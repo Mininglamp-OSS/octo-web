@@ -181,7 +181,6 @@ export default function SkillCard({ skill, categories, onOpen, onEdit, onDelete,
     const categoryName = categories.find((c) => c.id === skill.categoryId)?.name ?? "";
     const updatedLabel = skill.updatedAt ? formatRecentOrDate(skill.updatedAt) : "";
     const metaParts = [categoryName, updatedLabel].filter(Boolean);
-    const published = skill.visibility === "public";
     return (
       <article
         className="skill-market-mine-row"
@@ -224,20 +223,11 @@ export default function SkillCard({ skill, categories, onOpen, onEdit, onDelete,
               {hiddenTags.length > 0 && <span>+{hiddenTags.length}</span>}
             </div>
           )}
-          <div className="skill-market-mine-row__status">
-            <span
-              className={
-                published
-                  ? "skill-market-mine-row__badge skill-market-mine-row__badge--published"
-                  : "skill-market-mine-row__badge"
-              }
-            >
-              {published ? t("skillMarket.mine.published") : t("skillMarket.mine.private")}
-            </span>
-            {skill.version && (
+          {skill.version && (
+            <div className="skill-market-mine-row__status">
               <span className="skill-market-mine-row__version">v{skill.version}</span>
-            )}
-          </div>
+            </div>
+          )}
         </div>
         <div className="skill-market-mine-row__actions">
           {onEdit && (

@@ -46,7 +46,6 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
   const rawInstallCount = item.installCount ?? 0;
 
   if (row) {
-    const published = item.visibility === "public";
     const openUnlessButton = (target: EventTarget | null) =>
       !(target instanceof HTMLElement && target.closest("button"));
     return (
@@ -91,18 +90,11 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
               )}
             </div>
           )}
-          <div className="wk-mcp-mine-row__status">
-            <span
-              className={
-                published
-                  ? "wk-mcp-mine-row__badge wk-mcp-mine-row__badge--published"
-                  : "wk-mcp-mine-row__badge"
-              }
-            >
-              {published ? t("mcp.mine.published") : t("mcp.mine.private")}
-            </span>
-            {item.version && <span className="wk-mcp-mine-row__version">v{item.version}</span>}
-          </div>
+          {item.version && (
+            <div className="wk-mcp-mine-row__status">
+              <span className="wk-mcp-mine-row__version">v{item.version}</span>
+            </div>
+          )}
         </div>
         <div
           className="wk-mcp-mine-row__actions"
