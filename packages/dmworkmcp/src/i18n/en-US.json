@@ -194,7 +194,6 @@
   "card": {
     "officialPublisher": "Official publisher",
     "connect": "Add to Bot",
-    "connectAriaLabel": "Add {{name}} to Bot",
     "matchReason": {
       "name": "Matched name",
       "description": "Matched summary",

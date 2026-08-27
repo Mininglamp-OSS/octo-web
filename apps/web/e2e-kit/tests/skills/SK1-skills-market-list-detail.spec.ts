@@ -10,7 +10,7 @@ test("@SK1 @p1 @skills @market Skills 市场列表与详情", async ({ authedPag
   await authedPage.goto("/mcp-market/skills?sid=e2etest");
 
   await expect(
-    authedPage.getByRole("navigation", { name: "技能市场导航" })
+    authedPage.getByRole("searchbox", { name: "搜索名称、描述..." })
   ).toBeVisible();
 
   const skillCard = authedPage.getByRole("button", {

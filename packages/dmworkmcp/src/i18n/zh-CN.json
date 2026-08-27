@@ -194,7 +194,6 @@
   "card": {
     "officialPublisher": "官方发布",
     "connect": "添加到 Bot",
-    "connectAriaLabel": "添加 {{name}} 到 Bot",
     "matchReason": {
       "name": "命中名称",
       "description": "命中简介",

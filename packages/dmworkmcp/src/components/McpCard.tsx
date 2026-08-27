@@ -225,7 +225,10 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onConnect, onEdit, onD
       <button
         type="button"
         className="wk-mcp-card__primary-action"
-        aria-label={t("mcp.card.connectAriaLabel", { values: { name: item.name } })}
+        // No aria-label: the visible "添加到 Bot" text is the accessible name.
+        // Interpolating the connector name here would pollute the ancestor
+        // card's computed name (role="button") and make a name-scoped getByRole
+        // match both the card and this button (strict-mode collision).
         // The primary action forwards a connect prompt (onConnect) rather than
         // opening the detail modal. data-track-ignore so the global click
         // delegate doesn't also emit market_card_opened for the ancestor card.
