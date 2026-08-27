@@ -7,11 +7,6 @@
 /** The single marketplace scene every catalog row lives under today. */
 export const SCENE_CODE = "default";
 
-/** Sentinel the backend stores in place of a redacted secret value. The
- *  unified write path rejects it under secret-named keys, so forms blank it
- *  on read and never echo it back. */
-export const SECRET_PLACEHOLDER = "__OCTO_SECRET_PLACEHOLDER__";
-
 export type PluginTypeWire = "connector" | "expert" | "expert_team" | "skill";
 export type PluginVisibilityWire = "public" | "space" | "private" | "system";
 
@@ -103,12 +98,6 @@ export interface PluginCategoryWire {
   plugin_count: number;
 }
 
-export interface OffsetPaginationWire {
-  total: number;
-  page: number;
-  page_size: number;
-}
-
 /** raw_content of one inline package attachment, or undefined. */
 export function rawAttachment(
   pkg: PluginPackageWire | undefined,
@@ -132,43 +121,4 @@ export function jsonAttachment<T>(
   } catch {
     return undefined;
   }
-}
-
-/** Stable serializer matching Go's json.Marshal encoding (sorted keys,
- *  `<>&`/U+2028/U+2029 escapes): used to render deterministic JSON attachment
- *  contents (mcp.json, connector/*.json). The retired manifest byte-match rule
- *  no longer applies — packages carry no embedded manifest.json. */
-export function goCanonicalJSON(value: unknown): string {
-  return escapeLikeGo(stringifySortedKeys(value));
-}
-
-function stringifySortedKeys(value: unknown): string {
-  if (value === null || value === undefined) return "null";
-  if (typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) {
-    return `[${value.map(stringifySortedKeys).join(",")}]`;
-  }
-  const record = value as Record<string, unknown>;
-  const keys = Object.keys(record)
-    .filter((key) => record[key] !== undefined)
-    .sort();
-  const parts = keys.map(
-    (key) => `${JSON.stringify(key)}:${stringifySortedKeys(record[key])}`
-  );
-  return `{${parts.join(",")}}`;
-}
-
-function escapeLikeGo(json: string): string {
-  return json
-    .replace(/</g, "\\u003c")
-    .replace(/>/g, "\\u003e")
-    .replace(/&/g, "\\u0026")
-    .replace(/\u2028/g, "\\u2028")
-    .replace(/\u2029/g, "\\u2029")
-    // Go emits \u0008/\u000c where JSON.stringify emits the short \b/\f forms.
-    .replace(/\\./g, (escape) => {
-      if (escape === "\\b") return "\\u0008";
-      if (escape === "\\f") return "\\u000c";
-      return escape;
-    });
 }

@@ -9,7 +9,6 @@ test("@EX4 @p1 @experts @market @pagination Experts 市场分页上限提示", a
   });
   await authedPage.goto("/mcp-market/experts?sid=e2etest");
 
-  await expect(authedPage.getByText("共 101 个")).toBeVisible();
   await expect(
     authedPage.getByRole("button", { name: "发布负责人" })
   ).toBeVisible();

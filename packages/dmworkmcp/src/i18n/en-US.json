@@ -15,14 +15,9 @@
   },
   "mine": {
     "pageTitle": "My publications",
-    "pageSubtitle": "Manage the skills, experts and connectors you created, and publish them to the market.",
-    "navAriaLabel": "My asset type",
-    "published": "Published",
-    "private": "Private"
+    "navAriaLabel": "My asset type"
   },
   "expert": {
-    "pageTitle": "Experts",
-    "pageSubtitle": "Browse experts and squads you can install into Loop to extend your workspace.",
     "editor": {
       "returnToMarket": "Back",
       "save": "Save",
@@ -175,7 +170,6 @@
   },
   "list": {
     "pageTitle": "Connectors",
-    "pageSubtitle": "Browse and connect MCP servers to extend your agent's tools.",
     "desc": "Browse and connect MCP servers to extend your agent's tools.",
     "create": "Publish MCP",
     "searchPlaceholder": "Search name or description...",

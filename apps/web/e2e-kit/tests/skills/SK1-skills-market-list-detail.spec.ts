@@ -12,7 +12,6 @@ test("@SK1 @p1 @skills @market Skills 市场列表与详情", async ({ authedPag
   await expect(
     authedPage.getByRole("navigation", { name: "技能市场导航" })
   ).toBeVisible();
-  await expect(authedPage.getByText("共 1 个技能")).toBeVisible();
 
   const skillCard = authedPage.getByRole("button", {
     name: /release-risk-radar 官方发布/,

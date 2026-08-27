@@ -50,7 +50,12 @@ describe("toPluginUpsert", () => {
     const doc = JSON.parse(
       rawAttachment(body.plugin.plugin_json, "mcp.json") ?? "{}"
     );
-    const server = doc.mcpServers["GitHub MCP"];
+    // mcpServers MUST be keyed by the ASCII slug, not the display name — a
+    // space/CJK display-name key breaks the copy-paste config and disagrees
+    // with manifest.name / connector.source (both slug).
+    expect(Object.keys(doc.mcpServers)).toEqual(["github-mcp"]);
+    expect(doc.mcpServers["GitHub MCP"]).toBeUndefined();
+    const server = doc.mcpServers["github-mcp"];
     expect(server.type).toBe("streamable-http");
     expect(server.url).toBe("https://mcp.example.com/github");
     // User-supplied Authorization becomes an install-time placeholder; the
@@ -60,6 +65,20 @@ describe("toPluginUpsert", () => {
       "X-Trace": "on",
     });
     expect(server.env).toEqual({ REGION: "us", DB_URI: "" });
+  });
+
+  it("keys mcpServers by the default slug when the name has no ASCII slug", () => {
+    const cjk: CreateMcpParams = { ...form, name: "高德地图", slug: undefined };
+    const body = toPluginUpsert(cjk, { visibility: "space" });
+    const doc = JSON.parse(
+      rawAttachment(body.plugin.plugin_json, "mcp.json") ?? "{}"
+    );
+    // A pure-CJK display name slugifies to empty → the shared default slug; the
+    // key must never be the raw Chinese name.
+    expect(Object.keys(doc.mcpServers)).toEqual(["mcp-server"]);
+    expect(doc.mcpServers["高德地图"]).toBeUndefined();
+    expect(body.plugin.plugin_json.connector.source).toBe("connector.mcp-server");
+    expect(body.plugin.manifest_json.name).toBe("mcp-server");
   });
 
   it("does not embed a manifest.json attachment (contract layout)", () => {

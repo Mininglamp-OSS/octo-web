@@ -59,7 +59,6 @@
   },
   "list": {
     "pageTitle": "技能",
-    "pageSubtitle": "浏览可复用的技能,直接添加到你的智能体与工作流。",
     "mine": "我的",
     "tabSkills": "全部",
     "publish": "上架",
@@ -229,8 +228,5 @@
     "hoursAgo": "{{count}} 小时前",
     "daysAgo": "{{count}} 天前"
   },
-  "mine": {
-    "published": "已发布",
-    "private": "仅自己可见"
-  }
+  "mine": {}
 }

@@ -15,14 +15,9 @@
   },
   "mine": {
     "pageTitle": "我的发布",
-    "pageSubtitle": "管理你创建的技能、专家与连接器,并按需发布到市场。",
-    "navAriaLabel": "我的资产类型",
-    "published": "已发布",
-    "private": "仅自己可见"
+    "navAriaLabel": "我的资产类型"
   },
   "expert": {
-    "pageTitle": "专家",
-    "pageSubtitle": "浏览可安装到回路的专家与专家团,直接为你的工作区补充能力。",
     "editor": {
       "returnToMarket": "返回",
       "save": "保存",
@@ -175,7 +170,6 @@
   },
   "list": {
     "pageTitle": "连接器",
-    "pageSubtitle": "浏览并接入连接器，为你的智能体扩展工具能力。",
     "desc": "浏览并接入连接器，为你的智能体扩展工具能力。",
     "create": "上架连接器",
     "searchPlaceholder": "搜索名称、描述...",

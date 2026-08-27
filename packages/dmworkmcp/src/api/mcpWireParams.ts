@@ -88,8 +88,14 @@ export function toPluginUpsert(
   if (headers) server.headers = headers;
   // Contract layout: the manifest lives only in manifest_json — no embedded
   // manifest.json attachment (the old byte-match rule is retired).
+  // The mcpServers object MUST be keyed by the ASCII slug, not the display
+  // name: a Chinese/spaced display name produces an invalid copy-paste config
+  // key, and it must agree with manifest.name / connector.source (both slug).
+  // mapDetail reads serverName back from this key, so a display-name key would
+  // regress the detail snippet too.
+  const serverKey = slug || name;
   const attachments: PluginAttachmentBody[] = [
-    rawAtt("mcp.json", goCanonicalJSON({ mcpServers: { [name]: server } })),
+    rawAtt("mcp.json", goCanonicalJSON({ mcpServers: { [serverKey]: server } })),
     rawAtt("connector/tools.json", goCanonicalJSON(params.tools ?? [])),
     rawAtt("connector/examples.json", goCanonicalJSON(usage)),
     rawAtt(

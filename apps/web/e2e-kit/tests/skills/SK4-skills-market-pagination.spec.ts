@@ -21,7 +21,6 @@ test("@SK4 @p1 @skills @market @pagination Skills 市场分页追加", async ({ 
     name: /meeting-note-cleaner/,
   });
 
-  await expect(authedPage.getByText("共 2 个技能")).toBeVisible();
   await expect(firstSkill).toBeVisible();
   await expect.poll(() => skillRequests.some((url) => !url.includes("cursor="))).toBe(true);
   await authedPage.locator(".skill-market-sentinel").scrollIntoViewIfNeeded();

@@ -59,7 +59,6 @@
   },
   "list": {
     "pageTitle": "Skills",
-    "pageSubtitle": "Browse reusable skills and add them straight to your agents and workflows.",
     "mine": "Mine",
     "tabSkills": "All",
     "publish": "Publish",
@@ -229,8 +228,5 @@
     "hoursAgo": "{{count}} hours ago",
     "daysAgo": "{{count}} days ago"
   },
-  "mine": {
-    "published": "Published",
-    "private": "Private"
-  }
+  "mine": {}
 }
