@@ -1,7 +1,7 @@
 import React from "react";
 import { Tooltip } from "@douyinfe/semi-ui";
 import { IconWrenchStroked } from "@douyinfe/semi-icons";
-import { Bot, Pencil, Plug, ShieldCheck, Trash2, UserRound } from "lucide-react";
+import { Bot, Pencil, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import type { McpListItem } from "../types/mcp";
 import { t } from "@octo/base";
 import { IconGlyph } from "../utils/icon";
@@ -235,7 +235,6 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onConnect, onEdit, onD
           (onConnect ?? onClick)(item);
         }}
       >
-        <Plug size={14} aria-hidden="true" />
         {t("mcp.card.connect")}
       </button>
       <div className="wk-mcp-card__top">
