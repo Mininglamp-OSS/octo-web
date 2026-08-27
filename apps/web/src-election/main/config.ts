@@ -1,10 +1,54 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 
+const DEFAULT_ELECTRON_UPDATER_API_PATH = "/api/v1/common/updater/";
+
+function normalizeDirectoryUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+    if (url.search || url.hash) return "";
+    return url.toString().endsWith("/") ? url.toString() : `${url.toString()}/`;
+  } catch {
+    return "";
+  }
+}
+
+function deriveUpdaterApiUrlFromApiUrl(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    const apiOrigin = new URL(value).origin;
+    return new URL(DEFAULT_ELECTRON_UPDATER_API_PATH, apiOrigin).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function readBuiltElectronUpdaterApiUrl(): string | null | undefined {
+  try {
+    const raw = readFileSync(join(__dirname, "../../build/electron-config.json"), "utf8");
+    const value = JSON.parse(raw)?.electronUpdaterApiUrl;
+    return typeof value === "string" ? value : null;
+  } catch {
+    return undefined;
+  }
+}
+
+function readElectronUpdaterApiUrl(): string | undefined {
+  const built = readBuiltElectronUpdaterApiUrl();
+  const raw = built !== undefined
+    ? built
+    : process.env.VITE_ELECTRON_UPDATER_API_URL ||
+      process.env.ELECTRON_UPDATER_API_URL ||
+      deriveUpdaterApiUrlFromApiUrl(process.env.VITE_API_URL);
+  const normalized = raw ? normalizeDirectoryUrl(raw) : "";
+  return normalized || undefined;
+}
+
 const OCTO_CONFIG = {
   appId: "com.mininglamp.octo.web",
   name: "OCTO",
-  updateUrl: 'https://api.example.com/'
+  updaterApiUrl: readElectronUpdaterApiUrl(),
 };
 
 function readBuiltOidcApiOrigin(): string | null | undefined {

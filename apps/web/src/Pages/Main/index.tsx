@@ -336,6 +336,7 @@ export class MainPage extends Component<{}, MainPageState> {
                                         showAppUpdate={vm.showAppUpdate}
                                         appUpdateProgress={vm.appUpdateProgress}
                                         showAppUpdateOperation={vm.showAppUpdateOperation}
+                                        appUpdateDownloaded={vm.appUpdateDownloaded}
                                         lastVersionInfo={vm.lastVersionInfo}
                                         onToggleSetting={() => { vm.settingSelected = !vm.settingSelected; }}
                                         onSetShowAppVersion={(v) => {

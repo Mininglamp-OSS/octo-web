@@ -73,6 +73,45 @@ export const Default: Story = {
     args: defaultArgs,
 };
 
+export const UpdateCheckOpen: StoryObj = {
+    name: "检查更新弹框（打开）",
+    render: () => (
+        <NavSettingsPanel
+            settingSelected={false}
+            showAppVersion
+            showAppUpdate={false}
+            appUpdateProgress={0}
+            showAppUpdateOperation
+            lastVersionInfo={{
+                appVersion: "2.0.0",
+                updateDesc: "本次更新：优化消息体验\n\n- 修复若干问题\n- 提升稳定性",
+            }}
+            onToggleSetting={() => undefined}
+            onSetShowAppVersion={() => undefined}
+            onInstallUpdate={() => undefined}
+            onNotifyListener={() => undefined}
+        />
+    ),
+};
+
+export const UpdateInProgress: StoryObj = {
+    name: "更新中弹框",
+    render: () => (
+        <NavSettingsPanel
+            settingSelected={false}
+            showAppVersion
+            showAppUpdate
+            appUpdateProgress={62}
+            showAppUpdateOperation={false}
+            lastVersionInfo={{ appVersion: "2.0.0", updateDesc: "" }}
+            onToggleSetting={() => undefined}
+            onSetShowAppVersion={() => undefined}
+            onInstallUpdate={() => undefined}
+            onNotifyListener={() => undefined}
+        />
+    ),
+};
+
 export const SettingsFlyoutOpen: Story = {
     name: "设置弹层（真实组件）",
     args: { ...defaultArgs, settingSelected: true },
