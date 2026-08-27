@@ -42,12 +42,22 @@ export function permissionState(status: DocSharePreviewStatus): DocSharePermissi
   if (status === "unavailable") return "unavailable";
   if (status === "error") return "error";
   if (status === "ready") return "reader";
-  // empty 只来自 docs-backend 的 409 `unsupported_doc_type`（**已收窄**：其它 409 —— 归档的
-  // `conflict` 走 unavailable、snapshot_invalid 等走 error —— 都到不了这里）。而那道 doc_type
-  // 闸在 requireDocRole(reader) **之后**才跑，换言之，能拿到这个码就意味着调用者已通过
-  // reader 校验；后端也没有任何「无权限却返回 409」的路径。所以 empty 在 ACL 上**确证**了
-  // reader 权限，标绿「可查看」是准确结论，不是乐观猜测；卡片随后自然落到「暂无预览」
-  // 占位，而不是红色错误态。
+  // empty = **reader-protected 接口确认了访问权，但没有可渲染内容**。它有两条来源，
+  // 两条都在 requireDocRole(reader) **通过之后**才可能发生：
+  //   • 409 `unsupported_doc_type`——doc_type 闸排在鉴权之后，拿到这个码即证明已过 reader
+  //     校验（其它 409 到不了这里：归档的 `conflict` 走 unavailable、snapshot_invalid 等走
+  //     error）。doc/sheet/board 端点会对 html 目标回它；/html-preview 自己也会对非 html
+  //     目标回它——四个端点同一套语义，不用区分。
+  //   • 200 + 空 preview（html 的 /html-preview 端点）——路由本身挂在 requireDocRole(reader)
+  //     上，能返回 200 就说明鉴权已过；空内容是后端刻意的降级出口（无 slug / 上游超时 /
+  //     抽不出正文时宁可回空也不回 5xx，见 htmlPreviewFetch.ts）。
+  // 后端没有任何「无权限却返回 409 或 200」的路径，所以无论走哪条，empty 在 ACL 上都
+  // **确证**了 reader 权限，标绿「可查看」是准确结论，不是乐观猜测；卡片随后自然落到
+  // 「暂无预览」占位，而不是红色错误态。
+  //
+  // ⚠️ 注意区分：empty 对**权限**是稳定结论，但对**内容**不是——html 那条来源可能只是
+  // 上游一次抖动，内容随时可能自愈（缓存语义见 preview.ts 的 fetchDocPreview）。
+  // 这里只关心权限维度，所以两条来源殊途同归。
   if (status === "empty") return "reader";
   return "checking";
 }

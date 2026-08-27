@@ -49,6 +49,31 @@ async function openConversation(page: Parameters<typeof installMockImRuntime>[0]
   await expect(page.locator('[contenteditable="true"]')).toBeVisible({ timeout: 15_000 });
 }
 
+async function registerChannelSettingUserInfo(
+  page: Parameters<typeof installMockImRuntime>[0],
+) {
+  await page.evaluate(() => {
+    type Msw = {
+      worker: { use: (...handlers: unknown[]) => void };
+      http: { get: (path: string, resolver: () => unknown) => unknown };
+      HttpResponse: { json: (body: unknown) => unknown };
+    };
+    const msw = (window as unknown as { __msw?: Msw }).__msw;
+    if (!msw) throw new Error("[chat-layout] MSW worker 未就绪");
+    msw.worker.use(
+      msw.http.get("*/users/e2e-user-2", () =>
+        msw.HttpResponse.json({
+          uid: "e2e-user-2",
+          name: "E2E Sender",
+          short_no: "e2e-2001",
+          robot: 0,
+          extra: {},
+        }),
+      ),
+    );
+  });
+}
+
 
 test("@CH21 @p1 @chat @sidebar 顶部搜索和添加入口打开面板", async ({ authedPage }) => {
   await openChat(authedPage);
@@ -145,6 +170,135 @@ test("@CH23 @p1 @chat @conversation 详情顶部显示标题并打开群详情",
   await authedPage.getByTestId("chat-channel-setting-entry").click();
   await expect(authedPage.locator(".wk-chat-content-right")).toHaveClass(/wk-chat-channelsetting-open/);
 });
+
+test(
+  "@CH43 @p1 @chat @conversation 群详情遮罩覆盖聊天浮动按钮",
+  async ({ authedPage }) => {
+    await installMockImRuntime(authedPage, {
+      ...seed(),
+      subscribers: [
+        {
+          uid: "e2e-user-1",
+          name: "E2E Tester",
+          channelId: GROUP_ID,
+          channelType: 2,
+          role: 1,
+          status: 1,
+        },
+        {
+          uid: "e2e-user-2",
+          name: "E2E Sender",
+          channelId: GROUP_ID,
+          channelType: 2,
+          status: 1,
+        },
+      ],
+    });
+    await registerChannelSettingUserInfo(authedPage);
+    await openChat(authedPage);
+    await authedPage
+      .getByRole("button", { name: "最近", exact: true })
+      .click();
+    await authedPage.getByText(GROUP_NAME, { exact: true }).click();
+
+    const messages = authedPage.locator(".wk-conversation-messages");
+    await expect(messages).toBeVisible({ timeout: 15_000 });
+    await messages.evaluate((element) => {
+      Object.defineProperties(element, {
+        scrollHeight: { configurable: true, value: 2_000 },
+        clientHeight: { configurable: true, value: 600 },
+      });
+      element.scrollTop = 0;
+      element.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+
+    const scrollPositionView = authedPage.locator(
+      ".wk-conversationpositionview",
+    );
+    const scrollButton = scrollPositionView
+      .locator(".wk-conversationpositionview-item")
+      .last();
+    await expect(scrollButton).toHaveClass(/wk-reveale/);
+
+    const channelSettingEntry = authedPage.getByTestId(
+      "chat-channel-setting-entry",
+    );
+    await channelSettingEntry.click();
+    const mask = authedPage.getByTestId("chat-channel-setting-mask");
+    const panel = authedPage.locator(".wk-chat-channelsetting");
+    await expect(mask).toBeVisible();
+    await expect(panel).toBeVisible();
+    await expect(panel).toBeFocused();
+    await expect(panel).toHaveAttribute("aria-modal", "true");
+    await expect(authedPage.locator(".wk-chat-content-chat")).toHaveAttribute(
+      "inert",
+      "",
+    );
+    await authedPage.keyboard.press("Shift+Tab");
+    await expect
+      .poll(() =>
+        panel.evaluate((element) => element.contains(document.activeElement)),
+      )
+      .toBe(true);
+    await authedPage.keyboard.press("Tab");
+    await expect
+      .poll(() =>
+        panel.evaluate((element) => element.contains(document.activeElement)),
+      )
+      .toBe(true);
+
+    const scrollButtonBox = await scrollButton.boundingBox();
+    if (!scrollButtonBox) throw new Error("滚动到底部按钮没有可验证的布局位置");
+    const panelCoversScrollButton = await panel.evaluate(
+      (element, point) =>
+        element.contains(document.elementFromPoint(point.x, point.y)),
+      {
+        x: scrollButtonBox.x + scrollButtonBox.width / 2,
+        y: scrollButtonBox.y + scrollButtonBox.height / 2,
+      },
+    );
+    expect(panelCoversScrollButton).toBe(true);
+
+    const member = panel
+      .locator(".wk-subscribers-item")
+      .filter({ hasText: "E2E Sender" });
+    await expect(member).toBeVisible();
+    await member.click();
+    const userInfoModal = authedPage
+      .locator(".semi-modal-content.wk-modal-content")
+      .filter({ hasText: "E2E Sender" });
+    await expect(userInfoModal).toBeVisible();
+    const userInfoAction = userInfoModal.locator("button").first();
+    await expect(userInfoAction).toBeVisible();
+    await userInfoAction.focus();
+    await authedPage.keyboard.press("Tab");
+    await expect
+      .poll(() =>
+        userInfoModal.evaluate((element) =>
+          element.contains(document.activeElement),
+        ),
+      )
+      .toBe(true);
+    await authedPage.keyboard.press("Escape");
+    await expect(userInfoModal).toBeHidden();
+    await expect(mask).toBeVisible();
+
+    await panel.focus();
+    await authedPage.keyboard.press("Escape");
+    await expect(mask).toHaveCount(0);
+    await expect(channelSettingEntry).toBeFocused();
+
+    await channelSettingEntry.click();
+    await mask.click({ position: { x: 8, y: 8 } });
+    await expect(mask).toHaveCount(0);
+    await expect(
+      authedPage.locator(".wk-chat-content-right"),
+    ).not.toHaveClass(/wk-chat-channelsetting-open/);
+
+    await authedPage.getByTestId("chat-thread-panel-entry").click();
+    await expect(authedPage.getByText("子区", { exact: true })).toBeVisible();
+  },
+);
 
 test("@CH24 @p1 @chat @thread 群详情顶部打开子区列表", async ({ authedPage }) => {
   await openConversation(authedPage); await authedPage.getByTestId("chat-thread-panel-entry").click();

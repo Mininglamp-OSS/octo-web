@@ -16,6 +16,7 @@ import BotDetailModal from "@octo/base/src/Components/BotDetailModal";
 import UserInfo from "@octo/base/src/Components/UserInfo";
 import GroupCard from "@octo/base/src/Components/GroupCard";
 import { Space, SpaceMember, SpaceService, hasSpacePrefix } from "@octo/base/src/Service/SpaceService";
+import { channelOpenedTrackPayload } from "@octo/base/src/Service/channelOpenedTracking";
 import { debounce } from "@octo/base/src/Utils/rateLimit";
 import { OnlineStatusBadge, needShowOnlineStatus, getOnlineTip } from "@octo/base/src/Components/ConversationList";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -633,6 +634,10 @@ export default class ContactsList extends Component<any, ContactsState> {
     }
 
     private handleGroupClick = (groupNo: string, name?: string, memberCount?: number) => {
+        // group_card_opened:通讯录内点群行弹出群名片(唯一收口点,搜索结果行 + 列表行两处 onClick 都走这里)。
+        // 与 contact_opened(打开人/bot 名片)对称。object_id 用原始 group_no(与本文件其他 opened 事件
+        // 同口径,不 stripSpacePrefix)。仅记「打开卡片」这一手势;从卡片点「进入聊天」是另一事件 channel_opened。
+        Dap.shared.track('group_card_opened', { object_id: groupNo })
         this.setState({ groupCardVisible: true, groupCardGroupNo: groupNo, groupCardName: name, groupCardMemberCount: memberCount })
     }
 
@@ -925,6 +930,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                             <UserInfo
                                 uid={this.state.userInfoUid}
                                 onClose={() => this.setState({ userInfoVisible: false })}
+                                trackContactMessageEntry
                             />
                         )}
                     </WKModal>
@@ -947,6 +953,13 @@ export default class ContactsList extends Component<any, ContactsState> {
                             }
                         }}
                         onChat={(channel) => {
+                            // contact_message_clicked:通讯录 AI 名片「发消息」收口点(此 BotDetailModal 实例专属通讯录页,
+                            // 不同于全局共享实例)。channel.channelID = bot uid。
+                            Dap.shared.track('contact_message_clicked', {
+                                object_id: channel.channelID,
+                                contact_type: 'ai',
+                                space_id: WKApp.shared.currentSpaceId || undefined,
+                            })
                             WKApp.endpoints.showConversation(channel)
                             this.setState({ botDetailVisible: false })
                         }}
@@ -959,6 +972,11 @@ export default class ContactsList extends Component<any, ContactsState> {
                         visible={this.state.groupCardVisible}
                         onClose={() => this.setState({ groupCardVisible: false })}
                         onEnterChat={(channel) => {
+                            // channel_opened:通讯录群聊名片「进入聊天」收口点(群聊)。与会话列表行同为命令式采集,
+                            // 复用 channelOpenedTrackPayload 保证 object_id(原始 channelID)与 channel_type 口径一致。
+                            // 群聊无「对端 AI」语义 → 不带 is_ai(helper 仅 person 行携带)。
+                            const payload = channelOpenedTrackPayload(channel, false)
+                            if (payload) Dap.shared.track('channel_opened', payload)
                             WKApp.endpoints.showConversation(channel)
                             this.setState({ groupCardVisible: false })
                         }}

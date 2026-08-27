@@ -266,3 +266,149 @@ describe("ContextMenus Lucide icons", () => {
         expect(container.querySelector(".wk-contextmenus li")?.textContent).toBe("Follow")
     })
 })
+
+describe("ContextMenus keyboard navigation", () => {
+    it("moves focus, executes the focused action, and restores trigger focus", () => {
+        const first = vi.fn()
+        const second = vi.fn()
+        const { context } = renderContextMenus(vi.fn(), [
+            { title: "Reply", actionKey: "reply", onClick: first },
+            { separator: true } as ContextMenusData,
+            { title: "Copy", actionKey: "copy", onClick: second },
+        ])
+        const trigger = container.querySelector<HTMLButtonElement>(".trigger")!
+        act(() => {
+            context?.hide()
+            trigger.focus()
+        })
+        dispatchContextMenu(trigger)
+
+        const items = container.querySelectorAll<HTMLElement>('[role="menuitem"]')
+        expect(document.activeElement).toBe(items[0])
+        act(() => items[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })))
+        expect(document.activeElement).toBe(items[1])
+        act(() => items[1].dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })))
+        expect(second).toHaveBeenCalledTimes(1)
+        expect(document.activeElement).toBe(trigger)
+    })
+
+    it("closes on Escape and restores focus", () => {
+        const { context } = renderContextMenus()
+        const trigger = container.querySelector<HTMLButtonElement>(".trigger")!
+        act(() => {
+            context?.hide()
+            trigger.focus()
+        })
+        dispatchContextMenu(trigger)
+        const item = container.querySelector<HTMLElement>('[role="menuitem"]')!
+        act(() => item.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })))
+        expect(context?.isShow()).toBe(false)
+        expect(document.activeElement).toBe(trigger)
+    })
+
+    it("closes on Tab without trapping keyboard focus", () => {
+        const { context } = renderContextMenus()
+        const item = container.querySelector<HTMLElement>('[role="menuitem"]')!
+
+        act(() => item.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true })))
+
+        expect(context?.isShow()).toBe(false)
+    })
+
+    it("opens a submenu with the keyboard and returns to its parent", () => {
+        const childAction = vi.fn()
+        renderContextMenus(vi.fn(), [{
+            title: "Move to",
+            children: [
+                { title: "Group A", onClick: childAction },
+                { title: "Group B" },
+            ],
+        }])
+        const parent = container.querySelector<HTMLElement>('.wk-contextmenus > ul > [role="menuitem"]')!
+        const children = container.querySelectorAll<HTMLElement>('.wk-ctx-submenu [role="menuitem"]')
+
+        act(() => parent.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })))
+        expect(document.activeElement).toBe(children[0])
+        act(() => children[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })))
+        expect(document.activeElement).toBe(children[1])
+        act(() => children[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })))
+        expect(document.activeElement).toBe(parent)
+        act(() => parent.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })))
+        expect(document.activeElement).toBe(children[0])
+        act(() => children[0].dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })))
+        expect(childAction).toHaveBeenCalledTimes(1)
+    })
+
+    it("returns focus before invoking an action that opens another focus-managed surface", () => {
+        const observedFocus = vi.fn()
+        const { context } = renderContextMenus(vi.fn(), [{
+            title: "React",
+            onClick: () => observedFocus(document.activeElement),
+        }])
+        const trigger = container.querySelector<HTMLButtonElement>(".trigger")!
+        act(() => {
+            context?.hide()
+            trigger.focus()
+        })
+        dispatchContextMenu(trigger)
+
+        const item = container.querySelector<HTMLElement>('[role="menuitem"]')!
+        act(() => item.click())
+
+        expect(observedFocus).toHaveBeenCalledWith(trigger)
+    })
+
+    it("restores the previously focused element after a mouse-opened menu closes", () => {
+        const { context } = renderContextMenus()
+        const composer = document.createElement("input")
+        container.prepend(composer)
+        act(() => {
+            context?.hide()
+            composer.focus()
+        })
+
+        dispatchContextMenu(container.querySelector(".trigger")!)
+        act(() => context?.hide())
+
+        expect(document.activeElement).toBe(composer)
+    })
+
+    it("does not override focus intentionally moved by an executed action", () => {
+        const actionTarget = document.createElement("input")
+        const { context } = renderContextMenus(vi.fn(), [{
+            title: "Reply",
+            onClick: () => actionTarget.focus(),
+        }])
+        container.prepend(actionTarget)
+        const trigger = container.querySelector<HTMLButtonElement>(".trigger")!
+        act(() => {
+            context?.hide()
+            trigger.focus()
+        })
+        dispatchContextMenu(trigger)
+
+        const item = container.querySelector<HTMLElement>('[role="menuitem"]')!
+        act(() => item.click())
+
+        expect(document.activeElement).toBe(actionTarget)
+    })
+
+    it("keeps the original return target when an open menu is shown again", () => {
+        const { context } = renderContextMenus()
+        const trigger = container.querySelector<HTMLButtonElement>(".trigger")!
+        act(() => {
+            context?.hide()
+            trigger.focus()
+        })
+        dispatchContextMenu(trigger)
+
+        act(() => context?.show({
+            clientX: 140,
+            clientY: 100,
+            preventDefault: vi.fn(),
+        }))
+        act(() => context?.hide())
+
+        expect(document.activeElement).toBe(trigger)
+    })
+})

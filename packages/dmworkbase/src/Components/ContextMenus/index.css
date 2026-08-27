@@ -55,6 +55,12 @@ body[theme-mode=dark] .wk-contextmenus {
     background: #F2F3F5;
 }
 
+.wk-contextmenus li:focus-visible {
+    background: var(--wk-bg-hover);
+    outline: var(--wk-sp-0-5) solid var(--wk-brand-primary);
+    outline-offset: calc(-1 * var(--wk-sp-0-5));
+}
+
 .wk-contextmenus ul > li:first-of-type {
     border-top-left-radius: var(--wk-r-md);
     border-top-right-radius: var(--wk-r-md);
@@ -134,7 +140,8 @@ body[theme-mode=dark] .wk-ctx-submenu {
     box-shadow: var(--wk-shadow-lg), var(--wk-shadow-sm);
 }
 
-.wk-contextmenus li:hover > .wk-ctx-submenu {
+.wk-contextmenus li:hover > .wk-ctx-submenu,
+.wk-contextmenus li:focus-within > .wk-ctx-submenu {
     display: block;
 }
 
@@ -150,7 +157,8 @@ body[theme-mode=dark] .wk-ctx-submenu {
 }
 
 /* 子菜单向左展开（靠近右侧视口边缘时） */
-.wk-contextmenus-flip-submenu li:hover > .wk-ctx-submenu {
+.wk-contextmenus-flip-submenu li:hover > .wk-ctx-submenu,
+.wk-contextmenus-flip-submenu li:focus-within > .wk-ctx-submenu {
     left: auto;
     right: calc(100% + 4px);
 }

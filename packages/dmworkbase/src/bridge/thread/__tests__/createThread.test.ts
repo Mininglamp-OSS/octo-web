@@ -111,11 +111,12 @@ describe("trackSubchannelCreated 关键属性", () => {
     })
   })
 
-  it("右键路径额外带 from_msg_type,channel_id = 源消息所在群", () => {
+  it("右键路径额外带 from_msg_type + is_ai_msg,channel_id = 源消息所在群", () => {
     trackSubchannelCreated({ short_id: "t2", channel_id: "group-b____t2" } as any, "message_right_click", {
       title: "",
       fromMsgType: "image_file",
       channelId: "group-b",
+      isAiMsg: true,
     })
     expect(hoisted.dapTrack).toHaveBeenCalledWith("subchannel_created", {
       subchannel_id: "t2",
@@ -123,6 +124,24 @@ describe("trackSubchannelCreated 关键属性", () => {
       title_len_bucket: "empty",
       from_msg_type: "image_file",
       channel_id: "group-b",
+      is_ai_msg: true,
+    })
+  })
+
+  it("is_ai_msg 携带 false(源消息作者非 AI)而非省略", () => {
+    trackSubchannelCreated({ short_id: "t2b", channel_id: "group-b____t2b" } as any, "message_right_click", {
+      title: "hi",
+      fromMsgType: "text",
+      channelId: "group-b",
+      isAiMsg: false,
+    })
+    expect(hoisted.dapTrack).toHaveBeenCalledWith("subchannel_created", {
+      subchannel_id: "t2b",
+      source: "message_right_click",
+      title_len_bucket: "short",
+      from_msg_type: "text",
+      channel_id: "group-b",
+      is_ai_msg: false,
     })
   })
 
@@ -169,11 +188,11 @@ describe("inferMsgType", () => {
     })).toBe("reply")
   })
 
-  it("maps text, image/file, interactive card, and unknown content", () => {
+  it("maps text and image/file content while leaving unsupported content undefined", () => {
     expect(inferMsgType({ contentType: MessageContentType.text })).toBe("text")
     expect(inferMsgType({ contentType: MessageContentType.image })).toBe("image_file")
     expect(inferMsgType({ contentType: MessageContentTypeConst.file })).toBe("image_file")
-    expect(inferMsgType({ contentType: MessageContentTypeConst.interactiveCard })).toBe("link")
+    expect(inferMsgType({ contentType: MessageContentTypeConst.interactiveCard })).toBeUndefined()
     expect(inferMsgType(undefined)).toBeUndefined()
   })
 })

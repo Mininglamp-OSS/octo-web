@@ -10,6 +10,7 @@ import { updateUserLanguagePreference } from "../../Service/UserLanguageService"
 import { i18n, t } from "../../i18n";
 import { Locale } from "../../i18n/types";
 import type { SettingsItem } from "./settingsRegistry";
+import type { VersionCheckResult } from "../../Utils/versionChecker";
 import { createDesktopSettingsAdapter, createDownloadSettingsAdapter, createKeepAwakeAdapter, createNotificationAdapter, type DesktopSettings, type DownloadSettings } from "../../Runtime/adapters";
 import SettingsStatusTag from "./SettingsStatusTag";
 import { MeInfo } from "../MeInfo";
@@ -23,7 +24,7 @@ import { acceptVoiceInput, ensureVoiceFeedbackLoaded } from "../../features/voic
 import { Dap } from "../../Service/Dap";
 import { getElectronLinksBridge, openElectronSystemSettings } from "../../electron/desktopBridge";
 import { resolveWebOrigin } from "../../Utils/webOrigin";
-import type { VersionCheckResult } from "../../Utils/versionChecker";
+import TrustedDomainsSettingsPage from "./TrustedDomainsSettingsPage";
 
 export function SettingsRow({ title, description, trailing, children, onClick }: { title: string; description?: React.ReactNode; trailing?: React.ReactNode; children?: React.ReactNode; onClick?: () => void }) {
   const content = <><div className="wk-settings-center__row-main"><div className="wk-settings-center__row-title">{title}</div>{description && <div className="wk-settings-center__row-description">{description}</div>}</div>{children ?? trailing}</>;
@@ -96,6 +97,7 @@ export function SettingsPage({ item, environment, accountCenterUrl, onSecrets, o
   if (item?.id === "desktop-behavior") return <DesktopBehaviorSettingsPage environment={environment} />;
   if (item?.id === "downloads") return <DownloadsSettingsPage environment={environment} />;
   if (item?.id === "voice") return <VoiceInputSettingsPage environment={environment} />;
+  if (item?.id === "trusted-domains") return <TrustedDomainsSettingsPage environment={environment} />;
   if (item?.id === "shortcuts") return <ShortcutsSettingsPage environment={environment} />;
   if (item?.id === "devices") return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.devices.title")} description={t("base.navRail.settingsCenter.page.devices.description")}><div className="wk-settings-center__resource-sections">{settingsResourceGroups.map((group) => <ResourceSection key={group.titleKey} title={t(group.titleKey)} category={group.category}>{group.resources.map((resource) => <ResourceCard key={resource.id} {...resource} title={t(resource.titleKey)} description={t(resource.descriptionKey)} category={group.category} action={resource.url && resource.actionKey ? <a className={`wk-settings-center__resource-action${group.category === "clients" ? " wk-settings-center__resource-action--client" : ""}`} href={resource.url} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" />{t(resource.actionKey)}</a> : undefined} />)}</ResourceSection>)}</div></SettingsPageFrame>;
   if (item?.id === "about") return <AboutSettingsPage environment={environment} onAbout={onAbout} aboutUpdateStatus={aboutUpdateStatus} onOpenOnboarding={onOpenOnboarding} />;

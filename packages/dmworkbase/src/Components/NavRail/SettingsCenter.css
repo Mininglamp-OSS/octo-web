@@ -100,6 +100,10 @@
 .wk-settings-center__demo-select:hover { border-color: var(--wk-border-strong, var(--wk-border-default)); }
 .wk-settings-center__demo-select:focus-visible { border-color: var(--wk-color-accent); outline: none; box-shadow: 0 0 0 2px var(--wk-brand-primary-ring); }
 .wk-settings-center__download-path { display: block; margin-top: 8px; color: var(--wk-text-tertiary); font: 11px/1.4 var(--wk-font-mono, monospace); overflow-wrap: anywhere; }
+.wk-settings-center__trusted-domains-status { display: flex; min-height: 68px; align-items: center; justify-content: center; color: var(--wk-text-tertiary); }
+.wk-settings-center__trusted-domains-empty { padding: 24px 0; color: var(--wk-text-tertiary); font-size: 13px; text-align: center; }
+.wk-settings-center__trusted-domains-list { display: grid; }
+.wk-settings-center__trusted-domains-list .wk-settings-center__row-title { overflow-wrap: anywhere; font-family: var(--wk-font-mono, monospace); font-size: 13px; }
 .wk-settings-center__manage-button:disabled, .wk-settings-center__demo-select:disabled { cursor: not-allowed; opacity: .55; }
 .wk-settings-center__local-config { display: grid; gap: 16px; margin: 0 -12px; padding: 20px 20px 18px; border-bottom: 1px solid var(--wk-border-subtle); background: var(--wk-bg-base); }
 .wk-settings-center__local-field { display: grid; gap: 7px; color: var(--wk-text-secondary); font-size: 12px; line-height: 1.5; }

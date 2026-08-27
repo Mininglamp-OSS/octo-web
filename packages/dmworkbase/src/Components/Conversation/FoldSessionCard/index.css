@@ -215,6 +215,11 @@
   order: -1;
 }
 
+.wk-fold-session-card-summary:focus-visible {
+  outline: var(--wk-sp-0-5) solid var(--wk-brand-primary);
+  outline-offset: calc(-1 * var(--wk-sp-0-5));
+}
+
 .wk-fold-session-card-summary-show {
   display: block;
 }

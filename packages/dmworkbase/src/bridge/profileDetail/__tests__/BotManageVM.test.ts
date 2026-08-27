@@ -9,8 +9,9 @@
  *   5. loadMore 无 cursor / hasMore=false → 不发请求
  *   6. toggleMentionFree 开 → PUT mention_pref{no_mention:1}；关 → DELETE
  *   7. toggle 成功 → 局部更新 no_mention；失败 → 记录错误 + 本地不变（开关回弹）
- *   8. visibleGroups → 客户端按群名过滤 + 已开启置顶分区
+ *   8. visibleGroups → 已开启置顶分区（关键字过滤已下沉后端 q）
  *   9. 防串台：setRobotId 后旧请求 isStale 丢弃，不污染新 bot 列表
+ *  10. 搜索接后端 q：debounce 合并输入、清关键字重拉、切 bot 清 debounce（本 issue WS-115）
  *
  * 与 PersonaSettings/vm.test.ts 同款 mock 策略（vi.hoisted Service）。
  */
@@ -231,7 +232,7 @@ describe("MentionFreeVM.visibleGroups (client filter + partition)", () => {
         expect(others.map((g) => g.group_no)).toEqual(["g1", "g3"])
     })
 
-    it("filters by group name (case-insensitive substring)", async () => {
+    it("does NOT filter locally by name (filtering is delegated to backend q)", async () => {
         hoisted.get.mockResolvedValueOnce({
             list: [
                 grp({ group_no: "g1", name: "Engineering" }),
@@ -242,9 +243,10 @@ describe("MentionFreeVM.visibleGroups (client filter + partition)", () => {
         })
         const vm = new MentionFreeVM("bot1")
         await vm.loadGroups()
+        // 关键字只回显；实际过滤由后端 q 完成，本地列表保持后端返回原样。
         vm.setSearchKeyword("market")
         const { enabled, others } = vm.visibleGroups()
-        expect([...enabled, ...others].map((g) => g.group_no)).toEqual(["g2"])
+        expect([...enabled, ...others].map((g) => g.group_no)).toEqual(["g1", "g2"])
     })
 })
 
@@ -376,5 +378,357 @@ describe("MentionFreeVM 防串台 (requestedUid / isStale)", () => {
         })
         await vm.loadMore()
         expect(vm.groups.map((g) => g.group_no)).toEqual(["b1", "b2"])
+    })
+})
+
+describe("MentionFreeVM 搜索接后端 q (debounce, WS-115)", () => {
+    beforeEach(() => {
+        vi.useFakeTimers()
+    })
+    afterEach(() => {
+        vi.useRealTimers()
+    })
+
+    it("A: debounces rapid input into a single backend call carrying q, cursor empty", async () => {
+        // 首屏（构造后手动触发一次 loadGroups，模拟 didMount）
+        hoisted.get.mockResolvedValue({ list: [], next_cursor: null, has_more: false })
+        const vm = new MentionFreeVM("bot1")
+        await vm.loadGroups()
+        hoisted.get.mockClear()
+
+        // debounce 窗口内连续输入，只应触发 1 次后端拉取
+        vm.setSearchKeyword("a")
+        vi.advanceTimersByTime(100)
+        vm.setSearchKeyword("ab")
+        vi.advanceTimersByTime(100)
+        vm.setSearchKeyword("abc")
+        expect(hoisted.get).not.toHaveBeenCalled()
+
+        await vi.advanceTimersByTimeAsync(250)
+        expect(hoisted.get).toHaveBeenCalledTimes(1)
+        expect(hoisted.get).toHaveBeenCalledWith({
+            robotId: "bot1",
+            limit: 30,
+            q: "abc",
+        })
+        // 搜索走 searching 而非 loading（不盖列表）
+        expect(vm.searching).toBe(false) // resolve 后复位
+        expect(vm.searchKeyword).toBe("abc")
+    })
+
+    it("B: clearing the keyword re-fetches without q and resets activeQuery", async () => {
+        hoisted.get.mockResolvedValue({
+            list: [grp({ group_no: "g1", name: "Engineering" })],
+            next_cursor: "C2",
+            has_more: true,
+        })
+        const vm = new MentionFreeVM("bot1")
+        await vm.loadGroups()
+
+        vm.setSearchKeyword("abc")
+        await vi.advanceTimersByTimeAsync(250)
+        expect(hoisted.get).toHaveBeenLastCalledWith({ robotId: "bot1", limit: 30, q: "abc" })
+
+        // loadMore 在有 q 时沿用同一关键字
+        hoisted.get.mockClear()
+        await vm.loadMore()
+        expect(hoisted.get).toHaveBeenLastCalledWith({
+            robotId: "bot1",
+            limit: 30,
+            cursor: "C2",
+            q: "abc",
+        })
+
+        // 清空关键字 → 重拉且不带 q
+        hoisted.get.mockClear()
+        vm.setSearchKeyword("")
+        await vi.advanceTimersByTimeAsync(250)
+        expect(hoisted.get).toHaveBeenCalledTimes(1)
+        expect(hoisted.get).toHaveBeenLastCalledWith({ robotId: "bot1", limit: 30 })
+
+        // activeQuery 复位：清空后 loadMore 不再带 q
+        hoisted.get.mockClear()
+        await vm.loadMore()
+        expect(hoisted.get).toHaveBeenLastCalledWith({
+            robotId: "bot1",
+            limit: 30,
+            cursor: "C2",
+        })
+    })
+
+    it("C: switching bot mid-search clears the pending debounce (no call for the old robotId)", async () => {
+        hoisted.get.mockResolvedValue({ list: [], next_cursor: null, has_more: false })
+        const vm = new MentionFreeVM("botOld")
+        await vm.loadGroups()
+        hoisted.get.mockClear()
+
+        // 输入进行中（debounce 未触发）就切 bot
+        vm.setSearchKeyword("query")
+        vi.advanceTimersByTime(100)
+        vm.setRobotId("botNew") // 切 bot 自身触发一次 botNew 首屏拉取
+        await Promise.resolve()
+
+        // 记录切 bot 触发的调用，确认参数针对 botNew 且无残留 q
+        expect(hoisted.get).toHaveBeenCalledTimes(1)
+        expect(hoisted.get).toHaveBeenLastCalledWith({ robotId: "botNew", limit: 30 })
+
+        // 旧 debounce 必须已被清：继续推进时间不应再对 botOld 发请求
+        hoisted.get.mockClear()
+        await vi.advanceTimersByTimeAsync(500)
+        expect(hoisted.get).not.toHaveBeenCalled()
+        expect(vm.searchKeyword).toBe("")
+    })
+
+    it("D: unmount during the debounce window reverts searchKeyword to the applied query (back/reopen consistency)", async () => {
+        // reviewer #1082：在 debounce 窗口内输入后立刻导航返回，VM 被复用重新挂载时
+        // 输入框显示未生效关键字、列表却是旧结果。dispose 取消 debounce 时应回滚关键字。
+        hoisted.get.mockResolvedValue({
+            list: [grp({ group_no: "g1" }), grp({ group_no: "g2" })],
+            next_cursor: null,
+            has_more: false,
+        })
+        const vm = new MentionFreeVM("bot1")
+        await vm.loadGroups() // 首屏未过滤，activeQuery=""
+        hoisted.get.mockClear()
+
+        // 输入关键字（排定 debounce）后立刻卸载，debounce 尚未触发
+        vm.setSearchKeyword("query")
+        expect(vm.searchKeyword).toBe("query")
+        vm.dispose()
+
+        // 关键字回滚到已生效的空串；且从未对 "query" 发起后端拉取
+        expect(vm.searchKeyword).toBe("")
+        await vi.advanceTimersByTimeAsync(500)
+        expect(hoisted.get).not.toHaveBeenCalled()
+
+        // 复用同一 VM 重新挂载：输入框(searchKeyword="") 与列表(未过滤)一致
+        const { enabled, others } = vm.visibleGroups()
+        expect([...enabled, ...others].map((g) => g.group_no)).toEqual(["g1", "g2"])
+    })
+
+    it("D2: unmount with no pending debounce leaves the applied keyword untouched", async () => {
+        // 关键字已生效（debounce 已触发成功）后卸载：无待定定时器，不应回滚关键字。
+        hoisted.get.mockResolvedValue({ list: [], next_cursor: null, has_more: false })
+        const vm = new MentionFreeVM("bot1")
+        await vm.loadGroups()
+
+        vm.setSearchKeyword("abc")
+        await vi.advanceTimersByTimeAsync(250) // debounce 触发，activeQuery 变为 "abc"
+        expect(vm.searchKeyword).toBe("abc")
+
+        vm.dispose() // 无待定 debounce
+        expect(vm.searchKeyword).toBe("abc")
+    })
+
+    it("D3: dispose invalidates an in-flight search response and resets searching (no stale overwrite)", async () => {
+        // reviewer P1（与 #1082 同族的残留竞态）：搜索 R1 在飞 → 再输入排下一个 debounce
+        // → 卸载。dispose 必须①作废 R1（generation++）②复位 searching③回滚关键字，
+        // 否则 R1 迟到落地把列表改成过滤子集、与回滚后的空输入框错开，且 searching 卡
+        // true 令重挂后 loadMore 被永久挡死。
+        const firstPage = {
+            list: [grp({ group_no: "g1" }), grp({ group_no: "g2" })],
+            next_cursor: null,
+            has_more: false,
+        }
+        hoisted.get.mockResolvedValueOnce(firstPage) // 首屏未过滤
+
+        // 搜索 R1：受控挂起，卸载后才 resolve
+        let resolveR1: (v: unknown) => void = () => {}
+        const r1 = new Promise((res) => {
+            resolveR1 = res
+        })
+        hoisted.get.mockReturnValueOnce(r1 as never)
+
+        const vm = new MentionFreeVM("bot1")
+        await vm.loadGroups() // activeQuery="", groups=[g1,g2]
+
+        vm.setSearchKeyword("abc")
+        await vi.advanceTimersByTimeAsync(250) // debounce 触发 R1（q="abc"），在飞
+        expect(vm.searching).toBe(true)
+
+        vm.setSearchKeyword("xyz") // 卸载时仍有待定 debounce（handle≠null）
+        vm.dispose()
+
+        // 关键字回滚到 activeQuery("")，searching 立即复位
+        expect(vm.searchKeyword).toBe("")
+        expect(vm.searching).toBe(false)
+
+        // R1 迟到落地：被 isStale() 丢弃，不改 groups/activeQuery/searching
+        resolveR1({ list: [grp({ group_no: "g1" })], next_cursor: null, has_more: false })
+        await vi.advanceTimersByTimeAsync(500)
+
+        const { enabled, others } = vm.visibleGroups()
+        expect([...enabled, ...others].map((g) => g.group_no)).toEqual(["g1", "g2"])
+        expect(vm.searching).toBe(false)
+    })
+
+    it("D4: dispose with an in-flight search but NO pending timer still rolls the keyword back", async () => {
+        // reviewer P1（本轮 blocking）：debounce 已触发后 searchDebounceHandle=null，旧逻辑
+        // 「仅有待定定时器才回滚」不回滚，dispose 丢弃响应却留下领先于 activeQuery/groups
+        // 的 searchKeyword；复用 VM 重挂时 groups 非空跳过重拉，输入框永远显示 abc、列表却是
+        // 未过滤全量。回滚必须无条件。
+        const firstPage = {
+            list: [grp({ group_no: "g1" }), grp({ group_no: "g2" })],
+            next_cursor: "C2",
+            has_more: true,
+        }
+        hoisted.get.mockResolvedValueOnce(firstPage) // 首屏未过滤，activeQuery=""
+
+        // 搜索 R1 受控挂起
+        let resolveR1: (v: unknown) => void = () => {}
+        const r1 = new Promise((res) => {
+            resolveR1 = res
+        })
+        hoisted.get.mockReturnValueOnce(r1 as never)
+
+        const vm = new MentionFreeVM("bot1")
+        await vm.loadGroups()
+
+        vm.setSearchKeyword("abc")
+        await vi.advanceTimersByTimeAsync(250) // debounce 触发 R1 → searchDebounceHandle 归 null
+        expect(vm.searching).toBe(true)
+        expect(vm.searchKeyword).toBe("abc")
+
+        vm.dispose() // 无待定定时器，但 R1 在飞
+
+        // 无条件回滚：searchKeyword 回到 activeQuery("")，与仍在屏上的未过滤列表一致
+        expect(vm.searchKeyword).toBe("")
+        expect(vm.searching).toBe(false)
+
+        // R1 迟到落地被丢弃；groups 保持未过滤、activeQuery 仍为空
+        resolveR1({ list: [grp({ group_no: "g1" })], next_cursor: null, has_more: false })
+        await vi.advanceTimersByTimeAsync(500)
+        const { enabled, others } = vm.visibleGroups()
+        expect([...enabled, ...others].map((g) => g.group_no)).toEqual(["g1", "g2"])
+
+        // loadMore 沿用 activeQuery=""（不带 q），与展示的未过滤列表同源
+        hoisted.get.mockClear()
+        hoisted.get.mockResolvedValueOnce({ list: [], next_cursor: null, has_more: false })
+        await vm.loadMore()
+        expect(hoisted.get).toHaveBeenLastCalledWith({
+            robotId: "bot1",
+            limit: 30,
+            cursor: "C2",
+        })
+    })
+
+    it("D5: dispose clears searchError so a stale inline failure is not re-shown on remount", async () => {
+        // reviewer P2（本轮一并修）：搜索失败置 searchError 后卸载再重挂，remount 不补拉、
+        // setRobotId 同 bot 早返回，若 dispose 不清 searchError 会在旧列表上重现失败提示。
+        hoisted.get.mockResolvedValueOnce({
+            list: [grp({ group_no: "g1" })],
+            next_cursor: null,
+            has_more: false,
+        })
+        const vm = new MentionFreeVM("bot1")
+        await vm.loadGroups()
+
+        hoisted.get.mockRejectedValueOnce({ status: 500 })
+        vm.setSearchKeyword("abc")
+        await vi.advanceTimersByTimeAsync(250)
+        expect(vm.searchError).toBe(true)
+
+        vm.dispose()
+        expect(vm.searchError).toBe(false)
+    })
+
+    it("E: a search failure is non-terminal — keeps list + search box, flags searchError not loadError", async () => {
+        // reviewer P1：带关键字的搜索失败若路由到全屏 loadError/backendMissing，搜索框会
+        // 消失，用户无法清空关键字、重试只能重发同一失败查询。改为 inline searchError：
+        // 保留列表与搜索框，用户可清空/改写关键字触发新搜索。
+        hoisted.get.mockResolvedValueOnce({
+            list: [grp({ group_no: "g1" }), grp({ group_no: "g2" })],
+            next_cursor: null,
+            has_more: false,
+        })
+        const vm = new MentionFreeVM("bot1")
+        await vm.loadGroups() // 首屏成功，activeQuery=""
+
+        hoisted.get.mockRejectedValueOnce({ status: 500 })
+        vm.setSearchKeyword("abc")
+        await vi.advanceTimersByTimeAsync(250)
+
+        // 非终态：searchError 置位，全屏终态标志均不置位
+        expect(vm.searchError).toBe(true)
+        expect(vm.loadError).toBe(false)
+        expect(vm.isBackendMissing).toBe(false)
+        expect(vm.searching).toBe(false)
+        // 列表保留（用户仍有上下文，搜索框始终可清空）
+        const kept = vm.visibleGroups()
+        expect(
+            [...kept.enabled, ...kept.others].map((g) => g.group_no),
+        ).toEqual(["g1", "g2"])
+
+        // 清空关键字重拉成功 → searchError 复位
+        hoisted.get.mockResolvedValueOnce({
+            list: [grp({ group_no: "g1" })],
+            next_cursor: null,
+            has_more: false,
+        })
+        vm.setSearchKeyword("")
+        await vi.advanceTimersByTimeAsync(250)
+        expect(vm.searchError).toBe(false)
+    })
+
+    it("E2: a 404 during search stays inline (searchError), not the backend-missing terminal screen", async () => {
+        // 搜索期间的 404 更可能是部署瞬时态，而非后端缺失；仍走 inline searchError，
+        // 保留搜索框，绝不把用户困进「功能即将上线」的无控件终态。
+        hoisted.get.mockResolvedValueOnce({
+            list: [grp({ group_no: "g1" })],
+            next_cursor: null,
+            has_more: false,
+        })
+        const vm = new MentionFreeVM("bot1")
+        await vm.loadGroups()
+
+        hoisted.get.mockRejectedValueOnce({ status: 404 })
+        vm.setSearchKeyword("abc")
+        await vi.advanceTimersByTimeAsync(250)
+
+        expect(vm.searchError).toBe(true)
+        expect(vm.isBackendMissing).toBe(false)
+        expect(vm.loadError).toBe(false)
+    })
+
+    it("F: a keyword-active failure on the NON-search reload path stays inline, never terminal", async () => {
+        // reviewer item 4 / 跨轮不变量：关键字激活时（典型：搜索零结果 → 返回 → 重挂，
+        // 容器 remount 因 groups 空发起非 search 重拉，q 沿用回滚后的 searchKeyword）失败
+        // 必须走 inline searchError，绝不置 loadError/backendMissing——否则终态屏抹掉搜索框、
+        // 关键字不可清空。终态只允许在无关键字时出现。
+        hoisted.get.mockResolvedValueOnce({ list: [], next_cursor: null, has_more: false })
+        const vm = new MentionFreeVM("bot1")
+        await vm.loadGroups() // 首屏
+
+        // 关键字生效但零结果，groups 空、searchKeyword="zzz"（dispose 会无条件回滚保留）
+        hoisted.get.mockResolvedValueOnce({ list: [], next_cursor: null, has_more: false })
+        vm.setSearchKeyword("zzz")
+        await vi.advanceTimersByTimeAsync(250)
+        expect(vm.searchKeyword).toBe("zzz")
+
+        // 非 search 重拉（remount refetch，isSearch=false）带 q="zzz" 失败
+        hoisted.get.mockRejectedValueOnce({ status: 500 })
+        await vm.loadGroups()
+
+        expect(vm.searchError).toBe(true)
+        expect(vm.loadError).toBe(false)
+        expect(vm.isBackendMissing).toBe(false)
+        // 关键字保留，用户可清空
+        expect(vm.searchKeyword).toBe("zzz")
+    })
+
+    it("G: a NO-keyword non-search failure still uses the terminal loadError/backendMissing screen", async () => {
+        // 反向守卫：无关键字的首屏/reload 失败仍走终态（此时没有可编辑搜索框的需求），
+        // 确保 F 的改动没有把初次加载失败也误判成 inline。
+        hoisted.get.mockRejectedValueOnce({ status: 500 })
+        const vm = new MentionFreeVM("bot1")
+        await vm.loadGroups() // searchKeyword="" → 无关键字
+        expect(vm.loadError).toBe(true)
+        expect(vm.searchError).toBe(false)
+
+        const vm2 = new MentionFreeVM("bot2")
+        hoisted.get.mockRejectedValueOnce({ status: 404 })
+        await vm2.loadGroups()
+        expect(vm2.isBackendMissing).toBe(true)
+        expect(vm2.searchError).toBe(false)
     })
 })

@@ -163,6 +163,7 @@ vi.mock("../../../i18n", () => ({
 
 import ConversationVM from "../vm"
 import { Channel, MessageStatus } from "wukongimjssdk"
+import { SUMMARY_TIP_TEMPLATE } from "../../../Messages/SummaryNotify/protocol"
 
 const channel = new Channel("g1", 2)
 
@@ -248,6 +249,38 @@ describe("ConversationVM message ordering", () => {
         expect(first.messageContainerId).toMatch(/^viewport-\d+$/)
         expect(second.messageContainerId).toMatch(/^viewport-\d+$/)
         expect(first.messageContainerId).not.toBe(second.messageContainerId)
+    })
+
+    it("keeps separate summary-completion tips inside the generic system-tip dedup window", () => {
+        const vm = new ConversationVM(channel)
+        const summaryContent = {
+            contentType: 2000,
+            displayText: "Alice总结了群聊内容",
+            content: {
+                content: SUMMARY_TIP_TEMPLATE,
+                extra: [{ uid: "alice", name: "Alice" }],
+            },
+        }
+        const first = wrap({ clientMsgNo: "summary-1", timestamp: 100, content: summaryContent })
+        const second = wrap({ clientMsgNo: "summary-2", timestamp: 200, content: { ...summaryContent } })
+
+        expect(vm.deduplicateSystemTips([first, second])).toEqual([first, second])
+    })
+
+    it("still deduplicates other identical system tips inside five minutes", () => {
+        const vm = new ConversationVM(channel)
+        const first = wrap({
+            clientMsgNo: "system-1",
+            timestamp: 100,
+            content: { contentType: 1001, displayText: "安全提示", content: { content: "安全提示" } },
+        })
+        const second = wrap({
+            clientMsgNo: "system-2",
+            timestamp: 200,
+            content: { contentType: 1001, displayText: "安全提示", content: { content: "安全提示" } },
+        })
+
+        expect(vm.deduplicateSystemTips([first, second])).toEqual([first])
     })
 
     it("keeps a fully unread conversation unread until the visible-message gate advances browseTo", async () => {

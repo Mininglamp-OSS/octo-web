@@ -2,6 +2,7 @@
 
 import React from "react";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -15,13 +16,15 @@ const state = vi.hoisted(() => ({
   getMessage: vi.fn(),
   getThread: vi.fn(),
   sendDraft: vi.fn(),
+  restoreNotJunk: vi.fn(),
   emit: vi.fn(),
+  wkConfirm: vi.fn(),
   t: vi.fn((key: string) => key),
 }));
 
 vi.mock("@octo/base", () => ({
   useI18n: () => ({ t: state.t, locale: "en-US" }),
-  wkConfirm: vi.fn(),
+  wkConfirm: state.wkConfirm,
   WKApp: {
     mittBus: { emit: state.emit },
     routeRight: { pop: vi.fn(), push: vi.fn() },
@@ -34,6 +37,7 @@ vi.mock("../Service/MailService", () => ({
     getThread: state.getThread,
     getMessageDelivery: vi.fn(),
     updateKeywords: vi.fn(),
+    restoreNotJunk: state.restoreNotJunk,
     deleteMessage: vi.fn(),
     sendDraft: state.sendDraft,
     getRawMessage: vi.fn(),
@@ -71,6 +75,8 @@ describe("MessageDetailFeature action errors", () => {
     vi.clearAllMocks();
     state.getMessage.mockReset();
     state.sendDraft.mockReset();
+    state.restoreNotJunk.mockReset();
+    state.wkConfirm.mockReset();
     state.getThread.mockReset();
     state.getMessage.mockResolvedValue(draft);
   });
@@ -97,6 +103,103 @@ describe("MessageDetailFeature action errors", () => {
       "send failed"
     );
     await waitFor(() => expect(state.sendDraft).toHaveBeenCalledTimes(1));
+  });
+
+  it("offers an owner-confirmed restore action only in Junk", async () => {
+    const junkMessage: MessageDetail = {
+      ...draft,
+      mailbox: "Junk",
+      from: "sender@example.com",
+      agentDraft: undefined,
+    };
+    state.getMessage.mockResolvedValue(junkMessage);
+    state.restoreNotJunk.mockResolvedValue({
+      updated: "E1",
+      senderAddress: "sender@example.com",
+    });
+    const onRestoredFromJunk = vi.fn();
+
+    render(
+      <MessageDetailFeature
+        mailboxContextId="42"
+        mailboxAddress="bot@mail.imocto.cn"
+        messageId="E1"
+        mailboxRole="junk"
+        embedded
+        onRestoredFromJunk={onRestoredFromJunk}
+      />
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "mail.actions.notJunk" })
+    );
+    expect(state.restoreNotJunk).not.toHaveBeenCalled();
+    expect(state.wkConfirm).toHaveBeenCalledTimes(1);
+    const confirmation = state.wkConfirm.mock.calls[0][0];
+    expect(confirmation.title).toBe("mail.confirm.notJunkTitle");
+
+    await confirmation.onOk();
+
+    expect(state.restoreNotJunk).toHaveBeenCalledWith("42", "E1");
+    expect(onRestoredFromJunk).toHaveBeenCalledTimes(1);
+    expect(state.emit).toHaveBeenCalledWith("mail-refresh");
+  });
+
+  it("keeps the Junk message when restoring it fails", async () => {
+    const failure = { msg: "restore failed" };
+    state.getMessage.mockResolvedValue({
+      ...draft,
+      mailbox: "Junk",
+      from: "sender@example.com",
+      agentDraft: undefined,
+    });
+    state.restoreNotJunk.mockRejectedValue(failure);
+    const onRestoredFromJunk = vi.fn();
+
+    render(
+      <MessageDetailFeature
+        mailboxContextId="42"
+        mailboxAddress="bot@mail.imocto.cn"
+        messageId="E1"
+        mailboxRole="junk"
+        embedded
+        onRestoredFromJunk={onRestoredFromJunk}
+      />
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "mail.actions.notJunk" })
+    );
+    const confirmation = state.wkConfirm.mock.calls[0][0];
+
+    await act(async () => {
+      await expect(confirmation.onOk()).rejects.toBe(failure);
+    });
+
+    expect(await screen.findByText("Owner review")).toBeTruthy();
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "restore failed"
+    );
+    expect(onRestoredFromJunk).not.toHaveBeenCalled();
+    expect(state.emit).not.toHaveBeenCalledWith("mail-refresh");
+  });
+
+  it("does not show the restore action outside Junk", async () => {
+    state.getMessage.mockResolvedValue({ ...draft, agentDraft: undefined });
+
+    render(
+      <MessageDetailFeature
+        mailboxContextId="42"
+        mailboxAddress="bot@mail.imocto.cn"
+        messageId="E1"
+        mailboxRole="inbox"
+      />
+    );
+
+    await screen.findByText("Owner review");
+    expect(
+      screen.queryByRole("button", { name: "mail.actions.notJunk" })
+    ).toBeNull();
   });
 
   it("sends the explicit Agent Draft id instead of the message id", async () => {

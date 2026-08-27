@@ -187,6 +187,7 @@ export default class BotManageModal extends Component<BotManageModalProps> {
             reload: t("base.botManage.reload"),
             searchPlaceholder: t("base.botManage.mentionFree.searchPlaceholder"),
             noSearchResult: t("base.botManage.mentionFree.noSearchResult"),
+            searchFailed: t("base.botManage.mentionFree.searchFailed"),
             empty: t("base.botManage.mentionFree.empty"),
             sectionEnabled: (count: number) =>
                 t("base.botManage.mentionFree.sectionEnabled", {
@@ -340,6 +341,7 @@ class MentionFreeListContainer extends Component<MentionFreeListContainerProps> 
 
     componentWillUnmount(): void {
         if (this.unsubscribe) this.unsubscribe()
+        this.props.vm.dispose()
     }
 
     render(): ReactNode {
@@ -349,8 +351,10 @@ class MentionFreeListContainer extends Component<MentionFreeListContainerProps> 
             <MentionFreeListView
                 labels={labels}
                 loading={vm.loading}
+                searching={vm.searching}
                 backendMissing={vm.isBackendMissing}
                 loadError={vm.loadError}
+                searchError={vm.searchError}
                 searchKeyword={vm.searchKeyword}
                 enabledGroups={enabled.map(mapGroupItem)}
                 otherGroups={others.map(mapGroupItem)}

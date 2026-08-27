@@ -196,6 +196,11 @@
   flex-direction: column;
 }
 
+.wk-msg-row-body:focus-visible {
+  outline: var(--wk-sp-0-5) solid var(--wk-border-glow);
+  outline-offset: var(--wk-sp-0-5);
+}
+
 .wk-msg-row-body-hitarea {
   display: flex;
   flex-direction: column;

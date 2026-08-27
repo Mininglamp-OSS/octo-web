@@ -103,6 +103,14 @@
     {
       "path": "packages/dmworksummary/src/utils/channelType.ts",
       "reason": "Error message template with interpolation placeholder; already covered by runtime error handling with proper i18n."
+    },
+    {
+      "path": "packages/dmworkbase/src/Messages/SummaryNotify/protocol.ts",
+      "reason": "SummaryTipContent send-side WK_TIP(2000) payload template ('{0}总结了群聊内容'). Cross-platform wire-format system-tip string consumed by SDK SystemContent {0}+extra placeholder replacement on Web and native; product decision locks copy to zh-CN (see #1379 iteration). Not translatable UI copy."
+    },
+    {
+      "path": "packages/dmworksummary/src/__mocks__/dmworkBase.ts",
+      "reason": "Vitest mock mirroring the SummaryTipContent wire-format template; test fixture, not UI copy."
     }
   ]
 }

@@ -303,6 +303,11 @@ body[theme-mode="dark"] .wk-conversation-content {
   gap: 4px;
 }
 
+.wk-fold-msg-content:focus-visible {
+  outline: var(--wk-sp-0-5) solid var(--wk-border-glow);
+  outline-offset: var(--wk-sp-0-5);
+}
+
 .wk-fold-msg-head {
   display: flex;
   align-items: center;

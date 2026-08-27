@@ -113,6 +113,20 @@ describe("MailRuleManagementView editor", () => {
     expect(
       screen.getByText("已添加 2 / 5 个条件；至少添加并填写一个条件。")
     ).toBeTruthy();
+    const secondConditionType = screen.getByRole("combobox", {
+      name: "条件类型 2",
+    }) as HTMLSelectElement;
+    expect(
+      Array.from(secondConditionType.options)
+        .filter((option) => option.value)
+        .map((option) => [option.value, option.disabled])
+    ).toEqual([
+      ["subject", false],
+      ["body", false],
+      ["subject_or_body", false],
+      ["from", false],
+      ["to", false],
+    ]);
     const deleteConditions = screen.getAllByRole("button", {
       name: /^删除条件 \d+$/,
     });
@@ -259,6 +273,73 @@ describe("MailRuleManagementView editor", () => {
     );
   });
 
+  it("creates repeated field conditions through the editor", () => {
+    const onSave = vi.fn().mockResolvedValue(true);
+    render(
+      <MailRuleManagementView
+        mailbox={{
+          id: "mailbox-1",
+          address: "agent@example.com",
+          connectState: "connected",
+          outboundMode: "manual_confirmation",
+        }}
+        rules={[]}
+        loading={false}
+        error=""
+        actionError=""
+        saving={false}
+        deletingId=""
+        t={(key) => labels[key] ?? key}
+        onBack={vi.fn()}
+        onRefresh={vi.fn()}
+        onSave={onSave}
+        onSetEnabled={vi.fn()}
+        onDelete={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "新建规则" })[0]!);
+    fireEvent.change(screen.getByRole("textbox", { name: "名称" }), {
+      target: { value: "正文组合规则" },
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: "条件类型 1" }), {
+      target: { value: "body" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "正文 1" }), {
+      target: { value: "alpha" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "添加条件" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "条件类型 2" }), {
+      target: { value: "body" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "正文 2" }), {
+      target: { value: "beta" },
+    });
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "转发至固定地址 1" }),
+      { target: { value: "owner@example.com" } }
+    );
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "新建规则" }).at(-1)!
+    );
+
+    expect(onSave).toHaveBeenCalledWith(
+      {
+        name: "正文组合规则",
+        enabled: true,
+        priority: 0,
+        matchMode: "all",
+        conditions: [
+          { field: "body", operator: "contains", value: "alpha" },
+          { field: "body", operator: "contains", value: "beta" },
+        ],
+        forwardTargets: ["owner@example.com"],
+      },
+      undefined
+    );
+  });
+
   it("does not save an API rule with more than five conditions", () => {
     render(
       <MailRuleManagementView
@@ -317,7 +398,15 @@ describe("MailRuleManagementView editor", () => {
     ).toBe(true);
   });
 
-  it("does not save an API rule with duplicate condition fields", () => {
+  it("saves five conditions that repeat the same field", () => {
+    const onSave = vi.fn().mockResolvedValue(true);
+    const conditions = ["alpha", "beta", "gamma", "delta", "epsilon"].map(
+      (value) => ({
+        field: "body" as const,
+        operator: "contains" as const,
+        value,
+      })
+    );
     render(
       <MailRuleManagementView
         mailbox={{
@@ -333,10 +422,7 @@ describe("MailRuleManagementView editor", () => {
             enabled: true,
             priority: 0,
             matchMode: "all",
-            conditions: [
-              { field: "from", operator: "contains", value: "a" },
-              { field: "from", operator: "not_contains", value: "b" },
-            ],
+            conditions,
             forwardTargets: ["owner@example.com"],
             createdAt: "2026-08-17T00:00:00Z",
             updatedAt: "2026-08-17T00:00:00Z",
@@ -350,7 +436,7 @@ describe("MailRuleManagementView editor", () => {
         t={(key) => labels[key] ?? key}
         onBack={vi.fn()}
         onRefresh={vi.fn()}
-        onSave={vi.fn()}
+        onSave={onSave}
         onSetEnabled={vi.fn()}
         onDelete={vi.fn()}
       />
@@ -358,9 +444,29 @@ describe("MailRuleManagementView editor", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "编辑规则" }));
     expect(
+      (
+        screen.getByRole("button", {
+          name: "添加条件",
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    expect(
       (screen.getByRole("button", { name: "保存" }) as HTMLButtonElement)
         .disabled
-    ).toBe(true);
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(onSave).toHaveBeenCalledWith(
+      {
+        name: "重复条件规则",
+        enabled: true,
+        priority: 0,
+        matchMode: "all",
+        conditions,
+        forwardTargets: ["owner@example.com"],
+      },
+      "duplicate-rule"
+    );
   });
 
   it("uses the centered product confirmation before deleting a rule", () => {
