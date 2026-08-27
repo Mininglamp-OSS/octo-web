@@ -712,13 +712,13 @@
   min-height: 42px;
 }
 
-/* Hover-revealed primary action (连接) — top-right, mirrors the prototype's
+/* Hover-revealed primary action (连接) — bottom-right, mirrors the prototype's
    single card action. Opens the detail modal (same as a card click), so it
    is NOT data-track-ignore'd: the click still resolves to the card's
    market_card_opened track. */
 .wk-mcp-card__primary-action {
   position: absolute;
-  top: var(--wk-sp-3);
+  bottom: var(--wk-sp-3);
   right: var(--wk-sp-3);
   z-index: 1;
   display: inline-flex;
@@ -733,7 +733,7 @@
   font: var(--wk-font-semibold) var(--wk-text-size-sm) / 1 var(--wk-font-sans);
   cursor: pointer;
   opacity: 0;
-  transform: translateY(-4px);
+  transform: translateY(4px);
   transition: opacity var(--wk-dur-fast) var(--wk-ease),
     transform var(--wk-dur-fast) var(--wk-ease),
     background var(--wk-dur-fast) var(--wk-ease);
