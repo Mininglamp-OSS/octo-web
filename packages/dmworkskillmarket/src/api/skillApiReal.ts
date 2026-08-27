@@ -590,7 +590,7 @@ export async function updateSkill(id: string, form: UpdateSkillForm): Promise<Sk
   const categoryId =
     form.categoryId !== undefined ? form.categoryId : plugin.category_id;
   const newManifest = {
-    $schema: "cowork-plugin-manifest-1.0.json",
+    $schema: "cowork-plugin-manifest-2.0.json",
     plugin_name: displayName,
     plugin_type: "skill",
     name,
@@ -619,7 +619,7 @@ export async function updateSkill(id: string, form: UpdateSkillForm): Promise<Sk
         visibility,
         manifest_json: newManifest,
         plugin_json: {
-          $schema: "cowork-plugin-package-1.0.json",
+          $schema: "cowork-plugin-package-2.0.json",
           attachments,
         },
       },

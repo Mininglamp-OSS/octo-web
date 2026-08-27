@@ -60,7 +60,7 @@ export function toPluginUpsert(
     .map((s) => s.trim())
     .filter(Boolean);
   const manifest: PluginManifestWire = {
-    $schema: "cowork-plugin-manifest-1.0.json",
+    $schema: "cowork-plugin-manifest-2.0.json",
     plugin_name: name,
     plugin_type: "connector",
     name: slug || name,
@@ -112,7 +112,7 @@ export function toPluginUpsert(
       visibility: opts.visibility,
       manifest_json: manifest,
       plugin_json: {
-        $schema: "cowork-plugin-package-1.0.json",
+        $schema: "cowork-plugin-package-2.0.json",
         connector: { type: "mcp", source: `connector.${slug || name}` },
         attachments,
       },
