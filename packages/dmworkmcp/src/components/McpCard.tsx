@@ -11,6 +11,10 @@ import { isOfficialMcp } from "../utils/publisher";
 interface McpCardProps {
   item: McpListItem;
   onClick: (item: McpListItem) => void;
+  /** Primary card action (连接). When provided, the hover-revealed button
+   *  forwards a connect prompt instead of opening the detail modal. Falls back
+   *  to `onClick` (detail) when omitted. */
+  onConnect?: (item: McpListItem) => void;
   onEdit?: (item: McpListItem) => void;
   onDelete?: (item: McpListItem) => void;
   /** Show the footer stats row. Discovery hides it; the 我的 view keeps it. */
@@ -92,7 +96,7 @@ export function resolveOwner(item: McpListItem): { botName?: string; humanName?:
 }
 
 /** A single MCP server card in the list grid. */
-const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete, showStats = true, row = false }) => {
+const McpCard: React.FC<McpCardProps> = ({ item, onClick, onConnect, onEdit, onDelete, showStats = true, row = false }) => {
   const visibleTags = item.tags.slice(0, CARD_TAG_LIMIT);
   const overflowTags = item.tags.slice(CARD_TAG_LIMIT);
   const isOfficial = isOfficialMcp(item);
@@ -222,9 +226,13 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete, show
         type="button"
         className="wk-mcp-card__primary-action"
         aria-label={t("mcp.card.connectAriaLabel", { values: { name: item.name } })}
+        // The primary action forwards a connect prompt (onConnect) rather than
+        // opening the detail modal. data-track-ignore so the global click
+        // delegate doesn't also emit market_card_opened for the ancestor card.
+        data-track-ignore=""
         onClick={(e) => {
           e.stopPropagation();
-          onClick(item);
+          (onConnect ?? onClick)(item);
         }}
       >
         <Plug size={14} aria-hidden="true" />

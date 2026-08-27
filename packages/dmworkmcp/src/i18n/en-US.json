@@ -469,5 +469,9 @@
       "leaveConfirm": "You have unsaved changes. Leave anyway?",
       "leaderRequired": "Please set a leader for the squad"
     }
+  },
+  "connect": {
+    "title": "Connect Prompt",
+    "hint": "Copy and paste into an Agent conversation to connect this connector to the runtime automatically"
   }
 }

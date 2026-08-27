@@ -11,6 +11,7 @@ import McpCard from "../components/McpCard";
 import McpDetailModal from "../components/McpDetailModal";
 import McpCreateModal from "../components/McpCreateModal";
 import McpBotPublishModal from "../components/McpBotPublishModal";
+import McpConnectModal from "../components/McpConnectModal";
 import McpDeleteConfirmModal from "../components/McpDeleteConfirmModal";
 import "../index.css";
 import { parseMcpListQuery, serializeMcpListQuery } from "./mcpListQuery";
@@ -66,6 +67,10 @@ interface McpMarketListPageState {
    *  Mirrors dmworkskillmarket's `deleting` state — a card-level trash click
    *  short-circuits opening the detail modal. */
   deletingItem: McpListItem | null;
+  /** When set, the connect-prompt modal (McpConnectModal) is open for this
+   *  connector. Driven by the card's primary 连接 action, which forwards a
+   *  prompt instead of opening the detail modal. */
+  connectItem: McpListItem | null;
 }
 
 /**
@@ -111,6 +116,7 @@ export default class McpMarketListPage extends Component<
     botPublishVisible: false,
     editingDetail: null,
     deletingItem: null,
+    connectItem: null,
   };
 
   private publishMenuRef = React.createRef<HTMLDivElement>();
@@ -219,6 +225,7 @@ export default class McpMarketListPage extends Component<
       categoriesSelected: [],
       publishMenuOpen: false,
       botPublishVisible: false,
+      connectItem: null,
     }, () => this.loadData());
   };
 
@@ -818,6 +825,7 @@ export default class McpMarketListPage extends Component<
                             // 删除此处命令式 market_card_viewed —— 二者本是对「同一次打开」的双计(owner 决策:留 opened)。
                             this.setState({ detailId: it.id });
                           }}
+                          onConnect={(it) => this.setState({ connectItem: it })}
                           onEdit={canManage ? this.handleEditFromCard : undefined}
                           onDelete={
                             canManage
@@ -867,6 +875,10 @@ export default class McpMarketListPage extends Component<
         <McpBotPublishModal
           visible={this.state.botPublishVisible}
           onClose={() => this.setState({ botPublishVisible: false })}
+        />
+        <McpConnectModal
+          item={this.state.connectItem}
+          onClose={() => this.setState({ connectItem: null })}
         />
         <McpDeleteConfirmModal
           item={this.state.deletingItem}

@@ -469,5 +469,9 @@
       "leaveConfirm": "有未保存的修改,确定离开吗?",
       "leaderRequired": "请为专家团设置一位组长"
     }
+  },
+  "connect": {
+    "title": "接入 Prompt",
+    "hint": "复制后粘贴到 Agent 对话中，将自动把该连接器接入运行环境"
   }
 }

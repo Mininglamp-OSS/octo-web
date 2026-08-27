@@ -85,6 +85,10 @@
       "reason": "Agent prompt template for the MCP marketplace publish flow. Same rationale as dmworkskillmarket/src/utils/botPublishPrompt.ts — generated prompt content pasted into an agent client, must byte-match; not translatable UI chrome."
     },
     {
+      "path": "packages/dmworkmcp/src/utils/mcpConnectPrompt.ts",
+      "reason": "Agent prompt template for the connector 接入 flow (card primary action forwards this to a Bot). Generated prompt content pasted into an agent client, must byte-match; not translatable UI chrome. Same category as mcpBotPublishPrompt.ts / dmworkskillmarket installPrompt.ts."
+    },
+    {
       "path": "packages/dmworkmcp/src/mock/expertMock.ts",
       "reason": "Expert Marketplace demo fixtures (squad/expert names, summaries, roles, strategies, category names). Sample content data returned by the mock service layer, replaced wholesale by the real backend response later; not translatable UI chrome. Same category as dmworkmcp/src/mock/mcpMock.ts."
     },

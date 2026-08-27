@@ -713,9 +713,9 @@
 }
 
 /* Hover-revealed primary action (连接) — bottom-right, mirrors the prototype's
-   single card action. Opens the detail modal (same as a card click), so it
-   is NOT data-track-ignore'd: the click still resolves to the card's
-   market_card_opened track. */
+   single card action. Forwards a connect prompt (McpConnectModal) rather than
+   opening the detail modal, so it IS data-track-ignore'd in the markup: the
+   click is its own intent, not a card open. */
 .wk-mcp-card__primary-action {
   position: absolute;
   bottom: var(--wk-sp-3);
