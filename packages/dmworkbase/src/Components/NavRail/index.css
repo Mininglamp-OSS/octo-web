@@ -262,6 +262,19 @@
     transition: stroke-dashoffset var(--wk-dur-slow) var(--wk-ease);
 }
 
+.wk-update-modal__progress-circle--indeterminate .wk-update-modal__progress-circle-value {
+    stroke-dasharray: 96 306;
+    stroke-dashoffset: 0;
+    animation: wk-update-progress-spin var(--wk-dur-slow) linear infinite;
+    transform-origin: center;
+}
+
+@keyframes wk-update-progress-spin {
+    to {
+        transform: rotate(270deg);
+    }
+}
+
 .wk-update-modal__progress-circle-label {
     position: absolute;
     inset: 0;

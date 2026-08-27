@@ -1,16 +1,18 @@
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import crypto from "node:crypto";
+import { execFile, spawn } from "node:child_process";
+import { promisify } from "node:util";
 import { app, BrowserWindow, ipcMain, net, shell } from "electron";
 import logger from "electron-log";
 import OCTO_CONFIG from "./config";
 import {
   IPC_UPDATE_AVAILABLE,
+  IPC_UPDATE_CANCEL_DOWNLOAD,
   IPC_UPDATE_CHECK,
   IPC_UPDATE_DOWNLOADED,
   IPC_UPDATE_DOWNLOAD,
   IPC_UPDATE_ERROR,
-  IPC_UPDATE_INSTALL,
   IPC_UPDATE_DOWNLOAD_PROGRESS,
   IPC_UPDATE_NOT_AVAILABLE,
 } from "../shared/ipc-channels";
@@ -20,15 +22,22 @@ import {
   getMacAppBundleName,
   getDownloadedUpdateFileName,
   getUpdaterPlatform,
+  isLocalhostHttpUrl,
+  isNewerVersion,
   isZipUpdatePackage,
   parseUpdaterCheckResult,
   type DesktopUpdateInfo,
 } from "./updateCore";
 
+const DOWNLOAD_STALL_TIMEOUT_MS = 120_000;
+const CHECK_TIMEOUT_MS = 30_000;
+const execFileAsync = promisify(execFile);
+
 let mainWindow: BrowserWindow;
 let pendingUpdateInfo: DesktopUpdateInfo | undefined;
-let downloadedUpdatePath: string | undefined;
 let isDownloadingUpdate = false;
+let updateCheckSeq = 0;
+let currentDownloadController: AbortController | undefined;
 const isMainWindowSender = (event: Electron.IpcMainEvent): boolean =>
   Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents);
 // 封装更新相关的进程通信方法
@@ -42,23 +51,35 @@ async function requestUpdateInfo(): Promise<DesktopUpdateInfo | null> {
   if (!updaterApiUrl) {
     throw new Error("Updater API URL is not configured");
   }
+  const updaterBaseUrl = new URL(updaterApiUrl);
   const checkUrl = buildUpdaterCheckUrl({
     updaterApiUrl,
     version: app.getVersion(),
   });
   logger.info(`[updater] checking ${checkUrl}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
   const response = await net.fetch(checkUrl, {
     method: "GET",
-    redirect: "follow",
+    redirect: "error",
+    credentials: "omit",
+    signal: controller.signal,
     headers: {
       Accept: "application/json",
     },
-  });
+  }).finally(() => clearTimeout(timeout));
   if (response.status === 204) return null;
   if (!response.ok) {
     throw new Error(`Updater check failed with status ${response.status}`);
   }
-  return parseUpdaterCheckResult(await response.json(), { platform: process.platform });
+  const updateInfo = parseUpdaterCheckResult(await response.json(), {
+    allowInsecureHttp: isLocalhostHttpUrl(updaterBaseUrl),
+    expectedDownloadOrigin: updaterBaseUrl.origin,
+    platform: process.platform,
+  });
+  if (!updateInfo || isNewerVersion(updateInfo.version, app.getVersion())) return updateInfo;
+  logger.info(`[updater] ignoring non-newer version ${updateInfo.version}; current=${app.getVersion()}`);
+  return null;
 }
 
 function sendUpdateAvailable(updateInfo: DesktopUpdateInfo) {
@@ -74,23 +95,114 @@ function sendUpdateAvailable(updateInfo: DesktopUpdateInfo) {
   });
 }
 
+function sendDownloadProgress(data: number | { percent: number; downloadedBytes?: number; totalBytes?: number }) {
+  sendUpdateMessage({ cmd: IPC_UPDATE_DOWNLOAD_PROGRESS, data });
+}
+
 async function writeChunk(stream: fs.WriteStream, chunk: Uint8Array): Promise<void> {
-  if (stream.write(Buffer.from(chunk))) return;
   await new Promise<void>((resolve, reject) => {
-    stream.once("drain", resolve);
-    stream.once("error", reject);
+    const onDrain = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const cleanup = () => {
+      stream.removeListener("drain", onDrain);
+      stream.removeListener("error", onError);
+    };
+    stream.once("error", onError);
+    if (stream.write(Buffer.from(chunk))) {
+      cleanup();
+      resolve();
+      return;
+    }
+    stream.once("drain", onDrain);
   });
 }
 
-async function downloadUpdatePackage(updateInfo: DesktopUpdateInfo): Promise<string> {
-  const response = await net.fetch(updateInfo.url, {
-    method: "GET",
-    redirect: "follow",
+function finishStream(stream: fs.WriteStream): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const onFinish = () => {
+      cleanup();
+      resolve();
+    };
+    const cleanup = () => {
+      stream.removeListener("error", onError);
+      stream.removeListener("finish", onFinish);
+    };
+    stream.once("error", onError);
+    stream.once("finish", onFinish);
+    stream.end();
   });
+}
+
+function getHashConfig(updateInfo: DesktopUpdateInfo): {
+  algorithm: "sha512" | "sha256";
+  encoding: "base64" | "hex";
+  expected: string;
+} {
+  if (updateInfo.sha512) {
+    return {
+      algorithm: "sha512",
+      encoding: /^[a-fA-F0-9]{128}$/.test(updateInfo.sha512) ? "hex" : "base64",
+      expected: updateInfo.sha512,
+    };
+  }
+  if (updateInfo.sha256) {
+    return { algorithm: "sha256", encoding: "hex", expected: updateInfo.sha256 };
+  }
+  throw new Error("Updater response is missing package checksum");
+}
+
+function verifyDownloadedPackageHash(expected: string, actualDigest: string) {
+  if (actualDigest.toLowerCase() !== expected.toLowerCase()) {
+    throw new Error("Downloaded update package checksum mismatch");
+  }
+}
+
+function getUpdateErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.name === "AbortError") return "Update download cancelled or timed out";
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function downloadUpdatePackage(updateInfo: DesktopUpdateInfo): Promise<string> {
+  const hashConfig = getHashConfig(updateInfo);
+  const controller = new AbortController();
+  currentDownloadController = controller;
+  let stallTimer: NodeJS.Timeout | undefined;
+  const resetStallTimer = () => {
+    if (stallTimer) clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => controller.abort(), DOWNLOAD_STALL_TIMEOUT_MS);
+  };
+  resetStallTimer();
+  let response: Awaited<ReturnType<typeof net.fetch>>;
+  try {
+    response = await net.fetch(updateInfo.url, {
+      method: "GET",
+      redirect: "error",
+      credentials: "omit",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (stallTimer) clearTimeout(stallTimer);
+    if (currentDownloadController === controller) currentDownloadController = undefined;
+    throw error;
+  }
   if (!response.ok) {
+    if (stallTimer) clearTimeout(stallTimer);
+    if (currentDownloadController === controller) currentDownloadController = undefined;
     throw new Error(`Update download failed with status ${response.status}`);
   }
   if (!response.body) {
+    if (stallTimer) clearTimeout(stallTimer);
+    if (currentDownloadController === controller) currentDownloadController = undefined;
     throw new Error("Update download response has no body");
   }
 
@@ -106,38 +218,50 @@ async function downloadUpdatePackage(updateInfo: DesktopUpdateInfo): Promise<str
     const total = Number(response.headers.get("content-length") || 0);
     let downloaded = 0;
     let lastPercent = -1;
+    const hash = crypto.createHash(hashConfig.algorithm);
     const reader = response.body.getReader();
     const stream = fs.createWriteStream(tempPath);
-    const streamFinished = new Promise<void>((resolve, reject) => {
-      stream.once("finish", resolve);
-      stream.once("error", reject);
-    });
 
-    sendUpdateMessage({ cmd: IPC_UPDATE_DOWNLOAD_PROGRESS, data: 0 });
+    sendDownloadProgress(total > 0 ? 0 : { percent: -1, downloadedBytes: 0 });
     try {
       for (;;) {
+        resetStallTimer();
         const { done, value } = await reader.read();
         if (done) break;
         if (!value) continue;
         downloaded += value.byteLength;
+        hash.update(value);
         await writeChunk(stream, value);
         if (total > 0) {
           const percent = Math.min(99, Math.floor((downloaded / total) * 100));
           if (percent !== lastPercent) {
             lastPercent = percent;
-            sendUpdateMessage({ cmd: IPC_UPDATE_DOWNLOAD_PROGRESS, data: percent });
+            sendDownloadProgress(percent);
           }
+        } else {
+          sendDownloadProgress({ percent: -1, downloadedBytes: downloaded });
         }
       }
+    } catch (error) {
+      stream.destroy();
+      throw error;
     } finally {
-      stream.end();
+      if (stallTimer) clearTimeout(stallTimer);
+      if (currentDownloadController === controller) currentDownloadController = undefined;
       reader.releaseLock();
     }
 
-    await streamFinished;
+    await finishStream(stream);
+    if (total > 0 && downloaded !== total) {
+      throw new Error("Update download ended before content-length was reached");
+    }
+    verifyDownloadedPackageHash(hashConfig.expected, hash.digest(hashConfig.encoding));
+    if (platform === "linux" && filePath.toLowerCase().endsWith(".appimage")) {
+      await fs.promises.chmod(tempPath, 0o755);
+    }
     await fs.promises.rename(tempPath, filePath);
     completed = true;
-    sendUpdateMessage({ cmd: IPC_UPDATE_DOWNLOAD_PROGRESS, data: 100 });
+    sendDownloadProgress({ percent: 100, downloadedBytes: downloaded, totalBytes: total > 0 ? total : undefined });
     return filePath;
   } catch (error) {
     if (!completed) {
@@ -147,32 +271,66 @@ async function downloadUpdatePackage(updateInfo: DesktopUpdateInfo): Promise<str
   }
 }
 
-async function openDownloadedUpdatePackage(): Promise<void> {
-  if (!downloadedUpdatePath) {
+async function openDownloadedUpdatePackage(updateInfo: DesktopUpdateInfo, filePath: string): Promise<void> {
+  if (!filePath) {
     throw new Error("No downloaded update package");
   }
-  if (getUpdaterPlatform() === "macos" && isZipUpdatePackage(downloadedUpdatePath)) {
-    await installMacZipUpdateAndQuit(downloadedUpdatePath, pendingUpdateInfo?.version || "");
+  if (getUpdaterPlatform() === "macos" && isZipUpdatePackage(filePath)) {
+    await installMacZipUpdateAndQuit(filePath, updateInfo.version);
     return;
   }
-  const errorMessage = await shell.openPath(downloadedUpdatePath);
+  if (process.platform === "win32" && filePath.toLowerCase().endsWith(".exe")) {
+    await verifyWindowsInstallerSignature(filePath);
+  }
+  const errorMessage = await shell.openPath(filePath);
   if (errorMessage) throw new Error(errorMessage);
 }
 
-async function openDownloadedUpdatePackageAndQuitIfNeeded(): Promise<void> {
-  await openDownloadedUpdatePackage();
-  if (downloadedUpdatePath && getUpdaterPlatform() !== "macos") {
+async function verifyWindowsInstallerSignature(filePath: string): Promise<void> {
+  const expectedPublisher = OCTO_CONFIG.updaterWindowsPublisherName;
+  if (!expectedPublisher) {
+    throw new Error("Windows update signing publisher is not configured");
+  }
+  const command = [
+    "$signature = Get-AuthenticodeSignature -LiteralPath $args[0]",
+    "if ($signature.Status -ne 'Valid') { exit 10 }",
+    "$subject = $signature.SignerCertificate.Subject",
+    "if ($subject -notlike ('*' + $args[1] + '*')) { exit 11 }",
+  ].join("; ");
+  await execFileAsync("powershell.exe", [
+    "-NoProfile",
+    "-NonInteractive",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-Command",
+    command,
+    filePath,
+    expectedPublisher,
+  ], { windowsHide: true });
+}
+
+async function openDownloadedUpdatePackageAndQuitIfNeeded(updateInfo: DesktopUpdateInfo, filePath: string): Promise<void> {
+  await openDownloadedUpdatePackage(updateInfo, filePath);
+  if (getUpdaterPlatform() !== "macos") {
     app.quit();
   }
 }
 
 async function installMacZipUpdateAndQuit(zipPath: string, expectedVersion: string): Promise<void> {
+  const expectedTeamId = OCTO_CONFIG.updaterCodeSigningTeamId;
+  if (!expectedTeamId) {
+    throw new Error("macOS update signing Team ID is not configured");
+  }
   const targetAppPath = getMacAppBundlePath(process.execPath);
   const expectedAppName = getMacAppBundleName(targetAppPath);
   const updateDir = path.dirname(zipPath);
+  await fs.promises.access(path.dirname(targetAppPath), fs.constants.W_OK);
   const installDir = await fs.promises.mkdtemp(path.join(updateDir, "install-"));
   const stagingPath = path.join(installDir, "staging");
+  const resultPath = path.join(updateDir, "last-macos-update-result.txt");
+  const logPath = path.join(updateDir, "last-macos-update.log");
   const scriptPath = path.join(installDir, "install-macos-update.sh");
+  await fs.promises.rm(resultPath, { force: true }).catch(() => undefined);
   const script = `#!/bin/sh
 set -eu
 
@@ -183,53 +341,100 @@ PARENT_PID="$4"
 EXPECTED_BUNDLE_ID="$5"
 EXPECTED_APP_NAME="$6"
 EXPECTED_VERSION="$7"
-INSTALL_DIR="$8"
+EXPECTED_TEAM_ID="$8"
+INSTALL_DIR="$9"
+RESULT_PATH="$10"
+LOG_PATH="$11"
+
+exec >> "$LOG_PATH" 2>&1
+echo "macOS update helper started at $(date)"
+
+cleanup() {
+  rm -rf "$INSTALL_DIR"
+}
+
+fail() {
+  CODE="$1"
+  printf "%s\\n" "$CODE" > "$RESULT_PATH" 2>/dev/null || true
+  if [ -d "$TARGET_APP_PATH" ]; then
+    /usr/bin/open "$TARGET_APP_PATH" >/dev/null 2>&1 || true
+  fi
+  exit "$CODE"
+}
+
+wait_until_not_running() {
+  RUNNING_CHECK=0
+  while /usr/bin/pgrep -f "$TARGET_APP_PATH/Contents/MacOS/" >/dev/null 2>&1; do
+    RUNNING_CHECK=$((RUNNING_CHECK + 1))
+    if [ "$RUNNING_CHECK" -ge 150 ]; then
+      fail 20
+    fi
+    sleep 0.2
+  done
+}
+
+trap cleanup EXIT
 
 if [ ! -f "$ZIP_PATH" ]; then
-  exit 10
+  fail 10
 fi
 
 case "$TARGET_APP_PATH" in
   *.app) ;;
-  *) exit 11 ;;
+  *) fail 11 ;;
 esac
 
 while kill -0 "$PARENT_PID" 2>/dev/null; do
   sleep 0.2
 done
 
-rm -rf "$STAGING_PATH"
-mkdir -p "$STAGING_PATH"
-/usr/bin/ditto -x -k "$ZIP_PATH" "$STAGING_PATH"
+wait_until_not_running
+
+rm -rf "$STAGING_PATH" || fail 12
+mkdir -p "$STAGING_PATH" || fail 12
+/usr/bin/ditto -x -k "$ZIP_PATH" "$STAGING_PATH" || fail 12
 
 NEXT_APP_PATH="$(/usr/bin/find "$STAGING_PATH" -maxdepth 2 -name "*.app" -type d | /usr/bin/head -n 1)"
 if [ -z "$NEXT_APP_PATH" ]; then
-  exit 12
+  fail 12
 fi
 
 if [ "$(/usr/bin/basename "$NEXT_APP_PATH")" != "$EXPECTED_APP_NAME" ]; then
-  exit 13
+  fail 13
 fi
 
 NEXT_INFO_PLIST="$NEXT_APP_PATH/Contents/Info.plist"
 if [ ! -f "$NEXT_INFO_PLIST" ]; then
-  exit 14
+  fail 14
 fi
 
 NEXT_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$NEXT_INFO_PLIST" 2>/dev/null || true)"
 if [ -n "$EXPECTED_BUNDLE_ID" ] && [ "$NEXT_BUNDLE_ID" != "$EXPECTED_BUNDLE_ID" ]; then
-  exit 15
+  fail 15
 fi
 
 NEXT_VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$NEXT_INFO_PLIST" 2>/dev/null || true)"
-if [ -n "$EXPECTED_VERSION" ] && [ "$NEXT_VERSION" != "$EXPECTED_VERSION" ]; then
-  exit 16
+NORMALIZED_NEXT_VERSION="$(printf "%s" "$NEXT_VERSION" | /usr/bin/sed 's/^[vV]//')"
+NORMALIZED_EXPECTED_VERSION="$(printf "%s" "$EXPECTED_VERSION" | /usr/bin/sed 's/^[vV]//')"
+if [ -n "$NORMALIZED_EXPECTED_VERSION" ] && [ "$NORMALIZED_NEXT_VERSION" != "$NORMALIZED_EXPECTED_VERSION" ]; then
+  fail 16
 fi
+
+if ! /usr/bin/codesign --verify --deep --strict "$NEXT_APP_PATH" >/dev/null 2>&1; then
+  fail 17
+fi
+
+NEXT_TEAM_ID="$(/usr/bin/codesign -dv "$NEXT_APP_PATH" 2>&1 | /usr/bin/awk -F= '/^TeamIdentifier=/ {print $2; exit}')"
+if [ "$NEXT_TEAM_ID" != "$EXPECTED_TEAM_ID" ]; then
+  fail 18
+fi
+
+wait_until_not_running
 
 BACKUP_APP_PATH="$TARGET_APP_PATH.previous-update"
 rm -rf "$BACKUP_APP_PATH"
 if [ -d "$TARGET_APP_PATH" ]; then
-  /bin/mv "$TARGET_APP_PATH" "$BACKUP_APP_PATH"
+  /bin/mv "$TARGET_APP_PATH" "$BACKUP_APP_PATH" || fail 19
 fi
 
 if ! /usr/bin/ditto "$NEXT_APP_PATH" "$TARGET_APP_PATH"; then
@@ -237,13 +442,13 @@ if ! /usr/bin/ditto "$NEXT_APP_PATH" "$TARGET_APP_PATH"; then
   if [ -d "$BACKUP_APP_PATH" ]; then
     /bin/mv "$BACKUP_APP_PATH" "$TARGET_APP_PATH"
   fi
-  exit 17
+  fail 19
 fi
 
 rm -rf "$BACKUP_APP_PATH"
-/usr/bin/xattr -dr com.apple.quarantine "$TARGET_APP_PATH" 2>/dev/null || true
+rm -f "$RESULT_PATH"
+rm -f "$ZIP_PATH"
 /usr/bin/open "$TARGET_APP_PATH"
-rm -rf "$INSTALL_DIR"
 `;
   await fs.promises.writeFile(scriptPath, script, { mode: 0o700 });
   const child = spawn("/bin/sh", [
@@ -255,7 +460,10 @@ rm -rf "$INSTALL_DIR"
     OCTO_CONFIG.appId,
     expectedAppName,
     expectedVersion,
+    expectedTeamId,
     installDir,
+    resultPath,
+    logPath,
   ], {
     detached: true,
     stdio: "ignore",
@@ -264,11 +472,69 @@ rm -rf "$INSTALL_DIR"
   app.quit();
 }
 
+async function surfacePendingMacInstallResult(): Promise<void> {
+  if (process.platform !== "darwin") return;
+  const resultPath = path.join(app.getPath("userData"), "updates", "last-macos-update-result.txt");
+  let code = "";
+  try {
+    code = (await fs.promises.readFile(resultPath, "utf8")).trim();
+    await fs.promises.rm(resultPath, { force: true });
+  } catch {
+    return;
+  }
+  if (!code) return;
+  setTimeout(() => {
+    sendUpdateMessage({
+      cmd: IPC_UPDATE_ERROR,
+      data: `macOS update installer failed with code ${code}. See ${path.join(app.getPath("userData"), "updates", "last-macos-update.log")}`,
+    });
+  }, 1500);
+}
+
+async function cleanupStaleUpdateArtifacts(): Promise<void> {
+  const updateDir = path.join(app.getPath("userData"), "updates");
+  const staleBefore = Date.now() - 24 * 60 * 60 * 1000;
+  let entries: string[] = [];
+  try {
+    entries = await fs.promises.readdir(updateDir);
+  } catch {
+    return;
+  }
+  await Promise.all(entries.map(async (entry) => {
+    const lower = entry.toLowerCase();
+    if (
+      lower.endsWith(".download") ||
+      lower.endsWith(".zip") ||
+      lower.endsWith(".dmg") ||
+      lower.endsWith(".exe") ||
+      lower.endsWith(".appimage") ||
+      lower.startsWith("install-")
+    ) {
+      const target = path.join(updateDir, entry);
+      const stat = await fs.promises.stat(target).catch(() => undefined);
+      if (stat && stat.mtimeMs < staleBefore) {
+        await fs.promises.rm(target, { recursive: true, force: true }).catch(() => undefined);
+      }
+    }
+  }));
+}
+
 function checkUpdate(win: BrowserWindow) {
   mainWindow = win;
+  void surfacePendingMacInstallResult();
+  void cleanupStaleUpdateArtifacts();
   // 接收渲染进程消息，开始检查更新
   ipcMain.on(IPC_UPDATE_CHECK, async (event, options?: { silent?: boolean }) => {
     if (!isMainWindowSender(event)) return;
+    if (isDownloadingUpdate) {
+      if (!options?.silent) {
+        sendUpdateMessage({
+          cmd: IPC_UPDATE_ERROR,
+          data: "Update download is already in progress",
+        });
+      }
+      return;
+    }
     if (!OCTO_CONFIG.updaterApiUrl) {
       logger.info("[updater] updater API URL is not configured; skipping update check");
       if (!options?.silent) {
@@ -279,10 +545,12 @@ function checkUpdate(win: BrowserWindow) {
       }
       return;
     }
+    const seq = updateCheckSeq + 1;
+    updateCheckSeq = seq;
     try {
       const updateInfo = await requestUpdateInfo();
+      if (seq !== updateCheckSeq || isDownloadingUpdate) return;
       pendingUpdateInfo = updateInfo || undefined;
-      downloadedUpdatePath = undefined;
       if (updateInfo) sendUpdateAvailable(updateInfo);
       else if (!options?.silent) sendUpdateMessage({ cmd: IPC_UPDATE_NOT_AVAILABLE, data: {} });
     } catch (error) {
@@ -307,43 +575,35 @@ function checkUpdate(win: BrowserWindow) {
       });
       return;
     }
+    const updateInfo = pendingUpdateInfo;
     try {
       isDownloadingUpdate = true;
-      downloadedUpdatePath = await downloadUpdatePackage(pendingUpdateInfo);
+      const filePath = await downloadUpdatePackage(updateInfo);
       sendUpdateMessage({
         cmd: IPC_UPDATE_DOWNLOADED,
         data: {
-          version: pendingUpdateInfo.version,
-          releaseNotes: pendingUpdateInfo.notes,
-          releaseDate: pendingUpdateInfo.pub_date,
-          url: pendingUpdateInfo.url,
-          forceUpdate: pendingUpdateInfo.forceUpdate,
-          filePath: downloadedUpdatePath,
+          version: updateInfo.version,
+          releaseNotes: updateInfo.notes,
+          releaseDate: updateInfo.pub_date,
+          url: updateInfo.url,
+          forceUpdate: updateInfo.forceUpdate,
+          filePath,
         },
       });
-      await openDownloadedUpdatePackageAndQuitIfNeeded();
+      await openDownloadedUpdatePackageAndQuitIfNeeded(updateInfo, filePath);
     } catch (error) {
       logger.info(error);
       sendUpdateMessage({
         cmd: IPC_UPDATE_ERROR,
-        data: error instanceof Error ? error.message : String(error),
+        data: getUpdateErrorMessage(error),
       });
     } finally {
       isDownloadingUpdate = false;
     }
   });
-  // 退出并安装更新包
-  ipcMain.on(IPC_UPDATE_INSTALL, async (event) => {
+  ipcMain.on(IPC_UPDATE_CANCEL_DOWNLOAD, (event) => {
     if (!isMainWindowSender(event)) return;
-    try {
-      await openDownloadedUpdatePackageAndQuitIfNeeded();
-    } catch (error) {
-      logger.info(error);
-      sendUpdateMessage({
-        cmd: IPC_UPDATE_ERROR,
-        data: error instanceof Error ? error.message : String(error),
-      });
-    }
+    currentDownloadController?.abort();
   });
 }
 

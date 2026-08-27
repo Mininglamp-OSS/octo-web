@@ -66,7 +66,7 @@ declare global {
 const IPC_CONVERSATION_UNREAD_COUNT = "conversation-manager-unread-count";
 const IPC_UPDATE_CHECK = "check-update";
 const IPC_UPDATE_DOWNLOAD = "update-app";
-const IPC_UPDATE_INSTALL = "install-update";
+const IPC_UPDATE_CANCEL_DOWNLOAD = "cancel-update-download";
 const IPC_SCREENSHOTS_START = "screenshots-start";
 const IPC_MEDIA_ACCESS_STATUS = "get-media-access-status";
 const IPC_RESTART_APP = "restart-app";
@@ -137,8 +137,8 @@ export function sendElectronUpdateApp(): void {
   getElectronIpcBridge()?.send(IPC_UPDATE_DOWNLOAD);
 }
 
-export function sendElectronInstallUpdate(): void {
-  getElectronIpcBridge()?.send(IPC_UPDATE_INSTALL);
+export function sendElectronCancelUpdateDownload(): void {
+  getElectronIpcBridge()?.send(IPC_UPDATE_CANCEL_DOWNLOAD);
 }
 
 export function startElectronScreenshot(args?: unknown): void {

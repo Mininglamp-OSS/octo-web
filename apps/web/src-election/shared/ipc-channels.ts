@@ -32,7 +32,7 @@ export const IPC_RESTART_APP = "restart-app";
 /** Renderer → Main: check, download, and install app updates. */
 export const IPC_UPDATE_CHECK = "check-update";
 export const IPC_UPDATE_DOWNLOAD = "update-app";
-export const IPC_UPDATE_INSTALL = "install-update";
+export const IPC_UPDATE_CANCEL_DOWNLOAD = "cancel-update-download";
 
 /** Main → Renderer: app update lifecycle. */
 export const IPC_UPDATE_ERROR = "update-error";

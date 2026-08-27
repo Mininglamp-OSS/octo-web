@@ -21,7 +21,9 @@ import {
 function normalizeHttpDirectoryUrl(value: string, name: string): string {
   try {
     const url = new URL(value);
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
+    const isLocalhostHttp = url.protocol === "http:" &&
+      (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1");
+    if (url.protocol !== "https:" && !isLocalhostHttp) {
       throw new Error("unsupported protocol");
     }
     if (url.search || url.hash) {
@@ -29,18 +31,20 @@ function normalizeHttpDirectoryUrl(value: string, name: string): string {
     }
     return url.toString().endsWith("/") ? url.toString() : `${url.toString()}/`;
   } catch {
-    throw new Error(`[vite] ${name} format is invalid: "${value}". Please use an absolute http(s) URL.`);
+    throw new Error(`[vite] ${name} format is invalid: "${value}". Please use an absolute https URL, or http://localhost for local development.`);
+  }
+}
+
+function normalizeOptionalElectronUpdaterUrl(value: string): string {
+  try {
+    return normalizeHttpDirectoryUrl(value, "VITE_API_URL-derived updater URL");
+  } catch {
+    return "";
   }
 }
 
 export default defineConfig(({ mode }) => {
-  const loadedEnv = loadEnv(mode, process.cwd(), "VITE_");
-  const env = {
-    ...loadedEnv,
-    ...Object.fromEntries(
-      Object.entries(process.env).filter(([key]) => key.startsWith("VITE_"))
-    ),
-  };
+  const env = loadEnv(mode, process.cwd(), "VITE_");
   const apiUrl = env.VITE_API_URL;
   const mailApiUrl = env.VITE_MAIL_API_URL || apiUrl || "http://127.0.0.1:8080";
   const agentMailApiUrl =
@@ -88,7 +92,7 @@ export default defineConfig(({ mode }) => {
     if (explicit) {
       return normalizeHttpDirectoryUrl(explicit, "VITE_ELECTRON_UPDATER_API_URL");
     }
-    return new URL("/api/v1/common/updater/", apiOrigin).toString();
+    return normalizeOptionalElectronUpdaterUrl(new URL("/api/v1/common/updater/", apiOrigin).toString());
   })();
 
   return {
@@ -146,6 +150,8 @@ export default defineConfig(({ mode }) => {
                       oidcApiOrigin: apiOrigin,
                       oidcEndSessionOrigins: [apiOrigin, ...oidcTrustedOrigins],
                       electronUpdaterApiUrl,
+                      electronUpdateSigningTeamId: env.VITE_ELECTRON_UPDATE_SIGNING_TEAM_ID || "",
+                      electronUpdateWindowsPublisherName: env.VITE_ELECTRON_UPDATE_WINDOWS_PUBLISHER_NAME || "",
                     },
                     null,
                     2

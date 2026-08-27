@@ -272,7 +272,7 @@ function AboutSettingsPage({ environment, onAbout, aboutUpdateStatus = { status:
     <div className="wk-settings-center__about-identity">
       <img className="wk-settings-center__about-logo" src={octoLogo} alt={t("base.navRail.settingsCenter.about.octoLogoAlt")} />
       <div className="wk-settings-center__about-copy"><strong>{isDesktop ? "Octo Desktop" : "Octo Web"}</strong><span>{[runtimeLabel, platformLabel, `${t("base.navRail.settingsCenter.page.about.versionPrefix")}${t("base.navRail.settingsCenter.about.versionSeparator")}${WKApp.config.appVersion}`].filter(Boolean).join(" · ")}</span>{!isDesktop && <span>{updateDescription}</span>}</div>
-      <div className="wk-settings-center__about-update-actions"><SettingsStatusTag tone={statusTone} label={statusLabel} /><button type="button" className="wk-settings-center__about-update" onClick={onAbout}>{updateAvailable && !isDesktop ? t("base.navRail.settingsCenter.action.refresh") : t("base.navRail.settingsCenter.action.checkUpdate")}</button></div>
+      <div className="wk-settings-center__about-update-actions">{!isDesktop && <SettingsStatusTag tone={statusTone} label={statusLabel} />}<button type="button" className="wk-settings-center__about-update" onClick={onAbout}>{updateAvailable && !isDesktop ? t("base.navRail.settingsCenter.action.refresh") : t("base.navRail.settingsCenter.action.checkUpdate")}</button></div>
     </div>
     <SettingsSection title={t("base.navRail.settingsCenter.section.help")}>
       {onOpenOnboarding && <SettingsRow title={t("base.navRail.settingsCenter.row.guide")} onClick={onOpenOnboarding} trailing={<ChevronIcon />} />}

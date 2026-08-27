@@ -21,13 +21,14 @@ export interface NavRailVMProps {
     showAppVersion: boolean;
     showAppUpdate: boolean;
     appUpdateProgress: number;
+    appUpdateDownloadedBytes?: number;
     showAppUpdateOperation: boolean;
-    appUpdateDownloaded?: boolean;
     lastVersionInfo?: { appVersion: string; updateDesc: string; forceUpdate?: boolean };
     onMenuClick: (menus: Menus) => void;
     onToggleSetting: () => void;
     onSetShowAppVersion: (v: boolean) => void;
     onInstallUpdate: () => void;
+    onCancelUpdateDownload?: () => void;
     onNotifyListener: () => void;
     onAvatarClick: () => void;
     onOpenOnboarding?: () => void;
@@ -61,13 +62,14 @@ export default class NavRail extends Component<NavRailProps> {
             showAppVersion,
             showAppUpdate,
             appUpdateProgress,
+            appUpdateDownloadedBytes,
             showAppUpdateOperation,
-            appUpdateDownloaded,
             lastVersionInfo,
             onMenuClick,
             onToggleSetting,
             onSetShowAppVersion,
             onInstallUpdate,
+            onCancelUpdateDownload,
             onNotifyListener,
             onAvatarClick,
             onOpenOnboarding,
@@ -146,12 +148,13 @@ export default class NavRail extends Component<NavRailProps> {
                     showAppVersion={showAppVersion}
                     showAppUpdate={showAppUpdate}
                     appUpdateProgress={appUpdateProgress}
+                    appUpdateDownloadedBytes={appUpdateDownloadedBytes}
                     showAppUpdateOperation={showAppUpdateOperation}
-                    appUpdateDownloaded={appUpdateDownloaded}
                     lastVersionInfo={lastVersionInfo}
                     onToggleSetting={onToggleSetting}
                     onSetShowAppVersion={onSetShowAppVersion}
                     onInstallUpdate={onInstallUpdate}
+                    onCancelUpdateDownload={onCancelUpdateDownload}
                     onNotifyListener={onNotifyListener}
                     onOpenOnboarding={onOpenOnboarding}
                 />

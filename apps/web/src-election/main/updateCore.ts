@@ -5,12 +5,14 @@ export interface DesktopUpdateInfo {
   url: string;
   notes?: string;
   pub_date?: string;
-  signature?: string;
+  sha256?: string;
+  sha512?: string;
   forceUpdate?: boolean;
 }
 
 export interface ParseUpdateInfoOptions {
   allowInsecureHttp?: boolean;
+  expectedDownloadOrigin?: string;
   platform?: NodeJS.Platform;
 }
 
@@ -18,7 +20,8 @@ export function parseUpdaterCheckResult(raw: unknown, options: ParseUpdateInfoOp
   if (isNullEnvelope(raw)) return null;
   const value = unwrapUpdaterPayload(raw);
   if (isNoUpdatePayload(value)) return null;
-  return parseUpdateInfo(value, options);
+  if (!hasUpdateInfoFields(value)) return null;
+  return parseUpdateInfoPayload(value, options);
 }
 
 export function getUpdaterPlatform(platform: NodeJS.Platform = process.platform): UpdaterPlatform {
@@ -41,8 +44,8 @@ export function buildUpdaterCheckUrl(options: {
 
 function normalizeUpdaterApiBaseUrl(value: string): string {
   const url = new URL(value);
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("Updater API URL must be http(s)");
+  if (url.protocol !== "https:" && !isLocalhostHttpUrl(url)) {
+    throw new Error("Updater API URL must be https, or http on localhost");
   }
   if (url.search || url.hash) {
     throw new Error("Updater API URL must not include query or hash");
@@ -52,7 +55,10 @@ function normalizeUpdaterApiBaseUrl(value: string): string {
 }
 
 export function parseUpdateInfo(raw: unknown, options: ParseUpdateInfoOptions = {}): DesktopUpdateInfo {
-  const value = unwrapUpdaterPayload(raw);
+  return parseUpdateInfoPayload(unwrapUpdaterPayload(raw), options);
+}
+
+function parseUpdateInfoPayload(value: Record<string, unknown>, options: ParseUpdateInfoOptions = {}): DesktopUpdateInfo {
   const version = typeof value.version === "string" ? value.version.trim() : "";
   const urlValue = value.url ?? value.download_url ?? value.downloadUrl;
   const url = typeof urlValue === "string" ? urlValue.trim() : "";
@@ -62,15 +68,27 @@ export function parseUpdateInfo(raw: unknown, options: ParseUpdateInfoOptions = 
   if (!isAllowedUpdaterDownloadUrl(parsedUrl, options.allowInsecureHttp)) {
     throw new Error("Updater response url must be https, or http on localhost when explicitly allowed");
   }
+  if (options.expectedDownloadOrigin && parsedUrl.origin !== options.expectedDownloadOrigin) {
+    throw new Error("Updater response url origin does not match updater API origin");
+  }
   if (options.platform && !isAllowedUpdaterPackageUrl(parsedUrl, getUpdaterPlatform(options.platform))) {
     throw new Error("Updater response url extension does not match current platform");
+  }
+  const sha256 = parseHexDigest(value.sha256 ?? value.checksum_sha256 ?? value.checksumSha256, 64, "sha256");
+  const sha512 = parseBase64OrHexDigest(
+    value.sha512 ?? value.checksum_sha512 ?? value.checksumSha512 ?? value.checksum ?? value.signature,
+    "sha512",
+  );
+  if (!sha256 && !sha512) {
+    throw new Error("Updater response is missing package checksum");
   }
   return {
     version,
     url: parsedUrl.toString(),
     notes: typeof value.notes === "string" ? value.notes : "",
     pub_date: typeof value.pub_date === "string" ? value.pub_date : "",
-    signature: typeof value.signature === "string" ? value.signature : "",
+    sha256,
+    sha512,
     forceUpdate: parseForceUpdate(value),
   };
 }
@@ -91,6 +109,13 @@ function isNoUpdatePayload(value: Record<string, unknown>): boolean {
   return parseBooleanFlag(raw) === false;
 }
 
+function hasUpdateInfoFields(value: Record<string, unknown>): boolean {
+  return typeof value.version === "string" ||
+    typeof value.url === "string" ||
+    typeof value.download_url === "string" ||
+    typeof value.downloadUrl === "string";
+}
+
 export function isAllowedUpdaterPackageUrl(url: URL, platform: UpdaterPlatform): boolean {
   const pathname = decodeURIComponent(url.pathname).toLowerCase();
   if (platform === "macos") return pathname.endsWith(".zip");
@@ -101,7 +126,12 @@ export function isAllowedUpdaterPackageUrl(url: URL, platform: UpdaterPlatform):
 function isAllowedUpdaterDownloadUrl(url: URL, allowInsecureHttp = false): boolean {
   if (url.protocol === "https:") return true;
   if (url.protocol !== "http:" || !allowInsecureHttp) return false;
-  return url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1";
+  return isLocalhostHttpUrl(url);
+}
+
+export function isLocalhostHttpUrl(url: URL): boolean {
+  return url.protocol === "http:" &&
+    (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1");
 }
 
 function parseForceUpdate(value: Record<string, unknown>): boolean {
@@ -161,4 +191,41 @@ export function getMacAppBundleName(appPath: string): string {
     throw new Error("macOS app bundle path must end with .app");
   }
   return name;
+}
+
+function parseHexDigest(raw: unknown, length: number, name: string): string {
+  if (raw === undefined || raw === null || raw === "") return "";
+  if (typeof raw !== "string" || !new RegExp(`^[a-fA-F0-9]{${length}}$`).test(raw.trim())) {
+    throw new Error(`Updater response ${name} is invalid`);
+  }
+  return raw.trim().toLowerCase();
+}
+
+function parseBase64OrHexDigest(raw: unknown, name: string): string {
+  if (raw === undefined || raw === null || raw === "") return "";
+  if (typeof raw !== "string") throw new Error(`Updater response ${name} is invalid`);
+  const value = raw.trim();
+  if (/^[a-fA-F0-9]{128}$/.test(value)) return value.toLowerCase();
+  if (/^[A-Za-z0-9+/]{86}==$/.test(value)) return value;
+  throw new Error(`Updater response ${name} is invalid`);
+}
+
+export function isNewerVersion(candidate: string, current: string): boolean {
+  const next = parseVersionParts(candidate);
+  const base = parseVersionParts(current);
+  if (!next || !base) return candidate.trim() !== current.trim();
+  const length = Math.max(next.length, base.length);
+  for (let index = 0; index < length; index += 1) {
+    const nextPart = next[index] || 0;
+    const basePart = base[index] || 0;
+    if (nextPart > basePart) return true;
+    if (nextPart < basePart) return false;
+  }
+  return false;
+}
+
+function parseVersionParts(value: string): number[] | undefined {
+  const normalized = value.trim().replace(/^v/i, "");
+  if (!/^\d+(?:\.\d+){0,3}$/.test(normalized)) return undefined;
+  return normalized.split(".").map((part) => Number(part));
 }
