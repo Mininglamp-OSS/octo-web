@@ -1,5 +1,9 @@
 import type { Page } from "@playwright/test";
 
+// Unified plugin surface for the list/categories the market page loads (empty
+// here — this spec exercises the create wizard's probe path). Probing stays on
+// the intentionally-retained legacy tool endpoint (/mcps/_probe), so those mocks
+// are unchanged.
 export async function registerC39McpProbeFailure(page: Page): Promise<void> {
   function install() {
     type Msw = {
@@ -38,8 +42,8 @@ export async function registerC39McpProbeFailure(page: Page): Promise<void> {
         },
       });
     win.__msw.worker.use(
-      win.__msw.http.get("*/market/api/v1/mcps", list),
-      win.__msw.http.get("*/market/api/v1/mcp_categories", categories),
+      win.__msw.http.get("*/market/api/v1/plugins", list),
+      win.__msw.http.get("*/market/api/v1/plugin_categories", categories),
       win.__msw.http.post("*/market/api/v1/mcps/_probe", probeFailure),
       win.__msw.http.post("*/market/api/v1/mcps/probe", probeFailure),
       win.__msw.http.post("*/api/v1/mcps/_probe", probeFailure),
