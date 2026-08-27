@@ -271,10 +271,9 @@ export type DriveSearchOwnerScope = "me" | "others";
 export type DriveFileType = "doc" | "blob" | "folder";
 
 export interface DriveSearchFilters {
-  type?: DriveFileType;
-  /** Multi-value include (TES-70 wire contract); excludes folder hits by
-   * requesting only ['blob','doc']. Kept alongside single `type` for
-   * back-compat — backend treats the two as an OR. */
+  /** Multi-value include (TES-70/TES-72 wire contract); excludes folder hits by
+   * requesting only ['blob','doc']. The single-value `type` field was removed to
+   * match the TES-72 backend, which keeps only the `Types` array. */
   types?: DriveFileType[];
   owner_scope?: DriveSearchOwnerScope;
   /** RFC3339. Include hits whose `updated_at >= updated_after`. */

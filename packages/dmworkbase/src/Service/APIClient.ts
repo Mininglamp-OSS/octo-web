@@ -289,9 +289,9 @@ export class RequestConfig {
     /**
      * Per-request axios baseURL override. When set, axios uses it INSTEAD of the
      * shared `axios.defaults.baseURL` (`/api/v1/`) and combines it with `path`.
-     * Used by the drive full-text search, which is proxied under `/api/drive/`
-     * (a distinct nginx location from the `/api/v1/` gateway), not the v1 API.
-     * Omitting it fully preserves the existing default-baseURL behavior.
+     * Used by the drive full-text search, which is proxied under `/v1/drive/`
+     * (a distinct nginx location from the `/api/v1/` gateway), matching the exact
+     * route drive-module uses. Omitting it fully preserves the default behavior.
      */
     baseURL?: string
 }

@@ -76,12 +76,12 @@ export function toChannelSearchRequestBody(query: ChannelSearchQuery) {
 // CN-tz day formatter for GlobalSearch. See §11.
 const CN_TZ = "Asia/Shanghai";
 
-// Drive full-text search is proxied under a dedicated nginx location
-// (`^~ /api/drive` -> octo-drive backend), NOT the `/api/v1/` gateway that is
-// APIClient's default baseURL. Pass this as a per-request baseURL override so
-// the request resolves to `/api/drive/search`, per the spec route contract —
-// axios combines this baseURL with the `"search"` path (no leading slash).
-const DRIVE_API_PREFIX = "/api/drive/";
+// Drive full-text search shares drive-module's exact route: `POST /v1/drive/search`
+// (dmwork-prod nginx: `location ^~ /v1/drive/` -> octo-drive backend, already live).
+// APIClient's default baseURL is the `/api/v1/` gateway, so we still pass `/v1/drive/`
+// as a per-request baseURL override — axios combines it with the `"search"` path (no
+// leading slash) to resolve `/v1/drive/search`.
+const DRIVE_API_PREFIX = "/v1/drive/";
 
 // Split a Date into CN-tz Y/M/D (numeric). Extracted so both the wire
 // serializer and the datePreset boundary math share one code path.
@@ -525,7 +525,7 @@ const SearchService = {
     };
   },
 
-  // Drive full-text search: octo-drive backend, proxied at `POST /api/drive/search`
+  // Drive full-text search: octo-drive backend, proxied at `POST /v1/drive/search`
   // (see DRIVE_API_PREFIX). uid is
   // injected by the gateway (not sent from the client); the backend applies
   // permission down-push server-side, so the client renders items verbatim.
