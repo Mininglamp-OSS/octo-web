@@ -206,7 +206,10 @@ function makeExtra(contentEdit?: InteractiveCardContent): MessageExtra {
     return extra
 }
 
-afterEach(() => vi.clearAllMocks())
+afterEach(() => {
+    vi.useRealTimers()
+    vi.clearAllMocks()
+})
 
 describe("WS-99 client fallback finalize race", () => {
     it("final text 到达后把未终态卡标记为兜底", () => {
@@ -280,6 +283,7 @@ describe("WS-99 client fallback finalize race", () => {
     })
 
     it("buffered 卡片收到 edit frame 保持活跃后，紧接的 final text 不误挂兜底（finding E 端到端）", () => {
+        vi.useFakeTimers()
         const vm: any = new ConversationVM(channel)
         const cardWrap = makeCardWrap("🤖 正在处理…")
         cardWrap.progressUpdatedAtSec = 0 // 初始到达很久以前；若 edit frame 丢失则会被误判为空闲
@@ -289,6 +293,55 @@ describe("WS-99 client fallback finalize race", () => {
         // 紧接着 final text 到达：卡片刚更新过（idle < 3s），不应误触发兜底。修复前 edit frame 被
         // 丢弃、到达时刻冻结在 0，会误判空闲并挂上 banner。
         vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
+        expect(cardWrap.localFallbackApplied).toBeFalsy()
+    })
+
+    it("final text 在 3s 空闲门槛前到达时，会在门槛到期后复检并兜底", () => {
+        vi.useFakeTimers()
+        vi.setSystemTime(new Date("2026-08-27T00:00:00.000Z"))
+        const vm: any = new ConversationVM(channel)
+        const cardWrap = makeCardWrap("🤖 正在处理…")
+        cardWrap.progressUpdatedAtSec = Date.now() / 1000
+        vm.messagesOfOrigin.push(cardWrap)
+
+        vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
+        expect(cardWrap.localFallbackApplied).toBeFalsy()
+
+        vi.advanceTimersByTime(2999)
+        expect(cardWrap.localFallbackApplied).toBeFalsy()
+        vi.advanceTimersByTime(1)
+        expect(cardWrap.localFallbackApplied).toBe(true)
+    })
+
+    it("延迟复检前收到权威新帧会取消旧复检", () => {
+        vi.useFakeTimers()
+        vi.setSystemTime(new Date("2026-08-27T00:00:00.000Z"))
+        const vm: any = new ConversationVM(channel)
+        const cardWrap = makeCardWrap("🤖 正在处理…")
+        cardWrap.progressUpdatedAtSec = Date.now() / 1000
+        vm.messagesOfOrigin.push(cardWrap)
+
+        vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
+        vi.advanceTimersByTime(1000)
+        vm.updateMessageByMessageExtras([makeExtra(makeCardContent("🤖 处理中 · 第 2 步"))])
+        vi.advanceTimersByTime(3000)
+
+        expect(cardWrap.localFallbackApplied).toBeFalsy()
+    })
+
+    it("VM 卸载会取消尚未到期的延迟复检", () => {
+        vi.useFakeTimers()
+        vi.setSystemTime(new Date("2026-08-27T00:00:00.000Z"))
+        const vm: any = new ConversationVM(channel)
+        vm.didMount()
+        const cardWrap = makeCardWrap("🤖 正在处理…")
+        cardWrap.progressUpdatedAtSec = Date.now() / 1000
+        vm.messagesOfOrigin.push(cardWrap)
+
+        vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
+        vm.didUnMount()
+        vi.advanceTimersByTime(3000)
+
         expect(cardWrap.localFallbackApplied).toBeFalsy()
     })
 

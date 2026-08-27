@@ -54,6 +54,7 @@ import {
 import { resolveEffectiveCardContent } from "../../Messages/InteractiveCard/resolveContent";
 import { isAgentProgressCard } from "../../Messages/InteractiveCard/cardLayout";
 import {
+    CARD_FALLBACK_MIN_IDLE_SEC,
     isNonTerminalProgressCard,
     isProgressCardIdleEnough,
 } from "../../Messages/InteractiveCard/agentProgressFallback";
@@ -200,6 +201,7 @@ export default class ConversationVM extends ProviderListener {
     private liveFoldRevokeClientMsgNos: Set<string> = new Set()
     afterFoldSessionClientMsgNos: Set<string> = new Set() // 紧跟在折叠卡片后的消息，需强制独立显示
     private foldSessionActiveTimer: ReturnType<typeof setTimeout> | null = null // 协作态超时自动结束
+    private progressFallbackTimers: Map<MessageWrap, ReturnType<typeof setTimeout>> = new Map()
     private reactionSyncController: ReturnType<typeof createMessageReactionSyncController>
     private readonly registerAsOpenConversation: boolean
     private readonly openConversationOwner = Symbol("openConversationOwner")
@@ -1226,6 +1228,10 @@ export default class ConversationVM extends ProviderListener {
             clearTimeout(this.foldSessionActiveTimer)
             this.foldSessionActiveTimer = null
         }
+        for (const timer of this.progressFallbackTimers.values()) {
+            clearTimeout(timer)
+        }
+        this.progressFallbackTimers.clear()
         this.pendingMessages = [] // 清理缓冲区
 
         WKApp.mittBus.off("task-upload-failed", this._taskUploadFailedHandler)
@@ -1537,6 +1543,53 @@ export default class ConversationVM extends ProviderListener {
         }
     }
 
+    private cancelProgressCardFallback(messageWrap: MessageWrap) {
+        const timer = this.progressFallbackTimers.get(messageWrap)
+        if (timer !== undefined) clearTimeout(timer)
+        this.progressFallbackTimers.delete(messageWrap)
+    }
+
+    private applyProgressCardFallback(messageWrap: MessageWrap, senderId: string, nowSec: number) {
+        this.cancelProgressCardFallback(messageWrap)
+        messageWrap.localFallbackApplied = true
+        const idleSec = nowSec - (messageWrap.progressUpdatedAtSec ?? nowSec)
+        console.debug(
+            `[interactive-card] client fallback finalized stuck progress card sender=${senderId} messageID=${messageWrap.messageID} idleSec=${idleSec.toFixed(1)}`
+        )
+        this.rebuildRenderItems()
+        this.notifyListener()
+    }
+
+    /**
+     * final text 早于 3s 空闲门槛时只安排一次到期复检。回调必须重新核对原卡仍是该 sender 的
+     * 最近卡、期间没有新帧、且仍为未终态；权威 edit frame 与 VM 卸载都会主动取消定时器。
+     */
+    private scheduleProgressCardFallback(messageWrap: MessageWrap, senderId: string, nowSec: number) {
+        const updatedAtSec = messageWrap.progressUpdatedAtSec
+        if (typeof updatedAtSec !== "number") return
+
+        this.cancelProgressCardFallback(messageWrap)
+        const remainingMs = Math.max(
+            0,
+            Math.ceil((updatedAtSec + CARD_FALLBACK_MIN_IDLE_SEC - nowSec) * 1000)
+        )
+        const timer = setTimeout(() => {
+            this.progressFallbackTimers.delete(messageWrap)
+            if (this.findLatestSenderCard(senderId) !== messageWrap) return
+            if (messageWrap.localFallbackApplied) return
+            if (messageWrap.progressUpdatedAtSec !== updatedAtSec) return
+            const card = this.resolveProgressCard(messageWrap)
+            const recheckAtSec = Date.now() / 1000
+            if (
+                !card ||
+                !isNonTerminalProgressCard(card) ||
+                !isProgressCardIdleEnough(messageWrap.progressUpdatedAtSec, recheckAtSec)
+            ) return
+            this.applyProgressCardFallback(messageWrap, senderId, recheckAtSec)
+        }, remainingMs)
+        this.progressFallbackTimers.set(messageWrap, timer)
+    }
+
     /**
      * 收到某 assistant 的 type=1 final text 后的客户端兜底：若该 assistant 最近一张 type=17 卡是
      * 「未终态」的 progress 卡、且距其最后一次帧到达已空闲够久，则把它降级显示为「已完成（未收到
@@ -1563,18 +1616,12 @@ export default class ConversationVM extends ProviderListener {
         const card = this.resolveProgressCard(m)
         if (!card) return
         const finalAtSec = Date.now() / 1000
-        if (
-            isNonTerminalProgressCard(card) &&
-            isProgressCardIdleEnough(m.progressUpdatedAtSec, finalAtSec)
-        ) {
-            m.localFallbackApplied = true
-            const idleSec = finalAtSec - (m.progressUpdatedAtSec ?? finalAtSec)
-            console.debug(
-                `[interactive-card] client fallback finalized stuck progress card sender=${senderId} messageID=${m.messageID} idleSec=${idleSec.toFixed(1)}`
-            )
-            this.rebuildRenderItems()
-            this.notifyListener()
+        if (!isNonTerminalProgressCard(card)) return
+        if (isProgressCardIdleEnough(m.progressUpdatedAtSec, finalAtSec)) {
+            this.applyProgressCardFallback(m, senderId, finalAtSec)
+            return
         }
+        this.scheduleProgressCardFallback(m, senderId, finalAtSec)
     }
 
     /**
@@ -1612,6 +1659,8 @@ export default class ConversationVM extends ProviderListener {
                 // receipt 等只读扩展不含 contentEdit，不改有效卡，既不刷新到达时刻、也不撤回本地
                 // 兜底注解。门控对齐 resolveEffectiveCardContent 的采用条件。
                 if (messageExtra.isEdit && messageExtra.contentEdit instanceof InteractiveCardContent) {
+                    // 新权威帧使此前基于旧 progressUpdatedAtSec 安排的延迟复检失效。
+                    this.cancelProgressCardFallback(message)
                     // 卡片内容又前进了一帧：刷新到达时刻，供 final-text 兜底重新做空闲判定，
                     // 避免只读扩展重置 3s 空闲判定把单次 final-text 兜底永久压掉（评审 blocker）。
                     this.stampProgressCardArrival(message)
