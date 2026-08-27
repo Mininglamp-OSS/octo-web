@@ -11,7 +11,7 @@
 :root {
   /* ── Brand Black 调色板（Figma 真正的主色） ── */
   --wk-brand-black: #1c1c23; /* Figma: 主按钮、消息卡片、选中态 */
-  --wk-brand-black-hover: #2a2a33; /* hover 态略浅 */
+  --wk-brand-black-hover: #2e3238; /* hover 态略浅 */
   --wk-brand-dark-tab: #343b3a; /* Figma: Tab 切换容器背景 */
 
   /* ── Purple 调色板（Figma AI 功能色/链接色，非主色） ── */

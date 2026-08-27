@@ -876,9 +876,6 @@ importers:
       '@octo/base':
         specifier: workspace:*
         version: link:../dmworkbase
-      '@octo/ui':
-        specifier: workspace:*
-        version: link:../octo-ui
       lucide-react:
         specifier: ^0.577.0
         version: 0.577.0(react@18.3.1)

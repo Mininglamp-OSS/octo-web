@@ -3,6 +3,9 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react'
 export type ButtonHTMLType = 'button' | 'submit' | 'reset'
 export type ButtonLegacyType = 'primary' | 'secondary' | 'tertiary' | 'warning' | 'danger'
 export type ButtonLegacyTheme = 'solid' | 'light' | 'borderless' | 'outline'
+export type ButtonSemiType = 'primary' | 'secondary' | 'tertiary' | 'warning' | 'danger'
+export type ButtonSemiTheme = 'solid' | 'light' | 'borderless' | 'outline'
+export type ButtonSemiSize = 'default' | 'small' | 'large'
 export type ButtonVariant =
   | 'solid'
   | 'brand'
@@ -11,6 +14,7 @@ export type ButtonVariant =
   | 'text'
   | 'warning'
   | 'danger'
+  | 'danger-text'
   /** @deprecated Use text. */
   | 'ghost'
 export type ButtonSize =

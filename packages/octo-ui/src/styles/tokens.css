@@ -34,10 +34,10 @@ body {
   --octo-ui-button-tint-bg-active: var(--wk-brand-tint-12, oklch(22.957% 0.01344 285.29 / 12%));
   --octo-ui-button-tint-text: var(--wk-brand-primary, oklch(22.957% 0.01344 285.29));
   --octo-ui-button-secondary-bg: var(--wk-bg-surface, oklch(100% 0 89.88));
-  --octo-ui-button-secondary-border: var(--wk-border-default, oklch(22.957% 0.01344 285.29 / 8%));
+  --octo-ui-button-secondary-border: var(--wk-border-secondary, oklch(22.957% 0.01344 285.29 / 15%));
   --octo-ui-button-secondary-border-hover: var(--wk-border-strong, oklch(0% 0 0 / 14%));
   --octo-ui-button-secondary-text: var(--wk-text-primary, oklch(22.957% 0.01344 285.29));
-  --octo-ui-button-secondary-bg-hover: var(--wk-bg-hover, oklch(90.65% 0.00292 264.54));
+  --octo-ui-button-secondary-bg-hover: var(--wk-brand-tint-03, oklch(22.957% 0.01344 285.29 / 3%));
   --octo-ui-button-secondary-bg-active: var(--wk-bg-active, oklch(88.531% 0 89.88));
   --octo-ui-button-text: var(--wk-color-accent, oklch(55.235% 0.25402 292.64));
   --octo-ui-button-text-hover: var(--wk-color-accent-hover, oklch(50.629% 0.24582 290.24));

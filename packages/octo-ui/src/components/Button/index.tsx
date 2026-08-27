@@ -1,5 +1,8 @@
-import { forwardRef } from 'react'
-import type { ButtonHTMLType, ButtonProps } from './types'
+import SemiButton from '@douyinfe/semi-ui/lib/es/button'
+import { forwardRef, useImperativeHandle, useRef } from 'react'
+import { findDOMNode } from 'react-dom'
+import type { ComponentRef, MouseEvent } from 'react'
+import type { ButtonHTMLType, ButtonProps, ButtonSemiSize, ButtonSemiTheme, ButtonSemiType } from './types'
 
 const htmlButtonTypes: ButtonHTMLType[] = ['button', 'submit', 'reset']
 
@@ -29,6 +32,35 @@ const normalizeSize = (size: ButtonProps['size']) => {
   return size ?? 'sm'
 }
 
+const mapSemiVisual = (variant: Exclude<ReturnType<typeof normalizeVariant>, undefined>): {
+  type: ButtonSemiType
+  theme: ButtonSemiTheme
+} => {
+  switch (variant) {
+    case 'solid':
+    case 'brand':
+      return { type: 'primary', theme: 'solid' }
+    case 'secondary':
+      return { type: 'tertiary', theme: 'light' }
+    case 'text':
+      return { type: 'primary', theme: 'borderless' }
+    case 'warning':
+      return { type: 'warning', theme: 'light' }
+    case 'danger':
+      return { type: 'danger', theme: 'solid' }
+    case 'danger-text':
+      return { type: 'danger', theme: 'borderless' }
+    case 'tint':
+    default:
+      return { type: 'primary', theme: 'light' }
+  }
+}
+
+const mapSemiSize = (size: Exclude<ReturnType<typeof normalizeSize>, undefined>): ButtonSemiSize => {
+  if (size === 'xs') return 'small'
+  return 'default'
+}
+
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   {
     variant,
@@ -42,12 +74,16 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
     type,
     htmlType,
     theme,
+    onClick,
     ...rest
   },
   ref,
 ) {
+  const semiRef = useRef<ComponentRef<typeof SemiButton>>(null)
   const normalizedVariant = normalizeVariant(variant, type, theme)
   const normalizedSize = normalizeSize(size)
+  const semiVisual = mapSemiVisual(normalizedVariant)
+  const semiSize = mapSemiSize(normalizedSize)
   const nativeType = htmlType ?? (htmlButtonTypes.includes(type as ButtonHTMLType) ? type as ButtonHTMLType : 'button')
   const classes = [
     'octo-ui-button',
@@ -58,28 +94,38 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
     className,
   ].filter(Boolean).join(' ')
 
+  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
+    if (loading) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+    onClick?.(event)
+  }
+
+  useImperativeHandle(ref, () => {
+    const node = semiRef.current ? findDOMNode(semiRef.current) : null
+    return node instanceof HTMLButtonElement ? node : document.createElement('button')
+  })
+
   return (
-    <button
-      ref={ref}
+    <SemiButton
+      ref={semiRef}
       className={classes}
-      disabled={disabled || loading}
-      type={nativeType}
+      disabled={disabled}
+      htmlType={nativeType}
+      icon={icon}
+      loading={loading}
+      noHorizontalPadding={iconOnly}
+      size={semiSize}
+      theme={semiVisual.theme}
+      type={semiVisual.type}
       aria-busy={loading || undefined}
+      onClick={handleClick}
       {...rest}
     >
-      {loading ? (
-        <span className="octo-ui-button__spinner" aria-hidden="true" />
-      ) : icon ? (
-        <span className="octo-ui-button__icon" aria-hidden={iconOnly || undefined}>
-          {icon}
-        </span>
-      ) : null}
-      {!iconOnly && children && (icon || loading) ? (
-        <span className="octo-ui-button__label">{children}</span>
-      ) : !iconOnly && children ? (
-        children
-      ) : null}
-    </button>
+      {iconOnly ? null : children}
+    </SemiButton>
   )
 })
 

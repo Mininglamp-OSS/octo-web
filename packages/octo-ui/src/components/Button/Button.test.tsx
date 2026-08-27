@@ -1,6 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Button } from './index'
+
+vi.mock('@douyinfe/semi-icons', () => ({
+  IconAILoading: () => <span data-icon="loading" />,
+}))
 
 describe('Button', () => {
   it('renders children and default classes', () => {
@@ -78,13 +82,13 @@ describe('Button', () => {
     expect(html).toContain('type="submit"')
   })
 
-  it('disables the button and renders a spinner while loading', () => {
+  it('marks the button busy and renders the Semi loading state', () => {
     const html = renderToStaticMarkup(<Button loading>Save</Button>)
 
-    expect(html).toContain('disabled')
     expect(html).toContain('aria-busy="true"')
     expect(html).toContain('octo-ui-button--loading')
-    expect(html).toContain('octo-ui-button__spinner')
+    expect(html).toContain('semi-button-loading')
+    expect(html).toContain('data-icon="spin"')
   })
 
   it('renders icon-only buttons without the text label', () => {
