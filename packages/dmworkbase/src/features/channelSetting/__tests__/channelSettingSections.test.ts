@@ -37,6 +37,18 @@ import {
   buildThreadWebhookSection,
 } from "../channelSettingThreadSections";
 
+const hoisted = vi.hoisted(() => ({
+  modalConfirm: vi.fn(),
+}));
+
+vi.mock("@octo/ui", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@octo/ui")>();
+  return {
+    ...actual,
+    modalConfirm: hoisted.modalConfirm,
+  };
+});
+
 vi.mock("@douyinfe/semi-ui", () => ({
   Button: vi.fn(),
   Input: vi.fn(),
@@ -767,6 +779,21 @@ describe("channel setting section builders", () => {
       t("base.threadPanel.webhook")
     );
     expect(buildThreadActionsSection(context)?.rows).toHaveLength(2);
+  });
+
+  it("opens thread leave confirmation with localized title and buttons", () => {
+    const context = createThreadContext();
+    const rows = buildThreadActionsSection(context)?.rows;
+
+    rows?.[1].properties.onClick();
+
+    expect(hoisted.modalConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: t("base.module.thread.leaveConfirm"),
+        okText: t("base.module.thread.leave"),
+        cancelText: t("base.common.cancel"),
+      })
+    );
   });
 
   it("uses only reliable thread participation data", () => {

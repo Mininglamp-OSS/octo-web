@@ -529,6 +529,7 @@ export default class WKBase
 
         <OctoModal
           className="wk-base-modal wk-base-modal-forward"
+          title={conversationSelectTitle ?? this.context.t("base.forwardModal.title")}
           visible={showConversationSelect}
           width={625}
           options={{ mask: false }}
@@ -543,6 +544,7 @@ export default class WKBase
           <ConversationSelect
             key={conversationSelectKey}
             grant={conversationSelectGrant}
+            showHeader={false}
             onFinished={(channels: Channel[], grant) => {
               const forward = this.docForward;
               this.docForward = undefined;
@@ -571,18 +573,22 @@ export default class WKBase
         </OctoModal>
 
         <OctoModal
-          title={alertTitle}
+          title={alertTitle ?? alertContent}
           visible={this.state.showAlert}
           onCancel={() => { this.cancelAlert(); }}
           options={{ maskClosable: false }}
           footerConfig={{
+            cancelText: this.context.t("base.common.cancel"),
+            okText: this.context.t("base.common.ok"),
             onOk: () => {
               if (onAlertOk) { onAlertOk(); }
               this.cancelAlert();
             },
           }}
         >
-          <p className="octo-ui-modal-confirm__description">{alertContent}</p>
+          {alertTitle ? (
+            <p className="octo-ui-modal-confirm__description">{alertContent}</p>
+          ) : null}
         </OctoModal>
         <Modal
           closable={this.state.globalModalOptions?.closable}

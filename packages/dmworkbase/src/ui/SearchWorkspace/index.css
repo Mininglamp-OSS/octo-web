@@ -28,6 +28,14 @@
   gap: var(--wk-sp-2);
 }
 
+.wk-search-workspace__header-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  margin-left: var(--wk-sp-3);
+}
+
 .wk-search-workspace__leading,
 .wk-search-workspace__trailing {
   display: inline-flex;

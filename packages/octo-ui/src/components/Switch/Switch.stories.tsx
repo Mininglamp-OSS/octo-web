@@ -47,7 +47,7 @@ const DarkTheme = ({ children }: { children: React.ReactNode }) => {
   }, [])
 
   return (
-    <div style={{ background: 'var(--wk-bg-surface)', color: 'var(--wk-text-primary)', padding: 16 }}>
+    <div style={{ background: 'var(--octo-ui-bg-surface)', color: 'var(--octo-ui-text-primary)', padding: 16 }}>
       {children}
     </div>
   )

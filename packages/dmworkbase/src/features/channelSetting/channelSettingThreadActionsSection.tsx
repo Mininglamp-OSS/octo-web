@@ -98,8 +98,10 @@ export function buildThreadActionsSection(
         title: t("base.module.thread.leave"),
         danger: true,
         onClick: () => {
-          WKApp.shared.baseContext.showAlert({
-            content: t("base.module.thread.leaveConfirm"),
+          modalConfirm({
+            title: t("base.module.thread.leaveConfirm"),
+            okText: t("base.module.thread.leave"),
+            cancelText: t("base.common.cancel"),
             onOk: async () => {
               if (!threadInfo) return;
               try {

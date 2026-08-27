@@ -8,8 +8,12 @@
 
 .wk-global-search-modal .wk-search-workspace__header {
   min-height: calc(var(--wk-sp-10) + var(--wk-sp-4));
-  padding: var(--wk-sp-4) var(--wk-sp-12) var(--wk-sp-3) var(--wk-sp-6);
+  padding: var(--wk-sp-4) var(--wk-sp-6) var(--wk-sp-3);
   border-bottom: 0;
+}
+
+.wk-global-search-modal .octo-ui-modal__body {
+  padding: 0;
 }
 
 .wk-global-search-modal .wk-search-workspace__input-wrap {
@@ -53,6 +57,31 @@
 .wk-global-search-clear:hover {
   background: var(--wk-bg-item-hover);
   color: var(--wk-text-primary);
+}
+
+.wk-global-search-modal-close {
+  display: inline-flex;
+  width: var(--wk-sp-6);
+  height: var(--wk-sp-6);
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  color: var(--wk-text-secondary);
+  cursor: pointer;
+}
+
+.wk-global-search-modal-close:hover,
+.wk-global-search-modal-close:focus-visible {
+  background: var(--wk-brand-tint-04);
+  color: var(--wk-text-primary);
+  outline: none;
+}
+
+.wk-global-search-modal-close:focus-visible {
+  box-shadow: 0 0 0 2px var(--wk-border-glow);
 }
 
 .wk-search-tabs {

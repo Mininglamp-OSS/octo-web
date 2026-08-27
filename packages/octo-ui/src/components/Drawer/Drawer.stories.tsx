@@ -38,7 +38,7 @@ function IconButton({ children, label }: { children: React.ReactNode; label: str
         alignItems: 'center',
         background: 'transparent',
         border: 0,
-        color: 'var(--wk-icon-muted)',
+        color: 'var(--octo-ui-icon-muted)',
         cursor: 'pointer',
         display: 'inline-flex',
         height: 16,
@@ -64,11 +64,11 @@ function SettingRow({ label, value, danger }: { label: string; value?: React.Rea
         padding: '0 16px',
       }}
     >
-      <span style={{ color: danger ? 'var(--wk-color-danger)' : 'var(--wk-text-primary)', fontSize: 14, fontWeight: 500, lineHeight: '20px' }}>
+      <span style={{ color: danger ? 'var(--octo-ui-color-danger)' : 'var(--octo-ui-text-primary)', fontSize: 14, fontWeight: 500, lineHeight: '20px' }}>
         {label}
       </span>
       {value ? (
-        <span style={{ color: 'var(--wk-text-secondary)', flex: 1, fontSize: 14, lineHeight: '20px', minWidth: 0, overflow: 'hidden', textAlign: 'right', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ color: 'var(--octo-ui-text-secondary)', flex: 1, fontSize: 14, lineHeight: '20px', minWidth: 0, overflow: 'hidden', textAlign: 'right', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {value}
         </span>
       ) : null}
@@ -77,14 +77,14 @@ function SettingRow({ label, value, danger }: { label: string; value?: React.Rea
 }
 
 function SectionGap() {
-  return <div style={{ background: 'var(--wk-brand-tint-06)', height: 8 }} />
+  return <div style={{ background: 'var(--octo-ui-tint-06)', height: 8 }} />
 }
 
 function DrawerPlayground() {
   const [open, setOpen] = useState(true)
 
   return (
-    <div style={{ background: 'var(--wk-bg-base)', height: 420, overflow: 'hidden', position: 'relative' }}>
+    <div style={{ background: 'var(--octo-ui-bg-elevated)', height: 420, overflow: 'hidden', position: 'relative' }}>
       <button type="button" onClick={() => setOpen(true)}>
         Open drawer
       </button>
@@ -109,7 +109,7 @@ export const Playground: Story = {
 
 export const InfoPanel: Story = {
   render: () => (
-    <div style={{ display: 'flex', height: 360, justifyContent: 'flex-end', overflow: 'hidden', background: 'var(--wk-bg-base)' }}>
+    <div style={{ display: 'flex', height: 360, justifyContent: 'flex-end', overflow: 'hidden', background: 'var(--octo-ui-bg-elevated)' }}>
       <Drawer inline open motion={false} size="compact" title="聊天信息" bodyFlush>
         <SettingRow label="群聊名称" value="后端架构讨论" />
         <SettingRow label="群公告" value="未设置" />
@@ -129,7 +129,7 @@ export const InfoPanel: Story = {
 
 export const ThreadPanel: Story = {
   render: () => (
-    <div style={{ display: 'flex', height: 360, justifyContent: 'flex-end', overflow: 'hidden', background: 'var(--wk-bg-base)' }}>
+    <div style={{ display: 'flex', height: 360, justifyContent: 'flex-end', overflow: 'hidden', background: 'var(--octo-ui-bg-elevated)' }}>
       <Drawer
         open
         inline
@@ -145,11 +145,11 @@ export const ThreadPanel: Story = {
           </>
         )}
       >
-        <p style={{ color: 'var(--wk-text-secondary)', fontSize: 13, lineHeight: 1.8, margin: 0 }}>
+        <p style={{ color: 'var(--octo-ui-text-secondary)', fontSize: 13, lineHeight: 1.8, margin: 0 }}>
           张兴朝 · 10:20<br />
           我先抛个结论：倾向 PG。我们有大量非结构化数据，JSONB 原生支持这个太重要了。
         </p>
-        <p style={{ color: 'var(--wk-text-secondary)', fontSize: 13, lineHeight: 1.8, margin: 0 }}>
+        <p style={{ color: 'var(--octo-ui-text-secondary)', fontSize: 13, lineHeight: 1.8, margin: 0 }}>
           沙东惠 · 10:20<br />
           MySQL 8 也有 JSON 支持了，但是性能确实不如 PG。
         </p>
@@ -160,7 +160,7 @@ export const ThreadPanel: Story = {
 
 export const WidePanel: Story = {
   render: () => (
-    <div style={{ display: 'flex', height: 360, justifyContent: 'flex-end', overflow: 'hidden', background: 'var(--wk-bg-base)' }}>
+    <div style={{ display: 'flex', height: 360, justifyContent: 'flex-end', overflow: 'hidden', background: 'var(--octo-ui-bg-elevated)' }}>
       <Drawer
         open
         inline
@@ -177,7 +177,7 @@ export const WidePanel: Story = {
         )}
         footer={<span className="octo-ui-drawer__footer-placeholder">在 Thread 中回复...</span>}
       >
-        <div style={{ color: 'var(--wk-text-tertiary)', fontSize: 12 }}>完整视图内容区</div>
+        <div style={{ color: 'var(--octo-ui-text-tertiary)', fontSize: 12 }}>完整视图内容区</div>
       </Drawer>
     </div>
   ),

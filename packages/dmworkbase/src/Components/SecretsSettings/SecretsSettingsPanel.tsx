@@ -64,12 +64,10 @@ export default function SecretsSettingsPanel({
       ? current
       : { mode: "create" }
   )), []);
-  // Support pointer and keyboard activation; the state update is idempotent
-  // when the browser emits both mousedown and click for one activation.
-  const handleCreateMouseDown = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+  const handleCreateMouseUp = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
     event.stopPropagation();
-    startCreate();
+    window.setTimeout(startCreate, 0);
   }, [startCreate]);
   const handleCreateClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -164,14 +162,15 @@ export default function SecretsSettingsPanel({
             </h2>
             <p className="wk-secrets__subtitle">{t("base.secrets.subtitle")}</p>
           </div>
-          <Button
-            variant="solid"
-            icon={<IconPlus />}
-            onMouseDown={handleCreateMouseDown}
+          <button
+            type="button"
+            className="wk-secrets__add-button"
+            onMouseUp={handleCreateMouseUp}
             onClick={handleCreateClick}
           >
+            <IconPlus />
             {t("base.secrets.addButton")}
-          </Button>
+          </button>
         </div>
 
         {/* 列表主体 */}
@@ -192,14 +191,15 @@ export default function SecretsSettingsPanel({
               <IconKey size="extra-large" />
             </div>
             <p className="wk-secrets__empty-text">{t("base.secrets.empty")}</p>
-            <Button
-              variant="solid"
-              icon={<IconPlus />}
-              onMouseDown={handleCreateMouseDown}
+            <button
+              type="button"
+              className="wk-secrets__add-button"
+              onMouseUp={handleCreateMouseUp}
               onClick={handleCreateClick}
             >
+              <IconPlus />
               {t("base.secrets.empty.action")}
-            </Button>
+            </button>
           </div>
         ) : (
           <ul className="wk-secrets__list">

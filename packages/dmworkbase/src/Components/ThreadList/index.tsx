@@ -66,9 +66,11 @@ export class ThreadList extends Component<ThreadListProps, ThreadListState> {
   handleDelete = (thread: Thread, e: React.MouseEvent) => {
     e.stopPropagation()
     modalConfirm({
-      title: t("base.threadPanel.delete"),
-      content: t("base.threadList.deleteConfirm", { values: { name: thread.name } }),
+      title: t("base.threadPanel.deleteConfirmTitle", { values: { name: thread.name } }),
+      content: t("base.threadPanel.deleteConfirmContent"),
       okType: "danger",
+      okText: t("base.threadPanel.delete"),
+      cancelText: t("base.common.cancel"),
       onOk: async () => {
         try {
           await this.vm.delete(thread.short_id)
@@ -93,8 +95,9 @@ export class ThreadList extends Component<ThreadListProps, ThreadListState> {
   handleLeave = (thread: Thread, e: React.MouseEvent) => {
     e.stopPropagation()
     modalConfirm({
-      title: t("base.module.thread.leave"),
-      content: t("base.threadList.leaveConfirm", { values: { name: thread.name } }),
+      title: t("base.threadList.leaveConfirm", { values: { name: thread.name } }),
+      okText: t("base.threadList.leave"),
+      cancelText: t("base.common.cancel"),
       onOk: async () => {
         try {
           await this.vm.leave(thread.short_id)

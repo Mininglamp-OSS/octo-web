@@ -28,7 +28,7 @@ export default meta
 type Story = StoryObj<typeof Tag>
 
 const Row = ({ children }: { children: ReactNode }) => (
-  <div style={{ display: 'flex', gap: 'var(--wk-sp-2)', flexWrap: 'wrap', alignItems: 'center' }}>
+  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
     {children}
   </div>
 )
@@ -76,7 +76,7 @@ export const WithIcon: Story = {
 
 export const EdgeCases: Story = {
   render: () => (
-    <div style={{ display: 'grid', gap: 'var(--wk-sp-3)', maxWidth: 'min(100%, 280px)' }}>
+    <div style={{ display: 'grid', gap: '12px', maxWidth: 'min(100%, 280px)' }}>
       <Tag>Short</Tag>
       <Tag variant="brand" size="md">Long metadata label that truncates inside a narrow parent</Tag>
       <Tag variant="danger">Requires attention</Tag>

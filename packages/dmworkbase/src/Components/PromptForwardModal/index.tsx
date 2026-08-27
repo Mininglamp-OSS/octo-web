@@ -60,7 +60,7 @@ export default function PromptForwardModal({
       visible={visible}
       onCancel={onClose}
       title={null}
-      width="min(920px, calc(100vw - 32px))"
+      width="min(920px, calc(100vw - 96px))"
       className="wk-prompt-forward-modal"
       footer={null}
       header={header}

@@ -37,19 +37,19 @@ export const States: Story = {
   render: () => (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
       <div>
-        <div style={{ margin: '0 0 4px', color: 'var(--wk-text-secondary)', fontSize: 12 }}>默认</div>
+        <div style={{ margin: '0 0 4px', color: 'var(--octo-ui-text-secondary)', fontSize: 12 }}>默认</div>
         <Input placeholder="请输入" />
       </div>
       <div>
-        <div style={{ margin: '0 0 4px', color: 'var(--wk-text-secondary)', fontSize: 12 }}>全圆角·搜索</div>
+        <div style={{ margin: '0 0 4px', color: 'var(--octo-ui-text-secondary)', fontSize: 12 }}>全圆角·搜索</div>
         <Input.Search placeholder="搜索" />
       </div>
       <div>
-        <div style={{ margin: '0 0 4px', color: 'var(--wk-text-secondary)', fontSize: 12 }}>禁用</div>
+        <div style={{ margin: '0 0 4px', color: 'var(--octo-ui-text-secondary)', fontSize: 12 }}>禁用</div>
         <Input disabled placeholder="请输入" />
       </div>
       <div>
-        <div style={{ margin: '0 0 4px', color: 'var(--wk-text-secondary)', fontSize: 12 }}>报错</div>
+        <div style={{ margin: '0 0 4px', color: 'var(--octo-ui-text-secondary)', fontSize: 12 }}>报错</div>
         <Input status="error" defaultValue="内容有误" aria-describedby="input-error-demo" aria-invalid />
         <Input.ErrorMessage id="input-error-demo">请输入正确的内容</Input.ErrorMessage>
       </div>

@@ -44,16 +44,16 @@ function SpaceCreateModal() {
         onOpenChange={setOpen}
       >
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ color: 'var(--wk-text-secondary)', fontSize: 14, fontWeight: 600 }}>Space名称<span style={{ color: 'var(--wk-color-danger)' }}>*</span></span>
+          <span style={{ color: 'var(--octo-ui-text-secondary)', fontSize: 14, fontWeight: 600 }}>Space名称<span style={{ color: 'var(--octo-ui-color-danger)' }}>*</span></span>
           <Input placeholder="请输入" />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ color: 'var(--wk-text-secondary)', fontSize: 14, fontWeight: 600 }}>描述</span>
+          <span style={{ color: 'var(--octo-ui-text-secondary)', fontSize: 14, fontWeight: 600 }}>描述</span>
           <Input.TextArea maxCount={200} placeholder="待填" />
         </label>
         <div style={{ alignItems: 'center', display: 'flex', justifyContent: 'space-between', padding: '12px 0' }}>
-          <span style={{ color: 'var(--wk-text-secondary)', fontSize: 14 }}>
-            <b style={{ color: 'var(--wk-text-primary)', fontWeight: 500 }}>加入审批</b>（成员需管理员审批后才能加入）
+          <span style={{ color: 'var(--octo-ui-text-secondary)', fontSize: 14 }}>
+            <b style={{ color: 'var(--octo-ui-text-primary)', fontWeight: 500 }}>加入审批</b>（成员需管理员审批后才能加入）
           </span>
           <Switch />
         </div>

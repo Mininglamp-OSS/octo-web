@@ -2035,6 +2035,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
               <OctoModal
                 size="fullscreen"
                 className="wk-global-search-modal"
+                header={null}
                 visible={vm.showGlobalSearch}
                 onCancel={() => {
                   vm.showGlobalSearch = false;

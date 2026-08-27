@@ -29,6 +29,7 @@ interface ConversationSelectProps {
   onFinished?: ForwardFinished
   onCancel?: () => void
   title?: string
+  showHeader?: boolean
   /** 授权区 opt-in 配置（feature #511）。不传则不渲染授权区。 */
   grant?: ConversationSelectGrant
 }
@@ -37,6 +38,7 @@ export default function ConversationSelect({
   onFinished,
   onCancel,
   title,
+  showHeader,
   grant,
 }: ConversationSelectProps) {
   const {
@@ -115,6 +117,7 @@ export default function ConversationSelect({
   return (
     <ForwardModal
       title={title}
+      showHeader={showHeader}
       items={items}
       allItems={allItems}
       selectedIDs={selectedIDs}
