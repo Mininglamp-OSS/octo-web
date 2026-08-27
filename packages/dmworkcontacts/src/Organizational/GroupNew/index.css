@@ -1,16 +1,29 @@
-.wk-main-modal-organizational-group-new .wk-modal-shell {
+.wk-main-modal-organizational-group-new .octo-ui-modal__surface {
+  height: min(500px, var(--octo-ui-modal-max-height));
   padding: 0;
 }
 
-.wk-main-modal-organizational-group-new .wk-modal-body {
-  height: 500px;
-  display: flex;
+.wk-main-modal-organizational-group-new__body {
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0;
   overflow: hidden;
 }
 
-.wk-organizational-group-new-left {
-  width: 50%;
+.wk-main-modal-organizational-group-new__content {
+  display: flex;
+  width: 100%;
   height: 100%;
+  min-height: 0;
+}
+
+.wk-organizational-group-new-left {
+  box-sizing: border-box;
+  width: 50%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
   background-color: var(--wk-color-secondary);
   padding: 12px;
   display: flex;
@@ -19,6 +32,8 @@
 
 .wk-organizational-group-new-left .group-new-left-main {
   flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -49,11 +64,40 @@
 .group-new-left-main .friend-opt .friend-opt-main .friend-opt-item {
   display: flex;
   align-items: center;
+  width: 100%;
+  box-sizing: border-box;
   padding: 12px 8px;
   font-size: 14px;
   line-height: 20px;
   color: var(--semi-color-text-0);
   row-gap: 0;
+}
+
+.group-new-left-main
+  .friend-opt
+  .friend-opt-main
+  .friend-opt-item
+  .octo-ui-checkbox-semi-content,
+.group-new-left-main
+  .friend-opt
+  .friend-opt-main
+  .friend-opt-item
+  .octo-ui-checkbox-semi-addon {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.group-new-left-main
+  .friend-opt
+  .friend-opt-main
+  .friend-opt-item
+  .octo-ui-checkbox-semi-addon
+  > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .group-new-left-main .friend-opt .friend-opt-main .friend-opt-item:hover {
   background-color: var(--semi-color-fill-0);
@@ -130,8 +174,11 @@
 }
 
 .wk-organizational-group-new-right {
+  box-sizing: border-box;
   width: 50%;
+  min-width: 0;
   height: 100%;
+  min-height: 0;
   background-color: var(--wk-color-item);
   padding: 12px;
   display: flex;
@@ -143,6 +190,8 @@
 }
 .wk-organizational-group-new-right .organizational-group-new-right-body {
   flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   margin: 12px 0;
 }
@@ -165,6 +214,17 @@
   .user-info {
   display: flex;
   align-items: center;
+  min-width: 0;
+}
+
+.wk-organizational-group-new-right
+  .organizational-group-new-right-body
+  .opt-personnel-item
+  .user-info
+  > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wk-organizational-group-new-right

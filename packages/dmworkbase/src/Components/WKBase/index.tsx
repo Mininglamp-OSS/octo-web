@@ -1,5 +1,4 @@
 import { Modal, Toast } from "@douyinfe/semi-ui";
-import WKModal from "../WKModal";
 import { Channel, ChannelTypePerson, MessageText } from "wukongimjssdk";
 import React, { Component, HTMLProps, ReactNode } from "react";
 import ConversationSelect from "../ConversationSelect";
@@ -28,6 +27,7 @@ import {
   syncCurrentImChannelSubscribers,
 } from "../../im-runtime/currentChannelRuntime";
 import "./index.css";
+import { Modal as OctoModal } from "@octo/ui";
 
 /**
  * Default production ExternalViewerGate wired into WKBase.
@@ -480,7 +480,7 @@ export default class WKBase
     return (
       <div className="wk-base">
         {this.props.children}
-        <WKModal
+        <OctoModal
           className="wk-base-modal-userinfo wk-base-modal"
           visible={showUserInfo}
           options={{ mask: false, closable: false }}
@@ -504,11 +504,11 @@ export default class WKBase
               }}
             ></UserInfo>
           ) : undefined}
-        </WKModal>
+        </OctoModal>
 
         {/* GH#1112: Bot 资料弹窗，统一替代会话/消息场景下的只读 UserInfo，
             使 bot owner 在任何入口（通讯录 / 群聊 / 私聊 / 全局搜索 / 订阅者列表）
-            都能看到可编辑的头像与简介。BotDetailModal 自带 WKModal，不再外层包裹。 */}
+            都能看到可编辑的头像与简介。BotDetailModal 自带 OctoModal，不再外层包裹。 */}
         <BotDetailModal
           uid={showBotDetail && userUID ? userUID : ""}
           visible={!!showBotDetail && !!userUID}
@@ -527,7 +527,7 @@ export default class WKBase
           }}
         />
 
-        <WKModal
+        <OctoModal
           className="wk-base-modal wk-base-modal-forward"
           visible={showConversationSelect}
           width={625}
@@ -568,9 +568,9 @@ export default class WKBase
             }}
             title={conversationSelectTitle}
           ></ConversationSelect>
-        </WKModal>
+        </OctoModal>
 
-        <WKModal
+        <OctoModal
           title={alertTitle}
           visible={this.state.showAlert}
           onCancel={() => { this.cancelAlert(); }}
@@ -582,8 +582,8 @@ export default class WKBase
             },
           }}
         >
-          <p className="wk-modal-confirm-text">{alertContent}</p>
-        </WKModal>
+          <p className="octo-ui-modal-confirm__description">{alertContent}</p>
+        </OctoModal>
         <Modal
           closable={this.state.globalModalOptions?.closable}
           className={this.state.globalModalOptions?.className}
@@ -595,7 +595,7 @@ export default class WKBase
           {this.state.globalModalOptions?.body}
         </Modal>
         {/* 加入组织 */}
-        <WKModal
+        <OctoModal
           visible={showJoinOrgInfo}
           title={this.context.t("base.wkBase.joinOrganization")}
           className="wk-base-modal-join-org"
@@ -616,7 +616,7 @@ export default class WKBase
               style={{ width: "100%", height: "100%", border: "none" }}
             ></iframe>
           )}
-        </WKModal>
+        </OctoModal>
       </div>
     );
   }

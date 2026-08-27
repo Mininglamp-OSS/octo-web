@@ -3,23 +3,30 @@
   height: 100%;
 }
 
-.wk-base-modal .wk-modal-shell {
+.wk-base-modal .octo-ui-modal__surface {
   padding: 0;
 }
 
-.wk-base-modal-userinfo .wk-modal-body {
+.wk-base-modal .octo-ui-modal__body {
+  display: block;
+  flex: none;
+  padding: 0;
+}
+
+.wk-base-modal-userinfo .octo-ui-modal__body {
   height: 500px;
+  overflow: hidden;
 }
 
 /* 加入组织 */
-.wk-base-modal-join-org .wk-modal-shell {
+.wk-base-modal-join-org .octo-ui-modal__surface {
   padding: var(--wk-sp-3);
 }
-.wk-base-modal-join-org .wk-modal-body {
+.wk-base-modal-join-org .octo-ui-modal__body {
   height: 420px;
 }
 
-.wk-base-modal-forward .wk-modal-body {
+.wk-base-modal-forward .octo-ui-modal__body {
   height: 560px;
   overflow: hidden;
 }

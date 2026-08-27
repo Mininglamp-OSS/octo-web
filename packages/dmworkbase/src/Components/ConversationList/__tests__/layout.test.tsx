@@ -187,8 +187,8 @@ beforeAll(async () => {
     formatDraftPreview: (draft: string) => draft,
   }));
 
-  vi.doMock("../../WKModal", () => ({
-    wkConfirm: vi.fn(),
+  vi.doMock("../../OctoModal", () => ({
+    modalConfirm: vi.fn(),
   }));
 
   vi.doMock("../../Conversation/vm", () => ({

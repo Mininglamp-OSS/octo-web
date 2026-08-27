@@ -21,17 +21,24 @@
 }
 
 /* ========== MeInfo Modal（原 tab_normal_screen.css 迁移过来） ========== */
-.wk-main-sider-modal .wk-modal-shell {
+.wk-main-sider-modal .octo-ui-modal__surface {
     padding: 0;
 }
 
-.wk-main-sider-meinfo .wk-modal-body {
+.wk-main-sider-modal .octo-ui-modal__body {
+    display: block;
+    flex: none;
+    padding: 0;
+}
+
+.wk-main-sider-meinfo .octo-ui-modal__body {
     height: calc(
         var(--wk-sp-10) + var(--wk-sp-3) +
         var(--wk-sp-12) + var(--wk-sp-12) + var(--wk-sp-12) + var(--wk-sp-12) + var(--wk-sp-12) +
         var(--wk-sp-10) + var(--wk-sp-8) + var(--wk-sp-12)
     );
     max-height: calc(100vh - var(--wk-sp-12));
+    overflow: hidden;
 }
 
 /* ========== Empty State: 全息投影 ========== */

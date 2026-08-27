@@ -1,7 +1,6 @@
-import { Button, Checkbox, Input } from "@octo/ui";
+import { Button, Checkbox, Input, Modal as OctoModal } from "@octo/ui";
 import React, { Component } from "react";
 import { Toast } from "@douyinfe/semi-ui";
-import WKModal from "../WKModal";
 import { SpaceService } from "../../Service/SpaceService";
 import { extractErrorMsg } from "../../Service/APIClient";
 import { I18nContext } from "../../i18n";
@@ -73,7 +72,7 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
         const { t } = this.context;
 
         return (
-            <WKModal
+            <OctoModal
                 title={inviteUrl ? t("base.spaceCreate.inviteMembers") : t("base.spaceCreate.createSpace")}
                 visible={visible}
                 onCancel={this.handleClose}
@@ -130,7 +129,7 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
                         </div>
                     </div>
                 )}
-            </WKModal>
+            </OctoModal>
         );
     }
 }

@@ -1,7 +1,7 @@
-import { Button, Input } from "@octo/ui";
+import { Button, Input, Modal as OctoModal } from "@octo/ui";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Box, ImagePlus, Loader2, Upload, XCircle } from "lucide-react";
-import { t, useI18n, WKModal } from "@octo/base";
+import { t, useI18n } from "@octo/base";
 import type { Category, Skill } from "../types/skill";
 import { updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse, getSkillTags } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
@@ -403,11 +403,11 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
 
   return (
     <>
-      <WKModal
+      <OctoModal
         visible={Boolean(skill)}
         onCancel={requestClose}
         title={skill ? t("skillMarket.form.editTitle", { values: { name: skill.name } }) : t("skillMarket.form.editTitleFallback")}
-        size="lg"
+        size="wide"
         className="skill-market-workflow-modal"
         footer={
           <>
@@ -634,7 +634,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
             </label>
           </div>
         </div>
-      </WKModal>
+      </OctoModal>
       <IconCropModal
         visible={!!iconCropFile}
         file={iconCropFile}
@@ -645,7 +645,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
           setIconCropFile(null);
         }}
       />
-      <WKModal
+      <OctoModal
         visible={confirmClose}
         onCancel={() => setConfirmClose(false)}
         title={t("skillMarket.confirm.title")}
@@ -662,7 +662,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
             ? t("skillMarket.confirm.busyMessage")
             : t("skillMarket.confirm.dirtyEditMessage")}
         </p>
-      </WKModal>
+      </OctoModal>
     </>
   );
 }

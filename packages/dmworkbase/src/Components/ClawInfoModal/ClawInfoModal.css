@@ -1,11 +1,18 @@
 /* ===== ClawInfoModal 龙虾详情弹窗样式 ===== */
 
 /* 弹窗容器 */
-.claw-info-modal .wk-modal-shell {
+.claw-info-modal .octo-ui-modal__surface {
   padding: 0;
 }
 
-.claw-info-modal .wk-modal-content {
+.claw-info-modal .octo-ui-modal__body {
+  display: block;
+  flex: none;
+  padding: 0;
+  overflow: hidden;
+}
+
+.claw-info-modal .octo-ui-modal__content {
   border-radius: var(--wk-r-lg);
   overflow: hidden;
 }

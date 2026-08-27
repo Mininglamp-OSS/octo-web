@@ -68,3 +68,13 @@ export type {
   DrawerProps,
   DrawerSize,
 } from './components/Drawer/types'
+export { default as Modal, ConfirmModal, confirm as modalConfirm } from './components/Modal'
+export type {
+  ConfirmModalProps,
+  ModalConfirmHandle,
+  ModalConfirmOptions,
+  ModalFooterConfig,
+  ModalProps,
+  ModalSize,
+  ModalTone,
+} from './components/Modal/types'

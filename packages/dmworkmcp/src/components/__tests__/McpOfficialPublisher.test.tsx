@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import McpCard from "../McpCard";
 import McpDetailModal from "../McpDetailModal";
 import type { McpDetail, McpListItem } from "../../types/mcp";
+import { Modal as OctoModal, modalConfirm } from "@octo/ui";
 
 const fetchMcpDetail = vi.fn();
 
@@ -25,14 +26,14 @@ vi.mock("@douyinfe/semi-ui", () => ({
 }));
 vi.mock("@octo/base", () => ({
   t: (key: string) => (key === "mcp.card.officialPublisher" ? "官方发布" : key),
-  WKModal: ({
+  OctoModal: ({
     children,
     header,
   }: {
     children: React.ReactNode;
     header?: React.ReactNode;
   }) => React.createElement("div", null, header, children),
-  wkConfirm: vi.fn(),
+  modalConfirm: vi.fn(),
 }));
 
 let container: HTMLDivElement | null = null;

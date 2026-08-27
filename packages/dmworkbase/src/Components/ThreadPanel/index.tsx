@@ -1,5 +1,5 @@
 import React, { Component, useState } from "react";
-import { Drawer } from "@octo/ui";
+import { Drawer, modalConfirm } from "@octo/ui";
 import {
   Channel,
   ChannelTypePerson,
@@ -53,7 +53,6 @@ import { ImageRenderer } from "../FilePreviewPanel/renderers/ImageRenderer";
 import { VideoRenderer } from "../FilePreviewPanel/renderers/VideoRenderer";
 import { isChannelSearchEnabled } from "../ChannelSearch/feature";
 import { I18nContext, t } from "../../i18n";
-import { wkConfirm } from "../WKModal";
 import { THREAD_NAME_MAX_LENGTH } from "../../Service/nameLimits";
 import ThreadCreateDialog, { ThreadCreateLabels } from "../../ui/ThreadCreateDialog";
 import {
@@ -78,7 +77,7 @@ import "./index.css";
 
 /**
  * 子区名称输入框 — 带字数计数器（当前/最大）。
- * 目前仍用于重命名子区的 legacy wkConfirm。
+ * 目前仍用于重命名子区的 legacy modalConfirm。
  */
 const ThreadNameInput = React.forwardRef<
   HTMLInputElement,
@@ -775,7 +774,7 @@ export default class ThreadPanel extends Component<
     setTimeout(() => {
       let newName = thread.name;
       const inputRef = React.createRef<HTMLInputElement>();
-      wkConfirm({
+      modalConfirm({
         title: t("base.threadPanel.editNameTitle"),
         okText: t("base.threadPanel.save"),
         cancelText: t("base.common.cancel"),
@@ -893,7 +892,7 @@ export default class ThreadPanel extends Component<
     this.setState({ showMoreMenu: false });
 
     setTimeout(() => {
-      wkConfirm({
+      modalConfirm({
         title: archiving
           ? t("base.module.thread.archiveConfirmTitle", {
               values: { name: thread.name },
@@ -1047,7 +1046,7 @@ export default class ThreadPanel extends Component<
     this.setState({ showMoreMenu: false });
 
     setTimeout(() => {
-      wkConfirm({
+      modalConfirm({
         title: t("base.threadPanel.deleteConfirmTitle", {
           values: { name: thread.name },
         }),

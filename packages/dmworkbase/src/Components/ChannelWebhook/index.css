@@ -375,30 +375,30 @@
 
 /* webhook 弹窗（编辑表单 / 一次性 URL）内容可能很长。这里把弹窗壳限高到视口内、
    body 区内部滚动，标题与底部按钮固定，避免 Semi centered 模式下整体溢出视口。 */
-.wk-webhook-modal .wk-modal-shell {
+.wk-webhook-modal .octo-ui-modal__surface {
   display: flex;
   flex-direction: column;
   max-height: 90vh;
   padding: var(--wk-sp-5);
 }
 
-.wk-webhook-modal .wk-modal-title {
+.wk-webhook-modal .octo-ui-modal__title {
   margin-bottom: var(--wk-sp-4);
   font-size: var(--wk-text-size-lg);
 }
 
-.wk-webhook-modal .wk-modal-footer {
+.wk-webhook-modal .octo-ui-modal__footer {
   margin-top: var(--wk-sp-4);
   padding-top: var(--wk-sp-4);
   border-top: 1px solid var(--wk-border-subtle);
 }
 
-.wk-webhook-modal .wk-modal-title,
-.wk-webhook-modal .wk-modal-footer {
+.wk-webhook-modal .octo-ui-modal__title,
+.wk-webhook-modal .octo-ui-modal__footer {
   flex-shrink: 0;
 }
 
-.wk-webhook-modal .wk-modal-body {
+.wk-webhook-modal .octo-ui-modal__body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;

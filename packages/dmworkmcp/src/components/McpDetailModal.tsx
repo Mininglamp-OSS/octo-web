@@ -1,6 +1,6 @@
-import { Button } from "@octo/ui";
+import { Button, Modal as OctoModal, modalConfirm } from "@octo/ui";
 import React, { useEffect, useMemo, useState } from "react";
-import { WKModal, t, Dap } from "@octo/base";
+import { t, Dap } from "@octo/base";
 import { Toast, Spin } from "@douyinfe/semi-ui";
 import { IconWrenchStroked } from "@douyinfe/semi-icons";
 import { Bot, ShieldCheck, UserRound } from "lucide-react";
@@ -166,7 +166,7 @@ const McpDetailModal: React.FC<McpDetailModalProps> = ({
   };
 
   /** 就地内联确认删除：第一次点「删除」只把 footer 切成确认态，不弹新窗，
-   *  从根本上避免 modal 套 modal（详情 WKModal 上再叠一层 wkConfirm 遮罩）。
+   *  从根本上避免 modal 套 modal（详情 OctoModal 上再叠一层 modalConfirm 遮罩）。
    *  第二次点「确认删除」才真正发起网络请求，成功后通知父组件并关闭详情。 */
   const handleDeleteClick = () => {
     if (!detail) return;
@@ -318,7 +318,7 @@ const McpDetailModal: React.FC<McpDetailModalProps> = ({
   ) : null;
 
   return (
-    <WKModal
+    <OctoModal
       visible={!!mcpId}
       onCancel={handleModalCancel}
       width={900}
@@ -470,7 +470,7 @@ const McpDetailModal: React.FC<McpDetailModalProps> = ({
           )}
         </div>
       )}
-    </WKModal>
+    </OctoModal>
   );
 };
 

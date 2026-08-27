@@ -1,4 +1,4 @@
-import { Button } from "@octo/ui";
+import { Button, modalConfirm } from "@octo/ui";
 import React, { Component } from "react"
 import { Spin, Toast, Tooltip } from "@douyinfe/semi-ui";
 import { Channel } from "wukongimjssdk"
@@ -10,7 +10,6 @@ import RouteContext from "../../Service/Context"
 import { ThreadListVM, ThreadListState } from "./vm"
 import { ThreadCreate } from "../ThreadCreate"
 import { I18nContext, t } from "../../i18n"
-import { wkConfirm } from "../WKModal"
 import "./index.css"
 
 export interface ThreadListProps {
@@ -66,7 +65,7 @@ export class ThreadList extends Component<ThreadListProps, ThreadListState> {
 
   handleDelete = (thread: Thread, e: React.MouseEvent) => {
     e.stopPropagation()
-    wkConfirm({
+    modalConfirm({
       title: t("base.threadPanel.delete"),
       content: t("base.threadList.deleteConfirm", { values: { name: thread.name } }),
       okType: "danger",
@@ -93,7 +92,7 @@ export class ThreadList extends Component<ThreadListProps, ThreadListState> {
 
   handleLeave = (thread: Thread, e: React.MouseEvent) => {
     e.stopPropagation()
-    wkConfirm({
+    modalConfirm({
       title: t("base.module.thread.leave"),
       content: t("base.threadList.leaveConfirm", { values: { name: thread.name } }),
       onOk: async () => {

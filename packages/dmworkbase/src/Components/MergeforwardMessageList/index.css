@@ -2,7 +2,7 @@
  * MergeforwardMessageList — 聊天记录详情弹窗内容区
  * Figma 421:64397 / content container
  *
- * Header 由 WKModal（Semi Modal）原生渲染，此处只管内容列表。
+ * Header 由 @octo/ui Modal 原生渲染，此处只管内容列表。
  * pad T10 B10 L16 R16，gap=16
  */
 

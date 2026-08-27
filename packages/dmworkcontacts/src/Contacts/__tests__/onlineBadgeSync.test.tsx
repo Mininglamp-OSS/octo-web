@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom";
 import { act } from "react-dom/test-utils";
 import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+import { Modal as OctoModal } from "@octo/ui";
 
 // Regression coverage for the two remaining AI online green-dot paths on the
 // Contacts page (the tab-focus path is covered in visibilityHeal.test.tsx):
@@ -123,7 +124,7 @@ beforeAll(async () => {
     WKBase: RenderProp,
     WKBaseContext: class {},
     ErrorBoundary: Passthrough,
-    WKModal: () => null,
+    OctoModal: () => null,
     I18nContext: React.createContext({}),
     t: (k: string) => k,
     toSimplized: (s: string) => s,

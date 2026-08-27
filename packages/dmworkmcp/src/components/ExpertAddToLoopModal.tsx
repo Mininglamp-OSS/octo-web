@@ -1,7 +1,7 @@
-import { Button } from "@octo/ui";
+import { Button, Modal as OctoModal } from "@octo/ui";
 import Select from "@octo/ui/select";
 import React, { useEffect, useState } from "react";
-import { WKModal, t, useI18n } from "@octo/base";
+import { t, useI18n } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
 import type { ExpertItem } from "../mock/expertMock";
 import {
@@ -165,7 +165,7 @@ export default function ExpertAddToLoopModal({
   const canSubmit = Boolean(workspaceId && runtimeId) && !submitting;
 
   return (
-    <WKModal
+    <OctoModal
       visible={visible}
       onCancel={handleClose}
       width={480}
@@ -221,6 +221,6 @@ export default function ExpertAddToLoopModal({
             : t("mcp.expert.secretPlaceholderNote")}
         </p>
       </div>
-    </WKModal>
+    </OctoModal>
   );
 }

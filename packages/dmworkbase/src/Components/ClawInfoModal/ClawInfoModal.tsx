@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { Spin, Empty, Tooltip } from "@douyinfe/semi-ui";
 import { IconClose } from "@douyinfe/semi-icons";
 import { Clock } from "lucide-react";
-import WKModal from "../WKModal";
 import ClawSessionItem from "../ClawSessionItem";
 import ClawOverviewTab from "../ClawOverviewTab/ClawOverviewTab";
 import ClawCoreFilesTab from "../ClawCoreFilesTab/ClawCoreFilesTab";
@@ -10,6 +9,7 @@ import AgentCardService, { type AgentCardData } from "../../Service/AgentCardSer
 import { Locale, useI18n } from "../../i18n";
 import type { I18nFormatter } from "../../i18n";
 import "./ClawInfoModal.css";
+import { Modal as OctoModal } from "@octo/ui";
 
 export interface ClawInfoModalProps {
   /** Bot ID（如 pipixia_bot） */
@@ -295,11 +295,11 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
   };
 
   return (
-    <WKModal
+    <OctoModal
       visible={visible}
       onCancel={onClose}
       title={null}
-      size="full"
+      size="fullscreen"
       className="claw-info-modal"
     >
       <div className="claw-info-container">
@@ -419,6 +419,6 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
           )}
         </div>
       </div>
-    </WKModal>
+    </OctoModal>
   );
 }

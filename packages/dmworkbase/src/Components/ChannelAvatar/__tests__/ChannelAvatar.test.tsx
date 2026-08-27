@@ -72,8 +72,20 @@ vi.mock("../../avatarUpload", () => ({
   isAvatarFileTooLarge: vi.fn(() => false),
 }));
 
-vi.mock("../../WKModal", () => ({
-  default: ({ visible, children, footerConfig, onCancel }: any) =>
+vi.mock("@octo/ui", () => ({
+  Button: ({ children, loading, ...props }: any) => (
+    <button type="button" disabled={loading || props.disabled} {...props}>
+      {children}
+    </button>
+  ),
+  Input: ({ value, onChange, ...props }: any) => (
+    <input
+      value={value}
+      onChange={(event) => onChange?.((event.target as HTMLInputElement).value)}
+      {...props}
+    />
+  ),
+  Modal: ({ visible, children, footerConfig, onCancel }: any) =>
     visible ? (
       <div>
         {children}

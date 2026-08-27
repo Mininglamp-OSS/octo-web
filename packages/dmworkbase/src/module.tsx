@@ -24,7 +24,7 @@ import { voiceSettingsStore } from "./Service/VoiceSettingsStore";
 import ChatSearchEntryButton from "./features/channelSearch/ChatSearchEntryButton";
 import { isElectronPowered } from "./electron/desktopBridge";
 import { ChannelSettingRouteData } from "./Components/ChannelSetting/context";
-import { Input } from "@octo/ui";
+import { Input, modalConfirm } from "@octo/ui";
 import { ListItem, ListItemTip } from "./Components/ListItem";
 import { Card, CardCell } from "./Messages/Card";
 import { GifCell, GifContent } from "./Messages/Gif";
@@ -85,7 +85,6 @@ import { quickMuteStore } from "./Components/NavRail/QuickMuteStore";
 import IconClick from "./Components/IconClick";
 import EmojiToolbar from "./Components/EmojiToolbar";
 import MergeforwardContent, { MergeforwardCell } from "./Messages/Mergeforward";
-import { wkConfirm } from "./Components/WKModal";
 import { UserInfoRouteData } from "./bridge/profileDetail/UserInfoVM";
 import {
   userInfoMembershipCreatedAt,
@@ -1373,7 +1372,7 @@ export default class BaseModule implements IModule {
               message.content?.conversationDigest || ""
             ).slice(0, 20);
             let threadName = defaultName;
-            wkConfirm({
+            modalConfirm({
               title: t("base.module.createThread.title"),
               okText: t("base.module.createThread.ok"),
               cancelText: t("base.common.cancel"),

@@ -8,7 +8,6 @@ import ChannelWebhookPanel from "../../Components/ChannelWebhook";
 import { GroupManagement } from "../../Components/GroupManagement";
 import { GroupMdEditor } from "../../Components/GroupMdEditor";
 import { SubscriberList } from "../../Components/Subscribers/list";
-import { wkConfirm } from "../../Components/WKModal";
 import { GroupRole } from "../../Service/Const";
 import RouteContext, {
   FinishButtonContext,
@@ -26,6 +25,7 @@ import {
 } from "../../ui/ChannelSettingRows";
 import { ChannelSettingTextEditPush } from "./types";
 import { createChannelSettingMemberSearch } from "./channelSettingMemberSearch";
+import { modalConfirm } from "@octo/ui";
 
 interface BuildGroupManagementRowsOptions {
   context: RouteContext<ChannelSettingRouteData>;
@@ -86,7 +86,7 @@ function buildTransferOwnerRow(
                 return;
               }
               const name = selected.remark || selected.name || selected.uid;
-              wkConfirm({
+              modalConfirm({
                 title: t("base.module.channelSettings.transferOwner"),
                 content: t("base.module.channelSettings.transferOwnerConfirm", {
                   values: { name },

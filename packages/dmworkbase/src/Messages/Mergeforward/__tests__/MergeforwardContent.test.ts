@@ -87,7 +87,7 @@ vi.mock("../../../ui/message/MergeforwardCard", () => ({
 vi.mock("../../../bridge/message/useMergeforwardMessageUI", () => ({
   getMergeforwardMessageUI: () => null,
 }));
-vi.mock("../../../Components/WKModal", () => ({ default: () => null }));
+vi.mock("@octo/ui", () => ({ Modal: () => null }));
 vi.mock("@douyinfe/semi-ui", () => ({
   Modal: () => null,
   Popconfirm: ({ children }: any) => children ?? null,

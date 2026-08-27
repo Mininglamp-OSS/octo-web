@@ -1,8 +1,11 @@
-.wk-bot-detail-modal .wk-modal-shell {
+.wk-bot-detail-modal .octo-ui-modal__surface {
     padding: 0;
 }
 
-.wk-bot-detail-modal .wk-modal-body {
+.wk-bot-detail-modal .octo-ui-modal__body {
+    display: block;
+    flex: none;
+    padding: 0;
     overflow: hidden;
 }
 

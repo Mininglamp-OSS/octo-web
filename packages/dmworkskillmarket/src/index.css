@@ -1971,7 +1971,7 @@
   font-size: 12px;
 }
 
-.skill-market-workflow-modal .wk-modal-body {
+.skill-market-workflow-modal .octo-ui-modal__body {
   max-height: min(68vh, 640px);
   overflow: auto;
 }
@@ -2481,8 +2481,8 @@
     position: static;
   }
 
-  .skill-market-workflow-modal .wk-modal,
-  .skill-market-workflow-modal .wk-modal-content {
+  .skill-market-workflow-modal.octo-ui-modal,
+  .skill-market-workflow-modal .octo-ui-modal__content {
     width: calc(100vw - 24px);
     max-width: none;
   }
@@ -2499,7 +2499,7 @@
   width: 560px;
 }
 
-.skill-market-workflow-modal .wk-modal-content {
+.skill-market-workflow-modal .octo-ui-modal__content {
   width: 560px;
   max-width: 560px;
 }
@@ -2619,7 +2619,7 @@
 
 /* --- Crop modal --- */
 
-.skill-market-crop-modal .wk-modal-body {
+.skill-market-crop-modal .octo-ui-modal__body {
   display: flex;
   justify-content: center;
 }

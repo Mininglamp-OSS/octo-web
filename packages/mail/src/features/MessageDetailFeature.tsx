@@ -18,7 +18,7 @@ import {
   ShieldAlert,
   Trash2,
 } from "lucide-react";
-import { useI18n, wkConfirm, WKApp } from "@octo/base";
+import { useI18n, modalConfirm, WKApp } from "@octo/base";
 import MailService from "../Service/MailService";
 import type {
   ComposeMode,
@@ -315,7 +315,7 @@ export default function MessageDetailFeature({
 
   const deleteCurrent = () => {
     if (!current) return;
-    wkConfirm({
+    modalConfirm({
       title: t("mail.confirm.deleteTitle"),
       content: t("mail.confirm.deleteContent"),
       okType: "danger",

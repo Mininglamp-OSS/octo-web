@@ -1,6 +1,11 @@
-.wk-group-card-modal .wk-modal-shell {
+.wk-group-card-modal .octo-ui-modal__surface {
     padding: 0;
 }
+
+.wk-group-card-modal .octo-ui-modal__body {
+    padding: 0;
+}
+
 .wk-group-card-content {
     padding: 24px;
 }

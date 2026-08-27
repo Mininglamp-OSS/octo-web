@@ -1,7 +1,7 @@
-import { Button } from "@octo/ui";
+import { Button, Modal as OctoModal } from "@octo/ui";
 import React, { useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import { t, useI18n, WKModal } from "@octo/base";
+import { t, useI18n } from "@octo/base";
 import type { Skill } from "../types/skill";
 import { deleteSkill } from "../api/skillApi";
 
@@ -32,7 +32,7 @@ export default function DeleteConfirmModal({ skill, onClose, onDeleted }: Delete
   }
 
   return (
-    <WKModal
+    <OctoModal
       visible={Boolean(skill)}
       onCancel={onClose}
       title={t("skillMarket.delete.title")}
@@ -51,6 +51,6 @@ export default function DeleteConfirmModal({ skill, onClose, onDeleted }: Delete
           {error && <p className="skill-market-delete__error">{error}</p>}
         </div>
       </div>
-    </WKModal>
+    </OctoModal>
   );
 }

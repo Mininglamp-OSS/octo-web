@@ -74,7 +74,7 @@
  * Figma 421:64397: 480px 宽，max-height=100vh-160px
  * Header: 56px，pad L/R 16，标题左+关闭右
  *
- * 样式通过 WKModal props (width/bodyStyle/style/header) 传入，
+ * 样式通过 @octo/ui Modal props (width/bodyStyle/style/header) 传入，
  * 不直接覆盖 .semi-modal-* 内部类。
  * 布局尺寸通过组件级 token 定义，便于统一调整。
  */

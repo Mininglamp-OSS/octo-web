@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Component } from "react";
-import { Contacts, WKApp, WKBase, ErrorBoundary, WKModal, I18nContext, t, addCurrentImChannelInfoListener, fetchCurrentImChannelInfo, getCurrentImChannelInfo, Dap } from "@octo/base"
+import { Contacts, WKApp, WKBase, ErrorBoundary, I18nContext, t, addCurrentImChannelInfoListener, fetchCurrentImChannelInfo, getCurrentImChannelInfo, Dap } from "@octo/base";
 import "./index.css"
 import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
@@ -29,6 +29,7 @@ import {
     searchContacts,
 } from "../bridge/contactsSearch/searchContacts";
 import type { ContactsSearchIndex } from "../bridge/contactsSearch/types";
+import { Modal as OctoModal } from "@octo/ui";
 
 function OverflowTooltip({ text, children }: { text: string; children: React.ReactNode }) {
     const [visible, setVisible] = useState(false)
@@ -914,7 +915,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                         )}
                     </div>
 
-                    <WKModal
+                    <OctoModal
                         title={null}
                         visible={this.state.userInfoVisible}
                         onCancel={() => this.setState({ userInfoVisible: false })}
@@ -927,7 +928,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                                 onClose={() => this.setState({ userInfoVisible: false })}
                             />
                         )}
-                    </WKModal>
+                    </OctoModal>
 
                     <BotDetailModal
                         uid={this.state.botDetailUid || ""}

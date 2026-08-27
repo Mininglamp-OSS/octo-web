@@ -1,7 +1,6 @@
-import { Button } from "@octo/ui";
+import { Button, Modal as OctoModal } from "@octo/ui";
 import React, { Component } from "react";
 import { Spin } from "@douyinfe/semi-ui";
-import WKModal from "../WKModal";
 import { Channel, ChannelTypeGroup, WKSDK } from "wukongimjssdk";
 import WKAvatar from "../WKAvatar";
 import { I18nContext } from "../../i18n";
@@ -74,7 +73,7 @@ export default class GroupCard extends Component<GroupCardProps, GroupCardState>
         const { loading, name, memberCount } = this.state;
 
         return (
-            <WKModal
+            <OctoModal
                 title={null}
                 visible={visible}
                 onCancel={onClose}
@@ -108,7 +107,7 @@ export default class GroupCard extends Component<GroupCardProps, GroupCardState>
                         </Button>
                     </div>
                 )}
-            </WKModal>
+            </OctoModal>
         );
     }
 }

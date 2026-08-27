@@ -8,7 +8,6 @@ import RouteContext, {
 } from "../../Service/Context";
 import { GroupRole } from "../../Service/Const";
 import { I18nContext, t } from "../../i18n";
-import { wkConfirm } from "../WKModal";
 import {
   addGroupManagementBotAdmins,
   addGroupManagementManagers,
@@ -27,6 +26,7 @@ import {
   shouldListenerApply,
 } from "../../bridge/channelSetting/groupManagementAllowNoMention";
 import { GroupManagementMemberPicker } from "./MemberPicker";
+import { modalConfirm } from "@octo/ui";
 import GroupManagementView, {
   type GroupManagementMemberItem,
   type GroupManagementMemberRole,
@@ -172,7 +172,7 @@ export class GroupManagement extends Component<
 
   handleRemoveManager = (subscriber: Subscriber) => {
     const { channel } = this.props;
-    wkConfirm({
+    modalConfirm({
       title: t("base.groupManagement.removeManagerTitle"),
       content: t("base.groupManagement.removeManagerContent", {
         values: { name: subscriber.remark || subscriber.name },
@@ -196,7 +196,7 @@ export class GroupManagement extends Component<
 
   handleRemoveBotAdmin = (subscriber: Subscriber) => {
     const { channel } = this.props;
-    wkConfirm({
+    modalConfirm({
       title: t("base.groupManagement.removeBotAdminTitle"),
       content: t("base.groupManagement.removeBotAdminContent", {
         values: { name: subscriber.remark || subscriber.name },
@@ -359,7 +359,7 @@ export class GroupManagement extends Component<
   // DELETE /groups/:group_no/disband，成功后群进入只读态（保留历史）。
   handleDisband = () => {
     const { channel, context } = this.props;
-    wkConfirm({
+    modalConfirm({
       title: t("base.groupManagement.disbandTitle"),
       content: t("base.groupManagement.disbandContent"),
       okText: t("base.groupManagement.disbandAction"),

@@ -11,10 +11,10 @@ import RoutePage from "../RoutePage";
 import { WKAvatarEditor } from "../WKAvatarEditor";
 import { WKAvatarUploadPreview } from "../WKAvatarUploadPreview";
 import WKAvatar from "../WKAvatar";
-import WKModal from "../WKModal";
 import MeInfoPanel from "./MeInfoPanel";
 import { MeInfoVM } from "./vm";
 import "./index.css"
+import { Modal as OctoModal } from "@octo/ui";
 
 export interface MeInfoProps {
     onClose: () => void
@@ -306,7 +306,7 @@ export class MeInfo extends Component<MeInfoProps, MeInfoState> {
                 />
             </div>
 
-            <WKModal
+            <OctoModal
                 title={t("base.me.qrCode")}
                 visible={showQrCode}
                 onCancel={() => this.setState({ showQrCode: false })}
@@ -317,9 +317,9 @@ export class MeInfo extends Component<MeInfoProps, MeInfoState> {
                 <div className="wk-meinfo-qrcode-content">
                     <QRCodeMy disableHeader={true} />
                 </div>
-            </WKModal>
+            </OctoModal>
 
-            <WKModal
+            <OctoModal
                 title={t("base.me.selectGender")}
                 visible={showSexSelect}
                 onCancel={() => {
@@ -356,9 +356,9 @@ export class MeInfo extends Component<MeInfoProps, MeInfoState> {
                         })}
                     </div>
                 </div>
-            </WKModal>
+            </OctoModal>
 
-            <WKModal
+            <OctoModal
                 title={t("base.channelAvatar.previewAvatar")}
                 visible={!!avatarPreviewFile}
                 onCancel={this.cancelAvatarPreview}
@@ -377,9 +377,9 @@ export class MeInfo extends Component<MeInfoProps, MeInfoState> {
                 }}
             >
                 {avatarPreviewFile && <WKAvatarUploadPreview file={avatarPreviewFile} />}
-            </WKModal>
+            </OctoModal>
 
-            <WKModal
+            <OctoModal
                 title={t("base.channelAvatar.cropAvatar")}
                 visible={!!avatarCropFile}
                 onCancel={this.cancelAvatarCrop}
@@ -403,7 +403,7 @@ export class MeInfo extends Component<MeInfoProps, MeInfoState> {
                         file={avatarCropFile}
                     />
                 </div>}
-            </WKModal>
+            </OctoModal>
         </>
     }
 

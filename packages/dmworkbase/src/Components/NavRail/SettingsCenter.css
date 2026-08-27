@@ -1,6 +1,6 @@
-.wk-settings-center-modal .wk-modal-shell { padding: 0; overflow: hidden; }
-.wk-settings-center-modal .wk-modal-custom-close-btn { display: none; }
-.wk-settings-center-modal .wk-modal-body { overflow: hidden; border-radius: 16px; }
+.wk-settings-center-modal .octo-ui-modal__surface { padding: 0; overflow: hidden; }
+.wk-settings-center-modal .octo-ui-modal__close { display: none; }
+.wk-settings-center-modal .octo-ui-modal__body { overflow: hidden; border-radius: 16px; }
 .wk-settings-center { position: relative; display: grid; grid-template-columns: 264px minmax(0, 1fr); width: 100%; min-width: 712px; min-height: 560px; height: min(760px, calc(100vh - 120px)); overflow: hidden; color: var(--wk-text-primary); background: var(--wk-bg-surface); box-shadow: var(--wk-shadow-lg); }
 .wk-settings-center__sidebar { display: flex; min-width: 0; flex-direction: column; padding: 24px 16px 16px; overflow: hidden; background: var(--wk-bg-base); border-right: 1px solid var(--wk-border-subtle); }
 .wk-settings-center__sidebar > h1 { margin: 0 12px 24px; font-size: 22px; font-weight: 700; line-height: 1.3; }

@@ -1,7 +1,7 @@
-import { Button } from "@octo/ui";
+import { Button, Modal as OctoModal } from "@octo/ui";
 import React, { useEffect, useState } from "react";
 import { Check, Copy, Terminal } from "lucide-react";
-import { t, useI18n, WKApp, WKModal } from "@octo/base";
+import { t, useI18n, WKApp } from "@octo/base";
 import { buildInstallPrompt, resolveAPIBaseURL } from "../utils/installPrompt";
 import { Dap } from "@octo/base";
 
@@ -33,11 +33,11 @@ export default function InstallPromptModal({ skillId, onClose }: InstallPromptMo
   }
 
   return (
-    <WKModal
+    <OctoModal
       visible={Boolean(skillId)}
       onCancel={onClose}
       title={null}
-      size="lg"
+      size="wide"
       header={
         <div className="skill-market-prompt-modal__header">
           <div className="skill-market-prompt-modal__icon">
@@ -62,6 +62,6 @@ export default function InstallPromptModal({ skillId, onClose }: InstallPromptMo
       <div className="skill-market-prompt-modal__body">
         <pre className="skill-market-prompt-modal__pre">{prompt}</pre>
       </div>
-    </WKModal>
+    </OctoModal>
   );
 }

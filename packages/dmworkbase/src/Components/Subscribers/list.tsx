@@ -14,7 +14,7 @@ import {
 import WKAvatar, { isBot } from "../WKAvatar";
 import AiBadge from "../AiBadge";
 import BotDetailModal from "../BotDetailModal";
-import { Checkbox } from "@octo/ui";
+import { Checkbox, modalConfirm } from "@octo/ui";
 import { Tag, Toast } from "@douyinfe/semi-ui";
 import { GroupRole } from "../../Service/Const";
 import { debounce, throttle } from "../../Utils/rateLimit";
@@ -29,7 +29,6 @@ import {
   fetchCurrentImChannelInfo,
   getCurrentImChannelInfo,
 } from "../../im-runtime/currentChannelRuntime";
-import { wkConfirm } from "../WKModal/confirm";
 
 export interface SubscriberListProps {
   channel: Channel;
@@ -278,7 +277,7 @@ export class SubscriberList extends Component<
     const targetIsBot =
       isBot(subscriber.uid) || subscriber?.orgData?.robot === 1;
 
-    wkConfirm({
+    modalConfirm({
       title: this.context.t(
         targetIsBot
           ? "base.subscribers.confirmRemoveBotTitle"

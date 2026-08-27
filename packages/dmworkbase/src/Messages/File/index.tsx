@@ -7,7 +7,6 @@ import { FileContent } from "./FileContent";
 import { downloadFile } from "../../Utils/download";
 import { WKSDK, Task, TaskStatus, MessageStatus } from "wukongimjssdk";
 import { Toast, Tooltip } from "@douyinfe/semi-ui";
-import WKModal from "../../Components/WKModal";
 import MarkdownContent from "../Text/MarkdownContent";
 import MessageRow from "../../ui/message/MessageRow";
 import { getFileMessageUI } from "../../bridge/message/useFileMessageUI";
@@ -17,6 +16,7 @@ import { isDriveTransferSupportedChannel, imDriveTransferSourceKey, stripSpacePr
 import { resolveCardActionChannelId } from "../InteractiveCard/cardAction";
 import { ChannelTypePerson } from "wukongimjssdk";
 import { I18nContext } from "../../i18n";
+import { Modal as OctoModal } from "@octo/ui";
 
 export { FileContent } from "./FileContent";
 
@@ -1018,11 +1018,11 @@ export class FileCell extends MessageCell<any, FileCellState> {
             )}
           </div>
         </MessageRow>
-        <WKModal
+        <OctoModal
           className="wk-base-modal"
           visible={this.state.textPreviewVisible}
           title={this.state.textPreviewName}
-          size="lg"
+          size="wide"
           onCancel={() => this.setState({ textPreviewVisible: false })}
         >
           <div className="wk-text-file-preview">
@@ -1034,7 +1034,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
               </pre>
             )}
           </div>
-        </WKModal>
+        </OctoModal>
       </>
     );
   }

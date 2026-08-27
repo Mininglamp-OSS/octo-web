@@ -1,9 +1,8 @@
-import { Button } from "@octo/ui";
+import { Button, modalConfirm, Modal as OctoModal } from "@octo/ui";
 import React, { useCallback, useEffect, useState } from "react";
 import { Channel } from "wukongimjssdk";
 import { Spin, Toast } from "@douyinfe/semi-ui";
 import { IconPlus, IconLink } from "@douyinfe/semi-icons";
-import { wkConfirm } from "../WKModal";
 import { useI18n } from "../../i18n";
 import { extractErrorMsg } from "../../Service/APIClient";
 import {
@@ -118,7 +117,7 @@ export default function ChannelWebhookPanel({
   };
 
   const handleRegenerate = (item: IncomingWebhook) => {
-    wkConfirm({
+    modalConfirm({
       title: t("base.channelWebhook.regenerate.title"),
       content: t("base.channelWebhook.regenerate.content", {
         values: { name: item.name },
@@ -136,8 +135,8 @@ export default function ChannelWebhookPanel({
             extractErrorMsg(e) ||
               t("base.channelWebhook.error.regenerateFailed")
           );
-          // 重新抛出：wkConfirm 的 onOk 捕获 reject 后保持弹窗打开、按钮复位
-          // 供用户重试（见 WKModal/confirm.tsx 的 .catch(updatePending(null))）。
+          // 重新抛出：modalConfirm 的 onOk 捕获 reject 后保持弹窗打开、按钮复位
+          // 供用户重试（见 OctoModal/confirm.tsx 的 .catch(updatePending(null))）。
           throw e;
         }
       },
@@ -145,7 +144,7 @@ export default function ChannelWebhookPanel({
   };
 
   const handleDelete = (item: IncomingWebhook) => {
-    wkConfirm({
+    modalConfirm({
       title: t("base.channelWebhook.delete.title"),
       content: t("base.channelWebhook.delete.content", {
         values: { name: item.name },
@@ -161,7 +160,7 @@ export default function ChannelWebhookPanel({
           Toast.error(
             extractErrorMsg(e) || t("base.channelWebhook.error.deleteFailed")
           );
-          // 重新抛出：wkConfirm 捕获 reject 后保持弹窗打开供重试（同 handleRegenerate）。
+          // 重新抛出：modalConfirm 捕获 reject 后保持弹窗打开供重试（同 handleRegenerate）。
           throw e;
         }
         if (deleted) {

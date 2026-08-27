@@ -65,6 +65,10 @@ vi.mock("@douyinfe/semi-ui", () => {
 vi.mock("@octo/ui", () => ({
   Button: ({ children, ...props }: any) =>
     React.createElement("button", props, children),
+  Modal: ({ children, footer, visible }: any) =>
+    visible
+      ? React.createElement("div", { "data-testid": "modal" }, children, footer)
+      : null,
   Switch: ({ checked, onChange }: any) =>
     React.createElement("button", {
       "data-testid": "switch",
@@ -77,15 +81,6 @@ vi.mock("@douyinfe/semi-icons", () => ({
   IconAlertTriangle: () =>
     React.createElement("span", { "data-testid": "icon-alert" }),
 }));
-
-vi.mock("../../WKModal", () => ({
-  default: ({ children, footer, visible }: any) =>
-    visible
-      ? React.createElement("div", { "data-testid": "modal" }, children, footer)
-      : null,
-  __esModule: true,
-}));
-
 
 vi.mock("../../../App", () => ({
   default: {
@@ -133,6 +128,7 @@ vi.mock("wukongimjssdk", async (importOriginal) => {
 });
 
 import WebhookEditModal from "../WebhookEditModal";
+import { Modal as OctoModal } from "@octo/ui";
 
 let container: HTMLDivElement;
 

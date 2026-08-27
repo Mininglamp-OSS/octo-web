@@ -2,7 +2,6 @@ import { webOrigin } from "../../Utils/docLink";
 import React, { Component } from "react";
 import { IconPlus, IconSearch, IconLink } from "@douyinfe/semi-icons";
 import { Spin, Toast, Tooltip } from "@douyinfe/semi-ui";
-import WKModal from "../WKModal";
 import { Space, SpaceService } from "../../Service/SpaceService";
 import WKApp from "../../App";
 import SpaceItem from "../SpaceItem";
@@ -10,6 +9,7 @@ import ActionListItem from "../ActionListItem";
 import JoinSpaceModalConnected from "../JoinSpaceModal/JoinSpaceModalConnected";
 import { I18nContext } from "../../i18n";
 import "./index.css";
+import { Modal as OctoModal } from "@octo/ui";
 
 export interface SpaceListProps {
     selectedSpaceId?: string;
@@ -133,7 +133,7 @@ export default class SpaceList extends Component<SpaceListProps, SpaceListState>
                 />
 
                 {/* 邀请他人弹窗 */}
-                <WKModal
+                <OctoModal
                     title={t("base.spaceList.inviteTitle", { values: { name: inviteSpaceName } })}
                     visible={showInviteModal}
                     onCancel={() => this.setState({ showInviteModal: false, inviteCode: "" })}
@@ -152,7 +152,7 @@ export default class SpaceList extends Component<SpaceListProps, SpaceListState>
                             {t("base.spaceList.copyInviteLink")}
                         </button>
                     </div>
-                </WKModal>
+                </OctoModal>
 
                 {loading ? (
                     <div className="wk-spacelist-loading">

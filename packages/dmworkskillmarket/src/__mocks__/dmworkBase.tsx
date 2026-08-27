@@ -1,6 +1,6 @@
 import React from "react";
 
-interface WKModalMockProps {
+interface OctoModalMockProps {
   visible: boolean;
   title?: React.ReactNode;
   header?: React.ReactNode;
@@ -12,7 +12,7 @@ interface WKModalMockProps {
   bodyStyle?: React.CSSProperties;
 }
 
-export function WKModal({ visible, title, header, footer, children, onCancel }: WKModalMockProps) {
+export function OctoModal({ visible, title, header, footer, children, onCancel }: OctoModalMockProps) {
   if (!visible) return null;
   return (
     <section role="dialog" aria-label={typeof title === "string" ? title : "modal"}>
@@ -65,6 +65,7 @@ export const WKApp = {
 };
 
 import zhCN from "../i18n/zh-CN.json";
+import { Modal as OctoModal } from "@octo/ui";
 
 const flattenMessages = (obj: Record<string, unknown>, prefix = ""): Record<string, string> => {
   const result: Record<string, string> = {};

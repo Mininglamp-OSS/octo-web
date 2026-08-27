@@ -1,7 +1,7 @@
-import { Button } from "@octo/ui";
+import { Button, Modal as OctoModal } from "@octo/ui";
 import React from "react";
 import { AlertTriangle } from "lucide-react";
-import { t, useI18n, WKModal } from "@octo/base";
+import { t, useI18n } from "@octo/base";
 import type { ExpertItem } from "../mock/expertMock";
 
 interface ExpertDeleteConfirmModalProps {
@@ -29,7 +29,7 @@ export default function ExpertDeleteConfirmModal({
   };
 
   return (
-    <WKModal
+    <OctoModal
       visible={Boolean(item)}
       onCancel={onClose}
       title={t("mcp.expert.deleteConfirmTitle")}
@@ -51,6 +51,6 @@ export default function ExpertDeleteConfirmModal({
           <p>{t("mcp.expert.deleteConfirmBody")}</p>
         </div>
       </div>
-    </WKModal>
+    </OctoModal>
   );
 }

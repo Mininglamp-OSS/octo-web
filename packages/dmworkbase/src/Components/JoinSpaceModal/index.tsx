@@ -1,6 +1,5 @@
-import { Button, Input } from "@octo/ui";
+import { Button, Input, Modal as OctoModal } from "@octo/ui";
 import React from "react";
-import WKModal from "../WKModal";
 import { useI18n } from "../../i18n";
 import "./index.css";
 
@@ -48,7 +47,7 @@ export default function JoinSpaceModal({
         inviteInfo.member_count >= inviteInfo.max_users;
 
     return (
-        <WKModal
+        <OctoModal
             title={t("base.joinSpace.title")}
             visible={visible}
             onCancel={onCancel}
@@ -119,6 +118,6 @@ export default function JoinSpaceModal({
                     </div>
                 </div>
             )}
-        </WKModal>
+        </OctoModal>
     );
 }

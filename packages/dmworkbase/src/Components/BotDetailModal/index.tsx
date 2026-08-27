@@ -1,6 +1,5 @@
 import React, { Component } from "react";
 import { Toast } from "@douyinfe/semi-ui";
-import WKModal from "../WKModal";
 import { Channel, ChannelTypePerson } from "wukongimjssdk";
 import WKApp from "../../App";
 import WKAvatar from "../WKAvatar";
@@ -22,6 +21,7 @@ import {
     fetchCurrentImChannelInfo,
 } from "../../im-runtime/currentChannelRuntime";
 import "./index.css";
+import { Modal as OctoModal } from "@octo/ui";
 
 interface BotDetailModalProps {
     uid: string;
@@ -317,7 +317,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps> {
 
         return (
             <>
-            <WKModal
+            <OctoModal
                 title={null}
                 visible={visible && !showBotManage}
                 onCancel={this.handleClose}
@@ -404,7 +404,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps> {
                     onApplyRemarkChange={(value) => this.vm.setApplyRemark(value)}
                     onSubmitApply={this.handleSubmitApply}
                 />
-            </WKModal>
+            </OctoModal>
             <ClawInfoModal
                 botId={uid}
                 botName={name}
@@ -418,7 +418,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps> {
                     onClose={() => this.vm.closeBotManage()}
                 />
             )}
-            <WKModal
+            <OctoModal
                 title={t("base.botDetail.previewAvatar")}
                 visible={visible && !!avatarPreviewFile}
                 onCancel={this.handleAvatarPreviewCancel}
@@ -438,8 +438,8 @@ export default class BotDetailModal extends Component<BotDetailModalProps> {
                 {avatarPreviewFile && (
                     <WKAvatarUploadPreview file={avatarPreviewFile} shape="bot" />
                 )}
-            </WKModal>
-            <WKModal
+            </OctoModal>
+            <OctoModal
                 title={t("base.botDetail.cropAvatar")}
                 visible={visible && !!avatarCropFile}
                 onCancel={this.handleAvatarCropCancel}
@@ -466,7 +466,7 @@ export default class BotDetailModal extends Component<BotDetailModalProps> {
                         />
                     </div>
                 )}
-            </WKModal>
+            </OctoModal>
         </>
         );
     }

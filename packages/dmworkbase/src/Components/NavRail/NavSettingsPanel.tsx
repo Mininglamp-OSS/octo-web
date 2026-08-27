@@ -1,8 +1,7 @@
-import { Button } from "@octo/ui";
+import { Button, Modal as OctoModal } from "@octo/ui";
 import WKApp from "../../App";
 import React, { Component } from "react";
 import { Progress, Toast } from "@douyinfe/semi-ui";
-import WKModal from "../WKModal";
 import { t } from "../../i18n";
 import { checkVersionOnceWithStatus } from "../../Utils/versionChecker";
 import ChangelogMarkdown from "./ChangelogMarkdown";
@@ -92,7 +91,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                     openSecretsRequest={this.state.secretsRequest}
                 />
 
-                <WKModal
+                <OctoModal
                     title={t("base.navRail.settingsPanel.updateCheckTitle")}
                     visible={showAppVersion}
                     options={{ maskClosable: false, closeOnEsc: false }}
@@ -112,7 +111,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                         </ul></div></div></div>}
                         {showAppUpdate && <Progress percent={appUpdateProgress} style={{ height: "8px" }} showInfo aria-label="update progress" />}
                     </div>
-                </WKModal>
+                </OctoModal>
             </>
         );
     }

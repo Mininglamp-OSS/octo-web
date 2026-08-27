@@ -1,7 +1,7 @@
-import { Button, Input } from "@octo/ui";
+import { Button, Input, Modal as OctoModal } from "@octo/ui";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, FileArchive, ImagePlus, Loader2, UploadCloud, XCircle } from "lucide-react";
-import { t, useI18n, WKModal } from "@octo/base";
+import { t, useI18n } from "@octo/base";
 import type { Category, NewSkillForm } from "../types/skill";
 import { createSkill, getSkillTags, initUpload, uploadFile, uploadIcon, triggerParse, pollParse } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
@@ -416,11 +416,11 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
 
   return (
     <>
-      <WKModal
+      <OctoModal
         visible={visible}
         onCancel={requestClose}
         title={t("skillMarket.form.createTitle")}
-        size="lg"
+        size="wide"
         className="skill-market-workflow-modal"
         footer={
           <>
@@ -636,7 +636,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
             </label>
           </div>
         </section>
-      </WKModal>
+      </OctoModal>
       <IconCropModal
         visible={!!iconCropFile}
         file={iconCropFile}
@@ -666,11 +666,11 @@ function ConfirmLeaveModal({
   onLeave: () => void;
 }) {
   return (
-    <WKModal
+    <OctoModal
       visible={Boolean(mode)}
       onCancel={onKeep}
       title={t("skillMarket.confirm.title")}
-      size="md"
+      size="default"
       footer={
         <>
           <Button variant="secondary" onClick={onKeep}>{mode === "busy" ? t("skillMarket.confirm.keepUploading") : t("skillMarket.confirm.keepEditing")}</Button>
@@ -683,6 +683,6 @@ function ConfirmLeaveModal({
           ? t("skillMarket.confirm.busyMessage")
           : t("skillMarket.confirm.dirtyCreateMessage")}
       </p>
-    </WKModal>
+    </OctoModal>
   );
 }

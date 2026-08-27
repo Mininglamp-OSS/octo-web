@@ -1,7 +1,7 @@
-import { Button, Input, Switch } from "@octo/ui";
+import { Button, Input, Switch, Modal as OctoModal } from "@octo/ui";
 import Select from "@octo/ui/select";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { WKModal, t, Dap } from "@octo/base";
+import { t, Dap } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
 import {
   createMcp,
@@ -1131,7 +1131,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
   ];
 
   return (
-    <WKModal
+    <OctoModal
       visible={visible}
       onCancel={handleClose}
       width={720}
@@ -1684,7 +1684,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
         </>
         )}
       </div>
-    </WKModal>
+    </OctoModal>
   );
 };
 

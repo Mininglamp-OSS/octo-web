@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { Input } from "@octo/ui";
+import { Input, Modal as OctoModal } from "@octo/ui";
 import { Pencil } from "lucide-react";
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 
-import { ChannelAvatar, GroupAvatarPreview, WKModal } from "@octo/base";
+import { ChannelAvatar, GroupAvatarPreview } from "@octo/base";
 
 import GroupMemberPicker from "../GroupMemberPicker";
 import type { GroupCreateDialogProps } from "./types";
@@ -39,8 +39,8 @@ function GroupCreateDialog({
   return (
     <>
       {isCreate ? (
-        <WKModal
-          size="lg"
+        <OctoModal
+          size="wide"
           className="wk-main-modal-group-create"
           visible={isOpen}
           title={copy.title}
@@ -126,17 +126,20 @@ function GroupCreateDialog({
               </div>
             </div>
           </div>
-        </WKModal>
+        </OctoModal>
       ) : (
-        <WKModal
-          size="lg"
+        <OctoModal
+          size="wide"
           className="wk-main-modal-organizational-group-new"
+          bodyClassName="wk-main-modal-organizational-group-new__body"
           visible={isOpen}
           options={{ closable: false, maskClosable: false }}
           onCancel={actions.onCancel}
         >
-          <GroupMemberPicker {...memberPicker} />
-        </WKModal>
+          <div className="wk-main-modal-organizational-group-new__content">
+            <GroupMemberPicker {...memberPicker} />
+          </div>
+        </OctoModal>
       )}
 
       {isCreate && (

@@ -1,4 +1,4 @@
-import { Button } from "@octo/ui";
+import { Button, Modal as OctoModal, modalConfirm } from "@octo/ui";
 import React, { useState, useCallback, useEffect } from "react";
 import { Toast, Spin } from "@douyinfe/semi-ui";
 import {
@@ -9,7 +9,6 @@ import {
   IconDelete,
   IconRefresh,
 } from "@douyinfe/semi-icons";
-import WKModal, { wkConfirm } from "../WKModal";
 import { useI18n } from "../../i18n";
 import SecretsService, { SecretListItem } from "../../Service/SecretsService";
 import { Dap } from "../../Service/Dap";
@@ -118,7 +117,7 @@ export default function SecretsSettingsPanel({
 
   const handleDelete = useCallback(
     (secret: SecretListItem) => {
-      wkConfirm({
+      modalConfirm({
         title: t("base.secrets.delete.title"),
         content: t("base.secrets.delete.content", { values: { name: secret.display_name } }),
         okText: t("base.secrets.delete.confirm"),
@@ -248,16 +247,16 @@ export default function SecretsSettingsPanel({
   if (embedded) return content;
 
   return (
-    <WKModal
+    <OctoModal
       visible
       title={null}
       onCancel={onClose}
       options={{ closeOnEsc: true, maskClosable: true, closable: false }}
       footer={null}
-      size="lg"
+      size="wide"
       className="wk-secrets-modal"
     >
       {content}
-    </WKModal>
+    </OctoModal>
   );
 }

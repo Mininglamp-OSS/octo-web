@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import ExpertDetailModal from "../ExpertDetailModal";
 import ExpertCard from "../ExpertCard";
 import type { ExpertAgent, ExpertSquad } from "../../mock/expertMock";
+import { Modal as OctoModal } from "@octo/ui";
 
 const trackExpertView = vi.fn();
 
@@ -24,7 +25,7 @@ vi.mock("@octo/base", () => ({
   t: (key: string, opts?: { values?: { count?: number } }) =>
     opts?.values?.count !== undefined ? `${key}:${opts.values.count}` : key,
   useI18n: () => undefined,
-  WKModal: ({
+  OctoModal: ({
     children,
     header,
   }: {

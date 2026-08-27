@@ -1,7 +1,7 @@
-import { Button } from "@octo/ui";
+import { Button, Modal as OctoModal } from "@octo/ui";
 import React, { useEffect, useState } from "react";
 import { Bot, Check, Copy } from "lucide-react";
-import { t, useI18n, WKApp, WKModal, Dap } from "@octo/base";
+import { t, useI18n, WKApp, Dap } from "@octo/base";
 import { resolveAPIBaseURL } from "../utils/installPrompt";
 import { getBotPublishPrompt } from "../utils/botPublishPrompt";
 
@@ -50,11 +50,11 @@ export default function BotPublishModal({
   }
 
   return (
-    <WKModal
+    <OctoModal
       visible={visible}
       onCancel={onClose}
       title={null}
-      size="lg"
+      size="wide"
       header={
         <div className="skill-market-prompt-modal__header">
           <div className="skill-market-prompt-modal__icon">
@@ -83,6 +83,6 @@ export default function BotPublishModal({
       <div className="skill-market-prompt-modal__body">
         <pre className="skill-market-prompt-modal__pre">{prompt}</pre>
       </div>
-    </WKModal>
+    </OctoModal>
   );
 }

@@ -9,7 +9,7 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
-import { t, useI18n, WKModal } from "@octo/base";
+import { t, useI18n } from "@octo/base";
 import type { ExpertItem, ExpertMember } from "../mock/expertMock";
 import { getExpertSkillContent, getSquadSkillContent, getExpertSkillDownloadUrl, getSquadSkillDownloadUrl, trackExpertView } from "../api/expertService";
 import { getMcpAvatarColor } from "../utils/mcpAvatar";
@@ -17,6 +17,7 @@ import { resolveExpertOwner } from "../utils/expertOwner";
 import { isOfficialExpert } from "../utils/publisher";
 import { formatCount } from "../utils/format";
 import ExpertSpecView from "./ExpertSpecView";
+import { Modal as OctoModal } from "@octo/ui";
 
 interface ExpertDetailModalProps {
   item: ExpertItem | null;
@@ -160,7 +161,7 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
   );
 
   return (
-    <WKModal
+    <OctoModal
       visible={Boolean(item)}
       onCancel={onClose}
       title={null}
@@ -290,6 +291,6 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
             )}
           </div>
       </div>
-    </WKModal>
+    </OctoModal>
   );
 }

@@ -5,8 +5,8 @@ import { fireEvent } from "@testing-library/dom"
 import { describe, expect, it, vi } from "vitest"
 import ThreadCreateDialog, { ThreadCreateForm, ThreadCreateLabels } from "../index"
 
-vi.mock("../../../Components/WKModal", () => ({
-  default: ({ visible, children }: { visible: boolean; children: React.ReactNode }) => (
+vi.mock("@octo/ui", () => ({
+  Modal: ({ visible, children }: { visible: boolean; children: React.ReactNode }) => (
     <div data-visible={visible ? "true" : "false"}>{children}</div>
   ),
 }))

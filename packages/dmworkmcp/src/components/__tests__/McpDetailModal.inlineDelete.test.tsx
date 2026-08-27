@@ -23,12 +23,12 @@ vi.mock("@douyinfe/semi-ui", () => ({
   Toast: { success: vi.fn(), error: vi.fn() },
   Spin: () => null,
 }));
-// WKModal renders footer + children inline.
-// wkConfirm is intentionally a throwing stub — if the component still called
+// OctoModal renders footer + children inline.
+// modalConfirm is intentionally a throwing stub — if the component still called
 // it (the old modal-on-modal path), the test would blow up.
 vi.mock("@octo/base", () => ({
   t: (k: string) => k,
-  WKModal: ({
+  OctoModal: ({
     footer,
     children,
   }: {
@@ -41,14 +41,15 @@ vi.mock("@octo/base", () => ({
       children,
       React.createElement("div", { "data-testid": "footer" }, footer)
     ),
-  wkConfirm: () => {
+  modalConfirm: () => {
     throw new Error(
-      "wkConfirm should NOT be called after 方案A (no modal-on-modal)"
+      "modalConfirm should NOT be called after 方案A (no modal-on-modal)"
     );
   },
 }));
 
 import McpDetailModal from "../McpDetailModal";
+import { Modal as OctoModal, modalConfirm } from "@octo/ui";
 
 let container: HTMLDivElement | null = null;
 afterEach(() => {
@@ -125,7 +126,7 @@ describe("McpDetailModal 就地内联删除确认（方案A）", () => {
     expect(initialBtns).toContain("mcp.detail.edit");
 
     // 点「删除」——footer 就地切成确认态；应出现确认提示文案 + 确认删除按钮，
-    // 且没有第二个 WKModal（不叠遮罩）。wkConfirm 抛错的 stub 也未触发。
+    // 且没有第二个 OctoModal（不叠遮罩）。modalConfirm 抛错的 stub 也未触发。
     clickButtonByText(root, "mcp.detail.delete");
     expect(root.querySelectorAll('[data-testid="wkmodal"]').length).toBe(1);
     expect(root.textContent).toContain("mcp.delete.confirmBody");

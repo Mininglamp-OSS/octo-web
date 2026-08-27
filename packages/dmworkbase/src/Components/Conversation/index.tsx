@@ -82,7 +82,6 @@ import AiBadge from "../AiBadge";
 import { IconClose, IconEdit, IconReply } from "@douyinfe/semi-icons";
 import { Toast, Spin } from "@douyinfe/semi-ui";
 import { AtSign, UserRound } from "lucide-react";
-import { wkConfirm } from "../WKModal";
 import { FlameMessageCell } from "../../Messages/Flame";
 import FoldSessionCard, { FoldSessionCardParticipant } from "./FoldSessionCard";
 import { BeatLoader } from "react-spinners";
@@ -160,6 +159,7 @@ import {
   fetchImChannelInfo,
   getImChannelInfo,
 } from "../../im-runtime/channelRuntime";
+import { modalConfirm } from "@octo/ui";
 import {
   SummaryCardContent,
   SummaryCardForwardBlockedError,
@@ -3250,7 +3250,7 @@ export class Conversation
                         );
                         return;
                       }
-                      wkConfirm({
+                      modalConfirm({
                         title: t("base.conversation.deleteConfirm.title"),
                         content: t("base.conversation.deleteConfirm.content"),
                         okText: t("base.conversation.deleteConfirm.confirm"),

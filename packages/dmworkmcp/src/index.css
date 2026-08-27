@@ -167,11 +167,11 @@
 
 /* Hide the outer modal-body scrollbar too — the inner code area handles its
    own scroll via max-height + overflow. Keeps the modal chrome flat. */
-.wk-mcp-prompt-modal .wk-modal-body {
+.wk-mcp-prompt-modal .octo-ui-modal__body {
   scrollbar-width: none;
 }
 
-.wk-mcp-prompt-modal .wk-modal-body::-webkit-scrollbar {
+.wk-mcp-prompt-modal .octo-ui-modal__body::-webkit-scrollbar {
   display: none;
 }
 
@@ -1928,13 +1928,13 @@
    The form is long enough to overflow — we keep the scroll behavior but
    hide the chrome to match the calmer look of the market page. Same trick
    as ConversationList's default state. */
-.wk-mcp-create-modal .wk-modal-body,
-.wk-mcp-detail-modal .wk-modal-body {
+.wk-mcp-create-modal .octo-ui-modal__body,
+.wk-mcp-detail-modal .octo-ui-modal__body {
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* legacy Edge / IE */
 }
-.wk-mcp-create-modal .wk-modal-body::-webkit-scrollbar,
-.wk-mcp-detail-modal .wk-modal-body::-webkit-scrollbar {
+.wk-mcp-create-modal .octo-ui-modal__body::-webkit-scrollbar,
+.wk-mcp-detail-modal .octo-ui-modal__body::-webkit-scrollbar {
   width: 0;
   height: 0;
   display: none; /* WebKit */
@@ -2813,14 +2813,14 @@
 /* Cap the detail modal to the viewport and scroll its body instead of letting
  * the whole dialog grow past the top/bottom edges. The sticky prompt panel
  * (.wk-mcp-expert-prompt) then pins correctly within this scroll container. */
-.wk-mcp-expert-modal .wk-modal-shell {
+.wk-mcp-expert-modal .octo-ui-modal__surface {
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 96px);
   overflow: hidden;
 }
 
-.wk-mcp-expert-modal .wk-modal-body {
+.wk-mcp-expert-modal .octo-ui-modal__body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
@@ -2829,13 +2829,13 @@
 /* Keep the detail modal scrollable (body + the fixed-height prompt panel) but
  * hide the scrollbars — two visible bars stacked at the right edge read as
  * clutter. Content still scrolls via wheel/trackpad. */
-.wk-mcp-expert-modal .wk-modal-body,
+.wk-mcp-expert-modal .octo-ui-modal__body,
 .wk-mcp-expert-prompt__preview {
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* legacy Edge/IE */
 }
 
-.wk-mcp-expert-modal .wk-modal-body::-webkit-scrollbar,
+.wk-mcp-expert-modal .octo-ui-modal__body::-webkit-scrollbar,
 .wk-mcp-expert-prompt__preview::-webkit-scrollbar {
   display: none; /* WebKit */
 }

@@ -1,4 +1,4 @@
-import { Button } from "@octo/ui";
+import { Button, modalConfirm } from "@octo/ui";
 import React, { Component } from "react";
 import { Spin } from "@douyinfe/semi-ui";
 import { Toast } from "@douyinfe/semi-ui";
@@ -7,7 +7,6 @@ import WKApp from "../../App";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
 import { parseThreadChannelId } from "../../Service/Thread";
 import { I18nContext } from "../../i18n";
-import { wkConfirm } from "../WKModal";
 import MarkdownContent from "../../Messages/Text/MarkdownContent";
 import VoiceInputButton, { ReplaceMode, SelectionRange } from "../VoiceInputButton";
 import {
@@ -217,7 +216,7 @@ export class GroupMdEditor extends Component<
   };
 
   handleDelete = () => {
-    wkConfirm({
+    modalConfirm({
       title: this.context.t("base.groupMd.deleteTitle"),
       content: this.context.t("base.groupMd.deleteContent"),
       onOk: async () => {

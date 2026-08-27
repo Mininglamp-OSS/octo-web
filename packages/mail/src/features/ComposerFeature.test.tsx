@@ -18,13 +18,13 @@ const state = vi.hoisted(() => ({
   updateDraft: vi.fn(),
   sendDraft: vi.fn(),
   emit: vi.fn(),
-  wkConfirm: vi.fn(),
+  modalConfirm: vi.fn(),
   t: vi.fn((key: string) => key),
 }));
 
 vi.mock("@octo/base", () => ({
   useI18n: () => ({ t: state.t }),
-  wkConfirm: state.wkConfirm,
+  modalConfirm: state.modalConfirm,
   WKApp: {
     mittBus: { emit: state.emit },
     routeRight: { pop: vi.fn() },
@@ -149,8 +149,8 @@ describe("ComposerFeature safety boundaries", () => {
     expect(fileInput.disabled).toBe(true);
 
     expect(requestMailWorkspaceSwitch(proceed)).toBe(false);
-    expect(state.wkConfirm).toHaveBeenCalledTimes(1);
-    const confirmation = state.wkConfirm.mock.calls[0][0];
+    expect(state.modalConfirm).toHaveBeenCalledTimes(1);
+    const confirmation = state.modalConfirm.mock.calls[0][0];
     expect(confirmation.okText).toBe("mail.actions.discard");
     expect(confirmation.cancelText).toBe("mail.actions.continueEditing");
     expect(confirmation.onCancel).toBeUndefined();
@@ -492,7 +492,7 @@ describe("ComposerFeature safety boundaries", () => {
     const proceed = vi.fn();
     expect(requestMailWorkspaceSwitch(proceed)).toBe(false);
     expect(proceed).not.toHaveBeenCalled();
-    expect(state.wkConfirm).not.toHaveBeenCalled();
+    expect(state.modalConfirm).not.toHaveBeenCalled();
 
     await act(async () => {
       sent.resolve({ submissionIds: ["S1"], messageId: "E2" });

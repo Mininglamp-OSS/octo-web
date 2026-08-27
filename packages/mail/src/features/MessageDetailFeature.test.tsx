@@ -21,7 +21,7 @@ const state = vi.hoisted(() => ({
 
 vi.mock("@octo/base", () => ({
   useI18n: () => ({ t: state.t, locale: "en-US" }),
-  wkConfirm: vi.fn(),
+  modalConfirm: vi.fn(),
   WKApp: {
     mittBus: { emit: state.emit },
     routeRight: { pop: vi.fn(), push: vi.fn() },

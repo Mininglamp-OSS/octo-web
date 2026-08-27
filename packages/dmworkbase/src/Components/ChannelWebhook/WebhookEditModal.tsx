@@ -1,4 +1,4 @@
-import { Button } from "@octo/ui";
+import { Button, Modal as OctoModal } from "@octo/ui";
 import React, {
   useCallback,
   useEffect,
@@ -10,7 +10,6 @@ import { Channel } from "wukongimjssdk";
 import { Switch } from "@octo/ui";
 import { Toast } from "@douyinfe/semi-ui";
 import { IconAlertTriangle } from "@douyinfe/semi-icons";
-import WKModal from "../WKModal";
 import AiBadge from "../AiBadge";
 import { useI18n } from "../../i18n";
 import { extractErrorMsg } from "../../Service/APIClient";
@@ -157,9 +156,9 @@ export default function WebhookEditModal({
   }, [isEdit, onClose, onSaved, submit, t]);
 
   return (
-    <WKModal
+    <OctoModal
       visible={visible}
-      size="lg"
+      size="wide"
       title={
         isEdit
           ? t("base.channelWebhook.form.editTitle")
@@ -348,6 +347,6 @@ export default function WebhookEditModal({
           </div>
         </div>
       </div>
-    </WKModal>
+    </OctoModal>
   );
 }

@@ -45,10 +45,11 @@ vi.mock('@douyinfe/semi-icons', () => ({
   IconRefresh: () => React.createElement('span'),
 }));
 
-vi.mock('../../WKModal', () => ({
-  default: ({ children, visible }: any) =>
+vi.mock('@octo/ui', () => ({
+  Button: ({ children, ...props }: any) => React.createElement('button', props, children),
+  Modal: ({ children, visible }: any) =>
     visible ? React.createElement('div', { 'data-testid': 'modal' }, children) : null,
-  wkConfirm: vi.fn(),
+  modalConfirm: vi.fn(),
   __esModule: true,
 }));
 

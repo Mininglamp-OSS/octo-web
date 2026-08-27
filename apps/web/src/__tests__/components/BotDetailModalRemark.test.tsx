@@ -59,6 +59,9 @@ vi.mock('@octo/ui', async () => {
             </button>
         ),
         Input,
+        Modal: ({ visible, children }: any) => (
+            visible ? <div data-testid="modal">{children}</div> : null
+        ),
     };
 });
 
@@ -127,15 +130,6 @@ vi.mock('../../../../../packages/dmworkbase/src/Service/APIClient', () => ({
         },
     },
 }));
-
-vi.mock('../../../../../packages/dmworkbase/src/Components/WKModal', async () => {
-    const React = await import('react');
-    return {
-        default: ({ visible, children }: any) => (
-            visible ? <div data-testid="wk-modal">{children}</div> : null
-        ),
-    };
-});
 
 vi.mock('../../../../../packages/dmworkbase/src/Components/WKAvatar', () => ({
     default: () => <div data-testid="wk-avatar" />,

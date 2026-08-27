@@ -64,7 +64,7 @@ test("@CH34 @p1 @chat @sidebar @group-create 发起群聊完成创建", async ({
   await openChat(authedPage);
   await authedPage.getByTestId("chat-add-entry").click();
   await authedPage.getByRole("list").getByText("发起群聊", { exact: true }).click();
-  const dialog = authedPage.locator(".wk-modal-content").filter({ hasText: "发起群聊" });
+  const dialog = authedPage.locator(".octo-ui-modal__content").filter({ hasText: "发起群聊" });
   await expect(dialog).toBeVisible();
   await dialog.locator("input").first().fill("E2E 新建群");
   await dialog.getByText("E2E 建群成员", { exact: true }).click();

@@ -1,5 +1,5 @@
 import React, { Component, ReactNode } from "react";
-import { Drawer } from "@octo/ui";
+import { Drawer, Modal as OctoModal } from "@octo/ui";
 import { Conversation } from "../../Components/Conversation";
 import ConversationList, {
   ConvFilter,
@@ -18,7 +18,6 @@ import { ErrorBoundary } from "../../Components/ErrorBoundary";
 
 import { Spin, Popover, Toast } from "@douyinfe/semi-ui";
 import { getElectronLinksBridge } from "../../electron/desktopBridge";
-import WKModal from "../../Components/WKModal";
 import { Columns2, ChevronRight } from "lucide-react";
 import ThreadIcon from "../../Components/Icons/ThreadIcon";
 import { ChatVM, handleGlobalSearchClick } from "./vm";
@@ -1914,8 +1913,8 @@ export default class ChatPage extends Component<any, ChatPageState> {
                   }}
                 />
               )}
-              <WKModal
-                size="full"
+              <OctoModal
+                size="fullscreen"
                 className="wk-global-search-modal"
                 visible={vm.showGlobalSearch}
                 onCancel={() => {
@@ -1999,10 +1998,10 @@ export default class ChatPage extends Component<any, ChatPageState> {
                     }}
                   />
                 </ErrorBoundary>
-              </WKModal>
+              </OctoModal>
 
               {/* 附件未发送切换会话确认弹窗 */}
-              <WKModal
+              <OctoModal
                 visible={!!this.state.pendingConfirm}
                 title={t("base.chatPage.unsentAttachmentTitle")}
                 footerConfig={{
@@ -2016,10 +2015,10 @@ export default class ChatPage extends Component<any, ChatPageState> {
                 onCancel={() => this.setState({ pendingConfirm: null })}
                 options={{ closable: false }}
               >
-                <p className="wk-modal-confirm-text">
+                <p className="octo-ui-modal-confirm__description">
                   {t("base.chatPage.unsentAttachmentContent")}
                 </p>
-              </WKModal>
+              </OctoModal>
             </div>
           );
         }}
