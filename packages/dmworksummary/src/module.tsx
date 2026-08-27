@@ -12,8 +12,10 @@ import ScheduleListPage from "./pages/ScheduleListPage";
 import { getChatCandidates, getSummaryShare } from "./api/summaryApi";
 import { getOriginalSummaryTaskId, shouldOpenOriginalSummary } from "./features/summaryShare/navigation";
 import { notifyChatSummaryCreated } from "./utils/chatSummaryActions";
-import { getSummaryAttentionBadge, refreshSummaryAttentionBadge, setSummaryAttentionBadge } from "./utils/summaryAttentionBadge";
+import { getSummaryAttentionBadge, readSummaryAttentionCount, refreshSummaryAttentionBadge, setSummaryAttentionBadge } from "./utils/summaryAttentionBadge";
 import { createAttentionSync, shouldRefreshForMessage, type AttentionSync } from "./utils/summaryAttentionSync";
+import { createAttentionPoll, type AttentionPoll } from "./utils/summaryAttentionPoll";
+import { createAttentionLeader, type AttentionLeader } from "./utils/summaryAttentionLeader";
 import { isSupportedChannelType } from "./utils/channelType";
 import { SMALL_SCREEN_WIDTH } from "@octo/base/src/Components/WKLayout/layoutWidth";
 import ChatSummaryStarButton from "./components/ChatSummaryStarButton";
@@ -28,6 +30,11 @@ let _spaceReadyHandler: (() => void) | null = null;
 let _attentionSync: AttentionSync | null = null;
 let _visibilityHandler: (() => void) | null = null;
 let _focusHandler: (() => void) | null = null;
+// 后台兜底轮询 + 跨标签页 leader 选举。与上面几个 handler 同生命周期，
+// 它们持有真实的 setTimeout/setInterval，热更时必须一并拆掉。
+let _attentionPoll: AttentionPoll | null = null;
+let _attentionLeader: AttentionLeader | null = null;
+let _menuActivatedHandler: (() => void) | null = null;
 let _imMessageHandler: ((message: unknown) => void) | null = null;
 let _imConnectHandler: ((status: unknown) => void) | null = null;
 const openingSummaryShares = new Set<string>();
@@ -227,6 +234,9 @@ export class SummaryModule implements IModule {
             // 计数现在含义比「未处理邀请」宽得多，显错 Space 的数字更具误导性。
             setSummaryAttentionBadge(0);
             refreshSummaryAttentionBadge();
+            // 切 Space 是一次明确的用户活动：把轮询拉回基础档。否则上一个 Space 安静
+            // 了很久、间隔已退到 60s，切过去之后新 Space 的变化要等一分钟才能看到。
+            _attentionPoll?.notifyActivity();
         };
         _spaceReadyHandler = () => {
             initialSpaceReady = true;
@@ -245,17 +255,74 @@ export class SummaryModule implements IModule {
 
         // 回到标签页 / 重新聚焦。邀请场景没有 IM 推送可依赖（产品定下邀请不发 IM），
         // 靠的就是这两条。两个事件常常相继触发，由去抖合并成一次。
+        // ═══ 无人值守时的兜底轮询 ═══
+        // 上面那些触发源都要求【有事发生】：用户切回来、IM 来消息、IM 重连。
+        // 但有两个状态没有任何事件可搭：被拉进多人总结（邀请不发 IM），以及
+        // 「轮到你提交了」（pending_submission，服务端派生状态，同样无推送）。
+        // 桌面端一开就是一整天，这两个状态下红点可以一整天不动。代价控制在
+        // 自适应退避 + 可见性门控 + 跨标签页只一份上，详见
+        // utils/summaryAttentionPoll.ts 与 utils/summaryAttentionLeader.ts 头部注释。
+        _attentionPoll = createAttentionPoll({
+            // 后台轮询【不】传 fresh：它是唯一一条无人值守就会产生的流量，
+            // 让它吃服务端 5s 缓存，多个用户的 tick 撞在一起时后端只算一次。
+            fetchCount: async () => {
+                const count = await readSummaryAttentionCount();
+                // null = 未登录 / Space 未就绪 / 飞行中切了 Space，本次没有可用样本。
+                // 抄当前值回去，在调度器眼里就是一次「值未变」：不污染红点，也不会
+                // 把这种早退当成失败去退避（未登录状态下退到 60s 毫无意义，登录后
+                // 又得慢慢爬回来）。
+                return count ?? getSummaryAttentionBadge();
+            },
+            isVisible: () => typeof document === 'undefined' || document.visibilityState === 'visible',
+            onCount: (count) => {
+                // leader 把结果广播给其它标签页，它们不必各发一份请求。降级模式下
+                // publish 是 no-op（没有 channel），而那种情况下每个标签页本来就在自己拉。
+                _attentionLeader?.publish(count, WKApp.shared.currentSpaceId ?? '');
+            },
+        });
+
+        _attentionLeader = createAttentionLeader({
+            onBecomeLeader: () => _attentionPoll?.start(),
+            onResignLeader: () => _attentionPoll?.stop(),
+            onRemoteCount: (count, spaceId) => {
+                // 只接受与本标签页当前 Space 相同的广播：计数是 space-scoped 的，
+                // 各标签页可能停在不同 Space 上，写错 Space 的数字比不刷新更糟。
+                if (!spaceId || spaceId !== WKApp.shared.currentSpaceId) return;
+                // 直接设值、不参与 ticket 排序：广播不是本标签页发出的读取，没有
+                // 属于它的发出时刻可以排。它也不能抢号：若本标签页此刻正有一个用户
+                // 动作触发的读取在飞，那个读取才更权威（它带 fresh=1，且反映的是本
+                // 标签页用户刚做完的动作），它回来时会盖掉广播值。
+                setSummaryAttentionBadge(count);
+            },
+        });
+        _attentionLeader.start();
+
+        // 可见性切换身兼两职：刷一次（_attentionSync）+ 控制轮询起停（不可见就【停表】，
+        // 而不是空转跳拍）。两件事语义不同：前者是「现在刷一次」，后者是「接下来还
+        // 要不要接着轮」。
         _visibilityHandler = () => {
-            if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+            const visible = typeof document === 'undefined' || document.visibilityState === 'visible';
+            _attentionPoll?.setVisible(visible);
+            if (!visible) return;
             _attentionSync?.trigger();
         };
-        _focusHandler = () => _attentionSync?.trigger();
+        _focusHandler = () => {
+            // 聚焦与可见性常常相继到达；刷新那边由固定窗口合并，轮询这边由
+            // notifyActivity 自带的互斥与重排吸掉，不会变成两发请求。
+            _attentionSync?.trigger();
+            _attentionPoll?.notifyActivity();
+        };
         if (typeof document !== 'undefined') {
             document.addEventListener('visibilitychange', _visibilityHandler);
         }
         if (typeof window !== 'undefined') {
             window.addEventListener('focus', _focusHandler);
         }
+
+        // 站内路由切换（NavRail 菜单激活）同样算一次活动：用户在应用内走动说明他在用，
+        // 轮询应该从退避档回到基础档。注意切标签页不会发这个事件，两者不重叠。
+        _menuActivatedHandler = () => _attentionPoll?.notifyActivity();
+        WKApp.mittBus.on('wk:active-menu-changed', _menuActivatedHandler);
 
         // IM 侧两条：收到群内总结完成提示（type-21 或 PR1534 之后的 WK_TIP 2000），
         // 以及重连成功后补齐离线期间的变更。用 try/catch 包住：红点是锦上添花，
@@ -303,38 +370,63 @@ export class SummaryModule implements IModule {
     }
 }
 
+/**
+ * 拆掉模块级的监听与定时器。
+ *
+ * 单独导出而不是直接写在 `import.meta.hot.dispose` 的回调里，是为了让它
+ * 【可被单测真的调一遍】：vitest 跑的是非 HMR 构建，`import.meta.hot` 恒为
+ * undefined，写在里面的代码在测试里永远不会执行——而「加了监听/定时器却忘了
+ * 拆」正是这个模块真实发生过的 bug，且代价很实：一个下午的开发会话能叠出
+ * 几十条并行轮询链，而且旧链持有的是旧模块实例。提成函数后，清单是否完整
+ * 就能被断言，而不是只能靠人读。幂等：重复调用无副作用。
+ */
+export function disposeSummaryModuleListeners(): void {
+    if (_spaceChangedHandler) {
+        WKApp.mittBus.off('space-changed', _spaceChangedHandler);
+        _spaceChangedHandler = null;
+    }
+    if (_spaceReadyHandler) {
+        WKApp.mittBus.off('space-ready', _spaceReadyHandler);
+        _spaceReadyHandler = null;
+    }
+    // 外部事件监听也要拆，否则每次热更都会叠一层，一个 visibilitychange
+    // 最后会打出 N 个请求。
+    if (_visibilityHandler && typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', _visibilityHandler);
+    }
+    _visibilityHandler = null;
+    if (_focusHandler && typeof window !== 'undefined') {
+        window.removeEventListener('focus', _focusHandler);
+    }
+    _focusHandler = null;
+    try {
+        const sdk = WKSDK.shared();
+        if (_imMessageHandler) sdk.chatManager.removeMessageListener(_imMessageHandler as any);
+        if (_imConnectHandler) sdk.connectManager.removeConnectStatusListener(_imConnectHandler as any);
+    } catch {
+        // 与注册处对称：SDK 不可用时无需拆。
+    }
+    _imMessageHandler = null;
+    _imConnectHandler = null;
+    _attentionSync?.cancel();
+    _attentionSync = null;
+    // 轮询与 leader 心跳都是真实的定时器，漏一个就会在每次热更后叠一层。
+    // 先停 leader：它会回调 onResignLeader 把轮询停表，同时关掉 BroadcastChannel
+    // 并让出租约（让其它标签页立即接管，不必等租约过期）。
+    _attentionLeader?.stop();
+    _attentionLeader = null;
+    // 再显式 stop 一次：降级模式下轮询是被直接拉起来的，不依赖 leader 回调；
+    // stop 幂等，多调一次比漏一个定时器安全。
+    _attentionPoll?.stop();
+    _attentionPoll = null;
+    if (_menuActivatedHandler) {
+        WKApp.mittBus.off('wk:active-menu-changed', _menuActivatedHandler);
+        _menuActivatedHandler = null;
+    }
+}
+
 if (import.meta.hot) {
-    import.meta.hot.dispose(() => {
-        if (_spaceChangedHandler) {
-            WKApp.mittBus.off('space-changed', _spaceChangedHandler);
-            _spaceChangedHandler = null;
-        }
-        if (_spaceReadyHandler) {
-            WKApp.mittBus.off('space-ready', _spaceReadyHandler);
-            _spaceReadyHandler = null;
-        }
-        // 外部事件监听也要拆，否则每次热更都会叠一层，一个 visibilitychange
-        // 最后会打出 N 个请求。
-        if (_visibilityHandler && typeof document !== 'undefined') {
-            document.removeEventListener('visibilitychange', _visibilityHandler);
-        }
-        _visibilityHandler = null;
-        if (_focusHandler && typeof window !== 'undefined') {
-            window.removeEventListener('focus', _focusHandler);
-        }
-        _focusHandler = null;
-        try {
-            const sdk = WKSDK.shared();
-            if (_imMessageHandler) sdk.chatManager.removeMessageListener(_imMessageHandler as any);
-            if (_imConnectHandler) sdk.connectManager.removeConnectStatusListener(_imConnectHandler as any);
-        } catch {
-            // 与注册处对称：SDK 不可用时无需拆。
-        }
-        _imMessageHandler = null;
-        _imConnectHandler = null;
-        _attentionSync?.cancel();
-        _attentionSync = null;
-    });
+    import.meta.hot.dispose(disposeSummaryModuleListeners);
 }
 
 /**

@@ -71,8 +71,8 @@ describe('summaryAttentionBadge (#1359)', () => {
         expect(WKApp.menus.refresh).toHaveBeenCalledTimes(1);
     });
 
-    it('refreshSummaryAttentionBadge 从 listSummaries 拉取 attention_count（未读∪邀请∪待提交）', async () => {
-        vi.mocked(api.listSummaries).mockResolvedValue({
+    it('refreshSummaryAttentionBadge 拉取 attention_count（未读∪邀请∪待提交）', async () => {
+        vi.mocked(api.fetchSummaryAttentionCounts).mockResolvedValue({
             items: [],
             total: 0,
             attention_count: 5,
@@ -83,14 +83,14 @@ describe('summaryAttentionBadge (#1359)', () => {
 
         await refreshSummaryAttentionBadge();
 
-        expect(api.listSummaries).toHaveBeenCalledWith({ page: 1, page_size: 1 });
+        expect(api.fetchSummaryAttentionCounts).toHaveBeenCalledWith({ fresh: true });
         expect(getSummaryAttentionBadge()).toBe(5);
     });
 
     // 口径回归：#1359 首版读 pending_invitation_count，侧边栏数字会小于卡片红点数。
     // 侧边栏必须与 needs_attention 同源，否则「显示 1 条、进去 3 个红点」。
     it('refreshSummaryAttentionBadge 不再只读 pending_invitation_count', async () => {
-        vi.mocked(api.listSummaries).mockResolvedValue({
+        vi.mocked(api.fetchSummaryAttentionCounts).mockResolvedValue({
             items: [],
             total: 0,
             attention_count: 3,
@@ -105,7 +105,7 @@ describe('summaryAttentionBadge (#1359)', () => {
     });
 
     it('refreshSummaryAttentionBadge 网络异常静默失败，不抛错', async () => {
-        vi.mocked(api.listSummaries).mockRejectedValue(new Error('network'));
+        vi.mocked(api.fetchSummaryAttentionCounts).mockRejectedValue(new Error('network'));
         setSummaryAttentionBadge(4);
 
         await expect(refreshSummaryAttentionBadge()).resolves.toBeUndefined();
@@ -114,7 +114,7 @@ describe('summaryAttentionBadge (#1359)', () => {
     });
 
     it('refreshSummaryAttentionBadge 响应缺 attention_count 时归零', async () => {
-        vi.mocked(api.listSummaries).mockResolvedValue({
+        vi.mocked(api.fetchSummaryAttentionCounts).mockResolvedValue({
             items: [],
             total: 0,
             unread_count: 0,
@@ -134,13 +134,13 @@ describe('summaryAttentionBadge (#1359)', () => {
         WKApp.shared.currentSpaceId = '';
         await refreshSummaryAttentionBadge();
 
-        expect(api.listSummaries).not.toHaveBeenCalled();
+        expect(api.fetchSummaryAttentionCounts).not.toHaveBeenCalled();
     });
 
     it('refreshSummaryAttentionBadge 丢弃跨 Space 的迟到响应', async () => {
         const responseA = deferred<any>();
         const responseB = deferred<any>();
-        vi.mocked(api.listSummaries)
+        vi.mocked(api.fetchSummaryAttentionCounts)
             .mockReturnValueOnce(responseA.promise)
             .mockReturnValueOnce(responseB.promise);
 
@@ -181,14 +181,14 @@ describe('summaryAttentionBadge — 按发出时刻排序', () => {
     it('在飞期间发起的刷新会另发请求，并以后发者为准', async () => {
         const first = deferred<any>();
         const second = deferred<any>();
-        vi.mocked(api.listSummaries)
+        vi.mocked(api.fetchSummaryAttentionCounts)
             .mockReturnValueOnce(first.promise)
             .mockReturnValueOnce(second.promise);
 
         const pendingFirst = refreshSummaryAttentionBadge();   // 团队标读后
         const pendingSecond = refreshSummaryAttentionBadge();  // 个人标读后
 
-        expect(api.listSummaries).toHaveBeenCalledTimes(2);
+        expect(api.fetchSummaryAttentionCounts).toHaveBeenCalledTimes(2);
 
         // 早发的探测带回变更前的快照，不得落盘。
         first.resolve({ attention_count: 1 });
@@ -203,7 +203,7 @@ describe('summaryAttentionBadge — 按发出时刻排序', () => {
     it('后发的探测先返回时，早发的陈旧响应不得覆盖它', async () => {
         const first = deferred<any>();
         const second = deferred<any>();
-        vi.mocked(api.listSummaries)
+        vi.mocked(api.fetchSummaryAttentionCounts)
             .mockReturnValueOnce(first.promise)
             .mockReturnValueOnce(second.promise);
 
@@ -223,7 +223,7 @@ describe('summaryAttentionBadge — 按发出时刻排序', () => {
     // 都会把刚发出的探测杀掉。一个什么都没改的写者不应该能作废更新的读取。
     it('直接设值（含 no-op）不会作废在飞探测', async () => {
         const probe = deferred<any>();
-        vi.mocked(api.listSummaries).mockReturnValueOnce(probe.promise);
+        vi.mocked(api.fetchSummaryAttentionCounts).mockReturnValueOnce(probe.promise);
         setSummaryAttentionBadge(3);
 
         const pending = refreshSummaryAttentionBadge();
@@ -238,7 +238,7 @@ describe('summaryAttentionBadge — 按发出时刻排序', () => {
     // 列表在发请求前领 ticket：它的快照早于探测，就算先返回也不能盖。
     it('先领号的列表写入不能覆盖后领号的探测', async () => {
         const probe = deferred<any>();
-        vi.mocked(api.listSummaries).mockReturnValueOnce(probe.promise);
+        vi.mocked(api.fetchSummaryAttentionCounts).mockReturnValueOnce(probe.promise);
 
         const listTicket = beginSummaryAttentionRead();   // 列表先发请求
         const pending = refreshSummaryAttentionBadge();   // 用户随后标读
@@ -275,7 +275,7 @@ describe('summaryAttentionBadge — 放弃路径还号 (ticket liveness)', () =>
     it('探测失败后还号：更早的在飞读取得以落盘', async () => {
         const older = deferred<any>();
         const newer = deferred<any>();
-        vi.mocked(api.listSummaries)
+        vi.mocked(api.fetchSummaryAttentionCounts)
             .mockReturnValueOnce(older.promise)
             .mockReturnValueOnce(newer.promise);
 
@@ -296,7 +296,7 @@ describe('summaryAttentionBadge — 放弃路径还号 (ticket liveness)', () =>
     it('探测跨 Space 早退后还号：更早的在飞读取不被卡死', async () => {
         const older = deferred<any>();
         const newer = deferred<any>();
-        vi.mocked(api.listSummaries)
+        vi.mocked(api.fetchSummaryAttentionCounts)
             .mockReturnValueOnce(older.promise)
             .mockReturnValueOnce(newer.promise);
 

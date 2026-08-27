@@ -7,9 +7,12 @@ import * as api from '../api/summaryApi';
  * 独立成文件的原因与 chatSummaryActions 相同：module.tsx 引入
  * react-dom/client，单测不便直接 import。
  *
- * 数据源：后端 GET /summaries 已返回全量 `attention_count`
- * (octo-smart-summary task.go，space-scoped via X-Space-Id header)，
- * 无需新增后端接口。用 page_size=1 拉取，只为拿 count 字段。
+ * 数据源：优先走窄端点 GET /summaries/attention（只返回四个计数，服务端带 5s
+ * 缓存）；该端点尚未部署时自动兜底回 GET /summaries?page_size=1 读同一个
+ * `attention_count` 字段（均 space-scoped via X-Space-Id header，口径一致；
+ * 具体见 api/summaryApi.ts 的 fetchSummaryAttentionCounts）。
+ * 之所以值得新增一个窄端点：红点现在多了一条无人值守的定时兜底轮询
+ * （utils/summaryAttentionPoll.ts），拿整页列表换三个整数的浪费会被频次放大。
  *
  * ⚠️ 口径：#1359 首版只读 `pending_invitation_count`（仅未处理邀请），
  * 导致侧边栏数字与卡片红点（`needs_attention`）不一致——用户会看到
@@ -24,9 +27,12 @@ import * as api from '../api/summaryApi';
  */
 let summaryAttentionBadge = 0;
 // 计数读取的单调取号。写入按【请求发出时刻】排序，而不是按响应到达顺序：
-// 只有“自己发出后再没人发过新读取”的响应才能落盘。两个写者（全局列表
-// loadData 与 page_size=1 探测）共用同一个号段，否则先发后到的旧快照会盖
-// 掉新值。
+// 只有“自己发出后再没人发过新读取”的响应才能落盘。现在有【三个】并发写者
+// 共用同一个号段：全局列表 loadData、用户动作触发的探测，以及后台兜底轮询
+// （utils/summaryAttentionPoll.ts）。轮询那个写者特别值得提：它是唯一一个在
+// 【没有任何用户动作】时也会开火的，所以“轮询先发、用户随后打开列表、
+// 轮询的旧响应最后到达”这类交错不需要用户配合就会发生。不排序的话，
+// 先发后到的旧快照会盖掉新值。
 let issueSeq = 0;
 
 export function getSummaryAttentionBadge(): number {
@@ -102,22 +108,55 @@ export function setSummaryAttentionBadge(count: number): void {
  * 还显示着数字。省一个轻量 GET 不值这个代价。
  */
 export async function refreshSummaryAttentionBadge(): Promise<void> {
+    try {
+        // 用户动作触发的刷新：带 fresh=1 绕过服务端 5s 缓存。用户刚做完一件事，
+        // 看到的数字必须是他那次动作之后的。
+        await readSummaryAttentionCount({ fresh: true });
+    } catch {
+        // 静默失败，保持旧值。readSummaryAttentionCount 内部已经还过号。
+    }
+}
+
+/**
+ * 读一次待关注计数，按 ticket 规则落盘，并把落盘用的值返回给调用方。
+ *
+ * 返回值的三态是给【兜底轮询】用的（utils/summaryAttentionPoll.ts 要靠
+ * 「这次的值跟上次比变没变」来决定退避档位），三种情况必须能区分开：
+ *   - number  → 成功取到一个当前 Space 的计数（不论是否真的写进了红点：
+ *               被更新的读取顶掉时值本身仍然是新鲜的，可以参与比较）；
+ *   - null    → 【这次没有可用样本】。前置条件不满足（未登录 / Space 未就绪），
+ *               或请求飞行期间用户切了 Space。它不是失败，也不是「值没变」，
+ *               调用方两边都不该记账：算失败会让切 Space 平白触发一次退避，
+ *               算未变化则会把一次跨 Space 早退伪装成一段安静期。
+ *   - throw   → 真的失败了（网络 / 5xx）。调用方据此退避。
+ *
+ * 号的领/交/还全在这里完成。定时轮询是号段的【第三个】并发写者（另两个是
+ * SummaryListPage.loadData 与本函数自身的用户动作调用），而且是唯一一个
+ * 没有用户动作也会开火的写者——把领号留给调用方，等于把最容易错的一步
+ * 复制三份。所有早退路径都必须还号，否则号段停在一个再也不会提交的号上，
+ * 一个发出更早、仍在飞、携带正确值的读取会被一并作废（ticket liveness）。
+ */
+export async function readSummaryAttentionCount(options?: { fresh?: boolean }): Promise<number | null> {
     const spaceId = WKApp.shared.currentSpaceId;
-    if (!WKApp.loginInfo.isLogined() || !WKApp.loginInfo.uid || !spaceId) return;
+    if (!WKApp.loginInfo.isLogined() || !WKApp.loginInfo.uid || !spaceId) return null;
 
     const ticket = beginSummaryAttentionRead();
+    let counts: api.SummaryAttentionCounts;
     try {
-        const resp = await api.listSummaries({ page: 1, page_size: 1 });
-        if (WKApp.shared.currentSpaceId !== spaceId) {
-            // 跨 Space 早退：本次读取作废，把号还回去，别把仍在飞的
-            // 更早读取一并卡死（ticket liveness）。
-            abandonSummaryAttentionRead(ticket);
-            return;
-        }
-        commitSummaryAttentionBadge(ticket, resp.attention_count ?? 0);
-    } catch {
-        // 静默失败，保持旧值。号也还回去：失败的读取不该作废一个
-        // 仍在飞、携带正确值的更早读取（ticket liveness）。
+        counts = await api.fetchSummaryAttentionCounts(options);
+    } catch (err) {
+        // 号还回去：失败的读取不该作废一个仍在飞、携带正确值的更早读取
+        // （ticket liveness）。抛出去让轮询知道该退避；用户动作路径在外层吞掉。
         abandonSummaryAttentionRead(ticket);
+        throw err;
     }
+    if (WKApp.shared.currentSpaceId !== spaceId) {
+        // 跨 Space 早退：本次读取作废，把号还回去，别把仍在飞的
+        // 更早读取一并卡死（ticket liveness）。
+        abandonSummaryAttentionRead(ticket);
+        return null;
+    }
+    const count = counts?.attention_count ?? 0;
+    commitSummaryAttentionBadge(ticket, count);
+    return count;
 }

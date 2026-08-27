@@ -157,7 +157,7 @@ describe('SummaryListPage — loadData 的读取号生死 (ticket liveness)', ()
     it('loadData 失败后还号：更早发出的探测仍能把正确值落盘', async () => {
         // 先有一个探测在飞（领号在前），它带着正确值但还没回来。
         const probe = deferred<any>();
-        vi.mocked(api.listSummaries).mockReturnValueOnce(probe.promise);
+        vi.mocked(api.fetchSummaryAttentionCounts).mockReturnValueOnce(probe.promise);
         const pendingProbe = refreshSummaryAttentionBadge();
 
         // 随后全局列表加载失败（领号在后）。
@@ -183,7 +183,7 @@ describe('SummaryListPage — loadData 的读取号生死 (ticket liveness)', ()
         // 此后新探测领的号仍在列表号之后且能正常落盘：证明成功 commit
         // 没有把号回退、给更早的陈旧快照开后门。
         const probe = deferred<any>();
-        vi.mocked(api.listSummaries).mockReturnValueOnce(probe.promise);
+        vi.mocked(api.fetchSummaryAttentionCounts).mockReturnValueOnce(probe.promise);
         const pendingProbe = refreshSummaryAttentionBadge();
         probe.resolve({ attention_count: 1 });
         await pendingProbe;
