@@ -1154,6 +1154,25 @@ describe("MarkdownContent — allowSingleDollarMath 放宽启发式但保留资�
     expect(visibleText(root)).toContain("$$");
   });
 
+  const rejectedContainerCases: Array<[string, string]> = [
+    ["blockquote", "> $$\n> \\frac{a}\n> $$"],
+    ["nested blockquote", "> > $$\n> > \\frac{a}\n> > $$"],
+    ["list item", "- $$\n  \\frac{a}\n  $$"],
+  ];
+
+  for (const [name, input] of rejectedContainerCases) {
+    it(`被拒绝的 display 在 ${name} 中不泄漏容器源码`, () => {
+      const root = renderContent(
+        <MarkdownContent content={input} allowSingleDollarMath />
+      );
+      const text = visibleText(root);
+      expect(root.querySelector(".katex")).toBeNull();
+      expect(text).toContain("$$\\frac{a}$$");
+      expect(text).not.toContain(">");
+      expect(text).not.toContain("\n\n\n");
+    });
+  }
+
   it("enableMath={false} 时即便有 $$ 也不渲染公式", () => {
     const root = renderContent(
       <MarkdownContent content={"$$E=mc^2$$"} enableMath={false} />

@@ -194,21 +194,8 @@ function hastNodeText(node: any): string {
  */
 function guardRemarkMathPlugin() {
   return (tree: any, file: any) => {
-    const source =
-      typeof file?.value === "string" ? file.value : String(file ?? "");
     const ctx = ((file.data ||= {}).mathCtx ||= { attempts: 0 });
     const literalFallback = (node: any): any => {
-      const start = node.position?.start?.offset;
-      const end = node.position?.end?.offset;
-      if (
-        typeof start === "number" &&
-        typeof end === "number" &&
-        start >= 0 &&
-        end >= start &&
-        end <= source.length
-      ) {
-        return { type: "text", value: source.slice(start, end) };
-      }
       const delimiter = node.type === "math" ? "$$" : "$";
       return { type: "text", value: `${delimiter}${node.value}${delimiter}` };
     };
