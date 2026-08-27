@@ -3,10 +3,15 @@ import { join } from "path";
 
 const DEFAULT_ELECTRON_UPDATER_API_PATH = "/api/v1/common/updater/";
 
+function isLocalhostHttpUrl(url: URL): boolean {
+  return url.protocol === "http:" &&
+    (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1");
+}
+
 function normalizeDirectoryUrl(value: string): string {
   try {
     const url = new URL(value);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+    if (url.protocol !== "https:" && !isLocalhostHttpUrl(url)) return "";
     if (url.search || url.hash) return "";
     return url.toString().endsWith("/") ? url.toString() : `${url.toString()}/`;
   } catch {
@@ -25,9 +30,21 @@ function deriveUpdaterApiUrlFromApiUrl(value: string | undefined): string | unde
 }
 
 function readBuiltElectronUpdaterApiUrl(): string | null | undefined {
+  return readBuiltString("electronUpdaterApiUrl");
+}
+
+function readBuiltElectronUpdateSigningTeamId(): string | null | undefined {
+  return readBuiltString("electronUpdateSigningTeamId");
+}
+
+function readBuiltElectronUpdateWindowsPublisherName(): string | null | undefined {
+  return readBuiltString("electronUpdateWindowsPublisherName");
+}
+
+function readBuiltString(key: string): string | null | undefined {
   try {
     const raw = readFileSync(join(__dirname, "../../build/electron-config.json"), "utf8");
-    const value = JSON.parse(raw)?.electronUpdaterApiUrl;
+    const value = JSON.parse(raw)?.[key];
     return typeof value === "string" ? value : null;
   } catch {
     return undefined;
@@ -49,6 +66,8 @@ const OCTO_CONFIG = {
   appId: "com.mininglamp.octo.web",
   name: "OCTO",
   updaterApiUrl: readElectronUpdaterApiUrl(),
+  updaterCodeSigningTeamId: (readBuiltElectronUpdateSigningTeamId() ?? process.env.ELECTRON_UPDATE_SIGNING_TEAM_ID ?? "").trim(),
+  updaterWindowsPublisherName: (readBuiltElectronUpdateWindowsPublisherName() ?? process.env.ELECTRON_UPDATE_WINDOWS_PUBLISHER_NAME ?? "").trim(),
 };
 
 function readBuiltOidcApiOrigin(): string | null | undefined {

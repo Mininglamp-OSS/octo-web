@@ -7,8 +7,8 @@ import {
   t,
   getElectronIpcBridge,
   isElectronPowered,
+  sendElectronCancelUpdateDownload,
   sendElectronCheckUpdate,
-  sendElectronInstallUpdate,
   sendElectronUpdateApp,
 } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
@@ -57,7 +57,7 @@ export default class MainVM extends ProviderListener {
   showAppUpdate = false;
   showAppUpdateOperation = false;
   appUpdateProgress = 0;
-  appUpdateDownloaded = false;
+  appUpdateDownloadedBytes = 0;
 
   private static VERSION_READ_KEY_PREFIX = "dmwork_last_read_version_";
 
@@ -191,7 +191,7 @@ export default class MainVM extends ProviderListener {
       this.showAppUpdate = false;
       this.showAppUpdateOperation = Boolean(this.lastVersionInfo);
       this.appUpdateProgress = 0;
-      this.appUpdateDownloaded = false;
+      this.appUpdateDownloadedBytes = 0;
       this.notifyListener();
       Toast.error(typeof message === "string" ? message : t("base.navRail.settingsCenter.value.updateCheckFailed"));
     });
@@ -206,7 +206,7 @@ export default class MainVM extends ProviderListener {
       this.showAppUpdate = false;
       this.showAppUpdateOperation = true;
       this.appUpdateProgress = 0;
-      this.appUpdateDownloaded = false;
+      this.appUpdateDownloadedBytes = 0;
       this.notifyListener();
     });
     // 没有可用更新事件
@@ -215,7 +215,7 @@ export default class MainVM extends ProviderListener {
       this.showAppUpdate = false;
       this.showAppUpdateOperation = false;
       this.appUpdateProgress = 0;
-      this.appUpdateDownloaded = false;
+      this.appUpdateDownloadedBytes = 0;
       this.notifyListener();
       Toast.success(t("app.main.updateAlreadyLatest"));
     });
@@ -223,8 +223,12 @@ export default class MainVM extends ProviderListener {
     this.addIpcListener(IPC_UPDATE_DOWNLOAD_PROGRESS, (event, message) => {
       this.showAppUpdate = true;
       this.showAppUpdateOperation = false;
-      this.appUpdateProgress = message;
-      this.appUpdateDownloaded = false;
+      this.appUpdateProgress = typeof message === "number"
+        ? message
+        : typeof message?.percent === "number"
+          ? message.percent
+          : -1;
+      this.appUpdateDownloadedBytes = typeof message?.downloadedBytes === "number" ? message.downloadedBytes : 0;
       this.notifyListener();
     });
     // 监听下载完成事件
@@ -235,12 +239,12 @@ export default class MainVM extends ProviderListener {
         forceUpdate: Boolean(message.forceUpdate),
       };
       this.appUpdateProgress = 100;
+      this.appUpdateDownloadedBytes = 0;
       // The main process opens the downloaded package immediately, so the UI should not
       // return to a second confirmation state after download completes.
       this.showAppVersion = false;
       this.showAppUpdate = false;
       this.showAppUpdateOperation = false;
-      this.appUpdateDownloaded = true;
       this.markVersionRead();
       this.notifyListener();
     });
@@ -376,11 +380,11 @@ export default class MainVM extends ProviderListener {
 
   // 安装更新
   installUpdate() {
-    if (this.appUpdateDownloaded) {
-      sendElectronInstallUpdate();
-      return;
-    }
     sendElectronUpdateApp();
+  }
+
+  cancelUpdateDownload() {
+    sendElectronCancelUpdateDownload();
   }
 
   get menusList() {

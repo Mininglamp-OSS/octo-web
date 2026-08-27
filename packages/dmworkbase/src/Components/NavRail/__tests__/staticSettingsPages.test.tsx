@@ -103,7 +103,7 @@ describe("static settings pages", () => {
 
     renderPage("about", { environment: { ...webEnvironment, target: "desktop" } });
     expect(container.querySelector(".wk-settings-center__about-update-actions")).toBeTruthy();
-    expect(container.querySelector(".wk-settings-status-tag")?.textContent).toContain("尚未检查");
+    expect(container.querySelector(".wk-settings-status-tag")).toBeNull();
     expect(container.querySelector(".wk-settings-center__about-update")?.textContent).toBe("检查更新");
   });
 

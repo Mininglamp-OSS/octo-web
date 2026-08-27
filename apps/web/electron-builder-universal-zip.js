@@ -14,13 +14,10 @@ module.exports = {
     ],
   },
   afterAllArtifactBuild: async (buildResult) => {
-    const artifactPaths = buildResult.artifactPaths.filter((artifactPath) => {
+    for (const artifactPath of buildResult.artifactPaths) {
       if (artifactPath.endsWith('.dmg') || artifactPath.endsWith('.dmg.blockmap')) {
         fs.rmSync(artifactPath, { force: true });
-        return false;
       }
-      return true;
-    });
-    return artifactPaths;
+    }
   },
 };

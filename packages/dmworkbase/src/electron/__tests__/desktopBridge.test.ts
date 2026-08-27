@@ -9,9 +9,9 @@ import {
   isElectronPowered,
   isElectronShellBridgeAvailable,
   restartElectronApp,
+  sendElectronCancelUpdateDownload,
   sendElectronCheckUpdate,
   sendElectronConversationUnreadCount,
-  sendElectronInstallUpdate,
   sendElectronUpdateApp,
   startElectronScreenshot,
 } from "../desktopBridge";
@@ -71,7 +71,7 @@ describe("desktopBridge", () => {
     sendElectronConversationUnreadCount(7);
     sendElectronCheckUpdate();
     sendElectronUpdateApp();
-    sendElectronInstallUpdate();
+    sendElectronCancelUpdateDownload();
     startElectronScreenshot({ silent: true });
     await expect(getElectronMediaAccessStatus("camera")).resolves.toEqual({ status: "granted" });
     restartElectronApp();
@@ -79,7 +79,7 @@ describe("desktopBridge", () => {
     expect(send).toHaveBeenNthCalledWith(1, "conversation-manager-unread-count", 7);
     expect(send).toHaveBeenNthCalledWith(2, "check-update");
     expect(send).toHaveBeenNthCalledWith(3, "update-app");
-    expect(send).toHaveBeenNthCalledWith(4, "install-update");
+    expect(send).toHaveBeenNthCalledWith(4, "cancel-update-download");
     expect(send).toHaveBeenNthCalledWith(5, "screenshots-start", { silent: true });
     expect(send).toHaveBeenNthCalledWith(6, "restart-app");
     expect(invoke).toHaveBeenCalledWith("get-media-access-status", "camera");

@@ -1,5 +1,5 @@
 import WKApp from "../../App";
-import React, { Component, useId } from "react";
+import React, { Component, useState } from "react";
 import { Toast } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import WKButton from "../WKButton";
@@ -12,18 +12,21 @@ import SettingsCenter, { OpenSecretsRequest } from "./SettingsCenter";
 import type { AboutUpdateStatus } from "./settingsPages";
 import "./index.css";
 
+let updateProgressGradientSeq = 0;
+
 export interface NavSettingsPanelProps {
     settingSelected: boolean;
     showAppVersion: boolean;
     showAppUpdate: boolean;
     appUpdateProgress: number;
+    appUpdateDownloadedBytes?: number;
     showAppUpdateOperation: boolean;
-    appUpdateDownloaded?: boolean;
     lastVersionInfo?: { appVersion: string; updateDesc: string; forceUpdate?: boolean };
     onOpenOnboarding?: () => void;
     onToggleSetting: () => void;
     onSetShowAppVersion: (v: boolean) => void;
     onInstallUpdate: () => void;
+    onCancelUpdateDownload?: () => void;
     onNotifyListener: () => void;
 }
 
@@ -36,15 +39,21 @@ function UpdateRocketIllustration() {
     return <img className="wk-update-modal__illustration" src={updateRocketIllustration} width="160" height="160" alt="" />;
 }
 
-function UpdateProgressCircle({ progress }: { progress: number }) {
-    const gradientId = `wk-update-progress-gradient-${useId().replace(/:/g, "")}`;
+function formatDownloadedBytes(bytes?: number): string {
+    if (!bytes || bytes < 0) return "";
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function UpdateProgressCircle({ progress, downloadedBytes }: { progress: number; downloadedBytes?: number }) {
+    const [gradientId] = useState(() => `wk-update-progress-gradient-${++updateProgressGradientSeq}`);
     const radius = 64;
     const circumference = 2 * Math.PI * radius;
+    const indeterminate = progress < 0;
     const boundedProgress = Math.min(100, Math.max(0, progress));
     const dashOffset = circumference * (1 - boundedProgress / 100);
 
     return (
-        <div className="wk-update-modal__progress-circle" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={boundedProgress}>
+        <div className={`wk-update-modal__progress-circle${indeterminate ? " wk-update-modal__progress-circle--indeterminate" : ""}`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={indeterminate ? undefined : boundedProgress}>
             <svg viewBox="0 0 180 180" aria-hidden="true">
                 <defs>
                     <linearGradient id={gradientId} x1="154" y1="90" x2="52" y2="135" gradientUnits="userSpaceOnUse">
@@ -56,8 +65,8 @@ function UpdateProgressCircle({ progress }: { progress: number }) {
                 <circle className="wk-update-modal__progress-circle-value" cx="90" cy="90" r={radius} stroke={`url(#${gradientId})`} strokeDasharray={circumference} strokeDashoffset={dashOffset} transform="rotate(-90 90 90)" />
             </svg>
             <div className="wk-update-modal__progress-circle-label">
-                <strong>{Math.round(boundedProgress)}%</strong>
-                <span>{t("base.navRail.settingsPanel.updatingTitle")}</span>
+                <strong>{indeterminate ? "..." : `${Math.round(boundedProgress)}%`}</strong>
+                <span>{indeterminate ? formatDownloadedBytes(downloadedBytes) || t("base.navRail.settingsPanel.updatingTitle") : t("base.navRail.settingsPanel.updatingTitle")}</span>
             </div>
         </div>
     );
@@ -99,12 +108,13 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
             showAppVersion,
             showAppUpdate,
             appUpdateProgress,
+            appUpdateDownloadedBytes,
             showAppUpdateOperation,
-            appUpdateDownloaded,
             lastVersionInfo,
             onOpenOnboarding,
             onSetShowAppVersion,
             onInstallUpdate,
+            onCancelUpdateDownload,
             onNotifyListener,
         } = this.props;
         const forceUpdate = Boolean(lastVersionInfo?.forceUpdate);
@@ -142,18 +152,22 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                         onSetShowAppVersion(false);
                         onNotifyListener();
                     }}
-                    footer={showAppUpdateOperation ? (
+                    footer={showAppUpdate ? (
+                        <WKButton variant="secondary" onClick={onCancelUpdateDownload}>
+                            {t("base.common.cancel")}
+                        </WKButton>
+                    ) : showAppUpdateOperation ? (
                         <>
                             {!forceUpdate && <WKButton variant="secondary" onClick={() => { onSetShowAppVersion(false); onNotifyListener(); }}>{t("base.common.cancel")}</WKButton>}
                             <WKButton variant="primary" onClick={onInstallUpdate}>
-                                {appUpdateDownloaded ? t("base.common.install") : t("base.common.update")}
+                                {t("base.common.update")}
                             </WKButton>
                         </>
                     ) : undefined}
                 >
                     <div className="wk-update-modal__body">
                         {showAppUpdate ? <>
-                            <UpdateProgressCircle progress={appUpdateProgress} />
+                            <UpdateProgressCircle progress={appUpdateProgress} downloadedBytes={appUpdateDownloadedBytes} />
                             {lastVersionInfo && <div className="wk-update-modal__summary">
                                 <div className="wk-update-modal__versions">{t("base.navRail.settingsPanel.currentVersion")} {WKApp.config.appVersion}&nbsp;&nbsp;{t("base.navRail.settingsPanel.targetVersion")} {lastVersionInfo.appVersion}</div>
                                 <div className="wk-update-modal__content">

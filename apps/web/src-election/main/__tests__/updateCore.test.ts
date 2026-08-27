@@ -6,10 +6,13 @@ import {
   getMacAppBundlePath,
   getUpdaterPlatform,
   isAllowedUpdaterPackageUrl,
+  isNewerVersion,
   isZipUpdatePackage,
   parseUpdaterCheckResult,
   parseUpdateInfo,
 } from "../updateCore";
+
+const SHA512_HEX = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 describe("desktop updater core", () => {
   it("maps Electron platforms to updater system path segments", () => {
@@ -48,7 +51,12 @@ describe("desktop updater core", () => {
       updaterApiUrl: "file:///tmp/updater/",
       version: "1.0.0",
       platform: "darwin",
-    })).toThrow("Updater API URL must be http(s)");
+    })).toThrow("Updater API URL must be https");
+    expect(() => buildUpdaterCheckUrl({
+      updaterApiUrl: "http://updates.example.test/api/",
+      version: "1.0.0",
+      platform: "darwin",
+    })).toThrow("Updater API URL must be https");
     expect(() => buildUpdaterCheckUrl({
       updaterApiUrl: "https://updates.example.test/api?token=abc",
       version: "1.0.0",
@@ -63,6 +71,7 @@ describe("desktop updater core", () => {
         url: " https://cdn.example.com/OCTO-Setup-1.0.0.exe ",
         notes: "Windows update",
         pub_date: "2026-08-20T00:00:00Z",
+        sha512: SHA512_HEX,
         force_update: true,
       }),
     ).toEqual({
@@ -70,7 +79,8 @@ describe("desktop updater core", () => {
       url: "https://cdn.example.com/OCTO-Setup-1.0.0.exe",
       notes: "Windows update",
       pub_date: "2026-08-20T00:00:00Z",
-      signature: "",
+      sha256: "",
+      sha512: SHA512_HEX,
       forceUpdate: true,
     });
   });
@@ -80,6 +90,7 @@ describe("desktop updater core", () => {
       parseUpdateInfo({
         version: "1.0.0",
         download_url: "https://cdn.example.com/OCTO-1.0.0-arm64.dmg",
+        sha512: SHA512_HEX,
         mandatory: "TRUE",
       }),
     ).toMatchObject({
@@ -93,12 +104,13 @@ describe("desktop updater core", () => {
       parseUpdaterCheckResult({
         data: {
           version: "1.0.1",
-          downloadUrl: "https://cdn.example.com/OCTO-1.0.1-arm64.dmg",
+          downloadUrl: "https://cdn.example.com/OCTO-1.0.1-universal.zip",
+          sha512: SHA512_HEX,
         },
-      }),
+      }, { platform: "darwin" }),
     ).toMatchObject({
       version: "1.0.1",
-      url: "https://cdn.example.com/OCTO-1.0.1-arm64.dmg",
+      url: "https://cdn.example.com/OCTO-1.0.1-universal.zip",
     });
   });
 
@@ -106,10 +118,11 @@ describe("desktop updater core", () => {
     expect(parseUpdaterCheckResult({ should_update: false })).toBeNull();
     expect(parseUpdaterCheckResult({ data: { hasUpdate: "False" } })).toBeNull();
     expect(parseUpdaterCheckResult({ data: null })).toBeNull();
+    expect(parseUpdaterCheckResult({ code: 0, msg: "ok" })).toBeNull();
   });
 
   it("rejects non-https updater manifest URLs by default", () => {
-    expect(() => parseUpdateInfo({ version: "1.0.0", url: "http://cdn.example.com/app.zip" })).toThrow(
+    expect(() => parseUpdateInfo({ version: "1.0.0", url: "http://cdn.example.com/app.zip", sha512: SHA512_HEX })).toThrow(
       "Updater response url must be https",
     );
   });
@@ -117,33 +130,57 @@ describe("desktop updater core", () => {
   it("allows localhost http updater manifest URLs only when explicitly enabled", () => {
     expect(
       parseUpdateInfo(
-        { version: "1.0.0", url: "http://127.0.0.1:9000/OCTO-1.0.0-universal.zip" },
+        { version: "1.0.0", url: "http://127.0.0.1:9000/OCTO-1.0.0-universal.zip", sha512: SHA512_HEX },
         { allowInsecureHttp: true },
       ),
     ).toMatchObject({
       url: "http://127.0.0.1:9000/OCTO-1.0.0-universal.zip",
     });
     expect(() => parseUpdateInfo(
-      { version: "1.0.0", url: "http://cdn.example.com/app.zip" },
+      { version: "1.0.0", url: "http://cdn.example.com/app.zip", sha512: SHA512_HEX },
       { allowInsecureHttp: true },
     )).toThrow("Updater response url must be https");
   });
 
   it("rejects updater manifest URLs that cannot be opened safely", () => {
-    expect(() => parseUpdateInfo({ version: "1.0.0", url: "file:///tmp/app.exe" })).toThrow(
+    expect(() => parseUpdateInfo({ version: "1.0.0", url: "file:///tmp/app.exe", sha512: SHA512_HEX })).toThrow(
       "Updater response url must be https",
     );
+  });
+
+  it("rejects updater payloads without a package checksum", () => {
+    expect(() => parseUpdateInfo({
+      version: "1.0.0",
+      url: "https://cdn.example.com/OCTO-1.0.0-universal.zip",
+    })).toThrow("Updater response is missing package checksum");
+  });
+
+  it("accepts the legacy signature field as a sha512 package checksum", () => {
+    expect(parseUpdateInfo({
+      version: "1.0.0",
+      url: "https://cdn.example.com/OCTO-1.0.0-universal.zip",
+      signature: SHA512_HEX,
+    })).toMatchObject({
+      sha512: SHA512_HEX,
+    });
+  });
+
+  it("rejects updater download URLs from a different origin when requested", () => {
+    expect(() => parseUpdateInfo(
+      { version: "1.0.0", url: "https://cdn.example.com/OCTO-1.0.0-universal.zip", sha512: SHA512_HEX },
+      { platform: "darwin", expectedDownloadOrigin: "https://updates.example.test" },
+    )).toThrow("Updater response url origin does not match updater API origin");
   });
 
   it("rejects updater package URLs that do not match the current platform", () => {
     expect(
       parseUpdateInfo(
-        { version: "1.0.0", url: "https://cdn.example.com/OCTO-1.0.0-universal.zip" },
+        { version: "1.0.0", url: "https://cdn.example.com/OCTO-1.0.0-universal.zip", sha512: SHA512_HEX },
         { platform: "darwin" },
       ).url,
     ).toBe("https://cdn.example.com/OCTO-1.0.0-universal.zip");
     expect(() => parseUpdateInfo(
-      { version: "1.0.0", url: "https://cdn.example.com/OCTO-1.0.0-universal.zip" },
+      { version: "1.0.0", url: "https://cdn.example.com/OCTO-1.0.0-universal.zip", sha512: SHA512_HEX },
       { platform: "win32" },
     )).toThrow("Updater response url extension does not match current platform");
   });
@@ -181,5 +218,12 @@ describe("desktop updater core", () => {
   it("resolves the macOS app bundle name", () => {
     expect(getMacAppBundleName("/Applications/OCTO.app")).toBe("OCTO.app");
     expect(() => getMacAppBundleName("/Applications/OCTO")).toThrow("macOS app bundle path must end with .app");
+  });
+
+  it("compares simple release versions", () => {
+    expect(isNewerVersion("1.0.1", "1.0.0")).toBe(true);
+    expect(isNewerVersion("v1.2.0", "1.1.9")).toBe(true);
+    expect(isNewerVersion("1.0.0", "1.0.0")).toBe(false);
+    expect(isNewerVersion("1.0.0", "1.0.1")).toBe(false);
   });
 });

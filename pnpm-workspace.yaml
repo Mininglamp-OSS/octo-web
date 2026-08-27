@@ -7,6 +7,9 @@ packages:
 onlyBuiltDependencies:
   - esbuild
 
+# macOS universal Electron packages need both darwin x64 and arm64 optional
+# native packages on the same install, otherwise @electron/universal cannot
+# merge the two temporary app bundles deterministically.
 supportedArchitectures:
   os:
     - current
@@ -30,3 +33,12 @@ patchedDependencies:
   # 导致 electron-screenshots -> debug -> ms 等传递依赖漏进 app.asar（运行时 Cannot find module 'ms'）。
   # 补丁让收集器以 package.json 声明为准补全依赖图。
   app-builder-lib@26.8.1: patches/app-builder-lib@26.8.1.patch
+
+allowBuilds:
+  canvas: set this to true or false
+  electron: set this to true or false
+  electron-winstaller: set this to true or false
+  esbuild: set this to true or false
+  msw: set this to true or false
+  sharp: set this to true or false
+  spawn-sync: set this to true or false
