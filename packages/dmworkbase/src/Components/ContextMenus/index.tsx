@@ -21,7 +21,6 @@ export interface ContextMenusTrigger {
     clientX: number
     clientY: number
     preventDefault(): void
-    currentTarget?: EventTarget | null
 }
 
 export interface ContextMenusContext {
@@ -251,23 +250,54 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
             this.hide()
             return
         }
-        const items = Array.from(
-            this.contextMenusRef?.querySelectorAll<HTMLElement>(':scope > ul > [role="menuitem"]') ?? [],
-        )
+        if (event.key === "Tab") {
+            this.hide()
+            return
+        }
+
+        const activeItem = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('[role="menuitem"]')
+        const activeList = activeItem?.parentElement
+        const parentItem = activeList?.closest<HTMLElement>('[role="menuitem"]')
+        const items = Array.from(activeList?.querySelectorAll<HTMLElement>(':scope > [role="menuitem"]') ?? [])
         if (items.length === 0) return
-        const current = items.indexOf(document.activeElement as HTMLElement)
+        const current = items.indexOf(activeItem as HTMLElement)
         let next = current
         if (event.key === "ArrowDown") next = current < 0 ? 0 : (current + 1) % items.length
         else if (event.key === "ArrowUp") next = current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length
         else if (event.key === "Home") next = 0
         else if (event.key === "End") next = items.length - 1
+        else if (event.key === "ArrowLeft" && parentItem) {
+            event.preventDefault()
+            parentItem.focus()
+            return
+        } else if (event.key === "ArrowRight" && activeItem) {
+            const firstChild = activeItem.querySelector<HTMLElement>(':scope > .wk-ctx-submenu > ul > [role="menuitem"]')
+            if (!firstChild) return
+            event.preventDefault()
+            firstChild.focus()
+            return
+        }
         else if ((event.key === "Enter" || event.key === " ") && current >= 0) {
             event.preventDefault()
+            const firstChild = items[current].querySelector<HTMLElement>(':scope > .wk-ctx-submenu > ul > [role="menuitem"]')
+            if (firstChild) {
+                firstChild.focus()
+                return
+            }
             items[current].click()
             return
         } else return
         event.preventDefault()
         items[next].focus()
+    }
+
+    _activateItem(onClick?: () => void) {
+        const activeElement = document.activeElement
+        if (activeElement && this.contextMenusRef?.contains(activeElement) && this._returnFocus?.isConnected) {
+            this._returnFocus.focus()
+        }
+        this.hide()
+        onClick?.()
     }
 
     _renderItem(m: ContextMenusData, i: number): ReactNode {
@@ -282,6 +312,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                 key={i}
                 data-action-key={m.actionKey}
                 role="menuitem"
+                aria-haspopup={hasChildren ? "menu" : undefined}
                 tabIndex={-1}
                 data-testid={m.testid}
                 className={classNames(m.danger && "wk-ctx-danger")}
@@ -291,8 +322,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                         e.stopPropagation()
                         return
                     }
-                    this.hide()
-                    if (m.onClick) m.onClick()
+                    this._activateItem(m.onClick)
                 }}
             >
                 {m.icon && <CtxIcon icon={m.icon} />}
@@ -301,7 +331,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                     <>
                         <ArrowIcon />
                         <div className="wk-ctx-submenu">
-                            <ul className="wk-ctx-submenu-list">
+                            <ul className="wk-ctx-submenu-list" role="menu">
                                 {m.children!.map((child, ci) => {
                                     if (child.separator) {
                                         return <div key={ci} className="wk-ctx-sep" />
@@ -313,8 +343,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                                             tabIndex={-1}
                                             onClick={(e) => {
                                                 e.stopPropagation()
-                                                this.hide()
-                                                if (child.onClick) child.onClick()
+                                                this._activateItem(child.onClick)
                                             }}
                                         >
                                             {child.icon && <CtxIcon icon={child.icon} />}

@@ -306,6 +306,58 @@ describe("ContextMenus keyboard navigation", () => {
         expect(document.activeElement).toBe(trigger)
     })
 
+    it("closes on Tab without trapping keyboard focus", () => {
+        const { context } = renderContextMenus()
+        const item = container.querySelector<HTMLElement>('[role="menuitem"]')!
+
+        act(() => item.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true })))
+
+        expect(context?.isShow()).toBe(false)
+    })
+
+    it("opens a submenu with the keyboard and returns to its parent", () => {
+        const childAction = vi.fn()
+        renderContextMenus(vi.fn(), [{
+            title: "Move to",
+            children: [
+                { title: "Group A", onClick: childAction },
+                { title: "Group B" },
+            ],
+        }])
+        const parent = container.querySelector<HTMLElement>('.wk-contextmenus > ul > [role="menuitem"]')!
+        const children = container.querySelectorAll<HTMLElement>('.wk-ctx-submenu [role="menuitem"]')
+
+        act(() => parent.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })))
+        expect(document.activeElement).toBe(children[0])
+        act(() => children[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })))
+        expect(document.activeElement).toBe(children[1])
+        act(() => children[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })))
+        expect(document.activeElement).toBe(parent)
+        act(() => parent.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })))
+        expect(document.activeElement).toBe(children[0])
+        act(() => children[0].dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })))
+        expect(childAction).toHaveBeenCalledTimes(1)
+    })
+
+    it("returns focus before invoking an action that opens another focus-managed surface", () => {
+        const observedFocus = vi.fn()
+        const { context } = renderContextMenus(vi.fn(), [{
+            title: "React",
+            onClick: () => observedFocus(document.activeElement),
+        }])
+        const trigger = container.querySelector<HTMLButtonElement>(".trigger")!
+        act(() => {
+            context?.hide()
+            trigger.focus()
+        })
+        dispatchContextMenu(trigger)
+
+        const item = container.querySelector<HTMLElement>('[role="menuitem"]')!
+        act(() => item.click())
+
+        expect(observedFocus).toHaveBeenCalledWith(trigger)
+    })
+
     it("restores the previously focused element after a mouse-opened menu closes", () => {
         const { context } = renderContextMenus()
         const composer = document.createElement("input")

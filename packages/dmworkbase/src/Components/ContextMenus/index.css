@@ -140,7 +140,8 @@ body[theme-mode=dark] .wk-ctx-submenu {
     box-shadow: var(--wk-shadow-lg), var(--wk-shadow-sm);
 }
 
-.wk-contextmenus li:hover > .wk-ctx-submenu {
+.wk-contextmenus li:hover > .wk-ctx-submenu,
+.wk-contextmenus li:focus-within > .wk-ctx-submenu {
     display: block;
 }
 
@@ -156,7 +157,8 @@ body[theme-mode=dark] .wk-ctx-submenu {
 }
 
 /* 子菜单向左展开（靠近右侧视口边缘时） */
-.wk-contextmenus-flip-submenu li:hover > .wk-ctx-submenu {
+.wk-contextmenus-flip-submenu li:hover > .wk-ctx-submenu,
+.wk-contextmenus-flip-submenu li:focus-within > .wk-ctx-submenu {
     left: auto;
     right: calc(100% + 4px);
 }
