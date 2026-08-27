@@ -163,6 +163,18 @@ describe("MarkdownContent — block/flow 公式不再崩 + display 模式 (revie
     expect(visibleText(root)).toContain("$$");
   });
 
+  it("深层 blockquote 的非锚定 $$ 线性判定，不发生正则指数回溯", () => {
+    const prefix = "> ".repeat(40);
+    const input = [prefix + "x $$", prefix + "foo", prefix + "$$"].join("\n");
+    const startedAt = performance.now();
+    const root = renderContent(<MarkdownContent content={input} />);
+    const elapsedMs = performance.now() - startedAt;
+
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(visibleText(root)).toContain("x $$");
+    expect(elapsedMs).toBeLessThan(500);
+  });
+
   it("未闭合的流式 $$ 前缀不崩（渲染成文本，等后续 chunk）", () => {
     const root = renderContent(
       <MarkdownContent content={"正在计算 $$\\sum_{i=1}^n i ="} isStreaming />

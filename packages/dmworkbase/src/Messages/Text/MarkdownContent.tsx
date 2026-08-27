@@ -354,7 +354,7 @@ function isAnchoredDisplay(
   const lineStart = source.lastIndexOf("\n", openIdx - 1) + 1;
   const prefix = source.slice(lineStart, openIdx);
   // blockquote marker / indentation 属于容器前缀；其它源码说明 opener 实际位于行中。
-  const openerAtLineStart = /^(?:[ \t]*>[ \t]*)*[ \t]*$/.test(prefix);
+  const openerAtLineStart = isContainerPrefixOnly(prefix);
   let b = closeIdx + 2;
   while (b < source.length && (source[b] === " " || source[b] === "\t")) b += 1;
   const closerAtLineEnd =
@@ -362,12 +362,21 @@ function isAnchoredDisplay(
   return openerAtLineStart && closerAtLineEnd;
 }
 
+/** 行前缀只包含 blockquote marker 与水平空白；逐字符扫描避免嵌套量词指数回溯。 */
+function isContainerPrefixOnly(prefix: string): boolean {
+  for (let i = 0; i < prefix.length; i += 1) {
+    const char = prefix[i];
+    if (char !== " " && char !== "\t" && char !== ">") return false;
+  }
+  return true;
+}
+
 /** 某个 `$$` 是否可作为独占源码行的 display opener。 */
 function isStandaloneDisplayOpener(source: string, openIdx: number): boolean {
   if (openIdx < 0) return false;
   const lineStart = source.lastIndexOf("\n", openIdx - 1) + 1;
   const prefix = source.slice(lineStart, openIdx);
-  if (!/^(?:[ \t]*>[ \t]*)*[ \t]*$/.test(prefix)) return false;
+  if (!isContainerPrefixOnly(prefix)) return false;
   let after = openIdx + 2;
   while (
     after < source.length &&
