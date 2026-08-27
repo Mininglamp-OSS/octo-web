@@ -403,8 +403,8 @@
   },
   "visibility": {
     "public": "公开",
-    "space": "空间",
+    "space": "组织",
     "private": "仅自己",
-    "system": "官方"
+    "system": "公开"
   }
 }

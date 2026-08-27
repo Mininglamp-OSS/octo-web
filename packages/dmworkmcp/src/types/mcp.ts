@@ -263,7 +263,7 @@ export interface CreateMcpParams {
   notes?: string[];
 }
 
-export type McpVisibility = "public" | "private" | "system";
+export type McpVisibility = "public" | "space" | "private" | "system";
 
 /**
  * Payload for updating an existing MCP server entry (PATCH /mcps/{id}).

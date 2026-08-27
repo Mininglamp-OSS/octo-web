@@ -82,7 +82,10 @@ function clampToolDescription(desc: string | undefined | null): string {
 const EMPTY: CreateMcpParams = {
   name: "",
   slug: "",
-  category: "dev",
+  // Blank until the backend taxonomy loads — the create form then defaults to
+  // the first real category. A hardcoded slug ("dev") would render as a raw,
+  // unmatched value in the localized (dynamic) category Select.
+  category: "",
   icon: "",
   tags: [],
   slogan: "",
@@ -562,7 +565,13 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     let alive = true;
     listConnectorCategories()
       .then((names) => {
-        if (alive) setCategoryNames(names);
+        if (!alive) return;
+        setCategoryNames(names);
+        // Create mode: default to the first real category once the taxonomy
+        // loads (EMPTY.category is blank). Editing keeps the record's category.
+        if (!editing && names.length) {
+          setForm((prev) => (prev.category ? prev : { ...prev, category: names[0] }));
+        }
       })
       .catch(() => {});
     return () => {

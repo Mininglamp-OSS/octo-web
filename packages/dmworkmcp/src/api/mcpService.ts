@@ -583,11 +583,14 @@ async function resolveWriteCategory(
   throw new Error(t("mcp.errors.invalidRequest"));
 }
 
-/** Unified plugin visibility → legacy McpVisibility. `space` was the legacy
- *  "public within the Space" scope, which the UI labels public. */
+/** Unified plugin visibility → McpVisibility. Each scope is preserved so the
+ *  card chip can label it distinctly: system=公开(platform-wide),
+ *  space=组织(within the org), private=仅自己. A legacy "public" row (none in
+ *  the unified data) falls through to the platform-public bucket. */
 function mapVisibility(v: PluginVisibilityWire): McpListItem["visibility"] {
   if (v === "system") return "system";
   if (v === "private") return "private";
+  if (v === "space") return "space";
   return "public";
 }
 

@@ -403,8 +403,8 @@
   },
   "visibility": {
     "public": "Public",
-    "space": "Space",
+    "space": "Org",
     "private": "Private",
-    "system": "Official"
+    "system": "Public"
   }
 }
