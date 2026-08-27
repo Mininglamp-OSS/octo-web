@@ -24,6 +24,11 @@
 
 .wk-ctx-item {
     position: relative;
+    user-select: none;
+}
+
+body[theme-mode=dark] .wk-contextmenus .wk-ctx-item {
+    color: var(--wk-text-primary);
 }
 
 /* ── 图标 ── */
@@ -76,7 +81,8 @@ body[theme-mode=dark] .wk-ctx-submenu {
     box-shadow: var(--wk-shadow-lg), var(--wk-shadow-sm);
 }
 
-.wk-contextmenus .wk-ctx-item:hover > .wk-ctx-submenu {
+.wk-contextmenus .wk-ctx-item:hover > .wk-ctx-submenu,
+.wk-contextmenus .wk-ctx-item:focus-within > .wk-ctx-submenu {
     display: block;
 }
 
@@ -92,7 +98,8 @@ body[theme-mode=dark] .wk-ctx-submenu {
 }
 
 /* 子菜单向左展开（靠近右侧视口边缘时） */
-.wk-contextmenus-flip-submenu .wk-ctx-item:hover > .wk-ctx-submenu {
+.wk-contextmenus-flip-submenu .wk-ctx-item:hover > .wk-ctx-submenu,
+.wk-contextmenus-flip-submenu .wk-ctx-item:focus-within > .wk-ctx-submenu {
     left: auto;
     right: calc(100% + 4px);
 }

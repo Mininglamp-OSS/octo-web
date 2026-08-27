@@ -395,6 +395,79 @@ export class ChatContentPage extends Component<
   private _unsubscribeChannelInfoListener?: () => void;
   private _unsubscribeChannelSearchConfig?: () => void;
   private readonly titlePageOwner = Symbol("chat-content-page");
+  private readonly channelSettingPanelRef = React.createRef<HTMLElement>();
+  private readonly chatContentRef = React.createRef<HTMLDivElement>();
+  private channelSettingReturnFocusElement?: HTMLElement;
+  private shouldRestoreChannelSettingFocus = false;
+
+  private _closeChannelSetting = () => {
+    this.shouldRestoreChannelSettingFocus = true;
+    this.setState({ showChannelSetting: false });
+  };
+
+  private _onChannelSettingKeyDown = (event: KeyboardEvent) => {
+    if (!this.state.showChannelSetting) return;
+
+    const panel = this.channelSettingPanelRef.current;
+    const chatContent = this.chatContentRef.current;
+    const eventTarget = event.target;
+    if (
+      !panel ||
+      !(eventTarget instanceof Node) ||
+      (!panel.contains(eventTarget) && !chatContent?.contains(eventTarget))
+    ) {
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      this._closeChannelSetting();
+      return;
+    }
+
+    if (event.key !== "Tab") return;
+
+    const focusableElements = Array.from(
+      panel.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]'
+      )
+    ).filter((element) => {
+      if (
+        element.closest('[aria-hidden="true"]') ||
+        element.getClientRects().length === 0
+      ) {
+        return false;
+      }
+
+      const routeView = element.closest<HTMLElement>(".wk-viewqueue-view");
+      if (!routeView) return true;
+
+      const route = routeView.parentElement;
+      const activeRouteView =
+        route?.querySelector<HTMLElement>(":scope > #wk-viewqueue-view-last") ||
+        route?.querySelector<HTMLElement>(":scope > .wk-viewqueue-view");
+      return routeView === activeRouteView;
+    });
+
+    if (focusableElements.length === 0) {
+      event.preventDefault();
+      panel.focus();
+      return;
+    }
+
+    const first = focusableElements[0];
+    const last = focusableElements[focusableElements.length - 1];
+    const activeElement = document.activeElement;
+    if (
+      !panel.contains(activeElement) ||
+      activeElement === panel ||
+      (event.shiftKey && activeElement === first) ||
+      (!event.shiftKey && activeElement === last)
+    ) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    }
+  };
 
   constructor(props: any) {
     super(props);
@@ -797,6 +870,27 @@ export class ChatContentPage extends Component<
     prevProps: ChatContentPageProps,
     prevState: ChatContentPageState
   ) {
+    if (!prevState.showChannelSetting && this.state.showChannelSetting) {
+      document.addEventListener(
+        "keydown",
+        this._onChannelSettingKeyDown,
+        true
+      );
+      this.shouldRestoreChannelSettingFocus = false;
+      this.channelSettingPanelRef.current?.focus();
+    } else if (prevState.showChannelSetting && !this.state.showChannelSetting) {
+      document.removeEventListener(
+        "keydown",
+        this._onChannelSettingKeyDown,
+        true
+      );
+      if (this.shouldRestoreChannelSettingFocus) {
+        this.channelSettingReturnFocusElement?.focus();
+      }
+      this.shouldRestoreChannelSettingFocus = false;
+      this.channelSettingReturnFocusElement = undefined;
+    }
+
     // 子区打开(入口二:页内子区选择)——本页 channel 为父群、activeThread 身份(channel_id)变化即一次
     // subchannel_opened,覆盖 onOpenThreadPanel / onThreadSelect 这类不 remount 只改 state 的页内入口。
     // 与挂载入口(入口一)的去重由 subchannelOpenFromMount 的 sentinel 负责:本支照发,若用户随后把该
@@ -914,6 +1008,11 @@ export class ChatContentPage extends Component<
   }) => void;
 
   componentWillUnmount() {
+    document.removeEventListener(
+      "keydown",
+      this._onChannelSettingKeyDown,
+      true
+    );
     chatPageTitleController.deactivate(this.titlePageOwner);
     WKApp.mittBus.off("wk:file-preview", this._onFilePreview);
     if (this._onPendingThread) {
@@ -1057,10 +1156,13 @@ export class ChatContentPage extends Component<
         )}
       >
         <div
+          ref={this.chatContentRef}
           className={classNames(
             "wk-chat-content-chat",
             selectionMode ? "wk-chat-content-chat-selection" : undefined
           )}
+          aria-hidden={showChannelSetting || undefined}
+          {...(showChannelSetting ? { inert: "" } : {})}
         >
           <div
             className={classNames(
@@ -1242,21 +1344,29 @@ export class ChatContentPage extends Component<
                     <div
                       data-testid="chat-channel-setting-entry"
                       className="wk-chat-conversation-header-right-item"
+                      role="button"
+                      tabIndex={0}
+                      aria-controls="chat-channel-setting-panel"
+                      aria-expanded={showChannelSetting}
+                      aria-label={t("base.channelSetting.title")}
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (this.state.showChannelSetting) {
+                          this._closeChannelSetting();
+                          return;
+                        }
+                        this.channelSettingReturnFocusElement = e.currentTarget;
                         // group_info_panel_opened:仅开面板(opening)且为群频道时发,props 恒空
-                        if (
-                          !this.state.showChannelSetting &&
-                          channel.channelType === ChannelTypeGroup
-                        ) {
+                        if (channel.channelType === ChannelTypeGroup) {
                           Dap.shared.track("group_info_panel_opened", {});
                         }
-                        this.setState((prevState) => {
-                          const opening = !prevState.showChannelSetting;
-                          return opening
-                            ? openChatRightPanel("channelSetting")
-                            : { showChannelSetting: false };
-                        });
+                        this.setState(openChatRightPanel("channelSetting"));
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          event.currentTarget.click();
+                        }
                       }}
                     >
                       <svg
@@ -1331,15 +1441,26 @@ export class ChatContentPage extends Component<
           </div>
         </div>
 
+        {showChannelSetting && (
+          <div
+            className="wk-chat-channelsetting-mask"
+            data-testid="chat-channel-setting-mask"
+            onClick={this._closeChannelSetting}
+          />
+        )}
+
         <Drawer
+          id="chat-channel-setting-panel"
+          ref={this.channelSettingPanelRef}
           inline
           keepDOM
           open={showChannelSetting}
           bodyFlush
           closable={false}
-          aria-label={t("base.chatPage.channelSettings")}
+          aria-label={t("base.channelSetting.title")}
           className="wk-chat-channelsetting"
           closeOnEsc={false}
+          tabIndex={-1}
           width="var(--wk-wdith-chat-channelsetting)"
         >
           <ErrorBoundary moduleName={t("base.chatPage.channelSettings")}>
@@ -1348,9 +1469,7 @@ export class ChatContentPage extends Component<
               key={channel.getChannelKey()}
               channel={channel}
               onClose={() => {
-                this.setState({
-                  showChannelSetting: false,
-                });
+                this._closeChannelSetting();
               }}
             ></ChannelSetting>
           </ErrorBoundary>

@@ -1728,12 +1728,13 @@ describe('批次B 需求3：参与者报告自己那条有编辑（can_edit_pers
             expandedReports: { 'test-uid': true, u_b: true },
             members: [
                 { ...submittedMember('test-uid', '我', '我的报告 [5]'), citations: [{ index: 5, sender: 's', content: 'c', sent_at: '', source: '' }] },
-                submittedMember('u_b', '李四', '李四的报告 [1]'),
+                submittedMember('u_b', '李四', '李四的报告 [1] [P1]'),
             ],
         };
         const json = JSON.stringify((page as any).renderParticipantReports());
         // 他人 [1] 被清；自己 [5] 保留（不被隐私清洗）。
         expect(json).not.toContain('[1]');
+        expect(json).toContain('[P1]');
         expect(json).toContain('[5]');
     });
 

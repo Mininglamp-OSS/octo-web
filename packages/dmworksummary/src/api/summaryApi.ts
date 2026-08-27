@@ -1,5 +1,5 @@
 import axios, { AxiosRequestConfig } from 'axios';
-import { WKApp, buildAcceptLanguage, Dap } from '@octo/base';
+import { WKApp, buildAcceptLanguage, Dap, convertMarkdownToDoc } from '@octo/base';
 import type {
     AgentChatHistory,
     AgentChatParams,
@@ -1026,4 +1026,22 @@ export async function getChatCandidates(params?: { keyword?: string; chat_type?:
 export async function getMemberCandidates(params?: { keyword?: string }): Promise<MemberCandidate[]> {
     const data = await get<MemberCandidate[]>('/summary-member-candidates', params as Record<string, unknown>);
     return data || [];
+}
+// ─── Copy & Convert to Document (octo-smart-summary#195) ────────────────
+
+/**
+ * 转为在线文档。
+ *
+ * 注意这里**不含任何 docs-backend REST 调用**：`packages/docs` 已在
+ * `#1363 feat: detach docs module from oss host` 之后从本仓库移除并被 oss-module-guard
+ * 禁止加回，OSS 侧直连它的 REST 端点会在没有部署 docs-backend 的形态下必然失败。
+ * 实际的「建文档 → 导入 markdown →（失败时）回滚」全部由闭源 docs 模块在
+ * `EndpointID.docsConvertMarkdown` 端口后面实现，跳转链接也由它用 buildDocLink 生成。
+ *
+ * 端口未接线（docsOn 关闭或 docs 模块不在当前 bundle 里）时抛
+ * DocsCapabilityUnavailableError —— 但调用方本就该用 isDocsConvertAvailable() 提前
+ * 隐藏入口，正常路径上不会走到这个分支。
+ */
+export async function convertSummaryToDoc(title: string, markdown: string): Promise<{ docId: string; url: string }> {
+    return convertMarkdownToDoc({ title, markdown });
 }

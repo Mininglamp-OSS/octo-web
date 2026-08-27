@@ -162,6 +162,11 @@
     line-height: 1.65;
 }
 
+.wk-message-base-bubble:focus-visible {
+    outline: var(--wk-sp-0-5) solid var(--wk-border-glow);
+    outline-offset: var(--wk-sp-0-5);
+}
+
 .wk-message-base-bubble-box.hide .wk-message-base-bubble {
     padding: 0px;
 }

@@ -44,6 +44,7 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
     footer,
     footerClassName,
     height,
+    id,
     inline = false,
     keepDOM,
     mask = false,
@@ -59,6 +60,7 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
     portalContainer,
     size = 'default',
     style,
+    tabIndex,
     title,
     visible,
     width,
@@ -161,6 +163,7 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
         data-octo-drawer-motion={motion ? 'true' : 'false'}
         data-octo-drawer-placement={placement}
         data-octo-drawer-size={size}
+        id={id}
         {...(!actualOpen ? { inert: '' } : {})}
         role="dialog"
         style={{
@@ -169,6 +172,7 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
           zIndex,
           ...style,
         }}
+        tabIndex={tabIndex}
       >
         <div className="octo-ui-drawer__dialog">
           {bodyNode}
@@ -180,6 +184,8 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
   const sideSheetProps: SideSheetReactProps & {
     'data-octo-drawer-placement': DrawerProps['placement']
     'data-octo-drawer-size': DrawerSize
+    id?: string
+    tabIndex?: number
   } = {
     'aria-label': ariaLabel ?? (typeof title === 'string' ? title : undefined),
     afterVisibleChange: handleVisibleChange,
@@ -196,6 +202,7 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
     getPopupContainer: portalContainer,
     headerStyle: { display: 'none' },
     height: drawerHeight,
+    id,
     keepDOM,
     mask,
     maskClosable,
@@ -205,6 +212,7 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
     placement,
     size: semiSizeByDrawerSize[size],
     style,
+    tabIndex,
     title: null,
     visible: actualOpen,
     width: drawerWidth,

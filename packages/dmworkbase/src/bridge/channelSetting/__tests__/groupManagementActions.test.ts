@@ -158,6 +158,18 @@ describe("group management actions", () => {
     expect(runtime.syncDisbandState).toHaveBeenCalledWith(channel);
   });
 
+  it("does not mutate local disband state when the disband request fails", async () => {
+    const channel = new Channel("group-1", ChannelTypeGroup);
+    const runtime = createRuntime({
+      disbandGroup: vi.fn(() => Promise.reject(new Error("disband failed"))),
+    });
+
+    await expect(disbandGroupManagementGroup({ channel, runtime })).rejects.toThrow(
+      "disband failed"
+    );
+    expect(runtime.syncDisbandState).not.toHaveBeenCalled();
+  });
+
   it("sets allow-no-mention and then refreshes channel info", async () => {
     const channel = new Channel("group-1", ChannelTypeGroup);
     const runtime = createRuntime();
@@ -176,6 +188,32 @@ describe("group management actions", () => {
       channel_id: "group-1",
       enabled: false,
     });
+  });
+
+  it("does not track or refresh when allow-no-mention saving fails", async () => {
+    const channel = new Channel("group-1", ChannelTypeGroup);
+    const runtime = createRuntime({
+      setAllowNoMention: vi.fn(() => Promise.reject(new Error("save failed"))),
+    });
+    hoisted.dapTrack.mockReset();
+
+    await expect(
+      setGroupManagementAllowNoMention({ allow: true, channel, runtime })
+    ).rejects.toThrow("save failed");
+
+    expect(runtime.fetchChannelInfo).not.toHaveBeenCalled();
+    expect(hoisted.dapTrack).not.toHaveBeenCalled();
+  });
+
+  it("propagates member removal failures without hiding the rejected operation", async () => {
+    const channel = new Channel("group-1", ChannelTypeGroup);
+    const runtime = createRuntime({
+      removeManagers: vi.fn(() => Promise.reject(new Error("remove failed"))),
+    });
+
+    await expect(
+      removeGroupManagementManager({ channel, uid: "alice", runtime })
+    ).rejects.toThrow("remove failed");
   });
 
   it("reads allow-no-mention from current channel info", () => {

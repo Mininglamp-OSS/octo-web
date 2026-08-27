@@ -563,8 +563,16 @@
   align-items: center;
 }
 
+.wk-chat-channelsetting-mask {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--wk-z-modal) + 10);
+  background: var(--wk-overlay-scrim);
+  cursor: default;
+}
+
 .wk-chat-channelsetting {
-  z-index: var(--octo-ui-z-drawer, 100);
+  z-index: calc(var(--wk-z-modal) + 11);
 }
 
 .wk-chat-channelsetting .octo-ui-drawer__dialog {

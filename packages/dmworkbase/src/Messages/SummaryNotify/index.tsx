@@ -14,6 +14,8 @@ import { t } from "../../i18n";
 import { MessageContentTypeConst } from "../../Service/Const";
 import { MessageCell } from "../MessageCell";
 
+export * from "./tip";
+
 export class SummaryNotifyContent extends MessageContent {
   fromUID = "";
   fromName = "";

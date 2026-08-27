@@ -125,6 +125,7 @@ function toSubscriber(s: MockSubscriberSeed): Subscriber {
   sub.uid = s.uid;
   (sub as any).name = s.name ?? s.uid;
   (sub as any).role = s.role ?? 0;
+  (sub as any).status = s.status ?? 0;
   (sub as any).version = 1; // 增量 sync 需要,SDK 内部读 lastMember.version
   (sub as any).orgData = { ...s.orgData, robot: s.robot ?? 0 };
   return sub;

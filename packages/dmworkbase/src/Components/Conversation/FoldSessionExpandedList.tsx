@@ -67,13 +67,11 @@ const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
                   }
                 : undefined
             }
-            onContextMenu={(event) => {
-              if (editMode) {
+            onContextMenu={editMode
+              ? (event) => {
                 event.preventDefault();
-                return;
               }
-              onMessageContextMenu(message.message, event);
-            }}
+              : undefined}
           >
             {editMode && selectable ? (
               <div
@@ -103,7 +101,32 @@ const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
                   <span className="wk-fold-msg-time">{timeStr}</span>
                 </div>
               ) : null}
-              {renderMessageContent(message)}
+              <div
+                className="wk-fold-msg-content"
+                tabIndex={editMode ? undefined : 0}
+                onContextMenu={(event) => {
+                  if (editMode) {
+                    event.preventDefault();
+                    return;
+                  }
+                  onMessageContextMenu(message.message, event);
+                }}
+                onKeyDown={(event) => {
+                  if (editMode) return;
+                  if ((event.shiftKey && event.key === "F10") || event.key === "ContextMenu") {
+                    event.preventDefault();
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    event.currentTarget.dispatchEvent(new MouseEvent("contextmenu", {
+                      bubbles: true,
+                      cancelable: true,
+                      clientX: rect.left + Math.min(rect.width / 2, 24),
+                      clientY: rect.top + Math.min(rect.height / 2, 24),
+                    }));
+                  }
+                }}
+              >
+                {renderMessageContent(message)}
+              </div>
             </div>
           </div>
         );

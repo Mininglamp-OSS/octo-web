@@ -7,6 +7,9 @@ describe("isNotificationSuppressedContentType", () => {
     expect(
       isNotificationSuppressedContentType(MessageContentTypeConst.summaryNotify)
     ).toBe(true);
+    expect(
+      isNotificationSuppressedContentType(MessageContentTypeConst.summaryTip)
+    ).toBe(true);
   });
 
   it("does not change existing screenshot or text notification behavior", () => {

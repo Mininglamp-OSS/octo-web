@@ -444,7 +444,10 @@ export default function useMailWorkspace(
           if (!active || document.visibilityState === "hidden") return;
           const changed = knownState === null || knownState !== nextState;
           knownState = nextState;
-          if (changed) refreshSilently();
+          if (changed) {
+            refreshSilently();
+            WKApp.mittBus.emit("mail-navigation-refresh" as never);
+          }
         })
         .catch(() => {
           // State polling is an optimization. The low-frequency full refresh

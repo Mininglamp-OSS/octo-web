@@ -192,6 +192,15 @@ jobs:
           pnpm --filter @octo/base exec vitest run
           src/Service/__tests__/APIClient.headers.test.ts
           src/Service/__tests__/APIClient.test.ts
+      - name: Smart summary unit tests
+        run: >-
+          pnpm --filter @octo/base exec vitest run
+          src/__tests__/docsPort.test.ts
+          && pnpm --filter @dmwork/summary exec vitest run
+          src/components/__tests__/citationStrip.test.ts
+          src/components/__tests__/SummaryResultActions.test.tsx
+          src/api/__tests__/summaryApi.test.ts
+          src/utils/convertDocError.test.ts
       - name: Electron main-process unit tests
         run: pnpm --filter @octo/web exec vitest run src-election src/__tests__/oidcLogoutWiring.test.ts
       - name: Type-check Electron main-process tests

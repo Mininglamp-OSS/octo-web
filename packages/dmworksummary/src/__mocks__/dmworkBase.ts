@@ -77,6 +77,14 @@ export const WKApp = {
   apiClient: {},
   endpoints: { showConversation: () => {} },
   menus: { menusList: () => [], refresh: () => {} },
+  // remoteConfig 的最小测试替身：与真实 App.tsx 的 addConfigChangeListener(cb) => () => void 同形；
+  // __fireConfigChangeListeners() 模拟 appconfig 到位 / docs_on 翻转时的广播（round-4 P2-a）。
+  remoteConfig: {
+    addConfigChangeListener: (cb: () => void): (() => void) => {
+      __configChangeListeners.add(cb);
+      return () => { __configChangeListeners.delete(cb); };
+    },
+  },
 };
 
 export default WKApp;
@@ -105,4 +113,73 @@ export class SummaryNotifyContent {
   fromName = '';
 }
 
+export class SummaryTipContent {
+  fromUID = '';
+  fromName = '';
+  setSender(uid: string, name: string) {
+    this.fromUID = typeof uid === 'string' ? uid.trim() : '';
+    this.fromName = typeof name === 'string' ? name.trim() : '';
+    return this;
+  }
+  encodeJSON() {
+    return {
+      content: '{0}总结了群聊内容',
+      extra: [{ uid: this.fromUID, name: this.fromName }],
+    };
+  }
+  get contentType() {
+    return 2000;
+  }
+}
+
 export const isConversationDisbanded = () => false;
+
+/**
+ * APIClient.extractErrorMsg 的测试替身。真实实现从 axios error 的
+ * response.data.msg / message 里挑出可展示的文案，取不到时回退空串。
+ */
+export const extractErrorMsg = (err: unknown): string => {
+  const e = err as { response?: { data?: { msg?: string; message?: string } }; message?: string };
+  return e?.response?.data?.msg ?? e?.response?.data?.message ?? e?.message ?? '';
+};
+
+/** Utils/docLink.buildDocLink 的测试替身：与真实实现同形，emit `/d/:docId`。 */
+export const buildDocLink = ({ docId }: { docId: string }): string =>
+  `${typeof window !== 'undefined' && window.location?.origin ? window.location.origin : ''}/d/${encodeURIComponent(docId)}`;
+
+/** Utils/clipboard.copyToClipboard 的测试替身，默认成功；单测可 vi.spyOn 覆写。 */
+export const copyToClipboard = async (_text: string): Promise<boolean> => true;
+
+// ─── docs 能力端口（bridge/docs/docsPort）的测试替身 ───────────────────
+// 真实实现走 EndpointManager；测试里用可写的 registry，单测通过
+// __setDocsConvertHandler / __setDocsOn 控制端口是否可用。
+let __docsConvertHandler: ((p: { title: string; markdown: string }) => Promise<{ docId: string; url: string }>) | null = null;
+let __docsOn = false;
+
+export const __setDocsConvertHandler = (h: typeof __docsConvertHandler) => { __docsConvertHandler = h; };
+export const __setDocsOn = (v: boolean) => { __docsOn = v; };
+export const __resetDocsPort = () => {
+  __docsConvertHandler = null;
+  __docsOn = false;
+  __configChangeListeners.clear();
+};
+
+const __configChangeListeners = new Set<() => void>();
+/** 模拟 App.tsx 在 docs_on 等配置变化时的 notifyConfigChangeListeners() 广播。 */
+export const __fireConfigChangeListeners = () => {
+  for (const cb of [...__configChangeListeners]) cb();
+};
+
+export class DocsCapabilityUnavailableError extends Error {
+  constructor(message = 'docs capability unavailable') {
+    super(message);
+    this.name = 'DocsCapabilityUnavailableError';
+  }
+}
+
+export const isDocsConvertAvailable = (): boolean => __docsOn && !!__docsConvertHandler;
+
+export const convertMarkdownToDoc = async (params: { title: string; markdown: string }) => {
+  if (!isDocsConvertAvailable()) throw new DocsCapabilityUnavailableError();
+  return __docsConvertHandler!(params);
+};

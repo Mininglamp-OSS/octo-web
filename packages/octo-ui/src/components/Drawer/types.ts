@@ -24,6 +24,7 @@ export interface DrawerProps {
   footer?: ReactNode
   footerClassName?: string
   height?: CSSProperties['height']
+  id?: string
   /**
    * Render the drawer inside the current React tree instead of Semi's portal.
    * Use this for app-owned right panels that live inside a positioned layout container.
@@ -45,6 +46,7 @@ export interface DrawerProps {
   portalContainer?: () => HTMLElement
   size?: DrawerSize
   style?: CSSProperties
+  tabIndex?: number
   title?: ReactNode
   /** @deprecated Use open. */
   visible?: boolean

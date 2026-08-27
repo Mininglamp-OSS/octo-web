@@ -234,6 +234,18 @@ for (const f of files) {
     }
   }
 
+  // 前置条件里声明的 per-case handler 必须真实存在，避免 spec 文档与测试实现漂移。
+  const handlerRefs = [...text.matchAll(/Per-case\s+MSW\s+handler:\s*`([^`]+)`/gi)];
+  for (const [, ref] of handlerRefs) {
+    const relativeRef = ref.replace(/^e2e-kit\//, "");
+    const handlerPath = join(E2E_ROOT, relativeRef.includes("/") ? relativeRef : join("msw-handlers", relativeRef));
+    try {
+      statSync(handlerPath);
+    } catch {
+      errors.push(`${relF}: Per-case MSW handler 不存在: ${ref}`);
+    }
+  }
+
   const counterexamples = extractSection(text, /^##+\s*反例\s*$/im);
   if (counterexamples !== null && counterexamples.length < 20) {
     errors.push(

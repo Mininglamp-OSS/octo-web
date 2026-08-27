@@ -26,6 +26,7 @@ import { interpretForwardResult, ForwardToastScope, ForwardToastKind } from "../
 import Provider from "../../Service/Provider";
 import { Dap } from "../../Service/Dap";
 import ConversationVM from "./vm";
+import { selectDoneReminderIDs } from "./reminderDone";
 import { isMessageAuthorAi } from "./replyAiIdentity";
 import "./index.css";
 import { EmojiInfo, MentionInfo } from "../../Messages/Text/MarkdownContent";
@@ -123,6 +124,7 @@ import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
 import { buildChatContext, ChatContextChannelInfo } from "./chatContext";
+import { buildGroupedMessageContextMenus } from "../../features/messageContextMenu/menuModel";
 import {
   resolveDraftAfterSend,
   resolveDraftToPersist,
@@ -173,6 +175,35 @@ function forwardBlockedMessageKey(error: unknown): string | null {
     return "base.conversation.forward.cardBlocked";
   }
   return null;
+}
+
+export function classifyAssistantIntentText(text: string | undefined): string {
+  if (!text) return "other";
+  if (/总结|摘要|概括|summariz|summary/i.test(text)) return "summary";
+  if (/分析|解读|analyz|analysis/i.test(text)) return "analysis";
+  if (
+    text.includes("```") ||
+    /写(段|个|一)?代码|代码实现|生成代码|帮我(写|实现).*(函数|方法|代码|脚本)|报错|编译|\bdebug\b|\bfunction\b|\bclass\b|\bdef\b/i.test(text)
+  ) {
+    return "code_gen";
+  }
+  if (text.includes("?") || text.includes("？")) return "qa";
+  return "other";
+}
+
+export async function deleteSelectedConversationMessages(
+  vm: Pick<ConversationVM, "deleteMessages" | "unCheckAllMessages"> & { editOn: boolean },
+  messages: Message[],
+): Promise<void> {
+  if (messages.length === 0) return;
+  try {
+    await vm.deleteMessages(messages);
+    vm.editOn = false;
+    vm.unCheckAllMessages();
+  } catch (error) {
+    Toast.error(t("base.conversation.deleteConfirm.failed"));
+    throw error;
+  }
 }
 
 /**
@@ -692,31 +723,7 @@ export class Conversation
     if (!(content instanceof MessageText)) {
       return "other";
     }
-    const text = (content as MessageText).text || "";
-    if (!text) return "other";
-
-    // 摘要：含总结/摘要/概括（显式意图优先，避免被 code_gen 的宽泛词吞掉）
-    if (/总结|摘要|概括|summariz|summary/i.test(text)) {
-      return "summary";
-    }
-    // 分析：含分析/解读
-    if (/分析|解读|analyz|analysis/i.test(text)) {
-      return "analysis";
-    }
-    // 代码生成：需代码围栏，或明确的写码信号（收紧，不再用 code/let/const 等日常词误命中）
-    if (
-      text.includes("```") ||
-      /写(段|个|一)?代码|代码实现|生成代码|帮我(写|实现).*(函数|方法|代码|脚本)|报错|编译|\bdebug\b|\bfunction\b|\bclass\b|\bdef\b/i.test(
-        text
-      )
-    ) {
-      return "code_gen";
-    }
-    // 问答：含问号
-    if (text.includes("?") || text.includes("？")) {
-      return "qa";
-    }
-    return "other";
+    return classifyAssistantIntentText((content as MessageText).text);
   }
 
   // 统一上报转发结果。区分「全部失败」与「部分失败（带计数）」，全部成功不提示。
@@ -2794,17 +2801,26 @@ export class Conversation
     if (!reminders || reminders.length === 0) {
       return;
     }
-    const doneReminderIDs: number[] = [];
-    for (const reminder of reminders) {
-      if (reminder.done) {
-        continue;
-      }
-      const message = this.vm.findMessageWithMessageSeq(reminder.messageSeq);
-      if (message && this.isVisiableMessage(message.message, viewport)) {
-        doneReminderIDs.push(reminder.reminderID);
-        continue;
-      }
-    }
+    // 是否已读到会话最新。用 #1408 指定的信号：browseToMessageSeq >= lastMessage.messageSeq，
+    // 与 vm 的已读语义一致（含自己发消息时把 browseToMessageSeq 推进到最新的快捷路径——发消息
+    // 本就意味着读到最新）。这是“读到最新”而非“那条历史 @ 在视口里”：#1408 的 Fix A 就是要在
+    // 读到最新时把被挤出视口的历史 mention 一并标 done，否则角标永久亮着。lastMessageSeq > 0
+    // 排除尚未拿到 sendack 的空 seq 窗口。
+    const lastMessageSeq = this.vm.currentConversation?.lastMessage?.messageSeq;
+    const scrolledToBottom =
+      typeof lastMessageSeq === "number" &&
+      lastMessageSeq > 0 &&
+      this.vm.browseToMessageSeq >= lastMessageSeq;
+
+    const doneReminderIDs = selectDoneReminderIDs(reminders, {
+      scrolledToBottom,
+      isVisible: (reminder) => {
+        const message = this.vm.findMessageWithMessageSeq(reminder.messageSeq);
+        return (
+          !!message && this.isVisiableMessage(message.message, viewport) === true
+        );
+      },
+    });
     if (doneReminderIDs.length > 0) {
       // Persist reminder done status to server via SDK (fixes #169)
       WKSDK.shared().reminderManager.done(doneReminderIDs);
@@ -3261,17 +3277,7 @@ export class Conversation
                           const messages = checkedMessagewraps
                             .map((m) => m.message)
                             .filter(Boolean);
-                          if (messages.length === 0) return;
-                          try {
-                            await vm.deleteMessages(messages);
-                            vm.editOn = false;
-                            vm.unCheckAllMessages();
-                          } catch (e) {
-                            Toast.error(
-                              t("base.conversation.deleteConfirm.failed")
-                            );
-                            throw e;
-                          }
+                          await deleteSelectedConversationMessages(vm, messages);
                         },
                       });
                     }}
@@ -3472,19 +3478,9 @@ export class Conversation
                 }}
                 menus={
                   vm.selectMessage
-                    ? WKApp.endpoints
-                        .messageContextMenus(vm.selectMessage, this)
-                        .map((menus) => {
-                          return {
-                            title: menus.title,
-                            testid: menus.testid,
-                            onClick: () => {
-                              if (menus.onClick) {
-                                menus.onClick();
-                              }
-                            },
-                          };
-                        })
+                    ? buildGroupedMessageContextMenus(
+                        WKApp.endpoints.messageContextMenus(vm.selectMessage, this),
+                      )
                     : []
                 }
               ></ContextMenus>

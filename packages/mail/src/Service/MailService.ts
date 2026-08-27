@@ -488,6 +488,17 @@ const MailService = {
     );
   },
 
+  restoreNotJunk(
+    mailboxContextId: string,
+    id: string
+  ): Promise<{ updated: string; senderAddress: string }> {
+    return APIClient.shared.post(
+      mailApiUrl(`/messages/${encodeURIComponent(id)}/not-junk`),
+      {},
+      mailboxContextConfig(mailboxContextId)
+    );
+  },
+
   updateKeywords(
     mailboxContextId: string,
     id: string,

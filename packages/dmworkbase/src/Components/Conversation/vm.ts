@@ -53,6 +53,7 @@ import {
 } from "../../im-runtime/channelRuntime";
 import { getBrowserUnreadConversationSync } from "../../features/documentTitle";
 import { isOwnedConversationSingleton } from "../../features/notifications/messageAttention";
+import { isSummaryTipContent } from "../../Messages/SummaryNotify/protocol";
 
 export interface FoldSessionParticipant {
     uid: string
@@ -1865,7 +1866,11 @@ export default class ConversationVM extends ProviderListener {
                 opts.pullMode = PullMode.Up
             }
         }
-        const remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts)
+        const remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts).catch((error) => {
+            this.loading = false
+            this.notifyListener()
+            throw error
+        })
 
         const newMessages = new Array<Message>()
         if (remoteMessages && remoteMessages.length > 0) {
@@ -1949,7 +1954,11 @@ export default class ConversationVM extends ProviderListener {
         const [olderRemoteMessages, newerRemoteMessages] = await Promise.all([
             WKApp.conversationProvider.syncMessages(this.channel, olderOpts),
             WKApp.conversationProvider.syncMessages(this.channel, newerOpts),
-        ])
+        ]).catch((error) => {
+            this.loading = false
+            this.notifyListener()
+            throw error
+        })
         const toAvailableMessageWraps = (remoteMessages?: Message[]) => {
             const messages = new Array<Message>()
             if (remoteMessages && remoteMessages.length > 0) {
@@ -2069,6 +2078,10 @@ export default class ConversationVM extends ProviderListener {
         return messages.filter((m) => {
             // Only process system messages (content_type 1000-2000)
             if (m.contentType < 1000 || m.contentType > 2000) return true
+            // Summary-completion tips represent distinct tasks. Their visible
+            // text can be identical within five minutes, so the generic
+            // security-warning dedup must not collapse them.
+            if (isSummaryTipContent(m.content)) return true
             const content = m.content as SystemContent
             const text = content?.displayText
             if (!text) return true
@@ -2146,6 +2159,9 @@ export default class ConversationVM extends ProviderListener {
 
     // 向下拉取消息
     async pulldownMessages() {
+        if (this.loading) {
+            return
+        }
 
         const minMessage = this.getMessageMin();
         if (minMessage?.messageSeq === 1) { // 如果最小messageSeq=1 说明下拉没消息了直接return
@@ -2165,7 +2181,11 @@ export default class ConversationVM extends ProviderListener {
         opts.pullMode = PullMode.Down
         opts.startMessageSeq = minMessage.messageSeq - 1
 
-        let remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts)
+        let remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts).catch((error) => {
+            this.loading = false
+            this.notifyListener()
+            throw error
+        })
         const newMessages = new Array<Message>()
         if (remoteMessages && remoteMessages.length > 0) {
             remoteMessages.forEach(msg => {
@@ -2195,18 +2215,26 @@ export default class ConversationVM extends ProviderListener {
 
     // 向上拉取消息
     async pullupMessages() {
-        this.loading = true
+        if (this.loading) {
+            return
+        }
+
         const maxMessage = this.getMessageMax()
         if (maxMessage == null || maxMessage.messageSeq <= 0) { // 没有消息直接return
             return
         }
 
+        this.loading = true
         const opts = new SyncMessageOptions()
         opts.limit = WKApp.config.pageSizeOfMessage
         opts.pullMode = PullMode.Up
         opts.startMessageSeq = maxMessage.messageSeq
 
-        let remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts)
+        let remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts).catch((error) => {
+            this.loading = false
+            this.notifyListener()
+            throw error
+        })
         const newMessages = new Array<Message>()
         if (remoteMessages && remoteMessages.length > 0) {
             remoteMessages.forEach(msg => {

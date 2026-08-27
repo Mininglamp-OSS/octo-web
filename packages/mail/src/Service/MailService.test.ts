@@ -353,6 +353,24 @@ describe("MailService", () => {
     );
   });
 
+  it("restores a Junk message and trusts its sender in the selected mailbox", async () => {
+    api.post.mockResolvedValue({
+      updated: "E 1",
+      senderAddress: "sender@example.com",
+    });
+
+    await MailService.restoreNotJunk("42", "E 1");
+
+    expect(api.post).toHaveBeenCalledWith(
+      "/mail-api/webapi/v0/messages/E%201/not-junk",
+      {},
+      {
+        headers: { "X-Octo-Mailbox-ID": "42" },
+        timeout: MAIL_REQUEST_TIMEOUT_MS,
+      }
+    );
+  });
+
   it("persists a message star through the account-scoped keyword route", async () => {
     api.patch.mockResolvedValue({ updated: "E 1" });
 

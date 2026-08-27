@@ -221,6 +221,10 @@ export const FETCH_RULES: FetchRule[] = [
     // contact_opened 不在此通道 —— GET /users/:id 是通用 profile 拉取(bot profile / 内部查库都会打),
     //   已在 Contacts handleContactClick 命令式 track(联系人行点击);删除此处避免双计(见 review P2-3)。
     { method: 'POST', path: '/api/v1/friend/apply', event: 'contact_add_friend_clicked' },
+    // contact_add_friend_succeeded —— 好友申请达成终态。接受方在「新的朋友」列表点「确认」→ POST friend/sure
+    //   (NewFriend/vm.tsx friendSure → datasource friendSure)。2xx 即达成,覆盖真人↔真人 / 真人↔AI 接受侧。
+    //   与 contact_add_friend_clicked(申请起点)配对,供 DAP 达成率。bot 侧 BotFather 命令处理另计 bot_friend_request_handled。
+    { method: 'POST', path: '/api/v1/friend/sure', event: 'contact_add_friend_succeeded' },
     // 注意:/api/v1/docs/* 全套(document_*)已移除 —— issue #1406 明确「24 个 octo-docs 模块事件(独立仓库/嵌入编辑器)
     //       不在本次范围」,且这些请求由**独立的 octo-docs 编辑器**发出,octo-web 运行时根本不发 → 抓不到(死规则)。
     // apps_module_entered 不在此通道(十二审 🔴 P1-3)—— GET /app_bot/available 由 useAppBots 在**每次切换空间**

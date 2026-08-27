@@ -192,15 +192,9 @@ export function buildGroupProfileRows({
         placeholder: t("base.module.channelSettings.groupNamePlaceholder"),
         trackEvent: "group_name_edit_opened",
         maxCount: GROUP_NAME_MAX_LENGTH,
-        onStartEdit: () => {
-          if (!data.isManagerOrCreatorOfMe) {
-            Toast.warning(
-              t("base.module.channelSettings.groupNameOnlyManager")
-            );
-            return false;
-          }
-          return true;
-        },
+        // 改名走「服务端为唯一权威」（WS-23）：前端不再前置判定谁能改群名——客户端只持有
+        // 部分 roster（超级群父群仅缓存首页），任何本地 gate 都会对不在缓存里的合法成员误判。
+        // 名字行对成员一律可编辑，龙虾/黑名单/外部成员由服务端拒绝并经下方 Toast.error 呈现。
         onSave: (value: string) =>
           updateChannelSettingField({
             channel,

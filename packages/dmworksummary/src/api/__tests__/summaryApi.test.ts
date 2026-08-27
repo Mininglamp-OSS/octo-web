@@ -588,4 +588,53 @@ describe('summaryApi', () => {
             track.mockRestore();
         });
     });
+    describe('convertSummaryToDoc — 委托给 docs 能力端口 (octo-smart-summary#195)', () => {
+        // 回归钉死：packages/docs 已在 #1363 从 OSS host 拆走，本包**不得**再直连
+        // docs-backend 的 REST 端点。转文档必须整段走 @octo/base 的 docs 端口，
+        // 建文档 / 导入 markdown / 失败回滚全部是实现方职责。
+        it('把 title + markdown 原样交给端口，并回传端口给的 docId/url', async () => {
+            const base = await import('@octo/base');
+            const spy = vi
+                .spyOn(base, 'convertMarkdownToDoc')
+                .mockResolvedValueOnce({ docId: 'doc-9', url: '/d/doc-9' });
+
+            const { convertSummaryToDoc } = await import('../summaryApi');
+            const result = await convertSummaryToDoc('周报', '# 本周进展');
+
+            expect(spy).toHaveBeenCalledTimes(1);
+            expect(spy).toHaveBeenCalledWith({ title: '周报', markdown: '# 本周进展' });
+            expect(result).toEqual({ docId: 'doc-9', url: '/d/doc-9' });
+            spy.mockRestore();
+        });
+
+        it('不发起任何 docs REST 请求（不 post /docs、不 delete /docs/:id）', async () => {
+            const base = await import('@octo/base');
+            const spy = vi
+                .spyOn(base, 'convertMarkdownToDoc')
+                .mockResolvedValueOnce({ docId: 'doc-9', url: '/d/doc-9' });
+
+            mockPost.mockClear();
+            mockDelete.mockClear();
+            const { convertSummaryToDoc } = await import('../summaryApi');
+            await convertSummaryToDoc('t', 'body');
+
+            expect(mockPost).not.toHaveBeenCalled();
+            expect(mockDelete).not.toHaveBeenCalled();
+            spy.mockRestore();
+        });
+
+        it('端口失败时错误原样抛出，本层不做回滚补偿', async () => {
+            const base = await import('@octo/base');
+            const boom = new Error('import failed');
+            const spy = vi.spyOn(base, 'convertMarkdownToDoc').mockRejectedValueOnce(boom);
+
+            mockDelete.mockClear();
+            const { convertSummaryToDoc } = await import('../summaryApi');
+            await expect(convertSummaryToDoc('t', 'body')).rejects.toBe(boom);
+            // 回滚（删孤儿文档）属于实现方职责 —— 只有它知道哪些错误是确定性 HTTP 拒绝、
+            // 哪些只是超时（超时不代表服务端没落盘，贸然删除会丢用户内容）。
+            expect(mockDelete).not.toHaveBeenCalled();
+            spy.mockRestore();
+        });
+    });
 });

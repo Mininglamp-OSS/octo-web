@@ -165,6 +165,22 @@ const FoldSessionCard: React.FC<FoldSessionCardProps> = ({
             highlightSummary && "wk-fold-session-card-summary-highlight"
           )}
           onAnimationEnd={onSummaryAnimationEnd}
+          tabIndex={!selectionMode && onSummaryContextMenu ? 0 : undefined}
+          onKeyDown={
+            !selectionMode && onSummaryContextMenu
+              ? (event) => {
+                  if (!((event.shiftKey && event.key === "F10") || event.key === "ContextMenu")) return;
+                  event.preventDefault();
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  event.currentTarget.dispatchEvent(new MouseEvent("contextmenu", {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: Math.max(0, Math.min(window.innerWidth, rect.left + rect.width / 2)),
+                    clientY: Math.max(0, Math.min(window.innerHeight, rect.top + rect.height / 2)),
+                  }));
+                }
+              : undefined
+          }
           onContextMenu={
             selectionMode
               ? (event) => {

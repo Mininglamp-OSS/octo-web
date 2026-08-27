@@ -1,7 +1,7 @@
 import React from "react";
 import "./index.css";
 
-export type DocShareKind = "doc" | "board" | "sheet";
+export type DocShareKind = "doc" | "board" | "sheet" | "html";
 
 /** viewer 视角的权限态（由 Cell 依据实时 ACL 取数结果给出）。 */
 export type DocSharePermissionState =
@@ -13,8 +13,20 @@ export type DocSharePermissionState =
   | "error"
   | "checking";
 
-/** 首屏预览取数状态。 */
-export type DocSharePreviewStatus = "loading" | "ready" | "denied" | "unavailable" | "error";
+/**
+ * 首屏预览取数状态。
+ * `empty` = **鉴权已通过**（reader 接口确认了访问权），但**没有可渲染的内容**——不绑定具体
+ * doc_type，既覆盖「该类型本来就没有预览」（409 `unsupported_doc_type`），也覆盖「有预览
+ * 能力但这次没抽到内容」（专属预览接口 200 + 空内容）。
+ * 是**正常降级**，与 error（取数失败）严格区分：前者标绿显「暂无预览」，后者标红。
+ */
+export type DocSharePreviewStatus =
+  | "loading"
+  | "ready"
+  | "denied"
+  | "unavailable"
+  | "error"
+  | "empty";
 
 /** ACL 校验后的首屏预览数据，按 kind 区分。 */
 export type DocSharePreview =
@@ -76,6 +88,14 @@ function KindIcon({ kind }: { kind: DocShareKind }): JSX.Element {
       <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
         <rect x="4" y="4" width="16" height="16" rx="2" />
         <path d="M4 10h16M4 15h16M10 4v16" />
+      </svg>
+    );
+  }
+  if (kind === "html") {
+    return (
+      <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M9 10l-2.5 2L9 14M15 10l2.5 2L15 14M13 9l-2 6" />
       </svg>
     );
   }

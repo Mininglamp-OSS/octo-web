@@ -2,3 +2,4 @@ export { createNotificationAdapter, type NotificationAdapter, type NotificationP
 export { createKeepAwakeAdapter, type KeepAwakeAdapter } from "./keepAwakeAdapter";
 export { createDesktopSettingsAdapter, type DesktopSettingsAdapter, type DesktopSettings } from "./desktopSettingsAdapter";
 export { createDownloadSettingsAdapter, type DownloadSettingsAdapter, type DownloadSettings } from "./downloadSettingsAdapter";
+export { createTrustedDomainsAdapter, type TrustedDomainsAdapter } from "./trustedDomainsAdapter";

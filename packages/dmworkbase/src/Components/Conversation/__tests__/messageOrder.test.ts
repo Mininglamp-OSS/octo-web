@@ -163,6 +163,7 @@ vi.mock("../../../i18n", () => ({
 
 import ConversationVM from "../vm"
 import { Channel, MessageStatus } from "wukongimjssdk"
+import { SUMMARY_TIP_TEMPLATE } from "../../../Messages/SummaryNotify/protocol"
 
 const channel = new Channel("g1", 2)
 
@@ -248,6 +249,38 @@ describe("ConversationVM message ordering", () => {
         expect(first.messageContainerId).toMatch(/^viewport-\d+$/)
         expect(second.messageContainerId).toMatch(/^viewport-\d+$/)
         expect(first.messageContainerId).not.toBe(second.messageContainerId)
+    })
+
+    it("keeps separate summary-completion tips inside the generic system-tip dedup window", () => {
+        const vm = new ConversationVM(channel)
+        const summaryContent = {
+            contentType: 2000,
+            displayText: "Alice总结了群聊内容",
+            content: {
+                content: SUMMARY_TIP_TEMPLATE,
+                extra: [{ uid: "alice", name: "Alice" }],
+            },
+        }
+        const first = wrap({ clientMsgNo: "summary-1", timestamp: 100, content: summaryContent })
+        const second = wrap({ clientMsgNo: "summary-2", timestamp: 200, content: { ...summaryContent } })
+
+        expect(vm.deduplicateSystemTips([first, second])).toEqual([first, second])
+    })
+
+    it("still deduplicates other identical system tips inside five minutes", () => {
+        const vm = new ConversationVM(channel)
+        const first = wrap({
+            clientMsgNo: "system-1",
+            timestamp: 100,
+            content: { contentType: 1001, displayText: "安全提示", content: { content: "安全提示" } },
+        })
+        const second = wrap({
+            clientMsgNo: "system-2",
+            timestamp: 200,
+            content: { contentType: 1001, displayText: "安全提示", content: { content: "安全提示" } },
+        })
+
+        expect(vm.deduplicateSystemTips([first, second])).toEqual([first])
     })
 
     it("keeps a fully unread conversation unread until the visible-message gate advances browseTo", async () => {
@@ -465,6 +498,56 @@ describe("ConversationVM message ordering", () => {
         expect(refreshMessages.mock.calls[0][0].map((message: any) => message.messageSeq)).toEqual([55, 56, 57])
         expect(vm.pulldownFinished).toBe(false)
         expect(vm.loading).toBe(false)
+    })
+
+    it("clears loading when locating an unloaded message fails", async () => {
+        sdkState.syncMessages.mockRejectedValueOnce(new Error("locate failed"))
+        const vm = new ConversationVM(channel)
+
+        await expect(vm.requestMessagesAroundMessageSeq(56)).rejects.toThrow("locate failed")
+
+        expect(vm.loading).toBe(false)
+    })
+
+    it("clears loading state when the initial message sync fails", async () => {
+        sdkState.syncMessages.mockRejectedValueOnce(new Error("sync failed"))
+        const vm = new ConversationVM(channel)
+
+        await expect(vm.syncMessages()).rejects.toThrow("sync failed")
+
+        expect(vm.loading).toBe(false)
+    })
+
+    it("clears loading state when loading older or newer messages fails", async () => {
+        const vm = new ConversationVM(channel)
+        vm.messagesOfOrigin = [wrap({ clientMsgNo: "oldest", messageSeq: 5 })]
+        sdkState.syncMessages.mockRejectedValueOnce(new Error("history failed"))
+
+        await expect(vm.pulldownMessages()).rejects.toThrow("history failed")
+        expect(vm.loading).toBe(false)
+
+        sdkState.syncMessages.mockRejectedValueOnce(new Error("newer failed"))
+        await expect(vm.pullupMessages()).rejects.toThrow("newer failed")
+        expect(vm.loading).toBe(false)
+    })
+
+    it("does not enter loading state when there is no newer message to load", async () => {
+        const vm = new ConversationVM(channel)
+
+        await vm.pullupMessages()
+
+        expect(vm.loading).toBe(false)
+        expect(sdkState.syncMessages).not.toHaveBeenCalled()
+    })
+
+    it("does not start a second history load while one is in progress", async () => {
+        const vm = new ConversationVM(channel)
+        vm.messagesOfOrigin = [wrap({ clientMsgNo: "latest", messageSeq: 5 })]
+        vm.loading = true
+
+        await Promise.all([vm.pulldownMessages(), vm.pullupMessages()])
+
+        expect(sdkState.syncMessages).not.toHaveBeenCalled()
     })
 
     it("scrolls to the expanded row when locating a message inside a fold session", () => {

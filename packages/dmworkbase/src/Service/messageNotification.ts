@@ -4,5 +4,8 @@ import { MessageContentTypeConst } from "./Const";
 export function isNotificationSuppressedContentType(
   contentType: number
 ): boolean {
-  return contentType === MessageContentTypeConst.summaryNotify;
+  return (
+    contentType === MessageContentTypeConst.summaryNotify ||
+    contentType === MessageContentTypeConst.summaryTip
+  );
 }
