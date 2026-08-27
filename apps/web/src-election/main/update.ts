@@ -303,14 +303,15 @@ async function verifyWindowsInstallerSignature(filePath: string): Promise<void> 
     throw new Error("Windows update signing publisher is not configured");
   }
   const command = [
-    "& { param([string]$Path, [string]$ExpectedPublisher)",
+    "$Path = $env:OCTO_UPDATE_INSTALLER_PATH",
+    "$ExpectedPublisher = $env:OCTO_UPDATE_WINDOWS_PUBLISHER_NAME",
+    "if ([string]::IsNullOrWhiteSpace($Path) -or [string]::IsNullOrWhiteSpace($ExpectedPublisher)) { exit 12 }",
     "$signature = Get-AuthenticodeSignature -LiteralPath $Path",
     "if ($signature.Status -ne 'Valid') { exit 10 }",
     "$subject = $signature.SignerCertificate.Subject",
     "$match = [regex]::Match($subject, '(?:^|,\\s*)CN=([^,]+)')",
     "if (!$match.Success) { exit 11 }",
     "if ($match.Groups[1].Value -ne $ExpectedPublisher) { exit 11 }",
-    "}",
   ].join("; ");
   await execFileAsync("powershell.exe", [
     "-NoProfile",
@@ -319,9 +320,14 @@ async function verifyWindowsInstallerSignature(filePath: string): Promise<void> 
     "Bypass",
     "-Command",
     command,
-    filePath,
-    expectedPublisher,
-  ], { windowsHide: true });
+  ], {
+    windowsHide: true,
+    env: {
+      ...process.env,
+      OCTO_UPDATE_INSTALLER_PATH: filePath,
+      OCTO_UPDATE_WINDOWS_PUBLISHER_NAME: expectedPublisher,
+    },
+  });
 }
 
 async function openDownloadedUpdatePackageAndQuitIfNeeded(updateInfo: DesktopUpdateInfo, filePath: string): Promise<void> {
@@ -351,6 +357,7 @@ set -eu
 
 ZIP_PATH="$1"
 TARGET_APP_PATH="$2"
+INSTALL_TARGET_TMP_PATH="$TARGET_APP_PATH.update-in-progress"
 STAGING_PATH="$3"
 PARENT_PID="$4"
 EXPECTED_BUNDLE_ID="$5"
@@ -371,6 +378,7 @@ cleanup() {
 fail() {
   CODE="$1"
   printf "%s\\n" "$CODE" > "$RESULT_PATH" 2>/dev/null || true
+  rm -rf "$INSTALL_TARGET_TMP_PATH" >/dev/null 2>&1 || true
   if [ -d "$TARGET_APP_PATH" ]; then
     /usr/bin/open "$TARGET_APP_PATH" >/dev/null 2>&1 || true
   fi
@@ -379,7 +387,14 @@ fail() {
 
 wait_until_not_running() {
   RUNNING_CHECK=0
-  while /bin/ps -axo command= | /usr/bin/grep -F "$TARGET_APP_PATH/Contents/MacOS/" >/dev/null 2>&1; do
+  while APP_RUNNING="$(/bin/ps -axo command= | while IFS= read -r COMMAND; do
+    case "$COMMAND" in
+      "$TARGET_APP_PATH/Contents/MacOS/"*)
+        printf "%s\\n" "$COMMAND"
+        break
+        ;;
+    esac
+  done)" && [ -n "$APP_RUNNING" ]; do
     RUNNING_CHECK=$((RUNNING_CHECK + 1))
     if [ "$RUNNING_CHECK" -ge 150 ]; then
       fail 20
@@ -447,12 +462,21 @@ fi
 wait_until_not_running
 
 BACKUP_APP_PATH="$TARGET_APP_PATH.previous-update"
+rm -rf "$INSTALL_TARGET_TMP_PATH"
+if ! /usr/bin/ditto "$NEXT_APP_PATH" "$INSTALL_TARGET_TMP_PATH"; then
+  rm -rf "$INSTALL_TARGET_TMP_PATH"
+  fail 19
+fi
+
+wait_until_not_running
+
 rm -rf "$BACKUP_APP_PATH"
 if [ -d "$TARGET_APP_PATH" ]; then
   /bin/mv "$TARGET_APP_PATH" "$BACKUP_APP_PATH" || fail 19
 fi
 
-if ! /usr/bin/ditto "$NEXT_APP_PATH" "$TARGET_APP_PATH"; then
+if ! /bin/mv "$INSTALL_TARGET_TMP_PATH" "$TARGET_APP_PATH"; then
+  rm -rf "$INSTALL_TARGET_TMP_PATH"
   rm -rf "$TARGET_APP_PATH"
   if [ -d "$BACKUP_APP_PATH" ]; then
     /bin/mv "$BACKUP_APP_PATH" "$TARGET_APP_PATH"

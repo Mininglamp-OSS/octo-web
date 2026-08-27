@@ -45,7 +45,9 @@ function readBuiltString(key: string): string | null | undefined {
   try {
     const raw = readFileSync(join(__dirname, "../../build/electron-config.json"), "utf8");
     const value = JSON.parse(raw)?.[key];
-    return typeof value === "string" ? value : null;
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    return trimmed || undefined;
   } catch {
     return undefined;
   }
