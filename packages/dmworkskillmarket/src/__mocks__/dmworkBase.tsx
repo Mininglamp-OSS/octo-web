@@ -74,9 +74,10 @@ interface PromptForwardModalMockProps {
   onForwarded?: () => void;
 }
 
-// Shared "forward to Bot" modal from @octo/base. The real one copies/forwards
-// `prompt`; the mock only needs to render the prompt + a close affordance so
-// callers (e.g. InstallPromptModal) mount without crashing and stay inert while
+// Shared "forward to Bot" modal from @octo/base. The real one renders a split
+// layout (prompt + 复制提示词 on the left, 选 Bot + 转发 on the right); the mock
+// mirrors the observable surface the skill suite asserts — a copy button that
+// writes the prompt to the clipboard, no 取消 button — and stays inert while
 // hidden (visible=false → null, so it never leaks an extra dialog).
 export function PromptForwardModal({ visible, title, hint, prompt, onClose }: PromptForwardModalMockProps) {
   if (!visible) return null;
@@ -86,6 +87,15 @@ export function PromptForwardModal({ visible, title, hint, prompt, onClose }: Pr
       {title ? <h2>{title}</h2> : null}
       {hint ? <p>{hint}</p> : null}
       <pre>{prompt}</pre>
+      <button
+        type="button"
+        disabled={!prompt}
+        onClick={() => {
+          if (prompt) void navigator.clipboard?.writeText?.(prompt);
+        }}
+      >
+        复制提示词
+      </button>
     </section>
   );
 }
