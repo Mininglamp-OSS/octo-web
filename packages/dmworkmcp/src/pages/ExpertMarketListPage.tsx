@@ -22,8 +22,7 @@ import type { ExpertCatalogSort, ExpertCategoryCount } from "../api/expertServic
 import { expertListErrorI18nKey } from "../api/expertListError";
 import ExpertCard from "../components/ExpertCard";
 import ExpertDetailModal from "../components/ExpertDetailModal";
-import ExpertEditorPage from "./ExpertEditorPage";
-import SquadEditorPage from "./SquadEditorPage";
+import ExpertBotPublishModal from "../components/ExpertBotPublishModal";
 import ExpertDeleteConfirmModal from "../components/ExpertDeleteConfirmModal";
 import ExpertAddToLoopModal from "../components/ExpertAddToLoopModal";
 
@@ -113,6 +112,12 @@ export default function ExpertMarketListPage({
   const [sort, setSort] = useState<ExpertCatalogSort>("latest");
   const [selected, setSelected] = useState<ExpertItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  /** Bot-authored create/update flow (the previous version): create opens the
+   *  publish prompt; editTarget drives the update prompt for an existing record. */
+  const [botPublishOpen, setBotPublishOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<
+    { id: string; kind: "agent" | "squad" } | null
+  >(null);
   const [deleteTarget, setDeleteTarget] = useState<ExpertItem | null>(null);
   const [addToLoopTarget, setAddToLoopTarget] = useState<ExpertItem | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -235,6 +240,8 @@ export default function ExpertMarketListPage({
   useEffect(() => {
     const handleSpaceChanged = () => {
       setSelected(null);
+      setBotPublishOpen(false);
+      setEditTarget(null);
       setDeleteTarget(null);
       setAddToLoopTarget(null);
       setQuery("");
@@ -430,12 +437,9 @@ export default function ExpertMarketListPage({
   // needed here — the Bot reads the current record and asks the user for the
   // fields to change, so no hydrate is required.
   const handleEdit = (item: ExpertItem) => {
-    // Agents and squads both open their full-page editor.
-    if (item.kind === "squad") {
-      WKApp.routeRight.push(<SquadEditorPage mode="edit" squadId={item.id} />);
-      return;
-    }
-    WKApp.routeRight.push(<ExpertEditorPage mode="edit" expertId={item.id} />);
+    // Edit via the Bot update prompt (previous version) — the Bot reads the
+    // current record and asks for the fields to change.
+    setEditTarget({ id: item.id, kind: item.kind === "squad" ? "squad" : "agent" });
   };
 
   const handleConfirmDelete = async (id: string) => {
@@ -615,11 +619,7 @@ export default function ExpertMarketListPage({
               <WKButton
                 variant="primary"
                 icon={<Upload size={15} />}
-                onClick={() =>
-                  mineType === "squad"
-                    ? WKApp.routeRight.push(<SquadEditorPage mode="create" />)
-                    : WKApp.routeRight.push(<ExpertEditorPage mode="create" />)
-                }
+                onClick={() => setBotPublishOpen(true)}
               >
                 {mineType === "squad"
                   ? t("mcp.expert.publish")
@@ -805,6 +805,21 @@ export default function ExpertMarketListPage({
       <ExpertDetailModal
         item={selected}
         onClose={() => setSelected(null)}
+      />
+      <ExpertBotPublishModal
+        visible={botPublishOpen}
+        kind={mineType === "squad" ? "squad" : "agent"}
+        mode="create"
+        onClose={() => setBotPublishOpen(false)}
+        onToast={showToast}
+      />
+      <ExpertBotPublishModal
+        visible={Boolean(editTarget)}
+        kind={editTarget?.kind ?? "agent"}
+        mode="update"
+        editingId={editTarget?.id}
+        onClose={() => setEditTarget(null)}
+        onToast={showToast}
       />
       <ExpertDeleteConfirmModal
         item={deleteTarget}

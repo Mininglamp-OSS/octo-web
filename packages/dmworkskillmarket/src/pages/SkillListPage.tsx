@@ -22,7 +22,6 @@ import SearchBar from "../components/SearchBar";
 import SkillCard from "../components/SkillCard";
 import SkillCardSkeleton from "../components/SkillCardSkeleton";
 import SkillDetailModal from "../components/SkillDetailModal";
-import SkillEditorPage from "./SkillEditorPage";
 
 type TabId = "skills" | "mine";
 
@@ -163,13 +162,6 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
     showToast(t("skillMarket.list.saved"));
     list.refresh();
     setDetailRefreshKey((current) => current + 1);
-  }
-
-  /** Open a personal skill in the full-page editor. Pushes the editor into the
-   *  market's right pane (same navigation model as MarketSidebar / the summary
-   *  detail pages); the editor pops back to the 我的 list on return. */
-  function openSkillEditor(skill: Skill) {
-    WKApp.routeRight.push(<SkillEditorPage skillId={skill.id} />);
   }
 
   function openDetail(item: Skill) {
@@ -326,7 +318,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
                 skill={skill}
                 categories={list.categories}
                 onOpen={openDetail}
-                onEdit={mine ? openSkillEditor : undefined}
+                onEdit={mine ? setEditing : undefined}
                 onDelete={mine ? setDeleting : undefined}
                 onInstall={(item) => setInstallSkillId(item.id)}
                 showStats={mine}
