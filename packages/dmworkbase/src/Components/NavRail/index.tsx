@@ -29,6 +29,7 @@ export interface NavRailVMProps {
     onSetShowAppVersion: (v: boolean) => void;
     onInstallUpdate: () => void;
     onCancelUpdateDownload?: () => void;
+    onQuitApp?: () => void;
     onNotifyListener: () => void;
     onAvatarClick: () => void;
     onOpenOnboarding?: () => void;
@@ -70,6 +71,7 @@ export default class NavRail extends Component<NavRailProps> {
             onSetShowAppVersion,
             onInstallUpdate,
             onCancelUpdateDownload,
+            onQuitApp,
             onNotifyListener,
             onAvatarClick,
             onOpenOnboarding,
@@ -155,6 +157,7 @@ export default class NavRail extends Component<NavRailProps> {
                     onSetShowAppVersion={onSetShowAppVersion}
                     onInstallUpdate={onInstallUpdate}
                     onCancelUpdateDownload={onCancelUpdateDownload}
+                    onQuitApp={onQuitApp}
                     onNotifyListener={onNotifyListener}
                     onOpenOnboarding={onOpenOnboarding}
                 />

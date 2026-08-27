@@ -27,6 +27,7 @@ export interface NavSettingsPanelProps {
     onSetShowAppVersion: (v: boolean) => void;
     onInstallUpdate: () => void;
     onCancelUpdateDownload?: () => void;
+    onQuitApp?: () => void;
     onNotifyListener: () => void;
 }
 
@@ -115,6 +116,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
             onSetShowAppVersion,
             onInstallUpdate,
             onCancelUpdateDownload,
+            onQuitApp,
             onNotifyListener,
         } = this.props;
         const forceUpdate = Boolean(lastVersionInfo?.forceUpdate);
@@ -153,14 +155,26 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                         onNotifyListener();
                     }}
                     footer={showAppUpdate ? (
+                        forceUpdate ? (
+                            <WKButton variant="secondary" onClick={onQuitApp}>
+                                {t("base.navRail.settingsCenter.value.quitOcto")}
+                            </WKButton>
+                        ) : (
                         <WKButton variant="secondary" onClick={onCancelUpdateDownload}>
                             {t("base.common.cancel")}
                         </WKButton>
+                        )
                     ) : showAppUpdateOperation ? (
                         <>
-                            {!forceUpdate && <WKButton variant="secondary" onClick={() => { onSetShowAppVersion(false); onNotifyListener(); }}>{t("base.common.cancel")}</WKButton>}
+                            {forceUpdate ? (
+                                <WKButton variant="secondary" onClick={onQuitApp}>
+                                    {t("base.navRail.settingsCenter.value.quitOcto")}
+                                </WKButton>
+                            ) : (
+                                <WKButton variant="secondary" onClick={() => { onSetShowAppVersion(false); onNotifyListener(); }}>{t("base.common.cancel")}</WKButton>
+                            )}
                             <WKButton variant="primary" onClick={onInstallUpdate}>
-                                {t("base.common.update")}
+                                {forceUpdate ? t("base.navRail.settingsCenter.action.retry") : t("base.common.update")}
                             </WKButton>
                         </>
                     ) : undefined}

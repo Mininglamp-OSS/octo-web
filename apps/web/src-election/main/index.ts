@@ -45,6 +45,7 @@ import {
   IPC_OIDC_CLEAR_AUTH_SESSION,
   IPC_NOTIFICATION_TEST_ICON,
   IPC_MEDIA_ACCESS_STATUS,
+  IPC_QUIT_APP,
   IPC_RESTART_APP,
   IPC_SCREENSHOTS_OK,
   IPC_SCREENSHOTS_START,
@@ -1832,6 +1833,12 @@ const createMainWindow = async () => {
     if (!isTrustedShellIpcSender(event)) return;
     restartApp()
   })
+
+  ipcMain.on(IPC_QUIT_APP, (event) => {
+    if (!isTrustedShellIpcSender(event)) return;
+    forceQuit = true;
+    app.quit();
+  });
 
   // Test notification handler for debugging (development only)
   ipcMain.handle(IPC_NOTIFICATION_TEST_ICON, (event) => {

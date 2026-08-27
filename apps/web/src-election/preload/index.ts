@@ -29,6 +29,7 @@ import {
   IPC_TRUSTED_DOMAIN_REMOVE,
   IPC_ASK_TRUST_FLEET_HOST,
   IPC_OPEN_EXTERNAL_URL,
+  IPC_QUIT_APP,
   IPC_RESTART_APP,
   IPC_SCREENSHOTS_OK,
   IPC_SCREENSHOTS_START,
@@ -132,6 +133,7 @@ const ALLOWED_SEND_CHANNELS = [
   IPC_CONVERSATION_UNREAD_COUNT,
   IPC_SCREENSHOTS_START,
   IPC_RESTART_APP,
+  IPC_QUIT_APP,
 ];
 
 const ALLOWED_INVOKE_CHANNELS = [
@@ -302,6 +304,7 @@ const octoElectron = {
     startScreenshot: (args) => sendAllowed(IPC_SCREENSHOTS_START, args),
     getMediaAccessStatus: (mediaType) => invokeAllowed(IPC_MEDIA_ACCESS_STATUS, mediaType),
     restartApp: () => sendAllowed(IPC_RESTART_APP),
+    quitApp: () => sendAllowed(IPC_QUIT_APP),
   },
 };
 
