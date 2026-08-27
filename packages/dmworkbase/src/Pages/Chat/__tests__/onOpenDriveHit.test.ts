@@ -47,6 +47,19 @@ describe("buildDriveFileHitUrl", () => {
     expect(buildDriveFileHitUrl(baseHit({ type: "folder", name: "设计稿" }))).toBeNull();
   });
 
+  it("doc hit with ref_id: routes to the /d/<ref_id> standalone reader, not /drive/f/*", () => {
+    const u = new URL(
+      buildDriveFileHitUrl(baseHit({ type: "doc", ref_id: "doc-abc", name: "设计文档" }))!,
+      "https://x.example.com"
+    );
+    expect(u.pathname).toBe("/d/doc-abc");
+    expect(u.pathname).not.toContain("/drive/f/");
+  });
+
+  it("doc hit without ref_id: returns null (no reader link, must not fall through to /drive/f/*)", () => {
+    expect(buildDriveFileHitUrl(baseHit({ type: "doc", ref_id: undefined }))).toBeNull();
+  });
+
   it("missing size: leaves the size param empty rather than 'undefined'", () => {
     const u = new URL(
       buildDriveFileHitUrl(baseHit({ size: undefined }))!,
@@ -82,6 +95,30 @@ describe("openDriveFileHit", () => {
     openDriveFileHit(baseHit({ type: "folder", name: "设计稿" }), { open, onBlocked });
     expect(open).not.toHaveBeenCalled();
     expect(onBlocked).not.toHaveBeenCalled();
+  });
+
+  it("doc hit with ref_id: navigates to /d/<ref_id> (docs reader), not the blob preview", () => {
+    openDriveFileHit(baseHit({ type: "doc", ref_id: "doc-abc", name: "设计文档" }), {
+      open,
+      onBlocked,
+    });
+    expect(open).toHaveBeenCalledWith("about:blank", "_blank");
+    const u = new URL(tab.location.href, "https://x.example.com");
+    expect(u.pathname).toBe("/d/doc-abc");
+    expect(tab.location.href).not.toContain("/drive/f/");
+    expect(onBlocked).not.toHaveBeenCalled();
+  });
+
+  it("doc hit without ref_id: warns and never opens a tab", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    openDriveFileHit(baseHit({ type: "doc", ref_id: undefined }), { open, onBlocked });
+    expect(open).not.toHaveBeenCalled();
+    expect(onBlocked).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("doc hit missing ref_id"),
+      expect.anything()
+    );
+    warn.mockRestore();
   });
 
   it("popup blocked: calls onBlocked and does not navigate", () => {

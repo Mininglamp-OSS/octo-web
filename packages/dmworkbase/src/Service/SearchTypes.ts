@@ -306,6 +306,12 @@ export interface DriveSearchContentMeta {
 
 export interface DriveSearchHit {
   file_id: number;
+  /** Present only when type='doc'. Value = drive_file.ref_id = the cloud-doc
+   *  docId. The host dispatches a doc hit to buildDocLink({docId: ref_id}) →
+   *  /d/:docId (docs standalone reader), avoiding the blob-download 400 that a
+   *  doc file_id triggers. Backend contract: drive-search merge.go doc-hit
+   *  branch (omitempty — absent on blob/folder hits). */
+  ref_id?: string;
   space_id: string;
   space_name: string;
   parent_id: number;

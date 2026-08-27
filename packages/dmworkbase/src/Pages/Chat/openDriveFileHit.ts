@@ -1,9 +1,12 @@
 import type { DriveSearchHit } from "../../Service/SearchTypes";
+import { buildDocLink } from "../../Utils/docLink";
 
 // Routing for a clicked global-search drive hit, extracted from Chat's
 // onOpenDriveHit so the contract is unit-tested against the real code rather
-// than a mirror: folder hits have no preview and must never open a tab; file
-// hits open the standalone preview page `/drive/f/<fileId>?name=&size=&spaceId=`
+// than a mirror: folder hits have no preview and must never open a tab; doc
+// hits open the docs standalone reader `/d/<ref_id>` via buildDocLink (a doc
+// file_id would 400 on the blob-download preview); blob hits open the
+// standalone preview page `/drive/f/<fileId>?name=&size=&spaceId=`
 // (intercepted by apps/web Layout outside the app shell). name/size ride in the
 // query so the panel can label the file before the presigned URL resolves.
 
@@ -21,9 +24,19 @@ export interface OpenDriveFileHitDeps {
   onBlocked: () => void;
 }
 
-/** The standalone-preview URL for a file hit, or null for a folder (no preview). */
+/** The preview URL for a hit, or null when there is nothing to open (a folder,
+ *  or a doc hit missing its ref_id). Doc hits route to the /d/:docId standalone
+ *  reader via buildDocLink; blob hits route to the /drive/f/:fileId preview. */
 export function buildDriveFileHitUrl(hit: DriveSearchHit): string | null {
   if (hit.type === "folder") return null;
+  if (hit.type === "doc") {
+    // A doc hit is a cloud document, not a blob: route it to the docs
+    // standalone reader (same target as a cloud-doc tab hit), never to the
+    // blob-download preview which 400s on a doc file_id. ref_id is the docId;
+    // absent it we cannot build a link, so skip (return null).
+    if (!hit.ref_id) return null;
+    return buildDocLink({ docId: hit.ref_id });
+  }
   const params = new URLSearchParams({
     name: hit.name || "",
     size: hit.size != null ? String(hit.size) : "",
@@ -33,17 +46,24 @@ export function buildDriveFileHitUrl(hit: DriveSearchHit): string | null {
 }
 
 /**
- * Open a clicked file hit in a new standalone-preview tab. Folder hits are
- * skipped (client-side backstop: the panel already excludes them server-side
- * via filters.types). Uses the about:blank-first + opener=null pattern to dodge
- * the noopener null-return popup-blocker false positive.
+ * Open a clicked hit in a new tab. Folder hits, and doc hits missing a ref_id,
+ * are skipped (folders are a client-side backstop — the panel already excludes
+ * them server-side via filters.types; a doc without ref_id has no reader link).
+ * Uses the about:blank-first + opener=null pattern to dodge the noopener
+ * null-return popup-blocker false positive.
  */
 export function openDriveFileHit(hit: DriveSearchHit, deps: OpenDriveFileHitDeps): void {
   const url = buildDriveFileHitUrl(hit);
   if (url === null) {
-    console.warn(
-      "[GlobalSearch] folder hit should be filtered out server-side; skipping"
-    );
+    if (hit.type === "doc") {
+      console.warn("[GlobalSearch] doc hit missing ref_id; skipping", {
+        file_id: hit.file_id,
+      });
+    } else {
+      console.warn(
+        "[GlobalSearch] folder hit should be filtered out server-side; skipping"
+      );
+    }
     return;
   }
   const opened = deps.open("about:blank", "_blank");
