@@ -67,11 +67,13 @@ const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
                   }
                 : undefined
             }
-            onContextMenu={editMode
-              ? (event) => {
+            onContextMenu={(event) => {
+              if (editMode) {
                 event.preventDefault();
+                return;
               }
-              : undefined}
+              onMessageContextMenu(message.message, event);
+            }}
           >
             {editMode && selectable ? (
               <div
@@ -103,13 +105,6 @@ const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
               <div
                 className="wk-fold-msg-content"
                 tabIndex={editMode ? undefined : 0}
-                onContextMenu={(event) => {
-                  if (editMode) {
-                    event.preventDefault();
-                    return;
-                  }
-                  onMessageContextMenu(message.message, event);
-                }}
                 onKeyDown={(event) => {
                   if (editMode) return;
                   if ((event.shiftKey && event.key === "F10") || event.key === "ContextMenu") {

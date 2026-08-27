@@ -20,6 +20,7 @@ export interface ContextMenusState {
 export interface ContextMenusTrigger {
     clientX: number
     clientY: number
+    button?: number
     preventDefault(): void
 }
 
@@ -142,6 +143,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
     show(event: ContextMenusTrigger): void {
         event.preventDefault();
         if (!this.contextMenusRef) return
+        const shouldFocusFirstItem = event.button !== 2
 
         if (!this.state.showContextMenus) {
             this._returnFocus = document.activeElement instanceof HTMLElement
@@ -193,9 +195,11 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
             const flipSubmenu = (screenW - left - rootW) < SUBMENU_W + MARGIN
             this.setState({ contextOrigin, showContextMenus: true, flipSubmenu }, () => {
                 ContextMenus._syncDocumentContextMenuGuard()
-                this.contextMenusRef
-                    ?.querySelector<HTMLElement>(':scope > ul > [role="menuitem"]')
-                    ?.focus()
+                if (shouldFocusFirstItem) {
+                    this.contextMenusRef
+                        ?.querySelector<HTMLElement>(':scope > ul > [role="menuitem"]')
+                        ?.focus()
+                }
             })
         })
     }

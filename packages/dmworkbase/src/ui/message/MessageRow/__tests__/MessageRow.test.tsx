@@ -167,8 +167,9 @@ describe("MessageRow — selection mode interactions", () => {
         dispatchMouseEvent(root.querySelector(".wk-msg-row-sender")!, "click")
         expect(onSenderNameClick).toHaveBeenCalledTimes(1)
 
+        dispatchMouseEvent(root.querySelector(".wk-msg-row-header")!, "contextmenu")
         dispatchMouseEvent(root.querySelector(".wk-msg-row-body")!, "contextmenu")
-        expect(onContextMenu).toHaveBeenCalledTimes(1)
+        expect(onContextMenu).toHaveBeenCalledTimes(2)
     })
 
     it("suppresses right-click only on the actionable avatar button", () => {
@@ -188,7 +189,7 @@ describe("MessageRow — selection mode interactions", () => {
         expect(onContextMenu).not.toHaveBeenCalled()
     })
 
-    it("does not open the message menu from a continuation placeholder", () => {
+    it("opens the message menu from a continuation placeholder", () => {
         const onContextMenu = vi.fn()
         const root = renderRow(
             <MessageRow
@@ -203,10 +204,10 @@ describe("MessageRow — selection mode interactions", () => {
 
         const event = dispatchMouseEvent(root.querySelector(".wk-msg-row-avatar-placeholder")!, "contextmenu")
         expect(event.defaultPrevented).toBe(false)
-        expect(onContextMenu).not.toHaveBeenCalled()
+        expect(onContextMenu).toHaveBeenCalledTimes(1)
     })
 
-    it("does not open the message menu from a non-actionable avatar", () => {
+    it("opens the message menu from a non-actionable avatar area", () => {
         const onContextMenu = vi.fn()
         const root = renderRow(
             <MessageRow
@@ -221,10 +222,10 @@ describe("MessageRow — selection mode interactions", () => {
 
         const event = dispatchMouseEvent(root.querySelector(".wk-msg-row-avatar")!, "contextmenu")
         expect(event.defaultPrevented).toBe(false)
-        expect(onContextMenu).not.toHaveBeenCalled()
+        expect(onContextMenu).toHaveBeenCalledTimes(1)
     })
 
-    it("opens the message menu from the focused body with Shift+F10 only", () => {
+    it("opens from the focused body with Shift+F10 and from the surrounding row", () => {
         const onContextMenu = vi.fn()
         const root = renderRow(
             <MessageRow {...baseProps} onContextMenu={onContextMenu}>
@@ -243,7 +244,7 @@ describe("MessageRow — selection mode interactions", () => {
 
         dispatchMouseEvent(root.querySelector(".wk-msg-row-sender")!, "contextmenu")
         dispatchMouseEvent(root.querySelector(".wk-msg-row")!, "contextmenu")
-        expect(onContextMenu).toHaveBeenCalledTimes(1)
+        expect(onContextMenu).toHaveBeenCalledTimes(3)
     })
 
     it("uses a native button for an actionable avatar", () => {
