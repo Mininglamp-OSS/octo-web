@@ -73,7 +73,9 @@ describe("MarkdownContent — #1089 手动验收字符串必须渲染 (WS-117)",
   });
 
   it("默认路径下单 $E=mc^2$ 渲染成 KaTeX 节点（含 ^，是真公式）", () => {
-    const root = renderContent(<MarkdownContent content={"值 $E=mc^2$ 结束"} />);
+    const root = renderContent(
+      <MarkdownContent content={"值 $E=mc^2$ 结束"} />
+    );
     expect(root.querySelector(".katex")).not.toBeNull();
   });
 
@@ -92,7 +94,9 @@ describe("MarkdownContent — $$...$$ 公式渲染 (WS-117 / GH#1089)", () => {
   });
 
   it("块级 $$\\frac{a}{b}$$ 渲染成 KaTeX 节点", () => {
-    const root = renderContent(<MarkdownContent content={"$$\\frac{a}{b}$$"} />);
+    const root = renderContent(
+      <MarkdownContent content={"$$\\frac{a}{b}$$"} />
+    );
     expect(root.querySelector(".katex")).not.toBeNull();
   });
 
@@ -129,6 +133,36 @@ describe("MarkdownContent — block/flow 公式不再崩 + display 模式 (revie
     });
   }
 
+  const lineEndingMatrix: Array<[string, string]> = [
+    ["LF / EOF", "$$\n\\frac{a}{b}\n$$"],
+    ["LF / 后续文本", "$$\n\\frac{a}{b}\n$$\ntail"],
+    ["LF / 空行后续文本", "$$\n\\frac{a}{b}\n$$\n\ntail"],
+    ["CRLF / EOF", "$$\r\n\\frac{a}{b}\r\n$$"],
+    ["CRLF / 后续文本", "$$\r\n\\frac{a}{b}\r\n$$\r\ntail"],
+    ["CRLF / 空行后续文本", "$$\r\n\\frac{a}{b}\r\n$$\r\n\r\ntail"],
+  ];
+  for (const [name, content] of lineEndingMatrix) {
+    it(`行尾矩阵 ${name}：锚定 display 公式正常渲染`, () => {
+      const root = renderContent(<MarkdownContent content={content} />);
+      expect(root.querySelectorAll(".katex-display")).toHaveLength(1);
+      if (content.includes("tail")) expect(visibleText(root)).toContain("tail");
+    });
+  }
+
+  it("源码行内 markup 后的 $$ 不把 text-node 边界误判为行首", () => {
+    const input = "**Prefix**$$\nx^2\n$$";
+    const root = renderContent(<MarkdownContent content={input} />);
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(visibleText(root)).toContain("$$");
+  });
+
+  it("源码行内 markup 前的 $$ 不把 text-node 边界误判为行尾", () => {
+    const input = "$$\nx^2\n$$**suffix**";
+    const root = renderContent(<MarkdownContent content={input} />);
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(visibleText(root)).toContain("$$");
+  });
+
   it("未闭合的流式 $$ 前缀不崩（渲染成文本，等后续 chunk）", () => {
     const root = renderContent(
       <MarkdownContent content={"正在计算 $$\\sum_{i=1}^n i ="} isStreaming />
@@ -162,7 +196,9 @@ describe("MarkdownContent — block/flow 公式不再崩 + display 模式 (revie
 
 describe("MarkdownContent — KaTeX 布局定位样式不被 sanitize 剥掉", () => {
   it("分数保留 strut 内联定位样式（不塌陷）", () => {
-    const root = renderContent(<MarkdownContent content={"$$\\frac{a}{b}$$"} />);
+    const root = renderContent(
+      <MarkdownContent content={"$$\\frac{a}{b}$$"} />
+    );
     const strut = root.querySelector<HTMLElement>(".katex-html .strut");
     expect(strut).not.toBeNull();
     expect(strut?.getAttribute("style")).toBeTruthy();
@@ -351,7 +387,9 @@ describe("MarkdownContent — 被拒绝的公式无损还原：不丢正文/meta
     "报价 $$100 有点贵",
   ];
   for (const input of p0Cases) {
-    it(`开 fence 同行文本(meta)不被吞、原样显示：${JSON.stringify(input)}`, () => {
+    it(`开 fence 同行文本(meta)不被吞、原样显示：${JSON.stringify(
+      input
+    )}`, () => {
       const root = renderContent(<MarkdownContent content={input} />);
       expect(root.querySelector(".katex")).toBeNull();
       expect(visibleText(root)).toBe(input);
@@ -371,9 +409,7 @@ describe("MarkdownContent — 被拒绝的公式无损还原：不丢正文/meta
   it("P1：跨行 inline math 在 blockquote 内不把 `> ` 泄漏进正文", () => {
     // reviewer 例子：`> $foo` / `> bar$`，内部无数学字符 → 被拒。旧 slice 还原会显示
     // `$foo\n> bar$`，把容器 marker 漏进正文；新实现转义后重解析，remark 正确处理容器。
-    const root = renderContent(
-      <MarkdownContent content={"> $foo\n> bar$"} />
-    );
+    const root = renderContent(<MarkdownContent content={"> $foo\n> bar$"} />);
     expect(root.querySelector(".katex")).toBeNull();
     const vt = visibleText(root);
     expect(vt).toContain("$foo");
@@ -470,7 +506,10 @@ describe("MarkdownContent — 合法公式在收紧规则下仍渲染", () => {
     ["单 $E=mc^2$", "值 $E=mc^2$ 结束"],
     ["单 $x_1$", "设 $x_1$"],
     ["内部带空格 $a + b^2$", "式 $a + b^2$ 完"],
-    ["行内 $$ \\eta_{avg} $$（双美元允许 padding）", "结果 $$ \\eta_{avg} $$ 完"],
+    [
+      "行内 $$ \\eta_{avg} $$（双美元允许 padding）",
+      "结果 $$ \\eta_{avg} $$ 完",
+    ],
   ];
   for (const [name, content] of ok) {
     it(`仍渲染：${name}`, () => {
@@ -484,7 +523,9 @@ describe("MarkdownContent — KaTeX 解析失败回落为正文，不显示 .kat
   it("无效公式被判为公式但解析失败时，降级为纯文本（保留定界符、不显示红字）", () => {
     // `$\frac{a}$` 过守卫（含 \ 和 {}，单 $ 两端紧贴非空白），但缺第二个参数 → KaTeX 报错。
     // 预校验失败 → 整体按字面文本保留，连 `$` 定界符一起（P1-1：旧 fallback 会丢定界符）。
-    const root = renderContent(<MarkdownContent content={"试 $\\frac{a}$ 完"} />);
+    const root = renderContent(
+      <MarkdownContent content={"试 $\\frac{a}$ 完"} />
+    );
     expect(root.querySelector(".katex-error")).toBeNull();
     expect(visibleText(root)).toContain("$\\frac{a}$");
   });
@@ -549,7 +590,9 @@ describe("MarkdownContent — 含真正 TeX 命令时放宽（CJK 合法公式�
   });
 
   it("纯 CJK 且无命令的 $金额_x$ 不渲染（视为正文）", () => {
-    const root = renderContent(<MarkdownContent content={"订单 $金额_x$ 备注"} />);
+    const root = renderContent(
+      <MarkdownContent content={"订单 $金额_x$ 备注"} />
+    );
     expect(root.querySelector(".katex")).toBeNull();
     expect(visibleText(root)).toContain("金额_x");
   });
@@ -698,6 +741,15 @@ describe("MarkdownContent — 接收端保护：每条消息公式数量上限 (
     const root = renderContent(<MarkdownContent content={`$$\n${body}\n$$`} />);
     expect(root.querySelector(".katex")).toBeNull();
   });
+
+  it("公式 attempt 达到 32 后停止预校验，失败候选也计入上限", () => {
+    const invalid = Array.from({ length: 32 }, () => "$\\frac{a}$").join(" ");
+    const root = renderContent(
+      <MarkdownContent content={`${invalid} $x^2$`} />
+    );
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(visibleText(root)).toContain("$x^2$");
+  });
 });
 
 describe("MarkdownContent — 转义 \\$ 在容器/实体等场景仍保持 literal (reviewer P0-2 收口)", () => {
@@ -717,7 +769,9 @@ describe("MarkdownContent — 转义 \\$ 在容器/实体等场景仍保持 lite
 
   it("转义 \\$ 与真实反斜杠 \\\\$x^2$ 区分：字面反斜杠后是活公式", () => {
     // \\$x^2$ = 字面反斜杠 + 活公式：应渲染公式，且保留一个反斜杠
-    const root = renderContent(<MarkdownContent content={"path \\\\$x^2$ end"} />);
+    const root = renderContent(
+      <MarkdownContent content={"path \\\\$x^2$ end"} />
+    );
     expect(root.querySelector(".katex")).not.toBeNull();
   });
 });
@@ -793,9 +847,7 @@ describe("MarkdownContent — escape 哨兵不泄漏到 link/image 属性 (revie
 
 describe("MarkdownContent — 用户原文里的 U+E000 不被无条件改写 (reviewer P1-3)", () => {
   it("消息含 PUA U+E000 且无 \\$ 时，U+E000 原样保留（不变成 $）", () => {
-    const root = renderContent(
-      <MarkdownContent content={"hello  world"} />
-    );
+    const root = renderContent(<MarkdownContent content={"hello  world"} />);
     const vt = visibleText(root);
     expect(vt).toContain("");
     expect(vt).toBe("hello  world");
@@ -811,6 +863,27 @@ describe("MarkdownContent — 用户原文里的 U+E000 不被无条件改写 (r
     const vt = visibleText(root);
     expect(vt).toContain("$x^2$");
     expect(vt).toContain("");
+  });
+
+  it("字符引用解码后的 PUA 也参与哨兵碰撞检查", () => {
+    const root = renderContent(
+      <MarkdownContent content={"&#xE000; \\$x^2\\$ done"} />
+    );
+    expect(root.querySelector(".katex")).toBeNull();
+    const vt = visibleText(root);
+    expect(vt).toContain("");
+    expect(vt).toContain("$x^2$");
+  });
+
+  it("所有 PUA 哨兵都碰撞时 fail closed，不重新激活转义公式", () => {
+    const allPua = Array.from({ length: 0xf8ff - 0xe000 + 1 }, (_, i) =>
+      String.fromCharCode(0xe000 + i)
+    ).join("");
+    const root = renderContent(
+      <MarkdownContent content={`${allPua} \\$x^2\\$ done`} />
+    );
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(visibleText(root)).toContain("$x^2$");
   });
 });
 
