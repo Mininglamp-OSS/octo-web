@@ -742,6 +742,7 @@ export default class McpMarketListPage extends Component<
           </div>
         </header>
 
+        {this.props.variant !== "mine" && (
         <div className="wk-mcp__toolbar">
           <div className="wk-mcp__pills">
             {categories.map((cat) => (
@@ -782,6 +783,7 @@ export default class McpMarketListPage extends Component<
             </div>
           )}
         </div>
+        )}
 
         <div
           className="wk-mcp__body"
