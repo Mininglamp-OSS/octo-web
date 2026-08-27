@@ -39,17 +39,30 @@ beforeEach(() => {
 });
 
 describe("SearchService.searchDrive", () => {
-  it("posts drive/search with the default offset body (page_index 0) and forwards the abort signal", async () => {
+  it("posts search under the /api/drive/ prefix with the default offset body (page_index 0) and forwards the abort signal", async () => {
     postMock.mockResolvedValue({ total: 1, truncated: false, items: [hit()] });
     const controller = new AbortController();
 
     await SearchService.searchDrive({ q: "评审" }, controller.signal);
 
     expect(postMock).toHaveBeenCalledWith(
-      "drive/search",
+      "search",
       { q: "评审", scope: "all", page_index: 0, page_size: 20 },
-      { signal: controller.signal }
+      { signal: controller.signal, baseURL: "/api/drive/" }
     );
+  });
+
+  it("routes drive search to /api/drive/search (baseURL override + path combine)", async () => {
+    postMock.mockResolvedValue({ total: 0, truncated: false, items: [] });
+
+    await SearchService.searchDrive({ q: "x" });
+
+    const [path, , config] = postMock.mock.calls[0];
+    expect(path).toBe("search");
+    expect(config.baseURL).toBe("/api/drive/");
+    // The drive tab must resolve to the dedicated /api/drive proxy, NOT the
+    // /api/v1 gateway; axios combines baseURL + path exactly like this.
+    expect(`${config.baseURL}${path}`).toBe("/api/drive/search");
   });
 
   it("passes page_index / page_size / space_id / filters through when provided", async () => {
@@ -65,7 +78,7 @@ describe("SearchService.searchDrive", () => {
     });
 
     expect(postMock).toHaveBeenCalledWith(
-      "drive/search",
+      "search",
       {
         q: "spec",
         scope: "space",
@@ -74,7 +87,7 @@ describe("SearchService.searchDrive", () => {
         space_id: "space-9",
         filters: { type: "doc" },
       },
-      { signal: undefined }
+      { signal: undefined, baseURL: "/api/drive/" }
     );
   });
 

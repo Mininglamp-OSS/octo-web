@@ -21,6 +21,17 @@ const HIGHLIGHT_MAX_LEN = 2000;
 // Show at most this many body snippets per hit; the backend may return more.
 const BODY_SNIPPET_MAX = 2;
 
+// Abort rejections (keyword change / unmount cleanup calling controller.abort())
+// are expected control flow, never a real search failure — filter them so a
+// request we cancelled ourselves never flashes an error banner.
+function isAbortError(err: unknown): boolean {
+  return (
+    !!err &&
+    typeof err === "object" &&
+    (err as { name?: unknown }).name === "AbortError"
+  );
+}
+
 interface DriveSearchPanelProps {
   keyword: string;
   dataSource: GlobalSearchDataSource;
@@ -111,17 +122,28 @@ const DriveSearchPanel: React.FC<DriveSearchPanelProps> = ({
   // changes. Debounced so a fast typist fires one search per pause.
   useEffect(() => {
     abortRef.current?.abort();
+    // Bump the generation on EVERY run — INCLUDING the !canSearch early return
+    // below — so any in-flight response (first page or next page) from the prior
+    // generation fails its `seq === seqRef.current` guard and cannot write stale
+    // items/error back after we reset to the empty state. abort() alone races: a
+    // resolve/reject already queued before the abort still lands, and without a
+    // seq bump it would pass the guard and pollute the empty state (QA 🔴).
+    const seq = ++seqRef.current;
     setItems([]);
     setTotal(0);
     setTruncated(false);
     setPageIndex(0);
     setError(null);
+    // Reset loadingMore too: an in-flight next page whose finally() is now gated
+    // out by the seq bump would otherwise leave loadingMore stuck true forever —
+    // footer frozen on "loading" and loadNextPage's opening guard blocking every
+    // later page. Mirrors the cursor-paged panels' reset (高研 必修🟠).
+    setLoadingMore(false);
     if (!canSearch) {
       setLoading(false);
       return;
     }
     setLoading(true);
-    const seq = ++seqRef.current;
     const controller = new AbortController();
     abortRef.current = controller;
     const timer = window.setTimeout(() => {
@@ -136,10 +158,10 @@ const DriveSearchPanel: React.FC<DriveSearchPanelProps> = ({
           setTotal(resp.total);
           setTruncated(resp.truncated);
         })
-        .catch(() => {
-          // A superseded generation (keyword changed / abort) is dropped by the
-          // seq guard before it can surface a spurious error.
-          if (seq !== seqRef.current) return;
+        .catch((err) => {
+          // A cancelled request (AbortError) or a superseded generation is not a
+          // failure — drop it silently instead of surfacing a spurious error.
+          if (isAbortError(err) || seq !== seqRef.current) return;
           setError(t("base.globalSearch.drive.searchFailed"));
         })
         .finally(() => {
@@ -163,19 +185,25 @@ const DriveSearchPanel: React.FC<DriveSearchPanelProps> = ({
     const seq = seqRef.current;
     const nextIndex = pageIndex + 1;
     try {
-      const resp = await dataSource.searchDrive!({
-        q: trimmed,
-        scope: "all",
-        page_index: nextIndex,
-        page_size: PAGE_SIZE,
-      });
+      // Share the current generation's controller so a keyword switch mid-page
+      // cancels this request too (the first-page effect already called abort()).
+      const resp = await dataSource.searchDrive!(
+        {
+          q: trimmed,
+          scope: "all",
+          page_index: nextIndex,
+          page_size: PAGE_SIZE,
+        },
+        abortRef.current?.signal
+      );
       if (seq !== seqRef.current) return;
       setItems((prev) => [...prev, ...resp.items]);
       setPageIndex(nextIndex);
       setTotal(resp.total); // total normally stable; follow backend if it moves
       setTruncated(resp.truncated);
-    } catch {
-      if (seq !== seqRef.current) return;
+    } catch (err) {
+      // Cancelled request or superseded generation: drop it, never show an error.
+      if (isAbortError(err) || seq !== seqRef.current) return;
       setError(t("base.globalSearch.drive.searchFailed"));
     } finally {
       if (seq === seqRef.current) setLoadingMore(false);
