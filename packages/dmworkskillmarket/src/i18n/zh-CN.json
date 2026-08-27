@@ -102,7 +102,7 @@
     "viewsTitle": "浏览次数：{{count}}",
     "downloadsLabel": "下载",
     "downloadsTitle": "下载次数：{{count}}",
-    "install": "安装"
+    "install": "添加"
   },
   "category": {
     "ariaLabel": "技能分类",

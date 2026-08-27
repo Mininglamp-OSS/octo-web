@@ -62,6 +62,34 @@ export function WKModal({ visible, title, header, footer, children, onCancel }: 
   );
 }
 
+interface PromptForwardModalMockProps {
+  visible: boolean;
+  title?: React.ReactNode;
+  hint?: React.ReactNode;
+  icon?: React.ReactNode;
+  prompt: string;
+  spaceId?: string;
+  prerequisiteHint?: React.ReactNode;
+  onClose?: () => void;
+  onForwarded?: () => void;
+}
+
+// Shared "forward to Bot" modal from @octo/base. The real one copies/forwards
+// `prompt`; the mock only needs to render the prompt + a close affordance so
+// callers (e.g. InstallPromptModal) mount without crashing and stay inert while
+// hidden (visible=false → null, so it never leaks an extra dialog).
+export function PromptForwardModal({ visible, title, hint, prompt, onClose }: PromptForwardModalMockProps) {
+  if (!visible) return null;
+  return (
+    <section role="dialog" aria-label={typeof title === "string" ? title : "prompt-forward"}>
+      <button type="button" aria-label="关闭" onClick={onClose} />
+      {title ? <h2>{title}</h2> : null}
+      {hint ? <p>{hint}</p> : null}
+      <pre>{prompt}</pre>
+    </section>
+  );
+}
+
 export const Toast = {
   success: () => undefined,
   error: () => undefined,

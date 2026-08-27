@@ -801,11 +801,11 @@
    .skill-market-card__install. */
 .skill-market-card__primary-action {
   position: absolute;
-  top: var(--wk-sp-3);
+  bottom: var(--wk-sp-3);
   right: var(--wk-sp-3);
   z-index: 1;
   opacity: 0;
-  transform: translateY(-4px);
+  transform: translateY(4px);
   transition: opacity var(--wk-dur-fast) var(--wk-ease),
     transform var(--wk-dur-fast) var(--wk-ease),
     background var(--wk-dur-fast) var(--wk-ease);
