@@ -331,13 +331,6 @@
   opacity: 0.92;
 }
 
-/* !important 是必需的：AdaptiveCards SDK 输出的 spinner/loading 元素带 inline/keyframe 动画，
- * 常规选择器权重压不过；兜底后若不强制停掉，卡片仍在转圈，与「已完成」语义矛盾。 */
-.wk-interactive-card-progress--fallback [class*="spinner"],
-.wk-interactive-card-progress--fallback [class*="loading"] {
-  animation: none !important;
-}
-
 /* ── SDK(AdaptiveCards) 输出基线样式 ──
  * SDK 未引入默认样式表，按钮/输入本无样式；此处用 --wk-* token 补基线，待真机微调。
  * 颜色/间距/字体等由 HostConfig 就地注入（inline），此处只补 SDK 未覆盖的控件外观。 */

@@ -101,7 +101,7 @@ export class InteractiveCardCell extends MessageCell {
   /**
    * 已应用到挂载卡片的「客户端兜底已完成」态。**不进 renderedKey**：它只是本地标记翻转、
    * 没有新 card frame 到达，若混进 key 会误走重挂载/重置分支（折叠已展开 timeline、作废在飞
-   * Submit）。单独追踪，仅在翻转时叠加 banner 视觉 + forceUpdate 刷 UI（评审 P1）。
+   * Submit）。单独追踪：false → true 仅叠加 banner 视觉；true → false 重挂载以撤销已改写的 DOM。
    */
   private renderedFallbackFinalized = false;
   /** 组件是否仍挂载（异步回调卸载守卫）。 */
@@ -198,7 +198,8 @@ export class InteractiveCardCell extends MessageCell {
     }
     const fallbackFinalized = this.isFallbackFinalized(decision.card);
     // renderedKey 只表达真实 card 内容/渲染 profile；本地兜底标记不进 key（评审 P1，见
-    // cardReconcile 模块头注释）。据此把本次 sync 分成 remount / fallback-only / noop 三类。
+    // cardReconcile 模块头注释）。据此把本次 sync 分成 remount / fallback-only / noop 三类；
+    // fallback-only 只允许 false → true，撤回必须 remount 才能还原 DOM overlay。
     const key = buildRenderedCardKey(
       decision.renderProfile,
       decision.allowInteractive,
@@ -212,7 +213,7 @@ export class InteractiveCardCell extends MessageCell {
     );
     if (action === "noop") return;
     if (action === "fallback-only") {
-      // 内容未变、仅本地兜底标记翻转 → 只叠加 banner 视觉并刷 JSX，不重挂载、不重置交互态
+      // 内容未变、兜底 false → true → 只叠加 banner 视觉并刷 JSX，不重挂载、不重置交互态
       // （不 submitGen++、不清 timer/submitting/submitError），避免折叠已展开 timeline、
       // 静默放弃在飞 Action.Submit。复用现有 seam：enhanceMountedCard 带 fallbackFinalized。
       this.renderedFallbackFinalized = fallbackFinalized;

@@ -2,7 +2,8 @@
 //
 // 关键不变量：本地兜底标记 (localFallbackApplied) 翻转**不改变** renderedKey，因此不会被判成
 // 「新帧到达」而走重挂载/重置分支——那会折叠用户已展开的 timeline 并静默作废在飞的
-// Action.Submit（submitGen++/清 submitting/submitError）。这里在无重型组件图依赖下锁住该决策。
+// Action.Submit（submitGen++/清 submitting/submitError）。但撤回时必须重挂载，才能清掉已原地
+// 改写的 timeline DOM。这里在无重型组件图依赖下锁住这两个方向不同的决策。
 
 import { describe, expect, it } from "vitest";
 import {
@@ -60,9 +61,12 @@ describe("classifyCardReconcile", () => {
     expect(classifyCardReconcile(key, true, key, true)).toBe("noop");
   });
 
-  it("内容不变、仅兜底标记翻转 → fallback-only（不重挂载、不重置交互态）", () => {
+  it("apply：内容不变、兜底 false → true → fallback-only（保护交互态）", () => {
     expect(classifyCardReconcile(key, false, key, true)).toBe("fallback-only");
-    expect(classifyCardReconcile(key, true, key, false)).toBe("fallback-only");
+  });
+
+  it("retract：内容不变、兜底 true → false → remount（撤销 DOM overlay）", () => {
+    expect(classifyCardReconcile(key, true, key, false)).toBe("remount");
   });
 
   it("内容指纹变化（真实新帧）→ remount（即便兜底态相同）", () => {
