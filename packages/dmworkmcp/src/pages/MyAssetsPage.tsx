@@ -10,6 +10,21 @@ import "../index.css";
  *  split into their own tabs, matching the marketing prototype. */
 type MineType = "skills" | "experts" | "squads" | "mcp";
 
+/** Initial tab, deep-linkable via `?type=` on the /mcp-market/mine URL so a
+ *  direct link (or an e2e spec) can land on a specific market's mine view
+ *  without first mounting — and fetching — the default 技能 tab. */
+function initialType(): MineType {
+  try {
+    const value = new URLSearchParams(window.location.search).get("type");
+    if (value === "mcp" || value === "experts" || value === "squads" || value === "skills") {
+      return value;
+    }
+  } catch {
+    // ignore — fall through to the default
+  }
+  return "skills";
+}
+
 const TYPE_TABS: Array<{
   key: MineType;
   labelKey: string;
@@ -31,7 +46,7 @@ const TYPE_TABS: Array<{
  */
 export default function MyAssetsPage() {
   useI18n();
-  const [type, setType] = useState<MineType>("skills");
+  const [type, setType] = useState<MineType>(initialType);
   return (
     <div className="wk-mcp-mine">
       <header className="wk-mcp-mine__hero">

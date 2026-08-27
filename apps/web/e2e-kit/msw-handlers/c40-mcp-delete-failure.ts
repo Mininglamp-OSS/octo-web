@@ -55,10 +55,13 @@ export async function registerC40McpDeleteFailure(page: Page): Promise<void> {
       updated_at: "2026-08-26T00:00:00Z",
     };
     win.__msw.worker.use(
-      // Both 全部 and 我的 hit GET /plugins; the 我的 view sends mode=mine.
+      // The connector 我的 view sends mode=mine + plugin_type=connector.
       win.__msw.http.get("*/market/api/v1/plugins", ({ request }) => {
-        const mode = new URL(request.url).searchParams.get("mode");
-        const data = mode === "mine" ? [item] : [];
+        const params = new URL(request.url).searchParams;
+        const mine =
+          params.get("mode") === "mine" &&
+          params.get("plugin_type") === "connector";
+        const data = mine ? [item] : [];
         return win.__msw!.HttpResponse.json({
           data,
           pagination: { total: data.length, page: 1, page_size: 20 },
