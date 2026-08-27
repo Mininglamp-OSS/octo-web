@@ -89,6 +89,7 @@ export const UpdateCheckOpen: StoryObj = {
             onToggleSetting={() => undefined}
             onSetShowAppVersion={() => undefined}
             onInstallUpdate={() => undefined}
+            onCancelUpdateDownload={() => undefined}
             onNotifyListener={() => undefined}
         />
     ),
@@ -107,6 +108,7 @@ export const UpdateInProgress: StoryObj = {
             onToggleSetting={() => undefined}
             onSetShowAppVersion={() => undefined}
             onInstallUpdate={() => undefined}
+            onCancelUpdateDownload={() => undefined}
             onNotifyListener={() => undefined}
         />
     ),
