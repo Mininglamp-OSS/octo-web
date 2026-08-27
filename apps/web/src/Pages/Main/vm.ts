@@ -24,8 +24,6 @@ import {
 } from "../../../src-election/shared/ipc-channels";
 
 export default class MainVM extends ProviderListener {
-  private static MAX_ELECTRON_FORCED_UPDATE_FAILURES = 3;
-  private static ELECTRON_UPDATE_FAILURE_KEY_PREFIX = "dmwork_electron_update_failure_count_";
   private _currentMenus?: Menus;
   private _settingSelected!: boolean;
 
@@ -102,28 +100,6 @@ export default class MainVM extends ProviderListener {
   private _onBrowserRouteChange = () => {
     this.syncMenuFromBrowserPath();
   };
-
-  private getElectronUpdateFailureKey(version: string): string {
-    return MainVM.ELECTRON_UPDATE_FAILURE_KEY_PREFIX + version;
-  }
-
-  private getElectronUpdateFailureCount(version: string): number {
-    return Number(localStorage.getItem(this.getElectronUpdateFailureKey(version)) || 0);
-  }
-
-  private clearElectronUpdateFailureCount(version: string) {
-    localStorage.removeItem(this.getElectronUpdateFailureKey(version));
-  }
-
-  private recordElectronUpdateFailure(): boolean {
-    const version = this.lastVersionInfo?.appVersion;
-    if (!version || !this.lastVersionInfo?.forceUpdate) return false;
-    const next = this.getElectronUpdateFailureCount(version) + 1;
-    localStorage.setItem(this.getElectronUpdateFailureKey(version), String(next));
-    if (next < MainVM.MAX_ELECTRON_FORCED_UPDATE_FAILURES) return false;
-    this.lastVersionInfo = { ...this.lastVersionInfo, forceUpdate: false };
-    return true;
-  }
 
   private findMenuForRoute(routePath: string): Menus | undefined {
     return this.menusList
@@ -211,7 +187,6 @@ export default class MainVM extends ProviderListener {
   appUpdateInit() {
     // 监听升级失败事件
     this.addIpcListener(IPC_UPDATE_ERROR, (event, message) => {
-      this.recordElectronUpdateFailure();
       this.showAppVersion = Boolean(this.lastVersionInfo);
       this.showAppUpdate = false;
       this.showAppUpdateOperation = Boolean(this.lastVersionInfo);
@@ -222,11 +197,10 @@ export default class MainVM extends ProviderListener {
     });
     // 发现可用更新事件
     this.addIpcListener(IPC_UPDATE_AVAILABLE, (event, message) => {
-      const failureCount = this.getElectronUpdateFailureCount(message.version);
       this.lastVersionInfo = {
         appVersion: message.version,
         updateDesc: message.releaseNotes,
-        forceUpdate: Boolean(message.forceUpdate) && failureCount < MainVM.MAX_ELECTRON_FORCED_UPDATE_FAILURES,
+        forceUpdate: Boolean(message.forceUpdate),
       };
       this.showAppVersion = true;
       this.showAppUpdate = false;
@@ -259,7 +233,6 @@ export default class MainVM extends ProviderListener {
     });
     // 监听下载完成事件
     this.addIpcListener(IPC_UPDATE_DOWNLOADED, (event, message) => {
-      this.clearElectronUpdateFailureCount(message.version);
       this.lastVersionInfo = {
         appVersion: message.version,
         updateDesc: message.releaseNotes,
@@ -272,7 +245,6 @@ export default class MainVM extends ProviderListener {
       this.showAppVersion = false;
       this.showAppUpdate = false;
       this.showAppUpdateOperation = false;
-      this.markVersionRead();
       this.notifyListener();
     });
   }

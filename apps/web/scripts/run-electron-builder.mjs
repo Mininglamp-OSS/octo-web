@@ -115,6 +115,42 @@ if (!hasPublishArg) {
   builderArgs.push("--publish", "never");
 }
 
+function hasPlatformFlag(longName, shortName) {
+  return builderArgs.some((arg) => {
+    if (arg === longName) return true;
+    if (!arg.startsWith("-") || arg.startsWith("--")) return false;
+    return arg.slice(1).includes(shortName);
+  });
+}
+
+function requireUpdaterVerifierConfig() {
+  if (process.env.VITE_ELECTRON_ALLOW_UNSIGNED_UPDATER_TEST_BUILD === "true") {
+    console.warn(
+      "[run-electron-builder] Skipping desktop updater verifier identity checks for a local unsigned test build.",
+    );
+    return;
+  }
+
+  const missing = [];
+  if (hasPlatformFlag("--mac", "m") && !process.env.VITE_ELECTRON_UPDATE_SIGNING_TEAM_ID?.trim()) {
+    missing.push("VITE_ELECTRON_UPDATE_SIGNING_TEAM_ID");
+  }
+  if (hasPlatformFlag("--win", "w") && !process.env.VITE_ELECTRON_UPDATE_WINDOWS_PUBLISHER_NAME?.trim()) {
+    missing.push("VITE_ELECTRON_UPDATE_WINDOWS_PUBLISHER_NAME");
+  }
+  if (missing.length === 0) return;
+
+  console.error(
+    "[run-electron-builder] Refusing to package an Electron updater build without verifier identity configuration.\n" +
+      `Missing: ${missing.join(", ")}\n` +
+      "Set the public verifier identity values for release packaging, or set " +
+      "VITE_ELECTRON_ALLOW_UNSIGNED_UPDATER_TEST_BUILD=true only for local unsigned updater smoke tests.",
+  );
+  process.exit(1);
+}
+
+requireUpdaterVerifierConfig();
+
 const child = childProcess.spawn(process.execPath, [electronBuilderBin, ...builderArgs], {
   cwd: appDir,
   env: {

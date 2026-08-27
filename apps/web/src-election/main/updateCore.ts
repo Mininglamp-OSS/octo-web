@@ -160,7 +160,10 @@ export function getDownloadedUpdateFileName(url: string, version: string, platfo
   const fallbackExt = platform === "windows" ? "exe" : platform === "macos" ? "zip" : "AppImage";
   const fallback = `OCTO-${version}.${fallbackExt}`;
   const candidate = name || fallback;
-  return candidate.replace(/[\\/:*?"<>|]/g, "_");
+  return candidate
+    .replace(/[^A-Za-z0-9._ -]/g, "_")
+    .replace(/^\.+/, "")
+    .slice(0, 160) || fallback.replace(/[^A-Za-z0-9._ -]/g, "_");
 }
 
 export function isZipUpdatePackage(filePathOrUrl: string): boolean {

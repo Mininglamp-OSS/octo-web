@@ -202,6 +202,9 @@ describe("desktop updater core", () => {
     expect(
       getDownloadedUpdateFileName("https://cdn.example.com/releases/", "1.0.0", "macos"),
     ).toBe("OCTO-1.0.0.zip");
+    expect(
+      getDownloadedUpdateFileName("https://cdn.example.com/releases/OCTO-1.0.0;Start-Process.exe", "1.0.0", "windows"),
+    ).toBe("OCTO-1.0.0_Start-Process.exe");
   });
 
   it("detects zip update packages", () => {
@@ -236,10 +239,12 @@ describe("desktop updater core", () => {
     expect(source).not.toContain('LOG_PATH="$11"');
   });
 
-  it("binds Windows signature verification parameters through PowerShell param", () => {
+  it("keeps Windows signature verification values out of PowerShell command text", () => {
     const source = fs.readFileSync(path.resolve(__dirname, "../update.ts"), "utf8");
-    expect(source).toContain("& { param([string]$Path, [string]$ExpectedPublisher)");
+    expect(source).toContain("$Path = $env:OCTO_UPDATE_INSTALLER_PATH");
+    expect(source).toContain("$ExpectedPublisher = $env:OCTO_UPDATE_WINDOWS_PUBLISHER_NAME");
     expect(source).toContain("Get-AuthenticodeSignature -LiteralPath $Path");
-    expect(source).not.toContain("Get-AuthenticodeSignature -LiteralPath $args[0]");
+    expect(source).not.toContain("param([string]$Path, [string]$ExpectedPublisher)");
+    expect(source).not.toContain("-Command\",\n    command,\n    filePath");
   });
 });
