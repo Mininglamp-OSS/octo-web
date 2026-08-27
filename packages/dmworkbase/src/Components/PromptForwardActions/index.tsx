@@ -9,7 +9,6 @@ import APIClient from "../../Service/APIClient";
 import { forwardPlainText } from "../../Service/ForwardService";
 import { copyToClipboard } from "../../Utils/clipboard";
 import { Dap } from "../../Service/Dap";
-import { matchRoute } from "../../Service/TrackRules";
 import WKButton from "../WKButton";
 import "./index.css";
 
@@ -56,6 +55,14 @@ export interface PromptForwardActionsProps {
   layout?: "stack" | "split";
   /** Left-column content in split layout (usually the prompt <pre> + hint). */
   preview?: React.ReactNode;
+  /**
+   * DAP event to emit once on a SUCCESSFUL copy. Each host supplies its own
+   * (e.g. "market_bot_publish_prompt_copied", "market_skill_install_prompt_copied",
+   * "market_mcp_connect_prompt_copied") so the metric follows the surface, not
+   * the route. Omit to emit nothing (e.g. the expert/squad publish surface,
+   * whose copy is not counted). See DAP_EVENTS.md.
+   */
+  copyTrackEvent?: string;
 }
 
 /** One owned-Bot row the picker renders. Sourced from `/robot/owned_bots`. */
@@ -102,6 +109,7 @@ export default function PromptForwardActions({
   navigateOnSend = true,
   layout = "stack",
   preview,
+  copyTrackEvent,
 }: PromptForwardActionsProps) {
   useI18n();
   // INVARIANT: this snapshot does NOT subscribe to space changes. Every current
@@ -174,20 +182,14 @@ export default function PromptForwardActions({
     if (ok) {
       if (!mountedRef.current) return;
       setCopied(true);
-      // 八审 P2:改为「复制成功」后命令式 track。此前挂 TrackRules 点击委托(mcp-bot-publish-copy),
-      // 点击即发——即使 copyToClipboard 返回 false(非安全上下文/权限拒绝)也计一次。本共享组件也渲染在
-      // /mcp-market/experts(专家/专家团 发布),那里的复制不算 bot 发布,故沿用原规则的 route 门:仅
-      // /mcp-market/mcp 计。matchRoute + currentRoute 同源(location.pathname),与原 DOM 规则完全等价。
-      const route = (() => {
-        try {
-          const loc = (globalThis as { location?: Location }).location;
-          return loc && loc.pathname ? loc.pathname : "";
-        } catch {
-          return "";
-        }
-      })();
-      if (matchRoute("/mcp-market/mcp", route)) {
-        Dap.shared.track("market_bot_publish_prompt_copied", {});
+      // Emit the caller-supplied copy event once on SUCCESS (not on click):
+      // copyToClipboard can return false in a non-secure context / on a
+      // permission denial, and that must not be counted. Each host passes the
+      // event for its own surface (bot-publish / skill-install / mcp-connect),
+      // so the metric follows the surface rather than a brittle route match.
+      // Surfaces whose copy is not counted (expert/squad publish) pass none.
+      if (copyTrackEvent) {
+        Dap.shared.track(copyTrackEvent, {});
       }
       if (copiedTimerRef.current !== null) {
         window.clearTimeout(copiedTimerRef.current);

@@ -23,8 +23,6 @@ import SkillCard from "../components/SkillCard";
 import SkillCardSkeleton from "../components/SkillCardSkeleton";
 import SkillDetailModal from "../components/SkillDetailModal";
 
-type TabId = "skills" | "mine";
-
 /**
  * Rendering variant. "market" (default) = discovery catalog. "mine" = personal
  * assets mounted inside MyAssetsPage — forces the mine data source, hides the
@@ -42,8 +40,10 @@ const SORT_OPTIONS: Array<{ value: SkillSort; labelKey: string; descending?: boo
 
 export default function SkillListPage({ variant = "market" }: SkillListPageProps = {}) {
   useI18n();
-  const [tab] = useState<TabId>(variant === "mine" ? "mine" : "skills");
-  const mine = tab === "mine";
+  // Variant is fixed for the page's lifetime (mine → /mcp-market/mine, market →
+  // discovery), so this is a derived constant, not state — the 全部/我的 tab
+  // strip that used to flip it was removed in the market UI restructure.
+  const mine = variant === "mine";
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [sort, setSort] = useState<SkillSort>("latest");
   const list = useSkills({ mine, selectedTags, sort });

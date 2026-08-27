@@ -20,6 +20,9 @@ export interface PromptForwardModalProps {
   onClose: () => void;
   /** Called after a successful forward; defaults to onClose. */
   onForwarded?: () => void;
+  /** DAP event emitted once on a successful copy (per-surface). See
+   *  PromptForwardActions.copyTrackEvent / DAP_EVENTS.md. */
+  copyTrackEvent?: string;
 }
 
 /**
@@ -40,6 +43,7 @@ export default function PromptForwardModal({
   prerequisiteHint,
   onClose,
   onForwarded,
+  copyTrackEvent,
 }: PromptForwardModalProps) {
   const header = (
     <div className="wk-prompt-forward-modal__header">
@@ -79,6 +83,7 @@ export default function PromptForwardModal({
           prompt={prompt}
           spaceId={spaceId}
           disabled={!prompt}
+          copyTrackEvent={copyTrackEvent}
           prerequisiteHint={prerequisiteHint}
           onForwarded={onForwarded ?? onClose}
         />

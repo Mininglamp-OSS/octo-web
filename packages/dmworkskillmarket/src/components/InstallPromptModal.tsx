@@ -46,6 +46,7 @@ export default function InstallPromptModal({ skillId, onClose }: InstallPromptMo
       prompt={prompt}
       spaceId={spaceId}
       onForwarded={onClose}
+      copyTrackEvent="market_skill_install_prompt_copied"
     />
   );
 }

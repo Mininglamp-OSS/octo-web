@@ -10,10 +10,10 @@ import {
   uploadMcpIcon,
 } from "../api/mcpService";
 import {
-  SECRET_PLACEHOLDER_SENTINEL,
   isSecretKey,
   slugifyServerName,
 } from "../utils/constants";
+import { SECRET_PLACEHOLDER } from "../api/pluginWire";
 import { parseImportJSON } from "../utils/importJson";
 import {
   MAX_MCP_TAGS,
@@ -126,7 +126,7 @@ function entriesFromWire(
   const supplied = new Set(userSupplied ?? []);
   return Object.entries(values).map(([key, raw]) => {
     const isSupplied = supplied.has(key);
-    const value = raw === SECRET_PLACEHOLDER_SENTINEL ? "" : raw;
+    const value = raw === SECRET_PLACEHOLDER ? "" : raw;
     return { key, value, userSupplied: isSupplied };
   });
 }

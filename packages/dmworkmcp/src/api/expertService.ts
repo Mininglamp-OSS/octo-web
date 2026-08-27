@@ -310,9 +310,11 @@ async function fetchExpertCategoriesWire(
 }
 
 function getExpertCategoryMaps(
-  pluginType: ExpertPluginType
+  pluginType: ExpertPluginType,
+  forceRefresh = false
 ): Promise<ExpertCategoryMaps> {
   const spaceId = WKApp.shared?.currentSpaceId ?? "";
+  if (forceRefresh) categoryMapsCache.delete(pluginType);
   const hit = categoryMapsCache.get(pluginType);
   if (!hit || hit.spaceId !== spaceId) {
     const promise = fetchExpertCategoriesWire(pluginType).then((wire) => {
@@ -353,11 +355,25 @@ async function listPathReal(
   query.page = params.page && params.page > 0 ? params.page : 1;
   query.page_size = params.pageSize && params.pageSize > 0 ? params.pageSize : 100;
 
-  const maps = await getExpertCategoryMaps(pluginType);
+  let maps = await getExpertCategoryMaps(pluginType);
   const category = params.category?.trim();
   if (category && category !== ALL_CATEGORY && category !== CATEGORY_KEY_ALL) {
-    const categoryId = maps.nameToId.get(category);
-    if (categoryId) query.category_id = categoryId;
+    let categoryId = maps.nameToId.get(category);
+    if (!categoryId) {
+      // Stale per-space cache (e.g. an admin renamed the category): refetch the
+      // taxonomy once before giving up.
+      maps = await getExpertCategoryMaps(pluginType, true);
+      categoryId = maps.nameToId.get(category);
+    }
+    if (categoryId) {
+      query.category_id = categoryId;
+    } else {
+      // Fail closed: an unresolvable category filter must NOT silently widen to
+      // the whole catalog (the list would then render every expert as if
+      // unfiltered). Surface an explicit empty result, mirroring the connector
+      // path in mcpService.fetchMcpListPath.
+      return { items: [], total: 0 };
+    }
   }
   const resp = await executeExpertListRequest(() =>
     expertAxios.get<PluginListResponseWire>(`${BASE}/plugins`, { params: query })
@@ -405,7 +421,12 @@ async function loadSkills(
   relations: PluginRelationWire[] | undefined
 ): Promise<{ skills: ExpertSkill[]; pluginIds: string[] }> {
   const rels = liveRelations(relations, "expert_skill");
-  const details = await Promise.all(
+  // allSettled, not all: a soft-deleted / unresolvable expert_skill target must
+  // not reject the whole expert/squad detail — drop the dangling relation and
+  // keep the rest of the skills usable. skills[] and pluginIds[] stay aligned
+  // because both are pushed together only for resolved targets. Cancellation
+  // (space switch) still propagates.
+  const settled = await Promise.allSettled(
     rels.map((rel) =>
       get<PluginDetailWire>("/plugins/detail", {
         plugin_id: rel.target_plugin_id,
@@ -413,10 +434,17 @@ async function loadSkills(
       })
     )
   );
-  return {
-    skills: details.map((d) => fromSkillPlugin(d.plugin)),
-    pluginIds: rels.map((rel) => rel.target_plugin_id),
-  };
+  const skills: ExpertSkill[] = [];
+  const pluginIds: string[] = [];
+  settled.forEach((res, i) => {
+    if (res.status === "fulfilled") {
+      skills.push(fromSkillPlugin(res.value.plugin));
+      pluginIds.push(rels[i].target_plugin_id);
+    } else if (axios.isCancel(res.reason)) {
+      throw res.reason;
+    }
+  });
+  return { skills, pluginIds };
 }
 
 async function getExpertReal(id: string): Promise<ExpertAgent> {
@@ -453,9 +481,16 @@ async function getSquadReal(id: string): Promise<ExpertSquad> {
   );
   const memberRels = liveRelations(detail.relations, "expert_team_expert");
   const skillIndex = new Map<string, string[]>();
-  const members = await Promise.all(
+  // allSettled: one unresolvable member relation must not break the whole squad
+  // detail view — drop it and render the rest. Cancellation still propagates.
+  const settledMembers = await Promise.allSettled(
     memberRels.map((rel) => loadSquadMember(rel, skillIndex))
   );
+  const members: ExpertMember[] = [];
+  for (const res of settledMembers) {
+    if (res.status === "fulfilled") members.push(res.value);
+    else if (axios.isCancel(res.reason)) throw res.reason;
+  }
   squadSkillIndex.set(id, skillIndex);
   return {
     ...mapPluginSquadListItem(plugin, categoryName),

@@ -54,6 +54,7 @@ export default function McpConnectModal({ item, onClose }: McpConnectModalProps)
       prompt={prompt}
       spaceId={spaceId}
       onForwarded={onClose}
+      copyTrackEvent="market_mcp_connect_prompt_copied"
     />
   );
 }

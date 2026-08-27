@@ -51,6 +51,7 @@ export default function BotPublishModal({
       prompt={prompt}
       spaceId={spaceId}
       onForwarded={onClose}
+      copyTrackEvent="market_bot_publish_prompt_copied"
     />
   );
 }

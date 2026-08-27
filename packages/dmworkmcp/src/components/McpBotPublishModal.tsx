@@ -54,6 +54,7 @@ export default function McpBotPublishModal({
       prompt={prompt}
       spaceId={spaceId}
       onForwarded={onClose}
+      copyTrackEvent="market_bot_publish_prompt_copied"
     />
   );
 }

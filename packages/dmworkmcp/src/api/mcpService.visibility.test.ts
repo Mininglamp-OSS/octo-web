@@ -175,4 +175,19 @@ describe("secret placeholder round-trip — preserves the original reference", (
       TOKEN: "${TOKEN}",
     });
   });
+
+  it("blanks the backend redaction sentinel on read and never re-emits it on write", () => {
+    // The backend echoes SECRET_PLACEHOLDER for a redacted value. Read blanks it
+    // to "" (not user-supplied — it is a shared key), and the write path also
+    // maps the sentinel to "" so it is never sent back (the upsert would reject
+    // it under a secret-named key). Neither branch can preserve the stored value
+    // — the design has no "leave untouched" path, which this pins.
+    const read = splitUserSupplied({ SHARED_TOKEN: SECRET_PLACEHOLDER });
+    expect(read.userSupplied).toBeUndefined();
+    expect(read.values).toEqual({ SHARED_TOKEN: "" });
+    // Even if the sentinel somehow reached the write path directly, it blanks.
+    expect(placeholderSecretMap({ SHARED_TOKEN: SECRET_PLACEHOLDER }, undefined)).toEqual({
+      SHARED_TOKEN: "",
+    });
+  });
 });

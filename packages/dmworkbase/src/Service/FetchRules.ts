@@ -275,6 +275,11 @@ export const FETCH_RULES: FetchRule[] = [
     //   在 upsert 后必发 POST /plugins/publish。两者都是「发布提交」;副作用是 skill 版本 bump 的
     //   publish 也会计入(语义上仍是发布提交,可接受)。纯元数据编辑只走 POST /plugins/upsert,
     //   刻意不映射 —— upsert 新建/编辑同端点,fetch 层分不出意图(同 mcps/:id 看/编不可分的老问题)。
+    // NOTE: /plugins/versions is type-agnostic, but this rule maps it to the
+    // SKILL history event. FetchRules matches on path only (no plugin_type), and
+    // today the sole caller is skillApiReal (skill version history). If a
+    // connector/expert version-history caller is ever added, it will silently
+    // emit market_skill_version_history_viewed — split the metric by type then.
     { method: 'GET', path: '/market/api/v1/plugins/versions', event: 'market_skill_version_history_viewed' },
     { method: 'POST', path: '/market/api/v1/plugins/import', event: 'market_manual_publish_submitted' },
     { method: 'POST', path: '/market/api/v1/plugins/publish', event: 'market_manual_publish_submitted' },
