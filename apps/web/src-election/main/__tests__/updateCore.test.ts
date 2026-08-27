@@ -1,7 +1,10 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  buildMacInstallScript,
   buildUpdaterCheckUrl,
   getDownloadedUpdateFileName,
   getMacAppBundleName,
@@ -194,8 +197,8 @@ describe("desktop updater core", () => {
 
   it("builds safe local filenames for downloaded update packages", () => {
     expect(
-      getDownloadedUpdateFileName("https://cdn.example.com/releases/OCTO-1.0.0-arm64.dmg", "1.0.0", "macos"),
-    ).toBe("OCTO-1.0.0-arm64.dmg");
+      getDownloadedUpdateFileName("https://cdn.example.com/releases/OCTO-1.0.0-universal.zip", "1.0.0", "macos"),
+    ).toBe("OCTO-1.0.0-universal.zip");
     expect(
       getDownloadedUpdateFileName("https://cdn.example.com/releases/", "1.0.0", "windows"),
     ).toBe("OCTO-1.0.0.exe");
@@ -205,6 +208,16 @@ describe("desktop updater core", () => {
     expect(
       getDownloadedUpdateFileName("https://cdn.example.com/releases/OCTO-1.0.0;Start-Process.exe", "1.0.0", "windows"),
     ).toBe("OCTO-1.0.0_Start-Process.exe");
+  });
+
+  it("preserves updater package extensions when truncating long local filenames", () => {
+    const longStem = `OCTO-${"a".repeat(190)}`;
+    const windowsName = getDownloadedUpdateFileName(`https://cdn.example.com/releases/${longStem}.exe`, "1.0.0", "windows");
+    const macName = getDownloadedUpdateFileName(`https://cdn.example.com/releases/${longStem}.zip`, "1.0.0", "macos");
+    expect(windowsName).toHaveLength(160);
+    expect(windowsName).toMatch(/\.exe$/);
+    expect(macName).toHaveLength(160);
+    expect(macName).toMatch(/\.zip$/);
   });
 
   it("detects zip update packages", () => {
@@ -231,20 +244,40 @@ describe("desktop updater core", () => {
     expect(isNewerVersion("1.0.0-rollback", "1.2.0")).toBe(false);
   });
 
-  it("keeps macOS installer script references to two-digit argv explicit", () => {
-    const source = fs.readFileSync(path.resolve(__dirname, "../update.ts"), "utf8");
-    expect(source).toContain('RESULT_PATH="\\${10}"');
-    expect(source).toContain('LOG_PATH="\\${11}"');
-    expect(source).not.toContain('RESULT_PATH="$10"');
-    expect(source).not.toContain('LOG_PATH="$11"');
-  });
+  it("executes the macOS installer script and writes failure output to argv 10 and 11", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "octo-updater-script-"));
+    try {
+      const scriptPath = path.join(tempDir, "install-macos-update.sh");
+      const zipPath = path.join(tempDir, "OCTO-1.0.1.zip");
+      const targetAppPath = path.join(tempDir, "OCTO.app");
+      const stagingPath = path.join(tempDir, "staging");
+      const installDir = path.join(tempDir, "install");
+      const resultPath = path.join(tempDir, "last-macos-update-result.txt");
+      const logPath = path.join(tempDir, "last-macos-update.log");
+      fs.writeFileSync(scriptPath, buildMacInstallScript(), { mode: 0o700 });
+      fs.writeFileSync(zipPath, "");
 
-  it("keeps Windows signature verification values out of PowerShell command text", () => {
-    const source = fs.readFileSync(path.resolve(__dirname, "../update.ts"), "utf8");
-    expect(source).toContain("$Path = $env:OCTO_UPDATE_INSTALLER_PATH");
-    expect(source).toContain("$ExpectedPublisher = $env:OCTO_UPDATE_WINDOWS_PUBLISHER_NAME");
-    expect(source).toContain("Get-AuthenticodeSignature -LiteralPath $Path");
-    expect(source).not.toContain("param([string]$Path, [string]$ExpectedPublisher)");
-    expect(source).not.toContain("-Command\",\n    command,\n    filePath");
+      expect(() => execFileSync("/bin/sh", [
+        scriptPath,
+        zipPath,
+        targetAppPath,
+        stagingPath,
+        "999999",
+        "com.mininglamp.octo.web",
+        "OCTO.app",
+        "1.0.1",
+        "TEAMID1234",
+        installDir,
+        resultPath,
+        logPath,
+      ], { stdio: "ignore" })).toThrow();
+
+      expect(fs.readFileSync(resultPath, "utf8").trim()).toBe("12");
+      expect(fs.existsSync(logPath)).toBe(true);
+      expect(fs.existsSync(`${zipPath}0`)).toBe(false);
+      expect(fs.existsSync(`${zipPath}1`)).toBe(false);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

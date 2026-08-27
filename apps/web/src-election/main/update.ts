@@ -18,19 +18,21 @@ import {
 } from "../shared/ipc-channels";
 import {
   buildUpdaterCheckUrl,
+  buildMacInstallScript,
   getMacAppBundlePath,
   getMacAppBundleName,
   getDownloadedUpdateFileName,
+  getUpdaterPackageExtension,
   getUpdaterPlatform,
   isLocalhostHttpUrl,
   isNewerVersion,
-  isZipUpdatePackage,
   parseUpdaterCheckResult,
   type DesktopUpdateInfo,
 } from "./updateCore";
 
 const DOWNLOAD_STALL_TIMEOUT_MS = 120_000;
 const CHECK_TIMEOUT_MS = 30_000;
+const MAX_UPDATE_PACKAGE_BYTES = 2 * 1024 * 1024 * 1024;
 const execFileAsync = promisify(execFile);
 
 let mainWindow: BrowserWindow;
@@ -38,6 +40,7 @@ let pendingUpdateInfo: DesktopUpdateInfo | undefined;
 let isDownloadingUpdate = false;
 let updateCheckSeq = 0;
 let currentDownloadController: AbortController | undefined;
+let currentDownloadAbortReason: "cancelled" | "timeout" | undefined;
 const isMainWindowSender = (event: Electron.IpcMainEvent): boolean =>
   Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents);
 // 封装更新相关的进程通信方法
@@ -164,6 +167,21 @@ function getUpdateErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function getUpdateErrorPayload(error: unknown): { message: string; code: string } {
+  if (error instanceof Error && error.name === "AbortError") {
+    return {
+      message: currentDownloadAbortReason === "cancelled"
+        ? "Update download cancelled"
+        : "Update download timed out",
+      code: currentDownloadAbortReason === "cancelled" ? "download-cancelled" : "download-timeout",
+    };
+  }
+  return {
+    message: getUpdateErrorMessage(error),
+    code: "update-failed",
+  };
+}
+
 async function downloadUpdatePackage(updateInfo: DesktopUpdateInfo): Promise<string> {
   const hashConfig = getHashConfig(updateInfo);
   const controller = new AbortController();
@@ -171,7 +189,10 @@ async function downloadUpdatePackage(updateInfo: DesktopUpdateInfo): Promise<str
   let stallTimer: NodeJS.Timeout | undefined;
   const resetStallTimer = () => {
     if (stallTimer) clearTimeout(stallTimer);
-    stallTimer = setTimeout(() => controller.abort(), DOWNLOAD_STALL_TIMEOUT_MS);
+    stallTimer = setTimeout(() => {
+      currentDownloadAbortReason = "timeout";
+      controller.abort();
+    }, DOWNLOAD_STALL_TIMEOUT_MS);
   };
   resetStallTimer();
   let response: Awaited<ReturnType<typeof net.fetch>>;
@@ -208,6 +229,12 @@ async function downloadUpdatePackage(updateInfo: DesktopUpdateInfo): Promise<str
   let completed = false;
   try {
     const total = Number(response.headers.get("content-length") || 0);
+    if (!Number.isSafeInteger(total) || total <= 0) {
+      throw new Error("Update download response is missing content-length");
+    }
+    if (total > MAX_UPDATE_PACKAGE_BYTES) {
+      throw new Error("Update download package is too large");
+    }
     let downloaded = 0;
     let lastPercent = -1;
     const hash = crypto.createHash(hashConfig.algorithm);
@@ -236,6 +263,9 @@ async function downloadUpdatePackage(updateInfo: DesktopUpdateInfo): Promise<str
           if (done) break;
           if (!value) continue;
           downloaded += value.byteLength;
+          if (downloaded > total) {
+            throw new Error("Update download exceeded content-length");
+          }
           hash.update(value);
           await writeChunk(stream, value, streamErrorPromise);
           if (streamError) throw streamError;
@@ -279,6 +309,9 @@ async function downloadUpdatePackage(updateInfo: DesktopUpdateInfo): Promise<str
       await fs.promises.rm(tempPath, { force: true }).catch(() => undefined);
     }
     throw error;
+  } finally {
+    if (stallTimer) clearTimeout(stallTimer);
+    if (currentDownloadController === controller) currentDownloadController = undefined;
   }
 }
 
@@ -286,12 +319,22 @@ async function openDownloadedUpdatePackage(updateInfo: DesktopUpdateInfo, filePa
   if (!filePath) {
     throw new Error("No downloaded update package");
   }
-  if (getUpdaterPlatform() === "macos" && isZipUpdatePackage(filePath)) {
+  const platform = getUpdaterPlatform();
+  const packageExtension = getUpdaterPackageExtension(updateInfo.url, platform);
+  if (platform === "macos") {
+    if (packageExtension !== ".zip") throw new Error("macOS updater package must be a zip archive");
     await installMacZipUpdateAndQuit(filePath, updateInfo.version);
     return;
   }
-  if (process.platform === "win32" && filePath.toLowerCase().endsWith(".exe")) {
+  if (platform === "windows") {
+    if (packageExtension !== ".exe") throw new Error("Windows updater package must be an exe installer");
     await verifyWindowsInstallerSignature(filePath);
+    const errorMessage = await shell.openPath(filePath);
+    if (errorMessage) throw new Error(errorMessage);
+    return;
+  }
+  if (![".appimage", ".deb", ".rpm"].includes(packageExtension)) {
+    throw new Error("Linux updater package extension is not supported");
   }
   const errorMessage = await shell.openPath(filePath);
   if (errorMessage) throw new Error(errorMessage);
@@ -352,143 +395,7 @@ async function installMacZipUpdateAndQuit(zipPath: string, expectedVersion: stri
   const logPath = path.join(updateDir, "last-macos-update.log");
   const scriptPath = path.join(installDir, "install-macos-update.sh");
   await fs.promises.rm(resultPath, { force: true }).catch(() => undefined);
-  const script = `#!/bin/sh
-set -eu
-
-ZIP_PATH="$1"
-TARGET_APP_PATH="$2"
-INSTALL_TARGET_TMP_PATH="$TARGET_APP_PATH.update-in-progress"
-STAGING_PATH="$3"
-PARENT_PID="$4"
-EXPECTED_BUNDLE_ID="$5"
-EXPECTED_APP_NAME="$6"
-EXPECTED_VERSION="$7"
-EXPECTED_TEAM_ID="$8"
-INSTALL_DIR="$9"
-RESULT_PATH="\${10}"
-LOG_PATH="\${11}"
-
-exec >> "$LOG_PATH" 2>&1
-echo "macOS update helper started at $(date)"
-
-cleanup() {
-  rm -rf "$INSTALL_DIR"
-}
-
-fail() {
-  CODE="$1"
-  printf "%s\\n" "$CODE" > "$RESULT_PATH" 2>/dev/null || true
-  rm -rf "$INSTALL_TARGET_TMP_PATH" >/dev/null 2>&1 || true
-  if [ -d "$TARGET_APP_PATH" ]; then
-    /usr/bin/open "$TARGET_APP_PATH" >/dev/null 2>&1 || true
-  fi
-  exit "$CODE"
-}
-
-wait_until_not_running() {
-  RUNNING_CHECK=0
-  while APP_RUNNING="$(/bin/ps -axo command= | while IFS= read -r COMMAND; do
-    case "$COMMAND" in
-      "$TARGET_APP_PATH/Contents/MacOS/"*)
-        printf "%s\\n" "$COMMAND"
-        break
-        ;;
-    esac
-  done)" && [ -n "$APP_RUNNING" ]; do
-    RUNNING_CHECK=$((RUNNING_CHECK + 1))
-    if [ "$RUNNING_CHECK" -ge 150 ]; then
-      fail 20
-    fi
-    sleep 0.2
-  done
-}
-
-trap cleanup EXIT
-
-if [ ! -f "$ZIP_PATH" ]; then
-  fail 10
-fi
-
-case "$TARGET_APP_PATH" in
-  *.app) ;;
-  *) fail 11 ;;
-esac
-
-while kill -0 "$PARENT_PID" 2>/dev/null; do
-  sleep 0.2
-done
-
-wait_until_not_running
-
-rm -rf "$STAGING_PATH" || fail 12
-mkdir -p "$STAGING_PATH" || fail 12
-/usr/bin/ditto -x -k "$ZIP_PATH" "$STAGING_PATH" || fail 12
-
-NEXT_APP_PATH="$(/usr/bin/find "$STAGING_PATH" -maxdepth 2 -name "*.app" -type d | /usr/bin/head -n 1)"
-if [ -z "$NEXT_APP_PATH" ]; then
-  fail 12
-fi
-
-if [ "$(/usr/bin/basename "$NEXT_APP_PATH")" != "$EXPECTED_APP_NAME" ]; then
-  fail 13
-fi
-
-NEXT_INFO_PLIST="$NEXT_APP_PATH/Contents/Info.plist"
-if [ ! -f "$NEXT_INFO_PLIST" ]; then
-  fail 14
-fi
-
-NEXT_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$NEXT_INFO_PLIST" 2>/dev/null || true)"
-if [ -n "$EXPECTED_BUNDLE_ID" ] && [ "$NEXT_BUNDLE_ID" != "$EXPECTED_BUNDLE_ID" ]; then
-  fail 15
-fi
-
-NEXT_VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$NEXT_INFO_PLIST" 2>/dev/null || true)"
-NORMALIZED_NEXT_VERSION="$(printf "%s" "$NEXT_VERSION" | /usr/bin/sed 's/^[vV]//')"
-NORMALIZED_EXPECTED_VERSION="$(printf "%s" "$EXPECTED_VERSION" | /usr/bin/sed 's/^[vV]//')"
-if [ -n "$NORMALIZED_EXPECTED_VERSION" ] && [ "$NORMALIZED_NEXT_VERSION" != "$NORMALIZED_EXPECTED_VERSION" ]; then
-  fail 16
-fi
-
-if ! /usr/bin/codesign --verify --deep --strict "$NEXT_APP_PATH" >/dev/null 2>&1; then
-  fail 17
-fi
-
-NEXT_TEAM_ID="$(/usr/bin/codesign -dv "$NEXT_APP_PATH" 2>&1 | /usr/bin/awk -F= '/^TeamIdentifier=/ {print $2; exit}')"
-if [ "$NEXT_TEAM_ID" != "$EXPECTED_TEAM_ID" ]; then
-  fail 18
-fi
-
-wait_until_not_running
-
-BACKUP_APP_PATH="$TARGET_APP_PATH.previous-update"
-rm -rf "$INSTALL_TARGET_TMP_PATH"
-if ! /usr/bin/ditto "$NEXT_APP_PATH" "$INSTALL_TARGET_TMP_PATH"; then
-  rm -rf "$INSTALL_TARGET_TMP_PATH"
-  fail 19
-fi
-
-wait_until_not_running
-
-rm -rf "$BACKUP_APP_PATH"
-if [ -d "$TARGET_APP_PATH" ]; then
-  /bin/mv "$TARGET_APP_PATH" "$BACKUP_APP_PATH" || fail 19
-fi
-
-if ! /bin/mv "$INSTALL_TARGET_TMP_PATH" "$TARGET_APP_PATH"; then
-  rm -rf "$INSTALL_TARGET_TMP_PATH"
-  rm -rf "$TARGET_APP_PATH"
-  if [ -d "$BACKUP_APP_PATH" ]; then
-    /bin/mv "$BACKUP_APP_PATH" "$TARGET_APP_PATH"
-  fi
-  fail 19
-fi
-
-rm -rf "$BACKUP_APP_PATH"
-rm -f "$RESULT_PATH"
-rm -f "$ZIP_PATH"
-/usr/bin/open "$TARGET_APP_PATH"
-`;
+  const script = buildMacInstallScript();
   await fs.promises.writeFile(scriptPath, script, { mode: 0o700 });
   const child = spawn("/bin/sh", [
     scriptPath,
@@ -562,10 +469,38 @@ async function cleanupStaleUpdateArtifacts(): Promise<void> {
   }));
 }
 
+async function reconcileStaleMacInstallArtifacts(): Promise<void> {
+  if (process.platform !== "darwin") return;
+  let targetAppPath = "";
+  try {
+    targetAppPath = getMacAppBundlePath(process.execPath);
+  } catch {
+    return;
+  }
+  const backupPath = `${targetAppPath}.previous-update`;
+  const inProgressPath = `${targetAppPath}.update-in-progress`;
+  const [targetExists, backupExists] = await Promise.all([
+    fs.promises.stat(targetAppPath).then(() => true, () => false),
+    fs.promises.stat(backupPath).then(() => true, () => false),
+  ]);
+  if (!targetExists && backupExists) {
+    await fs.promises.rename(backupPath, targetAppPath).catch((error) => {
+      logger.warn(`[updater] failed to restore previous macOS app bundle: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }
+  const inProgressStat = await fs.promises.stat(inProgressPath).catch(() => undefined);
+  if (inProgressStat && inProgressStat.mtimeMs < Date.now() - 24 * 60 * 60 * 1000) {
+    await fs.promises.rm(inProgressPath, { recursive: true, force: true }).catch((error) => {
+      logger.warn(`[updater] failed to cleanup stale macOS staged app bundle: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }
+}
+
 function checkUpdate(win: BrowserWindow) {
   mainWindow = win;
   void surfacePendingMacInstallResult();
   void cleanupStaleUpdateArtifacts();
+  void reconcileStaleMacInstallArtifacts();
   // 接收渲染进程消息，开始检查更新
   ipcMain.on(IPC_UPDATE_CHECK, async (event, options?: { silent?: boolean }) => {
     if (!isMainWindowSender(event)) return;
@@ -598,7 +533,7 @@ function checkUpdate(win: BrowserWindow) {
       else if (!options?.silent) sendUpdateMessage({ cmd: IPC_UPDATE_NOT_AVAILABLE, data: {} });
     } catch (error) {
       logger.info(error);
-      if (!options?.silent) {
+      if (seq === updateCheckSeq && !options?.silent) {
         sendUpdateMessage({
           cmd: IPC_UPDATE_ERROR,
           data: error instanceof Error ? error.message : String(error),
@@ -638,14 +573,16 @@ function checkUpdate(win: BrowserWindow) {
       logger.info(error);
       sendUpdateMessage({
         cmd: IPC_UPDATE_ERROR,
-        data: getUpdateErrorMessage(error),
+        data: getUpdateErrorPayload(error),
       });
     } finally {
       isDownloadingUpdate = false;
+      currentDownloadAbortReason = undefined;
     }
   });
   ipcMain.on(IPC_UPDATE_CANCEL_DOWNLOAD, (event) => {
     if (!isMainWindowSender(event)) return;
+    currentDownloadAbortReason = "cancelled";
     currentDownloadController?.abort();
   });
 }

@@ -7,6 +7,7 @@ import {
   t,
   getElectronIpcBridge,
   isElectronPowered,
+  quitElectronApp,
   sendElectronCancelUpdateDownload,
   sendElectronCheckUpdate,
   sendElectronUpdateApp,
@@ -187,13 +188,18 @@ export default class MainVM extends ProviderListener {
   appUpdateInit() {
     // 监听升级失败事件
     this.addIpcListener(IPC_UPDATE_ERROR, (event, message) => {
+      const errorMessage = typeof message === "string"
+        ? message
+        : typeof message?.message === "string"
+          ? message.message
+          : t("base.navRail.settingsCenter.value.updateCheckFailed");
       this.showAppVersion = Boolean(this.lastVersionInfo);
       this.showAppUpdate = false;
       this.showAppUpdateOperation = Boolean(this.lastVersionInfo);
       this.appUpdateProgress = 0;
       this.appUpdateDownloadedBytes = 0;
       this.notifyListener();
-      Toast.error(typeof message === "string" ? message : t("base.navRail.settingsCenter.value.updateCheckFailed"));
+      Toast.error(errorMessage);
     });
     // 发现可用更新事件
     this.addIpcListener(IPC_UPDATE_AVAILABLE, (event, message) => {
@@ -384,6 +390,10 @@ export default class MainVM extends ProviderListener {
 
   cancelUpdateDownload() {
     sendElectronCancelUpdateDownload();
+  }
+
+  quitApp() {
+    quitElectronApp();
   }
 
   get menusList() {

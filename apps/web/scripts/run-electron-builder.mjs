@@ -123,6 +123,15 @@ function hasPlatformFlag(longName, shortName) {
   });
 }
 
+function readBuiltElectronConfig() {
+  const configPath = path.join(appDir, "build", "electron-config.json");
+  try {
+    return JSON.parse(fs.readFileSync(configPath, "utf8"));
+  } catch {
+    return undefined;
+  }
+}
+
 function requireUpdaterVerifierConfig() {
   if (process.env.VITE_ELECTRON_ALLOW_UNSIGNED_UPDATER_TEST_BUILD === "true") {
     console.warn(
@@ -131,19 +140,20 @@ function requireUpdaterVerifierConfig() {
     return;
   }
 
+  const builtConfig = readBuiltElectronConfig();
   const missing = [];
-  if (hasPlatformFlag("--mac", "m") && !process.env.VITE_ELECTRON_UPDATE_SIGNING_TEAM_ID?.trim()) {
-    missing.push("VITE_ELECTRON_UPDATE_SIGNING_TEAM_ID");
+  if (hasPlatformFlag("--mac", "m") && !builtConfig?.electronUpdateSigningTeamId?.trim()) {
+    missing.push("build/electron-config.json: electronUpdateSigningTeamId");
   }
-  if (hasPlatformFlag("--win", "w") && !process.env.VITE_ELECTRON_UPDATE_WINDOWS_PUBLISHER_NAME?.trim()) {
-    missing.push("VITE_ELECTRON_UPDATE_WINDOWS_PUBLISHER_NAME");
+  if (hasPlatformFlag("--win", "w") && !builtConfig?.electronUpdateWindowsPublisherName?.trim()) {
+    missing.push("build/electron-config.json: electronUpdateWindowsPublisherName");
   }
   if (missing.length === 0) return;
 
   console.error(
     "[run-electron-builder] Refusing to package an Electron updater build without verifier identity configuration.\n" +
       `Missing: ${missing.join(", ")}\n` +
-      "Set the public verifier identity values for release packaging, or set " +
+      "Run build:electron with the public verifier identity values for release packaging, or set " +
       "VITE_ELECTRON_ALLOW_UNSIGNED_UPDATER_TEST_BUILD=true only for local unsigned updater smoke tests.",
   );
   process.exit(1);

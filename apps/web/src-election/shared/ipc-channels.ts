@@ -28,6 +28,7 @@ export const IPC_SCREENSHOTS_START = "screenshots-start";
 export const IPC_SCREENSHOTS_OK = "screenshots-ok";
 export const IPC_MEDIA_ACCESS_STATUS = "get-media-access-status";
 export const IPC_RESTART_APP = "restart-app";
+export const IPC_QUIT_APP = "quit-app";
 
 /** Renderer → Main: check, download, and install app updates. */
 export const IPC_UPDATE_CHECK = "check-update";

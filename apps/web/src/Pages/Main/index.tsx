@@ -346,6 +346,7 @@ export class MainPage extends Component<{}, MainPageState> {
                                         }}
                                         onInstallUpdate={() => vm.installUpdate()}
                                         onCancelUpdateDownload={() => vm.cancelUpdateDownload()}
+                                        onQuitApp={() => vm.quitApp()}
                                         onNotifyListener={() => vm.notifyListener()}
                                         onOpenOnboarding={this.handleOpenOnboarding}
                                         onDismissNewVersion={() => { vm.markVersionRead(); }}

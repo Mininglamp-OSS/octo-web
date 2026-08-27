@@ -117,10 +117,33 @@ function hasUpdateInfoFields(value: Record<string, unknown>): boolean {
 }
 
 export function isAllowedUpdaterPackageUrl(url: URL, platform: UpdaterPlatform): boolean {
-  const pathname = decodeURIComponent(url.pathname).toLowerCase();
+  const pathname = decodeUrlPathname(url).toLowerCase();
   if (platform === "macos") return pathname.endsWith(".zip");
   if (platform === "windows") return pathname.endsWith(".exe");
   return pathname.endsWith(".appimage") || pathname.endsWith(".deb") || pathname.endsWith(".rpm");
+}
+
+export function getUpdaterPackageExtension(url: string, platform: UpdaterPlatform): string {
+  const parsedUrl = new URL(url);
+  const pathname = decodeUrlPathname(parsedUrl).toLowerCase();
+  const allowedExtensions = platform === "macos"
+    ? [".zip"]
+    : platform === "windows"
+      ? [".exe"]
+      : [".appimage", ".deb", ".rpm"];
+  const extension = allowedExtensions.find((item) => pathname.endsWith(item));
+  if (!extension) {
+    throw new Error("Updater package extension does not match current platform");
+  }
+  return extension;
+}
+
+function decodeUrlPathname(url: URL): string {
+  try {
+    return decodeURIComponent(url.pathname);
+  } catch {
+    throw new Error("Updater response url path is malformed");
+  }
 }
 
 function isAllowedUpdaterDownloadUrl(url: URL, allowInsecureHttp = false): boolean {
@@ -151,19 +174,26 @@ function parseBooleanFlag(raw: unknown): boolean | undefined {
 
 export function getDownloadedUpdateFileName(url: string, version: string, platform: UpdaterPlatform): string {
   let name = "";
+  let extension = platform === "windows" ? ".exe" : platform === "macos" ? ".zip" : ".AppImage";
   try {
+    extension = getUpdaterPackageExtension(url, platform);
     const pathname = new URL(url).pathname;
     name = pathname.endsWith("/") ? "" : decodeURIComponent(pathname.split("/").filter(Boolean).pop() || "");
   } catch {
     name = "";
   }
-  const fallbackExt = platform === "windows" ? "exe" : platform === "macos" ? "zip" : "AppImage";
-  const fallback = `OCTO-${version}.${fallbackExt}`;
+  const fallback = `OCTO-${version}${extension}`;
   const candidate = name || fallback;
-  return candidate
+  const sanitized = candidate
     .replace(/[^A-Za-z0-9._ -]/g, "_")
-    .replace(/^\.+/, "")
-    .slice(0, 160) || fallback.replace(/[^A-Za-z0-9._ -]/g, "_");
+    .replace(/^\.+/, "");
+  const fallbackName = fallback.replace(/[^A-Za-z0-9._ -]/g, "_");
+  const source = sanitized || fallbackName;
+  const lowerSource = source.toLowerCase();
+  const lowerExtension = extension.toLowerCase();
+  const sourceWithExtension = lowerSource.endsWith(lowerExtension) ? source : fallbackName;
+  const stem = sourceWithExtension.slice(0, -extension.length).replace(/[. ]+$/, "") || `OCTO-${version}`;
+  return `${stem.slice(0, Math.max(1, 160 - extension.length))}${extension}`;
 }
 
 export function isZipUpdatePackage(filePathOrUrl: string): boolean {
@@ -175,6 +205,139 @@ export function isZipUpdatePackage(filePathOrUrl: string): boolean {
     }
   })();
   return pathName.toLowerCase().endsWith(".zip");
+}
+
+export function buildMacInstallScript(): string {
+  return `#!/bin/sh
+set -eu
+
+ZIP_PATH="$1"
+TARGET_APP_PATH="$2"
+INSTALL_TARGET_TMP_PATH="$TARGET_APP_PATH.update-in-progress"
+STAGING_PATH="$3"
+PARENT_PID="$4"
+EXPECTED_BUNDLE_ID="$5"
+EXPECTED_APP_NAME="$6"
+EXPECTED_VERSION="$7"
+EXPECTED_TEAM_ID="$8"
+INSTALL_DIR="$9"
+RESULT_PATH="\${10}"
+LOG_PATH="\${11}"
+
+exec >> "$LOG_PATH" 2>&1 || true
+echo "macOS update helper started at $(date)"
+
+cleanup() {
+  rm -rf "$INSTALL_DIR"
+}
+
+fail() {
+  CODE="$1"
+  printf "%s\\n" "$CODE" > "$RESULT_PATH" 2>/dev/null || true
+  rm -rf "$INSTALL_TARGET_TMP_PATH" >/dev/null 2>&1 || true
+  if [ -d "$TARGET_APP_PATH" ]; then
+    /usr/bin/open "$TARGET_APP_PATH" >/dev/null 2>&1 || true
+  fi
+  exit "$CODE"
+}
+
+wait_until_not_running() {
+  RUNNING_CHECK=0
+  while /usr/bin/pgrep -f "$TARGET_APP_PATH/Contents/MacOS/" >/dev/null 2>&1; do
+    RUNNING_CHECK=$((RUNNING_CHECK + 1))
+    if [ "$RUNNING_CHECK" -ge 150 ]; then
+      fail 20
+    fi
+    sleep 0.2
+  done
+}
+
+trap cleanup EXIT
+
+if [ ! -f "$ZIP_PATH" ]; then
+  fail 10
+fi
+
+case "$TARGET_APP_PATH" in
+  *.app) ;;
+  *) fail 11 ;;
+esac
+
+while kill -0 "$PARENT_PID" 2>/dev/null; do
+  sleep 0.2
+done
+
+wait_until_not_running
+
+rm -rf "$STAGING_PATH" || fail 12
+mkdir -p "$STAGING_PATH" || fail 12
+/usr/bin/ditto -x -k "$ZIP_PATH" "$STAGING_PATH" || fail 12
+
+NEXT_APP_PATH="$(/usr/bin/find "$STAGING_PATH" -maxdepth 2 -name "*.app" -type d | /usr/bin/head -n 1)"
+if [ -z "$NEXT_APP_PATH" ]; then
+  fail 12
+fi
+
+if [ "$(/usr/bin/basename "$NEXT_APP_PATH")" != "$EXPECTED_APP_NAME" ]; then
+  fail 13
+fi
+
+NEXT_INFO_PLIST="$NEXT_APP_PATH/Contents/Info.plist"
+if [ ! -f "$NEXT_INFO_PLIST" ]; then
+  fail 14
+fi
+
+NEXT_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$NEXT_INFO_PLIST" 2>/dev/null || true)"
+if [ -n "$EXPECTED_BUNDLE_ID" ] && [ "$NEXT_BUNDLE_ID" != "$EXPECTED_BUNDLE_ID" ]; then
+  fail 15
+fi
+
+NEXT_VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$NEXT_INFO_PLIST" 2>/dev/null || true)"
+NORMALIZED_NEXT_VERSION="$(printf "%s" "$NEXT_VERSION" | /usr/bin/sed 's/^[vV]//')"
+NORMALIZED_EXPECTED_VERSION="$(printf "%s" "$EXPECTED_VERSION" | /usr/bin/sed 's/^[vV]//')"
+if [ -n "$NORMALIZED_EXPECTED_VERSION" ] && [ "$NORMALIZED_NEXT_VERSION" != "$NORMALIZED_EXPECTED_VERSION" ]; then
+  fail 16
+fi
+
+if ! /usr/bin/codesign --verify --deep --strict "$NEXT_APP_PATH" >/dev/null 2>&1; then
+  fail 17
+fi
+
+NEXT_TEAM_ID="$(/usr/bin/codesign -dv "$NEXT_APP_PATH" 2>&1 | /usr/bin/awk -F= '/^TeamIdentifier=/ {print $2; exit}')"
+if [ "$NEXT_TEAM_ID" != "$EXPECTED_TEAM_ID" ]; then
+  fail 18
+fi
+
+wait_until_not_running
+
+BACKUP_APP_PATH="$TARGET_APP_PATH.previous-update"
+rm -rf "$INSTALL_TARGET_TMP_PATH"
+if ! /usr/bin/ditto "$NEXT_APP_PATH" "$INSTALL_TARGET_TMP_PATH"; then
+  rm -rf "$INSTALL_TARGET_TMP_PATH"
+  fail 19
+fi
+
+wait_until_not_running
+
+rm -rf "$BACKUP_APP_PATH"
+if [ -d "$TARGET_APP_PATH" ]; then
+  /bin/mv "$TARGET_APP_PATH" "$BACKUP_APP_PATH" || fail 21
+fi
+
+if ! /bin/mv "$INSTALL_TARGET_TMP_PATH" "$TARGET_APP_PATH"; then
+  rm -rf "$INSTALL_TARGET_TMP_PATH"
+  rm -rf "$TARGET_APP_PATH"
+  if [ -d "$BACKUP_APP_PATH" ]; then
+    /bin/mv "$BACKUP_APP_PATH" "$TARGET_APP_PATH"
+  fi
+  fail 22
+fi
+
+rm -rf "$BACKUP_APP_PATH"
+rm -f "$RESULT_PATH"
+rm -f "$ZIP_PATH"
+/usr/bin/open "$TARGET_APP_PATH"
+`;
 }
 
 export function getMacAppBundlePath(execPath: string): string {
