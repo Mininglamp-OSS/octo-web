@@ -614,6 +614,7 @@ function mapListItem(
     createdByBotName: raw.created_by_bot_name,
     matchReasons: [],
     updatedAt: raw.updated_at,
+    version: raw.current_version ?? "",
   };
 }
 

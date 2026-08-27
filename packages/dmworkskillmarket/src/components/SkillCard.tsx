@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useRef, useState } from "react";
 import { Bot, Download, Eye, Pencil, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import { t, useI18n } from "@octo/base";
 import type { Category, Skill } from "../types/skill";
-import { formatCount, formatRecentOrDate } from "../utils/format";
+import { formatCount } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import { isPlatformPublishedSkill } from "../utils/publisher";
 
@@ -179,8 +179,6 @@ export default function SkillCard({ skill, categories, onOpen, onEdit, onDelete,
 
   if (row) {
     const categoryName = categories.find((c) => c.id === skill.categoryId)?.name ?? "";
-    const updatedLabel = skill.updatedAt ? formatRecentOrDate(skill.updatedAt) : "";
-    const metaParts = [categoryName, updatedLabel].filter(Boolean);
     return (
       <article
         className="skill-market-mine-row"
@@ -209,8 +207,8 @@ export default function SkillCard({ skill, categories, onOpen, onEdit, onDelete,
           <div className="skill-market-mine-row__title" title={displayName}>
             {displayName}
           </div>
-          {metaParts.length > 0 && (
-            <div className="skill-market-mine-row__meta">{metaParts.join(" · ")}</div>
+          {categoryName && (
+            <div className="skill-market-mine-row__meta">{categoryName}</div>
           )}
           {skill.description && (
             <p className="skill-market-mine-row__desc">{skill.description}</p>

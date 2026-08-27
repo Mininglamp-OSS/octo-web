@@ -95,12 +95,13 @@ export interface McpListItem {
   matchReasons?: string[];
   relevance?: number;
   updatedAt?: string;
+  /** Current published version (wire `current_version`), e.g. "1.0.0". Shown on
+   *  the 我的发布 row card and the detail header. */
+  version?: string;
 }
 
 /** Full detail payload shown in the centered detail modal. */
 export interface McpDetail extends McpListItem {
-  /** Current published version (e.g. "1.0.0"), shown in the detail header. */
-  version?: string;
   /** Nickname of the user who created / published this MCP. Rendered as
    *  `@name` next to the tool count. Optional so legacy fixtures without
    *  the field still type-check. */
