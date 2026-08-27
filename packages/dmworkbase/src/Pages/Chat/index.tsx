@@ -29,6 +29,7 @@ import ChannelSetting from "../../Components/ChannelSetting";
 import ChannelSearchPanel from "../../features/channelSearch/ChannelSearchPanel";
 import { createChannelSearchApiDataSource } from "../../bridge/channelSearch/createChannelSearchDataSource";
 import { isChannelSearchEnabled } from "../../features/channelSearch/feature";
+import { openDriveFileHit } from "./openDriveFileHit";
 import type {
   ChannelSearchDataSource,
   ChannelSearchItem,
@@ -1765,50 +1766,17 @@ export default class ChatPage extends Component<any, ChatPageState> {
                       opened.location.href = url;
                     }}
                     onOpenDriveHit={(hit) => {
-                      // Folders have no preview — the panel already filters them
-                      // out server-side (filters.types), so a folder hit here
-                      // means a stale/loosened filter; warn and skip rather than
-                      // open a broken preview.
-                      if (hit.type === "folder") {
-                        console.warn(
-                          "[GlobalSearch] folder hit should be filtered out server-side; skipping"
-                        );
-                        return;
-                      }
-                      // Open the clicked file in the standalone preview page
-                      // `/drive/f/<fileId>`, which enterprise-modules routes to
-                      // StandalonePreview. name/size ride in the query so the
-                      // panel can label the file before the presigned URL
-                      // resolves; spaceId is kept for parity with the old link.
-                      // Same new-tab pattern as onOpenDoc: `/drive/f/...` is
-                      // intercepted by apps/web Layout outside the app shell, so
-                      // it can't be reached by an in-shell soft push. The
-                      // about:blank-first dance avoids the noopener null-return
-                      // popup-blocker false positive. The search modal stays open
-                      // so several results can be opened in a row.
-                      const params = new URLSearchParams({
-                        name: hit.name || "",
-                        size: hit.size != null ? String(hit.size) : "",
-                        spaceId: hit.space_id,
+                      // Routing lives in openDriveFileHit (unit-tested directly)
+                      // so folder-skip / URL shape / popup handling can't drift
+                      // from a test mirror. The search modal stays open so
+                      // several results can be opened in a row.
+                      openDriveFileHit(hit, {
+                        open: (u, target) => window.open(u, target),
+                        onBlocked: () =>
+                          Toast.warning(
+                            t("base.globalSearch.drive.popupBlocked")
+                          ),
                       });
-                      const url = `/drive/f/${encodeURIComponent(
-                        String(hit.file_id)
-                      )}?${params.toString()}`;
-                      const opened = window.open("about:blank", "_blank");
-                      if (!opened) {
-                        Toast.warning(
-                          t("base.globalSearch.drive.popupBlocked")
-                        );
-                        return;
-                      }
-                      try {
-                        opened.opener = null;
-                      } catch {
-                        // Some sandboxes freeze the opener setter; continue
-                        // navigating. about:blank is same-origin so the residual
-                        // risk is already contained.
-                      }
-                      opened.location.href = url;
                     }}
                     hideModal={() => {
                       vm.showGlobalSearch = false;
