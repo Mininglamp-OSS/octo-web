@@ -2102,18 +2102,35 @@ export default class ChatPage extends Component<any, ChatPageState> {
                       opened.location.href = url;
                     }}
                     onOpenDriveHit={(hit) => {
-                      // Open the clicked drive hit in the standalone `/drive`
-                      // page, which the drive module locates via the fileId /
-                      // spaceId query params (see drive-module patch). Same new-tab
-                      // pattern as onOpenDoc: `/drive` is intercepted by apps/web
-                      // Layout outside the app shell, so it can't be reached by an
-                      // in-shell soft push. The about:blank-first dance avoids the
-                      // noopener null-return popup-blocker false positive. The
-                      // search modal stays open so several results can be opened
-                      // in a row.
-                      const url = `/drive?fileId=${hit.file_id}&spaceId=${encodeURIComponent(
-                        hit.space_id
-                      )}`;
+                      // Folders have no preview — the panel already filters them
+                      // out server-side (filters.types), so a folder hit here
+                      // means a stale/loosened filter; warn and skip rather than
+                      // open a broken preview.
+                      if (hit.type === "folder") {
+                        console.warn(
+                          "[GlobalSearch] folder hit should be filtered out server-side; skipping"
+                        );
+                        return;
+                      }
+                      // Open the clicked file in the standalone preview page
+                      // `/drive/f/<fileId>`, which enterprise-modules routes to
+                      // StandalonePreview. name/size ride in the query so the
+                      // panel can label the file before the presigned URL
+                      // resolves; spaceId is kept for parity with the old link.
+                      // Same new-tab pattern as onOpenDoc: `/drive/f/...` is
+                      // intercepted by apps/web Layout outside the app shell, so
+                      // it can't be reached by an in-shell soft push. The
+                      // about:blank-first dance avoids the noopener null-return
+                      // popup-blocker false positive. The search modal stays open
+                      // so several results can be opened in a row.
+                      const params = new URLSearchParams({
+                        name: hit.name || "",
+                        size: hit.size != null ? String(hit.size) : "",
+                        spaceId: hit.space_id,
+                      });
+                      const url = `/drive/f/${encodeURIComponent(
+                        String(hit.file_id)
+                      )}?${params.toString()}`;
                       const opened = window.open("about:blank", "_blank");
                       if (!opened) {
                         Toast.warning(
