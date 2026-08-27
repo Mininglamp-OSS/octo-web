@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildUpdaterCheckUrl,
@@ -155,14 +157,12 @@ describe("desktop updater core", () => {
     })).toThrow("Updater response is missing package checksum");
   });
 
-  it("accepts the legacy signature field as a sha512 package checksum", () => {
-    expect(parseUpdateInfo({
+  it("does not guess that signature fields are package checksums", () => {
+    expect(() => parseUpdateInfo({
       version: "1.0.0",
       url: "https://cdn.example.com/OCTO-1.0.0-universal.zip",
       signature: SHA512_HEX,
-    })).toMatchObject({
-      sha512: SHA512_HEX,
-    });
+    })).toThrow("Updater response is missing package checksum");
   });
 
   it("rejects updater download URLs from a different origin when requested", () => {
@@ -225,5 +225,21 @@ describe("desktop updater core", () => {
     expect(isNewerVersion("v1.2.0", "1.1.9")).toBe(true);
     expect(isNewerVersion("1.0.0", "1.0.0")).toBe(false);
     expect(isNewerVersion("1.0.0", "1.0.1")).toBe(false);
+    expect(isNewerVersion("1.0.0-rollback", "1.2.0")).toBe(false);
+  });
+
+  it("keeps macOS installer script references to two-digit argv explicit", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../update.ts"), "utf8");
+    expect(source).toContain('RESULT_PATH="\\${10}"');
+    expect(source).toContain('LOG_PATH="\\${11}"');
+    expect(source).not.toContain('RESULT_PATH="$10"');
+    expect(source).not.toContain('LOG_PATH="$11"');
+  });
+
+  it("binds Windows signature verification parameters through PowerShell param", () => {
+    const source = fs.readFileSync(path.resolve(__dirname, "../update.ts"), "utf8");
+    expect(source).toContain("& { param([string]$Path, [string]$ExpectedPublisher)");
+    expect(source).toContain("Get-AuthenticodeSignature -LiteralPath $Path");
+    expect(source).not.toContain("Get-AuthenticodeSignature -LiteralPath $args[0]");
   });
 });

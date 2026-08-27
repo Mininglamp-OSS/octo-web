@@ -76,7 +76,7 @@ function parseUpdateInfoPayload(value: Record<string, unknown>, options: ParseUp
   }
   const sha256 = parseHexDigest(value.sha256 ?? value.checksum_sha256 ?? value.checksumSha256, 64, "sha256");
   const sha512 = parseBase64OrHexDigest(
-    value.sha512 ?? value.checksum_sha512 ?? value.checksumSha512 ?? value.checksum ?? value.signature,
+    value.sha512 ?? value.checksum_sha512 ?? value.checksumSha512 ?? value.checksum,
     "sha512",
   );
   if (!sha256 && !sha512) {
@@ -213,7 +213,7 @@ function parseBase64OrHexDigest(raw: unknown, name: string): string {
 export function isNewerVersion(candidate: string, current: string): boolean {
   const next = parseVersionParts(candidate);
   const base = parseVersionParts(current);
-  if (!next || !base) return candidate.trim() !== current.trim();
+  if (!next || !base) return false;
   const length = Math.max(next.length, base.length);
   for (let index = 0; index < length; index += 1) {
     const nextPart = next[index] || 0;

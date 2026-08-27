@@ -99,28 +99,18 @@ function sendDownloadProgress(data: number | { percent: number; downloadedBytes?
   sendUpdateMessage({ cmd: IPC_UPDATE_DOWNLOAD_PROGRESS, data });
 }
 
-async function writeChunk(stream: fs.WriteStream, chunk: Uint8Array): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const onDrain = () => {
-      cleanup();
-      resolve();
-    };
-    const onError = (error: Error) => {
-      cleanup();
-      reject(error);
-    };
-    const cleanup = () => {
-      stream.removeListener("drain", onDrain);
-      stream.removeListener("error", onError);
-    };
-    stream.once("error", onError);
-    if (stream.write(Buffer.from(chunk))) {
-      cleanup();
-      resolve();
-      return;
-    }
+async function writeChunk(stream: fs.WriteStream, chunk: Uint8Array, streamErrorPromise: Promise<never>): Promise<void> {
+  if (stream.write(Buffer.from(chunk))) return;
+  let onDrain: (() => void) | undefined;
+  const drainPromise = new Promise<void>((resolve) => {
+    onDrain = resolve;
     stream.once("drain", onDrain);
   });
+  try {
+    await Promise.race([drainPromise, streamErrorPromise]);
+  } finally {
+    if (onDrain) stream.removeListener("drain", onDrain);
+  }
 }
 
 function finishStream(stream: fs.WriteStream): Promise<void> {
@@ -161,8 +151,10 @@ function getHashConfig(updateInfo: DesktopUpdateInfo): {
   throw new Error("Updater response is missing package checksum");
 }
 
-function verifyDownloadedPackageHash(expected: string, actualDigest: string) {
-  if (actualDigest.toLowerCase() !== expected.toLowerCase()) {
+function verifyDownloadedPackageHash(expected: string, actualDigest: string, encoding: "base64" | "hex") {
+  const normalizedExpected = encoding === "hex" ? expected.toLowerCase() : expected;
+  const normalizedActual = encoding === "hex" ? actualDigest.toLowerCase() : actualDigest;
+  if (normalizedActual !== normalizedExpected) {
     throw new Error("Downloaded update package checksum mismatch");
   }
 }
@@ -221,48 +213,67 @@ async function downloadUpdatePackage(updateInfo: DesktopUpdateInfo): Promise<str
     const hash = crypto.createHash(hashConfig.algorithm);
     const reader = response.body.getReader();
     const stream = fs.createWriteStream(tempPath);
+    let streamError: Error | undefined;
+    let rejectStreamError: ((error: Error) => void) | undefined;
+    const streamErrorPromise = new Promise<never>((_, reject) => {
+      rejectStreamError = reject;
+    });
+    streamErrorPromise.catch(() => undefined);
+    const onStreamError = (error: Error) => {
+      streamError = error;
+      rejectStreamError?.(error);
+    };
+    stream.on("error", onStreamError);
 
-    sendDownloadProgress(total > 0 ? 0 : { percent: -1, downloadedBytes: 0 });
     try {
-      for (;;) {
-        resetStallTimer();
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (!value) continue;
-        downloaded += value.byteLength;
-        hash.update(value);
-        await writeChunk(stream, value);
-        if (total > 0) {
-          const percent = Math.min(99, Math.floor((downloaded / total) * 100));
-          if (percent !== lastPercent) {
-            lastPercent = percent;
-            sendDownloadProgress(percent);
+      sendDownloadProgress(total > 0 ? 0 : { percent: -1, downloadedBytes: 0 });
+      try {
+        for (;;) {
+          if (streamError) throw streamError;
+          resetStallTimer();
+          const { done, value } = await Promise.race([reader.read(), streamErrorPromise]);
+          if (streamError) throw streamError;
+          if (done) break;
+          if (!value) continue;
+          downloaded += value.byteLength;
+          hash.update(value);
+          await writeChunk(stream, value, streamErrorPromise);
+          if (streamError) throw streamError;
+          if (total > 0) {
+            const percent = Math.min(99, Math.floor((downloaded / total) * 100));
+            if (percent !== lastPercent) {
+              lastPercent = percent;
+              sendDownloadProgress(percent);
+            }
+          } else {
+            sendDownloadProgress({ percent: -1, downloadedBytes: downloaded });
           }
-        } else {
-          sendDownloadProgress({ percent: -1, downloadedBytes: downloaded });
         }
+      } catch (error) {
+        stream.destroy();
+        throw error;
+      } finally {
+        if (stallTimer) clearTimeout(stallTimer);
+        if (currentDownloadController === controller) currentDownloadController = undefined;
+        reader.releaseLock();
       }
-    } catch (error) {
-      stream.destroy();
-      throw error;
-    } finally {
-      if (stallTimer) clearTimeout(stallTimer);
-      if (currentDownloadController === controller) currentDownloadController = undefined;
-      reader.releaseLock();
-    }
 
-    await finishStream(stream);
-    if (total > 0 && downloaded !== total) {
-      throw new Error("Update download ended before content-length was reached");
+      if (streamError) throw streamError;
+      await finishStream(stream);
+      if (total > 0 && downloaded !== total) {
+        throw new Error("Update download ended before content-length was reached");
+      }
+      verifyDownloadedPackageHash(hashConfig.expected, hash.digest(hashConfig.encoding), hashConfig.encoding);
+      if (platform === "linux" && filePath.toLowerCase().endsWith(".appimage")) {
+        await fs.promises.chmod(tempPath, 0o755);
+      }
+      await fs.promises.rename(tempPath, filePath);
+      completed = true;
+      sendDownloadProgress({ percent: 100, downloadedBytes: downloaded, totalBytes: total > 0 ? total : undefined });
+      return filePath;
+    } finally {
+      stream.removeListener("error", onStreamError);
     }
-    verifyDownloadedPackageHash(hashConfig.expected, hash.digest(hashConfig.encoding));
-    if (platform === "linux" && filePath.toLowerCase().endsWith(".appimage")) {
-      await fs.promises.chmod(tempPath, 0o755);
-    }
-    await fs.promises.rename(tempPath, filePath);
-    completed = true;
-    sendDownloadProgress({ percent: 100, downloadedBytes: downloaded, totalBytes: total > 0 ? total : undefined });
-    return filePath;
   } catch (error) {
     if (!completed) {
       await fs.promises.rm(tempPath, { force: true }).catch(() => undefined);
@@ -292,10 +303,14 @@ async function verifyWindowsInstallerSignature(filePath: string): Promise<void> 
     throw new Error("Windows update signing publisher is not configured");
   }
   const command = [
-    "$signature = Get-AuthenticodeSignature -LiteralPath $args[0]",
+    "& { param([string]$Path, [string]$ExpectedPublisher)",
+    "$signature = Get-AuthenticodeSignature -LiteralPath $Path",
     "if ($signature.Status -ne 'Valid') { exit 10 }",
     "$subject = $signature.SignerCertificate.Subject",
-    "if ($subject -notlike ('*' + $args[1] + '*')) { exit 11 }",
+    "$match = [regex]::Match($subject, '(?:^|,\\s*)CN=([^,]+)')",
+    "if (!$match.Success) { exit 11 }",
+    "if ($match.Groups[1].Value -ne $ExpectedPublisher) { exit 11 }",
+    "}",
   ].join("; ");
   await execFileAsync("powershell.exe", [
     "-NoProfile",
@@ -343,8 +358,8 @@ EXPECTED_APP_NAME="$6"
 EXPECTED_VERSION="$7"
 EXPECTED_TEAM_ID="$8"
 INSTALL_DIR="$9"
-RESULT_PATH="$10"
-LOG_PATH="$11"
+RESULT_PATH="\${10}"
+LOG_PATH="\${11}"
 
 exec >> "$LOG_PATH" 2>&1
 echo "macOS update helper started at $(date)"
@@ -364,7 +379,7 @@ fail() {
 
 wait_until_not_running() {
   RUNNING_CHECK=0
-  while /usr/bin/pgrep -f "$TARGET_APP_PATH/Contents/MacOS/" >/dev/null 2>&1; do
+  while /bin/ps -axo command= | /usr/bin/grep -F "$TARGET_APP_PATH/Contents/MacOS/" >/dev/null 2>&1; do
     RUNNING_CHECK=$((RUNNING_CHECK + 1))
     if [ "$RUNNING_CHECK" -ge 150 ]; then
       fail 20
@@ -467,6 +482,10 @@ rm -f "$ZIP_PATH"
   ], {
     detached: true,
     stdio: "ignore",
+  });
+  await new Promise<void>((resolve, reject) => {
+    child.once("spawn", resolve);
+    child.once("error", reject);
   });
   child.unref();
   app.quit();
