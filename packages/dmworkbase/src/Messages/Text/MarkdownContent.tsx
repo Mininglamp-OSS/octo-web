@@ -516,15 +516,16 @@ function makeMathNode(inner: string, display: boolean): any {
 
 /**
  * 单次左到右扫描一段文本，识别 `$…$` / `$$…$$` 公式，返回 mdast 节点序列（text / inlineMath / math）。
- * 关键：候选被拒绝时只跳过本 opener（前移 openLen），后续 `$` 仍可开新候选——因此货币 `$100`
- * 不会吃掉后面 `$E=mc^2$` 的定界符；被拒绝的定界符与文本 100% 原样保留。
+ * 关键：行内候选被拒绝时只跳过本 opener（前移 openLen），后续 `$` 仍可开新候选——因此货币
+ * `$100` 不会吃掉后面 `$E=mc^2$` 的定界符。跨行 `$$` 候选被拒绝时则整体跳过，避免它的
+ * closer 被复用成下一候选的 opener；两条路径都会把被拒绝的定界符与文本原样保留。
  */
 function scanTextForMath(
   text: string,
   ctx: { attempts: number },
   source: string,
-  sourceStart: number,
-  sourceEnd: number
+  sourceStart?: number,
+  sourceEnd?: number
 ): any[] {
   const out: any[] = [];
   let buf = "";
@@ -536,7 +537,18 @@ function scanTextForMath(
   };
   const n = text.length;
   let i = 0;
-  let sourceCursor = sourceStart;
+  const hasSourceRange =
+    typeof sourceStart === "number" &&
+    typeof sourceEnd === "number" &&
+    sourceStart >= 0 &&
+    sourceEnd >= sourceStart &&
+    sourceEnd <= source.length;
+  const hasExactSourceMapping =
+    hasSourceRange && source.slice(sourceStart, sourceEnd) === text;
+  // 容器节点（如 blockquote）会让源码区间包含 `> ` 等 marker，无法按 text 下标直接映射。
+  // 这类节点按候选顺序在自己的源码区间内查找；每一对 $$ 无论接受还是拒绝都必须消费，
+  // 避免后续 display 候选错误复用更早的源码定界符。
+  let sourceCursor = hasSourceRange ? sourceStart : -1;
   while (i < n) {
     if (text[i] !== "$") {
       buf += text[i];
@@ -568,13 +580,31 @@ function scanTextForMath(
       const hasNewline = inner.indexOf("\n") !== -1;
       let sourceOpen = -1;
       let sourceClose = -1;
-      if (isDouble && hasNewline) {
-        sourceOpen = source.indexOf("$$", sourceCursor);
-        if (sourceOpen < sourceStart || sourceOpen >= sourceEnd) {
-          sourceOpen = -1;
+      if (isDouble && hasSourceRange) {
+        if (hasExactSourceMapping) {
+          sourceOpen = sourceStart + i;
+          sourceClose = sourceStart + close;
+          if (
+            source.slice(sourceOpen, sourceOpen + 2) !== "$$" ||
+            source.slice(sourceClose, sourceClose + 2) !== "$$"
+          ) {
+            sourceOpen = -1;
+            sourceClose = -1;
+          }
         } else {
-          sourceClose = source.indexOf("$$", sourceOpen + 2);
-          if (sourceClose < 0 || sourceClose >= sourceEnd) sourceClose = -1;
+          sourceOpen = source.indexOf("$$", sourceCursor);
+          if (sourceOpen < sourceStart || sourceOpen >= sourceEnd) {
+            sourceOpen = -1;
+          } else {
+            sourceClose = source.indexOf("$$", sourceOpen + 2);
+            if (sourceClose < 0 || sourceClose >= sourceEnd) sourceClose = -1;
+          }
+        }
+        if (sourceClose >= 0) {
+          sourceCursor = sourceClose + openLen;
+        } else {
+          // 映射一旦不可靠，后续 display 一律 fail closed；行内候选仍可按 text 自身判断。
+          sourceCursor = sourceEnd;
         }
       }
       const display =
@@ -604,12 +634,18 @@ function scanTextForMath(
           flush();
           out.push(makeMathNode(inner, display));
           i = close + openLen;
-          if (sourceClose >= 0) sourceCursor = sourceClose + openLen;
           continue;
         }
       }
+      if (isDouble && hasNewline) {
+        // 跨行 $$ 候选拒绝后也要整体按字面消费。不能只跳过 opener，否则本候选 closer
+        // 会与下一块 opener 重新配对，既可能吞掉中间正文，也可能让后续合法 display 漏渲。
+        buf += text.slice(i, close + openLen);
+        i = close + openLen;
+        continue;
+      }
     }
-    // 拒绝：定界符按字面文本，只前移 openLen，后面的 `$` 仍能开新候选
+    // 拒绝的行内候选：定界符按字面文本，只前移 openLen，后面的 `$` 仍能开新候选。
     buf += text.slice(i, i + openLen);
     i += openLen;
   }
@@ -647,8 +683,8 @@ function mathScanPlugin() {
             child.value,
             ctx,
             source,
-            typeof start === "number" ? start : 0,
-            typeof end === "number" ? end : source.length
+            typeof start === "number" ? start : undefined,
+            typeof end === "number" ? end : undefined
           );
           if (parts.some((p) => p.type === "inlineMath" || p.type === "math")) {
             next.push(...parts);

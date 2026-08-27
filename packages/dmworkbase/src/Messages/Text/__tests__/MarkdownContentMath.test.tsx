@@ -686,6 +686,140 @@ describe("MarkdownContent — 跨软换行的非锚定 $$ 不吞成 display math
   });
 });
 
+describe("MarkdownContent — 多个 $$ 候选的源码映射保持同步 (review round 11)", () => {
+  it("被拒绝的 inline $$ 后续跨行正文不误渲染为 display", () => {
+    const input = "$$x$$\nthe config_x value $$100 and\nmore$$";
+    const root = renderContent(<MarkdownContent content={input} />);
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(visibleText(root)).toContain("the config_x value");
+    expect(visibleText(root)).toContain("$$100 and");
+  });
+
+  it("被拒绝的 inline $$ 后续中文正文不误渲染为 display", () => {
+    const input = "$$x$$\n这里 m_0 是质量 $$100 and\nmore$$";
+    const root = renderContent(<MarkdownContent content={input} />);
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(visibleText(root)).toContain("这里 m_0 是质量");
+  });
+
+  it("已接受的 inline $$ 后续合法 display 仍正常渲染", () => {
+    const root = renderContent(
+      <MarkdownContent content={"$$a^2$$ then\n$$\nE=mc^2\n$$"} />
+    );
+    expect(root.querySelectorAll(".katex")).toHaveLength(2);
+    expect(root.querySelectorAll(".katex-display")).toHaveLength(1);
+  });
+
+  it("跨行正文候选之后的合法 display 不会因游标滞后而漏渲", () => {
+    const root = renderContent(
+      <MarkdownContent content={"cost $$5 for\nthe item $$ x\n$$\ny^2\n$$"} />
+    );
+    expect(root.querySelectorAll(".katex")).toHaveLength(1);
+    expect(root.querySelectorAll(".katex-display")).toHaveLength(1);
+    expect(visibleText(root)).toContain("cost $$5 for");
+  });
+
+  it("行中非锚定候选之后的合法 display 不会因游标滞后而漏渲", () => {
+    const root = renderContent(
+      <MarkdownContent content={"prefix$$\na\n$$ then\n$$\nx^2\n$$"} />
+    );
+    expect(root.querySelectorAll(".katex")).toHaveLength(1);
+    expect(root.querySelectorAll(".katex-display")).toHaveLength(1);
+    expect(visibleText(root)).toContain("prefix$$");
+  });
+
+  it("无源码 position 的 HTML 文本节点不猜测 display 锚点", () => {
+    const root = renderContent(
+      <MarkdownContent content={"$$\na^2\n$$\n\n<div>pre$$\nx^2\n$$</div>"} />
+    );
+    expect(root.querySelectorAll(".katex-display")).toHaveLength(1);
+    expect(visibleText(root)).toContain("pre$$");
+  });
+});
+
+describe("MarkdownContent — 被拒绝的 display 不复用 closer (review round 11)", () => {
+  const cases = [
+    "$$\n\\frac{a}{b\n$$\n其中 a_1 为系数\n$$\nc^2\n$$",
+    "$$\n\\label{a}\n$$\n下面是 m_0 静质量\n$$\ny^2\n$$",
+    "$$\n\\label{a}\n$$\nnote a_1 here\n$$\ny^2\n$$",
+    "> $$\n> \\bad\n> $$\n> some ^text\n> $$\n> y^2\n> $$",
+  ];
+
+  for (const input of cases) {
+    it(`保留无效块及其中间正文，仅渲染下一合法块：${JSON.stringify(
+      input
+    )}`, () => {
+      const root = renderContent(<MarkdownContent content={input} />);
+      expect(root.querySelectorAll(".katex-display")).toHaveLength(1);
+    });
+  }
+
+  it("无效块后的 ASCII 正文不会被 KaTeX 吞掉", () => {
+    const root = renderContent(
+      <MarkdownContent
+        content={"$$\n\\label{a}\n$$\nnote a_1 here\n$$\ny^2\n$$"}
+      />
+    );
+    expect(visibleText(root)).toContain("note a_1 here");
+    expect(visibleText(root)).toContain("\\label{a}");
+  });
+
+  it("首个 display 合法时两个公式都渲染且中间正文完整", () => {
+    const root = renderContent(
+      <MarkdownContent content={"$$\nx^2\n$$\nnote a_1 here\n$$\ny^2\n$$"} />
+    );
+    expect(root.querySelectorAll(".katex-display")).toHaveLength(2);
+    expect(visibleText(root)).toContain("note a_1 here");
+  });
+});
+
+describe("MarkdownContent — display 配对在容器与换行组合下保持稳定", () => {
+  const matrix = ["LF", "CRLF"].flatMap((lineEnding) =>
+    ["paragraph", "blockquote"].flatMap((containerKind) =>
+      ["valid", "invalid"].flatMap((firstBlockKind) =>
+        ["adjacent", "blank-line"].map((separation) => ({
+          lineEnding,
+          containerKind,
+          firstBlockKind,
+          separation,
+        }))
+      )
+    )
+  );
+
+  for (const {
+    lineEnding,
+    containerKind,
+    firstBlockKind,
+    separation,
+  } of matrix) {
+    it(`${lineEnding} / ${containerKind} / ${firstBlockKind} / ${separation}`, () => {
+      const eol = lineEnding === "CRLF" ? "\r\n" : "\n";
+      const gap = separation === "blank-line" ? [""] : [];
+      const lines = [
+        "$$",
+        firstBlockKind === "valid" ? "x^2" : "\\label{a}",
+        "$$",
+        ...gap,
+        "note a_1 here",
+        "$$",
+        "y^2",
+        "$$",
+      ];
+      const content =
+        containerKind === "blockquote"
+          ? lines.map((line) => (line ? `> ${line}` : "> ")).join(eol)
+          : lines.join(eol);
+      const root = renderContent(<MarkdownContent content={content} />);
+
+      expect(root.querySelectorAll(".katex-display")).toHaveLength(
+        firstBlockKind === "valid" ? 2 : 1
+      );
+      expect(visibleText(root)).toContain("note a_1 here");
+    });
+  }
+});
+
 describe("MarkdownContent — markdown 转义的 \\$ 保持 literal，不被重新激活为定界符 (reviewer P0-2)", () => {
   it("literal \\$x_1\\$ 原样显示，不渲染公式", () => {
     const root = renderContent(
