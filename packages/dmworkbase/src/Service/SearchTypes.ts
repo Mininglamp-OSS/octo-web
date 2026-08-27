@@ -200,6 +200,15 @@ export interface GlobalSearchDataSource {
   // Optional so existing DataSource fakes/tests stay valid; the docs tab is
   // only rendered where a real API data source provides it.
   searchDocs?: (query: DocSearchQuery) => Promise<DocSearchResponse>;
+  // Drive full-text search (octo-drive backend POST drive/search). Optional so
+  // existing DataSource fakes/tests stay valid; the drive tab is only rendered
+  // where a real API data source provides it and remoteConfig.driveOn is set.
+  // Accepts an AbortSignal so the panel can cancel a stale in-flight request
+  // when the keyword changes (mirrors the APIClient search-abort convention).
+  searchDrive?: (
+    query: DriveSearchQuery,
+    signal?: AbortSignal
+  ) => Promise<DriveSearchResponse>;
 }
 
 // --- Cloud-docs search (octo-docs-backend) -------------------------------
@@ -246,6 +255,78 @@ export interface DocSearchResponse {
   // while a further page exists; absent => no more results, so the pager stops
   // on `!nextCursor` rather than any offset/total arithmetic.
   nextCursor?: string;
+}
+
+// --- Drive search (octo-drive backend, POST drive/search) ----------------
+// Host-owned types symmetric to the octo-drive wire contract
+// (octo-drive-module src/bridge/types.ts). Duplicated here on purpose: host
+// must not import the drive module. Keep field names/types 1:1 with the wire.
+//   - file_id / parent_id are Go uint64 -> number; space_id is a string.
+//   - parent_id === 0 means "space root".
+//   - Pagination is offset-based (page_index / page_size), NOT cursor.
+//   - Highlight fragments already wrap hits in <mark> (rendered via an
+//     allowlist, never dangerouslySetInnerHTML).
+export type DriveSearchScope = "all" | "space";
+export type DriveSearchOwnerScope = "me" | "others";
+export type DriveFileType = "doc" | "blob" | "folder";
+
+export interface DriveSearchFilters {
+  type?: DriveFileType;
+  owner_scope?: DriveSearchOwnerScope;
+  /** RFC3339. Include hits whose `updated_at >= updated_after`. */
+  updated_after?: string;
+  /** Byte range, blob-only. Inclusive on both ends. */
+  size_min?: number;
+  size_max?: number;
+}
+
+export interface DriveSearchQuery {
+  q: string;
+  scope?: DriveSearchScope;
+  /** Required when scope === 'space'. */
+  space_id?: string;
+  filters?: DriveSearchFilters;
+  page_index?: number;
+  page_size?: number;
+}
+
+/** Per-field highlight fragments; each fragment already wraps hits in <mark>. */
+export interface DriveSearchHighlights {
+  name?: string[];
+  body?: string[];
+}
+
+export interface DriveSearchContentMeta {
+  extractor: string;
+  truncated: boolean;
+}
+
+export interface DriveSearchHit {
+  file_id: number;
+  space_id: string;
+  space_name: string;
+  parent_id: number;
+  /** Root-first folder-name chain, does NOT include the hit itself. */
+  path: string[];
+  name: string;
+  type: DriveFileType;
+  ext?: string;
+  size?: number;
+  owner_uid: string;
+  owner_name: string;
+  updater_uid: string;
+  updater_name: string;
+  created_at: string;
+  updated_at: string;
+  highlights?: DriveSearchHighlights;
+  content_meta?: DriveSearchContentMeta;
+}
+
+export interface DriveSearchResponse {
+  total: number;
+  /** True when the OS response was capped; UI shows a "results may be partial" note. */
+  truncated: boolean;
+  items: DriveSearchHit[];
 }
 
 export interface GlobalSearchChannelOption {
