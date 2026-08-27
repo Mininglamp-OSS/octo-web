@@ -1455,5 +1455,13 @@
   "globalSearch.docs.loading": "Searching…",
   "globalSearch.docs.searchFailed": "Search failed, please try again",
   "globalSearch.docs.loadMore": "Load more",
-  "globalSearch.docs.popupBlocked": "Your browser blocked the new tab. Allow pop-ups for this site, then click the document again."
+  "globalSearch.docs.popupBlocked": "Your browser blocked the new tab. Allow pop-ups for this site, then click the document again.",
+  "globalSearch.tab.drive": "Drive",
+  "globalSearch.drive.emptyHint": "Type a keyword to search drive files",
+  "globalSearch.drive.noResults": "No matching drive files found",
+  "globalSearch.drive.loading": "Searching…",
+  "globalSearch.drive.searchFailed": "Search failed, please try again",
+  "globalSearch.drive.popupBlocked": "Your browser blocked the new tab. Allow pop-ups for this site, then click the file again.",
+  "globalSearch.drive.truncated": "Results may be incomplete. Try a more specific keyword.",
+  "globalSearch.drive.allLoaded": "All {{count}} results shown"
 }

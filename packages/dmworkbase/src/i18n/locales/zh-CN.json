@@ -1455,5 +1455,13 @@
   "globalSearch.docs.loading": "搜索中…",
   "globalSearch.docs.searchFailed": "搜索失败，请稍后重试",
   "globalSearch.docs.loadMore": "加载更多",
-  "globalSearch.docs.popupBlocked": "浏览器拦截了新标签页，请允许本站弹窗后重新点击该文档。"
+  "globalSearch.docs.popupBlocked": "浏览器拦截了新标签页，请允许本站弹窗后重新点击该文档。",
+  "globalSearch.tab.drive": "网盘",
+  "globalSearch.drive.emptyHint": "输入关键词搜索网盘文件",
+  "globalSearch.drive.noResults": "未找到匹配的网盘文件",
+  "globalSearch.drive.loading": "搜索中…",
+  "globalSearch.drive.searchFailed": "搜索失败，请稍后重试",
+  "globalSearch.drive.popupBlocked": "浏览器拦截了新标签页，请允许本站弹窗后重新点击该文件。",
+  "globalSearch.drive.truncated": "结果可能不完整，请缩小关键词",
+  "globalSearch.drive.allLoaded": "已显示全部 {{count}} 条"
 }
