@@ -76,6 +76,13 @@ export function toChannelSearchRequestBody(query: ChannelSearchQuery) {
 // CN-tz day formatter for GlobalSearch. See §11.
 const CN_TZ = "Asia/Shanghai";
 
+// Drive full-text search is proxied under a dedicated nginx location
+// (`^~ /api/drive` -> octo-drive backend), NOT the `/api/v1/` gateway that is
+// APIClient's default baseURL. Pass this as a per-request baseURL override so
+// the request resolves to `/api/drive/search`, per the spec route contract —
+// axios combines this baseURL with the `"search"` path (no leading slash).
+const DRIVE_API_PREFIX = "/api/drive/";
+
 // Split a Date into CN-tz Y/M/D (numeric). Extracted so both the wire
 // serializer and the datePreset boundary math share one code path.
 function cnCalendarParts(
@@ -518,7 +525,8 @@ const SearchService = {
     };
   },
 
-  // Drive full-text search: octo-drive backend `POST drive/search`. uid is
+  // Drive full-text search: octo-drive backend, proxied at `POST /api/drive/search`
+  // (see DRIVE_API_PREFIX). uid is
   // injected by the gateway (not sent from the client); the backend applies
   // permission down-push server-side, so the client renders items verbatim.
   //
@@ -548,7 +556,10 @@ const SearchService = {
     };
     if (query.space_id) body.space_id = query.space_id;
     if (query.filters) body.filters = query.filters;
-    const resp = await APIClient.shared.post("drive/search", body, { signal });
+    const resp = await APIClient.shared.post("search", body, {
+      signal,
+      baseURL: DRIVE_API_PREFIX,
+    });
     const items = Array.isArray(resp?.items) ? resp.items : [];
     const validItems = items.filter(
       (it: unknown): it is DriveSearchHit =>

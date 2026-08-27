@@ -211,6 +211,106 @@ describe("DriveSearchPanel — offset pagination", () => {
 
     expect(screen.queryByText("old-more-20")).toBeNull();
     expect(screen.getByText("new-0")).toBeInTheDocument();
+    // loadingMore must be reset on the keyword switch — the stale page-2's
+    // finally() is seq-gated out, so without the first-page reset it would leave
+    // loadingMore stuck true: footer frozen on "loading" and loadNextPage's guard
+    // blocking every later page forever (必修🟠).
+    expect(
+      screen.queryByText("base.globalSearch.drive.loading")
+    ).toBeNull();
+  });
+
+  it("世代保护: 切到空关键词后滞后的旧首页响应不得污染空态", async () => {
+    let releaseOld!: () => void;
+    const oldGate = new Promise<void>((resolve) => {
+      releaseOld = resolve;
+    });
+    const { ds, searchDrive } = makeDataSource(async (query) => {
+      if (query.q === "old") {
+        await oldGate; // first page hangs until released (after clearing keyword)
+        return { total: 20, truncated: false, items: makeHits(20, 0, "old") };
+      }
+      return { total: 0, truncated: false, items: [] };
+    });
+
+    const { rerender } = render(
+      <DriveSearchPanel keyword="old" dataSource={ds} isActive />
+    );
+    // Wait for the debounced first-page request to fire (still hanging).
+    await waitFor(() => expect(searchDrive).toHaveBeenCalledTimes(1));
+
+    // Clear the keyword -> canSearch false -> the effect resets to the empty
+    // state AND (with the fix) bumps the generation so the pending "old" first
+    // page can no longer write back.
+    rerender(<DriveSearchPanel keyword="" dataSource={ds} isActive />);
+    expect(
+      screen.getByText("base.globalSearch.drive.emptyHint")
+    ).toBeInTheDocument();
+
+    releaseOld();
+    await oldGate;
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(screen.queryByText("old-0")).toBeNull();
+    expect(
+      screen.getByText("base.globalSearch.drive.emptyHint")
+    ).toBeInTheDocument();
+  });
+
+  it("世代保护: 切到 inactive 后滞后的旧首页响应不得污染", async () => {
+    let releaseOld!: () => void;
+    const oldGate = new Promise<void>((resolve) => {
+      releaseOld = resolve;
+    });
+    const { ds, searchDrive } = makeDataSource(async () => {
+      await oldGate;
+      return { total: 20, truncated: false, items: makeHits(20, 0, "old") };
+    });
+
+    const { rerender } = render(
+      <DriveSearchPanel keyword="old" dataSource={ds} isActive />
+    );
+    await waitFor(() => expect(searchDrive).toHaveBeenCalledTimes(1));
+
+    // Panel goes inactive (hidden) -> canSearch false -> reset + generation bump.
+    rerender(<DriveSearchPanel keyword="old" dataSource={ds} isActive={false} />);
+
+    releaseOld();
+    await oldGate;
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(screen.queryByText("old-0")).toBeNull();
+  });
+
+  it("abort 拒绝不置错: 被取消的旧首页请求 reject 不得触发错误态", async () => {
+    let rejectOld!: (err: unknown) => void;
+    const oldGate = new Promise<DriveSearchResponse>((_, reject) => {
+      rejectOld = reject;
+    });
+    const { ds, searchDrive } = makeDataSource(async (query) => {
+      if (query.q === "old") return oldGate; // hangs, then rejected as if aborted
+      return { total: 1, truncated: false, items: makeHits(1, 0, "new") };
+    });
+
+    const { rerender } = render(
+      <DriveSearchPanel keyword="old" dataSource={ds} isActive />
+    );
+    await waitFor(() => expect(searchDrive).toHaveBeenCalledTimes(1));
+
+    rerender(<DriveSearchPanel keyword="new" dataSource={ds} isActive />);
+    await screen.findByText("new-0");
+
+    // The cancelled "old" request now rejects with an AbortError — it must be
+    // swallowed (superseded generation + isAbortError), never shown as a failure.
+    const abortErr = new Error("aborted");
+    abortErr.name = "AbortError";
+    rejectOld(abortErr);
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(
+      screen.queryByText("base.globalSearch.drive.searchFailed")
+    ).toBeNull();
+    expect(screen.getByText("new-0")).toBeInTheDocument();
   });
 
   it("truncated: shows the soft hint and still allows paging", async () => {
