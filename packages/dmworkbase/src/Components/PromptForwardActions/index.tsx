@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Channel, ChannelTypePerson } from "wukongimjssdk";
 import { Toast } from "@douyinfe/semi-ui";
-import { Check, Copy, Send } from "lucide-react";
+import { Check, Copy, Pencil, Send } from "lucide-react";
 import { t } from "../../i18n";
 import { useI18n } from "../../i18n";
 import WKApp from "../../App";
@@ -53,8 +53,6 @@ export interface PromptForwardActionsProps {
    * the forward button beneath it. The host sizes the outer box.
    */
   layout?: "stack" | "split";
-  /** Left-column content in split layout (usually the prompt <pre> + hint). */
-  preview?: React.ReactNode;
   /**
    * DAP event to emit once on a SUCCESSFUL copy. Each host supplies its own
    * (e.g. "market_bot_publish_prompt_copied", "market_skill_install_prompt_copied",
@@ -108,7 +106,6 @@ export default function PromptForwardActions({
   onForwarded,
   navigateOnSend = true,
   layout = "stack",
-  preview,
   copyTrackEvent,
 }: PromptForwardActionsProps) {
   useI18n();
@@ -126,6 +123,15 @@ export default function PromptForwardActions({
   const [reloadKey, setReloadKey] = useState(0);
   const [copied, setCopied] = useState(false);
   const [forwarding, setForwarding] = useState(false);
+  // Editable working copy of the prompt. The host authors `prompt`; the user can
+  // tweak it here ("编辑提示词") before copying / forwarding — copy and forward
+  // both send this draft, not the original. Reset when the host swaps the prompt.
+  const [draft, setDraft] = useState(prompt);
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    setDraft(prompt);
+    setEditing(false);
+  }, [prompt]);
   // A successful forward typically unmounts this component mid-handler (the
   // host closes its modal from onForwarded / showConversation), and the
   // copied-toast reset timer can outlive a fast close. Guard both so React 17
@@ -172,13 +178,13 @@ export default function PromptForwardActions({
     };
   }, [effectiveSpaceId, reloadKey]);
 
-  const promptReady = Boolean(prompt) && !disabled;
+  const promptReady = Boolean(draft) && !disabled;
   const hasBots = bots.kind === "ready" && bots.bots.length > 0;
   const canForward = promptReady && hasBots && !!selectedUid && !forwarding;
 
   const handleCopy = async () => {
     if (!promptReady) return;
-    const ok = await copyToClipboard(prompt);
+    const ok = await copyToClipboard(draft);
     if (ok) {
       if (!mountedRef.current) return;
       setCopied(true);
@@ -210,7 +216,7 @@ export default function PromptForwardActions({
     const channel = new Channel(bot.uid, ChannelTypePerson);
     setForwarding(true);
     try {
-      const result = await forwardPlainText([channel], prompt, {
+      const result = await forwardPlainText([channel], draft, {
         spaceId: effectiveSpaceId || null,
       });
       if (result.failedTargets > 0) {
@@ -298,6 +304,49 @@ export default function PromptForwardActions({
     </WKButton>
   );
 
+  // Split-layout preview: the prompt is a read-only <pre> by default and turns
+  // into an editable <textarea> on "编辑提示词"; copy lives as a hover-revealed
+  // icon in the top-right corner (both act on the editable draft).
+  const editablePreview = (
+    <div className="wk-prompt-forward__preview">
+      <button
+        type="button"
+        className="wk-prompt-forward__copy-icon"
+        title={t("base.promptForward.copyPrompt")}
+        aria-label={t("base.promptForward.copyPrompt")}
+        onClick={handleCopy}
+        disabled={!promptReady}
+      >
+        {copied ? <Check size={15} /> : <Copy size={15} />}
+      </button>
+      {editing ? (
+        <textarea
+          className="wk-prompt-forward__preview-edit"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          aria-label={t("base.promptForward.editPrompt")}
+        />
+      ) : (
+        <pre className="wk-prompt-forward__preview-pre" tabIndex={0}>
+          {draft}
+        </pre>
+      )}
+    </div>
+  );
+
+  const editButton = (
+    <WKButton
+      variant="secondary"
+      icon={<Pencil size={15} />}
+      onClick={() => setEditing((v) => !v)}
+      disabled={!draft && !editing}
+    >
+      {editing
+        ? t("base.promptForward.doneEdit")
+        : t("base.promptForward.editPrompt")}
+    </WKButton>
+  );
+
   const forwardButton = (
     <WKButton
       variant="primary"
@@ -316,8 +365,8 @@ export default function PromptForwardActions({
     return (
       <div className="wk-prompt-forward wk-prompt-forward--split">
         <div className="wk-prompt-forward__col wk-prompt-forward__col--preview">
-          <div className="wk-prompt-forward__preview-body">{preview}</div>
-          <div className="wk-prompt-forward__actions">{copyButton}</div>
+          <div className="wk-prompt-forward__preview-body">{editablePreview}</div>
+          <div className="wk-prompt-forward__actions">{editButton}</div>
         </div>
         <div className="wk-prompt-forward__col wk-prompt-forward__col--bots">
           {botPicker}

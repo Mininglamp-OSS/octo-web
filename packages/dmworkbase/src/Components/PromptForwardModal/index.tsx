@@ -1,13 +1,14 @@
 import React from "react";
 import WKModal from "../WKModal";
 import PromptForwardActions from "../PromptForwardActions";
+import { t } from "../../i18n";
 import "./index.css";
 
 export interface PromptForwardModalProps {
   visible: boolean;
-  /** Modal title (left of the header). */
-  title: React.ReactNode;
-  /** Optional sub-line under the title. */
+  /** @deprecated The header title is unified to "添加给 Bot"; this is ignored. */
+  title?: React.ReactNode;
+  /** @deprecated The sub-line was removed; this is ignored. */
   hint?: React.ReactNode;
   /** Optional leading icon rendered in the header. */
   icon?: React.ReactNode;
@@ -27,16 +28,13 @@ export interface PromptForwardModalProps {
 
 /**
  * Shared "hand this prompt to a Bot" modal — the single owner of the split
- * layout (prompt + 复制 on the left, 选 Bot + 转发 on the right). Every
- * marketplace prompt surface (安装 / 上架专家 / 上架专家团 / MCP 上架 / 编辑)
- * renders this and only supplies the generated prompt + header text, so the
- * layout is changed in one place. Built on the shared PromptForwardActions
- * (layout="split") from @octo/base.
+ * layout (editable prompt + copy on the left, 选 Bot + 转发 on the right). Every
+ * marketplace prompt surface (安装 / 上架专家 / 上架专家团 / MCP 上架 / 接入)
+ * renders this and only supplies the generated prompt + icon; the header title
+ * is unified to "添加给 Bot" here, so the layout and copy live in one place.
  */
 export default function PromptForwardModal({
   visible,
-  title,
-  hint,
   icon,
   prompt,
   spaceId,
@@ -53,8 +51,7 @@ export default function PromptForwardModal({
         </span>
       )}
       <div className="wk-prompt-forward-modal__heading">
-        <h2>{title}</h2>
-        {hint && <p>{hint}</p>}
+        <h2>{t("base.promptForward.title")}</h2>
       </div>
     </div>
   );
@@ -72,14 +69,6 @@ export default function PromptForwardModal({
       <div className="wk-prompt-forward-modal__box">
         <PromptForwardActions
           layout="split"
-          preview={
-            // tabIndex: the scrollbar is styled away, so keyboard users need
-            // the <pre> focusable to scroll a long generated prompt (a plain
-            // pre is not in the tab order).
-            <pre className="wk-prompt-forward__preview-pre" tabIndex={0}>
-              {prompt}
-            </pre>
-          }
           prompt={prompt}
           spaceId={spaceId}
           disabled={!prompt}
