@@ -1,0 +1,313 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { File, FileText, FolderOpen } from "lucide-react";
+import { useI18n } from "../../i18n";
+import type {
+  DriveFileType,
+  DriveSearchHit,
+  GlobalSearchDataSource,
+} from "../../Service/SearchTypes";
+import { formatFileSize } from "../../Utils/fileIcon";
+import "./drive-search-panel.css";
+
+const PAGE_SIZE = 20;
+// Debounce keystrokes so a fast typist fires one search per pause, not one per
+// character. Matches the drive module's own search box.
+const DEBOUNCE_MS = 250;
+// Trigger the next page while this many px from the bottom (same as the
+// cursor-paged panels feed useSearchPagination).
+const SCROLL_THRESHOLD_PX = 100;
+// Upper bound on the highlight fragment we scan/render (see renderHighlight).
+const HIGHLIGHT_MAX_LEN = 2000;
+// Show at most this many body snippets per hit; the backend may return more.
+const BODY_SNIPPET_MAX = 2;
+
+interface DriveSearchPanelProps {
+  keyword: string;
+  dataSource: GlobalSearchDataSource;
+  // Mounted alongside the other tab panels and toggled via display:none, so a
+  // hidden panel must not run its search. Gate on isActive (same contract as
+  // DocSearchPanel / GlobalContentSearchPanel).
+  isActive?: boolean;
+  // Integration point: open the clicked hit. Wired by the host (Chat) to
+  // /drive?fileId=..&spaceId=.. -> window.open in a new tab; the search modal
+  // is kept open so several results can be opened in turn. No-op default keeps
+  // this panel self-contained when the prop is unwired.
+  onOpenDriveHit?: (hit: DriveSearchHit) => void;
+}
+
+// Backend highlight fragments already wrap hits in <mark></mark>. Render them
+// into React text nodes with a <mark>-only allowlist: everything between/around
+// the tags becomes a plain React string (auto-escaped by React), and only the
+// marked spans are wrapped in <mark>. This never uses dangerouslySetInnerHTML,
+// so injected markup in the fragment cannot execute. (Same logic as
+// DocSearchPanel.renderHighlight, with <em> swapped for <mark>.)
+function renderHighlight(rawFragment: string): React.ReactNode {
+  const fragment =
+    rawFragment.length > HIGHLIGHT_MAX_LEN
+      ? rawFragment.slice(0, HIGHLIGHT_MAX_LEN)
+      : rawFragment;
+  const pattern = /<mark>([\s\S]*?)<\/mark>/gi;
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+  while ((match = pattern.exec(fragment))) {
+    if (match.index > cursor) nodes.push(fragment.slice(cursor, match.index));
+    nodes.push(<mark key={key++}>{match[1]}</mark>);
+    cursor = pattern.lastIndex;
+  }
+  if (cursor < fragment.length) nodes.push(fragment.slice(cursor));
+  return nodes.length > 0 ? nodes : fragment;
+}
+
+function renderFileIcon(type: DriveFileType): React.ReactNode {
+  if (type === "folder") return <FolderOpen size={20} aria-hidden />;
+  if (type === "doc") return <FileText size={20} aria-hidden />;
+  return <File size={20} aria-hidden />;
+}
+
+function formatUpdatedAt(iso: string, locale: string): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString(locale);
+  } catch {
+    return "";
+  }
+}
+
+// space_name + root-first folder chain (path excludes the hit itself).
+function breadcrumb(hit: DriveSearchHit): string {
+  return [hit.space_name, ...(hit.path ?? [])].filter(Boolean).join(" / ");
+}
+
+const DriveSearchPanel: React.FC<DriveSearchPanelProps> = ({
+  keyword,
+  dataSource,
+  isActive = true,
+  onOpenDriveHit,
+}) => {
+  const { t, locale } = useI18n();
+  const trimmed = keyword.trim();
+  const canSearch = !!trimmed && isActive && !!dataSource.searchDrive;
+
+  const [items, setItems] = useState<DriveSearchHit[]>([]);
+  const [total, setTotal] = useState(0);
+  const [truncated, setTruncated] = useState(false);
+  const [pageIndex, setPageIndex] = useState(0); // current loaded page (0-based)
+  const [loading, setLoading] = useState(false); // first page in flight
+  const [loadingMore, setLoadingMore] = useState(false); // next page in flight
+  const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  // Generation guard: only the latest generation may write state. Bumped when
+  // the first page resets, so a stale in-flight response (first page OR next
+  // page) is silently dropped — dual protection with AbortController.
+  const seqRef = useRef(0);
+
+  // Derived: more pages exist while we hold fewer hits than the reported total.
+  // The backend has no has_more / nextCursor field, so this is the sole gate.
+  const hasMore = items.length < total;
+
+  // First page: reset + fetch page_index=0 whenever the query / active / source
+  // changes. Debounced so a fast typist fires one search per pause.
+  useEffect(() => {
+    abortRef.current?.abort();
+    setItems([]);
+    setTotal(0);
+    setTruncated(false);
+    setPageIndex(0);
+    setError(null);
+    if (!canSearch) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const seq = ++seqRef.current;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const timer = window.setTimeout(() => {
+      dataSource
+        .searchDrive!(
+          { q: trimmed, scope: "all", page_index: 0, page_size: PAGE_SIZE },
+          controller.signal
+        )
+        .then((resp) => {
+          if (seq !== seqRef.current) return;
+          setItems(resp.items);
+          setTotal(resp.total);
+          setTruncated(resp.truncated);
+        })
+        .catch(() => {
+          // A superseded generation (keyword changed / abort) is dropped by the
+          // seq guard before it can surface a spurious error.
+          if (seq !== seqRef.current) return;
+          setError(t("base.globalSearch.drive.searchFailed"));
+        })
+        .finally(() => {
+          if (seq === seqRef.current) setLoading(false);
+        });
+    }, DEBOUNCE_MS);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+    // t is referentially stable (from I18n context); listing it keeps
+    // exhaustive-deps happy without causing a refetch.
+  }, [canSearch, trimmed, dataSource, t]);
+
+  // Next page: appended on scroll-to-bottom. Shares the generation number with
+  // the first-page effect, so a first-page reset invalidates an in-flight
+  // loadNextPage (its captured seq goes stale and its result is dropped).
+  const loadNextPage = useCallback(async () => {
+    if (loading || loadingMore || !hasMore || !canSearch) return;
+    setLoadingMore(true);
+    const seq = seqRef.current;
+    const nextIndex = pageIndex + 1;
+    try {
+      const resp = await dataSource.searchDrive!({
+        q: trimmed,
+        scope: "all",
+        page_index: nextIndex,
+        page_size: PAGE_SIZE,
+      });
+      if (seq !== seqRef.current) return;
+      setItems((prev) => [...prev, ...resp.items]);
+      setPageIndex(nextIndex);
+      setTotal(resp.total); // total normally stable; follow backend if it moves
+      setTruncated(resp.truncated);
+    } catch {
+      if (seq !== seqRef.current) return;
+      setError(t("base.globalSearch.drive.searchFailed"));
+    } finally {
+      if (seq === seqRef.current) setLoadingMore(false);
+    }
+  }, [
+    loading,
+    loadingMore,
+    hasMore,
+    canSearch,
+    pageIndex,
+    trimmed,
+    dataSource,
+    t,
+  ]);
+
+  const handleScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      const el = e.currentTarget;
+      if (
+        el.scrollHeight - el.scrollTop - el.clientHeight <
+        SCROLL_THRESHOLD_PX
+      ) {
+        void loadNextPage();
+      }
+    },
+    [loadNextPage]
+  );
+
+  const emptyState = useMemo(() => {
+    if (loading) {
+      return (
+        <div className="wk-drive-search__hint">
+          {t("base.globalSearch.drive.loading")}
+        </div>
+      );
+    }
+    if (error) {
+      return <div className="wk-drive-search__hint">{error}</div>;
+    }
+    return (
+      <div className="wk-drive-search__empty">
+        {!trimmed
+          ? t("base.globalSearch.drive.emptyHint")
+          : t("base.globalSearch.drive.noResults")}
+      </div>
+    );
+  }, [error, loading, t, trimmed]);
+
+  return (
+    <div className="wk-drive-search">
+      <div className="wk-drive-search__list" onScroll={handleScroll}>
+        {items.length === 0
+          ? emptyState
+          : items.map((hit) => {
+              const bodySnippets = (hit.highlights?.body ?? []).slice(
+                0,
+                BODY_SNIPPET_MAX
+              );
+              const crumb = breadcrumb(hit);
+              return (
+                <button
+                  type="button"
+                  key={`${hit.space_id}:${hit.file_id}`}
+                  className="wk-drive-search__item"
+                  onClick={() => onOpenDriveHit?.(hit)}
+                >
+                  <span
+                    className={`wk-drive-search__icon wk-drive-search__icon--${hit.type}`}
+                  >
+                    {renderFileIcon(hit.type)}
+                  </span>
+                  <span className="wk-drive-search__meta">
+                    <span className="wk-drive-search__title">
+                      {hit.highlights?.name?.[0]
+                        ? renderHighlight(hit.highlights.name[0])
+                        : hit.name}
+                    </span>
+                    {crumb && (
+                      <span className="wk-drive-search__crumb">{crumb}</span>
+                    )}
+                    {bodySnippets.length > 0 ? (
+                      bodySnippets.map((frag, i) => (
+                        <span key={i} className="wk-drive-search__snippet">
+                          {renderHighlight(frag)}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="wk-drive-search__sub">
+                        {[
+                          hit.owner_name,
+                          formatUpdatedAt(hit.updated_at, locale),
+                          typeof hit.size === "number"
+                            ? formatFileSize(hit.size)
+                            : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+        {/* Bottom hints (only once the first page has results). Priority:
+            loadingMore spinner > paging error > truncated note > all-loaded. */}
+        {items.length > 0 && loadingMore && (
+          <div className="wk-drive-search__footer" role="status">
+            {t("base.globalSearch.drive.loading")}
+          </div>
+        )}
+        {items.length > 0 && !loadingMore && error && (
+          <div className="wk-drive-search__footer">{error}</div>
+        )}
+        {items.length > 0 && !loadingMore && !error && truncated && (
+          <div className="wk-drive-search__footer" role="status">
+            {t("base.globalSearch.drive.truncated")}
+          </div>
+        )}
+        {items.length > 0 &&
+          !loadingMore &&
+          !error &&
+          !truncated &&
+          !hasMore && (
+            <div className="wk-drive-search__footer" role="status">
+              {t("base.globalSearch.drive.allLoaded", {
+                values: { count: total },
+              })}
+            </div>
+          )}
+      </div>
+    </div>
+  );
+};
+
+export default DriveSearchPanel;
