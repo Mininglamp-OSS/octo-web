@@ -210,9 +210,6 @@ export default function SkillCard({ skill, categories, onOpen, onEdit, onDelete,
           {categoryName && (
             <div className="skill-market-mine-row__meta">{categoryName}</div>
           )}
-          {skill.description && (
-            <p className="skill-market-mine-row__desc">{skill.description}</p>
-          )}
           {visibleTags.length > 0 && (
             <div className="skill-market-card__tags">
               {visibleTags.map((tag) => (
@@ -221,11 +218,28 @@ export default function SkillCard({ skill, categories, onOpen, onEdit, onDelete,
               {hiddenTags.length > 0 && <span>+{hiddenTags.length}</span>}
             </div>
           )}
-          {skill.version && (
-            <div className="skill-market-mine-row__status">
+          <div className="skill-market-mine-row__status">
+            <span
+              className="skill-market-mine-row__stat"
+              title={t("skillMarket.card.viewsTitle", { values: { count: rawViewCount } })}
+            >
+              <Eye size={13} aria-hidden="true" />
+              {viewCount}
+            </span>
+            <span
+              className="skill-market-mine-row__stat"
+              title={t("skillMarket.card.downloadsTitle", { values: { count: rawDownloadCount } })}
+            >
+              <Download size={13} aria-hidden="true" />
+              {downloadCount}
+            </span>
+            <span className="skill-market-mine-row__vis">
+              {t(`skillMarket.visibility.${skill.visibility}`)}
+            </span>
+            {skill.version && (
               <span className="skill-market-mine-row__version">v{skill.version}</span>
-            </div>
-          )}
+            )}
+          </div>
         </div>
         <div className="skill-market-mine-row__actions">
           {onEdit && (

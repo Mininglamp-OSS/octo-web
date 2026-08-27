@@ -607,6 +607,8 @@ function mapListItem(
     icon: raw.icon_url || raw.icon || "",
     tags: raw.tags ?? [],
     toolCount: raw.tool_count ?? 0,
+    viewCount: raw.view_count ?? 0,
+    installCount: raw.install_count ?? 0,
     visibility: mapVisibility(raw.visibility),
     creatorName: raw.creator_name,
     createdByType: raw.created_by_type,

@@ -208,7 +208,9 @@
     "editAriaLabel": "Edit {{name}}",
     "deleteAriaLabel": "Delete {{name}}",
     "edit": "Edit",
-    "delete": "Delete"
+    "delete": "Delete",
+    "viewCountTitle": "{{count}} views",
+    "installCountTitle": "{{count}} installs"
   },
   "detail": {
     "title": "MCP Details",
@@ -398,5 +400,11 @@
   "connect": {
     "title": "Connect Prompt",
     "hint": "Copy and paste into an Agent conversation to connect this connector to the runtime automatically"
+  },
+  "visibility": {
+    "public": "Public",
+    "space": "Space",
+    "private": "Private",
+    "system": "Official"
   }
 }

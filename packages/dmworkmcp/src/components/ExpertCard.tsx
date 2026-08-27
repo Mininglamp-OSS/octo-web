@@ -77,7 +77,6 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
             {item.name}
           </div>
           {item.category && <div className="wk-mcp-mine-row__meta">{item.category}</div>}
-          {item.summary && <p className="wk-mcp-mine-row__desc">{item.summary}</p>}
           {visibleTags.length > 0 && (
             <div className="wk-mcp-card__tags">
               {visibleTags.map((tag) => (
@@ -90,11 +89,39 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
               )}
             </div>
           )}
-          {item.version && (
-            <div className="wk-mcp-mine-row__status">
+          <div className="wk-mcp-mine-row__status">
+            {isSquad && (
+              <span
+                className="wk-mcp-mine-row__stat"
+                title={t("mcp.expert.memberCount", { values: { count: item.memberCount ?? item.members.length } })}
+              >
+                <Users size={13} aria-hidden="true" />
+                {item.memberCount ?? item.members.length}
+              </span>
+            )}
+            <span
+              className="wk-mcp-mine-row__stat"
+              title={t("mcp.expert.viewCountTitle", { values: { count: rawViewCount } })}
+            >
+              <Eye size={13} aria-hidden="true" />
+              {formatCount(rawViewCount)}
+            </span>
+            <span
+              className="wk-mcp-mine-row__stat"
+              title={t("mcp.expert.installCountTitle", { values: { count: rawInstallCount } })}
+            >
+              <Download size={13} aria-hidden="true" />
+              {formatCount(rawInstallCount)}
+            </span>
+            {item.visibility && (
+              <span className="wk-mcp-mine-row__vis">
+                {t(`mcp.visibility.${item.visibility}`)}
+              </span>
+            )}
+            {item.version && (
               <span className="wk-mcp-mine-row__version">v{item.version}</span>
-            </div>
-          )}
+            )}
+          </div>
         </div>
         <div
           className="wk-mcp-mine-row__actions"

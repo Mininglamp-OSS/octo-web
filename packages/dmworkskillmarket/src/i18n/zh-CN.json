@@ -198,5 +198,11 @@
     "hoursAgo": "{{count}} 小时前",
     "daysAgo": "{{count}} 天前"
   },
-  "mine": {}
+  "mine": {},
+  "visibility": {
+    "public": "公开",
+    "space": "空间",
+    "private": "仅自己",
+    "system": "官方"
+  }
 }

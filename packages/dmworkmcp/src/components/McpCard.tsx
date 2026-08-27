@@ -1,12 +1,13 @@
 import React from "react";
 import { Tooltip } from "@douyinfe/semi-ui";
 import { IconWrenchStroked } from "@douyinfe/semi-icons";
-import { Bot, Pencil, ShieldCheck, Trash2, UserRound } from "lucide-react";
+import { Bot, Download, Eye, Pencil, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import type { McpListItem } from "../types/mcp";
 import { t } from "@octo/base";
 import { IconGlyph } from "../utils/icon";
 import { getMcpAvatarColor, getMcpAvatarText } from "../utils/mcpAvatar";
 import { isOfficialMcp } from "../utils/publisher";
+import { formatCount } from "../utils/format";
 
 interface McpCardProps {
   item: McpListItem;
@@ -142,7 +143,6 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onConnect, onEdit, onD
             {item.name}
           </div>
           {item.category && <div className="wk-mcp-mine-row__meta">{item.category}</div>}
-          {item.slogan && <p className="wk-mcp-mine-row__desc">{item.slogan}</p>}
           {visibleTags.length > 0 && (
             <div className="wk-mcp-card__tags">
               {visibleTags.map((tag) => (
@@ -155,11 +155,30 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onConnect, onEdit, onD
               )}
             </div>
           )}
-          {item.version && (
-            <div className="wk-mcp-mine-row__status">
+          <div className="wk-mcp-mine-row__status">
+            <span
+              className="wk-mcp-mine-row__stat"
+              title={t("mcp.card.viewCountTitle", { values: { count: item.viewCount ?? 0 } })}
+            >
+              <Eye size={13} aria-hidden="true" />
+              {formatCount(item.viewCount ?? 0)}
+            </span>
+            <span
+              className="wk-mcp-mine-row__stat"
+              title={t("mcp.card.installCountTitle", { values: { count: item.installCount ?? 0 } })}
+            >
+              <Download size={13} aria-hidden="true" />
+              {formatCount(item.installCount ?? 0)}
+            </span>
+            {item.visibility && (
+              <span className="wk-mcp-mine-row__vis">
+                {t(`mcp.visibility.${item.visibility}`)}
+              </span>
+            )}
+            {item.version && (
               <span className="wk-mcp-mine-row__version">v{item.version}</span>
-            </div>
-          )}
+            )}
+          </div>
         </div>
         <div
           className="wk-mcp-mine-row__actions"

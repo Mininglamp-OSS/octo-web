@@ -1,8 +1,8 @@
 import React, { Component } from "react";
 import axios from "axios";
 import { Spin, Toast } from "@douyinfe/semi-ui";
-import { IconSearch, IconClose } from "@douyinfe/semi-icons";
-import { Bot, Check, ChevronDown, SlidersHorizontal, Upload } from "lucide-react";
+import { IconClose } from "@douyinfe/semi-icons";
+import { Bot, Check, ChevronDown, Search, SlidersHorizontal, Upload } from "lucide-react";
 import { I18nContext, t, WKApp, WKButton, Dap } from "@octo/base";
 import { fetchMcpDetail, fetchMcpList, fetchMcpMine, fetchMcpTags, McpTagSuggestion } from "../api/mcpService";
 import { mcpListErrorI18nKey } from "../api/mcpListError";
@@ -582,7 +582,7 @@ export default class McpMarketListPage extends Component<
           <div className="wk-mcp__topbar-actions">
             <div className="wk-mcp__search">
               <div className="wk-mcp__search-control">
-                <IconSearch aria-hidden />
+                <Search size={16} aria-hidden="true" />
                 <input
                   type="search"
                   value={keyword}
@@ -628,7 +628,7 @@ export default class McpMarketListPage extends Component<
                   {tagFilterOpen && (
                     <div className="wk-mcp-tag-filter__popover">
                       <label className="wk-mcp-tag-filter__search">
-                        <IconSearch aria-hidden />
+                        <Search size={16} aria-hidden="true" />
                         <input
                           ref={this.tagSearchInputRef}
                           type="search"

@@ -297,13 +297,24 @@ export default function ExpertMarketListPage({
     return EXPERT_CATEGORIES;
   }, [categories]);
 
-  // All tags in the current tab's catalog, de-duped and sorted, for the popover.
+  // All tags in the current view's catalog, de-duped and sorted, for the popover.
+  // In the mine view the source is the user's own experts/squads (narrowed by
+  // mineType) rather than the discovery catalog.
   const allTags = useMemo(() => {
-    const source: ExpertItem[] = kind === "squad" ? squadsData : agentsData;
+    const source: ExpertItem[] =
+      kind === "mine"
+        ? mineType === "squad"
+          ? mySquadsData
+          : mineType === "agent"
+            ? myAgentsData
+            : [...myAgentsData, ...mySquadsData]
+        : kind === "squad"
+          ? squadsData
+          : agentsData;
     const set = new Set<string>();
     source.forEach((item) => item.tags.forEach((tag) => set.add(tag)));
     return Array.from(set).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
-  }, [kind, squadsData, agentsData]);
+  }, [kind, mineType, squadsData, agentsData, myAgentsData, mySquadsData]);
 
   const visibleTags = useMemo(() => {
     const q = tagQuery.trim().toLowerCase();
@@ -375,16 +386,27 @@ export default function ExpertMarketListPage({
   // 我的 tab: the caller's own experts / squads (GET /experts/mine +
   // /squads/mine). Only the keyword search applies here (the sort control and
   // category / tag filters are hidden in this tab); each kind gets its own
-  // section, keeping the backend's newest-first order.
+  // section, keeping the backend's newest-first order. Filtered by the keyword
+  // and the tag filter (AND semantics, matching discovery).
   const myAgents = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return myAgentsData.filter((item) => matchesQuery(item, q));
-  }, [myAgentsData, query]);
+    return myAgentsData.filter(
+      (item) =>
+        matchesQuery(item, q) &&
+        (!selectedTags.length ||
+          selectedTags.every((tag) => item.tags.includes(tag)))
+    );
+  }, [myAgentsData, query, selectedTags]);
 
   const mySquads = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return mySquadsData.filter((item) => matchesQuery(item, q));
-  }, [mySquadsData, query]);
+    return mySquadsData.filter(
+      (item) =>
+        matchesQuery(item, q) &&
+        (!selectedTags.length ||
+          selectedTags.every((tag) => item.tags.includes(tag)))
+    );
+  }, [mySquadsData, query, selectedTags]);
 
   // The active catalog's true total vs. how many were actually loaded. The list
   // fetch caps at LIST_PAGE_SIZE, so when the total exceeds the loaded count the
@@ -520,10 +542,9 @@ export default function ExpertMarketListPage({
                 aria-label={t("mcp.expert.searchClear")}
                 onClick={() => setQuery("")}
               >
-                <X size={14} />
+                <X size={18} />
               </button>
             )}
-            {kind !== "mine" && (
               <div className="wk-mcp-expert-tagfilter" ref={tagFilterRef}>
               <button
                 type="button"
@@ -612,7 +633,6 @@ export default function ExpertMarketListPage({
                 </div>
               )}
               </div>
-            )}
           </div>
           {variant === "mine" && (
             <div className="wk-mcp-expert-publish">

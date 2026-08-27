@@ -307,10 +307,9 @@
   box-shadow: 0 0 0 var(--wk-sp-1) var(--wk-accent-tint-12);
 }
 
-.wk-mcp__search-control > .semi-icon {
+.wk-mcp__search-control > svg {
   flex: 0 0 auto;
   margin-left: var(--wk-sp-3);
-  font-size: 16px;
 }
 
 .wk-mcp__search-control > input {
@@ -1546,22 +1545,27 @@
   color: var(--wk-text-tertiary);
   font-size: 12px;
 }
-.wk-mcp-mine-row__desc {
-  margin: 0;
-  color: var(--wk-text-secondary);
-  font-size: 13px;
-  line-height: 1.6;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
 .wk-mcp-mine-row__status {
   display: flex;
   align-items: center;
-  gap: var(--wk-sp-2);
+  gap: var(--wk-sp-3);
   font-size: 12px;
   color: var(--wk-text-tertiary);
+}
+.wk-mcp-mine-row__stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.wk-mcp-mine-row__vis {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 var(--wk-sp-2);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-secondary);
 }
 .wk-mcp-mine-row__version {
   font-variant-numeric: tabular-nums;
@@ -2419,16 +2423,19 @@
 }
 
 .wk-mcp-expert-search {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--wk-sp-2);
-  width: min(420px, 40vw);
+  width: 360px;
+  max-width: 100%;
   min-height: 40px;
-  padding: 0 0 0 var(--wk-sp-3);
   border: 1px solid var(--wk-border-subtle);
   border-radius: var(--wk-r-md);
   color: var(--wk-text-tertiary);
   background: var(--wk-bg-base);
+  transition: border-color var(--wk-dur-fast) var(--wk-ease),
+    box-shadow var(--wk-dur-fast) var(--wk-ease),
+    background var(--wk-dur-fast) var(--wk-ease);
 }
 
 .wk-mcp-expert-search:focus-within {
@@ -2437,12 +2444,17 @@
   box-shadow: 0 0 0 var(--wk-sp-1) var(--wk-accent-tint-12);
 }
 
+.wk-mcp-expert-search > svg {
+  flex: 0 0 auto;
+  margin-left: var(--wk-sp-3);
+}
+
 .wk-mcp-expert-search input {
   flex: 1 1 auto;
   min-width: 0;
   width: 100%;
   height: 38px;
-  padding: 0;
+  padding: 0 var(--wk-sp-2);
   border: 0;
   outline: 0;
   color: var(--wk-text-primary);
@@ -2459,14 +2471,18 @@
 }
 
 .wk-mcp-expert-search__clear {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-right: var(--wk-sp-1);
   border: 0;
-  border-radius: var(--wk-r-circle);
-  color: var(--wk-icon-default);
+  border-radius: var(--wk-r-sm);
+  color: var(--wk-text-tertiary);
   background: transparent;
+  cursor: pointer;
 }
 
 /* -------- Tag filter (inside the search bar, Skills-market style) -------- */
@@ -2634,8 +2650,11 @@
   cursor: not-allowed;
 }
 
-.wk-mcp-expert-search__clear:hover {
-  background: var(--wk-brand-tint-06);
+.wk-mcp-expert-search__clear:hover,
+.wk-mcp-expert-search__clear:focus-visible {
+  outline: none;
+  background: var(--wk-bg-item-hover);
+  color: var(--wk-text-secondary);
 }
 
 /* Tab row + the Loop-explainer help icon sitting just right of 我的. */

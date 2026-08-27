@@ -84,10 +84,9 @@
 .skill-market-topbar h1 {
   margin: 0;
   color: var(--wk-text-strong);
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1.25;
-  letter-spacing: 0;
+  font-size: var(--wk-text-size-3xl);
+  font-weight: var(--wk-font-bold);
+  line-height: 1.2;
 }
 
 .skill-market-topbar p {
@@ -713,22 +712,27 @@
   color: var(--wk-text-tertiary);
   font-size: 12px;
 }
-.skill-market-mine-row__desc {
-  margin: 0;
-  color: var(--wk-text-secondary);
-  font-size: 13px;
-  line-height: 1.6;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
 .skill-market-mine-row__status {
   display: flex;
   align-items: center;
-  gap: var(--wk-sp-2);
+  gap: var(--wk-sp-3);
   font-size: 12px;
   color: var(--wk-text-tertiary);
+}
+.skill-market-mine-row__stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.skill-market-mine-row__vis {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 var(--wk-sp-2);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-secondary);
 }
 .skill-market-mine-row__version {
   font-variant-numeric: tabular-nums;

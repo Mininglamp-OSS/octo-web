@@ -334,19 +334,22 @@ describe("SkillListPage", () => {
     });
   });
 
-  it("renders the mine row card (version, not view/download stats) and opens detail", async () => {
+  it("renders the mine row card (stats + visibility) and opens detail", async () => {
     render(<SkillListPage variant="mine" />);
 
     const card = await screen.findByRole("button", {
       name: "meeting-note-cleaner 我",
     });
-    // The 我的发布 row card surfaces the version + publish status, not the
-    // view/download counters (those live only in discovery cards now).
+    // The 我的发布 row card surfaces view/download counts, visibility, and version.
     expect(screen.getByText("v1.1.3")).toBeInTheDocument();
-    expect(screen.queryByLabelText(/浏览次数：2|Views: 2/)).not.toBeInTheDocument();
+    expect(screen.getByTitle(/浏览次数：|Views:/)).toBeInTheDocument();
+    expect(screen.getByTitle(/下载次数：|Downloads:/)).toBeInTheDocument();
 
     fireEvent.click(card);
-    await screen.findByText(skill.description);
+    // Detail opened: the machine name renders in the modal content (header +
+    // frontmatter + readme) but nowhere in the row card (which shows only the
+    // display name). findAllByText avoids the multi-match throw.
+    expect((await screen.findAllByText(skill.name)).length).toBeGreaterThan(0);
   });
 
   it("confirms deletion and removes the skill through the API", async () => {
@@ -369,7 +372,7 @@ describe("SkillListPage", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "meeting-note-cleaner 我" })
     );
-    expect(await screen.findByText(skill.description)).toBeInTheDocument();
+    expect((await screen.findAllByText(skill.name)).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getAllByRole("button", { name: deleteSkillName }).at(-1)!);
     expect(screen.getByText(deleteConfirmText)).toBeInTheDocument();
@@ -416,7 +419,7 @@ describe("SkillListPage", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "meeting-note-cleaner 我" })
     );
-    expect(await screen.findByText(skill.description)).toBeInTheDocument();
+    expect((await screen.findAllByText(skill.name)).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getAllByRole("button", { name: editSkillName }).at(-1)!);
     fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), {

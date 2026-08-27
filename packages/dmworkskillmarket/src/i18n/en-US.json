@@ -198,5 +198,11 @@
     "hoursAgo": "{{count}} hours ago",
     "daysAgo": "{{count}} days ago"
   },
-  "mine": {}
+  "mine": {},
+  "visibility": {
+    "public": "Public",
+    "space": "Space",
+    "private": "Private",
+    "system": "Official"
+  }
 }

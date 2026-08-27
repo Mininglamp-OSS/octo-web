@@ -208,7 +208,9 @@
     "editAriaLabel": "编辑 {{name}}",
     "deleteAriaLabel": "删除 {{name}}",
     "edit": "编辑",
-    "delete": "删除"
+    "delete": "删除",
+    "viewCountTitle": "浏览 {{count}} 次",
+    "installCountTitle": "安装 {{count}} 次"
   },
   "detail": {
     "title": "连接器详情",
@@ -398,5 +400,11 @@
   "connect": {
     "title": "接入 Prompt",
     "hint": "复制后粘贴到 Agent 对话中，将自动把该连接器接入运行环境"
+  },
+  "visibility": {
+    "public": "公开",
+    "space": "空间",
+    "private": "仅自己",
+    "system": "官方"
   }
 }

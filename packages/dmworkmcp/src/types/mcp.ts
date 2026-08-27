@@ -69,6 +69,10 @@ export interface McpListItem {
   tags: string[];
   /** Number of tools this server exposes (shown on the card footer). */
   toolCount: number;
+  /** Detail-view count (wire `view_count`). Shown on the 我的发布 row card. */
+  viewCount?: number;
+  /** Install count (wire `install_count`). Shown on the 我的发布 row card. */
+  installCount?: number;
   /** Icon: single emoji/char OR image URL / data URL. */
   icon: string;
   /** Visibility scope, echoed by the wire (mcp-v1.md §0). Optional so legacy

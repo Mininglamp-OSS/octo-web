@@ -186,7 +186,6 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
             placeholder={t("skillMarket.filter.searchNameDescription")}
             selectedTags={selectedTags}
             onSelectedTagsChange={handleSelectedTagsChange}
-            autoFocus
           />
           {variant === "mine" && (
           <div className="skill-market-publish-menu" ref={publishMenuRef}>
