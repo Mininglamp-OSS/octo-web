@@ -8,6 +8,7 @@ import { act } from "react-dom/test-utils"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 let ChatConversationList: typeof import("../index").default
+let isMutedForRecentConversation: typeof import("../index").isMutedForRecentConversation
 let container: HTMLDivElement
 let mockCategories: Array<any> = []
 let latestExtraContextMenus: ((conversation: any) => Array<any>) | undefined
@@ -111,7 +112,9 @@ beforeAll(async () => {
         },
     }))
 
-    ChatConversationList = (await import("../index")).default
+    const module = await import("../index")
+    ChatConversationList = module.default
+    isMutedForRecentConversation = module.isMutedForRecentConversation
 })
 
 beforeEach(() => {
@@ -238,5 +241,27 @@ describe("ChatConversationList", () => {
         expect(children).toHaveLength(1)
         expect(children?.[0]?.separator).not.toBe(true)
         expect(children?.[0]?.title).toBe("base.chatSidebar.context.createCategory")
+    })
+
+    it("covers grouped rendering, modal ref wiring, and mute classification", () => {
+        mockCategories = [{ category_id: "cat", name: "Cat", is_default: false }]
+        const ref = { current: null as (() => void) | null }
+        act(() => {
+            ReactDOM.render(
+                <ChatConversationList
+                    conversations={[makeGroupConversation("grouped", 2)] as any}
+                    filter="group"
+                    onOpenCreateCategoryRef={ref as any}
+                    onConversationClick={() => {}}
+                    onClearMessages={() => {}}
+                    onThreadOverflowClick={() => {}}
+                />,
+                container,
+            )
+        })
+        expect(container).toBeTruthy()
+        ref.current?.()
+        expect(isMutedForRecentConversation({ channel: { channelID: "dm", channelType: 1 }, channelInfo: {} } as any)).toBe(false)
+        expect(isMutedForRecentConversation({ channel: { channelID: "thread", channelType: 5 }, channelInfo: { orgData: {} } } as any)).toBe(false)
     })
 })

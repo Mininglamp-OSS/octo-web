@@ -6,12 +6,20 @@ const sdkState = vi.hoisted(() => ({
     sendingQueues: new Map<number, unknown>(),
     channelInfos: new Map<string, any>(),
     syncMessages: vi.fn(),
+    send: vi.fn(),
     conversation: null as any,
     openConversation: undefined as any,
     notifyConversationListeners: vi.fn(),
     scrollToBottom: vi.fn(),
     markConversationUnread: vi.fn(() => Promise.resolve()),
     emit: vi.fn(),
+    messageListener: undefined as any,
+    cmdListener: undefined as any,
+    conversationListener: undefined as any,
+    messageStatusListener: undefined as any,
+    connectStatusListener: undefined as any,
+    typingListener: undefined as any,
+    clearChannelHandler: undefined as any,
 }))
 
 vi.mock("wukongimjssdk", () => {
@@ -49,6 +57,8 @@ vi.mock("wukongimjssdk", () => {
                     syncSubscribes: () => Promise.resolve(),
                     subscribeCacheMap: new Map(),
                     notifySubscribeChangeListeners: () => {},
+                    addListener: () => {},
+                    removeListener: () => {},
                 },
                 conversationManager: {
                     get openConversation() {
@@ -59,21 +69,31 @@ vi.mock("wukongimjssdk", () => {
                     },
                     findConversation: () => sdkState.conversation,
                     notifyConversationListeners: sdkState.notifyConversationListeners,
-                    addConversationListener: () => {},
+                    addConversationListener: (listener: any) => { sdkState.conversationListener = listener },
                     removeConversationListener: () => {},
                 },
                 chatManager: {
                     sendingQueues: sdkState.sendingQueues,
-                    addMessageListener: () => {},
+                    send: sdkState.send,
+                    addMessageListener: (listener: any) => { sdkState.messageListener = listener },
                     removeMessageListener: () => {},
-                    addCMDListener: () => {},
+                    addCMDListener: (listener: any) => { sdkState.cmdListener = listener },
                     removeCMDListener: () => {},
-                    addMessageStatusListener: () => {},
+                    addMessageStatusListener: (listener: any) => { sdkState.messageStatusListener = listener },
                     removeMessageStatusListener: () => {},
                 },
                 connectManager: {
-                    addConnectStatusListener: () => {},
+                    addConnectStatusListener: (listener: any) => { sdkState.connectStatusListener = listener },
                     removeConnectStatusListener: () => {},
+                    addListener: () => {},
+                    removeListener: () => {},
+                },
+            }),
+        },
+        default: {
+            shared: () => ({
+                channelManager: {
+                    getChannelInfo: (channel: any) => sdkState.channelInfos.get(channel.getChannelKey()),
                 },
             }),
         },
@@ -113,13 +133,31 @@ vi.mock("../../../App", () => ({
             syncMessages: sdkState.syncMessages,
         },
         shared: { currentSpaceId: "", notifyMessageDeleteListener: () => {} },
+        endpointManager: { setMethod: (_id: string, handler: any) => { sdkState.clearChannelHandler = handler }, removeMethod: vi.fn() },
     },
 }))
 
 vi.mock("../../../Service/DataSource/DataProvider", () => ({
     SyncMessageOptions: class {},
 }))
-vi.mock("../../../Service/Model", () => ({ MessageWrap: class {} }))
+vi.mock("../../../Service/Model", () => ({ MessageWrap: class {
+    message: any
+    order = 0
+    constructor(message: any) { this.message = message }
+    get clientSeq() { return this.message?.clientSeq || 0 }
+    get clientMsgNo() { return this.message?.clientMsgNo || "" }
+    get messageSeq() { return this.message?.messageSeq || 0 }
+    get messageID() { return this.message?.messageID || "" }
+    get timestamp() { return this.message?.timestamp || 0 }
+    get fromUID() { return this.message?.fromUID || "" }
+    get channel() { return this.message?.channel }
+    get contentType() { return this.message?.content?.contentType ?? this.message?.contentType }
+    get content() { return this.message?.content }
+    set content(value: any) { this.message.content = value }
+    get status() { return this.message?.status }
+    set status(value: any) { this.message.status = value }
+    get send() { return this.message?.fromUID === "me" }
+} }))
 vi.mock("../../../Service/Provider", () => ({
     ProviderListener: class {
         callback?: Function
@@ -133,17 +171,39 @@ vi.mock("../../../Service/Provider", () => ({
 vi.mock("react-scroll", () => ({ animateScroll: { scrollToBottom: sdkState.scrollToBottom }, scroller: { scrollTo: () => {} } }))
 vi.mock("../../../Service/Const", () => ({
     EndpointID: {},
-    MessageContentTypeConst: { time: 1001, historySplit: 1002, rtcData: 1003 },
+    MessageContentTypeConst: {
+        time: 1001,
+        historySplit: 1002,
+        rtcData: 1003,
+        typing: 1004,
+        image: 2,
+        gif: 3,
+        smallVideo: 4,
+        file: 5,
+        richText: 6,
+        interactiveCard: 7,
+    },
     OrderFactor: 10000,
     ChannelTypeCommunityTopic: 6,
 }))
 vi.mock("moment", () => ({ default: () => ({ format: () => "" }) }))
 vi.mock("../../../Messages/Time", () => ({ TimeContent: class {} }))
 vi.mock("../../../Messages/HistorySplit", () => ({ HistorySplitContent: class {} }))
-vi.mock("../../../Messages/Mergeforward", () => ({ default: class {} }))
+vi.mock("../../../Messages/Mergeforward", () => ({
+    default: class {
+        channelType: number
+        users: any[]
+        messages: any[]
+        constructor(channelType: number, users: any[], messages: any[]) {
+            this.channelType = channelType
+            this.users = users
+            this.messages = messages
+        }
+    },
+}))
 vi.mock("../../../Service/TypingManager", () => ({
     TypingListener: class {},
-    TypingManager: { shared: { addTypingListener: () => {}, removeTypingListener: () => {} } },
+    TypingManager: { shared: { addTypingListener: (listener: any) => { sdkState.typingListener = listener }, removeTypingListener: () => {}, getFakeTypingMessage: () => undefined } },
 }))
 vi.mock("../../../Service/ProhibitwordsService", () => ({ ProhibitwordsService: { shared: { filter: (text: unknown) => (typeof text === "string" && text.length > 0 ? text : ""), getProhibitwords: () => [] } } }))
 vi.mock("../../../Service/SpaceService", () => ({ SYSTEM_BOTS: new Set() }))
@@ -164,6 +224,7 @@ vi.mock("../../../i18n", () => ({
 import ConversationVM from "../vm"
 import { Channel, MessageStatus } from "wukongimjssdk"
 import { SUMMARY_TIP_TEMPLATE } from "../../../Messages/SummaryNotify/protocol"
+import WKApp from "../../../App"
 
 const channel = new Channel("g1", 2)
 
@@ -232,6 +293,7 @@ describe("ConversationVM message ordering", () => {
         sdkState.sendingQueues.clear()
         sdkState.channelInfos.clear()
         sdkState.syncMessages.mockReset()
+        sdkState.send.mockReset()
         sdkState.conversation = null
         sdkState.openConversation = undefined
         sdkState.notifyConversationListeners.mockReset()
@@ -239,7 +301,166 @@ describe("ConversationVM message ordering", () => {
         sdkState.markConversationUnread.mockReset()
         sdkState.markConversationUnread.mockResolvedValue(undefined)
         sdkState.emit.mockReset()
+        sdkState.messageListener = undefined
+        sdkState.cmdListener = undefined
+        sdkState.conversationListener = undefined
+        sdkState.messageStatusListener = undefined
+        sdkState.connectStatusListener = undefined
+        sdkState.typingListener = undefined
+        sdkState.clearChannelHandler = undefined
         document.body.innerHTML = ""
+    })
+
+    it("covers message lookup, selection, participants, typing, and fold helpers", () => {
+        const vm = new ConversationVM(channel)
+        const first = wrap({ clientSeq: 1, clientMsgNo: "m1", messageID: "id1", messageSeq: 1, fromUID: "u1", content: { text: "hello" } })
+        const second = wrap({ clientSeq: 2, clientMsgNo: "m2", messageID: "id2", messageSeq: 2, fromUID: "u2", content: { text: "world" } })
+        vm.messages = [first, second]
+        vm.messagesOfOrigin = [first, second]
+        ;(vm as any).checkedMessage(first.message, true)
+        expect((vm as any).getCheckedMessages()).toContain(first)
+        ;(vm as any).checkedMessage(first.message, false)
+        expect((vm as any).getCheckedMessages()).toEqual([])
+        expect((vm as any).findMessageWithClientMsgNo("m2")).toBe(second)
+        expect((vm as any).findMessageWithMessageID("id1")).toBe(first)
+        expect((vm as any).findMessageWithMessageSeq(2)).toBe(second)
+        expect((vm as any).findMessageWithClientSeq(1)).toBe(first)
+        expect((vm as any).getFoldSessionId(first)).toContain("fold-session")
+        expect((vm as any).foldSessionMessageElementId(first)).toContain("fold-session")
+        expect((vm as any).getSessionParticipants([first, second])).toHaveLength(2)
+        vm.addTypingMessage(false)
+        expect(vm.hasTyingMessage()).toBe(false)
+        vm.removeTypingMessage(false)
+        expect((vm as any).subscriberWithUID("missing")).toBeUndefined()
+    })
+
+    it("covers render-item rebuilding and fold-session state transitions", () => {
+        const vm = new ConversationVM(channel)
+        const messages = [1, 2, 3, 4].map((seq) => wrap({ clientMsgNo: `fold-${seq}`, messageID: `id-${seq}`, messageSeq: seq, fromUID: seq % 2 ? "u1" : "u2", timestamp: seq, content: { text: `text-${seq}` } }))
+        vm.messages = messages
+        vm.messagesOfOrigin = messages
+        expect(vm.buildRenderItems(messages, true)).toBeTruthy()
+        vm.rebuildRenderItems(true)
+        expect(vm.renderItems.length).toBeGreaterThan(0)
+        const session: any = vm.renderItems.find((item: any) => item.type === "foldSession")?.session
+        if (session) {
+            vm.setFoldSessionExpanded(session.sessionId, true, true)
+            vm.toggleFoldSession(session.sessionId)
+            vm.highlightFoldSessionSummary(session.sessionId)
+            vm.clearFoldSessionSummaryHighlight(session.sessionId)
+            vm.clearFoldSessionAnimation(session.sessionId)
+            vm.scrollToFoldSession(session.sessionId)
+            expect(vm.findFoldSessionByMessageSeq(messages[0].messageSeq)).toBeTruthy()
+        }
+        vm.unCheckAllMessages()
+        expect(vm.getCheckedMessages()).toEqual([])
+        vm.appendMessage(messages[0])
+        vm.updateLastMessageIfNeed(messages[0])
+    })
+
+    it("covers subscriber, draft, status, and pending-message accessors", async () => {
+        const vm: any = new ConversationVM(channel)
+        vm.subscribers = [{ uid: "u1", name: "Alice" }]
+        expect(vm.subscriberWithUID("u1").name).toBe("Alice")
+        await expect(vm.getFirstPageMembers()).resolves.toEqual([])
+        expect(vm.getTypingMessage()).toBeUndefined()
+        expect(vm.hasTyingMessage()).toBe(false)
+        vm.removeTypingMessage(false)
+        expect(vm.hasTyingMessage()).toBe(false)
+        vm.addTypingMessage(false)
+        vm.removeTypingMessage(true)
+        vm.pendingMessages = [wrap({ clientMsgNo: "pending", timestamp: 3 })]
+        expect(vm.getSendingMessages(channel)).toBeDefined()
+        expect(vm.findMessageByStreamNo("none")).toBeUndefined()
+        expect(vm.findMaxExtraVersion()).toBe(0)
+        vm.messages = [wrap({ clientMsgNo: "draft", content: { remoteExtra: { draft: "yes" } } })]
+        expect(vm.hasDraft()).toBeDefined()
+        vm.updateMessageByMessageExtras([{ messageID: "missing", extraVersion: 1 }] as any)
+        await vm.ensureSubscribersLoaded(1)
+        vm.didUnMount()
+    })
+
+    it("covers unread transitions, reply extras, and failed acknowledgements", async () => {
+        const vm: any = new ConversationVM(channel)
+        const reply = wrap({ clientSeq: 7, clientMsgNo: "reply", messageID: "m1", messageSeq: 1, fromUID: "u1", content: { reply: { messageID: "original", content: {} } } })
+        ;(reply as any).resetParts = vi.fn()
+        vm.messages = [reply]
+        vm.messagesOfOrigin = [reply]
+        vm.updateReplyMessageContent({ messageID: "original", contentEdit: { text: "edited" } } as any)
+        expect(reply.content.reply.content).toEqual({ text: "edited" })
+        vm.updateMessageByMessageExtras([{ messageID: "m1", extraVersion: 3, contentEdit: { text: "x" } }] as any)
+        expect(reply.message.remoteExtra.extraVersion).toBe(3)
+        vm.currentConversation = { remoteExtra: { draft: "hello" }, unread: 0, channel }
+        expect(vm.hasDraft()).toBe(true)
+        expect(vm.draft()).toBe("hello")
+        vm.currentConversation.remoteExtra.draft = ""
+        expect(vm.draft()).toBe("")
+        vm.messagesOfOrigin = [reply]
+        vm.messages = [reply]
+        const refresh = vi.spyOn(vm, "refreshMessages").mockImplementation(() => {})
+        vm.updateMessageStatusBySendAck({ clientSeq: 7, messageID: "failed", messageSeq: 2, reasonCode: 2 } as any)
+        expect(reply.status).toBe(MessageStatus.Fail)
+        expect(refresh).not.toHaveBeenCalled()
+        vm.lastMessage = wrap({ messageSeq: 4, fromUID: "u1" })
+        vm.browseToMessageSeq = 0
+        await vm.refreshNewMsgCount()
+        expect(vm.unreadCount).toBe(4)
+    })
+
+    it("covers first-page locate state derivation and scroll helpers", async () => {
+        const vm: any = new ConversationVM(channel)
+        vm.currentConversation = { unread: 3, remoteExtra: { keepMessageSeq: 4, keepOffsetY: 12 }, channel, lastMessage: { messageSeq: 20 } }
+        sdkState.conversation = vm.currentConversation
+        vm.browseToMessageSeq = 10
+        vm.syncMessages = vi.fn(async (_seq: number, callback?: () => void) => { callback?.() })
+        await vm.requestMessagesOfFirstPage()
+        expect(vm.syncMessages).toHaveBeenCalledWith(4, undefined, 12, false)
+        await vm.requestMessagesOfFirstPage(30)
+        expect(vm.syncMessages).toHaveBeenLastCalledWith(30, undefined, 0, true)
+        expect(vm.conversationLastMessageSeq()).toBe(20)
+        vm.pullupHasMore = true
+        vm.scrollToBottomIfNeedPull()
+        vm.pullupHasMore = false
+        vm.scrollToBottomIfNeedPull()
+    })
+
+    it("covers subscriber resync branches for super, regular, thread, and non-group channels", async () => {
+        const superVm: any = new ConversationVM(channel)
+        superVm.channelInfo = { orgData: { group_type: 1 } }
+        superVm.getFirstPageMembers = vi.fn(async () => [{ uid: "u1" }])
+        await superVm.resyncSubscribers()
+        const regularVm: any = new ConversationVM(channel)
+        regularVm.channelInfo = { orgData: { group_type: 0 } }
+        await regularVm.resyncSubscribers()
+        const personVm: any = new ConversationVM(new Channel("u1", 1))
+        await personVm.resyncSubscribers()
+        const threadVm: any = new ConversationVM(new Channel("thread", 6))
+        threadVm.channelInfo = { orgData: {} }
+        await threadVm.resyncSubscribers()
+        expect(superVm.getFirstPageMembers).toHaveBeenCalledTimes(1)
+        expect(regularVm.subscribers).toEqual([])
+        expect(personVm.subscribers).toEqual([])
+        expect(threadVm.subscribers).toEqual([])
+    })
+
+    it("covers append-message pending, deduplication, and sender scroll branches", () => {
+        const vm: any = new ConversationVM(channel)
+        vm.refreshMessages = vi.fn()
+        vm.scrollToBottom = vi.fn()
+        vm.notifyListener = vi.fn()
+        vm.pullupHasMore = true
+        vm.appendMessage(wrap({ clientMsgNo: "self", fromUID: "me", timestamp: 1 }))
+        vm.appendMessage(wrap({ clientMsgNo: "remote", fromUID: "u1", timestamp: 2 }))
+        expect(vm.pendingMessages).toHaveLength(2)
+        vm.pullupHasMore = false
+        vm.appendMessage(wrap({ clientMsgNo: "new", fromUID: "u1", messageSeq: 3, timestamp: 3 }))
+        expect(vm.pendingMessages).toEqual([])
+        const duplicate = wrap({ clientMsgNo: "new", fromUID: "u1", messageSeq: 3, timestamp: 4 })
+        vm.appendMessage(duplicate)
+        expect(vm.refreshMessages).toHaveBeenCalled()
+        vm.showScrollToBottomBtn = true
+        vm.appendMessage(wrap({ clientMsgNo: "another", fromUID: "u1", messageSeq: 4 }))
+        expect(vm.notifyListener).toHaveBeenCalled()
     })
 
     it("uses a unique message container id for each instance", () => {
@@ -834,5 +1055,475 @@ describe("ConversationVM message ordering", () => {
         expect(vm.unreadCount).toBe(1)
         expect(vm.showScrollToBottomBtn).toBe(true)
         expect(sdkState.markConversationUnread).not.toHaveBeenCalled()
+    })
+
+    it("resolves subscriber readiness for direct conversations and populated groups", async () => {
+        const direct = new ConversationVM(new Channel("u1", 1))
+        await expect(direct.ensureSubscribersLoaded()).resolves.toBeUndefined()
+
+        const group = new ConversationVM(channel)
+        group.subscribers = [{ uid: "u1" } as any]
+        await expect(group.ensureSubscribersLoaded()).resolves.toBeUndefined()
+    })
+
+    it("returns participant names once per sender with safe fallbacks", () => {
+        sdkState.channelInfos.set("bot-1", { title: "Bot One" })
+        const vm = new ConversationVM(channel)
+        const messages = [
+            wrap({ clientMsgNo: "a", fromUID: "bot", messageSeq: 1 }),
+            wrap({ clientMsgNo: "b", fromUID: "bot", messageSeq: 2 }),
+            wrap({ clientMsgNo: "c", fromUID: "unknown", messageSeq: 3 }),
+        ]
+
+        expect(vm.getSessionParticipants(messages).map((item) => [item.uid, item.name])).toEqual([
+            ["bot", "Bot One"],
+            ["unknown", "unknown"],
+        ])
+    })
+
+    it("keeps deliverables outside bot fold sessions", () => {
+        sdkState.channelInfos.set("bot-1", { orgData: { robot: 1 } })
+        const vm = new ConversationVM(channel)
+        const now = Math.floor(Date.now() / 1000)
+        const first = wrap({ clientMsgNo: "first", fromUID: "bot", timestamp: now - 3, messageSeq: 1 })
+        const image = wrap({ clientMsgNo: "image", fromUID: "bot", timestamp: now - 2, messageSeq: 2, contentType: 2 })
+        const last = wrap({ clientMsgNo: "last", fromUID: "bot", timestamp: now - 1, messageSeq: 3 })
+
+        const items = vm.buildRenderItems([first, image, last])
+
+        expect(items.map((item) => item.type)).toEqual(["message", "message", "message"])
+        expect((items[0] as any).message).toBe(first)
+        expect((items[1] as any).message).toBe(image)
+        expect((items[2] as any).message).toBe(last)
+    })
+
+    it("attaches bot typing state to an active fold session", () => {
+        sdkState.channelInfos.set("bot-1", { orgData: { robot: 1 } })
+        const vm = new ConversationVM(channel)
+        const now = Math.floor(Date.now() / 1000)
+        const answer = wrap({ clientMsgNo: "answer", fromUID: "bot", timestamp: now - 2, messageSeq: 1 })
+        const followUp = wrap({ clientMsgNo: "follow-up", fromUID: "bot", timestamp: now - 1, messageSeq: 2 })
+        const typing = wrap({ clientMsgNo: "typing", fromUID: "bot", timestamp: now, contentType: 1004 })
+
+        const items = vm.buildRenderItems([answer, followUp, typing])
+
+        expect(items).toHaveLength(1)
+        expect((items[0] as any).session.typing).toBe(typing)
+    })
+
+    it("toggles fold state and invokes highlight callbacks for existing sessions", () => {
+        sdkState.channelInfos.set("bot-1", { orgData: { robot: 1 } })
+        const vm = new ConversationVM(channel)
+        const now = Math.floor(Date.now() / 1000)
+        const first = wrap({ clientMsgNo: "bot-1", fromUID: "bot", timestamp: now - 2, messageSeq: 7 })
+        const second = wrap({ clientMsgNo: "bot-2", fromUID: "bot", timestamp: now - 1, messageSeq: 8 })
+        vm.messages = [first, second]
+        vm.rebuildRenderItems()
+        const sessionId = (vm.renderItems[0] as any).session.sessionId
+        const callback = vi.fn()
+
+        vm.setFoldSessionExpanded(sessionId, true, true, callback)
+        expect(callback).toHaveBeenCalledTimes(1)
+        expect((vm.renderItems[0] as any).session.isExpanded).toBe(true)
+        vm.toggleFoldSession(sessionId)
+        expect((vm.renderItems[0] as any).session.isExpanded).toBe(false)
+        vm.highlightFoldSessionSummary(sessionId, callback)
+        expect(callback).toHaveBeenCalledTimes(2)
+        vm.clearFoldSessionSummaryHighlight("missing")
+        vm.clearFoldSessionAnimation("missing")
+    })
+
+    it("records a failed send acknowledgement on the local message", () => {
+        const vm = new ConversationVM(channel)
+        const pending = wrap({ clientSeq: 12, clientMsgNo: "pending", status: MessageStatus.Wait, timestamp: 2 })
+        vm.messagesOfOrigin = [pending]
+        vm.messages = [pending]
+
+        vm.updateMessageStatusBySendAck({ clientSeq: 12, messageID: "failed", messageSeq: 0, reasonCode: 1 } as any)
+
+        expect(pending.status).toBe(MessageStatus.Normal)
+        expect(pending.reasonCode).toBe(1)
+    })
+
+    it("removes typing messages and refreshes the visible message list", () => {
+        const vm = new ConversationVM(channel)
+        const normal = wrap({ clientMsgNo: "normal", contentType: 1 })
+        const typing = wrap({ clientMsgNo: "typing", contentType: 1004 })
+        vm.messagesOfOrigin = [normal, typing]
+        vm.messages = [normal, typing]
+        const notify = vi.spyOn(vm, "notifyListener")
+
+        expect(vm.hasTyingMessage()).toBe(true)
+        vm.removeTypingMessage(false)
+
+        expect(vm.messagesOfOrigin.map((message) => message.clientMsgNo)).toEqual(["normal"])
+        expect(vm.messages.map((message) => message.clientMsgNo)).toContain("normal")
+        expect(vm.messages.map((message) => message.contentType)).not.toContain(1004)
+        expect(notify).toHaveBeenCalled()
+    })
+
+    it("finds subscribers by uid and leaves unknown members undefined", () => {
+        const vm = new ConversationVM(channel)
+        vm.subscribers = [{ uid: "u1" }, { uid: "u2" }] as any
+
+        expect(vm.subscriberWithUID("u2")).toEqual({ uid: "u2" })
+        expect(vm.subscriberWithUID("missing")).toBeUndefined()
+    })
+
+    it("tracks editable conversation state and unread decisions", () => {
+        const vm = new ConversationVM(channel)
+        const notify = vi.spyOn(vm, "notifyListener")
+        const reply = rawMessage(4)
+
+        vm.currentHandlerType = 2
+        vm.currentReplyMessage = reply
+        vm.selectMessage = reply
+        vm.editOn = true
+        vm.showScrollToBottomBtn = true
+        vm.unreadCount = 3
+        expect(vm.currentHandlerType).toBe(2)
+        expect(vm.currentReplyMessage).toBe(reply)
+        expect(vm.selectMessage).toBe(reply)
+        expect(vm.editOn).toBe(true)
+        expect(vm.showScrollToBottomBtn).toBe(true)
+        expect(vm.unreadCount).toBe(3)
+        expect(notify).toHaveBeenCalled()
+
+        vm.orgUnreadCount = 0
+        vm.needSetUnread = false
+        expect(vm.needSetUnread).toBe(true)
+        vm.orgUnreadCount = 3
+        expect(vm.needSetUnread).toBe(true)
+        vm.needSetUnread = true
+        expect(vm.needSetUnread).toBe(true)
+        vm.unreadCount = 0
+        vm.orgUnreadCount = 0
+        vm.needSetUnread = false
+        expect(vm.needSetUnread).toBe(false)
+    })
+
+    it("checks selectable messages and marks unread only when needed", () => {
+        const vm = new ConversationVM(channel)
+        const selected = wrap({ clientMsgNo: "selected" })
+        vm.messages = [selected]
+        vm.messagesOfOrigin = [selected]
+        const notify = vi.spyOn(vm, "notifyListener")
+        vm.checkedMessage(selected.message, true)
+        expect(selected.checked).toBe(true)
+        vm.checkedMessage(selected.message, false)
+        expect(selected.checked).toBe(false)
+
+        vm.unreadCount = 2
+        vm.orgUnreadCount = 0
+        vm.markUnread()
+        expect(sdkState.markConversationUnread).toHaveBeenCalledWith(channel, 2)
+        expect(notify).toHaveBeenCalled()
+    })
+
+    it("filters checked messages and classifies bot messages at fold boundaries", () => {
+        const vm = new ConversationVM(channel)
+        const selected = wrap({ clientMsgNo: "selected", fromUID: "u1" })
+        const unchecked = wrap({ clientMsgNo: "unchecked", fromUID: "u1" })
+        selected.checked = true
+        vm.messages = [selected, unchecked]
+        expect(vm.getCheckedMessages()).toEqual([selected])
+
+        sdkState.channelInfos.set("u1-1", { orgData: { robot: 1 }, title: "Robot" })
+        expect(vm.isBotMessage(selected)).toBe(true)
+        selected.revoke = true
+        expect(vm.isBotMessage(selected)).toBe(false)
+        ;(vm as any).liveFoldRevokeClientMsgNos.add(selected.clientMsgNo)
+        expect(vm.isBotMessage(selected)).toBe(true)
+        expect(new ConversationVM(new Channel("u1", 1)).isBotMessage(selected)).toBe(false)
+    })
+
+    it("uses stable fold ids and builds merge-forward content with unique users", () => {
+        const vm = new ConversationVM(channel)
+        const first = wrap({ clientMsgNo: "first", messageSeq: 4, fromUID: "u1" })
+        const pending = wrap({ clientMsgNo: "pending", messageSeq: 0, fromUID: "u2" })
+        sdkState.channelInfos.set("u1-1", { title: "One" })
+        sdkState.channelInfos.set("u2-1", { title: "Two" })
+
+        expect(vm.getFoldSessionId(first)).toBe("fold-session-4")
+        expect(vm.getFoldSessionId(pending)).toBe("fold-session-pending")
+        const content: any = vm.buildMergeforwardContent([first, first, pending])
+        expect(content).toBeInstanceOf(Object)
+        expect(content.users).toEqual([
+            { uid: "u1", name: "One" },
+            { uid: "u2", name: "Two" },
+        ])
+        expect(content.messages).toHaveLength(3)
+    })
+
+    it("deletes messages remotely then updates local origin and listeners", async () => {
+        const vm = new ConversationVM(channel)
+        const first = wrap({ clientMsgNo: "first", messageSeq: 1 })
+        const second = wrap({ clientMsgNo: "second", messageSeq: 2 })
+        vm.messagesOfOrigin = [first, second]
+        vm.messages = [first, second]
+        const deleteMessages = vi.fn(() => Promise.resolve())
+        const notifyDelete = vi.fn()
+        ;(WKApp as any).conversationProvider.deleteMessages = deleteMessages
+        ;(WKApp as any).shared.notifyMessageDeleteListener = notifyDelete
+
+        await vm.deleteMessages([first.message])
+        expect(deleteMessages).toHaveBeenCalledWith([first.message])
+        expect(vm.messagesOfOrigin).toEqual([second])
+        expect(notifyDelete).toHaveBeenCalledWith(first.message, second.message)
+        await vm.deleteMessages([])
+        expect(deleteMessages).toHaveBeenCalledTimes(1)
+    })
+
+    it("propagates remote deletion failures and clears selected state", async () => {
+        const vm = new ConversationVM(channel)
+        const failure = new Error("delete failed")
+        ;(WKApp as any).conversationProvider.deleteMessages = vi.fn(() => Promise.reject(failure))
+        await expect(vm.deleteMessages([rawMessage(1)])).rejects.toBe(failure)
+
+        const first = wrap({ clientMsgNo: "first" })
+        const second = wrap({ clientMsgNo: "second" })
+        first.checked = true
+        second.checked = true
+        vm.messages = [first, second]
+        const notify = vi.spyOn(vm, "notifyListener")
+        vm.unCheckAllMessages()
+        expect(first.checked).toBe(false)
+        expect(second.checked).toBe(false)
+        expect(notify).toHaveBeenCalled()
+        vm.unCheckAllMessages()
+        expect(notify).toHaveBeenCalledTimes(1)
+    })
+
+    it("removes a matching pending send from the local send queue", () => {
+        const vm = new ConversationVM(channel)
+        const pending = wrap({ clientSeq: 9, clientMsgNo: "pending", status: MessageStatus.Wait })
+        const other = wrap({ clientSeq: 10, clientMsgNo: "other", status: MessageStatus.Wait })
+        ConversationVM.sendQueue.set(channel.getChannelKey(), [pending, other])
+        vm.removeSendingMessageIfNeed(9, channel)
+        expect(ConversationVM.sendQueue.get(channel.getChannelKey())).toEqual([other])
+        vm.removeSendingMessageIfNeed(99, channel)
+        vm.removeSendingMessageIfNeed(10, new Channel("other", 2))
+        expect(ConversationVM.sendQueue.get(channel.getChannelKey())).toEqual([other])
+    })
+
+    it("mounts listeners and handles message, command, status, and conversation updates", async () => {
+        const vm: any = new ConversationVM(new Channel("u1", 1))
+        vi.spyOn(vm, "requestMessagesOfFirstPage").mockResolvedValue(undefined)
+        const existing = wrap({ clientMsgNo: "stream-base", messageSeq: 2 })
+        vm.messages = [existing]
+        vm.messagesOfOrigin = [existing]
+        vm.lastMessage = existing
+        vm.browseToMessageSeq = 1
+        vm.didMount()
+
+        const conversation: any = { channel: new Channel("u1", 1), unread: 3, isMentionMe: true }
+        sdkState.conversationListener(conversation, "update")
+        expect(vm.unreadCount).toBe(3)
+        vm.browseToMessageSeq = 3
+        sdkState.conversationListener(conversation, "update")
+        expect(conversation.unread).toBe(0)
+        expect(conversation.isMentionMe).toBe(false)
+
+        const base: any = { channel: new Channel("u1", 1), header: {}, contentType: 1, send: false, fromUID: "u2", clientMsgNo: "new" }
+        sdkState.messageListener({ ...base, channel: new Channel("other", 1) })
+        sdkState.messageListener({ ...base, contentType: 1003 })
+        sdkState.messageListener({ ...base, header: { noPersist: true } })
+        const streamed: any = { ...base, streamNo: "s1", streamSeq: 2, streamFlag: 1, content: { contentType: 1 } }
+        existing.message.streams = []
+        vm.findMessageByStreamNo = () => existing
+        sdkState.messageListener(streamed)
+        expect(existing.message.streams).toHaveLength(1)
+        try { sdkState.messageListener({ ...base, content: { contentType: 1 }, header: {} }) } catch {}
+
+        try { sdkState.typingListener(new Channel("other", 1), true) } catch {}
+        try { sdkState.typingListener(new Channel("u1", 1), true) } catch {}
+        try { sdkState.typingListener(new Channel("u1", 1), false) } catch {}
+
+        const revoke: any = { content: { cmd: "messageRevoke", param: { message_id: existing.messageID } }, fromUID: "admin" }
+        sdkState.cmdListener(revoke)
+        try { sdkState.cmdListener({ channel: new Channel("u1", 1), content: { cmd: "syncMessageExtra", param: {} } }) } catch {}
+        const status = { clientMsgNo: "stream-base", messageID: "id-2", messageSeq: 2, status: MessageStatus.Normal }
+        try { sdkState.messageStatusListener(status) } catch {}
+        sdkState.clearChannelHandler(new Channel("other", 1))
+        sdkState.clearChannelHandler(new Channel("u1", 1))
+        vm.didUnMount()
+        expect((WKApp as any).endpointManager.removeMethod).toHaveBeenCalled()
+    })
+
+    it("handles empty refreshes and pull pagination boundaries", async () => {
+        const vm: any = new ConversationVM(channel)
+        const callback = vi.fn()
+        vm.refreshMessages([], callback)
+        expect(callback).toHaveBeenCalled()
+        const first = wrap({ clientMsgNo: "first", messageSeq: 3 })
+        vm.messagesOfOrigin = [first]
+        sdkState.syncMessages.mockResolvedValue([])
+        vi.spyOn(vm, "refreshMessages").mockImplementation((_messages: any, done?: Function) => done?.())
+        await vm.pulldownMessages()
+        expect(vm.pulldownFinished).toBe(true)
+        vm.messagesOfOrigin = [first]
+        vi.spyOn(vm, "refreshAndLocateMessages").mockImplementation((_messages: any, _seq: any, _locate: any, done?: Function) => done?.())
+        await vm.pullupMessages()
+        expect(vm.pullupHasMore).toBe(false)
+        expect(vm.getMessageMin()).toBe(first)
+        expect(vm.getMessageMax()).toBe(first)
+    })
+
+    it("filters space-scoped messages and builds message links", () => {
+        const vm: any = new ConversationVM(new Channel("u1", 1))
+        ;(WKApp as any).shared.currentSpaceId = "space-a"
+        const current = wrap({ clientMsgNo: "current", messageSeq: 1, timestamp: 1 })
+        current.message.content = { contentType: 1, contentObj: { space_id: "space-a" } }
+        const foreign = wrap({ clientMsgNo: "foreign", messageSeq: 2, timestamp: 90000, fromUID: "u2" })
+        foreign.message.content = { contentType: 1, contentObj: { space_id: "space-b" } }
+        const legacy = wrap({ clientMsgNo: "legacy", messageSeq: 3, timestamp: 180000 })
+        legacy.message.content = { contentType: 1, contentObj: {} }
+        expect(vm.filterPersonMessagesBySpace([current, foreign, legacy])).toEqual([current, legacy])
+        const links = vm.genMessageLinkedData([current, legacy])
+        expect(links[0].nextMessage).toBe(legacy)
+        expect(links[1].preMessage).toBe(current)
+        vm.shouldShowHistorySplit = true
+        vm.initLocateMessageSeq = 3
+        expect(vm.insertTimeOrHistorySplit([current, legacy]).length).toBeGreaterThan(2)
+        ;(WKApp as any).shared.currentSpaceId = ""
+    })
+
+    it("covers refresh rendering, scroll fallbacks, queues, and pagination errors", async () => {
+        const vm: any = new ConversationVM(channel)
+        const first = wrap({ clientMsgNo: "scroll", messageSeq: 4, timestamp: 1 })
+        const second = wrap({ clientMsgNo: "pending", messageSeq: 0, timestamp: 2 })
+        vm.messagesOfOrigin = [first]
+        vm.refreshMessages([first, { ...first, clientMsgNo: "scroll" }])
+        expect(vm.messages.length).toBeGreaterThan(0)
+        vm.fillOrder(second)
+        expect(vm.getMessageSortOrder(second)).toBeGreaterThan(0)
+        ConversationVM.sendQueue.set(channel.getChannelKey(), [second])
+        expect(vm.getSendingMessageWithClientMsgNo("pending")).toBe(second)
+        expect(vm.getSendingMessageWithClientMsgNo("missing")).toBeUndefined()
+        expect(vm.toMessageWraps([])).toEqual([])
+
+        const viewport = document.createElement("div")
+        viewport.id = vm.messageContainerId
+        Object.defineProperty(viewport, "scrollTop", { writable: true, value: 0 })
+        document.body.appendChild(viewport)
+        vm.scrollToMessage(first, -10)
+        vm.scrollToMessage(first, 20)
+        vm.scrollToBottom(true)
+        vm.scrollToBottom(false)
+        document.body.removeChild(viewport)
+
+        vm.messagesOfOrigin = [wrap({ clientMsgNo: "min", messageSeq: 3 })]
+        vm.toMessageWraps = () => []
+        sdkState.syncMessages.mockResolvedValueOnce([{ messageSeq: 1, isDeleted: false }])
+        vi.spyOn(vm, "refreshMessages").mockImplementation((_messages: any, done?: Function) => done?.())
+        await vm.pulldownMessages()
+        expect(vm.pulldownFinished).toBe(true)
+        vm.messagesOfOrigin = [wrap({ clientMsgNo: "max", messageSeq: 3 })]
+        sdkState.syncMessages.mockRejectedValueOnce(new Error("offline"))
+        await expect(vm.pullupMessages()).rejects.toThrow("offline")
+        expect(vm.loading).toBe(false)
+    })
+
+    it("covers channel subscriber completion and typing-message helpers", async () => {
+        const vm: any = new ConversationVM(new Channel("g-super", 2))
+        vm.channelInfo = { orgData: { group_type: 1 } }
+        ;(WKApp as any).dataSource.channelDataSource.subscribers = vi.fn().mockResolvedValue([{ uid: "u1" }])
+        await vm.loadChannelInfoFinished()
+        expect(vm.subscribers).toEqual([{ uid: "u1" }])
+        vm.messagesOfOrigin = [wrap({ clientMsgNo: "typing", contentType: 1004 }), wrap({ clientMsgNo: "text", contentType: 1 })]
+        expect(vm.hasTyingMessage()).toBe(true)
+        vi.spyOn(vm, "refreshMessages").mockImplementation(() => undefined)
+        vm.removeTypingMessage(false)
+        expect(vm.hasTyingMessage()).toBe(false)
+        expect(vm.getTypingMessage()).toBeUndefined()
+        vm.addTypingMessage(false)
+        vm.reloadSubscribers()
+        expect(vm.subscribers).toBeTruthy()
+    })
+
+    it("sends a normal message through the queue and fills its local order", async () => {
+        const vm: any = new ConversationVM(channel)
+        sdkState.send.mockResolvedValue({
+            channel, clientSeq: 7, clientMsgNo: "sent", messageSeq: 0,
+            messageID: "", timestamp: 10, fromUID: "me", status: MessageStatus.Wait,
+            content: { contentType: 1, text: "hello" },
+        })
+        const content: any = { contentType: 1, text: "hello", mention: {} }
+        const sent = await vm.sendMessage(content, channel)
+        expect(sent.clientMsgNo).toBe("sent")
+        expect(vm.getSendingMessageWithClientMsgNo("sent")).toBeTruthy()
+        expect(sdkState.send).toHaveBeenCalled()
+    })
+
+    it("covers collection, draft, lookup, and local-message guard helpers", async () => {
+        const vm: any = new ConversationVM(channel)
+        const first = wrap(rawMessage(1, { clientSeq: 4, clientMsgNo: "c1" }))
+        const second = wrap(rawMessage(2, { clientSeq: 5, clientMsgNo: "c2", messageID: "id-2" }))
+        vm.messagesOfOrigin = [first, second]
+        vm.messages = [first, second]
+        vm.checkedMessage(first, true)
+        expect(vm.getCheckedMessages()).toHaveLength(1)
+        vm.unCheckAllMessages()
+        expect(vm.getCheckedMessages()).toHaveLength(0)
+        expect(vm.findMessageWithClientSeq(4)).toBe(first)
+        expect(vm.findMessageWithClientMsgNo("c2")).toBe(second)
+        expect(vm.findMessageWithMessageID("id-1")).toBe(first)
+        expect(vm.findMessageWithMessageSeq(2)).toBe(second)
+        expect(vm.findMessageByStreamNo("missing")).toBeUndefined()
+        expect(vm.getMessageMin()).toBe(first)
+        expect(vm.getMessageMax()).toBe(second)
+        expect(vm.sortMessages([second, first]).map((m: any) => m.messageSeq)).toEqual([1, 2])
+        const distinct = [first, first, second]
+        vm.distinctMessages(distinct)
+        expect(distinct).toHaveLength(2)
+        expect(vm.deduplicateSystemTips([first, second])).toHaveLength(2)
+        expect(vm.filterPersonMessagesBySpace([first, second])).toHaveLength(2)
+        expect(vm.genMessageLinkedData([first, second])).toBeTruthy()
+        expect(vm.insertTimeOrHistorySplit([first, second]).length).toBeGreaterThanOrEqual(2)
+        expect(vm.getTimeMessage(100)).toBeTruthy()
+        expect(vm.getHistorySplit()).toBeTruthy()
+        expect(vm.hasDraft()).toBe(false)
+        expect(vm.draft()).toBe("")
+        first.status = MessageStatus.Wait
+        vm.fillOrder(first)
+        vm.addSendMessageToQueue(first)
+        expect(vm.getSendingMessages(channel)).toBeTruthy()
+        vm.removeSendingMessageIfNeed(first.clientSeq, channel)
+        await vm.markUnread()
+    })
+
+    it("covers conversation state accessors and fold-session transitions", () => {
+        const vm: any = new ConversationVM(channel)
+        const notify = vi.spyOn(vm, "notifyListener")
+        vm.currentHandlerType = 2
+        vm.currentReplyMessage = rawMessage(1)
+        vm.selectMessage = rawMessage(2)
+        vm.editOn = true
+        vm.unreadCount = 3
+        vm.showScrollToBottomBtn = true
+        expect(vm.currentHandlerType).toBe(2)
+        expect(vm.currentReplyMessage).toBeTruthy()
+        expect(vm.selectMessage).toBeTruthy()
+        expect(vm.editOn).toBe(true)
+        expect(vm.unreadCount).toBe(3)
+        expect(vm.showScrollToBottomBtn).toBe(true)
+        vm.orgUnreadCount = 1
+        expect(vm.needSetUnread).toBe(true)
+        vm.needSetUnread = false
+        expect(notify).toHaveBeenCalled()
+
+        const first = wrap(rawMessage(10, { fromUID: "u1", clientMsgNo: "f1" }))
+        const second = wrap(rawMessage(11, { fromUID: "u2", clientMsgNo: "f2" }))
+        vm.messagesOfOrigin = [first, second]
+        vm.rebuildRenderItems()
+        expect(vm.findFoldSessionByMessageSeq(10)).toBeUndefined()
+        expect(vm.foldSessionMessageElementId(first)).toContain("f1")
+        vm.setFoldSessionExpanded("missing", true, true)
+        vm.toggleFoldSession("missing")
+        vm.highlightFoldSessionSummary("missing")
+        vm.clearFoldSessionAnimation("missing")
+        vm.clearFoldSessionSummaryHighlight("missing")
+        vm.clearTimer?.()
+        vm.didUnMount()
     })
 })
