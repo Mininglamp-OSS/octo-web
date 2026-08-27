@@ -272,6 +272,10 @@ export type DriveFileType = "doc" | "blob" | "folder";
 
 export interface DriveSearchFilters {
   type?: DriveFileType;
+  /** Multi-value include (TES-70 wire contract); excludes folder hits by
+   * requesting only ['blob','doc']. Kept alongside single `type` for
+   * back-compat — backend treats the two as an OR. */
+  types?: DriveFileType[];
   owner_scope?: DriveSearchOwnerScope;
   /** RFC3339. Include hits whose `updated_at >= updated_after`. */
   updated_after?: string;
