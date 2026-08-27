@@ -8,9 +8,8 @@
 // $$、```math 围栏）统一过同一套 guard 与上限：
 //   1. 正向 TeX 白名单（多字母命令 / 上标 / 单字符底下标）+ 负向 shell/path/prose 信号
 //      （${…}、/ :、单字母反斜杠、定界符紧贴单词字符、跨软换行非锚定 $$、无命令的 CJK / ≥2 词形 token）。
-//   2. 转义在解析前稳定保存：escapeMaskPlugin 用「源码中不存在的动态 PUA 哨兵」遮罩被转义的 $，
-//      经 file.data 传给 restoreSentinelPlugin 还原（覆盖 value/url/title/alt）；哨兵动态挑选，
-//      绝不与用户原文里的 PUA 字符冲突。
+//   2. 转义在解析前稳定保存：escapeMaskPlugin 用「源码中不存在的动态 PUA 哨兵」遮罩 CommonMark
+//      会解码的反斜杠转义；公式候选恢复原始 TeX，普通文本恢复解码字符，且不与用户 PUA 冲突。
 //   3. KaTeX 预校验 + 接收端上限：解析失败整条按字面保留（含定界符、无红字）；渲染后 HTML >60KB
 //      或单条消息公式数 >32 拒绝（$ / $$ / ```math 共享同一 per-render 计数）。
 //   4. 依赖对齐 remark-math ^6→^5（仅 allowSingleDollarMath 文档/编辑器路径使用）；渲染顺序
@@ -60,6 +59,12 @@ function visibleText(root: HTMLElement): string {
     .querySelectorAll(".katex-mathml")
     .forEach((n) => n.parentNode?.removeChild(n));
   return clone.textContent ?? "";
+}
+
+function texAnnotations(root: HTMLElement): string[] {
+  return Array.from(
+    root.querySelectorAll('annotation[encoding="application/x-tex"]')
+  ).map((node) => node.textContent ?? "");
 }
 
 describe("MarkdownContent — #1089 手动验收字符串必须渲染 (WS-117)", () => {
@@ -527,6 +532,43 @@ describe("MarkdownContent — 合法公式在收紧规则下仍渲染", () => {
     it(`仍渲染：${name}`, () => {
       const root = renderContent(<MarkdownContent content={content} />);
       expect(root.querySelector(".katex")).not.toBeNull();
+    });
+  }
+});
+
+describe("MarkdownContent — CommonMark 转义不篡改交给 KaTeX 的 TeX", () => {
+  const inlineCases: Array<[string, string]> = [
+    ["百分号", "$50\\% \\times x^2$"],
+    ["集合括号", "$\\{x \\mid x^2>1\\}$"],
+    ["文本下划线", "$\\text{a\\_b}^2$"],
+    ["井号与括号", "$\\#\\{S\\}^2$"],
+    ["细空格", "$3\\,x^2$"],
+    ["公式内美元", "$\\$5 = x^2$"],
+    ["文本与号", "$\\text{A\\&B}^2$"],
+  ];
+
+  for (const [name, input] of inlineCases) {
+    it(`${name} 保留作者原始转义`, () => {
+      const root = renderContent(<MarkdownContent content={input} />);
+      expect(root.querySelectorAll(".katex")).toHaveLength(1);
+      expect(texAnnotations(root)).toContain(input.slice(1, -1));
+    });
+  }
+
+  const displayCases: Array<[string, string]> = [
+    ["aligned", "\\begin{aligned}x &= 1\\\\y &= 2\\end{aligned}"],
+    ["pmatrix", "\\begin{pmatrix}1&2\\\\3&4\\end{pmatrix}"],
+    ["cases", "f(x)=\\begin{cases}1 & x>0\\\\0 & x\\le 0\\end{cases}"],
+    ["array", "\\begin{array}{c}a\\\\b\\end{array}"],
+  ];
+
+  for (const [name, tex] of displayCases) {
+    it(`${name} 多行环境保留双反斜杠并渲染`, () => {
+      const root = renderContent(
+        <MarkdownContent content={`$$\n${tex}\n$$`} />
+      );
+      expect(root.querySelectorAll(".katex-display")).toHaveLength(1);
+      expect(texAnnotations(root)).toContain(`\n${tex}\n`);
     });
   }
 });
@@ -1070,7 +1112,7 @@ describe("MarkdownContent — 用户原文里的 U+E000 不被无条件改写 (r
   });
 });
 
-describe("MarkdownContent — allowSingleDollarMath 关掉守卫 (文档/编辑器场景)", () => {
+describe("MarkdownContent — allowSingleDollarMath 放宽启发式但保留资源上限", () => {
   it("开启后无数学字符的简单公式 $a+b$ 也渲染成 KaTeX", () => {
     // 默认路径下 $a+b$ 内部无 \\ ^ _ { }，会被守卫还原；文档场景显式关守卫应渲染。
     const root = renderContent(
@@ -1083,6 +1125,33 @@ describe("MarkdownContent — allowSingleDollarMath 关掉守卫 (文档/编辑�
     const root = renderContent(<MarkdownContent content={"值 $a+b$ 结束"} />);
     expect(root.querySelector(".katex")).toBeNull();
     expect(visibleText(root)).toBe("值 $a+b$ 结束");
+  });
+
+  it("仍限制每条消息最多尝试 32 个公式", () => {
+    const input = Array.from({ length: 40 }, () => "$x^2$").join(" ");
+    const root = renderContent(
+      <MarkdownContent content={input} allowSingleDollarMath />
+    );
+    expect(root.querySelectorAll(".katex")).toHaveLength(32);
+    expect(visibleText(root)).toContain("$x^2$");
+  });
+
+  it("仍拒绝超过块长度上限的 display 公式", () => {
+    const input = `$$\n${"x^2+".repeat(1100)}\n$$`;
+    const root = renderContent(
+      <MarkdownContent content={input} allowSingleDollarMath />
+    );
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(visibleText(root)).toContain("$$");
+  });
+
+  it("仍拒绝输入未超长但渲染产物超过上限的公式", () => {
+    const body = "\\begin{matrix}" + "1 & ".repeat(900) + "1\\end{matrix}";
+    const root = renderContent(
+      <MarkdownContent content={`$$\n${body}\n$$`} allowSingleDollarMath />
+    );
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(visibleText(root)).toContain("$$");
   });
 
   it("enableMath={false} 时即便有 $$ 也不渲染公式", () => {

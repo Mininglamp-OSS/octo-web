@@ -189,6 +189,53 @@ function hastNodeText(node: any): string {
 }
 
 /**
+ * `allowSingleDollarMath` 只放宽正文启发式，不能绕过接收端资源上限。remark-math 已在
+ * CommonMark 转义前取得原始 TeX；这里统一限制数量、源码长度、KaTeX 可解析性与渲染产物大小。
+ */
+function guardRemarkMathPlugin() {
+  return (tree: any, file: any) => {
+    const source =
+      typeof file?.value === "string" ? file.value : String(file ?? "");
+    const ctx = ((file.data ||= {}).mathCtx ||= { attempts: 0 });
+    const literalFallback = (node: any): any => {
+      const start = node.position?.start?.offset;
+      const end = node.position?.end?.offset;
+      if (
+        typeof start === "number" &&
+        typeof end === "number" &&
+        start >= 0 &&
+        end >= start &&
+        end <= source.length
+      ) {
+        return { type: "text", value: source.slice(start, end) };
+      }
+      const delimiter = node.type === "math" ? "$$" : "$";
+      return { type: "text", value: `${delimiter}${node.value}${delimiter}` };
+    };
+    const visit = (node: any) => {
+      if (!node || !Array.isArray(node.children)) return;
+      node.children = node.children.map((child: any) => {
+        if (child?.type === "inlineMath" || child?.type === "math") {
+          const display = child.type === "math";
+          const tex = typeof child.value === "string" ? child.value : "";
+          const maxLength = display ? MAX_BLOCK_MATH_LEN : MAX_INLINE_MATH_LEN;
+          const canAttempt =
+            tex.trim().length > 0 &&
+            tex.length <= maxLength &&
+            ctx.attempts < MAX_FORMULAS_PER_MESSAGE;
+          if (canAttempt) ctx.attempts += 1;
+          if (canAttempt && katexAccepts(tex, display)) return child;
+          return literalFallback(child);
+        }
+        visit(child);
+        return child;
+      });
+    };
+    visit(tree);
+  };
+}
+
+/**
  * KaTeX 解析失败时（`throwOnError:false` 会渲染 `.katex-error` 红字）把该节点降级成纯文本，
  * 避免普通聊天里冒出红色报错。展示公式源码原文（去掉红色样式），与「误匹配一律回落到正文」
  * 的整体策略一致。守卫已挡掉绝大多数正文，此处只兜住真被判定为公式却 KaTeX 解析失败的少数情况。
@@ -225,9 +272,9 @@ const baseRemarkPlugins: any[] = [
 /**
  * 聊天默认路径：自研单次左到右扫描器 {@link mathScanPlugin} 直接在 mdast 文本节点上识别公式。
  * 顺序要点：
- *  - {@link escapeMaskPlugin} 必须排最前：它在 markdown 解析前把「源码里被反斜杠转义的 `$`」换成
- *    哨兵字符（代码区不动），从根上稳定保存转义信息，避免解析后再从 source slice 反推（会在实体 /
- *    软换行 / blockquote 续行处 fail-open，把 `\$` 重新激活成定界符）；
+ *  - {@link escapeMaskPlugin} 必须排最前：它在 markdown 解析前把 CommonMark 会解码的反斜杠转义换成
+ *    哨兵字符（代码 / HTML 区不动）。scanner 接受公式后把哨兵还原成原始 TeX 转义，拒绝后则还原成
+ *    CommonMark 的字面字符；这样 `\%` / `\\` 等不会在交给 KaTeX 前丢失语义；
  *  - mathScanPlugin 在 remarkBreaks 之前：否则 breaks 会把块级 `$$\n…\n$$` 的软换行拆散；
  *  - {@link restoreSentinelPlugin} 最后把哨兵还原成字面 `$`。
  * 行内代码 / 代码块是独立节点，天然不被 scanner 触碰。所有进入 KaTeX 的 route（行内 `$`、块级 `$$`、
@@ -242,12 +289,13 @@ const mathRemarkPlugins: any[] = [
   restoreSentinelPlugin,
 ];
 
-/** 文档 / 编辑器场景：无条件识别所有 `$...$` / `$$...$$`，不加守卫（作者显式书写公式）。 */
+/** 文档 / 编辑器场景：放宽正文启发式，但仍统一执行公式数量、长度和渲染产物上限。 */
 const mathRemarkPluginsSingleDollar: any[] = [
   rawHtmlAsTextPlugin,
   [remarkGfm, remarkGfmOptions],
-  remarkBreaks,
   remarkMath,
+  guardRemarkMathPlugin,
+  remarkBreaks,
 ];
 
 /** math-ish 内部字符：与 iOS WKLaTeXPreprocessor.hasMathChar 完全一致。 */
@@ -409,112 +457,165 @@ function collectSentinelCollisions(node: any, present: Set<string>): void {
   }
 }
 
-function pickMathSentinel(source: string, tree: any): string | null {
+function pickMathSentinels(
+  source: string,
+  tree: any,
+  count: number
+): string[] | null {
   const present = new Set(source);
   // 字符引用在 markdown parse 后才解码；碰撞检查必须覆盖解码后的 AST 字符。
   collectSentinelCollisions(tree, present);
+  const sentinels: string[] = [];
   for (let cp = 0xe000; cp <= 0xf8ff; cp += 1) {
     const ch = String.fromCharCode(cp);
-    if (!present.has(ch)) return ch;
+    if (!present.has(ch)) {
+      sentinels.push(ch);
+      if (sentinels.length === count) return sentinels;
+    }
   }
   return null;
 }
 
-/** 收集 code / inlineCode 节点的源码区间（转义遮罩时跳过，代码里的 `\$` 原样保留）。 */
-function collectCodeRanges(node: any, ranges: Array<[number, number]>): void {
+/** 收集代码与原始 HTML 的源码区间；这些节点里的反斜杠不走 CommonMark 转义。 */
+function collectLiteralRanges(
+  node: any,
+  ranges: Array<[number, number]>
+): void {
   if (!node) return;
-  if (node.type === "code" || node.type === "inlineCode") {
+  if (
+    node.type === "code" ||
+    node.type === "inlineCode" ||
+    node.type === "html"
+  ) {
     const s = node.position?.start?.offset;
     const e = node.position?.end?.offset;
     if (typeof s === "number" && typeof e === "number") ranges.push([s, e]);
     return;
   }
   if (Array.isArray(node.children)) {
-    for (const c of node.children) collectCodeRanges(c, ranges);
+    for (const c of node.children) collectLiteralRanges(c, ranges);
   }
 }
 
-/** 把源码里（代码区外）被反斜杠转义的 `$` 换成哨兵；奇偶反斜杠计数区分 `\$`（转义）与 `\\$`（字面反斜杠+活 `$`）。 */
-function maskEscapedDollars(
+function isAsciiPunctuation(char: string | undefined): boolean {
+  if (!char) return false;
+  const code = char.charCodeAt(0);
+  return (
+    (code >= 0x21 && code <= 0x2f) ||
+    (code >= 0x3a && code <= 0x40) ||
+    (code >= 0x5b && code <= 0x60) ||
+    (code >= 0x7b && code <= 0x7e)
+  );
+}
+
+/**
+ * 把源码里（代码 / HTML 外）会被 CommonMark 解码的转义换成哨兵。连续反斜杠按 pair 处理：
+ * `\\` 是一个被转义的反斜杠，奇数个末尾反斜杠还可继续转义随后的 ASCII 标点。
+ */
+function maskMarkdownEscapes(
   source: string,
   ranges: Array<[number, number]>,
-  sentinel: string
-): string {
-  const inCode = (off: number) => ranges.some(([s, e]) => off >= s && off < e);
+  sentinels: string[]
+): { masked: string; escapeMap: Record<string, string> } | null {
+  const inLiteral = (off: number) =>
+    ranges.some(([s, e]) => off >= s && off < e);
+  const escapedChars = new Map<string, string>();
+  let nextSentinel = 0;
+  const sentinelFor = (char: string): string | null => {
+    const existing = escapedChars.get(char);
+    if (existing) return existing;
+    const sentinel = sentinels[nextSentinel];
+    if (!sentinel) return null;
+    nextSentinel += 1;
+    escapedChars.set(char, sentinel);
+    return sentinel;
+  };
   const n = source.length;
   let out = "";
   let i = 0;
   while (i < n) {
-    if (source[i] === "\\") {
+    if (source[i] === "\\" && !inLiteral(i)) {
       let k = i;
       while (k < n && source[k] === "\\") k += 1;
       const runLen = k - i;
-      if (source[k] === "$" && runLen % 2 === 1 && !inCode(k)) {
-        out += "\\".repeat(runLen - 1) + sentinel;
+      const escapedSlash = sentinelFor("\\");
+      if (!escapedSlash) return null;
+      out += escapedSlash.repeat(Math.floor(runLen / 2));
+      if (runLen % 2 === 1 && isAsciiPunctuation(source[k]) && !inLiteral(k)) {
+        const escapedPunctuation = sentinelFor(source[k]);
+        if (!escapedPunctuation) return null;
+        out += escapedPunctuation;
         i = k + 1;
         continue;
       }
-      out += source.slice(i, k);
+      if (runLen % 2 === 1) out += "\\";
       i = k;
       continue;
     }
     out += source[i];
     i += 1;
   }
-  return out;
+  const escapeMap: Record<string, string> = {};
+  for (const [char, sentinel] of escapedChars) escapeMap[sentinel] = char;
+  return { masked: out, escapeMap };
 }
 
 /**
- * 在 markdown 解析前稳定保存转义信息：把源码里（代码区外）被反斜杠转义的 `$` 换成哨兵，再用同一
- * processor 重新解析整篇。转义信息直接来自原始源码（看得到反斜杠），代码区间来自首次解析的 code
- * 节点——不依赖解析后从 source slice 反推（那在实体 / 软换行 / blockquote 续行处会 fail-open）。
+ * 在 markdown 解析前稳定保存 CommonMark 反斜杠转义，再用同一 processor 重解析整篇。公式节点恢复
+ * 作者写入的原始 TeX（如 `\%`、`\\`）；普通文本恢复 CommonMark 解码后的字符。
  */
 function escapeMaskPlugin(this: any) {
   const processor = this;
   return (tree: any, file: any) => {
     const source: string =
       typeof file?.value === "string" ? file.value : String(file ?? "");
-    if (
-      source.indexOf("\\$") === -1 ||
-      typeof processor?.parse !== "function"
-    ) {
+    if (source.indexOf("\\") === -1 || typeof processor?.parse !== "function") {
       return;
     }
-    // 动态挑选源码中不存在的哨兵，避免与用户原文里的 PUA 字符冲突（既不漏 mask，也不误改用户内容）。
-    const sentinel = pickMathSentinel(source, tree);
-    if (!sentinel) {
-      // 没有安全哨兵时 fail closed：保留首次 parse 对 \$ 的字面解释，并禁用本消息的公式扫描。
+    // ASCII 标点至多 32 种；为每种转义字符分配一个源码 / AST 中都不存在的哨兵。
+    const sentinels = pickMathSentinels(source, tree, 32);
+    if (!sentinels) {
+      // 没有足够安全哨兵时 fail closed，保留首次 parse 的 CommonMark 文本并禁用公式扫描。
       (file.data ||= {}).disableMathScan = true;
       return;
     }
     const ranges: Array<[number, number]> = [];
-    collectCodeRanges(tree, ranges);
-    const masked = maskEscapedDollars(source, ranges, sentinel);
-    if (masked === source) return;
-    // 经 file.data 把本次选用的哨兵传给 restore（其存在与否即「是否 mask 过」的 out-of-band 标记）。
-    (file.data ||= {}).mathSentinel = sentinel;
-    file.data.mathScanSource = masked;
-    const reparsed = processor.parse(masked);
+    collectLiteralRanges(tree, ranges);
+    const result = maskMarkdownEscapes(source, ranges, sentinels);
+    if (!result || result.masked === source) return;
+    // 经 file.data 传递哨兵映射；其存在与否即「是否 mask 过」的 out-of-band 标记。
+    (file.data ||= {}).mathEscapeMap = result.escapeMap;
+    file.data.mathScanSource = result.masked;
+    const reparsed = processor.parse(result.masked);
     tree.children = reparsed.children;
   };
 }
 
 /**
- * 把哨兵还原成字面 `$`。仅在 {@link escapeMaskPlugin} 确实注入过哨兵时运行（out-of-band 标记），
- * 否则跳过——避免无条件改写用户原文里的 Private Use Area 字符。还原覆盖所有可能承载哨兵的字符串
+ * 把哨兵还原成 CommonMark 解码后的字面字符。仅在 {@link escapeMaskPlugin} 确实注入过哨兵时运行，
+ * 避免无条件改写用户原文里的 Private Use Area 字符。还原覆盖所有可能承载哨兵的字符串
  * 字段：text / inlineMath / math 的 `value`，以及 link / image / definition 的 `url` / `title` / `alt`
  * （否则 `[go](…/a\$b)` 会把哨兵泄漏进 href）。
  */
 function restoreSentinelPlugin() {
   return (tree: any, file: any) => {
-    const sentinel: string | undefined = file?.data?.mathSentinel;
-    if (!sentinel) return;
-    const fix = (s: string) => s.split(sentinel).join("$");
+    const escapeMap: Record<string, string> | undefined =
+      file?.data?.mathEscapeMap;
+    if (!escapeMap) return;
+    const escapeEntries = Object.entries(escapeMap);
+    const fix = (value: string) =>
+      escapeEntries.reduce(
+        (result, [sentinel, char]) => result.split(sentinel).join(char),
+        value
+      );
     const visit = (node: any) => {
       if (!node) return;
       for (const key of ["value", "url", "title", "alt"]) {
         const v = node[key];
-        if (typeof v === "string" && v.indexOf(sentinel) !== -1) {
+        if (
+          typeof v === "string" &&
+          escapeEntries.some(([sentinel]) => v.includes(sentinel))
+        ) {
           node[key] = fix(v);
         }
       }
@@ -524,6 +625,18 @@ function restoreSentinelPlugin() {
     };
     visit(tree);
   };
+}
+
+/** 把 scanner 候选中的哨兵还原成作者原始 TeX 转义。 */
+function restoreMathEscapes(
+  value: string,
+  escapeMap?: Record<string, string>
+): string {
+  if (!escapeMap) return value;
+  return Object.entries(escapeMap).reduce(
+    (result, [sentinel, char]) => result.split(sentinel).join(`\\${char}`),
+    value
+  );
 }
 
 /** 构造 mdast 公式节点，带 remark-rehype 交接所需的 hName/hProperties/hChildren，供 rehype-katex 渲染。 */
@@ -549,7 +662,7 @@ function makeMathNode(inner: string, display: boolean): any {
  */
 function scanTextForMath(
   text: string,
-  ctx: { attempts: number },
+  ctx: { attempts: number; escapeMap?: Record<string, string> },
   source: string,
   sourceStart?: number,
   sourceEnd?: number
@@ -616,7 +729,10 @@ function scanTextForMath(
       j += 1;
     }
     if (close >= i + openLen) {
-      const inner = text.slice(i + openLen, close);
+      const inner = restoreMathEscapes(
+        text.slice(i + openLen, close),
+        ctx.escapeMap
+      );
       const hasNewline = inner.indexOf("\n") !== -1;
       let sourceClose = -1;
       if (isDouble && sourceOpen >= 0) {
@@ -714,6 +830,7 @@ function mathScanPlugin() {
         : String(file ?? "");
     // 与 ```math 围栏共享同一 per-render 尝试计数（见 guardMathFencePlugin）。
     const ctx = ((file.data ||= {}).mathCtx ||= { attempts: 0 });
+    ctx.escapeMap = file.data.mathEscapeMap;
     const visit = (node: any) => {
       if (!node || !Array.isArray(node.children)) return;
       const next: any[] = [];

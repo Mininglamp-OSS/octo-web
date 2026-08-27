@@ -367,7 +367,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
 
         {effectiveViewMode === "preview" ? (
           <div className="wk-file-preview-markdown-renderer__preview">
-            <MarkdownContent content={content} enableMath allowSingleDollarMath />
+            <MarkdownContent content={content} enableMath />
           </div>
         ) : sourceRenderMode === "too-large" ? (
           /* 源码超过 PLAIN_TEXT 阈值，不预览 */
