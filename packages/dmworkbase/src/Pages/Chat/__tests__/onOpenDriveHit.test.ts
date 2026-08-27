@@ -1,17 +1,17 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DriveSearchHit } from "../../../Service/SearchTypes";
+import {
+  buildDriveFileHitUrl,
+  openDriveFileHit,
+  type OpenedTab,
+} from "../openDriveFileHit";
 
-// onOpenDriveHit routes a clicked global-search drive hit to the standalone
-// file-preview tab (`/drive/f/<fileId>?name=&size=&spaceId=`) and drops folder
-// hits (they have no preview; the panel already filters them server-side, this
-// is the client-side backstop).
-//
-// Why a behavioral mirror + source guard, not a full render: the handler is
-// inline in Pages/Chat/index.tsx, whose class component pulls the whole chat
-// stack (WKApp, wukongimjssdk, react-virtuoso) into vitest. §A mirrors the
-// handler against a mocked window.open; §B locks the production edit in place.
+// Tests the REAL production routing (openDriveFileHit / buildDriveFileHitUrl),
+// not a mirror — so folder-skip, URL shape, opener=null, and popup handling
+// cannot drift from what Chat's handler actually calls. Chat/index.tsx only
+// wires window.open + Toast into these functions (verified by the source guard).
 
 function baseHit(overrides: Partial<DriveSearchHit> = {}): DriveSearchHit {
   return {
@@ -34,106 +34,86 @@ function baseHit(overrides: Partial<DriveSearchHit> = {}): DriveSearchHit {
   };
 }
 
-// Mirror of Chat#onOpenDriveHit. If production diverges from this shape, the §B
-// source guard below fails.
-function simulateOnOpenDriveHit(
-  hit: DriveSearchHit,
-  deps: {
-    open: (url: string, target: string) => { opener: unknown; location: { href: string } } | null;
-    warn: () => void;
-  }
-): void {
-  if (hit.type === "folder") {
-    // production console.warns and skips
-    return;
-  }
-  const params = new URLSearchParams({
-    name: hit.name || "",
-    size: hit.size != null ? String(hit.size) : "",
-    spaceId: hit.space_id,
-  });
-  const url = `/drive/f/${encodeURIComponent(String(hit.file_id))}?${params.toString()}`;
-  const opened = deps.open("about:blank", "_blank");
-  if (!opened) {
-    deps.warn();
-    return;
-  }
-  try {
-    opened.opener = null;
-  } catch {
-    /* swallow */
-  }
-  opened.location.href = url;
-}
-
-describe("onOpenDriveHit — §A behavior", () => {
-  let win: { opener: unknown; location: { href: string } };
-  let open: ReturnType<typeof vi.fn>;
-  let warn: ReturnType<typeof vi.fn>;
-
-  beforeEach(() => {
-    win = { opener: {}, location: { href: "about:blank" } };
-    open = vi.fn(() => win);
-    warn = vi.fn();
-  });
-  afterEach(() => vi.clearAllMocks());
-
-  it("file hit: opens /drive/f/<id> with name, size and spaceId in the query", () => {
-    simulateOnOpenDriveHit(baseHit(), { open, warn });
-    expect(open).toHaveBeenCalledWith("about:blank", "_blank");
-    expect(win.opener).toBeNull();
-    const u = new URL(win.location.href, "https://x.example.com");
+describe("buildDriveFileHitUrl", () => {
+  it("file hit: /drive/f/<id> with name, size and spaceId in the query", () => {
+    const u = new URL(buildDriveFileHitUrl(baseHit())!, "https://x.example.com");
     expect(u.pathname).toBe("/drive/f/1234");
     expect(u.searchParams.get("name")).toBe("spec.pdf");
     expect(u.searchParams.get("size")).toBe("2048");
     expect(u.searchParams.get("spaceId")).toBe("space-9");
   });
 
-  it("folder hit: never opens a tab (client-side backstop)", () => {
-    simulateOnOpenDriveHit(baseHit({ type: "folder", name: "设计稿" }), {
-      open,
-      warn,
-    });
-    expect(open).not.toHaveBeenCalled();
+  it("folder hit: returns null (no preview URL)", () => {
+    expect(buildDriveFileHitUrl(baseHit({ type: "folder", name: "设计稿" }))).toBeNull();
   });
 
   it("missing size: leaves the size param empty rather than 'undefined'", () => {
-    simulateOnOpenDriveHit(baseHit({ size: undefined }), { open, warn });
-    const u = new URL(win.location.href, "https://x.example.com");
+    const u = new URL(
+      buildDriveFileHitUrl(baseHit({ size: undefined }))!,
+      "https://x.example.com"
+    );
     expect(u.searchParams.get("size")).toBe("");
-  });
-
-  it("popup blocked: warns and does not navigate", () => {
-    open.mockReturnValueOnce(null);
-    simulateOnOpenDriveHit(baseHit(), { open, warn });
-    expect(warn).toHaveBeenCalledTimes(1);
   });
 });
 
-describe("onOpenDriveHit — §B source guard", () => {
-  const src = fs.readFileSync(
-    path.resolve(__dirname, "../index.tsx"),
-    "utf8"
-  );
-  const block = (() => {
+describe("openDriveFileHit", () => {
+  let tab: OpenedTab;
+  let open: ReturnType<typeof vi.fn>;
+  let onBlocked: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    tab = { opener: {}, location: { href: "about:blank" } };
+    open = vi.fn(() => tab);
+    onBlocked = vi.fn();
+  });
+  afterEach(() => vi.clearAllMocks());
+
+  it("file hit: opens about:blank, clears opener, then navigates to the preview URL", () => {
+    openDriveFileHit(baseHit(), { open, onBlocked });
+    expect(open).toHaveBeenCalledWith("about:blank", "_blank");
+    expect(tab.opener).toBeNull();
+    const u = new URL(tab.location.href, "https://x.example.com");
+    expect(u.pathname).toBe("/drive/f/1234");
+    expect(u.searchParams.get("spaceId")).toBe("space-9");
+    expect(onBlocked).not.toHaveBeenCalled();
+  });
+
+  it("folder hit: never opens a tab (client-side backstop)", () => {
+    openDriveFileHit(baseHit({ type: "folder", name: "设计稿" }), { open, onBlocked });
+    expect(open).not.toHaveBeenCalled();
+    expect(onBlocked).not.toHaveBeenCalled();
+  });
+
+  it("popup blocked: calls onBlocked and does not navigate", () => {
+    open.mockReturnValueOnce(null);
+    openDriveFileHit(baseHit(), { open, onBlocked });
+    expect(onBlocked).toHaveBeenCalledTimes(1);
+  });
+
+  it("frozen opener setter: swallows and still navigates", () => {
+    Object.defineProperty(tab, "opener", {
+      get: () => ({}),
+      set: () => {
+        throw new Error("frozen");
+      },
+    });
+    expect(() => openDriveFileHit(baseHit(), { open, onBlocked })).not.toThrow();
+    expect(tab.location.href).toContain("/drive/f/1234");
+  });
+});
+
+describe("Chat handler delegates to openDriveFileHit (source guard)", () => {
+  // Behavior above tests the real function; this only guards that the handler
+  // keeps calling it (no re-inlined copy that could drift) and wires the popup
+  // warning in, without importing the heavy Chat class into vitest.
+  const src = fs.readFileSync(path.resolve(__dirname, "../index.tsx"), "utf8");
+
+  it("onOpenDriveHit calls openDriveFileHit with a popup-blocked Toast", () => {
     const start = src.indexOf("onOpenDriveHit={(hit)");
     expect(start, "onOpenDriveHit handler should exist").toBeGreaterThan(-1);
-    return src.slice(start, start + 3200);
-  })();
-
-  it("skips folder hits before opening a tab", () => {
-    const folderIdx = block.indexOf('hit.type === "folder"');
-    const openIdx = block.indexOf("window.open");
-    expect(folderIdx).toBeGreaterThan(-1);
-    expect(openIdx).toBeGreaterThan(folderIdx);
-  });
-
-  it("routes to the /drive/f/<fileId> standalone preview path", () => {
-    expect(block).toMatch(/\/drive\/f\/\$\{encodeURIComponent/);
-  });
-
-  it("keeps the about:blank + opener=null new-tab pattern", () => {
-    expect(block).toMatch(/window\.open\("about:blank", "_blank"\)/);
-    expect(block).toMatch(/opened\.opener = null/);
+    const block = src.slice(start, start + 600);
+    expect(block).toMatch(/openDriveFileHit\(hit,/);
+    expect(block).toMatch(/popupBlocked/);
+    expect(src).toMatch(/import \{ openDriveFileHit \} from "\.\/openDriveFileHit"/);
   });
 });

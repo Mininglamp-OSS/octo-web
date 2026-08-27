@@ -351,10 +351,16 @@ describe("DriveSearchPanel — folder exclusion (filters.types)", () => {
       types: ["blob", "doc"],
     });
 
-    await waitFor(() => {
-      fireEvent.scroll(listEl(container));
-      expect(searchDrive.mock.calls.length).toBe(2);
-    });
+    // Generous timeout: the scroll→debounce→next-page settle is CPU-timing
+    // sensitive and can exceed the 1s default when the whole monorepo suite runs
+    // in parallel (turbo). Package-level runs settle in well under this.
+    await waitFor(
+      () => {
+        fireEvent.scroll(listEl(container));
+        expect(searchDrive.mock.calls.length).toBe(2);
+      },
+      { timeout: 15000 }
+    );
     // The next-page request must carry the same filter, or folders would leak
     // back in as the user scrolls.
     expect(searchDrive.mock.calls[1]![0].filters).toEqual({
