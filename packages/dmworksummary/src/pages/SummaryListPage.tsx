@@ -10,7 +10,7 @@ import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
 import { I18nContext, t, WKApp, Dap } from "@octo/base";
 import * as api from "../api/summaryApi";
-import { beginSummaryAttentionRead, commitSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
+import { abandonSummaryAttentionRead, beginSummaryAttentionRead, commitSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
 import type {
     SummaryListItem,
     ListSummariesParams,
@@ -231,6 +231,9 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         // 时刻排序；否则一个先发后到、快照更旧的列表响应会盖掉用户刚触发的
         // 正确探测（读/提交/应答），红点卡在陈值。
         const attentionTicket = this.props.channelId ? null : beginSummaryAttentionRead();
+        // 票号是否已被成功消费。finally 里据此决定还不还号：成功 commit 后
+        // 若把号还回去，等于给更早的陈旧快照开后门。
+        let attentionCommitted = false;
         this.isLoadingData = true;
         // Only toggle loading. Do NOT pre-set page:1 / hasMore:true here —
         // if the request fails in silent mode we would leave items at the
@@ -263,6 +266,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             // 用发请求前领的 ticket 提交：期间若有更新的读取发出，本次就是陈旧
             // 快照，丢弃即可——那个更新的读取会带回正确值。
             if (attentionTicket !== null) {
+                attentionCommitted = true;
                 commitSummaryAttentionBadge(attentionTicket, resp.attention_count ?? 0);
             }
             this.setState({
@@ -298,6 +302,15 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             // the newer one is still in flight. Only the current loadData
             // is allowed to release the guard.
             if (seq === this.loadDataSeq) this.isLoadingData = false;
+            // Ticket liveness: this loadData took a ticket
+            // but never committed it (superseded by a newer loadData,
+            // unmounted, Space changed, or the request failed). Release the
+            // number so it cannot strand an older in-flight read that still
+            // carries the correct count. No-op once a newer read owns the
+            // sequence; never runs after a successful commit.
+            if (attentionTicket !== null && !attentionCommitted) {
+                abandonSummaryAttentionRead(attentionTicket);
+            }
         }
     }
 

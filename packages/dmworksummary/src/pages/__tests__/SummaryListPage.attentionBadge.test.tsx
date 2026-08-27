@@ -30,7 +30,7 @@ vi.mock('../../api/summaryApi');
 import * as api from '../../api/summaryApi';
 import { WKApp } from '@octo/base';
 import SummaryListPage from '../SummaryListPage';
-import { getSummaryAttentionBadge, setSummaryAttentionBadge } from '../../utils/summaryAttentionBadge';
+import { getSummaryAttentionBadge, setSummaryAttentionBadge, refreshSummaryAttentionBadge } from '../../utils/summaryAttentionBadge';
 
 function deferred<T>() {
     let resolve!: (value: T) => void;
@@ -138,5 +138,55 @@ describe('SummaryListPage — 侧边栏待关注红点同步 (#1359)', () => {
         await pending;
 
         expect(getSummaryAttentionBadge()).toBe(2);
+    });
+});
+
+// Ticket liveness：loadData 领号后若失败/被顶掉，必须把号
+// 还回去，否则它会把一个发出更早、仍在飞、携带正确值的探测一并作废，
+// 角标卡陈值。成功 commit 则绝不能还号（那会给陈旧快照开后门）。
+describe('SummaryListPage — loadData 的读取号生死 (ticket liveness)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        WKApp.shared.currentSpaceId = 'space-123';
+        WKApp.loginInfo.uid = 'test-uid';
+        vi.spyOn(WKApp.loginInfo, 'isLogined').mockReturnValue(true);
+        vi.spyOn(WKApp.menus, 'refresh').mockImplementation(() => {});
+        setSummaryAttentionBadge(0);
+    });
+
+    it('loadData 失败后还号：更早发出的探测仍能把正确值落盘', async () => {
+        // 先有一个探测在飞（领号在前），它带着正确值但还没回来。
+        const probe = deferred<any>();
+        vi.mocked(api.listSummaries).mockReturnValueOnce(probe.promise);
+        const pendingProbe = refreshSummaryAttentionBadge();
+
+        // 随后全局列表加载失败（领号在后）。
+        vi.mocked(api.listSummaries).mockRejectedValueOnce(new Error('network'));
+        const page = makePage();
+        await (page as any).loadData();
+        // 旧值保持，失败不写。
+        expect(getSummaryAttentionBadge()).toBe(0);
+
+        // 关键：loadData 失败已把号还回，探测的正确值得以落盘；
+        // 不还号的旧实现里它会被作废，角标卡 0。
+        probe.resolve({ attention_count: 5 });
+        await pendingProbe;
+        expect(getSummaryAttentionBadge()).toBe(5);
+    });
+
+    it('loadData 成功落盘后不会把已消费的号还回去', async () => {
+        vi.mocked(api.listSummaries).mockResolvedValue({ items: [], total: 0, attention_count: 3 } as any);
+        const page = makePage();
+        await (page as any).loadData();
+        expect(getSummaryAttentionBadge()).toBe(3);
+
+        // 此后新探测领的号仍在列表号之后且能正常落盘：证明成功 commit
+        // 没有把号回退、给更早的陈旧快照开后门。
+        const probe = deferred<any>();
+        vi.mocked(api.listSummaries).mockReturnValueOnce(probe.promise);
+        const pendingProbe = refreshSummaryAttentionBadge();
+        probe.resolve({ attention_count: 1 });
+        await pendingProbe;
+        expect(getSummaryAttentionBadge()).toBe(1);
     });
 });

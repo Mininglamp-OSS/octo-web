@@ -19,14 +19,16 @@ import {
     refreshSummaryAttentionBadge,
     beginSummaryAttentionRead,
     commitSummaryAttentionBadge,
+    abandonSummaryAttentionRead,
 } from '../summaryAttentionBadge';
 
 import { WKApp } from '@octo/base';
 
 function deferred<T>() {
     let resolve!: (value: T) => void;
-    const promise = new Promise<T>((res) => { resolve = res; });
-    return { promise, resolve };
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+    return { promise, resolve, reject };
 }
 
 describe('summaryAttentionBadge (#1359)', () => {
@@ -253,5 +255,87 @@ describe('summaryAttentionBadge — 按发出时刻排序', () => {
         const ticket = beginSummaryAttentionRead();
         commitSummaryAttentionBadge(ticket, 5);
         expect(getSummaryAttentionBadge()).toBe(5);
+    });
+});
+
+// Ticket liveness：失败/放弃的读取若不还号，
+// 号段就停在它那里，把一个发出更早、仍在飞、携带正确值的读取一并作废，
+// 角标卡在陈值。放弃路径必须 `if (ticket === issueSeq) issueSeq--`。
+describe('summaryAttentionBadge — 放弃路径还号 (ticket liveness)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        WKApp.shared.currentSpaceId = 'space-123';
+        WKApp.loginInfo.uid = 'test-uid';
+        vi.spyOn(WKApp.loginInfo, 'isLogined').mockReturnValue(true);
+        vi.spyOn(WKApp.menus, 'refresh').mockImplementation(() => {});
+        setSummaryAttentionBadge(0);
+        vi.mocked(WKApp.menus.refresh).mockClear();
+    });
+
+    it('探测失败后还号：更早的在飞读取得以落盘', async () => {
+        const older = deferred<any>();
+        const newer = deferred<any>();
+        vi.mocked(api.listSummaries)
+            .mockReturnValueOnce(older.promise)
+            .mockReturnValueOnce(newer.promise);
+
+        const pendingOlder = refreshSummaryAttentionBadge();
+        const pendingNewer = refreshSummaryAttentionBadge();
+
+        // 后发的探测失败 → 号还回去，旧值保持。
+        newer.reject(new Error('network'));
+        await pendingNewer;
+        expect(getSummaryAttentionBadge()).toBe(0);
+
+        // 先发的读取带着正确值到达：号段已还给它，落盘成功。
+        older.resolve({ attention_count: 3 });
+        await pendingOlder;
+        expect(getSummaryAttentionBadge()).toBe(3);
+    });
+
+    it('探测跨 Space 早退后还号：更早的在飞读取不被卡死', async () => {
+        const older = deferred<any>();
+        const newer = deferred<any>();
+        vi.mocked(api.listSummaries)
+            .mockReturnValueOnce(older.promise)
+            .mockReturnValueOnce(newer.promise);
+
+        const pendingOlder = refreshSummaryAttentionBadge();  // 为 space-123 发出
+        WKApp.shared.currentSpaceId = 'space-b';
+        const pendingNewer = refreshSummaryAttentionBadge();  // 为 space-b 发出
+
+        // 用户又切回 space-123：space-b 的探测成了弃子 → 早退、还号。
+        WKApp.shared.currentSpaceId = 'space-123';
+        newer.resolve({ attention_count: 7 });
+        await pendingNewer;
+        expect(getSummaryAttentionBadge()).toBe(0);
+
+        // space-123 的旧读取仍然有效：号段已还给它，正确值落盘。
+        // 不还号的旧实现里它会被作废，角标卡 0。
+        older.resolve({ attention_count: 2 });
+        await pendingOlder;
+        expect(getSummaryAttentionBadge()).toBe(2);
+    });
+
+    it('号已不是最新时放弃是 no-op：不得回退到更旧的号', () => {
+        const t1 = beginSummaryAttentionRead();
+        const t2 = beginSummaryAttentionRead();
+        beginSummaryAttentionRead();                          // t3 = 最新
+
+        abandonSummaryAttentionRead(t2);                      // 2 !== 3 → no-op
+
+        commitSummaryAttentionBadge(t1, 9);                   // 1 !== 3 → 丢弃
+        expect(getSummaryAttentionBadge()).toBe(0);
+    });
+
+    it('连续放弃两次只回退一次（幂等由票号相等守护）', () => {
+        const t1 = beginSummaryAttentionRead();
+        const t2 = beginSummaryAttentionRead();
+
+        abandonSummaryAttentionRead(t2);                      // issueSeq 2 → 1
+        abandonSummaryAttentionRead(t2);                      // 2 !== 1 → no-op
+
+        commitSummaryAttentionBadge(t1, 4);                   // 1 === 1 → 落盘
+        expect(getSummaryAttentionBadge()).toBe(4);
     });
 });

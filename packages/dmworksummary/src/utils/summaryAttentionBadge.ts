@@ -44,12 +44,32 @@ export function beginSummaryAttentionRead(): number {
 
 /**
  * 用领号时拿到的 ticket 提交一个读取结果。期间若有更新的读取被发出，
- * 本次结果就是陈旧快照，丢弃——那个更新的读取会带回正确值。
+ * 本次结果就是陈旧快照，丢弃。注意「丢弃后由更新的读取带回正确值」只
+ * 在那个更新的读取【成功】时成立：它若失败或被放弃，号段就停在它那里，
+ * 仍在飞的更早读取（哪怕带着正确值）会被一并作废。所以失败/放弃路径
+ * 必须调 abandonSummaryAttentionRead 把号还回去（ticket liveness）。
  * 若它失败，按“静默失败保持旧值”的一贯策略，宁可不刷也不写旧数。
  */
 export function commitSummaryAttentionBadge(ticket: number, count: number): void {
     if (ticket !== issueSeq) return;
     setSummaryAttentionBadge(count);
+}
+
+/**
+ * 放弃一个已领取、确定不会再提交的读取号（请求失败 / 跨 Space 早退 /
+ * 卸载或 seq 早退）。
+ *
+ * 只在号仍是最新时归还（`issueSeq--`）：归还后，仍在飞的更早读取的票
+ * 号重新成为最新，它带回的正确值得以落盘——堵掉「新读取失败/放弃却
+ * 把旧的正确响应作废」的死角。若已有更新的读取发出
+ * （号不再是自己的），不动：那个更新的读取自己负责成功或放弃。
+ *
+ * ⚠️ 绝不能在成功 commit 之后调用：那会把已消费的号还回去，平白给更
+ * 早的陈旧快照开一扇后门。调用方用 committed 标志守住（见
+ * SummaryListPage.loadData 的 finally）。
+ */
+export function abandonSummaryAttentionRead(ticket: number): void {
+    if (ticket === issueSeq) issueSeq--;
 }
 
 /**
@@ -88,9 +108,16 @@ export async function refreshSummaryAttentionBadge(): Promise<void> {
     const ticket = beginSummaryAttentionRead();
     try {
         const resp = await api.listSummaries({ page: 1, page_size: 1 });
-        if (WKApp.shared.currentSpaceId !== spaceId) return;
+        if (WKApp.shared.currentSpaceId !== spaceId) {
+            // 跨 Space 早退：本次读取作废，把号还回去，别把仍在飞的
+            // 更早读取一并卡死（ticket liveness）。
+            abandonSummaryAttentionRead(ticket);
+            return;
+        }
         commitSummaryAttentionBadge(ticket, resp.attention_count ?? 0);
     } catch {
-        // 静默失败，保持旧值。
+        // 静默失败，保持旧值。号也还回去：失败的读取不该作废一个
+        // 仍在飞、携带正确值的更早读取（ticket liveness）。
+        abandonSummaryAttentionRead(ticket);
     }
 }
