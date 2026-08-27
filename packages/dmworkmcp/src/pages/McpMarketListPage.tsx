@@ -823,6 +823,7 @@ export default class McpMarketListPage extends Component<
                               : undefined
                           }
                           showStats={this.props.variant === "mine"}
+                          row={this.props.variant === "mine"}
                         />
                       ))}
                     </div>

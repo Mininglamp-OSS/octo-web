@@ -16,7 +16,9 @@
   "mine": {
     "pageTitle": "我的发布",
     "pageSubtitle": "管理你创建的技能、专家与连接器,并按需发布到市场。",
-    "navAriaLabel": "我的资产类型"
+    "navAriaLabel": "我的资产类型",
+    "published": "已发布",
+    "private": "仅自己可见"
   },
   "expert": {
     "pageTitle": "专家",

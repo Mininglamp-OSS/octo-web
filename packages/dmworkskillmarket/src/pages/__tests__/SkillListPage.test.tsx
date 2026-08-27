@@ -334,25 +334,19 @@ describe("SkillListPage", () => {
     });
   });
 
-  it("shows persisted stats without an optimistic view-count increment", async () => {
+  it("renders the mine row card (version, not view/download stats) and opens detail", async () => {
     render(<SkillListPage variant="mine" />);
 
     const card = await screen.findByRole("button", {
       name: "meeting-note-cleaner 我",
     });
-    expect(screen.getByLabelText(/浏览次数：2|Views: 2/)).toHaveTextContent(
-      "2"
-    );
-    expect(screen.getByLabelText(/下载次数：0|Downloads: 0/)).toHaveTextContent(
-      "0"
-    );
+    // The 我的发布 row card surfaces the version + publish status, not the
+    // view/download counters (those live only in discovery cards now).
+    expect(screen.getByText("v1.1.3")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/浏览次数：2|Views: 2/)).not.toBeInTheDocument();
 
     fireEvent.click(card);
-
     await screen.findByText(skill.description);
-    expect(screen.getByLabelText(/浏览次数：2|Views: 2/)).toHaveTextContent(
-      "2"
-    );
   });
 
   it("confirms deletion and removes the skill through the API", async () => {

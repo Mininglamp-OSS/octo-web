@@ -228,5 +228,9 @@
     "minutesAgo": "{{count}} minutes ago",
     "hoursAgo": "{{count}} hours ago",
     "daysAgo": "{{count}} days ago"
+  },
+  "mine": {
+    "published": "Published",
+    "private": "Private"
   }
 }

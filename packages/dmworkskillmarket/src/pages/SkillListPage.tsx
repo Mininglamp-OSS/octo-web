@@ -330,6 +330,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
                 onDelete={mine ? setDeleting : undefined}
                 onInstall={(item) => setInstallSkillId(item.id)}
                 showStats={mine}
+                row={mine}
               />
             ))}
           </div>

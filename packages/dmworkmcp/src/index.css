@@ -1479,12 +1479,136 @@
   background: var(--wk-bg-surface);
 }
 
-/* 我的发布:卡片改为一行一个(单列),控制在可读宽度内、左对齐,像一列清单。
+/* 我的发布:卡片改为一行一个(单列横排长条),铺满内容宽度。
    覆盖三种市场卡片网格(技能/专家/连接器)在 mine 变体下的多列布局。 */
 .wk-mcp-mine .skill-market-grid,
 .wk-mcp-mine .wk-mcp-expert-grid,
 .wk-mcp-mine .wk-mcp__grid {
-  grid-template-columns: min(100%, 760px);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* ── 我的发布 横排长条卡片(专家/连接器共用) ───────────────────────────── */
+.wk-mcp-mine-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wk-sp-4);
+  padding: var(--wk-sp-4) var(--wk-sp-5);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-lg);
+  background: var(--wk-bg-surface);
+  cursor: pointer;
+  transition: box-shadow var(--wk-dur-fast) var(--wk-ease),
+    border-color var(--wk-dur-fast) var(--wk-ease);
+}
+.wk-mcp-mine-row:hover,
+.wk-mcp-mine-row:focus-visible {
+  outline: none;
+  border-color: var(--wk-border-default);
+  box-shadow: var(--wk-shadow-sm);
+}
+.wk-mcp-mine-row__icon {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--wk-r-md);
+  overflow: hidden;
+}
+.wk-mcp-mine-row__icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.wk-mcp-mine-row__icon-default {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: var(--wk-font-semibold);
+}
+.wk-mcp-mine-row__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wk-mcp-mine-row__title {
+  color: var(--wk-text-strong);
+  font-weight: var(--wk-font-semibold);
+  font-size: var(--wk-text-size-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wk-mcp-mine-row__meta {
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+}
+.wk-mcp-mine-row__desc {
+  margin: 0;
+  color: var(--wk-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wk-mcp-mine-row__status {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  font-size: 12px;
+  color: var(--wk-text-tertiary);
+}
+.wk-mcp-mine-row__badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--wk-sp-2);
+  border-radius: var(--wk-r-full);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-secondary);
+  font-weight: var(--wk-font-medium);
+}
+.wk-mcp-mine-row__badge--published {
+  background: var(--wk-color-success-bg);
+  color: var(--wk-color-success);
+}
+.wk-mcp-mine-row__version {
+  font-variant-numeric: tabular-nums;
+}
+.wk-mcp-mine-row__actions {
+  flex: 0 0 auto;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+}
+.wk-mcp-mine-row__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 var(--wk-sp-3);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+.wk-mcp-mine-row__action:hover {
+  background: var(--wk-bg-item-hover);
+}
+.wk-mcp-mine-row__action--danger {
+  color: var(--wk-color-danger);
+  border-color: var(--wk-color-danger-border);
+}
+.wk-mcp-mine-row__action--danger:hover {
+  background: var(--wk-color-danger-bg);
 }
 
 .wk-mcp-mine__hero {

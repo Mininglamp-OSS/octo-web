@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useRef, useState } from "react";
 import { Bot, Download, Eye, Pencil, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import { t, useI18n } from "@octo/base";
 import type { Category, Skill } from "../types/skill";
-import { formatCount } from "../utils/format";
+import { formatCount, formatRecentOrDate } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import { isPlatformPublishedSkill } from "../utils/publisher";
 
@@ -16,6 +16,9 @@ interface SkillCardProps {
   /** Show the footer stats row (views/downloads). Discovery hides it; the 我的
    *  view keeps it. Defaults to true so existing callers/tests are unchanged. */
   showStats?: boolean;
+  /** Render the horizontal "我的发布" row layout (avatar + content + edit/delete
+   *  on the right) instead of the grid card. */
+  row?: boolean;
 }
 
 const CARD_VISIBLE_TAG_LIMIT = 3;
@@ -75,9 +78,8 @@ export function getDescriptionTooltipStyle(
   return { left, top, maxWidth, maxHeight };
 }
 
-export default function SkillCard({ skill, categories: _categories, onOpen, onEdit, onDelete, onInstall, showStats = true }: SkillCardProps) {
+export default function SkillCard({ skill, categories, onOpen, onEdit, onDelete, onInstall, showStats = true, row = false }: SkillCardProps) {
   useI18n();
-  void _categories;
   const [imgError, setImgError] = useState(false);
   const [descriptionTooltip, setDescriptionTooltip] = useState<DescriptionTooltipState>({
     visible: false,
@@ -173,6 +175,102 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
       visible: truncated,
       style: truncated ? { visibility: "hidden" } : {},
     });
+  }
+
+  if (row) {
+    const categoryName = categories.find((c) => c.id === skill.categoryId)?.name ?? "";
+    const updatedLabel = skill.updatedAt ? formatRecentOrDate(skill.updatedAt) : "";
+    const metaParts = [categoryName, updatedLabel].filter(Boolean);
+    const published = skill.visibility === "public";
+    return (
+      <article
+        className="skill-market-mine-row"
+        role="button"
+        tabIndex={0}
+        aria-label={ariaLabel}
+        onClick={() => onOpen(skill)}
+        onKeyDown={handleKeyDown}
+        data-track="market_card_opened"
+        data-object-id={skill.id}
+        data-track-item-type="skill"
+      >
+        <span className="skill-market-mine-row__icon">
+          {skill.iconUrl && !imgError ? (
+            <img src={skill.iconUrl} alt="" onError={() => setImgError(true)} />
+          ) : (
+            <span
+              className="skill-market-mine-row__icon-default"
+              style={{ background: getSkillAvatarColor(skill.name) }}
+            >
+              {getSkillAvatarText(skill.name)}
+            </span>
+          )}
+        </span>
+        <div className="skill-market-mine-row__body">
+          <div className="skill-market-mine-row__title" title={displayName}>
+            {displayName}
+          </div>
+          {metaParts.length > 0 && (
+            <div className="skill-market-mine-row__meta">{metaParts.join(" · ")}</div>
+          )}
+          {skill.description && (
+            <p className="skill-market-mine-row__desc">{skill.description}</p>
+          )}
+          {visibleTags.length > 0 && (
+            <div className="skill-market-card__tags">
+              {visibleTags.map((tag) => (
+                <span key={tag}>{tag}</span>
+              ))}
+              {hiddenTags.length > 0 && <span>+{hiddenTags.length}</span>}
+            </div>
+          )}
+          <div className="skill-market-mine-row__status">
+            <span
+              className={
+                published
+                  ? "skill-market-mine-row__badge skill-market-mine-row__badge--published"
+                  : "skill-market-mine-row__badge"
+              }
+            >
+              {published ? t("skillMarket.mine.published") : t("skillMarket.mine.private")}
+            </span>
+            {skill.version && (
+              <span className="skill-market-mine-row__version">v{skill.version}</span>
+            )}
+          </div>
+        </div>
+        <div className="skill-market-mine-row__actions">
+          {onEdit && (
+            <button
+              type="button"
+              className="skill-market-mine-row__action"
+              aria-label={t("skillMarket.card.editAriaLabel", { values: { name: skill.name } })}
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit(skill);
+              }}
+            >
+              <Pencil size={15} aria-hidden="true" />
+              {t("skillMarket.common.edit")}
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              className="skill-market-mine-row__action skill-market-mine-row__action--danger"
+              aria-label={t("skillMarket.card.deleteAriaLabel", { values: { name: skill.name } })}
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete(skill);
+              }}
+            >
+              <Trash2 size={15} aria-hidden="true" />
+              {t("skillMarket.common.delete")}
+            </button>
+          )}
+        </div>
+      </article>
+    );
   }
 
   return (

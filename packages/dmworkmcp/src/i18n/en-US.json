@@ -16,7 +16,9 @@
   "mine": {
     "pageTitle": "My publications",
     "pageSubtitle": "Manage the skills, experts and connectors you created, and publish them to the market.",
-    "navAriaLabel": "My asset type"
+    "navAriaLabel": "My asset type",
+    "published": "Published",
+    "private": "Private"
   },
   "expert": {
     "pageTitle": "Experts",

@@ -707,6 +707,7 @@ export default function ExpertMarketListPage({
                       onEdit={handleEdit}
                       onDelete={setDeleteTarget}
                       showStats={variant === "mine"}
+                      row={variant === "mine"}
                     />
                   ))}
                 </div>
@@ -742,6 +743,7 @@ export default function ExpertMarketListPage({
                       onEdit={handleEdit}
                       onDelete={setDeleteTarget}
                       showStats={variant === "mine"}
+                      row={variant === "mine"}
                     />
                   ))}
                 </div>
@@ -772,6 +774,7 @@ export default function ExpertMarketListPage({
                     onOpen={openDetail}
                     onAddToLoop={loopOn ? openAddToLoop : undefined}
                     showStats={variant === "mine"}
+                    row={variant === "mine"}
                   />
                 ))}
               </div>

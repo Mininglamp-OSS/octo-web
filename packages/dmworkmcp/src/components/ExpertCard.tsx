@@ -20,6 +20,8 @@ interface ExpertCardProps {
   onAddToLoop?: (item: ExpertItem) => void;
   /** Show the footer stats row. Discovery hides it; the 我的 view keeps it. */
   showStats?: boolean;
+  /** Render the horizontal "我的发布" row layout instead of the grid card. */
+  row?: boolean;
 }
 
 const MAX_TAGS = 3;
@@ -31,7 +33,7 @@ const MAX_TAGS = 3;
  * tag pills, and a footer stat. The whole card is one click target (no inline
  * action button competing for the click); copying lives in the detail modal.
  */
-export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop, showStats = true }: ExpertCardProps) {
+export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop, showStats = true, row = false }: ExpertCardProps) {
   const isSquad = item.kind === "squad";
   const isOfficial = isOfficialExpert(item);
   const owner = resolveExpertOwner(item);
@@ -42,6 +44,102 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
   const hasActions = Boolean(onEdit || onDelete);
   const rawViewCount = item.viewCount ?? 0;
   const rawInstallCount = item.installCount ?? 0;
+
+  if (row) {
+    const published = item.visibility === "public";
+    const openUnlessButton = (target: EventTarget | null) =>
+      !(target instanceof HTMLElement && target.closest("button"));
+    return (
+      <div
+        className="wk-mcp-mine-row"
+        role="button"
+        tabIndex={0}
+        aria-label={item.name}
+        onPointerDown={(event) => {
+          if (event.button === 0 && openUnlessButton(event.target)) onOpen(item);
+        }}
+        onKeyDown={(event) => {
+          if ((event.key === "Enter" || event.key === " ") && openUnlessButton(event.target)) {
+            event.preventDefault();
+            onOpen(item);
+          }
+        }}
+      >
+        <span className="wk-mcp-mine-row__icon">
+          <span
+            className="wk-mcp-mine-row__icon-default"
+            style={{ background: getMcpAvatarColor(item.id) }}
+          >
+            {item.shortName}
+          </span>
+        </span>
+        <div className="wk-mcp-mine-row__body">
+          <div className="wk-mcp-mine-row__title" title={item.name}>
+            {item.name}
+          </div>
+          {item.category && <div className="wk-mcp-mine-row__meta">{item.category}</div>}
+          {item.summary && <p className="wk-mcp-mine-row__desc">{item.summary}</p>}
+          {visibleTags.length > 0 && (
+            <div className="wk-mcp-card__tags">
+              {visibleTags.map((tag) => (
+                <span key={tag} className="wk-mcp-tag">
+                  {tag}
+                </span>
+              ))}
+              {overflowTags.length > 0 && (
+                <span className="wk-mcp-tag wk-mcp-tag--more">+{overflowTags.length}</span>
+              )}
+            </div>
+          )}
+          <div className="wk-mcp-mine-row__status">
+            <span
+              className={
+                published
+                  ? "wk-mcp-mine-row__badge wk-mcp-mine-row__badge--published"
+                  : "wk-mcp-mine-row__badge"
+              }
+            >
+              {published ? t("mcp.mine.published") : t("mcp.mine.private")}
+            </span>
+            {item.version && <span className="wk-mcp-mine-row__version">v{item.version}</span>}
+          </div>
+        </div>
+        <div
+          className="wk-mcp-mine-row__actions"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          {onEdit && (
+            <button
+              type="button"
+              className="wk-mcp-mine-row__action"
+              aria-label={t("mcp.expert.editAriaLabel", { values: { name: item.name } })}
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit(item);
+              }}
+            >
+              <Pencil size={15} aria-hidden="true" />
+              {t("mcp.expert.edit")}
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              className="wk-mcp-mine-row__action wk-mcp-mine-row__action--danger"
+              aria-label={t("mcp.expert.deleteAriaLabel", { values: { name: item.name } })}
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete(item);
+              }}
+            >
+              <Trash2 size={15} aria-hidden="true" />
+              {t("mcp.expert.delete")}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
