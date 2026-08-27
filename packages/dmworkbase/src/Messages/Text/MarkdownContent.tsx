@@ -362,6 +362,24 @@ function isAnchoredDisplay(
   return openerAtLineStart && closerAtLineEnd;
 }
 
+/** 某个 `$$` 是否可作为独占源码行的 display opener。 */
+function isStandaloneDisplayOpener(source: string, openIdx: number): boolean {
+  if (openIdx < 0) return false;
+  const lineStart = source.lastIndexOf("\n", openIdx - 1) + 1;
+  const prefix = source.slice(lineStart, openIdx);
+  if (!/^(?:[ \t]*>[ \t]*)*[ \t]*$/.test(prefix)) return false;
+  let after = openIdx + 2;
+  while (
+    after < source.length &&
+    (source[after] === " " || source[after] === "\t")
+  ) {
+    after += 1;
+  }
+  return (
+    after >= source.length || source[after] === "\n" || source[after] === "\r"
+  );
+}
+
 function collectSentinelCollisions(node: any, present: Set<string>): void {
   if (!node) return;
   for (const key of ["value", "url", "title", "alt"]) {
@@ -517,8 +535,8 @@ function makeMathNode(inner: string, display: boolean): any {
 /**
  * 单次左到右扫描一段文本，识别 `$…$` / `$$…$$` 公式，返回 mdast 节点序列（text / inlineMath / math）。
  * 关键：行内候选被拒绝时只跳过本 opener（前移 openLen），后续 `$` 仍可开新候选——因此货币
- * `$100` 不会吃掉后面 `$E=mc^2$` 的定界符。跨行 `$$` 候选被拒绝时则整体跳过，避免它的
- * closer 被复用成下一候选的 opener；两条路径都会把被拒绝的定界符与文本原样保留。
+ * `$100` 不会吃掉后面 `$E=mc^2$` 的定界符。完整的 `$$…$$` 候选被拒绝时则整体跳过；若跨行
+ * 匹配到的 closer 本身是下一段独占行 opener，则保留给下一轮。text/source 两侧始终消费相同定界符。
  */
 function scanTextForMath(
   text: string,
@@ -557,6 +575,19 @@ function scanTextForMath(
     }
     const isDouble = text[i + 1] === "$";
     const openLen = isDouble ? 2 : 1;
+    let sourceOpen = -1;
+    if (isDouble && hasSourceRange) {
+      sourceOpen = hasExactSourceMapping
+        ? sourceStart + i
+        : source.indexOf("$$", sourceCursor);
+      if (
+        sourceOpen < sourceStart ||
+        sourceOpen >= sourceEnd ||
+        source.slice(sourceOpen, sourceOpen + 2) !== "$$"
+      ) {
+        sourceOpen = -1;
+      }
+    }
     let close = -1;
     let j = i + openLen;
     while (j < n) {
@@ -578,33 +609,16 @@ function scanTextForMath(
     if (close >= i + openLen) {
       const inner = text.slice(i + openLen, close);
       const hasNewline = inner.indexOf("\n") !== -1;
-      let sourceOpen = -1;
       let sourceClose = -1;
-      if (isDouble && hasSourceRange) {
+      if (isDouble && sourceOpen >= 0) {
         if (hasExactSourceMapping) {
-          sourceOpen = sourceStart + i;
           sourceClose = sourceStart + close;
-          if (
-            source.slice(sourceOpen, sourceOpen + 2) !== "$$" ||
-            source.slice(sourceClose, sourceClose + 2) !== "$$"
-          ) {
-            sourceOpen = -1;
+          if (source.slice(sourceClose, sourceClose + 2) !== "$$")
             sourceClose = -1;
-          }
         } else {
-          sourceOpen = source.indexOf("$$", sourceCursor);
-          if (sourceOpen < sourceStart || sourceOpen >= sourceEnd) {
-            sourceOpen = -1;
-          } else {
-            sourceClose = source.indexOf("$$", sourceOpen + 2);
-            if (sourceClose < 0 || sourceClose >= sourceEnd) sourceClose = -1;
-          }
-        }
-        if (sourceClose >= 0) {
-          sourceCursor = sourceClose + openLen;
-        } else {
-          // 映射一旦不可靠，后续 display 一律 fail closed；行内候选仍可按 text 自身判断。
-          sourceCursor = sourceEnd;
+          sourceClose = source.indexOf("$$", sourceOpen + 2);
+          if (sourceClose < 0 || sourceClose >= (sourceEnd ?? source.length))
+            sourceClose = -1;
         }
       }
       const display =
@@ -613,6 +627,12 @@ function scanTextForMath(
         sourceOpen >= 0 &&
         sourceClose >= 0 &&
         isAnchoredDisplay(source, sourceOpen, sourceClose); // 用源码偏移判断，不能把 text-node 边界当行首/行尾
+      const preserveCloseAsDisplayOpener =
+        isDouble &&
+        hasNewline &&
+        !display &&
+        sourceClose >= 0 &&
+        isStandaloneDisplayOpener(source, sourceClose);
       let accept: boolean;
       if (display) {
         accept =
@@ -634,16 +654,33 @@ function scanTextForMath(
           flush();
           out.push(makeMathNode(inner, display));
           i = close + openLen;
+          if (isDouble && !hasExactSourceMapping) {
+            sourceCursor =
+              sourceClose >= 0
+                ? sourceClose + openLen
+                : sourceEnd ?? source.length;
+          }
           continue;
         }
       }
-      if (isDouble && hasNewline) {
-        // 跨行 $$ 候选拒绝后也要整体按字面消费。不能只跳过 opener，否则本候选 closer
-        // 会与下一块 opener 重新配对，既可能吞掉中间正文，也可能让后续合法 display 漏渲。
+      if (isDouble && !preserveCloseAsDisplayOpener) {
+        // 完整 $$ 候选拒绝后也整体按字面消费；text/source 两侧始终越过同一对定界符。
+        // 单 $ 仍只跳过 opener，保留 `$100 ... $E=mc^2$` 的后续公式识别能力。
         buf += text.slice(i, close + openLen);
         i = close + openLen;
+        if (!hasExactSourceMapping) {
+          sourceCursor =
+            sourceClose >= 0
+              ? sourceClose + openLen
+              : sourceEnd ?? source.length;
+        }
         continue;
       }
+    }
+    if (isDouble && !hasExactSourceMapping) {
+      // 未形成候选时 text 侧只消费 opener；source 侧必须做完全相同的推进。
+      sourceCursor =
+        sourceOpen >= 0 ? sourceOpen + openLen : sourceEnd ?? source.length;
     }
     // 拒绝的行内候选：定界符按字面文本，只前移 openLen，后面的 `$` 仍能开新候选。
     buf += text.slice(i, i + openLen);

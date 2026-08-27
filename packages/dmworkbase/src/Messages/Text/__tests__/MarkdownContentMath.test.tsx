@@ -737,6 +737,43 @@ describe("MarkdownContent — 多个 $$ 候选的源码映射保持同步 (revie
   });
 });
 
+describe("MarkdownContent — 被拒绝的单行 $$ 不让 text/source 游标错位", () => {
+  const literalCases = [
+    "> pay $$5 or $$ my_var here\n> $$\n> x^2\n> $$",
+    "a \\* b $$5 or $$ my_var here\n$$\nx^2\n$$",
+    "a &amp; b $$5 or $$ my_var here\n$$\nx^2\n$$",
+  ];
+
+  for (const input of literalCases) {
+    it(`正文保持字面且后续 display 正常渲染：${JSON.stringify(input)}`, () => {
+      const root = renderContent(<MarkdownContent content={input} />);
+      expect(root.querySelectorAll(".katex-display")).toHaveLength(1);
+      expect(visibleText(root)).toContain("$$5 or $$ my_var here");
+    });
+  }
+
+  it("inline code 中的 $$ 不影响同一 blockquote 后续 display", () => {
+    const root = renderContent(
+      <MarkdownContent content={"> `$$` and $$ y_1 more\n> $$\n> x^2\n> $$"} />
+    );
+    expect(root.querySelectorAll(".katex-display")).toHaveLength(1);
+    expect(visibleText(root)).toContain("$$ y_1 more");
+  });
+
+  it("opener 同行含公式内容的既有多行 display 仍可渲染", () => {
+    const root = renderContent(<MarkdownContent content={"$$ x^2\ny^2\n$$"} />);
+    expect(root.querySelectorAll(".katex-display")).toHaveLength(1);
+  });
+
+  it("非精确映射节点中的单 $ 公式不干扰后续 display", () => {
+    const root = renderContent(
+      <MarkdownContent content={"> $x^2$ then\n> $$\n> y^2\n> $$"} />
+    );
+    expect(root.querySelectorAll(".katex")).toHaveLength(2);
+    expect(root.querySelectorAll(".katex-display")).toHaveLength(1);
+  });
+});
+
 describe("MarkdownContent — 被拒绝的 display 不复用 closer (review round 11)", () => {
   const cases = [
     "$$\n\\frac{a}{b\n$$\n其中 a_1 为系数\n$$\nc^2\n$$",
