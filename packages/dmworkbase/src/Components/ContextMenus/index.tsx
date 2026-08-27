@@ -20,7 +20,9 @@ export interface ContextMenusState {
 export interface ContextMenusTrigger {
     clientX: number
     clientY: number
-    button?: number
+    /** Keyboard callers opt in; pointer callers keep their current focus. */
+    focusFirstItem?: boolean
+    nativeEvent?: Event & { focusFirstItem?: boolean }
     preventDefault(): void
 }
 
@@ -69,7 +71,7 @@ function ArrowIcon() {
 
 export default class ContextMenus extends Component<ContextMenusProps, ContextMenusState> implements ContextMenusContext {
     private static _instances: Set<ContextMenus> = new Set()
-    private static _documentContextMenuGuardAttached = false
+    private static _documentGuardsAttached = false
     private _rafId?: number
     private _returnFocus?: HTMLElement
 
@@ -96,16 +98,28 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
         event.preventDefault()
     }
 
+    private static _handleDocumentKeyDown(event: KeyboardEvent) {
+        const openInstance = Array.from(ContextMenus._instances).find((instance) => instance.isShow())
+        if (!openInstance) {
+            ContextMenus._syncDocumentContextMenuGuard()
+            return
+        }
+        if (event.target instanceof Node && openInstance.contextMenusRef?.contains(event.target)) return
+        openInstance._handleKeyDown(event)
+    }
+
     private static _syncDocumentContextMenuGuard() {
         if (typeof document === "undefined") return
 
         const shouldAttach = ContextMenus._hasOpenInstance()
-        if (shouldAttach && !ContextMenus._documentContextMenuGuardAttached) {
+        if (shouldAttach && !ContextMenus._documentGuardsAttached) {
             document.addEventListener("contextmenu", ContextMenus._handleDocumentContextMenu, true)
-            ContextMenus._documentContextMenuGuardAttached = true
-        } else if (!shouldAttach && ContextMenus._documentContextMenuGuardAttached) {
+            document.addEventListener("keydown", ContextMenus._handleDocumentKeyDown, true)
+            ContextMenus._documentGuardsAttached = true
+        } else if (!shouldAttach && ContextMenus._documentGuardsAttached) {
             document.removeEventListener("contextmenu", ContextMenus._handleDocumentContextMenu, true)
-            ContextMenus._documentContextMenuGuardAttached = false
+            document.removeEventListener("keydown", ContextMenus._handleDocumentKeyDown, true)
+            ContextMenus._documentGuardsAttached = false
         }
     }
 
@@ -143,7 +157,8 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
     show(event: ContextMenusTrigger): void {
         event.preventDefault();
         if (!this.contextMenusRef) return
-        const shouldFocusFirstItem = event.button !== 2
+        const shouldFocusFirstItem = event.focusFirstItem === true
+            || event.nativeEvent?.focusFirstItem === true
 
         if (!this.state.showContextMenus) {
             this._returnFocus = document.activeElement instanceof HTMLElement
@@ -248,7 +263,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
         submenu.style.top = `${Math.max(lowestTop, Math.min(0, highestTop))}px`
     }
 
-    _handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    _handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement> | KeyboardEvent) => {
         if (event.key === "Escape") {
             event.preventDefault()
             this.hide()
@@ -261,6 +276,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
 
         const activeItem = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('[role="menuitem"]')
         const activeList = activeItem?.parentElement
+            ?? this.contextMenusRef?.querySelector<HTMLElement>(":scope > ul")
         const parentItem = activeList?.closest<HTMLElement>('[role="menuitem"]')
         const items = Array.from(activeList?.querySelectorAll<HTMLElement>(':scope > [role="menuitem"]') ?? [])
         if (items.length === 0) return

@@ -241,6 +241,9 @@ describe("MessageRow — selection mode interactions", () => {
             cancelable: true,
         })))
         expect(onContextMenu).toHaveBeenCalledTimes(1)
+        expect((onContextMenu.mock.calls[0][0].nativeEvent as MouseEvent & {
+            focusFirstItem?: boolean
+        }).focusFirstItem).toBe(true)
 
         dispatchMouseEvent(root.querySelector(".wk-msg-row-sender")!, "contextmenu")
         dispatchMouseEvent(root.querySelector(".wk-msg-row")!, "contextmenu")

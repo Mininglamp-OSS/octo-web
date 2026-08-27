@@ -281,12 +281,14 @@ export default function MessageRow({
             if ((event.shiftKey && event.key === 'F10') || event.key === 'ContextMenu') {
               event.preventDefault()
               const rect = event.currentTarget.getBoundingClientRect()
-              event.currentTarget.dispatchEvent(new MouseEvent('contextmenu', {
+              const contextMenuEvent = new MouseEvent('contextmenu', {
                 bubbles: true,
                 cancelable: true,
                 clientX: rect.left + Math.min(rect.width / 2, 24),
                 clientY: rect.top + Math.min(rect.height / 2, 24),
-              }))
+              }) as MouseEvent & { focusFirstItem?: boolean }
+              contextMenuEvent.focusFirstItem = true
+              event.currentTarget.dispatchEvent(contextMenuEvent)
             }
           }}
         >

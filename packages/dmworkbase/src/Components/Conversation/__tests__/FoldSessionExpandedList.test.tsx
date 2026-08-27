@@ -70,5 +70,8 @@ describe("FoldSessionExpandedList context-menu boundary", () => {
       cancelable: true,
     })));
     expect(onMessageContextMenu).toHaveBeenCalledTimes(4);
+    expect((onMessageContextMenu.mock.calls[3][1].nativeEvent as MouseEvent & {
+      focusFirstItem?: boolean;
+    }).focusFirstItem).toBe(true);
   });
 });
