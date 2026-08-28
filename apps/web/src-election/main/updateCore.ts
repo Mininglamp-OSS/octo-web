@@ -235,7 +235,7 @@ EXPECTED_TEAM_ID="$8"
 INSTALL_DIR="$9"
 RESULT_PATH="\${10}"
 LOG_PATH="\${11}"
-PS_BIN="\${OCTO_UPDATE_PS_BIN:-/bin/ps}"
+PS_BIN="\${12:-/bin/ps}"
 
 if ! : >> "$LOG_PATH" 2>/dev/null; then
   LOG_PATH=/dev/null
@@ -261,9 +261,20 @@ fail() {
 wait_until_not_running() {
   RUNNING_CHECK=0
   PROCESS_LIST_PATH="$RESULT_PATH.processes"
+  OCTO_WAIT_PREFIX="$TARGET_APP_PATH/Contents/MacOS/"
+  export OCTO_WAIT_PREFIX
   while :; do
-    "$PS_BIN" -axo command= > "$PROCESS_LIST_PATH" || fail 20
-    /usr/bin/awk -v prefix="$TARGET_APP_PATH/Contents/MacOS/" 'index($0, prefix) == 1 { found = 1; exit } END { exit found ? 0 : 1 }' "$PROCESS_LIST_PATH" || break
+    "$PS_BIN" -axww -o command= > "$PROCESS_LIST_PATH" || fail 20
+    set +e
+    /usr/bin/awk 'BEGIN { prefix = ENVIRON["OCTO_WAIT_PREFIX"] } index($0, prefix) == 1 { found = 1; exit } END { exit found ? 0 : 1 }' "$PROCESS_LIST_PATH"
+    AWK_STATUS=$?
+    set -e
+    if [ "$AWK_STATUS" -eq 1 ]; then
+      break
+    fi
+    if [ "$AWK_STATUS" -ne 0 ]; then
+      fail 20
+    fi
     RUNNING_CHECK=$((RUNNING_CHECK + 1))
     if [ "$RUNNING_CHECK" -ge 150 ]; then
       fail 20

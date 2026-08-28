@@ -24,6 +24,27 @@ import {
   IPC_UPDATE_NOT_AVAILABLE,
 } from "../../../src-election/shared/ipc-channels";
 
+function getElectronUpdateErrorText(code: string, fallback: string): string {
+  switch (code) {
+    case "download-timeout":
+      return t("base.navRail.settingsPanel.updateError.downloadTimeout");
+    case "download-in-progress":
+      return t("base.navRail.settingsPanel.updateError.downloadInProgress");
+    case "updater-api-not-configured":
+      return t("base.navRail.settingsPanel.updateError.updaterApiNotConfigured");
+    case "no-pending-update":
+      return t("base.navRail.settingsPanel.updateError.noPendingUpdate");
+    case "check-failed":
+      return t("base.navRail.settingsPanel.updateError.checkFailed");
+    case "macos-install-failed":
+      return t("base.navRail.settingsPanel.updateError.macosInstallFailed");
+    case "update-failed":
+      return t("base.navRail.settingsPanel.updateError.updateFailed");
+    default:
+      return fallback;
+  }
+}
+
 export default class MainVM extends ProviderListener {
   private _currentMenus?: Menus;
   private _settingSelected!: boolean;
@@ -209,7 +230,7 @@ export default class MainVM extends ProviderListener {
       this.appUpdateProgress = 0;
       this.appUpdateDownloadedBytes = 0;
       this.notifyListener();
-      Toast.error(errorMessage);
+      Toast.error(getElectronUpdateErrorText(errorCode, errorMessage));
     });
     // 发现可用更新事件
     this.addIpcListener(IPC_UPDATE_AVAILABLE, (event, message) => {

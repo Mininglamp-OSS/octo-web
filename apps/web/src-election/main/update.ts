@@ -44,6 +44,7 @@ let updateCheckSeq = 0;
 let currentDownloadController: AbortController | undefined;
 let currentDownloadAbortReason: "cancelled" | "timeout" | undefined;
 let pendingMacInstallError: { message: string; code: string } | undefined;
+let pendingMacInstallResultRead: Promise<void> = Promise.resolve();
 let updateIpcHandlersRegistered = false;
 let quitUpdaterApp = () => app.quit();
 const isMainWindowSender = (event: Electron.IpcMainEvent): boolean =>
@@ -363,7 +364,13 @@ async function openDownloadedUpdatePackage(updateInfo: DesktopUpdateInfo, filePa
 }
 
 async function installLinuxAppImageUpdate(filePath: string): Promise<void> {
-  const plan = buildLinuxAppImageInstallPlan(process.env.APPIMAGE || "");
+  if (!process.env.APPIMAGE) {
+    logger.warn("[updater] APPIMAGE is not set; relaunching downloaded AppImage without in-place replacement");
+    await fs.promises.chmod(filePath, 0o755);
+    app.relaunch({ execPath: filePath });
+    return;
+  }
+  const plan = buildLinuxAppImageInstallPlan(process.env.APPIMAGE);
   await fs.promises.access(path.dirname(plan.targetPath), fs.constants.W_OK);
   await fs.promises.rm(plan.stagingPath, { force: true }).catch(() => undefined);
   await fs.promises.rm(plan.backupPath, { force: true }).catch(() => undefined);
@@ -381,17 +388,7 @@ async function installLinuxAppImageUpdate(filePath: string): Promise<void> {
     }
     throw error;
   }
-  const errorMessage = await shell.openPath(plan.targetPath);
-  if (errorMessage) {
-    await fs.promises.rename(plan.targetPath, plan.stagingPath).catch(() => undefined);
-    const targetExists = await fs.promises.stat(plan.targetPath).then(() => true, () => false);
-    const backupExists = await fs.promises.stat(plan.backupPath).then(() => true, () => false);
-    if (!targetExists && backupExists) {
-      await fs.promises.rename(plan.backupPath, plan.targetPath).catch(() => undefined);
-    }
-    await fs.promises.rm(plan.stagingPath, { force: true }).catch(() => undefined);
-    throw new Error(errorMessage);
-  }
+  app.relaunch({ execPath: plan.targetPath });
   await fs.promises.rm(plan.backupPath, { recursive: true, force: true }).catch(() => undefined);
   await fs.promises.rm(filePath, { force: true }).catch(() => undefined);
 }
@@ -456,6 +453,7 @@ async function installMacZipUpdateAndQuit(zipPath: string, expectedVersion: stri
     installDir,
     resultPath,
     logPath,
+    "/bin/ps",
   ], {
     detached: true,
     stdio: "ignore",
@@ -506,6 +504,7 @@ async function cleanupStaleUpdateArtifacts(): Promise<void> {
     const lower = entry.toLowerCase();
     if (
       lower.endsWith(".download") ||
+      lower.endsWith(".processes") ||
       lower.endsWith(".zip") ||
       lower.endsWith(".dmg") ||
       lower.endsWith(".exe") ||
@@ -531,18 +530,12 @@ async function reconcileStaleMacInstallArtifacts(): Promise<void> {
   }
   const backupPath = `${targetAppPath}.previous-update`;
   const inProgressPath = `${targetAppPath}.update-in-progress`;
-  const [targetExists, backupExists] = await Promise.all([
+  const [targetExists, backupStat] = await Promise.all([
     fs.promises.stat(targetAppPath).then(() => true, () => false),
-    fs.promises.stat(backupPath).then(() => true, () => false),
+    fs.promises.stat(backupPath).catch(() => undefined),
   ]);
-  if (!targetExists && backupExists) {
-    await fs.promises.rename(backupPath, targetAppPath).catch((error) => {
-      logger.warn(`[updater] failed to restore previous macOS app bundle: ${error instanceof Error ? error.message : String(error)}`);
-    });
-  }
   const inProgressStat = await fs.promises.stat(inProgressPath).catch(() => undefined);
-  const backupStat = await fs.promises.stat(backupPath).catch(() => undefined);
-  if (targetExists && backupExists && backupStat && backupStat.mtimeMs < Date.now() - 24 * 60 * 60 * 1000) {
+  if (targetExists && backupStat && backupStat.ctimeMs < Date.now() - 24 * 60 * 60 * 1000) {
     await fs.promises.rm(backupPath, { recursive: true, force: true }).catch((error) => {
       logger.warn(`[updater] failed to cleanup stale macOS backup app bundle: ${error instanceof Error ? error.message : String(error)}`);
     });
@@ -557,7 +550,7 @@ async function reconcileStaleMacInstallArtifacts(): Promise<void> {
 function checkUpdate(win: BrowserWindow, options?: { quitApp?: () => void }) {
   mainWindow = win;
   if (options?.quitApp) quitUpdaterApp = options.quitApp;
-  void surfacePendingMacInstallResult();
+  pendingMacInstallResultRead = surfacePendingMacInstallResult();
   void cleanupStaleUpdateArtifacts();
   void reconcileStaleMacInstallArtifacts();
   if (updateIpcHandlersRegistered) return;
@@ -565,7 +558,8 @@ function checkUpdate(win: BrowserWindow, options?: { quitApp?: () => void }) {
   // 接收渲染进程消息，开始检查更新
   ipcMain.on(IPC_UPDATE_CHECK, async (event, options?: { silent?: boolean }) => {
     if (!isMainWindowSender(event)) return;
-    void flushPendingMacInstallResult();
+    await pendingMacInstallResultRead;
+    await flushPendingMacInstallResult();
     if (isDownloadingUpdate) {
       if (!options?.silent) {
         sendUpdateError("Update download is already in progress", "download-in-progress");
