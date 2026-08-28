@@ -58,13 +58,15 @@ export default class GlobalSearchVM extends ProviderListener {
     if (WKApp.remoteConfig.docsOn && WKApp.remoteConfig.docsSearchOn) {
       tabs.push({ tab: t("base.globalSearch.tab.docs"), itemKey: "docs" });
     }
-    // Drive search hits the octo-drive backend (POST drive/search). Single-flag
-    // gate: driveOn means the drive module is deployed AND its search endpoint is
-    // available (unlike docs, drive search ships in the same backend as the
-    // module, so there is no separate search switch). The drive panel fetches
-    // lazily on first activation, so an enabled-but-empty backend never 404s
-    // until the user actually opens the tab.
-    if (WKApp.remoteConfig.driveOn) {
+    // Drive search hits the octo-drive backend (POST drive/search). Gate on TWO
+    // flags, mirroring docs: driveOn means the drive module is deployed, while
+    // driveSearchOn means the multi-type search backend
+    // (feat/drive-search-multi-type) is live. The module flag alone is not
+    // enough — an old backend ignores filters.types, so folder hits leak, doc
+    // hits lose ref_id (silently skipped) and blob hits 404. driveSearchOn
+    // defaults false, so the tab stays hidden until ops flips drive_search_on on
+    // once the search backend is actually ready.
+    if (WKApp.remoteConfig.driveOn && WKApp.remoteConfig.driveSearchOn) {
       tabs.push({ tab: t("base.globalSearch.tab.drive"), itemKey: "drive" });
     }
     return tabs;

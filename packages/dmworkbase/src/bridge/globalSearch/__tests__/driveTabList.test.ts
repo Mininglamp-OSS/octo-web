@@ -7,6 +7,7 @@ const mockState = vi.hoisted(() => ({
     docsOn: false as boolean,
     docsSearchOn: false as boolean,
     driveOn: false as boolean,
+    driveSearchOn: false as boolean,
   },
 }));
 
@@ -25,18 +26,32 @@ beforeEach(() => {
   mockState.remoteConfig.docsOn = false;
   mockState.remoteConfig.docsSearchOn = false;
   mockState.remoteConfig.driveOn = false;
+  mockState.remoteConfig.driveSearchOn = false;
 });
 
 describe("GlobalSearchVM tabList — drive tab gating", () => {
   const keys = (vm: GlobalSearchVM) => vm.tabList.map((t) => t.itemKey);
 
-  it("omits the drive tab when driveOn is false", () => {
+  it("omits the drive tab when both drive flags are off", () => {
     const vm = new GlobalSearchVM();
     expect(keys(vm)).not.toContain("drive");
   });
 
-  it("appends the drive tab when driveOn is true", () => {
+  it("omits the drive tab when driveOn is true but driveSearchOn is false", () => {
     mockState.remoteConfig.driveOn = true;
+    mockState.remoteConfig.driveSearchOn = false;
+    expect(keys(new GlobalSearchVM())).not.toContain("drive");
+  });
+
+  it("omits the drive tab when driveSearchOn is true but driveOn is false", () => {
+    mockState.remoteConfig.driveOn = false;
+    mockState.remoteConfig.driveSearchOn = true;
+    expect(keys(new GlobalSearchVM())).not.toContain("drive");
+  });
+
+  it("appends the drive tab only when driveOn AND driveSearchOn are true", () => {
+    mockState.remoteConfig.driveOn = true;
+    mockState.remoteConfig.driveSearchOn = true;
     const vm = new GlobalSearchVM();
     const list = keys(vm);
     expect(list).toContain("drive");
@@ -46,6 +61,7 @@ describe("GlobalSearchVM tabList — drive tab gating", () => {
 
   it("gates independently of the docs flags", () => {
     mockState.remoteConfig.driveOn = true;
+    mockState.remoteConfig.driveSearchOn = true;
     mockState.remoteConfig.docsOn = true;
     mockState.remoteConfig.docsSearchOn = true;
     const list = keys(new GlobalSearchVM());

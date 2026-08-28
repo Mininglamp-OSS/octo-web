@@ -350,16 +350,21 @@ export default class GlobalSearch extends Component<
             onOpenDoc={this.handleOpenDoc}
           />
         </div>
-        {/* Drive tab. Conditionally mounted so a driveOn=false deployment never
-            renders the panel at all (the tab LIST is gated in GlobalSearchVM;
-            this mirror-gates the panel). isActive gates the actual search so a
-            hidden-but-mounted panel stays idle. */}
-        {WKApp.remoteConfig.driveOn && (
+        {/* Drive tab. Conditionally mounted so a deployment without both flags
+            never renders the panel at all (the tab LIST is gated in
+            GlobalSearchVM on driveOn && driveSearchOn; this mirror-gates the
+            panel). isActive gates the actual search so a hidden-but-mounted
+            panel stays idle. */}
+        {WKApp.remoteConfig.driveOn && WKApp.remoteConfig.driveSearchOn && (
           <div className="wk-search-tabs__panel" style={panelStyle("drive")}>
             <DriveSearchPanel
               keyword={vm.keyword}
               dataSource={this.globalDataSource}
-              isActive={currentKey === "drive" && !!WKApp.remoteConfig.driveOn}
+              isActive={
+                currentKey === "drive" &&
+                !!WKApp.remoteConfig.driveOn &&
+                !!WKApp.remoteConfig.driveSearchOn
+              }
               onOpenDriveHit={this.handleOpenDriveHit}
             />
           </div>
