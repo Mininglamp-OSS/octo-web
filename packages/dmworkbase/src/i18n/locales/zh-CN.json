@@ -12,6 +12,8 @@
   "promptForward.copied": "已复制",
   "promptForward.copyFailed": "复制失败",
   "promptForward.forwardToBot": "转发提示词给 Bot 进行安装",
+  "promptForward.forwardToBotPublish": "转发提示词给 Bot 进行上架",
+  "promptForward.forwardToBotUpdate": "转发提示词给 Bot 进行更新",
   "promptForward.forwarding": "转发中…",
   "promptForward.forwardSuccess": "已转发给 {{name}}",
   "promptForward.forwardFailed": "转发失败，请重试",

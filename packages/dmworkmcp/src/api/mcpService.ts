@@ -585,13 +585,15 @@ async function resolveWriteCategory(
 
 /** Unified plugin visibility → McpVisibility. Each scope is preserved so the
  *  card chip can label it distinctly: system=公开(platform-wide),
- *  space=组织(within the org), private=仅自己. A legacy "public" row (none in
- *  the unified data) falls through to the platform-public bucket. */
+ *  space=组织(within the org), private=仅自己. An unrecognized wire value falls
+ *  back to "space" (org-scoped) — the least-surprising, non-permissive bucket —
+ *  rather than the platform-public one, so a bad value never over-exposes a row. */
 function mapVisibility(v: PluginVisibilityWire): McpListItem["visibility"] {
   if (v === "system") return "system";
   if (v === "private") return "private";
   if (v === "space") return "space";
-  return "public";
+  if (v === "public") return "public";
+  return "space";
 }
 
 function mapListItem(

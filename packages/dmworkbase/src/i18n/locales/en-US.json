@@ -12,6 +12,8 @@
   "promptForward.copied": "Copied",
   "promptForward.copyFailed": "Copy failed",
   "promptForward.forwardToBot": "Forward the prompt to a Bot to install",
+  "promptForward.forwardToBotPublish": "Forward the prompt to a Bot to publish",
+  "promptForward.forwardToBotUpdate": "Forward the prompt to a Bot to update",
   "promptForward.forwarding": "Forwarding…",
   "promptForward.forwardSuccess": "Forwarded to {{name}}",
   "promptForward.forwardFailed": "Forward failed, please retry",

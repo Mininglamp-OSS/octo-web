@@ -77,6 +77,7 @@ export default function ExpertBotPublishModal({
       onClose={onClose}
       title={title}
       hint={isUpdate ? t("mcp.expert.botUpdateHint") : t("mcp.expert.botPublishHint")}
+      kind={isUpdate ? "update" : "publish"}
       icon={<Bot size={18} />}
       prompt={prompt}
       spaceId={spaceId}

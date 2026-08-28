@@ -47,6 +47,7 @@ export default function BotPublishModal({
       onClose={onClose}
       title={t("skillMarket.botPublish.title")}
       hint={t("skillMarket.botPublish.hint")}
+      kind="publish"
       icon={<Bot size={18} />}
       prompt={prompt}
       spaceId={spaceId}

@@ -1,6 +1,6 @@
 import React from "react";
 import { Terminal } from "lucide-react";
-import { PromptForwardModal, t, useI18n, WKApp } from "@octo/base";
+import { PromptForwardModal, useI18n, WKApp } from "@octo/base";
 import { buildInstallPrompt, resolveAPIBaseURL } from "../utils/installPrompt";
 
 interface InstallPromptModalProps {
@@ -40,8 +40,6 @@ export default function InstallPromptModal({ skillId, onClose }: InstallPromptMo
     <PromptForwardModal
       visible={Boolean(skillId)}
       onClose={onClose}
-      title={t("skillMarket.install.title")}
-      hint={t("skillMarket.install.hint")}
       icon={<Terminal size={18} />}
       prompt={prompt}
       spaceId={spaceId}

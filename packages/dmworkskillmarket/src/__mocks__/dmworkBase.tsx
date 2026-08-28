@@ -75,16 +75,18 @@ interface PromptForwardModalMockProps {
 }
 
 // Shared "forward to Bot" modal from @octo/base. The real one renders a split
-// layout (prompt + 复制提示词 on the left, 选 Bot + 转发 on the right); the mock
-// mirrors the observable surface the skill suite asserts — a copy button that
-// writes the prompt to the clipboard, no 取消 button — and stays inert while
-// hidden (visible=false → null, so it never leaks an extra dialog).
+// layout (prompt + 复制提示词 on the left, 选 Bot + 转发 on the right) with a
+// heading that falls back to the unified "添加给 Bot" when no title is passed;
+// the mock mirrors the observable surface the skill suite asserts — the heading
+// (title when provided, unified default otherwise), an optional hint, a copy
+// button that writes the prompt to the clipboard, no 取消 button — and stays
+// inert while hidden (visible=false → null, so it never leaks an extra dialog).
 export function PromptForwardModal({ visible, title, hint, prompt, onClose }: PromptForwardModalMockProps) {
   if (!visible) return null;
   return (
     <section role="dialog" aria-label={typeof title === "string" ? title : "prompt-forward"}>
       <button type="button" aria-label="关闭" onClick={onClose} />
-      {title ? <h2>{title}</h2> : null}
+      <h2>{title ?? "添加给 Bot"}</h2>
       {hint ? <p>{hint}</p> : null}
       <pre>{prompt}</pre>
       <button

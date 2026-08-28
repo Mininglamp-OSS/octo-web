@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { Plug } from "lucide-react";
-import { PromptForwardModal, useI18n, t, WKApp } from "@octo/base";
+import { PromptForwardModal, useI18n, WKApp } from "@octo/base";
 import type { McpListItem } from "../types/mcp";
 import {
   buildMcpConnectPrompt,
@@ -48,8 +48,6 @@ export default function McpConnectModal({ item, onClose }: McpConnectModalProps)
     <PromptForwardModal
       visible={Boolean(item)}
       onClose={onClose}
-      title={t("mcp.connect.title")}
-      hint={t("mcp.connect.hint")}
       icon={<Plug size={18} />}
       prompt={prompt}
       spaceId={spaceId}

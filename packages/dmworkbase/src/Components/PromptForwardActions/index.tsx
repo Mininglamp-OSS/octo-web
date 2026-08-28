@@ -54,6 +54,12 @@ export interface PromptForwardActionsProps {
    */
   layout?: "stack" | "split";
   /**
+   * Which action the host surface performs — selects the forward-button label
+   * ("…进行安装" / "…进行上架" / "…进行更新") so a publish/update surface does not
+   * render install phrasing. Defaults to "install".
+   */
+  kind?: "install" | "publish" | "update";
+  /**
    * DAP event to emit once on a SUCCESSFUL copy. Each host supplies its own
    * (e.g. "market_bot_publish_prompt_copied", "market_skill_install_prompt_copied",
    * "market_mcp_connect_prompt_copied") so the metric follows the surface, not
@@ -106,6 +112,7 @@ export default function PromptForwardActions({
   onForwarded,
   navigateOnSend = true,
   layout = "stack",
+  kind = "install",
   copyTrackEvent,
 }: PromptForwardActionsProps) {
   useI18n();
@@ -339,13 +346,22 @@ export default function PromptForwardActions({
       variant="secondary"
       icon={<Pencil size={15} />}
       onClick={() => setEditing((v) => !v)}
-      disabled={!draft && !editing}
+      disabled={!prompt && !editing}
     >
       {editing
         ? t("base.promptForward.doneEdit")
         : t("base.promptForward.editPrompt")}
     </WKButton>
   );
+
+  // Forward-button label follows the host's action so publish/update surfaces
+  // don't read the install phrasing ("…进行安装").
+  const forwardLabel =
+    kind === "publish"
+      ? t("base.promptForward.forwardToBotPublish")
+      : kind === "update"
+      ? t("base.promptForward.forwardToBotUpdate")
+      : t("base.promptForward.forwardToBot");
 
   const forwardButton = (
     <WKButton
@@ -355,9 +371,7 @@ export default function PromptForwardActions({
       disabled={!canForward}
       loading={forwarding}
     >
-      {forwarding
-        ? t("base.promptForward.forwarding")
-        : t("base.promptForward.forwardToBot")}
+      {forwarding ? t("base.promptForward.forwarding") : forwardLabel}
     </WKButton>
   );
 
