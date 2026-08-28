@@ -10,6 +10,12 @@ export interface DesktopUpdateInfo {
   forceUpdate?: boolean;
 }
 
+export interface LinuxAppImageInstallPlan {
+  targetPath: string;
+  stagingPath: string;
+  backupPath: string;
+}
+
 export interface ParseUpdateInfoOptions {
   allowInsecureHttp?: boolean;
   expectedDownloadOrigin?: string;
@@ -192,19 +198,25 @@ export function getDownloadedUpdateFileName(url: string, version: string, platfo
   const lowerSource = source.toLowerCase();
   const lowerExtension = extension.toLowerCase();
   const sourceWithExtension = lowerSource.endsWith(lowerExtension) ? source : fallbackName;
-  const stem = sourceWithExtension.slice(0, -extension.length).replace(/[. ]+$/, "") || `OCTO-${version}`;
-  return `${stem.slice(0, Math.max(1, 160 - extension.length))}${extension}`;
+  const fallbackStem = fallbackName.slice(0, -extension.length).replace(/[. ]+$/, "") || "OCTO";
+  const stem = sourceWithExtension.slice(0, -extension.length).replace(/[. ]+$/, "") || fallbackStem;
+  const safeStem = stem.replace(/[^A-Za-z0-9._ -]/g, "_").replace(/^\.+/, "").replace(/[. ]+$/, "") || "OCTO";
+  return `${safeStem.slice(0, Math.max(1, 160 - extension.length))}${extension}`;
 }
 
-export function isZipUpdatePackage(filePathOrUrl: string): boolean {
-  const pathName = (() => {
-    try {
-      return new URL(filePathOrUrl).pathname;
-    } catch {
-      return filePathOrUrl;
-    }
-  })();
-  return pathName.toLowerCase().endsWith(".zip");
+export function buildLinuxAppImageInstallPlan(currentAppImagePath: string): LinuxAppImageInstallPlan {
+  const targetPath = currentAppImagePath.trim();
+  if (!targetPath) {
+    throw new Error("Running AppImage path is not available");
+  }
+  if (!targetPath.toLowerCase().endsWith(".appimage")) {
+    throw new Error("Running AppImage path must end with .AppImage");
+  }
+  return {
+    targetPath,
+    stagingPath: `${targetPath}.update-in-progress`,
+    backupPath: `${targetPath}.previous-update`,
+  };
 }
 
 export function buildMacInstallScript(): string {
@@ -223,12 +235,17 @@ EXPECTED_TEAM_ID="$8"
 INSTALL_DIR="$9"
 RESULT_PATH="\${10}"
 LOG_PATH="\${11}"
+PS_BIN="\${OCTO_UPDATE_PS_BIN:-/bin/ps}"
 
-exec >> "$LOG_PATH" 2>&1 || true
+if ! : >> "$LOG_PATH" 2>/dev/null; then
+  LOG_PATH=/dev/null
+fi
+exec >> "$LOG_PATH" 2>&1
 echo "macOS update helper started at $(date)"
 
 cleanup() {
   rm -rf "$INSTALL_DIR"
+  rm -f "$RESULT_PATH.processes"
 }
 
 fail() {
@@ -243,7 +260,10 @@ fail() {
 
 wait_until_not_running() {
   RUNNING_CHECK=0
-  while /usr/bin/pgrep -f "$TARGET_APP_PATH/Contents/MacOS/" >/dev/null 2>&1; do
+  PROCESS_LIST_PATH="$RESULT_PATH.processes"
+  while :; do
+    "$PS_BIN" -axo command= > "$PROCESS_LIST_PATH" || fail 20
+    /usr/bin/awk -v prefix="$TARGET_APP_PATH/Contents/MacOS/" 'index($0, prefix) == 1 { found = 1; exit } END { exit found ? 0 : 1 }' "$PROCESS_LIST_PATH" || break
     RUNNING_CHECK=$((RUNNING_CHECK + 1))
     if [ "$RUNNING_CHECK" -ge 150 ]; then
       fail 20
@@ -263,7 +283,12 @@ case "$TARGET_APP_PATH" in
   *) fail 11 ;;
 esac
 
+PARENT_WAIT=0
 while kill -0 "$PARENT_PID" 2>/dev/null; do
+  PARENT_WAIT=$((PARENT_WAIT + 1))
+  if [ "$PARENT_WAIT" -ge 3000 ]; then
+    fail 23
+  fi
   sleep 0.2
 done
 
@@ -338,6 +363,20 @@ rm -f "$RESULT_PATH"
 rm -f "$ZIP_PATH"
 /usr/bin/open "$TARGET_APP_PATH"
 `;
+}
+
+export function buildWindowsInstallerSignatureCommand(): string {
+  return [
+    "$Path = $env:OCTO_UPDATE_INSTALLER_PATH",
+    "$ExpectedPublisher = $env:OCTO_UPDATE_WINDOWS_PUBLISHER_NAME",
+    "if ([string]::IsNullOrWhiteSpace($Path) -or [string]::IsNullOrWhiteSpace($ExpectedPublisher)) { exit 12 }",
+    "$signature = Get-AuthenticodeSignature -LiteralPath $Path",
+    "if ($signature.Status -ne 'Valid') { exit 10 }",
+    "$subject = $signature.SignerCertificate.Subject",
+    "$match = [regex]::Match($subject, '(?:^|,\\s*)CN=([^,]+)')",
+    "if (!$match.Success) { exit 11 }",
+    "if ($match.Groups[1].Value -ne $ExpectedPublisher) { exit 11 }",
+  ].join("; ");
 }
 
 export function getMacAppBundlePath(execPath: string): string {

@@ -174,7 +174,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                                 <WKButton variant="secondary" onClick={() => { onSetShowAppVersion(false); onNotifyListener(); }}>{t("base.common.cancel")}</WKButton>
                             )}
                             <WKButton variant="primary" onClick={onInstallUpdate}>
-                                {forceUpdate ? t("base.navRail.settingsCenter.action.retry") : t("base.common.update")}
+                                {t("base.common.update")}
                             </WKButton>
                         </>
                     ) : undefined}

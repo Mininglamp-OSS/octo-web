@@ -188,11 +188,21 @@ export default class MainVM extends ProviderListener {
   appUpdateInit() {
     // 监听升级失败事件
     this.addIpcListener(IPC_UPDATE_ERROR, (event, message) => {
+      const errorCode = typeof message?.code === "string" ? message.code : "";
       const errorMessage = typeof message === "string"
         ? message
         : typeof message?.message === "string"
           ? message.message
           : t("base.navRail.settingsCenter.value.updateCheckFailed");
+      if (errorCode === "download-cancelled") {
+        this.showAppVersion = false;
+        this.showAppUpdate = false;
+        this.showAppUpdateOperation = false;
+        this.appUpdateProgress = 0;
+        this.appUpdateDownloadedBytes = 0;
+        this.notifyListener();
+        return;
+      }
       this.showAppVersion = Boolean(this.lastVersionInfo);
       this.showAppUpdate = false;
       this.showAppUpdateOperation = Boolean(this.lastVersionInfo);

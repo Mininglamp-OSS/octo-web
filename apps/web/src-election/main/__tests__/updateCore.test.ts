@@ -4,15 +4,16 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  buildLinuxAppImageInstallPlan,
   buildMacInstallScript,
   buildUpdaterCheckUrl,
+  buildWindowsInstallerSignatureCommand,
   getDownloadedUpdateFileName,
   getMacAppBundleName,
   getMacAppBundlePath,
   getUpdaterPlatform,
   isAllowedUpdaterPackageUrl,
   isNewerVersion,
-  isZipUpdatePackage,
   parseUpdaterCheckResult,
   parseUpdateInfo,
 } from "../updateCore";
@@ -220,10 +221,20 @@ describe("desktop updater core", () => {
     expect(macName).toMatch(/\.zip$/);
   });
 
-  it("detects zip update packages", () => {
-    expect(isZipUpdatePackage("https://cdn.example.com/OCTO-1.0.0-universal.zip")).toBe(true);
-    expect(isZipUpdatePackage("/Users/me/Library/Application Support/OCTO/updates/OCTO-1.0.0-universal.zip")).toBe(true);
-    expect(isZipUpdatePackage("https://cdn.example.com/OCTO-1.0.0-universal.dmg")).toBe(false);
+  it("sanitizes fallback stems even when the server URL basename is empty", () => {
+    expect(
+      getDownloadedUpdateFileName("https://cdn.example.com/releases/%20.exe", "../../../../evil", "windows"),
+    ).toBe("OCTO-.._.._.._.._evil.exe");
+  });
+
+  it("builds Linux AppImage replacement paths from the running image", () => {
+    expect(buildLinuxAppImageInstallPlan("/home/me/OCTO.AppImage")).toEqual({
+      targetPath: "/home/me/OCTO.AppImage",
+      stagingPath: "/home/me/OCTO.AppImage.update-in-progress",
+      backupPath: "/home/me/OCTO.AppImage.previous-update",
+    });
+    expect(() => buildLinuxAppImageInstallPlan("")).toThrow("Running AppImage path is not available");
+    expect(() => buildLinuxAppImageInstallPlan("/home/me/OCTO.deb")).toThrow("Running AppImage path must end with .AppImage");
   });
 
   it("resolves the owning macOS app bundle from the executable path", () => {
@@ -248,6 +259,7 @@ describe("desktop updater core", () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "octo-updater-script-"));
     try {
       const scriptPath = path.join(tempDir, "install-macos-update.sh");
+      const psPath = path.join(tempDir, "ps-stub.sh");
       const zipPath = path.join(tempDir, "OCTO-1.0.1.zip");
       const targetAppPath = path.join(tempDir, "OCTO.app");
       const stagingPath = path.join(tempDir, "staging");
@@ -255,14 +267,17 @@ describe("desktop updater core", () => {
       const resultPath = path.join(tempDir, "last-macos-update-result.txt");
       const logPath = path.join(tempDir, "last-macos-update.log");
       fs.writeFileSync(scriptPath, buildMacInstallScript(), { mode: 0o700 });
+      fs.writeFileSync(psPath, "#!/bin/sh\nexit 0\n", { mode: 0o700 });
       fs.writeFileSync(zipPath, "");
 
+      // Linux runners intentionally fail at /usr/bin/ditto, so this test is scoped to
+      // exercising the shell template and the two-digit argv plumbing.
       expect(() => execFileSync("/bin/sh", [
         scriptPath,
         zipPath,
         targetAppPath,
         stagingPath,
-        "999999",
+        String(process.pid + 10_000_000),
         "com.mininglamp.octo.web",
         "OCTO.app",
         "1.0.1",
@@ -270,7 +285,14 @@ describe("desktop updater core", () => {
         installDir,
         resultPath,
         logPath,
-      ], { stdio: "ignore" })).toThrow();
+      ], {
+        stdio: "ignore",
+        timeout: 30_000,
+        env: {
+          ...process.env,
+          OCTO_UPDATE_PS_BIN: psPath,
+        },
+      })).toThrow();
 
       expect(fs.readFileSync(resultPath, "utf8").trim()).toBe("12");
       expect(fs.existsSync(logPath)).toBe(true);
@@ -279,5 +301,82 @@ describe("desktop updater core", () => {
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it("waits for a running macOS app path using literal matching when the path contains regex characters", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "octo-updater-wait-"));
+    let scriptProcess: ReturnType<typeof import("node:child_process").ChildProcess> | undefined;
+    try {
+      const targetAppPath = path.join(tempDir, "OCTO (Beta) [test].app");
+      const scriptPath = path.join(tempDir, "install-macos-update.sh");
+      const psPath = path.join(tempDir, "ps-stub.sh");
+      const runningFlagPath = path.join(tempDir, "app-running");
+      const zipPath = path.join(tempDir, "OCTO-1.0.1.zip");
+      const stagingPath = path.join(tempDir, "staging");
+      const installDir = path.join(tempDir, "install");
+      const resultPath = path.join(tempDir, "last-macos-update-result.txt");
+      const logPath = path.join(tempDir, "last-macos-update.log");
+      fs.writeFileSync(scriptPath, buildMacInstallScript(), { mode: 0o700 });
+      fs.writeFileSync(psPath, [
+        "#!/bin/sh",
+        `if [ -f "${runningFlagPath}" ]; then`,
+        `  printf "%s\\n" "${targetAppPath}/Contents/MacOS/OCTO --flag"`,
+        "fi",
+      ].join("\n"), { mode: 0o700 });
+      fs.writeFileSync(runningFlagPath, "");
+      fs.writeFileSync(zipPath, "");
+
+      const { spawn: spawnProcess } = await import("node:child_process");
+      scriptProcess = spawnProcess("/bin/sh", [
+        scriptPath,
+        zipPath,
+        targetAppPath,
+        stagingPath,
+        String(process.pid + 10_000_000),
+        "com.mininglamp.octo.web",
+        "OCTO (Beta) [test].app",
+        "1.0.1",
+        "TEAMID1234",
+        installDir,
+        resultPath,
+        logPath,
+      ], {
+        stdio: "ignore",
+        env: {
+          ...process.env,
+          OCTO_UPDATE_PS_BIN: psPath,
+        },
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(fs.existsSync(resultPath)).toBe(false);
+      fs.rmSync(runningFlagPath, { force: true });
+
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("installer script did not finish")), 30_000);
+        scriptProcess?.once("exit", () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+        scriptProcess?.once("error", (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        });
+      });
+      expect(fs.readFileSync(resultPath, "utf8").trim()).toBe("12");
+    } finally {
+      scriptProcess?.kill();
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps Windows signature verification values bound through environment variables", () => {
+    const command = buildWindowsInstallerSignatureCommand();
+    expect(command).toContain("$Path = $env:OCTO_UPDATE_INSTALLER_PATH");
+    expect(command).toContain("$ExpectedPublisher = $env:OCTO_UPDATE_WINDOWS_PUBLISHER_NAME");
+    expect(command).toContain("Get-AuthenticodeSignature -LiteralPath $Path");
+    expect(command).not.toContain("param([string]$Path, [string]$ExpectedPublisher)");
+    expect(command).not.toContain("${filePath}");
+    expect(command).not.toContain("${expectedPublisher}");
   });
 });
