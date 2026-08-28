@@ -967,6 +967,26 @@ describe("MarkdownContent — display 配对在容器与换行组合下保持稳
       expect(visibleText(root)).toContain("note a_1 here");
     });
   }
+
+  const reusedDisplayOpenerCases: Array<[string, string, string]> = [
+    [
+      "cost $$5 for\n$$\n\\alpha \\% \\beta + \\gamma^2\n$$",
+      "\\alpha \\% \\beta + \\gamma^2",
+      "β",
+    ],
+    ["cost $$5 for\n$$\na\\_b^2\n$$", "a\\_b^2", "a"],
+  ];
+
+  for (const [content, tex, visibleToken] of reusedDisplayOpenerCases) {
+    it(`复用 closer 作为 display opener 时保留块内转义：${tex}`, () => {
+      const root = renderContent(<MarkdownContent content={content} />);
+      expect(root.querySelectorAll(".katex-display")).toHaveLength(1);
+      expect(texAnnotations(root).some((value) => value.includes(tex))).toBe(
+        true
+      );
+      expect(visibleText(root)).toContain(visibleToken);
+    });
+  }
 });
 
 describe("MarkdownContent — markdown 转义的 \\$ 保持 literal，不被重新激活为定界符 (reviewer P0-2)", () => {

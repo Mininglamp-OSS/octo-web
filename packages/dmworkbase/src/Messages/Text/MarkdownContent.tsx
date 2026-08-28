@@ -780,9 +780,20 @@ function collectPotentialMathRanges(
     }
     if (close >= 0) {
       ranges.push([i + openLen, close]);
+      const preserveCloseAsDisplayOpener =
+        openLen === 2 &&
+        /[\r\n]/.test(source.slice(i + openLen, close)) &&
+        !isAnchoredDisplay(source, i, close) &&
+        isStandaloneDisplayOpener(source, close);
       // 与 scanTextForMath 保持一致：单 `$` 候选可能被正文守卫拒绝，此时 closer 仍可能是
-      // 后续真实公式的 opener，因此只越过当前 opener；`$$` 完整候选则整体消费。
-      i = openLen === 1 ? i + openLen : close + openLen;
+      // 后续真实公式的 opener，因此只越过当前 opener；非锚定的多行 `$$` 候选也可能复用
+      // 独占行 closer 作为下一段 display opener。其余 `$$` 完整候选整体消费。
+      i =
+        openLen === 1
+          ? i + openLen
+          : preserveCloseAsDisplayOpener
+          ? close
+          : close + openLen;
     } else {
       i += openLen;
     }
