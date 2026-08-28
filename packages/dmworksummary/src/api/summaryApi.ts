@@ -93,6 +93,38 @@ summaryAxios.interceptors.response.use(
 
 const BASE = '/summary/api/v1';
 
+/**
+ * 待关注计数请求的超时。
+ *
+ * 其它请求没超时还能接受（用户在看着，卡了他会自己重试），这条不行：
+ * 兜底轮询内部有请求互斥（summaryAttentionPoll 的 fetching 标志），一个挂死的
+ * 请求会把整条轮询链停摆到浏览器自己超时为止（可能一两分钟，也可能更久）。
+ * 而「无人值守时红点会自己亮」正是这条轮询唯一的存在理由。加上超时后，
+ * 挂死请求会落进既有的失败/退避分支，重新排期。
+ *
+ * 10s 取得比基础间隔 15s 短：让失败在下一拍之前就完成销账，不会因为互斥
+ * 而跳拍。
+ */
+export const SUMMARY_ATTENTION_TIMEOUT_MS = 10_000;
+
+/**
+ * 校验待关注计数响应的形状。
+ *
+ * 不校验的话，一个信封错位的响应（网关改了包装、后端返回 HTML 错误页、
+ * 字段改名）会让 `attention_count` 取到 undefined，一路满足下游的 `?? 0`，
+ * 红点【静默归零】——而且还会被当成正常样本广播给全部标签页，把错误放大。
+ * 没有红点和红点不对用户分辨不出来，也不会报 bug。
+ *
+ * 报错而不是默认 0：上层对失败的处理是「保持旧值 + 退避」，正是这里想要的。
+ */
+function assertAttentionCounts(data: unknown): SummaryAttentionCounts {
+    const counts = data as SummaryAttentionCounts | null | undefined;
+    if (!counts || typeof counts !== 'object' || !Number.isFinite(counts.attention_count)) {
+        throw new Error('Malformed summary attention response');
+    }
+    return counts;
+}
+
 function extractErrorMessage(err: unknown): string {
     const axiosErr = err as { response?: { status?: number; data?: { message?: string; msg?: string; error?: { message?: string } } } };
     const status = axiosErr?.response?.status;
@@ -610,8 +642,11 @@ export async function getSummaryAttention(options?: { fresh?: boolean }): Promis
     try {
         const resp = await summaryAxios.get(`${BASE}/summaries/attention`, {
             params: options?.fresh ? { fresh: 1 } : undefined,
+            timeout: SUMMARY_ATTENTION_TIMEOUT_MS,
         });
-        return resp.data?.data ?? resp.data;
+        // 校验在 404 判定【之内】，但抛的是不带 status 的 Error，所以不会被
+        // fetchSummaryAttentionCounts 误判成「端点不存在」而永久降级到重的那条路径。
+        return assertAttentionCounts(resp.data?.data ?? resp.data);
     } catch (err) {
         if (axios.isCancel(err)) throw err;
         const status = (err as { response?: { status?: number } })?.response?.status;
@@ -668,12 +703,13 @@ export async function fetchSummaryAttentionCounts(options?: { fresh?: boolean })
     // page_size=1 是为了让后端少序列化几条 item，返回的 items 直接丢掉。
     // 窄端点全量上线后，这段连同 summaryAttentionEndpointMissing 可以一起删。
     const resp = await listSummaries({ page: 1, page_size: 1 });
-    return {
+    // 兵底路径同样校验：它并不比窄端点更可信，而且它是老后端上的唯一数据源。
+    return assertAttentionCounts({
         attention_count: resp.attention_count,
         unread_count: resp.unread_count,
         pending_invitation_count: resp.pending_invitation_count,
         pending_submission_count: resp.pending_submission_count,
-    };
+    });
 }
 
 export async function getSummaryDetail(taskId: number | string): Promise<SummaryDetail> {

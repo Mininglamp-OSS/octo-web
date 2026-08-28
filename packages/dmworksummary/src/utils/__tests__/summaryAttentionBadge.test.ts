@@ -20,6 +20,13 @@ import {
     beginSummaryAttentionRead,
     commitSummaryAttentionBadge,
     abandonSummaryAttentionRead,
+    acceptRemoteAttentionCount,
+    attentionSampleAt,
+    hasInFlightAttentionRead,
+    readSummaryAttentionCount,
+    resetSummaryAttentionOrdering,
+    setSummaryAttentionPublisher,
+    ATTENTION_CACHE_TTL_MS,
 } from '../summaryAttentionBadge';
 
 import { WKApp } from '@octo/base';
@@ -337,5 +344,198 @@ describe('summaryAttentionBadge — 放弃路径还号 (ticket liveness)', () =>
 
         commitSummaryAttentionBadge(t1, 4);                   // 1 === 1 → 落盘
         expect(getSummaryAttentionBadge()).toBe(4);
+    });
+});
+
+// ═══ 广播的排序（跨标签页） ═══
+//
+// 🔴 回归组。此前 module.tsx 的 onRemoteCount 直接 setSummaryAttentionBadge，
+// 完全绕开号段，是 last-write-wins。可达交错：
+//   1. leader 的轮询发出（不带 fresh，可能命中服务端 5s 缓存）；
+//   2. 跟随者标签页上用户做了动作（已读/提交），本地 fresh=1 读取发出、先返回、
+//      按票号 commit 了新值；
+//   3. leader 的响应此时才到达并广播旧值 → 跟随者无条件写入，把刚 commit 的
+//      新值盖回旧值。
+// 观感就是「明明点完了红点还挂着」——恰好是本 PR 用 fresh=1 刻意规避的那件事。
+//
+// 号段解决不了它：广播来自另一个标签页，它的票号属于那边的号段，两个号段之间
+// 没有任何可比性。所以引入一个跨标签页可比的刻度——样本时刻（同源标签页共用
+// 系统时钟），广播与本地写入进同一个排序域。
+describe('summaryAttentionBadge — 广播排序', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        WKApp.shared.currentSpaceId = 'space-123';
+        WKApp.loginInfo.uid = 'test-uid';
+        vi.spyOn(WKApp.loginInfo, 'isLogined').mockReturnValue(true);
+        vi.spyOn(WKApp.menus, 'refresh').mockImplementation(() => {});
+        setSummaryAttentionBadge(0);
+        resetSummaryAttentionOrdering();
+        vi.mocked(WKApp.menus.refresh).mockClear();
+    });
+
+    it('样本时刻折算：不带 fresh 的读按最坏情况往前推一个缓存 TTL', () => {
+        // 不带 fresh 的读可能命中服务端 5s 缓存，那条缓存最早可能是 5 秒前建的，
+        // 所以它代表的状态时刻要按最坏情况算。带 fresh 的读绕过缓存，发出即代表。
+        expect(attentionSampleAt(1_000_000, true)).toBe(1_000_000);
+        expect(attentionSampleAt(1_000_000, false)).toBe(1_000_000 - ATTENTION_CACHE_TTL_MS);
+    });
+
+    it('本地没有在飞读取、且广播更新时，广播落盘', () => {
+        expect(acceptRemoteAttentionCount(4, 2_000)).toBe(true);
+        expect(getSummaryAttentionBadge()).toBe(4);
+    });
+
+    it('🔴 leader 迟到的旧广播不得覆盖本地刚 commit 的新值', () => {
+        // 1) leader 的轮询在 t=1000 发出，不带 fresh → 样本时刻折算成 1000-5000。
+        const leaderSampleAt = attentionSampleAt(1_000, false);
+
+        // 2) 跟随者上用户做了动作，本地 fresh 读在 t=2000 发出并先返回、落盘。
+        const ticket = beginSummaryAttentionRead();
+        commitSummaryAttentionBadge(ticket, 0, attentionSampleAt(2_000, true));
+        expect(getSummaryAttentionBadge()).toBe(0);
+
+        // 3) leader 的响应此刻才到达并广播旧值。
+        expect(acceptRemoteAttentionCount(3, leaderSampleAt)).toBe(false);
+        expect(getSummaryAttentionBadge()).toBe(0);   // 旧实现这里会变回 3
+    });
+
+    it('🔴 缓存窗口内的广播被折算后拒收（5s 缓存把窗口拉得更宽）', () => {
+        // 用户动作在 t=10000 落盘；leader 的非 fresh 轮询在 t=12000 发出，
+        // 看似更晚，但它可能吃到 t=7000 建的缓存 → 折算后是 7000，排不过 10000。
+        const ticket = beginSummaryAttentionRead();
+        commitSummaryAttentionBadge(ticket, 0, attentionSampleAt(10_000, true));
+
+        expect(acceptRemoteAttentionCount(5, attentionSampleAt(12_000, false))).toBe(false);
+        expect(getSummaryAttentionBadge()).toBe(0);
+    });
+
+    it('本地有读取在飞时一律不收广播（本地读取更权威）', () => {
+        beginSummaryAttentionRead();
+        expect(hasInFlightAttentionRead()).toBe(true);
+
+        // 本地在飞的那个读带 fresh、反映本标签页用户刚做完的动作，
+        // 它回来时会写正确值；此刻收广播只是徒增一次闪烁。
+        expect(acceptRemoteAttentionCount(9, Number.MAX_SAFE_INTEGER)).toBe(false);
+        expect(getSummaryAttentionBadge()).toBe(0);
+    });
+
+    it('在飞读取结束后广播恢复接收（commit 与 abandon 都要销账）', async () => {
+        const t1 = beginSummaryAttentionRead();
+        commitSummaryAttentionBadge(t1, 1, 1_000);
+        expect(hasInFlightAttentionRead()).toBe(false);
+
+        const t2 = beginSummaryAttentionRead();
+        abandonSummaryAttentionRead(t2);
+        expect(hasInFlightAttentionRead()).toBe(false);
+
+        // 销账漏掉任何一条，广播就会被永久堵死——一个不会报错、只会「红点不准」
+        // 的静默故障。
+        expect(acceptRemoteAttentionCount(6, 2_000)).toBe(true);
+        expect(getSummaryAttentionBadge()).toBe(6);
+    });
+
+    it('被更新读取顶掉的 commit 同样销账，不会把广播堵死', () => {
+        const older = beginSummaryAttentionRead();
+        const newer = beginSummaryAttentionRead();
+
+        commitSummaryAttentionBadge(newer, 2, 2_000);
+        commitSummaryAttentionBadge(older, 8, 1_000);     // 号不是最新 → 丢弃
+
+        expect(hasInFlightAttentionRead()).toBe(false);
+        expect(getSummaryAttentionBadge()).toBe(2);
+    });
+
+    it('相同样本时刻的广播不重复写（同一份样本广播两次也无害）', () => {
+        expect(acceptRemoteAttentionCount(4, 5_000)).toBe(true);
+        expect(acceptRemoteAttentionCount(7, 5_000)).toBe(false);
+        expect(getSummaryAttentionBadge()).toBe(4);
+    });
+
+    it('畸形广播（非有限数）被拒，不写坏红点', () => {
+        setSummaryAttentionBadge(3);
+        expect(acceptRemoteAttentionCount(Number.NaN, 9_000)).toBe(false);
+        expect(acceptRemoteAttentionCount(2, Number.NaN)).toBe(false);
+        expect(getSummaryAttentionBadge()).toBe(3);
+    });
+
+    it('广播落盘后会推进本地水位：更旧的广播随后到达也进不来', () => {
+        expect(acceptRemoteAttentionCount(4, 5_000)).toBe(true);
+        expect(acceptRemoteAttentionCount(9, 4_000)).toBe(false);
+        expect(getSummaryAttentionBadge()).toBe(4);
+    });
+});
+
+// 每一次成功的本地读取都要广播出去，不只是 leader 的轮询：一个标签页里用户
+// 点掉红点，其它标签页本来就该跟着灭，而不是等 leader 下一拍（最长 60s）。
+describe('summaryAttentionBadge — 读取路径广播钩子', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        WKApp.shared.currentSpaceId = 'space-123';
+        WKApp.loginInfo.uid = 'test-uid';
+        vi.spyOn(WKApp.loginInfo, 'isLogined').mockReturnValue(true);
+        vi.spyOn(WKApp.menus, 'refresh').mockImplementation(() => {});
+        setSummaryAttentionBadge(0);
+        resetSummaryAttentionOrdering();
+        vi.mocked(WKApp.menus.refresh).mockClear();
+    });
+
+    it('成功读取后广播计数与样本时刻', async () => {
+        const publisher = vi.fn();
+        setSummaryAttentionPublisher(publisher);
+        vi.mocked(api.fetchSummaryAttentionCounts).mockResolvedValueOnce({ attention_count: 3 } as any);
+
+        const sample = await readSummaryAttentionCount({ fresh: true });
+
+        expect(sample).toEqual({ count: 3, sampleAt: expect.any(Number) });
+        expect(publisher).toHaveBeenCalledWith(3, sample!.sampleAt);
+    });
+
+    it('用户动作的读带 fresh，样本时刻不折算', async () => {
+        const publisher = vi.fn();
+        setSummaryAttentionPublisher(publisher);
+        vi.mocked(api.fetchSummaryAttentionCounts).mockResolvedValueOnce({ attention_count: 1 } as any);
+
+        const before = Date.now();
+        const sample = await readSummaryAttentionCount({ fresh: true });
+
+        // 绕过了缓存，所以样本时刻就是发出时刻，不往前推 TTL。
+        expect(sample!.sampleAt).toBeGreaterThanOrEqual(before);
+    });
+
+    it('后台轮询的读不带 fresh，样本时刻往前推一个 TTL', async () => {
+        vi.mocked(api.fetchSummaryAttentionCounts).mockResolvedValueOnce({ attention_count: 1 } as any);
+
+        const before = Date.now();
+        const sample = await readSummaryAttentionCount();
+
+        expect(sample!.sampleAt).toBeLessThanOrEqual(before - ATTENTION_CACHE_TTL_MS);
+    });
+
+    it('失败、跨 Space 早退、未登录都不广播', async () => {
+        const publisher = vi.fn();
+        setSummaryAttentionPublisher(publisher);
+
+        vi.mocked(api.fetchSummaryAttentionCounts).mockRejectedValueOnce(new Error('network'));
+        await expect(readSummaryAttentionCount()).rejects.toBeTruthy();
+        expect(publisher).not.toHaveBeenCalled();
+
+        vi.mocked(api.fetchSummaryAttentionCounts).mockImplementationOnce(async () => {
+            WKApp.shared.currentSpaceId = 'space-b';
+            return { attention_count: 5 } as any;
+        });
+        await expect(readSummaryAttentionCount()).resolves.toBeNull();
+        expect(publisher).not.toHaveBeenCalled();
+
+        WKApp.shared.currentSpaceId = 'space-123';
+        vi.mocked(WKApp.loginInfo.isLogined).mockReturnValue(false);
+        await expect(readSummaryAttentionCount()).resolves.toBeNull();
+        expect(publisher).not.toHaveBeenCalled();
+    });
+
+    it('没有接钩子时读取照常工作（拆线后不得抛异常）', async () => {
+        setSummaryAttentionPublisher(null);
+        vi.mocked(api.fetchSummaryAttentionCounts).mockResolvedValueOnce({ attention_count: 2 } as any);
+
+        await expect(readSummaryAttentionCount()).resolves.toMatchObject({ count: 2 });
     });
 });

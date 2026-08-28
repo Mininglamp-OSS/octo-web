@@ -34,9 +34,78 @@ let summaryAttentionBadge = 0;
 // 轮询的旧响应最后到达”这类交错不需要用户配合就会发生。不排序的话，
 // 先发后到的旧快照会盖掉新值。
 let issueSeq = 0;
+/**
+ * 当前在飞的读取数量（领了号、还没 commit 也还没 abandon）。
+ *
+ * 只服务于【广播】的取舍：本标签页自己有读取在飞时，那个读取比任何广播都权威
+ * （它反映的是本标签页用户刚做完的动作，且带 fresh=1），此时到达的广播一律不写。
+ * 本地读取之间的排序仍然只靠票号，与这个计数无关。
+ */
+let inFlightReads = 0;
+/**
+ * 最近一次真正落盘的样本所反映的【服务端时刻】（见 attentionSampleAt）。
+ *
+ * 号段解决不了广播的排序：广播来自另一个标签页，它的票号属于那边的号段，
+ * 两个号段之间没有任何可比性。而红点值本身是跨标签页共享的同一份事实，
+ * 所以必须有一个跨标签页可比的刻度——同源标签页共用系统时钟，取数时刻就是。
+ */
+let lastCommittedSampleAt = 0;
+
+/**
+ * 服务端 attention 缓存的时长。与后端 `GET /summaries/attention` 的 5s 缓存
+ * 一致（见 api/summaryApi.ts）。改后端缓存时这里必须跟着改。
+ */
+export const ATTENTION_CACHE_TTL_MS = 5_000;
+
+/**
+ * 把「请求发出时刻」折算成「这份数据所反映的服务端时刻」。
+ *
+ * 不带 fresh 的读可能命中服务端的 5s 缓存，那条缓存最早可能是 5 秒前建的，
+ * 所以它代表的状态时刻要按【最坏情况】往前推一个 TTL。带 fresh 的读绕过缓存，
+ * 发出时刻就是它反映的时刻。
+ *
+ * 折算不是吹毛求疵，它正是本机制要防的那条交错：leader 的轮询（不带 fresh）
+ * 在用户动作【之后】发出，却可能取回动作【之前】的缓存值。只比发出时刻的话，
+ * 这份陈旧快照反而更“新”，会把用户刚点掉的红点重新点亮——恰好复现本 PR 用
+ * fresh=1 刻意规避的那个观感。
+ */
+export function attentionSampleAt(issuedAt: number, fresh: boolean): number {
+    return fresh ? issuedAt : issuedAt - ATTENTION_CACHE_TTL_MS;
+}
 
 export function getSummaryAttentionBadge(): number {
     return summaryAttentionBadge;
+}
+
+/** 本标签页当前是否有读取在飞。广播接受判定用，另见 inFlightReads。 */
+export function hasInFlightAttentionRead(): boolean {
+    return inFlightReads > 0;
+}
+
+/**
+ * 本标签页取数成功后向其它标签页广播的钩子（module.tsx 接到 leader.publish）。
+ *
+ * 放在这里而不是只给轮询接，是因为【每一次】成功的本地读取都值得广播，
+ * 不只是 leader 的轮询：用户在一个标签页里点开总结、红点清掉，其它标签页的
+ * 红点本来就该跟着灭，而不是等下一拍轮询（最长 60s）。而且用户动作的读带
+ * fresh=1，样本时刻最新，天然能排赢任何在飞的缓存读。
+ *
+ * 广播只在这一处发出，不要再给轮询的 onCount 接一份：两处都发就是同一个
+ * 样本广播两次（第二次因 sampleAt 相等而被对端丢弃，只是白跑一轮）。
+ */
+let attentionPublisher: ((count: number, sampleAt: number) => void) | null = null;
+
+export function setSummaryAttentionPublisher(
+    publisher: ((count: number, sampleAt: number) => void) | null,
+): void {
+    attentionPublisher = publisher;
+}
+
+/** 测试用：重置模块级的广播排序状态（模块级状态跨用例会串）。 */
+export function resetSummaryAttentionOrdering(): void {
+    inFlightReads = 0;
+    lastCommittedSampleAt = 0;
+    attentionPublisher = null;
 }
 
 /**
@@ -45,6 +114,7 @@ export function getSummaryAttentionBadge(): number {
  * 当成发出顺序，正是本机制要避开的错。
  */
 export function beginSummaryAttentionRead(): number {
+    inFlightReads += 1;
     return ++issueSeq;
 }
 
@@ -56,9 +126,40 @@ export function beginSummaryAttentionRead(): number {
  * 必须调 abandonSummaryAttentionRead 把号还回去（ticket liveness）。
  * 若它失败，按“静默失败保持旧值”的一贯策略，宁可不刷也不写旧数。
  */
-export function commitSummaryAttentionBadge(ticket: number, count: number): void {
+export function commitSummaryAttentionBadge(ticket: number, count: number, sampleAt?: number): void {
+    // 本地读取结束：无论是否落盘，它都不再在飞了。放在 seq 判定【之前】，
+    // 被更新的读取顶掉的那次也必须销账，否则计数只增不减，广播被永久堵死。
+    if (inFlightReads > 0) inFlightReads -= 1;
     if (ticket !== issueSeq) return;
+    // 记下这次落盘所反映的服务端时刻，供广播排序比较。sampleAt 缺省时
+    // （SummaryListPage.loadData 这类没有折算信息的调用方）按“现在”记：
+    // 列表响应刚到，把它当成最新样本，之后到达的旧广播理应排不过它。
+    lastCommittedSampleAt = sampleAt ?? Date.now();
     setSummaryAttentionBadge(count);
+}
+
+/**
+ * 收下一条来自其它标签页的广播计数。
+ *
+ * 广播【不能】直接 setSummaryAttentionBadge：那是 last-write-wins，会出现
+ * 「用户在本标签页点掉红点、本地已 commit 新值，leader 那条更早发出的响应
+ * 随后到达并广播旧值，把刚清掉的红点又点回来」。这条交错不需要用户配合，
+ * leader 的轮询本来就是无人值守自行开火的。
+ *
+ * 两道闸：
+ *   1. 本地有读取在飞 → 一律不收。那个读取更权威（本标签页用户的动作、带
+ *      fresh），它回来时会写正确值；此刻收广播只是徒增一次闪烁。
+ *   2. 广播样本的服务端时刻不晚于本地最后一次落盘 → 丢弃。这是真正的排序。
+ *
+ * @returns 是否真的写入了（测试与诊断用）。
+ */
+export function acceptRemoteAttentionCount(count: number, sampleAt: number): boolean {
+    if (!Number.isFinite(count) || !Number.isFinite(sampleAt)) return false;
+    if (inFlightReads > 0) return false;
+    if (sampleAt <= lastCommittedSampleAt) return false;
+    lastCommittedSampleAt = sampleAt;
+    setSummaryAttentionBadge(count);
+    return true;
 }
 
 /**
@@ -75,6 +176,8 @@ export function commitSummaryAttentionBadge(ticket: number, count: number): void
  * SummaryListPage.loadData 的 finally）。
  */
 export function abandonSummaryAttentionRead(ticket: number): void {
+    // 同 commit：本地读取结束就销账，与号还不还得回去无关。
+    if (inFlightReads > 0) inFlightReads -= 1;
     if (ticket === issueSeq) issueSeq--;
 }
 
@@ -136,10 +239,16 @@ export async function refreshSummaryAttentionBadge(): Promise<void> {
  * 复制三份。所有早退路径都必须还号，否则号段停在一个再也不会提交的号上，
  * 一个发出更早、仍在飞、携带正确值的读取会被一并作废（ticket liveness）。
  */
-export async function readSummaryAttentionCount(options?: { fresh?: boolean }): Promise<number | null> {
+export async function readSummaryAttentionCount(
+    options?: { fresh?: boolean },
+): Promise<{ count: number; sampleAt: number } | null> {
     const spaceId = WKApp.shared.currentSpaceId;
     if (!WKApp.loginInfo.isLogined() || !WKApp.loginInfo.uid || !spaceId) return null;
 
+    const fresh = options?.fresh === true;
+    // 折算基准必须取【发出前】的时刻，和领号同一个道理：await 之后再取，
+    // 记的就是到达时刻，正是本机制要避开的错。
+    const sampleAt = attentionSampleAt(Date.now(), fresh);
     const ticket = beginSummaryAttentionRead();
     let counts: api.SummaryAttentionCounts;
     try {
@@ -157,6 +266,10 @@ export async function readSummaryAttentionCount(options?: { fresh?: boolean }): 
         return null;
     }
     const count = counts?.attention_count ?? 0;
-    commitSummaryAttentionBadge(ticket, count);
-    return count;
+    commitSummaryAttentionBadge(ticket, count, sampleAt);
+    // 广播放在 commit 之后、不看 commit 是否真的落盘：被更新的本地读取顶掉只说明
+    // 本标签页有更新的数，不说明这份样本对【其它】标签页无用；对端自己会按
+    // sampleAt 排序。广播失败不影响本标签页，钩子内部已经静默。
+    attentionPublisher?.(count, sampleAt);
+    return { count, sampleAt };
 }

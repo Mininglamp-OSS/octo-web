@@ -36,6 +36,7 @@ const leader = vi.hoisted(() => ({
   publish: vi.fn(),
   isLeader: () => true,
   isDegraded: () => false,
+  setVisible: vi.fn(),
 }));
 
 const captured = vi.hoisted(() => ({
@@ -100,9 +101,12 @@ vi.mock("../features/summaryShare/navigation", () => ({
 vi.mock("../utils/chatSummaryActions", () => ({ notifyChatSummaryCreated: vi.fn() }));
 vi.mock("../utils/summaryAttentionBadge", () => ({
   getSummaryAttentionBadge: () => 0,
-  readSummaryAttentionCount: vi.fn().mockResolvedValue(0),
+  // 返回 { count, sampleAt }：sampleAt 是广播排序用的样本时刻。
+  readSummaryAttentionCount: vi.fn().mockResolvedValue({ count: 0, sampleAt: 1_000 }),
   refreshSummaryAttentionBadge: vi.fn(),
   setSummaryAttentionBadge: vi.fn(),
+  acceptRemoteAttentionCount: vi.fn(),
+  setSummaryAttentionPublisher: vi.fn(),
 }));
 vi.mock("../utils/summaryAttentionPoll", () => ({
   createAttentionPoll: (deps: unknown) => {
@@ -121,7 +125,10 @@ vi.mock("../components/ChatSummaryStarButton", () => ({ default: () => null }));
 vi.mock("../components/ChatSummaryPanel", () => ({ default: () => null }));
 
 import { SummaryModule, disposeSummaryModuleListeners } from "../module";
-import { setSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
+import {
+  acceptRemoteAttentionCount,
+  setSummaryAttentionPublisher,
+} from "../utils/summaryAttentionBadge";
 
 function mittHandler(event: string): (payload?: unknown) => void {
   const handler = state.mittHandlers.get(event);
@@ -168,6 +175,9 @@ describe("SummaryModule —— 兜底轮询接线", () => {
 
     captured.leaderDeps.onBecomeLeader();
     expect(poll.start).toHaveBeenCalledTimes(1);
+    // 接管意味着刚才有一段【没人轮询】的窗口（上任 leader 崩了，或切到后台
+    // 让了位），必须立刻取一次而不是等一个基础间隔。start() 只排期不取数。
+    expect(poll.notifyActivity).toHaveBeenCalledTimes(1);
 
     captured.leaderDeps.onResignLeader();
     expect(poll.stop).toHaveBeenCalledTimes(1);
@@ -190,22 +200,34 @@ describe("SummaryModule —— 兜底轮询接线", () => {
     await expect(captured.pollDeps.fetchCount()).resolves.toBe(0);
   });
 
-  it("取到的计数被广播出去，并带上当前 Space", async () => {
-    captured.pollDeps.onCount(5);
+  // 广播不再挂在轮询的 onCount 上：每一次成功的本地读取都该广播，不只是
+  // leader 那一条。一个标签页里用户点掉红点，其它标签页本来就该跟着灭，
+  // 而不是等 leader 下一拍（最长 60s）。
+  it("广播钩子接到读取路径上，而不是只接轮询的 onCount", () => {
+    expect(setSummaryAttentionPublisher).toHaveBeenCalledTimes(1);
+    expect(captured.pollDeps.onCount).toBeUndefined();
+  });
 
-    expect(leader.publish).toHaveBeenCalledWith(5, "space-a");
+  it("广播带上当前 Space 与样本时刻", () => {
+    const publisher = vi.mocked(setSummaryAttentionPublisher).mock.calls[0][0]!;
+
+    publisher(5, 1_700_000_000_000);
+
+    expect(leader.publish).toHaveBeenCalledWith(5, "space-a", 1_700_000_000_000);
   });
 
   it("只接受与本标签页当前 Space 相同的广播", () => {
-    captured.leaderDeps.onRemoteCount(7, "space-a");
-    expect(setSummaryAttentionBadge).toHaveBeenCalledWith(7);
+    captured.leaderDeps.onRemoteCount(7, "space-a", 1_700_000_000_000);
+    // 广播不再直接 setSummaryAttentionBadge：那是 last-write-wins，会让 leader
+    // 一条更早发出的响应把本地刚 commit 的新值盖回去。改走同一个排序域。
+    expect(acceptRemoteAttentionCount).toHaveBeenCalledWith(7, 1_700_000_000_000);
 
-    vi.mocked(setSummaryAttentionBadge).mockClear();
+    vi.mocked(acceptRemoteAttentionCount).mockClear();
 
     // 各标签页可能停在不同 Space 上；写错 Space 的数字比不刷新更糟。
-    captured.leaderDeps.onRemoteCount(9, "space-b");
-    captured.leaderDeps.onRemoteCount(9, "");
-    expect(setSummaryAttentionBadge).not.toHaveBeenCalled();
+    captured.leaderDeps.onRemoteCount(9, "space-b", 1_700_000_000_001);
+    captured.leaderDeps.onRemoteCount(9, "", 1_700_000_000_002);
+    expect(acceptRemoteAttentionCount).not.toHaveBeenCalled();
   });
 
   it("标签页转入后台时停表，回到前台时重新起表", () => {
@@ -216,6 +238,19 @@ describe("SummaryModule —— 兜底轮询接线", () => {
     state.visibility = "visible";
     docHandler("visibilitychange")();
     expect(poll.setVisible).toHaveBeenLastCalledWith(true);
+  });
+
+  // 🔴 回归：可见性此前只喂给轮询，没喂给 leader。于是隐藏的 leader 一边停着
+  // 自己的表、一边每 3s 照常续租，其它可见标签页永远看到新鲜租约不接管——
+  // 整个浏览器零轮询，直到 Chrome 的 intensive throttling（约 5 分钟）生效才自愈。
+  it("可见性同时是选主资格：隐藏时通知 leader 让位，可见时通知它重新竞争", () => {
+    state.visibility = "hidden";
+    docHandler("visibilitychange")();
+    expect(leader.setVisible).toHaveBeenLastCalledWith(false);
+
+    state.visibility = "visible";
+    docHandler("visibilitychange")();
+    expect(leader.setVisible).toHaveBeenLastCalledWith(true);
   });
 
   it("窗口聚焦算一次活动：把节奏拉回基础档", () => {
@@ -275,6 +310,16 @@ describe("SummaryModule —— 定时器与监听的拆线", () => {
     expect(leader.stop).toHaveBeenCalledTimes(1);
     // 降级模式下轮询是被直接拉起来的，不依赖 leader 回调，必须显式再停一次。
     expect(poll.stop).toHaveBeenCalledTimes(1);
+  });
+
+  // 广播钩子持有 _attentionLeader 的引用；漏拆的话，热更后新模块的读取会往
+  // 一个已关闭的 channel 上发广播，更糟的是它会一直钉住旧模块实例。
+  it("拆线摘掉广播钩子", () => {
+    vi.mocked(setSummaryAttentionPublisher).mockClear();
+
+    disposeSummaryModuleListeners();
+
+    expect(setSummaryAttentionPublisher).toHaveBeenCalledWith(null);
   });
 
   it("拆线后路由监听不再在总线上", () => {

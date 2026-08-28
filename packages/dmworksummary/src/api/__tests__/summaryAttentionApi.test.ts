@@ -36,10 +36,20 @@ import {
     fetchSummaryAttentionCounts,
     getSummaryAttention,
     resetSummaryAttentionEndpointProbe,
+    SUMMARY_ATTENTION_TIMEOUT_MS,
 } from '../summaryApi';
 
 const ATTENTION_PATH = '/summary/api/v1/summaries/attention';
 const LIST_PATH = '/summary/api/v1/summaries';
+
+/**
+ * 窄端点的请求配置。timeout 是【必须】断言的一部分，不是可有可无的细节：
+ * 兜底轮询内部有请求互斥，一个挂死的请求会把整条轮询链停摆到浏览器自己超时
+ * 为止，而「无人值守时红点会自己亮」正是这条轮询唯一的存在理由。
+ */
+function attentionCfg(params?: Record<string, unknown>) {
+    return { params, timeout: SUMMARY_ATTENTION_TIMEOUT_MS };
+}
 
 function httpError(status: number) {
     return { response: { status, data: { message: `HTTP ${status}` } } };
@@ -69,7 +79,7 @@ describe('getSummaryAttention —— 窄端点', () => {
 
         await getSummaryAttention({ fresh: true });
 
-        expect(mockGet).toHaveBeenCalledWith(ATTENTION_PATH, { params: { fresh: 1 } });
+        expect(mockGet).toHaveBeenCalledWith(ATTENTION_PATH, attentionCfg({ fresh: 1 }));
     });
 
     it('不传 fresh 时【不】带该参数（后台轮询吃缓存）', async () => {
@@ -77,7 +87,7 @@ describe('getSummaryAttention —— 窄端点', () => {
 
         await getSummaryAttention();
 
-        expect(mockGet).toHaveBeenCalledWith(ATTENTION_PATH, { params: undefined });
+        expect(mockGet).toHaveBeenCalledWith(ATTENTION_PATH, attentionCfg(undefined));
     });
 
     it('把 HTTP 状态码挂到 Error 上：兜底判定必须能区分 404 与 5xx', async () => {
@@ -99,7 +109,7 @@ describe('fetchSummaryAttentionCounts —— 端点缺失兜底', () => {
 
         await expect(fetchSummaryAttentionCounts()).resolves.toEqual({ attention_count: 6 });
         expect(mockGet).toHaveBeenCalledTimes(1);
-        expect(mockGet).toHaveBeenCalledWith(ATTENTION_PATH, { params: undefined });
+        expect(mockGet).toHaveBeenCalledWith(ATTENTION_PATH, attentionCfg(undefined));
     });
 
     it('窄端点 404 时回落到 listSummaries({page:1,page_size:1}) 读同一字段', async () => {
@@ -144,7 +154,7 @@ describe('fetchSummaryAttentionCounts —— 端点缺失兜底', () => {
         // 下一次仍然优先走窄端点：一次抖动不该让它永久降级到重的那条路径。
         mockGet.mockResolvedValueOnce({ data: { data: { attention_count: 2 } } });
         await expect(fetchSummaryAttentionCounts()).resolves.toEqual({ attention_count: 2 });
-        expect(mockGet).toHaveBeenLastCalledWith(ATTENTION_PATH, { params: undefined });
+        expect(mockGet).toHaveBeenLastCalledWith(ATTENTION_PATH, attentionCfg(undefined));
     });
 
     it('网络错误（无 response.status）同样不触发兜底', async () => {
@@ -169,7 +179,7 @@ describe('fetchSummaryAttentionCounts —— 端点缺失兜底', () => {
 
         await fetchSummaryAttentionCounts({ fresh: true });
 
-        expect(mockGet).toHaveBeenNthCalledWith(1, ATTENTION_PATH, { params: { fresh: 1 } });
+        expect(mockGet).toHaveBeenNthCalledWith(1, ATTENTION_PATH, attentionCfg({ fresh: 1 }));
         // 列表端点没有 fresh 语义（它本来就不走那层 5s 缓存），别凭空塞参数。
         expect(mockGet).toHaveBeenNthCalledWith(2, LIST_PATH, { params: { page: 1, page_size: 1 } });
     });

@@ -71,8 +71,27 @@ export interface AttentionLeaderDeps {
     onBecomeLeader: () => void;
     /** 失去 leader 身份时调用（停止轮询）。 */
     onResignLeader: () => void;
-    /** 收到别的标签页广播来的计数。`spaceId` 是 leader 取数时所在的 Space。 */
-    onRemoteCount?: (count: number, spaceId: string) => void;
+    /**
+     * 收到别的标签页广播来的计数。`spaceId` 是 leader 取数时所在的 Space，
+     * `sampleAt` 是这份样本【所反映的服务端时刻】（见 publish 的注释）。
+     */
+    onRemoteCount?: (count: number, spaceId: string, sampleAt: number) => void;
+    /**
+     * 本标签页当前是否可见。不传时按「一直可见」处理（非浏览器宿主）。
+     *
+     * 可见性必须是【选主资格】而不只是轮询开关。轮询本身在不可见时停表
+     * （见 summaryAttentionPoll.setVisible），但如果 leader 身份不受可见性约束，
+     * 隐藏的 leader 就会变成一个「占着租约却不干活」的空壳：它每 3s 照常续租，
+     * 其它可见标签页看到租约新鲜、永不接管，于是整个浏览器【没有任何人轮询】。
+     *
+     * 这不是理论交错。Chrome 对隐藏标签页的节流是分级的：intensive throttling
+     * （≤1 次/分钟）要隐藏满约 5 分钟才介入，在那之前 ≥1s 的 setInterval 照常
+     * 触发（只有 <1s 会被钳到 1s）。所以「从 leader 标签页切到同窗口的另一个
+     * OCTO 标签页」——最常见不过的操作——会让兜底轮询静默最长约 5 分钟，
+     * 直到节流生效、租约终于馊掉才自愈。而这恰恰打在本功能唯一的存在理由上：
+     * 用户盯着一个可见标签页、暂时没有交互时，红点必须自己会亮。
+     */
+    isVisible?: () => boolean;
     now?: () => number;
     setIntervalFn?: (handler: () => void, timeout: number) => unknown;
     clearIntervalFn?: (handle: unknown) => void;
@@ -98,8 +117,16 @@ export interface AttentionLeader {
      * 什么都没有。跟随者按 Space 过滤后若长期收不到匹配广播，它自身的
      * 可见性/聚焦/切 Space 刷新仍然兜底（见 summaryAttentionSync）。
      */
-    publish(count: number, spaceId: string): void;
+    publish(count: number, spaceId: string, sampleAt: number): void;
     isLeader(): boolean;
+    /**
+     * 本标签页可见性变化。不可见 → 立即让位并清租约；可见 → 立即参与竞争。
+     *
+     * 走事件而不是等心跳发现：visibilitychange 是事件，不受后台节流影响，
+     * 所以交接可以是即时的。租约过期（STALE_AFTER_MS）只保留给「标签页被强杀、
+     * 什么回调都没跑」那条路——那才是租约真正不可替代的地方。
+     */
+    setVisible(visible: boolean): void;
     /**
      * 是否降级为「每个标签页自己轮询」。降级下 isLeader() 恒为 true：
      * 调用方不必分支，「我是 leader」与「没有协调、我自己来」对它是同一件事。
@@ -153,6 +180,7 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
     const heartbeatMs = deps.heartbeatMs ?? LEADER_HEARTBEAT_MS;
     const staleAfterMs = deps.staleAfterMs ?? LEADER_STALE_AFTER_MS;
     const tabId = deps.tabId ?? defaultTabId();
+    const isVisibleFn = deps.isVisible ?? (() => true);
 
     const rawStorage = deps.storage !== undefined
         ? deps.storage
@@ -187,9 +215,19 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
     let leader = degraded; // 降级时每个标签页都视自己为 leader
     let heartbeatTimer: unknown = null;
     let unloadHandler: (() => void) | null = null;
+    /**
+     * 本标签页当前是否可见。初值从注入的判定读一次，之后由 setVisible 维护。
+     *
+     * 不可见的标签页【没有当 leader 的资格】：它自己的轮询已经停表，再占着租约
+     * 就是把整个浏览器的兜底轮询扣死。见 AttentionLeaderDeps.isVisible 的注释。
+     */
+    let visible = isVisibleFn();
 
     const writeLease = () => {
         if (!storage) return;
+        // 不可见时绝不续租：这是「可见性即选主资格」的落点。少了这一行，隐藏的
+        // leader 会一边停着自己的表、一边每 3s 告诉所有人「我还活着」。
+        if (!visible) return;
         try {
             storage.setItem(LEASE_KEY, JSON.stringify({ id: tabId, ts: now() } satisfies LeaseRecord));
         } catch {
@@ -227,6 +265,16 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
      */
     const beat = () => {
         if (!storage) return;
+        if (!visible) {
+            // 隐藏标签页主动退出竞争：让位 + 清掉自己的租约，可见的跟随者下一拍
+            // 就能接管，不必空等 staleAfterMs。租约过期只留给「被强杀、连
+            // visibilitychange 都没跑」的那条路。
+            if (leader) {
+                resign();
+                clearLeaseIfMine();
+            }
+            return;
+        }
         const lease = readLease(storage);
         const current = now();
 
@@ -261,11 +309,22 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
     };
 
     const handleMessage = (event: MessageEvent) => {
-        const data = event?.data as { type?: string; count?: number; spaceId?: string } | null;
+        const data = event?.data as {
+            type?: string;
+            count?: number;
+            spaceId?: string;
+            sampleAt?: number;
+        } | null;
         if (!data || data.type !== 'attention-count') return;
         if (typeof data.count !== 'number' || !Number.isFinite(data.count)) return;
         if (typeof data.spaceId !== 'string' || !data.spaceId) return;
-        deps.onRemoteCount?.(data.count, data.spaceId);
+        // sampleAt 缺失/非法 → 丢弃，不要用 0 或 now() 兜底：前者会让这条广播
+        // 永远排不过任何本地写入（等于静默失效），后者会让它永远排得过（等于
+        // 绕开排序）。两种兜底都比直接丢一条广播糟——广播丢了还有各标签页自己的
+        // 可见性/聚焦刷新兜底。唯一会走到这里的是跨版本标签页（老版本不带这个
+        // 字段），那种情况下丢弃正是想要的行为。
+        if (typeof data.sampleAt !== 'number' || !Number.isFinite(data.sampleAt)) return;
+        deps.onRemoteCount?.(data.count, data.spaceId, data.sampleAt);
     };
 
     return {
@@ -282,7 +341,12 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
             if (channel) channel.onmessage = handleMessage;
 
             // 先抢一拍再起定时器，否则冷启动后要白等一个心跳周期才有人轮询。
+            // 不可见启动时这一拍什么都不做（beat 自己拦），等 setVisible(true) 拉起。
             beat();
+            // 心跳定时器【不】随可见性停掉：它同时承担「观察租约、适时抢占」的
+            // 职责，停了之后本标签页重新可见却没有 visibilitychange（比如宿主根本
+            // 不发这个事件的嵌入环境）时，就再也没东西把它拉回竞争。隐藏期间的
+            // 每一拍开销是一次 early return，可忽略。
             heartbeatTimer = setIntervalFn(beat, heartbeatMs);
 
             if (typeof window !== 'undefined') {
@@ -322,16 +386,27 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
                 deps.onResignLeader();
             }
         },
-        publish(count: number, spaceId: string): void {
+        publish(count: number, spaceId: string, sampleAt: number): void {
             if (!channel) return;
             try {
-                channel.postMessage({ type: 'attention-count', count, spaceId });
+                channel.postMessage({ type: 'attention-count', count, spaceId, sampleAt });
             } catch {
                 // 广播失败不影响本标签页自己的红点，静默。
             }
         },
         isLeader(): boolean {
             return leader;
+        },
+        setVisible(nextVisible: boolean): void {
+            if (nextVisible === visible) return;
+            visible = nextVisible;
+            // 降级模式下没有租约也没有心跳，leader 恒为 true；可见性对轮询的门控
+            // 已经在 summaryAttentionPoll 里做过了，这里再动一次只会把「每个标签页
+            // 自己轮询」这个降级保底拆掉。
+            if (degraded || !started) return;
+            // 不可见 → beat() 里的分支会 resign + 清租约；
+            // 可见 → beat() 立即参与竞争，不必白等一个心跳周期。
+            beat();
         },
         isDegraded(): boolean {
             return degraded;

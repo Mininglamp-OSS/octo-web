@@ -12,7 +12,14 @@ import ScheduleListPage from "./pages/ScheduleListPage";
 import { getChatCandidates, getSummaryShare } from "./api/summaryApi";
 import { getOriginalSummaryTaskId, shouldOpenOriginalSummary } from "./features/summaryShare/navigation";
 import { notifyChatSummaryCreated } from "./utils/chatSummaryActions";
-import { getSummaryAttentionBadge, readSummaryAttentionCount, refreshSummaryAttentionBadge, setSummaryAttentionBadge } from "./utils/summaryAttentionBadge";
+import {
+    acceptRemoteAttentionCount,
+    getSummaryAttentionBadge,
+    readSummaryAttentionCount,
+    refreshSummaryAttentionBadge,
+    setSummaryAttentionBadge,
+    setSummaryAttentionPublisher,
+} from "./utils/summaryAttentionBadge";
 import { createAttentionSync, shouldRefreshForMessage, type AttentionSync } from "./utils/summaryAttentionSync";
 import { createAttentionPoll, type AttentionPoll } from "./utils/summaryAttentionPoll";
 import { createAttentionLeader, type AttentionLeader } from "./utils/summaryAttentionLeader";
@@ -266,34 +273,46 @@ export class SummaryModule implements IModule {
             // 后台轮询【不】传 fresh：它是唯一一条无人值守就会产生的流量，
             // 让它吃服务端 5s 缓存，多个用户的 tick 撞在一起时后端只算一次。
             fetchCount: async () => {
-                const count = await readSummaryAttentionCount();
+                const sample = await readSummaryAttentionCount();
                 // null = 未登录 / Space 未就绪 / 飞行中切了 Space，本次没有可用样本。
                 // 抄当前值回去，在调度器眼里就是一次「值未变」：不污染红点，也不会
                 // 把这种早退当成失败去退避（未登录状态下退到 60s 毫无意义，登录后
                 // 又得慢慢爬回来）。
-                return count ?? getSummaryAttentionBadge();
+                return sample?.count ?? getSummaryAttentionBadge();
             },
             isVisible: () => typeof document === 'undefined' || document.visibilityState === 'visible',
-            onCount: (count) => {
-                // leader 把结果广播给其它标签页，它们不必各发一份请求。降级模式下
-                // publish 是 no-op（没有 channel），而那种情况下每个标签页本来就在自己拉。
-                _attentionLeader?.publish(count, WKApp.shared.currentSpaceId ?? '');
-            },
+            // 广播【不】在这里发：它挂在 readSummaryAttentionCount 里的 publisher 上（见
+            // setSummaryAttentionPublisher 接线），因为【每一次】成功的本地读取都该广播，
+            // 不只是轮询那一条。一个标签页里用户点掉红点，其它标签页本来就该跟着灭，
+            // 而不是等 leader 下一拍（最长 60s）。只在一处发也避免同一样本广播两次。
         });
 
         _attentionLeader = createAttentionLeader({
-            onBecomeLeader: () => _attentionPoll?.start(),
+            onBecomeLeader: () => {
+                _attentionPoll?.start();
+                // 接管意味着刚才有一段【没人轮询】的窗口（上任 leader 崩了、或者
+                // 切到后台让了位），必须立刻取一次而不是等一个基础间隔。start() 自己
+                // 只排期不取数。
+                _attentionPoll?.notifyActivity();
+            },
             onResignLeader: () => _attentionPoll?.stop(),
-            onRemoteCount: (count, spaceId) => {
+            isVisible: () => typeof document === 'undefined' || document.visibilityState === 'visible',
+            onRemoteCount: (count, spaceId, sampleAt) => {
                 // 只接受与本标签页当前 Space 相同的广播：计数是 space-scoped 的，
                 // 各标签页可能停在不同 Space 上，写错 Space 的数字比不刷新更糟。
                 if (!spaceId || spaceId !== WKApp.shared.currentSpaceId) return;
-                // 直接设值、不参与 ticket 排序：广播不是本标签页发出的读取，没有
-                // 属于它的发出时刻可以排。它也不能抢号：若本标签页此刻正有一个用户
-                // 动作触发的读取在飞，那个读取才更权威（它带 fresh=1，且反映的是本
-                // 标签页用户刚做完的动作），它回来时会盖掉广播值。
-                setSummaryAttentionBadge(count);
+                // 进入同一个排序域再写：广播没有本地票号（那是另一个标签页的号段），
+                // 但它有可比的【样本时刻】。直接 setSummaryAttentionBadge 是 last-write-wins，
+                // 会让 leader 一条更早发出的（甚至命中 5s 缓存的）响应把本地刚 commit 的
+                // 新值盖回去。判定全在 acceptRemoteAttentionCount 里，见其注释。
+                acceptRemoteAttentionCount(count, sampleAt);
             },
+        });
+        // 把广播钩子接到读取路径上。必须在 leader 建好之后，且在 dispose 里对称拆掉：
+        // 它持有 _attentionLeader 的引用，漏了会让热更新后的读取往一个已关闭的
+        // channel 上发广播。
+        setSummaryAttentionPublisher((count, sampleAt) => {
+            _attentionLeader?.publish(count, WKApp.shared.currentSpaceId ?? '', sampleAt);
         });
         _attentionLeader.start();
 
@@ -303,6 +322,10 @@ export class SummaryModule implements IModule {
         _visibilityHandler = () => {
             const visible = typeof document === 'undefined' || document.visibilityState === 'visible';
             _attentionPoll?.setVisible(visible);
+            // 可见性同时是【选主资格】：隐藏的标签页自己不轮询，就不能再占着租约。
+            // 漏了这一行，切到同窗口另一个标签页就会让整个浏览器静默到 Chrome 的
+            // intensive throttling 生效（约 5 分钟）。见 summaryAttentionLeader.isVisible。
+            _attentionLeader?.setVisible(visible);
             if (!visible) return;
             _attentionSync?.trigger();
         };
@@ -410,6 +433,9 @@ export function disposeSummaryModuleListeners(): void {
     _imConnectHandler = null;
     _attentionSync?.cancel();
     _attentionSync = null;
+    // 广播钩子持有 _attentionLeader，必须在停 leader 【之前】拆掉：否则热更新后
+    // 的读取会往一个已关闭的 channel 上发广播，或者更糟——持住旧模块实例。
+    setSummaryAttentionPublisher(null);
     // 轮询与 leader 心跳都是真实的定时器，漏一个就会在每次热更后叠一层。
     // 先停 leader：它会回调 onResignLeader 把轮询停表，同时关掉 BroadcastChannel
     // 并让出租约（让其它标签页立即接管，不必等租约过期）。

@@ -65,6 +65,11 @@ vi.mock("../utils/summaryAttentionBadge", () => ({
   getSummaryAttentionBadge: () => 0,
   refreshSummaryAttentionBadge: vi.fn(),
   setSummaryAttentionBadge: vi.fn(),
+  // 广播排序相关的两个出口：init 会接广播钩子（setSummaryAttentionPublisher），
+  // leader 收到广播时走 acceptRemoteAttentionCount。本用例只关心菜单切换，
+  // 但 mock 缺一个导出就会让整个 init 抛错。
+  acceptRemoteAttentionCount: vi.fn(),
+  setSummaryAttentionPublisher: vi.fn(),
 }));
 vi.mock("../utils/channelType", () => ({
   isSupportedChannelType: () => true,

@@ -67,16 +67,22 @@ function createTab(options: {
     storage: Storage | null;
     ctor: typeof BroadcastChannel | null;
     clock: { now: number };
+    /** 初始可见性。缺省可见——绝大多数用例不关心这一维。 */
+    visible?: boolean;
 }) {
     const events: string[] = [];
-    const remote: Array<{ count: number; spaceId: string }> = [];
+    const remote: Array<{ count: number; spaceId: string; sampleAt: number }> = [];
     let beatHandler: (() => void) | null = null;
+    // 可见性由测试摆布：真实环境里它来自 document.visibilityState，
+    // 注入之后「隐藏的 leader 会不会继续续租」才是可断言的。
+    const state = { visible: options.visible ?? true };
 
     const leader = createAttentionLeader({
         tabId: options.id,
         storage: options.storage,
         broadcastChannelCtor: options.ctor,
         now: () => options.clock.now,
+        isVisible: () => state.visible,
         setIntervalFn: (handler: () => void) => {
             beatHandler = handler;
             return 1;
@@ -84,7 +90,7 @@ function createTab(options: {
         clearIntervalFn: () => { beatHandler = null; },
         onBecomeLeader: () => events.push('lead'),
         onResignLeader: () => events.push('resign'),
-        onRemoteCount: (count, spaceId) => remote.push({ count, spaceId }),
+        onRemoteCount: (count, spaceId, sampleAt) => remote.push({ count, spaceId, sampleAt }),
     });
 
     return {
@@ -94,6 +100,11 @@ function createTab(options: {
         /** 手动跳一拍心跳（续租 or 抢占检查）。 */
         beat: () => beatHandler?.(),
         hasHeartbeat: () => beatHandler !== null,
+        /** 切换可见性并通知 leader（与 module.tsx 的 visibilitychange 接线等价）。 */
+        setVisible: (visible: boolean) => {
+            state.visible = visible;
+            leader.setVisible(visible);
+        },
     };
 }
 
@@ -297,9 +308,9 @@ describe('createAttentionLeader —— 计数广播', () => {
         const b = createTab({ id: 'tab-b', storage, ctor: factory.ctor, clock });
         b.leader.start();
 
-        a.leader.publish(4, 'space-1');
+        a.leader.publish(4, 'space-1', 1_700_000_000_000);
 
-        expect(b.remote).toEqual([{ count: 4, spaceId: 'space-1' }]);
+        expect(b.remote).toEqual([{ count: 4, spaceId: 'space-1', sampleAt: 1_700_000_000_000 }]);
         expect(a.remote).toEqual([]);                    // 不回自己
     });
 
@@ -337,7 +348,7 @@ describe('createAttentionLeader —— 计数广播', () => {
         b.leader.start();
 
         b.leader.stop();
-        a.leader.publish(9, 'space-1');
+        a.leader.publish(9, 'space-1', 1_700_000_000_000);
 
         expect(b.remote).toEqual([]);
     });
@@ -421,7 +432,7 @@ describe('createAttentionLeader —— 降级（宁可多打请求，也不能�
         const a = createTab({ id: 'tab-a', storage, ctor: null, clock });
         a.leader.start();
 
-        expect(() => a.leader.publish(3, 'space-1')).not.toThrow();
+        expect(() => a.leader.publish(3, 'space-1', 1_700_000_000_000)).not.toThrow();
     });
 
     it('降级模式下 stop 仍然通知调用方停表（否则轮询定时器会漏出去）', () => {
@@ -507,5 +518,172 @@ describe('createAttentionLeader —— 生命周期', () => {
         a.leader.start();
 
         expect(storage.getItem('octo:summary-attention-leader:probe')).toBeNull();
+    });
+});
+
+// ═══ 可见性即选主资格 ═══
+//
+// 🔴 回归组。此前 leader 对可见性零感知：心跳无条件续租，而 module.tsx 的
+// visibilitychange 只停轮询、不通知 leader。于是「从 leader 标签页切到同窗口的
+// 另一个 OCTO 标签页」——最常见不过的操作——会让隐藏的 leader 一边停着自己的表、
+// 一边每 3s 照常宣告「我还活着」，其它可见标签页永远看到新鲜租约、永不接管。
+// 结果是整个浏览器零轮询。
+//
+// 为什么不能靠浏览器节流兜底：Chrome 的节流是分级的，intensive throttling
+// （≤1 次/分钟）要隐藏满约 5 分钟才介入，在那之前 ≥1s 的 setInterval 照常触发
+// （只有 <1s 被钳到 1s）。也就是说这个死区最长约 5 分钟，而且恰好打在本功能
+// 唯一的存在理由上：用户盯着一个可见标签页、暂时没有交互时，红点必须自己会亮。
+describe('createAttentionLeader —— 可见性即选主资格', () => {
+    let storage: ReturnType<typeof createMemoryStorage>;
+    let factory: ReturnType<typeof createChannelFactory>;
+    let clock: { now: number };
+
+    beforeEach(() => {
+        storage = createMemoryStorage();
+        factory = createChannelFactory();
+        clock = { now: 1_000_000 };
+    });
+
+    it('隐藏的 leader 立即让位并清掉租约，不必等租约过期', () => {
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        a.leader.start();
+        expect(a.leader.isLeader()).toBe(true);
+
+        a.setVisible(false);
+
+        expect(a.leader.isLeader()).toBe(false);
+        expect(a.events).toEqual(['lead', 'resign']);
+        // 主动清租约是关键：留着它，可见的跟随者还要白等 7.5s 才敢抢。
+        expect(storage.getItem('octo:summary-attention-leader')).toBeNull();
+    });
+
+    it('隐藏的 leader 不再续租：可见的跟随者下一拍就接管', () => {
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        a.leader.start();
+        const b = createTab({ id: 'tab-b', storage, ctor: factory.ctor, clock });
+        b.leader.start();
+        expect(b.leader.isLeader()).toBe(false);
+
+        a.setVisible(false);
+        b.beat();
+
+        expect(b.leader.isLeader()).toBe(true);
+        expect(a.leader.isLeader()).toBe(false);
+    });
+
+    // 这一条正面钉死那个 5 分钟死区：哪怕隐藏的 leader 的心跳还在跑（节流生效前
+    // 它就是在跑），它也不该把租约刷新，否则可见标签页永远没有机会。
+    it('隐藏 leader 的心跳照跑也不续租，可见标签页仍能接管', () => {
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        a.leader.start();
+        const b = createTab({ id: 'tab-b', storage, ctor: factory.ctor, clock });
+        b.leader.start();
+
+        a.setVisible(false);
+        // 模拟 intensive throttling 生效前的那几分钟：隐藏标签页的心跳照常触发。
+        for (let i = 0; i < 100; i += 1) {
+            clock.now += LEADER_HEARTBEAT_MS;
+            a.beat();
+        }
+
+        expect(storage.getItem('octo:summary-attention-leader')).toBeNull();
+        b.beat();
+        expect(b.leader.isLeader()).toBe(true);
+    });
+
+    it('重新可见时立刻参与竞争，不白等一个心跳周期', () => {
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        a.leader.start();
+
+        a.setVisible(false);
+        expect(a.leader.isLeader()).toBe(false);
+
+        a.setVisible(true);
+
+        // 没有别人占着，转可见的这一下就该把它拉回 leader。
+        expect(a.leader.isLeader()).toBe(true);
+        expect(a.events).toEqual(['lead', 'resign', 'lead']);
+    });
+
+    it('重新可见时若租约已被别人持有，老老实实当跟随者', () => {
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        a.leader.start();
+        const b = createTab({ id: 'tab-b', storage, ctor: factory.ctor, clock });
+        b.leader.start();
+
+        a.setVisible(false);
+        b.beat();                                        // tab-b 接管
+        a.setVisible(true);                              // tab-a 回到前台
+
+        // 抢回来毫无必要：tab-b 正在正常轮询。双 leader 才是要避免的。
+        expect(b.leader.isLeader()).toBe(true);
+        expect(a.leader.isLeader()).toBe(false);
+    });
+
+    it('全部标签页都隐藏时没有人轮询——这是正确行为，不是 bug', () => {
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        a.leader.start();
+        const b = createTab({ id: 'tab-b', storage, ctor: factory.ctor, clock });
+        b.leader.start();
+
+        a.setVisible(false);
+        b.setVisible(false);
+        clock.now += LEADER_STALE_AFTER_MS + 1;
+        a.beat();
+        b.beat();
+
+        // 没人看得见红点，请求就该归零；这正是可见性门控的收益所在。
+        expect(a.leader.isLeader()).toBe(false);
+        expect(b.leader.isLeader()).toBe(false);
+        expect(storage.getItem('octo:summary-attention-leader')).toBeNull();
+    });
+
+    it('以隐藏状态启动的标签页不抢租约（后台开的标签页不该当 leader）', () => {
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock, visible: false });
+        a.leader.start();
+
+        expect(a.leader.isLeader()).toBe(false);
+        expect(a.events).toEqual([]);
+        expect(storage.getItem('octo:summary-attention-leader')).toBeNull();
+    });
+
+    // 心跳定时器不能随可见性停掉：它同时担着「观察租约、适时抢占」的职责。
+    // 停了之后，若宿主根本不发 visibilitychange（某些嵌入环境），本标签页就
+    // 再也没有东西把它拉回竞争。
+    it('隐藏时心跳定时器仍在（它还担着观察与抢占的职责）', () => {
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        a.leader.start();
+
+        a.setVisible(false);
+
+        expect(a.hasHeartbeat()).toBe(true);
+    });
+
+    it('降级模式忽略可见性：绝不能把「每个标签页自己轮询」这条保底拆掉', () => {
+        const s = createMemoryStorage();
+        const a = createTab({ id: 'tab-a', storage: s, ctor: null, clock });
+        a.leader.start();
+        expect(a.leader.isDegraded()).toBe(true);
+        expect(a.leader.isLeader()).toBe(true);
+
+        a.setVisible(false);
+
+        // 降级下 isLeader 恒为 true；可见性对轮询的门控由 summaryAttentionPoll
+        // 自己做（它本来就停表）。在这里再动一次只会把保底拆没。
+        expect(a.leader.isLeader()).toBe(true);
+        expect(a.events).toEqual(['lead']);
+    });
+
+    it('重复 setVisible 同一个值是 no-op，不会反复让位/夺回', () => {
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        a.leader.start();
+
+        a.setVisible(true);
+        a.setVisible(true);
+        expect(a.events).toEqual(['lead']);
+
+        a.setVisible(false);
+        a.setVisible(false);
+        expect(a.events).toEqual(['lead', 'resign']);
     });
 });

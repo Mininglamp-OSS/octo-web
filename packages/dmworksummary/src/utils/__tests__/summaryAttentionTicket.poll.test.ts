@@ -80,8 +80,10 @@ function makePoll(harness: ReturnType<typeof createHarness>, onCount?: (c: numbe
     return createAttentionPoll({
         ...harness.deps,
         fetchCount: async () => {
-            const count = await readSummaryAttentionCount();
-            return count ?? getSummaryAttentionBadge();
+            // readSummaryAttentionCount 现在返回 { count, sampleAt }：sampleAt 是
+            // 广播排序用的样本时刻，调度器只关心 count。与 module.tsx 接线一致。
+            const sample = await readSummaryAttentionCount();
+            return sample?.count ?? getSummaryAttentionBadge();
         },
         onCount,
     });
