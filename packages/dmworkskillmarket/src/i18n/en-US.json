@@ -30,8 +30,6 @@
   },
   "list": {
     "pageTitle": "Skills",
-    "mine": "Mine",
-    "tabSkills": "All",
     "publish": "Publish",
     "publishSkill": "Publish Skill",
     "search": "Search",
@@ -56,9 +54,7 @@
   },
   "sort": {
     "ariaLabel": "Skill sort",
-    "comprehensive": "Recommended",
     "latest": "Latest",
-    "views": "Views",
     "downloads": "Downloads",
     "hottest": "Hottest"
   },
@@ -177,8 +173,6 @@
     "failed": "Failed to delete"
   },
   "install": {
-    "title": "Install Prompt",
-    "hint": "Copy and paste into an Agent conversation to complete installation automatically",
     "copied": "Copied",
     "copyBtn": "Copy Install Prompt"
   },
@@ -198,7 +192,6 @@
     "hoursAgo": "{{count}} hours ago",
     "daysAgo": "{{count}} days ago"
   },
-  "mine": {},
   "visibility": {
     "public": "Public",
     "space": "Org",

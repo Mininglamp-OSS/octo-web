@@ -37,6 +37,7 @@
     "botPublishTitle": "Publish squad via Bot",
     "botPublishTitleAgent": "Publish expert via Bot",
     "botPublishHint": "Copy the prompt below to an Agent — it will publish your experts and dispatch logic as a squad template.",
+    "botPublishHintAgent": "Copy the prompt below to an Agent — it will publish this expert.",
     "botUpdateTitle": "Update squad via Bot",
     "botUpdateTitleAgent": "Update expert via Bot",
     "botUpdateHint": "Copy the prompt below to an Agent — it will apply your changes to the published listing.",
@@ -45,10 +46,7 @@
     "installCountTitle": "Added to Loop {{count}} times",
     "truncatedNotice": "Showing the first {{count}} — narrow with search or category",
     "sortAriaLabel": "Sort by",
-    "sortComprehensive": "Recommended",
     "sortLatest": "Latest",
-    "sortInstalls": "Installs",
-    "sortViews": "Views",
     "empty": "No matching results",
     "emptyHint": "Try another keyword or clear the category filter.",
     "loading": "Loading…",
@@ -156,10 +154,6 @@
     "loadMore": "Scroll down to load more",
     "reachedEnd": "You've reached the end",
     "navLabel": "MCP marketplace navigation",
-    "mode": {
-      "all": "All",
-      "mine": "Mine"
-    },
     "sortAriaLabel": "Connector sort",
     "sortLatest": "Latest",
     "sortHottest": "Hottest"
@@ -395,11 +389,6 @@
     "minutesAgo": "{{count}} min ago",
     "hoursAgo": "{{count}} hours ago",
     "daysAgo": "{{count}} days ago"
-  },
-  "squad": {},
-  "connect": {
-    "title": "Connect Prompt",
-    "hint": "Copy and paste into an Agent conversation to connect this connector to the runtime automatically"
   },
   "visibility": {
     "public": "Public",

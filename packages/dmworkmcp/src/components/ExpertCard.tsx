@@ -5,6 +5,7 @@ import type { ExpertItem } from "../mock/expertMock";
 import { getMcpAvatarColor } from "../utils/mcpAvatar";
 import { resolveExpertOwner } from "../utils/expertOwner";
 import { isOfficialExpert } from "../utils/publisher";
+import { normalizeVisibility } from "../utils/visibility";
 import { formatCount } from "../utils/format";
 
 interface ExpertCardProps {
@@ -115,7 +116,7 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
             </span>
             {item.visibility && (
               <span className="wk-mcp-mine-row__vis">
-                {t(`mcp.visibility.${item.visibility}`)}
+                {t(`mcp.visibility.${normalizeVisibility(item.visibility)}`)}
               </span>
             )}
             {item.version && (

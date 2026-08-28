@@ -37,6 +37,7 @@
     "botPublishTitle": "Bot 上架专家团",
     "botPublishTitleAgent": "Bot 上架专家",
     "botPublishHint": "复制下面的提示词交给 Agent，它会帮你把专家和调取逻辑发布成专家团模板。",
+    "botPublishHintAgent": "复制下面的提示词交给 Agent，它会帮你把这个专家发布上架。",
     "botUpdateTitle": "Bot 更新专家团",
     "botUpdateTitleAgent": "Bot 更新专家",
     "botUpdateHint": "复制下面的提示词交给 Agent，它会按你的改动更新已上架的内容。",
@@ -45,10 +46,7 @@
     "installCountTitle": "添加到回路 {{count}} 次",
     "truncatedNotice": "仅显示前 {{count}} 项，请用搜索或分类筛选缩小范围",
     "sortAriaLabel": "排序方式",
-    "sortComprehensive": "综合",
     "sortLatest": "最新",
-    "sortInstalls": "安装",
-    "sortViews": "浏览",
     "empty": "没有找到匹配内容",
     "emptyHint": "换一个关键词或清除分类筛选后再试。",
     "loading": "加载中…",
@@ -156,10 +154,6 @@
     "loadMore": "向下滚动加载更多",
     "reachedEnd": "已经到底了",
     "navLabel": "连接器市场导航",
-    "mode": {
-      "all": "全部",
-      "mine": "我的"
-    },
     "sortAriaLabel": "连接器排序",
     "sortLatest": "最新",
     "sortHottest": "最热"
@@ -395,11 +389,6 @@
     "minutesAgo": "{{count}} 分钟前",
     "hoursAgo": "{{count}} 小时前",
     "daysAgo": "{{count}} 天前"
-  },
-  "squad": {},
-  "connect": {
-    "title": "接入 Prompt",
-    "hint": "复制后粘贴到 Agent 对话中，将自动把该连接器接入运行环境"
   },
   "visibility": {
     "public": "公开",

@@ -71,12 +71,21 @@ export default function ExpertBotPublishModal({
     ? t("mcp.expert.botPublishTitle")
     : t("mcp.expert.botPublishTitleAgent");
 
+  // botUpdateHint is kind-neutral, but botPublishHint is squad-specific
+  // ("...as a squad template"), so the publish hint discriminates on kind the
+  // same way `title` does.
+  const hint = isUpdate
+    ? t("mcp.expert.botUpdateHint")
+    : kind === "squad"
+    ? t("mcp.expert.botPublishHint")
+    : t("mcp.expert.botPublishHintAgent");
+
   return (
     <PromptForwardModal
       visible={visible}
       onClose={onClose}
       title={title}
-      hint={isUpdate ? t("mcp.expert.botUpdateHint") : t("mcp.expert.botPublishHint")}
+      hint={hint}
       kind={isUpdate ? "update" : "publish"}
       icon={<Bot size={18} />}
       prompt={prompt}

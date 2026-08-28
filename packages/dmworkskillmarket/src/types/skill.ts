@@ -96,28 +96,6 @@ export interface UpdateSkillForm {
   iconUrl?: string;
   fileName?: string;
   fileSize?: number;
-  /** Edited per-file package tree (full-page skill editor). When present on a
-   *  metadata-only save, it replaces the plugin's `plugin_json.attachments`
-   *  (readonly/storage files are preserved from the current record). */
-  attachments?: EditableAttachment[];
-}
-
-/** One editable file in the skill's package tree, surfaced to the full-page
- *  editor. `raw` files carry inline text (`rawContent`); `storage` (binary /
- *  zip) files are shown read-only and preserved verbatim on save. */
-export interface EditableAttachment {
-  path: string;
-  rawContent?: string;
-  mimeType?: string;
-  readonly: boolean;
-}
-
-/** Result of loading a skill's editable file tree for the full-page editor. */
-export interface SkillFilesResult {
-  skill: Skill;
-  attachments: EditableAttachment[];
-  /** Legacy zip-package skills can't be edited per-file; fall back to reupload. */
-  isLegacy: boolean;
 }
 
 // ─── Upload/Parse flow types ─────────────────────────────────────────────

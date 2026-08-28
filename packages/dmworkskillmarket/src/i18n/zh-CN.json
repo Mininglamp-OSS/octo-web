@@ -30,8 +30,6 @@
   },
   "list": {
     "pageTitle": "技能",
-    "mine": "我的",
-    "tabSkills": "全部",
     "publish": "上架",
     "publishSkill": "上架技能",
     "search": "搜索",
@@ -56,9 +54,7 @@
   },
   "sort": {
     "ariaLabel": "技能排序",
-    "comprehensive": "综合",
     "latest": "最新",
-    "views": "浏览",
     "downloads": "下载",
     "hottest": "最热"
   },
@@ -177,8 +173,6 @@
     "failed": "删除失败"
   },
   "install": {
-    "title": "安装 Prompt",
-    "hint": "复制后粘贴到 Agent 对话中，将自动完成安装",
     "copied": "已复制",
     "copyBtn": "复制安装 Prompt"
   },
@@ -198,7 +192,6 @@
     "hoursAgo": "{{count}} 小时前",
     "daysAgo": "{{count}} 天前"
   },
-  "mine": {},
   "visibility": {
     "public": "公开",
     "space": "组织",

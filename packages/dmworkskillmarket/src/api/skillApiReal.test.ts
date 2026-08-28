@@ -6,7 +6,6 @@ import {
   getMySkills,
   getSkillTags,
   getSkill,
-  getSkillFiles,
   trackSkillView,
   getSkillMd,
   createSkill,
@@ -17,7 +16,6 @@ import {
   initReupload,
   triggerParse,
   pollParse,
-  getDownloadUrl,
 } from "./skillApiReal";
 
 // Mock global fetch
@@ -565,90 +563,6 @@ describe("skillApiReal", () => {
     expect(body.plugin.plugin_json.$schema).toBe("cowork-plugin-package-2.0.json");
   });
 
-  it("getSkillFiles returns editable raw files + read-only storage files, hides manifest.json", async () => {
-    const wire = pluginSkillWire({
-      plugin_json: {
-        $schema: "cowork-plugin-package-1.0.json",
-        attachments: [
-          { path: "manifest.json", content_type: "raw", raw_content: "{}" },
-          { path: "SKILL.md", content_type: "raw", mime_type: "text/markdown", raw_content: "# hi" },
-          { path: "scripts/run.py", content_type: "raw", raw_content: "print(1)" },
-          { path: "assets/logo.png", content_type: "storage", storage_uri: "plugins/x/logo.png", content_size: 10 },
-        ],
-      },
-    });
-    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: wire, relations: [] }));
-
-    const res = await getSkillFiles("ci-failure-map");
-
-    expect(res.isLegacy).toBe(false);
-    expect(res.attachments.some((a) => a.path === "manifest.json")).toBe(false);
-    const md = res.attachments.find((a) => a.path === "SKILL.md");
-    expect(md?.readonly).toBe(false);
-    expect(md?.rawContent).toBe("# hi");
-    const logo = res.attachments.find((a) => a.path === "assets/logo.png");
-    expect(logo?.readonly).toBe(true);
-    expect(logo?.rawContent).toBeUndefined();
-  });
-
-  it("getSkillFiles flags legacy zip-package skills", async () => {
-    const wire = pluginSkillWire({
-      plugin_json: {
-        attachments: [
-          { path: "skill/ref.json", content_type: "raw", raw_content: "{}" },
-          { path: "skill/package.zip", content_type: "storage", storage_uri: "x" },
-        ],
-      },
-    });
-    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: wire, relations: [] }));
-
-    const res = await getSkillFiles("legacy-skill");
-    expect(res.isLegacy).toBe(true);
-  });
-
-  it("updateSkill with edited attachments replaces the package (raw written, storage preserved, deleted dropped)", async () => {
-    const current = pluginSkillWire({
-      plugin_json: {
-        $schema: "cowork-plugin-package-1.0.json",
-        attachments: [
-          { path: "SKILL.md", content_type: "raw", raw_content: "# old" },
-          { path: "scripts/run.py", content_type: "raw", raw_content: "old" },
-          { path: "assets/logo.png", content_type: "storage", storage_uri: "plugins/x/logo.png", content_size: 10, content_hash: "h" },
-        ],
-      },
-    });
-    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: current, relations: [] }));
-    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: current, relations: [] }));
-
-    await updateSkill("ci-failure-map", {
-      displayName: "n",
-      attachments: [
-        { path: "SKILL.md", rawContent: "# new", readonly: false },
-        { path: "assets/logo.png", readonly: true },
-        { path: "docs/added.md", rawContent: "added", readonly: false },
-        // scripts/run.py intentionally omitted → deleted
-      ],
-    });
-
-    const [url, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1] as [string, RequestInit];
-    expect(url).toBe("/market/api/v1/plugins/upsert");
-    const body = JSON.parse(init.body as string);
-    const atts = body.plugin.plugin_json.attachments as Array<{
-      path: string;
-      content_type: string;
-      raw_content?: string;
-      storage_uri?: string;
-    }>;
-    const byPath = Object.fromEntries(atts.map((a) => [a.path, a]));
-    expect(byPath["SKILL.md"].raw_content).toBe("# new");
-    expect(byPath["docs/added.md"].raw_content).toBe("added");
-    // storage attachment preserved verbatim (editor never carries storage_uri).
-    expect(byPath["assets/logo.png"].content_type).toBe("storage");
-    expect(byPath["assets/logo.png"].storage_uri).toBe("plugins/x/logo.png");
-    // deleted file dropped.
-    expect(byPath["scripts/run.py"]).toBeUndefined();
-  });
-
   it("re-upload without a new icon omits icon so the stored icon is preserved", async () => {
     // Regression (Jerry-Xin B2 / P1-10): EditSkillModal only sets iconUrl when a
     // new icon is chosen, so a package-only re-upload has iconUrl === undefined.
@@ -963,12 +877,6 @@ describe("skillApiReal", () => {
     await assertion;
     expect(mockFetch).toHaveBeenCalledTimes(60);
     vi.useRealTimers();
-  });
-
-  it("getDownloadUrl exposes the authenticated unified download endpoint", () => {
-    expect(getDownloadUrl("skill/with space")).toBe(
-      "/market/api/v1/plugins/download?plugin_id=skill%2Fwith%20space"
-    );
   });
 
   it("normalizes tags when backend returns a JSON-encoded string", async () => {
