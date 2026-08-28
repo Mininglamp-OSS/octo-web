@@ -676,6 +676,9 @@ export async function updateSkill(id: string, form: UpdateSkillForm): Promise<Sk
         tags,
         icon,
         visibility,
+        // current_version is caller-declared; the skill edit form carries a
+        // version field. When absent the backend defaults it to "1.0.0".
+        ...(form.version ? { version: form.version } : {}),
         manifest_json: newManifest,
         plugin_json: {
           $schema: "cowork-plugin-package-2.0.json",
