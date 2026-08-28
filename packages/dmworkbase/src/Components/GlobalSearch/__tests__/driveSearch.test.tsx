@@ -325,34 +325,137 @@ describe("DriveSearchPanel — offset pagination", () => {
     expect(screen.getByText("new-0")).toBeInTheDocument();
   });
 
-  it("停止翻页: a short first page (items < PAGE_SIZE) stops pagination even when total claims more", async () => {
-    // Backend reports total=40 but the first (and only) page returns 10 rows —
-    // e.g. the rest were dropped as malformed / filtered / permission-denied, so
-    // items can never reach `total`. Without the reachedEnd stop, loadNextPage
-    // would keep incrementing page_index into the OpenSearch max_result_window.
-    const { ds, searchDrive } = makeDataSource(async () => ({
-      total: 40,
-      truncated: false,
-      items: makeHits(10, 0),
-    }));
+  it("停止翻页: an empty page (not merely short) stops pagination when total still claims more", async () => {
+    // Backend reports total=40 but page 1 comes back EMPTY — every remaining
+    // row was filtered/permission-denied. A short-but-non-empty page must NOT
+    // trigger the terminal stop, because the client-side normalizer in
+    // SearchService drops malformed rows (post-filter under-count) and would
+    // otherwise silently strand the rest of the result set. See P1-1 fix.
+    let call = 0;
+    const { ds, searchDrive } = makeDataSource(async () => {
+      call++;
+      if (call === 1) return { total: 40, truncated: false, items: makeHits(20, 0) };
+      // Second page comes back empty — this is what actually ends the walk.
+      return { total: 40, truncated: false, items: [] };
+    });
     const { container } = render(
       <DriveSearchPanel keyword="评审" dataSource={ds} isActive />
     );
     await screen.findByText("file-0");
     expect(searchDrive).toHaveBeenCalledTimes(1);
 
-    // allLoaded footer means hasMore is false despite items(10) < total(40).
-    // The count must be the rows actually rendered (10), NOT backend `total`
-    // (40) — `total` counts pre-filter rows and overstates what the user sees.
+    // Scroll to trigger page 2 → returns empty → reachedEnd latches.
+    await waitFor(() => {
+      fireEvent.scroll(listEl(container));
+      expect(searchDrive.mock.calls.length).toBe(2);
+    });
+
+    // allLoaded footer surfaces once the empty page confirms end-of-set.
+    // Count is the rows actually rendered (20), not backend total (40).
     expect(
-      await screen.findByText(/drive\.allLoaded count=10\b/)
+      await screen.findByText(/drive\.allLoaded count=20\b/)
     ).toBeInTheDocument();
     expect(screen.queryByText(/count=40/)).toBeNull();
 
-    // Scrolling to the bottom must NOT fetch another page.
+    // Further scrolls MUST NOT re-fetch after the empty-page stop.
     for (let i = 0; i < 3; i++) fireEvent.scroll(listEl(container));
     await new Promise((r) => setTimeout(r, 50));
+    expect(searchDrive).toHaveBeenCalledTimes(2);
+  });
+
+  it("停止翻页: a short page (items < PAGE_SIZE but > 0) must NOT end pagination — P1-1", async () => {
+    // Regression guard for yujiawei's P1-1: SearchService drops malformed rows
+    // on the wire, so a 20-row backend page carrying one bad row arrives here
+    // as 19. A `< PAGE_SIZE` terminal would strand the rest of a 100-row set.
+    // Only an empty page is a true terminal signal.
+    let call = 0;
+    const { ds, searchDrive } = makeDataSource(async () => {
+      call++;
+      if (call === 1) {
+        // Page 1: 19 rows (backend sent 20, SearchService dropped 1 malformed).
+        return { total: 100, truncated: false, items: makeHits(19, 0) };
+      }
+      if (call === 2) {
+        // Page 2: full 20 rows — pagination must have continued here despite
+        // the short page 1.
+        return { total: 100, truncated: false, items: makeHits(20, 100) };
+      }
+      // Page 3: empty → real end-of-set.
+      return { total: 100, truncated: false, items: [] };
+    });
+    const { container } = render(
+      <DriveSearchPanel keyword="评审" dataSource={ds} isActive />
+    );
+    await screen.findByText("file-0");
     expect(searchDrive).toHaveBeenCalledTimes(1);
+
+    // The panel must NOT report "all loaded" after only the short page 1 —
+    // that would be the pre-fix behaviour and the exact silent under-fetch
+    // yujiawei called out.
+    expect(screen.queryByText(/drive\.allLoaded/)).toBeNull();
+
+    // Scroll: page 2 fetches and appends. Re-fire until loadNextPage passes
+    // its `loading` guard (jsdom scroll metrics are 0 so any event reads as
+    // near-bottom; the guard on the first page's in-flight state is what
+    // gates the second fetch).
+    await waitFor(() => {
+      fireEvent.scroll(listEl(container));
+      expect(searchDrive.mock.calls.length).toBe(2);
+    });
+    await screen.findByText("file-100");
+    // Still not terminal — page 2 is short but non-empty is fine, page 3 will
+    // be the empty stop.
+    expect(screen.queryByText(/drive\.allLoaded/)).toBeNull();
+
+    // Scroll: page 3 is empty → this is the real stop.
+    await waitFor(() => {
+      fireEvent.scroll(listEl(container));
+      expect(searchDrive.mock.calls.length).toBe(3);
+    });
+    expect(
+      await screen.findByText(/drive\.allLoaded count=39\b/)
+    ).toBeInTheDocument();
+  });
+
+  it("双击保护: two scroll events in the same tick load page 2 only once — P1-2", async () => {
+    // Regression guard for yujiawei's P1-2: React 18's concurrent root does
+    // not flush setLoadingMore(true) synchronously, so two scroll events
+    // dispatched inside one commit tick would both pass the state-based
+    // guard and both fetch page 2 — duplicating rows. The sync
+    // loadingMorePageRef must reject the second one at ref-check time.
+    // Additionally the rAF coalescer collapses per-frame scroll bursts to a
+    // single call. This test asserts the ref-based rejection directly by
+    // firing back-to-back events in the same task tick (no rAF between).
+    let call = 0;
+    const { ds, searchDrive } = makeDataSource(async () => {
+      call++;
+      if (call === 1) return { total: 100, truncated: false, items: makeHits(20, 0) };
+      return { total: 100, truncated: false, items: makeHits(20, 100) };
+    });
+    const { container } = render(
+      <DriveSearchPanel keyword="评审" dataSource={ds} isActive />
+    );
+    await screen.findByText("file-0");
+    expect(searchDrive).toHaveBeenCalledTimes(1);
+
+    // Fire three scroll events in the same tick — no awaits between.
+    // Only ONE should reach the network for page 2. The rAF coalescer +
+    // sync ref together drop the duplicates. Use waitFor to give the first
+    // page a chance to settle before the burst; then fire 3 events in one
+    // synchronous block.
+    await waitFor(() => {
+      const el = listEl(container);
+      fireEvent.scroll(el);
+      fireEvent.scroll(el);
+      fireEvent.scroll(el);
+      expect(searchDrive.mock.calls.length).toBe(2);
+    });
+    await screen.findByText("file-100");
+    // Exactly ONE additional call — not 2, not 3.
+    expect(searchDrive).toHaveBeenCalledTimes(2);
+    // No duplicate rows in the DOM (each file_id key rendered once).
+    const nodes = container.querySelectorAll("[data-file-id='100']");
+    expect(nodes.length).toBeLessThanOrEqual(1);
   });
 
   it("truncated: shows the soft hint and still allows paging", async () => {
