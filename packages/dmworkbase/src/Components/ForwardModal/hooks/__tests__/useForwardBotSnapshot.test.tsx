@@ -282,6 +282,31 @@ describe("useForwardBotSnapshot", () => {
     expect(readLatest()).toEqual([])
   })
 
+  it("accepts serialized robot flags for direct targets without a redundant refetch", async () => {
+    hoisted.channelInfos.set("b_direct", {
+      channel: { channelID: "b_direct", channelType: 1 },
+      title: "Direct Bot",
+      orgData: { robot: "true" },
+    })
+    hoisted.channelInfos.set("u_direct", {
+      channel: { channelID: "u_direct", channelType: 1 },
+      title: "Direct human",
+      orgData: { robot: false },
+    })
+
+    await render({
+      selectedIDs: ["b_direct", "u_direct"],
+      selectedChannels: [new Channel("b_direct", 1), new Channel("u_direct", 1)],
+      spaceId: "s_1",
+      enabled: true,
+    })
+
+    expect(latest?.ready).toBe(true)
+    expect(readLatestHumans()).toEqual(["u_direct"])
+    expect(readLatest()).toEqual(["b_direct"])
+    expect(hoisted.fetchCurrentImChannelInfo).not.toHaveBeenCalled()
+  })
+
   it("normalizes a Space-prefixed direct human uid for grants and creator Bot lookup", async () => {
     const prefixedUid = `s${"a".repeat(32)}_u_ada`
     hoisted.listBots.mockResolvedValue([{ uid: "b_1", name: "Ada Bot", creator_uid: "u_ada" }])
@@ -526,6 +551,27 @@ describe("useForwardBotSnapshot", () => {
     expect(latest?.error).toBe(true)
     expect(readLatest()).toEqual([])
     expect(readLatestHumans()).toEqual([])
+  })
+
+  it("accepts serialized robot flags in a group snapshot without identity refetches", async () => {
+    hoisted.subscribers.set("g_1", [
+      { uid: "b_string", name: "String Bot", orgData: { robot: "1" } },
+      { uid: "b_boolean", name: "Boolean Bot", orgData: { robot: true } },
+      { uid: "u_string", name: "String human", orgData: { robot: "0" } },
+      { uid: "u_boolean", name: "Boolean human", orgData: { robot: false } },
+    ])
+
+    await render({
+      selectedIDs: ["g_1"],
+      selectedChannels: [new Channel("g_1", 2)],
+      spaceId: "s_1",
+      enabled: true,
+    })
+
+    expect(latest?.ready).toBe(true)
+    expect(readLatestHumans()).toEqual(["u_string", "u_boolean"])
+    expect(readLatest()).toEqual(["b_string", "b_boolean"])
+    expect(hoisted.fetchCurrentImChannelInfo).not.toHaveBeenCalled()
   })
 
   it("resolves an unknown group subscriber through person-channel identity metadata", async () => {

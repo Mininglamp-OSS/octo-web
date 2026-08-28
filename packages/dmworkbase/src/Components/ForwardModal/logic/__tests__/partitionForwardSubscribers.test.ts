@@ -33,19 +33,20 @@ describe("partitionForwardSubscribers", () => {
     ])
   })
 
-  it("does not coerce truthy non-numeric robot values into Bots", () => {
+  it("normalizes boolean and string robot flags without accepting malformed values", () => {
     const result = partitionForwardSubscribers([
       { uid: "u_string", orgData: { robot: "1" } },
       { uid: "u_boolean", orgData: { robot: true } },
+      { uid: "u_string_human", orgData: { robot: "0" } },
+      { uid: "u_boolean_human", orgData: { robot: false } },
       { uid: "u_null", orgData: { robot: null } },
     ])
 
-    expect(result.humans).toEqual([])
-    expect(result.bots).toEqual([])
-    expect(result.unknown.map((member) => member.uid)).toEqual([
-      "u_string",
-      "u_boolean",
-      "u_null",
+    expect(result.humans.map((member) => member.uid)).toEqual([
+      "u_string_human",
+      "u_boolean_human",
     ])
+    expect(result.bots.map((member) => member.uid)).toEqual(["u_string", "u_boolean"])
+    expect(result.unknown.map((member) => member.uid)).toEqual(["u_null"])
   })
 })
