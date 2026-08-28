@@ -263,6 +263,7 @@ export default function SkillDetailModal({
       onCancel={onClose}
       title={null}
       size="wide"
+      closeLabel={t("skillMarket.common.close")}
       header={
         <div className="skill-market-detail-header">
           <span className="skill-market-detail-header__icon">

@@ -167,6 +167,7 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
       title={null}
       width="min(880px, calc(100vw - 32px))"
       className="wk-mcp-expert-modal"
+      closeLabel={t("mcp.common.close")}
       header={header}
     >
       <div className="wk-mcp-expert-detail__layout wk-mcp-expert-detail__layout--agent">

@@ -324,6 +324,7 @@ const McpDetailModal: React.FC<McpDetailModalProps> = ({
       width={900}
       className="wk-mcp-detail-modal"
       bodyStyle={{ height: "70vh", overflowY: "auto" }}
+      closeLabel={t("mcp.common.close")}
       title={detail ? null : t("mcp.detail.title")}
       header={detailHeader}
       footer={

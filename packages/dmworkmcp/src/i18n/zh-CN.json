@@ -103,6 +103,7 @@
     "selfCreator": "我"
   },
   "common": {
+    "close": "关闭",
     "loadFailed": "加载失败"
   },
   "errors": {

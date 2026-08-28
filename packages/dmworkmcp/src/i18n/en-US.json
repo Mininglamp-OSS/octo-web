@@ -103,6 +103,7 @@
     "selfCreator": "Me"
   },
   "common": {
+    "close": "Close",
     "loadFailed": "Failed to load"
   },
   "errors": {
