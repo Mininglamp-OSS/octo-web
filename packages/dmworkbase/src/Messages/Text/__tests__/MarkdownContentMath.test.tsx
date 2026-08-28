@@ -729,14 +729,35 @@ describe("MarkdownContent — 段落里预先转义的 \\$ 不破坏其它 $ 的
 describe("MarkdownContent — 超长 $$ block 超限回退为文本 (reviewer P2-8)", () => {
   it("约 4.8KB 的 display math 超过长度上限时按文本处理，不渲染", () => {
     const body = "x_1 + " + "a".repeat(4800); // 含 math-ish，但整体 > 4096
-    const root = renderContent(<MarkdownContent content={`$$\n${body}\n$$`} />);
-    expect(root.querySelector(".katex")).toBeNull();
+    const renderToString = vi.spyOn(katex, "renderToString");
+    try {
+      const root = renderContent(
+        <MarkdownContent content={`$$\n${body}\n$$`} />
+      );
+      expect(root.querySelector(".katex")).toBeNull();
+      expect(renderToString).not.toHaveBeenCalled();
+    } finally {
+      renderToString.mockRestore();
+    }
   });
 
   it("正常长度的 display math 仍渲染", () => {
     const root = renderContent(
       <MarkdownContent content={"$$\n\\frac{a}{b}\n$$"} />
     );
+    expect(root.querySelector(".katex-display")).not.toBeNull();
+  });
+
+  it("8 行嵌套分式的 aligned 推导不被行内复杂度预算误拒绝", () => {
+    const lines = Array.from(
+      { length: 7 },
+      (_, index) =>
+        `\\frac{\\frac{a_${index}}{b_${index}}}{\\frac{c_${index}}{d_${index}}} &= \\frac{e_${index}}{f_${index}}`
+    );
+    lines.push("\\frac{a_7}{b_7} &= c_7");
+    const body = `\\begin{aligned}\n${lines.join("\\\\\n")}\n\\end{aligned}`;
+    expect(body.length).toBeGreaterThan(450);
+    const root = renderContent(<MarkdownContent content={`$$\n${body}\n$$`} />);
     expect(root.querySelector(".katex-display")).not.toBeNull();
   });
 });
@@ -984,10 +1005,18 @@ describe("MarkdownContent — 接收端保护：每条消息公式数量上限 (
   });
 
   it("输入合法但渲染产物过大的公式按文本处理（渲染后 HTML 上限）", () => {
-    // 900 列矩阵：输入约 3.6KB（未超 4096 块长上限），但 KaTeX 渲染出 >500KB HTML。
-    const body = "\\begin{matrix}" + "1 & ".repeat(900) + "1\\end{matrix}";
-    const root = renderContent(<MarkdownContent content={`$$\n${body}\n$$`} />);
-    expect(root.querySelector(".katex")).toBeNull();
+    // 约 400 字符且复杂度很低，但 KaTeX 渲染产物超过 60KB。
+    const body = "x^2+".repeat(100) + "x";
+    const renderToString = vi.spyOn(katex, "renderToString");
+    try {
+      const root = renderContent(
+        <MarkdownContent content={`$$\n${body}\n$$`} />
+      );
+      expect(root.querySelector(".katex")).toBeNull();
+      expect(renderToString).toHaveBeenCalled();
+    } finally {
+      renderToString.mockRestore();
+    }
   });
 
   it("多公式共享累计渲染预算，不能叠加成超大 DOM", () => {
@@ -1003,10 +1032,11 @@ describe("MarkdownContent — 接收端保护：每条消息公式数量上限 (
   });
 
   it("高复杂度公式在调用 KaTeX 前快速拒绝", () => {
-    const matrix = `\\begin{matrix}${"1 & ".repeat(900)}1\\end{matrix}`;
-    const input = Array.from({ length: 32 }, () => `$$\n${matrix}\n$$`).join(
-      "\n\n"
-    );
+    const denseEscapes = "\\{\\}".repeat(200);
+    const input = Array.from(
+      { length: 32 },
+      () => `$$\n${denseEscapes}\n$$`
+    ).join("\n\n");
     const renderToString = vi.spyOn(katex, "renderToString");
     try {
       const root = renderContent(<MarkdownContent content={input} />);
@@ -1222,10 +1252,16 @@ describe("MarkdownContent — ```math 围栏与 $$ 走同一套上限 (reviewer 
 
   it("超长 ```math 围栏（超过块长上限）退回代码块", () => {
     const body = "x_1 " + "a".repeat(4500);
-    const root = renderContent(
-      <MarkdownContent content={"```math\n" + body + "\n```"} />
-    );
-    expect(root.querySelector(".katex")).toBeNull();
+    const renderToString = vi.spyOn(katex, "renderToString");
+    try {
+      const root = renderContent(
+        <MarkdownContent content={"```math\n" + body + "\n```"} />
+      );
+      expect(root.querySelector(".katex")).toBeNull();
+      expect(renderToString).not.toHaveBeenCalled();
+    } finally {
+      renderToString.mockRestore();
+    }
   });
 });
 

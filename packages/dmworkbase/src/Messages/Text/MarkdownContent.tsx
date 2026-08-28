@@ -412,8 +412,10 @@ const MAX_RENDERED_MATH_LEN = 60000;
 const MAX_RENDERED_MATH_PER_MESSAGE = 120000;
 /** 单条消息公式尝试次数上限：解析失败也计数，避免恶意失败候选反复调用 KaTeX。 */
 const MAX_FORMULAS_PER_MESSAGE = 32;
-/** KaTeX 前置复杂度预算：在真正渲染前挡住宽矩阵 / 大量命令与分组。 */
-const MAX_MATH_COMPLEXITY_SCORE = 512;
+/** KaTeX 前置复杂度预算：行内输入短且频繁，保持严格限制。 */
+const MAX_INLINE_MATH_COMPLEXITY_SCORE = 512;
+/** display 允许常见多行推导；源码长度与渲染产物上限仍提供独立硬边界。 */
+const MAX_DISPLAY_MATH_COMPLEXITY_SCORE = 2048;
 const KATEX_LENGTH_CACHE_LIMIT = 256;
 
 interface MathContext {
@@ -435,19 +437,18 @@ function getMathContext(file: any): MathContext {
   return ctx;
 }
 
-function exceedsMathComplexity(inner: string): boolean {
+function exceedsMathComplexity(inner: string, displayMode: boolean): boolean {
+  const maxScore = displayMode
+    ? MAX_DISPLAY_MATH_COMPLEXITY_SCORE
+    : MAX_INLINE_MATH_COMPLEXITY_SCORE;
   let score = Math.ceil(inner.length / 6);
-  for (
-    let i = 0;
-    i < inner.length && score <= MAX_MATH_COMPLEXITY_SCORE;
-    i += 1
-  ) {
+  for (let i = 0; i < inner.length && score <= maxScore; i += 1) {
     const char = inner[i];
     if (char === "\\" || char === "&") score += 3;
     else if (char === "{" || char === "}") score += 2;
     else if (char === "^" || char === "_") score += 1;
   }
-  return score > MAX_MATH_COMPLEXITY_SCORE;
+  return score > maxScore;
 }
 
 function getKatexRenderedLength(inner: string, displayMode: boolean): number {
@@ -483,7 +484,7 @@ function tryAcceptMath(
 ): boolean {
   if (
     ctx.budgetExhausted ||
-    exceedsMathComplexity(inner) ||
+    exceedsMathComplexity(inner, displayMode) ||
     TRUST_GATED_TEX_CMD.test(inner) ||
     MACRO_DEFINITION_TEX_CMD.test(inner)
   ) {
