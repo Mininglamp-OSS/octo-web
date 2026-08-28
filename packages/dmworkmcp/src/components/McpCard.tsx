@@ -1,7 +1,7 @@
 import React from "react";
 import { Tooltip } from "@douyinfe/semi-ui";
 import { IconWrenchStroked } from "@douyinfe/semi-icons";
-import { Bot, Download, Eye, Pencil, ShieldCheck, Trash2, UserRound } from "lucide-react";
+import { Bot, Eye, Pencil, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import type { McpListItem } from "../types/mcp";
 import { t } from "@octo/base";
 import { IconGlyph } from "../utils/icon";
@@ -165,10 +165,10 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onConnect, onEdit, onD
             </span>
             <span
               className="wk-mcp-mine-row__stat"
-              title={t("mcp.card.installCountTitle", { values: { count: item.installCount ?? 0 } })}
+              title={t("mcp.card.toolCount", { values: { count: item.toolCount ?? 0 } })}
             >
-              <Download size={13} aria-hidden="true" />
-              {formatCount(item.installCount ?? 0)}
+              <IconWrenchStroked size="small" aria-hidden="true" />
+              {formatCount(item.toolCount ?? 0)}
             </span>
             {item.visibility && (
               <span className="wk-mcp-mine-row__vis">
