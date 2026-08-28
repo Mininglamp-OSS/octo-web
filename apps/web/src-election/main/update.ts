@@ -26,8 +26,10 @@ import {
   getDownloadedUpdateFileName,
   getUpdaterPackageExtension,
   getUpdaterPlatform,
+  isLinuxElfMachineCompatible,
   isLocalhostHttpUrl,
   isNewerVersion,
+  parseLinuxElfMachine,
   parseUpdaterCheckResult,
   type DesktopUpdateInfo,
 } from "./updateCore";
@@ -210,6 +212,18 @@ function getUpdateErrorPayload(error: unknown): { message: string; code: string 
     message: getUpdateErrorMessage(error),
     code: "update-failed",
   };
+}
+
+function getUpdateCheckErrorCode(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (
+    message === "Updater response is missing package checksum" ||
+    message.startsWith("Updater response sha512 is invalid") ||
+    message.startsWith("Updater response sha256 is invalid")
+  ) {
+    return "updater-misconfigured";
+  }
+  return "check-failed";
 }
 
 async function downloadUpdatePackage(updateInfo: DesktopUpdateInfo): Promise<string> {
@@ -397,6 +411,7 @@ async function installLinuxAppImageUpdate(filePath: string): Promise<void> {
       "updater-permission-denied",
     );
   }
+  await verifyLinuxAppImageArchitecture(filePath);
   await fs.promises.rm(plan.stagingPath, { force: true }).catch(() => undefined);
   await fs.promises.rm(plan.backupPath, { force: true }).catch(() => undefined);
   await fs.promises.copyFile(filePath, plan.stagingPath);
@@ -414,8 +429,24 @@ async function installLinuxAppImageUpdate(filePath: string): Promise<void> {
     throw error;
   }
   app.relaunch({ execPath: plan.targetPath });
-  await fs.promises.rm(plan.backupPath, { recursive: true, force: true }).catch(() => undefined);
   await fs.promises.rm(filePath, { force: true }).catch(() => undefined);
+}
+
+async function verifyLinuxAppImageArchitecture(filePath: string): Promise<void> {
+  const handle = await fs.promises.open(filePath, "r");
+  try {
+    const header = Buffer.alloc(20);
+    const { bytesRead } = await handle.read(header, 0, header.length, 0);
+    const machine = parseLinuxElfMachine(header.subarray(0, bytesRead));
+    if (!isLinuxElfMachineCompatible(machine, process.arch)) {
+      throw new DesktopUpdateError(
+        `Linux AppImage architecture does not match this ${process.arch} client`,
+        "updater-architecture-mismatch",
+      );
+    }
+  } finally {
+    await handle.close();
+  }
 }
 
 async function verifyWindowsInstallerSignature(filePath: string): Promise<void> {
@@ -593,6 +624,31 @@ async function reconcileStaleMacInstallArtifacts(): Promise<void> {
   }
 }
 
+async function reconcileStaleLinuxAppImageArtifacts(): Promise<void> {
+  if (process.platform !== "linux" || !process.env.APPIMAGE) return;
+  let plan;
+  try {
+    plan = buildLinuxAppImageInstallPlan(process.env.APPIMAGE);
+  } catch {
+    return;
+  }
+  const [targetExists, backupStat, stagingStat] = await Promise.all([
+    fs.promises.stat(plan.targetPath).then(() => true, () => false),
+    fs.promises.stat(plan.backupPath).catch(() => undefined),
+    fs.promises.stat(plan.stagingPath).catch(() => undefined),
+  ]);
+  if (targetExists && backupStat) {
+    await fs.promises.rm(plan.backupPath, { force: true }).catch((error) => {
+      logger.warn(`[updater] failed to cleanup stale Linux AppImage backup: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }
+  if (stagingStat && stagingStat.mtimeMs < Date.now() - 24 * 60 * 60 * 1000) {
+    await fs.promises.rm(plan.stagingPath, { force: true }).catch((error) => {
+      logger.warn(`[updater] failed to cleanup stale Linux AppImage staging file: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }
+}
+
 function checkUpdate(win: BrowserWindow, options?: { quitApp?: () => void }) {
   mainWindow = win;
   if (options?.quitApp) quitUpdaterApp = options.quitApp;
@@ -601,6 +657,7 @@ function checkUpdate(win: BrowserWindow, options?: { quitApp?: () => void }) {
   });
   void cleanupStaleUpdateArtifacts();
   void reconcileStaleMacInstallArtifacts();
+  void reconcileStaleLinuxAppImageArtifacts();
   if (updateIpcHandlersRegistered) return;
   updateIpcHandlersRegistered = true;
   // 接收渲染进程消息，开始检查更新
@@ -632,7 +689,7 @@ function checkUpdate(win: BrowserWindow, options?: { quitApp?: () => void }) {
     } catch (error) {
       logger.info(error);
       if (seq === updateCheckSeq && !isDownloadingUpdate && !options?.silent) {
-        sendUpdateError(error instanceof Error ? error.message : String(error), "check-failed");
+        sendUpdateError(error instanceof Error ? error.message : String(error), getUpdateCheckErrorCode(error));
       }
     }
   });

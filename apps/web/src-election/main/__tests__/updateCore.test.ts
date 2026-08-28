@@ -13,7 +13,9 @@ import {
   getMacAppBundlePath,
   getUpdaterPlatform,
   isAllowedUpdaterPackageUrl,
+  isLinuxElfMachineCompatible,
   isNewerVersion,
+  parseLinuxElfMachine,
   parseUpdaterCheckResult,
   parseUpdateInfo,
 } from "../updateCore";
@@ -101,6 +103,14 @@ describe("desktop updater core", () => {
       }),
     ).toMatchObject({
       url: "https://cdn.example.com/OCTO-1.0.0-arm64.dmg",
+      forceUpdate: true,
+    });
+    expect(parseUpdateInfo({
+      version: "1.0.0",
+      download_url: "https://cdn.example.com/OCTO-1.0.0-arm64.dmg",
+      sha512: SHA512_HEX,
+      is_force: 1,
+    })).toMatchObject({
       forceUpdate: true,
     });
   });
@@ -244,6 +254,24 @@ describe("desktop updater core", () => {
     });
     expect(() => buildLinuxAppImageInstallPlan("")).toThrow("Running AppImage path is not available");
     expect(() => buildLinuxAppImageInstallPlan("/home/me/OCTO.deb")).toThrow("Running AppImage path must end with .AppImage");
+  });
+
+  it("parses Linux ELF machine headers for AppImage architecture checks", () => {
+    const x64Header = new Uint8Array(20);
+    x64Header.set([0x7f, 0x45, 0x4c, 0x46, 2, 1]);
+    x64Header[18] = 62;
+    x64Header[19] = 0;
+    const arm64Header = new Uint8Array(20);
+    arm64Header.set([0x7f, 0x45, 0x4c, 0x46, 2, 1]);
+    arm64Header[18] = 183;
+    arm64Header[19] = 0;
+
+    expect(parseLinuxElfMachine(x64Header)).toBe(62);
+    expect(parseLinuxElfMachine(arm64Header)).toBe(183);
+    expect(isLinuxElfMachineCompatible(62, "x64")).toBe(true);
+    expect(isLinuxElfMachineCompatible(183, "arm64")).toBe(true);
+    expect(isLinuxElfMachineCompatible(62, "arm64")).toBe(false);
+    expect(parseLinuxElfMachine(new Uint8Array([0x00, 0x45, 0x4c, 0x46]))).toBeUndefined();
   });
 
   it("resolves the owning macOS app bundle from the executable path", () => {

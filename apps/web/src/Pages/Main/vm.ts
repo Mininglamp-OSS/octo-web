@@ -57,6 +57,8 @@ function getElectronUpdateErrorText(code: string, fallback: string): string {
       return t("base.navRail.settingsPanel.updateError.updaterMisconfigured");
     case "updater-permission-denied":
       return t("base.navRail.settingsPanel.updateError.updaterPermissionDenied");
+    case "updater-architecture-mismatch":
+      return t("base.navRail.settingsPanel.updateError.updaterArchitectureMismatch");
     case "update-failed":
       return t("base.navRail.settingsPanel.updateError.updateFailed");
     default:

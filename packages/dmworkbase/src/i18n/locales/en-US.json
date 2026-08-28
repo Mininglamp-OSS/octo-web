@@ -1479,6 +1479,7 @@
   "navRail.settingsPanel.updateError.noPendingUpdate": "No update is ready to download. Check again.",
   "navRail.settingsPanel.updateError.packageVerificationFailed": "The update package could not be verified. Do not install it; check the release package and try again.",
   "navRail.settingsPanel.updateError.updateFailed": "Update failed. Please try again later.",
+  "navRail.settingsPanel.updateError.updaterArchitectureMismatch": "The update package does not match this device architecture. Download the matching desktop package.",
   "navRail.settingsPanel.updateError.updaterMisconfigured": "The desktop updater is missing required verification configuration.",
   "navRail.settingsPanel.updateError.updaterPermissionDenied": "This installation location is not writable. Ask your administrator to update the app.",
   "navRail.settingsPanel.updateError.updaterApiNotConfigured": "The desktop updater service is not configured.",
