@@ -987,6 +987,34 @@ describe("MarkdownContent — display 配对在容器与换行组合下保持稳
       expect(visibleText(root)).toContain(visibleToken);
     });
   }
+
+  const inlineNodeSplitters = [
+    "*for*",
+    "**for**",
+    "`for`",
+    "[for](https://example.com)",
+    "~~for~~",
+  ];
+
+  for (const splitter of inlineNodeSplitters) {
+    it(`转义范围不跨 ${splitter} 的 mdast 节点配对`, () => {
+      const tex = "a\\_b^2";
+      const root = renderContent(
+        <MarkdownContent content={`cost $$5 ${splitter} $$${tex}$$ tail`} />
+      );
+      expect(root.querySelectorAll(".katex")).toHaveLength(1);
+      expect(texAnnotations(root)).toContain(tex);
+    });
+  }
+
+  it("跨 inline node 后的百分号转义不会截断公式", () => {
+    const tex = "\\alpha \\% \\beta + \\gamma^2";
+    const root = renderContent(
+      <MarkdownContent content={`cost $$5 *for* $$${tex}$$ tail`} />
+    );
+    expect(texAnnotations(root)).toContain(tex);
+    expect(visibleText(root)).toContain("β");
+  });
 });
 
 describe("MarkdownContent — markdown 转义的 \\$ 保持 literal，不被重新激活为定界符 (reviewer P0-2)", () => {

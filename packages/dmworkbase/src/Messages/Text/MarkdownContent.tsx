@@ -644,6 +644,30 @@ function collectReferenceRanges(
   }
 }
 
+/**
+ * 收集 mathScanPlugin 实际会处理的 mdast text 节点源码区间。范围收集必须使用同一边界，
+ * 否则在 emphasis/link/code 等内联节点两侧配出的 `$` / `$$` 对，scanner 根本无法跨节点消费。
+ */
+function collectMathScanSourceRanges(
+  node: any,
+  ranges: Array<[number, number]>
+): void {
+  if (!node) return;
+  if (node.type === "text" && String(node.value ?? "").includes("$")) {
+    const start = node.position?.start?.offset;
+    const end = node.position?.end?.offset;
+    if (typeof start === "number" && typeof end === "number") {
+      ranges.push([start, end]);
+    }
+    return;
+  }
+  if (Array.isArray(node.children)) {
+    for (const child of node.children) {
+      collectMathScanSourceRanges(child, ranges);
+    }
+  }
+}
+
 function isOffsetInRanges(
   offset: number,
   ranges: Array<[number, number]>
@@ -745,11 +769,19 @@ function isQuotedJsonValue(
 /** 找出原始源码中可能由 scanner 处理的 `$...$` / `$$...$$` 内部区间。 */
 function collectPotentialMathRanges(
   source: string,
-  excludedRanges: Array<[number, number]>
+  excludedRanges: Array<[number, number]>,
+  scanRanges: Array<[number, number]>
 ): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
   let i = 0;
-  while (i < source.length) {
+  let scanRangeIndex = 0;
+  while (scanRangeIndex < scanRanges.length) {
+    const [scanStart, scanEnd] = scanRanges[scanRangeIndex];
+    if (i < scanStart) i = scanStart;
+    if (i >= scanEnd) {
+      scanRangeIndex += 1;
+      continue;
+    }
     if (
       source[i] !== "$" ||
       isOffsetInRanges(i, excludedRanges) ||
@@ -758,9 +790,9 @@ function collectPotentialMathRanges(
       i += 1;
       continue;
     }
-    const openLen = source[i + 1] === "$" ? 2 : 1;
+    const openLen = i + 1 < scanEnd && source[i + 1] === "$" ? 2 : 1;
     let close = -1;
-    for (let j = i + openLen; j < source.length; j += 1) {
+    for (let j = i + openLen; j < scanEnd; j += 1) {
       if (isOffsetInRanges(j, excludedRanges)) continue;
       if (openLen === 1 && (source[j] === "\n" || source[j] === "\r")) break;
       if (
@@ -772,7 +804,7 @@ function collectPotentialMathRanges(
       if (
         source[j] === "$" &&
         !isEscapedAt(source, j) &&
-        (openLen === 1 || source[j + 1] === "$")
+        (openLen === 1 || (j + 1 < scanEnd && source[j + 1] === "$"))
       ) {
         close = j;
         break;
@@ -916,7 +948,10 @@ function escapeMaskPlugin(this: any) {
     const referenceRanges: Array<[number, number]> = [];
     collectReferenceRanges(tree, referenceRanges);
     referenceRanges.sort((a, b) => a[0] - b[0]);
-    const mathRanges = collectPotentialMathRanges(source, ranges);
+    const scanRanges: Array<[number, number]> = [];
+    collectMathScanSourceRanges(tree, scanRanges);
+    scanRanges.sort((a, b) => a[0] - b[0]);
+    const mathRanges = collectPotentialMathRanges(source, ranges, scanRanges);
     const result = maskMarkdownEscapes(
       source,
       ranges,
