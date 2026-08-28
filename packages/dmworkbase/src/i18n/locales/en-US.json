@@ -1475,6 +1475,7 @@
   "navRail.settingsPanel.updateError.downloadTimeout": "The update package download timed out. Please try again.",
   "navRail.settingsPanel.updateError.linuxAppImagePathUnavailable": "This Linux build cannot install the AppImage update automatically. Download the matching desktop package or update through your package manager.",
   "navRail.settingsPanel.updateError.macosInstallFailed": "macOS update installation failed. Check the update log.",
+  "navRail.settingsPanel.updateError.macosInstallFailedWithDetail": "macOS update installation failed with code {code}. Check the update log: {path}",
   "navRail.settingsPanel.updateError.noPendingUpdate": "No update is ready to download. Check again.",
   "navRail.settingsPanel.updateError.packageVerificationFailed": "The update package could not be verified. Do not install it; check the release package and try again.",
   "navRail.settingsPanel.updateError.updateFailed": "Update failed. Please try again later.",

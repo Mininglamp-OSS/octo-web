@@ -24,6 +24,17 @@ import {
   IPC_UPDATE_NOT_AVAILABLE,
 } from "../../../src-election/shared/ipc-channels";
 
+function getMacInstallErrorText(fallback: string): string {
+  const match = fallback.match(/code\s+([^.\s]+)\.\s+See\s+(.+)$/);
+  if (!match) return t("base.navRail.settingsPanel.updateError.macosInstallFailed");
+  return t("base.navRail.settingsPanel.updateError.macosInstallFailedWithDetail", {
+    values: {
+      code: match[1],
+      path: match[2],
+    },
+  });
+}
+
 function getElectronUpdateErrorText(code: string, fallback: string): string {
   switch (code) {
     case "download-timeout":
@@ -37,7 +48,7 @@ function getElectronUpdateErrorText(code: string, fallback: string): string {
     case "check-failed":
       return t("base.navRail.settingsPanel.updateError.checkFailed");
     case "macos-install-failed":
-      return t("base.navRail.settingsPanel.updateError.macosInstallFailed");
+      return getMacInstallErrorText(fallback);
     case "linux-appimage-path-unavailable":
       return t("base.navRail.settingsPanel.updateError.linuxAppImagePathUnavailable");
     case "package-verification-failed":

@@ -53,6 +53,9 @@ const isMainWindowSender = (event: Electron.IpcMainEvent): boolean =>
 class DesktopUpdateError extends Error {
   constructor(message: string, public readonly code: string) {
     super(message);
+    // The Electron main tsconfig still emits ES5. Native Error subclasses need
+    // an explicit prototype repair there, otherwise instanceof checks fail.
+    Object.setPrototypeOf(this, DesktopUpdateError.prototype);
     this.name = "DesktopUpdateError";
   }
 }
@@ -379,13 +382,21 @@ async function openDownloadedUpdatePackage(updateInfo: DesktopUpdateInfo, filePa
 
 async function installLinuxAppImageUpdate(filePath: string): Promise<void> {
   if (!process.env.APPIMAGE) {
+    await fs.promises.rm(filePath, { force: true }).catch(() => undefined);
     throw new DesktopUpdateError(
       "Linux AppImage updates require the app to be running from an AppImage package",
       "linux-appimage-path-unavailable",
     );
   }
   const plan = buildLinuxAppImageInstallPlan(process.env.APPIMAGE);
-  await fs.promises.access(path.dirname(plan.targetPath), fs.constants.W_OK);
+  try {
+    await fs.promises.access(path.dirname(plan.targetPath), fs.constants.W_OK);
+  } catch {
+    throw new DesktopUpdateError(
+      "Current Linux AppImage location is not writable",
+      "updater-permission-denied",
+    );
+  }
   await fs.promises.rm(plan.stagingPath, { force: true }).catch(() => undefined);
   await fs.promises.rm(plan.backupPath, { force: true }).catch(() => undefined);
   await fs.promises.copyFile(filePath, plan.stagingPath);
@@ -430,9 +441,16 @@ async function verifyWindowsInstallerSignature(filePath: string): Promise<void> 
       },
     });
   } catch (error) {
+    const rawExitCode = (error as { code?: unknown }).code;
+    const exitCode = typeof rawExitCode === "number"
+      ? rawExitCode
+      : undefined;
+    const code = exitCode === 10 || exitCode === 11 || exitCode === 12
+      ? "package-verification-failed"
+      : "updater-misconfigured";
     throw new DesktopUpdateError(
       error instanceof Error ? error.message : "Windows update package signature verification failed",
-      "package-verification-failed",
+      code,
     );
   }
 }
