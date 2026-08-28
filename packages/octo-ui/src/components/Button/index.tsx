@@ -1,4 +1,5 @@
 import SemiButton from '@douyinfe/semi-ui/lib/es/button'
+import { IconAILoading } from '@douyinfe/semi-icons'
 import { forwardRef, useImperativeHandle, useRef } from 'react'
 import { findDOMNode } from 'react-dom'
 import type { ComponentRef, MouseEvent } from 'react'
@@ -85,12 +86,15 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   const semiVisual = mapSemiVisual(normalizedVariant)
   const semiSize = mapSemiSize(normalizedSize)
   const nativeType = htmlType ?? (htmlButtonTypes.includes(type as ButtonHTMLType) ? type as ButtonHTMLType : 'button')
+  const isDisabled = Boolean(disabled || loading)
+  const buttonIcon = loading ? <IconAILoading className="semi-button-content-loading-icon" /> : icon
   const classes = [
     'octo-ui-button',
     `octo-ui-button--${normalizedVariant}`,
     `octo-ui-button--${normalizedSize}`,
     iconOnly ? 'octo-ui-button--icon-only' : '',
     loading ? 'octo-ui-button--loading' : '',
+    loading ? 'semi-button-loading' : '',
     className,
   ].filter(Boolean).join(' ')
 
@@ -111,18 +115,19 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   return (
     <SemiButton
       ref={semiRef}
+      {...rest}
       className={classes}
-      disabled={disabled}
+      disabled={isDisabled}
       htmlType={nativeType}
-      icon={icon}
+      icon={buttonIcon}
       loading={loading}
-      noHorizontalPadding={iconOnly}
+      noHorizontalPadding={iconOnly || undefined}
       size={semiSize}
       theme={semiVisual.theme}
       type={semiVisual.type}
       aria-busy={loading || undefined}
+      aria-disabled={isDisabled || undefined}
       onClick={handleClick}
-      {...rest}
     >
       {iconOnly ? null : children}
     </SemiButton>

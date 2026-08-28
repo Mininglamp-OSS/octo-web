@@ -122,6 +122,7 @@ export default function ChannelWebhookPanel({
       content: t("base.channelWebhook.regenerate.content", {
         values: { name: item.name },
       }),
+      cancelText: t("base.common.cancel"),
       okText: t("base.channelWebhook.regenerate.confirm"),
       okType: "danger",
       onOk: async () => {
@@ -149,6 +150,7 @@ export default function ChannelWebhookPanel({
       content: t("base.channelWebhook.delete.content", {
         values: { name: item.name },
       }),
+      cancelText: t("base.common.cancel"),
       okText: t("base.channelWebhook.delete.confirm"),
       okType: "danger",
       onOk: async () => {

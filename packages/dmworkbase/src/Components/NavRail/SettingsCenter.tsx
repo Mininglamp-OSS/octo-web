@@ -54,6 +54,7 @@ export default function SettingsCenter({ visible, isDesktop = false, environment
   const [selectedId, setSelectedId] = useState("general");
   const [secondaryPage, setSecondaryPage] = useState<"secrets" | null>(null);
   const previousSecondaryPage = useRef<"secrets" | null>(null);
+  const consumedSecretsSequence = useRef<number | null>(null);
   const contentRef = useRef<HTMLElement | null>(null);
   React.useLayoutEffect(() => {
     if (contentRef.current) contentRef.current.scrollTop = 0;
@@ -63,17 +64,23 @@ export default function SettingsCenter({ visible, isDesktop = false, environment
     previousSecondaryPage.current = secondaryPage;
   }, [onSecretsClosed, secondaryPage]);
   React.useEffect(() => {
-    if (visible && openSecretsRequest) {
+    if (!openSecretsRequest) {
+      consumedSecretsSequence.current = null;
+      return;
+    }
+    if (visible && consumedSecretsSequence.current !== openSecretsRequest.sequence) {
+      consumedSecretsSequence.current = openSecretsRequest.sequence;
       setSelectedId("account");
       setSecondaryPage("secrets");
     }
   }, [openSecretsRequest, visible]);
   React.useEffect(() => {
-    if (!visible && !openSecretsRequest) {
+    if (!visible) {
       setSelectedId("general");
       setSecondaryPage(null);
+      if (openSecretsRequest) onSecretsClosed?.();
     }
-  }, [openSecretsRequest, visible]);
+  }, [onSecretsClosed, openSecretsRequest, visible]);
   React.useEffect(() => {
     if (selectedId === "shortcuts" && !shouldShowVoiceShortcuts(voiceSettings, getVoiceOs(runtimeEnvironment))) {
       setSelectedId(availableGroups[0]?.items[0]?.id ?? "general");

@@ -1,6 +1,6 @@
 import SemiModal from '@douyinfe/semi-ui/lib/es/modal'
-import { forwardRef, useCallback, useMemo, useState } from 'react'
-import type { ComponentRef, KeyboardEvent, MouseEvent, ReactNode, Ref } from 'react'
+import { cloneElement, forwardRef, isValidElement, useCallback, useMemo, useState } from 'react'
+import type { ComponentRef, KeyboardEvent, MouseEvent, ReactElement, ReactNode, Ref } from 'react'
 import Button from '../Button'
 import type {
   ConfirmModalProps,
@@ -19,6 +19,8 @@ const widthBySize: Record<ModalSize, number | string> = {
   wide: 720,
   fullscreen: '80%',
 }
+
+let modalTitleSeed = 0
 
 function isPromiseLike(value: unknown): value is Promise<unknown> {
   return Boolean(value && typeof (value as Promise<unknown>).then === 'function')
@@ -70,12 +72,17 @@ function ModalFooter({ className, config, onClose }: ModalFooterProps) {
     const callback = action === 'ok' ? config.onOk : config.onCancel
     const result = callback?.()
     if (!isPromiseLike(result)) {
-      if (action === 'cancel' && !config.onCancel) onClose()
+      if (action === 'cancel') onClose()
       return
     }
 
     setPending(action)
-    void result.finally(() => setPending(null))
+    void result
+      .then(() => {
+        if (action === 'cancel') onClose()
+      })
+      .catch(() => undefined)
+      .finally(() => setPending(null))
   }
 
   return (
@@ -115,7 +122,7 @@ const Modal = forwardRef<ComponentRef<typeof SemiModal>, ModalProps>(function Mo
     closable = true,
     closeClassName,
     closeIcon,
-    closeLabel = 'Close',
+    closeLabel = '关闭',
     closeOnEsc = true,
     contentClassName,
     defaultOpen,
@@ -156,6 +163,9 @@ const Modal = forwardRef<ComponentRef<typeof SemiModal>, ModalProps>(function Mo
   const actualCloseOnEsc = options?.closeOnEsc ?? closeOnEsc
   const actualMask = options?.mask ?? mask
   const actualMaskClosable = options?.maskClosable ?? maskClosable
+  const titleId = useMemo(() => `octo-ui-modal-title-${++modalTitleSeed}`, [])
+  const hasDefaultTitleNode = header === undefined && title !== null && title !== undefined
+  const dialogLabel = ariaLabel ?? (typeof title === 'string' ? title : 'modal')
 
   const setOpen = useCallback((nextOpen: boolean) => {
     if (controlledOpen === undefined) {
@@ -171,35 +181,40 @@ const Modal = forwardRef<ComponentRef<typeof SemiModal>, ModalProps>(function Mo
     onCancel?.(event)
   }, [onCancel, onClose, setOpen])
 
+  const closeNode = actualClosable ? (
+    <button
+      aria-label={closeLabel}
+      className={cx('octo-ui-modal__close', closeClassName)}
+      type="button"
+      onClick={handleClose}
+    >
+      {closeIcon ?? <CloseIcon />}
+    </button>
+  ) : null
+
   const defaultHeaderNode = useMemo(() => {
-    if (!title && !actualClosable) return null
+    if (!title) return null
     return (
       <header className={cx('octo-ui-modal__header', headerClassName)}>
-        {title ? (
-          <div className={cx('octo-ui-modal__title', titleClassName)}>{title}</div>
-        ) : (
-          <div className={cx('octo-ui-modal__title', titleClassName)} />
-        )}
-        {actualClosable ? (
-          <button
-            aria-label={closeLabel}
-            className={cx('octo-ui-modal__close', closeClassName)}
-            type="button"
-            onClick={handleClose}
-          >
-            {closeIcon ?? <CloseIcon />}
-          </button>
-        ) : null}
+        <div id={titleId} className={cx('octo-ui-modal__title', titleClassName)}>{title}</div>
       </header>
     )
-  }, [actualClosable, closeClassName, closeIcon, closeLabel, handleClose, headerClassName, title, titleClassName])
+  }, [headerClassName, title, titleClassName, titleId])
 
   const headerNode = header !== undefined ? header : defaultHeaderNode
+  const renderDialog = useCallback((node: ReactNode) => {
+    if (!isValidElement(node)) return node
+
+    const ariaProps = hasDefaultTitleNode
+      ? { 'aria-labelledby': titleId, 'aria-label': undefined }
+      : { 'aria-labelledby': undefined, 'aria-label': dialogLabel }
+
+    return cloneElement(node as ReactElement<Record<string, unknown>>, ariaProps)
+  }, [dialogLabel, hasDefaultTitleNode, titleId])
 
   return (
     <SemiModal
       ref={ref as Ref<ComponentRef<typeof SemiModal>>}
-      aria-label={ariaLabel ?? (typeof title === 'string' ? title : undefined)}
       afterClose={afterClose}
       bodyStyle={{ padding: 0 }}
       centered
@@ -214,6 +229,7 @@ const Modal = forwardRef<ComponentRef<typeof SemiModal>, ModalProps>(function Mo
       maskClosable={actualMaskClosable}
       maskStyle={maskStyle}
       modalContentClass={cx('octo-ui-modal__content', modalContentClassName)}
+      modalRender={renderDialog}
       motion={motion}
       style={style}
       title={null}
@@ -224,6 +240,7 @@ const Modal = forwardRef<ComponentRef<typeof SemiModal>, ModalProps>(function Mo
     >
       <div className={cx('octo-ui-modal__surface', contentClassName)}>
         {headerNode}
+        {closeNode}
         <div className={cx('octo-ui-modal__body', bodyClassName)} style={bodyStyle}>
           {children}
         </div>
@@ -378,7 +395,9 @@ const ConfirmModal = forwardRef<ComponentRef<typeof SemiModal>, ConfirmModalProp
     const result = onOk?.()
     if (!isPromiseLike(result)) return
     setPending(true)
-    void result.finally(() => setPending(false))
+    void result
+      .catch(() => undefined)
+      .finally(() => setPending(false))
   }
 
   return (

@@ -172,12 +172,14 @@ const FoldSessionCard: React.FC<FoldSessionCardProps> = ({
                   if (!((event.shiftKey && event.key === "F10") || event.key === "ContextMenu")) return;
                   event.preventDefault();
                   const rect = event.currentTarget.getBoundingClientRect();
-                  event.currentTarget.dispatchEvent(new MouseEvent("contextmenu", {
+                  const contextMenuEvent = new MouseEvent("contextmenu", {
                     bubbles: true,
                     cancelable: true,
                     clientX: Math.max(0, Math.min(window.innerWidth, rect.left + rect.width / 2)),
                     clientY: Math.max(0, Math.min(window.innerHeight, rect.top + rect.height / 2)),
-                  }));
+                  }) as MouseEvent & { focusFirstItem?: boolean };
+                  contextMenuEvent.focusFirstItem = true;
+                  event.currentTarget.dispatchEvent(contextMenuEvent);
                 }
               : undefined
           }

@@ -130,7 +130,7 @@ describe("NewSkillModal", () => {
   });
 
   it("opens the hidden icon file input and shows the crop dialog after selecting an image", async () => {
-    const { container } = render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} />);
+    render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} />);
 
     await act(async () => {
       fireEvent.change(screen.getByLabelText(selectZipLabel), {
@@ -142,7 +142,7 @@ describe("NewSkillModal", () => {
       expect(screen.getByText("skill-pack.skill")).toBeInTheDocument();
     });
 
-    const iconInput = container.querySelector<HTMLInputElement>(".skill-market-icon-upload__input");
+    const iconInput = document.body.querySelector<HTMLInputElement>(".skill-market-icon-upload__input");
     expect(iconInput).toBeTruthy();
     const clickSpy = vi.spyOn(iconInput!, "click").mockImplementation(() => undefined);
 

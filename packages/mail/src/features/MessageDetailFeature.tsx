@@ -321,6 +321,7 @@ export default function MessageDetailFeature({
     modalConfirm({
       title: t("mail.confirm.deleteTitle"),
       content: t("mail.confirm.deleteContent"),
+      cancelText: t("mail.actions.cancel"),
       okType: "danger",
       okText: t("mail.actions.delete"),
       onOk: async () => {
@@ -344,6 +345,7 @@ export default function MessageDetailFeature({
       content: t("mail.confirm.notJunkContent", {
         values: { sender: current.from },
       }),
+      cancelText: t("mail.actions.cancel"),
       okText: t("mail.actions.notJunk"),
       onOk: async () => {
         setBusy(true);

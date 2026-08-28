@@ -24,6 +24,7 @@ vi.mock('@douyinfe/semi-ui/lib/es/modal', async () => {
       getPopupContainer,
       mask,
       maskClosable,
+      modalRender,
       modalContentClass,
       visible,
       width,
@@ -32,7 +33,7 @@ vi.mock('@douyinfe/semi-ui/lib/es/modal', async () => {
     ref,
   ) {
     if (!visible) afterClose?.()
-    return (
+    const content = (
       <section
         {...rest}
         ref={ref}
@@ -48,6 +49,7 @@ vi.mock('@douyinfe/semi-ui/lib/es/modal', async () => {
         <div className={modalContentClass}>{children}</div>
       </section>
     )
+    return modalRender ? modalRender(content) : content
   })
   ;(Modal as any).confirm = confirmMock
 
@@ -130,6 +132,7 @@ describe('Modal', () => {
 
     expect(html).toContain('custom-header')
     expect(html).not.toContain('octo-ui-modal__header unused-header')
+    expect(html).toContain('aria-label="关闭"')
   })
 
   it('can hide the header and footer', () => {
@@ -140,8 +143,20 @@ describe('Modal', () => {
     )
 
     expect(html).not.toContain('octo-ui-modal__header')
+    expect(html).not.toContain('octo-ui-modal__close')
     expect(html).not.toContain('octo-ui-modal__footer')
     expect(html).toContain('Plain')
+  })
+
+  it('maps Octo title semantics onto the dialog element', () => {
+    const html = renderToStaticMarkup(
+      <Modal open title="Settings">
+        body
+      </Modal>,
+    )
+
+    expect(html).toContain('aria-labelledby="octo-ui-modal-title-')
+    expect(html).not.toContain('aria-labelledby="semi-modal-title"')
   })
 })
 

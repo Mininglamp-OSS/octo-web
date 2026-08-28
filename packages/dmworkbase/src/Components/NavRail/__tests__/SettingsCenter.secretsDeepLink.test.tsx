@@ -113,4 +113,65 @@ describe("SettingsCenter secrets deep link", () => {
       })
     );
   });
+
+  it("clears a pending request when the settings center closes", async () => {
+    const onSecretsClosed = vi.fn();
+    const request = {
+      create: true,
+      name: "Claude",
+      value: "sk-test",
+      sequence: 1,
+    };
+
+    act(() => {
+      ReactDOM.render(
+        <SettingsCenter
+          visible
+          onClose={vi.fn()}
+          onSecretsClosed={onSecretsClosed}
+          openSecretsRequest={request}
+        />,
+        container
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('[data-testid="secrets-panel"]')).not.toBeNull();
+
+    act(() => {
+      ReactDOM.render(
+        <SettingsCenter
+          visible={false}
+          onClose={vi.fn()}
+          onSecretsClosed={onSecretsClosed}
+          openSecretsRequest={request}
+        />,
+        container
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(onSecretsClosed).toHaveBeenCalled();
+
+    act(() => {
+      ReactDOM.render(
+        <SettingsCenter
+          visible
+          onClose={vi.fn()}
+          onSecretsClosed={onSecretsClosed}
+          openSecretsRequest={null}
+        />,
+        container
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('[data-testid="secrets-panel"]')).toBeNull();
+  });
 });

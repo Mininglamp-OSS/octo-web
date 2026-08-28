@@ -649,7 +649,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
         visible={confirmClose}
         onCancel={() => setConfirmClose(false)}
         title={t("skillMarket.confirm.title")}
-        size="md"
+        size="default"
         footer={
           <>
             <Button variant="secondary" onClick={() => setConfirmClose(false)}>{t("skillMarket.confirm.keepEditing")}</Button>

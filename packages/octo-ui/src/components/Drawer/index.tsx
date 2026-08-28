@@ -158,6 +158,7 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
         ref={ref as Ref<HTMLElement>}
         aria-hidden={!actualOpen}
         aria-label={ariaLabel ?? (typeof title === 'string' ? title : undefined)}
+        aria-modal={mask && actualOpen ? true : undefined}
         className={cx('octo-ui-drawer', 'octo-ui-drawer--inline', `octo-ui-drawer--${placement}`, className)}
         data-octo-drawer-open={actualOpen ? 'true' : 'false'}
         data-octo-drawer-motion={motion ? 'true' : 'false'}

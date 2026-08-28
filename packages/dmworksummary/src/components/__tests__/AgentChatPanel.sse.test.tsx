@@ -13,20 +13,23 @@ vi.mock('../../api/summaryApi', () => ({
 }));
 
 vi.mock('@douyinfe/semi-ui', () => ({
-    Button: ({ children, onClick, disabled, ...rest }: any) => (
-        <button onClick={onClick} disabled={disabled} {...rest}>
-            {children}
-        </button>
-    ),
     Modal: ({ children, visible }: any) => (visible ? <div data-testid="modal">{children}</div> : null),
-    Input: ({ value, onChange, ...rest }: any) => (
-        <input value={value} onChange={(e) => onChange?.(e.target.value)} {...rest} />
-    ),
     Toast: {
         error: vi.fn(),
         success: vi.fn(),
         warning: vi.fn(),
     },
+}));
+
+vi.mock('@octo/ui', () => ({
+    Button: ({ children, onClick, disabled, loading, htmlType, ...rest }: any) => (
+        <button type={htmlType ?? 'button'} onClick={onClick} disabled={disabled || loading} data-loading={loading} {...rest}>
+            {children}
+        </button>
+    ),
+    Input: ({ value, onChange, ...rest }: any) => (
+        <input value={value} onChange={(e) => onChange?.(e.target.value)} {...rest} />
+    ),
 }));
 
 const mockT = (key: string) => key;
@@ -322,14 +325,14 @@ describe('AgentChatPanel SSE Mode', () => {
 
         await waitFor(() => expect(summaryApi.agentChat).toHaveBeenCalled(), { timeout: 2000 });
         expect(textarea).toBeDisabled();
-        expect(screen.getByText('summary.create.newSession')).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'summary.create.newSession' })).toBeDisabled();
 
         await act(async () => {
             resolveFallback?.({ reply: 'fallback reply', session_id: 'busy-session' });
         });
 
         await waitFor(() => expect(textarea).not.toBeDisabled(), { timeout: 2000 });
-        expect(screen.getByText('summary.create.newSession')).not.toBeDisabled();
+        expect(screen.getByRole('button', { name: 'summary.create.newSession' })).not.toBeDisabled();
         expect(onNewSession).not.toHaveBeenCalled();
     });
 

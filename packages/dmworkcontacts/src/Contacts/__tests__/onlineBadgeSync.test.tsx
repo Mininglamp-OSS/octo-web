@@ -2,7 +2,6 @@ import React from "react";
 import ReactDOM from "react-dom";
 import { act } from "react-dom/test-utils";
 import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { Modal as OctoModal } from "@octo/ui";
 
 // Regression coverage for the two remaining AI online green-dot paths on the
 // Contacts page (the tab-focus path is covered in visibilityHeal.test.tsx):
@@ -124,7 +123,6 @@ beforeAll(async () => {
     WKBase: RenderProp,
     WKBaseContext: class {},
     ErrorBoundary: Passthrough,
-    OctoModal: () => null,
     I18nContext: React.createContext({}),
     t: (k: string) => k,
     toSimplized: (s: string) => s,
@@ -165,6 +163,9 @@ beforeAll(async () => {
   vi.doMock("@douyinfe/semi-ui", () => ({
     Toast: { success: vi.fn(), error: vi.fn() },
     Tooltip: ({ children }: any) => <>{children}</>,
+  }));
+  vi.doMock("@octo/ui", () => ({
+    Modal: ({ children, visible = true }: any) => (visible ? <div>{children}</div> : null),
   }));
   vi.doMock("@tanstack/react-virtual", () => ({ useVirtualizer: () => ({ getVirtualItems: () => [], getTotalSize: () => 0, scrollToOffset: vi.fn() }) }));
   vi.doMock("../Service/ContactsListManager", () => ({ ContactsListManager: { shared: {} } }));

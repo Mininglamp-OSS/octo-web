@@ -118,6 +118,7 @@ export default function SecretsSettingsPanel({
       modalConfirm({
         title: t("base.secrets.delete.title"),
         content: t("base.secrets.delete.content", { values: { name: secret.display_name } }),
+        cancelText: t("base.common.cancel"),
         okText: t("base.secrets.delete.confirm"),
         okType: "danger",
         onOk: async () => {

@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import McpCard from "../McpCard";
 import McpDetailModal from "../McpDetailModal";
 import type { McpDetail, McpListItem } from "../../types/mcp";
-import { Modal as OctoModal, modalConfirm } from "@octo/ui";
 
 const fetchMcpDetail = vi.fn();
 
@@ -24,16 +23,31 @@ vi.mock("@douyinfe/semi-ui", () => ({
   Toast: { success: vi.fn(), error: vi.fn() },
   Tooltip: ({ children }: { children: React.ReactNode }) => children,
 }));
-vi.mock("@octo/base", () => ({
-  t: (key: string) => (key === "mcp.card.officialPublisher" ? "官方发布" : key),
-  OctoModal: ({
+vi.mock("@octo/ui", () => ({
+  Button: ({
+    children,
+    disabled,
+    onClick,
+  }: {
+    children: React.ReactNode;
+    disabled?: boolean;
+    onClick?: React.MouseEventHandler<HTMLButtonElement>;
+  }) => React.createElement("button", { disabled, onClick }, children),
+  Modal: ({
     children,
     header,
+    title,
+    visible = true,
   }: {
     children: React.ReactNode;
     header?: React.ReactNode;
-  }) => React.createElement("div", null, header, children),
+    title?: React.ReactNode;
+    visible?: boolean;
+  }) => (visible ? React.createElement("div", null, header ?? title, children) : null),
   modalConfirm: vi.fn(),
+}));
+vi.mock("@octo/base", () => ({
+  t: (key: string) => (key === "mcp.card.officialPublisher" ? "官方发布" : key),
 }));
 
 let container: HTMLDivElement | null = null;
@@ -75,8 +89,8 @@ describe("official MCP publisher", () => {
     const root = render(<McpCard item={baseItem} onClick={vi.fn()} />);
 
     expect(root.querySelector(".wk-mcp-card--official")).not.toBeNull();
-    expect(root.textContent).toContain("官方发布");
-    expect(root.textContent).not.toContain("Internal Admin");
+    expect(document.body.textContent).toContain("官方发布");
+    expect(document.body.textContent).not.toContain("Internal Admin");
     expect(root.textContent).toContain("search");
   });
 

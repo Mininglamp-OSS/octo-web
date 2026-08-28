@@ -18,6 +18,7 @@
 
 .octo-ui-modal__surface {
   box-sizing: border-box;
+  position: relative;
   display: flex;
   max-height: var(--octo-ui-modal-max-height);
   min-width: 0;
@@ -35,6 +36,7 @@
   justify-content: space-between;
   height: var(--octo-ui-modal-header-height);
   padding: var(--octo-ui-modal-header-padding);
+  padding-right: calc(var(--octo-ui-modal-header-padding) + var(--octo-ui-modal-close-size) + var(--octo-ui-modal-header-padding));
 }
 
 .octo-ui-modal__title {
@@ -50,6 +52,9 @@
 
 .octo-ui-modal__close {
   box-sizing: border-box;
+  position: absolute;
+  top: calc((var(--octo-ui-modal-header-height) - var(--octo-ui-modal-close-size)) / 2);
+  right: var(--octo-ui-modal-header-padding);
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -133,6 +138,8 @@
 }
 
 .octo-ui-modal__surface--confirm .octo-ui-modal__close {
+  top: var(--octo-ui-modal-confirm-padding);
+  right: var(--octo-ui-modal-confirm-padding);
   width: var(--octo-ui-modal-icon-size);
   height: var(--octo-ui-modal-icon-size);
 }

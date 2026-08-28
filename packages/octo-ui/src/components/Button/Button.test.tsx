@@ -86,9 +86,21 @@ describe('Button', () => {
     const html = renderToStaticMarkup(<Button loading>Save</Button>)
 
     expect(html).toContain('aria-busy="true"')
+    expect(html).toContain('aria-disabled="true"')
     expect(html).toContain('octo-ui-button--loading')
     expect(html).toContain('semi-button-loading')
-    expect(html).toContain('data-icon="spin"')
+    expect(html).toContain('data-icon="loading"')
+  })
+
+  it('keeps loading accessibility state controlled by the wrapper', () => {
+    const html = renderToStaticMarkup(
+      <Button loading aria-busy={false} aria-disabled={false}>
+        Save
+      </Button>,
+    )
+
+    expect(html).toContain('aria-busy="true"')
+    expect(html).toContain('aria-disabled="true"')
   })
 
   it('renders icon-only buttons without the text label', () => {

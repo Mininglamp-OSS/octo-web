@@ -2,7 +2,6 @@ import React from "react";
 import ReactDOM from "react-dom";
 import { act } from "react-dom/test-utils";
 import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { Modal as OctoModal } from "@octo/ui";
 
 // Reproduces the tester scenario for the AI online green dot on the Contacts page:
 // the server marks an AI online but sends NO onlineStatus CMD, the user switches
@@ -104,7 +103,6 @@ beforeAll(async () => {
     WKBase: RenderProp,
     WKBaseContext: class {},
     ErrorBoundary: Passthrough,
-    OctoModal: () => null,
     I18nContext: React.createContext({}),
     t: (k: string) => k,
     toSimplized: (s: string) => s,
@@ -145,6 +143,9 @@ beforeAll(async () => {
   vi.doMock("@douyinfe/semi-ui", () => ({
     Toast: { success: vi.fn(), error: vi.fn() },
     Tooltip: ({ children }: any) => <>{children}</>,
+  }));
+  vi.doMock("@octo/ui", () => ({
+    Modal: ({ children, visible = true }: any) => (visible ? <div>{children}</div> : null),
   }));
   vi.doMock("@tanstack/react-virtual", () => ({ useVirtualizer: () => ({ getVirtualItems: () => [], getTotalSize: () => 0, scrollToOffset: vi.fn() }) }));
   vi.doMock("../Service/ContactsListManager", () => ({ ContactsListManager: { shared: {} } }));

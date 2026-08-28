@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import ExpertDetailModal from "../ExpertDetailModal";
 import ExpertCard from "../ExpertCard";
 import type { ExpertAgent, ExpertSquad } from "../../mock/expertMock";
-import { Modal as OctoModal } from "@octo/ui";
 
 const trackExpertView = vi.fn();
 
@@ -21,17 +20,21 @@ vi.mock("../../api/expertService", () => ({
   },
 }));
 vi.mock("../ExpertSpecView", () => ({ default: () => null }));
+vi.mock("@octo/ui", () => ({
+  Modal: ({
+    children,
+    header,
+    title,
+  }: {
+    children: React.ReactNode;
+    header?: React.ReactNode;
+    title?: React.ReactNode;
+  }) => React.createElement("div", null, header ?? title, children),
+}));
 vi.mock("@octo/base", () => ({
   t: (key: string, opts?: { values?: { count?: number } }) =>
     opts?.values?.count !== undefined ? `${key}:${opts.values.count}` : key,
   useI18n: () => undefined,
-  OctoModal: ({
-    children,
-    header,
-  }: {
-    children: React.ReactNode;
-    header?: React.ReactNode;
-  }) => React.createElement("div", null, header, children),
 }));
 
 let container: HTMLDivElement | null = null;
@@ -127,10 +130,10 @@ describe("expert metric counts", () => {
     expect(cardRoot.textContent).toContain(compact1280);
     expect(cardRoot.textContent).toContain("6");
 
-    const detailRoot = render(<ExpertDetailModal item={squad} onClose={vi.fn()} />);
-    expect(detailRoot.querySelectorAll(".wk-mcp-expert-detail__stat")).toHaveLength(2);
-    expect(detailRoot.textContent).toContain("42");
-    expect(detailRoot.textContent).toContain("3");
+    render(<ExpertDetailModal item={squad} onClose={vi.fn()} />);
+    expect(document.body.querySelectorAll(".wk-mcp-expert-detail__stat")).toHaveLength(2);
+    expect(document.body.textContent).toContain("42");
+    expect(document.body.textContent).toContain("3");
   });
 
   it("keeps zero counts visible instead of hiding the stats", () => {

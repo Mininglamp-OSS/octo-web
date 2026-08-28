@@ -16,6 +16,7 @@ const ignoredSegments = new Set([
   "coverage",
   "dist",
   "node_modules",
+  "public",
 ]);
 
 const legacyPatterns = [
@@ -23,6 +24,11 @@ const legacyPatterns = [
   { pattern: /\bwkConfirm\b/g, message: "uses legacy wkConfirm; use @octo/ui modalConfirm" },
   { pattern: /Components\/WKModal/g, message: "imports legacy Components/WKModal path" },
   { pattern: /\.wk-modal(?:\b|-)/g, message: "uses legacy .wk-modal selector; use .octo-ui-modal__* selectors" },
+];
+
+const semiOverridePatterns = [
+  /\.octo-ui-modal[^\n,{]*\.semi-modal(?:\b|-)/g,
+  /\.semi-modal(?:\b|-)[^\n,{]*\.octo-ui-modal/g,
 ];
 
 function extname(file) {
@@ -63,6 +69,16 @@ for (const scanRoot of scanRoots) {
       let match;
       while ((match = pattern.exec(source))) {
         violations.push(`${rel}:${lineNumber(source, match.index)} ${message}`);
+      }
+    }
+
+    if (styleExtensions.has(extname(file))) {
+      for (const pattern of semiOverridePatterns) {
+        pattern.lastIndex = 0;
+        let match;
+        while ((match = pattern.exec(source))) {
+          violations.push(`${rel}:${lineNumber(source, match.index)} overrides Semi Modal internals through Octo Modal; use octo-ui-modal__* selectors`);
+        }
       }
     }
   }

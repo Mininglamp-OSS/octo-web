@@ -291,6 +291,7 @@ export class SubscriberList extends Component<
           values: { name },
         }
       ),
+      cancelText: this.context.t("base.common.cancel"),
       okText: this.context.t("base.subscribers.remove"),
       okType: "danger",
       onOk: async () => {

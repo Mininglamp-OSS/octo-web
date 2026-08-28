@@ -84,4 +84,29 @@ describe('Modal with real Semi Modal', () => {
 
     expect(document.querySelector('.semi-modal-mask')).toBeNull()
   })
+
+  it('keeps a close button when a custom header is supplied', () => {
+    render(
+      <Modal open motion={false} header={<div className="custom-header">Custom header</div>} title="Custom dialog">
+        body
+      </Modal>,
+    )
+
+    expect(document.querySelector('.custom-header')?.textContent).toBe('Custom header')
+    expect(document.querySelector<HTMLButtonElement>('.octo-ui-modal__close')?.getAttribute('aria-label')).toBe('关闭')
+  })
+
+  it('labels the dialog with the Octo title node', () => {
+    render(
+      <Modal open motion={false} title="Named dialog">
+        body
+      </Modal>,
+    )
+
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')
+    const labelledBy = dialog?.getAttribute('aria-labelledby')
+    expect(labelledBy).toMatch(/^octo-ui-modal-title-/)
+    expect(labelledBy).not.toBe('semi-modal-title')
+    expect(document.getElementById(labelledBy ?? '')?.textContent).toBe('Named dialog')
+  })
 })

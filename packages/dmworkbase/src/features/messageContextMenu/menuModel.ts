@@ -21,11 +21,18 @@ const actionOrder = (actionKey: string) => {
   return index === -1 ? Number.MAX_SAFE_INTEGER : index;
 };
 
+const LEGACY_DRIVE_ACTION_KEY = "contextmenus.driveSave";
+
 export function buildGroupedMessageContextMenus(
   actions: MessageContextMenus[],
 ): ContextMenusData[] {
+  // The private Drive module historically registered this action. The host now
+  // owns the icon-backed save/view action, so never render the legacy duplicate.
+  const visibleActions = actions.filter(
+    (action) => action.actionKey !== LEGACY_DRIVE_ACTION_KEY,
+  );
   const groups = GROUP_ORDER
-    .map((group) => actions
+    .map((group) => visibleActions
       .filter((action) => (action.group ?? "processing") === group)
       .sort((left, right) => actionOrder(left.actionKey ?? "") - actionOrder(right.actionKey ?? "")))
     .filter((group) => group.length > 0);

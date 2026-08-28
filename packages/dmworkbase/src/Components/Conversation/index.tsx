@@ -1423,6 +1423,7 @@ export class Conversation
       trigger = {
         clientX: rect.right,
         clientY: rect.bottom,
+        focusFirstItem: true,
         preventDefault: () => undefined,
       };
     }

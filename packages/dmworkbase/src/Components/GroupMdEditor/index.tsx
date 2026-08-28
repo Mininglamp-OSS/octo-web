@@ -219,6 +219,8 @@ export class GroupMdEditor extends Component<
     modalConfirm({
       title: this.context.t("base.groupMd.deleteTitle"),
       content: this.context.t("base.groupMd.deleteContent"),
+      cancelText: this.context.t("base.common.cancel"),
+      okText: this.context.t("base.common.ok"),
       onOk: async () => {
         try {
           if (this.isThreadMd()) {

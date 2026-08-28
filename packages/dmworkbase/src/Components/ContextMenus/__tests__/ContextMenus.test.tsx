@@ -71,13 +71,15 @@ function restoreAnimationFrame(
     }
 }
 
-function dispatchContextMenu(element: Element) {
+function dispatchContextMenu(element: Element, button = 2, focusFirstItem = false) {
     const event = new MouseEvent("contextmenu", {
         bubbles: true,
         cancelable: true,
         clientX: 120,
         clientY: 80,
-    })
+        button,
+    }) as MouseEvent & { focusFirstItem?: boolean }
+    event.focusFirstItem = focusFirstItem
     act(() => {
         element.dispatchEvent(event)
     })
@@ -283,7 +285,7 @@ describe("ContextMenus keyboard navigation", () => {
             context?.hide()
             trigger.focus()
         })
-        dispatchContextMenu(trigger)
+        dispatchContextMenu(trigger, 0, true)
 
         const items = container.querySelectorAll<HTMLElement>('[role="menuitem"]')
         expect(document.activeElement).toBe(items[0])
@@ -301,7 +303,7 @@ describe("ContextMenus keyboard navigation", () => {
             context?.hide()
             trigger.focus()
         })
-        dispatchContextMenu(trigger)
+        dispatchContextMenu(trigger, 0, true)
         const item = container.querySelector<HTMLElement>('[role="menuitem"]')!
         act(() => item.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })))
         expect(context?.isShow()).toBe(false)
@@ -310,6 +312,12 @@ describe("ContextMenus keyboard navigation", () => {
 
     it("closes on Tab without trapping keyboard focus", () => {
         const { context } = renderContextMenus()
+        const trigger = container.querySelector<HTMLButtonElement>(".trigger")!
+        act(() => {
+            context?.hide()
+            trigger.focus()
+        })
+        dispatchContextMenu(trigger, 0, true)
         const item = container.querySelector<HTMLElement>('[role="menuitem"]')!
 
         act(() => item.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true })))
@@ -319,13 +327,19 @@ describe("ContextMenus keyboard navigation", () => {
 
     it("opens a submenu with the keyboard and returns to its parent", () => {
         const childAction = vi.fn()
-        renderContextMenus(vi.fn(), [{
+        const { context } = renderContextMenus(vi.fn(), [{
             title: "Move to",
             children: [
                 { title: "Group A", onClick: childAction },
                 { title: "Group B" },
             ],
         }])
+        const trigger = container.querySelector<HTMLButtonElement>(".trigger")!
+        act(() => {
+            context?.hide()
+            trigger.focus()
+        })
+        dispatchContextMenu(trigger, 0, true)
         const parent = container.querySelector<HTMLElement>('.wk-contextmenus > ul > .wk-ctx-item > [role="menuitem"]')!
         const children = container.querySelectorAll<HTMLElement>('.wk-ctx-submenu [role="menuitem"]')
 
@@ -352,7 +366,7 @@ describe("ContextMenus keyboard navigation", () => {
             context?.hide()
             trigger.focus()
         })
-        dispatchContextMenu(trigger)
+        dispatchContextMenu(trigger, 0, true)
 
         const item = container.querySelector<HTMLElement>('[role="menuitem"]')!
         act(() => item.click())
@@ -370,8 +384,41 @@ describe("ContextMenus keyboard navigation", () => {
         })
 
         dispatchContextMenu(container.querySelector(".trigger")!)
+        expect(document.activeElement).toBe(composer)
         act(() => context?.hide())
 
+        expect(document.activeElement).toBe(composer)
+    })
+
+    it("keeps focus for Control-click and enters the menu on ArrowDown", () => {
+        const { context } = renderContextMenus()
+        const composer = document.createElement("input")
+        container.prepend(composer)
+        act(() => {
+            context?.hide()
+            composer.focus()
+        })
+
+        dispatchContextMenu(container.querySelector(".trigger")!, 0)
+        expect(document.activeElement).toBe(composer)
+
+        act(() => composer.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })))
+        expect(document.activeElement).toBe(container.querySelector('[role="menuitem"]'))
+    })
+
+    it("closes a mouse-opened menu on Escape without moving focus", () => {
+        const { context } = renderContextMenus()
+        const composer = document.createElement("input")
+        container.prepend(composer)
+        act(() => {
+            context?.hide()
+            composer.focus()
+        })
+
+        dispatchContextMenu(container.querySelector(".trigger")!)
+        act(() => composer.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })))
+
+        expect(context?.isShow()).toBe(false)
         expect(document.activeElement).toBe(composer)
     })
 
@@ -387,7 +434,7 @@ describe("ContextMenus keyboard navigation", () => {
             context?.hide()
             trigger.focus()
         })
-        dispatchContextMenu(trigger)
+        dispatchContextMenu(trigger, 0, true)
 
         const item = container.querySelector<HTMLElement>('[role="menuitem"]')!
         act(() => item.click())
@@ -402,7 +449,7 @@ describe("ContextMenus keyboard navigation", () => {
             context?.hide()
             trigger.focus()
         })
-        dispatchContextMenu(trigger)
+        dispatchContextMenu(trigger, 0, true)
 
         act(() => context?.show({
             clientX: 140,

@@ -6,11 +6,6 @@ import { summaryTestIds } from '../../utils/testIds';
 
 // @octo/base 走 dmworkBase mock，其 I18nContext 默认值已带 t，直接渲染即可。
 vi.mock('@douyinfe/semi-ui', () => ({
-    Button: ({ children, onClick, disabled, loading, ...rest }: any) => (
-        <button onClick={onClick} disabled={disabled} data-loading={loading} {...rest}>
-            {children}
-        </button>
-    ),
     Modal: ({ visible, children, onOk, onCancel, confirmLoading }: any) => 
         visible ? (
             <div data-testid="save-modal">
@@ -32,6 +27,17 @@ vi.mock('@douyinfe/semi-ui', () => ({
         error: vi.fn(),
         success: vi.fn(),
     },
+}));
+
+vi.mock('@octo/ui', () => ({
+    Button: ({ children, onClick, disabled, loading, htmlType, ...rest }: any) => (
+        <button type={htmlType ?? 'button'} onClick={onClick} disabled={disabled || loading} data-loading={loading} {...rest}>
+            {children}
+        </button>
+    ),
+    Input: ({ value, onChange, ...rest }: any) => (
+        <input value={value} onChange={(e) => onChange?.(e.target.value)} {...rest} />
+    ),
 }));
 
 describe('AgentChatPanel handleKeyDown (Bug1: IME 组字回车不发送)', () => {
@@ -251,7 +257,7 @@ describe('AgentChatPanel 新会话 action', () => {
         rtlRender(
             <AgentChatPanel messages={[]} onSend={vi.fn()} sending onNewSession={onNewSession} />,
         );
-        const btn = screen.getByText('新会话') as HTMLButtonElement;
+        const btn = screen.getByRole('button', { name: '新会话' });
         expect(btn).toBeDisabled();
     });
 });

@@ -692,6 +692,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                             openCategoryMenu(categoryId, {
                                 clientX: rect.right,
                                 clientY: rect.bottom,
+                                focusFirstItem: e.detail === 0,
                                 preventDefault: () => undefined,
                             })
                             return
