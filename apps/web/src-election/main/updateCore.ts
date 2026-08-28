@@ -244,8 +244,8 @@ exec >> "$LOG_PATH" 2>&1
 echo "macOS update helper started at $(date)"
 
 cleanup() {
-  rm -rf "$INSTALL_DIR"
-  rm -f "$RESULT_PATH.processes"
+  rm -rf "$INSTALL_DIR" || true
+  rm -f "$RESULT_PATH.processes" || true
 }
 
 fail() {
@@ -347,15 +347,15 @@ fi
 wait_until_not_running
 
 BACKUP_APP_PATH="$TARGET_APP_PATH.previous-update"
-rm -rf "$INSTALL_TARGET_TMP_PATH"
+rm -rf "$INSTALL_TARGET_TMP_PATH" || true
 if ! /usr/bin/ditto "$NEXT_APP_PATH" "$INSTALL_TARGET_TMP_PATH"; then
-  rm -rf "$INSTALL_TARGET_TMP_PATH"
+  rm -rf "$INSTALL_TARGET_TMP_PATH" || true
   fail 19
 fi
 
 wait_until_not_running
 
-rm -rf "$BACKUP_APP_PATH"
+rm -rf "$BACKUP_APP_PATH" || true
 if [ -d "$TARGET_APP_PATH" ]; then
   /bin/mv "$TARGET_APP_PATH" "$BACKUP_APP_PATH" || fail 21
 fi
@@ -369,9 +369,9 @@ if ! /bin/mv "$INSTALL_TARGET_TMP_PATH" "$TARGET_APP_PATH"; then
   fail 22
 fi
 
-rm -rf "$BACKUP_APP_PATH"
-rm -f "$RESULT_PATH"
-rm -f "$ZIP_PATH"
+rm -rf "$BACKUP_APP_PATH" || true
+rm -f "$RESULT_PATH" || true
+rm -f "$ZIP_PATH" || true
 /usr/bin/open "$TARGET_APP_PATH"
 `;
 }

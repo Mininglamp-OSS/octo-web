@@ -1475,6 +1475,7 @@
   "navRail.settingsPanel.updateError.downloadTimeout": "更新包下载超时，请重试",
   "navRail.settingsPanel.updateError.linuxAppImagePathUnavailable": "当前 Linux 安装方式不支持自动安装 AppImage 更新包，请下载匹配的桌面端安装包，或通过系统包管理器更新",
   "navRail.settingsPanel.updateError.macosInstallFailed": "macOS 更新安装失败，请查看更新日志",
+  "navRail.settingsPanel.updateError.macosInstallFailedWithDetail": "macOS 更新安装失败，错误码：{code}。请查看更新日志：{path}",
   "navRail.settingsPanel.updateError.noPendingUpdate": "暂无可下载的更新，请重新检查",
   "navRail.settingsPanel.updateError.packageVerificationFailed": "更新包校验失败，请不要安装该包，确认发布包后再重试",
   "navRail.settingsPanel.updateError.updateFailed": "更新失败，请稍后重试",
