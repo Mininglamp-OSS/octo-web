@@ -47,7 +47,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
-  const [categoryId, setCategoryId] = useState("dev-tools");
+  const [categoryId, setCategoryId] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagDraft, setTagDraft] = useState("");
   const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
