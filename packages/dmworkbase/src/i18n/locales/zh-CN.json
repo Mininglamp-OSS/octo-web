@@ -1740,6 +1740,7 @@
   "globalSearch.drive.loading": "搜索中…",
   "globalSearch.drive.searchFailed": "搜索失败，请稍后重试",
   "globalSearch.drive.popupBlocked": "浏览器拦截了新标签页，请允许本站弹窗后重新点击该文件。",
+  "globalSearch.drive.unavailable": "该结果暂不可预览",
   "globalSearch.drive.truncated": "结果可能不完整，请缩小关键词",
   "globalSearch.drive.allLoaded": "已显示全部 {{count}} 条"
 }

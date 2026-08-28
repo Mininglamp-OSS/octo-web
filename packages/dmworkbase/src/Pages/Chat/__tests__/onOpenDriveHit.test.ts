@@ -73,11 +73,13 @@ describe("openDriveFileHit", () => {
   let tab: OpenedTab;
   let open: ReturnType<typeof vi.fn>;
   let onBlocked: ReturnType<typeof vi.fn>;
+  let onUnavailable: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     tab = { opener: {}, location: { href: "about:blank" } };
     open = vi.fn(() => tab);
     onBlocked = vi.fn();
+    onUnavailable = vi.fn();
   });
   afterEach(() => vi.clearAllMocks());
 
@@ -91,10 +93,15 @@ describe("openDriveFileHit", () => {
     expect(onBlocked).not.toHaveBeenCalled();
   });
 
-  it("folder hit: never opens a tab (client-side backstop)", () => {
-    openDriveFileHit(baseHit({ type: "folder", name: "设计稿" }), { open, onBlocked });
+  it("folder hit: never opens a tab and surfaces the unavailable feedback", () => {
+    openDriveFileHit(baseHit({ type: "folder", name: "设计稿" }), {
+      open,
+      onBlocked,
+      onUnavailable,
+    });
     expect(open).not.toHaveBeenCalled();
     expect(onBlocked).not.toHaveBeenCalled();
+    expect(onUnavailable).toHaveBeenCalledTimes(1);
   });
 
   it("doc hit with ref_id: navigates to /d/<ref_id> (docs reader), not the blob preview", () => {
@@ -109,11 +116,16 @@ describe("openDriveFileHit", () => {
     expect(onBlocked).not.toHaveBeenCalled();
   });
 
-  it("doc hit without ref_id: warns and never opens a tab", () => {
+  it("doc hit without ref_id: warns, never opens a tab, and surfaces the unavailable feedback", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    openDriveFileHit(baseHit({ type: "doc", ref_id: undefined }), { open, onBlocked });
+    openDriveFileHit(baseHit({ type: "doc", ref_id: undefined }), {
+      open,
+      onBlocked,
+      onUnavailable,
+    });
     expect(open).not.toHaveBeenCalled();
     expect(onBlocked).not.toHaveBeenCalled();
+    expect(onUnavailable).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("doc hit missing ref_id"),
       expect.anything()

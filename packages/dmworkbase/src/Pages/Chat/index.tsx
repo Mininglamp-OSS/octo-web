@@ -2112,6 +2112,10 @@ export default class ChatPage extends Component<any, ChatPageState> {
                           Toast.warning(
                             t("base.globalSearch.drive.popupBlocked")
                           ),
+                        onUnavailable: () =>
+                          Toast.warning(
+                            t("base.globalSearch.drive.unavailable")
+                          ),
                         getLinksBridge: () => getElectronLinksBridge() ?? null,
                         toAbsoluteUrl: (u) =>
                           resolveDocLinkForExternalOpen(u, apiUrlOrigin()),

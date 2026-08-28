@@ -29,6 +29,13 @@ export interface OpenDriveFileHitDeps {
   /** Called when the popup was blocked (production: a Toast warning). */
   onBlocked: () => void;
   /**
+   * A clicked hit has no preview (a folder, or a doc hit missing its ref_id).
+   * Surfaces user-visible feedback (production: a Toast warning) so a click that
+   * resolves to nothing does not look broken — console.warn stays for logs but
+   * is invisible to the user.
+   */
+  onUnavailable?: () => void;
+  /**
    * Desktop shell only: the Electron system-browser links bridge, or null on
    * web (production: getElectronLinksBridge()). When present the hit opens
    * through the IPC bridge instead of window.open — Electron's
@@ -86,6 +93,7 @@ export function openDriveFileHit(hit: DriveSearchHit, deps: OpenDriveFileHitDeps
         "[GlobalSearch] folder hit should be filtered out server-side; skipping"
       );
     }
+    deps.onUnavailable?.();
     return;
   }
   const linksBridge = deps.getLinksBridge?.();
