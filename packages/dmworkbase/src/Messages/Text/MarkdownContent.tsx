@@ -593,6 +593,27 @@ function pickMathSentinels(
   return null;
 }
 
+function isAutoLinkNode(node: any, source: string): boolean {
+  if (node?.type !== "link") return false;
+  const start = node.position?.start?.offset;
+  const end = node.position?.end?.offset;
+  const raw =
+    typeof start === "number" && typeof end === "number"
+      ? source.slice(start, end)
+      : "";
+  return raw.startsWith("<") || /^(?:https?:\/\/|www\.)/i.test(raw);
+}
+
+/** 数学扫描与源码范围收集共同跳过的 mdast 子树。 */
+function isMathScanExcludedSubtree(node: any, source: string): boolean {
+  return (
+    node?.type === "linkReference" ||
+    node?.type === "imageReference" ||
+    node?.type === "definition" ||
+    isAutoLinkNode(node, source)
+  );
+}
+
 /** 收集代码、原始 HTML 与自动链接区间；这些位置不应参与数学转义遮罩。 */
 function collectLiteralRanges(
   node: any,
@@ -602,16 +623,11 @@ function collectLiteralRanges(
   if (!node) return;
   const s = node.position?.start?.offset;
   const e = node.position?.end?.offset;
-  const raw =
-    typeof s === "number" && typeof e === "number" ? source.slice(s, e) : "";
-  const isAutoLink =
-    node.type === "link" &&
-    (raw.startsWith("<") || /^(?:https?:\/\/|www\.)/i.test(raw));
   if (
     node.type === "code" ||
     node.type === "inlineCode" ||
     node.type === "html" ||
-    isAutoLink
+    isAutoLinkNode(node, source)
   ) {
     if (typeof s === "number" && typeof e === "number") ranges.push([s, e]);
     return;
@@ -650,9 +666,10 @@ function collectReferenceRanges(
  */
 function collectMathScanSourceRanges(
   node: any,
-  ranges: Array<[number, number]>
+  ranges: Array<[number, number]>,
+  source: string
 ): void {
-  if (!node) return;
+  if (!node || isMathScanExcludedSubtree(node, source)) return;
   if (node.type === "text" && String(node.value ?? "").includes("$")) {
     const start = node.position?.start?.offset;
     const end = node.position?.end?.offset;
@@ -663,7 +680,7 @@ function collectMathScanSourceRanges(
   }
   if (Array.isArray(node.children)) {
     for (const child of node.children) {
-      collectMathScanSourceRanges(child, ranges);
+      collectMathScanSourceRanges(child, ranges, source);
     }
   }
 }
@@ -949,7 +966,7 @@ function escapeMaskPlugin(this: any) {
     collectReferenceRanges(tree, referenceRanges);
     referenceRanges.sort((a, b) => a[0] - b[0]);
     const scanRanges: Array<[number, number]> = [];
-    collectMathScanSourceRanges(tree, scanRanges);
+    collectMathScanSourceRanges(tree, scanRanges, source);
     scanRanges.sort((a, b) => a[0] - b[0]);
     const mathRanges = collectPotentialMathRanges(source, ranges, scanRanges);
     const result = maskMarkdownEscapes(
@@ -1227,7 +1244,13 @@ function mathScanPlugin() {
     const ctx = getMathContext(file);
     ctx.escapeMap = file.data.mathEscapeMap;
     const visit = (node: any) => {
-      if (!node || !Array.isArray(node.children)) return;
+      if (
+        !node ||
+        isMathScanExcludedSubtree(node, source) ||
+        !Array.isArray(node.children)
+      ) {
+        return;
+      }
       const next: any[] = [];
       for (const child of node.children) {
         if (

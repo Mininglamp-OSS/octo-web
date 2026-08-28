@@ -1188,6 +1188,24 @@ describe("MarkdownContent — 转义保护不改变公式外 Markdown 结构", (
     expect(root.querySelector("a")?.textContent).toBe("text");
   });
 
+  it("reference link label 不扫描公式，避免未遮罩转义被 KaTeX 截断", () => {
+    const input = "[formula $x\\%^2$][r]\n\n[r]: https://example.com";
+    const root = renderContent(<MarkdownContent content={input} />);
+    const link = root.querySelector("a");
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(link?.getAttribute("href")).toBe("https://example.com");
+    expect(link?.textContent).toBe("formula $x%^2$");
+  });
+
+  it("GFM 自动链接的可见 URL 与 href 都保持字面美元内容", () => {
+    const input = "https://api.x.com/q?f=$a_1$&g=2";
+    const root = renderContent(<MarkdownContent content={input} />);
+    const link = root.querySelector("a");
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(link?.textContent).toBe(input);
+    expect(link?.getAttribute("href")).toBe(input);
+  });
+
   it("字符实体美元不借用后续真实 $$ 的源码位置", () => {
     const input = "&#36;&#36;x^2&#36;&#36;\n$$\ny^2\n$$";
     const root = renderContent(<MarkdownContent content={input} />);
