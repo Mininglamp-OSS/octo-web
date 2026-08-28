@@ -559,6 +559,10 @@ describe("skillApiReal", () => {
     );
     expect(body.plugin.manifest_json.plugin_name).toBe("改名");
     expect(body.plugin.manifest_json.labels).toEqual(["新标签"]);
+    // Cross-repo contract: the emitted schema ids must be 2.0 (the unified
+    // backend hard-rejects a 1.0 id), regardless of the stored 1.0 input above.
+    expect(body.plugin.manifest_json.$schema).toBe("cowork-plugin-manifest-2.0.json");
+    expect(body.plugin.plugin_json.$schema).toBe("cowork-plugin-package-2.0.json");
   });
 
   it("getSkillFiles returns editable raw files + read-only storage files, hides manifest.json", async () => {

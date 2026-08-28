@@ -32,6 +32,11 @@ describe("toPluginUpsert", () => {
     expect(body.plugin.tags).toEqual(["official", "hot"]);
     expect(body.plugin.manifest_json.labels).toEqual(["official", "hot"]);
     expect(body.plugin.manifest_json.name).toBe("github-mcp");
+    // Cross-repo contract: the write path must emit the 2.0 schema ids the
+    // unified backend requires (a 1.0 id is hard-rejected). Pin them so a
+    // regression turns a production 400 into a red test.
+    expect(body.plugin.manifest_json.$schema).toBe("cowork-plugin-manifest-2.0.json");
+    expect(body.plugin.plugin_json.$schema).toBe("cowork-plugin-package-2.0.json");
     expect(body.relations).toEqual([]);
   });
 
