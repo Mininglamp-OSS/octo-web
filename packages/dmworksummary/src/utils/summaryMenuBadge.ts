@@ -44,11 +44,7 @@ export async function refreshPendingInvitationBadge(): Promise<void> {
     const seq = ++refreshSeq;
     const spaceId = WKApp.shared.currentSpaceId;
     if (!WKApp.loginInfo.isLogined() || !WKApp.loginInfo.uid || !spaceId) return;
-    if (
-        import.meta.env.VITE_E2E_MOCK === "1" &&
-        typeof window !== "undefined" &&
-        !(window as unknown as { __MSW_READY__?: boolean }).__MSW_READY__
-    ) {
+    if (import.meta.env.VITE_E2E_MOCK === "1") {
         return;
     }
 
