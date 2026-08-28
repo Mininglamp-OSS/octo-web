@@ -2104,15 +2104,17 @@ export default class ChatPage extends Component<any, ChatPageState> {
                     }}
                     onOpenDriveHit={(hit) => {
                       // Routing lives in openDriveFileHit (unit-tested directly)
-                      // so folder-skip / URL shape / popup handling can't drift
-                      // from a test mirror. The search modal stays open so
-                      // several results can be opened in a row.
+                      // so folder-skip / URL / popup handling can't drift. On
+                      // desktop the hit opens via the Electron links bridge.
                       openDriveFileHit(hit, {
                         open: (u, target) => window.open(u, target),
                         onBlocked: () =>
                           Toast.warning(
                             t("base.globalSearch.drive.popupBlocked")
                           ),
+                        getLinksBridge: () => getElectronLinksBridge() ?? null,
+                        toAbsoluteUrl: (u) =>
+                          resolveDocLinkForExternalOpen(u, apiUrlOrigin()),
                       });
                     }}
                     hideModal={() => {

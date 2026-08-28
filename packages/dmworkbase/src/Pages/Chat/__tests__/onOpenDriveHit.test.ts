@@ -137,6 +137,40 @@ describe("openDriveFileHit", () => {
     expect(() => openDriveFileHit(baseHit(), { open, onBlocked })).not.toThrow();
     expect(tab.location.href).toContain("/drive/f/1234");
   });
+
+  it("desktop shell: opens through the Electron links bridge, not window.open", async () => {
+    const openExternal = vi.fn(async () => ({ ok: true }));
+    const toAbsoluteUrl = vi.fn((u: string) => `https://api.example.com${u}`);
+    openDriveFileHit(baseHit(), {
+      open,
+      onBlocked,
+      getLinksBridge: () => ({ openExternal }),
+      toAbsoluteUrl,
+    });
+    // Electron's setWindowOpenHandler denies the web about:blank open, so the
+    // web path must be skipped entirely on desktop.
+    expect(open).not.toHaveBeenCalled();
+    expect(toAbsoluteUrl).toHaveBeenCalledWith("/drive/f/1234?name=spec.pdf&size=2048&spaceId=space-9");
+    expect(openExternal).toHaveBeenCalledWith(
+      "https://api.example.com/drive/f/1234?name=spec.pdf&size=2048&spaceId=space-9"
+    );
+    await Promise.resolve();
+    expect(onBlocked).not.toHaveBeenCalled();
+  });
+
+  it("desktop shell: a rejected bridge open surfaces the blocked warning", async () => {
+    const openExternal = vi.fn(async () => ({ ok: false, reason: "denied" }));
+    openDriveFileHit(baseHit(), {
+      open,
+      onBlocked,
+      getLinksBridge: () => ({ openExternal }),
+      toAbsoluteUrl: (u) => `https://api.example.com${u}`,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(open).not.toHaveBeenCalled();
+    expect(onBlocked).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("Chat handler delegates to openDriveFileHit (source guard)", () => {

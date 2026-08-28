@@ -17,11 +17,33 @@ export interface OpenedTab {
   location: { href: string };
 }
 
+/** Minimal shape of the Electron system-browser links bridge (desktopBridge's
+ *  DesktopLinksBridge) — kept structural so tests can pass a plain object. */
+export interface DesktopLinksOpener {
+  openExternal(url: string): Promise<{ ok: boolean; reason?: string }>;
+}
+
 export interface OpenDriveFileHitDeps {
   /** Opens a blank tab (production: `window.open`). Returns null when blocked. */
   open: (url: string, target: string) => OpenedTab | null;
   /** Called when the popup was blocked (production: a Toast warning). */
   onBlocked: () => void;
+  /**
+   * Desktop shell only: the Electron system-browser links bridge, or null on
+   * web (production: getElectronLinksBridge()). When present the hit opens
+   * through the IPC bridge instead of window.open — Electron's
+   * setWindowOpenHandler denies the web-era about:blank window.open
+   * (apps/web src-election/main/externalLink.ts), so the web path would always
+   * false-positive as "popup blocked" on desktop.
+   */
+  getLinksBridge?: () => DesktopLinksOpener | null | undefined;
+  /**
+   * Resolve a (possibly root-relative) hit URL to an absolute http(s) URL the
+   * system browser can open (production:
+   * resolveDocLinkForExternalOpen(url, apiUrlOrigin())). Only consulted on the
+   * desktop bridge branch.
+   */
+  toAbsoluteUrl?: (url: string) => string;
 }
 
 /** The preview URL for a hit, or null when there is nothing to open (a folder,
@@ -64,6 +86,22 @@ export function openDriveFileHit(hit: DriveSearchHit, deps: OpenDriveFileHitDeps
         "[GlobalSearch] folder hit should be filtered out server-side; skipping"
       );
     }
+    return;
+  }
+  const linksBridge = deps.getLinksBridge?.();
+  if (linksBridge) {
+    // Desktop shell: setWindowOpenHandler routes every window.open to the system
+    // browser, so the about:blank dance below can never yield a usable window
+    // reference. Resolve the (root-relative on file://) URL to an absolute one
+    // and hand it to the IPC bridge; a rejected/blocked open surfaces the same
+    // warning as the web popup-blocked path. Mirrors Chat's onOpenDoc branch.
+    const absoluteUrl = deps.toAbsoluteUrl ? deps.toAbsoluteUrl(url) : url;
+    void linksBridge
+      .openExternal(absoluteUrl)
+      .then((result) => {
+        if (!result.ok) deps.onBlocked();
+      })
+      .catch(() => deps.onBlocked());
     return;
   }
   const opened = deps.open("about:blank", "_blank");
