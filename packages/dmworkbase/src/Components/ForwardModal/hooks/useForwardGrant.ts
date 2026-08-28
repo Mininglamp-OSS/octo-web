@@ -20,6 +20,8 @@ export interface UseForwardGrantResult {
   grantRole: ForwardGrantRole
   setGrantEnabled: (v: boolean) => void
   setGrantRole: (r: ForwardGrantRole) => void
+  /** Record the human uid snapshot displayed by the grant UI. */
+  setGrantHumanUids: (uids: string[]) => void
   /** Record the currently-selected Bot uids so confirm() can carry them in the grant payload. */
   setGrantBotUids: (uids: string[]) => void
   /** 供 confirm() 读取当前授权快照：未激活或未开启时返回 undefined。 */
@@ -42,7 +44,13 @@ export function useForwardGrant(options?: UseForwardGrantOptions): UseForwardGra
     [defaultRole],
   )
 
-  const stateRef = useRef<{ active: boolean; enabled: boolean; role: ForwardGrantRole; botUids: string[] }>({
+  const stateRef = useRef<{
+    active: boolean
+    enabled: boolean
+    role: ForwardGrantRole
+    humanUids?: string[]
+    botUids: string[]
+  }>({
     active,
     enabled: grantEnabled,
     role: grantRole,
@@ -50,14 +58,22 @@ export function useForwardGrant(options?: UseForwardGrantOptions): UseForwardGra
   })
   stateRef.current = { ...stateRef.current, active, enabled: grantEnabled, role: grantRole }
 
+  const setGrantHumanUids = useCallback((uids: string[]) => {
+    stateRef.current.humanUids = [...new Set(uids.filter(Boolean))]
+  }, [])
+
   const setGrantBotUids = useCallback((uids: string[]) => {
-    stateRef.current.botUids = uids
+    stateRef.current.botUids = [...new Set(uids.filter(Boolean))]
   }, [])
 
   const readConfirmPayload = useCallback((): ForwardGrant | undefined => {
-    const { active: a, enabled, role, botUids } = stateRef.current
-    // Only carry a non-empty botUids so a bot-free forward emits the exact legacy `{ role }` shape.
-    return a && enabled ? (botUids.length > 0 ? { role, botUids } : { role }) : undefined
+    const { active: a, enabled, role, humanUids, botUids } = stateRef.current
+    if (!a || !enabled) return undefined
+    return {
+      role,
+      ...(humanUids !== undefined ? { humanUids } : {}),
+      ...(botUids.length > 0 ? { botUids } : {}),
+    }
   }, [])
 
   return {
@@ -65,6 +81,7 @@ export function useForwardGrant(options?: UseForwardGrantOptions): UseForwardGra
     grantRole,
     setGrantEnabled,
     setGrantRole,
+    setGrantHumanUids,
     setGrantBotUids,
     readConfirmPayload,
   }

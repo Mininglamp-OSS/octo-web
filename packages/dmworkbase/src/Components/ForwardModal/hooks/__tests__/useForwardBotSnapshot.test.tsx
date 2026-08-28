@@ -5,11 +5,17 @@ import ReactDOM from "react-dom"
 import { act } from "react-dom/test-utils"
 
 const hoisted = vi.hoisted(() => ({
+  channelInfos: new Map<string, {
+    channel: { channelID: string; channelType: number }
+    title?: string
+    orgData?: { robot?: unknown }
+  }>(),
+  fetchCurrentImChannelInfo: vi.fn(),
   subscribers: new Map<string, Array<{
     uid?: string
     remark?: string
     name?: string
-    orgData?: { real_name?: string; realname_verified?: boolean }
+    orgData?: { real_name?: string; realname_verified?: boolean; robot?: unknown }
   }>>(),
   syncCurrentImChannelSubscribers: vi.fn(async () => undefined),
   listBots: vi.fn(async (_spaceId: string) => [] as Array<{ uid?: string; name?: string; creator_uid?: string }>),
@@ -28,6 +34,13 @@ vi.mock("wukongimjssdk", () => {
 })
 
 vi.mock("../../../../im-runtime/currentChannelRuntime", () => ({
+  getCurrentImChannelInfo: (channel: { channelID: string; channelType: number }) =>
+    hoisted.channelInfos.get(channel.channelID) ?? {
+      channel,
+      title: `name:${channel.channelID}`,
+      orgData: { robot: 0 },
+    },
+  fetchCurrentImChannelInfo: hoisted.fetchCurrentImChannelInfo,
   getCurrentImChannelSubscribers: (channel: { channelID: string }) =>
     hoisted.subscribers.get(channel.channelID) ?? [],
   syncCurrentImChannelSubscribers: hoisted.syncCurrentImChannelSubscribers,
@@ -49,6 +62,7 @@ function Probe({
   resolveName = (uid) => `name:${uid}`,
   onValue,
   onGetter,
+  onHumanGetter,
 }: {
   selectedIDs: string[]
   selectedChannels: Channel[]
@@ -57,8 +71,9 @@ function Probe({
   resolveName?: (uid: string) => string
   onValue: (value: ForwardBotSnapshot | undefined) => void
   onGetter?: (read: () => string[]) => void
+  onHumanGetter?: (read: () => string[]) => void
 }) {
-  const { snapshot, readLatestSelectedBotUids } = useForwardBotSnapshot(
+  const { snapshot, readLatestSelectedBotUids, readLatestHumanUids } = useForwardBotSnapshot(
     selectedIDs,
     selectedChannels,
     spaceId,
@@ -67,6 +82,7 @@ function Probe({
   )
   onValue(snapshot)
   onGetter?.(readLatestSelectedBotUids)
+  onHumanGetter?.(readLatestHumanUids)
   return null
 }
 
@@ -80,14 +96,24 @@ describe("useForwardBotSnapshot", () => {
   let container: HTMLDivElement
   let latest: ForwardBotSnapshot | undefined
   let readLatest: () => string[]
+  let readLatestHumans: () => string[]
 
   beforeEach(() => {
+    hoisted.channelInfos = new Map()
+    hoisted.fetchCurrentImChannelInfo.mockReset().mockImplementation(async (channel) =>
+      hoisted.channelInfos.get(channel.channelID) ?? {
+        channel,
+        title: `name:${channel.channelID}`,
+        orgData: { robot: 0 },
+      },
+    )
     hoisted.subscribers = new Map()
     hoisted.syncCurrentImChannelSubscribers.mockReset().mockResolvedValue(undefined)
     hoisted.listBots.mockReset().mockResolvedValue([])
     container = document.createElement("div")
     document.body.appendChild(container)
     readLatest = () => []
+    readLatestHumans = () => []
   })
 
   afterEach(() => {
@@ -106,7 +132,12 @@ describe("useForwardBotSnapshot", () => {
   }) {
     act(() => {
       ReactDOM.render(
-        <Probe {...props} onValue={(v) => (latest = v)} onGetter={(r) => (readLatest = r)} />,
+        <Probe
+          {...props}
+          onValue={(v) => (latest = v)}
+          onGetter={(r) => (readLatest = r)}
+          onHumanGetter={(r) => (readLatestHumans = r)}
+        />,
         container,
       )
     })
@@ -120,7 +151,12 @@ describe("useForwardBotSnapshot", () => {
   }) {
     await act(async () => {
       ReactDOM.render(
-        <Probe {...props} onValue={(v) => (latest = v)} onGetter={(r) => (readLatest = r)} />,
+        <Probe
+          {...props}
+          onValue={(v) => (latest = v)}
+          onGetter={(r) => (readLatest = r)}
+          onHumanGetter={(r) => (readLatestHumans = r)}
+        />,
         container,
       )
       await flush()
@@ -195,6 +231,29 @@ describe("useForwardBotSnapshot", () => {
     expect(selectedBotUids(latest)).toEqual(["b_1", "b_2"])
   })
 
+  it("classifies a directly selected Bot as a cancellable Bot, never as a human", async () => {
+    hoisted.listBots.mockResolvedValue([
+      { uid: "b_direct", name: "Direct Bot", creator_uid: "u_owner" },
+    ])
+    await render({
+      selectedIDs: ["b_direct"],
+      selectedChannels: [new Channel("b_direct", 1)],
+      spaceId: "s_1",
+      enabled: true,
+    })
+
+    expect(latest?.peopleCount).toBe(0)
+    expect(latest?.groups[0]).toMatchObject({
+      uid: "direct:b_direct",
+      bots: [{ uid: "b_direct", selected: true }],
+    })
+    expect(readLatestHumans()).toEqual([])
+    expect(readLatest()).toEqual(["b_direct"])
+
+    act(() => { latest?.toggleBot("b_direct") })
+    expect(readLatest()).toEqual([])
+  })
+
   it("cancels a single Bot while keeping the rest, updating the M count and selected uids", async () => {
     hoisted.listBots.mockResolvedValue([
       { uid: "b_1", name: "Writer Bot", creator_uid: "u_ada" },
@@ -214,63 +273,78 @@ describe("useForwardBotSnapshot", () => {
     expect(selectedBotUids(latest)).toEqual(["b_1", "b_2"])
   })
 
-  it("uses the group member display name when the Bot creator is absent from forward candidates", async () => {
+  it("counts only humans and offers only Bots that are actually in a selected group", async () => {
     hoisted.subscribers.set("g_1", [
-      { uid: "u_hidden", remark: "群内备注", name: "成员昵称" },
+      { uid: "u_owner", name: "Owner", orgData: { robot: 0 } },
+      ...Array.from({ length: 8 }, (_, index) => ({
+        uid: `b_group_${index}`,
+        name: `Group Bot ${index}`,
+        orgData: { robot: 1 },
+      })),
     ])
     hoisted.listBots.mockResolvedValue([
-      { uid: "b_1", name: "Hidden Bot", creator_uid: "u_hidden" },
+      ...Array.from({ length: 8 }, (_, index) => ({
+        uid: `b_group_${index}`,
+        name: `Group Bot ${index}`,
+        creator_uid: "u_owner",
+      })),
+      ...Array.from({ length: 4 }, (_, index) => ({
+        uid: `b_elsewhere_${index}`,
+        name: `Other Bot ${index}`,
+        creator_uid: "u_owner",
+      })),
     ])
+
     await render({
       selectedIDs: ["g_1"],
       selectedChannels: [new Channel("g_1", 2)],
       spaceId: "s_1",
       enabled: true,
-      resolveName: () => "",
+      resolveName: (uid) => uid === "g_1" ? "测试群" : "",
     })
 
-    expect(latest?.groups[0]).toMatchObject({ uid: "u_hidden", name: "群内备注" })
+    expect(latest?.peopleCount).toBe(1)
+    expect(latest?.botCount).toBe(8)
+    expect(latest?.groups).toHaveLength(1)
+    expect(latest?.groups[0]).toMatchObject({ uid: "group:g_1", name: "测试群" })
+    expect(selectedBotUids(latest)).toEqual(
+      Array.from({ length: 8 }, (_, index) => `b_group_${index}`),
+    )
+    expect(readLatestHumans()).toEqual(["u_owner"])
+
+    act(() => { latest?.toggleBot("b_group_3") })
+    expect(readLatest()).not.toContain("b_group_3")
+    expect(readLatestHumans()).toEqual(["u_owner"])
   })
 
-  it("prefers the candidate display name when both candidate and group member names exist", async () => {
-    hoisted.subscribers.set("g_1", [{ uid: "u_ada", name: "群内昵称" }])
-    hoisted.listBots.mockResolvedValue([
-      { uid: "b_1", name: "Ada Bot", creator_uid: "u_ada" },
+  it("uses the Space roster as a fallback Bot signal and fails closed for unknown members", async () => {
+    hoisted.subscribers.set("g_1", [
+      { uid: "b_roster", name: "Roster Bot" },
+      { uid: "u_unknown", name: "Unknown" },
     ])
+    hoisted.listBots.mockResolvedValue([
+      { uid: "b_roster", name: "Roster Bot", creator_uid: "u_someone" },
+    ])
+
     await render({
       selectedIDs: ["g_1"],
       selectedChannels: [new Channel("g_1", 2)],
       spaceId: "s_1",
       enabled: true,
-      resolveName: () => "候选显示名",
     })
 
-    expect(latest?.groups[0]).toMatchObject({ uid: "u_ada", name: "候选显示名" })
-  })
-
-  it("uses the canonical verified real name from the group subscriber fallback", async () => {
-    hoisted.subscribers.set("g_1", [{
-      uid: "u_verified",
-      remark: "群内备注",
-      name: "成员昵称",
-      orgData: { real_name: "认证实名", realname_verified: true },
-    }])
-    hoisted.listBots.mockResolvedValue([
-      { uid: "b_1", name: "Verified Bot", creator_uid: "u_verified" },
-    ])
-    await render({
-      selectedIDs: ["g_1"],
-      selectedChannels: [new Channel("g_1", 2)],
-      spaceId: "s_1",
-      enabled: true,
-      resolveName: () => "",
-    })
-
-    expect(latest?.groups[0]).toMatchObject({ uid: "u_verified", name: "认证实名" })
+    expect(latest?.ready).toBe(false)
+    expect(latest?.error).toBe(true)
+    expect(readLatest()).toEqual([])
+    expect(readLatestHumans()).toEqual([])
   })
 
   it("expands group members and de-duplicates people across group + person targets", async () => {
-    hoisted.subscribers.set("g_1", [{ uid: "u_ada" }, { uid: "u_grace" }, { uid: "u_ada" }])
+    hoisted.subscribers.set("g_1", [
+      { uid: "u_ada", orgData: { robot: 0 } },
+      { uid: "u_grace", orgData: { robot: 0 } },
+      { uid: "u_ada", orgData: { robot: 0 } },
+    ])
     hoisted.listBots.mockResolvedValue([
       { uid: "b_1", name: "Ada Bot", creator_uid: "u_ada" },
       { uid: "b_2", name: "Grace Bot", creator_uid: "u_grace" },
@@ -283,8 +357,10 @@ describe("useForwardBotSnapshot", () => {
     })
     // u_ada appears in both the group and as a person target — counted once.
     expect(latest?.peopleCount).toBe(2)
-    expect(latest?.botCount).toBe(2)
-    expect(latest?.groups.map((g) => g.uid).sort()).toEqual(["u_ada", "u_grace"])
+    // Only u_ada was selected directly, so u_grace's Space-wide Bot is not pulled in transitively.
+    expect(latest?.botCount).toBe(1)
+    expect(latest?.groups.map((g) => g.uid)).toEqual(["u_ada"])
+    expect(readLatestHumans().sort()).toEqual(["u_ada", "u_grace"])
   })
 
   it("fails closed with a recoverable retry when the Bot lookup throws", async () => {

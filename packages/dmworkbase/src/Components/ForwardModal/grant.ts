@@ -15,6 +15,12 @@ export type ForwardGrantRole = "reader" | "commenter" | "writer"
 export interface ForwardGrant {
   role: ForwardGrantRole
   /**
+   * Human recipients from the same resolved snapshot shown in the authorization UI. Keeping this
+   * snapshot in the confirm payload prevents WKBase from re-expanding the groups and accidentally
+   * reintroducing group Bot uids that the forwarder cancelled.
+   */
+  humanUids?: string[]
+  /**
    * Bot uids the forwarder explicitly kept selected in the 授权区 Bot expander (feature: user+Bot
    * grants). Empty/omitted → grant humans only. The host merges these onto the human snapshot at
    * forward time; they are NEVER attached silently — only what the user left checked is carried.
@@ -54,11 +60,11 @@ export interface ForwardGrantConfig {
   bots?: ForwardBotSnapshot
 }
 
-/** One person and the Bots they created among the selected forward targets. */
+/** One display group of Bots associated with a selected person, group, or direct Bot target. */
 export interface ForwardBotCreatorGroup {
-  /** Creator uid (a selected person / group member). */
+  /** Stable key: creator uid, `group:<channelID>`, or `direct:<botUid>`. */
   uid: string
-  /** Display name for the creator, falling back to the uid. */
+  /** Display name for the creator, selected group, or directly selected Bot. */
   name: string
   /** Bots this person created, each with its current selected state. */
   bots: Array<{ uid: string; name: string; selected: boolean }>
@@ -80,7 +86,7 @@ export interface ForwardBotSnapshot {
   peopleCount: number
   /** Currently-selected Bot count across all creators ("M Bot"). */
   botCount: number
-  /** Per-creator Bot groups, rendered as expandable rows. */
+  /** Bot groups by source, rendered as expandable rows. */
   groups: ForwardBotCreatorGroup[]
   /** Toggle one Bot's selected state. */
   toggleBot(uid: string): void

@@ -2,20 +2,28 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Channel, ChannelTypePerson } from "wukongimjssdk"
 import type { ImSubscriberLike } from "../../../im-runtime/channelRuntime"
 import {
+  fetchCurrentImChannelInfo,
+  getCurrentImChannelInfo,
   getCurrentImChannelSubscribers,
   syncCurrentImChannelSubscribers,
 } from "../../../im-runtime/currentChannelRuntime"
 import SpaceBotService from "../../../Service/SpaceBotService"
 import { subscriberDisplayName } from "../../../Utils/displayName"
+import { mentionUidStateFromRobot } from "../../../Utils/mentionRender"
 import type { ForwardBotCreatorGroup, ForwardBotSnapshot } from "../grant"
+import {
+  partitionForwardSubscribers,
+  type ForwardSubscriberLike,
+} from "../logic/partitionForwardSubscribers"
 
 /** Injectable name lookup so the panel can show a display name instead of a raw uid. */
 export type ForwardNameResolver = (uid: string) => string
 
 interface ResolvedModel {
-  peopleUids: string[]
+  key: string
+  humanUids: string[]
   peopleNames: Map<string, string>
-  botsByCreator: Map<string, Array<{ uid: string; name: string }>>
+  botGroups: Map<string, { name: string; bots: Array<{ uid: string; name: string }> }>
 }
 
 export interface UseForwardBotSnapshotResult {
@@ -29,23 +37,25 @@ export interface UseForwardBotSnapshotResult {
    * without depending on a passive effect having flushed. While loading / gated off → [].
    */
   readLatestSelectedBotUids: () => string[]
+  /** Human recipients from the same authoritative snapshot used by the Bot controls. */
+  readLatestHumanUids: () => string[]
 }
 
 /** Compute the selected (non-cancelled) Bot uids from a resolved model. */
 function selectedFrom(resolved: ResolvedModel | null, cancelled: Set<string>): string[] {
   if (!resolved) return []
   const out: string[] = []
-  for (const list of resolved.botsByCreator.values())
-    for (const b of list) if (!cancelled.has(b.uid)) out.push(b.uid)
+  for (const group of resolved.botGroups.values())
+    for (const b of group.bots) if (!cancelled.has(b.uid)) out.push(b.uid)
   return [...new Set(out)]
 }
 
 /**
  * 授权区 Bot 展开器的数据 hook（feature: user+Bot grants）。
  *
- * 把选中目标展开成去重人员 uid，再用 `SpaceBotService.list(spaceId)` 拉 Space Bot 按 creator_uid
- * 归到人员下，形成每人可展开的 Bot 分组（默认全选，逐个可取消）。真实无 Bot 返回空快照；
- * roster/lookup 失败则 fail-closed，显示可重试错误并阻止确认。
+ * 把选中目标解析成去重的真人与 Bot：群聊只纳入群内实际成员，直接选中的真人还会按
+ * `creator_uid` 带出其 Space Bot。Bot 按来源分组，默认全选且可逐个取消；roster/identity
+ * lookup 失败则 fail-closed，显示可重试错误并阻止确认。
  *
  * loading/stale 语义（避免旧 Bot 被误确认）：目标/space/enabled 变化时立即丢弃旧 resolved 并置
  * `ready:false`（loading）；新一轮 async 完成前 snapshot 不含任何 Bot，`readLatestSelectedBotUids()`
@@ -64,12 +74,15 @@ export function useForwardBotSnapshot(
     () => selectedChannels.map((ch) => `${ch.channelID}:${ch.channelType}`).join(","),
     [selectedChannels],
   )
-
-  // Resolved model from the async pass. `null` = still loading (or gated off); it is cleared the
-  // instant the target/space/enabled inputs change so a stale model can never leak into confirm.
+  // Resolved model from the async pass. `null` = still loading (or gated off). `resolutionKey`
+  // synchronously hides a stale model during render; the effect then clears the stored value.
   const [resolved, setResolved] = useState<ResolvedModel | null>(null)
   const [loadError, setLoadError] = useState(false)
   const [retryGeneration, setRetryGeneration] = useState(0)
+  const resolutionKey = useMemo(
+    () => JSON.stringify([selectedKey, resolvedKey, spaceId ?? null, retryGeneration]),
+    [selectedKey, resolvedKey, spaceId, retryGeneration],
+  )
   // Bot uids the user has CANCELLED (default is "all selected", so we track the negatives).
   const [cancelled, setCancelled] = useState<Set<string>>(() => new Set())
   // Monotonic run id: only the newest run may commit, so an in-flight fetch for a superseded
@@ -83,8 +96,8 @@ export function useForwardBotSnapshot(
 
   useEffect(() => {
     const gen = ++generation.current
-    // Any input change invalidates the previous model immediately → loading (ready:false), so the
-    // snapshot below reports no Bots and the confirm getter returns [] until this run's result lands.
+    // Clear the previous model when this run starts. The render-time resolutionKey check already
+    // makes the stale model unreadable before this passive effect runs.
     setResolved(null)
     resolvedRef.current = null
     setLoadError(false)
@@ -99,19 +112,26 @@ export function useForwardBotSnapshot(
       setResolved(model)
       resolvedRef.current = model
       const available = new Set<string>()
-      for (const list of model.botsByCreator.values()) for (const bot of list) available.add(bot.uid)
+      for (const group of model.botGroups.values())
+        for (const bot of group.bots) available.add(bot.uid)
       const nextCancelled = new Set([...cancelledRef.current].filter((uid) => available.has(uid)))
       cancelledRef.current = nextCancelled
       setCancelled(nextCancelled)
     }
 
     void (async () => {
-      // 1) expand targets → distinct people uids (person peer + group members).
-      const people = new Set<string>()
+      // 1) Resolve the selected channel topology once. Keep direct-person targets separate from
+      // group subscribers: selecting a group must not implicitly select every Space Bot created by
+      // every human in that group.
+      const directChannels: Channel[] = []
       const peopleNames = new Map<string, string>()
+      const groupSnapshots: Array<{
+        channel: Channel
+        subscribers: ForwardSubscriberLike[]
+      }> = []
       for (const ch of selectedChannels) {
         if (ch.channelType === ChannelTypePerson) {
-          if (ch.channelID) people.add(ch.channelID)
+          if (ch.channelID) directChannels.push(ch)
           continue
         }
         try {
@@ -121,20 +141,12 @@ export function useForwardBotSnapshot(
           return
         }
         if (generation.current !== gen) return
-        const subs = getCurrentImChannelSubscribers<Channel, ImSubscriberLike>(ch)
-        for (const s of subs) {
-          if (typeof s?.uid !== "string" || !s.uid) continue
-          people.add(s.uid)
-          const name = subscriberDisplayName({
-            name: s.name,
-            remark: s.remark,
-            orgData: s.orgData,
-          }).trim()
-          if (name && !peopleNames.has(s.uid)) peopleNames.set(s.uid, name)
-        }
+        const subscribers = getCurrentImChannelSubscribers<Channel, ImSubscriberLike>(ch)
+        groupSnapshots.push({ channel: ch, subscribers })
       }
 
-      // 2) fetch Space Bots and group by creator — only creators present in the people snapshot.
+      // 2) Fetch the Space Bot catalog. It is a fallback identity source and the source for Bots
+      // owned by a DIRECTLY selected person; it is not a count of Bots present in a selected group.
       // Shared cached catalog read so the person-row preview and this selected-target resolution
       // draw from ONE consistent fetch (UX #4).
       let bots: Array<{ uid?: string; name?: string; creator_uid?: string }> = []
@@ -146,24 +158,137 @@ export function useForwardBotSnapshot(
       }
       if (generation.current !== gen) return
 
-      const byCreator = new Map<string, Array<{ uid: string; name: string }>>()
+      const knownBotUids = new Set<string>()
+      const botByUid = new Map<string, (typeof bots)[number]>()
       for (const bot of bots) {
-        if (!bot?.uid || !bot.creator_uid || !people.has(bot.creator_uid)) continue
-        const list = byCreator.get(bot.creator_uid) ?? []
-        list.push({ uid: bot.uid, name: bot.name || bot.uid })
-        byCreator.set(bot.creator_uid, list)
+        if (!bot.uid) continue
+        knownBotUids.add(bot.uid)
+        botByUid.set(bot.uid, bot)
+      }
+      const humanUids = new Set<string>()
+      const directHumanUids = new Set<string>()
+      const botGroups = new Map<
+        string,
+        { name: string; bots: Array<{ uid: string; name: string }> }
+      >()
+      const seenBotUids = new Set<string>()
+
+      // 3) Classify directly selected person-channel targets too. A Bot uses the same channel type
+      // as a human, so channel type alone is not an identity signal. Prefer the Space roster's
+      // positive Bot match, otherwise require explicit channel metadata and fail closed.
+      for (const channel of directChannels) {
+        const uid = channel.channelID
+        const rosterBot = botByUid.get(uid)
+        let channelInfo = getCurrentImChannelInfo(channel)
+        let identity = rosterBot
+          ? "bot"
+          : mentionUidStateFromRobot(channelInfo?.orgData?.robot)
+
+        if (identity === "unknown") {
+          try {
+            const fetched = await fetchCurrentImChannelInfo(channel)
+            if (generation.current !== gen) return
+            if (fetched && typeof fetched === "object") channelInfo = fetched
+            else channelInfo = getCurrentImChannelInfo(channel)
+            identity = mentionUidStateFromRobot(channelInfo?.orgData?.robot)
+          } catch {
+            if (generation.current === gen) setLoadError(true)
+            return
+          }
+        }
+
+        if (identity === "unknown") {
+          if (generation.current === gen) setLoadError(true)
+          return
+        }
+        if (identity === "user") {
+          humanUids.add(uid)
+          directHumanUids.add(uid)
+          const name = resolveName?.(uid) || channelInfo?.title || uid
+          if (name) peopleNames.set(uid, name)
+          continue
+        }
+
+        if (seenBotUids.has(uid)) continue
+        seenBotUids.add(uid)
+        const name = rosterBot?.name || resolveName?.(uid) || channelInfo?.title || uid
+        botGroups.set(`direct:${uid}`, {
+          name,
+          bots: [{ uid, name }],
+        })
       }
 
-      commit({ peopleUids: [...people], peopleNames, botsByCreator: byCreator })
+      // 4) A selected group contributes its actual human members and its actual Bot members.
+      // Unknown identities block this grant-critical snapshot instead of being silently treated as
+      // humans, which would recreate the permission leak when metadata is stale or incomplete.
+      for (const { channel, subscribers } of groupSnapshots) {
+        const partitioned = partitionForwardSubscribers(subscribers, knownBotUids)
+        if (partitioned.unknown.length > 0) {
+          if (generation.current === gen) setLoadError(true)
+          return
+        }
+        for (const member of partitioned.humans) {
+          const uid = member.uid!
+          humanUids.add(uid)
+          const name = subscriberDisplayName({
+            name: member.name,
+            remark: member.remark,
+            orgData: member.orgData,
+          }).trim()
+          if (name && !peopleNames.has(uid)) peopleNames.set(uid, name)
+        }
+
+        const groupBots: Array<{ uid: string; name: string }> = []
+        for (const member of partitioned.bots) {
+          const uid = member.uid!
+          if (seenBotUids.has(uid)) continue
+          seenBotUids.add(uid)
+          const rosterBot = botByUid.get(uid)
+          const memberName = subscriberDisplayName({
+            name: member.name,
+            remark: member.remark,
+            orgData: member.orgData,
+          }).trim()
+          groupBots.push({ uid, name: rosterBot?.name || memberName || uid })
+        }
+        if (groupBots.length > 0) {
+          botGroups.set(`group:${channel.channelID}`, {
+            name: resolveName?.(channel.channelID) || channel.channelID,
+            bots: groupBots,
+          })
+        }
+      }
+
+      // 5) Preserve the existing "selected person + their Space Bots" behavior only for a human
+      // target the forwarder selected directly. Group membership is not transitive consent to all
+      // Bots created by every human in that group.
+      for (const bot of bots) {
+        if (
+          !bot?.uid ||
+          !bot.creator_uid ||
+          !directHumanUids.has(bot.creator_uid) ||
+          seenBotUids.has(bot.uid)
+        ) continue
+        seenBotUids.add(bot.uid)
+        const existing = botGroups.get(bot.creator_uid)
+        const group = existing ?? {
+          name: resolveName?.(bot.creator_uid) || bot.creator_uid,
+          bots: [],
+        }
+        group.bots.push({ uid: bot.uid, name: bot.name || bot.uid })
+        if (!existing) botGroups.set(bot.creator_uid, group)
+      }
+
+      commit({ key: resolutionKey, humanUids: [...humanUids], peopleNames, botGroups })
     })()
 
     return () => {
       // Bump the generation so a late-resolving fetch for this (now superseded) run is discarded.
       generation.current++
     }
-    // selectedKey/resolvedKey carry the "which targets" semantics; spaceId/enabled gate the fetch.
+    // resolutionKey carries target/space/retry identity; enabled gates the fetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedKey, resolvedKey, spaceId, enabled, retryGeneration])
+  }, [resolutionKey, enabled])
 
   // Toggle keeps the state and the confirm mirror in lockstep, both in the event phase.
   const toggleBot = useCallback((uid: string) => {
@@ -178,17 +303,26 @@ export function useForwardBotSnapshot(
 
   const readLatestSelectedBotUids = useCallback((): string[] => {
     if (!enabled || !spaceId) return []
-    return selectedFrom(resolvedRef.current, cancelledRef.current)
-  }, [enabled, spaceId])
+    const current = resolvedRef.current
+    if (current?.key !== resolutionKey) return []
+    return selectedFrom(current, cancelledRef.current)
+  }, [enabled, spaceId, resolutionKey])
 
-  const retry = useCallback(() => setRetryGeneration((value) => value + 1), [])
+  const readLatestHumanUids = useCallback((): string[] => {
+    if (!enabled || !spaceId) return []
+    const current = resolvedRef.current
+    return current?.key === resolutionKey ? current.humanUids : []
+  }, [enabled, spaceId, resolutionKey])
+
+  const retry = useCallback(() => setRetryGeneration((value: number) => value + 1), [])
 
   const snapshot = useMemo<ForwardBotSnapshot | undefined>(() => {
     // A closed switch is gated off. Missing document Space is an authorization lookup error.
     if (!enabled) return undefined
 
     // Loading/error snapshots carry no Bots and keep confirmation blocked.
-    if (!resolved) {
+    const currentResolved = resolved?.key === resolutionKey ? resolved : null
+    if (!currentResolved) {
       return {
         ready: false,
         error: loadError,
@@ -202,29 +336,29 @@ export function useForwardBotSnapshot(
 
     const groups: ForwardBotCreatorGroup[] = []
     let botCount = 0
-    for (const [creatorUid, list] of resolved.botsByCreator) {
-      const bots = list.map((b: { uid: string; name: string }) => {
+    for (const [groupUid, group] of currentResolved.botGroups) {
+      const bots = group.bots.map((b: { uid: string; name: string }) => {
         const selected = !cancelled.has(b.uid)
         if (selected) botCount++
         return { uid: b.uid, name: b.name, selected }
       })
       groups.push({
-        uid: creatorUid,
-        name: resolveName?.(creatorUid) || resolved.peopleNames.get(creatorUid) || creatorUid,
+        uid: groupUid,
+        name: group.name || currentResolved.peopleNames.get(groupUid) || groupUid,
         bots,
       })
     }
 
     return {
       ready: true,
-      peopleCount: resolved.peopleUids.length,
+      peopleCount: currentResolved.humanUids.length,
       botCount,
       groups,
       toggleBot,
     }
-  }, [enabled, spaceId, resolved, loadError, cancelled, resolveName, retry, toggleBot])
+  }, [enabled, resolutionKey, resolved, loadError, cancelled, retry, toggleBot])
 
-  return { snapshot, readLatestSelectedBotUids }
+  return { snapshot, readLatestSelectedBotUids, readLatestHumanUids }
 }
 
 /** Selected (non-cancelled) Bot uids from a READY snapshot — the set the grant actually adds.

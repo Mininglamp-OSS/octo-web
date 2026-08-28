@@ -113,6 +113,18 @@ describe("useForwardGrant", () => {
     expect(latest.readConfirmPayload()).toEqual({ role: "reader", botUids: ["b_1", "b_2"] })
   })
 
+  it("carries the resolved human snapshot and de-duplicates both principal lists", () => {
+    render({ canGrant: true })
+    act(() => latest.setGrantEnabled(true))
+    act(() => latest.setGrantHumanUids(["u_1", "u_2", "u_1", ""]))
+    act(() => latest.setGrantBotUids(["b_1", "b_1", ""]))
+    expect(latest.readConfirmPayload()).toEqual({
+      role: "reader",
+      humanUids: ["u_1", "u_2"],
+      botUids: ["b_1"],
+    })
+  })
+
   it("omits botUids from the payload when none are selected (legacy { role } shape)", () => {
     render({ canGrant: true })
     act(() => latest.setGrantEnabled(true))

@@ -27,6 +27,10 @@ import {
   getCurrentImChannelSubscribers,
   syncCurrentImChannelSubscribers,
 } from "../../im-runtime/currentChannelRuntime";
+import {
+  partitionForwardSubscribers,
+  type ForwardSubscriberLike,
+} from "../ForwardModal/logic/partitionForwardSubscribers";
 import "./index.css";
 
 /**
@@ -271,11 +275,12 @@ export default class WKBase
   private docForward?: DocForwardOpen;
 
   /**
-   * Expand the selected target channels into a de-duplicated uid snapshot at forward time
+   * Legacy fallback: expand selected targets into a de-duplicated uid snapshot
    * (contract 2): a group → its current subscriber uids (syncSubscribes → getSubscribes),
    * a person channel → the peer uid (channelID). Failures on one channel are skipped, never fatal.
-   * Bots are NOT attached here — the forwarder picks them explicitly in the 授权区 Bot expander and
-   * they arrive via `grant.botUids`, so nothing is granted silently.
+   * Normal document forwards carry the already-reviewed `grant.humanUids` snapshot and do not call
+   * this method. For older role-only callers, explicitly identified Bots are excluded while unknown
+   * legacy rows retain their historical human treatment.
    */
   private async collectForwardUids(channels: Channel[]): Promise<string[]> {
     const uids = new Set<string>();
@@ -289,8 +294,9 @@ export default class WKBase
       } catch {
         // best-effort: fall back to whatever is already cached
       }
-      const subs = getCurrentImChannelSubscribers(ch) as { uid?: string }[];
-      for (const s of subs) {
+      const subs = getCurrentImChannelSubscribers(ch) as ForwardSubscriberLike[];
+      const { humans, unknown } = partitionForwardSubscribers(subs);
+      for (const s of [...humans, ...unknown]) {
         if (s?.uid) uids.add(s.uid);
       }
     }
@@ -319,7 +325,9 @@ export default class WKBase
     // 1) grant first (先授权后发). Only when the switch is on AND docs injected an executor.
     if (grant && forward.grantAccess) {
       try {
-        const humanUids = await this.collectForwardUids(sendable);
+        // Normal doc-forward confirms carry the exact human snapshot displayed in the modal. The
+        // fallback preserves unknown legacy members while excluding explicit Bot rows.
+        const humanUids = grant.humanUids ?? await this.collectForwardUids(sendable);
         // Merge the explicitly-kept Bot uids from the 授权区 expander onto the human snapshot.
         // Bots the forwarder cancelled are absent from grant.botUids, so nothing is granted silently.
         const uids = [...new Set([...humanUids, ...(grant.botUids ?? [])])];
