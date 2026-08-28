@@ -108,15 +108,22 @@ const DriveSearchPanel: React.FC<DriveSearchPanelProps> = ({
   const [loading, setLoading] = useState(false); // first page in flight
   const [loadingMore, setLoadingMore] = useState(false); // next page in flight
   const [error, setError] = useState<string | null>(null);
+  // Hard stop for offset pagination: set once a page comes back empty or shorter
+  // than PAGE_SIZE. The backend's `total` counts pre-permission/pre-filter rows,
+  // so items can stay below `total` forever (dropped malformed rows, folder
+  // filtering, permission down-push) — without this flag loadNextPage would keep
+  // incrementing page_index past the OpenSearch max_result_window and error out.
+  const [reachedEnd, setReachedEnd] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   // Generation guard: only the latest generation may write state. Bumped when
   // the first page resets, so a stale in-flight response (first page OR next
   // page) is silently dropped — dual protection with AbortController.
   const seqRef = useRef(0);
 
-  // Derived: more pages exist while we hold fewer hits than the reported total.
-  // The backend has no has_more / nextCursor field, so this is the sole gate.
-  const hasMore = items.length < total;
+  // Derived: more pages exist while we hold fewer hits than the reported total
+  // AND we have not hit a short/empty page (reachedEnd). The backend has no
+  // has_more / nextCursor field, so this is the sole gate.
+  const hasMore = items.length < total && !reachedEnd;
 
   // First page: reset + fetch page_index=0 whenever the query / active / source
   // changes. Debounced so a fast typist fires one search per pause.
@@ -134,6 +141,8 @@ const DriveSearchPanel: React.FC<DriveSearchPanelProps> = ({
     setTruncated(false);
     setPageIndex(0);
     setError(null);
+    // Reset the pagination stop so the fresh query can page again.
+    setReachedEnd(false);
     // Reset loadingMore too: an in-flight next page whose finally() is now gated
     // out by the seq bump would otherwise leave loadingMore stuck true forever —
     // footer frozen on "loading" and loadNextPage's opening guard blocking every
@@ -164,6 +173,9 @@ const DriveSearchPanel: React.FC<DriveSearchPanelProps> = ({
           setItems(resp.items);
           setTotal(resp.total);
           setTruncated(resp.truncated);
+          // A short/empty first page means there is no further page to fetch,
+          // even if `total` claims more (see reachedEnd).
+          if (resp.items.length < PAGE_SIZE) setReachedEnd(true);
         })
         .catch((err) => {
           // A cancelled request (AbortError) or a superseded generation is not a
@@ -210,6 +222,9 @@ const DriveSearchPanel: React.FC<DriveSearchPanelProps> = ({
       setPageIndex(nextIndex);
       setTotal(resp.total); // total normally stable; follow backend if it moves
       setTruncated(resp.truncated);
+      // Stop paging once a page returns empty or shorter than PAGE_SIZE — the
+      // offset walker has caught up with the real (post-filter) result set.
+      if (resp.items.length < PAGE_SIZE) setReachedEnd(true);
     } catch (err) {
       // Cancelled request or superseded generation: drop it, never show an error.
       if (isAbortError(err) || seq !== seqRef.current) return;

@@ -313,6 +313,33 @@ describe("DriveSearchPanel — offset pagination", () => {
     expect(screen.getByText("new-0")).toBeInTheDocument();
   });
 
+  it("停止翻页: a short first page (items < PAGE_SIZE) stops pagination even when total claims more", async () => {
+    // Backend reports total=40 but the first (and only) page returns 10 rows —
+    // e.g. the rest were dropped as malformed / filtered / permission-denied, so
+    // items can never reach `total`. Without the reachedEnd stop, loadNextPage
+    // would keep incrementing page_index into the OpenSearch max_result_window.
+    const { ds, searchDrive } = makeDataSource(async () => ({
+      total: 40,
+      truncated: false,
+      items: makeHits(10, 0),
+    }));
+    const { container } = render(
+      <DriveSearchPanel keyword="评审" dataSource={ds} isActive />
+    );
+    await screen.findByText("file-0");
+    expect(searchDrive).toHaveBeenCalledTimes(1);
+
+    // allLoaded footer means hasMore is false despite items(10) < total(40).
+    expect(
+      await screen.findByText("base.globalSearch.drive.allLoaded")
+    ).toBeInTheDocument();
+
+    // Scrolling to the bottom must NOT fetch another page.
+    for (let i = 0; i < 3; i++) fireEvent.scroll(listEl(container));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(searchDrive).toHaveBeenCalledTimes(1);
+  });
+
   it("truncated: shows the soft hint and still allows paging", async () => {
     const { ds, searchDrive } = makeDataSource(async (query) => ({
       total: 40,
