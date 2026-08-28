@@ -1,4 +1,5 @@
 import React, { FormEvent, useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import classNames from "classnames"
 import { X } from "lucide-react"
 import VoiceInputButton from "../../Components/VoiceInputButton"
@@ -188,7 +189,7 @@ export default function ThreadCreateDialog({
 
   if (!visible) return null
 
-  return (
+  const dialog = (
     <div className="wk-thread-modal" onKeyDown={handleKeyDown}>
       <div className="wk-thread-modal-overlay" onClick={onCancel} />
       <div className="wk-thread-modal-content">
@@ -204,4 +205,6 @@ export default function ThreadCreateDialog({
       </div>
     </div>
   )
+
+  return typeof document === "undefined" ? dialog : createPortal(dialog, document.body)
 }

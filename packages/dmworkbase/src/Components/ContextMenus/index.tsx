@@ -1,6 +1,7 @@
 import classNames from "classnames";
 import type { LucideIcon } from "lucide-react";
 import React, { Component, ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Dropdown } from "@octo/ui";
 
 import "./index.css"
@@ -397,7 +398,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
     render(): ReactNode {
         const { showContextMenus, contextOrigin, flipSubmenu } = this.state
         const { menus } = this.props
-        return (
+        const node = (
             <>
                 <div
                     className={classNames("wk-contextmenus", showContextMenus && "wk-contextmenus-open", flipSubmenu && "wk-contextmenus-flip-submenu")}
@@ -418,5 +419,6 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                 />
             </>
         )
+        return typeof document === "undefined" ? node : createPortal(node, document.body)
     }
 }

@@ -249,20 +249,15 @@ test(
 
     const scrollButtonBox = await scrollButton.boundingBox();
     if (!scrollButtonBox) throw new Error("滚动到底部按钮没有可验证的布局位置");
-    const overlayCoversScrollButton = await panel.evaluate(
-      (element, point) => {
-        const hit = document.elementFromPoint(point.x, point.y);
-        const mask = document.querySelector(
-          '[data-testid="chat-channel-setting-mask"]',
-        );
-        return Boolean(hit && (element.contains(hit) || mask?.contains(hit)));
-      },
+    const panelCoversScrollButton = await panel.evaluate(
+      (element, point) =>
+        element.contains(document.elementFromPoint(point.x, point.y)),
       {
         x: scrollButtonBox.x + scrollButtonBox.width / 2,
         y: scrollButtonBox.y + scrollButtonBox.height / 2,
       },
     );
-    expect(overlayCoversScrollButton).toBe(true);
+    expect(panelCoversScrollButton).toBe(true);
 
     const member = panel
       .locator(".wk-subscribers-item")

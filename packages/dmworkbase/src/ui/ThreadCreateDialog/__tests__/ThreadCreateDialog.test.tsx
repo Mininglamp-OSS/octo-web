@@ -47,14 +47,14 @@ describe("ThreadCreateDialog", () => {
     try {
       renderDialog(true)
 
-      const input = container.querySelector<HTMLInputElement>('input[placeholder="Thread name"]')
+      const input = document.body.querySelector<HTMLInputElement>('input[placeholder="Thread name"]')
       expect(input).not.toBeNull()
       fireEvent.change(input!, { target: { value: "Draft topic" } })
 
       renderDialog(false)
       renderDialog(true)
 
-      const reopenedInput = container.querySelector<HTMLInputElement>(
+      const reopenedInput = document.body.querySelector<HTMLInputElement>(
         'input[placeholder="Thread name"]'
       )
 
@@ -88,7 +88,7 @@ describe("ThreadCreateDialog", () => {
       })
 
       expect(container.textContent).toContain("Server error")
-      const input = container.querySelector<HTMLInputElement>('input[placeholder="Thread name"]')
+      const input = document.body.querySelector<HTMLInputElement>('input[placeholder="Thread name"]')
       expect(input).not.toBeNull()
 
       act(() => {
@@ -122,13 +122,13 @@ describe("ThreadCreateDialog", () => {
 
     try {
       renderForm(1)
-      const input = container.querySelector<HTMLInputElement>('input[placeholder="Thread name"]')
+      const input = document.body.querySelector<HTMLInputElement>('input[placeholder="Thread name"]')
       expect(input).not.toBeNull()
       fireEvent.change(input!, { target: { value: "Draft topic" } })
 
       renderForm(2)
 
-      const resetInput = container.querySelector<HTMLInputElement>('input[placeholder="Thread name"]')
+      const resetInput = document.body.querySelector<HTMLInputElement>('input[placeholder="Thread name"]')
       expect(resetInput?.value).toBe("")
     } finally {
       ReactDOM.unmountComponentAtNode(container)

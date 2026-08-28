@@ -125,7 +125,7 @@ function renderContextMenus(
 describe("ContextMenus native contextmenu suppression", () => {
     it("closes the open menu and suppresses the browser menu on mask right-click", () => {
         const { context, onHide } = renderContextMenus()
-        const mask = container.querySelector(".wk-contextmenus-mask")!
+        const mask = document.body.querySelector(".wk-contextmenus-mask")!
 
         const event = dispatchContextMenu(mask)
 
@@ -136,7 +136,7 @@ describe("ContextMenus native contextmenu suppression", () => {
 
     it("suppresses the browser menu on the custom menu without hiding it", () => {
         const { context, onHide } = renderContextMenus()
-        const menu = container.querySelector(".wk-contextmenus")!
+        const menu = document.body.querySelector(".wk-contextmenus")!
 
         const event = dispatchContextMenu(menu)
 
@@ -169,7 +169,7 @@ describe("ContextMenus rounded hover boundaries", () => {
             children: [{ title: "Group 1" }],
         }])
         const trigger = container.querySelector(".trigger")!
-        const submenu = container.querySelector<HTMLElement>(".wk-ctx-submenu")!
+        const submenu = document.body.querySelector<HTMLElement>(".wk-ctx-submenu")!
         submenu.style.top = "-320px"
 
         act(() => {
@@ -204,8 +204,8 @@ describe("ContextMenus rounded hover boundaries", () => {
             )
         })
 
-        const rootMenu = container.querySelector(".wk-contextmenus [role='menu']")!
-        const submenu = container.querySelector(".wk-ctx-submenu")!
+        const rootMenu = document.body.querySelector(".wk-contextmenus [role='menu']")!
+        const submenu = document.body.querySelector(".wk-ctx-submenu")!
         const rootItems = rootMenu.querySelectorAll(":scope > .wk-ctx-item > button")
         const submenuItems = submenu.querySelectorAll("button")
 
@@ -229,9 +229,9 @@ describe("ContextMenus rounded hover boundaries", () => {
             )
         })
 
-        const parentItem = container.querySelector<HTMLElement>(".wk-contextmenus [role='menu'] > .wk-ctx-item")!
-        const submenu = container.querySelector<HTMLElement>(".wk-ctx-submenu")!
-        const submenuList = container.querySelector<HTMLElement>(".wk-ctx-submenu-list")!
+        const parentItem = document.body.querySelector<HTMLElement>(".wk-contextmenus [role='menu'] > .wk-ctx-item")!
+        const submenu = document.body.querySelector<HTMLElement>(".wk-ctx-submenu")!
+        const submenuList = document.body.querySelector<HTMLElement>(".wk-ctx-submenu-list")!
         Object.defineProperty(submenuList, "scrollHeight", { configurable: true, value: 1200 })
         vi.spyOn(parentItem, "getBoundingClientRect").mockReturnValue({
             top: 740,
@@ -266,8 +266,8 @@ describe("ContextMenus Lucide icons", () => {
             )
         })
 
-        expect(container.querySelector(".wk-contextmenus .wk-ctx-item .lucide-star.ctx-icon")).not.toBeNull()
-        expect(container.querySelector(".wk-contextmenus .wk-ctx-item")?.textContent).toBe("Follow")
+        expect(document.body.querySelector(".wk-contextmenus .wk-ctx-item .lucide-star.ctx-icon")).not.toBeNull()
+        expect(document.body.querySelector(".wk-contextmenus .wk-ctx-item")?.textContent).toBe("Follow")
     })
 })
 
@@ -287,7 +287,7 @@ describe("ContextMenus keyboard navigation", () => {
         })
         dispatchContextMenu(trigger, 0, true)
 
-        const items = container.querySelectorAll<HTMLElement>('[role="menuitem"]')
+        const items = document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
         expect(document.activeElement).toBe(items[0])
         act(() => items[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })))
         expect(document.activeElement).toBe(items[1])
@@ -304,7 +304,7 @@ describe("ContextMenus keyboard navigation", () => {
             trigger.focus()
         })
         dispatchContextMenu(trigger, 0, true)
-        const item = container.querySelector<HTMLElement>('[role="menuitem"]')!
+        const item = document.body.querySelector<HTMLElement>('[role="menuitem"]')!
         act(() => item.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })))
         expect(context?.isShow()).toBe(false)
         expect(document.activeElement).toBe(trigger)
@@ -318,7 +318,7 @@ describe("ContextMenus keyboard navigation", () => {
             trigger.focus()
         })
         dispatchContextMenu(trigger, 0, true)
-        const item = container.querySelector<HTMLElement>('[role="menuitem"]')!
+        const item = document.body.querySelector<HTMLElement>('[role="menuitem"]')!
 
         act(() => item.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true })))
 
@@ -340,8 +340,8 @@ describe("ContextMenus keyboard navigation", () => {
             trigger.focus()
         })
         dispatchContextMenu(trigger, 0, true)
-        const parent = container.querySelector<HTMLElement>('.wk-contextmenus > ul > .wk-ctx-item > [role="menuitem"]')!
-        const children = container.querySelectorAll<HTMLElement>('.wk-ctx-submenu [role="menuitem"]')
+        const parent = document.body.querySelector<HTMLElement>('.wk-contextmenus > ul > .wk-ctx-item > [role="menuitem"]')!
+        const children = document.body.querySelectorAll<HTMLElement>('.wk-ctx-submenu [role="menuitem"]')
 
         act(() => parent.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })))
         expect(document.activeElement).toBe(children[0])
@@ -368,7 +368,7 @@ describe("ContextMenus keyboard navigation", () => {
         })
         dispatchContextMenu(trigger, 0, true)
 
-        const item = container.querySelector<HTMLElement>('[role="menuitem"]')!
+        const item = document.body.querySelector<HTMLElement>('[role="menuitem"]')!
         act(() => item.click())
 
         expect(observedFocus).toHaveBeenCalledWith(trigger)
@@ -403,7 +403,7 @@ describe("ContextMenus keyboard navigation", () => {
         expect(document.activeElement).toBe(composer)
 
         act(() => composer.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })))
-        expect(document.activeElement).toBe(container.querySelector('[role="menuitem"]'))
+        expect(document.activeElement).toBe(document.body.querySelector('[role="menuitem"]'))
     })
 
     it("closes a mouse-opened menu on Escape without moving focus", () => {
@@ -436,7 +436,7 @@ describe("ContextMenus keyboard navigation", () => {
         })
         dispatchContextMenu(trigger, 0, true)
 
-        const item = container.querySelector<HTMLElement>('[role="menuitem"]')!
+        const item = document.body.querySelector<HTMLElement>('[role="menuitem"]')!
         act(() => item.click())
 
         expect(document.activeElement).toBe(actionTarget)

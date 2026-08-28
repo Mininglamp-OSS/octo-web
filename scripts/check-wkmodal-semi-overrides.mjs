@@ -30,6 +30,7 @@ const allowedLegacyFiles = new Set([
   // Public compatibility aliases for out-of-repo @octo/base consumers. New
   // internal call sites must still use @octo/ui directly.
   "packages/dmworkbase/src/index.tsx",
+  "packages/dmworkbase/src/Components/WKCompatibility/index.tsx",
 ]);
 
 const semiOverridePatterns = [
