@@ -65,7 +65,6 @@ export const WKApp = {
 };
 
 import zhCN from "../i18n/zh-CN.json";
-import { Modal as OctoModal } from "@octo/ui";
 
 const flattenMessages = (obj: Record<string, unknown>, prefix = ""): Record<string, string> => {
   const result: Record<string, string> = {};

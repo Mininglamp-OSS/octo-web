@@ -104,8 +104,17 @@ export { useJoinSpace } from "./Components/JoinSpaceModal/useJoinSpace"
 export { showJoinSuccessToast } from "./Components/JoinSuccessToast"
 export type { JoinSuccessToastOptions } from "./Components/JoinSuccessToast"
 export * from "./Utils/joinSuccessNotice"
-export { modalConfirm } from "@octo/ui"
-export type { ModalConfirmHandle, ModalConfirmOptions } from "@octo/ui"
+export { Button as WKButton, Input as WKInput, Modal as WKModal, modalConfirm, modalConfirm as wkConfirm } from "@octo/ui"
+export type {
+    ButtonProps as WKButtonProps,
+    InputProps as WKInputProps,
+    ModalConfirmHandle,
+    ModalConfirmOptions,
+    ModalConfirmOptions as WKConfirmProps,
+    ModalFooterConfig as WKModalFooterConfig,
+    ModalProps as WKModalProps,
+    ModalSize as WKModalSize,
+} from "@octo/ui"
 export { default as PromptForwardActions } from "./Components/PromptForwardActions"
 export type { PromptForwardActionsProps } from "./Components/PromptForwardActions"
 export { default as PromptForwardModal } from "./Components/PromptForwardModal"

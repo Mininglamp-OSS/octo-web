@@ -1,6 +1,6 @@
 import { forwardRef } from 'react'
 import type { ComponentRef } from 'react'
-import { Switch as SemiSwitch } from '@douyinfe/semi-ui'
+import SemiSwitch from '@douyinfe/semi-ui/lib/es/switch'
 import type { SwitchChangeEvent, SwitchProps, SwitchSize } from './types'
 
 const cx = (classes: Array<string | false | null | undefined>) => classes.filter(Boolean).join(' ')

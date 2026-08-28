@@ -59,7 +59,7 @@ vi.mock("../../../../Service/VoiceSettingsStore", async (importOriginal) => ({
 
 vi.mock("lucide-react", () => ({ Mic: () => <span /> }));
 
-vi.mock("@douyinfe/semi-ui", () => {
+vi.mock("@octo/ui", () => {
   const Dropdown = ({
     children,
     render,
@@ -75,6 +75,11 @@ vi.mock("@douyinfe/semi-ui", () => {
     children: React.ReactNode;
     onClick?: () => void;
   }) => <button onClick={onClick}>{children}</button>;
+
+  return { Dropdown };
+});
+
+vi.mock("@douyinfe/semi-ui", () => {
   const Select = Object.assign(
     ({ children }: { children?: React.ReactNode }) => <>{children}</>,
     {
@@ -83,7 +88,6 @@ vi.mock("@douyinfe/semi-ui", () => {
   );
 
   return {
-    Dropdown,
     LocaleConsumer: ({ children }: { children: (locale: { emptyText: string }) => React.ReactNode }) => children({ emptyText: "No options" }),
     Select,
     Toast: {

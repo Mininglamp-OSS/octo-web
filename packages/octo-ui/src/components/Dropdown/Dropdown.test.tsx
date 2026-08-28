@@ -10,7 +10,7 @@ vi.hoisted(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 })
 
-vi.mock('@douyinfe/semi-ui', async () => {
+vi.mock('@douyinfe/semi-ui/lib/es/dropdown', async () => {
   const React = await vi.importActual<typeof import('react')>('react')
   const Dropdown = ({
     children,
@@ -33,7 +33,7 @@ vi.mock('@douyinfe/semi-ui', async () => {
     </div>
   )
 
-  return { Dropdown }
+  return { default: Dropdown }
 })
 
 let container: HTMLDivElement | null = null

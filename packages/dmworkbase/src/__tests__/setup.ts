@@ -30,12 +30,36 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 }
 
 // ProseMirror calls getClientRects while restoring a selection. jsdom does
-// not provide the geometry API, so keep the test DOM usable without hiding
-// application errors behind a global error handler.
+// not provide the full geometry API, so keep the test DOM usable without
+// hiding application errors behind a global error handler.
 if (typeof Element !== "undefined" && typeof Element.prototype.getClientRects !== "function") {
   Object.defineProperty(Element.prototype, "getClientRects", {
     configurable: true,
     value: () => [],
+  });
+}
+
+if (typeof Range !== "undefined" && typeof Range.prototype.getClientRects !== "function") {
+  Object.defineProperty(Range.prototype, "getClientRects", {
+    configurable: true,
+    value: () => [],
+  });
+}
+
+if (typeof Range !== "undefined" && typeof Range.prototype.getBoundingClientRect !== "function") {
+  Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+    configurable: true,
+    value: () => ({
+      bottom: 0,
+      height: 0,
+      left: 0,
+      right: 0,
+      top: 0,
+      width: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    }),
   });
 }
 

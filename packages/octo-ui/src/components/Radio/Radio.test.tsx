@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import Radio, { RadioGroup } from './index'
 
-vi.mock('@douyinfe/semi-ui', async () => {
+vi.mock('@douyinfe/semi-ui/lib/es/radio', async () => {
   const React = await vi.importActual<typeof import('react')>('react')
   const Radio = React.forwardRef<HTMLLabelElement, any>(function MockRadio(
     { checked, className, children, defaultChecked, disabled, extra, prefixCls, ...rest },
@@ -35,7 +35,7 @@ vi.mock('@douyinfe/semi-ui', async () => {
     </div>
   )
 
-  return { Radio, RadioGroup }
+  return { default: Object.assign(Radio, { Group: RadioGroup }), Radio }
 })
 
 describe('Radio', () => {

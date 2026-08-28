@@ -26,6 +26,12 @@ const legacyPatterns = [
   { pattern: /\.wk-modal(?:\b|-)/g, message: "uses legacy .wk-modal selector; use .octo-ui-modal__* selectors" },
 ];
 
+const allowedLegacyFiles = new Set([
+  // Public compatibility aliases for out-of-repo @octo/base consumers. New
+  // internal call sites must still use @octo/ui directly.
+  "packages/dmworkbase/src/index.tsx",
+]);
+
 const semiOverridePatterns = [
   /\.octo-ui-modal[^\n,{]*\.semi-modal(?:\b|-)/g,
   /\.semi-modal(?:\b|-)[^\n,{]*\.octo-ui-modal/g,
@@ -64,11 +70,13 @@ for (const scanRoot of scanRoots) {
     const rel = relative(root, file);
     const source = readFileSync(file, "utf8");
 
-    for (const { pattern, message } of legacyPatterns) {
-      pattern.lastIndex = 0;
-      let match;
-      while ((match = pattern.exec(source))) {
-        violations.push(`${rel}:${lineNumber(source, match.index)} ${message}`);
+    if (!allowedLegacyFiles.has(rel)) {
+      for (const { pattern, message } of legacyPatterns) {
+        pattern.lastIndex = 0;
+        let match;
+        while ((match = pattern.exec(source))) {
+          violations.push(`${rel}:${lineNumber(source, match.index)} ${message}`);
+        }
       }
     }
 

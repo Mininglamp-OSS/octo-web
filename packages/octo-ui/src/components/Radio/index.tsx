@@ -1,10 +1,11 @@
 import { Children, cloneElement, forwardRef, isValidElement } from 'react'
 import type { ComponentRef } from 'react'
-import { Radio as SemiRadio, RadioGroup as SemiRadioGroup } from '@douyinfe/semi-ui'
+import SemiRadioWithGroup, { Radio as SemiRadio } from '@douyinfe/semi-ui/lib/es/radio'
 import type { RadioChangeEvent, RadioGroupProps, RadioProps, RadioValue } from './types'
 
 const radioPrefixCls = 'octo-ui-radio-semi'
 const radioGroupPrefixCls = 'octo-ui-radio-group-semi'
+const SemiRadioGroup = SemiRadioWithGroup.Group
 
 const cx = (classes: Array<string | false | null | undefined>) => classes.filter(Boolean).join(' ')
 

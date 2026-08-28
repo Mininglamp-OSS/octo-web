@@ -1,4 +1,4 @@
-import { Dropdown as SemiDropdown } from '@douyinfe/semi-ui'
+import SemiDropdown from '@douyinfe/semi-ui/lib/es/dropdown'
 import { forwardRef, useCallback, useContext, useMemo, useState } from 'react'
 import type { FocusEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import MenuItem from '../MenuItem'

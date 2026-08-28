@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import Switch from './index'
 
-vi.mock('@douyinfe/semi-ui', async () => {
+vi.mock('@douyinfe/semi-ui/lib/es/switch', async () => {
   const React = await vi.importActual<typeof import('react')>('react')
   // This mock only supports static markup assertions. The real Semi Switch ref
   // resolves to Semi's class instance, not this mock DOM element.
@@ -36,7 +36,7 @@ vi.mock('@douyinfe/semi-ui', async () => {
     )
   })
 
-  return { Switch }
+  return { default: Switch }
 })
 
 describe('Switch', () => {

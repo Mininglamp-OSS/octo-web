@@ -1,10 +1,11 @@
 import { Children, cloneElement, forwardRef, isValidElement } from 'react'
 import type { ComponentRef } from 'react'
-import { Checkbox as SemiCheckbox, CheckboxGroup as SemiCheckboxGroup } from '@douyinfe/semi-ui'
+import SemiCheckboxWithGroup, { Checkbox as SemiCheckbox } from '@douyinfe/semi-ui/lib/es/checkbox'
 import type { CheckboxChangeEvent, CheckboxGroupProps, CheckboxProps } from './types'
 
 const checkboxPrefixCls = 'octo-ui-checkbox-semi'
 const checkboxGroupPrefixCls = 'octo-ui-checkbox-group-semi'
+const SemiCheckboxGroup = SemiCheckboxWithGroup.Group
 
 const cx = (classes: Array<string | false | null | undefined>) => classes.filter(Boolean).join(' ')
 

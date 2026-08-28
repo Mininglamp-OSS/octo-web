@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import Checkbox, { CheckboxGroup } from './index'
 
-vi.mock('@douyinfe/semi-ui', async () => {
+vi.mock('@douyinfe/semi-ui/lib/es/checkbox', async () => {
   const React = await vi.importActual<typeof import('react')>('react')
   const Checkbox = React.forwardRef<HTMLSpanElement, any>(function MockCheckbox(
     { checked, className, children, defaultChecked, disabled, extra, indeterminate, prefixCls, shape, size, ...rest },
@@ -36,7 +36,7 @@ vi.mock('@douyinfe/semi-ui', async () => {
     </div>
   )
 
-  return { Checkbox, CheckboxGroup }
+  return { default: Object.assign(Checkbox, { Group: CheckboxGroup }), Checkbox }
 })
 
 describe('Checkbox', () => {
