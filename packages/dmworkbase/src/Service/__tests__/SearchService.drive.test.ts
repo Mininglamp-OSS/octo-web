@@ -12,7 +12,22 @@ vi.mock("../APIClient", () => ({
   },
 }));
 
+// The drive baseURL is derived per-request (P1-1): web keeps the root-relative
+// `/v1/drive/`; the Electron desktop shell (document served over file://) must
+// resolve it against the API origin or every search 404s. Mock the two origin
+// helpers so we can drive both branches without a real window/APIClient.
+vi.mock("../../bridge/message/webhookPreview", () => ({
+  apiUrlOrigin: vi.fn(() => "https://api.example.com"),
+}));
+vi.mock("../../Utils/webOrigin", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../Utils/webOrigin")>();
+  // Default to the web shell (http(s) document origin) so the existing
+  // relative-URL assertions hold; the desktop test overrides per-call.
+  return { ...actual, isHttpOrigin: vi.fn(() => true) };
+});
+
 import SearchService from "../SearchService";
+import { isHttpOrigin } from "../../Utils/webOrigin";
 import type { DriveSearchHit } from "../SearchTypes";
 
 function hit(overrides: Partial<DriveSearchHit> = {}): DriveSearchHit {
@@ -64,6 +79,22 @@ describe("SearchService.searchDrive", () => {
     // `/v1/drive/` nginx location, NOT the `/api/v1` gateway default. axios
     // combines baseURL + path exactly like this.
     expect(`${config.baseURL}${path}`).toBe("/v1/drive/search");
+  });
+
+  it("resolves the baseURL against the API origin on the desktop shell (file:// document)", async () => {
+    // Electron loads over file://, so isHttpOrigin(document origin) is false and
+    // the prefix must become an absolute API-origin URL — a root-relative
+    // `/v1/drive/` would resolve to file:///v1/drive/search and 404 every search.
+    vi.mocked(isHttpOrigin).mockReturnValueOnce(false);
+    postMock.mockResolvedValue({ total: 0, truncated: false, items: [] });
+
+    await SearchService.searchDrive({ q: "评审" });
+
+    const [path, , config] = postMock.mock.calls[0];
+    expect(config.baseURL).toBe("https://api.example.com/v1/drive/");
+    expect(`${config.baseURL}${path}`).toBe(
+      "https://api.example.com/v1/drive/search"
+    );
   });
 
   it("passes page_index / page_size / space_id / filters through when provided", async () => {

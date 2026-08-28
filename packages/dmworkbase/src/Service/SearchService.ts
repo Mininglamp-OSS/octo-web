@@ -15,6 +15,8 @@ import {
   SearchPagination,
 } from "./SearchResultMapper";
 import APIClient from "./APIClient";
+import { apiUrlOrigin } from "../bridge/message/webhookPreview";
+import { isHttpOrigin } from "../Utils/webOrigin";
 import type {
   ChannelSearchItem,
   ChannelSearchQuery,
@@ -78,10 +80,24 @@ const CN_TZ = "Asia/Shanghai";
 
 // Drive full-text search shares drive-module's exact route: `POST /v1/drive/search`
 // (dmwork-prod nginx: `location ^~ /v1/drive/` -> octo-drive backend, already live).
-// APIClient's default baseURL is the `/api/v1/` gateway, so we still pass `/v1/drive/`
+// APIClient's default baseURL is the `/api/v1/` gateway, so we pass `/v1/drive/`
 // as a per-request baseURL override — axios combines it with the `"search"` path (no
 // leading slash) to resolve `/v1/drive/search`.
-const DRIVE_API_PREFIX = "/v1/drive/";
+//
+// On the WEB shell the document is served over http(s), so the root-relative
+// `/v1/drive/` resolves against the page origin and hits the nginx location as
+// before. The DESKTOP shell (Electron) loads over file://, where a root-relative
+// baseURL resolves to `file:///v1/drive/search` and every search 404s — so there
+// we resolve the prefix against the API origin via apiUrlOrigin() (the same
+// helper the /d doc links use; see apps/web/src/apiURL.ts resolveApiURL for the
+// web/desktop split this mirrors).
+function driveApiPrefix(): string {
+  const documentOrigin =
+    typeof window === "undefined" ? undefined : window.location?.origin;
+  if (isHttpOrigin(documentOrigin)) return "/v1/drive/";
+  const apiOrigin = apiUrlOrigin();
+  return apiOrigin ? `${apiOrigin}/v1/drive/` : "/v1/drive/";
+}
 
 // Split a Date into CN-tz Y/M/D (numeric). Extracted so both the wire
 // serializer and the datePreset boundary math share one code path.
@@ -526,7 +542,7 @@ const SearchService = {
   },
 
   // Drive full-text search: octo-drive backend, proxied at `POST /v1/drive/search`
-  // (see DRIVE_API_PREFIX). uid is
+  // (see driveApiPrefix). uid is
   // injected by the gateway (not sent from the client); the backend applies
   // permission down-push server-side, so the client renders items verbatim.
   //
@@ -558,7 +574,7 @@ const SearchService = {
     if (query.filters) body.filters = query.filters;
     const resp = await APIClient.shared.post("search", body, {
       signal,
-      baseURL: DRIVE_API_PREFIX,
+      baseURL: driveApiPrefix(),
     });
     const items = Array.isArray(resp?.items) ? resp.items : [];
     const validItems = items.filter(
