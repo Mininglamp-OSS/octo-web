@@ -1479,6 +1479,7 @@
   "navRail.settingsPanel.updateError.noPendingUpdate": "暂无可下载的更新，请重新检查",
   "navRail.settingsPanel.updateError.packageVerificationFailed": "更新包校验失败，请不要安装该包，确认发布包后再重试",
   "navRail.settingsPanel.updateError.updateFailed": "更新失败，请稍后重试",
+  "navRail.settingsPanel.updateError.updaterArchitectureMismatch": "更新包与当前设备架构不匹配，请下载匹配的桌面端安装包",
   "navRail.settingsPanel.updateError.updaterMisconfigured": "桌面端更新缺少必要的校验配置",
   "navRail.settingsPanel.updateError.updaterPermissionDenied": "当前安装位置不可写，请联系管理员更新应用",
   "navRail.settingsPanel.updateError.updaterApiNotConfigured": "当前未配置桌面端更新服务",

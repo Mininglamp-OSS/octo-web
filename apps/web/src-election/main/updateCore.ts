@@ -16,6 +16,12 @@ export interface LinuxAppImageInstallPlan {
   backupPath: string;
 }
 
+const LINUX_ELF_MACHINE_BY_ARCH: Partial<Record<NodeJS.Architecture, number>> = {
+  arm: 40,
+  x64: 62,
+  arm64: 183,
+};
+
 export interface ParseUpdateInfoOptions {
   allowInsecureHttp?: boolean;
   expectedDownloadOrigin?: string;
@@ -168,7 +174,7 @@ export function isLocalhostHttpUrl(url: URL): boolean {
 }
 
 function parseForceUpdate(value: Record<string, unknown>): boolean {
-  const raw = value.forceUpdate ?? value.force_update ?? value.force ?? value.required ?? value.mandatory;
+  const raw = value.forceUpdate ?? value.force_update ?? value.isForce ?? value.is_force ?? value.force ?? value.required ?? value.mandatory;
   return parseBooleanFlag(raw) === true;
 }
 
@@ -221,6 +227,20 @@ export function buildLinuxAppImageInstallPlan(currentAppImagePath: string): Linu
     stagingPath: `${targetPath}.update-in-progress`,
     backupPath: `${targetPath}.previous-update`,
   };
+}
+
+export function parseLinuxElfMachine(header: Uint8Array): number | undefined {
+  if (header.length < 20) return undefined;
+  if (header[0] !== 0x7f || header[1] !== 0x45 || header[2] !== 0x4c || header[3] !== 0x46) return undefined;
+  const encoding = header[5];
+  if (encoding === 1) return header[18] | (header[19] << 8);
+  if (encoding === 2) return (header[18] << 8) | header[19];
+  return undefined;
+}
+
+export function isLinuxElfMachineCompatible(machine: number | undefined, arch: NodeJS.Architecture = process.arch): boolean {
+  const expectedMachine = LINUX_ELF_MACHINE_BY_ARCH[arch];
+  return Boolean(expectedMachine && machine === expectedMachine);
 }
 
 export function buildMacInstallScript(): string {
