@@ -27,7 +27,7 @@ const dispatchContextMenu = (element: Element) => {
 };
 
 describe("FoldSessionExpandedList context-menu boundary", () => {
-  it("opens only from message content and supports the keyboard context-menu shortcut", () => {
+  it("opens from the whole message row and supports the keyboard context-menu shortcut", () => {
     const onMessageContextMenu = vi.fn();
     const message = {
       clientMsgNo: "fold-1",
@@ -56,11 +56,11 @@ describe("FoldSessionExpandedList context-menu boundary", () => {
 
     dispatchContextMenu(container.querySelector(".wk-fold-msg-ava")!);
     dispatchContextMenu(container.querySelector(".wk-fold-msg-head")!);
-    expect(onMessageContextMenu).not.toHaveBeenCalled();
+    expect(onMessageContextMenu).toHaveBeenCalledTimes(2);
 
     const content = container.querySelector<HTMLElement>(".wk-fold-msg-content")!;
     dispatchContextMenu(content);
-    expect(onMessageContextMenu).toHaveBeenCalledTimes(1);
+    expect(onMessageContextMenu).toHaveBeenCalledTimes(3);
 
     act(() => content.focus());
     act(() => content.dispatchEvent(new KeyboardEvent("keydown", {
@@ -69,6 +69,9 @@ describe("FoldSessionExpandedList context-menu boundary", () => {
       bubbles: true,
       cancelable: true,
     })));
-    expect(onMessageContextMenu).toHaveBeenCalledTimes(2);
+    expect(onMessageContextMenu).toHaveBeenCalledTimes(4);
+    expect((onMessageContextMenu.mock.calls[3][1].nativeEvent as MouseEvent & {
+      focusFirstItem?: boolean;
+    }).focusFirstItem).toBe(true);
   });
 });

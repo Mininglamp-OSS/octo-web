@@ -170,7 +170,7 @@ export default function MessageRow({
         isSelecting && 'wk-msg-row--selection-mode',
         isActive && 'wk-msg-row--active',
       )}
-      onContextMenu={isSelecting ? handleContextMenu : undefined}
+      onContextMenu={handleContextMenu}
       onClick={handleRowClick}
     >
       {/* 多选 Checkbox */}
@@ -276,18 +276,19 @@ export default function MessageRow({
         <div
           className="wk-msg-row-body"
           tabIndex={!isSelecting && onContextMenu ? 0 : undefined}
-          onContextMenu={handleContextMenu}
           onKeyDown={(event) => {
             if (isSelecting || !onContextMenu) return
             if ((event.shiftKey && event.key === 'F10') || event.key === 'ContextMenu') {
               event.preventDefault()
               const rect = event.currentTarget.getBoundingClientRect()
-              event.currentTarget.dispatchEvent(new MouseEvent('contextmenu', {
+              const contextMenuEvent = new MouseEvent('contextmenu', {
                 bubbles: true,
                 cancelable: true,
                 clientX: rect.left + Math.min(rect.width / 2, 24),
                 clientY: rect.top + Math.min(rect.height / 2, 24),
-              }))
+              }) as MouseEvent & { focusFirstItem?: boolean }
+              contextMenuEvent.focusFirstItem = true
+              event.currentTarget.dispatchEvent(contextMenuEvent)
             }
           }}
         >
