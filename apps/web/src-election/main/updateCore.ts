@@ -361,10 +361,10 @@ if [ -d "$TARGET_APP_PATH" ]; then
 fi
 
 if ! /bin/mv "$INSTALL_TARGET_TMP_PATH" "$TARGET_APP_PATH"; then
-  rm -rf "$INSTALL_TARGET_TMP_PATH"
-  rm -rf "$TARGET_APP_PATH"
+  rm -rf "$INSTALL_TARGET_TMP_PATH" || true
+  rm -rf "$TARGET_APP_PATH" || true
   if [ -d "$BACKUP_APP_PATH" ]; then
-    /bin/mv "$BACKUP_APP_PATH" "$TARGET_APP_PATH"
+    /bin/mv "$BACKUP_APP_PATH" "$TARGET_APP_PATH" || true
   fi
   fail 22
 fi

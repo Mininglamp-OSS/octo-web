@@ -38,6 +38,14 @@ function getElectronUpdateErrorText(code: string, fallback: string): string {
       return t("base.navRail.settingsPanel.updateError.checkFailed");
     case "macos-install-failed":
       return t("base.navRail.settingsPanel.updateError.macosInstallFailed");
+    case "linux-appimage-path-unavailable":
+      return t("base.navRail.settingsPanel.updateError.linuxAppImagePathUnavailable");
+    case "package-verification-failed":
+      return t("base.navRail.settingsPanel.updateError.packageVerificationFailed");
+    case "updater-misconfigured":
+      return t("base.navRail.settingsPanel.updateError.updaterMisconfigured");
+    case "updater-permission-denied":
+      return t("base.navRail.settingsPanel.updateError.updaterPermissionDenied");
     case "update-failed":
       return t("base.navRail.settingsPanel.updateError.updateFailed");
     default:
