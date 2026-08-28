@@ -134,7 +134,8 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
     uploadStage !== "error" &&
     name.trim() &&
     displayName.trim() &&
-    (!parseTaskId || (version.trim() && changelog.trim())) &&
+    version.trim() &&
+    (!parseTaskId || changelog.trim()) &&
     !tagSubmitError,
   );
 
@@ -362,7 +363,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
 
   async function submit() {
     if (!skill) return;
-    if (!name.trim() || !displayName.trim() || !categoryId || (parseTaskId && (!version.trim() || !changelog.trim()))) {
+    if (!name.trim() || !displayName.trim() || !categoryId || !version.trim() || (parseTaskId && !changelog.trim())) {
       setError(t("skillMarket.form.validationRequired"));
       return;
     }
@@ -383,7 +384,8 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
         iconUrl = await uploadIcon(iconBlob);
       }
       const updated = await updateSkill(skill.id, {
-        ...(parseTaskId ? { parseTaskId, version, changelog } : {}),
+        version,
+        ...(parseTaskId ? { parseTaskId, changelog } : {}),
         name,
         displayName,
         description,
@@ -484,8 +486,6 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
                   value={version}
                   onChange={setVersion}
                   placeholder={t("skillMarket.form.versionPlaceholder")}
-                  readOnly={!parseTaskId}
-                  className={!parseTaskId ? "skill-market-input-readonly" : undefined}
                 />
               </label>
               <label>
