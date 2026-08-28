@@ -352,8 +352,11 @@ const DriveSearchPanel: React.FC<DriveSearchPanelProps> = ({
           !truncated &&
           !hasMore && (
             <div className="wk-drive-search__footer" role="status">
+              {/* Count the rows actually rendered, not backend `total`: `total`
+                  counts pre-permission/pre-filter rows, so on a short/empty
+                  page (reachedEnd) it overstates what the user sees. */}
               {t("base.globalSearch.drive.allLoaded", {
-                values: { count: total },
+                values: { count: items.length },
               })}
             </div>
           )}

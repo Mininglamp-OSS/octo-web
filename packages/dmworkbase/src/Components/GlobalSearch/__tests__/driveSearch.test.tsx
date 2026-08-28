@@ -3,12 +3,24 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
-// i18n: identity translator so the panel renders without a provider (keys are
-// asserted verbatim). Return a STABLE value/`t` reference (like the real
-// useMemo-backed provider) — the panel's first-page effect lists `t` in its
-// deps, so a fresh `t` per render would re-fire it every render (infinite loop).
+// i18n: near-identity translator so the panel renders without a provider (keys
+// are asserted verbatim). It DOES apply interpolation values (appended as
+// `key key=value`) so a test can assert the real count the panel passes — an
+// identity `t` that drops `values` would mask a wrong count. Return a STABLE
+// value/`t` reference (like the real useMemo-backed provider) — the panel's
+// first-page effect lists `t` in its deps, so a fresh `t` per render would
+// re-fire it every render (infinite loop).
 vi.mock("../../../i18n", () => {
-  const value = { t: (k: string) => k, locale: "en-US" };
+  const value = {
+    t: (k: string, opts?: { values?: Record<string, unknown> }) =>
+      opts?.values
+        ? Object.entries(opts.values).reduce(
+            (s, [key, v]) => `${s} ${key}=${v}`,
+            k
+          )
+        : k,
+    locale: "en-US",
+  };
   return { useI18n: () => value };
 });
 
@@ -330,9 +342,12 @@ describe("DriveSearchPanel — offset pagination", () => {
     expect(searchDrive).toHaveBeenCalledTimes(1);
 
     // allLoaded footer means hasMore is false despite items(10) < total(40).
+    // The count must be the rows actually rendered (10), NOT backend `total`
+    // (40) — `total` counts pre-filter rows and overstates what the user sees.
     expect(
-      await screen.findByText("base.globalSearch.drive.allLoaded")
+      await screen.findByText(/drive\.allLoaded count=10\b/)
     ).toBeInTheDocument();
+    expect(screen.queryByText(/count=40/)).toBeNull();
 
     // Scrolling to the bottom must NOT fetch another page.
     for (let i = 0; i < 3; i++) fireEvent.scroll(listEl(container));
