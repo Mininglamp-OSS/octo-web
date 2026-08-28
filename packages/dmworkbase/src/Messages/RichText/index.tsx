@@ -36,6 +36,9 @@ function resolveReplySourceSpaceName(reply: any): string {
  * 老端 fallback：未注册 type=14 的旧端落 UnknownCell（已有），本端注册后正常渲染。
  */
 export class RichTextCell extends MessageCell {
+  private handleMentionClick = (uid: string) =>
+    this.props.context.showUser(uid);
+
   render() {
     const { message, context } = this.props;
     const content = message.content as RichTextContent;
@@ -77,7 +80,7 @@ export class RichTextCell extends MessageCell {
           )}
           <MixedContent
             {...uiProps.content}
-            onMentionClick={(uid) => context.showUser(uid)}
+            onMentionClick={this.handleMentionClick}
             onFileDownload={(block) => {
               if (block.url) {
                 downloadFile(block.url, block.name);
