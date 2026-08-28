@@ -22,6 +22,11 @@ const LINUX_ELF_MACHINE_BY_ARCH: Partial<Record<NodeJS.Architecture, number>> = 
   arm64: 183,
 };
 
+const MAC_MACHO_ARCH_BY_NODE_ARCH: Partial<Record<NodeJS.Architecture, string>> = {
+  x64: "x86_64",
+  arm64: "arm64",
+};
+
 export interface ParseUpdateInfoOptions {
   allowInsecureHttp?: boolean;
   expectedDownloadOrigin?: string;
@@ -243,6 +248,14 @@ export function isLinuxElfMachineCompatible(machine: number | undefined, arch: N
   return Boolean(expectedMachine && machine === expectedMachine);
 }
 
+export function getMacExpectedMachOArch(arch: NodeJS.Architecture = process.arch): string {
+  const expectedArch = MAC_MACHO_ARCH_BY_NODE_ARCH[arch];
+  if (!expectedArch) {
+    throw new Error(`Unsupported macOS updater architecture: ${arch}`);
+  }
+  return expectedArch;
+}
+
 export function buildMacInstallScript(): string {
   return `#!/bin/sh
 set -eu
@@ -260,6 +273,7 @@ INSTALL_DIR="$9"
 RESULT_PATH="\${10}"
 LOG_PATH="\${11}"
 PS_BIN="\${12:-/bin/ps}"
+EXPECTED_APP_ARCH="\${13:-}"
 
 if ! : >> "$LOG_PATH" 2>/dev/null; then
   LOG_PATH=/dev/null
@@ -359,6 +373,23 @@ if [ -n "$NORMALIZED_EXPECTED_VERSION" ] && [ "$NORMALIZED_NEXT_VERSION" != "$NO
   fail 16
 fi
 
+NEXT_EXECUTABLE_NAME="$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$NEXT_INFO_PLIST" 2>/dev/null || true)"
+if [ -z "$NEXT_EXECUTABLE_NAME" ]; then
+  fail 24
+fi
+NEXT_EXECUTABLE_PATH="$NEXT_APP_PATH/Contents/MacOS/$NEXT_EXECUTABLE_NAME"
+if [ ! -f "$NEXT_EXECUTABLE_PATH" ]; then
+  fail 24
+fi
+if [ -z "$EXPECTED_APP_ARCH" ]; then
+  fail 24
+fi
+NEXT_APP_ARCHS="$(/usr/bin/lipo -archs "$NEXT_EXECUTABLE_PATH" 2>/dev/null || true)"
+case " $NEXT_APP_ARCHS " in
+  *" $EXPECTED_APP_ARCH "*) ;;
+  *) fail 24 ;;
+esac
+
 if ! /usr/bin/codesign --verify --deep --strict "$NEXT_APP_PATH" >/dev/null 2>&1; then
   fail 17
 fi
@@ -393,7 +424,6 @@ if ! /bin/mv "$INSTALL_TARGET_TMP_PATH" "$TARGET_APP_PATH"; then
   fail 22
 fi
 
-rm -rf "$BACKUP_APP_PATH" || true
 rm -f "$RESULT_PATH" || true
 rm -f "$ZIP_PATH" || true
 /usr/bin/open "$TARGET_APP_PATH"

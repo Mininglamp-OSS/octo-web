@@ -23,6 +23,7 @@ import {
   buildWindowsInstallerSignatureCommand,
   getMacAppBundlePath,
   getMacAppBundleName,
+  getMacExpectedMachOArch,
   getDownloadedUpdateFileName,
   getUpdaterPackageExtension,
   getUpdaterPlatform,
@@ -509,6 +510,15 @@ async function installMacZipUpdateAndQuit(zipPath: string, expectedVersion: stri
       "updater-permission-denied",
     );
   }
+  let expectedAppArch: string;
+  try {
+    expectedAppArch = getMacExpectedMachOArch(process.arch);
+  } catch (error) {
+    throw new DesktopUpdateError(
+      error instanceof Error ? error.message : "Unsupported macOS updater architecture",
+      "updater-architecture-mismatch",
+    );
+  }
   const installDir = await fs.promises.mkdtemp(path.join(updateDir, "install-"));
   const stagingPath = path.join(installDir, "staging");
   const resultPath = path.join(updateDir, "last-macos-update-result.txt");
@@ -531,6 +541,7 @@ async function installMacZipUpdateAndQuit(zipPath: string, expectedVersion: stri
     resultPath,
     logPath,
     "/bin/ps",
+    expectedAppArch,
   ], {
     detached: true,
     stdio: "ignore",

@@ -11,6 +11,7 @@ import {
   getDownloadedUpdateFileName,
   getMacAppBundleName,
   getMacAppBundlePath,
+  getMacExpectedMachOArch,
   getUpdaterPlatform,
   isAllowedUpdaterPackageUrl,
   isLinuxElfMachineCompatible,
@@ -284,6 +285,12 @@ describe("desktop updater core", () => {
     expect(() => getMacAppBundleName("/Applications/OCTO")).toThrow("macOS app bundle path must end with .app");
   });
 
+  it("maps Node architectures to macOS Mach-O slice names", () => {
+    expect(getMacExpectedMachOArch("arm64")).toBe("arm64");
+    expect(getMacExpectedMachOArch("x64")).toBe("x86_64");
+    expect(() => getMacExpectedMachOArch("ia32")).toThrow("Unsupported macOS updater architecture");
+  });
+
   it("compares simple release versions", () => {
     expect(isNewerVersion("1.0.1", "1.0.0")).toBe(true);
     expect(isNewerVersion("v1.2.0", "1.1.9")).toBe(true);
@@ -323,6 +330,7 @@ describe("desktop updater core", () => {
         resultPath,
         logPath,
         psPath,
+        "x86_64",
       ], {
         stdio: "ignore",
         timeout: 30_000,
@@ -378,6 +386,7 @@ describe("desktop updater core", () => {
         resultPath,
         logPath,
         psPath,
+        "x86_64",
       ], {
         stdio: "ignore",
       });
@@ -402,6 +411,15 @@ describe("desktop updater core", () => {
       scriptProcess?.kill();
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it("keeps the macOS rollback backup until a later launch and checks executable architecture", () => {
+    const script = buildMacInstallScript();
+    const finalSwapIndex = script.indexOf('if ! /bin/mv "$INSTALL_TARGET_TMP_PATH" "$TARGET_APP_PATH"; then');
+    expect(script).toContain('NEXT_EXECUTABLE_NAME="$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable"');
+    expect(script).toContain('NEXT_APP_ARCHS="$(/usr/bin/lipo -archs "$NEXT_EXECUTABLE_PATH"');
+    expect(script).toContain('*" $EXPECTED_APP_ARCH "*) ;;');
+    expect(script.indexOf('rm -rf "$BACKUP_APP_PATH"', finalSwapIndex)).toBe(-1);
   });
 
   it("keeps Windows signature verification values bound through environment variables", () => {
