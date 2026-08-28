@@ -17,8 +17,10 @@ import {
   IPC_UPDATE_NOT_AVAILABLE,
 } from "../shared/ipc-channels";
 import {
+  buildLinuxAppImageInstallPlan,
   buildUpdaterCheckUrl,
   buildMacInstallScript,
+  buildWindowsInstallerSignatureCommand,
   getMacAppBundlePath,
   getMacAppBundleName,
   getDownloadedUpdateFileName,
@@ -41,6 +43,9 @@ let isDownloadingUpdate = false;
 let updateCheckSeq = 0;
 let currentDownloadController: AbortController | undefined;
 let currentDownloadAbortReason: "cancelled" | "timeout" | undefined;
+let pendingMacInstallError: { message: string; code: string } | undefined;
+let updateIpcHandlersRegistered = false;
+let quitUpdaterApp = () => app.quit();
 const isMainWindowSender = (event: Electron.IpcMainEvent): boolean =>
   Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents);
 // 封装更新相关的进程通信方法
@@ -48,6 +53,13 @@ const sendUpdateMessage = (opt: { cmd: string; data: any }) => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send(opt.cmd, opt.data);
 };
+
+function sendUpdateError(message: string, code = "update-failed") {
+  sendUpdateMessage({
+    cmd: IPC_UPDATE_ERROR,
+    data: { message, code },
+  });
+}
 
 async function requestUpdateInfo(): Promise<DesktopUpdateInfo | null> {
   const updaterApiUrl = OCTO_CONFIG.updaterApiUrl;
@@ -190,8 +202,10 @@ async function downloadUpdatePackage(updateInfo: DesktopUpdateInfo): Promise<str
   const resetStallTimer = () => {
     if (stallTimer) clearTimeout(stallTimer);
     stallTimer = setTimeout(() => {
-      currentDownloadAbortReason = "timeout";
-      controller.abort();
+      if (!controller.signal.aborted) {
+        currentDownloadAbortReason = "timeout";
+        controller.abort();
+      }
     }, DOWNLOAD_STALL_TIMEOUT_MS);
   };
   resetStallTimer();
@@ -228,9 +242,10 @@ async function downloadUpdatePackage(updateInfo: DesktopUpdateInfo): Promise<str
 
   let completed = false;
   try {
-    const total = Number(response.headers.get("content-length") || 0);
-    if (!Number.isSafeInteger(total) || total <= 0) {
-      throw new Error("Update download response is missing content-length");
+    const totalHeader = response.headers.get("content-length");
+    const total = totalHeader ? Number(totalHeader) : 0;
+    if (totalHeader && (!Number.isSafeInteger(total) || total <= 0)) {
+      throw new Error("Update download content-length is invalid");
     }
     if (total > MAX_UPDATE_PACKAGE_BYTES) {
       throw new Error("Update download package is too large");
@@ -263,7 +278,10 @@ async function downloadUpdatePackage(updateInfo: DesktopUpdateInfo): Promise<str
           if (done) break;
           if (!value) continue;
           downloaded += value.byteLength;
-          if (downloaded > total) {
+          if (downloaded > MAX_UPDATE_PACKAGE_BYTES) {
+            throw new Error("Update download package is too large");
+          }
+          if (total > 0 && downloaded > total) {
             throw new Error("Update download exceeded content-length");
           }
           hash.update(value);
@@ -336,8 +354,46 @@ async function openDownloadedUpdatePackage(updateInfo: DesktopUpdateInfo, filePa
   if (![".appimage", ".deb", ".rpm"].includes(packageExtension)) {
     throw new Error("Linux updater package extension is not supported");
   }
+  if (packageExtension === ".appimage") {
+    await installLinuxAppImageUpdate(filePath);
+    return;
+  }
   const errorMessage = await shell.openPath(filePath);
   if (errorMessage) throw new Error(errorMessage);
+}
+
+async function installLinuxAppImageUpdate(filePath: string): Promise<void> {
+  const plan = buildLinuxAppImageInstallPlan(process.env.APPIMAGE || "");
+  await fs.promises.access(path.dirname(plan.targetPath), fs.constants.W_OK);
+  await fs.promises.rm(plan.stagingPath, { force: true }).catch(() => undefined);
+  await fs.promises.rm(plan.backupPath, { force: true }).catch(() => undefined);
+  await fs.promises.copyFile(filePath, plan.stagingPath);
+  await fs.promises.chmod(plan.stagingPath, 0o755);
+  try {
+    await fs.promises.rename(plan.targetPath, plan.backupPath);
+    await fs.promises.rename(plan.stagingPath, plan.targetPath);
+  } catch (error) {
+    await fs.promises.rm(plan.stagingPath, { force: true }).catch(() => undefined);
+    const targetExists = await fs.promises.stat(plan.targetPath).then(() => true, () => false);
+    const backupExists = await fs.promises.stat(plan.backupPath).then(() => true, () => false);
+    if (!targetExists && backupExists) {
+      await fs.promises.rename(plan.backupPath, plan.targetPath).catch(() => undefined);
+    }
+    throw error;
+  }
+  const errorMessage = await shell.openPath(plan.targetPath);
+  if (errorMessage) {
+    await fs.promises.rename(plan.targetPath, plan.stagingPath).catch(() => undefined);
+    const targetExists = await fs.promises.stat(plan.targetPath).then(() => true, () => false);
+    const backupExists = await fs.promises.stat(plan.backupPath).then(() => true, () => false);
+    if (!targetExists && backupExists) {
+      await fs.promises.rename(plan.backupPath, plan.targetPath).catch(() => undefined);
+    }
+    await fs.promises.rm(plan.stagingPath, { force: true }).catch(() => undefined);
+    throw new Error(errorMessage);
+  }
+  await fs.promises.rm(plan.backupPath, { recursive: true, force: true }).catch(() => undefined);
+  await fs.promises.rm(filePath, { force: true }).catch(() => undefined);
 }
 
 async function verifyWindowsInstallerSignature(filePath: string): Promise<void> {
@@ -345,17 +401,7 @@ async function verifyWindowsInstallerSignature(filePath: string): Promise<void> 
   if (!expectedPublisher) {
     throw new Error("Windows update signing publisher is not configured");
   }
-  const command = [
-    "$Path = $env:OCTO_UPDATE_INSTALLER_PATH",
-    "$ExpectedPublisher = $env:OCTO_UPDATE_WINDOWS_PUBLISHER_NAME",
-    "if ([string]::IsNullOrWhiteSpace($Path) -or [string]::IsNullOrWhiteSpace($ExpectedPublisher)) { exit 12 }",
-    "$signature = Get-AuthenticodeSignature -LiteralPath $Path",
-    "if ($signature.Status -ne 'Valid') { exit 10 }",
-    "$subject = $signature.SignerCertificate.Subject",
-    "$match = [regex]::Match($subject, '(?:^|,\\s*)CN=([^,]+)')",
-    "if (!$match.Success) { exit 11 }",
-    "if ($match.Groups[1].Value -ne $ExpectedPublisher) { exit 11 }",
-  ].join("; ");
+  const command = buildWindowsInstallerSignatureCommand();
   await execFileAsync("powershell.exe", [
     "-NoProfile",
     "-NonInteractive",
@@ -376,7 +422,7 @@ async function verifyWindowsInstallerSignature(filePath: string): Promise<void> 
 async function openDownloadedUpdatePackageAndQuitIfNeeded(updateInfo: DesktopUpdateInfo, filePath: string): Promise<void> {
   await openDownloadedUpdatePackage(updateInfo, filePath);
   if (getUpdaterPlatform() !== "macos") {
-    app.quit();
+    quitUpdaterApp();
   }
 }
 
@@ -419,7 +465,7 @@ async function installMacZipUpdateAndQuit(zipPath: string, expectedVersion: stri
     child.once("error", reject);
   });
   child.unref();
-  app.quit();
+  quitUpdaterApp();
 }
 
 async function surfacePendingMacInstallResult(): Promise<void> {
@@ -428,17 +474,23 @@ async function surfacePendingMacInstallResult(): Promise<void> {
   let code = "";
   try {
     code = (await fs.promises.readFile(resultPath, "utf8")).trim();
-    await fs.promises.rm(resultPath, { force: true });
   } catch {
     return;
   }
   if (!code) return;
-  setTimeout(() => {
-    sendUpdateMessage({
-      cmd: IPC_UPDATE_ERROR,
-      data: `macOS update installer failed with code ${code}. See ${path.join(app.getPath("userData"), "updates", "last-macos-update.log")}`,
-    });
-  }, 1500);
+  pendingMacInstallError = {
+    message: `macOS update installer failed with code ${code}. See ${path.join(app.getPath("userData"), "updates", "last-macos-update.log")}`,
+    code: "macos-install-failed",
+  };
+}
+
+async function flushPendingMacInstallResult(): Promise<void> {
+  if (!pendingMacInstallError) return;
+  sendUpdateMessage({ cmd: IPC_UPDATE_ERROR, data: pendingMacInstallError });
+  pendingMacInstallError = undefined;
+  if (process.platform !== "darwin") return;
+  const resultPath = path.join(app.getPath("userData"), "updates", "last-macos-update-result.txt");
+  await fs.promises.rm(resultPath, { force: true }).catch(() => undefined);
 }
 
 async function cleanupStaleUpdateArtifacts(): Promise<void> {
@@ -489,6 +541,12 @@ async function reconcileStaleMacInstallArtifacts(): Promise<void> {
     });
   }
   const inProgressStat = await fs.promises.stat(inProgressPath).catch(() => undefined);
+  const backupStat = await fs.promises.stat(backupPath).catch(() => undefined);
+  if (targetExists && backupExists && backupStat && backupStat.mtimeMs < Date.now() - 24 * 60 * 60 * 1000) {
+    await fs.promises.rm(backupPath, { recursive: true, force: true }).catch((error) => {
+      logger.warn(`[updater] failed to cleanup stale macOS backup app bundle: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }
   if (inProgressStat && inProgressStat.mtimeMs < Date.now() - 24 * 60 * 60 * 1000) {
     await fs.promises.rm(inProgressPath, { recursive: true, force: true }).catch((error) => {
       logger.warn(`[updater] failed to cleanup stale macOS staged app bundle: ${error instanceof Error ? error.message : String(error)}`);
@@ -496,30 +554,28 @@ async function reconcileStaleMacInstallArtifacts(): Promise<void> {
   }
 }
 
-function checkUpdate(win: BrowserWindow) {
+function checkUpdate(win: BrowserWindow, options?: { quitApp?: () => void }) {
   mainWindow = win;
+  if (options?.quitApp) quitUpdaterApp = options.quitApp;
   void surfacePendingMacInstallResult();
   void cleanupStaleUpdateArtifacts();
   void reconcileStaleMacInstallArtifacts();
+  if (updateIpcHandlersRegistered) return;
+  updateIpcHandlersRegistered = true;
   // 接收渲染进程消息，开始检查更新
   ipcMain.on(IPC_UPDATE_CHECK, async (event, options?: { silent?: boolean }) => {
     if (!isMainWindowSender(event)) return;
+    void flushPendingMacInstallResult();
     if (isDownloadingUpdate) {
       if (!options?.silent) {
-        sendUpdateMessage({
-          cmd: IPC_UPDATE_ERROR,
-          data: "Update download is already in progress",
-        });
+        sendUpdateError("Update download is already in progress", "download-in-progress");
       }
       return;
     }
     if (!OCTO_CONFIG.updaterApiUrl) {
       logger.info("[updater] updater API URL is not configured; skipping update check");
       if (!options?.silent) {
-        sendUpdateMessage({
-          cmd: IPC_UPDATE_ERROR,
-          data: "Updater API URL is not configured",
-        });
+        sendUpdateError("Updater API URL is not configured", "updater-api-not-configured");
       }
       return;
     }
@@ -533,11 +589,8 @@ function checkUpdate(win: BrowserWindow) {
       else if (!options?.silent) sendUpdateMessage({ cmd: IPC_UPDATE_NOT_AVAILABLE, data: {} });
     } catch (error) {
       logger.info(error);
-      if (seq === updateCheckSeq && !options?.silent) {
-        sendUpdateMessage({
-          cmd: IPC_UPDATE_ERROR,
-          data: error instanceof Error ? error.message : String(error),
-        });
+      if (seq === updateCheckSeq && !isDownloadingUpdate && !options?.silent) {
+        sendUpdateError(error instanceof Error ? error.message : String(error), "check-failed");
       }
     }
   });
@@ -547,10 +600,7 @@ function checkUpdate(win: BrowserWindow) {
     if (!isMainWindowSender(event)) return;
     if (isDownloadingUpdate) return;
     if (!pendingUpdateInfo?.url) {
-      sendUpdateMessage({
-        cmd: IPC_UPDATE_ERROR,
-        data: "No pending update download URL",
-      });
+      sendUpdateError("No pending update download URL", "no-pending-update");
       return;
     }
     const updateInfo = pendingUpdateInfo;
@@ -582,8 +632,10 @@ function checkUpdate(win: BrowserWindow) {
   });
   ipcMain.on(IPC_UPDATE_CANCEL_DOWNLOAD, (event) => {
     if (!isMainWindowSender(event)) return;
-    currentDownloadAbortReason = "cancelled";
-    currentDownloadController?.abort();
+    if (currentDownloadController && !currentDownloadController.signal.aborted) {
+      currentDownloadAbortReason = "cancelled";
+      currentDownloadController.abort();
+    }
   });
 }
 

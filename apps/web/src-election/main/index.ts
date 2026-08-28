@@ -86,6 +86,10 @@ import { DOWNLOAD_SETTINGS_VERSION, normalizeDownloadSettings, sanitizeDownloadF
 import { attachTrayPrimaryClick, attachTraySecondaryMenu } from "./trayBehavior";
 
 let forceQuit = false;
+const forceQuitApp = () => {
+  forceQuit = true;
+  app.quit();
+};
 let mainWindow: any;
 let isMainWindowFocusedWhenStartScreenshot = false;
 let screenshots: any;
@@ -1836,8 +1840,7 @@ const createMainWindow = async () => {
 
   ipcMain.on(IPC_QUIT_APP, (event) => {
     if (!isTrustedShellIpcSender(event)) return;
-    forceQuit = true;
-    app.quit();
+    forceQuitApp();
   });
 
   // Test notification handler for debugging (development only)
@@ -1863,7 +1866,7 @@ const createMainWindow = async () => {
   electronNotificationManager.setSenderGuard(isTrustedShellIpcSender);
 
   // 检查更新
-  checkUpdate(mainWindow)
+  checkUpdate(mainWindow, { quitApp: forceQuitApp })
 };
 
 // 重启应用
