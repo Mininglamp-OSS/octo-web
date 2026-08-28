@@ -241,7 +241,11 @@ export default function SkillCard({ skill, categories, onOpen, onEdit, onDelete,
             )}
           </div>
         </div>
-        <div className="skill-market-mine-row__actions">
+        <div
+          className="skill-market-mine-row__actions"
+          onClick={(event) => event.stopPropagation()}
+          data-track-ignore=""
+        >
           {onEdit && (
             <button
               type="button"

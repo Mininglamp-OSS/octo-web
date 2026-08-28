@@ -1,9 +1,15 @@
+import { sanitizeShellSpaceId } from "./spaceId";
+
 export function resolveAPIBaseURL(apiURL: string, origin: string): string {
   const target = new URL(apiURL || origin, origin);
   return target.origin;
 }
 
 export function buildInstallPrompt(skillId: string, spaceId: string, apiBaseURL: string): string {
+  // The space id is interpolated into shell command lines; keep it a single safe
+  // token (a poisoned localStorage value renders as <space-id>), matching the
+  // connector prompt builders.
+  spaceId = sanitizeShellSpaceId(spaceId);
   return `使用 octo-cli 内置的 Marketplace Skill，将指定 Skill 安装到当前 Agent runtime。
 
 - Skill ID：\`${skillId}\`

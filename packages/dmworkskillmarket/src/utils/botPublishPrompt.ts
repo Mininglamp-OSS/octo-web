@@ -1,10 +1,14 @@
+import { sanitizeShellSpaceId } from "./spaceId";
+
 export interface BotPublishPromptValues {
   spaceId?: string;
   apiBaseUrl?: string;
 }
 
 export function getBotPublishPrompt(values: BotPublishPromptValues = {}): string {
-  const spaceId = values.spaceId?.trim() || "<space-id>";
+  // Sanitize the space id: it is interpolated into shell command lines, so a
+  // poisoned value must render as the inert <space-id> placeholder.
+  const spaceId = sanitizeShellSpaceId(values.spaceId);
   const apiBaseUrl = values.apiBaseUrl?.trim() || "<api-base-url>";
 
   return `使用 octo-cli 内置的 Marketplace Skill，将指定 Skill 上架到 OCTO Marketplace。
