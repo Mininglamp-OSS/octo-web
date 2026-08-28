@@ -49,6 +49,14 @@ let updateIpcHandlersRegistered = false;
 let quitUpdaterApp = () => app.quit();
 const isMainWindowSender = (event: Electron.IpcMainEvent): boolean =>
   Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents);
+
+class DesktopUpdateError extends Error {
+  constructor(message: string, public readonly code: string) {
+    super(message);
+    this.name = "DesktopUpdateError";
+  }
+}
+
 // 封装更新相关的进程通信方法
 const sendUpdateMessage = (opt: { cmd: string; data: any }) => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -171,7 +179,7 @@ function verifyDownloadedPackageHash(expected: string, actualDigest: string, enc
   const normalizedExpected = encoding === "hex" ? expected.toLowerCase() : expected;
   const normalizedActual = encoding === "hex" ? actualDigest.toLowerCase() : actualDigest;
   if (normalizedActual !== normalizedExpected) {
-    throw new Error("Downloaded update package checksum mismatch");
+    throw new DesktopUpdateError("Downloaded update package checksum mismatch", "package-verification-failed");
   }
 }
 
@@ -181,6 +189,12 @@ function getUpdateErrorMessage(error: unknown): string {
 }
 
 function getUpdateErrorPayload(error: unknown): { message: string; code: string } {
+  if (error instanceof DesktopUpdateError) {
+    return {
+      message: error.message,
+      code: error.code,
+    };
+  }
   if (error instanceof Error && error.name === "AbortError") {
     return {
       message: currentDownloadAbortReason === "cancelled"
@@ -365,10 +379,10 @@ async function openDownloadedUpdatePackage(updateInfo: DesktopUpdateInfo, filePa
 
 async function installLinuxAppImageUpdate(filePath: string): Promise<void> {
   if (!process.env.APPIMAGE) {
-    logger.warn("[updater] APPIMAGE is not set; relaunching downloaded AppImage without in-place replacement");
-    await fs.promises.chmod(filePath, 0o755);
-    app.relaunch({ execPath: filePath });
-    return;
+    throw new DesktopUpdateError(
+      "Linux AppImage updates require the app to be running from an AppImage package",
+      "linux-appimage-path-unavailable",
+    );
   }
   const plan = buildLinuxAppImageInstallPlan(process.env.APPIMAGE);
   await fs.promises.access(path.dirname(plan.targetPath), fs.constants.W_OK);
@@ -396,24 +410,31 @@ async function installLinuxAppImageUpdate(filePath: string): Promise<void> {
 async function verifyWindowsInstallerSignature(filePath: string): Promise<void> {
   const expectedPublisher = OCTO_CONFIG.updaterWindowsPublisherName;
   if (!expectedPublisher) {
-    throw new Error("Windows update signing publisher is not configured");
+    throw new DesktopUpdateError("Windows update signing publisher is not configured", "updater-misconfigured");
   }
   const command = buildWindowsInstallerSignatureCommand();
-  await execFileAsync("powershell.exe", [
-    "-NoProfile",
-    "-NonInteractive",
-    "-ExecutionPolicy",
-    "Bypass",
-    "-Command",
-    command,
-  ], {
-    windowsHide: true,
-    env: {
-      ...process.env,
-      OCTO_UPDATE_INSTALLER_PATH: filePath,
-      OCTO_UPDATE_WINDOWS_PUBLISHER_NAME: expectedPublisher,
-    },
-  });
+  try {
+    await execFileAsync("powershell.exe", [
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      command,
+    ], {
+      windowsHide: true,
+      env: {
+        ...process.env,
+        OCTO_UPDATE_INSTALLER_PATH: filePath,
+        OCTO_UPDATE_WINDOWS_PUBLISHER_NAME: expectedPublisher,
+      },
+    });
+  } catch (error) {
+    throw new DesktopUpdateError(
+      error instanceof Error ? error.message : "Windows update package signature verification failed",
+      "package-verification-failed",
+    );
+  }
 }
 
 async function openDownloadedUpdatePackageAndQuitIfNeeded(updateInfo: DesktopUpdateInfo, filePath: string): Promise<void> {
@@ -426,12 +447,19 @@ async function openDownloadedUpdatePackageAndQuitIfNeeded(updateInfo: DesktopUpd
 async function installMacZipUpdateAndQuit(zipPath: string, expectedVersion: string): Promise<void> {
   const expectedTeamId = OCTO_CONFIG.updaterCodeSigningTeamId;
   if (!expectedTeamId) {
-    throw new Error("macOS update signing Team ID is not configured");
+    throw new DesktopUpdateError("macOS update signing Team ID is not configured", "updater-misconfigured");
   }
   const targetAppPath = getMacAppBundlePath(process.execPath);
   const expectedAppName = getMacAppBundleName(targetAppPath);
   const updateDir = path.dirname(zipPath);
-  await fs.promises.access(path.dirname(targetAppPath), fs.constants.W_OK);
+  try {
+    await fs.promises.access(path.dirname(targetAppPath), fs.constants.W_OK);
+  } catch {
+    throw new DesktopUpdateError(
+      "Current macOS installation location is not writable",
+      "updater-permission-denied",
+    );
+  }
   const installDir = await fs.promises.mkdtemp(path.join(updateDir, "install-"));
   const stagingPath = path.join(installDir, "staging");
   const resultPath = path.join(updateDir, "last-macos-update-result.txt");
@@ -550,7 +578,9 @@ async function reconcileStaleMacInstallArtifacts(): Promise<void> {
 function checkUpdate(win: BrowserWindow, options?: { quitApp?: () => void }) {
   mainWindow = win;
   if (options?.quitApp) quitUpdaterApp = options.quitApp;
-  pendingMacInstallResultRead = surfacePendingMacInstallResult();
+  pendingMacInstallResultRead = surfacePendingMacInstallResult().catch((error) => {
+    logger.warn(`[updater] failed to read pending macOS install result: ${error instanceof Error ? error.message : String(error)}`);
+  });
   void cleanupStaleUpdateArtifacts();
   void reconcileStaleMacInstallArtifacts();
   if (updateIpcHandlersRegistered) return;
