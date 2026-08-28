@@ -161,12 +161,21 @@ describe("desktop updater core", () => {
     })).toThrow("Updater response is missing package checksum");
   });
 
-  it("does not guess that signature fields are package checksums", () => {
-    expect(() => parseUpdateInfo({
+  it("accepts the live updater endpoint signature field as a sha512 digest", () => {
+    expect(parseUpdateInfo({
       version: "1.0.0",
-      url: "https://cdn.example.com/OCTO-1.0.0-universal.zip",
+      url: "https://updates.example.test/releases/OCTO-1.0.0-universal.zip",
+      notes: "Desktop update",
+      pub_date: "2026-08-28T08:00:00Z",
       signature: SHA512_HEX,
-    })).toThrow("Updater response is missing package checksum");
+    }, {
+      platform: "darwin",
+      expectedDownloadOrigin: "https://updates.example.test",
+    })).toMatchObject({
+      version: "1.0.0",
+      url: "https://updates.example.test/releases/OCTO-1.0.0-universal.zip",
+      sha512: SHA512_HEX,
+    });
   });
 
   it("rejects updater download URLs from a different origin when requested", () => {

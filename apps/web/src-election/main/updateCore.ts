@@ -81,8 +81,12 @@ function parseUpdateInfoPayload(value: Record<string, unknown>, options: ParseUp
     throw new Error("Updater response url extension does not match current platform");
   }
   const sha256 = parseHexDigest(value.sha256 ?? value.checksum_sha256 ?? value.checksumSha256, 64, "sha256");
+  // octo-server's /api/v1/common/updater/:os/:version response uses
+  // `signature` for the same stored package digest that its latest-*.yml branch
+  // exposes as sha512. Keep this alias explicit so the live updater contract is
+  // covered without treating arbitrary fields as checksums.
   const sha512 = parseBase64OrHexDigest(
-    value.sha512 ?? value.checksum_sha512 ?? value.checksumSha512 ?? value.checksum,
+    value.sha512 ?? value.checksum_sha512 ?? value.checksumSha512 ?? value.checksum ?? value.signature,
     "sha512",
   );
   if (!sha256 && !sha512) {
