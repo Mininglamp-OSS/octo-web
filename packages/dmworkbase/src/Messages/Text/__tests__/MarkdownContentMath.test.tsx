@@ -19,6 +19,7 @@
 import React from "react";
 import ReactDOM from "react-dom";
 import { act } from "react-dom/test-utils";
+import katex from "katex";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../App", () => ({
@@ -1006,20 +1007,30 @@ describe("MarkdownContent — 接收端保护：每条消息公式数量上限 (
     const input = Array.from({ length: 32 }, () => `$$\n${matrix}\n$$`).join(
       "\n\n"
     );
-    const startedAt = performance.now();
-    const root = renderContent(<MarkdownContent content={input} />);
-    expect(root.querySelector(".katex")).toBeNull();
-    expect(performance.now() - startedAt).toBeLessThan(1000);
+    const renderToString = vi.spyOn(katex, "renderToString");
+    try {
+      const root = renderContent(<MarkdownContent content={input} />);
+      expect(root.querySelector(".katex")).toBeNull();
+      expect(renderToString).not.toHaveBeenCalled();
+    } finally {
+      renderToString.mockRestore();
+    }
   });
 
   it("宏定义膨胀在调用 KaTeX 前快速拒绝", () => {
     const macroBody = "x".repeat(1400);
     const body = `\\def\\a{${macroBody}}${"\\a".repeat(78)}`;
-    const startedAt = performance.now();
-    const root = renderContent(<MarkdownContent content={`$$\n${body}\n$$`} />);
-    expect(root.querySelector(".katex")).toBeNull();
-    expect(visibleText(root)).toContain("\\def\\a");
-    expect(performance.now() - startedAt).toBeLessThan(200);
+    const renderToString = vi.spyOn(katex, "renderToString");
+    try {
+      const root = renderContent(
+        <MarkdownContent content={`$$\n${body}\n$$`} />
+      );
+      expect(root.querySelector(".katex")).toBeNull();
+      expect(visibleText(root)).toContain("\\def\\a");
+      expect(renderToString).not.toHaveBeenCalled();
+    } finally {
+      renderToString.mockRestore();
+    }
   });
 
   it("单条公式超出输出上限时，后续小公式仍可渲染", () => {
@@ -1099,6 +1110,10 @@ describe("MarkdownContent — JSON quoted values 不误判为公式", () => {
     '{"key":"$x_1$"}',
     '{"a":"$x^2$","b":2}',
     'JSON: {"key":"$x_1$"}',
+    '["$x^2$"]',
+    '{"meta":"}","values":["$x^2$"]}',
+    `don't render {"key":"$x^2$"}`,
+    "{'key':'$x^2$'}",
   ];
   for (const input of cases) {
     it(`保持字面 JSON：${input}`, () => {
@@ -1113,6 +1128,25 @@ describe("MarkdownContent — JSON quoted values 不误判为公式", () => {
       <MarkdownContent content={'the formula is "$x^2$"'} />
     );
     expect(root.querySelectorAll(".katex")).toHaveLength(1);
+  });
+
+  it("大量引号候选的扫描耗时按输入长度近似线性增长", () => {
+    const measure = (repetitions: number) => {
+      const startedAt = performance.now();
+      renderContent(<MarkdownContent content={'"$a$"'.repeat(repetitions)} />);
+      const elapsed = performance.now() - startedAt;
+      if (container) {
+        ReactDOM.unmountComponentAtNode(container);
+        container.remove();
+        container = null;
+      }
+      return elapsed;
+    };
+
+    measure(200);
+    const small = measure(4_000);
+    const large = measure(16_000);
+    expect(large / Math.max(small, 1)).toBeLessThan(10);
   });
 });
 

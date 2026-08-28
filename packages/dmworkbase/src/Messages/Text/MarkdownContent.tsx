@@ -667,11 +667,66 @@ function isEscapedAt(source: string, offset: number): boolean {
   return slashes % 2 === 1;
 }
 
+/**
+ * 线性预计算每个字符是否位于一个已闭合的 JSON-like `{}` / `[]` 容器内。
+ *
+ * 不能在每个 `$...$` 候选处用 lastIndexOf/indexOf 向两侧重新查找：大量引号候选会把
+ * scanner 退化成 O(n²)。这里先收集匹配容器，再用差分数组生成 O(1) 查询表。
+ */
+function collectJsonContainerDepth(text: string): Int32Array {
+  const depthDelta = new Int32Array(text.length + 1);
+  const stack: Array<{ char: "{" | "["; offset: number }> = [];
+  let quote: '"' | "'" | "" = "";
+  let escaped = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === quote) {
+        quote = "";
+      }
+      continue;
+    }
+    const apostropheInsideWord =
+      char === "'" &&
+      /[A-Za-z0-9]/.test(text[i - 1] ?? "") &&
+      /[A-Za-z0-9]/.test(text[i + 1] ?? "");
+    if ((char === '"' || char === "'") && !apostropheInsideWord) {
+      quote = char;
+      continue;
+    }
+    if (char === "{" || char === "[") {
+      stack.push({ char, offset: i });
+      continue;
+    }
+    if (char !== "}" && char !== "]") continue;
+
+    const expectedOpen = char === "}" ? "{" : "[";
+    const open = stack[stack.length - 1];
+    if (!open || open.char !== expectedOpen) continue;
+    stack.pop();
+    depthDelta[open.offset + 1] += 1;
+    depthDelta[i] -= 1;
+  }
+
+  let depth = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    depth += depthDelta[i];
+    depthDelta[i] = depth;
+  }
+  return depthDelta;
+}
+
 function isQuotedJsonValue(
   text: string,
   openOffset: number,
   closeOffset: number,
-  delimiterLength: number
+  delimiterLength: number,
+  jsonContainerDepth?: Int32Array
 ): boolean {
   const before = openOffset > 0 ? text[openOffset - 1] : "";
   const after = text[closeOffset + delimiterLength] ?? "";
@@ -680,13 +735,10 @@ function isQuotedJsonValue(
   ) {
     return false;
   }
-  const hasObjectContainer =
-    text.lastIndexOf("{", openOffset) > text.lastIndexOf("}", openOffset) &&
-    text.indexOf("}", closeOffset + delimiterLength) >= 0;
-  const hasArrayContainer =
-    text.lastIndexOf("[", openOffset) > text.lastIndexOf("]", openOffset) &&
-    text.indexOf("]", closeOffset + delimiterLength) >= 0;
-  return hasObjectContainer || hasArrayContainer;
+  return Boolean(
+    jsonContainerDepth?.[openOffset] &&
+      jsonContainerDepth[closeOffset + delimiterLength]
+  );
 }
 
 /** 找出原始源码中可能由 scanner 处理的 `$...$` / `$$...$$` 内部区间。 */
@@ -960,6 +1012,10 @@ function scanTextForMath(
     }
   };
   const n = text.length;
+  const jsonContainerDepth =
+    text.includes('"$') || text.includes("'$")
+      ? collectJsonContainerDepth(text)
+      : undefined;
   let i = 0;
   const hasSourceRange =
     typeof sourceStart === "number" &&
@@ -1051,7 +1107,13 @@ function scanTextForMath(
         const after = close + openLen < n ? text[close + openLen] : "";
         const wordAdjacent =
           /[A-Za-z0-9]/.test(before) || /[A-Za-z0-9_]/.test(after);
-        const quotedString = isQuotedJsonValue(text, i, close, openLen);
+        const quotedString = isQuotedJsonValue(
+          text,
+          i,
+          close,
+          openLen,
+          jsonContainerDepth
+        );
         accept =
           !wordAdjacent &&
           !quotedString &&
