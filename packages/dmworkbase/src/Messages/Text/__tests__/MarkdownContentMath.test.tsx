@@ -578,6 +578,20 @@ describe("MarkdownContent — CommonMark 转义不篡改交给 KaTeX 的 TeX", (
     });
   }
 
+  const afterRejectedDollarCases: Array<[string, string, string]> = [
+    ["订单 $12 的折扣是 $50\\% \\times x^2$", "$12", "50\\% \\times x^2"],
+    ["预算 $200，公式 $a\\_b^2$ 请看", "$200", "a\\_b^2"],
+  ];
+
+  for (const [input, literalPrefix, tex] of afterRejectedDollarCases) {
+    it(`前导金额不破坏后续公式转义：${input}`, () => {
+      const root = renderContent(<MarkdownContent content={input} />);
+      expect(root.querySelectorAll(".katex")).toHaveLength(1);
+      expect(texAnnotations(root)).toContain(tex);
+      expect(visibleText(root)).toContain(literalPrefix);
+    });
+  }
+
   const displayCases: Array<[string, string]> = [
     ["aligned", "\\begin{aligned}x &= 1\\\\y &= 2\\end{aligned}"],
     ["pmatrix", "\\begin{pmatrix}1&2\\\\3&4\\end{pmatrix}"],

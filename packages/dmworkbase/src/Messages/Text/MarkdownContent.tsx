@@ -780,7 +780,9 @@ function collectPotentialMathRanges(
     }
     if (close >= 0) {
       ranges.push([i + openLen, close]);
-      i = close + openLen;
+      // 与 scanTextForMath 保持一致：单 `$` 候选可能被正文守卫拒绝，此时 closer 仍可能是
+      // 后续真实公式的 opener，因此只越过当前 opener；`$$` 完整候选则整体消费。
+      i = openLen === 1 ? i + openLen : close + openLen;
     } else {
       i += openLen;
     }
