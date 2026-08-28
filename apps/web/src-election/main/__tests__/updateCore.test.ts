@@ -285,13 +285,10 @@ describe("desktop updater core", () => {
         installDir,
         resultPath,
         logPath,
+        psPath,
       ], {
         stdio: "ignore",
         timeout: 30_000,
-        env: {
-          ...process.env,
-          OCTO_UPDATE_PS_BIN: psPath,
-        },
       })).toThrow();
 
       expect(fs.readFileSync(resultPath, "utf8").trim()).toBe("12");
@@ -305,9 +302,9 @@ describe("desktop updater core", () => {
 
   it("waits for a running macOS app path using literal matching when the path contains regex characters", async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "octo-updater-wait-"));
-    let scriptProcess: ReturnType<typeof import("node:child_process").ChildProcess> | undefined;
+    let scriptProcess: import("node:child_process").ChildProcess | undefined;
     try {
-      const targetAppPath = path.join(tempDir, "OCTO (Beta) [test].app");
+      const targetAppPath = path.join(tempDir, `Downloads-${"long-path-".repeat(8)}`, "OCTO back\\slash (Beta) [test].app");
       const scriptPath = path.join(tempDir, "install-macos-update.sh");
       const psPath = path.join(tempDir, "ps-stub.sh");
       const runningFlagPath = path.join(tempDir, "app-running");
@@ -319,6 +316,9 @@ describe("desktop updater core", () => {
       fs.writeFileSync(scriptPath, buildMacInstallScript(), { mode: 0o700 });
       fs.writeFileSync(psPath, [
         "#!/bin/sh",
+        "if [ \"$1\" != \"-axww\" ] || [ \"$2\" != \"-o\" ] || [ \"$3\" != \"command=\" ]; then",
+        "  exit 2",
+        "fi",
         `if [ -f "${runningFlagPath}" ]; then`,
         `  printf "%s\\n" "${targetAppPath}/Contents/MacOS/OCTO --flag"`,
         "fi",
@@ -340,12 +340,9 @@ describe("desktop updater core", () => {
         installDir,
         resultPath,
         logPath,
+        psPath,
       ], {
         stdio: "ignore",
-        env: {
-          ...process.env,
-          OCTO_UPDATE_PS_BIN: psPath,
-        },
       });
 
       await new Promise((resolve) => setTimeout(resolve, 500));
