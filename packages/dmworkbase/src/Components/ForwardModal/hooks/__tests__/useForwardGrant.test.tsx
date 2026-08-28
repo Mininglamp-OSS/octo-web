@@ -40,10 +40,7 @@ describe("useForwardGrant", () => {
 
   function render(options?: UseForwardGrantOptions) {
     act(() => {
-      ReactDOM.render(
-        <Probe options={options} onValue={(v) => (latest = v)} />,
-        container,
-      )
+      ReactDOM.render(<Probe options={options} onValue={(v) => (latest = v)} />, container)
     })
   }
 
@@ -110,18 +107,37 @@ describe("useForwardGrant", () => {
     render({ canGrant: true })
     act(() => latest.setGrantEnabled(true))
     act(() => latest.setGrantBotUids(["b_1", "b_2"]))
-    expect(latest.readConfirmPayload()).toEqual({ role: "reader", botUids: ["b_1", "b_2"] })
-  })
-
-  it("carries the resolved human snapshot and de-duplicates both principal lists", () => {
-    render({ canGrant: true })
-    act(() => latest.setGrantEnabled(true))
-    act(() => latest.setGrantHumanUids(["u_1", "u_2", "u_1", ""]))
-    act(() => latest.setGrantBotUids(["b_1", "b_1", ""]))
     expect(latest.readConfirmPayload()).toEqual({
       role: "reader",
-      humanUids: ["u_1", "u_2"],
-      botUids: ["b_1"],
+      botUids: ["b_1", "b_2"],
+    })
+  })
+
+  it("carries and de-duplicates the target-scoped principal snapshot", () => {
+    render({ canGrant: true })
+    act(() => latest.setGrantEnabled(true))
+    act(() =>
+      latest.setGrantPrincipalsByTarget([
+        {
+          channelID: "g_1",
+          channelType: 2,
+          uids: ["u_1", "b_1", "u_1", ""],
+        },
+      ])
+    )
+    expect(latest.readConfirmPayload()).toEqual({
+      role: "reader",
+      principalsByTarget: [{ channelID: "g_1", channelType: 2, uids: ["u_1", "b_1"] }],
+    })
+  })
+
+  it("keeps an empty target-scoped snapshot authoritative", () => {
+    render({ canGrant: true })
+    act(() => latest.setGrantEnabled(true))
+    act(() => latest.setGrantPrincipalsByTarget([]))
+    expect(latest.readConfirmPayload()).toEqual({
+      role: "reader",
+      principalsByTarget: [],
     })
   })
 

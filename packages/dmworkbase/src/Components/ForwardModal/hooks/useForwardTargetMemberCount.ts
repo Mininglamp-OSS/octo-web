@@ -1,13 +1,10 @@
 import { useEffect, useMemo, useState } from "react"
 import { Channel, ChannelTypePerson } from "wukongimjssdk"
+import type { ImSubscriberLike } from "../../../im-runtime/channelRuntime"
 import {
   getCurrentImChannelSubscribers,
   syncCurrentImChannelSubscribers,
 } from "../../../im-runtime/currentChannelRuntime"
-import {
-  partitionForwardSubscribers,
-  type ForwardSubscriberLike,
-} from "../logic/partitionForwardSubscribers"
 
 /**
  * 授权区「将授权给群当前 N 名成员」提示的成员数。
@@ -59,15 +56,10 @@ export function useForwardTargetMemberCount(
           // best-effort：拉取失败时退回已缓存的成员快照。
         }
         if (cancelled) return
-        const subs = getCurrentImChannelSubscribers<Channel, ForwardSubscriberLike>(ch)
-        const { humans, unknown } = partitionForwardSubscribers(subs)
-        // Never label an unclassified principal as a person. A later authoritative resolve may
-        // identify it as a Bot; hiding the count is safer than presenting a false human total.
-        if (unknown.length > 0) {
-          if (!cancelled) setCount(undefined)
-          return
+        const subs = getCurrentImChannelSubscribers<Channel, ImSubscriberLike>(ch)
+        for (const s of subs) {
+          if (typeof s?.uid === "string" && s.uid) uids.add(s.uid)
         }
-        for (const s of humans) uids.add(s.uid!)
       }
       if (!cancelled) setCount(uids.size > 0 ? uids.size : undefined)
     }

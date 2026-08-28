@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 const runtime = vi.hoisted(() => ({
   subscribers: new Map<string, Array<{ uid?: string; orgData?: { robot?: unknown } }>>(),
+  disbandedChannelIDs: new Set<string>(),
   syncSubscribers: vi.fn(async () => undefined),
 }))
 vi.mock("react-virtuoso", () => ({ TableVirtuoso: () => null, Virtuoso: () => null, VirtuosoGrid: () => null }))
@@ -13,12 +14,16 @@ vi.mock("../../../im-runtime/currentChannelRuntime", () => ({
     runtime.subscribers.get(channel.channelID) ?? [],
   syncCurrentImChannelSubscribers: runtime.syncSubscribers,
 }))
+vi.mock("../../../Utils/groupDisband", () => ({
+  isConversationDisbanded: (channel: { channelID: string }) => runtime.disbandedChannelIDs.has(channel.channelID),
+}))
 import WKBase, { createDefaultExternalViewerGate } from "../index"
 import { Channel } from "wukongimjssdk"
 
 describe("WKBase context methods", () => {
   beforeEach(() => {
     runtime.subscribers = new Map()
+    runtime.disbandedChannelIDs = new Set()
     runtime.syncSubscribers.mockReset().mockResolvedValue(undefined)
   })
 
@@ -63,6 +68,13 @@ describe("WKBase context methods", () => {
     expect(result).toHaveBeenCalledWith(expect.objectContaining({ sent: 1, failed: 0 }))
   })
 
+  it("normalizes Space-prefixed person ids in the legacy grant fallback", async () => {
+    const base: any = new WKBase({ children: null })
+    const prefixedUid = `s${"a".repeat(32)}_peer`
+
+    expect(await base.collectForwardUids([new Channel(prefixedUid, 1)])).toEqual(["peer"])
+  })
+
   it("uses the reviewed grant snapshot instead of re-expanding group members", async () => {
     const base: any = new WKBase({ children: null })
     base.context = { t: (key: string) => key }
@@ -70,11 +82,52 @@ describe("WKBase context methods", () => {
 
     await base.runDocForward(
       [new Channel("group", 2)],
-      { role: "reader", humanUids: ["u_human"], botUids: ["b_kept"] },
-      { messageTitle: "Doc", link: "https://docs.test/d1", grantAccess },
+      {
+        role: "reader",
+        principalsByTarget: [{ channelID: "group", channelType: 2, uids: ["u_human", "b_kept"] }],
+      },
+      { messageTitle: "Doc", link: "https://docs.test/d1", grantAccess }
     )
 
     expect(grantAccess).toHaveBeenCalledWith(["u_human", "b_kept"], "reader")
+  })
+
+  it("grants only principals attributed to targets that are still sendable", async () => {
+    const base: any = new WKBase({ children: null })
+    base.context = { t: (key: string) => key }
+    runtime.disbandedChannelIDs.add("dead")
+    const grantAccess = vi.fn(async () => ({ granted: 2, failed: 0 }))
+
+    await base.runDocForward(
+      [new Channel("live", 2), new Channel("dead", 2)],
+      {
+        role: "reader",
+        principalsByTarget: [
+          { channelID: "live", channelType: 2, uids: ["u_live", "b_shared"] },
+          {
+            channelID: "dead",
+            channelType: 2,
+            uids: ["u_dead", "b_shared", "b_dead"],
+          },
+        ],
+      },
+      { messageTitle: "Doc", link: "https://docs.test/d1", grantAccess }
+    )
+
+    expect(grantAccess).toHaveBeenCalledWith(["u_live", "b_shared"], "reader")
+    expect(grantAccess).toHaveBeenCalledTimes(1)
+  })
+
+  it("fails closed on unscoped legacy Bots when any selected target is disbanded", async () => {
+    const base: any = new WKBase({ children: null })
+    base.context = { t: (key: string) => key }
+    runtime.disbandedChannelIDs.add("dead")
+    runtime.subscribers.set("live", [{ uid: "u_live", orgData: { robot: 0 } }])
+    const grantAccess = vi.fn(async () => ({ granted: 1, failed: 0 }))
+
+    await base.runDocForward([new Channel("live", 2), new Channel("dead", 2)], { role: "reader", botUids: ["b_unscoped"] }, { messageTitle: "Doc", link: "https://docs.test/d1", grantAccess })
+
+    expect(grantAccess).toHaveBeenCalledWith(["u_live"], "reader")
   })
 
   it("preserves the legacy role-only grant fallback for callers without a reviewed snapshot", async () => {

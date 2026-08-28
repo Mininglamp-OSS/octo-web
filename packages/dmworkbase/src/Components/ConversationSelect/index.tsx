@@ -56,8 +56,7 @@ export default function ConversationSelect({
     grantRole,
     setGrantEnabled,
     setGrantRole,
-    setGrantHumanUids,
-    setGrantBotUids,
+    setGrantPrincipalsByTarget,
   } = useForwardModal(
     onFinished,
     grant ? { canGrant: grant.canGrant, defaultRole: grant.defaultRole } : undefined
@@ -67,16 +66,11 @@ export default function ConversationSelect({
   // 默认全选、逐个可取消；仅当授权开关开启且确有 Bot 时渲染。失败/无 Bot 时为空快照。
   const resolveName = React.useCallback(
     (uid: string) => allItems.find((it) => it.channelID === uid)?.displayName || "",
-    [allItems],
+    [allItems]
   )
-  // The hook owns the confirm-time getter: readLatestSelectedBotUids() reads the freshest selected
-  // Bot set (ref-backed, no render-phase write, no passive-effect race). confirm() layers it into
-  // the grant payload before delegating.
-  const {
-    snapshot: botSnapshot,
-    readLatestHumanUids,
-    readLatestSelectedBotUids,
-  } = useForwardBotSnapshot(
+  // The hook owns the confirm-time getter. It reads the freshest target-scoped principal set
+  // (ref-backed, no render-phase write, no passive-effect race) before delegating.
+  const { snapshot: botSnapshot, readLatestPrincipalsByTarget } = useForwardBotSnapshot(
     selectedIDs,
     selectedChannels,
     grant?.spaceId,
@@ -93,16 +87,13 @@ export default function ConversationSelect({
 
   const confirm = React.useCallback(() => {
     if (grantEnabled && botSnapshot && !botSnapshot.ready) return
-    setGrantHumanUids(readLatestHumanUids())
-    setGrantBotUids(readLatestSelectedBotUids())
+    setGrantPrincipalsByTarget(readLatestPrincipalsByTarget())
     confirmForward()
   }, [
     grantEnabled,
     botSnapshot,
-    setGrantHumanUids,
-    setGrantBotUids,
-    readLatestHumanUids,
-    readLatestSelectedBotUids,
+    setGrantPrincipalsByTarget,
+    readLatestPrincipalsByTarget,
     confirmForward,
   ])
 

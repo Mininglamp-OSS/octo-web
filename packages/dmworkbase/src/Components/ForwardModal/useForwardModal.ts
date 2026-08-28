@@ -5,7 +5,11 @@ import {
   filterChatSelectorItems,
   type ChatSelectorTab,
 } from "../ChatSelector/tabFilter"
-import type { ForwardFinished, ForwardGrantRole } from "./grant"
+import type {
+  ForwardFinished,
+  ForwardGrantRole,
+  ForwardGrantTargetPrincipals,
+} from "./grant"
 import {
   FORWARD_ITEM_ACCESSORS,
   mergeForwardSources,
@@ -49,8 +53,8 @@ export interface UseForwardModalResult {
   grantRole: ForwardGrantRole
   setGrantEnabled: (v: boolean) => void
   setGrantRole: (r: ForwardGrantRole) => void
-  /** Record the human uid snapshot resolved by the authorization UI. */
-  setGrantHumanUids: (uids: string[]) => void
+  /** Record the final principals attributed to each selected target. */
+  setGrantPrincipalsByTarget: (targets: ForwardGrantTargetPrincipals[]) => void
   /** Record the currently-selected Bot uids so confirm() carries them in the grant payload. */
   setGrantBotUids: (uids: string[]) => void
 }
@@ -111,7 +115,7 @@ export function useForwardModal(
     grantRole,
     setGrantEnabled,
     setGrantRole,
-    setGrantHumanUids,
+    setGrantPrincipalsByTarget,
     setGrantBotUids,
     readConfirmPayload: readGrantPayload,
   } = useForwardGrant(grantOptions)
@@ -174,7 +178,7 @@ export function useForwardModal(
     grantRole,
     setGrantEnabled,
     setGrantRole,
-    setGrantHumanUids,
+    setGrantPrincipalsByTarget,
     setGrantBotUids,
   }
 }

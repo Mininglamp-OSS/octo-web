@@ -5,8 +5,8 @@ import ReactDOM from "react-dom"
 import { act } from "react-dom/test-utils"
 
 const hoisted = vi.hoisted(() => ({
-  subscribers: new Map<string, Array<{ uid?: string; orgData?: { robot?: unknown } }>>(),
-  syncCurrentImChannelSubscribers: vi.fn(async (_channel?: { channelID: string }): Promise<void> => undefined),
+  subscribers: new Map<string, Array<{ uid?: string }>>(),
+  syncCurrentImChannelSubscribers: vi.fn(async () => undefined),
 }))
 
 vi.mock("wukongimjssdk", () => {
@@ -72,10 +72,7 @@ describe("useForwardTargetMemberCount", () => {
 
     const person = new Channel("user-1", 1)
     const group = new Channel("group-1", 2)
-    hoisted.subscribers.set("group-1", [
-      { uid: "user-1", orgData: { robot: 0 } },
-      { uid: "user-2", orgData: { robot: 0 } },
-    ])
+    hoisted.subscribers.set("group-1", [{ uid: "user-1" }, { uid: "user-2" }])
 
     await act(async () => {
       ReactDOM.render(
@@ -125,10 +122,7 @@ describe("useForwardTargetMemberCount", () => {
     const person = new Channel("user-1", 1)
     const group = new Channel("group-1", 2)
     // user-1 既是私聊对端，也是群成员 → 应去重为 2（user-1 + user-2），而非 3。
-    hoisted.subscribers.set("group-1", [
-      { uid: "user-1", orgData: { robot: 0 } },
-      { uid: "user-2", orgData: { robot: 0 } },
-    ])
+    hoisted.subscribers.set("group-1", [{ uid: "user-1" }, { uid: "user-2" }])
 
     await act(async () => {
       ReactDOM.render(
@@ -157,11 +151,7 @@ describe("useForwardTargetMemberCount", () => {
     let latest: number | undefined
 
     const group = new Channel("group-1", 2)
-    hoisted.subscribers.set("group-1", [
-      { uid: "u1", orgData: { robot: 0 } },
-      { uid: "u2", orgData: { robot: 0 } },
-      { uid: "u3", orgData: { robot: 0 } },
-    ])
+    hoisted.subscribers.set("group-1", [{ uid: "u1" }, { uid: "u2" }, { uid: "u3" }])
     hoisted.syncCurrentImChannelSubscribers.mockRejectedValue(new Error("net"))
 
     await act(async () => {
@@ -184,60 +174,6 @@ describe("useForwardTargetMemberCount", () => {
     container.remove()
   })
 
-  it("counts only subscribers explicitly identified as humans", async () => {
-    const container = document.createElement("div")
-    document.body.appendChild(container)
-    let latest: number | undefined
-
-    const group = new Channel("group-1", 2)
-    hoisted.subscribers.set("group-1", [
-      { uid: "u_human", orgData: { robot: 0 } },
-      { uid: "b_1", orgData: { robot: 1 } },
-      { uid: "b_2", orgData: { robot: 1 } },
-    ])
-
-    await act(async () => {
-      ReactDOM.render(
-        <Probe
-          selectedIDs={["group-1"]}
-          selectedChannels={[group]}
-          onValue={(v) => (latest = v)}
-        />,
-        container,
-      )
-      await flushMicrotasks()
-    })
-
-    expect(latest).toBe(1)
-    act(() => ReactDOM.unmountComponentAtNode(container))
-    container.remove()
-  })
-
-  it("does not present an unknown identity as a human count", async () => {
-    const container = document.createElement("div")
-    document.body.appendChild(container)
-    let latest: number | undefined
-
-    const group = new Channel("group-1", 2)
-    hoisted.subscribers.set("group-1", [{ uid: "u_unknown" }])
-
-    await act(async () => {
-      ReactDOM.render(
-        <Probe
-          selectedIDs={["group-1"]}
-          selectedChannels={[group]}
-          onValue={(v) => (latest = v)}
-        />,
-        container,
-      )
-      await flushMicrotasks()
-    })
-
-    expect(latest).toBeUndefined()
-    act(() => ReactDOM.unmountComponentAtNode(container))
-    container.remove()
-  })
-
   it("stale-guard: a slow sync from an outdated selection must not overwrite the new selection's count", async () => {
     // 场景：先选 group-1（订阅数 5，sync 慢），随后切到 group-2（订阅数 2，sync 快）。
     // 语义：group-1 的 sync 晚 resolve 时，cancelled 已置 true，不得把 count 覆写回 5。
@@ -247,19 +183,13 @@ describe("useForwardTargetMemberCount", () => {
 
     const groupA = new Channel("group-A", 2)
     const groupB = new Channel("group-B", 2)
-    hoisted.subscribers.set(
-      "group-A",
-      Array.from({ length: 5 }, (_, i) => ({ uid: `a${i}`, orgData: { robot: 0 } })),
-    )
-    hoisted.subscribers.set("group-B", [
-      { uid: "b1", orgData: { robot: 0 } },
-      { uid: "b2", orgData: { robot: 0 } },
-    ])
+    hoisted.subscribers.set("group-A", Array.from({ length: 5 }, (_, i) => ({ uid: `a${i}` })))
+    hoisted.subscribers.set("group-B", [{ uid: "b1" }, { uid: "b2" }])
 
     let resolveA: () => void = () => {}
     const slowA = new Promise<void>((res) => { resolveA = res })
-    hoisted.syncCurrentImChannelSubscribers.mockImplementation(async (ch?: { channelID: string }) => {
-      if (ch?.channelID === "group-A") return slowA
+    hoisted.syncCurrentImChannelSubscribers.mockImplementation(async (ch: any) => {
+      if (ch.channelID === "group-A") return slowA
       return undefined
     })
 

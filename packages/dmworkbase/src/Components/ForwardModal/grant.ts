@@ -11,19 +11,27 @@ import type { Channel } from "wukongimjssdk"
 /** Roles a forwarder may grant when forwarding a doc — no admin. */
 export type ForwardGrantRole = "reader" | "commenter" | "writer"
 
+/** Final principals attributed to one selected forwarding target. */
+export interface ForwardGrantTargetPrincipals {
+  channelID: string
+  channelType: number
+  /** Human recipients plus Bots that remain selected for this target. */
+  uids: string[]
+}
+
 /** The grant selection emitted on confirm — undefined when the switch is off. */
 export interface ForwardGrant {
   role: ForwardGrantRole
   /**
-   * Human recipients from the same resolved snapshot shown in the authorization UI. Keeping this
-   * snapshot in the confirm payload prevents WKBase from re-expanding the groups and accidentally
-   * reintroducing group Bot uids that the forwarder cancelled.
+   * Final authorization principals grouped by the target that contributed them. WKBase intersects
+   * this snapshot with the latest sendable targets before granting, so a group that becomes
+   * disbanded after confirmation cannot leak access to its members or Bots.
    */
-  humanUids?: string[]
+  principalsByTarget?: ForwardGrantTargetPrincipals[]
   /**
    * Bot uids the forwarder explicitly kept selected in the 授权区 Bot expander (feature: user+Bot
-   * grants). Empty/omitted → grant humans only. The host merges these onto the human snapshot at
-   * forward time; they are NEVER attached silently — only what the user left checked is carried.
+   * grants). Kept for legacy role/Bot callers that do not provide `principalsByTarget`; the normal
+   * document-forward flow uses the target-scoped snapshot above.
    */
   botUids?: string[]
 }
@@ -104,7 +112,7 @@ export interface ForwardGrantResult {
 
 /**
  * Payload the docs bridge injects so the HOST can orchestrate "先授权后发":
- *   1. host expands each target channel → uid snapshot (group via syncSubscribes, person → 对端 uid)
+ *   1. modal resolves a target-scoped principal snapshot; host intersects it with sendable targets
  *   2. if the grant switch is on, host `await`s `grantAccess(uids, role)` (docs owns the /docs api)
  *   3. host sends `**title**\n[title](link)` via WKSDK and aggregates sent/failed
  *   4. host calls `onResult` with the combined outcome
@@ -144,5 +152,10 @@ export interface DocForwardOpen {
   /** docs-injected executor; host awaits it BEFORE sending (先授权后发). */
   grantAccess?(uids: string[], role: ForwardGrantRole): Promise<ForwardGrantResult>
   /** Optional outcome callback (host already toasts; docs may use this for extra UI). */
-  onResult?(result: { sent: number; failed: number; grantFailures?: string[]; grantRejections?: string[] }): void
+  onResult?(result: {
+    sent: number
+    failed: number
+    grantFailures?: string[]
+    grantRejections?: string[]
+  }): void
 }

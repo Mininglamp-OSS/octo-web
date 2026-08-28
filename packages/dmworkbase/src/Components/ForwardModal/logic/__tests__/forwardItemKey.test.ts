@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest"
-import { forwardItemKey, forwardItemKind, FORWARD_ITEM_ACCESSORS } from "../forwardItemKey"
+import {
+  forwardChannelKey,
+  forwardItemKey,
+  forwardItemKind,
+  FORWARD_ITEM_ACCESSORS,
+} from "../forwardItemKey"
 import type { ForwardItem } from "../../ForwardModal"
 
 const CT_PERSON = 1
@@ -16,6 +21,10 @@ function item(id: string, extra: Partial<ForwardItem> = {}): ForwardItem {
 }
 
 describe("forwardItemKey", () => {
+  it("keys any channel-shaped target with the same composite format", () => {
+    expect(forwardChannelKey({ channelID: "g1", channelType: CT_GROUP })).toBe("2::g1")
+  })
+
   it("produces `${type}::${id}` composite keys", () => {
     expect(forwardItemKey(item("g1", { channelType: CT_GROUP }))).toBe("2::g1")
     expect(forwardItemKey(item("d1", { channelType: CT_PERSON }))).toBe("1::d1")
@@ -53,7 +62,11 @@ describe("FORWARD_ITEM_ACCESSORS", () => {
   })
 
   it("exposes id / name / parentId / kind consistently", () => {
-    const t = item("t1", { channelType: CT_COMMUNITY_TOPIC, parentChannelID: "g1", displayName: "Standup" })
+    const t = item("t1", {
+      channelType: CT_COMMUNITY_TOPIC,
+      parentChannelID: "g1",
+      displayName: "Standup",
+    })
     expect(FORWARD_ITEM_ACCESSORS.getId(t)).toBe("t1")
     expect(FORWARD_ITEM_ACCESSORS.getName(t)).toBe("Standup")
     expect(FORWARD_ITEM_ACCESSORS.getParentId(t)).toBe("g1")

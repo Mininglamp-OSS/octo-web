@@ -4,6 +4,7 @@ export {
 } from "./channelInfoToForwardItem"
 export {
   FORWARD_ITEM_ACCESSORS,
+  forwardChannelKey,
   forwardItemKey,
   forwardItemKind,
 } from "./forwardItemKey"

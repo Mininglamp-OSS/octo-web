@@ -6,8 +6,7 @@ import { render } from "@testing-library/react"
 const hoisted = vi.hoisted(() => ({
   modalProps: [] as any[],
   confirm: vi.fn(),
-  setGrantHumanUids: vi.fn(),
-  setGrantBotUids: vi.fn(),
+  setGrantPrincipalsByTarget: vi.fn(),
   snapshot: { ready: true, peopleCount: 3, botCount: 1, groups: [] } as any,
 }))
 vi.mock("../../ForwardModal/ForwardModal", () => ({
@@ -19,14 +18,15 @@ vi.mock("../../ForwardModal/useForwardModal", () => ({
     selectedChannels: [{ channelID: "g1", channelType: 2 }],
     inputValue: "", loading: false, activeTab: "all", setActiveTab: vi.fn(), setInputValue: vi.fn(),
     toggleSelect: vi.fn(), confirm: hoisted.confirm, requestChannelInfoIfNeeded: vi.fn(), grantEnabled: true, grantRole: "viewer",
-    setGrantEnabled: vi.fn(), setGrantRole: vi.fn(), setGrantHumanUids: hoisted.setGrantHumanUids, setGrantBotUids: hoisted.setGrantBotUids,
+    setGrantEnabled: vi.fn(), setGrantRole: vi.fn(), setGrantPrincipalsByTarget: hoisted.setGrantPrincipalsByTarget, setGrantBotUids: vi.fn(),
   }),
 }))
 vi.mock("../../ForwardModal/hooks", () => ({
   useForwardBotSnapshot: () => ({
     snapshot: hoisted.snapshot,
-    readLatestHumanUids: () => ["u1", "u2", "u3"],
-    readLatestSelectedBotUids: () => ["b1"],
+    readLatestPrincipalsByTarget: () => [
+      { channelID: "g1", channelType: 2, uids: ["u1", "u2", "u3", "b1"] },
+    ],
   }),
   useForwardBotPreview: () => ({ botsFor: vi.fn(() => []) }),
 }))
@@ -37,8 +37,7 @@ describe("ConversationSelect render wiring", () => {
   beforeEach(() => {
     hoisted.modalProps.length = 0
     hoisted.confirm.mockClear()
-    hoisted.setGrantHumanUids.mockClear()
-    hoisted.setGrantBotUids.mockClear()
+    hoisted.setGrantPrincipalsByTarget.mockClear()
     hoisted.snapshot = { ready: true, peopleCount: 3, botCount: 1, groups: [] }
   })
 
@@ -62,8 +61,9 @@ describe("ConversationSelect render wiring", () => {
     props.grant.onRoleChange("writer")
     props.onConfirm()
     expect(props.grant.bots).toBeTruthy()
-    expect(hoisted.setGrantHumanUids).toHaveBeenCalledWith(["u1", "u2", "u3"])
-    expect(hoisted.setGrantBotUids).toHaveBeenCalledWith(["b1"])
+    expect(hoisted.setGrantPrincipalsByTarget).toHaveBeenCalledWith([
+      { channelID: "g1", channelType: 2, uids: ["u1", "u2", "u3", "b1"] },
+    ])
     expect(hoisted.confirm).toHaveBeenCalledTimes(1)
   })
 
@@ -74,8 +74,7 @@ describe("ConversationSelect render wiring", () => {
 
     props.onConfirm()
 
-    expect(hoisted.setGrantHumanUids).not.toHaveBeenCalled()
-    expect(hoisted.setGrantBotUids).not.toHaveBeenCalled()
+    expect(hoisted.setGrantPrincipalsByTarget).not.toHaveBeenCalled()
     expect(hoisted.confirm).not.toHaveBeenCalled()
   })
 })
