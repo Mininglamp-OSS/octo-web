@@ -132,7 +132,7 @@ describe('Modal', () => {
 
     expect(html).toContain('custom-header')
     expect(html).not.toContain('octo-ui-modal__header unused-header')
-    expect(html).toContain('aria-label="关闭"')
+    expect(html).toContain('aria-label="Close"')
   })
 
   it('can hide the header and footer', () => {

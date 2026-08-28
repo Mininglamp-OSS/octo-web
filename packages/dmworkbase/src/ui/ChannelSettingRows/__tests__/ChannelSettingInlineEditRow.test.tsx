@@ -6,6 +6,7 @@ import { ChannelSettingInlineEditRow } from "../index";
 import { Dap } from "../../../Service/Dap";
 
 vi.mock("@douyinfe/semi-icons", () => ({
+  IconAILoading: () => <span aria-hidden="true">loading</span>,
   IconClear: () => <span aria-hidden="true">x</span>,
   IconEyeClosed: () => <span aria-hidden="true">eye-closed</span>,
   IconEyeOpened: () => <span aria-hidden="true">eye-opened</span>,

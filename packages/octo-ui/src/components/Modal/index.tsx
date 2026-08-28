@@ -122,7 +122,7 @@ const Modal = forwardRef<ComponentRef<typeof SemiModal>, ModalProps>(function Mo
     closable = true,
     closeClassName,
     closeIcon,
-    closeLabel = '关闭',
+    closeLabel = 'Close',
     closeOnEsc = true,
     contentClassName,
     defaultOpen,

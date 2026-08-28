@@ -1455,6 +1455,7 @@ export class ChatContentPage extends Component<
           inline
           keepDOM
           open={showChannelSetting}
+          mask={showChannelSetting}
           bodyFlush
           closable={false}
           aria-label={t("base.channelSetting.title")}
@@ -2036,6 +2037,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                 size="fullscreen"
                 className="wk-global-search-modal"
                 header={null}
+                options={{ closable: false }}
                 visible={vm.showGlobalSearch}
                 onCancel={() => {
                   vm.showGlobalSearch = false;

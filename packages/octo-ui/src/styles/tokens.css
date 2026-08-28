@@ -415,3 +415,79 @@ body {
   --octo-ui-modal-confirm-info: var(--octo-ui-color-info);
   --octo-ui-modal-confirm-success: var(--octo-ui-color-success);
 }
+
+body[theme-mode="dark"] {
+  --octo-ui-color-white: #ffffff;
+  --octo-ui-color-black: #e4e6ed;
+  --octo-ui-color-black-hover: #ffffff;
+  --octo-ui-color-accent: #a78bfa;
+  --octo-ui-color-accent-hover: #c4b5fd;
+  --octo-ui-color-danger: #ff6b66;
+  --octo-ui-color-danger-soft: rgba(255, 107, 102, 0.12);
+  --octo-ui-color-danger-border: rgba(255, 107, 102, 0.28);
+  --octo-ui-color-danger-hover: rgba(255, 107, 102, 0.18);
+  --octo-ui-color-warning: #ffb454;
+  --octo-ui-color-warning-soft: rgba(255, 180, 84, 0.12);
+  --octo-ui-color-success: #5dd18a;
+  --octo-ui-color-info: #5caeff;
+  --octo-ui-text-primary: #e4e6ed;
+  --octo-ui-text-secondary: rgba(228, 230, 237, 0.72);
+  --octo-ui-text-tertiary: rgba(228, 230, 237, 0.5);
+  --octo-ui-text-placeholder: rgba(228, 230, 237, 0.36);
+  --octo-ui-text-disabled: rgba(228, 230, 237, 0.28);
+  --octo-ui-text-inverse: #10131a;
+  --octo-ui-icon-default: rgba(228, 230, 237, 0.72);
+  --octo-ui-icon-muted: rgba(228, 230, 237, 0.5);
+  --octo-ui-bg-surface: #242733;
+  --octo-ui-bg-elevated: #303442;
+  --octo-ui-bg-hover: rgba(255, 255, 255, 0.06);
+  --octo-ui-bg-active: rgba(255, 255, 255, 0.12);
+  --octo-ui-bg-selected: rgba(167, 139, 250, 0.16);
+  --octo-ui-border-subtle: rgba(255, 255, 255, 0.06);
+  --octo-ui-border-default: rgba(255, 255, 255, 0.1);
+  --octo-ui-border-secondary: rgba(255, 255, 255, 0.18);
+  --octo-ui-border-strong: rgba(255, 255, 255, 0.28);
+  --octo-ui-tint-03: rgba(255, 255, 255, 0.04);
+  --octo-ui-tint-04: rgba(255, 255, 255, 0.05);
+  --octo-ui-tint-06: rgba(255, 255, 255, 0.07);
+  --octo-ui-tint-08: rgba(255, 255, 255, 0.09);
+  --octo-ui-tint-12: rgba(255, 255, 255, 0.13);
+  --octo-ui-tint-15: rgba(255, 255, 255, 0.16);
+  --octo-ui-tint-20: rgba(255, 255, 255, 0.22);
+  --octo-ui-tint-35: rgba(255, 255, 255, 0.38);
+  --octo-ui-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.45);
+
+  --octo-ui-button-solid-bg: #e4e6ed;
+  --octo-ui-button-solid-bg-hover: #ffffff;
+  --octo-ui-button-tint-text: var(--octo-ui-text-primary);
+  --octo-ui-button-danger-bg-solid-hover: color-mix(in srgb, var(--octo-ui-button-danger-bg) 82%, #ffffff);
+  --octo-ui-button-danger-bg-solid-active: color-mix(in srgb, var(--octo-ui-button-danger-bg) 74%, #ffffff);
+  --octo-ui-button-text-inverse: #10131a;
+
+  --octo-ui-tag-success-bg: rgba(93, 209, 138, 0.12);
+  --octo-ui-input-border-focus: var(--octo-ui-text-primary);
+  --octo-ui-input-text: var(--octo-ui-text-primary);
+  --octo-ui-input-disabled-text: rgba(228, 230, 237, 0.22);
+
+  --octo-ui-checkbox-checked-bg: var(--octo-ui-text-primary);
+  --octo-ui-checkbox-checked-border: var(--octo-ui-text-primary);
+  --octo-ui-checkbox-check-color: var(--octo-ui-text-inverse);
+  --octo-ui-radio-checked-bg: var(--octo-ui-text-primary);
+  --octo-ui-radio-checked-border: var(--octo-ui-text-primary);
+  --octo-ui-radio-dot-color: var(--octo-ui-text-inverse);
+
+  --octo-ui-switch-checked-bg-hover: color-mix(in srgb, var(--octo-ui-switch-checked-bg) 86%, #ffffff);
+  --octo-ui-switch-knob-bg: #ffffff;
+  --octo-ui-switch-knob-shadow: 0 0 1px rgba(0, 0, 0, 0.45), 0 4px 8px rgba(0, 0, 0, 0.32);
+  --octo-ui-switch-knob-shadow-sm: 0 0 1px rgba(0, 0, 0, 0.35), 0 1px 6px rgba(0, 0, 0, 0.28);
+  --octo-ui-switch-disabled-knob-shadow: 0 0 1px rgba(0, 0, 0, 0.35);
+
+  --octo-ui-drawer-shadow-right: -8px 0 40px rgba(0, 0, 0, 0.45);
+  --octo-ui-drawer-shadow-left: 8px 0 40px rgba(0, 0, 0, 0.45);
+  --octo-ui-drawer-shadow-top: 0 -8px 40px rgba(0, 0, 0, 0.45);
+  --octo-ui-drawer-shadow-bottom: 0 8px 40px rgba(0, 0, 0, 0.45);
+  --octo-ui-drawer-footer-border: rgba(255, 255, 255, 0.1);
+
+  --octo-ui-modal-mask-bg: rgba(0, 0, 0, 0.58);
+  --octo-ui-modal-shadow: var(--octo-ui-shadow-lg), 0 0 0 1px var(--octo-ui-border-subtle);
+}

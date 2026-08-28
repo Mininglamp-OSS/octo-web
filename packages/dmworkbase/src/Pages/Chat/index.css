@@ -571,7 +571,7 @@
   cursor: default;
 }
 
-.wk-chat-channelsetting {
+.wk-chat-channelsetting.octo-ui-drawer--inline {
   z-index: calc(var(--wk-z-modal) + 11);
 }
 

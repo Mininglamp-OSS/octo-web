@@ -93,7 +93,7 @@ describe('Modal with real Semi Modal', () => {
     )
 
     expect(document.querySelector('.custom-header')?.textContent).toBe('Custom header')
-    expect(document.querySelector<HTMLButtonElement>('.octo-ui-modal__close')?.getAttribute('aria-label')).toBe('关闭')
+    expect(document.querySelector<HTMLButtonElement>('.octo-ui-modal__close')?.getAttribute('aria-label')).toBe('Close')
   })
 
   it('labels the dialog with the Octo title node', () => {
