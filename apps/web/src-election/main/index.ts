@@ -45,6 +45,7 @@ import {
   IPC_OIDC_CLEAR_AUTH_SESSION,
   IPC_NOTIFICATION_TEST_ICON,
   IPC_MEDIA_ACCESS_STATUS,
+  IPC_QUIT_APP,
   IPC_RESTART_APP,
   IPC_SCREENSHOTS_OK,
   IPC_SCREENSHOTS_START,
@@ -85,6 +86,10 @@ import { DOWNLOAD_SETTINGS_VERSION, normalizeDownloadSettings, sanitizeDownloadF
 import { attachTrayPrimaryClick, attachTraySecondaryMenu } from "./trayBehavior";
 
 let forceQuit = false;
+const forceQuitApp = () => {
+  forceQuit = true;
+  app.quit();
+};
 let mainWindow: any;
 let isMainWindowFocusedWhenStartScreenshot = false;
 let screenshots: any;
@@ -1833,6 +1838,11 @@ const createMainWindow = async () => {
     restartApp()
   })
 
+  ipcMain.on(IPC_QUIT_APP, (event) => {
+    if (!isTrustedShellIpcSender(event)) return;
+    forceQuitApp();
+  });
+
   // Test notification handler for debugging (development only)
   ipcMain.handle(IPC_NOTIFICATION_TEST_ICON, (event) => {
     if (!isTrustedShellIpcSender(event)) return false;
@@ -1856,7 +1866,7 @@ const createMainWindow = async () => {
   electronNotificationManager.setSenderGuard(isTrustedShellIpcSender);
 
   // 检查更新
-  checkUpdate(mainWindow)
+  checkUpdate(mainWindow, { quitApp: forceQuitApp })
 };
 
 // 重启应用

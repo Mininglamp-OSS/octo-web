@@ -9,8 +9,10 @@ import {
   isElectronPowered,
   isElectronShellBridgeAvailable,
   restartElectronApp,
+  quitElectronApp,
+  sendElectronCancelUpdateDownload,
+  sendElectronCheckUpdate,
   sendElectronConversationUnreadCount,
-  sendElectronInstallUpdate,
   sendElectronUpdateApp,
   startElectronScreenshot,
 } from "../desktopBridge";
@@ -51,6 +53,7 @@ describe("desktopBridge", () => {
         startScreenshot: vi.fn(),
         getMediaAccessStatus: vi.fn(),
         restartApp: vi.fn(),
+        quitApp: vi.fn(),
       },
     };
     window.ipc = legacyIpc;
@@ -68,17 +71,21 @@ describe("desktopBridge", () => {
     window.ipc = { send, invoke, on: vi.fn(), once: vi.fn(), removeListener: vi.fn() };
 
     sendElectronConversationUnreadCount(7);
+    sendElectronCheckUpdate();
     sendElectronUpdateApp();
-    sendElectronInstallUpdate();
+    sendElectronCancelUpdateDownload();
     startElectronScreenshot({ silent: true });
     await expect(getElectronMediaAccessStatus("camera")).resolves.toEqual({ status: "granted" });
     restartElectronApp();
+    quitElectronApp();
 
     expect(send).toHaveBeenNthCalledWith(1, "conversation-manager-unread-count", 7);
-    expect(send).toHaveBeenNthCalledWith(2, "update-app");
-    expect(send).toHaveBeenNthCalledWith(3, "install-update");
-    expect(send).toHaveBeenNthCalledWith(4, "screenshots-start", { silent: true });
-    expect(send).toHaveBeenNthCalledWith(5, "restart-app");
+    expect(send).toHaveBeenNthCalledWith(2, "check-update");
+    expect(send).toHaveBeenNthCalledWith(3, "update-app");
+    expect(send).toHaveBeenNthCalledWith(4, "cancel-update-download");
+    expect(send).toHaveBeenNthCalledWith(5, "screenshots-start", { silent: true });
+    expect(send).toHaveBeenNthCalledWith(6, "restart-app");
+    expect(send).toHaveBeenNthCalledWith(7, "quit-app");
     expect(invoke).toHaveBeenCalledWith("get-media-access-status", "camera");
   });
 
@@ -87,6 +94,7 @@ describe("desktopBridge", () => {
     const startScreenshot = vi.fn();
     const getMediaAccessStatus = vi.fn().mockResolvedValue({ status: "prompt" });
     const restartApp = vi.fn();
+    const quitApp = vi.fn();
     const clearAuthSession = vi.fn().mockResolvedValue({ ok: true });
     window.octoElectron = {
       ipc: { send: vi.fn(), invoke: vi.fn(), on: vi.fn(), once: vi.fn(), removeListener: vi.fn() },
@@ -107,19 +115,21 @@ describe("desktopBridge", () => {
       },
       window: { isFocused: vi.fn() },
       conversation: { setUnreadCount },
-      system: { startScreenshot, getMediaAccessStatus, restartApp },
+      system: { startScreenshot, getMediaAccessStatus, restartApp, quitApp },
     };
 
     sendElectronConversationUnreadCount(3);
     startElectronScreenshot();
     await expect(getElectronMediaAccessStatus("microphone")).resolves.toEqual({ status: "prompt" });
     restartElectronApp();
+    quitElectronApp();
     await expect(clearElectronAuthSession()).resolves.toEqual({ ok: true });
 
     expect(setUnreadCount).toHaveBeenCalledWith(3);
     expect(startScreenshot).toHaveBeenCalledWith(undefined);
     expect(getMediaAccessStatus).toHaveBeenCalledWith("microphone");
     expect(restartApp).toHaveBeenCalledOnce();
+    expect(quitApp).toHaveBeenCalledOnce();
     expect(clearAuthSession).toHaveBeenCalledOnce();
   });
 

@@ -40,6 +40,7 @@ export interface DesktopSystemBridge {
   startScreenshot(args?: unknown): void;
   getMediaAccessStatus(mediaType: "camera" | "microphone"): Promise<unknown>;
   restartApp(): void;
+  quitApp(): void;
 }
 
 export interface OctoElectronBridge {
@@ -64,11 +65,13 @@ declare global {
 }
 
 const IPC_CONVERSATION_UNREAD_COUNT = "conversation-manager-unread-count";
+const IPC_UPDATE_CHECK = "check-update";
 const IPC_UPDATE_DOWNLOAD = "update-app";
-const IPC_UPDATE_INSTALL = "install-update";
+const IPC_UPDATE_CANCEL_DOWNLOAD = "cancel-update-download";
 const IPC_SCREENSHOTS_START = "screenshots-start";
 const IPC_MEDIA_ACCESS_STATUS = "get-media-access-status";
 const IPC_RESTART_APP = "restart-app";
+const IPC_QUIT_APP = "quit-app";
 const IPC_OIDC_CLEAR_AUTH_SESSION = "octo:oidc:clear-auth-session";
 const IPC_OPEN_SYSTEM_SETTINGS = "open-system-settings";
 
@@ -125,12 +128,19 @@ export function sendElectronConversationUnreadCount(count: number): void {
   getElectronIpcBridge()?.send(IPC_CONVERSATION_UNREAD_COUNT, count);
 }
 
+export function sendElectronCheckUpdate(options?: { silent?: boolean }): void {
+  const ipc = getElectronIpcBridge();
+  if (!ipc) return;
+  if (options) ipc.send(IPC_UPDATE_CHECK, options);
+  else ipc.send(IPC_UPDATE_CHECK);
+}
+
 export function sendElectronUpdateApp(): void {
   getElectronIpcBridge()?.send(IPC_UPDATE_DOWNLOAD);
 }
 
-export function sendElectronInstallUpdate(): void {
-  getElectronIpcBridge()?.send(IPC_UPDATE_INSTALL);
+export function sendElectronCancelUpdateDownload(): void {
+  getElectronIpcBridge()?.send(IPC_UPDATE_CANCEL_DOWNLOAD);
 }
 
 export function startElectronScreenshot(args?: unknown): void {
@@ -159,6 +169,15 @@ export function restartElectronApp(): void {
     return;
   }
   getElectronIpcBridge()?.send(IPC_RESTART_APP);
+}
+
+export function quitElectronApp(): void {
+  const bridge = getElectronSystemBridge();
+  if (bridge) {
+    bridge.quitApp();
+    return;
+  }
+  getElectronIpcBridge()?.send(IPC_QUIT_APP);
 }
 
 export function clearElectronAuthSession(): Promise<unknown> | undefined {
