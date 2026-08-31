@@ -521,6 +521,7 @@ export class Conversation
     threadName: string
   ) => void;
   private onOpenWebhookPreview?: (target: WebhookIssuePreviewTarget) => void;
+  private handleMarkdownMentionClick = (uid: string) => this.showUser(uid);
 
   constructor(props: any) {
     super(props);
@@ -1423,6 +1424,7 @@ export class Conversation
       trigger = {
         clientX: rect.right,
         clientY: rect.bottom,
+        focusFirstItem: true,
         preventDefault: () => undefined,
       };
     }
@@ -2221,7 +2223,7 @@ export class Conversation
             isSend={message.send}
             isStreaming={message.isStreaming}
             mentions={this.getMessageMentions(message)}
-            onMentionClick={(uid) => this.showUser(uid)}
+            onMentionClick={this.handleMarkdownMentionClick}
             emojis={this.getMessageEmojis(message)}
           />
         </div>
@@ -2283,7 +2285,7 @@ export class Conversation
             isSend={message.send}
             isStreaming={message.isStreaming}
             mentions={this.getMessageMentions(message)}
-            onMentionClick={(uid) => this.showUser(uid)}
+            onMentionClick={this.handleMarkdownMentionClick}
             emojis={this.getMessageEmojis(message)}
           />
         </div>

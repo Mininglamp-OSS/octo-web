@@ -68,15 +68,21 @@ describe("buildMentionDropdownItems", () => {
 });
 
 describe("mentionUidStateFromRobot", () => {
-  it("classifies only explicit robot metadata as bot or user", () => {
+  it("normalizes explicit true and false robot metadata", () => {
     expect(mentionUidStateFromRobot(1)).toBe("bot");
+    expect(mentionUidStateFromRobot(true)).toBe("bot");
+    expect(mentionUidStateFromRobot("1")).toBe("bot");
+    expect(mentionUidStateFromRobot("true")).toBe("bot");
     expect(mentionUidStateFromRobot(0)).toBe("user");
+    expect(mentionUidStateFromRobot(false)).toBe("user");
+    expect(mentionUidStateFromRobot("0")).toBe("user");
+    expect(mentionUidStateFromRobot("false")).toBe("user");
   });
 
   it("treats missing or malformed robot metadata as unknown", () => {
     expect(mentionUidStateFromRobot(undefined)).toBe("unknown");
     expect(mentionUidStateFromRobot(null)).toBe("unknown");
-    expect(mentionUidStateFromRobot("1")).toBe("unknown");
-    expect(mentionUidStateFromRobot(true)).toBe("unknown");
+    expect(mentionUidStateFromRobot("yes")).toBe("unknown");
+    expect(mentionUidStateFromRobot(2)).toBe("unknown");
   });
 });

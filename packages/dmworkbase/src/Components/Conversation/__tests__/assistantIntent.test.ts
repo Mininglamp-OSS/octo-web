@@ -143,6 +143,23 @@ describe("classifyAssistantIntentText", () => {
     expect(vm.unCheckAllMessages).toHaveBeenCalledTimes(1)
   })
 
+  it("builds conversation render trees for normal, selected, and expanded input states", () => {
+    const renderChannel: any = new Channel("g", 2)
+    const conversation: any = new Conversation({ channel: renderChannel, onSelectionStateChange: vi.fn() })
+    conversation.vm = { subscribers: [] }
+    const provider: any = conversation.render()
+    const vm: any = {
+      editOn: false, fileDragEnter: false, currentReplyMessage: undefined, messageContainerId: "messages",
+      renderItems: [], showScrollToBottomBtn: false, unreadCount: 0, currentConversation: undefined,
+      onDownArrow: vi.fn(), syncMessages: vi.fn(), needSetUnread: false, loading: false,
+      channel: renderChannel,
+      subscribers: [],
+    }
+    expect(provider.props.render(vm)).toBeTruthy()
+    conversation.state.inputExpanded = true
+    expect(provider.props.render({ ...vm, editOn: true, currentReplyMessage: {} })).toBeTruthy()
+  })
+
   it("reports deletion failures and preserves the error", async () => {
     const error = new Error("delete failed")
     const vm = { deleteMessages: vi.fn(() => Promise.reject(error)), unCheckAllMessages: vi.fn(), editOn: true }
@@ -182,6 +199,37 @@ describe("classifyAssistantIntentText", () => {
 
     await expect(conversation.resendMessage(message as any)).rejects.toBe(error)
     expect(vm.deleteMessagesFromLocal).toHaveBeenCalledTimes(1)
+  })
+
+  it("blocks resending a message from a disbanded conversation", async () => {
+    hoisted.disbanded = true
+    hoisted.toastError.mockReset()
+    const deleteMessagesFromLocal = vi.fn()
+    const sendMessage = vi.fn()
+    const conversation = new Conversation({ channel })
+    ;(conversation as any).vm = { deleteMessagesFromLocal, sendMessage }
+    const message = { channel, content: {} }
+
+    await expect(conversation.resendMessage(message as any)).rejects.toThrow("group disbanded")
+
+    expect(deleteMessagesFromLocal).not.toHaveBeenCalled()
+    expect(sendMessage).not.toHaveBeenCalled()
+    expect(hoisted.toastError).toHaveBeenCalledTimes(1)
+    hoisted.disbanded = false
+  })
+
+  it("does not restore a revoked message when it is not eligible or the editor is unavailable", async () => {
+    const conversation = new Conversation({ channel })
+    const insertContent = vi.fn()
+    const message = { revoke: false, fromUID: "u1", contentType: 1, content: { text: "draft" } }
+    ;(conversation as any)._messageInputContext = { insertContent }
+
+    await conversation.reeditRevokedMessage(message as any)
+    expect(insertContent).not.toHaveBeenCalled()
+
+    ;(conversation as any)._messageInputContext = undefined
+    await conversation.reeditRevokedMessage({ revoke: true, fromUID: "u1" } as any)
+    expect(insertContent).not.toHaveBeenCalled()
   })
 
   it("ignores non-file drops after resetting the drag state", async () => {

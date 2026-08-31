@@ -134,9 +134,18 @@ export function readMentionFlags(
 
 export type MentionUidState = "bot" | "user" | "unknown";
 
+/**
+ * Normalize the explicit shapes emitted for the backend's 0/1 robot flag.
+ * Missing and unrecognized values stay unknown so grant-sensitive callers can
+ * still fail closed instead of silently treating an unclassified Bot as human.
+ */
 export function mentionUidStateFromRobot(robot: unknown): MentionUidState {
-  if (robot === 1) return "bot";
-  if (robot === 0) return "user";
+  if (robot === 1 || robot === true || robot === "1" || robot === "true") {
+    return "bot";
+  }
+  if (robot === 0 || robot === false || robot === "0" || robot === "false") {
+    return "user";
+  }
   return "unknown";
 }
 

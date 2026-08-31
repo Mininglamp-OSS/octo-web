@@ -173,6 +173,7 @@ export default class APIClient {
     }
     post(path: string, data?: any, config?: RequestConfig) {
         return this.wrapResult(axios.post(path, data, {
+            baseURL: config?.baseURL,
             headers: config?.headers,
             responseType: config?.responseType,
             timeout: config?.timeout,
@@ -285,6 +286,14 @@ export class RequestConfig {
      * yujiawei.
      */
     signal?: AbortSignal
+    /**
+     * Per-request axios baseURL override. When set, axios uses it INSTEAD of the
+     * shared `axios.defaults.baseURL` (`/api/v1/`) and combines it with `path`.
+     * Used by the drive full-text search, which is proxied under `/v1/drive/`
+     * (a distinct nginx location from the `/api/v1/` gateway), matching the exact
+     * route drive-module uses. Omitting it fully preserves the default behavior.
+     */
+    baseURL?: string
 }
 
 export interface APIResp {

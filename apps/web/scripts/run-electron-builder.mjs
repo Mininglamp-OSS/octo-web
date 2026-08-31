@@ -109,8 +109,59 @@ if (process.platform === "win32") {
 }
 
 const electronBuilderBin = require.resolve("electron-builder/out/cli/cli.js");
+const builderArgs = process.argv.slice(2);
+const hasPublishArg = builderArgs.some((arg) => arg === "--publish" || arg.startsWith("--publish=") || arg === "-p");
+if (!hasPublishArg) {
+  builderArgs.push("--publish", "never");
+}
 
-const child = childProcess.spawn(process.execPath, [electronBuilderBin, ...process.argv.slice(2)], {
+function hasPlatformFlag(longName, shortName) {
+  return builderArgs.some((arg) => {
+    if (arg === longName) return true;
+    if (!arg.startsWith("-") || arg.startsWith("--")) return false;
+    return arg.slice(1).includes(shortName);
+  });
+}
+
+function readBuiltElectronConfig() {
+  const configPath = path.join(appDir, "build", "electron-config.json");
+  try {
+    return JSON.parse(fs.readFileSync(configPath, "utf8"));
+  } catch {
+    return undefined;
+  }
+}
+
+function requireUpdaterVerifierConfig() {
+  if (process.env.VITE_ELECTRON_ALLOW_UNSIGNED_UPDATER_TEST_BUILD === "true") {
+    console.warn(
+      "[run-electron-builder] Skipping desktop updater verifier identity checks for a local unsigned test build.",
+    );
+    return;
+  }
+
+  const builtConfig = readBuiltElectronConfig();
+  const missing = [];
+  if (hasPlatformFlag("--mac", "m") && !builtConfig?.electronUpdateSigningTeamId?.trim()) {
+    missing.push("build/electron-config.json: electronUpdateSigningTeamId");
+  }
+  if (hasPlatformFlag("--win", "w") && !builtConfig?.electronUpdateWindowsPublisherName?.trim()) {
+    missing.push("build/electron-config.json: electronUpdateWindowsPublisherName");
+  }
+  if (missing.length === 0) return;
+
+  console.error(
+    "[run-electron-builder] Refusing to package an Electron updater build without verifier identity configuration.\n" +
+      `Missing: ${missing.join(", ")}\n` +
+      "Run build:electron with the public verifier identity values for release packaging, or set " +
+      "VITE_ELECTRON_ALLOW_UNSIGNED_UPDATER_TEST_BUILD=true only for local unsigned updater smoke tests.",
+  );
+  process.exit(1);
+}
+
+requireUpdaterVerifierConfig();
+
+const child = childProcess.spawn(process.execPath, [electronBuilderBin, ...builderArgs], {
   cwd: appDir,
   env: {
     ...childEnv,

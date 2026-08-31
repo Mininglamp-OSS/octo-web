@@ -141,12 +141,12 @@ const BOTFATHER_COMMAND_EVENTS: Array<[string, string]> = [
  * /installation 会误命中 /install、/newbotany 误命中 /newbot。用 \s 覆盖整类空白。
  * (见 review P2-10 / 二审 P2-8 / 三审 nit:/newbot 分支也复用此边界。)
  */
-function matchesCommandPrefix(text: string, prefix: string): boolean {
+export function matchesCommandPrefix(text: string, prefix: string): boolean {
     return text === prefix || (text.startsWith(prefix) && /\s/.test(text.charAt(prefix.length)))
 }
 
 /** 只判前缀选事件名。命中具体命令返回其事件,未命中但以 "/" 开头归兜底 botfather_command_sent。 */
-function matchBotfatherCommandEvent(text: string): string | undefined {
+export function matchBotfatherCommandEvent(text: string): string | undefined {
     if (!text.startsWith("/")) return undefined
     for (const [prefix, event] of BOTFATHER_COMMAND_EVENTS) {
         if (matchesCommandPrefix(text, prefix)) return event

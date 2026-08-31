@@ -35,6 +35,7 @@ import ChannelSetting from "../../Components/ChannelSetting";
 import ChannelSearchPanel from "../../features/channelSearch/ChannelSearchPanel";
 import { createChannelSearchApiDataSource } from "../../bridge/channelSearch/createChannelSearchDataSource";
 import { isChannelSearchEnabled } from "../../features/channelSearch/feature";
+import { openDriveFileHit } from "./openDriveFileHit";
 import type {
   ChannelSearchDataSource,
   ChannelSearchItem,
@@ -103,17 +104,17 @@ import {
 // 实测立即 threadGet 可能仍返回 Archived，因此发送后用短轮询等后端状态落稳。
 const THREAD_REACTIVATE_REFRESH_DELAYS_MS = [0, 300, 800, 1500];
 
-function extensionFromUrl(url: string): string {
+export function extensionFromUrl(url: string): string {
   const path = url.split(/[?#]/)[0] || "";
   const fileName = path.substring(path.lastIndexOf("/") + 1);
   return getExtension("", fileName);
 }
 
-function fallbackSearchMediaExtension(kind: ChannelSearchItem["kind"]) {
+export function fallbackSearchMediaExtension(kind: ChannelSearchItem["kind"]) {
   return kind === "video" ? "mp4" : "jpg";
 }
 
-function searchMediaPreviewName(
+export function searchMediaPreviewName(
   item: ChannelSearchItem,
   extension: string
 ): string {
@@ -2100,6 +2101,25 @@ export default class ChatPage extends Component<any, ChatPageState> {
                         // residual risk is already contained.
                       }
                       opened.location.href = url;
+                    }}
+                    onOpenDriveHit={(hit) => {
+                      // Routing lives in openDriveFileHit (unit-tested directly)
+                      // so folder-skip / URL / popup handling can't drift. On
+                      // desktop the hit opens via the Electron links bridge.
+                      openDriveFileHit(hit, {
+                        open: (u, target) => window.open(u, target),
+                        onBlocked: () =>
+                          Toast.warning(
+                            t("base.globalSearch.drive.popupBlocked")
+                          ),
+                        onUnavailable: () =>
+                          Toast.warning(
+                            t("base.globalSearch.drive.unavailable")
+                          ),
+                        getLinksBridge: () => getElectronLinksBridge() ?? null,
+                        toAbsoluteUrl: (u) =>
+                          resolveDocLinkForExternalOpen(u, apiUrlOrigin()),
+                      });
                     }}
                     hideModal={() => {
                       vm.showGlobalSearch = false;

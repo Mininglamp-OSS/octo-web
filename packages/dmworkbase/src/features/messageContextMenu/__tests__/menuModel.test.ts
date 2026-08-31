@@ -42,4 +42,18 @@ describe("buildGroupedMessageContextMenus", () => {
       "createThread",
     ]);
   });
+
+  it("drops the legacy private Drive action and keeps the host action", () => {
+    const menus = buildGroupedMessageContextMenus([
+      action("reply", "processing"),
+      action("contextmenus.driveSave", "processing"),
+      action("saveDrive", "derived"),
+    ]);
+
+    expect(menus.map((item) => item.separator ? "separator" : item.actionKey)).toEqual([
+      "reply",
+      "separator",
+      "saveDrive",
+    ]);
+  });
 });

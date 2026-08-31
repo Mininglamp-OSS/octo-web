@@ -405,6 +405,15 @@ export class WKRemoteConfig {
    */
   driveOn: boolean = false;
   /**
+   * 网盘全文搜索开关，默认关闭；与 driveOn(模块入口)解耦，独立灰度。镜像
+   * docsSearchOn 的双 flag 门禁：driveOn 只代表网盘模块已部署，而多类型搜索
+   * (folder/doc/blob 过滤、ref_id 下发)由后端 feat/drive-search-multi-type 单独上线。
+   * 老 backend 收到 filters.types 会忽略——folder 命中泄漏、doc 命中 ref_id 缺失被静默
+   * skip、blob 命中 404——所以 driveOn=true 的部署在搜索后端就绪前必须靠此位保持隐藏，
+   * 运维在多类型搜索上线后再下发 drive_search_on=true。
+   */
+  driveSearchOn: boolean = false;
+  /**
    * Agent Mail 模块展示开关。后端字段 mail_on 为 true 时，前端在侧边栏 NavRail
    * 展示邮件入口；false 或字段缺失时隐藏。
    *
@@ -530,6 +539,7 @@ export class WKRemoteConfig {
       const previousDmloopOn = this.dmloopOn;
       const previousDmpersonalOn = this.dmpersonalOn;
       const previousDriveOn = this.driveOn;
+      const previousDriveSearchOn = this.driveSearchOn;
       const previousMailOn = this.mailOn;
       const previousOctoAssistantUids = this.octoAssistantUids;
       const previousRequestFailed = this.requestFailed;
@@ -559,6 +569,7 @@ export class WKRemoteConfig {
       this.dmloopOn = parseRemoteBool(result["dmloop_on"]);
       this.dmpersonalOn = parseRemoteBool(result["dmpersonal_on"]);
       this.driveOn = parseRemoteBool(result["drive_on"]);
+      this.driveSearchOn = parseRemoteBool(result["drive_search_on"]);
       this.mailOn = parseRemoteBool(result["mail_on"]);
       // Octo Assistant UID 列表：后端下发 octo_assistant_uids（逗号分隔字符串或数组），
       // 前端据此判别当前打开的应用 bot 是否为 Octo Assistant（octo-dap S3 / YUJ-277）。
@@ -583,6 +594,7 @@ export class WKRemoteConfig {
         previousDmloopOn !== this.dmloopOn ||
         previousDmpersonalOn !== this.dmpersonalOn ||
         previousDriveOn !== this.driveOn ||
+        previousDriveSearchOn !== this.driveSearchOn ||
         previousMailOn !== this.mailOn ||
         !stringArraysEqual(previousOctoAssistantUids, this.octoAssistantUids) ||
         previousRequestFailed !== this.requestFailed ||
