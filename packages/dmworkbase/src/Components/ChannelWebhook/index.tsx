@@ -137,7 +137,7 @@ export default function ChannelWebhookPanel({
               t("base.channelWebhook.error.regenerateFailed")
           );
           // 重新抛出：modalConfirm 的 onOk 捕获 reject 后保持弹窗打开、按钮复位
-          // 供用户重试（见 @octo/ui Modal confirm 的 .catch(updatePending(null))）。
+          // 供用户重试（见 @octo/ui Modal confirm 的 .catch(() => updatePending(null))）。
           throw e;
         }
       },

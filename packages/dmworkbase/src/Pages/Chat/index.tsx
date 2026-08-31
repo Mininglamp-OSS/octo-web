@@ -1,5 +1,4 @@
 import React, { Component, ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { Drawer, Modal as OctoModal } from "@octo/ui";
 import { Conversation } from "../../Components/Conversation";
 import ConversationList, {
@@ -1443,13 +1442,13 @@ export class ChatContentPage extends Component<
           </div>
         </div>
 
-        {showChannelSetting && typeof document !== "undefined" && createPortal((
+        {showChannelSetting && (
           <div
             className="wk-chat-channelsetting-mask"
             data-testid="chat-channel-setting-mask"
             onClick={this._closeChannelSetting}
           />
-        ), document.body)}
+        )}
 
         <Drawer
           id="chat-channel-setting-panel"

@@ -259,6 +259,17 @@ test(
     );
     expect(panelCoversScrollButton).toBe(true);
 
+    const chatBox = await authedPage.locator(".wk-chat-content-chat").boundingBox();
+    if (!chatBox) throw new Error("聊天区域没有可验证的布局位置");
+    const maskCoversChatPane = await mask.evaluate(
+      (element, point) => element === document.elementFromPoint(point.x, point.y),
+      {
+        x: chatBox.x + Math.min(80, chatBox.width / 2),
+        y: chatBox.y + Math.min(80, chatBox.height / 2),
+      },
+    );
+    expect(maskCoversChatPane).toBe(true);
+
     const member = panel
       .locator(".wk-subscribers-item")
       .filter({ hasText: "E2E Sender" });

@@ -588,10 +588,6 @@
     box-shadow 0s linear 150ms;
 }
 
-.wk-chat-content-right.wk-chat-channelsetting-open {
-  z-index: calc(var(--wk-z-modal) + 11);
-}
-
 .wk-chat-content-right.wk-chat-channelsetting-open .wk-chat-content-chat {
   width: 100%;
 }
