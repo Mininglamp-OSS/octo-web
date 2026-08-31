@@ -29,12 +29,14 @@ import WKSDK, {
   ChannelInfo,
   ChannelTypeGroup,
   ChannelTypePerson,
+  CMDContent,
   ConnectStatus,
   Conversation,
   Message,
   MessageText,
   Subscriber,
 } from "wukongimjssdk";
+import { WKApp } from "@octo/base";
 import type {
   MockConversationSeed,
   MockGroupSeed,
@@ -79,11 +81,15 @@ function userToChannelInfo(u: MockUserSeed): ChannelInfo {
   return info;
 }
 
-function toConversation(c: MockConversationSeed): Conversation {
+function toConversation(c: MockConversationSeed, messages: MockMessageSeed[]): Conversation {
   const conv = new Conversation();
   conv.channel = new Channel(c.channelId, c.channelType);
   conv.unread = c.unread ?? 0;
   conv.timestamp = c.timestamp ?? 0;
+  const lastMessage = messages
+    .filter((message) => message.channelId === c.channelId && message.channelType === c.channelType)
+    .sort((a, b) => b.messageSeq - a.messageSeq)[0];
+  if (lastMessage) conv.lastMessage = toMessage(lastMessage);
   (conv as any).extra = {
     top: c.stick ?? 0,
     categoryId: c.categoryId ?? null,
@@ -119,6 +125,7 @@ function toSubscriber(s: MockSubscriberSeed): Subscriber {
   sub.uid = s.uid;
   (sub as any).name = s.name ?? s.uid;
   (sub as any).role = s.role ?? 0;
+  (sub as any).status = s.status ?? 0;
   (sub as any).version = 1; // 增量 sync 需要,SDK 内部读 lastMember.version
   (sub as any).orgData = { ...s.orgData, robot: s.robot ?? 0 };
   return sub;
@@ -149,7 +156,8 @@ export function installFakeProvider(seed: MockSeed): void {
   // 3. 覆盖 provider 全部 callback
   const provider = sdk.config.provider;
 
-  provider.syncConversationsCallback = async () => seed.conversations.map(toConversation);
+  provider.syncConversationsCallback = async () =>
+    seed.conversations.map((conversation) => toConversation(conversation, seed.messages ?? []));
 
   provider.syncConversationExtrasCallback = async () => [];
 
@@ -221,6 +229,33 @@ export function installFakeProvider(seed: MockSeed): void {
   provider.syncRemindersCallback = async () => [];
   provider.reminderDoneCallback = async () => undefined;
   provider.messageReadedCallback = async () => undefined;
+
+  // The real datasource receives revoke/edit as IM command + message-extra push.
+  // Keep the e2e runtime on that same observable path instead of making the UI
+  // infer success from the HTTP response alone.
+  const conversationProvider = WKApp.conversationProvider as any;
+  if (conversationProvider) {
+    const revokeState = conversationProvider.__e2eRevokeState ?? {
+      original: conversationProvider.revokeMessage?.bind(conversationProvider),
+      currentUid: seed.currentUid,
+    };
+    revokeState.currentUid = seed.currentUid;
+    conversationProvider.__e2eRevokeState = revokeState;
+    if (!conversationProvider.__e2eRevokeWrapperInstalled) {
+      conversationProvider.revokeMessage = async (message: Message) => {
+        await revokeState.original?.(message);
+        const command = new Message();
+        command.channel = message.channel;
+        command.fromUID = revokeState.currentUid;
+        const content = new CMDContent();
+        content.cmd = "messageRevoke";
+        content.param = { message_id: message.messageID };
+        command.content = content;
+        sdk.chatManager.notifyCMDListeners(command);
+      };
+      conversationProvider.__e2eRevokeWrapperInstalled = true;
+    }
+  }
 
   // 4. short-circuit connect → Connected
   const conn = sdk.connectManager;

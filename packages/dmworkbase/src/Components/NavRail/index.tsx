@@ -19,17 +19,18 @@ export interface NavRailVMProps {
     currentMenus?: Menus;
     settingSelected: boolean;
     hasNewVersion: boolean;
-    showNewVersion: boolean;
     showAppVersion: boolean;
     showAppUpdate: boolean;
     appUpdateProgress: number;
+    appUpdateDownloadedBytes?: number;
     showAppUpdateOperation: boolean;
-    lastVersionInfo?: { appVersion: string; updateDesc: string };
+    lastVersionInfo?: { appVersion: string; updateDesc: string; forceUpdate?: boolean };
     onMenuClick: (menus: Menus) => void;
     onToggleSetting: () => void;
-    onSetShowNewVersion: (v: boolean) => void;
     onSetShowAppVersion: (v: boolean) => void;
     onInstallUpdate: () => void;
+    onCancelUpdateDownload?: () => void;
+    onQuitApp?: () => void;
     onNotifyListener: () => void;
     onAvatarClick: () => void;
     onOpenOnboarding?: () => void;
@@ -42,8 +43,9 @@ export interface NavRailVMProps {
     onSpaceSelect: (spaceId: string) => void;
     onJoinSpace?: () => void;
     onCreateSpace?: () => void;
-    /** 是否在设置菜单中显示「空间管理」入口（仅 owner/admin 可见） */
+    /** 是否显示「Space 管理」入口（仅 owner/admin 可见） */
     canManageSpace?: boolean;
+    onSpaceManagement?: () => void;
     /** 用户关闭版本更新气泡时的回调 */
     onDismissNewVersion?: () => void;
 }
@@ -59,17 +61,18 @@ export default class NavRail extends Component<NavRailProps> {
             currentMenus,
             settingSelected,
             hasNewVersion,
-            showNewVersion,
             showAppVersion,
             showAppUpdate,
             appUpdateProgress,
+            appUpdateDownloadedBytes,
             showAppUpdateOperation,
             lastVersionInfo,
             onMenuClick,
             onToggleSetting,
-            onSetShowNewVersion,
             onSetShowAppVersion,
             onInstallUpdate,
+            onCancelUpdateDownload,
+            onQuitApp,
             onNotifyListener,
             onAvatarClick,
             onOpenOnboarding,
@@ -81,6 +84,7 @@ export default class NavRail extends Component<NavRailProps> {
             onJoinSpace,
             onCreateSpace,
             canManageSpace = false,
+            onSpaceManagement,
         } = this.props;
         const userChannel = new Channel(WKApp.loginInfo.uid || "", ChannelTypePerson);
         const userName = WKApp.loginInfo.name || WKApp.loginInfo.uid || t("base.navRail.me");
@@ -139,25 +143,24 @@ export default class NavRail extends Component<NavRailProps> {
                         onSpaceSelect={onSpaceSelect}
                         onJoinSpace={onJoinSpace}
                         onCreateSpace={onCreateSpace}
+                        onSpaceManagement={canManageSpace ? onSpaceManagement : undefined}
                     />
                 </nav>
 
                 {/* 设置面板 + Modals（挂在 nav 外，避免 overflow 裁剪） */}
                 <NavSettingsPanel
                     settingSelected={settingSelected}
-                    triggerRef={this.settingsButtonRef}
-                    hasNewVersion={hasNewVersion}
-                    canManageSpace={canManageSpace}
-                    showNewVersion={showNewVersion}
                     showAppVersion={showAppVersion}
                     showAppUpdate={showAppUpdate}
                     appUpdateProgress={appUpdateProgress}
+                    appUpdateDownloadedBytes={appUpdateDownloadedBytes}
                     showAppUpdateOperation={showAppUpdateOperation}
                     lastVersionInfo={lastVersionInfo}
                     onToggleSetting={onToggleSetting}
-                    onSetShowNewVersion={onSetShowNewVersion}
                     onSetShowAppVersion={onSetShowAppVersion}
                     onInstallUpdate={onInstallUpdate}
+                    onCancelUpdateDownload={onCancelUpdateDownload}
+                    onQuitApp={onQuitApp}
                     onNotifyListener={onNotifyListener}
                     onOpenOnboarding={onOpenOnboarding}
                 />
@@ -169,7 +172,6 @@ export default class NavRail extends Component<NavRailProps> {
 }
 
 export { NavSpaceSwitcher, NavItem, NavBottom };
-export { default as NavLanguageSwitcher } from "./NavLanguageSwitcher";
 export type { NavItemProps } from "./NavItem";
 export type { NavSpaceSwitcherProps } from "./NavSpaceSwitcher";
 export type { NavBottomProps } from "./NavBottom";

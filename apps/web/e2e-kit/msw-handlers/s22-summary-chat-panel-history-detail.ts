@@ -4,6 +4,14 @@ import type { Page } from "@playwright/test";
 
 /** S22: 聊天内 Summary Panel 历史列表 → 详情. */
 export async function registerS22SummaryChatPanelHistoryDetail(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => {
+      const w = globalThis as unknown as { __MSW_READY__?: boolean; __msw?: unknown };
+      return w.__MSW_READY__ === true && Boolean(w.__msw);
+    },
+    undefined,
+    { timeout: 15_000 },
+  );
   await page.evaluate(() => {
     type MSW = {
       worker: { use: (...h: unknown[]) => void };

@@ -7,6 +7,20 @@ packages:
 onlyBuiltDependencies:
   - esbuild
 
+# macOS universal Electron packages need both darwin x64 and arm64 optional
+# native packages on the same install, otherwise @electron/universal cannot
+# merge the two temporary app bundles deterministically.
+supportedArchitectures:
+  os:
+    - current
+    - darwin
+  cpu:
+    - current
+    - x64
+    - arm64
+  libc:
+    - current
+
 overrides:
   '@tiptap/core': 3.22.2
   '@tiptap/suggestion': 3.22.2

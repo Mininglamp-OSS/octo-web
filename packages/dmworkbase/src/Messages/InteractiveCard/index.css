@@ -16,8 +16,10 @@
   flex-direction: column;
   gap: var(--wk-sp-1, 4px);
   /* 默认采用 standard(480px) 规格，避免卡片内容更新后因操作数量变化而跳宽；
-     宿主空间不足时收缩到 100%，由卡片内部的 auto/stretch/wrap 继续响应式布局。 */
-  width: min(480px, 100%);
+     宿主空间不足时由 max-width 收缩到 100%。父级命中区域是 fit-content，
+     这里不能用 width: min(480px, 100%)，否则百分比会跟随内容宽度自适应。 */
+  width: 480px;
+  max-width: 100%;
   min-width: 0;
 }
 
@@ -301,6 +303,32 @@
   margin-top: var(--wk-sp-1, 4px);
   font-size: 12px;
   color: var(--wk-color-danger, var(--wk-text-secondary));
+}
+
+/* ── 客户端兜底：收到 final text 后把同 assistant 未终态 progress 卡降级显示 ──
+ * 只在渲染层叠加提示 + tag（不改消息内容）；运行中步骤的沙漏由 DOM 层换成 ⚠️。 */
+.wk-interactive-card-fallback {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2, 8px);
+  margin-bottom: var(--wk-sp-1, 4px);
+  font-size: var(--wk-text-size-sm, 12px);
+  color: var(--wk-color-warning, var(--wk-text-secondary));
+}
+
+.wk-interactive-card-fallback__tag {
+  padding: 0 var(--wk-sp-1, 4px);
+  border-radius: var(--wk-r-sm, 4px);
+  font-size: var(--wk-text-size-xs, 11px);
+  line-height: 1.6;
+  color: var(--wk-text-secondary);
+  background: var(--wk-fill-secondary, transparent);
+  border: 1px solid var(--wk-border-subtle, transparent);
+}
+
+/* 兜底后弱化进行中视觉（spinner/glow 收敛，与「已完成」语义一致）。 */
+.wk-interactive-card-sdk--fallback-finalized {
+  opacity: 0.92;
 }
 
 /* ── SDK(AdaptiveCards) 输出基线样式 ──

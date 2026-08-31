@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "src/index.tsx",
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage --coverage.include='src/**/*.{ts,tsx}' --coverage.exclude='src/**/__tests__/**' --coverage.exclude='**/*.test.{ts,tsx}' --coverage.exclude='**/*.stories.{ts,tsx}' --coverage.reportOnFailure"
   },
   "dependencies": {
     "@mlt-org/octo-card-profile-octo-chat": "1.2.0-rc.2",
@@ -62,7 +63,7 @@
     "rehype-sanitize": "^6.0.0",
     "remark-breaks": "^3.0.0",
     "remark-gfm": "3",
-    "remark-math": "^6.0.0",
+    "remark-math": "^5.1.1",
     "sensitive-word-tool": "^1.1.9",
     "tippy.js": "^6.3.7",
     "unist-util-visit": "^5.1.0",

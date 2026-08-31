@@ -38,6 +38,15 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/__tests__/setup.ts'],
+    coverage: {
+      reporter: ['text', 'json-summary'],
+      thresholds: {
+        statements: 68,
+        branches: 59,
+        functions: 63,
+        lines: 70,
+      },
+    },
     server: {
       deps: {
         inline: [/@tiptap\/react/, /@douyinfe\/semi-icons/, /@douyinfe\/semi-ui/],

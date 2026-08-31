@@ -168,7 +168,7 @@ function ImageVisual({ section }: { section: ResolvedOnboardingSection }) {
         section.imageFit === "contain" ? " is-contain" : ""
       }`}
       src={section.image}
-      alt={section.visualTitle}
+      alt={section.imageAlt}
       decoding="async"
     />
   );
@@ -648,10 +648,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
             {activeSection.title}
           </h1>
 
-          <div
-            className="wk-onboarding-media-frame"
-            aria-label={activeSection.visualTitle}
-          >
+          <div className="wk-onboarding-media-frame">
             <ImageVisual section={activeSection} />
           </div>
 

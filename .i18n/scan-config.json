@@ -77,10 +77,6 @@
       "reason": "Agent prompt template for the Bot publish flow. Same rationale as installPrompt.ts above — generated prompt content pasted into an agent client, must byte-match; not translatable UI chrome."
     },
     {
-      "path": "packages/dmworkskillmarket/src/utils/publisher.ts",
-      "reason": "Publisher classification helper. The Chinese literal is a backend identity value used to recognize administrator-created records, not user-facing UI copy; the displayed label is localized separately."
-    },
-    {
       "path": "packages/dmworkmcp/src/utils/mcpBotPublishPrompt.ts",
       "reason": "Agent prompt template for the MCP marketplace publish flow. Same rationale as dmworkskillmarket/src/utils/botPublishPrompt.ts — generated prompt content pasted into an agent client, must byte-match; not translatable UI chrome."
     },
@@ -99,6 +95,14 @@
     {
       "path": "packages/dmworksummary/src/utils/channelType.ts",
       "reason": "Error message template with interpolation placeholder; already covered by runtime error handling with proper i18n."
+    },
+    {
+      "path": "packages/dmworkbase/src/Messages/SummaryNotify/protocol.ts",
+      "reason": "SummaryTipContent send-side WK_TIP(2000) payload template ('{0}总结了群聊内容'). Cross-platform wire-format system-tip string consumed by SDK SystemContent {0}+extra placeholder replacement on Web and native; product decision locks copy to zh-CN (see #1379 iteration). Not translatable UI copy."
+    },
+    {
+      "path": "packages/dmworksummary/src/__mocks__/dmworkBase.ts",
+      "reason": "Vitest mock mirroring the SummaryTipContent wire-format template; test fixture, not UI copy."
     }
   ]
 }

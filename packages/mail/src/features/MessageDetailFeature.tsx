@@ -14,6 +14,7 @@ import {
   Reply,
   ReplyAll,
   RefreshCw,
+  ShieldCheck,
   Star,
   ShieldAlert,
   Trash2,
@@ -55,6 +56,7 @@ interface MessageDetailFeatureProps {
   embedded?: boolean;
   onCompose?: (mode: ComposeMode, source?: MessageDetail) => void;
   onDeleted?: () => void;
+  onRestoredFromJunk?: () => void;
   onDraftSent?: () => void;
 }
 
@@ -114,6 +116,7 @@ export default function MessageDetailFeature({
   embedded = false,
   onCompose,
   onDeleted,
+  onRestoredFromJunk,
   onDraftSent,
 }: MessageDetailFeatureProps) {
   const { t, locale } = useI18n();
@@ -334,6 +337,32 @@ export default function MessageDetailFeature({
     });
   };
 
+  const restoreFromJunk = () => {
+    if (!current || busy) return;
+    wkConfirm({
+      title: t("mail.confirm.notJunkTitle"),
+      content: t("mail.confirm.notJunkContent", {
+        values: { sender: current.from },
+      }),
+      okText: t("mail.actions.notJunk"),
+      onOk: async () => {
+        setBusy(true);
+        setError("");
+        try {
+          await MailService.restoreNotJunk(mailboxContextId, current.id);
+          WKApp.mittBus.emit("mail-refresh" as never);
+          onRestoredFromJunk?.();
+          if (!embedded) WKApp.routeRight.pop();
+        } catch (reason) {
+          setError(getErrorMessage(reason, t("mail.error.fallback")));
+          throw reason;
+        } finally {
+          setBusy(false);
+        }
+      },
+    });
+  };
+
   const sendDraft = async () => {
     if (!current || busy) return;
     setBusy(true);
@@ -482,6 +511,17 @@ export default function MessageDetailFeature({
             </>
           ) : (
             <>
+              {mailboxRole === "junk" ? (
+                <button
+                  className="octo-mail-action octo-mail-action--primary"
+                  type="button"
+                  disabled={busy}
+                  onClick={restoreFromJunk}
+                >
+                  <ShieldCheck size={16} />
+                  <span>{t("mail.actions.notJunk")}</span>
+                </button>
+              ) : null}
               <button
                 className="octo-mail-action octo-mail-action--soft"
                 type="button"

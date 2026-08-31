@@ -1,7 +1,7 @@
 import React from "react";
 import WKApp from "../../App";
 import { getRichTextMessageUI } from "../../bridge/message/useRichTextMessageUI";
-import { webhookPreviewClickHandler } from "../../bridge/message/webhookPreview";
+import { fleetPreviewClickHandler } from "../../bridge/message/webhookPreview";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import MessageRow from "../../ui/message/MessageRow";
 import MixedContent from "../../ui/message/MixedContent";
@@ -36,6 +36,9 @@ function resolveReplySourceSpaceName(reply: any): string {
  * 老端 fallback：未注册 type=14 的旧端落 UnknownCell（已有），本端注册后正常渲染。
  */
 export class RichTextCell extends MessageCell {
+  private handleMentionClick = (uid: string) =>
+    this.props.context.showUser(uid);
+
   render() {
     const { message, context } = this.props;
     const content = message.content as RichTextContent;
@@ -49,6 +52,12 @@ export class RichTextCell extends MessageCell {
         ? (selected) => context.checkeMessage(message.message, selected)
         : undefined,
     });
+    // One handler reference shared by click and auxclick (the handler gates
+    // on event.button internally): avoids a per-render double allocation and
+    // keeps the two paths provably identical.
+    const onBodyLinkClick = fleetPreviewClickHandler(
+      context.openWebhookPreview?.bind(context)
+    );
 
     return (
       <MessageRow
@@ -57,10 +66,8 @@ export class RichTextCell extends MessageCell {
         isActive={context.isContextMenuOpen(message.message)}
         onAvatarClick={(e) => context.onTapAvatar(message.fromUID, e)}
         onSenderNameClick={() => context.showUser(message.fromUID)}
-        onBodyClick={webhookPreviewClickHandler(
-          message,
-          context.openWebhookPreview?.bind(context)
-        )}
+        onBodyClick={onBodyLinkClick}
+        onBodyAuxClick={onBodyLinkClick}
       >
         <div className="wk-message-richtext">
           {content.reply && (
@@ -73,7 +80,7 @@ export class RichTextCell extends MessageCell {
           )}
           <MixedContent
             {...uiProps.content}
-            onMentionClick={(uid) => context.showUser(uid)}
+            onMentionClick={this.handleMentionClick}
             onFileDownload={(block) => {
               if (block.url) {
                 downloadFile(block.url, block.name);

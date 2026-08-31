@@ -44,7 +44,11 @@ vi.mock('../../pages/SummaryListPage', () => ({
 // SummaryCreatePage mock
 vi.mock('../../pages/SummaryCreatePage', () => ({
     default: (props: any) => (
-        <div data-testid="summary-create" data-channel={props.channel?.channelID}>
+        <div
+            data-testid="summary-create"
+            data-channel={props.channel?.channelID}
+            data-initial-mode={props.initialMode ?? ''}
+        >
             <button onClick={() => props.onSubmit?.(99)}>submit-create</button>
             <button onClick={() => props.onClose?.()}>cancel-create</button>
         </div>
@@ -103,6 +107,16 @@ describe('ChatSummaryPanel', () => {
         expect(screen.queryByTestId('summary-list')).not.toBeVisible();
         // Must NOT emit wk:open-summary-modal — create is now in-panel
         expect(mockEmit).not.toHaveBeenCalledWith('wk:open-summary-modal', expect.anything());
+    });
+
+    it('passes the selected mode via onCreateNew(mode) into the embedded create page', () => {
+        render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
+        // 列表页「+」下拉选择 Agent 后 onCreateNew("agent")，create 视图应收到 initialMode="agent"。
+        createNewCb?.('agent');
+        expect(screen.getByTestId('summary-create').dataset.initialMode).toBe('agent');
+        // 无参（normal 入口）→ initialMode 默认 normal。
+        createNewCb?.(undefined as never);
+        expect(screen.getByTestId('summary-create').dataset.initialMode).toBe('normal');
     });
 
     it('returns from create to list via back button', () => {

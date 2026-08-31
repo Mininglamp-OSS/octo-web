@@ -27,19 +27,17 @@
 
 ## 用户操作步骤
 
-1. 从默认 app shell 点击主导航「智能总结」。
-2. 在空态点击「创建第一份总结」进入创建页。
-3. 点击模式切换里的「Agent 总结」。
-4. 在 Agent 输入框「输入你的问题，回车发送（Shift+Enter 换行）」输入 `S9 总结项目风险和下周计划` 并点击「发送」。
-5. 等待 Agent 回复出现。
-6. 点击「保存为总结」。
-7. 在保存弹窗中输入标题 `S9 Agent 风险总结`，点击「确定」。
-8. 在新详情页查看保存后的 Agent 总结。
+1. 从默认 app shell 点击主导航「智能总结」，进入总结列表页（空态）。
+2. 点击列表页右上角「+」下拉，选择「Agent 总结」直接进入 Agent 创建会话。
+3. 在 Agent 输入框「输入你的问题，回车发送（Shift+Enter 换行）」输入 `S9 总结项目风险和下周计划` 并点击「发送」。
+4. 等待 Agent 回复出现。
+5. 点击「保存为总结」。
+6. 在保存弹窗中输入标题 `S9 Agent 风险总结`，点击「确定」。
+7. 在新详情页查看保存后的 Agent 总结。
 
 ## 预期结果
 
-- 创建页显示标题「邀请同事一起总结信息」。
-- 切换到 Agent 模式后显示欢迎语「你好，我是总结助手，想总结什么尽管告诉我。」和「新会话」。
+- 进入 Agent 模式后显示欢迎语「你好，我是总结助手，想总结什么尽管告诉我。」和「新会话」。
 - 发送后用户气泡显示 `S9 总结项目风险和下周计划`。
 - Agent 回复显示 `S9 Agent 已整理项目风险和下周计划`。
 - 回复出现后「保存为总结」按钮可点击。
@@ -62,10 +60,10 @@
 
 ## 摸清依据
 
-- `packages/dmworksummary/src/module.tsx:119`: `/summary` 路由真实挂载 `SummaryListPage`。
-- `packages/dmworksummary/src/pages/SummaryListPage.tsx:414`: 空态/头部新建入口会把 `SummaryCreatePage` 推入右侧路由。
-- `packages/dmworksummary/src/pages/SummaryCreatePage.tsx:1030`: 创建页模式切换包含「开始总结」和「Agent 总结」。
-- `packages/dmworksummary/src/pages/SummaryCreatePage.tsx:1064`: Agent 模式渲染 `AgentChatPanel`，并开启 `useStream`。
+- `packages/dmworksummary/src/module.tsx:122`: `/summary` 路由真实挂载 `SummaryListPage`；`module.tsx` NavRail「智能总结」`onPress` 进入列表页并把右栏 `replaceToRoot` 为新建总结页（默认 `initialMode="normal"`，取代欢迎占位页）。
+- `packages/dmworksummary/src/pages/SummaryListPage.tsx:559`: `handleCreate(mode)` 对非 onCreateNew 路径推入 `SummaryCreatePage`（`initialMode` 透传模式）；空态入口也汇聚于此。
+- `packages/dmworksummary/src/pages/SummaryListPage.tsx`: 列表页 header 为单一「+」按钮（`listModeSwitch`）——点击只弹下拉（快速总结 / Agent 总结，`listNormalTab`/`listAgentTab`），不再有独立的主按钮 + 箭头组合。
+- `packages/dmworksummary/src/pages/SummaryCreatePage.tsx:76,145,327`: `initialMode="agent"` 时 mount 调用 `enterAgentMode()` 恢复历史 session 并回显。
 - `packages/dmworksummary/src/components/AgentChatPanel.tsx:159`: 发送时调用 `agentChatStream()`。
 - `packages/dmworksummary/src/components/AgentChatPanel.tsx:421`: 有 assistant 输出后渲染「保存为总结」按钮。
 - `packages/dmworksummary/src/pages/SummaryCreatePage.tsx:891`: `handleSaveAsSummary()` 调用 `createAgentSummary()`。

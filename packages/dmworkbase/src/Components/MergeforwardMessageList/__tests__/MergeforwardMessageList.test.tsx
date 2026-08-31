@@ -4,6 +4,7 @@ import React from "react";
 import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ChannelTypeGroup, MessageContentType } from "wukongimjssdk";
+import { MessageContentTypeConst } from "../../../Service/Const";
 import { I18nContext } from "../../../i18n";
 import MergeforwardMessageList from "../index";
 
@@ -134,5 +135,27 @@ describe("MergeforwardMessageList mention rendering", () => {
 
     fireEvent.click(entity!);
     expect(onMentionClick).toHaveBeenCalledWith("uid_zhang");
+  });
+
+  it("renders forwarded message rows and external member origin", () => {
+    const content: any = {
+      channelType: ChannelTypeGroup,
+      users: [{ uid: "sender", name: "Sender", is_external: 1, source_space_name: "Remote" }],
+      msgs: [
+        { contentType: MessageContentType.text, content: { text: "hello" }, fromUID: "sender", messageID: "m1", timestamp: 1 },
+        { contentType: MessageContentType.text, content: { text: "again" }, fromUID: "sender", messageID: "m2", timestamp: 2 },
+        { contentType: MessageContentType.image, content: { width: 20, height: 10, imgData: "data:image/png" }, fromUID: "other", messageID: "m3", timestamp: 3 },
+        { contentType: MessageContentTypeConst.file, content: { extension: "pdf", name: "doc.pdf", size: 2048 }, fromUID: "other", messageID: "m4", timestamp: 4 },
+      ],
+    };
+    const { container } = render(
+      <I18nContext.Provider value={i18nValue as any}>
+        <MergeforwardMessageList mergeforwardContent={content} />
+      </I18nContext.Provider>,
+    );
+    expect(container.querySelectorAll(".wk-mergeforwardmessagelist-content-msg")).toHaveLength(4);
+    expect(container.textContent).toContain("Remote");
+    expect(container.textContent).toContain("doc.pdf");
+    expect(container.querySelector("img")).toBeTruthy();
   });
 });

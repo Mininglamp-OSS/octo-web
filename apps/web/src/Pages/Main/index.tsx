@@ -15,8 +15,12 @@ import { Toast } from "@douyinfe/semi-ui";
 import {
     requestGuardedSpaceChange,
     publishInitialSpaceResolution,
-    resolveInitialSpace,
 } from "./spaceChange";
+import {
+    clearLastSpaceId,
+    persistActiveSpace,
+    resolveInitialSpaceForUser,
+} from "../../features/spacePreference";
 import { requestGuardedMenuChange, requestProgrammaticMenuChange } from "./menuChange";
 import { requestMailWorkspaceSwitch } from "@octo/mail";
 
@@ -99,14 +103,18 @@ export class MainPage extends Component<{}, MainPageState> {
         SpaceService.shared.getMySpaces().then(spaces => {
             this.setState({ allSpaces: spaces });
             const previousSpaceId = WKApp.shared.currentSpaceId || "";
-            const savedSpaceId = localStorage.getItem("currentSpaceId");
-            const selectedSpace = resolveInitialSpace(spaces, savedSpaceId);
+            const selectedSpace = resolveInitialSpaceForUser(
+                spaces,
+                WKApp.loginInfo.uid,
+                previousSpaceId,
+            );
             if (selectedSpace) {
                 WKApp.shared.currentSpaceId = selectedSpace.space_id;
-                localStorage.setItem("currentSpaceId", selectedSpace.space_id);
+                persistActiveSpace(WKApp.loginInfo.uid, selectedSpace.space_id);
             } else {
                 WKApp.shared.currentSpaceId = '';
                 WKApp.shared.spaceChecked = false;
+                clearLastSpaceId(WKApp.loginInfo.uid);
                 localStorage.removeItem("currentSpaceId");
             }
             publishInitialSpaceResolution(
@@ -172,7 +180,7 @@ export class MainPage extends Component<{}, MainPageState> {
         // 避免随后用户立即触发的"合并转发"等动作读到旧的 spaceId
         // （此前这些更新都放在 getMySpaces().then 内，存在网络 race）。
         WKApp.shared.currentSpaceId = spaceId;
-        localStorage.setItem("currentSpaceId", spaceId);
+        persistActiveSpace(WKApp.loginInfo.uid, spaceId);
         const existing = this.state.allSpaces.find(s => s.space_id === spaceId);
         if (existing) {
             WKApp.mittBus.emit("space-changed", existing);
@@ -271,6 +279,7 @@ export class MainPage extends Component<{}, MainPageState> {
                                         onJoinSpace={() => this.setState({ showJoinSpace: true })}
                                         onCreateSpace={() => this.setState({ showCreateSpace: true })}
                                         canManageSpace={canManageSpace}
+                                        onSpaceManagement={() => { window.location.href = "/space"; }}
                                         // 菜单
                                         menusList={vm.menusList}
                                         currentMenus={vm.currentMenus}
@@ -323,24 +332,21 @@ export class MainPage extends Component<{}, MainPageState> {
                                         // 设置
                                         settingSelected={vm.settingSelected}
                                         hasNewVersion={vm.hasNewVersion}
-                                        showNewVersion={vm.showNewVersion}
                                         showAppVersion={vm.showAppVersion}
                                         showAppUpdate={vm.showAppUpdate}
                                         appUpdateProgress={vm.appUpdateProgress}
+                                        appUpdateDownloadedBytes={vm.appUpdateDownloadedBytes}
                                         showAppUpdateOperation={vm.showAppUpdateOperation}
                                         lastVersionInfo={vm.lastVersionInfo}
                                         onToggleSetting={() => { vm.settingSelected = !vm.settingSelected; }}
-                                        onSetShowNewVersion={(v) => {
-                                            vm.showNewVersion = v;
-                                            if (!v) { vm.markVersionRead(); }
-                                            vm.notifyListener();
-                                        }}
                                         onSetShowAppVersion={(v) => {
                                             vm.showAppVersion = v;
                                             if (!v) { vm.markVersionRead(); }
                                             vm.notifyListener();
                                         }}
                                         onInstallUpdate={() => vm.installUpdate()}
+                                        onCancelUpdateDownload={() => vm.cancelUpdateDownload()}
+                                        onQuitApp={() => vm.quitApp()}
                                         onNotifyListener={() => vm.notifyListener()}
                                         onOpenOnboarding={this.handleOpenOnboarding}
                                         onDismissNewVersion={() => { vm.markVersionRead(); }}

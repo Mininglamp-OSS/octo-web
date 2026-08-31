@@ -104,6 +104,13 @@ export interface AgentAuthorizationRequest {
   requestedAt: string;
   expiresAt: string;
   pollIntervalSeconds?: number;
+  /**
+   * Server-owned authorization-record mode. Device authorization creation
+   * does not accept an outbound mode, and pending records default to manual
+   * confirmation. Owner approval persists the selected mode to the same
+   * record, so approved/exchanged reads expose the owner's actual grant here,
+   * not an Agent-requested value.
+   */
   outboundMode: AgentOutboundMode;
   /** @deprecated Compatibility projection during the local enum migration. */
   autoReplyEnabled?: boolean;
@@ -119,6 +126,8 @@ export interface MailRule {
   name: string;
   enabled: boolean;
   priority: number;
+  matchMode: "all" | "any";
+  conditions: MailRuleCondition[];
   matchFrom?: string;
   matchSubject?: string;
   forwardTargets: string[];
@@ -130,9 +139,26 @@ export interface MailRuleInput {
   name: string;
   enabled: boolean;
   priority: number;
+  matchMode: "all" | "any";
+  conditions: MailRuleCondition[];
   matchFrom?: string;
   matchSubject?: string;
   forwardTargets: string[];
+}
+
+export type MailRuleConditionField =
+  | "from"
+  | "to"
+  | "subject"
+  | "body"
+  | "subject_or_body";
+
+export type MailRuleConditionOperator = "contains" | "not_contains" | "equals";
+
+export interface MailRuleCondition {
+  field: MailRuleConditionField;
+  operator: MailRuleConditionOperator;
+  value: string;
 }
 
 export type MailRuleExecutionStatus =

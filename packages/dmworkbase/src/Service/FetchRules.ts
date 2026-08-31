@@ -145,7 +145,12 @@ export const FETCH_RULES: FetchRule[] = [
     //   富属性)。撤回的唯一活入口是会话菜单 vm.revokeMessage(module.tsx 的 context.revokeMessage)。
     //   若此处再挂 POST /message/revoke 的 fetch 规则,会与命令式双发(fetch 空属性 + 命令式富属性)、属性不一致。
     //   故删除 fetch 规则,统一收口到命令式单通道(见四审 P1-1;六审删除已死的气泡 onMessageRevoke 入口)。
-    { method: 'POST', path: '/api/v1/groups/:id/threads', event: 'message_subchannel_created' },
+    // subchannel_created 不在此通道 —— 子区创建成功后已由命令式 trackSubchannelCreated
+    //   采集(带 source/title_len_bucket/from_msg_type 富属性)。两个活入口都走同一 POST:
+    //   顶栏 createThreadByNameAndNotify('channel_toolbar')、右键 module.tsx('message_right_click')。
+    //   若此处再挂 POST /groups/:id/threads 的 fetch 规则,会与命令式双发(fetch 空属性 +
+    //   命令式富属性)、跨通道双计。channelUniqueness guard 只比事件名,rename 后的新名会绕过它,
+    //   故显式删除 fetch 规则,统一收口到命令式单通道(见 D1;与 message_revoked 同模式)。
     { method: 'DELETE', path: '/api/v1/message', event: 'message_multiselect_deleted' },
     // channel_subchannel_panel_opened 不在此通道 —— GET /groups/:id/threads(threadList)在删除/归档/重试
     //   刷新时也会再拉,请求成功 ≠ 打开面板。二审又发现原命令式落点 ThreadList.componentDidMount 为死组件
@@ -216,6 +221,10 @@ export const FETCH_RULES: FetchRule[] = [
     // contact_opened 不在此通道 —— GET /users/:id 是通用 profile 拉取(bot profile / 内部查库都会打),
     //   已在 Contacts handleContactClick 命令式 track(联系人行点击);删除此处避免双计(见 review P2-3)。
     { method: 'POST', path: '/api/v1/friend/apply', event: 'contact_add_friend_clicked' },
+    // contact_add_friend_succeeded —— 好友申请达成终态。接受方在「新的朋友」列表点「确认」→ POST friend/sure
+    //   (NewFriend/vm.tsx friendSure → datasource friendSure)。2xx 即达成,覆盖真人↔真人 / 真人↔AI 接受侧。
+    //   与 contact_add_friend_clicked(申请起点)配对,供 DAP 达成率。bot 侧 BotFather 命令处理另计 bot_friend_request_handled。
+    { method: 'POST', path: '/api/v1/friend/sure', event: 'contact_add_friend_succeeded' },
     // 注意:/api/v1/docs/* 全套(document_*)已移除 —— issue #1406 明确「24 个 octo-docs 模块事件(独立仓库/嵌入编辑器)
     //       不在本次范围」,且这些请求由**独立的 octo-docs 编辑器**发出,octo-web 运行时根本不发 → 抓不到(死规则)。
     // apps_module_entered 不在此通道(十二审 🔴 P1-3)—— GET /app_bot/available 由 useAppBots 在**每次切换空间**
@@ -227,7 +236,6 @@ export const FETCH_RULES: FetchRule[] = [
     { method: 'PUT', path: '/api/v1/user/language', event: 'language_switched' },
     // 注意:settings_menu_opened 不在此通道。/version.json 由 versionChecker 定时轮询(cache-bust),
     // 请求成功 ≠ 用户打开设置 —— 该事件改由「设置入口」点击(data-testid / 命令式 track)采集。
-    { method: 'GET', path: '/api/v1/common/updater/web/1.0', event: 'settings_changelog_viewed' },
     // settings_voice_opened 不在此通道 —— GET /voice/local-config 由语音设置组件挂载即拉,且被设置页其他
     //   子面板/焦点刷新连带调用,请求成功 ≠ 用户打开语音设置。改由语音设置入口点击命令式 track(见二审 P1-3)。
     // settings_voice_toggled 不在此通道(十二审 P2)—— PUT /voice/local-config 被两个手势共用:真实开关

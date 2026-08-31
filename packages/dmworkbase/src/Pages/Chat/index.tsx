@@ -16,6 +16,7 @@ import Provider from "../../Service/Provider";
 import { ErrorBoundary } from "../../Components/ErrorBoundary";
 
 import { Spin, Popover, Toast } from "@douyinfe/semi-ui";
+import { getElectronLinksBridge } from "../../electron/desktopBridge";
 import WKButton from "../../Components/WKButton";
 import WKModal from "../../Components/WKModal";
 import { Columns2, ChevronRight } from "lucide-react";
@@ -25,10 +26,16 @@ import "./index.css";
 import { ConversationWrap } from "../../Service/Model";
 import WKApp, { ThemeMode } from "../../App";
 import { Dap } from "../../Service/Dap";
+import { isBotfatherChannelID } from "../../Service/botfatherChannel";
+import {
+  subchannelOpenFromMount,
+  subchannelOpenFromThreadChange,
+} from "../../Service/subchannelOpenTracking";
 import ChannelSetting from "../../Components/ChannelSetting";
 import ChannelSearchPanel from "../../features/channelSearch/ChannelSearchPanel";
 import { createChannelSearchApiDataSource } from "../../bridge/channelSearch/createChannelSearchDataSource";
 import { isChannelSearchEnabled } from "../../features/channelSearch/feature";
+import { openDriveFileHit } from "./openDriveFileHit";
 import type {
   ChannelSearchDataSource,
   ChannelSearchItem,
@@ -48,7 +55,10 @@ import { ChannelInfoListener } from "wukongimjssdk";
 import { ChatMenus } from "../../App";
 import ConversationContext from "../../Components/Conversation/context";
 import GlobalSearch from "../../features/globalSearch/GlobalSearchPanel";
-import { buildDocLink } from "../../Utils/docLink";
+import {
+  buildDocLink,
+  resolveDocLinkForExternalOpen,
+} from "../../Utils/docLink";
 import { ShowConversationOptions } from "../../EndpointCommon";
 import SpaceList from "../../Components/SpaceList";
 import SpaceCreate from "../../Components/SpaceCreate";
@@ -77,27 +87,34 @@ import {
   deleteImChannelInfo,
   fetchImChannelInfo,
   getImChannelInfo,
+  getPendingImChannelInfoFetch,
 } from "../../im-runtime/channelRuntime";
 import WebhookIssuePreviewPanel from "../../features/webhookMessagePreview/WebhookIssuePreviewPanel";
 import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPreview";
+import { apiUrlOrigin } from "../../bridge/message/webhookPreview";
 import { closeChatRightPanels, openChatRightPanel } from "./rightPanelState";
 import { chatPageTitleController } from "./chatPageTitleController";
+import {
+  shouldHideFollowUnreadBadge,
+  shouldHideRecentUnreadBadge,
+  unreadContribution,
+} from "./sidebarUnreadBadge";
 
 // 消息 ACK 只代表发送成功；后端把归档子区恢复为活跃存在短暂异步窗口。
 // 实测立即 threadGet 可能仍返回 Archived，因此发送后用短轮询等后端状态落稳。
 const THREAD_REACTIVATE_REFRESH_DELAYS_MS = [0, 300, 800, 1500];
 
-function extensionFromUrl(url: string): string {
+export function extensionFromUrl(url: string): string {
   const path = url.split(/[?#]/)[0] || "";
   const fileName = path.substring(path.lastIndexOf("/") + 1);
   return getExtension("", fileName);
 }
 
-function fallbackSearchMediaExtension(kind: ChannelSearchItem["kind"]) {
+export function fallbackSearchMediaExtension(kind: ChannelSearchItem["kind"]) {
   return kind === "video" ? "mp4" : "jpg";
 }
 
-function searchMediaPreviewName(
+export function searchMediaPreviewName(
   item: ChannelSearchItem,
   extension: string
 ): string {
@@ -108,6 +125,7 @@ function searchMediaPreviewName(
 
 interface SidebarTabBarWithBadgesProps {
   conversations: ConversationWrap[];
+  recentLoading: boolean;
   activeTab: SidebarTab;
   onTabChange: (tab: SidebarTab) => void;
   onRecentUnreadNavigate?: () => void;
@@ -127,17 +145,48 @@ interface SidebarTabBarWithBadgesProps {
  */
 const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
   conversations,
+  recentLoading,
   activeTab,
   onTabChange,
   onRecentUnreadNavigate,
 }) => {
-  const { items } = useFollowSidebarContext();
+  const { items, isLoading: followingLoading } = useFollowSidebarContext();
+  const requestedUnreadAuthorityRef = React.useRef<Set<string>>(new Set());
+  const missingRecentMuteAuthority = new Map<string, Channel>();
+  const missingFollowMuteAuthority = new Map<string, Channel>();
 
-  const isItemMuted = (it: {
+  const rememberMissingAuthority = (
+    target: Map<string, Channel>,
+    channel: Channel
+  ) => {
+    target.set(channel.getChannelKey(), channel);
+  };
+
+  const resolveMuteAuthority = (
+    channel: Channel,
+    parentGroupNo: string | undefined,
+    target: Map<string, Channel>
+  ) => {
+    const channelInfo = getImChannelInfo(WKSDK.shared(), channel);
+    if (!channelInfo) rememberMissingAuthority(target, channel);
+
+    let parentChannelInfo: ChannelInfo | undefined;
+    if (parentGroupNo) {
+      const parentChannel = new Channel(parentGroupNo, ChannelTypeGroup);
+      parentChannelInfo = getImChannelInfo(WKSDK.shared(), parentChannel);
+      if (!parentChannelInfo) {
+        rememberMissingAuthority(target, parentChannel);
+      }
+    }
+
+    return { channelInfo, parentChannelInfo };
+  };
+
+  const getItemMuteState = (it: {
     target_type: number;
     target_id: string;
     parent_channel_id?: string;
-  }): boolean => {
+  }) => {
     let channelType: number | null = null;
     if (it.target_type === SidebarTargetType.DM)
       channelType = ChannelTypePerson;
@@ -145,28 +194,26 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
       channelType = ChannelTypeGroup;
     else if (it.target_type === SidebarTargetType.THREAD)
       channelType = ChannelTypeCommunityTopic;
-    if (channelType == null) return false;
-    const info = getImChannelInfo(
-      WKSDK.shared(),
-      new Channel(it.target_id, channelType)
-    );
-    const isThread = it.target_type === SidebarTargetType.THREAD;
-    let parentChannelInfo: any | undefined;
-    if (isThread) {
-      const parentGroupNo =
-        it.parent_channel_id || parseThreadChannelId(it.target_id)?.groupNo;
-      if (parentGroupNo) {
-        parentChannelInfo = getImChannelInfo(
-          WKSDK.shared(),
-          new Channel(parentGroupNo, ChannelTypeGroup)
-        );
-      }
+    if (channelType == null) {
+      return { ready: true, muted: false };
     }
-    return isEffectivelyMuted({
+    const channel = new Channel(it.target_id, channelType);
+    const isThread = it.target_type === SidebarTargetType.THREAD;
+    const parentGroupNo = isThread
+      ? it.parent_channel_id || parseThreadChannelId(it.target_id)?.groupNo
+      : undefined;
+    const { channelInfo, parentChannelInfo } = resolveMuteAuthority(
+      channel,
+      parentGroupNo,
+      missingFollowMuteAuthority
+    );
+    const ready =
+      !!channelInfo && (!parentGroupNo || !!parentChannelInfo);
+    return { ready, muted: isEffectivelyMuted({
       isThread,
-      channelInfo: info,
+      channelInfo,
       parentChannelInfo,
-    });
+    }) };
   };
 
   // sidebar items 是 /sidebar/sync 的快照，IM 缓存里 conv 才是 reactive 的。
@@ -183,7 +230,6 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
     threadSidebarStatus.set(it.target_id, it.status);
   }
   const followUnread = items.reduce((sum, it) => {
-    if (isItemMuted(it)) return sum;
     let channelType: number | null = null;
     if (it.target_type === SidebarTargetType.DM)
       channelType = ChannelTypePerson;
@@ -212,22 +258,81 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
       return sum;
     }
     const unread = liveConv ? liveConv.unread || 0 : it.unread || 0;
-    return sum + unread;
+    if (unread <= 0) return sum;
+    const muteState = getItemMuteState(it);
+    return sum + unreadContribution({
+      unread,
+      muteAuthorityReady: muteState.ready,
+      muted: muteState.muted,
+    });
   }, 0);
 
   const recentUnread = conversations.reduce(
     (sum: number, c: ConversationWrap) => {
-      if (isMutedForRecentConversation(c)) return sum;
-      return sum + (c.unread || 0);
+      const unread = c.unread || 0;
+      if (unread <= 0) return sum;
+      const isThread =
+        c.channel.channelType === ChannelTypeCommunityTopic;
+      const parentGroupNo = isThread
+        ? (c.channelInfo?.orgData?.parentGroupNo as string | undefined) ||
+          parseThreadChannelId(c.channel.channelID)?.groupNo
+        : undefined;
+      const authority = resolveMuteAuthority(
+        c.channel,
+        parentGroupNo,
+        missingRecentMuteAuthority
+      );
+      return sum + unreadContribution({
+        unread,
+        muteAuthorityReady:
+          !!authority.channelInfo &&
+          (!parentGroupNo || !!authority.parentChannelInfo),
+        muted: isMutedForRecentConversation(c),
+      });
     },
     0
   );
 
+  const missingUnreadAuthority = new Map([
+    ...missingRecentMuteAuthority,
+    ...missingFollowMuteAuthority,
+  ]);
+  const missingUnreadAuthorityKey = [...missingUnreadAuthority.keys()]
+    .sort()
+    .join("|");
+
+  React.useEffect(() => {
+    const sdk = WKSDK.shared();
+    for (const [key, channel] of missingUnreadAuthority) {
+      if (requestedUnreadAuthorityRef.current.has(key)) continue;
+      requestedUnreadAuthorityRef.current.add(key);
+      const request =
+        getPendingImChannelInfoFetch(sdk, channel) ||
+        fetchImChannelInfo(sdk, channel);
+      void Promise.resolve(request)
+        .catch(() => undefined)
+        .finally(() => {
+          requestedUnreadAuthorityRef.current.delete(key);
+        });
+    }
+  }, [missingUnreadAuthorityKey]);
+
+  const hideRecentUnread = shouldHideRecentUnreadBadge({
+    recentLoading,
+    followingLoading,
+  });
+  const hideFollowUnread = shouldHideFollowUnreadBadge({
+    recentLoading,
+    followingLoading,
+  });
+
   return (
     <SidebarTabBar
       activeTab={activeTab}
-      followUnread={followUnread}
-      recentUnread={recentUnread}
+      // 最近和关注快照齐备后再显示 Tab 角标；单个频道缺少免打扰信息时
+      // 只跳过该频道，不能把两个 Tab 的已知未读一起隐藏。
+      followUnread={hideFollowUnread ? 0 : followUnread}
+      recentUnread={hideRecentUnread ? 0 : recentUnread}
       onTabChange={onTabChange}
       onActiveTabClick={(tab) => {
         if (tab === "recent" && activeTab === "recent" && recentUnread > 0) {
@@ -292,6 +397,79 @@ export class ChatContentPage extends Component<
   private _unsubscribeChannelInfoListener?: () => void;
   private _unsubscribeChannelSearchConfig?: () => void;
   private readonly titlePageOwner = Symbol("chat-content-page");
+  private readonly channelSettingPanelRef = React.createRef<HTMLDivElement>();
+  private readonly chatContentRef = React.createRef<HTMLDivElement>();
+  private channelSettingReturnFocusElement?: HTMLElement;
+  private shouldRestoreChannelSettingFocus = false;
+
+  private _closeChannelSetting = () => {
+    this.shouldRestoreChannelSettingFocus = true;
+    this.setState({ showChannelSetting: false });
+  };
+
+  private _onChannelSettingKeyDown = (event: KeyboardEvent) => {
+    if (!this.state.showChannelSetting) return;
+
+    const panel = this.channelSettingPanelRef.current;
+    const chatContent = this.chatContentRef.current;
+    const eventTarget = event.target;
+    if (
+      !panel ||
+      !(eventTarget instanceof Node) ||
+      (!panel.contains(eventTarget) && !chatContent?.contains(eventTarget))
+    ) {
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      this._closeChannelSetting();
+      return;
+    }
+
+    if (event.key !== "Tab") return;
+
+    const focusableElements = Array.from(
+      panel.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]'
+      )
+    ).filter((element) => {
+      if (
+        element.closest('[aria-hidden="true"]') ||
+        element.getClientRects().length === 0
+      ) {
+        return false;
+      }
+
+      const routeView = element.closest<HTMLElement>(".wk-viewqueue-view");
+      if (!routeView) return true;
+
+      const route = routeView.parentElement;
+      const activeRouteView =
+        route?.querySelector<HTMLElement>(":scope > #wk-viewqueue-view-last") ||
+        route?.querySelector<HTMLElement>(":scope > .wk-viewqueue-view");
+      return routeView === activeRouteView;
+    });
+
+    if (focusableElements.length === 0) {
+      event.preventDefault();
+      panel.focus();
+      return;
+    }
+
+    const first = focusableElements[0];
+    const last = focusableElements[focusableElements.length - 1];
+    const activeElement = document.activeElement;
+    if (
+      !panel.contains(activeElement) ||
+      activeElement === panel ||
+      (event.shiftKey && activeElement === first) ||
+      (!event.shiftKey && activeElement === last)
+    ) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    }
+  };
 
   constructor(props: any) {
     super(props);
@@ -367,6 +545,9 @@ export class ChatContentPage extends Component<
         activeThread.channel_id,
         ChannelTypeCommunityTopic
       );
+      // 该子区已在面板打开(didUpdate 已发过 subchannel_opened),此处仅是视图切换 → 置 sentinel,
+      // 让子区页挂载时跳过重复发点(R10 P1-1)。
+      WKApp.shared.pendingSubchannelOpenTracked = threadChannel.channelID;
       WKApp.endpoints.showConversation(threadChannel);
       return;
     }
@@ -639,9 +820,24 @@ export class ChatContentPage extends Component<
     // 子区：预先获取父群组信息
     if (channel.channelType === ChannelTypeCommunityTopic) {
       const channelInfo = getImChannelInfo(WKSDK.shared(), channel);
+      const parsed = parseThreadChannelId(channel.channelID);
       const parentGroupNo =
-        channelInfo?.orgData?.parentGroupNo ||
-        parseThreadChannelId(channel.channelID)?.groupNo;
+        channelInfo?.orgData?.parentGroupNo || parsed?.groupNo;
+      // subchannel_opened(入口一):本页以子区频道挂载 = 会话列表点子区行 / 文件预览
+      // showConversation(threadChannel) / 深链或路由恢复进子区。这些都会 remount 走 componentDidMount。
+      // 去重(R10 P1-1):若本次挂载来自「已打开面板子区」再导航(全屏/搜索/文件预览),didUpdate 已发过,
+      // 由 pendingSubchannelOpenTracked sentinel 抑制(one-shot 消费);直接从列表/深链挂载则照常发。
+      // channel_id/subchannel_id 归一与判空均在 subchannelOpenFromMount 内(bare id,strip 前缀)。
+      const suppressSubchannelOpen = WKApp.shared.pendingSubchannelOpenTracked;
+      WKApp.shared.pendingSubchannelOpenTracked = undefined;
+      const openEvent = subchannelOpenFromMount(
+        channel,
+        parentGroupNo,
+        suppressSubchannelOpen
+      );
+      if (openEvent) {
+        Dap.shared.track("subchannel_opened", openEvent);
+      }
       if (parentGroupNo) {
         this.parentGroupChannel = new Channel(parentGroupNo, ChannelTypeGroup);
         if (!getImChannelInfo(WKSDK.shared(), this.parentGroupChannel)) {
@@ -649,9 +845,66 @@ export class ChatContentPage extends Component<
         }
       }
     }
+
+    // botfather_opened:本页以 botfather DM 挂载 = 进入 botfather 会话。覆盖全部入口——通讯录横幅/
+    // 联系人行点入(handleContactClick→showConversation)、深链、路由恢复,以及会话列表内
+    // 「切换」到 botfather:ChatContentPage 以 channel.getChannelKey()(channelID-channelType)为 React
+    // key,任何频道切换都会换 key → remount → 重走 componentDidMount,故挂载处即唯一发点(无需 didUpdate
+    // 补一路,那条 channelChanged 分支永不为真)。一次进入发一次。DAP「BotFather 命令使用分布」图分母 =
+    // 进入 botfather 会话的去重用户;actor_id 由 collector 附。
+    // 门用后缀匹配 isBotfatherChannelID:Space 部署下 channelID = s{spaceId}_botfather(spaceId 任意
+    // 串,如 sminglue_default_botfather),裸 "botfather" 只在无 Space 时出现。判定与分子(vm.ts botfather
+    // 命令)共用同一 helper,保证图两侧同步。详见 Service/botfatherChannel.ts。
+    // entry 来源:各入口(通讯录顶端横幅 contact_banner)在 showConversation 前写 pendingBotfatherOpenEntry
+    // sentinel,此处一次性消费;未写入(会话列表点行 / 深链 / 路由恢复)缺省 "conversation"。消费后即清,
+    // 避免下一次非标记进入误带上一次来源。
+    if (
+      channel.channelType === ChannelTypePerson &&
+      isBotfatherChannelID(channel.channelID)
+    ) {
+      const entry = WKApp.shared.pendingBotfatherOpenEntry || "conversation";
+      WKApp.shared.pendingBotfatherOpenEntry = undefined;
+      Dap.shared.track("botfather_opened", { entry });
+    }
   }
 
-  componentDidUpdate(prevProps: ChatContentPageProps) {
+  componentDidUpdate(
+    prevProps: ChatContentPageProps,
+    prevState: ChatContentPageState
+  ) {
+    if (!prevState.showChannelSetting && this.state.showChannelSetting) {
+      document.addEventListener(
+        "keydown",
+        this._onChannelSettingKeyDown,
+        true
+      );
+      this.shouldRestoreChannelSettingFocus = false;
+      this.channelSettingPanelRef.current?.focus();
+    } else if (prevState.showChannelSetting && !this.state.showChannelSetting) {
+      document.removeEventListener(
+        "keydown",
+        this._onChannelSettingKeyDown,
+        true
+      );
+      if (this.shouldRestoreChannelSettingFocus) {
+        this.channelSettingReturnFocusElement?.focus();
+      }
+      this.shouldRestoreChannelSettingFocus = false;
+      this.channelSettingReturnFocusElement = undefined;
+    }
+
+    // 子区打开(入口二:页内子区选择)——本页 channel 为父群、activeThread 身份(channel_id)变化即一次
+    // subchannel_opened,覆盖 onOpenThreadPanel / onThreadSelect 这类不 remount 只改 state 的页内入口。
+    // 与挂载入口(入口一)的去重由 subchannelOpenFromMount 的 sentinel 负责:本支照发,若用户随后把该
+    // 子区导航成完整视图/搜索/文件预览触发 remount,挂载处凭 sentinel 跳过,故一次开子区手势只发一次。
+    // 文件预览等不改 activeThread → 不误发;关闭(→null)也不发。channel_id 归一/判空在 helper 内。
+    const openEvent = subchannelOpenFromThreadChange(
+      this.state.activeThread,
+      prevState.activeThread?.channel_id
+    );
+    if (openEvent) {
+      Dap.shared.track("subchannel_opened", openEvent);
+    }
     const { channel } = this.props;
     const channelChanged =
       channel.channelID !== prevProps.channel.channelID ||
@@ -757,6 +1010,11 @@ export class ChatContentPage extends Component<
   }) => void;
 
   componentWillUnmount() {
+    document.removeEventListener(
+      "keydown",
+      this._onChannelSettingKeyDown,
+      true
+    );
     chatPageTitleController.deactivate(this.titlePageOwner);
     WKApp.mittBus.off("wk:file-preview", this._onFilePreview);
     if (this._onPendingThread) {
@@ -900,10 +1158,13 @@ export class ChatContentPage extends Component<
         )}
       >
         <div
+          ref={this.chatContentRef}
           className={classNames(
             "wk-chat-content-chat",
             selectionMode ? "wk-chat-content-chat-selection" : undefined
           )}
+          aria-hidden={showChannelSetting || undefined}
+          {...(showChannelSetting ? { inert: "" } : {})}
         >
           <div
             className={classNames(
@@ -1048,6 +1309,7 @@ export class ChatContentPage extends Component<
                       channel.channelType === ChannelTypeGroup &&
                       WKApp.remoteConfig.threadOn && (
                         <div
+                          data-testid="chat-thread-panel-entry"
                           className="wk-chat-conversation-header-right-item"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1082,22 +1344,31 @@ export class ChatContentPage extends Component<
                         </div>
                       )}
                     <div
+                      data-testid="chat-channel-setting-entry"
                       className="wk-chat-conversation-header-right-item"
+                      role="button"
+                      tabIndex={0}
+                      aria-controls="chat-channel-setting-panel"
+                      aria-expanded={showChannelSetting}
+                      aria-label={t("base.channelSetting.title")}
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (this.state.showChannelSetting) {
+                          this._closeChannelSetting();
+                          return;
+                        }
+                        this.channelSettingReturnFocusElement = e.currentTarget;
                         // group_info_panel_opened:仅开面板(opening)且为群频道时发,props 恒空
-                        if (
-                          !this.state.showChannelSetting &&
-                          channel.channelType === ChannelTypeGroup
-                        ) {
+                        if (channel.channelType === ChannelTypeGroup) {
                           Dap.shared.track("group_info_panel_opened", {});
                         }
-                        this.setState((prevState) => {
-                          const opening = !prevState.showChannelSetting;
-                          return opening
-                            ? openChatRightPanel("channelSetting")
-                            : { showChannelSetting: false };
-                        });
+                        this.setState(openChatRightPanel("channelSetting"));
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          event.currentTarget.click();
+                        }
                       }}
                     >
                       <svg
@@ -1172,16 +1443,32 @@ export class ChatContentPage extends Component<
           </div>
         </div>
 
-        <div className={classNames("wk-chat-channelsetting")}>
+        {showChannelSetting && (
+          <div
+            className="wk-chat-channelsetting-mask"
+            data-testid="chat-channel-setting-mask"
+            onClick={this._closeChannelSetting}
+          />
+        )}
+
+        <div
+          id="chat-channel-setting-panel"
+          ref={this.channelSettingPanelRef}
+          className={classNames("wk-chat-channelsetting")}
+          role="dialog"
+          aria-modal={showChannelSetting || undefined}
+          aria-hidden={showChannelSetting ? undefined : true}
+          aria-label={t("base.channelSetting.title")}
+          tabIndex={-1}
+          {...(!showChannelSetting ? { inert: "" } : {})}
+        >
           <ErrorBoundary moduleName={t("base.chatPage.channelSettings")}>
             <ChannelSetting
               conversationContext={this.conversationContext}
               key={channel.getChannelKey()}
               channel={channel}
               onClose={() => {
-                this.setState({
-                  showChannelSetting: false,
-                });
+                this._closeChannelSetting();
               }}
             ></ChannelSetting>
           </ErrorBoundary>
@@ -1472,6 +1759,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                     <div className="wk-chat-header-actions">
                       <NavSignalBadge showText />
                       <div
+                        data-testid="chat-global-search-entry"
                         className="wk-chat-header-btn"
                         onClick={() => {
                           vm.showGlobalSearch = true;
@@ -1529,6 +1817,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                         }
                       >
                         <div
+                          data-testid="chat-add-entry"
                           className="wk-chat-header-btn"
                           onClick={() => {
                             vm.showAddPopover = !vm.showAddPopover;
@@ -1551,6 +1840,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                   <FollowSidebarProvider>
                     <SidebarTabBarWithBadges
                       conversations={vm.conversations}
+                      recentLoading={vm.loading}
                       activeTab={activeTab}
                       onTabChange={this._handleTabChange}
                       onRecentUnreadNavigate={this._handleRecentUnreadNavigate}
@@ -1761,7 +2051,34 @@ export default class ChatPage extends Component<any, ChatPageState> {
                         docId: item.docId,
                         space: item.spaceId,
                       });
-                      // window.open(url, "_blank", "noopener,noreferrer")
+                      // Desktop shell: use the dedicated IPC bridge —
+                      // setWindowOpenHandler routes everything to the system
+                      // browser, so the web-era about:blank dance would never
+                      // produce a usable window reference. buildDocLink emits
+                      // a RELATIVE /d/<docId> path on file:// shells (the
+                      // webOrigin allowlist degrades there), which the
+                      // http(s)-only bridge would reject — resolve against
+                      // the API origin so the standalone doc page opens in
+                      // the browser.
+                      const linksBridge = getElectronLinksBridge();
+                      if (linksBridge) {
+                        const absoluteUrl = resolveDocLinkForExternalOpen(
+                          url,
+                          apiUrlOrigin(),
+                        );
+                        linksBridge
+                          .openExternal(absoluteUrl)
+                          .then((result) => {
+                            if (!result.ok) {
+                              Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                            }
+                          })
+                          .catch(() => {
+                            Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                          });
+                        return;
+                      }
+                      // Web: window.open(url, "_blank", "noopener,noreferrer")
                       // cannot be null-checked: per MDN, passing the
                       // `noopener` feature makes window.open return null on
                       // SUCCESS too, so `if (!opened)` false-positives on
@@ -1784,6 +2101,25 @@ export default class ChatPage extends Component<any, ChatPageState> {
                         // residual risk is already contained.
                       }
                       opened.location.href = url;
+                    }}
+                    onOpenDriveHit={(hit) => {
+                      // Routing lives in openDriveFileHit (unit-tested directly)
+                      // so folder-skip / URL / popup handling can't drift. On
+                      // desktop the hit opens via the Electron links bridge.
+                      openDriveFileHit(hit, {
+                        open: (u, target) => window.open(u, target),
+                        onBlocked: () =>
+                          Toast.warning(
+                            t("base.globalSearch.drive.popupBlocked")
+                          ),
+                        onUnavailable: () =>
+                          Toast.warning(
+                            t("base.globalSearch.drive.unavailable")
+                          ),
+                        getLinksBridge: () => getElectronLinksBridge() ?? null,
+                        toAbsoluteUrl: (u) =>
+                          resolveDocLinkForExternalOpen(u, apiUrlOrigin()),
+                      });
                     }}
                     hideModal={() => {
                       vm.showGlobalSearch = false;

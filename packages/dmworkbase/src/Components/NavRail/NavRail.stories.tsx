@@ -26,7 +26,6 @@ const defaultArgs: NavRailProps = {
     currentMenus: messagesMenu,
     settingSelected: false,
     hasNewVersion: false,
-    showNewVersion: false,
     showAppVersion: false,
     showAppUpdate: false,
     appUpdateProgress: 0,
@@ -35,7 +34,6 @@ const defaultArgs: NavRailProps = {
     currentSpaceId: "s1",
     onMenuClick: (menus) => console.log("nav menu clicked:", menus.id),
     onToggleSetting: () => console.log("settings toggled"),
-    onSetShowNewVersion: (v) => console.log("show new version:", v),
     onSetShowAppVersion: (v) => console.log("show app version:", v),
     onInstallUpdate: () => console.log("install update"),
     onNotifyListener: () => console.log("notify listener"),
@@ -73,6 +71,47 @@ type Story = StoryObj<typeof NavRail>;
 
 export const Default: Story = {
     args: defaultArgs,
+};
+
+export const UpdateCheckOpen: StoryObj = {
+    name: "检查更新弹框（打开）",
+    render: () => (
+        <NavSettingsPanel
+            settingSelected={false}
+            showAppVersion
+            showAppUpdate={false}
+            appUpdateProgress={0}
+            showAppUpdateOperation
+            lastVersionInfo={{
+                appVersion: "2.0.0",
+                updateDesc: "本次更新：优化消息体验\n\n- 修复若干问题\n- 提升稳定性",
+            }}
+            onToggleSetting={() => undefined}
+            onSetShowAppVersion={() => undefined}
+            onInstallUpdate={() => undefined}
+            onCancelUpdateDownload={() => undefined}
+            onNotifyListener={() => undefined}
+        />
+    ),
+};
+
+export const UpdateInProgress: StoryObj = {
+    name: "更新中弹框",
+    render: () => (
+        <NavSettingsPanel
+            settingSelected={false}
+            showAppVersion
+            showAppUpdate
+            appUpdateProgress={62}
+            showAppUpdateOperation={false}
+            lastVersionInfo={{ appVersion: "2.0.0", updateDesc: "" }}
+            onToggleSetting={() => undefined}
+            onSetShowAppVersion={() => undefined}
+            onInstallUpdate={() => undefined}
+            onCancelUpdateDownload={() => undefined}
+            onNotifyListener={() => undefined}
+        />
+    ),
 };
 
 export const SettingsFlyoutOpen: Story = {
@@ -148,7 +187,6 @@ function FlyoutComparison() {
             <NavSettingsPanel
                 {...defaultArgs}
                 settingSelected
-                triggerRef={settingsTriggerRef}
                 onToggleSetting={() => console.log("settings toggled")}
             />
             <SpaceOpen />

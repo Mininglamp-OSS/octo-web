@@ -20,6 +20,8 @@ import {
 import { TypingListener, TypingManager } from "../../Service/TypingManager";
 import { ProhibitwordsService } from "../../Service/ProhibitwordsService";
 import { SYSTEM_BOTS } from "../../Service/SpaceService";
+import { isBotfatherChannelID } from "../../Service/botfatherChannel";
+import { isReplyAuthorAi } from "./replyAiIdentity";
 import { rememberSendIntent, trackMessageRevoked } from "../../Service/trackMessage";
 import { SuperGroup } from "../../Utils/const";
 import { SystemContent } from "wukongimjssdk";
@@ -49,8 +51,16 @@ import {
     setImChannelSubscribersCache,
     syncImChannelSubscribers,
 } from "../../im-runtime/channelRuntime";
+import { resolveEffectiveCardContent } from "../../Messages/InteractiveCard/resolveContent";
+import { isAgentProgressCard } from "../../Messages/InteractiveCard/cardLayout";
+import {
+    CARD_FALLBACK_MIN_IDLE_SEC,
+    isNonTerminalProgressCard,
+    isProgressCardIdleEnough,
+} from "../../Messages/InteractiveCard/agentProgressFallback";
 import { getBrowserUnreadConversationSync } from "../../features/documentTitle";
 import { isOwnedConversationSingleton } from "../../features/notifications/messageAttention";
+import { isSummaryTipContent } from "../../Messages/SummaryNotify/protocol";
 
 export interface FoldSessionParticipant {
     uid: string
@@ -131,12 +141,12 @@ const BOTFATHER_COMMAND_EVENTS: Array<[string, string]> = [
  * /installation 会误命中 /install、/newbotany 误命中 /newbot。用 \s 覆盖整类空白。
  * (见 review P2-10 / 二审 P2-8 / 三审 nit:/newbot 分支也复用此边界。)
  */
-function matchesCommandPrefix(text: string, prefix: string): boolean {
+export function matchesCommandPrefix(text: string, prefix: string): boolean {
     return text === prefix || (text.startsWith(prefix) && /\s/.test(text.charAt(prefix.length)))
 }
 
 /** 只判前缀选事件名。命中具体命令返回其事件,未命中但以 "/" 开头归兜底 botfather_command_sent。 */
-function matchBotfatherCommandEvent(text: string): string | undefined {
+export function matchBotfatherCommandEvent(text: string): string | undefined {
     if (!text.startsWith("/")) return undefined
     for (const [prefix, event] of BOTFATHER_COMMAND_EVENTS) {
         if (matchesCommandPrefix(text, prefix)) return event
@@ -192,6 +202,7 @@ export default class ConversationVM extends ProviderListener {
     private liveFoldRevokeClientMsgNos: Set<string> = new Set()
     afterFoldSessionClientMsgNos: Set<string> = new Set() // 紧跟在折叠卡片后的消息，需强制独立显示
     private foldSessionActiveTimer: ReturnType<typeof setTimeout> | null = null // 协作态超时自动结束
+    private progressFallbackTimers: Map<MessageWrap, ReturnType<typeof setTimeout>> = new Map()
     private reactionSyncController: ReturnType<typeof createMessageReactionSyncController>
     private readonly registerAsOpenConversation: boolean
     private readonly openConversationOwner = Symbol("openConversationOwner")
@@ -995,6 +1006,8 @@ export default class ConversationVM extends ProviderListener {
 
             const messageWrap = new MessageWrap(message)
             this.fillOrder(messageWrap)
+            this.stampProgressCardArrival(messageWrap)
+            this.maybeFinalizeStuckProgressCard(messageWrap)
             this.appendMessage(messageWrap)
         }
         WKSDK.shared().chatManager.addMessageListener(this.messageListener)
@@ -1216,6 +1229,10 @@ export default class ConversationVM extends ProviderListener {
             clearTimeout(this.foldSessionActiveTimer)
             this.foldSessionActiveTimer = null
         }
+        for (const timer of this.progressFallbackTimers.values()) {
+            clearTimeout(timer)
+        }
+        this.progressFallbackTimers.clear()
         this.pendingMessages = [] // 清理缓冲区
 
         WKApp.mittBus.off("task-upload-failed", this._taskUploadFailedHandler)
@@ -1504,6 +1521,127 @@ export default class ConversationVM extends ProviderListener {
         this.notifyListener()
     }
 
+    /**
+     * type=17 progress 卡「客户端兜底」——判定当前有效卡片的 AdaptiveCard 树。
+     * 非 InteractiveCard / 非 agent_progress 卡返回 null。
+     */
+    private resolveProgressCard(messageWrap: MessageWrap): Record<string, unknown> | null {
+        if (messageWrap.contentType !== MessageContentTypeConst.interactiveCard) {
+            return null
+        }
+        const content = messageWrap.content
+        if (!(content instanceof InteractiveCardContent)) {
+            return null
+        }
+        const effective = resolveEffectiveCardContent(content, messageWrap.message.remoteExtra)
+        return isAgentProgressCard(effective.card) ? effective.card : null
+    }
+
+    /** 记录一张 progress 卡的最近帧到达时刻（创建或 patch），供 final-text 兜底做空闲判定。 */
+    private stampProgressCardArrival(messageWrap: MessageWrap) {
+        if (this.resolveProgressCard(messageWrap)) {
+            messageWrap.progressUpdatedAtSec = Date.now() / 1000
+        }
+    }
+
+    private cancelProgressCardFallback(messageWrap: MessageWrap) {
+        const timer = this.progressFallbackTimers.get(messageWrap)
+        if (timer !== undefined) clearTimeout(timer)
+        this.progressFallbackTimers.delete(messageWrap)
+    }
+
+    private applyProgressCardFallback(messageWrap: MessageWrap, senderId: string, nowSec: number) {
+        this.cancelProgressCardFallback(messageWrap)
+        messageWrap.localFallbackApplied = true
+        const idleSec = nowSec - (messageWrap.progressUpdatedAtSec ?? nowSec)
+        console.debug(
+            `[interactive-card] client fallback finalized stuck progress card sender=${senderId} messageID=${messageWrap.messageID} idleSec=${idleSec.toFixed(1)}`
+        )
+        this.rebuildRenderItems()
+        this.notifyListener()
+    }
+
+    /**
+     * final text 到达后等待完整 grace period 再复检，给生产端随后异步发送的终态帧留出时间。
+     * 回调必须重新核对原卡仍是该 sender 的最近卡、期间没有新帧、且仍为未终态；权威 edit
+     * frame 与 VM 卸载都会主动取消定时器。
+     */
+    private scheduleProgressCardFallback(messageWrap: MessageWrap, senderId: string) {
+        // 历史/同步路径通过 toMessageWraps 构造，不经过实时 listener 的 arrival stamp。
+        // 首次在 final text 路径观察到这类卡时从当前时刻开始计 grace，既不立即误判，
+        // 也不会因缺失时间戳让兜底永久失效。
+        const updatedAtSec = messageWrap.progressUpdatedAtSec ?? Date.now() / 1000
+        messageWrap.progressUpdatedAtSec = updatedAtSec
+
+        this.cancelProgressCardFallback(messageWrap)
+        const timer = setTimeout(() => {
+            this.progressFallbackTimers.delete(messageWrap)
+            if (this.findLatestSenderCard(senderId) !== messageWrap) return
+            if (messageWrap.localFallbackApplied) return
+            if (messageWrap.progressUpdatedAtSec !== updatedAtSec) return
+            const card = this.resolveProgressCard(messageWrap)
+            const recheckAtSec = Date.now() / 1000
+            if (
+                !card ||
+                !isNonTerminalProgressCard(card) ||
+                !isProgressCardIdleEnough(messageWrap.progressUpdatedAtSec, recheckAtSec)
+            ) return
+            this.applyProgressCardFallback(messageWrap, senderId, recheckAtSec)
+        }, CARD_FALLBACK_MIN_IDLE_SEC * 1000)
+        this.progressFallbackTimers.set(messageWrap, timer)
+    }
+
+    /**
+     * 收到某 assistant 的 type=1 final text 后的客户端兜底：若该 assistant 最近一张 type=17 卡是
+     * 「未终态」的 progress 卡、且距其最后一次帧到达已空闲够久，则把它降级显示为「已完成（未收到
+     * 显式终态）」。严格按 senderId 匹配「最近一张卡」，多助理并发不误伤别人；只叠加本地 UI 态，
+     * 不写回消息内容。发方补发终态（WS-97 Sub-1 根治）后不冲突：真终态帧会走正常渲染。
+     */
+    private maybeFinalizeStuckProgressCard(finalTextWrap: MessageWrap) {
+        if (finalTextWrap.contentType !== MessageContentType.text) return
+        if (finalTextWrap.send) return // 自己发的文本不触发
+        if (finalTextWrap.message.streamNo) return // 流式分片非 final（正常已在上游早退，双保险）
+        const text = (finalTextWrap.content as MessageText)?.text
+        // 严格类型保护：SDK MessageText.decodeJSON 不校验 content["content"] 类型，若 type=1
+        // payload 的 content 是 number/object/array，text 会是非字符串且 truthy，直接 .trim()
+        // 会抛 TypeError。本 hook 跑在 appendMessage/refreshMessages 之前、绕过 #465 畸形文本
+        // 归一化，且 SDK listener 无 error boundary——抛出会导致该消息不入会话并中断后续 listener。
+        if (typeof text !== "string" || !text.trim()) return
+        const senderId = finalTextWrap.fromUID
+        if (!senderId) return
+
+        // 该 assistant 最近一张 type=17 卡：只对这一张判定，不再往前看（对齐「最近一张」语义）。
+        const m = this.findLatestSenderCard(senderId)
+        if (!m) return
+        if (m.localFallbackApplied) return // 幂等
+        const card = this.resolveProgressCard(m)
+        if (!card) return
+        if (!isNonTerminalProgressCard(card)) return
+        // 生产端正常时序是 final text 先到、终态 edit frame 后台异步到达。无论此前卡片已空闲
+        // 多久，都先给终态帧完整 grace period；否则长回答会在健康路径短暂闪出「未收到终态」。
+        this.scheduleProgressCardFallback(m, senderId)
+    }
+
+    /**
+     * 找该 assistant（senderId）最近一张 type=17 卡，供 final-text 兜底判定。
+     * 严格按 senderId 匹配，多助理并发不误伤别人。历史加载（pullupHasMore）期间实时到达的卡片
+     * 与 final text 都进 pendingMessages，只扫 messagesOfOrigin 会找不到真实最新卡片、且 buffer
+     * flush 不重跑检测导致僵尸卡永久漏掉（评审 blocker）；pendingMessages 比 messagesOfOrigin
+     * 新，故先扫 pending 再扫 origin，各自从尾到头取最近一张。
+     */
+    private findLatestSenderCard(senderId: string): MessageWrap | undefined {
+        const scan = (list: MessageWrap[]): MessageWrap | undefined => {
+            for (let i = list.length - 1; i >= 0; i--) {
+                const m = list[i]
+                if (m.fromUID !== senderId) continue
+                if (m.contentType !== MessageContentTypeConst.interactiveCard) continue
+                return m
+            }
+            return undefined
+        }
+        return scan(this.pendingMessages) ?? scan(this.messagesOfOrigin)
+    }
+
     // 更新消息扩展数据
     updateMessageByMessageExtras(messageExtras: MessageExtra[]) {
         if (!messageExtras || messageExtras.length == 0) {
@@ -1515,6 +1653,23 @@ export default class ConversationVM extends ProviderListener {
             if (message) {
                 message.message.remoteExtra = messageExtra
                 message.resetParts()
+                // 只处理「卡片内容编辑帧」（isEdit + InteractiveCardContent contentEdit）；read
+                // receipt 等只读扩展不含 contentEdit，不改有效卡，既不刷新到达时刻、也不撤回本地
+                // 兜底注解。门控对齐 resolveEffectiveCardContent 的采用条件。
+                if (messageExtra.isEdit && messageExtra.contentEdit instanceof InteractiveCardContent) {
+                    // 新权威帧使此前基于旧 progressUpdatedAtSec 安排的延迟复检失效。
+                    this.cancelProgressCardFallback(message)
+                    // 卡片内容又前进了一帧：刷新到达时刻，供 final-text 兜底重新做空闲判定，
+                    // 避免只读扩展重置 3s 空闲判定把单次 final-text 兜底永久压掉（评审 blocker）。
+                    this.stampProgressCardArrival(message)
+                    // 权威内容编辑帧说明卡片有了新状态，之前叠加的本地兜底注解（「已完成（未收到
+                    // 显式终态）」）已失真，一律撤回：终态帧走正常终态渲染；非终态帧说明卡片又活了，
+                    // 清掉 flag 后可由后续 final text + 空闲判定重新触发，闭环「内容在前进却仍标注
+                    // 已兜底完成」的自相矛盾态（P2-1 终态 + P2-6 非终态）。
+                    if (message.localFallbackApplied) {
+                        message.localFallbackApplied = false
+                    }
+                }
             }
         }
         this.notifyListener()
@@ -1573,15 +1728,26 @@ export default class ConversationVM extends ProviderListener {
 
     // 通过messageID获取消息对象
     findMessageWithMessageID(messageID: string): MessageWrap | undefined {
-        if (!this.messages || this.messages.length <= 0) {
-            return
-        }
-        for (let i = this.messages.length - 1; i >= 0; i--) {
-            const message = this.messages[i]
-            if (message.messageID === messageID) {
-                return message
+        // 对齐 findMessageWithClientSeq：除 this.messages 外，还要查 messagesOfOrigin 与
+        // pendingMessages。pullup/history loading 期间实时到达的卡片先缓冲在 pendingMessages，
+        // 若这里只查 this.messages，buffered window 内的权威 edit frame（走
+        // updateMessageByMessageExtras）会被丢掉，卡片 progressUpdatedAtSec 冻结在初始到达时刻，
+        // 导致 final text 到达时空闲判定误判、给仍在活跃推进的卡片错挂兜底 banner（评审 finding E）。
+        const findIn = (messages?: MessageWrap[]) => {
+            if (!messages || messages.length <= 0) {
+                return
+            }
+            for (let i = messages.length - 1; i >= 0; i--) {
+                const message = messages[i]
+                if (message.messageID === messageID) {
+                    return message
+                }
             }
         }
+
+        return findIn(this.messages)
+            || findIn(this.messagesOfOrigin)
+            || findIn(this.pendingMessages)
     }
 
     // 通过streamNo查找流式消息
@@ -1863,7 +2029,11 @@ export default class ConversationVM extends ProviderListener {
                 opts.pullMode = PullMode.Up
             }
         }
-        const remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts)
+        const remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts).catch((error) => {
+            this.loading = false
+            this.notifyListener()
+            throw error
+        })
 
         const newMessages = new Array<Message>()
         if (remoteMessages && remoteMessages.length > 0) {
@@ -1947,7 +2117,11 @@ export default class ConversationVM extends ProviderListener {
         const [olderRemoteMessages, newerRemoteMessages] = await Promise.all([
             WKApp.conversationProvider.syncMessages(this.channel, olderOpts),
             WKApp.conversationProvider.syncMessages(this.channel, newerOpts),
-        ])
+        ]).catch((error) => {
+            this.loading = false
+            this.notifyListener()
+            throw error
+        })
         const toAvailableMessageWraps = (remoteMessages?: Message[]) => {
             const messages = new Array<Message>()
             if (remoteMessages && remoteMessages.length > 0) {
@@ -2067,6 +2241,10 @@ export default class ConversationVM extends ProviderListener {
         return messages.filter((m) => {
             // Only process system messages (content_type 1000-2000)
             if (m.contentType < 1000 || m.contentType > 2000) return true
+            // Summary-completion tips represent distinct tasks. Their visible
+            // text can be identical within five minutes, so the generic
+            // security-warning dedup must not collapse them.
+            if (isSummaryTipContent(m.content)) return true
             const content = m.content as SystemContent
             const text = content?.displayText
             if (!text) return true
@@ -2144,6 +2322,9 @@ export default class ConversationVM extends ProviderListener {
 
     // 向下拉取消息
     async pulldownMessages() {
+        if (this.loading) {
+            return
+        }
 
         const minMessage = this.getMessageMin();
         if (minMessage?.messageSeq === 1) { // 如果最小messageSeq=1 说明下拉没消息了直接return
@@ -2163,7 +2344,11 @@ export default class ConversationVM extends ProviderListener {
         opts.pullMode = PullMode.Down
         opts.startMessageSeq = minMessage.messageSeq - 1
 
-        let remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts)
+        let remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts).catch((error) => {
+            this.loading = false
+            this.notifyListener()
+            throw error
+        })
         const newMessages = new Array<Message>()
         if (remoteMessages && remoteMessages.length > 0) {
             remoteMessages.forEach(msg => {
@@ -2193,18 +2378,26 @@ export default class ConversationVM extends ProviderListener {
 
     // 向上拉取消息
     async pullupMessages() {
-        this.loading = true
+        if (this.loading) {
+            return
+        }
+
         const maxMessage = this.getMessageMax()
         if (maxMessage == null || maxMessage.messageSeq <= 0) { // 没有消息直接return
             return
         }
 
+        this.loading = true
         const opts = new SyncMessageOptions()
         opts.limit = WKApp.config.pageSizeOfMessage
         opts.pullMode = PullMode.Up
         opts.startMessageSeq = maxMessage.messageSeq
 
-        let remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts)
+        let remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts).catch((error) => {
+            this.loading = false
+            this.notifyListener()
+            throw error
+        })
         const newMessages = new Array<Message>()
         if (remoteMessages && remoteMessages.length > 0) {
             remoteMessages.forEach(msg => {
@@ -2489,10 +2682,13 @@ export default class ConversationVM extends ProviderListener {
         {
             let botCreateEntry: string | undefined
             let botCommandEvent: string | undefined
-            // botfather 命令(/newbot、/help…)是 botfather 专属;门按 channelID==="botfather" 判,
-            // 与 BOTFATHER_COMMAND_EVENTS 注释(§B)对齐。不用 SYSTEM_BOTS.has():该集合未来加入其它
-            // 系统 bot 时会让别的 bot 的 /command 文本误命中 botfather 事件(见二审 nit)。
-            if (channel.channelID === "botfather" && content instanceof MessageText) {
+            // botfather 命令(/newbot、/help…)是 botfather 专属;门用 isBotfatherChannelID 后缀匹配,
+            // 与 BOTFATHER_COMMAND_EVENTS 注释(§B)及 botfather_opened 分母门**共用同一 helper** → 图两侧
+            // 同步。Space 部署下 channelID = s{spaceId}_botfather(spaceId 任意串),裸 "botfather" 只在无
+            // Space 时出现;不能用 stripSpacePrefix(正则只认 32-hex spaceId)。详见 Service/botfatherChannel.ts。
+            // 不用 SYSTEM_BOTS.has():该集合未来加入其它系统 bot 时会让别的 bot 的 /command 文本误命中
+            // botfather 事件(见二审 nit)。
+            if (isBotfatherChannelID(channel.channelID) && content instanceof MessageText) {
                 const text = (content.text || "").trim()
                 if (matchesCommandPrefix(text, "/newbot")) {
                     botCreateEntry = "botfather_im"
@@ -2514,6 +2710,11 @@ export default class ConversationVM extends ProviderListener {
                 }
                 if (bots.length > 0) mentionedBots = bots
             }
+            // message_replied 的 is_ai_msg:被回复消息作者(content.reply.fromUID)是否 AI/bot。
+            // 走 isReplyAuthorAi(按 uid 查 person channelInfo 的 robot 标记),DM/群统一 ——
+            // 不再查 this.subscribers(仅群/子区填充,DM 恒空会把 human↔AI DM 回复误判 false;见 #1452 review P1)。
+            const replyFromUid = content.reply?.fromUID
+            const isReplyToAi: boolean | undefined = content.reply ? isReplyAuthorAi(replyFromUid) : undefined
             rememberSendIntent(message.clientSeq, {
                 channelId: channel.channelID,
                 channelType: channel.channelType,
@@ -2521,6 +2722,13 @@ export default class ConversationVM extends ProviderListener {
                 botCreateEntry,
                 botCommandEvent,
                 isReply: !!content.reply,
+                // message_replied 的 message_id = 被回复消息的 ID(content.reply.messageID,
+                // 发送时即可得;server 侧新消息 id 此刻尚未分配)。无 reply 时 undefined,
+                // 但此时 isReply=false,message_replied 根本不发。
+                messageId: content.reply?.messageID,
+                isReplyToAi,
+                // ai_mentioned 的 user_id 由生产者注入,避免 leaf service trackMessage 静态 import App
+                userId: WKApp.loginInfo.uid || null,
                 mentionedBots,
             })
         }

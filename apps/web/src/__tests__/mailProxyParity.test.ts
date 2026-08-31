@@ -184,16 +184,21 @@ describe("Agent Mail proxy path parity", () => {
       "utf8"
     );
 
+    const browserMailLocation = "location /mail-api/";
     const bootstrapLocation =
       "location ~ ^/agent-mail-api/webapi/v0/agent-auth/(device|token)$";
     const credentialedLocation = "location ~ ^/agent-mail-api(?:/|$)";
+    const browserMailStart = nginx.indexOf(browserMailLocation);
     const bootstrapStart = nginx.indexOf(bootstrapLocation);
     const credentialedStart = nginx.indexOf(credentialedLocation);
-    expect(bootstrapStart).toBeGreaterThanOrEqual(0);
+    expect(browserMailStart).toBeGreaterThanOrEqual(0);
+    expect(bootstrapStart).toBeGreaterThan(browserMailStart);
     expect(credentialedStart).toBeGreaterThan(bootstrapStart);
 
+    const browserMailBlock = nginx.slice(browserMailStart, bootstrapStart);
     const bootstrapBlock = nginx.slice(bootstrapStart, credentialedStart);
     const credentialedBlock = nginx.slice(credentialedStart);
+    expect(browserMailBlock).toContain("proxy_http_version 1.1;");
     expect(bootstrapBlock).toContain(
       "rewrite ^/agent-mail-api/?(.*)$ /$1 break;",
     );

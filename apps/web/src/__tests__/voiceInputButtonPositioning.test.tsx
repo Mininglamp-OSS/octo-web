@@ -23,6 +23,11 @@ vi.mock("@douyinfe/semi-ui", () => ({
   }),
 }));
 
+vi.mock("react-virtuoso", () => ({
+  Virtuoso: () => null,
+  TableVirtuoso: () => null,
+}));
+
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 
 function createMockReturn(overrides = {}) {

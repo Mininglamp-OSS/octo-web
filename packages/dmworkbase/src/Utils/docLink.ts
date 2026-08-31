@@ -2,6 +2,9 @@
 //
 // The link points at the STANDALONE doc page `${origin}/d/:docId` (XIN-450, boss decision
 // 2026-07-06), NOT the in-shell `/docs?...&doc=` route. This is the real fix for problem 2: the
+
+import APIClient from "../Service/APIClient";
+import { resolveWebOrigin } from "./webOrigin";
 // octo host's self-built RouteManager (dmworkbase Service/Route.tsx) handles `pageshow`/`popstate`
 // by re-pushing `window.location.pathname` ONLY — it UNCONDITIONALLY strips the query — so a
 // `?doc=` deep-link was wiped before the docs module mounted and the recipient landed on the empty
@@ -43,9 +46,44 @@ export interface DocLinkTarget {
   folder?: string
 }
 
+/**
+ * The authoritative web origin for renderer-built URLs that leave the app
+ * (share links, clipboard text, IdP return_to, the system-browser bridge).
+ * See Utils/webOrigin.ts for why an http(s) allowlist — not a denylist of
+ * known-bad file:// values — decides.
+ */
+export function webOrigin(): string {
+  return resolveWebOrigin(
+    typeof window === "undefined" ? undefined : window.location?.origin,
+    APIClient.shared?.config?.apiURL,
+  );
+}
+
 /** Origin for the doc link; empty under SSR/tests so the link degrades to a bare query path. */
 function origin(): string {
-  return typeof window !== 'undefined' && window.location?.origin ? window.location.origin : ''
+  return webOrigin();
+}
+
+/**
+ * Normalize a built doc link for handing to the external-open path (system
+ * browser bridge). buildDocLink emits an absolute http(s) URL when the
+ * document origin is a real web origin, and a root-relative `/d/<docId>` on
+ * file:// shells (see webOrigin) — the shell must resolve root-relative
+ * links against the API origin before openExternal. Absolute http(s) links
+ * pass through untouched; anything else is returned unchanged when no
+ * resolvable base is available (the caller degrades gracefully).
+ */
+export function resolveDocLinkForExternalOpen(
+  link: string,
+  apiOrigin: string,
+): string {
+  if (/^https?:/.test(link)) return link;
+  try {
+    return new URL(link, apiOrigin || undefined).href;
+  } catch {
+    // No usable base (SSR/tests/malformed config) — degrade to the input.
+    return link;
+  }
 }
 
 /**

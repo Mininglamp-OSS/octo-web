@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getConfig: vi.fn(),
+  getLocalConfig: vi.fn(),
   getVoiceContext: vi.fn(),
   transcribe: vi.fn(),
   clearVoiceContextCache: vi.fn(),
@@ -18,6 +19,14 @@ const mocks = vi.hoisted(() => ({
   updateLocalConfig: vi.fn(),
   probeLocal: vi.fn(),
   transcribeLocal: vi.fn(),
+  setVoiceSettings: vi.fn(),
+  migrateServerConfig: vi.fn((config: Record<string, unknown>) => {
+    if (typeof config.local_enabled === "boolean") mocks.localVoiceSettings.localEnabled = config.local_enabled;
+    if (typeof config.local_timeout_ms === "number") mocks.localVoiceSettings.localTimeoutMs = config.local_timeout_ms;
+    return mocks.localVoiceSettings;
+  }),
+  needsLocalConfigMigration: vi.fn(() => true),
+  setMicrophonePermission: vi.fn(),
   getUserMedia: vi.fn(),
   toastWarning: vi.fn(),
   toastError: vi.fn(),
@@ -36,6 +45,13 @@ const mocks = vi.hoisted(() => ({
     apiAvailable: false,
     loadedSpaceId: null as string | null,
   },
+  localVoiceSettings: {
+    microphoneDeviceId: "",
+    localEnabled: false,
+    localProbeUrl: "http://localhost:8787/",
+    localTranscribeUrl: "http://localhost:8787/v1/voice/transcribe",
+    localTimeoutMs: 10000,
+  },
 }));
 
 vi.mock("@douyinfe/semi-ui", () => ({
@@ -49,6 +65,7 @@ vi.mock("../../../../Service/VoiceService", () => ({
   default: {
     shared: {
       getConfig: (...args: unknown[]) => mocks.getConfig(...args),
+      getLocalConfig: (...args: unknown[]) => mocks.getLocalConfig(...args),
       getVoiceContext: (...args: unknown[]) => mocks.getVoiceContext(...args),
       transcribe: (...args: unknown[]) => mocks.transcribe(...args),
       clearVoiceContextCache: (...args: unknown[]) =>
@@ -76,6 +93,17 @@ vi.mock("../../../../Service/LocalModelService", () => ({
       probe: (...args: unknown[]) => mocks.probeLocal(...args),
       transcribe: (...args: unknown[]) => mocks.transcribeLocal(...args),
     },
+  },
+}));
+
+vi.mock("../../../../Service/VoiceSettingsStore", () => ({
+  setMicrophonePermission: (...args: unknown[]) => mocks.setMicrophonePermission(...args),
+  voiceSettingsStore: {
+    get: () => mocks.localVoiceSettings,
+    set: (patch: Record<string, unknown>) => { Object.assign(mocks.localVoiceSettings, patch); mocks.setVoiceSettings(patch); return mocks.localVoiceSettings; },
+    migrateServerConfig: (config: Record<string, unknown>) => mocks.migrateServerConfig(config),
+    needsLocalConfigMigration: () => mocks.needsLocalConfigMigration(),
+    subscribe: () => () => {},
   },
 }));
 
@@ -179,7 +207,16 @@ beforeEach(() => {
     apiAvailable: false,
     loadedSpaceId: null,
   };
+  Object.assign(mocks.localVoiceSettings, {
+    microphoneDeviceId: "",
+    localEnabled: false,
+    localProbeUrl: "http://localhost:8787/",
+    localTranscribeUrl: "http://localhost:8787/v1/voice/transcribe",
+    localTimeoutMs: 10000,
+  });
   mocks.getConfig.mockResolvedValue({ enabled: true });
+  mocks.getLocalConfig.mockResolvedValue({ enabled: false, timeout_ms: null, probe_url: null, transcribe_url: null });
+  mocks.needsLocalConfigMigration.mockReturnValue(true);
   mocks.getVoiceContext.mockResolvedValue({ has_context: false });
   mocks.fetchAndApplySpaceSetting.mockResolvedValue(undefined);
   mocks.probeLocal.mockResolvedValue(false);
@@ -205,6 +242,135 @@ afterEach(() => {
 });
 
 describe("useVoiceInput space lifecycle", () => {
+  it("loads legacy local service settings for migration", async () => {
+    mocks.getLocalConfig.mockResolvedValue({
+      enabled: true,
+      timeout_ms: 5000,
+      probe_url: "http://127.0.0.1:9000/",
+      transcribe_url: "http://127.0.0.1:9000/v1/voice/transcribe",
+    });
+    const current = createHost("space-a");
+
+    await act(async () => {
+      ReactDOM.render(<Probe host={current.host} onTranscribed={() => undefined} />, container);
+      await flush();
+    });
+
+    expect(mocks.getLocalConfig).toHaveBeenCalledTimes(1);
+    expect(mocks.migrateServerConfig).toHaveBeenCalledWith(expect.objectContaining({ local_enabled: true, local_timeout_ms: 5000 }));
+  });
+
+  it("does not request legacy settings after migration is complete", async () => {
+    mocks.needsLocalConfigMigration.mockReturnValue(false);
+    const current = createHost("space-a");
+
+    await act(async () => {
+      ReactDOM.render(<Probe host={current.host} onTranscribed={() => undefined} />, container);
+      await flush();
+    });
+
+    expect(mocks.getLocalConfig).not.toHaveBeenCalled();
+  });
+
+  it("retries legacy local settings after a transient read failure", async () => {
+    mocks.getLocalConfig
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockResolvedValueOnce({ enabled: true, timeout_ms: 5000, probe_url: null, transcribe_url: null });
+    const current = createHost("space-a");
+
+    await act(async () => {
+      ReactDOM.render(<Probe host={current.host} onTranscribed={() => undefined} />, container);
+      await flush();
+    });
+    act(() => { ReactDOM.unmountComponentAtNode(container); });
+    await act(async () => {
+      ReactDOM.render(<Probe host={current.host} onTranscribed={() => undefined} />, container);
+      await flush();
+    });
+
+    expect(mocks.getLocalConfig).toHaveBeenCalledTimes(2);
+    expect(mocks.migrateServerConfig).toHaveBeenCalledTimes(1);
+    expect(mocks.migrateServerConfig).toHaveBeenLastCalledWith(expect.objectContaining({ local_enabled: true, local_timeout_ms: 5000 }));
+  });
+
+  it("applies local voice settings to the runtime model service", async () => {
+    Object.assign(mocks.localVoiceSettings, {
+      localEnabled: true,
+      localProbeUrl: "http://127.0.0.1:9000/health",
+      localTranscribeUrl: "http://127.0.0.1:9000/transcribe",
+      localTimeoutMs: 7000,
+    });
+    const current = createHost("space-a");
+
+    await act(async () => {
+      ReactDOM.render(
+        <Probe host={current.host} onTranscribed={() => undefined} />,
+        container,
+      );
+    });
+    await flush();
+
+    expect(mocks.updateLocalConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enabled: true,
+        probeUrl: "http://127.0.0.1:9000/health",
+        transcribeUrl: "http://127.0.0.1:9000/transcribe",
+        requestTimeoutMs: 7000,
+        preferLocal: true,
+      }),
+      localStorage,
+    );
+  });
+
+  it("passes the selected microphone constraint to getUserMedia", async () => {
+    mocks.localVoiceSettings.microphoneDeviceId = "mic-1";
+    mocks.getUserMedia.mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] } as unknown as MediaStream);
+    const current = createHost("space-a");
+
+    await act(async () => {
+      ReactDOM.render(<Probe host={current.host} onTranscribed={() => undefined} />, container);
+    });
+    act(() => { latest.startRecording(); });
+    await flush();
+
+    expect(mocks.getUserMedia).toHaveBeenCalledWith({ audio: { deviceId: { exact: "mic-1" } } });
+  });
+
+  it("retries local availability after the service starts later", async () => {
+    vi.useFakeTimers();
+    mocks.localVoiceSettings.localEnabled = true;
+    mocks.probeLocal.mockResolvedValueOnce(false).mockResolvedValue(true);
+    const current = createHost("space-a");
+
+    await act(async () => {
+      ReactDOM.render(<Probe host={current.host} onTranscribed={() => undefined} />, container);
+      await Promise.resolve();
+    });
+    mocks.probeLocal.mockClear();
+    act(() => { vi.advanceTimersByTime(5000); });
+    await flush();
+
+    expect(mocks.probeLocal).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("falls back to the default microphone when the selected device disappears", async () => {
+    mocks.localVoiceSettings.microphoneDeviceId = "missing-mic";
+    mocks.getUserMedia
+      .mockRejectedValueOnce(Object.assign(new Error("missing"), { name: "OverconstrainedError" }))
+      .mockResolvedValueOnce({ getTracks: () => [{ stop: vi.fn() }] } as unknown as MediaStream);
+    const current = createHost("space-a");
+
+    await act(async () => {
+      ReactDOM.render(<Probe host={current.host} onTranscribed={() => undefined} />, container);
+    });
+    act(() => { latest.startRecording(); });
+    await flush();
+
+    expect(mocks.setVoiceSettings).toHaveBeenCalledWith({ microphoneDeviceId: "" });
+    expect(mocks.getUserMedia).toHaveBeenLastCalledWith({ audio: true });
+  });
+
   it("does not tear down shared voice feedback on a plain mount", async () => {
     const current = createHost("space-a");
 

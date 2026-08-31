@@ -20,6 +20,7 @@ import "./SecretsSettings.css";
 
 export interface SecretsSettingsPanelProps {
   onClose: () => void;
+  embedded?: boolean;
   /** 深链落地：打开即弹新增弹窗，并按需预填名字/类型/明文 */
   initialCreate?: boolean;
   prefillName?: string;
@@ -40,6 +41,7 @@ type EditTarget =
  */
 export default function SecretsSettingsPanel({
   onClose,
+  embedded = false,
   initialCreate,
   prefillName,
   prefillValue,
@@ -58,7 +60,23 @@ export default function SecretsSettingsPanel({
   );
 
   /** 手动新增：永远是干净的空表单，不带任何预填明文。 */
-  const startCreate = useCallback(() => setEditTarget({ mode: "create" }), []);
+  const startCreate = useCallback(() => setEditTarget((current) => (
+    current?.mode === "create" && current.prefillName === undefined && current.prefillValue === undefined
+      ? current
+      : { mode: "create" }
+  )), []);
+  // Support pointer and keyboard activation; the state update is idempotent
+  // when the browser emits both mousedown and click for one activation.
+  const handleCreateMouseDown = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    startCreate();
+  }, [startCreate]);
+  const handleCreateClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    startCreate();
+  }, [startCreate]);
+  const closeEditor = useCallback(() => setEditTarget(null), []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -135,16 +153,8 @@ export default function SecretsSettingsPanel({
     return `${created} · ${lastUsed}`;
   };
 
-  return (
-    <WKModal
-      visible
-      title={null}
-      onCancel={onClose}
-      options={{ closeOnEsc: true, maskClosable: true, closable: false }}
-      footer={null}
-      size="lg"
-      className="wk-secrets-modal"
-    >
+  const content = (
+    <>
       <div className="wk-secrets">
         {/* 头部：标题 + 副标题 + 新增 */}
         <div className="wk-secrets__header">
@@ -156,9 +166,11 @@ export default function SecretsSettingsPanel({
             <p className="wk-secrets__subtitle">{t("base.secrets.subtitle")}</p>
           </div>
           <WKButton
+            type="button"
             variant="primary"
             icon={<IconPlus />}
-            onClick={() => startCreate()}
+            onMouseDown={handleCreateMouseDown}
+            onClick={handleCreateClick}
           >
             {t("base.secrets.addButton")}
           </WKButton>
@@ -183,9 +195,11 @@ export default function SecretsSettingsPanel({
             </div>
             <p className="wk-secrets__empty-text">{t("base.secrets.empty")}</p>
             <WKButton
+              type="button"
               variant="primary"
               icon={<IconPlus />}
-              onClick={() => startCreate()}
+              onMouseDown={handleCreateMouseDown}
+              onClick={handleCreateClick}
             >
               {t("base.secrets.empty.action")}
             </WKButton>
@@ -197,22 +211,13 @@ export default function SecretsSettingsPanel({
                 <div className="wk-secrets__card-main">
                   <div className="wk-secrets__card-titlerow">
                     <span className="wk-secrets__card-name">{secret.display_name}</span>
-                    <span
-                      className={`wk-secrets__chip wk-secrets__chip--${secret.kind}`}
-                    >
-                      {secret.kind === "llm"
-                        ? t("base.secrets.kind.llm")
-                        : t("base.secrets.kind.external")}
+                    <span className={`wk-secrets__chip wk-secrets__chip--${secret.kind}`}>
+                      {secret.kind === "llm" ? t("base.secrets.kind.llm") : t("base.secrets.kind.external")}
                     </span>
                   </div>
                   <div className="wk-secrets__card-maskrow">
                     <code className="wk-secrets__mask">{secret.masked}</code>
-                    <button
-                      type="button"
-                      className="wk-secrets__copyref"
-                      onClick={() => handleCopyName(secret.display_name)}
-                      title={t("base.secrets.action.copyName")}
-                    >
+                    <button type="button" className="wk-secrets__copyref" onClick={() => handleCopyName(secret.display_name)} title={t("base.secrets.action.copyName")}>
                       <IconCopy size="small" />
                       {t("base.secrets.action.copyName")}
                     </button>
@@ -220,50 +225,41 @@ export default function SecretsSettingsPanel({
                   <div className="wk-secrets__card-meta">{renderMeta(secret)}</div>
                 </div>
                 <div className="wk-secrets__card-actions">
-                  <button
-                    type="button"
-                    className="wk-secrets__icon-btn"
-                    onClick={() => setEditTarget({ mode: "edit", secret })}
-                    title={t("base.secrets.action.edit")}
-                    aria-label={t("base.secrets.action.edit")}
-                  >
-                    <IconEdit />
-                  </button>
-                  <button
-                    type="button"
-                    className="wk-secrets__icon-btn"
-                    onClick={() => setEditTarget({ mode: "edit", secret })}
-                    title={t("base.secrets.action.updateKey")}
-                    aria-label={t("base.secrets.action.updateKey")}
-                  >
-                    <IconRefresh />
-                  </button>
-                  <button
-                    type="button"
-                    className="wk-secrets__icon-btn wk-secrets__icon-btn--danger"
-                    onClick={() => handleDelete(secret)}
-                    title={t("base.secrets.action.delete")}
-                    aria-label={t("base.secrets.action.delete")}
-                  >
-                    <IconDelete />
-                  </button>
+                  <button type="button" className="wk-secrets__icon-btn" onClick={(event) => { event.stopPropagation(); setEditTarget({ mode: "edit", secret }); }} title={t("base.secrets.action.edit")} aria-label={t("base.secrets.action.edit")}><IconEdit /></button>
+                  <button type="button" className="wk-secrets__icon-btn" onClick={(event) => { event.stopPropagation(); setEditTarget({ mode: "edit", secret }); }} title={t("base.secrets.action.updateKey")} aria-label={t("base.secrets.action.updateKey")}><IconRefresh /></button>
+                  <button type="button" className="wk-secrets__icon-btn wk-secrets__icon-btn--danger" onClick={(event) => { event.stopPropagation(); handleDelete(secret); }} title={t("base.secrets.action.delete")} aria-label={t("base.secrets.action.delete")}><IconDelete /></button>
                 </div>
               </li>
             ))}
           </ul>
         )}
       </div>
-
       {editTarget && (
         <SecretEditModal
           secret={editTarget.mode === "edit" ? editTarget.secret : undefined}
           existing={items}
           prefillName={editTarget.mode === "create" ? editTarget.prefillName : undefined}
           prefillValue={editTarget.mode === "create" ? editTarget.prefillValue : undefined}
-          onClose={() => setEditTarget(null)}
+          onClose={closeEditor}
           onSaved={() => void load()}
         />
       )}
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <WKModal
+      visible
+      title={null}
+      onCancel={onClose}
+      options={{ closeOnEsc: true, maskClosable: true, closable: false }}
+      footer={null}
+      size="lg"
+      className="wk-secrets-modal"
+    >
+      {content}
     </WKModal>
   );
 }

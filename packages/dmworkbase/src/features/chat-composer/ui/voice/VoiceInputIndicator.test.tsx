@@ -6,71 +6,58 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   startRecording: vi.fn(),
-  acceptVoiceInput: vi.fn(),
+  stopRecording: vi.fn(),
   toastError: vi.fn(),
-  noticeAccept: undefined as
-    | ((feedbackOn: boolean) => void | Promise<void>)
-    | undefined,
-  noticeCancel: undefined as (() => void) | undefined,
+  toastWarning: vi.fn(),
+  voiceEnabled: false,
+  speakingMode: "toggle" as "toggle" | "hold",
+  shortcut: "alt-right" as "alt-right" | "shift-right" | "shift-left",
+  isRecording: false,
+  isTranscribing: false,
+  cancelRecording: vi.fn(),
+  settingsListeners: new Set<(settings: unknown) => void>(),
+  transcribed: null as null | ((text: string) => void),
+  inputTranscribed: null as null | ((text: string) => void),
 }));
 
 vi.mock("../../adapters/voice/useVoiceInput", () => ({
-  default: () => ({
-    isRecording: false,
-    isTranscribing: false,
-    startRecording: (...args: unknown[]) => mocks.startRecording(...args),
-    stopRecordingAndTranscribe: vi.fn(),
-    cancelRecording: vi.fn(),
-    isVoiceEnabled: true,
-    currentMode: "append_only",
-    localAvailable: false,
-  }),
-}));
-
-vi.mock("../../../voice-input/useSpaceFeedbackSetting", () => ({
-  default: () => ({
-    spaceSetting: {
-      voice_input_enabled: 0,
-      voice_feedback_on: 0,
-      voice_feedback_notice_acked: 0,
-    },
-    loaded: true,
-    voiceConfig: {},
-  }),
-  getSharedSpaceFeedbackState: () => ({ loaded: true }),
-  acceptVoiceInput: (...args: unknown[]) => mocks.acceptVoiceInput(...args),
-}));
-
-vi.mock("../../../voice-input/VoiceFeedbackNotice", () => ({
-  default: ({
-    onAccept,
-    onCancel,
-  }: {
-    onAccept: (feedbackOn: boolean) => void | Promise<void>;
-    onCancel: () => void;
-  }) => {
-    mocks.noticeAccept = onAccept;
-    mocks.noticeCancel = onCancel;
-    return (
-      <>
-        <button data-testid="accept-consent" onClick={() => onAccept(false)}>
-          accept
-        </button>
-        <button data-testid="cancel-consent" onClick={onCancel}>
-          cancel
-        </button>
-      </>
-    );
+  default: (options: { onTranscribed: (text: string) => void }) => {
+    mocks.inputTranscribed = options.onTranscribed;
+    const [isRecording, setIsRecording] = React.useState(mocks.isRecording);
+    return {
+      isRecording,
+      isTranscribing: mocks.isTranscribing,
+      startRecording: (...args: unknown[]) => {
+        mocks.startRecording(...args);
+        setIsRecording(true);
+      },
+      stopRecordingAndTranscribe: (...args: unknown[]) => {
+        mocks.stopRecording(...args);
+        setIsRecording(false);
+      },
+      cancelRecording: mocks.cancelRecording,
+      isVoiceEnabled: true,
+      currentMode: "append_only",
+      localAvailable: false,
+    };
   },
 }));
 
 vi.mock("../../../../i18n", () => ({
   useI18n: () => ({ t: (key: string) => key }),
+  I18nContext: React.createContext({ t: (key: string) => key }),
 }));
 
-vi.mock("lucide-react", () => ({
-  Mic: () => <span />,
+vi.mock("../../../../Service/VoiceSettingsStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../../Service/VoiceSettingsStore")>()),
+  getVoiceShortcut: () => mocks.shortcut,
+  voiceSettingsStore: {
+    get: () => ({ enabled: mocks.voiceEnabled, shortcutWindows: mocks.shortcut, shortcutMacos: mocks.shortcut, speakingMode: mocks.speakingMode }),
+    subscribe: (listener: (settings: unknown) => void) => { mocks.settingsListeners.add(listener); return () => mocks.settingsListeners.delete(listener); },
+  },
 }));
+
+vi.mock("lucide-react", () => ({ Mic: () => <span /> }));
 
 vi.mock("@douyinfe/semi-ui", () => {
   const Dropdown = ({
@@ -79,15 +66,8 @@ vi.mock("@douyinfe/semi-ui", () => {
   }: {
     children: React.ReactNode;
     render?: React.ReactNode;
-  }) => (
-    <>
-      {children}
-      {render}
-    </>
-  );
-  Dropdown.Menu = ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  );
+  }) => <>{children}{render}</>;
+  Dropdown.Menu = ({ children }: { children: React.ReactNode }) => <>{children}</>;
   Dropdown.Item = ({
     children,
     onClick,
@@ -99,7 +79,7 @@ vi.mock("@douyinfe/semi-ui", () => {
     Dropdown,
     Toast: {
       error: (...args: unknown[]) => mocks.toastError(...args),
-      warning: vi.fn(),
+      warning: (...args: unknown[]) => mocks.toastWarning(...args),
     },
   };
 });
@@ -108,288 +88,219 @@ import VoiceInputIndicator from "./VoiceInputIndicator";
 import type { ChatComposerVoiceHost } from "../../ports";
 
 let container: HTMLDivElement;
+const voiceHost: ChatComposerVoiceHost = {
+  getSpaceId: () => "space-a",
+  subscribeSpaceChange: () => () => {},
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.noticeAccept = undefined;
-  mocks.noticeCancel = undefined;
-  Object.defineProperty(navigator, "onLine", {
-    configurable: true,
-    value: true,
-  });
+  mocks.voiceEnabled = false;
+  mocks.speakingMode = "toggle";
+  mocks.shortcut = "alt-right";
+  mocks.isRecording = false;
+  mocks.isTranscribing = false;
+  mocks.cancelRecording.mockReset();
+  mocks.settingsListeners.clear();
+  mocks.inputTranscribed = null;
+  Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
   container = document.createElement("div");
   document.body.appendChild(container);
 });
 
 afterEach(() => {
-  act(() => {
-    ReactDOM.unmountComponentAtNode(container);
-  });
+  act(() => ReactDOM.unmountComponentAtNode(container));
   container.remove();
 });
 
-describe("VoiceInputIndicator consent lifecycle", () => {
-  it("closes a pending consent notice when the space changes", async () => {
-    let spaceId = "space-a";
-    const listeners = new Set<() => void>();
-    const voiceHost: ChatComposerVoiceHost = {
-      getSpaceId: () => spaceId,
-      subscribeSpaceChange: (listener) => {
-        listeners.add(listener);
-        return () => listeners.delete(listener);
-      },
-    };
-
+describe("VoiceInputIndicator click behavior", () => {
+  it("shows the settings hint without starting recording when disabled", async () => {
     await act(async () => {
       ReactDOM.render(
-        <VoiceInputIndicator
-          voiceHost={voiceHost}
-          onTranscribed={() => undefined}
-        />,
-        container
+        <VoiceInputIndicator voiceHost={voiceHost} onTranscribed={() => undefined} />,
+        container,
       );
     });
+
     act(() => {
-      (
-        container.querySelector(".wk-voice-button-group") as HTMLElement
-      ).click();
-    });
-    expect(container.querySelector('[data-testid="accept-consent"]')).not.toBeNull();
-
-    spaceId = "space-b";
-    act(() => {
-      listeners.forEach((listener) => listener());
+      (container.querySelector(".wk-voice-button-group") as HTMLElement).click();
     });
 
-    expect(container.querySelector('[data-testid="accept-consent"]')).toBeNull();
-    expect(mocks.acceptVoiceInput).not.toHaveBeenCalled();
-  });
-
-  it("does not start recording when the space changes during consent", async () => {
-    let spaceId = "space-a";
-    const listeners = new Set<() => void>();
-    const voiceHost: ChatComposerVoiceHost = {
-      getSpaceId: () => spaceId,
-      subscribeSpaceChange: (listener) => {
-        listeners.add(listener);
-        return () => listeners.delete(listener);
-      },
-    };
-    let resolveConsent!: () => void;
-    mocks.acceptVoiceInput.mockReturnValue(
-      new Promise<void>((resolve) => {
-        resolveConsent = resolve;
-      })
-    );
-
-    await act(async () => {
-      ReactDOM.render(
-        <VoiceInputIndicator
-          voiceHost={voiceHost}
-          onTranscribed={() => undefined}
-        />,
-        container
-      );
-    });
-    act(() => {
-      (
-        container.querySelector(".wk-voice-button-group") as HTMLElement
-      ).click();
-    });
-    act(() => {
-      (
-        container.querySelector('[data-testid="accept-consent"]') as HTMLElement
-      ).click();
-    });
-
-    spaceId = "space-b";
-    act(() => {
-      listeners.forEach((listener) => listener());
-    });
-    await act(async () => {
-      resolveConsent();
-      await Promise.resolve();
-    });
-
-    expect(mocks.acceptVoiceInput).toHaveBeenCalledWith(
-      "space-a",
-      false,
-      expect.any(Function)
-    );
-    expect(mocks.acceptVoiceInput.mock.calls[0][2]()).toBe(false);
     expect(mocks.startRecording).not.toHaveBeenCalled();
+    expect(mocks.toastWarning).toHaveBeenCalledWith("base.voiceInput.error.disabled");
   });
 
-  it("invalidates a visible consent notice when the voice host is replaced", async () => {
-    const firstHost: ChatComposerVoiceHost = {
-      getSpaceId: () => "space-a",
-      subscribeSpaceChange: () => () => {},
-    };
-    const secondHost: ChatComposerVoiceHost = {
-      getSpaceId: () => "space-b",
-      subscribeSpaceChange: () => () => {},
-    };
-
+  it("starts the selected voice mode directly", async () => {
+    mocks.voiceEnabled = true;
     await act(async () => {
       ReactDOM.render(
-        <VoiceInputIndicator
-          voiceHost={firstHost}
-          onTranscribed={() => undefined}
-        />,
-        container
-      );
-    });
-    act(() => {
-      (
-        container.querySelector(".wk-voice-button-group") as HTMLElement
-      ).click();
-    });
-    const staleAccept = mocks.noticeAccept;
-    expect(container.querySelector('[data-testid="accept-consent"]')).not.toBeNull();
-
-    await act(async () => {
-      ReactDOM.render(
-        <VoiceInputIndicator
-          voiceHost={secondHost}
-          onTranscribed={() => undefined}
-        />,
-        container
-      );
-    });
-
-    expect(container.querySelector('[data-testid="accept-consent"]')).toBeNull();
-    await act(async () => {
-      await staleAccept?.(false);
-    });
-    expect(mocks.acceptVoiceInput).not.toHaveBeenCalled();
-    expect(mocks.startRecording).not.toHaveBeenCalled();
-  });
-
-  it("allows only one consent request at a time", async () => {
-    const voiceHost: ChatComposerVoiceHost = {
-      getSpaceId: () => "space-a",
-      subscribeSpaceChange: () => () => {},
-    };
-    let resolveConsent!: () => void;
-    mocks.acceptVoiceInput.mockReturnValue(
-      new Promise<void>((resolve) => {
-        resolveConsent = resolve;
-      })
-    );
-
-    await act(async () => {
-      ReactDOM.render(
-        <VoiceInputIndicator
-          voiceHost={voiceHost}
-          onTranscribed={() => undefined}
-        />,
-        container
-      );
-    });
-    act(() => {
-      (
-        container.querySelector(".wk-voice-button-group") as HTMLElement
-      ).click();
-    });
-
-    let firstRequest!: Promise<void>;
-    act(() => {
-      firstRequest = mocks.noticeAccept?.(false) as Promise<void>;
-      void mocks.noticeAccept?.(true);
-    });
-    expect(mocks.acceptVoiceInput).toHaveBeenCalledOnce();
-
-    await act(async () => {
-      resolveConsent();
-      await firstRequest;
-    });
-
-    expect(mocks.startRecording).toHaveBeenCalledOnce();
-    expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
-  });
-
-  it("ignores reopen attempts while consent is being saved", async () => {
-    const voiceHost: ChatComposerVoiceHost = {
-      getSpaceId: () => "space-a",
-      subscribeSpaceChange: () => () => {},
-    };
-    let resolveConsent!: () => void;
-    mocks.acceptVoiceInput
-      .mockReturnValueOnce(
-        new Promise<void>((resolve) => {
-          resolveConsent = resolve;
-        })
-      )
-      .mockResolvedValueOnce(undefined);
-
-    await act(async () => {
-      ReactDOM.render(
-        <VoiceInputIndicator
-          voiceHost={voiceHost}
-          onTranscribed={() => undefined}
-        />,
-        container
-      );
-    });
-    const voiceButton = container.querySelector(
-      ".wk-voice-button-group"
-    ) as HTMLElement;
-    act(() => voiceButton.click());
-    act(() => {
-      (
-        container.querySelector('[data-testid="accept-consent"]') as HTMLElement
-      ).click();
-    });
-
-    act(() => voiceButton.click());
-    expect(container.querySelector('[data-testid="accept-consent"]')).toBeNull();
-    expect(mocks.acceptVoiceInput).toHaveBeenCalledOnce();
-
-    await act(async () => {
-      resolveConsent();
-      await Promise.resolve();
-    });
-    act(() => voiceButton.click());
-    expect(container.querySelector('[data-testid="accept-consent"]')).not.toBeNull();
-    await act(async () => {
-      await mocks.noticeAccept?.(false);
-    });
-    expect(mocks.acceptVoiceInput).toHaveBeenCalledTimes(2);
-  });
-
-  it("resets a cancelled edit consent before a main-button consent", async () => {
-    const voiceHost: ChatComposerVoiceHost = {
-      getSpaceId: () => "space-a",
-      subscribeSpaceChange: () => () => {},
-    };
-    mocks.acceptVoiceInput.mockResolvedValue(undefined);
-
-    await act(async () => {
-      ReactDOM.render(
-        <VoiceInputIndicator
-          voiceHost={voiceHost}
-          onTranscribed={() => undefined}
-        />,
-        container
+        <VoiceInputIndicator voiceHost={voiceHost} onTranscribed={() => undefined} />,
+        container,
       );
     });
 
     const editMode = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "base.voiceInput.mode.edit"
+      (button) => button.textContent === "base.voiceInput.mode.edit",
     ) as HTMLButtonElement;
-    act(() => editMode.click());
-    act(() => mocks.noticeCancel?.());
     act(() => {
-      (
-        container.querySelector(".wk-voice-button-group") as HTMLElement
-      ).click();
+      editMode.click();
     });
 
+    expect(mocks.startRecording).toHaveBeenCalledWith("edit_only");
+  });
+
+  it("starts and stops hold-mode shortcut recording after the long press", async () => {
+    mocks.voiceEnabled = true;
+    mocks.speakingMode = "hold";
+    vi.useFakeTimers();
     await act(async () => {
-      await mocks.noticeAccept?.(false);
+      ReactDOM.render(
+        <VoiceInputIndicator voiceHost={voiceHost} onTranscribed={() => undefined} />,
+        container,
+      );
     });
 
-    expect(mocks.startRecording).toHaveBeenCalledOnce();
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { code: "AltRight" })));
+    expect(mocks.startRecording).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(500));
     expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
+    act(() => window.dispatchEvent(new KeyboardEvent("keyup", { code: "AltRight" })));
+    expect(mocks.stopRecording).toHaveBeenCalledWith(undefined);
+    vi.useRealTimers();
+  });
+
+  it("cancels an active recording when voice input is disabled", async () => {
+    mocks.voiceEnabled = true;
+    mocks.isRecording = true;
+    await act(async () => {
+      ReactDOM.render(<VoiceInputIndicator voiceHost={voiceHost} onTranscribed={() => undefined} />, container);
+    });
+
+    mocks.voiceEnabled = false;
+    act(() => { mocks.settingsListeners.forEach((listener) => listener({ enabled: false })); });
+    expect(mocks.cancelRecording).toHaveBeenCalled();
+  });
+
+  it.each([
+    ["shift-right", "ShiftRight"],
+    ["shift-left", "ShiftLeft"],
+  ] as const)("does not stop toggle recording on %s keyup", async (shortcut, code) => {
+    mocks.voiceEnabled = true;
+    mocks.shortcut = shortcut;
+    mocks.isRecording = true;
+    await act(async () => {
+      ReactDOM.render(<VoiceInputIndicator voiceHost={voiceHost} onTranscribed={() => undefined} />, container);
+    });
+
+    act(() => window.dispatchEvent(new KeyboardEvent("keyup", { code, key: "Shift" })));
+    expect(mocks.stopRecording).not.toHaveBeenCalled();
+  });
+
+  // Regression: on Windows some keyboard driver / IME combinations report the
+  // right Shift key with an empty `code` and location 0. The indicator must
+  // still start/stop toggle recording for it.
+  it("supports the Windows empty-code right Shift key for toggle recording", async () => {
+    mocks.voiceEnabled = true;
+    mocks.shortcut = "shift-right";
+    await act(async () => {
+      ReactDOM.render(<VoiceInputIndicator voiceHost={voiceHost} onTranscribed={() => undefined} />, container);
+    });
+
+    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { code: "", key: "Shift", location: 0 })); });
+    expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
+
+    mocks.isRecording = true;
+    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { code: "", key: "Shift", location: 0 })); });
+    expect(mocks.stopRecording).toHaveBeenCalledWith();
+  });
+
+  it("supports the Windows empty-code right Shift key for hold recording", async () => {
+    vi.useFakeTimers();
+    mocks.voiceEnabled = true;
+    mocks.shortcut = "shift-right";
+    mocks.speakingMode = "hold";
+    await act(async () => {
+      ReactDOM.render(<VoiceInputIndicator voiceHost={voiceHost} onTranscribed={() => undefined} />, container);
+    });
+
+    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { code: "", key: "Shift", location: 0 })); });
+    act(() => vi.advanceTimersByTime(500));
+    expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
+
+    mocks.isRecording = true;
+    act(() => { window.dispatchEvent(new KeyboardEvent("keyup", { code: "", key: "Shift", location: 0 })); });
+    expect(mocks.stopRecording).toHaveBeenCalledWith(undefined);
+    vi.useRealTimers();
+  });
+
+  it("uses append mode for toggle shortcuts even when text is selected", async () => {
+    mocks.voiceEnabled = true;
+    const onTranscribed = vi.fn();
+    await act(async () => {
+      ReactDOM.render(
+        <VoiceInputIndicator
+          voiceHost={voiceHost}
+          onTranscribed={onTranscribed}
+          getSelectedText={() => "selected"}
+          getSelectionRange={() => ({ from: 3, to: 11 })}
+        />,
+        container,
+      );
+    });
+
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { code: "AltRight" })));
+    expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
+    act(() => mocks.inputTranscribed?.("new text"));
+    expect(onTranscribed).toHaveBeenCalledWith("new text", "insert");
+  });
+
+  it("does not start from toggle shortcut while transcribing", async () => {
+    mocks.voiceEnabled = true;
+    mocks.isTranscribing = true;
+    await act(async () => {
+      ReactDOM.render(<VoiceInputIndicator voiceHost={voiceHost} onTranscribed={() => undefined} />, container);
+    });
+
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { code: "AltRight" })));
+    expect(mocks.startRecording).not.toHaveBeenCalled();
+  });
+
+  it("shows the network warning for an offline toggle shortcut", async () => {
+    mocks.voiceEnabled = true;
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: false });
+    await act(async () => {
+      ReactDOM.render(<VoiceInputIndicator voiceHost={voiceHost} onTranscribed={() => undefined} />, container);
+    });
+
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { code: "AltRight" })));
+    expect(mocks.startRecording).not.toHaveBeenCalled();
+    expect(mocks.toastWarning).toHaveBeenCalledWith("base.voiceInput.error.networkUnavailable");
+  });
+
+  it("shows the network warning before starting an offline hold shortcut", async () => {
+    mocks.voiceEnabled = true;
+    mocks.speakingMode = "hold";
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: false });
+    vi.useFakeTimers();
+    await act(async () => {
+      ReactDOM.render(<VoiceInputIndicator voiceHost={voiceHost} onTranscribed={() => undefined} />, container);
+    });
+
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { code: "AltRight" })));
+    act(() => vi.advanceTimersByTime(500));
+    expect(mocks.startRecording).not.toHaveBeenCalled();
+    expect(mocks.toastWarning).toHaveBeenCalledWith("base.voiceInput.error.networkUnavailable");
+    vi.useRealTimers();
+  });
+
+  it("cancels recording with Escape", async () => {
+    mocks.voiceEnabled = true;
+    mocks.isRecording = true;
+    await act(async () => {
+      ReactDOM.render(<VoiceInputIndicator voiceHost={voiceHost} onTranscribed={() => undefined} />, container);
+    });
+
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape", key: "Escape" })));
+    expect(mocks.cancelRecording).toHaveBeenCalled();
   });
 });

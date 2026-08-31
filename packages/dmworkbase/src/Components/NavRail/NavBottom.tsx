@@ -1,9 +1,8 @@
 import React, { Component } from "react";
 import { Space } from "wukongimjssdk";
 import NavSpaceSwitcher from "./NavSpaceSwitcher";
-import NavLanguageSwitcher from "./NavLanguageSwitcher";
 import { t } from "../../i18n";
-import { Dap } from "../../Service/Dap";
+import QuickMuteSidebar from "./QuickMuteSidebar";
 
 export interface NavBottomProps {
     settingSelected?: boolean;
@@ -19,6 +18,7 @@ export interface NavBottomProps {
     onSpaceSelect: (spaceId: string) => void;
     onJoinSpace?: () => void;
     onCreateSpace?: () => void;
+    onSpaceManagement?: () => void;
 }
 
 interface NavBottomState {
@@ -46,7 +46,7 @@ export default class NavBottom extends Component<NavBottomProps, NavBottomState>
     }
 
     render() {
-        const { onSettingsClick, settingsButtonRef, settingSelected, hasNewVersion, onDismissNewVersion, spaces, currentSpaceId, onSpaceSelect, onJoinSpace, onCreateSpace } = this.props;
+        const { onSettingsClick, settingsButtonRef, settingSelected, hasNewVersion, onDismissNewVersion, spaces, currentSpaceId, onSpaceSelect, onJoinSpace, onCreateSpace, onSpaceManagement } = this.props;
         const { bubbleVisible } = this.state;
 
         return (
@@ -54,7 +54,7 @@ export default class NavBottom extends Component<NavBottomProps, NavBottomState>
                 {/* 设置上方分割线 */}
                 <div className="wk-navrail__sep" />
 
-                <NavLanguageSwitcher />
+                <QuickMuteSidebar />
 
                 {/* 设置按钮 + 气泡 */}
                 <div className="wk-navrail__settings-wrap">
@@ -66,11 +66,7 @@ export default class NavBottom extends Component<NavBottomProps, NavBottomState>
                         aria-label={t("base.navRail.settings")}
                         aria-haspopup="menu"
                         aria-expanded={!!settingSelected}
-                        onClick={() => {
-                            // 仅在「关→开」这一沿采集打开设置;点击本身是 toggle,关闭时不计。
-                            if (!settingSelected) Dap.shared.track("settings_menu_opened", {});
-                            onSettingsClick?.();
-                        }}
+                        onClick={onSettingsClick}
                     >
                         <IconSettings />
                         <span className="wk-navrail__item-label">{t("base.navRail.settings")}</span>
@@ -119,6 +115,7 @@ export default class NavBottom extends Component<NavBottomProps, NavBottomState>
                     onSpaceSelect={onSpaceSelect}
                     onJoinSpace={onJoinSpace}
                     onCreateSpace={onCreateSpace}
+                    onSpaceManagement={onSpaceManagement}
                 />
             </div>
         );

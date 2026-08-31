@@ -4,7 +4,7 @@
  * 独立成文件的原因与 chatSummaryActions 相同：module.tsx 引入
  * react-dom/client，单测不便直接 import。
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@octo/base', async () => {
     const actual = await vi.importActual<Record<string, unknown>>('../../__mocks__/dmworkBase');
@@ -37,6 +37,11 @@ describe('summaryMenuBadge (#1359)', () => {
         // 重置模块级计数
         setPendingInvitationBadge(0);
         vi.mocked(WKApp.menus.refresh).mockClear();
+    });
+
+    afterEach(() => {
+        vi.unstubAllEnvs();
+        vi.unstubAllGlobals();
     });
 
     it('getPendingInvitationBadge 初始返回 0', () => {
@@ -113,6 +118,32 @@ describe('summaryMenuBadge (#1359)', () => {
         await refreshPendingInvitationBadge();
 
         expect(api.listSummaries).not.toHaveBeenCalled();
+    });
+
+    it('refreshPendingInvitationBadge 在 E2E mock 未 ready 前不发后台请求', async () => {
+        vi.stubEnv('VITE_E2E_MOCK', '1');
+        vi.stubGlobal('window', {});
+
+        await refreshPendingInvitationBadge();
+
+        expect(api.listSummaries).not.toHaveBeenCalled();
+    });
+
+    it('refreshPendingInvitationBadge 在 E2E mock ready 后走正常请求路径', async () => {
+        vi.stubEnv('VITE_E2E_MOCK', '1');
+        vi.stubGlobal('window', { __MSW_READY__: true });
+        vi.mocked(api.listSummaries).mockResolvedValue({
+            items: [],
+            total: 0,
+            attention_count: 0,
+            unread_count: 0,
+            pending_invitation_count: 2,
+        } as any);
+
+        await refreshPendingInvitationBadge();
+
+        expect(api.listSummaries).toHaveBeenCalledWith({ page: 1, page_size: 1 });
+        expect(getPendingInvitationBadge()).toBe(2);
     });
 
     it('refreshPendingInvitationBadge 丢弃跨 Space 的迟到响应', async () => {

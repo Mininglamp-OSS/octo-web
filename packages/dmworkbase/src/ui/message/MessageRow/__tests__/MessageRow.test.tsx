@@ -12,6 +12,7 @@ vi.mock("../../../../i18n", () => ({
             const messages: Record<string, string> = {
                 "base.message.avatar.alt": "Avatar",
                 "base.message.edited": "已编辑",
+                "base.conversation.avatarMenu.open": "打开头像菜单",
                 "base.realnameVerified.title": "已完成实名认证",
                 "base.realnameVerified.label": "已实名",
             }
@@ -166,8 +167,102 @@ describe("MessageRow — selection mode interactions", () => {
         dispatchMouseEvent(root.querySelector(".wk-msg-row-sender")!, "click")
         expect(onSenderNameClick).toHaveBeenCalledTimes(1)
 
-        dispatchMouseEvent(root.querySelector(".wk-msg-row")!, "contextmenu")
+        dispatchMouseEvent(root.querySelector(".wk-msg-row-header")!, "contextmenu")
+        dispatchMouseEvent(root.querySelector(".wk-msg-row-body")!, "contextmenu")
+        expect(onContextMenu).toHaveBeenCalledTimes(2)
+    })
+
+    it("suppresses right-click only on the actionable avatar button", () => {
+        const onContextMenu = vi.fn()
+        const root = renderRow(
+            <MessageRow
+                {...baseProps}
+                onContextMenu={onContextMenu}
+                onAvatarClick={vi.fn()}
+            >
+                <div>message</div>
+            </MessageRow>
+        )
+
+        const event = dispatchMouseEvent(root.querySelector(".wk-msg-row-avatar-button")!, "contextmenu")
+        expect(event.defaultPrevented).toBe(true)
+        expect(onContextMenu).not.toHaveBeenCalled()
+    })
+
+    it("opens the message menu from a continuation placeholder", () => {
+        const onContextMenu = vi.fn()
+        const root = renderRow(
+            <MessageRow
+                {...baseProps}
+                isContinue={true}
+                showAvatar={false}
+                onContextMenu={onContextMenu}
+            >
+                <div>message</div>
+            </MessageRow>
+        )
+
+        const event = dispatchMouseEvent(root.querySelector(".wk-msg-row-avatar-placeholder")!, "contextmenu")
+        expect(event.defaultPrevented).toBe(false)
         expect(onContextMenu).toHaveBeenCalledTimes(1)
+    })
+
+    it("opens the message menu from a non-actionable avatar area", () => {
+        const onContextMenu = vi.fn()
+        const root = renderRow(
+            <MessageRow
+                {...baseProps}
+                isWebhook={true}
+                onContextMenu={onContextMenu}
+                onAvatarClick={vi.fn()}
+            >
+                <div>message</div>
+            </MessageRow>
+        )
+
+        const event = dispatchMouseEvent(root.querySelector(".wk-msg-row-avatar")!, "contextmenu")
+        expect(event.defaultPrevented).toBe(false)
+        expect(onContextMenu).toHaveBeenCalledTimes(1)
+    })
+
+    it("opens from the focused body with Shift+F10 and from the surrounding row", () => {
+        const onContextMenu = vi.fn()
+        const root = renderRow(
+            <MessageRow {...baseProps} onContextMenu={onContextMenu}>
+                <div>message</div>
+            </MessageRow>
+        )
+        const body = root.querySelector<HTMLElement>(".wk-msg-row-body")!
+
+        act(() => body.dispatchEvent(new KeyboardEvent("keydown", {
+            key: "F10",
+            shiftKey: true,
+            bubbles: true,
+            cancelable: true,
+        })))
+        expect(onContextMenu).toHaveBeenCalledTimes(1)
+        expect((onContextMenu.mock.calls[0][0].nativeEvent as MouseEvent & {
+            focusFirstItem?: boolean
+        }).focusFirstItem).toBe(true)
+
+        dispatchMouseEvent(root.querySelector(".wk-msg-row-sender")!, "contextmenu")
+        dispatchMouseEvent(root.querySelector(".wk-msg-row")!, "contextmenu")
+        expect(onContextMenu).toHaveBeenCalledTimes(3)
+    })
+
+    it("uses a native button for an actionable avatar", () => {
+        const onAvatarClick = vi.fn()
+        const root = renderRow(
+            <MessageRow {...baseProps} onAvatarClick={onAvatarClick}>
+                <div>message</div>
+            </MessageRow>
+        )
+
+        const button = root.querySelector<HTMLButtonElement>(".wk-msg-row-avatar-button")
+        expect(button?.tagName).toBe("BUTTON")
+        expect(button?.getAttribute("aria-label")).toBe("打开头像菜单")
+        act(() => button?.click())
+        expect(onAvatarClick).toHaveBeenCalledTimes(1)
     })
 })
 

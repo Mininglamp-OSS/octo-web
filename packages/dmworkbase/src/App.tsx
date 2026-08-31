@@ -2,8 +2,13 @@ import mitt, { Emitter } from "mitt";
 import { getSessionSid, setSessionSid } from "./Service/SessionScope";
 import { replaceWithShellDocument } from "./Service/ShellDocument";
 import { runLogoutCleanup } from "./Service/logoutCleanup";
-
-const IPC_CLEAR_AUTH_SESSION = "octo:oidc:clear-auth-session";
+import {
+  clearElectronAuthSession as clearElectronAuthSessionBridge,
+  getElectronIpcBridge,
+  getOctoElectronBridge,
+  isElectronPowered,
+  isElectronShellBridgeAvailable,
+} from "./electron/desktopBridge";
 
 /** mittBus 全局事件类型表 */
 export type MittEvents = {
@@ -97,7 +102,7 @@ export type MittEvents = {
   /**
    * 打开「密钥 / Secrets」管理面板（YUJ-3539）。由聊天反向跳转（bot 消息里的
    * 「去添加密钥」按钮）或输入框防手滑提示触发；payload 可携带预填名字 / 明文，
-   * 接收方 NavSecretsSettingsItem 据此打开面板并预填新增弹窗（绝不自动发送/保存）。
+   * 设置中心据此打开密钥二级页并预填新增弹窗（绝不自动发送/保存）。
    */
   'wk:open-secrets': {
     create?: boolean;
@@ -257,6 +262,35 @@ function oidcProvidersEqual(
   });
 }
 
+/**
+ * 解析后端下发的 octo_assistant_uids 字段。后端可能下发数组或逗号分隔字符串，
+ * 前端统一转为 string[]。字段缺失或非数组/字符串时返回空数组。
+ */
+function parseOctoAssistantUids(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.filter((v): v is string => typeof v === "string" && v.length > 0);
+  }
+  if (typeof raw === "string" && raw.length > 0) {
+    return raw.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+  }
+  return [];
+}
+
+/** 两个字符串数组作为**无序集合**是否相等。octoAssistantUids 等 uid 名单语义上是集合,
+ * 顺序不代表变化;顺序敏感比较会把后端仅重排的下发误判为「变了」而触发无谓刷新(#1452 review P2-7)。
+ * 允许重复元素:按计数比较(而非仅 Set),两侧同一 uid 出现次数须一致。 */
+function stringArraysEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const counts = new Map<string, number>();
+  for (const v of a) counts.set(v, (counts.get(v) ?? 0) + 1);
+  for (const v of b) {
+    const n = counts.get(v);
+    if (!n) return false;
+    counts.set(v, n - 1);
+  }
+  return true;
+}
+
 // StickerUploadLimits 解析同理抽到 ./Service/StickerUploadConfig：独立 leaf 文件,
 // 不拖 App.tsx 的重依赖链路, EmojiToolbar 的 vitest 可以直接测 parse 的边界情况。
 import {
@@ -371,12 +405,30 @@ export class WKRemoteConfig {
    */
   driveOn: boolean = false;
   /**
+   * 网盘全文搜索开关，默认关闭；与 driveOn(模块入口)解耦，独立灰度。镜像
+   * docsSearchOn 的双 flag 门禁：driveOn 只代表网盘模块已部署，而多类型搜索
+   * (folder/doc/blob 过滤、ref_id 下发)由后端 feat/drive-search-multi-type 单独上线。
+   * 老 backend 收到 filters.types 会忽略——folder 命中泄漏、doc 命中 ref_id 缺失被静默
+   * skip、blob 命中 404——所以 driveOn=true 的部署在搜索后端就绪前必须靠此位保持隐藏，
+   * 运维在多类型搜索上线后再下发 drive_search_on=true。
+   */
+  driveSearchOn: boolean = false;
+  /**
    * Agent Mail 模块展示开关。后端字段 mail_on 为 true 时，前端在侧边栏 NavRail
    * 展示邮件入口；false 或字段缺失时隐藏。
    *
    * 默认 false(fail-safe)，仅控制前端入口展示，不承担权限校验。
    */
   mailOn: boolean = false;
+  /**
+   * Octo Assistant UID 列表。后端字段 octo_assistant_uids，来源 env
+   * DM_OCTO_ASSISTANT_UIDS。前端据此判别当前打开的应用 bot 是否为 Octo Assistant，
+   * 决定发 octo_assistant_opened 还是 app_opened 埋点事件（octo-dap S3 / YUJ-277）。
+   *
+   * 默认空数组（env 未设或后端未下发）。与 app_config.version 解耦，两个 appconfig
+   * 分支都下发，避免 version 缓存阻止 UID 列表更新。
+   */
+  octoAssistantUids: string[] = [];
   /**
    * OIDC provider 元数据数组, 由后端 /v1/common/appconfig 的 oidc_providers 字段下发。
    * OIDC 关闭时为空数组。前端不再硬编码具体 IdP, 部署 env 切 provider。
@@ -487,7 +539,9 @@ export class WKRemoteConfig {
       const previousDmloopOn = this.dmloopOn;
       const previousDmpersonalOn = this.dmpersonalOn;
       const previousDriveOn = this.driveOn;
+      const previousDriveSearchOn = this.driveSearchOn;
       const previousMailOn = this.mailOn;
+      const previousOctoAssistantUids = this.octoAssistantUids;
       const previousRequestFailed = this.requestFailed;
       const previousOidcProviders = this.oidcProviders;
       this.requestSuccess = true;
@@ -515,7 +569,11 @@ export class WKRemoteConfig {
       this.dmloopOn = parseRemoteBool(result["dmloop_on"]);
       this.dmpersonalOn = parseRemoteBool(result["dmpersonal_on"]);
       this.driveOn = parseRemoteBool(result["drive_on"]);
+      this.driveSearchOn = parseRemoteBool(result["drive_search_on"]);
       this.mailOn = parseRemoteBool(result["mail_on"]);
+      // Octo Assistant UID 列表：后端下发 octo_assistant_uids（逗号分隔字符串或数组），
+      // 前端据此判别当前打开的应用 bot 是否为 Octo Assistant（octo-dap S3 / YUJ-277）。
+      this.octoAssistantUids = parseOctoAssistantUids(result["octo_assistant_uids"]);
       this.oidcProviders = parseOidcProviders(result["oidc_providers"]);
       // 仅首次成功通知, 后续重新拉取(重连/手动刷新)不重复打扰订阅方。
       if (!wasSuccessful) this.notifyListeners();
@@ -536,7 +594,9 @@ export class WKRemoteConfig {
         previousDmloopOn !== this.dmloopOn ||
         previousDmpersonalOn !== this.dmpersonalOn ||
         previousDriveOn !== this.driveOn ||
+        previousDriveSearchOn !== this.driveSearchOn ||
         previousMailOn !== this.mailOn ||
+        !stringArraysEqual(previousOctoAssistantUids, this.octoAssistantUids) ||
         previousRequestFailed !== this.requestFailed ||
         !oidcProvidersEqual(previousOidcProviders, this.oidcProviders)
       ) {
@@ -893,6 +953,20 @@ export default class WKApp extends ProviderListener {
   /** 待打开子区面板的群组 ID，ChatContentPage 挂载时检查并消费 */
   pendingThreadPanel?: string;
 
+  /**
+   * subchannel_opened 去重 sentinel：由「已打开面板子区」再导航(打开完整视图/页内搜索/
+   * 文件预览)的三个调用点写入目标子区 channelID，ChatContentPage 挂载时消费。命中则跳过
+   * 挂载处的 subchannel_opened(didUpdate 已发过)，保证一次开子区手势只发一次。见 #1452 R10 P1-1。
+   */
+  pendingSubchannelOpenTracked?: string;
+
+  /**
+   * botfather_opened 来源标记：进入 botfather 会话的入口调用点(通讯录顶端 BotFather 横幅)
+   * 在 showConversation 前写入 entry 枚举，ChatContentPage 挂载时一次性消费并附到 botfather_opened
+   * 的 props.entry。未写入(会话列表点行 / 深链 / 路由恢复)→ 缺省 "conversation"。
+   */
+  pendingBotfatherOpenEntry?: string;
+
   /** 待打开的具体子区，ChatContentPage 挂载时检查并消费 */
   pendingThread?: {
     groupNo: string;
@@ -967,7 +1041,7 @@ export default class WKApp extends ProviderListener {
 
     // 是否是PC端
     if (
-      (window as any)?.__POWERED_ELECTRON__ ||
+      isElectronPowered() ||
       (window as any).__TAURI_IPC__
     ) {
       this.isPC = true;
@@ -990,7 +1064,7 @@ export default class WKApp extends ProviderListener {
       );
       this._deviceFlagMigrationHandled = true;
       markDeviceFlagMigration(migrationSid);
-      WKApp.loginInfo.logout();
+      void this.clearLocalLoginState();
     } else if (!hasDeviceFlagMismatch && WKApp.loginInfo.isLogined()) {
       // A matching session supersedes any marker left by an interrupted boot.
       clearDeviceFlagMigration(migrationSid);
@@ -1020,6 +1094,9 @@ export default class WKApp extends ProviderListener {
     });
 
     if (WKApp.loginInfo.isLogined()) {
+      // Module init runs before loginInfo.load(). Re-emit the auth lifecycle
+      // after restore so user-scoped stores bind to the loaded uid too.
+      WKApp.mittBus.emit("wk:auth-state-changed");
       this.startMain();
     }
 
@@ -1224,13 +1301,12 @@ export default class WKApp extends ProviderListener {
   }
 
   private async clearElectronAuthSession() {
-    if (
-      (window as any).__POWERED_ELECTRON__ &&
-      typeof (window as any).ipc?.invoke === "function"
-    ) {
+    if (isElectronPowered()) {
       try {
-        const result = await (window as any).ipc.invoke(IPC_CLEAR_AUTH_SESSION);
-        if (result?.ok !== true || result?.partial === true) {
+        const result = (await clearElectronAuthSessionBridge()) as
+          | { ok?: boolean; partial?: boolean }
+          | undefined;
+        if (result && (result.ok !== true || result.partial === true)) {
           console.warn("[auth] Electron auth-session cleanup was incomplete", result);
         }
       } catch {
@@ -1274,10 +1350,7 @@ export default class WKApp extends ProviderListener {
    * logout through the web redirect path.
    */
   private isElectronShell() {
-    return Boolean(
-      (window as any).__POWERED_ELECTRON__ &&
-      typeof (window as any).ipc?.invoke === "function",
-    );
+    return isElectronShellBridgeAvailable();
   }
 
   async logoutUserInitiated() {
@@ -1289,7 +1362,7 @@ export default class WKApp extends ProviderListener {
       loginProvider: WKApp.loginInfo.loginProvider,
       token: WKApp.loginInfo.token || "",
       apiURL: WKApp.apiClient.config.apiURL || "",
-      ipc: (window as any).ipc,
+      ipc: getOctoElectronBridge()?.oidc ?? getElectronIpcBridge(),
       env: this.isElectronShell() ? "desktop-shell" : "web",
       // Only forward the dev override when actually in a dev build; in
       // production `import.meta.env.DEV` is false and we must not read the
@@ -1342,7 +1415,7 @@ export default class WKApp extends ProviderListener {
       if (spaceId && uid.startsWith(`s${spaceId}_`)) {
         uid = uid.substring(spaceId.length + 2);
       }
-      if (!uid) uid = channel.channelID; // fallback
+      if (!uid) return "";
       return `${baseURL}users/${uid}/avatar?v=${avatarTag}`;
     } else if (channel.channelType === ChannelTypeGroup) {
       return `${baseURL}groups/${channel.channelID}/avatar?v=${avatarTag}`;
@@ -1357,6 +1430,7 @@ export default class WKApp extends ProviderListener {
   }
 
   avatarUser(uid: string) {
+    if (!uid) return "";
     const c = new Channel(uid, ChannelTypePerson);
     return this.avatarChannel(c);
   }

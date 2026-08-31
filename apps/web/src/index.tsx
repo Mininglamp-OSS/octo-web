@@ -5,7 +5,7 @@ import '@octo/ui/styles.css';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
-import  { BaseModule, I18nProvider, i18n, WKApp, Dap } from '@octo/base';
+import  { BaseModule, I18nProvider, i18n, WKApp, Dap, isElectronPowered } from '@octo/base';
 import  { LoginModule, BindModule } from '@octo/login';
 import  { DataSourceModule } from '@octo/datasource';
 import {ContactsModule} from '@octo/contacts';
@@ -28,7 +28,8 @@ import { LoopIcon } from './Components/Icons/LoopIcon';
 // preload 标记仍然保留，用于开发环境和 IPC 能力；但不能只依赖 preload 判断 API
 // 环境，否则 preload 加载异常时会误走 Web 分支，把 `/api/v1/` 解析成 `file:///api/v1/`。
 const isDesktopRuntime =
-  Boolean((window as any).__TAURI_IPC__ || (window as any).__POWERED_ELECTRON__) ||
+  Boolean((window as any).__TAURI_IPC__) ||
+  isElectronPowered() ||
   import.meta.env.VITE_ELECTRON_BUILD === "true" ||
   window.location.protocol === "file:"
 

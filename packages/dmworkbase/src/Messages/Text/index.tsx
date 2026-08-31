@@ -16,7 +16,7 @@ import { isMessageReactionChannelSupported } from "../../features/messageReactio
 import { getTextMessageUI } from "../../bridge/message/useTextMessageUI";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
-import { webhookPreviewClickHandler } from "../../bridge/message/webhookPreview";
+import { fleetPreviewClickHandler } from "../../bridge/message/webhookPreview";
 import "./index.css"
 
 /**
@@ -55,6 +55,8 @@ export class TextCell extends MessageCell {
     constructor(props: any) {
         super(props)
     }
+
+    private handleMentionClick = (uid: string) => this.props.context.showUser(uid)
 
     getCommonText(k: number, part: Part) {
         const texts = part.text.split("\n")
@@ -110,7 +112,7 @@ export class TextCell extends MessageCell {
     }
 
     getRenderMessageText() {
-        const { message, context } = this.props
+        const { message } = this.props
 
         // 流式消息：Markdown 渲染流式内容（带光标）
         if (message.streamOn) {
@@ -171,7 +173,7 @@ export class TextCell extends MessageCell {
                 content={plainText}
                 isSend={message.send}
                 mentions={mentions}
-                onMentionClick={(uid) => context.showUser(uid)}
+                onMentionClick={this.handleMentionClick}
                 emojis={emojis}
             />
         )
@@ -193,6 +195,12 @@ export class TextCell extends MessageCell {
                 isSelected: selectable && !!message.checked,
                 onSelect: selectable ? (selected) => context.checkeMessage(message.message, selected) : undefined,
             })
+            // One handler reference shared by click and auxclick (the handler
+            // gates on event.button internally): avoids a per-render double
+            // allocation and keeps the two paths provably identical.
+            const onBodyLinkClick = fleetPreviewClickHandler(
+                context.openWebhookPreview?.bind(context)
+            )
 
             return (
                 <MessageRow 
@@ -201,10 +209,8 @@ export class TextCell extends MessageCell {
                     isActive={context.isContextMenuOpen(message.message)}
                     onAvatarClick={(e) => context.onTapAvatar(message.fromUID, e)}
                     onSenderNameClick={() => context.showUser(message.fromUID)}
-                    onBodyClick={webhookPreviewClickHandler(
-                        message,
-                        context.openWebhookPreview?.bind(context)
-                    )}
+                    onBodyClick={onBodyLinkClick}
+                    onBodyAuxClick={onBodyLinkClick}
                 >
                     <div>
                         {message?.content?.reply && (
@@ -217,7 +223,7 @@ export class TextCell extends MessageCell {
                         )}
                         <TextContent
                             {...uiProps.content}
-                            onMentionClick={(uid) => context.showUser(uid)}
+                            onMentionClick={this.handleMentionClick}
                         />
                         {isMessageReactionChannelSupported(message.channel.channelType) &&
                             message.messageID && (

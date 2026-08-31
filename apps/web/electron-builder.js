@@ -32,10 +32,6 @@ module.exports = {
   extraMetadata: {
     main: "out-election/main/index.js",
   },
-  publish: [{
-    provider: "generic",
-    url: "https://api.example.com/v1/common/pcupdater/"
-  }],
   mac: {
     extendInfo: {
       NSMicrophoneUsageDescription: "授权访问麦克风",
@@ -60,15 +56,17 @@ module.exports = {
     icon: "resources/icons/icon.icns",
   },
   dmg: {
+    // eslint-disable-next-line no-template-curly-in-string
+    title: "${productName} ${version}",
     // background: 'build/appdmg.png', // dmg安装窗口背景图
     icon: "resources/icons/icon.icns", // 客户端图标
     iconSize: 100, // 安装图标大小
     // 安装窗口中包含的项目和配置
     contents: [
-      { x: 380, y: 280, type: "link", path: "/Applications" },
-      { x: 110, y: 280, type: "file" },
+      { x: 410, y: 220, type: "link", path: "/Applications" },
+      { x: 140, y: 220, type: "file" },
     ],
-    window: { width: 500, height: 500 }, // 安装窗口大小
+    window: { width: 560, height: 380 }, // 安装窗口大小
   },
   win: {
     icon: "resources/icons/icon.ico",

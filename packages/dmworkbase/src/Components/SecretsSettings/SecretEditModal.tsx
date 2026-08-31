@@ -119,6 +119,7 @@ export default function SecretEditModal({
       title={isEdit ? t("base.secrets.edit.title") : t("base.secrets.create.title")}
       onCancel={onClose}
       options={{ closeOnEsc: true, maskClosable: false }}
+      zIndex={1200}
       footer={
         <>
           <WKButton variant="ghost" onClick={onClose} disabled={saving}>

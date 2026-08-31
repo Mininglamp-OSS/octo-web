@@ -48,6 +48,25 @@ describe("BotManageService", () => {
     })
   })
 
+  it("listGroups trims q and omits it when blank/whitespace", async () => {
+    apiGet.mockResolvedValue({ list: [] })
+
+    await BotManageService.listGroups({ robotId: "bot1", limit: 30, q: "  hello  " })
+    expect(apiGet).toHaveBeenLastCalledWith("robot/bot1/groups", {
+      param: { limit: 30, q: "hello" },
+    })
+
+    await BotManageService.listGroups({ robotId: "bot1", limit: 30, q: "   " })
+    expect(apiGet).toHaveBeenLastCalledWith("robot/bot1/groups", {
+      param: { limit: 30 },
+    })
+
+    await BotManageService.listGroups({ robotId: "bot1", limit: 30, q: "" })
+    expect(apiGet).toHaveBeenLastCalledWith("robot/bot1/groups", {
+      param: { limit: 30 },
+    })
+  })
+
   it("enableMentionFree calls mention preference endpoint", async () => {
     apiPut.mockResolvedValueOnce(undefined)
 

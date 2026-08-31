@@ -20,9 +20,15 @@ import {
   ForwardService,
   interpretForwardResult,
   titleContextStore,
-  SummaryNotifyContent,
+  SummaryTipContent,
   isConversationDisbanded,
   Dap,
+  // CR: 必须走包的 public index，不能深路径 import `@octo/base/src/...`。
+  // dmworksummary 的 vitest.config.ts 末尾有一条**字符串** alias
+  // `@octo/base` -> `src/__mocks__/dmworkBase.ts`；字符串 alias 按前缀匹配，会把
+  // `@octo/base/src/Service/APIClient` 一并吃进 mock 文件里导致解析失败，
+  // 静默打断本包 4 个测试套件的 collection。
+  copyToClipboard,
 } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -32,6 +38,7 @@ import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
 import RoutePage from "@octo/base/src/Components/RoutePage";
 import { Channel as WkChannel } from "wukongimjssdk";
 import { splitSummaryText } from "../utils/splitMessage";
+import { convertDocErrorMessage } from "../utils/convertDocError";
 import { sendGroupSummaryCompletionTips } from "../utils/groupSummaryNotify";
 import { applyRegenerateVoiceInput } from "../utils/regenerateInput";
 import SummaryConfirmPage from "./SummaryConfirmPage";
@@ -65,6 +72,8 @@ import {
 } from "../utils/summaryHelpers";
 import { summaryTestIds } from "../utils/testIds";
 import CitationText from "../components/CitationText";
+import SummaryResultActions from "../components/SummaryResultActions";
+import { stripCitationMarkers } from "../components/citationStrip";
 import SelectedSourcesPanel from "../components/SelectedSourcesPanel";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import SummaryEditor from "../components/SummaryEditor";
@@ -152,6 +161,13 @@ interface SummaryDetailPageState {
     teamStreaming: boolean;
     teamStreamingContent: string;
     teamStreamError: string | null;
+    /**
+     * octo-smart-summary#195: 当前正在复制 / 转文档的操作行 key。
+     * 用 key 而不是 boolean，是为了让多个挂载点各自独立 loading —— 否则转个人总结时
+     * 团队总结那一行的按钮也会跟着转圈。
+     */
+    copyingKey: string | null;
+    convertingKey: string | null;
 }
 
 const INTER_MESSAGE_DELAY_MS = 200;
@@ -197,6 +213,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private tocSignature = "";
     private tocHeadingNodes: HTMLElement[] = [];
     private regenerateVoiceMode: RegenerateMode | null = null;
+    /** 转文档的同步重入闸（P1-b：semi-ui loading 不禁点，双击会创建两份文档）。 */
+    private convertInFlight = false;
 
     private handleRegenerateVoiceRecordingStart = () => {
         this.regenerateVoiceMode = this.state.regenerateMode;
@@ -275,6 +293,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         teamStreaming: false,
         teamStreamingContent: "",
         teamStreamError: null,
+        copyingKey: null,
+        convertingKey: null,
     };
 
     private personalPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -316,19 +336,28 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     /**
-     * 「运行→完成」沿的 smart_summary_completed 单发 + regenerate 复位。状态订阅
+     * 「运行→终态」沿的 smart_summary_completed 单发 + regenerate 复位。状态订阅
      * (handleStatusChangeEvent) 与兜底轮询(doFallbackPollOnce)两路共用本方法与
      * completedTrackedTaskId 去重锚(见三审 R3):先检出者写锚并发,后到者 id 相等即跳过——
-     * 按 task 精确一次。**离开 COMPLETED**(如 regenerate 把状态就地推回 PENDING)时清锚,
+     * 按 task 精确一次。终态含 COMPLETED / FAILED / CANCELLED 三态,以 result 字段区分。
+     * **离开终态**(如 regenerate 把状态就地推回 PENDING)时清锚,
      * 使同一 taskId 的下一次完成能再计一次(见六审 P1b:原先锚只写不清 → 除首次外每轮 regenerate
      * 的完成都命中 id 相等而被跳过,flagship 漏斗 smart_summary_completed 系统性漏计)。
      * 两路必须走同一入口,避免各自内联再次跑偏(这正是三→六审反复回炉的同源)。
      */
     private trackSummaryCompletedOnce(status: TaskStatus, taskId: number) {
-        if (status === TaskStatus.COMPLETED) {
+        // 终态三选一：完成 / 失败 / 取消，都算「一次结束」，按 result 区分。去重锚
+        // completedTrackedTaskId 仍按 task 维度精确一次（先到者写锚发送，后到者 id 相等即跳过）；
+        // 离开终态（如 regenerate 推回 PENDING）时清锚，使同一 taskId 的下一次结束能再计一次。
+        const result =
+            status === TaskStatus.COMPLETED ? "completed" :
+            status === TaskStatus.FAILED ? "failed" :
+            status === TaskStatus.CANCELLED ? "cancelled" :
+            null;
+        if (result) {
             if (this.completedTrackedTaskId !== taskId) {
                 this.completedTrackedTaskId = taskId;
-                Dap.shared.track("smart_summary_completed", {});
+                Dap.shared.track("smart_summary_completed", { result });
             }
         } else if (this.completedTrackedTaskId === taskId) {
             this.completedTrackedTaskId = null;
@@ -1174,11 +1203,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             ChannelTypeGroup,
             {
                 sendToChannel: async (channel, currentUserId) => {
-                    const content = new SummaryNotifyContent();
-                    content.fromUID = currentUserId;
-                    content.fromName = WKApp.loginInfo.selfDisplayName?.()
+                    const name = WKApp.loginInfo.selfDisplayName?.()
                         || WKApp.loginInfo.name
                         || currentUserId;
+                    // Iterate #1379: emit a WK_TIP (2000) system-range tip so
+                    // Web and native clients render it via their built-in
+                    // SystemContent path with no per-type adaptation.
+                    const content = new SummaryTipContent().setSender(currentUserId, name);
                     await WKSDK.shared().chatManager.send(content, channel);
                 },
                 isDisbanded: isConversationDisbanded,
@@ -2842,6 +2873,110 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         );
     }
 
+    /** octo-smart-summary#195: 复制总结内容到剪贴板 */
+    handleCopyContent = async (content: string, key: string) => {
+        const text = content?.trim();
+        if (!text) return;
+        this.setState({ copyingKey: key });
+        try {
+            // 复用 @octo/base 的 copyToClipboard：它已经处理了 execCommand 降级、
+            // iOS Safari 需要的 focus() + setSelectionRange() 兑底，以及 textarea 清理。
+            const ok = await copyToClipboard(content);
+            if (this.unmounted) return;
+            if (ok) {
+                Toast.success(this.context.t("summary.detail.copySuccess"));
+            } else {
+                Toast.error(this.context.t("summary.detail.copyFailed"));
+            }
+        } catch {
+            if (this.unmounted) return;
+            Toast.error(this.context.t("summary.detail.copyFailed"));
+        } finally {
+            // 只在 key 仍是自己时清，和 handleConvertToDoc 的 finally 同构：copyingKey 是
+            // 全页共享的单值，两行（个人/团队）先后点复制时，先完成的那次会把后一次
+            // 的 spinner 一起掐灭，后者看起来「点了没反应」。
+            if (!this.unmounted && this.state.copyingKey === key) {
+                this.setState({ copyingKey: null });
+            }
+        }
+    };
+
+    /** octo-smart-summary#195: 转为在线文档 */
+    handleConvertToDoc = async (content: string, title: string | undefined, key: string) => {
+        const text = content?.trim();
+        if (!text) return;
+        // 同步重入闸：semi-ui@2.93 的 Button `loading` 纯装饰、不禁点（round-4 P1-b(i)），
+        // 双开两个总结各点一下会并发两次转文档请求、创建两份文档。已有请求在飞时直接忽略，
+        // 不用 convertingKey（它是渲染态，异步 setState 拦不住同一事件循环里的第二次点击）。
+        if (this.convertInFlight) return;
+        this.convertInFlight = true;
+        // 同步预开标签页，保留用户激活状态，避免浏览器拦截 popup。
+        // 对齐 Pages/Chat/index.tsx 的写法：先开 about:blank 拿到真实的“被拦/成功”信号
+        // （带 noopener 的 window.open 成功时也返回 null，没法 null-check），再手动置空 opener。
+        const opened = window.open("about:blank", "_blank");
+        if (opened) {
+            try {
+                opened.opener = null;
+            } catch {
+                // 个别沙箱会冻结 opener setter；about:blank 同源，残留风险可控，继续。
+            }
+        }
+        this.setState({ convertingKey: key });
+        try {
+            const docTitle = title || this.context.t("summary.detail.defaultTitle");
+            // 转文档时去掉引用序号标记（`[1]` / 团队 `[P1]`）——它们是总结正文
+            // 的引用锚,落到文档正文里是噪声。实现见 citationStrip.ts：与渲染侧权威正则
+            // 对齐，护住 markdown 链接 / 代码块 / 引用定义（round-4 P1-a）。
+            const cleaned = stripCitationMarkers(content);
+            const { url } = await api.convertSummaryToDoc(docTitle, cleaned);
+            if (this.unmounted) {
+                if (opened && !opened.closed) opened.close();
+                return;
+            }
+            if (opened && !opened.closed) {
+                // 预开的标签页还在 → 导航它。
+                opened.location.href = url;
+                Toast.success(this.context.t("summary.detail.convertSuccess"));
+            } else {
+                // popup 被拦（opened=null）或预开标签已被用户关掉（opened.closed）：
+                // 文档**已经创建成功**，不再喊“允许弹出后重试”——照做只会再造一份孤儿文档
+                // （round-4 P1-b(iii)）。给出文档直达链接，链接可点、文档不丢。
+                Toast.warning({
+                    duration: 8,
+                    content: (
+                        <span>
+                            {this.context.t("summary.detail.convertPopupBlocked")}{" "}
+                            <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="summary-detail-doc-popup-link"
+                            >
+                                {this.context.t("summary.detail.convertDocLink")}
+                            </a>
+                        </span>
+                    ),
+                });
+            }
+        } catch (err) {
+            if (opened && !opened.closed) opened.close();
+            if (this.unmounted) return;
+            // 刻意不走 extractErrorMsg：host 的 normalizeApiError 只识别 401/403/404/429/5xx,
+            // docs-backend 的 422/413/412/409 全部被归一化成「未知错误」——一个**非空**字符串,
+            // 于是 `extractErrorMsg(err) || convertFailed` 里 `||` 右边永远不执行,更具体的原因
+            // 全被吞掉。convertDocErrorMessage 直接读 err.response.data.error（docs 模块的
+            // toApiErrorEnvelope 保证它在),认不出时才回落 convertFailed。
+            Toast.error(convertDocErrorMessage(err, this.context.t));
+        } finally {
+            // 只在 key 仍是自己时清：万一将来有并发路径覆写了 key，别把别人的
+            // loading 态顺手掐掉（round-4 P1-b(ii)）。
+            if (!this.unmounted && this.state.convertingKey === key) {
+                this.setState({ convertingKey: null });
+            }
+            this.convertInFlight = false;
+        }
+    };
+
     renderCompleted() {
         const { detail, isEditing } = this.state;
         const { t } = this.context;
@@ -2896,7 +3031,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 baseResultId={detail.result_id || 0}
                                 initialContent={detail.result.content || ""}
                                 onSave={this.handleEditSave}
-                                onCancel={this.handleEditCancel}
                                 exposeSave={(fn) => { this.editorSaveFn = fn; }}
                             />
                         </div>
@@ -2921,6 +3055,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             <span className="summary-detail-result-time">
                                 {t("summary.detail.lastEditedAt", { values: { time: formatDate(detail.result_edited_at) } })}
                             </span>
+                        )}
+                        {/* octo-smart-summary#195: 正在编辑（SummaryEditor）或预览历史版本时不渲染。
+                            上面的内容槽是三元，此时屏幕上显示的并不是 detail.result.content，
+                            再显示按钮会导出“看的是 v1、复制出来却是 v3”的内容。 */}
+                        {!isEditing && !this.state.showVersionDetailModal && (
+                            <SummaryResultActions
+                                testid="summary-actions-team-result"
+                                content={detail.result.content}
+                                title={detail.title}
+                                onCopy={(c) => this.handleCopyContent(c, "team-result")}
+                                onConvert={(c, title) => this.handleConvertToDoc(c, title, "team-result")}
+                                copying={this.state.copyingKey === "team-result"}
+                                converting={this.state.convertingKey === "team-result"}
+                            />
                         )}
                     </div>
                 </>
@@ -3057,7 +3205,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     baseResultId={this.state.detail?.result_id || 0}
                                     initialContent={personalResult.content || ""}
                                     onSave={this.handleEditSave}
-                                    onCancel={this.handleEditCancel}
                                     exposeSave={(fn) => { this.editorSaveFn = fn; }}
                                 />
                             </div>
@@ -3070,6 +3217,25 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 <CitationText content={personalResult.content} citations={personalResult.citations || []} />
                             </div>
                         )}
+                        {!isEditing && (
+                            <SummaryResultActions
+                                testid="summary-actions-personal-result"
+                                content={personalResult.content}
+                                title={detail?.title}
+                                onCopy={(c) => this.handleCopyContent(c, "personal-result")}
+                                onConvert={(c, title) => this.handleConvertToDoc(c, title, "personal-result")}
+                                copying={this.state.copyingKey === "personal-result"}
+                                converting={this.state.convertingKey === "personal-result"}
+                            />
+                        )}
+                        {/* CR: 这里原本还有一组「复制团队总结 / 团队总结转文档」按钮，已删除。
+                            单人 BY_PERSON 场景下 renderTeamSummary() 对 members.length <= 1 故意
+                            return null，即页面**刻意不展示团队总结正文**；却给这份不展示的内容
+                            挂操作按钮，用户会复制出自己从未在页面上见过的文字。另外两处门控谓词也不
+                            互补（此处看 participants，随 detail 同步返回；renderTeamSummary 看 members，
+                            是第二个异步请求），会出现重复渲染两组按钮或一组都没有。
+                            若确实需要单人也能看/复制团队总结，应先把正文展示出来（属产品变更，
+                            单开 issue），按钮跟着正文走。 */}
                     </>
                 )}
                 </>)}
@@ -3193,7 +3359,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             baseResultId={detail.result_id}
                             initialContent={detail.result.content || ""}
                             onSave={this.handleEditTeamSave}
-                            onCancel={this.handleEditTeamCancel}
                             exposeSave={(fn) => { this.editorSaveFn = fn; }}
                         />
                     </div>
@@ -3247,6 +3412,19 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             hidePlainCitations
                         />
                     </div>
+                )}
+                {/* octo-smart-summary#195: 预览历史版本时不渲染——上面显示的是 versionDetail.content，
+                    而按钮导出的是最新版 detail.result.content。 */}
+                {!this.state.showVersionDetailModal && (
+                    <SummaryResultActions
+                        testid="summary-actions-team-collab"
+                        content={detail.result.content}
+                        title={detail.title}
+                        onCopy={(c) => this.handleCopyContent(c, "team-collab")}
+                        onConvert={(c, title) => this.handleConvertToDoc(c, title, "team-collab")}
+                        copying={this.state.copyingKey === "team-collab"}
+                        converting={this.state.convertingKey === "team-collab"}
+                    />
                 )}
             </div>
         );
@@ -3437,13 +3615,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     baseResultId={detail?.result_id ?? 0}
                                     initialContent={content}
                                     onSave={this.handleEditPersonalReportSave}
-                                    onCancel={this.handleEditPersonalReportCancel}
                                     exposeSave={(fn) => { this.editorSaveFn = fn; }}
                                 />
                             </div>
                         );
                     }
-                    // need3：他人那条隐私收口（citations=[] 、清 [n]）不变；自己那条不被清洗，可正常显示引用。
+                    // need3：他人那条隐私收口（citations=[]、清 [n]）保持原行为；自己那条
+                    // 不被清洗，可正常显示引用。Markdown 感知的清理由转文档路径单独负责。
                     const displayContent = isMe ? content : content.replace(/\[\d+\]/g, '');
                     const displayCitations = isMe ? (m.citations || []) : [];
                     const needsTruncate = displayContent.length > 100;
@@ -3566,7 +3744,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         baseResultId={detail.result_id ?? 0}
                         initialContent={myContent}
                         onSave={this.handleEditMyDraftSave}
-                        onCancel={this.handleEditMyDraftCancel}
                         exposeSave={(fn) => { this.editorSaveFn = fn; }}
                     />
                 </div>

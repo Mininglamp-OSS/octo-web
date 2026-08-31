@@ -171,7 +171,11 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
 
   return (
     <article
-      className={isOwnerCard ? "skill-market-card skill-market-card--owner" : "skill-market-card"}
+      className={[
+        "skill-market-card",
+        isOwnerCard ? "skill-market-card--owner" : "",
+        isPlatformPublished ? "skill-market-card--official" : "",
+      ].filter(Boolean).join(" ")}
       role="button"
       tabIndex={0}
       aria-label={ariaLabel}

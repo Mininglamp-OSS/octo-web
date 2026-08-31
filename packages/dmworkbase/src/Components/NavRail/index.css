@@ -115,6 +115,216 @@
     flex-shrink: 0;
 }
 
+.wk-navrail__quick-mute-wrap { position: relative; width: 100%; }
+.wk-navrail__quick-mute-trigger svg { width: 20px; height: 20px; flex: 0 0 20px; }
+.wk-navrail__quick-mute-menu { padding: 8px; }
+.wk-navrail__quick-mute-title { padding: 7px 10px 2px; color: var(--wk-text-primary); font-size: 14px; font-weight: 700; line-height: 1.45; }
+.wk-navrail__quick-mute-hint { padding: 0 10px 8px; color: var(--wk-text-tertiary); font-size: 12px; line-height: 1.5; }
+.wk-navrail__quick-mute-option, .wk-navrail__quick-mute-resume { display: flex; width: 100%; min-height: 36px; align-items: center; justify-content: space-between; padding: 5px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--wk-text-primary); cursor: pointer; font: inherit; font-size: 13px; line-height: 1.4; text-align: left; transition: background 140ms ease, color 140ms ease; }
+.wk-navrail__quick-mute-option:hover, .wk-navrail__quick-mute-option:focus-visible, .wk-navrail__quick-mute-resume:hover, .wk-navrail__quick-mute-resume:focus-visible { background: var(--wk-bg-item-hover); outline: none; }
+.wk-navrail__quick-mute-option:disabled, .wk-navrail__quick-mute-resume:disabled { cursor: not-allowed; opacity: .5; }
+.wk-navrail__quick-mute-resume { margin: 4px 0 0; padding-inline: 10px; border-top: 1px solid var(--wk-border-subtle); border-radius: 0; color: var(--wk-color-accent); font-weight: 600; }
+.wk-navrail__quick-mute-custom { display: grid; gap: 6px; padding: 6px 10px 4px; }
+.wk-navrail__quick-mute-custom input { width: 100%; min-height: 30px; box-sizing: border-box; padding: 0 7px; border: 1px solid var(--wk-border-default); border-radius: 5px; background: var(--wk-bg-surface); color: var(--wk-text-primary); font: inherit; font-size: 12px; }
+.wk-navrail__quick-mute-custom input:focus-visible { border-color: var(--wk-color-accent); outline: 2px solid var(--wk-brand-primary-ring); outline-offset: 0; }
+.wk-navrail__quick-mute-custom button { min-height: 30px; border: 1px solid var(--wk-border-default); border-radius: 5px; background: var(--wk-bg-surface); color: var(--wk-text-primary); cursor: pointer; font-size: 12px; }
+.wk-navrail__quick-mute-custom button:hover, .wk-navrail__quick-mute-custom button:focus-visible { background: var(--wk-bg-item-hover); outline: none; }
+.wk-navrail__quick-mute-scope { display: grid; gap: 4px; margin: 6px 4px 2px; padding-top: 8px; border-top: 1px solid var(--wk-border-subtle); color: var(--wk-text-tertiary); font-size: 12px; }
+.wk-navrail__quick-mute-scope select { min-height: 28px; border: 1px solid var(--wk-border-default); border-radius: 5px; background: var(--wk-bg-surface); color: var(--wk-text-primary); font-size: 12px; }
+.wk-navrail__quick-mute-error { padding: 6px 4px 2px; color: var(--wk-color-danger, #d14343); font-size: 12px; }
+.wk-navrail__quick-mute-error button { padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; text-decoration: underline; }
+
+/* ── Update modal ── */
+.wk-update-modal .wk-modal-shell {
+    padding: var(--wk-sp-6);
+}
+
+.wk-update-modal .wk-modal-title {
+    margin: 0;
+    padding-right: var(--wk-sp-8);
+    font-size: var(--wk-text-size-xl);
+    line-height: var(--wk-leading-tight);
+}
+
+.wk-update-modal .wk-modal-footer {
+    justify-content: flex-end;
+    margin-top: var(--wk-sp-4);
+    padding-top: var(--wk-sp-2);
+    border-top: none;
+    gap: var(--wk-sp-2);
+}
+
+.wk-update-modal__body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--wk-sp-4);
+    padding-top: var(--wk-sp-4);
+    color: var(--wk-text-secondary);
+    text-align: center;
+}
+
+.wk-update-modal__illustration {
+    display: block;
+    width: 160px;
+    height: 160px;
+    margin: 0 auto;
+}
+
+.wk-update-modal__summary {
+    width: 100%;
+    padding: 0;
+    color: var(--wk-text-primary);
+    text-align: center;
+}
+
+.wk-update-modal__progress-circle + .wk-update-modal__summary,
+.wk-update-modal__illustration + .wk-update-modal__summary {
+    margin-top: calc(var(--wk-sp-2) * -1);
+}
+
+.wk-update-modal__content {
+    color: var(--wk-text-primary);
+    line-height: var(--wk-leading-snug);
+    overflow-wrap: anywhere;
+}
+
+.wk-update-modal__content-title {
+    margin-bottom: var(--wk-sp-2);
+    font-size: var(--wk-text-size-md);
+    font-weight: var(--wk-font-semibold);
+    line-height: var(--wk-leading-normal);
+    text-align: left;
+}
+
+.wk-update-modal__content .wk-navrail__changelog-markdown {
+    max-height: min(240px, 35vh);
+    overflow-y: auto;
+    padding-right: var(--wk-sp-2);
+    font-size: var(--wk-text-size-md);
+    line-height: var(--wk-leading-normal);
+    text-align: left;
+    scrollbar-color: var(--wk-border-default) transparent;
+    scrollbar-width: thin;
+}
+
+.wk-update-modal__content .wk-navrail__changelog-markdown::-webkit-scrollbar {
+    width: 6px;
+}
+
+.wk-update-modal__content .wk-navrail__changelog-markdown::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.wk-update-modal__content .wk-navrail__changelog-markdown::-webkit-scrollbar-thumb {
+    border-radius: var(--wk-r-full);
+    background: var(--wk-border-default);
+}
+
+.wk-update-modal__versions {
+    margin-top: var(--wk-sp-1);
+    color: var(--wk-text-tertiary, var(--wk-text-secondary));
+    font-size: var(--wk-text-size-md);
+    line-height: var(--wk-leading-normal);
+}
+
+.wk-update-modal__force-update {
+    margin-top: var(--wk-sp-3);
+    color: var(--wk-color-danger);
+}
+
+.wk-update-modal__progress-circle {
+    position: relative;
+    width: 144px;
+    height: 144px;
+}
+
+.wk-update-modal__progress-circle svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.wk-update-modal__progress-circle-track,
+.wk-update-modal__progress-circle-value {
+    fill: none;
+    stroke-width: 16;
+}
+
+.wk-update-modal__progress-circle-track {
+    stroke: var(--wk-bg-elevated);
+}
+
+.wk-update-modal__progress-circle-value {
+    stroke-linecap: round;
+    will-change: stroke-dashoffset;
+    transition: stroke-dashoffset var(--wk-dur-slow) var(--wk-ease);
+}
+
+.wk-update-modal__progress-circle--indeterminate .wk-update-modal__progress-circle-value {
+    stroke-dasharray: 96 306;
+    stroke-dashoffset: 0;
+    animation: wk-update-progress-spin var(--wk-dur-slow) linear infinite;
+    transform-origin: center;
+}
+
+@keyframes wk-update-progress-spin {
+    to {
+        transform: rotate(270deg);
+    }
+}
+
+.wk-update-modal__progress-circle-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.wk-update-modal__progress-circle-label strong {
+    color: var(--wk-color-accent);
+    font-size: var(--wk-text-size-xl);
+    font-weight: var(--wk-font-semibold);
+    line-height: var(--wk-leading-tight);
+}
+
+.wk-update-modal__progress-circle-label span {
+    margin-top: var(--wk-sp-1);
+    color: var(--wk-text-secondary);
+    font-size: var(--wk-text-size-sm);
+    line-height: var(--wk-leading-normal);
+}
+
+.wk-update-modal .wk-modal-footer .wk-btn {
+    min-width: 64px;
+    height: 36px;
+    padding: 0 var(--wk-sp-4);
+    border-radius: var(--wk-r-full);
+    font-size: var(--wk-text-size-md);
+    font-weight: var(--wk-font-semibold);
+}
+
+.wk-update-modal .wk-modal-footer .wk-btn--secondary {
+    background: var(--wk-bg-base);
+}
+
+.wk-update-modal .wk-modal-footer .wk-btn--secondary:hover:not(:disabled) {
+    background: var(--wk-bg-hover);
+}
+
+@media (max-width: 520px) {
+    .wk-update-modal .wk-modal-shell {
+        width: min(480px, calc(100vw - 32px));
+        padding: var(--wk-sp-6);
+    }
+
+    .wk-update-modal__versions {
+        font-size: var(--wk-text-size-md);
+    }
+}
+
 .wk-layout-tab-expanded .wk-navrail__sep {
     width: auto;
     margin: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
@@ -195,8 +405,16 @@
     width: 224px;
 }
 
+/* 快捷静音参考 quick-mute demo，保持侧边栏现有紧凑宽度。 */
+.wk-navrail__flyout.wk-navrail__quick-mute-menu {
+    background: #fff;
+    border-color: #e4e4e4;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(28, 28, 35, 0.14), 0 2px 6px rgba(28, 28, 35, 0.06);
+}
+
 .wk-navrail__flyout--lg {
-    width: 240px;
+    width: 264px;
     background: var(--wk-bg-surface);
     border-color: var(--wk-border-subtle);
     border-radius: 8px;                /* Figma: cornerRadius=8 */
@@ -385,18 +603,6 @@
 }
 
 /* ── Changelog markdown ── */
-.wk-navrail__changelog-content {
-    max-height: calc(var(--wk-sp-10) * 10);
-    overflow: auto;
-    padding: var(--wk-sp-2) 0;
-}
-
-.wk-navrail__changelog-meta {
-    margin-bottom: var(--wk-sp-3);
-    color: var(--wk-text-tertiary);
-    font-size: var(--wk-text-size-base);
-}
-
 .wk-navrail__changelog-markdown {
     color: var(--wk-text-primary);
     font: var(--wk-text-body);
@@ -555,6 +761,16 @@
     display: none;
 }
 
+/* 设置入口在收起态也展示名称，与快捷静音入口保持一致。 */
+.wk-navrail__settings-wrap .wk-navrail__item > .wk-navrail__item-label {
+    display: block;
+}
+
+/* 快捷静音在收起态也需要保留“提醒开启 / 已静音”状态文字。 */
+.wk-navrail__quick-mute-wrap .wk-navrail__item > .wk-navrail__item-label {
+    display: block;
+}
+
 .wk-layout-tab-expanded .wk-navrail__bottom {
     align-items: stretch;
     gap: var(--wk-sp-2);
@@ -698,45 +914,6 @@
     color: var(--wk-text-primary);
 }
 
-
-/* ── 设置面板内版本更新提示 ── */
-.wk-navrail__settings-version-update {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--wk-sp-2, 8px);
-    padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
-    border-bottom: 1px solid var(--wk-border-subtle);
-    color: var(--wk-text-primary);
-    font-size: var(--wk-text-size-sm, 13px);
-    cursor: default;
-}
-
-.wk-navrail__settings-version-refresh {
-    padding: 2px 10px;
-    border-radius: 4px;
-    border: none;
-    background: var(--wk-brand-primary);
-    color: #fff;
-    font-size: var(--wk-text-size-sm, 13px);
-    cursor: pointer;
-    flex-shrink: 0;
-}
-
-.wk-navrail__settings-version-refresh:hover {
-    opacity: 0.85;
-}
-
-/* ── Settings panel (flyout) ── */
-.wk-navrail__settings-list {
-    list-style: none;
-}
-
-.wk-navrail__settings-list .wk-navrail__flyout-item {
-    border-radius: 0;
-    padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
-    font-size: var(--wk-text-size-sm, 13px);
-}
 
 /* ── User avatar ── */
 .wk-navrail__avatar {

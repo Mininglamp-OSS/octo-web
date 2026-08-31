@@ -180,7 +180,8 @@ describe('AgentChatPanel - Save as Summary', () => {
         // 等待异步操作完成
         await waitFor(() => {
             // 验证 onSaveAsSummary 被正确调用
-            expect(onSaveAsSummary).toHaveBeenCalledWith('测试总结');
+            // WEB-03: 第二参是绑定的 request_id；本用例没发过消息，故为 undefined。
+            expect(onSaveAsSummary).toHaveBeenCalledWith('测试总结', undefined);
             expect(onSaveAsSummary).toHaveBeenCalledTimes(1);
         });
         
@@ -225,7 +226,8 @@ describe('AgentChatPanel - Save as Summary', () => {
         // 等待异步操作完成
         await waitFor(() => {
             // 验证 onSaveAsSummary 被调用
-            expect(onSaveAsSummary).toHaveBeenCalledWith('测试总结');
+            // WEB-03: 第二参是绑定的 request_id；本用例没发过消息，故为 undefined。
+            expect(onSaveAsSummary).toHaveBeenCalledWith('测试总结', undefined);
             expect(onSaveAsSummary).toHaveBeenCalledTimes(1);
         });
         

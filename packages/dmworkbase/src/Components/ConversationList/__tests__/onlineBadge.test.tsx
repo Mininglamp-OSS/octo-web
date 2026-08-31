@@ -221,4 +221,27 @@ describe("online badge in compact (favorites/group) list", () => {
     expect(recentHasBadge).toBe(true);
     expect(compactHasBadge).toBe(recentHasBadge);
   });
+
+  it("covers list filtering and collection helpers", () => {
+    const list: any = new (ConversationList as any)({ filter: "all" });
+    const person: any = { channel: new MockChannel("p", 1), channelInfo: { orgData: { robot: 0 } }, remoteExtra: { draft: "draft" } };
+    const group: any = { channel: new MockChannel("g", 2), channelInfo: { orgData: {} }, remoteExtra: {} };
+    expect(list.lastContent(person)).toBe("draft");
+    expect(list.lastContent({ ...group, lastMessage: undefined })).toBeUndefined();
+    expect(list.getOnlineTip({ online: true } as any)).toBeUndefined();
+    expect(list.needShowOnlineStatus({ online: true } as any)).toBeTypeOf("boolean");
+    expect(list.filterConversation(person)).toBe(true);
+    list.props = { filter: "group" };
+    expect(list.filterConversation(group)).toBe(true);
+    list.props = { filter: "dm" };
+    expect(list.filterConversation(person)).toBe(true);
+    list.props = { filter: "ai" };
+    expect(list.filterConversation(person)).toBe(false);
+    list.props = { filter: "human" };
+    expect(list.filterConversation(person)).toBe(true);
+    const thread = { channel: new MockChannel("g____t", 3), channelInfo: { orgData: { parentGroupNo: "g" } } };
+    const grouped = list.groupThreadsWithParent([group, thread] as any, 0);
+    expect(grouped.threadsByParent.get("g")).toHaveLength(1);
+    expect(grouped.items.length).toBeGreaterThan(0);
+  });
 });

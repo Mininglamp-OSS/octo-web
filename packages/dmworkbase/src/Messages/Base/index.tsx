@@ -383,6 +383,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     const showAvatar = this.needAvatar();
     const timeStr = formatMessageTimestamp(message.timestamp);
     const selectionMode = context.editOn();
+    const avatarClickable = showAvatar && !webhookFrom && !selectionMode;
     const selectable = isMessageSelectable(message);
 
     // 外部群成员来源标记：按当前查看 Space 相对渲染。
@@ -505,35 +506,52 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
             ) : undefined}
 
             {/* 头像：flex item，仅 first/single 显示，否则占位 */}
-            <div
-              className={classNames(
-                "senderAvatar",
-                showAvatar ? undefined : "senderAvatar-placeholder"
-              )}
-              onClick={
-                // webhook 发送者没有个人资料页，点击不响应
-                showAvatar && !(webhookDisplay && !webhookDisplay.avatarClickable)
-                  ? (el) => {
-                      context.onTapAvatar(message.fromUID, el);
-                    }
-                  : undefined
-              }
-            >
-              {showAvatar &&
-                (webhookDisplay && webhookDisplay.avatarUrl ? (
-                  // webhook 管理员自定义头像
+            {avatarClickable ? (
+              <button
+                type="button"
+                className="senderAvatar"
+                aria-label={this.context.t("base.conversation.avatarMenu.open", {
+                  values: { name: displayName },
+                })}
+                onClick={(event) => context.onTapAvatar(message.fromUID, event)}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+              >
+                {webhookDisplay && webhookDisplay.avatarUrl ? (
                   <WKAvatar
                     src={webhookDisplay.avatarUrl}
                     style={{ width: "32px", height: "32px" }}
                   />
                 ) : (
-                  // 普通消息，以及无自定义头像的 webhook：都走用户头像链路
                   <WKAvatar
                     channel={avatarChannel}
                     style={{ width: "32px", height: "32px" }}
                   />
-                ))}
-            </div>
+                )}
+              </button>
+            ) : (
+              <div
+                className={classNames(
+                  "senderAvatar",
+                  showAvatar ? undefined : "senderAvatar-placeholder"
+                )}
+              >
+                {showAvatar &&
+                  (webhookDisplay?.avatarUrl ? (
+                    <WKAvatar
+                      src={webhookDisplay.avatarUrl}
+                      style={{ width: "32px", height: "32px" }}
+                    />
+                  ) : (
+                    <WKAvatar
+                      channel={avatarChannel}
+                      style={{ width: "32px", height: "32px" }}
+                    />
+                  ))}
+              </div>
+            )}
 
             {/* 消息体列 */}
             <div className="wk-msg-body">
@@ -575,8 +593,24 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
                 <div
                   className="wk-message-base-bubble"
                   style={bubbleStyle}
+                  tabIndex={selectionMode ? undefined : 0}
                   onContextMenu={(event) => {
                     context.showContextMenus(message.message, event);
+                  }}
+                  onKeyDown={(event) => {
+                    if (selectionMode) return;
+                    if ((event.shiftKey && event.key === "F10") || event.key === "ContextMenu") {
+                      event.preventDefault();
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      const contextMenuEvent = new MouseEvent("contextmenu", {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: rect.left + Math.min(rect.width / 2, 24),
+                        clientY: rect.top + Math.min(rect.height / 2, 24),
+                      }) as MouseEvent & { focusFirstItem?: boolean };
+                      contextMenuEvent.focusFirstItem = true;
+                      event.currentTarget.dispatchEvent(contextMenuEvent);
+                    }
                   }}
                   data-message-seq={message.messageSeq}
                 >
