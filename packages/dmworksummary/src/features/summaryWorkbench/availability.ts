@@ -25,6 +25,7 @@ export interface SummaryWorkbenchEnabledAvailability {
     spaceId: string;
     reason: "supported";
     contractVersion: typeof SUMMARY_WORKSPACE_CONTRACT_VERSION;
+    maxTimeRangeDays: number;
     checkedAt: number;
 }
 
@@ -271,6 +272,7 @@ export class SummaryWorkbenchAvailability {
             spaceId,
             reason: "supported",
             contractVersion: SUMMARY_WORKSPACE_CONTRACT_VERSION,
+            maxTimeRangeDays: value.max_time_range_days,
             checkedAt: this.now(),
         };
     }
@@ -387,6 +389,9 @@ function isCapabilities(
     const record = value as Record<string, unknown>;
     return (
         typeof record.enabled === "boolean" &&
-        typeof record.contract_version === "string"
+        typeof record.contract_version === "string" &&
+        typeof record.max_time_range_days === "number" &&
+        Number.isInteger(record.max_time_range_days) &&
+        record.max_time_range_days > 0
     );
 }

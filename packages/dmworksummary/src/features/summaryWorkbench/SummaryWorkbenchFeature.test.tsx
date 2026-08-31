@@ -108,7 +108,7 @@ vi.mock("../../Service/SummaryWorkbenchService", () => ({
 }));
 
 vi.mock("../../ui/SummaryWorkbench", () => ({
-  default: ({ state, actions }: any) => (
+  default: ({ state, actions, contextPanel }: any) => (
     <div
       data-testid="workbench-ui"
       data-can-send={String(state.canSend)}
@@ -154,21 +154,58 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
       >
         open-participant
       </button>
+      <button type="button" onClick={() => actions.onOpenContext("time_range")}>
+        open-time-range
+      </button>
       <button type="button" onClick={actions.onOpenScheduledSummary}>
         open-schedule
       </button>
+      {state.showTemplateTrigger && (
+        <button type="button" onClick={() => actions.onOpenContext("template")}>
+          open-template
+        </button>
+      )}
+      <button type="button" onClick={actions.onNewSession}>
+        new-session
+      </button>
+      {contextPanel}
     </div>
   ),
 }));
 
 vi.mock("../../components/ChatSelectorModal", () => ({
-  default: () => null,
+  default: ({ visible, mode, channel }: any) =>
+    visible ? (
+      <div
+        data-testid="chat-selector"
+        data-mode={mode ?? "chat"}
+        data-channel-id={channel?.channelID ?? ""}
+      />
+    ) : null,
 }));
 vi.mock("../../components/TemplateSelectorModal", () => ({
-  default: () => null,
+  default: ({ visible, inline, onChange }: any) =>
+    visible ? (
+      <div data-testid="template-selector" data-inline={String(inline)}>
+        <button
+          type="button"
+          onClick={() =>
+            onChange({
+              templateId: "weekly",
+              label: "Weekly",
+              requirement: "Summarize progress and risks",
+            })
+          }
+        >
+          choose-template
+        </button>
+      </div>
+    ) : null,
 }));
 vi.mock("../../components/TimeRangeSelector", () => ({
-  default: () => null,
+  default: ({ maxDays }: { maxDays: number }) => (
+    <div data-testid="time-range-selector" data-max-days={maxDays} />
+  ),
 }));
 vi.mock("../../components/SummaryReferenceSidePanel", () => ({
   default: ({ taskId }: { taskId: number }) => (
@@ -243,6 +280,14 @@ function controller(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
 describe("SummaryWorkbenchFeature", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -283,10 +328,222 @@ describe("SummaryWorkbenchFeature", () => {
     expect(screen.getByTestId("workbench-ui").dataset.canSend).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
-    await waitFor(() => expect(send).toHaveBeenCalledWith("personal-intent"));
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith("personal-intent", "system_intent")
+    );
     expect(mocks.markNotificationEligible).toHaveBeenCalledWith(101);
     expect(mocks.busEmit).toHaveBeenCalledWith(
       "summary-list-refresh-requested"
+    );
+  });
+
+  it("keeps templates expanded inline and fills an empty composer on selection", () => {
+    const current = controller();
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+
+    expect(screen.getByTestId("template-selector")).toHaveAttribute(
+      "data-inline",
+      "true"
+    );
+    fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
+
+    expect(current.updateScope).toHaveBeenCalledWith(
+      expect.objectContaining({
+        template: expect.objectContaining({ templateId: "weekly" }),
+      })
+    );
+    expect(current.setComposerValue).toHaveBeenCalledWith(
+      "Summarize progress and risks"
+    );
+    expect(screen.getByTestId("template-selector")).toBeInTheDocument();
+  });
+
+  it("clears the composer and collapses templates as soon as the task starts", async () => {
+    const pendingResponse = deferred<any>();
+    const current = controller({
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Summarize the launch risks",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: true,
+      },
+      send: vi.fn(() => pendingResponse.promise),
+    });
+    current.setComposerValue = vi.fn((value: string) => {
+      current.viewState.inputValue = value;
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    expect(current.setComposerValue).toHaveBeenCalledWith("");
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "false"
+    );
+    expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
+
+    pendingResponse.resolve({
+      resultType: "agent_preview",
+      preview: { content: "Draft" },
+    });
+    await waitFor(() => expect(current.send).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "open-template" }));
+    expect(screen.getByTestId("template-selector")).toBeInTheDocument();
+  });
+
+  it("collapses templates after restoring a session that already has messages", async () => {
+    localStorage.setItem(
+      "summary-workbench-session:v1:space-a:global",
+      "restored-session"
+    );
+    const current = controller({ isHydrating: true });
+    mocks.useSummaryWorkbench.mockImplementation(() => current);
+
+    const view = render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    expect(screen.getByTestId("template-selector")).toBeInTheDocument();
+
+    current.isHydrating = false;
+    current.viewState.messages = [
+      { id: "message-a", role: "assistant", content: "Restored response" },
+    ];
+    view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument()
+    );
+    expect(
+      screen.getByRole("button", { name: "open-template" })
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the composer and templates when the request is not accepted", async () => {
+    const pendingResponse = deferred<undefined>();
+    const current = controller({
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Keep this request",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: true,
+      },
+      send: vi.fn(() => pendingResponse.promise),
+    });
+    current.setComposerValue = vi.fn((value: string) => {
+      current.viewState.inputValue = value;
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    expect(current.setComposerValue).toHaveBeenCalledWith("");
+    expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
+
+    pendingResponse.resolve(undefined);
+    await waitFor(() =>
+      expect(current.setComposerValue).toHaveBeenLastCalledWith(
+        "Keep this request"
+      )
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("template-selector")).toBeInTheDocument()
+    );
+    expect(
+      screen.queryByRole("button", { name: "open-template" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("restores the template gallery when starting a new session", async () => {
+    const current = controller({
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Create a draft",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: true,
+      },
+      send: vi.fn().mockResolvedValue({
+        resultType: "agent_preview",
+        preview: { content: "Draft" },
+      }),
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() =>
+      expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument()
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "new-session" }));
+    expect(current.resetSession).toHaveBeenCalledWith({ scope: scope() });
+    expect(screen.getByTestId("template-selector")).toBeInTheDocument();
+  });
+
+  it("confirms before replacing manually entered text with a template", () => {
+    const current = controller({
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Keep my custom requirement",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: true,
+      },
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
+
+    expect(current.updateScope).not.toHaveBeenCalled();
+    expect(current.setComposerValue).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
+    expect(current.updateScope).toHaveBeenCalledTimes(1);
+    expect(current.setComposerValue).toHaveBeenCalledWith(
+      "Summarize progress and risks"
+    );
+  });
+
+  it("uses the backend-advertised time range limit", () => {
+    mocks.useSummaryWorkbench.mockReturnValue(controller());
+
+    render(
+      <SummaryWorkbenchFeature spaceId="space-a" maxTimeRangeDays={90} />,
+      { legacyRoot: true }
+    );
+    fireEvent.click(screen.getByRole("button", { name: "open-time-range" }));
+
+    expect(screen.getByTestId("time-range-selector")).toHaveAttribute(
+      "data-max-days",
+      "90"
+    );
+    expect(screen.getByTestId("time-range-selector").parentElement).toHaveClass(
+      "wk-summary-workbench-feature__time-range-panel"
     );
   });
 
@@ -324,14 +581,126 @@ describe("SummaryWorkbenchFeature", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
-    await waitFor(() => expect(send).toHaveBeenCalledWith("personal-intent"));
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith("personal-intent", "system_intent")
+    );
     expect(mocks.markNotificationEligible).not.toHaveBeenCalled();
   });
 
-  it("sends the standard team intent and waits for confirmation", async () => {
+  it("sends a template-only fallback as an explicit start intent for recent-chat discovery", async () => {
     const send = vi.fn().mockResolvedValue({
-      resultType: "workflow_confirmation",
-      confirmation: {},
+      resultType: "agent_preview",
+      preview: { content: "Draft", assumptions: ["最近 1 个聊天"] },
+    });
+    const current = controller({ send });
+    current.updateScope = vi.fn((nextScope: SummaryWorkbenchScope) => {
+      current.scope = nextScope;
+    });
+    current.setComposerValue = vi.fn((value: string) => {
+      current.viewState.inputValue = value;
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
+
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "true"
+    );
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith("personal-intent", "system_intent")
+    );
+  });
+
+  it.each([
+    ["participants plus template", []],
+    [
+      "chat, participants, and template",
+      [{ chatId: "chat-a", chatType: "group" as const, name: "Product" }],
+    ],
+  ])("starts %s with the direct team intent", async (_label, channels) => {
+    const send = vi.fn().mockResolvedValue({
+      resultType: "workflow_started",
+      workflow: { taskId: 202, taskTitle: "Team update" },
+    });
+    const current = controller({
+      scope: scope({
+        selectedChannels: channels,
+        participants: [{ userId: "user-a", userName: "Alex" }],
+      }),
+      send,
+    });
+    current.updateScope = vi.fn((nextScope: SummaryWorkbenchScope) => {
+      current.scope = nextScope;
+    });
+    current.setComposerValue = vi.fn((value: string) => {
+      current.viewState.inputValue = value;
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith("team-intent", "system_intent")
+    );
+    expect(mocks.markNotificationEligible).toHaveBeenCalledWith(202);
+  });
+
+  it.each([
+    ["participants", []],
+    [
+      "chat and participants",
+      [{ chatId: "chat-a", chatType: "group" as const, name: "Product" }],
+    ],
+  ])("allows %s with a real user request", async (_label, channels) => {
+    const send = vi.fn().mockResolvedValue({
+      resultType: "workflow_started",
+      workflow: { taskId: 203, taskTitle: "Team update" },
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(
+      controller({
+        scope: scope({
+          selectedChannels: channels,
+          participants: [{ userId: "user-a", userName: "Alex" }],
+        }),
+        viewState: {
+          layout: "full",
+          messages: [],
+          contextItems: [],
+          inputValue: "Focus on launch risks",
+          placeholderKey: "summary.workbench.placeholder.initial",
+          isSending: false,
+          canSend: true,
+        },
+        send,
+      })
+    );
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "true"
+    );
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() => expect(send).toHaveBeenCalledWith(undefined, "user"));
+  });
+
+  it("disables chat plus participants until a template or user request is added", () => {
+    const send = vi.fn().mockResolvedValue({
+      resultType: "workflow_started",
+      workflow: { taskId: 202 },
     });
     mocks.useSummaryWorkbench.mockReturnValue(
       controller({
@@ -352,10 +721,38 @@ describe("SummaryWorkbenchFeature", () => {
     render(<SummaryWorkbenchFeature spaceId="space-a" />, {
       legacyRoot: true,
     });
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "false"
+    );
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
-    await waitFor(() => expect(send).toHaveBeenCalledWith("team-intent"));
+    expect(send).not.toHaveBeenCalled();
     expect(mocks.markNotificationEligible).not.toHaveBeenCalled();
+  });
+
+  it("disables a participant-only scope until a template or user request is added", () => {
+    const send = vi.fn();
+    mocks.useSummaryWorkbench.mockReturnValue(
+      controller({
+        scope: scope({
+          participants: [{ userId: "user-a", userName: "Alex" }],
+        }),
+        send,
+      })
+    );
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "false"
+    );
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    expect(send).not.toHaveBeenCalled();
   });
 
   it("lets a direct natural-language request route through the Agent", async () => {
@@ -383,16 +780,39 @@ describe("SummaryWorkbenchFeature", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
-    await waitFor(() => expect(send).toHaveBeenCalledWith(undefined));
+    await waitFor(() => expect(send).toHaveBeenCalledWith(undefined, "user"));
     expect(mocks.markNotificationEligible).not.toHaveBeenCalled();
   });
 
-  it("requires exactly one group chat before opening participant selection", () => {
+  it("opens the workspace participant roster without selecting a chat", () => {
+    mocks.useSummaryWorkbench.mockReturnValue(controller());
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "open-participant" }));
+
+    expect(screen.getByTestId("chat-selector")).toHaveAttribute(
+      "data-mode",
+      "members"
+    );
+    expect(screen.getByTestId("chat-selector")).toHaveAttribute(
+      "data-channel-id",
+      ""
+    );
+    expect(mocks.toastInfo).not.toHaveBeenCalled();
+  });
+
+  it("still rejects participant selection for a direct or ambiguous chat scope", () => {
     mocks.useSummaryWorkbench.mockReturnValue(
       controller({
         scope: scope({
           selectedChannels: [
-            { chatId: "direct-a", chatType: "direct", name: "Alex" },
+            {
+              chatId: "direct-a",
+              chatType: "direct",
+              name: "Alex",
+            },
           ],
         }),
       })
@@ -414,7 +834,11 @@ describe("SummaryWorkbenchFeature", () => {
       const current = controller({
         scope: scope({
           selectedChannels: [
-            { chatId: "chat-a", chatType: "group", name: "Product" },
+            {
+              chatId: "chat-a",
+              chatType: "group",
+              name: "Product",
+            },
           ],
         }),
       });
@@ -612,6 +1036,7 @@ describe("SummaryWorkbenchFeature", () => {
         autoHydrate: true,
       })
     );
+    expect(screen.getByTestId("template-selector")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "open-reference" }));
     fireEvent.click(screen.getByRole("button", { name: "choose-reference" }));
@@ -639,7 +1064,10 @@ describe("SummaryWorkbenchFeature", () => {
     );
 
     expect(mocks.useSummaryWorkbench).toHaveBeenLastCalledWith(
-      expect.objectContaining({ initialSessionId: "", autoHydrate: false })
+      expect.objectContaining({
+        initialSessionId: "",
+        autoHydrate: false,
+      })
     );
     expect(localStorage.getItem(ordinaryKey)).toBe("ordinary-session");
     expect(localStorage.getItem(referencedTaskKey)).toBe("session-a");

@@ -44,7 +44,11 @@ describe("SummaryWorkbenchEntry", () => {
         expect(screen.getByTestId("pending")).toBeInTheDocument();
         expect(screen.queryByTestId("legacy")).not.toBeInTheDocument();
 
-        response.resolve({ enabled: true, contract_version: "1" });
+        response.resolve({
+            enabled: true,
+            contract_version: "1",
+            max_time_range_days: 90,
+        });
         expect(await screen.findByTestId("new")).toBeInTheDocument();
     });
 
@@ -53,6 +57,7 @@ describe("SummaryWorkbenchEntry", () => {
             getCapabilities: vi.fn().mockResolvedValue({
                 enabled: true,
                 contract_version: "2",
+                max_time_range_days: 90,
             }),
         });
 
@@ -66,10 +71,15 @@ describe("SummaryWorkbenchEntry", () => {
         const source: SummaryWorkbenchCapabilitySource = {
             getCapabilities: vi
                 .fn()
-                .mockResolvedValueOnce({ enabled: true, contract_version: "1" })
+                .mockResolvedValueOnce({
+                    enabled: true,
+                    contract_version: "1",
+                    max_time_range_days: 90,
+                })
                 .mockResolvedValueOnce({
                     enabled: false,
                     contract_version: "1",
+                    max_time_range_days: 90,
                 }),
         };
         const availability = new SummaryWorkbenchAvailability(source);
@@ -95,10 +105,15 @@ describe("SummaryWorkbenchEntry", () => {
         const source: SummaryWorkbenchCapabilitySource = {
             getCapabilities: vi
                 .fn()
-                .mockResolvedValueOnce({ enabled: true, contract_version: "1" })
+                .mockResolvedValueOnce({
+                    enabled: true,
+                    contract_version: "1",
+                    max_time_range_days: 90,
+                })
                 .mockResolvedValueOnce({
                     enabled: false,
                     contract_version: "1",
+                    max_time_range_days: 90,
                 }),
         };
         const availability = new SummaryWorkbenchAvailability(source);

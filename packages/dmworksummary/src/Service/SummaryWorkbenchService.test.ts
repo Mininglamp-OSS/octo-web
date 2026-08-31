@@ -81,6 +81,7 @@ describe("SummaryWorkbenchService", () => {
       service.sendMessage({
         sessionId: "session-1",
         message: "帮我总结风险",
+        inputOrigin: "user",
         requestId: "request-1",
         scopeVersion: 1,
         scope,
@@ -97,11 +98,16 @@ describe("SummaryWorkbenchService", () => {
         profile: "summary_workspace",
         action: "chat",
         message: "帮我总结风险",
+        input_origin: "user",
         request_id: "request-1",
         scope_version: 1,
         summary_context: {
           selected_channels: [
-            { chat_id: "chat-1", chat_type: "group", name: "产品研发群" },
+            {
+              chat_id: "chat-1",
+              chat_type: "group",
+              name: "产品研发群",
+            },
           ],
           participants: [],
           template: null,
@@ -133,7 +139,10 @@ describe("SummaryWorkbenchService", () => {
     handlers?.onDone?.(clarificationTurn());
 
     expect(onDone).toHaveBeenCalledWith(
-      expect.objectContaining({ resultType: "clarification", messageId: "10" })
+      expect.objectContaining({
+        resultType: "clarification",
+        messageId: "10",
+      })
     );
     expect(onError).not.toHaveBeenCalled();
   });
@@ -317,10 +326,15 @@ describe("SummaryWorkbenchService", () => {
   });
 
   it("loads capabilities through the strict decoder", async () => {
-    getCapabilities.mockResolvedValue({ enabled: true, contract_version: "1" });
+    getCapabilities.mockResolvedValue({
+      enabled: true,
+      contract_version: "1",
+      max_time_range_days: 90,
+    });
     await expect(service.getCapabilities()).resolves.toEqual({
       enabled: true,
       contract_version: "1",
+      max_time_range_days: 90,
     });
   });
 

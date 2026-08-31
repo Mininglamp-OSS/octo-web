@@ -1,7 +1,7 @@
 .wk-time-range-selector {
     display: flex;
     flex-direction: column;
-    gap: var(--wk-sp-3);
+    gap: var(--wk-sp-4);
     width: 100%;
 }
 
@@ -69,5 +69,11 @@
 .wk-time-range-selector__error {
     margin: 0;
     color: var(--wk-color-error);
+    font: var(--wk-text-caption);
+}
+
+.wk-time-range-selector__warning {
+    margin: 0;
+    color: var(--wk-color-warning);
     font: var(--wk-text-caption);
 }

@@ -16,9 +16,12 @@ import { MAX_CHAT_SELECT } from "../../constants/limits";
 import { TOPIC_TEMPLATES } from "../../constants/templates";
 import summaryWorkbenchService from "../../Service/SummaryWorkbenchService";
 import type { SummaryWorkbenchResponse } from "../../bridge/summaryWorkbench/model";
-import type {
-  SummaryWorkbenchScope,
-  SummaryWorkbenchTimeRangeScope,
+import {
+  DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS,
+  type SummaryWorkbenchScope,
+  type SummaryWorkbenchTemplateScope,
+  type SummaryWorkbenchTimeRangeScope,
+  type SummaryWorkspaceInputOrigin,
 } from "../../bridge/summaryWorkbench/protocol";
 import useSummaryWorkbench from "../../bridge/summaryWorkbench/useSummaryWorkbench";
 import SummaryWorkbench, {
@@ -63,9 +66,10 @@ export interface SummaryWorkbenchFeatureProps {
   onCreated?: () => void;
   onOpenTask?: (taskId: number) => void;
   onOpenScheduledSummary?: () => void;
+  maxTimeRangeDays?: number;
 }
 
-type OpenSelector = SummaryWorkbenchContextKind | null;
+type OpenSelector = Exclude<SummaryWorkbenchContextKind, "template"> | null;
 type ReferencedTask = Pick<SummaryListItem, "task_id" | "title">;
 
 function initialScopeFor(
@@ -93,6 +97,12 @@ function errorMessageKey(httpStatus?: number, kind?: string): string {
   return "";
 }
 
+function isAcceptedResponse(
+  response?: SummaryWorkbenchResponse
+): response is Exclude<SummaryWorkbenchResponse, { resultType: "error" }> {
+  return Boolean(response && response.resultType !== "error");
+}
+
 export default function SummaryWorkbenchFeature({
   spaceId,
   channel,
@@ -102,6 +112,7 @@ export default function SummaryWorkbenchFeature({
   onCreated,
   onOpenTask,
   onOpenScheduledSummary,
+  maxTimeRangeDays = DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS,
 }: SummaryWorkbenchFeatureProps) {
   const { t, format } = useI18n();
   const initialScope = useMemo(
@@ -136,7 +147,14 @@ export default function SummaryWorkbenchFeature({
   const [referencePreviewOpen, setReferencePreviewOpen] = useState(false);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveTitle, setSaveTitle] = useState("");
+  const [composerFocusKey, setComposerFocusKey] = useState(0);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [templateGalleryOpen, setTemplateGalleryOpen] = useState(true);
+  const [pendingTemplate, setPendingTemplate] =
+    useState<SummaryWorkbenchTemplateScope | null>(null);
   const notifiedTaskIds = useRef(new Set<number>());
+  const hydrationObserved = useRef(false);
+  const templateFilledComposer = useRef<string | null>(null);
 
   const workbench = useSummaryWorkbench({
     initialSessionId,
@@ -150,6 +168,26 @@ export default function SummaryWorkbenchFeature({
   useEffect(() => {
     writeSummaryWorkbenchSession(storageScope, workbench.sessionId);
   }, [storageScope, workbench.sessionId]);
+
+  useEffect(() => {
+    if (workbench.isHydrating) {
+      hydrationObserved.current = true;
+      return;
+    }
+    if (!hydrationObserved.current) return;
+    hydrationObserved.current = false;
+    if (
+      workbench.viewState.messages.length > 0 ||
+      Boolean(workbench.viewState.card)
+    ) {
+      setHasSubmitted(true);
+      setTemplateGalleryOpen(false);
+    }
+  }, [
+    workbench.isHydrating,
+    workbench.viewState.card,
+    workbench.viewState.messages.length,
+  ]);
 
   const referencedTaskId = workbench.scope.referencedTaskIds[0];
   useEffect(() => {
@@ -220,8 +258,15 @@ export default function SummaryWorkbenchFeature({
     }
   };
 
-  const structuredGenerate = canGenerateFromScope(workbench.scope);
   const composerHasText = workbench.viewState.inputValue.trim().length > 0;
+  const composerHasCustomText = Boolean(
+    composerHasText &&
+      workbench.viewState.inputValue !== templateFilledComposer.current
+  );
+  const structuredGenerate = canGenerateFromScope(
+    workbench.scope,
+    composerHasCustomText
+  );
   const busy =
     workbench.viewState.isSending ||
     workbench.isHydrating ||
@@ -241,10 +286,14 @@ export default function SummaryWorkbenchFeature({
   const viewState = {
     ...workbench.viewState,
     contextItems,
+    composerFocusKey,
     isSending: busy,
-    canSend: !busy && (composerHasText || structuredGenerate),
+    canSend:
+      !busy &&
+      (composerHasCustomText || (!hasSubmitted && structuredGenerate)),
+    showTemplateTrigger: !templateGalleryOpen,
     sendLabelKey:
-      !composerHasText && structuredGenerate
+      !composerHasCustomText && structuredGenerate
         ? "summary.workbench.composer.generate"
         : "summary.workbench.composer.send",
     errorMessage: displayErrorKey
@@ -252,15 +301,50 @@ export default function SummaryWorkbenchFeature({
       : workbench.viewState.errorMessage,
   };
 
+  const runStartedTask = async (
+    request: () => Promise<SummaryWorkbenchResponse | undefined>
+  ) => {
+    const previousInputValue = workbench.viewState.inputValue;
+    const previousHasSubmitted = hasSubmitted;
+    const previousTemplateGalleryOpen = templateGalleryOpen;
+    const previousTemplateFilledComposer = templateFilledComposer.current;
+    const responsePromise = request();
+
+    templateFilledComposer.current = null;
+    workbench.setComposerValue("");
+    setHasSubmitted(true);
+    setTemplateGalleryOpen(false);
+
+    const response = await responsePromise;
+    if (!isAcceptedResponse(response)) {
+      workbench.setComposerValue(previousInputValue);
+      templateFilledComposer.current = previousTemplateFilledComposer;
+      setHasSubmitted(previousHasSubmitted);
+      setTemplateGalleryOpen(previousTemplateGalleryOpen);
+    }
+    return response;
+  };
+
   const send = async () => {
     if (!viewState.canSend) return;
-    const message = composerHasText
-      ? undefined
-      : workbench.scope.participants.length > 0
-      ? t("summary.workbench.intent.team")
-      : t("summary.workbench.intent.personal");
+    setOpenSelector(null);
+    let message: string | undefined;
+    let inputOrigin: SummaryWorkspaceInputOrigin;
+    if (composerHasCustomText) {
+      message = undefined;
+      inputOrigin = "user";
+    } else {
+      message =
+        workbench.scope.participants.length > 0
+          ? t("summary.workbench.intent.team")
+          : t("summary.workbench.intent.personal");
+      inputOrigin = "system_intent";
+    }
     Dap.shared.track("smart_summary_agent_message_sent", {});
-    observeWorkflow(await workbench.send(message));
+    const response = await runStartedTask(() =>
+      workbench.send(message, inputOrigin)
+    );
+    observeWorkflow(response);
   };
 
   const openTask = (taskId: number) => {
@@ -274,7 +358,8 @@ export default function SummaryWorkbenchFeature({
 
   const handleResultAction = async (action: SummaryWorkbenchAction) => {
     if (action === "confirm_workflow") {
-      observeWorkflow(await workbench.confirmWorkflow());
+      const response = await runStartedTask(() => workbench.confirmWorkflow());
+      observeWorkflow(response);
       return;
     }
     if (action === "save_preview") {
@@ -291,6 +376,10 @@ export default function SummaryWorkbenchFeature({
 
   const handleContextOpen = (kind: SummaryWorkbenchContextKind) => {
     if (busy) return;
+    if (kind === "template") {
+      setTemplateGalleryOpen(true);
+      return;
+    }
     if (kind === "participant" && !canSelectParticipants(workbench.scope)) {
       Toast.info(t("summary.workbench.notice.selectSingleChatForParticipants"));
       return;
@@ -306,8 +395,14 @@ export default function SummaryWorkbenchFeature({
     id: string
   ) => {
     if (busy) return;
+    const shouldClearTemplateText =
+      kind === "template" && templateFilledComposer.current !== null;
     const result = removeScopeContext(workbench.scope, kind, id);
     workbench.updateScope(result.scope);
+    if (shouldClearTemplateText) {
+      templateFilledComposer.current = null;
+      workbench.setComposerValue("");
+    }
     if (kind === "reference") {
       setReferencedTask(null);
       setReferencePreviewOpen(false);
@@ -324,6 +419,8 @@ export default function SummaryWorkbenchFeature({
       t("summary.templates.custom.myTemplatesTitleWithCount", {
         values: { count, limit },
       }),
+    customSectionTitle: t("summary.templates.custom.myTemplatesTitle"),
+    customCountLabel: (count, limit) => `${count}/${limit}`,
     create: t("summary.templates.custom.new"),
     edit: t("summary.templates.custom.edit"),
     delete: t("summary.templates.custom.delete"),
@@ -366,6 +463,7 @@ export default function SummaryWorkbenchFeature({
     invalidOrder: t("summary.timeRange.validationEndAfterStart"),
     maxDaysExceeded: (maxDays) =>
       t("summary.timeRange.validationMaxDays", { values: { maxDays } }),
+    longRangeWarning: t("summary.workbench.selector.longTimeRangeWarning"),
     formatCustomRange: (start, end) =>
       `${format.date(start)} – ${format.date(end)}`,
   };
@@ -374,6 +472,11 @@ export default function SummaryWorkbenchFeature({
     clearSummaryWorkbenchSession(storageScope);
     setReferencedTask(derivedFromTask ?? null);
     setReferencePreviewOpen(false);
+    setOpenSelector(null);
+    setPendingTemplate(null);
+    setHasSubmitted(false);
+    setTemplateGalleryOpen(true);
+    templateFilledComposer.current = null;
     workbench.resetSession({ scope: initialScope });
   };
 
@@ -408,6 +511,40 @@ export default function SummaryWorkbenchFeature({
     [t]
   );
 
+  const applyTemplate = (template: SummaryWorkbenchTemplateScope) => {
+    workbench.updateScope({ ...workbench.scope, template });
+    templateFilledComposer.current = template.requirement;
+    workbench.setComposerValue(template.requirement);
+    setComposerFocusKey((current) => current + 1);
+    setPendingTemplate(null);
+  };
+
+  const handleTemplateChange = (
+    template: SummaryWorkbenchTemplateScope | null
+  ) => {
+    if (busy) return;
+    if (!template) {
+      workbench.updateScope({ ...workbench.scope, template: null });
+      if (templateFilledComposer.current !== null) {
+        templateFilledComposer.current = null;
+        workbench.setComposerValue("");
+      }
+      return;
+    }
+
+    const currentInput = workbench.viewState.inputValue.trim();
+    const previousRequirement = workbench.scope.template?.requirement.trim();
+    if (
+      currentInput &&
+      currentInput !== previousRequirement &&
+      currentInput !== template.requirement.trim()
+    ) {
+      setPendingTemplate(template);
+      return;
+    }
+    applyTemplate(template);
+  };
+
   return (
     <div
       className={`wk-summary-workbench-feature${
@@ -421,7 +558,10 @@ export default function SummaryWorkbenchFeature({
         <SummaryWorkbench
           state={viewState}
           actions={{
-            onInputChange: workbench.setComposerValue,
+            onInputChange: (value) => {
+              templateFilledComposer.current = null;
+              workbench.setComposerValue(value);
+            },
             onSend: () => void send(),
             onOpenContext: handleContextOpen,
             onRemoveContext: handleContextRemove,
@@ -429,6 +569,19 @@ export default function SummaryWorkbenchFeature({
             onNewSession: resetSession,
             onOpenScheduledSummary,
           }}
+          contextPanel={
+            templateGalleryOpen ? (
+              <TemplateSelectorModal
+                visible
+                inline
+                value={workbench.scope.template}
+                labels={templateLabels}
+                fallbackTemplates={resolvedFallbackTemplates}
+                onChange={handleTemplateChange}
+                onCancel={() => undefined}
+              />
+            ) : undefined
+          }
         />
       </div>
 
@@ -478,38 +631,41 @@ export default function SummaryWorkbenchFeature({
         onCancel={() => setOpenSelector(null)}
       />
 
-      <TemplateSelectorModal
-        visible={openSelector === "template"}
-        value={workbench.scope.template}
-        labels={templateLabels}
-        fallbackTemplates={resolvedFallbackTemplates}
-        onChange={(template) => {
-          if (busy) return;
-          workbench.updateScope({ ...workbench.scope, template });
-          setOpenSelector(null);
-        }}
-        onCancel={() => setOpenSelector(null)}
-      />
-
       <Modal
         visible={openSelector === "time_range"}
         title={t("summary.workbench.selector.timeRangeTitle")}
         footer={null}
         onCancel={() => setOpenSelector(null)}
       >
-        <TimeRangeSelector
-          value={workbench.scope.timeRange}
-          labels={timeRangeLabels}
-          disabled={busy}
-          onChange={(timeRange: SummaryWorkbenchTimeRangeScope | null) => {
-            if (busy) return;
-            workbench.updateScope({
-              ...workbench.scope,
-              timeRange,
-            });
-            setOpenSelector(null);
-          }}
-        />
+        <div className="wk-summary-workbench-feature__time-range-panel">
+          <TimeRangeSelector
+            value={workbench.scope.timeRange}
+            labels={timeRangeLabels}
+            maxDays={maxTimeRangeDays}
+            disabled={busy}
+            onChange={(timeRange: SummaryWorkbenchTimeRangeScope | null) => {
+              if (busy) return;
+              workbench.updateScope({
+                ...workbench.scope,
+                timeRange,
+              });
+              setOpenSelector(null);
+            }}
+          />
+        </div>
+      </Modal>
+
+      <Modal
+        visible={pendingTemplate !== null}
+        title={t("summary.workbench.selector.replaceTemplateTitle")}
+        okText={t("summary.workbench.selector.replaceTemplateConfirm")}
+        cancelText={t("summary.common.cancel")}
+        onOk={() => {
+          if (pendingTemplate) applyTemplate(pendingTemplate);
+        }}
+        onCancel={() => setPendingTemplate(null)}
+      >
+        <p>{t("summary.workbench.selector.replaceTemplateContent")}</p>
       </Modal>
 
       <SummaryReferencePicker

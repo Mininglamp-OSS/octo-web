@@ -30,6 +30,7 @@ import {
   SummaryWorkspaceApiError,
   serializeSummaryWorkbenchScope,
   type SummaryWorkbenchScope,
+  type SummaryWorkspaceInputOrigin,
 } from "./protocol";
 
 export interface SummaryWorkbenchControllerService {
@@ -92,7 +93,10 @@ export interface SummaryWorkbenchController {
   savedSummary: CreateAgentSummaryResult | null;
   setComposerValue: (value: string) => void;
   updateScope: (scope: SummaryWorkbenchScopeInput) => boolean;
-  send: (message?: string) => Promise<SummaryWorkbenchResponse | undefined>;
+  send: (
+    message?: string,
+    inputOrigin?: SummaryWorkspaceInputOrigin
+  ) => Promise<SummaryWorkbenchResponse | undefined>;
   confirmWorkflow: () => Promise<SummaryWorkbenchResponse | undefined>;
   savePreview: (
     title?: string
@@ -340,7 +344,9 @@ export default function useSummaryWorkbench(
 
   const send = useCallback(
     (
-      messageOverride?: string
+      messageOverride?: string,
+      inputOrigin: SummaryWorkspaceInputOrigin =
+        messageOverride === undefined ? "user" : "system_intent"
     ): Promise<SummaryWorkbenchResponse | undefined> => {
       const existing = generationRef.current;
       if (existing) return existing.promise;
@@ -360,7 +366,8 @@ export default function useSummaryWorkbench(
       const retryIdentity = generationRetryIdentity(
         current.sessionId,
         current.scope,
-        message
+        message,
+        inputOrigin
       );
       const previousAttempt = retryableGenerationRef.current;
       const requestId =
@@ -371,6 +378,7 @@ export default function useSummaryWorkbench(
       const input: SummaryWorkbenchMessageInput = {
         sessionId: current.sessionId,
         message,
+        inputOrigin,
         requestId,
         scopeVersion: current.model.scopeVersion,
         scope: cloneScope(current.scope),
@@ -1152,9 +1160,15 @@ function scopeFingerprint(scope: SummaryWorkbenchScope): string {
 function generationRetryIdentity(
   sessionId: string,
   scope: SummaryWorkbenchScope,
-  message: string
+  message: string,
+  inputOrigin: SummaryWorkspaceInputOrigin
 ): string {
-  return JSON.stringify([sessionId, scopeFingerprint(scope), message]);
+  return JSON.stringify([
+    sessionId,
+    scopeFingerprint(scope),
+    message,
+    inputOrigin,
+  ]);
 }
 
 function normalizeSessionId(sessionId: string | undefined): string {

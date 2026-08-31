@@ -2709,16 +2709,18 @@ body[theme-mode="dark"] .chat-summary-template-card:active {
 
 .chat-summary-template-card-content {
     display: flex;
-    flex-direction: column;
-    gap: 4px;
+    align-items: flex-start;
+    gap: 8px;
     flex: 1;
     min-width: 0;
 }
 
-.chat-summary-template-card-header {
+.chat-summary-template-card-copy {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .chat-summary-template-card-title {
@@ -2736,7 +2738,6 @@ body[theme-mode="dark"] .chat-summary-template-card:active {
     font-size: 12px;
     font-weight: 400;
     line-height: 16px;
-    padding-left: 24px;
     overflow: hidden;
     text-overflow: ellipsis;
     display: -webkit-box;

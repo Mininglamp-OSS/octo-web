@@ -48,9 +48,20 @@ describe("summary workbench scope helpers", () => {
     expect(result.scope.participants).toEqual([]);
   });
 
-  it("allows participant selection only for exactly one group chat", () => {
+  it("keeps workspace participants when the chat selection remains empty", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      participants: [{ userId: "user-a", userName: "Alex" }],
+    };
+
+    const result = replaceSelectedChannels(scope, []);
+    expect(result.participantsCleared).toBe(false);
+    expect(result.scope.participants).toEqual(scope.participants);
+  });
+
+  it("allows participant selection globally or from exactly one group chat", () => {
     const emptyScope = emptySummaryWorkbenchScope();
-    expect(canSelectParticipants(emptyScope)).toBe(false);
+    expect(canSelectParticipants(emptyScope)).toBe(true);
     expect(
       canSelectParticipants({
         ...emptyScope,
@@ -113,13 +124,86 @@ describe("summary workbench scope helpers", () => {
     expect(result.scope.participants).toEqual([]);
   });
 
-  it("allows a selected chat to execute without template or composer text", () => {
+  it("applies the final start gate across chat, participant, template, and user input", () => {
     const scope = emptySummaryWorkbenchScope();
     expect(canGenerateFromScope(scope)).toBe(false);
+    expect(canGenerateFromScope(scope, true)).toBe(true);
     expect(
       canGenerateFromScope({
         ...scope,
         selectedChannels: [{ chatId: "chat-a", chatType: "group", name: "A" }],
+      })
+    ).toBe(true);
+    expect(
+      canGenerateFromScope({
+        ...scope,
+        participants: [{ userId: "user-a", userName: "Alex" }],
+      })
+    ).toBe(false);
+    expect(
+      canGenerateFromScope(
+        {
+          ...scope,
+          participants: [{ userId: "user-a", userName: "Alex" }],
+        },
+        true
+      )
+    ).toBe(true);
+    expect(
+      canGenerateFromScope({
+        ...scope,
+        template: {
+          templateId: "weekly",
+          label: "Weekly",
+          requirement: "Summarize progress",
+        },
+      })
+    ).toBe(true);
+    expect(
+      canGenerateFromScope({
+        ...scope,
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group", name: "A" },
+        ],
+        template: {
+          templateId: "weekly",
+          label: "Weekly",
+          requirement: "Summarize progress",
+        },
+      })
+    ).toBe(true);
+    expect(
+      canGenerateFromScope({
+        ...scope,
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group", name: "A" },
+        ],
+        participants: [{ userId: "user-a", userName: "Alex" }],
+      })
+    ).toBe(false);
+    expect(
+      canGenerateFromScope({
+        ...scope,
+        participants: [{ userId: "user-a", userName: "Alex" }],
+        template: {
+          templateId: "weekly",
+          label: "Weekly",
+          requirement: "Summarize progress",
+        },
+      })
+    ).toBe(true);
+    expect(
+      canGenerateFromScope({
+        ...scope,
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group", name: "A" },
+        ],
+        participants: [{ userId: "user-a", userName: "Alex" }],
+        template: {
+          templateId: "weekly",
+          label: "Weekly",
+          requirement: "Summarize progress",
+        },
       })
     ).toBe(true);
   });

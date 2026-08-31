@@ -78,6 +78,7 @@ export interface SummaryWorkbenchViewState {
   contextItems: SummaryWorkbenchContextItem[];
   card?: SummaryWorkbenchCardView;
   inputValue: string;
+  composerFocusKey?: number;
   placeholderKey: string;
   isSending: boolean;
   canSend: boolean;
@@ -85,6 +86,7 @@ export interface SummaryWorkbenchViewState {
   progressSteps?: SummaryWorkbenchProgressView[];
   sendLabelKey?: string;
   errorMessage?: string;
+  showTemplateTrigger?: boolean;
 }
 
 export interface SummaryWorkbenchActions {
@@ -101,4 +103,6 @@ export interface SummaryWorkbenchProps {
   state: SummaryWorkbenchViewState;
   actions: SummaryWorkbenchActions;
   className?: string;
+  contextPanel?: ReactNode;
 }
+import type { ReactNode } from "react";

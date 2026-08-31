@@ -3,6 +3,12 @@ import type { AgentProgressEvent } from "../../types/summary";
 export const SUMMARY_WORKSPACE_CONTRACT_VERSION = "1";
 export const SUMMARY_WORKSPACE_PROFILE = "summary_workspace";
 export const SUMMARY_WORKSPACE_SNAPSHOT_VERSION = 1 as const;
+export const DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS = 31;
+
+export type SummaryWorkspaceInputOrigin =
+  | "user"
+  | "template"
+  | "system_intent";
 
 export type SummaryWorkspaceResultType =
   | "clarification"
@@ -92,6 +98,7 @@ export interface SummaryWorkspaceChatRequestDTO {
   profile: typeof SUMMARY_WORKSPACE_PROFILE;
   action: "chat";
   message: string;
+  input_origin: SummaryWorkspaceInputOrigin;
   request_id: string;
   scope_version: number;
   summary_context: SummaryWorkspaceContextDTO;
@@ -118,6 +125,7 @@ export interface SummaryWorkspaceSavePreviewRequestDTO {
 export interface SummaryWorkspaceCapabilitiesDTO {
   enabled: boolean;
   contract_version: string;
+  max_time_range_days: number;
 }
 
 export interface SummaryWorkspacePreviewDTO {

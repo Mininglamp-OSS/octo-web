@@ -5,8 +5,16 @@ import {
     type SummaryWorkbenchCapabilitySource,
 } from "./availability";
 
-function capability(enabled = true, contractVersion = "1") {
-    return { enabled, contract_version: contractVersion };
+function capability(
+    enabled = true,
+    contractVersion = "1",
+    maxTimeRangeDays = 90
+) {
+    return {
+        enabled,
+        contract_version: contractVersion,
+        max_time_range_days: maxTimeRangeDays,
+    };
 }
 
 function deferred<T>() {
@@ -39,6 +47,7 @@ describe("SummaryWorkbenchAvailability", () => {
             status: "enabled",
             spaceId: "space-a",
             reason: "supported",
+            maxTimeRangeDays: 90,
         });
         await expect(second).resolves.toMatchObject({ status: "enabled" });
         await availability.resolve("space-a");
@@ -50,7 +59,14 @@ describe("SummaryWorkbenchAvailability", () => {
     it.each([
         [capability(false), "server_disabled"],
         [capability(true, "2"), "unsupported_contract"],
-        [{ enabled: "yes", contract_version: "1" }, "invalid_response"],
+        [
+            {
+                enabled: "yes",
+                contract_version: "1",
+                max_time_range_days: 90,
+            },
+            "invalid_response",
+        ],
     ])("fails closed for capability payload %#", async (payload, reason) => {
         const availability = new SummaryWorkbenchAvailability({
             getCapabilities: vi.fn().mockResolvedValue(payload),

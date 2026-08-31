@@ -212,8 +212,8 @@
         "subtitle": "Select chats, participants, or a template, or describe what you need summarized",
         "empty": "Tell me what you want to summarize, and I'll work with the context you've selected",
         "context": {
-            "chat": "Chats",
-            "participant": "Participants",
+            "chat": "Select chats",
+            "participant": "Select participants",
             "template": "Template",
             "timeRange": "Time range",
             "reference": "Reference summary",
@@ -240,6 +240,10 @@
         "selector": {
             "templateTitle": "Choose a summary template",
             "timeRangeTitle": "Choose a summary time range",
+            "replaceTemplateTitle": "Replace the current input?",
+            "replaceTemplateContent": "Choosing this template will fill the composer with its requirements and replace your unsent text.",
+            "replaceTemplateConfirm": "Replace and use template",
+            "longTimeRangeWarning": "This range exceeds 31 days. Reading the additional messages may take longer.",
             "customTimeRange": "Custom time range",
             "clearTemplate": "Use no template",
             "clearTimeRange": "Use no time limit"

@@ -335,6 +335,7 @@ describe("useSummaryWorkbench", () => {
       {
         sessionId: "session-1",
         message: "总结关键风险",
+        inputOrigin: "user",
         requestId: "request-1",
         scopeVersion: 1,
         scope: initialScope,
@@ -520,6 +521,46 @@ describe("useSummaryWorkbench", () => {
       "request-business-2",
     ]);
     expect(createRequestId).toHaveBeenCalledTimes(2);
+    unmount();
+  });
+
+  it("uses a new request id when the same text changes input origin", async () => {
+    sendMessage.mockRejectedValue(
+      new SummaryWorkspaceApiError({
+        message: "gateway timeout",
+        kind: "transport",
+        retryable: true,
+      })
+    );
+    const requestIds = ["request-template", "request-user"];
+    const createRequestId = vi.fn(
+      () => requestIds.shift() ?? "request-unexpected"
+    );
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "session-1",
+        initialScope,
+        autoHydrate: false,
+        preferStreaming: false,
+        service,
+        createRequestId,
+      })
+    );
+
+    await act(async () => {
+      await result.current.send("总结关键风险", "template");
+      await result.current.send("总结关键风险", "user");
+    });
+
+    expect(
+      sendMessage.mock.calls.map(([input]) => ({
+        requestId: input.requestId,
+        inputOrigin: input.inputOrigin,
+      }))
+    ).toEqual([
+      { requestId: "request-template", inputOrigin: "template" },
+      { requestId: "request-user", inputOrigin: "user" },
+    ]);
     unmount();
   });
 

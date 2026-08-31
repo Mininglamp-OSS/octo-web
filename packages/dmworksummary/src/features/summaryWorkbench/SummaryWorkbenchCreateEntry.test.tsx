@@ -12,16 +12,24 @@ vi.mock("./useCurrentSummarySpaceId", () => ({
 }));
 
 vi.mock("./Entry", () => ({
-    default: ({ renderNew }: { renderNew: () => React.ReactNode }) => (
-        <>{renderNew()}</>
-    ),
+    default: ({
+        renderNew,
+    }: {
+        renderNew: (availability: unknown) => React.ReactNode;
+    }) => <>{renderNew({ maxTimeRangeDays: 90 })}</>,
 }));
 
 vi.mock("./SummaryWorkbenchFeature", () => ({
-    default: (props: { onOpenScheduledSummary?: () => void }) => {
+    default: (props: {
+        onOpenScheduledSummary?: () => void;
+        maxTimeRangeDays?: number;
+    }) => {
         const [draft, setDraft] = React.useState("");
         return (
             <div>
+                <span data-testid="max-time-range-days">
+                    {props.maxTimeRangeDays}
+                </span>
                 <input
                     aria-label="workbench-draft"
                     value={draft}
@@ -54,6 +62,16 @@ vi.mock("../../pages/SummaryCreatePage", () => ({
 }));
 
 describe("SummaryWorkbenchCreateEntry scheduled summary bridge", () => {
+    it("passes the server-advertised time range limit to the Workbench", () => {
+        render(<SummaryWorkbenchCreateEntry source="summary_home" />, {
+            legacyRoot: true,
+        });
+
+        expect(screen.getByTestId("max-time-range-days")).toHaveTextContent(
+            "90"
+        );
+    });
+
     it("remounts the workbench when the channel type changes for the same id", () => {
         const view = render(
             <SummaryWorkbenchCreateEntry
@@ -65,7 +83,9 @@ describe("SummaryWorkbenchCreateEntry scheduled summary bridge", () => {
 
         fireEvent.change(
             screen.getByRole("textbox", { name: "workbench-draft" }),
-            { target: { value: "direct-chat draft" } }
+            {
+                target: { value: "direct-chat draft" },
+            }
         );
         expect(
             screen.getByRole("textbox", { name: "workbench-draft" })

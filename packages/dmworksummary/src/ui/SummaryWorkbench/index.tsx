@@ -8,13 +8,13 @@ import type {
 } from "./types";
 import "./index.css";
 
-const CONTEXT_KINDS: SummaryWorkbenchContextKind[] = [
+const COMPOSER_CONTEXT_KINDS: SummaryWorkbenchContextKind[] = [
   "chat",
   "participant",
-  "template",
   "time_range",
-  "reference",
 ];
+
+const REFERENCE_CONTEXT_KIND: SummaryWorkbenchContextKind = "reference";
 
 const CONTEXT_LABEL_KEYS: Record<SummaryWorkbenchContextKind, string> = {
   chat: "summary.workbench.context.chat",
@@ -81,9 +81,26 @@ const SummaryWorkbench = ({
   state,
   actions,
   className,
+  contextPanel,
 }: SummaryWorkbenchProps) => {
   const { t } = useI18n();
   const composerRef = React.useRef<HTMLTextAreaElement>(null);
+  const isComposerDisabled = state.isSending || Boolean(state.isHydrating);
+  const composerContextItems = state.contextItems.filter(
+    (item) => item.kind !== REFERENCE_CONTEXT_KIND
+  );
+  const referenceContextItems = state.contextItems.filter(
+    (item) => item.kind === REFERENCE_CONTEXT_KIND
+  );
+  const composerContextKinds = state.showTemplateTrigger
+    ? [...COMPOSER_CONTEXT_KINDS, "template" as const]
+    : COMPOSER_CONTEXT_KINDS;
+  const hasConversationContent =
+    Boolean(state.isHydrating) ||
+    state.messages.length > 0 ||
+    (state.progressSteps?.length ?? 0) > 0 ||
+    Boolean(state.card) ||
+    !contextPanel;
   const rootClassName = [
     "wk-summary-workbench",
     `wk-summary-workbench--${state.layout}`,
@@ -91,6 +108,11 @@ const SummaryWorkbench = ({
   ]
     .filter(Boolean)
     .join(" ");
+
+  React.useEffect(() => {
+    if (!state.composerFocusKey) return;
+    composerRef.current?.focus();
+  }, [state.composerFocusKey]);
 
   const renderCard = (card: SummaryWorkbenchCardView) => {
     const cardActions = visibleActions(card);
@@ -243,7 +265,11 @@ const SummaryWorkbench = ({
   };
 
   return (
-    <section className={rootClassName} data-testid="summary-workbench">
+    <section
+      className={rootClassName}
+      data-testid="summary-workbench"
+      data-screen-label="smart-summary-workbench"
+    >
       <header className="wk-summary-workbench__header">
         <div className="wk-summary-workbench__heading">
           <div>
@@ -251,12 +277,54 @@ const SummaryWorkbench = ({
             <p>{t("summary.workbench.subtitle")}</p>
           </div>
           <div className="wk-summary-workbench__header-actions">
+            <div className="wk-summary-workbench__reference-context">
+              <WKButton
+                type="button"
+                size="sm"
+                variant="ghost"
+                className={
+                  referenceContextItems.length > 0
+                    ? "wk-summary-workbench-context__trigger--active"
+                    : undefined
+                }
+                aria-pressed={referenceContextItems.length > 0}
+                disabled={isComposerDisabled}
+                onClick={() => actions.onOpenContext(REFERENCE_CONTEXT_KIND)}
+              >
+                {t(CONTEXT_LABEL_KEYS[REFERENCE_CONTEXT_KIND])}
+              </WKButton>
+              {referenceContextItems.map((item) => (
+                <span
+                  className="wk-summary-workbench-context__item"
+                  key={`${item.kind}:${item.id}`}
+                >
+                  <span>{item.label}</span>
+                  <WKButton
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    iconOnly
+                    icon={<span aria-hidden="true">×</span>}
+                    className="wk-summary-workbench-context__remove"
+                    disabled={isComposerDisabled}
+                    aria-label={t("summary.workbench.context.remove", {
+                      values: {
+                        label: item.label,
+                      },
+                    })}
+                    onClick={() =>
+                      actions.onRemoveContext(REFERENCE_CONTEXT_KIND, item.id)
+                    }
+                  />
+                </span>
+              ))}
+            </div>
             {actions.onOpenScheduledSummary && (
               <WKButton
                 type="button"
                 size="sm"
-                variant="secondary"
-                disabled={state.isSending || state.isHydrating}
+                variant="ghost"
+                disabled={isComposerDisabled}
                 onClick={actions.onOpenScheduledSummary}
               >
                 {t("summary.workbench.actions.scheduledSummary")}
@@ -266,8 +334,8 @@ const SummaryWorkbench = ({
               <WKButton
                 type="button"
                 size="sm"
-                variant="secondary"
-                disabled={state.isSending || state.isHydrating}
+                variant="primary"
+                disabled={isComposerDisabled}
                 onClick={actions.onNewSession}
               >
                 {t("summary.workbench.actions.newSession")}
@@ -277,107 +345,57 @@ const SummaryWorkbench = ({
         </div>
       </header>
 
-      <div className="wk-summary-workbench__contexts">
-        {CONTEXT_KINDS.map((kind) => {
-          const items = state.contextItems.filter((item) => item.kind === kind);
-          return (
-            <div className="wk-summary-workbench-context" key={kind}>
-              <WKButton
-                type="button"
-                size="sm"
-                variant="secondary"
-                className={
-                  items.length > 0
-                    ? "wk-summary-workbench-context__trigger--active"
-                    : undefined
-                }
-                aria-pressed={items.length > 0}
-                disabled={state.isSending || state.isHydrating}
-                onClick={() => actions.onOpenContext(kind)}
+      {hasConversationContent && (
+        <div
+          className="wk-summary-workbench__conversation"
+          role="log"
+          aria-live="polite"
+        >
+          {state.isHydrating ? (
+            <p className="wk-summary-workbench__empty">
+              {t("summary.workbench.loadingHistory")}
+            </p>
+          ) : state.messages.length === 0 && !contextPanel ? (
+            <p className="wk-summary-workbench__empty">
+              {t("summary.workbench.empty")}
+            </p>
+          ) : (
+            state.messages.map((message) => (
+              <div
+                key={message.id}
+                className={`wk-summary-workbench-message wk-summary-workbench-message--${message.role}`}
+                data-result-type={message.resultType}
               >
-                {t(CONTEXT_LABEL_KEYS[kind])}
-              </WKButton>
-              {items.length > 0 && (
-                <div className="wk-summary-workbench-context__items">
-                  {items.map((item) => (
-                    <span
-                      className="wk-summary-workbench-context__item"
-                      key={`${kind}:${item.id}`}
-                    >
-                      <span>{item.label}</span>
-                      <WKButton
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        iconOnly
-                        icon={<span aria-hidden="true">×</span>}
-                        className="wk-summary-workbench-context__remove"
-                        disabled={state.isSending || state.isHydrating}
-                        aria-label={t("summary.workbench.context.remove", {
-                          values: {
-                            label: item.label,
-                          },
-                        })}
-                        onClick={() => actions.onRemoveContext(kind, item.id)}
-                      />
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      <div
-        className="wk-summary-workbench__conversation"
-        role="log"
-        aria-live="polite"
-      >
-        {state.isHydrating ? (
-          <p className="wk-summary-workbench__empty">
-            {t("summary.workbench.loadingHistory")}
-          </p>
-        ) : state.messages.length === 0 ? (
-          <p className="wk-summary-workbench__empty">
-            {t("summary.workbench.empty")}
-          </p>
-        ) : (
-          state.messages.map((message) => (
+                {message.content}
+              </div>
+            ))
+          )}
+          {(state.progressSteps?.length ?? 0) > 0 && (
             <div
-              key={message.id}
-              className={`wk-summary-workbench-message wk-summary-workbench-message--${message.role}`}
-              data-result-type={message.resultType}
+              className="wk-summary-workbench__progress"
+              data-testid="summary-workbench-progress"
             >
-              {message.content}
+              <span>{t("summary.common.agentChat.viewGenerationProcess")}</span>
+              <ul>
+                {state.progressSteps?.map((step, index) => (
+                  <li key={`${step.phase}:${index}`}>
+                    {t(
+                      PROGRESS_LABEL_KEYS[step.phase] ??
+                        "summary.common.agentChat.progress.fallback"
+                    )}
+                    {step.count !== undefined
+                      ? ` · ${t("summary.common.agentPanel.processedCount", {
+                          values: { count: step.count },
+                        })}`
+                      : ""}
+                  </li>
+                ))}
+              </ul>
             </div>
-          ))
-        )}
-        {(state.progressSteps?.length ?? 0) > 0 && (
-          <div
-            className="wk-summary-workbench__progress"
-            data-testid="summary-workbench-progress"
-          >
-            <span>{t("summary.common.agentChat.viewGenerationProcess")}</span>
-            <ul>
-              {state.progressSteps?.map((step, index) => (
-                <li key={`${step.phase}:${index}`}>
-                  {t(
-                    PROGRESS_LABEL_KEYS[step.phase] ??
-                      "summary.common.agentChat.progress.fallback"
-                  )}
-                  {step.count !== undefined
-                    ? ` · ${t("summary.common.agentPanel.processedCount", {
-                        values: { count: step.count },
-                      })}`
-                    : ""}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {state.card && renderCard(state.card)}
-      </div>
+          )}
+          {state.card && renderCard(state.card)}
+        </div>
+      )}
 
       {state.errorMessage && (
         <div className="wk-summary-workbench__error" role="alert">
@@ -385,26 +403,95 @@ const SummaryWorkbench = ({
         </div>
       )}
 
-      <div className="wk-summary-workbench__composer">
+      {contextPanel && (
+        <div
+          id="summary-workbench-context-panel"
+          className="wk-summary-workbench__context-panel"
+        >
+          {contextPanel}
+        </div>
+      )}
+
+      <div
+        className={`wk-summary-workbench__composer${
+          isComposerDisabled ? " wk-summary-workbench__composer--disabled" : ""
+        }`}
+      >
         <textarea
           ref={composerRef}
           value={state.inputValue}
           placeholder={t(state.placeholderKey)}
           aria-label={t(state.placeholderKey)}
-          disabled={state.isSending || state.isHydrating}
+          disabled={isComposerDisabled}
           rows={2}
           onChange={(event) => actions.onInputChange(event.target.value)}
           onKeyDown={handleComposerKeyDown}
         />
-        <WKButton
-          type="button"
-          variant="primary"
-          loading={state.isSending}
-          disabled={!state.canSend || state.isSending || state.isHydrating}
-          onClick={actions.onSend}
-        >
-          {t(state.sendLabelKey ?? "summary.workbench.composer.send")}
-        </WKButton>
+        {composerContextItems.length > 0 && (
+          <div className="wk-summary-workbench__selected-contexts">
+            {composerContextItems.map((item) => (
+              <span
+                className="wk-summary-workbench-context__item"
+                key={`${item.kind}:${item.id}`}
+              >
+                <span>{item.label}</span>
+                <WKButton
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  iconOnly
+                  icon={<span aria-hidden="true">×</span>}
+                  className="wk-summary-workbench-context__remove"
+                  disabled={isComposerDisabled}
+                  aria-label={t("summary.workbench.context.remove", {
+                    values: {
+                      label: item.label,
+                    },
+                  })}
+                  onClick={() => actions.onRemoveContext(item.kind, item.id)}
+                />
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="wk-summary-workbench__composer-toolbar">
+          <div className="wk-summary-workbench__contexts">
+            {composerContextKinds.map((kind) => {
+              const hasItems = composerContextItems.some(
+                (item) => item.kind === kind
+              );
+              return (
+                <WKButton
+                  key={kind}
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className={
+                    hasItems
+                      ? "wk-summary-workbench-context__trigger--active"
+                      : undefined
+                  }
+                  aria-pressed={hasItems}
+                  disabled={isComposerDisabled}
+                  onClick={() => actions.onOpenContext(kind)}
+                >
+                  {t(CONTEXT_LABEL_KEYS[kind])}
+                </WKButton>
+              );
+            })}
+          </div>
+          <WKButton
+            type="button"
+            size="sm"
+            variant="primary"
+            className="wk-summary-workbench__send"
+            loading={state.isSending}
+            disabled={!state.canSend || isComposerDisabled}
+            onClick={actions.onSend}
+          >
+            {t(state.sendLabelKey ?? "summary.workbench.composer.send")}
+          </WKButton>
+        </div>
       </div>
     </section>
   );

@@ -390,8 +390,23 @@ describe("summary workspace adapter", () => {
       decodeSummaryWorkspaceCapabilities({
         enabled: true,
         contract_version: "1",
+        max_time_range_days: 90,
       })
-    ).toEqual({ enabled: true, contract_version: "1" });
+    ).toEqual({
+      enabled: true,
+      contract_version: "1",
+      max_time_range_days: 90,
+    });
+    expect(
+      decodeSummaryWorkspaceCapabilities({
+        enabled: true,
+        contract_version: "1",
+      })
+    ).toEqual({
+      enabled: true,
+      contract_version: "1",
+      max_time_range_days: 31,
+    });
   });
 
   it("rejects unsupported contract versions", () => {

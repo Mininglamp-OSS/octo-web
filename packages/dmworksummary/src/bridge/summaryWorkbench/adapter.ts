@@ -15,6 +15,7 @@ import type {
   SummaryWorkbenchResultType,
 } from "../../ui/SummaryWorkbench/types";
 import {
+  DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS,
   SUMMARY_WORKSPACE_CONTRACT_VERSION,
   SUMMARY_WORKSPACE_SNAPSHOT_VERSION,
   SummaryWorkspaceApiError,
@@ -240,6 +241,13 @@ export function decodeSummaryWorkspaceCapabilities(
       record.contract_version,
       "capabilities.contract_version"
     ),
+    max_time_range_days:
+      record.max_time_range_days === undefined
+        ? DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS
+        : requirePositiveInteger(
+            record.max_time_range_days,
+            "capabilities.max_time_range_days"
+          ),
   };
 }
 

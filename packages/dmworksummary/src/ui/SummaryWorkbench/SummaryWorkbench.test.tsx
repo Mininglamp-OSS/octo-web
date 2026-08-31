@@ -20,8 +20,8 @@ vi.mock("@octo/base", async () => {
     "summary.workbench.title": "Summary assistant",
     "summary.workbench.subtitle": "Describe the result you need.",
     "summary.workbench.empty": "Start a conversation.",
-    "summary.workbench.context.chat": "Chats",
-    "summary.workbench.context.participant": "Participants",
+    "summary.workbench.context.chat": "Select chats",
+    "summary.workbench.context.participant": "Select participants",
     "summary.workbench.context.template": "Template",
     "summary.workbench.context.timeRange": "Time range",
     "summary.workbench.context.reference": "Reference summary",
@@ -74,7 +74,8 @@ vi.mock("@octo/base", async () => {
       icon,
       iconOnly: _iconOnly,
       size: _size,
-      variant: _variant,
+      variant,
+      className,
       ...props
     }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
       loading?: boolean;
@@ -83,7 +84,13 @@ vi.mock("@octo/base", async () => {
       size?: string;
       variant?: string;
     }) => (
-      <button {...props} disabled={props.disabled || loading}>
+      <button
+        {...props}
+        className={[className, variant ? `wk-btn--${variant}` : ""]
+          .filter(Boolean)
+          .join(" ")}
+        disabled={props.disabled || loading}
+      >
         {icon}
         {children}
       </button>
@@ -140,24 +147,152 @@ function renderWorkbench(card?: SummaryWorkbenchCardView) {
 }
 
 describe("SummaryWorkbench", () => {
-  it("renders one controlled composer and all five context controls", () => {
-    const { actions } = renderWorkbench();
+  it("renders three scope controls below the textarea and reference in the header", () => {
+    const actions = createActions();
+    actions.onNewSession = vi.fn();
+    actions.onOpenScheduledSummary = vi.fn();
+    const state = createState();
+    state.contextItems.push({
+      id: "summary-1",
+      kind: "reference",
+      label: "Last weekly summary",
+    });
+    const { container } = rtlRender(
+      <SummaryWorkbench state={state} actions={actions} />,
+      { legacyRoot: true }
+    );
+
+    const input = screen.getByRole("textbox");
+    const composer = container.querySelector<HTMLElement>(
+      ".wk-summary-workbench__composer"
+    );
+    const composerContexts = container.querySelector<HTMLElement>(
+      ".wk-summary-workbench__contexts"
+    );
+    const headerActions = container.querySelector<HTMLElement>(
+      ".wk-summary-workbench__header-actions"
+    );
+    const contexts = [
+      ["Select chats", "chat"],
+      ["Select participants", "participant"],
+      ["Time range", "time_range"],
+    ] as const;
 
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
+    expect(composer).toContainElement(input);
+    expect(composer).toContainElement(screen.getByText("Product chat"));
+    expect(composer).toContainElement(screen.getByText("Alex"));
+    if (!composerContexts)
+      throw new Error("Composer contexts were not rendered");
+    expect(within(composerContexts).getAllByRole("button")).toHaveLength(3);
     expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
     expect(screen.getByText("What should I summarize?")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Chats" }));
-    fireEvent.click(screen.getByRole("button", { name: "Participants" }));
-    fireEvent.click(screen.getByRole("button", { name: "Template" }));
-    fireEvent.click(screen.getByRole("button", { name: "Time range" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reference summary" }));
+    contexts.forEach(([name]) => {
+      const trigger = screen.getByRole("button", { name });
+      expect(composer).toContainElement(trigger);
+      expect(
+        input.compareDocumentPosition(trigger) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).not.toBe(0);
+      fireEvent.click(trigger);
+    });
 
-    expect(actions.onOpenContext).toHaveBeenNthCalledWith(1, "chat");
-    expect(actions.onOpenContext).toHaveBeenNthCalledWith(2, "participant");
-    expect(actions.onOpenContext).toHaveBeenNthCalledWith(3, "template");
-    expect(actions.onOpenContext).toHaveBeenNthCalledWith(4, "time_range");
-    expect(actions.onOpenContext).toHaveBeenNthCalledWith(5, "reference");
+    const referenceTrigger = screen.getByRole("button", {
+      name: "Reference summary",
+    });
+    expect(headerActions).toContainElement(referenceTrigger);
+    expect(headerActions).toContainElement(
+      screen.getByText("Last weekly summary")
+    );
+    expect(referenceTrigger).toHaveClass("wk-btn--ghost");
+    expect(screen.getByRole("button", { name: "New session" })).toHaveClass(
+      "wk-btn--primary"
+    );
+    expect(composer).not.toContainElement(referenceTrigger);
+    expect(composer).not.toContainElement(
+      screen.getByText("Last weekly summary")
+    );
+    fireEvent.click(referenceTrigger);
+
+    contexts.forEach(([, kind], index) => {
+      expect(actions.onOpenContext).toHaveBeenNthCalledWith(index + 1, kind);
+    });
+    expect(actions.onOpenContext).toHaveBeenNthCalledWith(4, "reference");
+  });
+
+  it("renders an expanded context panel above the composer", () => {
+    const actions = createActions();
+    const { container } = rtlRender(
+      <SummaryWorkbench
+        state={createState()}
+        actions={actions}
+        contextPanel={<section data-testid="expanded-template-gallery" />}
+      />,
+      { legacyRoot: true }
+    );
+
+    const panel = screen.getByTestId("expanded-template-gallery");
+    const composer = container.querySelector<HTMLElement>(
+      ".wk-summary-workbench__composer"
+    );
+    if (!composer) throw new Error("Composer was not rendered");
+
+    expect(
+      panel.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).not.toBe(0);
+    expect(
+      screen.queryByRole("button", { name: "Template" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows a compact template trigger after the gallery is collapsed", () => {
+    const actions = createActions();
+    const state = createState();
+    state.showTemplateTrigger = true;
+
+    rtlRender(<SummaryWorkbench state={state} actions={actions} />, {
+      legacyRoot: true,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Template" }));
+    expect(actions.onOpenContext).toHaveBeenCalledWith("template");
+  });
+
+  it("does not reserve an empty conversation area above the template gallery", () => {
+    const state = createState();
+    state.messages = [];
+    const { container } = rtlRender(
+      <SummaryWorkbench
+        state={state}
+        actions={createActions()}
+        contextPanel={<section data-testid="expanded-template-gallery" />}
+      />,
+      { legacyRoot: true }
+    );
+
+    expect(
+      container.querySelector(".wk-summary-workbench__conversation")
+    ).not.toBeInTheDocument();
+  });
+
+  it("focuses the composer after an external selection fills it", () => {
+    const actions = createActions();
+    const state = createState();
+    state.composerFocusKey = 0;
+    const { rerender } = rtlRender(
+      <SummaryWorkbench state={state} actions={actions} />,
+      { legacyRoot: true }
+    );
+
+    rerender(
+      <SummaryWorkbench
+        state={{ ...state, composerFocusKey: 1 }}
+        actions={actions}
+      />
+    );
+
+    expect(screen.getByRole("textbox")).toHaveFocus();
   });
 
   it("forwards input, send, enter and context removal events", () => {
@@ -213,10 +348,13 @@ describe("SummaryWorkbench", () => {
       legacyRoot: true,
     });
 
+    expect(
+      document.querySelector(".wk-summary-workbench__composer")
+    ).toHaveClass("wk-summary-workbench__composer--disabled");
+
     for (const name of [
-      "Chats",
-      "Participants",
-      "Template",
+      "Select chats",
+      "Select participants",
       "Time range",
       "Reference summary",
       "Remove Product chat",
@@ -224,7 +362,7 @@ describe("SummaryWorkbench", () => {
     ]) {
       expect(screen.getByRole("button", { name })).toBeDisabled();
     }
-    fireEvent.click(screen.getByRole("button", { name: "Chats" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select chats" }));
     fireEvent.click(
       screen.getByRole("button", { name: "Remove Product chat" })
     );

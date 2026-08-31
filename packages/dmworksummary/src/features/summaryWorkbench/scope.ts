@@ -67,6 +67,7 @@ export function scopeParticipantsToCandidates(
 }
 
 export function canSelectParticipants(scope: SummaryWorkbenchScope): boolean {
+  if (scope.selectedChannels.length === 0) return true;
   return (
     scope.selectedChannels.length === 1 &&
     scope.selectedChannels[0]?.chatType === "group"
@@ -82,17 +83,19 @@ export function participantSourceChannel(
   return new Channel(channel.chatId, ChannelTypeGroup);
 }
 
+function participantSourceKey(scope: SummaryWorkbenchScope): string | undefined {
+  if (scope.selectedChannels.length === 0) return "space";
+  if (!canSelectParticipants(scope)) return undefined;
+  return `group:${scope.selectedChannels[0]?.chatId ?? ""}`;
+}
+
 export function replaceSelectedChannels(
   scope: SummaryWorkbenchScope,
   channels: SummaryWorkbenchChannelScope[]
 ): { scope: SummaryWorkbenchScope; participantsCleared: boolean } {
   const nextScope = { ...scope, selectedChannels: channels };
-  const previousMemberSource = canSelectParticipants(scope)
-    ? scope.selectedChannels[0]?.chatId
-    : undefined;
-  const nextMemberSource = canSelectParticipants(nextScope)
-    ? channels[0]?.chatId
-    : undefined;
+  const previousMemberSource = participantSourceKey(scope);
+  const nextMemberSource = participantSourceKey(nextScope);
   const participantsCleared =
     scope.participants.length > 0 &&
     (!nextMemberSource || previousMemberSource !== nextMemberSource);
@@ -149,8 +152,16 @@ export function removeScopeContext(
   }
 }
 
-export function canGenerateFromScope(scope: SummaryWorkbenchScope): boolean {
-  return scope.selectedChannels.length > 0;
+export function canGenerateFromScope(
+  scope: SummaryWorkbenchScope,
+  hasUserInput = false
+): boolean {
+  if (scope.participants.length > 0) {
+    return Boolean(scope.template) || hasUserInput;
+  }
+  return (
+    scope.selectedChannels.length > 0 || Boolean(scope.template) || hasUserInput
+  );
 }
 
 export function memberCandidateToLegacy(

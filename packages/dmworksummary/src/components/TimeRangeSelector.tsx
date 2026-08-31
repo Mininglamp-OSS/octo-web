@@ -5,6 +5,7 @@ import "./TimeRangeSelector.css";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const LAST_SEVEN_DAYS = 7;
+const LONG_RANGE_WARNING_DAYS = 31;
 
 export interface TimeRangeSelectorLabels {
     last7Days: string;
@@ -15,6 +16,7 @@ export interface TimeRangeSelectorLabels {
     customRangeAriaLabel: string;
     invalidOrder: string;
     maxDaysExceeded: (maxDays: number) => string;
+    longRangeWarning: string;
     formatCustomRange: (start: Date, end: Date) => string;
 }
 
@@ -116,6 +118,11 @@ export default function TimeRangeSelector({
     const [error, setError] = useState("");
     const selectedDates = scopeDates(value);
     const lastSevenDaysSelected = isLastSevenDays(value, referenceNow);
+    const isLongRange = Boolean(
+        selectedDates &&
+            selectedDates[1].getTime() - selectedDates[0].getTime() >
+                LONG_RANGE_WARNING_DAYS * DAY_IN_MS
+    );
 
     useEffect(() => {
         if (!value) return;
@@ -242,6 +249,11 @@ export default function TimeRangeSelector({
                 <output className="wk-time-range-selector__value">
                     {value.label}
                 </output>
+            )}
+            {isLongRange && !error && (
+                <p className="wk-time-range-selector__warning">
+                    {labels.longRangeWarning}
+                </p>
             )}
             {error && (
                 <p className="wk-time-range-selector__error" role="alert">

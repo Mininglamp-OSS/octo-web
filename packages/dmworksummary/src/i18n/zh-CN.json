@@ -212,8 +212,8 @@
         "subtitle": "选择聊天、参与者或模板，也可以直接描述你的总结需求",
         "empty": "告诉我你想总结什么，我会根据已选内容为你处理",
         "context": {
-            "chat": "聊天",
-            "participant": "参与者",
+            "chat": "选择聊天",
+            "participant": "选择参与者",
             "template": "模板",
             "timeRange": "时间范围",
             "reference": "引用总结",
@@ -240,6 +240,10 @@
         "selector": {
             "templateTitle": "选择总结模板",
             "timeRangeTitle": "选择总结时间范围",
+            "replaceTemplateTitle": "替换当前输入内容？",
+            "replaceTemplateContent": "选择模板会把模板要求填入输入框，并替换当前尚未发送的内容。",
+            "replaceTemplateConfirm": "替换并使用模板",
+            "longTimeRangeWarning": "当前时间范围超过 31 天，需要读取更多消息，生成时间可能更长。",
             "customTimeRange": "自定义时间范围",
             "clearTemplate": "不使用模板",
             "clearTimeRange": "不限制时间范围"

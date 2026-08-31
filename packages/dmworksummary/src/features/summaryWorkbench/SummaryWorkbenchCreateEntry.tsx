@@ -47,7 +47,7 @@ export default function SummaryWorkbenchCreateEntry(
               <Spin />
             </div>
           )}
-          renderNew={() => (
+          renderNew={(availability) => (
             <SummaryWorkbenchFeature
               key={entryKey}
               spaceId={spaceId}
@@ -57,6 +57,7 @@ export default function SummaryWorkbenchCreateEntry(
               source={props.source}
               onCreated={props.onCreated}
               onOpenTask={props.onOpenTask}
+              maxTimeRangeDays={availability.maxTimeRangeDays}
               onOpenScheduledSummary={() => setShowLegacySchedule(true)}
             />
           )}

@@ -33,6 +33,7 @@ const labels: TimeRangeSelectorLabels = {
     customRangeAriaLabel: "Choose custom range",
     invalidOrder: "Invalid order",
     maxDaysExceeded: (maxDays) => `Maximum ${maxDays} days`,
+    longRangeWarning: "Long ranges take longer",
     formatCustomRange: (start, end) =>
         `${start.getFullYear()}-${
             start.getMonth() + 1
@@ -103,6 +104,46 @@ describe("TimeRangeSelector", () => {
 
         expect(onChange).not.toHaveBeenCalled();
         expect(view.getByRole("alert")).toHaveTextContent("Maximum 31 days");
+    });
+
+    it("accepts a range longer than 31 days when the server limit allows it", () => {
+        const onChange = vi.fn();
+        datePickerSelection = [new Date(2026, 5, 1), new Date(2026, 7, 27)];
+        const view = render(
+            <TimeRangeSelector
+                value={null}
+                onChange={onChange}
+                labels={labels}
+                maxDays={90}
+                now={new Date(2026, 7, 27)}
+            />,
+            { legacyRoot: true }
+        );
+
+        fireEvent.click(view.getByRole("button", { name: "Custom" }));
+        fireEvent.click(view.getByRole("button", { name: "Start End" }));
+
+        expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
+    it("warns after a selected range exceeds 31 days", () => {
+        const value = createCustomTimeRange(
+            new Date(2026, 5, 1),
+            new Date(2026, 7, 27),
+            "Long range"
+        );
+        const view = render(
+            <TimeRangeSelector
+                value={value}
+                onChange={vi.fn()}
+                labels={labels}
+                maxDays={90}
+                now={new Date(2026, 7, 27)}
+            />,
+            { legacyRoot: true }
+        );
+
+        expect(view.getByText("Long ranges take longer")).toBeInTheDocument();
     });
 
     it("normalizes helper-created custom ranges to day boundaries", () => {

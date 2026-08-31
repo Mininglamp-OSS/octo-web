@@ -30,6 +30,7 @@ import {
   type SummaryWorkspaceCapabilitiesDTO,
   type SummaryWorkspaceChatRequestDTO,
   type SummaryWorkspaceConfirmRequestDTO,
+  type SummaryWorkspaceInputOrigin,
   type SummaryWorkspaceSavePreviewRequestDTO,
   type SummaryWorkspaceStreamHandlers,
 } from "../bridge/summaryWorkbench/protocol";
@@ -37,6 +38,7 @@ import {
 export interface SummaryWorkbenchMessageInput {
   sessionId: string;
   message: string;
+  inputOrigin?: SummaryWorkspaceInputOrigin;
   requestId: string;
   scopeVersion: number;
   scope: SummaryWorkbenchScope;
@@ -230,6 +232,7 @@ function buildChatRequest(
     profile: SUMMARY_WORKSPACE_PROFILE,
     action: "chat",
     message: input.message,
+    input_origin: input.inputOrigin ?? "user",
     request_id: input.requestId,
     scope_version: input.scopeVersion,
     summary_context: serializeSummaryWorkbenchScope(input.scope),
