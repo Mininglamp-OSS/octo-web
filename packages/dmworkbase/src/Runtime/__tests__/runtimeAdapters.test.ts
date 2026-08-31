@@ -11,6 +11,7 @@ vi.mock("../../Utils/NotificationUtil", () => ({
 
 import { createKeepAwakeAdapter } from "../adapters/keepAwakeAdapter";
 import { createNotificationAdapter } from "../adapters/notificationAdapter";
+import { createTrustedDomainsAdapter } from "../adapters/trustedDomainsAdapter";
 import { detectRuntimeEnvironment } from "../runtimeEnvironment";
 
 const webEnvironment = {
@@ -65,6 +66,31 @@ describe("runtime adapters", () => {
 
   it("does not create keep-awake IPC on Web", () => {
     expect(createKeepAwakeAdapter(webEnvironment)).toBeNull();
+  });
+
+  it("bridges trusted-domain reads and removals to Electron IPC", async () => {
+    const invoke = vi.fn()
+      .mockResolvedValueOnce(["example.com"])
+      .mockResolvedValueOnce([]);
+    (window as Window & { ipc?: unknown }).ipc = { invoke };
+    const environment = {
+      ...webEnvironment,
+      target: "desktop" as const,
+      shell: "electron" as const,
+      capabilities: new Set(["keepAwake"] as const),
+    };
+    const adapter = createTrustedDomainsAdapter(environment);
+
+    await expect(adapter?.get()).resolves.toEqual(["example.com"]);
+    await expect(adapter?.remove("example.com")).resolves.toEqual([]);
+    expect(invoke.mock.calls).toEqual([
+      ["trusted-domains-get"],
+      ["trusted-domain-remove", "example.com"],
+    ]);
+  });
+
+  it("does not create trusted-domains IPC on Web", () => {
+    expect(createTrustedDomainsAdapter(webEnvironment)).toBeNull();
   });
 
   it("detects Electron from the user agent and exposes desktop capabilities", () => {

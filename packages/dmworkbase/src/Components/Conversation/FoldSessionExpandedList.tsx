@@ -102,7 +102,27 @@ const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
                   <span className="wk-fold-msg-time">{timeStr}</span>
                 </div>
               ) : null}
-              {renderMessageContent(message)}
+              <div
+                className="wk-fold-msg-content"
+                tabIndex={editMode ? undefined : 0}
+                onKeyDown={(event) => {
+                  if (editMode) return;
+                  if ((event.shiftKey && event.key === "F10") || event.key === "ContextMenu") {
+                    event.preventDefault();
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const contextMenuEvent = new MouseEvent("contextmenu", {
+                      bubbles: true,
+                      cancelable: true,
+                      clientX: rect.left + Math.min(rect.width / 2, 24),
+                      clientY: rect.top + Math.min(rect.height / 2, 24),
+                    }) as MouseEvent & { focusFirstItem?: boolean };
+                    contextMenuEvent.focusFirstItem = true;
+                    event.currentTarget.dispatchEvent(contextMenuEvent);
+                  }
+                }}
+              >
+                {renderMessageContent(message)}
+              </div>
             </div>
           </div>
         );

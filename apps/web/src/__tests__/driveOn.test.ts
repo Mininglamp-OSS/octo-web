@@ -44,3 +44,22 @@ describe("drive_on appconfig web integration", () => {
     expect(source).not.toContain("new DriveModule()");
   });
 });
+
+describe("drive_search_on appconfig web integration", () => {
+  it("wires driveSearchOn into WKRemoteConfig from appconfig, defaulting to false", () => {
+    const source = readRepoFile("packages/dmworkbase/src/App.tsx");
+
+    // Second flag of the staged rollout: the drive search tab shows only when
+    // BOTH drive_on and drive_search_on are true. Fail-safe default keeps it
+    // hidden until ops flips drive_search_on after multi-type search ships.
+    expect(source).toContain("driveSearchOn: boolean = false");
+    expect(source).toContain(
+      'this.driveSearchOn = parseRemoteBool(result["drive_search_on"])'
+    );
+    // driveSearchOn must participate in change detection so the search UI
+    // refreshes when ops toggles the flag.
+    expect(source).toContain("previousDriveSearchOn");
+    expect(source).toContain("previousDriveSearchOn !== this.driveSearchOn");
+    expect(source).toContain("notifyConfigChangeListeners");
+  });
+});

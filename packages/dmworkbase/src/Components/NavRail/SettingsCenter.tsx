@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
-import { Bell, FolderDown, Info, Keyboard, LogOut, Mic, Monitor, MonitorSmartphone, SlidersHorizontal, UserRound } from "lucide-react";
+import { Bell, FolderDown, Info, Keyboard, LogOut, Mic, Monitor, MonitorSmartphone, ShieldCheck, SlidersHorizontal, UserRound } from "lucide-react";
 import { t } from "../../i18n";
 import WKModal from "../WKModal";
 import "./SettingsCenter.css";
@@ -10,7 +10,7 @@ import type { AboutUpdateStatus } from "./settingsPages";
 import SecretsSettingsPanel from "../SecretsSettings/SecretsSettingsPanel";
 import { shouldShowVoiceShortcuts, voiceSettingsStore } from "../../Service/VoiceSettingsStore";
 
-const settingsIcons = { general: SlidersHorizontal, account: UserRound, notifications: Bell, voice: Mic, "desktop-behavior": Monitor, downloads: FolderDown, shortcuts: Keyboard, devices: MonitorSmartphone, about: Info } as const;
+const settingsIcons = { general: SlidersHorizontal, account: UserRound, notifications: Bell, voice: Mic, "desktop-behavior": Monitor, downloads: FolderDown, "trusted-domains": ShieldCheck, shortcuts: Keyboard, devices: MonitorSmartphone, about: Info } as const;
 
 export interface OpenSecretsRequest {
   create?: boolean;

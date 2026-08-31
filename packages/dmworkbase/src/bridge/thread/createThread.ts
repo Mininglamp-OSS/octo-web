@@ -36,9 +36,9 @@ export function emitThreadCreated(groupNo: string, thread: ThreadCreateResult) {
 
 /**
  * 推断消息类型用于 subchannel_created 的 from_msg_type 属性。
- * 映射到 CSV:26 规范值：'text' | 'reply' | 'image_file' | 'link'
+ * 映射到当前可创建子区消息对应的 CSV:26 规范值。
  */
-export function inferMsgType(message: any): 'text' | 'reply' | 'image_file' | 'link' | undefined {
+export function inferMsgType(message: any): 'text' | 'reply' | 'image_file' | undefined {
   const contentType = message?.content?.contentType ?? message?.contentType
   // reply 优先:回复类消息即便正文是文本,也应归类为 'reply'(CSV:26)。reply 元数据
   // 在 content.reply(MessageContent.reply),不在 message 顶层——旧代码查 message.reply
@@ -53,9 +53,6 @@ export function inferMsgType(message: any): 'text' | 'reply' | 'image_file' | 'l
   // image(图片)与 file(文件, MessageContentTypeConst.file=8)同归 image_file 桶。
   if (contentType === MessageContentType.image || contentType === MessageContentTypeConst.file) {
     return 'image_file'
-  }
-  if (contentType === MessageContentTypeConst.interactiveCard) {
-    return 'link'
   }
   return undefined
 }

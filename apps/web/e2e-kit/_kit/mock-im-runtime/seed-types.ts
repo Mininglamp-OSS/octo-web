@@ -58,6 +58,7 @@ export interface MockSubscriberSeed {
   channelId: string;
   channelType: number;
   role?: number;
+  status?: 0 | 1 | 2;
   robot?: 0 | 1;
   orgData?: Record<string, unknown>;
 }

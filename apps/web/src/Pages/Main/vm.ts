@@ -7,7 +7,9 @@ import {
   t,
   getElectronIpcBridge,
   isElectronPowered,
-  sendElectronInstallUpdate,
+  quitElectronApp,
+  sendElectronCancelUpdateDownload,
+  sendElectronCheckUpdate,
   sendElectronUpdateApp,
 } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
@@ -21,6 +23,48 @@ import {
   IPC_UPDATE_ERROR,
   IPC_UPDATE_NOT_AVAILABLE,
 } from "../../../src-election/shared/ipc-channels";
+
+function getMacInstallErrorText(fallback: string): string {
+  const match = fallback.match(/code\s+([^.\s]+)\.\s+See\s+(.+)$/);
+  if (!match) return t("base.navRail.settingsPanel.updateError.macosInstallFailed");
+  return t("base.navRail.settingsPanel.updateError.macosInstallFailedWithDetail", {
+    values: {
+      code: match[1],
+      path: match[2],
+    },
+  });
+}
+
+function getElectronUpdateErrorText(code: string, fallback: string): string {
+  switch (code) {
+    case "download-timeout":
+      return t("base.navRail.settingsPanel.updateError.downloadTimeout");
+    case "download-in-progress":
+      return t("base.navRail.settingsPanel.updateError.downloadInProgress");
+    case "updater-api-not-configured":
+      return t("base.navRail.settingsPanel.updateError.updaterApiNotConfigured");
+    case "no-pending-update":
+      return t("base.navRail.settingsPanel.updateError.noPendingUpdate");
+    case "check-failed":
+      return t("base.navRail.settingsPanel.updateError.checkFailed");
+    case "macos-install-failed":
+      return getMacInstallErrorText(fallback);
+    case "linux-appimage-path-unavailable":
+      return t("base.navRail.settingsPanel.updateError.linuxAppImagePathUnavailable");
+    case "package-verification-failed":
+      return t("base.navRail.settingsPanel.updateError.packageVerificationFailed");
+    case "updater-misconfigured":
+      return t("base.navRail.settingsPanel.updateError.updaterMisconfigured");
+    case "updater-permission-denied":
+      return t("base.navRail.settingsPanel.updateError.updaterPermissionDenied");
+    case "updater-architecture-mismatch":
+      return t("base.navRail.settingsPanel.updateError.updaterArchitectureMismatch");
+    case "update-failed":
+      return t("base.navRail.settingsPanel.updateError.updateFailed");
+    default:
+      return fallback;
+  }
+}
 
 export default class MainVM extends ProviderListener {
   private _currentMenus?: Menus;
@@ -52,10 +96,11 @@ export default class MainVM extends ProviderListener {
     this.notifyListener();
   }
 
-  showAppVersion: boolean;
-  showAppUpdate: boolean;
-  showAppUpdateOperation: boolean;
-  appUpdateProgress: number;
+  showAppVersion = false;
+  showAppUpdate = false;
+  showAppUpdateOperation = false;
+  appUpdateProgress = 0;
+  appUpdateDownloadedBytes = 0;
 
   private static VERSION_READ_KEY_PREFIX = "dmwork_last_read_version_";
 
@@ -151,6 +196,7 @@ export default class MainVM extends ProviderListener {
 
     if (isElectronPowered()) {
       this.appUpdateInit();
+      sendElectronCheckUpdate({ silent: true });
     } else {
       // 轮询 /version.json 检测 Web 端新版本，有新版本时亮设置按钮气泡
       this.stopVersionCheck = startVersionCheck({
@@ -184,29 +230,63 @@ export default class MainVM extends ProviderListener {
   appUpdateInit() {
     // 监听升级失败事件
     this.addIpcListener(IPC_UPDATE_ERROR, (event, message) => {
+      const errorCode = typeof message?.code === "string" ? message.code : "";
+      const errorMessage = typeof message === "string"
+        ? message
+        : typeof message?.message === "string"
+          ? message.message
+          : t("base.navRail.settingsCenter.value.updateCheckFailed");
+      if (errorCode === "download-cancelled") {
+        this.showAppVersion = false;
+        this.showAppUpdate = false;
+        this.showAppUpdateOperation = false;
+        this.appUpdateProgress = 0;
+        this.appUpdateDownloadedBytes = 0;
+        this.notifyListener();
+        return;
+      }
+      this.showAppVersion = Boolean(this.lastVersionInfo);
+      this.showAppUpdate = false;
+      this.showAppUpdateOperation = Boolean(this.lastVersionInfo);
+      this.appUpdateProgress = 0;
+      this.appUpdateDownloadedBytes = 0;
+      this.notifyListener();
+      Toast.error(getElectronUpdateErrorText(errorCode, errorMessage));
     });
     // 发现可用更新事件
     this.addIpcListener(IPC_UPDATE_AVAILABLE, (event, message) => {
-      sendElectronUpdateApp();
       this.lastVersionInfo = {
         appVersion: message.version,
         updateDesc: message.releaseNotes,
+        forceUpdate: Boolean(message.forceUpdate),
       };
       this.showAppVersion = true;
+      this.showAppUpdate = false;
+      this.showAppUpdateOperation = true;
+      this.appUpdateProgress = 0;
+      this.appUpdateDownloadedBytes = 0;
       this.notifyListener();
     });
     // 没有可用更新事件
     this.addIpcListener(IPC_UPDATE_NOT_AVAILABLE, (event, message) => {
+      this.showAppVersion = false;
       this.showAppUpdate = false;
       this.showAppUpdateOperation = false;
-      this.showAppUpdateOperation = false;
+      this.appUpdateProgress = 0;
+      this.appUpdateDownloadedBytes = 0;
+      this.notifyListener();
       Toast.success(t("app.main.updateAlreadyLatest"));
     });
     // 更新下载进度事件
     this.addIpcListener(IPC_UPDATE_DOWNLOAD_PROGRESS, (event, message) => {
       this.showAppUpdate = true;
       this.showAppUpdateOperation = false;
-      this.appUpdateProgress = message;
+      this.appUpdateProgress = typeof message === "number"
+        ? message
+        : typeof message?.percent === "number"
+          ? message.percent
+          : -1;
+      this.appUpdateDownloadedBytes = typeof message?.downloadedBytes === "number" ? message.downloadedBytes : 0;
       this.notifyListener();
     });
     // 监听下载完成事件
@@ -214,10 +294,15 @@ export default class MainVM extends ProviderListener {
       this.lastVersionInfo = {
         appVersion: message.version,
         updateDesc: message.releaseNotes,
+        forceUpdate: Boolean(message.forceUpdate),
       };
       this.appUpdateProgress = 100;
+      this.appUpdateDownloadedBytes = 0;
+      // The main process opens the downloaded package immediately, so the UI should not
+      // return to a second confirmation state after download completes.
+      this.showAppVersion = false;
+      this.showAppUpdate = false;
       this.showAppUpdateOperation = false;
-      this.showAppUpdateOperation = true;
       this.notifyListener();
     });
   }
@@ -352,7 +437,15 @@ export default class MainVM extends ProviderListener {
 
   // 安装更新
   installUpdate() {
-    sendElectronInstallUpdate();
+    sendElectronUpdateApp();
+  }
+
+  cancelUpdateDownload() {
+    sendElectronCancelUpdateDownload();
+  }
+
+  quitApp() {
+    quitElectronApp();
   }
 
   get menusList() {
@@ -401,4 +494,5 @@ export default class MainVM extends ProviderListener {
 export class VersionInfo {
   appVersion!: string; // 版本信息
   updateDesc!: string; // 更新描述
+  forceUpdate?: boolean; // 是否强制更新
 }

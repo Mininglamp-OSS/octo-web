@@ -9,6 +9,7 @@ import { createSearchAssetResolver } from "../search/createSearchAssetResolver";
 import { activeGlobalSearchFilterCount } from "./filterState";
 import type {
   DocSearchQuery,
+  DriveSearchQuery,
   GlobalSearchChannelOption,
   GlobalSearchDataSource,
   GlobalSearchFileTypeCategory,
@@ -265,6 +266,8 @@ export function createGlobalSearchApiDataSource(
       return result;
     },
     searchDocs: (query: DocSearchQuery) => SearchService.searchDocs(query),
+    searchDrive: (query: DriveSearchQuery, signal?: AbortSignal) =>
+      SearchService.searchDrive(query, signal),
   };
 }
 

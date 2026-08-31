@@ -32,10 +32,6 @@ module.exports = {
   extraMetadata: {
     main: "out-election/main/index.js",
   },
-  publish: [{
-    provider: "generic",
-    url: "https://api.example.com/v1/common/pcupdater/"
-  }],
   mac: {
     extendInfo: {
       NSMicrophoneUsageDescription: "授权访问麦克风",
@@ -60,6 +56,8 @@ module.exports = {
     icon: "resources/icons/icon.icns",
   },
   dmg: {
+    // eslint-disable-next-line no-template-curly-in-string
+    title: "${productName} ${version}",
     // background: 'build/appdmg.png', // dmg安装窗口背景图
     icon: "resources/icons/icon.icns", // 客户端图标
     iconSize: 100, // 安装图标大小

@@ -20,6 +20,9 @@ export interface ContextMenusState {
 export interface ContextMenusTrigger {
     clientX: number
     clientY: number
+    /** Keyboard callers opt in; pointer callers keep their current focus. */
+    focusFirstItem?: boolean
+    nativeEvent?: Event & { focusFirstItem?: boolean }
     preventDefault(): void
 }
 
@@ -30,6 +33,8 @@ export interface ContextMenusContext {
 }
 
 export class ContextMenusData {
+    /** 稳定动作标识，不依赖文案或数组位置 */
+    actionKey?: string
     title!: string
     onClick?: () => void
     /** Lucide 图标组件 */
@@ -66,8 +71,9 @@ function ArrowIcon() {
 
 export default class ContextMenus extends Component<ContextMenusProps, ContextMenusState> implements ContextMenusContext {
     private static _instances: Set<ContextMenus> = new Set()
-    private static _documentContextMenuGuardAttached = false
+    private static _documentGuardsAttached = false
     private _rafId?: number
+    private _returnFocus?: HTMLElement
 
     static hideAll() {
         ContextMenus._instances.forEach((instance) => {
@@ -92,16 +98,28 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
         event.preventDefault()
     }
 
+    private static _handleDocumentKeyDown(event: KeyboardEvent) {
+        const openInstance = Array.from(ContextMenus._instances).find((instance) => instance.isShow())
+        if (!openInstance) {
+            ContextMenus._syncDocumentContextMenuGuard()
+            return
+        }
+        if (event.target instanceof Node && openInstance.contextMenusRef?.contains(event.target)) return
+        openInstance._handleKeyDown(event)
+    }
+
     private static _syncDocumentContextMenuGuard() {
         if (typeof document === "undefined") return
 
         const shouldAttach = ContextMenus._hasOpenInstance()
-        if (shouldAttach && !ContextMenus._documentContextMenuGuardAttached) {
+        if (shouldAttach && !ContextMenus._documentGuardsAttached) {
             document.addEventListener("contextmenu", ContextMenus._handleDocumentContextMenu, true)
-            ContextMenus._documentContextMenuGuardAttached = true
-        } else if (!shouldAttach && ContextMenus._documentContextMenuGuardAttached) {
+            document.addEventListener("keydown", ContextMenus._handleDocumentKeyDown, true)
+            ContextMenus._documentGuardsAttached = true
+        } else if (!shouldAttach && ContextMenus._documentGuardsAttached) {
             document.removeEventListener("contextmenu", ContextMenus._handleDocumentContextMenu, true)
-            ContextMenus._documentContextMenuGuardAttached = false
+            document.removeEventListener("keydown", ContextMenus._handleDocumentKeyDown, true)
+            ContextMenus._documentGuardsAttached = false
         }
     }
 
@@ -127,6 +145,11 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
     hide(): void {
         this.setState({ showContextMenus: false }, () => {
             ContextMenus._syncDocumentContextMenuGuard()
+            const activeElement = document.activeElement
+            const focusStayedInMenu = activeElement === document.body
+                || Boolean(activeElement && this.contextMenusRef?.contains(activeElement))
+            if (focusStayedInMenu && this._returnFocus?.isConnected) this._returnFocus.focus()
+            this._returnFocus = undefined
         })
         this.props.onHide?.()
     }
@@ -134,6 +157,14 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
     show(event: ContextMenusTrigger): void {
         event.preventDefault();
         if (!this.contextMenusRef) return
+        const shouldFocusFirstItem = event.focusFirstItem === true
+            || event.nativeEvent?.focusFirstItem === true
+
+        if (!this.state.showContextMenus) {
+            this._returnFocus = document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : undefined
+        }
 
         ContextMenus._instances.forEach((instance) => {
             if (instance !== this && instance.isShow()) instance.hide()
@@ -179,6 +210,11 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
             const flipSubmenu = (screenW - left - rootW) < SUBMENU_W + MARGIN
             this.setState({ contextOrigin, showContextMenus: true, flipSubmenu }, () => {
                 ContextMenus._syncDocumentContextMenuGuard()
+                if (shouldFocusFirstItem) {
+                    this.contextMenusRef
+                        ?.querySelector<HTMLElement>(':scope > ul > [role="menuitem"]')
+                        ?.focus()
+                }
             })
         })
     }
@@ -227,9 +263,66 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
         submenu.style.top = `${Math.max(lowestTop, Math.min(0, highestTop))}px`
     }
 
+    _handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement> | KeyboardEvent) => {
+        if (event.key === "Escape") {
+            event.preventDefault()
+            this.hide()
+            return
+        }
+        if (event.key === "Tab") {
+            this.hide()
+            return
+        }
+
+        const activeItem = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('[role="menuitem"]')
+        const activeList = activeItem?.parentElement
+            ?? this.contextMenusRef?.querySelector<HTMLElement>(":scope > ul")
+        const parentItem = activeList?.closest<HTMLElement>('[role="menuitem"]')
+        const items = Array.from(activeList?.querySelectorAll<HTMLElement>(':scope > [role="menuitem"]') ?? [])
+        if (items.length === 0) return
+        const current = items.indexOf(activeItem as HTMLElement)
+        let next = current
+        if (event.key === "ArrowDown") next = current < 0 ? 0 : (current + 1) % items.length
+        else if (event.key === "ArrowUp") next = current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length
+        else if (event.key === "Home") next = 0
+        else if (event.key === "End") next = items.length - 1
+        else if (event.key === "ArrowLeft" && parentItem) {
+            event.preventDefault()
+            parentItem.focus()
+            return
+        } else if (event.key === "ArrowRight" && activeItem) {
+            const firstChild = activeItem.querySelector<HTMLElement>(':scope > .wk-ctx-submenu > ul > [role="menuitem"]')
+            if (!firstChild) return
+            event.preventDefault()
+            firstChild.focus()
+            return
+        }
+        else if ((event.key === "Enter" || event.key === " ") && current >= 0) {
+            event.preventDefault()
+            const firstChild = items[current].querySelector<HTMLElement>(':scope > .wk-ctx-submenu > ul > [role="menuitem"]')
+            if (firstChild) {
+                firstChild.focus()
+                return
+            }
+            items[current].click()
+            return
+        } else return
+        event.preventDefault()
+        items[next].focus()
+    }
+
+    _activateItem(onClick?: () => void) {
+        const activeElement = document.activeElement
+        if (activeElement && this.contextMenusRef?.contains(activeElement) && this._returnFocus?.isConnected) {
+            this._returnFocus.focus()
+        }
+        this.hide()
+        onClick?.()
+    }
+
     _renderItem(m: ContextMenusData, i: number): ReactNode {
         if (m.separator) {
-            return <div key={i} className="wk-ctx-sep" />
+            return <div key={i} className="wk-ctx-sep" role="separator" />
         }
 
         const hasChildren = m.children && m.children.length > 0
@@ -237,6 +330,10 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
         return (
             <li
                 key={i}
+                data-action-key={m.actionKey}
+                role="menuitem"
+                aria-haspopup={hasChildren ? "menu" : undefined}
+                tabIndex={-1}
                 data-testid={m.testid}
                 className={classNames(m.danger && "wk-ctx-danger")}
                 onMouseEnter={hasChildren ? (event) => this._positionSubmenu(event) : undefined}
@@ -245,8 +342,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                         e.stopPropagation()
                         return
                     }
-                    this.hide()
-                    if (m.onClick) m.onClick()
+                    this._activateItem(m.onClick)
                 }}
             >
                 {m.icon && <CtxIcon icon={m.icon} />}
@@ -255,7 +351,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                     <>
                         <ArrowIcon />
                         <div className="wk-ctx-submenu">
-                            <ul className="wk-ctx-submenu-list">
+                            <ul className="wk-ctx-submenu-list" role="menu">
                                 {m.children!.map((child, ci) => {
                                     if (child.separator) {
                                         return <div key={ci} className="wk-ctx-sep" />
@@ -263,10 +359,11 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                                     return (
                                         <li
                                             key={ci}
+                                            role="menuitem"
+                                            tabIndex={-1}
                                             onClick={(e) => {
                                                 e.stopPropagation()
-                                                this.hide()
-                                                if (child.onClick) child.onClick()
+                                                this._activateItem(child.onClick)
                                             }}
                                         >
                                             {child.icon && <CtxIcon icon={child.icon} />}
@@ -301,8 +398,9 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                     ref={ref => { this.contextMenusRef = ref }}
                     style={{ transformOrigin: `-3px ${contextOrigin}px` }}
                     onContextMenuCapture={this._handleContextMenu}
+                    onKeyDown={this._handleKeyDown}
                 >
-                    <ul>
+                    <ul role="menu">
                         {menus && menus.map((m, i) => this._renderItem(m, i))}
                     </ul>
                 </div>

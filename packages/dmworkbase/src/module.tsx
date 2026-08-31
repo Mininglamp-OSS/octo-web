@@ -16,7 +16,11 @@ import {
   ConnectStatus,
 } from "wukongimjssdk";
 import React, { ElementType } from "react";
-import { Smile, Scissors, ImagePlus, Paperclip, AtSign } from "lucide-react";
+import {
+  AtSign, Copy, Forward as ForwardIcon, HardDrive, HardDriveDownload,
+  ImagePlus, ListChecks, MessageSquareMore, MessageSquarePlus, Paperclip,
+  Scissors, Smile, SmilePlus, Undo2,
+} from "lucide-react";
 import { Howl, Howler } from "howler";
 import WKApp, { FriendApply, FriendApplyState, ThemeMode } from "./App";
 import { isChannelSearchEnabled } from "./features/channelSearch/feature";
@@ -130,6 +134,8 @@ import { SummaryCardCell } from "./Messages/SummaryCard";
 import { DocumentShareCardContent } from "./Messages/DocumentShareCard/DocumentShareCardContent";
 import { DocumentShareCardCell } from "./Messages/DocumentShareCard";
 import { isEffectivelyMuted, parseThreadChannelId } from "./Service/Thread";
+import { isDriveTransferSupportedChannel, stripSpacePrefix } from "./Service/SpacePrefix";
+import { resolveCardActionChannelId } from "./Messages/InteractiveCard/cardAction";
 import {
   getBrowserSingleAlertCoordinator,
   isConversationChannelVisible,
@@ -1071,7 +1077,10 @@ export default class BaseModule implements IModule {
         }
 
         return {
+          actionKey: "copy",
+          group: "processing",
           title: t("base.module.contextMenus.copy"),
+          icon: Copy,
           testid: "ctx-message-copy",
           onClick: () => {
             // message_copied 由此命令式发,携 is_ai_msg(被复制消息作者是否 AI/bot,
@@ -1128,7 +1137,10 @@ export default class BaseModule implements IModule {
         });
 
         return {
+          actionKey: "copyImage",
+          group: "processing",
           title: t("base.module.contextMenus.copyImage"),
+          icon: Copy,
           onClick: () => {
             copyImageToClipboard(src)
               .then(() =>
@@ -1153,7 +1165,7 @@ export default class BaseModule implements IModule {
       (message) => {
         const content = message.content as LottieSticker;
         // 纯逻辑（flag 门控 + 可收藏判定 + 收藏/广播/错误分发）抽到 collectMenu 便于单测。
-        return buildAddStickerMenu(message.contentType, content, {
+        const item = buildAddStickerMenu(message.contentType, content, {
           stickerCustomEnabled: WKApp.remoteConfig.stickerCustomEnabled,
           collect: (req) =>
             WKApp.dataSource.commonDataSource.collectSticker(req),
@@ -1161,6 +1173,12 @@ export default class BaseModule implements IModule {
           t,
           toast: Toast,
         });
+        return item ? {
+          ...item,
+          actionKey: "addSticker",
+          group: "processing" as const,
+          icon: SmilePlus,
+        } : null;
       },
       1150
     );
@@ -1182,7 +1200,10 @@ export default class BaseModule implements IModule {
           return null;
         }
         return {
+          actionKey: "reaction",
+          group: "processing",
           title: t("base.module.contextMenus.react"),
+          icon: Smile,
           onClick: () => {
             reactionPickerOverlay.openAtLastPointer({
               messageId: message.messageID,
@@ -1225,7 +1246,10 @@ export default class BaseModule implements IModule {
         }
 
         return {
+          actionKey: "forward",
+          group: "processing",
           title: t("base.module.contextMenus.forward"),
+          icon: ForwardIcon,
           testid: "ctx-message-forward",
           onClick: () => {
             context.fowardMessageUI(message);
@@ -1237,8 +1261,14 @@ export default class BaseModule implements IModule {
     WKApp.endpoints.registerMessageContextMenus(
       "contextmenus.reply",
       (message, context) => {
+        if (isConversationDisbanded(message.channel)) {
+          return null;
+        }
         return {
+          actionKey: "reply",
+          group: "processing",
           title: t("base.module.contextMenus.reply"),
+          icon: MessageSquareMore,
           onClick: () => {
             context.reply(message, 1);
           },
@@ -1248,11 +1278,16 @@ export default class BaseModule implements IModule {
     WKApp.endpoints.registerMessageContextMenus(
       "contextmenus.muli",
       (message, context) => {
-        if (!isMessageSelectable(message)) {
+        const forwardVisible = !WKApp.shared.notSupportForward.includes(message.contentType)
+          && message.contentType !== MessageContentTypeConst.threadCreated;
+        if (!isMessageSelectable(message) || !forwardVisible) {
           return null;
         }
         return {
+          actionKey: "multiSelect",
+          group: "processing",
           title: t("base.module.contextMenus.multiSelect"),
+          icon: ListChecks,
           testid: "ctx-message-multiselect",
           onClick: () => {
             context.setEditOn(true);
@@ -1267,11 +1302,17 @@ export default class BaseModule implements IModule {
         // 群/子区解散后只读，撤回属写操作，一并禁用（与 createThread guard 同模式）。
         // 用 isConversationDisbanded 而非 isChannelDisbanded：子区频道需经父群判断，
         // 直接对子区频道用 isChannelDisbanded 会因 channelType!=Group 而 fail-open。
-        if (isConversationDisbanded(message.channel)) {
+        if (
+          isConversationDisbanded(message.channel) ||
+          isCurrentImSystemMessage(message.contentType)
+        ) {
           return null;
         }
         const makeRevokeAction = () => ({
+          actionKey: "revoke",
+          group: "control" as const,
           title: t("base.module.contextMenus.revoke"),
+          icon: Undo2,
           onClick: () => {
             context.revokeMessage(message).catch((err) => {
               // 六审 P6:真正的 Error(网络 TypeError / throw Error)只有 .message 没有 .msg,
@@ -1359,6 +1400,22 @@ export default class BaseModule implements IModule {
         if (isCurrentImSystemMessage(message.contentType)) {
           return null;
         }
+        const blockedSourceTypes = new Set([
+          MessageContentTypeConst.gif,
+          MessageContentTypeConst.voice,
+          MessageContentTypeConst.smallVideo,
+          MessageContentTypeConst.location,
+          MessageContentTypeConst.card,
+          MessageContentTypeConst.mergeForward,
+          MessageContentTypeConst.lottieSticker,
+          MessageContentTypeConst.lottieEmojiSticker,
+          MessageContentTypeConst.interactiveCard,
+          MessageContentTypeConst.summaryNotify,
+          MessageContentTypeConst.joinOrganization,
+        ]);
+        if (blockedSourceTypes.has(message.contentType)) {
+          return null;
+        }
         // 群已解散则隐藏「创建子区」——解散后全员只读，不得新建子区。
         // 否则右键菜单会绕过 ThreadPanel 的禁用按钮直接 POST 建子区（后端虽拒，
         // 前端不应暴露该入口）。isChannelDisbanded fail-open，正常群不受影响。
@@ -1366,7 +1423,10 @@ export default class BaseModule implements IModule {
           return null;
         }
         return {
+          actionKey: "createThread",
+          group: "derived",
           title: t("base.module.contextMenus.createThread"),
+          icon: MessageSquarePlus,
           testid: "ctx-message-create-thread",
           onClick: () => {
             // 右键「创建子区」入口打开确认弹窗即计一次 dialog_opened,与 ThreadPanel 顶栏入口
@@ -1468,6 +1528,67 @@ export default class BaseModule implements IModule {
         };
       },
       5000
+    );
+
+    WKApp.endpoints.registerMessageContextMenus(
+      "contextmenus.drive",
+      (message) => {
+        if (
+          message.contentType !== MessageContentTypeConst.file ||
+          !message.messageID ||
+          message.status !== MessageStatus.Normal ||
+          !WKApp.remoteConfig?.driveOn ||
+          !isDriveTransferSupportedChannel(message.channel.channelType)
+        ) {
+          return null;
+        }
+
+        const channelID = message.channel.channelType === ChannelTypePerson
+          ? stripSpacePrefix(message.channel.channelID)
+          : message.channel.channelID;
+        const params = {
+          im_group_no: resolveCardActionChannelId({
+            channelType: message.channel.channelType,
+            channelID,
+            fromUID: message.fromUID,
+            selfUID: WKApp.loginInfo.uid,
+          }),
+          im_channel_type: message.channel.channelType,
+          im_msg_id: message.messageID,
+        };
+        const saved = WKApp.getDriveTransferred?.(params);
+
+        if (saved?.file_id && saved.space_id && WKApp.openDriveFile) {
+          return {
+            actionKey: "viewDrive",
+            group: "derived",
+            title: t("base.messageFile.viewInDrive"),
+            icon: HardDrive,
+            onClick: () => WKApp.openDriveFile?.({
+              space_id: saved.space_id,
+              file_id: saved.file_id,
+              parent_id: saved.parent_id,
+            }),
+          };
+        }
+
+        // 状态尚未由文件卡片的批量查询确认时不猜测，避免展示必然错误的动作。
+        if (saved === undefined || !WKApp.saveMessageToDriveAt) {
+          return null;
+        }
+        return {
+          actionKey: "saveDrive",
+          group: "derived",
+          title: t("base.messageFile.saveToDrive"),
+          icon: HardDriveDownload,
+          onClick: () => {
+            void WKApp.saveMessageToDriveAt?.(params).then(() => {
+              Toast.success(t("base.messageFile.saveToDriveSuccess"));
+            }).catch(() => undefined);
+          },
+        };
+      },
+      6000
     );
   }
 

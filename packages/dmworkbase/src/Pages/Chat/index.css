@@ -548,13 +548,21 @@
   align-items: center;
 }
 
+.wk-chat-channelsetting-mask {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--wk-z-modal) + 10);
+  background: var(--wk-overlay-scrim);
+  cursor: default;
+}
+
 .wk-chat-channelsetting {
   pointer-events: auto;
   width: var(--wk-wdith-chat-channelsetting);
   height: 100%;
   transition: margin-right 150ms ease-in-out 0s;
   position: absolute;
-  z-index: 99;
+  z-index: calc(var(--wk-z-modal) + 11);
   top: 0;
   right: 0;
   border-left: var(--wk-line);

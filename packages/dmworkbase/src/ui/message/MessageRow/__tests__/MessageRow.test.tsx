@@ -167,8 +167,9 @@ describe("MessageRow — selection mode interactions", () => {
         dispatchMouseEvent(root.querySelector(".wk-msg-row-sender")!, "click")
         expect(onSenderNameClick).toHaveBeenCalledTimes(1)
 
-        dispatchMouseEvent(root.querySelector(".wk-msg-row")!, "contextmenu")
-        expect(onContextMenu).toHaveBeenCalledTimes(1)
+        dispatchMouseEvent(root.querySelector(".wk-msg-row-header")!, "contextmenu")
+        dispatchMouseEvent(root.querySelector(".wk-msg-row-body")!, "contextmenu")
+        expect(onContextMenu).toHaveBeenCalledTimes(2)
     })
 
     it("suppresses right-click only on the actionable avatar button", () => {
@@ -188,7 +189,7 @@ describe("MessageRow — selection mode interactions", () => {
         expect(onContextMenu).not.toHaveBeenCalled()
     })
 
-    it("keeps the row context menu available from a continuation placeholder", () => {
+    it("opens the message menu from a continuation placeholder", () => {
         const onContextMenu = vi.fn()
         const root = renderRow(
             <MessageRow
@@ -206,7 +207,7 @@ describe("MessageRow — selection mode interactions", () => {
         expect(onContextMenu).toHaveBeenCalledTimes(1)
     })
 
-    it("keeps the row context menu available from a non-actionable avatar", () => {
+    it("opens the message menu from a non-actionable avatar area", () => {
         const onContextMenu = vi.fn()
         const root = renderRow(
             <MessageRow
@@ -222,6 +223,31 @@ describe("MessageRow — selection mode interactions", () => {
         const event = dispatchMouseEvent(root.querySelector(".wk-msg-row-avatar")!, "contextmenu")
         expect(event.defaultPrevented).toBe(false)
         expect(onContextMenu).toHaveBeenCalledTimes(1)
+    })
+
+    it("opens from the focused body with Shift+F10 and from the surrounding row", () => {
+        const onContextMenu = vi.fn()
+        const root = renderRow(
+            <MessageRow {...baseProps} onContextMenu={onContextMenu}>
+                <div>message</div>
+            </MessageRow>
+        )
+        const body = root.querySelector<HTMLElement>(".wk-msg-row-body")!
+
+        act(() => body.dispatchEvent(new KeyboardEvent("keydown", {
+            key: "F10",
+            shiftKey: true,
+            bubbles: true,
+            cancelable: true,
+        })))
+        expect(onContextMenu).toHaveBeenCalledTimes(1)
+        expect((onContextMenu.mock.calls[0][0].nativeEvent as MouseEvent & {
+            focusFirstItem?: boolean
+        }).focusFirstItem).toBe(true)
+
+        dispatchMouseEvent(root.querySelector(".wk-msg-row-sender")!, "contextmenu")
+        dispatchMouseEvent(root.querySelector(".wk-msg-row")!, "contextmenu")
+        expect(onContextMenu).toHaveBeenCalledTimes(3)
     })
 
     it("uses a native button for an actionable avatar", () => {

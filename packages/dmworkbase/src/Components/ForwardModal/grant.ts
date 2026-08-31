@@ -11,13 +11,27 @@ import type { Channel } from "wukongimjssdk"
 /** Roles a forwarder may grant when forwarding a doc — no admin. */
 export type ForwardGrantRole = "reader" | "commenter" | "writer"
 
+/** Final principals attributed to one selected forwarding target. */
+export interface ForwardGrantTargetPrincipals {
+  channelID: string
+  channelType: number
+  /** Human recipients plus Bots that remain selected for this target. */
+  uids: string[]
+}
+
 /** The grant selection emitted on confirm — undefined when the switch is off. */
 export interface ForwardGrant {
   role: ForwardGrantRole
   /**
+   * Final authorization principals grouped by the target that contributed them. WKBase intersects
+   * this snapshot with the latest sendable targets before granting, so a group that becomes
+   * disbanded after confirmation cannot leak access to its members or Bots.
+   */
+  principalsByTarget?: ForwardGrantTargetPrincipals[]
+  /**
    * Bot uids the forwarder explicitly kept selected in the 授权区 Bot expander (feature: user+Bot
-   * grants). Empty/omitted → grant humans only. The host merges these onto the human snapshot at
-   * forward time; they are NEVER attached silently — only what the user left checked is carried.
+   * grants). Kept for legacy role/Bot callers that do not provide `principalsByTarget`; the normal
+   * document-forward flow uses the target-scoped snapshot above.
    */
   botUids?: string[]
 }
@@ -54,11 +68,11 @@ export interface ForwardGrantConfig {
   bots?: ForwardBotSnapshot
 }
 
-/** One person and the Bots they created among the selected forward targets. */
+/** One display group of Bots associated with a selected person, group, or direct Bot target. */
 export interface ForwardBotCreatorGroup {
-  /** Creator uid (a selected person / group member). */
+  /** Stable key: creator uid, `group:<channelID>`, or `direct:<botUid>`. */
   uid: string
-  /** Display name for the creator, falling back to the uid. */
+  /** Display name for the creator, selected group, or directly selected Bot. */
   name: string
   /** Bots this person created, each with its current selected state. */
   bots: Array<{ uid: string; name: string; selected: boolean }>
@@ -80,7 +94,7 @@ export interface ForwardBotSnapshot {
   peopleCount: number
   /** Currently-selected Bot count across all creators ("M Bot"). */
   botCount: number
-  /** Per-creator Bot groups, rendered as expandable rows. */
+  /** Bot groups by source, rendered as expandable rows. */
   groups: ForwardBotCreatorGroup[]
   /** Toggle one Bot's selected state. */
   toggleBot(uid: string): void
@@ -98,7 +112,7 @@ export interface ForwardGrantResult {
 
 /**
  * Payload the docs bridge injects so the HOST can orchestrate "先授权后发":
- *   1. host expands each target channel → uid snapshot (group via syncSubscribes, person → 对端 uid)
+ *   1. modal resolves a target-scoped principal snapshot; host intersects it with sendable targets
  *   2. if the grant switch is on, host `await`s `grantAccess(uids, role)` (docs owns the /docs api)
  *   3. host sends `**title**\n[title](link)` via WKSDK and aggregates sent/failed
  *   4. host calls `onResult` with the combined outcome
@@ -138,5 +152,10 @@ export interface DocForwardOpen {
   /** docs-injected executor; host awaits it BEFORE sending (先授权后发). */
   grantAccess?(uids: string[], role: ForwardGrantRole): Promise<ForwardGrantResult>
   /** Optional outcome callback (host already toasts; docs may use this for extra UI). */
-  onResult?(result: { sent: number; failed: number; grantFailures?: string[]; grantRejections?: string[] }): void
+  onResult?(result: {
+    sent: number
+    failed: number
+    grantFailures?: string[]
+    grantRejections?: string[]
+  }): void
 }

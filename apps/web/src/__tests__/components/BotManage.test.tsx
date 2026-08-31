@@ -72,6 +72,7 @@ const labels: BotManageViewLabels = {
     reload: 'Reload',
     searchPlaceholder: 'Search group name',
     noSearchResult: 'No matching groups',
+    searchFailed: 'Search failed, please retry',
     empty: "This bot hasn't joined any groups yet",
     sectionEnabled: (count: number) => `Reply-without-@ enabled (${count})`,
     sectionOthers: 'Other groups',
@@ -164,8 +165,10 @@ describe('MentionFreeListView (L3)', () => {
             <MentionFreeListView
                 labels={labels}
                 loading={false}
+                searching={false}
                 backendMissing={false}
                 loadError={false}
+                searchError={false}
                 searchKeyword=""
                 enabledGroups={[]}
                 otherGroups={[]}
@@ -234,8 +237,10 @@ describe('MentionFreeListView (L3)', () => {
             <MentionFreeListView
                 labels={labels}
                 loading
+                searching={false}
                 backendMissing={false}
                 loadError={false}
+                searchError={false}
                 searchKeyword=""
                 enabledGroups={[]}
                 otherGroups={[]}
@@ -266,6 +271,29 @@ describe('MentionFreeListView (L3)', () => {
         const { onReload } = renderList({ loadError: true });
         fireEvent.click(screen.getByText('Reload'));
         expect(onReload).toHaveBeenCalledTimes(1);
+    });
+
+    it('search error keeps the search input clearable (non-terminal, inline message)', () => {
+        // reviewer P1：搜索失败不能落进全屏终态——搜索框必须始终在，用户能清空关键字。
+        const { onSearch } = renderList({
+            searchError: true,
+            searchKeyword: 'market',
+            otherGroups: [{ groupNo: 'g1', name: 'Engineering', noMention: false }],
+        });
+        // inline 错误提示可见
+        expect(
+            screen.getByText('Search failed, please retry'),
+        ).toBeInTheDocument();
+        // 搜索框仍在且携带当前关键字，用户可清空触发新搜索
+        const input = screen.getByTestId(
+            'bot-manage-mention-search',
+        ) as HTMLInputElement;
+        expect(input).toBeInTheDocument();
+        expect(input.value).toBe('market');
+        fireEvent.change(input, { target: { value: '' } });
+        expect(onSearch).toHaveBeenCalledWith('');
+        // 已有列表保留，不被错误抹掉
+        expect(screen.getByText('Engineering')).toBeInTheDocument();
     });
 });
 

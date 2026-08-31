@@ -37,9 +37,14 @@ describe("settings registry", () => {
       "voice",
       "desktop-behavior",
       "downloads",
+      "trusted-domains",
       "shortcuts",
       "devices",
       "about",
     ]);
+  });
+
+  it("never exposes trusted domains on web", () => {
+    expect(itemIds("web")).not.toContain("trusted-domains");
   });
 });

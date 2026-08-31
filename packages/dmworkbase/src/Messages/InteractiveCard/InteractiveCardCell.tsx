@@ -19,6 +19,10 @@ import {
   submitCardAction,
 } from "./cardAction";
 import { isAgentProgressCard } from "./cardLayout";
+import {
+  buildRenderedCardKey,
+  classifyCardReconcile,
+} from "./cardReconcile";
 import { InteractiveCardContent } from "./InteractiveCardContent";
 import { decideCardBody, type CardDecision } from "./renderDecision";
 import { resolveEffectiveCardContent } from "./resolveContent";
@@ -94,6 +98,12 @@ export class InteractiveCardCell extends MessageCell {
   private cardMountRef = React.createRef<HTMLDivElement>();
   /** 已挂载卡片的内容指纹；内容不变则不重挂载（保护后续输入交互态）。 */
   private renderedKey: string | null = null;
+  /**
+   * 已应用到挂载卡片的「客户端兜底已完成」态。**不进 renderedKey**：它只是本地标记翻转、
+   * 没有新 card frame 到达，若混进 key 会误走重挂载/重置分支（折叠已展开 timeline、作废在飞
+   * Submit）。单独追踪：false → true 仅叠加 banner 视觉；true → false 重挂载以撤销已改写的 DOM。
+   */
+  private renderedFallbackFinalized = false;
   /** 组件是否仍挂载（异步回调卸载守卫）。 */
   private mounted = false;
   /**
@@ -186,11 +196,33 @@ export class InteractiveCardCell extends MessageCell {
       this.renderedKey = null;
       return;
     }
-    const key = `${decision.renderProfile}:${
-      decision.allowInteractive ? "v2" : "v1"
-    }:${JSON.stringify(decision.card)}`;
-    if (key === this.renderedKey) return;
+    const fallbackFinalized = this.isFallbackFinalized(decision.card);
+    // renderedKey 只表达真实 card 内容/渲染 profile；本地兜底标记不进 key（评审 P1，见
+    // cardReconcile 模块头注释）。据此把本次 sync 分成 remount / fallback-only / noop 三类；
+    // fallback-only 只允许 false → true，撤回必须 remount 才能还原 DOM overlay。
+    const key = buildRenderedCardKey(
+      decision.renderProfile,
+      decision.allowInteractive,
+      decision.card
+    );
+    const action = classifyCardReconcile(
+      this.renderedKey,
+      this.renderedFallbackFinalized,
+      key,
+      fallbackFinalized
+    );
+    if (action === "noop") return;
+    if (action === "fallback-only") {
+      // 内容未变、兜底 false → true → 只叠加 banner 视觉并刷 JSX，不重挂载、不重置交互态
+      // （不 submitGen++、不清 timer/submitting/submitError），避免折叠已展开 timeline、
+      // 静默放弃在飞 Action.Submit。复用现有 seam：enhanceMountedCard 带 fallbackFinalized。
+      this.renderedFallbackFinalized = fallbackFinalized;
+      this.enhanceMountedCard();
+      this.forceUpdate();
+      return;
+    }
     this.renderedKey = key;
+    this.renderedFallbackFinalized = fallbackFinalized;
     // 新帧到达：作废在飞提交（响应/超时不再生效）并重置交互态（loading/错误/超时）。
     const wasBusy = this.submitting || this.submitError !== null;
     this.submitGen++;
@@ -205,6 +237,7 @@ export class InteractiveCardCell extends MessageCell {
         tableCopyLabel: t("base.message.interactiveCard.copyTable"),
         onTableCopy: (text) => this.handleTableCopy(text),
         renderProfile: decision.renderProfile,
+        fallbackFinalized,
       });
     } catch {
       // 已过 octo 预校验仍渲染失败属极端边角 → fail-safe 渲纯文本（不走 markdown/HTML）。
@@ -223,6 +256,16 @@ export class InteractiveCardCell extends MessageCell {
       });
   }
 
+  /**
+   * 该卡是否已被客户端兜底判定为「已完成（未收到显式终态）」。
+   * 仅 agent_progress 卡 + VM 置了 localFallbackApplied 时为 true。
+   */
+  private isFallbackFinalized(card: Record<string, unknown>): boolean {
+    return (
+      !!this.props.message.localFallbackApplied && isAgentProgressCard(card)
+    );
+  }
+
   private enhanceMountedCard() {
     const target = this.cardMountRef.current;
     if (!target) return;
@@ -235,6 +278,7 @@ export class InteractiveCardCell extends MessageCell {
       tableCopyLabel: t("base.message.interactiveCard.copyTable"),
       onTableCopy: (text) => this.handleTableCopy(text),
       renderProfile: decision.renderProfile,
+      fallbackFinalized: this.isFallbackFinalized(decision.card),
     });
   }
 
@@ -494,14 +538,28 @@ export class InteractiveCardCell extends MessageCell {
   ): React.ReactNode {
     switch (decision.kind) {
       case "card": {
+        const fallbackFinalized = this.isFallbackFinalized(decision.card);
         const cls =
           cardMountRootClass(decision.renderProfile) +
           (agentProgress ? " wk-interactive-card-sdk--agent-progress" : "") +
+          (fallbackFinalized
+            ? " wk-interactive-card-sdk--fallback-finalized"
+            : "") +
           (this.submitting ? " wk-interactive-card-sdk--submitting" : "") +
           // webhook 卡展示-only：输入置灰不可交互（提交侧另有 handleSubmit 双保险）。
           (decision.interactive ? "" : " wk-interactive-card-sdk--readonly");
         return (
           <>
+            {fallbackFinalized && (
+              <div className="wk-interactive-card-fallback" role="status">
+                <span className="wk-interactive-card-fallback__state">
+                  {t("base.message.interactiveCard.fallbackFinalized")}
+                </span>
+                <span className="wk-interactive-card-fallback__tag">
+                  {t("base.message.interactiveCard.fallbackTag")}
+                </span>
+              </div>
+            )}
             <div className={cls} ref={this.cardMountRef} />
             {this.submitError && (
               <div className="wk-interactive-card-error" role="alert">

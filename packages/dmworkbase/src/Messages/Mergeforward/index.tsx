@@ -281,6 +281,8 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
   declare context: React.ContextType<typeof I18nContext>;
 
   private goBackRef: React.MutableRefObject<(() => void) | null> = { current: null };
+  private handleMentionClick = (uid: string) =>
+    this.props.context.showUser(uid);
 
   constructor(props: any) {
     super(props);
@@ -427,7 +429,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
               mergeforwardContent={content}
               visible={showList}
               onClose={() => this.setState({ showList: false, canGoBack: false, navTitle: "" })}
-              onMentionClick={(uid) => context.showUser(uid)}
+              onMentionClick={this.handleMentionClick}
               goBackRef={this.goBackRef}
               onNavigateChange={({ title, canGoBack }) =>
                 this.setState({ navTitle: title, canGoBack })
@@ -508,7 +510,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
             mergeforwardContent={content}
             visible={showList}
             onClose={() => this.setState({ showList: false, canGoBack: false, navTitle: "" })}
-            onMentionClick={(uid) => context.showUser(uid)}
+            onMentionClick={this.handleMentionClick}
             goBackRef={this.goBackRef}
             onNavigateChange={({ title, canGoBack }) =>
               this.setState({ navTitle: title, canGoBack })

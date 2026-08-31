@@ -188,11 +188,11 @@ describe("inferMsgType", () => {
     })).toBe("reply")
   })
 
-  it("maps text, image/file, interactive card, and unknown content", () => {
+  it("maps text and image/file content while leaving unsupported content undefined", () => {
     expect(inferMsgType({ contentType: MessageContentType.text })).toBe("text")
     expect(inferMsgType({ contentType: MessageContentType.image })).toBe("image_file")
     expect(inferMsgType({ contentType: MessageContentTypeConst.file })).toBe("image_file")
-    expect(inferMsgType({ contentType: MessageContentTypeConst.interactiveCard })).toBe("link")
+    expect(inferMsgType({ contentType: MessageContentTypeConst.interactiveCard })).toBeUndefined()
     expect(inferMsgType(undefined)).toBeUndefined()
   })
 })

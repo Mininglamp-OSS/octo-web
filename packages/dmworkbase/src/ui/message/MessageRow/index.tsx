@@ -273,7 +273,25 @@ export default function MessageRow({
         )}
         
         {/* 消息体 */}
-        <div className="wk-msg-row-body">
+        <div
+          className="wk-msg-row-body"
+          tabIndex={!isSelecting && onContextMenu ? 0 : undefined}
+          onKeyDown={(event) => {
+            if (isSelecting || !onContextMenu) return
+            if ((event.shiftKey && event.key === 'F10') || event.key === 'ContextMenu') {
+              event.preventDefault()
+              const rect = event.currentTarget.getBoundingClientRect()
+              const contextMenuEvent = new MouseEvent('contextmenu', {
+                bubbles: true,
+                cancelable: true,
+                clientX: rect.left + Math.min(rect.width / 2, 24),
+                clientY: rect.top + Math.min(rect.height / 2, 24),
+              }) as MouseEvent & { focusFirstItem?: boolean }
+              contextMenuEvent.focusFirstItem = true
+              event.currentTarget.dispatchEvent(contextMenuEvent)
+            }
+          }}
+        >
           {!isSelecting && (onBodyClick || onBodyAuxClick) ? (
             <div
               className="wk-msg-row-body-hitarea"

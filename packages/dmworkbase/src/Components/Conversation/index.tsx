@@ -26,6 +26,7 @@ import { interpretForwardResult, ForwardToastScope, ForwardToastKind } from "../
 import Provider from "../../Service/Provider";
 import { Dap } from "../../Service/Dap";
 import ConversationVM from "./vm";
+import { selectDoneReminderIDs } from "./reminderDone";
 import { isMessageAuthorAi } from "./replyAiIdentity";
 import "./index.css";
 import { EmojiInfo, MentionInfo } from "../../Messages/Text/MarkdownContent";
@@ -124,6 +125,7 @@ import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
 import { buildChatContext, ChatContextChannelInfo } from "./chatContext";
+import { buildGroupedMessageContextMenus } from "../../features/messageContextMenu/menuModel";
 import {
   resolveDraftAfterSend,
   resolveDraftToPersist,
@@ -519,6 +521,7 @@ export class Conversation
     threadName: string
   ) => void;
   private onOpenWebhookPreview?: (target: WebhookIssuePreviewTarget) => void;
+  private handleMarkdownMentionClick = (uid: string) => this.showUser(uid);
 
   constructor(props: any) {
     super(props);
@@ -1421,6 +1424,7 @@ export class Conversation
       trigger = {
         clientX: rect.right,
         clientY: rect.bottom,
+        focusFirstItem: true,
         preventDefault: () => undefined,
       };
     }
@@ -2219,7 +2223,7 @@ export class Conversation
             isSend={message.send}
             isStreaming={message.isStreaming}
             mentions={this.getMessageMentions(message)}
-            onMentionClick={(uid) => this.showUser(uid)}
+            onMentionClick={this.handleMarkdownMentionClick}
             emojis={this.getMessageEmojis(message)}
           />
         </div>
@@ -2281,7 +2285,7 @@ export class Conversation
             isSend={message.send}
             isStreaming={message.isStreaming}
             mentions={this.getMessageMentions(message)}
-            onMentionClick={(uid) => this.showUser(uid)}
+            onMentionClick={this.handleMarkdownMentionClick}
             emojis={this.getMessageEmojis(message)}
           />
         </div>
@@ -2799,17 +2803,26 @@ export class Conversation
     if (!reminders || reminders.length === 0) {
       return;
     }
-    const doneReminderIDs: number[] = [];
-    for (const reminder of reminders) {
-      if (reminder.done) {
-        continue;
-      }
-      const message = this.vm.findMessageWithMessageSeq(reminder.messageSeq);
-      if (message && this.isVisiableMessage(message.message, viewport)) {
-        doneReminderIDs.push(reminder.reminderID);
-        continue;
-      }
-    }
+    // 是否已读到会话最新。用 #1408 指定的信号：browseToMessageSeq >= lastMessage.messageSeq，
+    // 与 vm 的已读语义一致（含自己发消息时把 browseToMessageSeq 推进到最新的快捷路径——发消息
+    // 本就意味着读到最新）。这是“读到最新”而非“那条历史 @ 在视口里”：#1408 的 Fix A 就是要在
+    // 读到最新时把被挤出视口的历史 mention 一并标 done，否则角标永久亮着。lastMessageSeq > 0
+    // 排除尚未拿到 sendack 的空 seq 窗口。
+    const lastMessageSeq = this.vm.currentConversation?.lastMessage?.messageSeq;
+    const scrolledToBottom =
+      typeof lastMessageSeq === "number" &&
+      lastMessageSeq > 0 &&
+      this.vm.browseToMessageSeq >= lastMessageSeq;
+
+    const doneReminderIDs = selectDoneReminderIDs(reminders, {
+      scrolledToBottom,
+      isVisible: (reminder) => {
+        const message = this.vm.findMessageWithMessageSeq(reminder.messageSeq);
+        return (
+          !!message && this.isVisiableMessage(message.message, viewport) === true
+        );
+      },
+    });
     if (doneReminderIDs.length > 0) {
       // Persist reminder done status to server via SDK (fixes #169)
       WKSDK.shared().reminderManager.done(doneReminderIDs);
@@ -3467,19 +3480,9 @@ export class Conversation
                 }}
                 menus={
                   vm.selectMessage
-                    ? WKApp.endpoints
-                        .messageContextMenus(vm.selectMessage, this)
-                        .map((menus) => {
-                          return {
-                            title: menus.title,
-                            testid: menus.testid,
-                            onClick: () => {
-                              if (menus.onClick) {
-                                menus.onClick();
-                              }
-                            },
-                          };
-                        })
+                    ? buildGroupedMessageContextMenus(
+                        WKApp.endpoints.messageContextMenus(vm.selectMessage, this),
+                      )
                     : []
                 }
               ></ContextMenus>

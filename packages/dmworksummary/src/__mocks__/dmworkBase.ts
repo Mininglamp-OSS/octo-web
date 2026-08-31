@@ -113,6 +113,25 @@ export class SummaryNotifyContent {
   fromName = '';
 }
 
+export class SummaryTipContent {
+  fromUID = '';
+  fromName = '';
+  setSender(uid: string, name: string) {
+    this.fromUID = typeof uid === 'string' ? uid.trim() : '';
+    this.fromName = typeof name === 'string' ? name.trim() : '';
+    return this;
+  }
+  encodeJSON() {
+    return {
+      content: '{0}总结了群聊内容',
+      extra: [{ uid: this.fromUID, name: this.fromName }],
+    };
+  }
+  get contentType() {
+    return 2000;
+  }
+}
+
 export const isConversationDisbanded = () => false;
 
 /**

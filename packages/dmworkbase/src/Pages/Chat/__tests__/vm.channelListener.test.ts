@@ -16,6 +16,7 @@ vi.mock("wukongimjssdk", () => ({
         shared: () => ({
             conversationManager: {
                 conversations: [],
+                notifyConversationListeners: vi.fn(),
                 addConversationListener: (listener: (conversation: any, action: string) => void) => {
                     hoisted.conversationListener = listener
                 },
@@ -73,6 +74,7 @@ vi.mock("react-scroll", () => ({
 
 vi.mock("../../../App", () => ({
     default: {
+        loginInfo: { uid: "me" },
         shared: {
             currentSpaceId: "",
             channelSpaceMap: new Map(),
@@ -153,7 +155,7 @@ vi.mock("../../../Utils/download", () => ({
     downloadFile: () => Promise.resolve(),
 }))
 
-import { ChatVM } from "../vm"
+import { ChatVM, applyPinnedThreadSnapshot } from "../vm"
 import WKApp from "../../../App"
 import { ConversationWrap } from "../../../Service/Model"
 import { chatPageTitleController } from "../chatPageTitleController"
@@ -355,4 +357,32 @@ describe("ChatVM active menu lifecycle", () => {
         expect(vm.selectedConversation).toBe(selected)
         expect(WKApp.shared.openChannel).toBe(selected.channel)
     })
+})
+
+describe("ChatVM small state and conversation helpers", () => {
+    it("applies pinned thread snapshots and handles local list helpers", () => {
+        const threads: any[] = [
+            { channel: { channelID: "g____t1", channelType: ChannelTypeCommunityTopic } },
+            { channel: { channelID: "g", channelType: ChannelTypeGroup } },
+        ]
+        applyPinnedThreadSnapshot(threads as any, [{ channel_type: ChannelTypeCommunityTopic, channel_id: "g____t1" } as any])
+        expect(threads[0].extra.top).toBe(1)
+        applyPinnedThreadSnapshot(threads as any, undefined)
+        const vm = new ChatVM()
+        const first: any = { channel: { channelID: "u1", channelType: 1, isEqual: (c: any) => c.channelID === "u1" && c.channelType === 1 }, timestamp: 20 }
+        const second: any = { channel: { channelID: "u2", channelType: 1, isEqual: (c: any) => c.channelID === "u2" && c.channelType === 1 }, timestamp: 10 }
+        vm.conversations = [new ConversationWrap(first), new ConversationWrap(second)]
+        expect(vm.findConversation(first.channel)).toBe(vm.conversations[0])
+        expect(vm.findConversation({ channelID: "none", channelType: 1 } as any)).toBeUndefined()
+        vm.removeThreadsOfParent("g")
+        vm.keepPosition(12)
+        vm.showAddPopover = true
+        vm.showGlobalSearch = true
+        vm.showChannelSetting = true
+        vm.connectTitle = "connected"
+        vm.selectedSpace = undefined
+        expect(vm.filteredConversations).toHaveLength(2)
+    })
+
+
 })

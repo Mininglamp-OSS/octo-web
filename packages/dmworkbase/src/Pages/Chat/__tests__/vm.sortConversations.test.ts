@@ -4,6 +4,7 @@ const hoisted = vi.hoisted(() => ({
     emit: vi.fn(),
     pinnedList: vi.fn(() => Promise.resolve([])),
     sync: vi.fn(() => Promise.resolve([])),
+    clearMessages: vi.fn(() => Promise.resolve()),
 }))
 
 vi.mock("wukongimjssdk", () => ({
@@ -14,6 +15,7 @@ vi.mock("wukongimjssdk", () => ({
                 addConversationListener: () => {},
                 removeConversationListener: () => {},
                 sync: hoisted.sync,
+                notifyConversationListeners: vi.fn(),
             },
             connectManager: {
                 status: 0,
@@ -62,6 +64,7 @@ vi.mock("react-scroll", () => ({
 
 vi.mock("../../../App", () => ({
     default: {
+        loginInfo: { uid: "me" },
         shared: {
             currentSpaceId: "",
             channelSpaceMap: new Map(),
@@ -76,7 +79,7 @@ vi.mock("../../../App", () => ({
         menus: { refresh: () => {} },
         routeRight: { popToRoot: () => {} },
         endpointManager: { invoke: () => {} },
-        conversationProvider: { clearConversationMessages: () => Promise.resolve() },
+        conversationProvider: { clearConversationMessages: hoisted.clearMessages },
         apiClient: { get: () => Promise.resolve({}) },
         endpoints: { showConversation: () => {} },
     },
@@ -136,9 +139,10 @@ vi.mock("../../../Utils/download", () => ({
     downloadFile: () => Promise.resolve(),
 }))
 
-import { ChatVM } from "../vm"
+import { applyPinnedThreadSnapshot, ChatVM } from "../vm"
 import { ConversationWrap } from "../../../Service/Model"
 import WKApp from "../../../App"
+import { Channel } from "wukongimjssdk"
 
 beforeEach(() => {
     vi.clearAllMocks()
@@ -169,6 +173,19 @@ function deferred<T>() {
 }
 
 describe("ChatVM.sortConversations", () => {
+    it("applies pinned state only to community topic conversations", () => {
+        const group = { channel: { channelID: "g", channelType: 2 }, extra: undefined } as any
+        const pinned = { channel: { channelID: "thread-1", channelType: 5 }, extra: {} } as any
+        applyPinnedThreadSnapshot([group, pinned], [{ channel_id: "thread-1", channel_type: 5 } as any])
+        expect(group.extra).toBeUndefined()
+        expect(pinned.extra.top).toBe(1)
+
+        const other = { channel: { channelID: "thread-2", channelType: 5 }, extra: {} } as any
+        applyPinnedThreadSnapshot([other], [{ channel_id: "thread-1", channel_type: 5 } as any])
+        expect(other.extra.top).toBe(0)
+        applyPinnedThreadSnapshot([other], undefined)
+        expect(other.extra.top).toBe(0)
+    })
     it("replaces vm.conversations with a newly sorted array so memoized recent lists recalculate", () => {
         const vm = new ChatVM()
         const oldArray = [
@@ -196,6 +213,38 @@ describe("ChatVM.sortConversations", () => {
             "old-pinned",
             "new-unpinned",
         ])
+    })
+
+    it("updates connection state and removes matching conversations", () => {
+        const vm = new ChatVM()
+        const notify = vi.spyOn(vm, "notifyListener")
+        vm.conversations = [makeConversation("keep", 1), makeConversation("remove", 2)]
+        vm.setConnectTitleWithConnectStatus(1 as any)
+        expect(vm.connectStatus).toBe(1)
+        vm.setConnectTitleWithConnectStatus(0 as any)
+        expect(vm.connectStatus).toBe(0)
+        vm.setConnectTitleWithConnectStatus(2 as any)
+        expect(vm.connectStatus).toBe(2)
+        vm.removeConversation(new Channel("remove", 1) as any)
+        expect(vm.conversations.map((item) => item.channel.channelID)).toEqual(["keep"])
+        expect(notify).toHaveBeenCalled()
+        vm.removeConversation(new Channel("missing", 1) as any)
+    })
+
+    it("clears an existing conversation and leaves a missing one untouched", async () => {
+        const vm = new ChatVM()
+        const conversation: any = {
+            channel: new Channel("clear", 1), timestamp: 10,
+            lastMessage: { messageID: "last" }, unread: 3, extra: { spaceUnread: 2 },
+        }
+        vm.conversations = [new ConversationWrap(conversation)]
+        ;(WKApp.shared as any).currentSpaceId = "space"
+        await vm.clearMessages(conversation.channel)
+        expect(conversation.lastMessage).toBeUndefined()
+        expect(conversation.unread).toBe(0)
+        expect(conversation.extra.spaceUnread).toBe(0)
+        expect(hoisted.clearMessages).toHaveBeenCalledWith(conversation)
+        await vm.clearMessages(new Channel("missing", 1) as any)
     })
 })
 
@@ -359,5 +408,68 @@ describe("ChatVM.requestConversationList", () => {
         await vm.requestConversationList()
 
         expect(thread.extra.top).toBe(0)
+    })
+})
+
+describe("ChatVM state and collection helpers", () => {
+    it("updates view state through setters and finds/removes conversations", () => {
+        const vm = new ChatVM()
+        const notify = vi.spyOn(vm, "notifyListener")
+        const selected = makeConversation("selected", 10)
+        vm.conversations = [selected]
+        vm.showAddPopover = true
+        vm.showGlobalSearch = true
+        vm.showChannelSetting = true
+        vm.showSpaceCreate = true
+        vm.connectTitle = "Connected"
+        vm.selectedConversation = selected
+        expect(vm.showAddPopover).toBe(true)
+        expect(vm.showGlobalSearch).toBe(true)
+        expect(vm.showChannelSetting).toBe(true)
+        expect(vm.showSpaceCreate).toBe(true)
+        expect(vm.connectTitle).toBe("Connected")
+        expect(vm.selectedConversation).toBe(selected)
+        expect(vm.findConversation(new Channel("selected", 1))).toBe(selected)
+        expect(vm.filteredConversations).toEqual([selected])
+        vm.removeConversation(new Channel("selected", 1))
+        expect(vm.conversations).toEqual([])
+        expect(notify).toHaveBeenCalled()
+    })
+
+    it("maps connection status to title and reads/preserves list scroll position", () => {
+        const vm = new ChatVM()
+        vm.setConnectTitleWithConnectStatus(1 as any)
+        expect(vm.connectStatus).toBe(1)
+        expect(vm.connectTitle).toBe("Octo")
+        vm.setConnectTitleWithConnectStatus(0 as any)
+        expect(vm.connectStatus).toBe(0)
+        vm.setConnectTitleWithConnectStatus(99 as any)
+        expect(vm.connectStatus).toBe(2)
+
+        expect(vm.currentConversationListY()).toBeUndefined()
+        const list = document.createElement("div")
+        list.id = "wk-conversationlist"
+        list.scrollTop = 37
+        document.body.appendChild(list)
+        expect(vm.currentConversationListY()).toBe(37)
+        vm.keepPosition(55)
+    })
+
+    it("clears a conversation and resets unread state", async () => {
+        const vm = new ChatVM()
+        const conversation: any = {
+            channel: new Channel("peer", 1),
+            timestamp: 10,
+            unread: 4,
+            lastMessage: { messageID: "last" },
+            extra: { spaceUnread: 4 },
+        }
+        vm.conversations = [new ConversationWrap(conversation)]
+        ;(WKApp.shared as any).currentSpaceId = "space-1"
+        await vm.clearMessages(conversation.channel)
+        expect(conversation.lastMessage).toBeUndefined()
+        expect(conversation.unread).toBe(0)
+        expect(conversation.extra.spaceUnread).toBe(0)
+        expect((WKApp as any).conversationProvider.clearConversationMessages).toHaveBeenCalledWith(conversation)
     })
 })

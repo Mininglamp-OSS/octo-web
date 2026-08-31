@@ -131,17 +131,55 @@ function parseSheetPreview(body: unknown): DocSharePreview | undefined {
   return { type: "sheet", headers, rows: dataRows };
 }
 
+/**
+ * 采用并**规范化** GET /docs/:id/html-preview 的 `body.preview`。
+ *
+ * ⚠️ 这个 body **不是** ProseMirror 树，是后端已经抽好的纯文本结果，喂给
+ * parseDocPreview 只会读到 `body.doc.content === undefined` → 恒 undefined。
+ * 所以 html 分支只认 `body.preview`、**绝不解析 `body.doc`**（后端
+ * docHtmlPreview.ts 文件头明确写了这条契约）。
+ *
+ * 但“不解析”不等于“逐字照收”：wire 数据仍不可信，这里会 trim、丢弃非字符串与空串、
+ * 按本文件既有预算截断长度与段数（MAX_TEXT_CHARS / MAX_PARAGRAPHS）——别让后端的上限
+ * 成为前端唯一的上限。
+ *
+ * ⚠️ heading/paragraphs 是从**攻击者可控**的 HTML 文档里抽出来的纯文本，可能含
+ * `<` `>` `&`（`&lt;script&gt;` 解码后就是字面量 `<script>`）。消费端必须**当文本渲染**
+ * ——ui/DocumentShareCard 的 JSX 插值天然转义，符合要求；任何 innerHTML /
+ * dangerouslySetInnerHTML 都会把文本变回 markup，重新造出这个端点本来要消灭的 XSS。
+ */
+function adoptHtmlPreview(body: unknown): DocSharePreview | undefined {
+  const preview = (body as { preview?: unknown })?.preview;
+  if (!preview || typeof preview !== "object") return undefined;
+  const p = preview as { heading?: unknown; paragraphs?: unknown };
+  const rawHeading = typeof p.heading === "string" ? p.heading.trim() : "";
+  const heading = rawHeading ? rawHeading.slice(0, MAX_TEXT_CHARS) : undefined;
+  const paragraphs: string[] = [];
+  if (Array.isArray(p.paragraphs)) {
+    for (const item of p.paragraphs as unknown[]) {
+      if (typeof item !== "string") continue;
+      const text = item.trim();
+      if (!text) continue;
+      paragraphs.push(text.slice(0, MAX_TEXT_CHARS));
+      if (paragraphs.length >= MAX_PARAGRAPHS) break;
+    }
+  }
+  // 空 paragraphs + 无 heading 是后端的**正常降级**（无 slug / 上游取不到 / 解析不出
+  // 内容时它回 200 + 空预览，绝不 5xx）→ undefined，交给 requestPreview 判成 empty
+  // （灰色「暂无预览」），**不能**变成红色 error。
+  if (!heading && paragraphs.length === 0) return undefined;
+  return { type: "doc", heading, paragraphs };
+}
+
 const ENDPOINT: Record<DocShareKind, string> = {
   doc: "content",
   board: "scene",
   sheet: "sheet",
-  // html **故意**打 /content，虽然它没有专属预览端点。docs-backend 的 docContent 是
-  // 先跑 requireDocRole(reader)、通过后才撞 doc_type 闸抛 409 `unsupported_doc_type`，
-  // 所以这一枪被当作纯粹的 **ACL 探针**：409 `unsupported_doc_type` 就是“有 reader 权限、
-  // 但此类型无预览”（→ empty），403/404 依旧是无权限/失效。注意 409 **不止这一种**
-  // （见 requestPreview 的错误码分派），只有这个码能推出 reader。零新端点、ACL 语义不丢，
-  // 且未来任何新 doc_type 自动兜住。
-  html: "content",
+  // html 有了专属预览端点（docs-backend docHtmlPreview.ts，reader / requireDocRole）：
+  // 服务端抓上游 HTML、抽出 heading + 前几段**纯文本**返回，原始 markup 永不过界。
+  // 它复用 doc 的三段式错误码语义（403 无权限 / 404·410 失效 / 409
+  // `unsupported_doc_type` 该类型无预览 / 409 `conflict` 已归档），所以下面的分派不变。
+  html: "html-preview",
 };
 
 /**
@@ -179,16 +217,17 @@ async function requestPreview(
         param: spaceId ? { sp: spaceId } : undefined,
       } as any,
     );
-    // html 没有可渲染的首屏预览，body 形状也不是 ProseMirror doc——绝不能拿去
-    // parseDocPreview 解析。防御性分支：今天 backend 必回 409、走不到这里，但哪天
-    // 它给 html 开了 200，也只能得出 empty（有权限无预览），不能崩也不能乱渲染。
-    if (kind === "html") return { status: "empty" };
     const preview =
       kind === "doc"
         ? parseDocPreview(body)
         : kind === "board"
           ? parseBoardPreview(body)
-          : parseSheetPreview(body);
+          : kind === "sheet"
+            ? parseSheetPreview(body)
+            : adoptHtmlPreview(body);
+    // html-preview 的 200 + 空预览是后端**刻意**的降级出口（宁可无预览也不让卡片变红），
+    // 前端必须把它落成 empty（灰色「暂无预览」），而不是 ready-with-undefined。
+    if (kind === "html" && !preview) return { status: "empty" };
     return { status: "ready", preview };
   } catch (e) {
     const status = (e as { status?: number })?.status;
@@ -253,12 +292,31 @@ function cacheKey(
  * 拉取一份 ACL-safe 首屏预览。信任边界由 **docs 后端 reader 接口**把守（requireDocRole）：
  * 无权限 → 403 → denied；文档删/锁 → 404/410 → unavailable；有 reader 权限但该类型无预览 →
  * 409 `unsupported_doc_type` → empty；文档已归档 → 409 `conflict` → unavailable；
+ * html 另有一条：/html-preview 回 **200 + 空 preview** → empty（后端刻意的降级出口）；
  * 其余错误（含**其它 409**，如 snapshot_invalid 这类后端 fail-closed 的数据损坏）→ error。
- * space 用显式 X-Space-Id 头传文档自身 space（文档可能不在当前 space）。
+ * space 用显式 X-Space-Id 头传文档自身的 space（文档可能不在当前 space）。
  *
- * 去重 + 缓存（P2-4）：并发同 key 共享一个在飞请求；成功/无权限/失效/无预览结果缓存 30s
- * （empty 和 ready 一样是**稳定结论**，doc_type 不会在 TTL 内变），error 不缓存（可能是瞬时
- * 故障，允许下次重试）。`signal` 保留以兼容调用方，但共享请求不按单个调用方 abort
+ * 去重 + 缓存（P2-4）：并发同 key 共享一个在飞请求；成功/无权限/失效/无预览结果缓存 30s，
+ * error 不缓存（可能是瞬时故障，允许下次重试）。
+ *
+ * ⚠️ empty **不是稳定结论**，它仍然进缓存是一个权衡，不是推论：
+ *   • 409 `unsupported_doc_type` 这条确实稳定（doc_type 不会在 TTL 内变）；
+ *   • 但 html 的 200 + 空 preview 可能源于**上游超时 / 临时故障 / 无 slug**
+ *     （见 docs-backend htmlPreviewFetch.ts：任何失败都降级成空预览，绝不 5xx）——
+ *     这类 empty **30s 内完全可能自愈**。
+ * 仍然缓存它的理由：（1）不缓存就变成每个 cell 挂载都对同一文档重打一枪，而 html 那一枪
+ * 还会穿透到上游取源，成本远高于一次 409；（2）降级态本身是中性的「暂无预览」，多撑一会
+ * 不会误导用户（不会把有预览说成没权限，也不会把正常说成出错）。
+ *
+ * ⚠️ 但**没有定时重查**：能拿到新结果的只有两种情况——缓存**已过期**后的 Cell 挂载（挂载走
+ * `force: false`，TTL 内重新挂载会直接命中旧 empty，**不**会重取），或 `force: true`（Cell 侧绑的
+ * window focus / visibilitychange，见 Messages/DocumentShareCard/index.tsx）。注意 `force: true`
+ * 只绕过**结果缓存**，不绕过在飞去重：同 key 请求正在路上时它复用那一枪、不另发。用户若一直
+ * 停在同一个可见窗口盯着这张卡，上游恢复了它也不会自己变出预览——陈旧态**不是有界的**，
+ * 需要用户切走再切回（force），或等 TTL 过期后再挂载。缩短 html empty 的 TTL 或加定时重试
+ * 可以改善这一点，属于后续优化，不在本次改动范围内。
+ *
+ * `signal` 保留以兼容调用方，但共享请求不按单个调用方 abort
  * （Cell 侧已用自身 aborted 标志守 setState，卸载后不写状态）。
  */
 export async function fetchDocPreview(
