@@ -10,6 +10,8 @@ import type { TagProps } from './components/Tag/types'
 import type { BadgeProps } from './components/Badge/types'
 import type { DotProps } from './components/Dot/types'
 import type { TooltipProps } from './components/Tooltip/types'
+import type { AvatarProps } from './components/Avatar/types'
+import type { AvatarGroupProps } from './components/AvatarGroup/types'
 
 export type {
   ButtonProps,
@@ -33,6 +35,17 @@ export type {
   TooltipPlacement,
   TooltipProps,
 } from './components/Tooltip/types'
+export type {
+  AvatarKind,
+  AvatarProps,
+  AvatarSize,
+  AvatarTone,
+} from './components/Avatar/types'
+export type {
+  AvatarGroupMax,
+  AvatarGroupProps,
+  AvatarGroupSize,
+} from './components/AvatarGroup/types'
 export interface OctoUIProviderProps {
   children?: ReactNode
 }
@@ -50,4 +63,10 @@ export declare const Dot: ForwardRefExoticComponent<
   DotProps & RefAttributes<HTMLSpanElement>
 >
 export declare const Tooltip: FC<TooltipProps>
+export declare const Avatar: ForwardRefExoticComponent<
+  AvatarProps & RefAttributes<HTMLSpanElement>
+>
+export declare const AvatarGroup: ForwardRefExoticComponent<
+  AvatarGroupProps & RefAttributes<HTMLSpanElement>
+>
 export declare const OctoUIProvider: FC<OctoUIProviderProps>

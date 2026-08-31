@@ -58,6 +58,50 @@
   --octo-ui-tooltip-action-hover-color: var(--wk-color-white);
   --octo-ui-tooltip-max-width: 320px;
   --octo-ui-tooltip-line-height: 1.42857143;
+
+  --octo-ui-avatar-size-16: var(--wk-sp-4);
+  --octo-ui-avatar-size-20: var(--wk-sp-5);
+  --octo-ui-avatar-size-28: 28px;
+  --octo-ui-avatar-size-32: var(--wk-sp-8);
+  --octo-ui-avatar-size-40: var(--wk-sp-10);
+  --octo-ui-avatar-font-size-16: var(--wk-sp-2);
+  --octo-ui-avatar-font-size-default: var(--wk-text-size-tiny);
+  --octo-ui-avatar-font-size-large: var(--wk-text-size-sm);
+  --octo-ui-avatar-border-width: 1px;
+  --octo-ui-avatar-group-line-height: 1.05;
+  --octo-ui-avatar-group-icon-size: 60%;
+  --octo-ui-avatar-group-overlap: var(--wk-sp-2);
+
+  --octo-ui-avatar-tone-0-solid: #14c0ff;
+  --octo-ui-avatar-tone-0-surface: #ecf9fe;
+  --octo-ui-avatar-tone-0-icon: #7edafb;
+  --octo-ui-avatar-tone-1-solid: #00d6b9;
+  --octo-ui-avatar-tone-1-surface: #eafaf8;
+  --octo-ui-avatar-tone-1-icon: #64e8d6;
+  --octo-ui-avatar-tone-2-solid: #34c724;
+  --octo-ui-avatar-tone-2-surface: #f0fbef;
+  --octo-ui-avatar-tone-2-icon: #8ee085;
+  --octo-ui-avatar-tone-3-solid: #b3d600;
+  --octo-ui-avatar-tone-3-surface: #f7fae5;
+  --octo-ui-avatar-tone-3-icon: #d2e76a;
+  --octo-ui-avatar-tone-4-solid: #ffc60a;
+  --octo-ui-avatar-tone-4-surface: #fdf9ed;
+  --octo-ui-avatar-tone-4-icon: #f7dc82;
+  --octo-ui-avatar-tone-5-solid: #ff8800;
+  --octo-ui-avatar-tone-5-surface: #fff5eb;
+  --octo-ui-avatar-tone-5-icon: #ffba6b;
+  --octo-ui-avatar-tone-6-solid: #f01d94;
+  --octo-ui-avatar-tone-6-surface: #fef1f8;
+  --octo-ui-avatar-tone-6-icon: #f57ac0;
+  --octo-ui-avatar-tone-7-solid: #d136d1;
+  --octo-ui-avatar-tone-7-surface: #fceefc;
+  --octo-ui-avatar-tone-7-icon: #e58fe5;
+  --octo-ui-avatar-tone-8-solid: #7f3bf5;
+  --octo-ui-avatar-tone-8-surface: #f6f1fe;
+  --octo-ui-avatar-tone-8-icon: #ad82f7;
+  --octo-ui-avatar-tone-9-solid: #4954e6;
+  --octo-ui-avatar-tone-9-surface: #f2f3fd;
+  --octo-ui-avatar-tone-9-icon: #7b83ea;
 }
 
 body[theme-mode='dark'] {

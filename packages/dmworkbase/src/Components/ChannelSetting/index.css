@@ -203,6 +203,8 @@
 
 .wk-channelsetting-content .wk-subscribers-item img,
 .wk-channelsetting-content .wk-subscribers-item-avatar-wrap img,
+.wk-channelsetting-content .wk-subscribers-item .wk-avatar,
+.wk-channelsetting-content .wk-subscribers-item-avatar-wrap .wk-avatar,
 .wk-channelsetting-content .wk-subscribers-item-avatar-wrap {
     width: var(--wk-sp-12);
     height: var(--wk-sp-12);

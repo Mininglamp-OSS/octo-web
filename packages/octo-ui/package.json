@@ -21,7 +21,9 @@
     "src/components/Tag/types.ts",
     "src/components/Badge/types.ts",
     "src/components/Dot/types.ts",
-    "src/components/Tooltip/types.ts"
+    "src/components/Tooltip/types.ts",
+    "src/components/Avatar/types.ts",
+    "src/components/AvatarGroup/types.ts"
   ],
   "sideEffects": [
     "**/*.css"

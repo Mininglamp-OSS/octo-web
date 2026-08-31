@@ -23,3 +23,16 @@ export type {
   TooltipPlacement,
   TooltipProps,
 } from './components/Tooltip/types'
+export { default as Avatar } from './components/Avatar'
+export type {
+  AvatarKind,
+  AvatarProps,
+  AvatarSize,
+  AvatarTone,
+} from './components/Avatar/types'
+export { default as AvatarGroup } from './components/AvatarGroup'
+export type {
+  AvatarGroupMax,
+  AvatarGroupProps,
+  AvatarGroupSize,
+} from './components/AvatarGroup/types'
