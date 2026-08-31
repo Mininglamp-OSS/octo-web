@@ -35,6 +35,7 @@ import ChannelSetting from "../../Components/ChannelSetting";
 import ChannelSearchPanel from "../../features/channelSearch/ChannelSearchPanel";
 import { createChannelSearchApiDataSource } from "../../bridge/channelSearch/createChannelSearchDataSource";
 import { isChannelSearchEnabled } from "../../features/channelSearch/feature";
+import { openDriveFileHit } from "./openDriveFileHit";
 import type {
   ChannelSearchDataSource,
   ChannelSearchItem,
@@ -2100,6 +2101,25 @@ export default class ChatPage extends Component<any, ChatPageState> {
                         // residual risk is already contained.
                       }
                       opened.location.href = url;
+                    }}
+                    onOpenDriveHit={(hit) => {
+                      // Routing lives in openDriveFileHit (unit-tested directly)
+                      // so folder-skip / URL / popup handling can't drift. On
+                      // desktop the hit opens via the Electron links bridge.
+                      openDriveFileHit(hit, {
+                        open: (u, target) => window.open(u, target),
+                        onBlocked: () =>
+                          Toast.warning(
+                            t("base.globalSearch.drive.popupBlocked")
+                          ),
+                        onUnavailable: () =>
+                          Toast.warning(
+                            t("base.globalSearch.drive.unavailable")
+                          ),
+                        getLinksBridge: () => getElectronLinksBridge() ?? null,
+                        toAbsoluteUrl: (u) =>
+                          resolveDocLinkForExternalOpen(u, apiUrlOrigin()),
+                      });
                     }}
                     hideModal={() => {
                       vm.showGlobalSearch = false;

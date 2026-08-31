@@ -10,6 +10,7 @@ import TabFile from "../../Components/GlobalSearch/tab-file";
 import { Channel } from "wukongimjssdk";
 import GlobalContentSearchPanel from "../../Components/GlobalSearch/GlobalContentSearchPanel";
 import DocSearchPanel from "../../Components/GlobalSearch/DocSearchPanel";
+import DriveSearchPanel from "../../Components/GlobalSearch/DriveSearchPanel";
 import GlobalSearchFilterPanel, {
   type GlobalSearchFilterApplyMeta,
 } from "../../Components/GlobalSearch/GlobalSearchFilterPanel";
@@ -25,6 +26,7 @@ import {
 import type {
   ChannelSearchItem,
   DocSearchItem,
+  DriveSearchHit,
 } from "../../Service/SearchTypes";
 import { canLocateChannelSearchItem } from "../../bridge/channelSearch/locate";
 import WKApp from "../../App";
@@ -56,6 +58,10 @@ export interface GlobalSearchProps {
   // is a deployment concern; when omitted the docs tab still searches but the
   // click is a no-op (see handleOpenDoc).
   onOpenDoc?: (item: DocSearchItem) => void;
+  // Host-provided opener for a drive search hit (drive tab). Route/endpoint is a
+  // deployment concern; when omitted the drive tab still searches but the click
+  // is a no-op (see handleOpenDriveHit).
+  onOpenDriveHit?: (hit: DriveSearchHit) => void;
   initialState?: Partial<GlobalSearchState>;
 }
 
@@ -207,6 +213,24 @@ export default class GlobalSearch extends Component<
     }
   };
 
+  // Drive tab: open the clicked hit via the host `onOpenDriveHit`, which the
+  // Chat host wires to a /drive?fileId=..&spaceId=.. -> window.open in a new
+  // browser tab. Same contract as handleOpenDoc: keep this modal open, and a
+  // no-op + dev hint when unwired rather than a bogus navigation.
+  handleOpenDriveHit = (hit: DriveSearchHit) => {
+    if (this.props.onOpenDriveHit) {
+      this.props.onOpenDriveHit(hit);
+      return;
+    }
+    if (process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[GlobalSearch] onOpenDriveHit not wired; cannot open drive file",
+        hit.file_id
+      );
+    }
+  };
+
   // 同时挂载所有 tab 组件，通过 display 切换可见性。
   // 避免切 tab 时 unmount 导致 <img>/VisibilityTrigger 全部重建，进而重新
   // 触发头像请求（浏览器 HTTP cache 不一定命中，网络面板会看到"全量重拉"）。
@@ -326,6 +350,25 @@ export default class GlobalSearch extends Component<
             onOpenDoc={this.handleOpenDoc}
           />
         </div>
+        {/* Drive tab. Conditionally mounted so a deployment without both flags
+            never renders the panel at all (the tab LIST is gated in
+            GlobalSearchVM on driveOn && driveSearchOn; this mirror-gates the
+            panel). isActive gates the actual search so a hidden-but-mounted
+            panel stays idle. */}
+        {WKApp.remoteConfig.driveOn && WKApp.remoteConfig.driveSearchOn && (
+          <div className="wk-search-tabs__panel" style={panelStyle("drive")}>
+            <DriveSearchPanel
+              keyword={vm.keyword}
+              dataSource={this.globalDataSource}
+              isActive={
+                currentKey === "drive" &&
+                !!WKApp.remoteConfig.driveOn &&
+                !!WKApp.remoteConfig.driveSearchOn
+              }
+              onOpenDriveHit={this.handleOpenDriveHit}
+            />
+          </div>
+        )}
         {showSharedFilter && (
           <aside className="wk-search-tabs__shared-filter">
             <GlobalSearchFilterPanel

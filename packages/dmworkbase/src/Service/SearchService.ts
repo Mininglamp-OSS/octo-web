@@ -15,6 +15,8 @@ import {
   SearchPagination,
 } from "./SearchResultMapper";
 import APIClient from "./APIClient";
+import { apiUrlOrigin } from "../bridge/message/webhookPreview";
+import { isHttpOrigin } from "../Utils/webOrigin";
 import type {
   ChannelSearchItem,
   ChannelSearchQuery,
@@ -23,6 +25,9 @@ import type {
   DocSearchItem,
   DocSearchQuery,
   DocSearchResponse,
+  DriveSearchHit,
+  DriveSearchQuery,
+  DriveSearchResponse,
   GlobalContentTab,
   GlobalSearchFileTypeCategory,
   GlobalSearchFilters,
@@ -72,6 +77,27 @@ export function toChannelSearchRequestBody(query: ChannelSearchQuery) {
 // timezone, which would be off-by-one on non-CN browsers → we ship our own
 // CN-tz day formatter for GlobalSearch. See §11.
 const CN_TZ = "Asia/Shanghai";
+
+// Drive full-text search shares drive-module's exact route: `POST /v1/drive/search`
+// (dmwork-prod nginx: `location ^~ /v1/drive/` -> octo-drive backend, already live).
+// APIClient's default baseURL is the `/api/v1/` gateway, so we pass `/v1/drive/`
+// as a per-request baseURL override — axios combines it with the `"search"` path (no
+// leading slash) to resolve `/v1/drive/search`.
+//
+// On the WEB shell the document is served over http(s), so the root-relative
+// `/v1/drive/` resolves against the page origin and hits the nginx location as
+// before. The DESKTOP shell (Electron) loads over file://, where a root-relative
+// baseURL resolves to `file:///v1/drive/search` and every search 404s — so there
+// we resolve the prefix against the API origin via apiUrlOrigin() (the same
+// helper the /d doc links use; see apps/web/src/apiURL.ts resolveApiURL for the
+// web/desktop split this mirrors).
+function driveApiPrefix(): string {
+  const documentOrigin =
+    typeof window === "undefined" ? undefined : window.location?.origin;
+  if (isHttpOrigin(documentOrigin)) return "/v1/drive/";
+  const apiOrigin = apiUrlOrigin();
+  return apiOrigin ? `${apiOrigin}/v1/drive/` : "/v1/drive/";
+}
 
 // Split a Date into CN-tz Y/M/D (numeric). Extracted so both the wire
 // serializer and the datePreset boundary math share one code path.
@@ -512,6 +538,56 @@ const SearchService = {
       total: typeof resp?.total === "number" ? resp.total : validItems.length,
       items: validItems,
       nextCursor,
+    };
+  },
+
+  // Drive full-text search: octo-drive backend, proxied at `POST /v1/drive/search`
+  // (see driveApiPrefix). uid is
+  // injected by the gateway (not sent from the client); the backend applies
+  // permission down-push server-side, so the client renders items verbatim.
+  //
+  // Contract mirrors octo-drive-module src/bridge/types.ts (SearchParams /
+  // SearchResult). Request/response shape:
+  //   req:  { q, scope, space_id?, filters?, page_index, page_size }
+  //   resp: { total, truncated, items: SearchHit[] }
+  //   1. Pagination is OFFSET-based (page_index / page_size), NOT keyset. The
+  //      global-search drive tab only ever fetches the first page (page_index
+  //      0, page_size 20), so there is no pager arithmetic here.
+  //   2. `truncated` — true when the OpenSearch response was capped; the panel
+  //      renders a "results may be partial" note.
+  //   3. Highlight fragments already wrap hits in <mark> (name[]/body[]); the
+  //      panel renders them through a <mark>-only allowlist, never raw HTML.
+  // Boundary guard: drop items missing a usable numeric file_id / string
+  // space_id (both feed React key= and the /drive open URL), so a malformed
+  // row can't forge a key collision or a /drive?fileId=undefined jump.
+  async searchDrive(
+    query: DriveSearchQuery,
+    signal?: AbortSignal
+  ): Promise<DriveSearchResponse> {
+    const body: Record<string, unknown> = {
+      q: query.q,
+      scope: query.scope ?? "all",
+      page_index: query.page_index ?? 0,
+      page_size: query.page_size ?? 20,
+    };
+    if (query.space_id) body.space_id = query.space_id;
+    if (query.filters) body.filters = query.filters;
+    const resp = await APIClient.shared.post("search", body, {
+      signal,
+      baseURL: driveApiPrefix(),
+    });
+    const items = Array.isArray(resp?.items) ? resp.items : [];
+    const validItems = items.filter(
+      (it: unknown): it is DriveSearchHit =>
+        !!it &&
+        typeof (it as DriveSearchHit).file_id === "number" &&
+        typeof (it as DriveSearchHit).space_id === "string" &&
+        (it as DriveSearchHit).space_id !== ""
+    );
+    return {
+      total: typeof resp?.total === "number" ? resp.total : validItems.length,
+      truncated: resp?.truncated === true,
+      items: validItems,
     };
   },
 
