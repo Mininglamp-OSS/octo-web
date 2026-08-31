@@ -71,7 +71,7 @@ export function getExpertBotPublishPrompt(
         "   - 成员的 skills 同样是整包 .zip/.skill，上传流程见 `expert.md`。",
       ]
     : [
-        "   - 编写 `expert.json`：name / summary 必填，category（分类**名称**）/ tags / instruction（system prompt），可选 mcp_config（mcpServers 的 JSON 字符串，用 __OCTO_SECRET_PLACEHOLDER__ 占位密钥）。",
+        "   - 编写 `expert.json`：name / summary 必填，category（分类**名称**）/ tags / instruction（system prompt），可选 mcp_config（mcpServers 的 JSON 字符串；密钥类 env / headers 值请用 `${KEY}` 占位、切勿写入真实凭证——mcp_config 会在专家详情页对所有查看者展示，安装时才本地填充）。",
         "   - 如需附带 skills 包：先运行 `octo-cli marketplace expert-skill-upload create --file-name <名称.zip> --file-size <字节> --profile <profile>` 取得预签名，按返回的 method / headers 把原始包 PUT 到 presigned_url（不要打印 URL / headers），再在 skills[] 里用 {name, upload_object_key, file_name, file_size} 引用；只有名称时写 {name}。",
       ];
 

@@ -15,9 +15,9 @@ test("@C40 @p1 @mcp @mcp-delete MCP 删除失败保留确认弹窗和条目", as
   // deep-link straight to the connector tab so the default 技能 tab never mounts.
   await authedPage.goto("/mcp-market/mine?type=mcp&sid=e2etest");
 
-  // Mine cards use the horizontal row layout, whose accessible name is the
-  // connector name (the delete action keeps its "删除 <name>" label).
-  const card = authedPage.getByRole("button", {
+  // Mine assets render as a table; each row's accessible name is the connector
+  // name (role="row"), and the delete action keeps its "删除 <name>" label.
+  const card = authedPage.getByRole("row", {
     name: "Delete Failure MCP",
     exact: true,
   });

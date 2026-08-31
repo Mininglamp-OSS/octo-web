@@ -827,7 +827,6 @@ export default function ExpertMarketListPage({
                     onOpen={openDetail}
                     onAddToLoop={loopOn ? openAddToLoop : undefined}
                     showStats={variant === "mine"}
-                    row={variant === "mine"}
                   />
                 ))}
               </div>

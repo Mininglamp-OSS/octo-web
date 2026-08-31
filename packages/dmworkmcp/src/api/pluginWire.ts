@@ -7,9 +7,11 @@
 /** The single marketplace scene every catalog row lives under today. */
 export const SCENE_CODE = "default";
 
-/** Sentinel the backend stores in place of a redacted secret value. The
- *  unified write path rejects it under secret-named keys, so forms blank it
- *  on read and never echo it back. */
+/** Legacy redaction sentinel. The unified backend has NO secret scanner (it was
+ *  deliberately removed), so it neither produces this marker on read nor rejects
+ *  it on write — it is a purely client-side guard: if a value equal to this
+ *  sentinel is ever read back, forms blank it and never echo it, so a stray
+ *  marker cannot round-trip into a stored config. */
 export const SECRET_PLACEHOLDER = "__OCTO_SECRET_PLACEHOLDER__";
 
 export type PluginTypeWire = "connector" | "expert" | "expert_team" | "skill";

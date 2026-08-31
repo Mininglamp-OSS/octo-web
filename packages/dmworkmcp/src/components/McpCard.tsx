@@ -1,13 +1,12 @@
 import React from "react";
 import { Tooltip } from "@douyinfe/semi-ui";
 import { IconWrenchStroked } from "@douyinfe/semi-icons";
-import { Bot, Eye, Pencil, ShieldCheck, Trash2, UserRound } from "lucide-react";
+import { Bot, Pencil, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import type { McpListItem } from "../types/mcp";
 import { t } from "@octo/base";
 import { IconGlyph } from "../utils/icon";
 import { getMcpAvatarColor, getMcpAvatarText } from "../utils/mcpAvatar";
 import { isOfficialMcp } from "../utils/publisher";
-import { formatCount } from "../utils/format";
 
 interface McpCardProps {
   item: McpListItem;
@@ -20,8 +19,6 @@ interface McpCardProps {
   onDelete?: (item: McpListItem) => void;
   /** Show the footer stats row. Discovery hides it; the 我的 view keeps it. */
   showStats?: boolean;
-  /** Render the horizontal "我的发布" row layout instead of the grid card. */
-  row?: boolean;
 }
 
 /** Parse a backend `match_reasons` entry into an i18n key + optional value.
@@ -97,7 +94,7 @@ export function resolveOwner(item: McpListItem): { botName?: string; humanName?:
 }
 
 /** A single MCP server card in the list grid. */
-const McpCard: React.FC<McpCardProps> = ({ item, onClick, onConnect, onEdit, onDelete, showStats = true, row = false }) => {
+const McpCard: React.FC<McpCardProps> = ({ item, onClick, onConnect, onEdit, onDelete, showStats = true }) => {
   const visibleTags = item.tags.slice(0, CARD_TAG_LIMIT);
   const overflowTags = item.tags.slice(CARD_TAG_LIMIT);
   const isOfficial = isOfficialMcp(item);
@@ -106,117 +103,6 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onConnect, onEdit, onD
   // (paste artifact, backend quirk) doesn't slip past the truthiness check
   // and render an empty box via IconGlyph.
   const hasIcon = !!item.icon?.trim();
-
-  if (row) {
-    return (
-      <div
-        className="wk-mcp-mine-row"
-        role="button"
-        tabIndex={0}
-        aria-label={item.name}
-        data-track="market_card_opened"
-        data-object-id={item.id}
-        data-track-item-type="mcp"
-        onClick={() => onClick(item)}
-        onKeyDown={(e) => {
-          if (e.target instanceof HTMLElement && e.target.closest("button")) return;
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onClick(item);
-          }
-        }}
-      >
-        <span className="wk-mcp-mine-row__icon">
-          {hasIcon ? (
-            <IconGlyph icon={item.icon} className="wk-mcp-mine-row__icon-img" alt={item.name} />
-          ) : (
-            <span
-              className="wk-mcp-mine-row__icon-default"
-              style={{ background: getMcpAvatarColor(item.id) }}
-            >
-              {getMcpAvatarText(item.name)}
-            </span>
-          )}
-        </span>
-        <div className="wk-mcp-mine-row__body">
-          <div className="wk-mcp-mine-row__title" title={item.name}>
-            {item.name}
-          </div>
-          {item.category && <div className="wk-mcp-mine-row__meta">{item.category}</div>}
-          {visibleTags.length > 0 && (
-            <div className="wk-mcp-card__tags">
-              {visibleTags.map((tag) => (
-                <span key={tag} className="wk-mcp-tag">
-                  {tag}
-                </span>
-              ))}
-              {overflowTags.length > 0 && (
-                <span className="wk-mcp-tag wk-mcp-tag--more">+{overflowTags.length}</span>
-              )}
-            </div>
-          )}
-          <div className="wk-mcp-mine-row__status">
-            <span
-              className="wk-mcp-mine-row__stat"
-              title={t("mcp.card.viewCountTitle", { values: { count: item.viewCount ?? 0 } })}
-            >
-              <Eye size={13} aria-hidden="true" />
-              {formatCount(item.viewCount ?? 0)}
-            </span>
-            <span
-              className="wk-mcp-mine-row__stat"
-              title={t("mcp.card.toolCount", { values: { count: item.toolCount ?? 0 } })}
-            >
-              <IconWrenchStroked size="small" aria-hidden="true" />
-              {formatCount(item.toolCount ?? 0)}
-            </span>
-            {item.visibility && (
-              <span className="wk-mcp-mine-row__vis">
-                {t(`mcp.visibility.${item.visibility}`)}
-              </span>
-            )}
-            {item.version && (
-              <span className="wk-mcp-mine-row__version">v{item.version}</span>
-            )}
-          </div>
-        </div>
-        <div
-          className="wk-mcp-mine-row__actions"
-          onClick={(e) => e.stopPropagation()}
-          data-track-ignore=""
-        >
-          {onEdit && (
-            <button
-              type="button"
-              className="wk-mcp-mine-row__action"
-              aria-label={t("mcp.card.editAriaLabel", { values: { name: item.name } })}
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit(item);
-              }}
-            >
-              <Pencil size={15} aria-hidden="true" />
-              {t("mcp.card.edit")}
-            </button>
-          )}
-          {onDelete && (
-            <button
-              type="button"
-              className="wk-mcp-mine-row__action wk-mcp-mine-row__action--danger"
-              aria-label={t("mcp.card.deleteAriaLabel", { values: { name: item.name } })}
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(item);
-              }}
-            >
-              <Trash2 size={15} aria-hidden="true" />
-              {t("mcp.card.delete")}
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div

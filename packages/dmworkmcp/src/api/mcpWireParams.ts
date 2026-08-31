@@ -70,10 +70,12 @@ export function toPluginUpsert(
     // back by every client of the unified API, so this must not bake in a locale.
     examples: usage.map((input, i) => ({ title: `Example ${i + 1}`, input })),
   };
-  // The unified marketplace never persists secret VALUES. mcp.json is the
-  // standard {"mcpServers": {...}} document: user-supplied env/header keys
-  // carry ${KEY} placeholders (filled locally at install time), and any
-  // redaction sentinel echoed from a read is blanked.
+  // Secret handling on the unified surface is a CLIENT-side control, not a
+  // backend guarantee: the marketplace has no secret scanner (the heuristic one
+  // was deliberately removed), so it stores whatever value it receives. This
+  // client therefore never SENDS secret values — user-supplied env/header keys
+  // are emitted as ${KEY} placeholders (filled locally at install time), and a
+  // redaction sentinel echoed from a read is blanked before write.
   const server: Record<string, unknown> = {};
   if (params.transport) server.type = params.transport;
   if (params.url) server.url = params.url;
