@@ -391,9 +391,9 @@
     "daysAgo": "{{count}} 天前"
   },
   "visibility": {
-    "public": "公开",
-    "space": "组织",
+    "public": "全平台",
+    "space": "本组织",
     "private": "仅自己",
-    "system": "公开"
+    "system": "全平台"
   }
 }

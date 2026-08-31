@@ -25,6 +25,9 @@ import ExpertDetailModal from "../components/ExpertDetailModal";
 import ExpertBotPublishModal from "../components/ExpertBotPublishModal";
 import ExpertDeleteConfirmModal from "../components/ExpertDeleteConfirmModal";
 import ExpertAddToLoopModal from "../components/ExpertAddToLoopModal";
+import { MineTable } from "@dmwork/skillmarket";
+import { getMcpAvatarColor } from "../utils/mcpAvatar";
+import { normalizeVisibility } from "../utils/visibility";
 
 type ExpertKind = "agent" | "squad" | "mine";
 
@@ -717,20 +720,35 @@ export default function ExpertMarketListPage({
                 </p>
               )}
               {mySquads.length > 0 ? (
-                <div className="wk-mcp-expert-grid">
-                  {mySquads.map((item) => (
-                    <ExpertCard
-                      key={item.id}
-                      item={item}
-                      onOpen={openDetail}
-                      onAddToLoop={loopOn ? openAddToLoop : undefined}
-                      onEdit={handleEdit}
-                      onDelete={setDeleteTarget}
-                      showStats={variant === "mine"}
-                      row={variant === "mine"}
-                    />
-                  ))}
-                </div>
+                <MineTable
+                  rows={mySquads.map((item) => ({
+                    id: item.id,
+                    type: "squad" as const,
+                    trackItemType: "expert",
+                    icon: (
+                      <span
+                        className="wk-mine-table__avatar-tile"
+                        style={{ background: getMcpAvatarColor(item.id) }}
+                      >
+                        {item.shortName}
+                      </span>
+                    ),
+                    name: item.name,
+                    description: item.summary,
+                    category: item.category,
+                    version: item.version,
+                    visibility: normalizeVisibility(item.visibility),
+                    views: item.viewCount,
+                    downloads: item.installCount,
+                    ariaLabel: item.name,
+                    onOpen: () => openDetail(item),
+                    onEdit: () => handleEdit(item),
+                    onDelete: () => setDeleteTarget(item),
+                    editAria: t("mcp.expert.editAriaLabel", { values: { name: item.name } }),
+                    deleteAria: t("mcp.expert.deleteAriaLabel", { values: { name: item.name } }),
+                  }))}
+                  visibilityLabel={(v) => t(`mcp.visibility.${v}`)}
+                />
               ) : (
                 <p className="wk-mcp-expert-mine-empty">
                   {t("mcp.expert.mineSquadsEmpty")}
@@ -753,20 +771,35 @@ export default function ExpertMarketListPage({
                 </p>
               )}
               {myAgents.length > 0 ? (
-                <div className="wk-mcp-expert-grid">
-                  {myAgents.map((item) => (
-                    <ExpertCard
-                      key={item.id}
-                      item={item}
-                      onOpen={openDetail}
-                      onAddToLoop={loopOn ? openAddToLoop : undefined}
-                      onEdit={handleEdit}
-                      onDelete={setDeleteTarget}
-                      showStats={variant === "mine"}
-                      row={variant === "mine"}
-                    />
-                  ))}
-                </div>
+                <MineTable
+                  rows={myAgents.map((item) => ({
+                    id: item.id,
+                    type: "expert" as const,
+                    trackItemType: "expert",
+                    icon: (
+                      <span
+                        className="wk-mine-table__avatar-tile"
+                        style={{ background: getMcpAvatarColor(item.id) }}
+                      >
+                        {item.shortName}
+                      </span>
+                    ),
+                    name: item.name,
+                    description: item.summary,
+                    category: item.category,
+                    version: item.version,
+                    visibility: normalizeVisibility(item.visibility),
+                    views: item.viewCount,
+                    downloads: item.installCount,
+                    ariaLabel: item.name,
+                    onOpen: () => openDetail(item),
+                    onEdit: () => handleEdit(item),
+                    onDelete: () => setDeleteTarget(item),
+                    editAria: t("mcp.expert.editAriaLabel", { values: { name: item.name } }),
+                    deleteAria: t("mcp.expert.deleteAriaLabel", { values: { name: item.name } }),
+                  }))}
+                  visibilityLabel={(v) => t(`mcp.visibility.${v}`)}
+                />
               ) : (
                 <p className="wk-mcp-expert-mine-empty">
                   {t("mcp.expert.mineAgentsEmpty")}

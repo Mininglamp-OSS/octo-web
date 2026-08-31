@@ -22,6 +22,8 @@ import SearchBar from "../components/SearchBar";
 import SkillCard from "../components/SkillCard";
 import SkillCardSkeleton from "../components/SkillCardSkeleton";
 import SkillDetailModal from "../components/SkillDetailModal";
+import MineTable from "../components/MineTable";
+import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 
 /**
  * Rendering variant. "market" (default) = discovery catalog. "mine" = personal
@@ -310,21 +312,53 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
           </div>
         )}
         {!list.loading && !list.error && list.skills.length > 0 && (
-          <div className="skill-market-grid">
-            {list.skills.map((skill) => (
-              <SkillCard
-                key={skill.id}
-                skill={skill}
-                categories={list.categories}
-                onOpen={openDetail}
-                onEdit={mine ? setEditing : undefined}
-                onDelete={mine ? setDeleting : undefined}
-                onInstall={(item) => setInstallSkillId(item.id)}
-                showStats={mine}
-                row={mine}
-              />
-            ))}
-          </div>
+          mine ? (
+            <MineTable
+              rows={list.skills.map((skill) => ({
+                id: skill.id,
+                type: "skill" as const,
+                trackItemType: "skill",
+                icon: skill.iconUrl ? (
+                  <img className="wk-mine-table__avatar-img" src={skill.iconUrl} alt="" />
+                ) : (
+                  <span
+                    className="wk-mine-table__avatar-tile"
+                    style={{ background: getSkillAvatarColor(skill.name) }}
+                  >
+                    {getSkillAvatarText(skill.name)}
+                  </span>
+                ),
+                name: skill.displayName || skill.name,
+                description: skill.description,
+                category: list.categories.find((c) => c.id === skill.categoryId)?.name,
+                version: skill.version,
+                visibility: skill.visibility,
+                views: skill.viewCount,
+                downloads: skill.downloadCount,
+                updatedAt: skill.updatedAt,
+                ariaLabel: skill.name,
+                onOpen: () => openDetail(skill),
+                onEdit: () => setEditing(skill),
+                onDelete: () => setDeleting(skill),
+                editAria: t("skillMarket.card.editAriaLabel", { values: { name: skill.name } }),
+                deleteAria: t("skillMarket.card.deleteAriaLabel", { values: { name: skill.name } }),
+              }))}
+              visibilityLabel={(v) => t(`skillMarket.visibility.${v}`)}
+            />
+          ) : (
+            <div className="skill-market-grid">
+              {list.skills.map((skill) => (
+                <SkillCard
+                  key={skill.id}
+                  skill={skill}
+                  categories={list.categories}
+                  onOpen={openDetail}
+                  onInstall={(item) => setInstallSkillId(item.id)}
+                  showStats={false}
+                />
+              ))}
+            </div>
+          )
         )}
         <div ref={sentinelRef} className="skill-market-sentinel">
           {list.loadingMore ? (

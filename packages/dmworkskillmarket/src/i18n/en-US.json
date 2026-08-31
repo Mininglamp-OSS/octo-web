@@ -193,9 +193,20 @@
     "daysAgo": "{{count}} days ago"
   },
   "visibility": {
-    "public": "Public",
-    "space": "Org",
-    "private": "Private",
-    "system": "Public"
+    "public": "All platforms",
+    "space": "Organization",
+    "private": "Only me",
+    "system": "All platforms"
+  },
+  "mineTable": {
+    "ariaLabel": "My publications",
+    "name": "Name",
+    "category": "Category",
+    "version": "Version",
+    "visibility": "Visibility",
+    "views": "Views",
+    "downloads": "Downloads",
+    "updatedAt": "Updated",
+    "actions": "Actions"
   }
 }

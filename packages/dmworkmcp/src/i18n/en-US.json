@@ -391,9 +391,9 @@
     "daysAgo": "{{count}} days ago"
   },
   "visibility": {
-    "public": "Public",
-    "space": "Org",
-    "private": "Private",
-    "system": "Public"
+    "public": "All platforms",
+    "space": "Organization",
+    "private": "Only me",
+    "system": "All platforms"
   }
 }

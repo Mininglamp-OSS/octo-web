@@ -193,9 +193,20 @@
     "daysAgo": "{{count}} 天前"
   },
   "visibility": {
-    "public": "公开",
-    "space": "组织",
+    "public": "全平台",
+    "space": "本组织",
     "private": "仅自己",
-    "system": "公开"
+    "system": "全平台"
+  },
+  "mineTable": {
+    "ariaLabel": "我的发布列表",
+    "name": "名称",
+    "category": "分类",
+    "version": "版本",
+    "visibility": "可见范围",
+    "views": "浏览",
+    "downloads": "下载",
+    "updatedAt": "更新时间",
+    "actions": "操作"
   }
 }

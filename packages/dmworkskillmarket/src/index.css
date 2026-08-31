@@ -2807,3 +2807,200 @@
   justify-content: flex-end;
   gap: var(--wk-sp-2);
 }
+
+/* ── "我的发布" list table (shared MineTable) ─────────────────────────────
+   Token-styled data table used by all three mine tabs (技能 / 连接器 / 专家 /
+   专家团). Grid rows share the header's column template. Discovery grids are
+   untouched. */
+.wk-mine-table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-lg);
+  background: var(--wk-bg-surface);
+  overflow: hidden;
+}
+.wk-mine-table__head,
+.wk-mine-table__row {
+  display: grid;
+  grid-template-columns:
+    minmax(240px, 2.4fr) minmax(96px, 1fr) 96px 118px 76px 76px 116px 152px;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  padding: 0 var(--wk-sp-5);
+}
+.wk-mine-table__head {
+  height: 44px;
+  border-bottom: 1px solid var(--wk-border-subtle);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+  font-weight: var(--wk-font-semibold);
+}
+.wk-mine-table__row {
+  min-height: 64px;
+  padding-top: var(--wk-sp-3);
+  padding-bottom: var(--wk-sp-3);
+  border-bottom: 1px solid var(--wk-border-subtle);
+  color: var(--wk-text-tertiary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--wk-dur-fast) var(--wk-ease);
+}
+.wk-mine-table__row:last-child {
+  border-bottom: none;
+}
+.wk-mine-table__row:hover,
+.wk-mine-table__row:focus-visible {
+  outline: none;
+  background: var(--wk-bg-item-hover);
+}
+.wk-mine-table__col {
+  min-width: 0;
+}
+.wk-mine-table__col--num,
+.wk-mine-table__col--updated {
+  font-variant-numeric: tabular-nums;
+}
+.wk-mine-table__col--category {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* name cell — avatar (+ type marker) + name/description stack */
+.wk-mine-table__col--name {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+}
+.wk-mine-table__avatar {
+  position: relative;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+}
+.wk-mine-table__avatar-img {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--wk-r-md);
+  object-fit: cover;
+  display: block;
+}
+.wk-mine-table__avatar-tile {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--wk-r-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--wk-bg-surface);
+  font-weight: var(--wk-font-semibold);
+  font-size: 14px;
+  overflow: hidden;
+}
+.wk-mine-table__type {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 2px solid var(--wk-bg-surface);
+  color: var(--wk-bg-surface);
+}
+.wk-mine-table__type--skill {
+  background: var(--wk-color-warning);
+}
+.wk-mine-table__type--connector {
+  background: var(--wk-color-info);
+}
+.wk-mine-table__type--expert {
+  background: var(--wk-color-primary);
+}
+.wk-mine-table__type--squad {
+  background: var(--wk-color-success);
+}
+.wk-mine-table__namecol {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.wk-mine-table__name {
+  color: var(--wk-text-strong);
+  font-weight: var(--wk-font-semibold);
+  font-size: var(--wk-text-size-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wk-mine-table__desc {
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wk-mine-table__version {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--wk-sp-2);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.wk-mine-table__vis {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 var(--wk-sp-2);
+  border-radius: var(--wk-r-sm);
+  white-space: nowrap;
+}
+.wk-mine-table__vis--system {
+  background: var(--wk-color-success-bg);
+  color: var(--wk-color-success);
+}
+.wk-mine-table__vis--space {
+  background: var(--wk-color-info-bg);
+  color: var(--wk-color-info);
+}
+.wk-mine-table__vis--private {
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-secondary);
+}
+.wk-mine-table__col--actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  justify-content: flex-end;
+}
+.wk-mine-table__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 var(--wk-sp-2);
+  border: none;
+  border-radius: var(--wk-r-md);
+  background: transparent;
+  color: var(--wk-color-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--wk-dur-fast) var(--wk-ease);
+}
+.wk-mine-table__action:hover {
+  background: var(--wk-bg-item-hover);
+}
+.wk-mine-table__action--danger {
+  color: var(--wk-color-danger);
+}
+.wk-mine-table__action--danger:hover {
+  background: var(--wk-color-danger-bg);
+}

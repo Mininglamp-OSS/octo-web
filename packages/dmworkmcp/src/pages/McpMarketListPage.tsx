@@ -13,6 +13,9 @@ import McpCreateModal from "../components/McpCreateModal";
 import McpBotPublishModal from "../components/McpBotPublishModal";
 import McpConnectModal from "../components/McpConnectModal";
 import McpDeleteConfirmModal from "../components/McpDeleteConfirmModal";
+import { MineTable } from "@dmwork/skillmarket";
+import { isImageIcon } from "../utils/icon";
+import { getMcpAvatarColor, getMcpAvatarText } from "../utils/mcpAvatar";
 import "../index.css";
 import { parseMcpListQuery, serializeMcpListQuery } from "./mcpListQuery";
 
@@ -815,6 +818,40 @@ export default class McpMarketListPage extends Component<
                   <div className="wk-mcp__state">{t("mcp.list.empty")}</div>
                 ) : (
                   <>
+                    {this.props.variant === "mine" ? (
+                      <MineTable
+                        rows={items.map((item) => ({
+                          id: item.id,
+                          type: "connector" as const,
+                          trackItemType: "mcp",
+                          icon: isImageIcon(item.icon) ? (
+                            <img className="wk-mine-table__avatar-img" src={item.icon} alt="" />
+                          ) : (
+                            <span
+                              className="wk-mine-table__avatar-tile"
+                              style={{ background: getMcpAvatarColor(item.id) }}
+                            >
+                              {item.icon?.trim() ? item.icon : getMcpAvatarText(item.name)}
+                            </span>
+                          ),
+                          name: item.name,
+                          description: item.slogan,
+                          category: item.category,
+                          version: item.version,
+                          visibility: item.visibility,
+                          views: item.viewCount,
+                          downloads: item.installCount,
+                          updatedAt: item.updatedAt,
+                          ariaLabel: item.name,
+                          onOpen: () => this.setState({ detailId: item.id }),
+                          onEdit: () => this.handleEditFromCard(item),
+                          onDelete: () => this.setState({ deletingItem: item }),
+                          editAria: t("mcp.card.editAriaLabel", { values: { name: item.name } }),
+                          deleteAria: t("mcp.card.deleteAriaLabel", { values: { name: item.name } }),
+                        }))}
+                        visibilityLabel={(v) => t(`mcp.visibility.${v}`)}
+                      />
+                    ) : (
                     <div className="wk-mcp__grid">
                       {items.map((item) => (
                         <McpCard
@@ -826,17 +863,11 @@ export default class McpMarketListPage extends Component<
                             this.setState({ detailId: it.id });
                           }}
                           onConnect={(it) => this.setState({ connectItem: it })}
-                          onEdit={canManage ? this.handleEditFromCard : undefined}
-                          onDelete={
-                            canManage
-                              ? (it) => this.setState({ deletingItem: it })
-                              : undefined
-                          }
-                          showStats={this.props.variant === "mine"}
-                          row={this.props.variant === "mine"}
+                          showStats={false}
                         />
                       ))}
                     </div>
+                    )}
                     <div className="wk-mcp__footnote">
                       {loadingMore ? (
                         <Spin size="small" />

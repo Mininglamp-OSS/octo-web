@@ -131,7 +131,7 @@ describe("SkillListPage", () => {
 
     expect(screen.queryByLabelText(categoryAriaLabel)).not.toBeInTheDocument();
     expect(
-      await screen.findByRole("button", { name: "meeting-note-cleaner 我" })
+      await screen.findByRole("row", { name: "meeting-note-cleaner" })
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^安装$/ })).not.toBeInTheDocument();
     expect(
@@ -334,16 +334,17 @@ describe("SkillListPage", () => {
     });
   });
 
-  it("renders the mine row card (stats + visibility) and opens detail", async () => {
+  it("renders the mine table row (version + visibility) and opens detail", async () => {
     render(<SkillListPage variant="mine" />);
 
-    const card = await screen.findByRole("button", {
-      name: "meeting-note-cleaner 我",
+    const card = await screen.findByRole("row", {
+      name: "meeting-note-cleaner",
     });
-    // The 我的发布 row card surfaces view/download counts, visibility, and version.
+    // The 我的发布 table row surfaces version and visibility.
     expect(screen.getByText("v1.1.3")).toBeInTheDocument();
-    expect(screen.getByTitle(/浏览次数：|Views:/)).toBeInTheDocument();
-    expect(screen.getByTitle(/下载次数：|Downloads:/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/本组织|skillMarket\.visibility\.space/)
+    ).toBeInTheDocument();
 
     fireEvent.click(card);
     // Detail opened: the machine name renders in the modal content (header +
@@ -370,7 +371,7 @@ describe("SkillListPage", () => {
     render(<SkillListPage variant="mine" />);
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "meeting-note-cleaner 我" })
+      await screen.findByRole("row", { name: "meeting-note-cleaner" })
     );
     expect((await screen.findAllByText(skill.name)).length).toBeGreaterThan(0);
 
@@ -417,7 +418,7 @@ describe("SkillListPage", () => {
     render(<SkillListPage variant="mine" />);
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "meeting-note-cleaner 我" })
+      await screen.findByRole("row", { name: "meeting-note-cleaner" })
     );
     expect((await screen.findAllByText(skill.name)).length).toBeGreaterThan(0);
 
