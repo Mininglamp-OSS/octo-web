@@ -105,6 +105,12 @@ function createTab(options: {
             state.visible = visible;
             leader.setVisible(visible);
         },
+        /**
+         * 只改真实可见性，【不】通知 leader —— 模拟压根不发 visibilitychange 的
+         * 宿主（某些 Electron / iframe 嵌入环境）。这是 setVisible 之外唯一能把
+         * 「beat 到底读缓存还是现问」区分开的手法。
+         */
+        setVisibleSilently: (visible: boolean) => { state.visible = visible; },
     };
 }
 
@@ -685,5 +691,84 @@ describe('createAttentionLeader —— 可见性即选主资格', () => {
         a.setVisible(false);
         a.setVisible(false);
         expect(a.events).toEqual(['lead', 'resign']);
+    });
+});
+
+/**
+ * beat() 每拍现问可见性，而不是只信 setVisible 留下的缓存值。
+ *
+ * 这一维单靠 setVisible 测不出来：那条路径本来就会把缓存值改对。要区分「读缓存」
+ * 和「现问」，只能让真实可见性在【没有 visibilitychange】的情况下变化——而那恰
+ * 恰是心跳定时器特意不随可见性停表所要照顾的宿主（见 start() 的注释）。心跳活着
+ * 却读着一个永远不会更新的变量，等于活着也没用。
+ */
+describe('createAttentionLeader —— beat 现问可见性（宿主不发 visibilitychange）', () => {
+    let storage: ReturnType<typeof createMemoryStorage>;
+    let factory: ReturnType<typeof createChannelFactory>;
+    let clock: { now: number };
+
+    beforeEach(() => {
+        storage = createMemoryStorage();
+        factory = createChannelFactory();
+        clock = { now: 1_000_000 };
+    });
+
+    it('leader 静默转入隐藏：下一拍就让位并清掉自己的租约', () => {
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        a.leader.start();
+        expect(a.leader.isLeader()).toBe(true);
+
+        // 宿主不发事件，只有真实可见性变了。
+        a.setVisibleSilently(false);
+        clock.now += LEADER_HEARTBEAT_MS;
+        a.beat();
+
+        expect(a.leader.isLeader()).toBe(false);
+        expect(a.events).toEqual(['lead', 'resign']);
+        // 让位的同时清租约，可见的跟随者下一拍就能接管，不必空等 staleAfterMs。
+        expect(storage.getItem('octo:summary-attention-leader')).toBeNull();
+    });
+
+    it('隐藏的 leader 静默转回可见：下一拍自己夺回，不必等 visibilitychange', () => {
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock, visible: false });
+        a.leader.start();
+        expect(a.leader.isLeader()).toBe(false);
+
+        a.setVisibleSilently(true);
+        clock.now += LEADER_HEARTBEAT_MS;
+        a.beat();
+
+        expect(a.leader.isLeader()).toBe(true);
+        expect(a.events).toEqual(['lead']);
+    });
+
+    it('静默隐藏的 leader 不再续租，可见的跟随者靠这一拍接管', () => {
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        a.leader.start();
+        const b = createTab({ id: 'tab-b', storage, ctor: factory.ctor, clock });
+        b.leader.start();
+        expect(b.leader.isLeader()).toBe(false);
+
+        a.setVisibleSilently(false);
+        clock.now += LEADER_HEARTBEAT_MS;
+        a.beat();   // 让位 + 清租约
+        b.beat();   // 看到没有租约，抢占
+
+        expect(a.leader.isLeader()).toBe(false);
+        expect(b.leader.isLeader()).toBe(true);
+    });
+
+    it('降级模式不受影响：beat 压根不跑，isLeader 恒为 true', () => {
+        const s = createMemoryStorage();
+        const a = createTab({ id: 'tab-a', storage: s, ctor: null, clock });
+        a.leader.start();
+        expect(a.leader.isDegraded()).toBe(true);
+
+        a.setVisibleSilently(false);
+        clock.now += LEADER_HEARTBEAT_MS;
+        a.beat();
+
+        expect(a.leader.isLeader()).toBe(true);
+        expect(a.events).toEqual(['lead']);
     });
 });

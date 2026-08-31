@@ -44,6 +44,12 @@ let _attentionLeader: AttentionLeader | null = null;
 let _menuActivatedHandler: (() => void) | null = null;
 let _imMessageHandler: ((message: unknown) => void) | null = null;
 let _imConnectHandler: ((status: unknown) => void) | null = null;
+/**
+ * 本标签页此刻是否可见。SSR / 测试环境没有 document，按可见处理（那里没有
+ * 「后台标签页」的概念，一律当前台才不会把功能整个关掉）。
+ */
+const isDocumentVisible = () => typeof document === 'undefined' || document.visibilityState === 'visible';
+
 const openingSummaryShares = new Set<string>();
 // NavRail 每次进入的序号：并入默认创建页元素的 key。key 若固定，重复点菜单时
 // React 会复用旧实例（WKViewQueue 按数组下标渲染），「重置回默认创建页」不生效。
@@ -240,10 +246,19 @@ export class SummaryModule implements IModule {
             // 失败（静默保持旧值），归零后的失败模式是“没红点”而不是“别人的红点”。
             // 计数现在含义比「未处理邀请」宽得多，显错 Space 的数字更具误导性。
             setSummaryAttentionBadge(0);
-            refreshSummaryAttentionBadge();
             // 切 Space 是一次明确的用户活动：把轮询拉回基础档。否则上一个 Space 安静
             // 了很久、间隔已退到 60s，切过去之后新 Space 的变化要等一分钟才能看到。
+            //
+            // 顺序要紧，而且必须是【先轮询、后 fresh】。两条读取都在自己的第一个
+            // await 之前取票，所以先调用的那条票号更小；notifyActivity() 又是同步
+            // 调进 tick() 的，不存在「排到下一个宏任务」的侥幸。反过来写（fresh 在
+            // 前）就成了：非 fresh 那条票号更新，它先回来就直接落盘，随后 fresh 的
+            // 响应因票号过期被丢掉——切一次 Space 花两个请求，偏偏丢的是唯一那条
+            // 绕开服务端 5s 缓存的，新 Space 的红点仍旧来自一个最多 5s 前的缓存值。
+            // 现在这个顺序下 fresh 读票号最新、折算后的样本时刻也最新（非 fresh 会
+            // 被减去一个 TTL），无论两条谁先回来它都赢。
             _attentionPoll?.notifyActivity();
+            refreshSummaryAttentionBadge();
         };
         _spaceReadyHandler = () => {
             initialSpaceReady = true;
@@ -280,7 +295,7 @@ export class SummaryModule implements IModule {
                 // 又得慢慢爬回来）。
                 return sample?.count ?? getSummaryAttentionBadge();
             },
-            isVisible: () => typeof document === 'undefined' || document.visibilityState === 'visible',
+            isVisible: isDocumentVisible,
             // 广播【不】在这里发：它挂在 readSummaryAttentionCount 里的 publisher 上（见
             // setSummaryAttentionPublisher 接线），因为【每一次】成功的本地读取都该广播，
             // 不只是轮询那一条。一个标签页里用户点掉红点，其它标签页本来就该跟着灭，
@@ -296,7 +311,7 @@ export class SummaryModule implements IModule {
                 _attentionPoll?.notifyActivity();
             },
             onResignLeader: () => _attentionPoll?.stop(),
-            isVisible: () => typeof document === 'undefined' || document.visibilityState === 'visible',
+            isVisible: isDocumentVisible,
             onRemoteCount: (count, spaceId, sampleAt) => {
                 // 只接受与本标签页当前 Space 相同的广播：计数是 space-scoped 的，
                 // 各标签页可能停在不同 Space 上，写错 Space 的数字比不刷新更糟。
@@ -320,7 +335,7 @@ export class SummaryModule implements IModule {
         // 而不是空转跳拍）。两件事语义不同：前者是「现在刷一次」，后者是「接下来还
         // 要不要接着轮」。
         _visibilityHandler = () => {
-            const visible = typeof document === 'undefined' || document.visibilityState === 'visible';
+            const visible = isDocumentVisible();
             _attentionPoll?.setVisible(visible);
             // 可见性同时是【选主资格】：隐藏的标签页自己不轮询，就不能再占着租约。
             // 漏了这一行，切到同窗口另一个标签页就会让整个浏览器静默到 Chrome 的
@@ -352,11 +367,21 @@ export class SummaryModule implements IModule {
         // 它的接线失败绝不应该把模块注册整个带崩（例如测试/嵌入环境里 SDK 未就绪）。
         try {
             const sdk = WKSDK.shared();
+            // 两条都加可见性门。IM 与重连是【每个标签页各收一份】的事件源，既不过
+            // leader、也不去抖跨页，而本 PR 之后它们走的是 fresh=1，逐个绕开服务端
+            // 那 5s 缓存。不门控的话，一个开着五个 OCTO 标签页的用户每来一条落在
+            // 1000-2000 系统提示区间的消息就是五个未缓存请求，其中四个花在没人看的
+            // 标签页上——PR 里那句「720 → ~62」只算了轮询这一半，对不上这一半。
+            //
+            // 不牺牲任何响应速度：标签页从隐藏变回可见时，_visibilityHandler 自己就
+            // 会 trigger() 一次，隐藏期间攒下的变更在用户真正看到红点的那一刻补齐。
             _imMessageHandler = (message: unknown) => {
+                if (!isDocumentVisible()) return;
                 if (shouldRefreshForMessage(message)) _attentionSync?.trigger();
             };
             sdk.chatManager.addMessageListener(_imMessageHandler as any);
             _imConnectHandler = (status: unknown) => {
+                if (!isDocumentVisible()) return;
                 if (status === ConnectStatus.Connected) _attentionSync?.trigger();
             };
             sdk.connectManager.addConnectStatusListener(_imConnectHandler as any);

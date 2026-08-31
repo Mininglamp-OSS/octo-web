@@ -216,7 +216,8 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
     let heartbeatTimer: unknown = null;
     let unloadHandler: (() => void) | null = null;
     /**
-     * 本标签页当前是否可见。初值从注入的判定读一次，之后由 setVisible 维护。
+     * 本标签页当前是否可见。初值从注入的判定读一次；之后由 setVisible 更新，
+     * 并且每一拍心跳都会重新校准（见 beat）——所以它是缓存，不是唯一真相。
      *
      * 不可见的标签页【没有当 leader 的资格】：它自己的轮询已经停表，再占着租约
      * 就是把整个浏览器的兜底轮询扣死。见 AttentionLeaderDeps.isVisible 的注释。
@@ -265,6 +266,18 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
      */
     const beat = () => {
         if (!storage) return;
+        // 每拍现问一次可见性，而不是只信 setVisible 留下的缓存值。
+        //
+        // 心跳定时器特意【不】随可见性停表，理由写在 start() 里：宿主可能根本不发
+        // visibilitychange，那时只剩这条心跳能把标签页拉回竞争。可若这里读的是一个
+        // 只由 visibilitychange 维护的变量，在恰恰是那种宿主里它会永远冻在构造时的
+        // 取值，幸存下来的定时器便没有任何新信息可依据——理由与实现对不上。
+        //
+        // 轮询那边本来就每拍现读 document.visibilityState（summaryAttentionPoll 的
+        // schedule/tick）。这里用同一把尺子、同样的频率，两者才不会分叉成「自己停着
+        // 表、却还每 3s 续租」的空心 leader——那正是可见性门控要防的那种静默。
+        // 代价是每 3s 一次判定调用，可忽略。
+        visible = isVisibleFn();
         if (!visible) {
             // 隐藏标签页主动退出竞争：让位 + 清掉自己的租约，可见的跟随者下一拍
             // 就能接管，不必空等 staleAfterMs。租约过期只留给「被强杀、连

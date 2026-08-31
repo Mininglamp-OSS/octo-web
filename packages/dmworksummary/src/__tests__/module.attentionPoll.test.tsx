@@ -44,6 +44,20 @@ const captured = vi.hoisted(() => ({
   leaderDeps: null as any,
 }));
 
+// 事件驱动刷新的调度器换成替身：本文件关心的是【谁在什么条件下 trigger】，
+// 固定窗口本身在 utils/__tests__/summaryAttentionSync.test.ts 里已经钉住了。
+const sync = vi.hoisted(() => ({
+  trigger: vi.fn(),
+  triggerNow: vi.fn(),
+  cancel: vi.fn(),
+}));
+
+// IM 侧同样换成替身，好把 module.tsx 注册进去的两个 listener 抓在手里。
+const im = vi.hoisted(() => ({
+  messageListeners: [] as Array<(message: unknown) => void>,
+  connectListeners: [] as Array<(status: unknown) => void>,
+}));
+
 vi.mock("@octo/base", () => ({
   i18n: { registerNamespace: vi.fn() },
   t: (key: string) => key,
@@ -120,6 +134,30 @@ vi.mock("../utils/summaryAttentionLeader", () => ({
     return leader;
   },
 }));
+vi.mock("../utils/summaryAttentionSync", () => ({
+  createAttentionSync: () => sync,
+  // 只有显式标记的消息才算「值得刷新」，免得把真实的 contentType 区间抄进测试。
+  shouldRefreshForMessage: (message: unknown) => (message as { match?: boolean })?.match === true,
+}));
+vi.mock("wukongimjssdk", () => ({
+  default: {
+    shared: () => ({
+      chatManager: {
+        addMessageListener: (h: (message: unknown) => void) => im.messageListeners.push(h),
+        removeMessageListener: (h: (message: unknown) => void) => {
+          im.messageListeners = im.messageListeners.filter((x) => x !== h);
+        },
+      },
+      connectManager: {
+        addConnectStatusListener: (h: (status: unknown) => void) => im.connectListeners.push(h),
+        removeConnectStatusListener: (h: (status: unknown) => void) => {
+          im.connectListeners = im.connectListeners.filter((x) => x !== h);
+        },
+      },
+    }),
+  },
+  ConnectStatus: { Connected: "Connected" },
+}));
 vi.mock("../utils/channelType", () => ({ isSupportedChannelType: () => true }));
 vi.mock("../components/ChatSummaryStarButton", () => ({ default: () => null }));
 vi.mock("../components/ChatSummaryPanel", () => ({ default: () => null }));
@@ -150,6 +188,8 @@ describe("SummaryModule —— 兜底轮询接线", () => {
     state.winHandlers.clear();
     state.currentSpaceId = "space-a";
     state.visibility = "visible";
+    im.messageListeners = [];
+    im.connectListeners = [];
 
     vi.spyOn(document, "addEventListener").mockImplementation(((event: string, handler: any) => {
       state.docHandlers.set(event, handler);
@@ -268,6 +308,22 @@ describe("SummaryModule —— 兜底轮询接线", () => {
     expect(poll.notifyActivity).toHaveBeenCalledTimes(1);
   });
 
+  // 🔴 回归：这两行原本是【fresh 在前、轮询在后】。两条读取都在自己的第一个
+  // await 之前取票，notifyActivity() 又是同步调进 tick() 的，所以那个顺序下非
+  // fresh 的轮询读票号更新；它先回来就直接落盘，随后 fresh 的响应因票号过期被
+  // 丢掉——切一次 Space 花两个请求，偏偏丢的是唯一绕开服务端 5s 缓存的那条。
+  it("切 Space 时先发轮询读、后发 fresh 读，好让绕开缓存的那条赢", async () => {
+    const badge = await import("../utils/summaryAttentionBadge");
+    mittHandler("space-ready")();
+    vi.clearAllMocks();
+
+    mittHandler("space-changed")();
+
+    const pollOrder = poll.notifyActivity.mock.invocationCallOrder[0];
+    const freshOrder = vi.mocked(badge.refreshSummaryAttentionBadge).mock.invocationCallOrder[0];
+    expect(pollOrder).toBeLessThan(freshOrder);
+  });
+
   it("站内路由切换（NavRail 菜单激活）算一次活动", () => {
     mittHandler("wk:active-menu-changed")({ menuId: "summary" });
 
@@ -278,6 +334,86 @@ describe("SummaryModule —— 兜底轮询接线", () => {
     mittHandler("space-changed")();
 
     expect(poll.notifyActivity).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * IM 消息与重连触发的刷新要过可见性门。
+ *
+ * 这两条是【每个标签页各收一份】的事件源：既不过 leader，也不跨页去抖，而本 PR
+ * 之后它们走的是 fresh=1，逐个绕开服务端那 5s 缓存。不门控的话，开着五个 OCTO
+ * 标签页的用户每来一条命中提示区间的消息就是五个未缓存请求，四个花在没人看的
+ * 标签页上。门控不牺牲响应：标签页转回可见时 visibilitychange 自己会补刷一次。
+ */
+describe("SummaryModule —— IM / 重连刷新的可见性门", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    state.mittHandlers.clear();
+    state.docHandlers.clear();
+    state.winHandlers.clear();
+    state.currentSpaceId = "space-a";
+    state.visibility = "visible";
+    im.messageListeners = [];
+    im.connectListeners = [];
+
+    vi.spyOn(document, "addEventListener").mockImplementation(((event: string, handler: any) => {
+      state.docHandlers.set(event, handler);
+    }) as any);
+    vi.spyOn(document, "removeEventListener").mockImplementation(((event: string) => {
+      state.docHandlers.delete(event);
+    }) as any);
+    vi.spyOn(window, "addEventListener").mockImplementation(((event: string, handler: any) => {
+      state.winHandlers.set(event, handler);
+    }) as any);
+    vi.spyOn(window, "removeEventListener").mockImplementation(((event: string) => {
+      state.winHandlers.delete(event);
+    }) as any);
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => state.visibility);
+
+    new SummaryModule().init();
+  });
+
+  it("可见时，命中的 IM 消息照常触发刷新", () => {
+    im.messageListeners[0]({ match: true });
+
+    expect(sync.trigger).toHaveBeenCalledTimes(1);
+  });
+
+  it("隐藏时，IM 消息不再触发刷新", () => {
+    state.visibility = "hidden";
+
+    im.messageListeners[0]({ match: true });
+
+    expect(sync.trigger).not.toHaveBeenCalled();
+  });
+
+  it("可见时，重连成功触发一次补齐", () => {
+    im.connectListeners[0]("Connected");
+
+    expect(sync.trigger).toHaveBeenCalledTimes(1);
+  });
+
+  it("隐藏时，重连成功也不刷新（回到前台那一刻由 visibilitychange 补上）", () => {
+    state.visibility = "hidden";
+
+    im.connectListeners[0]("Connected");
+    expect(sync.trigger).not.toHaveBeenCalled();
+
+    state.visibility = "visible";
+    docHandler("visibilitychange")();
+    expect(sync.trigger).toHaveBeenCalledTimes(1);
+  });
+
+  it("可见但不是 Connected 的状态变化仍然不刷新（门没有把原判定顶掉）", () => {
+    im.connectListeners[0]("Disconnected");
+
+    expect(sync.trigger).not.toHaveBeenCalled();
+  });
+
+  it("可见但没命中提示区间的消息仍然不刷新", () => {
+    im.messageListeners[0]({ match: false });
+
+    expect(sync.trigger).not.toHaveBeenCalled();
   });
 });
 
