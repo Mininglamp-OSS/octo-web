@@ -1,16 +1,22 @@
 import { ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk"
 import { ChannelTypeCommunityTopic } from "../../../Service/Const"
-import type {
-  ChatKind,
-  ChatSelectorAccessors,
-} from "../../ChatSelector/tabFilter"
+import type { ChatKind, ChatSelectorAccessors } from "../../ChatSelector/tabFilter"
 import type { ForwardItem } from "../ForwardModal"
+
+interface ForwardChannelIdentity {
+  channelID: string
+  channelType: number
+}
 
 // 复合 key：`${channelType}::${channelID}`，防跨类型 id 碰撞。channelType 取值
 // (个人=1 / 群=2 / 子区=5) 恰与 SidebarTargetType(DM/CHANNEL/THREAD) 一致，
 // 故转发本地 item 与 SidebarService 返回的关注/最近集合可直接对齐比较。
-export function forwardItemKey(item: ForwardItem): string {
+export function forwardChannelKey(item: ForwardChannelIdentity): string {
   return `${item.channelType}::${item.channelID}`
+}
+
+export function forwardItemKey(item: ForwardItem): string {
+  return forwardChannelKey(item)
 }
 
 // 归类：个人→私聊，子区→thread，其余→群。供四 Tab 作用域过滤使用。
@@ -27,5 +33,9 @@ export const FORWARD_ITEM_ACCESSORS: ChatSelectorAccessors<ForwardItem> = {
   getParentId: (i) => i.parentChannelID,
   getKey: forwardItemKey,
   // 父群恒为群聊，故以群类型（ChannelTypeGroup）构造复合 key，与 forwardItemKey 同构。
-  getGroupKeyFromId: (parentId) => `${ChannelTypeGroup}::${parentId}`,
+  getGroupKeyFromId: (parentId) =>
+    forwardChannelKey({
+      channelID: parentId,
+      channelType: ChannelTypeGroup,
+    }),
 }

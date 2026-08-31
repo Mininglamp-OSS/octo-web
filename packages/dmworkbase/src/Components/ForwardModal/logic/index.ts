@@ -4,6 +4,7 @@ export {
 } from "./channelInfoToForwardItem"
 export {
   FORWARD_ITEM_ACCESSORS,
+  forwardChannelKey,
   forwardItemKey,
   forwardItemKind,
 } from "./forwardItemKey"
@@ -15,3 +16,8 @@ export {
 export type { SortableConversation } from "./sortConversations"
 export { sortRecentItems } from "./sortRecentItems"
 export type { RecentSortMeta } from "./sortRecentItems"
+export {
+  partitionForwardSubscribers,
+  type ForwardSubscriberLike,
+  type ForwardSubscriberPartition,
+} from "./partitionForwardSubscribers"
