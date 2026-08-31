@@ -83,10 +83,6 @@ afterEach(() => {
 const flush = async (): Promise<void> => {
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 };
-const flushTimers = async (): Promise<void> => {
-  await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 0)); });
-  await flush();
-};
 
 describe('SecretsSettingsPanel deep-link prefill (one-shot)', () => {
   it('passes prefill to the initial deep-link create modal', async () => {
@@ -149,15 +145,6 @@ describe('SecretsSettingsPanel deep-link prefill (one-shot)', () => {
     expect(editModalProps).toHaveLength(1);
   });
 
-  it('opens the create editor from mouseup when nested modal click is swallowed', async () => {
-    act(() => { ReactDOM.render(React.createElement(SecretsSettingsPanel, { onClose: vi.fn() }), container); });
-    await flush();
-    const addBtn = container.querySelector('button') as HTMLButtonElement;
-    act(() => { addBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 })); });
-    await flushTimers();
-    expect(editModalProps).toHaveLength(1);
-  });
-
   it('does not open the create editor on mousedown before release', async () => {
     act(() => { ReactDOM.render(React.createElement(SecretsSettingsPanel, { onClose: vi.fn() }), container); });
     await flush();
@@ -171,9 +158,7 @@ describe('SecretsSettingsPanel deep-link prefill (one-shot)', () => {
     act(() => { ReactDOM.render(React.createElement(SecretsSettingsPanel, { onClose: vi.fn() }), container); });
     await flush();
     const addBtn = container.querySelector('button') as HTMLButtonElement;
-    act(() => { addBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 2 })); });
-    act(() => { addBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 2 })); });
-    act(() => { addBtn.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, button: 2 })); });
+    act(() => { addBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 2 })); });
     await flush();
     expect(editModalProps).toHaveLength(0);
   });

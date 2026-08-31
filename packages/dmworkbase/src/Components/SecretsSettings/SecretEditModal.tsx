@@ -118,8 +118,6 @@ export default function SecretEditModal({
       title={isEdit ? t("base.secrets.edit.title") : t("base.secrets.create.title")}
       onCancel={onClose}
       options={{ closeOnEsc: true, maskClosable: false }}
-      motion={false}
-      portalContainer={() => document.body}
       zIndex={1200}
       footer={
         <>

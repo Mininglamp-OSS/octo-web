@@ -89,9 +89,9 @@ describe("static settings pages", () => {
     expect(container.querySelector(".wk-settings-center__about-update-actions")).toBeTruthy();
     act(() => (container.querySelector("[aria-label=\"使用指南\"]") as HTMLElement).click());
     renderPage("about", { environment: { ...webEnvironment, target: "desktop" }, onAbout, onOpenOnboarding });
-    expect(container.querySelector(".wk-settings-center__about-update-actions")).toBeNull();
-    expect(container.querySelector(".wk-settings-center__about-update")).toBeNull();
-    expect(onAbout).not.toHaveBeenCalled();
+    expect(container.querySelector(".wk-settings-center__about-update-actions")).toBeTruthy();
+    act(() => (container.querySelector(".wk-settings-center__about-update") as HTMLElement).click());
+    expect(onAbout).toHaveBeenCalledTimes(1);
     expect(onOpenOnboarding).toHaveBeenCalledTimes(1);
   });
 
@@ -102,9 +102,9 @@ describe("static settings pages", () => {
     expect(container.querySelector(".wk-settings-center__about-update")?.textContent).toBe("检查更新");
 
     renderPage("about", { environment: { ...webEnvironment, target: "desktop" } });
-    expect(container.querySelector(".wk-settings-center__about-update-actions")).toBeNull();
+    expect(container.querySelector(".wk-settings-center__about-update-actions")).toBeTruthy();
     expect(container.querySelector(".wk-settings-status-tag")).toBeNull();
-    expect(container.querySelector(".wk-settings-center__about-update")).toBeNull();
+    expect(container.querySelector(".wk-settings-center__about-update")?.textContent).toBe("检查更新");
   });
 
   it("keeps the about copy aligned with the version status", () => {

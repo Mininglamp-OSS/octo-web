@@ -44,6 +44,9 @@ export async function refreshPendingInvitationBadge(): Promise<void> {
     const seq = ++refreshSeq;
     const spaceId = WKApp.shared.currentSpaceId;
     if (!WKApp.loginInfo.isLogined() || !WKApp.loginInfo.uid || !spaceId) return;
+    if (import.meta.env.VITE_E2E_MOCK === "1") {
+        return;
+    }
 
     try {
         const resp = await api.listSummaries({ page: 1, page_size: 1 });

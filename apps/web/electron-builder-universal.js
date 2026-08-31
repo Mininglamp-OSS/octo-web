@@ -23,6 +23,7 @@ module.exports = {
       "**/*.node",
       "**/node-screenshots-*/**/*"
     ],
+    x64ArchFiles: "Contents/Resources/app.asar.unpacked/node_modules/node-screenshots-darwin-*/**/*",
   },
   beforeBuild: async (context) => {
     console.log('🔨 Building Universal macOS app (x64 + ARM64)');

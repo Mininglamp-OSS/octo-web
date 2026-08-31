@@ -1,7 +1,7 @@
 .wk-settings-center-modal .octo-ui-modal__surface { padding: 0; overflow: hidden; }
 .wk-settings-center-modal .octo-ui-modal__close { display: none; }
-.wk-settings-center-modal .octo-ui-modal__body { overflow: hidden; border-radius: 16px; }
-.wk-settings-center { position: relative; display: grid; grid-template-columns: 264px minmax(0, 1fr); width: 100%; min-width: 712px; min-height: 560px; height: min(760px, calc(100vh - 120px)); overflow: hidden; color: var(--wk-text-primary); background: var(--wk-bg-surface); box-shadow: var(--wk-shadow-lg); }
+.wk-settings-center-modal .octo-ui-modal__body { overflow-y: auto; border-radius: 16px; }
+.wk-settings-center { position: relative; display: grid; grid-template-columns: 264px minmax(0, 1fr); width: 100%; min-width: 712px; min-height: min(560px, var(--octo-ui-modal-max-height)); height: min(760px, calc(100vh - 120px)); overflow: hidden; color: var(--wk-text-primary); background: var(--wk-bg-surface); box-shadow: var(--wk-shadow-lg); }
 .wk-settings-center__sidebar { display: flex; min-width: 0; flex-direction: column; padding: 24px 16px 16px; overflow: hidden; background: var(--wk-bg-base); border-right: 1px solid var(--wk-border-subtle); }
 .wk-settings-center__sidebar > h1 { margin: 0 12px 24px; font-size: 22px; font-weight: 700; line-height: 1.3; }
 .wk-settings-center__navigation { flex: 1; min-height: 0; overflow: auto; }
@@ -47,7 +47,7 @@
 .wk-settings-center__voice-consent-document p { margin: 0 0 16px; }
 .wk-settings-center__voice-consent-document ol, .wk-settings-center__voice-consent-document ul { margin: 0 0 16px; padding-left: 22px; }
 .wk-settings-center__voice-consent-footer { display: grid; gap: 16px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--wk-border-subtle); }
-.wk-settings-center__voice-consent-footer .wk-checkbox { color: var(--wk-text-secondary); }
+.wk-settings-center__voice-consent-footer .octo-ui-checkbox { color: var(--wk-text-secondary); }
 .wk-settings-center__voice-consent-actions { margin-top: 0; }
 .wk-settings-center__voice-consent-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
 .wk-settings-center__section-content h3 { margin: 0 0 16px; font-size: 16px; font-weight: 600; line-height: 1.35; }

@@ -64,12 +64,8 @@ export default function SecretsSettingsPanel({
       ? current
       : { mode: "create" }
   )), []);
-  const handleCreateMouseUp = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
-    if (event.button !== 0) return;
-    event.stopPropagation();
-    window.setTimeout(startCreate, 0);
-  }, [startCreate]);
   const handleCreateClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
     event.stopPropagation();
     startCreate();
   }, [startCreate]);
@@ -163,15 +159,13 @@ export default function SecretsSettingsPanel({
             </h2>
             <p className="wk-secrets__subtitle">{t("base.secrets.subtitle")}</p>
           </div>
-          <button
-            type="button"
-            className="wk-secrets__add-button"
-            onMouseUp={handleCreateMouseUp}
+          <Button
+            variant="solid"
+            icon={<IconPlus />}
             onClick={handleCreateClick}
           >
-            <IconPlus />
             {t("base.secrets.addButton")}
-          </button>
+          </Button>
         </div>
 
         {/* 列表主体 */}
@@ -192,15 +186,13 @@ export default function SecretsSettingsPanel({
               <IconKey size="extra-large" />
             </div>
             <p className="wk-secrets__empty-text">{t("base.secrets.empty")}</p>
-            <button
-              type="button"
-              className="wk-secrets__add-button"
-              onMouseUp={handleCreateMouseUp}
+            <Button
+              variant="solid"
+              icon={<IconPlus />}
               onClick={handleCreateClick}
             >
-              <IconPlus />
               {t("base.secrets.empty.action")}
-            </button>
+            </Button>
           </div>
         ) : (
           <ul className="wk-secrets__list">
