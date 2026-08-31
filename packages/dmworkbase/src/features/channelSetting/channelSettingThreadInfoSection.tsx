@@ -1,4 +1,4 @@
-import { Tag, Toast } from "@douyinfe/semi-ui";
+import { Toast } from "@douyinfe/semi-ui";
 import React from "react";
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 
@@ -42,7 +42,7 @@ export function buildThreadInfoSection(
       : thread?.status === ThreadStatus.Deleted
       ? t("base.module.thread.status.deleted")
       : t("base.module.thread.status.active");
-  const statusColor =
+  const statusTone =
     thread?.status === ThreadStatus.Archived
       ? "grey"
       : thread?.status === ThreadStatus.Deleted
@@ -87,9 +87,9 @@ export function buildThreadInfoSection(
         properties: {
           title: t("base.module.thread.status.title"),
           value: (
-            <Tag color={statusColor} size="small">
+            <span className={`wk-channelsetting-thread-status-tag wk-channelsetting-thread-status-tag--${statusTone}`}>
               {statusTitle}
-            </Tag>
+            </span>
           ),
         },
       })

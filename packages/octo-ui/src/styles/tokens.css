@@ -1,0 +1,164 @@
+/* Foundation placeholder. Component tokens are added in the component phase. */
+:root {
+  --octo-ui-tag-gap: var(--wk-sp-1);
+  --octo-ui-tag-padding-y: var(--wk-sp-0-5);
+  --octo-ui-tag-padding-x: var(--wk-sp-2);
+  --octo-ui-tag-line-height: var(--wk-sp-5);
+  --octo-ui-tag-muted-icon-color: rgba(28, 28, 35, 0.4);
+  --octo-ui-tag-close-hover-bg: rgba(28, 28, 35, 0.08);
+
+  --octo-ui-tag-light-gray-bg: rgba(28, 28, 35, 0.08);
+  --octo-ui-tag-light-gray-color: rgba(28, 28, 35, 0.8);
+  --octo-ui-tag-light-red-bg: #fff1ec;
+  --octo-ui-tag-light-red-color: #940100;
+  --octo-ui-tag-light-amber-bg: #fffceb;
+  --octo-ui-tag-light-amber-color: #804700;
+  --octo-ui-tag-light-green-bg: #ecf9ec;
+  --octo-ui-tag-light-green-color: #176221;
+  --octo-ui-tag-light-blue-bg: #ebf9ff;
+  --octo-ui-tag-light-blue-color: #005694;
+  --octo-ui-tag-light-cyan-bg: #e5f9f5;
+  --octo-ui-tag-light-cyan-color: #00605a;
+  --octo-ui-tag-light-purple-bg: #f1eefc;
+  --octo-ui-tag-light-purple-color: #38107a;
+  --octo-ui-tag-light-orange-bg: #fff9eb;
+  --octo-ui-tag-light-orange-color: #803100;
+  --octo-ui-tag-light-pink-bg: #ffefef;
+  --octo-ui-tag-light-pink-color: #da0003;
+
+  --octo-ui-tag-solid-color: var(--wk-color-white);
+  --octo-ui-tag-solid-dark-bg: rgba(28, 28, 35, 0.4);
+  --octo-ui-tag-solid-gray-bg: #555661;
+  --octo-ui-tag-solid-teal-bg: #00d6b9;
+  --octo-ui-tag-solid-indigo-bg: #3e4adc;
+  --octo-ui-tag-solid-orange-bg: #ff7d26;
+  --octo-ui-tag-solid-green-bg: #00bf34;
+  --octo-ui-tag-solid-magenta-bg: #fd1f88;
+  --octo-ui-tag-solid-sky-bg: #14c0ff;
+  --octo-ui-tag-solid-yellow-bg: #ffc60a;
+
+  --octo-ui-tag-pastel-color: #1c1c23;
+  --octo-ui-tag-pastel-yellow-bg: #fff7cc;
+  --octo-ui-tag-pastel-cyan-bg: #c2f2ea;
+  --octo-ui-tag-pastel-blue-bg: #b9eaff;
+  --octo-ui-tag-pastel-purple-bg: #ede4ff;
+  --octo-ui-tag-pastel-orange-bg: #ffe6c6;
+  --octo-ui-tag-pastel-peach-bg: #ffdbf2;
+  --octo-ui-tag-pastel-green-bg: #c9ffca;
+  --octo-ui-tag-pastel-red-bg: #ffd7d8;
+
+  --octo-ui-tag-ai-bg: linear-gradient(90deg, #41dfff 0%, #6e7cf7 50%, #7f3bf5 100%);
+  --octo-ui-tag-ai-color: var(--wk-color-white);
+
+  --octo-ui-tooltip-bg: #1c1c23;
+  --octo-ui-tooltip-color: var(--wk-color-white);
+  --octo-ui-tooltip-muted-color: rgba(255, 255, 255, 0.7);
+  --octo-ui-tooltip-shortcut-color: #a7abb0;
+  --octo-ui-tooltip-action-color: var(--wk-purple-300);
+  --octo-ui-tooltip-action-hover-color: var(--wk-color-white);
+  --octo-ui-tooltip-max-width: 320px;
+  --octo-ui-tooltip-line-height: 1.42857143;
+
+  --octo-ui-tabs-indicator-radius: 2px;
+  --octo-ui-tabs-active-color: var(--wk-neutral-850);
+  --octo-ui-tabs-text-color: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 60%,
+    transparent
+  );
+  --octo-ui-tabs-hover-color: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 80%,
+    transparent
+  );
+  --octo-ui-tabs-disabled-color: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 30%,
+    transparent
+  );
+  --octo-ui-tabs-segmented-bg: var(--wk-black-alpha-06);
+  --octo-ui-tabs-segmented-active-bg: var(--wk-bg-surface);
+  --octo-ui-tabs-segmented-text-color: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 40%,
+    transparent
+  );
+  --octo-ui-tabs-segmented-hover-bg: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 3%,
+    transparent
+  );
+}
+
+body[theme-mode='dark'] {
+  --octo-ui-tabs-active-color: var(--wk-text-primary);
+  --octo-ui-tabs-text-color: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 60%,
+    transparent
+  );
+  --octo-ui-tabs-hover-color: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 80%,
+    transparent
+  );
+  --octo-ui-tabs-disabled-color: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 30%,
+    transparent
+  );
+  --octo-ui-tabs-segmented-bg: var(--wk-white-alpha-06);
+  --octo-ui-tabs-segmented-active-bg: var(--wk-bg-surface);
+  --octo-ui-tabs-segmented-text-color: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 40%,
+    transparent
+  );
+  --octo-ui-tabs-segmented-hover-bg: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 3%,
+    transparent
+  );
+
+  --octo-ui-tag-muted-icon-color: rgba(var(--semi-grey-9), 0.45);
+  --octo-ui-tag-close-hover-bg: rgba(var(--semi-grey-9), 0.12);
+
+  --octo-ui-tag-light-gray-bg: rgba(var(--semi-grey-9), 0.12);
+  --octo-ui-tag-light-gray-color: rgba(var(--semi-grey-9), 0.82);
+  --octo-ui-tag-light-red-bg: rgba(var(--semi-red-5), 0.2);
+  --octo-ui-tag-light-red-color: rgba(var(--semi-red-8), 1);
+  --octo-ui-tag-light-amber-bg: rgba(var(--semi-yellow-5), 0.2);
+  --octo-ui-tag-light-amber-color: rgba(var(--semi-yellow-8), 1);
+  --octo-ui-tag-light-green-bg: rgba(var(--semi-green-5), 0.2);
+  --octo-ui-tag-light-green-color: rgba(var(--semi-green-8), 1);
+  --octo-ui-tag-light-blue-bg: rgba(var(--semi-blue-5), 0.2);
+  --octo-ui-tag-light-blue-color: rgba(var(--semi-blue-8), 1);
+  --octo-ui-tag-light-cyan-bg: rgba(var(--semi-cyan-5), 0.2);
+  --octo-ui-tag-light-cyan-color: rgba(var(--semi-cyan-8), 1);
+  --octo-ui-tag-light-purple-bg: rgba(var(--semi-purple-5), 0.2);
+  --octo-ui-tag-light-purple-color: rgba(var(--semi-purple-8), 1);
+  --octo-ui-tag-light-orange-bg: rgba(var(--semi-orange-5), 0.2);
+  --octo-ui-tag-light-orange-color: rgba(var(--semi-orange-8), 1);
+  --octo-ui-tag-light-pink-bg: rgba(var(--semi-pink-5), 0.2);
+  --octo-ui-tag-light-pink-color: rgba(var(--semi-pink-8), 1);
+
+  --octo-ui-tag-solid-dark-bg: rgba(var(--semi-grey-2), 1);
+  --octo-ui-tag-solid-gray-bg: rgba(var(--semi-grey-5), 1);
+  --octo-ui-tag-solid-teal-bg: rgba(var(--semi-teal-5), 1);
+  --octo-ui-tag-solid-indigo-bg: rgba(var(--semi-indigo-5), 1);
+  --octo-ui-tag-solid-orange-bg: rgba(var(--semi-orange-5), 1);
+  --octo-ui-tag-solid-green-bg: rgba(var(--semi-green-5), 1);
+  --octo-ui-tag-solid-magenta-bg: rgba(var(--semi-pink-5), 1);
+  --octo-ui-tag-solid-sky-bg: rgba(var(--semi-blue-5), 1);
+  --octo-ui-tag-solid-yellow-bg: rgba(var(--semi-yellow-5), 1);
+
+  --octo-ui-tag-pastel-color: var(--wk-neutral-900);
+  --octo-ui-tag-pastel-yellow-bg: rgba(var(--semi-yellow-7), 1);
+  --octo-ui-tag-pastel-cyan-bg: rgba(var(--semi-cyan-7), 1);
+  --octo-ui-tag-pastel-blue-bg: rgba(var(--semi-blue-7), 1);
+  --octo-ui-tag-pastel-purple-bg: rgba(var(--semi-purple-7), 1);
+  --octo-ui-tag-pastel-orange-bg: rgba(var(--semi-orange-7), 1);
+  --octo-ui-tag-pastel-peach-bg: rgba(var(--semi-pink-7), 1);
+  --octo-ui-tag-pastel-green-bg: rgba(var(--semi-green-7), 1);
+  --octo-ui-tag-pastel-red-bg: rgba(var(--semi-red-7), 1);
+}

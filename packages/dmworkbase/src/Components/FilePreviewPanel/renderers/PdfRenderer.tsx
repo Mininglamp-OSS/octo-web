@@ -16,7 +16,7 @@ import {
 } from "@react-pdf-viewer/zoom";
 import { pageNavigationPlugin } from "@react-pdf-viewer/page-navigation";
 import { List, Image } from "lucide-react";
-import { Tooltip } from "@douyinfe/semi-ui";
+import { Tooltip } from "@octo/ui";
 import { IconMenuFold, IconMinus, IconPlus } from "../icons";
 import { BaseRendererProps } from "../types";
 import { isFileTooLarge } from "../config";
@@ -303,8 +303,6 @@ const PdfRenderer: React.FC<PdfRendererProps> = ({ file, onError }) => {
             content={isSidebarOpen
               ? t("base.filePreview.pdf.hideSidebar")
               : t("base.filePreview.pdf.showSidebar")}
-            position="top"
-            showArrow
           >
             <button
               className="wk-file-preview-pdf-renderer__toolbar-sidebar-btn"

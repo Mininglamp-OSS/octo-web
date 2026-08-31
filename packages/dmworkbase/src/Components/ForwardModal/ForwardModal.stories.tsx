@@ -115,6 +115,7 @@ function Interactive(props: Partial<ForwardModalProps> & { initialItems?: Forwar
   const [selectedIDs, setSelectedIDs] = useState<string[]>(props.selectedIDs ?? [])
   const [inputValue, setInputValue] = useState(props.inputValue ?? "")
   const [keyword, setKeyword] = useState(props.inputValue ?? "")
+  const [activeTab, setActiveTab] = useState(props.activeTab ?? "recent")
 
   // 过滤后的列表（列表项）
   const items = baseItems.filter((item: ForwardItem) =>
@@ -149,8 +150,11 @@ function Interactive(props: Partial<ForwardModalProps> & { initialItems?: Forwar
         }}
         onConfirm={() => {}}
         onCancel={props.onCancel}
-        activeTab={props.activeTab ?? "recent"}
-        onTabChange={props.onTabChange ?? (() => {})}
+        activeTab={activeTab}
+        onTabChange={(tab) => {
+          setActiveTab(tab)
+          props.onTabChange?.(tab)
+        }}
       />
     </div>
   )
@@ -163,21 +167,24 @@ export const Default: Story = {
   render: () => <Interactive />,
   play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
     const canvas = within(canvasElement)
+    const list = canvasElement.querySelector<HTMLElement>(".wk-fm-list")
+    if (!list) throw new Error("ForwardModal list is missing")
+    const listCanvas = within(list)
 
     // 列表有数据
-    await expect(canvas.getByText("Alice")).toBeInTheDocument()
-    await expect(canvas.getByText("Bob")).toBeInTheDocument()
+    await expect(listCanvas.getByText("Alice")).toBeInTheDocument()
+    await expect(listCanvas.getByText("Bob")).toBeInTheDocument()
 
     // 确认按钮初始 disabled
     const confirmBtn = canvas.getByRole("button", { name: /确认/i })
     await expect(confirmBtn).toBeDisabled()
 
     // 点击 Alice → 选中，确认按钮变为可点
-    await userEvent.click(canvas.getByText("Alice"))
+    await userEvent.click(listCanvas.getByText("Alice"))
     await expect(canvas.getByRole("button", { name: /确认\(1\)/i })).not.toBeDisabled()
 
     // 再次点击 Alice → 取消选中，确认按钮回到 disabled
-    await userEvent.click(canvas.getByText("Alice"))
+    await userEvent.click(listCanvas.getByText("Alice"))
     await expect(canvas.getByRole("button", { name: /确认/i })).toBeDisabled()
   },
 }
