@@ -131,10 +131,26 @@ export function commitSummaryAttentionBadge(ticket: number, count: number, sampl
     // 被更新的读取顶掉的那次也必须销账，否则计数只增不减，广播被永久堵死。
     if (inFlightReads > 0) inFlightReads -= 1;
     if (ticket !== issueSeq) return;
-    // 记下这次落盘所反映的服务端时刻，供广播排序比较。sampleAt 缺省时
-    // （SummaryListPage.loadData 这类没有折算信息的调用方）按“现在”记：
-    // 列表响应刚到，把它当成最新样本，之后到达的旧广播理应排不过它。
-    lastCommittedSampleAt = sampleAt ?? Date.now();
+    // sampleAt 缺省时（SummaryListPage.loadData 这类没有折算信息的调用方）按
+    // “现在”记：列表响应刚到，把它当成最新样本。
+    const at = sampleAt ?? Date.now();
+    // 票号只排【发出顺序】，排不了【数据新鲜度】——而这两件事因为服务端的 5s
+    // 缓存已经分家了：不带 fresh 的轮询发得更晚（票号更新），取回的却可能是
+    // 一个 TTL 之前建的缓存。少了这道闸，下面这条交错会把用户刚点掉的红点
+    // 重新点亮，而它无需用户配合、轮询自己就会开火：
+    //
+    //   T      用户标读 → fresh 读(ticket N) → 落盘 V-1，水位 = T
+    //   T+3s   轮询 → 非 fresh 读(ticket N+1) → 命中 ≤5s 前的缓存 → 拿回旧值 V
+    //   T+3.2s commit(N+1)：票号最新 → V 盖掉 V-1，水位倒退回 T-2   ✗
+    //
+    // 用与广播同一把尺子（attentionSampleAt 折算后的样本时刻）拦掉它，
+    // 本地写入与跨标签页广播从此在同一个排序域里。见 acceptRemoteAttentionCount。
+    //
+    // 这里是【严格小于】，广播那边是 <=，差别是刻意的：样本时刻相同意味着两份
+    // 数据一样新，此时该由票号（发出顺序）定胜负，本地后发者理应写得进去；而
+    // 广播的同刻度重复只可能是同一份样本被送了两次，收下只是白刷一次。
+    if (at < lastCommittedSampleAt) return;
+    lastCommittedSampleAt = at;
     setSummaryAttentionBadge(count);
 }
 
@@ -198,6 +214,30 @@ export function setSummaryAttentionBadge(count: number): void {
 }
 
 /**
+ * E2E mock 模式下 MSW worker 是否已就绪。
+ *
+ * worker 是异步启动的，在它接管之前发出的请求会穿透到 Vite proxy——而 mock
+ * 后端根本没在监听，于是 ECONNREFUSED → 502 → console error。e2e gate 对
+ * proxy error 是硬阻断（.github/workflows/e2e.yml：「说明 mock 覆盖漏网, block PR」），
+ * 且多个用例断言 `consoleErrors` 为空。
+ *
+ * 这条读取比其它路径更需要这道门：它挂在兜底轮询上，是唯一一条【没有用户动作
+ * 也会自行开火】的流量，冷启动那一刻正好撞在 worker 启动窗口里。
+ *
+ * 返回 null 而不是抛：这不是失败，只是「这次没有可用样本」，调用方两边都不
+ * 记账（见 readSummaryAttentionCount 的三态约定）。
+ *
+ * 形态与 PR #1608 给 summaryMenuBadge 加的守卫一致（那个文件已被本 PR 前身
+ * 删除，守卫随读取路径迁到这里）。生产构建里 VITE_E2E_MOCK 不为 '1'，整条
+ * 判断恒真。
+ */
+function e2eMockReady(): boolean {
+    if (import.meta.env.VITE_E2E_MOCK !== '1') return true;
+    if (typeof window === 'undefined') return true;
+    return (window as unknown as { __MSW_READY__?: boolean }).__MSW_READY__ === true;
+}
+
+/**
  * 拉取当前 space 的待关注数并更新红点。
  * 失败静默：红点是锦上添花，网络异常不应打扰用户（与 SummaryListPage
  * silent refresh 同样的克制原则）。
@@ -244,6 +284,7 @@ export async function readSummaryAttentionCount(
 ): Promise<{ count: number; sampleAt: number } | null> {
     const spaceId = WKApp.shared.currentSpaceId;
     if (!WKApp.loginInfo.isLogined() || !WKApp.loginInfo.uid || !spaceId) return null;
+    if (!e2eMockReady()) return null;
 
     const fresh = options?.fresh === true;
     // 折算基准必须取【发出前】的时刻，和领号同一个道理：await 之后再取，

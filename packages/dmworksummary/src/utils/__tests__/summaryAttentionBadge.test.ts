@@ -4,7 +4,7 @@
  * 独立成文件的原因与 chatSummaryActions 相同：module.tsx 引入
  * react-dom/client，单测不便直接 import。
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@octo/base', async () => {
     const actual = await vi.importActual<Record<string, unknown>>('../../__mocks__/dmworkBase');
@@ -45,7 +45,8 @@ describe('summaryAttentionBadge (#1359)', () => {
         WKApp.loginInfo.uid = 'test-uid';
         vi.spyOn(WKApp.loginInfo, 'isLogined').mockReturnValue(true);
         vi.spyOn(WKApp.menus, 'refresh').mockImplementation(() => {});
-        // 重置模块级计数
+        // 重置模块级计数与样本时刻水位（都会跨用例串）
+        resetSummaryAttentionOrdering();
         setSummaryAttentionBadge(0);
         vi.mocked(WKApp.menus.refresh).mockClear();
     });
@@ -177,6 +178,7 @@ describe('summaryAttentionBadge — 按发出时刻排序', () => {
         WKApp.loginInfo.uid = 'test-uid';
         vi.spyOn(WKApp.loginInfo, 'isLogined').mockReturnValue(true);
         vi.spyOn(WKApp.menus, 'refresh').mockImplementation(() => {});
+        resetSummaryAttentionOrdering();
         setSummaryAttentionBadge(0);
         vi.mocked(WKApp.menus.refresh).mockClear();
     });
@@ -275,6 +277,7 @@ describe('summaryAttentionBadge — 放弃路径还号 (ticket liveness)', () =>
         WKApp.loginInfo.uid = 'test-uid';
         vi.spyOn(WKApp.loginInfo, 'isLogined').mockReturnValue(true);
         vi.spyOn(WKApp.menus, 'refresh').mockImplementation(() => {});
+        resetSummaryAttentionOrdering();
         setSummaryAttentionBadge(0);
         vi.mocked(WKApp.menus.refresh).mockClear();
     });
@@ -537,5 +540,173 @@ describe('summaryAttentionBadge — 读取路径广播钩子', () => {
         vi.mocked(api.fetchSummaryAttentionCounts).mockResolvedValueOnce({ attention_count: 2 } as any);
 
         await expect(readSummaryAttentionCount()).resolves.toMatchObject({ count: 2 });
+    });
+});
+
+// 本地写入的样本时刻闸。票号只排【发出顺序】，排不了【数据新鲜度】——服务端
+// 那 5s 缓存让这两件事分了家：不带 fresh 的轮询发得更晚（票号更新），取回的
+// 却可能是一个 TTL 之前建的缓存。广播那侧早就按样本时刻排了序，本地这侧曾经
+// 没有，于是同一条交错换个入口就能把用户刚点掉的红点重新点亮。
+describe('summaryAttentionBadge — 本地 commit 的样本时刻闸', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        WKApp.shared.currentSpaceId = 'space-123';
+        WKApp.loginInfo.uid = 'test-uid';
+        vi.spyOn(WKApp.loginInfo, 'isLogined').mockReturnValue(true);
+        vi.spyOn(WKApp.menus, 'refresh').mockImplementation(() => {});
+        resetSummaryAttentionOrdering();
+        setSummaryAttentionBadge(0);
+        vi.mocked(WKApp.menus.refresh).mockClear();
+    });
+
+    // 评审点名的交错，逐拍钉死：
+    //   T      用户标读 → fresh 读(ticket N) → 落盘 V-1
+    //   T+3s   轮询 → 非 fresh 读(ticket N+1) → 命中 ≤5s 前的缓存 → 拿回旧值 V
+    //   T+3.2s commit(N+1)：票号最新 → 旧实现让 V 盖掉 V-1
+    it('🔴 非 fresh 轮询的缓存旧值不得覆盖刚落盘的 fresh 新值', () => {
+        setSummaryAttentionBadge(3);
+
+        // T = 10000：用户标读后的 fresh 读落盘 2。
+        const userTicket = beginSummaryAttentionRead();
+        commitSummaryAttentionBadge(userTicket, 2, attentionSampleAt(10_000, true));
+        expect(getSummaryAttentionBadge()).toBe(2);
+
+        // T+3000：轮询的非 fresh 读【发出更晚、票号更新】，但它可能吃到
+        // 8000 时刻建的缓存 → 折算后样本时刻 8000，比 10000 旧。
+        const pollTicket = beginSummaryAttentionRead();
+        commitSummaryAttentionBadge(pollTicket, 3, attentionSampleAt(13_000, false));
+
+        expect(getSummaryAttentionBadge()).toBe(2);   // 旧实现这里会变回 3
+    });
+
+    it('缓存窗口过去之后，非 fresh 轮询照常落盘（闸不是永久拦截）', () => {
+        const userTicket = beginSummaryAttentionRead();
+        commitSummaryAttentionBadge(userTicket, 2, attentionSampleAt(10_000, true));
+
+        // T+15000（一个基础轮询间隔）：折算后 10000 + 5000，已越过水位。
+        const pollTicket = beginSummaryAttentionRead();
+        commitSummaryAttentionBadge(pollTicket, 7, attentionSampleAt(20_000, false));
+
+        expect(getSummaryAttentionBadge()).toBe(7);
+    });
+
+    // 严格小于（而不是 <=）的理由：样本时刻相同说明两份数据一样新，
+    // 此时该由票号定胜负，本地后发者理应写得进去。
+    it('样本时刻相同时按票号定胜负，后发者写得进去', () => {
+        const first = beginSummaryAttentionRead();
+        commitSummaryAttentionBadge(first, 1, 10_000);
+        expect(getSummaryAttentionBadge()).toBe(1);
+
+        const second = beginSummaryAttentionRead();
+        commitSummaryAttentionBadge(second, 4, 10_000);
+        expect(getSummaryAttentionBadge()).toBe(4);
+    });
+
+    it('被闸拦下的 commit 仍然销账，广播不会被堵死', () => {
+        const userTicket = beginSummaryAttentionRead();
+        commitSummaryAttentionBadge(userTicket, 2, attentionSampleAt(10_000, true));
+
+        const pollTicket = beginSummaryAttentionRead();
+        commitSummaryAttentionBadge(pollTicket, 9, attentionSampleAt(11_000, false));
+
+        // 销账写在票号判定与样本闸【之前】，两条早退路径都不能漏。
+        expect(hasInFlightAttentionRead()).toBe(false);
+        expect(acceptRemoteAttentionCount(6, 20_000)).toBe(true);
+        expect(getSummaryAttentionBadge()).toBe(6);
+    });
+
+    it('被闸拦下也不推进水位：更旧的样本仍然进不来，更新的仍然进得来', () => {
+        const t1 = beginSummaryAttentionRead();
+        commitSummaryAttentionBadge(t1, 2, 10_000);
+
+        const t2 = beginSummaryAttentionRead();
+        commitSummaryAttentionBadge(t2, 9, 8_000);        // 被拦
+        const t3 = beginSummaryAttentionRead();
+        commitSummaryAttentionBadge(t3, 5, 9_000);        // 仍旧于 10000 → 也被拦
+        expect(getSummaryAttentionBadge()).toBe(2);
+
+        const t4 = beginSummaryAttentionRead();
+        commitSummaryAttentionBadge(t4, 8, 11_000);
+        expect(getSummaryAttentionBadge()).toBe(8);
+    });
+
+    // 没有折算信息的调用方（SummaryListPage.loadData）按“现在”记，
+    // 行为与加闸之前一致：列表响应刚到，之后到达的旧样本理应排不过它。
+    it('不带 sampleAt 的调用方按“现在”记，行为不变', () => {
+        const listTicket = beginSummaryAttentionRead();
+        commitSummaryAttentionBadge(listTicket, 4);
+        expect(getSummaryAttentionBadge()).toBe(4);
+
+        expect(acceptRemoteAttentionCount(9, 1_000)).toBe(false);
+        expect(getSummaryAttentionBadge()).toBe(4);
+    });
+
+    // 端到端走一遍真实读取路径，确认闸装在 readSummaryAttentionCount 的落盘端。
+    it('端到端：轮询读（非 fresh）不覆盖紧随其后的用户读（fresh）结果', async () => {
+        vi.mocked(api.fetchSummaryAttentionCounts).mockResolvedValueOnce({ attention_count: 0 } as any);
+        await readSummaryAttentionCount({ fresh: true });
+        expect(getSummaryAttentionBadge()).toBe(0);
+
+        // 轮询紧接着读到一份缓存里的旧值（3）。它折算后落在 fresh 读之前。
+        vi.mocked(api.fetchSummaryAttentionCounts).mockResolvedValueOnce({ attention_count: 3 } as any);
+        const sample = await readSummaryAttentionCount();
+
+        // 值仍要返回给轮询做退避判据（它拿到的确实是服务端此刻给的数），
+        // 但红点不能被它写回去。
+        expect(sample).toMatchObject({ count: 3 });
+        expect(getSummaryAttentionBadge()).toBe(0);
+    });
+});
+
+// E2E mock 就绪门。MSW worker 是异步启动的，在它接管之前发出的请求会穿透到
+// Vite proxy → mock 后端没在监听 → ECONNREFUSED → 502 → console error，而
+// e2e gate 对 proxy error 是硬阻断。这条读取尤其需要这道门：它挂在无人值守的
+// 兜底轮询上，冷启动那一刻正好撞在 worker 启动窗口里。
+// 形态沿用 PR #1608 给 summaryMenuBadge 加的守卫（那个文件已被删除，守卫随
+// 读取路径迁到这里）。
+describe('summaryAttentionBadge — E2E mock 就绪门', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        WKApp.shared.currentSpaceId = 'space-123';
+        WKApp.loginInfo.uid = 'test-uid';
+        vi.spyOn(WKApp.loginInfo, 'isLogined').mockReturnValue(true);
+        vi.spyOn(WKApp.menus, 'refresh').mockImplementation(() => {});
+        resetSummaryAttentionOrdering();
+        setSummaryAttentionBadge(0);
+        vi.mocked(WKApp.menus.refresh).mockClear();
+    });
+
+    afterEach(() => {
+        vi.unstubAllEnvs();
+        vi.unstubAllGlobals();
+    });
+
+    it('E2E mock 未就绪时不发请求，且返回 null（不记账、不领号）', async () => {
+        vi.stubEnv('VITE_E2E_MOCK', '1');
+        vi.stubGlobal('window', {});
+
+        await expect(readSummaryAttentionCount()).resolves.toBeNull();
+
+        expect(api.fetchSummaryAttentionCounts).not.toHaveBeenCalled();
+        // 没领号就没有要还的号：号段不受扰动，在飞计数保持干净。
+        expect(hasInFlightAttentionRead()).toBe(false);
+    });
+
+    it('E2E mock 就绪后走正常请求路径', async () => {
+        vi.stubEnv('VITE_E2E_MOCK', '1');
+        vi.stubGlobal('window', { __MSW_READY__: true });
+        vi.mocked(api.fetchSummaryAttentionCounts).mockResolvedValueOnce({ attention_count: 2 } as any);
+
+        await expect(readSummaryAttentionCount({ fresh: true })).resolves.toMatchObject({ count: 2 });
+        expect(getSummaryAttentionBadge()).toBe(2);
+    });
+
+    it('非 E2E mock 构建下这道门恒开（生产路径不受影响）', async () => {
+        vi.stubEnv('VITE_E2E_MOCK', '');
+        vi.stubGlobal('window', {});
+        vi.mocked(api.fetchSummaryAttentionCounts).mockResolvedValueOnce({ attention_count: 1 } as any);
+
+        await expect(readSummaryAttentionCount({ fresh: true })).resolves.toMatchObject({ count: 1 });
+        expect(api.fetchSummaryAttentionCounts).toHaveBeenCalledTimes(1);
     });
 });

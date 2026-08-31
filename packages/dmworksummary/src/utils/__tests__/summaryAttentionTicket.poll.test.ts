@@ -33,6 +33,7 @@ import {
     refreshSummaryAttentionBadge,
     beginSummaryAttentionRead,
     commitSummaryAttentionBadge,
+    resetSummaryAttentionOrdering,
 } from '../summaryAttentionBadge';
 import { createAttentionPoll } from '../summaryAttentionPoll';
 
@@ -96,6 +97,10 @@ describe('ticket liveness —— 定时轮询作为第三个并发写者', () =>
         WKApp.loginInfo.uid = 'test-uid';
         vi.spyOn(WKApp.loginInfo, 'isLogined').mockReturnValue(true);
         vi.spyOn(WKApp.menus, 'refresh').mockImplementation(() => {});
+        // 样本时刻的水位是模块级的，跨用例会串：上一个用例里一次 fresh 写入把
+        // 水位钉在 Date.now()，本用例的非 fresh 轮询读折算后是 Date.now()-5s，
+        // 会被 commit 的样本时刻闸挡掉——那是正确行为撞上了脏状态。
+        resetSummaryAttentionOrdering();
         setSummaryAttentionBadge(0);
         vi.mocked(WKApp.menus.refresh).mockClear();
     });
