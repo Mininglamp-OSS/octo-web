@@ -11,7 +11,7 @@ import {
   Users,
 } from "lucide-react";
 import { t } from "@octo/base";
-import { formatCount, formatFullDate } from "../utils/format";
+import { formatCount } from "../utils/format";
 
 /** The four personal-asset kinds shown in "我的发布". The type marker in the
  *  bottom-right of each row's avatar disambiguates them (the tabs are per-type
@@ -55,6 +55,9 @@ interface MineTableProps {
    *  连接器/专家 tabs (mcp namespace) and 技能 tab (skillMarket namespace) keep
    *  their own wording (全平台 / 本组织 / 仅自己). */
   visibilityLabel: (key: string) => string;
+  /** Show the 浏览 / 下载 columns. Connectors hide them (no meaningful per-row
+   *  view/download); skills and experts show them. Defaults to true. */
+  showStats?: boolean;
 }
 
 const TYPE_MARKERS: Record<MineAssetType, React.ReactElement> = {
@@ -72,18 +75,13 @@ function visibilityMeta(key: string): { cls: string; icon: React.ReactElement } 
   return { cls: "space", icon: <Building2 size={13} aria-hidden="true" /> };
 }
 
-function safeDate(iso?: string): string {
-  if (!iso) return "—";
-  try {
-    return formatFullDate(iso);
-  } catch {
-    return iso.slice(0, 10) || "—";
-  }
-}
-
-export default function MineTable({ rows, visibilityLabel }: MineTableProps) {
+export default function MineTable({ rows, visibilityLabel, showStats = true }: MineTableProps) {
   return (
-    <div className="wk-mine-table" role="table" aria-label={t("skillMarket.mineTable.ariaLabel")}>
+    <div
+      className={`wk-mine-table${showStats ? "" : " wk-mine-table--nostats"}`}
+      role="table"
+      aria-label={t("skillMarket.mineTable.ariaLabel")}
+    >
       <div className="wk-mine-table__head" role="row">
         <span className="wk-mine-table__col wk-mine-table__col--name" role="columnheader">
           {t("skillMarket.mineTable.name")}
@@ -97,15 +95,16 @@ export default function MineTable({ rows, visibilityLabel }: MineTableProps) {
         <span className="wk-mine-table__col wk-mine-table__col--visibility" role="columnheader">
           {t("skillMarket.mineTable.visibility")}
         </span>
-        <span className="wk-mine-table__col wk-mine-table__col--num" role="columnheader">
-          {t("skillMarket.mineTable.views")}
-        </span>
-        <span className="wk-mine-table__col wk-mine-table__col--num" role="columnheader">
-          {t("skillMarket.mineTable.downloads")}
-        </span>
-        <span className="wk-mine-table__col wk-mine-table__col--updated" role="columnheader">
-          {t("skillMarket.mineTable.updatedAt")}
-        </span>
+        {showStats && (
+          <>
+            <span className="wk-mine-table__col wk-mine-table__col--num" role="columnheader">
+              {t("skillMarket.mineTable.views")}
+            </span>
+            <span className="wk-mine-table__col wk-mine-table__col--num" role="columnheader">
+              {t("skillMarket.mineTable.downloads")}
+            </span>
+          </>
+        )}
         <span className="wk-mine-table__col wk-mine-table__col--actions" role="columnheader">
           {t("skillMarket.mineTable.actions")}
         </span>
@@ -168,15 +167,16 @@ export default function MineTable({ rows, visibilityLabel }: MineTableProps) {
                 "—"
               )}
             </span>
-            <span className="wk-mine-table__col wk-mine-table__col--num" role="cell">
-              {formatCount(r.views ?? 0)}
-            </span>
-            <span className="wk-mine-table__col wk-mine-table__col--num" role="cell">
-              {formatCount(r.downloads ?? 0)}
-            </span>
-            <span className="wk-mine-table__col wk-mine-table__col--updated" role="cell">
-              {safeDate(r.updatedAt)}
-            </span>
+            {showStats && (
+              <>
+                <span className="wk-mine-table__col wk-mine-table__col--num" role="cell">
+                  {formatCount(r.views ?? 0)}
+                </span>
+                <span className="wk-mine-table__col wk-mine-table__col--num" role="cell">
+                  {formatCount(r.downloads ?? 0)}
+                </span>
+              </>
+            )}
             <span
               className="wk-mine-table__col wk-mine-table__col--actions"
               role="cell"

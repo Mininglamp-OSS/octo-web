@@ -850,6 +850,7 @@ export default class McpMarketListPage extends Component<
                           deleteAria: t("mcp.card.deleteAriaLabel", { values: { name: item.name } }),
                         }))}
                         visibilityLabel={(v) => t(`mcp.visibility.${v}`)}
+                        showStats={false}
                       />
                     ) : (
                     <div className="wk-mcp__grid">

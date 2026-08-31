@@ -2824,10 +2824,15 @@
 .wk-mine-table__row {
   display: grid;
   grid-template-columns:
-    minmax(240px, 2.4fr) minmax(96px, 1fr) 96px 118px 76px 76px 116px 152px;
+    minmax(240px, 2.4fr) minmax(96px, 1fr) 96px 118px 76px 76px 152px;
   align-items: center;
   gap: var(--wk-sp-3);
   padding: 0 var(--wk-sp-5);
+}
+.wk-mine-table--nostats .wk-mine-table__head,
+.wk-mine-table--nostats .wk-mine-table__row {
+  grid-template-columns:
+    minmax(240px, 2.6fr) minmax(96px, 1fr) 96px 118px 152px;
 }
 .wk-mine-table__head {
   height: 44px;
