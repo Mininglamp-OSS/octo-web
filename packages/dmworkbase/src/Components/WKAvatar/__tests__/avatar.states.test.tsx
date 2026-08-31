@@ -14,12 +14,12 @@ describe("WKAvatar states", () => {
     state.info = { orgData: { robot: 1 } }
     expect(isBot("u")).toBe(true)
     const { container, rerender, unmount } = render(<WKAvatar channel={group} lazy random="v1" />)
-    expect(container.querySelector("img")?.className).toContain("wk-avatar-group")
+    expect(container.querySelector(".wk-avatar")).toHaveClass("wk-avatar-group")
     const img = container.querySelector("img")!
     fireEvent.error(img)
     fireEvent.load(img)
     rerender(<WKAvatar channel={person} src=" user.png " />)
-    expect(container.querySelector("img")?.className).toContain("wk-avatar-ai")
+    expect(container.querySelector(".wk-avatar")).toHaveClass("wk-avatar-ai")
     fireEvent(img, new Event("error"))
     window.dispatchEvent(new CustomEvent("channel-avatar-changed", { detail: { channelID: "u", channelType: 1 } }))
     unmount()

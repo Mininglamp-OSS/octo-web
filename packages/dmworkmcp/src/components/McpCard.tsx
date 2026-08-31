@@ -1,5 +1,5 @@
 import React from "react";
-import { Tooltip } from "@douyinfe/semi-ui";
+import { Tooltip } from "@octo/ui";
 import { IconWrenchStroked } from "@douyinfe/semi-icons";
 import { Bot, Pencil, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import type { McpListItem } from "../types/mcp";
@@ -185,9 +185,6 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
                 ))}
               </div>
             }
-            className="wk-mcp-tooltip-light"
-            mouseEnterDelay={100}
-            position="top"
           >
             <span className="wk-mcp-tag wk-mcp-tag--more" aria-label={overflowTags.join(", ")}>
               +{overflowTags.length}

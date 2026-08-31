@@ -1,0 +1,28 @@
+.octo-ui-avatar-group {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  vertical-align: middle;
+}
+
+.octo-ui-avatar-group--size-16 {
+  --octo-ui-avatar-group-size: var(--octo-ui-avatar-size-16);
+}
+
+.octo-ui-avatar-group--size-20 {
+  --octo-ui-avatar-group-size: var(--octo-ui-avatar-size-20);
+}
+
+.octo-ui-avatar-group__item {
+  display: inline-flex;
+  flex: none;
+  width: var(--octo-ui-avatar-group-size);
+  height: var(--octo-ui-avatar-group-size);
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--wk-avatar-radius, var(--wk-r-circle));
+}
+
+.octo-ui-avatar-group__item + .octo-ui-avatar-group__item {
+  margin-left: calc(-1 * var(--octo-ui-avatar-group-overlap));
+}

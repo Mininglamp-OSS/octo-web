@@ -1,21 +1,52 @@
-import React from "react";
-import { render as rtlRender, screen, fireEvent } from "@testing-library/react";
-import { vi } from "vitest";
+import React, { act } from "react";
+import { render as rtlRender, screen, fireEvent, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, vi } from "vitest";
 import OverflowTooltip from "./OverflowTooltip";
 
-// Mock semi Tooltip: render content only when `visible` is true. The real
-// component drives visibility via its own onMouseEnter/onMouseLeave on the
-// wrapped child (trigger="custom") and supplies a stable `content` from the
-// `title` prop, so the mock renders `children` as-is and lets those handlers
-// flow through.
-vi.mock("@douyinfe/semi-ui", () => ({
-    Tooltip: ({ children, content, visible, trigger }: any) => (
-        <div data-testid="tooltip-wrapper" data-visible={visible} data-trigger={trigger}>
-            {visible && <div data-testid="tooltip-content">{content}</div>}
+vi.mock("@octo/ui", () => ({
+    Tooltip: ({ children, content, isDisabled }: { children: React.ReactNode; content: React.ReactNode; isDisabled?: boolean }) => isDisabled ? children : (
+        <div data-testid="tooltip-wrapper">
             {children}
+            <div data-testid="tooltip-content">{content}</div>
         </div>
     ),
 }));
+
+type ResizeCallback = ResizeObserverCallback;
+const resizeObservers: MockResizeObserver[] = [];
+
+class MockResizeObserver {
+    private readonly callback: ResizeCallback;
+    private readonly elements = new Set<Element>();
+
+    constructor(callback: ResizeCallback) {
+        this.callback = callback;
+        resizeObservers.push(this);
+    }
+
+    observe(element: Element) {
+        this.elements.add(element);
+    }
+
+    disconnect() {
+        this.elements.clear();
+    }
+
+    trigger(element: Element) {
+        if (!this.elements.has(element)) return false;
+        this.callback([], this as unknown as ResizeObserver);
+        return true;
+    }
+}
+
+beforeEach(() => {
+    resizeObservers.length = 0;
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+});
+
+afterEach(() => {
+    vi.unstubAllGlobals();
+});
 
 function render(ui: React.ReactElement, options?: any) {
     return rtlRender(ui, { legacyRoot: true, ...options });
@@ -24,6 +55,17 @@ function render(ui: React.ReactElement, options?: any) {
 function mockOverflow(el: HTMLElement, overflowing: boolean) {
     Object.defineProperty(el, "scrollWidth", { value: overflowing ? 200 : 100, configurable: true });
     Object.defineProperty(el, "clientWidth", { value: 100, configurable: true });
+    fireEvent(window, new Event("resize"));
+}
+
+function triggerResize(el: HTMLElement) {
+    let triggerCount = 0;
+    act(() => {
+        resizeObservers.forEach((observer) => {
+            if (observer.trigger(el)) triggerCount += 1;
+        });
+    });
+    return triggerCount;
 }
 
 describe("OverflowTooltip", () => {
@@ -33,8 +75,7 @@ describe("OverflowTooltip", () => {
         const container = screen.getByText("Short text");
         mockOverflow(container, false);
 
-        fireEvent.mouseEnter(container);
-
+        expect(screen.queryByTestId("tooltip-wrapper")).not.toBeInTheDocument();
         expect(screen.queryByTestId("tooltip-content")).not.toBeInTheDocument();
     });
 
@@ -45,8 +86,7 @@ describe("OverflowTooltip", () => {
         const container = screen.getByText(text);
         mockOverflow(container, true);
 
-        fireEvent.mouseEnter(container);
-
+        expect(screen.getByTestId("tooltip-wrapper")).toBeInTheDocument();
         expect(screen.getByTestId("tooltip-content")).toBeInTheDocument();
     });
 
@@ -56,22 +96,37 @@ describe("OverflowTooltip", () => {
         const container = screen.getByText("Truncated…");
         mockOverflow(container, true);
 
-        fireEvent.mouseEnter(container);
-
         expect(screen.getByTestId("tooltip-content")).toHaveTextContent("Full title text");
     });
 
-    it("hides tooltip on mouse leave", () => {
+    it("removes the tooltip wrapper after the content no longer overflows", () => {
         render(<OverflowTooltip title="Overflowing text">Overflowing text</OverflowTooltip>);
 
         const container = screen.getByText("Overflowing text");
         mockOverflow(container, true);
+        expect(screen.getByTestId("tooltip-wrapper")).toBeInTheDocument();
 
-        fireEvent.mouseEnter(container);
-        expect(screen.getByTestId("tooltip-content")).toBeInTheDocument();
+        mockOverflow(container, false);
+        expect(screen.queryByTestId("tooltip-wrapper")).not.toBeInTheDocument();
+    });
 
-        fireEvent.mouseLeave(container);
-        expect(screen.queryByTestId("tooltip-content")).not.toBeInTheDocument();
+    it("keeps observing the live element after truncation toggles", async () => {
+        render(<OverflowTooltip title="Resize observed text">Resize observed text</OverflowTooltip>);
+
+        const initialElement = screen.getByText("Resize observed text");
+        Object.defineProperty(initialElement, "scrollWidth", { value: 200, configurable: true });
+        Object.defineProperty(initialElement, "clientWidth", { value: 100, configurable: true });
+        expect(triggerResize(initialElement)).toBe(1);
+        expect(screen.getByTestId("tooltip-wrapper")).toBeInTheDocument();
+
+        const liveElement = screen.getByTestId("tooltip-wrapper").firstElementChild as HTMLElement;
+        Object.defineProperty(liveElement, "scrollWidth", { value: 100, configurable: true });
+        Object.defineProperty(liveElement, "clientWidth", { value: 100, configurable: true });
+        expect(triggerResize(liveElement)).toBe(1);
+
+        await waitFor(() => {
+            expect(screen.queryByTestId("tooltip-wrapper")).not.toBeInTheDocument();
+        });
     });
 
     it("renders correct element type when as prop is provided", () => {
@@ -93,19 +148,10 @@ describe("OverflowTooltip", () => {
         expect(el).toHaveStyle("color: rgb(255, 0, 0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;");
     });
 
-    it("uses a fully controlled (custom) trigger so semi never self-mounts an overlay", () => {
-        render(<OverflowTooltip title="Text">Text</OverflowTooltip>);
-
-        const wrapper = screen.getByTestId("tooltip-wrapper");
-        expect(wrapper).toHaveAttribute("data-trigger", "custom");
-    });
-
-    it("keeps the overlay closed until the title actually overflows", () => {
+    it("does not mount the shared tooltip until the title actually overflows", () => {
         render(<OverflowTooltip title="Some title">Some title</OverflowTooltip>);
 
-        const wrapper = screen.getByTestId("tooltip-wrapper");
-        // Before any hover, visibility is driven solely by `visible` (false).
-        expect(wrapper).toHaveAttribute("data-visible", "false");
+        expect(screen.queryByTestId("tooltip-wrapper")).not.toBeInTheDocument();
         expect(screen.queryByTestId("tooltip-content")).not.toBeInTheDocument();
     });
 });

@@ -15,6 +15,11 @@ This directory contains development guides and implementation notes for Octo Web
 - [`chat-composer-architecture.md`](./chat-composer-architecture.md) — current architecture and developer guide for the
   chat composer, send transaction, recovery lifecycle, UI boundaries, and extensible editor/message rendering.
 
+## RFCs
+
+- [`octo-ui-icon-avatar-rfc.md`](./octo-ui-icon-avatar-rfc.md) — proposed Icon registry and pure Avatar/AvatarGroup
+  contracts, business boundaries, and staged migration policy for `@octo/ui`.
+
 ## Assets
 
 - [`assets/`](./assets/) — images used by repository documentation.

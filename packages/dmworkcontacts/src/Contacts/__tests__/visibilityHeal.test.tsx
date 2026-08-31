@@ -145,6 +145,9 @@ beforeAll(async () => {
     Toast: { success: vi.fn(), error: vi.fn() },
     Tooltip: ({ children }: any) => <>{children}</>,
   }));
+  vi.doMock("@octo/ui", () => ({
+    Tooltip: ({ children }: any) => <>{children}</>,
+  }));
   vi.doMock("@tanstack/react-virtual", () => ({ useVirtualizer: () => ({ getVirtualItems: () => [], getTotalSize: () => 0, scrollToOffset: vi.fn() }) }));
   vi.doMock("../Service/ContactsListManager", () => ({ ContactsListManager: { shared: {} } }));
 
