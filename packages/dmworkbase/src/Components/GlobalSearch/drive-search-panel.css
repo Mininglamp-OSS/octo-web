@@ -1,0 +1,110 @@
+/* Drive search tab. Mirrors the chrome of the cloud-docs panel
+   (doc-search-panel.css) using the shared theme tokens from theme/semantic.css.
+   Kept token-only (no literal fallbacks / no hardcoded colours) so it inherits
+   light/dark theming automatically via body[theme-mode=dark]. Sizes/spacing/
+   radii deliberately match doc-search-panel.css 1:1 (spec §2.4 视觉铁律). */
+.wk-drive-search {
+  height: 100%;
+  min-height: 0;
+}
+.wk-drive-search__list {
+  height: var(--wk-global-search-content-height, min(58vh, 640px));
+  overflow: auto;
+  padding: var(--wk-sp-1) var(--wk-sp-2);
+}
+.wk-drive-search__item {
+  display: flex;
+  gap: var(--wk-sp-3);
+  width: 100%;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border: 0;
+  border-radius: var(--wk-r-md);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  align-items: flex-start;
+}
+.wk-drive-search__item:hover {
+  background: var(--wk-bg-item-hover);
+}
+/* Icon badge: same 38x38 / radius / glyph colour as .wk-doc-search__icon.
+   Folder + generic files fall back to the accent fill (doc panel's default
+   icon background); the doc type overrides to the shared doc accent. The
+   lucide glyph paints with currentColor = --wk-text-inverse. */
+.wk-drive-search__icon {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--wk-r-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--wk-text-inverse);
+  background: var(--wk-text-accent);
+}
+.wk-drive-search__icon--doc {
+  background: var(--wk-doc-accent-doc);
+}
+.wk-drive-search__meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.wk-drive-search__title {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--wk-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* <mark> highlight: identical to .wk-doc-search__snippet em. background:transparent
+   neutralises the UA yellow default so it matches the <em> treatment exactly. */
+.wk-drive-search__title mark,
+.wk-drive-search__snippet mark {
+  background: transparent;
+  font-style: normal;
+  color: var(--wk-text-accent);
+  font-weight: 600;
+}
+.wk-drive-search__crumb {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--wk-text-tertiary);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wk-drive-search__snippet {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--wk-text-secondary);
+  margin-top: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wk-drive-search__sub {
+  font-size: 12px;
+  color: var(--wk-text-tertiary);
+  margin-top: 4px;
+}
+.wk-drive-search__hint,
+.wk-drive-search__empty {
+  padding: var(--wk-sp-6) var(--wk-sp-4);
+  text-align: center;
+  color: var(--wk-text-tertiary);
+  font-size: 13px;
+}
+/* loadingMore / truncated / all-loaded bottom hints share one container. */
+.wk-drive-search__footer {
+  padding: var(--wk-sp-3) var(--wk-sp-4);
+  text-align: center;
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+}

@@ -130,9 +130,6 @@ export const chatBaselineHandlers = [
   http.get("*/message/prohibit_words/sync", () =>
     HttpResponse.json({ version: 0, words: [] })
   ),
-  http.get("*/api/v1/message/prohibit_words/sync", () =>
-    HttpResponse.json({ version: 0, words: [] })
-  ),
 
   // === User / device / avatar ===
   http.get("*/users/:uid/avatar", () =>
@@ -166,10 +163,6 @@ export const chatBaselineHandlers = [
     HttpResponse.json({ size: 0, colors: [] })
   ),
   http.get("*/user/devices/:deviceId", () =>
-    // 400 表示设备未注册, App.tsx 里 syncClientMsgDeviceId 已有静默 fallback.
-    HttpResponse.json({ msg: "device not found" }, { status: 400 })
-  ),
-  http.get("*/api/v1/user/devices/:deviceId", () =>
     // 400 表示设备未注册, App.tsx 里 syncClientMsgDeviceId 已有静默 fallback.
     HttpResponse.json({ msg: "device not found" }, { status: 400 })
   ),

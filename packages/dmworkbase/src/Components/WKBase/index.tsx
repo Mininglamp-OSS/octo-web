@@ -22,10 +22,16 @@ import {
 } from "./userInfoRouter";
 import { I18nContext } from "../../i18n";
 import { isIncomingWebhookSender } from "../../Service/IncomingWebhook";
+import { stripSpacePrefix } from "../../Service/SpacePrefix";
 import {
   getCurrentImChannelSubscribers,
   syncCurrentImChannelSubscribers,
 } from "../../im-runtime/currentChannelRuntime";
+import {
+  forwardChannelKey,
+  partitionForwardSubscribers,
+  type ForwardSubscriberLike,
+} from "../ForwardModal/logic";
 import "./index.css";
 import { Modal as OctoModal } from "@octo/ui";
 
@@ -55,8 +61,10 @@ export function createDefaultExternalViewerGate(): ExternalViewerGate {
     isExternal: (uid, fromChannel, channelInfo) => {
       // 1) Group subscriber orgData (primary source, matches UserInfoVM step 1).
       if (fromChannel && fromChannel.channelType !== ChannelTypePerson) {
-        const subscribers = getCurrentImChannelSubscribers(fromChannel) as
-          { uid?: string; orgData?: ChannelInfoOrgDataLike }[];
+        const subscribers = getCurrentImChannelSubscribers(fromChannel) as {
+          uid?: string;
+          orgData?: ChannelInfoOrgDataLike;
+        }[];
         const sub = subscribers.find((s) => s && s.uid === uid);
         const org = sub?.orgData;
         if (org) {
@@ -181,7 +189,7 @@ export default class WKBase
     ({ uid, fromChannel, vercode, isBot }) => {
       this.dispatchUserInfo(uid, fromChannel, vercode, isBot);
     },
-    createDefaultExternalViewerGate(),
+    createDefaultExternalViewerGate()
   );
 
   constructor(props: any) {
@@ -271,17 +279,18 @@ export default class WKBase
   private docForward?: DocForwardOpen;
 
   /**
-   * Expand the selected target channels into a de-duplicated uid snapshot at forward time
+   * Legacy fallback: expand selected targets into a de-duplicated uid snapshot
    * (contract 2): a group → its current subscriber uids (syncSubscribes → getSubscribes),
    * a person channel → the peer uid (channelID). Failures on one channel are skipped, never fatal.
-   * Bots are NOT attached here — the forwarder picks them explicitly in the 授权区 Bot expander and
-   * they arrive via `grant.botUids`, so nothing is granted silently.
+   * Normal document forwards carry an already-reviewed, target-scoped principal snapshot and do
+   * not call this method. For older role-only callers, explicitly identified Bots are excluded
+   * while unknown legacy rows retain their historical human treatment.
    */
   private async collectForwardUids(channels: Channel[]): Promise<string[]> {
     const uids = new Set<string>();
     for (const ch of channels) {
       if (ch.channelType === ChannelTypePerson) {
-        if (ch.channelID) uids.add(ch.channelID);
+        if (ch.channelID) uids.add(stripSpacePrefix(ch.channelID));
         continue;
       }
       try {
@@ -289,8 +298,11 @@ export default class WKBase
       } catch {
         // best-effort: fall back to whatever is already cached
       }
-      const subs = getCurrentImChannelSubscribers(ch) as { uid?: string }[];
-      for (const s of subs) {
+      const subs = getCurrentImChannelSubscribers(
+        ch
+      ) as ForwardSubscriberLike[];
+      const { humans, unknown } = partitionForwardSubscribers(subs);
+      for (const s of [...humans, ...unknown]) {
         if (s?.uid) uids.add(s.uid);
       }
     }
@@ -312,21 +324,44 @@ export default class WKBase
     const sendable = channels.filter((ch) => !isConversationDisbanded(ch));
     if (sendable.length === 0) {
       Toast.error(t("base.forwardModal.grant.sendFailed"));
-      forward.onResult?.({ sent: 0, failed: channels.length, grantFailures: undefined, grantRejections: undefined });
+      forward.onResult?.({
+        sent: 0,
+        failed: channels.length,
+        grantFailures: undefined,
+        grantRejections: undefined,
+      });
       return;
     }
 
     // 1) grant first (先授权后发). Only when the switch is on AND docs injected an executor.
     if (grant && forward.grantAccess) {
       try {
-        const humanUids = await this.collectForwardUids(sendable);
-        // Merge the explicitly-kept Bot uids from the 授权区 expander onto the human snapshot.
-        // Bots the forwarder cancelled are absent from grant.botUids, so nothing is granted silently.
-        const uids = [...new Set([...humanUids, ...(grant.botUids ?? [])])];
+        let uids: string[];
+        if (grant.principalsByTarget !== undefined) {
+          const sendableKeys = new Set(
+            sendable.map((channel) => forwardChannelKey(channel))
+          );
+          uids = [
+            ...new Set(
+              grant.principalsByTarget
+                .filter((target) => sendableKeys.has(forwardChannelKey(target)))
+                .flatMap((target) => target.uids)
+                .filter(Boolean)
+            ),
+          ];
+        } else {
+          // Compatibility for role-only / pre-provenance callers. Humans are expanded only from
+          // current sendable targets. Aggregate legacy botUids have no target attribution, so when
+          // any target is no longer sendable they are omitted rather than risking an access leak.
+          const humanUids = await this.collectForwardUids(sendable);
+          const legacyBotUids = sendable.length === channels.length ? grant.botUids ?? [] : [];
+          uids = [...new Set([...humanUids, ...legacyBotUids])];
+        }
         if (uids.length > 0) {
           const res = await forward.grantAccess(uids, grant.role);
           if (res.failed > 0) grantFailures = res.failures;
-          if (res.rejected && res.rejected.length > 0) grantRejections = res.rejected;
+          if (res.rejected && res.rejected.length > 0)
+            grantRejections = res.rejected;
         }
       } catch {
         // A grant failure must not block sending the message — the receiver can still
@@ -358,12 +393,13 @@ export default class WKBase
           card.permission = grant?.role ?? forward.defaultRole ?? "reader";
           return card;
         }
-      : () => new MessageText(buildForwardMessageText(forward.messageTitle, forward.link));
-    const result = await ForwardService.send(
-      channels,
-      contentFactory,
-      { spaceId: WKApp.shared.currentSpaceId },
-    );
+      : () =>
+          new MessageText(
+            buildForwardMessageText(forward.messageTitle, forward.link)
+          );
+    const result = await ForwardService.send(channels, contentFactory, {
+      spaceId: WKApp.shared.currentSpaceId,
+    });
 
     // 3) partial-failure Toast (reuse the dmworksummary范式). 分母维度用 targets，
     // 保留旧的用户可见语义（原代码 total=channels.length，即 result.targets）。
@@ -393,7 +429,12 @@ export default class WKBase
     }
 
     const sent = state.total - state.failed;
-    forward.onResult?.({ sent, failed: state.failed, grantFailures, grantRejections });
+    forward.onResult?.({
+      sent,
+      failed: state.failed,
+      grantFailures,
+      grantRejections,
+    });
   }
 
   hideUserInfo() {
@@ -574,14 +615,19 @@ export default class WKBase
 
         <OctoModal
           title={alertTitle}
+          aria-label={alertTitle ?? alertContent}
           visible={this.state.showAlert}
-          onCancel={() => { this.cancelAlert(); }}
+          onCancel={() => {
+            this.cancelAlert();
+          }}
           options={{ maskClosable: false }}
           footerConfig={{
             cancelText: this.context.t("base.common.cancel"),
             okText: this.context.t("base.common.ok"),
             onOk: () => {
-              if (onAlertOk) { onAlertOk(); }
+              if (onAlertOk) {
+                onAlertOk();
+              }
               this.cancelAlert();
             },
           }}
@@ -617,7 +663,11 @@ export default class WKBase
         >
           {orgId && orgUid && orgCode && (
             <iframe
-              src={`${baseURL}web/join_org.html?org_id=${encodeURIComponent(orgId)}&uid=${encodeURIComponent(orgUid)}&code=${encodeURIComponent(orgCode)}`}
+              src={`${baseURL}web/join_org.html?org_id=${encodeURIComponent(
+                orgId
+              )}&uid=${encodeURIComponent(orgUid)}&code=${encodeURIComponent(
+                orgCode
+              )}`}
               sandbox="allow-scripts allow-same-origin"
               style={{ width: "100%", height: "100%", border: "none" }}
             ></iframe>
