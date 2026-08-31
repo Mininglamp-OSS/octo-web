@@ -1,4 +1,6 @@
 import React from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
@@ -34,6 +36,8 @@ import WKAvatar from "../index";
 afterEach(() => {
   vi.clearAllMocks();
   vi.unstubAllGlobals();
+  document.documentElement.style.removeProperty("--octo-ui-avatar-size-16");
+  document.querySelector("[data-wk-avatar-test-styles]")?.remove();
 });
 
 describe("WKAvatar composition", () => {
@@ -71,13 +75,42 @@ describe("WKAvatar composition", () => {
   });
 
   it("forwards an explicit primitive size to the Avatar shell", () => {
+    const styles = document.createElement("style");
+    styles.dataset.wkAvatarTestStyles = "true";
+    styles.textContent = [
+      readFileSync(
+        resolve(process.cwd(), "../octo-ui/src/components/Avatar/index.css"),
+        "utf8"
+      ),
+      readFileSync(
+        resolve(process.cwd(), "src/Components/WKAvatar/index.css"),
+        "utf8"
+      ),
+    ].join("\n");
+    document.head.append(styles);
+    document.documentElement.style.setProperty(
+      "--octo-ui-avatar-size-16",
+      "16px"
+    );
     const { container } = render(
       <WKAvatar src="https://example.test/candice.png" size={16} />
     );
 
-    expect(container.querySelector(".wk-avatar")).toHaveClass(
+    const shell = container.querySelector<HTMLElement>(".wk-avatar");
+    expect(shell).toHaveClass(
       "octo-ui-avatar--size-16"
     );
+    const computedStyle = getComputedStyle(shell as HTMLElement);
+    expect(computedStyle.width).toBe("var(--octo-ui-avatar-size)");
+    expect(computedStyle.height).toBe("var(--octo-ui-avatar-size)");
+    expect(computedStyle.getPropertyValue("--octo-ui-avatar-size")).toBe(
+      "var(--octo-ui-avatar-size-16)"
+    );
+    expect(
+      getComputedStyle(document.documentElement).getPropertyValue(
+        "--octo-ui-avatar-size-16"
+      )
+    ).toBe("16px");
   });
 
   it("keeps the legacy placeholder when the image fails", async () => {

@@ -1,7 +1,7 @@
 .wk-avatar {
     display: block;
-    width: 40px;
-    height: 40px;
+    width: var(--octo-ui-avatar-size);
+    height: var(--octo-ui-avatar-size);
     border-radius: var(--wk-avatar-radius, 50%);
     object-fit: cover;
     transition: border-radius 150ms ease;
