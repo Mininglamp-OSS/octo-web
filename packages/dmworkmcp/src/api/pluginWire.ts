@@ -179,7 +179,7 @@ function escapeLikeGo(json: string): string {
  *  marker. Redaction sentinels blank the same way (never reach edit forms).
  *  The name part accepts leading digits because the writer normalizes keys
  *  like "12" to ${12} — reader and writer must agree on the full range. */
-const PLACEHOLDER_PATTERN = /^\$\{[A-Za-z0-9_]+\}$/;
+export const PLACEHOLDER_PATTERN = /^\$\{[A-Za-z0-9_]+\}$/;
 
 /** The self-referential placeholder the writer emits for a user-supplied key:
  *  ${NORMALIZED_KEY}. Must stay in lockstep with placeholderFor() in

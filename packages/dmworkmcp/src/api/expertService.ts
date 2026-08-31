@@ -415,6 +415,15 @@ function pluginDetail(id: string): Promise<PluginDetailWire> {
   });
 }
 
+/** A CONFIRMED 404 means the relation target is soft-deleted / dangling — the
+ *  one case where dropping it (rather than failing the whole detail) is correct.
+ *  `get()` has already wrapped the axios error into an ExpertListError, so we key
+ *  off its classified kind. Any other failure (500 / 403 / network / unknown)
+ *  must surface, not silently shrink the displayed skill/member list. */
+function isDanglingTarget(reason: unknown): boolean {
+  return reason instanceof ExpertListError && reason.kind === "notfound";
+}
+
 /** Load every expert_skill relation target and project it for the browser,
  *  returning the skills plus their plugin ids (positionally aligned). */
 async function loadSkills(
@@ -422,10 +431,11 @@ async function loadSkills(
 ): Promise<{ skills: ExpertSkill[]; pluginIds: string[] }> {
   const rels = liveRelations(relations, "expert_skill");
   // allSettled, not all: a soft-deleted / unresolvable expert_skill target must
-  // not reject the whole expert/squad detail — drop the dangling relation and
-  // keep the rest of the skills usable. skills[] and pluginIds[] stay aligned
-  // because both are pushed together only for resolved targets. Cancellation
-  // (space switch) still propagates.
+  // not reject the whole expert/squad detail. But only a CONFIRMED 404 is
+  // dropped — a 500/403/network error is rethrown so the detail surfaces the
+  // failure instead of silently rendering a shortened skill list. skills[] and
+  // pluginIds[] stay aligned because both are pushed together only for resolved
+  // targets. Cancellation (space switch) still propagates.
   const settled = await Promise.allSettled(
     rels.map((rel) =>
       get<PluginDetailWire>("/plugins/detail", {
@@ -440,9 +450,11 @@ async function loadSkills(
     if (res.status === "fulfilled") {
       skills.push(fromSkillPlugin(res.value.plugin));
       pluginIds.push(rels[i].target_plugin_id);
-    } else if (axios.isCancel(res.reason)) {
+    } else if (axios.isCancel(res.reason) || !isDanglingTarget(res.reason)) {
+      // Cancellation or a non-404 failure — surface it, don't drop silently.
       throw res.reason;
     }
+    // else: confirmed 404 → dangling target, safe to drop.
   });
   return { skills, pluginIds };
 }
@@ -482,14 +494,19 @@ async function getSquadReal(id: string): Promise<ExpertSquad> {
   const memberRels = liveRelations(detail.relations, "expert_team_expert");
   const skillIndex = new Map<string, string[]>();
   // allSettled: one unresolvable member relation must not break the whole squad
-  // detail view — drop it and render the rest. Cancellation still propagates.
+  // detail — but only a CONFIRMED 404 is dropped; a 500/403/network error is
+  // rethrown so a transient failure doesn't silently shrink the member list (and
+  // memberCount). Cancellation still propagates.
   const settledMembers = await Promise.allSettled(
     memberRels.map((rel) => loadSquadMember(rel, skillIndex))
   );
   const members: ExpertMember[] = [];
   for (const res of settledMembers) {
     if (res.status === "fulfilled") members.push(res.value);
-    else if (axios.isCancel(res.reason)) throw res.reason;
+    else if (axios.isCancel(res.reason) || !isDanglingTarget(res.reason)) {
+      throw res.reason;
+    }
+    // else: confirmed 404 → dangling member, safe to drop.
   }
   squadSkillIndex.set(id, skillIndex);
   return {

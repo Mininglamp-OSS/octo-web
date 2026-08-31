@@ -149,6 +149,7 @@
       "forbidden": "You do not have permission to access the MCP marketplace.",
       "network": "Network connection failed. Check your connection and retry.",
       "server": "The service is temporarily unavailable. Try again later.",
+      "notfound": "The content no longer exists or has been removed.",
       "unknown": "Failed to load. Try again later."
     },
     "empty": "No matching MCP servers",
