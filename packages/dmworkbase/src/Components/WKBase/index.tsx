@@ -573,7 +573,7 @@ export default class WKBase
         </OctoModal>
 
         <OctoModal
-          title={alertTitle ?? alertContent}
+          title={alertTitle}
           visible={this.state.showAlert}
           onCancel={() => { this.cancelAlert(); }}
           options={{ maskClosable: false }}
@@ -586,7 +586,7 @@ export default class WKBase
             },
           }}
         >
-          {alertTitle ? (
+          {alertContent ? (
             <p className="octo-ui-modal-confirm__description">{alertContent}</p>
           ) : null}
         </OctoModal>

@@ -120,7 +120,7 @@ describe('summaryMenuBadge (#1359)', () => {
         expect(api.listSummaries).not.toHaveBeenCalled();
     });
 
-    it('refreshPendingInvitationBadge 在 E2E mock 环境不发后台请求', async () => {
+    it('refreshPendingInvitationBadge 在 E2E mock 未 ready 前不发后台请求', async () => {
         vi.stubEnv('VITE_E2E_MOCK', '1');
         vi.stubGlobal('window', {});
 
@@ -129,13 +129,21 @@ describe('summaryMenuBadge (#1359)', () => {
         expect(api.listSummaries).not.toHaveBeenCalled();
     });
 
-    it('refreshPendingInvitationBadge 在 E2E mock ready 后仍跳过后台请求', async () => {
+    it('refreshPendingInvitationBadge 在 E2E mock ready 后走正常请求路径', async () => {
         vi.stubEnv('VITE_E2E_MOCK', '1');
         vi.stubGlobal('window', { __MSW_READY__: true });
+        vi.mocked(api.listSummaries).mockResolvedValue({
+            items: [],
+            total: 0,
+            attention_count: 0,
+            unread_count: 0,
+            pending_invitation_count: 2,
+        } as any);
 
         await refreshPendingInvitationBadge();
 
-        expect(api.listSummaries).not.toHaveBeenCalled();
+        expect(api.listSummaries).toHaveBeenCalledWith({ page: 1, page_size: 1 });
+        expect(getPendingInvitationBadge()).toBe(2);
     });
 
     it('refreshPendingInvitationBadge 丢弃跨 Space 的迟到响应', async () => {

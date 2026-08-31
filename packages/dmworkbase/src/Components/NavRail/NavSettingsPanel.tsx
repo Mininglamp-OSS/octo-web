@@ -172,7 +172,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                             ) : (
                                 <Button variant="secondary" onClick={() => { onSetShowAppVersion(false); onNotifyListener(); }}>{t("base.common.cancel")}</Button>
                             )}
-                            <Button variant="primary" onClick={onInstallUpdate}>
+                            <Button variant="solid" onClick={onInstallUpdate}>
                                 {t("base.common.update")}
                             </Button>
                         </>
