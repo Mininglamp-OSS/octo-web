@@ -91,8 +91,8 @@ function principalsByTargetFrom(
  * 授权区 Bot 展开器的数据 hook（feature: user+Bot grants）。
  *
  * 把选中目标解析成去重的真人与 Bot：群聊只纳入群内实际成员，直接选中的真人还会按
- * `creator_uid` 带出其 Space Bot。Bot 按来源分组，默认全选且可逐个取消；roster/identity
- * lookup 失败则 fail-closed，显示可重试错误并阻止确认。
+ * `creator_uid` 带出其 Space Bot。Bot 优先按创建者分组，缺少创建者信息时按来源群兜底；默认全选
+ * 且可逐个取消。roster/identity lookup 失败则 fail-closed，显示可重试错误并阻止确认。
  *
  * loading/stale 语义（避免旧 Bot 被误确认）：目标/space/enabled 变化时立即丢弃旧 resolved 并置
  * `ready:false`（loading）；新一轮 async 完成前 snapshot 不含任何 Bot，`readLatestSelectedBotUids()`
@@ -387,16 +387,22 @@ export function useForwardBotSnapshot(
           authoritativeBotUids.add(uid)
           target.botUids.add(uid)
           const rosterBot = botByUid.get(uid)
+          const creatorUid = rosterBot?.creator_uid
           const fallbackName = fallbackIdentity.get(uid)?.channelInfo?.title
           const memberName = subscriberDisplayName({
             name: member.name,
             remark: member.remark,
             orgData: member.orgData,
           }).trim()
-          addDisplayedBot(`group:${channel.channelID}`, channel.channelID, channel.channelID, {
-            uid,
-            name: rosterBot?.name || memberName || fallbackName || uid,
-          })
+          addDisplayedBot(
+            creatorUid || `group:${channel.channelID}`,
+            creatorUid || channel.channelID,
+            (creatorUid && peopleNames.get(creatorUid)) || creatorUid || channel.channelID,
+            {
+              uid,
+              name: rosterBot?.name || memberName || fallbackName || uid,
+            }
+          )
         }
       }
 

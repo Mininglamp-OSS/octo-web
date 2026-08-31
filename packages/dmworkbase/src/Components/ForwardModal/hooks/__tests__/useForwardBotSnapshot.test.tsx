@@ -463,15 +463,19 @@ describe("useForwardBotSnapshot", () => {
       selectedChannels: [new Channel("g_1", 2)],
       spaceId: "s_1",
       enabled: true,
-      resolveName: (uid) => (uid === "g_1" ? "测试群" : ""),
+      resolveName: (uid) => {
+        if (uid === "g_1") return "测试群"
+        if (uid === "u_owner") return "qwen3-omni-speech-test"
+        return ""
+      },
     })
 
     expect(latest?.peopleCount).toBe(1)
     expect(latest?.botCount).toBe(8)
     expect(latest?.groups).toHaveLength(1)
     expect(latest?.groups[0]).toMatchObject({
-      uid: "group:g_1",
-      name: "测试群",
+      uid: "u_owner",
+      name: "qwen3-omni-speech-test",
     })
     expect(selectedBotUids(latest)).toEqual(
       Array.from({ length: 8 }, (_, index) => `b_group_${index}`)
@@ -491,6 +495,32 @@ describe("useForwardBotSnapshot", () => {
     expect(readLatest()).not.toContain("b_group_3")
     expect(readLatestHumans()).toEqual(["u_owner"])
     expect(readLatestTargets()[0].uids).not.toContain("b_group_3")
+  })
+
+  it("falls back to the selected group label when a group Bot has no creator metadata", async () => {
+    hoisted.subscribers.set("g_1", [
+      { uid: "b_legacy", name: "Legacy Bot", orgData: { robot: 1 } },
+    ])
+    hoisted.listBots.mockResolvedValue([{ uid: "b_legacy", name: "Legacy Bot" }])
+
+    await render({
+      selectedIDs: ["g_1"],
+      selectedChannels: [new Channel("g_1", 2)],
+      spaceId: "s_1",
+      enabled: true,
+      resolveName: (uid) => (uid === "g_1" ? "测试群" : ""),
+    })
+
+    expect(latest?.groups).toEqual([
+      {
+        uid: "group:g_1",
+        name: "测试群",
+        bots: [{ uid: "b_legacy", name: "Legacy Bot", selected: true }],
+      },
+    ])
+    expect(readLatestTargets()).toEqual([
+      { channelID: "g_1", channelType: 2, uids: ["b_legacy"] },
+    ])
   })
 
   it("applies Bot precedence across selected groups and removes a cancelled Bot from every target", async () => {
