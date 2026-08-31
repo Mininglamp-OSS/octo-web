@@ -243,6 +243,7 @@ export default function SecretsSettingsPanel({
     <OctoModal
       visible
       title={null}
+      aria-label={t("base.secrets.title")}
       onCancel={onClose}
       options={{ closeOnEsc: true, maskClosable: true, closable: false }}
       footer={null}

@@ -110,7 +110,7 @@ export function openDocsDenyReasonDialog(
         const reason = box.reason.trim();
         if (!reason) {
           Toast.warning(t("base.message.interactiveCard.denyDialog.reasonRequired"));
-          // 拒绝一个 promise 让 modalConfirm 保持弹窗打开（见 OctoModal/confirm.tsx）。
+          // 拒绝一个 promise 让 modalConfirm 保持弹窗打开（见 @octo/ui Modal confirm）。
           return Promise.reject(new Error("deny reason required"));
         }
         done(reason);

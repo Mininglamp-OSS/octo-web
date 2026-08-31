@@ -164,7 +164,7 @@ const Modal = forwardRef<ComponentRef<typeof SemiModal>, ModalProps>(function Mo
   const actualMask = options?.mask ?? mask
   const actualMaskClosable = options?.maskClosable ?? maskClosable
   const titleId = useMemo(() => `octo-ui-modal-title-${++modalTitleSeed}`, [])
-  const hasDefaultTitleNode = header === undefined && title !== null && title !== undefined
+  const hasDefaultTitleNode = header === undefined && Boolean(title)
   const dialogLabel = ariaLabel ?? (typeof title === 'string' ? title : 'modal')
 
   const setOpen = useCallback((nextOpen: boolean) => {
