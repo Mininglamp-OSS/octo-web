@@ -103,6 +103,7 @@
     "skillFileBinary": "二进制文件，暂不支持预览。",
     "instructionTitle": "指令",
     "mcpTitle": "MCP",
+    "mcpUnavailable": "MCP 配置无法安全展示",
     "skillsTitle": "Skills",
     "selfCreator": "我",
     "sortHottest": "最热"

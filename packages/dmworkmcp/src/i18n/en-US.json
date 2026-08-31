@@ -103,6 +103,7 @@
     "skillFileBinary": "Binary file — cannot be previewed.",
     "instructionTitle": "Instruction",
     "mcpTitle": "MCP",
+    "mcpUnavailable": "MCP configuration cannot be shown safely",
     "skillsTitle": "Skills",
     "selfCreator": "Me",
     "sortHottest": "Hottest"

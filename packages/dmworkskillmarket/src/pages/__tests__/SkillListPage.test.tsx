@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SkillListPage from "../SkillListPage";
@@ -346,7 +347,9 @@ describe("SkillListPage", () => {
       screen.getByText(/本组织|skillMarket\.visibility\.space/)
     ).toBeInTheDocument();
 
-    fireEvent.click(card);
+    fireEvent.click(
+      within(card).getByRole("button", { name: "meeting-note-cleaner" })
+    );
     // Detail opened: the machine name renders in the modal content (header +
     // frontmatter + readme) but nowhere in the row card (which shows only the
     // display name). findAllByText avoids the multi-match throw.
@@ -371,7 +374,7 @@ describe("SkillListPage", () => {
     render(<SkillListPage variant="mine" />);
 
     fireEvent.click(
-      await screen.findByRole("row", { name: "meeting-note-cleaner" })
+      await screen.findByRole("button", { name: "meeting-note-cleaner" })
     );
     expect((await screen.findAllByText(skill.name)).length).toBeGreaterThan(0);
 
@@ -418,7 +421,7 @@ describe("SkillListPage", () => {
     render(<SkillListPage variant="mine" />);
 
     fireEvent.click(
-      await screen.findByRole("row", { name: "meeting-note-cleaner" })
+      await screen.findByRole("button", { name: "meeting-note-cleaner" })
     );
     expect((await screen.findAllByText(skill.name)).length).toBeGreaterThan(0);
 

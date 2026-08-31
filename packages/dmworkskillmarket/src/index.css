@@ -653,121 +653,6 @@
   align-items: stretch;
 }
 
-/* ── 我的发布 横排长条卡片 ─────────────────────────────────────────────── */
-.skill-market-mine-row {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--wk-sp-4);
-  padding: var(--wk-sp-4) var(--wk-sp-5);
-  border: 1px solid var(--wk-border-subtle);
-  border-radius: var(--wk-r-lg);
-  background: var(--wk-bg-surface);
-  cursor: pointer;
-  transition: box-shadow var(--wk-dur-fast) var(--wk-ease),
-    border-color var(--wk-dur-fast) var(--wk-ease);
-}
-.skill-market-mine-row:hover,
-.skill-market-mine-row:focus-visible {
-  outline: none;
-  border-color: var(--wk-border-default);
-  box-shadow: var(--wk-shadow-sm);
-}
-.skill-market-mine-row__icon {
-  flex: 0 0 auto;
-  width: 48px;
-  height: 48px;
-  border-radius: var(--wk-r-md);
-  overflow: hidden;
-}
-.skill-market-mine-row__icon img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.skill-market-mine-row__icon-default {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--wk-bg-surface);
-  font-weight: var(--wk-font-semibold);
-}
-.skill-market-mine-row__body {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.skill-market-mine-row__title {
-  color: var(--wk-text-strong);
-  font-weight: var(--wk-font-semibold);
-  font-size: var(--wk-text-size-md);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.skill-market-mine-row__meta {
-  color: var(--wk-text-tertiary);
-  font-size: 12px;
-}
-.skill-market-mine-row__status {
-  display: flex;
-  align-items: center;
-  gap: var(--wk-sp-3);
-  font-size: 12px;
-  color: var(--wk-text-tertiary);
-}
-.skill-market-mine-row__stat {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-variant-numeric: tabular-nums;
-}
-.skill-market-mine-row__vis {
-  display: inline-flex;
-  align-items: center;
-  height: 18px;
-  padding: 0 var(--wk-sp-2);
-  border-radius: var(--wk-r-sm);
-  background: var(--wk-bg-elevated);
-  color: var(--wk-text-secondary);
-}
-.skill-market-mine-row__version {
-  font-variant-numeric: tabular-nums;
-}
-.skill-market-mine-row__actions {
-  flex: 0 0 auto;
-  align-self: center;
-  display: flex;
-  align-items: center;
-  gap: var(--wk-sp-2);
-}
-.skill-market-mine-row__action {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 32px;
-  padding: 0 var(--wk-sp-3);
-  border: 1px solid var(--wk-border-default);
-  border-radius: var(--wk-r-md);
-  background: var(--wk-bg-surface);
-  color: var(--wk-text-primary);
-  font-size: 13px;
-  cursor: pointer;
-}
-.skill-market-mine-row__action:hover {
-  background: var(--wk-bg-item-hover);
-}
-.skill-market-mine-row__action--danger {
-  color: var(--wk-color-danger);
-  border-color: var(--wk-color-danger-border);
-}
-.skill-market-mine-row__action--danger:hover {
-  background: var(--wk-color-danger-bg);
-}
-
 .skill-market-card {
   position: relative;
   display: flex;
@@ -2849,15 +2734,12 @@
   border-bottom: 1px solid var(--wk-border-subtle);
   color: var(--wk-text-tertiary);
   font-size: 13px;
-  cursor: pointer;
   transition: background var(--wk-dur-fast) var(--wk-ease);
 }
 .wk-mine-table__row:last-child {
   border-bottom: none;
 }
-.wk-mine-table__row:hover,
-.wk-mine-table__row:focus-visible {
-  outline: none;
+.wk-mine-table__row:hover {
   background: var(--wk-bg-item-hover);
 }
 .wk-mine-table__col {
@@ -2872,11 +2754,31 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* name cell — avatar (+ type marker) + name/description stack */
+/* name cell — an activatable open-button wrapping avatar (+ type marker) +
+   name/description stack. The button is the flex container so the whole name
+   area is one keyboard-focusable target. */
 .wk-mine-table__col--name {
   display: flex;
   align-items: center;
+}
+.wk-mine-table__open {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
   gap: var(--wk-sp-3);
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--wk-r-md);
+}
+.wk-mine-table__open:focus-visible {
+  outline: 2px solid var(--wk-color-primary);
+  outline-offset: 2px;
 }
 .wk-mine-table__avatar {
   position: relative;

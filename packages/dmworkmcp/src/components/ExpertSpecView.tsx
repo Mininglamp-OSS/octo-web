@@ -34,7 +34,10 @@ export default function ExpertSpecView({
   // Index of the expanded skill (null when all collapsed); one open at a time.
   const [openSkill, setOpenSkill] = useState<number | null>(null);
   // The detail view is read-only and public; mask any literal secret in the
-  // mcp.json env/headers so a hand-written credential is not exposed to viewers.
+  // mcp.json (env/header values, url query tokens, positional args) so a
+  // hand-written credential is not exposed. redactMcpConfig returns null when
+  // it can't safely parse/round-trip the config (fail closed) — render a
+  // localized notice instead of the untrusted original.
   const redactedMcpConfig = useMemo(
     () => (mcpConfig ? redactMcpConfig(mcpConfig) : mcpConfig),
     [mcpConfig]
@@ -65,7 +68,9 @@ export default function ExpertSpecView({
               <h3>{t("mcp.expert.mcpTitle")}</h3>
             </div>
           </div>
-          <pre className="wk-mcp-expert-code">{redactedMcpConfig}</pre>
+          <pre className="wk-mcp-expert-code">
+            {redactedMcpConfig ?? t("mcp.expert.mcpUnavailable")}
+          </pre>
         </section>
       )}
 

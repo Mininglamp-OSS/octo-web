@@ -116,40 +116,42 @@ export default function MineTable({ rows, visibilityLabel, showStats = true }: M
             key={r.id}
             className="wk-mine-table__row"
             role="row"
-            tabIndex={0}
             aria-label={r.ariaLabel ?? r.name}
-            data-track="market_card_opened"
-            data-object-id={r.id}
-            data-track-item-type={r.trackItemType}
-            onClick={() => r.onOpen?.()}
-            onKeyDown={(e) => {
-              if (e.target instanceof HTMLElement && e.target.closest("button")) return;
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                r.onOpen?.();
-              }
-            }}
           >
             <span className="wk-mine-table__col wk-mine-table__col--name" role="cell">
-              <span className="wk-mine-table__avatar">
-                {r.icon}
-                <span
-                  className={`wk-mine-table__type wk-mine-table__type--${r.type}`}
-                  aria-hidden="true"
-                >
-                  {TYPE_MARKERS[r.type]}
-                </span>
-              </span>
-              <span className="wk-mine-table__namecol">
-                <span className="wk-mine-table__name" title={r.name}>
-                  {r.name}
-                </span>
-                {r.description && (
-                  <span className="wk-mine-table__desc" title={r.description}>
-                    {r.description}
+              {/* The row is structural (role="row"); the primary "open" action is
+                  a real, keyboard-focusable button so screen readers announce it
+                  and Enter/Space activate it natively. Tracking rides the button
+                  so it only fires on an actual open, not on any row click. */}
+              <button
+                type="button"
+                className="wk-mine-table__open"
+                aria-label={r.ariaLabel ?? r.name}
+                data-track="market_card_opened"
+                data-object-id={r.id}
+                data-track-item-type={r.trackItemType}
+                onClick={() => r.onOpen?.()}
+              >
+                <span className="wk-mine-table__avatar">
+                  {r.icon}
+                  <span
+                    className={`wk-mine-table__type wk-mine-table__type--${r.type}`}
+                    aria-hidden="true"
+                  >
+                    {TYPE_MARKERS[r.type]}
                   </span>
-                )}
-              </span>
+                </span>
+                <span className="wk-mine-table__namecol">
+                  <span className="wk-mine-table__name" title={r.name}>
+                    {r.name}
+                  </span>
+                  {r.description && (
+                    <span className="wk-mine-table__desc" title={r.description}>
+                      {r.description}
+                    </span>
+                  )}
+                </span>
+              </button>
             </span>
             <span className="wk-mine-table__col wk-mine-table__col--category" role="cell">
               {r.category || "—"}

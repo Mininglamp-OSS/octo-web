@@ -1,4 +1,5 @@
 import { slugifyServerName } from "../utils/constants";
+import { redactUrl } from "../utils/redactMcpConfig";
 import type { McpQuickStart } from "../types/mcp";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -83,7 +84,9 @@ function buildJson(qs: McpQuickStart): string {
     );
     const server: Record<string, unknown> = {
       type: jsonTypeField(qs),
-      url: qs.url ?? "",
+      // The url is a public read surface not covered by the user-supplied
+      // header/env declaration; mask any query token so it can't leak.
+      url: redactUrl(qs.url ?? ""),
     };
     if (Object.keys(merged).length > 0) {
       server.headers = merged;
@@ -206,7 +209,7 @@ function buildPrompt(qs: McpQuickStart): string {
     return texts.remote({
       serverName: qs.serverName,
       transport: qs.transport,
-      url: qs.url ?? "",
+      url: redactUrl(qs.url ?? ""),
       extraHeaders,
     });
   }
