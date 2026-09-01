@@ -96,7 +96,6 @@ export interface SummaryWorkbenchActions {
   onRemoveContext: (kind: SummaryWorkbenchContextKind, id: string) => void;
   onResultAction: (action: SummaryWorkbenchAction) => void;
   onNewSession?: () => void;
-  onOpenScheduledSummary?: () => void;
 }
 
 export interface SummaryWorkbenchProps {

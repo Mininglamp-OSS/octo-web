@@ -319,17 +319,6 @@ const SummaryWorkbench = ({
                 </span>
               ))}
             </div>
-            {actions.onOpenScheduledSummary && (
-              <WKButton
-                type="button"
-                size="sm"
-                variant="ghost"
-                disabled={isComposerDisabled}
-                onClick={actions.onOpenScheduledSummary}
-              >
-                {t("summary.workbench.actions.scheduledSummary")}
-              </WKButton>
-            )}
             {actions.onNewSession && (
               <WKButton
                 type="button"

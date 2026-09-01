@@ -229,8 +229,7 @@
             "viewSummary": "View summary",
             "viewProgress": "View progress",
             "continueChat": "Continue chat",
-            "newSession": "New session",
-            "scheduledSummary": "Scheduled summary"
+            "newSession": "New session"
         },
         "loadingHistory": "Restoring your previous summary session…",
         "intent": {

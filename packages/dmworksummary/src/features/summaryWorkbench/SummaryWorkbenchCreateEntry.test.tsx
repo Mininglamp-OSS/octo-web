@@ -21,7 +21,6 @@ vi.mock("./Entry", () => ({
 
 vi.mock("./SummaryWorkbenchFeature", () => ({
     default: (props: {
-        onOpenScheduledSummary?: () => void;
         maxTimeRangeDays?: number;
     }) => {
         const [draft, setDraft] = React.useState("");
@@ -35,33 +34,16 @@ vi.mock("./SummaryWorkbenchFeature", () => ({
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
                 />
-                <button type="button" onClick={props.onOpenScheduledSummary}>
-                    open-schedule
-                </button>
             </div>
         );
     },
 }));
 
 vi.mock("../../pages/SummaryCreatePage", () => ({
-    default: (props: {
-        initialMode?: string;
-        initialScheduleOpen?: boolean;
-        onBackToWorkbench?: () => void;
-    }) => (
-        <div
-            data-testid="legacy-schedule"
-            data-initial-mode={props.initialMode}
-            data-schedule-open={String(props.initialScheduleOpen)}
-        >
-            <button type="button" onClick={props.onBackToWorkbench}>
-                back-to-workbench
-            </button>
-        </div>
-    ),
+    default: () => <div data-testid="legacy-create" />,
 }));
 
-describe("SummaryWorkbenchCreateEntry scheduled summary bridge", () => {
+describe("SummaryWorkbenchCreateEntry", () => {
     it("passes the server-advertised time range limit to the Workbench", () => {
         render(<SummaryWorkbenchCreateEntry source="summary_home" />, {
             legacyRoot: true,
@@ -101,32 +83,5 @@ describe("SummaryWorkbenchCreateEntry scheduled summary bridge", () => {
         expect(
             screen.getByRole("textbox", { name: "workbench-draft" })
         ).toHaveValue("");
-    });
-
-    it("opens scheduled summaries in Legacy and can return to the Workbench", () => {
-        render(<SummaryWorkbenchCreateEntry source="summary_home" />, {
-            legacyRoot: true,
-        });
-
-        fireEvent.change(
-            screen.getByRole("textbox", { name: "workbench-draft" }),
-            {
-                target: { value: "unsent requirement" },
-            }
-        );
-        fireEvent.click(screen.getByRole("button", { name: "open-schedule" }));
-        const legacy = screen.getByTestId("legacy-schedule");
-        expect(legacy.dataset.initialMode).toBe("normal");
-        expect(legacy.dataset.scheduleOpen).toBe("true");
-
-        fireEvent.click(
-            screen.getByRole("button", { name: "back-to-workbench" })
-        );
-        expect(
-            screen.getByRole("button", { name: "open-schedule" })
-        ).toBeInTheDocument();
-        expect(
-            screen.getByRole("textbox", { name: "workbench-draft" })
-        ).toHaveValue("unsent requirement");
     });
 });

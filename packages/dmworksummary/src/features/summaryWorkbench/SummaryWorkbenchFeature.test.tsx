@@ -157,9 +157,6 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
       <button type="button" onClick={() => actions.onOpenContext("time_range")}>
         open-time-range
       </button>
-      <button type="button" onClick={actions.onOpenScheduledSummary}>
-        open-schedule
-      </button>
       {state.showTemplateTrigger && (
         <button type="button" onClick={() => actions.onOpenContext("template")}>
           open-template
@@ -1013,20 +1010,16 @@ describe("SummaryWorkbenchFeature", () => {
     expect(mocks.routePush).not.toHaveBeenCalled();
   });
 
-  it("restores the scoped session, updates references, and exposes Legacy schedules", () => {
+  it("restores the scoped session and updates references", () => {
     localStorage.setItem(
       "summary-workbench-session:v1:space-a:global",
       "restored-session"
     );
     const updateScope = vi.fn();
     mocks.useSummaryWorkbench.mockReturnValue(controller({ updateScope }));
-    const onOpenScheduledSummary = vi.fn();
 
     render(
-      <SummaryWorkbenchFeature
-        spaceId="space-a"
-        onOpenScheduledSummary={onOpenScheduledSummary}
-      />,
+      <SummaryWorkbenchFeature spaceId="space-a" />,
       { legacyRoot: true }
     );
 
@@ -1043,9 +1036,6 @@ describe("SummaryWorkbenchFeature", () => {
     expect(updateScope).toHaveBeenCalledWith(
       expect.objectContaining({ referencedTaskIds: [42] })
     );
-
-    fireEvent.click(screen.getByRole("button", { name: "open-schedule" }));
-    expect(onOpenScheduledSummary).toHaveBeenCalledTimes(1);
   });
 
   it("isolates a referenced-task session from the ordinary new-entry session", () => {

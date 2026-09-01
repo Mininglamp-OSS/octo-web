@@ -27,7 +27,6 @@ vi.mock("@octo/base", async () => {
     "summary.workbench.context.reference": "Reference summary",
     "summary.workbench.composer.send": "Send",
     "summary.workbench.actions.newSession": "New session",
-    "summary.workbench.actions.scheduledSummary": "Scheduled summary",
     "summary.workbench.loadingHistory": "Restoring session",
     "summary.common.agentChat.viewGenerationProcess": "Generation progress",
     "summary.common.agentChat.progress.retrieve": "Reading chats",
@@ -150,7 +149,6 @@ describe("SummaryWorkbench", () => {
   it("renders three scope controls below the textarea and reference in the header", () => {
     const actions = createActions();
     actions.onNewSession = vi.fn();
-    actions.onOpenScheduledSummary = vi.fn();
     const state = createState();
     state.contextItems.push({
       id: "summary-1",
@@ -371,18 +369,6 @@ describe("SummaryWorkbench", () => {
     expect(screen.getByTestId("summary-workbench-progress")).toHaveTextContent(
       "Processed 0 items"
     );
-  });
-
-  it("opens the explicit Legacy scheduled-summary path", () => {
-    const actions = createActions();
-    actions.onOpenScheduledSummary = vi.fn();
-
-    rtlRender(<SummaryWorkbench state={createState()} actions={actions} />, {
-      legacyRoot: true,
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Scheduled summary" }));
-    expect(actions.onOpenScheduledSummary).toHaveBeenCalledTimes(1);
   });
 
   it("renders team confirmation details and only the supplied actions", () => {

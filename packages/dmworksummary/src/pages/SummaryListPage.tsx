@@ -602,6 +602,14 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         }, 300);
     };
 
+    handleContinueOptimize = (taskId: number) => {
+        const task = this.state.items.find(item => item.task_id === taskId);
+        if (!task) return;
+        window.dispatchEvent(
+            new CustomEvent("summary-open-chat-with-reference", { detail: task })
+        );
+    };
+
     handleEdit = (taskId: number) => {
         this.handleCardClick(taskId);
         // 300ms delay allows detail page to mount and register event listener
@@ -852,6 +860,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                                 onLeave={this.handleLeave}
                                 onRetry={this.handleRetry}
                                 onRegenerate={this.handleRegenerate}
+                                onContinueOptimize={this.handleContinueOptimize}
                                 onEdit={this.handleEdit}
                                 onCancel={this.handleCancel}
                             />

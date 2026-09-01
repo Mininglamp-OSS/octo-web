@@ -212,6 +212,19 @@ describe('SummaryListPage mode entry navigation', () => {
         expect(onCreateNew).toHaveBeenCalledWith('unified');
     });
 
+    it('opens Agent continue optimization with the selected summary as reference', () => {
+        const page = makePage();
+        const task = { task_id: 42, title: 'Agent summary' };
+        (page as any).state = { ...(page as any).state, items: [task] };
+        const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+        (page as any).handleContinueOptimize(42);
+
+        const event = dispatchSpy.mock.calls[0][0] as CustomEvent;
+        expect(event.type).toBe('summary-open-chat-with-reference');
+        expect(event.detail).toBe(task);
+    });
+
     it('fail-closed Legacy entry keeps normal and Agent choices in the original dropdown', () => {
         const page = makePage();
         (page as any).context = { locale: 'zh-CN', t: (k: string) => k };

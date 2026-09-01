@@ -65,7 +65,6 @@ export interface SummaryWorkbenchFeatureProps {
   source?: string;
   onCreated?: () => void;
   onOpenTask?: (taskId: number) => void;
-  onOpenScheduledSummary?: () => void;
   maxTimeRangeDays?: number;
 }
 
@@ -111,7 +110,6 @@ export default function SummaryWorkbenchFeature({
   source,
   onCreated,
   onOpenTask,
-  onOpenScheduledSummary,
   maxTimeRangeDays = DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS,
 }: SummaryWorkbenchFeatureProps) {
   const { t, format } = useI18n();
@@ -567,7 +565,6 @@ export default function SummaryWorkbenchFeature({
             onRemoveContext: handleContextRemove,
             onResultAction: (action) => void handleResultAction(action),
             onNewSession: resetSession,
-            onOpenScheduledSummary,
           }}
           contextPanel={
             templateGalleryOpen ? (

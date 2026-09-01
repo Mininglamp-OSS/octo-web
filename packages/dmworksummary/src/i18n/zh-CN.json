@@ -229,8 +229,7 @@
             "viewSummary": "查看总结",
             "viewProgress": "查看进度",
             "continueChat": "继续沟通",
-            "newSession": "新建会话",
-            "scheduledSummary": "定时总结"
+            "newSession": "新建会话"
         },
         "loadingHistory": "正在恢复上次的总结会话…",
         "intent": {
