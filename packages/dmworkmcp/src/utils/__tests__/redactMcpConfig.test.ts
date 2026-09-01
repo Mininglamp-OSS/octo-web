@@ -100,6 +100,56 @@ describe("redactMcpConfig", () => {
     expect(out).toContain("8080");
   });
 
+  it("masks the value after a header/env-injecting flag (--header, -e)", () => {
+    const raw = JSON.stringify({
+      mcpServers: {
+        s: {
+          command: "docker",
+          args: ["run", "-i", "--rm", "-e", "API_KEY=sk-live-DOCKER", "img"],
+        },
+        h: { command: "x", args: ["--header", "Authorization: Bearer sk-live-HDR"] },
+      },
+    });
+    const out = redactMcpConfig(raw)!;
+    expect(out).not.toContain("sk-live-DOCKER");
+    expect(out).not.toContain("sk-live-HDR");
+    // Benign flags/positionals survive.
+    expect(out).toContain("--rm");
+    expect(out).toContain("img");
+  });
+
+  it("masks a secret KEY=value positional but keeps a non-secret one", () => {
+    const raw = JSON.stringify({
+      mcpServers: { s: { command: "run", args: ["API_KEY=sk-live-KV", "REGION=us-east-1"] } },
+    });
+    const out = redactMcpConfig(raw)!;
+    expect(out).not.toContain("sk-live-KV");
+    expect(out).toContain("REGION=us-east-1");
+  });
+
+  it("does NOT mutate a colon-bearing positional that is not a URL", () => {
+    const raw = JSON.stringify({
+      mcpServers: { s: { command: "x", args: ["Authorization: Bearer keepme"] } },
+    });
+    const out = redactMcpConfig(raw)!;
+    // new URL() would parse `authorization:` as a scheme and lowercase it; the
+    // hasUrlShape guard keeps a non-URL positional byte-identical.
+    expect(out).toContain("Authorization: Bearer keepme");
+  });
+
+  it("masks userinfo + fragment on a protocol-relative / relative URL", () => {
+    const rel = redactMcpConfig(
+      JSON.stringify({ mcpServers: { s: { url: "//user:sk-live-PW@mcp.example/sse" } } })
+    )!;
+    expect(rel).not.toContain("sk-live-PW");
+    expect(rel).toContain("mcp.example/sse");
+    const frag = redactMcpConfig(
+      JSON.stringify({ mcpServers: { s: { url: "/sse#access_token=sk-live-FRAG2" } } })
+    )!;
+    expect(frag).not.toContain("sk-live-FRAG2");
+    expect(frag).toContain("/sse");
+  });
+
   it("redacts a query token in a positional-URL arg (mcp-remote bridge) but keeps the host/path", () => {
     const raw = JSON.stringify({
       mcpServers: {

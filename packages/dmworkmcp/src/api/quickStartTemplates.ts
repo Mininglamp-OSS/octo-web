@@ -1,4 +1,4 @@
-import { slugifyServerName } from "../utils/constants";
+import { isSecretKey, slugifyServerName } from "../utils/constants";
 import type { McpQuickStart } from "../types/mcp";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -83,13 +83,12 @@ function buildJson(qs: McpQuickStart): string {
     );
     const server: Record<string, unknown> = {
       type: jsonTypeField(qs),
-      // The quick-start JSON is a copy-paste-ready connect snippet: it must
-      // stay a working config. The url is published verbatim (same accepted
-      // exposure as shared, non-user-supplied env/headers below) — masking it
-      // would break the snippet and mojibake the endpoint. Authors are told to
-      // put secrets in a user-supplied header/env slot, which renders as a
-      // ${KEY} placeholder here.
-      url: qs.url ?? "",
+      // The quick-start JSON is a copy-paste-ready connect snippet, so it stays a
+      // working config — but the backend blanks nothing on read, so a secret in
+      // the URL's query would render to every viewer. Mask only secret-shaped
+      // query params (as fillable ${KEY} placeholders); the endpoint + non-secret
+      // params stay intact.
+      url: maskUrlSecretParams(qs.url ?? ""),
     };
     if (Object.keys(merged).length > 0) {
       server.headers = merged;
@@ -107,11 +106,37 @@ function buildJson(qs: McpQuickStart): string {
   return JSON.stringify({ mcpServers: { [key]: server } }, null, 2);
 }
 
-/** Render each key/value from the persisted map, substituting the visible
- *  token placeholder for any key that the MCP author marked as
- *  "user-supplied" (`headers_user_supplied` / `env_user_supplied`). Values
- *  for shared keys pass through verbatim — the author chose to publish them,
- *  and the copy-paste snippet has to include them for the config to work. */
+/** Render each key/value from the persisted map, substituting the visible token
+ *  placeholder for any key the MCP author marked "user-supplied" AND any key
+ *  whose NAME is secret-shaped (Authorization / *_token / *_key / …). The
+ *  backend blanks nothing on read, so a secret-shaped shared value would
+ *  otherwise render verbatim to every viewer of the connector detail; a
+ *  placeholder keeps the copy-paste snippet fillable. Non-secret shared values
+ *  (X-Client, region, …) still pass through so the snippet works as authored. */
+function shouldPlaceholder(key: string, supplied: Set<string>): boolean {
+  return supplied.has(key) || isSecretKey(key);
+}
+
+/** Replace the value of any secret-shaped query param with a fillable token
+ *  placeholder, keeping the endpoint + non-secret params intact. Operates on the
+ *  raw string (so relative/opaque URLs are covered) and stays ASCII-free of
+ *  percent-encoding artifacts, so the McpDetailModal highlighter still marks it. */
+function maskUrlSecretParams(url: string): string {
+  if (!url) return url;
+  return url.replace(
+    /([?&])([^=&#]+)=([^&#]*)/g,
+    (whole, sep: string, rawKey: string, _val: string) => {
+      let key = rawKey;
+      try {
+        key = decodeURIComponent(rawKey);
+      } catch {
+        /* keep raw key */
+      }
+      return isSecretKey(key) ? `${sep}${rawKey}=${formatTokenPlaceholder(key)}` : whole;
+    }
+  );
+}
+
 function applyUserSuppliedPlaceholder(
   m: Record<string, string>,
   userSupplied: string[] | undefined
@@ -119,7 +144,7 @@ function applyUserSuppliedPlaceholder(
   const supplied = new Set(userSupplied ?? []);
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(m)) {
-    out[k] = supplied.has(k) ? formatTokenPlaceholder(k) : v;
+    out[k] = shouldPlaceholder(k, supplied) ? formatTokenPlaceholder(k) : v;
   }
   return out;
 }
@@ -203,7 +228,7 @@ function buildPrompt(qs: McpQuickStart): string {
         ? texts.headersLabel +
           Object.entries(qs.headers)
             .map(([k, v]) =>
-              headerSupplied.has(k)
+              shouldPlaceholder(k, headerSupplied)
                 ? `${k}: ${formatTokenPlaceholder(k)}`
                 : `${k}: ${v}`
             )
@@ -212,7 +237,7 @@ function buildPrompt(qs: McpQuickStart): string {
     return texts.remote({
       serverName: qs.serverName,
       transport: qs.transport,
-      url: qs.url ?? "",
+      url: maskUrlSecretParams(qs.url ?? ""),
       extraHeaders,
     });
   }
@@ -231,7 +256,9 @@ function buildPrompt(qs: McpQuickStart): string {
       ? texts.envLabel +
         Object.entries(qs.env)
           .map(([k, v]) =>
-            envSupplied.has(k) ? `${k}=${formatTokenPlaceholder(k)}` : `${k}=${v}`
+            shouldPlaceholder(k, envSupplied)
+              ? `${k}=${formatTokenPlaceholder(k)}`
+              : `${k}=${v}`
           )
           .join(", ")
       : "";

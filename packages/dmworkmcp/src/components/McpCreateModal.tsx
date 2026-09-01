@@ -876,13 +876,13 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
       return;
     }
 
-    // Collapse the structured editors down to the wire pair. Backend no
-    // longer rejects secret-shaped shared values (rule 2 was removed);
-    // non-owner blanking (§5.3) is the sole guard keeping author tokens
-    // out of consumer-facing responses. The inline warning next to the
-    // Submit button (see sharedSecretLeaks below) is the frontend's
-    // advisory signal for the edge case where the operator explicitly
-    // published a secret-shape shared value; non-blocking on purpose.
+    // Collapse the structured editors down to the wire pair. The backend has NO
+    // secret scanner and does NOT blank values on read, so a secret-shaped shared
+    // value would be persisted verbatim. Two client-side guards keep author
+    // tokens out of consumer-facing output: the detail/quick-start renderer masks
+    // secret-shaped keys (see quickStartTemplates.shouldPlaceholder), and the
+    // inline warning next to Submit (see sharedSecretLeaks below) flags the case
+    // to the operator. Owners should mark such keys user-supplied instead.
     const envWire = entriesToWire(envEntries);
     const headersWire = entriesToWire(headersEntries);
 

@@ -37,6 +37,19 @@ const MODELED_ATTACHMENT_PATHS = new Set([
  *  opts.rawServer so a metadata edit doesn't destroy it. */
 const MODELED_SERVER_KEYS = ["type", "url", "command", "args", "env", "headers"];
 
+/** A preserved attachment comes from a backend read and is promoted straight
+ *  back into the trusted upsert; drop a poisoned path (empty / absolute /
+ *  backslash / NUL / `..` traversal). Mirrors skillApiReal.isSafeAttachmentPath. */
+function isSafeAttachmentPath(path: string | undefined): boolean {
+  if (typeof path !== "string") return false;
+  const trimmed = path.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith("/")) return false;
+  if (trimmed.includes("\\")) return false;
+  if (trimmed.includes("\0")) return false;
+  return !trimmed.split("/").some((segment) => segment === "..");
+}
+
 export interface PluginUpsertBody {
   plugin: {
     plugin_id?: string;
@@ -147,10 +160,14 @@ export function toPluginUpsert(
       goCanonicalJSON((params.notes ?? []).map((s) => s.trim()).filter(Boolean))
     ),
   ];
-  // Preserve any stored attachment this form doesn't model (guard against a
-  // stale extra colliding with a modeled path — the modeled rebuild wins).
+  // Preserve any stored attachment this form doesn't model. These come from a
+  // backend read and are promoted straight back into the trusted upsert, so
+  // validate each path (mirrors the skill path's isSafeAttachmentPath): reject a
+  // modeled-path collision (the rebuild wins), plus empty/absolute/traversal/NUL.
   for (const att of opts.extraAttachments ?? []) {
-    if (!MODELED_ATTACHMENT_PATHS.has(att.path)) attachments.push(att);
+    if (!MODELED_ATTACHMENT_PATHS.has(att.path) && isSafeAttachmentPath(att.path)) {
+      attachments.push(att);
+    }
   }
   return {
     plugin: {

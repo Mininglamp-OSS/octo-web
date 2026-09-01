@@ -53,17 +53,30 @@ function maskValue(v: unknown): unknown {
 /** Keep scheme://host/path visible (the endpoint is not the secret) but blank
  *  EVERY query-param value (rebuilt, so duplicate keys can't slip a second value
  *  through), the fragment, and any userinfo. Uses an ASCII marker so serialization
- *  doesn't mojibake. A relative/opaque URL keeps its path and only drops a query
- *  string; a value with no query is returned unchanged. */
+ *  doesn't mojibake. A relative / protocol-relative URL is handled by the same
+ *  rules on the string-fallback path, so userinfo and fragment are masked there
+ *  too; a value with no query/userinfo/fragment is returned unchanged. */
 export function redactUrl(url: string): string {
   if (isPlaceholder(url)) return url;
   let u: URL;
   try {
     u = new URL(url);
   } catch {
-    // Not absolute — strip only a query string, keep the (endpoint) path.
-    const q = url.indexOf("?");
-    return q === -1 ? url : `${url.slice(0, q)}?${URL_MASK}`;
+    // Not an absolute URL (relative `/x` or protocol-relative `//user:pw@h`):
+    // mask userinfo, query, and fragment via string ops so the same parts the
+    // absolute branch masks don't survive here.
+    let rest = url;
+    let frag = "";
+    const h = rest.indexOf("#");
+    if (h !== -1) {
+      frag = `#${URL_MASK}`;
+      rest = rest.slice(0, h);
+    }
+    const q = rest.indexOf("?");
+    if (q !== -1) rest = `${rest.slice(0, q)}?${URL_MASK}`;
+    // Protocol-relative userinfo: //user:pass@host → //REDACTED@host.
+    rest = rest.replace(/^(\/\/)[^/@?#]*@/, `$1${URL_MASK}@`);
+    return rest + frag;
   }
   if (u.username) u.username = URL_MASK;
   if (u.password) u.password = URL_MASK;
@@ -77,10 +90,23 @@ export function redactUrl(url: string): string {
   return u.toString();
 }
 
-/** Redact secret-bearing args while keeping flags and non-URL positionals (a
- *  package name / path is informational, not a secret). Covers `--flag=value`
- *  (mask the RHS), the value token immediately after a secret-named flag, and a
- *  positional that is a URL carrying a query token (the `mcp-remote` bridge). */
+/** A positional arg only goes through redactUrl when it actually looks like a
+ *  URL (has a scheme, is protocol-relative, or carries a query) — otherwise
+ *  `new URL()` mis-parses shapes like `Authorization: Bearer x` (scheme
+ *  `authorization:`) and mutates them. */
+function hasUrlShape(a: string): boolean {
+  return /:\/\//.test(a) || a.startsWith("//") || a.includes("?");
+}
+
+/** Flags whose following token is a header/env injection carrying a value
+ *  (`--header "Authorization: …"`, `-e API_KEY=…`) — the flag name itself isn't
+ *  secret-shaped, so mask the value that follows it. */
+const VALUE_INJECT_FLAGS = new Set(["--header", "-H", "--headers", "--env", "-e"]);
+
+/** Redact secret-bearing args while keeping flags and non-secret positionals (a
+ *  package name / path is informational). Covers `--flag=value` and secret
+ *  `KEY=value` (mask the RHS), the value token after a secret-named or
+ *  header/env-injecting flag, and a URL-shaped positional (mask its query). */
 function redactArgs(args: unknown[]): unknown[] {
   const out: unknown[] = [];
   let maskNext = false;
@@ -95,22 +121,24 @@ function redactArgs(args: unknown[]): unknown[] {
       maskNext = false;
       continue;
     }
-    const inline = a.match(/^(--?[A-Za-z0-9_.-]+)=(.*)$/);
+    const inline = a.match(/^(-{0,2}[A-Za-z0-9_.-]+)=(.*)$/);
     if (inline) {
-      const [, flag, val] = inline;
-      out.push(isPlaceholder(val) || val === "" ? a : `${flag}=${MASK}`);
+      const [, key, val] = inline;
+      // A dashed flag (`--api-key=…`) always masks its value; a bare `KEY=value`
+      // only when the KEY names a secret (so `FOO=bar` / `--rm` stay readable).
+      const shouldMask = key.startsWith("-") || isSecretKey(key);
+      out.push(shouldMask && val !== "" && !isPlaceholder(val) ? `${key}=${MASK}` : a);
       continue;
     }
     if (/^--?[A-Za-z0-9_.-]+$/.test(a)) {
-      // A bare flag; mask the following token only if the flag names a secret.
-      maskNext = isSecretKey(a.replace(/^--?/, ""));
+      // A bare flag; mask the following token when the flag names a secret or
+      // injects a header/env value.
+      maskNext = isSecretKey(a.replace(/^--?/, "")) || VALUE_INJECT_FLAGS.has(a);
       out.push(a);
       continue;
     }
-    // Bare positional. redactUrl is safe unconditionally: a package name / path /
-    // subcommand has no query and is returned unchanged, while a URL positional
-    // (absolute, or a schemeless host with a query) gets its token masked.
-    out.push(redactUrl(a));
+    // Bare positional — only URL-shaped values get query/userinfo masking.
+    out.push(hasUrlShape(a) ? redactUrl(a) : a);
   }
   return out;
 }
