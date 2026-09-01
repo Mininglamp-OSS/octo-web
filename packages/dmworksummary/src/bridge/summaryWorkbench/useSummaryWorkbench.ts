@@ -92,6 +92,7 @@ export interface SummaryWorkbenchController {
   error: SummaryWorkspaceApiError | null;
   savedSummary: CreateAgentSummaryResult | null;
   setComposerValue: (value: string) => void;
+  restoreComposerValue: (value: string) => void;
   updateScope: (scope: SummaryWorkbenchScopeInput) => boolean;
   send: (
     message?: string,
@@ -311,6 +312,20 @@ export default function useSummaryWorkbench(
     [commit]
   );
 
+  const restoreComposerValue = useCallback(
+    (value: string) => {
+      commit((current: RuntimeState) => ({
+        ...current,
+        error: null,
+        model: updateSummaryComposer(current.model, {
+          value,
+          errorMessage: undefined,
+        }),
+      }));
+    },
+    [commit]
+  );
+
   const updateScope = useCallback(
     (input: SummaryWorkbenchScopeInput): boolean => {
       const current = runtimeRef.current;
@@ -447,9 +462,10 @@ export default function useSummaryWorkbench(
           retryableGenerationRef.current = null;
         }
         flight.stream?.close();
-        commit((latest: RuntimeState) =>
+        const next = commit((latest: RuntimeState) =>
           applyControllerResponse(latest, response, requestId)
         );
+        notifySessionId(next.sessionId);
         flight.resolve(response);
       };
 
@@ -546,7 +562,7 @@ export default function useSummaryWorkbench(
 
       return promise;
     },
-    [commit]
+    [commit, notifySessionId]
   );
 
   const confirmWorkflow = useCallback((): Promise<
@@ -603,10 +619,11 @@ export default function useSummaryWorkbench(
         ) {
           return undefined;
         }
-        commit((latest: RuntimeState) => ({
+        const next = commit((latest: RuntimeState) => ({
           ...applyControllerResponse(latest, response),
           isConfirming: false,
         }));
+        notifySessionId(next.sessionId);
         return response;
       })
       .catch((reason: unknown) => {
@@ -641,7 +658,7 @@ export default function useSummaryWorkbench(
 
     confirmationRef.current = { epoch, identity, controller, promise };
     return promise;
-  }, [commit]);
+  }, [commit, notifySessionId]);
 
   const savePreview = useCallback(
     (title?: string): Promise<CreateAgentSummaryResult | undefined> => {
@@ -782,6 +799,26 @@ export default function useSummaryWorkbench(
           if (hydrationRef.current !== flight || epochRef.current !== epoch) {
             return false;
           }
+          if (hydration.empty) {
+            const nextSessionId = createSessionIdRef.current();
+            commit((current: RuntimeState) => ({
+              ...current,
+              sessionId: nextSessionId,
+              model: createInitialSummaryWorkbenchModel({
+                layout: current.model.layout,
+                contextItems: contextItemsFromScope(current.scope),
+              }),
+              progressEvents: [],
+              isHydrating: false,
+              isConfirming: false,
+              isSaving: false,
+              error: null,
+              savedSummary: null,
+              previewRequest: undefined,
+            }));
+            notifySessionId("");
+            return true;
+          }
           const nextSessionId = hydration.sessionId;
           commit((current: RuntimeState) => ({
             ...current,
@@ -799,6 +836,7 @@ export default function useSummaryWorkbench(
             savedSummary: null,
             previewRequest: undefined,
           }));
+          notifySessionId(nextSessionId);
           return true;
         })
         .catch((reason: unknown) => {
@@ -832,7 +870,7 @@ export default function useSummaryWorkbench(
       hydrationRef.current = flight;
       return promise;
     },
-    [cancelOperations, commit]
+    [cancelOperations, commit, notifySessionId]
   );
 
   const resetSession = useCallback(
@@ -897,23 +935,18 @@ export default function useSummaryWorkbench(
 
   const activeWorkflow = runtime.model.workflow;
   const activeWorkflowTaskId = activeWorkflow?.taskId;
-  const activeWorkflowScopeVersion = activeWorkflow?.scopeVersion;
   const activeWorkflowResultType = activeWorkflow?.resultType;
-  const shouldPollWorkflow =
-    activeWorkflowResultType === "workflow_started" &&
-    activeWorkflowScopeVersion === runtime.model.scopeVersion;
+  const shouldPollWorkflow = activeWorkflowResultType === "workflow_started";
 
   useEffect(() => {
     if (
       !shouldPollWorkflow ||
-      activeWorkflowTaskId === undefined ||
-      activeWorkflowScopeVersion === undefined
+      activeWorkflowTaskId === undefined
     )
       return;
 
     const sessionId = runtime.sessionId;
     const taskId = activeWorkflowTaskId;
-    const scopeVersion = activeWorkflowScopeVersion;
     const controller = new AbortController();
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -931,10 +964,8 @@ export default function useSummaryWorkbench(
       if (!workflow) return false;
       return (
         current.sessionId === sessionId &&
-        current.model.scopeVersion === scopeVersion &&
         workflow.taskId === taskId &&
-        workflow.resultType === "workflow_started" &&
-        workflow.scopeVersion === current.model.scopeVersion
+        workflow.resultType === "workflow_started"
       );
     };
 
@@ -957,6 +988,10 @@ export default function useSummaryWorkbench(
           signal: controller.signal,
         });
         if (!active || controller.signal.aborted) return;
+        if (hydration.empty) {
+          scheduleNext();
+          return;
+        }
         if (operationVersionRef.current !== operationVersion) {
           if (isSameRunningWorkflow(runtimeRef.current)) scheduleNext();
           return;
@@ -973,6 +1008,8 @@ export default function useSummaryWorkbench(
             // background status refresh must not erase text that
             // the user typed while the request was in flight.
             composer: current.model.composer,
+            scopeVersion: current.model.scopeVersion,
+            contextItems: current.model.contextItems,
           });
           const hydratedWorkflow = hydratedModel.workflow;
           const latestHydratedMessage =
@@ -990,13 +1027,11 @@ export default function useSummaryWorkbench(
 
           continuePolling = Boolean(
             hydratedWorkflow &&
-              hydratedWorkflow.resultType === "workflow_started" &&
-              hydratedWorkflow.scopeVersion === hydratedModel.scopeVersion
+              hydratedWorkflow.resultType === "workflow_started"
           );
           return {
             ...current,
             sessionId: hydration.sessionId,
-            scope: cloneScope(hydration.scope),
             model: hydratedModel,
             error: null,
             previewRequest: undefined,
@@ -1021,10 +1056,8 @@ export default function useSummaryWorkbench(
     };
   }, [
     activeWorkflowResultType,
-    activeWorkflowScopeVersion,
     activeWorkflowTaskId,
     commit,
-    runtime.model.scopeVersion,
     runtime.sessionId,
     shouldPollWorkflow,
   ]);
@@ -1036,10 +1069,6 @@ export default function useSummaryWorkbench(
       return { ...current, model: { ...current.model, layout } };
     });
   }, [commit, options.layout]);
-
-  useEffect(() => {
-    notifySessionId(runtime.sessionId);
-  }, [notifySessionId, runtime.sessionId]);
 
   const viewState = useMemo(
     () => ({
@@ -1077,6 +1106,7 @@ export default function useSummaryWorkbench(
     error: runtime.error,
     savedSummary: runtime.savedSummary,
     setComposerValue,
+    restoreComposerValue,
     updateScope,
     send,
     confirmWorkflow,

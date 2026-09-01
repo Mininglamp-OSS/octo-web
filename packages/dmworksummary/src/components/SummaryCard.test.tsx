@@ -451,6 +451,7 @@ describe('SummaryCard completed actions', () => {
                 onClick={noop}
                 onDelete={noop}
                 onContinueOptimize={onContinueOptimize}
+                unifiedAgentActions
             />,
         );
 
@@ -462,6 +463,54 @@ describe('SummaryCard completed actions', () => {
 
         fireEvent.click(screen.getByText('继续优化'));
         expect(onContinueOptimize).toHaveBeenCalledWith(1);
+    });
+
+    it('Legacy Agent summary keeps regenerate and edit actions', () => {
+        render(
+            <SummaryCard
+                task={makeItem({ status: TaskStatus.COMPLETED, trigger_type: TriggerType.AGENT }) as any}
+                onClick={noop}
+                onDelete={noop}
+                onRegenerate={noop}
+                onEdit={noop}
+            />,
+        );
+
+        openCardMenu();
+        expect(screen.getByText('重新生成')).toBeInTheDocument();
+        expect(screen.getByText('编辑')).toBeInTheDocument();
+        expect(screen.queryByText('继续优化')).not.toBeInTheDocument();
+    });
+
+    it('hides continue refining when an Agent summary is not referenceable', () => {
+        render(
+            <SummaryCard
+                task={makeItem({ status: TaskStatus.COMPLETED, trigger_type: TriggerType.AGENT, referenceable: false }) as any}
+                onClick={noop}
+                onDelete={noop}
+                onContinueOptimize={noop}
+                unifiedAgentActions
+            />,
+        );
+
+        openCardMenu();
+        expect(screen.queryByText('继续优化')).not.toBeInTheDocument();
+        expect(screen.getByText('删除')).toBeInTheDocument();
+    });
+
+    it('hides action items whose handlers are not provided', () => {
+        render(
+            <SummaryCard
+                task={makeItem({ status: TaskStatus.COMPLETED, trigger_type: TriggerType.MANUAL }) as any}
+                onClick={noop}
+                onDelete={noop}
+            />,
+        );
+
+        openCardMenu();
+        expect(screen.queryByText('重新生成')).not.toBeInTheDocument();
+        expect(screen.queryByText('编辑')).not.toBeInTheDocument();
+        expect(screen.getByText('删除')).toBeInTheDocument();
     });
 
     it('Workflow summary keeps regenerate, edit, and delete', () => {

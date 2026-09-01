@@ -113,12 +113,14 @@ export default function SummaryWorkbenchFeature({
   maxTimeRangeDays = DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS,
 }: SummaryWorkbenchFeatureProps) {
   const { t, format } = useI18n();
+  const currentUserId = WKApp.loginInfo.uid || "";
   const initialScope = useMemo(
     () => initialScopeFor(channel, derivedFromTask),
     [channel?.channelID, channel?.channelType, derivedFromTask?.task_id]
   );
   const storageScope = useMemo<SummaryWorkbenchSessionScope>(
     () => ({
+      userId: currentUserId,
       spaceId,
       channelId: channel?.channelID,
       channelType: channel?.channelType,
@@ -129,6 +131,7 @@ export default function SummaryWorkbenchFeature({
       channel?.channelType,
       derivedFromTask?.task_id,
       spaceId,
+      currentUserId,
     ]
   );
   const [initialSessionId] = useState(() => {
@@ -151,6 +154,7 @@ export default function SummaryWorkbenchFeature({
   const [pendingTemplate, setPendingTemplate] =
     useState<SummaryWorkbenchTemplateScope | null>(null);
   const notifiedTaskIds = useRef(new Set<number>());
+  const handledSavedTaskIds = useRef(new Set<number>());
   const hydrationObserved = useRef(false);
   const templateFilledComposer = useRef<string | null>(null);
 
@@ -159,13 +163,14 @@ export default function SummaryWorkbenchFeature({
     initialScope,
     layout: embedded ? "panel" : "full",
     autoHydrate: initialSessionId.length > 0,
-    onSessionIdChange: (sessionId) =>
-      writeSummaryWorkbenchSession(storageScope, sessionId),
+    onSessionIdChange: (sessionId) => {
+      if (sessionId) {
+        writeSummaryWorkbenchSession(storageScope, sessionId);
+      } else {
+        clearSummaryWorkbenchSession(storageScope);
+      }
+    },
   });
-
-  useEffect(() => {
-    writeSummaryWorkbenchSession(storageScope, workbench.sessionId);
-  }, [storageScope, workbench.sessionId]);
 
   useEffect(() => {
     if (workbench.isHydrating) {
@@ -309,13 +314,13 @@ export default function SummaryWorkbenchFeature({
     const responsePromise = request();
 
     templateFilledComposer.current = null;
-    workbench.setComposerValue("");
+    workbench.restoreComposerValue("");
     setHasSubmitted(true);
     setTemplateGalleryOpen(false);
 
     const response = await responsePromise;
     if (!isAcceptedResponse(response)) {
-      workbench.setComposerValue(previousInputValue);
+      workbench.restoreComposerValue(previousInputValue);
       templateFilledComposer.current = previousTemplateFilledComposer;
       setHasSubmitted(previousHasSubmitted);
       setTemplateGalleryOpen(previousTemplateGalleryOpen);
@@ -361,6 +366,7 @@ export default function SummaryWorkbenchFeature({
       return;
     }
     if (action === "save_preview") {
+      workbench.clearError();
       const content = workbench.model.currentPreview?.content ?? "";
       setSaveTitle(deriveSummaryTitle(content).slice(0, 100));
       setSaveDialogOpen(true);
@@ -487,6 +493,8 @@ export default function SummaryWorkbenchFeature({
     const result = await workbench.savePreview(title);
     if (!result) return;
     setSaveDialogOpen(false);
+    if (handledSavedTaskIds.current.has(result.task_id)) return;
+    handledSavedTaskIds.current.add(result.task_id);
     const firstGapDetail =
       (result.finish_status === "PARTIAL" ||
         result.finish_status === "FAILED") &&
@@ -685,7 +693,10 @@ export default function SummaryWorkbenchFeature({
         visible={saveDialogOpen}
         title={t("summary.create.saveDialogTitle")}
         onOk={() => void savePreview()}
-        onCancel={() => setSaveDialogOpen(false)}
+        onCancel={() => {
+          setSaveDialogOpen(false);
+          workbench.clearError();
+        }}
         okText={t("summary.common.confirm")}
         cancelText={t("summary.common.cancel")}
         confirmLoading={workbench.isSaving}
@@ -698,6 +709,11 @@ export default function SummaryWorkbenchFeature({
           placeholder={t("summary.create.titlePlaceholder")}
           onChange={setSaveTitle}
         />
+        {workbench.error && (
+          <div className="wk-summary-workbench-feature__save-error">
+            {workbench.error.message}
+          </div>
+        )}
       </Modal>
 
       {workbench.isHydrating && (

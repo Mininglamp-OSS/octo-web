@@ -225,6 +225,19 @@ describe('SummaryListPage mode entry navigation', () => {
         expect(event.detail).toBe(task);
     });
 
+    it('delegates Agent continue optimization to the panel host when provided', () => {
+        const onContinueOptimize = vi.fn();
+        const page = makePage({ onContinueOptimize });
+        const task = { task_id: 42, title: 'Agent summary' };
+        (page as any).state = { ...(page as any).state, items: [task] };
+        const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+        (page as any).handleContinueOptimize(42);
+
+        expect(onContinueOptimize).toHaveBeenCalledWith(task);
+        expect(dispatchSpy).not.toHaveBeenCalled();
+    });
+
     it('fail-closed Legacy entry keeps normal and Agent choices in the original dropdown', () => {
         const page = makePage();
         (page as any).context = { locale: 'zh-CN', t: (k: string) => k };

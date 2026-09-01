@@ -235,6 +235,7 @@ data: {"reply":"r","session_id":"s1","run_id":"run-abc"}
                 profile: 'summary_workspace',
                 action: 'chat',
                 message: '开始总结',
+                input_origin: 'user',
                 request_id: 'request-1',
                 scope_version: 2,
                 summary_context: {
@@ -375,6 +376,7 @@ data: {"code":50001
                 profile: 'summary_workspace',
                 action: 'chat',
                 message: '开始总结',
+                input_origin: 'user',
                 request_id: 'request-1',
                 scope_version: 1,
                 summary_context: {
@@ -393,6 +395,43 @@ data: {"code":50001
             code: 40000,
             message: 'invalid summary context',
             transient: false,
+        });
+        close();
+    });
+
+    it.each([404, 405])('marks HTTP %s stream unavailability as transient for JSON fallback', async (status) => {
+        const onError = vi.fn();
+        fetchMock.mockResolvedValueOnce({
+            ok: false,
+            status,
+            text: vi.fn().mockResolvedValue(JSON.stringify({ code: status, message: 'stream unavailable' })),
+        });
+
+        const { close } = streamSummaryWorkspaceTurn(
+            {
+                session_id: 'session-1',
+                profile: 'summary_workspace',
+                action: 'chat',
+                message: '开始总结',
+                input_origin: 'user',
+                request_id: 'request-1',
+                scope_version: 1,
+                summary_context: {
+                    selected_channels: [],
+                    participants: [],
+                    template: null,
+                    time_range: null,
+                    referenced_task_ids: [],
+                },
+            },
+            { onError },
+        );
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        expect(onError).toHaveBeenCalledWith({
+            code: status,
+            message: 'stream unavailable',
+            transient: true,
         });
         close();
     });

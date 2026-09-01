@@ -54,6 +54,34 @@ describe("SummaryWorkbenchAvailability", () => {
         await availability.resolve("space-b");
 
         expect(source.getCapabilities).toHaveBeenCalledTimes(2);
+        expect(source.getCapabilities).toHaveBeenNthCalledWith(
+            1,
+            expect.objectContaining({ spaceId: "space-a" })
+        );
+        expect(source.getCapabilities).toHaveBeenNthCalledWith(
+            2,
+            expect.objectContaining({ spaceId: "space-b" })
+        );
+    });
+
+    it("refreshes a cached decision after the short TTL expires", async () => {
+        let now = 1_000;
+        const source: SummaryWorkbenchCapabilitySource = {
+            getCapabilities: vi.fn().mockResolvedValue(capability()),
+        };
+        const availability = new SummaryWorkbenchAvailability(source, {
+            cacheTtlMs: 30_000,
+            now: () => now,
+        });
+
+        await availability.resolve("space-a");
+        now += 29_999;
+        await availability.resolve("space-a");
+        expect(source.getCapabilities).toHaveBeenCalledTimes(1);
+
+        now += 1;
+        await availability.resolve("space-a");
+        expect(source.getCapabilities).toHaveBeenCalledTimes(2);
     });
 
     it.each([

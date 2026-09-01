@@ -35,6 +35,8 @@ interface SummaryListPageProps {
     onCreateNew?: (mode?: "normal" | "agent" | "unified") => void;
     /** Called when a card is clicked in panel mode (instead of routeRight.push). */
     onViewDetail?: (taskId: number) => void;
+    /** Opens continue-optimization inside the host panel when provided. */
+    onContinueOptimize?: (task: SummaryListItem) => void;
 }
 
 interface SummaryListPageState {
@@ -605,6 +607,10 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     handleContinueOptimize = (taskId: number) => {
         const task = this.state.items.find(item => item.task_id === taskId);
         if (!task) return;
+        if (this.props.onContinueOptimize) {
+            this.props.onContinueOptimize(task);
+            return;
+        }
         window.dispatchEvent(
             new CustomEvent("summary-open-chat-with-reference", { detail: task })
         );
@@ -692,8 +698,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                     </h2>
                     <div className="summary-list-header-actions">
                         {createEntryMode === "legacy" ? (
-                            /* Legacy 保留原模式下拉。normal 创建页仍包含定时总结配置，
-                               统一工作台灰度期间不会丢失定时总结入口。 */
+                            /* Legacy 保留原模式下拉；定时更新统一在总结详情页配置。 */
                             <Dropdown
                                 trigger="click"
                                 position="bottomRight"
@@ -863,6 +868,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                                 onContinueOptimize={this.handleContinueOptimize}
                                 onEdit={this.handleEdit}
                                 onCancel={this.handleCancel}
+                                unifiedAgentActions={createEntryMode === "unified"}
                             />
                         ))}
                         {loadingMore && (

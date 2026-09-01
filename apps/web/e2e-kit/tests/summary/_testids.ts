@@ -21,7 +21,6 @@ export const T = {
     createTopic: "summary-create-topic",
     createSelectChat: "summary-create-select-chat",
     createSelectMembers: "summary-create-select-members",
-    createSchedule: "summary-create-schedule",
     createSubmit: "summary-create-submit",
     workbenchFeature: "summary-workbench-feature",
     // Mode-select dropdown on the single list-page "+" entry (mirror of prod testIds.ts)

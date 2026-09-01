@@ -23,6 +23,7 @@ import {
 import type { SummaryWorkbenchResponse } from "../bridge/summaryWorkbench/model";
 import {
   SUMMARY_WORKSPACE_PROFILE,
+  SUMMARY_WORKSPACE_CONTRACT_VERSION,
   SUMMARY_WORKSPACE_SNAPSHOT_VERSION,
   SummaryWorkspaceApiError,
   serializeSummaryWorkbenchScope,
@@ -66,6 +67,7 @@ export interface SummaryWorkbenchSaveInput {
 
 export interface SummaryWorkbenchRequestOptions {
   signal?: AbortSignal;
+  spaceId?: string;
 }
 
 export interface SummaryWorkbenchStreamCallbacks {
@@ -167,6 +169,28 @@ export class SummaryWorkbenchService {
     options: SummaryWorkbenchRequestOptions = {}
   ): Promise<SummaryWorkbenchHistoryHydration> {
     const response = await this.transport.getHistory(sessionId, options);
+    if (response === null) {
+      return {
+        sessionId,
+        contractVersion: SUMMARY_WORKSPACE_CONTRACT_VERSION,
+        scope: {
+          selectedChannels: [],
+          participants: [],
+          template: null,
+          timeRange: null,
+          referencedTaskIds: [],
+        },
+        modelOptions: {
+          scopeVersion: 1,
+          contextItems: [],
+          messages: [],
+          currentPreview: null,
+          pendingProposal: null,
+          workflow: null,
+        },
+        empty: true,
+      };
+    }
     return adaptSummaryWorkspaceHistory(response);
   }
 
@@ -216,11 +240,29 @@ export class SummaryWorkbenchService {
         ? { request_id: input.generationRequestId }
         : {}),
     };
-    const response = await this.transport.savePreview(request, {
-      ...options,
-      idempotencyKey: input.idempotencyKey,
-    });
-    return decodeSummaryWorkspaceSaveResult(response);
+    try {
+      const response = await this.transport.savePreview(request, {
+        ...options,
+        idempotencyKey: input.idempotencyKey,
+      });
+      return decodeSummaryWorkspaceSaveResult(response);
+    } catch (error) {
+      if (
+        error instanceof SummaryWorkspaceApiError &&
+        error.recoveryAction === "open_existing_summary" &&
+        error.taskId !== undefined &&
+        error.taskId > 0
+      ) {
+        const detail = await this.transport.getSummaryDetail(error.taskId);
+        return {
+          task_id: detail.task_id,
+          task_no: detail.task_no,
+          status: detail.status,
+          created_at: detail.created_at,
+        };
+      }
+      throw error;
+    }
   }
 }
 

@@ -451,6 +451,7 @@ describe('summaryApi', () => {
             profile: 'summary_workspace',
             action: 'chat',
             message: '帮我总结风险',
+            input_origin: 'user',
             request_id: 'request-1',
             scope_version: 2,
             summary_context: {
@@ -481,18 +482,28 @@ describe('summaryApi', () => {
                     data: { code: 0, data: { session_id: 'session/1' } },
                 });
 
-            await expect(getSummaryWorkspaceCapabilities()).resolves.toMatchObject({
+            await expect(getSummaryWorkspaceCapabilities({ spaceId: 'space-a' })).resolves.toMatchObject({
                 enabled: true,
             });
             await expect(getSummaryWorkspaceHistory('session/1')).resolves.toEqual({
                 session_id: 'session/1',
             });
 
-            expect(mockGet).toHaveBeenNthCalledWith(1, '/summary/api/v1/summary-workbench/capabilities', { signal: undefined });
+            expect(mockGet).toHaveBeenNthCalledWith(1, '/summary/api/v1/summary-workbench/capabilities', {
+                headers: { 'X-Space-Id': 'space-a' },
+                signal: undefined,
+            });
             expect(mockGet).toHaveBeenNthCalledWith(2, '/summary/api/v1/agent/chat/history', {
                 params: { session_id: 'session/1', profile: 'summary_workspace' },
                 signal: undefined,
             });
+        });
+
+        it('treats a successful History envelope with data:null as an empty session', async () => {
+            const { getSummaryWorkspaceHistory } = await import('../summaryApi');
+            mockGet.mockResolvedValueOnce({ data: { code: 0, data: null } });
+
+            await expect(getSummaryWorkspaceHistory('empty-session')).resolves.toBeNull();
         });
 
         it('sends proposal confirmation and preview save with idempotency headers', async () => {

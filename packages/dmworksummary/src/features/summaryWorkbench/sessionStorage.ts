@@ -1,6 +1,7 @@
-const SESSION_KEY_PREFIX = "summary-workbench-session:v1";
+const SESSION_KEY_PREFIX = "summary-workbench-session:v2";
 
 export interface SummaryWorkbenchSessionScope {
+    userId?: string | null;
     spaceId?: string | number | null;
     channelId?: string | null;
     channelType?: string | number | null;
@@ -8,12 +9,13 @@ export interface SummaryWorkbenchSessionScope {
 }
 
 function storageKey(scope: SummaryWorkbenchSessionScope): string {
+    const user = encodeURIComponent(scope.userId || "anonymous");
     const space = encodeURIComponent(String(scope.spaceId ?? "global"));
     const channel = encodeURIComponent(scope.channelId || "global");
     const channelType = scope.channelId
         ? encodeURIComponent(String(scope.channelType ?? "unknown"))
         : "";
-    const baseKey = `${SESSION_KEY_PREFIX}:${space}:${channel}${
+    const baseKey = `${SESSION_KEY_PREFIX}:${user}:${space}:${channel}${
         channelType ? `:type:${channelType}` : ""
     }`;
     if (scope.referencedTaskId === undefined || scope.referencedTaskId === null) {

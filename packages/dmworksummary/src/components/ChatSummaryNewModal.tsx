@@ -1,19 +1,16 @@
 import React, { Component, createRef } from 'react';
 import { Modal, Toast, Tag, Button, Dropdown, SplitButtonGroup } from '@douyinfe/semi-ui';
-import { IconPlus, IconClock, IconChevronDown } from '@douyinfe/semi-icons';
+import { IconPlus, IconChevronDown } from '@douyinfe/semi-icons';
 import { WKApp, I18nContext } from '@octo/base';
 import VoiceInputButton from '@octo/base/src/Components/VoiceInputButton';
 import type { ReplaceMode, SelectionRange } from '@octo/base/src/Components/VoiceInputButton';
-import type { TopicTemplate, ChatCandidate, ScheduleConfig, CreateAgentSummaryParams, ChatMessage } from '../types/summary';
-import { SummaryMode } from '../types/summary';
+import type { TopicTemplate, ChatCandidate, CreateAgentSummaryParams, ChatMessage } from '../types/summary';
 import { getSourceType, getOriginChannelType, chatTypeToOriginChannelType } from '../utils/channelType';
 import { markAgentSummaryNotificationEligible } from '../utils/groupSummaryNotify';
 import { channelToChatCandidate } from '../utils/channelConvert';
 import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, limitTemplateSummaryContent, type ResolvableTemplate } from '../utils/templateResolver';
 
 import {
-    describeSchedule,
-    scheduleToParams,
     genSessionId,
     genRequestId,
     readAgentChatSession,
@@ -30,7 +27,6 @@ import { MAX_CHAT_SELECT, SUMMARY_INPUT_MAX_LENGTH, TEMPLATE_CONTENT_MAX_LENGTH,
 import TemplateCard from './TemplateCard';
 import AgentChatPanel from './AgentChatPanel';
 import ChatSelectorModal from './ChatSelectorModal';
-import ScheduleConfigModal from './ScheduleConfigModal';
 import './ChatSummaryNewModal.css';
 
 interface ChatSummaryNewModalProps {
@@ -55,8 +51,6 @@ interface ChatSummaryNewModalState {
     agentSubmitting: boolean;
     savingSummary: boolean;
     templatePlaceholderRange: [number, number] | null;
-    scheduleConfig: ScheduleConfig | null;
-    showScheduleConfig: boolean;
     showMoreTemplates: boolean;
     editingTemplate: TopicTemplate | null;
     creatingCustomTemplate: boolean;
@@ -138,8 +132,6 @@ export default class ChatSummaryNewModal extends Component<
             agentSubmitting: false,
             savingSummary: false,
             templatePlaceholderRange: null,
-            scheduleConfig: null,
-            showScheduleConfig: false,
             showMoreTemplates: false,
             editingTemplate: null,
             creatingCustomTemplate: false,
@@ -174,8 +166,6 @@ export default class ChatSummaryNewModal extends Component<
                 agentSubmitting: false,
                 savingSummary: false,
                 templatePlaceholderRange: null,
-                scheduleConfig: null,
-                showScheduleConfig: false,
                 showMoreTemplates: false,
                 editingTemplate: null,
                 creatingCustomTemplate: false,
@@ -388,13 +378,8 @@ export default class ChatSummaryNewModal extends Component<
         });
     };
 
-    private getScheduleLabel(cfg: ScheduleConfig): string {
-        const { cron_expr, interval_days, interval_months, run_time, day_of_week, day_of_month } = scheduleToParams(cfg);
-        return describeSchedule(cron_expr, interval_days, interval_months, run_time, day_of_week, day_of_month);
-    }
-
     private handleSubmit = async () => {
-        const { topic, selectedChats, scheduleConfig } = this.state;
+        const { topic, selectedChats } = this.state;
         const { channel, onSubmit } = this.props;
 
         if (!topic.trim()) return;
@@ -432,31 +417,6 @@ export default class ChatSummaryNewModal extends Component<
                 trigger_mode: 'normal',
             });
             markAgentSummaryNotificationEligible(res.task_id);
-
-            // 若配置了定时：仿完整页，在 scope='task' 下由后端在一个事务里原子完成
-            // 「建定时 + 绑定到 task_id」。总结本身已创建成功，定时失败仅提示不阻断。
-            if (scheduleConfig !== null) {
-                const { cron_expr, interval_days, interval_months, day_of_week, day_of_month, run_time } = scheduleToParams(scheduleConfig);
-                try {
-                    await summaryApi.createSchedule({
-                        title: summaryTitle,
-                        summary_mode: SummaryMode.BY_PERSON,
-                        cron_expr,
-                        interval_days,
-                        interval_months,
-                        day_of_week,
-                        day_of_month,
-                        run_time,
-                        time_range_type: 2,
-                        sources,
-                        scope: 'task',
-                        task_id: res.task_id,
-                    });
-                } catch (scheduleErr: any) {
-                    // 与完整页 SummaryCreatePage 对齐：优先透出后端 message，回落 i18n 文案。
-                    Toast.error(scheduleErr?.message || this.context.t('summary.create.scheduleFailed'));
-                }
-            }
 
             window.dispatchEvent(
                 new CustomEvent('chat-summary-created', {
@@ -692,7 +652,17 @@ export default class ChatSummaryNewModal extends Component<
             });
             markAgentSummaryNotificationEligible(res.task_id);
 
-            Toast.success(t('summary.create.agentSummaryCreated'));
+            const firstGapDetail =
+                (res.finish_status === 'PARTIAL' || res.finish_status === 'FAILED')
+                    ? res.gaps?.[0]?.detail
+                    : undefined;
+            if (firstGapDetail) {
+                Toast.warning(t('summary.workbench.notice.savedWithQualityGap', {
+                    values: { detail: firstGapDetail },
+                }));
+            } else {
+                Toast.success(t('summary.create.agentSummaryCreated'));
+            }
 
             // dispatch 刷新事件。下游刷新监听按 taskId 走即可;channelId 传空串以
             // 保持事件字段结构不变、避免 undefined 引用崩溃(origin 已在上面的
@@ -736,7 +706,7 @@ export default class ChatSummaryNewModal extends Component<
     render() {
         const { visible, onClose, embedded } = this.props;
         const {
-            topic, appliedTemplateLabel, customTemplateLimit, mode, templates, selectedChats, showChatSelector, submitting, agentSubmitting, scheduleConfig, showScheduleConfig, showMoreTemplates,
+            topic, appliedTemplateLabel, customTemplateLimit, mode, templates, selectedChats, showChatSelector, submitting, agentSubmitting, showMoreTemplates,
             editingTemplate, creatingCustomTemplate,
             editingTemplateLabel, editingTemplateDescription, savingTemplate,
             messages,
@@ -984,20 +954,6 @@ export default class ChatSummaryNewModal extends Component<
                                     ? t('summary.create.selectedChats', { values: { count: selectedChats.length } })
                                     : t('summary.create.selectChat')}
                             </Button>
-                            <Button
-                                theme="borderless"
-                                icon={<IconClock />}
-                                size="small"
-                                onClick={() => this.setState({ showScheduleConfig: true })}
-                                style={{
-                                    marginLeft: 8,
-                                    color: scheduleConfig ? 'var(--wk-color-primary, #3370FF)' : undefined,
-                                }}
-                            >
-                                {scheduleConfig
-                                    ? this.getScheduleLabel(scheduleConfig)
-                                    : t('summary.schedule.config.title')}
-                            </Button>
                             </>
                         )}
                         <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
@@ -1051,14 +1007,6 @@ export default class ChatSummaryNewModal extends Component<
                         this.setState({ selectedChats: chats, showChatSelector: false })
                     }
                     onCancel={() => this.setState({ showChatSelector: false })}
-                />
-
-                <ScheduleConfigModal
-                    visible={showScheduleConfig}
-                    value={scheduleConfig ?? { unit: 'week', every: 1, time: '09:00' }}
-                    onConfirm={(cfg) => this.setState({ scheduleConfig: cfg, showScheduleConfig: false })}
-                    onCancel={() => this.setState({ showScheduleConfig: false })}
-                    showGenerationInstruction={false}
                 />
 
                 <Modal

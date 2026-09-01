@@ -1,4 +1,4 @@
-import { Clock, Sparkles, X, Plus } from "lucide-react";
+import { Sparkles, X, Plus } from "lucide-react";
 import React, { Component, createRef } from "react";
 import {
     Button,
@@ -20,7 +20,6 @@ import { markAgentSummaryNotificationEligible } from "../utils/groupSummaryNotif
 import { channelToChatCandidate } from "../utils/channelConvert";
 import SummaryDetailPage from "./SummaryDetailPage";
 import ChatSelectorModal from "../components/ChatSelectorModal";
-import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import TemplateCard from "../components/TemplateCard";
 import AgentChatPanel from "../components/AgentChatPanel";
 import RouteContext, { RouteContextConfig } from "@octo/base/src/Service/Context";
@@ -36,7 +35,6 @@ import type {
     ChatMessage,
     ChatCandidate,
     MemberCandidate,
-    ScheduleConfig,
     TopicTemplate,
     SummaryListItem,
     CreateAgentSummaryParams,
@@ -44,8 +42,6 @@ import type {
 import { SummaryMode, SourceType } from "../types/summary";
 import { Channel, WKSDK } from "wukongimjssdk";
 import {
-    describeSchedule,
-    scheduleToParams,
     genSessionId,
     genRequestId,
     readAgentChatSession,
@@ -88,10 +84,6 @@ interface SummaryCreatePageProps {
      * mount 时若为 agent 会自动进入 agent 模式（恢复历史 session）。
      */
     initialMode?: "normal" | "agent";
-    /** Unified Workbench 中选择“定时总结”时，直接打开 Legacy 定时配置。 */
-    initialScheduleOpen?: boolean;
-    /** 从 Legacy 定时流返回统一 Workbench。 */
-    onBackToWorkbench?: () => void;
 }
 
 interface SummaryCreatePageState {
@@ -103,14 +95,12 @@ interface SummaryCreatePageState {
     templatePlaceholderRange: [number, number] | null;
     selectedChats: ChatCandidate[];
     selectedMembers: MemberCandidate[];
-    scheduleConfig: ScheduleConfig | null;
     showChatSelector: boolean;
     showMemberSelector: boolean;
     memberSelectorChannel: Channel | null;
     memberSelectorExcluded: string[];
     memberSelectorSelectedItems: (() => any[]) | null;
     memberSelectorOnSelect: ((items: any[]) => void) | null;
-    showScheduleConfig: boolean;
     submitting: boolean;
     agentSubmitting: boolean;
     savingSummary: boolean;
@@ -170,14 +160,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             return [channelToChatCandidate(ch)];
         })(),
         selectedMembers: [],
-        scheduleConfig: null,
         showChatSelector: false,
         showMemberSelector: false,
         memberSelectorChannel: null,
         memberSelectorExcluded: [],
         memberSelectorSelectedItems: null,
         memberSelectorOnSelect: null,
-        showScheduleConfig: this.props.initialScheduleOpen === true,
         submitting: false,
         agentSubmitting: false,
         savingSummary: false,
@@ -589,11 +577,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         el.style.height = `${el.scrollHeight}px`;
     };
 
-    getScheduleLabel(cfg: ScheduleConfig): string {
-        const { cron_expr, interval_days, interval_months, run_time, day_of_week, day_of_month } = scheduleToParams(cfg);
-        return describeSchedule(cron_expr, interval_days, interval_months, run_time, day_of_week, day_of_month);
-    }
-
     canSubmit(): boolean {
         return this.state.topic.trim().length > 0;
     }
@@ -628,7 +611,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     handleSubmit = async () => {
-        const { topic, selectedChats, selectedMembers, scheduleConfig } = this.state;
+        const { topic, selectedChats, selectedMembers } = this.state;
         if (!this.canSubmit()) return;
         // 八审 P2:提交即取消未触发的主题输入去抖 —— 用户已从「填主题」进到「生成」,
         // 600ms 后再补发 smart_summary_theme_input 会把一次已转化的输入多计一次。
@@ -688,38 +671,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             // 登记后首次观察到 COMPLETED 即补发,标记只在创建时写入,
             // 不会让历史任务追溯群发。
             markAgentSummaryNotificationEligible(result.task_id);
-
-            // If schedule is configured, create it in ONE step bound to the new task.
-            // 后端 create 接口在 scope='task' + task_id 下已在一个事务里原子完成
-            //   校验 task 归属 → 建定时 → Update summary_task.schedule_id 绑定（一对一约束）。
-            // 不再需要第二步 update 绑定，也不会产生游离定时，所以去掉 B2 回滚。
-            if (scheduleConfig !== null) {
-                const { cron_expr, interval_days, interval_months, day_of_week, day_of_month, run_time } = scheduleToParams(scheduleConfig);
-                // V5/§6.1：多人（participants 非空）+ 定时默认 confirm_policy=1（一次性确认）；
-                // 单人定时不传（走后端 AUTO 兜底）。
-                const isMultiPerson = !!params.participants && params.participants.length > 0;
-                try {
-                    await api.createSchedule({
-                        title: summaryTitle,
-                        summary_mode: params.summary_mode || SummaryMode.BY_PERSON,
-                        cron_expr,
-                        interval_days,
-                        interval_months,
-                        day_of_week,
-                        day_of_month,
-                        run_time,
-                        time_range_type: 2,
-                        sources: params.sources || [],
-                        participants: params.participants,
-                        ...(isMultiPerson ? { confirm_policy: 1 } : {}),
-                        scope: 'task',
-                        task_id: result.task_id,
-                    });
-                } catch (scheduleErr: any) {
-                    // 总结本身已创建成功；定时创建失败仅提示（后端返回中文 message）。
-                    Toast.error(scheduleErr.message || t("summary.create.scheduleFailed"));
-                }
-            }
 
             Toast.success(t("summary.create.success"));
 
@@ -1059,7 +1010,17 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             });
             markAgentSummaryNotificationEligible(result.task_id);
 
-            Toast.success(t('summary.create.agentSummaryCreated'));
+            const firstGapDetail =
+                (result.finish_status === 'PARTIAL' || result.finish_status === 'FAILED')
+                    ? result.gaps?.[0]?.detail
+                    : undefined;
+            if (firstGapDetail) {
+                Toast.warning(t('summary.workbench.notice.savedWithQualityGap', {
+                    values: { detail: firstGapDetail },
+                }));
+            } else {
+                Toast.success(t('summary.create.agentSummaryCreated'));
+            }
 
             // 保存成功 → 销毁 chat session 工作台:
             //   1. 清 localStorage 里的 session_id(不然下次进 agent 会误恢复空 session)
@@ -1145,8 +1106,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             customTemplateLimit,
             mode,
             templates,
-            selectedChats, selectedMembers, scheduleConfig,
-            showChatSelector, showMemberSelector, showScheduleConfig,
+            selectedChats, selectedMembers,
+            showChatSelector, showMemberSelector,
             memberSelectorChannel, memberSelectorExcluded, memberSelectorOnSelect,
             submitting, agentSubmitting, error, editingTemplate, creatingCustomTemplate,
             editingTemplateLabel, editingTemplateDescription, savingTemplate,
@@ -1167,15 +1128,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 <div className="summary-workbench-header">
                     <span className="summary-workbench-header-emoji">🚀</span>
                     <span className="summary-workbench-title">{translate("summary.create.title")}</span>
-                    {this.props.onBackToWorkbench && (
-                        <Button
-                            className="summary-workbench-back-to-assistant"
-                            theme="borderless"
-                            onClick={this.props.onBackToWorkbench}
-                        >
-                            {translate("summary.create.backToAssistant")}
-                        </Button>
-                    )}
                 </div>
 
                 {/* Content card */}
@@ -1491,23 +1443,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 </button>
                             </div>
                             )}
-                            {mode !== 'agent' && (
-                                <div className="summary-workbench-chat-row">
-                                    <button
-                                        data-testid={summaryTestIds.createSchedule}
-                                        type="button"
-                                        className="summary-workbench-add-chat"
-                                        onClick={() => this.setState({ showScheduleConfig: true })}
-                                    >
-                                        <Clock size={16} />
-                                        <span>
-                                            {scheduleConfig
-                                                ? this.getScheduleLabel(scheduleConfig)
-                                                : translate("summary.schedule.config.title")}
-                                        </span>
-                                    </button>
-                                </div>
-                            )}
                         </div>
                         {/* 右下角：主提交按钮。总结方式选择已上移到列表页「+」下拉，此处不再提供切换。 */}
                         {mode !== 'agent' && (
@@ -1521,8 +1456,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 <Sparkles size={16} />
                                 {submitting
                                     ? translate("summary.create.submitting")
-                                    : scheduleConfig
-                                    ? translate("summary.create.createScheduled")
                                     : translate("summary.create.start")}
                             </Button>
                         )}
@@ -1542,13 +1475,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     maxSelect={MAX_CHAT_SELECT}
                     onConfirm={(chats) => this.setState({ selectedChats: chats, showChatSelector: false })}
                     onCancel={() => this.setState({ showChatSelector: false })}
-                />
-                <ScheduleConfigModal
-                    visible={showScheduleConfig}
-                    value={scheduleConfig ?? { unit: "week", every: 1, time: "09:00" }}
-                    onConfirm={(cfg) => this.setState({ scheduleConfig: cfg, showScheduleConfig: false })}
-                    onCancel={() => this.setState({ showScheduleConfig: false })}
-                    showGenerationInstruction={false}
                 />
                 <ChatSelectorModal
                     visible={showMemberSelector}

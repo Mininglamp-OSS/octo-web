@@ -46,6 +46,12 @@
     padding: var(--wk-sp-2) 0 var(--wk-sp-6);
 }
 
+.wk-summary-workbench-feature__save-error {
+  margin-top: var(--wk-sp-2);
+  color: var(--wk-color-danger);
+  font-size: var(--wk-text-size-sm);
+}
+
 .wk-summary-workbench-entry-loading {
     display: grid;
     width: 100%;

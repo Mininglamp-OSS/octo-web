@@ -203,7 +203,7 @@ export class SummaryModule implements IModule {
         // 导致「多人协作 / 多人定时」入口在主导航上找不到。菜单 id 须为 "summary"，
         // 与 WKApp.switchToMenuById("summary") 及 SummaryListPage 监听的 wk:nav-menu-activated
         // (menuId === "summary") 保持一致；路由指向 /summary 列表页（列表页内「+」下拉选择
-        // 总结方式：快速总结 / Agent 总结，进入对应创建页，可选参与者 + 定时）。
+        // 总结方式：快速总结 / Agent 总结，进入对应创建页；定时更新在总结详情页配置。
         WKApp.menus.register(
             "summary",
             () => {

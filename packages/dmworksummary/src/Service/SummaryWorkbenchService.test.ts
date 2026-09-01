@@ -294,6 +294,36 @@ describe("SummaryWorkbenchService", () => {
     );
   });
 
+  it("recovers an idempotent save by opening the existing summary", async () => {
+    savePreview.mockRejectedValueOnce(
+      new SummaryWorkspaceApiError({
+        message: "already saved",
+        kind: "business",
+        code: 40009,
+        recoveryAction: "open_existing_summary",
+        taskId: 89,
+      })
+    );
+    getSummaryDetail.mockResolvedValueOnce({
+      task_id: 89,
+      task_no: "SUM-89",
+      status: 3,
+      created_at: "2026-08-26T10:00:00Z",
+    } as never);
+
+    await expect(
+      service.savePreview({
+        sessionId: "session-1",
+        messageId: "18",
+        snapshotVersion: 1,
+        scopeVersion: 1,
+        artifactVersion: 3,
+        idempotencyKey: "save-key",
+      })
+    ).resolves.toMatchObject({ task_id: 89, task_no: "SUM-89" });
+    expect(getSummaryDetail).toHaveBeenCalledWith(89);
+  });
+
   it("rejects an invalid preview message id before issuing a request", async () => {
     await expect(
       service.savePreview({
@@ -331,10 +361,27 @@ describe("SummaryWorkbenchService", () => {
       contract_version: "1",
       max_time_range_days: 90,
     });
-    await expect(service.getCapabilities()).resolves.toEqual({
+    await expect(service.getCapabilities({ spaceId: "space-a" })).resolves.toEqual({
       enabled: true,
       contract_version: "1",
       max_time_range_days: 90,
+    });
+    expect(getCapabilities).toHaveBeenCalledWith({ spaceId: "space-a" });
+  });
+
+  it("treats History data:null as an empty server session", async () => {
+    getHistory.mockResolvedValueOnce(null);
+
+    await expect(service.loadSession("session-empty")).resolves.toMatchObject({
+      sessionId: "session-empty",
+      contractVersion: "1",
+      empty: true,
+      scope: {
+        selectedChannels: [],
+        participants: [],
+        referencedTaskIds: [],
+      },
+      modelOptions: { messages: [], workflow: null },
     });
   });
 

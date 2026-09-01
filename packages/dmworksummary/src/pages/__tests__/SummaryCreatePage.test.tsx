@@ -63,7 +63,6 @@ vi.mock('@douyinfe/semi-icons', () => ({
 vi.mock('../../api/summaryApi', () => ({
     createSummary: vi.fn().mockResolvedValue({ task_id: 1 }),
     createAgentSummary: vi.fn().mockResolvedValue({ task_id: 1 }),
-    createSchedule: vi.fn().mockResolvedValue({}),
     getTopicTemplatesConfig: vi.fn().mockResolvedValue({ templates: [], custom_template_limit: 30 }),
     updateMyTopicTemplate: vi.fn().mockResolvedValue({}),
     resetMyTopicTemplate: vi.fn().mockResolvedValue({}),
@@ -78,7 +77,6 @@ vi.mock('../../api/summaryApi', () => ({
 vi.mock('../SummaryDetailPage', () => ({ default: () => null }));
 vi.mock('../../components/ChatSelectorModal', () => ({ default: () => null }));
 vi.mock('../../components/MemberSelectorModal', () => ({ default: () => null }));
-vi.mock('../../components/ScheduleConfigModal', () => ({ default: () => null }));
 
 import { getTopicTemplatesConfig } from '../../api/summaryApi';
 
@@ -93,23 +91,6 @@ function flushPromises() {
 describe('SummaryCreatePage templates', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-    });
-
-    it('keeps scheduled-summary creation available in the Legacy page', async () => {
-        const pageRef = React.createRef<SummaryCreatePage>();
-        await act(async () => {
-            render(<SummaryCreatePage ref={pageRef} initialScheduleOpen />);
-            await flushPromises();
-        });
-
-        expect((pageRef.current as any).state.showScheduleConfig).toBe(true);
-        expect(screen.getByTestId(summaryTestIds.createSchedule)).toBeInTheDocument();
-
-        await act(async () => {
-            (pageRef.current as any).setState({ showScheduleConfig: false });
-        });
-        fireEvent.click(screen.getByTestId(summaryTestIds.createSchedule));
-        expect((pageRef.current as any).state.showScheduleConfig).toBe(true);
     });
 
     it('renders all builtin template cards when topic is empty', async () => {
@@ -850,6 +831,24 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
             expect.objectContaining({ session_id: 'sess-4', request_id: 'req-page-1' }),
             expect.any(Object),
         );
+    });
+
+    it.each(['PARTIAL', 'FAILED'] as const)('shows the first quality gap after a %s legacy Agent save', async (finishStatus) => {
+        const { Toast } = await import('@douyinfe/semi-ui');
+        (api.createAgentSummary as any).mockResolvedValueOnce({
+            task_id: 1,
+            finish_status: finishStatus,
+            gaps: [{ kind: 'citation', detail: '引用完整性校验失败' }],
+        });
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({ sessionId: 'sess-gap', mode: 'agent' });
+        });
+
+        await act(async () => { await instance.handleSaveAsSummary('t'); });
+
+        expect(Toast.warning).toHaveBeenCalledWith('总结已保存，但存在质量缺口：引用完整性校验失败');
+        expect(Toast.success).not.toHaveBeenCalled();
     });
 });
 

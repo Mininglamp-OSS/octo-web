@@ -42,6 +42,7 @@ export interface SummaryWorkbenchHistoryHydration {
   contractVersion: string;
   scope: SummaryWorkbenchScope;
   modelOptions: CreateSummaryWorkbenchModelOptions;
+  empty?: boolean;
 }
 
 export function adaptSummaryWorkspaceTurn(
@@ -339,11 +340,12 @@ export function decodeSummaryWorkspaceStreamError(
   ) {
     return protocolError("Summary workspace stream error is invalid");
   }
+  const retryable = transient === true || code === 40902 || code === "40902";
   return new SummaryWorkspaceApiError({
     message,
-    kind: transient ? "transport" : "business",
+    kind: retryable ? "transport" : "business",
     code,
-    retryable: transient ?? false,
+    retryable,
   });
 }
 

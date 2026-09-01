@@ -7,6 +7,7 @@ import {
 } from "../../bridge/summaryWorkbench/protocol";
 
 export const DEFAULT_SUMMARY_WORKBENCH_CAPABILITY_TIMEOUT_MS = 5_000;
+export const DEFAULT_SUMMARY_WORKBENCH_CAPABILITY_CACHE_TTL_MS = 30_000;
 
 export type SummaryWorkbenchAvailabilityReason =
     | "supported"
@@ -53,11 +54,15 @@ export type SummaryWorkbenchAvailabilityState =
     | SummaryWorkbenchAvailabilityDecision;
 
 export interface SummaryWorkbenchCapabilitySource {
-    getCapabilities(options?: { signal?: AbortSignal }): Promise<unknown>;
+    getCapabilities(options?: {
+        signal?: AbortSignal;
+        spaceId?: string;
+    }): Promise<unknown>;
 }
 
 export interface SummaryWorkbenchAvailabilityOptions {
     timeoutMs?: number;
+    cacheTtlMs?: number;
     now?: () => number;
 }
 
@@ -86,6 +91,7 @@ export class SummaryWorkbenchAvailability {
     private readonly pending = new Map<string, PendingAvailability>();
 
     private readonly timeoutMs: number;
+    private readonly cacheTtlMs: number;
 
     private readonly now: () => number;
 
@@ -97,6 +103,10 @@ export class SummaryWorkbenchAvailability {
             1,
             options.timeoutMs ?? DEFAULT_SUMMARY_WORKBENCH_CAPABILITY_TIMEOUT_MS
         );
+        this.cacheTtlMs = Math.max(
+            0,
+            options.cacheTtlMs ?? DEFAULT_SUMMARY_WORKBENCH_CAPABILITY_CACHE_TTL_MS
+        );
         this.now = options.now ?? Date.now;
     }
 
@@ -105,7 +115,13 @@ export class SummaryWorkbenchAvailability {
     ): SummaryWorkbenchAvailabilityDecision | undefined {
         const normalizedSpaceId = normalizeSummaryWorkbenchSpaceId(spaceId);
         if (!normalizedSpaceId) return this.missingSpaceDecision();
-        return this.cache.get(normalizedSpaceId);
+        const cached = this.cache.get(normalizedSpaceId);
+        if (!cached) return undefined;
+        if (this.now() - cached.checkedAt >= this.cacheTtlMs) {
+            this.cache.delete(normalizedSpaceId);
+            return undefined;
+        }
+        return cached;
     }
 
     resolve(
@@ -117,7 +133,7 @@ export class SummaryWorkbenchAvailability {
             return Promise.resolve(this.missingSpaceDecision());
         }
 
-        const cached = this.cache.get(normalizedSpaceId);
+        const cached = this.peek(normalizedSpaceId);
         if (cached) return Promise.resolve(cached);
         if (options.signal?.aborted) {
             return Promise.resolve(
@@ -177,7 +193,10 @@ export class SummaryWorkbenchAvailability {
         });
 
         const capabilityPromise = Promise.resolve().then(() =>
-            this.source.getCapabilities({ signal: controller.signal })
+            this.source.getCapabilities({
+                signal: controller.signal,
+                spaceId,
+            })
         );
 
         pending.promise = Promise.race([capabilityPromise, timeoutPromise])

@@ -484,6 +484,45 @@ describe("useSummaryWorkbench", () => {
     unmount();
   });
 
+  it("keeps the request id while a template submission temporarily clears and restores the composer", async () => {
+    sendMessage
+      .mockRejectedValueOnce(
+        new SummaryWorkspaceApiError({
+          message: "gateway timeout",
+          kind: "transport",
+          retryable: true,
+        })
+      )
+      .mockResolvedValueOnce(conversationalResponse());
+    const createRequestId = vi.fn(() => "request-template");
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "session-1",
+        initialScope,
+        autoHydrate: false,
+        preferStreaming: false,
+        service,
+        createRequestId,
+      })
+    );
+
+    await act(async () => {
+      const first = result.current.send("personal-intent", "system_intent");
+      result.current.restoreComposerValue("");
+      await first;
+      result.current.restoreComposerValue("template requirement");
+      await result.current.send("personal-intent", "system_intent");
+    });
+
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sendMessage.mock.calls.map(([input]) => input.requestId)).toEqual([
+      "request-template",
+      "request-template",
+    ]);
+    expect(createRequestId).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
   it("does not retain the request id after a business or 4xx failure", async () => {
     sendMessage.mockRejectedValue(
       new SummaryWorkspaceApiError({
@@ -950,6 +989,54 @@ describe("useSummaryWorkbench", () => {
     }
   });
 
+  it("keeps polling the same workflow after scope edits without replacing the new scope", async () => {
+    vi.useFakeTimers();
+    try {
+      loadSession.mockResolvedValueOnce(workflowHydration("workflow_completed"));
+      const { result, unmount } = renderHook(() =>
+        useSummaryWorkbench({
+          initialSessionId: "session-1",
+          initialScope,
+          autoHydrate: false,
+          service,
+          createRequestId: () => "request-workflow",
+          workflowPollIntervalMs: 10,
+        })
+      );
+
+      await act(async () => {
+        const request = result.current.send("发起多人总结");
+        streamCallbacks.onDone?.(workflowResponse("workflow_started"));
+        await request;
+      });
+      const editedScope = {
+        ...result.current.scope,
+        timeRange: {
+          start: "2026-08-01T00:00:00Z",
+          end: "2026-08-31T23:59:59Z",
+          label: "八月",
+        },
+      };
+      act(() => {
+        result.current.updateScope(editedScope);
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10);
+      });
+
+      expect(loadSession).toHaveBeenCalledTimes(1);
+      expect(result.current.scope).toEqual(editedScope);
+      expect(result.current.model.workflow).toMatchObject({
+        taskId: 91,
+        resultType: "workflow_completed",
+      });
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("applies a terminal workflow error from History and stops polling", async () => {
     vi.useFakeTimers();
     try {
@@ -1275,10 +1362,41 @@ describe("useSummaryWorkbench", () => {
     expect(result.current.sessionId).toBe("session-2");
     expect(result.current.scope).toEqual(initialScope);
     expect(result.current.model.messages).toEqual([]);
-    expect(onSessionIdChange).toHaveBeenCalledWith("session-2");
+    expect(onSessionIdChange).not.toHaveBeenCalled();
 
     act(() => streamCallbacks.onDone?.(previewResponse()));
     expect(result.current.model.messages).toEqual([]);
+    unmount();
+  });
+
+  it("does not persist an empty History session before the first server turn", async () => {
+    loadSession.mockResolvedValueOnce({
+      sessionId: "client-only-session",
+      contractVersion: "1",
+      scope: initialScope,
+      modelOptions: { messages: [] },
+      empty: true,
+    });
+    const onSessionIdChange = vi.fn();
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "client-only-session",
+        initialScope,
+        autoHydrate: false,
+        service,
+        createSessionId: () => "fresh-client-session",
+        onSessionIdChange,
+      })
+    );
+
+    await act(async () => {
+      await result.current.hydrateSession();
+    });
+
+    expect(result.current.sessionId).toBe("fresh-client-session");
+    expect(result.current.scope).toEqual(initialScope);
+    expect(result.current.model.messages).toEqual([]);
+    expect(onSessionIdChange).toHaveBeenCalledWith("");
     unmount();
   });
 });

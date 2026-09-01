@@ -759,4 +759,36 @@ describe('ChatSummaryNewModal agent save — explicit origin_channel_id (#930)',
             expect.any(Object),
         );
     });
+
+    it.each(['PARTIAL', 'FAILED'] as const)('shows the first quality gap after a %s save', async (finishStatus) => {
+        const { Toast } = await import('@douyinfe/semi-ui');
+        (summaryApi.createAgentSummary as any).mockResolvedValueOnce({
+            task_id: 1,
+            finish_status: finishStatus,
+            gaps: [{ kind: 'citation', detail: '引用完整性校验失败' }],
+        });
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(
+                <ChatSummaryNewModal
+                    visible
+                    channel={{ channelID: 'ch1', channelType: 2 }}
+                    onClose={vi.fn()}
+                    onSubmit={vi.fn()}
+                    ref={ref}
+                />,
+            );
+            await flushPromises();
+        });
+        await act(async () => {
+            (ref.current as any).setState({ sessionId: 'sess-gap' });
+            await flushPromises();
+        });
+        await act(async () => {
+            await (ref.current as any).handleSaveAsSummary('t');
+        });
+
+        expect(Toast.warning).toHaveBeenCalledWith('总结已保存，但存在质量缺口：引用完整性校验失败');
+        expect(Toast.success).not.toHaveBeenCalled();
+    });
 });

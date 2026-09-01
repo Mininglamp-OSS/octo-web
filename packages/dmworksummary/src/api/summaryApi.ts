@@ -424,6 +424,7 @@ export async function createAgentSummary(
 
 export interface SummaryWorkspaceRequestOptions {
     signal?: AbortSignal;
+    spaceId?: string;
 }
 
 export interface SummaryWorkspaceIdempotentOptions extends SummaryWorkspaceRequestOptions {
@@ -434,6 +435,7 @@ export interface SummaryWorkspaceIdempotentOptions extends SummaryWorkspaceReque
 export async function getSummaryWorkspaceCapabilities(options: SummaryWorkspaceRequestOptions = {}): Promise<unknown> {
     return requestSummaryWorkspace(() =>
         summaryAxios.get(`${BASE}/summary-workbench/capabilities`, {
+            ...(options.spaceId ? { headers: { 'X-Space-Id': options.spaceId } } : {}),
             signal: options.signal,
         }),
     );
@@ -457,11 +459,13 @@ export function streamSummaryWorkspaceTurn(request: SummaryWorkspaceChatRequestD
 }
 
 export async function getSummaryWorkspaceHistory(sessionId: string, options: SummaryWorkspaceRequestOptions = {}): Promise<unknown> {
-    return requestSummaryWorkspace(() =>
-        summaryAxios.get(`${BASE}/agent/chat/history`, {
-            params: { session_id: sessionId, profile: SUMMARY_WORKSPACE_PROFILE },
-            signal: options.signal,
-        }),
+    return requestSummaryWorkspace(
+        () =>
+            summaryAxios.get(`${BASE}/agent/chat/history`, {
+                params: { session_id: sessionId, profile: SUMMARY_WORKSPACE_PROFILE },
+                signal: options.signal,
+            }),
+        { allowNullData: true },
     );
 }
 
@@ -499,10 +503,13 @@ export async function saveSummaryWorkspacePreview(
     );
 }
 
-async function requestSummaryWorkspace(request: () => Promise<{ data?: unknown }>): Promise<unknown> {
+async function requestSummaryWorkspace(
+    request: () => Promise<{ data?: unknown }>,
+    options: { allowNullData?: boolean } = {},
+): Promise<unknown> {
     try {
         const response = await request();
-        return unwrapSummaryWorkspaceEnvelope(response.data);
+        return unwrapSummaryWorkspaceEnvelope(response.data, options.allowNullData === true);
     } catch (error) {
         if (error instanceof SummaryWorkspaceApiError) throw error;
         if (axios.isCancel(error)) {
@@ -535,7 +542,7 @@ async function requestSummaryWorkspace(request: () => Promise<{ data?: unknown }
     }
 }
 
-function unwrapSummaryWorkspaceEnvelope(payload: unknown): unknown {
+function unwrapSummaryWorkspaceEnvelope(payload: unknown, allowNullData = false): unknown {
     if (!isUnknownRecord(payload)) {
         throw new SummaryWorkspaceApiError({
             message: 'Invalid summary workspace response envelope',
@@ -563,6 +570,7 @@ function unwrapSummaryWorkspaceEnvelope(payload: unknown): unknown {
         });
     }
     if (payload.data === undefined || payload.data === null) {
+        if (allowNullData && payload.data === null) return null;
         throw new SummaryWorkspaceApiError({
             message: 'Summary workspace response has no data',
             kind: 'protocol',
@@ -831,7 +839,7 @@ function decodeAgentStreamHttpError(status: number, body: string): AgentErrorEve
     return {
         code,
         message,
-        transient: effectiveStatus >= 500,
+        transient: effectiveStatus >= 500 || effectiveStatus === 404 || effectiveStatus === 405,
     };
 }
 

@@ -36,6 +36,7 @@ vi.mock("@octo/base", () => ({
     format: { date: (value: unknown) => String(value) },
   }),
   default: {
+    loginInfo: { uid: "test-uid" },
     routeRight: {
       popToRoot: mocks.routePopToRoot,
       push: mocks.routePush,
@@ -63,6 +64,7 @@ vi.mock("@octo/base/src/App", () => ({
     format: { date: (value: unknown) => String(value) },
   }),
   default: {
+    loginInfo: { uid: "test-uid" },
     routeRight: {
       popToRoot: mocks.routePopToRoot,
       push: mocks.routePush,
@@ -265,6 +267,7 @@ function controller(overrides: Record<string, unknown> = {}) {
     error: null,
     savedSummary: null,
     setComposerValue: vi.fn(),
+    restoreComposerValue: vi.fn(),
     updateScope: vi.fn(),
     send: vi.fn(),
     confirmWorkflow: vi.fn(),
@@ -376,6 +379,9 @@ describe("SummaryWorkbenchFeature", () => {
     current.setComposerValue = vi.fn((value: string) => {
       current.viewState.inputValue = value;
     });
+    current.restoreComposerValue = vi.fn((value: string) => {
+      current.viewState.inputValue = value;
+    });
     mocks.useSummaryWorkbench.mockReturnValue(current);
 
     render(<SummaryWorkbenchFeature spaceId="space-a" />, {
@@ -383,7 +389,7 @@ describe("SummaryWorkbenchFeature", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
-    expect(current.setComposerValue).toHaveBeenCalledWith("");
+    expect(current.restoreComposerValue).toHaveBeenCalledWith("");
     expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
       "data-can-send",
       "false"
@@ -401,7 +407,7 @@ describe("SummaryWorkbenchFeature", () => {
 
   it("collapses templates after restoring a session that already has messages", async () => {
     localStorage.setItem(
-      "summary-workbench-session:v1:space-a:global",
+      "summary-workbench-session:v2:test-uid:space-a:global",
       "restored-session"
     );
     const current = controller({ isHydrating: true });
@@ -443,6 +449,9 @@ describe("SummaryWorkbenchFeature", () => {
     current.setComposerValue = vi.fn((value: string) => {
       current.viewState.inputValue = value;
     });
+    current.restoreComposerValue = vi.fn((value: string) => {
+      current.viewState.inputValue = value;
+    });
     mocks.useSummaryWorkbench.mockReturnValue(current);
 
     render(<SummaryWorkbenchFeature spaceId="space-a" />, {
@@ -450,12 +459,12 @@ describe("SummaryWorkbenchFeature", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
-    expect(current.setComposerValue).toHaveBeenCalledWith("");
+    expect(current.restoreComposerValue).toHaveBeenCalledWith("");
     expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
 
     pendingResponse.resolve(undefined);
     await waitFor(() =>
-      expect(current.setComposerValue).toHaveBeenLastCalledWith(
+      expect(current.restoreComposerValue).toHaveBeenCalledWith(
         "Keep this request"
       )
     );
@@ -984,6 +993,59 @@ describe("SummaryWorkbenchFeature", () => {
     expect(mocks.toastWarning).not.toHaveBeenCalled();
   });
 
+  it("handles the same recovered save result only once", async () => {
+    const savePreview = vi.fn().mockResolvedValue({
+      task_id: 306,
+      task_no: "SUM-306",
+      status: 3,
+      created_at: "2026-08-27T08:00:00Z",
+    });
+    const onOpenTask = vi.fn();
+    mocks.useSummaryWorkbench.mockReturnValue(
+      controller({
+        model: {
+          currentPreview: { content: "# Draft\nBody" },
+          pendingProposal: null,
+          workflow: null,
+        },
+        savePreview,
+      })
+    );
+
+    render(
+      <SummaryWorkbenchFeature spaceId="space-a" embedded onOpenTask={onOpenTask} />,
+      { legacyRoot: true }
+    );
+    fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
+    const ok = screen.getByRole("button", { name: "modal-ok" });
+    fireEvent.click(ok);
+    fireEvent.click(ok);
+
+    await waitFor(() => expect(savePreview).toHaveBeenCalledTimes(2));
+    expect(mocks.markNotificationEligible).toHaveBeenCalledTimes(1);
+    expect(onOpenTask).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows an ordinary save failure inside the save dialog", () => {
+    mocks.useSummaryWorkbench.mockReturnValue(
+      controller({
+        model: {
+          currentPreview: { content: "# Draft\nBody" },
+          pendingProposal: null,
+          workflow: null,
+        },
+        error: new Error("保存失败，请重试"),
+      })
+    );
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
+
+    expect(screen.getByText("保存失败，请重试")).toBeInTheDocument();
+  });
+
   it("opens a completed Workflow task through the embedded detail callback", () => {
     const onOpenTask = vi.fn();
     mocks.useSummaryWorkbench.mockReturnValue(
@@ -1012,7 +1074,7 @@ describe("SummaryWorkbenchFeature", () => {
 
   it("restores the scoped session and updates references", () => {
     localStorage.setItem(
-      "summary-workbench-session:v1:space-a:global",
+      "summary-workbench-session:v2:test-uid:space-a:global",
       "restored-session"
     );
     const updateScope = vi.fn();
@@ -1038,8 +1100,25 @@ describe("SummaryWorkbenchFeature", () => {
     );
   });
 
+  it("persists a generated session only after the hook reports a server-backed id", () => {
+    mocks.useSummaryWorkbench.mockReturnValue(controller());
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+
+    const key = "summary-workbench-session:v2:test-uid:space-a:global";
+    expect(localStorage.getItem(key)).toBeNull();
+    const options = mocks.useSummaryWorkbench.mock.calls.at(-1)?.[0] as {
+      onSessionIdChange: (sessionId: string) => void;
+    };
+    options.onSessionIdChange("server-session");
+    expect(localStorage.getItem(key)).toBe("server-session");
+    options.onSessionIdChange("");
+    expect(localStorage.getItem(key)).toBeNull();
+  });
+
   it("isolates a referenced-task session from the ordinary new-entry session", () => {
-    const ordinaryKey = "summary-workbench-session:v1:space-a:global";
+    const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
     const referencedTaskKey = `${ordinaryKey}:reference:42`;
     localStorage.setItem(ordinaryKey, "ordinary-session");
     localStorage.setItem(referencedTaskKey, "stale-reference-session");
@@ -1060,7 +1139,7 @@ describe("SummaryWorkbenchFeature", () => {
       })
     );
     expect(localStorage.getItem(ordinaryKey)).toBe("ordinary-session");
-    expect(localStorage.getItem(referencedTaskKey)).toBe("session-a");
+    expect(localStorage.getItem(referencedTaskKey)).toBeNull();
 
     referencedRender.unmount();
     render(<SummaryWorkbenchFeature spaceId="space-a" />, {

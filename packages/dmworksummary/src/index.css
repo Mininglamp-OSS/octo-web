@@ -2347,10 +2347,6 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     color: var(--wk-text-primary);
 }
 
-.summary-workbench-back-to-assistant {
-    margin-left: auto;
-}
-
 /* Content card */
 .summary-workbench-card {
     display: flex;

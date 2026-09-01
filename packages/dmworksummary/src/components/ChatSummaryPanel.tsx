@@ -10,6 +10,7 @@ import { X, ChevronLeft } from 'lucide-react';
 import SummaryListPage from '../pages/SummaryListPage';
 import SummaryWorkbenchCreateEntry from '../features/summaryWorkbench/SummaryWorkbenchCreateEntry';
 import SummaryDetailPage from '../pages/SummaryDetailPage';
+import type { SummaryListItem } from '../types/summary';
 import { summaryTestIds } from '../utils/testIds';
 
 interface ChatSummaryPanelProps {
@@ -22,6 +23,7 @@ interface ChatSummaryPanelProps {
 interface ChatSummaryPanelState {
     view: 'list' | 'detail' | 'create';
     selectedTaskId: number | null;
+    refineTask: SummaryListItem | null;
     isDragging: boolean;
     /** 仅供 Capability fail-closed 后的 Legacy 创建页恢复原选择。 */
     legacyCreateMode: 'normal' | 'agent';
@@ -42,7 +44,7 @@ export default class ChatSummaryPanel extends Component<
     constructor(props: ChatSummaryPanelProps) {
         super(props);
         const initialView = props.summaryPanelView === 'new' ? 'create' : 'list';
-        this.state = { view: initialView, selectedTaskId: null, isDragging: false, legacyCreateMode: 'normal' };
+        this.state = { view: initialView, selectedTaskId: null, refineTask: null, isDragging: false, legacyCreateMode: 'normal' };
     }
 
     componentDidMount() {
@@ -68,7 +70,7 @@ export default class ChatSummaryPanel extends Component<
         ) {
             // 切换会话或面板视图请求变化时，重置到对应初始视图
             const initialView = this.props.summaryPanelView === 'new' ? 'create' : 'list';
-            this.setState({ view: initialView, selectedTaskId: null, legacyCreateMode: 'normal' });
+            this.setState({ view: initialView, selectedTaskId: null, refineTask: null, legacyCreateMode: 'normal' });
         }
     }
 
@@ -127,20 +129,30 @@ export default class ChatSummaryPanel extends Component<
         this.setState({
             view: 'create',
             selectedTaskId: null,
+            refineTask: null,
             legacyCreateMode: mode === 'agent' ? 'agent' : 'normal',
         });
     };
 
     private handleViewDetail = (taskId: number) => {
-        this.setState({ view: 'detail', selectedTaskId: taskId });
+        this.setState({ view: 'detail', selectedTaskId: taskId, refineTask: null });
+    };
+
+    private handleContinueOptimize = (task: SummaryListItem) => {
+        this.setState({
+            view: 'create',
+            selectedTaskId: null,
+            refineTask: task,
+            legacyCreateMode: 'agent',
+        });
     };
 
     private handleBack = () => {
-        this.setState({ view: 'list' });
+        this.setState({ view: 'list', refineTask: null });
     };
 
     private handleBackToList = () => {
-        this.setState({ view: 'list' });
+        this.setState({ view: 'list', refineTask: null });
     };
 
     private handleCreateSubmit = (taskId: number) => {
@@ -152,7 +164,7 @@ export default class ChatSummaryPanel extends Component<
 
     render() {
         const { channel, onClose } = this.props;
-        const { view, selectedTaskId, isDragging } = this.state;
+        const { view, selectedTaskId, refineTask, isDragging } = this.state;
         const { t } = this.context;
         const isDetail = view === 'detail' && selectedTaskId != null;
         const isCreate = view === 'create';
@@ -182,6 +194,7 @@ export default class ChatSummaryPanel extends Component<
                         onClose={onClose}
                         onCreateNew={this.handleCreateNew}
                         onViewDetail={this.handleViewDetail}
+                        onContinueOptimize={this.handleContinueOptimize}
                     />
                 </div>
 
@@ -203,6 +216,7 @@ export default class ChatSummaryPanel extends Component<
                             <SummaryWorkbenchCreateEntry
                                 key={`${channel.channelType}:${channel.channelID}`}
                                 channel={channel}
+                                derivedFromTask={refineTask ?? undefined}
                                 embedded={true}
                                 onClose={this.handleBackToList}
                                 onSubmit={this.handleCreateSubmit}

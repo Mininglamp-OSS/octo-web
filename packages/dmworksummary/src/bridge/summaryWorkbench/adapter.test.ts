@@ -9,6 +9,7 @@ import {
   adaptSummaryWorkspaceTurn,
   decodeSummaryWorkspaceCapabilities,
   decodeSummaryWorkspaceSaveResult,
+  decodeSummaryWorkspaceStreamError,
 } from "./adapter";
 import {
   SummaryWorkspaceApiError,
@@ -477,6 +478,19 @@ describe("summary workspace adapter", () => {
       created_at: "2026-08-26T10:01:00Z",
       finish_status: "FAILED",
       gaps: [{ kind: "citation", detail: "引用完整性校验失败" }],
+    });
+  });
+
+  it("treats stream code 40902 as retryable even when transient is omitted", () => {
+    expect(
+      decodeSummaryWorkspaceStreamError({
+        code: 40902,
+        message: "request still in progress",
+      })
+    ).toMatchObject({
+      kind: "transport",
+      code: 40902,
+      retryable: true,
     });
   });
 });

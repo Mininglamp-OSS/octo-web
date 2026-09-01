@@ -11,6 +11,7 @@ describe("summary workbench session storage", () => {
     it("isolates sessions by Space and channel", () => {
         writeSummaryWorkbenchSession(
             {
+                userId: "user-a",
                 spaceId: "space-a",
                 channelId: "channel-1",
                 channelType: "group",
@@ -19,6 +20,7 @@ describe("summary workbench session storage", () => {
         );
         writeSummaryWorkbenchSession(
             {
+                userId: "user-a",
                 spaceId: "space-a",
                 channelId: "channel-2",
                 channelType: "group",
@@ -28,6 +30,7 @@ describe("summary workbench session storage", () => {
 
         expect(
             readSummaryWorkbenchSession({
+                userId: "user-a",
                 spaceId: "space-a",
                 channelId: "channel-1",
                 channelType: "group",
@@ -35,6 +38,7 @@ describe("summary workbench session storage", () => {
         ).toBe("session-a");
         expect(
             readSummaryWorkbenchSession({
+                userId: "user-a",
                 spaceId: "space-a",
                 channelId: "channel-2",
                 channelType: "group",
@@ -42,6 +46,7 @@ describe("summary workbench session storage", () => {
         ).toBe("session-b");
         expect(
             readSummaryWorkbenchSession({
+                userId: "user-a",
                 spaceId: "space-b",
                 channelId: "channel-1",
                 channelType: "group",
@@ -51,6 +56,7 @@ describe("summary workbench session storage", () => {
 
     it("isolates the same channel id by channel type", () => {
         const groupScope = {
+            userId: "user-a",
             spaceId: "space-a",
             channelId: "shared-id",
             channelType: "group",
@@ -67,14 +73,14 @@ describe("summary workbench session storage", () => {
     });
 
     it("clears only the requested entry", () => {
-        const scope = { spaceId: 42, channelId: null };
+        const scope = { userId: "user-a", spaceId: 42, channelId: null };
         writeSummaryWorkbenchSession(scope, "session-global");
         clearSummaryWorkbenchSession(scope);
         expect(readSummaryWorkbenchSession(scope)).toBe("");
     });
 
     it("isolates referenced tasks without changing the ordinary session key", () => {
-        const ordinaryScope = { spaceId: "space-a", channelId: null };
+        const ordinaryScope = { userId: "user-a", spaceId: "space-a", channelId: null };
         const task42Scope = { ...ordinaryScope, referencedTaskId: 42 };
         const task73Scope = { ...ordinaryScope, referencedTaskId: 73 };
 
@@ -93,9 +99,19 @@ describe("summary workbench session storage", () => {
         );
         expect(
             localStorage.getItem(
-                "summary-workbench-session:v1:space-a:global"
+                "summary-workbench-session:v2:user-a:space-a:global"
             )
         ).toBe("ordinary-session");
+    });
+
+    it("isolates sessions for different signed-in users", () => {
+        const first = { userId: "user-a", spaceId: "space-a" };
+        const second = { userId: "user-b", spaceId: "space-a" };
+        writeSummaryWorkbenchSession(first, "session-a");
+        writeSummaryWorkbenchSession(second, "session-b");
+
+        expect(readSummaryWorkbenchSession(first)).toBe("session-a");
+        expect(readSummaryWorkbenchSession(second)).toBe("session-b");
     });
 
     it("fails safely when browser storage is unavailable", () => {
@@ -104,7 +120,7 @@ describe("summary workbench session storage", () => {
             .mockImplementation(() => {
                 throw new Error("blocked");
             });
-        expect(readSummaryWorkbenchSession({ spaceId: "space-a" })).toBe("");
+        expect(readSummaryWorkbenchSession({ userId: "user-a", spaceId: "space-a" })).toBe("");
         getSpy.mockRestore();
 
         const setSpy = vi
@@ -113,7 +129,7 @@ describe("summary workbench session storage", () => {
                 throw new Error("blocked");
             });
         expect(() =>
-            writeSummaryWorkbenchSession({ spaceId: "space-a" }, "session-a")
+            writeSummaryWorkbenchSession({ userId: "user-a", spaceId: "space-a" }, "session-a")
         ).not.toThrow();
         setSpy.mockRestore();
     });

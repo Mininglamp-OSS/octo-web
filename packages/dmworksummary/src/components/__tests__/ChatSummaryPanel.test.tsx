@@ -31,6 +31,7 @@ vi.mock('../../pages/SummaryListPage', () => ({
             <div data-testid="summary-list" data-channel-id={props.channelId}>
                 <button onClick={() => props.onViewDetail(42)}>open-detail</button>
                 <button onClick={() => props.onCreateNew()}>create-new</button>
+                <button onClick={() => props.onContinueOptimize?.({ task_id: 42, title: 'Agent summary' })}>continue-optimize</button>
                 {props.onClose && (
                     <button data-testid="list-close" onClick={props.onClose}>
                         close
@@ -54,6 +55,7 @@ vi.mock('../../features/summaryWorkbench/SummaryWorkbenchCreateEntry', () => ({
             )}
             data-embedded={String(props.embedded)}
             data-source={props.source}
+            data-derived-task-id={props.derivedFromTask?.task_id ?? ''}
         >
             <button onClick={() => props.onSubmit?.(99)}>submit-create</button>
             <button onClick={() => props.onOpenTask?.(77)}>open-created-task</button>
@@ -205,6 +207,17 @@ describe('ChatSummaryPanel', () => {
             '77',
         );
         expect(screen.queryByTestId('summary-create-entry')).not.toBeInTheDocument();
+    });
+
+    it('opens continue optimization inside the panel with the selected summary reference', () => {
+        render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
+        fireEvent.click(screen.getByText('continue-optimize'));
+
+        expect(screen.getByTestId('summary-create-entry')).toHaveAttribute(
+            'data-derived-task-id',
+            '42',
+        );
+        expect(screen.queryByTestId('summary-list')).not.toBeVisible();
     });
 
     describe('resizable splitter', () => {

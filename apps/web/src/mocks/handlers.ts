@@ -34,6 +34,22 @@ const quickMuteStateHandler = http.get(/\/api\/v1\/user\/notification-pause$/, (
   HttpResponse.json({ paused: false, paused_until: null, revision: 0, server_time: new Date().toISOString() }),
 );
 
+// Existing E2E scenarios exercise the Legacy summary UI unless a case-specific
+// handler explicitly enables the unified workbench capability.
+const summaryWorkbenchCapabilityHandler = http.get(
+  "*/summary/api/v1/summary-workbench/capabilities",
+  () =>
+    HttpResponse.json({
+      code: 0,
+      message: "ok",
+      data: {
+        enabled: false,
+        contract_version: "1",
+        max_time_range_days: 31,
+      },
+    }),
+);
+
 export const handlers = [
   mswProbeHandler,
   ...getEnterpriseMockHandlers(),
@@ -49,5 +65,6 @@ export const handlers = [
   ...skillMarketErrorHandlers,
   ...expertMarketErrorHandlers,
   ...chatBaselineHandlers,
+  summaryWorkbenchCapabilityHandler,
   quickMuteStateHandler,
 ];
