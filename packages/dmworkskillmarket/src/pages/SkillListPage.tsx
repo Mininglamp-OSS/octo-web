@@ -12,6 +12,9 @@ import {
 import { t, useI18n, WKApp, WKButton, Dap } from "@octo/base";
 import type { Skill, SkillSort } from "../types/skill";
 import { useSkills } from "../hooks/useSkills";
+import { useReviewRequests } from "../hooks/useReviewRequests";
+import { cancelReview } from "../api/skillApi";
+import { deriveSkillReviewState } from "../utils/review";
 import BotPublishModal from "../components/BotPublishModal";
 import CategoryChips from "../components/CategoryChips";
 import DeleteConfirmModal from "../components/DeleteConfirmModal";
@@ -22,7 +25,7 @@ import SearchBar from "../components/SearchBar";
 import SkillCard from "../components/SkillCard";
 import SkillCardSkeleton from "../components/SkillCardSkeleton";
 import SkillDetailModal from "../components/SkillDetailModal";
-import MineTable from "../components/MineTable";
+import MineTable, { type MineReviewBadge } from "../components/MineTable";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 
 /**
@@ -49,8 +52,22 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [sort, setSort] = useState<SkillSort>("latest");
   const list = useSkills({ mine, selectedTags, sort });
+  // Review state for the "我的" surface. `mode=mine` is applicant-scoped (no
+  // reviewer role needed), but the public catalog shows no review state at all,
+  // so the read is held back to the mine variant to keep discovery cheap.
+  const myReviews = useReviewRequests({ mode: "mine", pageSize: 100, enabled: mine });
   const refreshRef = useRef(list.refresh);
+  const reviewsRefreshRef = useRef(myReviews.refresh);
   const [createVisible, setCreateVisible] = useState(false);
+  // 提交组织审核 / 重新提交 / 发布新版本 all funnel into NewSkillModal's review
+  // mode: it collects the version label + changelog and calls
+  // `POST /plugins/review_requests`. Content edits go through the separate edit
+  // flow first — an owner edit is a mutable draft server-side and never mints a
+  // version on its own.
+  const [reviewSkill, setReviewSkill] = useState<Skill | null>(null);
+  const [reviewInitial, setReviewInitial] = useState<{ version?: string; changelog?: string } | null>(
+    null
+  );
   const [publishMenuOpen, setPublishMenuOpen] = useState(false);
   const [botPublishVisible, setBotPublishVisible] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -65,6 +82,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
   const toastTimerRef = useRef<number | null>(null);
 
   refreshRef.current = list.refresh;
+  reviewsRefreshRef.current = myReviews.refresh;
 
   const showToast = useCallback((message: string) => {
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
@@ -85,12 +103,15 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
     const handleSpaceChanged = () => {
       setPublishMenuOpen(false);
       setCreateVisible(false);
+      setReviewSkill(null);
+      setReviewInitial(null);
       setBotPublishVisible(false);
       setDetailId(null);
       setEditing(null);
       setDeleting(null);
       setInstallSkillId(null);
       refreshRef.current();
+      reviewsRefreshRef.current();
     };
     WKApp.mittBus.on("space-changed", handleSpaceChanged);
     return () => WKApp.mittBus.off("space-changed", handleSpaceChanged);
@@ -155,9 +176,39 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
     list.refresh();
   }
 
-  function handleCreated() {
-    showToast(t("skillMarket.list.created"));
+  function handleCreated(message?: string) {
+    showToast(message ?? t("skillMarket.list.created"));
     list.refresh();
+    // A create can also have submitted a review request; keep the derived row
+    // badges in step with it.
+    myReviews.refresh();
+  }
+
+  function closeCreate() {
+    setCreateVisible(false);
+    setReviewSkill(null);
+    setReviewInitial(null);
+  }
+
+  /** Open NewSkillModal in review-submit mode for an already-published skill. */
+  function openReviewSubmit(skill: Skill, initialChangelog?: string) {
+    setReviewSkill(skill);
+    setReviewInitial(initialChangelog ? { changelog: initialChangelog } : null);
+    setCreateVisible(true);
+  }
+
+  async function handleCancelReview(reviewId: string) {
+    try {
+      await cancelReview(reviewId);
+      showToast(t("skillMarket.review.canceledToast"));
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t("skillMarket.review.cancelFailed"));
+    } finally {
+      // Refresh either way: on a lost race the server already moved the request
+      // out of `pending`, and only a re-read shows the real state.
+      list.refresh();
+      myReviews.refresh();
+    }
   }
 
   function handleUpdated() {
@@ -171,6 +222,12 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
     // 删除此处命令式 market_card_viewed —— 二者本是对「同一次打开」的双计(owner 决策:留 opened;与 mcp 侧对称)。
     setDetailId(item.id);
   }
+
+  // Join this user's own review requests onto their rows by plugin id. Review
+  // state is never a column on the plugin (a listed v1 and an in-review v2
+  // coexist server-side), so it is derived here at render time. Empty on the
+  // public catalog — that surface never receives review state or owner actions.
+  const reviewStateByPlugin = deriveSkillReviewState(myReviews.items);
 
   return (
     <div className="skill-market-page">
@@ -226,6 +283,10 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
                   onClick={() => {
                     Dap.shared.track("market_manual_publish_dialog_opened", {});
                     setPublishMenuOpen(false);
+                    // Plain upload, not a review resubmit — clear any review
+                    // context left over from an earlier 提交审核 click.
+                    setReviewSkill(null);
+                    setReviewInitial(null);
                     setCreateVisible(true);
                   }}
                 >
@@ -314,7 +375,31 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
         {!list.loading && !list.error && list.skills.length > 0 && (
           mine ? (
             <MineTable
-              rows={list.skills.map((skill) => ({
+              rows={list.skills.map((skill) => {
+                // Review affordances are mutually exclusive by construction: at
+                // most one of pending / rejected / private / listed applies to a
+                // given row. They are attached here (page level) and rendered by
+                // the row component; the catalog branch below builds no such
+                // fields, so a discovery card can never pick up owner actions.
+                const reviewState = reviewStateByPlugin.get(skill.id);
+                const pending = reviewState?.pending;
+                const rejected = reviewState?.rejected;
+                const isPrivate = skill.visibility === "private";
+                // MineTable renders a precomputed badge instead of re-deriving one
+                // from the request objects, so the union is resolved here. Order
+                // matters: a pending request outranks a stale rejection, and on an
+                // already-listed plugin "pending" means the live version stays up
+                // while the new one is reviewed.
+                const reviewBadge: MineReviewBadge = pending
+                  ? isPrivate
+                    ? "pending"
+                    : "pending-upgrade"
+                  : rejected
+                    ? "rejected"
+                    : isPrivate
+                      ? "private"
+                      : "live";
+                return {
                 id: skill.id,
                 type: "skill" as const,
                 trackItemType: "skill",
@@ -338,16 +423,35 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
                 updatedAt: skill.updatedAt,
                 ariaLabel: skill.name,
                 onOpen: () => openDetail(skill),
-                onEdit: () => setEditing(skill),
+                // 编辑 is withheld once a plugin is listed to the org. A direct edit
+                // takes effect immediately for everyone, which would route around
+                // review entirely — so a listed plugin changes only through
+                // 发布新版本, and while a request is pending it does not change at
+                // all (the live version stays up until a decision lands).
+                onEdit: isPrivate && !pending ? () => setEditing(skill) : undefined,
                 onDelete: () => setDeleting(skill),
                 editAria: t("skillMarket.card.editAriaLabel", { values: { name: skill.name } }),
                 deleteAria: t("skillMarket.card.deleteAriaLabel", { values: { name: skill.name } }),
-              }))}
+                reviewBadge,
+                rejectReason: rejected?.reason,
+                onSubmitReview:
+                  isPrivate && !pending && !rejected ? () => openReviewSubmit(skill) : undefined,
+                onCancelReview: pending ? () => void handleCancelReview(pending.id) : undefined,
+                onResubmit: rejected
+                  ? () => openReviewSubmit(skill, rejected.changelog)
+                  : undefined,
+                onPublishVersion:
+                  !isPrivate && !pending ? () => openReviewSubmit(skill) : undefined,
+                };
+              })}
               visibilityLabel={(v) => t(`skillMarket.visibility.${v}`)}
             />
           ) : (
             <div className="skill-market-grid">
               {list.skills.map((skill) => (
+                // Discovery catalog. No owner-only props on purpose: SkillCard
+                // derives `isOwnerCard` from callback presence, and review state
+                // is applicant-scoped, so neither belongs on a public card.
                 <SkillCard
                   key={skill.id}
                   skill={skill}
@@ -381,8 +485,10 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
       <NewSkillModal
         visible={createVisible}
         categories={list.categories}
-        onClose={() => setCreateVisible(false)}
+        onClose={closeCreate}
         onCreated={handleCreated}
+        reviewSkill={reviewSkill}
+        reviewInitial={reviewInitial}
       />
       <BotPublishModal
         visible={botPublishVisible}

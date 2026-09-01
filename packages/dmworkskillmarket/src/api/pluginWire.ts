@@ -98,6 +98,43 @@ export interface PluginCategoryWire {
   plugin_count: number;
 }
 
+/** `POST/GET /plugins/review_requests*` response row. Field names mirror
+ *  `internal_api_handler_plugin.reviewRequestResponse` in octo-marketplace's
+ *  `docs/openapi/swagger.yaml` exactly — do not add speculative aliases, an
+ *  unknown key here silently maps to `undefined`.
+ *
+ *  Two backend defects are visible through this shape today:
+ *  - `readme_content` is only ever populated by the detail endpoint, and even
+ *    there the server currently returns "" — render the preview conditionally.
+ *  - `plugin_icon` is the raw storage key, NOT a resolved display URL (unlike
+ *    `PluginListItemWire.icon_url`), so binding it to `<img src>` 404s. Consumers
+ *    must fall back to the letter-avatar. */
+export interface PluginReviewRequestWire {
+  review_id: string;
+  plugin_id: string;
+  plugin_name?: string;
+  plugin_type?: PluginTypeWire;
+  plugin_icon?: string;
+  space_id: string;
+  target_scope: string;
+  status: string;
+  kind: string;
+  version: string;
+  current_version?: string;
+  changelog?: string;
+  readme_content?: string;
+  manifest_hash?: string;
+  plugin_hash?: string;
+  applicant_id: string;
+  applicant_name?: string;
+  reviewer_id?: string;
+  reviewer_name?: string;
+  reason?: string;
+  decision_source?: string;
+  submitted_at: string;
+  reviewed_at?: string;
+}
+
 /** raw_content of one inline package attachment, or undefined. */
 export function rawAttachment(
   pkg: PluginPackageWire | undefined,

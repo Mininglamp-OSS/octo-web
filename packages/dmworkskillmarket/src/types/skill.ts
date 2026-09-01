@@ -37,6 +37,57 @@ export interface Skill {
   updatedAt: string;
 }
 
+// ─── Review request types ────────────────────────────────────────────────
+//
+// Review state is an independent entity, never a column on `Skill`: a listed
+// v1 and an in-review v2 coexist, so the card badges are derived at render
+// time by joining the `mode=mine` request list onto the skill list by
+// `pluginId` (see `deriveSkillReviewState` in `utils/review.ts`). Adding a
+// review-status field to `Skill` — or a new member to `Visibility` — would
+// re-introduce the coupling the backend model deliberately avoids. The
+// snake_case wire shape lives in `api/pluginWire.ts`.
+
+export type ReviewStatus = "pending" | "approved" | "rejected" | "canceled";
+export type ReviewKind = "first" | "upgrade";
+export type ReviewListMode = "mine" | "space";
+export type ReviewTargetScope = "space" | "system";
+export type ReviewDecisionSource = "web" | "im";
+
+export interface ReviewRequest {
+  id: string;
+  pluginId: string;
+  pluginName: string;
+  pluginType: string;
+  /** Resolved display URL. The backend runs `plugin_icon` through the same
+   *  icon-resolution path the plugin list uses, on both review reads, so this is
+   *  safe to bind to an `<img src>`. Still optional — a plugin may carry no icon
+   *  — so consumers must keep a letter-avatar fallback. */
+  pluginIconUrl?: string;
+  spaceId: string;
+  targetScope: ReviewTargetScope;
+  status: ReviewStatus;
+  kind: ReviewKind;
+  version: string;
+  currentVersion?: string;
+  changelog?: string;
+  /** Reviewable body extracted from the FROZEN package snapshot: SKILL.md, then
+   *  README.md / AGENTS.md, falling back to the manifest description so
+   *  connectors are not blank. The list endpoint omits it; only the detail read
+   *  populates it. Storage-backed attachments are not fetched on that path, so
+   *  it can still be empty — render the preview section only when non-empty. */
+  readmeContent?: string;
+  manifestHash?: string;
+  pluginHash?: string;
+  applicantId: string;
+  applicantName: string;
+  reviewerId?: string;
+  reviewerName?: string;
+  reason?: string;
+  decisionSource?: ReviewDecisionSource;
+  submittedAt: string;
+  reviewedAt?: string;
+}
+
 export interface SkillListQuery {
   q?: string;
   categoryId?: string;

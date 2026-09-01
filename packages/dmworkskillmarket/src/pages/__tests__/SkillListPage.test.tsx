@@ -112,6 +112,16 @@ describe("SkillListPage", () => {
     vi.mocked(api.getSkillMd).mockResolvedValue(skill.readmeContent);
     vi.mocked(api.updateSkill).mockResolvedValue(skill);
     vi.mocked(api.deleteSkill).mockResolvedValue();
+    // The "我的" variant joins the caller's own review requests onto its rows.
+    // `vi.mock("../../api/skillApi")` auto-stubs `listReviewRequests` to
+    // `undefined`, and `useReviewRequests` deliberately does NOT defend against
+    // that (swallowing it would mask real API-layer bugs), so the page needs a
+    // resolved page here.
+    vi.mocked(api.listReviewRequests).mockResolvedValue({
+      items: [],
+      nextCursor: null,
+      total: 0,
+    });
   });
 
   afterEach(() => {
@@ -135,12 +145,69 @@ describe("SkillListPage", () => {
       await screen.findByRole("row", { name: "meeting-note-cleaner" })
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^安装$/ })).not.toBeInTheDocument();
+    // The fixture is already listed to the org (visibility "space"), so 编辑 is
+    // deliberately withheld: a direct edit would take effect for everyone
+    // immediately and route around review. 删除 stays available.
     expect(
-      screen.getByRole("button", { name: editSkillName })
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: editSkillName })
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: deleteSkillName })
     ).toBeInTheDocument();
+  });
+
+  it("offers 编辑 on a private draft but not on a listed plugin", async () => {
+    // Private draft: nothing is public yet, so a direct edit is safe.
+    vi.mocked(api.getMySkills).mockResolvedValue({
+      items: [{ ...skill, visibility: "private" }],
+      nextCursor: null,
+      total: 1,
+    });
+    const { unmount } = render(<SkillListPage variant="mine" />);
+    expect(
+      await screen.findByRole("row", { name: "meeting-note-cleaner" })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: editSkillName })).toBeInTheDocument();
+    unmount();
+
+    // Listed: the only route to a content change is 发布新版本, which goes
+    // through review.
+    vi.mocked(api.getMySkills).mockResolvedValue({
+      items: [{ ...skill, visibility: "space" }],
+      nextCursor: null,
+      total: 1,
+    });
+    render(<SkillListPage variant="mine" />);
+    expect(
+      await screen.findByRole("row", { name: "meeting-note-cleaner" })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: editSkillName })).not.toBeInTheDocument();
+  });
+
+  it("reads the caller's own review requests on the mine surface only", async () => {
+    const { unmount } = render(<SkillListPage />);
+
+    expect(
+      await screen.findByRole("button", { name: "meeting-note-cleaner 我" })
+    ).toBeInTheDocument();
+    // The public catalog shows no review state, so it must not spend a request
+    // on one — nor hand any review/owner callback to a discovery card.
+    expect(api.listReviewRequests).not.toHaveBeenCalled();
+    unmount();
+
+    render(<SkillListPage variant="mine" />);
+
+    await waitFor(() =>
+      expect(api.listReviewRequests).toHaveBeenCalledWith(
+        "mine",
+        expect.objectContaining({ page: 1 })
+      )
+    );
+    // `mode=mine` is applicant-scoped; the reviewer-only `mode=space` read
+    // belongs to the 组织审核 page and must never fire from here.
+    for (const call of vi.mocked(api.listReviewRequests).mock.calls) {
+      expect(call[0]).toBe("mine");
+    }
   });
 
   it("debounces search by 300ms before reloading the list", async () => {

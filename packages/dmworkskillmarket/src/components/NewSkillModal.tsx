@@ -1,24 +1,51 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, FileArchive, ImagePlus, Loader2, UploadCloud, XCircle } from "lucide-react";
 import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
-import type { Category, NewSkillForm } from "../types/skill";
-import { createSkill, getSkillTags, initUpload, uploadFile, uploadIcon, triggerParse, pollParse } from "../api/skillApi";
+import type { Category, NewSkillForm, Skill } from "../types/skill";
+import { createSkill, createReviewRequest, getSkillTags, initReupload, initUpload, uploadFile, uploadIcon, triggerParse, pollParse } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
+
+type SubmitScope = "private" | "review";
 
 interface NewSkillModalProps {
   visible: boolean;
   categories: Category[];
   onClose: () => void;
-  onCreated: () => void;
+  onCreated: (message?: string) => void;
+  /** If set, opens in "submit review for an existing skill" mode.
+   *  A private draft needs only version + changelog (the plugin row is itself
+   *  the draft). An already-listed skill is an UPGRADE and must also upload the
+   *  new package — that row is the live content, so submitting without new
+   *  content would have the reviewer approve something that already shipped. */
+  reviewSkill?: Skill | null;
+  /** Pre-filled version/changelog for a resubmit after rejection. */
+  reviewInitial?: { version?: string; changelog?: string } | null;
 }
 
-type UploadStage = "idle" | "uploading" | "parsing" | "form" | "error";
+type UploadStage = "idle" | "uploading" | "parsing" | "form" | "review" | "error";
 
 const MAX_ZIP_SIZE = 20 * 1024 * 1024;
 const DEFAULT_CREATE_VERSION = "0.1.0";
 const SKILL_PACKAGE_ACCEPT = ".zip,.skill";
+
+function bumpPatch(ver: string): string {
+  const parts = ver.split(".");
+  if (parts.length < 3) return ver;
+  const patch = parseInt(parts[2], 10);
+  parts[2] = String(isNaN(patch) ? 1 : patch + 1);
+  return parts.join(".");
+}
+
+// The submit button label cycles. Existing tests locate the "create" action
+// with a /创建/ regex, so the private-publish scope must keep the plain
+// `common.create` label; only the review scope swaps to "提交审核".
+function getSubmitLabel(submitScope: SubmitScope): string {
+  return submitScope === "review"
+    ? t("skillMarket.review.submitAction")
+    : t("skillMarket.common.create");
+}
 
 function createReadme(name: string, description: string, version: string): string {
   return `# ${name}\n\n${description}\n\n## Version\n\n${version}\n`;
@@ -31,7 +58,7 @@ function validateZipFile(file: File): string | null {
   return null;
 }
 
-export default function NewSkillModal({ visible, categories, onClose, onCreated }: NewSkillModalProps) {
+export default function NewSkillModal({ visible, categories, onClose, onCreated, reviewSkill, reviewInitial }: NewSkillModalProps) {
   useI18n();
   const selectableCategories = useMemo<Category[]>(
     () => categories.filter((category: Category) => category.id !== "all"),
@@ -58,14 +85,10 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
   const [tagError, setTagError] = useState<string | null>(null);
   const [version, setVersion] = useState(DEFAULT_CREATE_VERSION);
   const [changelog, setChangelog] = useState("");
+  const [submitScope, setSubmitScope] = useState<SubmitScope>("private");
   const [iconPreview, setIconPreview] = useState<string | null>(null);
   const [iconBlob, setIconBlob] = useState<Blob | null>(null);
   const [iconCropFile, setIconCropFile] = useState<File | null>(null);
-  // Every `URL.createObjectURL(blob)` allocates a browser-managed handle
-  // that only the caller can release with `revokeObjectURL`. Without this
-  // effect a user cropping the icon N times leaks N-1 blob URLs (the last
-  // one is still bound to the <img> src). Cleanup runs on preview change
-  // AND on unmount.
   useEffect(() => {
     if (!iconPreview) return;
     return () => URL.revokeObjectURL(iconPreview);
@@ -73,8 +96,26 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState<"busy" | "dirty" | null>(null);
+  // Defect 1 fix: remember a successfully-created plugin id so a retry after a
+  // failed createReviewRequest skips createSkill and only re-submits the
+  // review. The user is told the draft was saved; no orphan is left behind.
+  const [createdPluginId, setCreatedPluginId] = useState<string | null>(null);
 
+  const isReviewMode = Boolean(reviewSkill);
+  // An upgrade is a review submission for a skill that is ALREADY listed to the
+  // org. Its plugin row is the live content, so the submission has to carry the
+  // new package: without it the reviewer would be approving something that
+  // shipped before they ever saw it. A private draft is the other case — nobody
+  // else can see it, so the row is legitimately the thing under review.
+  const isUpgrade = Boolean(reviewSkill && reviewSkill.visibility !== "private");
   const busy = stage === "uploading" || stage === "parsing";
+
+  const reviewDefaultVersion = useMemo(() => {
+    if (reviewInitial?.version) return reviewInitial.version;
+    if (reviewSkill) return bumpPatch(reviewSkill.version);
+    return DEFAULT_CREATE_VERSION;
+  }, [reviewSkill, reviewInitial]);
+
   const dirty = Boolean(
     file ||
     name.trim() ||
@@ -82,9 +123,10 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
     tags.length ||
     tagDraft.trim() ||
     categoryId ||
-    version !== DEFAULT_CREATE_VERSION ||
+    (isReviewMode ? version !== reviewDefaultVersion : version !== DEFAULT_CREATE_VERSION) ||
     changelog.trim() ||
-    iconBlob,
+    iconBlob ||
+    createdPluginId,
   );
 
   function getTagDraftError() {
@@ -97,17 +139,27 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
   }
 
   const tagSubmitError = tagError ?? validateSkillTags(tags) ?? getTagDraftError();
-  const canCreate = Boolean(
-    parseTaskId &&
-    name.trim() &&
-    displayName.trim() &&
-    categoryId &&
-    version.trim() &&
-    changelog.trim() &&
-    !busy &&
-    !saving &&
-    !tagSubmitError,
-  );
+
+  const canCreate = isReviewMode
+    ? Boolean(
+        version.trim() &&
+        changelog.trim() &&
+        // An upgrade cannot be submitted without the new package.
+        (!isUpgrade || parseTaskId) &&
+        !busy &&
+        !saving,
+      )
+    : Boolean(
+        parseTaskId &&
+        name.trim() &&
+        displayName.trim() &&
+        categoryId &&
+        version.trim() &&
+        (submitScope === "private" || changelog.trim()) &&
+        !busy &&
+        !saving &&
+        !tagSubmitError,
+      );
 
   function updateTagSuggestionStyle() {
     const field = tagFieldRef.current;
@@ -152,6 +204,22 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
     if (!visible) reset();
   }, [visible]);
 
+  useEffect(() => {
+    if (!visible || !isReviewMode || !reviewSkill) return;
+    setStage("review");
+    setName(reviewSkill.name);
+    setDisplayName(reviewSkill.displayName || reviewSkill.name);
+    setDescription(reviewSkill.description);
+    setCategoryId(reviewSkill.categoryId);
+    setTags(reviewSkill.tags);
+    setVersion(reviewDefaultVersion);
+    setChangelog(reviewInitial?.changelog ?? "");
+    setIconPreview(reviewSkill.iconUrl || null);
+    setIconBlob(null);
+    setError(null);
+    setSubmitScope("review");
+  }, [visible, isReviewMode, reviewSkill, reviewDefaultVersion, reviewInitial]);
+
   function reset() {
     abortRef.current = true;
     setStage("idle");
@@ -176,7 +244,8 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
     setSaving(false);
     setError(null);
     setConfirmClose(null);
-    // Allow next upload
+    setSubmitScope("private");
+    setCreatedPluginId(null);
     setTimeout(() => { abortRef.current = false; }, 0);
   }
 
@@ -201,7 +270,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
     const validationError = validateZipFile(nextFile);
     setError(validationError);
     if (validationError) {
-      setStage("error");
+      setStage(isReviewMode ? "review" : "error");
       setFile(null);
       setProgress(0);
       return;
@@ -214,30 +283,61 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
     abortRef.current = false;
 
     try {
-      // Step 1: Init upload
-      const { uploadId, presignedUrl, headers } = await initUpload(nextFile.name, nextFile.size);
+      // Same three-step pipeline for both flows; only the init boundary differs.
+      // A review-mode upload is a new package for an existing skill, so it goes
+      // through the reupload init (which binds nothing until import/submit time).
+      const { uploadId, presignedUrl, headers } =
+        isReviewMode && reviewSkill
+          ? await initReupload(reviewSkill.id, nextFile.name, nextFile.size)
+          : await initUpload(nextFile.name, nextFile.size);
       if (abortRef.current) return;
 
-      // Step 2: Upload the file
       await uploadFile(presignedUrl, nextFile, headers, (percent) => {
         if (!abortRef.current) setProgress(percent);
       });
       if (abortRef.current) return;
 
-      // Step 3: Trigger parse
       setStage("parsing");
       const { taskId } = await triggerParse(uploadId);
       if (abortRef.current) return;
 
-      // Step 4: Poll parse status
       let attempts = 0;
-      const maxAttempts = 60; // 60s max
+      const maxAttempts = 60;
       while (attempts < maxAttempts) {
         if (abortRef.current) return;
         const status = await pollParse(taskId);
         if (abortRef.current) return;
 
         if (status.status === "success" && status.result) {
+          // Review mode reuses this one pipeline rather than bolting on a second
+          // uploader. The difference is what the parse result is allowed to
+          // touch: an upgrade keeps the existing skill's identity and metadata
+          // (the reviewer is deciding on a new version of a known skill), so
+          // only the parse task and the version/changelog inputs move.
+          if (isReviewMode && reviewSkill) {
+            if (status.result.name !== reviewSkill.name) {
+              setStage("review");
+              setFile(null);
+              setParseTaskId(null);
+              setError(
+                t("skillMarket.upload.nameMismatch", {
+                  values: { expected: reviewSkill.name, actual: status.result.name },
+                }),
+              );
+              return;
+            }
+            setParseTaskId(taskId);
+            // Respect a version the author actually bumped in the package, but
+            // never adopt one equal to what is already live — the backend
+            // rejects a republished version label, so keep the suggested bump
+            // and let the user override it by hand.
+            if (status.result.version && status.result.version !== reviewSkill.version) {
+              setVersion(status.result.version);
+            }
+            setStage("review");
+            setError(null);
+            return;
+          }
           setParseTaskId(taskId);
           setName(status.result.name);
           setDescription(status.result.description);
@@ -250,20 +350,18 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
           return;
         }
         if (status.status === "failed") {
-          setStage("error");
+          setStage(isReviewMode ? "review" : "error");
           setError(status.error?.message ?? t("skillMarket.upload.parseFailed"));
           return;
         }
-        // Still pending/parsing — wait 1s and retry
         await new Promise((resolve) => setTimeout(resolve, 1000));
         attempts++;
       }
-      // Timeout
-      setStage("error");
+      setStage(isReviewMode ? "review" : "error");
       setError(t("skillMarket.upload.parseTimeout"));
     } catch (err) {
       if (!abortRef.current) {
-        setStage("error");
+        setStage(isReviewMode ? "review" : "error");
         setError(err instanceof Error ? err.message : t("skillMarket.upload.uploadFailed"));
       }
     }
@@ -311,7 +409,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
   }
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || isReviewMode) return;
     const query = tagDraft.trim();
     if (!query || tags.length >= MAX_SKILL_TAGS || validateSkillTag(query)) {
       setTagSuggestions([]);
@@ -343,7 +441,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [tagDraft, tags, visible]);
+  }, [tagDraft, tags, visible, isReviewMode]);
 
   useLayoutEffect(() => {
     if (!tagSuggestOpen || tagSuggestions.length === 0) return;
@@ -358,8 +456,46 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
   }, [tagSuggestOpen, tagSuggestions.length]);
 
   async function submit() {
-    if (!displayName.trim() || !categoryId || !version.trim() || !changelog.trim()) {
+    if (isReviewMode) {
+      if (!reviewSkill || !version.trim() || !changelog.trim()) {
+        setError(t("skillMarket.review.versionAndChangelogRequired"));
+        return;
+      }
+      // The content requirement for an upgrade is enforced here as well as in
+      // `canCreate`: the backend rejects a contentless upgrade, and a local
+      // message is clearer than surfacing that rejection.
+      if (isUpgrade && !parseTaskId) {
+        setError(t("skillMarket.review.packageRequired"));
+        return;
+      }
+      setSaving(true);
+      setError(null);
+      try {
+        await createReviewRequest({
+          pluginId: reviewSkill.id,
+          version: version.trim(),
+          changelog: changelog.trim(),
+          // Omit entirely for a private draft — the plugin row IS the draft, so
+          // there is no separate content to freeze.
+          ...(parseTaskId ? { parseTaskId } : {}),
+        });
+        reset();
+        onCreated(t("skillMarket.review.submittedToast"));
+        onClose();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t("skillMarket.review.submitFailed"));
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    if (!displayName.trim() || !categoryId || !version.trim()) {
       setError(t("skillMarket.form.validationRequired"));
+      return;
+    }
+    if (submitScope === "review" && !changelog.trim()) {
+      setError(t("skillMarket.review.changelogRequired"));
       return;
     }
     if (!parseTaskId) {
@@ -387,25 +523,72 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
         const iconUploadId = await uploadIcon(iconBlob);
         iconUrl = iconUploadId;
       }
-      const form: NewSkillForm = {
-        parseTaskId,
-        name,
-        displayName,
-        description,
-        categoryId,
-        tags: submittedTags,
-        visibility: "space",
-        version,
-        changelog,
-        readmeContent: createReadme(name, description, version),
-        iconUrl,
-        fileName: file?.name ?? "",
-        fileSize: file?.size ?? 0,
-      };
-      await createSkill(form);
-      reset();
-      onCreated();
-      onClose();
+
+      if (submitScope === "review") {
+        // Defect 1 fix: if we already created the plugin on a prior attempt
+        // (and only the review submission failed), skip createSkill and go
+        // straight to submit. Remember the id across retries.
+        let pluginId = createdPluginId;
+        if (!pluginId) {
+          const form: NewSkillForm = {
+            parseTaskId,
+            name,
+            displayName,
+            description,
+            categoryId,
+            tags: submittedTags,
+            visibility: "private",
+            version,
+            changelog,
+            readmeContent: createReadme(name, description, version),
+            iconUrl,
+            fileName: file?.name ?? "",
+            fileSize: file?.size ?? 0,
+          };
+          const created = await createSkill(form);
+          pluginId = created.id;
+          setCreatedPluginId(pluginId);
+        }
+        try {
+          // A fresh create lands as a private draft, so this is `kind=first`:
+          // the plugin row is the draft the reviewer will look at, and the
+          // content fields are deliberately omitted.
+          await createReviewRequest({ pluginId, version, changelog });
+        } catch (reviewErr) {
+          // Plugin was saved; tell the user clearly so they understand why
+          // a retry doesn't create a duplicate.
+          setError(
+            (reviewErr instanceof Error ? reviewErr.message : t("skillMarket.review.submitFailed")) +
+              " " +
+              t("skillMarket.review.draftSavedHint"),
+          );
+          setSaving(false);
+          return;
+        }
+        reset();
+        onCreated(t("skillMarket.review.submittedToast"));
+        onClose();
+      } else {
+        const form: NewSkillForm = {
+          parseTaskId,
+          name,
+          displayName,
+          description,
+          categoryId,
+          tags: submittedTags,
+          visibility: "private",
+          version,
+          changelog: changelog || t("skillMarket.form.initialChangelog"),
+          readmeContent: createReadme(name, description, version),
+          iconUrl,
+          fileName: file?.name ?? "",
+          fileSize: file?.size ?? 0,
+        };
+        await createSkill(form);
+        reset();
+        onCreated();
+        onClose();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : t("skillMarket.form.createFailed"));
     } finally {
@@ -413,18 +596,33 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
     }
   }
 
+  const modalTitle = isReviewMode
+    ? reviewSkill && reviewSkill.visibility !== "private"
+      ? t("skillMarket.review.publishNewVersion")
+      : t("skillMarket.review.submitAction")
+    : t("skillMarket.form.createTitle");
+  const submitLabel = isReviewMode
+    ? t("skillMarket.review.submitAction")
+    : getSubmitLabel(submitScope);
+
+  // Changelog is required when scope is "review"; hide the asterisk and relax
+  // required styling for the private scope (changelog remains pre-filled with
+  // initialChangelog so the backend gets a value, but user isn't forced to
+  // edit it).
+  const changelogRequired = isReviewMode || submitScope === "review";
+
   return (
     <>
       <WKModal
         visible={visible}
         onCancel={requestClose}
-        title={t("skillMarket.form.createTitle")}
+        title={modalTitle}
         size="lg"
         className="skill-market-workflow-modal"
         footer={
           <>
             <WKButton variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</WKButton>
-            <WKButton variant="primary" onClick={() => void submit()} loading={saving} disabled={!canCreate}>{t("skillMarket.common.create")}</WKButton>
+            <WKButton variant="primary" onClick={() => void submit()} loading={saving} disabled={!canCreate}>{submitLabel}</WKButton>
           </>
         }
       >
@@ -435,41 +633,99 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
               <span>{error}</span>
             </div>
           )}
-          <div
-            className={file ? "skill-market-upload-file" : "skill-market-upload-file skill-market-upload-file--empty"}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => {
-              event.preventDefault();
-              if (busy) return;
-              const dropped = event.dataTransfer.files?.[0];
-              if (dropped) startUpload(dropped);
-            }}
-          >
-            {file ? <FileArchive size={18} /> : <UploadCloud size={18} />}
-            <div>
-              <strong>{file?.name ?? t("skillMarket.upload.dropzoneTitle")}</strong>
-              <span>
-                {file
-                  ? (parseTaskId
-                    ? t("skillMarket.upload.parsedWithName", { values: { name } })
-                    : stage === "parsing"
-                      ? t("skillMarket.upload.parsing")
-                      : t("skillMarket.upload.uploading"))
-                  : t("skillMarket.upload.parseAutofillHint")}
+
+          {isReviewMode && reviewSkill && (
+            <div className="skill-market-review-info">
+              <span className="skill-market-card__icon" style={{ width: 32, height: 32 }}>
+                {reviewSkill.iconUrl ? (
+                  <img src={reviewSkill.iconUrl} alt="" style={{ width: 32, height: 32, borderRadius: 6 }} />
+                ) : (
+                  <span
+                    style={{
+                      background: getSkillAvatarColor(reviewSkill.name),
+                      width: 32,
+                      height: 32,
+                      borderRadius: 6,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: "#fff",
+                    }}
+                  >
+                    {getSkillAvatarText(reviewSkill.name)}
+                  </span>
+                )}
               </span>
+              <div>
+                <strong>{reviewSkill.displayName || reviewSkill.name}</strong>
+                <span>
+                  {/* The wording has to be honest about what a submission does.
+                      For an upgrade the listed version stays live until the new
+                      one is approved; for a first listing nothing is public yet. */}
+                  {isUpgrade
+                    ? t("skillMarket.review.upgradeSkillHint", {
+                        values: { version: reviewSkill.version },
+                      })
+                    : t("skillMarket.review.submitSkillHint", {
+                        values: { version: reviewSkill.version },
+                      })}
+                </span>
+              </div>
             </div>
-            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={busy}>
-              {file ? t("skillMarket.upload.reuploadShort") : t("skillMarket.upload.selectFileAction")}
-            </button>
-            <input
-              ref={fileInputRef}
-              aria-label={t("skillMarket.upload.selectFileAriaLabel")}
-              className="skill-market-upload-file__input"
-              type="file"
-              accept={SKILL_PACKAGE_ACCEPT}
-              onChange={handleFileChange}
-            />
-          </div>
+          )}
+
+          {(!isReviewMode || isUpgrade) && (
+            <div
+              className={file ? "skill-market-upload-file" : "skill-market-upload-file skill-market-upload-file--empty"}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                if (busy) return;
+                const dropped = event.dataTransfer.files?.[0];
+                if (dropped) startUpload(dropped);
+              }}
+            >
+              {file ? <FileArchive size={18} /> : <UploadCloud size={18} />}
+              <div>
+                <strong>
+                  {file?.name ??
+                    (isUpgrade
+                      ? t("skillMarket.review.newPackageTitle")
+                      : t("skillMarket.upload.dropzoneTitle"))}
+                </strong>
+                <span>
+                  {file
+                    ? (parseTaskId
+                      ? (isUpgrade
+                        ? t("skillMarket.upload.newVersionParsedWithName", { values: { name } })
+                        : t("skillMarket.upload.parsedWithName", { values: { name } }))
+                      : stage === "parsing"
+                        ? t("skillMarket.upload.parsing")
+                        : t("skillMarket.upload.uploading"))
+                    : isUpgrade
+                      ? t("skillMarket.review.newPackageHint")
+                      : t("skillMarket.upload.parseAutofillHint")}
+                </span>
+              </div>
+              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={busy}>
+                {file ? t("skillMarket.upload.reuploadShort") : t("skillMarket.upload.selectFileAction")}
+              </button>
+              <input
+                ref={fileInputRef}
+                aria-label={
+                  isUpgrade
+                    ? t("skillMarket.upload.selectNewFileAriaLabel")
+                    : t("skillMarket.upload.selectFileAriaLabel")
+                }
+                className="skill-market-upload-file__input"
+                type="file"
+                accept={SKILL_PACKAGE_ACCEPT}
+                onChange={handleFileChange}
+              />
+            </div>
+          )}
           {stage === "uploading" && (
             <div className="skill-market-upload-status">
               <div className="skill-market-upload-status__line">
@@ -488,152 +744,206 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
             </div>
           )}
 
-          <div className="skill-market-form__version-section">
-            <h3 className="skill-market-form__section-title">{t("skillMarket.form.versionSection")}</h3>
-            <div className="skill-market-form__row">
-              <label>
-                <span>{t("skillMarket.form.versionLabel")}<i className="skill-market-required">*</i></span>
-                <WKInput value={version} onChange={setVersion} placeholder={t("skillMarket.form.versionPlaceholder")} />
-              </label>
-              <label>
-                <span>{t("skillMarket.form.changelogLabel")}<i className="skill-market-required">*</i></span>
-                <WKInput value={changelog} onChange={setChangelog} placeholder={t("skillMarket.form.changelogPlaceholder")} />
-              </label>
-            </div>
-          </div>
+          {isReviewMode && reviewSkill && (
+            <p className="skill-market-review-notice">
+              {isUpgrade
+                ? t("skillMarket.review.upgradeNotice", {
+                    values: { version: reviewSkill.version },
+                  })
+                : t("skillMarket.review.firstListingNotice")}
+            </p>
+          )}
 
-          <h3 className="skill-market-form__section-title">{t("skillMarket.form.basicInfoSection")}</h3>
-
-          <div className="skill-market-form__icon-row">
-            <button
-              type="button"
-              className="skill-market-icon-upload"
-              title={t("skillMarket.form.uploadIcon")}
-              onClick={handleIconClick}
-              aria-label={t("skillMarket.form.uploadIcon")}
-            >
-              {iconPreview ? (
-                <img src={iconPreview} alt="icon" />
-              ) : name ? (
-                <span
-                  className="skill-market-icon-upload__default"
-                  style={{ background: getSkillAvatarColor(name) }}
-                >
-                  {getSkillAvatarText(name)}
-                </span>
-              ) : (
-                <ImagePlus size={24} />
-              )}
-            </button>
-            <input
-              ref={iconInputRef}
-              className="skill-market-icon-upload__input"
-              type="file"
-              accept="image/*"
-              multiple={false}
-              onClick={handleIconInputClick}
-              onChange={handleIconFileChange}
-            />
-            <label>
-              <span>{t("skillMarket.form.displayName")}<i className="skill-market-required">*</i></span>
-              <WKInput value={displayName} onChange={(v: string) => setDisplayName(v.slice(0, 20))} placeholder={t("skillMarket.form.displayNamePlaceholder")} maxLength={20} />
-            </label>
-          </div>
-          <div className="skill-market-form__row">
-            <label>
-              <span>{t("skillMarket.form.category")}<i className="skill-market-required">*</i></span>
-              <select aria-label={t("skillMarket.form.category")} value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
-                <option value="">{t("skillMarket.form.categoryPlaceholder")}</option>
-                {selectableCategories.map((category) => (
-                  <option key={category.id} value={category.id}>{category.name}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>{t("skillMarket.form.tags")}</span>
-              <div className="skill-market-tag-field" ref={tagFieldRef}>
-                <div className="skill-market-tag-input">
-                  {tags.map((tag) => (
-                    <button key={tag} type="button" onClick={() => setTags(tags.filter((item) => item !== tag))}>
-                      <span className="skill-market-tag-input__text" title={tag}>{tag}</span>
-                      <XCircle size={12} />
-                    </button>
-                  ))}
-                  <input
-                    value={tagDraft}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      setTagDraft(next);
-                      setTagError(validateSkillTag(next));
-                    }}
-                    onFocus={() => setTagSuggestOpen(tagSuggestions.length > 0)}
-                    onKeyDown={(event) => {
-                      if (event.key === "ArrowDown" && tagSuggestions.length) {
-                        event.preventDefault();
-                        setTagSuggestOpen(true);
-                        setActiveTagSuggestion((current) => (current + 1) % tagSuggestions.length);
-                        return;
-                      }
-                      if (event.key === "ArrowUp" && tagSuggestions.length) {
-                        event.preventDefault();
-                        setTagSuggestOpen(true);
-                        setActiveTagSuggestion((current) => (current - 1 + tagSuggestions.length) % tagSuggestions.length);
-                        return;
-                      }
-                      if (event.key === "Escape") {
-                        setTagSuggestOpen(false);
-                        return;
-                      }
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        if (tagSuggestOpen && tagSuggestions[activeTagSuggestion]) {
-                          addTagValue(tagSuggestions[activeTagSuggestion]);
-                        } else {
-                          addTag();
-                        }
-                      }
-                    }}
-                    onBlur={addTag}
-                    placeholder={t("skillMarket.form.tagPlaceholder")}
-                    aria-label={t("skillMarket.form.tags")}
-                    aria-autocomplete="list"
-                    aria-expanded={tagSuggestOpen}
-                    aria-describedby={(tagSubmitError || tags.length >= MAX_SKILL_TAGS) ? "skill-market-tag-hint" : undefined}
+          {(stage === "form" || stage === "review" || isReviewMode) && (
+            <div className="skill-market-form__version-section">
+              <h3 className="skill-market-form__section-title">{t("skillMarket.form.versionSection")}</h3>
+              <div className="skill-market-form__row">
+                <label>
+                  <span>{t("skillMarket.form.versionLabel")}<i className="skill-market-required">*</i></span>
+                  <WKInput value={version} onChange={setVersion} placeholder={t("skillMarket.form.versionPlaceholder")} />
+                </label>
+                <label>
+                  <span>{t("skillMarket.form.changelogLabel")}{changelogRequired && <i className="skill-market-required">*</i>}</span>
+                  <WKInput
+                    value={changelog}
+                    onChange={setChangelog}
+                    placeholder={t("skillMarket.review.changelogPlaceholder")}
                   />
-                </div>
-                {(tagSubmitError || tags.length >= MAX_SKILL_TAGS) && (
-                  <small id="skill-market-tag-hint" className={tagSubmitError ? "skill-market-tag-hint is-error" : "skill-market-tag-hint"}>
-                    {tagSubmitError ?? t("skillMarket.form.tagLimit", { values: { count: MAX_SKILL_TAGS } })}
-                  </small>
-                )}
-                {tagSuggestOpen && tagSuggestions.length > 0 && (
-                  <div
-                    className="skill-market-tag-suggestions"
-                    role="listbox"
-                    aria-label={t("skillMarket.form.tagSuggestions")}
-                    style={tagSuggestionStyle}
-                  >
-                    {tagSuggestions.map((tag, index) => (
-                      <button
-                        key={tag}
-                        type="button"
-                        role="option"
-                        aria-selected={index === activeTagSuggestion}
-                        className={index === activeTagSuggestion ? "is-active" : ""}
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          addTagValue(tag);
-                        }}
-                        onMouseEnter={() => setActiveTagSuggestion(index)}
-                      >
-                        {tag}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                </label>
               </div>
-            </label>
-          </div>
+            </div>
+          )}
+
+          {!isReviewMode && stage === "form" && (
+            <div className="skill-market-form__scope-section">
+              <h3 className="skill-market-form__section-title">{t("skillMarket.review.scopeSection")}</h3>
+              <div className="skill-market-scope-options">
+                <label className={submitScope === "review" ? "is-selected" : ""}>
+                  <input
+                    type="radio"
+                    name="submit-scope"
+                    value="review"
+                    checked={submitScope === "review"}
+                    onChange={() => setSubmitScope("review")}
+                  />
+                  <div>
+                    <strong>{t("skillMarket.review.scopeReviewLabel")}</strong>
+                    <span>{t("skillMarket.review.scopeReviewHint")}</span>
+                  </div>
+                </label>
+                <label className={submitScope === "private" ? "is-selected" : ""}>
+                  <input
+                    type="radio"
+                    name="submit-scope"
+                    value="private"
+                    checked={submitScope === "private"}
+                    onChange={() => setSubmitScope("private")}
+                  />
+                  <div>
+                    <strong>{t("skillMarket.review.scopePrivateLabel")}</strong>
+                    <span>{t("skillMarket.review.scopePrivateHint")}</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {!isReviewMode && stage === "form" && (
+            <>
+              <h3 className="skill-market-form__section-title">{t("skillMarket.form.basicInfoSection")}</h3>
+
+              <div className="skill-market-form__icon-row">
+                <button
+                  type="button"
+                  className="skill-market-icon-upload"
+                  title={t("skillMarket.form.uploadIcon")}
+                  onClick={handleIconClick}
+                  aria-label={t("skillMarket.form.uploadIcon")}
+                >
+                  {iconPreview ? (
+                    <img src={iconPreview} alt="icon" />
+                  ) : name ? (
+                    <span
+                      className="skill-market-icon-upload__default"
+                      style={{ background: getSkillAvatarColor(name) }}
+                    >
+                      {getSkillAvatarText(name)}
+                    </span>
+                  ) : (
+                    <ImagePlus size={24} />
+                  )}
+                </button>
+                <input
+                  ref={iconInputRef}
+                  className="skill-market-icon-upload__input"
+                  type="file"
+                  accept="image/*"
+                  multiple={false}
+                  onClick={handleIconInputClick}
+                  onChange={handleIconFileChange}
+                />
+                <label>
+                  <span>{t("skillMarket.form.displayName")}<i className="skill-market-required">*</i></span>
+                  <WKInput value={displayName} onChange={(v: string) => setDisplayName(v.slice(0, 20))} placeholder={t("skillMarket.form.displayNamePlaceholder")} maxLength={20} />
+                </label>
+              </div>
+              <div className="skill-market-form__row">
+                <label>
+                  <span>{t("skillMarket.form.category")}<i className="skill-market-required">*</i></span>
+                  <select aria-label={t("skillMarket.form.category")} value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
+                    <option value="">{t("skillMarket.form.categoryPlaceholder")}</option>
+                    {selectableCategories.map((category) => (
+                      <option key={category.id} value={category.id}>{category.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>{t("skillMarket.form.tags")}</span>
+                  <div className="skill-market-tag-field" ref={tagFieldRef}>
+                    <div className="skill-market-tag-input">
+                      {tags.map((tag) => (
+                        <button key={tag} type="button" onClick={() => setTags(tags.filter((item) => item !== tag))}>
+                          <span className="skill-market-tag-input__text" title={tag}>{tag}</span>
+                          <XCircle size={12} />
+                        </button>
+                      ))}
+                      <input
+                        value={tagDraft}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          setTagDraft(next);
+                          setTagError(validateSkillTag(next));
+                        }}
+                        onFocus={() => setTagSuggestOpen(tagSuggestions.length > 0)}
+                        onKeyDown={(event) => {
+                          if (event.key === "ArrowDown" && tagSuggestions.length) {
+                            event.preventDefault();
+                            setTagSuggestOpen(true);
+                            setActiveTagSuggestion((current) => (current + 1) % tagSuggestions.length);
+                            return;
+                          }
+                          if (event.key === "ArrowUp" && tagSuggestions.length) {
+                            event.preventDefault();
+                            setTagSuggestOpen(true);
+                            setActiveTagSuggestion((current) => (current - 1 + tagSuggestions.length) % tagSuggestions.length);
+                            return;
+                          }
+                          if (event.key === "Escape") {
+                            setTagSuggestOpen(false);
+                            return;
+                          }
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            if (tagSuggestOpen && tagSuggestions[activeTagSuggestion]) {
+                              addTagValue(tagSuggestions[activeTagSuggestion]);
+                            } else {
+                              addTag();
+                            }
+                          }
+                        }}
+                        onBlur={addTag}
+                        placeholder={t("skillMarket.form.tagPlaceholder")}
+                        aria-label={t("skillMarket.form.tags")}
+                        aria-autocomplete="list"
+                        aria-expanded={tagSuggestOpen}
+                        aria-describedby={(tagSubmitError || tags.length >= MAX_SKILL_TAGS) ? "skill-market-tag-hint" : undefined}
+                      />
+                    </div>
+                    {(tagSubmitError || tags.length >= MAX_SKILL_TAGS) && (
+                      <small id="skill-market-tag-hint" className={tagSubmitError ? "skill-market-tag-hint is-error" : "skill-market-tag-hint"}>
+                        {tagSubmitError ?? t("skillMarket.form.tagLimit", { values: { count: MAX_SKILL_TAGS } })}
+                      </small>
+                    )}
+                    {tagSuggestOpen && tagSuggestions.length > 0 && (
+                      <div
+                        className="skill-market-tag-suggestions"
+                        role="listbox"
+                        aria-label={t("skillMarket.form.tagSuggestions")}
+                        style={tagSuggestionStyle}
+                      >
+                        {tagSuggestions.map((tag, index) => (
+                          <button
+                            key={tag}
+                            type="button"
+                            role="option"
+                            aria-selected={index === activeTagSuggestion}
+                            className={index === activeTagSuggestion ? "is-active" : ""}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              addTagValue(tag);
+                            }}
+                            onMouseEnter={() => setActiveTagSuggestion(index)}
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </label>
+              </div>
+            </>
+          )}
         </section>
       </WKModal>
       <IconCropModal

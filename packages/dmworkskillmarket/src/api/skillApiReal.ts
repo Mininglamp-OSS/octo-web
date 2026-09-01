@@ -15,6 +15,12 @@ import type {
   PagedResult,
   ParseStatusResult,
   RawSkillTag,
+  ReviewDecisionSource,
+  ReviewKind,
+  ReviewListMode,
+  ReviewRequest,
+  ReviewStatus,
+  ReviewTargetScope,
   Skill,
   SkillListQuery,
   SkillSort,
@@ -32,6 +38,7 @@ import {
   type PluginDetailPluginWire,
   type PluginDetailWire,
   type PluginListItemWire,
+  type PluginReviewRequestWire,
 } from "./pluginWire";
 
 interface SuccessEnvelope<T> {
@@ -860,4 +867,201 @@ export function listVersions(skillId: string): Promise<SkillVersion[]> {
   return request<PluginVersionWire[] | null>(
     `/plugins/versions?plugin_id=${encodeURIComponent(skillId)}`
   ).then((items) => (items ?? []).map(mapVersion));
+}
+
+// ─── Review requests ─────────────────────────────────────────────────────
+//
+// Six endpoints under `/plugins/review_requests`. Note the asymmetric response
+// shapes: create/get return a review request, `approve` returns the updated
+// *plugin detail* and reject/cancel return an empty object — so only the first
+// two map to `ReviewRequest`. The decision calls resolve to `void`; callers
+// refresh the list, which is the authoritative post-decision state anyway
+// (a concurrent decision by another admin can win the CAS race server-side).
+
+function mapReviewRequest(raw: PluginReviewRequestWire): ReviewRequest {
+  return {
+    id: raw.review_id,
+    pluginId: raw.plugin_id,
+    pluginName: raw.plugin_name ?? "",
+    pluginType: raw.plugin_type ?? "",
+    // Backend defect: `plugin_icon` is the raw storage key, not a presigned
+    // display URL like `PluginListItemWire.icon_url`. Mapped through as-is so
+    // the field is not silently lost, but a consumer MUST keep the letter-avatar
+    // fallback — an <img src> on this value 404s today.
+    pluginIconUrl: raw.plugin_icon,
+    spaceId: raw.space_id,
+    targetScope: raw.target_scope as ReviewTargetScope,
+    status: raw.status as ReviewStatus,
+    kind: raw.kind as ReviewKind,
+    version: raw.version,
+    currentVersion: raw.current_version,
+    changelog: raw.changelog,
+    readmeContent: raw.readme_content,
+    manifestHash: raw.manifest_hash,
+    pluginHash: raw.plugin_hash,
+    applicantId: raw.applicant_id,
+    applicantName: raw.applicant_name ?? "",
+    reviewerId: raw.reviewer_id,
+    reviewerName: raw.reviewer_name,
+    reason: raw.reason,
+    decisionSource: raw.decision_source as ReviewDecisionSource | undefined,
+    submittedAt: raw.submitted_at,
+    reviewedAt: raw.reviewed_at,
+  };
+}
+
+/** One relation to freeze alongside the submitted content. */
+export interface ReviewRelationInput {
+  targetPluginId: string;
+  relationType: string;
+  sortOrder?: number;
+}
+
+/**
+ * Input for `POST /plugins/review_requests`.
+ *
+ * The version label and changelog are always caller-supplied. The content
+ * fields are what makes an *upgrade* submission honest: for a plugin already
+ * listed to the org the plugin row IS the live content, so freezing "whatever
+ * is on the row" would mean the reviewer approves something that already
+ * shipped. An upgrade therefore carries the new content, which lands in the
+ * frozen snapshot and does not touch the live plugin until approval.
+ *
+ * A first-listing submission (`kind=first`) is the opposite case: the plugin is
+ * a private draft that nobody else can see, so the row is itself the draft and
+ * the content fields are omitted.
+ */
+export interface CreateReviewRequestInput {
+  pluginId: string;
+  version: string;
+  changelog: string;
+  /**
+   * Parse task of the freshly uploaded package. This is the authoritative
+   * content source for a skill upgrade: only the server can turn the verified
+   * zip into the canonical attachment tree (text inline, binaries spilled to
+   * managed object keys), so the client must NOT try to author `pluginJson`
+   * from a parse result — doing so would silently drop every non-SKILL.md file
+   * from the snapshot the reviewer approves.
+   */
+  parseTaskId?: string;
+  /** Declared manifest document of the submitted content. */
+  manifestJson?: unknown;
+  /** Declared package document; only callers holding a real attachment tree
+   *  (not a parse task) can supply this. */
+  pluginJson?: unknown;
+  relations?: ReviewRelationInput[];
+}
+
+/** Submit a plugin for Space review. `kind` (first vs upgrade) is still derived
+ *  server-side from the plugin's current visibility; the frozen snapshot comes
+ *  from the submitted content when present and from the plugin row otherwise.
+ *  409 CONFLICT when a request is already pending or the version label is
+ *  already published; 404 NOT_FOUND when the caller does not own the plugin.
+ *
+ *  Absent content fields are omitted from the JSON body entirely rather than
+ *  sent as `null` — a `null` manifest is a request to freeze an empty document,
+ *  which is not the same thing as "no content supplied". */
+export function createReviewRequest(
+  input: CreateReviewRequestInput
+): Promise<ReviewRequest> {
+  const body: Record<string, unknown> = {
+    plugin_id: input.pluginId,
+    version: input.version,
+    changelog: input.changelog,
+  };
+  if (input.parseTaskId !== undefined) body.parse_task_id = input.parseTaskId;
+  if (input.manifestJson !== undefined) body.manifest_json = input.manifestJson;
+  if (input.pluginJson !== undefined) body.plugin_json = input.pluginJson;
+  if (input.relations !== undefined) {
+    body.relations = input.relations.map((relation) => ({
+      target_plugin_id: relation.targetPluginId,
+      relation_type: relation.relationType,
+      ...(relation.sortOrder !== undefined
+        ? { sort_order: relation.sortOrder }
+        : {}),
+    }));
+  }
+  return request<PluginReviewRequestWire>("/plugins/review_requests", {
+    method: "POST",
+    body: JSON.stringify(body),
+  }).then(mapReviewRequest);
+}
+
+export interface ReviewListParams {
+  status?: ReviewStatus;
+  page?: number;
+  pageSize?: number;
+  signal?: AbortSignal;
+}
+
+/** List review requests. `mode` is required by the server: `mine` is
+ *  applicant-scoped, `space` is the reviewer queue and 403s for non-admins.
+ *  These endpoints take no `scene_code`/`plugin_type`, so they deliberately do
+ *  NOT go through `buildPluginListParams` — review covers every plugin type. */
+export function listReviewRequests(
+  mode: ReviewListMode,
+  params?: ReviewListParams
+): Promise<PagedResult<ReviewRequest>> {
+  const search = new URLSearchParams();
+  search.set("mode", mode);
+  if (params?.status) search.set("status", params.status);
+  search.set(
+    "page",
+    String(cursorToPage(params?.page === undefined ? undefined : String(params.page)))
+  );
+  if (params?.pageSize) search.set("page_size", String(params.pageSize));
+  return requestEnvelope<PluginReviewRequestWire[] | null>(
+    `/plugins/review_requests?${search.toString()}`,
+    params?.signal ? { signal: params.signal } : undefined
+  ).then(({ data, pagination }) => {
+    const items = (data ?? []).map(mapReviewRequest);
+    const page = pagination?.page ?? params?.page ?? 1;
+    const pageSize = pagination?.page_size ?? params?.pageSize ?? 20;
+    const total = pagination?.total ?? items.length;
+    return {
+      items,
+      // Same offset→opaque-cursor synthesis as the plugin list.
+      nextCursor: page * pageSize < total ? String(page + 1) : null,
+      total,
+    };
+  });
+}
+
+/** Fetch one request, including `readme_content` (the frozen SKILL.md preview
+ *  the list endpoint omits — today the server always returns "", so callers
+ *  must treat the preview as optional). Cross-Space access is NOT_FOUND. */
+export function getReviewRequest(id: string): Promise<ReviewRequest> {
+  return request<PluginReviewRequestWire>(
+    `/plugins/review_requests/${encodeURIComponent(id)}`
+  ).then(mapReviewRequest);
+}
+
+/** Approve (reviewer only). Responds with the updated plugin detail, which the
+ *  UI does not consume — it refreshes instead. 403 without the reviewer role,
+ *  409 when another admin already decided. */
+export function approveReview(id: string): Promise<void> {
+  return request<unknown>(
+    `/plugins/review_requests/${encodeURIComponent(id)}/approve`,
+    { method: "POST" }
+  ).then(() => undefined);
+}
+
+/** Reject (reviewer only). `reason` is required, non-empty and ≤1000 chars
+ *  server-side; a violation comes back as 400 VALIDATION_ERROR. */
+export function rejectReview(id: string, reason: string): Promise<void> {
+  return request<unknown>(
+    `/plugins/review_requests/${encodeURIComponent(id)}/reject`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }
+  ).then(() => undefined);
+}
+
+/** Withdraw a pending request. Applicant only; reviewers reject instead. */
+export function cancelReview(id: string): Promise<void> {
+  return request<unknown>(
+    `/plugins/review_requests/${encodeURIComponent(id)}/cancel`,
+    { method: "POST" }
+  ).then(() => undefined);
 }

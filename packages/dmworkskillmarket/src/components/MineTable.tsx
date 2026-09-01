@@ -1,22 +1,36 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Building2,
+  Clock,
   Globe,
   Lock,
   Pencil,
   Plug,
   Sparkles,
   Trash2,
+  Upload,
   UserRound,
   Users,
+  XCircle,
 } from "lucide-react";
 import { t } from "@octo/base";
+import type { ReviewRequest } from "../types/skill";
 import { formatCount } from "../utils/format";
 
 /** The four personal-asset kinds shown in "我的发布". The type marker in the
  *  bottom-right of each row's avatar disambiguates them (the tabs are per-type
  *  today, but the marker keeps the row self-describing and matches the design). */
 export type MineAssetType = "skill" | "connector" | "expert" | "squad";
+
+/** Derived review badge for an owner row. `state` is the union of visibility
+ *  and the latest pending/rejected review attached to the plugin (computed by
+ *  the page from `deriveSkillReviewState`); the table just renders it. */
+export type MineReviewBadge =
+  | "private"
+  | "pending"
+  | "pending-upgrade"
+  | "rejected"
+  | "live";
 
 /** One normalized "我的发布" row. Each market page maps its own list item
  *  (Skill / McpListItem / ExpertItem) onto this shape and builds the avatar node
@@ -47,6 +61,23 @@ export interface MineRow {
    *  namespaced "编辑 {name}" / "删除 {name}" so the button name carries the item. */
   editAria?: string;
   deleteAria?: string;
+  /** ── Review state (owner-view only). Absent on non-owner rows and on
+   *  market packages (mcp / experts) that don't participate in the skill
+   *  review flow. */
+  reviewBadge?: MineReviewBadge;
+  /** Rejection reason, surfaced as a title / tooltip on the 已拒绝 badge. */
+  rejectReason?: string;
+  /** Callbacks gated by the page on the derived state; the table only renders
+   *  a button when its callback is present, matching the existing edit/delete
+   *  idiom. */
+  onSubmitReview?: () => void;
+  onCancelReview?: () => void;
+  onResubmit?: () => void;
+  onPublishVersion?: () => void;
+  submitReviewAria?: string;
+  cancelReviewAria?: string;
+  resubmitAria?: string;
+  publishVersionAria?: string;
 }
 
 interface MineTableProps {
@@ -73,6 +104,23 @@ function visibilityMeta(key: string): { cls: string; icon: React.ReactElement } 
   if (v === "system") return { cls: "system", icon: <Globe size={13} aria-hidden="true" /> };
   if (v === "private") return { cls: "private", icon: <Lock size={13} aria-hidden="true" /> };
   return { cls: "space", icon: <Building2 size={13} aria-hidden="true" /> };
+}
+
+function badgeLabel(badge: MineReviewBadge): string {
+  switch (badge) {
+    case "private":
+      return t("skillMarket.review.badgePrivate");
+    case "pending":
+      return t("skillMarket.review.statusPending");
+    case "pending-upgrade":
+      return t("skillMarket.review.badgePendingUpgrade");
+    case "rejected":
+      return t("skillMarket.review.statusRejected");
+    case "live":
+      return t("skillMarket.review.badgeLive");
+    default:
+      return "";
+  }
 }
 
 export default function MineTable({ rows, visibilityLabel, showStats = true }: MineTableProps) {
@@ -142,12 +190,30 @@ export default function MineTable({ rows, visibilityLabel, showStats = true }: M
                   </span>
                 </span>
                 <span className="wk-mine-table__namecol">
-                  <span className="wk-mine-table__name" title={r.name}>
-                    {r.name}
+                  <span className="wk-mine-table__namerow" title={r.name}>
+                    <span className="wk-mine-table__name">{r.name}</span>
+                    {r.reviewBadge && (
+                      <span
+                        className={`wk-mine-review-badge wk-mine-review-badge--${r.reviewBadge}`}
+                        title={r.reviewBadge === "rejected" ? r.rejectReason : undefined}
+                      >
+                        {r.reviewBadge === "pending" || r.reviewBadge === "pending-upgrade" ? (
+                          <Clock size={11} aria-hidden="true" />
+                        ) : r.reviewBadge === "rejected" ? (
+                          <XCircle size={11} aria-hidden="true" />
+                        ) : null}
+                        {badgeLabel(r.reviewBadge)}
+                      </span>
+                    )}
                   </span>
                   {r.description && (
                     <span className="wk-mine-table__desc" title={r.description}>
                       {r.description}
+                    </span>
+                  )}
+                  {r.reviewBadge === "rejected" && r.rejectReason && (
+                    <span className="wk-mine-table__review-reason" title={r.rejectReason}>
+                      {t("skillMarket.review.reasonInline", { values: { reason: r.rejectReason } })}
                     </span>
                   )}
                 </span>
@@ -185,32 +251,90 @@ export default function MineTable({ rows, visibilityLabel, showStats = true }: M
               data-track-ignore=""
               onClick={(e) => e.stopPropagation()}
             >
-              {r.onEdit && (
+              {/* Review actions — rendered only when the page hands us the
+                  corresponding callback. The page is responsible for gating
+                  them on the derived state (private / pending / rejected /
+                  listed) so this table never inspects role or visibility. */}
+              {r.reviewBadge === "pending" && r.onCancelReview && (
                 <button
                   type="button"
                   className="wk-mine-table__action"
+                  aria-label={r.cancelReviewAria}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    r.onCancelReview!();
+                  }}
+                >
+                  <Clock size={13} aria-hidden="true" />
+                  {t("skillMarket.review.cancelRequest")}
+                </button>
+              )}
+              {r.reviewBadge === "rejected" && r.onResubmit && (
+                <button
+                  type="button"
+                  className="wk-mine-table__action wk-mine-table__action--primary"
+                  aria-label={r.resubmitAria}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    r.onResubmit!();
+                  }}
+                >
+                  {t("skillMarket.review.cardResubmit")}
+                </button>
+              )}
+              {r.reviewBadge === "private" && r.onSubmitReview && (
+                <button
+                  type="button"
+                  className="wk-mine-table__action wk-mine-table__action--primary"
+                  aria-label={r.submitReviewAria}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    r.onSubmitReview!();
+                  }}
+                >
+                  {t("skillMarket.review.submitAction")}
+                </button>
+              )}
+              {(r.reviewBadge === "live" || r.reviewBadge === "pending-upgrade") && r.onPublishVersion && (
+                <button
+                  type="button"
+                  className="wk-mine-table__action wk-mine-table__action--primary"
+                  aria-label={r.publishVersionAria}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    r.onPublishVersion!();
+                  }}
+                >
+                  <Upload size={13} aria-hidden="true" />
+                  {t("skillMarket.review.publishNewVersion")}
+                </button>
+              )}
+              {r.onEdit && (
+                <button
+                  type="button"
+                  className="wk-mine-table__action wk-mine-table__action--icon"
                   aria-label={r.editAria}
+                  title={t("skillMarket.common.edit")}
                   onClick={(e) => {
                     e.stopPropagation();
                     r.onEdit!();
                   }}
                 >
                   <Pencil size={14} aria-hidden="true" />
-                  {t("skillMarket.common.edit")}
                 </button>
               )}
               {r.onDelete && (
                 <button
                   type="button"
-                  className="wk-mine-table__action wk-mine-table__action--danger"
+                  className="wk-mine-table__action wk-mine-table__action--danger wk-mine-table__action--icon"
                   aria-label={r.deleteAria}
+                  title={t("skillMarket.common.delete")}
                   onClick={(e) => {
                     e.stopPropagation();
                     r.onDelete!();
                   }}
                 >
                   <Trash2 size={14} aria-hidden="true" />
-                  {t("skillMarket.common.delete")}
                 </button>
               )}
             </span>

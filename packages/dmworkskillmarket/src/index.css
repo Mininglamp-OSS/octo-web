@@ -2709,7 +2709,7 @@
 .wk-mine-table__row {
   display: grid;
   grid-template-columns:
-    minmax(240px, 2.4fr) minmax(96px, 1fr) 96px 118px 76px 76px 152px;
+    minmax(240px, 2.4fr) minmax(96px, 1fr) 96px 118px 76px 76px 168px;
   align-items: center;
   gap: var(--wk-sp-3);
   padding: 0 var(--wk-sp-5);
@@ -2717,7 +2717,7 @@
 .wk-mine-table--nostats .wk-mine-table__head,
 .wk-mine-table--nostats .wk-mine-table__row {
   grid-template-columns:
-    minmax(240px, 2.6fr) minmax(96px, 1fr) 96px 118px 152px;
+    minmax(240px, 2.6fr) minmax(96px, 1fr) 96px 118px 168px;
 }
 .wk-mine-table__head {
   height: 44px;
@@ -2892,6 +2892,13 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  /* CJK labels have no spaces, so without nowrap they break at ANY character:
+     squeezed by flex, 发布新版本 collapses to one glyph per line. flex-shrink:0
+     keeps the row from being squeezed in the first place — the actions column
+     sizes to its content (see the grid template) rather than the buttons
+     yielding. */
+  white-space: nowrap;
+  flex: 0 0 auto;
   height: 30px;
   padding: 0 var(--wk-sp-2);
   border: none;
@@ -2908,6 +2915,623 @@
 .wk-mine-table__action--danger {
   color: var(--wk-color-danger);
 }
+/* Icon-only actions. 编辑 / 删除 drop their labels so the row fits alongside the
+   review action, which keeps its label because it is the rare, consequential one
+   and an icon alone would not carry it. The label survives as aria-label (for
+   screen readers) plus title (hover), so nothing is lost but width. */
+.wk-mine-table__action--icon {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+}
 .wk-mine-table__action--danger:hover {
   background: var(--wk-color-danger-bg);
 }
+
+/* ── MineTable review affordances ──────────────────────────────────── */
+
+.wk-mine-table__namerow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.wk-mine-table__namerow .wk-mine-table__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-mine-review-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: var(--wk-r-full);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.wk-mine-review-badge--private {
+  background: color-mix(in srgb, var(--wk-text-tertiary, #6b7280) 12%, transparent);
+  color: var(--wk-text-secondary);
+}
+
+.wk-mine-review-badge--pending,
+.wk-mine-review-badge--pending-upgrade {
+  background: color-mix(in srgb, #f59e0b 14%, transparent);
+  color: #d97706;
+}
+
+.wk-mine-review-badge--rejected {
+  background: color-mix(in srgb, var(--wk-color-error, #ef4444) 12%, transparent);
+  color: var(--wk-color-error, #ef4444);
+}
+
+.wk-mine-review-badge--live {
+  background: color-mix(in srgb, #22c55e 12%, transparent);
+  color: #16a34a;
+}
+
+.wk-mine-table__review-reason {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--wk-color-error, #ef4444);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.wk-mine-table__action--primary {
+  border-color: var(--wk-color-accent);
+  color: var(--wk-color-accent);
+}
+
+.wk-mine-table__action--primary:hover {
+  background: color-mix(in srgb, var(--wk-color-accent) 8%, transparent);
+}
+
+/* ─── Scope choice in NewSkillModal ────────────────────────────────── */
+
+.skill-market-form__scope-section {
+  margin-top: var(--wk-sp-3);
+}
+
+.skill-market-scope-options {
+  display: grid;
+  gap: var(--wk-sp-2);
+  margin-top: var(--wk-sp-2);
+}
+
+.skill-market-scope-options label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-3);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  cursor: pointer;
+  transition: border-color var(--wk-dur-fast) var(--wk-ease), background var(--wk-dur-fast) var(--wk-ease);
+}
+
+.skill-market-scope-options label:hover {
+  border-color: var(--wk-border-default);
+  background: var(--wk-bg-item-hover);
+}
+
+.skill-market-scope-options label.is-selected {
+  border-color: var(--wk-color-accent);
+  background: color-mix(in srgb, var(--wk-color-accent) 5%, transparent);
+}
+
+.skill-market-scope-options input[type="radio"] {
+  margin-top: 2px;
+  accent-color: var(--wk-color-accent);
+}
+
+.skill-market-scope-options label > div {
+  display: grid;
+  gap: 2px;
+}
+
+.skill-market-scope-options label > div strong {
+  color: var(--wk-text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.skill-market-scope-options label > div span {
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+}
+
+/* Review mode info banner in NewSkillModal */
+.skill-market-review-info {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-elevated);
+}
+
+.skill-market-review-info > span:first-child {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--wk-r-sm);
+  overflow: hidden;
+}
+
+.skill-market-review-info > span:first-child img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.skill-market-review-info > span:first-child > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--wk-r-sm);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.skill-market-review-info > div {
+  display: grid;
+  gap: 2px;
+}
+
+.skill-market-review-info > div strong {
+  color: var(--wk-text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.skill-market-review-info > div span {
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+}
+
+/* What actually happens on submit: for an upgrade the listed version stays live
+   until approval, so the notice must not read like an immediate publish. */
+.skill-market-review-notice {
+  margin: 0;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border-left: 2px solid var(--wk-color-primary);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* ─── Review queue (org tab) ──────────────────────────────────────── */
+
+.skill-market-review-queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-3);
+}
+
+.skill-market-review-queue__error {
+  margin-bottom: var(--wk-sp-3);
+}
+
+.skill-market-review-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.skill-market-review-tabs button {
+  position: relative;
+  padding: var(--wk-sp-2) var(--wk-sp-4);
+  border: 0;
+  background: transparent;
+  color: var(--wk-text-secondary);
+  font: 500 14px/1.4 var(--wk-font-sans);
+  cursor: pointer;
+  transition: color var(--wk-dur-fast) var(--wk-ease);
+}
+
+.skill-market-review-tabs button:hover {
+  color: var(--wk-text-primary);
+}
+
+.skill-market-review-tabs button.is-active {
+  color: var(--wk-color-accent);
+}
+
+.skill-market-review-tabs button.is-active::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: var(--wk-sp-3);
+  right: var(--wk-sp-3);
+  height: 2px;
+  background: var(--wk-color-accent);
+  border-radius: 1px;
+}
+
+.skill-market-review-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  border-radius: 9px;
+  background: var(--wk-color-error, #ef4444);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.skill-market-review-list {
+  display: grid;
+  gap: var(--wk-sp-2);
+}
+
+.skill-market-review-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-3);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+  cursor: pointer;
+  transition: border-color var(--wk-dur-fast) var(--wk-ease), background var(--wk-dur-fast) var(--wk-ease), opacity var(--wk-dur-fast) var(--wk-ease);
+}
+
+.skill-market-review-item[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+.skill-market-review-item:hover {
+  border-color: var(--wk-border-default);
+  background: var(--wk-bg-item-hover);
+}
+
+.skill-market-review-item[aria-disabled="true"]:hover {
+  border-color: var(--wk-border-subtle);
+  background: var(--wk-bg-surface);
+}
+
+.skill-market-review-item__icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--wk-r-md);
+  overflow: hidden;
+}
+
+.skill-market-review-item__icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.skill-market-review-item__icon > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--wk-r-md);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.skill-market-review-item__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.skill-market-review-item__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-2);
+  margin-bottom: 4px;
+}
+
+.skill-market-review-item__title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.skill-market-review-item__title-row strong {
+  color: var(--wk-text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-market-review-item__type {
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-tertiary);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.skill-market-review-item__kind {
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.skill-market-review-item__kind--first {
+  background: color-mix(in srgb, var(--wk-color-accent) 10%, transparent);
+  color: var(--wk-color-accent);
+}
+
+.skill-market-review-item__kind--upgrade {
+  background: color-mix(in srgb, #3b82f6 10%, transparent);
+  color: #2563eb;
+}
+
+.skill-market-review-item__version {
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+}
+
+.skill-market-review-item__version-bump {
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.skill-market-review-item__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.skill-market-review-item__status--pending {
+  color: #d97706;
+}
+
+.skill-market-review-item__status--approved {
+  color: #16a34a;
+}
+
+.skill-market-review-item__status--rejected,
+.skill-market-review-item__status--canceled {
+  color: var(--wk-color-error, #ef4444);
+}
+
+.skill-market-review-item__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+}
+
+.skill-market-review-item__reason,
+.skill-market-review-item__changelog {
+  margin-top: 6px;
+  color: var(--wk-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.skill-market-review-item__reason {
+  color: var(--wk-color-error, #ef4444);
+}
+
+.skill-market-review-item__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  flex-shrink: 0;
+}
+
+.skill-market-review-item__btn {
+  padding: 5px 14px;
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-secondary);
+  font: 500 13px/1.4 var(--wk-font-sans);
+  cursor: pointer;
+  transition: all var(--wk-dur-fast) var(--wk-ease);
+}
+
+.skill-market-review-item__btn:hover:not(:disabled) {
+  background: var(--wk-bg-item-hover);
+  color: var(--wk-text-primary);
+}
+
+.skill-market-review-item__btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.skill-market-review-item__btn--primary {
+  border-color: var(--wk-color-accent);
+  background: var(--wk-color-accent);
+  color: #fff;
+}
+
+.skill-market-review-item__btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--wk-color-accent) 88%, #000);
+  color: #fff;
+}
+
+.skill-market-review-item__btn--danger {
+  border-color: var(--wk-color-error, #ef4444);
+  color: var(--wk-color-error, #ef4444);
+}
+
+.skill-market-review-item__btn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--wk-color-error, #ef4444) 8%, transparent);
+}
+
+.skill-market-review-item__btn--secondary {
+  border-color: var(--wk-border-default);
+  color: var(--wk-text-secondary);
+}
+
+.skill-market-review-list--loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wk-sp-2);
+  padding: 40px 0;
+  color: var(--wk-text-tertiary);
+  font-size: 13px;
+}
+
+/* ─── Reject reason modal ──────────────────────────────────────────── */
+
+.skill-market-reject-form {
+  display: flex;
+  gap: var(--wk-sp-3);
+}
+
+.skill-market-reject-form > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--wk-color-error, #ef4444);
+}
+
+.skill-market-reject-form > div {
+  flex: 1;
+  display: grid;
+  gap: var(--wk-sp-2);
+}
+
+.skill-market-reject-form strong {
+  color: var(--wk-text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.skill-market-reject-form p {
+  margin: 0;
+  color: var(--wk-text-tertiary);
+  font-size: 13px;
+}
+
+.skill-market-reject-form textarea {
+  width: 100%;
+  min-height: 84px;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  font: 14px/1.45 var(--wk-font-sans);
+  resize: vertical;
+}
+
+.skill-market-reject-form textarea:focus {
+  outline: none;
+  border-color: var(--wk-color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--wk-color-accent) 20%, transparent);
+}
+
+.skill-market-reject-form__error {
+  color: var(--wk-color-error, #ef4444);
+  font-size: 12px;
+}
+
+/* ─── Review detail badges ─────────────────────────────────────────── */
+
+.skill-market-review-badge--upgrade {
+  background: color-mix(in srgb, #3b82f6 12%, transparent);
+  color: #2563eb;
+}
+
+.skill-market-review-badge--first {
+  background: color-mix(in srgb, var(--wk-color-accent) 12%, transparent);
+  color: var(--wk-color-accent);
+}
+
+.skill-market-review-upgrade-callout {
+  padding: var(--wk-sp-3);
+  margin-bottom: var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  background: color-mix(in srgb, #3b82f6 8%, transparent);
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.skill-market-review-rejected-callout {
+  display: grid;
+  gap: 4px;
+  padding: var(--wk-sp-3);
+  margin-bottom: var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  background: color-mix(in srgb, var(--wk-color-error, #ef4444) 8%, transparent);
+}
+
+.skill-market-review-rejected-callout strong {
+  color: var(--wk-color-error, #ef4444);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.skill-market-review-rejected-callout span {
+  color: var(--wk-text-secondary);
+  font-size: 13px;
+}
+
+.skill-market-review-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  color: var(--wk-text-tertiary);
+  cursor: pointer;
+  transition: background var(--wk-dur-fast) var(--wk-ease), color var(--wk-dur-fast) var(--wk-ease);
+}
+
+.skill-market-review-close:hover {
+  background: var(--wk-bg-item-hover);
+  color: var(--wk-text-primary);
+}
+
+.skill-market-spin {
+  animation: skill-market-spin 900ms linear infinite;
+}
+
