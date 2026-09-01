@@ -509,18 +509,28 @@ describe('summaryAttentionBadge — 读取路径广播钩子', () => {
 
         const before = Date.now();
         const sample = await readSummaryAttentionCount({ fresh: true });
+        const after = Date.now();
 
         // 绕过了缓存，所以样本时刻就是发出时刻，不往前推 TTL。
+        // 两侧都夹住：单边的 >= before 在「折算了一个 TTL」的实现下也会通过（那时
+        // sampleAt 更小，但断言方向反了才发现不了），上界才是真正钉住「不折算」的那半。
         expect(sample!.sampleAt).toBeGreaterThanOrEqual(before);
+        expect(sample!.sampleAt).toBeLessThanOrEqual(after);
     });
 
     it('后台轮询的读不带 fresh，样本时刻往前推一个 TTL', async () => {
         vi.mocked(api.fetchSummaryAttentionCounts).mockResolvedValueOnce({ attention_count: 1 } as any);
 
+        // 必须用 before / after 把 issuedAt 夹在中间，不能只拿 before 当上界：
+        // sampleAt = issuedAt - TTL，而 issuedAt 是 readSummaryAttentionCount 内部
+        // 自己取的 Date.now()，只要中间跨了一毫秒就有 issuedAt > before，单边的
+        // `<= before - TTL` 就会红。这条真的在 CI 上以 1ms 之差炸过一次。
         const before = Date.now();
         const sample = await readSummaryAttentionCount();
+        const after = Date.now();
 
-        expect(sample!.sampleAt).toBeLessThanOrEqual(before - ATTENTION_CACHE_TTL_MS);
+        expect(sample!.sampleAt).toBeGreaterThanOrEqual(before - ATTENTION_CACHE_TTL_MS);
+        expect(sample!.sampleAt).toBeLessThanOrEqual(after - ATTENTION_CACHE_TTL_MS);
     });
 
     it('失败、跨 Space 早退、未登录都不广播', async () => {
