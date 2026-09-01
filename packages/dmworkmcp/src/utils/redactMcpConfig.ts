@@ -61,6 +61,17 @@ function maskValue(v: unknown): unknown {
   return MASK;
 }
 
+/** True when the string parses as an absolute URL (has a scheme + host). A
+ *  relative path / package name / subcommand throws and returns false. */
+function isAbsoluteUrl(v: string): boolean {
+  try {
+    new URL(v);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Keep scheme://host/path visible (the endpoint is not the secret) but blank
  *  EVERY query-param value (rebuilt, so duplicate keys can't slip a second value
  *  through) and any userinfo. Uses an ASCII marker so serialization doesn't
@@ -116,8 +127,11 @@ function redactArgs(args: unknown[]): unknown[] {
       out.push(a);
       continue;
     }
-    // Bare positional (package name, path, subcommand) — informational, keep.
-    out.push(a);
+    // Bare positional: a package name / path / subcommand is informational and
+    // kept — but a positional that parses as an absolute URL can carry a query
+    // token (the `mcp-remote` stdio-bridge shape passes the endpoint as an arg),
+    // so redact it like any other url.
+    out.push(isAbsoluteUrl(a) ? redactUrl(a) : a);
   }
   return out;
 }

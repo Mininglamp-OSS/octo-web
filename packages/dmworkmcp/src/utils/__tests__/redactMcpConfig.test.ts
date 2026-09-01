@@ -100,6 +100,22 @@ describe("redactMcpConfig", () => {
     expect(out).toContain("8080");
   });
 
+  it("redacts a query token in a positional-URL arg (mcp-remote bridge) but keeps the host/path", () => {
+    const raw = JSON.stringify({
+      mcpServers: {
+        remote: {
+          command: "npx",
+          args: ["-y", "mcp-remote", "https://mcp.vendor.com/sse?access_token=sk-live-XXX"],
+        },
+      },
+    });
+    const out = redactMcpConfig(raw)!;
+    expect(out).not.toContain("sk-live-XXX");
+    // Bridge package name and endpoint host/path stay readable.
+    expect(out).toContain("mcp-remote");
+    expect(out).toContain("mcp.vendor.com/sse");
+  });
+
   it("fails CLOSED on a non-mcpServers shape (does not leak the untrusted body)", () => {
     expect(redactMcpConfig(JSON.stringify({ secrets: { token: "sk-live-000" } }))).toBeNull();
   });
