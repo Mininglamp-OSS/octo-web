@@ -124,11 +124,75 @@ describe("redactMcpConfig", () => {
     expect(redactMcpConfig(JSON.stringify({ mcpServers: { a: "sk-live-str" } }))).toBeNull();
   });
 
-  it("fails CLOSED on a server carrying an unmodeled (possibly secret) key", () => {
+  it("DROPS a root sibling key instead of re-serializing it (rebuild, not mutate)", () => {
     const raw = JSON.stringify({
-      mcpServers: { s: { type: "sse", url: "https://x", token: "sk-live-456" } },
+      mcpServers: { safe: { command: "npx" } },
+      secrets: { token: "sk-live-ROOTSIBLING" },
     });
-    expect(redactMcpConfig(raw)).toBeNull();
+    const out = redactMcpConfig(raw)!;
+    expect(out).not.toContain("sk-live-ROOTSIBLING");
+    expect(out).not.toContain("secrets");
+    expect(out).toContain("npx");
+  });
+
+  it("DROPS a VS Code top-level inputs array (credential defaults live there)", () => {
+    const raw = JSON.stringify({
+      inputs: [{ id: "tok", password: true, default: "sk-live-VSCODEINPUT" }],
+      mcpServers: { safe: { command: "npx", args: ["-y", "pkg"] } },
+    });
+    const out = redactMcpConfig(raw)!;
+    expect(out).not.toContain("sk-live-VSCODEINPUT");
+    expect(out).not.toContain("inputs");
+  });
+
+  it("DROPS an unmodeled server key and a mistyped tool allow-list instead of leaking them", () => {
+    const raw = JSON.stringify({
+      mcpServers: {
+        s: {
+          type: "sse",
+          url: "https://x",
+          token: "sk-live-SRVKEY",
+          name: "sk-live-NAME",
+          autoApprove: { token: "sk-live-AUTOAPPROVE" },
+        },
+      },
+    });
+    const out = redactMcpConfig(raw)!;
+    expect(out).not.toContain("sk-live-SRVKEY");
+    expect(out).not.toContain("sk-live-NAME");
+    expect(out).not.toContain("sk-live-AUTOAPPROVE");
+    // Modeled fields still render.
+    expect(out).toContain("https://x");
+    expect(out).toContain("sse");
+  });
+
+  it("DROPS a non-string url and a non-array args (wrong-typed modeled keys)", () => {
+    const raw = JSON.stringify({
+      mcpServers: {
+        x: { url: { href: "https://h/?t=sk-live-OBJURL" }, args: { a: "sk-live-OBJARGS" } },
+      },
+    });
+    const out = redactMcpConfig(raw)!;
+    expect(out).not.toContain("sk-live-OBJURL");
+    expect(out).not.toContain("sk-live-OBJARGS");
+  });
+
+  it("masks a schemeless host+query positional arg (redactUrl runs unconditionally)", () => {
+    const raw = JSON.stringify({
+      mcpServers: { s: { command: "run", args: ["example.com/path?token=sk-live-NOSCHEME"] } },
+    });
+    const out = redactMcpConfig(raw)!;
+    expect(out).not.toContain("sk-live-NOSCHEME");
+    expect(out).toContain("example.com/path");
+  });
+
+  it("masks a URL fragment token", () => {
+    const raw = JSON.stringify({
+      mcpServers: { s: { url: "https://h/sse#access_token=sk-live-FRAG" } },
+    });
+    const out = redactMcpConfig(raw)!;
+    expect(out).not.toContain("sk-live-FRAG");
+    expect(out).toContain("h/sse");
   });
 
   it("fails CLOSED on malformed JSON rather than echoing it back", () => {

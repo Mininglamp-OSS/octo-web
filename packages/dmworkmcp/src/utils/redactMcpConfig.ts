@@ -11,43 +11,32 @@ import { PLACEHOLDER_PATTERN } from "../api/pluginWire";
  * variables the server needs. It is a display-only guard; the owner's edit/copy
  * flow reads the raw config.
  *
- * Because the config is FREE-FORM hostile input, this is strict-whitelist +
- * fail-CLOSED: it returns `null` (→ caller renders a localized "unavailable"
- * notice) for anything it cannot fully model — malformed JSON, a non-`mcpServers`
- * shape, a non-object server entry, or a server carrying a key outside
- * {@link MODELED_SERVER_KEYS}. Within a modeled server it masks `env`/`headers`
- * values (any non-placeholder, incl. non-string), URL query params + userinfo,
- * and secret-bearing `args` (both `--flag=value` and the value after a
- * secret-named flag). An exact `${KEY}` placeholder is kept; a value that merely
- * contains `${…}` is masked.
+ * Because the config is FREE-FORM hostile input, the output is REBUILT from a
+ * whitelist rather than mutating and re-serializing the parsed document — so a
+ * root sibling key (VS Code's `inputs`, a stray `secrets`, …) or an unmodeled /
+ * wrong-typed server field can never survive verbatim. It returns `null`
+ * (→ caller renders a localized "unavailable" notice) for structurally unmodelable
+ * input: malformed JSON, a missing/invalid `mcpServers`, or a non-object server
+ * entry. Within each server only known fields are re-emitted: `env`/`headers`
+ * values are masked (any non-placeholder, incl. non-string), the URL's query +
+ * userinfo + fragment are masked, `args` are redacted, and structural fields
+ * (`command`, `type`, `cwd`, …) are copied verbatim only when correctly typed.
+ * An exact `${KEY}` placeholder is kept; a value that merely contains `${…}` is
+ * masked.
+ *
+ * Documented residuals (display-only `<pre>`, org-scoped visibility): a secret
+ * embedded in a `command` shell one-liner or a URL path segment is kept, same
+ * accepted posture as "the endpoint is not the secret".
  */
 const MASK = "••••••";
 /** ASCII marker for inside a URL — a Unicode MASK would percent-encode to
  *  mojibake through URL serialization. */
 const URL_MASK = "REDACTED";
-export const REDACTION_UNAVAILABLE = null;
 
-/** Server-object keys this guard understands. Anything else (a server-level
- *  `token`/`oauth`/`credentials`, an unknown field) makes the whole config fail
- *  closed rather than round-trip an unmodeled — possibly secret — value. */
-const MODELED_SERVER_KEYS = new Set([
-  "type",
-  "transport",
-  "url",
-  "command",
-  "args",
-  "env",
-  "headers",
-  // Structural, non-secret keys common clients add; safe to keep verbatim.
-  "cwd",
-  "timeout",
-  "disabled",
-  "description",
-  "name",
-  "icon",
-  "autoApprove",
-  "alwaysAllow",
-]);
+/** Structural server fields copied verbatim when correctly typed. These are the
+ *  executable / endpoint / behavioural fields, not credential carriers (a secret
+ *  hand-embedded in `command` is a documented residual). */
+const STRING_FIELDS = ["type", "transport", "command", "cwd"] as const;
 
 function isPlaceholder(v: unknown): boolean {
   return typeof v === "string" && PLACEHOLDER_PATTERN.test(v);
@@ -61,22 +50,11 @@ function maskValue(v: unknown): unknown {
   return MASK;
 }
 
-/** True when the string parses as an absolute URL (has a scheme + host). A
- *  relative path / package name / subcommand throws and returns false. */
-function isAbsoluteUrl(v: string): boolean {
-  try {
-    new URL(v);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /** Keep scheme://host/path visible (the endpoint is not the secret) but blank
  *  EVERY query-param value (rebuilt, so duplicate keys can't slip a second value
- *  through) and any userinfo. Uses an ASCII marker so serialization doesn't
- *  mojibake. A relative/opaque URL keeps its path and only drops a query string;
- *  a value with no query is returned unchanged. */
+ *  through), the fragment, and any userinfo. Uses an ASCII marker so serialization
+ *  doesn't mojibake. A relative/opaque URL keeps its path and only drops a query
+ *  string; a value with no query is returned unchanged. */
 export function redactUrl(url: string): string {
   if (isPlaceholder(url)) return url;
   let u: URL;
@@ -95,12 +73,14 @@ export function redactUrl(url: string): string {
       .join("&");
     u.search = masked ? `?${masked}` : "";
   }
+  if (u.hash) u.hash = `#${URL_MASK}`;
   return u.toString();
 }
 
-/** Redact secret-bearing args while keeping flags and positionals (a package
- *  name / path is informational, not a secret). Covers `--flag=value` (mask the
- *  RHS) and the value token immediately after a secret-named flag. */
+/** Redact secret-bearing args while keeping flags and non-URL positionals (a
+ *  package name / path is informational, not a secret). Covers `--flag=value`
+ *  (mask the RHS), the value token immediately after a secret-named flag, and a
+ *  positional that is a URL carrying a query token (the `mcp-remote` bridge). */
 function redactArgs(args: unknown[]): unknown[] {
   const out: unknown[] = [];
   let maskNext = false;
@@ -127,11 +107,40 @@ function redactArgs(args: unknown[]): unknown[] {
       out.push(a);
       continue;
     }
-    // Bare positional: a package name / path / subcommand is informational and
-    // kept — but a positional that parses as an absolute URL can carry a query
-    // token (the `mcp-remote` stdio-bridge shape passes the endpoint as an arg),
-    // so redact it like any other url.
-    out.push(isAbsoluteUrl(a) ? redactUrl(a) : a);
+    // Bare positional. redactUrl is safe unconditionally: a package name / path /
+    // subcommand has no query and is returned unchanged, while a URL positional
+    // (absolute, or a schemeless host with a query) gets its token masked.
+    out.push(redactUrl(a));
+  }
+  return out;
+}
+
+/** Rebuild one server object from known fields only — nothing else is copied. */
+function redactServer(s: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of STRING_FIELDS) {
+    if (typeof s[k] === "string") out[k] = s[k];
+  }
+  if (typeof s.disabled === "boolean") out.disabled = s.disabled;
+  if (typeof s.timeout === "number") out.timeout = s.timeout;
+  if (typeof s.url === "string") out.url = redactUrl(s.url);
+  if (Array.isArray(s.args)) out.args = redactArgs(s.args);
+  // Tool allow-lists are arrays of tool names; keep only the string members so a
+  // `{token: …}` object hidden under the key can't ride through.
+  for (const k of ["autoApprove", "alwaysAllow"] as const) {
+    if (Array.isArray(s[k])) {
+      out[k] = (s[k] as unknown[]).filter((x) => typeof x === "string");
+    }
+  }
+  for (const field of ["env", "headers"] as const) {
+    const map = s[field];
+    if (map && typeof map === "object" && !Array.isArray(map)) {
+      const masked: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(map as Record<string, unknown>)) {
+        masked[k] = maskValue(v);
+      }
+      out[field] = masked;
+    }
   }
   return out;
 }
@@ -142,39 +151,25 @@ export function redactMcpConfig(raw: string): string | null {
   try {
     doc = JSON.parse(raw);
   } catch {
-    return REDACTION_UNAVAILABLE;
+    return null;
   }
   const servers = (doc as { mcpServers?: unknown })?.mcpServers;
   if (!servers || typeof servers !== "object" || Array.isArray(servers)) {
-    return REDACTION_UNAVAILABLE;
+    return null;
   }
-  for (const server of Object.values(servers as Record<string, unknown>)) {
-    // A non-object server entry is unmodeled — fail closed rather than
-    // re-serialize it (e.g. a bare string could be a raw credential).
+  // Rebuild a fresh document; only mcpServers (and only known server fields) is
+  // re-emitted, so any root sibling or unmodeled field is dropped, not leaked.
+  const outServers: Record<string, unknown> = {};
+  for (const [key, server] of Object.entries(servers as Record<string, unknown>)) {
+    // A non-object server entry is unmodelable — fail closed rather than guess.
     if (!server || typeof server !== "object" || Array.isArray(server)) {
-      return REDACTION_UNAVAILABLE;
+      return null;
     }
-    const s = server as Record<string, unknown>;
-    for (const key of Object.keys(s)) {
-      if (!MODELED_SERVER_KEYS.has(key)) return REDACTION_UNAVAILABLE;
-    }
-    if (typeof s.url === "string") s.url = redactUrl(s.url);
-    if (Array.isArray(s.args)) s.args = redactArgs(s.args);
-    for (const field of ["env", "headers"] as const) {
-      const map = s[field];
-      if (!map || typeof map !== "object" || Array.isArray(map)) {
-        // A present-but-non-object env/headers is unmodeled → fail closed.
-        if (map !== undefined) return REDACTION_UNAVAILABLE;
-        continue;
-      }
-      for (const [k, v] of Object.entries(map as Record<string, unknown>)) {
-        (map as Record<string, unknown>)[k] = maskValue(v);
-      }
-    }
+    outServers[key] = redactServer(server as Record<string, unknown>);
   }
   try {
-    return JSON.stringify(doc, null, 2);
+    return JSON.stringify({ mcpServers: outServers }, null, 2);
   } catch {
-    return REDACTION_UNAVAILABLE;
+    return null;
   }
 }
