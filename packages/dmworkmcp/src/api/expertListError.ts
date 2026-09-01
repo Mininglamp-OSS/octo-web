@@ -1,4 +1,10 @@
-export type ExpertListErrorKind = "auth" | "forbidden" | "network" | "server" | "unknown";
+export type ExpertListErrorKind =
+  | "auth"
+  | "forbidden"
+  | "notfound"
+  | "network"
+  | "server"
+  | "unknown";
 
 export class ExpertListError extends Error {
   constructor(readonly kind: ExpertListErrorKind) { super(kind); }
@@ -9,6 +15,10 @@ export function classifyExpertListError(err: unknown): ExpertListErrorKind {
   const status = value?.response?.status;
   if (status === 401) return "auth";
   if (status === 403) return "forbidden";
+  // A 404 is a distinct, recoverable case: a relation target that no longer
+  // exists (soft-deleted / dangling) can be safely dropped, whereas every other
+  // failure must surface rather than silently shrink a list.
+  if (status === 404) return "notfound";
   if (!value?.response && (value?.code === "ERR_NETWORK" || value?.code === "ECONNABORTED")) return "network";
   if (status && status >= 500) return "server";
   return "unknown";

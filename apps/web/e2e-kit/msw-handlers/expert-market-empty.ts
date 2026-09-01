@@ -1,6 +1,9 @@
 import { http, HttpResponse } from "msw";
 
-const API_BASE = "/api/v1";
+// Unified plugin surface (octo-marketplace). Two plugins load, then the spec
+// searches for a keyword that matches neither so the page renders its empty
+// state (filtering is client-side).
+const API_BASE = "/market/api/v1";
 
 function enabled(): boolean {
   try {
@@ -10,51 +13,71 @@ function enabled(): boolean {
   }
 }
 
-const experts = [
+const plugins = [
   {
-    expert_id: "release-lead",
-    short_name: "发布",
-    name: "发布负责人",
-    summary: "统筹发布检查、风险识别和上线决策。",
-    category: "研发工具",
+    plugin_id: "release-lead",
+    plugin_name: "发布负责人",
+    plugin_type: "expert" as const,
+    category_id: "dev-tools",
     tags: ["发布", "质量"],
     publisher: "Octo Platform",
-    visibility: "system",
+    owner_id: "space-e2e",
+    visibility: "system" as const,
     creator_name: "[redacted-admin]",
-    created_by_type: "human",
+    created_by_type: "human" as const,
+    icon_url: "",
     view_count: 24,
     install_count: 8,
+    download_count: 0,
+    current_version: "1.0.0",
+    manifest_json: {
+      name: "release-lead",
+      description: "统筹发布检查、风险识别和上线决策。",
+      labels: ["发布", "质量"],
+    },
+    created_at: "2026-07-10T08:00:00Z",
+    updated_at: "2026-07-20T08:00:00Z",
   },
   {
-    expert_id: "meeting-coordinator",
-    short_name: "会议",
-    name: "会议协调专家",
-    summary: "整理会议议程、决策和后续待办。",
-    category: "办公提效",
+    plugin_id: "meeting-coordinator",
+    plugin_name: "会议协调专家",
+    plugin_type: "expert" as const,
+    category_id: "office",
     tags: ["会议", "协作"],
     publisher: "Octo Community",
-    visibility: "space",
+    owner_id: "space-e2e",
+    visibility: "space" as const,
     creator_name: "Alice",
-    created_by_type: "human",
+    created_by_type: "human" as const,
+    icon_url: "",
     view_count: 11,
     install_count: 3,
+    download_count: 0,
+    current_version: "1.0.0",
+    manifest_json: {
+      name: "meeting-coordinator",
+      description: "整理会议议程、决策和后续待办。",
+      labels: ["会议", "协作"],
+    },
+    created_at: "2026-07-11T08:00:00Z",
+    updated_at: "2026-07-21T08:00:00Z",
   },
 ];
 
 export const expertMarketEmptyHandlers = [
-  http.get(`*${API_BASE}/experts`, () => {
+  http.get(`*${API_BASE}/plugins`, () => {
     if (!enabled()) return undefined;
     return HttpResponse.json({
-      data: experts,
+      data: plugins,
       pagination: { total: 2, page: 1, page_size: 100 },
     });
   }),
-  http.get(`*${API_BASE}/expert_categories`, () => {
+  http.get(`*${API_BASE}/plugin_categories`, () => {
     if (!enabled()) return undefined;
     return HttpResponse.json({
       data: [
-        { expert_category_id: "dev-tools", name: "研发工具", count: 1 },
-        { expert_category_id: "office", name: "办公提效", count: 1 },
+        { category_id: "dev-tools", name: "研发工具", sort_order: 0, plugin_count: 1 },
+        { category_id: "office", name: "办公提效", sort_order: 1, plugin_count: 1 },
       ],
     });
   }),

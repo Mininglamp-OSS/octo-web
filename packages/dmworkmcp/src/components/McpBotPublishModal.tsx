@@ -50,10 +50,12 @@ export default function McpBotPublishModal({
       onClose={onClose}
       title={t("mcp.botPublish.title")}
       hint={t("mcp.botPublish.hint")}
+      kind="publish"
       icon={<Bot size={18} />}
       prompt={prompt}
       spaceId={spaceId}
       onForwarded={onClose}
+      copyTrackEvent="market_bot_publish_prompt_copied"
     />
   );
 }

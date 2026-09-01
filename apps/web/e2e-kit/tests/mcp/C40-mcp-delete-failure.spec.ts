@@ -11,11 +11,15 @@ test("@C40 @p1 @mcp @mcp-delete MCP 删除失败保留确认弹窗和条目", as
   await authedPage.waitForFunction(
     () => (globalThis as { __c40Installed?: boolean }).__c40Installed === true,
   );
-  await authedPage.goto("/mcp-market/mcp?sid=e2etest");
-  await authedPage.getByRole("button", { name: "我的", exact: true }).click();
+  // The connector 我的 view (with manage actions) lives on /mcp-market/mine;
+  // deep-link straight to the connector tab so the default 技能 tab never mounts.
+  await authedPage.goto("/mcp-market/mine?type=mcp&sid=e2etest");
 
-  const card = authedPage.getByRole("button", {
-    name: /^🧪 Delete Failure MCP E2E/,
+  // Mine assets render as a table; each row's accessible name is the connector
+  // name (role="row"), and the delete action keeps its "删除 <name>" label.
+  const card = authedPage.getByRole("row", {
+    name: "Delete Failure MCP",
+    exact: true,
   });
   await expect(card).toBeVisible();
   await card.getByRole("button", { name: "删除 Delete Failure MCP", exact: true }).click();

@@ -9,7 +9,6 @@ test("@SK2 @p1 @skills @market @search Skills 市场搜索", async ({ authedPage
   });
   await authedPage.goto("/mcp-market/skills?sid=e2etest");
 
-  await expect(authedPage.getByText("共 2 个技能")).toBeVisible();
   await expect(
     authedPage.getByRole("button", { name: /release-risk-radar 官方发布/ })
   ).toBeVisible();
@@ -22,11 +21,14 @@ test("@SK2 @p1 @skills @market @search Skills 市场搜索", async ({ authedPage
   });
   await search.fill("发布");
 
-  await expect(authedPage.getByText("共 1 个技能")).toBeVisible();
+  // Only release-risk-radar matches 发布, so the search re-scopes the grid to
+  // it alone and meeting-note-cleaner drops out.
   await expect(
     authedPage.getByRole("button", { name: /release-risk-radar 官方发布/ })
   ).toBeVisible();
-  expect(
-    await authedPage.getByRole("button", { name: /meeting-note-cleaner Alice/ }).count()
-  ).toBe(0);
+  await expect
+    .poll(() =>
+      authedPage.getByRole("button", { name: /meeting-note-cleaner Alice/ }).count()
+    )
+    .toBe(0);
 });

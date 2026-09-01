@@ -147,4 +147,39 @@ describe("PromptForwardActions", () => {
     const forwardBtn = buttonByText("base.promptForward.forwardToBot");
     expect(forwardBtn?.disabled).toBe(true);
   });
+
+  it("relabels the forward button per kind (publish / update)", async () => {
+    await render({ kind: "publish" });
+    expect(buttonByText("base.promptForward.forwardToBotPublish")).toBeTruthy();
+
+    ReactDOM.unmountComponentAtNode(container);
+    await render({ kind: "update" });
+    expect(buttonByText("base.promptForward.forwardToBotUpdate")).toBeTruthy();
+  });
+
+  it("keeps the edit button actionable after the draft is cleared (gates on the prompt prop)", async () => {
+    // Split layout renders the 编辑提示词 button; enter edit mode, wipe the
+    // textarea, then leave edit mode. Regression guard: the button must gate on
+    // the immutable `prompt` prop, not the mutable draft — otherwise clearing
+    // the textarea permanently disables edit/copy/forward until reopen.
+    await render({ layout: "split" });
+    await act(async () => {
+      buttonByText("base.promptForward.editPrompt")?.click();
+    });
+    const textarea = container.querySelector("textarea") as HTMLTextAreaElement;
+    expect(textarea).toBeTruthy();
+    await act(async () => {
+      const setValue = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype,
+        "value"
+      )!.set!;
+      setValue.call(textarea, "");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      buttonByText("base.promptForward.doneEdit")?.click();
+    });
+    const editBtn = buttonByText("base.promptForward.editPrompt");
+    expect(editBtn?.disabled).toBe(false);
+  });
 });

@@ -37,4 +37,15 @@ describe("buildInstallPrompt", () => {
     expect(prompt).not.toContain("在下载或覆盖文件前，向用户展示");
     expect(prompt).not.toContain("go install github.com/Mininglamp-OSS/octo-cli");
   });
+
+  it("renders a shell-metacharacter space id as the inert placeholder", () => {
+    const prompt = buildInstallPrompt(
+      "skill-123",
+      "abc --api-base-url https://evil.tld",
+      "https://octo.example.com",
+    );
+    expect(prompt).not.toContain("evil.tld");
+    expect(prompt).toContain("- Space ID：`<space-id>`");
+    expect(prompt).toContain("--profile space-<space-id> --space <space-id>");
+  });
 });

@@ -29,20 +29,17 @@
     "parseTimeout": "解析超时，请重试"
   },
   "list": {
-    "mine": "我的",
-    "tabSkills": "全部",
+    "pageTitle": "技能",
     "publish": "上架",
     "publishSkill": "上架技能",
     "search": "搜索",
     "errorTitle": "加载失败",
     "retry": "重试",
     "empty": "暂无数据",
-    "totalCount": "共 {{count}} 个技能",
     "loadMore": "继续加载...",
     "deleted": "已删除",
     "created": "创建成功",
     "saved": "已保存",
-    "navAriaLabel": "技能市场导航",
     "loadingAriaLabel": "技能加载中",
     "closeToast": "关闭提示"
   },
@@ -57,10 +54,9 @@
   },
   "sort": {
     "ariaLabel": "技能排序",
-    "comprehensive": "综合",
     "latest": "最新",
-    "views": "浏览",
-    "downloads": "下载"
+    "downloads": "下载",
+    "hottest": "最热"
   },
   "card": {
     "platformPublisher": "官方发布",
@@ -71,7 +67,7 @@
     "viewsTitle": "浏览次数：{{count}}",
     "downloadsLabel": "下载",
     "downloadsTitle": "下载次数：{{count}}",
-    "install": "安装"
+    "install": "添加到 Bot"
   },
   "category": {
     "ariaLabel": "技能分类",
@@ -177,8 +173,6 @@
     "failed": "删除失败"
   },
   "install": {
-    "title": "安装 Prompt",
-    "hint": "复制后粘贴到 Agent 对话中，将自动完成安装",
     "copied": "已复制",
     "copyBtn": "复制安装 Prompt"
   },
@@ -197,5 +191,21 @@
     "minutesAgo": "{{count}} 分钟前",
     "hoursAgo": "{{count}} 小时前",
     "daysAgo": "{{count}} 天前"
+  },
+  "visibility": {
+    "public": "全平台",
+    "space": "本组织",
+    "private": "仅自己",
+    "system": "全平台"
+  },
+  "mineTable": {
+    "ariaLabel": "我的发布列表",
+    "name": "名称",
+    "category": "分类",
+    "version": "版本",
+    "visibility": "可见范围",
+    "views": "浏览",
+    "downloads": "下载",
+    "actions": "操作"
   }
 }

@@ -28,7 +28,6 @@
 
 ## 预期结果
 
-- 结果摘要显示“共 2 个技能”。
 - 首屏显示“release-risk-radar”，并最终追加显示“meeting-note-cleaner”。
 - 首屏技能在加载下一页后仍然可见，两个技能同时保留在列表中。
 - 分页过程中不显示“加载失败”。
@@ -41,7 +40,7 @@
 
 ## 视觉基准
 
-不建 pixel baseline; 用 `getByRole` + `getByText` 断言结果摘要和技能卡片结构。
+不建 pixel baseline; 用 `getByRole` + `getByText` 断言技能卡片结构。
 
 ## 摸清依据
 
