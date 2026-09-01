@@ -44,6 +44,22 @@ interface EmojiManifest {
 // 故此处无需手写 If-None-Match，只做"上次结果"的本地落地。
 const EMOJI_MANIFEST_CACHE_KEY = "emoji_manifest_v1"
 
+// Electron 的 renderer 通过 file:// 加载 build/index.html，但应用内部使用
+// history.pushState("/contacts") 这类路径切换。切换后 window.location.href 会变成
+// file:///contacts，若此时再解析 "./emoji/0_0.png"，浏览器会错误地请求
+// file:///emoji/0_0.png。这里在模块初始化时固定住最初的文档目录，后续路由切换不影响
+// 本地资源地址。Web 环境仍然走 BASE_URL，不依赖 window。
+const INITIAL_FILE_DOCUMENT_DIRECTORY = (() => {
+    if (typeof window === "undefined" || window.location.protocol !== "file:") {
+        return ""
+    }
+    try {
+        return new URL("./", window.location.href).href
+    } catch {
+        return ""
+    }
+})()
+
 // 内置自定义表情的**本地兜底**：服务端 manifest 拉取失败/离线/或某条目未下发 url 时，
 // 复用客户端已打包的本地 PNG（apps/*/public/emoji/custom_*.png）。
 //   key  = 消息正文 token
@@ -381,6 +397,9 @@ export class DefaultEmojiService implements EmojiService {
         // 页面 URL 带任意路径段都正确解析），electron 构建 base="./"（file:// 下
         // 相对 index.html 不变）。写死 "./" 在页面 URL 带路径段（如 /chat/、/xxx/）
         // 时会被解析到 /xxx/emoji/...，SPA fallback 返回 HTML → <img> 破图不显示。
+        if (INITIAL_FILE_DOCUMENT_DIRECTORY) {
+            return new URL(`emoji/${base}.png`, INITIAL_FILE_DOCUMENT_DIRECTORY).href
+        }
         return `${import.meta.env.BASE_URL}emoji/${base}.png`
     }
 
