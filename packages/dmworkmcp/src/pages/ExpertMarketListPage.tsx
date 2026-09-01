@@ -16,16 +16,25 @@ import {
   listMyExperts,
   listMySquads,
   listSquads,
+  loadExpertChildRelations,
   prefetchLoopTargets,
 } from "../api/expertService";
 import type { ExpertCatalogSort, ExpertCategoryCount } from "../api/expertService";
+import { cancelPluginReview } from "../api/pluginReview";
 import { expertListErrorI18nKey } from "../api/expertListError";
 import ExpertCard from "../components/ExpertCard";
 import ExpertDetailModal from "../components/ExpertDetailModal";
 import ExpertBotPublishModal from "../components/ExpertBotPublishModal";
 import ExpertDeleteConfirmModal from "../components/ExpertDeleteConfirmModal";
 import ExpertAddToLoopModal from "../components/ExpertAddToLoopModal";
-import { MineTable } from "@dmwork/skillmarket";
+import ReviewSubmitModal, {
+  type ReviewSubmitTarget,
+} from "../components/ReviewSubmitModal";
+import { MineTable, type MineRow } from "@dmwork/skillmarket";
+import {
+  resolveReviewRowState,
+  useMyReviewState,
+} from "../hooks/useMyReviewState";
 import { getMcpAvatarColor } from "../utils/mcpAvatar";
 import { normalizeVisibility } from "../utils/visibility";
 
@@ -123,6 +132,8 @@ export default function ExpertMarketListPage({
   >(null);
   const [deleteTarget, setDeleteTarget] = useState<ExpertItem | null>(null);
   const [addToLoopTarget, setAddToLoopTarget] = useState<ExpertItem | null>(null);
+  /** 提交审核 / 重新提交 / 发布新版本 all funnel into ReviewSubmitModal. */
+  const [reviewTarget, setReviewTarget] = useState<ReviewSubmitTarget | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
   const [tagQuery, setTagQuery] = useState("");
@@ -147,6 +158,13 @@ export default function ExpertMarketListPage({
   // network / server / unknown), or null when the load succeeded. Lets the
   // error state show an actionable message instead of a single generic one.
   const [errorKey, setErrorKey] = useState<string | null>(null);
+
+  // Review state for the "我的" surface only. `mode=mine` is applicant-scoped, but
+  // the discovery catalog shows no review state and no owner actions, so the read
+  // is held back there to keep browsing cheap.
+  const myReviews = useMyReviewState(kind === "mine");
+  const reviewsRefreshRef = useRef(myReviews.refresh);
+  reviewsRefreshRef.current = myReviews.refresh;
 
   const toastTimerRef = useRef<number | null>(null);
   const tagFilterRef = useRef<HTMLDivElement | null>(null);
@@ -247,6 +265,7 @@ export default function ExpertMarketListPage({
       setEditTarget(null);
       setDeleteTarget(null);
       setAddToLoopTarget(null);
+      setReviewTarget(null);
       setQuery("");
       setCategory(ALL_CATEGORY);
       setSelectedTags([]);
@@ -257,6 +276,7 @@ export default function ExpertMarketListPage({
       clearLoopCache();
       if (loopOn) prefetchLoopTargets();
       reload();
+      reviewsRefreshRef.current();
     };
     WKApp.mittBus.on("space-changed", handleSpaceChanged);
     return () => WKApp.mittBus.off("space-changed", handleSpaceChanged);
@@ -480,6 +500,112 @@ export default function ExpertMarketListPage({
     } catch (err) {
       showToast(err instanceof Error ? err.message : t("mcp.expert.loadError"));
     }
+  };
+
+  // -------- 组织审核 (Space review) --------
+  // 专家 / 专家团 are CONTAINER types: the record owns child relations
+  // (expert_skill / expert_team_expert). A review submission whose `relations`
+  // field is absent inherits whatever the live graph is at approval time, so the
+  // snapshot would be incomplete — every submission from here names the current
+  // child set explicitly (see loadExpertChildRelations).
+  const openReviewSubmit = (item: ExpertItem, initialChangelog?: string) => {
+    setReviewTarget({
+      pluginId: item.id,
+      name: item.name,
+      version: item.version,
+      isUpgrade: normalizeVisibility(item.visibility) !== "private",
+      initialChangelog,
+      loadRelations: () => loadExpertChildRelations(item.id),
+    });
+  };
+
+  const handleCancelReview = async (reviewId: string) => {
+    try {
+      await cancelPluginReview(reviewId);
+      showToast(t("skillMarket.review.canceledToast"));
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : t("skillMarket.review.cancelFailed")
+      );
+    } finally {
+      // Refresh either way: on a lost race the server already moved the request
+      // out of `pending`, and only a re-read shows the real state.
+      reload();
+      myReviews.refresh();
+    }
+  };
+
+  const handleReviewSubmitted = (message: string) => {
+    showToast(message);
+    reload();
+    myReviews.refresh();
+  };
+
+  /**
+   * Project one owned expert / squad onto a MineTable row, review affordances
+   * included. Shared by the 专家团 and 专家 sections so the two cannot drift.
+   */
+  const toMineRow = (item: ExpertItem, type: "expert" | "squad"): MineRow => {
+    const visibility = normalizeVisibility(item.visibility);
+    const review = resolveReviewRowState(
+      visibility,
+      myReviews.stateByPlugin.get(item.id)
+    );
+    return {
+      id: item.id,
+      type,
+      trackItemType: "expert",
+      icon: (
+        <span
+          className="wk-mine-table__avatar-tile"
+          style={{ background: getMcpAvatarColor(item.id) }}
+        >
+          {item.shortName}
+        </span>
+      ),
+      name: item.name,
+      description: item.summary,
+      category: item.category,
+      version: item.version,
+      visibility,
+      views: item.viewCount,
+      downloads: item.installCount,
+      ariaLabel: item.name,
+      onOpen: () => openDetail(item),
+      // 编辑 is withheld once the record is listed to the org: a direct edit takes
+      // effect immediately for everyone, which would route around review (the
+      // backend answers such a write with 409 listed_requires_review). A listed
+      // record changes only through 发布新版本, and while a request is pending it
+      // does not change at all — the live version stays up until a decision lands.
+      onEdit: review.canEdit ? () => handleEdit(item) : undefined,
+      onDelete: () => setDeleteTarget(item),
+      editAria: t("mcp.expert.editAriaLabel", { values: { name: item.name } }),
+      deleteAria: t("mcp.expert.deleteAriaLabel", { values: { name: item.name } }),
+      reviewBadge: review.badge,
+      rejectReason: review.rejected?.reason,
+      onSubmitReview: review.canSubmitReview
+        ? () => openReviewSubmit(item)
+        : undefined,
+      onCancelReview: review.pending
+        ? () => void handleCancelReview(review.pending!.id)
+        : undefined,
+      onResubmit: review.rejected
+        ? () => openReviewSubmit(item, review.rejected!.changelog)
+        : undefined,
+      onPublishVersion: review.canPublishVersion
+        ? () => openReviewSubmit(item)
+        : undefined,
+      submitReviewAria: t("mcp.review.submitReviewAria", {
+        values: { name: item.name },
+      }),
+      cancelReviewAria: t("mcp.review.cancelReviewAria", {
+        values: { name: item.name },
+      }),
+      resubmitAria: t("mcp.review.resubmitAria", { values: { name: item.name } }),
+      publishVersionAria: t("mcp.review.publishVersionAria", {
+        values: { name: item.name },
+      }),
+    };
   };
 
   const searchPlaceholder =
@@ -721,32 +847,7 @@ export default function ExpertMarketListPage({
               )}
               {mySquads.length > 0 ? (
                 <MineTable
-                  rows={mySquads.map((item) => ({
-                    id: item.id,
-                    type: "squad" as const,
-                    trackItemType: "expert",
-                    icon: (
-                      <span
-                        className="wk-mine-table__avatar-tile"
-                        style={{ background: getMcpAvatarColor(item.id) }}
-                      >
-                        {item.shortName}
-                      </span>
-                    ),
-                    name: item.name,
-                    description: item.summary,
-                    category: item.category,
-                    version: item.version,
-                    visibility: normalizeVisibility(item.visibility),
-                    views: item.viewCount,
-                    downloads: item.installCount,
-                    ariaLabel: item.name,
-                    onOpen: () => openDetail(item),
-                    onEdit: () => handleEdit(item),
-                    onDelete: () => setDeleteTarget(item),
-                    editAria: t("mcp.expert.editAriaLabel", { values: { name: item.name } }),
-                    deleteAria: t("mcp.expert.deleteAriaLabel", { values: { name: item.name } }),
-                  }))}
+                  rows={mySquads.map((item) => toMineRow(item, "squad"))}
                   visibilityLabel={(v) => t(`mcp.visibility.${v}`)}
                 />
               ) : (
@@ -772,32 +873,7 @@ export default function ExpertMarketListPage({
               )}
               {myAgents.length > 0 ? (
                 <MineTable
-                  rows={myAgents.map((item) => ({
-                    id: item.id,
-                    type: "expert" as const,
-                    trackItemType: "expert",
-                    icon: (
-                      <span
-                        className="wk-mine-table__avatar-tile"
-                        style={{ background: getMcpAvatarColor(item.id) }}
-                      >
-                        {item.shortName}
-                      </span>
-                    ),
-                    name: item.name,
-                    description: item.summary,
-                    category: item.category,
-                    version: item.version,
-                    visibility: normalizeVisibility(item.visibility),
-                    views: item.viewCount,
-                    downloads: item.installCount,
-                    ariaLabel: item.name,
-                    onOpen: () => openDetail(item),
-                    onEdit: () => handleEdit(item),
-                    onDelete: () => setDeleteTarget(item),
-                    editAria: t("mcp.expert.editAriaLabel", { values: { name: item.name } }),
-                    deleteAria: t("mcp.expert.deleteAriaLabel", { values: { name: item.name } }),
-                  }))}
+                  rows={myAgents.map((item) => toMineRow(item, "expert"))}
                   visibilityLabel={(v) => t(`mcp.visibility.${v}`)}
                 />
               ) : (
@@ -882,6 +958,11 @@ export default function ExpertMarketListPage({
         key={addToLoopTarget?.id ?? "none"}
         item={addToLoopTarget}
         onClose={() => setAddToLoopTarget(null)}
+      />
+      <ReviewSubmitModal
+        target={reviewTarget}
+        onClose={() => setReviewTarget(null)}
+        onSubmitted={handleReviewSubmitted}
       />
 
       {toast &&

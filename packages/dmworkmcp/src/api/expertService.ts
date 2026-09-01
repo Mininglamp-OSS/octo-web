@@ -748,6 +748,59 @@ export function deleteSquad(id: string): Promise<void> {
   return USE_MOCK ? deleteSquadMock(id) : deleteSquadReal(id);
 }
 
+/** One child relation of a container plugin, shaped for a review submission.
+ *  Structurally the `PluginReviewRelation` of api/pluginReview.ts — declared
+ *  locally so this module keeps its import graph to axios + @octo/base (its unit
+ *  suites mock exactly those two). */
+export interface ExpertChildRelation {
+  targetPluginId: string;
+  relationType: string;
+  sortOrder: number;
+}
+
+/**
+ * The plugin's CURRENT direct child relation graph (expert → expert_skill,
+ * expert_team → expert_team_expert), read straight off `/plugins/detail`.
+ *
+ * 专家 / 专家团 are container types: a review snapshot that carries only the
+ * manifest + package is incomplete, because approving it would re-derive the
+ * child set from whatever the live graph happens to be at decision time. The
+ * submit payload therefore has to name the children explicitly, and this is the
+ * authoritative source for that list.
+ *
+ * Read from the RAW relations rather than from the `skills` / `members`
+ * projections on ExpertAgent / ExpertSquad on purpose: those drop soft-deleted
+ * targets, flatten the type into the field name, and (for squads) require an
+ * N+1 fan-out to hydrate — none of which the snapshot needs. Every relation type
+ * present on the row is echoed, so this stays correct if the backend grows
+ * another child edge.
+ *
+ * KNOWN GAP: `PluginRelationWire.data` (a squad member's `member_key` /
+ * `is_leader` wiring) has no field on the review submit payload, so it cannot be
+ * frozen. See the mismatch note in the task report.
+ */
+export async function loadExpertChildRelations(
+  id: string
+): Promise<ExpertChildRelation[]> {
+  // No mock branch: the fixtures in mock/expertMock.ts carry no relation graph,
+  // and USE_MOCK is pinned false. A mock caller would get an empty list, which
+  // "replace the graph with []" would then act on — so fail loudly instead.
+  if (USE_MOCK) {
+    throw new Error("loadExpertChildRelations is not available under USE_MOCK");
+  }
+  const detail = await pluginDetail(id);
+  return [...(detail.relations ?? [])]
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .map((rel, index) => ({
+      targetPluginId: rel.target_plugin_id,
+      relationType: rel.relation_type,
+      // Re-normalized to a dense 0..n-1 sequence in the order the backend
+      // itself renders children (liveRelations sorts by sort_order), so a
+      // sparse or duplicated stored ordering can't reorder the approved copy.
+      sortOrder: index,
+    }));
+}
+
 /** Record one detail view for an expert ("agent") or squad. Fire-and-forget:
  *  never rejects — failures are swallowed inside (a lost view is meaningless
  *  to the user and must not surface). */

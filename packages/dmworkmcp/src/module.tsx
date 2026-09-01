@@ -1,7 +1,7 @@
 import React from "react";
 import type { IModule } from "@octo/base";
 import { ChatPage, i18n, I18nProvider, WKApp, Menus, t as translate, Dap } from "@octo/base";
-import { SkillListPage } from "@dmwork/skillmarket";
+import { SkillListPage, SpaceReviewPage } from "@dmwork/skillmarket";
 import McpMarketListPage from "./pages/McpMarketListPage";
 import MyAssetsPage from "./pages/MyAssetsPage";
 import ExpertMarketListPage from "./pages/ExpertMarketListPage";
@@ -88,6 +88,15 @@ export class McpMarketModule implements IModule {
     // sub-tabs, so personal assets live in one place instead of a per-market
     // tab. Same shared "/mcp-market" shell as the three discovery markets.
     WKApp.route.register("/mcp-market/mine", () => <MyAssetsPage />, { hostShell: marketHostShell });
+
+    // 组织审核 (Space review queue) — the sidebar's fifth entry, shown only to
+    // Space owners/admins. That gate is COSMETIC and lives in MarketSidebar; the
+    // route itself stays registered unconditionally so a deep link never renders
+    // a blank pane. A member who lands here gets the queue's own 403 error state
+    // (the server enforces the reviewer role) and the sidebar moves them off the
+    // route once its role probe resolves. Page owned by @dmwork/skillmarket, same
+    // as /mcp-market/skills.
+    WKApp.route.register("/mcp-market/review", () => <SpaceReviewPage />, { hostShell: marketHostShell });
 
     // 顶层 NavRail 菜单入口。sort=5003 紧跟在 summary(4002/5000) 之后，
     // 与既有 chat(1000)/contacts(4000) 图标栏共用同一注册机制

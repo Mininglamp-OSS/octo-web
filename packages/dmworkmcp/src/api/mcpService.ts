@@ -815,9 +815,14 @@ async function createMcpReal(params: CreateMcpParams): Promise<{ id: string }> {
   // Fail closed on an unresolved category so the plugin and its placement never
   // split-brain on a NULL category_id.
   const { categoryId } = await resolveWriteCategory(params.category, maps);
+  // A create lands as a PRIVATE draft, never `space`. Listing to the org is a
+  // reviewer decision now: a tenant may not set `space` itself (the backend
+  // rejects the flip), so the org-visible state is reached only by 提交审核 →
+  // approve. This used to hardcode `visibility: "space"`, which both bypassed
+  // review and is no longer accepted.
   const detail = await post<PluginDetailWire>(
     "/plugins/upsert",
-    toPluginUpsert(params, { categoryId, visibility: "space" })
+    toPluginUpsert(params, { categoryId, visibility: "private" })
   );
   return { id: detail.plugin.plugin_id };
 }
@@ -829,6 +834,29 @@ async function updateMcpReal(
   id: string,
   params: UpdateMcpParams
 ): Promise<McpDetail> {
+  const { body, maps } = await buildConnectorUpsert(id, params);
+  const detail = await post<PluginDetailWire>("/plugins/upsert", body);
+  return mapDetail(detail.plugin, maps.idToKey);
+}
+
+/**
+ * Build the full-replace upsert body for an existing connector.
+ *
+ * Shared by the direct edit (updateMcpReal) and by the 发布新版本 review
+ * submission, which needs the very same `manifest_json` / `plugin_json` pair but
+ * posts it to `/plugins/review_requests` instead of `/plugins/upsert`. Extracted
+ * rather than duplicated because everything below is preservation logic — a
+ * review submission that skipped it would freeze a snapshot with the caller's
+ * unmodeled attachments and server keys destroyed, and approving it would then
+ * destroy them for real.
+ */
+async function buildConnectorUpsert(
+  id: string,
+  params: UpdateMcpParams
+): Promise<{
+  body: ReturnType<typeof toPluginUpsert>;
+  maps: Awaited<ReturnType<typeof getConnectorCategoryMaps>>;
+}> {
   const [current, maps] = await Promise.all([
     get<PluginDetailWire>(`/plugins/detail`, {
       plugin_id: id,
@@ -875,22 +903,40 @@ async function updateMcpReal(
   for (const [k, v] of Object.entries(currentServers)) {
     if (k !== currentServerName) extraServers[k] = v;
   }
-  const detail = await post<PluginDetailWire>(
-    "/plugins/upsert",
-    toPluginUpsert(
-      { ...params, icon: canonicalIcon },
-      {
-        pluginId: id,
-        categoryId,
-        visibility: current.plugin.visibility,
-        rawServer,
-        extraServers,
-        // toPluginUpsert drops the five modeled paths, keeping only the extras.
-        extraAttachments: current.plugin.plugin_json?.attachments,
-      }
-    )
+  const body = toPluginUpsert(
+    { ...params, icon: canonicalIcon },
+    {
+      pluginId: id,
+      categoryId,
+      visibility: current.plugin.visibility,
+      rawServer,
+      extraServers,
+      // toPluginUpsert drops the five modeled paths, keeping only the extras.
+      extraAttachments: current.plugin.plugin_json?.attachments,
+    }
   );
-  return mapDetail(detail.plugin, resolvedMaps.idToKey);
+  return { body, maps: resolvedMaps };
+}
+
+/**
+ * The frozen content for a connector 发布新版本 submission: exactly the
+ * documents a direct edit would have written, but handed to the caller instead
+ * of posted.
+ *
+ * An already-listed (`space`) connector cannot be edited directly — the backend
+ * answers 409 `listed_requires_review` — so this pair IS the change under
+ * review. The live row keeps serving the previous version until a reviewer
+ * approves.
+ */
+export async function buildConnectorReviewContent(
+  id: string,
+  params: UpdateMcpParams
+): Promise<{ manifestJson: unknown; pluginJson: unknown }> {
+  const { body } = await buildConnectorUpsert(id, params);
+  return {
+    manifestJson: body.plugin.manifest_json,
+    pluginJson: body.plugin.plugin_json,
+  };
 }
 
 /** POST /plugins/delete — owner-only soft delete. */

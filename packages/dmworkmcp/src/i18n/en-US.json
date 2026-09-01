@@ -11,7 +11,8 @@
     "skills": "Skills",
     "experts": "Experts",
     "expertsBadge": "Loop",
-    "mine": "My publications"
+    "mine": "My publications",
+    "review": "Org review"
   },
   "mine": {
     "pageTitle": "My publications",
@@ -397,5 +398,18 @@
     "space": "Organization",
     "private": "Only me",
     "system": "All platforms"
+  },
+  "review": {
+    "cancel": "Cancel",
+    "relationsLoading": "Loading current items…",
+    "relationsFrozen": "This submission freezes the current {{count}} item(s)",
+    "relationsFailed": "Failed to load child items; cannot submit for review",
+    "newVersionSection": "Publish new version",
+    "newVersionSectionDesc": "Your edits are submitted with this review request; the listed version is replaced only after approval.",
+    "submitReviewAria": "Submit \"{{name}}\" for review",
+    "cancelReviewAria": "Withdraw the review request for \"{{name}}\"",
+    "resubmitAria": "Resubmit \"{{name}}\" for review",
+    "publishVersionAria": "Publish a new version of \"{{name}}\"",
+    "pendingBlocksEdit": "A review request is pending; edits are available after it is resolved"
   }
 }

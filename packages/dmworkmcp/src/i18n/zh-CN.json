@@ -11,7 +11,8 @@
     "skills": "技能",
     "experts": "专家",
     "expertsBadge": "回路",
-    "mine": "我的发布"
+    "mine": "我的发布",
+    "review": "组织审核"
   },
   "mine": {
     "pageTitle": "我的发布",
@@ -397,5 +398,18 @@
     "space": "本组织",
     "private": "仅自己",
     "system": "全平台"
+  },
+  "review": {
+    "cancel": "取消",
+    "relationsLoading": "正在读取当前子项…",
+    "relationsFrozen": "本次送审将冻结当前 {{count}} 个子项",
+    "relationsFailed": "读取子项失败，无法提交审核",
+    "newVersionSection": "发布新版本",
+    "newVersionSectionDesc": "修改内容将随本次审核申请一起提交；审核通过后才会替换组织内在架的版本。",
+    "submitReviewAria": "提交「{{name}}」上架审核",
+    "cancelReviewAria": "撤回「{{name}}」的上架申请",
+    "resubmitAria": "重新提交「{{name}}」上架审核",
+    "publishVersionAria": "为「{{name}}」发布新版本",
+    "pendingBlocksEdit": "该插件有正在审核的申请，审核完成后才能修改"
   }
 }

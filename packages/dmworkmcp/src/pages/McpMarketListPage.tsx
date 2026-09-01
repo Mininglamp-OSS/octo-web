@@ -13,7 +13,16 @@ import McpCreateModal from "../components/McpCreateModal";
 import McpBotPublishModal from "../components/McpBotPublishModal";
 import McpConnectModal from "../components/McpConnectModal";
 import McpDeleteConfirmModal from "../components/McpDeleteConfirmModal";
-import { MineTable } from "@dmwork/skillmarket";
+import ReviewSubmitModal, {
+  type ReviewSubmitTarget,
+} from "../components/ReviewSubmitModal";
+import { MineTable, type MineRow } from "@dmwork/skillmarket";
+import { cancelPluginReview } from "../api/pluginReview";
+import {
+  MyReviewStateProbe,
+  resolveReviewRowState,
+  type UseMyReviewStateResult,
+} from "../hooks/useMyReviewState";
 import { isImageIcon } from "../utils/icon";
 import { getMcpAvatarColor, getMcpAvatarText } from "../utils/mcpAvatar";
 import "../index.css";
@@ -74,6 +83,17 @@ interface McpMarketListPageState {
    *  connector. Driven by the card's primary 连接 action, which forwards a
    *  prompt instead of opening the detail modal. */
   connectItem: McpListItem | null;
+  /** The caller's own review requests, joined by plugin id. Resolved by the
+   *  headless <MyReviewStateProbe /> because the hooks cannot run in a class. */
+  review: UseMyReviewStateResult;
+  /** 提交审核 / 重新提交 target for ReviewSubmitModal (version + changelog only).
+   *  发布新版本 does NOT come through here — a listed connector's new content is
+   *  authored in McpCreateModal's review mode. */
+  reviewTarget: ReviewSubmitTarget | null;
+  /** When set, McpCreateModal opens in REVIEW mode: prefilled from this detail,
+   *  and Submit posts a review request carrying the edited content instead of
+   *  writing the live record. */
+  reviewEditingDetail: McpDetail | null;
 }
 
 /**
@@ -120,6 +140,11 @@ export default class McpMarketListPage extends Component<
     editingDetail: null,
     deletingItem: null,
     connectItem: null,
+    // Empty until the probe reports; `refresh` is a no-op so a space switch or a
+    // cancel that lands before the first report cannot throw.
+    review: { stateByPlugin: new Map(), refresh: () => {} },
+    reviewTarget: null,
+    reviewEditingDetail: null,
   };
 
   private publishMenuRef = React.createRef<HTMLDivElement>();
@@ -229,7 +254,13 @@ export default class McpMarketListPage extends Component<
       publishMenuOpen: false,
       botPublishVisible: false,
       connectItem: null,
+      reviewTarget: null,
+      reviewEditingDetail: null,
     }, () => this.loadData());
+    // Review requests are Space-scoped server-side but `useReviewRequests` keys
+    // its fetch on mode/status/pageSize only, so the re-read has to be explicit —
+    // same as SkillListPage's space-changed handler.
+    this.state.review.refresh();
   };
 
   private tagFetchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -488,6 +519,165 @@ export default class McpMarketListPage extends Component<
     } else {
       this.loadData();
     }
+  };
+
+  // ── 组织审核 (Space review) ────────────────────────────────────────────────
+  // Stable callback for the headless probe (see MyReviewStateProbe): an unstable
+  // one would re-fire its effect on every render and loop through setState.
+  private handleReviewStateChange = (review: UseMyReviewStateResult) => {
+    this.setState({ review });
+  };
+
+  /** 提交审核 (first listing of a private draft) / 重新提交 (after a rejection).
+   *  No content travels with either: the row is still a private draft nobody
+   *  else can see, so the server freezes the row itself. */
+  private openReviewSubmit = (item: McpListItem, initialChangelog?: string) => {
+    this.setState({
+      reviewTarget: {
+        pluginId: item.id,
+        name: item.name,
+        version: item.version,
+        isUpgrade: item.visibility !== "private",
+        initialChangelog,
+        // A connector is a LEAF type — it owns no child relations, so the field
+        // is deliberately omitted (sending `[]` would mean "replace the graph
+        // with nothing", which is a different statement from "I have no children
+        // to declare").
+      },
+    });
+  };
+
+  /** 发布新版本 for an already-listed connector. The live record cannot be
+   *  edited directly (409 listed_requires_review), so the new content is
+   *  authored in McpCreateModal's review mode and travels WITH the review
+   *  request; the org keeps seeing the current version until approval. */
+  private openPublishVersion = async (item: McpListItem) => {
+    try {
+      const detail = await fetchMcpDetail(item.id);
+      this.setState({ reviewEditingDetail: detail, createVisible: true });
+    } catch (err) {
+      Toast.error(err instanceof Error ? err.message : t("mcp.edit.failed"));
+    }
+  };
+
+  private handleCancelReview = async (reviewId: string) => {
+    try {
+      await cancelPluginReview(reviewId);
+      Toast.success(t("skillMarket.review.canceledToast"));
+    } catch (err) {
+      Toast.error(
+        err instanceof Error ? err.message : t("skillMarket.review.cancelFailed")
+      );
+    } finally {
+      // Refresh either way: on a lost race the server already moved the request
+      // out of `pending`, and only a re-read shows the real state.
+      this.loadData();
+      this.state.review.refresh();
+    }
+  };
+
+  private handleReviewSubmitted = (message: string) => {
+    Toast.success(message);
+    this.loadData();
+    this.state.review.refresh();
+  };
+
+  /**
+   * Edit from the detail modal — the second entry point into the editor, gated
+   * exactly like the row's 编辑 button so it cannot route around review:
+   *   - private draft, nothing in flight → the normal edit,
+   *   - already listed → 发布新版本 (the edit becomes the reviewed content),
+   *   - a request pending → refused; the live version must not move while a
+   *     reviewer is looking at the next one.
+   */
+  private handleEditFromDetail = (d: McpDetail) => {
+    const review = resolveReviewRowState(
+      d.visibility,
+      this.state.review.stateByPlugin.get(d.id)
+    );
+    if (review.canEdit) {
+      // State batching keeps this a single render.
+      this.setState({ detailId: null, editingDetail: d, createVisible: true });
+      return;
+    }
+    if (review.canPublishVersion) {
+      this.setState({
+        detailId: null,
+        reviewEditingDetail: d,
+        createVisible: true,
+      });
+      return;
+    }
+    Toast.warning(t("mcp.review.pendingBlocksEdit"));
+  };
+
+  /** Project one owned connector onto a MineTable row, review affordances
+   *  included. Review state is derived here (page level) and merely rendered by
+   *  the table; the discovery branch builds none of these fields, so a public
+   *  card can never pick up an owner action. */
+  private toMineRow = (item: McpListItem): MineRow => {
+    const review = resolveReviewRowState(
+      item.visibility,
+      this.state.review.stateByPlugin.get(item.id)
+    );
+    return {
+      id: item.id,
+      type: "connector",
+      trackItemType: "mcp",
+      icon: isImageIcon(item.icon) ? (
+        <img className="wk-mine-table__avatar-img" src={item.icon} alt="" />
+      ) : (
+        <span
+          className="wk-mine-table__avatar-tile"
+          style={{ background: getMcpAvatarColor(item.id) }}
+        >
+          {item.icon?.trim() ? item.icon : getMcpAvatarText(item.name)}
+        </span>
+      ),
+      name: item.name,
+      description: item.slogan,
+      category: item.category,
+      version: item.version,
+      visibility: item.visibility,
+      views: item.viewCount,
+      downloads: item.installCount,
+      updatedAt: item.updatedAt,
+      ariaLabel: item.name,
+      onOpen: () => this.setState({ detailId: item.id }),
+      // 编辑 is withheld once the connector is listed to the org: a direct edit
+      // takes effect immediately for every member, routing around review — the
+      // backend rejects it with 409 listed_requires_review. A listed connector
+      // changes only through 发布新版本, and while a request is pending it does
+      // not change at all (the live version stays up until a decision lands).
+      onEdit: review.canEdit ? () => this.handleEditFromCard(item) : undefined,
+      onDelete: () => this.setState({ deletingItem: item }),
+      editAria: t("mcp.card.editAriaLabel", { values: { name: item.name } }),
+      deleteAria: t("mcp.card.deleteAriaLabel", { values: { name: item.name } }),
+      reviewBadge: review.badge,
+      rejectReason: review.rejected?.reason,
+      onSubmitReview: review.canSubmitReview
+        ? () => this.openReviewSubmit(item)
+        : undefined,
+      onCancelReview: review.pending
+        ? () => void this.handleCancelReview(review.pending!.id)
+        : undefined,
+      onResubmit: review.rejected
+        ? () => this.openReviewSubmit(item, review.rejected!.changelog)
+        : undefined,
+      onPublishVersion: review.canPublishVersion
+        ? () => void this.openPublishVersion(item)
+        : undefined,
+      submitReviewAria: t("mcp.review.submitReviewAria", {
+        values: { name: item.name },
+      }),
+      cancelReviewAria: t("mcp.review.cancelReviewAria", {
+        values: { name: item.name },
+      }),
+      resubmitAria: t("mcp.review.resubmitAria", { values: { name: item.name } }),
+      publishVersionAria: t("mcp.review.publishVersionAria", {
+        values: { name: item.name },
+      }),
+    };
   };
 
   private handleKeyword = (value: string) => {
@@ -820,35 +1010,7 @@ export default class McpMarketListPage extends Component<
                   <>
                     {this.props.variant === "mine" ? (
                       <MineTable
-                        rows={items.map((item) => ({
-                          id: item.id,
-                          type: "connector" as const,
-                          trackItemType: "mcp",
-                          icon: isImageIcon(item.icon) ? (
-                            <img className="wk-mine-table__avatar-img" src={item.icon} alt="" />
-                          ) : (
-                            <span
-                              className="wk-mine-table__avatar-tile"
-                              style={{ background: getMcpAvatarColor(item.id) }}
-                            >
-                              {item.icon?.trim() ? item.icon : getMcpAvatarText(item.name)}
-                            </span>
-                          ),
-                          name: item.name,
-                          description: item.slogan,
-                          category: item.category,
-                          version: item.version,
-                          visibility: item.visibility,
-                          views: item.viewCount,
-                          downloads: item.installCount,
-                          updatedAt: item.updatedAt,
-                          ariaLabel: item.name,
-                          onOpen: () => this.setState({ detailId: item.id }),
-                          onEdit: () => this.handleEditFromCard(item),
-                          onDelete: () => this.setState({ deletingItem: item }),
-                          editAria: t("mcp.card.editAriaLabel", { values: { name: item.name } }),
-                          deleteAria: t("mcp.card.deleteAriaLabel", { values: { name: item.name } }),
-                        }))}
+                        rows={items.map(this.toMineRow)}
                         visibilityLabel={(v) => t(`mcp.visibility.${v}`)}
                         showStats={false}
                       />
@@ -889,20 +1051,31 @@ export default class McpMarketListPage extends Component<
           mcpId={detailId}
           onClose={() => this.setState({ detailId: null })}
           canManage={canManage}
-          onEdit={(d) =>
-            // Close the detail modal and hand off to the shared create/edit
-            // modal in edit mode. State batching keeps this a single render.
-            this.setState({ detailId: null, editingDetail: d, createVisible: true })
-          }
+          onEdit={this.handleEditFromDetail}
           onDeleted={this.handleItemDeleted}
         />
         <McpCreateModal
           visible={createVisible}
-          editing={editingDetail}
+          editing={editingDetail ?? this.state.reviewEditingDetail}
+          reviewMode={Boolean(this.state.reviewEditingDetail)}
           onClose={() =>
-            this.setState({ createVisible: false, editingDetail: null })
+            this.setState({
+              createVisible: false,
+              editingDetail: null,
+              reviewEditingDetail: null,
+            })
           }
           onSaved={this.handleSaved}
+          onReviewSubmitted={this.handleReviewSubmitted}
+        />
+        <ReviewSubmitModal
+          target={this.state.reviewTarget}
+          onClose={() => this.setState({ reviewTarget: null })}
+          onSubmitted={this.handleReviewSubmitted}
+        />
+        <MyReviewStateProbe
+          enabled={this.props.variant === "mine"}
+          onChange={this.handleReviewStateChange}
         />
         <McpBotPublishModal
           visible={this.state.botPublishVisible}

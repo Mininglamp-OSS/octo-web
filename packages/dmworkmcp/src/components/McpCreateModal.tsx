@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { WKModal, WKInput, WKButton, t, Dap } from "@octo/base";
 import { Select, Switch, TextArea, Toast } from "@douyinfe/semi-ui";
 import {
+  buildConnectorReviewContent,
   createMcp,
   listConnectorCategories,
   probeMcpTools,
@@ -9,6 +10,8 @@ import {
   updateMcp,
   uploadMcpIcon,
 } from "../api/mcpService";
+import { submitPluginReview } from "../api/pluginReview";
+import { bumpPatch } from "./ReviewSubmitModal";
 import {
   isSecretKey,
   slugifyServerName,
@@ -42,6 +45,19 @@ interface McpCreateModalProps {
    *  submits via updateMcp(id), and uses the edit title/label copy. Absent =
    *  create mode (original behavior). */
   editing?: McpDetail | null;
+  /**
+   * REVIEW mode — 发布新版本 for a connector that is already listed to the org.
+   * Requires `editing`. The form behaves exactly as an edit, but Submit posts
+   * `POST /plugins/review_requests` carrying the edited manifest + package as
+   * the frozen content instead of writing the live record: the org keeps seeing
+   * the current version until a reviewer approves. A direct write here would be
+   * rejected by the backend with 409 `listed_requires_review` anyway.
+   */
+  reviewMode?: boolean;
+  /** Fires after a successful review submission (review mode only), with a
+   *  ready-to-show message. Distinct from `onSaved` because nothing was saved —
+   *  the list must not be patched with content that has not shipped. */
+  onReviewSubmitted?: (message: string) => void;
 }
 
 const ICON_MAX_BYTES = 2 * 1024 * 1024;
@@ -514,6 +530,8 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
   onClose,
   onSaved,
   editing,
+  reviewMode = false,
+  onReviewSubmitted,
 }) => {
   const [form, setForm] = useState<CreateMcpParams>(EMPTY);
   /** Connector categories from the backend taxonomy (dynamic, matching the
@@ -557,9 +575,17 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
   const [createMode, setCreateMode] = useState<"manual" | "json">("manual");
   const [jsonRaw, setJsonRaw] = useState("");
 
+  // 发布新版本 metadata. Only collected (and only rendered) in review mode; the
+  // review request needs a version label + changelog on top of the content.
+  const [reviewVersion, setReviewVersion] = useState("");
+  const [reviewChangelog, setReviewChangelog] = useState("");
+
   const iconInputRef = useRef<HTMLInputElement>(null);
 
+  // Review mode IS an edit of an existing record as far as the form is
+  // concerned — it just posts the result somewhere else.
   const isEdit = !!editing;
+  const isReview = reviewMode && !!editing;
 
   // Prefill on open. When `editing` is set, hydrate the form from the detail;
   // otherwise reset to EMPTY so re-opening always starts fresh. Also drives
@@ -616,6 +642,10 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     // JSON import mode + textarea reset. Edit sessions never enter JSON mode.
     setCreateMode("manual");
     setJsonRaw("");
+    // Review metadata is reseeded per open so a previous 发布新版本 attempt's
+    // version label / changelog never leaks into the next one.
+    setReviewVersion(bumpPatch(editing?.version));
+    setReviewChangelog("");
   }, [visible, editing]);
 
   // Object-URL preview lifecycle: create on file pick, revoke on replace/unmount
@@ -878,6 +908,13 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
       else setStep(1);
       return;
     }
+    // Review mode carries the version label + changelog alongside the content;
+    // both live on the last step, next to Submit.
+    if (isReview && (!reviewVersion.trim() || !reviewChangelog.trim())) {
+      Toast.warning(t("skillMarket.review.versionAndChangelogRequired"));
+      setStep(stepDefs.length - 1);
+      return;
+    }
 
     // Collapse the structured editors down to the wire pair. The backend has NO
     // secret scanner and does NOT blank values on read, so a secret-shaped shared
@@ -942,7 +979,22 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
       notes: (form.notes ?? []).filter((s) => s.trim()),
     };
     try {
-      if (isEdit && editing) {
+      if (isReview && editing) {
+        // 发布新版本: freeze the edited documents into the review request. The
+        // live record is NOT written — the org keeps serving the current version
+        // until a reviewer approves. `relations` is deliberately absent: a
+        // connector is a leaf type with no child graph to declare.
+        const content = await buildConnectorReviewContent(editing.id, payload);
+        await submitPluginReview({
+          pluginId: editing.id,
+          version: reviewVersion.trim(),
+          changelog: reviewChangelog.trim(),
+          manifestJson: content.manifestJson,
+          pluginJson: content.pluginJson,
+        });
+        resetAll();
+        onReviewSubmitted?.(t("skillMarket.review.submittedToast"));
+      } else if (isEdit && editing) {
         const updated = await updateMcp(editing.id, payload);
         Toast.success(t("mcp.edit.success"));
         resetAll();
@@ -955,7 +1007,11 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
       }
       onClose();
     } catch (err: unknown) {
-      const fallback = isEdit ? t("mcp.edit.failed") : t("mcp.create.failed");
+      const fallback = isReview
+        ? t("skillMarket.review.submitFailed")
+        : isEdit
+          ? t("mcp.edit.failed")
+          : t("mcp.create.failed");
       Toast.error(err instanceof Error ? err.message : fallback);
     } finally {
       setSubmitting(false);
@@ -1198,7 +1254,13 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
       width={720}
       className="wk-mcp-create-modal"
       bodyStyle={{ maxHeight: "78vh", overflowY: "auto" }}
-      title={isEdit ? t("mcp.edit.title") : t("mcp.create.title")}
+      title={
+        isReview
+          ? t("skillMarket.review.publishNewVersion")
+          : isEdit
+            ? t("mcp.edit.title")
+            : t("mcp.create.title")
+      }
       footer={
         createMode === "json" ? null : (
         <div className="wk-mcp-form-footer">
@@ -1234,7 +1296,11 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                   loading={submitting}
                   onClick={handleSubmit}
                 >
-                  {isEdit ? t("mcp.edit.submit") : t("mcp.create.submit")}
+                  {isReview
+                    ? t("skillMarket.review.publishNewVersion")
+                    : isEdit
+                      ? t("mcp.edit.submit")
+                      : t("mcp.create.submit")}
                 </WKButton>
               </>
             )}
@@ -1739,6 +1805,33 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                 </div>
               )}
             </Section>
+
+            {/* 7. 发布新版本 — review mode only. Placed on the last step so the
+                version label + changelog sit next to the Submit button that
+                sends them. */}
+            {isReview && (
+              <Section
+                title={t("mcp.review.newVersionSection")}
+                desc={t("mcp.review.newVersionSectionDesc")}
+              >
+                <Field label={t("skillMarket.review.fieldVersion")}>
+                  <WKInput
+                    value={reviewVersion}
+                    onChange={setReviewVersion}
+                    maxLength={32}
+                  />
+                </Field>
+                <Field label={t("skillMarket.review.fieldChangelog")}>
+                  <TextArea
+                    value={reviewChangelog}
+                    onChange={setReviewChangelog}
+                    rows={4}
+                    maxLength={1000}
+                    placeholder={t("skillMarket.review.changelogPlaceholder")}
+                  />
+                </Field>
+              </Section>
+            )}
 
           </>
         )}
