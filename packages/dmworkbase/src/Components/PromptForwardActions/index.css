@@ -168,6 +168,60 @@
   display: none;
 }
 
+/* Wrapper holding the prompt <pre>/<textarea> plus the hover-revealed copy
+ * icon in the top-right corner. */
+.wk-prompt-forward__preview {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.wk-prompt-forward__copy-icon {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--wk-border-subtle, rgba(0, 0, 0, 0.08));
+  border-radius: var(--wk-r-sm, 6px);
+  background: var(--wk-bg-surface, #fff);
+  color: var(--wk-text-secondary, #4b5563);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.wk-prompt-forward__preview:hover .wk-prompt-forward__copy-icon,
+.wk-prompt-forward__copy-icon:focus-visible {
+  opacity: 1;
+}
+
+.wk-prompt-forward__copy-icon:disabled {
+  cursor: default;
+}
+
+/* Editable variant of the prompt preview — same look as the <pre>. */
+.wk-prompt-forward__preview-edit {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 16px;
+  resize: none;
+  border: 0;
+  outline: none;
+  color: var(--wk-text-primary, #111827);
+  background: var(--wk-bg-base, #f7f8fa);
+  font: 13px / 1.7 var(--wk-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .wk-prompt-forward__col--bots {
   gap: 8px;
   padding: 12px;

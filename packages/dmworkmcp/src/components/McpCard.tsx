@@ -11,8 +11,14 @@ import { isOfficialMcp } from "../utils/publisher";
 interface McpCardProps {
   item: McpListItem;
   onClick: (item: McpListItem) => void;
+  /** Primary card action (连接). When provided, the hover-revealed button
+   *  forwards a connect prompt instead of opening the detail modal. Falls back
+   *  to `onClick` (detail) when omitted. */
+  onConnect?: (item: McpListItem) => void;
   onEdit?: (item: McpListItem) => void;
   onDelete?: (item: McpListItem) => void;
+  /** Show the footer stats row. Discovery hides it; the 我的 view keeps it. */
+  showStats?: boolean;
 }
 
 /** Parse a backend `match_reasons` entry into an i18n key + optional value.
@@ -88,7 +94,7 @@ export function resolveOwner(item: McpListItem): { botName?: string; humanName?:
 }
 
 /** A single MCP server card in the list grid. */
-const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) => {
+const McpCard: React.FC<McpCardProps> = ({ item, onClick, onConnect, onEdit, onDelete, showStats = true }) => {
   const visibleTags = item.tags.slice(0, CARD_TAG_LIMIT);
   const overflowTags = item.tags.slice(CARD_TAG_LIMIT);
   const isOfficial = isOfficialMcp(item);
@@ -97,6 +103,7 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
   // (paste artifact, backend quirk) doesn't slip past the truthiness check
   // and render an empty box via IconGlyph.
   const hasIcon = !!item.icon?.trim();
+
   return (
     <div
       className={`wk-mcp-card${isOfficial ? " wk-mcp-card--official" : ""}`}
@@ -120,6 +127,24 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
         }
       }}
     >
+      <button
+        type="button"
+        className="wk-mcp-card__primary-action"
+        // No aria-label: the visible "添加到 Bot" text is the accessible name.
+        // Interpolating the connector name here would pollute the ancestor
+        // card's computed name (role="button") and make a name-scoped getByRole
+        // match both the card and this button (strict-mode collision).
+        // The primary action forwards a connect prompt (onConnect) rather than
+        // opening the detail modal. data-track-ignore so the global click
+        // delegate doesn't also emit market_card_opened for the ancestor card.
+        data-track-ignore=""
+        onClick={(e) => {
+          e.stopPropagation();
+          (onConnect ?? onClick)(item);
+        }}
+      >
+        {t("mcp.card.connect")}
+      </button>
       <div className="wk-mcp-card__top">
         <div className="wk-mcp-card__icon">
           {hasIcon ? (
@@ -170,7 +195,7 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
       <div className="wk-mcp-card__slogan">{item.slogan}</div>
       <div className="wk-mcp-card__tags">
         {visibleTags.map((tag) => (
-          <span key={tag} className="wk-mcp-tag wk-mcp-tag--accent">
+          <span key={tag} className="wk-mcp-tag">
             {tag}
           </span>
         ))}
@@ -179,7 +204,7 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
             content={
               <div className="wk-mcp-tag-overflow">
                 {overflowTags.map((tag) => (
-                  <span key={tag} className="wk-mcp-tag wk-mcp-tag--accent">
+                  <span key={tag} className="wk-mcp-tag">
                     {tag}
                   </span>
                 ))}
@@ -198,7 +223,9 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
       {item.matchReasons?.length ? (
         <MatchReasons reasons={item.matchReasons} hideCreator={isOfficial} />
       ) : null}
+      {(showStats || onEdit || onDelete) && (
       <div className="wk-mcp-card__footer">
+        {showStats && (
         <div className="wk-mcp-card__stats">
           <span
             className="wk-mcp-card__stat"
@@ -209,6 +236,7 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
             {item.toolCount}
           </span>
         </div>
+        )}
         {(onEdit || onDelete) && (
           <div
             className="wk-mcp-card__footer-actions"
@@ -251,6 +279,7 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
           </div>
         )}
       </div>
+      )}
     </div>
   );
 };

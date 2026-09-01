@@ -3,19 +3,6 @@
 // (octo-marketplace/docs/api/mcp-v1.md §0). Do not localize or reformat these.
 
 /**
- * Legacy placeholder value the frontend used to submit for a header/env key
- * whose value each consumer must fill locally (`*_user_supplied` arrays in
- * mcp-v1.md §5). Since the §5.1 relaxation, user-supplied values are stored
- * verbatim for the owner and blanked to non-owners at read time — the frontend
- * no longer needs to substitute the sentinel on submit. The constant is kept
- * because `entriesFromWire` still normalizes it back to "" when reading a
- * legacy record that persisted the sentinel literal.
- *
- * Contract source: mcp-v1.md §0 — must match the backend literal exactly.
- */
-export const SECRET_PLACEHOLDER_SENTINEL = "__OCTO_SECRET_PLACEHOLDER__";
-
-/**
  * Reserved category key that disables the category filter on the list
  * endpoints. Mirrors `CATEGORY_KEY_ALL` from mcp-v1.md §0.
  */

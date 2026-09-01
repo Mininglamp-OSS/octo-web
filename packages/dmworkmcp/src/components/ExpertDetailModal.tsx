@@ -2,8 +2,6 @@ import React, { useEffect, useState } from "react";
 import {
   Bot,
   ChevronLeft,
-  Download,
-  Eye,
   Route,
   ShieldCheck,
   UserRound,
@@ -15,7 +13,6 @@ import { getExpertSkillContent, getSquadSkillContent, getExpertSkillDownloadUrl,
 import { getMcpAvatarColor } from "../utils/mcpAvatar";
 import { resolveExpertOwner } from "../utils/expertOwner";
 import { isOfficialExpert } from "../utils/publisher";
-import { formatCount } from "../utils/format";
 import ExpertSpecView from "./ExpertSpecView";
 import { Modal as OctoModal } from "@octo/ui";
 
@@ -137,26 +134,13 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
               )}
             </span>
           )}
-          <span className="wk-mcp-expert-detail__stats">
-            <span
-              className="wk-mcp-expert-detail__stat"
-              title={t("mcp.expert.viewCountTitle", { values: { count: item.viewCount ?? 0 } })}
-              aria-label={t("mcp.expert.viewCountTitle", { values: { count: item.viewCount ?? 0 } })}
-            >
-              <Eye size={13} aria-hidden="true" />
-              {formatCount(item.viewCount ?? 0)}
-            </span>
-            <span
-              className="wk-mcp-expert-detail__stat"
-              title={t("mcp.expert.installCountTitle", { values: { count: item.installCount ?? 0 } })}
-              aria-label={t("mcp.expert.installCountTitle", { values: { count: item.installCount ?? 0 } })}
-            >
-              <Download size={13} aria-hidden="true" />
-              {formatCount(item.installCount ?? 0)}
-            </span>
-          </span>
         </div>
       </div>
+      {item.version && (
+        <span className="wk-mcp-detail-header__version" title={`v${item.version}`}>
+          v{item.version}
+        </span>
+      )}
     </div>
   );
 

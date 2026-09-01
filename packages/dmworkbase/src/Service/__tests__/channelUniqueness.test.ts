@@ -215,7 +215,6 @@ describe('中央映射通道 —— 命令式 / data-track 站点也与规则表
  *     (mute/pin 已改命令式补点、退出 BODY 表,故不在此列;见 review M3/B4)
  *   - 登录双入口(账号 / 邮箱)同为一次登录:user_login
  *   - 密钥「配置」= 新建(POST)或更新(PUT)同一动作:settings_secrets_configured
- *   - 市场「发布」跨 mcp / skill 两个目录同一手势:market_manual_publish_submitted
  *
  * 仅覆盖 FETCH / BODY 两条**后端调用驱动**通道:一次真实后端调用被两条同事件规则命中 = 真·双计。
  * TRACK(DOM 锚点)**不在此约束**:一个事件在 DOM 层锚到多个 testid(工具栏 + 菜单等不同入口)是常态,
@@ -245,7 +244,6 @@ describe('中央映射通道 —— 表内「一手势一事件」守卫(重复�
             allow: new Set([
                 'user_login',
                 'settings_secrets_configured',
-                'market_manual_publish_submitted',
                 'group_md_edited',
                 'webhook_created',
                 'webhook_url_reset',

@@ -29,39 +29,37 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   });
 }
 
-// ProseMirror calls getClientRects while restoring a selection. jsdom does
-// not provide the full geometry API, so keep the test DOM usable without
-// hiding application errors behind a global error handler.
-if (typeof Element !== "undefined" && typeof Element.prototype.getClientRects !== "function") {
-  Object.defineProperty(Element.prototype, "getClientRects", {
-    configurable: true,
-    value: () => [],
-  });
+// ProseMirror calls getClientRects()/getBoundingClientRect() while restoring a
+// selection (coordsAtPos → singleRect). jsdom implements neither on a Range or a
+// Text node, so a chat-composer test that lets the editor run scrollToSelection
+// after unmount throws an UNCAUGHT "target.getClientRects is not a function" that
+// fails the whole run intermittently. Stub both methods (empty rects) on every
+// prototype ProseMirror may call them on — Element, Range, and CharacterData
+// (Text) — without hiding real application errors behind a global handler.
+const ZERO_RECT = {
+  x: 0, y: 0, top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0,
+  toJSON() {
+    return this;
+  },
+};
+function stubDomGeometry(proto: unknown): void {
+  const p = proto as Record<string, unknown> | undefined;
+  if (!p) return;
+  if (typeof p.getClientRects !== "function") {
+    Object.defineProperty(p, "getClientRects", { configurable: true, value: () => [] });
+  }
+  if (typeof p.getBoundingClientRect !== "function") {
+    Object.defineProperty(p, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ ...ZERO_RECT }),
+    });
+  }
 }
-
-if (typeof Range !== "undefined" && typeof Range.prototype.getClientRects !== "function") {
-  Object.defineProperty(Range.prototype, "getClientRects", {
-    configurable: true,
-    value: () => [],
-  });
-}
-
-if (typeof Range !== "undefined" && typeof Range.prototype.getBoundingClientRect !== "function") {
-  Object.defineProperty(Range.prototype, "getBoundingClientRect", {
-    configurable: true,
-    value: () => ({
-      bottom: 0,
-      height: 0,
-      left: 0,
-      right: 0,
-      top: 0,
-      width: 0,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    }),
-  });
-}
+stubDomGeometry(typeof Element !== "undefined" ? Element.prototype : undefined);
+stubDomGeometry(typeof Range !== "undefined" ? Range.prototype : undefined);
+stubDomGeometry(
+  typeof CharacterData !== "undefined" ? CharacterData.prototype : undefined
+);
 
 // Node 26 + vitest 4 + jsdom: jsdom no longer exposes `window.localStorage`
 // unless launched with `--localstorage-file`, and Node's built-in

@@ -11,7 +11,10 @@ test("@C39 @p1 @mcp @mcp-probe MCP 试连失败保留向导并展示原因", asy
   await authedPage.waitForFunction(
     () => (globalThis as { __c39Installed?: boolean }).__c39Installed === true,
   );
-  await authedPage.goto("/mcp-market/mcp?sid=e2etest");
+  // Publishing lives on the 我的发布 (mine) connector view, not the discovery
+  // page; deep-link straight to that tab via ?type=mcp so the default 技能 tab
+  // never mounts (and never fires an unmocked skill fetch).
+  await authedPage.goto("/mcp-market/mine?type=mcp&sid=e2etest");
 
   await authedPage.getByTestId("mcp-publish-entry").click();
   await authedPage.getByTestId("mcp-publish-method-manual").click();

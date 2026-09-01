@@ -4,15 +4,22 @@
   },
   "sidebar": {
     "header": "市场",
+    "brandGlyph": "市",
+    "tagline": "让能力被发现和使用",
+    "footnote": "这里呈现可发现、可发布、可引用的资产。",
     "mcp": "连接器",
     "skills": "技能",
     "experts": "专家",
-    "expertsBadge": "回路"
+    "expertsBadge": "回路",
+    "mine": "我的发布"
+  },
+  "mine": {
+    "pageTitle": "我的发布",
+    "navAriaLabel": "我的资产类型"
   },
   "expert": {
     "typeSquad": "专家团",
     "typeAgent": "专家",
-    "typeMine": "我的",
     "navAriaLabel": "专家类型",
     "loopIntro": "专家与专家团是可安装到「回路」的 AI 智能体,添加到回路后即可在回路中自动替你完成任务。",
     "searchPlaceholder": "搜索专家或专家团",
@@ -30,19 +37,16 @@
     "botPublishTitle": "Bot 上架专家团",
     "botPublishTitleAgent": "Bot 上架专家",
     "botPublishHint": "复制下面的提示词交给 Agent，它会帮你把专家和调取逻辑发布成专家团模板。",
+    "botPublishHintAgent": "复制下面的提示词交给 Agent，它会帮你把这个专家发布上架。",
     "botUpdateTitle": "Bot 更新专家团",
     "botUpdateTitleAgent": "Bot 更新专家",
     "botUpdateHint": "复制下面的提示词交给 Agent，它会按你的改动更新已上架的内容。",
     "memberCount": "{{count}} 位专家",
     "viewCountTitle": "浏览 {{count}} 次",
     "installCountTitle": "添加到回路 {{count}} 次",
-    "totalCount": "共 {{count}} 个",
     "truncatedNotice": "仅显示前 {{count}} 项，请用搜索或分类筛选缩小范围",
     "sortAriaLabel": "排序方式",
-    "sortComprehensive": "综合",
     "sortLatest": "最新",
-    "sortInstalls": "安装",
-    "sortViews": "浏览",
     "empty": "没有找到匹配内容",
     "emptyHint": "换一个关键词或清除分类筛选后再试。",
     "loading": "加载中…",
@@ -78,7 +82,7 @@
     "secretPlaceholderNoteSquad": "若团中成员配置了密钥，添加后请到对应成员的设置中补填真实密钥再使用。",
     "editAriaLabel": "编辑 {{name}}",
     "deleteAriaLabel": "删除 {{name}}",
-    "deleteSuccess": "已删除。",
+    "deleteSuccess": "已删除",
     "deleteConfirmTitle": "删除确认",
     "deleteConfirmBody": "删除后将从你的列表中移除，此操作不可撤销。",
     "deleteCancel": "取消",
@@ -99,8 +103,10 @@
     "skillFileBinary": "二进制文件，暂不支持预览。",
     "instructionTitle": "指令",
     "mcpTitle": "MCP",
+    "mcpUnavailable": "MCP 配置无法安全展示",
     "skillsTitle": "Skills",
-    "selfCreator": "我"
+    "selfCreator": "我",
+    "sortHottest": "最热"
   },
   "common": {
     "close": "关闭",
@@ -132,6 +138,7 @@
     "bot": "Bot 创建"
   },
   "list": {
+    "pageTitle": "连接器",
     "desc": "浏览并接入连接器，为你的智能体扩展工具能力。",
     "create": "上架连接器",
     "searchPlaceholder": "搜索名称、描述...",
@@ -143,17 +150,16 @@
       "forbidden": "你没有访问连接器市场的权限",
       "network": "网络连接失败，请检查网络后重试",
       "server": "服务暂时不可用，请稍后重试",
+      "notfound": "内容不存在或已被删除",
       "unknown": "加载失败，请稍后重试"
     },
     "empty": "没有匹配的连接器",
     "loadMore": "向下滚动加载更多",
     "reachedEnd": "已经到底了",
-    "total": "共 {{count}} 个连接器",
     "navLabel": "连接器市场导航",
-    "mode": {
-      "all": "全部",
-      "mine": "我的"
-    }
+    "sortAriaLabel": "连接器排序",
+    "sortLatest": "最新",
+    "sortHottest": "最热"
   },
   "publishMenu": {
     "botTitle": "Bot 上架",
@@ -184,6 +190,7 @@
   },
   "card": {
     "officialPublisher": "官方发布",
+    "connect": "添加到 Bot",
     "matchReason": {
       "name": "命中名称",
       "description": "命中简介",
@@ -198,7 +205,9 @@
     "editAriaLabel": "编辑 {{name}}",
     "deleteAriaLabel": "删除 {{name}}",
     "edit": "编辑",
-    "delete": "删除"
+    "delete": "删除",
+    "viewCountTitle": "浏览 {{count}} 次",
+    "installCountTitle": "安装 {{count}} 次"
   },
   "detail": {
     "title": "连接器详情",
@@ -268,6 +277,7 @@
     "name": "名称",
     "namePlaceholder": "例如 GitHub MCP",
     "nameRequired": "请填写名称",
+    "categoryRequired": "请选择分类",
     "slug": "服务标识 (slug)",
     "slugHint": "生成 mcpServers JSON 时用作 key，仅限英文小写、数字、连字符；留空自动根据名称生成",
     "slugPlaceholder": "例如 github-mcp",
@@ -382,5 +392,11 @@
     "minutesAgo": "{{count}} 分钟前",
     "hoursAgo": "{{count}} 小时前",
     "daysAgo": "{{count}} 天前"
+  },
+  "visibility": {
+    "public": "全平台",
+    "space": "本组织",
+    "private": "仅自己",
+    "system": "全平台"
   }
 }

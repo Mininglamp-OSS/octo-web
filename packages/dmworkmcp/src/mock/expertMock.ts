@@ -18,6 +18,9 @@
  */
 export interface ExpertSkill {
   name: string;
+  /** The bound skill's own plugin id (expert_skill relation target). Lets the
+   *  expert editor open it for editing and preserve/rebuild the relation. */
+  pluginId?: string;
   hasContent?: boolean;
   canDownload?: boolean;
   fileName?: string;
@@ -29,6 +32,10 @@ export interface ExpertSkill {
 export interface ExpertMember {
   /** Stable key used to bind memberKey -> agentId during install. */
   key?: string;
+  /** The member expert's own plugin id (relation target). Needed to open the
+   *  member in the expert editor and to rebuild expert_team_expert relations
+   *  on squad save. */
+  pluginId?: string;
   /** Expert template this member is created from. */
   templateId?: string;
   name: string;
@@ -66,6 +73,8 @@ interface ExpertBase {
   viewCount?: number;
   /** Successful add-to-loop count from resource_metrics (wire `install_count`). */
   installCount?: number;
+  /** Current published version (wire `current_version`), shown in the detail. */
+  version?: string;
   /** System prompt / instructions that define how the expert behaves. */
   instruction?: string;
   /** Raw MCP servers config (mcpServers JSON), as entered in the config editor. */

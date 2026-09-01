@@ -74,17 +74,19 @@
   justify-content: space-between;
   gap: var(--wk-sp-4);
   min-height: 64px;
-  padding: var(--wk-sp-3) var(--wk-sp-6);
-  border-bottom: 1px solid var(--wk-border-subtle);
+  padding: var(--wk-sp-5) var(--wk-sp-6) var(--wk-sp-4);
+}
+
+.skill-market-hero-title {
+  min-width: 0;
 }
 
 .skill-market-topbar h1 {
   margin: 0;
   color: var(--wk-text-strong);
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1.25;
-  letter-spacing: 0;
+  font-size: var(--wk-text-size-3xl);
+  font-weight: var(--wk-font-bold);
+  line-height: 1.2;
 }
 
 .skill-market-topbar p {
@@ -176,8 +178,11 @@
 }
 
 .skill-market-tabs {
+  flex: none;
   display: flex;
   gap: 0;
+  padding: 0 var(--wk-sp-6);
+  border-bottom: 1px solid var(--wk-border-subtle);
 }
 
 .skill-market-tabs button {
@@ -216,8 +221,8 @@
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
-  gap: var(--wk-sp-2);
-  flex-wrap: wrap;
+  gap: var(--wk-sp-4);
+  flex-wrap: nowrap;
   padding: var(--wk-sp-3) var(--wk-sp-6);
   border-bottom: 1px solid var(--wk-border-subtle);
 }
@@ -476,16 +481,17 @@
 }
 
 .skill-market-category-chip.is-active {
-  background: var(--wk-brand-primary);
-  border-color: var(--wk-brand-primary);
-  color: var(--wk-text-inverse);
+  background: var(--wk-brand-tint-08);
+  border-color: var(--wk-brand-tint-15);
+  color: var(--wk-brand-primary);
+  font-weight: var(--wk-font-semibold);
 }
 
 .skill-market-category-chip.is-active:hover,
 .skill-market-category-chip.is-active:focus-visible {
-  background: var(--wk-brand-primary-hover, var(--wk-brand-primary));
-  border-color: var(--wk-brand-primary-hover, var(--wk-brand-primary));
-  color: var(--wk-text-inverse);
+  background: var(--wk-brand-tint-12);
+  border-color: var(--wk-brand-tint-15);
+  color: var(--wk-brand-primary);
 }
 
 .skill-market-sort {
@@ -532,12 +538,12 @@
 .skill-market-sort button:focus-visible {
   outline: none;
   background: var(--wk-bg-hover);
-  color: var(--wk-color-accent);
+  color: var(--wk-text-strong);
 }
 
 .skill-market-sort button.is-active {
   background: var(--wk-bg-surface);
-  color: var(--wk-color-accent);
+  color: var(--wk-text-strong);
   box-shadow: var(--wk-shadow-sm);
   font-weight: 600;
 }
@@ -626,7 +632,7 @@
 .skill-market-result-summary {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: var(--wk-sp-3);
   flex-wrap: wrap;
   min-height: 36px;
@@ -642,25 +648,48 @@
 
 .skill-market-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
-  gap: var(--wk-sp-4);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr));
+  gap: var(--wk-sp-3);
   align-items: stretch;
 }
 
 .skill-market-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  min-height: 184px;
-  padding: var(--wk-sp-3);
+  min-height: 174px;
+  padding: var(--wk-sp-4);
   border: 1px solid var(--wk-border-subtle);
   border-radius: var(--wk-r-md);
-  background: var(--wk-bg-base);
+  background: var(--wk-bg-surface);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   cursor: pointer;
   transition: border-color var(--wk-dur-fast) var(--wk-ease),
     background var(--wk-dur-fast) var(--wk-ease),
     box-shadow var(--wk-dur-fast) var(--wk-ease);
+}
+
+/* Hover-revealed primary action (安装) — top-right, mirrors the prototype's
+   single card action and the connector market's .wk-mcp-card__primary-action.
+   Positioning + reveal only; the dark-pill look comes from
+   .skill-market-card__install. */
+.skill-market-card__primary-action {
+  position: absolute;
+  bottom: var(--wk-sp-3);
+  right: var(--wk-sp-3);
+  z-index: 1;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity var(--wk-dur-fast) var(--wk-ease),
+    transform var(--wk-dur-fast) var(--wk-ease),
+    background var(--wk-dur-fast) var(--wk-ease);
+}
+
+.skill-market-card:hover .skill-market-card__primary-action,
+.skill-market-card:focus-within .skill-market-card__primary-action {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .skill-market-card:hover,
@@ -692,9 +721,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 48px;
-  width: 48px;
-  height: 48px;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
   border-radius: var(--wk-r-md);
   background: var(--wk-bg-elevated);
   color: var(--wk-icon-default);
@@ -804,8 +833,9 @@
   overflow: hidden;
   padding: 3px 8px;
   border-radius: var(--wk-r-full);
-  background: var(--wk-accent-tint-06, rgba(127, 59, 245, 0.06));
-  color: var(--wk-color-accent);
+  border: 1px solid var(--wk-border-default);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -824,8 +854,8 @@
   max-width: 65%;
   min-width: 0;
   overflow: hidden;
-  color: var(--wk-color-accent);
-  font-weight: 600;
+  color: var(--wk-text-tertiary);
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -836,6 +866,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Official/platform publisher reads in the accent color, matching the expert
+   market's "官方发布" (.wk-mcp-detail__owner--official). Icon inherits via
+   currentColor. */
+.skill-market-card__owner--official {
+  color: var(--wk-text-accent);
 }
 
 .skill-market-card__owner-bot-icon,
@@ -1359,8 +1396,14 @@
 
 .skill-market-detail-header__owner {
   max-width: min(260px, 42%);
-  color: var(--wk-color-accent) !important;
-  font-weight: 600;
+  color: var(--wk-text-tertiary) !important;
+  font-weight: 500;
+}
+
+/* Official/platform publisher accent, matching the expert market. Needs
+   !important to beat the tertiary base rule above. */
+.skill-market-detail-header__owner--official {
+  color: var(--wk-text-accent) !important;
 }
 
 .skill-market-detail-header__owner > svg {
@@ -1460,8 +1503,9 @@
   max-width: 100%;
   padding: 3px 8px;
   border-radius: var(--wk-r-full);
-  background: var(--wk-accent-tint-06, rgba(127, 59, 245, 0.06));
-  color: var(--wk-color-accent);
+  border: 1px solid var(--wk-border-default);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
   font-size: 12px;
   line-height: 1.35;
   overflow-wrap: anywhere;
@@ -2647,4 +2691,223 @@
   display: flex;
   justify-content: flex-end;
   gap: var(--wk-sp-2);
+}
+
+/* ── "我的发布" list table (shared MineTable) ─────────────────────────────
+   Token-styled data table used by all three mine tabs (技能 / 连接器 / 专家 /
+   专家团). Grid rows share the header's column template. Discovery grids are
+   untouched. */
+.wk-mine-table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-lg);
+  background: var(--wk-bg-surface);
+  overflow: hidden;
+}
+.wk-mine-table__head,
+.wk-mine-table__row {
+  display: grid;
+  grid-template-columns:
+    minmax(240px, 2.4fr) minmax(96px, 1fr) 96px 118px 76px 76px 152px;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  padding: 0 var(--wk-sp-5);
+}
+.wk-mine-table--nostats .wk-mine-table__head,
+.wk-mine-table--nostats .wk-mine-table__row {
+  grid-template-columns:
+    minmax(240px, 2.6fr) minmax(96px, 1fr) 96px 118px 152px;
+}
+.wk-mine-table__head {
+  height: 44px;
+  border-bottom: 1px solid var(--wk-border-subtle);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+  font-weight: var(--wk-font-semibold);
+}
+.wk-mine-table__row {
+  min-height: 64px;
+  padding-top: var(--wk-sp-3);
+  padding-bottom: var(--wk-sp-3);
+  border-bottom: 1px solid var(--wk-border-subtle);
+  color: var(--wk-text-tertiary);
+  font-size: 13px;
+  transition: background var(--wk-dur-fast) var(--wk-ease);
+}
+.wk-mine-table__row:last-child {
+  border-bottom: none;
+}
+.wk-mine-table__row:hover {
+  background: var(--wk-bg-item-hover);
+}
+.wk-mine-table__col {
+  min-width: 0;
+}
+.wk-mine-table__col--num,
+.wk-mine-table__col--updated {
+  font-variant-numeric: tabular-nums;
+}
+.wk-mine-table__col--category {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* name cell — an activatable open-button wrapping avatar (+ type marker) +
+   name/description stack. The button is the flex container so the whole name
+   area is one keyboard-focusable target. */
+.wk-mine-table__col--name {
+  display: flex;
+  align-items: center;
+}
+.wk-mine-table__open {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--wk-r-md);
+}
+.wk-mine-table__open:focus-visible {
+  outline: 2px solid var(--wk-color-primary);
+  outline-offset: 2px;
+}
+.wk-mine-table__avatar {
+  position: relative;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+}
+.wk-mine-table__avatar-img {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--wk-r-md);
+  object-fit: cover;
+  display: block;
+}
+.wk-mine-table__avatar-tile {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--wk-r-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--wk-bg-surface);
+  font-weight: var(--wk-font-semibold);
+  font-size: 14px;
+  overflow: hidden;
+}
+.wk-mine-table__type {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 2px solid var(--wk-bg-surface);
+  color: var(--wk-bg-surface);
+}
+.wk-mine-table__type--skill {
+  background: var(--wk-color-warning);
+}
+.wk-mine-table__type--connector {
+  background: var(--wk-color-info);
+}
+.wk-mine-table__type--expert {
+  background: var(--wk-color-primary);
+}
+.wk-mine-table__type--squad {
+  background: var(--wk-color-success);
+}
+.wk-mine-table__namecol {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.wk-mine-table__name {
+  color: var(--wk-text-strong);
+  font-weight: var(--wk-font-semibold);
+  font-size: var(--wk-text-size-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wk-mine-table__desc {
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wk-mine-table__version {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--wk-sp-2);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.wk-mine-table__vis {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 var(--wk-sp-2);
+  border-radius: var(--wk-r-sm);
+  white-space: nowrap;
+}
+.wk-mine-table__vis--system {
+  background: var(--wk-color-success-bg);
+  color: var(--wk-color-success);
+}
+.wk-mine-table__vis--space {
+  background: var(--wk-color-info-bg);
+  color: var(--wk-color-info);
+}
+.wk-mine-table__vis--private {
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-secondary);
+}
+.wk-mine-table__col--actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  justify-content: flex-end;
+}
+.wk-mine-table__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 var(--wk-sp-2);
+  border: none;
+  border-radius: var(--wk-r-md);
+  background: transparent;
+  color: var(--wk-color-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--wk-dur-fast) var(--wk-ease);
+}
+.wk-mine-table__action:hover {
+  background: var(--wk-bg-item-hover);
+}
+.wk-mine-table__action--danger {
+  color: var(--wk-color-danger);
+}
+.wk-mine-table__action--danger:hover {
+  background: var(--wk-color-danger-bg);
 }

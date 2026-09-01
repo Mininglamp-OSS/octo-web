@@ -4,15 +4,22 @@
   },
   "sidebar": {
     "header": "Markets",
+    "brandGlyph": "M",
+    "tagline": "Make capabilities discoverable and usable",
+    "footnote": "Assets here are discoverable, publishable, and referenceable.",
     "mcp": "MCP",
     "skills": "Skills",
     "experts": "Experts",
-    "expertsBadge": "Loop"
+    "expertsBadge": "Loop",
+    "mine": "My publications"
+  },
+  "mine": {
+    "pageTitle": "My publications",
+    "navAriaLabel": "My asset type"
   },
   "expert": {
     "typeSquad": "Squads",
     "typeAgent": "Experts",
-    "typeMine": "Mine",
     "navAriaLabel": "Expert type",
     "loopIntro": "Experts and squads are AI agents you can install into Loop — add one to a Loop workspace and it works for you automatically.",
     "searchPlaceholder": "Search experts or squads",
@@ -30,19 +37,16 @@
     "botPublishTitle": "Publish squad via Bot",
     "botPublishTitleAgent": "Publish expert via Bot",
     "botPublishHint": "Copy the prompt below to an Agent — it will publish your experts and dispatch logic as a squad template.",
+    "botPublishHintAgent": "Copy the prompt below to an Agent — it will publish this expert.",
     "botUpdateTitle": "Update squad via Bot",
     "botUpdateTitleAgent": "Update expert via Bot",
     "botUpdateHint": "Copy the prompt below to an Agent — it will apply your changes to the published listing.",
     "memberCount": "{{count}} experts",
     "viewCountTitle": "{{count}} views",
     "installCountTitle": "Added to Loop {{count}} times",
-    "totalCount": "{{count}} total",
     "truncatedNotice": "Showing the first {{count}} — narrow with search or category",
     "sortAriaLabel": "Sort by",
-    "sortComprehensive": "Recommended",
     "sortLatest": "Latest",
-    "sortInstalls": "Installs",
-    "sortViews": "Views",
     "empty": "No matching results",
     "emptyHint": "Try another keyword or clear the category filter.",
     "loading": "Loading…",
@@ -78,7 +82,7 @@
     "secretPlaceholderNoteSquad": "If any team member requires secrets, fill in the real values in that member's settings after adding before using it.",
     "editAriaLabel": "Edit {{name}}",
     "deleteAriaLabel": "Delete {{name}}",
-    "deleteSuccess": "Deleted.",
+    "deleteSuccess": "Deleted",
     "deleteConfirmTitle": "Delete confirmation",
     "deleteConfirmBody": "This removes it from your list. This can't be undone.",
     "deleteCancel": "Cancel",
@@ -99,8 +103,10 @@
     "skillFileBinary": "Binary file — cannot be previewed.",
     "instructionTitle": "Instruction",
     "mcpTitle": "MCP",
+    "mcpUnavailable": "MCP configuration cannot be shown safely",
     "skillsTitle": "Skills",
-    "selfCreator": "Me"
+    "selfCreator": "Me",
+    "sortHottest": "Hottest"
   },
   "common": {
     "close": "Close",
@@ -132,6 +138,7 @@
     "bot": "Bot"
   },
   "list": {
+    "pageTitle": "Connectors",
     "desc": "Browse and connect MCP servers to extend your agent's tools.",
     "create": "Publish MCP",
     "searchPlaceholder": "Search name or description...",
@@ -143,17 +150,16 @@
       "forbidden": "You do not have permission to access the MCP marketplace.",
       "network": "Network connection failed. Check your connection and retry.",
       "server": "The service is temporarily unavailable. Try again later.",
+      "notfound": "The content no longer exists or has been removed.",
       "unknown": "Failed to load. Try again later."
     },
     "empty": "No matching MCP servers",
     "loadMore": "Scroll down to load more",
     "reachedEnd": "You've reached the end",
-    "total": "Total {{count}} MCPs",
     "navLabel": "MCP marketplace navigation",
-    "mode": {
-      "all": "All",
-      "mine": "Mine"
-    }
+    "sortAriaLabel": "Connector sort",
+    "sortLatest": "Latest",
+    "sortHottest": "Hottest"
   },
   "publishMenu": {
     "botTitle": "Publish via Bot",
@@ -184,6 +190,7 @@
   },
   "card": {
     "officialPublisher": "Official publisher",
+    "connect": "Add to Bot",
     "matchReason": {
       "name": "Matched name",
       "description": "Matched summary",
@@ -198,7 +205,9 @@
     "editAriaLabel": "Edit {{name}}",
     "deleteAriaLabel": "Delete {{name}}",
     "edit": "Edit",
-    "delete": "Delete"
+    "delete": "Delete",
+    "viewCountTitle": "{{count}} views",
+    "installCountTitle": "{{count}} installs"
   },
   "detail": {
     "title": "MCP Details",
@@ -268,6 +277,7 @@
     "name": "Name",
     "namePlaceholder": "e.g. GitHub MCP",
     "nameRequired": "Name is required",
+    "categoryRequired": "Please select a category",
     "slug": "Server slug",
     "slugHint": "Used as the key in the generated mcpServers JSON; lowercase letters, digits and hyphens only. Leave blank to derive it from the name.",
     "slugPlaceholder": "e.g. github-mcp",
@@ -382,5 +392,11 @@
     "minutesAgo": "{{count}} min ago",
     "hoursAgo": "{{count}} hours ago",
     "daysAgo": "{{count}} days ago"
+  },
+  "visibility": {
+    "public": "All platforms",
+    "space": "Organization",
+    "private": "Only me",
+    "system": "All platforms"
   }
 }

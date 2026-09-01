@@ -30,20 +30,17 @@
     "parseTimeout": "Parse timed out, please retry"
   },
   "list": {
-    "mine": "Mine",
-    "tabSkills": "All",
+    "pageTitle": "Skills",
     "publish": "Publish",
     "publishSkill": "Publish Skill",
     "search": "Search",
     "errorTitle": "Failed to load",
     "retry": "Retry",
     "empty": "No data",
-    "totalCount": "Total {{count}} Skills",
     "loadMore": "Load more...",
     "deleted": "Deleted",
     "created": "Created successfully",
     "saved": "Saved",
-    "navAriaLabel": "Skill Market Navigation",
     "loadingAriaLabel": "Loading skills",
     "closeToast": "Close notification"
   },
@@ -58,10 +55,9 @@
   },
   "sort": {
     "ariaLabel": "Skill sort",
-    "comprehensive": "Recommended",
     "latest": "Latest",
-    "views": "Views",
-    "downloads": "Downloads"
+    "downloads": "Downloads",
+    "hottest": "Hottest"
   },
   "card": {
     "platformPublisher": "Official",
@@ -72,7 +68,7 @@
     "viewsTitle": "Views: {{count}}",
     "downloadsLabel": "Downloads",
     "downloadsTitle": "Downloads: {{count}}",
-    "install": "Install"
+    "install": "Add to Bot"
   },
   "category": {
     "ariaLabel": "Skill categories",
@@ -178,8 +174,6 @@
     "failed": "Failed to delete"
   },
   "install": {
-    "title": "Install Prompt",
-    "hint": "Copy and paste into an Agent conversation to complete installation automatically",
     "copied": "Copied",
     "copyBtn": "Copy Install Prompt"
   },
@@ -198,5 +192,21 @@
     "minutesAgo": "{{count}} minutes ago",
     "hoursAgo": "{{count}} hours ago",
     "daysAgo": "{{count}} days ago"
+  },
+  "visibility": {
+    "public": "All platforms",
+    "space": "Organization",
+    "private": "Only me",
+    "system": "All platforms"
+  },
+  "mineTable": {
+    "ariaLabel": "My publications",
+    "name": "Name",
+    "category": "Category",
+    "version": "Version",
+    "visibility": "Visibility",
+    "views": "Views",
+    "downloads": "Downloads",
+    "actions": "Actions"
   }
 }

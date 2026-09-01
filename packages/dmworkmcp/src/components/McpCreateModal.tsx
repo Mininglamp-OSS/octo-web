@@ -5,17 +5,17 @@ import { t, Dap } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
 import {
   createMcp,
+  listConnectorCategories,
   probeMcpTools,
   isProbeAvailable,
   updateMcp,
   uploadMcpIcon,
 } from "../api/mcpService";
-import { MCP_CATEGORY_LABELS, MCP_CATEGORY_ORDER } from "../mock/mcpMock";
 import {
-  SECRET_PLACEHOLDER_SENTINEL,
   isSecretKey,
   slugifyServerName,
 } from "../utils/constants";
+import { SECRET_PLACEHOLDER } from "../api/pluginWire";
 import { parseImportJSON } from "../utils/importJson";
 import {
   MAX_MCP_TAGS,
@@ -84,7 +84,10 @@ function clampToolDescription(desc: string | undefined | null): string {
 const EMPTY: CreateMcpParams = {
   name: "",
   slug: "",
-  category: "dev",
+  // Blank until the backend taxonomy loads — the create form then defaults to
+  // the first real category. A hardcoded slug ("dev") would render as a raw,
+  // unmatched value in the localized (dynamic) category Select.
+  category: "",
   icon: "",
   tags: [],
   slogan: "",
@@ -105,10 +108,14 @@ const TRANSPORT_OPTIONS: McpTransport[] = ["stdio", "streamable-http", "sse"];
 /** One row in the structured Headers / Env editor. Replaces the earlier free-
  *  text `KEY: value` textarea buffer so each row can carry a per-key toggle
  *  for the wire's `headers_user_supplied` / `env_user_supplied` arrays.
- *  `userSupplied=true` flags the key as "consumer supplies their own value";
- *  the value itself IS persisted (§5.1 relaxation) so the owner sees it on
- *  their own edit, but non-owner reads are blanked server-side (§5.3) and
- *  the market snippet substitutes the placeholder client-side. */
+ *  `userSupplied=true` flags the key as "consumer supplies their own value": on
+ *  write `placeholderSecretMap` replaces the typed value with a `${KEY}`
+ *  placeholder (the value is NOT persisted), and on read `splitUserSupplied`
+ *  blanks that self-placeholder — so a user-supplied value never round-trips.
+ *  A SHARED (non-user-supplied) value IS persisted verbatim and rendered to
+ *  every viewer (the backend has no secret scanner and blanks nothing); the
+ *  detail snippet masks secret-shaped shared keys, but owners still must not
+ *  type a real secret under a shared key. */
 interface KvEntry {
   key: string;
   value: string;
@@ -128,15 +135,17 @@ function entriesFromWire(
   const supplied = new Set(userSupplied ?? []);
   return Object.entries(values).map(([key, raw]) => {
     const isSupplied = supplied.has(key);
-    const value = raw === SECRET_PLACEHOLDER_SENTINEL ? "" : raw;
+    const value = raw === SECRET_PLACEHOLDER ? "" : raw;
     return { key, value, userSupplied: isSupplied };
   });
 }
 
 /** Collapse the structured editor into wire shape:
- *  - values map keeps `key → value` verbatim; the value is preserved even for
- *    user-supplied keys so the owner sees it again on their own edit (§5.1
- *    rule 1 relaxation). Non-owner reads are blanked server-side (§5.3).
+ *  - values map keeps `key → value` as typed here; the downstream write
+ *    (`placeholderSecretMap` in mcpWireParams) then substitutes a `${KEY}`
+ *    placeholder for every user-supplied key, so a user-supplied typed value is
+ *    NOT sent. A shared (non-user-supplied) value is persisted verbatim — owners
+ *    must not type a real secret under a shared key.
  *  - userSupplied[] is the list of keys whose value is a "consumer supplies
  *    their own" placeholder in the marketplace snippet — the mask happens
  *    client-side via applyUserSuppliedPlaceholder, not by nulling the value
@@ -509,6 +518,9 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
   editing,
 }) => {
   const [form, setForm] = useState<CreateMcpParams>(EMPTY);
+  /** Connector categories from the backend taxonomy (dynamic, matching the
+   *  discovery pills). Name is both value and label. */
+  const [categoryNames, setCategoryNames] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [probing, setProbing] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -530,6 +542,13 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
   // edit) so the create → detail round-trip renders without a blank.
   const [iconFile, setIconFile] = useState<File | null>(null);
   const [iconPreview, setIconPreview] = useState("");
+  // Icon write intent tracking. The edit form seeds `form.icon` from the
+  // DISPLAY value (mapDetail = icon_url || icon) — a presigned, expiring URL we
+  // must never persist back. So we do NOT derive the payload icon from
+  // `form.icon`; instead we send an explicit `undefined` sentinel unless the
+  // user touched the icon: a fresh upload sends the new object key, an explicit
+  // remove sends `""`. `iconRemoved` records that the user cleared the icon.
+  const [iconRemoved, setIconRemoved] = useState(false);
 
   // Once the user hand-edits the slug we stop auto-deriving it from the name.
   const [slugTouched, setSlugTouched] = useState(false);
@@ -548,6 +567,26 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
   // otherwise reset to EMPTY so re-opening always starts fresh. Also drives
   // the "back to step 0 on every open" behavior so a partial previous session
   // doesn't leak into the next one.
+  // Load the connector category taxonomy when the modal opens.
+  useEffect(() => {
+    if (!visible) return;
+    let alive = true;
+    listConnectorCategories()
+      .then((names) => {
+        if (!alive) return;
+        setCategoryNames(names);
+        // Create mode: default to the first real category once the taxonomy
+        // loads (EMPTY.category is blank). Editing keeps the record's category.
+        if (!editing && names.length) {
+          setForm((prev) => (prev.category ? prev : { ...prev, category: names[0] }));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [visible]);
+
   useEffect(() => {
     if (!visible) return;
     if (editing) {
@@ -574,6 +613,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     }
     setIconFile(null);
     setIconPreview("");
+    setIconRemoved(false);
     setStep(0);
     // JSON import mode + textarea reset. Edit sessions never enter JSON mode.
     setCreateMode("manual");
@@ -611,6 +651,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     setStep(0);
     setCreateMode("manual");
     setJsonRaw("");
+    setIconRemoved(false);
   };
 
   /** Name edit also seeds the slug while the user hasn't hand-edited it, so the
@@ -675,11 +716,14 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
       return;
     }
     setIconFile(file);
+    // A fresh pick supersedes any prior removal.
+    setIconRemoved(false);
   };
 
   const handleIconRemove = (e: React.MouseEvent) => {
     e.stopPropagation();
     setIconFile(null);
+    setIconRemoved(true);
     update("icon", "");
   };
 
@@ -762,6 +806,12 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     values?: Record<string, number>;
   } | null => {
     if (!form.name.trim()) return { key: "mcp.create.nameRequired" };
+    // Category can arrive empty when the record's stored category_id no longer
+    // resolves in the taxonomy map (mcpService degrades it to ""), leaving the
+    // Select blank. Surface a legible required-field error here rather than
+    // letting resolveWriteCategory throw a generic invalidRequest on submit.
+    if (!(form.category ?? "").trim())
+      return { key: "mcp.create.categoryRequired" };
     if (isRemote(form.transport)) {
       if (!(form.url ?? "").trim()) return { key: "mcp.create.urlRequired" };
       // Per-row key / value length. The KV editor caps typed input via
@@ -821,18 +871,23 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
         t(err.key, err.values ? { values: err.values } : undefined)
       );
       // Connection fields live on step 1; jump there so the user sees the gap.
-      if (err.key !== "mcp.create.nameRequired") setStep(1);
-      else setStep(0);
+      // Name + category live on step 0.
+      if (
+        err.key === "mcp.create.nameRequired" ||
+        err.key === "mcp.create.categoryRequired"
+      )
+        setStep(0);
+      else setStep(1);
       return;
     }
 
-    // Collapse the structured editors down to the wire pair. Backend no
-    // longer rejects secret-shaped shared values (rule 2 was removed);
-    // non-owner blanking (§5.3) is the sole guard keeping author tokens
-    // out of consumer-facing responses. The inline warning next to the
-    // Submit button (see sharedSecretLeaks below) is the frontend's
-    // advisory signal for the edge case where the operator explicitly
-    // published a secret-shape shared value; non-blocking on purpose.
+    // Collapse the structured editors down to the wire pair. The backend has NO
+    // secret scanner and does NOT blank values on read, so a secret-shaped shared
+    // value would be persisted verbatim. Two client-side guards keep author
+    // tokens out of consumer-facing output: the detail/quick-start renderer masks
+    // secret-shaped keys (see quickStartTemplates.shouldPlaceholder), and the
+    // inline warning next to Submit (see sharedSecretLeaks below) flags the case
+    // to the operator. Owners should mark such keys user-supplied instead.
     const envWire = entriesToWire(envEntries);
     const headersWire = entriesToWire(headersEntries);
 
@@ -855,9 +910,17 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
         // blocking the whole create/edit on a transient upload failure.
       }
     }
+    // Icon write intent as an explicit sentinel (never seeded from the display
+    // `form.icon`, which on edit is the expiring presigned icon_url):
+    //   - a freshly-uploaded object key → set it,
+    //   - an explicit remove → "" (removal),
+    //   - otherwise untouched → undefined (leave the stored icon unchanged;
+    //     the create path defaults undefined → "" in toPluginUpsert).
+    const iconIntent: string | undefined =
+      iconOverride !== undefined ? iconOverride : iconRemoved ? "" : undefined;
     const payload: CreateMcpParams = {
       ...form,
-      icon: iconOverride ?? form.icon,
+      icon: iconIntent,
       // Slug is the JSON `mcpServers` key; a manual override is run through the
       // same slugify as the auto value so Chinese / uppercase / spaces /
       // underscores can never leak into the key. Falls back to the safe default.
@@ -975,15 +1038,15 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     return leaks;
   }, [headersEntries, envEntries]);
 
-  // ── Static options ─────────────────────────────────────────────────────
-  const categoryOptions = useMemo(
-    () =>
-      MCP_CATEGORY_ORDER.filter((k) => k !== "all").map((k) => ({
-        value: k,
-        label: MCP_CATEGORY_LABELS[k],
-      })),
-    []
-  );
+  // Category options come from the backend taxonomy (name = value = label). When
+  // editing an existing connector whose category isn't in the fetched list yet
+  // (or vanished), keep it selectable so the form doesn't silently drop it.
+  const categoryOptions = useMemo(() => {
+    const names = [...categoryNames];
+    const current = editing?.category;
+    if (current && !names.includes(current)) names.unshift(current);
+    return names.map((name) => ({ value: name, label: name }));
+  }, [categoryNames, editing]);
 
   const transportOptions = TRANSPORT_OPTIONS.map((tr) => ({
     value: tr,

@@ -314,6 +314,11 @@ const McpDetailModal: React.FC<McpDetailModalProps> = ({
           return <div className="wk-mcp-detail-header__meta">{withSeparators}</div>;
         })()}
       </div>
+      {detail.version && (
+        <span className="wk-mcp-detail-header__version" title={`v${detail.version}`}>
+          v{detail.version}
+        </span>
+      )}
     </div>
   ) : null;
 

@@ -1,7 +1,6 @@
-import { Button, Modal as OctoModal } from "@octo/ui";
-import React, { useEffect, useState } from "react";
-import { Bot, Check, Copy } from "lucide-react";
-import { t, useI18n, WKApp, Dap } from "@octo/base";
+import React, { useMemo } from "react";
+import { Bot } from "lucide-react";
+import { PromptForwardModal, t, useI18n, WKApp } from "@octo/base";
 import { resolveAPIBaseURL } from "../utils/installPrompt";
 import { getBotPublishPrompt } from "../utils/botPublishPrompt";
 
@@ -19,70 +18,41 @@ function getCurrentSpaceId(): string {
   );
 }
 
+/** Skill "Bot 上架" modal — renders the generated publish prompt in the shared
+ *  PromptForwardModal (copy / pick an owned Bot / forward the prompt into that
+ *  Bot's DM), matching the MCP 上架 and connector/skill 添加到 Bot surfaces.
+ *  Prompt content lives in ../utils/botPublishPrompt.ts. */
 export default function BotPublishModal({
   visible,
   onClose,
 }: BotPublishModalProps) {
   useI18n();
-  const [copied, setCopied] = useState(false);
-  const prompt = getBotPublishPrompt({
-    spaceId: getCurrentSpaceId(),
-    apiBaseUrl: resolveAPIBaseURL(
-      WKApp.apiClient.config.apiURL,
-      window.location.origin
-    ),
-  });
-
-  useEffect(() => {
-    if (visible) setCopied(false);
-  }, [visible]);
-
-  function handleCopy() {
-    if (!prompt || !navigator.clipboard?.writeText) return;
-    void navigator.clipboard.writeText(prompt).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      // 八审 P2:改为复制成功后命令式 track。此前挂 TrackRules 点击委托(skill-bot-publish-copy),
-      // 会在 clipboard.writeText 落定前就发,且非安全上下文(navigator.clipboard 缺失)提前 return 时
-      // 什么都没复制却仍计一次(与六审已修的三条 *_copied 同源)。
-      Dap.shared.track("market_bot_publish_prompt_copied", {});
-    });
-  }
+  const spaceId = getCurrentSpaceId();
+  const apiURL = WKApp.apiClient.config.apiURL;
+  // Depend on BOTH spaceId and the configured apiURL — resolveAPIBaseURL derives
+  // from apiURL first and falls back to window.location.origin, so a runtime
+  // apiURL change on the mutable client config must bust the cache.
+  const prompt = useMemo(
+    () =>
+      getBotPublishPrompt({
+        spaceId,
+        apiBaseUrl: resolveAPIBaseURL(apiURL, window.location.origin),
+      }),
+    [spaceId, apiURL]
+  );
 
   return (
-    <OctoModal
+    <PromptForwardModal
       visible={visible}
-      onCancel={onClose}
-      title={null}
-      size="wide"
-      header={
-        <div className="skill-market-prompt-modal__header">
-          <div className="skill-market-prompt-modal__icon">
-            <Bot size={18} />
-          </div>
-          <div>
-            <h3>{t("skillMarket.botPublish.title")}</h3>
-            <p>{t("skillMarket.botPublish.hint")}</p>
-          </div>
-        </div>
-      }
-      footer={
-        <Button
-          variant="solid"
-          data-testid="skill-bot-publish-copy"
-          icon={copied ? <Check size={15} /> : <Copy size={15} />}
-          onClick={handleCopy}
-          disabled={!prompt}
-        >
-          {copied
-            ? t("skillMarket.botPublish.copied")
-            : t("skillMarket.botPublish.copyBtn")}
-        </Button>
-      }
-    >
-      <div className="skill-market-prompt-modal__body">
-        <pre className="skill-market-prompt-modal__pre">{prompt}</pre>
-      </div>
-    </OctoModal>
+      onClose={onClose}
+      title={t("skillMarket.botPublish.title")}
+      hint={t("skillMarket.botPublish.hint")}
+      kind="publish"
+      icon={<Bot size={18} />}
+      prompt={prompt}
+      spaceId={spaceId}
+      onForwarded={onClose}
+      copyTrackEvent="market_bot_publish_prompt_copied"
+    />
   );
 }

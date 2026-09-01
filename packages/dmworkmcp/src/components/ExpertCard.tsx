@@ -18,6 +18,8 @@ interface ExpertCardProps {
    *  picker and provisions directly — an agent for an expert, or the member
    *  agents + team for a squad. */
   onAddToLoop?: (item: ExpertItem) => void;
+  /** Show the footer stats row. Discovery hides it; the 我的 view keeps it. */
+  showStats?: boolean;
 }
 
 const MAX_TAGS = 3;
@@ -29,7 +31,7 @@ const MAX_TAGS = 3;
  * tag pills, and a footer stat. The whole card is one click target (no inline
  * action button competing for the click); copying lives in the detail modal.
  */
-export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop }: ExpertCardProps) {
+export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop, showStats = true }: ExpertCardProps) {
   const isSquad = item.kind === "squad";
   const isOfficial = isOfficialExpert(item);
   const owner = resolveExpertOwner(item);
@@ -37,7 +39,7 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
   const overflowTags = item.tags.slice(MAX_TAGS);
   // 添加到回路 is offered for both experts and squads.
   const showAddToLoop = Boolean(onAddToLoop);
-  const hasActions = Boolean(onEdit || onDelete || showAddToLoop);
+  const hasActions = Boolean(onEdit || onDelete);
   const rawViewCount = item.viewCount ?? 0;
   const rawInstallCount = item.installCount ?? 0;
 
@@ -74,6 +76,18 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
         }
       }}
     >
+      {showAddToLoop && (
+        <button
+          type="button"
+          className="wk-mcp-card__primary-action"
+          onClick={(event) => {
+            event.stopPropagation();
+            onAddToLoop?.(item);
+          }}
+        >
+          {t("mcp.expert.addToLoop")}
+        </button>
+      )}
       <div className="wk-mcp-card__top">
         <div className="wk-mcp-card__icon">
           <span
@@ -122,7 +136,7 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
 
       <div className="wk-mcp-card__tags">
         {visibleTags.map((tag) => (
-          <span key={tag} className="wk-mcp-tag wk-mcp-tag--accent">
+          <span key={tag} className="wk-mcp-tag">
             {tag}
           </span>
         ))}
@@ -137,7 +151,9 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
         )}
       </div>
 
+      {(showStats || hasActions) && (
       <div className="wk-mcp-card__footer">
+        {showStats && (
         <div className="wk-mcp-card__stats">
           {isSquad && (
             <span
@@ -165,23 +181,12 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
             {formatCount(rawInstallCount)}
           </span>
         </div>
+        )}
         {hasActions && (
           <div
             className="wk-mcp-card__footer-actions"
             onPointerDown={(event) => event.stopPropagation()}
           >
-            {showAddToLoop && (
-              <button
-                type="button"
-                className="wk-mcp-expert-card__add-loop"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onAddToLoop?.(item);
-                }}
-              >
-                {t("mcp.expert.addToLoop")}
-              </button>
-            )}
             {onEdit && (
               <button
                 type="button"
@@ -213,6 +218,7 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

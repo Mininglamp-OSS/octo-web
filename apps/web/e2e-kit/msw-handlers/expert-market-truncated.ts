@@ -1,6 +1,9 @@
 import { http, HttpResponse } from "msw";
 
-const API_BASE = "/api/v1";
+// Unified plugin surface (octo-marketplace). The list fetch caps at page_size
+// 100 while the true total is 101, so the page renders the "仅显示前 100 项"
+// truncation notice (total from pagination.total exceeds the loaded slice).
+const API_BASE = "/market/api/v1";
 
 function enabled(): boolean {
   try {
@@ -10,45 +13,62 @@ function enabled(): boolean {
   }
 }
 
-const firstExpert = {
-  expert_id: "release-lead",
-  short_name: "发布",
-  name: "发布负责人",
-  summary: "统筹发布检查、风险识别和上线决策。",
-  category: "研发工具",
+const firstPlugin = {
+  plugin_id: "release-lead",
+  plugin_name: "发布负责人",
+  plugin_type: "expert" as const,
+  category_id: "dev-tools",
   tags: ["发布", "质量"],
   publisher: "Octo Platform",
-  visibility: "system",
+  owner_id: "space-e2e",
+  visibility: "system" as const,
   creator_name: "[redacted-admin]",
-  created_by_type: "human",
+  created_by_type: "human" as const,
+  icon_url: "",
   view_count: 24,
   install_count: 8,
+  download_count: 0,
+  current_version: "1.0.0",
+  manifest_json: {
+    name: "release-lead",
+    description: "统筹发布检查、风险识别和上线决策。",
+    labels: ["发布", "质量"],
+  },
+  created_at: "2026-07-10T08:00:00Z",
+  updated_at: "2026-07-20T08:00:00Z",
 };
 
-const experts = [
-  firstExpert,
+// 100 loaded rows against a true total of 101 → one page over the cap.
+const plugins = [
+  firstPlugin,
   ...Array.from({ length: 99 }, (_, index) => ({
-    ...firstExpert,
-    expert_id: `catalog-expert-${index + 2}`,
-    short_name: `专家${index + 2}`,
-    name: `目录专家${index + 2}`,
-    summary: `用于分页边界验证的目录专家 ${index + 2}。`,
+    ...firstPlugin,
+    plugin_id: `catalog-expert-${index + 2}`,
+    plugin_name: `目录专家${index + 2}`,
+    visibility: "space" as const,
     tags: ["目录"],
+    manifest_json: {
+      name: `catalog-expert-${index + 2}`,
+      description: `用于分页边界验证的目录专家 ${index + 2}。`,
+      labels: ["目录"],
+    },
   })),
 ];
 
 export const expertMarketTruncatedHandlers = [
-  http.get(`*${API_BASE}/experts`, () => {
+  http.get(`*${API_BASE}/plugins`, () => {
     if (!enabled()) return undefined;
     return HttpResponse.json({
-      data: experts,
+      data: plugins,
       pagination: { total: 101, page: 1, page_size: 100 },
     });
   }),
-  http.get(`*${API_BASE}/expert_categories`, () => {
+  http.get(`*${API_BASE}/plugin_categories`, () => {
     if (!enabled()) return undefined;
     return HttpResponse.json({
-      data: [{ expert_category_id: "dev-tools", name: "研发工具", count: 101 }],
+      data: [
+        { category_id: "dev-tools", name: "研发工具", sort_order: 0, plugin_count: 101 },
+      ],
     });
   }),
 ];
