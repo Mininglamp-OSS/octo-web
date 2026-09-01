@@ -127,14 +127,19 @@ describe("redactMcpConfig", () => {
     expect(out).toContain("REGION=us-east-1");
   });
 
-  it("does NOT mutate a colon-bearing positional that is not a URL", () => {
-    const raw = JSON.stringify({
-      mcpServers: { s: { command: "x", args: ["Authorization: Bearer keepme"] } },
-    });
-    const out = redactMcpConfig(raw)!;
-    // new URL() would parse `authorization:` as a scheme and lowercase it; the
-    // hasUrlShape guard keeps a non-URL positional byte-identical.
-    expect(out).toContain("Authorization: Bearer keepme");
+  it("masks the value of a secret Header: positional but keeps a non-secret colon token verbatim", () => {
+    const secret = redactMcpConfig(
+      JSON.stringify({ mcpServers: { s: { command: "x", args: ["Authorization: Bearer LEAKh"] } } })
+    )!;
+    // Secret-named header positional: value masked, header name kept.
+    expect(secret).not.toContain("LEAKh");
+    expect(secret).toContain("Authorization");
+    // Non-secret colon token is not a URL and not a secret header → byte-identical
+    // (string-level redaction never mis-parses it as a scheme).
+    const benign = redactMcpConfig(
+      JSON.stringify({ mcpServers: { s: { command: "x", args: ["Content-Type: application/json"] } } })
+    )!;
+    expect(benign).toContain("Content-Type: application/json");
   });
 
   it("masks userinfo + fragment on a protocol-relative / relative URL", () => {

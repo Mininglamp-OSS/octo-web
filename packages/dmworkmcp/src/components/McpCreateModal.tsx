@@ -106,11 +106,14 @@ const TRANSPORT_OPTIONS: McpTransport[] = ["stdio", "streamable-http", "sse"];
 /** One row in the structured Headers / Env editor. Replaces the earlier free-
  *  text `KEY: value` textarea buffer so each row can carry a per-key toggle
  *  for the wire's `headers_user_supplied` / `env_user_supplied` arrays.
- *  `userSupplied=true` flags the key as "consumer supplies their own value";
- *  the value itself IS persisted verbatim and returned on every read of the
- *  plugin (the backend has NO secret scanner and does NOT blank values). The
- *  only protection is client-side: the market snippet substitutes a `${KEY}`
- *  placeholder for user-supplied keys. Owners must not type real secrets. */
+ *  `userSupplied=true` flags the key as "consumer supplies their own value": on
+ *  write `placeholderSecretMap` replaces the typed value with a `${KEY}`
+ *  placeholder (the value is NOT persisted), and on read `splitUserSupplied`
+ *  blanks that self-placeholder — so a user-supplied value never round-trips.
+ *  A SHARED (non-user-supplied) value IS persisted verbatim and rendered to
+ *  every viewer (the backend has no secret scanner and blanks nothing); the
+ *  detail snippet masks secret-shaped shared keys, but owners still must not
+ *  type a real secret under a shared key. */
 interface KvEntry {
   key: string;
   value: string;
@@ -136,11 +139,11 @@ function entriesFromWire(
 }
 
 /** Collapse the structured editor into wire shape:
- *  - values map keeps `key → value` verbatim; the value is persisted as typed
- *    for every key (the owner sees it again on their own edit). The backend
- *    stores and returns it as-is — there is no server-side blanking — so the
- *    only masking is client-side (see below). Owners must not type real
- *    secrets under a shared (non-user-supplied) key.
+ *  - values map keeps `key → value` as typed here; the downstream write
+ *    (`placeholderSecretMap` in mcpWireParams) then substitutes a `${KEY}`
+ *    placeholder for every user-supplied key, so a user-supplied typed value is
+ *    NOT sent. A shared (non-user-supplied) value is persisted verbatim — owners
+ *    must not type a real secret under a shared key.
  *  - userSupplied[] is the list of keys whose value is a "consumer supplies
  *    their own" placeholder in the marketplace snippet — the mask happens
  *    client-side via applyUserSuppliedPlaceholder, not by nulling the value

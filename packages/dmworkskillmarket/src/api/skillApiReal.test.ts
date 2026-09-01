@@ -994,7 +994,9 @@ describe("skillApiReal", () => {
     expect(skill.name).toBe("Minimal");
     expect(skill.description).toBe("");
     expect(skill.ownerName).toBe("");
-    expect(skill.visibility).toBe("space");
+    // Unknown/absent visibility fails CLOSED to the most restrictive bucket,
+    // since EditSkillModal echoes this value into a full-replace write.
+    expect(skill.visibility).toBe("private");
     expect(skill.version).toBe("1.0.0");
     expect(skill.readmeContent).toBe("");
     expect(skill.fileName).toBe("");

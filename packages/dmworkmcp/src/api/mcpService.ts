@@ -633,8 +633,16 @@ function mapDetail(
   const manifest = raw.manifest_json ?? {};
   const servers =
     jsonAttachment<McpJSONWire>(raw.plugin_json, "mcp.json")?.mcpServers ?? {};
-  // One connector = one MCP server; the map key is the server name.
-  const serverName = Object.keys(servers)[0] ?? "";
+  // One connector = one MODELED server. Select it by the manifest slug (the key
+  // the write re-emits it under), NOT by position: goCanonicalJSON sorts the
+  // mcpServers keys alphabetically, so a positional pick would read a DIFFERENT
+  // server than the write keys, and on a multi-server doc that silently
+  // overwrites the wrong server + drops the real one. Fall back to the first key
+  // only when the slug names no present entry.
+  const serverName =
+    manifest.name && (manifest.name as string) in servers
+      ? (manifest.name as string)
+      : Object.keys(servers)[0] ?? "";
   const server = servers[serverName] ?? {};
   const env = splitUserSupplied(server.env);
   const headers = splitUserSupplied(server.headers);
@@ -851,7 +859,15 @@ async function updateMcpReal(
   const currentServers =
     jsonAttachment<McpJSONWire>(current.plugin.plugin_json, "mcp.json")
       ?.mcpServers ?? {};
-  const currentServerName = Object.keys(currentServers)[0] ?? "";
+  // Resolve the modeled server by the manifest slug (same key the write uses),
+  // NOT by position — otherwise a multi-server doc whose modeled server isn't
+  // alphabetically first would seed rawServer from the wrong entry and drop the
+  // real one on write (see mapDetail).
+  const currentSlug = current.plugin.manifest_json?.name;
+  const currentServerName =
+    currentSlug && currentSlug in currentServers
+      ? currentSlug
+      : Object.keys(currentServers)[0] ?? "";
   const rawServer = currentServers[currentServerName] as
     | Record<string, unknown>
     | undefined;

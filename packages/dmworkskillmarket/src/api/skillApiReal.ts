@@ -310,20 +310,26 @@ function mapSkill(raw: PluginListItemWire): Skill {
     ownerId: raw.owner_id,
     // Backfill preserved the legacy owner display name in publisher.
     ownerName: raw.publisher ?? "",
-    creatorId: raw.owner_id,
+    // The unified wire carries no creator id. Leaving it undefined (not owner_id)
+    // keeps the dual "creator · owner" attribution working: the card falls back
+    // to comparing creatorName vs ownerName, which a bot-authored skill needs —
+    // setting creatorId = owner_id would make the ids always equal and kill it.
+    creatorId: undefined,
     creatorName: raw.creator_name ?? raw.publisher ?? "",
     spaceId: raw.space_id ?? "",
     // Preserve the unified wire's "system" visibility: a system-admin-published
     // skill is official across every market (isPlatformPublishedSkill), so
-    // folding it into "space" would strip its 官方发布 badge and leak a creator
-    // name. Only genuinely unknown values degrade to the space default.
+    // folding it into another bucket would strip its 官方发布 badge. A genuinely
+    // unknown / absent value fails CLOSED to "private" — EditSkillModal echoes
+    // this value back into a full-replace write, so the non-permissive default
+    // must be the most restrictive one, not "space".
     visibility:
       raw.visibility === "public" ||
       raw.visibility === "private" ||
       raw.visibility === "space" ||
       raw.visibility === "system"
         ? raw.visibility
-        : "space",
+        : "private",
     version: raw.current_version ?? "1.0.0",
     readmeContent: "",
     iconUrl: raw.icon_url ?? raw.icon ?? "",

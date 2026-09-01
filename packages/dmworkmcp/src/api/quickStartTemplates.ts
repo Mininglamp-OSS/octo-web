@@ -1,4 +1,9 @@
 import { isSecretKey, slugifyServerName } from "../utils/constants";
+import {
+  redactArgs,
+  redactUrlDeep,
+  type SecretMask,
+} from "../utils/redactMcpConfig";
 import type { McpQuickStart } from "../types/mcp";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -83,12 +88,10 @@ function buildJson(qs: McpQuickStart): string {
     );
     const server: Record<string, unknown> = {
       type: jsonTypeField(qs),
-      // The quick-start JSON is a copy-paste-ready connect snippet, so it stays a
-      // working config — but the backend blanks nothing on read, so a secret in
-      // the URL's query would render to every viewer. Mask only secret-shaped
-      // query params (as fillable ${KEY} placeholders); the endpoint + non-secret
-      // params stay intact.
-      url: maskUrlSecretParams(qs.url ?? ""),
+      // The snippet stays a working config, but the backend blanks nothing on
+      // read — so mask secrets in the URL (userinfo / query / fragment) as
+      // fillable placeholders, keeping the endpoint host + path.
+      url: redactUrlDeep(qs.url ?? "", snippetMask),
     };
     if (Object.keys(merged).length > 0) {
       server.headers = merged;
@@ -98,7 +101,9 @@ function buildJson(qs: McpQuickStart): string {
   // stdio — no `type` field per Cursor / Claude Desktop convention.
   const server: Record<string, unknown> = {
     command: qs.command ?? "npx",
-    args: qs.args ?? [],
+    // args can carry secrets (`-e API_KEY=…`, `--token …`, a positional URL);
+    // mask them with the same rules as the expert spec.
+    args: redactArgs(qs.args ?? [], snippetMask),
   };
   if (qs.env && Object.keys(qs.env).length > 0) {
     server.env = applyUserSuppliedPlaceholder(qs.env, qs.envUserSupplied);
@@ -117,25 +122,11 @@ function shouldPlaceholder(key: string, supplied: Set<string>): boolean {
   return supplied.has(key) || isSecretKey(key);
 }
 
-/** Replace the value of any secret-shaped query param with a fillable token
- *  placeholder, keeping the endpoint + non-secret params intact. Operates on the
- *  raw string (so relative/opaque URLs are covered) and stays ASCII-free of
- *  percent-encoding artifacts, so the McpDetailModal highlighter still marks it. */
-function maskUrlSecretParams(url: string): string {
-  if (!url) return url;
-  return url.replace(
-    /([?&])([^=&#]+)=([^&#]*)/g,
-    (whole, sep: string, rawKey: string, _val: string) => {
-      let key = rawKey;
-      try {
-        key = decodeURIComponent(rawKey);
-      } catch {
-        /* keep raw key */
-      }
-      return isSecretKey(key) ? `${sep}${rawKey}=${formatTokenPlaceholder(key)}` : whole;
-    }
-  );
-}
+/** The connector snippet is a copy-paste config, so a masked value renders as a
+ *  fillable `${KEY}` placeholder (keyed on the param / flag / header name) rather
+ *  than an opaque marker. Reuses the expert-side rules (redactArgs / redactUrlDeep)
+ *  so the connector and expert surfaces cannot drift in redaction depth. */
+const snippetMask: SecretMask = (hint) => formatTokenPlaceholder(hint || "value");
 
 function applyUserSuppliedPlaceholder(
   m: Record<string, string>,
@@ -237,7 +228,7 @@ function buildPrompt(qs: McpQuickStart): string {
     return texts.remote({
       serverName: qs.serverName,
       transport: qs.transport,
-      url: maskUrlSecretParams(qs.url ?? ""),
+      url: redactUrlDeep(qs.url ?? "", snippetMask),
       extraHeaders,
     });
   }
@@ -245,7 +236,7 @@ function buildPrompt(qs: McpQuickStart): string {
   // survives copy-paste out of the natural-language prompt tab without being
   // re-tokenized by whichever shell the agent runs. The JSON tab preserves
   // token boundaries via a real array; this string form has to encode them.
-  const args = (qs.args ?? [])
+  const args = (redactArgs(qs.args ?? [], snippetMask) as string[])
     .map((a) =>
       /\s/.test(a) ? `"${a.replace(/(["\\])/g, "\\$1")}"` : a
     )

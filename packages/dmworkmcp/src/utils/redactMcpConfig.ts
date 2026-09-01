@@ -50,50 +50,61 @@ function maskValue(v: unknown): unknown {
   return MASK;
 }
 
-/** Keep scheme://host/path visible (the endpoint is not the secret) but blank
- *  EVERY query-param value (rebuilt, so duplicate keys can't slip a second value
- *  through), the fragment, and any userinfo. Uses an ASCII marker so serialization
- *  doesn't mojibake. A relative / protocol-relative URL is handled by the same
- *  rules on the string-fallback path, so userinfo and fragment are masked there
- *  too; a value with no query/userinfo/fragment is returned unchanged. */
-export function redactUrl(url: string): string {
-  if (isPlaceholder(url)) return url;
-  let u: URL;
-  try {
-    u = new URL(url);
-  } catch {
-    // Not an absolute URL (relative `/x` or protocol-relative `//user:pw@h`):
-    // mask userinfo, query, and fragment via string ops so the same parts the
-    // absolute branch masks don't survive here.
-    let rest = url;
-    let frag = "";
-    const h = rest.indexOf("#");
-    if (h !== -1) {
-      frag = `#${URL_MASK}`;
-      rest = rest.slice(0, h);
+/** Turns a detected secret occurrence into its display form. The expert spec
+ *  uses an opaque marker (`••••••` / `REDACTED`); the connector copy-paste
+ *  snippet uses a fillable `${KEY}` placeholder keyed on the `hint` (param /
+ *  flag / header name) so the snippet stays usable. */
+export type SecretMask = (hint: string) => string;
+
+const OPAQUE_VALUE: SecretMask = () => MASK;
+const OPAQUE_URL: SecretMask = () => URL_MASK;
+
+/** Keep scheme://host/path visible (the endpoint is not the secret) but mask
+ *  userinfo, EVERY query-param value (an exact `${KEY}` placeholder is kept), and
+ *  the fragment. Pure string ops so an arbitrary mask token (including a Unicode
+ *  placeholder) round-trips without URL-encoding into mojibake, and so relative /
+ *  protocol-relative URLs get the same depth as absolute ones. */
+export function redactUrlDeep(url: string, mask: SecretMask): string {
+  if (!url || isPlaceholder(url)) return url;
+  let s = url;
+  let frag = "";
+  const h = s.indexOf("#");
+  if (h !== -1) {
+    frag = s.length > h + 1 ? `#${mask("fragment")}` : s.slice(h);
+    s = s.slice(0, h);
+  }
+  s = s.replace(/([?&])([^=&#]+)=([^&#]*)/g, (whole, sep: string, rawKey: string, val: string) => {
+    let decoded = val;
+    try {
+      decoded = decodeURIComponent(val);
+    } catch {
+      /* keep raw */
     }
-    const q = rest.indexOf("?");
-    if (q !== -1) rest = `${rest.slice(0, q)}?${URL_MASK}`;
-    // Protocol-relative userinfo: //user:pass@host → //REDACTED@host.
-    rest = rest.replace(/^(\/\/)[^/@?#]*@/, `$1${URL_MASK}@`);
-    return rest + frag;
-  }
-  if (u.username) u.username = URL_MASK;
-  if (u.password) u.password = URL_MASK;
-  if (u.search) {
-    const masked = Array.from(u.searchParams.keys())
-      .map((k) => `${encodeURIComponent(k)}=${URL_MASK}`)
-      .join("&");
-    u.search = masked ? `?${masked}` : "";
-  }
-  if (u.hash) u.hash = `#${URL_MASK}`;
-  return u.toString();
+    if (isPlaceholder(decoded)) return whole;
+    let key = rawKey;
+    try {
+      key = decodeURIComponent(rawKey);
+    } catch {
+      /* keep raw */
+    }
+    return `${sep}${rawKey}=${mask(key)}`;
+  });
+  // Userinfo: scheme://user:pass@host or protocol-relative //user:pass@host.
+  s = s.replace(
+    /^([a-z][a-z0-9+.-]*:\/\/|\/\/)([^/@?#]*)@/i,
+    (_w, scheme: string) => `${scheme}${mask("userinfo")}@`
+  );
+  return s + frag;
 }
 
-/** A positional arg only goes through redactUrl when it actually looks like a
- *  URL (has a scheme, is protocol-relative, or carries a query) — otherwise
- *  `new URL()` mis-parses shapes like `Authorization: Bearer x` (scheme
- *  `authorization:`) and mutates them. */
+/** Opaque-marker URL redaction for the expert spec surface. */
+export function redactUrl(url: string): string {
+  return redactUrlDeep(url, OPAQUE_URL);
+}
+
+/** A positional arg only goes through redactUrlDeep when it actually looks like a
+ *  URL (has a scheme, is protocol-relative, or carries a query) — otherwise a
+ *  colon-bearing token like `Authorization: Bearer x` would be treated as a URL. */
 function hasUrlShape(a: string): boolean {
   return /:\/\//.test(a) || a.startsWith("//") || a.includes("?");
 }
@@ -103,22 +114,40 @@ function hasUrlShape(a: string): boolean {
  *  secret-shaped, so mask the value that follows it. */
 const VALUE_INJECT_FLAGS = new Set(["--header", "-H", "--headers", "--env", "-e"]);
 
+/** `Header: value` shape (mask the value, keep the header name). */
+const HEADER_PAIR = /^([A-Za-z][A-Za-z0-9-]*): ?(.+)$/;
+
 /** Redact secret-bearing args while keeping flags and non-secret positionals (a
- *  package name / path is informational). Covers `--flag=value` and secret
- *  `KEY=value` (mask the RHS), the value token after a secret-named or
- *  header/env-injecting flag, and a URL-shaped positional (mask its query). */
-function redactArgs(args: unknown[]): unknown[] {
+ *  package name / path is informational). `mask` selects the display form. */
+export function redactArgs(args: unknown[], mask: SecretMask): unknown[] {
   const out: unknown[] = [];
   let maskNext = false;
+  let maskHint = "value";
   for (const a of args) {
     if (typeof a !== "string") {
-      out.push(MASK);
+      out.push(mask("value"));
       maskNext = false;
       continue;
     }
     if (maskNext) {
-      out.push(isPlaceholder(a) ? a : MASK);
       maskNext = false;
+      if (isPlaceholder(a)) {
+        out.push(a);
+        continue;
+      }
+      // `-e API_KEY=…` → keep the key, mask the value.
+      const kv = a.match(/^([A-Za-z0-9_.-]+)=(.*)$/);
+      if (kv && kv[2] !== "" && !isPlaceholder(kv[2])) {
+        out.push(`${kv[1]}=${mask(kv[1])}`);
+        continue;
+      }
+      // `--header "Authorization: Bearer …"` → keep the header name, mask value.
+      const hp = a.match(HEADER_PAIR);
+      if (hp) {
+        out.push(`${hp[1]}: ${mask(hp[1])}`);
+        continue;
+      }
+      out.push(mask(maskHint));
       continue;
     }
     const inline = a.match(/^(-{0,2}[A-Za-z0-9_.-]+)=(.*)$/);
@@ -127,18 +156,30 @@ function redactArgs(args: unknown[]): unknown[] {
       // A dashed flag (`--api-key=…`) always masks its value; a bare `KEY=value`
       // only when the KEY names a secret (so `FOO=bar` / `--rm` stay readable).
       const shouldMask = key.startsWith("-") || isSecretKey(key);
-      out.push(shouldMask && val !== "" && !isPlaceholder(val) ? `${key}=${MASK}` : a);
+      out.push(
+        shouldMask && val !== "" && !isPlaceholder(val)
+          ? `${key}=${mask(key.replace(/^-+/, ""))}`
+          : a
+      );
+      continue;
+    }
+    // A secret-named `Header: value` positional → mask the value, keep the name;
+    // a non-secret colon token (Content-Type: …) falls through unchanged.
+    const hp = a.match(HEADER_PAIR);
+    if (hp && isSecretKey(hp[1])) {
+      out.push(`${hp[1]}: ${mask(hp[1])}`);
       continue;
     }
     if (/^--?[A-Za-z0-9_.-]+$/.test(a)) {
-      // A bare flag; mask the following token when the flag names a secret or
-      // injects a header/env value.
-      maskNext = isSecretKey(a.replace(/^--?/, "")) || VALUE_INJECT_FLAGS.has(a);
+      const name = a.replace(/^--?/, "");
+      // Mask the following token when the flag names a secret or injects a value.
+      maskNext = isSecretKey(name) || VALUE_INJECT_FLAGS.has(a);
+      maskHint = name;
       out.push(a);
       continue;
     }
     // Bare positional — only URL-shaped values get query/userinfo masking.
-    out.push(hasUrlShape(a) ? redactUrl(a) : a);
+    out.push(hasUrlShape(a) ? redactUrlDeep(a, mask) : a);
   }
   return out;
 }
@@ -151,8 +192,8 @@ function redactServer(s: Record<string, unknown>): Record<string, unknown> {
   }
   if (typeof s.disabled === "boolean") out.disabled = s.disabled;
   if (typeof s.timeout === "number") out.timeout = s.timeout;
-  if (typeof s.url === "string") out.url = redactUrl(s.url);
-  if (Array.isArray(s.args)) out.args = redactArgs(s.args);
+  if (typeof s.url === "string") out.url = redactUrlDeep(s.url, OPAQUE_URL);
+  if (Array.isArray(s.args)) out.args = redactArgs(s.args, OPAQUE_VALUE);
   // Tool allow-lists are arrays of tool names; keep only the string members so a
   // `{token: …}` object hidden under the key can't ride through.
   for (const k of ["autoApprove", "alwaysAllow"] as const) {

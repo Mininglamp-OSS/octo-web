@@ -57,16 +57,19 @@ describe("buildQuickStartTabs — JSON snippet", () => {
     expect(JSON.stringify(server)).not.toContain("shared-service-account");
   });
 
-  it("remote: masks a secret-shaped URL query param but keeps the endpoint + non-secret params", () => {
+  it("remote: masks URL userinfo + query values but keeps the endpoint host/path", () => {
     const qs: McpQuickStart = {
       transport: "streamable-http",
       serverName: "svc",
-      url: "https://mcp.example.com/sse?api_key=LEAKf&region=us",
+      url: "https://u:LEAKp@mcp.example.com/sse?api_key=LEAKf&region=us",
     };
     const url = JSON.parse(content(qs, "json")).mcpServers.svc.url;
     expect(url).not.toContain("LEAKf");
+    expect(url).not.toContain("LEAKp");
+    // Endpoint host + path stay so the snippet still points at the right server;
+    // query values are masked as fillable placeholders (all of them, per review).
     expect(url).toContain("mcp.example.com/sse");
-    expect(url).toContain("region=us");
+    expect(url).not.toContain("region=us");
   });
 
   it("stdio: omits env when backend returned nothing", () => {

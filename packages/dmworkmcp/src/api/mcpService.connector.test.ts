@@ -313,4 +313,49 @@ describe("updateMcpReal — full-replace echoes unmodeled connector state", () =
     expect(paths).toContain("connector/custom.json");
     expect(paths).toContain("mcp.json");
   });
+
+  it("selects the modeled server by manifest slug, not position (multi-server, slug not first)", async () => {
+    // mcp.json has the connector's own server (github-mcp = manifest slug) AFTER
+    // an unrelated helper. A positional pick would read a-helper's config and
+    // overwrite github-mcp with it (dropping a-helper) on a metadata edit.
+    const wire = detailPlugin({
+      manifest_json: { name: "github-mcp", description: "Issues and PRs" },
+      plugin_json: {
+        $schema: "cowork-plugin-package-2.0.json",
+        connector: { type: "mcp", source: "connector.github-mcp" },
+        attachments: [
+          {
+            path: "mcp.json",
+            content_type: "raw",
+            raw_content: JSON.stringify({
+              mcpServers: {
+                "a-helper": { command: "helper", args: ["--serve"] },
+                "github-mcp": {
+                  type: "streamable-http",
+                  url: "https://mcp.example.com/github",
+                  cwd: "/srv/gh",
+                },
+              },
+            }),
+          },
+        ],
+      },
+    });
+    mock.instance.get.mockImplementation((url: string) => {
+      if (url.includes("/plugin_categories")) return Promise.resolve(categoriesOk());
+      if (url.includes("/plugins/detail")) return Promise.resolve({ data: { data: wire } });
+      throw new Error(`unexpected GET ${url}`);
+    });
+    mock.instance.post.mockResolvedValue({ data: { data: detailPlugin() } });
+
+    await updateMcp("p-1", baseParams({ slogan: "Renamed" }));
+
+    const { servers } = writtenUpsert();
+    // github-mcp keeps ITS config (+ unmodeled cwd), NOT a-helper's.
+    expect(servers["github-mcp"].url).toBe("https://mcp.example.com/github");
+    expect(servers["github-mcp"].cwd).toBe("/srv/gh");
+    expect(servers["github-mcp"].command).toBeUndefined();
+    // a-helper is preserved verbatim, not dropped.
+    expect(servers["a-helper"]).toEqual({ command: "helper", args: ["--serve"] });
+  });
 });
