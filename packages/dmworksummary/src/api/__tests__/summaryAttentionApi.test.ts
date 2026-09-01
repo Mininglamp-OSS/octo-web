@@ -51,6 +51,26 @@ function attentionCfg(params?: Record<string, unknown>) {
     return { params, timeout: SUMMARY_ATTENTION_TIMEOUT_MS };
 }
 
+/**
+ * 兜底（列表端点）路径的请求配置。
+ *
+ * 同样【必须】断言 timeout，且理由比窄端点更强一层：这条路径被 404 记忆锁定之后，
+ * 就是老后端上轮询唯一的取数来源。
+ *
+ * 澄清一点，免得后人误读这条断言的目的：这【不】是「从无超时改成有超时」。
+ * summaryAxios 会继承 axios.create 那一刻的 axios.defaults，而 @octo/base 的
+ * APIClient 在模块求值期就设了 20s 全局默认（YUJ-2628），所以兜底请求本来就有
+ * 隐式超时。问题是 20s > 轮询基础间隔 15s：挂死的请求会跨过下一拍（被 fetching
+ * 互斥跳掉），并在这段时间里让 inFlightReads ≥1 拒掉全部跨标签页广播。取 10s
+ * 是为了让失败在下一拍之前销账，同时把这条不变量从「另一个包的全局默认值恰好
+ * 合适」变成本地显式声明。
+ *
+ * 列表端点【没有】fresh 语义，所以 params 恒为分页那两个字段。
+ */
+function listFallbackCfg() {
+    return { params: { page: 1, page_size: 1 }, timeout: SUMMARY_ATTENTION_TIMEOUT_MS };
+}
+
 function httpError(status: number) {
     return { response: { status, data: { message: `HTTP ${status}` } } };
 }
@@ -122,9 +142,7 @@ describe('fetchSummaryAttentionCounts —— 端点缺失兜底', () => {
         // 本次调用不算失败：老后端上红点必须照常亮。
         await expect(fetchSummaryAttentionCounts()).resolves.toMatchObject({ attention_count: 3 });
 
-        expect(mockGet).toHaveBeenNthCalledWith(2, LIST_PATH, {
-            params: { page: 1, page_size: 1 },
-        });
+        expect(mockGet).toHaveBeenNthCalledWith(2, LIST_PATH, listFallbackCfg());
     });
 
     it('404 只判一次：之后的调用直接走兜底，不再每拍撞一次 404', async () => {
@@ -181,6 +199,69 @@ describe('fetchSummaryAttentionCounts —— 端点缺失兜底', () => {
 
         expect(mockGet).toHaveBeenNthCalledWith(1, ATTENTION_PATH, attentionCfg({ fresh: 1 }));
         // 列表端点没有 fresh 语义（它本来就不走那层 5s 缓存），别凭空塞参数。
-        expect(mockGet).toHaveBeenNthCalledWith(2, LIST_PATH, { params: { page: 1, page_size: 1 } });
+        expect(mockGet).toHaveBeenNthCalledWith(2, LIST_PATH, listFallbackCfg());
+    });
+
+    /**
+     * 🔴 CR：窄端点拿到了 10s 超时，兜底路径当时没有显式超时。
+     *
+     * 这一组钉的是「挂死不会拖掉下一拍」。诊断错这一条的代价特别高：故障表现是
+     * 红点该动的时候没动、控制台无错误、用户不会报 bug，而 fetching / inFlightReads
+     * 两个标志位在挂死期间都停在「有请求在飞」上，轮询丢拍、跨标签页广播全被拒。
+     *
+     * 精确一点：兜底请求本来就有 @octo/base 设的 20s 全局默认超时（见 listFallbackCfg
+     * 注释），所以这不是「永久停摆」而是「丢拍」。要防的是 20s > 15s 基础间隔。
+     */
+    describe('兜底路径的超时（🔴 CR）', () => {
+        it('兜底请求带上和窄端点同一个 timeout，不是无超时', async () => {
+            mockGet
+                .mockRejectedValueOnce(httpError(404))
+                .mockResolvedValueOnce({ data: { data: { items: [], total: 0, attention_count: 4 } } });
+
+            await fetchSummaryAttentionCounts();
+
+            const [, cfg] = mockGet.mock.calls[1];
+            // 断言具体数值而不只是 toBeDefined：写成 0 或 undefined 在 axios 里都等于
+            // 「永不超时」，那正是本条要防的故障。
+            expect(cfg).toMatchObject({ timeout: SUMMARY_ATTENTION_TIMEOUT_MS });
+            expect(cfg.timeout).toBeGreaterThan(0);
+        });
+
+        it('超时短于轮询基础间隔：失败要在下一拍之前销账，不能因互斥跳拍', () => {
+            // 15_000 是 summaryAttentionPoll 的 POLL_BASE_INTERVAL_MS。取值一旦被调大到
+            // 超过基础间隔，超时就不再能阻止「一拍挂死拖掉下一拍」，这条断言会先炸。
+            expect(SUMMARY_ATTENTION_TIMEOUT_MS).toBeLessThan(15_000);
+        });
+
+        it('兜底请求超时后向上抛，让轮询走退避分支而不是拖住下一拍', async () => {
+            mockGet
+                .mockRejectedValueOnce(httpError(404))
+                // axios 超时的形状：无 response，code=ECONNABORTED。
+                .mockRejectedValueOnce(
+                    Object.assign(new Error('timeout of 10000ms exceeded'), { code: 'ECONNABORTED' }),
+                );
+
+            // 关键在于它【会 settle】。挂死的实现下这个 await 永远不返回，
+            // 用例会以超时失败——正是要抓的那个故障。
+            await expect(fetchSummaryAttentionCounts()).rejects.toThrow(/timeout/i);
+        });
+
+        it('超时【不】被误判成端点缺失：下一次仍走兜底，不会反过来重探窄端点', async () => {
+            mockGet
+                .mockRejectedValueOnce(httpError(404))
+                .mockRejectedValueOnce(
+                    Object.assign(new Error('timeout of 10000ms exceeded'), { code: 'ECONNABORTED' }),
+                );
+            await expect(fetchSummaryAttentionCounts()).rejects.toBeTruthy();
+            const callsAfterTimeout = mockGet.mock.calls.length;             // 404 + 超时 = 2
+
+            // 一次超时不该动摇「窄端点不存在」这个已经成立的结论：重探会在老后端上
+            // 把每拍的请求量翻回两个。
+            mockGet.mockResolvedValueOnce({ data: { data: { items: [], total: 0, attention_count: 5 } } });
+            await expect(fetchSummaryAttentionCounts()).resolves.toMatchObject({ attention_count: 5 });
+
+            expect(mockGet.mock.calls.length).toBe(callsAfterTimeout + 1);
+            expect(mockGet).toHaveBeenLastCalledWith(LIST_PATH, listFallbackCfg());
+        });
     });
 });

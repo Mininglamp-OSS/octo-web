@@ -618,7 +618,9 @@ function parseAndDispatch(event: string, data: string, handlers: AgentStreamHand
 
 export async function listSummaries(
     params: ListSummariesParams,
-    config?: { signal?: AbortSignal },
+    // timeout 是给 fetchSummaryAttentionCounts 的兜底路径开的口子（见那里的注释）。
+    // 其余调用点都由用户动作驱动、有可见的 loading 态，不传即沿用 axios 默认的无超时。
+    config?: { signal?: AbortSignal; timeout?: number },
 ): Promise<ListSummariesResponse> {
     return get('/summaries', params as Record<string, unknown>, config);
 }
@@ -702,7 +704,27 @@ export async function fetchSummaryAttentionCounts(options?: { fresh?: boolean })
     // 兜底：窄端点尚未部署时，仍从列表端点读同一个 attention_count 字段。
     // page_size=1 是为了让后端少序列化几条 item，返回的 items 直接丢掉。
     // 窄端点全量上线后，这段连同 summaryAttentionEndpointMissing 可以一起删。
-    const resp = await listSummaries({ page: 1, page_size: 1 });
+    //
+    // timeout 和窄端点用【同一个】值，理由也同一条（见 SUMMARY_ATTENTION_TIMEOUT_MS）：
+    // 这条路径一旦被 404 记忆锁定，就是老后端上轮询唯一的取数来源，同样是无人值守
+    // 发生的。
+    //
+    // 注意这【不】是「从无超时改成有超时」：summaryAxios 由 axios.create 创建，会把
+    // 创建那一刻的 axios.defaults 快照进去，而 @octo/base 的 APIClient 在模块求值期
+    // （`static shared = new APIClient()` → initAxios）就设了 axios.defaults.timeout
+    // = DEFAULT_REQUEST_TIMEOUT_MS（20s，YUJ-2628）。本文件第 2 行 import '@octo/base'
+    // 先于第 47 行的 axios.create 求值，所以兜底请求本来就有一个 20s 的隐式超时。
+    //
+    // 真正的问题是 20s > 轮询基础间隔 15s：一个挂死的兜底请求会让 poll 的 fetching
+    // 标志跨过下一拍（那一拍被互斥直接跳掉），同时 inFlightReads 停在 ≥1，让
+    // acceptRemoteAttentionCount 在这段时间里拒掉全部跨标签页广播。不是永久停摆，
+    // 但确实丢拍，且表现为「红点该动的时候没动」这种不报错的故障。
+    //
+    // 所以这里显式取 10s（< 15s）：让失败在下一拍之前完成销账。顺带把这条不变量从
+    // 「依赖另一个包的全局默认值恰好合适」变成本地显式声明——DEFAULT_REQUEST_TIMEOUT_MS
+    // 是给登录页转圈用的，它没有义务为 summary 轮询的节奏负责，改动它的人也不会想到
+    // 这里。listSummaries 的其它调用点不传 timeout，继续用那个 20s 的全局默认。
+    const resp = await listSummaries({ page: 1, page_size: 1 }, { timeout: SUMMARY_ATTENTION_TIMEOUT_MS });
     // 兵底路径同样校验：它并不比窄端点更可信，而且它是老后端上的唯一数据源。
     return assertAttentionCounts({
         attention_count: resp.attention_count,
