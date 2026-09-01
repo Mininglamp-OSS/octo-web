@@ -158,6 +158,31 @@ function probeStorage(storage: Storage | null | undefined): Storage | null {
     }
 }
 
+/**
+ * 取默认存储。【读 `window.localStorage` 这个属性本身就可能抛】——不是 setItem，
+ * 是属性访问：无 allow-same-origin 的 sandbox iframe、浏览器为本 origin 屏蔽了
+ * 站点数据、Firefox 的 dom.storage.enabled=false、企业策略禁用站点数据，都会
+ * 抛 SecurityError。
+ *
+ * probeStorage 挡不住它：那一层跑起来的时候，属性已经读完了。而这个抛点在一条
+ * 【没有任何人 catch】的同步链上——module.tsx 的 createAttentionLeader 调用没包
+ * try，ModuleManager.register 裸调 init()，而 registerModule 又在 apps/web
+ * src/index.tsx 的【顶层求值】期执行，早于 main()。于是后果不是「红点不更新」，
+ * 是 root.render() 一次都跑不到：整个应用白屏。
+ *
+ * 形态照抄仓库既有的 dmworkbase/src/Service/SessionScope.ts safeLocalStorage()。
+ * 返回 null 走既有的降级路径（每个标签页自己轮询），与本文件头注释声明的
+ * 「任何一环不可用一律降级」对齐。
+ */
+function defaultLocalStorage(): Storage | null {
+    if (typeof window === 'undefined') return null;
+    try {
+        return window.localStorage;
+    } catch {
+        return null;
+    }
+}
+
 function readLease(storage: Storage): LeaseRecord | null {
     try {
         const raw = storage.getItem(LEASE_KEY);
@@ -184,7 +209,7 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
 
     const rawStorage = deps.storage !== undefined
         ? deps.storage
-        : (typeof window !== 'undefined' ? window.localStorage : null);
+        : defaultLocalStorage();
     const storage = probeStorage(rawStorage);
 
     const ChannelCtor = deps.broadcastChannelCtor !== undefined
@@ -261,6 +286,29 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
     };
 
     /**
+     * 租约是否已经馊了（含【未来时间戳】这条）。
+     *
+     * 只算 `current - lease.ts > staleAfterMs` 会漏掉一整类静默死锁：ts 落在未来时，
+     * 这个差值恒为负，租约【永远】不馊。持有者随后死掉的话，谁都不会接管——正是
+     * 租约机制存在的唯一理由被一个没校验的数字抵消掉，而且是整个会话级别、无任何
+     * 报错。可达路径两条：墙上时钟被往回校准（休眠唤醒后的 NTP 纠正、虚拟机对时、
+     * 手动改时间）；以及任何同源代码往 `octo:summary-attention-leader` 写一条
+     * `{"id":"x","ts":1e15}`——localStorage 是同源共享的可写面，这里只校验过类型，
+     * 没校验过量级。
+     *
+     * 容差取一个心跳周期：合法的续租都是 `now()` 写的，同源标签页共用同一个时钟，
+     * 所以正常情况下 ts 绝不会大于本地的 current。留一拍的余量是为了吸收「另一个
+     * 标签页刚写完、本标签页读到时定时器精度/时钟粗化造成的几毫秒偏差」，同时又
+     * 不给一个伪造值留出可用窗口。
+     *
+     * 判成馊的后果是安全的：抢占逻辑会用 `now()` 覆盖掉那条租约，自愈。
+     */
+    const isLeaseStale = (lease: LeaseRecord, current: number): boolean => {
+        if (lease.ts > current + heartbeatMs) return true;
+        return current - lease.ts > staleAfterMs;
+    };
+
+    /**
      * 心跳一拍：是 leader 就续租；不是就看看租约是不是已经馊了，馊了就接管。
      * 两件事合在一拍里做，跟随者才不需要另一个独立的观察定时器。
      */
@@ -295,7 +343,7 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
             // 还是我的租约。但要防「自己已经馊了」这种情况：标签页被挂起
             // （休眠、后台节流、断点）很久后醒来，期间别人可能已经接管过。
             // 若确实过期了，先按丢失身份处理，再由下面的抢占逻辑重新竞争。
-            if (current - lease.ts > staleAfterMs) {
+            if (isLeaseStale(lease, current)) {
                 resign();
             } else {
                 writeLease();
@@ -304,7 +352,7 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
             }
         }
 
-        const stale = !lease || current - lease.ts > staleAfterMs;
+        const stale = !lease || isLeaseStale(lease, current);
         if (stale) {
             // 抢占。多个标签页可能在同一拍同时抢，最后写入的赢；输的那个会在
             // 下一拍读到别人的 id 并退位。这个窗口最长一个心跳周期，期间可能有
@@ -347,6 +395,13 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
 
             if (degraded) {
                 // 没有协调手段：直接自己轮询。这里【不】设心跳定时器，也不写租约。
+                //
+                // 显式置位而不是只依赖构造时的 `let leader = degraded`：stop() 会把
+                // leader 置回 false，若这里不重新置上，第二次 start() 会把轮询拉起来
+                // 却留下 leader === false，接着的 stop() 就跳过 onResignLeader()，
+                // 轮询定时器漏出去。今天不可达（dispose 会丢掉实例、init 重新构造），
+                // 但这个对象没理由不可重启。
+                leader = true;
                 deps.onBecomeLeader();
                 return;
             }

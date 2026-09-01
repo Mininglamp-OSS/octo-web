@@ -10,7 +10,7 @@
  *
  * storage 与 BroadcastChannel 都用注入的替身，因此可以精确摆布时间与故障。
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
     createAttentionLeader,
@@ -770,5 +770,213 @@ describe('createAttentionLeader —— beat 现问可见性（宿主不发 visib
 
         expect(a.leader.isLeader()).toBe(true);
         expect(a.events).toEqual(['lead']);
+    });
+});
+
+/**
+ * 🔴 CR：默认 storage 分支【一次都没被测过】。
+ *
+ * 上面每个用例都显式注入 storage（内存替身或 null），`deps.storage !== undefined`
+ * 因此永远短路，生产真正走的那条 `window.localStorage` 从未执行过——而它正是唯一
+ * 会把异常抛出构造函数的地方：读这个【属性】本身在无 allow-same-origin 的 sandbox
+ * iframe、站点数据被屏蔽的 origin、dom.storage.enabled=false 的 Firefox、被企业策略
+ * 禁用的浏览器里会抛 SecurityError。probeStorage 挡不住它（那一层跑到时属性已经读完）。
+ *
+ * 后果不是「红点不更新」：module.tsx 的 createAttentionLeader 调用没包 try，
+ * ModuleManager.register 裸调 init()，而 registerModule 又在 apps/web 的 index.tsx
+ * 【顶层求值】期执行、早于 main()——于是 root.render() 一次都跑不到，整个应用白屏。
+ */
+describe('createAttentionLeader —— 默认 storage（读属性即抛）', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    /** 一个 localStorage 属性访问就抛的 window（模拟被策略/上下文禁用的存储）。 */
+    function stubThrowingWindow(): void {
+        const win: Record<string, unknown> = {
+            addEventListener: () => {},
+            removeEventListener: () => {},
+        };
+        Object.defineProperty(win, 'localStorage', {
+            configurable: true,
+            get(): Storage {
+                // 真实浏览器抛的是 DOMException('SecurityError')；这里只关心「抛」。
+                throw new Error('SecurityError: access to storage is not allowed');
+            },
+        });
+        vi.stubGlobal('window', win);
+    }
+
+    it('🔴 构造【不抛】，而是降级成「每个标签页自己轮询」', () => {
+        stubThrowingWindow();
+        const factory = createChannelFactory();
+
+        let leader: ReturnType<typeof createAttentionLeader> | null = null;
+        expect(() => {
+            leader = createAttentionLeader({
+                // 关键：不传 storage，逼它走生产默认分支。
+                broadcastChannelCtor: factory.ctor,
+                onBecomeLeader: () => {},
+                onResignLeader: () => {},
+            });
+        }).not.toThrow();
+
+        // 降级而不是静默失效：本文件头注释的那条不变量——宁可多打请求，
+        // 也绝不能没人打。
+        expect(leader!.isDegraded()).toBe(true);
+    });
+
+    it('🔴 降级后 start() 照常把轮询拉起来，红点仍然会亮', () => {
+        stubThrowingWindow();
+        const factory = createChannelFactory();
+        const events: string[] = [];
+
+        const leader = createAttentionLeader({
+            broadcastChannelCtor: factory.ctor,
+            onBecomeLeader: () => events.push('lead'),
+            onResignLeader: () => events.push('resign'),
+        });
+        expect(() => leader.start()).not.toThrow();
+
+        expect(events).toEqual(['lead']);
+        expect(leader.isLeader()).toBe(true);
+    });
+
+    it('localStorage 正常可用时【不】降级（确认默认分支真的被走到了）', () => {
+        // 没有这一条，上面两条用「永远降级」的实现也能通过。
+        const storage = createMemoryStorage();
+        vi.stubGlobal('window', {
+            localStorage: storage,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+        });
+        const factory = createChannelFactory();
+
+        const leader = createAttentionLeader({
+            broadcastChannelCtor: factory.ctor,
+            onBecomeLeader: () => {},
+            onResignLeader: () => {},
+        });
+
+        expect(leader.isDegraded()).toBe(false);
+    });
+});
+
+/**
+ * P2 CR：租约的 ts 只校验了类型，没校验量级。
+ *
+ * 馊判定是 `current - lease.ts > staleAfterMs`。ts 落在未来时这个差值恒为负，
+ * 租约【永远】不馊——持有者随后死掉的话谁都不会接管，正是租约机制存在的唯一理由
+ * 被一个没校验的数字抵消掉，而且是整个会话级别、无任何报错。
+ *
+ * 可达路径两条：墙上时钟被往回校准（休眠唤醒后的 NTP 纠正、虚拟机对时、手动改
+ * 时间）；以及任何同源代码往这个 key 写一条 `{"id":"x","ts":1e15}`。
+ */
+describe('createAttentionLeader —— 租约时间戳的范围校验（P2 CR）', () => {
+    const LEASE_KEY = 'octo:summary-attention-leader';
+    let storage: ReturnType<typeof createMemoryStorage>;
+    let factory: ReturnType<typeof createChannelFactory>;
+    let clock: { now: number };
+
+    beforeEach(() => {
+        storage = createMemoryStorage();
+        factory = createChannelFactory();
+        clock = { now: 1_000_000 };
+    });
+
+    it('未来 ts 的他人租约按【已馊】处理，本标签页照常接管', () => {
+        // 幽灵租约：id 不是自己，ts 在一年后。旧实现下这个标签页永远当跟随者，
+        // 整个浏览器零轮询，直到用户手动刷新。
+        storage.setItem(LEASE_KEY, JSON.stringify({ id: 'ghost', ts: clock.now + 31_536_000_000 }));
+
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        a.leader.start();
+
+        expect(a.leader.isLeader()).toBe(true);
+        // 抢占顺手把那条不可信的租约用 now() 覆盖掉，自愈。
+        const lease = JSON.parse(storage.getItem(LEASE_KEY) ?? 'null');
+        expect(lease).toMatchObject({ id: 'tab-a', ts: clock.now });
+    });
+
+    it('容差之内的 ts 仍算新鲜（边界不能取反，否则活着的 leader 会被误抢）', () => {
+        // 容差是一个心跳周期：合法续租都是 now() 写的，留一拍余量吸收几毫秒的
+        // 定时器精度/时钟粗化偏差，不是给伪造值留窗口。
+        storage.setItem(LEASE_KEY, JSON.stringify({ id: 'ghost', ts: clock.now + LEADER_HEARTBEAT_MS }));
+
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        a.leader.start();
+
+        expect(a.leader.isLeader()).toBe(false);
+        expect(a.events).toEqual([]);
+    });
+
+    it('刚越过容差一毫秒就判馊', () => {
+        storage.setItem(LEASE_KEY, JSON.stringify({ id: 'ghost', ts: clock.now + LEADER_HEARTBEAT_MS + 1 }));
+
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        a.leader.start();
+
+        expect(a.leader.isLeader()).toBe(true);
+    });
+
+    it('未来 ts 的【自有】租约先让位再重新竞争，一拍自愈', () => {
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        a.leader.start();
+        expect(a.leader.isLeader()).toBe(true);
+
+        // 时钟被往回校准：自己刚写的租约看起来落在了未来。
+        storage.setItem(LEASE_KEY, JSON.stringify({ id: 'tab-a', ts: clock.now + 60_000 }));
+        a.beat();
+
+        // 身份没丢（同一拍里重新抢回来），但走过一次让位，所以事件是 lead→resign→lead。
+        expect(a.leader.isLeader()).toBe(true);
+        expect(a.events).toEqual(['lead', 'resign', 'lead']);
+        expect(JSON.parse(storage.getItem(LEASE_KEY) ?? 'null')).toMatchObject({ ts: clock.now });
+    });
+
+    it('幽灵租约不会让两个标签页双双接管：先抢到的当 leader，后来的照常跟随', () => {
+        // 判馊只是让【被卡死的竞争重新开始】，不是把互斥拆掉。第一个标签页抢占时
+        // 会用 now() 覆盖那条不可信的租约，第二个于是看到一条合法的新鲜租约。
+        storage.setItem(LEASE_KEY, JSON.stringify({ id: 'ghost', ts: clock.now + 60_000 }));
+
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        const b = createTab({ id: 'tab-b', storage, ctor: factory.ctor, clock });
+        a.leader.start();
+        b.leader.start();
+
+        expect(a.leader.isLeader()).toBe(true);
+        expect(b.leader.isLeader()).toBe(false);
+        expect(b.events).toEqual([]);
+
+        // 后续心跳也不该出现双 leader。
+        clock.now += LEADER_HEARTBEAT_MS;
+        a.beat();
+        b.beat();
+        expect(a.leader.isLeader()).toBe(true);
+        expect(b.leader.isLeader()).toBe(false);
+    });
+});
+
+/**
+ * Nit CR：降级分支只依赖构造时的 `let leader = degraded`，没在 start() 里置位。
+ * stop() 会把它清成 false，于是第二次 start() 把轮询拉起来却留下
+ * leader === false，接着的 stop() 跳过 onResignLeader()，轮询定时器漏出去。
+ * 今天不可达（dispose 丢实例、init 重新构造），但这个对象没理由不可重启。
+ */
+describe('createAttentionLeader —— 降级模式的可重启性（Nit CR）', () => {
+    it('stop 之后再 start 仍是 leader，第二次 stop 也要拆线', () => {
+        const clock = { now: 1_000_000 };
+        const a = createTab({ id: 'tab-a', storage: createMemoryStorage(), ctor: null, clock });
+        expect(a.leader.isDegraded()).toBe(true);
+
+        a.leader.start();
+        a.leader.stop();
+        a.leader.start();
+
+        expect(a.leader.isLeader()).toBe(true);
+        a.leader.stop();
+
+        // 漏了第二次 resign 就等于轮询定时器没人停。
+        expect(a.events).toEqual(['lead', 'resign', 'lead', 'resign']);
     });
 });

@@ -27,6 +27,7 @@ import {
     resetSummaryAttentionOrdering,
     setSummaryAttentionPublisher,
     ATTENTION_CACHE_TTL_MS,
+    REMOTE_SAMPLE_FUTURE_TOLERANCE_MS,
 } from '../summaryAttentionBadge';
 
 import { WKApp } from '@octo/base';
@@ -412,13 +413,21 @@ describe('summaryAttentionBadge — 广播排序', () => {
         expect(getSummaryAttentionBadge()).toBe(0);
     });
 
-    it('本地有读取在飞时一律不收广播（本地读取更权威）', () => {
-        beginSummaryAttentionRead();
+    it('在飞读取不比广播旧时不收广播（本地那份马上就会带回更新的值）', () => {
+        const now = Date.now();
+        // 用户动作的 fresh 读在飞：样本时刻就是发出时刻。
+        beginSummaryAttentionRead(attentionSampleAt(now, true));
         expect(hasInFlightAttentionRead()).toBe(true);
 
-        // 本地在飞的那个读带 fresh、反映本标签页用户刚做完的动作，
-        // 它回来时会写正确值；此刻收广播只是徒增一次闪烁。
-        expect(acceptRemoteAttentionCount(9, Number.MAX_SAFE_INTEGER)).toBe(false);
+        // 广播的样本时刻更旧 → 本地在飞那份更权威，收它只是徒增一次闪烁。
+        expect(acceptRemoteAttentionCount(9, now - 1)).toBe(false);
+        expect(getSummaryAttentionBadge()).toBe(0);
+    });
+
+    it('不传样本时刻的调用方按「现在」记，行为与加闸前一致（在飞即拦）', () => {
+        beginSummaryAttentionRead();
+        expect(hasInFlightAttentionRead()).toBe(true);
+        expect(acceptRemoteAttentionCount(9, Date.now() - 1_000)).toBe(false);
         expect(getSummaryAttentionBadge()).toBe(0);
     });
 
@@ -708,5 +717,217 @@ describe('summaryAttentionBadge — E2E mock 就绪门', () => {
 
         await expect(readSummaryAttentionCount({ fresh: true })).resolves.toMatchObject({ count: 1 });
         expect(api.fetchSummaryAttentionCounts).toHaveBeenCalledTimes(1);
+    });
+});
+
+// ═══ 广播样本时刻的范围校验（P2 CR） ═══
+//
+// `sampleAt` 是【外部输入】：它由另一个标签页写进 BroadcastChannel 载荷，而本地
+// 水位 `lastCommittedSampleAt` 单调不减。于是一条越界的未来时刻不是「丢一次广播」
+// 而是「把红点钉死到本会话结束」——此后所有广播与本地写入都排不进去。
+//
+// 越界不需要恶意：跨版本标签页写坏字段、系统时钟被 NTP 往前跳、虚拟机挂起恢复，
+// 都会产出一个远在未来的时刻。校验加在最外层，越界即丢、【不】动水位。
+describe('summaryAttentionBadge — 广播样本时刻的范围校验（P2 CR）', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        WKApp.shared.currentSpaceId = 'space-123';
+        WKApp.loginInfo.uid = 'test-uid';
+        vi.spyOn(WKApp.loginInfo, 'isLogined').mockReturnValue(true);
+        vi.spyOn(WKApp.menus, 'refresh').mockImplementation(() => {});
+        setSummaryAttentionBadge(0);
+        resetSummaryAttentionOrdering();
+        vi.mocked(WKApp.menus.refresh).mockClear();
+    });
+
+    it('未来样本时刻的广播被拒，且【不】污染水位（合法广播随后照常落盘）', () => {
+        const now = Date.now();
+
+        expect(acceptRemoteAttentionCount(7, now + 30 * 60_000)).toBe(false);
+        expect(getSummaryAttentionBadge()).toBe(0);
+
+        // 后半段才是这条用例真正的目的：水位单调不减，一旦被未来时刻钉住，本会话
+        // 余下时间的每一条广播都排不进去，红点从此永久停摆且无任何报错。
+        expect(acceptRemoteAttentionCount(7, now - 1_000)).toBe(true);
+        expect(getSummaryAttentionBadge()).toBe(7);
+    });
+
+    it('Number.MAX_SAFE_INTEGER 这类明显越界的时刻被拒（有限数不等于合理）', () => {
+        // `Number.isFinite` 对它是 true，所以只靠原来那道有限性校验挡不住。
+        expect(acceptRemoteAttentionCount(9, Number.MAX_SAFE_INTEGER)).toBe(false);
+        expect(getSummaryAttentionBadge()).toBe(0);
+
+        expect(acceptRemoteAttentionCount(3, Date.now() - 1_000)).toBe(true);
+        expect(getSummaryAttentionBadge()).toBe(3);
+    });
+
+    it('容差之内的轻微超前仍然接受（取样与广播之间本就有毫秒级间隔）', () => {
+        // 留 50ms 余量，抵消本用例自身两次 Date.now() 之间的漂移。
+        expect(
+            acceptRemoteAttentionCount(2, Date.now() + REMOTE_SAMPLE_FUTURE_TOLERANCE_MS - 50),
+        ).toBe(true);
+        expect(getSummaryAttentionBadge()).toBe(2);
+    });
+
+    it('容差明显小于缓存 TTL：越界判定不会吃掉正常的折算余量', () => {
+        // 折算把非 fresh 读往前推一个 TTL，容差往后放一点点。两者一旦可比，
+        // 校验就会开始误伤正常广播。
+        expect(REMOTE_SAMPLE_FUTURE_TOLERANCE_MS).toBeLessThan(ATTENTION_CACHE_TTL_MS);
+        expect(REMOTE_SAMPLE_FUTURE_TOLERANCE_MS).toBeGreaterThan(0);
+    });
+});
+
+// ═══ 在飞闸从「有读在飞」收窄到「在飞那份更新」（P2 CR） ═══
+//
+// 原来的闸是一个计数器：只要本地有读在飞就拒掉全部广播，理由写的是「本地读带
+// fresh、更权威」。可轮询那条读【不】带 fresh，它拿回来的可能是 5s 前建的缓存。
+// 于是闸的前提在轮询这条路径上不成立，而后果不是丢一次广播：在飞那份陈旧值随后
+// 会 commit 上去，把跟随者刚广播的新值盖回旧值。
+//
+// 修法不是按 fresh 分支（那只是把前提近似一下），而是让闸自己去比样本时刻：
+// 在飞计数换成 Map<票号, 样本时刻>，只有当在飞的那份【确实不比广播旧】时才拦。
+describe('summaryAttentionBadge — 在飞闸按样本时刻收窄（P2 CR）', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        WKApp.shared.currentSpaceId = 'space-123';
+        WKApp.loginInfo.uid = 'test-uid';
+        vi.spyOn(WKApp.loginInfo, 'isLogined').mockReturnValue(true);
+        vi.spyOn(WKApp.menus, 'refresh').mockImplementation(() => {});
+        setSummaryAttentionBadge(0);
+        resetSummaryAttentionOrdering();
+        vi.mocked(WKApp.menus.refresh).mockClear();
+    });
+
+    it('🟡 在飞的非 fresh 轮询不再拦掉更新的广播（旧实现拦掉后还会盖回旧值）', () => {
+        const now = Date.now();
+        setSummaryAttentionBadge(3);
+
+        // leader 的轮询发出，不带 fresh → 样本时刻按最坏情况折算到一个 TTL 之前。
+        const pollSampleAt = attentionSampleAt(now, false);
+        const pollTicket = beginSummaryAttentionRead(pollSampleAt);
+        expect(hasInFlightAttentionRead()).toBe(true);
+
+        // 跟随者上用户点掉了红点，它的 fresh 读先回来并广播 0。
+        expect(acceptRemoteAttentionCount(0, now - 1)).toBe(true);
+        expect(getSummaryAttentionBadge()).toBe(0);
+
+        // 轮询的陈旧响应此刻才到，被样本时刻闸挡住 —— 红点保持灭。
+        commitSummaryAttentionBadge(pollTicket, 3, pollSampleAt);
+        expect(getSummaryAttentionBadge()).toBe(0);
+        expect(hasInFlightAttentionRead()).toBe(false);
+    });
+
+    it('闸只看最新的那份在飞读取：多个读在飞时按其中最新的样本时刻判', () => {
+        const now = Date.now();
+        beginSummaryAttentionRead(attentionSampleAt(now, false));   // 陈旧的轮询
+        beginSummaryAttentionRead(attentionSampleAt(now, true));    // 用户动作的 fresh 读
+
+        // 有一份 fresh 读在飞且不比广播旧 → 该拦。若实现取的是「最旧那份」，
+        // 这条会被放进来，随后又被那份 fresh 的结果覆盖，白闪一次。
+        expect(acceptRemoteAttentionCount(9, now - 1)).toBe(false);
+        expect(getSummaryAttentionBadge()).toBe(0);
+    });
+
+    it('销账仍然是幂等的：commit 与 abandon 都摘掉在飞项，广播不会被堵死', () => {
+        const t1 = beginSummaryAttentionRead(1_000);
+        commitSummaryAttentionBadge(t1, 1, 1_000);
+        commitSummaryAttentionBadge(t1, 1, 1_000);           // 重复 settle
+        expect(hasInFlightAttentionRead()).toBe(false);
+
+        const t2 = beginSummaryAttentionRead(2_000);
+        abandonSummaryAttentionRead(t2);
+        abandonSummaryAttentionRead(t2);
+        expect(hasInFlightAttentionRead()).toBe(false);
+
+        expect(acceptRemoteAttentionCount(6, 3_000)).toBe(true);
+        expect(getSummaryAttentionBadge()).toBe(6);
+    });
+});
+
+// ═══ 已放弃后缀的折叠（票号活性，P2 CR） ═══
+//
+// 原来的还号是 `if (ticket === issueSeq) issueSeq--`：只有最新号失败才回退。乱序
+// 失败因此有死角 —— A/B/C 三个读在飞，B 先失败（不是最新号，不回退），C 随后失败
+// （回退到 B），号段停在 B 上，而 B 已经不在飞了。A 带着正确值回来时被判过期丢掉。
+// 下一次读取（≤60s）会自愈，但这 60s 内红点就是不准的。
+//
+// 修法是折叠「连续的已放弃后缀」：还号时记下被放弃的号，然后从最新号往下一直
+// 退过所有已放弃的号。
+describe('summaryAttentionBadge — 已放弃后缀的折叠（票号活性，P2 CR）', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        WKApp.shared.currentSpaceId = 'space-123';
+        WKApp.loginInfo.uid = 'test-uid';
+        vi.spyOn(WKApp.loginInfo, 'isLogined').mockReturnValue(true);
+        vi.spyOn(WKApp.menus, 'refresh').mockImplementation(() => {});
+        setSummaryAttentionBadge(0);
+        resetSummaryAttentionOrdering();
+        vi.mocked(WKApp.menus.refresh).mockClear();
+    });
+
+    it('🟡 乱序放弃（先 B 后 C）后 A 照常落盘，不必等下一次读取自愈', () => {
+        const a = beginSummaryAttentionRead(1_000);
+        const b = beginSummaryAttentionRead(2_000);
+        const c = beginSummaryAttentionRead(3_000);
+
+        abandonSummaryAttentionRead(b);   // 不是最新号，此刻不能回退（C 还在飞）
+        abandonSummaryAttentionRead(c);   // 连同已放弃的 B 一起折叠，号段回到 A
+
+        commitSummaryAttentionBadge(a, 5, 1_000);
+        expect(getSummaryAttentionBadge()).toBe(5);   // 修复前是 0：A 的号被判过期
+    });
+
+    it('顺序放弃（先 C 后 B）同样收敛到 A', () => {
+        const a = beginSummaryAttentionRead(1_000);
+        const b = beginSummaryAttentionRead(2_000);
+        const c = beginSummaryAttentionRead(3_000);
+
+        abandonSummaryAttentionRead(c);
+        abandonSummaryAttentionRead(b);
+
+        commitSummaryAttentionBadge(a, 5, 1_000);
+        expect(getSummaryAttentionBadge()).toBe(5);
+    });
+
+    it('折叠只吃已放弃的后缀：落在中间的在飞号仍然是最新号', () => {
+        const a = beginSummaryAttentionRead(1_000);
+        const b = beginSummaryAttentionRead(2_000);
+        const c = beginSummaryAttentionRead(3_000);
+
+        abandonSummaryAttentionRead(c);        // 号段回到 B，B 仍在飞
+
+        commitSummaryAttentionBadge(a, 9, 1_000);
+        expect(getSummaryAttentionBadge()).toBe(0);   // A 此刻确实过期，该丢
+
+        commitSummaryAttentionBadge(b, 6, 2_000);
+        expect(getSummaryAttentionBadge()).toBe(6);
+    });
+
+    it('重复放弃同一个号不留残渣：残渣会在号段回升后把在飞的号折下去', () => {
+        // 第一代 A/B/C。
+        const a = beginSummaryAttentionRead(1_000);
+        const b = beginSummaryAttentionRead(2_000);
+        const c = beginSummaryAttentionRead(3_000);
+
+        abandonSummaryAttentionRead(c);   // 号段回到 B
+        abandonSummaryAttentionRead(c);   // 重试路径 / 双重 catch：必须是彻底的 no-op
+        abandonSummaryAttentionRead(b);   // 号段回到 A
+
+        // 第二代：号被回收后重新发出去，于是又出现 2 和 3。
+        const e = beginSummaryAttentionRead(4_000);
+        const f = beginSummaryAttentionRead(5_000);
+
+        // e 不是最新号（f 才是），折叠不该动 f。
+        abandonSummaryAttentionRead(e);
+
+        // 少了幂等守护时，第一代那次重复放弃会把「3 已放弃」留在集合里；此处的
+        // 折叠链会一路走过它，把号段折到 f 之下 —— f 的正确取值随后被判过期丢掉，
+        // 表现只有「红点不准」，不报错。
+        commitSummaryAttentionBadge(f, 6, 5_000);
+        expect(getSummaryAttentionBadge()).toBe(6);
+
+        // 顺带确认第一代那个仍在飞的 A 不会因为号段被踩低而混进来。
+        commitSummaryAttentionBadge(a, 9, 1_000);
+        expect(getSummaryAttentionBadge()).toBe(6);
     });
 });

@@ -35,13 +35,40 @@ let summaryAttentionBadge = 0;
 // 先发后到的旧快照会盖掉新值。
 let issueSeq = 0;
 /**
- * 当前在飞的读取数量（领了号、还没 commit 也还没 abandon）。
+ * 在飞读取（领了号、还没 commit 也还没 abandon）→ 它的【样本时刻】。
  *
- * 只服务于【广播】的取舍：本标签页自己有读取在飞时，那个读取比任何广播都权威
- * （它反映的是本标签页用户刚做完的动作，且带 fresh=1），此时到达的广播一律不写。
- * 本地读取之间的排序仍然只靠票号，与这个计数无关。
+ * 只服务于【广播】的取舍。原来这里是一个计数，广播判定是「有读取在飞就一律不
+ * 收」，前提写的是「本地那个读取带 fresh=1、反映本标签页用户刚做完的动作，比任何
+ * 广播都权威」。但号段有三个写者，其中【两个不带 fresh】：兜底轮询的定时读，以及
+ * SummaryListPage.loadData 的列表读。对它们那句前提不成立，于是一条确实更新的
+ * 广播会被一份更旧的在飞快照挡掉。最常见的形态就在 leader 标签页上：
+ *
+ *   leader 的非 fresh 轮询在飞 → 跟随者上用户点掉红点、广播一份 fresh 新值
+ *   → leader 因「有读取在飞」丢弃它 → 轮询取回 5s 缓存里的旧值并落盘
+ *   → leader 的红点继续亮着，最长一个轮询间隔。
+ *
+ * 所以这里记的不是「有没有在飞」，而是「在飞的那些读取分别代表哪个时刻的服务端
+ * 状态」——和广播、和落盘水位同一把尺子（见 attentionSampleAt）。判定因此变成
+ * 「广播是否比【我在飞的最新那份】还要新」，前提自证，不必再靠 fresh 这个近似。
+ *
+ * 用 Map 而不是计数还顺带消掉一个静默故障：销账写成加减法时，漏一次减就是广播被
+ * 永久堵死；按票号 delete 是幂等的，重复销账不会把账做穿。
  */
-let inFlightReads = 0;
+const inFlightSamples = new Map<number, number>();
+
+/**
+ * 已放弃、但号段还没退回去的票号（见 abandonSummaryAttentionRead 的折叠）。
+ */
+const abandonedTickets = new Set<number>();
+
+/**
+ * 广播 sampleAt 允许超出本地「现在」的容差。
+ *
+ * 同源标签页共用一个 Date.now()，而 sampleAt 是发请求【之前】取的，所以一条合法
+ * 广播的 sampleAt 绝不会大于收方的 now()。留 1s 是吸收定时器粗化一类的几毫秒偏差，
+ * 不是给偏差留窗口——见 acceptRemoteAttentionCount 里这条闸的理由。
+ */
+export const REMOTE_SAMPLE_FUTURE_TOLERANCE_MS = 1_000;
 /**
  * 最近一次真正落盘的样本所反映的【服务端时刻】（见 attentionSampleAt）。
  *
@@ -77,9 +104,22 @@ export function getSummaryAttentionBadge(): number {
     return summaryAttentionBadge;
 }
 
-/** 本标签页当前是否有读取在飞。广播接受判定用，另见 inFlightReads。 */
+/** 本标签页当前是否有读取在飞（诊断与测试用；广播判定见 inFlightSamples）。 */
 export function hasInFlightAttentionRead(): boolean {
-    return inFlightReads > 0;
+    return inFlightSamples.size > 0;
+}
+
+/**
+ * 在飞读取中最新的那份样本时刻。没有在飞读取时返回 -Infinity，让下游的
+ * 比较自然地全部通过（而不是要在调用处再写一个 size 判断）。
+ */
+function newestInFlightSampleAt(): number {
+    let newest = Number.NEGATIVE_INFINITY;
+    // forEach 而不是 for...of：避开 Map 迭代对 downlevelIteration 的依赖。
+    inFlightSamples.forEach((at) => {
+        if (at > newest) newest = at;
+    });
+    return newest;
 }
 
 /**
@@ -103,7 +143,8 @@ export function setSummaryAttentionPublisher(
 
 /** 测试用：重置模块级的广播排序状态（模块级状态跨用例会串）。 */
 export function resetSummaryAttentionOrdering(): void {
-    inFlightReads = 0;
+    inFlightSamples.clear();
+    abandonedTickets.clear();
     lastCommittedSampleAt = 0;
     attentionPublisher = null;
 }
@@ -113,9 +154,13 @@ export function resetSummaryAttentionOrdering(): void {
  * “这份数据是什么时候向服务端要的”。在 await 之后才取号等于把到达顺序
  * 当成发出顺序，正是本机制要避开的错。
  */
-export function beginSummaryAttentionRead(): number {
-    inFlightReads += 1;
-    return ++issueSeq;
+export function beginSummaryAttentionRead(sampleAt?: number): number {
+    const ticket = ++issueSeq;
+    // sampleAt 缺省按「现在」记，等价于「这是我能取到的最新样本」——也就是加闸
+    // 之前那条「有读取在飞就不收广播」的行为。带折算信息的调用方（读取路径、
+    // 列表页）都会显式传，见各自的注释。
+    inFlightSamples.set(ticket, sampleAt ?? Date.now());
+    return ticket;
 }
 
 /**
@@ -128,11 +173,17 @@ export function beginSummaryAttentionRead(): number {
  */
 export function commitSummaryAttentionBadge(ticket: number, count: number, sampleAt?: number): void {
     // 本地读取结束：无论是否落盘，它都不再在飞了。放在 seq 判定【之前】，
-    // 被更新的读取顶掉的那次也必须销账，否则计数只增不减，广播被永久堵死。
-    if (inFlightReads > 0) inFlightReads -= 1;
+    // 被更新的读取顶掉的那次也必须销账，否则它的样本时刻会永久挂在在飞表里
+    // 把广播堵死。
+    inFlightSamples.delete(ticket);
     if (ticket !== issueSeq) return;
-    // sampleAt 缺省时（SummaryListPage.loadData 这类没有折算信息的调用方）按
-    // “现在”记：列表响应刚到，把它当成最新样本。
+    // 走到这里说明本次是号段的最新一号且真的要参与落盘：比它更早的在飞读取从此
+    // 全是陈旧快照，那些还挂在集合里的旧号再也不会参与折叠，清掉以免无界增长。
+    abandonedTickets.clear();
+    // sampleAt 缺省时按“现在”记。生产上【所有】写者现在都显式传（读取路径传折算后
+    // 的发出时刻，列表页传未折算的发出时刻），缺省只留给测试与将来的新调用方——
+    // 而且它是在 await 之后求值的【到达】时刻，与其它写者的发出时刻不同尺，
+    // 靠它就等于把请求延迟凭空计入水位。见 SummaryListPage.loadData 的注释。
     const at = sampleAt ?? Date.now();
     // 票号只排【发出顺序】，排不了【数据新鲜度】——而这两件事因为服务端的 5s
     // 缓存已经分家了：不带 fresh 的轮询发得更晚（票号更新），取回的却可能是
@@ -171,7 +222,29 @@ export function commitSummaryAttentionBadge(ticket: number, count: number, sampl
  */
 export function acceptRemoteAttentionCount(count: number, sampleAt: number): boolean {
     if (!Number.isFinite(count) || !Number.isFinite(sampleAt)) return false;
-    if (inFlightReads > 0) return false;
+    // 落在未来的样本时刻一律丢弃。只校验「是有限数」不够：lastCommittedSampleAt 是
+    // 单调不减的水位，一旦被推到未来，【之后每一次】本地落盘（严格 <）和每一条广播
+    // （<=）都会被拒，直到墙上时间追上来；再叠上 space-changed 那次绕过排序的
+    // setSummaryAttentionBadge(0)，观感就是红点整个会话钉死在 0，且哪里都不报错。
+    //
+    // BroadcastChannel 是同源可写面，这里原来只校验过类型没校验过量级，
+    // Number.MAX_SAFE_INTEGER 照收。另一条不需要恶意参与的路径是墙上时钟被往回
+    // 校准（休眠唤醒后的 NTP 纠正、虚拟机对时、手动改时间）。
+    //
+    // 容差见 REMOTE_SAMPLE_FUTURE_TOLERANCE_MS。丢一条广播是安全的：各标签页自己的
+    // 可见性/聚焦刷新和下一拍轮询都会兜底，而水位一旦被污染是会话级的。
+    if (sampleAt > Date.now() + REMOTE_SAMPLE_FUTURE_TOLERANCE_MS) return false;
+    // 本地有读取在飞时，只在【那份在飞样本不比广播旧】的时候才拒。
+    //
+    // 原来这里是「有读取在飞就一律拒」，前提是「在飞的那个读带 fresh、反映本标签页
+    // 用户刚做完的动作」。三个写者里有两个不带 fresh（兜底轮询、列表页 loadData），
+    // 对它们前提不成立：一条确实更新的广播会被一份更旧的在飞快照挡掉。改成比样本
+    // 时刻之后，前提自证——它挡下来的一定是「我马上就会拿到更新的那份」，而不再是
+    // 「我在飞的东西恰好更旧」。见 inFlightSamples 的注释。
+    //
+    // 也不会多出闪烁：收下广播之后，那份更旧的在飞响应回来时会被下面这道水位闸
+    // 拦掉，红点仍然只动一次。
+    if (sampleAt <= newestInFlightSampleAt()) return false;
     if (sampleAt <= lastCommittedSampleAt) return false;
     lastCommittedSampleAt = sampleAt;
     setSummaryAttentionBadge(count);
@@ -193,8 +266,26 @@ export function acceptRemoteAttentionCount(count: number, sampleAt: number): boo
  */
 export function abandonSummaryAttentionRead(ticket: number): void {
     // 同 commit：本地读取结束就销账，与号还不还得回去无关。
-    if (inFlightReads > 0) inFlightReads -= 1;
-    if (ticket === issueSeq) issueSeq--;
+    //
+    // 只有【确实在飞】的号才参与下面的折叠。重复销账（或一个压根没领过的号）必须
+    // 是空操作：否则同一个号会被记进集合两次，等号段之后正好走到它头上时会被多退
+    // 一格，把一个仍在飞、携带正确值的读取误伤成陈旧快照。加闸之前的实现天然幂等
+    // （`ticket === issueSeq` 判定第二次就不成立），这里得显式保住。
+    if (!inFlightSamples.delete(ticket)) return;
+    abandonedTickets.add(ticket);
+    // 折叠【连续的已放弃后缀】，而不是只在 ticket === issueSeq 时退一格。
+    //
+    // 只退一格的话，乱序失败会把号段停在一个死号上。评审点名的三写者交错（切 Space
+    // 时列表 + 轮询 + 用户动作同时在飞就会出现）：A=1 / B=2 / C=3，B 先失败（号不是
+    // 最新，不退）→ C 失败（退到 2）→ A 带着唯一一份成功的值到达，1 !== 2 被丢弃，
+    // 红点停在 A 之前的值直到下一次成功读取。折叠之后 C 失败会一路退到 1，A 落盘。
+    //
+    // 集合的增长由 commit 的 clear 兜住：一旦有一次成功落盘，比它更早的号全部作废，
+    // 不再需要留着参与折叠。
+    while (abandonedTickets.has(issueSeq)) {
+        abandonedTickets.delete(issueSeq);
+        issueSeq--;
+    }
 }
 
 /**
@@ -290,7 +381,9 @@ export async function readSummaryAttentionCount(
     // 折算基准必须取【发出前】的时刻，和领号同一个道理：await 之后再取，
     // 记的就是到达时刻，正是本机制要避开的错。
     const sampleAt = attentionSampleAt(Date.now(), fresh);
-    const ticket = beginSummaryAttentionRead();
+    // 把折算后的样本时刻一起登记进在飞表：非 fresh 的轮询读【不该】挡掉一条比它
+    // 更新的广播（见 acceptRemoteAttentionCount）。
+    const ticket = beginSummaryAttentionRead(sampleAt);
     let counts: api.SummaryAttentionCounts;
     try {
         counts = await api.fetchSummaryAttentionCounts(options);

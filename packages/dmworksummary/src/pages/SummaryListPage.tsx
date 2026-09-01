@@ -230,7 +230,16 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         // 什么时候向服务端要的”。列表与 page_size=1 探测是两个并行写者，按发出
         // 时刻排序；否则一个先发后到、快照更旧的列表响应会盖掉用户刚触发的
         // 正确探测（读/提交/应答），红点卡在陈值。
-        const attentionTicket = this.props.channelId ? null : beginSummaryAttentionRead();
+        // 样本时刻同样在 await 之前取。列表端点【没有】那层 5s 缓存，所以不折算：
+        // 发出时刻就是它反映的时刻。
+        //
+        // 显式传，而不是让 commit 走 `?? Date.now()` 的缺省：那个缺省会在 await
+        // 【之后】求值，记下的是【到达】时刻，而其它写者记的都是【发出】时刻。列表
+        // 又恰好是最慢的那个请求（它 join 参与者、逐行算 needs_attention，本 PR 加窄
+        // 端点就是为了避开它）。一次 2s 的列表加载会把水位凭空抬高 2s，之后约
+        // latency + ATTENTION_CACHE_TTL_MS 内发出的非 fresh 轮询读会被水位闸静默丢掉。
+        const attentionIssuedAt = Date.now();
+        const attentionTicket = this.props.channelId ? null : beginSummaryAttentionRead(attentionIssuedAt);
         // 票号是否已被成功消费。finally 里据此决定还不还号：成功 commit 后
         // 若把号还回去，等于给更早的陈旧快照开后门。
         let attentionCommitted = false;
@@ -266,8 +275,22 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             // 用发请求前领的 ticket 提交：期间若有更新的读取发出，本次就是陈旧
             // 快照，丢弃即可——那个更新的读取会带回正确值。
             if (attentionTicket !== null) {
+                // 号在这里就销掉（commit 或 abandon 二者之一），finally 不再重复处理。
                 attentionCommitted = true;
-                commitSummaryAttentionBadge(attentionTicket, resp.attention_count ?? 0);
+                if (Number.isFinite(resp.attention_count)) {
+                    commitSummaryAttentionBadge(attentionTicket, resp.attention_count as number, attentionIssuedAt);
+                } else {
+                    // 不再 `?? 0`。那是 api/summaryApi.ts 的 assertAttentionCounts 这一轮
+                    // 专门要消掉的静默归零模式：一个信封错位的响应（网关改包装、后端返回
+                    // HTML 错误页、字段改名）会让 attention_count 取到 undefined，`?? 0`
+                    // 把它当成正常样本落盘，红点静默清零——而且这条写入还会被广播出去，
+                    // 把错误放大到全部标签页。窄端点与 404 兜底两条路都已经过校验，这里
+                    // 是最后一个缺口。
+                    //
+                    // 按失败处理（还号 + 保持旧值），与那两条路「抛出去、上层退避」的策略
+                    // 一致：没有红点和红点不对用户分辨不出来，也不会报 bug。
+                    abandonSummaryAttentionRead(attentionTicket);
+                }
             }
             this.setState({
                 items: resp.items,

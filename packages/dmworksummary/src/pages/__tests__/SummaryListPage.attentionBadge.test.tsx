@@ -30,7 +30,13 @@ vi.mock('../../api/summaryApi');
 import * as api from '../../api/summaryApi';
 import { WKApp } from '@octo/base';
 import SummaryListPage from '../SummaryListPage';
-import { getSummaryAttentionBadge, setSummaryAttentionBadge, refreshSummaryAttentionBadge } from '../../utils/summaryAttentionBadge';
+import {
+    getSummaryAttentionBadge,
+    setSummaryAttentionBadge,
+    refreshSummaryAttentionBadge,
+    acceptRemoteAttentionCount,
+    resetSummaryAttentionOrdering,
+} from '../../utils/summaryAttentionBadge';
 
 function deferred<T>() {
     let resolve!: (value: T) => void;
@@ -66,6 +72,11 @@ describe('SummaryListPage — 侧边栏待关注红点同步 (#1359)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         WKApp.shared.currentSpaceId = 'space-123';
+        WKApp.loginInfo.uid = 'test-uid';
+        vi.spyOn(WKApp.loginInfo, 'isLogined').mockReturnValue(true);
+        vi.spyOn(WKApp.menus, 'refresh').mockImplementation(() => {});
+        // 号段与样本时刻水位都是模块级状态，会跨用例串。
+        resetSummaryAttentionOrdering();
         setSummaryAttentionBadge(0);
     });
 
@@ -101,14 +112,81 @@ describe('SummaryListPage — 侧边栏待关注红点同步 (#1359)', () => {
         expect(getSummaryAttentionBadge()).toBe(2);
     });
 
-    it('后端未返回 attention_count 时红点归零', async () => {
+    /**
+     * P2 CR：原实现是 `commitSummaryAttentionBadge(ticket, resp.attention_count ?? 0)`，
+     * 于是一个信封错位的响应（网关改包装、后端返回 HTML 错误页、字段改名、老版本
+     * 后端还没有这个字段）会一路满足 `?? 0`，把红点【静默归零】。
+     *
+     * 归零是最坏的失败方向：红点的全部价值就是「团队卡在你身上」这个提醒，静默灭掉
+     * 它既不报错、也不会有人来报 bug。这条路径上正确的做法是【保持旧值】，把号还回去，
+     * 等下一次读取（用户动作或 ≤60s 的轮询）自愈。
+     *
+     * 窄端点那条路径早已在 api 层做了同样的校验（`fetchSummaryAttentionCounts` 解包后
+     * 不是有限数就抛）；`listSummaries` 是通用列表接口、没有那层校验，所以这个洞留在
+     * 这里。
+     */
+    it('后端未返回 attention_count 时保持旧值，不静默归零', async () => {
         vi.mocked(api.listSummaries).mockResolvedValue({ items: [], total: 0 } as any);
 
         setSummaryAttentionBadge(4);
         const page = makePage();
         await (page as any).loadData();
 
-        expect(getSummaryAttentionBadge()).toBe(0);
+        expect(getSummaryAttentionBadge()).toBe(4);
+    });
+
+    it('attention_count 是非有限数（信封错位的典型形态）时同样保持旧值', async () => {
+        setSummaryAttentionBadge(4);
+        const page = makePage();
+
+        for (const bad of [null, undefined, 'many', Number.NaN, {}]) {
+            vi.mocked(api.listSummaries).mockResolvedValueOnce({ items: [], total: 0, attention_count: bad } as any);
+            await (page as any).loadData();
+            expect(getSummaryAttentionBadge()).toBe(4);
+        }
+    });
+
+    it('畸形响应会把号还回去：更早发出、仍在飞的探测照常落盘', async () => {
+        // 先有一个探测在飞（领号在前），带着正确值。
+        const probe = deferred<any>();
+        vi.mocked(api.fetchSummaryAttentionCounts).mockReturnValueOnce(probe.promise);
+        const pendingProbe = refreshSummaryAttentionBadge();
+
+        // 随后列表返回一个畸形响应（领号在后）。
+        vi.mocked(api.listSummaries).mockResolvedValueOnce({ items: [], total: 0 } as any);
+        const page = makePage();
+        await (page as any).loadData();
+
+        // 不还号的写法会把这个更早、仍在飞的正确值一并作废（ticket liveness）。
+        probe.resolve({ attention_count: 5 });
+        await pendingProbe;
+        expect(getSummaryAttentionBadge()).toBe(5);
+    });
+
+    /**
+     * P2 CR：`commitSummaryAttentionBadge` 现在要过一道样本时刻闸，而样本时刻必须取
+     * 【请求发出前】的时刻。取 `await` 之后的 `Date.now()` 记的是到达时刻，恰恰是这套
+     * 排序机制要避开的那个错——一个慢响应会因此显得比它实际代表的状态更新，把一个
+     * 真正更新的值挡在外面。
+     */
+    it('样本时刻取的是发出时刻，不是响应到达时刻', async () => {
+        const response = deferred<any>();
+        vi.mocked(api.listSummaries).mockReturnValueOnce(response.promise);
+
+        const page = makePage();
+        const issuedBefore = Date.now();
+        const pending = (page as any).loadData();
+
+        // 让响应晚 50ms 才到。若样本时刻取的是到达时刻，下面那条按「发出时刻」
+        // 记的广播就会被判成更旧而被拒。
+        await new Promise((r) => setTimeout(r, 50));
+        response.resolve({ items: [], total: 0, attention_count: 3 });
+        await pending;
+        expect(getSummaryAttentionBadge()).toBe(3);
+
+        // 另一个标签页在列表请求【发出之后】取的样，理应排得过它。
+        expect(acceptRemoteAttentionCount(1, issuedBefore + 10)).toBe(true);
+        expect(getSummaryAttentionBadge()).toBe(1);
     });
 
     it('跨 Space 的迟到列表响应不覆盖新 Space badge', async () => {
@@ -151,6 +229,7 @@ describe('SummaryListPage — loadData 的读取号生死 (ticket liveness)', ()
         WKApp.loginInfo.uid = 'test-uid';
         vi.spyOn(WKApp.loginInfo, 'isLogined').mockReturnValue(true);
         vi.spyOn(WKApp.menus, 'refresh').mockImplementation(() => {});
+        resetSummaryAttentionOrdering();
         setSummaryAttentionBadge(0);
     });
 
