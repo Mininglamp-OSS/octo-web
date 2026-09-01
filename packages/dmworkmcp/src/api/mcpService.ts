@@ -843,6 +843,22 @@ async function updateMcpReal(
   // sides come from the same fetch), so the service does no display comparison.
   const canonicalIcon =
     params.icon === undefined ? current.plugin.icon ?? "" : params.icon;
+  // The upsert replaces plugin_json wholesale and the form only models six
+  // server fields + five attachments. Extract the rest from the freshly-fetched
+  // current record so the write echoes it back instead of destroying it: the raw
+  // modeled-server object (keeps cwd/disabled/timeout/autoApprove/…), any other
+  // mcpServers entry, and any non-modeled attachment.
+  const currentServers =
+    jsonAttachment<McpJSONWire>(current.plugin.plugin_json, "mcp.json")
+      ?.mcpServers ?? {};
+  const currentServerName = Object.keys(currentServers)[0] ?? "";
+  const rawServer = currentServers[currentServerName] as
+    | Record<string, unknown>
+    | undefined;
+  const extraServers: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(currentServers)) {
+    if (k !== currentServerName) extraServers[k] = v;
+  }
   const detail = await post<PluginDetailWire>(
     "/plugins/upsert",
     toPluginUpsert(
@@ -851,6 +867,10 @@ async function updateMcpReal(
         pluginId: id,
         categoryId,
         visibility: current.plugin.visibility,
+        rawServer,
+        extraServers,
+        // toPluginUpsert drops the five modeled paths, keeping only the extras.
+        extraAttachments: current.plugin.plugin_json?.attachments,
       }
     )
   );

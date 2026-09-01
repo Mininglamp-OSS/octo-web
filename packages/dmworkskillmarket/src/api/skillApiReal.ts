@@ -543,7 +543,10 @@ function importBody(
     description: form.description,
     category_id: form.categoryId || undefined,
     tags: form.tags,
-    visibility: form.visibility,
+    // A re-upload is a full replace: never send an absent visibility (JSON drops
+    // `undefined`), which would let a backend default decide whether a private
+    // skill stays private. Fail closed to the most restrictive value.
+    visibility: form.visibility ?? "private",
     version: form.version,
     changelog: form.changelog,
   };

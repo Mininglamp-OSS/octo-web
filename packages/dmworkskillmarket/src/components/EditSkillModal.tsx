@@ -391,6 +391,10 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
         description,
         categoryId,
         tags: submittedTags,
+        // This modal has no visibility control, so preserve the skill's current
+        // visibility explicitly — a re-upload is a full replace and would
+        // otherwise send no visibility, leaving it to a backend default.
+        visibility: skill.visibility,
         ...(iconUrl !== undefined ? { iconUrl } : {}),
       });
       onUpdated(updated);

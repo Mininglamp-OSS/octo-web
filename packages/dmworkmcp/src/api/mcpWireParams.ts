@@ -3,6 +3,7 @@ import { slugifyServerName } from "../utils/constants";
 import {
   SECRET_PLACEHOLDER,
   goCanonicalJSON,
+  type PluginAttachmentWire,
   type PluginManifestWire,
   type PluginVisibilityWire,
 } from "./pluginWire";
@@ -19,6 +20,23 @@ interface PluginAttachmentBody {
   raw_content: string;
 }
 
+/** The connector-package attachments this form fully models and rebuilds from
+ *  the current form on every write. Any OTHER stored attachment is preserved
+ *  verbatim (opts.extraAttachments): the upsert replaces plugin_json wholesale,
+ *  so a path we neither model nor re-emit would be silently dropped on edit. */
+const MODELED_ATTACHMENT_PATHS = new Set([
+  "mcp.json",
+  "connector/tools.json",
+  "connector/examples.json",
+  "connector/faqs.json",
+  "connector/notes.json",
+]);
+
+/** Modeled server-object keys the form owns; everything else on the stored
+ *  server (cwd, disabled, timeout, autoApprove, …) is seeded back from
+ *  opts.rawServer so a metadata edit doesn't destroy it. */
+const MODELED_SERVER_KEYS = ["type", "url", "command", "args", "env", "headers"];
+
 export interface PluginUpsertBody {
   plugin: {
     plugin_id?: string;
@@ -32,7 +50,7 @@ export interface PluginUpsertBody {
     plugin_json: {
       $schema: string;
       connector: { type: "mcp"; source: string };
-      attachments: PluginAttachmentBody[];
+      attachments: (PluginAttachmentBody | PluginAttachmentWire)[];
     };
   };
   relations: [];
@@ -42,6 +60,14 @@ export interface PluginUpsertOptions {
   pluginId?: string;
   categoryId?: string;
   visibility: PluginVisibilityWire;
+  /** The RAW stored modeled-server object, seeded into the write so keys this
+   *  form doesn't model (cwd/disabled/timeout/autoApprove/…) survive an edit. */
+  rawServer?: Record<string, unknown>;
+  /** Other mcpServers entries, re-emitted verbatim so a multi-server document
+   *  isn't collapsed to one on a metadata edit. */
+  extraServers?: Record<string, unknown>;
+  /** Stored attachments outside MODELED_ATTACHMENT_PATHS, re-emitted verbatim. */
+  extraAttachments?: PluginAttachmentWire[];
 }
 
 export function toPluginUpsert(
@@ -76,7 +102,12 @@ export function toPluginUpsert(
   // client therefore never SENDS secret values — user-supplied env/header keys
   // are emitted as ${KEY} placeholders (filled locally at install time), and a
   // redaction sentinel echoed from a read is blanked before write.
-  const server: Record<string, unknown> = {};
+  // Seed from the RAW stored modeled-server object so keys this form does not
+  // model (cwd, disabled, timeout, autoApprove, …) survive a metadata edit; then
+  // drop the modeled keys and overlay the form, so clearing a field (deleting
+  // env/headers, clearing args) doesn't leave a stale seeded value behind.
+  const server: Record<string, unknown> = { ...(opts.rawServer ?? {}) };
+  for (const k of MODELED_SERVER_KEYS) delete server[k];
   if (params.transport) server.type = params.transport;
   if (params.url) server.url = params.url;
   if (params.command) server.command = params.command;
@@ -96,8 +127,15 @@ export function toPluginUpsert(
   // mapDetail reads serverName back from this key, so a display-name key would
   // regress the detail snippet too.
   const serverKey = slug || name;
-  const attachments: PluginAttachmentBody[] = [
-    rawAtt("mcp.json", goCanonicalJSON({ mcpServers: { [serverKey]: server } })),
+  // Re-emit any other stored servers verbatim (minus the one we're writing) so a
+  // multi-server document isn't collapsed on a metadata edit.
+  const mcpServers: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(opts.extraServers ?? {})) {
+    if (k !== serverKey) mcpServers[k] = v;
+  }
+  mcpServers[serverKey] = server;
+  const attachments: (PluginAttachmentBody | PluginAttachmentWire)[] = [
+    rawAtt("mcp.json", goCanonicalJSON({ mcpServers })),
     rawAtt("connector/tools.json", goCanonicalJSON(params.tools ?? [])),
     rawAtt("connector/examples.json", goCanonicalJSON(usage)),
     rawAtt(
@@ -109,6 +147,11 @@ export function toPluginUpsert(
       goCanonicalJSON((params.notes ?? []).map((s) => s.trim()).filter(Boolean))
     ),
   ];
+  // Preserve any stored attachment this form doesn't model (guard against a
+  // stale extra colliding with a modeled path — the modeled rebuild wins).
+  for (const att of opts.extraAttachments ?? []) {
+    if (!MODELED_ATTACHMENT_PATHS.has(att.path)) attachments.push(att);
+  }
   return {
     plugin: {
       ...(opts.pluginId ? { plugin_id: opts.pluginId } : {}),

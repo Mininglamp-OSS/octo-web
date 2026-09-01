@@ -512,6 +512,28 @@ describe("skillApiReal", () => {
     expect(body.visibility).toBe("private");
   });
 
+  it("re-upload fails CLOSED to private when the caller omits visibility (full replace)", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({ plugin: pluginSkillWire(), relations: [] })
+    );
+    // EditSkillModal has no visibility control; if it ever omits the field, the
+    // full-replace import must not let a backend default widen a private skill.
+    await updateSkill("new-skill", { parseTaskId: "task-3" });
+    const [, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.visibility).toBe("private");
+  });
+
+  it("re-upload preserves an explicit visibility the modal threads through", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({ plugin: pluginSkillWire(), relations: [] })
+    );
+    await updateSkill("new-skill", { parseTaskId: "task-4", visibility: "space" });
+    const [, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.visibility).toBe("space");
+  });
+
   it("updateSkill without a parse task merges onto the current documents and upserts", async () => {
     const current = pluginSkillWire({
       plugin_json: {

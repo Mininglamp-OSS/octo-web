@@ -243,3 +243,74 @@ describe("updateMcpReal — icon write intent uses an undefined sentinel (P1-1 /
     expect(upsertIcon()).toBe("icons/fresh-upload.png");
   });
 });
+
+describe("updateMcpReal — full-replace echoes unmodeled connector state", () => {
+  // A stored connector whose mcp.json carries fields the form doesn't model
+  // (cwd/disabled/timeout), a SECOND server, and a non-modeled attachment.
+  function richDetail() {
+    return detailPlugin({
+      plugin_json: {
+        $schema: "cowork-plugin-package-2.0.json",
+        connector: { type: "mcp", source: "connector.github-mcp" },
+        attachments: [
+          {
+            path: "mcp.json",
+            content_type: "raw",
+            raw_content: JSON.stringify({
+              mcpServers: {
+                "github-mcp": {
+                  type: "streamable-http",
+                  url: "https://mcp.example.com/github",
+                  cwd: "/srv/app",
+                  disabled: true,
+                  timeout: 60,
+                },
+                "other-server": { command: "node", args: ["x.js"] },
+              },
+            }),
+          },
+          { path: "connector/tools.json", content_type: "raw", raw_content: "[]" },
+          { path: "connector/custom.json", content_type: "raw", raw_content: '{"kept":true}' },
+        ],
+      },
+    });
+  }
+
+  function writtenUpsert() {
+    const call = mock.instance.post.mock.calls.find((c) =>
+      (c[0] as string).endsWith("/plugins/upsert")
+    ) as [string, { plugin: { plugin_json: { attachments: { path: string; raw_content: string }[] } } }];
+    const atts = call[1].plugin.plugin_json.attachments;
+    const mcp = atts.find((a) => a.path === "mcp.json")!;
+    return {
+      servers: (JSON.parse(mcp.raw_content) as { mcpServers: Record<string, Record<string, unknown>> })
+        .mcpServers,
+      paths: atts.map((a) => a.path),
+    };
+  }
+
+  it("preserves unmodeled server fields, a second server, and a non-modeled attachment on a metadata edit", async () => {
+    mock.instance.get.mockImplementation((url: string) => {
+      if (url.includes("/plugin_categories")) return Promise.resolve(categoriesOk());
+      if (url.includes("/plugins/detail")) return Promise.resolve({ data: { data: richDetail() } });
+      throw new Error(`unexpected GET ${url}`);
+    });
+    mock.instance.post.mockResolvedValue({ data: { data: detailPlugin() } });
+
+    // A metadata edit (new slogan); everything else the form re-derives.
+    await updateMcp("p-1", baseParams({ slogan: "Renamed" }));
+
+    const { servers, paths } = writtenUpsert();
+    // Unmodeled keys on the modeled server survive.
+    expect(servers["github-mcp"].cwd).toBe("/srv/app");
+    expect(servers["github-mcp"].disabled).toBe(true);
+    expect(servers["github-mcp"].timeout).toBe(60);
+    // Modeled fields still written from the form.
+    expect(servers["github-mcp"].url).toBe("https://mcp.example.com/github");
+    // The second server is not collapsed.
+    expect(servers["other-server"]).toEqual({ command: "node", args: ["x.js"] });
+    // The non-modeled attachment survives alongside the rebuilt five.
+    expect(paths).toContain("connector/custom.json");
+    expect(paths).toContain("mcp.json");
+  });
+});
