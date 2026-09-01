@@ -61,10 +61,10 @@ describe("buildQuickStartTabs — JSON snippet", () => {
     const qs: McpQuickStart = {
       transport: "streamable-http",
       serverName: "svc",
-      url: "https://mcp.example.com/sse?api_key=sk-live-URLSECRET&region=us",
+      url: "https://mcp.example.com/sse?api_key=LEAKf&region=us",
     };
     const url = JSON.parse(content(qs, "json")).mcpServers.svc.url;
-    expect(url).not.toContain("sk-live-URLSECRET");
+    expect(url).not.toContain("LEAKf");
     expect(url).toContain("mcp.example.com/sse");
     expect(url).toContain("region=us");
   });

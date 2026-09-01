@@ -105,14 +105,14 @@ describe("redactMcpConfig", () => {
       mcpServers: {
         s: {
           command: "docker",
-          args: ["run", "-i", "--rm", "-e", "API_KEY=sk-live-DOCKER", "img"],
+          args: ["run", "-i", "--rm", "-e", "API_KEY=LEAKa", "img"],
         },
-        h: { command: "x", args: ["--header", "Authorization: Bearer sk-live-HDR"] },
+        h: { command: "x", args: ["--header", "Authorization: Bearer LEAKb"] },
       },
     });
     const out = redactMcpConfig(raw)!;
-    expect(out).not.toContain("sk-live-DOCKER");
-    expect(out).not.toContain("sk-live-HDR");
+    expect(out).not.toContain("LEAKa");
+    expect(out).not.toContain("LEAKb");
     // Benign flags/positionals survive.
     expect(out).toContain("--rm");
     expect(out).toContain("img");
@@ -120,10 +120,10 @@ describe("redactMcpConfig", () => {
 
   it("masks a secret KEY=value positional but keeps a non-secret one", () => {
     const raw = JSON.stringify({
-      mcpServers: { s: { command: "run", args: ["API_KEY=sk-live-KV", "REGION=us-east-1"] } },
+      mcpServers: { s: { command: "run", args: ["API_KEY=LEAKc", "REGION=us-east-1"] } },
     });
     const out = redactMcpConfig(raw)!;
-    expect(out).not.toContain("sk-live-KV");
+    expect(out).not.toContain("LEAKc");
     expect(out).toContain("REGION=us-east-1");
   });
 
@@ -139,14 +139,14 @@ describe("redactMcpConfig", () => {
 
   it("masks userinfo + fragment on a protocol-relative / relative URL", () => {
     const rel = redactMcpConfig(
-      JSON.stringify({ mcpServers: { s: { url: "//user:sk-live-PW@mcp.example/sse" } } })
+      JSON.stringify({ mcpServers: { s: { url: "//user:LEAKd@mcp.example/sse" } } })
     )!;
-    expect(rel).not.toContain("sk-live-PW");
+    expect(rel).not.toContain("LEAKd");
     expect(rel).toContain("mcp.example/sse");
     const frag = redactMcpConfig(
-      JSON.stringify({ mcpServers: { s: { url: "/sse#access_token=sk-live-FRAG2" } } })
+      JSON.stringify({ mcpServers: { s: { url: "/sse#access_token=LEAKe" } } })
     )!;
-    expect(frag).not.toContain("sk-live-FRAG2");
+    expect(frag).not.toContain("LEAKe");
     expect(frag).toContain("/sse");
   });
 
