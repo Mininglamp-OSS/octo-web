@@ -107,7 +107,22 @@ async function enableMocksIfE2E(): Promise<void> {
   try {
     const { worker } = await import("./mocks/browser");
     const msw = await import("msw");
+    const { waitForServiceWorkerControl, MSW_CONTROL_TIMEOUT_MS } = await import("./mocks/swControl");
     await worker.start({ onUnhandledRequest: "bypass" });
+    // start() 之后还要等真正【接管】: 否则 __MSW_READY__ 会在 SW 尚未 control 本
+    // client 时就变成 true, boot 期间的请求绕过 MSW 直达 dev server, 在 e2e 上表现
+    // 为 "proxy errors" (详见 mocks/swControl.ts 的注释).
+    // 这个 await 同时把 __MSW_READY__ 的语义修正成它一直声称的那个:
+    // 「从现在起请求会被拦」—— 二十多个 spec 和 e2eReady 都以它为 boot 闸门.
+    const controlled = await waitForServiceWorkerControl(MSW_CONTROL_TIMEOUT_MS);
+    if (!controlled) {
+      // 降级: 仍然放行 boot (卡死 boot 比漏一个请求糟得多). 打印出来让 e2e 失败时
+      // 能一眼定位, 而不是从一堆 proxy error 里反推.
+      console.warn(
+        `[e2e] MSW worker started but did not take control within ${MSW_CONTROL_TIMEOUT_MS}ms; ` +
+          "boot-time requests may bypass mocks",
+      );
+    }
     const w = window as unknown as {
       __MSW_READY__: boolean;
       __msw?: { worker: typeof worker; http: typeof msw.http; HttpResponse: typeof msw.HttpResponse };
