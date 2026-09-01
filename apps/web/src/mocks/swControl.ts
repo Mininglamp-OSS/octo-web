@@ -68,3 +68,83 @@ export async function waitForServiceWorkerControl(
     sw.addEventListener("controllerchange", onControllerChange);
   });
 }
+
+/**
+ * 探针路径。刻意选一个【不在任何 vite proxy 前缀下】的路径
+ * （proxy 配的是 /mail-api/、/api/v1/docs、/summary/api/v1、/market/api/v1、
+ * /fleet/api/v1），这样探针自己万一没被拦到，也只会落到 SPA fallback 上，
+ * 绝不会在 e2e 的 "http proxy error" 计数里留一笔——探针不该制造它要消除的东西。
+ */
+export const MSW_PROBE_PATH = "/__msw_probe__";
+/** 探针响应的标记头。靠它区分「MSW 拦到了」与「vite 把 index.html 兜回来了」。 */
+export const MSW_PROBE_HEADER = "x-msw-probe";
+export const MSW_PROBE_TIMEOUT_MS = 5_000;
+export const MSW_PROBE_RETRY_MS = 50;
+
+/**
+ * 等 MSW 在【本 document】里真的开始拦请求。
+ *
+ * 为什么 `waitForServiceWorkerControl` 还不够 —— 它俩挡的是两件不同的事：
+ *
+ * - `navigator.serviceWorker.controller` 存在，只说明这个 document 由某个 SW 接管；
+ * - MSW 只对【登记过的 client】施加 mock：worker 脚本内部维护一份 client 名册，
+ *   `worker.start()` 通过 postMessage 把本 document 加进去，`beforeunload` 时又发
+ *   `CLIENT_CLOSED` 把它摘掉。
+ *
+ * 于是 e2e 里最常见的那种页面——一个 spec 内连续 navigate 好几次——会撞上第二种
+ * 窗口期：第二个 document 一加载，`controller` 因为 SW 早已激活而【立刻】非空，
+ * 接管等待一拍都不等就通过了，可此时 worker 名册里还没有这个新 client，请求照旧
+ * 绕过 mock 直达 dev server。`onUnhandledRequest: "bypass"` 让它不报错不告警，只在
+ * e2e 的 proxy-error 计数上留一笔——正是 e2e-p0 上那个概率性红点的成因，也解释了
+ * 为什么它专挑多次导航的 spec（`@S26` 一个 spec 里 5 次导航，只等 1 次
+ * `__MSW_READY__`）。
+ *
+ * 所以这里不再推断，而是【实测】：打一发只有 MSW 才会应答的请求，看回来的响应是不是
+ * 带标记头的那个。拦到了才算就绪。这也让 `__MSW_READY__` 从「start() 返回了」变成
+ * 它一直声称的那件事——「从现在起请求会被拦」。
+ *
+ * 和接管等待同一套降级哲学：有界，且调用方【无论如何都往下走】。拿不到就打告警并
+ * 照常置 `__MSW_READY__`；把 boot 卡死会让二十多个 spec 的闸门一起超时，比偶发漏一个
+ * 请求糟得多。
+ *
+ * @param timeoutMs 等待上限
+ * @param deps 注入点，仅供单测替换 fetch / 时钟 / sleep；生产调用不传
+ * @returns 是否确认拦到（false 表示走了降级，调用方据此打告警）
+ */
+export async function waitForMockInterception(
+  timeoutMs: number = MSW_PROBE_TIMEOUT_MS,
+  deps: {
+    fetchFn?: typeof fetch;
+    now?: () => number;
+    sleep?: (ms: number) => Promise<void>;
+  } = {},
+): Promise<boolean> {
+  const fetchFn = deps.fetchFn ?? (typeof fetch === "undefined" ? undefined : fetch);
+  // 环境里没有 fetch（极端 polyfill 情况）时按降级处理，绝不抛：抛出去会被
+  // index.tsx 的 catch 吞掉并【不】设 __MSW_READY__，把「没探到」升级成「MSW 不可用」。
+  if (!fetchFn) return false;
+  const now = deps.now ?? ((): number => Date.now());
+  const sleep = deps.sleep ?? ((ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms)));
+
+  const deadline = now() + timeoutMs;
+  // 时限之外再加一道【次数】上限。两道闸看着冗余，其实挡的不是同一件事：时限依赖
+  // 注入进来的 now() 真的在走，而次数只依赖循环自己。少了它，一个不推进的时钟
+  // （单测里手写的假时钟、宿主里被冻住的 performance 源）会让这个 for(;;) 变成一个
+  // 纯微任务的死循环 —— 定时器一次都不派发，连测试框架自己的超时都救不了它。
+  const maxAttempts = Math.max(1, Math.ceil(timeoutMs / MSW_PROBE_RETRY_MS) + 1);
+  // 先探一次再看时限：timeoutMs 传 0 也至少探一发，不会一次都不试就报降级。
+  for (let attempt = 1; ; attempt++) {
+    let intercepted = false;
+    try {
+      // no-store：别让某一次探针结果被缓存住，之后每个 document 都读到同一份。
+      const res = await fetchFn(MSW_PROBE_PATH, { cache: "no-store" });
+      intercepted = res.headers.get(MSW_PROBE_HEADER) === "1";
+    } catch {
+      // 网络层失败（SW 正在换代、dev server 抖动）等同于「还没拦到」，继续重试。
+      intercepted = false;
+    }
+    if (intercepted) return true;
+    if (now() >= deadline || attempt >= maxAttempts) return false;
+    await sleep(MSW_PROBE_RETRY_MS);
+  }
+}

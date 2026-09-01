@@ -12,7 +12,15 @@
  *      `__MSW_READY__` 为闸门，卡死 boot 比漏一个请求糟得多。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MSW_CONTROL_TIMEOUT_MS, waitForServiceWorkerControl } from "../mocks/swControl";
+import {
+  MSW_CONTROL_TIMEOUT_MS,
+  MSW_PROBE_HEADER,
+  MSW_PROBE_PATH,
+  MSW_PROBE_RETRY_MS,
+  MSW_PROBE_TIMEOUT_MS,
+  waitForMockInterception,
+  waitForServiceWorkerControl,
+} from "../mocks/swControl";
 
 /**
  * 最小 ServiceWorkerContainer 替身。
@@ -152,5 +160,142 @@ describe("waitForServiceWorkerControl", () => {
     // fixtures-authed.ts 的 waitForFunction 给 __MSW_READY__ 15s。握手若等得更久，
     // 降级路径上 fixture 会先超时，报出来的是「boot 超时」而不是那条明确的告警。
     expect(MSW_CONTROL_TIMEOUT_MS).toBeLessThan(15_000);
+  });
+});
+
+/**
+ * 探针握手 —— 「MSW 在【本 document】里真的开始拦了」。
+ *
+ * 接管等待挡不住的那半：MSW 只对登记过的 client 施加 mock，而一个 spec 内的第二次
+ * 导航会让 `serviceWorker.controller` 因 SW 早已激活而【立刻】非空，接管等待一拍都不
+ * 等就通过，可 worker 名册里还没有这个新 client——请求照旧绕过 mock。
+ * `onUnhandledRequest: "bypass"` 让它不报错不告警，只在 e2e 的 proxy-error 计数上留
+ * 一笔，所以只能实测：打一发只有 MSW 才会应答的探针。
+ *
+ * 用例同样分两类：确认拦到才算就绪；以及【降级必须按时返回】——绝不能把 boot 挂住。
+ */
+describe("waitForMockInterception", () => {
+  const PROBE_OK = {
+    headers: { get: (name: string) => (name === MSW_PROBE_HEADER ? "1" : null) },
+  } as unknown as Response;
+  /** vite 的 SPA fallback：200 + index.html，没有标记头。 */
+  const PROBE_BYPASSED = {
+    headers: { get: (): string | null => null },
+  } as unknown as Response;
+
+  /** 注入一个可控时钟 + 立即返回的 sleep：不依赖 fake timers，也不真的等。 */
+  function harness(fetchFn: typeof fetch) {
+    let clock = 0;
+    return {
+      deps: {
+        fetchFn,
+        now: (): number => clock,
+        sleep: async (ms: number): Promise<void> => {
+          clock += ms;
+        },
+      },
+      elapsed: (): number => clock,
+    };
+  }
+
+  it("拦到带标记头的探针响应才算就绪", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(PROBE_OK) as unknown as typeof fetch;
+    const h = harness(fetchFn);
+
+    await expect(waitForMockInterception(MSW_PROBE_TIMEOUT_MS, h.deps)).resolves.toBe(true);
+    // 一发命中就不该再探：探针本身也是请求，别在每个 spec 的 boot 上叠开销。
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(h.elapsed()).toBe(0);
+  });
+
+  it("探的是不落在任何 vite proxy 前缀下的路径，且带 no-store", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(PROBE_OK) as unknown as typeof fetch;
+    await waitForMockInterception(MSW_PROBE_TIMEOUT_MS, harness(fetchFn).deps);
+
+    expect(fetchFn).toHaveBeenCalledWith(MSW_PROBE_PATH, { cache: "no-store" });
+    // 路径一旦挪到 /api、/summary/api/v1 之类前缀下，没拦到的那一发就会经由 vite
+    // proxy 出去，在 e2e 的 proxy-error 计数上留一笔——探针制造出它本要消除的东西。
+    for (const proxied of ["/api/", "/mail-api/", "/summary/api/v1", "/market/api/v1", "/fleet/api/v1"]) {
+      expect(MSW_PROBE_PATH.startsWith(proxied)).toBe(false);
+    }
+  });
+
+  it("没被拦到（拿回 SPA fallback）时重试，直到拦到为止", async () => {
+    // 这正是要覆盖的那个窗口期：SW 已在控，但本 client 还没登记完。
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(PROBE_BYPASSED)
+      .mockResolvedValueOnce(PROBE_BYPASSED)
+      .mockResolvedValue(PROBE_OK) as unknown as typeof fetch;
+    const h = harness(fetchFn);
+
+    await expect(waitForMockInterception(MSW_PROBE_TIMEOUT_MS, h.deps)).resolves.toBe(true);
+    expect(fetchFn).toHaveBeenCalledTimes(3);
+    expect(h.elapsed()).toBe(2 * MSW_PROBE_RETRY_MS);
+  });
+
+  it("fetch 抛错（SW 换代 / dev server 抖动）等同于还没拦到，继续重试", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValue(PROBE_OK) as unknown as typeof fetch;
+
+    await expect(waitForMockInterception(MSW_PROBE_TIMEOUT_MS, harness(fetchFn).deps)).resolves.toBe(true);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("【降级】始终不挂住 boot：一直拦不到也按时返回 false", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(PROBE_BYPASSED) as unknown as typeof fetch;
+    const h = harness(fetchFn);
+
+    // 这条是整组里最重要的一条。写成「拦到才 resolve」会让二十多个 spec 的
+    // __MSW_READY__ 闸门一起超时，比偶发漏一个请求糟得多。
+    await expect(waitForMockInterception(MSW_PROBE_TIMEOUT_MS, h.deps)).resolves.toBe(false);
+    expect(h.elapsed()).toBeLessThanOrEqual(MSW_PROBE_TIMEOUT_MS);
+    // 重试间隔不能退化成忙等：那会在拿不到 mock 的 5s 里把 dev server 打满。
+    expect(fetchFn.mock.calls.length).toBeLessThanOrEqual(MSW_PROBE_TIMEOUT_MS / MSW_PROBE_RETRY_MS + 1);
+  });
+
+  it("时限传 0 也至少探一发，不会一次都不试就报降级", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(PROBE_OK) as unknown as typeof fetch;
+
+    await expect(waitForMockInterception(0, harness(fetchFn).deps)).resolves.toBe(true);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("环境里没有 fetch 时返回 false，不抛错", async () => {
+    // 抛出去会被 index.tsx 的 catch 吞掉并【不】设 __MSW_READY__，把「没探到」
+    // 升级成「MSW 不可用」，连带把那二十多个 spec 的闸门堵死。
+    //
+    // 必须真把全局 fetch 摘掉：只传 `fetchFn: undefined` 会被 `??` 兜回全局 fetch，
+    // 那样测的就不是这条分支了。
+    vi.stubGlobal("fetch", undefined);
+    try {
+      await expect(waitForMockInterception(MSW_PROBE_TIMEOUT_MS, harness(undefined as never).deps)).resolves.toBe(
+        false,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("时钟不推进时靠次数上限收敛，不会退化成微任务死循环", async () => {
+    // 两道闸挡的不是同一件事：时限依赖注入的 now() 真的在走，次数只依赖循环自己。
+    // 少了次数这道闸，一个被冻住的时钟会让 for(;;) 变成纯微任务的死循环 ——
+    // 定时器一次都不派发，连 vitest 自己的 testTimeout 都救不了（它也是定时器），
+    // 表现是整个 test file 挂死、零输出。这条用例就是那次挂死的回归。
+    const fetchFn = vi.fn().mockResolvedValue(PROBE_BYPASSED) as unknown as typeof fetch;
+    const frozen = { fetchFn, now: (): number => 0, sleep: async (): Promise<void> => {} };
+
+    await expect(waitForMockInterception(MSW_PROBE_TIMEOUT_MS, frozen)).resolves.toBe(false);
+    expect((fetchFn as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBeLessThanOrEqual(
+      MSW_PROBE_TIMEOUT_MS / MSW_PROBE_RETRY_MS + 1,
+    );
+  });
+
+  it("时限短于 e2e fixture 的 __MSW_READY__ 等待（15s），降级要可诊断", () => {
+    // 接管等待与探针等待是【串行】的两段，最坏情况相加。相加后仍要短于 fixture 的
+    // 15s，否则降级路径上 fixture 先超时，报出来的是 boot 超时而不是那两条告警。
+    expect(MSW_CONTROL_TIMEOUT_MS + MSW_PROBE_TIMEOUT_MS).toBeLessThan(15_000);
   });
 });

@@ -107,7 +107,8 @@ async function enableMocksIfE2E(): Promise<void> {
   try {
     const { worker } = await import("./mocks/browser");
     const msw = await import("msw");
-    const { waitForServiceWorkerControl, MSW_CONTROL_TIMEOUT_MS } = await import("./mocks/swControl");
+    const { waitForServiceWorkerControl, MSW_CONTROL_TIMEOUT_MS, waitForMockInterception, MSW_PROBE_TIMEOUT_MS } =
+      await import("./mocks/swControl");
     await worker.start({ onUnhandledRequest: "bypass" });
     // start() 之后还要等真正【接管】: 否则 __MSW_READY__ 会在 SW 尚未 control 本
     // client 时就变成 true, boot 期间的请求绕过 MSW 直达 dev server, 在 e2e 上表现
@@ -121,6 +122,17 @@ async function enableMocksIfE2E(): Promise<void> {
       console.warn(
         `[e2e] MSW worker started but did not take control within ${MSW_CONTROL_TIMEOUT_MS}ms; ` +
           "boot-time requests may bypass mocks",
+      );
+    }
+    // 接管到位【仍不等于】本 document 会被拦: MSW 只对登记过的 client 施加 mock,
+    // 而一个 spec 内的第二次导航会让 controller 立刻非空 (SW 早已激活) 却还没登记完,
+    // 接管等待因此一拍都不等就通过 —— 这是 @S26 那类多次导航 spec 上概率性泄漏的
+    // 真正成因. 所以不再推断, 直接实测一发: 打一个只有 MSW 才会应答的探针.
+    const intercepting = await waitForMockInterception(MSW_PROBE_TIMEOUT_MS);
+    if (!intercepting) {
+      console.warn(
+        `[e2e] MSW did not intercept a probe request within ${MSW_PROBE_TIMEOUT_MS}ms; ` +
+          "requests may bypass mocks",
       );
     }
     const w = window as unknown as {

@@ -307,6 +307,13 @@ test("@CH24 @p1 @chat @thread 群详情顶部打开子区列表", async ({ authe
 
 test("@CH32 @p1 @chat @thread 创建子区后列表显示新子区", async ({ authedPage }) => {
   await installMockImRuntime(authedPage, seed()); await authedPage.reload();
+  // reload() 之后必须等 window.__msw 重新挂上再注册 handler。registerChatLayoutThreadCreate
+  // 里是一发 page.evaluate 直接读 __msw、读不到就 throw，没有任何等待；而 __msw 是在
+  // index.tsx 的 enableMocksIfE2E() 走完之后才赋值的。本文件其余几处都在 reload【之前】
+  // 注册，只有这里在之后，所以只有这里会撞上这个窗口期。
+  await authedPage.waitForFunction(() => !!(window as unknown as { __msw?: unknown }).__msw, null, {
+    timeout: 15_000,
+  });
   await registerChatLayoutThreadCreate(authedPage);
   await openConversation(authedPage, false, true);
   await authedPage.getByTestId("chat-thread-panel-entry").click();
