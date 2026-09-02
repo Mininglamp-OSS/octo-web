@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { AlertCircle, Box, ImagePlus, Loader2, Upload, XCircle } from "lucide-react";
 import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
 import type { Category, Skill } from "../types/skill";
-import { updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse, getSkillTags } from "../api/skillApi";
+import { updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse, getSkillTags, publishPlugin } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
@@ -12,6 +12,9 @@ interface EditSkillModalProps {
   categories: Category[];
   onClose: () => void;
   onUpdated: (skill: Skill) => void;
+  /** Optional: shows the outcome of a 发布 made from this modal. Without it the
+   *  save still works, it just says nothing about which branch the backend took. */
+  onPublished?: (message: string) => void;
 }
 
 type UploadStage = "idle" | "uploading" | "parsing" | "error";
@@ -34,7 +37,7 @@ function validateZipFile(file: File): string | null {
   return null;
 }
 
-export default function EditSkillModal({ skill, categories, onClose, onUpdated }: EditSkillModalProps) {
+export default function EditSkillModal({ skill, categories, onClose, onUpdated, onPublished }: EditSkillModalProps) {
   useI18n();
   const selectableCategories = useMemo<Category[]>(
     () => categories.filter((category: Category) => category.id !== "all"),
@@ -58,6 +61,8 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
   // The DECLARED audience. Editable here because it is what 发布 reads to decide
   // whether listing this plugin needs organization review.
   const [visibility, setVisibility] = useState<"private" | "space">("private");
+  // Which footer action is in flight, so only that button spins.
+  const [publishing, setPublishing] = useState(false);
   const [version, setVersion] = useState("1.0.0");
   const [uploadStage, setUploadStage] = useState<UploadStage>("idle");
   const [progress, setProgress] = useState(0);
@@ -142,6 +147,18 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
     (!parseTaskId || changelog.trim()) &&
     !tagSubmitError,
   );
+
+  // Whether this save leaves the plugin unlisted — either it already is, or
+  // widening the audience is about to un-list it server-side. That is exactly
+  // when 保存草稿 is the honest label and 发布 has something to do; on a published
+  // plugin whose audience is unchanged there is nothing to publish, so the
+  // primary action is not rendered rather than sitting there disabled.
+  const willBeUnlisted =
+    skill?.listingState !== "published" ||
+    (skill?.visibility !== undefined && visibility !== skill.visibility);
+  // 发布 asks for a changelog only when the plugin is headed for organization
+  // review, mirroring the create modal.
+  const canPublishNow = canSave && (visibility === "private" || Boolean(changelog.trim()));
 
   function updateTagSuggestionStyle() {
     const field = tagFieldRef.current;
@@ -365,7 +382,13 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
     event.target.value = "";
   }
 
-  async function submit() {
+  /**
+   * `publish=false` saves and stops; `publish=true` saves and then hands the
+   * plugin to the backend's one publish door, which routes on the declared
+   * visibility. Same two-action shape as the create modal, so an author does not
+   * meet a different contract depending on whether the plugin already exists.
+   */
+  async function submit(publish: boolean) {
     if (!skill) return;
     if (!name.trim() || !displayName.trim() || !categoryId || !version.trim() || (parseTaskId && !changelog.trim())) {
       setError(t("skillMarket.form.validationRequired"));
@@ -381,6 +404,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
       ? [...tags, tagDraft.trim()].slice(0, MAX_SKILL_TAGS)
       : tags;
     setSaving(true);
+    setPublishing(publish);
     setError(null);
     try {
       let iconUrl: string | undefined;
@@ -405,12 +429,26 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
         visibility,
         ...(iconUrl !== undefined ? { iconUrl } : {}),
       });
-      onUpdated(updated);
+      if (publish) {
+        // Saved first, so what gets published is what the author just wrote —
+        // and if widening the audience un-listed the row, this is the step that
+        // earns the listing back through review.
+        const outcome = await publishPlugin({ pluginId: skill.id, version });
+        onUpdated(updated);
+        onPublished?.(
+          outcome.displayStatus === "pending_review"
+            ? t("skillMarket.review.submittedToast")
+            : t("skillMarket.plugin.publishedToast")
+        );
+      } else {
+        onUpdated(updated);
+      }
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("skillMarket.form.saveFailed"));
     } finally {
       setSaving(false);
+      setPublishing(false);
     }
   }
 
@@ -425,14 +463,33 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
         footer={
           <>
             <WKButton variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</WKButton>
+            {/* Same shape as the create modal. The secondary action is only called
+                保存草稿 when the save actually leaves a draft behind — on a
+                published plugin whose audience is unchanged it is a plain 保存,
+                and there is nothing to publish, so 发布 is not offered at all
+                rather than sitting there permanently disabled. */}
             <WKButton
-              variant="primary"
-              onClick={() => void submit()}
-              loading={saving}
-              disabled={!canSave}
+              variant="secondary"
+              onClick={() => void submit(false)}
+              loading={saving && !publishing}
+              disabled={!canSave || (saving && publishing)}
             >
-              {t("skillMarket.common.save")}
+              {t(
+                willBeUnlisted
+                  ? "skillMarket.plugin.actionSaveDraft"
+                  : "skillMarket.common.save"
+              )}
             </WKButton>
+            {willBeUnlisted && (
+              <WKButton
+                variant="primary"
+                onClick={() => void submit(true)}
+                loading={saving && publishing}
+                disabled={!canPublishNow || (saving && !publishing)}
+              >
+                {t("skillMarket.plugin.actionPublish")}
+              </WKButton>
+            )}
           </>
         }
       >

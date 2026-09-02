@@ -520,6 +520,12 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
         categories={list.categories}
         onClose={() => setEditing(null)}
         onUpdated={handleUpdated}
+        onPublished={(message) => {
+          showToast(message);
+          // The listing changed, so the row's status and actions did too.
+          list.refresh();
+          myReviews.refresh();
+        }}
       />
       <InstallPromptModal
         skillId={installSkillId}
