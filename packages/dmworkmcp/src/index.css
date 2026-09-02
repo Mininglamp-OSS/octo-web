@@ -1577,6 +1577,10 @@
    from their page's own content area. Matches .skill-market-content, or the 全部
    table sits flush against the panel edges while every sibling tab is inset. */
 .wk-mcp-mine__all {
+  /* The market pages carry `background: var(--wk-bg-surface)` on their own root;
+     this tab has no page under it, so without this the 全部 panel sat on the base
+     colour while its four siblings sat on the surface one. */
+  background: var(--wk-bg-surface);
   display: flex;
   flex-direction: column;
   min-height: 0;

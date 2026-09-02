@@ -2708,15 +2708,21 @@
 }
 /* Nine fixed columns: 名称 / 描述 / 分类 / 版本 / 可见性 / 浏览 / 下载 / 状态 /
    操作. 名称 and 描述 are the only elastic ones and both truncate, so a long
-   value never reflows the row; 操作 is `max-content` above its floor because
-   the cell can hold two labelled buttons plus the 编辑/删除 icon pair and CJK
-   labels must not wrap (see .wk-mine-table__action). */
+   value never reflows the row.
+
+   操作 is a FIXED width, not `minmax(…, max-content)`. The header and every row
+   are separate grid containers, so a content-sized track resolves independently
+   in each one: a row holding 通过 + 拒绝 got a wider 操作 than the header holding
+   the word 操作, and every column to its left shifted to compensate. Across tabs
+   it was worse — 全部 has no row actions at all, so its whole grid resolved
+   differently from 技能's. 180px clears the widest real combination (two labelled
+   buttons, or one plus the 编辑/删除 icon pair) with the labels still nowrap. */
 .wk-mine-table__head,
 .wk-mine-table__row {
   display: grid;
   grid-template-columns:
     minmax(180px, 2.2fr) minmax(120px, 1.8fr) minmax(72px, 0.9fr) 84px 96px 64px
-    64px 88px minmax(140px, max-content);
+    64px 88px 180px;
   align-items: center;
   gap: var(--wk-sp-3);
   padding: 0 var(--wk-sp-5);
@@ -3072,7 +3078,7 @@
   .wk-mine-table__row {
     grid-template-columns:
       minmax(180px, 2.2fr) minmax(120px, 1.8fr) minmax(72px, 0.9fr) 84px 96px
-      88px minmax(140px, max-content);
+      88px 180px;
   }
   .wk-mine-table__col--num {
     display: none;
@@ -3084,7 +3090,7 @@
   .wk-mine-table__row {
     grid-template-columns:
       minmax(160px, 2.2fr) minmax(120px, 1.8fr) 84px 96px 88px
-      minmax(140px, max-content);
+      180px;
   }
   .wk-mine-table__col--category {
     display: none;
