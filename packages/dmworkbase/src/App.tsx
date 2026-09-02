@@ -654,6 +654,21 @@ export class LoginInfo {
   realName?: string;
   realnameVerifiedAt?: number; // Unix 秒或毫秒，后端未定义前端不展示即可
 
+  public applySession(session: {
+    uid: string;
+    token: string;
+    name?: string;
+    loginProvider?: string;
+    deviceFlag?: number;
+  }, persist = false) {
+    this.uid = session.uid;
+    this.token = session.token;
+    this.name = session.name ?? "";
+    this.loginProvider = session.loginProvider;
+    this.deviceFlag = session.deviceFlag;
+    if (persist) this.save();
+  }
+
   /**
    * save 保存登录信息
    */
@@ -1033,11 +1048,13 @@ export default class WKApp extends ProviderListener {
   }
 
   // app启动
-  startup() {
+  startup(options: { loadLoginInfo?: boolean } = {}) {
     if (consumeOidcPostLogoutCleanup()) {
       void this.clearLocalLoginState();
     }
-    WKApp.loginInfo.load(); // 加载登录信息
+    if (options.loadLoginInfo !== false) {
+      WKApp.loginInfo.load(); // 加载登录信息
+    }
 
     // 是否是PC端
     if (

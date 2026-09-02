@@ -145,6 +145,26 @@ describe("[api] WKApp.startMain device record fetch", () => {
 });
 
 describe("LoginInfo and WKConfig persistence boundaries", () => {
+  it("applies a host session without writing renderer storage by default", () => {
+    const info = new LoginInfo();
+    const save = vi.spyOn(info, "save");
+
+    info.applySession({
+      uid: "host-user",
+      token: "host-token",
+      name: "Host User",
+      loginProvider: "oidc",
+      deviceFlag: 2,
+    });
+
+    expect(info.uid).toBe("host-user");
+    expect(info.token).toBe("host-token");
+    expect(info.name).toBe("Host User");
+    expect(info.loginProvider).toBe("oidc");
+    expect(info.deviceFlag).toBe(2);
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it("round-trips login fields and preserves tri-state real-name status", () => {
     const info = new LoginInfo();
     info.appID = "app";
