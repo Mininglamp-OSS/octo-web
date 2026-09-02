@@ -88,6 +88,11 @@ const deleteButtonName = /^删除$|^skillMarket\.common\.delete$/;
 const saveButtonName = /保存|skillMarket\.common\.save/;
 const displayNamePlaceholder =
   /请输入展示名称，最多20个字符|skillMarket\.form\.displayNamePlaceholder/;
+// The review-submit (升级版本) modal's changelog uses review.changelogPlaceholder,
+// which is DISTINCT from EditSkillModal's form.changelogPlaceholder — so this
+// selector proves the detail-modal 编辑 opened the review flow, not a direct edit.
+const reviewChangelogPlaceholder =
+  /简述本次提交的变更内容|skillMarket\.review\.changelogPlaceholder/;
 const emptyText = /暂无数据|skillMarket\.list\.empty/;
 
 describe("SkillListPage", () => {
@@ -540,15 +545,30 @@ describe("SkillListPage", () => {
   });
 
   it("refreshes an open detail modal after saving from detail edit", async () => {
-    const updatedSkill: Skill = {
+    // A PRIVATE DRAFT: the detail modal's 编辑 routes to the normal edit only for
+    // a row that is NOT listed to the org. The default fixture is published+space
+    // (listed to the org), for which handleEditFromDetail routes to 升级版本
+    // instead — see the "detail 编辑 is gated" case below.
+    const draft: Skill = {
       ...skill,
+      visibility: "private",
+      listingState: "draft",
+      displayStatus: "draft",
+    };
+    const updatedSkill: Skill = {
+      ...draft,
       displayName: "更新后的展示名",
       description: "更新后的详情说明",
       updatedAt: "2026-07-14T08:00:00.000Z",
     };
+    vi.mocked(api.getSkills).mockResolvedValue({
+      items: [draft],
+      nextCursor: null,
+      total: 1,
+    });
     vi.mocked(api.updateSkill).mockResolvedValue(updatedSkill);
     vi.mocked(api.getSkill)
-      .mockResolvedValueOnce(skill)
+      .mockResolvedValueOnce(draft)
       .mockResolvedValueOnce(updatedSkill);
 
     render(<SkillListPage variant="mine" />);
@@ -576,6 +596,29 @@ describe("SkillListPage", () => {
       (await screen.findAllByText(updatedSkill.description)).length
     ).toBeGreaterThan(0);
     expect(api.getSkill).toHaveBeenCalledTimes(2);
+  });
+
+  it("gates the detail modal's 编辑 for a listed-to-org row into 升级版本, not a direct edit", async () => {
+    // The default fixture is published + space (listed to the org). Opening its
+    // detail modal and clicking 编辑 must NOT reach updateSkill — it opens the
+    // 升级版本 (review-submit) flow instead, so the edit becomes reviewed content.
+    vi.mocked(api.getSkill).mockResolvedValue(skill);
+
+    render(<SkillListPage variant="mine" />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "meeting-note-cleaner" })
+    );
+    expect((await screen.findAllByText(skill.name)).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getAllByRole("button", { name: editSkillName }).at(-1)!);
+
+    // The review-submit modal opened (its changelog placeholder is distinct from
+    // EditSkillModal's), and no direct edit fired.
+    expect(
+      await screen.findByPlaceholderText(reviewChangelogPlaceholder)
+    ).toBeInTheDocument();
+    expect(api.updateSkill).not.toHaveBeenCalled();
   });
 
   it("shows a search-specific empty state with a clear-search action", async () => {

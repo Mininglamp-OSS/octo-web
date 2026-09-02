@@ -250,6 +250,31 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
     setDetailId(item.id);
   }
 
+  /** Edit from the detail modal — the SECOND entry point into the editor, gated
+   *  with the same predicate as the row's 编辑 button so it cannot route around
+   *  review (mirrors McpMarketListPage.handleEditFromDetail). Passing
+   *  `setEditing` straight through — as this did — let a listed-to-org skill's
+   *  detail modal open EditSkillModal → updateSkill → a full replace that takes
+   *  effect for the whole org, bypassing the review the row gate exists to force.
+   *  The row's onEdit/onUpgrade split (`:447`/`:464`) is the exact predicate:
+   *    - not listed to the org, nothing pending → the normal edit,
+   *    - listed to the org → 升级版本 (the edit becomes the reviewed content),
+   *    - a request pending → refused; the live version must not move while a
+   *      reviewer is looking at the next one. */
+  function handleEditFromDetail(skill: Skill) {
+    const listedToOrg = skill.listingState === "published" && skill.visibility === "space";
+    const pending = skill.displayStatus === "pending_review";
+    if (pending) {
+      showToast(t("skillMarket.review.pendingBlocksEdit"));
+      return;
+    }
+    if (listedToOrg) {
+      openReviewSubmit(skill);
+      return;
+    }
+    setEditing(skill);
+  }
+
   // Join this user's own review requests onto their rows by plugin id. Review
   // state is never a column on the plugin (a listed v1 and an in-review v2
   // coexist server-side), so it is derived here at render time. Empty on the
@@ -504,7 +529,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
         categories={list.categories}
         refreshKey={detailRefreshKey}
         onClose={() => setDetailId(null)}
-        onEdit={mine ? setEditing : undefined}
+        onEdit={mine ? handleEditFromDetail : undefined}
         onDelete={mine ? setDeleting : undefined}
       />
       <NewSkillModal
