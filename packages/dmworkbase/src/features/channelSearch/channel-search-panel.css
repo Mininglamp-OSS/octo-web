@@ -408,11 +408,7 @@
   height: 32px;
   transform: translate(-50%, -50%);
   border-radius: var(--wk-r-full);
-  background: color-mix(
-    in srgb,
-    var(--wk-brand-primary) 35%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--wk-brand-primary) 35%, transparent);
   color: var(--wk-text-on-brand);
   pointer-events: none;
 }
@@ -431,25 +427,16 @@
   opacity: 0;
   border: none;
   border-radius: var(--wk-r-full);
-  background: color-mix(
-    in srgb,
-    var(--wk-brand-primary) 40%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--wk-brand-primary) 40%, transparent);
   color: var(--wk-text-on-brand);
   cursor: pointer;
-  transition:
-    background var(--wk-dur-fast) var(--wk-ease),
+  transition: background var(--wk-dur-fast) var(--wk-ease),
     opacity var(--wk-dur-fast) var(--wk-ease);
 }
 
 .wk-channel-search-media-locate:hover,
 .wk-channel-search-media-locate:focus-visible {
-  background: color-mix(
-    in srgb,
-    var(--wk-brand-primary) 60%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--wk-brand-primary) 60%, transparent);
 }
 
 .wk-channel-search-media-thumb:hover .wk-channel-search-media-locate,
@@ -492,12 +479,14 @@
   background: var(--wk-bg-elevated);
 }
 
-/* V6 rev-002-lite (sketches/002-snippet-below-card, lightened): file card stays
- * visually untouched; the body-hit content_snippet renders as a separate block
- * below the card. Per feedback the filled background read too heavy, so the
- * block is now background-less — just a thin left blue rule + a tinted body
- * text colour to signal "hit context". Accent = --wk-color-info (blue), NOT the
- * brand purple, per the no-brand-purple-in-content rule. */
+/* Below-card body-content match block for a chat-tab file message. The file
+ * card itself stays visually untouched — the block is a sibling below it —
+ * so it reads as "search hit context" rather than mutating the message card.
+ *
+ * Style is intentionally lightweight (no fill, no boxed badge): a thin left
+ * blue rule (--wk-color-info, the info-tone accent — brand purple is
+ * deliberately not used in content areas) plus a tinted label carry the
+ * "hit context" signal without pulling weight from the file card above. */
 .wk-channel-search-file-snippet-below {
   display: -webkit-box;
   overflow: hidden;
@@ -655,8 +644,7 @@
   right: calc(var(--wk-sp-0-5) * -1);
   z-index: var(--wk-z-dropdown);
   width: 243px;
-  padding: calc(var(--wk-sp-4) + var(--wk-sp-0-5)) var(--wk-sp-4)
-    var(--wk-sp-4);
+  padding: calc(var(--wk-sp-4) + var(--wk-sp-0-5)) var(--wk-sp-4) var(--wk-sp-4);
   border-radius: var(--wk-r-md);
   background: var(--wk-bg-surface);
   box-shadow: var(--wk-shadow-lg), 0 0 0 1px var(--wk-border-subtle);
@@ -700,8 +688,8 @@
   align-items: center;
   min-height: 32px;
   gap: var(--wk-sp-1);
-  padding: var(--wk-sp-1) calc(var(--wk-sp-6) + var(--wk-sp-1))
-    var(--wk-sp-1) var(--wk-sp-2);
+  padding: var(--wk-sp-1) calc(var(--wk-sp-6) + var(--wk-sp-1)) var(--wk-sp-1)
+    var(--wk-sp-2);
   border-radius: var(--wk-r-sm);
   background: var(--wk-bg-elevated);
   cursor: text;

@@ -38,10 +38,7 @@ export type ChannelSearchSnippetToken =
       highlighted: boolean;
     };
 
-export function parseChannelSearchSnippetHighlights(
-  text = "",
-  keyword = ""
-) {
+export function parseChannelSearchSnippetHighlights(text = "", keyword = "") {
   const markPattern = /<mark>([\s\S]*?)<\/mark>/gi;
   const ranges: HighlightRange[] = [];
   const parts: string[] = [];
@@ -211,11 +208,7 @@ export function buildChannelSearchSnippetTokens(
     const matchIndex = match?.index;
     const matchedText = match?.[0];
 
-    if (
-      matchIndex === undefined ||
-      !matchedText ||
-      matchedText.length === 0
-    ) {
+    if (matchIndex === undefined || !matchedText || matchedText.length === 0) {
       break;
     }
 

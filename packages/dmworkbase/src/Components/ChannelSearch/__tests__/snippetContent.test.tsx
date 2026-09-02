@@ -79,7 +79,10 @@ describe("ChannelSearchSnippetContent", () => {
   });
 
   it("highlights a custom emoji when keyword matches inside the emoji key", () => {
-    const parsed = parseChannelSearchSnippetHighlights("这个[有品位]不错", "品");
+    const parsed = parseChannelSearchSnippetHighlights(
+      "这个[有品位]不错",
+      "品"
+    );
     const tokens = buildChannelSearchSnippetTokens(
       parsed.text,
       parsed.ranges,
@@ -144,7 +147,7 @@ describe("ChannelSearchSnippetContent", () => {
       ""
     );
     expect(parsed).toEqual({
-      text: "prefix <script> & renamed \"doc\" tail '",
+      text: 'prefix <script> & renamed "doc" tail \'',
       ranges: [{ start: 18, end: 31 }],
     });
   });
@@ -153,8 +156,7 @@ describe("ChannelSearchSnippetContent", () => {
     // Simulate a file uploaded with a malicious name and a keyword that
     // overlaps the tokenized name: server returns the whole name with only
     // <mark> as live markup and everything else entity-escaped.
-    const wire =
-      "&lt;img src=x onerror=alert(1)&gt;.<mark>pdf</mark>";
+    const wire = "&lt;img src=x onerror=alert(1)&gt;.<mark>pdf</mark>";
     const root = renderSnippet(
       <ChannelSearchSnippetContent text={wire} keyword="pdf" />
     );
