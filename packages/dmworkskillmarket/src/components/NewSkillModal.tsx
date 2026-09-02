@@ -7,6 +7,7 @@ import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/fo
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
 import InlineConfirmBar from "./InlineConfirmBar";
+import { versionErrorKey } from "../utils/version";
 
 /**
  * The visibility the author DECLARES on the plugin. It is stored as-is and lists
@@ -149,6 +150,9 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
   }
 
   const tagSubmitError = tagError ?? validateSkillTags(tags) ?? getTagDraftError();
+  // On a create there is no stored label to move forward from; in review mode the
+  // plugin's live version is what the submission must exceed.
+  const versionError = versionErrorKey(isReviewMode ? reviewSkill?.version : undefined, version);
 
   const canCreate = isReviewMode
     ? Boolean(
@@ -165,6 +169,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
         displayName.trim() &&
         categoryId &&
         version.trim() &&
+        !versionError &&
         !busy &&
         !saving &&
         !tagSubmitError,
@@ -857,6 +862,9 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
                 <label>
                   <span>{t("skillMarket.form.versionLabel")}<i className="skill-market-required">*</i></span>
                   <WKInput value={version} onChange={setVersion} placeholder={t("skillMarket.form.versionPlaceholder")} />
+                  {versionError && (
+                    <p className="skill-market-field-error">{t(versionError)}</p>
+                  )}
                 </label>
                 <label>
                   <span>{t("skillMarket.form.changelogLabel")}{changelogRequired && <i className="skill-market-required">*</i>}</span>

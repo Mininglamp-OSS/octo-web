@@ -3507,3 +3507,13 @@
   font-size: 12px;
   line-height: 1.6;
 }
+
+/* Field-level validation message, shown under the input it belongs to rather
+   than in the form-wide error banner — the banner is for failures that arrive
+   from the server and has no way to point at a field. */
+.skill-market-field-error {
+  margin: var(--wk-sp-1) 0 0;
+  color: var(--wk-color-error);
+  font-size: 12px;
+  line-height: 1.5;
+}

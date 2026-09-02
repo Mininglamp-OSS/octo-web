@@ -1,3 +1,4 @@
+import { versionErrorKey } from "@dmwork/skillmarket";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { WKModal, WKInput, WKButton, t, Dap } from "@octo/base";
 import { Select, Switch, TextArea, Toast } from "@douyinfe/semi-ui";
@@ -659,6 +660,8 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
   // block the author who is not ready to describe the change yet — the same trap
   // a single shared gate created in the skill form.
   const canPublishNow = declaredVisibility !== "space" || Boolean(reviewChangelog.trim());
+  // 升级版本 must exceed what is currently listed; the server compares the same way.
+  const reviewVersionError = isReview ? versionErrorKey(editing?.version, reviewVersion) : null;
   const willBeUnlisted =
     !editing ||
     editing.listingState !== "published" ||
@@ -1474,6 +1477,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                   <WKButton
                     variant="primary"
                     loading={submitting}
+                    disabled={Boolean(reviewVersionError)}
                     onClick={() => void handleSubmit(true)}
                   >
                     {t("skillMarket.plugin.actionUpgrade")}
@@ -2115,6 +2119,9 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                     onChange={setReviewVersion}
                     maxLength={32}
                   />
+                  {reviewVersionError && (
+                    <p className="skill-market-field-error">{t(reviewVersionError)}</p>
+                  )}
                 </Field>
                 <Field label={t("skillMarket.review.fieldChangelog")}>
                   <TextArea

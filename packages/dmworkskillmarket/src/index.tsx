@@ -58,6 +58,8 @@ export {
 // can return them together (`mode=mine` with plugin_type omitted), so dmworkmcp
 // needs the reader and the row type.
 export { getMySkills, deleteSkill } from "./api/skillApi";
+// Version rules, mirrored from the backend so a form objects before a round trip.
+export { isValidVersion, isVersionForward, versionErrorKey, nextPatch } from "./utils/version";
 // The 全部 tab renders skills beside connectors and experts, so it needs the
 // skill avatar helpers to draw a skill row the same way the 技能 tab does.
 export { getSkillAvatarColor, getSkillAvatarText } from "./utils/skillAvatar";

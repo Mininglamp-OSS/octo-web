@@ -8,6 +8,7 @@ import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
 import InlineConfirmBar from "./InlineConfirmBar";
 import { visibilityLabel } from "../utils/labels";
+import { versionErrorKey } from "../utils/version";
 
 interface EditSkillModalProps {
   skill: Skill | null;
@@ -145,6 +146,9 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
   }
 
   const tagSubmitError = tagError ?? validateSkillTags(tags, skill?.tags ?? []) ?? getTagDraftError();
+  // Mirrors the backend rule so the form objects before the round trip. Compared
+  // against the STORED label, which is what the server compares against too.
+  const versionError = versionErrorKey(skill?.version, version);
   const canSave = Boolean(
     !busy &&
     uploadStage !== "error" &&
@@ -152,6 +156,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     displayName.trim() &&
     version.trim() &&
     (!parseTaskId || changelog.trim()) &&
+    !versionError &&
     !tagSubmitError,
   );
 
@@ -594,6 +599,9 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
                   onChange={setVersion}
                   placeholder={t("skillMarket.form.versionPlaceholder")}
                 />
+                {versionError && (
+                  <p className="skill-market-field-error">{t(versionError)}</p>
+                )}
               </label>
               <label>
                 <span>{t("skillMarket.form.changelogLabel")}<i className="skill-market-required">*</i></span>

@@ -301,6 +301,8 @@
     "draftSavedToast": "已保存草稿",
     "publishedToast": "已发布",
     "visibilityChangeUnlists": "修改可见范围后该插件会回到草稿，需要重新发布（组织可见需通过审核）",
-    "visibilityAdminManaged": "仅平台管理员可修改"
+    "visibilityAdminManaged": "仅平台管理员可修改",
+    "versionFormatInvalid": "版本号格式为 1.0.1（三段数字）",
+    "versionMustNotDecrease": "版本号只能保持不变或递增"
   }
 }

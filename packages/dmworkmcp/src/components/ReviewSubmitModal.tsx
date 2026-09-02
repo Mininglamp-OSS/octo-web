@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { TextArea } from "@douyinfe/semi-ui";
+import { versionErrorKey } from "@dmwork/skillmarket";
 import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
 import {
   submitPluginReview,
@@ -135,8 +136,13 @@ export default function ReviewSubmitModal({
     resolveRelations(target);
   }, [target, resolveRelations]);
 
+  // An upgrade must exceed the version currently listed, which is exactly what
+  // the server compares against.
+  const versionError = versionErrorKey(target?.version, version);
   const blocked =
-    submitting || (needsRelations && (loadingRelations || relations === undefined));
+    submitting ||
+    Boolean(versionError) ||
+    (needsRelations && (loadingRelations || relations === undefined));
 
   async function submit() {
     if (!target) return;
@@ -208,6 +214,7 @@ export default function ReviewSubmitModal({
         <label className="wk-mcp-review-submit__field">
           <span>{t("skillMarket.review.fieldVersion")}</span>
           <WKInput value={version} onChange={setVersion} maxLength={32} />
+          {versionError && <p className="skill-market-field-error">{t(versionError)}</p>}
         </label>
         <label className="wk-mcp-review-submit__field">
           <span>{t("skillMarket.review.fieldChangelog")}</span>
