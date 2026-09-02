@@ -3321,8 +3321,18 @@
   color: var(--wk-text-primary);
 }
 
+/* Selected state uses --wk-brand-primary (the "选中态" token: brand black in
+   light, accent in dark), the same token 我的发布's 全部/技能/连接器/专家/专家团 strip
+   and the expert strip already use. It used to use --wk-color-accent, which is
+   the AI/link purple — reserved for AI-flavoured elements — so this strip alone
+   rendered its active tab purple while every strip beside it rendered black.
+   The semibold bump comes with it: every other underline strip in the two market
+   packages weights its active tab 600 and this one was the lone 500. Inactive,
+   hover and focus already matched (--wk-text-secondary / --wk-text-primary / the
+   UA focus ring) and are left alone. */
 .skill-market-review-tabs button.is-active {
-  color: var(--wk-color-accent);
+  color: var(--wk-brand-primary);
+  font-weight: var(--wk-font-semibold);
 }
 
 .skill-market-review-tabs button.is-active::after {
@@ -3332,7 +3342,7 @@
   left: var(--wk-sp-3);
   right: var(--wk-sp-3);
   height: 2px;
-  background: var(--wk-color-accent);
+  background: var(--wk-brand-primary);
   border-radius: 1px;
 }
 
