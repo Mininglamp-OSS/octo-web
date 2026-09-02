@@ -190,7 +190,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     private agentSendInFlight = false;
 
     // 完整创建页无频道上下文：session_id 落到统一兜底 key（见 summaryHelpers）。
-    // 单独抽成方法便于与 ChatSummaryNewModal（按 channelID 隔离）保持对称。
     private agentChannelId(): string | undefined {
         return this.props.channel?.channelID;
     }
@@ -215,8 +214,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }
         const actions = selectChat.parentElement;
         if (!actions) return;
-        // 创建页右下角从「SplitButtonGroup(开始总结下拉)」收敛为单个 createSubmit 按钮，
-        // 宽度预留即减该按钮宽度（原逻辑减 .chat-summary-modal-split，已随下拉删除）。
+        // 创建页右下角已收敛为单个 createSubmit 按钮，宽度预留只需减去该按钮宽度。
         const submitBtn = actions.querySelector('[data-testid="summary-create-submit"]');
         const actionsWidth = actions.clientWidth;
         const groupWidth = submitBtn ? (submitBtn as HTMLElement).offsetWidth : 0;
@@ -623,7 +621,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
         // smart_summary_started 收口在 api 层(summaryApi.createSummary → envelope code===0 gate),
         // 不在此页面/按钮发 —— 因为 HTTP200+code≠0 是逻辑失败,只有 api 层看得到 code,且多入口
-        // (本页 normal / ChatSummaryNewModal / agent 模式)共用一个收口点才能计数与 props 一致
+        // 共用一个收口点才能保证计数与 props 一致
         // (见二审 P1「smart_summary_started 双发」)。此处只把维度 props 透传给 createSummary。
         // trigger_mode 恒为 'normal'(agent 分支走 handleAgentSubmit,永不到此)。
         const startedProps = {

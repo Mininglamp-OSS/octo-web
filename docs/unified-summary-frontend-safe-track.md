@@ -113,7 +113,7 @@ This FE1 extension does not:
 - Default preview: selecting a chat is sufficient to execute. Without a template or typed request, the frontend sends the standard personal intent so the Agent can return a preview with explicit assumptions; it is never auto-saved.
 - Side effects: personal Workflow completion is already a formal summary; team Workflow requires proposal confirmation; only a current Agent preview or revision can be saved.
 - Recovery: workspace History restores the server-authoritative scope and artifacts. Scope changes make old previews and proposals stale. Transport failures remain in the workspace and never silently replay through Legacy.
-- Compatibility: capability disabled, unavailable, malformed, or version-mismatched uses the existing `SummaryCreatePage` implementation. Scheduled summaries remain on that Legacy flow.
+- Compatibility: capability disabled, unavailable, malformed, or version-mismatched uses the existing `SummaryCreatePage` implementation. The create page does not expose scheduling; users configure schedules from an existing Workflow summary detail, while the schedule page continues to manage existing schedules.
 
 ### File Map
 
@@ -132,7 +132,7 @@ This PR does:
 - ship the unified summary assistant behind the backend capability contract;
 - wire existing chat, participant, template, time-range, and reference selectors into one authoritative scope;
 - complete personal Workflow, team confirmation, Agent preview/revision, refresh recovery, and navigation flows;
-- preserve Legacy as the fail-closed rollback path, including scheduled summaries.
+- preserve Legacy as the fail-closed rollback path for quick and Agent creation; scheduling remains outside the unified creation entry.
 
 This PR does not:
 
@@ -150,9 +150,9 @@ Impact:
 
 - Automated tests: Workbench model/adapter/Service/transport plus new hook, feature, capability gate, selector, and production entry tests.
 - Package regression: full `@dmwork/summary` Vitest suite, i18n check, CSS lint, formatting, and `git diff --check`.
-- E2E: personal Workflow, team proposal confirmation, Agent preview revision/save, clarification/explanation/stale scope, capability fallback, and History refresh.
+- E2E: capability-disabled fallback to Legacy and capability-enabled entry into the unified workbench. Workflow, proposal, Agent preview/save, and History behavior are covered by package-level integration tests.
 - Manual path: full and chat-panel layouts in zh-CN/en-US, light/dark, narrow width, long content, Space switching, refresh, back navigation, and detail refinement.
-- Legacy regression: capability off preserves quick/Agent mode selection and scheduled-summary creation without issuing workspace requests.
+- Legacy regression: capability off preserves quick/Agent mode selection without issuing workspace requests; scheduling remains available from Workflow summary detail and the existing schedule-management page.
 
 ### FE2 Verification Result (2026-08-27)
 

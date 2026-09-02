@@ -4,7 +4,7 @@ import type {
   SummaryWorkbenchScope,
 } from "../../bridge/summaryWorkbench/protocol";
 import type { SummaryWorkbenchContextKind } from "../../ui/SummaryWorkbench";
-import type { ChatCandidate, MemberCandidate } from "../../types/summary";
+import type { ChatCandidate } from "../../types/summary";
 
 export interface WorkbenchMemberCandidate {
   uid: string;
@@ -162,15 +162,4 @@ export function canGenerateFromScope(
   return (
     scope.selectedChannels.length > 0 || Boolean(scope.template) || hasUserInput
   );
-}
-
-export function memberCandidateToLegacy(
-  member: WorkbenchMemberCandidate
-): MemberCandidate {
-  return {
-    user_id: member.uid,
-    name: member.name,
-    avatar: member.avatar || "",
-    department: "",
-  };
 }

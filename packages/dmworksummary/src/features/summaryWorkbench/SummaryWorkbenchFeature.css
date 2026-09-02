@@ -16,10 +16,6 @@
     min-height: 0;
 }
 
-.wk-summary-workbench-entry-host[hidden] {
-    display: none;
-}
-
 .wk-summary-workbench-feature__main {
     flex: 1;
     min-width: 0;
