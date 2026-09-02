@@ -85,29 +85,12 @@
   background: var(--wk-bg-hover);
 }
 
-.wk-group-member-picker-check {
-  display: inline-flex;
-  width: var(--wk-sp-4);
-  height: var(--wk-sp-4);
-  flex: 0 0 auto;
+.wk-group-member-picker-item .wk-checkbox__label {
+  display: flex;
+  min-width: 0;
+  flex: 1;
   align-items: center;
-  justify-content: center;
-  border: 1px solid var(--wk-border-default);
-  border-radius: var(--wk-r-full);
-  background: var(--wk-bg-surface);
-  box-sizing: border-box;
-}
-
-.wk-group-member-picker-check--selected {
-  border-color: var(--wk-brand-primary);
-  background: var(--wk-brand-primary);
-}
-
-.wk-group-member-picker-check-dot {
-  width: var(--wk-sp-2);
-  height: var(--wk-sp-2);
-  border-radius: var(--wk-r-full);
-  background: var(--wk-text-inverse);
+  gap: var(--wk-sp-3);
 }
 
 .wk-group-member-picker-avatar {
