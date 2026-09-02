@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { t, useI18n, WKButton, WKModal } from "@octo/base";
 
@@ -24,6 +24,18 @@ export default function RejectReasonModal({
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Reset on close, not only via handleClose: a failed reject can close the
+  // modal by flipping `visible` directly (ReviewDetailDrawer setRejectOpen(false)),
+  // bypassing handleClose, and this instance survives a change of `review`. Left
+  // to handleClose alone, a 409'd reason stays in the box and pre-fills 拒绝 on
+  // the NEXT request — one confirm would write the previous plugin's reason here.
+  useEffect(() => {
+    if (!visible) {
+      setReason("");
+      setError(null);
+    }
+  }, [visible]);
 
   function handleClose() {
     if (submitting) return;

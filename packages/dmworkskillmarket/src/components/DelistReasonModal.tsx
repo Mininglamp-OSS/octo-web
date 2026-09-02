@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { t, useI18n, WKButton, WKModal } from "@octo/base";
 
@@ -33,6 +33,16 @@ export default function DelistReasonModal({
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Reset on close, not only via handleClose: a caller can close by flipping
+  // `visible` directly (bypassing handleClose) and this instance survives across
+  // targets, so a leftover reason would otherwise pre-fill the next 下架.
+  useEffect(() => {
+    if (!visible) {
+      setReason("");
+      setError(null);
+    }
+  }, [visible]);
 
   function handleClose() {
     if (submitting) return;

@@ -338,7 +338,10 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
       setError(err instanceof Error ? err.message : t("skillMarket.review.actionFailed"));
       await refreshAllAsync();
     } finally {
-      setActingId(null);
+      // Clear only if this action still owns the slot: a second row starting
+      // mid-flight moves actingId to its own id, and an unconditional clear here
+      // would re-enable that row while its POST is still in flight.
+      setActingId((cur) => (cur === item.id ? null : cur));
     }
   }
 
@@ -352,7 +355,7 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
       setError(err instanceof Error ? err.message : t("skillMarket.review.cancelFailed"));
       await refreshAllAsync();
     } finally {
-      setActingId(null);
+      setActingId((cur) => (cur === item.id ? null : cur));
     }
   }
 
@@ -554,11 +557,11 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
             // banner AND inside the modal, then reconcile.
             setError(err instanceof Error ? err.message : t("skillMarket.review.delistFailed"));
             await refreshAllAsync();
-            setActingId(null);
+            setActingId((cur) => (cur === id ? null : cur));
             throw err;
           }
           await refreshAllAsync();
-          setActingId(null);
+          setActingId((cur) => (cur === id ? null : cur));
           setDelistTarget(null);
         }}
       />
@@ -582,13 +585,13 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
             // (the modal's own catch sets its error state when we throw).
             setError(err instanceof Error ? err.message : t("skillMarket.review.actionFailed"));
             await refreshAllAsync();
-            setActingId(null);
+            setActingId((cur) => (cur === id ? null : cur));
             throw err; // let RejectReasonModal display its own inline error
           }
           // Success path: keep actingId set until refresh settles so the
           // row stays disabled (defect 3).
           await refreshAllAsync();
-          setActingId(null);
+          setActingId((cur) => (cur === id ? null : cur));
           setRejectTarget(null);
         }}
       />
