@@ -35,6 +35,7 @@ import {
   ExpertListError,
   classifyExpertListError,
   executeExpertListRequest,
+  expertListErrorI18nKey,
 } from "./expertListError";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -69,6 +70,15 @@ function delay<T>(value: T, ms = MOCK_DELAY_MS): Promise<T> {
 }
 
 export type ExpertKindParam = "agent" | "squad";
+
+/**
+ * The audience a tenant may DECLARE for a 专家 / 专家团.
+ *
+ * `system` (全平台) is deliberately absent: it marks a platform-published
+ * record, the tenant write path rejects it, and offering it would let an author
+ * downgrade an official listing into their own Space.
+ */
+export type ExpertVisibility = "private" | "space";
 
 /** Catalog sort modes accepted by the marketplace list endpoints. `installs`
  *  and `views` rank by the resource_metrics counters; `comprehensive` is the
@@ -562,6 +572,95 @@ async function deletePluginReal(id: string): Promise<void> {
 const deleteExpertReal = deletePluginReal;
 const deleteSquadReal = deletePluginReal;
 
+/**
+ * Rewrite ONE field — the declared audience — of an existing 专家 / 专家团.
+ *
+ * The unified plugin API has exactly one tenant write door, `POST
+ * /plugins/upsert`, and it is a FULL REPLACE: a field missing from the body is
+ * written as its zero value, and a child relation missing from `relations` is
+ * soft-deleted. There is no visibility-only endpoint (`/plugins/publish` decides
+ * from the STORED visibility and cannot set it), so the only honest way to move
+ * this one column is to read the record back and echo it unchanged except for
+ * `visibility`.
+ *
+ * Everything below is preservation, not policy:
+ *
+ *   - `manifest_json` / `plugin_json` are echoed VERBATIM. These records are
+ *     authored by a Bot through octo-cli, so this package has no model of their
+ *     contents (the connector path can rebuild its documents from a form; there
+ *     is no expert form). Anything less than a verbatim echo would destroy the
+ *     parts we do not model. The backend supports precisely this round-trip —
+ *     its read path strips storage object keys into a sidecar and its update
+ *     path re-injects them for attachments whose path AND content hash are
+ *     unchanged, so a fetch-edit-save cycle is not rejected.
+ *   - `relations` are echoed WITH `relation_id` and `data`. Matching on
+ *     relation_id makes the backend recognize each edge as untouched; dropping
+ *     the id would soft-delete every child and re-insert it, and dropping `data`
+ *     would lose the squad member wiring (`member_key` / `is_leader`) that makes
+ *     a team installable. This is deliberately NOT loadExpertChildRelations,
+ *     which projects a REVIEW snapshot and drops both fields on purpose.
+ *   - `version` is omitted, which tells the backend to keep the current label.
+ *     The write still snapshots a version server-side.
+ *
+ * Callers must not invoke this when the audience is unchanged — the write would
+ * cost a version snapshot that records no change. `ExpertEditModal` disables its
+ * save button in exactly that case.
+ *
+ * The backend refuses the write with 409 when the record is published to the org
+ * (`listed_requires_review`) or has a review pending; the row's `canEdit` from
+ * resolveReviewRowState mirrors both, so the action is not offered there.
+ */
+async function updateExpertVisibilityReal(
+  id: string,
+  visibility: ExpertVisibility
+): Promise<void> {
+  // include_relations: the echo has to name the current child set, and this is
+  // the same read the detail view already performs.
+  let detail: PluginDetailWire;
+  try {
+    detail = await pluginDetail(id);
+  } catch (err) {
+    if (axios.isCancel(err)) throw err;
+    // `get()` rewraps every failure as an ExpertListError whose `message` is the
+    // bare classification kind ("unknown", "forbidden", …). Translate it here so
+    // the caller can render `err.message` without knowing that.
+    throw new Error(t(expertListErrorI18nKey(err)));
+  }
+  const plugin = detail.plugin;
+  try {
+    await expertAxios.post(`${BASE}/plugins/upsert`, {
+      plugin: {
+        plugin_id: id,
+        plugin_name: plugin.plugin_name,
+        plugin_type: plugin.plugin_type,
+        // Spread-guarded: an explicit `category_id: undefined` serializes away,
+        // but so does an absent one, and the backend reads absent as "clear the
+        // category". Sending the key only when there is a value keeps the two
+        // cases visibly distinct in the request log.
+        ...(plugin.category_id ? { category_id: plugin.category_id } : {}),
+        tags: plugin.tags ?? [],
+        publisher: plugin.publisher ?? "",
+        // The write-canonical stored value, never the presigned display
+        // `icon_url` — echoing the latter would persist an expiring URL.
+        icon: plugin.icon ?? "",
+        visibility,
+        manifest_json: plugin.manifest_json,
+        plugin_json: plugin.plugin_json,
+      },
+      relations: (detail.relations ?? []).map((rel) => ({
+        relation_id: rel.relation_id,
+        target_plugin_id: rel.target_plugin_id,
+        relation_type: rel.relation_type,
+        sort_order: rel.sort_order,
+        ...(rel.data !== undefined ? { data: rel.data } : {}),
+      })),
+    });
+  } catch (err) {
+    if (axios.isCancel(err)) throw err;
+    throw new Error(extractErrorMessage(err));
+  }
+}
+
 /** POST /metrics/track — bump the plugin view counter. Fire-and-forget:
  *  every failure is swallowed here so no call site ever has to remember to
  *  catch a rejection that carries no actionable signal. */
@@ -746,6 +845,27 @@ export function deleteExpert(id: string): Promise<void> {
 
 export function deleteSquad(id: string): Promise<void> {
   return USE_MOCK ? deleteSquadMock(id) : deleteSquadReal(id);
+}
+
+/**
+ * Set the declared audience of one owned 专家 / 专家团 (see
+ * updateExpertVisibilityReal for why this is a full-record echo).
+ *
+ * No mock branch, for the same reason loadExpertChildRelations has none: the
+ * fixtures carry no manifest / package / relation graph, so a mock write could
+ * only pretend, and the whole draft→发布 surface it belongs to (publish, review,
+ * cancel) is real-only anyway. Fail loudly rather than silently succeed.
+ */
+export function updateExpertVisibility(
+  id: string,
+  visibility: ExpertVisibility
+): Promise<void> {
+  if (USE_MOCK) {
+    return Promise.reject(
+      new Error("updateExpertVisibility is not available under USE_MOCK")
+    );
+  }
+  return updateExpertVisibilityReal(id, visibility);
 }
 
 /** One child relation of a container plugin, shaped for a review submission.

@@ -26,6 +26,7 @@ import ExpertCard from "../components/ExpertCard";
 import ExpertDetailModal from "../components/ExpertDetailModal";
 import ExpertBotPublishModal from "../components/ExpertBotPublishModal";
 import ExpertDeleteConfirmModal from "../components/ExpertDeleteConfirmModal";
+import ExpertEditModal from "../components/ExpertEditModal";
 import ExpertAddToLoopModal from "../components/ExpertAddToLoopModal";
 import ReviewSubmitModal, {
   type ReviewSubmitTarget,
@@ -125,11 +126,16 @@ export default function ExpertMarketListPage({
   const [selected, setSelected] = useState<ExpertItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   /** Bot-authored create/update flow (the previous version): create opens the
-   *  publish prompt; editTarget drives the update prompt for an existing record. */
+   *  publish prompt; botEditTarget drives the update prompt for an existing
+   *  record. Reached from ExpertEditModal's content handoff — 编辑 itself now
+   *  opens the marketplace-metadata editor first. */
   const [botPublishOpen, setBotPublishOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<
+  const [botEditTarget, setBotEditTarget] = useState<
     { id: string; kind: "agent" | "squad" } | null
   >(null);
+  /** 编辑 — the 可见范围 editor (ExpertEditModal). Metadata only; content still
+   *  goes through the Bot prompt. */
+  const [editItem, setEditItem] = useState<ExpertItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ExpertItem | null>(null);
   const [addToLoopTarget, setAddToLoopTarget] = useState<ExpertItem | null>(null);
   /** 提交审核 / 重新提交 / 发布新版本 all funnel into ReviewSubmitModal. */
@@ -262,7 +268,8 @@ export default function ExpertMarketListPage({
     const handleSpaceChanged = () => {
       setSelected(null);
       setBotPublishOpen(false);
-      setEditTarget(null);
+      setBotEditTarget(null);
+      setEditItem(null);
       setDeleteTarget(null);
       setAddToLoopTarget(null);
       setReviewTarget(null);
@@ -477,14 +484,24 @@ export default function ExpertMarketListPage({
   };
 
   // -------- 我的 tab manage actions (edit / delete) --------
-  // Edit hands a Bot the marketplace "update" prompt for this listing (carrying
-  // its id); the Bot performs the update via octo-cli. Only id + kind are
-  // needed here — the Bot reads the current record and asks the user for the
-  // fields to change, so no hydrate is required.
+  // 编辑 opens ExpertEditModal, which owns the ONE thing a client can write for
+  // these types: the declared 可见范围. Content is still Bot-authored — the modal
+  // hands off to the update prompt below for that — but visibility is
+  // marketplace metadata that 发布 reads, so making an author round-trip it
+  // through an agent would be absurd. A list projection carries everything the
+  // modal reads, so no hydrate is required here either.
   const handleEdit = (item: ExpertItem) => {
-    // Edit via the Bot update prompt (previous version) — the Bot reads the
-    // current record and asks for the fields to change.
-    setEditTarget({ id: item.id, kind: item.kind === "squad" ? "squad" : "agent" });
+    setEditItem(item);
+  };
+
+  /** Content handoff out of ExpertEditModal: the Bot reads the current record
+   *  and asks for the fields to change (exactly what 编辑 used to do directly). */
+  const handleEditContent = (item: ExpertItem) => {
+    setEditItem(null);
+    setBotEditTarget({
+      id: item.id,
+      kind: item.kind === "squad" ? "squad" : "agent",
+    });
   };
 
   const handleConfirmDelete = async (id: string) => {
@@ -535,7 +552,10 @@ export default function ExpertMarketListPage({
     }
   };
 
-  const handleReviewSubmitted = (message: string) => {
+  /** A listing changed (review submitted, visibility saved, publish landed):
+   *  show what happened and re-read, because the row's status and its available
+   *  actions both follow server state. */
+  const handleListingChanged = (message: string) => {
     showToast(message);
     reload();
     myReviews.refresh();
@@ -951,12 +971,18 @@ export default function ExpertMarketListPage({
         onToast={showToast}
       />
       <ExpertBotPublishModal
-        visible={Boolean(editTarget)}
-        kind={editTarget?.kind ?? "agent"}
+        visible={Boolean(botEditTarget)}
+        kind={botEditTarget?.kind ?? "agent"}
         mode="update"
-        editingId={editTarget?.id}
-        onClose={() => setEditTarget(null)}
+        editingId={botEditTarget?.id}
+        onClose={() => setBotEditTarget(null)}
         onToast={showToast}
+      />
+      <ExpertEditModal
+        item={editItem}
+        onClose={() => setEditItem(null)}
+        onSaved={handleListingChanged}
+        onEditContent={handleEditContent}
       />
       <ExpertDeleteConfirmModal
         item={deleteTarget}
@@ -971,7 +997,7 @@ export default function ExpertMarketListPage({
       <ReviewSubmitModal
         target={reviewTarget}
         onClose={() => setReviewTarget(null)}
-        onSubmitted={handleReviewSubmitted}
+        onSubmitted={handleListingChanged}
       />
 
       {toast &&
