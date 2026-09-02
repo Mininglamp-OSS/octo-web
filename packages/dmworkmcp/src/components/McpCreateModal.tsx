@@ -1200,6 +1200,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
       width={720}
       className="wk-mcp-create-modal"
       bodyStyle={{ maxHeight: "78vh", overflowY: "auto" }}
+      closeLabel={t("mcp.common.close")}
       title={isEdit ? t("mcp.edit.title") : t("mcp.create.title")}
       footer={
         createMode === "json" ? null : (
