@@ -139,7 +139,7 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
   }
 
   const rows: MineRow[] = items.map((item) => {
-    const wireType = (item as Skill & { pluginType?: string }).pluginType ?? "skill";
+    const wireType = item.pluginType ?? "skill";
     const status = item.displayStatus ?? "draft";
     const pending = status === "pending_review";
     return {

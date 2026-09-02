@@ -22,9 +22,12 @@ import ReviewQueue from "../components/ReviewQueue";
  * `ReviewQueue` answers 403 and the queue renders its own error state, and the
  * sidebar moves them off the route as soon as the role probe resolves.
  *
- * No space-change handling is needed here: MarketSidebar re-renders the right
- * pane from scratch on `space-changed`, so this page (and the queue's fetch)
- * remount with the new Space.
+ * Space-change handling lives inside `ReviewQueue`, not here: MarketSidebar's
+ * replaceToRoot renders the right pane back into the same slot with the same
+ * component type and no key, so React KEEPS this page and the queue mounted
+ * across a `space-changed` — it does not remount them. `ReviewQueue` therefore
+ * subscribes to `space-changed` itself and refetches, the same way the 我的
+ * tabs do; this shell needs no wiring of its own.
  */
 export default function SpaceReviewPage() {
   useI18n();

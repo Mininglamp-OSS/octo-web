@@ -278,11 +278,28 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
     };
   }, [activeTab, refreshHandled]);
 
+  // Re-read on a Space switch. MarketSidebar's replaceToRoot renders the review
+  // page back into the SAME queue slot with the same component type and no key,
+  // so React keeps this instance mounted — the fetch effects above key off
+  // `mode`/`activeTab`, neither of which changes on a Space switch, so nothing
+  // refetches on its own and the queue would keep showing (and acting on) the
+  // previous Space's requests. Also drop any open drawer/modal and in-flight
+  // acting id, since each names a request id from the Space we are leaving.
+  // Subscribe explicitly, exactly as AllAssetsList does for the same reason.
   const refreshAll = useCallback(() => {
     setError(null);
+    setDetailId(null);
+    setRejectTarget(null);
+    setDelistTarget(null);
+    setActingId(null);
     refreshPending();
     if (activeTab === "handled") refreshHandled();
   }, [activeTab, refreshHandled, refreshPending]);
+
+  useEffect(() => {
+    WKApp.mittBus.on("space-changed", refreshAll);
+    return () => WKApp.mittBus.off("space-changed", refreshAll);
+  }, [refreshAll]);
 
   const rows: ReviewRequest[] = useMemo(() => {
     if (activeTab === "pending") return pendingItems;

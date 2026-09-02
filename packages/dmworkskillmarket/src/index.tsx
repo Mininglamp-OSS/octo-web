@@ -74,6 +74,7 @@ export type {
   ReviewRequest,
   ReviewStatus,
   ReviewKind,
+  PluginType,
   PluginListingState,
   PluginDisplayStatus,
 } from "./types/skill";

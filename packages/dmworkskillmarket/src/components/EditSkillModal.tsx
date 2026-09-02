@@ -125,7 +125,11 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     setIconPreview(skill.iconUrl || null);
     setIconBlob(null);
     setIconCropFile(null);
-    setChangelog(t("skillMarket.form.currentVersionChangelog"));
+    // Start blank: the field is editable whenever a changelog is actually asked
+    // for (a re-upload, or a 本组织 publish), and seeding it with filler text
+    // would submit that filler as the org-review changelog unless the author
+    // noticed and cleared it. A re-upload also blanks it below.
+    setChangelog("");
     setError(null);
     setConfirmClose(false);
     setTimeout(() => { abortRef.current = false; }, 0);
@@ -195,6 +199,13 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
   // review, mirroring the create modal.
   const canPublishNow =
     canSave && !publishVersionError && (visibility === "private" || Boolean(changelog.trim()));
+
+  // The changelog field is live in exactly the two cases a changelog is asked
+  // for: a re-upload (a new version was parsed, so save itself requires one) and
+  // a 本组织 publish (the org-review submit requires one — decision "3 强制").
+  // Read-only otherwise, so a 仅自己 save does not present an editable field the
+  // backend would ignore. Its `*` is only truthful when it is actually required.
+  const changelogRequired = Boolean(parseTaskId) || visibility === "space";
 
   function updateTagSuggestionStyle() {
     const field = tagFieldRef.current;
@@ -468,8 +479,14 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
       if (publish) {
         // Saved first, so what gets published is what the author just wrote —
         // and if widening the audience un-listed the row, this is the step that
-        // earns the listing back through review.
-        const outcome = await publishPlugin({ pluginId: skill.id, version });
+        // earns the listing back through review. The changelog only rides along
+        // on the org-review branch; on 仅自己 the server ignores it, and
+        // publishPlugin omits an empty one from the body regardless.
+        const outcome = await publishPlugin({
+          pluginId: skill.id,
+          version,
+          ...(visibility === "space" ? { changelog } : {}),
+        });
         onUpdated(updated);
         onPublished?.(
           outcome.displayStatus === "pending_review"
@@ -635,13 +652,13 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
                 )}
               </label>
               <label>
-                <span>{t("skillMarket.form.changelogLabel")}<i className="skill-market-required">*</i></span>
+                <span>{t("skillMarket.form.changelogLabel")}{changelogRequired && <i className="skill-market-required">*</i>}</span>
                 <WKInput
                   value={changelog}
                   onChange={setChangelog}
                   placeholder={t("skillMarket.form.changelogPlaceholder")}
-                  readOnly={!parseTaskId}
-                  className={!parseTaskId ? "skill-market-input-readonly" : undefined}
+                  readOnly={!changelogRequired}
+                  className={!changelogRequired ? "skill-market-input-readonly" : undefined}
                 />
               </label>
             </div>

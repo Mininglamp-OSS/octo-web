@@ -949,6 +949,33 @@ export async function loadExpertChildRelations(
     }));
 }
 
+/** The live FROZEN content of a 专家 / 专家团, read off `/plugins/detail`, to
+ *  echo WITH an upgrade review submission.
+ *
+ * 专家 / 专家团 records are authored by a Bot through octo-cli, not in the
+ * browser, so there is no client-side form to re-collect the content from on an
+ * upgrade. But the backend refuses a contentless submission for an
+ * already-listed plugin (freezeSubmission → `manifest_json/required`, HTTP 400):
+ * snapshotting the still-live row would make the review theatre. The client
+ * therefore reads the current row's own manifest + package and submits them
+ * verbatim — the frozen bytes the reviewer approves are exactly what is live
+ * today, and the listed version keeps serving until the decision.
+ *
+ * Only called on an UPGRADE (an already-listed container). A first listing sends
+ * no content: the row is still a private draft the server can freeze as-is. */
+export async function loadExpertReviewContent(
+  id: string
+): Promise<{ manifestJson: unknown; pluginJson: unknown }> {
+  if (USE_MOCK) {
+    throw new Error("loadExpertReviewContent is not available under USE_MOCK");
+  }
+  const detail = await pluginDetail(id);
+  return {
+    manifestJson: detail.plugin.manifest_json,
+    pluginJson: detail.plugin.plugin_json,
+  };
+}
+
 /** Record one detail view for an expert ("agent") or squad. Fire-and-forget:
  *  never rejects — failures are swallowed inside (a lost view is meaningless
  *  to the user and must not surface). */

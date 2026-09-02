@@ -1,6 +1,15 @@
 export type Visibility = "public" | "space" | "private" | "system";
 export type SkillSort = "comprehensive" | "latest" | "views" | "downloads";
 
+/**
+ * The unified plugin type a row belongs to. A `Skill` is the camelCase view of
+ * any unified plugin row, not only skills, so the type it was fetched as has to
+ * travel with it — the 全部 tab dispatches its row avatar, type tag, analytics
+ * label and "open the owning tab" click off this. Mirrors `PluginTypeWire`;
+ * kept as a local literal so this pure type module needs no wire import.
+ */
+export type PluginType = "connector" | "expert" | "expert_team" | "skill";
+
 // ─── Listing lifecycle ───────────────────────────────────────────────────
 
 /**
@@ -46,6 +55,11 @@ export interface Skill {
   creatorName?: string;
   spaceId: string;
   visibility: Visibility;
+  /** The unified plugin type this row was fetched as. Absent on the legacy skill
+   *  read; present on every unified `mode=mine` / detail row. The 全部 tab keys
+   *  its per-row dispatch off it, so it must not be silently defaulted to
+   *  "skill". */
+  pluginType?: PluginType;
   version: string;
   readmeContent: string;
   iconUrl: string;

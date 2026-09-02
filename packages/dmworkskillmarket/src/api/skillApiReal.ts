@@ -362,6 +362,12 @@ function mapSkill(raw: PluginListItemWire): Skill {
     creatorId: undefined,
     creatorName: raw.creator_name ?? raw.publisher ?? "",
     spaceId: raw.space_id ?? "",
+    // The unified type this row was fetched as. Carried verbatim from the wire so
+    // the 全部 tab can dispatch a connector/expert/expert_team row to its own
+    // market instead of treating every row as a skill. Left undefined (not
+    // defaulted to "skill") when the wire omits it, so a consumer can tell "not a
+    // unified row" from "a skill".
+    pluginType: raw.plugin_type,
     // Preserve the unified wire's "system" visibility: a system-admin-published
     // skill is official across every market (isPlatformPublishedSkill), so
     // folding it into another bucket would strip its 官方发布 badge. A genuinely

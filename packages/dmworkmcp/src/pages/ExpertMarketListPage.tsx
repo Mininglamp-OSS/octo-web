@@ -17,6 +17,7 @@ import {
   listMySquads,
   listSquads,
   loadExpertChildRelations,
+  loadExpertReviewContent,
   prefetchLoopTargets,
 } from "../api/expertService";
 import type { ExpertCatalogSort, ExpertCategoryCount } from "../api/expertService";
@@ -526,12 +527,20 @@ export default function ExpertMarketListPage({
   // snapshot would be incomplete — every submission from here names the current
   // child set explicitly (see loadExpertChildRelations).
   const openReviewSubmit = (item: ExpertItem, initialChangelog?: string) => {
+    const isUpgrade = normalizeVisibility(item.visibility) !== "private";
     setReviewTarget({
       pluginId: item.id,
       name: item.name,
       version: item.version,
-      isUpgrade: normalizeVisibility(item.visibility) !== "private",
+      isUpgrade,
       initialChangelog,
+      // An UPGRADE of an already-listed 专家/专家团 must echo its own live content:
+      // the backend refuses a contentless submission on a listed plugin (400).
+      // A first listing of a private draft sends none — the server freezes the
+      // row itself — so the loader is wired only on the upgrade path.
+      ...(isUpgrade
+        ? { loadContent: () => loadExpertReviewContent(item.id) }
+        : {}),
       loadRelations: () => loadExpertChildRelations(item.id),
     });
   };

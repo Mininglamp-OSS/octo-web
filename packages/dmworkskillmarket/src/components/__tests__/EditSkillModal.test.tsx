@@ -363,6 +363,55 @@ describe("EditSkillModal", () => {
     expect(api.updateSkill).not.toHaveBeenCalled();
   });
 
+  it("keeps the changelog editable and threads it into publishPlugin for a 本组织 publish without re-upload", async () => {
+    // The default skill is `visibility: "space"` and not yet listed, so 发布 is
+    // offered and heads for org review — where the changelog is mandatory. The
+    // field must be live even though nothing was re-uploaded (P1-1), and what the
+    // author types must reach publishPlugin.
+    vi.mocked(api.publishPlugin).mockResolvedValue({
+      pluginId: "meeting-note-cleaner",
+      listingState: "draft",
+      displayStatus: "pending_review",
+    });
+    const onPublished = vi.fn();
+    render(
+      <EditSkillModal
+        skill={skill}
+        categories={categories}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onPublished={onPublished}
+      />,
+    );
+
+    const changelogField = screen.getByPlaceholderText(changelogPlaceholder);
+    expect(changelogField).not.toHaveAttribute("readonly");
+    fireEvent.change(changelogField, { target: { value: "首次提交组织审核" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /发布|skillMarket\.plugin\.actionPublish/ }));
+
+    await waitFor(() =>
+      expect(api.publishPlugin).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pluginId: "meeting-note-cleaner",
+          version: "1.1.3",
+          changelog: "首次提交组织审核",
+        }),
+      ),
+    );
+    await waitFor(() => expect(onPublished).toHaveBeenCalled());
+  });
+
+  it("blocks a 本组织 publish until a changelog is entered", () => {
+    render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
+
+    // Empty changelog on the space branch: 发布 is disabled, and clicking it does
+    // not reach publishPlugin. Save (保存草稿) does not require a changelog.
+    expect(screen.getByRole("button", { name: /发布|skillMarket\.plugin\.actionPublish/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /发布|skillMarket\.plugin\.actionPublish/ }));
+    expect(api.publishPlugin).not.toHaveBeenCalled();
+  });
+
   it("does not save file metadata when re-upload parsing fails", async () => {
     vi.mocked(api.pollParse).mockResolvedValue({
       status: "failed",
