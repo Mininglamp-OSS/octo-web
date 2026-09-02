@@ -3434,8 +3434,8 @@
 /* ─── Review detail badges ─────────────────────────────────────────── */
 
 .skill-market-review-badge--upgrade {
-  background: color-mix(in srgb, #3b82f6 12%, transparent);
-  color: #2563eb;
+  background: color-mix(in srgb, var(--wk-color-info) 12%, transparent);
+  color: var(--wk-color-info);
 }
 
 .skill-market-review-badge--first {
@@ -3447,8 +3447,8 @@
   padding: var(--wk-sp-3);
   margin-bottom: var(--wk-sp-3);
   border-radius: var(--wk-r-md);
-  background: color-mix(in srgb, #3b82f6 8%, transparent);
-  color: #2563eb;
+  background: color-mix(in srgb, var(--wk-color-info) 8%, transparent);
+  color: var(--wk-color-info);
   font-size: 13px;
   font-weight: 500;
 }
