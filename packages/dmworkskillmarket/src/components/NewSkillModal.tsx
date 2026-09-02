@@ -7,7 +7,7 @@ import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/fo
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
 import InlineConfirmBar from "./InlineConfirmBar";
-import { versionErrorKey } from "../utils/version";
+import { nextPatch, versionErrorKey } from "../utils/version";
 
 /**
  * The visibility the author DECLARES on the plugin. It is stored as-is and lists
@@ -45,16 +45,6 @@ type UploadStage = "idle" | "uploading" | "parsing" | "form" | "review" | "error
 const MAX_ZIP_SIZE = 20 * 1024 * 1024;
 const DEFAULT_CREATE_VERSION = "0.1.0";
 const SKILL_PACKAGE_ACCEPT = ".zip,.skill";
-
-function bumpPatch(ver: string): string {
-  const parts = ver.split(".");
-  if (parts.length < 3) return ver;
-  const patch = parseInt(parts[2], 10);
-  parts[2] = String(isNaN(patch) ? 1 : patch + 1);
-  return parts.join(".");
-}
-
-
 
 function createReadme(name: string, description: string, version: string): string {
   return `# ${name}\n\n${description}\n\n## Version\n\n${version}\n`;
@@ -123,7 +113,13 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
 
   const reviewDefaultVersion = useMemo(() => {
     if (reviewInitial?.version) return reviewInitial.version;
-    if (reviewSkill) return bumpPatch(reviewSkill.version);
+    // `nextPatch`, not a local bump: this seeds a REVIEW submission, and
+    // SubmitReview gates on `validVersion` with no grandfathering, so the seed
+    // has to be well formed even when the row's stored label is not. Bumping the
+    // last dot-part of `v1.2.3` or `2.0.0-beta.1` produced another label the
+    // server refuses; `nextPatch` falls back to 1.0.0 instead, which — the
+    // stored label being unorderable — the forward-only rule accepts.
+    if (reviewSkill) return nextPatch(reviewSkill.version);
     return DEFAULT_CREATE_VERSION;
   }, [reviewSkill, reviewInitial]);
 
@@ -152,12 +148,20 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
   const tagSubmitError = tagError ?? validateSkillTags(tags) ?? getTagDraftError();
   // On a create there is no stored label to move forward from; in review mode the
   // plugin's live version is what the submission must exceed.
+  // No `stored` argument on either branch, deliberately: this modal only ever
+  // writes through `POST /plugins/review_requests`, and SubmitReview gates on
+  // `validVersion` with no stored-label grandfathering. Exempting the legacy
+  // label here would move the refusal from the button to a 400.
   const versionError = versionErrorKey(isReviewMode ? reviewSkill?.version : undefined, version);
 
   const canCreate = isReviewMode
     ? Boolean(
         version.trim() &&
         changelog.trim() &&
+        // The rule was already computed and already rendered under the field; it
+        // just was not gating, so a review could be submitted carrying a label
+        // the server refuses — the field said so and the button went anyway.
+        !versionError &&
         // An upgrade cannot be submitted without the new package.
         (!isUpgrade || parseTaskId) &&
         !busy &&
