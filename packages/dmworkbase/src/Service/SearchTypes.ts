@@ -53,6 +53,14 @@ export interface ChannelSearchFileInfo {
   url?: string;
   downloadUrl?: string;
   previewUrl?: string | null;
+  // Server-side highlight of the file name (keyword wrapped in <mark>). Present
+  // only when the keyword matched the name. Empty on browse/body-only hits — the
+  // UI then falls back to client-side highlighting of `name`.
+  nameHighlight?: string;
+  // Server-side <mark>-wrapped fragment of the extracted file body, explaining a
+  // body-only match (keyword appears in content, not name). Absent when the body
+  // didn't match.
+  contentSnippet?: string;
 }
 
 export interface ChannelSearchMediaInfo {

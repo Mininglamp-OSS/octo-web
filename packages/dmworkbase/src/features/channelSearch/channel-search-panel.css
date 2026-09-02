@@ -492,6 +492,31 @@
   background: var(--wk-bg-elevated);
 }
 
+/* V6 rev-002-lite (sketches/002-snippet-below-card, lightened): file card stays
+ * visually untouched; the body-hit content_snippet renders as a separate block
+ * below the card. Per feedback the filled background read too heavy, so the
+ * block is now background-less — just a thin left blue rule + a tinted body
+ * text colour to signal "hit context". Accent = --wk-color-info (blue), NOT the
+ * brand purple, per the no-brand-purple-in-content rule. */
+.wk-channel-search-file-snippet-below {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: var(--wk-sp-1);
+  padding: 0 0 0 var(--wk-sp-2);
+  border-left: 2px solid var(--wk-color-info);
+  color: var(--wk-text-secondary);
+  font: 400 12px/20px var(--wk-font-sans);
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.wk-channel-search-file-snippet-below-label {
+  margin-right: var(--wk-sp-1);
+  color: var(--wk-color-info);
+  font: 500 12px/20px var(--wk-font-sans);
+}
+
 .wk-channel-search-inline-file-icon {
   display: flex;
   align-items: center;
@@ -553,6 +578,17 @@
   font: 400 14px/20px var(--wk-font-sans);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.wk-channel-search-file-content-snippet {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: var(--wk-sp-1);
+  color: var(--wk-text-secondary);
+  font: 400 12px/18px var(--wk-font-sans);
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .wk-channel-search-file-meta {

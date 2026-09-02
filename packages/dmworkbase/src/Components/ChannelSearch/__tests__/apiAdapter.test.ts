@@ -316,6 +316,25 @@ describe("channel search API adapter response mapping", () => {
     });
 
     expect(
+      mapFileHit(
+        {
+          message_id: "f2",
+          message_seq: 21,
+          file_name: "quarterly-report.pdf",
+          name_highlight: "quarterly-<mark>report</mark>.pdf",
+          content_snippet: "...annual <mark>revenue</mark> grew...",
+          sender_id: "u9",
+          sent_at: "2026-01-02T00:00:00Z",
+        },
+        query
+      ).file
+    ).toMatchObject({
+      name: "quarterly-report.pdf",
+      nameHighlight: "quarterly-<mark>report</mark>.pdf",
+      contentSnippet: "...annual <mark>revenue</mark> grew...",
+    });
+
+    expect(
       mapMediaHit(
         {
           message_id: "p1",

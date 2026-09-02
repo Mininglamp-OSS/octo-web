@@ -116,6 +116,7 @@
   "channelSearch.keywordLimitToast": "Search keywords can be up to {{count}} characters.",
   "channelSearch.loadMore": "Load more",
   "channelSearch.loading": "Searching...",
+  "channelSearch.fileContentHit": "In content",
   "channelSearch.locateToChat": "Locate in chat",
   "channelSearch.locateToChatPosition": "Locate in chat",
   "channelSearch.mediaKeywordTip": "Images and videos cannot be searched by keyword yet. Use sender or date filters instead.",
