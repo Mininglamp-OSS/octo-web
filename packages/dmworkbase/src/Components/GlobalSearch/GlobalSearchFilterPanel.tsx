@@ -10,6 +10,7 @@ import { DatePicker } from "@douyinfe/semi-ui";
 import { CalendarDays, Check } from "lucide-react";
 import { useI18n } from "../../i18n";
 import WKButton from "../WKButton";
+import { Loading } from "@octo/ui";
 import FilterSearchSelect from "./FilterSearchSelect";
 import type { FilterSearchOption } from "./FilterSearchSelect";
 import type { ChannelSearchSender } from "../ChannelSearch/types";
@@ -826,7 +827,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
                 })}
                 {fileCategories.length === 0 && (
                   <span className="wk-global-search-filter-help">
-                    {t("base.channelSearch.loading")}
+                    <Loading size="sm" text={t("base.channelSearch.loading")} />
                   </span>
                 )}
               </div>

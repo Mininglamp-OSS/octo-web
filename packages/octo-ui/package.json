@@ -12,6 +12,11 @@
       "development": "./src/index.ts",
       "import": "./dist/index.js"
     },
+    "./components/Loading": {
+      "types": "./dist/loading.d.ts",
+      "development": "./src/components/Loading/index.tsx",
+      "import": "./dist/loading.js"
+    },
     "./styles.css": "./dist/styles.css"
   },
   "files": [
@@ -23,7 +28,9 @@
     "src/components/Dot/types.ts",
     "src/components/Tooltip/types.ts",
     "src/components/Avatar/types.ts",
-    "src/components/AvatarGroup/types.ts"
+    "src/components/AvatarGroup/types.ts",
+    "src/components/Loading/types.ts",
+    "src/components/Loading/index.tsx"
   ],
   "sideEffects": [
     "**/*.css"

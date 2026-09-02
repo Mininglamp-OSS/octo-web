@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import rehypeSanitize from "rehype-sanitize";
-import { Spin } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
 import { useI18n } from "@octo/base";
 
 interface SummaryContentProps {
@@ -29,7 +29,7 @@ const SummaryContent: React.FC<SummaryContentProps> = ({ content, loading }) => 
     if (loading) {
         return (
             <div className="summary-content-loading">
-                <Spin />
+                <Loading />
             </div>
         );
     }

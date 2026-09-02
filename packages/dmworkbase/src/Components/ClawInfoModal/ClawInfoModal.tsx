@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Dot, Tooltip } from "@octo/ui";
-import { Spin, Empty } from "@douyinfe/semi-ui";
+import { Dot, Loading, Tooltip } from "@octo/ui";
+import { Empty } from "@douyinfe/semi-ui";
 import { IconClose } from "@douyinfe/semi-icons";
 import { Clock } from "lucide-react";
 import WKModal from "../WKModal";
@@ -218,7 +218,7 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
     if (loading) {
       return (
         <div className="claw-info-loading">
-          <Spin size="large" />
+          <Loading size="lg" />
         </div>
       );
     }
@@ -408,7 +408,7 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
             <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
               {loading ? (
                 <div className="claw-info-loading">
-                  <Spin size="large" />
+                  <Loading size="lg" />
                 </div>
               ) : data?.runtime_info ? (
                 <ClawOverviewTab

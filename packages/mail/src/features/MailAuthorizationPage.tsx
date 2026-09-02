@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import { Bot, CheckCircle2, Mail, ShieldCheck } from "lucide-react";
 import { SpaceService, useI18n, UserService, WKApp } from "@octo/base";
+import Loading from "@octo/ui/components/Loading";
 import MailService from "../Service/MailService";
 import type {
   AgentAuthorizationView,
@@ -546,7 +547,7 @@ export default function MailAuthorizationPage({
 
         {loading && (
           <div className="mail-auth-card__status">
-            {t("mail.authorization.loading")}
+            <Loading text={t("mail.authorization.loading")} />
           </div>
         )}
         {connecting && (

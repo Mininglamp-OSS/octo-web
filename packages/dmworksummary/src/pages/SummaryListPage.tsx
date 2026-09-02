@@ -2,13 +2,13 @@ import React, { Component } from "react";
 import {
     Button,
     Dropdown,
-    Spin,
     Toast,
     Banner,
 } from "@douyinfe/semi-ui";
 import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
 import { I18nContext, t, WKApp, Dap } from "@octo/base";
+import { Loading } from "@octo/ui";
 import * as api from "../api/summaryApi";
 import { setPendingInvitationBadge } from "../utils/summaryMenuBadge";
 import type {
@@ -694,7 +694,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
 
                 {loading && (
                     <div className="summary-list-loading">
-                        <Spin size="large" />
+                        <Loading size="lg" />
                     </div>
                 )}
 
@@ -742,7 +742,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                         ))}
                         {loadingMore && (
                             <div className="summary-list-loading-more">
-                                <Spin />
+                                <Loading />
                             </div>
                         )}
                         {!hasMore && items.length > pageSize && (

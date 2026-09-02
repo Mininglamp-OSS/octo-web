@@ -5,10 +5,10 @@ import React, {
   useState,
   useEffect,
 } from "react";
-import { LoaderCircle } from "lucide-react";
 import { BaseRendererProps } from "../types";
 import PptPageRenderer, { PptPageContent } from "./PptPageRenderer";
 import { useI18n } from "../../../i18n";
+import { Loading } from "@octo/ui";
 import "./PptRenderer.css";
 
 /** PPT 页面数据 */
@@ -121,10 +121,7 @@ const PptRenderer = forwardRef<PptRendererRef, PptRendererProps>(
     if (loading) {
       return (
         <div className="wk-file-preview-ppt-renderer wk-file-preview-ppt-renderer--loading">
-          <LoaderCircle className="wk-file-preview-ppt-renderer__spinner" />
-          <span className="wk-file-preview-ppt-renderer__loading-text">
-            {t("base.filePreview.ppt.loadingPresentation")}
-          </span>
+          <Loading text={t("base.filePreview.ppt.loadingPresentation")} layout="vertical" />
         </div>
       );
     }

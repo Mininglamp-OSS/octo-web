@@ -1,5 +1,6 @@
 import React, { memo } from "react";
 import { useI18n } from "../../../i18n";
+import { Loading } from "@octo/ui";
 import "./RendererState.css";
 
 export type RendererStateType = "loading" | "error" | "empty";
@@ -37,8 +38,11 @@ export const RendererState = memo(function RendererState({
 
   return (
     <div className={`${baseClass} ${baseClass}--${type}`}>
-      {type === "loading" && <div className={`${baseClass}__spinner`} />}
-      <span className={`${baseClass}__message`}>{displayMessage}</span>
+      {type === "loading" ? (
+        <Loading text={displayMessage} layout="vertical" />
+      ) : (
+        <span className={`${baseClass}__message`}>{displayMessage}</span>
+      )}
       {type === "error" && onRetry && (
         <button className={`${baseClass}__retry`} onClick={onRetry}>
           {t("base.filePreview.retry")}

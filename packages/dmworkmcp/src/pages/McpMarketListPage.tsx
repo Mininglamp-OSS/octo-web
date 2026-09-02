@@ -1,10 +1,10 @@
 import React, { Component } from "react";
 import axios from "axios";
-import { Spin, Toast } from "@douyinfe/semi-ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { IconSearch, IconClose } from "@douyinfe/semi-icons";
 import { Bot, Check, ChevronDown, SlidersHorizontal, Upload } from "lucide-react";
 import { I18nContext, t, WKApp, WKButton, Dap } from "@octo/base";
-import { Button } from "@octo/ui";
+import { Button, Loading } from "@octo/ui";
 import { fetchMcpDetail, fetchMcpList, fetchMcpMine, fetchMcpTags, McpTagSuggestion } from "../api/mcpService";
 import { mcpListErrorI18nKey } from "../api/mcpListError";
 import type { McpCategory, McpDetail, McpListItem } from "../types/mcp";
@@ -769,7 +769,7 @@ export default class McpMarketListPage extends Component<
 
             {loading ? (
               <div className="wk-mcp__state">
-                <Spin />
+                <Loading />
               </div>
             ) : error ? (
               <div className="wk-mcp__state wk-mcp__state--error" role="alert">
@@ -812,7 +812,7 @@ export default class McpMarketListPage extends Component<
                     </div>
                     <div className="wk-mcp__footnote">
                       {loadingMore ? (
-                        <Spin size="small" />
+                        <Loading size="sm" />
                       ) : hasMore ? (
                         <span>{t("mcp.list.loadMore")}</span>
                       ) : (

@@ -368,6 +368,9 @@ importers:
       '@octo/base':
         specifier: workspace:*
         version: link:../dmworkbase
+      '@octo/ui':
+        specifier: workspace:*
+        version: link:../octo-ui
       wukongimjssdk:
         specifier: ^1.3.5
         version: 1.3.5
@@ -653,6 +656,9 @@ importers:
       '@octo/base':
         specifier: workspace:*
         version: link:../dmworkbase
+      '@octo/ui':
+        specifier: workspace:*
+        version: link:../octo-ui
       '@types/qrcode.react':
         specifier: ^1.0.2
         version: 1.0.5
@@ -739,6 +745,9 @@ importers:
       '@octo/base':
         specifier: workspace:*
         version: link:../dmworkbase
+      '@octo/ui':
+        specifier: workspace:*
+        version: link:../octo-ui
       classnames:
         specifier: ^2.3.1
         version: 2.5.1
@@ -870,6 +879,9 @@ importers:
       '@octo/base':
         specifier: workspace:*
         version: link:../dmworkbase
+      '@octo/ui':
+        specifier: workspace:*
+        version: link:../octo-ui
       lucide-react:
         specifier: ^0.577.0
         version: 0.577.0(react@18.3.1)

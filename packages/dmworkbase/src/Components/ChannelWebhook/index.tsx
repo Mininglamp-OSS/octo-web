@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Channel } from "wukongimjssdk";
-import { Spin, Toast } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { IconPlus, IconLink } from "@douyinfe/semi-icons";
 import WKButton from "../WKButton";
 import { wkConfirm } from "../WKModal";
@@ -224,7 +225,7 @@ export default function ChannelWebhookPanel({
 
       {loading ? (
         <div className="wk-webhook__state">
-          <Spin size="large" />
+          <Loading size="lg" />
         </div>
       ) : error ? (
         <div className="wk-webhook__state">

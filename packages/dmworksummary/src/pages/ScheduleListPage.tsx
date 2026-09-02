@@ -1,14 +1,13 @@
 import React, { Component } from "react";
 import {
     Button,
-    Spin,
     Toast,
     Modal,
     Switch,
     Popconfirm,
     Banner,
 } from "@douyinfe/semi-ui";
-import { Tag } from "@octo/ui";
+import { Loading, Tag } from "@octo/ui";
 import {
     IconArrowLeft,
     IconPlus,
@@ -177,7 +176,7 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
 
                 {loading && (
                     <div className="summary-schedule-loading">
-                        <Spin size="large" />
+                        <Loading size="lg" />
                     </div>
                 )}
 

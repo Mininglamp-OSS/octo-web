@@ -1,6 +1,6 @@
 import React, { Component, createRef } from "react";
-import { Checkbox, Spin, Empty } from "@douyinfe/semi-ui";
-import { Tag } from "@octo/ui";
+import { Checkbox, Empty } from "@douyinfe/semi-ui";
+import { Loading, Tag } from "@octo/ui";
 import { IconSearch } from "@douyinfe/semi-icons";
 import { X } from "lucide-react";
 import { I18nContext } from "@octo/base";
@@ -566,7 +566,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
                                 onScroll={this.handleListScroll}
                             >
                                 {loading ? (
-                                    <div className="chat-selector-loading"><Spin /></div>
+                                    <div className="chat-selector-loading"><Loading /></div>
                                 ) : mode === "members" ? (
                                     displayList.length === 0 ? (
                                         <Empty description={t("summary.chatSelector.noData")} />

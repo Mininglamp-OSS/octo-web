@@ -1,6 +1,7 @@
 import React from "react"
 import VisibilityTrigger from "../../VisibilityTrigger"
 import { useI18n } from "../../../i18n"
+import { Loading } from "@octo/ui"
 import type { ForwardItem } from "../ForwardModal"
 import { ItemRow, type ForwardBotPreview } from "./ItemRow"
 
@@ -36,7 +37,7 @@ export function ItemList({
   return (
     <div className="wk-fm-list">
       {loading ? (
-        <div className="wk-fm-empty">{t("base.forwardModal.loading")}</div>
+        <div className="wk-fm-empty"><Loading text={t("base.forwardModal.loading")} /></div>
       ) : items.length === 0 ? (
         <div className="wk-fm-empty">{t("base.forwardModal.noContacts")}</div>
       ) : (

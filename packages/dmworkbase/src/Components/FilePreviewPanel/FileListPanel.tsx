@@ -4,6 +4,7 @@ import { ConversationFile } from "./FilePreviewHeader";
 import { formatFileSize, isImageType } from "./config";
 import { getFileIcon as getFileIconUrl } from "../../Utils/fileIcon";
 import { useI18n } from "../../i18n";
+import { Loading } from "@octo/ui";
 import type { I18nFormatter } from "../../i18n";
 import "./FileListPanel.css";
 
@@ -205,7 +206,7 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
       <div className="wk-file-list-panel__list" ref={listRef}>
         {initialLoading ? (
           <div className="wk-file-list-panel__loading">
-            {t("base.filePreview.loading")}
+            <Loading text={t("base.filePreview.loading")} layout="vertical" />
           </div>
         ) : files.length === 0 ? (
           <div className="wk-file-list-panel__empty">
@@ -227,7 +228,7 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
             {/* 加载更多状态 */}
             {loadingMore && (
               <div className="wk-file-list-panel__loading">
-                {t("base.filePreview.loading")}
+                <Loading text={t("base.filePreview.loading")} />
               </div>
             )}
             {/* 没有更多数据（仅在加载过至少一页后显示） */}

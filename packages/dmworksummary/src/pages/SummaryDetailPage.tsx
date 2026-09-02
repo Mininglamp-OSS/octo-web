@@ -1,7 +1,6 @@
 import React, { Component } from "react";
 import {
     Button,
-    Spin,
     Toast,
     Banner,
     Modal,
@@ -9,7 +8,7 @@ import {
     Tooltip,
     Dropdown,
 } from "@douyinfe/semi-ui";
-import { Tag } from "@octo/ui";
+import { Loading, Tag } from "@octo/ui";
 import type { TagTone } from "@octo/ui";
 import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconRefresh, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
 import { Bot, ChevronDown, Check, X } from "lucide-react";
@@ -2499,7 +2498,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <span>{t("summary.detail.teamSummary")}</span>
                 </div>
                 <div className="summary-detail-team-generating">
-                    <Spin size="small" />
+                    <Loading size="sm" />
                     <span>{t("summary.detail.teamGenerating")}</span>
                 </div>
             </div>
@@ -2522,7 +2521,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <span>{t(titleKey)}</span>
                 </div>
                 <div className="summary-detail-team-generating">
-                    <Spin size="small" />
+                    <Loading size="sm" />
                     <span>{t(descKey)}</span>
                 </div>
             </div>
@@ -2856,7 +2855,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     </Button>
                 </div>
                 {versionDetailLoading ? (
-                    <div className="summary-version-detail-loading"><Spin /></div>
+                    <div className="summary-version-detail-loading"><Loading /></div>
                 ) : versionDetail ? (
                     <div className="summary-detail-result-content">
                         <CitationText
@@ -3144,7 +3143,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             return (
                 <div className="summary-detail-personal">
                     {this.renderMySummaryHeader(false)}
-                    {personalExpanded && <Spin size="small" />}
+                    {personalExpanded && <Loading size="sm" />}
                 </div>
             );
         }
@@ -3482,7 +3481,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             return (
                 <div data-testid={summaryTestIds.detailMembersSection} className="summary-detail-members">
                     {this.renderMemberStatusHeader()}
-                    <Spin size="small" />
+                    <Loading size="sm" />
                 </div>
             );
         }
@@ -4388,7 +4387,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <div className="summary-detail-content-inner">
                         {loading && (
                             <div className="summary-detail-loading">
-                                <Spin size="large" />
+                                <Loading size="lg" />
                             </div>
                         )}
 

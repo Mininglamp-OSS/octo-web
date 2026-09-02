@@ -11,6 +11,19 @@
   width: 250px;
 }
 
+.wk-friendadd-search {
+  position: relative;
+}
+
+.wk-friendadd-search-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
 .wk-friendadd-content-qrcode {
   margin-top: 10px;
   text-align: center;

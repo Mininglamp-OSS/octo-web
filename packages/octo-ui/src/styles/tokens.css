@@ -102,9 +102,24 @@
   --octo-ui-avatar-tone-9-solid: #4954e6;
   --octo-ui-avatar-tone-9-surface: #f2f3fd;
   --octo-ui-avatar-tone-9-icon: #7b83ea;
+
+  --octo-ui-loading-color: var(--wk-purple-500);
+  --octo-ui-loading-text-color: var(--wk-text-legacy-secondary);
+  --octo-ui-loading-text-size: var(--wk-text-size-md);
+  --octo-ui-loading-text-line-height: var(--wk-sp-5);
+  --octo-ui-loading-gap: var(--wk-sp-2);
+  --octo-ui-loading-size-sm: var(--wk-sp-4);
+  --octo-ui-loading-size-md: var(--wk-sp-6);
+  --octo-ui-loading-size-lg: var(--wk-sp-10);
+  --octo-ui-loading-stroke-sm: 2.6px;
+  --octo-ui-loading-stroke-md: 3.2px;
+  --octo-ui-loading-stroke-lg: 4.5px;
+  --octo-ui-loading-duration: 0.8s;
 }
 
 body[theme-mode='dark'] {
+  --octo-ui-loading-text-color: var(--wk-text-secondary);
+
   --octo-ui-tag-muted-icon-color: rgba(var(--semi-grey-9), 0.45);
   --octo-ui-tag-close-hover-bg: rgba(var(--semi-grey-9), 0.12);
 

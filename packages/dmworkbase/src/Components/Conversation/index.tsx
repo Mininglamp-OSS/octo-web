@@ -82,8 +82,8 @@ import WKAvatar from "../WKAvatar";
 import AiBadge from "../AiBadge";
 import AITag from "../../ui/AITag";
 import { IconClose, IconEdit, IconReply } from "@douyinfe/semi-icons";
-import { Tooltip } from "@octo/ui";
-import { Toast, Spin } from "@douyinfe/semi-ui";
+import { Loading, Tooltip } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { AtSign, UserRound } from "lucide-react";
 import { wkConfirm } from "../WKModal";
 import { FlameMessageCell } from "../../Messages/Flame";
@@ -3658,7 +3658,7 @@ class ConversationPositionView extends Component<
                   >
                     {this.getReminderIcon(type) ? (
                       loading.get(type) ? (
-                        <Spin spinning={true}></Spin>
+                        <Loading />
                       ) : (
                         <img src={this.getReminderIcon(type)}></img>
                       )
@@ -3695,7 +3695,7 @@ class ConversationPositionView extends Component<
               }}
             >
               {loading.get(-1) ? (
-                <Spin spinning={true}></Spin>
+                <Loading />
               ) : (
                 <img src={require("./assets/message_down.png")}></img>
               )}

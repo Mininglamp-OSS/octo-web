@@ -36,3 +36,9 @@ export type {
   AvatarGroupProps,
   AvatarGroupSize,
 } from './components/AvatarGroup/types'
+export { default as Loading } from './components/Loading'
+export type {
+  LoadingLayout,
+  LoadingProps,
+  LoadingSize,
+} from './components/Loading/types'

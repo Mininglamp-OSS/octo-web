@@ -24,6 +24,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
   Tooltip: ({ children }: { children: React.ReactNode }) => children,
 }));
 vi.mock("@octo/ui", () => ({
+  Loading: () => React.createElement("span", { role: "status" }),
   Tooltip: ({ children }: { children: React.ReactNode }) => children,
 }));
 vi.mock("@octo/base", () => ({

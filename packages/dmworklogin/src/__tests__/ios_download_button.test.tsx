@@ -26,11 +26,6 @@ vi.mock("@octo/base", () => ({
 }));
 
 vi.mock("@douyinfe/semi-ui", () => ({
-  Spin: ({ "aria-label": ariaLabel }: { "aria-label"?: string }) =>
-    React.createElement("span", {
-      "data-spin": "true",
-      "aria-label": ariaLabel,
-    }),
   Popover: ({
     children,
     position,
@@ -177,7 +172,7 @@ describe("IOSDownloadButton", () => {
     );
 
     expect(html).toContain('role="dialog"');
-    expect(html).toContain('data-spin="true"');
+    expect(html).toContain('class="octo-ui-loading octo-ui-loading--lg octo-ui-loading--inline"');
     expect(html).toContain('aria-label="正在获取下载地址"');
     expect(html).toContain('aria-busy="true"');
     expect(html).not.toContain('role="img"');

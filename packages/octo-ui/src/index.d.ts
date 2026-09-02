@@ -12,6 +12,7 @@ import type { DotProps } from './components/Dot/types'
 import type { TooltipProps } from './components/Tooltip/types'
 import type { AvatarProps } from './components/Avatar/types'
 import type { AvatarGroupProps } from './components/AvatarGroup/types'
+import type { LoadingProps } from './components/Loading/types'
 
 export type {
   ButtonProps,
@@ -46,6 +47,11 @@ export type {
   AvatarGroupProps,
   AvatarGroupSize,
 } from './components/AvatarGroup/types'
+export type {
+  LoadingLayout,
+  LoadingProps,
+  LoadingSize,
+} from './components/Loading/types'
 export interface OctoUIProviderProps {
   children?: ReactNode
 }
@@ -68,5 +74,8 @@ export declare const Avatar: ForwardRefExoticComponent<
 >
 export declare const AvatarGroup: ForwardRefExoticComponent<
   AvatarGroupProps & RefAttributes<HTMLSpanElement>
+>
+export declare const Loading: ForwardRefExoticComponent<
+  LoadingProps & RefAttributes<HTMLSpanElement>
 >
 export declare const OctoUIProvider: FC<OctoUIProviderProps>

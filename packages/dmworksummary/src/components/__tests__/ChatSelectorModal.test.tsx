@@ -37,6 +37,7 @@ vi.mock('@octo/base/src/Components/AiBadge', () => ({
 }));
 
 vi.mock('@octo/ui', () => ({
+    Loading: () => <div data-testid="spinner">loading</div>,
     Tag: ({ children }: any) => <span data-testid="tag">{children}</span>,
 }));
 

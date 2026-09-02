@@ -1,5 +1,6 @@
 import React, { Component } from "react";
-import { Spin, Toast } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { Channel, Subscriber } from "wukongimjssdk";
 import WKAvatar from "../WKAvatar";
 import RouteContext, {
@@ -477,7 +478,7 @@ export class GroupManagement extends Component<
     const memberCount = this.memberCount();
 
     const labels: GroupManagementViewLabels = {
-      loading: <Spin size="large" />,
+      loading: <Loading size="lg" />,
       ownerAndManagers: t("base.groupManagement.ownerAndManagers"),
       botAdmins: t("base.groupManagement.botAdmins"),
       addManager: t("base.groupManagement.addManager"),

@@ -16,7 +16,7 @@ import {
 } from "@react-pdf-viewer/zoom";
 import { pageNavigationPlugin } from "@react-pdf-viewer/page-navigation";
 import { List, Image } from "lucide-react";
-import { Tooltip } from "@octo/ui";
+import { Loading, Tooltip } from "@octo/ui";
 import { IconMenuFold, IconMinus, IconPlus } from "../icons";
 import { BaseRendererProps } from "../types";
 import { isFileTooLarge } from "../config";
@@ -449,8 +449,7 @@ const PdfRenderer: React.FC<PdfRendererProps> = ({ file, onError }) => {
           <div className="wk-file-preview-pdf-renderer__viewer">
             {isLoading && (
               <div className="wk-file-preview-pdf-renderer__loading">
-                <div className="wk-file-preview-pdf-renderer__spinner" />
-                <span>{t("base.filePreview.loading")}</span>
+                <Loading text={t("base.filePreview.loading")} layout="vertical" />
               </div>
             )}
             <Viewer

@@ -7,6 +7,7 @@ import type {
   GlobalSearchDataSource,
 } from "../../Service/SearchTypes";
 import { formatFileSize } from "../../Utils/fileIcon";
+import { Loading } from "@octo/ui";
 import "./drive-search-panel.css";
 
 const PAGE_SIZE = 20;
@@ -320,7 +321,7 @@ const DriveSearchPanel: React.FC<DriveSearchPanelProps> = ({
     if (loading) {
       return (
         <div className="wk-drive-search__hint">
-          {t("base.globalSearch.drive.loading")}
+          <Loading text={t("base.globalSearch.drive.loading")} />
         </div>
       );
     }
@@ -395,7 +396,7 @@ const DriveSearchPanel: React.FC<DriveSearchPanelProps> = ({
             loadingMore spinner > paging error > truncated note > all-loaded. */}
         {items.length > 0 && loadingMore && (
           <div className="wk-drive-search__footer" role="status">
-            {t("base.globalSearch.drive.loading")}
+            <Loading size="sm" text={t("base.globalSearch.drive.loading")} />
           </div>
         )}
         {items.length > 0 && !loadingMore && error && (

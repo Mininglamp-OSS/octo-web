@@ -5,7 +5,8 @@ import {
   ChannelTypeGroup,
   WKSDK,
 } from "wukongimjssdk";
-import { Toast, Spin, Popover } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
+import { Toast, Popover } from "@douyinfe/semi-ui";
 import {
   Thread,
   ThreadStatus,
@@ -1493,7 +1494,7 @@ export default class ThreadPanel extends Component<
 
         {threadsLoading ? (
           <div className="wk-thread-panel-loading">
-            <Spin />
+            <Loading />
           </div>
         ) : (
           <>
@@ -1937,7 +1938,7 @@ export default class ThreadPanel extends Component<
     if (loading) {
       return (
         <div className="wk-thread-panel-loading">
-          <Spin />
+          <Loading />
         </div>
       );
     }

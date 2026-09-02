@@ -24,6 +24,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
   Spin: () => null,
 }));
 vi.mock("@octo/ui", () => ({
+  Loading: () => React.createElement("span", { role: "status" }),
   Tooltip: ({ children }: { children: React.ReactNode }) => children,
 }));
 // WKModal renders footer + children inline; WKButton is a plain button.
