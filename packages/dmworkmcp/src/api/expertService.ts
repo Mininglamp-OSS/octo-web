@@ -15,6 +15,11 @@ import {
   mapPluginSquadListItem,
   fromSkillPlugin,
 } from "./expertWire";
+// Deep import, deliberately — see the identical note in mcpService.ts. The
+// subpath is a leaf module with no imports of its own, so it does not drag the
+// @dmwork/skillmarket React graph into the suites that mock only `axios` +
+// `@octo/base`.
+import { withReviewInvalidation } from "@dmwork/skillmarket/src/api/reviewSignal";
 import type {
   MemberContextWire,
 } from "./expertWire";
@@ -839,13 +844,23 @@ export function getSquad(id: string): Promise<ExpertSquad> {
   return USE_MOCK ? getSquadMock(id) : getSquadReal(id);
 }
 
-export function deleteExpert(id: string): Promise<void> {
+// Both wrapped for the same reason `deleteMcp` and skillmarket's `deleteSkill`
+// are: deleting a plugin settles its pending review request server-side in the
+// same transaction, so the Space's pending count drops and every review read —
+// the 组织发布管理 badge included — is stale until it re-reads. Attached to the
+// endpoint, not to ExpertMarketListPage.handleConfirmDelete, so the next delete
+// surface cannot forget. See reviewSignal.ts.
+export const deleteExpert = withReviewInvalidation(function deleteExpert(
+  id: string
+): Promise<void> {
   return USE_MOCK ? deleteExpertMock(id) : deleteExpertReal(id);
-}
+});
 
-export function deleteSquad(id: string): Promise<void> {
+export const deleteSquad = withReviewInvalidation(function deleteSquad(
+  id: string
+): Promise<void> {
   return USE_MOCK ? deleteSquadMock(id) : deleteSquadReal(id);
-}
+});
 
 /**
  * Set the declared audience of one owned 专家 / 专家团 (see

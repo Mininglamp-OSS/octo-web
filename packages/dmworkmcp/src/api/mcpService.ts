@@ -13,6 +13,14 @@ import type {
   UpdateMcpParams,
 } from "../types/mcp";
 import { toPluginUpsert } from "./mcpWireParams";
+// Deep import, deliberately. `withReviewInvalidation` must be the SAME module
+// instance `useReviewRequests` subscribes to, but this file must not reach the
+// @dmwork/skillmarket barrel: the suites covering it mock only `axios` +
+// `@octo/base`, and pulling that package's React graph in would break them at
+// import time — the reason api/pluginReview.ts exists as a separate bridge
+// file. This subpath resolves to a leaf module with ZERO imports of its own, so
+// it costs this module's graph nothing. Keep that true.
+import { withReviewInvalidation } from "@dmwork/skillmarket/src/api/reviewSignal";
 import {
   SCENE_CODE,
   splitUserSupplied,
@@ -1215,10 +1223,26 @@ export function updateMcp(
   return USE_MOCK ? updateMcpMock(id, params) : updateMcpReal(id, params);
 }
 
-/** DELETE /mcps/{id} — owner-only soft delete. */
-export function deleteMcp(id: string): Promise<void> {
+/**
+ * POST /plugins/delete — owner-only soft delete.
+ *
+ * Wrapped for the same reason @dmwork/skillmarket wraps `deleteSkill`: the
+ * backend cancels the plugin's pending review request inside the delete's own
+ * transaction (octo-marketplace `cancelPendingReviewFor`, reason "plugin
+ * deleted"), because a request whose plugin is gone is unreadable and
+ * unsettleable by anybody. So the Space's pending count really does drop here,
+ * and a client that does not re-read keeps advertising a review request for a
+ * connector that no longer exists.
+ *
+ * On the ENDPOINT rather than on its callers — deleting reaches this function
+ * from the row's 删除 and from the detail modal's inline confirm today, and
+ * whichever surface comes next gets it for free. See reviewSignal.ts.
+ */
+export const deleteMcp = withReviewInvalidation(function deleteMcp(
+  id: string
+): Promise<void> {
   return USE_MOCK ? deleteMcpMock(id) : deleteMcpReal(id);
-}
+});
 
 /**
  * Upload an MCP icon to object storage (POST /mcps/{id}/icon, multipart).
