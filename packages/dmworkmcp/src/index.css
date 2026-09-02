@@ -1574,8 +1574,9 @@
 
 /* The 全部 tab has no market page under it — it renders MineTable directly — so
    it has to supply the scroll container and padding the other four tabs inherit
-   from their page's own content area. Matches .skill-market-content, or the 全部
-   table sits flush against the panel edges while every sibling tab is inset. */
+   from their page's own content area. Matches the 我的发布 hero + tab strip inset,
+   or the 全部 table sits flush against the panel edges while every sibling tab
+   is inset. */
 .wk-mcp-mine__all {
   /* The market pages carry `background: var(--wk-bg-surface)` on their own root;
      this tab has no page under it, so without this the 全部 panel sat on the base
@@ -1586,6 +1587,24 @@
   min-height: 0;
   min-width: 0;
   overflow: auto;
+  padding: var(--wk-sp-4) var(--wk-sp-6);
+}
+
+/* 我的发布's own chrome — the 我的发布 title and the 全部/技能/连接器/专家/专家团 tab
+   strip — is not responsive: it stays inset by var(--wk-sp-6) at every width, and
+   the panel below it has to keep that left edge or the table visibly steps out
+   from under its own tabs.
+
+   Four of the five tabs already do. The 技能 tab does not: .skill-market-content
+   drops to a flat var(--wk-sp-3) under 760px, which is the right call for the
+   STANDALONE 技能市场 route (a phone, no hero and no tab strip above it to line up
+   with) and the wrong one here, where it made the 技能 table alone sit 12px wider
+   than 全部, 连接器, 专家, 专家团 and than the tab strip directly above it.
+
+   Pinned unconditionally rather than inside a matching media query: above 760px
+   this is already the computed value, so it is a no-op there, and stating it once
+   keeps the panel aligned if the skills page adds another breakpoint later. */
+.wk-mcp-mine__panel .skill-market-content {
   padding: var(--wk-sp-4) var(--wk-sp-6);
 }
 
