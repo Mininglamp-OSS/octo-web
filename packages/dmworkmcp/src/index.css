@@ -4503,3 +4503,47 @@
     align-items: stretch;
   }
 }
+
+/* ReviewSubmitModal — the 发布/升级版本 dialog for connectors, experts and expert
+   teams. Its markup shipped with class names but no rules at all, so the notice,
+   the two fields and the error all rendered as undifferentiated body text. */
+.wk-mcp-review-submit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-4);
+}
+.wk-mcp-review-submit__notice {
+  margin: 0;
+  padding: var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.wk-mcp-review-submit__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
+}
+.wk-mcp-review-submit__field > span {
+  color: var(--wk-text-secondary);
+  font-size: 13px;
+  font-weight: var(--wk-font-medium);
+}
+/* The frozen child set. It states what the submission will carry, so it reads as
+   information rather than as a warning even while it is still loading. */
+.wk-mcp-review-submit__relations {
+  margin: 0;
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.wk-mcp-review-submit__error {
+  margin: 0;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-color-error-bg);
+  color: var(--wk-color-error);
+  font-size: 13px;
+}

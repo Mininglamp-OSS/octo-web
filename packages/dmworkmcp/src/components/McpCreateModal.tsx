@@ -654,6 +654,11 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
    * unrepresentable stored audience (`declaredVisibility === undefined`) counts
    * as unchanged — the save is not going to touch that column.
    */
+  // 发布 asks for one thing 保存草稿 does not: the changelog a reviewer will read,
+  // and only on the branch that opens a review. Gating 保存草稿 on it too would
+  // block the author who is not ready to describe the change yet — the same trap
+  // a single shared gate created in the skill form.
+  const canPublishNow = declaredVisibility !== "space" || Boolean(reviewChangelog.trim());
   const willBeUnlisted =
     !editing ||
     editing.listingState !== "published" ||
@@ -980,7 +985,13 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
    * server reuses the connector's current one, which the save just wrote.
    */
   const publishSaved = async (pluginId: string): Promise<string> => {
-    const outcome = await publishPluginListing(pluginId);
+    // The changelog only travels on the branch that opens a review; a private
+    // publish has no reviewer and the server keeps the current version label.
+    const outcome = await publishPluginListing(pluginId, {
+      ...(declaredVisibility === "space" && reviewChangelog.trim()
+        ? { changelog: reviewChangelog.trim() }
+        : {}),
+    });
     return outcome.displayStatus === "pending_review"
       ? t("skillMarket.review.submittedToast")
       : t("skillMarket.plugin.publishedToast");
@@ -1136,8 +1147,16 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
         }
       } else {
         // Reuse the id from a previous attempt whose publish failed, so a second
-        // press publishes that connector instead of minting a duplicate.
-        const pluginId = createdPluginId ?? (await createMcp(payload)).id;
+        // press publishes that connector instead of minting a duplicate — but
+        // still WRITE. Skipping the save on a remembered id drops whatever the
+        // author fixed after that failure, usually the very thing that caused
+        // it, while the toast reports success.
+        let pluginId = createdPluginId;
+        if (!pluginId) {
+          pluginId = (await createMcp(payload)).id;
+        } else {
+          await updateMcp(pluginId, payload);
+        }
         setCreatedPluginId(pluginId);
         if (publish) {
           publishStarted = true;
@@ -1495,7 +1514,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                       <WKButton
                         variant="primary"
                         loading={submitting && publishing}
-                        disabled={submitting && !publishing}
+                        disabled={!canPublishNow || (submitting && !publishing)}
                         onClick={() => void handleSubmit(true)}
                       >
                         {t("skillMarket.plugin.actionPublish")}
@@ -1757,6 +1776,22 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                       {t("skillMarket.plugin.visibilityChangeUnlists")}
                     </div>
                   )}
+                {/* A 本组织 publish opens a review, and the reviewer decides on
+                    this text. Without the field the request reached them empty —
+                    the skill form has required it all along. Shown only for the
+                    audience that triggers a review; a 仅自己 publish has nobody to
+                    explain anything to. */}
+                {declaredVisibility === "space" && (
+                  <Field label={t("skillMarket.review.fieldChangelog")}>
+                    <TextArea
+                      value={reviewChangelog}
+                      onChange={setReviewChangelog}
+                      rows={3}
+                      maxLength={1000}
+                      placeholder={t("skillMarket.review.changelogPlaceholder")}
+                    />
+                  </Field>
+                )}
               </Section>
             )}
           </>

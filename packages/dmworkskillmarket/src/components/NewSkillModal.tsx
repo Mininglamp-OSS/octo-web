@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { AlertCircle, FileArchive, ImagePlus, Loader2, UploadCloud, XCircle } from "lucide-react";
 import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
 import type { Category, NewSkillForm, Skill } from "../types/skill";
-import { createSkill, createReviewRequest, getSkillTags, initReupload, initUpload, publishPlugin, uploadFile, uploadIcon, triggerParse, pollParse } from "../api/skillApi";
+import { createSkill, updateSkill, createReviewRequest, getSkillTags, initReupload, initUpload, publishPlugin, uploadFile, uploadIcon, triggerParse, pollParse } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
@@ -552,28 +552,37 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
       // now survives, because it is exactly what the backend reads to route the
       // publish.
       //
-      // The created id is remembered across retries: if the create succeeds and
-      // the publish fails, a second press must not mint a duplicate plugin.
+      const form: NewSkillForm = {
+        parseTaskId,
+        name,
+        displayName,
+        description,
+        categoryId,
+        tags: submittedTags,
+        visibility: declaredVisibility,
+        version,
+        changelog: changelog || t("skillMarket.form.initialChangelog"),
+        readmeContent: createReadme(name, description, version),
+        iconUrl,
+        fileName: file?.name ?? "",
+        fileSize: file?.size ?? 0,
+      };
+
+      // The created id is remembered across retries: if the create succeeded and
+      // only the publish failed, a second press must not mint a duplicate.
+      //
+      // But it must not SKIP the write either. This used to return early on a
+      // remembered id, so anything the author fixed after that failure — usually
+      // the very thing that made it fail — was silently dropped while the toast
+      // claimed the draft was saved. The retry updates the row it already
+      // created instead.
       let pluginId = createdPluginId;
       if (!pluginId) {
-        const form: NewSkillForm = {
-          parseTaskId,
-          name,
-          displayName,
-          description,
-          categoryId,
-          tags: submittedTags,
-          visibility: declaredVisibility,
-          version,
-          changelog: changelog || t("skillMarket.form.initialChangelog"),
-          readmeContent: createReadme(name, description, version),
-          iconUrl,
-          fileName: file?.name ?? "",
-          fileSize: file?.size ?? 0,
-        };
         const created = await createSkill(form);
         pluginId = created.id;
         setCreatedPluginId(pluginId);
+      } else {
+        await updateSkill(pluginId, form);
       }
 
       if (!publish) {
