@@ -55,13 +55,22 @@ function reviewStatusTone(status: ReviewStatus): string {
   }
 }
 
+/**
+ * There is deliberately no sibling-refresh callback here.
+ *
+ * An `onAction?: () => void` used to be invoked at five sites in this component
+ * and passed by none of its mounts, so five decision paths announced a decision
+ * to nobody — the worst shape a callback can have, because it reads as wired.
+ * Refreshing siblings is now the endpoints' job: every review mutation this
+ * queue issues is `withReviewInvalidation`-wrapped, so the sidebar badge and any
+ * other live `useReviewRequests` re-read on their own (see api/reviewSignal.ts).
+ * If a future mount needs to react to a decision, subscribe to that signal
+ * rather than threading a prop back through here.
+ */
 interface ReviewQueueProps {
   /** `space` is the reviewer queue (403 for non-admins server-side); `mine` is
    *  the applicant's own submissions. */
   mode: ReviewListMode;
-  /** Fired after any successful decision so the caller can refresh sibling
-   *  views (the plugin grid and the "我的" tab badge). */
-  onAction?: () => void;
 }
 
 const PAGE_SIZE = 20;
@@ -97,7 +106,7 @@ const initialHandled = (): HandledState => ({
   canceled: emptyHandledPage(),
 });
 
-export default function ReviewQueue({ mode, onAction }: ReviewQueueProps) {
+export default function ReviewQueue({ mode }: ReviewQueueProps) {
   useI18n();
   const [activeTab, setActiveTab] = useState<QueueTab>("pending");
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -325,7 +334,6 @@ export default function ReviewQueue({ mode, onAction }: ReviewQueueProps) {
     try {
       await approveReview(item.id);
       await refreshAllAsync();
-      onAction?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("skillMarket.review.actionFailed"));
       await refreshAllAsync();
@@ -340,7 +348,6 @@ export default function ReviewQueue({ mode, onAction }: ReviewQueueProps) {
     try {
       await cancelReview(item.id);
       await refreshAllAsync();
-      onAction?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("skillMarket.review.cancelFailed"));
       await refreshAllAsync();
@@ -525,7 +532,6 @@ export default function ReviewQueue({ mode, onAction }: ReviewQueueProps) {
         onClose={() => setDetailId(null)}
         onDecided={() => {
           void refreshAllAsync();
-          onAction?.();
         }}
       />
       <DelistReasonModal
@@ -554,7 +560,6 @@ export default function ReviewQueue({ mode, onAction }: ReviewQueueProps) {
           await refreshAllAsync();
           setActingId(null);
           setDelistTarget(null);
-          onAction?.();
         }}
       />
       <RejectReasonModal
@@ -585,7 +590,6 @@ export default function ReviewQueue({ mode, onAction }: ReviewQueueProps) {
           await refreshAllAsync();
           setActingId(null);
           setRejectTarget(null);
-          onAction?.();
         }}
       />
     </div>
