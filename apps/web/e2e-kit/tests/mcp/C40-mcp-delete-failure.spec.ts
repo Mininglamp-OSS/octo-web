@@ -16,13 +16,14 @@ test("@C40 @p1 @mcp @mcp-delete MCP 删除失败保留确认弹窗和条目", as
   await authedPage.goto("/mcp-market/mine?type=mcp&sid=e2etest");
 
   // Mine assets render as a table; each row's accessible name is the connector
-  // name (role="row"), and the delete action keeps its "删除 <name>" label.
+  // name (role="row"), and the delete action's label is "删除「<name>」"
+  // (dmworkskillmarket ariaDelete — the 我的发布 table is shared across types).
   const card = authedPage.getByRole("row", {
     name: "Delete Failure MCP",
     exact: true,
   });
   await expect(card).toBeVisible();
-  await card.getByRole("button", { name: "删除 Delete Failure MCP", exact: true }).click();
+  await card.getByRole("button", { name: "删除「Delete Failure MCP」", exact: true }).click();
 
   const dialog = authedPage.getByRole("dialog");
   await expect(dialog).toContainText("删除该连接器？");
