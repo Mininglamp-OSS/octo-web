@@ -64,8 +64,8 @@ const changelogPlaceholder = /简述本次提交的变更内容|skillMarket\.rev
 // The scope radio ("提交组织审核" / "仅自己可见（私有）") is replaced by a real
 // visibility choice that is STORED on the plugin. Each radio's accessible name
 // is its label + hint, so these match on the heading fragment only.
-const privateVisibilityRadio = /仅自己可见|skillMarket\.plugin\.visibilityPrivate/;
-const spaceVisibilityRadio = /仅本组织可见|skillMarket\.plugin\.visibilitySpace/;
+const privateVisibilityRadio = /仅自己|skillMarket\.plugin\.visibilityPrivate/;
+const spaceVisibilityRadio = /本组织|skillMarket\.plugin\.visibilitySpace/;
 const draftSavedToast = /已保存草稿|skillMarket\.plugin\.draftSavedToast/;
 const publishedToast = /^(已发布|skillMarket\.plugin\.publishedToast)$/;
 const submittedForReviewToast = /已提交审核|skillMarket\.review\.submittedToast/;
@@ -262,7 +262,7 @@ describe("NewSkillModal", () => {
     });
   }
 
-  it("saves a 仅本组织可见 draft that has no changelog yet", async () => {
+  it("saves a 本组织 draft that has no changelog yet", async () => {
     const onCreated = vi.fn();
     render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={onCreated} />);
 
@@ -295,7 +295,7 @@ describe("NewSkillModal", () => {
     expect(onCreated).toHaveBeenCalledWith(expect.stringMatching(draftSavedToast));
   });
 
-  it("does not publish a 仅本组织可见 plugin while its changelog is empty", async () => {
+  it("does not publish a 本组织 plugin while its changelog is empty", async () => {
     render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} />);
 
     await act(async () => {

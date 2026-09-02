@@ -18,7 +18,7 @@ import IconCropModal from "./IconCropModal";
  * a rule the server owns, and the author's actual intent was thrown away — every
  * plugin was created `private` regardless of what they picked.
  *
- * 全平台可见 (`system`) is deliberately absent: the tenant API rejects it, it is
+ * 全平台 (`system`) is deliberately absent: the tenant API rejects it, it is
  * minted only through the marketplace-admin surface.
  */
 type DeclaredVisibility = "private" | "space";
@@ -173,7 +173,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
   // plugin is headed for organization review, because that text is what the
   // reviewer reads. Gating BOTH buttons on it — as a single `canCreate` did —
   // makes 保存草稿 unreachable for exactly the authors who most need it: someone
-  // who picked 仅本组织可见 and is not ready to describe the change yet.
+  // who picked 本组织 and is not ready to describe the change yet.
   const canPublishNow = canCreate && (declaredVisibility === "private" || Boolean(changelog.trim()));
 
   function updateTagSuggestionStyle() {
@@ -833,7 +833,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
               {/* The DECLARED audience, stored as-is. It lists nothing by itself:
                   发布 is what lists it, and this value is what the backend reads
                   to decide whether that needs organization review.
-                  全平台可见 is absent on purpose — the tenant API rejects it, it is
+                  全平台 is absent on purpose — the tenant API rejects it, it is
                   minted only through the marketplace-admin surface. */}
               <div className="skill-market-scope-options">
                 <label className={declaredVisibility === "private" ? "is-selected" : ""}>
