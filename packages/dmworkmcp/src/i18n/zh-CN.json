@@ -19,7 +19,10 @@
     "navAriaLabel": "我的资产类型",
     "tabAll": "全部",
     "emptyAll": "还没有发布任何内容",
-    "allAriaLabel": "我的全部发布"
+    "allAriaLabel": "我的全部发布",
+    "deleteTitle": "删除插件",
+    "deleteHint": "确定删除「{{name}}」吗？删除后不可恢复。",
+    "deletedToast": "已删除"
   },
   "expert": {
     "typeSquad": "专家团",

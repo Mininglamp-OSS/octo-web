@@ -57,7 +57,7 @@ export {
 // The 全部 tab of 我的发布 lists every plugin type through the one endpoint that
 // can return them together (`mode=mine` with plugin_type omitted), so dmworkmcp
 // needs the reader and the row type.
-export { getMySkills } from "./api/skillApi";
+export { getMySkills, deleteSkill } from "./api/skillApi";
 // The 全部 tab renders skills beside connectors and experts, so it needs the
 // skill avatar helpers to draw a skill row the same way the 技能 tab does.
 export { getSkillAvatarColor, getSkillAvatarText } from "./utils/skillAvatar";

@@ -1,11 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, PackageOpen, RefreshCw } from "lucide-react";
-import { t, useI18n } from "@octo/base";
+import { Toast } from "@douyinfe/semi-ui";
+import { t, useI18n, WKButton, WKModal } from "@octo/base";
 import {
   MineTable,
+  cancelReview,
+  deleteSkill,
   getMySkills,
   getSkillAvatarColor,
   getSkillAvatarText,
+  publishPlugin,
   type MineAssetType,
   type MineRow,
   type Skill,
@@ -31,18 +35,20 @@ const ROW_TYPE: Record<string, MineAssetType> = {
  * The backend made this expressible by allowing `plugin_type` to be omitted on
  * the `mode=mine` listing.
  *
- * Deliberately READ-ONLY apart from opening a row. 编辑 and 升级版本 need the
- * owning market's modal (a connector edits through McpCreateModal, an expert
- * through the bot flow), and reproducing that dispatch here would mean this tab
- * silently drifting from the four that own those flows. Clicking a row takes you
- * to the tab that can act on it. The status column is the point of this view;
- * the actions live one click away.
+ * The actions it offers are exactly the TYPE-AGNOSTIC ones — 发布, 取消审核 and
+ * 删除 each go through an endpoint that takes a plugin id and nothing else. 编辑
+ * and 升级版本 are absent because they need the owning market's authoring surface
+ * (a connector edits through a wizard, an expert through a bot flow), and
+ * reproducing that dispatch here would guarantee this tab drifts from the four
+ * that own those flows. Clicking a row opens the tab that can do them.
  */
 export default function AllAssetsList({ onOpenType }: { onOpenType: (type: string) => void }) {
   useI18n();
   const [items, setItems] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<Skill | null>(null);
   // Guards against an out-of-order response overwriting a newer one.
   const requestRef = useRef(0);
 
@@ -65,6 +71,24 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** Runs one row action and reloads either way — on a conflict the server
+   *  already knows a state this page does not. The row stays disabled until the
+   *  reload settles so a second click cannot race it. */
+  const run = useCallback(
+    async (id: string, action: () => Promise<void>, failKey: string) => {
+      setBusyId(id);
+      try {
+        await action();
+      } catch (err) {
+        Toast.error(err instanceof Error ? err.message : t(failKey));
+      } finally {
+        await load();
+        setBusyId(null);
+      }
+    },
+    [load]
+  );
 
   if (loading && items.length === 0) {
     return (
@@ -102,6 +126,8 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
 
   const rows: MineRow[] = items.map((item) => {
     const wireType = (item as Skill & { pluginType?: string }).pluginType ?? "skill";
+    const status = item.displayStatus ?? "draft";
+    const pending = status === "pending_review";
     return {
       id: item.id,
       type: ROW_TYPE[wireType] ?? "skill",
@@ -132,16 +158,92 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
       visibility: item.visibility,
       views: item.viewCount,
       downloads: item.downloadCount,
-      status: item.displayStatus,
+      status,
       ariaLabel: item.name,
-      // Hands off to the tab that owns this type's edit/publish flows.
+      busy: busyId === item.id,
       onOpen: () => onOpenType(wireType),
+      onPublish:
+        item.listingState !== "published" && !pending
+          ? () =>
+              void run(
+                item.id,
+                async () => {
+                  // The backend routes on the plugin's declared visibility, so the
+                  // toast comes from the response rather than being guessed here.
+                  const outcome = await publishPlugin({
+                    pluginId: item.id,
+                    version: item.version,
+                  });
+                  Toast.success(
+                    outcome.displayStatus === "pending_review"
+                      ? t("skillMarket.review.submittedToast")
+                      : t("skillMarket.plugin.publishedToast")
+                  );
+                },
+                "skillMarket.review.submitFailed"
+              )
+          : undefined,
+      publishAria: t("skillMarket.plugin.ariaPublish", { values: { name: item.name } }),
+      onCancelReview:
+        pending && item.reviewId
+          ? () =>
+              void run(
+                item.id,
+                async () => {
+                  await cancelReview(item.reviewId as string);
+                  Toast.success(t("skillMarket.review.canceledToast"));
+                },
+                "skillMarket.review.cancelFailed"
+              )
+          : undefined,
+      cancelReviewAria: t("skillMarket.plugin.ariaCancelReview", { values: { name: item.name } }),
+      onDelete: () => setDeleting(item),
+      deleteAria: t("skillMarket.plugin.ariaDelete", { values: { name: item.name } }),
     };
   });
 
   return (
     <div className="wk-mcp-mine__all">
       <MineTable rows={rows} ariaLabel={t("mcp.mine.allAriaLabel")} />
+      <WKModal
+        visible={Boolean(deleting)}
+        onCancel={() => {
+          if (!busyId) setDeleting(null);
+        }}
+        title={t("mcp.mine.deleteTitle")}
+        footer={
+          <>
+            <WKButton
+              variant="secondary"
+              onClick={() => setDeleting(null)}
+              disabled={Boolean(busyId)}
+            >
+              {t("skillMarket.common.cancel")}
+            </WKButton>
+            <WKButton
+              variant="danger"
+              loading={Boolean(busyId)}
+              onClick={() => {
+                const target = deleting;
+                if (!target) return;
+                setDeleting(null);
+                void run(
+                  target.id,
+                  async () => {
+                    await deleteSkill(target.id);
+                    Toast.success(t("mcp.mine.deletedToast"));
+                  },
+                  "skillMarket.review.actionFailed"
+                );
+              }}
+            >
+              {t("skillMarket.plugin.actionDelete")}
+            </WKButton>
+          </>
+        }
+      >
+        <p>{t("mcp.mine.deleteHint", { values: { name: deleting?.name ?? "" } })}</p>
+      </WKModal>
     </div>
   );
 }

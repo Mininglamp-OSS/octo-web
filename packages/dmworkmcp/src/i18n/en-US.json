@@ -19,7 +19,10 @@
     "navAriaLabel": "My asset type",
     "tabAll": "All",
     "emptyAll": "You have not published anything yet",
-    "allAriaLabel": "All my publications"
+    "allAriaLabel": "All my publications",
+    "deleteTitle": "Delete plugin",
+    "deleteHint": "Delete {{name}}? This cannot be undone.",
+    "deletedToast": "Deleted"
   },
   "expert": {
     "typeSquad": "Squads",
