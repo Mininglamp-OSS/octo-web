@@ -891,6 +891,12 @@ export interface ExpertChildRelation {
   targetPluginId: string;
   relationType: string;
   sortOrder: number;
+  /** Id of the existing edge, echoed so the backend freezes it untouched
+   *  instead of soft-deleting and re-inserting it. */
+  relationId?: string;
+  /** Opaque per-edge payload — for 专家团 this carries the member's
+   *  `member_key` / `is_leader` wiring that makes the team installable. */
+  data?: Record<string, unknown>;
 }
 
 /**
@@ -910,9 +916,11 @@ export interface ExpertChildRelation {
  * present on the row is echoed, so this stays correct if the backend grows
  * another child edge.
  *
- * KNOWN GAP: `PluginRelationWire.data` (a squad member's `member_key` /
- * `is_leader` wiring) has no field on the review submit payload, so it cannot be
- * frozen. See the mismatch note in the task report.
+ * KNOWN GAP CLOSED: each edge is now echoed WITH its `relation_id` and `data`
+ * (a 专家团 member's `member_key` / `is_leader` wiring). Matching on relation_id
+ * freezes an untouched edge instead of soft-deleting and re-inserting it, and
+ * `data` keeps the wiring that makes the team installable. Mirrors
+ * updateExpertVisibilityReal's echo.
  */
 export async function loadExpertChildRelations(
   id: string
@@ -933,6 +941,11 @@ export async function loadExpertChildRelations(
       // itself renders children (liveRelations sorts by sort_order), so a
       // sparse or duplicated stored ordering can't reorder the approved copy.
       sortOrder: index,
+      // Echoed verbatim so the frozen snapshot keeps each edge's identity and
+      // its 专家团 member wiring (member_key / is_leader) — without them the
+      // backend re-inserts the edge and loses what makes the team installable.
+      relationId: rel.relation_id,
+      ...(rel.data !== undefined ? { data: rel.data } : {}),
     }));
 }
 

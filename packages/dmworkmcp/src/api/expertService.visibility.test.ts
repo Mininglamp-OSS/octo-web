@@ -32,7 +32,7 @@ vi.mock("@octo/base", () => ({
   DEFAULT_REQUEST_TIMEOUT_MS: 20000,
 }));
 
-import { updateExpertVisibility } from "./expertService";
+import { loadExpertChildRelations, updateExpertVisibility } from "./expertService";
 
 /**
  * A squad as the backend returns it: a category, a publisher, a stored icon key
@@ -196,5 +196,37 @@ describe("updateExpertVisibility — the full-replace echo", () => {
       "mcp.list.error.forbidden"
     );
     expect(mock.instance.post).not.toHaveBeenCalled();
+  });
+});
+
+describe("loadExpertChildRelations — the review-submit snapshot", () => {
+  beforeEach(() => {
+    mock.instance.get.mockReset();
+    mock.instance.post.mockReset();
+  });
+
+  it("carries each edge's relation_id and wiring data into the frozen snapshot", async () => {
+    wire();
+    const relations = await loadExpertChildRelations("squad-1");
+    // The review submission REPLACES the live graph, so an omitted relation_id /
+    // data would soft-delete each edge and re-insert it without its member wiring
+    // — the frozen team would approve without the member_key / is_leader that
+    // makes it installable. sort_order is re-normalized to a dense 0..n-1.
+    expect(relations).toEqual([
+      {
+        targetPluginId: "member-a",
+        relationType: "expert_team_expert",
+        sortOrder: 0,
+        relationId: "rel-1",
+        data: { member_key: "lead", is_leader: true },
+      },
+      {
+        targetPluginId: "member-b",
+        relationType: "expert_team_expert",
+        sortOrder: 1,
+        relationId: "rel-2",
+        data: { member_key: "worker" },
+      },
+    ]);
   });
 });

@@ -1257,6 +1257,45 @@ describe("skillApiReal", () => {
       });
     });
 
+    it("createReviewRequest echoes relation_id and data so an untouched 专家团 edge is frozen, not re-inserted", async () => {
+      mockFetch.mockReturnValueOnce(jsonResponse(reviewWire()));
+
+      await createReviewRequest({
+        pluginId: "team-1",
+        version: "1.1.0",
+        changelog: "更新成员",
+        relations: [
+          {
+            targetPluginId: "member-1",
+            relationType: "expert_team_expert",
+            sortOrder: 0,
+            relationId: "rel-1",
+            data: { member_key: "lead", is_leader: true },
+          },
+          // A brand-new edge with no id/data: those keys stay off the wire.
+          { targetPluginId: "member-2", relationType: "expert_team_expert", sortOrder: 1 },
+        ],
+      });
+
+      const body = JSON.parse(
+        (mockFetch.mock.calls[0][1] as { body: string }).body
+      );
+      expect(body.relations).toEqual([
+        {
+          target_plugin_id: "member-1",
+          relation_type: "expert_team_expert",
+          sort_order: 0,
+          relation_id: "rel-1",
+          data: { member_key: "lead", is_leader: true },
+        },
+        {
+          target_plugin_id: "member-2",
+          relation_type: "expert_team_expert",
+          sort_order: 1,
+        },
+      ]);
+    });
+
     it("createReviewRequest omits absent content fields instead of sending null", async () => {
       mockFetch.mockReturnValueOnce(jsonResponse(reviewWire()));
 

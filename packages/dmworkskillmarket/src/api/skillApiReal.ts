@@ -985,6 +985,14 @@ export interface ReviewRelationInput {
   targetPluginId: string;
   relationType: string;
   sortOrder?: number;
+  /** Id of the existing edge being frozen. Matching on it lets the backend
+   *  recognize an untouched edge instead of soft-deleting and re-inserting it;
+   *  omit it for a brand-new relation the submission introduces. */
+  relationId?: string;
+  /** Opaque per-edge payload (a 专家团 member's `member_key` / `is_leader`
+   *  wiring). Dropping it re-inserts the edge without the wiring that makes the
+   *  team installable, so it must survive the round-trip verbatim. */
+  data?: Record<string, unknown>;
 }
 
 /**
@@ -1049,6 +1057,13 @@ export function createReviewRequest(
       ...(relation.sortOrder !== undefined
         ? { sort_order: relation.sortOrder }
         : {}),
+      // Echo relation_id / data verbatim when present so the backend keeps an
+      // untouched 专家团 edge (and its member_key / is_leader wiring) instead of
+      // soft-deleting and re-inserting it — mirrors updateExpertVisibilityReal.
+      ...(relation.relationId !== undefined
+        ? { relation_id: relation.relationId }
+        : {}),
+      ...(relation.data !== undefined ? { data: relation.data } : {}),
     }));
   }
   return request<PluginReviewRequestWire>("/plugins/review_requests", {
