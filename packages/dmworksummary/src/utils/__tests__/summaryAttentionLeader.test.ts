@@ -19,16 +19,18 @@ import {
 } from '../summaryAttentionLeader';
 
 /** 一份可被多个「标签页」共享的内存 storage（模拟同源 localStorage）。 */
-function createMemoryStorage(): Storage & { failReads: boolean; failWrites: boolean } {
+function createMemoryStorage(): Storage & { failReads: boolean; failWrites: boolean; returnNullReads: boolean } {
     const map = new Map<string, string>();
     return {
         failReads: false,
         failWrites: false,
+        returnNullReads: false,
         get length() { return map.size; },
         clear: () => map.clear(),
         key: (i: number) => Array.from(map.keys())[i] ?? null,
-        getItem(this: { failReads: boolean }, key: string) {
+        getItem(this: { failReads: boolean; returnNullReads: boolean }, key: string) {
             if (this.failReads) throw new Error('SecurityError');
+            if (this.returnNullReads) return null;
             return map.get(key) ?? null;
         },
         setItem(this: { failWrites: boolean }, key: string, value: string) {
@@ -36,7 +38,7 @@ function createMemoryStorage(): Storage & { failReads: boolean; failWrites: bool
             map.set(key, value);
         },
         removeItem: (key: string) => { map.delete(key); },
-    } as Storage & { failReads: boolean; failWrites: boolean };
+    } as Storage & { failReads: boolean; failWrites: boolean; returnNullReads: boolean };
 }
 
 /** 共享总线上的 BroadcastChannel 替身：同名 channel 互相收发，且不回自己。 */
@@ -73,6 +75,8 @@ function createTab(options: {
     clock: { now: number };
     /** 初始可见性。缺省可见——绝大多数用例不关心这一维。 */
     visible?: boolean;
+    scopeId?: string;
+    userId?: string;
 }) {
     const events: string[] = [];
     const remote: Array<{ count: number; spaceId: string; sampleAt: number }> = [];
@@ -83,6 +87,8 @@ function createTab(options: {
 
     const leader = createAttentionLeader({
         tabId: options.id,
+        scopeId: options.scopeId,
+        getUserId: () => options.userId ?? '',
         storage: options.storage,
         broadcastChannelCtor: options.ctor,
         now: () => options.clock.now,
@@ -535,6 +541,28 @@ describe('createAttentionLeader —— 降级（宁可多打请求，也不能�
         expect(a.hasHeartbeat()).toBe(false);
     });
 
+    it('运行中 storage 静默吞写后读回 null 时所有标签页降级自轮', () => {
+        const storage = createMemoryStorage();
+        const factory = createChannelFactory();
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        const b = createTab({ id: 'tab-b', storage, ctor: factory.ctor, clock });
+        a.leader.start();
+        b.leader.start();
+        expect(a.leader.isLeader()).toBe(true);
+        expect(b.leader.isLeader()).toBe(false);
+
+        storage.returnNullReads = true;
+        a.beat();
+        b.beat();
+
+        expect(a.leader.isDegraded()).toBe(true);
+        expect(b.leader.isDegraded()).toBe(true);
+        expect(a.leader.isLeader()).toBe(true);
+        expect(b.leader.isLeader()).toBe(true);
+        expect(a.hasHeartbeat()).toBe(false);
+        expect(b.hasHeartbeat()).toBe(false);
+    });
+
     it('BroadcastChannel 构造函数抛异常时也降级，而不是把模块带崩', () => {
         const storage = createMemoryStorage();
         const ThrowingChannel = function () {
@@ -589,6 +617,45 @@ describe('createAttentionLeader —— 降级（宁可多打请求，也不能�
             tabs.forEach((t) => t.leader.start());
             expect(tabs.some((t) => t.leader.isLeader())).toBe(true);
         }
+    });
+});
+
+describe('createAttentionLeader —— 会话隔离', () => {
+    it('不同 sid/uid 各自选主，且不会接收对方广播', () => {
+        const storage = createMemoryStorage();
+        const factory = createChannelFactory();
+        const clock = { now: 1_000_000 };
+        const a = createTab({
+            id: 'tab-a', storage, ctor: factory.ctor, clock,
+            scopeId: 'sid-a', userId: 'user-a',
+        });
+        const b = createTab({
+            id: 'tab-b', storage, ctor: factory.ctor, clock,
+            scopeId: 'sid-b', userId: 'user-b',
+        });
+
+        a.leader.start();
+        b.leader.start();
+        expect(a.leader.isLeader()).toBe(true);
+        expect(b.leader.isLeader()).toBe(true);
+
+        a.leader.publish(7, 'space-shared', 1_700_000_000_000);
+        b.leader.publish(9, 'space-shared', 1_700_000_000_001);
+        expect(a.remote).toEqual([]);
+        expect(b.remote).toEqual([]);
+    });
+
+    it('同一频道也拒绝不同 uid 的广播', () => {
+        const storage = createMemoryStorage();
+        const factory = createChannelFactory();
+        const clock = { now: 1_000_000 };
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock, scopeId: 'sid', userId: 'user-a' });
+        const b = createTab({ id: 'tab-b', storage, ctor: factory.ctor, clock, scopeId: 'sid', userId: 'user-b' });
+        a.leader.start();
+        b.leader.start();
+
+        a.leader.publish(7, 'space-shared', 1_700_000_000_000);
+        expect(b.remote).toEqual([]);
     });
 });
 

@@ -65,6 +65,7 @@ const im = vi.hoisted(() => ({
 }));
 
 vi.mock("@octo/base", () => ({
+  getSessionSid: () => "sid-test",
   i18n: { registerNamespace: vi.fn() },
   t: (key: string) => key,
   Dap: { shared: { track: vi.fn() } },
@@ -220,6 +221,8 @@ describe("SummaryModule —— 兜底轮询接线", () => {
   });
 
   it("轮询由 leader 拉起、由失去身份停掉（而不是 init 里直接 start）", () => {
+    expect(captured.leaderDeps.scopeId).toBe("sid-test");
+    expect(captured.leaderDeps.getUserId()).toBe("u1");
     // init 只是把 leader 起起来；是否轮询由选举结果决定, 且入口层必须先
     // 显式 startSummaryAttentionPolling() (在 MSW 就绪之后), 否则 init 时同步
     // promote 的第一拍会漏 mock.

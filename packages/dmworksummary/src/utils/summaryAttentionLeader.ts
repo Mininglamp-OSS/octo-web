@@ -101,6 +101,10 @@ export interface AttentionLeaderDeps {
     broadcastChannelCtor?: typeof BroadcastChannel | null;
     /** 本标签页的唯一标识，测试可注入以获得确定性。 */
     tabId?: string;
+    /** 当前登录会话作用域。不同 sid 必须使用独立租约与广播频道。 */
+    scopeId?: string;
+    /** 动态读取当前用户，广播接收时用于二次隔离校验。 */
+    getUserId?: () => string;
     heartbeatMs?: number;
     staleAfterMs?: number;
 }
@@ -145,10 +149,10 @@ function defaultTabId(): string {
  * 存在但 setItem 抛 QuotaExceededError 的对象；配额写满、被企业策略禁用、
  * 被扩展替换成空壳的情况也都是「对象在、功能不在」。探测失败就降级。
  */
-function probeStorage(storage: Storage | null | undefined): Storage | null {
+function probeStorage(storage: Storage | null | undefined, leaseKey: string): Storage | null {
     if (!storage) return null;
     try {
-        const probeKey = `${LEASE_KEY}:probe`;
+        const probeKey = `${leaseKey}:probe`;
         storage.setItem(probeKey, '1');
         const ok = storage.getItem(probeKey) === '1';
         storage.removeItem(probeKey);
@@ -187,10 +191,10 @@ type LeaseReadResult =
     | { ok: true; lease: LeaseRecord | null }
     | { ok: false };
 
-function readLease(storage: Storage): LeaseReadResult {
+function readLease(storage: Storage, leaseKey: string): LeaseReadResult {
     let raw: string | null;
     try {
-        raw = storage.getItem(LEASE_KEY);
+        raw = storage.getItem(leaseKey);
     } catch {
         // 运行期间 storage 也可能失效（配额、策略切换、宿主替换实现）。这和
         // 「租约不存在」不能混为一谈：后者应该竞争，前者必须切到人人自轮。
@@ -218,12 +222,16 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
     const heartbeatMs = deps.heartbeatMs ?? LEADER_HEARTBEAT_MS;
     const staleAfterMs = deps.staleAfterMs ?? LEADER_STALE_AFTER_MS;
     const tabId = deps.tabId ?? defaultTabId();
+    const scopeId = deps.scopeId?.trim() ?? '';
+    const leaseKey = scopeId ? `${LEASE_KEY}:${scopeId}` : LEASE_KEY;
+    const channelName = scopeId ? `${CHANNEL_NAME}:${scopeId}` : CHANNEL_NAME;
+    const getUserId = deps.getUserId ?? (() => '');
     const isVisibleFn = deps.isVisible ?? (() => true);
 
     const rawStorage = deps.storage !== undefined
         ? deps.storage
         : defaultLocalStorage();
-    let storage = probeStorage(rawStorage);
+    let storage = probeStorage(rawStorage, leaseKey);
 
     const ChannelCtor = deps.broadcastChannelCtor !== undefined
         ? deps.broadcastChannelCtor
@@ -232,7 +240,7 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
     const openChannel = (): BroadcastChannel | null => {
         if (!ChannelCtor) return null;
         try {
-            return new ChannelCtor(CHANNEL_NAME);
+            return new ChannelCtor(channelName);
         } catch {
             // 构造失败（宿主给了个会抛的壳）等同不可用，下面按降级处理。
             return null;
@@ -297,7 +305,7 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
         // leader 会一边停着自己的表、一边每 3s 告诉所有人「我还活着」。
         if (!visible) return false;
         try {
-            storage.setItem(LEASE_KEY, JSON.stringify({ id: tabId, ts: now() } satisfies LeaseRecord));
+            storage.setItem(leaseKey, JSON.stringify({ id: tabId, ts: now() } satisfies LeaseRecord));
             return true;
         } catch {
             enterDegradedMode();
@@ -308,11 +316,11 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
     const clearLeaseIfMine = () => {
         if (!storage) return;
         try {
-            const result = readLease(storage);
+            const result = readLease(storage, leaseKey);
             if (!result.ok) return;
             const lease = result.lease;
             // 只清自己的：接管发生后租约已经属于别人，清掉会让它平白掉线。
-            if (lease && lease.id === tabId) storage.removeItem(LEASE_KEY);
+            if (lease && lease.id === tabId) storage.removeItem(leaseKey);
         } catch {
             // 清不掉就等它过期，正确性不依赖这一步。
         }
@@ -369,7 +377,7 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
             }
             return;
         }
-        const leaseResult = readLease(storage);
+        const leaseResult = readLease(storage, leaseKey);
         if (!leaseResult.ok) {
             enterDegradedMode();
             return;
@@ -397,13 +405,19 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
             // 两个标签页各发一次轮询——比「谁都不敢抢」好得多，
             // 而 localStorage 没有 CAS，纯前端做不到真正的原子抢占。
             if (!writeLease() || !storage) return;
-            const afterResult = readLease(storage);
+            const afterResult = readLease(storage, leaseKey);
             if (!afterResult.ok) {
                 enterDegradedMode();
                 return;
             }
             const after = afterResult.lease;
-            if (after?.id === tabId) promote();
+            // 刚成功写入自己的租约却读回 null，说明 storage 是 silent no-op 空壳，
+            // 不是一场正常竞争。继续选举会让所有标签页每拍都 resign，必须降级自轮。
+            if (!after) {
+                enterDegradedMode();
+                return;
+            }
+            if (after.id === tabId) promote();
             else resign();
             return;
         }
@@ -418,8 +432,12 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
             count?: number;
             spaceId?: string;
             sampleAt?: number;
+            scopeId?: string;
+            userId?: string;
         } | null;
         if (!data || data.type !== 'attention-count') return;
+        if ((data.scopeId ?? '') !== scopeId) return;
+        if ((data.userId ?? '') !== getUserId()) return;
         if (typeof data.count !== 'number' || !Number.isFinite(data.count)) return;
         if (typeof data.spaceId !== 'string' || !data.spaceId) return;
         // sampleAt 缺失/非法 → 丢弃，不要用 0 或 now() 兜底：前者会让这条广播
@@ -531,7 +549,14 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
         publish(count: number, spaceId: string, sampleAt: number): void {
             if (!channel) return;
             try {
-                channel.postMessage({ type: 'attention-count', count, spaceId, sampleAt });
+                channel.postMessage({
+                    type: 'attention-count',
+                    count,
+                    spaceId,
+                    sampleAt,
+                    scopeId,
+                    userId: getUserId(),
+                });
             } catch {
                 // 广播失败不影响本标签页自己的红点，静默。
             }

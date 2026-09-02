@@ -1,7 +1,7 @@
 import React from "react";
 import WKSDK, { ConnectStatus } from "wukongimjssdk";
 import type { IModule } from "@octo/base";
-import { i18n, WKApp, Menus, t as translate, Dap } from "@octo/base";
+import { i18n, WKApp, Menus, t as translate, Dap, getSessionSid } from "@octo/base";
 import SummaryListPage from "./pages/SummaryListPage";
 import SummaryCreatePage from "./pages/SummaryCreatePage";
 import SummaryDetailPage from "./pages/SummaryDetailPage";
@@ -314,6 +314,8 @@ export class SummaryModule implements IModule {
         });
 
         _attentionLeader = createAttentionLeader({
+            scopeId: getSessionSid(),
+            getUserId: () => WKApp.loginInfo.uid ?? '',
             onBecomeLeader: () => {
                 _attentionPoll?.start();
                 // 接管意味着刚才有一段【没人轮询】的窗口（上任 leader 崩了、或者
