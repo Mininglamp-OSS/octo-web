@@ -13,7 +13,7 @@
       "import": "./dist/index.js"
     },
     "./components/Loading": {
-      "types": "./dist/loading.d.ts",
+      "types": "./src/components/Loading/index.tsx",
       "development": "./src/components/Loading/index.tsx",
       "import": "./dist/loading.js"
     },
