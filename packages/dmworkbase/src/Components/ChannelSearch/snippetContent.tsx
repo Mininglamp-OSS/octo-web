@@ -6,6 +6,25 @@ type HighlightRange = {
   end: number;
 };
 
+/**
+ * Decode the five XML entities emitted by OpenSearch's `encoder=html`
+ * highlighter into their literal characters. Pure string transform — no DOM
+ * parsing, no template evaluation — so a decoded segment is only ever used as
+ * a React text node downstream (never as HTML). The set is closed: OpenSearch's
+ * HTML encoder emits exactly `& < > " '` escapes and preserves the highlighter
+ * pre/post tags (`<mark>` / `</mark>`) which we extract with a regex above.
+ */
+function decodeHTMLEntities(input: string): string {
+  if (!input) return input;
+  return input
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
 export type ChannelSearchSnippetToken =
   | {
       type: "text";
@@ -32,12 +51,18 @@ export function parseChannelSearchSnippetHighlights(
 
   while ((match = markPattern.exec(text))) {
     if (match.index > cursor) {
-      const plainText = text.slice(cursor, match.index);
+      // Server sets OpenSearch highlighter Encoder("html") to escape all
+      // uploader-controlled source (file names, Tika-extracted body, message
+      // text) — only <mark>/</mark> stay live. Decoding here yields the
+      // original characters as text (rendered via React text nodes downstream,
+      // never dangerouslySetInnerHTML), so `&lt;script&gt;` appears literally
+      // as "<script>" without executing.
+      const plainText = decodeHTMLEntities(text.slice(cursor, match.index));
       parts.push(plainText);
       plainLength += plainText.length;
     }
 
-    const markedText = match[1];
+    const markedText = decodeHTMLEntities(match[1]);
     const start = plainLength;
     parts.push(markedText);
     plainLength += markedText.length;
@@ -47,7 +72,7 @@ export function parseChannelSearchSnippetHighlights(
 
   if (ranges.length > 0) {
     if (cursor < text.length) {
-      parts.push(text.slice(cursor));
+      parts.push(decodeHTMLEntities(text.slice(cursor)));
     }
     return {
       text: parts.join(""),

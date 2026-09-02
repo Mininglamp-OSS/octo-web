@@ -132,4 +132,49 @@ describe("ChannelSearchSnippetContent", () => {
     expect(root.querySelector("img")?.getAttribute("alt")).toBe("[OK]");
     expect(root.querySelector("mark")?.textContent).toBe("hello");
   });
+
+  // Stored-XSS defence: server sets OpenSearch highlighter Encoder("html") so
+  // uploader-controlled name/body/text arrives with the five XML entities
+  // escaped; only <mark>/</mark> stay live. parseChannelSearchSnippetHighlights
+  // must decode those entities so the visible text is the original characters,
+  // and the render path must place them in React text nodes (never as HTML).
+  it("decodes html entities inside plain and marked segments", () => {
+    const parsed = parseChannelSearchSnippetHighlights(
+      "prefix &lt;script&gt; &amp; <mark>renamed &quot;doc&quot;</mark> tail &#x27;",
+      ""
+    );
+    expect(parsed).toEqual({
+      text: "prefix <script> & renamed \"doc\" tail '",
+      ranges: [{ start: 18, end: 31 }],
+    });
+  });
+
+  it("never executes injected HTML in a hostile file name highlight", () => {
+    // Simulate a file uploaded with a malicious name and a keyword that
+    // overlaps the tokenized name: server returns the whole name with only
+    // <mark> as live markup and everything else entity-escaped.
+    const wire =
+      "&lt;img src=x onerror=alert(1)&gt;.<mark>pdf</mark>";
+    const root = renderSnippet(
+      <ChannelSearchSnippetContent text={wire} keyword="pdf" />
+    );
+    // Visible text is the literal characters, no HTML element created.
+    expect(root.textContent).toBe("<img src=x onerror=alert(1)>.pdf");
+    expect(root.querySelector("img")).toBeNull();
+    // The <mark> stays live (the ONLY tag the server preserved).
+    expect(root.querySelector("mark")?.textContent).toBe("pdf");
+  });
+
+  it("never executes injected HTML in a hostile content snippet", () => {
+    const wire =
+      "quarterly &lt;script&gt;alert(1)&lt;/script&gt; report; <mark>渠道</mark> summary";
+    const root = renderSnippet(
+      <ChannelSearchSnippetContent text={wire} keyword="渠道" />
+    );
+    expect(root.textContent).toBe(
+      "quarterly <script>alert(1)</script> report; 渠道 summary"
+    );
+    expect(root.querySelector("script")).toBeNull();
+    expect(root.querySelector("mark")?.textContent).toBe("渠道");
+  });
 });
