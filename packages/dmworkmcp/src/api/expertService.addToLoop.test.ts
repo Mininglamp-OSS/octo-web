@@ -134,7 +134,7 @@ describe("expertService add-to-loop wire contract", () => {
     expect(res).toEqual([{ id: "rt1", name: "Runtime One", status: "online" }]);
   });
 
-  it("installExpertToLoop POSTs /experts/{id}/install with snake_case body and returns agentId", async () => {
+  it("installExpertToLoop POSTs /plugins/install with the plugin id and returns agentId", async () => {
     mock.instance.post.mockResolvedValue({
       data: { data: { agent_id: "agent-123" } },
     });
@@ -145,21 +145,10 @@ describe("expertService add-to-loop wire contract", () => {
     });
 
     expect(mock.instance.post).toHaveBeenCalledWith(
-      "/market/api/v1/experts/expert-1/install",
-      { workspace_id: "w1", runtime_id: "rt1" }
+      "/market/api/v1/plugins/install",
+      { plugin_id: "expert-1", workspace_id: "w1", runtime_id: "rt1" }
     );
     expect(res).toEqual({ agentId: "agent-123" });
-  });
-
-  it("installExpertToLoop URL-encodes the expert id", async () => {
-    mock.instance.post.mockResolvedValue({ data: { data: { agent_id: "a1" } } });
-
-    await installExpertToLoop("a/b c", { workspaceId: "w", runtimeId: "r" });
-
-    expect(mock.instance.post).toHaveBeenCalledWith(
-      "/market/api/v1/experts/a%2Fb%20c/install",
-      { workspace_id: "w", runtime_id: "r" }
-    );
   });
 
   it("installExpertToLoop rejects when the 2xx envelope has no agent_id", async () => {
@@ -170,9 +159,9 @@ describe("expertService add-to-loop wire contract", () => {
     ).rejects.toThrow();
   });
 
-  it("installSquadToLoop POSTs /squads/{id}/install with snake_case body and returns squadId", async () => {
+  it("installSquadToLoop POSTs /plugins/install with the plugin id and returns squadId", async () => {
     mock.instance.post.mockResolvedValue({
-      data: { data: { squad_id: "squad-123", leader_agent_id: "agent-lead" } },
+      data: { data: { squad_id: "squad-123" } },
     });
 
     const res = await installSquadToLoop("squad-1", {
@@ -181,13 +170,13 @@ describe("expertService add-to-loop wire contract", () => {
     });
 
     expect(mock.instance.post).toHaveBeenCalledWith(
-      "/market/api/v1/squads/squad-1/install",
-      { workspace_id: "w1", runtime_id: "rt1" }
+      "/market/api/v1/plugins/install",
+      { plugin_id: "squad-1", workspace_id: "w1", runtime_id: "rt1" }
     );
     expect(res).toEqual({ squadId: "squad-123" });
   });
 
-  it("installSquadToLoop URL-encodes the squad id and rejects on a missing squad_id", async () => {
+  it("installSquadToLoop rejects on a missing squad_id", async () => {
     mock.instance.post.mockResolvedValue({ data: { data: {} } });
 
     await expect(
@@ -195,8 +184,8 @@ describe("expertService add-to-loop wire contract", () => {
     ).rejects.toThrow();
 
     expect(mock.instance.post).toHaveBeenCalledWith(
-      "/market/api/v1/squads/a%2Fb%20c/install",
-      { workspace_id: "w", runtime_id: "r" }
+      "/market/api/v1/plugins/install",
+      { plugin_id: "a/b c", workspace_id: "w", runtime_id: "r" }
     );
   });
 

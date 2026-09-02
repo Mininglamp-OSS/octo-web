@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Boxes, ChevronDown, FileText, Wrench } from "lucide-react";
 import { t, useI18n } from "@octo/base";
 import type { ExpertSkill } from "../mock/expertMock";
 import ExpertSkillBrowser from "./ExpertSkillBrowser";
+import { redactMcpConfig } from "../utils/redactMcpConfig";
 
 interface ExpertSpecViewProps {
   instruction?: string;
@@ -32,6 +33,15 @@ export default function ExpertSpecView({
   useI18n();
   // Index of the expanded skill (null when all collapsed); one open at a time.
   const [openSkill, setOpenSkill] = useState<number | null>(null);
+  // The detail view is read-only and public; mask any literal secret in the
+  // mcp.json (env/header values, url query tokens, positional args) so a
+  // hand-written credential is not exposed. redactMcpConfig returns null when
+  // it can't safely parse/round-trip the config (fail closed) — render a
+  // localized notice instead of the untrusted original.
+  const redactedMcpConfig = useMemo(
+    () => (mcpConfig ? redactMcpConfig(mcpConfig) : mcpConfig),
+    [mcpConfig]
+  );
 
   const toggle = (index: number) =>
     setOpenSkill((cur) => (cur === index ? null : index));
@@ -58,7 +68,9 @@ export default function ExpertSpecView({
               <h3>{t("mcp.expert.mcpTitle")}</h3>
             </div>
           </div>
-          <pre className="wk-mcp-expert-code">{mcpConfig}</pre>
+          <pre className="wk-mcp-expert-code">
+            {redactedMcpConfig ?? t("mcp.expert.mcpUnavailable")}
+          </pre>
         </section>
       )}
 

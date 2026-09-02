@@ -115,7 +115,7 @@ describe("expert metric counts", () => {
     expect(trackExpertView).toHaveBeenLastCalledWith("squad", "squad-1");
   });
 
-  it("renders compact view/install counts on the card and detail header", () => {
+  it("renders compact view/install counts on the card", () => {
     const cardRoot = render(<ExpertCard item={agent} onOpen={vi.fn()} />);
     // Compute the expectation with the same Intl options the component uses —
     // compact notation output is locale-dependent (1.3K vs 1280 under zh-CN).
@@ -125,11 +125,6 @@ describe("expert metric counts", () => {
     }).format(1280);
     expect(cardRoot.textContent).toContain(compact1280);
     expect(cardRoot.textContent).toContain("6");
-
-    const detailRoot = render(<ExpertDetailModal item={squad} onClose={vi.fn()} />);
-    expect(detailRoot.querySelectorAll(".wk-mcp-expert-detail__stat")).toHaveLength(2);
-    expect(detailRoot.textContent).toContain("42");
-    expect(detailRoot.textContent).toContain("3");
   });
 
   it("keeps zero counts visible instead of hiding the stats", () => {

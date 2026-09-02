@@ -12,7 +12,6 @@ test("@EX1 @p1 @experts @market Experts 市场列表与详情", async ({ authedP
   await expect(
     authedPage.getByRole("navigation", { name: "专家类型" })
   ).toBeVisible();
-  await expect(authedPage.getByText("共 1 个")).toBeVisible();
 
   const expertCard = authedPage.getByRole("button", { name: "发布负责人" });
   await expect(expertCard).toBeVisible();

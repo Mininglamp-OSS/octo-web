@@ -31,16 +31,45 @@ describe("buildQuickStartTabs — JSON snippet", () => {
     expect(server.env).toEqual({ FOO: "bar", GITHUB_TOKEN: formatTokenPlaceholder("GITHUB_TOKEN") });
   });
 
-  it("stdio: shared env value is published verbatim (no forced masking)", () => {
+  it("stdio: a NON-secret shared env value passes through verbatim", () => {
     const qs: McpQuickStart = {
       transport: "stdio",
       serverName: "svc",
       command: "npx",
+      env: { REGION: "us-east-1" },
+    };
+    const server = JSON.parse(content(qs, "json")).mcpServers.svc;
+    // Non-secret shared key → published as-is so the snippet works as authored.
+    expect(server.env).toEqual({ REGION: "us-east-1" });
+  });
+
+  it("stdio: a SECRET-shaped shared env value is masked (backend blanks nothing on read)", () => {
+    const qs: McpQuickStart = {
+      transport: "stdio",
+      serverName: "svc",
+      command: "npx",
+      // No envUserSupplied entry, but the KEY is secret-shaped — a literal here
+      // would otherwise render to every viewer. Masked to a fillable placeholder.
       env: { API_KEY: "shared-service-account" },
     };
     const server = JSON.parse(content(qs, "json")).mcpServers.svc;
-    // No headersUserSupplied / envUserSupplied entry → value is trusted-shared.
-    expect(server.env).toEqual({ API_KEY: "shared-service-account" });
+    expect(server.env).toEqual({ API_KEY: formatTokenPlaceholder("API_KEY") });
+    expect(JSON.stringify(server)).not.toContain("shared-service-account");
+  });
+
+  it("remote: masks URL userinfo + query values but keeps the endpoint host/path", () => {
+    const qs: McpQuickStart = {
+      transport: "streamable-http",
+      serverName: "svc",
+      url: "https://u:LEAKp@mcp.example.com/sse?api_key=LEAKf&region=us",
+    };
+    const url = JSON.parse(content(qs, "json")).mcpServers.svc.url;
+    expect(url).not.toContain("LEAKf");
+    expect(url).not.toContain("LEAKp");
+    // Endpoint host + path stay so the snippet still points at the right server;
+    // query values are masked as fillable placeholders (all of them, per review).
+    expect(url).toContain("mcp.example.com/sse");
+    expect(url).not.toContain("region=us");
   });
 
   it("stdio: omits env when backend returned nothing", () => {

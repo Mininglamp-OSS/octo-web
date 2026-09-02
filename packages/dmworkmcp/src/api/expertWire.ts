@@ -13,6 +13,12 @@ import type {
   ExpertMember,
   ExpertSquad,
 } from "../mock/expertMock";
+import {
+  jsonAttachment,
+  rawAttachment,
+  type PluginDetailPluginWire,
+  type PluginListItemWire,
+} from "./pluginWire";
 
 // ─── Wire interfaces ────────────────────────────────────────────────────────
 
@@ -193,5 +199,181 @@ export function mapSquadDetail(raw: ExpertSquadDetailWire): ExpertSquad {
     },
     permission: raw.permission ?? "",
     checkResult: "supported",
+  };
+}
+
+// ─── Unified plugin wire mappers (octo-marketplace /plugins) ────────────────
+// The unified list item carries the manifest for display plus row-level
+// counters; detail assembly (attachments + relations fan-out) lives in
+// expertService — these are the pure projections.
+
+/** Structured view of the team package's AGENTS.md document. The contract
+ *  layout carries the collaboration/dispatch config as deterministic prose
+ *  (rendered by the marketplace backfill/repackage teamAgentsMarkdown); this
+ *  parser is its inverse and must track that format. */
+export interface TeamAgentsDoc {
+  leader: string;
+  strategies: string[];
+  dependencies: { blocking: string[]; recommended: string[] };
+  permission: string;
+}
+
+export function parseTeamAgentsMarkdown(text: string): TeamAgentsDoc {
+  const doc: TeamAgentsDoc = {
+    leader: "",
+    strategies: [],
+    dependencies: { blocking: [], recommended: [] },
+    permission: "",
+  };
+  let section = "";
+  let inCollaboration = false;
+  for (const rawLine of (text ?? "").split("\n")) {
+    const line = rawLine.trim();
+    if (line.startsWith("## ")) {
+      // The summary prose precedes ## 协作方式; nothing before that heading
+      // may be interpreted as config (a summary line could echo "- Leader:"
+      // or inject "### 策略"/"### 依赖"/"### 权限" sub-sections).
+      inCollaboration = line.slice(3).trim() === "协作方式";
+      section = "";
+      continue;
+    }
+    // Fail closed until the collaboration region opens: ignore every ### section
+    // capture and its content while outside ## 协作方式, so injected sub-headings
+    // in the summary prose can never seed team config.
+    if (!inCollaboration) continue;
+    if (line.startsWith("### ")) {
+      section = line.slice(4).trim();
+      continue;
+    }
+    if (!section && line.startsWith("- Leader:")) {
+      doc.leader = line.slice("- Leader:".length).trim();
+      continue;
+    }
+    if (section === "策略") {
+      const numbered = line.match(/^\d+\.\s+(.*)$/);
+      if (numbered) doc.strategies.push(numbered[1].trim());
+      continue;
+    }
+    if (section === "依赖") {
+      if (line.startsWith("- 阻塞:")) doc.dependencies.blocking.push(line.slice("- 阻塞:".length).trim());
+      if (line.startsWith("- 推荐:")) doc.dependencies.recommended.push(line.slice("- 推荐:".length).trim());
+      continue;
+    }
+    if (section === "权限" && line && !doc.permission) {
+      doc.permission = line;
+    }
+  }
+  return doc;
+}
+
+/** expert/context.json attachment persisted for squad member snapshots. */
+export interface MemberContextWire {
+  member_key?: string;
+  template_id?: string;
+  role?: string;
+  is_leader?: boolean;
+}
+
+/** skill/ref.json attachment: legacy artifact pointers shared by backfill
+ *  and import. */
+export interface SkillRefWire {
+  file_name?: string;
+  file_size?: number;
+  file_url?: string;
+  files?: string[];
+  object_key?: string;
+  zip_object_key?: string;
+}
+
+/** The legacy short_name never survived into the unified manifest; derive a
+ *  compact logo glyph from the display name so ExpertCard's logo block keeps
+ *  rendering. */
+function deriveShortName(name: string): string {
+  return name.trim().slice(0, 2);
+}
+
+function commonFromPlugin(raw: PluginListItemWire, categoryName: string) {
+  const manifest = raw.manifest_json ?? {};
+  return {
+    shortName: deriveShortName(raw.plugin_name ?? ""),
+    name: raw.plugin_name ?? "",
+    summary: manifest.description ?? "",
+    category: categoryName,
+    tags: raw.tags ?? [],
+    publisher: raw.publisher ?? "",
+    visibility: raw.visibility,
+    createdByType: mapCreatedByType(raw.created_by_type),
+    botName: raw.created_by_bot_name,
+    creatorName: raw.creator_name ?? "",
+    viewCount: raw.view_count ?? 0,
+    installCount: raw.install_count ?? 0,
+    version: raw.current_version ?? "",
+  };
+}
+
+export function mapPluginAgentListItem(
+  raw: PluginListItemWire,
+  categoryName: string
+): ExpertAgent {
+  return {
+    id: raw.plugin_id,
+    kind: "agent",
+    ...commonFromPlugin(raw, categoryName),
+  };
+}
+
+export function mapPluginSquadListItem(
+  raw: PluginListItemWire,
+  categoryName: string
+): ExpertSquad {
+  return {
+    id: raw.plugin_id,
+    kind: "squad",
+    ...commonFromPlugin(raw, categoryName),
+    memberCount: raw.member_count ?? 0,
+    members: [],
+    leader: "",
+    dependencies: { blocking: [], recommended: [] },
+    permission: "",
+    checkResult: "supported",
+  };
+}
+
+/** Project one skill Plugin (an expert_skill relation target) onto the lazy
+ *  ExpertSkill detail shape the file browser reads. Tree-shaped skills expose
+ *  their files directly as attachments; a legacy skill/ref.json pointer is still
+ *  honored for not-yet-expanded rows. */
+export function fromSkillPlugin(
+  plugin: PluginDetailPluginWire
+): import("../mock/expertMock").ExpertSkill {
+  const ref = jsonAttachment<SkillRefWire>(plugin.plugin_json, "skill/ref.json") ?? {};
+  const attachments = plugin.plugin_json?.attachments ?? [];
+  const inlineMd = rawAttachment(plugin.plugin_json, "SKILL.md") !== undefined;
+  const isLegacy = attachments.some(
+    (a) => a.path === "skill/ref.json" || a.path === "skill/package.zip"
+  );
+  // Tree shape: every attachment except SKILL.md is a real package file.
+  const treeFiles = attachments
+    .map((a) => a.path)
+    .filter((p) => p !== "SKILL.md");
+  const treeSize = attachments.reduce((n, a) => n + (a.content_size ?? 0), 0);
+  const managedZip = attachments.some(
+    (a) => a.path === "skill/package.zip" && a.content_type === "storage"
+  );
+  return {
+    name: plugin.plugin_name ?? "",
+    pluginId: plugin.plugin_id,
+    hasContent: inlineMd || !!ref.object_key,
+    // A tree skill is downloadable (the backend rebuilds a zip) when it carries
+    // supporting files beyond SKILL.md; legacy skills need a resolvable pointer.
+    canDownload: isLegacy
+      ? managedZip || !!ref.zip_object_key || !!ref.file_url
+      : treeFiles.length > 0,
+    // Tree skills have no ref.json, so synthesize a download filename from the
+    // plugin name (matching mapSkillDetail in the skill market); legacy skills
+    // keep the packaged file name from the pointer.
+    fileName: isLegacy ? ref.file_name : treeFiles.length > 0 ? `${plugin.plugin_name ?? "skill"}.zip` : undefined,
+    fileSize: isLegacy ? ref.file_size : treeSize,
+    files: isLegacy ? ref.files : treeFiles,
   };
 }

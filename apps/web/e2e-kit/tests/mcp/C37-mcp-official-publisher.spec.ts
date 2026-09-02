@@ -74,7 +74,7 @@ test("@C37 @p1 @mcp @mcp-official official publisher renders in MCP market", asy
   await expect(officialCard).toBeVisible();
   await expect(normalCard).toBeVisible();
 
-  await expect.poll(() => requests.some((url) => url.includes(`${API_BASE}/mcps?`))).toBe(true);
+  await expect.poll(() => requests.some((url) => url.includes(`${API_BASE}/plugins?`))).toBe(true);
   await expect.poll(() => responses.some(({ visibility }) => visibility === "system")).toBe(true);
   expect(consoleErrors).toEqual([]);
   expect(pageErrors).toEqual([]);

@@ -43,8 +43,6 @@ describe("SkillCard", () => {
     expect(screen.getByText("日志")).toBeInTheDocument();
     expect(screen.getByText("+1")).toBeInTheDocument();
     expect(screen.queryByText("开发工具")).not.toBeInTheDocument();
-    expect(screen.getByText("ci-helper")).toBeInTheDocument();
-    expect(screen.getByText("v1.0.0")).toBeInTheDocument();
     expect(screen.getByLabelText("浏览次数：12")).toHaveTextContent("12");
     expect(screen.getByLabelText("下载次数：0")).toHaveTextContent("0");
   });

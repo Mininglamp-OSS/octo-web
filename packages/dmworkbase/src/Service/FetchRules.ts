@@ -270,12 +270,19 @@ export const FETCH_RULES: FetchRule[] = [
     //   (handleEditFromCard→fetchMcpDetail)拉,fetch 层无法区分看/编,编辑会被误计成查看(见二审 P2-1)。
     //   改由卡根 data-track="market_card_opened"(DOM 委托,亦覆盖键盘)采集;这里把 /:id 钉成 IGNORE,
     //   同时继续压过 mine/tags/versions。(六审 C2:已删除曾并存的命令式 market_card_viewed,避免同一次打开双计。)
-    { method: 'GET', path: '/market/api/v1/mcps/mine', event: FETCH_IGNORE },
-    { method: 'GET', path: '/market/api/v1/skills/mine', event: FETCH_IGNORE },
-    { method: 'GET', path: '/market/api/v1/skills/tags', event: FETCH_IGNORE },
-    { method: 'GET', path: '/market/api/v1/mcps/:id', event: FETCH_IGNORE },
-    { method: 'GET', path: '/market/api/v1/skills/:id', event: FETCH_IGNORE },
-    { method: 'GET', path: '/market/api/v1/skills/:id/versions', event: 'market_skill_version_history_viewed' },
-    { method: 'POST', path: '/market/api/v1/mcps', event: 'market_manual_publish_submitted' },
-    { method: 'POST', path: '/market/api/v1/skills', event: 'market_manual_publish_submitted' },
+    //   2026-08-21 市场切统一插件接口:目录读写走 /plugins/*,规则整体换新。保留的工具端点
+    //   POST /mcps/_probe 与 POST /mcp_icon_uploads 仍会发起(非目录数据,无事件规则命中)。
+    //   新路径全部是字面段(无 :id 通配),不存在误吞,故旧的 mine/tags/:id IGNORE 钉子不再需要;
+    //   列表 GET /plugins、详情 GET /plugins/detail、标签 GET /plugin_tags 依旧不挂事件(同旧决策:
+    //   请求成功 ≠ 用户意图,卡片打开走 data-track="market_card_opened")。
+    //   market_manual_publish_submitted 的映射:skill 新建/重传 = POST /plugins/import。
+    //   连接器新建走 POST /plugins/upsert(与元数据编辑同端点),fetch 层分不出「新建 vs 编辑」
+    //   意图,故刻意不映射 —— 正式发布端点已下线(保存即版本快照),不再有 /plugins/publish。
+    // NOTE: /plugins/versions is type-agnostic, but this rule maps it to the
+    // SKILL history event. FetchRules matches on path only (no plugin_type), and
+    // today the sole caller is skillApiReal (skill version history). If a
+    // connector/expert version-history caller is ever added, it will silently
+    // emit market_skill_version_history_viewed — split the metric by type then.
+    { method: 'GET', path: '/market/api/v1/plugins/versions', event: 'market_skill_version_history_viewed' },
+    { method: 'POST', path: '/market/api/v1/plugins/import', event: 'market_manual_publish_submitted' },
 ]

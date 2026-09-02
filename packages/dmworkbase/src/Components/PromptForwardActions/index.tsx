@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Channel, ChannelTypePerson } from "wukongimjssdk";
 import { Toast } from "@douyinfe/semi-ui";
-import { Check, Copy, Send } from "lucide-react";
+import { Check, Copy, Pencil, Send } from "lucide-react";
 import { t } from "../../i18n";
 import { useI18n } from "../../i18n";
 import WKApp from "../../App";
@@ -9,7 +9,6 @@ import APIClient from "../../Service/APIClient";
 import { forwardPlainText } from "../../Service/ForwardService";
 import { copyToClipboard } from "../../Utils/clipboard";
 import { Dap } from "../../Service/Dap";
-import { matchRoute } from "../../Service/TrackRules";
 import WKButton from "../WKButton";
 import "./index.css";
 
@@ -54,8 +53,20 @@ export interface PromptForwardActionsProps {
    * the forward button beneath it. The host sizes the outer box.
    */
   layout?: "stack" | "split";
-  /** Left-column content in split layout (usually the prompt <pre> + hint). */
-  preview?: React.ReactNode;
+  /**
+   * Which action the host surface performs — selects the forward-button label
+   * ("…进行安装" / "…进行上架" / "…进行更新") so a publish/update surface does not
+   * render install phrasing. Defaults to "install".
+   */
+  kind?: "install" | "publish" | "update";
+  /**
+   * DAP event to emit once on a SUCCESSFUL copy. Each host supplies its own
+   * (e.g. "market_bot_publish_prompt_copied", "market_skill_install_prompt_copied",
+   * "market_mcp_connect_prompt_copied") so the metric follows the surface, not
+   * the route. Omit to emit nothing (e.g. the expert/squad publish surface,
+   * whose copy is not counted). See DAP_EVENTS.md.
+   */
+  copyTrackEvent?: string;
 }
 
 /** One owned-Bot row the picker renders. Sourced from `/robot/owned_bots`. */
@@ -101,7 +112,8 @@ export default function PromptForwardActions({
   onForwarded,
   navigateOnSend = true,
   layout = "stack",
-  preview,
+  kind = "install",
+  copyTrackEvent,
 }: PromptForwardActionsProps) {
   useI18n();
   // INVARIANT: this snapshot does NOT subscribe to space changes. Every current
@@ -118,6 +130,15 @@ export default function PromptForwardActions({
   const [reloadKey, setReloadKey] = useState(0);
   const [copied, setCopied] = useState(false);
   const [forwarding, setForwarding] = useState(false);
+  // Editable working copy of the prompt. The host authors `prompt`; the user can
+  // tweak it here ("编辑提示词") before copying / forwarding — copy and forward
+  // both send this draft, not the original. Reset when the host swaps the prompt.
+  const [draft, setDraft] = useState(prompt);
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    setDraft(prompt);
+    setEditing(false);
+  }, [prompt]);
   // A successful forward typically unmounts this component mid-handler (the
   // host closes its modal from onForwarded / showConversation), and the
   // copied-toast reset timer can outlive a fast close. Guard both so React 17
@@ -164,30 +185,24 @@ export default function PromptForwardActions({
     };
   }, [effectiveSpaceId, reloadKey]);
 
-  const promptReady = Boolean(prompt) && !disabled;
+  const promptReady = Boolean(draft) && !disabled;
   const hasBots = bots.kind === "ready" && bots.bots.length > 0;
   const canForward = promptReady && hasBots && !!selectedUid && !forwarding;
 
   const handleCopy = async () => {
     if (!promptReady) return;
-    const ok = await copyToClipboard(prompt);
+    const ok = await copyToClipboard(draft);
     if (ok) {
       if (!mountedRef.current) return;
       setCopied(true);
-      // 八审 P2:改为「复制成功」后命令式 track。此前挂 TrackRules 点击委托(mcp-bot-publish-copy),
-      // 点击即发——即使 copyToClipboard 返回 false(非安全上下文/权限拒绝)也计一次。本共享组件也渲染在
-      // /mcp-market/experts(专家/专家团 发布),那里的复制不算 bot 发布,故沿用原规则的 route 门:仅
-      // /mcp-market/mcp 计。matchRoute + currentRoute 同源(location.pathname),与原 DOM 规则完全等价。
-      const route = (() => {
-        try {
-          const loc = (globalThis as { location?: Location }).location;
-          return loc && loc.pathname ? loc.pathname : "";
-        } catch {
-          return "";
-        }
-      })();
-      if (matchRoute("/mcp-market/mcp", route)) {
-        Dap.shared.track("market_bot_publish_prompt_copied", {});
+      // Emit the caller-supplied copy event once on SUCCESS (not on click):
+      // copyToClipboard can return false in a non-secure context / on a
+      // permission denial, and that must not be counted. Each host passes the
+      // event for its own surface (bot-publish / skill-install / mcp-connect),
+      // so the metric follows the surface rather than a brittle route match.
+      // Surfaces whose copy is not counted (expert/squad publish) pass none.
+      if (copyTrackEvent) {
+        Dap.shared.track(copyTrackEvent, {});
       }
       if (copiedTimerRef.current !== null) {
         window.clearTimeout(copiedTimerRef.current);
@@ -208,7 +223,7 @@ export default function PromptForwardActions({
     const channel = new Channel(bot.uid, ChannelTypePerson);
     setForwarding(true);
     try {
-      const result = await forwardPlainText([channel], prompt, {
+      const result = await forwardPlainText([channel], draft, {
         spaceId: effectiveSpaceId || null,
       });
       if (result.failedTargets > 0) {
@@ -296,6 +311,58 @@ export default function PromptForwardActions({
     </WKButton>
   );
 
+  // Split-layout preview: the prompt is a read-only <pre> by default and turns
+  // into an editable <textarea> on "编辑提示词"; copy lives as a hover-revealed
+  // icon in the top-right corner (both act on the editable draft).
+  const editablePreview = (
+    <div className="wk-prompt-forward__preview">
+      <button
+        type="button"
+        className="wk-prompt-forward__copy-icon"
+        title={t("base.promptForward.copyPrompt")}
+        aria-label={t("base.promptForward.copyPrompt")}
+        onClick={handleCopy}
+        disabled={!promptReady}
+      >
+        {copied ? <Check size={15} /> : <Copy size={15} />}
+      </button>
+      {editing ? (
+        <textarea
+          className="wk-prompt-forward__preview-edit"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          aria-label={t("base.promptForward.editPrompt")}
+        />
+      ) : (
+        <pre className="wk-prompt-forward__preview-pre" tabIndex={0}>
+          {draft}
+        </pre>
+      )}
+    </div>
+  );
+
+  const editButton = (
+    <WKButton
+      variant="secondary"
+      icon={<Pencil size={15} />}
+      onClick={() => setEditing((v) => !v)}
+      disabled={!prompt && !editing}
+    >
+      {editing
+        ? t("base.promptForward.doneEdit")
+        : t("base.promptForward.editPrompt")}
+    </WKButton>
+  );
+
+  // Forward-button label follows the host's action so publish/update surfaces
+  // don't read the install phrasing ("…进行安装").
+  const forwardLabel =
+    kind === "publish"
+      ? t("base.promptForward.forwardToBotPublish")
+      : kind === "update"
+      ? t("base.promptForward.forwardToBotUpdate")
+      : t("base.promptForward.forwardToBot");
+
   const forwardButton = (
     <WKButton
       variant="primary"
@@ -304,9 +371,7 @@ export default function PromptForwardActions({
       disabled={!canForward}
       loading={forwarding}
     >
-      {forwarding
-        ? t("base.promptForward.forwarding")
-        : t("base.promptForward.forwardToBot")}
+      {forwarding ? t("base.promptForward.forwarding") : forwardLabel}
     </WKButton>
   );
 
@@ -314,8 +379,8 @@ export default function PromptForwardActions({
     return (
       <div className="wk-prompt-forward wk-prompt-forward--split">
         <div className="wk-prompt-forward__col wk-prompt-forward__col--preview">
-          <div className="wk-prompt-forward__preview-body">{preview}</div>
-          <div className="wk-prompt-forward__actions">{copyButton}</div>
+          <div className="wk-prompt-forward__preview-body">{editablePreview}</div>
+          <div className="wk-prompt-forward__actions">{editButton}</div>
         </div>
         <div className="wk-prompt-forward__col wk-prompt-forward__col--bots">
           {botPicker}

@@ -1,18 +1,22 @@
 import React, { Component } from "react";
 import axios from "axios";
 import { Toast } from "@douyinfe/semi-ui";
-import { IconSearch, IconClose } from "@douyinfe/semi-icons";
-import { Bot, Check, ChevronDown, SlidersHorizontal, Upload } from "lucide-react";
+import { IconClose } from "@douyinfe/semi-icons";
+import { Bot, Check, ChevronDown, Search, SlidersHorizontal, Upload } from "lucide-react";
 import { I18nContext, t, WKApp, WKButton, Dap } from "@octo/base";
 import { Button, Loading } from "@octo/ui";
 import { fetchMcpDetail, fetchMcpList, fetchMcpMine, fetchMcpTags, McpTagSuggestion } from "../api/mcpService";
 import { mcpListErrorI18nKey } from "../api/mcpListError";
-import type { McpCategory, McpDetail, McpListItem } from "../types/mcp";
+import type { McpCategory, McpDetail, McpListItem, McpSort } from "../types/mcp";
 import McpCard from "../components/McpCard";
 import McpDetailModal from "../components/McpDetailModal";
 import McpCreateModal from "../components/McpCreateModal";
 import McpBotPublishModal from "../components/McpBotPublishModal";
+import McpConnectModal from "../components/McpConnectModal";
 import McpDeleteConfirmModal from "../components/McpDeleteConfirmModal";
+import { MineTable } from "@dmwork/skillmarket";
+import { isImageIcon } from "../utils/icon";
+import { getMcpAvatarColor, getMcpAvatarText } from "../utils/mcpAvatar";
 import "../index.css";
 import { parseMcpListQuery, serializeMcpListQuery } from "./mcpListQuery";
 
@@ -40,13 +44,16 @@ interface McpMarketListPageState {
    *  outside-click listener + Escape handler can toggle it. */
   tagFilterOpen: boolean;
   /** Fuzzy filter typed into the tag-popover search input. Debounced fetch
-   *  against `/mcp_tags` populates `tagSuggestions`. */
+   *  against `/plugin_tags` populates `tagSuggestions`. */
   tagQuery: string;
   /** Backend-supplied tag suggestions (mcp-v1.md §4.8). Repopulated whenever
    *  the popover opens or `tagQuery` changes; empty until the first fetch
    *  resolves. */
   tagSuggestions: McpTagSuggestion[];
   mode: ListMode;
+  /** Discovery sort (market variant only). Default 最新 (newest), matching the
+   *  skill/expert markets. */
+  sort: McpSort;
   offset: number;
   total: number;
   detailId: string | null;
@@ -64,6 +71,20 @@ interface McpMarketListPageState {
    *  Mirrors dmworkskillmarket's `deleting` state — a card-level trash click
    *  short-circuits opening the detail modal. */
   deletingItem: McpListItem | null;
+  /** When set, the connect-prompt modal (McpConnectModal) is open for this
+   *  connector. Driven by the card's primary 连接 action, which forwards a
+   *  prompt instead of opening the detail modal. */
+  connectItem: McpListItem | null;
+}
+
+/**
+ * Rendering variant. "market" (default) is the discovery catalog. "mine" is the
+ * personal-assets view mounted inside MyAssetsPage: it forces the mine data
+ * source, hides the in-page tab strip + hero title (MyAssetsPage owns those),
+ * and exposes manage actions on every card.
+ */
+interface McpMarketListPageProps {
+  variant?: "market" | "mine";
 }
 
 /**
@@ -71,7 +92,7 @@ interface McpMarketListPageState {
  * (no secondary sidebar) when the "mcp-market" NavRail entry is active.
  */
 export default class McpMarketListPage extends Component<
-  {},
+  McpMarketListPageProps,
   McpMarketListPageState
 > {
   static contextType = I18nContext;
@@ -90,6 +111,7 @@ export default class McpMarketListPage extends Component<
     tagQuery: "",
     tagSuggestions: [],
     mode: "all",
+    sort: "latest",
     offset: 0,
     total: 0,
     detailId: null,
@@ -98,6 +120,7 @@ export default class McpMarketListPage extends Component<
     botPublishVisible: false,
     editingDetail: null,
     deletingItem: null,
+    connectItem: null,
   };
 
   private publishMenuRef = React.createRef<HTMLDivElement>();
@@ -109,7 +132,11 @@ export default class McpMarketListPage extends Component<
   private bodyRef = React.createRef<HTMLDivElement>();
 
   componentDidMount() {
-    this.setState(parseMcpListQuery(window.location.search), () => this.loadData());
+    const parsed = parseMcpListQuery(window.location.search);
+    this.setState(
+      { ...parsed, mode: this.props.variant === "mine" ? "mine" : "all" },
+      () => this.loadData()
+    );
     WKApp.mittBus.on("wk:nav-menu-activated", this.handleNavMenuActivated_);
     WKApp.mittBus.on("space-changed", this.handleSpaceChanged_);
   }
@@ -202,6 +229,7 @@ export default class McpMarketListPage extends Component<
       categoriesSelected: [],
       publishMenuOpen: false,
       botPublishVisible: false,
+      connectItem: null,
     }, () => this.loadData());
   };
 
@@ -240,7 +268,7 @@ export default class McpMarketListPage extends Component<
     return rows;
   }
 
-  /** Debounce + fire a /mcp_tags fetch, wiring the response into
+  /** Debounce + fire a /plugin_tags fetch, wiring the response into
    *  tagSuggestions. Cancels any in-flight request via AbortController so a
    *  fast typist doesn't clobber a fresh response with a stale one. */
   private scheduleTagFetch_() {
@@ -304,6 +332,7 @@ export default class McpMarketListPage extends Component<
         keyword: this.state.keyword,
         categories: this.state.categoriesSelected,
         tags: this.state.tagsSelected,
+        sort: this.state.sort,
         limit: PAGE_SIZE,
         offset: 0,
       });
@@ -353,6 +382,7 @@ export default class McpMarketListPage extends Component<
         keyword: this.state.keyword,
         categories: this.state.categoriesSelected,
         tags: this.state.tagsSelected,
+        sort: this.state.sort,
         limit: PAGE_SIZE,
         offset,
       });
@@ -390,25 +420,6 @@ export default class McpMarketListPage extends Component<
     if (remaining <= SCROLL_THRESHOLD_PX) {
       this.loadMore();
     }
-  };
-
-  private handleMode = (mode: ListMode) => {
-    if (mode === this.state.mode) return;
-    // 用户切换「全部/我的」视图(已过同值 guard);原先误用 GET /mcps/mine 加载推断,而 mine 列表也用于建议/初始化。
-    Dap.shared.track("market_view_switched", {});
-    // Full reset — tag suggestions are mode-scoped on the backend (see
-    // /mcp_tags?mode=mine), so keeping stale suggestions after a tab switch
-    // paints suggestions the just-loaded list can't produce. Mirrors
-    // handleSpaceChanged_ for the same reason.
-    this.cancelTagFetch_();
-    this.setState({
-      mode,
-      categoriesSelected: [],
-      tagsSelected: [],
-      tagFilterOpen: false,
-      tagQuery: "",
-      tagSuggestions: [],
-    }, () => this.loadData());
   };
 
   /** Patch a single row after a successful edit — keeps scroll position
@@ -491,6 +502,12 @@ export default class McpMarketListPage extends Component<
     }, 300);
   };
 
+  private handleSortChange = (sort: McpSort) => {
+    if (sort === this.state.sort) return;
+    this.setState({ sort }, () => this.loadData());
+    Dap.shared.track("market_mcp_sorted", { sort_by: sort });
+  };
+
   private handleCategory = (key: string) => {
     const prevSel = this.state.categoriesSelected;
     const nextSel = key === "all" || prevSel[0] === key ? [] : [key];
@@ -507,7 +524,7 @@ export default class McpMarketListPage extends Component<
    *  Refetches on every change; the tag popover stays open so the user can
    *  toggle several tags in one interaction. */
   private handleToggleTag = (tag: string) => {
-    // 用户点 tag 过滤(选/取消都算一次过滤动作);原先误用 GET /mcp_tags 加载 tag 列表推断。
+    // 用户点 tag 过滤(选/取消都算一次过滤动作);原先误用 GET /plugin_tags 加载 tag 列表推断。
     Dap.shared.track("market_tag_filtered", {});
     this.setState((prev) => ({
       tagsSelected: prev.tagsSelected.includes(tag)
@@ -541,7 +558,7 @@ export default class McpMarketListPage extends Component<
       editingDetail,
     } = this.state;
 
-    // Tag popover options: backend-authoritative via /mcp_tags (mcp-v1.md
+    // Tag popover options: backend-authoritative via /plugin_tags (mcp-v1.md
     // §4.8). Union with tagsSelected so a chip the user selected before the
     // fetch completes (or from a stale query) still shows up so they can
     // un-select it. Cached on the class instance keyed on the identity of
@@ -560,23 +577,16 @@ export default class McpMarketListPage extends Component<
 
     return (
       <div className="wk-mcp">
-        <header className="wk-mcp__topbar">
-          <nav className="wk-mcp__tabs" aria-label={t("mcp.list.navLabel")}>
-            {(["all", "mine"] as ListMode[]).map((k) => (
-              <button
-                key={k}
-                type="button"
-                className={k === mode ? "is-active" : ""}
-                onClick={() => this.handleMode(k)}
-              >
-                {t(`mcp.list.mode.${k}`)}
-              </button>
-            ))}
-          </nav>
+        <header className="wk-mcp__hero">
+          {this.props.variant !== "mine" && (
+            <div className="wk-mcp__hero-title">
+              <h1>{t("mcp.list.pageTitle")}</h1>
+            </div>
+          )}
           <div className="wk-mcp__topbar-actions">
             <div className="wk-mcp__search">
               <div className="wk-mcp__search-control">
-                <IconSearch aria-hidden />
+                <Search size={16} aria-hidden="true" />
                 <input
                   type="search"
                   value={keyword}
@@ -622,7 +632,7 @@ export default class McpMarketListPage extends Component<
                   {tagFilterOpen && (
                     <div className="wk-mcp-tag-filter__popover">
                       <label className="wk-mcp-tag-filter__search">
-                        <IconSearch aria-hidden />
+                        <Search size={16} aria-hidden="true" />
                         <input
                           ref={this.tagSearchInputRef}
                           type="search"
@@ -690,6 +700,7 @@ export default class McpMarketListPage extends Component<
                 </div>
               </div>
             </div>
+            {this.props.variant === "mine" && (
             <div className="wk-mcp-publish-menu" ref={this.publishMenuRef}>
               <Button
                 variant="primary"
@@ -738,9 +749,11 @@ export default class McpMarketListPage extends Component<
                 </div>
               )}
             </div>
+            )}
           </div>
         </header>
 
+        {this.props.variant !== "mine" && (
         <div className="wk-mcp__toolbar">
           <div className="wk-mcp__pills">
             {categories.map((cat) => (
@@ -758,7 +771,30 @@ export default class McpMarketListPage extends Component<
               </button>
             ))}
           </div>
+          {this.props.variant !== "mine" && (
+            // Sort pinned to the top-right of the category row; reuses the expert
+            // market's sort styling (same package) so the markets read alike.
+            <div className="wk-mcp-expert-sort" aria-label={t("mcp.list.sortAriaLabel")}>
+              <div className="wk-mcp-expert-sort__options">
+                {([
+                  ["latest", "mcp.list.sortLatest"],
+                  ["hottest", "mcp.list.sortHottest"],
+                ] as Array<[McpSort, string]>).map(([value, labelKey]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={this.state.sort === value ? "is-active" : ""}
+                    aria-pressed={this.state.sort === value}
+                    onClick={() => this.handleSortChange(value)}
+                  >
+                    <span>{t(labelKey)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
+        )}
 
         <div
           className="wk-mcp__body"
@@ -779,18 +815,45 @@ export default class McpMarketListPage extends Component<
               </div>
             ) : (
               <>
-                <div className="wk-mcp__result-summary">
-                  <span
-                    className="wk-mcp__result-summary-total"
-                    aria-live="polite"
-                  >
-                    {t("mcp.list.total", { values: { count: total } })}
-                  </span>
-                </div>
                 {items.length === 0 ? (
                   <div className="wk-mcp__state">{t("mcp.list.empty")}</div>
                 ) : (
                   <>
+                    {this.props.variant === "mine" ? (
+                      <MineTable
+                        rows={items.map((item) => ({
+                          id: item.id,
+                          type: "connector" as const,
+                          trackItemType: "mcp",
+                          icon: isImageIcon(item.icon) ? (
+                            <img className="wk-mine-table__avatar-img" src={item.icon} alt="" />
+                          ) : (
+                            <span
+                              className="wk-mine-table__avatar-tile"
+                              style={{ background: getMcpAvatarColor(item.id) }}
+                            >
+                              {item.icon?.trim() ? item.icon : getMcpAvatarText(item.name)}
+                            </span>
+                          ),
+                          name: item.name,
+                          description: item.slogan,
+                          category: item.category,
+                          version: item.version,
+                          visibility: item.visibility,
+                          views: item.viewCount,
+                          downloads: item.installCount,
+                          updatedAt: item.updatedAt,
+                          ariaLabel: item.name,
+                          onOpen: () => this.setState({ detailId: item.id }),
+                          onEdit: () => this.handleEditFromCard(item),
+                          onDelete: () => this.setState({ deletingItem: item }),
+                          editAria: t("mcp.card.editAriaLabel", { values: { name: item.name } }),
+                          deleteAria: t("mcp.card.deleteAriaLabel", { values: { name: item.name } }),
+                        }))}
+                        visibilityLabel={(v) => t(`mcp.visibility.${v}`)}
+                        showStats={false}
+                      />
+                    ) : (
                     <div className="wk-mcp__grid">
                       {items.map((item) => (
                         <McpCard
@@ -801,15 +864,12 @@ export default class McpMarketListPage extends Component<
                             // 删除此处命令式 market_card_viewed —— 二者本是对「同一次打开」的双计(owner 决策:留 opened)。
                             this.setState({ detailId: it.id });
                           }}
-                          onEdit={canManage ? this.handleEditFromCard : undefined}
-                          onDelete={
-                            canManage
-                              ? (it) => this.setState({ deletingItem: it })
-                              : undefined
-                          }
+                          onConnect={(it) => this.setState({ connectItem: it })}
+                          showStats={false}
                         />
                       ))}
                     </div>
+                    )}
                     <div className="wk-mcp__footnote">
                       {loadingMore ? (
                         <Loading size="sm" />
@@ -848,6 +908,10 @@ export default class McpMarketListPage extends Component<
         <McpBotPublishModal
           visible={this.state.botPublishVisible}
           onClose={() => this.setState({ botPublishVisible: false })}
+        />
+        <McpConnectModal
+          item={this.state.connectItem}
+          onClose={() => this.setState({ connectItem: null })}
         />
         <McpDeleteConfirmModal
           item={this.state.deletingItem}

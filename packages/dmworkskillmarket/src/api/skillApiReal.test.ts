@@ -16,8 +16,6 @@ import {
   initReupload,
   triggerParse,
   pollParse,
-  getDownloadUrl,
-  downloadSkill,
 } from "./skillApiReal";
 
 // Mock global fetch
@@ -44,21 +42,47 @@ function jsonResponse(data: unknown, status = 200, pagination?: unknown) {
   });
 }
 
+function pluginSkillWire(overrides: Record<string, unknown> = {}) {
+  return {
+    plugin_id: "ci-failure-map",
+    plugin_name: "CI 失败分析",
+    plugin_type: "skill",
+    category_id: "dev-tools",
+    tags: ["CI"],
+    publisher: "jian",
+    owner_id: "jian",
+    space_id: "dev-space",
+    visibility: "space",
+    creator_name: "CI Bot",
+    created_by_type: "human",
+    icon: "icons/ci.png",
+    icon_url: "https://cdn.example.com/icons/ci.png",
+    view_count: 7,
+    install_count: 0,
+    download_count: 3,
+    manifest_json: { name: "ci-failure-map", description: "Analyze CI logs" },
+    current_version: "1.0.2",
+    created_at: "2026-06-01T00:00:00Z",
+    updated_at: "2026-07-10T00:00:00Z",
+    ...overrides,
+  };
+}
+
 describe("skillApiReal", () => {
-  it("getCategories maps snake_case to camelCase", async () => {
+  it("getCategories maps the unified category wire to camelCase", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse([
         {
-          skill_category_id: "dev-tools",
+          category_id: "dev-tools",
           name: "开发工具",
           icon_key: "Terminal",
-          skill_count: 6,
+          plugin_count: 6,
         },
         {
-          skill_category_id: "starter",
+          category_id: "starter",
           name: "装机必备",
           icon_key: "Box",
-          skill_count: 3,
+          plugin_count: 3,
         },
       ])
     );
@@ -82,7 +106,7 @@ describe("skillApiReal", () => {
       },
     ]);
     expect(mockFetch).toHaveBeenCalledWith(
-      "/market/api/v1/skill_categories",
+      "/market/api/v1/plugin_categories?scene_code=default&plugin_type=skill",
       expect.objectContaining({
         headers: {
           "Content-Type": "application/json",
@@ -111,20 +135,23 @@ describe("skillApiReal", () => {
     await getCategories();
 
     expect(mockFetch).toHaveBeenCalledWith(
-      "https://api.example.com/market/api/v1/skill_categories",
+      expect.stringContaining(
+        "https://api.example.com/market/api/v1/plugin_categories?"
+      ),
       expect.any(Object)
     );
   });
 
-  it("getCategories forwards search and tag filters", async () => {
+  it("getCategories pins the unified taxonomy scope (legacy q/tags ignored)", async () => {
     mockFetch.mockReturnValueOnce(jsonResponse([]));
 
     await getCategories({ q: "CI", tags: ["CI", "质量"] });
 
     const url = mockFetch.mock.calls[0][0] as string;
-    expect(url).toContain("/market/api/v1/skill_categories?");
-    expect(url).toContain("q=CI");
-    expect(url).toContain("tags=CI%2C%E8%B4%A8%E9%87%8F");
+    expect(url).toContain("/market/api/v1/plugin_categories?");
+    expect(url).toContain("scene_code=default");
+    expect(url).toContain("plugin_type=skill");
+    expect(url).not.toContain("q=CI");
   });
 
   it("falls back to localStorage currentSpaceId when WKApp space is not hydrated", async () => {
@@ -135,7 +162,7 @@ describe("skillApiReal", () => {
     await getSkills();
 
     expect(mockFetch).toHaveBeenCalledWith(
-      "/market/api/v1/skills",
+      expect.stringContaining("/market/api/v1/plugins?"),
       expect.objectContaining({
         headers: {
           "Content-Type": "application/json",
@@ -146,37 +173,9 @@ describe("skillApiReal", () => {
     );
   });
 
-  it("getSkills maps paged result and passes query params", async () => {
+  it("getSkills maps the unified plugin list and passes query params", async () => {
     mockFetch.mockReturnValueOnce(
-      jsonResponse(
-        [
-          {
-            skill_id: "ci-failure-map",
-            name: "ci-failure-map",
-            description: "Analyze CI logs",
-            category_id: "dev-tools",
-            tags: ["CI"],
-            owner_id: "jian",
-            owner_name: "jian",
-            creator_id: "bot-1",
-            creator_name: "CI Bot",
-            space_id: "dev-space",
-            visibility: "space",
-            version: "1.0.2",
-            readme_content: "# ci-failure-map",
-            file_name: "ci-failure-map.zip",
-            file_url: "http://localhost/files/ci.zip",
-            file_size: 1024,
-            file_sha256: "abc123",
-            view_count: 7,
-            download_count: 3,
-            created_at: "2026-06-01T00:00:00Z",
-            updated_at: "2026-07-10T00:00:00Z",
-          },
-        ],
-        200,
-        { has_more: true, next_cursor: "abc", total: 42 }
-      )
+      jsonResponse([pluginSkillWire()], 200, { total: 42, page: 1, page_size: 10 })
     );
 
     const result = await getSkills({
@@ -188,37 +187,35 @@ describe("skillApiReal", () => {
     });
 
     expect(result.items).toHaveLength(1);
+    expect(result.items[0].id).toBe("ci-failure-map");
+    expect(result.items[0].name).toBe("ci-failure-map");
+    expect(result.items[0].displayName).toBe("CI 失败分析");
+    expect(result.items[0].description).toBe("Analyze CI logs");
     expect(result.items[0].categoryId).toBe("dev-tools");
     expect(result.items[0].creatorName).toBe("CI Bot");
-    expect(result.items[0].fileSha256).toBe("abc123");
+    expect(result.items[0].ownerName).toBe("jian");
+    expect(result.items[0].iconUrl).toBe("https://cdn.example.com/icons/ci.png");
+    expect(result.items[0].version).toBe("1.0.2");
     expect(result.items[0].viewCount).toBe(7);
     expect(result.items[0].downloadCount).toBe(3);
-    expect(result.nextCursor).toBe("abc");
+    // 1 * 10 < 42 → the synthesized cursor is the next page number.
+    expect(result.nextCursor).toBe("2");
     expect(result.total).toBe(42);
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/market/api/v1/skills?"),
-      expect.anything()
-    );
     const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain("/market/api/v1/plugins?");
+    expect(url).toContain("scene_code=default");
+    expect(url).toContain("plugin_type=skill");
     expect(url).toContain("q=CI");
     expect(url).toContain("category_id=dev-tools");
-    expect(url).toContain("tags=CI%2C%E8%B4%A8%E9%87%8F");
-    expect(url).toContain("sort=latest");
+    expect(url).toContain("tag=CI&tag=%E8%B4%A8%E9%87%8F");
+    expect(url).toContain("sort=newest");
+    expect(url).toContain("page=1");
     expect(url).toContain("page_size=10");
   });
 
-  it("getSkillTags fetches current-space tag suggestions", async () => {
+  it("getSkillTags aggregates suggestions from the unified tag endpoint", async () => {
     mockFetch.mockReturnValueOnce(
-      jsonResponse({
-        items: [
-          {
-            name: "ui-case",
-            created_by: "dev-user",
-            created_at: "2026-07-17T09:04:23Z",
-            updated_at: "2026-07-17T09:04:23Z",
-          },
-        ],
-      })
+      jsonResponse([{ name: "ui-case", count: 4 }])
     );
 
     const tags = await getSkillTags("ui");
@@ -226,13 +223,13 @@ describe("skillApiReal", () => {
     expect(tags).toEqual([
       {
         name: "ui-case",
-        createdBy: "dev-user",
-        createdAt: "2026-07-17T09:04:23Z",
-        updatedAt: "2026-07-17T09:04:23Z",
+        createdBy: undefined,
+        createdAt: "",
+        updatedAt: "",
       },
     ]);
     expect(mockFetch).toHaveBeenCalledWith(
-      "/market/api/v1/skills/tags?q=ui&page_size=20",
+      "/market/api/v1/plugin_tags?scene_code=default&plugin_type=skill&q=ui&limit=20",
       expect.objectContaining({
         headers: {
           "Content-Type": "application/json",
@@ -243,8 +240,10 @@ describe("skillApiReal", () => {
     );
   });
 
-  it("getMySkills calls /skill/mine endpoint", async () => {
-    mockFetch.mockReturnValueOnce(jsonResponse([], 200, { has_more: false }));
+  it("getMySkills scopes the unified list to mode=mine", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse([], 200, { total: 0, page: 1, page_size: 20 })
+    );
 
     const result = await getMySkills({
       q: "test",
@@ -255,60 +254,106 @@ describe("skillApiReal", () => {
     expect(result.items).toEqual([]);
     expect(result.nextCursor).toBeNull();
     const url = mockFetch.mock.calls[0][0] as string;
-    expect(url).toContain("/market/api/v1/skills/mine");
+    expect(url).toContain("/market/api/v1/plugins?");
+    expect(url).toContain("mode=mine");
     expect(url).toContain("q=test");
-    expect(url).toContain("tags=%E5%8D%8F%E4%BD%9C");
+    expect(url).toContain("tag=%E5%8D%8F%E4%BD%9C");
     expect(url).toContain("sort=downloads");
   });
 
-  it("getSkill maps a single skill", async () => {
+  it("getSkill maps the plugin detail with package artifacts", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse({
-        skill_id: "test-skill",
-        name: "Test",
-        description: "desc",
-        category_id: "other",
-        tags: ["a"],
-        owner_id: "u1",
-        owner_name: "User",
-        space_id: "s1",
-        visibility: "public",
-        version: "1.0.0",
-        readme_content: "# Test",
-        file_name: "test.zip",
-        file_url: "/files/test.zip",
-        file_size: 512,
-        file_sha256: "def456",
-        created_at: "2026-01-01T00:00:00Z",
-        updated_at: "2026-01-02T00:00:00Z",
+        plugin: pluginSkillWire({
+          plugin_json: {
+            $schema: "cowork-plugin-package-1.0.json",
+            attachments: [
+              {
+                path: "SKILL.md",
+                content_type: "raw",
+                mime_type: "text/markdown",
+                raw_content: "# Test",
+              },
+              {
+                path: "skill/ref.json",
+                content_type: "raw",
+                mime_type: "application/json",
+                raw_content: JSON.stringify({
+                  file_name: "test.zip",
+                  file_size: 512,
+                  file_sha256: "def456",
+                }),
+              },
+              {
+                path: "skill/package.zip",
+                content_type: "storage",
+                mime_type: "application/zip",
+                storage_uri: "plugins/dev-space/attachments/test.zip",
+                content_size: 512,
+              },
+            ],
+          },
+        }),
+        relations: [],
       })
     );
 
-    const skill = await getSkill("test-skill");
+    const skill = await getSkill("ci-failure-map");
 
-    expect(skill.id).toBe("test-skill");
-    expect(skill.categoryId).toBe("other");
+    expect(skill.id).toBe("ci-failure-map");
+    expect(skill.categoryId).toBe("dev-tools");
     expect(skill.readmeContent).toBe("# Test");
+    expect(skill.fileName).toBe("test.zip");
+    expect(skill.fileUrl).toBe("plugins/dev-space/attachments/test.zip");
+    expect(skill.fileSize).toBe(512);
     expect(skill.fileSha256).toBe("def456");
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain("/market/api/v1/plugins/detail?plugin_id=ci-failure-map");
   });
 
-  it("keeps detail navigation working during an id field rolling upgrade", async () => {
+  it("getSkill derives file metadata from a tree-shaped package", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse({
-        id: "legacy-skill",
-        name: "Legacy",
-        category_id: "other",
-        tags: [],
-        owner_id: "u1",
-        space_id: "s1",
-        created_at: "2026-01-01T00:00:00Z",
-        updated_at: "2026-01-02T00:00:00Z",
+        plugin: pluginSkillWire({
+          plugin_json: {
+            $schema: "cowork-plugin-package-1.0.json",
+            attachments: [
+              {
+                path: "SKILL.md",
+                content_type: "raw",
+                mime_type: "text/markdown",
+                raw_content: "# Tree",
+                content_size: 6,
+              },
+              {
+                path: "scripts/run.sh",
+                content_type: "raw",
+                mime_type: "text/x-shellscript",
+                raw_content: "echo hi",
+                content_size: 7,
+              },
+              {
+                path: "assets/logo.png",
+                content_type: "storage",
+                mime_type: "image/png",
+                storage_uri: "plugins/dev-space/attachments/skill-x-abc.png",
+                content_size: 20,
+              },
+            ],
+          },
+        }),
+        relations: [],
       })
     );
 
-    await expect(getSkill("legacy-skill")).resolves.toMatchObject({
-      id: "legacy-skill",
-    });
+    const skill = await getSkill("tree-skill");
+
+    expect(skill.readmeContent).toBe("# Tree");
+    // No legacy pointer: metadata is derived from the attachment tree.
+    expect(skill.fileName).toBe(`${skill.name}.zip`);
+    expect(skill.fileUrl).toBe("");
+    expect(skill.fileSize).toBe(33);
+    expect(skill.fileSha256).toBeUndefined();
   });
 
   it("trackSkillView sends a best-effort view metric", async () => {
@@ -326,7 +371,7 @@ describe("skillApiReal", () => {
           "X-Space-Id": "space-123",
         }),
         body: JSON.stringify({
-          resource_type: "skill",
+          resource_type: "plugin",
           resource_id: "skill/with space",
           event_type: "view",
         }),
@@ -334,12 +379,17 @@ describe("skillApiReal", () => {
     );
   });
 
-  it("deleteSkill handles empty success envelope", async () => {
-    mockFetch.mockReturnValueOnce(jsonResponse({}));
+  it("deleteSkill posts the plugin id to the unified delete endpoint", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({ deleted: true }));
 
     await expect(deleteSkill("some-id")).resolves.toBeUndefined();
-    const url = mockFetch.mock.calls[0][0] as string;
-    expect(url).toContain("/market/api/v1/skills/some-id");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/market/api/v1/plugins/delete",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ plugin_id: "some-id" }),
+      })
+    );
   });
 
   it("deleteSkill handles a real 204 No Content (empty body)", async () => {
@@ -410,27 +460,10 @@ describe("skillApiReal", () => {
     });
   });
 
-  it("createSkill and updateSkill send backend snake_case payloads", async () => {
-    const rawSkill = {
-      skill_id: "new-skill",
-      name: "New Skill",
-      description: "desc",
-      category_id: "dev-tools",
-      tags: ["tag"],
-      owner_id: "u1",
-      owner_name: "User",
-      space_id: "s1",
-      visibility: "space",
-      version: "1.0.0",
-      readme_content: "# New Skill",
-      file_name: "skill.zip",
-      file_url: "/files/skill.zip",
-      file_size: 512,
-      file_sha256: "sha",
-      created_at: "2026-01-01T00:00:00Z",
-      updated_at: "2026-01-02T00:00:00Z",
-    };
-    mockFetch.mockReturnValueOnce(jsonResponse(rawSkill));
+  it("createSkill imports the parse task through the unified endpoint", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({ plugin: pluginSkillWire(), relations: [] })
+    );
     await createSkill({
       parseTaskId: "task-1",
       name: "New Skill",
@@ -445,38 +478,179 @@ describe("skillApiReal", () => {
       fileSize: 512,
     });
     expect(mockFetch).toHaveBeenLastCalledWith(
-      "/market/api/v1/skills",
+      "/market/api/v1/plugins/import",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
           parse_task_id: "task-1",
+          plugin_name: "test",
           name: "New Skill",
-          display_name: "test",
           description: "desc",
           category_id: "dev-tools",
           tags: ["tag"],
           visibility: "space",
           version: "1.0.0",
-          icon_url: "",
+          icon: "",
         }),
       })
     );
+  });
 
-    mockFetch.mockReturnValueOnce(jsonResponse(rawSkill));
+  it("updateSkill with a parse task re-imports against the plugin id", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({ plugin: pluginSkillWire(), relations: [] })
+    );
     await updateSkill("new-skill", {
       parseTaskId: "task-2",
       visibility: "private",
     });
-    expect(mockFetch).toHaveBeenLastCalledWith(
-      "/market/api/v1/skills/new-skill",
-      expect.objectContaining({
-        method: "PATCH",
-        body: JSON.stringify({
-          parse_task_id: "task-2",
-          visibility: "private",
-        }),
-      })
+    const [url, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1] as [string, RequestInit];
+    expect(url).toBe("/market/api/v1/plugins/import");
+    const body = JSON.parse(init.body as string);
+    expect(body.parse_task_id).toBe("task-2");
+    expect(body.plugin_id).toBe("new-skill");
+    expect(body.visibility).toBe("private");
+  });
+
+  it("re-upload fails CLOSED to private when the caller omits visibility (full replace)", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({ plugin: pluginSkillWire(), relations: [] })
     );
+    // EditSkillModal has no visibility control; if it ever omits the field, the
+    // full-replace import must not let a backend default widen a private skill.
+    await updateSkill("new-skill", { parseTaskId: "task-3" });
+    const [, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.visibility).toBe("private");
+  });
+
+  it("re-upload preserves an explicit visibility the modal threads through", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({ plugin: pluginSkillWire(), relations: [] })
+    );
+    await updateSkill("new-skill", { parseTaskId: "task-4", visibility: "space" });
+    const [, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.visibility).toBe("space");
+  });
+
+  it("updateSkill without a parse task merges onto the current documents and upserts", async () => {
+    const current = pluginSkillWire({
+      plugin_json: {
+        $schema: "cowork-plugin-package-1.0.json",
+        attachments: [
+          {
+            path: "manifest.json",
+            content_type: "raw",
+            mime_type: "application/json",
+            raw_content: "{}",
+          },
+          {
+            path: "SKILL.md",
+            content_type: "raw",
+            mime_type: "text/markdown",
+            raw_content: "# keep me",
+          },
+        ],
+      },
+    });
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: current, relations: [] }));
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: current, relations: [] }));
+
+    await updateSkill("ci-failure-map", { displayName: "改名", tags: ["新标签"] });
+
+    const [url, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1] as [string, RequestInit];
+    expect(url).toBe("/market/api/v1/plugins/upsert");
+    const body = JSON.parse(init.body as string);
+    expect(body.plugin.plugin_id).toBe("ci-failure-map");
+    expect(body.plugin.plugin_name).toBe("改名");
+    expect(body.plugin.tags).toEqual(["新标签"]);
+    // icon echoes the stored write-canonical value, not the presigned URL.
+    expect(body.plugin.icon).toBe("icons/ci.png");
+    const attachments = body.plugin.plugin_json.attachments as Array<{
+      path: string;
+      raw_content?: string;
+    }>;
+    // Contract layout: the stale embedded manifest.json is dropped and the
+    // rest of the package passes through untouched.
+    expect(attachments.some((a) => a.path === "manifest.json")).toBe(false);
+    expect(attachments.find((a) => a.path === "SKILL.md")?.raw_content).toBe(
+      "# keep me"
+    );
+    expect(body.plugin.manifest_json.plugin_name).toBe("改名");
+    expect(body.plugin.manifest_json.labels).toEqual(["新标签"]);
+    // Cross-repo contract: the emitted schema ids must be 2.0 (the unified
+    // backend hard-rejects a 1.0 id), regardless of the stored 1.0 input above.
+    expect(body.plugin.manifest_json.$schema).toBe("cowork-plugin-manifest-2.0.json");
+    expect(body.plugin.plugin_json.$schema).toBe("cowork-plugin-package-2.0.json");
+  });
+
+  it("re-upload without a new icon omits icon so the stored icon is preserved", async () => {
+    // Regression (Jerry-Xin B2 / P1-10): EditSkillModal only sets iconUrl when a
+    // new icon is chosen, so a package-only re-upload has iconUrl === undefined.
+    // The import must NOT send icon:"" (a full-replace that wipes the stored
+    // icon) — it must omit icon entirely.
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({ plugin: pluginSkillWire(), relations: [] })
+    );
+
+    await updateSkill("ci-failure-map", {
+      parseTaskId: "task-reupload",
+      version: "1.1.0",
+      changelog: "repackage",
+    });
+
+    const [url, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1] as [string, RequestInit];
+    expect(url).toBe("/market/api/v1/plugins/import");
+    const body = JSON.parse(init.body as string);
+    expect(body.plugin_id).toBe("ci-failure-map");
+    expect("icon" in body).toBe(false);
+  });
+
+  it("re-upload with a fresh icon sends the new iconUrl", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({ plugin: pluginSkillWire(), relations: [] })
+    );
+
+    await updateSkill("ci-failure-map", {
+      parseTaskId: "task-reupload",
+      version: "1.1.0",
+      changelog: "repackage",
+      iconUrl: "icons/new.png",
+    });
+
+    const [, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.icon).toBe("icons/new.png");
+  });
+
+  it("metadata edit strips unsafe attachment paths from the resubmitted upsert", async () => {
+    const current = pluginSkillWire({
+      plugin_json: {
+        $schema: "cowork-plugin-package-1.0.json",
+        attachments: [
+          { path: "manifest.json", content_type: "raw", mime_type: "application/json", raw_content: "{}" },
+          { path: "SKILL.md", content_type: "raw", mime_type: "text/markdown", raw_content: "# keep" },
+          { path: "references/x.md", content_type: "raw", mime_type: "text/markdown", raw_content: "ref" },
+          { path: "../evil.md", content_type: "raw", mime_type: "text/markdown", raw_content: "escape" },
+          { path: "/abs.md", content_type: "raw", mime_type: "text/markdown", raw_content: "abs" },
+          { path: "a\\b.md", content_type: "raw", mime_type: "text/markdown", raw_content: "backslash" },
+          { path: "nested/../../deep.md", content_type: "raw", mime_type: "text/markdown", raw_content: "traverse" },
+        ],
+      },
+    });
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: current, relations: [] }));
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: current, relations: [] }));
+
+    await updateSkill("ci-failure-map", { displayName: "改名" });
+
+    const [url, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1] as [string, RequestInit];
+    expect(url).toBe("/market/api/v1/plugins/upsert");
+    const body = JSON.parse(init.body as string);
+    const paths = (body.plugin.plugin_json.attachments as Array<{ path: string }>).map((a) => a.path);
+    // manifest.json dropped (contract), traversal/absolute/backslash paths rejected;
+    // only safe relative paths survive into the trusted write.
+    expect(paths).toEqual(["SKILL.md", "references/x.md"]);
   });
 
   it("initUpload maps backend presigned upload fields", async () => {
@@ -528,8 +702,10 @@ describe("skillApiReal", () => {
       headers: { "Content-Type": "application/zip", "X-Amz-Acl": "private" },
       expiresIn: 1800,
     });
+    // Reuploads share the unbound upload channel; the skill binding happens
+    // at import time via plugin_id.
     expect(mockFetch).toHaveBeenCalledWith(
-      "/market/api/v1/skills/skill-1/reuploads",
+      "/market/api/v1/skill_uploads",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ file_name: "updated.zip", file_size: 4096 }),
@@ -725,58 +901,15 @@ describe("skillApiReal", () => {
     vi.useRealTimers();
   });
 
-  it("getDownloadUrl exposes the backend 302 download endpoint", () => {
-    expect(getDownloadUrl("skill/with space")).toBe(
-      "/market/api/v1/skills/skill%2Fwith%20space/download"
-    );
-  });
-
-  it("downloads through an authenticated JSON URL request", async () => {
-    mockFetch.mockReturnValueOnce(
-      jsonResponse({ download_url: "https://cdn.example.com/skills/demo.zip" })
-    );
-    const click = vi
-      .spyOn(HTMLAnchorElement.prototype, "click")
-      .mockImplementation(() => undefined);
-
-    await downloadSkill("skill/with space");
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      "/market/api/v1/skills/skill%2Fwith%20space/download?format=json",
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          token: "test-token",
-          "X-Space-Id": "space-123",
-        }),
-      })
-    );
-    expect(click).toHaveBeenCalledOnce();
-  });
-
   it("normalizes tags when backend returns a JSON-encoded string", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse({
-        skill_id: "test-skill",
-        name: "Test",
-        description: "desc",
-        category_id: "other",
-        tags: '["CI","debug"]',
-        owner_id: "u1",
-        owner_name: "User",
-        space_id: "s1",
-        visibility: "public",
-        version: "1.0.0",
-        readme_content: "# Test",
-        file_name: "test.zip",
-        file_url: "/files/test.zip",
-        file_size: 512,
-        file_sha256: "def456",
-        created_at: "2026-01-01T00:00:00Z",
-        updated_at: "2026-01-02T00:00:00Z",
+        plugin: pluginSkillWire({ tags: '["CI","debug"]' }),
+        relations: [],
       })
     );
 
-    const skill = await getSkill("test-skill");
+    const skill = await getSkill("ci-failure-map");
 
     expect(skill.tags).toEqual(["CI", "debug"]);
   });
@@ -784,27 +917,12 @@ describe("skillApiReal", () => {
   it("normalizes tags when backend returns null or undefined", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse({
-        skill_id: "test-skill",
-        name: "Test",
-        description: "desc",
-        category_id: "other",
-        tags: null,
-        owner_id: "u1",
-        owner_name: "User",
-        space_id: "s1",
-        visibility: "public",
-        version: "1.0.0",
-        readme_content: "# Test",
-        file_name: "test.zip",
-        file_url: "/files/test.zip",
-        file_size: 512,
-        file_sha256: "def456",
-        created_at: "2026-01-01T00:00:00Z",
-        updated_at: "2026-01-02T00:00:00Z",
+        plugin: pluginSkillWire({ tags: null }),
+        relations: [],
       })
     );
 
-    const skill = await getSkill("test-skill");
+    const skill = await getSkill("ci-failure-map");
 
     expect(skill.tags).toEqual([]);
   });
@@ -858,31 +976,27 @@ describe("skillApiReal", () => {
   it("defaults missing skill fields to safe values", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse({
-        skill_id: "minimal-skill",
-        name: "Minimal",
-        description: null,
-        category_id: "other",
-        tags: [],
-        owner_id: "u1",
-        owner_name: null,
-        space_id: "s1",
-        visibility: null,
-        version: null,
-        readme_content: null,
-        file_name: null,
-        file_url: null,
-        file_size: null,
-        file_sha256: "abc",
-        created_at: "2026-01-01T00:00:00Z",
-        updated_at: "2026-01-02T00:00:00Z",
+        plugin: {
+          plugin_id: "minimal-skill",
+          plugin_name: "Minimal",
+          plugin_type: "skill",
+          tags: [],
+          owner_id: "u1",
+          visibility: null,
+          manifest_json: {},
+        },
+        relations: [],
       })
     );
 
     const skill = await getSkill("minimal-skill");
 
+    expect(skill.name).toBe("Minimal");
     expect(skill.description).toBe("");
     expect(skill.ownerName).toBe("");
-    expect(skill.visibility).toBe("space");
+    // Unknown/absent visibility fails CLOSED to the most restrictive bucket,
+    // since EditSkillModal echoes this value into a full-replace write.
+    expect(skill.visibility).toBe("private");
     expect(skill.version).toBe("1.0.0");
     expect(skill.readmeContent).toBe("");
     expect(skill.fileName).toBe("");
@@ -960,7 +1074,7 @@ describe("skillApiReal", () => {
       const result = await getSkillMd("skill-123");
       expect(result).toBe(mdText);
       expect(mockFetch).toHaveBeenCalledWith(
-        "/market/api/v1/skills/skill-123/skill_md",
+        "/market/api/v1/plugins/skill_md?plugin_id=skill-123",
         expect.objectContaining({
           headers: {
             "Content-Type": "application/json",

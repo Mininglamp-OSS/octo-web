@@ -11,17 +11,25 @@ import {
   EXPERT_SQUADS,
 } from "../mock/expertMock";
 import {
-  mapAgentDetail,
-  mapAgentListItem,
-  mapSquadDetail,
-  mapSquadListItem,
+  mapPluginAgentListItem,
+  mapPluginSquadListItem,
+  fromSkillPlugin,
 } from "./expertWire";
 import type {
-  ExpertAgentDetailWire,
-  ExpertAgentListItemWire,
-  ExpertSquadDetailWire,
-  ExpertSquadListItemWire,
+  MemberContextWire,
 } from "./expertWire";
+import { parseTeamAgentsMarkdown } from "./expertWire";
+import type { ExpertMember, ExpertSkill } from "../mock/expertMock";
+import {
+  SCENE_CODE,
+  jsonAttachment,
+  rawAttachment,
+  type OffsetPaginationWire,
+  type PluginCategoryWire,
+  type PluginDetailWire,
+  type PluginListItemWire,
+  type PluginRelationWire,
+} from "./pluginWire";
 import { CATEGORY_KEY_ALL } from "../utils/constants";
 import {
   ExpertListError,
@@ -240,15 +248,6 @@ async function get<T>(
   }
 }
 
-async function del(path: string): Promise<void> {
-  try {
-    await expertAxios.delete(`${BASE}${path}`);
-  } catch (err) {
-    if (axios.isCancel(err)) throw err;
-    throw new Error(extractErrorMessage(err));
-  }
-}
-
 /** GET against the fleet service. Unlike the marketplace helpers, fleet returns
  *  the payload bare at `resp.data` (no `{data:...}` envelope), so we do NOT
  *  unwrap `.data`. */
@@ -265,70 +264,311 @@ async function fleetGet<T>(
   }
 }
 
-// ─── Real implementations (octo-marketplace expert catalog v1) ──────────────
+// ─── Real implementations (octo-marketplace unified plugin API) ─────────────
 
 /** Wire envelope for the list endpoints. */
-interface ExpertListResponseWire<W> {
-  data: W[];
-  pagination?: { total: number; page: number; page_size: number };
+interface PluginListResponseWire {
+  data: PluginListItemWire[];
+  pagination?: OffsetPaginationWire;
 }
 
-/** Build the query object for a list request. `category` is the NAME; the
- *  "all" sentinels ("全部" / "all") are omitted so the backend disables the
- *  filter. `tag` is sent as repeated params. */
-function buildListQuery(params: ListExpertParams): Record<string, unknown> {
-  const query: Record<string, unknown> = {};
-  const keyword = params.keyword?.trim();
-  if (keyword) query.keyword = keyword;
-  const category = params.category?.trim();
-  if (category && category !== ALL_CATEGORY && category !== CATEGORY_KEY_ALL) {
-    query.category = category;
+/** Unified plugin type behind each catalog tab. */
+type ExpertPluginType = "expert" | "expert_team";
+
+function pluginTypeOf(kind: ExpertKindParam): ExpertPluginType {
+  return kind === "squad" ? "expert_team" : "expert";
+}
+
+/** Unified sort names for the legacy catalog sort enum. */
+function mapSort(sort?: ExpertCatalogSort): string | undefined {
+  if (!sort) return undefined;
+  if (sort === "latest") return "newest";
+  return sort; // comprehensive / installs / views match 1:1
+}
+
+// Category maps per plugin type: the unified API filters by category UUID
+// while the UI keeps working with category NAMES. Cached per Space; counts
+// for the chips are re-fetched fresh by listExpertCategories.
+interface ExpertCategoryMaps {
+  nameToId: Map<string, string>;
+  idToName: Map<string, string>;
+}
+
+const categoryMapsCache = new Map<
+  string,
+  { spaceId: string; promise: Promise<ExpertCategoryMaps> }
+>();
+
+async function fetchExpertCategoriesWire(
+  pluginType: ExpertPluginType
+): Promise<PluginCategoryWire[]> {
+  const data = await get<PluginCategoryWire[] | null>("/plugin_categories", {
+    scene_code: SCENE_CODE,
+    plugin_type: pluginType,
+  });
+  return Array.isArray(data) ? data : [];
+}
+
+function getExpertCategoryMaps(
+  pluginType: ExpertPluginType,
+  forceRefresh = false
+): Promise<ExpertCategoryMaps> {
+  const spaceId = WKApp.shared?.currentSpaceId ?? "";
+  if (forceRefresh) categoryMapsCache.delete(pluginType);
+  const hit = categoryMapsCache.get(pluginType);
+  if (!hit || hit.spaceId !== spaceId) {
+    const promise = fetchExpertCategoriesWire(pluginType).then((wire) => {
+      const nameToId = new Map<string, string>();
+      const idToName = new Map<string, string>();
+      for (const category of wire) {
+        nameToId.set(category.name, category.category_id);
+        idToName.set(category.category_id, category.name);
+      }
+      return { nameToId, idToName };
+    });
+    promise.catch(() => {
+      if (categoryMapsCache.get(pluginType)?.promise === promise) {
+        categoryMapsCache.delete(pluginType);
+      }
+    });
+    categoryMapsCache.set(pluginType, { spaceId, promise });
   }
+  return categoryMapsCache.get(pluginType)!.promise;
+}
+
+async function listPathReal(
+  kind: ExpertKindParam,
+  mine: boolean,
+  params: ListExpertParams
+): Promise<ExpertListResult> {
+  const pluginType = pluginTypeOf(kind);
+  const query: Record<string, unknown> = {
+    scene_code: SCENE_CODE,
+    plugin_type: pluginType,
+  };
+  if (mine) query.mode = "mine";
+  const keyword = params.keyword?.trim();
+  if (keyword) query.q = keyword;
   if (params.tags?.length) query.tag = params.tags;
-  if (params.sort) query.sort = params.sort;
+  const sort = mapSort(params.sort);
+  if (sort) query.sort = sort;
   query.page = params.page && params.page > 0 ? params.page : 1;
   query.page_size = params.pageSize && params.pageSize > 0 ? params.pageSize : 100;
-  return query;
-}
 
-async function listPathReal<W>(
-  path: string,
-  params: ListExpertParams,
-  map: (raw: W) => ExpertItem
-): Promise<ExpertListResult> {
-  const query = buildListQuery(params);
+  let maps = await getExpertCategoryMaps(pluginType);
+  const category = params.category?.trim();
+  if (category && category !== ALL_CATEGORY && category !== CATEGORY_KEY_ALL) {
+    let categoryId = maps.nameToId.get(category);
+    if (!categoryId) {
+      // Stale per-space cache (e.g. an admin renamed the category): refetch the
+      // taxonomy once before giving up.
+      maps = await getExpertCategoryMaps(pluginType, true);
+      categoryId = maps.nameToId.get(category);
+    }
+    if (categoryId) {
+      query.category_id = categoryId;
+    } else {
+      // Fail closed: an unresolvable category filter must NOT silently widen to
+      // the whole catalog (the list would then render every expert as if
+      // unfiltered). Surface an explicit empty result, mirroring the connector
+      // path in mcpService.fetchMcpListPath.
+      return { items: [], total: 0 };
+    }
+  }
   const resp = await executeExpertListRequest(() =>
-    expertAxios.get<ExpertListResponseWire<W>>(`${BASE}${path}`, { params: query })
+    expertAxios.get<PluginListResponseWire>(`${BASE}/plugins`, { params: query })
   );
-  const items = (resp.data.data ?? []).map(map);
+  const items = (resp.data.data ?? []).map((raw) => {
+    const categoryName = (raw.category_id && maps.idToName.get(raw.category_id)) || "";
+    return kind === "squad"
+      ? mapPluginSquadListItem(raw, categoryName)
+      : mapPluginAgentListItem(raw, categoryName);
+  });
   return { items, total: resp.data.pagination?.total ?? items.length };
 }
 
-const listExpertsReal = (params: ListExpertParams) =>
-  listPathReal<ExpertAgentListItemWire>("/experts", params, mapAgentListItem);
-const listMyExpertsReal = (params: ListExpertParams) =>
-  listPathReal<ExpertAgentListItemWire>("/experts/mine", params, mapAgentListItem);
-const listSquadsReal = (params: ListExpertParams) =>
-  listPathReal<ExpertSquadListItemWire>("/squads", params, mapSquadListItem);
-const listMySquadsReal = (params: ListExpertParams) =>
-  listPathReal<ExpertSquadListItemWire>("/squads/mine", params, mapSquadListItem);
+const listExpertsReal = (params: ListExpertParams) => listPathReal("agent", false, params);
+const listMyExpertsReal = (params: ListExpertParams) => listPathReal("agent", true, params);
+const listSquadsReal = (params: ListExpertParams) => listPathReal("squad", false, params);
+const listMySquadsReal = (params: ListExpertParams) => listPathReal("squad", true, params);
 
-const getExpertReal = (id: string) =>
-  get<ExpertAgentDetailWire>(`/experts/${encodeURIComponent(id)}`).then(mapAgentDetail);
-const getSquadReal = (id: string) =>
-  get<ExpertSquadDetailWire>(`/squads/${encodeURIComponent(id)}`).then(mapSquadDetail);
+// ─── Detail assembly (attachments + relations fan-out) ──────────────────────
+// Skill text/packages load lazily by (parent id, member key, index); remember
+// which skill Plugin each position resolved to so those reads go straight to
+// /plugins/skill_md|download without re-walking relations.
+const expertSkillIndex = new Map<string, string[]>();
+const squadSkillIndex = new Map<string, Map<string, string[]>>();
 
-const deleteExpertReal = (id: string) => del(`/experts/${encodeURIComponent(id)}`);
-const deleteSquadReal = (id: string) => del(`/squads/${encodeURIComponent(id)}`);
+function liveRelations(
+  relations: PluginRelationWire[] | undefined,
+  relationType: string
+): PluginRelationWire[] {
+  return (relations ?? [])
+    .filter((rel) => rel.relation_type === relationType)
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+}
 
-/** POST /metrics/track — bump the backend view counter. Only detail views are
- *  tracked (opening the modal), matching the skill market's semantics.
- *  Fire-and-forget: every failure is swallowed here so no call site ever has
- *  to remember to catch a rejection that carries no actionable signal. */
-async function trackExpertViewReal(kind: ExpertKindParam, id: string): Promise<void> {
+function pluginDetail(id: string): Promise<PluginDetailWire> {
+  return get<PluginDetailWire>("/plugins/detail", {
+    plugin_id: id,
+    include_relations: true,
+  });
+}
+
+/** A CONFIRMED 404 means the relation target is soft-deleted / dangling — the
+ *  one case where dropping it (rather than failing the whole detail) is correct.
+ *  `get()` has already wrapped the axios error into an ExpertListError, so we key
+ *  off its classified kind. Any other failure (500 / 403 / network / unknown)
+ *  must surface, not silently shrink the displayed skill/member list. */
+function isDanglingTarget(reason: unknown): boolean {
+  return reason instanceof ExpertListError && reason.kind === "notfound";
+}
+
+/** Load every expert_skill relation target and project it for the browser,
+ *  returning the skills plus their plugin ids (positionally aligned). */
+async function loadSkills(
+  relations: PluginRelationWire[] | undefined
+): Promise<{ skills: ExpertSkill[]; pluginIds: string[] }> {
+  const rels = liveRelations(relations, "expert_skill");
+  // allSettled, not all: a soft-deleted / unresolvable expert_skill target must
+  // not reject the whole expert/squad detail. But only a CONFIRMED 404 is
+  // dropped — a 500/403/network error is rethrown so the detail surfaces the
+  // failure instead of silently rendering a shortened skill list. skills[] and
+  // pluginIds[] stay aligned because both are pushed together only for resolved
+  // targets. Cancellation (space switch) still propagates.
+  const settled = await Promise.allSettled(
+    rels.map((rel) =>
+      get<PluginDetailWire>("/plugins/detail", {
+        plugin_id: rel.target_plugin_id,
+        include_relations: false,
+      })
+    )
+  );
+  const skills: ExpertSkill[] = [];
+  const pluginIds: string[] = [];
+  settled.forEach((res, i) => {
+    if (res.status === "fulfilled") {
+      skills.push(fromSkillPlugin(res.value.plugin));
+      pluginIds.push(rels[i].target_plugin_id);
+    } else if (axios.isCancel(res.reason) || !isDanglingTarget(res.reason)) {
+      // Cancellation or a non-404 failure — surface it, don't drop silently.
+      throw res.reason;
+    }
+    // else: confirmed 404 → dangling target, safe to drop.
+  });
+  return { skills, pluginIds };
+}
+
+async function getExpertReal(id: string): Promise<ExpertAgent> {
+  const [detail, maps] = await Promise.all([
+    pluginDetail(id),
+    getExpertCategoryMaps("expert"),
+  ]);
+  const plugin = detail.plugin;
+  const categoryName =
+    (plugin.category_id && maps.idToName.get(plugin.category_id)) || "";
+  const { skills, pluginIds } = await loadSkills(detail.relations);
+  expertSkillIndex.set(id, pluginIds);
+  return {
+    ...mapPluginAgentListItem(plugin, categoryName),
+    instruction: rawAttachment(plugin.plugin_json, "AGENTS.md") ?? "",
+    mcpConfig: rawAttachment(plugin.plugin_json, "mcp.json") ?? "",
+    skills,
+  };
+}
+
+async function getSquadReal(id: string): Promise<ExpertSquad> {
+  const [detail, maps] = await Promise.all([
+    pluginDetail(id),
+    getExpertCategoryMaps("expert_team"),
+  ]);
+  const plugin = detail.plugin;
+  const categoryName =
+    (plugin.category_id && maps.idToName.get(plugin.category_id)) || "";
+  // Contract layout: the team package is a single AGENTS.md carrying the
+  // collaboration/dispatch config as deterministic prose; leadership also
+  // lives on member relations (is_leader).
+  const agents = parseTeamAgentsMarkdown(
+    rawAttachment(plugin.plugin_json, "AGENTS.md") ?? ""
+  );
+  const memberRels = liveRelations(detail.relations, "expert_team_expert");
+  const skillIndex = new Map<string, string[]>();
+  // allSettled: one unresolvable member relation must not break the whole squad
+  // detail — but only a CONFIRMED 404 is dropped; a 500/403/network error is
+  // rethrown so a transient failure doesn't silently shrink the member list (and
+  // memberCount). Cancellation still propagates.
+  const settledMembers = await Promise.allSettled(
+    memberRels.map((rel) => loadSquadMember(rel, skillIndex))
+  );
+  const members: ExpertMember[] = [];
+  for (const res of settledMembers) {
+    if (res.status === "fulfilled") members.push(res.value);
+    else if (axios.isCancel(res.reason) || !isDanglingTarget(res.reason)) {
+      throw res.reason;
+    }
+    // else: confirmed 404 → dangling member, safe to drop.
+  }
+  squadSkillIndex.set(id, skillIndex);
+  return {
+    ...mapPluginSquadListItem(plugin, categoryName),
+    members,
+    memberCount: members.length,
+    instruction: rawAttachment(plugin.plugin_json, "AGENTS.md") ?? "",
+    leader: agents.leader || members.find((m) => m.leader)?.name || "",
+    strategies: agents.strategies,
+    dependencies: agents.dependencies,
+    permission: agents.permission,
+    checkResult: "supported",
+  };
+}
+
+async function loadSquadMember(
+  rel: PluginRelationWire,
+  skillIndex: Map<string, string[]>
+): Promise<ExpertMember> {
+  const detail = await pluginDetail(rel.target_plugin_id);
+  const plugin = detail.plugin;
+  // relation_json is authoritative for squad wiring; the member's own
+  // expert/context.json snapshot is the fallback.
+  const wiring = (rel.data ?? {}) as MemberContextWire;
+  const context =
+    jsonAttachment<MemberContextWire>(plugin.plugin_json, "expert/context.json") ?? {};
+  const memberKey =
+    wiring.member_key || context.member_key || rel.target_plugin_id;
+  const { skills, pluginIds } = await loadSkills(detail.relations);
+  skillIndex.set(memberKey, pluginIds);
+  return {
+    key: memberKey,
+    pluginId: rel.target_plugin_id,
+    templateId: context.template_id,
+    name: plugin.plugin_name ?? "",
+    role: wiring.role ?? context.role ?? "",
+    leader: Boolean(wiring.is_leader ?? context.is_leader),
+    instruction: rawAttachment(plugin.plugin_json, "AGENTS.md") ?? "",
+    mcpConfig: rawAttachment(plugin.plugin_json, "mcp.json") ?? "",
+    skills,
+  };
+}
+
+async function deletePluginReal(id: string): Promise<void> {
+  try {
+    await expertAxios.post(`${BASE}/plugins/delete`, { plugin_id: id });
+  } catch (err) {
+    if (axios.isCancel(err)) throw err;
+    throw new Error(extractErrorMessage(err));
+  }
+}
+
+const deleteExpertReal = deletePluginReal;
+const deleteSquadReal = deletePluginReal;
+
+/** POST /metrics/track — bump the plugin view counter. Fire-and-forget:
+ *  every failure is swallowed here so no call site ever has to remember to
+ *  catch a rejection that carries no actionable signal. */
+async function trackExpertViewReal(_kind: ExpertKindParam, id: string): Promise<void> {
   try {
     await expertAxios.post(`${BASE}/metrics/track`, {
-      resource_type: kind === "squad" ? "squad" : "expert",
+      resource_type: "plugin",
       resource_id: id,
       event_type: "view",
     });
@@ -339,8 +579,8 @@ async function trackExpertViewReal(kind: ExpertKindParam, id: string): Promise<v
 
 async function listExpertTagsReal(kind: ExpertKindParam): Promise<string[]> {
   const data = await get<{ name: string; count: number }[] | null>(
-    "/expert_tags",
-    { kind }
+    "/plugin_tags",
+    { plugin_type: pluginTypeOf(kind) }
   );
   return Array.isArray(data) ? data.map((tag) => tag.name) : [];
 }
@@ -348,12 +588,8 @@ async function listExpertTagsReal(kind: ExpertKindParam): Promise<string[]> {
 async function listExpertCategoriesReal(
   kind: ExpertKindParam
 ): Promise<ExpertCategoryCount[]> {
-  const data = await get<
-    { expert_category_id: string; name: string; count: number }[] | null
-  >("/expert_categories", { kind });
-  return Array.isArray(data)
-    ? data.map((c) => ({ name: c.name, count: c.count }))
-    : [];
+  const data = await fetchExpertCategoriesWire(pluginTypeOf(kind));
+  return data.map((c) => ({ name: c.name, count: c.plugin_count ?? 0 }));
 }
 
 // ─── Mock implementations (session-local CRUD over module arrays) ───────────
@@ -533,20 +769,54 @@ export function listExpertCategories(
     : listExpertCategoriesReal(kind);
 }
 
-// ─── Skill content (viewable SKILL.md text, doc §3.1) ───────────────────────
-const getExpertSkillContentReal = (expertId: string, index: number) =>
-  get<{ content?: string }>(`/experts/${encodeURIComponent(expertId)}/skill_md`, {
-    i: index,
+// ─── Skill content (viewable SKILL.md text) ─────────────────────────────────
+// The lazy readers address skills by (parent id, member key, index); resolve
+// the position to its skill Plugin id via the index the detail assembly
+// recorded, re-fetching the detail when the cache is cold (e.g. page reload
+// straight into a deep link).
+
+async function skillPluginIdForExpert(
+  expertId: string,
+  index: number
+): Promise<string> {
+  let ids = expertSkillIndex.get(expertId);
+  if (!ids || !ids[index]) {
+    await getExpertReal(expertId);
+    ids = expertSkillIndex.get(expertId);
+  }
+  const pluginId = ids?.[index];
+  if (!pluginId) throw new Error(t("mcp.errors.notFound"));
+  return pluginId;
+}
+
+async function skillPluginIdForSquad(
+  squadId: string,
+  memberKey: string,
+  index: number
+): Promise<string> {
+  let byMember = squadSkillIndex.get(squadId);
+  if (!byMember || !byMember.get(memberKey)?.[index]) {
+    await getSquadReal(squadId);
+    byMember = squadSkillIndex.get(squadId);
+  }
+  const pluginId = byMember?.get(memberKey)?.[index];
+  if (!pluginId) throw new Error(t("mcp.errors.notFound"));
+  return pluginId;
+}
+
+function fetchSkillMarkdown(pluginId: string): Promise<string> {
+  return get<{ content?: string }>("/plugins/skill_md", {
+    plugin_id: pluginId,
   }).then((d) => d.content ?? "");
+}
+
+const getExpertSkillContentReal = (expertId: string, index: number) =>
+  skillPluginIdForExpert(expertId, index).then(fetchSkillMarkdown);
 const getSquadSkillContentReal = (
   squadId: string,
   memberKey: string,
   index: number
-) =>
-  get<{ content?: string }>(`/squads/${encodeURIComponent(squadId)}/skill_md`, {
-    member: memberKey,
-    i: index,
-  }).then((d) => d.content ?? "");
+) => skillPluginIdForSquad(squadId, memberKey, index).then(fetchSkillMarkdown);
 
 /** GET /experts/{id}/skill_md?i= — stored SKILL.md text for one expert skill. */
 export function getExpertSkillContent(
@@ -569,14 +839,16 @@ export function getSquadSkillContent(
     : getSquadSkillContentReal(squadId, memberKey, index);
 }
 
-// ─── Skill package retrieval (whole .zip/.skill, doc §3.1) ───────────────────
-// The detail view resolves a short-lived presigned GET URL and fetches + unzips
-// the package client-side for the in-place file browser. There is no user-facing
-// download; the *DownloadUrl helper names mirror the wire endpoint
-// (skill_download / download_url).
+// ─── Skill package retrieval (whole .zip/.skill) ─────────────────────────────
+// The detail view fetches + unzips the package client-side for the in-place
+// file browser. The unified marketplace streams the package from an
+// AUTHENTICATED endpoint (no presigned URL), so the *DownloadUrl helpers now
+// return a same-origin relative path and fetchSkillPackage attaches the
+// marketplace auth headers for it.
 
-/** Reject presigned URLs whose scheme isn't http(s); http only for localhost.
- *  Scheme-level guard mirroring the skills market's assertSafeExternalURL. */
+/** Reject external URLs whose scheme isn't http(s); http only for localhost.
+ *  Same-origin relative paths (the authenticated marketplace download) are
+ *  validated separately by the caller. */
 function assertSafeExternalURL(raw: string): void {
   let u: URL;
   try {
@@ -591,22 +863,39 @@ function assertSafeExternalURL(raw: string): void {
   throw new Error("unsupported upload URL scheme");
 }
 
+/** Marketplace auth headers for a bare fetch (mirrors the axios interceptor). */
+function marketAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const token = WKApp.loginInfo?.token;
+  if (token) headers["token"] = token;
+  const spaceId = WKApp.shared?.currentSpaceId;
+  if (spaceId) headers["X-Space-Id"] = spaceId;
+  return headers;
+}
+
 /** Ceiling for a fetched skill package (matches the backend upload cap). Guards
  *  the browser preview from a crafted/huge package before it's buffered. */
 export const MAX_SKILL_PACKAGE_FETCH_BYTES = 20 * 1024 * 1024;
 
-/** Fetch the raw bytes of a skill package from its presigned URL, for the
- *  client-side file browser. Scheme-guards the URL (rejecting "" and unsafe
- *  schemes), honours the caller's AbortSignal, and enforces
- *  MAX_SKILL_PACKAGE_FETCH_BYTES by STREAMING the body and cancelling as soon as
- *  the accumulated size exceeds the cap — so a missing/lying Content-Length
- *  can't force the tab to buffer an oversized (or infinite) response first. */
+/** Fetch the raw bytes of a skill package for the client-side file browser.
+ *  Marketplace-relative paths (starting with the /market mount) get the auth
+ *  headers attached and resolve against the API origin; absolute URLs are
+ *  scheme-guarded and fetched bare. Honours the caller's AbortSignal and
+ *  enforces MAX_SKILL_PACKAGE_FETCH_BYTES by STREAMING the body and cancelling
+ *  as soon as the accumulated size exceeds the cap. */
 export async function fetchSkillPackage(
   url: string,
   signal?: AbortSignal
 ): Promise<ArrayBuffer> {
-  assertSafeExternalURL(url); // throws on empty/unsafe URL
-  const resp = await fetch(url, { signal });
+  let target = url;
+  let headers: Record<string, string> | undefined;
+  if (url.startsWith(`${BASE}/`)) {
+    target = `${resolveBaseURL()}${url}`;
+    headers = marketAuthHeaders();
+  } else {
+    assertSafeExternalURL(url); // throws on empty/unsafe URL
+  }
+  const resp = await fetch(target, { signal, headers });
   if (!resp.ok) throw new Error(`package fetch failed: ${resp.status}`);
   const declared = Number(resp.headers.get("content-length") ?? "");
   if (Number.isFinite(declared) && declared > MAX_SKILL_PACKAGE_FETCH_BYTES) {
@@ -644,22 +933,24 @@ export async function fetchSkillPackage(
 }
 
 const getExpertSkillDownloadUrlReal = (id: string, index: number) =>
-  get<{ download_url?: string }>(`/experts/${encodeURIComponent(id)}/skill_download`, {
-    i: index,
-  }).then((d) => d.download_url ?? "");
+  skillPluginIdForExpert(id, index).then(
+    (pluginId) =>
+      `${BASE}/plugins/download?plugin_id=${encodeURIComponent(pluginId)}`
+  );
 const getSquadSkillDownloadUrlReal = (id: string, memberKey: string, index: number) =>
-  get<{ download_url?: string }>(`/squads/${encodeURIComponent(id)}/skill_download`, {
-    member: memberKey,
-    i: index,
-  }).then((d) => d.download_url ?? "");
+  skillPluginIdForSquad(id, memberKey, index).then(
+    (pluginId) =>
+      `${BASE}/plugins/download?plugin_id=${encodeURIComponent(pluginId)}`
+  );
 
-/** Resolve a presigned download URL for the expert's skill package. Used both to
- *  fetch + unzip the package client-side (file browser) and to trigger a download. */
+/** Resolve the authenticated download path for the expert's skill package. Used
+ *  both to fetch + unzip the package client-side (file browser) and to trigger a
+ *  download; consume it through fetchSkillPackage so auth headers attach. */
 export function getExpertSkillDownloadUrl(id: string, index: number): Promise<string> {
   return getExpertSkillDownloadUrlReal(id, index);
 }
 
-/** Resolve a presigned download URL for a squad member's skill package. */
+/** Resolve the authenticated download path for a squad member's skill package. */
 export function getSquadSkillDownloadUrl(
   id: string,
   memberKey: string,
@@ -824,19 +1115,20 @@ export function prefetchLoopTargets(): void {
     .catch(() => {});
 }
 
-/** POST /experts/{id}/install — create the agent (+ its skills) in the chosen
- *  workspace/runtime. The marketplace backend orchestrates the fleet calls
- *  server-side (create agent → create skills → bind) and rolls back on partial
- *  failure, returning the new agent's id. */
+/** POST /plugins/install — create the agent (+ its skills) in the
+ *  chosen workspace/runtime. The marketplace backend orchestrates the fleet
+ *  calls server-side (create agent → create skills → bind) and rolls back on
+ *  partial failure, returning the new agent's id. */
 export async function installExpertToLoop(
   expertId: string,
   opts: { workspaceId: string; runtimeId: string }
 ): Promise<{ agentId: string }> {
   try {
-    const resp = await expertAxios.post(
-      `${BASE}/experts/${encodeURIComponent(expertId)}/install`,
-      { workspace_id: opts.workspaceId, runtime_id: opts.runtimeId }
-    );
+    const resp = await expertAxios.post(`${BASE}/plugins/install`, {
+      plugin_id: expertId,
+      workspace_id: opts.workspaceId,
+      runtime_id: opts.runtimeId,
+    });
     const data = (resp?.data?.data ?? null) as { agent_id?: string } | null;
     const agentId = data?.agent_id ?? "";
     // The agent id is the whole point of this call. A 2xx without it means the
@@ -851,20 +1143,21 @@ export async function installExpertToLoop(
   }
 }
 
-/** POST /squads/{id}/install — provision the squad into the chosen
- *  workspace/runtime. The marketplace backend installs each member as a Loop
- *  agent (create agent → skills → bind), then forms the squad (create it led by
- *  the leader member, attach the rest), rolling back on partial failure. Returns
- *  the new fleet squad's id. */
+/** POST /plugins/install (expert_team) — provision the squad into the
+ *  chosen workspace/runtime. The marketplace backend installs each member as a
+ *  Loop agent (create agent → skills → bind), then forms the squad (create it
+ *  led by the leader member, attach the rest), rolling back on partial failure.
+ *  Returns the new fleet squad's id. */
 export async function installSquadToLoop(
   squadId: string,
   opts: { workspaceId: string; runtimeId: string }
 ): Promise<{ squadId: string }> {
   try {
-    const resp = await expertAxios.post(
-      `${BASE}/squads/${encodeURIComponent(squadId)}/install`,
-      { workspace_id: opts.workspaceId, runtime_id: opts.runtimeId }
-    );
+    const resp = await expertAxios.post(`${BASE}/plugins/install`, {
+      plugin_id: squadId,
+      workspace_id: opts.workspaceId,
+      runtime_id: opts.runtimeId,
+    });
     const data = (resp?.data?.data ?? null) as { squad_id?: string } | null;
     const newSquadId = data?.squad_id ?? "";
     // The squad id is the whole point of this call — a 2xx without it means the

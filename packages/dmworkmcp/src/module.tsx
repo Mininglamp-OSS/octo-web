@@ -3,6 +3,7 @@ import type { IModule } from "@octo/base";
 import { ChatPage, i18n, I18nProvider, WKApp, Menus, t as translate, Dap } from "@octo/base";
 import { SkillListPage } from "@dmwork/skillmarket";
 import McpMarketListPage from "./pages/McpMarketListPage";
+import MyAssetsPage from "./pages/MyAssetsPage";
 import ExpertMarketListPage from "./pages/ExpertMarketListPage";
 import MarketSidebar from "./components/MarketSidebar";
 import enUS from "./i18n/en-US.json";
@@ -81,6 +82,12 @@ export class McpMarketModule implements IModule {
     // and deployed, and the /market/api/v1 nginx location fail-louds (503)
     // when the marketplace is absent. See src/pages/ExpertMarketListPage.tsx.
     WKApp.route.register("/mcp-market/experts", () => <ExpertMarketListPage />, { hostShell: marketHostShell });
+
+    // 我的 (personal assets) — the sidebar's fourth entry. One page hosting
+    // skills / experts / connectors in their variant="mine" mode under type
+    // sub-tabs, so personal assets live in one place instead of a per-market
+    // tab. Same shared "/mcp-market" shell as the three discovery markets.
+    WKApp.route.register("/mcp-market/mine", () => <MyAssetsPage />, { hostShell: marketHostShell });
 
     // 顶层 NavRail 菜单入口。sort=5003 紧跟在 summary(4002/5000) 之后，
     // 与既有 chat(1000)/contacts(4000) 图标栏共用同一注册机制

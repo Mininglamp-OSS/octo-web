@@ -78,8 +78,6 @@ describe("SkillDetailModal", () => {
     expect(screen.getByTitle("办公协作")).toBeInTheDocument();
     expect(screen.getByTitle("我")).toBeInTheDocument();
     expect(screen.getByTitle("v1.1.3")).toBeInTheDocument();
-    expect(screen.getByTitle("浏览次数：12")).toHaveTextContent("12");
-    expect(screen.getByTitle("下载次数：3")).toHaveTextContent("3");
     expect(screen.queryByText("meeting-note-cleaner.zip")).not.toBeInTheDocument();
     expect(screen.queryByText("4 KB")).not.toBeInTheDocument();
   });

@@ -3,12 +3,12 @@ import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
-import { Bot, Download, Eye, Pencil, RefreshCw, ShieldCheck, Trash2, UserRound } from "lucide-react";
+import { Bot, Pencil, RefreshCw, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
 import Loading from "@octo/ui/components/Loading";
 import type { Category, Skill, SkillVersion } from "../types/skill";
 import { getSkill, getSkillMd, listVersions, trackSkillView } from "../api/skillApi";
-import { formatCount, formatFullDateTime, formatRecentOrDate } from "../utils/format";
+import { formatFullDateTime, formatRecentOrDate } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import { isPlatformPublishedSkill } from "../utils/publisher";
 
@@ -242,8 +242,6 @@ export default function SkillDetailModal({
   const showOwner = isPlatformPublished || Boolean(singlePublisherName);
   const displayName = skill ? (skill.displayName || skill.name) : t("skillMarket.detail.title");
   const versionLabel = skill?.version ? `v${skill.version}` : "";
-  const viewCountLabel = formatCount(skill?.viewCount ?? 0);
-  const downloadCountLabel = formatCount(skill?.downloadCount ?? 0);
   const updatedTimeLabel = skill ? formatRecentOrDate(skill.updatedAt) : "";
   const updatedTimeTitle = skill ? formatFullDateTime(skill.updatedAt) : "";
 
@@ -312,7 +310,14 @@ export default function SkillDetailModal({
                 {showOwner && (
                   <>
                     <span className="skill-market-detail-header__separator">·</span>
-                    <span className="skill-market-detail-header__owner" title={ownerLabel}>
+                    <span
+                      className={
+                        isPlatformPublished
+                          ? "skill-market-detail-header__owner skill-market-detail-header__owner--official"
+                          : "skill-market-detail-header__owner"
+                      }
+                      title={ownerLabel}
+                    >
                       {isPlatformPublished ? (
                         <>
                           <ShieldCheck className="skill-market-detail-header__platform-icon" size={13} aria-hidden="true" />
@@ -351,16 +356,6 @@ export default function SkillDetailModal({
       {skill && !loading && (
         <div className="skill-market-detail">
           <p className="skill-market-detail__desc">{skill.description}</p>
-          <div className="skill-market-detail__stats" aria-label={t("skillMarket.card.statsAriaLabel")}>
-            <span title={t("skillMarket.card.viewsTitle", { values: { count: skill.viewCount ?? 0 } })}>
-              <Eye size={13} aria-hidden="true" />
-              <strong>{viewCountLabel}</strong>
-            </span>
-            <span title={t("skillMarket.card.downloadsTitle", { values: { count: skill.downloadCount ?? 0 } })}>
-              <Download size={13} aria-hidden="true" />
-              <strong>{downloadCountLabel}</strong>
-            </span>
-          </div>
           {skill.tags.length > 0 && (
             <div className="skill-market-detail__tags" aria-label={t("skillMarket.filter.tags")}>
               {skill.tags.map((tag) => (

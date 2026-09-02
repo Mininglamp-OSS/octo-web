@@ -21,15 +21,26 @@
    action cluster (primary button + search) on the right, single border-
    bottom separator. Keeps the two market pages visually consistent under
    the shared "/mcp-market" shell. */
-.wk-mcp__topbar {
+.wk-mcp__hero {
   flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--wk-sp-4);
   min-height: 64px;
-  padding: var(--wk-sp-3) var(--wk-sp-6);
-  border-bottom: 1px solid var(--wk-border-subtle);
+  padding: var(--wk-sp-5) var(--wk-sp-6) var(--wk-sp-4);
+}
+
+.wk-mcp__hero-title {
+  min-width: 0;
+}
+
+.wk-mcp__hero-title h1 {
+  margin: 0;
+  color: var(--wk-text-strong);
+  font-size: var(--wk-text-size-3xl);
+  font-weight: var(--wk-font-bold);
+  line-height: 1.2;
 }
 
 .wk-mcp__topbar-actions {
@@ -182,11 +193,15 @@
   white-space: pre-wrap;
 }
 
-/* Underline-style tabs — matches skill-market-tabs. Active tab uses
-   --wk-text-accent with a 2px underline pseudo-element. */
+/* Underline-style tabs — matches skill-market-tabs. Its own full-width strip
+   below the hero; the bottom border is the underline track the active tab's
+   ::after sits on. Active tab uses --wk-text-accent with a 2px underline. */
 .wk-mcp__tabs {
+  flex: none;
   display: flex;
   gap: 0;
+  padding: 0 var(--wk-sp-6);
+  border-bottom: 1px solid var(--wk-border-subtle);
 }
 
 .wk-mcp__tabs button {
@@ -260,28 +275,9 @@
   padding: var(--wk-sp-3) var(--wk-sp-6);
   border-bottom: 1px solid var(--wk-border-subtle);
   display: flex;
-  align-items: center;
-  gap: var(--wk-sp-3);
-  flex-wrap: wrap;
-}
-
-/* 结果摘要行 — 与 dmworkskillmarket 的 .skill-market-result-summary
-   视觉一致：位于卡片网格上方，展示总数（可扩展为排序等）。 */
-.wk-mcp__result-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--wk-sp-3);
-  flex-wrap: wrap;
-  min-height: 36px;
-  margin-bottom: var(--wk-sp-3);
-  color: var(--wk-text-tertiary);
-  font: 500 13px/1.4 var(--wk-font-sans);
-}
-
-.wk-mcp__result-summary-total {
-  flex: 0 0 auto;
-  color: var(--wk-text-secondary);
+  align-items: flex-start;
+  gap: var(--wk-sp-4);
+  flex-wrap: nowrap;
 }
 
 .wk-mcp__search {
@@ -311,10 +307,9 @@
   box-shadow: 0 0 0 var(--wk-sp-1) var(--wk-accent-tint-12);
 }
 
-.wk-mcp__search-control > .semi-icon {
+.wk-mcp__search-control > svg {
   flex: 0 0 auto;
   margin-left: var(--wk-sp-3);
-  font-size: 16px;
 }
 
 .wk-mcp__search-control > input {
@@ -575,16 +570,17 @@
 }
 
 .wk-mcp__pill--active {
-  background: var(--wk-brand-primary);
-  border-color: var(--wk-brand-primary);
-  color: var(--wk-text-inverse);
+  background: var(--wk-brand-tint-08);
+  border-color: var(--wk-brand-tint-15);
+  color: var(--wk-brand-primary);
+  font-weight: var(--wk-font-semibold);
 }
 
 .wk-mcp__pill--active:hover,
 .wk-mcp__pill--active:focus-visible {
-  background: var(--wk-brand-primary-hover, var(--wk-brand-primary));
-  border-color: var(--wk-brand-primary-hover, var(--wk-brand-primary));
-  color: var(--wk-text-inverse);
+  background: var(--wk-brand-tint-12);
+  border-color: var(--wk-brand-tint-15);
+  color: var(--wk-brand-primary);
 }
 
 .wk-mcp__pill-count {
@@ -624,19 +620,20 @@
 /* ── Card grid ───────────────────────────────────────────────────────────── */
 .wk-mcp__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: var(--wk-sp-4);
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: var(--wk-sp-3);
 }
 
 .wk-mcp-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  min-height: 184px;
-  padding: var(--wk-sp-3);
+  min-height: 174px;
+  padding: var(--wk-sp-4);
   border: 1px solid var(--wk-border-subtle);
   border-radius: var(--wk-r-md);
-  background: var(--wk-bg-base);
+  background: var(--wk-bg-surface);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   cursor: pointer;
   transition: border-color var(--wk-dur-fast) var(--wk-ease),
@@ -672,13 +669,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 48px;
-  width: 48px;
-  height: 48px;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
   border-radius: var(--wk-r-md);
   background: var(--wk-bg-elevated);
   color: var(--wk-icon-default);
-  font-size: 24px;
+  font-size: 22px;
   overflow: hidden;
 }
 
@@ -704,7 +701,44 @@
   gap: 5px;
   flex: 1;
   min-width: 0;
-  min-height: 48px;
+  min-height: 42px;
+}
+
+/* Hover-revealed primary action (连接) — bottom-right, mirrors the prototype's
+   single card action. Forwards a connect prompt (McpConnectModal) rather than
+   opening the detail modal, so it IS data-track-ignore'd in the markup: the
+   click is its own intent, not a card open. */
+.wk-mcp-card__primary-action {
+  position: absolute;
+  bottom: var(--wk-sp-3);
+  right: var(--wk-sp-3);
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  height: 28px;
+  padding: 0 var(--wk-sp-3);
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-text-strong);
+  color: var(--wk-bg-surface);
+  font: var(--wk-font-semibold) var(--wk-text-size-sm) / 1 var(--wk-font-sans);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity var(--wk-dur-fast) var(--wk-ease),
+    transform var(--wk-dur-fast) var(--wk-ease),
+    background var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-mcp-card__primary-action:hover {
+  background: var(--wk-text-primary);
+}
+
+.wk-mcp-card:hover .wk-mcp-card__primary-action,
+.wk-mcp-card:focus-within .wk-mcp-card__primary-action {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .wk-mcp-card__title-row {
@@ -746,8 +780,8 @@
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--wk-color-accent);
-  font-weight: 600;
+  color: var(--wk-text-tertiary);
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -794,8 +828,9 @@
   min-width: 0;
   padding: 3px 8px;
   border-radius: var(--wk-r-full);
-  background: var(--wk-bg-elevated);
-  color: var(--wk-text-tertiary);
+  border: 1px solid var(--wk-border-default);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1027,6 +1062,25 @@
   white-space: nowrap;
 }
 
+.wk-mcp-detail-header__version {
+  position: absolute;
+  top: var(--wk-sp-4);
+  right: calc(var(--wk-sp-4) + var(--wk-sp-8) + var(--wk-sp-2));
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-full);
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .wk-mcp-detail-header__meta {
   display: inline-flex;
   align-items: center;
@@ -1048,8 +1102,8 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--wk-color-accent);
-  font-weight: 600;
+  color: var(--wk-text-tertiary);
+  font-weight: 500;
 }
 
 /* 工具数量图标行：跟卡片 footer 和 Skills 的 stats 视觉语言一致。
@@ -1080,7 +1134,7 @@
 .wk-mcp-section__title {
   font-size: var(--wk-text-size-md);
   font-weight: var(--wk-font-semibold);
-  color: var(--wk-text-primary);
+  color: var(--wk-text-strong);
   margin: 0 0 var(--wk-sp-2) 0;
 }
 
@@ -1255,16 +1309,47 @@
   color: var(--wk-text-primary);
 }
 
-.wk-mcp-sidebar__header {
+.wk-mcp-sidebar__brand {
   flex: none;
-  height: 56px;
   display: flex;
   align-items: center;
-  padding: 0 var(--wk-sp-5);
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-5) var(--wk-sp-5) var(--wk-sp-4);
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.wk-mcp-sidebar__brand-glyph {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--wk-r-md);
+  background: var(--wk-brand-primary);
+  color: var(--wk-text-on-brand);
+  font-size: var(--wk-text-size-lg);
+  font-weight: var(--wk-font-bold);
+  line-height: 1;
+}
+
+.wk-mcp-sidebar__brand-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wk-mcp-sidebar__brand-text strong {
+  color: var(--wk-text-strong);
   font-size: var(--wk-text-size-lg);
   font-weight: var(--wk-font-semibold);
-  color: var(--wk-text-primary);
-  border-bottom: 1px solid var(--wk-border-subtle);
+  line-height: 1.2;
+}
+
+.wk-mcp-sidebar__brand-text small {
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
+  line-height: 1.4;
 }
 
 .wk-mcp-sidebar__list {
@@ -1274,6 +1359,13 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+}
+
+/* Separates the personal 我的发布 entry from the discovery markets above it. */
+.wk-mcp-sidebar__divider {
+  height: 1px;
+  margin: var(--wk-sp-2) var(--wk-sp-2);
+  background: var(--wk-border-default);
 }
 
 .wk-mcp-sidebar__item {
@@ -1291,6 +1383,27 @@
   color: var(--wk-text-primary);
   cursor: pointer;
   transition: background var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-mcp-sidebar__item-left {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+}
+
+.wk-mcp-sidebar__item-icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: var(--wk-text-tertiary);
+}
+
+.wk-mcp-sidebar__item-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wk-mcp-sidebar__badge {
@@ -1312,6 +1425,141 @@
 .wk-mcp-sidebar__item--active,
 .wk-mcp-sidebar__item--active:hover {
   background: var(--wk-brand-tint-06);
+}
+
+.wk-mcp-sidebar__item--active .wk-mcp-sidebar__item-icon {
+  color: var(--wk-brand-primary);
+}
+
+.wk-mcp-sidebar__footnote {
+  flex: none;
+  padding: var(--wk-sp-4) var(--wk-sp-5);
+  border-top: 1px solid var(--wk-border-subtle);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
+  line-height: 1.6;
+}
+
+/* ── 我的 (MyAssetsPage) — hero + type sub-tabs hosting a market page in
+   variant="mine". The mounted page fills __panel and scrolls internally. ─── */
+.wk-mcp-mine {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--wk-bg-surface);
+}
+
+/* 我的发布:卡片改为一行一个(单列横排长条),铺满内容宽度。
+   覆盖三种市场卡片网格(技能/专家/连接器)在 mine 变体下的多列布局。 */
+.wk-mcp-mine .skill-market-grid,
+.wk-mcp-mine .wk-mcp-expert-grid,
+.wk-mcp-mine .wk-mcp__grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.wk-mcp-mine__hero {
+  flex: none;
+  min-height: 64px;
+  padding: var(--wk-sp-5) var(--wk-sp-6) var(--wk-sp-4);
+  border-bottom: 1px solid var(--wk-border-strong);
+}
+
+.wk-mcp-mine__hero-title h1 {
+  margin: 0;
+  color: var(--wk-text-strong);
+  font-size: var(--wk-text-size-3xl);
+  font-weight: var(--wk-font-bold);
+  line-height: 1.2;
+}
+
+.wk-mcp-mine__tabs {
+  flex: none;
+  display: flex;
+  gap: var(--wk-sp-5);
+  padding: 0 var(--wk-sp-6);
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.wk-mcp-mine__tabs button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-md);
+  font-weight: var(--wk-font-medium);
+  cursor: pointer;
+  transition: color var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-mcp-mine__tabs button:hover {
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp-mine__tab-icon {
+  display: inline-flex;
+  color: var(--wk-text-tertiary);
+}
+
+.wk-mcp-mine__tabs button.is-active {
+  color: var(--wk-brand-primary);
+  font-weight: var(--wk-font-semibold);
+}
+
+.wk-mcp-mine__tabs button.is-active .wk-mcp-mine__tab-icon {
+  color: var(--wk-brand-primary);
+}
+
+.wk-mcp-mine__tabs button.is-active::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: var(--wk-brand-primary);
+  border-radius: 1px;
+}
+
+.wk-mcp-mine__panel {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The mounted market page (variant="mine") fills the panel; its own hero row
+   keeps only the search + publish actions, so trim its top padding a touch. */
+.wk-mcp-mine__panel > .wk-mcp,
+.wk-mcp-mine__panel > .wk-mcp-expert-page,
+.wk-mcp-mine__panel > .skill-market-page {
+  flex: 1;
+  min-height: 0;
+}
+
+/* variant="mine" hides each page's own title, so lift its search + create
+   actions up onto the 我的 hero row (top-right of the mine container) instead
+   of leaving them as a separate left-aligned row under the type tabs. */
+.wk-mcp-mine__panel .wk-mcp__hero,
+.wk-mcp-mine__panel .wk-mcp-expert-topbar,
+.wk-mcp-mine__panel .skill-market-topbar {
+  position: absolute;
+  top: var(--wk-sp-4);
+  right: var(--wk-sp-6);
+  left: auto;
+  z-index: 2;
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  justify-content: flex-end;
 }
 
 /* ── Image icons (card + detail) ────────────────────────────────────────── */
@@ -1991,8 +2239,8 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--wk-sp-4);
-  min-height: 56px;
-  padding: var(--wk-sp-2) var(--wk-sp-6);
+  min-height: 64px;
+  padding: var(--wk-sp-5) var(--wk-sp-6) var(--wk-sp-4);
   border-bottom: 1px solid var(--wk-border-default);
 }
 
@@ -2034,16 +2282,19 @@
 }
 
 .wk-mcp-expert-search {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--wk-sp-2);
-  width: min(420px, 40vw);
+  width: 360px;
+  max-width: 100%;
   min-height: 40px;
-  padding: 0 0 0 var(--wk-sp-3);
   border: 1px solid var(--wk-border-subtle);
   border-radius: var(--wk-r-md);
   color: var(--wk-text-tertiary);
   background: var(--wk-bg-base);
+  transition: border-color var(--wk-dur-fast) var(--wk-ease),
+    box-shadow var(--wk-dur-fast) var(--wk-ease),
+    background var(--wk-dur-fast) var(--wk-ease);
 }
 
 .wk-mcp-expert-search:focus-within {
@@ -2052,12 +2303,17 @@
   box-shadow: 0 0 0 var(--wk-sp-1) var(--wk-accent-tint-12);
 }
 
+.wk-mcp-expert-search > svg {
+  flex: 0 0 auto;
+  margin-left: var(--wk-sp-3);
+}
+
 .wk-mcp-expert-search input {
   flex: 1 1 auto;
   min-width: 0;
   width: 100%;
   height: 38px;
-  padding: 0;
+  padding: 0 var(--wk-sp-2);
   border: 0;
   outline: 0;
   color: var(--wk-text-primary);
@@ -2074,14 +2330,18 @@
 }
 
 .wk-mcp-expert-search__clear {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-right: var(--wk-sp-1);
   border: 0;
-  border-radius: var(--wk-r-circle);
-  color: var(--wk-icon-default);
+  border-radius: var(--wk-r-sm);
+  color: var(--wk-text-tertiary);
   background: transparent;
+  cursor: pointer;
 }
 
 /* -------- Tag filter (inside the search bar, Skills-market style) -------- */
@@ -2249,8 +2509,11 @@
   cursor: not-allowed;
 }
 
-.wk-mcp-expert-search__clear:hover {
-  background: var(--wk-brand-tint-06);
+.wk-mcp-expert-search__clear:hover,
+.wk-mcp-expert-search__clear:focus-visible {
+  outline: none;
+  background: var(--wk-bg-item-hover);
+  color: var(--wk-text-secondary);
 }
 
 /* Tab row + the Loop-explainer help icon sitting just right of 我的. */
@@ -2287,18 +2550,19 @@
 
 .wk-mcp-expert-filter-bar {
   display: flex;
-  align-items: center;
-  min-height: 48px;
-  padding: 0 var(--wk-sp-6);
+  align-items: flex-start;
+  gap: var(--wk-sp-4);
+  padding: var(--wk-sp-3) var(--wk-sp-6);
   border-bottom: 1px solid var(--wk-border-default);
 }
 
 .wk-mcp-expert-categories {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--wk-sp-2);
-  overflow-x: auto;
-  scrollbar-width: none;
 }
 
 .wk-mcp-expert-categories::-webkit-scrollbar {
@@ -2329,16 +2593,16 @@
 }
 
 .wk-mcp-expert-category[aria-pressed="true"] {
-  color: var(--wk-text-inverse);
+  color: var(--wk-brand-primary);
   font-weight: var(--wk-font-semibold);
-  background: var(--wk-brand-primary);
-  border-color: var(--wk-brand-primary);
+  background: var(--wk-brand-tint-08);
+  border-color: var(--wk-brand-tint-15);
 }
 
 .wk-mcp-expert-category[aria-pressed="true"]:hover {
-  background: var(--wk-brand-primary-hover, var(--wk-brand-primary));
-  border-color: var(--wk-brand-primary-hover, var(--wk-brand-primary));
-  color: var(--wk-text-inverse);
+  background: var(--wk-brand-tint-12);
+  border-color: var(--wk-brand-tint-15);
+  color: var(--wk-brand-primary);
 }
 
 .wk-mcp-expert-category__count {
@@ -2356,7 +2620,7 @@
 .wk-mcp-expert-result-summary {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: var(--wk-sp-4);
   margin-bottom: var(--wk-sp-4);
   color: var(--wk-text-tertiary);
@@ -2417,47 +2681,20 @@
 .wk-mcp-expert-sort button:focus-visible {
   outline: none;
   background: var(--wk-bg-hover);
-  color: var(--wk-color-accent);
+  color: var(--wk-text-strong);
 }
 
 .wk-mcp-expert-sort button.is-active {
   background: var(--wk-bg-surface);
-  color: var(--wk-color-accent);
+  color: var(--wk-text-strong);
   box-shadow: var(--wk-shadow-sm);
   font-weight: var(--wk-font-semibold);
 }
 
 .wk-mcp-expert-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: var(--wk-sp-4);
-}
-
-/* 添加到回路 — dark primary pill (matches the skill market's 安装 button). */
-.wk-mcp-expert-card__add-loop {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  height: 26px;
-  min-width: 76px;
-  padding: 0 var(--wk-sp-3);
-  border: 1px solid transparent;
-  border-radius: var(--wk-r-full);
-  background: var(--wk-text-strong);
-  color: var(--wk-bg-base);
-  font: 500 12px/1 var(--wk-font-sans);
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.wk-mcp-expert-card__add-loop:hover {
-  background: var(--wk-text-primary);
-}
-
-.wk-mcp-expert-card__add-loop:focus-visible {
-  outline: none;
-  border-color: var(--wk-border-strong);
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: var(--wk-sp-3);
 }
 
 /* -------- 添加到回路 dialog -------- */
@@ -2600,8 +2837,9 @@
   height: 20px;
   padding: 0 var(--wk-sp-1-5);
   border-radius: var(--wk-r-full);
-  color: var(--wk-color-accent);
-  background: var(--wk-accent-tint-08);
+  border: 1px solid var(--wk-border-default);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
   font-size: var(--wk-text-size-sm);
   font-weight: var(--wk-font-medium);
 }
@@ -2707,7 +2945,7 @@
   align-items: center;
   gap: var(--wk-sp-1);
   min-width: 0;
-  color: var(--wk-color-accent);
+  color: var(--wk-text-tertiary);
   font-size: var(--wk-text-size-sm);
 }
 
@@ -2720,7 +2958,7 @@
 
 .wk-mcp-expert-owner__item > svg {
   flex: 0 0 auto;
-  color: var(--wk-color-accent);
+  color: var(--wk-text-tertiary);
 }
 
 .wk-mcp-expert-owner__name {

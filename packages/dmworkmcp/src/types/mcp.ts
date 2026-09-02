@@ -69,6 +69,10 @@ export interface McpListItem {
   tags: string[];
   /** Number of tools this server exposes (shown on the card footer). */
   toolCount: number;
+  /** Detail-view count (wire `view_count`). Shown on the 我的发布 row card. */
+  viewCount?: number;
+  /** Install count (wire `install_count`). Shown on the 我的发布 row card. */
+  installCount?: number;
   /** Icon: single emoji/char OR image URL / data URL. */
   icon: string;
   /** Visibility scope, echoed by the wire (mcp-v1.md §0). Optional so legacy
@@ -95,6 +99,9 @@ export interface McpListItem {
   matchReasons?: string[];
   relevance?: number;
   updatedAt?: string;
+  /** Current published version (wire `current_version`), e.g. "1.0.0". Shown on
+   *  the 我的发布 row card and the detail header. */
+  version?: string;
 }
 
 /** Full detail payload shown in the centered detail modal. */
@@ -130,6 +137,9 @@ export type McpCreatedByType = "human" | "bot" | "import";
 
 export type McpSource = "system" | "space" | "mine";
 
+/** Connector (MCP) discovery sort options. */
+export type McpSort = "latest" | "hottest";
+
 /** A category filter option with its live count. */
 export interface McpCategory {
   key: string;
@@ -152,7 +162,10 @@ export interface ListMcpParams {
    *  by widening the type when the UX actually needs it. */
   createdByType?: McpCreatedByType;
   tags?: string[];
-  sort?: "relevance" | "updated" | "verified";
+  /** Discovery sort. "latest" → backend `newest`, "hottest" → backend
+   *  `installs` (install-count popularity). The unified plugin list supports
+   *  both for the connector plugin type. */
+  sort?: McpSort;
   /** Page size; backend clamps to [1, 100], defaulting to 20 when 0/absent. */
   limit?: number;
   /** Row offset; defaults to 0. */
@@ -210,8 +223,15 @@ export interface CreateMcpParams {
    *  Falls back to a safe default when slugifying yields an empty string. */
   slug?: string;
   category: string;
-  /** Icon: single emoji/char OR uploaded image (data URL). */
-  icon: string;
+  /**
+   * Icon write intent, using an explicit `undefined` sentinel end-to-end
+   * (mirrors the skill path's `form.iconUrl` sentinel):
+   *   - `undefined` = leave the stored icon unchanged (edit path only).
+   *   - `""` = remove the stored icon.
+   *   - a non-empty string = set it (object key / URL, or a legacy emoji/char).
+   * The create path defaults `undefined` → `""` in toPluginUpsert.
+   */
+  icon?: string | undefined;
   /** Card + detail tag chips, e.g. ["官方", "热门"]. */
   tags: string[];
   slogan: string;
@@ -243,7 +263,7 @@ export interface CreateMcpParams {
   notes?: string[];
 }
 
-export type McpVisibility = "public" | "private" | "system";
+export type McpVisibility = "public" | "space" | "private" | "system";
 
 /**
  * Payload for updating an existing MCP server entry (PATCH /mcps/{id}).

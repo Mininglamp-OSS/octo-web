@@ -23,23 +23,32 @@ import SearchBar from "../components/SearchBar";
 import SkillCard from "../components/SkillCard";
 import SkillCardSkeleton from "../components/SkillCardSkeleton";
 import SkillDetailModal from "../components/SkillDetailModal";
+import MineTable from "../components/MineTable";
+import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 
-type TabId = "skills" | "mine";
+/**
+ * Rendering variant. "market" (default) = discovery catalog. "mine" = personal
+ * assets mounted inside MyAssetsPage — forces the mine data source, hides the
+ * in-page tab strip + hero title, and shows manage actions on every card.
+ */
+interface SkillListPageProps {
+  variant?: "market" | "mine";
+}
 
 const TOAST_DURATION = 3000;
 const SORT_OPTIONS: Array<{ value: SkillSort; labelKey: string; descending?: boolean }> = [
-  { value: "comprehensive", labelKey: "skillMarket.sort.comprehensive" },
   { value: "latest", labelKey: "skillMarket.sort.latest" },
-  { value: "downloads", labelKey: "skillMarket.sort.downloads", descending: true },
-  { value: "views", labelKey: "skillMarket.sort.views", descending: true },
+  { value: "downloads", labelKey: "skillMarket.sort.hottest" },
 ];
 
-export default function SkillListPage() {
+export default function SkillListPage({ variant = "market" }: SkillListPageProps = {}) {
   useI18n();
-  const [tab, setTab] = useState<TabId>("skills");
-  const mine = tab === "mine";
+  // Variant is fixed for the page's lifetime (mine → /mcp-market/mine, market →
+  // discovery), so this is a derived constant, not state — the 全部/我的 tab
+  // strip that used to flip it was removed in the market UI restructure.
+  const mine = variant === "mine";
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [sort, setSort] = useState<SkillSort>("comprehensive");
+  const [sort, setSort] = useState<SkillSort>("latest");
   const list = useSkills({ mine, selectedTags, sort });
   const refreshRef = useRef(list.refresh);
   const [createVisible, setCreateVisible] = useState(false);
@@ -124,15 +133,8 @@ export default function SkillListPage() {
     return () => observer.disconnect();
   }, [list]);
 
-  function switchTab(next: TabId) {
-    if (next === tab) return;
-    // 用户切换视图 Tab;原先误用 GET /skills/mine 加载推断,而 mine 列表也用于建议/初始化。
-    Dap.shared.track("market_view_switched", {});
-    setTab(next);
-  }
-
   function handleSelectedTagsChange(next: string[]) {
-    // 用户增删 tag 过滤;原先误用 GET /skills/tags 加载 tag 列表推断。
+    // 用户增删 tag 过滤;原先误用 GET /plugin_tags 加载 tag 列表推断。
     Dap.shared.track("market_tag_filtered", {});
     setSelectedTags(next);
   }
@@ -171,38 +173,14 @@ export default function SkillListPage() {
     setDetailId(item.id);
   }
 
-  // The paginated /skills response carries no real total, so list.total falls
-  // back to the loaded page size (e.g. 20). The /skill_categories counts are
-  // authoritative — on the skills tab show the active category's skillCount
-  // (for "全部" this equals the summed total shown in the chip). The "我的" tab
-  // has no category chips and a different scope, so keep list.total there.
-  const summaryTotal = mine
-    ? list.total
-    : list.categories.find((category) => category.id === list.categoryId)
-        ?.skillCount ?? list.total;
-
   return (
     <div className="skill-market-page">
       <header className="skill-market-topbar">
-        <nav
-          className="skill-market-tabs"
-          aria-label={t("skillMarket.list.navAriaLabel")}
-        >
-          <button
-            type="button"
-            className={tab === "skills" ? "is-active" : ""}
-            onClick={() => switchTab("skills")}
-          >
-            {t("skillMarket.list.tabSkills")}
-          </button>
-          <button
-            type="button"
-            className={tab === "mine" ? "is-active" : ""}
-            onClick={() => switchTab("mine")}
-          >
-            {t("skillMarket.list.mine")}
-          </button>
-        </nav>
+        {variant !== "mine" && (
+          <div className="skill-market-hero-title">
+            <h1>{t("skillMarket.list.pageTitle")}</h1>
+          </div>
+        )}
         <div className="skill-market-topbar__actions">
           <SearchBar
             ref={searchInputRef}
@@ -211,8 +189,8 @@ export default function SkillListPage() {
             placeholder={t("skillMarket.filter.searchNameDescription")}
             selectedTags={selectedTags}
             onSelectedTagsChange={handleSelectedTagsChange}
-            autoFocus
           />
+          {variant === "mine" && (
           <div className="skill-market-publish-menu" ref={publishMenuRef}>
             <WKButton
               variant="primary"
@@ -261,6 +239,7 @@ export default function SkillListPage() {
               </div>
             )}
           </div>
+          )}
         </div>
       </header>
 
@@ -272,48 +251,37 @@ export default function SkillListPage() {
         }
       >
         {!mine && (
-          <CategoryChips
-            categories={list.categories}
-            activeId={list.categoryId}
-            onChange={list.setCategoryId}
-          />
+          <>
+            <CategoryChips
+              categories={list.categories}
+              activeId={list.categoryId}
+              onChange={list.setCategoryId}
+            />
+            <div
+              className="skill-market-sort"
+              aria-label={t("skillMarket.sort.ariaLabel")}
+            >
+              <div className="skill-market-sort__options">
+                {SORT_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    data-testid="skill-sort-option"
+                    className={sort === option.value ? "is-active" : undefined}
+                    aria-pressed={sort === option.value}
+                    onClick={() => handleSortChange(option.value)}
+                  >
+                    <span>{t(option.labelKey)}</span>
+                    {option.descending && <ArrowDown size={12} aria-hidden="true" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
         )}
       </section>
 
       <main className="skill-market-content">
-        {!list.loading && !list.error && (
-          <div className="skill-market-result-summary">
-            <span className="skill-market-result-summary__total" aria-live="polite">
-              {t("skillMarket.list.totalCount", {
-                values: { count: summaryTotal },
-              })}
-            </span>
-            {!mine && (
-              <div
-                className="skill-market-sort"
-                aria-label={t("skillMarket.sort.ariaLabel")}
-              >
-                <div className="skill-market-sort__options">
-                  {SORT_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      data-testid="skill-sort-option"
-                      className={
-                        sort === option.value ? "is-active" : undefined
-                      }
-                      aria-pressed={sort === option.value}
-                      onClick={() => handleSortChange(option.value)}
-                    >
-                      <span>{t(option.labelKey)}</span>
-                      {option.descending && <ArrowDown size={12} aria-hidden="true" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
         {list.loading && (
           <div
             className="skill-market-grid"
@@ -345,19 +313,53 @@ export default function SkillListPage() {
           </div>
         )}
         {!list.loading && !list.error && list.skills.length > 0 && (
-          <div className="skill-market-grid">
-            {list.skills.map((skill) => (
-              <SkillCard
-                key={skill.id}
-                skill={skill}
-                categories={list.categories}
-                onOpen={openDetail}
-                onEdit={mine ? setEditing : undefined}
-                onDelete={mine ? setDeleting : undefined}
-                onInstall={(item) => setInstallSkillId(item.id)}
-              />
-            ))}
-          </div>
+          mine ? (
+            <MineTable
+              rows={list.skills.map((skill) => ({
+                id: skill.id,
+                type: "skill" as const,
+                trackItemType: "skill",
+                icon: skill.iconUrl ? (
+                  <img className="wk-mine-table__avatar-img" src={skill.iconUrl} alt="" />
+                ) : (
+                  <span
+                    className="wk-mine-table__avatar-tile"
+                    style={{ background: getSkillAvatarColor(skill.name) }}
+                  >
+                    {getSkillAvatarText(skill.name)}
+                  </span>
+                ),
+                name: skill.displayName || skill.name,
+                description: skill.description,
+                category: list.categories.find((c) => c.id === skill.categoryId)?.name,
+                version: skill.version,
+                visibility: skill.visibility,
+                views: skill.viewCount,
+                downloads: skill.downloadCount,
+                updatedAt: skill.updatedAt,
+                ariaLabel: skill.name,
+                onOpen: () => openDetail(skill),
+                onEdit: () => setEditing(skill),
+                onDelete: () => setDeleting(skill),
+                editAria: t("skillMarket.card.editAriaLabel", { values: { name: skill.name } }),
+                deleteAria: t("skillMarket.card.deleteAriaLabel", { values: { name: skill.name } }),
+              }))}
+              visibilityLabel={(v) => t(`skillMarket.visibility.${v}`)}
+            />
+          ) : (
+            <div className="skill-market-grid">
+              {list.skills.map((skill) => (
+                <SkillCard
+                  key={skill.id}
+                  skill={skill}
+                  categories={list.categories}
+                  onOpen={openDetail}
+                  onInstall={(item) => setInstallSkillId(item.id)}
+                  showStats={false}
+                />
+              ))}
+            </div>
+          )
         )}
         <div ref={sentinelRef} className="skill-market-sentinel">
           {list.loadingMore ? (
