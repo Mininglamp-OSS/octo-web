@@ -206,8 +206,12 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
     } finally {
       // Refresh either way: on a lost race the server already moved the request
       // out of `pending`, and only a re-read shows the real state.
+      //
+      // Only the plugin list. `cancelReview` is wrapped in
+      // `withReviewInvalidation`, so `myReviews` (and the sidebar badge, and any
+      // other live `useReviewRequests`) has already re-read by the time this
+      // runs — poking it here only cancels that fetch and issues it again.
       list.refresh();
-      myReviews.refresh();
     }
   }
 
@@ -228,9 +232,9 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
       showToast(err instanceof Error ? err.message : t("skillMarket.review.submitFailed"));
     } finally {
       // Refresh either way: on a conflict the server already knows a state this
-      // page does not, and only a re-read shows it.
+      // page does not, and only a re-read shows it. Plugin list only —
+      // `publishPlugin` invalidates the review reads itself.
       list.refresh();
-      myReviews.refresh();
     }
   }
 
@@ -522,9 +526,10 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
         onUpdated={handleUpdated}
         onPublished={(message) => {
           showToast(message);
-          // The listing changed, so the row's status and actions did too.
+          // The listing changed, so the row's status and actions did too. Only
+          // fires after EditSkillModal's `publishPlugin`, which invalidates the
+          // review reads on its own.
           list.refresh();
-          myReviews.refresh();
         }}
       />
       <InstallPromptModal

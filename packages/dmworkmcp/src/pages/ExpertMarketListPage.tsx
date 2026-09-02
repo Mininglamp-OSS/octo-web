@@ -547,14 +547,23 @@ export default function ExpertMarketListPage({
     } finally {
       // Refresh either way: on a lost race the server already moved the request
       // out of `pending`, and only a re-read shows the real state.
+      //
+      // The expert list only. `cancelPluginReview` reaches skillmarket's wrapped
+      // `cancelReview`, so `myReviews` has already re-read by the time this runs
+      // (see @dmwork/skillmarket api/reviewSignal.ts).
       reload();
-      myReviews.refresh();
     }
   };
 
   /** A listing changed (review submitted, visibility saved, publish landed):
    *  show what happened and re-read, because the row's status and its available
-   *  actions both follow server state. */
+   *  actions both follow server state.
+   *
+   *  `myReviews.refresh()` is NOT redundant here, unlike the publish and cancel
+   *  handlers around it: ExpertEditModal's 保存草稿 branch calls only
+   *  `updateExpertVisibility` (expertService, not a wrapped endpoint) and a
+   *  narrowed audience can un-list the record and close an open request, so
+   *  nothing has invalidated the review reads on that path. */
   const handleListingChanged = (message: string) => {
     showToast(message);
     reload();
@@ -581,8 +590,9 @@ export default function ExpertMarketListPage({
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : t("skillMarket.review.submitFailed"));
     } finally {
+      // Expert list only — `publishPluginListing` invalidates the review reads
+      // itself, on refusal as well as on success.
       reload();
-      myReviews.refresh();
     }
   };
 

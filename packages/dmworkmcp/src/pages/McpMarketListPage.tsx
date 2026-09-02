@@ -571,8 +571,11 @@ export default class McpMarketListPage extends Component<
     } finally {
       // Refresh either way: on a lost race the server already moved the request
       // out of `pending`, and only a re-read shows the real state.
+      //
+      // The connector list only. `cancelPluginReview` reaches skillmarket's
+      // wrapped `cancelReview`, so `this.state.review` has already re-read by
+      // the time this runs (see @dmwork/skillmarket api/reviewSignal.ts).
       this.loadData();
-      this.state.review.refresh();
     }
   };
 
@@ -584,11 +587,15 @@ export default class McpMarketListPage extends Component<
    * A full reload rather than an in-place patch, because `listing_state` /
    * `display_status` are not among the fields handleItemUpdated carries, and
    * they are exactly what changed.
+   *
+   * The connector list is all this reloads. Every path into here has just
+   * awaited `submitPluginReview` or `publishPluginListing`, both of which reach
+   * a `withReviewInvalidation`-wrapped endpoint and re-read the review state
+   * themselves.
    */
   private handleListingOutcome = (message: string) => {
     Toast.success(message);
     this.loadData();
-    this.state.review.refresh();
   };
 
   /**
@@ -638,8 +645,9 @@ export default class McpMarketListPage extends Component<
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : t("skillMarket.review.submitFailed"));
     } finally {
+      // Connector list only — `publishPluginListing` invalidates the review
+      // reads itself, on refusal as well as on success.
       this.loadData();
-      this.state.review.refresh();
     }
   };
 
