@@ -239,6 +239,48 @@ describe('createAttentionLeader —— 页面生命周期', () => {
         tab.leader.stop();
     });
 
+    it('beforeunload 被取消时，下一拍重新参与竞争', () => {
+        const events = stubWindowEvents();
+        const storage = createMemoryStorage();
+        const factory = createChannelFactory();
+        const clock = { now: 1_000_000 };
+        const tab = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        tab.leader.start();
+        expect(tab.events).toEqual(['lead']);
+
+        // 模拟存在未保存编辑：beforeunload 已派发，但导航随后被用户取消，
+        // 因此不会再收到 pagehide/pageshow。
+        events.dispatch('beforeunload');
+        expect(tab.leader.isLeader()).toBe(false);
+        expect(tab.events).toEqual(['lead', 'resign']);
+        expect(storage.getItem('octo:summary-attention-leader')).toBeNull();
+
+        clock.now += LEADER_HEARTBEAT_MS;
+        tab.beat();
+        expect(tab.leader.isLeader()).toBe(true);
+        expect(tab.events).toEqual(['lead', 'resign', 'lead']);
+        tab.leader.stop();
+    });
+
+    it('降级模式收到被取消的 beforeunload 时保持自轮', () => {
+        const events = stubWindowEvents();
+        const clock = { now: 1_000_000 };
+        const tab = createTab({
+            id: 'tab-a',
+            storage: createMemoryStorage(),
+            ctor: null,
+            clock,
+        });
+        tab.leader.start();
+        expect(tab.events).toEqual(['lead']);
+
+        events.dispatch('beforeunload');
+
+        expect(tab.leader.isLeader()).toBe(true);
+        expect(tab.events).toEqual(['lead']);
+        tab.leader.stop();
+    });
+
     it('降级模式在 pagehide 停轮询，pageshow 恢复自轮', () => {
         const events = stubWindowEvents();
         const clock = { now: 1_000_000 };

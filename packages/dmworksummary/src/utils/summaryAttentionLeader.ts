@@ -261,10 +261,11 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
     let started = false;
     let leader = degraded; // 降级时每个标签页都视自己为 leader
     let heartbeatTimer: unknown = null;
-    let unloadHandler: (() => void) | null = null;
+    let pageHideHandler: (() => void) | null = null;
+    let beforeUnloadHandler: (() => void) | null = null;
     let pageShowHandler: (() => void) | null = null;
-    // pagehide/beforeunload 后即使宿主仍短暂派发定时器，也不能重新抢回租约。
-    // bfcache 恢复由 pageshow 显式重新开启。
+    // pagehide 后即使宿主仍短暂派发定时器，也不能重新抢回租约；bfcache 恢复由
+    // pageshow 显式重新开启。beforeunload 可能被用户取消，不能把页面标成失活。
     let pageActive = true;
     /**
      * 本标签页当前是否可见。初值从注入的判定读一次；之后由 setVisible 更新，
@@ -466,9 +467,17 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
                 // 都必须先停掉本页 poll，再释放租约；只清租约会留下一个仍会开火的
                 // 定时器，而 MSW 已可能把旧 client 注销，造成请求直穿代理。
                 // 降级模式也必须装这组监听：它虽然没有租约，却仍有自己的 poll。
-                unloadHandler = () => {
+                pageHideHandler = () => {
                     pageActive = false;
                     visible = false;
+                    resign();
+                    clearLeaseIfMine();
+                };
+                // beforeunload 可被页面上的未保存编辑拦下。这里仅让出协调租约，
+                // 不把页面标成失活；若导航被取消，下一拍 heartbeat 会重新参与竞争。
+                // 降级模式没有共享租约也没有 heartbeat，真实卸载交给 pagehide 停表。
+                beforeUnloadHandler = () => {
+                    if (degraded) return;
                     resign();
                     clearLeaseIfMine();
                 };
@@ -482,8 +491,8 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
                     if (degraded) promote();
                     else beat();
                 };
-                window.addEventListener('pagehide', unloadHandler);
-                window.addEventListener('beforeunload', unloadHandler);
+                window.addEventListener('pagehide', pageHideHandler);
+                window.addEventListener('beforeunload', beforeUnloadHandler);
                 window.addEventListener('pageshow', pageShowHandler);
             }
 
@@ -520,14 +529,17 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
                 clearIntervalFn(heartbeatTimer);
                 heartbeatTimer = null;
             }
-            if (unloadHandler && typeof window !== 'undefined') {
-                window.removeEventListener('pagehide', unloadHandler);
-                window.removeEventListener('beforeunload', unloadHandler);
+            if (pageHideHandler && typeof window !== 'undefined') {
+                window.removeEventListener('pagehide', pageHideHandler);
+            }
+            if (beforeUnloadHandler && typeof window !== 'undefined') {
+                window.removeEventListener('beforeunload', beforeUnloadHandler);
             }
             if (pageShowHandler && typeof window !== 'undefined') {
                 window.removeEventListener('pageshow', pageShowHandler);
             }
-            unloadHandler = null;
+            pageHideHandler = null;
+            beforeUnloadHandler = null;
             pageShowHandler = null;
             clearLeaseIfMine();
             if (channel) {
