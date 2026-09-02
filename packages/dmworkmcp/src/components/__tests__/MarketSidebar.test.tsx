@@ -18,11 +18,20 @@ const h = vi.hoisted(() => ({
   spaceRole: { role: 3 as number | undefined, isReviewer: false, loading: false },
   pendingCount: 0,
   reviewOptions: [] as Array<Record<string, unknown>>,
+  reviewRefresh: vi.fn(),
+  // Real subscription bookkeeping rather than a bare spy: the space-changed test
+  // has to INVOKE the handler the component registered, and assert the
+  // unsubscribe actually removes it.
+  busHandlers: {} as Record<string, Array<(payload?: unknown) => void>>,
   syncPath: vi.fn(),
   replaceToRoot: vi.fn(),
   currentPath: undefined as string | undefined,
   currentMenuId: undefined as string | undefined,
 }));
+
+function emitBus(event: string, payload?: unknown) {
+  for (const handler of [...(h.busHandlers[event] ?? [])]) handler(payload);
+}
 
 vi.mock("@octo/base", () => ({
   I18nContext: React.createContext({}),
@@ -42,7 +51,14 @@ vi.mock("@octo/base", () => ({
     routeRight: {
       replaceToRoot: (node: React.ReactElement) => h.replaceToRoot(node),
     },
-    mittBus: { on: vi.fn(), off: vi.fn() },
+    mittBus: {
+      on: (event: string, handler: (payload?: unknown) => void) => {
+        (h.busHandlers[event] ??= []).push(handler);
+      },
+      off: (event: string, handler: (payload?: unknown) => void) => {
+        h.busHandlers[event] = (h.busHandlers[event] ?? []).filter((fn) => fn !== handler);
+      },
+    },
   },
 }));
 
@@ -60,7 +76,7 @@ vi.mock("@dmwork/skillmarket", () => ({
       error: null,
       hasMore: false,
       pendingCount: h.pendingCount,
-      refresh: () => undefined,
+      refresh: h.reviewRefresh,
       loadMore: () => undefined,
     };
   },
@@ -102,6 +118,8 @@ beforeEach(() => {
   h.spaceRole = { role: 3, isReviewer: false, loading: false };
   h.pendingCount = 0;
   h.reviewOptions = [];
+  h.busHandlers = {};
+  h.reviewRefresh.mockClear();
   h.currentPath = undefined;
   h.currentMenuId = undefined;
   h.syncPath.mockClear();
@@ -215,5 +233,41 @@ describe("MarketSidebar 组织发布管理 entry", () => {
 
     expect(h.replaceToRoot.mock.calls.at(-1)![0].type).toBe(SkillListPage);
     expect(h.syncPath).toHaveBeenCalledWith("/mcp-market/skills");
+  });
+});
+
+/**
+ * The badge counts requests in the ACTIVE Space, so a Space switch invalidates it
+ * for the same reason a decision does.
+ *
+ * Nothing else covers it: `useReviewRequests` keys its fetch on
+ * mode/status/pageSize, none of which a switch moves; `enabled` is `isReviewer`,
+ * which an owner→owner switch leaves true; and the sidebar — unlike the market
+ * pages in the right pane — is never remounted by the switch. Without an
+ * explicit re-read the previous Space's number simply stays on screen.
+ */
+describe("MarketSidebar review badge across a Space switch", () => {
+  it("re-reads the pending count when the Space changes", () => {
+    h.spaceRole = { role: 1, isReviewer: true, loading: false };
+    h.pendingCount = 2;
+    render();
+    h.reviewRefresh.mockClear();
+
+    act(() => emitBus("space-changed", { space_id: "space-b", role: 1 }));
+
+    expect(h.reviewRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops re-reading once the sidebar unmounts", () => {
+    h.spaceRole = { role: 1, isReviewer: true, loading: false };
+    render();
+    act(() => {
+      ReactDOM.unmountComponentAtNode(container!);
+    });
+    h.reviewRefresh.mockClear();
+
+    act(() => emitBus("space-changed", { space_id: "space-b", role: 1 }));
+
+    expect(h.reviewRefresh).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,4 @@
-import React, { Component, useEffect } from "react";
+import React, { Component, useEffect, useRef } from "react";
 import { Plug, ShieldCheck, Sparkles, UserRound, Users } from "lucide-react";
 import { I18nContext, t, WKApp, Dap } from "@octo/base";
 import {
@@ -156,12 +156,39 @@ function ReviewGateProbe({ onChange }: { onChange: (gate: ReviewGate) => void })
   const { isReviewer, loading } = useSpaceRole();
   // Badge-only probe: one row, and held back entirely until the role resolves
   // so a plain member never fires the 403-ing `mode=space` read.
-  const { pendingCount } = useReviewRequests({
+  const { pendingCount, refresh } = useReviewRequests({
     mode: "space",
     status: "pending",
     pageSize: 1,
     enabled: isReviewer,
   });
+
+  // Re-read the count for the Space the user just switched INTO.
+  //
+  // The count is Space-scoped server-side (every read carries `X-Space-Id`) but
+  // `useReviewRequests` keys its fetch on mode/status/pageSize only, so a switch
+  // moves none of them and nothing refetches. The reviewer gate does not save
+  // us either: `enabled` is `isReviewer`, and an owner who switches to another
+  // Space they own leaves it true, so the probe keeps rendering the previous
+  // Space's number. Unlike the market pages the sidebar is never remounted by
+  // the switch — MarketSidebar only replaces the RIGHT pane — so the re-read has
+  // to be explicit here, exactly as SkillListPage / McpMarketListPage /
+  // ExpertMarketListPage each do it in their own `space-changed` handler.
+  //
+  // Deliberately `refresh()` and not `notifyReviewsChanged()`: a Space switch is
+  // not a review mutation. Broadcasting it on the mutation signal would tell
+  // every subscriber that the QUEUE moved, which is a different (and false)
+  // claim, and the other subscribers already handle the switch themselves.
+  //
+  // `refresh` is read through a ref so a new identity on every render does not
+  // churn the mitt subscription.
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  useEffect(() => {
+    const handleSpaceChanged = () => refreshRef.current();
+    WKApp.mittBus.on("space-changed", handleSpaceChanged);
+    return () => WKApp.mittBus.off("space-changed", handleSpaceChanged);
+  }, []);
 
   useEffect(() => {
     onChange({ isReviewer, roleLoading: loading, pendingCount: isReviewer ? pendingCount : 0 });
