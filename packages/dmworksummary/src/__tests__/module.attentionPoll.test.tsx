@@ -21,14 +21,20 @@ const state = vi.hoisted(() => ({
 }));
 
 // 轮询与 leader 都换成可观测的替身：本文件关心的是调用关系，不是它们的内部逻辑。
-const poll = vi.hoisted(() => ({
-  start: vi.fn(),
-  stop: vi.fn(),
-  notifyActivity: vi.fn(),
-  setVisible: vi.fn(),
-  getCurrentIntervalMs: () => 15_000,
-  isFetching: () => false,
-}));
+const poll = vi.hoisted(() => {
+  let started = false;
+  let visible = true;
+  return {
+    start: vi.fn(() => { started = true; }),
+    stop: vi.fn(() => { started = false; }),
+    notifyActivity: vi.fn(() => { /* real impl guards: if (!started || !visible) return; */ }),
+    setVisible: vi.fn((v: boolean) => { visible = v; }),
+    getCurrentIntervalMs: () => 15_000,
+    isFetching: () => false,
+    // helper for tests
+    _isStarted: () => started,
+  };
+});
 
 const leader = vi.hoisted(() => ({
   start: vi.fn(),
@@ -162,7 +168,7 @@ vi.mock("../utils/channelType", () => ({ isSupportedChannelType: () => true }));
 vi.mock("../components/ChatSummaryStarButton", () => ({ default: () => null }));
 vi.mock("../components/ChatSummaryPanel", () => ({ default: () => null }));
 
-import { SummaryModule, disposeSummaryModuleListeners } from "../module";
+import { SummaryModule, disposeSummaryModuleListeners, startSummaryAttentionPolling } from "../module";
 import {
   acceptRemoteAttentionCount,
   setSummaryAttentionPublisher,
@@ -208,10 +214,22 @@ describe("SummaryModule —— 兜底轮询接线", () => {
     new SummaryModule().init();
   });
 
+  afterEach(() => {
+    disposeSummaryModuleListeners();
+  });
+
   it("轮询由 leader 拉起、由失去身份停掉（而不是 init 里直接 start）", () => {
-    // init 只是把 leader 起起来；是否轮询由选举结果决定。
+    // init 只是把 leader 起起来；是否轮询由选举结果决定, 且入口层必须先
+    // 显式 startSummaryAttentionPolling() (在 MSW 就绪之后), 否则 init 时同步
+    // promote 的第一拍会漏 mock.
     expect(leader.start).toHaveBeenCalledTimes(1);
     expect(poll.start).not.toHaveBeenCalled();
+
+    // 模拟入口层启动. 此时还没 promote, poll 仍然是停止的 (start 只排期不立即取数,
+    // 但连 start 都没调过, 说明还没拿到 leader 身份).
+    startSummaryAttentionPolling();
+    expect(poll.start).not.toHaveBeenCalled();
+    poll.notifyActivity.mockClear();
 
     captured.leaderDeps.onBecomeLeader();
     expect(poll.start).toHaveBeenCalledTimes(1);
@@ -373,6 +391,10 @@ describe("SummaryModule —— IM / 重连刷新的可见性门", () => {
     new SummaryModule().init();
   });
 
+  afterEach(() => {
+    disposeSummaryModuleListeners();
+  });
+
   it("可见时，命中的 IM 消息照常触发刷新", () => {
     im.messageListeners[0]({ match: true });
 
@@ -440,6 +462,10 @@ describe("SummaryModule —— 定时器与监听的拆线", () => {
     new SummaryModule().init();
   });
 
+  afterEach(() => {
+    disposeSummaryModuleListeners();
+  });
+
   it("拆线时先停 leader（关 BroadcastChannel + 让出租约）再显式停表", () => {
     disposeSummaryModuleListeners();
 
@@ -498,5 +524,93 @@ describe("SummaryModule —— 定时器与监听的拆线", () => {
 
     expect(leader.stop).toHaveBeenCalledTimes(1);
     expect(poll.stop).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("startSummaryAttentionPolling —— 启动顺序守卫", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    state.mittHandlers.clear();
+    state.docHandlers.clear();
+    state.winHandlers.clear();
+    state.currentSpaceId = "space-a";
+    state.visibility = "visible";
+    im.messageListeners = [];
+    im.connectListeners = [];
+
+    vi.spyOn(document, "addEventListener").mockImplementation(((event: string, handler: any) => {
+      state.docHandlers.set(event, handler);
+    }) as any);
+    vi.spyOn(document, "removeEventListener").mockImplementation(((event: string) => {
+      state.docHandlers.delete(event);
+    }) as any);
+    vi.spyOn(window, "addEventListener").mockImplementation(((event: string, handler: any) => {
+      state.winHandlers.set(event, handler);
+    }) as any);
+    vi.spyOn(window, "removeEventListener").mockImplementation(((event: string) => {
+      state.winHandlers.delete(event);
+    }) as any);
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => state.visibility);
+
+    // 注意: 本文件里 createAttentionLeader 被 mock 成返回 { start: vi.fn(), ... },
+    // 所以 _attentionLeader.start() 是 no-op, 不会同步 beat/promote. 真实代码里
+    // start() 会立即 beat 一次, 可抢占到租约时 promote() → onBecomeLeader(), 这是
+    // Option A 修复要拦掉的那条 init 时同步启动路径; 本 describe 的第一个断言直接
+    // 验证 init 之后 poll 没被唤醒 (leader.start 本身也没把 poll 拉起来, 因为 mock).
+    // 启动的唯一途径是显式调 startSummaryAttentionPolling()。
+    new SummaryModule().init();
+    poll.notifyActivity.mockClear();
+    poll.start.mockClear();
+    vi.mocked(setSummaryAttentionPublisher).mockClear();
+  });
+
+  afterEach(() => {
+    disposeSummaryModuleListeners();
+  });
+
+  it("init() 不发起任何轮询请求: leader 起了但 poll 还没被唤醒", () => {
+    // init 时 leader.start() 只开始心跳观察, 不 promote 也不 tick. 入口层还没
+    // 调 startSummaryAttentionPolling(), 这个阶段打出去的任何 fetch 都会
+    // 撞在 MSW 还没启动的窗口里 (见函数注释).
+    expect(leader.start).toHaveBeenCalledTimes(1);
+    expect(poll.notifyActivity).not.toHaveBeenCalled();
+    expect(poll.start).not.toHaveBeenCalled();
+  });
+
+  it("显式 startSummaryAttentionPolling() 才唤醒第一拍 (入口层在 MSW 就绪后调)", () => {
+    startSummaryAttentionPolling();
+
+    // 可见: 立刻 notifyActivity 排第一拍.
+    expect(poll.notifyActivity).toHaveBeenCalledTimes(1);
+  });
+
+  it("startSummaryAttentionPolling() 幂等: 多次调用只唤醒一次", () => {
+    startSummaryAttentionPolling();
+    startSummaryAttentionPolling();
+    startSummaryAttentionPolling();
+
+    expect(poll.notifyActivity).toHaveBeenCalledTimes(1);
+  });
+
+  it("页面隐藏时 startSummaryAttentionPolling() 不排第一拍 (setVisible 会在转可见时拉起来)", () => {
+    state.visibility = "hidden" as DocumentVisibilityState;
+
+    startSummaryAttentionPolling();
+
+    // 不可见: 不打请求, 等 visibilitychange 把它唤醒 (leader.beat 每拍会让位,
+    // 而 _visibilityHandler 把 setVisible(true) 接到 poll 上, 那次会走 notifyActivity).
+    expect(poll.notifyActivity).not.toHaveBeenCalled();
+  });
+
+  it("dispose 复位启动标志: 重新 init 之后可以再 start 一次", () => {
+    startSummaryAttentionPolling();
+    expect(poll.notifyActivity).toHaveBeenCalledTimes(1);
+    disposeSummaryModuleListeners();
+    poll.notifyActivity.mockClear();
+
+    // HMR 场景: dispose 了旧实例, init 造新实例, start 再调一次, 必须能再次唤醒.
+    new SummaryModule().init();
+    startSummaryAttentionPolling();
+    expect(poll.notifyActivity).toHaveBeenCalledTimes(1);
   });
 });

@@ -41,6 +41,7 @@ let _focusHandler: (() => void) | null = null;
 // 它们持有真实的 setTimeout/setInterval，热更时必须一并拆掉。
 let _attentionPoll: AttentionPoll | null = null;
 let _attentionLeader: AttentionLeader | null = null;
+let _attentionStarted = false;
 let _menuActivatedHandler: (() => void) | null = null;
 let _imMessageHandler: ((message: unknown) => void) | null = null;
 let _imConnectHandler: ((status: unknown) => void) | null = null;
@@ -308,7 +309,14 @@ export class SummaryModule implements IModule {
                 // 接管意味着刚才有一段【没人轮询】的窗口（上任 leader 崩了、或者
                 // 切到后台让了位），必须立刻取一次而不是等一个基础间隔。start() 自己
                 // 只排期不取数。
-                _attentionPoll?.notifyActivity();
+                //
+                // 但 init() 期间 leader.start() 的同步 beat() 抢到租约时不打这一发:
+                // 入口层还没调 startSummaryAttentionPolling() 就意味着 MSW 还没就绪,
+                // 这里打出去的 fetch 会漏 mock (见下面长注释). 启动后的正常 promote
+                // (重连/抢占) 都已经过了入口层闸门, _attentionStarted 会是 true.
+                if (_attentionStarted) {
+                    _attentionPoll?.notifyActivity();
+                }
             },
             onResignLeader: () => _attentionPoll?.stop(),
             isVisible: isDocumentVisible,
@@ -330,6 +338,19 @@ export class SummaryModule implements IModule {
             _attentionLeader?.publish(count, WKApp.shared.currentSpaceId ?? '', sampleAt);
         });
         _attentionLeader.start();
+
+        // 【不在 init() 里发起轮询】。init() 在 registerModule() 调用链中同步执行,
+        // 在 web 入口里这是模块顶层语句 —— 比 main() 里 await enableMocksIfE2E() 更早。
+        // 如果 leader.start() 立刻 beat() → promote() → poll.notifyActivity() → void tick()
+        // 把一条 fetch 排上 microtask, 这条 fetch 就会在 MSW 还没 start() 之前就发出,
+        // 直达 vite proxy。CI 用 vite preview + VITE_API_URL=http://127.0.0.1:9 (故意不通),
+        // 漏出去的请求立刻 ECONNREFUSED 并被记成 "http proxy error", fail-closed 整个 e2e.
+        //
+        // 真正启动兜底轮询是在下面的 startAttentionPolling() 里 —— 入口层 (apps/web/index.tsx)
+        // 会在 MSW 启动完、WKApp.shared.startup() 【之后】调用它。leader 先开始心跳和观察,
+        // 等 startAttentionPolling() 被调时再拍一下 notifyActivity() 发起第一拍, 功能上等价
+        // 于原先立即启动。未登录 / Space 未就绪时第一拍读会直接 return null (readSummaryAttentionCount
+        // 顶部的三个早退闸), 也不会打请求, 等 space-ready / wk:auth-state-changed 再拉起。
 
         // 可见性切换身兼两职：刷一次（_attentionSync）+ 控制轮询起停（不可见就【停表】，
         // 而不是空转跳拍）。两件事语义不同：前者是「现在刷一次」，后者是「接下来还
@@ -470,9 +491,41 @@ export function disposeSummaryModuleListeners(): void {
     // stop 幂等，多调一次比漏一个定时器安全。
     _attentionPoll?.stop();
     _attentionPoll = null;
+    _attentionStarted = false;
     if (_menuActivatedHandler) {
         WKApp.mittBus.off('wk:active-menu-changed', _menuActivatedHandler);
         _menuActivatedHandler = null;
+    }
+}
+
+/**
+ * 启动智能总结模块的【无人值守兜底轮询】。
+ *
+ * 必须在入口层【显式】调用, 而不能由 SummaryModule.init() 自己立刻启动:
+ *   - init() 由 WKApp.shared.registerModule 同步调用, 那是模块顶层语句, 比
+ *     main() 里的 await enableMocksIfE2E() 更早;
+ *   - 若 init() 里 leader.start() 立刻 promote 并 void tick(), 第一发 fetch 会在
+ *     MSW 还没激活之前就排上 microtask, 直达 vite proxy, e2e 模式下这条漏网请求
+ *     立刻 ECONNREFUSED 并被记成 proxy error, fail-closed 整个 CI.
+ *
+ * 入口层应当在 mocks 就绪、WKApp.shared.startup() 跑完之后调用本函数。
+ * 幂等: 多次调用只会启动一次。HMR dispose 会把它关掉, 热更后的 init 重新构造
+ * 对象后再由 HMR accept 路径调用即可 (如果没有 accept, 整个页面会刷新, 一样安全)。
+ */
+export function startSummaryAttentionPolling(): void {
+    if (_attentionStarted) return;
+    _attentionStarted = true;
+    // setVisible / notifyActivity 两个入口都要等 leader/poll 创建完.
+    // init() 里它们已经被 set 好了 (_visibilityHandler 等), 但 init 结束时 leader.start()
+    // 只开始心跳不发第一拍。这里补一次 "等同冷启动活动" 的动作:
+    //   - 页面可见 → poll 把基础档 tick 排上, 立刻发第一发;
+    //   - 不可见 (后台预渲染) → setVisible(false) 已经在 beat() 里让位过了, 什么都不做。
+    //
+    // 未登录或 Space 未就绪的情形下, 第一拍读直接 return null, 不会打请求 (见
+    // readSummaryAttentionCount 顶部的三个早退闸). 登录/Space 就绪后 space-ready /
+    // wk:auth-state-changed 会再触发 refresh + poll.notifyActivity.
+    if (isDocumentVisible()) {
+        _attentionPoll?.notifyActivity();
     }
 }
 
