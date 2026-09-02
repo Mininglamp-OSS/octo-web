@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Input, Modal, Spin, Toast } from "@douyinfe/semi-ui";
 import { Dap, useI18n } from "@octo/base";
 import WKApp from "@octo/base/src/App";
@@ -12,7 +12,10 @@ import TemplateSelectorModal, {
 import TimeRangeSelector, {
   type TimeRangeSelectorLabels,
 } from "../../components/TimeRangeSelector";
-import { MAX_CHAT_SELECT } from "../../constants/limits";
+import {
+  MAX_CHAT_SELECT,
+  MAX_PARTICIPANT_SELECT,
+} from "../../constants/limits";
 import { TOPIC_TEMPLATES } from "../../constants/templates";
 import summaryWorkbenchService from "../../Service/SummaryWorkbenchService";
 import type { SummaryWorkbenchResponse } from "../../bridge/summaryWorkbench/model";
@@ -43,14 +46,20 @@ import {
   type SummaryWorkbenchSessionScope,
 } from "./sessionStorage";
 import {
+  loadParticipantCandidates,
+  type ParticipantCandidateLoadResult,
+} from "./participantCandidates";
+import {
   canSelectParticipants,
   canGenerateFromScope,
   chatCandidatesToScope,
   emptySummaryWorkbenchScope,
   memberCandidatesToScope,
-  participantSourceChannel,
+  participantSourceChannels,
+  participantSourceKey,
   removeScopeContext,
   replaceSelectedChannels,
+  retainValidParticipants,
   scopeChannelsToCandidates,
   scopeParticipantsToCandidates,
   type WorkbenchMemberCandidate,
@@ -70,6 +79,10 @@ export interface SummaryWorkbenchFeatureProps {
 
 type OpenSelector = Exclude<SummaryWorkbenchContextKind, "template"> | null;
 type ReferencedTask = Pick<SummaryListItem, "task_id" | "title">;
+type ParticipantCandidateState = ParticipantCandidateLoadResult & {
+  sourceKey: string;
+  status: "idle" | "loading" | "ready" | "error";
+};
 
 function initialScopeFor(
   channel: SummaryWorkbenchFeatureProps["channel"],
@@ -171,6 +184,107 @@ export default function SummaryWorkbenchFeature({
       }
     },
   });
+  const latestScopeRef = useRef(workbench.scope);
+  const participantLoadSeq = useRef(0);
+  const [participantCandidateState, setParticipantCandidateState] =
+    useState<ParticipantCandidateState>({
+      sourceKey: "",
+      status: "idle",
+      members: [],
+      roles: new Map<string, number>(),
+    });
+  latestScopeRef.current = workbench.scope;
+
+  const refreshParticipantCandidates = useCallback(
+    async (force = false) => {
+      const scope = latestScopeRef.current;
+      const sourceKey = participantSourceKey(scope);
+      const channels = participantSourceChannels(scope);
+      if (!sourceKey || !channels) {
+        participantLoadSeq.current += 1;
+        setParticipantCandidateState({
+          sourceKey: sourceKey ?? "",
+          status: "idle",
+          members: [],
+          roles: new Map<string, number>(),
+        });
+        return false;
+      }
+      if (
+        !force &&
+        participantCandidateState.sourceKey === sourceKey &&
+        participantCandidateState.status === "ready"
+      ) {
+        return true;
+      }
+
+      const seq = ++participantLoadSeq.current;
+      setParticipantCandidateState((current) => ({
+        sourceKey,
+        status: "loading",
+        members: current.sourceKey === sourceKey ? current.members : [],
+        roles:
+          current.sourceKey === sourceKey
+            ? current.roles
+            : new Map<string, number>(),
+      }));
+      try {
+        const result = await loadParticipantCandidates(channels, {
+          currentUserId,
+          spaceId,
+        });
+        if (seq !== participantLoadSeq.current) return false;
+        const latestScope = latestScopeRef.current;
+        if (participantSourceKey(latestScope) !== sourceKey) return false;
+
+        setParticipantCandidateState({
+          sourceKey,
+          status: "ready",
+          ...result,
+        });
+        const retained = retainValidParticipants(latestScope, result.members);
+        if (retained.removedCount > 0) {
+          workbench.updateScope(retained.scope);
+          Toast.info(t("summary.workbench.notice.participantsPruned"));
+        }
+        return true;
+      } catch {
+        if (seq !== participantLoadSeq.current) return false;
+        setParticipantCandidateState({
+          sourceKey,
+          status: "error",
+          members: [],
+          roles: new Map<string, number>(),
+        });
+        return false;
+      }
+    }, [
+      currentUserId,
+      participantCandidateState.sourceKey,
+      participantCandidateState.status,
+      spaceId,
+      t,
+      workbench,
+    ]
+  );
+
+  const participantScopeKey = participantSourceKey(workbench.scope);
+  useEffect(() => {
+    participantLoadSeq.current += 1;
+    setParticipantCandidateState((current) =>
+      current.sourceKey === (participantScopeKey ?? "")
+        ? current
+        : {
+            sourceKey: participantScopeKey ?? "",
+            status: "idle",
+            members: [],
+            roles: new Map<string, number>(),
+          }
+    );
+    if (workbench.scope.participants.length > 0 && participantScopeKey) {
+      void refreshParticipantCandidates(true);
+    }
+  }, [participantScopeKey]);
 
   useEffect(() => {
     if (workbench.isHydrating) {
@@ -275,6 +389,11 @@ export default function SummaryWorkbenchFeature({
     workbench.isHydrating ||
     workbench.isConfirming ||
     workbench.isSaving;
+  const participantScopeReady =
+    workbench.scope.participants.length === 0 ||
+    (Boolean(participantScopeKey) &&
+      participantCandidateState.sourceKey === participantScopeKey &&
+      participantCandidateState.status === "ready");
   const displayErrorKey = errorMessageKey(
     workbench.error?.httpStatus,
     workbench.error?.kind
@@ -293,8 +412,9 @@ export default function SummaryWorkbenchFeature({
     isSending: busy,
     canSend:
       !busy &&
+      participantScopeReady &&
       (composerHasCustomText || (!hasSubmitted && structuredGenerate)),
-    showTemplateTrigger: !templateGalleryOpen,
+    showTemplateTrigger: !hasSubmitted && !templateGalleryOpen,
     sendLabelKey:
       !composerHasCustomText && structuredGenerate
         ? "summary.workbench.composer.generate"
@@ -381,6 +501,7 @@ export default function SummaryWorkbenchFeature({
   const handleContextOpen = (kind: SummaryWorkbenchContextKind) => {
     if (busy) return;
     if (kind === "template") {
+      if (hasSubmitted) return;
       setTemplateGalleryOpen(true);
       return;
     }
@@ -389,6 +510,9 @@ export default function SummaryWorkbenchFeature({
       return;
     }
     setOpenSelector(kind);
+    if (kind === "participant") {
+      void refreshParticipantCandidates();
+    }
     if (kind === "reference" && referencedTask) {
       setReferencePreviewOpen(true);
     }
@@ -575,7 +699,7 @@ export default function SummaryWorkbenchFeature({
             onNewSession: resetSession,
           }}
           contextPanel={
-            templateGalleryOpen ? (
+            templateGalleryOpen && !hasSubmitted ? (
               <TemplateSelectorModal
                 visible
                 inline
@@ -601,6 +725,7 @@ export default function SummaryWorkbenchFeature({
         visible={openSelector === "chat"}
         selected={scopeChannelsToCandidates(workbench.scope.selectedChannels)}
         maxSelect={MAX_CHAT_SELECT}
+        groupOnly={workbench.scope.participants.length > 0}
         onConfirm={(chats: ChatCandidate[]) => {
           if (busy) return;
           const result = replaceSelectedChannels(
@@ -619,7 +744,12 @@ export default function SummaryWorkbenchFeature({
       <ChatSelectorModal
         visible={openSelector === "participant"}
         mode="members"
-        channel={participantSourceChannel(workbench.scope)}
+        maxSelect={MAX_PARTICIPANT_SELECT}
+        memberCandidates={participantCandidateState.members}
+        memberRoles={participantCandidateState.roles}
+        memberLoading={participantCandidateState.status === "loading"}
+        memberLoadError={participantCandidateState.status === "error"}
+        onRetryMembers={() => void refreshParticipantCandidates(true)}
         selected={[]}
         selectedMembers={scopeParticipantsToCandidates(
           workbench.scope.participants

@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   toastInfo: vi.fn(),
   toastWarning: vi.fn(),
   toastSuccess: vi.fn(),
+  loadParticipantCandidates: vi.fn(),
 }));
 
 vi.mock("@octo/base", () => ({
@@ -100,6 +101,11 @@ vi.mock("@douyinfe/semi-ui", () => ({
 
 vi.mock("../../bridge/summaryWorkbench/useSummaryWorkbench", () => ({
   default: (...args: unknown[]) => mocks.useSummaryWorkbench(...args),
+}));
+
+vi.mock("./participantCandidates", () => ({
+  loadParticipantCandidates: (...args: unknown[]) =>
+    mocks.loadParticipantCandidates(...args),
 }));
 
 vi.mock("../../Service/SummaryWorkbenchService", () => ({
@@ -292,6 +298,10 @@ describe("SummaryWorkbenchFeature", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    mocks.loadParticipantCandidates.mockResolvedValue({
+      members: [{ uid: "user-a", name: "Alex" }],
+      roles: new Map(),
+    });
   });
 
   it("sends the standard personal intent for chat plus template", async () => {
@@ -401,8 +411,10 @@ describe("SummaryWorkbenchFeature", () => {
       preview: { content: "Draft" },
     });
     await waitFor(() => expect(current.send).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole("button", { name: "open-template" }));
-    expect(screen.getByTestId("template-selector")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "open-template" })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
   });
 
   it("collapses templates after restoring a session that already has messages", async () => {
@@ -428,8 +440,8 @@ describe("SummaryWorkbenchFeature", () => {
       expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument()
     );
     expect(
-      screen.getByRole("button", { name: "open-template" })
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "open-template" })
+    ).not.toBeInTheDocument();
   });
 
   it("keeps the composer and templates when the request is not accepted", async () => {
@@ -653,6 +665,12 @@ describe("SummaryWorkbenchFeature", () => {
       legacyRoot: true,
     });
     fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-can-send",
+        "true"
+      )
+    );
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
     await waitFor(() =>
@@ -694,9 +712,11 @@ describe("SummaryWorkbenchFeature", () => {
     render(<SummaryWorkbenchFeature spaceId="space-a" />, {
       legacyRoot: true,
     });
-    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
-      "data-can-send",
-      "true"
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-can-send",
+        "true"
+      )
     );
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 

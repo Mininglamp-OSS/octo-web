@@ -12,7 +12,7 @@ import * as api from "../api/summaryApi";
 import WKApp from "@octo/base/src/App";
 import { SpaceService } from "@octo/base/src/Service/SpaceService";
 import SidebarService, { SidebarTargetType } from "@octo/base/src/Service/SidebarService";
-import { MAX_CHAT_SELECT } from "../constants/limits";
+import { MAX_CHAT_SELECT, MAX_PARTICIPANT_SELECT } from "../constants/limits";
 import { summaryTestIds } from "../utils/testIds";
 
 interface MemberCandidate {
@@ -30,6 +30,12 @@ interface Props {
     maxSelect?: number;
     mode?: "chat" | "members";
     channel?: Channel | null;
+    memberCandidates?: MemberCandidate[];
+    memberRoles?: Map<string, number>;
+    memberLoading?: boolean;
+    memberLoadError?: boolean;
+    onRetryMembers?: () => void;
+    groupOnly?: boolean;
     selectedMembers?: MemberCandidate[];
     onConfirmMembers?: (members: MemberCandidate[]) => void;
 }
@@ -40,6 +46,7 @@ interface State {
     candidates: ChatCandidate[];
     memberRoles: Map<string, number>;
     loading: boolean;
+    loadError: boolean;
     localSelected: ChatCandidate[];
     localSelectedMembers: MemberCandidate[];
     includeArchived: boolean;
@@ -65,6 +72,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
         candidates: [],
         memberRoles: new Map<string, number>(),
         loading: false,
+        loadError: false,
         localSelected: [],
         localSelectedMembers: [],
         includeArchived: false,
@@ -98,17 +106,50 @@ export default class ChatSelectorModal extends Component<Props, State> {
             if (this.props.mode === "members") {
                 this.setState({
                     localSelectedMembers: [...(this.props.selectedMembers ?? [])],
+                    candidates: this.memberCandidatesToChats(this.props.memberCandidates ?? []),
+                    memberRoles: this.props.memberRoles ?? new Map<string, number>(),
+                    loading: this.props.memberLoading ?? false,
+                    loadError: this.props.memberLoadError ?? false,
                     keyword: "",
                     activeTab: "all_members",
                     visibleStart: 0,
                     visibleEnd: 20,
                 });
-                this.loadMembers();
+                if (this.props.memberCandidates === undefined) {
+                    this.loadMembers();
+                }
             } else {
-                this.setState({ localSelected: [...this.props.selected], keyword: "", activeTab: "followed", includeArchived: false, visibleStart: 0, visibleEnd: 20 });
+                this.setState({ localSelected: [...this.props.selected], keyword: "", activeTab: this.props.groupOnly ? "group" : "followed", includeArchived: false, visibleStart: 0, visibleEnd: 20 });
                 this.loadCandidates(false);
             }
         }
+        if (
+            this.props.visible &&
+            this.props.mode === "members" &&
+            this.props.memberCandidates !== undefined &&
+            (this.props.memberCandidates !== prevProps.memberCandidates ||
+                this.props.memberRoles !== prevProps.memberRoles ||
+                this.props.memberLoading !== prevProps.memberLoading ||
+                this.props.memberLoadError !== prevProps.memberLoadError ||
+                this.props.selectedMembers !== prevProps.selectedMembers)
+        ) {
+            this.setState({
+                candidates: this.memberCandidatesToChats(this.props.memberCandidates),
+                memberRoles: this.props.memberRoles ?? new Map<string, number>(),
+                loading: this.props.memberLoading ?? false,
+                loadError: this.props.memberLoadError ?? false,
+                localSelectedMembers: [...(this.props.selectedMembers ?? [])],
+            });
+        }
+    }
+
+    private memberCandidatesToChats(members: MemberCandidate[]): ChatCandidate[] {
+        return members.map((member) => ({
+            chat_id: member.uid,
+            chat_type: "direct" as const,
+            name: member.name || member.uid,
+            member_count: null,
+        }));
     }
 
     async loadMembers() {
@@ -118,7 +159,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
         // 与后端 contactsSync 的既有语义一致（datasource.ts 的 space 成员同步
         // 也显式 `m.uid === loginInfo.uid continue` 排除自己）。
         const myUid = WKApp.loginInfo?.uid;
-        this.setState({ loading: true });
+        this.setState({ loading: true, loadError: false });
         try {
             if (channel) {
                 // 有选中聊天：加载该群聊成员
@@ -173,7 +214,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
             }
         } catch {
             if (seq !== this.reqSeq) return;
-            this.setState({ candidates: [] });
+            this.setState({ candidates: [], loadError: true });
         } finally {
             if (seq !== this.reqSeq) return;
             this.setState({ loading: false });
@@ -255,9 +296,17 @@ export default class ChatSelectorModal extends Component<Props, State> {
         }
     };
 
+    handleRetryMembers = () => {
+        if (this.props.onRetryMembers) {
+            this.props.onRetryMembers();
+            return;
+        }
+        void this.loadMembers();
+    };
+
     handleToggleMember = (member: MemberCandidate) => {
         const { localSelectedMembers } = this.state;
-        const maxSelect = this.props.maxSelect ?? MAX_CHAT_SELECT;
+        const maxSelect = this.props.maxSelect ?? MAX_PARTICIPANT_SELECT;
         const existing = localSelectedMembers.find((m) => m.uid === member.uid);
         if (existing) {
             this.setState({ localSelectedMembers: localSelectedMembers.filter((m) => m.uid !== member.uid) });
@@ -281,12 +330,15 @@ export default class ChatSelectorModal extends Component<Props, State> {
 
     getDisplayList(): DisplayEntry[] {
         const { candidates, activeTab, keyword } = this.state;
+        const selectableCandidates = this.props.groupOnly
+            ? candidates.filter((candidate) => candidate.chat_type === "group")
+            : candidates;
         const kw = keyword.trim().toLowerCase();
 
         // members 模式：按 tab 过滤角色 + 搜索
         if (this.props.mode === "members") {
             const { memberRoles } = this.state;
-            return candidates
+            return selectableCandidates
                 .filter((c) => {
                     if (activeTab === "all_members") return true;
                     const role = memberRoles.get(c.chat_id);
@@ -299,7 +351,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
         }
 
         if (activeTab === "direct") {
-            return candidates
+            return selectableCandidates
                 .filter((c) => c.chat_type === "direct")
                 .filter((c) => !kw || c.name.toLowerCase().includes(kw))
                 .map((c) => ({ item: c, indent: false }));
@@ -307,7 +359,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
 
         if (activeTab === "recent") {
             const { recentIds, recentOrder } = this.state;
-            return candidates
+            return selectableCandidates
                 .filter((c) => recentIds.has(ChatSelectorModal.compositeKey(c.chat_type, c.chat_id)))
                 .filter((c) => !kw || c.name.toLowerCase().includes(kw))
                 .sort((a, b) => (recentOrder.get(ChatSelectorModal.compositeKey(b.chat_type, b.chat_id)) ?? 0) - (recentOrder.get(ChatSelectorModal.compositeKey(a.chat_type, a.chat_id)) ?? 0))
@@ -320,11 +372,11 @@ export default class ChatSelectorModal extends Component<Props, State> {
             return true;
         };
 
-        const groups = candidates.filter((c) => c.chat_type === "group" && inScope(c));
-        const threads = candidates.filter((c) => c.chat_type === "thread" && inScope(c));
+        const groups = selectableCandidates.filter((c) => c.chat_type === "group" && inScope(c));
+        const threads = selectableCandidates.filter((c) => c.chat_type === "thread" && inScope(c));
         const directs =
             activeTab === "followed"
-                ? candidates.filter((c) => c.chat_type === "direct" && inScope(c))
+                ? selectableCandidates.filter((c) => c.chat_type === "direct" && inScope(c))
                 : [];
 
         const groupIds = new Set(groups.map((g) => g.chat_id));
@@ -405,7 +457,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
 
     renderMemberItem = (entry: DisplayEntry) => {
         const { localSelectedMembers } = this.state;
-        const maxSelect = this.props.maxSelect ?? MAX_CHAT_SELECT;
+        const maxSelect = this.props.maxSelect ?? MAX_PARTICIPANT_SELECT;
         const { item } = entry;
         const checked = !!localSelectedMembers.find((m) => m.uid === item.chat_id);
         const disabled = !checked && localSelectedMembers.length >= maxSelect;
@@ -497,7 +549,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
             { key: "direct", label: t("summary.chatSelector.allDirects") },
         ];
 
-        const memberTabs = this.props.channel
+        const memberTabs = this.props.channel || (this.props.memberRoles?.size ?? 0) > 0
             ? [
                 { key: "all_members", label: t("summary.chatSelector.allMembers") },
                 { key: "managers", label: t("summary.chatSelector.managers") },
@@ -507,7 +559,11 @@ export default class ChatSelectorModal extends Component<Props, State> {
                 { key: "all_members", label: t("summary.chatSelector.allMembers") },
             ];
 
-        const currentTabs = mode === "members" ? memberTabs : chatTabs;
+        const currentTabs = mode === "members"
+            ? memberTabs
+            : this.props.groupOnly
+                ? chatTabs.filter((tab) => tab.key === "group")
+                : chatTabs;
 
         if (!visible) return null;
 
@@ -566,6 +622,17 @@ export default class ChatSelectorModal extends Component<Props, State> {
                             >
                                 {loading ? (
                                     <div className="chat-selector-loading"><Spin /></div>
+                                ) : mode === "members" && this.state.loadError ? (
+                                    <div className="chat-selector-loading">
+                                        <Empty description={t("summary.workbench.notice.participantCandidatesLoadFailed")} />
+                                        <button
+                                            type="button"
+                                            className="chat-selector-btn chat-selector-btn--confirm"
+                                            onClick={this.handleRetryMembers}
+                                        >
+                                            {t("summary.common.retry")}
+                                        </button>
+                                    </div>
                                 ) : mode === "members" ? (
                                     displayList.length === 0 ? (
                                         <Empty description={t("summary.chatSelector.noData")} />
@@ -600,7 +667,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
                         <div className="chat-selector-right">
                             <div className="chat-selector-right-header">
                                 {mode === "members"
-                                    ? t("summary.common.selectedCount", { values: { count: localSelectedMembers.length, max: this.props.maxSelect ?? MAX_CHAT_SELECT } })
+                                    ? t("summary.common.selectedCount", { values: { count: localSelectedMembers.length, max: this.props.maxSelect ?? MAX_PARTICIPANT_SELECT } })
                                     : t("summary.common.selectedCount", { values: { count: localSelected.length, max: this.props.maxSelect ?? MAX_CHAT_SELECT } })}
                             </div>
                             <div className="chat-selector-right-list">
@@ -637,6 +704,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
                             data-testid={mode === "members" ? summaryTestIds.memberSelectorConfirmBtn : summaryTestIds.chatSelectorConfirmBtn}
                             className="chat-selector-btn chat-selector-btn--confirm"
                             onClick={this.handleConfirm}
+                            disabled={mode === "members" && (loading || this.state.loadError)}
                         >
                             {t("summary.common.confirm")}
                         </button>

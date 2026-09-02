@@ -241,7 +241,9 @@
         },
         "notice": {
             "participantsCleared": "The participant source chat changed. Select participants again.",
-            "selectSingleChatForParticipants": "Select one group chat before adding participants.",
+            "participantsPruned": "Participants outside the selected groups were removed.",
+            "participantCandidatesLoadFailed": "Some group members failed to load. Try again.",
+            "selectSingleChatForParticipants": "Participant selection supports up to 30 group chats only.",
             "savedWithQualityGap": "Summary saved with a quality warning: {{detail}}"
         },
         "errors": {

@@ -1,8 +1,8 @@
-import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 import type {
   SummaryWorkbenchChannelScope,
   SummaryWorkbenchScope,
 } from "../../bridge/summaryWorkbench/protocol";
+import { MAX_CHAT_SELECT } from "../../constants/limits";
 import type { SummaryWorkbenchContextKind } from "../../ui/SummaryWorkbench";
 import type { ChatCandidate } from "../../types/summary";
 
@@ -69,24 +69,27 @@ export function scopeParticipantsToCandidates(
 export function canSelectParticipants(scope: SummaryWorkbenchScope): boolean {
   if (scope.selectedChannels.length === 0) return true;
   return (
-    scope.selectedChannels.length === 1 &&
-    scope.selectedChannels[0]?.chatType === "group"
+    scope.selectedChannels.length <= MAX_CHAT_SELECT &&
+    scope.selectedChannels.every((channel) => channel.chatType === "group")
   );
 }
 
-export function participantSourceChannel(
+export function participantSourceChannels(
   scope: SummaryWorkbenchScope
-): Channel | null {
+): SummaryWorkbenchChannelScope[] | null {
   if (!canSelectParticipants(scope)) return null;
-  const channel = scope.selectedChannels[0];
-  if (!channel) return null;
-  return new Channel(channel.chatId, ChannelTypeGroup);
+  return scope.selectedChannels;
 }
 
-function participantSourceKey(scope: SummaryWorkbenchScope): string | undefined {
+export function participantSourceKey(
+  scope: SummaryWorkbenchScope
+): string | undefined {
   if (scope.selectedChannels.length === 0) return "space";
   if (!canSelectParticipants(scope)) return undefined;
-  return `group:${scope.selectedChannels[0]?.chatId ?? ""}`;
+  return scope.selectedChannels
+    .map((channel) => `group:${channel.chatId}`)
+    .sort()
+    .join("|");
 }
 
 export function replaceSelectedChannels(
@@ -94,17 +97,29 @@ export function replaceSelectedChannels(
   channels: SummaryWorkbenchChannelScope[]
 ): { scope: SummaryWorkbenchScope; participantsCleared: boolean } {
   const nextScope = { ...scope, selectedChannels: channels };
-  const previousMemberSource = participantSourceKey(scope);
   const nextMemberSource = participantSourceKey(nextScope);
   const participantsCleared =
-    scope.participants.length > 0 &&
-    (!nextMemberSource || previousMemberSource !== nextMemberSource);
+    scope.participants.length > 0 && !nextMemberSource;
   return {
     scope: {
       ...nextScope,
       participants: participantsCleared ? [] : scope.participants,
     },
     participantsCleared,
+  };
+}
+
+export function retainValidParticipants(
+  scope: SummaryWorkbenchScope,
+  candidates: WorkbenchMemberCandidate[]
+): { scope: SummaryWorkbenchScope; removedCount: number } {
+  const validUserIds = new Set(candidates.map((candidate) => candidate.uid));
+  const participants = scope.participants.filter((participant) =>
+    validUserIds.has(participant.userId)
+  );
+  return {
+    scope: { ...scope, participants },
+    removedCount: scope.participants.length - participants.length,
   };
 }
 

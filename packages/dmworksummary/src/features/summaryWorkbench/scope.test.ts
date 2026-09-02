@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { ChannelTypeGroup } from "wukongimjssdk";
 import {
   canSelectParticipants,
   canGenerateFromScope,
   chatCandidatesToScope,
   emptySummaryWorkbenchScope,
-  participantSourceChannel,
+  participantSourceChannels,
   removeScopeContext,
   replaceSelectedChannels,
+  retainValidParticipants,
 } from "./scope";
 
 describe("summary workbench scope helpers", () => {
@@ -32,7 +32,7 @@ describe("summary workbench scope helpers", () => {
     ]);
   });
 
-  it("clears participants when their source chat changes", () => {
+  it("keeps participants until the changed group union is revalidated", () => {
     const scope = {
       ...emptySummaryWorkbenchScope(),
       selectedChannels: [
@@ -44,8 +44,8 @@ describe("summary workbench scope helpers", () => {
     const result = replaceSelectedChannels(scope, [
       { chatId: "chat-b", chatType: "group", name: "B" },
     ]);
-    expect(result.participantsCleared).toBe(true);
-    expect(result.scope.participants).toEqual([]);
+    expect(result.participantsCleared).toBe(false);
+    expect(result.scope.participants).toEqual(scope.participants);
   });
 
   it("keeps workspace participants when the chat selection remains empty", () => {
@@ -59,7 +59,7 @@ describe("summary workbench scope helpers", () => {
     expect(result.scope.participants).toEqual(scope.participants);
   });
 
-  it("allows participant selection globally or from exactly one group chat", () => {
+  it("allows participant selection globally or from up to thirty group chats", () => {
     const emptyScope = emptySummaryWorkbenchScope();
     expect(canSelectParticipants(emptyScope)).toBe(true);
     expect(
@@ -79,35 +79,51 @@ describe("summary workbench scope helpers", () => {
     expect(
       canSelectParticipants({
         ...emptyScope,
-        selectedChannels: [
-          { chatId: "group-a", chatType: "group", name: "A" },
-          { chatId: "group-b", chatType: "group", name: "B" },
-        ],
+        selectedChannels: Array.from({ length: 30 }, (_, index) => ({
+          chatId: `group-${index}`,
+          chatType: "group" as const,
+          name: `Group ${index}`,
+        })),
+      })
+    ).toBe(true);
+    expect(
+      canSelectParticipants({
+        ...emptyScope,
+        selectedChannels: Array.from({ length: 31 }, (_, index) => ({
+          chatId: `group-${index}`,
+          chatType: "group" as const,
+          name: `Group ${index}`,
+        })),
       })
     ).toBe(false);
   });
 
-  it("does not silently choose the first chat as the participant source", () => {
+  it("returns every selected group as a participant source", () => {
     const emptyScope = emptySummaryWorkbenchScope();
-    const source = participantSourceChannel({
+    const sources = participantSourceChannels({
       ...emptyScope,
-      selectedChannels: [{ chatId: "group-a", chatType: "group", name: "A" }],
+      selectedChannels: [
+        { chatId: "group-a", chatType: "group", name: "A" },
+        { chatId: "group-b", chatType: "group", name: "B" },
+      ],
     });
-    expect(source?.channelID).toBe("group-a");
-    expect(source?.channelType).toBe(ChannelTypeGroup);
+    expect(sources?.map((source) => source.chatId)).toEqual([
+      "group-a",
+      "group-b",
+    ]);
 
     expect(
-      participantSourceChannel({
+      participantSourceChannels({
         ...emptyScope,
         selectedChannels: [
           { chatId: "group-a", chatType: "group", name: "A" },
-          { chatId: "group-b", chatType: "group", name: "B" },
+          { chatId: "direct-a", chatType: "direct", name: "B" },
         ],
       })
     ).toBeNull();
   });
 
-  it("clears participants when a second chat makes their source ambiguous", () => {
+  it("clears participants when selected sources include a non-group chat", () => {
     const scope = {
       ...emptySummaryWorkbenchScope(),
       selectedChannels: [
@@ -118,10 +134,30 @@ describe("summary workbench scope helpers", () => {
 
     const result = replaceSelectedChannels(scope, [
       { chatId: "group-a", chatType: "group", name: "A" },
-      { chatId: "group-b", chatType: "group", name: "B" },
+      { chatId: "direct-b", chatType: "direct", name: "B" },
     ]);
     expect(result.participantsCleared).toBe(true);
     expect(result.scope.participants).toEqual([]);
+  });
+
+  it("keeps only participants that remain in the new group-member union", () => {
+    const current = {
+      ...emptySummaryWorkbenchScope(),
+      participants: [
+        { userId: "still-valid", userName: "Valid" },
+        { userId: "removed", userName: "Removed" },
+      ],
+    };
+
+    const result = retainValidParticipants(current, [
+      { uid: "still-valid", name: "Valid" },
+      { uid: "new-candidate", name: "New" },
+    ]);
+
+    expect(result.removedCount).toBe(1);
+    expect(result.scope.participants).toEqual([
+      { userId: "still-valid", userName: "Valid" },
+    ]);
   });
 
   it("applies the final start gate across chat, participant, template, and user input", () => {
