@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  ArrowDownFromLine,
   Building2,
   Check,
   Clock,
@@ -332,6 +333,13 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
                 danger
                 aria={r.delistAria}
                 onClick={r.onDelist}
+                // The mirror image of the Upload arrow that marks 发布/升级版本:
+                // that one puts a plugin up, this one takes it back down off the
+                // shelf, which is literally what 下架 says. An X (ArchiveX /
+                // PackageX) would read as "destroy" and is already spoken for by
+                // 拒绝; an eye-with-a-slash would read as a 可见性 change, which
+                // this is not — the plugin keeps its declared visibility.
+                leading={<ArrowDownFromLine size={13} aria-hidden="true" />}
                 label={t("skillMarket.plugin.actionDelist")}
               />
               <RowAction

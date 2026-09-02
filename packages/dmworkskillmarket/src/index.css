@@ -2715,14 +2715,26 @@
    in each one: a row holding 通过 + 拒绝 got a wider 操作 than the header holding
    the word 操作, and every column to its left shifted to compensate. Across tabs
    it was worse — 全部 has no row actions at all, so its whole grid resolved
-   differently from 技能's. 180px clears the widest real combination (two labelled
-   buttons, or one plus the 编辑/删除 icon pair) with the labels still nowrap. */
+   differently from 技能's.
+
+   160px is measured, not guessed. A labelled action is 8px padding + 13px icon +
+   4px gap + label + 8px padding; an icon-only action is 30px; the cell gap is
+   4px. The widest combination any page actually wires (see below) is 通过 + 拒绝
+   in en-US at 155.3px; zh-CN's widest is 发布 + 编辑 + 删除 at 127px. 160px clears
+   both with the labels still nowrap.
+
+   Note which combinations are NOT possible: `canEdit` is `!listedToOrg &&
+   !pending` while `canUpgrade` is `listedToOrg && !pending` and
+   `canCancelReview` is `pending` (useMyReviewState.ts), so 升级版本 and 取消审核
+   never appear next to 编辑 — that trio would need 153px (zh) / 183px (en). If a
+   future change lets 编辑 sit beside either of them, this track has to grow with
+   it. */
 .wk-mine-table__head,
 .wk-mine-table__row {
   display: grid;
   grid-template-columns:
     minmax(180px, 2.2fr) minmax(120px, 1.8fr) minmax(72px, 0.9fr) 84px 96px 64px
-    64px 88px 180px;
+    64px 88px 160px;
   align-items: center;
   gap: var(--wk-sp-3);
   padding: 0 var(--wk-sp-5);
@@ -2895,11 +2907,19 @@
   align-items: center;
   min-width: 0;
 }
+/* Left-aligned, like the other eight columns. The track is a fixed width, so
+   with flex-end a row carrying one button (组织发布管理 已处理 holds only 下架)
+   parked it at the far right and left the whole rest of the track blank —
+   reading as a gap between 状态 and 操作 rather than as a column. Starting at the
+   track edge also keeps the buttons inside the visible area when the row is
+   wider than its container: the leftover then falls off the right edge instead
+   of the buttons doing so. The header cell shares this class, so 操作 sits
+   directly above its buttons. */
 .wk-mine-table__col--actions {
   display: flex;
   align-items: center;
   gap: var(--wk-sp-1);
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 .wk-mine-table__action {
   display: inline-flex;
@@ -2907,9 +2927,9 @@
   gap: 4px;
   /* CJK labels have no spaces, so without nowrap they break at ANY character:
      squeezed by flex, 发布新版本 collapses to one glyph per line. flex-shrink:0
-     keeps the row from being squeezed in the first place — the actions column
-     sizes to its content (see the grid template) rather than the buttons
-     yielding. */
+     keeps the row from being squeezed in the first place — the actions track is
+     sized to hold the widest real combination (see the grid template) rather
+     than the buttons yielding. */
   white-space: nowrap;
   flex: 0 0 auto;
   height: 30px;
@@ -3072,13 +3092,15 @@
 
    Each rule re-states grid-template-columns to match the cells still shown;
    the header and body cells are hidden by the same selectors, so the two stay
-   in step. */
+   in step. 操作 keeps the same fixed 160px at every breakpoint — a content-sized
+   track here resolves independently in the header and in each row, which is the
+   misalignment the base rule above documents. */
 @media (max-width: 1280px) {
   .wk-mine-table__head,
   .wk-mine-table__row {
     grid-template-columns:
       minmax(180px, 2.2fr) minmax(120px, 1.8fr) minmax(72px, 0.9fr) 84px 96px
-      88px 180px;
+      88px 160px;
   }
   .wk-mine-table__col--num {
     display: none;
@@ -3090,7 +3112,7 @@
   .wk-mine-table__row {
     grid-template-columns:
       minmax(160px, 2.2fr) minmax(120px, 1.8fr) 84px 96px 88px
-      180px;
+      160px;
   }
   .wk-mine-table__col--category {
     display: none;
@@ -3100,8 +3122,7 @@
 @media (max-width: 900px) {
   .wk-mine-table__head,
   .wk-mine-table__row {
-    grid-template-columns:
-      minmax(140px, 1fr) 84px 96px 88px minmax(120px, max-content);
+    grid-template-columns: minmax(140px, 1fr) 84px 96px 88px 160px;
   }
   .wk-mine-table__col--desc {
     display: none;
@@ -3111,7 +3132,7 @@
 @media (max-width: 760px) {
   .wk-mine-table__head,
   .wk-mine-table__row {
-    grid-template-columns: minmax(120px, 1fr) 88px minmax(96px, max-content);
+    grid-template-columns: minmax(120px, 1fr) 88px 160px;
     gap: var(--wk-sp-2);
     padding-left: var(--wk-sp-3);
     padding-right: var(--wk-sp-3);
