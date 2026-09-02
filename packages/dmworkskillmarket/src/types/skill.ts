@@ -1,6 +1,28 @@
 export type Visibility = "public" | "space" | "private" | "system";
 export type SkillSort = "comprehensive" | "latest" | "views" | "downloads";
 
+// ─── Listing lifecycle ───────────────────────────────────────────────────
+
+/**
+ * Whether a plugin is listed, independent of who it is listed TO. `visibility`
+ * is the declared intent ("who should see this once it is listed") and this is
+ * whether it actually is.
+ */
+export type PluginListingState = "draft" | "published" | "delisted";
+
+/**
+ * The single status a client renders, computed BY THE BACKEND from the listing
+ * state plus the review entity. Deriving it client-side is what the old
+ * five-value badge union did, and every page got the precedence subtly
+ * different — a published plugin with a pending upgrade in particular.
+ */
+export type PluginDisplayStatus =
+  | "draft"
+  | "pending_review"
+  | "published"
+  | "rejected"
+  | "delisted";
+
 // ─── Frontend (camelCase) types ────────────────────────────────────────────
 
 export interface Category {
@@ -33,19 +55,24 @@ export interface Skill {
   fileSha256?: string;
   viewCount?: number;
   downloadCount?: number;
+  /** Listing lifecycle and the single status to render. Both are supplied by the
+   *  server on the owner (`mode=mine`) listing and on the detail read; they are
+   *  absent on the public marketplace grid, where every row is published by
+   *  construction. `reviewId` points at the request `displayStatus` reflects, so
+   *  a 取消审核 button has something to act on without a second lookup. */
+  listingState?: PluginListingState;
+  displayStatus?: PluginDisplayStatus;
+  reviewId?: string;
   createdAt: string;
   updatedAt: string;
 }
 
 // ─── Review request types ────────────────────────────────────────────────
 //
-// Review state is an independent entity, never a column on `Skill`: a listed
-// v1 and an in-review v2 coexist, so the card badges are derived at render
-// time by joining the `mode=mine` request list onto the skill list by
-// `pluginId` (see `deriveSkillReviewState` in `utils/review.ts`). Adding a
-// review-status field to `Skill` — or a new member to `Visibility` — would
-// re-introduce the coupling the backend model deliberately avoids. The
-// snake_case wire shape lives in `api/pluginWire.ts`.
+// Review state remains an independent entity, never a column on `Skill`: a
+// listed v1 and an in-review v2 coexist. `display_status` above does NOT
+// re-couple them — it is a derived projection the server computes per read, not
+// a stored field. The snake_case wire shape lives in `api/pluginWire.ts`.
 
 export type ReviewStatus = "pending" | "approved" | "rejected" | "canceled";
 export type ReviewKind = "first" | "upgrade";
@@ -63,6 +90,15 @@ export interface ReviewRequest {
    *  safe to bind to an `<img src>`. Still optional — a plugin may carry no icon
    *  — so consumers must keep a letter-avatar fallback. */
   pluginIconUrl?: string;
+  /**
+   * The plugin's CURRENT listing state — a live read of the plugin row, not part
+   * of the frozen snapshot this request approved. The two drift on purpose: an
+   * approved request whose plugin a Space admin later took down reads
+   * `delisted`, which is how the queue avoids offering 下架 on something that is
+   * already down. Optional because the server omits it when it has nothing to
+   * report (`omitempty`).
+   */
+  pluginListingState?: PluginListingState;
   spaceId: string;
   targetScope: ReviewTargetScope;
   status: ReviewStatus;

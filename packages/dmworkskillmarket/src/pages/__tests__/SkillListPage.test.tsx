@@ -41,7 +41,13 @@ const skill: Skill = {
   ownerId: "test-uid",
   ownerName: "我",
   spaceId: "space-demo",
+  // Visibility is only the DECLARED intent now; it lists nothing on its own.
+  // The default fixture is a plugin that is actually LISTED TO THE ORG, which is
+  // what `visibility: "space"` used to imply by itself: org intent + a published
+  // listing + the status the server computes for that pair.
   visibility: "space",
+  listingState: "published",
+  displayStatus: "published",
   version: "1.1.3",
   readmeContent: "# meeting-note-cleaner\n\n- 输出待办",
   fileName: "meeting-note-cleaner.zip",
@@ -67,10 +73,15 @@ const publishSkillName = /上架技能|skillMarket\.list\.publishSkill/;
 const botPublishName = /Bot 上架|skillMarket\.publishMenu\.botTitle/;
 const manualPublishName = /手动上传|skillMarket\.publishMenu\.manualTitle/;
 const copyPromptName = /复制提示词|skillMarket\.botPublish\.copyBtn/;
+// The row's 编辑/删除 buttons are labelled by aria-label, so the accessible name
+// is the label string, not the icon. `SkillListPage` still spells it with the
+// older `skillMarket.card.*AriaLabel` wording (编辑 X) while the MCP pages use
+// the shared `skillMarket.plugin.aria*` one (编辑「X」); accept either so the
+// query pins the BUTTON rather than the punctuation.
 const editSkillName =
-  /编辑 meeting-note-cleaner|skillMarket\.card\.editAriaLabel/;
+  /^(编辑[ 「]meeting-note-cleaner|skillMarket\.card\.editAriaLabel|skillMarket\.plugin\.ariaEdit)/;
 const deleteSkillName =
-  /删除 meeting-note-cleaner|skillMarket\.card\.deleteAriaLabel/;
+  /^(删除[ 「]meeting-note-cleaner|skillMarket\.card\.deleteAriaLabel|skillMarket\.plugin\.ariaDelete)/;
 const deleteConfirmText =
   /确定删除「meeting-note-cleaner」？|skillMarket\.delete\.confirmMessage/;
 const deleteButtonName = /^删除$|^skillMarket\.common\.delete$/;
@@ -145,9 +156,10 @@ describe("SkillListPage", () => {
       await screen.findByRole("row", { name: "meeting-note-cleaner" })
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^安装$/ })).not.toBeInTheDocument();
-    // The fixture is already listed to the org (visibility "space"), so 编辑 is
-    // deliberately withheld: a direct edit would take effect for everyone
-    // immediately and route around review. 删除 stays available.
+    // The fixture is listed to the org — org intent (visibility "space") AND an
+    // actual listing (listingState "published") — so 编辑 is deliberately
+    // withheld: a direct edit would take effect for everyone immediately and
+    // route around review. 删除 stays available.
     expect(
       screen.queryByRole("button", { name: editSkillName })
     ).not.toBeInTheDocument();
@@ -156,33 +168,82 @@ describe("SkillListPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("offers 编辑 on a private draft but not on a listed plugin", async () => {
-    // Private draft: nothing is public yet, so a direct edit is safe.
-    vi.mocked(api.getMySkills).mockResolvedValue({
-      items: [{ ...skill, visibility: "private" }],
-      nextCursor: null,
-      total: 1,
-    });
-    const { unmount } = render(<SkillListPage variant="mine" />);
-    expect(
-      await screen.findByRole("row", { name: "meeting-note-cleaner" })
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: editSkillName })).toBeInTheDocument();
-    unmount();
+  // 编辑 gating is two-axis now. `visibility` is only the declared intent and
+  // `listingState` is whether the plugin is actually listed, so the button is
+  // withheld in exactly two situations: the plugin is LISTED TO THE ORG
+  // (listingState "published" AND visibility "space"), where a direct edit would
+  // reach every member without passing review, or a review is in flight
+  // (displayStatus "pending_review"), where the live version must not move under
+  // the reviewer. Everything else stays editable — including states the old
+  // one-axis model could not express, such as a PUBLISHED PRIVATE plugin (no org
+  // audience to protect) and a DELISTED one (editing is how you fix and
+  // republish).
+  const editCases: Array<{
+    label: string;
+    patch: Partial<Skill>;
+    editable: boolean;
+  }> = [
+    {
+      label: "private draft",
+      patch: { visibility: "private", listingState: "draft", displayStatus: "draft" },
+      editable: true,
+    },
+    {
+      label: "published private plugin",
+      patch: { visibility: "private", listingState: "published", displayStatus: "published" },
+      editable: true,
+    },
+    {
+      label: "space-intent draft",
+      patch: { visibility: "space", listingState: "draft", displayStatus: "draft" },
+      editable: true,
+    },
+    {
+      label: "delisted plugin",
+      patch: { visibility: "space", listingState: "delisted", displayStatus: "delisted" },
+      editable: true,
+    },
+    {
+      label: "plugin listed to the org",
+      patch: { visibility: "space", listingState: "published", displayStatus: "published" },
+      editable: false,
+    },
+    {
+      label: "plugin whose review is still pending",
+      patch: {
+        visibility: "space",
+        listingState: "draft",
+        displayStatus: "pending_review",
+        reviewId: "rev-1",
+      },
+      editable: false,
+    },
+  ];
 
-    // Listed: the only route to a content change is 发布新版本, which goes
-    // through review.
-    vi.mocked(api.getMySkills).mockResolvedValue({
-      items: [{ ...skill, visibility: "space" }],
-      nextCursor: null,
-      total: 1,
+  for (const editCase of editCases) {
+    it(`${editCase.editable ? "offers" : "withholds"} 编辑 on a ${editCase.label}`, async () => {
+      vi.mocked(api.getMySkills).mockResolvedValue({
+        items: [{ ...skill, ...editCase.patch }],
+        nextCursor: null,
+        total: 1,
+      });
+
+      render(<SkillListPage variant="mine" />);
+
+      const row = await screen.findByRole("row", { name: "meeting-note-cleaner" });
+      const edit = within(row).queryByRole("button", { name: editSkillName });
+      if (editCase.editable) {
+        expect(edit).toBeInTheDocument();
+      } else {
+        expect(edit).not.toBeInTheDocument();
+      }
+      // 删除 is never gated, so its presence proves the row rendered its action
+      // cell at all — an absent 编辑 above is a real gate, not a blank row.
+      expect(
+        within(row).getByRole("button", { name: deleteSkillName })
+      ).toBeInTheDocument();
     });
-    render(<SkillListPage variant="mine" />);
-    expect(
-      await screen.findByRole("row", { name: "meeting-note-cleaner" })
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: editSkillName })).not.toBeInTheDocument();
-  });
+  }
 
   it("reads the caller's own review requests on the mine surface only", async () => {
     const { unmount } = render(<SkillListPage />);
@@ -402,16 +463,21 @@ describe("SkillListPage", () => {
     });
   });
 
-  it("renders the mine table row (version + visibility) and opens detail", async () => {
+  it("renders the mine table row (version + visibility + status) and opens detail", async () => {
     render(<SkillListPage variant="mine" />);
 
     const card = await screen.findByRole("row", {
       name: "meeting-note-cleaner",
     });
-    // The 我的发布 table row surfaces version and visibility.
-    expect(screen.getByText("v1.1.3")).toBeInTheDocument();
+    // The 我的发布 table row surfaces version, visibility and — as its own
+    // column since the table rewrite — the server-computed display status. The
+    // status is rendered from `displayStatus`, never re-derived from visibility.
+    expect(within(card).getByText("v1.1.3")).toBeInTheDocument();
     expect(
-      screen.getByText(/本组织|skillMarket\.visibility\.space/)
+      within(card).getByText(/本组织|skillMarket\.plugin\.visibilitySpace/)
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByText(/^(已发布|skillMarket\.plugin\.statusPublished)$/)
     ).toBeInTheDocument();
 
     fireEvent.click(

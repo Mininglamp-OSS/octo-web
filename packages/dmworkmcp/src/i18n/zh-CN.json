@@ -16,7 +16,10 @@
   },
   "mine": {
     "pageTitle": "我的发布",
-    "navAriaLabel": "我的资产类型"
+    "navAriaLabel": "我的资产类型",
+    "tabAll": "全部",
+    "emptyAll": "还没有发布任何内容",
+    "allAriaLabel": "我的全部发布"
   },
   "expert": {
     "typeSquad": "专家团",
@@ -392,12 +395,6 @@
     "minutesAgo": "{{count}} 分钟前",
     "hoursAgo": "{{count}} 小时前",
     "daysAgo": "{{count}} 天前"
-  },
-  "visibility": {
-    "public": "全平台",
-    "space": "本组织",
-    "private": "仅自己",
-    "system": "全平台"
   },
   "review": {
     "cancel": "取消",

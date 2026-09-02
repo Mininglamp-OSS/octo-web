@@ -615,6 +615,12 @@ function mapListItem(
     viewCount: raw.view_count ?? 0,
     installCount: raw.install_count ?? 0,
     visibility: mapVisibility(raw.visibility),
+    // Server-computed listing state and status. Both are absent on the public
+    // catalog, where every row is published by construction, so they stay
+    // optional rather than defaulting — a missing value must not read as 草稿.
+    listingState: raw.listing_state,
+    displayStatus: raw.display_status,
+    reviewId: raw.review_id || undefined,
     creatorName: raw.creator_name,
     createdByType: raw.created_by_type,
     createdByBotUid: raw.created_by_bot_id,

@@ -1,14 +1,15 @@
 import React, { useState } from "react";
-import { Plug, Sparkles, UserRound, Users } from "lucide-react";
+import { LayoutGrid, Plug, Sparkles, UserRound, Users } from "lucide-react";
 import { useI18n, t } from "@octo/base";
 import { SkillListPage } from "@dmwork/skillmarket";
 import McpMarketListPage from "./McpMarketListPage";
 import ExpertMarketListPage from "./ExpertMarketListPage";
+import AllAssetsList from "./AllAssetsList";
 import "../index.css";
 
 /** Which personal-asset type the 我的 page is showing. Experts and squads are
  *  split into their own tabs, matching the marketing prototype. */
-type MineType = "skills" | "experts" | "squads" | "mcp";
+type MineType = "all" | "skills" | "experts" | "squads" | "mcp";
 
 /** Initial tab, deep-linkable via `?type=` on the /mcp-market/mine URL so a
  *  direct link (or an e2e spec) can land on a specific market's mine view
@@ -16,13 +17,19 @@ type MineType = "skills" | "experts" | "squads" | "mcp";
 function initialType(): MineType {
   try {
     const value = new URLSearchParams(window.location.search).get("type");
-    if (value === "mcp" || value === "experts" || value === "squads" || value === "skills") {
+    if (
+      value === "all" ||
+      value === "mcp" ||
+      value === "experts" ||
+      value === "squads" ||
+      value === "skills"
+    ) {
       return value;
     }
   } catch {
     // ignore — fall through to the default
   }
-  return "skills";
+  return "all";
 }
 
 const TYPE_TABS: Array<{
@@ -30,10 +37,13 @@ const TYPE_TABS: Array<{
   labelKey: string;
   icon: React.ReactElement;
 }> = [
-  { key: "skills", labelKey: "mcp.sidebar.skills", icon: <Sparkles size={15} aria-hidden="true" /> },
-  { key: "mcp", labelKey: "mcp.sidebar.mcp", icon: <Plug size={15} aria-hidden="true" /> },
-  { key: "experts", labelKey: "mcp.expert.typeAgent", icon: <UserRound size={15} aria-hidden="true" /> },
-  { key: "squads", labelKey: "mcp.expert.typeSquad", icon: <Users size={15} aria-hidden="true" /> },
+  // 全部 leads: it is the only view that answers "what have I got waiting on
+  // review" without visiting four tabs.
+  { key: "all", labelKey: "mcp.mine.tabAll", icon: <LayoutGrid size={15} aria-hidden="true" /> },
+  { key: "skills", labelKey: "skillMarket.plugin.typeSkill", icon: <Sparkles size={15} aria-hidden="true" /> },
+  { key: "mcp", labelKey: "skillMarket.plugin.typeConnector", icon: <Plug size={15} aria-hidden="true" /> },
+  { key: "experts", labelKey: "skillMarket.plugin.typeExpert", icon: <UserRound size={15} aria-hidden="true" /> },
+  { key: "squads", labelKey: "skillMarket.plugin.typeExpertTeam", icon: <Users size={15} aria-hidden="true" /> },
 ];
 
 /**
@@ -69,6 +79,21 @@ export default function MyAssetsPage() {
         ))}
       </nav>
       <div className="wk-mcp-mine__panel">
+        {type === "all" && (
+          <AllAssetsList
+            onOpenType={(wireType) =>
+              setType(
+                wireType === "connector"
+                  ? "mcp"
+                  : wireType === "expert"
+                    ? "experts"
+                    : wireType === "expert_team"
+                      ? "squads"
+                      : "skills"
+              )
+            }
+          />
+        )}
         {type === "skills" && <SkillListPage variant="mine" />}
         {type === "experts" && (
           <ExpertMarketListPage variant="mine" mineType="agent" />

@@ -8,7 +8,6 @@ export {
   default as MineTable,
   type MineRow,
   type MineAssetType,
-  type MineReviewBadge,
 } from "./components/MineTable";
 // "组织审核" — the Space reviewer queue, mounted by dmworkmcp at
 // /mcp-market/review as the sidebar's fifth entry.
@@ -21,25 +20,49 @@ export { useSpaceRole, isSpaceReviewerRole } from "./hooks/useSpaceRole";
 // The review flow is NOT skill-specific — the connector / 专家 / 专家团 markets in
 // dmworkmcp run the same "private draft → 提交审核 → space" lifecycle over the same
 // `/plugins/review_requests` endpoints. Rather than let a second package
-// re-implement the derivation, the submit/cancel calls or the badge union, the
-// pieces those pages need are re-exported here, next to MineTable which already
-// renders the badge. dmworkmcp funnels every one of these through
+// re-implement the label vocabulary or the submit/cancel calls, the pieces those
+// pages need are re-exported here, next to MineTable which renders them. dmworkmcp funnels every one of these through
 // `dmworkmcp/src/api/pluginReview.ts` so the cross-package coupling stays in one
 // file on that side too.
 export {
   deriveSkillReviewState,
   reviewStatusLabel,
-  pluginTypeLabel,
   type SkillReviewState,
 } from "./utils/review";
+// The single plugin-facing vocabulary: type / visibility / status. Both packages
+// render from here so 专家团 and 专家团队 cannot drift apart again.
+export {
+  pluginTypeLabel,
+  visibilityLabel,
+  displayStatusLabel,
+  displayStatusTone,
+} from "./utils/labels";
 export {
   createReviewRequest,
   cancelReview,
+  // The 发布 / 下架 door is plugin-type agnostic for the same reason review is:
+  // the backend decides what publishing MEANS from the plugin's visibility, so a
+  // second package must not grow its own copy of that decision.
+  publishPlugin,
+  delistPlugin,
+  pluginConflictReason,
+  pluginRequiredRole,
   type CreateReviewRequestInput,
+  type DelistPluginInput,
+  type PluginConflictReason,
+  type PluginListingResult,
+  type PublishPluginInput,
   type ReviewRelationInput,
 } from "./api/skillApi";
+// The 全部 tab of 我的发布 lists every plugin type through the one endpoint that
+// can return them together (`mode=mine` with plugin_type omitted), so dmworkmcp
+// needs the reader and the row type.
+export { getMySkills } from "./api/skillApi";
+export type { Skill } from "./types/skill";
 export type {
   ReviewRequest,
   ReviewStatus,
   ReviewKind,
+  PluginListingState,
+  PluginDisplayStatus,
 } from "./types/skill";

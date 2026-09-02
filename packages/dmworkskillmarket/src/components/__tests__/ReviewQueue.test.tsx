@@ -10,10 +10,22 @@ vi.mock("../../api/skillApi");
 // Tolerant of a missing translation, matching the existing page test's idiom.
 const pendingTabName = /待审核|skillMarket\.review\.queuePending/;
 const handledTabName = /已处理|skillMarket\.review\.queueHandled/;
-const approveName = /^(通过|skillMarket\.review\.approve)$/;
-const rejectName = /^(拒绝|skillMarket\.review\.reject)$/;
+
+// The queue now renders the SAME `MineTable` as 我的发布 instead of a bespoke
+// flex card list, and every row action carries a name-scoped aria-label
+// (`skillMarket.plugin.aria*`). The accessible name is therefore the label, not
+// the button text, so a bare 通过/拒绝 no longer identifies anything — each query
+// has to name the plugin the action belongs to. That is strictly more specific
+// than the old positional/text lookup: it cannot match another row's button.
+const DEFAULT_PLUGIN = "CI 失败分析";
+const approveName = (plugin = DEFAULT_PLUGIN) =>
+  new RegExp(`^(通过「${plugin}」的上架申请|skillMarket\\.plugin\\.ariaApprove)$`);
+const rejectName = (plugin = DEFAULT_PLUGIN) =>
+  new RegExp(`^(拒绝「${plugin}」的上架申请|skillMarket\\.plugin\\.ariaReject)$`);
 const confirmRejectName = /确认拒绝|skillMarket\.review\.rejectConfirm/;
-const withdrawName = /^(撤回申请|skillMarket\.review\.cancelRequest)$/;
+// 撤回申请 collapsed into the shared 取消审核 action; same call, same intent.
+const cancelReviewName = (plugin = DEFAULT_PLUGIN) =>
+  new RegExp(`^(取消「${plugin}」的审核申请|skillMarket\\.plugin\\.ariaCancelReview)$`);
 
 function request(overrides: Partial<ReviewRequest> = {}): ReviewRequest {
   return {
@@ -103,7 +115,7 @@ describe("ReviewQueue", () => {
     render(<ReviewQueue mode="space" />);
     await screen.findByText("CI 失败分析");
 
-    fireEvent.click(screen.getByRole("button", { name: rejectName }));
+    fireEvent.click(screen.getByRole("button", { name: rejectName() }));
 
     const confirm = await screen.findByRole("button", { name: confirmRejectName });
     fireEvent.click(confirm);
@@ -125,7 +137,7 @@ describe("ReviewQueue", () => {
     render(<ReviewQueue mode="space" />);
     await screen.findByText("CI 失败分析");
 
-    fireEvent.click(screen.getByRole("button", { name: rejectName }));
+    fireEvent.click(screen.getByRole("button", { name: rejectName() }));
     fireEvent.change(await screen.findByRole("textbox"), { target: { value: "nope" } });
     fireEvent.click(screen.getByRole("button", { name: confirmRejectName }));
 
@@ -158,7 +170,7 @@ describe("ReviewQueue", () => {
     render(<ReviewQueue mode="space" />);
     await screen.findByText("CI 失败分析");
 
-    const approveBtn = screen.getByRole("button", { name: approveName });
+    const approveBtn = screen.getByRole("button", { name: approveName() });
     fireEvent.click(approveBtn);
 
     // Button must be disabled immediately (it shows "处理中"); while the
@@ -166,7 +178,7 @@ describe("ReviewQueue", () => {
     // button stays disabled, so a double-click cannot fire a second approve
     // against an already-decided request.
     await waitFor(() => expect(approveBtn).toBeDisabled());
-    expect(screen.getByRole("button", { name: rejectName })).toBeDisabled();
+    expect(screen.getByRole("button", { name: rejectName() })).toBeDisabled();
 
     // Resolve the approve — the button must still be disabled because the
     // refresh is still in flight.
@@ -181,27 +193,29 @@ describe("ReviewQueue", () => {
     });
   });
 
-  it("offers withdraw (not approve/reject) in mine mode for the applicant", async () => {
+  it("offers 取消审核 (not approve/reject) in mine mode for the applicant", async () => {
     render(<ReviewQueue mode="mine" />);
-    await screen.findByText("CI 失败分析");
+    await screen.findByText(DEFAULT_PLUGIN);
 
-    expect(screen.queryByRole("button", { name: approveName })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: rejectName })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: approveName() })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: rejectName() })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: withdrawName }));
+    fireEvent.click(screen.getByRole("button", { name: cancelReviewName() }));
 
     await waitFor(() => expect(api.cancelReview).toHaveBeenCalledWith("rev-1"));
   });
 
-  it("offers no withdraw for another user's request in mine mode", async () => {
+  it("offers no 取消审核 for another user's request in mine mode", async () => {
     vi.mocked(api.listReviewRequests).mockResolvedValue(
       page([request({ applicantId: "someone-else" })])
     );
 
     render(<ReviewQueue mode="mine" />);
-    await screen.findByText("CI 失败分析");
+    await screen.findByText(DEFAULT_PLUGIN);
 
-    expect(screen.queryByRole("button", { name: withdrawName })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: cancelReviewName() })
+    ).not.toBeInTheDocument();
   });
 
   it("shows no reviewer actions on an already-decided row", async () => {
@@ -221,7 +235,12 @@ describe("ReviewQueue", () => {
     fireEvent.click(screen.getByRole("tab", { name: handledTabName }));
     expect(await screen.findByText("Rejected Plugin")).toBeInTheDocument();
 
-    expect(screen.queryByRole("button", { name: approveName })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: approveName("Rejected Plugin") })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: rejectName("Rejected Plugin") })
+    ).not.toBeInTheDocument();
     expect(screen.getByText(/缺少说明/)).toBeInTheDocument();
   });
 

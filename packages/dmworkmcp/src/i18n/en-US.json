@@ -16,7 +16,10 @@
   },
   "mine": {
     "pageTitle": "My publications",
-    "navAriaLabel": "My asset type"
+    "navAriaLabel": "My asset type",
+    "tabAll": "All",
+    "emptyAll": "You have not published anything yet",
+    "allAriaLabel": "All my publications"
   },
   "expert": {
     "typeSquad": "Squads",
@@ -392,12 +395,6 @@
     "minutesAgo": "{{count}} min ago",
     "hoursAgo": "{{count}} hours ago",
     "daysAgo": "{{count}} days ago"
-  },
-  "visibility": {
-    "public": "All platforms",
-    "space": "Organization",
-    "private": "Only me",
-    "system": "All platforms"
   },
   "review": {
     "cancel": "Cancel",

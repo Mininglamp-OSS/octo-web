@@ -1,21 +1,9 @@
 import { t } from "@octo/base";
 import type { ReviewKind, ReviewRequest, ReviewStatus } from "../types/skill";
 
-const PLUGIN_TYPE_LABEL_KEYS: Record<string, string> = {
-  skill: "skillMarket.review.pluginTypeSkill",
-  connector: "skillMarket.review.pluginTypeConnector",
-  expert: "skillMarket.review.pluginTypeExpert",
-  expert_team: "skillMarket.review.pluginTypeExpertTeam",
-};
-
-/** Review covers every plugin type, not just skills, so the queue has to be
- *  able to label a connector/expert row even though this package's catalog is
- *  skill-only. Unknown types fall back to the raw wire value rather than an
- *  empty cell. */
-export function pluginTypeLabel(pluginType: string): string {
-  const key = PLUGIN_TYPE_LABEL_KEYS[pluginType];
-  return key ? t(key) : pluginType;
-}
+// pluginTypeLabel moved to utils/labels.ts, the single vocabulary shared by both
+// packages. Re-exported so existing importers keep working.
+export { pluginTypeLabel, visibilityLabel, displayStatusLabel } from "./labels";
 
 export function reviewStatusLabel(status: ReviewStatus): string {
   switch (status) {
@@ -24,7 +12,9 @@ export function reviewStatusLabel(status: ReviewStatus): string {
     case "approved":
       return t("skillMarket.review.statusApproved");
     case "rejected":
-      return t("skillMarket.review.statusRejected");
+      // Same word the status column uses; a request outcome and the plugin state
+      // it produces must not be named differently.
+      return t("skillMarket.plugin.statusRejected");
     case "canceled":
       return t("skillMarket.review.statusCanceled");
     default:

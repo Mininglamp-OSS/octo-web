@@ -17,7 +17,7 @@ import ReviewSubmitModal, {
   type ReviewSubmitTarget,
 } from "../components/ReviewSubmitModal";
 import { MineTable, type MineRow } from "@dmwork/skillmarket";
-import { cancelPluginReview } from "../api/pluginReview";
+import { cancelPluginReview, publishPluginListing } from "../api/pluginReview";
 import {
   MyReviewStateProbe,
   resolveReviewRowState,
@@ -593,6 +593,8 @@ export default class McpMarketListPage extends Component<
   private handleEditFromDetail = (d: McpDetail) => {
     const review = resolveReviewRowState(
       d.visibility,
+      d.listingState,
+      d.displayStatus,
       this.state.review.stateByPlugin.get(d.id)
     );
     if (review.canEdit) {
@@ -600,7 +602,7 @@ export default class McpMarketListPage extends Component<
       this.setState({ detailId: null, editingDetail: d, createVisible: true });
       return;
     }
-    if (review.canPublishVersion) {
+    if (review.canUpgrade) {
       this.setState({
         detailId: null,
         reviewEditingDetail: d,
@@ -611,13 +613,39 @@ export default class McpMarketListPage extends Component<
     Toast.warning(t("mcp.review.pendingBlocksEdit"));
   };
 
-  /** Project one owned connector onto a MineTable row, review affordances
-   *  included. Review state is derived here (page level) and merely rendered by
-   *  the table; the discovery branch builds none of these fields, so a public
-   *  card can never pick up an owner action. */
+  /**
+   * 发布 from the row. The backend decides from the connector's declared
+   * visibility whether this lists it immediately or opens an organization
+   * review, so the toast comes from the response.
+   */
+  private handlePublish = async (item: McpListItem) => {
+    try {
+      const outcome = await publishPluginListing(item.id, { version: item.version });
+      Toast.success(
+        outcome.displayStatus === "pending_review"
+          ? t("skillMarket.review.submittedToast")
+          : t("skillMarket.plugin.publishedToast")
+      );
+    } catch (err) {
+      Toast.error(err instanceof Error ? err.message : t("skillMarket.review.submitFailed"));
+    } finally {
+      this.loadData();
+      this.state.review.refresh();
+    }
+  };
+
+  /** Project one owned connector onto a MineTable row.
+   *
+   *  The status comes from the server (`display_status`); this only maps it to
+   *  affordances. 提交审核 / 重新提交 / 发布新版本 collapsed into two actions: 发布 for
+   *  anything unlisted (the backend decides whether that means listing it or
+   *  opening a review, from the connector's visibility) and 升级版本 for a listed
+   *  one. */
   private toMineRow = (item: McpListItem): MineRow => {
     const review = resolveReviewRowState(
       item.visibility,
+      item.listingState,
+      item.displayStatus,
       this.state.review.stateByPlugin.get(item.id)
     );
     return {
@@ -641,40 +669,27 @@ export default class McpMarketListPage extends Component<
       visibility: item.visibility,
       views: item.viewCount,
       downloads: item.installCount,
-      updatedAt: item.updatedAt,
+      status: review.status,
+      rejectReason: review.rejectReason,
       ariaLabel: item.name,
       onOpen: () => this.setState({ detailId: item.id }),
       // 编辑 is withheld once the connector is listed to the org: a direct edit
       // takes effect immediately for every member, routing around review — the
       // backend rejects it with 409 listed_requires_review. A listed connector
-      // changes only through 发布新版本, and while a request is pending it does
-      // not change at all (the live version stays up until a decision lands).
+      // changes only through 升级版本, and while a request is pending it does not
+      // change at all (the live version stays up until a decision lands).
       onEdit: review.canEdit ? () => this.handleEditFromCard(item) : undefined,
       onDelete: () => this.setState({ deletingItem: item }),
-      editAria: t("mcp.card.editAriaLabel", { values: { name: item.name } }),
-      deleteAria: t("mcp.card.deleteAriaLabel", { values: { name: item.name } }),
-      reviewBadge: review.badge,
-      rejectReason: review.rejected?.reason,
-      onSubmitReview: review.canSubmitReview
-        ? () => this.openReviewSubmit(item)
+      editAria: t("skillMarket.plugin.ariaEdit", { values: { name: item.name } }),
+      deleteAria: t("skillMarket.plugin.ariaDelete", { values: { name: item.name } }),
+      onPublish: review.canPublish ? () => void this.handlePublish(item) : undefined,
+      publishAria: t("skillMarket.plugin.ariaPublish", { values: { name: item.name } }),
+      onUpgrade: review.canUpgrade ? () => void this.openPublishVersion(item) : undefined,
+      upgradeAria: t("skillMarket.plugin.ariaUpgrade", { values: { name: item.name } }),
+      onCancelReview: review.canCancelReview
+        ? () => void this.handleCancelReview(item.reviewId ?? review.pending?.id ?? "")
         : undefined,
-      onCancelReview: review.pending
-        ? () => void this.handleCancelReview(review.pending!.id)
-        : undefined,
-      onResubmit: review.rejected
-        ? () => this.openReviewSubmit(item, review.rejected!.changelog)
-        : undefined,
-      onPublishVersion: review.canPublishVersion
-        ? () => void this.openPublishVersion(item)
-        : undefined,
-      submitReviewAria: t("mcp.review.submitReviewAria", {
-        values: { name: item.name },
-      }),
-      cancelReviewAria: t("mcp.review.cancelReviewAria", {
-        values: { name: item.name },
-      }),
-      resubmitAria: t("mcp.review.resubmitAria", { values: { name: item.name } }),
-      publishVersionAria: t("mcp.review.publishVersionAria", {
+      cancelReviewAria: t("skillMarket.plugin.ariaCancelReview", {
         values: { name: item.name },
       }),
     };
@@ -1011,8 +1026,6 @@ export default class McpMarketListPage extends Component<
                     {this.props.variant === "mine" ? (
                       <MineTable
                         rows={items.map(this.toMineRow)}
-                        visibilityLabel={(v) => t(`mcp.visibility.${v}`)}
-                        showStats={false}
                       />
                     ) : (
                     <div className="wk-mcp__grid">
@@ -1026,7 +1039,6 @@ export default class McpMarketListPage extends Component<
                             this.setState({ detailId: it.id });
                           }}
                           onConnect={(it) => this.setState({ connectItem: it })}
-                          showStats={false}
                         />
                       ))}
                     </div>

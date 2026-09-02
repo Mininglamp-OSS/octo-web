@@ -2,19 +2,21 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   deriveSkillReviewState,
   useReviewRequests,
-  type MineReviewBadge,
+  type PluginDisplayStatus,
   type ReviewRequest,
   type SkillReviewState,
 } from "@dmwork/skillmarket";
 
 /**
- * The caller's own review requests, joined onto their plugins by id.
+ * The caller's own review requests, kept ONLY for the text a plugin row cannot
+ * carry: the rejection reason.
  *
- * `mode=mine` is applicant-scoped (no reviewer role needed) and covers EVERY
- * plugin type, so the connector / 专家 / 专家团 "我的" surfaces read the same list
- * the skill market does. Review state is never a column on the plugin — a listed
- * v1 and an in-review v2 coexist server-side — so the badge is derived at render
- * time, exactly as SkillListPage does.
+ * This used to compute the row's whole state by joining the request list onto
+ * the plugin list and re-deriving a five-value badge. That derivation now lives
+ * on the server as `display_status`, because three pages each reimplemented the
+ * precedence and disagreed about a listed plugin with a pending upgrade. What
+ * survives here is the lookup for `reason`, which is a property of the REQUEST
+ * and has nowhere else to live.
  *
  * Held back on the discovery catalog (`enabled: false`): a public card shows no
  * review state and no owner actions, so the read would be pure cost.
@@ -46,58 +48,56 @@ export function useMyReviewState(enabled: boolean): UseMyReviewStateResult {
 }
 
 /**
- * Resolve the row badge + which owner actions apply, from the plugin's
- * visibility and its latest pending / rejected request.
+ * Which owner actions apply to a row, given the SERVER's status.
  *
- * The five states are mutually exclusive by construction and the ORDER matters,
- * matching SkillListPage:
- *   - a pending request outranks a stale rejection (never show 已拒绝 while a
- *     resubmission is queued),
- *   - on an already-listed plugin "pending" means the live version stays up
- *     while the new one is reviewed → `pending-upgrade`.
+ * Nothing here re-derives the status; it only translates it into affordances,
+ * mirroring rules the backend enforces anyway:
  *
- * `canEdit` is the gate the two market pages hang 编辑 off: a listed plugin
- * changes only through 发布新版本 (a direct edit would take effect immediately for
- * the whole org, routing around review — and the backend answers such a write
- * with 409 `listed_requires_review`), and while a request is pending it does not
- * change at all.
+ *   - 编辑 is withheld from a plugin LISTED TO THE ORG, because a direct edit
+ *     would take effect immediately for everyone and route around review. The
+ *     backend answers such a write with 409 `listed_requires_review`. A PRIVATE
+ *     plugin — published or not — has no org audience to protect and stays
+ *     editable, and a draft / rejected / delisted row is editable by definition:
+ *     that is how you fix it and publish again.
+ *   - Nothing is editable while a request is pending, so the frozen snapshot the
+ *     reviewer is looking at keeps matching what the author last said.
+ *   - 升级版本 is the only content path left on a listed plugin, and 取消审核 the
+ *     only one on a pending row. There is no longer a 提交审核 action: publishing
+ *     is one button whose meaning the backend decides from the visibility.
  */
 export interface PluginReviewRowState {
-  badge: MineReviewBadge;
+  status: PluginDisplayStatus;
   pending?: ReviewRequest;
   rejected?: ReviewRequest;
-  isPrivate: boolean;
+  /** Rejection text for the status tooltip; undefined unless status is rejected. */
+  rejectReason?: string;
   canEdit: boolean;
-  /** First listing of a private draft with nothing in flight. */
-  canSubmitReview: boolean;
-  /** Already listed to the org, nothing in flight → 发布新版本. */
-  canPublishVersion: boolean;
+  /** Listed to the org, nothing in flight → 升级版本. */
+  canUpgrade: boolean;
+  /** A request is open → 取消审核. */
+  canCancelReview: boolean;
+  /** Unlisted (draft / rejected / delisted) and nothing in flight → 发布. */
+  canPublish: boolean;
 }
 
 export function resolveReviewRowState(
   visibility: string | undefined,
+  listingState: string | undefined,
+  displayStatus: PluginDisplayStatus | undefined,
   state: SkillReviewState | undefined
 ): PluginReviewRowState {
-  const pending = state?.pending;
-  const rejected = state?.rejected;
-  const isPrivate = visibility === "private";
-  const badge: MineReviewBadge = pending
-    ? isPrivate
-      ? "pending"
-      : "pending-upgrade"
-    : rejected
-      ? "rejected"
-      : isPrivate
-        ? "private"
-        : "live";
+  const status: PluginDisplayStatus = displayStatus ?? "draft";
+  const pending = status === "pending_review";
+  const listedToOrg = listingState === "published" && visibility === "space";
   return {
-    badge,
-    pending,
-    rejected,
-    isPrivate,
-    canEdit: isPrivate && !pending,
-    canSubmitReview: isPrivate && !pending && !rejected,
-    canPublishVersion: !isPrivate && !pending,
+    status,
+    pending: state?.pending,
+    rejected: state?.rejected,
+    rejectReason: status === "rejected" ? state?.rejected?.reason : undefined,
+    canEdit: !listedToOrg && !pending,
+    canUpgrade: listedToOrg && !pending,
+    canCancelReview: pending,
+    canPublish: listingState !== "published" && !pending,
   };
 }
 

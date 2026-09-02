@@ -2,12 +2,26 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { AlertCircle, FileArchive, ImagePlus, Loader2, UploadCloud, XCircle } from "lucide-react";
 import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
 import type { Category, NewSkillForm, Skill } from "../types/skill";
-import { createSkill, createReviewRequest, getSkillTags, initReupload, initUpload, uploadFile, uploadIcon, triggerParse, pollParse } from "../api/skillApi";
+import { createSkill, createReviewRequest, getSkillTags, initReupload, initUpload, publishPlugin, uploadFile, uploadIcon, triggerParse, pollParse } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
 
-type SubmitScope = "private" | "review";
+/**
+ * The visibility the author DECLARES on the plugin. It is stored as-is and lists
+ * nothing on its own — 发布 is what lists it, and the backend decides from this
+ * value whether that means listing immediately (private) or opening an
+ * organization review (space).
+ *
+ * This replaces the old `SubmitScope` ("private" | "review"), which encoded the
+ * routing decision in the client. Two problems with that: the client had to know
+ * a rule the server owns, and the author's actual intent was thrown away — every
+ * plugin was created `private` regardless of what they picked.
+ *
+ * 全平台可见 (`system`) is deliberately absent: the tenant API rejects it, it is
+ * minted only through the marketplace-admin surface.
+ */
+type DeclaredVisibility = "private" | "space";
 
 interface NewSkillModalProps {
   visible: boolean;
@@ -38,14 +52,7 @@ function bumpPatch(ver: string): string {
   return parts.join(".");
 }
 
-// The submit button label cycles. Existing tests locate the "create" action
-// with a /创建/ regex, so the private-publish scope must keep the plain
-// `common.create` label; only the review scope swaps to "提交审核".
-function getSubmitLabel(submitScope: SubmitScope): string {
-  return submitScope === "review"
-    ? t("skillMarket.review.submitAction")
-    : t("skillMarket.common.create");
-}
+
 
 function createReadme(name: string, description: string, version: string): string {
   return `# ${name}\n\n${description}\n\n## Version\n\n${version}\n`;
@@ -85,7 +92,9 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
   const [tagError, setTagError] = useState<string | null>(null);
   const [version, setVersion] = useState(DEFAULT_CREATE_VERSION);
   const [changelog, setChangelog] = useState("");
-  const [submitScope, setSubmitScope] = useState<SubmitScope>("private");
+  const [declaredVisibility, setDeclaredVisibility] = useState<DeclaredVisibility>("private");
+  // Which footer button is in flight, so only that one shows a spinner.
+  const [publishing, setPublishing] = useState(false);
   const [iconPreview, setIconPreview] = useState<string | null>(null);
   const [iconBlob, setIconBlob] = useState<Blob | null>(null);
   const [iconCropFile, setIconCropFile] = useState<File | null>(null);
@@ -155,11 +164,17 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
         displayName.trim() &&
         categoryId &&
         version.trim() &&
-        (submitScope === "private" || changelog.trim()) &&
         !busy &&
         !saving &&
         !tagSubmitError,
       );
+
+  // 发布 asks for one thing 保存草稿 does not: a changelog, and only when the
+  // plugin is headed for organization review, because that text is what the
+  // reviewer reads. Gating BOTH buttons on it — as a single `canCreate` did —
+  // makes 保存草稿 unreachable for exactly the authors who most need it: someone
+  // who picked 仅本组织可见 and is not ready to describe the change yet.
+  const canPublishNow = canCreate && (declaredVisibility === "private" || Boolean(changelog.trim()));
 
   function updateTagSuggestionStyle() {
     const field = tagFieldRef.current;
@@ -217,7 +232,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
     setIconPreview(reviewSkill.iconUrl || null);
     setIconBlob(null);
     setError(null);
-    setSubmitScope("review");
+    setDeclaredVisibility("space");
   }, [visible, isReviewMode, reviewSkill, reviewDefaultVersion, reviewInitial]);
 
   function reset() {
@@ -244,7 +259,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
     setSaving(false);
     setError(null);
     setConfirmClose(null);
-    setSubmitScope("private");
+    setDeclaredVisibility("private");
     setCreatedPluginId(null);
     setTimeout(() => { abortRef.current = false; }, 0);
   }
@@ -455,7 +470,13 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
     };
   }, [tagSuggestOpen, tagSuggestions.length]);
 
-  async function submit() {
+  /**
+   * `publish=false` is 保存草稿 and `publish=true` is 发布. The two share every
+   * validation and the create call; they differ only in whether the publish step
+   * runs afterwards. A draft skips the changelog requirement, because there is
+   * nothing to describe to a reviewer yet.
+   */
+  async function submit(publish: boolean) {
     if (isReviewMode) {
       if (!reviewSkill || !version.trim() || !changelog.trim()) {
         setError(t("skillMarket.review.versionAndChangelogRequired"));
@@ -494,7 +515,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
       setError(t("skillMarket.form.validationRequired"));
       return;
     }
-    if (submitScope === "review" && !changelog.trim()) {
+    if (publish && declaredVisibility === "space" && !changelog.trim()) {
       setError(t("skillMarket.review.changelogRequired"));
       return;
     }
@@ -516,6 +537,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
       ? [...tags, tagDraft.trim()].slice(0, MAX_SKILL_TAGS)
       : tags;
     setSaving(true);
+    setPublishing(publish);
     setError(null);
     try {
       let iconUrl = "";
@@ -524,51 +546,15 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
         iconUrl = iconUploadId;
       }
 
-      if (submitScope === "review") {
-        // Defect 1 fix: if we already created the plugin on a prior attempt
-        // (and only the review submission failed), skip createSkill and go
-        // straight to submit. Remember the id across retries.
-        let pluginId = createdPluginId;
-        if (!pluginId) {
-          const form: NewSkillForm = {
-            parseTaskId,
-            name,
-            displayName,
-            description,
-            categoryId,
-            tags: submittedTags,
-            visibility: "private",
-            version,
-            changelog,
-            readmeContent: createReadme(name, description, version),
-            iconUrl,
-            fileName: file?.name ?? "",
-            fileSize: file?.size ?? 0,
-          };
-          const created = await createSkill(form);
-          pluginId = created.id;
-          setCreatedPluginId(pluginId);
-        }
-        try {
-          // A fresh create lands as a private draft, so this is `kind=first`:
-          // the plugin row is the draft the reviewer will look at, and the
-          // content fields are deliberately omitted.
-          await createReviewRequest({ pluginId, version, changelog });
-        } catch (reviewErr) {
-          // Plugin was saved; tell the user clearly so they understand why
-          // a retry doesn't create a duplicate.
-          setError(
-            (reviewErr instanceof Error ? reviewErr.message : t("skillMarket.review.submitFailed")) +
-              " " +
-              t("skillMarket.review.draftSavedHint"),
-          );
-          setSaving(false);
-          return;
-        }
-        reset();
-        onCreated(t("skillMarket.review.submittedToast"));
-        onClose();
-      } else {
+      // ONE create, carrying the declared visibility. The old code always wrote
+      // `private` and let the scope radio decide what happened next; the value
+      // now survives, because it is exactly what the backend reads to route the
+      // publish.
+      //
+      // The created id is remembered across retries: if the create succeeds and
+      // the publish fails, a second press must not mint a duplicate plugin.
+      let pluginId = createdPluginId;
+      if (!pluginId) {
         const form: NewSkillForm = {
           parseTaskId,
           name,
@@ -576,7 +562,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
           description,
           categoryId,
           tags: submittedTags,
-          visibility: "private",
+          visibility: declaredVisibility,
           version,
           changelog: changelog || t("skillMarket.form.initialChangelog"),
           readmeContent: createReadme(name, description, version),
@@ -584,32 +570,64 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
           fileName: file?.name ?? "",
           fileSize: file?.size ?? 0,
         };
-        await createSkill(form);
+        const created = await createSkill(form);
+        pluginId = created.id;
+        setCreatedPluginId(pluginId);
+      }
+
+      if (!publish) {
+        // 保存草稿: the row exists and is a draft. Nothing is listed, and the
+        // author can come back to it from 我的发布.
         reset();
-        onCreated();
+        onCreated(t("skillMarket.plugin.draftSavedToast"));
         onClose();
+        return;
+      }
+
+      try {
+        // 发布: the BACKEND decides what this means from the plugin's declared
+        // visibility — list it immediately, or open an organization review. The
+        // response says which happened, so the toast does not have to guess.
+        const outcome = await publishPlugin({ pluginId, version, changelog });
+        reset();
+        onCreated(
+          outcome.displayStatus === "pending_review"
+            ? t("skillMarket.review.submittedToast")
+            : t("skillMarket.plugin.publishedToast")
+        );
+        onClose();
+      } catch (publishErr) {
+        // The plugin was saved; say so, or the author retries and wonders why
+        // there is no duplicate.
+        setError(
+          (publishErr instanceof Error
+            ? publishErr.message
+            : t("skillMarket.review.submitFailed")) +
+            " " +
+            t("skillMarket.review.draftSavedHint")
+        );
+        return;
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : t("skillMarket.form.createFailed"));
     } finally {
       setSaving(false);
+      setPublishing(false);
     }
   }
 
   const modalTitle = isReviewMode
     ? reviewSkill && reviewSkill.visibility !== "private"
-      ? t("skillMarket.review.publishNewVersion")
-      : t("skillMarket.review.submitAction")
+      ? t("skillMarket.plugin.actionUpgrade")
+      : t("skillMarket.plugin.actionPublish")
     : t("skillMarket.form.createTitle");
-  const submitLabel = isReviewMode
-    ? t("skillMarket.review.submitAction")
-    : getSubmitLabel(submitScope);
+
 
   // Changelog is required when scope is "review"; hide the asterisk and relax
   // required styling for the private scope (changelog remains pre-filled with
   // initialChangelog so the backend gets a value, but user isn't forced to
   // edit it).
-  const changelogRequired = isReviewMode || submitScope === "review";
+  const changelogRequired = isReviewMode || declaredVisibility === "space";
 
   return (
     <>
@@ -622,7 +640,40 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
         footer={
           <>
             <WKButton variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</WKButton>
-            <WKButton variant="primary" onClick={() => void submit()} loading={saving} disabled={!canCreate}>{submitLabel}</WKButton>
+            {isReviewMode ? (
+              <WKButton
+                variant="primary"
+                onClick={() => void submit(true)}
+                loading={saving}
+                disabled={!canCreate}
+              >
+                {t("skillMarket.plugin.actionUpgrade")}
+              </WKButton>
+            ) : (
+              <>
+                {/* Two actions, not a mode switch. 保存草稿 leaves the plugin
+                    unlisted and skips the changelog requirement; 发布 hands the
+                    routing decision to the backend, which reads the declared
+                    visibility. There is no 提交审核 button any more — the author
+                    should not have to know which of the two 发布 means. */}
+                <WKButton
+                  variant="secondary"
+                  onClick={() => void submit(false)}
+                  loading={saving && !publishing}
+                  disabled={!canCreate || (saving && publishing)}
+                >
+                  {t("skillMarket.plugin.actionSaveDraft")}
+                </WKButton>
+                <WKButton
+                  variant="primary"
+                  onClick={() => void submit(true)}
+                  loading={saving && publishing}
+                  disabled={!canPublishNow || (saving && !publishing)}
+                >
+                  {t("skillMarket.plugin.actionPublish")}
+                </WKButton>
+              </>
+            )}
           </>
         }
       >
@@ -776,32 +827,39 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
 
           {!isReviewMode && stage === "form" && (
             <div className="skill-market-form__scope-section">
-              <h3 className="skill-market-form__section-title">{t("skillMarket.review.scopeSection")}</h3>
+              <h3 className="skill-market-form__section-title">
+                {t("skillMarket.plugin.columnVisibility")}
+              </h3>
+              {/* The DECLARED audience, stored as-is. It lists nothing by itself:
+                  发布 is what lists it, and this value is what the backend reads
+                  to decide whether that needs organization review.
+                  全平台可见 is absent on purpose — the tenant API rejects it, it is
+                  minted only through the marketplace-admin surface. */}
               <div className="skill-market-scope-options">
-                <label className={submitScope === "review" ? "is-selected" : ""}>
+                <label className={declaredVisibility === "private" ? "is-selected" : ""}>
                   <input
                     type="radio"
-                    name="submit-scope"
-                    value="review"
-                    checked={submitScope === "review"}
-                    onChange={() => setSubmitScope("review")}
+                    name="declared-visibility"
+                    value="private"
+                    checked={declaredVisibility === "private"}
+                    onChange={() => setDeclaredVisibility("private")}
                   />
                   <div>
-                    <strong>{t("skillMarket.review.scopeReviewLabel")}</strong>
-                    <span>{t("skillMarket.review.scopeReviewHint")}</span>
+                    <strong>{t("skillMarket.plugin.visibilityPrivate")}</strong>
+                    <span>{t("skillMarket.plugin.visibilityPrivateHint")}</span>
                   </div>
                 </label>
-                <label className={submitScope === "private" ? "is-selected" : ""}>
+                <label className={declaredVisibility === "space" ? "is-selected" : ""}>
                   <input
                     type="radio"
-                    name="submit-scope"
-                    value="private"
-                    checked={submitScope === "private"}
-                    onChange={() => setSubmitScope("private")}
+                    name="declared-visibility"
+                    value="space"
+                    checked={declaredVisibility === "space"}
+                    onChange={() => setDeclaredVisibility("space")}
                   />
                   <div>
-                    <strong>{t("skillMarket.review.scopePrivateLabel")}</strong>
-                    <span>{t("skillMarket.review.scopePrivateHint")}</span>
+                    <strong>{t("skillMarket.plugin.visibilitySpace")}</strong>
+                    <span>{t("skillMarket.plugin.visibilitySpaceHint")}</span>
                   </div>
                 </label>
               </div>

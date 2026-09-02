@@ -1256,7 +1256,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
       bodyStyle={{ maxHeight: "78vh", overflowY: "auto" }}
       title={
         isReview
-          ? t("skillMarket.review.publishNewVersion")
+          ? t("skillMarket.plugin.actionUpgrade")
           : isEdit
             ? t("mcp.edit.title")
             : t("mcp.create.title")
@@ -1297,7 +1297,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                   onClick={handleSubmit}
                 >
                   {isReview
-                    ? t("skillMarket.review.publishNewVersion")
+                    ? t("skillMarket.plugin.actionUpgrade")
                     : isEdit
                       ? t("mcp.edit.submit")
                       : t("mcp.create.submit")}

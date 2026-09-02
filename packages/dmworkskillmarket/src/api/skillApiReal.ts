@@ -14,6 +14,8 @@ import type {
   NewSkillForm,
   PagedResult,
   ParseStatusResult,
+  PluginDisplayStatus,
+  PluginListingState,
   RawSkillTag,
   ReviewDecisionSource,
   ReviewKind,
@@ -38,7 +40,10 @@ import {
   type PluginDetailPluginWire,
   type PluginDetailWire,
   type PluginListItemWire,
+  type PluginListingErrorDetailsWire,
+  type PluginListingResultWire,
   type PluginReviewRequestWire,
+  type PluginTypeWire,
 } from "./pluginWire";
 
 interface SuccessEnvelope<T> {
@@ -303,6 +308,39 @@ function normalizeTags(tags: unknown): string[] {
   return [];
 }
 
+const LISTING_STATES: readonly PluginListingState[] = [
+  "draft",
+  "published",
+  "delisted",
+];
+
+const DISPLAY_STATUSES: readonly PluginDisplayStatus[] = [
+  "draft",
+  "pending_review",
+  "published",
+  "rejected",
+  "delisted",
+];
+
+/**
+ * Narrow the listing fields, dropping anything outside the known enum.
+ *
+ * These map to `undefined` in two very different situations and that is
+ * deliberate: the marketplace grid genuinely does not receive them (the server
+ * only computes them for the owner's own rows), and a future server-side enum
+ * value we do not know yet must not be smuggled into a typed union the badge
+ * component switches on. Both cases mean "render no listing badge", which is the
+ * safe outcome; the alternative — defaulting to "draft" — would label every
+ * public catalog card as an unpublished draft.
+ */
+function toListingState(raw: unknown): PluginListingState | undefined {
+  return LISTING_STATES.find((state) => state === raw);
+}
+
+function toDisplayStatus(raw: unknown): PluginDisplayStatus | undefined {
+  return DISPLAY_STATUSES.find((status) => status === raw);
+}
+
 function mapSkill(raw: PluginListItemWire): Skill {
   const manifest = raw.manifest_json ?? {};
   return {
@@ -346,6 +384,14 @@ function mapSkill(raw: PluginListItemWire): Skill {
     fileSha256: undefined,
     viewCount: raw.view_count ?? 0,
     downloadCount: raw.download_count ?? 0,
+    // Rendered, never derived. The server folds the listing state together with
+    // the review entity into `display_status`; recomputing it here from
+    // (visibility, listing_state, some review list) is exactly the duplication
+    // that made a published plugin with a pending upgrade render three different
+    // badges on three different pages.
+    listingState: toListingState(raw.listing_state),
+    displayStatus: toDisplayStatus(raw.display_status),
+    reviewId: raw.review_id,
     createdAt: raw.created_at ?? "",
     updatedAt: raw.updated_at ?? "",
   };
@@ -415,6 +461,21 @@ export interface RequestOptions {
   signal?: AbortSignal;
 }
 
+/**
+ * Options for the plugin list reads.
+ *
+ * `pluginType` exists because `plugin_type` became OPTIONAL on `GET /plugins`
+ * when `mode=mine`: the marketplace grid is always one type at a time, but "我的
+ * 插件" is a cross-type inventory and had no way to ask for it. `"all"` omits the
+ * parameter entirely rather than sending a sentinel value — the server reads
+ * absence, not a magic string, and would treat `plugin_type=all` as an unknown
+ * type. The server still requires the parameter on a non-`mine` listing, so
+ * `"all"` is only meaningful via `getMySkills`.
+ */
+export interface PluginListOptions extends RequestOptions {
+  pluginType?: PluginTypeWire | "all";
+}
+
 export interface CategoryListOptions extends RequestOptions {
   q?: string;
   tags?: string[];
@@ -433,10 +494,15 @@ export function getCategories(opts?: CategoryListOptions): Promise<Category[]> {
   ).then((items) => (items ?? []).map(mapCategory));
 }
 
-function buildPluginListParams(query: SkillListQuery, mine: boolean): URLSearchParams {
+function buildPluginListParams(
+  query: SkillListQuery,
+  mine: boolean,
+  pluginType: PluginTypeWire | "all" = "skill"
+): URLSearchParams {
   const params = new URLSearchParams();
   params.set("scene_code", SCENE_CODE);
-  params.set("plugin_type", "skill");
+  // Absent (not `plugin_type=all`) is how the backend spells "every type".
+  if (pluginType !== "all") params.set("plugin_type", pluginType);
   if (mine) params.set("mode", "mine");
   if (query.q) params.set("q", query.q);
   if (query.categoryId && query.categoryId !== "all")
@@ -454,9 +520,9 @@ function buildPluginListParams(query: SkillListQuery, mine: boolean): URLSearchP
 function listPlugins(
   query: SkillListQuery,
   mine: boolean,
-  opts?: RequestOptions
+  opts?: PluginListOptions
 ): Promise<PagedResult<Skill>> {
-  const params = buildPluginListParams(query, mine);
+  const params = buildPluginListParams(query, mine, opts?.pluginType);
   return requestEnvelope<PluginListItemWire[]>(
     `/plugins?${params.toString()}`,
     opts?.signal ? { signal: opts.signal } : undefined
@@ -484,7 +550,7 @@ export function getSkills(
 
 export function getMySkills(
   query: SkillListQuery = {},
-  opts?: RequestOptions
+  opts?: PluginListOptions
 ): Promise<PagedResult<Skill>> {
   return listPlugins(query, true, opts);
 }
@@ -889,6 +955,10 @@ function mapReviewRequest(raw: PluginReviewRequestWire): ReviewRequest {
     // the field is not silently lost, but a consumer MUST keep the letter-avatar
     // fallback — an <img src> on this value 404s today.
     pluginIconUrl: raw.plugin_icon,
+    // Live plugin state, deliberately NOT part of what was reviewed: the queue
+    // needs to know whether the plugin is on the shelf right now, which an
+    // approved-then-delisted row would otherwise misreport as "published".
+    pluginListingState: toListingState(raw.plugin_listing_state),
     spaceId: raw.space_id,
     targetScope: raw.target_scope as ReviewTargetScope,
     status: raw.status as ReviewStatus,
@@ -1064,4 +1134,156 @@ export function cancelReview(id: string): Promise<void> {
     `/plugins/review_requests/${encodeURIComponent(id)}/cancel`,
     { method: "POST" }
   ).then(() => undefined);
+}
+
+// ─── Listing lifecycle: publish / delist ──────────────────────────────────
+//
+// `POST /plugins/publish` is the single 发布 door for every plugin type. What
+// publishing MEANS is decided server-side from the plugin's visibility, not by
+// the caller picking an endpoint:
+//   - `private` → listed immediately, no review, no `review_id` in the reply;
+//   - `space`   → a review request is opened; the plugin stays `draft` and the
+//                 reply carries `review_id` + `display_status: "pending_review"`.
+// The client therefore must NOT branch on visibility before calling, and must
+// not assume which of the two happened — it reads the response. That is the
+// whole point of collapsing 上架 / 提交审核 into one call: the two used to be
+// separate buttons whose enablement logic drifted from the server's rules.
+//
+// Note the deliberate absence of a 403 on publish: a non-owner gets 404, so
+// ownership is never disclosed by the error code. Delist is the opposite — it is
+// a Space-admin takedown of someone else's listing, so 403 is meaningful there
+// and names the missing role in `error.details.required_role`.
+
+/** Refusal reasons the listing endpoints report in `error.details`. */
+export type PluginConflictReason =
+  | "already_published"
+  | "review_pending"
+  | "not_published";
+
+/**
+ * Pull the machine-readable refusal reason out of a rejected publish/delist.
+ *
+ * `SkillMarketApiError.details` is typed `unknown` because it is whatever the
+ * endpoint put there; this is the typed reader for the listing endpoints' shape.
+ * It exists so callers can branch — "已上架了" wants a refresh, "审核中" wants to
+ * point at the pending request — instead of string-matching a localized server
+ * message, which is how the old flows ended up showing a generic toast for every
+ * 409.
+ */
+export function pluginConflictReason(
+  err: unknown
+): PluginConflictReason | undefined {
+  const reason = listingErrorDetails(err)?.conflict_reason;
+  return reason === "already_published" ||
+    reason === "review_pending" ||
+    reason === "not_published"
+    ? reason
+    : undefined;
+}
+
+/** Role the caller is missing on a 403 from delist (`space_admin` today).
+ *  Returned raw: it is an octo-server role name, not a closed client enum. */
+export function pluginRequiredRole(err: unknown): string | undefined {
+  const role = listingErrorDetails(err)?.required_role;
+  return typeof role === "string" && role ? role : undefined;
+}
+
+function listingErrorDetails(
+  err: unknown
+): PluginListingErrorDetailsWire | undefined {
+  if (!(err instanceof SkillMarketApiError)) return undefined;
+  const details = err.details;
+  if (!details || typeof details !== "object") return undefined;
+  return details as PluginListingErrorDetailsWire;
+}
+
+/** Outcome of a publish or delist. Same three fields either way; `reviewId` is
+ *  only ever set by a publish that opened a review. */
+export interface PluginListingResult {
+  pluginId: string;
+  listingState: PluginListingState;
+  displayStatus: PluginDisplayStatus;
+  /** Present iff the call opened a review request — the caller's signal that
+   *  this was a 提交审核 rather than an immediate 上架. */
+  reviewId?: string;
+}
+
+function mapListingResult(raw: PluginListingResultWire): PluginListingResult {
+  return {
+    pluginId: raw.plugin_id,
+    // Fail closed on an unrecognized value: an unknown listing state must not
+    // read as "published", which is the one value that changes what the UI lets
+    // the user do next.
+    listingState: toListingState(raw.listing_state) ?? "draft",
+    displayStatus: toDisplayStatus(raw.display_status) ?? "draft",
+    ...(raw.review_id ? { reviewId: raw.review_id } : {}),
+  };
+}
+
+export interface PublishPluginInput {
+  pluginId: string;
+  /**
+   * Version label of this listing. Optional: the server reuses the plugin's
+   * current version when omitted.
+   */
+  version?: string;
+  /** Shown to the reviewer on a `space` publish; ignored for a private one. */
+  changelog?: string;
+}
+
+/**
+ * List a plugin — or open the review that would list it. See the section note:
+ * the backend decides which, from the plugin's visibility.
+ *
+ * Publish carries NO content. The plugin row is already the thing being
+ * published: it was saved through `/plugins/upsert` or `/plugins/import` before
+ * this call, and every save is a version snapshot server-side. Sending content
+ * here would introduce a second, competing write path for the same bytes and
+ * make "what exactly got published" depend on which button the user pressed.
+ * (Contrast `createReviewRequest`, which does take content — an *upgrade* of an
+ * already-listed plugin must freeze the new bytes without touching the live row.)
+ *
+ * Rejects with `SkillMarketApiError`: 409 with a `conflict_reason` of
+ * `already_published` / `review_pending` (read it via `pluginConflictReason`),
+ * or 404 when the caller does not own the plugin.
+ */
+export function publishPlugin(
+  input: PublishPluginInput
+): Promise<PluginListingResult> {
+  const body: Record<string, unknown> = { plugin_id: input.pluginId };
+  // Omit rather than send "": an empty version is a request to label the
+  // listing with an empty string, not a request to keep the current label.
+  if (input.version) body.version = input.version;
+  if (input.changelog) body.changelog = input.changelog;
+  return request<PluginListingResultWire>("/plugins/publish", {
+    method: "POST",
+    body: JSON.stringify(body),
+  }).then(mapListingResult);
+}
+
+export interface DelistPluginInput {
+  pluginId: string;
+  /** Optional takedown note recorded with the action. */
+  reason?: string;
+}
+
+/**
+ * Take a listed plugin back off the shelf. Space-admin only, and unlike publish
+ * it is normally invoked on somebody ELSE's plugin, which is why it answers 403
+ * (with `required_role: "space_admin"`, see `pluginRequiredRole`) rather than
+ * hiding behind a 404 — the caller is allowed to know the plugin exists, they
+ * are just not allowed to take it down. A cross-Space target is still 404.
+ *
+ * 409 `not_published` means someone else already delisted it; callers should
+ * refresh rather than report a failure.
+ */
+export function delistPlugin(
+  input: DelistPluginInput
+): Promise<PluginListingResult> {
+  const body: Record<string, unknown> = { plugin_id: input.pluginId };
+  if (input.reason) body.reason = input.reason;
+  return request<PluginListingResultWire>("/plugins/delist", {
+    method: "POST",
+    body: JSON.stringify(body),
+  }).then(mapListingResult);
 }

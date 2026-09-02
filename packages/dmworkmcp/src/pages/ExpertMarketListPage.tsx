@@ -20,7 +20,7 @@ import {
   prefetchLoopTargets,
 } from "../api/expertService";
 import type { ExpertCatalogSort, ExpertCategoryCount } from "../api/expertService";
-import { cancelPluginReview } from "../api/pluginReview";
+import { cancelPluginReview, publishPluginListing } from "../api/pluginReview";
 import { expertListErrorI18nKey } from "../api/expertListError";
 import ExpertCard from "../components/ExpertCard";
 import ExpertDetailModal from "../components/ExpertDetailModal";
@@ -545,10 +545,33 @@ export default function ExpertMarketListPage({
    * Project one owned expert / squad onto a MineTable row, review affordances
    * included. Shared by the 专家团 and 专家 sections so the two cannot drift.
    */
+  /**
+   * 发布 from the row. Same one-button contract as the other markets: the
+   * backend routes on the declared visibility and the response says which way
+   * it went.
+   */
+  const handlePublish = async (item: ExpertItem) => {
+    try {
+      const outcome = await publishPluginListing(item.id, { version: item.version });
+      Toast.success(
+        outcome.displayStatus === "pending_review"
+          ? t("skillMarket.review.submittedToast")
+          : t("skillMarket.plugin.publishedToast")
+      );
+    } catch (err) {
+      Toast.error(err instanceof Error ? err.message : t("skillMarket.review.submitFailed"));
+    } finally {
+      reload();
+      myReviews.refresh();
+    }
+  };
+
   const toMineRow = (item: ExpertItem, type: "expert" | "squad"): MineRow => {
     const visibility = normalizeVisibility(item.visibility);
     const review = resolveReviewRowState(
       visibility,
+      item.listingState,
+      item.displayStatus,
       myReviews.stateByPlugin.get(item.id)
     );
     return {
@@ -570,39 +593,27 @@ export default function ExpertMarketListPage({
       visibility,
       views: item.viewCount,
       downloads: item.installCount,
+      status: review.status,
+      rejectReason: review.rejectReason,
       ariaLabel: item.name,
       onOpen: () => openDetail(item),
       // 编辑 is withheld once the record is listed to the org: a direct edit takes
       // effect immediately for everyone, which would route around review (the
       // backend answers such a write with 409 listed_requires_review). A listed
-      // record changes only through 发布新版本, and while a request is pending it
+      // record changes only through 升级版本, and while a request is pending it
       // does not change at all — the live version stays up until a decision lands.
       onEdit: review.canEdit ? () => handleEdit(item) : undefined,
       onDelete: () => setDeleteTarget(item),
-      editAria: t("mcp.expert.editAriaLabel", { values: { name: item.name } }),
-      deleteAria: t("mcp.expert.deleteAriaLabel", { values: { name: item.name } }),
-      reviewBadge: review.badge,
-      rejectReason: review.rejected?.reason,
-      onSubmitReview: review.canSubmitReview
-        ? () => openReviewSubmit(item)
+      editAria: t("skillMarket.plugin.ariaEdit", { values: { name: item.name } }),
+      deleteAria: t("skillMarket.plugin.ariaDelete", { values: { name: item.name } }),
+      onPublish: review.canPublish ? () => void handlePublish(item) : undefined,
+      publishAria: t("skillMarket.plugin.ariaPublish", { values: { name: item.name } }),
+      onUpgrade: review.canUpgrade ? () => openReviewSubmit(item) : undefined,
+      upgradeAria: t("skillMarket.plugin.ariaUpgrade", { values: { name: item.name } }),
+      onCancelReview: review.canCancelReview
+        ? () => void handleCancelReview(item.reviewId ?? review.pending?.id ?? "")
         : undefined,
-      onCancelReview: review.pending
-        ? () => void handleCancelReview(review.pending!.id)
-        : undefined,
-      onResubmit: review.rejected
-        ? () => openReviewSubmit(item, review.rejected!.changelog)
-        : undefined,
-      onPublishVersion: review.canPublishVersion
-        ? () => openReviewSubmit(item)
-        : undefined,
-      submitReviewAria: t("mcp.review.submitReviewAria", {
-        values: { name: item.name },
-      }),
-      cancelReviewAria: t("mcp.review.cancelReviewAria", {
-        values: { name: item.name },
-      }),
-      resubmitAria: t("mcp.review.resubmitAria", { values: { name: item.name } }),
-      publishVersionAria: t("mcp.review.publishVersionAria", {
+      cancelReviewAria: t("skillMarket.plugin.ariaCancelReview", {
         values: { name: item.name },
       }),
     };
@@ -848,7 +859,6 @@ export default function ExpertMarketListPage({
               {mySquads.length > 0 ? (
                 <MineTable
                   rows={mySquads.map((item) => toMineRow(item, "squad"))}
-                  visibilityLabel={(v) => t(`mcp.visibility.${v}`)}
                 />
               ) : (
                 <p className="wk-mcp-expert-mine-empty">
@@ -874,7 +884,6 @@ export default function ExpertMarketListPage({
               {myAgents.length > 0 ? (
                 <MineTable
                   rows={myAgents.map((item) => toMineRow(item, "expert"))}
-                  visibilityLabel={(v) => t(`mcp.visibility.${v}`)}
                 />
               ) : (
                 <p className="wk-mcp-expert-mine-empty">

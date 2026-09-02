@@ -79,6 +79,13 @@ export interface McpListItem {
    *  fixtures without the field still type-check; list cards may promote it to
    *  a badge. */
   visibility?: McpVisibility;
+  /** Listing lifecycle and the single status to render, both supplied by the
+   *  server on the owner listing (wire `listing_state` / `display_status`).
+   *  `reviewId` points at the request `displayStatus` reflects. Absent on the
+   *  public catalog, where every row is published by construction. */
+  listingState?: "draft" | "published" | "delisted";
+  displayStatus?: "draft" | "pending_review" | "published" | "rejected" | "delisted";
+  reviewId?: string;
   /** Snapshot of the publisher's nickname at create time (mcp-v1.md §3.2).
    *  Optional so legacy fixtures without the field still type-check. */
   creatorName?: string;

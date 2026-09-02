@@ -47,6 +47,9 @@ interface ExpertCommonWire {
   tags?: string[];
   publisher?: string;
   visibility?: string;
+  listing_state?: string;
+  display_status?: string;
+  review_id?: string;
   creator_name?: string;
   created_by_type?: "human" | "bot" | "import";
   created_by_bot_uid?: string;
@@ -115,6 +118,25 @@ function fromSkillWire(s: SkillWire): import("../mock/expertMock").ExpertSkill {
 
 // ─── Read mappers (wire → TS) ───────────────────────────────────────────────
 
+const LISTING_STATES = ["draft", "published", "delisted"] as const;
+const DISPLAY_STATUSES = [
+  "draft",
+  "pending_review",
+  "published",
+  "rejected",
+  "delisted",
+] as const;
+
+function narrowListingState(v?: string): (typeof LISTING_STATES)[number] | undefined {
+  return LISTING_STATES.includes(v as never) ? (v as (typeof LISTING_STATES)[number]) : undefined;
+}
+
+function narrowDisplayStatus(v?: string): (typeof DISPLAY_STATUSES)[number] | undefined {
+  return DISPLAY_STATUSES.includes(v as never)
+    ? (v as (typeof DISPLAY_STATUSES)[number])
+    : undefined;
+}
+
 export function mapAgentListItem(raw: ExpertAgentListItemWire): ExpertAgent {
   return {
     id: raw.expert_id,
@@ -126,6 +148,11 @@ export function mapAgentListItem(raw: ExpertAgentListItemWire): ExpertAgent {
     tags: raw.tags ?? [],
     publisher: raw.publisher ?? "",
     visibility: raw.visibility,
+    // Narrowed rather than cast: an unknown or absent value must stay undefined,
+    // or a public catalog card would badge itself as an unpublished draft.
+    listingState: narrowListingState(raw.listing_state),
+    displayStatus: narrowDisplayStatus(raw.display_status),
+    reviewId: raw.review_id || undefined,
     createdByType: mapCreatedByType(raw.created_by_type),
     botName: raw.created_by_bot_name,
     creatorName: raw.creator_name ?? "",
@@ -167,6 +194,11 @@ export function mapSquadListItem(raw: ExpertSquadListItemWire): ExpertSquad {
     tags: raw.tags ?? [],
     publisher: raw.publisher ?? "",
     visibility: raw.visibility,
+    // Narrowed rather than cast: an unknown or absent value must stay undefined,
+    // or a public catalog card would badge itself as an unpublished draft.
+    listingState: narrowListingState(raw.listing_state),
+    displayStatus: narrowDisplayStatus(raw.display_status),
+    reviewId: raw.review_id || undefined,
     createdByType: mapCreatedByType(raw.created_by_type),
     botName: raw.created_by_bot_name,
     creatorName: raw.creator_name ?? "",
@@ -302,6 +334,11 @@ function commonFromPlugin(raw: PluginListItemWire, categoryName: string) {
     tags: raw.tags ?? [],
     publisher: raw.publisher ?? "",
     visibility: raw.visibility,
+    // Narrowed rather than cast: an unknown or absent value must stay undefined,
+    // or a public catalog card would badge itself as an unpublished draft.
+    listingState: narrowListingState(raw.listing_state),
+    displayStatus: narrowDisplayStatus(raw.display_status),
+    reviewId: raw.review_id || undefined,
     createdByType: mapCreatedByType(raw.created_by_type),
     botName: raw.created_by_bot_name,
     creatorName: raw.creator_name ?? "",

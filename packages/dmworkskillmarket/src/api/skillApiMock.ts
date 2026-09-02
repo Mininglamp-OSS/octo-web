@@ -2,6 +2,8 @@ import type {
   Category,
   NewSkillForm,
   PagedResult,
+  PluginDisplayStatus,
+  PluginListingState,
   ReviewListMode,
   ReviewRequest,
   ReviewStatus,
@@ -18,7 +20,13 @@ import {
   CURRENT_USER_NAME,
   createInitialSkills,
 } from "./mockData";
-import type { CreateReviewRequestInput } from "./skillApiReal";
+import {
+  SkillMarketApiError,
+  type CreateReviewRequestInput,
+  type DelistPluginInput,
+  type PluginListingResult,
+  type PublishPluginInput,
+} from "./skillApiReal";
 
 let skills = createInitialSkills();
 
@@ -119,7 +127,10 @@ export function getSkills(
 
 export function getMySkills(
   query: SkillListQuery = {},
-  _opts?: { signal?: AbortSignal }
+  // `pluginType` is accepted for signature parity with the real client and
+  // ignored: the mock catalog only holds skills, so an "all types" listing and
+  // a skill listing are the same rows here.
+  _opts?: { signal?: AbortSignal; pluginType?: string }
 ): Promise<PagedResult<Skill>> {
   return getSkills({ ...query, mine: true });
 }
@@ -233,6 +244,24 @@ function findReview(id: string): ReviewRequest | undefined {
   return reviewRequests.find((item) => item.id === id);
 }
 
+/**
+ * Stamp the plugin's CURRENT listing state onto a review row at read time.
+ *
+ * Computed per read, never stored on the row, because it is live plugin state
+ * rather than part of the frozen request: an approved request whose plugin an
+ * admin later delisted must start reporting `delisted` without anything going
+ * back to rewrite the review record. The real backend joins it the same way.
+ */
+function withLiveListingState(request: ReviewRequest): ReviewRequest {
+  const listingState = skills.find(
+    (item) => item.id === request.pluginId
+  )?.listingState;
+  return {
+    ...request,
+    ...(listingState ? { pluginListingState: listingState } : {}),
+  };
+}
+
 export function createReviewRequest(
   input: CreateReviewRequestInput
 ): Promise<ReviewRequest> {
@@ -282,7 +311,8 @@ export function createReviewRequest(
     readmeContent: request.readmeContent,
     version: request.version,
   });
-  return withDelay({ ...request });
+  refreshListing(request.pluginId);
+  return withDelay(withLiveListingState(request));
 }
 
 /** Pull the submitted SKILL.md out of a declared package document, when the
@@ -316,7 +346,7 @@ export function listReviewRequests(
   const start = (page - 1) * pageSize;
   const items = matched
     .slice(start, start + pageSize)
-    .map((item) => ({ ...item }));
+    .map(withLiveListingState);
   return withDelay({
     items,
     nextCursor: page * pageSize < matched.length ? String(page + 1) : null,
@@ -327,7 +357,7 @@ export function listReviewRequests(
 export function getReviewRequest(id: string): Promise<ReviewRequest> {
   const found = findReview(id);
   if (!found) return withDelayReject(new Error("Review request not found"));
-  return withDelay({ ...found });
+  return withDelay(withLiveListingState(found));
 }
 
 export function approveReview(id: string): Promise<void> {
@@ -346,6 +376,9 @@ export function approveReview(id: string): Promise<void> {
       ? {
           ...item,
           visibility: "space",
+          // Approval is also what puts the plugin on the shelf: a publish of a
+          // space-visibility plugin only opened the request, it did not list it.
+          listingState: "published" as PluginListingState,
           version: found.version,
           ...(snapshot?.readmeContent !== undefined
             ? { readmeContent: snapshot.readmeContent }
@@ -353,6 +386,7 @@ export function approveReview(id: string): Promise<void> {
         }
       : item
   );
+  refreshListing(found.pluginId);
   return withDelay(undefined);
 }
 
@@ -367,6 +401,7 @@ export function rejectReview(id: string, reason: string): Promise<void> {
   found.reviewerId = CURRENT_USER_ID;
   found.reviewerName = CURRENT_USER_NAME;
   found.reviewedAt = new Date().toISOString();
+  refreshListing(found.pluginId);
   return withDelay(undefined);
 }
 
@@ -377,5 +412,157 @@ export function cancelReview(id: string): Promise<void> {
   }
   found.status = "canceled";
   found.reviewedAt = new Date().toISOString();
+  refreshListing(found.pluginId);
   return withDelay(undefined);
+}
+
+// ─── Listing lifecycle: publish / delist ──────────────────────────────────
+//
+// The mock owns `listingState` and re-folds `displayStatus` after every
+// transition, exactly as the server does per read. It is written as a fold
+// rather than as assignments at each call site because that is the invariant
+// under test: the status a client renders is a FUNCTION of (listing state,
+// review entity), never an independently stored flag that a missed branch can
+// leave stale.
+
+/** Recompute `displayStatus` for one plugin and write it back onto the row. */
+function refreshListing(pluginId: string): void {
+  skills = skills.map((skill) => {
+    if (skill.id !== pluginId) return skill;
+    const listingState = skill.listingState ?? "draft";
+    return { ...skill, listingState, displayStatus: foldDisplayStatus(pluginId, listingState) };
+  });
+}
+
+function foldDisplayStatus(
+  pluginId: string,
+  listingState: PluginListingState
+): PluginDisplayStatus {
+  // reviewRequests is newest-first, matching the server's submitted_at ordering.
+  const mine = reviewRequests.filter((item) => item.pluginId === pluginId);
+  // A pending request wins over everything, including an already-published
+  // listing: "已上架 + 有升级在审" reads as 审核中 to the applicant.
+  if (mine.some((item) => item.status === "pending")) return "pending_review";
+  if (listingState === "draft" && mine[0]?.status === "rejected") return "rejected";
+  return listingState;
+}
+
+/**
+ * Build the response for one plugin.
+ *
+ * `reviewId` is passed in rather than looked up, because on the wire its
+ * presence means one specific thing — "this call opened a review" — and callers
+ * branch on exactly that. Deriving it from whatever request happens to sit on
+ * the plugin would attach a stale rejected id to an immediate private publish
+ * and make that branch lie.
+ */
+function listingResult(pluginId: string, reviewId?: string): PluginListingResult {
+  const skill = skills.find((item) => item.id === pluginId);
+  const listingState = skill?.listingState ?? "draft";
+  return {
+    pluginId,
+    listingState,
+    displayStatus: foldDisplayStatus(pluginId, listingState),
+    ...(reviewId ? { reviewId } : {}),
+  };
+}
+
+/** Same envelope the real client normalizes a failed response into, so mock-mode
+ *  callers can use `pluginConflictReason` / `pluginRequiredRole` unchanged. */
+function listingError(
+  code: string,
+  status: number,
+  message: string,
+  details?: Record<string, string>
+): Promise<never> {
+  return withDelayReject(
+    new SkillMarketApiError(code, message, status, details)
+  );
+}
+
+export function publishPlugin(
+  input: PublishPluginInput
+): Promise<PluginListingResult> {
+  const skill = skills.find((item) => item.id === input.pluginId);
+  // 404, not 403 — the real endpoint refuses to confirm that someone else's
+  // plugin exists.
+  if (!skill) return listingError("NOT_FOUND", 404, "Plugin not found");
+  if ((skill.listingState ?? "draft") === "published") {
+    return listingError("CONFLICT", 409, "Already published", {
+      conflict_reason: "already_published",
+    });
+  }
+  if (reviewRequests.some((item) => item.pluginId === skill.id && item.status === "pending")) {
+    return listingError("CONFLICT", 409, "A review is already pending", {
+      conflict_reason: "review_pending",
+    });
+  }
+  // The branch the server owns: what "publish" means comes from the plugin's
+  // visibility, not from the caller. A private plugin is visible to its owner
+  // only, so nobody needs to vet it; anything wider enters the Space queue.
+  if (skill.visibility === "private") {
+    skills = skills.map((item) =>
+      item.id === skill.id
+        ? {
+            ...item,
+            listingState: "published" as PluginListingState,
+            version: input.version ?? item.version,
+          }
+        : item
+    );
+    refreshListing(skill.id);
+    return withDelay(listingResult(skill.id));
+  }
+  reviewSeq += 1;
+  const request: ReviewRequest = {
+    id: `review-${reviewSeq}`,
+    pluginId: skill.id,
+    pluginName: skill.displayName || skill.name,
+    pluginType: "skill",
+    pluginIconUrl: skill.iconUrl || undefined,
+    spaceId: CURRENT_SPACE_ID,
+    targetScope: "space",
+    status: "pending",
+    // A publish freezes the row as-is, so it is a first listing whenever the row
+    // is not already on the shelf.
+    kind: (skill.listingState ?? "draft") === "published" ? "upgrade" : "first",
+    version: input.version ?? skill.version,
+    changelog: input.changelog,
+    readmeContent: skill.readmeContent,
+    applicantId: CURRENT_USER_ID,
+    applicantName: CURRENT_USER_NAME,
+    decisionSource: "web",
+    submittedAt: new Date().toISOString(),
+  };
+  reviewRequests = [request, ...reviewRequests];
+  reviewSnapshots.set(request.id, {
+    readmeContent: request.readmeContent,
+    version: request.version,
+  });
+  refreshListing(skill.id);
+  // The review id IS the outcome here: it tells the caller this publish opened
+  // a request instead of listing the plugin.
+  return withDelay(listingResult(skill.id, request.id));
+}
+
+export function delistPlugin(
+  input: DelistPluginInput
+): Promise<PluginListingResult> {
+  const skill = skills.find((item) => item.id === input.pluginId);
+  if (!skill) return listingError("NOT_FOUND", 404, "Plugin not found");
+  if ((skill.listingState ?? "draft") !== "published") {
+    return listingError("CONFLICT", 409, "Plugin is not published", {
+      conflict_reason: "not_published",
+    });
+  }
+  // The mock's single user is also the Space admin, so the 403 path is not
+  // reachable here; `required_role` is documented on the real client instead.
+  skills = skills.map((item) =>
+    item.id === skill.id
+      ? { ...item, listingState: "delisted" as PluginListingState }
+      : item
+  );
+  refreshListing(skill.id);
+  // No review id: a takedown never opens a review request.
+  return withDelay(listingResult(skill.id));
 }

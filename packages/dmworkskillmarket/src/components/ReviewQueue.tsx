@@ -1,15 +1,59 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, Clock, RefreshCw, XCircle } from "lucide-react";
 import { t, useI18n, WKApp } from "@octo/base";
-import type { ReviewListMode, ReviewRequest, ReviewStatus } from "../types/skill";
-import { approveReview, cancelReview, listReviewRequests, rejectReview } from "../api/skillApi";
+import type {
+  PluginDisplayStatus,
+  PluginListingState,
+  ReviewListMode,
+  ReviewRequest,
+  ReviewStatus,
+} from "../types/skill";
+import {
+  approveReview,
+  cancelReview,
+  delistPlugin,
+  listReviewRequests,
+  rejectReview,
+} from "../api/skillApi";
 import { formatFullDateTime, formatRelativeTime } from "../utils/format";
-import { pluginTypeLabel, reviewKindLabel, reviewStatusLabel } from "../utils/review";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
+import MineTable, { type MineAssetType, type MineRow } from "./MineTable";
+import DelistReasonModal from "./DelistReasonModal";
 import RejectReasonModal from "./RejectReasonModal";
 import ReviewDetailDrawer from "./ReviewDetailDrawer";
 
 type QueueTab = "pending" | "handled";
+
+/** Wire plugin type -> MineTable's local row type. */
+const REVIEW_ROW_TYPE: Record<string, MineAssetType> = {
+  skill: "skill",
+  connector: "connector",
+  expert: "expert",
+  expert_team: "squad",
+};
+
+/**
+ * A queue row shows the state of the PLUGIN, in the same five-value vocabulary
+ * 我的发布 uses, rather than a second set of words for request outcomes. That is
+ * the whole point of putting both pages through one table: 待审核/审核中 and
+ * 已通过/已上架/已发布 previously named the same things differently depending on
+ * which page you were looking at.
+ *
+ * The plugin's listing state wins for a settled request, because it is the more
+ * recent fact: an approved plugin a Space admin later took down reads 已下架, not
+ * 已发布.
+ */
+function reviewRowStatus(
+  status: ReviewStatus,
+  listingState?: PluginListingState
+): PluginDisplayStatus {
+  if (status === "pending") return "pending_review";
+  if (listingState === "delisted") return "delisted";
+  if (status === "approved") return "published";
+  if (status === "rejected") return "rejected";
+  // A withdrawn request leaves the plugin exactly where it was: a draft.
+  return "draft";
+}
 
 interface ReviewQueueProps {
   /** `space` is the reviewer queue (403 for non-admins server-side); `mine` is
@@ -58,6 +102,7 @@ export default function ReviewQueue({ mode, onAction }: ReviewQueueProps) {
   const [activeTab, setActiveTab] = useState<QueueTab>("pending");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [rejectTarget, setRejectTarget] = useState<ReviewRequest | null>(null);
+  const [delistTarget, setDelistTarget] = useState<ReviewRequest | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [iconErrors, setIconErrors] = useState<Record<string, true>>({});
@@ -391,147 +436,77 @@ export default function ReviewQueue({ mode, onAction }: ReviewQueueProps) {
       )}
 
       {rows.length > 0 && (
-        <div className="skill-market-review-list">
-          {rows.map((item) => {
+        <MineTable
+          ariaLabel={t("skillMarket.review.orgTab")}
+          rows={rows.map((item) => {
             const isApplicant = item.applicantId === currentUid;
             const isPending = item.status === "pending";
             const showReviewerActions = isPending && mode === "space";
             const showCancel = isPending && mode === "mine" && isApplicant;
             const iconErrored = iconErrors[item.id];
             const acting = actingId === item.id;
-            return (
-              <div
-                key={item.id}
-                className="skill-market-review-item"
-                role="button"
-                tabIndex={0}
-                onClick={() => !acting && setDetailId(item.id)}
-                onKeyDown={(e) => {
-                  if (acting) return;
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setDetailId(item.id);
-                  }
-                }}
-                aria-disabled={acting}
-              >
-                <div className="skill-market-review-item__icon">
-                  {item.pluginIconUrl && !iconErrored ? (
-                    <img
-                      src={item.pluginIconUrl}
-                      alt=""
-                      onError={() => handleIconError(item.id)}
-                    />
-                  ) : (
-                    <span style={{ background: getSkillAvatarColor(item.pluginName) }}>
-                      {getSkillAvatarText(item.pluginName)}
-                    </span>
-                  )}
-                </div>
-                <div className="skill-market-review-item__main">
-                  <div className="skill-market-review-item__top">
-                    <div className="skill-market-review-item__title-row">
-                      <strong title={item.pluginName}>{item.pluginName}</strong>
-                      <span className="skill-market-review-item__type">
-                        {pluginTypeLabel(item.pluginType)}
-                      </span>
-                      <span
-                        className={`skill-market-review-item__kind skill-market-review-item__kind--${item.kind}`}
-                      >
-                        {reviewKindLabel(item.kind)}
-                      </span>
-                      {item.kind === "upgrade" && item.currentVersion ? (
-                        <span className="skill-market-review-item__version-bump">
-                          {t("skillMarket.review.versionBump", {
-                            values: { current: item.currentVersion, next: item.version },
-                          })}
-                        </span>
-                      ) : (
-                        <span className="skill-market-review-item__version">v{item.version}</span>
-                      )}
-                    </div>
-                    <div
-                      className={`skill-market-review-item__status skill-market-review-item__status--${item.status}`}
-                    >
-                      {item.status === "pending" && <Clock size={12} />}
-                      {item.status === "approved" && <CheckCircle2 size={12} />}
-                      {(item.status === "rejected" || item.status === "canceled") && (
-                        <XCircle size={12} />
-                      )}
-                      {reviewStatusLabel(item.status)}
-                    </div>
-                  </div>
-                  <div className="skill-market-review-item__meta">
-                    <span>{item.applicantName}</span>
-                    <span>·</span>
-                    <span title={formatFullDateTime(item.submittedAt)}>
-                      {formatRelativeTime(item.submittedAt)}
-                    </span>
-                  </div>
-                  {item.status === "rejected" && item.reason && (
-                    <div className="skill-market-review-item__reason">
-                      {t("skillMarket.review.reasonInline", { values: { reason: item.reason } })}
-                    </div>
-                  )}
-                  {item.changelog && item.status === "pending" && (
-                    <div className="skill-market-review-item__changelog">{item.changelog}</div>
-                  )}
-                </div>
-                <div
-                  className="skill-market-review-item__actions"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {showReviewerActions && (
-                    <>
-                      <button
-                        type="button"
-                        className="skill-market-review-item__btn skill-market-review-item__btn--danger"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (acting) return;
-                          setRejectTarget(item);
-                        }}
-                        disabled={acting}
-                      >
-                        {t("skillMarket.review.reject")}
-                      </button>
-                      <button
-                        type="button"
-                        className="skill-market-review-item__btn skill-market-review-item__btn--primary"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (acting) return;
-                          void handleApprove(item);
-                        }}
-                        disabled={acting}
-                      >
-                        {acting
-                          ? t("skillMarket.review.processing")
-                          : t("skillMarket.review.approve")}
-                      </button>
-                    </>
-                  )}
-                  {showCancel && (
-                    <button
-                      type="button"
-                      className="skill-market-review-item__btn skill-market-review-item__btn--secondary"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (acting) return;
-                        void handleCancel(item);
-                      }}
-                      disabled={acting}
-                    >
-                      {acting
-                        ? t("skillMarket.review.processing")
-                        : t("skillMarket.review.cancelRequest")}
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
+            // 下架 is offered on a request whose plugin is still listed. The
+            // backend refuses a delist of anything else with 409 not_published,
+            // so this only removes a dead affordance — it is not the gate.
+            const showDelist =
+              mode === "space" && item.status === "approved" && item.pluginListingState === "published";
+            return {
+              id: item.id,
+              type: REVIEW_ROW_TYPE[item.pluginType] ?? "skill",
+              trackItemType: item.pluginType,
+              icon:
+                item.pluginIconUrl && !iconErrored ? (
+                  <img
+                    className="wk-mine-table__avatar-img"
+                    src={item.pluginIconUrl}
+                    alt=""
+                    onError={() => handleIconError(item.id)}
+                  />
+                ) : (
+                  <span
+                    className="wk-mine-table__avatar-tile"
+                    style={{ background: getSkillAvatarColor(item.pluginName) }}
+                  >
+                    {getSkillAvatarText(item.pluginName)}
+                  </span>
+                ),
+              name: item.pluginName,
+              // 更新说明 is what a reviewer actually reads to decide, so it takes
+              // the 描述 column rather than the plugin's static description.
+              description: item.changelog || undefined,
+              version: item.version,
+              // An upgrade renders `v1.0.0 → v2.0.0`, so the reviewer sees what is
+              // being replaced without opening the drawer.
+              versionFrom: item.kind === "upgrade" ? item.currentVersion || undefined : undefined,
+              // Every request targets organization visibility; that is what a
+              // review IS. Rendering it keeps the column meaningful rather than
+              // blank on this page.
+              visibility: "space",
+              status: reviewRowStatus(item.status, item.pluginListingState),
+              rejectReason: item.reason || undefined,
+              meta: (
+                <>
+                  <span>{item.applicantName}</span>
+                  <span aria-hidden="true"> · </span>
+                  <span title={formatFullDateTime(item.submittedAt)}>
+                    {formatRelativeTime(item.submittedAt)}
+                  </span>
+                </>
+              ),
+              ariaLabel: item.pluginName,
+              busy: acting,
+              onOpen: () => setDetailId(item.id),
+              onApprove: showReviewerActions ? () => void handleApprove(item) : undefined,
+              approveAria: t("skillMarket.plugin.ariaApprove", { values: { name: item.pluginName } }),
+              onReject: showReviewerActions ? () => setRejectTarget(item) : undefined,
+              rejectAria: t("skillMarket.plugin.ariaReject", { values: { name: item.pluginName } }),
+              onCancelReview: showCancel ? () => void handleCancel(item) : undefined,
+              cancelReviewAria: t("skillMarket.plugin.ariaCancelReview", { values: { name: item.pluginName } }),
+              onDelist: showDelist ? () => setDelistTarget(item) : undefined,
+              delistAria: t("skillMarket.plugin.ariaDelist", { values: { name: item.pluginName } }),
+            } satisfies MineRow;
           })}
-        </div>
+        />
       )}
 
       <div ref={sentinelRef} className="skill-market-sentinel">
@@ -549,6 +524,35 @@ export default function ReviewQueue({ mode, onAction }: ReviewQueueProps) {
         onClose={() => setDetailId(null)}
         onDecided={() => {
           void refreshAllAsync();
+          onAction?.();
+        }}
+      />
+      <DelistReasonModal
+        visible={Boolean(delistTarget)}
+        pluginName={delistTarget?.pluginName}
+        onClose={() => {
+          if (actingId) return;
+          setDelistTarget(null);
+        }}
+        onConfirm={async (reason) => {
+          if (!delistTarget) return;
+          const id = delistTarget.id;
+          setActingId(id);
+          setError(null);
+          try {
+            await delistPlugin({ pluginId: delistTarget.pluginId, reason });
+          } catch (err) {
+            // Same shape as reject: a 409 here means somebody already took it
+            // down, or the author republished under us. Surface it on the queue
+            // banner AND inside the modal, then reconcile.
+            setError(err instanceof Error ? err.message : t("skillMarket.review.delistFailed"));
+            await refreshAllAsync();
+            setActingId(null);
+            throw err;
+          }
+          await refreshAllAsync();
+          setActingId(null);
+          setDelistTarget(null);
           onAction?.();
         }}
       />

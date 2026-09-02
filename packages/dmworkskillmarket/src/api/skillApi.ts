@@ -3,9 +3,22 @@ import * as realApi from "./skillApiReal";
 
 export type {
   CreateReviewRequestInput,
+  DelistPluginInput,
+  PluginConflictReason,
+  PluginListingResult,
+  PluginListOptions,
+  PublishPluginInput,
   RequestOptions,
   ReviewListParams,
   ReviewRelationInput,
+} from "./skillApiReal";
+// Error readers, not endpoints: they only inspect a rejected promise, so there
+// is nothing for the mock module to substitute — the mock throws the same
+// SkillMarketApiError shape on purpose.
+export {
+  SkillMarketApiError,
+  pluginConflictReason,
+  pluginRequiredRole,
 } from "./skillApiReal";
 
 const env = (import.meta as { env?: Record<string, string | boolean | undefined> }).env;
@@ -39,6 +52,8 @@ export const getReviewRequest = api.getReviewRequest;
 export const approveReview = api.approveReview;
 export const rejectReview = api.rejectReview;
 export const cancelReview = api.cancelReview;
+export const publishPlugin = api.publishPlugin;
+export const delistPlugin = api.delistPlugin;
 export const initUpload = realApi.initUpload;
 export const uploadFile = realApi.uploadFile;
 export const uploadIcon = realApi.uploadIcon;

@@ -13,7 +13,7 @@ import { t, useI18n, WKApp, WKButton, Dap } from "@octo/base";
 import type { Skill, SkillSort } from "../types/skill";
 import { useSkills } from "../hooks/useSkills";
 import { useReviewRequests } from "../hooks/useReviewRequests";
-import { cancelReview } from "../api/skillApi";
+import { cancelReview, publishPlugin } from "../api/skillApi";
 import { deriveSkillReviewState } from "../utils/review";
 import BotPublishModal from "../components/BotPublishModal";
 import CategoryChips from "../components/CategoryChips";
@@ -25,7 +25,7 @@ import SearchBar from "../components/SearchBar";
 import SkillCard from "../components/SkillCard";
 import SkillCardSkeleton from "../components/SkillCardSkeleton";
 import SkillDetailModal from "../components/SkillDetailModal";
-import MineTable, { type MineReviewBadge } from "../components/MineTable";
+import MineTable from "../components/MineTable";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 
 /**
@@ -211,6 +211,29 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
     }
   }
 
+  /**
+   * 发布 from the row. The BACKEND decides what that means from the plugin's
+   * declared visibility — list it now, or open an organization review — so the
+   * toast is chosen from the response rather than guessed at here.
+   */
+  async function handlePublish(skill: Skill) {
+    try {
+      const outcome = await publishPlugin({ pluginId: skill.id, version: skill.version });
+      showToast(
+        outcome.displayStatus === "pending_review"
+          ? t("skillMarket.review.submittedToast")
+          : t("skillMarket.plugin.publishedToast")
+      );
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t("skillMarket.review.submitFailed"));
+    } finally {
+      // Refresh either way: on a conflict the server already knows a state this
+      // page does not, and only a re-read shows it.
+      list.refresh();
+      myReviews.refresh();
+    }
+  }
+
   function handleUpdated() {
     showToast(t("skillMarket.list.saved"));
     list.refresh();
@@ -376,29 +399,15 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
           mine ? (
             <MineTable
               rows={list.skills.map((skill) => {
-                // Review affordances are mutually exclusive by construction: at
-                // most one of pending / rejected / private / listed applies to a
-                // given row. They are attached here (page level) and rendered by
-                // the row component; the catalog branch below builds no such
-                // fields, so a discovery card can never pick up owner actions.
+                // The status comes from the server (`display_status`), which folds
+                // the listing state together with the review entity. It used to be
+                // re-derived here from a client-side join of the review list, and
+                // each page got the precedence subtly different — a listed plugin
+                // with a pending upgrade in particular.
+                const status = skill.displayStatus ?? "draft";
+                const pending = status === "pending_review";
+                const listedToOrg = skill.listingState === "published" && skill.visibility === "space";
                 const reviewState = reviewStateByPlugin.get(skill.id);
-                const pending = reviewState?.pending;
-                const rejected = reviewState?.rejected;
-                const isPrivate = skill.visibility === "private";
-                // MineTable renders a precomputed badge instead of re-deriving one
-                // from the request objects, so the union is resolved here. Order
-                // matters: a pending request outranks a stale rejection, and on an
-                // already-listed plugin "pending" means the live version stays up
-                // while the new one is reviewed.
-                const reviewBadge: MineReviewBadge = pending
-                  ? isPrivate
-                    ? "pending"
-                    : "pending-upgrade"
-                  : rejected
-                    ? "rejected"
-                    : isPrivate
-                      ? "private"
-                      : "live";
                 return {
                 id: skill.id,
                 type: "skill" as const,
@@ -420,31 +429,38 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
                 visibility: skill.visibility,
                 views: skill.viewCount,
                 downloads: skill.downloadCount,
-                updatedAt: skill.updatedAt,
+                status,
+                rejectReason: reviewState?.rejected?.reason,
                 ariaLabel: skill.name,
                 onOpen: () => openDetail(skill),
-                // 编辑 is withheld once a plugin is listed to the org. A direct edit
-                // takes effect immediately for everyone, which would route around
-                // review entirely — so a listed plugin changes only through
-                // 发布新版本, and while a request is pending it does not change at
-                // all (the live version stays up until a decision lands).
-                onEdit: isPrivate && !pending ? () => setEditing(skill) : undefined,
+                // 编辑 is withheld only from a plugin LISTED TO THE ORG: a direct
+                // edit would take effect immediately for everyone, routing around
+                // review. A private plugin — published or not — has no org audience
+                // to protect and stays editable, and a draft/rejected/delisted row
+                // is editable by definition (that is how you fix and republish).
+                // While a request is pending nothing changes either, so the live
+                // version stays up until a decision lands.
+                onEdit: !listedToOrg && !pending ? () => setEditing(skill) : undefined,
                 onDelete: () => setDeleting(skill),
                 editAria: t("skillMarket.card.editAriaLabel", { values: { name: skill.name } }),
                 deleteAria: t("skillMarket.card.deleteAriaLabel", { values: { name: skill.name } }),
-                reviewBadge,
-                rejectReason: rejected?.reason,
-                onSubmitReview:
-                  isPrivate && !pending && !rejected ? () => openReviewSubmit(skill) : undefined,
-                onCancelReview: pending ? () => void handleCancelReview(pending.id) : undefined,
-                onResubmit: rejected
-                  ? () => openReviewSubmit(skill, rejected.changelog)
-                  : undefined,
-                onPublishVersion:
-                  !isPrivate && !pending ? () => openReviewSubmit(skill) : undefined,
+                // 升级版本 replaces the old 提交审核/重新提交/发布新版本 trio: publishing
+                // is now one backend-decided action, so the only thing left to
+                // offer on a LISTED plugin is a new version.
+                onPublish:
+                  skill.listingState !== "published" && !pending
+                    ? () => void handlePublish(skill)
+                    : undefined,
+                publishAria: t("skillMarket.plugin.ariaPublish", { values: { name: skill.name } }),
+                onUpgrade: listedToOrg && !pending ? () => openReviewSubmit(skill) : undefined,
+                upgradeAria: t("skillMarket.plugin.ariaUpgrade", { values: { name: skill.name } }),
+                onCancelReview:
+                  pending && skill.reviewId
+                    ? () => void handleCancelReview(skill.reviewId as string)
+                    : undefined,
+                cancelReviewAria: t("skillMarket.plugin.ariaCancelReview", { values: { name: skill.name } }),
                 };
               })}
-              visibilityLabel={(v) => t(`skillMarket.visibility.${v}`)}
             />
           ) : (
             <div className="skill-market-grid">

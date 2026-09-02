@@ -17,6 +17,21 @@ export const SECRET_PLACEHOLDER = "__OCTO_SECRET_PLACEHOLDER__";
 export type PluginTypeWire = "connector" | "expert" | "expert_team" | "skill";
 export type PluginVisibilityWire = "public" | "space" | "private" | "system";
 
+/** Whether the row is listed, independent of who it is listed to. Not to be
+ *  confused with the `status` int elsewhere on the wire, which is the soft-active
+ *  flag. */
+export type PluginListingStateWire = "draft" | "published" | "delisted";
+
+/** The one status a client renders. Folded server-side from the listing state
+ *  AND the review entity — hence values (`pending_review`, `rejected`) that no
+ *  column on the plugin row carries. Render it; never re-derive it. */
+export type PluginDisplayStatusWire =
+  | "draft"
+  | "pending_review"
+  | "published"
+  | "rejected"
+  | "delisted";
+
 export interface PluginManifestExampleWire {
   title: string;
   input: string;
@@ -73,6 +88,15 @@ export interface PluginListItemWire {
   download_count: number;
   manifest_json: PluginManifestWire;
   current_version?: string;
+  /** Owner-scoped listing fields: emitted only for `GET /plugins?mode=mine` and
+   *  `GET /plugins/detail`, so they are absent on the public market grid.
+   *  Optional rather than defaulted — "not returned" and "draft" are different
+   *  facts, and defaulting would badge every catalog card as an unpublished
+   *  draft. */
+  listing_state?: PluginListingStateWire;
+  display_status?: PluginDisplayStatusWire;
+  /** The review request `display_status` reflects, when there is one. */
+  review_id?: string;
   created_at: string;
   updated_at: string;
 }

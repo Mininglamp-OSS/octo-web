@@ -2693,10 +2693,11 @@
   gap: var(--wk-sp-2);
 }
 
-/* ── "我的发布" list table (shared MineTable) ─────────────────────────────
-   Token-styled data table used by all three mine tabs (技能 / 连接器 / 专家 /
-   专家团). Grid rows share the header's column template. Discovery grids are
-   untouched. */
+/* ── Plugin list table (shared MineTable) ─────────────────────────────────
+   Token-styled data table used by both "我的发布" (all four plugin tabs) and
+   "组织审核". The two pages render the same nine columns so an owner and a
+   reviewer read the same row; the column set is fixed rather than per-tab.
+   Discovery grids are untouched. */
 .wk-mine-table {
   display: flex;
   flex-direction: column;
@@ -2705,19 +2706,20 @@
   background: var(--wk-bg-surface);
   overflow: hidden;
 }
+/* Nine fixed columns: 名称 / 描述 / 分类 / 版本 / 可见性 / 浏览 / 下载 / 状态 /
+   操作. 名称 and 描述 are the only elastic ones and both truncate, so a long
+   value never reflows the row; 操作 is `max-content` above its floor because
+   the cell can hold two labelled buttons plus the 编辑/删除 icon pair and CJK
+   labels must not wrap (see .wk-mine-table__action). */
 .wk-mine-table__head,
 .wk-mine-table__row {
   display: grid;
   grid-template-columns:
-    minmax(240px, 2.4fr) minmax(96px, 1fr) 96px 118px 76px 76px 168px;
+    minmax(180px, 2.2fr) minmax(120px, 1.8fr) minmax(72px, 0.9fr) 84px 96px 64px
+    64px 88px minmax(140px, max-content);
   align-items: center;
   gap: var(--wk-sp-3);
   padding: 0 var(--wk-sp-5);
-}
-.wk-mine-table--nostats .wk-mine-table__head,
-.wk-mine-table--nostats .wk-mine-table__row {
-  grid-template-columns:
-    minmax(240px, 2.6fr) minmax(96px, 1fr) 96px 118px 168px;
 }
 .wk-mine-table__head {
   height: 44px;
@@ -2745,14 +2747,21 @@
 .wk-mine-table__col {
   min-width: 0;
 }
-.wk-mine-table__col--num,
-.wk-mine-table__col--updated {
+.wk-mine-table__col--num {
   font-variant-numeric: tabular-nums;
 }
-.wk-mine-table__col--category {
+.wk-mine-table__col--category,
+.wk-mine-table__col--desc {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* 描述 is its own column now rather than a second line under the name. It is
+   elastic, so it has to clamp to one line or a wordy plugin would set the row
+   height for every other row. */
+.wk-mine-table__col--desc {
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
 }
 /* name cell — an activatable open-button wrapping avatar (+ type marker) +
    name/description stack. The button is the flex container so the whole name
@@ -2844,13 +2853,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.wk-mine-table__desc {
-  color: var(--wk-text-tertiary);
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .wk-mine-table__version {
   display: inline-flex;
   align-items: center;
@@ -2881,6 +2883,11 @@
 .wk-mine-table__vis--private {
   background: var(--wk-bg-elevated);
   color: var(--wk-text-secondary);
+}
+.wk-mine-table__col--status {
+  display: flex;
+  align-items: center;
+  min-width: 0;
 }
 .wk-mine-table__col--actions {
   display: flex;
@@ -2928,7 +2935,7 @@
   background: var(--wk-color-danger-bg);
 }
 
-/* ── MineTable review affordances ──────────────────────────────────── */
+/* ── MineTable name cell + review affordances ──────────────────────── */
 
 .wk-mine-table__namerow {
   display: inline-flex;
@@ -2944,39 +2951,34 @@
   white-space: nowrap;
 }
 
-.wk-mine-review-badge {
+/* Type chip beside the name (技能 / 连接器 / 专家 / 专家团). The avatar marker
+   already encodes the type as a colour, but 组织审核 mixes all four types in one
+   queue, so the row needs the word too. Deliberately quiet: it must never
+   out-weigh the name it sits next to. */
+.wk-mine-table__typetag {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
   flex: 0 0 auto;
   height: 18px;
-  padding: 0 7px;
-  border-radius: var(--wk-r-full);
+  padding: 0 6px;
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-tertiary);
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1;
   white-space: nowrap;
 }
 
-.wk-mine-review-badge--private {
-  background: color-mix(in srgb, var(--wk-text-tertiary, #6b7280) 12%, transparent);
-  color: var(--wk-text-secondary);
-}
-
-.wk-mine-review-badge--pending,
-.wk-mine-review-badge--pending-upgrade {
-  background: color-mix(in srgb, #f59e0b 14%, transparent);
-  color: #d97706;
-}
-
-.wk-mine-review-badge--rejected {
-  background: color-mix(in srgb, var(--wk-color-error, #ef4444) 12%, transparent);
-  color: var(--wk-color-error, #ef4444);
-}
-
-.wk-mine-review-badge--live {
-  background: color-mix(in srgb, #22c55e 12%, transparent);
-  color: #16a34a;
+/* Secondary line under the name — 组织审核 puts 申请人 · 提交时间 here. Muted and
+   single-line so it cannot grow the row. */
+.wk-mine-table__meta {
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wk-mine-table__review-reason {
@@ -2989,6 +2991,62 @@
   line-height: 1.4;
 }
 
+/* ── Plugin display-status pill ─────────────────────────────────────────
+   Renders `display_status` from the backend (see utils/labels.ts
+   `displayStatusTone`). Built from the same semantic tokens as
+   .wk-mine-table__vis, so `body[theme-mode="dark"]` re-tints it for free — no
+   per-theme overrides here. */
+.wk-plugin-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  max-width: 100%;
+  height: 22px;
+  padding: 0 var(--wk-sp-2);
+  border-radius: var(--wk-r-full);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 草稿 — never submitted; the neutral, no-attention state. */
+.wk-plugin-status--draft {
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-secondary);
+}
+
+/* 审核中 — the one state a reviewer is expected to act on. */
+.wk-plugin-status--pending {
+  background: var(--wk-color-warning-bg);
+  color: var(--wk-color-warning);
+}
+
+/* 已上架 */
+.wk-plugin-status--published {
+  background: var(--wk-color-success-bg);
+  color: var(--wk-color-success);
+}
+
+/* 已拒绝 */
+.wk-plugin-status--rejected {
+  background: var(--wk-color-error-bg);
+  color: var(--wk-color-error);
+}
+
+/* 已下架 — was live, is not any more. Muted rather than red: it is an end
+   state, not a failure. The dotted underline separates it from 草稿 without
+   spending another hue. */
+.wk-plugin-status--delisted {
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-tertiary);
+  text-decoration: underline dotted currentcolor;
+  text-underline-offset: 2px;
+}
+
 .wk-mine-table__action--primary {
   border-color: var(--wk-color-accent);
   color: var(--wk-color-accent);
@@ -2996,6 +3054,76 @@
 
 .wk-mine-table__action--primary:hover {
   background: color-mix(in srgb, var(--wk-color-accent) 8%, transparent);
+}
+
+/* ── MineTable narrow-width behaviour ───────────────────────────────────
+   Nine columns do not fit a narrow content area, and horizontally scrolling a
+   table whose first cell is the only identifying one is worse than dropping
+   cells. So columns retire in reverse order of how much they carry: the two
+   counters first (pure telemetry), then 分类 and 描述, then 版本. 名称, 状态 and
+   操作 survive every breakpoint — you must always be able to tell which plugin
+   a row is, what state it is in, and act on it.
+
+   Each rule re-states grid-template-columns to match the cells still shown;
+   the header and body cells are hidden by the same selectors, so the two stay
+   in step. */
+@media (max-width: 1280px) {
+  .wk-mine-table__head,
+  .wk-mine-table__row {
+    grid-template-columns:
+      minmax(180px, 2.2fr) minmax(120px, 1.8fr) minmax(72px, 0.9fr) 84px 96px
+      88px minmax(140px, max-content);
+  }
+  .wk-mine-table__col--num {
+    display: none;
+  }
+}
+
+@media (max-width: 1080px) {
+  .wk-mine-table__head,
+  .wk-mine-table__row {
+    grid-template-columns:
+      minmax(160px, 2.2fr) minmax(120px, 1.8fr) 84px 96px 88px
+      minmax(140px, max-content);
+  }
+  .wk-mine-table__col--category {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .wk-mine-table__head,
+  .wk-mine-table__row {
+    grid-template-columns:
+      minmax(140px, 1fr) 84px 96px 88px minmax(120px, max-content);
+  }
+  .wk-mine-table__col--desc {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .wk-mine-table__head,
+  .wk-mine-table__row {
+    grid-template-columns: minmax(120px, 1fr) 88px minmax(96px, max-content);
+    gap: var(--wk-sp-2);
+    padding-left: var(--wk-sp-3);
+    padding-right: var(--wk-sp-3);
+  }
+  .wk-mine-table__col--version,
+  .wk-mine-table__col--visibility {
+    display: none;
+  }
+  /* The labelled review actions would blow the row apart at this width, so the
+     icon buttons keep their box and text buttons are allowed to shrink. */
+  .wk-mine-table__action {
+    max-width: 96px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .wk-mine-table__action--icon {
+    max-width: none;
+  }
 }
 
 /* ─── Scope choice in NewSkillModal ────────────────────────────────── */
@@ -3184,226 +3312,6 @@
 .skill-market-review-list {
   display: grid;
   gap: var(--wk-sp-2);
-}
-
-.skill-market-review-item {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--wk-sp-3);
-  padding: var(--wk-sp-3);
-  border: 1px solid var(--wk-border-subtle);
-  border-radius: var(--wk-r-md);
-  background: var(--wk-bg-surface);
-  cursor: pointer;
-  transition: border-color var(--wk-dur-fast) var(--wk-ease), background var(--wk-dur-fast) var(--wk-ease), opacity var(--wk-dur-fast) var(--wk-ease);
-}
-
-.skill-market-review-item[aria-disabled="true"] {
-  cursor: not-allowed;
-  opacity: 0.8;
-}
-
-.skill-market-review-item:hover {
-  border-color: var(--wk-border-default);
-  background: var(--wk-bg-item-hover);
-}
-
-.skill-market-review-item[aria-disabled="true"]:hover {
-  border-color: var(--wk-border-subtle);
-  background: var(--wk-bg-surface);
-}
-
-.skill-market-review-item__icon {
-  flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  border-radius: var(--wk-r-md);
-  overflow: hidden;
-}
-
-.skill-market-review-item__icon img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.skill-market-review-item__icon > span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: var(--wk-r-md);
-  color: #fff;
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.skill-market-review-item__main {
-  flex: 1;
-  min-width: 0;
-}
-
-.skill-market-review-item__top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--wk-sp-2);
-  margin-bottom: 4px;
-}
-
-.skill-market-review-item__title-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.skill-market-review-item__title-row strong {
-  color: var(--wk-text-primary);
-  font-size: 14px;
-  font-weight: 600;
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.skill-market-review-item__type {
-  padding: 1px 6px;
-  border-radius: 8px;
-  background: var(--wk-bg-elevated);
-  color: var(--wk-text-tertiary);
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.skill-market-review-item__kind {
-  padding: 1px 6px;
-  border-radius: 8px;
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.skill-market-review-item__kind--first {
-  background: color-mix(in srgb, var(--wk-color-accent) 10%, transparent);
-  color: var(--wk-color-accent);
-}
-
-.skill-market-review-item__kind--upgrade {
-  background: color-mix(in srgb, #3b82f6 10%, transparent);
-  color: #2563eb;
-}
-
-.skill-market-review-item__version {
-  color: var(--wk-text-tertiary);
-  font-size: 12px;
-}
-
-.skill-market-review-item__version-bump {
-  color: var(--wk-text-tertiary);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.skill-market-review-item__status {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  flex-shrink: 0;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.skill-market-review-item__status--pending {
-  color: #d97706;
-}
-
-.skill-market-review-item__status--approved {
-  color: #16a34a;
-}
-
-.skill-market-review-item__status--rejected,
-.skill-market-review-item__status--canceled {
-  color: var(--wk-color-error, #ef4444);
-}
-
-.skill-market-review-item__meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--wk-text-tertiary);
-  font-size: 12px;
-}
-
-.skill-market-review-item__reason,
-.skill-market-review-item__changelog {
-  margin-top: 6px;
-  color: var(--wk-text-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.skill-market-review-item__reason {
-  color: var(--wk-color-error, #ef4444);
-}
-
-.skill-market-review-item__actions {
-  display: flex;
-  align-items: center;
-  gap: var(--wk-sp-2);
-  flex-shrink: 0;
-}
-
-.skill-market-review-item__btn {
-  padding: 5px 14px;
-  border: 1px solid var(--wk-border-default);
-  border-radius: var(--wk-r-sm);
-  background: var(--wk-bg-surface);
-  color: var(--wk-text-secondary);
-  font: 500 13px/1.4 var(--wk-font-sans);
-  cursor: pointer;
-  transition: all var(--wk-dur-fast) var(--wk-ease);
-}
-
-.skill-market-review-item__btn:hover:not(:disabled) {
-  background: var(--wk-bg-item-hover);
-  color: var(--wk-text-primary);
-}
-
-.skill-market-review-item__btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.skill-market-review-item__btn--primary {
-  border-color: var(--wk-color-accent);
-  background: var(--wk-color-accent);
-  color: #fff;
-}
-
-.skill-market-review-item__btn--primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--wk-color-accent) 88%, #000);
-  color: #fff;
-}
-
-.skill-market-review-item__btn--danger {
-  border-color: var(--wk-color-error, #ef4444);
-  color: var(--wk-color-error, #ef4444);
-}
-
-.skill-market-review-item__btn--danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--wk-color-error, #ef4444) 8%, transparent);
-}
-
-.skill-market-review-item__btn--secondary {
-  border-color: var(--wk-border-default);
-  color: var(--wk-text-secondary);
 }
 
 .skill-market-review-list--loading {

@@ -176,8 +176,8 @@ export default function ReviewSubmitModal({
       onCancel={onClose}
       title={
         target?.isUpgrade
-          ? t("skillMarket.review.publishNewVersion")
-          : t("skillMarket.review.submitAction")
+          ? t("skillMarket.plugin.actionUpgrade")
+          : t("skillMarket.plugin.actionPublish")
       }
       footer={
         <>
@@ -191,8 +191,8 @@ export default function ReviewSubmitModal({
             disabled={blocked}
           >
             {target?.isUpgrade
-              ? t("skillMarket.review.publishNewVersion")
-              : t("skillMarket.review.submitAction")}
+              ? t("skillMarket.plugin.actionUpgrade")
+              : t("skillMarket.plugin.actionPublish")}
           </WKButton>
         </>
       }
