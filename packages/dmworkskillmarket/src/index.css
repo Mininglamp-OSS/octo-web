@@ -2701,11 +2701,27 @@
 .wk-mine-table {
   display: flex;
   flex-direction: column;
+  /* Every host of this table (.wk-mcp-mine__all, .skill-market-content) is a
+     column flex container that scrolls with `overflow: auto`, which makes the
+     table a flex ITEM. A flex item's automatic minimum size is its content
+     height — but only while its own `overflow` is `visible`. The
+     `overflow: hidden` below (which clips the rows to the rounded border) drops
+     that floor to zero, so once the list was taller than the viewport the table
+     was shrunk to fit instead of overflowing: the scroll container never got
+     anything to scroll, the rows past the fold were clipped away, and the
+     header — the only child whose min-content height (18px) is far below its
+     declared 44px — absorbed most of the squeeze and rendered less than half
+     height. It showed up as 全部 vs 技能 because 全部 lists all four plugin types
+     and is the tab that overflows first, but every tab did it once long enough.
+     Opting out of shrinking restores the intended behaviour: the table keeps its
+     content height and the host scrolls. */
+  flex-shrink: 0;
   border: 1px solid var(--wk-border-subtle);
   border-radius: var(--wk-r-lg);
   background: var(--wk-bg-surface);
   overflow: hidden;
 }
+
 /* Nine fixed columns: 名称 / 描述 / 分类 / 版本 / 可见性 / 浏览 / 下载 / 状态 /
    操作. 名称 and 描述 are the only elastic ones and both truncate, so a long
    value never reflows the row.
