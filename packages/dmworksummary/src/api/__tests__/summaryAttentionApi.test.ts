@@ -8,7 +8,8 @@
  *
  * 这里钉死三件事：
  *   1. fresh 的分工：用户动作带 fresh=1（绕过 5s 缓存），后台轮询不带（吃缓存）；
- *   2. 404 时自动回落到 listSummaries({page:1,page_size:1}) 读同一个 attention_count；
+ *   2. 老后端路由 404 时自动回落到 listSummaries({page:1,page_size:1})；配套新后端
+ *      对“没有总结”返回全零，不把业务空态与端点缺失混为一谈；
  *   3. 404 只判一次就记下来，之后直接走兜底——否则每一拍轮询都要先撞一次 404
  *      再补一个列表请求，在老后端上把请求量【翻倍】，比不做窄端点还糟。
  */
@@ -115,6 +116,12 @@ describe('getSummaryAttention —— 窄端点', () => {
 
         // 公共 get() 会把错误压成字符串 Error，状态码就此丢失，所以这里没走它。
         await expect(getSummaryAttention()).rejects.toMatchObject({ status: 404 });
+    });
+
+    it.each([-1, 0.5])('拒绝非法 attention_count=%s，不把畸形值当正常样本广播', async (count) => {
+        mockGet.mockResolvedValueOnce({ data: { data: { attention_count: count } } });
+
+        await expect(getSummaryAttention()).rejects.toThrow('Malformed summary attention response');
     });
 });
 

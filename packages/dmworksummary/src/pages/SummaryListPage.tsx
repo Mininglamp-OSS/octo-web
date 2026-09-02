@@ -120,20 +120,10 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 if (item.task_id !== taskId) return item;
                 // 看过 ≠ 已提交（owner 2026-08-26）：标读不清除待提交红点。
                 //
-                // 只信服务端刚回的值，【不】回退到 item.has_pending_submission。
-                // 回退看似更安全，实测恰恰相反（CR round-6，三位 reviewer 独立指出，
-                // 我在本地同时跑新旧两个后端逐条复现过）：
-                //   ・旧后端 MarkSummaryRead 不返回该字段 → 回退必定触发；而旧后端的
-                //     attention_count 又不含待提交 → 卡片留红点、导航栏显示 0。正是本 PR
-                //     要消灭的“侧边栏与卡片不一致”，方向反过来。
-                //   ・旧后端的 item.has_pending_submission 没有终态守卫，对 Failed/Cancelled
-                //     的任务照样返回 true → 回退会给一个永远提交不了的死任务钉上红点
-                //     （重新生成/删除又只有创建者能做）。#229 的 pendingSubmitStatusGuard
-                //     就是为这个而存在，回退正好绕过它。
-                //
-                // 去掉回退后两代后端都对：旧后端下恒为 undefined，标读清红点，与当前
-                // 线上语义一致；#229 上线后字段权威，“读≠提交”与一致的计数同时生效。
-                // 混合滚动发布窗口期也安全（那正是回退会被触发的时刻）。
+                // 红点信号只信服务端刚回的 needsAttention / hasPendingSubmission，
+                // 不用旧 item 的待提交值参与 needs_attention，避免把陈旧字段重新钉回红点。
+                // 但卡片字段本身保留旧值作为老后端兼容：旧接口不返回该字段时，维持
+                // 线上既有的等待态展示；新接口返回值时则以新值覆盖。
                 const pendingSubmission = detail.hasPendingSubmission;
                 return {
                     ...item,
@@ -141,7 +131,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                     has_pending_submission: pendingSubmission ?? item.has_pending_submission,
                     // 两个信号分开处理：
                     // ・邀请：新后端的 needsAttention 已包含它；旧后端省略字段时回退到卡片标记。
-                    // ・待提交：新后端的 needs_attention 已含它，这里的 OR 是冒余安全网；
+                    // ・待提交：新后端的 needs_attention 已含它，这里的 OR 是冗余安全网；
                     //   旧后端下 pendingSubmission 为 undefined，OR 不会凭空造出红点。
                     needs_attention: (detail.needsAttention ?? Boolean(item.has_pending_invitation))
                         || Boolean(pendingSubmission),

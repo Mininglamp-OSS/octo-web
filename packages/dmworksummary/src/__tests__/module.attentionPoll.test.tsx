@@ -171,6 +171,7 @@ vi.mock("../components/ChatSummaryPanel", () => ({ default: () => null }));
 import { SummaryModule, disposeSummaryModuleListeners, startSummaryAttentionPolling } from "../module";
 import {
   acceptRemoteAttentionCount,
+  refreshSummaryAttentionBadge,
   setSummaryAttentionPublisher,
 } from "../utils/summaryAttentionBadge";
 
@@ -324,6 +325,20 @@ describe("SummaryModule —— 兜底轮询接线", () => {
     mittHandler("space-changed")();
 
     expect(poll.notifyActivity).toHaveBeenCalledTimes(1);
+  });
+
+  it("space-ready 会把登录前退避的轮询拉回基础档", () => {
+    mittHandler("space-ready")();
+
+    expect(poll.notifyActivity).toHaveBeenCalledTimes(1);
+    expect(refreshSummaryAttentionBadge).toHaveBeenCalledTimes(1);
+  });
+
+  it("登录态变化会重置轮询节奏并 fresh 刷新", () => {
+    mittHandler("wk:auth-state-changed")();
+
+    expect(poll.notifyActivity).toHaveBeenCalledTimes(1);
+    expect(refreshSummaryAttentionBadge).toHaveBeenCalledTimes(1);
   });
 
   // 🔴 回归：这两行原本是【fresh 在前、轮询在后】。两条读取都在自己的第一个
@@ -486,10 +501,12 @@ describe("SummaryModule —— 定时器与监听的拆线", () => {
 
   it("拆线后路由监听不再在总线上", () => {
     expect(state.mittHandlers.has("wk:active-menu-changed")).toBe(true);
+    expect(state.mittHandlers.has("wk:auth-state-changed")).toBe(true);
 
     disposeSummaryModuleListeners();
 
     expect(state.mittHandlers.has("wk:active-menu-changed")).toBe(false);
+    expect(state.mittHandlers.has("wk:auth-state-changed")).toBe(false);
   });
 
   it("拆线后 visibility / focus 监听也一并摘掉（与既有 teardown 同一套做法）", () => {

@@ -11,9 +11,8 @@
  *   2. 只轮询**列表里已有**的任务（别人新建的邀请不在列表里，永远轮不到）；
  *   3. 只轮询**非终态**任务（已完成的未读也轮不到）。
  *
- * 补法刻意保持"被动"，**不引入新的定时轮询**：#1213 正是因为 5s 轮询产生
- * ~720 请求/用户/小时被产品砍掉，那个决定依然有效。这里只在**已经发生的
- * 外部事件**上顺带刷一次：
+ * 本文件只负责事件驱动的快速刷新；无人值守场景由独立的自适应轮询兜底
+ * （summaryAttentionPoll.ts）。这里只在**已经发生的外部事件**上顺带刷一次：
  *   - 标签页重新可见 / 窗口重新聚焦（用户回到 OCTO，最常见的入口）；
  *   - IM 重连成功（离线期间的变更需要补齐）；
  *   - 收到群内「总结完成」提示消息（type-21 或 PR1534 之后的 WK_TIP 2000）。
@@ -38,21 +37,18 @@ export const SUMMARY_NOTIFY_CONTENT_TYPE = 21;
  * WK_TIP 系统消息号段。PR1534(#1379) 把总结完成提示从自定义 type-21 改成
  * WK_TIP(2000) 以免 App 适配，所以两代消息都要认。
  */
-export const SYSTEM_TIP_MIN_CONTENT_TYPE = 1000;
-export const SYSTEM_TIP_MAX_CONTENT_TYPE = 2000;
+export const SUMMARY_TIP_CONTENT_TYPE = 2000;
 
 /**
  * 这条消息是否值得刷角标。
  *
- * 对系统提示只按号段粗判，不去解析文案：总结提示的正文是服务端下发的模板
- * （`{0}总结了群聊内容`），按文案匹配会被 i18n 和模板改动打碎。多刷一次
- * `page_size=1` 的代价远小于漏刷，而系统提示本身是低频消息。
+ * 不解析文案：总结提示的正文是服务端下发模板，按文案匹配会被 i18n 和模板
+ * 改动打碎。只认两代明确类型，避免普通加群/频道更新系统消息触发 fresh 请求。
  */
 export function shouldRefreshForMessage(message: unknown): boolean {
     const contentType = (message as { contentType?: unknown } | null | undefined)?.contentType;
     if (typeof contentType !== 'number' || !Number.isFinite(contentType)) return false;
-    if (contentType === SUMMARY_NOTIFY_CONTENT_TYPE) return true;
-    return contentType >= SYSTEM_TIP_MIN_CONTENT_TYPE && contentType <= SYSTEM_TIP_MAX_CONTENT_TYPE;
+    return contentType === SUMMARY_NOTIFY_CONTENT_TYPE || contentType === SUMMARY_TIP_CONTENT_TYPE;
 }
 
 /**

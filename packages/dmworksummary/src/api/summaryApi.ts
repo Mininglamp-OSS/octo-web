@@ -119,7 +119,12 @@ export const SUMMARY_ATTENTION_TIMEOUT_MS = 10_000;
  */
 function assertAttentionCounts(data: unknown): SummaryAttentionCounts {
     const counts = data as SummaryAttentionCounts | null | undefined;
-    if (!counts || typeof counts !== 'object' || !Number.isFinite(counts.attention_count)) {
+    if (
+        !counts
+        || typeof counts !== 'object'
+        || !Number.isInteger(counts.attention_count)
+        || counts.attention_count < 0
+    ) {
         throw new Error('Malformed summary attention response');
     }
     return counts;
@@ -662,7 +667,9 @@ export async function getSummaryAttention(options?: { fresh?: boolean }): Promis
  * 窄端点是否已被判定为「这个后端没有」。
  *
  * 前后端不同步发布是常态（本仓库的 web 可以指向任意一套 summary-api），窄端点
- * 上线前红点必须照常工作。第一次 404 之后就把结论记下来，之后直接走兜底：
+ * 上线前红点必须照常工作。配套后端对「没有任何总结」返回全零；前端又会在没有
+ * Space 时提前 return，所以这里收到的 404 表示当前后端没有部署该路由。第一次
+ * 404 之后就把结论记下来，之后直接走兜底：
  * 否则每 15s 的后台轮询都会先撞一次 404 再补一个列表请求，在老后端上把
  * 请求量【翻倍】——比不做窄端点还糟。
  *
@@ -725,7 +732,7 @@ export async function fetchSummaryAttentionCounts(options?: { fresh?: boolean })
     // 是给登录页转圈用的，它没有义务为 summary 轮询的节奏负责，改动它的人也不会想到
     // 这里。listSummaries 的其它调用点不传 timeout，继续用那个 20s 的全局默认。
     const resp = await listSummaries({ page: 1, page_size: 1 }, { timeout: SUMMARY_ATTENTION_TIMEOUT_MS });
-    // 兵底路径同样校验：它并不比窄端点更可信，而且它是老后端上的唯一数据源。
+    // 兜底路径同样校验：它并不比窄端点更可信，而且它是老后端上的唯一数据源。
     return assertAttentionCounts({
         attention_count: resp.attention_count,
         unread_count: resp.unread_count,

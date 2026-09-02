@@ -183,18 +183,31 @@ function defaultLocalStorage(): Storage | null {
     }
 }
 
-function readLease(storage: Storage): LeaseRecord | null {
+type LeaseReadResult =
+    | { ok: true; lease: LeaseRecord | null }
+    | { ok: false };
+
+function readLease(storage: Storage): LeaseReadResult {
+    let raw: string | null;
     try {
-        const raw = storage.getItem(LEASE_KEY);
-        if (!raw) return null;
+        raw = storage.getItem(LEASE_KEY);
+    } catch {
+        // 运行期间 storage 也可能失效（配额、策略切换、宿主替换实现）。这和
+        // 「租约不存在」不能混为一谈：后者应该竞争，前者必须切到人人自轮。
+        return { ok: false };
+    }
+    if (!raw) return { ok: true, lease: null };
+    try {
         const parsed = JSON.parse(raw) as Partial<LeaseRecord> | null;
-        if (!parsed || typeof parsed.id !== 'string' || typeof parsed.ts !== 'number') return null;
-        if (!Number.isFinite(parsed.ts)) return null;
-        return { id: parsed.id, ts: parsed.ts };
+        if (!parsed || typeof parsed.id !== 'string' || typeof parsed.ts !== 'number') {
+            return { ok: true, lease: null };
+        }
+        if (!Number.isFinite(parsed.ts)) return { ok: true, lease: null };
+        return { ok: true, lease: { id: parsed.id, ts: parsed.ts } };
     } catch {
         // 内容被别的东西写坏（同名 key 冲突、手改、旧版本格式）时按「没有租约」
         // 处理：接管会用合法内容覆盖它，比在这里抛异常把整条链路带崩要好。
-        return null;
+        return { ok: true, lease: null };
     }
 }
 
@@ -210,21 +223,22 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
     const rawStorage = deps.storage !== undefined
         ? deps.storage
         : defaultLocalStorage();
-    const storage = probeStorage(rawStorage);
+    let storage = probeStorage(rawStorage);
 
     const ChannelCtor = deps.broadcastChannelCtor !== undefined
         ? deps.broadcastChannelCtor
         : (typeof BroadcastChannel !== 'undefined' ? BroadcastChannel : null);
 
-    let channel: BroadcastChannel | null = null;
-    if (ChannelCtor) {
+    const openChannel = (): BroadcastChannel | null => {
+        if (!ChannelCtor) return null;
         try {
-            channel = new ChannelCtor(CHANNEL_NAME);
+            return new ChannelCtor(CHANNEL_NAME);
         } catch {
             // 构造失败（宿主给了个会抛的壳）等同不可用，下面按降级处理。
-            channel = null;
+            return null;
         }
-    }
+    };
+    let channel = openChannel();
 
     /**
      * 降级判定。
@@ -234,12 +248,16 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
      * 那些标签页的红点会一直是旧的——比多发几个请求糟得多。
      * 两者任缺其一都降级成「人人自己轮询」，绝不降级成「没人轮询」。
      */
-    const degraded = storage === null || channel === null;
+    let degraded = storage === null || channel === null;
 
     let started = false;
     let leader = degraded; // 降级时每个标签页都视自己为 leader
     let heartbeatTimer: unknown = null;
     let unloadHandler: (() => void) | null = null;
+    let pageShowHandler: (() => void) | null = null;
+    // pagehide/beforeunload 后即使宿主仍短暂派发定时器，也不能重新抢回租约。
+    // bfcache 恢复由 pageshow 显式重新开启。
+    let pageActive = true;
     /**
      * 本标签页当前是否可见。初值从注入的判定读一次；之后由 setVisible 更新，
      * 并且每一拍心跳都会重新校准（见 beat）——所以它是缓存，不是唯一真相。
@@ -248,30 +266,6 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
      * 就是把整个浏览器的兜底轮询扣死。见 AttentionLeaderDeps.isVisible 的注释。
      */
     let visible = isVisibleFn();
-
-    const writeLease = () => {
-        if (!storage) return;
-        // 不可见时绝不续租：这是「可见性即选主资格」的落点。少了这一行，隐藏的
-        // leader 会一边停着自己的表、一边每 3s 告诉所有人「我还活着」。
-        if (!visible) return;
-        try {
-            storage.setItem(LEASE_KEY, JSON.stringify({ id: tabId, ts: now() } satisfies LeaseRecord));
-        } catch {
-            // 写失败（配额、隐私模式突变）不改变身份：本标签页继续轮询，租约会
-            // 自然过期让别人接管。最坏结果是短时间两个标签页都在轮，可接受。
-        }
-    };
-
-    const clearLeaseIfMine = () => {
-        if (!storage) return;
-        try {
-            const lease = readLease(storage);
-            // 只清自己的：接管发生后租约已经属于别人，清掉会让它平白掉线。
-            if (lease && lease.id === tabId) storage.removeItem(LEASE_KEY);
-        } catch {
-            // 清不掉就等它过期，正确性不依赖这一步。
-        }
-    };
 
     const resign = () => {
         if (!leader) return;
@@ -283,6 +277,45 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
         if (leader) return;
         leader = true;
         deps.onBecomeLeader();
+    };
+
+    const enterDegradedMode = () => {
+        if (degraded) return;
+        degraded = true;
+        storage = null;
+        if (heartbeatTimer !== null) {
+            clearIntervalFn(heartbeatTimer);
+            heartbeatTimer = null;
+        }
+        // 协调能力丢失后，每个标签页都必须继续自轮；若当前是 follower，立即拉起。
+        promote();
+    };
+
+    const writeLease = (): boolean => {
+        if (!storage) return false;
+        // 不可见时绝不续租：这是「可见性即选主资格」的落点。少了这一行，隐藏的
+        // leader 会一边停着自己的表、一边每 3s 告诉所有人「我还活着」。
+        if (!visible) return false;
+        try {
+            storage.setItem(LEASE_KEY, JSON.stringify({ id: tabId, ts: now() } satisfies LeaseRecord));
+            return true;
+        } catch {
+            enterDegradedMode();
+            return false;
+        }
+    };
+
+    const clearLeaseIfMine = () => {
+        if (!storage) return;
+        try {
+            const result = readLease(storage);
+            if (!result.ok) return;
+            const lease = result.lease;
+            // 只清自己的：接管发生后租约已经属于别人，清掉会让它平白掉线。
+            if (lease && lease.id === tabId) storage.removeItem(LEASE_KEY);
+        } catch {
+            // 清不掉就等它过期，正确性不依赖这一步。
+        }
     };
 
     /**
@@ -313,7 +346,7 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
      * 两件事合在一拍里做，跟随者才不需要另一个独立的观察定时器。
      */
     const beat = () => {
-        if (!storage) return;
+        if (!storage || !pageActive) return;
         // 每拍现问一次可见性，而不是只信 setVisible 留下的缓存值。
         //
         // 心跳定时器特意【不】随可见性停表，理由写在 start() 里：宿主可能根本不发
@@ -336,7 +369,12 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
             }
             return;
         }
-        const lease = readLease(storage);
+        const leaseResult = readLease(storage);
+        if (!leaseResult.ok) {
+            enterDegradedMode();
+            return;
+        }
+        const lease = leaseResult.lease;
         const current = now();
 
         if (lease && lease.id === tabId) {
@@ -346,7 +384,7 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
             if (isLeaseStale(lease, current)) {
                 resign();
             } else {
-                writeLease();
+                if (!writeLease()) return;
                 promote();
                 return;
             }
@@ -358,9 +396,14 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
             // 下一拍读到别人的 id 并退位。这个窗口最长一个心跳周期，期间可能有
             // 两个标签页各发一次轮询——比「谁都不敢抢」好得多，
             // 而 localStorage 没有 CAS，纯前端做不到真正的原子抢占。
-            writeLease();
-            const after = readLease(storage);
-            if (after && after.id === tabId) promote();
+            if (!writeLease() || !storage) return;
+            const afterResult = readLease(storage);
+            if (!afterResult.ok) {
+                enterDegradedMode();
+                return;
+            }
+            const after = afterResult.lease;
+            if (after?.id === tabId) promote();
             else resign();
             return;
         }
@@ -392,6 +435,39 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
         start(): void {
             if (started) return;
             started = true;
+            pageActive = true;
+
+            // stop() 会关闭 channel；同一实例重新 start 时要恢复协调能力。
+            if (!degraded && channel === null) {
+                channel = openChannel();
+                if (channel === null) degraded = true;
+            }
+
+            if (typeof window !== 'undefined') {
+                // pagehide 可能进入 bfcache，也可能紧接着销毁 document。无论哪种，
+                // 都必须先停掉本页 poll，再释放租约；只清租约会留下一个仍会开火的
+                // 定时器，而 MSW 已可能把旧 client 注销，造成请求直穿代理。
+                // 降级模式也必须装这组监听：它虽然没有租约，却仍有自己的 poll。
+                unloadHandler = () => {
+                    pageActive = false;
+                    visible = false;
+                    resign();
+                    clearLeaseIfMine();
+                };
+                // bfcache 恢复不会重新执行模块初始化，pageshow 要把存活实例重新拉回
+                // 竞争；普通 reload 的旧 document 不会走到这里。
+                pageShowHandler = () => {
+                    if (!started) return;
+                    pageActive = true;
+                    visible = isVisibleFn();
+                    if (!visible) return;
+                    if (degraded) promote();
+                    else beat();
+                };
+                window.addEventListener('pagehide', unloadHandler);
+                window.addEventListener('beforeunload', unloadHandler);
+                window.addEventListener('pageshow', pageShowHandler);
+            }
 
             if (degraded) {
                 // 没有协调手段：直接自己轮询。这里【不】设心跳定时器，也不写租约。
@@ -415,19 +491,13 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
             // 职责，停了之后本标签页重新可见却没有 visibilitychange（比如宿主根本
             // 不发这个事件的嵌入环境）时，就再也没东西把它拉回竞争。隐藏期间的
             // 每一拍开销是一次 early return，可忽略。
-            heartbeatTimer = setIntervalFn(beat, heartbeatMs);
+            if (!degraded) heartbeatTimer = setIntervalFn(beat, heartbeatMs);
 
-            if (typeof window !== 'undefined') {
-                // 正常卸载时让出租约，纯粹是【优化】：接管立刻发生，不必等阈值。
-                // 正确性由租约过期兜底——被强杀时这个回调根本不会执行。
-                unloadHandler = () => clearLeaseIfMine();
-                window.addEventListener('pagehide', unloadHandler);
-                window.addEventListener('beforeunload', unloadHandler);
-            }
         },
         stop(): void {
             if (!started) return;
             started = false;
+            pageActive = false;
             if (heartbeatTimer !== null) {
                 clearIntervalFn(heartbeatTimer);
                 heartbeatTimer = null;
@@ -436,7 +506,11 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
                 window.removeEventListener('pagehide', unloadHandler);
                 window.removeEventListener('beforeunload', unloadHandler);
             }
+            if (pageShowHandler && typeof window !== 'undefined') {
+                window.removeEventListener('pageshow', pageShowHandler);
+            }
             unloadHandler = null;
+            pageShowHandler = null;
             clearLeaseIfMine();
             if (channel) {
                 channel.onmessage = null;
@@ -468,6 +542,7 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
         setVisible(nextVisible: boolean): void {
             if (nextVisible === visible) return;
             visible = nextVisible;
+            if (!pageActive) return;
             // 降级模式下没有租约也没有心跳，leader 恒为 true；可见性对轮询的门控
             // 已经在 summaryAttentionPoll 里做过了，这里再动一次只会把「每个标签页
             // 自己轮询」这个降级保底拆掉。

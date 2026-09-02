@@ -33,6 +33,7 @@ import "./index.css";
 
 let _spaceChangedHandler: (() => void) | null = null;
 let _spaceReadyHandler: (() => void) | null = null;
+let _authStateChangedHandler: (() => void) | null = null;
 // 外部事件→红点同步。模块级单例，与上面两个 handler 同生命周期。
 let _attentionSync: AttentionSync | null = null;
 let _visibilityHandler: (() => void) | null = null;
@@ -264,10 +265,19 @@ export class SummaryModule implements IModule {
         _spaceReadyHandler = () => {
             initialSpaceReady = true;
             // 此时登录态与 X-Space-Id 已就绪，安全执行一次冷启动首刷。
+            // 与切 Space 相同，先让 poll 回基础档并领较早的票，再发 fresh 读取。
+            _attentionPoll?.notifyActivity();
+            refreshSummaryAttentionBadge();
+        };
+        _authStateChangedHandler = () => {
+            // 登录态变化后重新校准轮询节奏。尤其是页面在登录前已退避到 60s 时，
+            // 登录成功不能继续沿用旧档位；读取自身会在未登录/无 Space 时安全早退。
+            _attentionPoll?.notifyActivity();
             refreshSummaryAttentionBadge();
         };
         WKApp.mittBus.on('space-changed', _spaceChangedHandler);
         WKApp.mittBus.on('space-ready', _spaceReadyHandler);
+        WKApp.mittBus.on('wk:auth-state-changed', _authStateChangedHandler);
 
         // ═══ 外部事件唤醒红点 ═══
         // 上面两个 handler 只盖住“本人切 Space / 冷启动”，其余刷新点全在详情页与
@@ -457,6 +467,10 @@ export function disposeSummaryModuleListeners(): void {
     if (_spaceReadyHandler) {
         WKApp.mittBus.off('space-ready', _spaceReadyHandler);
         _spaceReadyHandler = null;
+    }
+    if (_authStateChangedHandler) {
+        WKApp.mittBus.off('wk:auth-state-changed', _authStateChangedHandler);
+        _authStateChangedHandler = null;
     }
     // 外部事件监听也要拆，否则每次热更都会叠一层，一个 visibilitychange
     // 最后会打出 N 个请求。

@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MSW_CONTROL_TIMEOUT_MS,
   MSW_PROBE_HEADER,
+  MSW_PROBE_ATTEMPT_TIMEOUT_MS,
   MSW_PROBE_PATH,
   MSW_PROBE_RETRY_MS,
   MSW_PROBE_TIMEOUT_MS,
@@ -212,7 +213,10 @@ describe("waitForMockInterception", () => {
     const fetchFn = vi.fn().mockResolvedValue(PROBE_OK) as unknown as typeof fetch;
     await waitForMockInterception(MSW_PROBE_TIMEOUT_MS, harness(fetchFn).deps);
 
-    expect(fetchFn).toHaveBeenCalledWith(MSW_PROBE_PATH, { cache: "no-store" });
+    expect(fetchFn).toHaveBeenCalledWith(
+      MSW_PROBE_PATH,
+      expect.objectContaining({ cache: "no-store", signal: expect.any(AbortSignal) }),
+    );
     // 路径一旦挪到 /api、/summary/api/v1 之类前缀下，没拦到的那一发就会经由 vite
     // proxy 出去，在 e2e 的 proxy-error 计数上留一笔——探针制造出它本要消除的东西。
     for (const proxied of ["/api/", "/mail-api/", "/summary/api/v1", "/market/api/v1", "/fleet/api/v1"]) {
@@ -242,6 +246,21 @@ describe("waitForMockInterception", () => {
 
     await expect(waitForMockInterception(MSW_PROBE_TIMEOUT_MS, harness(fetchFn).deps)).resolves.toBe(true);
     expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("fetch 永不 settle 时也会按总时限返回 false，不把 main() 永久挂住", async () => {
+    const fetchFn = vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+      }),
+    ) as unknown as typeof fetch;
+    const timeoutMs = MSW_PROBE_ATTEMPT_TIMEOUT_MS * 2;
+    const pending = waitForMockInterception(timeoutMs, { fetchFn });
+
+    await vi.advanceTimersByTimeAsync(timeoutMs + MSW_PROBE_RETRY_MS);
+
+    await expect(pending).resolves.toBe(false);
+    expect(fetchFn.mock.calls.length).toBeGreaterThan(0);
   });
 
   it("【降级】始终不挂住 boot：一直拦不到也按时返回 false", async () => {

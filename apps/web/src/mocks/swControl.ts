@@ -80,6 +80,8 @@ export const MSW_PROBE_PATH = "/__msw_probe__";
 export const MSW_PROBE_HEADER = "x-msw-probe";
 export const MSW_PROBE_TIMEOUT_MS = 5_000;
 export const MSW_PROBE_RETRY_MS = 50;
+/** 单次探针的硬上限；总等待仍由 MSW_PROBE_TIMEOUT_MS 控制。 */
+export const MSW_PROBE_ATTEMPT_TIMEOUT_MS = 500;
 
 /**
  * 等 MSW 在【本 document】里真的开始拦请求。
@@ -135,13 +137,33 @@ export async function waitForMockInterception(
   // 先探一次再看时限：timeoutMs 传 0 也至少探一发，不会一次都不试就报降级。
   for (let attempt = 1; ; attempt++) {
     let intercepted = false;
+    const remainingMs = Math.max(0, deadline - now());
+    const attemptTimeoutMs = Math.min(MSW_PROBE_ATTEMPT_TIMEOUT_MS, remainingMs);
+    const controller = typeof AbortController === "undefined" ? null : new AbortController();
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
     try {
       // no-store：别让某一次探针结果被缓存住，之后每个 document 都读到同一份。
-      const res = await fetchFn(MSW_PROBE_PATH, { cache: "no-store" });
-      intercepted = res.headers.get(MSW_PROBE_HEADER) === "1";
+      // Promise.race 是硬边界：即使宿主 fetch 不理 AbortSignal，boot 也不会永久挂住；
+      // abort 负责尽量收掉底层连接，避免每轮留下一个后台悬挂请求。
+      const timeout = new Promise<null>((resolve) => {
+        timeoutHandle = setTimeout(() => {
+          controller?.abort();
+          resolve(null);
+        }, attemptTimeoutMs);
+      });
+      const request = Promise.resolve(
+        fetchFn(MSW_PROBE_PATH, {
+          cache: "no-store",
+          ...(controller ? { signal: controller.signal } : {}),
+        }),
+      ).catch(() => null);
+      const res = await Promise.race([request, timeout]);
+      intercepted = res?.headers.get(MSW_PROBE_HEADER) === "1";
     } catch {
       // 网络层失败（SW 正在换代、dev server 抖动）等同于「还没拦到」，继续重试。
       intercepted = false;
+    } finally {
+      if (timeoutHandle !== null) clearTimeout(timeoutHandle);
     }
     if (intercepted) return true;
     if (now() >= deadline || attempt >= maxAttempts) return false;

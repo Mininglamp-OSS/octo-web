@@ -3,6 +3,7 @@ import {
     createAttentionSync,
     shouldRefreshForMessage,
     SUMMARY_NOTIFY_CONTENT_TYPE,
+    SUMMARY_TIP_CONTENT_TYPE,
 } from '../summaryAttentionSync';
 
 describe('shouldRefreshForMessage', () => {
@@ -12,10 +13,12 @@ describe('shouldRefreshForMessage', () => {
 
     // PR1534(#1379) 把提示改成 WK_TIP(2000) 让 App 免适配，两代都要认，
     // 否则新老服务端各坏一半。
-    it('认 WK_TIP 号段（1000~2000），含两端边界', () => {
-        expect(shouldRefreshForMessage({ contentType: 1000 })).toBe(true);
-        expect(shouldRefreshForMessage({ contentType: 2000 })).toBe(true);
-        expect(shouldRefreshForMessage({ contentType: 1500 })).toBe(true);
+    it('只认总结 WK_TIP 2000，不把整个系统消息号段都当总结事件', () => {
+        expect(shouldRefreshForMessage({ contentType: SUMMARY_TIP_CONTENT_TYPE })).toBe(true);
+        expect(shouldRefreshForMessage({ contentType: 1000 })).toBe(false);
+        expect(shouldRefreshForMessage({ contentType: 1002 })).toBe(false);
+        expect(shouldRefreshForMessage({ contentType: 1005 })).toBe(false);
+        expect(shouldRefreshForMessage({ contentType: 1500 })).toBe(false);
     });
 
     // 普通聊天消息是最高频的事件源。若把它们也算上，等于给每条群消息挂一个

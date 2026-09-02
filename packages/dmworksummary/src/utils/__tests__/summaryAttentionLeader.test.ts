@@ -19,20 +19,24 @@ import {
 } from '../summaryAttentionLeader';
 
 /** 一份可被多个「标签页」共享的内存 storage（模拟同源 localStorage）。 */
-function createMemoryStorage(): Storage & { failWrites: boolean } {
+function createMemoryStorage(): Storage & { failReads: boolean; failWrites: boolean } {
     const map = new Map<string, string>();
     return {
+        failReads: false,
         failWrites: false,
         get length() { return map.size; },
         clear: () => map.clear(),
         key: (i: number) => Array.from(map.keys())[i] ?? null,
-        getItem(key: string) { return map.get(key) ?? null; },
+        getItem(this: { failReads: boolean }, key: string) {
+            if (this.failReads) throw new Error('SecurityError');
+            return map.get(key) ?? null;
+        },
         setItem(this: { failWrites: boolean }, key: string, value: string) {
             if (this.failWrites) throw new Error('QuotaExceededError');
             map.set(key, value);
         },
         removeItem: (key: string) => { map.delete(key); },
-    } as Storage & { failWrites: boolean };
+    } as Storage & { failReads: boolean; failWrites: boolean };
 }
 
 /** 共享总线上的 BroadcastChannel 替身：同名 channel 互相收发，且不回自己。 */
@@ -176,6 +180,80 @@ describe('createAttentionLeader —— 正常选举', () => {
 
         // 正常卸载时清租约只是让接管【立刻】发生，不必等过期阈值。
         expect(b.leader.isLeader()).toBe(true);
+    });
+});
+
+describe('createAttentionLeader —— 页面生命周期', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    function stubWindowEvents() {
+        const listeners = new Map<string, Set<EventListener>>();
+        vi.stubGlobal('window', {
+            addEventListener(type: string, listener: EventListener) {
+                const bucket = listeners.get(type) ?? new Set<EventListener>();
+                bucket.add(listener);
+                listeners.set(type, bucket);
+            },
+            removeEventListener(type: string, listener: EventListener) {
+                listeners.get(type)?.delete(listener);
+            },
+        });
+        return {
+            dispatch(type: string) {
+                for (const listener of listeners.get(type) ?? []) listener(new Event(type));
+            },
+        };
+    }
+
+    it('pagehide 先让位停轮询再释放租约，pageshow 从 bfcache 恢复竞争', () => {
+        const events = stubWindowEvents();
+        const storage = createMemoryStorage();
+        const factory = createChannelFactory();
+        const clock = { now: 1_000_000 };
+        const tab = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        tab.leader.start();
+        expect(tab.events).toEqual(['lead']);
+
+        events.dispatch('pagehide');
+
+        expect(tab.leader.isLeader()).toBe(false);
+        expect(tab.events).toEqual(['lead', 'resign']);
+        expect(storage.getItem('octo:summary-attention-leader')).toBeNull();
+
+        // 某些宿主在卸载窗口里仍可能派发一拍 interval；不能因此重新抢回租约。
+        tab.beat();
+        expect(tab.leader.isLeader()).toBe(false);
+
+        events.dispatch('pageshow');
+
+        expect(tab.leader.isLeader()).toBe(true);
+        expect(tab.events).toEqual(['lead', 'resign', 'lead']);
+        tab.leader.stop();
+    });
+
+    it('降级模式在 pagehide 停轮询，pageshow 恢复自轮', () => {
+        const events = stubWindowEvents();
+        const clock = { now: 1_000_000 };
+        const tab = createTab({
+            id: 'tab-a',
+            storage: createMemoryStorage(),
+            ctor: null,
+            clock,
+        });
+        tab.leader.start();
+        expect(tab.events).toEqual(['lead']);
+
+        events.dispatch('pagehide');
+        expect(tab.leader.isLeader()).toBe(false);
+        expect(tab.events).toEqual(['lead', 'resign']);
+
+        events.dispatch('pageshow');
+        expect(tab.leader.isLeader()).toBe(true);
+        expect(tab.events).toEqual(['lead', 'resign', 'lead']);
+
+        tab.leader.stop();
     });
 });
 
@@ -358,6 +436,19 @@ describe('createAttentionLeader —— 计数广播', () => {
 
         expect(b.remote).toEqual([]);
     });
+
+    it('stop 后重新 start 会重建 BroadcastChannel，仍能接收广播', () => {
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        const b = createTab({ id: 'tab-b', storage, ctor: factory.ctor, clock });
+        a.leader.start();
+        b.leader.start();
+
+        b.leader.stop();
+        b.leader.start();
+        a.leader.publish(6, 'space-1', 1_700_000_000_100);
+
+        expect(b.remote).toEqual([{ count: 6, spaceId: 'space-1', sampleAt: 1_700_000_000_100 }]);
+    });
 });
 
 // ═══ 强制降级路径 ═══
@@ -409,6 +500,39 @@ describe('createAttentionLeader —— 降级（宁可多打请求，也不能�
         // 只判 `typeof localStorage !== 'undefined'` 会漏掉这一整类环境。
         expect(a.leader.isDegraded()).toBe(true);
         expect(a.leader.isLeader()).toBe(true);
+    });
+
+    it('运行中 storage 读失败时从 follower 切到自轮，不会全标签页静默', () => {
+        const storage = createMemoryStorage();
+        const factory = createChannelFactory();
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        const b = createTab({ id: 'tab-b', storage, ctor: factory.ctor, clock });
+        a.leader.start();
+        b.leader.start();
+        expect(b.leader.isLeader()).toBe(false);
+
+        storage.failReads = true;
+        b.beat();
+
+        expect(b.leader.isDegraded()).toBe(true);
+        expect(b.leader.isLeader()).toBe(true);
+        expect(b.events).toEqual(['lead']);
+        expect(b.hasHeartbeat()).toBe(false);
+    });
+
+    it('运行中 storage 写失败时 leader 保持自轮并停止无效心跳', () => {
+        const storage = createMemoryStorage();
+        const factory = createChannelFactory();
+        const a = createTab({ id: 'tab-a', storage, ctor: factory.ctor, clock });
+        a.leader.start();
+
+        storage.failWrites = true;
+        a.beat();
+
+        expect(a.leader.isDegraded()).toBe(true);
+        expect(a.leader.isLeader()).toBe(true);
+        expect(a.events).toEqual(['lead']);
+        expect(a.hasHeartbeat()).toBe(false);
     });
 
     it('BroadcastChannel 构造函数抛异常时也降级，而不是把模块带崩', () => {
