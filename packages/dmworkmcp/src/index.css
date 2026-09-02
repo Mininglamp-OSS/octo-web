@@ -1566,9 +1566,23 @@
    keeps only the search + publish actions, so trim its top padding a touch. */
 .wk-mcp-mine__panel > .wk-mcp,
 .wk-mcp-mine__panel > .wk-mcp-expert-page,
-.wk-mcp-mine__panel > .skill-market-page {
+.wk-mcp-mine__panel > .skill-market-page,
+.wk-mcp-mine__panel > .wk-mcp-mine__all {
   flex: 1;
   min-height: 0;
+}
+
+/* The 全部 tab has no market page under it — it renders MineTable directly — so
+   it has to supply the scroll container and padding the other four tabs inherit
+   from their page's own content area. Matches .skill-market-content, or the 全部
+   table sits flush against the panel edges while every sibling tab is inset. */
+.wk-mcp-mine__all {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  padding: var(--wk-sp-4) var(--wk-sp-6);
 }
 
 /* variant="mine" hides each page's own title, so lift its search + create

@@ -4,6 +4,8 @@ import { t, useI18n } from "@octo/base";
 import {
   MineTable,
   getMySkills,
+  getSkillAvatarColor,
+  getSkillAvatarText,
   type MineAssetType,
   type MineRow,
   type Skill,
@@ -66,28 +68,34 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
 
   if (loading && items.length === 0) {
     return (
-      <div className="skill-market-review-list--loading">
-        <RefreshCw size={16} className="skill-market-spin" />
-        {t("skillMarket.common.loading")}
+      <div className="wk-mcp-mine__all">
+        <div className="skill-market-review-list--loading">
+          <RefreshCw size={16} className="skill-market-spin" />
+          {t("skillMarket.common.loading")}
+        </div>
       </div>
     );
   }
 
   if (error && items.length === 0) {
     return (
-      <div className="skill-market-state is-error">
-        <AlertCircle size={28} />
-        <strong>{t("skillMarket.common.loadFailed")}</strong>
-        <span>{error}</span>
+      <div className="wk-mcp-mine__all">
+        <div className="skill-market-state is-error">
+          <AlertCircle size={28} />
+          <strong>{t("skillMarket.common.loadFailed")}</strong>
+          <span>{error}</span>
+        </div>
       </div>
     );
   }
 
   if (items.length === 0) {
     return (
-      <div className="skill-market-state">
-        <PackageOpen size={48} />
-        <strong>{t("mcp.mine.emptyAll")}</strong>
+      <div className="wk-mcp-mine__all">
+        <div className="skill-market-state">
+          <PackageOpen size={48} />
+          <strong>{t("mcp.mine.emptyAll")}</strong>
+        </div>
       </div>
     );
   }
@@ -98,8 +106,18 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
       id: item.id,
       type: ROW_TYPE[wireType] ?? "skill",
       trackItemType: wireType,
+      // Each type draws its avatar the way its OWN tab draws it — skills key the
+      // tile off the name, the other markets off the id — so the same row does
+      // not change appearance depending on which tab you found it in.
       icon: item.iconUrl ? (
         <img className="wk-mine-table__avatar-img" src={item.iconUrl} alt="" />
+      ) : wireType === "skill" ? (
+        <span
+          className="wk-mine-table__avatar-tile"
+          style={{ background: getSkillAvatarColor(item.name) }}
+        >
+          {getSkillAvatarText(item.name)}
+        </span>
       ) : (
         <span
           className="wk-mine-table__avatar-tile"
@@ -121,5 +139,9 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
     };
   });
 
-  return <MineTable rows={rows} ariaLabel={t("mcp.mine.allAriaLabel")} />;
+  return (
+    <div className="wk-mcp-mine__all">
+      <MineTable rows={rows} ariaLabel={t("mcp.mine.allAriaLabel")} />
+    </div>
+  );
 }
