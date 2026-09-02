@@ -110,6 +110,15 @@ describe("GroupManagement disband action", () => {
 })
 
 describe("GroupManagement member loading", () => {
+  it("passes loading text to the view so it owns a single spinner", () => {
+    const component = makeComponent()
+
+    const view = component.render() as React.ReactElement<any>
+
+    expect(view.props.loading).toBe(true)
+    expect(view.props.labels.loading).toBe("base.groupManagement.loading")
+  })
+
   it("stores loaded managers and bot admins and clears loading", async () => {
     hoisted.loadMembers.mockResolvedValueOnce({
       managers: [{ uid: "manager" }],

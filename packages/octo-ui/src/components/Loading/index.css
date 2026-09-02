@@ -72,3 +72,9 @@
     transform: rotate(360deg);
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .octo-ui-loading__spinner {
+    animation: none;
+  }
+}

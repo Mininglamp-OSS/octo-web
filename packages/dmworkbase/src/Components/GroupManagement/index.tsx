@@ -1,5 +1,4 @@
 import React, { Component } from "react";
-import { Loading } from "@octo/ui";
 import { Toast } from "@douyinfe/semi-ui";
 import { Channel, Subscriber } from "wukongimjssdk";
 import WKAvatar from "../WKAvatar";
@@ -478,7 +477,7 @@ export class GroupManagement extends Component<
     const memberCount = this.memberCount();
 
     const labels: GroupManagementViewLabels = {
-      loading: <Loading size="lg" />,
+      loading: t("base.groupManagement.loading"),
       ownerAndManagers: t("base.groupManagement.ownerAndManagers"),
       botAdmins: t("base.groupManagement.botAdmins"),
       addManager: t("base.groupManagement.addManager"),
