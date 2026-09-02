@@ -31,6 +31,7 @@ export default function IconCropModal({ visible, file, onCancel, onConfirm }: Ic
       width={460}
       zIndex={1100}
       className="skill-market-crop-modal"
+      closeLabel={t("skillMarket.common.close")}
       footer={
         <div className="skill-market-crop-modal__footer">
           <Button variant="secondary" onClick={onCancel}>{t("skillMarket.common.cancel")}</Button>

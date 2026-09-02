@@ -39,6 +39,14 @@ describe('Button with real Semi Button', () => {
     expect(container?.querySelector('button')?.disabled).toBe(true)
   })
 
+  it('forwards refs to the mounted native button', () => {
+    const ref = React.createRef<HTMLButtonElement>()
+
+    render(<Button ref={ref}>Focusable</Button>)
+
+    expect(ref.current).toBe(container?.querySelector('button'))
+  })
+
   it('marks loading buttons busy and blocks clicks', () => {
     const onClick = vi.fn()
     render(<Button loading onClick={onClick}>Loading</Button>)

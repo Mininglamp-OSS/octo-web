@@ -33,6 +33,7 @@ export default function ExpertDeleteConfirmModal({
       visible={Boolean(item)}
       onCancel={onClose}
       title={t("mcp.expert.deleteConfirmTitle")}
+      closeLabel={t("mcp.common.close")}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>

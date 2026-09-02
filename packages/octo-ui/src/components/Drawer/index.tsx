@@ -74,7 +74,8 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
   const previousOpenRef = useRef(actualOpen)
   const drawerWidth = width ?? (isVerticalPlacement(placement) ? widthBySize[size] : undefined)
   const drawerHeight = height ?? (!isVerticalPlacement(placement) ? widthBySize[size] : undefined)
-  const resolvedDisableScroll = disableScroll ?? mask
+  const resolvedMask = inline ? false : mask
+  const resolvedDisableScroll = disableScroll ?? resolvedMask
 
   const setOpen = useCallback((nextOpen: boolean) => {
     if (controlledOpen === undefined) {
@@ -158,7 +159,6 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
         ref={ref as Ref<HTMLElement>}
         aria-hidden={!actualOpen}
         aria-label={ariaLabel ?? (typeof title === 'string' ? title : undefined)}
-        aria-modal={mask && actualOpen ? true : undefined}
         className={cx('octo-ui-drawer', 'octo-ui-drawer--inline', `octo-ui-drawer--${placement}`, className)}
         data-octo-drawer-open={actualOpen ? 'true' : 'false'}
         data-octo-drawer-motion={motion ? 'true' : 'false'}
@@ -205,7 +205,7 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
     height: drawerHeight,
     id,
     keepDOM,
-    mask,
+    mask: resolvedMask,
     maskClosable,
     maskStyle,
     motion,

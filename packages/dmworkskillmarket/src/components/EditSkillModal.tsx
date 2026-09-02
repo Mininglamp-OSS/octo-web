@@ -415,6 +415,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
         title={skill ? t("skillMarket.form.editTitle", { values: { name: skill.name } }) : t("skillMarket.form.editTitleFallback")}
         size="wide"
         className="skill-market-workflow-modal"
+        closeLabel={t("skillMarket.common.close")}
         footer={
           <>
             <Button variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</Button>
@@ -654,6 +655,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
         onCancel={() => setConfirmClose(false)}
         title={t("skillMarket.confirm.title")}
         size="default"
+        closeLabel={t("skillMarket.common.close")}
         footer={
           <>
             <Button variant="secondary" onClick={() => setConfirmClose(false)}>{t("skillMarket.confirm.keepEditing")}</Button>

@@ -422,6 +422,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
         title={t("skillMarket.form.createTitle")}
         size="wide"
         className="skill-market-workflow-modal"
+        closeLabel={t("skillMarket.common.close")}
         footer={
           <>
             <Button variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</Button>
@@ -671,6 +672,7 @@ function ConfirmLeaveModal({
       onCancel={onKeep}
       title={t("skillMarket.confirm.title")}
       size="default"
+      closeLabel={t("skillMarket.common.close")}
       footer={
         <>
           <Button variant="secondary" onClick={onKeep}>{mode === "busy" ? t("skillMarket.confirm.keepUploading") : t("skillMarket.confirm.keepEditing")}</Button>

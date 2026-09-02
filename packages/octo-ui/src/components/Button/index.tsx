@@ -62,7 +62,7 @@ const mapSemiSize = (size: Exclude<ReturnType<typeof normalizeSize>, undefined>)
   return 'default'
 }
 
-const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+const Button = forwardRef<HTMLButtonElement | null, ButtonProps>(function Button(
   {
     variant,
     size = 'sm',
@@ -107,9 +107,9 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
     onClick?.(event)
   }
 
-  useImperativeHandle(ref, () => {
+  useImperativeHandle<HTMLButtonElement | null, HTMLButtonElement | null>(ref, () => {
     const node = semiRef.current ? findDOMNode(semiRef.current) : null
-    return node instanceof HTMLButtonElement ? node : document.createElement('button')
+    return node instanceof HTMLButtonElement ? node : null
   })
 
   return (

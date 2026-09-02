@@ -44,6 +44,7 @@ export default function McpDeleteConfirmModal({ item, onClose, onDeleted }: McpD
       visible={Boolean(item)}
       onCancel={onClose}
       title={t("mcp.delete.confirmTitle")}
+      closeLabel={t("mcp.common.close")}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={deleting}>

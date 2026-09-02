@@ -137,6 +137,17 @@ describe('Drawer', () => {
     expect(html).toContain('Inline')
   })
 
+  it('keeps inline drawers non-modal even when mask is requested', () => {
+    const html = renderToStaticMarkup(
+      <Drawer inline open mask title="Inline">
+        body
+      </Drawer>,
+    )
+
+    expect(html).toContain('octo-ui-drawer--inline')
+    expect(html).not.toContain('aria-modal')
+  })
+
   it('honors disabled motion in inline layout', () => {
     const html = renderToStaticMarkup(
       <Drawer inline open motion={false} title="Inline">

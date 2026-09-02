@@ -171,6 +171,7 @@ export default function ExpertAddToLoopModal({
       width={480}
       className="wk-mcp-add-to-loop-modal"
       title={t("mcp.expert.addToLoopTitle")}
+      closeLabel={t("mcp.common.close")}
       footer={
         <div className="wk-mcp-form-footer__right">
           <Button variant="secondary" onClick={handleClose} disabled={submitting}>

@@ -36,6 +36,7 @@ export default function DeleteConfirmModal({ skill, onClose, onDeleted }: Delete
       visible={Boolean(skill)}
       onCancel={onClose}
       title={t("skillMarket.delete.title")}
+      closeLabel={t("skillMarket.common.close")}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={deleting}>{t("skillMarket.common.cancel")}</Button>
