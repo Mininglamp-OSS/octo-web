@@ -406,10 +406,6 @@
     "relationsFailed": "Failed to load child items; cannot submit for review",
     "newVersionSection": "Publish new version",
     "newVersionSectionDesc": "Your edits are submitted with this review request; the listed version is replaced only after approval.",
-    "submitReviewAria": "Submit \"{{name}}\" for review",
-    "cancelReviewAria": "Withdraw the review request for \"{{name}}\"",
-    "resubmitAria": "Resubmit \"{{name}}\" for review",
-    "publishVersionAria": "Publish a new version of \"{{name}}\"",
     "pendingBlocksEdit": "A review request is pending; edits are available after it is resolved"
   }
 }
