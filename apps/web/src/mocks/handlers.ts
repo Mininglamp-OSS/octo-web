@@ -14,6 +14,7 @@ import { skillMarketPaginationHandlers } from "../../e2e-kit/msw-handlers/skill-
 import { expertMarketTruncatedHandlers } from "../../e2e-kit/msw-handlers/expert-market-truncated";
 import { skillMarketErrorHandlers } from "../../e2e-kit/msw-handlers/skill-market-error";
 import { expertMarketErrorHandlers } from "../../e2e-kit/msw-handlers/expert-market-error";
+import { skillMarketReviewBadgeHandlers } from "../../e2e-kit/msw-handlers/skill-market-review-badge";
 import { getEnterpriseMockHandlers } from "virtual:octo-enterprise-modules";
 import { http, HttpResponse } from "msw";
 
@@ -24,6 +25,10 @@ const quickMuteStateHandler = http.get(/\/api\/v1\/user\/notification-pause$/, (
 export const handlers = [
   ...getEnterpriseMockHandlers(),
   ...mcpOfficialHandlers,
+  // Ahead of skillMarketListHandlers: this scenario needs its own
+  // /plugins + /plugin_categories answers, and MSW resolves first-match.
+  // Both are scenario-gated, so neither can intercept the other's case.
+  ...skillMarketReviewBadgeHandlers,
   ...skillMarketListHandlers,
   ...expertMarketListHandlers,
   ...skillMarketSearchHandlers,

@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { PagedResult, ReviewRequest } from "../../types/skill";
 import * as api from "../../api/skillApi";
+import { notifyReviewsChanged } from "../../api/reviewSignal";
 import { useReviewRequests } from "../useReviewRequests";
 
 vi.mock("../../api/skillApi");
@@ -238,5 +239,91 @@ describe("useReviewRequests", () => {
       "space",
       expect.objectContaining({ page: 2 })
     );
+  });
+
+  // ── Cross-view invalidation ────────────────────────────────────────────
+  //
+  // The reported bug: the sidebar's 组织发布管理 badge is its own instance of this
+  // hook and cannot see the queue's refresh, so 通过 / 拒绝 / 取消审核 / 发布 / 下架
+  // moved the list and left the badge on its page-load value until a reload.
+  // Every review mutation now announces itself (api/reviewSignal.ts) and every
+  // live read re-fetches.
+  describe("review-queue invalidation", () => {
+    it("re-reads the badge count when a review decision fires the signal", async () => {
+      vi.mocked(api.listReviewRequests)
+        .mockResolvedValueOnce(page([pendingRequest], 1))
+        .mockResolvedValueOnce(page([], 0));
+
+      const { result } = renderHook(() =>
+        useReviewRequests({ mode: "space", status: "pending", pageSize: 1 })
+      );
+
+      await waitFor(() => expect(result.current.pendingCount).toBe(1));
+
+      await act(async () => {
+        notifyReviewsChanged();
+      });
+
+      await waitFor(() => expect(result.current.pendingCount).toBe(0));
+      expect(api.listReviewRequests).toHaveBeenCalledTimes(2);
+      // Page 1, not the next cursor: an invalidation is a re-read of the head
+      // of the list, never an append.
+      expect(api.listReviewRequests).toHaveBeenNthCalledWith(
+        2,
+        "space",
+        expect.objectContaining({ status: "pending", page: 1 })
+      );
+    });
+
+    it("does not re-read while disabled", async () => {
+      // A plain member's badge probe is held back because `mode=space` 403s.
+      // An invalidation must not be the thing that finally fires it.
+      const { result } = renderHook(() =>
+        useReviewRequests({ mode: "space", status: "pending", enabled: false })
+      );
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        notifyReviewsChanged();
+      });
+
+      expect(api.listReviewRequests).not.toHaveBeenCalled();
+    });
+
+    it("unsubscribes on unmount", async () => {
+      const { result, unmount } = renderHook(() =>
+        useReviewRequests({ mode: "space", status: "pending" })
+      );
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      const callsBefore = vi.mocked(api.listReviewRequests).mock.calls.length;
+
+      unmount();
+      notifyReviewsChanged();
+
+      expect(vi.mocked(api.listReviewRequests).mock.calls.length).toBe(
+        callsBefore
+      );
+    });
+
+    it("registers exactly one subscription across re-renders", async () => {
+      const { result, rerender } = renderHook(() =>
+        useReviewRequests({ mode: "space", status: "pending" })
+      );
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      rerender();
+      rerender();
+      const callsBefore = vi.mocked(api.listReviewRequests).mock.calls.length;
+
+      await act(async () => {
+        notifyReviewsChanged();
+      });
+
+      expect(vi.mocked(api.listReviewRequests).mock.calls.length).toBe(
+        callsBefore + 1
+      );
+    });
   });
 });

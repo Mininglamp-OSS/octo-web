@@ -7,6 +7,7 @@ import type {
   ReviewStatus,
 } from "../types/skill";
 import { listReviewRequests } from "../api/skillApi";
+import { subscribeReviewsChanged } from "../api/reviewSignal";
 import type { ReviewListParams } from "../api/skillApi";
 
 export interface UseReviewRequestsOptions {
@@ -143,6 +144,29 @@ export function useReviewRequests(
       if (abortRef.current) abortRef.current.abort();
     };
   }, [fetchPage]);
+
+  // Any review decision anywhere in the app re-reads this hook.
+  //
+  // This is what keeps the sidebar's 组织发布管理 badge honest. The badge is its
+  // own `useReviewRequests` (a page_size=1 probe mounted by MarketSidebar's
+  // <ReviewGateProbe />) and cannot be folded into the queue's fetch, because it
+  // has to render while ReviewQueue is unmounted. Before this, a 通过 / 拒绝 /
+  // 取消审核 refreshed the queue's own list and left the badge showing the count
+  // from page load until a full reload.
+  //
+  // The subscription is registered ONCE — `fetchPage` is read through a ref
+  // rather than closed over, so a new filter identity does not churn the
+  // listener set — and it re-reads through the same `fetchPage`, so the disabled
+  // gate, the abort of the previous request and the badge probe all still apply.
+  const fetchPageRef = useRef(fetchPage);
+  fetchPageRef.current = fetchPage;
+  useEffect(
+    () =>
+      subscribeReviewsChanged(() => {
+        void fetchPageRef.current(null);
+      }),
+    []
+  );
 
   return {
     items,

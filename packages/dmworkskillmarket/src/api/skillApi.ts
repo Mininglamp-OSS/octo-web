@@ -1,5 +1,6 @@
 import * as mockApi from "./skillApiMock";
 import * as realApi from "./skillApiReal";
+import { withReviewInvalidation } from "./reviewSignal";
 
 export type {
   CreateReviewRequestInput,
@@ -44,16 +45,28 @@ export const getSkill = api.getSkill;
 export const trackSkillView = api.trackSkillView;
 export const createSkill = api.createSkill;
 export const updateSkill = api.updateSkill;
-export const deleteSkill = api.deleteSkill;
+// Deleting a plugin takes any open request on it with it, so the reviewer's
+// queue — and the sidebar count — shrink without anybody touching the queue.
+export const deleteSkill = withReviewInvalidation(api.deleteSkill);
 export const listVersions = api.listVersions;
-export const createReviewRequest = api.createReviewRequest;
+// ─── Review mutations ──────────────────────────────────────────────────────
+//
+// Everything below moves the Space's pending count, and every decision path in
+// both market packages funnels through these names (dmworkmcp reaches them via
+// `dmworkmcp/src/api/pluginReview.ts`, which re-exports from here). Wrapping
+// them is therefore the ONE place that can guarantee the 组织发布管理 sidebar
+// badge and the 待审核 list are invalidated together — see `reviewSignal.ts`
+// for why this lives on the endpoint rather than on its callers.
+export const createReviewRequest = withReviewInvalidation(api.createReviewRequest);
 export const listReviewRequests = api.listReviewRequests;
 export const getReviewRequest = api.getReviewRequest;
-export const approveReview = api.approveReview;
-export const rejectReview = api.rejectReview;
-export const cancelReview = api.cancelReview;
-export const publishPlugin = api.publishPlugin;
-export const delistPlugin = api.delistPlugin;
+export const approveReview = withReviewInvalidation(api.approveReview);
+export const rejectReview = withReviewInvalidation(api.rejectReview);
+export const cancelReview = withReviewInvalidation(api.cancelReview);
+// 发布 opens a review request when the plugin is org-visible (the backend, not
+// the caller, decides), and 下架 closes out an approved one.
+export const publishPlugin = withReviewInvalidation(api.publishPlugin);
+export const delistPlugin = withReviewInvalidation(api.delistPlugin);
 export const initUpload = realApi.initUpload;
 export const uploadFile = realApi.uploadFile;
 export const uploadIcon = realApi.uploadIcon;
