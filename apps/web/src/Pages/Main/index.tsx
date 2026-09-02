@@ -1,4 +1,4 @@
-import { WKApp, WKLayout, Provider, WKModal, t, Dap } from "@octo/base";
+import { WKApp, WKLayout, Provider, t, Dap } from "@octo/base";
 import React, { Component } from "react";
 import "./index.css"
 import MainVM from "./vm";
@@ -23,6 +23,7 @@ import {
 } from "../../features/spacePreference";
 import { requestGuardedMenuChange, requestProgrammaticMenuChange } from "./menuChange";
 import { requestMailWorkspaceSwitch } from "@octo/mail";
+import { Modal as OctoModal } from "@octo/ui";
 
 // ─── MainContentLeft：纯路由渲染区（Sidebar + 内容） ───────────────────────
 
@@ -393,14 +394,14 @@ export class MainPage extends Component<{}, MainPageState> {
                             />
 
                             {/* MeInfo Modal */}
-                            <WKModal
+                            <OctoModal
                                 className="wk-main-sider-modal wk-main-sider-meinfo"
                                 visible={showMeInfo}
                                 options={{ mask: false, closable: false }}
                                 onCancel={() => this.setState({ showMeInfo: false })}
                             >
                                 <MeInfo onClose={() => this.setState({ showMeInfo: false })} />
-                            </WKModal>
+                            </OctoModal>
 
                             <JoinSpaceModalConnected
                                 visible={showJoinSpace}

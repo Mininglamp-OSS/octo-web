@@ -106,20 +106,6 @@ describe("BaseModule smoke contract", () => {
     const module = new BaseModule()
     try { module.init() } catch {}
     const channel = new Channel("menu-group", 2)
-    let pushedConfig: any
-    let pushedElement: any
-    const editContext: any = {
-      push: vi.fn((element: any, config: any) => { pushedElement = element; pushedConfig = config }),
-      pop: vi.fn(),
-    }
-    module.inputEditPush(editContext, "old", vi.fn().mockResolvedValue(undefined), "name", 20)
-    const finishContext = { disable: vi.fn(), loading: vi.fn() }
-    pushedConfig.onFinishContext(finishContext)
-    pushedElement.props.onChange("", false)
-    pushedElement.props.onChange("new", false)
-    pushedElement.props.onChange("too long", true)
-    pushedConfig.onFinish().catch(() => {})
-    module.channelSettingInputEditPush(editContext, "old", vi.fn().mockResolvedValue(undefined), "name")
     const routeContext: any = {
       routeData: () => ({
         uid: "u2", isSelf: false,

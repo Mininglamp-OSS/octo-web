@@ -3,7 +3,6 @@ import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 
 import WKApp from "../../App";
 import { ChannelSettingRouteData } from "../../Components/ChannelSetting/context";
-import { wkConfirm } from "../../Components/WKModal";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
 import RouteContext from "../../Service/Context";
 import { Row, Section } from "../../Service/Section";
@@ -14,6 +13,7 @@ import { isChannelDisbanded } from "../../Utils/groupDisband";
 import { leaveChannelSettingThread } from "../../bridge/channelSetting/channelSettingActions";
 import { t } from "../../i18n";
 import { ChannelSettingActionRow } from "../../ui/ChannelSettingRows";
+import { modalConfirm } from "@octo/ui";
 
 export function buildThreadActionsSection(
   context: RouteContext<ChannelSettingRouteData>
@@ -51,7 +51,7 @@ export function buildThreadActionsSection(
               thread?.name ||
               data.channelInfo?.title ||
               t("base.module.thread.fallbackName");
-            wkConfirm({
+            modalConfirm({
               title: isArchived
                 ? t("base.module.thread.unarchiveConfirmTitle", {
                     values: { name },
@@ -98,8 +98,10 @@ export function buildThreadActionsSection(
         title: t("base.module.thread.leave"),
         danger: true,
         onClick: () => {
-          WKApp.shared.baseContext.showAlert({
-            content: t("base.module.thread.leaveConfirm"),
+          modalConfirm({
+            title: t("base.module.thread.leaveConfirm"),
+            okText: t("base.module.thread.leave"),
+            cancelText: t("base.common.cancel"),
             onOk: async () => {
               if (!threadInfo) return;
               try {

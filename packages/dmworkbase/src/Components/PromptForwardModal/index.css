@@ -2,9 +2,12 @@
  * and header; the split columns themselves live in PromptForwardActions. */
 
 .wk-prompt-forward-modal__header {
+  box-sizing: border-box;
   display: flex;
   align-items: flex-start;
   gap: 12px;
+  width: 100%;
+  padding: var(--wk-sp-4) var(--wk-sp-4) var(--wk-sp-1-5);
 }
 
 .wk-prompt-forward-modal__icon {

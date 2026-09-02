@@ -1,4 +1,5 @@
 import React, { Component, useState } from "react";
+import { Drawer, modalConfirm } from "@octo/ui";
 import {
   Channel,
   ChannelTypePerson,
@@ -56,7 +57,6 @@ import { ImageRenderer } from "../FilePreviewPanel/renderers/ImageRenderer";
 import { VideoRenderer } from "../FilePreviewPanel/renderers/VideoRenderer";
 import { isChannelSearchEnabled } from "../ChannelSearch/feature";
 import { I18nContext, t } from "../../i18n";
-import { wkConfirm } from "../WKModal";
 import { THREAD_NAME_MAX_LENGTH } from "../../Service/nameLimits";
 import ThreadCreateDialog, { ThreadCreateLabels } from "../../ui/ThreadCreateDialog";
 import {
@@ -81,7 +81,7 @@ import "./index.css";
 
 /**
  * 子区名称输入框 — 带字数计数器（当前/最大）。
- * 目前仍用于重命名子区的 legacy wkConfirm。
+ * 目前仍用于重命名子区的 legacy modalConfirm。
  */
 const ThreadNameInput = React.forwardRef<
   HTMLInputElement,
@@ -222,7 +222,7 @@ export default class ThreadPanel extends Component<
   declare context: React.ContextType<typeof I18nContext>;
 
   private vm: ThreadPanelVM | null = null;
-  private panelRef = React.createRef<HTMLDivElement>();
+  private panelRef = React.createRef<HTMLElement>();
   private dragStartX = 0;
   private dragStartWidth = 0;
   private lastPanelWidth = THREAD_DEFAULT_WIDTH;
@@ -369,11 +369,9 @@ export default class ThreadPanel extends Component<
     );
     this.lastPanelWidth = newWidth;
 
-    // Direct DOM update — no React re-render during drag
+    // Direct CSS variable update — no React re-render during drag
     const panel = this.panelRef.current;
     if (panel) {
-      panel.style.width = newWidth + "px";
-      // Update CSS variable on parent for chat area calc
       panel.parentElement?.style.setProperty(
         "--wk-width-thread-panel",
         newWidth + "px"
@@ -391,10 +389,15 @@ export default class ThreadPanel extends Component<
   };
 
   private onPanelDoubleClick = () => {
-    this.lastPanelWidth = THREAD_DEFAULT_WIDTH;
-    this.setState({ panelWidth: THREAD_DEFAULT_WIDTH });
-    persistThreadWidth(THREAD_DEFAULT_WIDTH);
-    this.syncCssVariable(THREAD_DEFAULT_WIDTH);
+    const resetWidth = clampThreadWidth(
+      THREAD_DEFAULT_WIDTH,
+      window.innerWidth,
+      this.getLeftPanelWidth()
+    );
+    this.lastPanelWidth = resetWidth;
+    this.setState({ panelWidth: resetWidth });
+    persistThreadWidth(resetWidth);
+    this.syncCssVariable(resetWidth);
   };
 
   /** Keep --wk-width-thread-panel in sync so chat area calc stays correct */
@@ -790,7 +793,7 @@ export default class ThreadPanel extends Component<
     setTimeout(() => {
       let newName = thread.name;
       const inputRef = React.createRef<HTMLInputElement>();
-      wkConfirm({
+      modalConfirm({
         title: t("base.threadPanel.editNameTitle"),
         okText: t("base.threadPanel.save"),
         cancelText: t("base.common.cancel"),
@@ -805,7 +808,7 @@ export default class ThreadPanel extends Component<
           newName = inputRef.current?.value ?? thread.name;
           if (!newName || newName.trim() === "") {
             Toast.error(t("base.threadPanel.nameRequired"));
-            // throw 让 wkConfirm 保留弹窗与用户草稿（其 onOk reject 分支不 destroy）
+            // throw 让 modalConfirm 保留弹窗与用户草稿（其 onOk reject 分支不 destroy）
             throw new Error("thread-name-empty");
           }
           if (newName.length > THREAD_NAME_MAX_LENGTH) {
@@ -819,7 +822,7 @@ export default class ThreadPanel extends Component<
               { name: newName.trim() }
             );
           } catch (error) {
-            // 透传服务端拒绝原因，不吞错；rethrow 让 wkConfirm 保留弹窗与草稿，避免把
+            // 透传服务端拒绝原因，不吞错；rethrow 让 modalConfirm 保留弹窗与草稿，避免把
             // 失败保存当成功关闭、丢失用户输入。
             Toast.error(
               extractErrorMsg(error) || t("base.module.thread.saveFailedRetry")
@@ -914,7 +917,7 @@ export default class ThreadPanel extends Component<
     this.setState({ showMoreMenu: false });
 
     setTimeout(() => {
-      wkConfirm({
+      modalConfirm({
         title: archiving
           ? t("base.module.thread.archiveConfirmTitle", {
               values: { name: thread.name },
@@ -1068,7 +1071,7 @@ export default class ThreadPanel extends Component<
     this.setState({ showMoreMenu: false });
 
     setTimeout(() => {
-      wkConfirm({
+      modalConfirm({
         title: t("base.threadPanel.deleteConfirmTitle", {
           values: { name: thread.name },
         }),
@@ -2091,7 +2094,6 @@ export default class ThreadPanel extends Component<
     const { filePreview } = this.props;
     const {
       view,
-      panelWidth,
       isDragging,
       isFilePanelOpen,
       conversationFiles,
@@ -2099,15 +2101,20 @@ export default class ThreadPanel extends Component<
       showWebhookPanel,
     } = this.state;
     const isSmallScreen = window.innerWidth <= SMALL_SCREEN_WIDTH;
-
-    const panelStyle = isSmallScreen
-      ? undefined
-      : {
-          width: `${panelWidth}px`,
-        };
+    const drawerWidth = "var(--wk-width-thread-panel-effective, var(--wk-width-thread-panel))";
 
     return (
-      <div className="wk-thread-panel" ref={this.panelRef} style={panelStyle}>
+      <Drawer
+        ref={this.panelRef}
+        inline
+        open
+        bodyFlush
+        closable={false}
+        aria-label={t("base.chatPage.threadPanel")}
+        className="wk-thread-panel"
+        closeOnEsc={false}
+        width={drawerWidth}
+      >
         {/* Left-edge splitter for resizing — hidden on small screens */}
         {!isSmallScreen && (
           <div
@@ -2157,7 +2164,7 @@ export default class ThreadPanel extends Component<
           )}
         </div>
         {isDragging && <div className="wk-thread-panel-drag-overlay" />}
-      </div>
+      </Drawer>
     );
   }
 }

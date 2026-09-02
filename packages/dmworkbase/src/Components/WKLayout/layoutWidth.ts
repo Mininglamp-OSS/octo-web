@@ -24,14 +24,15 @@ export const NAV_RAIL_EXPANDED_THRESHOLD = NAV_RAIL_EXPANDED_WIDTH
 export const NAV_RAIL_STORAGE_KEY = 'wk-layout-navrail-width'
 
 // ── Right panel (thread panel) ──
-export const THREAD_MIN_WIDTH = 432
+export const THREAD_MIN_WIDTH = 336
 export const THREAD_MAX_WIDTH = 1600  // effective max is clamped by screen ratio
-export const THREAD_DEFAULT_WIDTH = 432
+export const THREAD_DEFAULT_WIDTH = 336
+export const THREAD_CHAT_MIN_WIDTH = 240
 export const THREAD_STORAGE_KEY = 'wk-thread-panel-width'
 
 // ── Right panel (smart summary panel) ──
 // Independent constants + storage key so the summary panel width never
-// collides with the thread panel's (THREAD_MIN_WIDTH=432 > summary default 360).
+// collides with the thread panel's independent storage key.
 export const SUMMARY_MIN_WIDTH = 320
 export const SUMMARY_MAX_WIDTH = 720
 export const SUMMARY_DEFAULT_WIDTH = 360
@@ -92,22 +93,28 @@ export function persistNavRailWidth(width: number): void {
 
 /**
  * Thread panel max width based on available space (window - left panel).
- * Ensures chat area has at least 50% of available space.
+ * Keeps the 336px compact design width when possible, but preserves a readable chat
+ * column on constrained windows.
  * 
  * @param windowWidth - Total window width
  * @param leftPanelWidth - Left conversation list width (default 300px)
  * @returns Maximum allowed thread panel width
  */
 export function getMaxThreadWidth(windowWidth: number, leftPanelWidth = SPLITTER_DEFAULT_WIDTH): number {
-    const availableSpace = windowWidth - leftPanelWidth
-    // Thread can take at most 50% of available space, ensuring chat area gets at least 50%
+    if (windowWidth <= SMALL_SCREEN_WIDTH) return THREAD_DEFAULT_WIDTH
+
+    const availableSpace = Math.max(0, windowWidth - NAV_RAIL_DEFAULT_WIDTH - leftPanelWidth)
     const dynamicMax = Math.floor(availableSpace * 0.5)
-    return Math.max(THREAD_MIN_WIDTH, Math.min(THREAD_MAX_WIDTH, dynamicMax))
+    const designMax = Math.max(THREAD_MIN_WIDTH, Math.min(THREAD_MAX_WIDTH, dynamicMax))
+    const constrainedMax = Math.max(0, availableSpace - THREAD_CHAT_MIN_WIDTH)
+    if (constrainedMax < THREAD_MIN_WIDTH) return THREAD_DEFAULT_WIDTH
+    return Math.min(designMax, constrainedMax)
 }
 
 export function clampThreadWidth(width: number, windowWidth: number, leftPanelWidth = SPLITTER_DEFAULT_WIDTH): number {
     const max = getMaxThreadWidth(windowWidth, leftPanelWidth)
-    return Math.max(THREAD_MIN_WIDTH, Math.min(max, width))
+    const min = Math.min(THREAD_MIN_WIDTH, max)
+    return Math.max(min, Math.min(max, width))
 }
 
 export function restoreThreadWidth(): number {

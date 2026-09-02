@@ -452,6 +452,18 @@ export default class GlobalSearch extends Component<
                   activeTab={vm.selectedTabKey}
                   onTabChange={this.handleTabChange}
                   error={vm.searchError}
+                  headerActions={
+                    this.props.hideModal ? (
+                      <button
+                        type="button"
+                        className="wk-global-search-modal-close"
+                        aria-label={translate("common.close")}
+                        onClick={this.props.hideModal}
+                      >
+                        <X size={16} />
+                      </button>
+                    ) : undefined
+                  }
                   actions={
                     this.contentSearchEnabled && isGlobalContentTab ? (
                       <>

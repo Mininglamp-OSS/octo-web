@@ -66,13 +66,6 @@ vi.mock("qrcode.react", () => ({
     React.createElement("svg", { "data-qr-value": value }),
 }));
 
-type MockWKButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  icon?: React.ReactNode;
-  iconOnly?: boolean;
-  variant?: string;
-  size?: string;
-};
-
 vi.mock("@octo/base", () => ({
   apiFetchJson: apiFetchJsonMock,
   WKApp: {
@@ -80,17 +73,6 @@ vi.mock("@octo/base", () => ({
       config: { apiURL: "/api/v1/" },
     },
   },
-  WKButton: ({ children, icon, iconOnly, ...props }: MockWKButtonProps) =>
-    React.createElement(
-      "button",
-      {
-        ...props,
-        className: "wk-btn",
-        "data-icon-only": iconOnly ? "true" : undefined,
-      },
-      icon,
-      children
-    ),
 }));
 
 import {
@@ -237,11 +219,10 @@ describe("AndroidDownloadButton", () => {
     expect(html).not.toContain(" download");
     expect(html).toContain("或前往 GitHub 手动下载");
     expect(html).toContain('data-icon="github"');
-    expect(html).toContain("wk-btn");
+    expect(html).toContain("octo-ui-button");
     expect(html).toMatch(
       /<button[^>]*>.*data-icon="github".*或前往 GitHub 手动下载.*<\/button>/
     );
-    expect(html).not.toContain('data-icon-only="true"');
     expect(html).toContain('aria-label="打开 GitHub Releases"');
   });
 

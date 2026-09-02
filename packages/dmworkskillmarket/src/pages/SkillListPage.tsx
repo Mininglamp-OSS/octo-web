@@ -1,3 +1,4 @@
+import { Button } from "@octo/ui";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -9,7 +10,7 @@ import {
   RefreshCw,
   Upload,
 } from "lucide-react";
-import { t, useI18n, WKApp, WKButton, Dap } from "@octo/base";
+import { t, useI18n, WKApp, Dap } from "@octo/base";
 import type { Skill, SkillSort } from "../types/skill";
 import { useSkills } from "../hooks/useSkills";
 import BotPublishModal from "../components/BotPublishModal";
@@ -191,8 +192,8 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
           />
           {variant === "mine" && (
           <div className="skill-market-publish-menu" ref={publishMenuRef}>
-            <WKButton
-              variant="primary"
+            <Button
+              variant="solid"
               data-testid="skill-publish-entry"
               icon={<Upload size={15} />}
               onClick={() => setPublishMenuOpen((open) => !open)}
@@ -201,7 +202,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
             >
               {t("skillMarket.list.publishSkill")}
               <ChevronDown size={14} />
-            </WKButton>
+            </Button>
             {publishMenuOpen && (
               <div className="skill-market-publish-menu__panel" role="menu">
                 <button
@@ -296,13 +297,13 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
             <AlertCircle size={28} />
             <strong>{t("skillMarket.common.loadFailed")}</strong>
             <span>{list.error}</span>
-            <WKButton
+            <Button
               variant="secondary"
               icon={<RefreshCw size={15} />}
               onClick={list.refresh}
             >
               {t("skillMarket.list.retry")}
-            </WKButton>
+            </Button>
           </div>
         )}
         {!list.loading && !list.error && list.skills.length === 0 && (

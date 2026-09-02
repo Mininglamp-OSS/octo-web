@@ -1,5 +1,7 @@
+import { Button, Input } from "@octo/ui";
+import Select from "@octo/ui/select";
 import React, { useState, useCallback } from "react";
-import { Select, Tag, Button, Input } from "@douyinfe/semi-ui";
+import { Tag } from "@douyinfe/semi-ui";
 import { IconPlus } from "@douyinfe/semi-icons";
 import { useI18n } from "@octo/base";
 import type { SourceItem, SourceTypeValue } from "../types/summary";

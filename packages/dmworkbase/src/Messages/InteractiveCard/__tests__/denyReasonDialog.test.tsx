@@ -1,8 +1,9 @@
-// denyReasonDialog：拒绝动作识别 + 弹窗 resolve 语义。mock wkConfirm/Semi 避免拉起 UI。
+// denyReasonDialog：拒绝动作识别 + 弹窗 resolve 语义。mock modalConfirm/Semi 避免拉起 UI。
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import React from "react";
 
-const { wkConfirmMock, toastWarnMock } = vi.hoisted(() => ({
-  wkConfirmMock: vi.fn(),
+const { modalConfirmMock, toastWarnMock } = vi.hoisted(() => ({
+  modalConfirmMock: vi.fn(),
   toastWarnMock: vi.fn(),
 }));
 
@@ -10,8 +11,17 @@ vi.mock("../../../i18n", () => ({
   t: (key: string) => key,
 }));
 
-vi.mock("../../../Components/WKModal/confirm", () => ({
-  wkConfirm: wkConfirmMock,
+vi.mock("@octo/ui", () => ({
+  Input: {
+    TextArea: ({ value, onChange, ...props }: any) => (
+      <textarea
+        value={value}
+        onChange={(event) => onChange?.((event.target as HTMLTextAreaElement).value)}
+        {...props}
+      />
+    ),
+  },
+  modalConfirm: modalConfirmMock,
 }));
 
 vi.mock("@douyinfe/semi-ui", () => ({
@@ -53,11 +63,11 @@ describe("DOCS_DENY_REASON_INPUT_ID", () => {
 
 describe("openDocsDenyReasonDialog", () => {
   beforeEach(() => {
-    wkConfirmMock.mockReset();
+    modalConfirmMock.mockReset();
     toastWarnMock.mockReset();
   });
 
-  const lastConfig = () => wkConfirmMock.mock.calls[0][0] as any;
+  const lastConfig = () => modalConfirmMock.mock.calls[0][0] as any;
 
   it("opens a danger confirm and resolves the trimmed reason on confirm", async () => {
     const p = openDocsDenyReasonDialog({ docTitle: "Roadmap", actorName: "李四" });

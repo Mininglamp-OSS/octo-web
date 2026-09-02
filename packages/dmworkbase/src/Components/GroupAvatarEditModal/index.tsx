@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react"
-import { Input } from "@douyinfe/semi-ui"
+import { Input, Modal as OctoModal } from "@octo/ui";
 import { IconTick } from "@douyinfe/semi-icons"
-import WKModal from "../WKModal"
 import { t } from "../../i18n"
 import GroupAvatarPreview from "../GroupAvatarPreview"
 import {
@@ -238,8 +237,8 @@ const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
   }
 
   return (
-    <WKModal
-      size="md"
+    <OctoModal
+      size="default"
       className="wk-group-avatar-edit-modal"
       visible={visible}
       title={t("base.groupAvatarEdit.title")}
@@ -265,7 +264,7 @@ const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
         disabled={saving}
         onChange={setDraft}
       />
-    </WKModal>
+    </OctoModal>
   )
 }
 

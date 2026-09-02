@@ -19,7 +19,7 @@ import {
   ShieldAlert,
   Trash2,
 } from "lucide-react";
-import { useI18n, wkConfirm, WKApp } from "@octo/base";
+import { useI18n, modalConfirm, WKApp } from "@octo/base";
 import MailService from "../Service/MailService";
 import type {
   ComposeMode,
@@ -318,9 +318,10 @@ export default function MessageDetailFeature({
 
   const deleteCurrent = () => {
     if (!current) return;
-    wkConfirm({
+    modalConfirm({
       title: t("mail.confirm.deleteTitle"),
       content: t("mail.confirm.deleteContent"),
+      cancelText: t("mail.actions.cancel"),
       okType: "danger",
       okText: t("mail.actions.delete"),
       onOk: async () => {
@@ -339,11 +340,12 @@ export default function MessageDetailFeature({
 
   const restoreFromJunk = () => {
     if (!current || busy) return;
-    wkConfirm({
+    modalConfirm({
       title: t("mail.confirm.notJunkTitle"),
       content: t("mail.confirm.notJunkContent", {
         values: { sender: current.from },
       }),
+      cancelText: t("mail.actions.cancel"),
       okText: t("mail.actions.notJunk"),
       onOk: async () => {
         setBusy(true);

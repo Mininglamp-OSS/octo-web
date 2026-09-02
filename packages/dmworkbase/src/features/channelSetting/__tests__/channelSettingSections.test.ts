@@ -37,6 +37,18 @@ import {
   buildThreadWebhookSection,
 } from "../channelSettingThreadSections";
 
+const hoisted = vi.hoisted(() => ({
+  modalConfirm: vi.fn(),
+}));
+
+vi.mock("@octo/ui", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@octo/ui")>();
+  return {
+    ...actual,
+    modalConfirm: hoisted.modalConfirm,
+  };
+});
+
 vi.mock("@douyinfe/semi-ui", () => ({
   Button: vi.fn(),
   Input: vi.fn(),
@@ -51,8 +63,12 @@ vi.mock("@douyinfe/semi-ui", () => ({
 
 vi.mock("@douyinfe/semi-icons", () => ({
   IconAlertTriangle: vi.fn(),
+  IconClear: vi.fn(),
+  IconEyeClosed: vi.fn(),
+  IconEyeOpened: vi.fn(),
   IconLink: vi.fn(),
   IconPlus: vi.fn(),
+  IconSearchStroked: vi.fn(),
 }));
 
 vi.mock("../../../App", () => ({
@@ -542,8 +558,8 @@ describe("channel setting section builders", () => {
   });
 
   it("builds my group nickname only for active groups", () => {
-    const inputEditPush = vi.fn();
-    const normal = buildMyGroupNicknameSection(createContext(), inputEditPush);
+    const textEditPush = vi.fn();
+    const normal = buildMyGroupNicknameSection(createContext(), textEditPush);
     const disbanded = buildMyGroupNicknameSection(
       createContext({
         channelInfo: {
@@ -552,7 +568,7 @@ describe("channel setting section builders", () => {
           },
         },
       }),
-      inputEditPush
+      textEditPush
     );
 
     expect(normal?.rows).toHaveLength(1);
@@ -562,8 +578,8 @@ describe("channel setting section builders", () => {
 
   it("updates the visible group nickname after a successful save", async () => {
     const context = createContext();
-    const inputEditPush = vi.fn();
-    const section = buildMyGroupNicknameSection(context, inputEditPush);
+    const textEditPush = vi.fn();
+    const section = buildMyGroupNicknameSection(context, textEditPush);
 
     await section?.rows?.[0].properties.onSave("Alice Updated");
 
@@ -577,8 +593,8 @@ describe("channel setting section builders", () => {
 
   it("keeps a cleared group nickname empty instead of falling back to the member name", async () => {
     const context = createContext();
-    const inputEditPush = vi.fn();
-    const section = buildMyGroupNicknameSection(context, inputEditPush);
+    const textEditPush = vi.fn();
+    const section = buildMyGroupNicknameSection(context, textEditPush);
 
     await section?.rows?.[0].properties.onSave("");
 
@@ -590,7 +606,7 @@ describe("channel setting section builders", () => {
 
     const refreshedSection = buildMyGroupNicknameSection(
       context,
-      inputEditPush
+      textEditPush
     );
     expect(refreshedSection?.rows?.[0].properties.value).toBe("");
     expect(refreshedSection?.rows?.[0].properties.displayValue).toBe(
@@ -630,7 +646,7 @@ describe("channel setting section builders", () => {
   });
 
   it("builds group info rows and keeps only remark after disband", () => {
-    const inputEditPush = vi.fn();
+    const textEditPush = vi.fn();
     const activeOwner = buildChannelGroupInfoSection(
       createContext({
         isManagerOrCreatorOfMe: true,
@@ -639,7 +655,7 @@ describe("channel setting section builders", () => {
           role: 1,
         },
       }),
-      inputEditPush
+      textEditPush
     );
     const disbanded = buildChannelGroupInfoSection(
       createContext({
@@ -651,7 +667,7 @@ describe("channel setting section builders", () => {
           },
         },
       }),
-      inputEditPush
+      textEditPush
     );
 
     expect(activeOwner?.rows).toHaveLength(9);
@@ -678,7 +694,7 @@ describe("channel setting section builders", () => {
     const rows = buildGroupProfileRows({
       context,
       data: context.routeData(),
-      inputEditPush: vi.fn(),
+      textEditPush: vi.fn(),
       disbanded: false,
     });
 
@@ -706,7 +722,7 @@ describe("channel setting section builders", () => {
     const rows = buildGroupProfileRows({
       context,
       data: context.routeData(),
-      inputEditPush: vi.fn(),
+      textEditPush: vi.fn(),
       disbanded: false,
     });
 
@@ -736,7 +752,7 @@ describe("channel setting section builders", () => {
     const rows = buildGroupProfileRows({
       context,
       data: context.routeData(),
-      inputEditPush: vi.fn(),
+      textEditPush: vi.fn(),
       disbanded: false,
     });
 
@@ -746,16 +762,16 @@ describe("channel setting section builders", () => {
   });
 
   it("builds thread setting sections for active thread channels", () => {
-    const inputEditPush = vi.fn();
+    const textEditPush = vi.fn();
     const context = createThreadContext();
 
-    const infoRows = buildThreadInfoSection(context, inputEditPush)?.rows;
+    const infoRows = buildThreadInfoSection(context, textEditPush)?.rows;
     expect(infoRows).toHaveLength(3);
     expect(buildThreadMdSection(context)?.rows).toHaveLength(1);
     expect(buildThreadWebhookSection(context)?.rows).toHaveLength(1);
     const overviewRows = buildThreadOverviewSection(
       context,
-      inputEditPush
+      textEditPush
     )?.rows;
     expect(overviewRows).toHaveLength(5);
     expect(overviewRows?.[3].properties.title).toBe("GROUP.md");
@@ -763,6 +779,21 @@ describe("channel setting section builders", () => {
       t("base.threadPanel.webhook")
     );
     expect(buildThreadActionsSection(context)?.rows).toHaveLength(2);
+  });
+
+  it("opens thread leave confirmation with localized title and buttons", () => {
+    const context = createThreadContext();
+    const rows = buildThreadActionsSection(context)?.rows;
+
+    rows?.[1].properties.onClick();
+
+    expect(hoisted.modalConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: t("base.module.thread.leaveConfirm"),
+        okText: t("base.module.thread.leave"),
+        cancelText: t("base.common.cancel"),
+      })
+    );
   });
 
   it("uses only reliable thread participation data", () => {
@@ -793,13 +824,13 @@ describe("channel setting section builders", () => {
   });
 
   it("hides thread sections for group channels", () => {
-    const inputEditPush = vi.fn();
+    const textEditPush = vi.fn();
     const context = createContext();
 
-    expect(buildThreadInfoSection(context, inputEditPush)).toBeUndefined();
+    expect(buildThreadInfoSection(context, textEditPush)).toBeUndefined();
     expect(buildThreadMdSection(context)).toBeUndefined();
     expect(buildThreadWebhookSection(context)).toBeUndefined();
-    expect(buildThreadOverviewSection(context, inputEditPush)).toBeUndefined();
+    expect(buildThreadOverviewSection(context, textEditPush)).toBeUndefined();
     expect(buildThreadActionsSection(context)).toBeUndefined();
   });
 });

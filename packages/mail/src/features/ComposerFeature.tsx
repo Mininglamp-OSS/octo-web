@@ -6,7 +6,7 @@ import React, {
   useState,
 } from "react";
 import { LoaderCircle, Paperclip, Send, X } from "lucide-react";
-import { useI18n, wkConfirm, WKApp } from "@octo/base";
+import { useI18n, modalConfirm, WKApp } from "@octo/base";
 import MailService from "../Service/MailService";
 import type {
   AttachmentInput,
@@ -361,7 +361,7 @@ export default function ComposerFeature({
 
   const confirmAttachmentDiscard = useCallback(
     (onDiscard: () => void) => {
-      wkConfirm({
+      modalConfirm({
         title: t("mail.confirm.attachmentUnavailableTitle"),
         content: t(
           attachmentListIncomplete
@@ -391,7 +391,7 @@ export default function ComposerFeature({
       return;
     }
     if (mode !== "new") {
-      wkConfirm({
+      modalConfirm({
         title: t("mail.confirm.discardChangesTitle"),
         content: t("mail.confirm.discardChangesContent"),
         cancelText: t("mail.actions.continueEditing"),
@@ -401,7 +401,7 @@ export default function ComposerFeature({
       });
       return;
     }
-    wkConfirm({
+    modalConfirm({
       title: t("mail.confirm.saveDraftTitle"),
       content: t("mail.confirm.saveDraftContent"),
       cancelText: t("mail.actions.discard"),
@@ -423,7 +423,7 @@ export default function ComposerFeature({
         return false;
       }
       if ((mode === "new" || editingDraft) && !draftLocked) {
-        wkConfirm({
+        modalConfirm({
           title: t("mail.confirm.saveDraftTitle"),
           content: t("mail.confirm.saveDraftContent"),
           cancelText: t("mail.actions.discard"),
@@ -434,7 +434,7 @@ export default function ComposerFeature({
           onOk: () => saveDraft(proceed),
         });
       } else {
-        wkConfirm({
+        modalConfirm({
           title: t("mail.confirm.discardChangesTitle"),
           content: t("mail.confirm.discardChangesContent"),
           cancelText: t("mail.actions.continueEditing"),

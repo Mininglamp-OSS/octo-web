@@ -1,22 +1,50 @@
 // @vitest-environment jsdom
+import React from "react"
+import ReactDOM from "react-dom"
+import { act } from "react-dom/test-utils"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+
 const runtime = vi.hoisted(() => ({
   subscribers: new Map<string, Array<{ uid?: string; orgData?: { robot?: unknown } }>>(),
   disbandedChannelIDs: new Set<string>(),
   syncSubscribers: vi.fn(async () => undefined),
+  addChannelInfoListener: vi.fn(() => vi.fn()),
+  addSubscriberChangeListener: vi.fn(() => vi.fn()),
 }))
+
 vi.mock("react-virtuoso", () => ({ TableVirtuoso: () => null, Virtuoso: () => null, VirtuosoGrid: () => null }))
 vi.mock("../../../Service/ForwardService", () => ({
   ForwardService: { send: vi.fn(async () => ({ targets: 1, failedTargets: 0, messageAttempts: 1, failedMessages: 0, disbanded: 0, failures: [] })) },
 }))
-vi.mock("../../../im-runtime/currentChannelRuntime", () => ({
-  getCurrentImChannelSubscribers: (channel: { channelID: string }) =>
-    runtime.subscribers.get(channel.channelID) ?? [],
-  syncCurrentImChannelSubscribers: runtime.syncSubscribers,
-}))
+vi.mock("../../../im-runtime/currentChannelRuntime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../im-runtime/currentChannelRuntime")>()
+  return {
+    ...actual,
+    getCurrentImChannelSubscribers: (channel: { channelID: string }) =>
+      runtime.subscribers.get(channel.channelID) ?? [],
+    syncCurrentImChannelSubscribers: runtime.syncSubscribers,
+    addCurrentImChannelInfoListener: runtime.addChannelInfoListener,
+    addCurrentImSubscriberChangeListener: runtime.addSubscriberChangeListener,
+  }
+})
 vi.mock("../../../Utils/groupDisband", () => ({
   isConversationDisbanded: (channel: { channelID: string }) => runtime.disbandedChannelIDs.has(channel.channelID),
 }))
+vi.mock("@octo/ui", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@octo/ui")>()
+  return {
+    ...actual,
+    Modal: ({ visible, title, children }: { visible?: boolean; title?: React.ReactNode; children?: React.ReactNode }) => (
+      visible ? (
+        <div data-testid="octo-modal">
+          {title ? <div className="octo-ui-modal__title">{title}</div> : null}
+          <div className="octo-ui-modal__body">{children}</div>
+        </div>
+      ) : null
+    ),
+  }
+})
+
 import WKBase, { createDefaultExternalViewerGate } from "../index"
 import { Channel } from "wukongimjssdk"
 
@@ -25,6 +53,8 @@ describe("WKBase context methods", () => {
     runtime.subscribers = new Map()
     runtime.disbandedChannelIDs = new Set()
     runtime.syncSubscribers.mockReset().mockResolvedValue(undefined)
+    runtime.addChannelInfoListener.mockReset().mockReturnValue(vi.fn())
+    runtime.addSubscriberChangeListener.mockReset().mockReturnValue(vi.fn())
   })
 
   it("covers modal state transitions and external viewer routing", () => {
@@ -146,5 +176,28 @@ describe("WKBase context methods", () => {
     )
 
     expect(grantAccess).toHaveBeenCalledWith(["legacy_member"], "reader")
+  })
+
+  it("renders title-less alerts in the body instead of the ellipsized title slot", () => {
+    const container = document.createElement("div")
+    document.body.appendChild(container)
+
+    let context: any
+    act(() => {
+      ReactDOM.render(<WKBase onContext={(value) => { context = value; }}>{null}</WKBase>, container)
+    })
+    act(() => {
+      context.showAlert({ content: "Delete and exit this group permanently" })
+    })
+
+    expect(container.querySelector(".octo-ui-modal__title")?.textContent ?? "").toBe("")
+    expect(container.querySelector(".octo-ui-modal-confirm__description")?.textContent).toBe(
+      "Delete and exit this group permanently"
+    )
+
+    act(() => {
+      ReactDOM.unmountComponentAtNode(container)
+    })
+    container.remove()
   })
 })

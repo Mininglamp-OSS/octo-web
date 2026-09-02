@@ -1,4 +1,5 @@
 import React from "react"
+import { Dropdown } from "@octo/ui"
 import { useI18n } from "../../i18n"
 import "./index.css"
 
@@ -21,22 +22,23 @@ const MoveToGroupMenu: React.FC<MoveToGroupMenuProps> = ({
     const { t } = useI18n()
     return (
         <div className="wk-move-to-group-menu">
-            {categories.map((cat) => (
-                <div
-                    key={cat.id}
-                    className="wk-move-to-group-menu__item"
-                    onClick={() => onSelect(cat.id)}
+            <Dropdown.Menu>
+                {categories.map((cat) => (
+                    <Dropdown.Item
+                        key={cat.id}
+                        onSelect={() => onSelect(cat.id)}
+                    >
+                        {cat.name}
+                    </Dropdown.Item>
+                ))}
+                {categories.length > 0 && <Dropdown.Divider />}
+                <Dropdown.Item
+                    className="wk-move-to-group-menu__create"
+                    onSelect={onCreateNew}
                 >
-                    {cat.name}
-                </div>
-            ))}
-            {categories.length > 0 && <div className="wk-move-to-group-menu__divider" />}
-            <div
-                className="wk-move-to-group-menu__item wk-move-to-group-menu__create"
-                onClick={onCreateNew}
-            >
-                {t("base.chatSidebar.context.createCategory")}
-            </div>
+                    {t("base.chatSidebar.context.createCategory")}
+                </Dropdown.Item>
+            </Dropdown.Menu>
         </div>
     )
 }

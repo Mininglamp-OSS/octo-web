@@ -85,6 +85,16 @@ function flushPromises() {
     return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+function clickConfirmDelete() {
+    const deleteButtons = screen.getAllByText('删除');
+    const confirmDeleteButton = deleteButtons.find((button) =>
+        button.closest('.summary-confirm-btn--danger')
+    );
+
+    expect(confirmDeleteButton).toBeDefined();
+    fireEvent.click(confirmDeleteButton!);
+}
+
 function makeItem(overrides: Record<string, unknown> = {}) {
     return {
         task_id: 1,
@@ -207,7 +217,7 @@ describe('ChatSummaryHistory', () => {
             fireEvent.click(screen.getByText('删除'));
         });
         await act(async () => {
-            fireEvent.click(screen.getByText('删除'));
+            clickConfirmDelete();
             await flushPromises();
         });
 
@@ -243,7 +253,7 @@ describe('ChatSummaryHistory', () => {
             fireEvent.click(screen.getByText('删除'));
         });
         await act(async () => {
-            fireEvent.click(screen.getByText('删除'));
+            clickConfirmDelete();
             await flushPromises();
         });
 

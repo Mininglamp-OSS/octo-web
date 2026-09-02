@@ -3,6 +3,7 @@ import ReactDOM from "react-dom"
 import { act } from "react-dom/test-utils"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { ThreadStatus } from "../../../Service/Thread"
+import { Modal as OctoModal, modalConfirm } from "@octo/ui";
 
 let ConversationListGrouped: typeof import("../index").default
 let container: HTMLDivElement
@@ -85,7 +86,7 @@ beforeAll(async () => {
 
     vi.doMock("../../../i18n", () => ({ t: (key: string) => key, useI18n: () => ({ t: (key: string) => key }) }))
 
-    vi.doMock("../../WKModal", () => ({ wkConfirm: vi.fn() }))
+    vi.doMock("../../OctoModal", () => ({ modalConfirm: vi.fn() }))
 
     vi.doMock("../../ContextMenus", () => ({
         __esModule: true,

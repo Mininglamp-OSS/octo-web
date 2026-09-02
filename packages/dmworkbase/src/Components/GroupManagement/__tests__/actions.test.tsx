@@ -20,7 +20,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
     warning: vi.fn(),
   },
 }))
-vi.mock("../../WKModal", () => ({ wkConfirm: hoisted.confirm }))
+vi.mock("@octo/ui", () => ({ modalConfirm: hoisted.confirm }))
 vi.mock("../../WKAvatar", () => ({ default: () => null }))
 vi.mock("../../../i18n", () => ({
   I18nContext: {},

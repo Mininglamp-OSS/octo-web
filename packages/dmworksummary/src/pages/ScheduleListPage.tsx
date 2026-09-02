@@ -1,14 +1,6 @@
+import { Button, Switch } from "@octo/ui";
 import React, { Component } from "react";
-import {
-    Button,
-    Spin,
-    Toast,
-    Modal,
-    Switch,
-    Popconfirm,
-    Tag,
-    Banner,
-} from "@douyinfe/semi-ui";
+import { Spin, Toast, Modal, Popconfirm, Tag, Banner } from "@douyinfe/semi-ui";
 import {
     IconArrowLeft,
     IconPlus,
@@ -201,7 +193,7 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                                     <Switch
                                         checked={item.is_active}
                                         onChange={(checked) => this.handleToggle(item.schedule_id, checked)}
-                                        size="small"
+                                        size="sm"
                                     />
                                 </div>
                                 <div className="summary-schedule-card-meta">

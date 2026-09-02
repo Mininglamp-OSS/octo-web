@@ -85,13 +85,13 @@ describe("SkillDetailModal", () => {
   it("renders public skills as platform-published", async () => {
     vi.mocked(api.getSkill).mockResolvedValue({ ...skill, visibility: "public" });
 
-    const { container } = render(<SkillDetailModal skillId={skill.id} categories={categories} onClose={vi.fn()} />);
+    render(<SkillDetailModal skillId={skill.id} categories={categories} onClose={vi.fn()} />);
 
     expect(await screen.findByText("官方发布")).toBeInTheDocument();
     expect(screen.getByTitle("meeting-note-cleaner")).toBeInTheDocument();
     expect(screen.queryByText("我")).not.toBeInTheDocument();
     expect(screen.getByTitle("官方发布")).toBeInTheDocument();
-    expect(container.querySelector(".skill-market-detail-header__platform-icon")).toBeInTheDocument();
+    expect(document.body.querySelector(".skill-market-detail-header__platform-icon")).toBeInTheDocument();
   });
 
   it("shows bot creator and owner with icons when they are different", async () => {

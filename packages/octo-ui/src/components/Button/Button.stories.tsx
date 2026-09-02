@@ -1,0 +1,111 @@
+import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { ReactNode } from 'react'
+import Button from './index'
+
+const meta: Meta<typeof Button> = {
+  title: 'Octo UI/Button',
+  component: Button,
+  parameters: {
+    docs: {
+      description: {
+        component: 'Interactive base button for shared Octo UI workflows.',
+      },
+    },
+  },
+  argTypes: {
+    variant: {
+      control: 'radio',
+      options: ['solid', 'brand', 'tint', 'secondary', 'text', 'warning', 'danger'],
+    },
+    size: {
+      control: 'radio',
+      options: ['sm', 'xs'],
+    },
+    loading: { control: 'boolean' },
+    disabled: { control: 'boolean' },
+    iconOnly: { control: 'boolean' },
+  },
+}
+
+export default meta
+type Story = StoryObj<typeof Button>
+
+const Row = ({ children }: { children: ReactNode }) => (
+  <div style={{ display: 'flex', gap: 'var(--octo-ui-button-story-gap)', flexWrap: 'wrap', alignItems: 'center' }}>
+    {children}
+  </div>
+)
+
+export const Playground: Story = {
+  args: {
+    children: 'Confirm',
+    variant: 'solid',
+    size: 'sm',
+  },
+}
+
+export const Variants: Story = {
+  render: () => (
+    <Row>
+      <Button variant="solid">Solid</Button>
+      <Button variant="brand">Brand</Button>
+      <Button variant="tint">Tint</Button>
+      <Button variant="secondary">Secondary</Button>
+      <Button variant="text">Text</Button>
+      <Button variant="warning">Warning</Button>
+      <Button variant="danger">Danger</Button>
+    </Row>
+  ),
+}
+
+export const Sizes: Story = {
+  render: () => (
+    <Row>
+      <Button variant="solid" size="sm">Small</Button>
+      <Button variant="solid" size="xs">Compact</Button>
+      <Button variant="secondary" size="sm">Small</Button>
+      <Button variant="secondary" size="xs">Compact</Button>
+    </Row>
+  ),
+}
+
+export const States: Story = {
+  render: () => (
+    <Row>
+      <Button variant="solid" disabled>Disabled</Button>
+      <Button variant="secondary" disabled>Disabled</Button>
+      <Button variant="solid" loading>Loading</Button>
+      <Button variant="secondary" loading>Loading</Button>
+    </Row>
+  ),
+}
+
+export const WithIcon: Story = {
+  render: () => (
+    <Row>
+      <Button variant="solid" icon={<span>+</span>}>Create</Button>
+      <Button variant="secondary" icon={<span>i</span>}>Details</Button>
+      <Button variant="text" icon={<span>?</span>}>Help</Button>
+    </Row>
+  ),
+}
+
+export const IconOnly: Story = {
+  render: () => (
+    <Row>
+      <Button variant="text" iconOnly icon={<span>x</span>} aria-label="Close" />
+      <Button variant="secondary" iconOnly icon={<span>...</span>} aria-label="More actions" />
+      <Button variant="solid" iconOnly icon={<span>+</span>} aria-label="Create" size="xs" />
+    </Row>
+  ),
+}
+
+export const EdgeCases: Story = {
+  render: () => (
+    <div style={{ display: 'grid', gap: 'var(--octo-ui-button-story-gap)', maxWidth: 'min(100%, 420px)' }}>
+      <Button variant="secondary">A button with a longer label that stays on one line</Button>
+      <Button variant="solid" icon={<span>+</span>}>Create shared component</Button>
+      <Button variant="danger" loading>Deleting</Button>
+    </div>
+  ),
+}

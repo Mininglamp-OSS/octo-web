@@ -1,10 +1,11 @@
+import { Button, Modal as OctoModal } from "@octo/ui";
 import React, { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { Bot, Pencil, RefreshCw, ShieldCheck, Trash2, UserRound } from "lucide-react";
-import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
+import { t, useI18n, WKApp } from "@octo/base";
 import type { Category, Skill, SkillVersion } from "../types/skill";
 import { getSkill, getSkillMd, listVersions, trackSkillView } from "../api/skillApi";
 import { formatFullDateTime, formatRecentOrDate } from "../utils/format";
@@ -255,11 +256,12 @@ export default function SkillDetailModal({
 
   return (
     <>
-    <WKModal
+    <OctoModal
       visible={Boolean(skillId)}
       onCancel={onClose}
       title={null}
-      size="lg"
+      size="wide"
+      closeLabel={t("skillMarket.common.close")}
       header={
         <div className="skill-market-detail-header">
           <span className="skill-market-detail-header__icon">
@@ -400,14 +402,14 @@ export default function SkillDetailModal({
                 {mdError && (
                   <div className="skill-market-modal-state is-error">
                     <span>{t("skillMarket.common.loadFailed")}</span>
-                    <WKButton
+                    <Button
                       variant="secondary"
                       size="small"
                       icon={<RefreshCw size={14} />}
                       onClick={() => skillId && fetchSkillMd(skillId)}
                     >
                       {t("skillMarket.detail.retry")}
-                    </WKButton>
+                    </Button>
                   </div>
                 )}
                 {!mdLoading && !mdError && (
@@ -464,7 +466,7 @@ export default function SkillDetailModal({
           )}
         </div>
       )}
-    </WKModal>
+    </OctoModal>
     {tagTooltip &&
       createPortal(
         <div className="skill-market-detail__tag-tooltip" role="tooltip" style={tagTooltip.style}>

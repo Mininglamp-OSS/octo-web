@@ -1,5 +1,6 @@
+import { Button, Input } from "@octo/ui";
 import React from "react";
-import { Button, Input, Spin } from "@douyinfe/semi-ui";
+import { Spin } from "@douyinfe/semi-ui";
 import {
   IconAlertCircle,
   IconCamera,
@@ -8,7 +9,6 @@ import {
   IconTickCircle,
 } from "@douyinfe/semi-icons";
 import AiBadge from "../../../Components/AiBadge";
-import WKButton from "../../../Components/WKButton";
 import VoiceInputButton, {
   type ReplaceMode,
   type SelectionRange,
@@ -183,14 +183,14 @@ export function BotDetailView({
           actionClassName="wk-bot-detail-actions"
           action={
             isFriend ? (
-              <WKButton
+              <Button
                 className="wk-bot-detail-primary-action"
                 type="button"
-                variant="primary"
+                variant="solid"
                 onClick={onChat}
               >
                 {labels.sendMessage}
-              </WKButton>
+              </Button>
             ) : showApplyInput ? (
               <div className="wk-bot-detail-apply">
                 <div className="wk-bot-detail-apply-label">
@@ -201,26 +201,26 @@ export function BotDetailView({
                   onChange={onApplyRemarkChange}
                   placeholder={labels.applyMessagePlaceholder}
                 />
-                <WKButton
+                <Button
                   className="wk-bot-detail-primary-action"
                   type="button"
-                  variant="primary"
+                  variant="solid"
                   loading={applying}
                   disabled={!applyRemark}
                   onClick={onSubmitApply}
                 >
                   {labels.applySend}
-                </WKButton>
+                </Button>
               </div>
             ) : (
-              <WKButton
+              <Button
                 className="wk-bot-detail-primary-action"
                 type="button"
-                variant="primary"
+                variant="solid"
                 onClick={onShowApply}
               >
                 {labels.addFriend}
-              </WKButton>
+              </Button>
             )
           }
         />

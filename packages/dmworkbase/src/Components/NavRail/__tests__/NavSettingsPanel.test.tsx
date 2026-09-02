@@ -24,16 +24,14 @@ vi.mock("@douyinfe/semi-ui", () => ({
 }));
 vi.mock("../SettingsCenter", () => ({ default: () => null }));
 vi.mock("../ChangelogMarkdown", () => ({ default: ({ content }: { content: string }) => <div>{content}</div> }));
-vi.mock("../../WKModal", () => ({
-  default: ({ visible, footer, children }: { visible: boolean; footer?: React.ReactNode; children: React.ReactNode }) => visible ? (
+vi.mock("@octo/ui", () => ({
+  Modal: ({ visible, footer, children }: { visible: boolean; footer?: React.ReactNode; children: React.ReactNode }) => visible ? (
     <div>
       <div data-testid="modal-body">{children}</div>
       <div data-testid="modal-footer">{footer}</div>
     </div>
   ) : null,
-}));
-vi.mock("../../WKButton", () => ({
-  default: ({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) => <button type="button" onClick={onClick}>{children}</button>,
+  Button: ({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) => <button type="button" onClick={onClick}>{children}</button>,
 }));
 vi.mock("../../../electron/desktopBridge", () => ({
   isElectronPowered: () => true,

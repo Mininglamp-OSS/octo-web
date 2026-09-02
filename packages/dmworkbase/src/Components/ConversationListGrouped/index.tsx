@@ -34,8 +34,8 @@ import {
 import { filterArchivedThreads, isArchivedThreadConversation, type ThreadSidebarStatusMap } from "./archivedThreads"
 import { computeFollowDragSortItems, getSortableItemId } from "./dragSortAction"
 import { useI18n } from "../../i18n"
-import { wkConfirm } from "../WKModal"
 import { getImChannelInfo } from "../../im-runtime/channelRuntime"
+import { modalConfirm } from "@octo/ui";
 import {
     FolderInput,
     FolderPlus,
@@ -617,7 +617,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                 icon: Trash2,
                 danger: true,
                 onClick: () => {
-                    wkConfirm({
+                    modalConfirm({
                         title: t("base.chatSidebar.confirm.deleteCategoryTitle"),
                         content: t("base.chatSidebar.confirm.deleteCategoryContent", {
                             values: { name: cat.name },

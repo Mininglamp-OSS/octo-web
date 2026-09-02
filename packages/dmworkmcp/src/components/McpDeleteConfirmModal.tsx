@@ -1,6 +1,7 @@
+import { Button, Modal as OctoModal } from "@octo/ui";
 import React, { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import { t, useI18n, WKButton, WKModal } from "@octo/base";
+import { t, useI18n } from "@octo/base";
 import type { McpListItem } from "../types/mcp";
 import { deleteMcp } from "../api/mcpService";
 
@@ -39,18 +40,19 @@ export default function McpDeleteConfirmModal({ item, onClose, onDeleted }: McpD
   }
 
   return (
-    <WKModal
+    <OctoModal
       visible={Boolean(item)}
       onCancel={onClose}
       title={t("mcp.delete.confirmTitle")}
+      closeLabel={t("mcp.common.close")}
       footer={
         <>
-          <WKButton variant="secondary" onClick={onClose} disabled={deleting}>
+          <Button variant="secondary" onClick={onClose} disabled={deleting}>
             {t("mcp.delete.cancel")}
-          </WKButton>
-          <WKButton variant="danger" onClick={() => void submit()} loading={deleting}>
+          </Button>
+          <Button variant="danger" onClick={() => void submit()} loading={deleting}>
             {t("mcp.delete.ok")}
-          </WKButton>
+          </Button>
         </>
       }
     >
@@ -62,6 +64,6 @@ export default function McpDeleteConfirmModal({ item, onClose, onDeleted }: McpD
           {error && <p className="wk-mcp-delete__error">{error}</p>}
         </div>
       </div>
-    </WKModal>
+    </OctoModal>
   );
 }

@@ -32,17 +32,13 @@ vi.mock('@douyinfe/semi-icons', () => ({
   IconTickCircle: () => React.createElement('span', { 'data-testid': 'icon-tick' }),
 }));
 
-vi.mock('../../WKModal', () => ({
-  default: ({ children, visible }: any) =>
+vi.mock('@octo/ui', () => ({
+  Button: ({ children, ...props }: any) => React.createElement('button', props, children),
+  Modal: ({ children, visible }: any) =>
     visible ? React.createElement('div', { 'data-testid': 'modal' }, children) : null,
   __esModule: true,
 }));
 
-vi.mock('../../WKButton', () => ({
-  default: ({ children, onClick }: any) =>
-    React.createElement('button', { onClick }, children),
-  __esModule: true,
-}));
 
 vi.mock('../../../App', () => ({
   default: { apiClient: { config: { apiURL: '/api/v1/' } } },

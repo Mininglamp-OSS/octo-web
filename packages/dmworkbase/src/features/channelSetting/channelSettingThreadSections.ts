@@ -4,7 +4,7 @@ import { Section } from "../../Service/Section";
 import { buildThreadInfoSection } from "./channelSettingThreadInfoSection";
 import { buildThreadMdSection } from "./channelSettingThreadMdSection";
 import { buildThreadWebhookSection } from "./channelSettingThreadWebhookSection";
-import { ChannelSettingInputEditPush } from "./types";
+import { ChannelSettingTextEditPush } from "./types";
 
 export { buildThreadInfoSection } from "./channelSettingThreadInfoSection";
 export { buildThreadMdSection } from "./channelSettingThreadMdSection";
@@ -13,10 +13,10 @@ export { buildThreadActionsSection } from "./channelSettingThreadActionsSection"
 
 export function buildThreadOverviewSection(
   context: RouteContext<ChannelSettingRouteData>,
-  inputEditPush: ChannelSettingInputEditPush
+  textEditPush: ChannelSettingTextEditPush
 ) {
   const sections = [
-    buildThreadInfoSection(context, inputEditPush),
+    buildThreadInfoSection(context, textEditPush),
     buildThreadMdSection(context),
     buildThreadWebhookSection(context),
   ];

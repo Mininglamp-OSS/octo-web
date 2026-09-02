@@ -1,3 +1,4 @@
+import { Button, Modal as OctoModal } from "@octo/ui";
 import React, {
   useCallback,
   useEffect,
@@ -6,10 +7,9 @@ import React, {
   useState,
 } from "react";
 import { Channel } from "wukongimjssdk";
-import { Switch, Toast } from "@douyinfe/semi-ui";
+import { Switch } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { IconAlertTriangle } from "@douyinfe/semi-icons";
-import WKModal from "../WKModal";
-import WKButton from "../WKButton";
 import AiBadge from "../AiBadge";
 import { useI18n } from "../../i18n";
 import { extractErrorMsg } from "../../Service/APIClient";
@@ -156,9 +156,9 @@ export default function WebhookEditModal({
   }, [isEdit, onClose, onSaved, submit, t]);
 
   return (
-    <WKModal
+    <OctoModal
       visible={visible}
-      size="lg"
+      size="wide"
       title={
         isEdit
           ? t("base.channelWebhook.form.editTitle")
@@ -168,16 +168,16 @@ export default function WebhookEditModal({
       options={{ closeOnEsc: true, maskClosable: false }}
       footer={
         <>
-          <WKButton variant="ghost" onClick={onClose} disabled={saving}>
+          <Button variant="text" onClick={onClose} disabled={saving}>
             {t("base.common.cancel")}
-          </WKButton>
-          <WKButton
-            variant="primary"
+          </Button>
+          <Button
+            variant="solid"
             onClick={() => void handleSubmit()}
             loading={saving}
           >
             {t("base.common.save")}
-          </WKButton>
+          </Button>
         </>
       }
       className="wk-webhook-modal"
@@ -347,6 +347,6 @@ export default function WebhookEditModal({
           </div>
         </div>
       </div>
-    </WKModal>
+    </OctoModal>
   );
 }

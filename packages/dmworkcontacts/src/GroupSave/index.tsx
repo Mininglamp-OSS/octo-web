@@ -1,9 +1,10 @@
+import { Button } from "@octo/ui";
 import { WKApp, WKViewQueueHeader, Provider, I18nContext, t } from "@octo/base";
 import React from "react";
 import { Component, ReactNode } from "react";
 import "./index.css";
 import { GroupSaveVM } from "./vm";
-import { Button, Toast } from "@douyinfe/semi-ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { IndexTableItem, ContactsSelect } from "@octo/base";
 import { FinishButtonContext } from "@octo/base/src/Service/Context";
 

@@ -22,22 +22,32 @@ vi.mock("wukongimjssdk", () => {
 vi.mock("../../../WKAvatar", () => ({ default: () => <div data-testid="avatar" /> }))
 vi.mock("../../../AiBadge", () => ({ default: () => <span data-testid="ai-badge" /> }))
 vi.mock("@douyinfe/semi-ui", () => ({ Tag: ({ children }: { children: React.ReactNode }) => <span>{children}</span> }))
+vi.mock("@octo/ui", () => ({
+  Checkbox: ({
+    checked,
+    disabled,
+    onCheckedChange,
+  }: {
+    checked?: boolean
+    disabled?: boolean
+    onCheckedChange?: (checked: boolean) => void
+  }) => (
+    <div
+      role="checkbox"
+      aria-checked={!!checked}
+      aria-disabled={!!disabled}
+      onClick={() => {
+        if (!disabled) onCheckedChange?.(!checked)
+      }}
+    />
+  ),
+}))
 vi.mock("../../../../Service/Const", () => ({ ChannelTypeCommunityTopic: 99 }))
 vi.mock("../../../../i18n", () => ({
   useI18n: () => ({
     t: (key: string, opts?: { values?: Record<string, unknown> }) =>
       opts?.values ? `${key}:${JSON.stringify(opts.values)}` : key,
   }),
-}))
-vi.mock("../../../Checkbox", () => ({
-  default: ({ checked, disabled, onCheck }: { checked?: boolean; disabled?: boolean; onCheck?: () => void }) => (
-    <div
-      role="checkbox"
-      aria-checked={!!checked}
-      aria-disabled={!!disabled}
-      onClick={() => { if (!disabled) onCheck?.() }}
-    />
-  ),
 }))
 
 import { ItemRow } from "../ItemRow"

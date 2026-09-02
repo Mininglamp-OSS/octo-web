@@ -16,6 +16,9 @@ vi.mock("@douyinfe/semi-ui", () => ({
 }));
 
 vi.mock("@douyinfe/semi-icons", () => ({
+  IconEyeClosed: () => <span />,
+  IconEyeOpened: () => <span />,
+  IconSearchStroked: () => <span />,
   IconTick: () => <span />,
 }));
 
@@ -23,8 +26,15 @@ vi.mock("../../../i18n", () => ({
   t: (key: string) => key,
 }));
 
-vi.mock("../../WKModal", () => ({
-  default: ({ visible, children, footerConfig, onCancel }: any) => (
+vi.mock("@octo/ui", () => ({
+  Input: ({ value, onChange, ...props }: any) => (
+    <input
+      value={value}
+      onChange={(event) => onChange?.((event.target as HTMLInputElement).value)}
+      {...props}
+    />
+  ),
+  Modal: ({ visible, children, footerConfig, onCancel }: any) => (
     <div data-visible={String(visible)}>
       {children}
       {visible && (

@@ -23,6 +23,7 @@ export interface SearchWorkspaceProps {
   tabs: SearchWorkspaceTab[];
   activeTab: string;
   onTabChange: (key: string) => void;
+  headerActions?: React.ReactNode;
   actions?: React.ReactNode;
   error?: React.ReactNode;
   children: React.ReactNode;
@@ -33,6 +34,7 @@ export function SearchWorkspace({
   tabs,
   activeTab,
   onTabChange,
+  headerActions,
   actions,
   error,
   children,
@@ -58,6 +60,11 @@ export function SearchWorkspace({
             </span>
           )}
         </div>
+        {headerActions && (
+          <div className="wk-search-workspace__header-actions">
+            {headerActions}
+          </div>
+        )}
       </header>
 
       <nav className="wk-search-workspace__nav" aria-label={search.placeholder}>

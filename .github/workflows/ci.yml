@@ -112,6 +112,10 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Octo UI build
+        run: pnpm --filter @octo/ui build
+      - name: Octo UI tests
+        run: pnpm --filter @octo/ui test
       - name: Agent Mail tests
         run: pnpm --filter @octo/mail test
       - name: Agent Mail typecheck
@@ -219,3 +223,5 @@ jobs:
         run: pnpm lint
       - name: WKModal Semi override guard
         run: pnpm lint:wkmodal
+      - name: Octo UI Semi usage guards
+        run: pnpm lint:octo-dropdown && pnpm lint:octo-select && pnpm lint:octo-input && pnpm lint:octo-drawer && pnpm lint:octo-modal

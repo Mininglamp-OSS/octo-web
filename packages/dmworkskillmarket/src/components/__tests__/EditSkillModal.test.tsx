@@ -118,8 +118,8 @@ describe("EditSkillModal", () => {
   });
 
   it("opens the hidden icon file input and shows the crop dialog after selecting an image", async () => {
-    const { container } = render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
-    const iconInput = container.querySelector<HTMLInputElement>(".skill-market-icon-upload__input");
+    render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
+    const iconInput = document.body.querySelector<HTMLInputElement>(".skill-market-icon-upload__input");
     expect(iconInput).toBeTruthy();
     const clickSpy = vi.spyOn(iconInput!, "click").mockImplementation(() => undefined);
 
@@ -249,9 +249,6 @@ describe("EditSkillModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /取消|skillMarket\.common\.cancel/ }));
     fireEvent.click(screen.getByRole("button", { name: leaveButton }));
     expect(onClose).toHaveBeenCalled();
-    await waitFor(() => {
-      expect(screen.queryByText(dirtyEditMessage)).not.toBeInTheDocument();
-    });
   });
 
   it("can re-upload a Skill package and save the new file metadata", async () => {

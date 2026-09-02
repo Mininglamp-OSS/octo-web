@@ -6,7 +6,11 @@ import { ChannelSettingInlineEditRow } from "../index";
 import { Dap } from "../../../Service/Dap";
 
 vi.mock("@douyinfe/semi-icons", () => ({
+  IconAILoading: () => <span aria-hidden="true">loading</span>,
   IconClear: () => <span aria-hidden="true">x</span>,
+  IconEyeClosed: () => <span aria-hidden="true">eye-closed</span>,
+  IconEyeOpened: () => <span aria-hidden="true">eye-opened</span>,
+  IconSearchStroked: () => <span aria-hidden="true">search</span>,
 }));
 
 vi.mock("@douyinfe/semi-ui", () => ({
@@ -309,7 +313,9 @@ describe("ChannelSettingInlineEditRow", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Group notice" }));
-    fireEvent.click(screen.getByRole("button", { name: "textarea-clear" }));
+    fireEvent.change(screen.getByDisplayValue("Old notice"), {
+      target: { value: "" },
+    });
 
     expect(screen.getByDisplayValue("")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "base.common.save" }));

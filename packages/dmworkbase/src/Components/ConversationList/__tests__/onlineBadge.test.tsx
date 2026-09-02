@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom";
 import { act } from "react-dom/test-utils";
 import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+import { Modal as OctoModal, modalConfirm } from "@octo/ui";
 
 let ConversationList: typeof import("../index").default;
 let container: HTMLDivElement;
@@ -110,7 +111,7 @@ beforeAll(async () => {
   vi.doMock("../../../Utils/draftPreview", () => ({
     formatDraftPreview: (draft: string) => draft,
   }));
-  vi.doMock("../../WKModal", () => ({ wkConfirm: vi.fn() }));
+  vi.doMock("../../OctoModal", () => ({ modalConfirm: vi.fn() }));
   vi.doMock("../../Conversation/vm", () => ({
     default: { foldSessionPreview: new Map() },
   }));

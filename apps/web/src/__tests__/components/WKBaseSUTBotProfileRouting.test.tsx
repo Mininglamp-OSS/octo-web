@@ -21,7 +21,7 @@ import { act, render } from '@testing-library/react';
  * causes this test to FAIL — even if `UserInfoRouter` stays green in its own
  * unit test. The heavy child components (`UserInfo`, `BotDetailModal`,
  * `ConversationSelect`) are replaced with tiny `data-testid` stubs that echo
- * the props WKBase passed in; `WKModal` is reduced to a conditional wrapper so
+ * the props WKBase passed in; `OctoModal` is reduced to a conditional wrapper so
  * the `visible` boolean is observable through the DOM.
  *
  * Covered scenarios (round-3 mandated):
@@ -113,7 +113,7 @@ vi.mock('@douyinfe/semi-ui', () => ({
 // @tiptap/react: semi-ui's `aiChatInput` sub-module imports @tiptap/react
 // eagerly, and the tiptap dist uses `react/jsx-runtime` specifiers that
 // Node's strict ESM resolver rejects under Vitest. Even though WKBase never
-// reaches aiChatInput at runtime (we mock Modal and WKModal), Vitest still
+// reaches aiChatInput at runtime (we mock Modal and OctoModal), Vitest still
 // resolves semi-ui's module graph, so we short-circuit @tiptap/react here
 // to keep the resolve pass from failing. Pre-existing issue affecting
 // voiceInputIndicator.test.tsx too — unrelated to the routing logic.
@@ -136,13 +136,13 @@ vi.mock('../../../../../packages/dmworkbase/src/App', () => ({
     },
 }));
 
-// WKModal: conditionally render children when visible=true, otherwise nothing.
+// OctoModal: conditionally render children when visible=true, otherwise nothing.
 // This lets the stale-guard test observe which modal WKBase is actually
 // displaying via the usual testing-library queries.
 vi.mock(
-    '../../../../../packages/dmworkbase/src/Components/WKModal',
+    '@octo/ui',
     () => ({
-        default: (props: {
+        Modal: (props: {
             visible?: boolean;
             children?: React.ReactNode;
             className?: string;
@@ -263,7 +263,7 @@ describe('WKBase SUT: real component routes bot vs human entries (GH#1112, PR#11
         const bot = queryByTestId('bot-detail-stub');
         expect(bot).not.toBeNull();
         expect(bot!.getAttribute('data-uid')).toBe('bot_cached');
-        // UserInfo stub must NOT appear for a bot uid (its WKModal wrapper is
+        // UserInfo stub must NOT appear for a bot uid (its OctoModal wrapper is
         // also hidden because showUserInfo state stays false).
         expect(queryByTestId('user-info-stub')).toBeNull();
     });

@@ -267,27 +267,6 @@
   gap: 0;
 }
 
-.wk-fold-session-card-summary-checkbox .wk-checkbox__box {
-  border-radius: 50%;
-  border-width: 2px;
-  border-color: color-mix(in srgb, var(--wk-text-primary) 15%, transparent);
-  background: transparent;
-}
-
-.wk-fold-session-card-summary-checkbox:hover .wk-checkbox__box {
-  border-color: color-mix(in srgb, var(--wk-brand-primary) 40%, transparent);
-}
-
-.wk-fold-session-card-summary-checkbox.wk-checkbox--checked .wk-checkbox__box {
-  background: var(--wk-brand-primary);
-  border-color: var(--wk-brand-primary);
-}
-
-.wk-fold-session-card-summary-checkbox .wk-checkbox__check {
-  width: 10px;
-  height: 10px;
-}
-
 .wk-fold-session-card-summary-main {
   min-width: 0;
   flex: 1;

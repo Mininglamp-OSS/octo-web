@@ -1,3 +1,4 @@
+import { Button, Modal as OctoModal } from "@octo/ui";
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { Toast } from "@douyinfe/semi-ui";
 import {
@@ -6,8 +7,6 @@ import {
   IconEyeOpened,
   IconEyeClosed,
 } from "@douyinfe/semi-icons";
-import WKModal from "../WKModal";
-import WKButton from "../WKButton";
 import { useI18n } from "../../i18n";
 import SecretsService, {
   SecretKind,
@@ -114,7 +113,7 @@ export default function SecretEditModal({
   }, [canSubmit, isEdit, secret, name, kind, value, onSaved, onClose, t]);
 
   return (
-    <WKModal
+    <OctoModal
       visible
       title={isEdit ? t("base.secrets.edit.title") : t("base.secrets.create.title")}
       onCancel={onClose}
@@ -122,17 +121,17 @@ export default function SecretEditModal({
       zIndex={1200}
       footer={
         <>
-          <WKButton variant="ghost" onClick={onClose} disabled={saving}>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>
             {t("base.common.cancel")}
-          </WKButton>
-          <WKButton
-            variant="primary"
+          </Button>
+          <Button
+            variant="solid"
             onClick={handleSubmit}
             disabled={!canSubmit}
             loading={saving}
           >
             {t("base.common.save")}
-          </WKButton>
+          </Button>
         </>
       }
       className="wk-secrets-modal"
@@ -237,6 +236,6 @@ export default function SecretEditModal({
           <span>{t("base.secrets.security.note")}</span>
         </div>
       </div>
-    </WKModal>
+    </OctoModal>
   );
 }

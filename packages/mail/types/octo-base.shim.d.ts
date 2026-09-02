@@ -52,7 +52,7 @@ declare module "@octo/base" {
     onCancel?: () => unknown;
     onOk?: () => unknown;
   }
-  export function wkConfirm(options: ConfirmOptions): unknown;
+  export function modalConfirm(options: ConfirmOptions): unknown;
 
   export class Menus {
     constructor(

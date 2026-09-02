@@ -1,6 +1,7 @@
 import React, { Component } from "react";
-import { Input, Toast } from "@douyinfe/semi-ui";
-import { I18nContext, SpaceService, WKModal, extractErrorMsg, t } from "@octo/base";
+import { Input, Modal as OctoModal } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
+import { I18nContext, SpaceService, extractErrorMsg, t } from "@octo/base";
 import VoiceInputButton, { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
 import "./index.css";
 
@@ -94,7 +95,7 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
         const { t } = this.context;
 
         return (
-            <WKModal
+            <OctoModal
                 title={inviteUrl ? t("app.spaceCreate.inviteMembersTitle") : t("app.spaceCreate.createTitle")}
                 visible={visible}
                 onCancel={this.handleClose}
@@ -156,7 +157,7 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
                         </div>
                     </div>
                 )}
-            </WKModal>
+            </OctoModal>
         );
     }
 }

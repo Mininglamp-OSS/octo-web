@@ -1,8 +1,8 @@
 import React from "react";
 import classNames from "classnames";
+import { Checkbox } from "@octo/ui";
 import { Message } from "wukongimjssdk";
 import { MessageWrap } from "../../Service/Model";
-import Checkbox from "../Checkbox";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { formatMessageTimestamp } from "../../Utils/time";
 
@@ -85,7 +85,8 @@ const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
                 <Checkbox
                   className="wk-fold-msg-checkbox"
                   checked={!!message.checked}
-                  onChange={(checked) => {
+                  shape="circle"
+                  onCheckedChange={(checked) => {
                     onToggleSelect(message.message, checked);
                   }}
                 />

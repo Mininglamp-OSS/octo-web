@@ -1,210 +1,170 @@
 #!/usr/bin/env node
 
-import fs from "node:fs";
-import path from "node:path";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
 
-const repoRoot = process.cwd();
-const sourceRoots = ["apps", "packages"];
-const sourceExtensions = new Set([".js", ".jsx", ".ts", ".tsx"]);
+const root = process.cwd();
+const scanRoots = ["apps", "packages"];
+const sourceExtensions = new Set([".ts", ".tsx", ".js", ".jsx"]);
 const styleExtensions = new Set([".css", ".less", ".scss"]);
-const wkModalInternalStyleFile = path.join(
-  "packages",
-  "dmworkbase",
-  "src",
-  "Components",
-  "WKModal",
-  "index.css",
-);
-const ignoredDirs = new Set([
+const ignoredSegments = new Set([
   ".git",
   ".turbo",
   ".output",
   "build",
+  "build-e2e",
   "coverage",
   "dist",
   "node_modules",
+  "public",
 ]);
 
+const legacyPatterns = [
+  { pattern: /\bWKModal\b/g, message: "uses legacy WKModal; use @octo/ui Modal" },
+  { pattern: /\bwkConfirm\b/g, message: "uses legacy wkConfirm; use @octo/ui modalConfirm" },
+  { pattern: /Components\/WKModal/g, message: "imports legacy Components/WKModal path" },
+  { pattern: /\.wk-modal(?:\b|-)/g, message: "uses legacy .wk-modal selector; use .octo-ui-modal__* selectors" },
+];
+
+const allowedLegacyFiles = new Set([
+  // Public compatibility aliases for out-of-repo @octo/base consumers. New
+  // internal call sites must still use @octo/ui directly.
+  "packages/dmworkbase/src/index.tsx",
+  "packages/dmworkbase/src/Components/WKCompatibility/index.tsx",
+]);
+
+const semiOverridePatterns = [
+  "octo-ui-modal",
+];
+
+function extname(file) {
+  const index = file.lastIndexOf(".");
+  return index >= 0 ? file.slice(index) : "";
+}
+
 function walk(dir, files = []) {
-  if (!fs.existsSync(dir)) return files;
-
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (ignoredDirs.has(entry.name)) continue;
-
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (fullPath.endsWith(path.join("public", "pdfjs"))) continue;
-      walk(fullPath, files);
+  for (const entry of readdirSync(dir)) {
+    if (ignoredSegments.has(entry)) continue;
+    const full = join(dir, entry);
+    const stat = statSync(full);
+    if (stat.isDirectory()) {
+      walk(full, files);
       continue;
     }
 
-    files.push(fullPath);
+    const ext = extname(entry);
+    if (sourceExtensions.has(ext) || styleExtensions.has(ext)) files.push(full);
   }
-
   return files;
 }
 
-function getLineNumber(text, index) {
-  return text.slice(0, index).split("\n").length;
+function lineNumber(source, index) {
+  return source.slice(0, index).split("\n").length;
 }
 
-function findOpeningTags(text, tagName) {
-  const tags = [];
-  const needle = `<${tagName}`;
-  let index = 0;
-
-  while ((index = text.indexOf(needle, index)) !== -1) {
-    let cursor = index + needle.length;
-    let quote = "";
-    let braceDepth = 0;
-
-    for (; cursor < text.length; cursor += 1) {
-      const char = text[cursor];
-      const prev = text[cursor - 1];
-
-      if (quote) {
-        if (char === quote && prev !== "\\") quote = "";
-        continue;
-      }
-
-      if (char === "\"" || char === "'" || char === "`") {
-        quote = char;
-        continue;
-      }
-
-      if (char === "{") {
-        braceDepth += 1;
-        continue;
-      }
-
-      if (char === "}") {
-        braceDepth = Math.max(0, braceDepth - 1);
-        continue;
-      }
-
-      if (char === ">" && braceDepth === 0) {
-        tags.push({
-          index,
-          text: text.slice(index, cursor + 1),
-        });
-        cursor += 1;
-        break;
-      }
-    }
-
-    index = cursor;
-  }
-
-  return tags;
+function escapeRegExp(source) {
+  return source.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function extractWKModalClasses(files) {
-  const classNames = new Set(["wk-modal"]);
+function blankComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, " "));
+}
 
-  for (const file of files) {
-    if (!sourceExtensions.has(path.extname(file))) continue;
-
-    const text = fs.readFileSync(file, "utf8");
-    if (!text.includes("<WKModal")) continue;
-
-    for (const tag of findOpeningTags(text, "WKModal")) {
-      const match = tag.text.match(
-        /\bclassName\s*=\s*(?:"([^"]+)"|'([^']+)'|\{\s*"([^"]+)"\s*\}|\{\s*'([^']+)'\s*\})/,
-      );
-      if (!match) continue;
-
-      const value = match[1] ?? match[2] ?? match[3] ?? match[4] ?? "";
-      for (const className of value.split(/\s+/).filter(Boolean)) {
-        classNames.add(className);
-      }
+function collectModalClassNames(source) {
+  const names = new Set(["WKModal"]);
+  const importPattern = /(?:^|\n)\s*import\s*\{([^}]*)\}\s*from\s*["']@octo\/ui["']/g;
+  let match;
+  while ((match = importPattern.exec(source))) {
+    for (const rawSpecifier of match[1].split(",").map((part) => part.trim().replace(/^type\s+/, ""))) {
+      const parts = rawSpecifier.split(/\s+as\s+/);
+      if (parts[0] === "Modal") names.add(parts[1] || "Modal");
     }
   }
 
-  return classNames;
+  const tagPattern = new RegExp(`<(${Array.from(names).map(escapeRegExp).join("|")})\\b[^>]*>`, "g");
+  const classes = [];
+  while ((match = tagPattern.exec(source))) {
+    const tag = match[0];
+    const classMatch = /\bclassName\s*=\s*(?:"([^"]+)"|'([^']+)'|`([^`$]+)`)/.exec(tag);
+    if (!classMatch) continue;
+    const classSource = classMatch[1] || classMatch[2] || classMatch[3] || "";
+    for (const className of classSource.split(/\s+/).filter(Boolean)) {
+      classes.push(className);
+    }
+  }
+  return classes;
 }
 
-function stripCssComments(text) {
-  return text.replace(/\/\*[\s\S]*?\*\//g, (comment) =>
-    "\n".repeat(comment.split("\n").length - 1),
-  );
+function selectorTouchesClass(selector, className) {
+  return new RegExp(`\\.${escapeRegExp(className)}(?:\\b|[.#:[\\s>+~])`).test(selector);
 }
 
-function classTokenRegex(className) {
-  const escaped = className.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`\\.${escaped}(?![\\w-])`);
+function selectorTouchesSemiModal(selector) {
+  return /\.semi-modal(?:\b|-)/.test(selector);
 }
 
-function scanCss(files, wkModalClasses) {
+function collectSemiModalOverrideViolations(source, classNames) {
+  const stripped = blankComments(source);
   const violations = [];
-  const nativeSemiOverrides = [];
-  const classRegexes = [...wkModalClasses].map((className) => ({
-    className,
-    regex: classTokenRegex(className),
-  }));
+  const rulePattern = /([^{}]+)\{/g;
+  let match;
+  while ((match = rulePattern.exec(stripped))) {
+    const selectors = match[1].split(",").map((selector) => selector.replace(/\s+/g, " ").trim());
+    for (const selector of selectors) {
+      if (!selectorTouchesSemiModal(selector)) continue;
+      for (const className of classNames) {
+        if (selectorTouchesClass(selector, className)) {
+          violations.push(match.index);
+          break;
+        }
+      }
+    }
+  }
+  return violations;
+}
 
-  for (const file of files) {
-    if (!styleExtensions.has(path.extname(file))) continue;
-    if (path.relative(repoRoot, file) === wkModalInternalStyleFile) continue;
+const violations = [];
+const files = [];
+const modalClassNames = new Set(semiOverridePatterns);
 
-    const rawText = fs.readFileSync(file, "utf8");
-    if (!rawText.includes(".semi-modal")) continue;
+for (const scanRoot of scanRoots) {
+  const absRoot = join(root, scanRoot);
+  files.push(...walk(absRoot));
+}
 
-    const text = stripCssComments(rawText);
-    const ruleRegex = /([^{}]+)\{/g;
-    let match;
+for (const file of files) {
+  const rel = relative(root, file);
+  const source = readFileSync(file, "utf8");
+  if (!allowedLegacyFiles.has(rel) && sourceExtensions.has(extname(file))) {
+    for (const className of collectModalClassNames(source)) modalClassNames.add(className);
+  }
+}
 
-    while ((match = ruleRegex.exec(text)) !== null) {
-      const selector = match[1].trim();
-      if (!selector || selector.startsWith("@")) continue;
-      if (!selector.includes(".semi-modal")) continue;
+for (const file of files) {
+  const rel = relative(root, file);
+  const source = readFileSync(file, "utf8");
 
-      const matchedClasses = classRegexes
-        .filter(({ regex }) => regex.test(selector))
-        .map(({ className }) => className);
-
-      const entry = {
-        file,
-        line: getLineNumber(text, match.index),
-        selector: selector.replace(/\s+/g, " "),
-      };
-
-      if (matchedClasses.length > 0) {
-        violations.push({
-          ...entry,
-          classes: matchedClasses,
-        });
-      } else {
-        nativeSemiOverrides.push(entry);
+  if (!allowedLegacyFiles.has(rel)) {
+    for (const { pattern, message } of legacyPatterns) {
+      pattern.lastIndex = 0;
+      let match;
+      while ((match = pattern.exec(source))) {
+        violations.push(`${rel}:${lineNumber(source, match.index)} ${message}`);
       }
     }
   }
 
-  return { violations, nativeSemiOverrides };
+  if (styleExtensions.has(extname(file))) {
+    for (const index of collectSemiModalOverrideViolations(source, modalClassNames)) {
+      violations.push(`${rel}:${lineNumber(source, index)} overrides Semi Modal internals through Octo Modal; use octo-ui-modal__* selectors`);
+    }
+  }
 }
-
-const files = sourceRoots.flatMap((root) => walk(path.join(repoRoot, root)));
-const wkModalClasses = extractWKModalClasses(files);
-const { violations, nativeSemiOverrides } = scanCss(files, wkModalClasses);
 
 if (violations.length > 0) {
-  console.error(
-    "WKModal callers must not override Semi Modal internals. Target .wk-modal-shell/.wk-modal-body instead.",
-  );
-  for (const violation of violations) {
-    const relativeFile = path.relative(repoRoot, violation.file);
-    console.error(
-      `- ${relativeFile}:${violation.line} (${violation.classes.join(", ")}): ${violation.selector}`,
-    );
-  }
+  console.error("Octo UI Modal usage check failed:");
+  for (const violation of violations) console.error(`- ${violation}`);
   process.exit(1);
 }
 
-console.log(
-  `WKModal Semi override check passed (${wkModalClasses.size} WKModal class names scanned).`,
-);
-
-if (nativeSemiOverrides.length > 0) {
-  console.log(
-    `Found ${nativeSemiOverrides.length} native Semi Modal override(s) outside WKModal callers; left as existing technical debt.`,
-  );
-}
+console.log("Octo UI Modal usage check passed.");

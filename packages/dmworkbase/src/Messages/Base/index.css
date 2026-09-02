@@ -359,7 +359,7 @@ body[theme-mode=dark] .wk-message-base-bubble-box.recv .wk-message-base-bubble  
    
 }
 
-.wk-message-base-checkBox .wk-checkbox {
+.wk-message-base-checkBox .octo-ui-checkbox {
     position: absolute;
     bottom: 10px;
 }

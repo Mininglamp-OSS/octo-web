@@ -1,0 +1,244 @@
+.octo-ui-button.octo-ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--octo-ui-button-gap);
+  box-sizing: border-box;
+  flex-shrink: 0;
+  height: var(--octo-ui-button-height);
+  min-width: var(--octo-ui-button-min-width);
+  padding: var(--octo-ui-button-padding);
+  border: 1px solid transparent;
+  border-radius: var(--octo-ui-button-radius);
+  font-family: var(--octo-ui-font-sans);
+  font-size: var(--octo-ui-button-font-size);
+  font-weight: var(--octo-ui-button-font-weight);
+  line-height: var(--octo-ui-button-line-height);
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color var(--octo-ui-duration-fast) var(--octo-ui-ease-standard),
+    border-color var(--octo-ui-duration-fast) var(--octo-ui-ease-standard),
+    box-shadow var(--octo-ui-duration-fast) var(--octo-ui-ease-standard),
+    color var(--octo-ui-duration-fast) var(--octo-ui-ease-standard);
+}
+
+.octo-ui-button.octo-ui-button:focus-visible {
+  outline: 2px solid var(--octo-ui-focus-ring);
+  outline-offset: 2px;
+}
+
+.octo-ui-button.octo-ui-button--xs {
+  height: var(--octo-ui-button-height-xs);
+  min-width: var(--octo-ui-button-min-width-xs);
+  padding: var(--octo-ui-button-padding-xs);
+}
+
+.octo-ui-button.octo-ui-button--icon-only {
+  width: var(--octo-ui-button-icon-only-size);
+  height: var(--octo-ui-button-icon-only-size);
+  min-width: var(--octo-ui-button-icon-only-size);
+  padding-inline: 0;
+  border-radius: var(--octo-ui-button-icon-only-radius);
+}
+
+.octo-ui-button.octo-ui-button--icon-only.octo-ui-button--xs {
+  width: var(--octo-ui-button-icon-only-size);
+  min-width: var(--octo-ui-button-icon-only-size);
+  height: var(--octo-ui-button-icon-only-size);
+}
+
+.octo-ui-button--solid {
+  --semi-color-primary: var(--octo-ui-button-solid-bg);
+  --semi-color-primary-hover: var(--octo-ui-button-solid-bg-hover);
+  --semi-color-primary-active: var(--octo-ui-button-solid-bg-hover);
+
+  background: var(--octo-ui-button-solid-bg);
+  color: var(--octo-ui-button-text-inverse);
+}
+
+.octo-ui-button--solid:hover:not(:disabled) {
+  background: var(--octo-ui-button-solid-bg-hover);
+}
+
+.octo-ui-button--solid:active:not(:disabled) {
+  background: var(--octo-ui-button-solid-bg-hover);
+}
+
+.octo-ui-button--brand {
+  --semi-color-primary: var(--octo-ui-button-brand-bg);
+  --semi-color-primary-hover: var(--octo-ui-button-brand-bg-hover);
+  --semi-color-primary-active: var(--octo-ui-button-brand-bg-hover);
+
+  background: var(--octo-ui-button-brand-bg);
+  color: var(--octo-ui-button-text-inverse);
+}
+
+.octo-ui-button--brand:hover:not(:disabled) {
+  background: var(--octo-ui-button-brand-bg-hover);
+}
+
+.octo-ui-button--brand:active:not(:disabled) {
+  background: var(--octo-ui-button-brand-bg-hover);
+}
+
+.octo-ui-button--tint {
+  --semi-color-primary: var(--octo-ui-button-tint-text);
+  --semi-color-fill-0: var(--octo-ui-button-tint-bg);
+  --semi-color-fill-1: var(--octo-ui-button-tint-bg-hover);
+  --semi-color-fill-2: var(--octo-ui-button-tint-bg-active);
+
+  background: var(--octo-ui-button-tint-bg);
+  border-color: transparent;
+  color: var(--octo-ui-button-tint-text);
+}
+
+.octo-ui-button--tint:hover:not(:disabled) {
+  background: var(--octo-ui-button-tint-bg-hover);
+}
+
+.octo-ui-button--tint:active:not(:disabled) {
+  background: var(--octo-ui-button-tint-bg-active);
+}
+
+.octo-ui-button.octo-ui-button--secondary {
+  --semi-color-text-1: var(--octo-ui-button-secondary-text);
+  --semi-color-fill-0: var(--octo-ui-button-secondary-bg);
+  --semi-color-fill-1: var(--octo-ui-button-secondary-bg-hover);
+  --semi-color-fill-2: var(--octo-ui-button-secondary-bg-active);
+
+  background: var(--octo-ui-button-secondary-bg);
+  border-color: var(--octo-ui-button-secondary-border);
+  color: var(--octo-ui-button-secondary-text);
+}
+
+.octo-ui-button--secondary:hover:not(:disabled) {
+  background: var(--octo-ui-button-secondary-bg-hover);
+  border-color: var(--octo-ui-button-secondary-border-hover);
+}
+
+.octo-ui-button--secondary:active:not(:disabled) {
+  background: var(--octo-ui-button-secondary-bg-active);
+}
+
+.octo-ui-button--text {
+  --semi-color-primary: var(--octo-ui-button-text);
+  --semi-color-fill-0: var(--octo-ui-button-text-bg-hover);
+  --semi-color-fill-1: var(--octo-ui-button-text-bg-active);
+
+  background: transparent;
+  color: var(--octo-ui-button-text);
+  min-width: 0;
+}
+
+.octo-ui-button--text:hover:not(:disabled) {
+  background: var(--octo-ui-button-text-bg-hover);
+  color: var(--octo-ui-button-text-hover);
+}
+
+.octo-ui-button--text:active:not(:disabled) {
+  background: var(--octo-ui-button-text-bg-active);
+}
+
+.octo-ui-button--danger-text {
+  --semi-color-danger: var(--octo-ui-button-danger-text);
+  --semi-color-fill-0: var(--octo-ui-button-danger-bg-soft);
+  --semi-color-fill-1: var(--octo-ui-button-text-bg-active);
+
+  background: transparent;
+  border-color: transparent;
+  color: var(--octo-ui-button-danger-text);
+  min-width: 0;
+}
+
+.octo-ui-button--danger-text:hover:not(:disabled) {
+  background: var(--octo-ui-button-danger-bg-soft);
+}
+
+.octo-ui-button--danger-text:active:not(:disabled) {
+  background: var(--octo-ui-button-text-bg-active);
+}
+
+.octo-ui-button.octo-ui-button--warning {
+  --semi-color-warning: var(--octo-ui-button-danger-text);
+  --semi-color-fill-0: var(--octo-ui-button-secondary-bg);
+  --semi-color-fill-1: var(--octo-ui-button-danger-bg-soft);
+  --semi-color-fill-2: var(--octo-ui-button-danger-bg-hover);
+
+  background: var(--octo-ui-button-secondary-bg);
+  border-color: var(--octo-ui-button-danger-border);
+  color: var(--octo-ui-button-danger-text);
+}
+
+.octo-ui-button--warning:hover:not(:disabled) {
+  background: var(--octo-ui-button-danger-bg-soft);
+}
+
+.octo-ui-button--warning:active:not(:disabled) {
+  background: var(--octo-ui-button-danger-bg-hover);
+}
+
+.octo-ui-button--danger {
+  --semi-color-danger: var(--octo-ui-button-danger-bg);
+  --semi-color-danger-hover: var(--octo-ui-button-danger-bg-solid-hover);
+  --semi-color-danger-active: var(--octo-ui-button-danger-bg-solid-active);
+
+  background: var(--octo-ui-button-danger-bg);
+  color: var(--octo-ui-button-text-inverse);
+}
+
+.octo-ui-button--danger:hover:not(:disabled) {
+  background: var(--octo-ui-button-danger-bg-solid-hover);
+}
+
+.octo-ui-button--danger:active:not(:disabled) {
+  background: var(--octo-ui-button-danger-bg-solid-active);
+}
+
+.octo-ui-button.octo-ui-button:hover:not(:disabled),
+.octo-ui-button.octo-ui-button:active:not(:disabled) {
+  border-width: 1px;
+  border-style: solid;
+  transform: none;
+}
+
+.octo-ui-button.octo-ui-button--solid:hover:not(:disabled),
+.octo-ui-button.octo-ui-button--solid:active:not(:disabled),
+.octo-ui-button.octo-ui-button--brand:hover:not(:disabled),
+.octo-ui-button.octo-ui-button--brand:active:not(:disabled),
+.octo-ui-button.octo-ui-button--tint:hover:not(:disabled),
+.octo-ui-button.octo-ui-button--tint:active:not(:disabled),
+.octo-ui-button.octo-ui-button--text:hover:not(:disabled),
+.octo-ui-button.octo-ui-button--text:active:not(:disabled),
+.octo-ui-button.octo-ui-button--danger-text:hover:not(:disabled),
+.octo-ui-button.octo-ui-button--danger-text:active:not(:disabled),
+.octo-ui-button.octo-ui-button--danger:hover:not(:disabled),
+.octo-ui-button.octo-ui-button--danger:active:not(:disabled) {
+  border-color: transparent;
+}
+
+.octo-ui-button.octo-ui-button--secondary:hover:not(:disabled) {
+  border-color: var(--octo-ui-button-secondary-border-hover);
+}
+
+.octo-ui-button.octo-ui-button--secondary:active:not(:disabled) {
+  border-color: var(--octo-ui-button-secondary-border-hover);
+}
+
+.octo-ui-button.octo-ui-button--warning:hover:not(:disabled),
+.octo-ui-button.octo-ui-button--warning:active:not(:disabled) {
+  border-color: var(--octo-ui-button-danger-border);
+}
+
+.octo-ui-button.octo-ui-button:disabled,
+.octo-ui-button.octo-ui-button[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.octo-ui-button--loading {
+  cursor: wait;
+}

@@ -1,6 +1,8 @@
+import { Button, Modal as OctoModal } from "@octo/ui";
+import Select from "@octo/ui/select";
 import React, { useEffect, useState } from "react";
-import { WKModal, WKButton, t, useI18n } from "@octo/base";
-import { Select, Toast } from "@douyinfe/semi-ui";
+import { t, useI18n } from "@octo/base";
+import { Toast } from "@douyinfe/semi-ui";
 import type { ExpertItem } from "../mock/expertMock";
 import {
   installExpertToLoop,
@@ -163,20 +165,21 @@ export default function ExpertAddToLoopModal({
   const canSubmit = Boolean(workspaceId && runtimeId) && !submitting;
 
   return (
-    <WKModal
+    <OctoModal
       visible={visible}
       onCancel={handleClose}
       width={480}
       className="wk-mcp-add-to-loop-modal"
       title={t("mcp.expert.addToLoopTitle")}
+      closeLabel={t("mcp.common.close")}
       footer={
         <div className="wk-mcp-form-footer__right">
-          <WKButton variant="secondary" onClick={handleClose} disabled={submitting}>
+          <Button variant="secondary" onClick={handleClose} disabled={submitting}>
             {t("mcp.expert.cancel")}
-          </WKButton>
-          <WKButton variant="primary" onClick={handleConfirm} disabled={!canSubmit}>
+          </Button>
+          <Button variant="solid" onClick={handleConfirm} disabled={!canSubmit}>
             {submitting ? t("mcp.expert.installing") : t("mcp.expert.confirmInstall")}
-          </WKButton>
+          </Button>
         </div>
       }
     >
@@ -219,6 +222,6 @@ export default function ExpertAddToLoopModal({
             : t("mcp.expert.secretPlaceholderNote")}
         </p>
       </div>
-    </WKModal>
+    </OctoModal>
   );
 }

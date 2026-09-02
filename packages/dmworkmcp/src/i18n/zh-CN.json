@@ -109,6 +109,7 @@
     "sortHottest": "最热"
   },
   "common": {
+    "close": "关闭",
     "loadFailed": "加载失败"
   },
   "errors": {

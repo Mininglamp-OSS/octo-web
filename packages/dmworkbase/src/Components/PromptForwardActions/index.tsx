@@ -9,7 +9,7 @@ import APIClient from "../../Service/APIClient";
 import { forwardPlainText } from "../../Service/ForwardService";
 import { copyToClipboard } from "../../Utils/clipboard";
 import { Dap } from "../../Service/Dap";
-import WKButton from "../WKButton";
+import { Button } from "@octo/ui";
 import "./index.css";
 
 /**
@@ -298,7 +298,7 @@ export default function PromptForwardActions({
   );
 
   const copyButton = (
-    <WKButton
+    <Button
       data-testid="mcp-bot-publish-copy"
       variant="secondary"
       icon={copied ? <Check size={15} /> : <Copy size={15} />}
@@ -308,7 +308,7 @@ export default function PromptForwardActions({
       {copied
         ? t("base.promptForward.copied")
         : t("base.promptForward.copyPrompt")}
-    </WKButton>
+    </Button>
   );
 
   // Split-layout preview: the prompt is a read-only <pre> by default and turns
@@ -342,7 +342,7 @@ export default function PromptForwardActions({
   );
 
   const editButton = (
-    <WKButton
+    <Button
       variant="secondary"
       icon={<Pencil size={15} />}
       onClick={() => setEditing((v) => !v)}
@@ -351,7 +351,7 @@ export default function PromptForwardActions({
       {editing
         ? t("base.promptForward.doneEdit")
         : t("base.promptForward.editPrompt")}
-    </WKButton>
+    </Button>
   );
 
   // Forward-button label follows the host's action so publish/update surfaces
@@ -364,15 +364,15 @@ export default function PromptForwardActions({
       : t("base.promptForward.forwardToBot");
 
   const forwardButton = (
-    <WKButton
-      variant="primary"
+    <Button
+      variant="solid"
       icon={<Send size={15} />}
       onClick={handleForward}
       disabled={!canForward}
       loading={forwarding}
     >
       {forwarding ? t("base.promptForward.forwarding") : forwardLabel}
-    </WKButton>
+    </Button>
   );
 
   if (layout === "split") {

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { TextArea, Toast } from "@douyinfe/semi-ui";
+import { Input, modalConfirm, Modal as OctoModal } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { t } from "../../i18n";
-import { wkConfirm } from "../../Components/WKModal/confirm";
 
 /**
  * 文档访问申请「拒绝」二次确认弹窗。
@@ -65,7 +65,7 @@ function DenyReasonBody(props: {
           {t("base.message.interactiveCard.denyDialog.required")}
         </span>
       </div>
-      <TextArea
+      <Input.TextArea
         autosize={{ minRows: 3, maxRows: 6 }}
         maxLength={MAX_REASON}
         placeholder={t("base.message.interactiveCard.denyDialog.placeholder")}
@@ -99,7 +99,7 @@ export function openDocsDenyReasonDialog(
       settled = true;
       resolve(value);
     };
-    wkConfirm({
+    modalConfirm({
       title: t("base.message.interactiveCard.denyDialog.title"),
       okText: t("base.message.interactiveCard.denyDialog.confirm"),
       cancelText: t("base.message.interactiveCard.denyDialog.cancel"),
@@ -110,7 +110,7 @@ export function openDocsDenyReasonDialog(
         const reason = box.reason.trim();
         if (!reason) {
           Toast.warning(t("base.message.interactiveCard.denyDialog.reasonRequired"));
-          // 拒绝一个 promise 让 wkConfirm 保持弹窗打开（见 WKModal/confirm.tsx）。
+          // 拒绝一个 promise 让 modalConfirm 保持弹窗打开（见 @octo/ui Modal confirm）。
           return Promise.reject(new Error("deny reason required"));
         }
         done(reason);

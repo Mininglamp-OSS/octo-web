@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import '@octo/base/src/theme/tokens.css';
+import '@octo/ui/styles.css';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
@@ -102,12 +103,29 @@ WKApp.shared.registerModule(new MailModule()); // Agent Mail workspace
 // 否则第一发 fetch (common/appconfig) 会漏 mock.
 // 暴露 worker + http/HttpResponse 到 window, 让 e2e spec 用 worker.use(...)
 // 动态覆盖 handler 支持有状态场景 (page.route 拦不到 MSW SW 层).
+const E2E_MSW_RELOAD_KEY = "__octo_e2e_msw_reload__";
+
+async function ensureMswControlsPage(): Promise<void> {
+  if (!("serviceWorker" in navigator)) return;
+  await navigator.serviceWorker.ready;
+  if (navigator.serviceWorker.controller) {
+    window.sessionStorage.removeItem(E2E_MSW_RELOAD_KEY);
+    return;
+  }
+  if (window.sessionStorage.getItem(E2E_MSW_RELOAD_KEY) === "1") return;
+
+  window.sessionStorage.setItem(E2E_MSW_RELOAD_KEY, "1");
+  window.location.reload();
+  await new Promise<never>(() => undefined);
+}
+
 async function enableMocksIfE2E(): Promise<void> {
   if (import.meta.env.VITE_E2E_MOCK !== "1") return;
   try {
     const { worker } = await import("./mocks/browser");
     const msw = await import("msw");
     await worker.start({ onUnhandledRequest: "bypass" });
+    await ensureMswControlsPage();
     const w = window as unknown as {
       __MSW_READY__: boolean;
       __msw?: { worker: typeof worker; http: typeof msw.http; HttpResponse: typeof msw.HttpResponse };

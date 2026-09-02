@@ -1,16 +1,29 @@
-.wk-main-modal-organizational-group-new .wk-modal-shell {
+.wk-main-modal-organizational-group-new .octo-ui-modal__surface {
+  height: min(500px, var(--octo-ui-modal-max-height));
   padding: 0;
 }
 
-.wk-main-modal-organizational-group-new .wk-modal-body {
-  height: 500px;
-  display: flex;
+.wk-main-modal-organizational-group-new__body {
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0;
   overflow: hidden;
 }
 
-.wk-organizational-group-new-left {
-  width: 50%;
+.wk-main-modal-organizational-group-new__content {
+  display: flex;
+  width: 100%;
   height: 100%;
+  min-height: 0;
+}
+
+.wk-organizational-group-new-left {
+  box-sizing: border-box;
+  width: 50%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
   background-color: var(--wk-color-secondary);
   padding: 12px;
   display: flex;
@@ -19,6 +32,8 @@
 
 .wk-organizational-group-new-left .group-new-left-main {
   flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -27,12 +42,12 @@
 }
 .wk-organizational-group-new-left
   .group-new-left-search
-  .group-new-left-search-input.semi-input-wrapper-focus {
+  .group-new-left-search-input:focus-within {
   border: var(--wk-color-theme) solid 1px;
 }
 .wk-organizational-group-new-left
   .group-new-left-search
-  .group-new-left-search-input.semi-input-wrapper-focus:active {
+  .group-new-left-search-input:active {
   border: var(--wk-color-theme) solid 1px;
 }
 /* 好友选择 */
@@ -49,11 +64,40 @@
 .group-new-left-main .friend-opt .friend-opt-main .friend-opt-item {
   display: flex;
   align-items: center;
+  width: 100%;
+  box-sizing: border-box;
   padding: 12px 8px;
   font-size: 14px;
   line-height: 20px;
   color: var(--semi-color-text-0);
   row-gap: 0;
+}
+
+.group-new-left-main
+  .friend-opt
+  .friend-opt-main
+  .friend-opt-item
+  .octo-ui-checkbox-semi-content,
+.group-new-left-main
+  .friend-opt
+  .friend-opt-main
+  .friend-opt-item
+  .octo-ui-checkbox-semi-addon {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.group-new-left-main
+  .friend-opt
+  .friend-opt-main
+  .friend-opt-item
+  .octo-ui-checkbox-semi-addon
+  > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .group-new-left-main .friend-opt .friend-opt-main .friend-opt-item:hover {
   background-color: var(--semi-color-fill-0);
@@ -100,17 +144,6 @@
   padding-bottom: 12px;
 }
 
-.semi-checkbox:hover .semi-checkbox-inner-display {
-  background: var(--semi-color-fill-0);
-  box-shadow: inset 0 0 0 1px var(--wk-color-theme);
-}
-
-.semi-checkbox:hover .semi-checkbox-inner-checked .semi-checkbox-inner-display {
-  background: var(--wk-color-theme);
-  border-color: var(--wk-color-theme);
-  color: var(--semi-color-white);
-}
-
 .organizational-tree .semi-tree-option-list-block .department-icon {
   color: var(--wk-color-theme);
 }
@@ -141,8 +174,11 @@
 }
 
 .wk-organizational-group-new-right {
+  box-sizing: border-box;
   width: 50%;
+  min-width: 0;
   height: 100%;
+  min-height: 0;
   background-color: var(--wk-color-item);
   padding: 12px;
   display: flex;
@@ -154,6 +190,8 @@
 }
 .wk-organizational-group-new-right .organizational-group-new-right-body {
   flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   margin: 12px 0;
 }
@@ -176,6 +214,17 @@
   .user-info {
   display: flex;
   align-items: center;
+  min-width: 0;
+}
+
+.wk-organizational-group-new-right
+  .organizational-group-new-right-body
+  .opt-personnel-item
+  .user-info
+  > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wk-organizational-group-new-right
@@ -318,30 +367,8 @@
    全部限定在 .group-create-members / .group-create-selected 作用域，
    这两个类仅创建弹窗存在；renderMemberLeft/renderSelectedList 虽与群设置
    「添加成员」弹窗共用 DOM，但那套不在此作用域内，故零影响。
-   搜索框图标也用纯 CSS 伪元素注入，不改共用的 <Input> JSX。
    ==================================================================== */
 
-/* 搜索框：胶囊形 + 左侧放大镜（对齐 wk-fm-search）。
-   图标用 mask + 主题色变量，颜色随主题/暗色模式变化，不写死色值。 */
-.group-create-members .group-new-left-search {
-  position: relative;
-}
-.group-create-members .group-new-left-search::before {
-  content: "";
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  width: 16px;
-  height: 16px;
-  transform: translateY(-50%);
-  z-index: 1;
-  pointer-events: none;
-  background-color: var(--semi-color-text-2);
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E")
-    no-repeat center / contain;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E")
-    no-repeat center / contain;
-}
 .group-create-members .group-new-left-search .group-new-left-search-input {
   border-radius: 9999px;
   background: var(--semi-color-fill-1);
@@ -350,9 +377,8 @@
 .group-create-members
   .group-new-left-search
   .group-new-left-search-input
-  .semi-input {
+  input {
   background: transparent;
-  padding-left: 28px;
 }
 
 /* 列表行：行高/留白/hover 对齐 wk-fm-item（padding 4px、hover 极淡） */

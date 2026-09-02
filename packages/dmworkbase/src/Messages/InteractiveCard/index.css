@@ -701,8 +701,7 @@
 }
 
 /* ── 文档访问申请「拒绝」弹窗 ──
- * 弹窗本体由 wkConfirm(Semi Modal) 渲染并 portal 到 body，故这些类是全局面；
- * 只补内容排版，按钮/壳沿用 wk-modal 既有样式。 */
+ * 弹窗本体由 modalConfirm 渲染并 portal 到 body，故这些类是全局面。 */
 .wk-docs-deny-dialog-no {
   margin-bottom: var(--wk-sp-1, 4px);
   font-size: var(--wk-text-size-sm, 12px);

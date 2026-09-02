@@ -1,0 +1,213 @@
+.octo-ui-modal {
+  --semi-color-overlay-bg: var(--octo-ui-modal-mask-bg);
+
+  color: var(--octo-ui-modal-text);
+  font-family: var(--octo-ui-font-sans);
+}
+
+.octo-ui-modal .octo-ui-modal__content {
+  box-sizing: border-box;
+  max-height: var(--octo-ui-modal-max-height);
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--octo-ui-modal-radius);
+  background: var(--octo-ui-modal-bg);
+  box-shadow: var(--octo-ui-modal-shadow);
+}
+
+.octo-ui-modal__surface {
+  box-sizing: border-box;
+  position: relative;
+  display: flex;
+  max-height: var(--octo-ui-modal-max-height);
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--octo-ui-modal-text);
+  background: var(--octo-ui-modal-bg);
+}
+
+.octo-ui-modal__header {
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--octo-ui-modal-header-height);
+  padding: var(--octo-ui-modal-header-padding);
+  padding-right: calc(var(--octo-ui-modal-header-padding) + var(--octo-ui-modal-close-size) + var(--octo-ui-modal-header-padding));
+}
+
+.octo-ui-modal__title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--octo-ui-modal-title-text);
+  font-size: var(--octo-ui-modal-title-size);
+  font-weight: var(--octo-ui-modal-title-weight);
+  line-height: var(--octo-ui-modal-title-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.octo-ui-modal__close {
+  box-sizing: border-box;
+  position: absolute;
+  top: calc((var(--octo-ui-modal-header-height) - var(--octo-ui-modal-close-size)) / 2);
+  right: var(--octo-ui-modal-header-padding);
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--octo-ui-modal-close-size);
+  height: var(--octo-ui-modal-close-size);
+  padding: 0;
+  border: 0;
+  border-radius: var(--octo-ui-modal-close-radius);
+  color: var(--octo-ui-modal-icon);
+  background: transparent;
+  cursor: pointer;
+}
+
+.octo-ui-modal__close--legacy-hitarea {
+  --octo-ui-modal-close-size: var(--octo-ui-modal-close-size-legacy);
+}
+
+.octo-ui-modal__close:hover,
+.octo-ui-modal__close:focus-visible {
+  color: var(--octo-ui-modal-icon-hover);
+  background: var(--octo-ui-modal-close-bg-hover);
+  outline: none;
+}
+
+.octo-ui-modal__close:focus-visible {
+  box-shadow: 0 0 0 2px var(--octo-ui-focus-ring);
+}
+
+.octo-ui-modal__close svg {
+  display: block;
+  width: var(--octo-ui-modal-icon-size);
+  height: var(--octo-ui-modal-icon-size);
+}
+
+.octo-ui-modal__body {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--octo-ui-modal-body-gap);
+  min-height: 0;
+  padding: var(--octo-ui-modal-body-padding);
+  overflow-y: auto;
+  color: var(--octo-ui-modal-text);
+  font-size: var(--octo-ui-modal-body-size);
+  line-height: var(--octo-ui-modal-body-line-height);
+}
+
+.octo-ui-modal__body:empty {
+  display: none;
+}
+
+.octo-ui-modal__footer {
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--octo-ui-modal-footer-gap);
+  min-height: var(--octo-ui-modal-footer-height);
+  padding: var(--octo-ui-modal-footer-padding);
+}
+
+.octo-ui-modal__surface--confirm {
+  max-height: var(--octo-ui-modal-confirm-max-height);
+  padding: var(--octo-ui-modal-confirm-padding);
+  overflow-y: auto;
+}
+
+.octo-ui-modal__surface--confirm .octo-ui-modal__header {
+  position: absolute;
+  top: var(--octo-ui-modal-confirm-padding);
+  right: var(--octo-ui-modal-confirm-padding);
+  height: var(--octo-ui-modal-icon-size);
+  padding: 0;
+}
+
+.octo-ui-modal__surface--confirm .octo-ui-modal__title {
+  display: none;
+}
+
+.octo-ui-modal__surface--confirm .octo-ui-modal__close {
+  top: var(--octo-ui-modal-confirm-padding);
+  right: var(--octo-ui-modal-confirm-padding);
+  width: var(--octo-ui-modal-icon-size);
+  height: var(--octo-ui-modal-icon-size);
+}
+
+.octo-ui-modal__surface--confirm .octo-ui-modal__close:hover,
+.octo-ui-modal__surface--confirm .octo-ui-modal__close:focus-visible {
+  background: transparent;
+  box-shadow: none;
+}
+
+.octo-ui-modal__surface--confirm .octo-ui-modal__body {
+  padding: 0;
+}
+
+.octo-ui-modal__surface--confirm .octo-ui-modal__footer {
+  min-height: auto;
+  padding: var(--octo-ui-modal-confirm-footer-padding);
+}
+
+.octo-ui-modal-confirm {
+  display: flex;
+  gap: var(--octo-ui-modal-confirm-gap);
+  min-width: 0;
+}
+
+.octo-ui-modal-confirm__icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--octo-ui-modal-confirm-icon-size);
+  height: var(--octo-ui-modal-confirm-icon-size);
+  color: var(--octo-ui-modal-confirm-warning);
+}
+
+.octo-ui-modal-confirm__icon--danger {
+  color: var(--octo-ui-modal-confirm-danger);
+}
+
+.octo-ui-modal-confirm__icon--info {
+  color: var(--octo-ui-modal-confirm-info);
+}
+
+.octo-ui-modal-confirm__icon--success {
+  color: var(--octo-ui-modal-confirm-success);
+}
+
+.octo-ui-modal-confirm__icon svg {
+  display: block;
+  width: var(--octo-ui-modal-confirm-icon-size);
+  height: var(--octo-ui-modal-confirm-icon-size);
+}
+
+.octo-ui-modal-confirm__content {
+  min-width: 0;
+  padding-right: calc(var(--octo-ui-modal-icon-size) + var(--octo-ui-modal-confirm-gap));
+}
+
+.octo-ui-modal-confirm__title {
+  color: var(--octo-ui-modal-title-text);
+  font-size: var(--octo-ui-modal-confirm-title-size);
+  font-weight: var(--octo-ui-modal-title-weight);
+  line-height: var(--octo-ui-modal-confirm-title-line-height);
+}
+
+.octo-ui-modal-confirm__description {
+  margin-top: var(--octo-ui-modal-confirm-description-margin);
+  color: var(--octo-ui-modal-text);
+  font-size: var(--octo-ui-modal-body-size);
+  line-height: var(--octo-ui-modal-body-line-height);
+}

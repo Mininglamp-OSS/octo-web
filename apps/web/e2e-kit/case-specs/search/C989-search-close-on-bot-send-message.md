@@ -60,7 +60,7 @@ fix 回退后现象：搜索弹窗仍然停留在页面上，覆盖住会话面�
 
 - `packages/dmworkbase/src/Components/GlobalSearch/tab-contacts.tsx:150-158` — `BotDetailModal.onChat` 里的 fix 点 `this.props.hideModal?.()`
 - `packages/dmworkbase/src/features/globalSearch/GlobalSearchPanel.tsx:200-205` — `<TabContacts hideModal={this.props.hideModal} />` 透传点
-- `packages/dmworkbase/src/Pages/Chat/index.tsx:1963-1978` — 外层 `<WKModal className="wk-global-search-modal">` 加 `<GlobalSearch hideModal={()=>vm.showGlobalSearch=false}>`
+- `packages/dmworkbase/src/Pages/Chat/index.tsx:1963-1978` — 外层 Octo UI Modal 加 `<GlobalSearch hideModal={()=>vm.showGlobalSearch=false}>`
 - `packages/dmworkbase/src/Components/GlobalSearch/tab-contacts.tsx:167-185` — `renderItem` 里 `isBot(item.channel_id)` 决定走 BotDetailModal 分支
 - `packages/dmworkbase/src/Components/WKAvatar/index.tsx:13-16` — `isBot(uid)` = `channelInfoCache.get(uid).orgData.robot === 1` → 所以 mock 里要把 bot 用 seed 预热到 channelInfoCache
 - `packages/dmworkbase/src/Components/BotDetailModal/index.tsx:95-101` — `handleChat` 调 `onChat(new Channel(uid, ChannelTypePerson))` + `onClose()`

@@ -1,7 +1,5 @@
+import { Button, Input, Modal as OctoModal } from "@octo/ui";
 import React from "react";
-import WKModal from "../WKModal";
-import WKButton from "../WKButton";
-import WKInput from "../WKInput";
 import { useI18n } from "../../i18n";
 import "./index.css";
 
@@ -49,7 +47,7 @@ export default function JoinSpaceModal({
         inviteInfo.member_count >= inviteInfo.max_users;
 
     return (
-        <WKModal
+        <OctoModal
             title={t("base.joinSpace.title")}
             visible={visible}
             onCancel={onCancel}
@@ -61,7 +59,7 @@ export default function JoinSpaceModal({
                     </p>
                     <div className="wk-join-space-modal__field">
                         <label className="wk-join-space-modal__label">{t("base.joinSpace.inviteCode")}</label>
-                        <WKInput
+                        <Input
                             size="lg"
                             placeholder={t("base.joinSpace.placeholder")}
                             value={code}
@@ -74,10 +72,10 @@ export default function JoinSpaceModal({
                         </span>
                     </div>
                     <div className="wk-join-space-modal__footer">
-                        <WKButton variant="secondary" onClick={onCancel}>{t("base.common.cancel")}</WKButton>
-                        <WKButton variant="primary" loading={verifyLoading} onClick={onVerify}>
+                        <Button variant="secondary" onClick={onCancel}>{t("base.common.cancel")}</Button>
+                        <Button variant="solid" loading={verifyLoading} onClick={onVerify}>
                             {t("base.joinSpace.next")}
-                        </WKButton>
+                        </Button>
                     </div>
                 </div>
             )}
@@ -101,15 +99,15 @@ export default function JoinSpaceModal({
                         {/* 空间已满：信息去重，按钮已提示，这里不再显示 badge */}
                     </div>
                     <div className="wk-join-space-modal__footer wk-join-space-modal__footer--confirm">
-                        <WKButton
-                            variant="primary"
+                        <Button
+                            variant="solid"
                             loading={joinLoading}
                             disabled={isFull}
                             onClick={onJoin}
                             className="wk-join-space-modal__join-btn"
                         >
                             {isFull ? t("base.joinSpace.full") : t("base.joinSpace.confirm")}
-                        </WKButton>
+                        </Button>
                         <button
                             type="button"
                             className="wk-join-space-modal__back-link"
@@ -120,6 +118,6 @@ export default function JoinSpaceModal({
                     </div>
                 </div>
             )}
-        </WKModal>
+        </OctoModal>
     );
 }

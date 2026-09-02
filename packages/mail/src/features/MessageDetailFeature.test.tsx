@@ -18,13 +18,13 @@ const state = vi.hoisted(() => ({
   sendDraft: vi.fn(),
   restoreNotJunk: vi.fn(),
   emit: vi.fn(),
-  wkConfirm: vi.fn(),
+  modalConfirm: vi.fn(),
   t: vi.fn((key: string) => key),
 }));
 
 vi.mock("@octo/base", () => ({
   useI18n: () => ({ t: state.t, locale: "en-US" }),
-  wkConfirm: state.wkConfirm,
+  modalConfirm: state.modalConfirm,
   WKApp: {
     mittBus: { emit: state.emit },
     routeRight: { pop: vi.fn(), push: vi.fn() },
@@ -76,7 +76,7 @@ describe("MessageDetailFeature action errors", () => {
     state.getMessage.mockReset();
     state.sendDraft.mockReset();
     state.restoreNotJunk.mockReset();
-    state.wkConfirm.mockReset();
+    state.modalConfirm.mockReset();
     state.getThread.mockReset();
     state.getMessage.mockResolvedValue(draft);
   });
@@ -134,8 +134,8 @@ describe("MessageDetailFeature action errors", () => {
       await screen.findByRole("button", { name: "mail.actions.notJunk" })
     );
     expect(state.restoreNotJunk).not.toHaveBeenCalled();
-    expect(state.wkConfirm).toHaveBeenCalledTimes(1);
-    const confirmation = state.wkConfirm.mock.calls[0][0];
+    expect(state.modalConfirm).toHaveBeenCalledTimes(1);
+    const confirmation = state.modalConfirm.mock.calls[0][0];
     expect(confirmation.title).toBe("mail.confirm.notJunkTitle");
 
     await confirmation.onOk();
@@ -170,7 +170,7 @@ describe("MessageDetailFeature action errors", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "mail.actions.notJunk" })
     );
-    const confirmation = state.wkConfirm.mock.calls[0][0];
+    const confirmation = state.modalConfirm.mock.calls[0][0];
 
     await act(async () => {
       await expect(confirmation.onOk()).rejects.toBe(failure);

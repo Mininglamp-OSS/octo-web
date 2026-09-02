@@ -29,6 +29,7 @@ export interface ForwardItem {
 
 export interface ForwardModalProps {
   title?: string
+  showHeader?: boolean
   items: ForwardItem[]
   allItems?: ForwardItem[]
   selectedIDs: string[]
@@ -64,6 +65,7 @@ export interface ForwardModalProps {
  */
 export function ForwardModal({
   title,
+  showHeader = true,
   items,
   allItems,
   selectedIDs,
@@ -91,9 +93,11 @@ export function ForwardModal({
 
   return (
     <div className="wk-fm">
-      <div className="wk-fm-header">
-        <span className="wk-fm-title">{modalTitle}</span>
-      </div>
+      {showHeader ? (
+        <div className="wk-fm-header">
+          <span className="wk-fm-title">{modalTitle}</span>
+        </div>
+      ) : null}
 
       <div className="wk-fm-content">
         <div className="wk-fm-left">

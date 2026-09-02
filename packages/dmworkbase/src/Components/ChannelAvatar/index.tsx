@@ -1,4 +1,5 @@
-import { Button, Toast } from "@douyinfe/semi-ui";
+import { Button, Modal as OctoModal } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { IconCamera } from "@douyinfe/semi-icons";
 import axios from "axios";
 import { Channel } from "wukongimjssdk";
@@ -11,7 +12,6 @@ import { Dap } from "../../Service/Dap";
 import { WKAvatarEditor } from "../WKAvatarEditor";
 import { I18nContext } from "../../i18n";
 import { canvasToPngFile, isAvatarFileTooLarge } from "../avatarUpload";
-import WKModal from "../WKModal";
 import { GroupAvatarEditForm, GroupAvatarEditResult } from "../GroupAvatarEditModal";
 import GroupAvatarPreview from "../GroupAvatarPreview";
 import { fetchCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
@@ -398,7 +398,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
 
         return <>
             {this.props.visible === undefined ? content : (
-                <WKModal
+                <OctoModal
                     title={this.context.t('base.module.channelSettings.groupAvatar')}
                     visible={this.props.visible}
                     onCancel={this.cancelCustomAvatar}
@@ -416,9 +416,9 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                     }}
                 >
                     {content}
-                </WKModal>
+                </OctoModal>
             )}
-            <WKModal
+            <OctoModal
                 title={this.context.t('base.channelAvatar.cropAvatar')}
                 visible={!!cropFile}
                 onCancel={this.cancelCrop}
@@ -445,7 +445,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                         />
                     </div>
                 )}
-            </WKModal>
+            </OctoModal>
         </>
     }
 }

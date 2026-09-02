@@ -1,8 +1,8 @@
 import React from "react";
-import WKModal from "../WKModal";
 import PromptForwardActions from "../PromptForwardActions";
 import { t } from "../../i18n";
 import "./index.css";
+import { Modal as OctoModal } from "@octo/ui";
 
 export interface PromptForwardModalProps {
   visible: boolean;
@@ -69,11 +69,11 @@ export default function PromptForwardModal({
   );
 
   return (
-    <WKModal
+    <OctoModal
       visible={visible}
       onCancel={onClose}
       title={null}
-      width="min(920px, calc(100vw - 32px))"
+      width="min(920px, calc(100vw - 96px))"
       className="wk-prompt-forward-modal"
       footer={null}
       header={header}
@@ -90,6 +90,6 @@ export default function PromptForwardModal({
           onForwarded={onForwarded ?? onClose}
         />
       </div>
-    </WKModal>
+    </OctoModal>
   );
 }

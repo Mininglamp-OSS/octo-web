@@ -56,36 +56,30 @@ vi.mock("@douyinfe/semi-ui", () => {
     );
   Select.Option = ({ children }: any) =>
     React.createElement(React.Fragment, null, children);
-  const Switch = ({ checked, onChange }: any) =>
-    React.createElement("button", {
-      "data-testid": "switch",
-      "data-checked": String(!!checked),
-      onClick: () => onChange(!checked),
-    });
   return {
     Select,
-    Switch,
     Toast: { success: hoisted.toastSuccess, error: hoisted.toastError },
   };
 });
 
-vi.mock("@douyinfe/semi-icons", () => ({
-  IconAlertTriangle: () =>
-    React.createElement("span", { "data-testid": "icon-alert" }),
-}));
-
-vi.mock("../../WKModal", () => ({
-  default: ({ children, footer, visible }: any) =>
+vi.mock("@octo/ui", () => ({
+  Button: ({ children, ...props }: any) =>
+    React.createElement("button", props, children),
+  Modal: ({ children, footer, visible }: any) =>
     visible
       ? React.createElement("div", { "data-testid": "modal" }, children, footer)
       : null,
-  __esModule: true,
+  Switch: ({ checked, onChange }: any) =>
+    React.createElement("button", {
+      "data-testid": "switch",
+      "data-checked": String(!!checked),
+      onClick: () => onChange(!checked),
+    }),
 }));
 
-vi.mock("../../WKButton", () => ({
-  default: ({ children, onClick }: any) =>
-    React.createElement("button", { onClick }, children),
-  __esModule: true,
+vi.mock("@douyinfe/semi-icons", () => ({
+  IconAlertTriangle: () =>
+    React.createElement("span", { "data-testid": "icon-alert" }),
 }));
 
 vi.mock("../../../App", () => ({
@@ -134,6 +128,7 @@ vi.mock("wukongimjssdk", async (importOriginal) => {
 });
 
 import WebhookEditModal from "../WebhookEditModal";
+import { Modal as OctoModal } from "@octo/ui";
 
 let container: HTMLDivElement;
 

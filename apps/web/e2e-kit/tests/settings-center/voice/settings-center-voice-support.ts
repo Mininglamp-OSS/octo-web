@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { VOICE_PROTOCOL_VERSION } from "@octo/base/src/Service/VoiceProtocol";
+import { installMockImRuntime, type MockSeed } from "../../../_kit/mock-im-runtime";
 
 export type VoiceSeed = {
   shortcutWindows: "alt-right" | "shift-right" | "shift-left" | "disabled";
@@ -17,7 +18,17 @@ async function grantVoicePermission(page: Page): Promise<void> {
 
 export async function prepareVoiceConversation(page: Page, settings: VoiceSeed, name: string): Promise<void> {
   await grantVoicePermission(page);
-  await page.addInitScript(({ key, settings: value, conversationName, protocolVersion }) => {
+  const seed: MockSeed = {
+    currentUid: "e2e-user-1",
+    spaceId: "e2e-space-001",
+    users: [{ uid: "e2e-user-1", name: "E2E Tester", robot: 0 }],
+    groups: [{ group_no: "voice-settings-group", name }],
+    conversations: [{ channelId: "voice-settings-group", channelType: 2, unread: 0 }],
+    messages: [],
+    subscribers: [{ uid: "e2e-user-1", name: "E2E Tester", channelId: "voice-settings-group", channelType: 2, role: 1, robot: 0 }],
+  };
+
+  await page.addInitScript(({ key, settings: value, protocolVersion }) => {
     if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({
       enabled: value.enabled ?? true,
       consent: { protocolVersion, ackedAt: "2026-01-01T00:00:00.000Z" },
@@ -30,32 +41,19 @@ export async function prepareVoiceConversation(page: Page, settings: VoiceSeed, 
       localProbeUrl: "http://localhost:8787/",
       localTranscribeUrl: "http://localhost:8787/v1/voice/transcribe",
     }));
-    const seed = {
-      currentUid: "e2e-user-1",
-      spaceId: "e2e-space-001",
-      users: [{ uid: "e2e-user-1", name: "E2E Tester", robot: 0 }],
-      groups: [{ group_no: "voice-settings-group", name: conversationName }],
-      conversations: [{ channelId: "voice-settings-group", channelType: 2, unread: 0 }],
-      messages: [],
-      subscribers: [{ uid: "e2e-user-1", name: "E2E Tester", channelId: "voice-settings-group", channelType: 2, role: 1, robot: 0 }],
-    };
-    let tries = 0;
-    const timer = setInterval(() => {
-      const install = (globalThis as { __installMockImRuntime__?: (value: unknown) => void }).__installMockImRuntime__;
-      if (install) { install(seed); (globalThis as { __e2eVoiceSeedReady__?: boolean }).__e2eVoiceSeedReady__ = true; clearInterval(timer); }
-      else if (++tries > 120) {
-        (globalThis as { __e2eVoiceSeedError__?: string }).__e2eVoiceSeedError__ = "__installMockImRuntime__ was not ready after 12s";
-        clearInterval(timer);
-      }
-    }, 100);
-  }, { key: VOICE_STORAGE_KEY, settings, conversationName: name, protocolVersion: VOICE_PROTOCOL_VERSION });
+  }, { key: VOICE_STORAGE_KEY, settings, protocolVersion: VOICE_PROTOCOL_VERSION });
+
+  await installMockImRuntime(page, seed);
   await page.reload();
   await page.getByRole("button", { name: "会话" }).waitFor({ state: "visible", timeout: 15_000 });
-  await page.waitForFunction(() => {
-    const state = globalThis as { __e2eVoiceSeedReady__?: boolean; __e2eVoiceSeedError__?: string };
-    if (state.__e2eVoiceSeedError__) throw new Error(state.__e2eVoiceSeedError__);
-    return state.__e2eVoiceSeedReady__ === true;
-  }, undefined, { timeout: 15_000 });
+  await page.waitForFunction((conversationName) => {
+    const state = globalThis as { __mockImSeed__?: { groups?: Array<{ name?: string }> } };
+    return state.__mockImSeed__?.groups?.some((group) => group.name === conversationName) === true;
+  }, name, { timeout: 15_000 });
+  await page.evaluate(({ spaceId }) => {
+    const app = (globalThis as { WKApp?: { mittBus?: { emit?: (event: string, value: unknown) => void } } }).WKApp;
+    app?.mittBus?.emit?.("space-changed", { space_id: spaceId, name: "E2E Space" });
+  }, { spaceId: seed.spaceId });
   await page.getByRole("button", { name: "会话" }).click();
   await page.getByRole("button", { name: "最近" }).click();
   await page.getByText(name, { exact: true }).waitFor({ state: "visible", timeout: 15_000 });

@@ -15,6 +15,20 @@ if (typeof HTMLCanvasElement !== "undefined") {
   });
 }
 
+class MockResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+if (typeof globalThis.ResizeObserver === "undefined") {
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    configurable: true,
+    writable: true,
+    value: MockResizeObserver,
+  });
+}
+
 // ProseMirror calls getClientRects()/getBoundingClientRect() while restoring a
 // selection (coordsAtPos → singleRect). jsdom implements neither on a Range or a
 // Text node, so a chat-composer test that lets the editor run scrollToSelection

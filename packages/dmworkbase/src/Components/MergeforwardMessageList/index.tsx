@@ -36,6 +36,7 @@ import MergeforwardCard from "../../ui/message/MergeforwardCard";
 import { fetchImChannelInfo, getImChannelInfo } from "../../im-runtime/channelRuntime";
 
 import "./index.css";
+import { Modal as OctoModal } from "@octo/ui";
 
 /** 嵌套合并转发最大导航深度 */
 const MAX_NESTED_DEPTH = 10;
@@ -382,7 +383,7 @@ export default class MergeforwardMessageList extends Component<
               conversationDigest: msg.content?.conversationDigest,
             };
             // 先关闭合并转发 modal, 再 emit 预览事件; 否则预览面板会
-            // 被仍然激活的 WKModal mask 挡住, 用户无法操作 (PR #136
+            // 被仍然激活的 OctoModal mask 挡住, 用户无法操作 (PR #136
             // round-1)。
             this.props.onClose?.();
             WKApp.mittBus.emit("wk:file-preview", previewData);

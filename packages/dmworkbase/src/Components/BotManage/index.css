@@ -1,7 +1,11 @@
-.wk-bot-manage-modal .wk-modal-shell {
+.wk-bot-manage-modal .octo-ui-modal__surface {
     padding: 0;
 }
 
-.wk-bot-manage-modal .wk-modal-body {
+.wk-bot-manage-modal .octo-ui-modal__body {
+    display: block;
+    flex: none;
     height: 520px;
+    padding: 0;
+    overflow: hidden;
 }

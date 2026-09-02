@@ -1,5 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { useState } from "react"
-import { Modal, Button } from "@douyinfe/semi-ui"
+import { Modal } from "@douyinfe/semi-ui";
 import { useI18n } from "../../i18n"
 
 export interface DeleteCategoryModalProps {

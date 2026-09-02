@@ -3,23 +3,17 @@
     position: fixed;
     top: 100px;
     left: 0;
-    background: #FFFFFF;
-    border: 1px solid #E5E6EB;
+    background: var(--octo-ui-dropdown-bg);
     z-index: 99;
     min-width: 160px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    padding: 0;
+    padding: var(--octo-ui-dropdown-padding);
+    border-radius: var(--octo-ui-dropdown-radius);
+    box-shadow: var(--octo-ui-dropdown-shadow);
     transform: scale(0.92);
     opacity: 0;
     transition: opacity 0.15s cubic-bezier(0.16, 1, 0.3, 1),
                 transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
     visibility: hidden;
-}
-
-body[theme-mode=dark] .wk-contextmenus {
-    background: var(--wk-bg-surface);
-    box-shadow: var(--wk-shadow-lg), var(--wk-shadow-sm);
 }
 
 .wk-contextmenus-open {
@@ -28,84 +22,32 @@ body[theme-mode=dark] .wk-contextmenus {
     visibility: visible;
 }
 
-/* ── 菜单列表 ── */
-.wk-contextmenus ul {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-}
-
-/* ── 菜单项 ── */
-.wk-contextmenus li {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 16px;
-    height: 40px;
-    cursor: pointer;
-    font-size: 14px;
-    font-family: var(--wk-font-sans, -apple-system, sans-serif);
-    color: #1D2129;
-    transition: background 0.15s ease;
+.wk-ctx-item {
     position: relative;
     user-select: none;
 }
 
-.wk-contextmenus li:hover {
-    background: #F2F3F5;
-}
-
-.wk-contextmenus li:focus-visible {
-    background: var(--wk-bg-hover);
-    outline: var(--wk-sp-0-5) solid var(--wk-brand-primary);
-    outline-offset: calc(-1 * var(--wk-sp-0-5));
-}
-
-.wk-contextmenus ul > li:first-of-type {
-    border-top-left-radius: var(--wk-r-md);
-    border-top-right-radius: var(--wk-r-md);
-}
-
-.wk-contextmenus ul > li:last-of-type {
-    border-bottom-right-radius: var(--wk-r-md);
-    border-bottom-left-radius: var(--wk-r-md);
-}
-
-body[theme-mode=dark] .wk-contextmenus li {
+body[theme-mode=dark] .wk-contextmenus .wk-ctx-item {
     color: var(--wk-text-primary);
 }
 
-body[theme-mode=dark] .wk-contextmenus li:hover {
-    background: var(--wk-bg-hover);
-}
-
 /* ── 图标 ── */
-.wk-contextmenus li .ctx-icon {
+.wk-contextmenus .ctx-icon {
     width: 16px;
     height: 16px;
     flex-shrink: 0;
-    stroke: #4E5969;
+    stroke: currentColor;
     stroke-width: 1.7;
     fill: none;
     stroke-linecap: round;
     stroke-linejoin: round;
 }
 
-/* ── 危险项 ── */
-.wk-contextmenus li.wk-ctx-danger {
-    color: var(--wk-color-error);
-}
-
-.wk-contextmenus li.wk-ctx-danger .ctx-icon {
-    stroke: var(--wk-color-error);
-}
-
 /* ── 子菜单箭头 ── */
 .wk-ctx-arrow {
-    margin-left: auto;
     width: 12px;
     height: 12px;
-    stroke: #4E5969;
+    stroke: currentColor;
     stroke-width: 2;
     fill: none;
     stroke-linecap: round;
@@ -119,12 +61,11 @@ body[theme-mode=dark] .wk-contextmenus li:hover {
     left: calc(100% + 4px);
     right: auto;
     top: 0;
-    background: #FFFFFF;
-    border: 1px solid #E5E6EB;
+    background: var(--octo-ui-dropdown-bg);
     min-width: 160px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    padding: 0;
+    padding: var(--octo-ui-dropdown-padding);
+    border-radius: var(--octo-ui-dropdown-radius);
+    box-shadow: var(--octo-ui-dropdown-shadow);
     z-index: 100;
     display: none;
 }
@@ -140,8 +81,8 @@ body[theme-mode=dark] .wk-ctx-submenu {
     box-shadow: var(--wk-shadow-lg), var(--wk-shadow-sm);
 }
 
-.wk-contextmenus li:hover > .wk-ctx-submenu,
-.wk-contextmenus li:focus-within > .wk-ctx-submenu {
+.wk-contextmenus .wk-ctx-item:hover > .wk-ctx-submenu,
+.wk-contextmenus .wk-ctx-item:focus-within > .wk-ctx-submenu {
     display: block;
 }
 
@@ -157,8 +98,8 @@ body[theme-mode=dark] .wk-ctx-submenu {
 }
 
 /* 子菜单向左展开（靠近右侧视口边缘时） */
-.wk-contextmenus-flip-submenu li:hover > .wk-ctx-submenu,
-.wk-contextmenus-flip-submenu li:focus-within > .wk-ctx-submenu {
+.wk-contextmenus-flip-submenu .wk-ctx-item:hover > .wk-ctx-submenu,
+.wk-contextmenus-flip-submenu .wk-ctx-item:focus-within > .wk-ctx-submenu {
     left: auto;
     right: calc(100% + 4px);
 }
@@ -168,35 +109,14 @@ body[theme-mode=dark] .wk-ctx-submenu {
     right: -8px;
 }
 
-.wk-ctx-submenu li {
-    padding: 0 16px;
-    height: 40px;
-    font-size: 14px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    color: #1D2129;
-    transition: background 0.15s ease;
-}
-
-.wk-ctx-submenu li:hover {
-    background: #F2F3F5;
-}
-
-body[theme-mode=dark] .wk-ctx-submenu li {
-    color: var(--wk-text-primary);
-}
-
-body[theme-mode=dark] .wk-ctx-submenu li:hover {
-    background: var(--wk-bg-hover);
-}
-
-/* ── 分隔线 ── */
 .wk-ctx-sep {
-    height: 1px;
-    background: #F2F3F5;
-    margin: 4px 0;
+    margin: var(--octo-ui-dropdown-divider-margin);
+}
+
+.wk-ctx-checked {
+    color: var(--wk-brand-primary);
+    font-size: 13px;
+    font-weight: 600;
 }
 
 /* ── Mask ── */

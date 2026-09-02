@@ -1,3 +1,4 @@
+import { Button, Modal as OctoModal, modalConfirm } from "@octo/ui";
 import React, { useState, useCallback, useEffect } from "react";
 import { Toast, Spin } from "@douyinfe/semi-ui";
 import {
@@ -8,8 +9,6 @@ import {
   IconDelete,
   IconRefresh,
 } from "@douyinfe/semi-icons";
-import WKModal, { wkConfirm } from "../WKModal";
-import WKButton from "../WKButton";
 import { useI18n } from "../../i18n";
 import SecretsService, { SecretListItem } from "../../Service/SecretsService";
 import { Dap } from "../../Service/Dap";
@@ -65,14 +64,8 @@ export default function SecretsSettingsPanel({
       ? current
       : { mode: "create" }
   )), []);
-  // Support pointer and keyboard activation; the state update is idempotent
-  // when the browser emits both mousedown and click for one activation.
-  const handleCreateMouseDown = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
-    if (event.button !== 0) return;
-    event.stopPropagation();
-    startCreate();
-  }, [startCreate]);
   const handleCreateClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
     event.stopPropagation();
     startCreate();
   }, [startCreate]);
@@ -118,9 +111,10 @@ export default function SecretsSettingsPanel({
 
   const handleDelete = useCallback(
     (secret: SecretListItem) => {
-      wkConfirm({
+      modalConfirm({
         title: t("base.secrets.delete.title"),
         content: t("base.secrets.delete.content", { values: { name: secret.display_name } }),
+        cancelText: t("base.common.cancel"),
         okText: t("base.secrets.delete.confirm"),
         okType: "danger",
         onOk: async () => {
@@ -165,15 +159,13 @@ export default function SecretsSettingsPanel({
             </h2>
             <p className="wk-secrets__subtitle">{t("base.secrets.subtitle")}</p>
           </div>
-          <WKButton
-            type="button"
-            variant="primary"
+          <Button
+            variant="solid"
             icon={<IconPlus />}
-            onMouseDown={handleCreateMouseDown}
             onClick={handleCreateClick}
           >
             {t("base.secrets.addButton")}
-          </WKButton>
+          </Button>
         </div>
 
         {/* 列表主体 */}
@@ -184,9 +176,9 @@ export default function SecretsSettingsPanel({
         ) : error ? (
           <div className="wk-secrets__state">
             <p className="wk-secrets__state-text">{t("base.secrets.error.loadFailed")}</p>
-            <WKButton variant="secondary" onClick={() => void load()}>
+            <Button variant="secondary" onClick={() => void load()}>
               {t("base.secrets.retry")}
-            </WKButton>
+            </Button>
           </div>
         ) : items.length === 0 ? (
           <div className="wk-secrets__empty">
@@ -194,15 +186,13 @@ export default function SecretsSettingsPanel({
               <IconKey size="extra-large" />
             </div>
             <p className="wk-secrets__empty-text">{t("base.secrets.empty")}</p>
-            <WKButton
-              type="button"
-              variant="primary"
+            <Button
+              variant="solid"
               icon={<IconPlus />}
-              onMouseDown={handleCreateMouseDown}
               onClick={handleCreateClick}
             >
               {t("base.secrets.empty.action")}
-            </WKButton>
+            </Button>
           </div>
         ) : (
           <ul className="wk-secrets__list">
@@ -250,16 +240,17 @@ export default function SecretsSettingsPanel({
   if (embedded) return content;
 
   return (
-    <WKModal
+    <OctoModal
       visible
       title={null}
+      aria-label={t("base.secrets.title")}
       onCancel={onClose}
       options={{ closeOnEsc: true, maskClosable: true, closable: false }}
       footer={null}
-      size="lg"
+      size="wide"
       className="wk-secrets-modal"
     >
       {content}
-    </WKModal>
+    </OctoModal>
   );
 }

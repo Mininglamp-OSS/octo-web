@@ -109,6 +109,7 @@
     "sortHottest": "Hottest"
   },
   "common": {
+    "close": "Close",
     "loadFailed": "Failed to load"
   },
   "errors": {

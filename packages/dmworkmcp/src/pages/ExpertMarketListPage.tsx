@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowDown, Check, HelpCircle, PackageOpen, Search, SlidersHorizontal, Upload, X } from "lucide-react";
+import { Button } from "@octo/ui";
 import { Toast, Tooltip } from "@douyinfe/semi-ui";
-import { t, useI18n, WKApp, WKButton } from "@octo/base";
+import { t, useI18n, WKApp } from "@octo/base";
 import { EXPERT_CATEGORIES } from "../mock/expertMock";
 import type { ExpertItem } from "../mock/expertMock";
 import {
@@ -639,15 +640,15 @@ export default function ExpertMarketListPage({
           </div>
           {variant === "mine" && (
             <div className="wk-mcp-expert-publish">
-              <WKButton
-                variant="primary"
+              <Button
+                variant="solid"
                 icon={<Upload size={15} />}
                 onClick={() => setBotPublishOpen(true)}
               >
                 {mineType === "squad"
                   ? t("mcp.expert.publish")
                   : t("mcp.expert.publishAgent")}
-              </WKButton>
+              </Button>
             </div>
           )}
         </div>
@@ -699,9 +700,9 @@ export default function ExpertMarketListPage({
           <div className="wk-mcp-expert-empty">
             <PackageOpen size={48} aria-hidden="true" />
             <strong>{t(errorKey)}</strong>
-            <WKButton variant="primary" onClick={() => reload()}>
+            <Button variant="solid" onClick={() => reload()}>
               {t("mcp.list.retry")}
-            </WKButton>
+            </Button>
           </div>
         ) : kind === "mine" ? (
           <div className="wk-mcp-expert-mine">
@@ -836,8 +837,8 @@ export default function ExpertMarketListPage({
                 <strong>{t("mcp.expert.empty")}</strong>
                 <p>{t("mcp.expert.emptyHint")}</p>
                 {(query || category !== ALL_CATEGORY || selectedTags.length > 0) && (
-                  <WKButton
-                    variant="primary"
+                  <Button
+                    variant="solid"
                     onClick={() => {
                       setQuery("");
                       setCategory(ALL_CATEGORY);
@@ -846,7 +847,7 @@ export default function ExpertMarketListPage({
                     }}
                   >
                     {t("mcp.expert.resetFilters")}
-                  </WKButton>
+                  </Button>
                 )}
               </div>
             )}

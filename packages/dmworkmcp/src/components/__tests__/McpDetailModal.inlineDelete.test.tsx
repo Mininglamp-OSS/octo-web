@@ -23,38 +23,49 @@ vi.mock("@douyinfe/semi-ui", () => ({
   Toast: { success: vi.fn(), error: vi.fn() },
   Spin: () => null,
 }));
-// WKModal renders footer + children inline; WKButton is a plain button.
-// wkConfirm is intentionally a throwing stub — if the component still called
+// Octo Modal renders footer + children inline.
+// modalConfirm is intentionally a throwing stub — if the component still called
 // it (the old modal-on-modal path), the test would blow up.
-vi.mock("@octo/base", () => ({
-  t: (k: string) => k,
-  WKModal: ({
-    footer,
+vi.mock("@octo/ui", () => ({
+  Button: ({
     children,
-  }: {
-    footer: React.ReactNode;
-    children: React.ReactNode;
-  }) =>
-    React.createElement(
-      "div",
-      { "data-testid": "wkmodal" },
-      children,
-      React.createElement("div", { "data-testid": "footer" }, footer)
-    ),
-  WKButton: ({
-    children,
-    onClick,
     disabled,
+    onClick,
   }: {
     children: React.ReactNode;
-    onClick?: () => void;
     disabled?: boolean;
-  }) => React.createElement("button", { onClick, disabled }, children),
-  wkConfirm: () => {
+    onClick?: React.MouseEventHandler<HTMLButtonElement>;
+  }) => React.createElement("button", { disabled, onClick }, children),
+  Modal: ({
+    children,
+    footer,
+    header,
+    title,
+    visible = true,
+  }: {
+    children: React.ReactNode;
+    footer?: React.ReactNode;
+    header?: React.ReactNode;
+    title?: React.ReactNode;
+    visible?: boolean;
+  }) =>
+    visible
+      ? React.createElement(
+          "div",
+          { "data-testid": "octo-modal" },
+          header ?? title,
+          children,
+          React.createElement("div", { "data-testid": "footer" }, footer)
+        )
+      : null,
+  modalConfirm: () => {
     throw new Error(
-      "wkConfirm should NOT be called after 方案A (no modal-on-modal)"
+      "modalConfirm should NOT be called after 方案A (no modal-on-modal)"
     );
   },
+}));
+vi.mock("@octo/base", () => ({
+  t: (k: string) => k,
 }));
 
 import McpDetailModal from "../McpDetailModal";
@@ -75,7 +86,7 @@ function render(el: React.ReactElement) {
   act(() => {
     ReactDOM.render(el, container);
   });
-  return container;
+  return document.body;
 }
 
 function clickButtonByText(root: HTMLElement, text: string) {
@@ -134,9 +145,9 @@ describe("McpDetailModal 就地内联删除确认（方案A）", () => {
     expect(initialBtns).toContain("mcp.detail.edit");
 
     // 点「删除」——footer 就地切成确认态；应出现确认提示文案 + 确认删除按钮，
-    // 且没有第二个 WKModal（不叠遮罩）。wkConfirm 抛错的 stub 也未触发。
+    // 且没有第二个 OctoModal（不叠遮罩）。modalConfirm 抛错的 stub 也未触发。
     clickButtonByText(root, "mcp.detail.delete");
-    expect(root.querySelectorAll('[data-testid="wkmodal"]').length).toBe(1);
+    expect(root.querySelectorAll('[data-testid="octo-modal"]').length).toBe(1);
     expect(root.textContent).toContain("mcp.delete.confirmBody");
     const confirmBtns = Array.from(root.querySelectorAll("button")).map(
       (b) => b.textContent

@@ -138,9 +138,19 @@ export const chatBaselineHandlers = [
       headers: { "content-type": "image/png" },
     })
   ),
+  http.get("*/api/v1/users/:uid/avatar", () =>
+    HttpResponse.arrayBuffer(new Uint8Array([]).buffer, {
+      headers: { "content-type": "image/png" },
+    })
+  ),
   http.get("*/groups/:groupNo/avatar", () =>
     // 与 user avatar 同理: group logo 可能为空, 但请求本身不该漏到 Vite proxy
     // (fake-provider 会为无 logo 的 group 派生 avatar 路径, 见 fake-provider.ts).
+    HttpResponse.arrayBuffer(new Uint8Array([]).buffer, {
+      headers: { "content-type": "image/png" },
+    })
+  ),
+  http.get("*/api/v1/groups/:groupNo/avatar", () =>
     HttpResponse.arrayBuffer(new Uint8Array([]).buffer, {
       headers: { "content-type": "image/png" },
     })
@@ -263,7 +273,17 @@ export const chatBaselineHandlers = [
   // === Summary ===
   // 空列表, 界面停在"暂无总结"稳定分支; 不返 200 会无限重试打爆 network.
   http.get("*/summary/api/v1/summaries", () =>
-    HttpResponse.json({ code: 0, message: "ok", data: { items: [], total: 0 } })
+    HttpResponse.json({
+      code: 0,
+      message: "ok",
+      data: {
+        items: [],
+        total: 0,
+        attention_count: 0,
+        unread_count: 0,
+        pending_invitation_count: 0,
+      },
+    })
   ),
   // Deep-link Summary requests can happen on the fresh document before the
   // per-case handler is installed. Keep these fallbacks scoped to S26 only.

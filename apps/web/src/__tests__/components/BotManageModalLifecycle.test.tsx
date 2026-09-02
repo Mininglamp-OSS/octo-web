@@ -1,7 +1,7 @@
 /**
  * BotManageModal 生命周期测试。
  *
- * 单开一个文件而不是塞进 BotManage.test.tsx：这里要 stub 掉 WKModal / RoutePage /
+ * 单开一个文件而不是塞进 BotManage.test.tsx：这里要 stub 掉 OctoModal / RoutePage /
  * i18n 才能挂载真实的 modal，而那个文件刻意只喂纯视图 props，两种 mock 策略混在
  * 一个文件里会互相干扰。
  *
@@ -15,7 +15,7 @@
  * 所以「打开 Bot 管理不发任何请求」是要钉住的不变量，不是实现细节。
  *
  * stub 说明：
- *   - WKModal → 只在 visible 时渲染 children。真 WKModal 走 semi Modal 的进出场
+ *   - OctoModal → 只在 visible 时渲染 children。真 OctoModal 走 semi Modal 的进出场
  *     动画，jsdom 里 `animationend` 不触发，children 永远不卸载，测不出关闭语义。
  *   - RoutePage → 把 push 进来的节点真的渲染出来，否则到不了 L3。
  */
@@ -45,11 +45,11 @@ vi.mock('../../../../../packages/dmworkbase/src/Service/BotManageService', () =>
     },
 }));
 
-vi.mock('../../../../../packages/dmworkbase/src/Components/WKModal', async () => {
+vi.mock('@octo/ui', async () => {
     const ReactMod = await import('react');
-    const WKModal = ({ visible, children }: any) =>
+    const OctoModal = ({ visible, children }: any) =>
         visible ? ReactMod.createElement('div', null, children) : null;
-    return { default: WKModal, WKModal };
+    return { Modal: OctoModal };
 });
 
 vi.mock('../../../../../packages/dmworkbase/src/Components/RoutePage', async () => {

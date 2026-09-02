@@ -1,4 +1,5 @@
 import React, { Component, ReactNode } from "react";
+import { Drawer, Modal as OctoModal } from "@octo/ui";
 import { Conversation } from "../../Components/Conversation";
 import ConversationList, {
   ConvFilter,
@@ -17,8 +18,6 @@ import { ErrorBoundary } from "../../Components/ErrorBoundary";
 
 import { Spin, Popover, Toast } from "@douyinfe/semi-ui";
 import { getElectronLinksBridge } from "../../electron/desktopBridge";
-import WKButton from "../../Components/WKButton";
-import WKModal from "../../Components/WKModal";
 import { Columns2, ChevronRight } from "lucide-react";
 import ThreadIcon from "../../Components/Icons/ThreadIcon";
 import { ChatVM, handleGlobalSearchClick } from "./vm";
@@ -397,7 +396,7 @@ export class ChatContentPage extends Component<
   private _unsubscribeChannelInfoListener?: () => void;
   private _unsubscribeChannelSearchConfig?: () => void;
   private readonly titlePageOwner = Symbol("chat-content-page");
-  private readonly channelSettingPanelRef = React.createRef<HTMLDivElement>();
+  private readonly channelSettingPanelRef = React.createRef<HTMLElement>();
   private readonly chatContentRef = React.createRef<HTMLDivElement>();
   private channelSettingReturnFocusElement?: HTMLElement;
   private shouldRestoreChannelSettingFocus = false;
@@ -1451,16 +1450,20 @@ export class ChatContentPage extends Component<
           />
         )}
 
-        <div
+        <Drawer
           id="chat-channel-setting-panel"
           ref={this.channelSettingPanelRef}
-          className={classNames("wk-chat-channelsetting")}
-          role="dialog"
-          aria-modal={showChannelSetting || undefined}
-          aria-hidden={showChannelSetting ? undefined : true}
+          inline
+          keepDOM
+          open={showChannelSetting}
+          mask={showChannelSetting}
+          bodyFlush
+          closable={false}
           aria-label={t("base.channelSetting.title")}
+          className="wk-chat-channelsetting"
+          closeOnEsc={false}
           tabIndex={-1}
-          {...(!showChannelSetting ? { inert: "" } : {})}
+          width="var(--wk-wdith-chat-channelsetting)"
         >
           <ErrorBoundary moduleName={t("base.chatPage.channelSettings")}>
             <ChannelSetting
@@ -1472,10 +1475,19 @@ export class ChatContentPage extends Component<
               }}
             ></ChannelSetting>
           </ErrorBoundary>
-        </div>
+        </Drawer>
 
         {showChannelSearch && (
-          <div className="wk-chat-channel-search-panel">
+          <Drawer
+            inline
+            open={showChannelSearch}
+            bodyFlush
+            closable={false}
+            aria-label={t("base.chatPage.searchModuleName")}
+            className="wk-chat-channel-search-panel"
+            closeOnEsc={false}
+            width="var(--wk-width-chat-search-panel-effective, var(--wk-width-chat-search-panel))"
+          >
             <ErrorBoundary moduleName={t("base.chatPage.searchModuleName")}>
               <div
                 className={classNames(
@@ -1516,7 +1528,7 @@ export class ChatContentPage extends Component<
                 )}
               </div>
             </ErrorBoundary>
-          </div>
+          </Drawer>
         )}
 
         {/* 统一侧边面板：子区 + 文件预览共用一个壳子（仅群聊） */}
@@ -2022,9 +2034,11 @@ export default class ChatPage extends Component<any, ChatPageState> {
                   }}
                 />
               )}
-              <WKModal
-                size="full"
+              <OctoModal
+                size="fullscreen"
                 className="wk-global-search-modal"
+                header={null}
+                options={{ closable: false }}
                 visible={vm.showGlobalSearch}
                 onCancel={() => {
                   vm.showGlobalSearch = false;
@@ -2126,10 +2140,10 @@ export default class ChatPage extends Component<any, ChatPageState> {
                     }}
                   />
                 </ErrorBoundary>
-              </WKModal>
+              </OctoModal>
 
               {/* 附件未发送切换会话确认弹窗 */}
-              <WKModal
+              <OctoModal
                 visible={!!this.state.pendingConfirm}
                 title={t("base.chatPage.unsentAttachmentTitle")}
                 footerConfig={{
@@ -2143,10 +2157,10 @@ export default class ChatPage extends Component<any, ChatPageState> {
                 onCancel={() => this.setState({ pendingConfirm: null })}
                 options={{ closable: false }}
               >
-                <p className="wk-modal-confirm-text">
+                <p className="octo-ui-modal-confirm__description">
                   {t("base.chatPage.unsentAttachmentContent")}
                 </p>
-              </WKModal>
+              </OctoModal>
             </div>
           );
         }}

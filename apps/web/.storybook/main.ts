@@ -82,11 +82,32 @@ const config: StorybookConfig = {
         tsconfigPaths({ root: path.resolve(__dirname, '../../../') }),
       ],
       resolve: {
-        alias: {
-          '@octo/base': path.resolve(__dirname, '../../../packages/dmworkbase'),
-          '@octo/contacts': path.resolve(__dirname, '../../../packages/dmworkcontacts'),
-          '@octo/login': path.resolve(__dirname, '../../../packages/dmworklogin'),
-        },
+        alias: [
+          {
+            find: '@octo/base',
+            replacement: path.resolve(__dirname, '../../../packages/dmworkbase'),
+          },
+          {
+            find: '@octo/contacts',
+            replacement: path.resolve(__dirname, '../../../packages/dmworkcontacts'),
+          },
+          {
+            find: '@octo/login',
+            replacement: path.resolve(__dirname, '../../../packages/dmworklogin'),
+          },
+          {
+            find: '@octo/ui/styles.css',
+            replacement: path.resolve(__dirname, '../../../packages/octo-ui/src/styles/index.css'),
+          },
+          {
+            find: '@octo/ui/select',
+            replacement: path.resolve(__dirname, '../../../packages/octo-ui/src/components/Select/index.tsx'),
+          },
+          {
+            find: /^@octo\/ui$/,
+            replacement: path.resolve(__dirname, '../../../packages/octo-ui/src/index.ts'),
+          },
+        ],
         dedupe: ['react', 'react-dom'],
       },
     }),

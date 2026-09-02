@@ -1,4 +1,3 @@
-import WKModal from "../../Components/WKModal";
 import {
   Channel,
   ChannelTypeGroup,
@@ -25,6 +24,7 @@ import { I18nContext, t } from "../../i18n";
 import { fetchImChannelInfo, getImChannelInfo } from "../../im-runtime/channelRuntime";
 
 import "./index.css";
+import { Modal as OctoModal } from "@octo/ui";
 
 function isRecord(value: unknown): value is Record<string, any> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -388,7 +388,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
               }
             />
           </MessageRow>
-          <WKModal
+          <OctoModal
             className="wk-base-modal wk-mergeforward-modal"
             width="var(--mf-modal-width)"
             visible={showList}
@@ -435,7 +435,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
                 this.setState({ navTitle: title, canGoBack })
               }
             />
-          </WKModal>
+          </OctoModal>
         </>
       );
     }
@@ -468,7 +468,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
             </div>
           </div>
         </div>
-        <WKModal
+        <OctoModal
           className="wk-base-modal wk-mergeforward-modal"
           width="var(--mf-modal-width)"
           visible={showList}
@@ -516,7 +516,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
               this.setState({ navTitle: title, canGoBack })
             }
           />
-        </WKModal>
+        </OctoModal>
       </MessageBase>
     );
   }

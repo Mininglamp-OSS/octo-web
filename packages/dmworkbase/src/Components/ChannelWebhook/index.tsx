@@ -1,9 +1,8 @@
+import { Button, modalConfirm, Modal as OctoModal } from "@octo/ui";
 import React, { useCallback, useEffect, useState } from "react";
 import { Channel } from "wukongimjssdk";
 import { Spin, Toast } from "@douyinfe/semi-ui";
 import { IconPlus, IconLink } from "@douyinfe/semi-icons";
-import WKButton from "../WKButton";
-import { wkConfirm } from "../WKModal";
 import { useI18n } from "../../i18n";
 import { extractErrorMsg } from "../../Service/APIClient";
 import {
@@ -118,11 +117,12 @@ export default function ChannelWebhookPanel({
   };
 
   const handleRegenerate = (item: IncomingWebhook) => {
-    wkConfirm({
+    modalConfirm({
       title: t("base.channelWebhook.regenerate.title"),
       content: t("base.channelWebhook.regenerate.content", {
         values: { name: item.name },
       }),
+      cancelText: t("base.common.cancel"),
       okText: t("base.channelWebhook.regenerate.confirm"),
       okType: "danger",
       onOk: async () => {
@@ -136,8 +136,8 @@ export default function ChannelWebhookPanel({
             extractErrorMsg(e) ||
               t("base.channelWebhook.error.regenerateFailed")
           );
-          // 重新抛出：wkConfirm 的 onOk 捕获 reject 后保持弹窗打开、按钮复位
-          // 供用户重试（见 WKModal/confirm.tsx 的 .catch(updatePending(null))）。
+          // 重新抛出：modalConfirm 的 onOk 捕获 reject 后保持弹窗打开、按钮复位
+          // 供用户重试（见 @octo/ui Modal confirm 的 .catch(() => updatePending(null))）。
           throw e;
         }
       },
@@ -145,11 +145,12 @@ export default function ChannelWebhookPanel({
   };
 
   const handleDelete = (item: IncomingWebhook) => {
-    wkConfirm({
+    modalConfirm({
       title: t("base.channelWebhook.delete.title"),
       content: t("base.channelWebhook.delete.content", {
         values: { name: item.name },
       }),
+      cancelText: t("base.common.cancel"),
       okText: t("base.channelWebhook.delete.confirm"),
       okType: "danger",
       onOk: async () => {
@@ -161,7 +162,7 @@ export default function ChannelWebhookPanel({
           Toast.error(
             extractErrorMsg(e) || t("base.channelWebhook.error.deleteFailed")
           );
-          // 重新抛出：wkConfirm 捕获 reject 后保持弹窗打开供重试（同 handleRegenerate）。
+          // 重新抛出：modalConfirm 捕获 reject 后保持弹窗打开供重试（同 handleRegenerate）。
           throw e;
         }
         if (deleted) {
@@ -210,15 +211,15 @@ export default function ChannelWebhookPanel({
         {/* 列表非空时才显示 header 的新建按钮；空态有自己的醒目 CTA，
                     避免出现两个「新建」。加载中也不显示。 */}
         {!loading && items.length > 0 && (
-          <WKButton
-            variant="primary"
+          <Button
+            variant="solid"
             size="sm"
             icon={<IconPlus />}
             data-testid="webhook-create-btn"
             onClick={() => setEditTarget({ mode: "create" })}
           >
             {t("base.channelWebhook.add")}
-          </WKButton>
+          </Button>
         )}
       </div>
 
@@ -231,14 +232,14 @@ export default function ChannelWebhookPanel({
           <p className="wk-webhook__state-text">
             {t("base.channelWebhook.error.loadFailed")}
           </p>
-          <WKButton
+          <Button
             variant="secondary"
             onClick={() => {
               void load(true);
             }}
           >
             {t("base.channelWebhook.retry")}
-          </WKButton>
+          </Button>
         </div>
       ) : items.length === 0 ? (
         <div className="wk-webhook__empty">
@@ -248,14 +249,14 @@ export default function ChannelWebhookPanel({
           <p className="wk-webhook__empty-text">
             {t("base.channelWebhook.empty")}
           </p>
-          <WKButton
-            variant="primary"
+          <Button
+            variant="solid"
             icon={<IconPlus />}
             data-testid="webhook-create-btn"
             onClick={() => setEditTarget({ mode: "create" })}
           >
             {t("base.channelWebhook.add")}
-          </WKButton>
+          </Button>
         </div>
       ) : (
         <ul className="wk-webhook__list">

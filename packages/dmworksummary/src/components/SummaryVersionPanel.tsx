@@ -1,5 +1,6 @@
+import { Button } from "@octo/ui";
 import React from "react";
-import { Button, Tag } from "@douyinfe/semi-ui";
+import { Tag } from "@douyinfe/semi-ui";
 import { IconHistory, IconClose } from "@douyinfe/semi-icons";
 import { ChevronRight } from "lucide-react";
 import { useI18n } from "@octo/base";
@@ -161,7 +162,6 @@ const SummaryVersionPanel: React.FC<SummaryVersionPanelProps> = ({
                             className="version-panel__restore"
                             theme="solid"
                             type="primary"
-                            block
                             icon={<IconHistory />}
                             loading={restoringResultId === selected!.result_id}
                             onClick={() => onRestore(selected!)}

@@ -3,7 +3,8 @@ import axios from "axios";
 import { Spin, Toast } from "@douyinfe/semi-ui";
 import { IconClose } from "@douyinfe/semi-icons";
 import { Bot, Check, ChevronDown, Search, SlidersHorizontal, Upload } from "lucide-react";
-import { I18nContext, t, WKApp, WKButton, Dap } from "@octo/base";
+import { Button } from "@octo/ui";
+import { I18nContext, t, WKApp, Dap } from "@octo/base";
 import { fetchMcpDetail, fetchMcpList, fetchMcpMine, fetchMcpTags, McpTagSuggestion } from "../api/mcpService";
 import { mcpListErrorI18nKey } from "../api/mcpListError";
 import type { McpCategory, McpDetail, McpListItem, McpSort } from "../types/mcp";
@@ -701,8 +702,8 @@ export default class McpMarketListPage extends Component<
             </div>
             {this.props.variant === "mine" && (
             <div className="wk-mcp-publish-menu" ref={this.publishMenuRef}>
-              <WKButton
-                variant="primary"
+              <Button
+                variant="solid"
                 data-testid="mcp-publish-entry"
                 icon={<Upload size={15} />}
                 onClick={() =>
@@ -713,7 +714,7 @@ export default class McpMarketListPage extends Component<
               >
                 {t("mcp.list.create")}
                 <ChevronDown size={14} />
-              </WKButton>
+              </Button>
               {this.state.publishMenuOpen && (
                 <div className="wk-mcp-publish-menu__panel" role="menu">
                   <button
@@ -810,7 +811,7 @@ export default class McpMarketListPage extends Component<
               <div className="wk-mcp__state wk-mcp__state--error" role="alert">
                 <strong>{t("mcp.list.errorTitle")}</strong>
                 <span>{error}</span>
-                <WKButton onClick={() => this.loadData()}>{t("mcp.list.retry")}</WKButton>
+                <Button onClick={() => this.loadData()}>{t("mcp.list.retry")}</Button>
               </div>
             ) : (
               <>

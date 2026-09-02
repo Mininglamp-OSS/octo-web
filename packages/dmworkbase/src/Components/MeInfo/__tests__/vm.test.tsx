@@ -123,7 +123,6 @@ vi.mock("../../../Service/Provider", () => ({
 
 // UI 组件 stubs —— 防止 test 环境里 require 到 PDF viewer / lottie 等重依赖。
 vi.mock("../../QRCodeMy", () => ({ default: () => null }))
-vi.mock("../../InputEdit", () => ({ InputEdit: () => null }))
 vi.mock("../../ListItem", () => ({ ListItem: () => null, ListItemIcon: () => null }))
 vi.mock("../../ListItemAvatar", () => ({ ListItemAvatar: () => null }))
 vi.mock("../../SexSelect", () => ({ SexSelect: () => null, Sex: { Male: 1, Female: 0 } }))

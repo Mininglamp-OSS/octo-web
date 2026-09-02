@@ -12,7 +12,7 @@ test("@CT5 @p1 @contacts @contacts-group 发起群聊失败保留表单", async 
   await authedPage.getByTestId("chat-add-entry").click();
   await authedPage.getByRole("list").getByText("发起群聊", { exact: true }).click();
 
-  const dialog = authedPage.locator(".wk-modal-content").filter({ hasText: "发起群聊" });
+  const dialog = authedPage.locator(".octo-ui-modal__content").filter({ hasText: "发起群聊" });
   await expect(dialog).toBeVisible();
   const nameInput = dialog.getByPlaceholder("例：工作，学习，项目名称...");
   await nameInput.fill("E2E 创建失败群");

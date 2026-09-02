@@ -1,6 +1,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { computePosition, flip, offset, shift } from "@floating-ui/dom";
+import { MenuItem } from "@octo/ui";
 
 export type NavFlyoutSize = "sm" | "md" | "lg";
 
@@ -134,25 +135,17 @@ export function NavFlyoutMenuItem({
     className,
     "data-testid": dataTestId,
 }: NavFlyoutMenuItemProps) {
-    const itemClassName = [
-        "wk-navrail__flyout-item",
-        active && "wk-navrail__flyout-item--active",
-        className,
-    ]
-        .filter(Boolean)
-        .join(" ");
-
     return (
-        <button
-            type="button"
-            className={itemClassName}
+        <MenuItem
+            className={className}
             data-testid={dataTestId}
             role={role}
             aria-checked={ariaChecked}
+            selected={active}
+            suffix={trailing}
             onClick={onSelect}
         >
-            <span className="wk-navrail__flyout-item-label">{children}</span>
-            {trailing && <span className="wk-navrail__flyout-item-trailing">{trailing}</span>}
-        </button>
+            {children}
+        </MenuItem>
     );
 }

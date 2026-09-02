@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { Modal as OctoModal } from "@octo/ui";
 
 // #989: 在 IM 顶部搜索里点 bot → 打开资料卡 → 点「发送消息」跳到会话后，
 // 搜索弹窗应自动关闭。修前 TabContacts 的 BotDetailModal.onChat 只关名片、
@@ -43,7 +44,7 @@ describe("#989 search popup closes on bot 'send message' (source guard)", () => 
     const body = onChatMatch![1];
     expect(
       /this\.props\.hideModal\?\.\(\)/.test(body),
-      "onChat must call hideModal() so the outer search WKModal dismisses"
+      "onChat must call hideModal() so the outer search OctoModal dismisses"
     ).toBe(true);
   });
 

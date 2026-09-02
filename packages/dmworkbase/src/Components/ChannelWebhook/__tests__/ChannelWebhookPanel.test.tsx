@@ -7,7 +7,7 @@ import { act } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const hoisted = vi.hoisted(() => ({
-  wkConfirm: vi.fn(),
+  modalConfirm: vi.fn(),
   regenerateWebhook: vi.fn(),
   deleteWebhook: vi.fn(),
   testWebhook: vi.fn(),
@@ -31,28 +31,26 @@ const hoisted = vi.hoisted(() => ({
 
 vi.mock("@douyinfe/semi-ui", () => ({
   Spin: () => React.createElement("span", { "data-testid": "spin" }),
+  Toast: { success: hoisted.toastSuccess, error: hoisted.toastError },
+}));
+
+vi.mock("@octo/ui", () => ({
+  Button: ({ children, ...props }: any) =>
+    React.createElement("button", props, children),
+  modalConfirm: hoisted.modalConfirm,
+  Modal: ({ children, visible }: any) =>
+    visible ? React.createElement("div", null, children) : null,
   Switch: ({ checked, onChange, "aria-label": ariaLabel }: any) =>
     React.createElement("button", {
       "aria-label": ariaLabel,
       "data-checked": String(!!checked),
       onClick: () => onChange(!checked),
     }),
-  Toast: { success: hoisted.toastSuccess, error: hoisted.toastError },
 }));
 
 vi.mock("@douyinfe/semi-icons", () => ({
   IconPlus: () => React.createElement("span"),
   IconLink: () => React.createElement("span"),
-}));
-
-vi.mock("../../WKModal", () => ({
-  wkConfirm: hoisted.wkConfirm,
-}));
-
-vi.mock("../../WKButton", () => ({
-  default: ({ children, onClick }: any) =>
-    React.createElement("button", { onClick }, children),
-  __esModule: true,
 }));
 
 vi.mock("../../../i18n", () => ({
@@ -100,11 +98,12 @@ vi.mock("../WebhookUrlModal", () => ({
 }));
 
 import ChannelWebhookPanel from "../index";
+import { Modal as OctoModal, modalConfirm } from "@octo/ui";
 
 let container: HTMLDivElement;
 
 beforeEach(() => {
-  hoisted.wkConfirm.mockReset();
+  hoisted.modalConfirm.mockReset();
   hoisted.regenerateWebhook.mockReset();
   hoisted.deleteWebhook.mockReset();
   hoisted.testWebhook.mockReset();
@@ -157,7 +156,7 @@ describe("ChannelWebhookPanel stale results", () => {
         .click();
     });
 
-    const confirmConfig = hoisted.wkConfirm.mock.calls[0][0];
+    const confirmConfig = hoisted.modalConfirm.mock.calls[0][0];
     await act(async () => {
       await confirmConfig.onOk();
     });
@@ -178,7 +177,7 @@ describe("ChannelWebhookPanel stale results", () => {
         .click();
     });
 
-    const confirmConfig = hoisted.wkConfirm.mock.calls[0][0];
+    const confirmConfig = hoisted.modalConfirm.mock.calls[0][0];
     await act(async () => {
       await confirmConfig.onOk();
     });

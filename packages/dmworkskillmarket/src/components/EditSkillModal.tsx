@@ -1,6 +1,7 @@
+import { Button, Input, Modal as OctoModal } from "@octo/ui";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Box, ImagePlus, Loader2, Upload, XCircle } from "lucide-react";
-import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
+import { t, useI18n } from "@octo/base";
 import type { Category, Skill } from "../types/skill";
 import { updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse, getSkillTags } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
@@ -408,23 +409,24 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
 
   return (
     <>
-      <WKModal
+      <OctoModal
         visible={Boolean(skill)}
         onCancel={requestClose}
         title={skill ? t("skillMarket.form.editTitle", { values: { name: skill.name } }) : t("skillMarket.form.editTitleFallback")}
-        size="lg"
+        size="wide"
         className="skill-market-workflow-modal"
+        closeLabel={t("skillMarket.common.close")}
         footer={
           <>
-            <WKButton variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</WKButton>
-            <WKButton
-              variant="primary"
+            <Button variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</Button>
+            <Button
+              variant="solid"
               onClick={() => void submit()}
               loading={saving}
               disabled={!canSave}
             >
               {t("skillMarket.common.save")}
-            </WKButton>
+            </Button>
           </>
         }
       >
@@ -478,7 +480,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
             </div>
           )}
           {uploadStage === "error" && (
-            <WKButton variant="secondary" onClick={() => fileInputRef.current?.click()}>{t("skillMarket.upload.reselect")}</WKButton>
+            <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>{t("skillMarket.upload.reselect")}</Button>
           )}
 
           <div className="skill-market-form__version-section">
@@ -486,7 +488,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
             <div className="skill-market-form__row">
               <label>
                 <span>{t("skillMarket.form.versionLabel")}<i className="skill-market-required">*</i></span>
-                <WKInput
+                <Input
                   value={version}
                   onChange={setVersion}
                   placeholder={t("skillMarket.form.versionPlaceholder")}
@@ -494,7 +496,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
               </label>
               <label>
                 <span>{t("skillMarket.form.changelogLabel")}<i className="skill-market-required">*</i></span>
-                <WKInput
+                <Input
                   value={changelog}
                   onChange={setChangelog}
                   placeholder={t("skillMarket.form.changelogPlaceholder")}
@@ -539,7 +541,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
             />
             <label>
               <span>{t("skillMarket.form.displayName")}<i className="skill-market-required">*</i></span>
-              <WKInput value={displayName} onChange={(v: string) => setDisplayName(v.slice(0, 20))} placeholder={t("skillMarket.form.displayNamePlaceholder")} maxLength={20} />
+              <Input value={displayName} onChange={(v: string) => setDisplayName(v.slice(0, 20))} placeholder={t("skillMarket.form.displayNamePlaceholder")} maxLength={20} />
             </label>
           </div>
           <div className="skill-market-form__row">
@@ -637,7 +639,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
             </label>
           </div>
         </div>
-      </WKModal>
+      </OctoModal>
       <IconCropModal
         visible={!!iconCropFile}
         file={iconCropFile}
@@ -648,15 +650,16 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
           setIconCropFile(null);
         }}
       />
-      <WKModal
+      <OctoModal
         visible={confirmClose}
         onCancel={() => setConfirmClose(false)}
         title={t("skillMarket.confirm.title")}
-        size="md"
+        size="default"
+        closeLabel={t("skillMarket.common.close")}
         footer={
           <>
-            <WKButton variant="secondary" onClick={() => setConfirmClose(false)}>{t("skillMarket.confirm.keepEditing")}</WKButton>
-            <WKButton variant="danger" onClick={confirmLeave}>{t("skillMarket.confirm.leave")}</WKButton>
+            <Button variant="secondary" onClick={() => setConfirmClose(false)}>{t("skillMarket.confirm.keepEditing")}</Button>
+            <Button variant="danger" onClick={confirmLeave}>{t("skillMarket.confirm.leave")}</Button>
           </>
         }
       >
@@ -665,7 +668,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
             ? t("skillMarket.confirm.busyMessage")
             : t("skillMarket.confirm.dirtyEditMessage")}
         </p>
-      </WKModal>
+      </OctoModal>
     </>
   );
 }

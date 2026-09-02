@@ -23,7 +23,6 @@ vi.mock("../../../Service/messageSelection", () => ({ isMessageSelectable: () =>
 vi.mock("../../../Utils/download", () => ({ downloadFile: app.downloadFile }))
 vi.mock("../../../bridge/message/useFileMessageUI", () => ({ getFileMessageUI: () => ({}) }))
 vi.mock("../../../Service/Convert", () => ({ resolveExternalFileURL: (url: string) => url }))
-vi.mock("../../../Components/WKModal", () => ({ default: () => null }))
 vi.mock("../../../ui/message/MessageRow", () => ({ default: () => null }))
 vi.mock("../../Base", () => ({ default: () => null }))
 vi.mock("../../MessageCell", () => ({ MessageCell: class {} }))

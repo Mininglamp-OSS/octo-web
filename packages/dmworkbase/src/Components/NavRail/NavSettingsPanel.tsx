@@ -1,8 +1,7 @@
+import { Button, Modal as OctoModal } from "@octo/ui";
 import WKApp from "../../App";
 import React, { Component, useState } from "react";
 import { Toast } from "@douyinfe/semi-ui";
-import WKModal from "../WKModal";
-import WKButton from "../WKButton";
 import { t } from "../../i18n";
 import { isElectronPowered, sendElectronCheckUpdate } from "../../electron/desktopBridge";
 import { checkVersionOnceWithStatus } from "../../Utils/versionChecker";
@@ -142,7 +141,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                     openSecretsRequest={this.state.secretsRequest}
                 />
 
-                <WKModal
+                <OctoModal
                     title={t("base.navRail.settingsPanel.updateCheckTitle")}
                     visible={showAppVersion}
                     width="480px"
@@ -156,26 +155,26 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                     }}
                     footer={showAppUpdate ? (
                         forceUpdate ? (
-                            <WKButton variant="secondary" onClick={onQuitApp}>
+                            <Button variant="secondary" onClick={onQuitApp}>
                                 {t("base.navRail.settingsCenter.value.quitOcto")}
-                            </WKButton>
+                            </Button>
                         ) : (
-                        <WKButton variant="secondary" onClick={onCancelUpdateDownload}>
+                        <Button variant="secondary" onClick={onCancelUpdateDownload}>
                             {t("base.common.cancel")}
-                        </WKButton>
+                        </Button>
                         )
                     ) : showAppUpdateOperation ? (
                         <>
                             {forceUpdate ? (
-                                <WKButton variant="secondary" onClick={onQuitApp}>
+                                <Button variant="secondary" onClick={onQuitApp}>
                                     {t("base.navRail.settingsCenter.value.quitOcto")}
-                                </WKButton>
+                                </Button>
                             ) : (
-                                <WKButton variant="secondary" onClick={() => { onSetShowAppVersion(false); onNotifyListener(); }}>{t("base.common.cancel")}</WKButton>
+                                <Button variant="secondary" onClick={() => { onSetShowAppVersion(false); onNotifyListener(); }}>{t("base.common.cancel")}</Button>
                             )}
-                            <WKButton variant="primary" onClick={onInstallUpdate}>
+                            <Button variant="solid" onClick={onInstallUpdate}>
                                 {t("base.common.update")}
-                            </WKButton>
+                            </Button>
                         </>
                     ) : undefined}
                 >
@@ -201,7 +200,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                             </div>}
                         </>}
                     </div>
-                </WKModal>
+                </OctoModal>
             </>
         );
     }

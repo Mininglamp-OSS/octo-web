@@ -89,7 +89,7 @@ test("@CH34 @p1 @chat @sidebar @group-create 发起群聊完成创建", async ({
   await openChat(authedPage);
   await authedPage.getByTestId("chat-add-entry").click();
   await authedPage.getByRole("list").getByText("发起群聊", { exact: true }).click();
-  const dialog = authedPage.locator(".wk-modal-content").filter({ hasText: "发起群聊" });
+  const dialog = authedPage.locator(".octo-ui-modal__content").filter({ hasText: "发起群聊" });
   await expect(dialog).toBeVisible();
   await dialog.locator("input").first().fill("E2E 新建群");
   await dialog.getByText("E2E 建群成员", { exact: true }).click();
@@ -259,13 +259,24 @@ test(
     );
     expect(panelCoversScrollButton).toBe(true);
 
+    const chatBox = await authedPage.locator(".wk-chat-content-chat").boundingBox();
+    if (!chatBox) throw new Error("聊天区域没有可验证的布局位置");
+    const maskCoversChatPane = await mask.evaluate(
+      (element, point) => element === document.elementFromPoint(point.x, point.y),
+      {
+        x: chatBox.x + Math.min(80, chatBox.width / 2),
+        y: chatBox.y + Math.min(80, chatBox.height / 2),
+      },
+    );
+    expect(maskCoversChatPane).toBe(true);
+
     const member = panel
       .locator(".wk-subscribers-item")
       .filter({ hasText: "E2E Sender" });
     await expect(member).toBeVisible();
     await member.click();
     const userInfoModal = authedPage
-      .locator(".semi-modal-content.wk-modal-content")
+      .locator(".octo-ui-modal__content")
       .filter({ hasText: "E2E Sender" });
     await expect(userInfoModal).toBeVisible();
     const userInfoAction = userInfoModal.locator("button").first();

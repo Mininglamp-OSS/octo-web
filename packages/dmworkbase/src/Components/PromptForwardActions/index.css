@@ -251,8 +251,8 @@
   border-top: 1px solid var(--wk-border, #e5e7eb);
 }
 
-.wk-prompt-forward__col--preview .wk-prompt-forward__actions .wk-btn,
-.wk-prompt-forward__col--bots .wk-prompt-forward__actions .wk-btn {
+.wk-prompt-forward__col--preview .wk-prompt-forward__actions .octo-ui-button,
+.wk-prompt-forward__col--bots .wk-prompt-forward__actions .octo-ui-button {
   flex: 1 1 auto;
   justify-content: center;
 }

@@ -24,13 +24,6 @@ vi.mock("@octo/base", () => ({
   t: (key: string, opts?: { values?: { count?: number } }) =>
     opts?.values?.count !== undefined ? `${key}:${opts.values.count}` : key,
   useI18n: () => undefined,
-  WKModal: ({
-    children,
-    header,
-  }: {
-    children: React.ReactNode;
-    header?: React.ReactNode;
-  }) => React.createElement("div", null, header, children),
 }));
 
 let container: HTMLDivElement | null = null;

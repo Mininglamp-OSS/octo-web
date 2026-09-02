@@ -13,9 +13,10 @@ vi.mock("../../../Service/AgentCardService", () => ({
 }));
 
 import AgentCardService from "../../../Service/AgentCardService";
+import { Modal as OctoModal } from "@octo/ui";
 
-// Mock WKModal
-vi.mock("../../WKModal", () => ({
+// Mock OctoModal
+vi.mock("../../OctoModal", () => ({
   default: ({ children, visible }: any) => (visible ? <div>{children}</div> : null),
 }));
 

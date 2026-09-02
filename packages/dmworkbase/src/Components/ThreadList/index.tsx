@@ -1,5 +1,6 @@
+import { Button, modalConfirm } from "@octo/ui";
 import React, { Component } from "react"
-import { Button, Spin, Toast, Tooltip } from "@douyinfe/semi-ui"
+import { Spin, Toast, Tooltip } from "@douyinfe/semi-ui";
 import { Channel } from "wukongimjssdk"
 import { UserPlus, LogOut, Trash2 } from "lucide-react"
 import { Thread, ThreadStatus } from "../../Service/Thread"
@@ -9,7 +10,6 @@ import RouteContext from "../../Service/Context"
 import { ThreadListVM, ThreadListState } from "./vm"
 import { ThreadCreate } from "../ThreadCreate"
 import { I18nContext, t } from "../../i18n"
-import { wkConfirm } from "../WKModal"
 import "./index.css"
 
 export interface ThreadListProps {
@@ -65,10 +65,12 @@ export class ThreadList extends Component<ThreadListProps, ThreadListState> {
 
   handleDelete = (thread: Thread, e: React.MouseEvent) => {
     e.stopPropagation()
-    wkConfirm({
-      title: t("base.threadPanel.delete"),
-      content: t("base.threadList.deleteConfirm", { values: { name: thread.name } }),
+    modalConfirm({
+      title: t("base.threadPanel.deleteConfirmTitle", { values: { name: thread.name } }),
+      content: t("base.threadPanel.deleteConfirmContent"),
       okType: "danger",
+      okText: t("base.threadPanel.delete"),
+      cancelText: t("base.common.cancel"),
       onOk: async () => {
         try {
           await this.vm.delete(thread.short_id)
@@ -92,9 +94,10 @@ export class ThreadList extends Component<ThreadListProps, ThreadListState> {
 
   handleLeave = (thread: Thread, e: React.MouseEvent) => {
     e.stopPropagation()
-    wkConfirm({
-      title: t("base.module.thread.leave"),
-      content: t("base.threadList.leaveConfirm", { values: { name: thread.name } }),
+    modalConfirm({
+      title: t("base.threadList.leaveConfirm", { values: { name: thread.name } }),
+      okText: t("base.threadList.leave"),
+      cancelText: t("base.common.cancel"),
       onOk: async () => {
         try {
           await this.vm.leave(thread.short_id)
@@ -191,6 +194,7 @@ export class ThreadList extends Component<ThreadListProps, ThreadListState> {
                         size="small"
                         type="tertiary"
                         icon={<LogOut size={14} />}
+                        iconOnly
                         aria-label={t("base.module.thread.leave")}
                         onClick={(e) => this.handleLeave(thread, e)}
                       />
@@ -201,6 +205,7 @@ export class ThreadList extends Component<ThreadListProps, ThreadListState> {
                         size="small"
                         type="primary"
                         icon={<UserPlus size={14} />}
+                        iconOnly
                         aria-label={t("base.threadList.joinThread")}
                         onClick={(e) => this.handleJoin(thread, e)}
                       />
@@ -212,6 +217,7 @@ export class ThreadList extends Component<ThreadListProps, ThreadListState> {
                         size="small"
                         type="danger"
                         icon={<Trash2 size={14} />}
+                        iconOnly
                         aria-label={t("base.threadPanel.delete")}
                         className="wk-thread-item-action-btn"
                         onClick={(e) => this.handleDelete(thread, e)}

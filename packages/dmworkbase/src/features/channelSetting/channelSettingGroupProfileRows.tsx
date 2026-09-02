@@ -22,12 +22,12 @@ import {
   ChannelSettingInlineEditRow,
 } from "../../ui/ChannelSettingRows";
 import { parseAvatarColorIndex } from "./channelSettingAvatarColor";
-import { ChannelSettingInputEditPush } from "./types";
+import { ChannelSettingTextEditPush } from "./types";
 
 interface BuildGroupProfileRowsOptions {
   context: RouteContext<ChannelSettingRouteData>;
   data: ChannelSettingRouteData;
-  inputEditPush: ChannelSettingInputEditPush;
+  textEditPush: ChannelSettingTextEditPush;
   disbanded: boolean;
 }
 

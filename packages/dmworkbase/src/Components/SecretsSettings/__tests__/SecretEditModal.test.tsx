@@ -48,20 +48,16 @@ vi.mock('@douyinfe/semi-icons', () => ({
   IconEyeClosed: () => React.createElement('span', null, 'eye-off'),
 }));
 
-vi.mock('../../WKModal', () => ({
-  default: ({ children, visible, footer }: any) =>
+vi.mock('@octo/ui', () => ({
+  Button: ({ children, ...props }: any) => React.createElement('button', props, children),
+  Modal: ({ children, visible, footer }: any) =>
     visible
       ? React.createElement('div', { 'data-testid': 'modal' }, children, footer)
       : null,
-  wkConfirm: vi.fn(),
+  modalConfirm: vi.fn(),
   __esModule: true,
 }));
 
-vi.mock('../../WKButton', () => ({
-  default: ({ children, onClick, disabled }: any) =>
-    React.createElement('button', { onClick, disabled }, children),
-  __esModule: true,
-}));
 
 import SecretEditModal from '../SecretEditModal';
 

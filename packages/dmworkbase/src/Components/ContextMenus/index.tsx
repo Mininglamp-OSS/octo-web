@@ -1,7 +1,8 @@
 import classNames from "classnames";
 import type { LucideIcon } from "lucide-react";
-import React, { HTMLProps } from "react";
-import { Component, ReactNode } from "react";
+import React, { Component, ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { Dropdown } from "@octo/ui";
 
 import "./index.css"
 
@@ -212,7 +213,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                 ContextMenus._syncDocumentContextMenuGuard()
                 if (shouldFocusFirstItem) {
                     this.contextMenusRef
-                        ?.querySelector<HTMLElement>(':scope > ul > [role="menuitem"]')
+                        ?.querySelector<HTMLElement>(':scope > ul > .wk-ctx-item > button[role="menuitem"]')
                         ?.focus()
                 }
             })
@@ -266,6 +267,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
     _handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement> | KeyboardEvent) => {
         if (event.key === "Escape") {
             event.preventDefault()
+            event.stopPropagation()
             this.hide()
             return
         }
@@ -274,11 +276,12 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
             return
         }
 
-        const activeItem = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('[role="menuitem"]')
-        const activeList = activeItem?.parentElement
+        const activeItem = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('button[role="menuitem"]')
+        const activeShell = activeItem?.closest<HTMLElement>(".wk-ctx-item")
+        const activeList = activeShell?.parentElement
             ?? this.contextMenusRef?.querySelector<HTMLElement>(":scope > ul")
-        const parentItem = activeList?.closest<HTMLElement>('[role="menuitem"]')
-        const items = Array.from(activeList?.querySelectorAll<HTMLElement>(':scope > [role="menuitem"]') ?? [])
+        const parentItem = activeList?.closest<HTMLElement>(".wk-ctx-item")?.querySelector<HTMLElement>('button[role="menuitem"]')
+        const items = Array.from(activeList?.querySelectorAll<HTMLElement>(':scope > .wk-ctx-item > button[role="menuitem"]') ?? [])
         if (items.length === 0) return
         const current = items.indexOf(activeItem as HTMLElement)
         let next = current
@@ -288,18 +291,21 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
         else if (event.key === "End") next = items.length - 1
         else if (event.key === "ArrowLeft" && parentItem) {
             event.preventDefault()
+            event.stopPropagation()
             parentItem.focus()
             return
         } else if (event.key === "ArrowRight" && activeItem) {
-            const firstChild = activeItem.querySelector<HTMLElement>(':scope > .wk-ctx-submenu > ul > [role="menuitem"]')
+            const firstChild = activeShell?.querySelector<HTMLElement>(':scope > .wk-ctx-submenu > ul > .wk-ctx-item > button[role="menuitem"]')
             if (!firstChild) return
             event.preventDefault()
+            event.stopPropagation()
             firstChild.focus()
             return
         }
         else if ((event.key === "Enter" || event.key === " ") && current >= 0) {
             event.preventDefault()
-            const firstChild = items[current].querySelector<HTMLElement>(':scope > .wk-ctx-submenu > ul > [role="menuitem"]')
+            event.stopPropagation()
+            const firstChild = activeShell?.querySelector<HTMLElement>(':scope > .wk-ctx-submenu > ul > .wk-ctx-item > button[role="menuitem"]')
             if (firstChild) {
                 firstChild.focus()
                 return
@@ -308,6 +314,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
             return
         } else return
         event.preventDefault()
+        event.stopPropagation()
         items[next].focus()
     }
 
@@ -322,22 +329,60 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
 
     _renderItem(m: ContextMenusData, i: number): ReactNode {
         if (m.separator) {
-            return <div key={i} className="wk-ctx-sep" role="separator" />
+            return <Dropdown.Divider key={i} className="wk-ctx-sep" />
         }
 
         const hasChildren = m.children && m.children.length > 0
 
+        const submenu = hasChildren ? (
+            <div className="wk-ctx-submenu">
+                <Dropdown.Menu className="wk-ctx-submenu-list">
+                    {m.children!.map((child, ci) => {
+                        if (child.separator) {
+                            return <Dropdown.Divider key={ci} className="wk-ctx-sep" />
+                        }
+                        return (
+                            <Dropdown.Item
+                                key={ci}
+                                danger={child.danger}
+                                icon={child.icon ? <CtxIcon icon={child.icon} /> : undefined}
+                                suffix={child.checked ? (
+                                    <span className="wk-ctx-checked">✓</span>
+                                ) : undefined}
+                                data-action-key={child.actionKey}
+                                data-testid={child.testid}
+                                shellClassName="wk-ctx-item"
+                                onSelect={(e) => {
+                                    e.stopPropagation()
+                                    this._activateItem(child.onClick)
+                                }}
+                            >
+                                {child.title}
+                            </Dropdown.Item>
+                        )
+                    })}
+                </Dropdown.Menu>
+            </div>
+        ) : undefined
+
         return (
-            <li
+            <Dropdown.Item
                 key={i}
                 data-action-key={m.actionKey}
                 role="menuitem"
                 aria-haspopup={hasChildren ? "menu" : undefined}
                 tabIndex={-1}
                 data-testid={m.testid}
-                className={classNames(m.danger && "wk-ctx-danger")}
-                onMouseEnter={hasChildren ? (event) => this._positionSubmenu(event) : undefined}
-                onClick={(e) => {
+                danger={m.danger}
+                icon={m.icon ? <CtxIcon icon={m.icon} /> : undefined}
+                suffix={hasChildren ? <ArrowIcon /> : undefined}
+                shellClassName="wk-ctx-item"
+                shellProps={{
+                    onMouseEnter: hasChildren ? (event) => this._positionSubmenu(event) : undefined,
+                }}
+                submenu={submenu}
+                closeOnSelect={!hasChildren}
+                onSelect={(e) => {
                     if (hasChildren) {
                         e.stopPropagation()
                         return
@@ -345,64 +390,26 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                     this._activateItem(m.onClick)
                 }}
             >
-                {m.icon && <CtxIcon icon={m.icon} />}
-                <span style={{ flex: 1 }}>{m.title}</span>
-                {hasChildren && (
-                    <>
-                        <ArrowIcon />
-                        <div className="wk-ctx-submenu">
-                            <ul className="wk-ctx-submenu-list" role="menu">
-                                {m.children!.map((child, ci) => {
-                                    if (child.separator) {
-                                        return <div key={ci} className="wk-ctx-sep" />
-                                    }
-                                    return (
-                                        <li
-                                            key={ci}
-                                            role="menuitem"
-                                            tabIndex={-1}
-                                            onClick={(e) => {
-                                                e.stopPropagation()
-                                                this._activateItem(child.onClick)
-                                            }}
-                                        >
-                                            {child.icon && <CtxIcon icon={child.icon} />}
-                                            <span style={{ flex: 1 }}>{child.title}</span>
-                                            {child.checked && (
-                                                <span style={{
-                                                    color: 'var(--wk-brand-primary, #1C1C23)',
-                                                    fontSize: 13,
-                                                    fontWeight: 600,
-                                                    flexShrink: 0,
-                                                    marginLeft: 4,
-                                                }}>✓</span>
-                                            )}
-                                        </li>
-                                    )
-                                })}
-                            </ul>
-                        </div>
-                    </>
-                )}
-            </li>
+                {m.title}
+            </Dropdown.Item>
         )
     }
 
     render(): ReactNode {
         const { showContextMenus, contextOrigin, flipSubmenu } = this.state
         const { menus } = this.props
-        return (
+        const node = (
             <>
                 <div
                     className={classNames("wk-contextmenus", showContextMenus && "wk-contextmenus-open", flipSubmenu && "wk-contextmenus-flip-submenu")}
                     ref={ref => { this.contextMenusRef = ref }}
                     style={{ transformOrigin: `-3px ${contextOrigin}px` }}
                     onContextMenuCapture={this._handleContextMenu}
-                    onKeyDown={this._handleKeyDown}
+                    onKeyDownCapture={this._handleKeyDown}
                 >
-                    <ul role="menu">
+                    <Dropdown.Menu>
                         {menus && menus.map((m, i) => this._renderItem(m, i))}
-                    </ul>
+                    </Dropdown.Menu>
                 </div>
                 <div
                     className="wk-contextmenus-mask"
@@ -412,5 +419,6 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                 />
             </>
         )
+        return typeof document === "undefined" ? node : createPortal(node, document.body)
     }
 }

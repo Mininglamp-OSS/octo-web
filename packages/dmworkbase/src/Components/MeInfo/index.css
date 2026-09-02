@@ -367,7 +367,7 @@
     outline: none;
 }
 
-.wk-meinfo-secondary-modal .wk-modal-body {
+.wk-meinfo-secondary-modal .octo-ui-modal__body {
     min-height: 0;
 }
 
@@ -377,27 +377,30 @@
     --semi-color-bg-2: var(--wk-bg-surface);
 }
 
-.wk-meinfo-v2-modal .wk-modal-shell {
+.wk-meinfo-v2-modal .octo-ui-modal__surface {
     overflow: hidden;
     padding: 0;
     border-radius: var(--wk-r-md);
     background: var(--wk-bg-surface);
 }
 
-.wk-meinfo-v2-modal .wk-modal-title {
+.wk-meinfo-v2-modal .octo-ui-modal__header {
+    border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.wk-meinfo-v2-modal .octo-ui-modal__title {
     display: flex;
     min-height: calc(var(--wk-sp-10) + var(--wk-sp-3));
     align-items: center;
     margin: 0;
     padding: var(--wk-sp-3) calc(var(--wk-sp-10) + var(--wk-sp-5)) var(--wk-sp-3) var(--wk-sp-5);
-    border-bottom: 1px solid var(--wk-border-subtle);
     color: var(--wk-text-primary);
     font-size: var(--wk-text-size-md);
     font-weight: var(--wk-font-semibold);
     line-height: var(--wk-leading-normal);
 }
 
-.wk-meinfo-v2-modal .wk-modal-custom-close-btn {
+.wk-meinfo-v2-modal .octo-ui-modal__close {
     top: var(--wk-sp-3);
     right: var(--wk-sp-5);
     width: calc(var(--wk-sp-6) + var(--wk-sp-1));
@@ -405,11 +408,11 @@
     border-radius: var(--wk-r-sm);
 }
 
-.wk-meinfo-v2-modal .wk-modal-body {
+.wk-meinfo-v2-modal .octo-ui-modal__body {
     background: var(--wk-bg-surface);
 }
 
-.wk-meinfo-qrcode-modal .wk-modal-body {
+.wk-meinfo-qrcode-modal .octo-ui-modal__body {
     min-height: 0;
 }
 

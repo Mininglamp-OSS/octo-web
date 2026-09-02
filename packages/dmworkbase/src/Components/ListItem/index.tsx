@@ -1,4 +1,4 @@
-import { Switch } from "@douyinfe/semi-ui";
+import { Switch } from "@octo/ui";
 import React, { CSSProperties } from "react";
 import { Component } from "react";
 import { I18nContext } from "../../i18n";

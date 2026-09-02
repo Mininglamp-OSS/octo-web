@@ -2,7 +2,6 @@ import { Toast } from "@douyinfe/semi-ui"
 import React, { Component, ReactNode } from "react"
 import RouteContext, { RouteContextConfig } from "../../Service/Context"
 import Provider, { IProviderListener } from "../../Service/Provider"
-import WKModal from "../WKModal"
 import RoutePage from "../RoutePage"
 import { MentionFreeVM } from "../../bridge/profileDetail/BotManageVM"
 import { BotCardSettingsVM } from "../../bridge/profileDetail/BotCardSettingsVM"
@@ -20,15 +19,16 @@ import BotManageView, {
     type BotManageViewLabels,
 } from "../../ui/profileDetail/BotManageView"
 import "./index.css"
+import { Modal as OctoModal } from "@octo/ui";
 
 /**
  * BotManage —— 独立「Bot 管理」模块（octo-web#235 / YUJ-2838）。
  *
  * 三级导航：
- *   L1 BotDetailModal（既有）──兄弟 WKModal──▶ L2 BotManageModal（本文件）
+ *   L1 BotDetailModal（既有）──兄弟 OctoModal──▶ L2 BotManageModal（本文件）
  *   L2 BotManageView ──模块内 RoutePage.push──▶ L3 MentionFreeListView
  *
- * L1→L2 走「兄弟 WKModal」（仿 ClawInfoModal 在 BotDetailModal:785-790 的渲染方式），
+ * L1→L2 走「兄弟 OctoModal」（仿 ClawInfoModal 在 BotDetailModal:785-790 的渲染方式），
  * 而不是嵌套；L2↔L3 走模块自带的 RoutePage + push（仿 PersonaSettings standalone
  * index.tsx:73-86），整条 L2/L3 共用 RoutePage 唯一一个返回箭头：
  *   - L2（栈空）时点 ← = onClose 关闭整个 BotManageModal；
@@ -36,7 +36,7 @@ import "./index.css"
  *
  * 与 PersonaSettings 的区别：PersonaSettings 既支持「嵌入父 RouteContext」也支持
  * 「standalone 自带 RoutePage」两种模式（YUJ-1435 双 ← 修复）。BotManage 永远是
- * 被 BotDetailModal 以「兄弟 WKModal」打开的独立模态，没有父 RouteContext，所以
+ * 被 BotDetailModal 以「兄弟 OctoModal」打开的独立模态，没有父 RouteContext，所以
  * 只保留 standalone 一种形态，心智更简单。
  *
  * VM 设计：MentionFreeVM 持有 robotId + 群列表状态，在 Provider 里创建一次。
@@ -110,7 +110,7 @@ export default class BotManageModal extends Component<BotManageModalProps> {
         const { t } = this.context
         const labels = this.createLabels()
         return (
-            <WKModal
+            <OctoModal
                 title={null}
                 visible={visible}
                 onCancel={onClose}
@@ -164,7 +164,7 @@ export default class BotManageModal extends Component<BotManageModalProps> {
                         />
                     )}
                 />
-            </WKModal>
+            </OctoModal>
         )
     }
 
