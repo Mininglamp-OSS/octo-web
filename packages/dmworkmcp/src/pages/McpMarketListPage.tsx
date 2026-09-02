@@ -576,7 +576,16 @@ export default class McpMarketListPage extends Component<
     }
   };
 
-  private handleReviewSubmitted = (message: string) => {
+  /**
+   * An action moved the connector's LISTING — a review was submitted, or a 发布
+   * made from inside the editor was answered. Both end the same way: show the
+   * message the caller already resolved from the server's answer, then re-read.
+   *
+   * A full reload rather than an in-place patch, because `listing_state` /
+   * `display_status` are not among the fields handleItemUpdated carries, and
+   * they are exactly what changed.
+   */
+  private handleListingOutcome = (message: string) => {
     Toast.success(message);
     this.loadData();
     this.state.review.refresh();
@@ -1078,12 +1087,13 @@ export default class McpMarketListPage extends Component<
             })
           }
           onSaved={this.handleSaved}
-          onReviewSubmitted={this.handleReviewSubmitted}
+          onReviewSubmitted={this.handleListingOutcome}
+          onPublished={this.handleListingOutcome}
         />
         <ReviewSubmitModal
           target={this.state.reviewTarget}
           onClose={() => this.setState({ reviewTarget: null })}
-          onSubmitted={this.handleReviewSubmitted}
+          onSubmitted={this.handleListingOutcome}
         />
         <MyReviewStateProbe
           enabled={this.props.variant === "mine"}

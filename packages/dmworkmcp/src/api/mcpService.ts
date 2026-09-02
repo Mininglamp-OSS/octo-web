@@ -226,6 +226,10 @@ async function createMcpMock(params: CreateMcpParams): Promise<{ id: string }> {
     ? `${id}-${Date.now().toString(36)}`
     : id;
   const detail = buildDetailFromCreate(uniqueId, params);
+  // A create is always a DRAFT carrying the declared audience — mirroring the
+  // real path, where 发布 is the only thing that lists a connector.
+  detail.listingState = "draft";
+  detail.displayStatus = "draft";
   MOCK_MCP_DETAILS.unshift(detail);
   MOCK_MCP_LIST.unshift(projectListItem(detail));
   return delay({ id: uniqueId }, 400);
@@ -250,7 +254,14 @@ async function updateMcpMock(
   next.createdByType = prev.createdByType;
   next.createdByBotUid = prev.createdByBotUid;
   next.createdByBotName = prev.createdByBotName;
-  next.visibility = prev.visibility;
+  // Listing lifecycle stays server-owned: a save is not a publish. Visibility
+  // is NOT in that group any more — it is declared by the editor, so an
+  // explicit value is written through and only an omission preserves the
+  // stored one (same rule as updateMcpReal).
+  next.listingState = prev.listingState;
+  next.displayStatus = prev.displayStatus;
+  next.reviewId = prev.reviewId;
+  next.visibility = params.visibility ?? prev.visibility;
   MOCK_MCP_DETAILS[idx] = next;
   const listIdx = MOCK_MCP_LIST.findIndex((it) => it.id === id);
   if (listIdx !== -1) MOCK_MCP_LIST[listIdx] = projectListItem(next);
@@ -299,6 +310,10 @@ function buildDetailFromCreate(id: string, params: CreateMcpParams): McpDetail {
     toolCount: params.tools.length,
     icon: params.icon ?? "",
     creatorName: WKApp.loginInfo?.name || "",
+    // Same default as the real create path: a connector nobody declared an
+    // audience for is private. Listing state is NOT set here — this builder
+    // also backs the mock update, and a save must not move a row's listing.
+    visibility: params.visibility ?? "private",
     quickStart,
     tools: params.tools,
     usageExamples: (params.usageExamples ?? []).filter((s) => s.trim()),
@@ -323,6 +338,12 @@ function projectListItem(d: McpDetail): McpListItem {
     createdByBotUid: d.createdByBotUid,
     createdByBotName: d.createdByBotName,
     creatorName: d.creatorName,
+    // Audience + listing lifecycle, so a mock 我的发布 row resolves the same
+    // owner actions (编辑 / 发布 / 升级版本) the real listing does.
+    visibility: d.visibility,
+    listingState: d.listingState,
+    displayStatus: d.displayStatus,
+    reviewId: d.reviewId,
   };
 }
 
@@ -821,21 +842,30 @@ async function createMcpReal(params: CreateMcpParams): Promise<{ id: string }> {
   // Fail closed on an unresolved category so the plugin and its placement never
   // split-brain on a NULL category_id.
   const { categoryId } = await resolveWriteCategory(params.category, maps);
-  // A create lands as a PRIVATE draft, never `space`. Listing to the org is a
-  // reviewer decision now: a tenant may not set `space` itself (the backend
-  // rejects the flip), so the org-visible state is reached only by 提交审核 →
-  // approve. This used to hardcode `visibility: "space"`, which both bypassed
-  // review and is no longer accepted.
+  // A create always lands as a DRAFT, carrying the audience the author
+  // DECLARED. The declaration by itself lists nothing: 发布 is the one door, and
+  // the backend reads this value there to decide whether that lists the
+  // connector immediately (private) or opens an organization review (space).
+  //
+  // This used to hardcode `private` regardless of what the author picked, which
+  // made 本组织 unreachable from the create form. It defaults to `private` only
+  // when the caller declares nothing, so a non-UI caller cannot accidentally
+  // widen a new connector by omission.
   const detail = await post<PluginDetailWire>(
     "/plugins/upsert",
-    toPluginUpsert(params, { categoryId, visibility: "private" })
+    toPluginUpsert(params, {
+      categoryId,
+      visibility: params.visibility ?? "private",
+    })
   );
   return { id: detail.plugin.plugin_id };
 }
 
-/** Full-replace update via upsert. The current visibility is fetched first so
- *  the replace echo preserves it (legacy PATCH semantics); placement category
- *  follows the current-state category server-side. */
+/** Full-replace update via upsert. The declared visibility is written through;
+ *  the current one is fetched as the fallback for a caller that omits it (see
+ *  CreateMcpParams.visibility), so a row the editor cannot express — a legacy
+ *  `system` / `public` record — is preserved rather than downgraded. Placement
+ *  category follows the current-state category server-side. */
 async function updateMcpReal(
   id: string,
   params: UpdateMcpParams
@@ -914,7 +944,16 @@ async function buildConnectorUpsert(
     {
       pluginId: id,
       categoryId,
-      visibility: current.plugin.visibility,
+      // The audience as DECLARED by this write. An upsert replaces the row, so
+      // the value has to travel with every save — omitting it would leave the
+      // column to a backend default instead of to the author's choice.
+      //
+      // Widening it on an already-listed connector un-lists the row server-side
+      // (the audience changed, so the listing must be re-earned through 发布);
+      // the editor warns before saving. Falls back to the stored value for a
+      // caller that declares nothing — notably a row whose visibility the
+      // two-option editor cannot express (see CreateMcpParams.visibility).
+      visibility: params.visibility ?? current.plugin.visibility,
       rawServer,
       extraServers,
       // toPluginUpsert drops the five modeled paths, keeping only the extras.

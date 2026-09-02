@@ -10,7 +10,7 @@ import {
   updateMcp,
   uploadMcpIcon,
 } from "../api/mcpService";
-import { submitPluginReview } from "../api/pluginReview";
+import { publishPluginListing, submitPluginReview } from "../api/pluginReview";
 import { bumpPatch } from "./ReviewSubmitModal";
 import {
   isSecretKey,
@@ -25,6 +25,7 @@ import {
 } from "../utils/mcpTagValidation";
 import type {
   CreateMcpParams,
+  McpDeclaredVisibility,
   McpDetail,
   McpFaq,
   McpProbeRequest,
@@ -58,6 +59,19 @@ interface McpCreateModalProps {
    *  ready-to-show message. Distinct from `onSaved` because nothing was saved —
    *  the list must not be patched with content that has not shipped. */
   onReviewSubmitted?: (message: string) => void;
+  /**
+   * Fires after a 发布 made from this modal, with the outcome message the
+   * backend's answer implies (listed now, or sent to organization review).
+   *
+   * It owns the RELOAD as well as the message: a publish moves
+   * `listing_state` / `display_status`, which the parent's in-place row patch
+   * does not carry. Exactly one of `onSaved`-with-a-toast and this fires per
+   * submit, so the author never sees "已保存" followed by "已发布".
+   *
+   * Optional like `onReviewSubmitted`; a caller that omits it still gets a
+   * working save, it just says nothing about which branch the backend took.
+   */
+  onPublished?: (message: string) => void;
 }
 
 const ICON_MAX_BYTES = 2 * 1024 * 1024;
@@ -218,6 +232,24 @@ function detailToForm(detail: McpDetail): CreateMcpParams {
     faqs: detail.faqs,
     notes: detail.notes,
   };
+}
+
+/**
+ * Seed value for the 可见范围 radio.
+ *
+ * Only the two audiences an author may declare are representable. A row stored
+ * as `system` (全平台, minted by marketplace-admin) or the legacy `public` maps
+ * to `undefined` — "this form cannot express the stored audience" — rather than
+ * collapsing onto 仅自己, which would downgrade the connector on the next save.
+ * A create (no record yet) starts private.
+ */
+function declaredVisibilityOf(
+  detail: McpDetail | null | undefined
+): McpDeclaredVisibility | undefined {
+  if (!detail) return "private";
+  if (detail.visibility === "space") return "space";
+  if (detail.visibility === "private") return "private";
+  return undefined;
 }
 
 // ─── Small presentational helpers kept inline (single-use, tiny) ────────────
@@ -532,12 +564,33 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
   editing,
   reviewMode = false,
   onReviewSubmitted,
+  onPublished,
 }) => {
   const [form, setForm] = useState<CreateMcpParams>(EMPTY);
   /** Connector categories from the backend taxonomy (dynamic, matching the
    *  discovery pills). Name is both value and label. */
   const [categoryNames, setCategoryNames] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  /** Which footer action is in flight, so only that button spins. */
+  const [publishing, setPublishing] = useState(false);
+  /**
+   * The DECLARED audience. Editable here because it is what 发布 reads to decide
+   * whether listing this connector needs organization review.
+   *
+   * `undefined` means "the stored audience is not one this form can express" —
+   * a legacy `system` / `public` row. The radio then shows nothing selected and
+   * the payload omits the field, so the service preserves the stored value
+   * instead of silently downgrading it to 仅自己. Picking an option adopts it.
+   */
+  const [declaredVisibility, setDeclaredVisibility] = useState<
+    McpDeclaredVisibility | undefined
+  >("private");
+  /**
+   * Id of the connector this session created, remembered across retries: if the
+   * create succeeds and the publish that follows it fails, pressing 发布 again
+   * must publish THAT connector, not mint a duplicate. Mirrors NewSkillModal.
+   */
+  const [createdPluginId, setCreatedPluginId] = useState<string | null>(null);
   const [probing, setProbing] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [step, setStep] = useState(0);
@@ -586,6 +639,27 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
   // concerned — it just posts the result somewhere else.
   const isEdit = !!editing;
   const isReview = reviewMode && !!editing;
+
+  /**
+   * Whether this save leaves the connector UNLISTED — either it already is, or
+   * changing the declared audience is about to un-list it server-side.
+   *
+   * That is exactly when 保存草稿 is the honest label for the secondary action
+   * and 发布 has something to do. On a listed connector whose audience is
+   * unchanged there is nothing to publish (the backend answers 409
+   * `already_published`), so 发布 is not rendered at all rather than sitting
+   * there disabled, and the secondary is a plain 保存.
+   *
+   * A create has no record yet, so it is unlisted by construction. An
+   * unrepresentable stored audience (`declaredVisibility === undefined`) counts
+   * as unchanged — the save is not going to touch that column.
+   */
+  const willBeUnlisted =
+    !editing ||
+    editing.listingState !== "published" ||
+    (declaredVisibility !== undefined &&
+      editing.visibility !== undefined &&
+      declaredVisibility !== editing.visibility);
 
   // Prefill on open. When `editing` is set, hydrate the form from the detail;
   // otherwise reset to EMPTY so re-opening always starts fresh. Also drives
@@ -639,6 +713,12 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     setIconPreview("");
     setIconRemoved(false);
     setStep(0);
+    // The declared audience. An edit adopts the stored value; anything the
+    // two-option radio cannot express (a legacy `system` / `public` row) seeds
+    // as `undefined` so the save leaves that column alone. A create starts at
+    // 仅自己 — the safe default, and the one 发布 can list without review.
+    setDeclaredVisibility(declaredVisibilityOf(editing));
+    setCreatedPluginId(null);
     // JSON import mode + textarea reset. Edit sessions never enter JSON mode.
     setCreateMode("manual");
     setJsonRaw("");
@@ -680,6 +760,9 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     setCreateMode("manual");
     setJsonRaw("");
     setIconRemoved(false);
+    // Same "fresh create" baseline as setForm(EMPTY) above.
+    setDeclaredVisibility("private");
+    setCreatedPluginId(null);
   };
 
   /** Name edit also seeds the slug while the user hasn't hand-edited it, so the
@@ -886,7 +969,33 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     return null;
   };
 
-  const handleSubmit = async () => {
+  /**
+   * Hand a just-saved connector to the ONE publish door and translate the
+   * answer into the message to show.
+   *
+   * The backend decides from the STORED visibility whether this lists the
+   * connector immediately (private) or opens an organization review (space),
+   * and reports which in the response — so the message is read off the outcome
+   * rather than guessed from the radio. Version is omitted deliberately: the
+   * server reuses the connector's current one, which the save just wrote.
+   */
+  const publishSaved = async (pluginId: string): Promise<string> => {
+    const outcome = await publishPluginListing(pluginId);
+    return outcome.displayStatus === "pending_review"
+      ? t("skillMarket.review.submittedToast")
+      : t("skillMarket.plugin.publishedToast");
+  };
+
+  /**
+   * `publish=false` saves and stops; `publish=true` saves and THEN hands the
+   * connector to the backend's one publish door, so what ships is what the
+   * author just wrote. The two share every validation and the create/update
+   * call — they differ only in whether the publish step runs afterwards.
+   *
+   * Review mode ignores the flag: 升级版本 is a single action that neither saves
+   * the live row nor lists anything.
+   */
+  const handleSubmit = async (publish: boolean) => {
     const tagError = validateMcpTags(form.tags);
     if (tagError) {
       Toast.warning(tagError);
@@ -927,6 +1036,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     const headersWire = entriesToWire(headersEntries);
 
     setSubmitting(true);
+    setPublishing(publish);
     // Upload icon FIRST so the URL can ride in the create/update body. The
     // marketplace endpoint no longer accepts multipart icon uploads; uploads
     // go through the main IM (mcpService.uploadMcpIconReal) and return a URL
@@ -977,7 +1087,18 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
       usageExamples: (form.usageExamples ?? []).filter((s) => s.trim()),
       faqs: (form.faqs ?? []).filter((f) => f.question.trim()),
       notes: (form.notes ?? []).filter((s) => s.trim()),
+      // The DECLARED audience, spread-guarded: an own `visibility: undefined`
+      // property would still be an own key, and "declare this audience" vs
+      // "leave the stored one alone" is a real distinction for a row the radio
+      // cannot express (see declaredVisibilityOf).
+      ...(declaredVisibility !== undefined
+        ? { visibility: declaredVisibility }
+        : {}),
     };
+    // Which step a failure came from, so the fallback message names the right
+    // one: a create that threw before the publish ever ran must not report
+    // 提交审核失败.
+    let publishStarted = false;
     try {
       if (isReview && editing) {
         // 发布新版本: freeze the edited documents into the review request. The
@@ -996,25 +1117,61 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
         onReviewSubmitted?.(t("skillMarket.review.submittedToast"));
       } else if (isEdit && editing) {
         const updated = await updateMcp(editing.id, payload);
-        Toast.success(t("mcp.edit.success"));
-        resetAll();
-        onSaved(updated);
+        if (publish) {
+          // Saved first, so what gets published is what the author just wrote —
+          // and if widening the audience un-listed the row, this is the step
+          // that earns the listing back through review.
+          publishStarted = true;
+          const message = await publishSaved(editing.id);
+          resetAll();
+          // Both fire: onSaved patches the edited content into the row, and the
+          // outcome callback carries the message plus the reload the moved
+          // listing_state needs.
+          onSaved(updated);
+          onPublished?.(message);
+        } else {
+          Toast.success(t("mcp.edit.success"));
+          resetAll();
+          onSaved(updated);
+        }
       } else {
-        await createMcp(payload);
-        Toast.success(t("mcp.create.success"));
-        resetAll();
-        onSaved();
+        // Reuse the id from a previous attempt whose publish failed, so a second
+        // press publishes that connector instead of minting a duplicate.
+        const pluginId = createdPluginId ?? (await createMcp(payload)).id;
+        setCreatedPluginId(pluginId);
+        if (publish) {
+          publishStarted = true;
+          const message = await publishSaved(pluginId);
+          resetAll();
+          // Only the outcome callback here: it reloads the list anyway, so
+          // calling onSaved() as well would fetch the same page twice.
+          onPublished?.(message);
+        } else {
+          Toast.success(t("mcp.create.success"));
+          resetAll();
+          onSaved();
+        }
       }
       onClose();
     } catch (err: unknown) {
-      const fallback = isReview
-        ? t("skillMarket.review.submitFailed")
-        : isEdit
-          ? t("mcp.edit.failed")
-          : t("mcp.create.failed");
-      Toast.error(err instanceof Error ? err.message : fallback);
+      const fallback =
+        isReview || publishStarted
+          ? t("skillMarket.review.submitFailed")
+          : isEdit
+            ? t("mcp.edit.failed")
+            : t("mcp.create.failed");
+      const message = err instanceof Error ? err.message : fallback;
+      // The row was already written when a PUBLISH is what failed. Say so, or
+      // the author retries expecting a duplicate — the id is remembered, so the
+      // retry publishes the same connector.
+      Toast.error(
+        publishStarted
+          ? `${message} ${t("skillMarket.review.draftSavedHint")}`
+          : message
+      );
     } finally {
       setSubmitting(false);
+      setPublishing(false);
     }
   };
 
@@ -1291,17 +1448,61 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                     })}
                   </span>
                 )}
-                <WKButton
-                  variant="primary"
-                  loading={submitting}
-                  onClick={handleSubmit}
-                >
-                  {isReview
-                    ? t("skillMarket.plugin.actionUpgrade")
-                    : isEdit
-                      ? t("mcp.edit.submit")
-                      : t("mcp.create.submit")}
-                </WKButton>
+                {isReview ? (
+                  // 升级版本 stays a single action: it neither saves the live
+                  // row nor lists anything, so there is no draft/publish pair
+                  // to offer.
+                  <WKButton
+                    variant="primary"
+                    loading={submitting}
+                    onClick={() => void handleSubmit(true)}
+                  >
+                    {t("skillMarket.plugin.actionUpgrade")}
+                  </WKButton>
+                ) : (
+                  <>
+                    {/* Two actions, not a mode switch — the same pair the skill
+                        market offers. 保存草稿 leaves the connector unlisted;
+                        发布 saves first and then hands the routing decision to
+                        the backend, which reads the declared visibility. There
+                        is no 提交审核 button: the author should not have to know
+                        which of the two 发布 means.
+
+                        The secondary is only called 保存草稿 when the save
+                        actually leaves a draft behind; otherwise it is a plain
+                        保存 and 发布 is not rendered, because a listed connector
+                        whose audience did not change has nothing to publish. */}
+                    <WKButton
+                      variant="secondary"
+                      onClick={handleClose}
+                      disabled={submitting}
+                    >
+                      {t("skillMarket.common.cancel")}
+                    </WKButton>
+                    <WKButton
+                      variant="secondary"
+                      loading={submitting && !publishing}
+                      disabled={submitting && publishing}
+                      onClick={() => void handleSubmit(false)}
+                    >
+                      {t(
+                        willBeUnlisted
+                          ? "skillMarket.plugin.actionSaveDraft"
+                          : "skillMarket.common.save"
+                      )}
+                    </WKButton>
+                    {willBeUnlisted && (
+                      <WKButton
+                        variant="primary"
+                        loading={submitting && publishing}
+                        disabled={submitting && !publishing}
+                        onClick={() => void handleSubmit(true)}
+                      >
+                        {t("skillMarket.plugin.actionPublish")}
+                      </WKButton>
+                    )}
+                  </>
+                )}
               </>
             )}
           </div>
@@ -1499,6 +1700,65 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                 />
               </Field>
             </Section>
+
+            {/* 可见范围 — the DECLARED audience, stored as-is. It lists nothing
+                by itself: 发布 is what lists it, and this value is what the
+                backend reads to decide whether that needs organization review.
+                全平台 is absent on purpose — the tenant API rejects it, it is
+                minted only through the marketplace-admin surface.
+
+                Hidden during 升级版本: that flow freezes content into a review
+                request and never moves the audience, so offering the choice
+                there would promise something the submission cannot deliver. */}
+            {!isReview && (
+              <Section title={t("skillMarket.plugin.columnVisibility")}>
+                <div className="skill-market-scope-options">
+                  {(["private", "space"] as const).map((option) => (
+                    <label
+                      key={option}
+                      className={
+                        declaredVisibility === option ? "is-selected" : ""
+                      }
+                    >
+                      <input
+                        type="radio"
+                        name="mcp-declared-visibility"
+                        value={option}
+                        checked={declaredVisibility === option}
+                        onChange={() => setDeclaredVisibility(option)}
+                      />
+                      <div>
+                        <strong>
+                          {t(
+                            option === "private"
+                              ? "skillMarket.plugin.visibilityPrivate"
+                              : "skillMarket.plugin.visibilitySpace"
+                          )}
+                        </strong>
+                        <span>
+                          {t(
+                            option === "private"
+                              ? "skillMarket.plugin.visibilityPrivateHint"
+                              : "skillMarket.plugin.visibilitySpaceHint"
+                          )}
+                        </span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                {/* Said BEFORE the save, not after: a listed connector whose
+                    audience changes stops being listed until it goes through
+                    发布 again, and an author who is not told will read that as
+                    their connector disappearing. */}
+                {editing?.listingState === "published" &&
+                  declaredVisibility !== undefined &&
+                  declaredVisibility !== editing.visibility && (
+                    <div className="wk-mcp-field__hint">
+                      {t("skillMarket.plugin.visibilityChangeUnlists")}
+                    </div>
+                  )}
+              </Section>
+            )}
           </>
         )}
 
