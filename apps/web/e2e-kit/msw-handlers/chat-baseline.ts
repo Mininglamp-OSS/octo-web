@@ -193,12 +193,67 @@ export const chatBaselineHandlers = [
     })
   ),
   http.get("*/api/v1/user/pinned", () => HttpResponse.json([])),
+  http.get("*/user/pinned", () => HttpResponse.json([])),
+  http.get("*/robot/my_bots", () => HttpResponse.json([
+    {
+      uid: "e2e-contact-bot",
+      name: "E2E 助手",
+      status: "added",
+      description: "用于验证通讯录 Bot 发起会话",
+    },
+  ])),
+  http.get("*/robot/space_bots", () => HttpResponse.json([
+    {
+      uid: "e2e-contact-bot",
+      name: "E2E 助手",
+      status: "added",
+      description: "用于验证通讯录 Bot 发起会话",
+    },
+  ])),
   http.put("*/user/language", () => HttpResponse.json({})),
 
   // === Contacts / friends ===
   http.get("*/friend/sync", () => HttpResponse.json([])),
-  http.get("*/group/my", () => HttpResponse.json([])),
-  http.get("*/space/:spaceId/members", () => HttpResponse.json([])),
+  http.get("*/group/my", () => HttpResponse.json([
+    {
+      group_no: "e2e-contact-group",
+      name: "E2E 项目群",
+      member_count: 3,
+    },
+  ])),
+  http.get("*/space/:spaceId/members", () => HttpResponse.json([
+    {
+      uid: "e2e-contact-human",
+      name: "E2E 联系人",
+      avatar: "",
+      role: 0,
+      robot: 0,
+    },
+    {
+      uid: "e2e-contact-bot",
+      name: "E2E 助手",
+      avatar: "",
+      role: 0,
+      robot: 1,
+    },
+  ])),
+  http.get("*/users/e2e-contact-human", () => HttpResponse.json({
+    uid: "e2e-contact-human",
+    name: "E2E 联系人",
+    follow: 1,
+    robot: 0,
+    role: 0,
+  })),
+  http.get("*/users/e2e-contact-bot", () => HttpResponse.json({
+    uid: "e2e-contact-bot",
+    name: "E2E 助手",
+    username: "e2e-contact-bot",
+    follow: 1,
+    robot: 1,
+    bot_description: "用于验证通讯录 Bot 发起会话",
+    bot_creator_uid: "e2e-owner",
+    bot_creator_name: "E2E Owner",
+  })),
   http.delete("*/user/reddot/friendApply", () => HttpResponse.json({})),
 
   // === Sidebar ===
