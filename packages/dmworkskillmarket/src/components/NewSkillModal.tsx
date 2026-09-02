@@ -6,6 +6,7 @@ import { createSkill, createReviewRequest, getSkillTags, initReupload, initUploa
 import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
+import InlineConfirmBar from "./InlineConfirmBar";
 
 /**
  * The visibility the author DECLARES on the plugin. It is stored as-is and lists
@@ -638,6 +639,40 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
         size="lg"
         className="skill-market-workflow-modal"
         footer={
+          confirmClose ? (
+            <InlineConfirmBar
+              message={t(
+                confirmClose === "busy"
+                  ? "skillMarket.confirm.busyMessage"
+                  : "skillMarket.confirm.unsavedMessage"
+              )}
+              actions={[
+                {
+                  label: t(
+                    confirmClose === "busy"
+                      ? "skillMarket.confirm.keepUploading"
+                      : "skillMarket.confirm.keepEditing"
+                  ),
+                  onClick: () => setConfirmClose(null),
+                },
+                { label: t("skillMarket.confirm.leave"), variant: "danger", onClick: confirmLeave },
+                // Only offered when there is something a draft could hold. Mid
+                // upload there is no content to save, and in review/upgrade mode
+                // the plugin already exists — the draft is not this form.
+                ...(confirmClose === "dirty" && !isReviewMode
+                  ? [
+                      {
+                        label: t("skillMarket.confirm.saveDraftAndLeave"),
+                        variant: "primary" as const,
+                        disabled: !canCreate,
+                        loading: saving,
+                        onClick: () => void submit(false),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          ) : (
           <>
             <WKButton variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</WKButton>
             {isReviewMode ? (
@@ -675,6 +710,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
               </>
             )}
           </>
+          )
         }
       >
         <section className="skill-market-form skill-market-form--workflow">
@@ -1014,42 +1050,6 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
           setIconCropFile(null);
         }}
       />
-      <ConfirmLeaveModal
-        mode={confirmClose}
-        onKeep={() => setConfirmClose(null)}
-        onLeave={confirmLeave}
-      />
     </>
-  );
-}
-
-function ConfirmLeaveModal({
-  mode,
-  onKeep,
-  onLeave,
-}: {
-  mode: "busy" | "dirty" | null;
-  onKeep: () => void;
-  onLeave: () => void;
-}) {
-  return (
-    <WKModal
-      visible={Boolean(mode)}
-      onCancel={onKeep}
-      title={t("skillMarket.confirm.title")}
-      size="md"
-      footer={
-        <>
-          <WKButton variant="secondary" onClick={onKeep}>{mode === "busy" ? t("skillMarket.confirm.keepUploading") : t("skillMarket.confirm.keepEditing")}</WKButton>
-          <WKButton variant="danger" onClick={onLeave}>{t("skillMarket.confirm.leave")}</WKButton>
-        </>
-      }
-    >
-      <p className="skill-market-confirm-text">
-        {mode === "busy"
-          ? t("skillMarket.confirm.busyMessage")
-          : t("skillMarket.confirm.dirtyCreateMessage")}
-      </p>
-    </WKModal>
   );
 }

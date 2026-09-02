@@ -1,11 +1,13 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Box, ImagePlus, Loader2, Upload, XCircle } from "lucide-react";
 import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
-import type { Category, Skill } from "../types/skill";
+import type { Category, Skill, Visibility } from "../types/skill";
 import { updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse, getSkillTags, publishPlugin } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
+import InlineConfirmBar from "./InlineConfirmBar";
+import { visibilityLabel } from "../utils/labels";
 
 interface EditSkillModalProps {
   skill: Skill | null;
@@ -60,7 +62,12 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
   const [tagError, setTagError] = useState<string | null>(null);
   // The DECLARED audience. Editable here because it is what 发布 reads to decide
   // whether listing this plugin needs organization review.
-  const [visibility, setVisibility] = useState<"private" | "space">("private");
+  // Holds the RAW stored visibility, not just the two the radio can express. A
+  // `system` (全平台) or legacy `public` row is admin-managed and this form must
+  // carry it through untouched — narrowing to "private" | "space" here is how an
+  // edit silently demotes a platform-wide plugin to private and delists it from
+  // everyone.
+  const [visibility, setVisibility] = useState<Visibility>("private");
   // Which footer action is in flight, so only that button spins.
   const [publishing, setPublishing] = useState(false);
   const [version, setVersion] = useState("1.0.0");
@@ -102,7 +109,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     setTagSuggestionStyle({});
     setActiveTagSuggestion(0);
     setTagError(null);
-    setVisibility(skill.visibility === "space" ? "space" : "private");
+    setVisibility(skill.visibility);
     setVersion(skill.version);
     setUploadStage("idle");
     setProgress(0);
@@ -153,6 +160,8 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
   // when 保存草稿 is the honest label and 发布 has something to do; on a published
   // plugin whose audience is unchanged there is nothing to publish, so the
   // primary action is not rendered rather than sitting there disabled.
+  // Only private/space are selectable here; anything else is admin-managed.
+  const tenantVisibility = visibility === "private" || visibility === "space";
   const willBeUnlisted =
     skill?.listingState !== "published" ||
     (skill?.visibility !== undefined && visibility !== skill.visibility);
@@ -461,6 +470,34 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
         size="lg"
         className="skill-market-workflow-modal"
         footer={
+          confirmClose ? (
+            <InlineConfirmBar
+              message={t(
+                busy ? "skillMarket.confirm.busyMessage" : "skillMarket.confirm.unsavedMessage"
+              )}
+              actions={[
+                {
+                  label: t(
+                    busy ? "skillMarket.confirm.keepUploading" : "skillMarket.confirm.keepEditing"
+                  ),
+                  onClick: () => setConfirmClose(false),
+                },
+                { label: t("skillMarket.confirm.leave"), variant: "danger", onClick: confirmLeave },
+                // Mid upload there is nothing a save could keep.
+                ...(busy
+                  ? []
+                  : [
+                      {
+                        label: t("skillMarket.confirm.saveAndLeave"),
+                        variant: "primary" as const,
+                        disabled: !canSave,
+                        loading: saving,
+                        onClick: () => void submit(false),
+                      },
+                    ]),
+              ]}
+            />
+          ) : (
           <>
             <WKButton variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</WKButton>
             {/* Same shape as the create modal. The secondary action is only called
@@ -491,6 +528,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
               </WKButton>
             )}
           </>
+          )
         }
       >
         <div className="skill-market-form skill-market-form--workflow">
@@ -573,6 +611,13 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
           <h3 className="skill-market-form__section-title">
             {t("skillMarket.plugin.columnVisibility")}
           </h3>
+          {!tenantVisibility ? (
+            // Admin-managed audience. Shown, not editable: a tenant cannot mint
+            // or change 全平台, and the value has to survive the save.
+            <p className="skill-market-form__hint">
+              {visibilityLabel(visibility)} · {t("skillMarket.plugin.visibilityAdminManaged")}
+            </p>
+          ) : (
           <div className="skill-market-scope-options">
             {(["private", "space"] as const).map((option) => (
               <label key={option} className={visibility === option ? "is-selected" : ""}>
@@ -602,6 +647,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
               </label>
             ))}
           </div>
+          )}
           {/* Saying it before the save, not after: a published plugin whose
               audience widens stops being listed until it goes through 发布 again,
               and an author who is not told will read that as their plugin
@@ -753,24 +799,6 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
           setIconCropFile(null);
         }}
       />
-      <WKModal
-        visible={confirmClose}
-        onCancel={() => setConfirmClose(false)}
-        title={t("skillMarket.confirm.title")}
-        size="md"
-        footer={
-          <>
-            <WKButton variant="secondary" onClick={() => setConfirmClose(false)}>{t("skillMarket.confirm.keepEditing")}</WKButton>
-            <WKButton variant="danger" onClick={confirmLeave}>{t("skillMarket.confirm.leave")}</WKButton>
-          </>
-        }
-      >
-        <p className="skill-market-confirm-text">
-          {busy
-            ? t("skillMarket.confirm.busyMessage")
-            : t("skillMarket.confirm.dirtyEditMessage")}
-        </p>
-      </WKModal>
     </>
   );
 }

@@ -158,13 +158,13 @@
     "nameMismatch": "The name in SKILL.md must remain {{expected}}. Current value: {{actual}}"
   },
   "confirm": {
-    "title": "Leave this page?",
     "keepEditing": "Continue Editing",
     "keepUploading": "Continue Uploading",
     "leave": "Leave",
     "busyMessage": "Are you sure you want to leave? The Skill package is being uploaded/parsed. Progress will be lost and you will need to re-upload.",
-    "dirtyEditMessage": "Are you sure you want to leave? Editing is not complete. Uploaded files and entered information will be lost.",
-    "dirtyCreateMessage": "Are you sure you want to leave? Creation is not complete. Uploaded files and entered information will be lost."
+    "unsavedMessage": "Not saved yet — leaving discards the uploaded file and everything you typed",
+    "saveDraftAndLeave": "Save draft and leave",
+    "saveAndLeave": "Save and leave"
   },
   "delete": {
     "title": "Delete Skill",
@@ -300,6 +300,7 @@
     "visibilitySpaceHint": "Publishing sends it to a Space admin for review; approved plugins are visible to your organization",
     "draftSavedToast": "Draft saved",
     "publishedToast": "Published",
-    "visibilityChangeUnlists": "Changing the audience returns this plugin to a draft; publish it again to list it (organization visibility needs review)."
+    "visibilityChangeUnlists": "Changing the audience returns this plugin to a draft; publish it again to list it (organization visibility needs review).",
+    "visibilityAdminManaged": "Only a platform admin can change this"
   }
 }

@@ -16,7 +16,9 @@ const changelogPlaceholder = /简述此版本变更内容|skillMarket\.form\.cha
 const saveButton = /保存|skillMarket\.common\.save/;
 const reuploadButton = /重新上传技能包|skillMarket\.upload\.reupload/;
 const selectNewZipLabel = /选择新的技能包文件|skillMarket\.upload\.selectNewFileAriaLabel/;
-const dirtyEditMessage = /确定离开？尚未完成编辑，已上传的文件和填写的信息将丢失。|skillMarket\.confirm\.dirtyEditMessage/;
+// The guard is now an inline bar in the dialog's footer rather than a second
+// stacked dialog; the assertion is on the same warning text either way.
+const dirtyEditMessage = /尚未保存|skillMarket\.confirm\.unsavedMessage/;
 const keepEditing = /继续编辑|skillMarket\.confirm\.keepEditing/;
 const leaveButton = /确认离开|skillMarket\.confirm\.leave/;
 const tagPlaceholder = /输入或选择标签|skillMarket\.form\.tagPlaceholder/;
@@ -235,7 +237,7 @@ describe("EditSkillModal", () => {
     expect(screen.getAllByTitle("协作")).toHaveLength(1);
   });
 
-  it("guards closing after the form is changed and closes the confirm dialog after leaving", async () => {
+  it("guards closing after the form is changed and clears the inline confirm after leaving", async () => {
     const onClose = vi.fn();
     render(<EditSkillModal skill={skill} categories={categories} onClose={onClose} onUpdated={vi.fn()} />);
 

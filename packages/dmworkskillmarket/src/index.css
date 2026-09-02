@@ -3443,3 +3443,61 @@
   animation: skill-market-spin 900ms linear infinite;
 }
 
+
+/* Inline confirmation that replaces a dialog's footer rather than stacking a
+   second dialog over it. It occupies the footer slot, so it inherits the modal's
+   footer padding and border; only the layout and the warning tone are set here. */
+.skill-market-inline-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-4);
+  width: 100%;
+  min-width: 0;
+}
+.skill-market-inline-confirm__message {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  min-width: 0;
+  color: var(--wk-color-warning);
+  font-size: 13px;
+  font-weight: var(--wk-font-medium);
+}
+.skill-market-inline-confirm__message > svg {
+  flex: 0 0 auto;
+}
+.skill-market-inline-confirm__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  flex: 0 0 auto;
+}
+/* Narrow dialogs stack the message above the buttons rather than letting the
+   message truncate — it is the reason the buttons are there. */
+@media (max-width: 640px) {
+  .skill-market-inline-confirm {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .skill-market-inline-confirm__actions {
+    align-self: flex-end;
+  }
+}
+
+/* Used for the consequential notes in a write form — chiefly "changing the
+   audience returns this plugin to a draft", which is the one thing an author
+   must read BEFORE saving. It had no rule at all, so it rendered as body text
+   indistinguishable from a field label in both the skill and expert forms. */
+.skill-market-form__hint {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wk-sp-2);
+  margin: var(--wk-sp-2) 0 0;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-color-warning-bg);
+  color: var(--wk-color-warning);
+  font-size: 12px;
+  line-height: 1.6;
+}
