@@ -55,6 +55,9 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
   const [tagSuggestionStyle, setTagSuggestionStyle] = useState<React.CSSProperties>({});
   const [activeTagSuggestion, setActiveTagSuggestion] = useState(0);
   const [tagError, setTagError] = useState<string | null>(null);
+  // The DECLARED audience. Editable here because it is what 发布 reads to decide
+  // whether listing this plugin needs organization review.
+  const [visibility, setVisibility] = useState<"private" | "space">("private");
   const [version, setVersion] = useState("1.0.0");
   const [uploadStage, setUploadStage] = useState<UploadStage>("idle");
   const [progress, setProgress] = useState(0);
@@ -94,6 +97,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
     setTagSuggestionStyle({});
     setActiveTagSuggestion(0);
     setTagError(null);
+    setVisibility(skill.visibility === "space" ? "space" : "private");
     setVersion(skill.version);
     setUploadStage("idle");
     setProgress(0);
@@ -391,10 +395,14 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
         description,
         categoryId,
         tags: submittedTags,
-        // This modal has no visibility control, so preserve the skill's current
-        // visibility explicitly — a re-upload is a full replace and would
-        // otherwise send no visibility, leaving it to a backend default.
-        visibility: skill.visibility,
+        // The declared audience, as edited. A re-upload is a full replace, so it
+        // must always be sent — omitting it would leave the column to a backend
+        // default rather than to what the author chose.
+        //
+        // Widening it on an already-published plugin un-lists the row server-side
+        // (the audience changed, so the listing has to be re-earned through the
+        // normal 发布 path). The hint below says so before the author saves.
+        visibility,
         ...(iconUrl !== undefined ? { iconUrl } : {}),
       });
       onUpdated(updated);
@@ -504,6 +512,46 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
               </label>
             </div>
           </div>
+
+          <h3 className="skill-market-form__section-title">
+            {t("skillMarket.plugin.columnVisibility")}
+          </h3>
+          <div className="skill-market-scope-options">
+            {(["private", "space"] as const).map((option) => (
+              <label key={option} className={visibility === option ? "is-selected" : ""}>
+                <input
+                  type="radio"
+                  name="edit-visibility"
+                  value={option}
+                  checked={visibility === option}
+                  onChange={() => setVisibility(option)}
+                />
+                <div>
+                  <strong>
+                    {t(
+                      option === "private"
+                        ? "skillMarket.plugin.visibilityPrivate"
+                        : "skillMarket.plugin.visibilitySpace"
+                    )}
+                  </strong>
+                  <span>
+                    {t(
+                      option === "private"
+                        ? "skillMarket.plugin.visibilityPrivateHint"
+                        : "skillMarket.plugin.visibilitySpaceHint"
+                    )}
+                  </span>
+                </div>
+              </label>
+            ))}
+          </div>
+          {/* Saying it before the save, not after: a published plugin whose
+              audience widens stops being listed until it goes through 发布 again,
+              and an author who is not told will read that as their plugin
+              disappearing. */}
+          {skill?.listingState === "published" && visibility !== skill.visibility && (
+            <p className="skill-market-form__hint">{t("skillMarket.plugin.visibilityChangeUnlists")}</p>
+          )}
 
           <h3 className="skill-market-form__section-title">{t("skillMarket.form.basicInfoSection")}</h3>
 

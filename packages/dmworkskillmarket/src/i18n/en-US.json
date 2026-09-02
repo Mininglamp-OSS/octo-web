@@ -299,6 +299,7 @@
     "visibilityPrivateHint": "Only you can see and use it",
     "visibilitySpaceHint": "Publishing sends it to a Space admin for review; approved plugins are visible to your organization",
     "draftSavedToast": "Draft saved",
-    "publishedToast": "Published"
+    "publishedToast": "Published",
+    "visibilityChangeUnlists": "Changing the audience returns this plugin to a draft; publish it again to list it (organization visibility needs review)."
   }
 }

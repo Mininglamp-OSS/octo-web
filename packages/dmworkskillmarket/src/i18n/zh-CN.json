@@ -299,6 +299,7 @@
     "visibilityPrivateHint": "只有你自己能看到和使用",
     "visibilitySpaceHint": "发布后需组织管理员审核，通过后组织内成员可见",
     "draftSavedToast": "已保存草稿",
-    "publishedToast": "已发布"
+    "publishedToast": "已发布",
+    "visibilityChangeUnlists": "修改可见范围后该插件会回到草稿，需要重新发布（组织可见需通过审核）"
   }
 }
