@@ -442,8 +442,13 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
                 // version stays up until a decision lands.
                 onEdit: !listedToOrg && !pending ? () => setEditing(skill) : undefined,
                 onDelete: () => setDeleting(skill),
-                editAria: t("skillMarket.card.editAriaLabel", { values: { name: skill.name } }),
-                deleteAria: t("skillMarket.card.deleteAriaLabel", { values: { name: skill.name } }),
+                // The shared plugin namespace, same as the connector and expert
+                // pages: one MineTable affordance must not announce itself with
+                // two different accessible names depending on which market you
+                // reached it from. `skillMarket.card.*AriaLabel` stays — SkillCard
+                // and SkillDetailModal are a different affordance.
+                editAria: t("skillMarket.plugin.ariaEdit", { values: { name: skill.name } }),
+                deleteAria: t("skillMarket.plugin.ariaDelete", { values: { name: skill.name } }),
                 // 升级版本 replaces the old 提交审核/重新提交/发布新版本 trio: publishing
                 // is now one backend-decided action, so the only thing left to
                 // offer on a LISTED plugin is a new version.
