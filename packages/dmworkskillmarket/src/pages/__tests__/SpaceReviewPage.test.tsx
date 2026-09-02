@@ -12,7 +12,7 @@ vi.mock("../../components/ReviewQueue", () => ({
   ),
 }));
 
-const pageTitle = /组织审核|skillMarket\.review\.orgTab/;
+const pageTitle = /组织发布管理|skillMarket\.review\.orgTab/;
 
 describe("SpaceReviewPage", () => {
   it("renders the page title and mounts the Space reviewer queue", () => {

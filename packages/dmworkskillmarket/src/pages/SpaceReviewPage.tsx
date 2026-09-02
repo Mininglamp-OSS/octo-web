@@ -3,9 +3,14 @@ import { t, useI18n } from "@octo/base";
 import ReviewQueue from "../components/ReviewQueue";
 
 /**
- * "组织审核" — the Space reviewer queue, mounted at /mcp-market/review as the
+ * "组织发布管理" — the Space reviewer queue, mounted at /mcp-market/review as the
  * sidebar's fifth entry (see dmworkmcp/components/MarketSidebar.tsx). Owner and
  * admin only.
+ *
+ * The label says 发布管理 rather than 审核 because the page also delists (下架),
+ * not only approves/rejects. The route, the component names and the
+ * `/plugins/review_requests` read underneath deliberately keep the review
+ * wording: only the user-facing label changed.
  *
  * Deliberately a thin shell, mirroring how MyAssetsPage hosts the "我的" market
  * views: the page owns the chrome (hero title) and `ReviewQueue` owns the
@@ -28,7 +33,7 @@ export default function SpaceReviewPage() {
       <header className="skill-market-topbar">
         <div className="skill-market-hero-title">
           {/* `review.orgTab` predates the sidebar restructure (this used to be
-              an in-page tab) but its copy — "组织审核" — is exactly the page
+              an in-page tab) but its copy — "组织发布管理" — is exactly the page
               title, and it is the only review heading key that exists. Renaming
               it to `review.pageTitle` is an i18n-owner call; do not add a second
               key with the same string. */}

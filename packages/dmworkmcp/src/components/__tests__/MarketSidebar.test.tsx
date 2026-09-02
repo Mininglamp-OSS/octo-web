@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 
 // Tolerant matchers: the `t` stub echoes the key, so both the translated copy
 // and the raw key count as a hit (mirrors the idiom in the skillmarket suite).
-const reviewLabel = /组织审核|mcp\.sidebar\.review/;
+const reviewLabel = /组织发布管理|mcp\.sidebar\.review/;
 const mineLabel = /我的发布|mcp\.sidebar\.mine/;
 
 const h = vi.hoisted(() => ({
@@ -117,7 +117,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("MarketSidebar 组织审核 entry", () => {
+describe("MarketSidebar 组织发布管理 entry", () => {
   it("hides the entry from a plain member and keeps the other four intact", () => {
     render();
 

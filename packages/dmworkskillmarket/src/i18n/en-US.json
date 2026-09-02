@@ -196,7 +196,7 @@
     "ariaLabel": "My publications"
   },
   "review": {
-    "orgTab": "Org Review",
+    "orgTab": "Publication management",
     "queuePending": "Pending",
     "queueHandled": "Processed",
     "emptySpacePending": "No pending requests",

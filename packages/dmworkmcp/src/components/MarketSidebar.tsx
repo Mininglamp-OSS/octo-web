@@ -66,7 +66,7 @@ interface MarketItem {
 }
 
 // Order below controls the sidebar tab order: 技能 → 连接器 → 专家 → 我的发布
-// → 组织审核. The NavRail menu's onPress still boots the right pane into
+// → 组织发布管理. The NavRail menu's onPress still boots the right pane into
 // /mcp-market/mcp (see module.tsx), independent of this order; this array only
 // drives the sidebar's visual order + the path-miss fallback.
 //

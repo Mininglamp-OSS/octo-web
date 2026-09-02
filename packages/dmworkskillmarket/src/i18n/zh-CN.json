@@ -196,7 +196,7 @@
     "ariaLabel": "我的发布列表"
   },
   "review": {
-    "orgTab": "组织审核",
+    "orgTab": "组织发布管理",
     "queuePending": "待审核",
     "queueHandled": "已处理",
     "emptySpacePending": "暂无待审核申请",

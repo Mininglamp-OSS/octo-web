@@ -89,7 +89,7 @@ export class McpMarketModule implements IModule {
     // tab. Same shared "/mcp-market" shell as the three discovery markets.
     WKApp.route.register("/mcp-market/mine", () => <MyAssetsPage />, { hostShell: marketHostShell });
 
-    // 组织审核 (Space review queue) — the sidebar's fifth entry, shown only to
+    // 组织发布管理 (Space review queue) — the sidebar's fifth entry, shown only to
     // Space owners/admins. That gate is COSMETIC and lives in MarketSidebar; the
     // route itself stays registered unconditionally so a deep link never renders
     // a blank pane. A member who lands here gets the queue's own 403 error state
