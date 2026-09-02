@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, PackageOpen, RefreshCw } from "lucide-react";
 import { Toast } from "@douyinfe/semi-ui";
-import { t, useI18n, WKButton, WKModal } from "@octo/base";
+import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
 import {
   MineTable,
   cancelReview,
@@ -70,6 +70,20 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  // Re-read on a Space switch. Every per-type tab (SkillListPage,
+  // McpMarketListPage) subscribes; the 全部 tab — which is the default view and
+  // aggregates all four types — otherwise keeps rendering the previous Space's
+  // rows with live 发布 / 取消审核 / 删除 bound to old-Space plugin ids. The right
+  // pane is only remounted by MarketSidebar for the mcp-market menu, so this tab
+  // cannot rely on a remount to reset it.
+  useEffect(() => {
+    const handleSpaceChanged = () => {
+      void load();
+    };
+    WKApp.mittBus.on("space-changed", handleSpaceChanged);
+    return () => WKApp.mittBus.off("space-changed", handleSpaceChanged);
   }, [load]);
 
   /** Runs one row action and reloads either way — on a conflict the server

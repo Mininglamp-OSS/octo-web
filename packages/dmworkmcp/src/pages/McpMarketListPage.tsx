@@ -242,7 +242,16 @@ export default class McpMarketListPage extends Component<
    *  popovers before refetching. Tags / categories are space-scoped so a
    *  filter from space A stays with space A; leaving it selected across a
    *  switch produces a request the new backend will silently return zero
-   *  rows for. Matches dmworkskillmarket's SkillListPage handler. */
+   *  rows for. Matches dmworkskillmarket's SkillListPage handler.
+   *
+   *  Close the WHOLE modal stack, not just the review pair. Leaving
+   *  `createVisible` true while clearing `reviewEditingDetail` flips an open
+   *  升级版本 modal into a blank 新建 form: `editing` becomes null and
+   *  `reviewMode` false, McpCreateModal's prefill effect (keyed on
+   *  [visible, editing]) re-runs its create branch, and the footer's primary
+   *  button now calls `createMcp` — in the new Space. A stale `detailId` /
+   *  `deletingItem` likewise keeps a live 编辑 / 删除 bound to the old Space's
+   *  plugin id. SkillListPage.tsx:102-118 clears all of these. */
   private handleSpaceChanged_ = () => {
     this.cancelTagFetch_();
     this.setState({
@@ -254,6 +263,10 @@ export default class McpMarketListPage extends Component<
       publishMenuOpen: false,
       botPublishVisible: false,
       connectItem: null,
+      createVisible: false,
+      editingDetail: null,
+      detailId: null,
+      deletingItem: null,
       reviewTarget: null,
       reviewEditingDetail: null,
     }, () => this.loadData());
@@ -703,9 +716,13 @@ export default class McpMarketListPage extends Component<
       publishAria: t("skillMarket.plugin.ariaPublish", { values: { name: item.name } }),
       onUpgrade: review.canUpgrade ? () => void this.openPublishVersion(item) : undefined,
       upgradeAria: t("skillMarket.plugin.ariaUpgrade", { values: { name: item.name } }),
-      onCancelReview: review.canCancelReview
-        ? () => void this.handleCancelReview(item.reviewId ?? review.pending?.id ?? "")
-        : undefined,
+      onCancelReview:
+        review.canCancelReview && (item.reviewId ?? review.pending?.id)
+          ? () =>
+              void this.handleCancelReview(
+                (item.reviewId ?? review.pending?.id) as string
+              )
+          : undefined,
       cancelReviewAria: t("skillMarket.plugin.ariaCancelReview", {
         values: { name: item.name },
       }),
