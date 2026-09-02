@@ -1,13 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, Clock, RefreshCw, XCircle } from "lucide-react";
 import { t, useI18n, WKApp } from "@octo/base";
-import type {
-  PluginDisplayStatus,
-  PluginListingState,
-  ReviewListMode,
-  ReviewRequest,
-  ReviewStatus,
-} from "../types/skill";
+import type { ReviewListMode, ReviewRequest, ReviewStatus } from "../types/skill";
 import {
   approveReview,
   cancelReview,
@@ -17,6 +11,7 @@ import {
 } from "../api/skillApi";
 import { formatFullDateTime, formatRelativeTime } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
+import { reviewStatusLabel } from "../utils/review";
 import MineTable, { type MineAssetType, type MineRow } from "./MineTable";
 import DelistReasonModal from "./DelistReasonModal";
 import RejectReasonModal from "./RejectReasonModal";
@@ -33,26 +28,31 @@ const REVIEW_ROW_TYPE: Record<string, MineAssetType> = {
 };
 
 /**
- * A queue row shows the state of the PLUGIN, in the same five-value vocabulary
- * 我的发布 uses, rather than a second set of words for request outcomes. That is
- * the whole point of putting both pages through one table: 待审核/审核中 and
- * 已通过/已上架/已发布 previously named the same things differently depending on
- * which page you were looking at.
+ * The tone for a review OUTCOME, reusing the status pill's vocabulary.
  *
- * The plugin's listing state wins for a settled request, because it is the more
- * recent fact: an approved plugin a Space admin later took down reads 已下架, not
- * 已发布.
+ * A queue row is a RECORD of a decision, so the status cell says what was
+ * decided — not what the plugin happens to be now. Those are different questions
+ * and the column previously answered both at once: it took pending/approved/
+ * rejected from the request but let a later 下架 overwrite an approval, so a
+ * decision appeared to change months after it was made, and two approvals of the
+ * same plugin rendered identically. A rejected record, meanwhile, kept saying 驳回
+ * even after the author fixed and republished — the same column following live
+ * state for one outcome and history for another.
+ *
+ * The plugin's current listing state is still read, but only to gate 下架: you
+ * cannot take down what is not up.
  */
-function reviewRowStatus(
-  status: ReviewStatus,
-  listingState?: PluginListingState
-): PluginDisplayStatus {
-  if (status === "pending") return "pending_review";
-  if (listingState === "delisted") return "delisted";
-  if (status === "approved") return "published";
-  if (status === "rejected") return "rejected";
-  // A withdrawn request leaves the plugin exactly where it was: a draft.
-  return "draft";
+function reviewStatusTone(status: ReviewStatus): string {
+  switch (status) {
+    case "pending":
+      return "pending";
+    case "approved":
+      return "published";
+    case "rejected":
+      return "rejected";
+    default:
+      return "draft";
+  }
 }
 
 interface ReviewQueueProps {
@@ -482,7 +482,8 @@ export default function ReviewQueue({ mode, onAction }: ReviewQueueProps) {
               // review IS. Rendering it keeps the column meaningful rather than
               // blank on this page.
               visibility: "space",
-              status: reviewRowStatus(item.status, item.pluginListingState),
+              statusLabel: reviewStatusLabel(item.status),
+              statusTone: reviewStatusTone(item.status),
               rejectReason: item.reason || undefined,
               meta: (
                 <>

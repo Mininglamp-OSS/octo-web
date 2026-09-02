@@ -68,6 +68,16 @@ export interface MineRow {
    *  published plugin with a pending upgrade reads 审核中, and getting that
    *  precedence right independently in three pages is what went wrong before. */
   status?: PluginDisplayStatus;
+  /** Overrides the status cell with text this table cannot derive.
+   *
+   *  组织审核 needs it: its rows are review RECORDS, so the cell says what was
+   *  decided (已通过 / 已撤回) — outcomes that are not plugin states and are
+   *  deliberately absent from PluginDisplayStatus. Without the override the two
+   *  vocabularies would have to be merged into one enum, which is exactly the
+   *  conflation that made a settled decision appear to change months later. */
+  statusLabel?: string;
+  /** Tone for `statusLabel`, matching displayStatusTone's vocabulary. */
+  statusTone?: string;
   /** Rejection reason, surfaced under the name and as the status tooltip. */
   rejectReason?: string;
   /** Secondary line under the name — 组织审核 puts 申请人 · 提交时间 here. */
@@ -161,7 +171,7 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
       </div>
       {rows.map((r) => {
         const vis = r.visibility ? visibilityIcon(r.visibility) : null;
-        const rejected = r.status === "rejected";
+        const rejected = r.status === "rejected" || r.statusTone === "rejected";
         return (
           <div
             key={r.id}
@@ -249,17 +259,19 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
               {formatCount(r.downloads ?? 0)}
             </span>
             <span className="wk-mine-table__col wk-mine-table__col--status" role="cell">
-              {r.status ? (
+              {r.statusLabel || r.status ? (
                 <span
-                  className={`wk-plugin-status wk-plugin-status--${displayStatusTone(r.status)}`}
+                  className={`wk-plugin-status wk-plugin-status--${
+                    r.statusTone ?? (r.status ? displayStatusTone(r.status) : "draft")
+                  }`}
                   title={rejected ? r.rejectReason : undefined}
                 >
-                  {r.status === "pending_review" ? (
+                  {(r.statusTone ?? (r.status ? displayStatusTone(r.status) : "")) === "pending" ? (
                     <Clock size={11} aria-hidden="true" />
                   ) : rejected ? (
                     <XCircle size={11} aria-hidden="true" />
                   ) : null}
-                  {displayStatusLabel(r.status)}
+                  {r.statusLabel ?? (r.status ? displayStatusLabel(r.status) : "")}
                 </span>
               ) : (
                 "—"
