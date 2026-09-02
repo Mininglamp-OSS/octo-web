@@ -208,23 +208,15 @@ export default function useSummaryWorkbench(
 
   if (!initializedRef.current) {
     const scope = cloneScope(initialScopeRef.current);
-    initializedRef.current = {
-      sessionId:
-        normalizeSessionId(options.initialSessionId) ||
+    initializedRef.current = createRuntimeState(
+      normalizeSessionId(options.initialSessionId) ||
         createSessionIdRef.current(),
       scope,
-      model: createInitialSummaryWorkbenchModel({
+      createInitialSummaryWorkbenchModel({
         layout: options.layout,
         contextItems: contextItemsFromScope(scope),
-      }),
-      progressEvents: [],
-      isHydrating: false,
-      isConfirming: false,
-      isSaving: false,
-      error: null,
-      savedSummary: null,
-      previewRequest: undefined,
-    };
+      })
+    );
   }
 
   const [runtime, setRuntime] = useState<RuntimeState>(initializedRef.current);
@@ -286,13 +278,7 @@ export default function useSummaryWorkbench(
   );
 
   const clearError = useCallback(() => {
-    commit((current: RuntimeState) => ({
-      ...current,
-      error: null,
-      model: updateSummaryComposer(current.model, {
-        errorMessage: undefined,
-      }),
-    }));
+    commit(clearRuntimeError);
   }, [commit]);
 
   const setComposerValue = useCallback(
@@ -301,8 +287,7 @@ export default function useSummaryWorkbench(
         retryableGenerationRef.current = null;
       }
       commit((current: RuntimeState) => ({
-        ...current,
-        error: null,
+        ...clearRuntimeError(current),
         model: updateSummaryComposer(current.model, {
           value,
           errorMessage: undefined,
@@ -315,8 +300,7 @@ export default function useSummaryWorkbench(
   const restoreComposerValue = useCallback(
     (value: string) => {
       commit((current: RuntimeState) => ({
-        ...current,
-        error: null,
+        ...clearRuntimeError(current),
         model: updateSummaryComposer(current.model, {
           value,
           errorMessage: undefined,
@@ -339,9 +323,8 @@ export default function useSummaryWorkbench(
       commit((latest: RuntimeState) => {
         const scopeVersion = latest.model.scopeVersion + 1;
         return {
-          ...latest,
+          ...clearRuntimeError(latest),
           scope: candidate,
-          error: null,
           savedSummary: null,
           model: updateSummaryComposer(
             updateSummaryScope(latest.model, {
@@ -360,8 +343,9 @@ export default function useSummaryWorkbench(
   const send = useCallback(
     (
       messageOverride?: string,
-      inputOrigin: SummaryWorkspaceInputOrigin =
-        messageOverride === undefined ? "user" : "system_intent"
+      inputOrigin: SummaryWorkspaceInputOrigin = messageOverride === undefined
+        ? "user"
+        : "system_intent"
     ): Promise<SummaryWorkbenchResponse | undefined> => {
       const existing = generationRef.current;
       if (existing) return existing.promise;
@@ -592,12 +576,8 @@ export default function useSummaryWorkbench(
     const controller = new AbortController();
     const epoch = epochRef.current;
     commit((latest: RuntimeState) => ({
-      ...latest,
+      ...clearRuntimeError(latest),
       isConfirming: true,
-      error: null,
-      model: updateSummaryComposer(latest.model, {
-        errorMessage: undefined,
-      }),
     }));
 
     const promise = serviceRef.current
@@ -636,12 +616,8 @@ export default function useSummaryWorkbench(
         const error = normalizeControllerError(reason);
         if (error.kind !== "abort") {
           commit((latest: RuntimeState) => ({
-            ...latest,
+            ...withRuntimeError(latest, error),
             isConfirming: false,
-            error,
-            model: updateSummaryComposer(latest.model, {
-              errorMessage: error.message,
-            }),
           }));
         }
         return undefined;
@@ -696,12 +672,8 @@ export default function useSummaryWorkbench(
           ? current.previewRequest.requestId
           : undefined;
       commit((latest: RuntimeState) => ({
-        ...latest,
+        ...clearRuntimeError(latest),
         isSaving: true,
-        error: null,
-        model: updateSummaryComposer(latest.model, {
-          errorMessage: undefined,
-        }),
       }));
 
       const promise = serviceRef.current
@@ -744,12 +716,8 @@ export default function useSummaryWorkbench(
           const error = normalizeControllerError(reason);
           if (error.kind !== "abort") {
             commit((latest: RuntimeState) => ({
-              ...latest,
+              ...withRuntimeError(latest, error),
               isSaving: false,
-              error,
-              model: updateSummaryComposer(latest.model, {
-                errorMessage: error.message,
-              }),
             }));
           }
           return undefined;
@@ -782,10 +750,9 @@ export default function useSummaryWorkbench(
       const controller = new AbortController();
       const epoch = epochRef.current;
       commit((current: RuntimeState) => ({
-        ...current,
+        ...clearRuntimeError(current),
         sessionId,
         isHydrating: true,
-        error: null,
         model: updateSummaryComposer(current.model, {
           isSending: false,
           errorMessage: undefined,
@@ -801,41 +768,30 @@ export default function useSummaryWorkbench(
           }
           if (hydration.empty) {
             const nextSessionId = createSessionIdRef.current();
-            commit((current: RuntimeState) => ({
-              ...current,
-              sessionId: nextSessionId,
-              model: createInitialSummaryWorkbenchModel({
-                layout: current.model.layout,
-                contextItems: contextItemsFromScope(current.scope),
-              }),
-              progressEvents: [],
-              isHydrating: false,
-              isConfirming: false,
-              isSaving: false,
-              error: null,
-              savedSummary: null,
-              previewRequest: undefined,
-            }));
+            commit((current: RuntimeState) =>
+              createRuntimeState(
+                nextSessionId,
+                current.scope,
+                createInitialSummaryWorkbenchModel({
+                  layout: current.model.layout,
+                  contextItems: contextItemsFromScope(current.scope),
+                })
+              )
+            );
             notifySessionId("");
             return true;
           }
           const nextSessionId = hydration.sessionId;
-          commit((current: RuntimeState) => ({
-            ...current,
-            sessionId: nextSessionId,
-            scope: cloneScope(hydration.scope),
-            model: createInitialSummaryWorkbenchModel({
-              ...hydration.modelOptions,
-              layout: current.model.layout,
-            }),
-            progressEvents: [],
-            isHydrating: false,
-            isConfirming: false,
-            isSaving: false,
-            error: null,
-            savedSummary: null,
-            previewRequest: undefined,
-          }));
+          commit((current: RuntimeState) =>
+            createRuntimeState(
+              nextSessionId,
+              cloneScope(hydration.scope),
+              createInitialSummaryWorkbenchModel({
+                ...hydration.modelOptions,
+                layout: current.model.layout,
+              })
+            )
+          );
           notifySessionId(nextSessionId);
           return true;
         })
@@ -846,12 +802,8 @@ export default function useSummaryWorkbench(
           const error = normalizeControllerError(reason);
           if (error.kind !== "abort") {
             commit((current: RuntimeState) => ({
-              ...current,
+              ...withRuntimeError(current, error),
               isHydrating: false,
-              error,
-              model: updateSummaryComposer(current.model, {
-                errorMessage: error.message,
-              }),
             }));
           }
           return false;
@@ -882,21 +834,16 @@ export default function useSummaryWorkbench(
         normalizeSessionId(resetOptions.sessionId) ||
         createSessionIdRef.current();
       const scope = cloneScope(resetOptions.scope ?? initialScopeRef.current);
-      commit((current: RuntimeState) => ({
-        sessionId,
-        scope,
-        model: createInitialSummaryWorkbenchModel({
-          layout: current.model.layout,
-          contextItems: contextItemsFromScope(scope),
-        }),
-        progressEvents: [],
-        isHydrating: false,
-        isConfirming: false,
-        isSaving: false,
-        error: null,
-        savedSummary: null,
-        previewRequest: undefined,
-      }));
+      commit((current: RuntimeState) =>
+        createRuntimeState(
+          sessionId,
+          scope,
+          createInitialSummaryWorkbenchModel({
+            layout: current.model.layout,
+            contextItems: contextItemsFromScope(scope),
+          })
+        )
+      );
       return sessionId;
     },
     [cancelOperations, commit]
@@ -939,11 +886,7 @@ export default function useSummaryWorkbench(
   const shouldPollWorkflow = activeWorkflowResultType === "workflow_started";
 
   useEffect(() => {
-    if (
-      !shouldPollWorkflow ||
-      activeWorkflowTaskId === undefined
-    )
-      return;
+    if (!shouldPollWorkflow || activeWorkflowTaskId === undefined) return;
 
     const sessionId = runtime.sessionId;
     const taskId = activeWorkflowTaskId;
@@ -1149,6 +1092,46 @@ function applyControllerResponse(
     model,
     error: null,
     previewRequest,
+  };
+}
+
+function createRuntimeState(
+  sessionId: string,
+  scope: SummaryWorkbenchScope,
+  model: SummaryWorkbenchModel
+): RuntimeState {
+  return {
+    sessionId,
+    scope,
+    model,
+    progressEvents: [],
+    isHydrating: false,
+    isConfirming: false,
+    isSaving: false,
+    error: null,
+    savedSummary: null,
+    previewRequest: undefined,
+  };
+}
+
+function clearRuntimeError(current: RuntimeState): RuntimeState {
+  return {
+    ...current,
+    error: null,
+    model: updateSummaryComposer(current.model, { errorMessage: undefined }),
+  };
+}
+
+function withRuntimeError(
+  current: RuntimeState,
+  error: SummaryWorkspaceApiError
+): RuntimeState {
+  return {
+    ...current,
+    error,
+    model: updateSummaryComposer(current.model, {
+      errorMessage: error.message,
+    }),
   };
 }
 

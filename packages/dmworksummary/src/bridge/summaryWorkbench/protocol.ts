@@ -5,27 +5,28 @@ export const SUMMARY_WORKSPACE_PROFILE = "summary_workspace";
 export const SUMMARY_WORKSPACE_SNAPSHOT_VERSION = 1 as const;
 export const DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS = 31;
 
-export type SummaryWorkspaceInputOrigin =
-  | "user"
-  | "template"
-  | "system_intent";
+export type SummaryWorkspaceInputOrigin = "user" | "template" | "system_intent";
 
-export type SummaryWorkspaceResultType =
-  | "clarification"
-  | "explanation"
-  | "workflow_confirmation"
-  | "workflow_started"
-  | "workflow_completed"
-  | "agent_preview"
-  | "agent_revision"
-  | "error";
+export const SUMMARY_WORKSPACE_RESULT_TYPES = [
+  "clarification",
+  "explanation",
+  "workflow_confirmation",
+  "workflow_started",
+  "workflow_completed",
+  "agent_preview",
+  "agent_revision",
+  "error",
+] as const;
+export type SummaryWorkspaceResultType = (typeof SUMMARY_WORKSPACE_RESULT_TYPES)[number];
 
-export type SummaryWorkspaceAction =
-  | "confirm_workflow"
-  | "save_preview"
-  | "view_summary"
-  | "view_progress"
-  | "continue_chat";
+export const SUMMARY_WORKSPACE_ACTIONS = [
+  "confirm_workflow",
+  "save_preview",
+  "view_summary",
+  "view_progress",
+  "continue_chat",
+] as const;
+export type SummaryWorkspaceAction = (typeof SUMMARY_WORKSPACE_ACTIONS)[number];
 
 export interface SummaryWorkbenchChannelScope {
   chatId: string;
@@ -208,11 +209,7 @@ export interface SummaryWorkspaceStreamHandlers {
   onError?: (event: unknown) => void;
 }
 
-export type SummaryWorkspaceErrorKind =
-  | "business"
-  | "transport"
-  | "protocol"
-  | "abort";
+export type SummaryWorkspaceErrorKind = "business" | "transport" | "protocol" | "abort";
 
 export class SummaryWorkspaceApiError extends Error {
   readonly kind: SummaryWorkspaceErrorKind;
@@ -253,9 +250,7 @@ export function serializeSummaryWorkbenchScope(
       chat_id: channel.chatId,
       chat_type: channel.chatType,
       name: channel.name,
-      ...(channel.isArchived === undefined
-        ? {}
-        : { is_archived: channel.isArchived }),
+      ...(channel.isArchived === undefined ? {} : { is_archived: channel.isArchived }),
     })),
     participants: scope.participants.map((participant) => ({
       user_id: participant.userId,
@@ -266,9 +261,7 @@ export function serializeSummaryWorkbenchScope(
           template_id: scope.template.templateId,
           label: scope.template.label,
           requirement: scope.template.requirement,
-          ...(scope.template.version === undefined
-            ? {}
-            : { version: scope.template.version }),
+          ...(scope.template.version === undefined ? {} : { version: scope.template.version }),
         }
       : null,
     time_range: scope.timeRange

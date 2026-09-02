@@ -6,13 +6,10 @@ import type {
   SummaryWorkbenchContextKind,
   SummaryWorkbenchProps,
 } from "./types";
+import { visibleSummaryWorkbenchActions } from "./types";
 import "./index.css";
 
-const COMPOSER_CONTEXT_KINDS: SummaryWorkbenchContextKind[] = [
-  "chat",
-  "participant",
-  "time_range",
-];
+const COMPOSER_CONTEXT_KINDS: SummaryWorkbenchContextKind[] = ["chat", "participant", "time_range"];
 
 const REFERENCE_CONTEXT_KIND: SummaryWorkbenchContextKind = "reference";
 
@@ -41,48 +38,7 @@ const ACTION_LABEL_KEYS: Record<SummaryWorkbenchAction, string> = {
   continue_chat: "summary.workbench.actions.continueChat",
 };
 
-const CARD_ACTIONS: Record<
-  SummaryWorkbenchCardView["kind"],
-  readonly SummaryWorkbenchAction[]
-> = {
-  team_confirmation: ["confirm_workflow", "continue_chat"],
-  workflow_started: ["view_progress", "continue_chat"],
-  workflow_completed: ["view_summary"],
-  agent_preview: ["save_preview", "continue_chat"],
-  agent_revision: ["save_preview", "continue_chat"],
-};
-
-function visibleActions(
-  card: SummaryWorkbenchCardView
-): SummaryWorkbenchAction[] {
-  const uniqueActions = card.actions.filter(
-    (action, index) => card.actions.indexOf(action) === index
-  );
-  const allowedActions = CARD_ACTIONS[card.kind];
-  const validActions = uniqueActions.filter((action) =>
-    allowedActions.includes(action)
-  );
-
-  if (card.kind === "team_confirmation" && card.isStale) {
-    return validActions.filter((action) => action !== "confirm_workflow");
-  }
-
-  if (
-    (card.kind === "agent_preview" || card.kind === "agent_revision") &&
-    card.isStale
-  ) {
-    return validActions.filter((action) => action !== "save_preview");
-  }
-
-  return validActions;
-}
-
-const SummaryWorkbench = ({
-  state,
-  actions,
-  className,
-  contextPanel,
-}: SummaryWorkbenchProps) => {
+const SummaryWorkbench = ({ state, actions, className, contextPanel }: SummaryWorkbenchProps) => {
   const { t } = useI18n();
   const composerRef = React.useRef<HTMLTextAreaElement>(null);
   const isComposerDisabled = state.isSending || Boolean(state.isHydrating);
@@ -101,11 +57,7 @@ const SummaryWorkbench = ({
     (state.progressSteps?.length ?? 0) > 0 ||
     Boolean(state.card) ||
     !contextPanel;
-  const rootClassName = [
-    "wk-summary-workbench",
-    `wk-summary-workbench--${state.layout}`,
-    className,
-  ]
+  const rootClassName = ["wk-summary-workbench", `wk-summary-workbench--${state.layout}`, className]
     .filter(Boolean)
     .join(" ");
 
@@ -115,11 +67,10 @@ const SummaryWorkbench = ({
   }, [state.composerFocusKey]);
 
   const renderCard = (card: SummaryWorkbenchCardView) => {
-    const cardActions = visibleActions(card);
+    const cardActions = visibleSummaryWorkbenchActions(card.kind, card.actions, card.isStale);
     const isWorkflowStarted = card.kind === "workflow_started";
     const isWorkflowCompleted = card.kind === "workflow_completed";
-    const isPreview =
-      card.kind === "agent_preview" || card.kind === "agent_revision";
+    const isPreview = card.kind === "agent_preview" || card.kind === "agent_revision";
     const titleKey =
       card.kind === "team_confirmation"
         ? "summary.workbench.card.teamConfirmationTitle"
@@ -146,21 +97,14 @@ const SummaryWorkbench = ({
       >
         <header className="wk-summary-workbench-card__header">
           <div>
-            <span className="wk-summary-workbench-card__badge">
-              {t(badgeKey)}
-            </span>
+            <span className="wk-summary-workbench-card__badge">{t(badgeKey)}</span>
             {card.isStale && (
               <span className="wk-summary-workbench-card__badge wk-summary-workbench-card__badge--stale">
                 {t("summary.workbench.card.staleBadge")}
               </span>
             )}
           </div>
-          <h2>
-            {t(
-              titleKey,
-              isPreview ? { values: { version: card.version } } : undefined
-            )}
-          </h2>
+          <h2>{t(titleKey, isPreview ? { values: { version: card.version } } : undefined)}</h2>
         </header>
 
         {card.kind === "team_confirmation" && (
@@ -190,9 +134,7 @@ const SummaryWorkbench = ({
 
         {(isWorkflowStarted || isWorkflowCompleted) && (
           <div className="wk-summary-workbench-card__workflow">
-            <p className="wk-summary-workbench-card__task-title">
-              {card.taskTitle}
-            </p>
+            <p className="wk-summary-workbench-card__task-title">{card.taskTitle}</p>
             <dl className="wk-summary-workbench-card__details">
               <div>
                 <dt>{t("summary.workbench.card.taskId")}</dt>
@@ -210,9 +152,7 @@ const SummaryWorkbench = ({
 
         {isPreview && (
           <div className="wk-summary-workbench-card__preview">
-            <div className="wk-summary-workbench-card__content">
-              {card.content}
-            </div>
+            <div className="wk-summary-workbench-card__content">{card.content}</div>
             {card.assumptions.length > 0 && (
               <div className="wk-summary-workbench-card__assumptions">
                 <h3>{t("summary.workbench.card.assumptions")}</h3>
@@ -251,15 +191,8 @@ const SummaryWorkbench = ({
     );
   };
 
-  const handleComposerKeyDown = (
-    event: React.KeyboardEvent<HTMLTextAreaElement>
-  ) => {
-    if (
-      event.key !== "Enter" ||
-      event.shiftKey ||
-      event.nativeEvent.isComposing
-    )
-      return;
+  const handleComposerKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
     if (state.canSend && !state.isSending) actions.onSend();
   };
@@ -312,9 +245,7 @@ const SummaryWorkbench = ({
                         label: item.label,
                       },
                     })}
-                    onClick={() =>
-                      actions.onRemoveContext(REFERENCE_CONTEXT_KIND, item.id)
-                    }
+                    onClick={() => actions.onRemoveContext(REFERENCE_CONTEXT_KIND, item.id)}
                   />
                 </span>
               ))}
@@ -335,19 +266,11 @@ const SummaryWorkbench = ({
       </header>
 
       {hasConversationContent && (
-        <div
-          className="wk-summary-workbench__conversation"
-          role="log"
-          aria-live="polite"
-        >
+        <div className="wk-summary-workbench__conversation" role="log" aria-live="polite">
           {state.isHydrating ? (
-            <p className="wk-summary-workbench__empty">
-              {t("summary.workbench.loadingHistory")}
-            </p>
+            <p className="wk-summary-workbench__empty">{t("summary.workbench.loadingHistory")}</p>
           ) : state.messages.length === 0 && !contextPanel ? (
-            <p className="wk-summary-workbench__empty">
-              {t("summary.workbench.empty")}
-            </p>
+            <p className="wk-summary-workbench__empty">{t("summary.workbench.empty")}</p>
           ) : (
             state.messages.map((message) => (
               <div
@@ -393,10 +316,7 @@ const SummaryWorkbench = ({
       )}
 
       {contextPanel && (
-        <div
-          id="summary-workbench-context-panel"
-          className="wk-summary-workbench__context-panel"
-        >
+        <div id="summary-workbench-context-panel" className="wk-summary-workbench__context-panel">
           {contextPanel}
         </div>
       )}
@@ -419,10 +339,7 @@ const SummaryWorkbench = ({
         {composerContextItems.length > 0 && (
           <div className="wk-summary-workbench__selected-contexts">
             {composerContextItems.map((item) => (
-              <span
-                className="wk-summary-workbench-context__item"
-                key={`${item.kind}:${item.id}`}
-              >
+              <span className="wk-summary-workbench-context__item" key={`${item.kind}:${item.id}`}>
                 <span>{item.label}</span>
                 <WKButton
                   type="button"
@@ -446,20 +363,14 @@ const SummaryWorkbench = ({
         <div className="wk-summary-workbench__composer-toolbar">
           <div className="wk-summary-workbench__contexts">
             {composerContextKinds.map((kind) => {
-              const hasItems = composerContextItems.some(
-                (item) => item.kind === kind
-              );
+              const hasItems = composerContextItems.some((item) => item.kind === kind);
               return (
                 <WKButton
                   key={kind}
                   type="button"
                   size="sm"
                   variant="secondary"
-                  className={
-                    hasItems
-                      ? "wk-summary-workbench-context__trigger--active"
-                      : undefined
-                  }
+                  className={hasItems ? "wk-summary-workbench-context__trigger--active" : undefined}
                   aria-pressed={hasItems}
                   disabled={isComposerDisabled}
                   onClick={() => actions.onOpenContext(kind)}

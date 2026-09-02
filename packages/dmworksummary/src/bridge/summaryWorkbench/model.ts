@@ -6,6 +6,7 @@ import type {
   SummaryWorkbenchResultType,
   SummaryWorkbenchViewState,
 } from "../../ui/SummaryWorkbench/types";
+import { visibleSummaryWorkbenchActions } from "../../ui/SummaryWorkbench/types";
 import type { SummaryWorkbenchScope } from "./protocol";
 
 export interface SummaryWorkbenchMessage extends SummaryWorkbenchMessageView {
@@ -153,14 +154,9 @@ export interface SummaryWorkbenchScopeUpdate {
   scopeVersion?: number;
 }
 
-export type SummaryWorkbenchComposerUpdate =
-  | string
-  | Partial<SummaryWorkbenchComposer>;
+export type SummaryWorkbenchComposerUpdate = string | Partial<SummaryWorkbenchComposer>;
 
-const PREVIEW_TYPES = new Set<SummaryWorkbenchResultType>([
-  "agent_preview",
-  "agent_revision",
-]);
+const PREVIEW_TYPES = new Set<SummaryWorkbenchResultType>(["agent_preview", "agent_revision"]);
 
 const ARTIFACT_TYPES = new Set<SummaryWorkbenchResultType>([
   "workflow_confirmation",
@@ -170,17 +166,6 @@ const ARTIFACT_TYPES = new Set<SummaryWorkbenchResultType>([
   "agent_revision",
 ]);
 
-const CARD_ACTIONS: Record<
-  SummaryWorkbenchCardView["kind"],
-  readonly SummaryWorkbenchAction[]
-> = {
-  team_confirmation: ["confirm_workflow", "continue_chat"],
-  workflow_started: ["view_progress", "continue_chat"],
-  workflow_completed: ["view_summary"],
-  agent_preview: ["save_preview", "continue_chat"],
-  agent_revision: ["save_preview", "continue_chat"],
-};
-
 export function createInitialSummaryWorkbenchModel(
   options: CreateSummaryWorkbenchModelOptions = {}
 ): SummaryWorkbenchModel {
@@ -189,19 +174,13 @@ export function createInitialSummaryWorkbenchModel(
     scopeVersion: options.scopeVersion ?? 1,
     contextItems: [...(options.contextItems ?? [])],
     messages: [...(options.messages ?? [])],
-    currentPreview: options.currentPreview
-      ? clonePreview(options.currentPreview)
-      : null,
-    pendingProposal: options.pendingProposal
-      ? cloneProposal(options.pendingProposal)
-      : null,
+    currentPreview: options.currentPreview ? clonePreview(options.currentPreview) : null,
+    pendingProposal: options.pendingProposal ? cloneProposal(options.pendingProposal) : null,
     workflow: options.workflow ? cloneWorkflow(options.workflow) : null,
     composer: {
       value: options.composer?.value ?? "",
       isSending: options.composer?.isSending ?? false,
-      ...(options.composer?.errorMessage
-        ? { errorMessage: options.composer.errorMessage }
-        : {}),
+      ...(options.composer?.errorMessage ? { errorMessage: options.composer.errorMessage } : {}),
     },
   };
 }
@@ -228,9 +207,7 @@ export function applySummaryResponse(
       ...model.composer,
       isSending: false,
       errorMessage:
-        response.resultType === "error"
-          ? response.errorMessage ?? response.reply
-          : undefined,
+        response.resultType === "error" ? response.errorMessage ?? response.reply : undefined,
     },
   };
 
@@ -310,12 +287,8 @@ export function applySummaryAuthoritativeState(
     ...model,
     scopeVersion: state.scopeVersion,
     contextItems: [...state.contextItems],
-    currentPreview: state.currentPreview
-      ? clonePreview(state.currentPreview)
-      : null,
-    pendingProposal: state.pendingProposal
-      ? cloneProposal(state.pendingProposal)
-      : null,
+    currentPreview: state.currentPreview ? clonePreview(state.currentPreview) : null,
+    pendingProposal: state.pendingProposal ? cloneProposal(state.pendingProposal) : null,
     workflow: state.workflow ? cloneWorkflow(state.workflow) : null,
   };
 }
@@ -351,9 +324,7 @@ export function updateSummaryScope(
 ): SummaryWorkbenchModel {
   const contextItems = [...update.contextItems];
   const hasChanged = !sameContextItems(model.contextItems, contextItems);
-  const minimumVersion = hasChanged
-    ? model.scopeVersion + 1
-    : model.scopeVersion;
+  const minimumVersion = hasChanged ? model.scopeVersion + 1 : model.scopeVersion;
   const scopeVersion =
     update.scopeVersion === undefined
       ? minimumVersion
@@ -388,9 +359,7 @@ export function canSaveCurrentPreview(model: SummaryWorkbenchModel): boolean {
   return Boolean(
     preview &&
       latestArtifactMessage?.id === preview.messageId &&
-      PREVIEW_TYPES.has(
-        latestArtifactMessage.resultType as SummaryWorkbenchResultType
-      ) &&
+      PREVIEW_TYPES.has(latestArtifactMessage.resultType as SummaryWorkbenchResultType) &&
       PREVIEW_TYPES.has(preview.resultType) &&
       preview.snapshotVersion > 0 &&
       preview.scopeVersion === model.scopeVersion &&
@@ -398,9 +367,7 @@ export function canSaveCurrentPreview(model: SummaryWorkbenchModel): boolean {
   );
 }
 
-export function isTeamProposalConfirmable(
-  model: SummaryWorkbenchModel
-): boolean {
+export function isTeamProposalConfirmable(model: SummaryWorkbenchModel): boolean {
   const proposal = model.pendingProposal;
   const latestArtifactMessage = findLatestArtifactMessage(model.messages);
   return Boolean(
@@ -430,15 +397,12 @@ export function deriveSummaryWorkbenchView(
     inputValue: model.composer.value,
     placeholderKey: derivePlaceholderKey(model),
     isSending: model.composer.isSending,
-    canSend:
-      !model.composer.isSending && model.composer.value.trim().length > 0,
+    canSend: !model.composer.isSending && model.composer.value.trim().length > 0,
     errorMessage: model.composer.errorMessage,
   };
 }
 
-function deriveActiveCard(
-  model: SummaryWorkbenchModel
-): SummaryWorkbenchCardView | undefined {
+function deriveActiveCard(model: SummaryWorkbenchModel): SummaryWorkbenchCardView | undefined {
   const latestArtifactType = findLatestArtifactType(model.messages);
 
   if (latestArtifactType === "workflow_confirmation" && model.pendingProposal) {
@@ -451,7 +415,7 @@ function deriveActiveCard(
       templateLabel: proposal.templateLabel,
       timeRangeLabel: proposal.timeRangeLabel,
       isStale,
-      actions: sanitizeCardActions(
+      actions: visibleSummaryWorkbenchActions(
         "team_confirmation",
         proposal.availableActions,
         isStale
@@ -460,8 +424,7 @@ function deriveActiveCard(
   }
 
   if (
-    (latestArtifactType === "workflow_started" ||
-      latestArtifactType === "workflow_completed") &&
+    (latestArtifactType === "workflow_started" || latestArtifactType === "workflow_completed") &&
     model.workflow
   ) {
     const workflow = model.workflow;
@@ -473,7 +436,7 @@ function deriveActiveCard(
       // A created workflow remains valid even if the user changes the
       // composer scope for a later request.
       isStale: false,
-      actions: sanitizeCardActions(
+      actions: visibleSummaryWorkbenchActions(
         workflow.resultType,
         workflow.availableActions,
         false
@@ -481,10 +444,7 @@ function deriveActiveCard(
     };
   }
 
-  if (
-    PREVIEW_TYPES.has(latestArtifactType as SummaryWorkbenchResultType) &&
-    model.currentPreview
-  ) {
+  if (PREVIEW_TYPES.has(latestArtifactType as SummaryWorkbenchResultType) && model.currentPreview) {
     const preview = model.currentPreview;
     const isStale = preview.scopeVersion !== model.scopeVersion;
     return {
@@ -493,7 +453,7 @@ function deriveActiveCard(
       content: preview.content,
       assumptions: [...preview.assumptions],
       isStale,
-      actions: sanitizeCardActions(
+      actions: visibleSummaryWorkbenchActions(
         preview.resultType,
         preview.availableActions,
         isStale || !canSaveCurrentPreview(model)
@@ -502,22 +462,6 @@ function deriveActiveCard(
   }
 
   return undefined;
-}
-
-function sanitizeCardActions(
-  kind: SummaryWorkbenchCardView["kind"],
-  actions: SummaryWorkbenchAction[],
-  isStale: boolean
-): SummaryWorkbenchAction[] {
-  const allowedActions = CARD_ACTIONS[kind];
-  return actions.filter((action, index) => {
-    if (actions.indexOf(action) !== index || !allowedActions.includes(action)) {
-      return false;
-    }
-    if (isStale && action === "confirm_workflow") return false;
-    if (isStale && action === "save_preview") return false;
-    return true;
-  });
 }
 
 function derivePlaceholderKey(model: SummaryWorkbenchModel): string {
@@ -535,26 +479,17 @@ function derivePlaceholderKey(model: SummaryWorkbenchModel): string {
   if (latestArtifactType === "workflow_completed") {
     return "summary.workbench.placeholder.workflowCompleted";
   }
-  if (
-    PREVIEW_TYPES.has(latestArtifactType as SummaryWorkbenchResultType) &&
-    model.currentPreview
-  ) {
+  if (PREVIEW_TYPES.has(latestArtifactType as SummaryWorkbenchResultType) && model.currentPreview) {
     return canSaveCurrentPreview(model)
       ? "summary.workbench.placeholder.preview"
       : "summary.workbench.placeholder.scopeChanged";
   }
 
-  const hasParticipants = model.contextItems.some(
-    (item) => item.kind === "participant"
-  );
+  const hasParticipants = model.contextItems.some((item) => item.kind === "participant");
   const hasChat = model.contextItems.some((item) => item.kind === "chat");
-  const hasTemplate = model.contextItems.some(
-    (item) => item.kind === "template"
-  );
-  if (hasParticipants)
-    return "summary.workbench.placeholder.participantsSelected";
-  if (hasChat && hasTemplate)
-    return "summary.workbench.placeholder.structuredReady";
+  const hasTemplate = model.contextItems.some((item) => item.kind === "template");
+  if (hasParticipants) return "summary.workbench.placeholder.participantsSelected";
+  if (hasChat && hasTemplate) return "summary.workbench.placeholder.structuredReady";
   if (hasChat) return "summary.workbench.placeholder.chatSelected";
   return "summary.workbench.placeholder.initial";
 }
@@ -570,8 +505,7 @@ function findLatestArtifactMessage(
 ): SummaryWorkbenchMessage | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (message.resultType && ARTIFACT_TYPES.has(message.resultType))
-      return message;
+    if (message.resultType && ARTIFACT_TYPES.has(message.resultType)) return message;
   }
   return undefined;
 }
@@ -584,16 +518,12 @@ function sameContextItems(
   return left.every((item, index) => {
     const candidate = right[index];
     return (
-      item.id === candidate.id &&
-      item.kind === candidate.kind &&
-      item.label === candidate.label
+      item.id === candidate.id && item.kind === candidate.kind && item.label === candidate.label
     );
   });
 }
 
-function clonePreview(
-  preview: SummaryWorkbenchPreview
-): SummaryWorkbenchPreview {
+function clonePreview(preview: SummaryWorkbenchPreview): SummaryWorkbenchPreview {
   return {
     ...preview,
     assumptions: [...preview.assumptions],
@@ -601,9 +531,7 @@ function clonePreview(
   };
 }
 
-function cloneProposal(
-  proposal: SummaryWorkbenchProposal
-): SummaryWorkbenchProposal {
+function cloneProposal(proposal: SummaryWorkbenchProposal): SummaryWorkbenchProposal {
   return {
     ...proposal,
     participantNames: [...proposal.participantNames],
@@ -611,9 +539,7 @@ function cloneProposal(
   };
 }
 
-function cloneWorkflow(
-  workflow: SummaryWorkbenchWorkflow
-): SummaryWorkbenchWorkflow {
+function cloneWorkflow(workflow: SummaryWorkbenchWorkflow): SummaryWorkbenchWorkflow {
   return {
     ...workflow,
     availableActions: [...workflow.availableActions],

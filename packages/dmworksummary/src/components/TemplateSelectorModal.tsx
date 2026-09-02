@@ -180,6 +180,28 @@ export default function TemplateSelectorModal({
   const canCreateCustomTemplate = customTemplates.length < customTemplateLimit;
   const editorVisible = creatingCustomTemplate || editingTemplate !== null;
 
+  const resetEditor = () => {
+    setEditingTemplate(null);
+    setCreatingCustomTemplate(false);
+    setMutationError("");
+  };
+
+  const runMutation = async (
+    failureMessage: string,
+    mutation: () => Promise<void>
+  ) => {
+    if (mutationBusy) return;
+    setMutationBusy(true);
+    setMutationError("");
+    try {
+      await mutation();
+    } catch {
+      setMutationError(failureMessage);
+    } finally {
+      setMutationBusy(false);
+    }
+  };
+
   const replaceTemplate = useCallback((updated: TopicTemplate) => {
     setTemplates((current: TopicTemplate[]) =>
       current.map((template: TopicTemplate) =>
@@ -217,9 +239,7 @@ export default function TemplateSelectorModal({
 
   const closeEditor = () => {
     if (mutationBusy) return;
-    setEditingTemplate(null);
-    setCreatingCustomTemplate(false);
-    setMutationError("");
+    resetEditor();
   };
 
   const saveEditor = async () => {
@@ -227,52 +247,36 @@ export default function TemplateSelectorModal({
     const description = editingDescription.trim();
     if (!label || !description || mutationBusy) return;
 
-    setMutationBusy(true);
-    setMutationError("");
-    try {
-      if (creatingCustomTemplate) {
-        const created = await dataSource.create({ label, description });
-        setTemplates((current: TopicTemplate[]) => [...current, created]);
-      } else if (editingTemplate?.is_custom) {
-        const updated = await dataSource.updateCustom(editingTemplate.id, {
-          label,
-          description,
-        });
-        replaceTemplate(updated);
-        propagateSelectedTemplateUpdate(updated);
-      } else if (editingTemplate) {
-        const updated = await dataSource.updateBuiltIn(editingTemplate.id, {
-          label,
-          description,
-        });
-        replaceTemplate(updated);
-        propagateSelectedTemplateUpdate(updated);
+    await runMutation(
+      creatingCustomTemplate ? labels.createFailed : labels.updateFailed,
+      async () => {
+        if (creatingCustomTemplate) {
+          const created = await dataSource.create({ label, description });
+          setTemplates((current: TopicTemplate[]) => [...current, created]);
+        } else if (editingTemplate) {
+          const update = editingTemplate.is_custom
+            ? dataSource.updateCustom
+            : dataSource.updateBuiltIn;
+          const updated = await update(editingTemplate.id, {
+            label,
+            description,
+          });
+          replaceTemplate(updated);
+          propagateSelectedTemplateUpdate(updated);
+        }
+        resetEditor();
       }
-      setEditingTemplate(null);
-      setCreatingCustomTemplate(false);
-    } catch {
-      setMutationError(
-        creatingCustomTemplate ? labels.createFailed : labels.updateFailed
-      );
-    } finally {
-      setMutationBusy(false);
-    }
+    );
   };
 
   const resetBuiltIn = async () => {
     if (!editingTemplate || editingTemplate.is_custom || mutationBusy) return;
-    setMutationBusy(true);
-    setMutationError("");
-    try {
+    await runMutation(labels.resetFailed, async () => {
       const updated = await dataSource.resetBuiltIn(editingTemplate.id);
       replaceTemplate(updated);
       propagateSelectedTemplateUpdate(updated);
       setEditingTemplate(null);
-    } catch {
-      setMutationError(labels.resetFailed);
-    } finally {
-      setMutationBusy(false);
-    }
+    });
   };
 
   const requestCustomDelete = (template: TopicTemplate) => {
@@ -283,9 +287,7 @@ export default function TemplateSelectorModal({
   const deleteCustom = async () => {
     if (!pendingDelete?.is_custom || mutationBusy) return;
     const target = pendingDelete;
-    setMutationBusy(true);
-    setMutationError("");
-    try {
+    await runMutation(labels.deleteFailed, async () => {
       await dataSource.deleteCustom(target.id);
       setTemplates((current: TopicTemplate[]) =>
         current.filter((template: TopicTemplate) => template.id !== target.id)
@@ -295,11 +297,7 @@ export default function TemplateSelectorModal({
       }
       setPendingDelete(null);
       if (value?.templateId === target.id) onChange(null);
-    } catch {
-      setMutationError(labels.deleteFailed);
-    } finally {
-      setMutationBusy(false);
-    }
+    });
   };
 
   const renderTemplate = (template: TopicTemplate) => (

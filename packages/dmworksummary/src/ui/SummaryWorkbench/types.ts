@@ -1,19 +1,11 @@
-export type SummaryWorkbenchResultType =
-  | "clarification"
-  | "explanation"
-  | "workflow_confirmation"
-  | "workflow_started"
-  | "workflow_completed"
-  | "agent_preview"
-  | "agent_revision"
-  | "error";
+import type { ReactNode } from "react";
+import type {
+  SummaryWorkspaceAction,
+  SummaryWorkspaceResultType,
+} from "../../bridge/summaryWorkbench/protocol";
 
-export type SummaryWorkbenchAction =
-  | "confirm_workflow"
-  | "save_preview"
-  | "view_summary"
-  | "view_progress"
-  | "continue_chat";
+export type SummaryWorkbenchResultType = SummaryWorkspaceResultType;
+export type SummaryWorkbenchAction = SummaryWorkspaceAction;
 
 export type SummaryWorkbenchContextKind =
   | "chat"
@@ -72,6 +64,27 @@ export type SummaryWorkbenchCardView =
   | SummaryWorkbenchWorkflowCard
   | SummaryWorkbenchPreviewCard;
 
+const CARD_ACTIONS: Record<SummaryWorkbenchCardView["kind"], readonly SummaryWorkbenchAction[]> = {
+  team_confirmation: ["confirm_workflow", "continue_chat"],
+  workflow_started: ["view_progress", "continue_chat"],
+  workflow_completed: ["view_summary"],
+  agent_preview: ["save_preview", "continue_chat"],
+  agent_revision: ["save_preview", "continue_chat"],
+};
+
+export function visibleSummaryWorkbenchActions(
+  kind: SummaryWorkbenchCardView["kind"],
+  actions: SummaryWorkbenchAction[],
+  isStale: boolean
+): SummaryWorkbenchAction[] {
+  return actions.filter(
+    (action, index) =>
+      actions.indexOf(action) === index &&
+      CARD_ACTIONS[kind].includes(action) &&
+      (!isStale || (action !== "confirm_workflow" && action !== "save_preview"))
+  );
+}
+
 export interface SummaryWorkbenchViewState {
   layout: "full" | "panel";
   messages: SummaryWorkbenchMessageView[];
@@ -104,4 +117,3 @@ export interface SummaryWorkbenchProps {
   className?: string;
   contextPanel?: ReactNode;
 }
-import type { ReactNode } from "react";

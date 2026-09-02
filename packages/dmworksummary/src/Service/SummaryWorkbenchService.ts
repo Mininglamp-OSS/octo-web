@@ -145,22 +145,19 @@ export class SummaryWorkbenchService {
     input: SummaryWorkbenchMessageInput,
     callbacks: SummaryWorkbenchStreamCallbacks
   ): { close: () => void } {
+    const reportError = (error: SummaryWorkspaceApiError) =>
+      callbacks.onError?.(error);
     return this.transport.streamTurn(buildChatRequest(input), {
       onProgress: callbacks.onProgress,
       onDone: (payload) => {
-        let response: SummaryWorkbenchResponse;
         try {
-          response = adaptSummaryWorkspaceTurn(payload);
+          const response = adaptSummaryWorkspaceTurn(payload);
+          callbacks.onDone?.(response);
         } catch (error) {
-          callbacks.onError?.(normalizeWorkspaceError(error));
-          return;
+          reportError(normalizeWorkspaceError(error));
         }
-        callbacks.onDone?.(response);
       },
-      onError: (event) => {
-        const error = decodeSummaryWorkspaceStreamError(event);
-        callbacks.onError?.(error);
-      },
+      onError: (event) => reportError(decodeSummaryWorkspaceStreamError(event)),
     });
   }
 
