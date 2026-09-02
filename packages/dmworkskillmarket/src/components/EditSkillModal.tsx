@@ -8,7 +8,7 @@ import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
 import InlineConfirmBar from "./InlineConfirmBar";
 import { visibilityLabel } from "../utils/labels";
-import { versionErrorKey } from "../utils/version";
+import { isValidVersion, nextPatch, versionErrorKey } from "../utils/version";
 
 interface EditSkillModalProps {
   skill: Skill | null;
@@ -25,12 +25,18 @@ type UploadStage = "idle" | "uploading" | "parsing" | "error";
 const MAX_ZIP_SIZE = 20 * 1024 * 1024;
 const SKILL_PACKAGE_ACCEPT = ".zip,.skill";
 
+/**
+ * Seed the version field after a reupload.
+ *
+ * A label the tightened format rejects is the row's GRANDFATHERED one, and
+ * bumping it produces a third value that is neither well-formed nor the stored
+ * label — which is the one combination `/plugins/import` refuses outright
+ * (resolveImportFields: `!validVersion && !isStoredVersionLabel` → 400). So a
+ * legacy label is left exactly as stored; that is the only value a reupload may
+ * still carry, and the author can type a real one over it.
+ */
 function bumpPatch(ver: string): string {
-  const parts = ver.split(".");
-  if (parts.length < 3) return ver;
-  const patch = parseInt(parts[2], 10);
-  parts[2] = String(isNaN(patch) ? 1 : patch + 1);
-  return parts.join(".");
+  return isValidVersion(ver) ? nextPatch(ver) : ver;
 }
 
 function validateZipFile(file: File): string | null {
@@ -147,8 +153,15 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
 
   const tagSubmitError = tagError ?? validateSkillTags(tags, skill?.tags ?? []) ?? getTagDraftError();
   // Mirrors the backend rule so the form objects before the round trip. Compared
-  // against the STORED label, which is what the server compares against too.
-  const versionError = versionErrorKey(skill?.version, version);
+  // against the STORED label, which is what the server compares against too —
+  // and passed a third time as the grandfathering key, because this field is
+  // SEEDED from that label (see the `setVersion(skill.version)` reset below).
+  // Without the exemption every plugin carrying a pre-tightening label (`1.0`,
+  // `v1.2.3`, `2.0.0-beta.1`) has a permanently dead Save: the field arrives
+  // holding a value this rule rejects and the user is given nothing to do about
+  // it. Save writes through `/plugins/upsert`, which grants exactly this
+  // exemption (WriteRequest.grandfatheredVersion), so the two now agree.
+  const versionError = versionErrorKey(skill?.version, version, skill?.version);
   const canSave = Boolean(
     !busy &&
     uploadStage !== "error" &&
@@ -170,9 +183,18 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
   const willBeUnlisted =
     skill?.listingState !== "published" ||
     (skill?.visibility !== undefined && visibility !== skill.visibility);
+  // 发布 does NOT inherit the grandfathering. On 本组织 it routes through
+  // `Service.Publish` → `SubmitReview`, which gates on `validVersion` with no
+  // stored-label exemption, so a legacy label that saves fine would 400 on
+  // publish. Recomputing without `stored` is the whole difference. On 仅自己 the
+  // server ignores the submitted version entirely (the immediate branch), so the
+  // save rule is the right one there.
+  const publishVersionError =
+    visibility === "space" ? versionErrorKey(skill?.version, version) : versionError;
   // 发布 asks for a changelog only when the plugin is headed for organization
   // review, mirroring the create modal.
-  const canPublishNow = canSave && (visibility === "private" || Boolean(changelog.trim()));
+  const canPublishNow =
+    canSave && !publishVersionError && (visibility === "private" || Boolean(changelog.trim()));
 
   function updateTagSuggestionStyle() {
     const field = tagFieldRef.current;
@@ -601,6 +623,15 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
                 />
                 {versionError && (
                   <p className="skill-market-field-error">{t(versionError)}</p>
+                )}
+                {/* Save is fine but 发布 is not: the label is the row's own
+                    grandfathered one and organization publish will not take it.
+                    Say so, otherwise 发布 is a second dead button with no
+                    explanation — the exact failure this change exists to end. */}
+                {!versionError && publishVersionError && (
+                  <p className="skill-market-field-hint">
+                    {t("skillMarket.plugin.versionLegacyBlocksPublish")}
+                  </p>
                 )}
               </label>
               <label>

@@ -3538,3 +3538,13 @@
   font-size: 12px;
   line-height: 1.5;
 }
+
+/* Same slot as .skill-market-field-error but advisory, not a rejection: the
+   field is accepted, one of the actions below it is not. Muted so a form the
+   user CAN submit does not read as broken. */
+.skill-market-field-hint {
+  margin: var(--wk-sp-1) 0 0;
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}

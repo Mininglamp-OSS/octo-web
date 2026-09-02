@@ -5,6 +5,13 @@
  * A label is exactly three numeric parts (1.0.1) and may only move forward or
  * stay put. Parts are compared NUMERICALLY: 1.10.0 follows 1.9.0, which a string
  * comparison gets backwards.
+ *
+ * The format rule has one exemption, and it is the server's, not a convenience:
+ * a label that is byte-for-byte the one the row already stores is accepted even
+ * when malformed. Labels like `1.0`, `v1.2.3` and `2.0.0-beta.1` reached
+ * production before the format was tightened, and every save re-sends the stored
+ * value, so without the exemption tightening the format would retroactively make
+ * those rows unsavable. See `isStoredVersionLabel` below.
  */
 
 const VERSION_PATTERN = /^\d{1,9}\.\d{1,9}\.\d{1,9}$/;
@@ -42,13 +49,48 @@ export function isVersionForward(current: string | undefined, next: string): boo
 }
 
 /**
+ * Whether `next` is byte-for-byte — modulo surrounding space — the label the row
+ * ALREADY STORES. Mirrors the server's `isStoredVersionLabel`
+ * (internal/service/plugin/import.go), the predicate behind
+ * `WriteRequest.grandfatheredVersion`.
+ *
+ * `stored` must come from the fetched row, never from the form: the exemption
+ * exists so a label minted before the format was tightened stays savable, not so
+ * a caller can nominate its own malformed value as grandfathered. `undefined`
+ * mirrors a NULL current_version — no stored label, so no exemption.
+ */
+export function isStoredVersionLabel(stored: string | undefined, next: string): boolean {
+  return stored !== undefined && stored.trim() === next.trim();
+}
+
+/**
  * The i18n key for what is wrong with `next`, or null when it is acceptable.
  * Returning a key rather than a message keeps this callable from both packages.
+ *
+ * `stored` opts into the server's grandfathering exemption and must be the
+ * row's own `current_version`. Pass it on the SAVE surfaces — `/plugins/upsert`
+ * (Service.update) and `/plugins/import` (resolveImportFields) both accept a
+ * malformed label that equals the stored one, so refusing it here would leave
+ * every legacy-labeled plugin with a permanently dead Save button.
+ *
+ * OMIT it on the review-submit surfaces. `SubmitReview`
+ * (internal/service/plugin/review.go) gates on `validVersion` with no
+ * grandfathering at all, so exempting the stored label there would only move the
+ * dead end from the button to a 400.
  */
-export function versionErrorKey(current: string | undefined, next: string): string | null {
+export function versionErrorKey(
+  current: string | undefined,
+  next: string,
+  stored?: string
+): string | null {
   const nxt = next.trim();
   if (!nxt) return null; // emptiness is the caller's required-field concern
-  if (!isValidVersion(nxt)) return "skillMarket.plugin.versionFormatInvalid";
+  // Format first, then ordering — the same order as Service.update, whose
+  // forward-only check passes an unchanged label through before buildWrite's
+  // format gate ever sees it.
+  if (!isValidVersion(nxt) && !isStoredVersionLabel(stored, nxt)) {
+    return "skillMarket.plugin.versionFormatInvalid";
+  }
   if (!isVersionForward(current, nxt)) return "skillMarket.plugin.versionMustNotDecrease";
   return null;
 }

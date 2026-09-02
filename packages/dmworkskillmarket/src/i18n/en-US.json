@@ -303,6 +303,7 @@
     "visibilityChangeUnlists": "Changing the audience returns this plugin to a draft; publish it again to list it (organization visibility needs review).",
     "visibilityAdminManaged": "Only a platform admin can change this",
     "versionFormatInvalid": "Version must look like 1.0.1 (three numbers)",
-    "versionMustNotDecrease": "Version can only stay the same or go up"
+    "versionMustNotDecrease": "Version can only stay the same or go up",
+    "versionLegacyBlocksPublish": "Publishing to the organization needs a 1.0.1-style version; this older label can be saved but not submitted for review"
   }
 }
