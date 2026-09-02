@@ -111,9 +111,10 @@ export function ConversationSurface({
         <ErrorBoundary moduleName={errorModuleName}>
           <Conversation
             {...conversationProps}
-            key={channel.getChannelKey()}
+            key={`${channel.channelID}-${channel.channelType}`}
             channel={channel}
             isAuxiliary={mode === "auxiliary"}
+            shouldShowHistorySplit={mode !== "auxiliary"}
             onContext={handleConversationContext}
           />
         </ErrorBoundary>

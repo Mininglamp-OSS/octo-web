@@ -173,7 +173,11 @@ export class ManagedChatClient<
 
   start(bootstrap: ChatClientBootstrap): Promise<void> {
     return this._enqueueOperation(async () => {
-      if (this._started && this._status === ChatClientStatus.Connected) {
+      // Once started, the connection adapter owns reconnect behavior and
+      // reports availability through the epoch-scoped connection context.
+      // Calling start() again while disconnected must not create a second
+      // transport or duplicate its listeners.
+      if (this._started) {
         return;
       }
 

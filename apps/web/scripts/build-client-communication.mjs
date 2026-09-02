@@ -68,7 +68,9 @@ child.on("exit", (code, signal) => {
     commit,
     entry: "index.html",
     hostBridgeMajor: 1,
-    e2eMock: process.env.VITE_E2E_MOCK === "1",
+    e2eMock:
+      process.env.VITE_E2E_MOCK === "1" ||
+      process.env.VITE_E2E_MOCK_IM === "1",
   }, null, 2)}\n`);
 
   process.exit(0);

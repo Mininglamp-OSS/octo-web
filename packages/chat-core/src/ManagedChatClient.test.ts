@@ -202,6 +202,17 @@ describe("ManagedChatClient", () => {
       expect(connAdapter.connect).toHaveBeenCalledTimes(1);
     });
 
+    it("does not create a second transport when start is called while disconnected", async () => {
+      const { client, connAdapter } = createClient();
+      await client.start(bootstrapFor(channelA));
+      client.connectionContext.onConnectionLost();
+
+      await client.start(bootstrapFor(channelA));
+
+      expect(client.status).toBe(ChatClientStatus.Disconnected);
+      expect(connAdapter.connect).toHaveBeenCalledTimes(1);
+    });
+
     it("sets Failed when connection adapter throws", async () => {
       const { client } = createClient({ failConnect: true });
       await expect(client.start(bootstrapFor(channelA))).rejects.toThrow(

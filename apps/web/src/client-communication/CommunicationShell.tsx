@@ -60,15 +60,25 @@ export function CommunicationShell({
   const [activePage, setActivePage] = useState<CommunicationPage>(initialPage);
   const activePageRef = useRef(activePage);
   const routeReadyRef = useRef({ left: false, right: false });
+  const commandListenerReadyRef = useRef(false);
   const readyReportedRef = useRef(false);
   const pendingTargetRef = useRef<ConversationTarget | undefined>();
 
-  const markRouteReady = useCallback((side: "left" | "right") => {
-    routeReadyRef.current[side] = true;
-    if (readyReportedRef.current || !routeReadyRef.current.left || !routeReadyRef.current.right) return;
+  const reportReadyWhenPrepared = useCallback(() => {
+    if (
+      readyReportedRef.current ||
+      !commandListenerReadyRef.current ||
+      !routeReadyRef.current.left ||
+      !routeReadyRef.current.right
+    ) return;
     readyReportedRef.current = true;
     void onReady();
   }, [onReady]);
+
+  const markRouteReady = useCallback((side: "left" | "right") => {
+    routeReadyRef.current[side] = true;
+    reportReadyWhenPrepared();
+  }, [reportReadyWhenPrepared]);
 
   const activatePage = useCallback((
     page: CommunicationPage,
@@ -77,6 +87,7 @@ export function CommunicationShell({
   ) => {
     activePageRef.current = page;
     WKApp.currentMenuId = page;
+    WKApp.mittBus.emit("wk:active-menu-changed", { menuId: page });
     setActivePage(page);
     reportNavigation({ page, source });
     requestAnimationFrame(() => requestAnimationFrame(() => afterSwitch?.()));
@@ -136,12 +147,15 @@ export function CommunicationShell({
         window.dispatchEvent(new CustomEvent(`octobuddy:${command.type}`));
       }
     });
+    commandListenerReadyRef.current = true;
+    reportReadyWhenPrepared();
 
     return () => {
+      commandListenerReadyRef.current = false;
       dispose();
       WKApp.switchToMenuById = undefined;
     };
-  }, [activatePage, initialPage]);
+  }, [activatePage, initialPage, reportReadyWhenPrepared]);
 
   useEffect(() => {
     const syncUnread = () => bridge.reportUnread(getElectronUnreadMessageCount());
