@@ -270,7 +270,8 @@ function makeConversation(options: {
 function makeCompactConversation(
   channelID: string,
   channelType: number,
-  parentGroupNo?: string
+  parentGroupNo?: string,
+  options: { isMentionMe?: boolean; unread?: number } = {}
 ) {
   const channel = makeChannel(channelID, channelType);
   return {
@@ -284,8 +285,8 @@ function makeCompactConversation(
         parentGroupNo,
       },
     },
-    unread: 0,
-    isMentionMe: false,
+    unread: options.unread ?? 0,
+    isMentionMe: !!options.isMentionMe,
     simpleReminders: [],
     remoteExtra: {},
     timestamp: 1,
@@ -364,7 +365,7 @@ describe("ConversationList unread indicators", () => {
     ).toBe("14");
   });
 
-  it("hides the mention marker in a muted conversation but keeps the muted unread count", () => {
+  it("keeps the mention marker in a muted conversation alongside the muted unread count", () => {
     act(() => {
       ReactDOM.render(
         <ConversationList
@@ -580,6 +581,90 @@ describe("ConversationList unread indicators", () => {
         ".wk-conv-compact-item--thread .wk-conv-compact-drag-handle"
       )
     ).toBeNull();
+  });
+
+  it("bubbles @我 from a collapsed thread onto the parent group row (WS-213 rev 3, P2-2)", () => {
+    // 折叠态：thread 行不显示，父群行应通过 collapsedThreadHasMention 冒泡出 @我 marker。
+    // 覆盖 renderItem → conversationItem → CompactGroupItem 的整条 wiring，
+    // 而不只是 unread.ts 里的 helper 单测。
+    const parent = makeCompactConversation("group-a", 2);
+    const thread = makeCompactConversation("thread-a", 3, "group-a", {
+      isMentionMe: true,
+    });
+
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={[parent, thread] as any}
+          compact
+          disablePinSplit
+        />,
+        container
+      );
+    });
+
+    // 强制进入 collapsed：如果当前是 expanded，点一下 toggle 收起。
+    const toggle = container.querySelector(
+      ".wk-conv-compact-thread-tag"
+    ) as HTMLElement;
+    expect(toggle).not.toBeNull();
+    if (toggle.querySelector(".lucide-chevron-down")) {
+      act(() => {
+        toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+    }
+
+    expect(
+      container.querySelectorAll(".wk-conv-compact-item--thread")
+    ).toHaveLength(0);
+
+    const parentRow = container.querySelector(
+      ".wk-conv-compact-item--has-threads"
+    );
+    expect(parentRow).not.toBeNull();
+    expect(parentRow?.querySelector(".wk-conv-compact-mention")).not.toBeNull();
+  });
+
+  it("does not double-light @我 when the thread is expanded (WS-213 rev 3, P2-2)", () => {
+    // 展开态：thread 行自己亮 @我，父群行不应再冒泡（否则同一 mention 亮两次）。
+    const parent = makeCompactConversation("group-a", 2);
+    const thread = makeCompactConversation("thread-a", 3, "group-a", {
+      isMentionMe: true,
+    });
+
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={[parent, thread] as any}
+          compact
+          disablePinSplit
+        />,
+        container
+      );
+    });
+
+    // 强制进入 expanded：如果当前 collapsed，点一下 toggle 展开。
+    const toggle = container.querySelector(
+      ".wk-conv-compact-thread-tag"
+    ) as HTMLElement;
+    expect(toggle).not.toBeNull();
+    if (toggle.querySelector(".lucide-chevron-right")) {
+      act(() => {
+        toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+    }
+
+    expect(
+      container.querySelectorAll(".wk-conv-compact-item--thread")
+    ).toHaveLength(1);
+
+    const parentRow = container.querySelector(
+      ".wk-conv-compact-item--has-threads"
+    );
+    expect(parentRow?.querySelector(".wk-conv-compact-mention")).toBeNull();
+
+    const threadRow = container.querySelector(".wk-conv-compact-item--thread");
+    expect(threadRow?.querySelector(".wk-conv-compact-mention")).not.toBeNull();
   });
 });
 

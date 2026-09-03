@@ -48,13 +48,3 @@ export function collapsedThreadHasMention(
   if (!includeCollapsed) return false
   return threads.some((thread) => !!thread.isMentionMe)
 }
-
-// 行级 @我 展示规则的唯一定义。两个 render 路径（compact / recent）共用，
-// 避免 review 反复出现的"改一处漏一处"。参数取 ConversationWrap 的 isMentionMe
-// 与 collapsedThreadHasMention 的返回值。
-export function hasMentionForRow(
-  wrapIsMentionMe: boolean,
-  threadHasMention: boolean
-): boolean {
-  return wrapIsMentionMe || threadHasMention
-}

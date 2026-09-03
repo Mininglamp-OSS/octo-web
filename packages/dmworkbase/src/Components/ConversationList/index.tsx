@@ -54,7 +54,6 @@ import { formatDraftPreview } from "../../Utils/draftPreview";
 import {
   collapsedThreadHasMention,
   collapsedThreadUnread,
-  hasMentionForRow,
 } from "./unread";
 import { shouldShowExternalBadge } from "./externalBadge";
 import {
@@ -191,11 +190,8 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
   });
   // @我 标签只跟随权威 mention 源（reminders + lastMessage 兜底），不再和未读数耦合，
   // 也不做 mute 过滤——免打扰群里的直接 @我 仍然点亮（保持既有行为）。折叠子区里的 @我
-  // 通过 threadHasMention 冒泡到父群行。规则集中在 hasMentionForRow，避免多点漂移。
-  const hasMention = hasMentionForRow(
-    conversationWrap.isMentionMe,
-    threadHasMention
-  );
+  // 通过 threadHasMention 冒泡到父群行。
+  const hasMention = conversationWrap.isMentionMe || threadHasMention;
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
@@ -808,10 +804,7 @@ export default class ConversationList extends Component<
       channelInfo,
       parentChannelInfo,
     });
-    const hasMention = hasMentionForRow(
-      conversationWrap.isMentionMe,
-      threadHasMention
-    );
+    const hasMention = conversationWrap.isMentionMe || threadHasMention;
     const visibleSimpleReminders = conversationWrap.simpleReminders?.filter(
       (r) => !r.done && r.reminderType !== ReminderType.ReminderTypeMentionMe
     );

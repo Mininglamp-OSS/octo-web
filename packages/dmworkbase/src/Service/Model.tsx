@@ -117,28 +117,52 @@ export class ConversationWrap {
     }
 
     public get isMentionMe(): boolean {
-        // 权威来源：server-side reminders（Plan X 下 ais-only 不建 reminder，
-        // 且 filterChannelLevelByPublisher 已排除 sender 自通知）
+        // WS-213 rev 3 结算规则（yujiawei review P1-1 / P1-2）：
+        //   1) 任一未 done 的 mention reminder → true（reminder 是权威 unresolved 信号）。
+        //   2) 全部 done → 用 messageSeq 判断 reminder 是否覆盖当前 lastMessage：
+        //      - 覆盖（reminder.messageSeq >= lastSeq）→ 用户已确认，false；
+        //      - 未覆盖（有更新的 mention 但 reminder 还没同步 / 或从未建 reminder 的
+        //        channel 如 Person）→ 走 lastMessage 兜底。
+        //   3) lastMessage 兜底命中时，用 unread > 0 作为本地"未确认"水位——
+        //      对于永远不走 reminder sync 的 Person 频道（reminders.ts:16-23），
+        //      这是唯一的清除信号，与旧行为兼容。
+        // 单次遍历同时收集"是否有 undone"与"最大 covered seq"，避免 P2-4 提到的
+        // 每 render 一次的中间数组分配。
         const reminders = this.conversation.reminders
-        const mentionReminders = reminders?.filter(
-            r => r.reminderType === ReminderType.ReminderTypeMentionMe
-        )
-        if (mentionReminders && mentionReminders.length > 0) {
-            // reminder 记录已存在 → 完全以其 done 状态为准；lastMessage 兜底不再介入，
-            // 否则读到底把 reminder done 之后 lastMessage 仍是 @我，marker 永远清不掉（WS-213 review）。
-            return mentionReminders.some(r => !r.done)
+        let hasUndoneMention = false
+        let maxCoveredSeq = 0
+        let sawMentionReminder = false
+        if (reminders) {
+            for (const r of reminders) {
+                if (r.reminderType !== ReminderType.ReminderTypeMentionMe) continue
+                sawMentionReminder = true
+                if (!r.done) hasUndoneMention = true
+                const seq = r.messageSeq ?? 0
+                if (seq > maxCoveredSeq) maxCoveredSeq = seq
+            }
         }
+        if (hasUndoneMention) return true
 
-        // 实时兜底：reminder 还没同步下来时，只信 per-uid mention（不信 SDK 的 broadcast 判断）。
-        // Plan X: mention.all=1 不再代表人类通知，SDK 的 isMentionMe 对 broadcast 不可靠。
-        // 走 this.lastMessage（Space-filtered），避免跨 Space 的 mention 污染 person 频道。
-        const mention = this.lastMessage?.content?.mention
+        // lastMessage 兜底：走 Space-filtered getter，避免跨 Space mention 污染 person 频道。
+        // Plan X 下 mention.all=1 不代表人类通知，只信 per-uid mention。
+        const lastMessage = this.lastMessage
+        const mention = lastMessage?.content?.mention
         const myUid = WKSDK.shared().config.uid
-        if (mention?.uids && Array.isArray(mention.uids) && myUid && mention.uids.includes(myUid)) {
-            return true
-        }
+        const lastMentionsMe = !!(
+            mention?.uids &&
+            Array.isArray(mention.uids) &&
+            myUid &&
+            mention.uids.includes(myUid)
+        )
+        if (!lastMentionsMe) return false
 
-        return false
+        // done 的 reminder 覆盖当前 lastMessage → 用户已确认，marker 应清。
+        const lastSeq = lastMessage?.messageSeq ?? 0
+        if (sawMentionReminder && lastSeq <= maxCoveredSeq) return false
+
+        // reminder 未覆盖（Person 无 reminder，或 group 新 mention reminder 还没同步）：
+        // unread=0 视作用户已越过此消息（对 Person 尤其重要，否则永远清不掉）。
+        return this.conversation.unread > 0
     }
 
     public set isMentionMe(isMentionMe: boolean | undefined) {

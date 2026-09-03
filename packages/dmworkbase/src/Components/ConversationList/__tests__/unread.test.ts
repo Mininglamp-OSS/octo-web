@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest"
 import {
   collapsedThreadHasMention,
   collapsedThreadUnread,
-  hasMentionForRow,
 } from "../unread"
 
 const thread = (
@@ -81,24 +80,5 @@ describe("collapsedThreadHasMention", () => {
         true
       )
     ).toBe(false)
-  })
-})
-
-describe("hasMentionForRow", () => {
-  it("returns true if the row itself is @我", () => {
-    expect(hasMentionForRow(true, false)).toBe(true)
-  })
-
-  it("returns true if a collapsed thread bubbles @我", () => {
-    expect(hasMentionForRow(false, true)).toBe(true)
-  })
-
-  it("returns false when neither source is active", () => {
-    expect(hasMentionForRow(false, false)).toBe(false)
-  })
-
-  it("does not couple to unread — bubbles mention with zero unread", () => {
-    // 回归 WS-213：读到底后 unread=0，@我 仍要显示。行为已完全解耦。
-    expect(hasMentionForRow(true, false)).toBe(true)
   })
 })

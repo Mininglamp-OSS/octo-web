@@ -256,15 +256,15 @@ describe("ConversationWrap", () => {
     expect(wrap.isMentionMe).toBe(false)
   })
 
-  it("retires the marker once every mention reminder is done, even if lastMessage still mentions me", () => {
-    // WS-213 review 反馈 P1-1：reminder 一旦存在，就以其 done 状态为唯一权威，
-    // lastMessage 兜底不再介入——否则读到底后 lastMessage 不变，marker 永远清不掉。
+  it("retires the marker once every mention reminder covers the lastMessage (WS-213 rev 3)", () => {
+    // 读到底后所有 mention reminder done + reminder.messageSeq 覆盖 lastMessage.messageSeq
+    // → 用户已确认 → false（reminder 权威语义）。
     const wrap = new ConversationWrap(conversation({
       unread: 0,
       reminders: [
-        { reminderType: 1, done: true },
+        { reminderType: 1, done: true, messageSeq: 42 },
       ],
-      lastMessage: message({ content: { mention: { uids: ["me"] } } }),
+      lastMessage: message({ messageSeq: 42, content: { mention: { uids: ["me"] } } }),
     }))
     expect(wrap.isMentionMe).toBe(false)
   })
@@ -272,17 +272,53 @@ describe("ConversationWrap", () => {
   it("keeps the marker on when at least one mention reminder is still undone", () => {
     const wrap = new ConversationWrap(conversation({
       reminders: [
-        { reminderType: 1, done: true },
-        { reminderType: 1, done: false },
+        { reminderType: 1, done: true, messageSeq: 10 },
+        { reminderType: 1, done: false, messageSeq: 20 },
       ],
-      lastMessage: message({ content: {} }),
+      lastMessage: message({ messageSeq: 20, content: {} }),
     }))
     expect(wrap.isMentionMe).toBe(true)
   })
 
   it("uses lastMessage fallback only when no mention reminder record exists (pre-sync window)", () => {
-    // reminder 还没同步下来时，前端凭 lastMessage.mention.uids 先亮 marker
+    // reminder 还没同步下来时，前端凭 lastMessage.mention.uids + unread>0 先亮 marker
     const wrap = new ConversationWrap(conversation({
+      unread: 3,
+      reminders: [],
+      lastMessage: message({ content: { mention: { uids: ["me"] } } }),
+    }))
+    expect(wrap.isMentionMe).toBe(true)
+  })
+
+  it("lights up when a newer mentioning lastMessage postdates every done reminder (P1-1)", () => {
+    // 老的 done reminder（seq=10）不应屏蔽 seq=500 的新 @我：
+    // ReminderManager.reminders 从不删除，新 mention 的 reminder 未同步前，走 fallback。
+    const wrap = new ConversationWrap(conversation({
+      unread: 1,
+      reminders: [
+        { reminderType: 1, done: true, messageSeq: 10 },
+      ],
+      lastMessage: message({ messageSeq: 500, content: { mention: { uids: ["me"] } } }),
+    }))
+    expect(wrap.isMentionMe).toBe(true)
+  })
+
+  it("clears the marker on a Person channel once unread reaches zero (P1-2)", () => {
+    // 1:1 频道不走 reminder sync（reminders.ts:16-23 只处理 group / community topic），
+    // 所以 fallback 必须能凭 unread=0 清除，否则 DM 里的 @我 永远显示。
+    const wrap = new ConversationWrap(conversation({
+      channel: { channelID: "peer", channelType: 1 },
+      unread: 0,
+      reminders: [],
+      lastMessage: message({ content: { mention: { uids: ["me"] } } }),
+    }))
+    expect(wrap.isMentionMe).toBe(false)
+  })
+
+  it("keeps the marker on a Person channel while unread is nonzero (P1-2 counterpart)", () => {
+    const wrap = new ConversationWrap(conversation({
+      channel: { channelID: "peer", channelType: 1 },
+      unread: 2,
       reminders: [],
       lastMessage: message({ content: { mention: { uids: ["me"] } } }),
     }))
