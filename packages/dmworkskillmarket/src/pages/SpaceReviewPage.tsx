@@ -1,6 +1,8 @@
-import React from "react";
-import { t, useI18n } from "@octo/base";
+import React, { useCallback, useEffect, useState } from "react";
+import { t, useI18n, WKApp } from "@octo/base";
 import ReviewQueue from "../components/ReviewQueue";
+import { getReviewPolicy, updateReviewPolicy } from "../api/skillApi";
+import { useSpaceRole } from "../hooks/useSpaceRole";
 
 /**
  * "组织发布管理" — the Space reviewer queue, mounted at /mcp-market/review as the
@@ -31,6 +33,41 @@ import ReviewQueue from "../components/ReviewQueue";
  */
 export default function SpaceReviewPage() {
   useI18n();
+  const { role } = useSpaceRole();
+  const isOwner = role === 1;
+  const [enabled, setEnabled] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadPolicy = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    getReviewPolicy()
+      .then((policy) => setEnabled(policy.isAutoApproveEnabled))
+      .catch((err) => setError(err instanceof Error ? err.message : t("skillMarket.review.policyLoadFailed")))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    loadPolicy();
+    WKApp.mittBus.on("space-changed", loadPolicy);
+    return () => WKApp.mittBus.off("space-changed", loadPolicy);
+  }, [loadPolicy]);
+
+  async function handlePolicyChange(next: boolean) {
+    if (!next && !window.confirm(t("skillMarket.review.policyDisableConfirm"))) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const policy = await updateReviewPolicy(next);
+      setEnabled(policy.isAutoApproveEnabled);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("skillMarket.review.policySaveFailed"));
+    } finally {
+      setSaving(false);
+    }
+  }
   return (
     <div className="skill-market-page skill-market-page--review">
       <header className="skill-market-topbar">
@@ -44,6 +81,24 @@ export default function SpaceReviewPage() {
         </div>
       </header>
       <main className="skill-market-content">
+        {isOwner && (
+          <section className="skill-market-review-policy" aria-label={t("skillMarket.review.policyTitle")}>
+            <div>
+              <strong>{t("skillMarket.review.policyTitle")}</strong>
+              <p>{t("skillMarket.review.policyDescription")}</p>
+              {error && <p className="skill-market-review-policy__error">{error}</p>}
+            </div>
+            <label className="skill-market-review-policy__toggle">
+              <input
+                type="checkbox"
+                checked={enabled}
+                disabled={loading || saving}
+                onChange={(event) => void handlePolicyChange(event.target.checked)}
+              />
+              <span>{enabled ? t("skillMarket.review.policyEnabled") : t("skillMarket.review.policyDisabled")}</span>
+            </label>
+          </section>
+        )}
         <ReviewQueue mode="space" />
       </main>
     </div>

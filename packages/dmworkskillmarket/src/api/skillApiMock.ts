@@ -26,9 +26,20 @@ import {
   type DelistPluginInput,
   type PluginListingResult,
   type PublishPluginInput,
+  type PluginReviewPolicy,
 } from "./skillApiReal";
 
 let skills = createInitialSkills();
+let autoApproveEnabled = true;
+
+export function getReviewPolicy(): Promise<PluginReviewPolicy> {
+  return withDelay({ isAutoApproveEnabled: autoApproveEnabled });
+}
+
+export function updateReviewPolicy(enabled: boolean): Promise<PluginReviewPolicy> {
+  autoApproveEnabled = enabled;
+  return withDelay({ isAutoApproveEnabled: enabled, updatedAt: new Date().toISOString() });
+}
 
 function withDelay<T>(value: T): Promise<T> {
   return new Promise((resolve) => {
@@ -295,7 +306,7 @@ export function createReviewRequest(
     pluginIconUrl: skill.iconUrl || undefined,
     spaceId: CURRENT_SPACE_ID,
     targetScope: "space",
-    status: "pending",
+    status: autoApproveEnabled ? "approved" : "pending",
     kind: isFirst ? "first" : "upgrade",
     version: input.version,
     currentVersion: isFirst ? undefined : skill.version,
@@ -303,14 +314,22 @@ export function createReviewRequest(
     readmeContent: readmeFromReviewInput(input) ?? skill.readmeContent,
     applicantId: CURRENT_USER_ID,
     applicantName: CURRENT_USER_NAME,
-    decisionSource: "web",
+    decisionSource: autoApproveEnabled ? "policy" : "web",
     submittedAt: new Date().toISOString(),
+    ...(autoApproveEnabled
+      ? { reviewerId: CURRENT_USER_ID, reviewerName: CURRENT_USER_NAME, reviewedAt: new Date().toISOString() }
+      : {}),
   };
   reviewRequests = [request, ...reviewRequests];
   reviewSnapshots.set(request.id, {
     readmeContent: request.readmeContent,
     version: request.version,
   });
+  if (autoApproveEnabled) {
+    skills = skills.map((item) => item.id === skill.id
+      ? { ...item, visibility: "space", listingState: "published" as PluginListingState, version: input.version }
+      : item);
+  }
   refreshListing(request.pluginId);
   return withDelay(withLiveListingState(request));
 }
@@ -522,7 +541,7 @@ export function publishPlugin(
     pluginIconUrl: skill.iconUrl || undefined,
     spaceId: CURRENT_SPACE_ID,
     targetScope: "space",
-    status: "pending",
+    status: autoApproveEnabled ? "approved" : "pending",
     // A publish freezes the row as-is, so it is a first listing whenever the row
     // is not already on the shelf.
     kind: (skill.listingState ?? "draft") === "published" ? "upgrade" : "first",
@@ -531,14 +550,24 @@ export function publishPlugin(
     readmeContent: skill.readmeContent,
     applicantId: CURRENT_USER_ID,
     applicantName: CURRENT_USER_NAME,
-    decisionSource: "web",
+    decisionSource: autoApproveEnabled ? "policy" : "web",
     submittedAt: new Date().toISOString(),
+    ...(autoApproveEnabled
+      ? { reviewerId: CURRENT_USER_ID, reviewerName: CURRENT_USER_NAME, reviewedAt: new Date().toISOString() }
+      : {}),
   };
   reviewRequests = [request, ...reviewRequests];
   reviewSnapshots.set(request.id, {
     readmeContent: request.readmeContent,
     version: request.version,
   });
+  if (autoApproveEnabled) {
+    skills = skills.map((item) => item.id === skill.id
+      ? { ...item, listingState: "published" as PluginListingState, version: request.version }
+      : item);
+    refreshListing(skill.id);
+    return withDelay(listingResult(skill.id));
+  }
   refreshListing(skill.id);
   // The review id IS the outcome here: it tells the caller this publish opened
   // a request instead of listing the plugin.

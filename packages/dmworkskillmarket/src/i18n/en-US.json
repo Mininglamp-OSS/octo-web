@@ -197,6 +197,13 @@
   },
   "review": {
     "orgTab": "Publication management",
+    "policyTitle": "Automatic review",
+    "policyDescription": "When enabled, new publications and updates are approved automatically. When disabled, org admins review them manually. Only the org owner can change this setting.",
+    "policyEnabled": "Enabled",
+    "policyDisabled": "Disabled",
+    "policyDisableConfirm": "New publication requests will wait for an org admin to review. Disable automatic review?",
+    "policyLoadFailed": "Failed to load review settings",
+    "policySaveFailed": "Failed to save review settings",
     "queuePending": "Pending",
     "queueHandled": "Processed",
     "emptySpacePending": "No pending requests",

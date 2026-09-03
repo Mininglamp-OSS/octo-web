@@ -12,6 +12,7 @@ export type {
   RequestOptions,
   ReviewListParams,
   ReviewRelationInput,
+  PluginReviewPolicy,
 } from "./skillApiReal";
 // Error readers, not endpoints: they only inspect a rejected promise, so there
 // is nothing for the mock module to substitute — the mock throws the same
@@ -67,6 +68,8 @@ export const cancelReview = withReviewInvalidation(api.cancelReview);
 // the caller, decides), and 下架 closes out an approved one.
 export const publishPlugin = withReviewInvalidation(api.publishPlugin);
 export const delistPlugin = withReviewInvalidation(api.delistPlugin);
+export const getReviewPolicy = api.getReviewPolicy;
+export const updateReviewPolicy = api.updateReviewPolicy;
 export const initUpload = realApi.initUpload;
 export const uploadFile = realApi.uploadFile;
 export const uploadIcon = realApi.uploadIcon;

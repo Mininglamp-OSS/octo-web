@@ -22,6 +22,8 @@ import {
   approveReview,
   rejectReview,
   cancelReview,
+  getReviewPolicy,
+  updateReviewPolicy,
 } from "./skillApiReal";
 
 // Mock global fetch
@@ -75,6 +77,24 @@ function pluginSkillWire(overrides: Record<string, unknown> = {}) {
 }
 
 describe("skillApiReal", () => {
+  it("reads and updates the authenticated Space review policy", async () => {
+    mockFetch
+      .mockReturnValueOnce(jsonResponse({ is_auto_approve_enabled: true }))
+      .mockReturnValueOnce(jsonResponse({ is_auto_approve_enabled: false, updated_at: "2026-09-03T00:00:00Z" }));
+
+    await expect(getReviewPolicy()).resolves.toEqual({ isAutoApproveEnabled: true });
+    await expect(updateReviewPolicy(false)).resolves.toEqual({
+      isAutoApproveEnabled: false,
+      updatedAt: "2026-09-03T00:00:00Z",
+    });
+
+    expect(mockFetch.mock.calls[0][0]).toBe("/market/api/v1/plugin_review_policies");
+    expect(mockFetch.mock.calls[1][1]).toEqual(expect.objectContaining({
+      method: "PATCH",
+      body: JSON.stringify({ is_auto_approve_enabled: false }),
+    }));
+  });
+
   it("getCategories maps the unified category wire to camelCase", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse([

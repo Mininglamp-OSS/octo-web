@@ -197,6 +197,13 @@
   },
   "review": {
     "orgTab": "组织发布管理",
+    "policyTitle": "自动审核",
+    "policyDescription": "开启后，本组织的新发布和版本更新会自动通过；关闭后由组织管理员人工审核。仅组织所有者可修改。",
+    "policyEnabled": "已开启",
+    "policyDisabled": "已关闭",
+    "policyDisableConfirm": "关闭后，新的发布申请将等待组织管理员审核。确定关闭吗？",
+    "policyLoadFailed": "审核设置加载失败",
+    "policySaveFailed": "审核设置保存失败",
     "queuePending": "待审核",
     "queueHandled": "已处理",
     "emptySpacePending": "暂无待审核申请",

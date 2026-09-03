@@ -1036,7 +1036,9 @@ export interface CreateReviewRequestInput {
   relations?: ReviewRelationInput[];
 }
 
-/** Submit a plugin for Space review. `kind` (first vs upgrade) is still derived
+/** Submit a plugin for Space review. With the default Space policy the returned
+ *  request is already approved; with manual review enabled it remains pending.
+ *  `kind` (first vs upgrade) is still derived
  *  server-side from the plugin's current visibility; the frozen snapshot comes
  *  from the submitted content when present and from the plugin row otherwise.
  *  409 CONFLICT when a request is already pending or the version label is
@@ -1307,4 +1309,32 @@ export function delistPlugin(
     method: "POST",
     body: JSON.stringify(body),
   }).then(mapListingResult);
+}
+
+interface PluginReviewPolicyWire {
+  is_auto_approve_enabled: boolean;
+  updated_at?: string;
+}
+
+export interface PluginReviewPolicy {
+  isAutoApproveEnabled: boolean;
+  updatedAt?: string;
+}
+
+function mapReviewPolicy(raw: PluginReviewPolicyWire): PluginReviewPolicy {
+  return {
+    isAutoApproveEnabled: raw.is_auto_approve_enabled,
+    ...(raw.updated_at ? { updatedAt: raw.updated_at } : {}),
+  };
+}
+
+export function getReviewPolicy(): Promise<PluginReviewPolicy> {
+  return request<PluginReviewPolicyWire>("/plugin_review_policies").then(mapReviewPolicy);
+}
+
+export function updateReviewPolicy(enabled: boolean): Promise<PluginReviewPolicy> {
+  return request<PluginReviewPolicyWire>("/plugin_review_policies", {
+    method: "PATCH",
+    body: JSON.stringify({ is_auto_approve_enabled: enabled }),
+  }).then(mapReviewPolicy);
 }

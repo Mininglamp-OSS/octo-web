@@ -1,6 +1,6 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import SpaceReviewPage from "../SpaceReviewPage";
 
 // ReviewQueue owns the queue's own data reads, sub-tabs and empty/error states.
@@ -12,14 +12,39 @@ vi.mock("../../components/ReviewQueue", () => ({
   ),
 }));
 
+const { updatePolicy } = vi.hoisted(() => ({ updatePolicy: vi.fn() }));
+vi.mock("../../api/skillApi", () => ({
+  getReviewPolicy: vi.fn(() => Promise.resolve({ isAutoApproveEnabled: true })),
+  updateReviewPolicy: (enabled: boolean) => updatePolicy(enabled),
+}));
+vi.mock("../../hooks/useSpaceRole", () => ({
+  useSpaceRole: () => ({ role: 1, isReviewer: true, loading: false }),
+}));
+
 const pageTitle = /组织发布管理|skillMarket\.review\.orgTab/;
 
 describe("SpaceReviewPage", () => {
+  beforeEach(() => {
+    updatePolicy.mockReset();
+    updatePolicy.mockResolvedValue({ isAutoApproveEnabled: false });
+  });
   it("renders the page title and mounts the Space reviewer queue", () => {
     render(<SpaceReviewPage />);
 
     expect(screen.getByRole("heading", { name: pageTitle })).toBeInTheDocument();
     expect(screen.getByTestId("review-queue")).toHaveAttribute("data-mode", "space");
+  });
+
+  it("shows the default-enabled policy to owners and confirms before disabling", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<SpaceReviewPage />);
+
+    const toggle = await screen.findByRole("checkbox");
+    expect(toggle).toBeChecked();
+    fireEvent.click(toggle);
+
+    await waitFor(() => expect(updatePolicy).toHaveBeenCalledWith(false));
+    expect(window.confirm).toHaveBeenCalled();
   });
 
   it("delegates every empty/error/loading state to the queue", () => {

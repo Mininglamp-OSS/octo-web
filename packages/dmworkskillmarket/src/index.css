@@ -3296,6 +3296,23 @@
   gap: var(--wk-sp-3);
 }
 
+.skill-market-review-policy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 20px;
+  padding: 18px 20px;
+  border: 1px solid var(--wk-border-color, #e5e7eb);
+  border-radius: 12px;
+  background: var(--wk-bg-color, #fff);
+}
+
+.skill-market-review-policy p { margin: 6px 0 0; color: #6b7280; }
+.skill-market-review-policy__error { color: #dc2626 !important; }
+.skill-market-review-policy__toggle { display: flex; align-items: center; gap: 8px; white-space: nowrap; cursor: pointer; }
+.skill-market-review-policy__toggle input { width: 18px; height: 18px; accent-color: #2563eb; }
+
 .skill-market-review-queue__error {
   margin-bottom: var(--wk-sp-3);
 }

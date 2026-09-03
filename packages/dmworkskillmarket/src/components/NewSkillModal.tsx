@@ -502,7 +502,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
       setSaving(true);
       setError(null);
       try {
-        await createReviewRequest({
+        const review = await createReviewRequest({
           pluginId: reviewSkill.id,
           version: version.trim(),
           changelog: changelog.trim(),
@@ -511,7 +511,11 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
           ...(parseTaskId ? { parseTaskId } : {}),
         });
         reset();
-        onCreated(t("skillMarket.review.submittedToast"));
+        onCreated(
+          review.status === "approved"
+            ? t("skillMarket.plugin.publishedToast")
+            : t("skillMarket.review.submittedToast")
+        );
         onClose();
       } catch (err) {
         setError(err instanceof Error ? err.message : t("skillMarket.review.submitFailed"));
