@@ -7,21 +7,39 @@ type HighlightRange = {
 };
 
 /**
- * Decode the five XML entities emitted by OpenSearch's `encoder=html`
- * highlighter into their literal characters. Pure string transform — no DOM
- * parsing, no template evaluation — so a decoded segment is only ever used as
- * a React text node downstream (never as HTML). The set is closed: OpenSearch's
- * HTML encoder emits exactly `& < > " '` escapes and preserves the highlighter
- * pre/post tags (`<mark>` / `</mark>`) which we extract with a regex above.
+ * Decode the HTML entities emitted by the server-side highlight escape
+ * (`escapeHighlightFragment` in octo-server, applied only to
+ * `FileHit.NameHighlight` / `FileHit.ContentSnippet`) into their literal
+ * characters. Pure string transform — no DOM parsing, no template evaluation —
+ * so a decoded segment is only ever used as a React text node downstream
+ * (never as HTML).
+ *
+ * The set is closed and follows Apache Lucene's `SimpleHTMLEncoder`, which is
+ * what `encoder=html` resolves to server-side:
+ *   `"` → `&quot;`, `&` → `&amp;`, `<` → `&lt;`, `>` → `&gt;`,
+ *   `'` → `&#x27;`, `/` → `&#x2F;`.
+ * The literal `<mark>` / `</mark>` tags configured on the OpenSearch highlighter
+ * are preserved through the server-side escape and extracted by regex here.
+ *
+ * `&amp;` must be replaced LAST so the pass is single-decode: an input of
+ * `&amp;lt;` decodes to `&lt;` (the original characters the user typed), not
+ * `<` (which would happen if `&amp;` ran first and then `&lt;` matched).
+ *
+ * IMPORTANT: this only decodes fields the server actually escaped. Do NOT run
+ * it over shared snippet paths (e.g. `MessageHit.Snippet` from `/_search`,
+ * `/_search_all`, `_search_global_messages`, `_search_global_groups` top_hits)
+ * — those are raw on the wire and decoding them corrupts intentionally-typed
+ * ampersands, angle-brackets, etc. in message bodies. Decode at the mapper
+ * boundary for the specific fields whose contract says "server-escaped".
  */
-function decodeHTMLEntities(input: string): string {
+export function decodeServerEscapedHighlight(input: string): string {
   if (!input) return input;
   return input
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#x27;/g, "'")
-    .replace(/&#39;/g, "'")
+    .replace(/&#x2F;/g, "/")
     .replace(/&amp;/g, "&");
 }
 
@@ -48,18 +66,18 @@ export function parseChannelSearchSnippetHighlights(text = "", keyword = "") {
 
   while ((match = markPattern.exec(text))) {
     if (match.index > cursor) {
-      // Server sets OpenSearch highlighter Encoder("html") to escape all
-      // uploader-controlled source (file names, Tika-extracted body, message
-      // text) — only <mark>/</mark> stay live. Decoding here yields the
-      // original characters as text (rendered via React text nodes downstream,
-      // never dangerouslySetInnerHTML), so `&lt;script&gt;` appears literally
-      // as "<script>" without executing.
-      const plainText = decodeHTMLEntities(text.slice(cursor, match.index));
+      // Encoding-agnostic: caller decodes at the mapper boundary for fields
+      // whose contract says "server-escaped" (currently NameHighlight and
+      // ContentSnippet on FileHit). Pre-existing shared paths (MessageHit
+      // .Snippet, richText, mergeForward) stay raw and are passed through
+      // verbatim, so a genuine `&amp;` a user typed in a message body is
+      // preserved instead of silently rewritten to `&`.
+      const plainText = text.slice(cursor, match.index);
       parts.push(plainText);
       plainLength += plainText.length;
     }
 
-    const markedText = decodeHTMLEntities(match[1]);
+    const markedText = match[1];
     const start = plainLength;
     parts.push(markedText);
     plainLength += markedText.length;
@@ -69,7 +87,7 @@ export function parseChannelSearchSnippetHighlights(text = "", keyword = "") {
 
   if (ranges.length > 0) {
     if (cursor < text.length) {
-      parts.push(decodeHTMLEntities(text.slice(cursor)));
+      parts.push(text.slice(cursor));
     }
     return {
       text: parts.join(""),

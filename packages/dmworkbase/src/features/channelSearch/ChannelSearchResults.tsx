@@ -505,7 +505,12 @@ const FileInlineResult = React.memo(function FileInlineResult({
   // its established extension-stripped inline form + client-side keyword
   // fallback.
   const nameHighlight = item.file?.nameHighlight;
-  const nameLabelText = nameHighlight ?? inlineFileName;
+  // Prefer server-side whole-field highlight when present; `||` (not `??`)
+  // matches the File-tab convention at FileResultItem (line ~646) and the
+  // documented contract at SearchTypes.ts:56-58 which treats an empty string
+  // as "absent" (server may either omit the field or return empty; both fall
+  // through to the plain client-side name).
+  const nameLabelText = nameHighlight || inlineFileName;
   // The below-card body-content match block: rendered when the server
   // returned a highlighted body fragment for this file message. Sibling to
   // the file card, never modifies it; a name-only hit renders no extra DOM.

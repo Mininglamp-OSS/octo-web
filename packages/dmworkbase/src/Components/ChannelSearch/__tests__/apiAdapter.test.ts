@@ -334,6 +334,59 @@ describe("channel search API adapter response mapping", () => {
       contentSnippet: "...annual <mark>revenue</mark> grew...",
     });
 
+    // mapFileHit decodes server-escaped highlight entities at the boundary:
+    // the server-side escapeHighlightFragment (octo-server) HTML-escapes
+    // uploader-controlled name/body content and leaves only <mark>/</mark>
+    // live. The mapper decodes here so downstream renderers work in original
+    // characters. Pins the six-entity Lucene SimpleHTMLEncoder table
+    // including &#x2F; (slashes in URLs/dates/paths).
+    expect(
+      mapFileHit(
+        {
+          message_id: "f3",
+          message_seq: 22,
+          file_name: "<img src=x onerror=alert(1)>.pdf",
+          name_highlight: "&lt;img src=x onerror=alert(1)&gt;.<mark>pdf</mark>",
+          content_snippet:
+            "quarterly &lt;script&gt;alert(1)&lt;&#x2F;script&gt; see https:&#x2F;&#x2F;acme.co&#x2F;q3 <mark>report</mark>",
+          sender_id: "u9",
+          sent_at: "2026-01-02T00:00:00Z",
+        },
+        query
+      ).file
+    ).toMatchObject({
+      // Raw file_name unchanged (long-shipped contract; clients that render
+      // this field must sanitise themselves — unchanged by this PR).
+      name: "<img src=x onerror=alert(1)>.pdf",
+      // Escaped entities decoded, <mark> preserved. Downstream parser will
+      // extract <mark> and render every other segment as a React text node.
+      nameHighlight: "<img src=x onerror=alert(1)>.<mark>pdf</mark>",
+      // Includes the &#x2F; case that a five-entity table would miss.
+      contentSnippet:
+        "quarterly <script>alert(1)</script> see https://acme.co/q3 <mark>report</mark>",
+    });
+
+    // Empty / absent highlight fields stay undefined (SearchTypes.ts contract:
+    // "absent on browse or body-only hits"), so the chat-tab || fallback lands
+    // on the plain client-side name instead of a blank card.
+    expect(
+      mapFileHit(
+        {
+          message_id: "f4",
+          message_seq: 23,
+          file_name: "budget.pdf",
+          name_highlight: "",
+          sender_id: "u9",
+          sent_at: "2026-01-02T00:00:00Z",
+        },
+        query
+      ).file
+    ).toMatchObject({
+      name: "budget.pdf",
+      nameHighlight: undefined,
+      contentSnippet: undefined,
+    });
+
     expect(
       mapMediaHit(
         {
