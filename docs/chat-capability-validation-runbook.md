@@ -226,7 +226,7 @@ cat apps/web/build-client-communication/renderer-manifest.json
   "schemaVersion": 1,
   "name": "octo-web-client-communication",
   "version": "1.0.12",
-  "commit": "65a6e2e0",
+  "commit": "a2b05d41",
   "entry": "index.html",
   "hostBridgeMajor": 1,
   "e2eMock": false
@@ -299,7 +299,7 @@ pnpm prepare:communication-artifact
 pnpm test:e2e -- tests/e2e/communication.spec.ts
 ```
 
-通过标准：11 tests passed。
+通过标准：12 tests passed。
 
 该套 E2E 必须证明：
 
@@ -311,6 +311,9 @@ pnpm test:e2e -- tests/e2e/communication.spec.ts
 - 可以选择附件。
 - 内部跳转会同步 Client 侧栏状态。
 - 首次加载目标会话不会丢失。
+- Client 可传入 `channelId/channelType`，以 `conversation` presentation 打开现有频道。
+- 独立会话模式隐藏左侧列表并让聊天窗口填满通信区域。
+- 切回消息入口后恢复 `workspace` presentation，不重建 WebContentsView。
 - 首载期间 Space 更新不会被旧 ready 状态覆盖。
 - 隐藏后迟到导航不会抢回页面。
 - renderer 崩溃按限制自动恢复。
@@ -368,14 +371,17 @@ pnpm dev
 2. 点击“消息”，应在 Client 中央区域显示 octo-web 会话列表和聊天窗口。
 3. 点击“通讯录”，应复用原 View，不闪回登录页，不重新初始化整套应用。
 4. 点击一个联系人并选择“发送消息”，Client 侧栏应自动切换到“消息”。
-5. 发送文本、图片或文件，对端能够收到，发送状态正常。
-6. 从对端发送消息，Client 左侧消息入口显示未读数。
-7. 在消息和通讯录之间反复切换，不应重复连接或重复收到消息。
-8. 切换 Space，通信内容应切换到新 Space。
-9. 最小化、隐藏和恢复 Client，通信内容仍可继续使用。
-10. 打开 Client 弹窗遮挡通信区域时，原生 View 不应盖住弹窗。
-11. 更新同账号 token 后，通信 renderer 应自动重载并继续工作。
-12. 退出登录后，旧账号聊天内容不应继续显示。
+5. 点击“独立会话”，应默认复用刚才选择的真实频道；也可输入已有的 `channelId` 和 `channelType` 后点击“加载”。
+6. 独立会话只显示聊天窗口，不显示左侧会话列表；历史消息和编辑器应正常可用。
+7. 切回“消息”，左侧会话列表应恢复，且不应出现第二条 IM 连接。
+8. 发送文本、图片或文件，对端能够收到，发送状态正常。
+9. 从对端发送消息，Client 左侧消息入口显示未读数。
+10. 在消息和通讯录之间反复切换，不应重复连接或重复收到消息。
+11. 切换 Space，通信内容应切换到新 Space。
+12. 最小化、隐藏和恢复 Client，通信内容仍可继续使用。
+13. 打开 Client 弹窗遮挡通信区域时，原生 View 不应盖住弹窗。
+14. 更新同账号 token 后，通信 renderer 应自动重载并继续工作。
+15. 退出登录后，旧账号聊天内容不应继续显示。
 
 ### 6.5 开发者工具辅助检查
 
@@ -432,7 +438,7 @@ artifact version / commit：
 [ ] production artifact e2eMock=false
 [ ] Client typecheck passed
 [ ] Client unit 49 passed
-[ ] Client communication E2E 11 passed
+[ ] Client communication E2E 12 passed
 [ ] Client build passed
 [ ] octo-web 真实账号冒烟 passed
 [ ] Client 真实账号冒烟 passed

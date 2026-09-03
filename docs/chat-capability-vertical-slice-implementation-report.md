@@ -41,8 +41,9 @@ octo-buddy-client WebContentsView 宿主
 | `62eaee2b` | 为嵌入式通信宿主补充布局与运行能力 |
 | `1ce396c8` | 新增 Client 通信单入口和独立构建产物 |
 | `65a6e2e0` | 加固首次导航、连接和嵌入生命周期，并修复会话视口高度链 |
+| `a2b05d41` | 增加可由宿主传入频道的独立会话 presentation |
 
-相对 `upstream/main` 共修改 48 个文件，新增约 5273 行，删除约 348 行。
+相对 `upstream/main` 共修改 51 个文件，新增约 6309 行，删除约 348 行。
 
 ### 2.2 octo-buddy-client
 
@@ -52,8 +53,9 @@ octo-buddy-client WebContentsView 宿主
 | `8261073` | 将校验后的通信 renderer 加入打包流程 |
 | `5f4bfb0` | 修复跨平台 after-pack 资源路径 |
 | `c334476` | 加固 renderer 边界、生命周期、下载和版本锁定 |
+| `e64c9f6` | 增加独立会话模拟入口和 presentation/target 宿主链路 |
 
-相对 `origin/main` 共修改 30 个文件，新增约 2343 行，删除约 27 行。
+相对 `origin/main` 共修改 31 个文件，新增约 2702 行，删除约 27 行。
 
 ## 3. 已实现能力
 
@@ -176,7 +178,10 @@ octo-buddy-client WebContentsView 宿主
 - 在消息和通讯录之间切换，不销毁通信运行时。
 - 通讯录卡片继续调用 octo-web 的 `WKApp.endpoints.showConversation()` 发起会话。
 - 支持宿主直接打开指定 channel、定位消息或打开会话内搜索。
+- 支持 `workspace` 和 `conversation` 两种 presentation：前者保留会话列表，后者只渲染指定聊天窗口。
+- `conversation` presentation 接收宿主传入的 `channelId/channelType`，但继续使用现有登录态、Space、IM 连接、历史消息和发送能力。
 - 将内部页面跳转回报给 Client，使 Client 左侧入口保持同步。
+- 将当前打开的真实频道回报给 Client，便于宿主把用户刚选择的会话再次嵌入独立窗口。
 - 将会话未读总数同步给 Client。
 - 支持 `spaceChanged`、`appearanceChanged`、`suspend`、`resume` 和 `sessionRevoked`。
 - command listener 和左右路由都准备完成后才上报 ready，避免首次目标会话丢失。
@@ -228,6 +233,7 @@ manifest 包含：
 已经实现：
 
 - Client 左侧增加“消息”和“通讯录”入口。
+- Client 左侧增加“独立会话”模拟入口，可输入 `channelId` 和 `channelType`，也可复用最近选择的真实频道。
 - 消息入口显示未读数，超过 99 显示 `99+`。
 - Client 自己保留侧边栏和整体页面布局。
 - 中央内容区域提供 `CommunicationViewSlot`。
@@ -302,7 +308,7 @@ Client 代码位置：
   "schemaVersion": 1,
   "name": "octo-web-client-communication",
   "version": "1.0.12",
-  "commit": "65a6e2e0",
+  "commit": "a2b05d41",
   "hostBridgeMajor": 1
 }
 ```
@@ -339,16 +345,20 @@ Client 代码位置：
   -> Client 左侧自动选中“消息”
 ```
 
-### 4.3 Client 主动打开指定会话
+### 4.3 Client 主动打开独立会话
 
 ```text
-Client communication:show({ page: chat, target })
+Client communication:show({ page: chat, presentation: conversation, target })
   -> ready 前进入 pending command 队列
   -> 左右路由和 command listener 全部准备完成
   -> 执行 navigate
   -> openTarget(target)
   -> WKApp.endpoints.showConversation(channel, options)
+  -> 隐藏会话列表和 splitter
+  -> 现有 ConversationWindow 填满通信区域
 ```
+
+切回“消息”时，Client 发送 `presentation: workspace`，同一个 WebContentsView 恢复会话列表加聊天窗口布局，不重建 IM 运行时。
 
 ### 4.4 Space 与登录生命周期
 
@@ -379,14 +389,17 @@ Client Space 改变
 | production communication build | 通过 |
 | Client typecheck | 通过 |
 | Client unit tests | 49 passed |
-| Communication Electron E2E | 11 passed |
-| production manifest | `1.0.12 / 65a6e2e0 / e2eMock:false` |
+| Communication Electron E2E | 12 passed |
+| production manifest | `1.0.12 / a2b05d41 / e2eMock:false` |
 
 E2E 覆盖：
 
 - 消息与通讯录复用一个 WebContentsView。
 - 首次加载并发导航。
 - 首次加载直接打开指定联系人会话。
+- Client 传入 `channelId/channelType` 后以独立会话模式打开现有频道。
+- 独立会话隐藏左侧列表、填满聊天区域并保留消息编辑器。
+- 从独立会话切回消息后恢复 workspace 布局。
 - 首载期间 Space 发生变化。
 - 隐藏状态下忽略迟到导航。
 - 未读数同步。
@@ -401,7 +414,7 @@ E2E 覆盖：
 
 ```bash
 cd /Users/will/Project/octo/octo-web-chat-capability-vertical-slice
-VITE_API_URL=<实际 API Origin> pnpm --filter octo-web build:client-communication
+VITE_API_URL=https://im.deepminer.com.cn pnpm --filter @octo/web build:client-communication
 ```
 
 ### 6.2 将产物准备到 Client
@@ -448,7 +461,7 @@ octo-web 内部使用包级能力，Client 使用由同一能力链构建出的 
 1. WKSDK connect/disconnect 尚未进入 `chat-core` adapter。
 2. 消息模型尚未转换为完全 SDK 无关的数据结构。
 3. 发送消息仍通过旧 `ConversationContext` 桥接。
-4. `ConversationWindow` 尚未独立构建为一个最小 artifact；当前 artifact 是消息加通讯录工作台。
+4. 当前仍是同一个 communication artifact 通过 presentation 切换工作台和独立会话，并非单独发布的 ConversationWindow artifact。
 5. 主题暂时由 Client 固定传入浅色和中文，尚未连接 Client 的真实主题/语言设置。
 6. host 和 renderer 的 Bridge 类型目前在两个仓库各维护一份，后续应生成或发布共享 contract 包。
 
