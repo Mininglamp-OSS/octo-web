@@ -130,15 +130,22 @@ export default class ChatSelectorModal extends Component<Props, State> {
             (this.props.memberCandidates !== prevProps.memberCandidates ||
                 this.props.memberRoles !== prevProps.memberRoles ||
                 this.props.memberLoading !== prevProps.memberLoading ||
-                this.props.memberLoadError !== prevProps.memberLoadError ||
-                this.props.selectedMembers !== prevProps.selectedMembers)
+                this.props.memberLoadError !== prevProps.memberLoadError)
         ) {
+            // NOTE: selectedMembers is intentionally NOT in this sync list
+            // (PR #1593 P1-1, reviews 5087124100 / 5087740714). The parent
+            // re-renders per SSE event and per 3s workflow poll and passes
+            // scopeParticipantsToCandidates(...) inline — a fresh array
+            // reference with the same content every time. Re-seeding
+            // localSelectedMembers on that reference change silently reverted
+            // unconfirmed ticks; the committed scope flows back in on open
+            // (visible-transition branch above), which is the only reset the
+            // picker needs.
             this.setState({
                 candidates: this.memberCandidatesToChats(this.props.memberCandidates),
                 memberRoles: this.props.memberRoles ?? new Map<string, number>(),
                 loading: this.props.memberLoading ?? false,
                 loadError: this.props.memberLoadError ?? false,
-                localSelectedMembers: [...(this.props.selectedMembers ?? [])],
             });
         }
     }
