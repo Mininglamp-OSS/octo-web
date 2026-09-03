@@ -119,13 +119,20 @@ export class ConversationWrap {
     public get isMentionMe(): boolean {
         // 权威来源：server-side reminders（Plan X 下 ais-only 不建 reminder，
         // 且 filterChannelLevelByPublisher 已排除 sender 自通知）
-        const hasReminderMention = (this.conversation.reminders?.length ?? 0) > 0
-            && this.conversation.reminders!.some(r => r.reminderType === ReminderType.ReminderTypeMentionMe && !r.done)
-        if (hasReminderMention) return true
+        const reminders = this.conversation.reminders
+        const mentionReminders = reminders?.filter(
+            r => r.reminderType === ReminderType.ReminderTypeMentionMe
+        )
+        if (mentionReminders && mentionReminders.length > 0) {
+            // reminder 记录已存在 → 完全以其 done 状态为准；lastMessage 兜底不再介入，
+            // 否则读到底把 reminder done 之后 lastMessage 仍是 @我，marker 永远清不掉（WS-213 review）。
+            return mentionReminders.some(r => !r.done)
+        }
 
-        // 实时兜底：只信 per-uid mention（不信 SDK 的 broadcast 判断）
-        // Plan X: mention.all=1 不再代表人类通知，SDK 的 isMentionMe 对 broadcast 不可靠
-        const mention = this.conversation.lastMessage?.content?.mention
+        // 实时兜底：reminder 还没同步下来时，只信 per-uid mention（不信 SDK 的 broadcast 判断）。
+        // Plan X: mention.all=1 不再代表人类通知，SDK 的 isMentionMe 对 broadcast 不可靠。
+        // 走 this.lastMessage（Space-filtered），避免跨 Space 的 mention 污染 person 频道。
+        const mention = this.lastMessage?.content?.mention
         const myUid = WKSDK.shared().config.uid
         if (mention?.uids && Array.isArray(mention.uids) && myUid && mention.uids.includes(myUid)) {
             return true

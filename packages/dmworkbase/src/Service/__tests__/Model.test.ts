@@ -256,6 +256,39 @@ describe("ConversationWrap", () => {
     expect(wrap.isMentionMe).toBe(false)
   })
 
+  it("retires the marker once every mention reminder is done, even if lastMessage still mentions me", () => {
+    // WS-213 review 反馈 P1-1：reminder 一旦存在，就以其 done 状态为唯一权威，
+    // lastMessage 兜底不再介入——否则读到底后 lastMessage 不变，marker 永远清不掉。
+    const wrap = new ConversationWrap(conversation({
+      unread: 0,
+      reminders: [
+        { reminderType: 1, done: true },
+      ],
+      lastMessage: message({ content: { mention: { uids: ["me"] } } }),
+    }))
+    expect(wrap.isMentionMe).toBe(false)
+  })
+
+  it("keeps the marker on when at least one mention reminder is still undone", () => {
+    const wrap = new ConversationWrap(conversation({
+      reminders: [
+        { reminderType: 1, done: true },
+        { reminderType: 1, done: false },
+      ],
+      lastMessage: message({ content: {} }),
+    }))
+    expect(wrap.isMentionMe).toBe(true)
+  })
+
+  it("uses lastMessage fallback only when no mention reminder record exists (pre-sync window)", () => {
+    // reminder 还没同步下来时，前端凭 lastMessage.mention.uids 先亮 marker
+    const wrap = new ConversationWrap(conversation({
+      reminders: [],
+      lastMessage: message({ content: { mention: { uids: ["me"] } } }),
+    }))
+    expect(wrap.isMentionMe).toBe(true)
+  })
+
   it("initializes extras and delegates identity and reload operations", () => {
     const raw = conversation({ extra: undefined })
     const wrap = new ConversationWrap(raw)

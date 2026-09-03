@@ -51,7 +51,11 @@ import AiBadge from "../AiBadge";
 import ConversationVM from "../Conversation/vm";
 import { I18nContext, t, useI18n } from "../../i18n";
 import { formatDraftPreview } from "../../Utils/draftPreview";
-import { collapsedThreadHasMention, collapsedThreadUnread } from "./unread";
+import {
+  collapsedThreadHasMention,
+  collapsedThreadUnread,
+  hasMentionForRow,
+} from "./unread";
 import { shouldShowExternalBadge } from "./externalBadge";
 import {
   addImChannelInfoListener,
@@ -185,10 +189,13 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
     channelInfo,
     parentChannelInfo,
   });
-  // @我 标签：解绑「必须有未读」的旧规则，只跟随权威 mention 状态 + 静音语义。
-  // reminders 或 lastMessage.mention.uids 命中都算；折叠子区里的 @我 冒泡到父群行。
-  const hasMention =
-    (conversationWrap.isMentionMe || threadHasMention) && !effectiveMute;
+  // @我 标签只跟随权威 mention 源（reminders + lastMessage 兜底），不再和未读数耦合，
+  // 也不做 mute 过滤——免打扰群里的直接 @我 仍然点亮（保持既有行为）。折叠子区里的 @我
+  // 通过 threadHasMention 冒泡到父群行。规则集中在 hasMentionForRow，避免多点漂移。
+  const hasMention = hasMentionForRow(
+    conversationWrap.isMentionMe,
+    threadHasMention
+  );
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
@@ -801,8 +808,10 @@ export default class ConversationList extends Component<
       channelInfo,
       parentChannelInfo,
     });
-    const hasMention =
-      (conversationWrap.isMentionMe || threadHasMention) && !effectiveMute;
+    const hasMention = hasMentionForRow(
+      conversationWrap.isMentionMe,
+      threadHasMention
+    );
     const visibleSimpleReminders = conversationWrap.simpleReminders?.filter(
       (r) => !r.done && r.reminderType !== ReminderType.ReminderTypeMentionMe
     );
@@ -1401,28 +1410,28 @@ export default class ConversationList extends Component<
       const hasThreads =
         conv.channel.channelType === ChannelTypeGroup &&
         threadsByParent.has(conv.channel.channelID);
-      const threadUnread = (() => {
-        if (!hasThreads) return 0;
-        if (this._isThreadExpanded(conv.channel.channelID)) return 0;
-        const threads = threadsByParent.get(conv.channel.channelID) ?? [];
-        const parentInfo = getImChannelInfo(
-          WKSDK.shared(),
-          new Channel(conv.channel.channelID, ChannelTypeGroup)
-        );
-        return collapsedThreadUnread(threads, !!parentInfo?.mute, !!compact);
-      })();
-      // 折叠子区里的 @我 冒泡到父群行，避免子区折叠时用户看不到 @我 信号。
-      // 展开态下子区自己会亮 @我，父群行返回 false 避免同一 mention 亮两次。
-      const threadHasMention = (() => {
-        if (!hasThreads) return false;
-        if (this._isThreadExpanded(conv.channel.channelID)) return false;
-        const threads = threadsByParent.get(conv.channel.channelID) ?? [];
-        const parentInfo = getImChannelInfo(
-          WKSDK.shared(),
-          new Channel(conv.channel.channelID, ChannelTypeGroup)
-        );
-        return collapsedThreadHasMention(threads, !!parentInfo?.mute, !!compact);
-      })();
+      const collapsedThreads =
+        hasThreads && !this._isThreadExpanded(conv.channel.channelID)
+          ? threadsByParent.get(conv.channel.channelID) ?? []
+          : [];
+      const parentInfoForCollapsed =
+        collapsedThreads.length > 0
+          ? getImChannelInfo(
+              WKSDK.shared(),
+              new Channel(conv.channel.channelID, ChannelTypeGroup)
+            )
+          : undefined;
+      const threadUnread = collapsedThreadUnread(
+        collapsedThreads,
+        !!parentInfoForCollapsed?.mute,
+        !!compact
+      );
+      // 折叠子区里的 @我 冒泡到父群行。展开态下 collapsedThreads=[]，返回 false，
+      // 避免子区自己那一行和父群同时亮 @我。mute 不做过滤——与父群行的 hasMention 语义一致。
+      const threadHasMention = collapsedThreadHasMention(
+        collapsedThreads,
+        !!compact
+      );
       return this.conversationItem(conv, hasThreads, threadUnread, threadHasMention);
     };
 

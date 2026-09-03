@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest"
-import { collapsedThreadHasMention, collapsedThreadUnread } from "../unread"
+import {
+  collapsedThreadHasMention,
+  collapsedThreadUnread,
+  hasMentionForRow,
+} from "../unread"
 
 const thread = (
   unread: number,
@@ -49,48 +53,52 @@ describe("collapsedThreadUnread", () => {
 
 describe("collapsedThreadHasMention", () => {
   it("returns false for empty thread list", () => {
-    expect(collapsedThreadHasMention([], false, true)).toBe(false)
+    expect(collapsedThreadHasMention([], true)).toBe(false)
   })
 
   it("returns false when includeCollapsed is disabled", () => {
-    expect(
-      collapsedThreadHasMention([mentionThread(true)], false, false)
-    ).toBe(false)
+    expect(collapsedThreadHasMention([mentionThread(true)], false)).toBe(false)
   })
 
-  it("returns true when any unmuted thread has @我", () => {
+  it("returns true when any thread has @我", () => {
     expect(
       collapsedThreadHasMention(
         [mentionThread(false), mentionThread(true)],
-        false,
         true
       )
     ).toBe(true)
   })
 
-  it("ignores mentions inside muted threads", () => {
-    expect(
-      collapsedThreadHasMention([mentionThread(true, 1)], false, true)
-    ).toBe(false)
-  })
-
-  it("ignores mentions when parent group is muted (parent mute cascades)", () => {
-    expect(
-      collapsedThreadHasMention(
-        [mentionThread(true), mentionThread(true, 0)],
-        true,
-        true
-      )
-    ).toBe(false)
+  it("still bubbles mention from a muted thread (mute is not filtered)", () => {
+    // 行为对齐父群行 hasMention：mute 不抑制 @我 marker
+    expect(collapsedThreadHasMention([mentionThread(true, 1)], true)).toBe(true)
   })
 
   it("returns false when no thread carries @我", () => {
     expect(
       collapsedThreadHasMention(
         [mentionThread(false), mentionThread(false)],
-        false,
         true
       )
     ).toBe(false)
+  })
+})
+
+describe("hasMentionForRow", () => {
+  it("returns true if the row itself is @我", () => {
+    expect(hasMentionForRow(true, false)).toBe(true)
+  })
+
+  it("returns true if a collapsed thread bubbles @我", () => {
+    expect(hasMentionForRow(false, true)).toBe(true)
+  })
+
+  it("returns false when neither source is active", () => {
+    expect(hasMentionForRow(false, false)).toBe(false)
+  })
+
+  it("does not couple to unread — bubbles mention with zero unread", () => {
+    // 回归 WS-213：读到底后 unread=0，@我 仍要显示。行为已完全解耦。
+    expect(hasMentionForRow(true, false)).toBe(true)
   })
 })

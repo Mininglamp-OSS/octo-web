@@ -239,8 +239,13 @@ function makeConversation(options: {
   unread: number;
   mention?: boolean;
   mute?: boolean;
+  channelType?: number;
+  channelID?: string;
 }) {
-  const channel = makeChannel("alice");
+  const channel = makeChannel(
+    options.channelID ?? "alice",
+    options.channelType ?? 1
+  );
   return {
     channel,
     channelInfo: {
@@ -250,7 +255,7 @@ function makeConversation(options: {
       lastOffline: 0,
       top: false,
       orgData: {
-        displayName: "Alice",
+        displayName: options.channelID ?? "Alice",
       },
     },
     unread: options.unread,
@@ -375,11 +380,65 @@ describe("ConversationList unread indicators", () => {
       ".wk-conversationlist-item-indicators"
     );
 
-    // WS-213 方案 A + 对齐 category header：免打扰群不亮 @我 标签
-    expect(indicators?.querySelector(".wk-mention")).toBeNull();
+    // WS-213 review 反馈 P1-2：mute 语义反转需要产品拍板，暂保持既有行为——
+    // 免打扰群里的直接 @我 仍然点亮 marker（与 v1 shipped 行为一致）。
+    expect(indicators?.querySelector(".wk-mention")?.textContent).toBe(
+      "base.conversationList.mentionMarker"
+    );
     expect(
       indicators?.querySelector(".wk-conv-unread-num--muted")?.textContent
     ).toBe("5");
+  });
+
+  it("keeps the mention marker after unread has been cleared (WS-213 core)", () => {
+    // 回归 WS-213 主 case：thread 里 @我 → 读到底（unread=0）→ 返回列表 → 仍显示 @我
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={
+            [makeConversation({ unread: 0, mention: true })] as any
+          }
+        />,
+        container
+      );
+    });
+
+    const indicators = container.querySelector(
+      ".wk-conversationlist-item-indicators"
+    );
+
+    expect(indicators?.querySelector(".wk-mention")?.textContent).toBe(
+      "base.conversationList.mentionMarker"
+    );
+  });
+
+  it("renders the mention marker on a group channel with cleared unread", () => {
+    // 群聊是 WS-213 的主要目标。previous fixtures 都是 Person，缺少 group 覆盖。
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={
+            [
+              makeConversation({
+                unread: 0,
+                mention: true,
+                channelType: 2,
+                channelID: "team-room",
+              }),
+            ] as any
+          }
+        />,
+        container
+      );
+    });
+
+    const indicators = container.querySelector(
+      ".wk-conversationlist-item-indicators"
+    );
+
+    expect(indicators?.querySelector(".wk-mention")?.textContent).toBe(
+      "base.conversationList.mentionMarker"
+    );
   });
 
   it("renders the 1v1 unread-priority marker for an unread DM without mention", () => {
