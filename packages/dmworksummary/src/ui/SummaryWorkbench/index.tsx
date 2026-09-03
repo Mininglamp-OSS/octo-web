@@ -1,5 +1,6 @@
 import React from "react";
 import { useI18n, WKButton } from "@octo/base";
+import { summaryTestIds } from "../../utils/testIds";
 import type {
   SummaryWorkbenchAction,
   SummaryWorkbenchCardView,
@@ -257,6 +258,7 @@ const SummaryWorkbench = ({ state, actions, className, contextPanel }: SummaryWo
                 variant="primary"
                 disabled={isComposerDisabled}
                 onClick={actions.onNewSession}
+                data-testid={summaryTestIds.agentNewSessionBtn}
               >
                 {t("summary.workbench.actions.newSession")}
               </WKButton>

@@ -170,6 +170,7 @@ export default function SummaryWorkbenchFeature({
   const handledSavedTaskIds = useRef(new Set<number>());
   const hydrationObserved = useRef(false);
   const templateFilledComposer = useRef<string | null>(null);
+  const themeTrackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const workbench = useSummaryWorkbench({
     initialSessionId,
@@ -285,6 +286,14 @@ export default function SummaryWorkbenchFeature({
       void refreshParticipantCandidates(true);
     }
   }, [participantScopeKey]);
+
+  // Unmount: clear the theme-input debounce so a pending track cannot fire
+  // after the user has left (same rationale as the legacy page's cleanup).
+  useEffect(() => {
+    return () => {
+      if (themeTrackTimer.current) clearTimeout(themeTrackTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (workbench.isHydrating) {
@@ -647,6 +656,10 @@ export default function SummaryWorkbenchFeature({
     workbench.setComposerValue(template.requirement);
     setComposerFocusKey((current) => current + 1);
     setPendingTemplate(null);
+    // P1-4 (yujiawei review 5087124100): the workbench path lost this event —
+    // its sole sink was the legacy SummaryCreatePage. Same payload shape as
+    // the legacy emitter: no content, intent only.
+    Dap.shared.track("smart_summary_template_applied", {});
   };
 
   const handleTemplateChange = (
@@ -691,6 +704,13 @@ export default function SummaryWorkbenchFeature({
             onInputChange: (value) => {
               templateFilledComposer.current = null;
               workbench.setComposerValue(value);
+              // P1-4 (yujiawei review 5087124100): top-of-funnel intent signal
+              // was legacy-only. Mirror the legacy debounce (600ms, non-empty,
+              // no content) instead of tracking every keystroke.
+              if (themeTrackTimer.current) clearTimeout(themeTrackTimer.current);
+              themeTrackTimer.current = setTimeout(() => {
+                if (value.trim()) Dap.shared.track("smart_summary_theme_input", {});
+              }, 600);
             },
             onSend: () => void send(),
             onOpenContext: handleContextOpen,
