@@ -1,7 +1,7 @@
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 import { ChannelTypeCommunityTopic } from "./Const";
 import { parseThreadChannelId } from "./Thread";
-import { decodeServerEscapedHighlight } from "../Components/ChannelSearch/snippetContent";
+import { decodeServerEscapedHighlight } from "../Components/ChannelSearch/decodeHighlight";
 import type {
   ChannelSearchFileInfo,
   ChannelSearchFilters,
