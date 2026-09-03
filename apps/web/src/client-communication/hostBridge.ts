@@ -1,4 +1,5 @@
 export type CommunicationPage = "chat" | "contacts";
+export type CommunicationPresentation = "workspace" | "conversation";
 
 export interface ConversationTarget {
   channelId: string;
@@ -26,10 +27,16 @@ export interface CommunicationBootstrap {
     locale: "zh-CN" | "en-US";
   };
   initialPage: CommunicationPage;
+  initialPresentation: CommunicationPresentation;
 }
 
 export type HostCommand =
-  | { type: "navigate"; page: CommunicationPage; target?: ConversationTarget }
+  | {
+      type: "navigate";
+      page: CommunicationPage;
+      presentation?: CommunicationPresentation;
+      target?: ConversationTarget;
+    }
   | { type: "spaceChanged"; space: { id: string; name: string } }
   | { type: "appearanceChanged"; theme: "light" | "dark"; locale: "zh-CN" | "en-US" }
   | { type: "suspend" }

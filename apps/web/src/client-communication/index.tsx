@@ -77,6 +77,7 @@ async function main() {
       <I18nProvider>
         <CommunicationShell
           initialPage={bootstrap.initialPage}
+          initialPresentation={bootstrap.initialPresentation}
           onReady={() => host.reportReady({
             bridgeVersion: 1,
             page: bootstrap.initialPage,

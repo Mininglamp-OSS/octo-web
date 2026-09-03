@@ -14,6 +14,7 @@ import { getElectronUnreadMessageCount } from "../App/electronUnreadCount";
 import {
   requireHostBridge,
   type CommunicationPage,
+  type CommunicationPresentation,
   type ConversationTarget,
   type HostCommand,
   type NavigationReport,
@@ -52,12 +53,15 @@ function openTarget(target: ConversationTarget) {
 
 export function CommunicationShell({
   initialPage,
+  initialPresentation,
   onReady,
 }: {
   initialPage: CommunicationPage;
+  initialPresentation: CommunicationPresentation;
   onReady: () => Promise<void>;
 }) {
   const [activePage, setActivePage] = useState<CommunicationPage>(initialPage);
+  const [presentation, setPresentation] = useState<CommunicationPresentation>(initialPresentation);
   const activePageRef = useRef(activePage);
   const routeReadyRef = useRef({ left: false, right: false });
   const commandListenerReadyRef = useRef(false);
@@ -102,6 +106,7 @@ export function CommunicationShell({
 
     const dispose = bridge.onCommand((command: HostCommand) => {
       if (command.type === "navigate") {
+        if (command.presentation) setPresentation(command.presentation);
         if (command.page !== activePageRef.current) {
           WKApp.routeLeft.popToRoot();
           if (command.page === "contacts") WKApp.routeRight.popToRoot();
@@ -169,6 +174,25 @@ export function CommunicationShell({
     };
   }, []);
 
+  useEffect(() => {
+    let previousChannel = "";
+    const reportOpenChannel = () => {
+      const channel = WKApp.shared.openChannel;
+      if (!channel) return;
+      const key = `${channel.channelID}:${channel.channelType}`;
+      if (key === previousChannel) return;
+      previousChannel = key;
+      reportNavigation({
+        page: "chat",
+        source: "internal",
+        channel: { id: channel.channelID, type: channel.channelType },
+      });
+    };
+    const unsubscribe = WKApp.shared.addListener(reportOpenChannel);
+    reportOpenChannel();
+    return unsubscribe;
+  }, []);
+
   const leftContent = useMemo(() => (
     <div className="communication-page-stack">
       <div className="communication-page" style={{ display: activePage === "chat" ? "block" : "none" }}>
@@ -184,24 +208,26 @@ export function CommunicationShell({
     <WKBase onContext={(context) => {
       WKApp.shared.baseContext = context;
     }}>
-      <WKLayout
-        embedded
-        contentLeft={leftContent}
-        contentRight={<div className="communication-empty-state" />}
-        onLeftContext={(context) => {
-          bindLeftRoute(context);
-          markRouteReady("left");
-        }}
-        onRightContext={(context) => {
-          bindRightRoute(context);
-          markRouteReady("right");
-          const target = pendingTargetRef.current;
-          if (target) {
-            pendingTargetRef.current = undefined;
-            openTarget(target);
-          }
-        }}
-      />
+      <div className={`communication-shell communication-shell--${presentation}`}>
+        <WKLayout
+          embedded
+          contentLeft={leftContent}
+          contentRight={<div className="communication-empty-state" />}
+          onLeftContext={(context) => {
+            bindLeftRoute(context);
+            markRouteReady("left");
+          }}
+          onRightContext={(context) => {
+            bindRightRoute(context);
+            markRouteReady("right");
+            const target = pendingTargetRef.current;
+            if (target) {
+              pendingTargetRef.current = undefined;
+              openTarget(target);
+            }
+          }}
+        />
+      </div>
     </WKBase>
   );
 }
