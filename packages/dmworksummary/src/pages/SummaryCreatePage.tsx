@@ -1008,14 +1008,15 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             });
             markAgentSummaryNotificationEligible(result.task_id);
 
-            const firstGapDetail =
-                (result.finish_status === 'PARTIAL' || result.finish_status === 'FAILED')
-                    ? result.gaps?.[0]?.detail
-                    : undefined;
+            const qualityGateHit = result.finish_status === 'PARTIAL' || result.finish_status === 'FAILED';
+            const firstGapDetail = qualityGateHit ? result.gaps?.[0]?.detail : undefined;
             if (firstGapDetail) {
                 Toast.warning(t('summary.workbench.notice.savedWithQualityGap', {
                     values: { detail: firstGapDetail },
                 }));
+            } else if (qualityGateHit) {
+                // P1-5: FAILED/PARTIAL with an empty gaps list must not read as success.
+                Toast.warning(t('summary.workbench.notice.savedWithQualityGateWarning'));
             } else {
                 Toast.success(t('summary.create.agentSummaryCreated'));
             }

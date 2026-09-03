@@ -628,16 +628,23 @@ export default function SummaryWorkbenchFeature({
     setSaveDialogOpen(false);
     if (handledSavedTaskIds.current.has(result.task_id)) return;
     handledSavedTaskIds.current.add(result.task_id);
-    const firstGapDetail =
-      (result.finish_status === "PARTIAL" ||
-        result.finish_status === "FAILED") &&
-      result.gaps?.[0]?.detail;
-    if (firstGapDetail) {
-      Toast.warning(
-        t("summary.workbench.notice.savedWithQualityGap", {
-          values: { detail: firstGapDetail },
-        })
-      );
+    // P1-5 (yujiawei review 5087124100): gate the warning on finish_status,
+    // not on gaps[0].detail — {finish_status:"FAILED", gaps:[]} previously
+    // produced a success toast. Show gap detail when present, otherwise a
+    // generic quality-gate warning.
+    const qualityGateHit =
+      result.finish_status === "PARTIAL" || result.finish_status === "FAILED";
+    if (qualityGateHit) {
+      const firstGapDetail = result.gaps?.[0]?.detail;
+      if (firstGapDetail) {
+        Toast.warning(
+          t("summary.workbench.notice.savedWithQualityGap", {
+            values: { detail: firstGapDetail },
+          })
+        );
+      } else {
+        Toast.warning(t("summary.workbench.notice.savedWithQualityGateWarning"));
+      }
     } else {
       Toast.success(t("summary.create.agentSummaryCreated"));
     }

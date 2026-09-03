@@ -244,7 +244,8 @@
             "participantsPruned": "Participants outside the selected groups were removed.",
             "participantCandidatesLoadFailed": "Some group members failed to load. Try again.",
             "selectSingleChatForParticipants": "Participant selection supports up to 30 group chats only.",
-            "savedWithQualityGap": "Summary saved with a quality warning: {{detail}}"
+            "savedWithQualityGap": "Summary saved with a quality warning: {{detail}}",
+            "savedWithQualityGateWarning": "Summary saved, but it did not pass the full quality check. Please review before use."
         },
         "errors": {
             "network": "Network error. Try again later.",

@@ -982,6 +982,49 @@ describe("SummaryWorkbenchFeature", () => {
     }
   );
 
+  it(
+    "warns generically when a FAILED save carries an EMPTY gaps list (P1-5)",
+    async () => {
+      const savePreview = vi.fn().mockResolvedValue({
+        task_id: 306,
+        title: "Draft",
+        finish_status: "FAILED",
+        gaps: [],
+      });
+      const onOpenTask = vi.fn();
+      mocks.useSummaryWorkbench.mockReturnValue(
+        controller({
+          model: {
+            currentPreview: { content: "# Draft\nBody" },
+            pendingProposal: null,
+            workflow: null,
+          },
+          savePreview,
+        })
+      );
+
+      render(
+        <SummaryWorkbenchFeature
+          spaceId="space-a"
+          embedded
+          onOpenTask={onOpenTask}
+        />,
+        { legacyRoot: true }
+      );
+      fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
+      fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
+
+      await waitFor(() => expect(savePreview).toHaveBeenCalledWith("# Draft"));
+      // The generic quality-gate warning key falls through t() to the key
+      // itself in this mock — the assertion is that the user does NOT get
+      // the success toast and DOES get a warning.
+      expect(mocks.toastWarning).toHaveBeenCalled();
+      expect(mocks.toastSuccess).not.toHaveBeenCalled();
+      expect(mocks.markNotificationEligible).toHaveBeenCalledWith(306);
+      expect(onOpenTask).toHaveBeenCalledWith(306);
+    }
+  );
+
   it("keeps the ordinary success feedback for a COMPLETE save", async () => {
     const savePreview = vi.fn().mockResolvedValue({
       task_id: 305,

@@ -244,7 +244,8 @@
             "participantsPruned": "已移除不属于当前所选群聊的参与者",
             "participantCandidatesLoadFailed": "部分群成员加载失败，请重试",
             "selectSingleChatForParticipants": "选择参与者时仅支持最多 30 个群聊",
-            "savedWithQualityGap": "总结已保存，但存在质量缺口：{{detail}}"
+            "savedWithQualityGap": "总结已保存，但存在质量缺口：{{detail}}",
+            "savedWithQualityGateWarning": "总结已保存，但未通过完整质量校验，请人工核对后使用。"
         },
         "errors": {
             "network": "网络连接异常，请稍后重试",
