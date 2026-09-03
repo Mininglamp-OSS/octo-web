@@ -205,26 +205,10 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   min-height: var(--wk-sp-4);
 }
 
-/* 时间下方未读数字 badge（非静音） */
-.wk-conv-unread-num {
-  min-width: var(--wk-sp-4);
-  height: var(--wk-sp-4);
-  padding: 0 var(--wk-sp-1);
-  background: var(--wk-badge-danger-bg);
-  color: var(--wk-badge-danger-text);
-  border-radius: var(--wk-r-full);
-  font-size: var(--wk-text-size-tiny);
-  font-weight: 600;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-}
-
+/* 时间下方未读数字 Badge：基础外观由 @octo/ui Badge 提供 */
 .wk-conv-unread-num--muted {
-  background: color-mix(in srgb, var(--wk-icon-muted) 14%, transparent);
-  color: var(--wk-icon-muted);
+  --octo-ui-badge-bg: color-mix(in srgb, var(--wk-icon-muted) 14%, transparent);
+  --octo-ui-badge-color: var(--wk-icon-muted);
 }
 
 .wk-conv-unread-num--nudge-a {
@@ -304,20 +288,6 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 }
 
 .wk-ai-collab-tag {
-  font-size: var(--wk-text-size-xs);
-  padding: 1px 5px;
-  border-radius: var(--wk-r-xs);
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--wk-brand-primary) 12%, transparent),
-    color-mix(in srgb, var(--wk-color-success) 12%, transparent)
-  );
-  color: var(--wk-brand-primary);
-  font-weight: 600;
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
   margin-right: var(--wk-sp-1);
 }
 
@@ -368,8 +338,11 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   bottom: -5px;
   padding: 1.5px;
   border-radius: var(--wk-r-md);
-  background: var(--wk-bg-base);
   white-space: nowrap;
+}
+
+.wk-onlinestatusbadge:not(.wk-onlinestatusbadge-empty) {
+  background: var(--wk-bg-base);
 }
 
 .wk-onlinestatusbadge-content {
@@ -385,19 +358,13 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 }
 
 .wk-onlinestatusbadge-empty {
+  --octo-ui-dot-size: 9px;
+
   right: -1px;
   bottom: -1px;
-  width: 9px;
-  height: 9px;
   padding: 0;
-  border-radius: var(--wk-r-circle);
-  background: var(--wk-color-success);
   border: 2px solid var(--wk-bg-base);
   box-sizing: border-box;
-}
-
-.wk-onlinestatusbadge-empty .wk-onlinestatusbadge-content {
-  display: none;
 }
 
 /* Thread prefix */
@@ -527,15 +494,10 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 }
 
 /* Figma: emoji/icon 左上角 6x6 红色小圆点（有未读消息时显示） */
-.wk-conv-compact-icon--reddot::after {
-  content: "";
+.wk-conv-compact-unread-dot {
   position: absolute;
   top: -1px;
   left: -1px;
-  width: 6px;
-  height: 6px;
-  border-radius: var(--wk-r-circle);
-  background: var(--wk-color-danger);
   border: 1px solid var(--wk-color-white);
 }
 
@@ -617,18 +579,6 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 }
 
 .wk-conv-compact-badge {
-  min-width: 16px;
-  height: 16px;
-  border-radius: var(--wk-r-full);
-  background: var(--wk-badge-danger-bg);
-  color: var(--wk-badge-danger-text);
-  font-family: var(--wk-font-sans);
-  font-size: var(--wk-text-size-tiny);
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 var(--wk-sp-1);
   flex-shrink: 0;
 }
 
@@ -813,8 +763,18 @@ body[theme-mode="dark"] .wk-conv-compact-thread-badge {
 /* ── 外部群角标 ── */
 /* 常规会话列表：群名后显示「外部」Tag（紫色，对齐 Subscribers/SubscriberList 视觉） */
 .wk-conversationlist-item-external-tag {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--wk-sp-4);
   margin-left: var(--wk-sp-1);
+  padding: 0 var(--wk-sp-1-5);
+  border-radius: var(--wk-r-full);
+  background: rgba(var(--semi-purple-5), 0.15);
+  color: rgba(var(--semi-purple-8), 1);
   font-size: var(--wk-text-size-tiny);
+  font-weight: var(--wk-font-medium);
+  line-height: var(--wk-sp-4);
   flex-shrink: 0;
 }
 

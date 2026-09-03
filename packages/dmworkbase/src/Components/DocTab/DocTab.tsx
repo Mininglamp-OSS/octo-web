@@ -21,6 +21,7 @@ import React, { useRef, useState } from "react";
 // @douyinfe/semi-ui / lottie 重链），保持 DocTab 作为纯骨架叶子组件——与本仓
 // "避免引入 lottie 链" 的既有约定一致，不污染 DocTab.test 的 import 图。
 import { t } from "../../i18n/instance";
+import { Loading } from "@octo/ui";
 
 export interface DocTabProps {
   /** doc 服务渲染 URL，如 https://d.example.com/d/<slug>/v/1 或首页 /me。 */
@@ -62,7 +63,7 @@ const DocTab: React.FC<DocTabProps> = ({
     <div className={rootCls} data-testid="doc-tab">
       {loading && (
         <div className="wk-doc-tab__loading" data-testid="doc-tab-loading">
-          {loadingText ?? t("base.docTab.loading")}
+          <Loading text={loadingText ?? t("base.docTab.loading")} layout="vertical" />
         </div>
       )}
       <iframe

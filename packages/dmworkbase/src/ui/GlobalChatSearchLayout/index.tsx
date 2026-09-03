@@ -1,4 +1,5 @@
 import React from "react";
+import Loading from "@octo/ui/components/Loading";
 import { Hash, MessageCircleMore } from "lucide-react";
 import ThreadIcon from "../../Components/Icons/ThreadIcon";
 import "./index.css";
@@ -87,7 +88,7 @@ export function GlobalChatSearchLayout({
         <div className="wk-global-chat-search-layout__conversation-list">
           {state.status === "loading" && (
             <div className="wk-global-chat-search-layout__pane-state">
-              <span className="wk-global-chat-search-layout__spinner" />
+              <Loading size="sm" />
             </div>
           )}
           {state.status === "idle" && (

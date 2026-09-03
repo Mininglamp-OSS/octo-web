@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from "react";
-import { Toast, Spin } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import {
   IconPlus,
   IconKey,
@@ -179,7 +180,7 @@ export default function SecretsSettingsPanel({
         {/* 列表主体 */}
         {loading ? (
           <div className="wk-secrets__state">
-            <Spin size="large" />
+            <Loading size="lg" />
           </div>
         ) : error ? (
           <div className="wk-secrets__state">

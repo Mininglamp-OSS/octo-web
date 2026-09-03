@@ -311,6 +311,7 @@
   "groupManagement.disbandDesc": "After disbanding, all members (including the owner) can no longer send messages. Chat history remains viewable.",
   "groupManagement.disbandSuccess": "Group disbanded",
   "groupManagement.disbandTitle": "Disband Group",
+  "groupManagement.loading": "Loading",
   "groupManagement.loadFailed": "Failed to load",
   "groupManagement.manager": "Admin",
   "groupManagement.memberManagement": "Member management",

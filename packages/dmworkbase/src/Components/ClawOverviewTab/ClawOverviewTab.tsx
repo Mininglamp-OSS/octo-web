@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { RuntimeInfo } from '../../Service/AgentCardService';
 import { useI18n } from '../../i18n';
+import { Loading } from '@octo/ui';
 import './ClawOverviewTab.css';
 export interface ClawOverviewTabProps {
   /** 运行时信息数据 */
@@ -60,7 +61,7 @@ export default function ClawOverviewTab({
     return (
       <div className="claw-overview-tab" data-testid="claw-overview-tab-loading">
         <div className="claw-overview-tab__loading">
-          {t('base.claw.loading')}
+          <Loading text={t('base.claw.loading')} layout="vertical" />
         </div>
       </div>
     );

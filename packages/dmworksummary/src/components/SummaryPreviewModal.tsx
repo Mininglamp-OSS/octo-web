@@ -1,5 +1,6 @@
 import React, { Component } from 'react';
-import { Modal, Spin, Empty } from '@douyinfe/semi-ui';
+import { Modal, Empty } from '@douyinfe/semi-ui';
+import { Loading } from '@octo/ui';
 import { I18nContext } from '@octo/base';
 import SummaryContent from './SummaryContent';
 import { getSummaryDetail, getPersonalResult } from '../api/summaryApi';
@@ -119,7 +120,7 @@ class SummaryPreviewModal extends Component<SummaryPreviewModalProps, SummaryPre
                 <div className="summary-preview-modal-body">
                     {loading && (
                         <div className="summary-preview-modal-loading">
-                            <Spin />
+                            <Loading />
                         </div>
                     )}
                     {!loading && error && (

@@ -150,21 +150,6 @@
   color: var(--wk-color-error);
 }
 
-.wk-global-chat-search-layout__spinner {
-  width: var(--wk-sp-4);
-  height: var(--wk-sp-4);
-  border: 2px solid var(--wk-border-strong);
-  border-top-color: var(--wk-text-accent);
-  border-radius: var(--wk-r-circle);
-  animation: wk-global-chat-search-spin 0.8s linear infinite;
-}
-
-@keyframes wk-global-chat-search-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 .wk-global-chat-search-layout__truncated {
   flex: 0 0 auto;
   padding: var(--wk-sp-2) var(--wk-sp-4);

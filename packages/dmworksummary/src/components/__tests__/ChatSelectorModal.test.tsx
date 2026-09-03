@@ -36,6 +36,11 @@ vi.mock('@octo/base/src/Components/AiBadge', () => ({
     default: () => <span data-testid="ai-badge" />,
 }));
 
+vi.mock('@octo/ui', () => ({
+    Loading: () => <div data-testid="spinner">loading</div>,
+    Tag: ({ children }: any) => <span data-testid="tag">{children}</span>,
+}));
+
 vi.mock('@douyinfe/semi-icons', () => ({
     IconSearch: () => <span data-testid="icon-search" />,
 }));
@@ -66,7 +71,6 @@ vi.mock('@douyinfe/semi-ui', () => ({
     ),
     Spin: () => <div data-testid="spinner">loading</div>,
     Empty: ({ description }: any) => <div data-testid="empty">{description}</div>,
-    Tag: ({ children }: any) => <span data-testid="tag">{children}</span>,
 }));
 
 function flushPromises() {

@@ -5,6 +5,7 @@ import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { Bot, Pencil, RefreshCw, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
+import Loading from "@octo/ui/components/Loading";
 import type { Category, Skill, SkillVersion } from "../types/skill";
 import { getSkill, getSkillMd, listVersions, trackSkillView } from "../api/skillApi";
 import { formatFullDateTime, formatRecentOrDate } from "../utils/format";
@@ -350,7 +351,7 @@ export default function SkillDetailModal({
       }
       bodyStyle={{ maxHeight: "68vh", overflow: "auto" }}
     >
-      {loading && <div className="skill-market-modal-state">{t("skillMarket.common.loading")}</div>}
+      {loading && <div className="skill-market-modal-state"><Loading text={t("skillMarket.common.loading")} /></div>}
       {error && <div className="skill-market-modal-state is-error">{error}</div>}
       {skill && !loading && (
         <div className="skill-market-detail">
@@ -395,7 +396,7 @@ export default function SkillDetailModal({
             <div className="skill-market-detail__layout">
               <div className="skill-market-detail__readme">
                 {mdLoading && (
-                  <div className="skill-market-modal-state">{t("skillMarket.common.loading")}</div>
+                  <div className="skill-market-modal-state"><Loading text={t("skillMarket.common.loading")} /></div>
                 )}
                 {mdError && (
                   <div className="skill-market-modal-state is-error">
@@ -439,7 +440,7 @@ export default function SkillDetailModal({
               <div className="skill-market-versions__header">
                 <strong>{t("skillMarket.detail.tabVersions")}</strong>
               </div>
-              {versionsLoading && <div className="skill-market-versions__loading">{t("skillMarket.common.loading")}</div>}
+              {versionsLoading && <div className="skill-market-versions__loading"><Loading size="sm" text={t("skillMarket.common.loading")} /></div>}
               {!versionsLoading && (
                 <div className="skill-market-versions__timeline">
                   {versions.map((v, idx) => (

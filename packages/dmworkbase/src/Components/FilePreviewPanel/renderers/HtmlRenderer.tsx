@@ -14,6 +14,7 @@ import { RendererState } from "./RendererState";
 import FileTooLarge from "./FileTooLarge";
 import { downloadFile } from "../../../Utils/download";
 import { useI18n } from "../../../i18n";
+import { Loading } from "@octo/ui";
 import "./HtmlRenderer.css";
 import "./code-highlight.css";
 
@@ -348,10 +349,7 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
     <div className="wk-file-preview-html-renderer wk-file-preview-html-renderer--preview">
       {iframeLoading && (
         <div className="wk-file-preview-html-renderer__loading-overlay">
-          <div className="wk-file-preview-html-renderer__spinner" />
-          <span className="wk-file-preview-html-renderer__message">
-            {t("base.filePreview.html.rendering")}
-          </span>
+          <Loading text={t("base.filePreview.html.rendering")} layout="vertical" />
         </div>
       )}
       <iframe

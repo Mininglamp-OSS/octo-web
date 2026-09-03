@@ -1,6 +1,7 @@
 import React, { Component } from "react";
-import { Modal, Input, Checkbox, Button, Spin, Empty, Avatar } from "@douyinfe/semi-ui";
+import { Modal, Input, Checkbox, Button, Empty, Avatar } from "@douyinfe/semi-ui";
 import { IconSearch } from "@douyinfe/semi-icons";
+import { Loading } from "@octo/ui";
 import { I18nContext } from "@octo/base";
 import { Dap } from "@octo/base";
 import type { MemberCandidate } from "../types/summary";
@@ -124,7 +125,7 @@ export default class MemberSelectorModal extends Component<Props, State> {
                     />
                     <div className="summary-selector-list">
                         {loading ? (
-                            <div className="summary-selector-loading"><Spin /></div>
+                            <div className="summary-selector-loading"><Loading /></div>
                         ) : visibleCandidates.length === 0 ? (
                             <Empty description={t("summary.memberSelector.empty")} className="summary-selector-empty" />
                         ) : (

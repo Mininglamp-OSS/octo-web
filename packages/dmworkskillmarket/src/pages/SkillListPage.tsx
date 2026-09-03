@@ -10,6 +10,7 @@ import {
   Upload,
 } from "lucide-react";
 import { t, useI18n, WKApp, WKButton, Dap } from "@octo/base";
+import Loading from "@octo/ui/components/Loading";
 import type { Skill, SkillSort } from "../types/skill";
 import { useSkills } from "../hooks/useSkills";
 import BotPublishModal from "../components/BotPublishModal";
@@ -363,8 +364,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
         <div ref={sentinelRef} className="skill-market-sentinel">
           {list.loadingMore ? (
             <span className="skill-market-sentinel__loading">
-              <RefreshCw size={13} />
-              {t("skillMarket.list.loadMore")}
+              <Loading size="sm" text={t("skillMarket.list.loadMore")} />
             </span>
           ) : null}
         </div>

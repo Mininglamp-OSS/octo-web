@@ -1,6 +1,7 @@
 import React, { Component } from 'react';
-import { Modal, Input, List, Empty, Spin, Toast } from '@douyinfe/semi-ui';
+import { Modal, Input, List, Empty, Toast } from '@douyinfe/semi-ui';
 import { IconClose, IconLink } from '@douyinfe/semi-icons';
+import { Loading } from '@octo/ui';
 import { listSummaries } from '../api/summaryApi';
 import type { SummaryListItem } from '../types/summary';
 import { TriggerType, TaskStatus } from '../types/summary';
@@ -218,7 +219,7 @@ export default class SummaryReferencePicker extends Component<
                     style={{ marginBottom: 12 }}
                 />
                 <div className="summary-reference-picker-list">
-                    {loading && <Spin />}
+                    {loading && <Loading />}
                     {!loading && error && (
                         <div className="summary-reference-picker-error">
                             {t('summary.common.loadingFailed')}: {error}

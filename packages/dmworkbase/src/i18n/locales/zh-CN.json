@@ -311,6 +311,7 @@
   "groupManagement.disbandDesc": "解散后所有成员（含群主）都将无法再发送消息，聊天记录仍可查看。",
   "groupManagement.disbandSuccess": "群聊已解散",
   "groupManagement.disbandTitle": "解散群聊",
+  "groupManagement.loading": "加载中",
   "groupManagement.loadFailed": "加载失败",
   "groupManagement.manager": "管理员",
   "groupManagement.memberManagement": "成员管理",

@@ -1,6 +1,7 @@
 import React from "react";
-import { Popover, Spin } from "@douyinfe/semi-ui";
+import { Popover } from "@douyinfe/semi-ui";
 import { WKButton } from "@octo/base";
+import { Loading } from "@octo/ui";
 import { QRCodeSVG } from "qrcode.react";
 import { loginT as t } from "./i18n";
 import { useMobileDownloadUrl } from "./mobileDownloadUpdater";
@@ -33,7 +34,7 @@ export const IOSDownloadPopoverContent: React.FC<PopoverHoverProps> = (
         aria-busy={status === "loading" ? true : undefined}
       >
         {status === "loading" && (
-          <Spin aria-label={t("download.loadingAddress")} size="large" />
+          <Loading aria-label={t("download.loadingAddress")} size="lg" />
         )}
         {status === "error" && (
           <div className="wk-login-mobile-download-state" role="alert">

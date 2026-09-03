@@ -1,0 +1,80 @@
+.octo-ui-loading {
+  display: inline-flex;
+  gap: var(--octo-ui-loading-gap);
+  align-items: center;
+  color: var(--octo-ui-loading-text-color);
+  font-size: var(--octo-ui-loading-text-size);
+  line-height: var(--octo-ui-loading-text-line-height);
+}
+
+.octo-ui-loading--vertical {
+  flex-direction: column;
+}
+
+.octo-ui-loading__spinner {
+  position: relative;
+  box-sizing: border-box;
+  flex: none;
+  width: var(--octo-ui-loading-size);
+  height: var(--octo-ui-loading-size);
+  border-radius: 50%;
+  background: conic-gradient(
+    transparent 0deg,
+    var(--octo-ui-loading-color) 268deg,
+    transparent 270deg
+  );
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--octo-ui-loading-stroke-width)),
+    var(--wk-brand-black) calc(100% - var(--octo-ui-loading-stroke-width))
+  );
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--octo-ui-loading-stroke-width)),
+    var(--wk-brand-black) calc(100% - var(--octo-ui-loading-stroke-width))
+  );
+  animation: octo-ui-loading-spin var(--octo-ui-loading-duration) linear
+    infinite;
+}
+
+.octo-ui-loading__spinner::after {
+  position: absolute;
+  top: calc(50% - var(--octo-ui-loading-stroke-width) / 2);
+  left: 0;
+  width: var(--octo-ui-loading-stroke-width);
+  height: var(--octo-ui-loading-stroke-width);
+  border-radius: 50%;
+  background: var(--octo-ui-loading-color);
+  content: "";
+}
+
+.octo-ui-loading--sm {
+  --octo-ui-loading-size: var(--octo-ui-loading-size-sm);
+  --octo-ui-loading-stroke-width: var(--octo-ui-loading-stroke-sm);
+}
+
+.octo-ui-loading--md {
+  --octo-ui-loading-size: var(--octo-ui-loading-size-md);
+  --octo-ui-loading-stroke-width: var(--octo-ui-loading-stroke-md);
+}
+
+.octo-ui-loading--lg {
+  --octo-ui-loading-size: var(--octo-ui-loading-size-lg);
+  --octo-ui-loading-stroke-width: var(--octo-ui-loading-stroke-lg);
+}
+
+.octo-ui-loading__text {
+  white-space: nowrap;
+}
+
+@keyframes octo-ui-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .octo-ui-loading__spinner {
+    animation: none;
+  }
+}
