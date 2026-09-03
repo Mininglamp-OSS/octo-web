@@ -7,12 +7,12 @@ type HighlightRange = {
 };
 
 /**
- * Re-exported from `./decodeHighlight` (a dep-free module) so downstream data-
- * layer callers can consume this helper without pulling React/App into their
- * test boundaries. The `decodeHighlight` module carries the full behavioural
- * contract — see its top-of-file comment.
+ * Re-exported from `../../Service/decodeServerEscapedHighlight` (a dep-free
+ * Service-layer module) so downstream data-layer callers can consume this
+ * helper without pulling React/App into their test boundaries. That module
+ * carries the full behavioural contract — see its top-of-file comment.
  */
-export { decodeServerEscapedHighlight } from "./decodeHighlight";
+export { decodeServerEscapedHighlight } from "../../Service/decodeServerEscapedHighlight";
 
 export type ChannelSearchSnippetToken =
   | {

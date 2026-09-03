@@ -338,17 +338,30 @@ describe("channel search API adapter response mapping", () => {
     // the server-side escapeHighlightFragment (octo-server) HTML-escapes
     // uploader-controlled name/body content and leaves only <mark>/</mark>
     // live. The mapper decodes here so downstream renderers work in original
-    // characters. Pins the six-entity Lucene SimpleHTMLEncoder table
-    // including &#x2F; (slashes in URLs/dates/paths).
+    // characters.
+    //
+    // Wire-format fixtures lifted verbatim from the paired server test
+    //   octo-server modules/messages_search/search_files_test.go
+    //     :: TestSingleFileHit_HostileContentEscaped / ampersand-quote-roundtrip
+    // so the client decodes exactly what the server emits — see the doc
+    // comment on decodeServerEscapedHighlight for the entity set (Go
+    // html.EscapeString: &#34; / &#39; / &lt; / &gt; / &amp;, no &#x2F;).
     expect(
       mapFileHit(
         {
           message_id: "f3",
           message_seq: 22,
           file_name: "<img src=x onerror=alert(1)>.pdf",
+          // Wire string as octo-server's escapeHighlightFragment would emit
+          // it — hostile HTML entity-escaped, only the highlighter's
+          // <mark>/</mark> pair kept live.
           name_highlight: "&lt;img src=x onerror=alert(1)&gt;.<mark>pdf</mark>",
+          // Server emits &#34; for double-quote (decimal), not &quot;, and
+          // &#39; for apostrophe (decimal), not hex &#x27; — mirrors
+          // TestEscapeHighlightFragment's ampersand-quote-roundtrip case.
+          // Slash passes through raw (Go html.EscapeString does not touch it).
           content_snippet:
-            "quarterly &lt;script&gt;alert(1)&lt;&#x2F;script&gt; see https:&#x2F;&#x2F;acme.co&#x2F;q3 <mark>report</mark>",
+            "quarterly &#34;summary&#34; on John&#39;s <mark>report</mark> at https://acme.co/q3",
           sender_id: "u9",
           sent_at: "2026-01-02T00:00:00Z",
         },
@@ -361,9 +374,8 @@ describe("channel search API adapter response mapping", () => {
       // Escaped entities decoded, <mark> preserved. Downstream parser will
       // extract <mark> and render every other segment as a React text node.
       nameHighlight: "<img src=x onerror=alert(1)>.<mark>pdf</mark>",
-      // Includes the &#x2F; case that a five-entity table would miss.
       contentSnippet:
-        "quarterly <script>alert(1)</script> see https://acme.co/q3 <mark>report</mark>",
+        'quarterly "summary" on John\'s <mark>report</mark> at https://acme.co/q3',
     });
 
     // Empty / absent highlight fields stay undefined (SearchTypes.ts contract:

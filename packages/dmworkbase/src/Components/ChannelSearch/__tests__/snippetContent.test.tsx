@@ -157,20 +157,33 @@ describe("ChannelSearchSnippetContent", () => {
     });
   });
 
-  it("decodeServerEscapedHighlight decodes the six Lucene SimpleHTMLEncoder entities", () => {
-    // Cover every entity SimpleHTMLEncoder actually emits (six, not five):
-    // &quot; &amp; &lt; &gt; &#x27; &#x2F;. `&amp;` must be decoded last so a
-    // legitimate `&amp;lt;` in the source round-trips as `&lt;`, not `<`.
+  it("decodeServerEscapedHighlight decodes the entities Go html.EscapeString emits", () => {
+    // The decode table follows what Go's html.EscapeString actually emits, not
+    // Lucene's SimpleHTMLEncoder. Fixture values are lifted verbatim from the
+    // paired server test at:
+    //   octo-server modules/messages_search/search_files_test.go
+    //     :: TestEscapeHighlightFragment / ampersand-quote-roundtrip
+    // so the two suites can only disagree if someone changes the server on
+    // purpose. If a future server change moves to a different encoder, the fix
+    // is: update this fixture from the new server test, not from memory.
+
+    // Angle brackets — Go emits named forms for <>&.
     expect(decodeServerEscapedHighlight("&lt;a&gt;")).toBe("<a>");
-    expect(decodeServerEscapedHighlight("&quot;q&quot;")).toBe('"q"');
-    expect(decodeServerEscapedHighlight("john&#x27;s")).toBe("john's");
+    // Double quote — Go emits DECIMAL &#34;, not named &quot;.
+    expect(decodeServerEscapedHighlight("&#34;q&#34;")).toBe('"q"');
+    // Apostrophe — Go emits DECIMAL &#39;, not hex &#x27;.
+    expect(decodeServerEscapedHighlight("john&#39;s")).toBe("john's");
+    // Ampersand — round-trip.
     expect(decodeServerEscapedHighlight("R&amp;D")).toBe("R&D");
-    // The finding that motivated this test: `/` → `&#x2F;`. Missing this
-    // decode step ships literal `&#x2F;` in URLs, dates, file paths.
+    // End-to-end fixture lifted verbatim from the server's own
+    // TestEscapeHighlightFragment want-string. If this test breaks in isolation
+    // from a server change, the paired change should have shipped as one PR.
     expect(
-      decodeServerEscapedHighlight(
-        "see https:&#x2F;&#x2F;acme.co&#x2F;q3 2026&#x2F;09&#x2F;02"
-      )
+      decodeServerEscapedHighlight("R&amp;D &#34;v2&#34; <mark>foo</mark>")
+    ).toBe('R&D "v2" <mark>foo</mark>');
+    // Slash is NOT escaped by Go html.EscapeString — passthrough.
+    expect(
+      decodeServerEscapedHighlight("see https://acme.co/q3 2026/09/02")
     ).toBe("see https://acme.co/q3 2026/09/02");
     // Single-decode invariant (no double-unescape): the user-typed characters
     // `&lt;` must survive as literal `&lt;`, not decode all the way to `<`.
