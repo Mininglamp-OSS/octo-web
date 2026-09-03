@@ -51,7 +51,7 @@ import AiBadge from "../AiBadge";
 import ConversationVM from "../Conversation/vm";
 import { I18nContext, t, useI18n } from "../../i18n";
 import { formatDraftPreview } from "../../Utils/draftPreview";
-import { collapsedThreadUnread } from "./unread";
+import { collapsedThreadHasMention, collapsedThreadUnread } from "./unread";
 import { shouldShowExternalBadge } from "./externalBadge";
 import {
   addImChannelInfoListener,
@@ -129,6 +129,8 @@ interface CompactGroupItemProps {
   onToggleThreads?: (e: React.MouseEvent) => void;
   /** 折叠时子区的未读数（展开时为 0） */
   threadUnread?: number;
+  /** 折叠时子区是否有 @我（展开时为 false），用于父群行冒泡显示 @我 标签 */
+  threadHasMention?: boolean;
 }
 
 const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
@@ -142,10 +144,10 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
   threadsExpanded,
   onToggleThreads,
   threadUnread = 0,
+  threadHasMention = false,
 }) => {
   const { t } = useI18n();
   const totalUnread = conversationWrap.unread + threadUnread;
-  const hasMention = conversationWrap.isMentionMe && totalUnread > 0;
   const channelInfo = conversationWrap.channelInfo;
   // channelInfo 未加载时主动拉取，加载完触发 re-render
   React.useEffect(() => {
@@ -183,6 +185,10 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
     channelInfo,
     parentChannelInfo,
   });
+  // @我 标签：解绑「必须有未读」的旧规则，只跟随权威 mention 状态 + 静音语义。
+  // reminders 或 lastMessage.mention.uids 命中都算；折叠子区里的 @我 冒泡到父群行。
+  const hasMention =
+    (conversationWrap.isMentionMe || threadHasMention) && !effectiveMute;
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
@@ -704,7 +710,8 @@ export default class ConversationList extends Component<
   conversationItem(
     conversationWrap: ConversationWrap,
     hasThreads = false,
-    threadUnread = 0
+    threadUnread = 0,
+    threadHasMention = false
   ) {
     let channelInfo = conversationWrap.channelInfo;
     if (!channelInfo) {
@@ -751,6 +758,7 @@ export default class ConversationList extends Component<
               : false
           }
           threadUnread={threadUnread}
+          threadHasMention={threadHasMention}
           onClick={() => {
             this._trackChannelOpened(conversationWrap);
             if (this.props.onClick) this.props.onClick(conversationWrap);
@@ -788,15 +796,16 @@ export default class ConversationList extends Component<
     // parent item receives the collapsed unread count. Recent mode renders
     // threads as independent rows and must keep parent unread independent.
     const totalUnread = conversationWrap.unread + threadUnread;
-    const hasMention = conversationWrap.isMentionMe && totalUnread > 0;
-    const visibleSimpleReminders = conversationWrap.simpleReminders?.filter(
-      (r) => !r.done && r.reminderType !== ReminderType.ReminderTypeMentionMe
-    );
     const effectiveMute = isEffectivelyMuted({
       isThread,
       channelInfo,
       parentChannelInfo,
     });
+    const hasMention =
+      (conversationWrap.isMentionMe || threadHasMention) && !effectiveMute;
+    const visibleSimpleReminders = conversationWrap.simpleReminders?.filter(
+      (r) => !r.done && r.reminderType !== ReminderType.ReminderTypeMentionMe
+    );
     // 非 compact 下子区按 design v3.1 走扁平时间序，左侧用父频道头像，
     // 不再套 .wk-conversationlist-item-thread（避免缩进 + 树形连接线视觉嵌套）。
     const avatarChannel = isThread && parentChannel ? parentChannel : conversationWrap.channel;
@@ -1402,7 +1411,19 @@ export default class ConversationList extends Component<
         );
         return collapsedThreadUnread(threads, !!parentInfo?.mute, !!compact);
       })();
-      return this.conversationItem(conv, hasThreads, threadUnread);
+      // 折叠子区里的 @我 冒泡到父群行，避免子区折叠时用户看不到 @我 信号。
+      // 展开态下子区自己会亮 @我，父群行返回 false 避免同一 mention 亮两次。
+      const threadHasMention = (() => {
+        if (!hasThreads) return false;
+        if (this._isThreadExpanded(conv.channel.channelID)) return false;
+        const threads = threadsByParent.get(conv.channel.channelID) ?? [];
+        const parentInfo = getImChannelInfo(
+          WKSDK.shared(),
+          new Channel(conv.channel.channelID, ChannelTypeGroup)
+        );
+        return collapsedThreadHasMention(threads, !!parentInfo?.mute, !!compact);
+      })();
+      return this.conversationItem(conv, hasThreads, threadUnread, threadHasMention);
     };
 
     return (

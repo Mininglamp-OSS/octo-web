@@ -359,7 +359,7 @@ describe("ConversationList unread indicators", () => {
     ).toBe("14");
   });
 
-  it("renders mention and muted unread count together", () => {
+  it("hides the mention marker in a muted conversation but keeps the muted unread count", () => {
     act(() => {
       ReactDOM.render(
         <ConversationList
@@ -375,9 +375,8 @@ describe("ConversationList unread indicators", () => {
       ".wk-conversationlist-item-indicators"
     );
 
-    expect(indicators?.querySelector(".wk-mention")?.textContent).toBe(
-      "base.conversationList.mentionMarker"
-    );
+    // WS-213 方案 A + 对齐 category header：免打扰群不亮 @我 标签
+    expect(indicators?.querySelector(".wk-mention")).toBeNull();
     expect(
       indicators?.querySelector(".wk-conv-unread-num--muted")?.textContent
     ).toBe("5");
