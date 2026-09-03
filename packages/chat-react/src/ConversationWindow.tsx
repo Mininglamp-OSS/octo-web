@@ -1,11 +1,19 @@
 import React, {
+  useCallback,
   useState,
   useEffect,
+  useMemo,
   useRef,
   type ReactNode,
 } from 'react'
-import type { ChatClient, ChatChannelRef, ChatConversationLease } from '@octo/chat-core'
-import { useChatClient } from './hooks'
+import {
+  ChatClientEvent,
+  ChatClientStatus,
+  ChatConversationSupersededError,
+  type ChatChannelRef,
+  type ChatConversationLease,
+} from '@octo/chat-core'
+import { useChatClient, useChatHostCapabilities } from './hooks'
 import type { ConversationWindowData } from './types'
 
 export type { ConversationWindowData } from './types'
@@ -44,6 +52,9 @@ export interface ConversationWindowProps {
 
   /** Optional stable DOM data attribute value. Defaults to the channel id. */
   'data-channel'?: string
+
+  /** Called when opening the requested conversation fails. */
+  onError?: (error: Error) => void
 }
 
 /**
@@ -67,13 +78,17 @@ export function ConversationWindow({
   className,
   style,
   'data-channel': dataChannel,
+  onError,
 }: ConversationWindowProps): JSX.Element {
   const client = useChatClient()
+  const host = useChatHostCapabilities()
 
-  const [data, setData] = useState<ConversationWindowData>(() => ({
+  const [state, setState] = useState<Omit<ConversationWindowData, 'retry'>>(() => ({
     channel,
     isLeased: false,
+    error: null,
   }))
+  const [retryVersion, setRetryVersion] = useState(0)
 
   // Monotonic request token — invalidates stale async openConversation
   // resolutions so only the latest request may adopt its lease.
@@ -82,6 +97,23 @@ export function ConversationWindow({
   const leaseRef = useRef<ChatConversationLease | null>(null)
   // Guards against setState after unmount.
   const mountedRef = useRef(true)
+  const failedOpenRef = useRef(false)
+  const restartPendingRef = useRef(false)
+  const onErrorRef = useRef(onError)
+  const hostRef = useRef(host)
+  onErrorRef.current = onError
+  hostRef.current = host
+
+  const retry = useCallback(() => {
+    if (!mountedRef.current) return
+    failedOpenRef.current = false
+    setRetryVersion((version) => version + 1)
+  }, [])
+
+  const data = useMemo<ConversationWindowData>(() => ({
+    ...state,
+    retry,
+  }), [retry, state])
 
   useEffect(() => {
     mountedRef.current = true
@@ -89,6 +121,36 @@ export function ConversationWindow({
       mountedRef.current = false
     }
   }, [])
+
+  useEffect(() => client.subscribe(
+    ChatClientEvent.StatusChanged,
+    (status: ChatClientStatus) => {
+      if (!mountedRef.current) return
+
+      if (status === ChatClientStatus.Stopped) {
+        requestRef.current += 1
+        leaseRef.current = null
+        failedOpenRef.current = false
+        restartPendingRef.current = activate
+        setState({ channel, isLeased: false, error: null })
+        return
+      }
+
+      if (
+        status === ChatClientStatus.Connected &&
+        (failedOpenRef.current || restartPendingRef.current)
+      ) {
+        restartPendingRef.current = false
+        retry()
+      }
+    },
+  ), [
+    activate,
+    channel.channelId,
+    channel.channelType,
+    client,
+    retry,
+  ])
 
   useEffect(() => {
     const token = ++requestRef.current
@@ -102,14 +164,17 @@ export function ConversationWindow({
     leaseRef.current = null
 
     if (!activate) {
-      setData({ channel, isLeased: false })
+      failedOpenRef.current = false
+      setState({ channel, isLeased: false, error: null })
       return
     }
 
     let cancelled = false
+    failedOpenRef.current = false
+    restartPendingRef.current = false
 
     // Reset to unleased while the new request is in flight.
-    setData({ channel, isLeased: false })
+    setState({ channel, isLeased: false, error: null })
 
     client
       .openConversation(channel)
@@ -132,11 +197,34 @@ export function ConversationWindow({
           return
         }
         leaseRef.current = lease
-        setData({ channel, isLeased: true })
+        failedOpenRef.current = false
+        setState({ channel, isLeased: true, error: null })
       })
-      .catch(() => {
-        // openConversation failure leaves the window unleased; the next
-        // channel/prop change will re-attempt.
+      .catch((error: unknown) => {
+        if (
+          cancelled ||
+          !mountedRef.current ||
+          requestRef.current !== token ||
+          error instanceof ChatConversationSupersededError
+        ) return
+
+        const normalized = error instanceof Error ? error : new Error(String(error))
+        failedOpenRef.current = true
+        setState({ channel, isLeased: false, error: normalized })
+        try {
+          onErrorRef.current?.(normalized)
+        } catch {
+          // Consumer error handlers must not escape the lease lifecycle.
+        }
+        try {
+          hostRef.current?.reportError?.({
+            message: normalized.message,
+            code: 'conversation-open-failed',
+            stack: normalized.stack,
+          })
+        } catch {
+          // Host telemetry failures must not create an unhandled rejection.
+        }
       })
 
     return () => {
@@ -147,7 +235,7 @@ export function ConversationWindow({
       leaseRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, channel.channelId, channel.channelType, activate])
+  }, [client, channel.channelId, channel.channelType, activate, retryVersion])
 
   const rendered =
     typeof children === 'function'

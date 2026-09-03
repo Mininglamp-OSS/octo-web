@@ -104,7 +104,7 @@ export class ChatConversationSupersededError extends Error {
  * - Idempotent start / stop
  * - Single active-conversation ownership with safe switching
  * - Automatic lease release on stop / switch
- * - Event subscription cleanup on stop
+ * - Event subscriptions that remain observable across explicit restarts
  * - Failed-state support
  * - A generic message port routed to the optional message adapter
  */
@@ -133,6 +133,9 @@ export class ManagedChatClient<
   private _operationQueue: Promise<void> = Promise.resolve();
   // Tracks whether we have started (for idempotent stop).
   private _started = false;
+  // A failed connect may still leave transport resources behind. Keep cleanup
+  // pending until disconnect succeeds so retries cannot stack transports.
+  private _connectionNeedsDisconnect = false;
   // Open requests are queued, but only the latest requested channel is allowed
   // to commit after an asynchronous adapter call resolves.
   private _openRequestGeneration = 0;
@@ -181,11 +184,26 @@ export class ManagedChatClient<
         return;
       }
 
+      if (this._connectionNeedsDisconnect) {
+        try {
+          await this._connectionAdapter.disconnect();
+          this._connectionNeedsDisconnect = false;
+        } catch (error) {
+          const cleanupError = this._createAdapterError("start cleanup", [
+            error,
+          ]);
+          this._setStatus(ChatClientStatus.Failed);
+          this._emit(ChatClientEvent.Error, cleanupError);
+          throw cleanupError;
+        }
+      }
+
       this._bootstrap = bootstrap;
       const connectionEpoch = ++this._connectionEpoch;
       this._connectionAvailable = true;
       this._connectionContext = this._createConnectionContext(connectionEpoch);
       this._setStatus(ChatClientStatus.Connecting);
+      this._connectionNeedsDisconnect = true;
 
       try {
         await this._connectionAdapter.connect(
@@ -193,7 +211,21 @@ export class ManagedChatClient<
           this._connectionContext
         );
       } catch (err) {
+        this._connectionEpoch += 1;
+        this._bootstrap = null;
+        const errors: unknown[] = [err];
+        try {
+          await this._connectionAdapter.disconnect();
+          this._connectionNeedsDisconnect = false;
+        } catch (cleanupError) {
+          errors.push(cleanupError);
+        }
         this._setStatus(ChatClientStatus.Failed);
+        if (errors.length > 1) {
+          const error = this._createAdapterError("start", errors);
+          this._emit(ChatClientEvent.Error, error);
+          throw error;
+        }
         throw err;
       }
 
@@ -224,9 +256,10 @@ export class ManagedChatClient<
         errors.push(error);
       }
 
-      if (this._started) {
+      if (this._connectionNeedsDisconnect) {
         try {
           await this._connectionAdapter.disconnect();
+          this._connectionNeedsDisconnect = false;
         } catch (error) {
           errors.push(error);
           this._emit(ChatClientEvent.Error, error);
@@ -237,7 +270,6 @@ export class ManagedChatClient<
       this._bootstrap = null;
 
       this._setStatus(ChatClientStatus.Stopped);
-      this._clearAllListeners();
 
       if (errors.length > 0) {
         throw this._createAdapterError("stop", errors);
@@ -279,6 +311,7 @@ export class ManagedChatClient<
         const oldLease = this._currentLease;
         if (oldLease) {
           await this._teardownLease(oldLease);
+          this._throwIfOpenSuperseded(requestGeneration);
         }
 
         if (this._subscribeAdapter) {
@@ -288,8 +321,10 @@ export class ManagedChatClient<
           } catch {
             // Subscription setup must not fail the open itself.
           }
+          this._throwIfOpenSuperseded(requestGeneration);
         }
 
+        this._throwIfOpenSuperseded(requestGeneration);
         const newLease = new ManagedConversationLease(this, handle);
         if (subscribed) newLease._markSubscribed();
         newLease._markOpened();
@@ -353,10 +388,6 @@ export class ManagedChatClient<
         }
       }
     }
-  }
-
-  private _clearAllListeners(): void {
-    this._listeners.clear();
   }
 
   private _enqueueOperation<T>(operation: () => Promise<T>): Promise<T> {

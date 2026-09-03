@@ -221,8 +221,10 @@ export interface ChatClient {
   /**
    * Register an event listener.
    *
-   * Returns an unsubscribe function. All subscriptions are cleaned up
-   * automatically on `stop()`.
+   * Returns an unsubscribe function. Listeners remain registered across an
+   * explicit `stop()` / `start()` cycle so mounted consumers can observe and
+   * recover from restarts. Consumers must call the returned function when
+   * their own lifecycle ends.
    */
   subscribe(
     event: ChatClientEvent,

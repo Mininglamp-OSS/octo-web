@@ -17,11 +17,15 @@ const conversationContext = {
   clearCheckedMessages: vi.fn(),
   setEditOn: vi.fn(),
 };
+const conversationTestState = vi.hoisted(() => ({ throwOnRender: false }));
 
 vi.mock("../../Conversation", async () => {
   const ReactModule = await import("react");
   return {
     Conversation: (props: any) => {
+      if (conversationTestState.throwOnRender) {
+        throw new Error("conversation render failed");
+      }
       ReactModule.useEffect(() => {
         props.onContext?.(conversationContext);
       }, [props.onContext]);
@@ -36,15 +40,38 @@ vi.mock("../../Conversation", async () => {
   };
 });
 
-vi.mock("../../ErrorBoundary", () => ({
-  ErrorBoundary: ({ children }: { children: React.ReactNode }) => children,
-}));
+vi.mock("../../ErrorBoundary", async () => {
+  const ReactModule = await import("react");
+  class TestErrorBoundary extends ReactModule.Component<
+    { children: React.ReactNode; onError?: (error: Error, info: React.ErrorInfo) => void },
+    { hasError: boolean }
+  > {
+    state = { hasError: false };
+
+    static getDerivedStateFromError() {
+      return { hasError: true };
+    }
+
+    componentDidCatch(error: Error, info: React.ErrorInfo) {
+      this.props.onError?.(error, info);
+    }
+
+    render() {
+      return this.state.hasError
+        ? <div data-testid="conversation-error-boundary" />
+        : this.props.children;
+    }
+  }
+
+  return { ErrorBoundary: TestErrorBoundary };
+});
 
 import ConversationWindow from "../index";
 
-function createClient() {
+function createClient(options: { failOpenOnce?: boolean } = {}) {
   const released: string[] = [];
   const opened: ChatChannelRef[] = [];
+  let shouldFailOpen = options.failOpenOnce === true;
   const client: ChatClient = {
     status: ChatClientStatus.Connected,
     activeConversation: null,
@@ -57,6 +84,10 @@ function createClient() {
     start: async () => {},
     stop: async () => {},
     openConversation: async (channel) => {
+      if (shouldFailOpen) {
+        shouldFailOpen = false;
+        throw new Error("open failed");
+      }
       opened.push(channel);
       let isReleased = false;
       const lease: ChatConversationLease = {
@@ -91,6 +122,7 @@ const channel = {
 
 describe("ConversationWindow", () => {
   beforeEach(() => {
+    conversationTestState.throwOnRender = false;
     conversationContext.clearCheckedMessages.mockClear();
     conversationContext.setEditOn.mockClear();
   });
@@ -249,5 +281,55 @@ describe("ConversationWindow", () => {
     expect(
       view.getByTestId("legacy-conversation").getAttribute("data-auxiliary")
     ).toBe("true");
+  });
+
+  it("shows a recoverable state when opening the conversation fails", async () => {
+    const { client, opened } = createClient({ failOpenOnce: true });
+    const unbind = vi.fn();
+    const bind = vi.fn(() => unbind);
+
+    const view = render(
+      <ConversationWindow
+        client={client}
+        channel={channel}
+        errorModuleName="chat"
+        bindConversationContext={bind}
+        header={{ title: "Direct chat" }}
+      />
+    );
+
+    await waitFor(() => expect(bind).toHaveBeenCalledWith(conversationContext));
+    await waitFor(() => expect(view.getByRole("alert")).toBeTruthy());
+    await waitFor(() => expect(unbind).toHaveBeenCalledTimes(1));
+    expect(view.queryByTestId("legacy-conversation")).toBeNull();
+
+    fireEvent.click(view.getByRole("button", { name: /retry|重试/i }));
+
+    await waitFor(() => expect(view.getByTestId("legacy-conversation")).toBeTruthy());
+    expect(opened).toEqual([{ channelId: "person-1", channelType: 1 }]);
+  });
+
+  it("releases the bound context when Conversation is caught by its error boundary", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { client } = createClient();
+    const unbind = vi.fn();
+    const bind = vi.fn(() => unbind);
+    const props = {
+      client,
+      channel,
+      errorModuleName: "chat",
+      bindConversationContext: bind,
+      header: { title: "Direct chat" },
+    };
+
+    const view = render(<ConversationWindow {...props} />);
+    await waitFor(() => expect(bind).toHaveBeenCalledWith(conversationContext));
+
+    conversationTestState.throwOnRender = true;
+    view.rerender(<ConversationWindow {...props} />);
+
+    await waitFor(() => expect(view.getByTestId("conversation-error-boundary")).toBeTruthy());
+    await waitFor(() => expect(unbind).toHaveBeenCalledTimes(1));
+    consoleSpy.mockRestore();
   });
 });

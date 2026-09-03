@@ -54,4 +54,8 @@ export interface ChatHostCapabilities {
 export interface ConversationWindowData {
   readonly channel: ChatChannelRef
   readonly isLeased: boolean
+  /** Present in current implementations; optional for legacy structural consumers. */
+  readonly error?: Error | null
+  /** Present in current implementations; optional for legacy structural consumers. */
+  retry?(): void
 }

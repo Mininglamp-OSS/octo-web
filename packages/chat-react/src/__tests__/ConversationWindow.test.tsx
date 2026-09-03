@@ -1,9 +1,11 @@
 import React from 'react'
-import { describe, it, expect, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { ChatProvider } from '../ChatProvider'
 import { ConversationWindow } from '../ConversationWindow'
 import {
+  ChatClientEvent,
+  ChatClientStatus,
   createMockClient,
   channelA,
   channelB,
@@ -109,6 +111,108 @@ describe('ConversationWindow', () => {
         'channel-a:leased',
       )
     })
+  })
+
+  it('exposes real open errors and supports an explicit retry', async () => {
+    const openError = new Error('open failed')
+    const onError = vi.fn()
+    const originalOpen = client.openConversation.bind(client)
+    let attempts = 0
+    client.openConversation = vi.fn(async (channel) => {
+      attempts += 1
+      if (attempts === 1) throw openError
+      return originalOpen(channel)
+    })
+
+    render(
+      shell(
+        <ConversationWindow channel={channelA} onError={onError}>
+          {(data) => (
+            <button type="button" onClick={data.retry}>
+              {data.error?.message || (data.isLeased ? 'leased' : 'pending')}
+            </button>
+          )}
+        </ConversationWindow>,
+      ),
+    )
+
+    await waitFor(() => expect(screen.getByRole('button')).toHaveTextContent('open failed'))
+    expect(onError).toHaveBeenCalledWith(openError)
+
+    fireEvent.click(screen.getByRole('button'))
+    await waitFor(() => expect(screen.getByRole('button')).toHaveTextContent('leased'))
+    expect(client.openConversation).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries a failed open after the client reconnects', async () => {
+    const originalOpen = client.openConversation.bind(client)
+    let attempts = 0
+    client.openConversation = vi.fn(async (channel) => {
+      attempts += 1
+      if (attempts === 1) throw new Error('connection lost')
+      return originalOpen(channel)
+    })
+
+    render(
+      shell(
+        <ConversationWindow channel={channelA}>
+          {(data) => (
+            <span>{data.error?.message || (data.isLeased ? 'leased' : 'pending')}</span>
+          )}
+        </ConversationWindow>,
+      ),
+    )
+
+    await waitFor(() => expect(screen.getByText('connection lost')).toBeInTheDocument())
+    client.emit(ChatClientEvent.StatusChanged, ChatClientStatus.Connected)
+    await waitFor(() => expect(screen.getByText('leased')).toBeInTheDocument())
+    expect(client.openConversation).toHaveBeenCalledTimes(2)
+  })
+
+  it('reopens the conversation after an externally managed stop and restart', async () => {
+    render(
+      shell(
+        <ConversationWindow channel={channelA}>
+          {(data) => (
+            <span>{data.isLeased ? 'leased' : 'pending'}</span>
+          )}
+        </ConversationWindow>,
+      ),
+    )
+
+    await waitFor(() => expect(screen.getByText('leased')).toBeInTheDocument())
+
+    await act(async () => {
+      await client.stop()
+    })
+    expect(screen.getByText('pending')).toBeInTheDocument()
+
+    await act(async () => {
+      await client.start({ token: 'replacement' })
+    })
+    await waitFor(() => expect(screen.getByText('leased')).toBeInTheDocument())
+    expect(client.openCalls).toEqual([channelA, channelA])
+  })
+
+  it('discards a pending lease that resolves after the client stops', async () => {
+    client.deferNextOpen()
+    render(
+      shell(
+        <ConversationWindow channel={channelA}>
+          {(data) => <span>{data.isLeased ? 'leased' : 'pending'}</span>}
+        </ConversationWindow>,
+      ),
+    )
+
+    expect(client.pendingOpens).toHaveLength(1)
+    await act(async () => {
+      await client.stop()
+      client.resolveNextPending()
+      await Promise.resolve()
+    })
+
+    await waitFor(() => expect(client.leases[0].released).toBe(true))
+    expect(screen.getByText('pending')).toBeInTheDocument()
   })
 
   it('forwards className and style to a wrapper div', () => {

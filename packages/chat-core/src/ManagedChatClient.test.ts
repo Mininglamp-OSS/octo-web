@@ -11,7 +11,10 @@ import {
   type ChatSubscribeAdapter,
   type ChatMessageAdapter,
 } from "./types";
-import { ManagedChatClient } from "./ManagedChatClient";
+import {
+  ChatConversationSupersededError,
+  ManagedChatClient,
+} from "./ManagedChatClient";
 
 // --------------------------------------------------------------------------
 // Helpers
@@ -213,12 +216,32 @@ describe("ManagedChatClient", () => {
       expect(connAdapter.connect).toHaveBeenCalledTimes(1);
     });
 
-    it("sets Failed when connection adapter throws", async () => {
-      const { client } = createClient({ failConnect: true });
+    it("sets Failed and rolls back when connection adapter throws", async () => {
+      const { client, connAdapter } = createClient({ failConnect: true });
       await expect(client.start(bootstrapFor(channelA))).rejects.toThrow(
         "connect failed"
       );
       expect(client.status).toBe(ChatClientStatus.Failed);
+      expect(connAdapter.disconnect).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries pending connection cleanup before reconnecting", async () => {
+      const { client, connAdapter } = createClient();
+      connAdapter.connect
+        .mockRejectedValueOnce(new Error("connect failed"))
+        .mockResolvedValueOnce(undefined);
+      connAdapter.disconnect
+        .mockRejectedValueOnce(new Error("rollback failed"))
+        .mockResolvedValue(undefined);
+
+      await expect(client.start(bootstrapFor(channelA))).rejects.toThrow(
+        /connect failed; rollback failed/
+      );
+      await client.start(bootstrapFor(channelB));
+
+      expect(connAdapter.disconnect).toHaveBeenCalledTimes(2);
+      expect(connAdapter.connect).toHaveBeenCalledTimes(2);
+      expect(client.status).toBe(ChatClientStatus.Connected);
     });
 
     it("queues a stop requested while start is still connecting", async () => {
@@ -321,20 +344,21 @@ describe("ManagedChatClient", () => {
       expect(connAdapter.disconnect).toHaveBeenCalledTimes(1);
     });
 
-    it("clears all event subscriptions", async () => {
+    it("keeps event subscriptions across an explicit stop and restart", async () => {
       const { client } = createClient();
       await client.start(bootstrapFor(channelA));
 
-      const fn1 = vi.fn();
-      const fn2 = vi.fn();
-      client.subscribe(ChatClientEvent.StatusChanged, fn1);
-      client.subscribe(ChatClientEvent.Error, fn2);
+      const statuses: ChatClientStatus[] = [];
+      client.subscribe(ChatClientEvent.StatusChanged, (status) => statuses.push(status));
 
       await client.stop();
+      await client.start(bootstrapFor(channelB));
 
-      // fn1 sees the Stopped transition (1 call), fn2 never fires
-      expect(fn1).toHaveBeenCalledTimes(1);
-      expect(fn2).not.toHaveBeenCalled();
+      expect(statuses).toEqual([
+        ChatClientStatus.Stopped,
+        ChatClientStatus.Connecting,
+        ChatClientStatus.Connected,
+      ]);
     });
 
     it("reports a disconnect error after transitioning to Stopped", async () => {
@@ -666,7 +690,7 @@ describe("ManagedChatClient", () => {
       expect(errors).toHaveLength(1);
     });
 
-    it("finishes a committing subscription before the next same-channel open", async () => {
+    it("discards an open superseded while its subscription is pending", async () => {
       const { client, subAdapter } = createClient({ withSubscribe: true });
       await client.start(bootstrapFor(channelA));
       const firstSubscribe = deferred<void>();
@@ -690,7 +714,9 @@ describe("ManagedChatClient", () => {
       const winningOpen = client.openConversation({ ...channelA });
       firstSubscribe.resolve();
 
-      const firstLease = await firstOpen;
+      await expect(firstOpen).rejects.toBeInstanceOf(
+        ChatConversationSupersededError
+      );
       const winningLease = await winningOpen;
 
       expect(calls).toEqual([
@@ -698,12 +724,11 @@ describe("ManagedChatClient", () => {
         "unsubscribe-stale",
         "subscribe-winning",
       ]);
-      expect(firstLease.released).toBe(true);
       expect(client.activeConversation).toBe(winningLease);
       expect(winningLease.released).toBe(false);
     });
 
-    it("linearizes stop after an open that already entered commit", async () => {
+    it("discards an open superseded by stop while subscription is pending", async () => {
       const { client, subAdapter } = createClient({ withSubscribe: true });
       await client.start(bootstrapFor(channelA));
       const subscribe = deferred<void>();
@@ -723,11 +748,39 @@ describe("ManagedChatClient", () => {
       const stopping = client.stop();
       subscribe.resolve();
 
-      await opening;
+      await expect(opening).rejects.toBeInstanceOf(
+        ChatConversationSupersededError
+      );
       await stopping;
 
-      expect(events).toEqual(["opened", "closed"]);
+      expect(events).toEqual([]);
       expect(client.status).toBe(ChatClientStatus.Stopped);
+    });
+
+    it("discards an open superseded while the previous lease is tearing down", async () => {
+      const { client, convAdapter } = createClient();
+      await client.start(bootstrapFor(channelA));
+      await client.openConversation(channelA);
+
+      const closePrevious = deferred<void>();
+      convAdapter.closeConversation.mockImplementationOnce(
+        () => closePrevious.promise
+      );
+
+      const staleOpen = client.openConversation(channelB);
+      await vi.waitFor(() => {
+        expect(convAdapter.closeConversation).toHaveBeenCalledTimes(1);
+      });
+      const winningOpen = client.openConversation(channelA);
+      closePrevious.resolve();
+
+      await expect(staleOpen).rejects.toBeInstanceOf(
+        ChatConversationSupersededError
+      );
+      const winningLease = await winningOpen;
+
+      expect(client.activeConversation).toBe(winningLease);
+      expect(winningLease.channel).toBe(channelA);
     });
   });
 

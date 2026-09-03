@@ -1,4 +1,5 @@
 import React, {
+  useCallback,
   useEffect,
   useRef,
   type CSSProperties,
@@ -16,6 +17,7 @@ import { Channel } from "wukongimjssdk";
 import { Conversation, type ConversationProps } from "../Conversation";
 import type ConversationContext from "../Conversation/context";
 import { ErrorBoundary } from "../ErrorBoundary";
+import { useI18n } from "../../i18n";
 import "./index.css";
 
 export type ConversationWindowMode = "primary" | "auxiliary";
@@ -70,6 +72,43 @@ export interface ConversationSurfaceProps {
   >;
 }
 
+interface ConversationSurfaceContentProps {
+  channel: Channel;
+  mode: ConversationWindowMode;
+  errorModuleName: string;
+  conversationProps?: ConversationSurfaceProps["conversationProps"];
+  onContext: (context: ConversationContext) => void;
+  onUnmount: () => void;
+}
+
+function ConversationSurfaceContent({
+  channel,
+  mode,
+  errorModuleName,
+  conversationProps,
+  onContext,
+  onUnmount,
+}: ConversationSurfaceContentProps): JSX.Element {
+  useEffect(() => () => onUnmount(), [onUnmount]);
+
+  return (
+    <ErrorBoundary
+      key={`${channel.channelID}-${channel.channelType}`}
+      moduleName={errorModuleName}
+      onError={onUnmount}
+    >
+      <Conversation
+        {...conversationProps}
+        key={`${channel.channelID}-${channel.channelType}`}
+        channel={channel}
+        isAuxiliary={mode === "auxiliary"}
+        shouldShowHistorySplit={mode !== "auxiliary"}
+        onContext={onContext}
+      />
+    </ErrorBoundary>
+  );
+}
+
 export function ConversationSurface({
   client,
   channel,
@@ -81,21 +120,21 @@ export function ConversationSurface({
   bindConversationContext,
   conversationProps,
 }: ConversationSurfaceProps): JSX.Element {
+  const { t } = useI18n();
   const unbindConversationContextRef = useRef<(() => void) | undefined>();
 
-  useEffect(
-    () => () => {
-      unbindConversationContextRef.current?.();
-      unbindConversationContextRef.current = undefined;
-    },
-    []
-  );
-
-  const handleConversationContext = (context: ConversationContext) => {
+  const releaseConversationContext = useCallback(() => {
     unbindConversationContextRef.current?.();
+    unbindConversationContextRef.current = undefined;
+  }, []);
+
+  useEffect(() => releaseConversationContext, [releaseConversationContext]);
+
+  const handleConversationContext = useCallback((context: ConversationContext) => {
+    releaseConversationContext();
     unbindConversationContextRef.current = bindConversationContext?.(context);
     conversationProps?.onContext?.(context);
-  };
+  }, [bindConversationContext, conversationProps?.onContext, releaseConversationContext]);
 
   return (
     <ChatProvider client={client} host={hostCapabilities}>
@@ -108,16 +147,23 @@ export function ConversationSurface({
         className={classNames("wk-chat-conversation-surface", className)}
         style={style}
       >
-        <ErrorBoundary moduleName={errorModuleName}>
-          <Conversation
-            {...conversationProps}
-            key={`${channel.channelID}-${channel.channelType}`}
+        {({ error, retry }) => error ? (
+          <div className="wk-chat-conversation-open-error" role="alert">
+            <span>{t("base.conversation.openFailed")}</span>
+            <button type="button" onClick={retry}>
+              {t("base.conversation.retry")}
+            </button>
+          </div>
+        ) : (
+          <ConversationSurfaceContent
             channel={channel}
-            isAuxiliary={mode === "auxiliary"}
-            shouldShowHistorySplit={mode !== "auxiliary"}
+            mode={mode}
+            errorModuleName={errorModuleName}
+            conversationProps={conversationProps}
             onContext={handleConversationContext}
+            onUnmount={releaseConversationContext}
           />
-        </ErrorBoundary>
+        )}
       </ChatConversationBoundary>
     </ChatProvider>
   );

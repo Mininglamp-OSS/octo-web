@@ -266,6 +266,8 @@
   "conversation.deleteConfirm.confirm": "Confirm",
   "conversation.deleteConfirm.content": "Deleted messages will disappear from your conversation history, but other people in the conversation can still see them.",
   "conversation.deleteConfirm.failed": "Failed to delete. Please try again.",
+  "conversation.openFailed": "Unable to open this conversation.",
+  "conversation.retry": "Retry",
   "conversation.deleteConfirm.title": "Delete messages?",
   "conversation.disband.inputNotice": "This group has been disbanded. You can no longer send messages.",
   "conversation.disband.threadCreateDisabled": "This group has been disbanded. You can no longer create threads.",

@@ -37,13 +37,17 @@ octo-buddy-client WebContentsView 宿主
 
 | 提交 | 内容 |
 | --- | --- |
-| `9bdc986b` | 抽离聊天核心、React 生命周期层和业务 ConversationWindow |
-| `62eaee2b` | 为嵌入式通信宿主补充布局与运行能力 |
-| `1ce396c8` | 新增 Client 通信单入口和独立构建产物 |
-| `65a6e2e0` | 加固首次导航、连接和嵌入生命周期，并修复会话视口高度链 |
-| `a2b05d41` | 增加可由宿主传入频道的独立会话 presentation |
+| `8b3dc19d` | 抽离聊天核心、React 生命周期层和业务 ConversationWindow |
+| `0bc116b3` | 为嵌入式通信宿主补充布局与运行能力 |
+| `606e3674` | 新增 Client 通信单入口和独立构建产物 |
+| `8ae4359f` | 加固首次导航、连接和嵌入生命周期 |
+| `c2b4e254` | 修复会话视口高度链 |
+| `f3ccbc8a` | 补充能力集成验证手册 |
+| `22a54d17` | 增加可由宿主传入频道的独立会话 presentation |
+| `bd04b3e2` | 补充独立会话集成设计与实施说明 |
+| `HEAD`（本提交） | 加固聊天生命周期、错误恢复和通信上报 |
 
-相对 `upstream/main` 共修改 51 个文件，新增约 6309 行，删除约 348 行。
+相对 `upstream/main` 共修改 57 个文件，新增约 8038 行，删除约 348 行。
 
 ### 2.2 octo-buddy-client
 
@@ -308,7 +312,7 @@ Client 代码位置：
   "schemaVersion": 1,
   "name": "octo-web-client-communication",
   "version": "1.0.12",
-  "commit": "a2b05d41",
+  "commit": "<git rev-parse --short HEAD>",
   "hostBridgeMajor": 1
 }
 ```
@@ -382,15 +386,16 @@ Client Space 改变
 
 | 范围 | 结果 |
 | --- | --- |
-| `@octo/chat-core` | 52 tests passed |
-| `@octo/chat-react` | 15 tests passed |
-| `@octo/base` | 473 files / 4323 tests passed |
+| `@octo/chat-core` | 54 tests passed |
+| `@octo/chat-react` | 24 tests passed |
+| `@octo/base` | 473 files / 4325 tests passed |
+| octo-web unit tests | 113 files / 1419 tests passed |
 | octo-web 正式 build | 通过 |
 | production communication build | 通过 |
 | Client typecheck | 通过 |
 | Client unit tests | 49 passed |
 | Communication Electron E2E | 12 passed |
-| production manifest | `1.0.12 / a2b05d41 / e2eMock:false` |
+| production manifest | 当前仅完成 provisional build；提交修复并从 clean tree 重建后，记录实际 `version / commit / e2eMock:false` |
 
 E2E 覆盖：
 

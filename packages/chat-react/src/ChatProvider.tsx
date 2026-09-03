@@ -1,4 +1,11 @@
-import React, { useEffect, useRef, useMemo, type ReactNode } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { ChatClient, ChatClientBootstrap } from "@octo/chat-core";
 import type { ChatHostCapabilities } from "./types";
 import { ChatContext, ChatHostContext } from "./ChatContext";
@@ -20,7 +27,30 @@ export interface ChatProviderProps {
    */
   manageLifecycle?: boolean;
 
+  /** Rendered when a managed lifecycle operation fails. */
+  lifecycleFallback?:
+    | ReactNode
+    | ((state: ChatProviderLifecycleFailure) => ReactNode);
+
+  /** Called when a managed lifecycle operation fails. */
+  onLifecycleError?: (error: Error) => void;
+
   children: ReactNode;
+}
+
+export interface ChatProviderLifecycleFailure {
+  error: Error;
+  retry(): void;
+}
+
+interface PendingManagedStop {
+  client: ChatClient;
+  error?: Error;
+  reported: boolean;
+}
+
+function normalizeLifecycleError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 /**
@@ -34,38 +64,180 @@ export function ChatProvider({
   host,
   bootstrap,
   manageLifecycle = false,
+  lifecycleFallback,
+  onLifecycleError,
   children,
 }: ChatProviderProps): JSX.Element {
-  const startedRef = useRef(false);
+  const managedBootstrap = useMemo<ChatClientBootstrap | null>(() => {
+    if (!manageLifecycle || !bootstrap) return null;
+    return {
+      endpoint: bootstrap.endpoint,
+      token: bootstrap.token,
+      session: bootstrap.session,
+      space: bootstrap.space,
+      initialChannel: bootstrap.initialChannel
+        ? {
+            channelId: bootstrap.initialChannel.channelId,
+            channelType: bootstrap.initialChannel.channelType,
+          }
+        : undefined,
+    };
+  }, [
+    manageLifecycle,
+    bootstrap?.endpoint,
+    bootstrap?.token,
+    bootstrap?.session,
+    bootstrap?.space,
+    bootstrap?.initialChannel?.channelId,
+    bootstrap?.initialChannel?.channelType,
+  ]);
+  const [readyLifecycle, setReadyLifecycle] = useState<{
+    client: ChatClient;
+    bootstrap: ChatClientBootstrap;
+  } | null>(null);
+  const [lifecycleError, setLifecycleError] = useState<Error | null>(null);
+  const [retryVersion, setRetryVersion] = useState(0);
+  const lifecycleQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingStopRef = useRef<PendingManagedStop | null>(null);
+  const retryPendingStopRef = useRef(false);
+  const hostRef = useRef(host);
+  const onLifecycleErrorRef = useRef(onLifecycleError);
+  hostRef.current = host;
+  onLifecycleErrorRef.current = onLifecycleError;
+
+  const reportLifecycleError = useCallback((error: Error, code: string) => {
+    try {
+      onLifecycleErrorRef.current?.(error);
+    } catch {
+      // Consumer error callbacks must not escape the lifecycle effect.
+    }
+    try {
+      hostRef.current?.reportError?.({
+        message: error.message,
+        code,
+        stack: error.stack,
+      });
+    } catch {
+      // Host telemetry failures must not create an unhandled rejection.
+    }
+  }, []);
+
+  const retryLifecycle = useCallback(() => {
+    retryPendingStopRef.current = true;
+    setLifecycleError(null);
+    setRetryVersion((version) => version + 1);
+  }, []);
 
   useEffect(() => {
-    if (!manageLifecycle || !bootstrap) return;
+    if (!managedBootstrap) {
+      setReadyLifecycle(null);
+      setLifecycleError(null);
+      return;
+    }
 
     let cancelled = false;
+    let startAttempted = false;
+    let failureCode = "chat-client-start-failed";
+    let errorAlreadyReported = false;
+    const retryPendingStop = retryPendingStopRef.current;
+    retryPendingStopRef.current = false;
+    setReadyLifecycle(null);
+    setLifecycleError(null);
 
-    void client
-      .start(bootstrap)
-      .then(() => {
-        if (!cancelled) startedRef.current = true;
+    const startTask = lifecycleQueueRef.current
+      .then(async () => {
+        if (cancelled) return;
+
+        const pendingStop = pendingStopRef.current;
+        if (pendingStop) {
+          failureCode = "chat-client-stop-failed";
+          if (!retryPendingStop) {
+            errorAlreadyReported = pendingStop.reported;
+            throw pendingStop.error ?? new Error("Previous chat client cleanup is incomplete.");
+          }
+
+          try {
+            await pendingStop.client.stop();
+            if (pendingStopRef.current === pendingStop) {
+              pendingStopRef.current = null;
+            }
+          } catch (error) {
+            const normalized = normalizeLifecycleError(error);
+            pendingStop.error = normalized;
+            pendingStop.reported = false;
+            throw normalized;
+          }
+        }
+
+        if (cancelled) return;
+        failureCode = "chat-client-start-failed";
+        startAttempted = true;
+        await client.start(managedBootstrap);
+        if (!cancelled) {
+          setLifecycleError(null);
+          setReadyLifecycle({ client, bootstrap: managedBootstrap });
+        }
       })
-      .catch(() => {
-        startedRef.current = false;
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        const normalized = normalizeLifecycleError(error);
+        setReadyLifecycle(null);
+        setLifecycleError(normalized);
+        if (!errorAlreadyReported) {
+          reportLifecycleError(normalized, failureCode);
+          const pendingStop = pendingStopRef.current;
+          if (pendingStop?.error === normalized) pendingStop.reported = true;
+        }
       });
+    lifecycleQueueRef.current = startTask.then(
+      () => undefined,
+      () => undefined,
+    );
 
     return () => {
       cancelled = true;
-      startedRef.current = false;
-      void client.stop().catch(() => undefined);
+      const stopTask = lifecycleQueueRef.current.then(async () => {
+        if (!startAttempted) return;
+
+        const pendingStop: PendingManagedStop = {
+          client,
+          reported: false,
+        };
+        pendingStopRef.current = pendingStop;
+        try {
+          await client.stop();
+          if (pendingStopRef.current === pendingStop) {
+            pendingStopRef.current = null;
+          }
+        } catch (error) {
+          const normalized = normalizeLifecycleError(error);
+          pendingStop.error = normalized;
+          pendingStop.reported = true;
+          reportLifecycleError(normalized, "chat-client-stop-failed");
+          throw normalized;
+        }
+      });
+      lifecycleQueueRef.current = stopTask.catch(() => undefined);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, bootstrap, manageLifecycle]);
+  }, [client, managedBootstrap, reportLifecycleError, retryVersion]);
 
   const ctx = useMemo(() => ({ client, host }), [client, host]);
+  const lifecycleReady =
+    !managedBootstrap ||
+    (readyLifecycle?.client === client &&
+      readyLifecycle.bootstrap === managedBootstrap);
+  const renderedChildren = lifecycleReady
+    ? children
+    : lifecycleError && lifecycleFallback
+      ? typeof lifecycleFallback === "function"
+        ? lifecycleFallback({ error: lifecycleError, retry: retryLifecycle })
+        : lifecycleFallback
+      : null;
 
   return (
     <ChatContext.Provider value={ctx}>
       <ChatHostContext.Provider value={host}>
-        {children}
+        {renderedChildren}
       </ChatHostContext.Provider>
     </ChatContext.Provider>
   );

@@ -41,6 +41,28 @@
   min-height: 0;
 }
 
+.wk-chat-conversation-open-error {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--wk-text-secondary, #666);
+  font-size: 14px;
+}
+
+.wk-chat-conversation-open-error button {
+  min-width: 72px;
+  height: 32px;
+  padding: 0 16px;
+  color: var(--wk-brand-primary);
+  background: var(--wk-bg-surface, #fff);
+  border: 1px solid var(--wk-brand-primary);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
 .wk-chat-conversation-header {
   position: relative;
   z-index: 11;

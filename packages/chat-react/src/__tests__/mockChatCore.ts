@@ -6,8 +6,6 @@ import type {
   ChatClient,
   ChatClientBootstrap,
   ChatChannelRef,
-  ChatClientEvent,
-  ChatClientStatus,
   ChatConversationLease,
   ChatClientSnapshot,
 } from '@octo/chat-core'
@@ -16,10 +14,33 @@ export type {
   ChatClient,
   ChatClientBootstrap,
   ChatChannelRef,
-  ChatClientEvent,
-  ChatClientStatus,
   ChatConversationLease,
   ChatClientSnapshot,
+}
+
+export enum ChatClientStatus {
+  Idle = 'idle',
+  Connecting = 'connecting',
+  Connected = 'connected',
+  Disconnected = 'disconnected',
+  Failed = 'failed',
+  Stopped = 'stopped',
+}
+
+export enum ChatClientEvent {
+  StatusChanged = 'statusChanged',
+  ConversationOpened = 'conversationOpened',
+  ConversationClosed = 'conversationClosed',
+  Error = 'error',
+  MessageReceived = 'messageReceived',
+  MessageStatusChanged = 'messageStatusChanged',
+}
+
+export class ChatConversationSupersededError extends Error {
+  constructor() {
+    super('The conversation open request was superseded by a newer request.')
+    this.name = 'ChatConversationSupersededError'
+  }
 }
 
 export const channelA: ChatChannelRef = { channelId: 'channel-a', channelType: 1 }
@@ -87,15 +108,19 @@ export function createMockClient(): MockChatClient {
     pendingOpens,
 
     async start(bootstrap: ChatClientBootstrap) {
+      const previousStatus = connectionStatus
       connectionStatus = 'connected'
       client.startCalls.push(bootstrap)
+      client.emit(ChatClientEvent.StatusChanged, ChatClientStatus.Connected, previousStatus)
     },
 
     async stop() {
+      const previousStatus = connectionStatus
       if (activeLease && !activeLease.released) activeLease.release()
       activeLease = null
       connectionStatus = 'stopped'
       client.stopCalls += 1
+      client.emit(ChatClientEvent.StatusChanged, ChatClientStatus.Stopped, previousStatus)
     },
 
     getSnapshot(): ChatClientSnapshot {
@@ -139,7 +164,7 @@ export function createMockClient(): MockChatClient {
 
     emit(event: ChatClientEvent, ...args: any[]) {
       const set = listeners.get(event)
-      if (set) set.forEach((l) => l(event, ...args))
+      if (set) set.forEach((listener) => listener(...args))
     },
 
     deferNextOpen() {

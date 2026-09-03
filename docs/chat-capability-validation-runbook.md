@@ -24,10 +24,10 @@ octo-buddy-client:
 /Users/will/Project/octo/octo-buddy-client-chat-capability-integration
 ```
 
-预期提交：
+验证时以待发布分支的实际 HEAD 为准：
 
 ```text
-octo-web              65a6e2e0
+octo-web              <git rev-parse --short HEAD>
 octo-buddy-client     c334476
 ```
 
@@ -41,7 +41,7 @@ git -C /Users/will/Project/octo/octo-buddy-client-chat-capability-integration st
 git -C /Users/will/Project/octo/octo-buddy-client-chat-capability-integration log -1 --oneline
 ```
 
-文档本身尚未提交时，octo-web 可以出现 `docs/` 文件变更；源码不应出现无法解释的额外修改。
+正式生成和交付 artifact 前，源码工作树必须 clean，并重新执行本手册中的测试与构建。开发中间态可以包含本次修复，但需要在验收记录中注明。
 
 ## 3. 门禁一：验证 octo-web 没有被破坏
 
@@ -56,11 +56,11 @@ pnpm --filter @octo/chat-react test
 
 通过标准：
 
-- `chat-core`：52 tests passed。
-- `chat-react`：15 tests passed。
+- `chat-core`：54 tests passed。
+- `chat-react`：24 tests passed。
 - 没有 failed、unhandled rejection 或测试进程异常退出。
 
-`chat-react` 测试中可能出现 `useChatClient must be used within a <ChatProvider>` 错误栈，这是测试故意验证错误边界时产生的日志。只要最终结果为 15 passed，就不是失败。
+`chat-react` 测试中可能出现 `useChatClient must be used within a <ChatProvider>` 错误栈，这是测试故意验证错误边界时产生的日志。只要最终结果为 24 passed，就不是失败。
 
 ### 3.2 原有基础包全量回归
 
@@ -71,7 +71,7 @@ pnpm --filter @octo/base test
 通过标准：
 
 - 473 test files passed。
-- 4323 tests passed。
+- 4325 tests passed。
 - 退出码为 0。
 
 JSDOM 可能输出 `HTMLMediaElement.play()`、`load()` 或 `window.open()` 未实现提示。这些是已有测试环境限制，最终 tests passed 即可。
@@ -163,7 +163,7 @@ pnpm dev
 
 ### 4.1 `ManagedChatClient` 生命周期
 
-由 `chat-core` 的 52 项测试覆盖：
+由 `chat-core` 的 54 项测试覆盖：
 
 - 重复 `start()` 不建立第二条连接。
 - 重复 `stop()` 不重复释放。
@@ -175,7 +175,7 @@ pnpm dev
 
 ### 4.2 React 会话边界
 
-由 `chat-react` 的 15 项测试覆盖：
+由 `chat-react` 的 24 项测试覆盖：
 
 - mount 打开会话。
 - unmount 释放会话。
@@ -226,7 +226,7 @@ cat apps/web/build-client-communication/renderer-manifest.json
   "schemaVersion": 1,
   "name": "octo-web-client-communication",
   "version": "1.0.12",
-  "commit": "a2b05d41",
+  "commit": "<git rev-parse --short HEAD>",
   "entry": "index.html",
   "hostBridgeMajor": 1,
   "e2eMock": false
@@ -430,9 +430,10 @@ octo-web commit：
 client commit：
 artifact version / commit：
 
-[ ] chat-core 52 passed
-[ ] chat-react 15 passed
-[ ] @octo/base 4323 passed
+[ ] chat-core 54 passed
+[ ] chat-react 24 passed
+[ ] @octo/base 4325 passed
+[ ] octo-web 113 files / 1419 passed
 [ ] octo-web build passed
 [ ] Web chat/contact E2E passed
 [ ] production artifact e2eMock=false

@@ -19,6 +19,7 @@ import {
   type HostCommand,
   type NavigationReport,
 } from "./hostBridge";
+import { createReadyReporter } from "./readyReporter";
 import "./index.css";
 
 const bridge = requireHostBridge();
@@ -38,7 +39,19 @@ function bindRightRoute(context: WKViewQueueContext) {
 }
 
 function reportNavigation(report: NavigationReport) {
-  void bridge.reportNavigation(report);
+  void Promise.resolve()
+    .then(() => bridge.reportNavigation(report))
+    .catch((error: unknown) => {
+      console.error("[client-communication] failed to report navigation", error);
+    });
+}
+
+function reportUnread(count: number) {
+  try {
+    bridge.reportUnread(count);
+  } catch (error) {
+    console.error("[client-communication] failed to report unread count", error);
+  }
 }
 
 function openTarget(target: ConversationTarget) {
@@ -65,19 +78,19 @@ export function CommunicationShell({
   const activePageRef = useRef(activePage);
   const routeReadyRef = useRef({ left: false, right: false });
   const commandListenerReadyRef = useRef(false);
-  const readyReportedRef = useRef(false);
   const pendingTargetRef = useRef<ConversationTarget | undefined>();
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+  const readyReporterRef = useRef<ReturnType<typeof createReadyReporter>>();
 
   const reportReadyWhenPrepared = useCallback(() => {
     if (
-      readyReportedRef.current ||
       !commandListenerReadyRef.current ||
       !routeReadyRef.current.left ||
       !routeReadyRef.current.right
     ) return;
-    readyReportedRef.current = true;
-    void onReady();
-  }, [onReady]);
+    readyReporterRef.current?.request();
+  }, []);
 
   const markRouteReady = useCallback((side: "left" | "right") => {
     routeReadyRef.current[side] = true;
@@ -96,6 +109,26 @@ export function CommunicationShell({
     reportNavigation({ page, source });
     requestAnimationFrame(() => requestAnimationFrame(() => afterSwitch?.()));
   }, []);
+
+  useEffect(() => {
+    const reporter = createReadyReporter(
+      () => onReadyRef.current(),
+      {
+        onExhausted: (error) => {
+          console.error("[client-communication] failed to report ready", error);
+        },
+      },
+    );
+    readyReporterRef.current = reporter;
+    reportReadyWhenPrepared();
+
+    return () => {
+      reporter.dispose();
+      if (readyReporterRef.current === reporter) {
+        readyReporterRef.current = undefined;
+      }
+    };
+  }, [reportReadyWhenPrepared]);
 
   useEffect(() => {
     WKApp.currentMenuId = initialPage;
@@ -163,7 +196,7 @@ export function CommunicationShell({
   }, [activatePage, initialPage, reportReadyWhenPrepared]);
 
   useEffect(() => {
-    const syncUnread = () => bridge.reportUnread(getElectronUnreadMessageCount());
+    const syncUnread = () => reportUnread(getElectronUnreadMessageCount());
     const conversationManager = WKSDK.shared().conversationManager;
     conversationManager.addConversationListener(syncUnread);
     WKApp.mittBus.on("conversation-list-refreshed", syncUnread);
