@@ -36,7 +36,12 @@ import type {
     AgentStreamHandlers,
     CreateSummarySharesResponse,
     GetSummaryShareResponse,
+    SummaryAttentionCounts,
 } from '../types/summary';
+
+// 待关注计数的响应形状从本文件再导出一次：调用方（summaryAttentionBadge）只与
+// api 层打交道，不必再去 types/summary 里找一个只服务于这条路径的类型。
+export type { SummaryAttentionCounts };
 import { SummaryMode } from '../types/summary';
 
 const summaryAxios = axios.create({ baseURL: '' });
@@ -87,6 +92,43 @@ summaryAxios.interceptors.response.use(
 );
 
 const BASE = '/summary/api/v1';
+
+/**
+ * 待关注计数请求的超时。
+ *
+ * 其它请求没超时还能接受（用户在看着，卡了他会自己重试），这条不行：
+ * 兜底轮询内部有请求互斥（summaryAttentionPoll 的 fetching 标志），一个挂死的
+ * 请求会把整条轮询链停摆到浏览器自己超时为止（可能一两分钟，也可能更久）。
+ * 而「无人值守时红点会自己亮」正是这条轮询唯一的存在理由。加上超时后，
+ * 挂死请求会落进既有的失败/退避分支，重新排期。
+ *
+ * 10s 取得比基础间隔 15s 短：让失败在下一拍之前就完成销账，不会因为互斥
+ * 而跳拍。
+ */
+export const SUMMARY_ATTENTION_TIMEOUT_MS = 10_000;
+
+/**
+ * 校验待关注计数响应的形状。
+ *
+ * 不校验的话，一个信封错位的响应（网关改了包装、后端返回 HTML 错误页、
+ * 字段改名）会让 `attention_count` 取到 undefined，一路满足下游的 `?? 0`，
+ * 红点【静默归零】——而且还会被当成正常样本广播给全部标签页，把错误放大。
+ * 没有红点和红点不对用户分辨不出来，也不会报 bug。
+ *
+ * 报错而不是默认 0：上层对失败的处理是「保持旧值 + 退避」，正是这里想要的。
+ */
+function assertAttentionCounts(data: unknown): SummaryAttentionCounts {
+    const counts = data as SummaryAttentionCounts | null | undefined;
+    if (
+        !counts
+        || typeof counts !== 'object'
+        || !Number.isInteger(counts.attention_count)
+        || counts.attention_count < 0
+    ) {
+        throw new Error('Malformed summary attention response');
+    }
+    return counts;
+}
 
 function extractErrorMessage(err: unknown): string {
     const axiosErr = err as { response?: { status?: number; data?: { message?: string; msg?: string; error?: { message?: string } } } };
@@ -581,9 +623,122 @@ function parseAndDispatch(event: string, data: string, handlers: AgentStreamHand
 
 export async function listSummaries(
     params: ListSummariesParams,
-    config?: { signal?: AbortSignal },
+    // timeout 是给 fetchSummaryAttentionCounts 的兜底路径开的口子（见那里的注释）。
+    // 其余调用点都由用户动作驱动、有可见的 loading 态，不传即沿用 axios 默认的无超时。
+    config?: { signal?: AbortSignal; timeout?: number },
 ): Promise<ListSummariesResponse> {
     return get('/summaries', params as Record<string, unknown>, config);
+}
+
+/**
+ * 待关注计数的窄端点 `GET /summaries/attention`。
+ *
+ * 为什么不复用 listSummaries({page:1,page_size:1})：那条路径为了拿三个整数，
+ * 逼后端把列表查询整个跑一遍（join 参与者、算每条的 needs_attention、再序列化
+ * 一条根本不看的 item）。侧边栏红点现在还挂着一个后台定时器（见
+ * utils/summaryAttentionPoll.ts），取数频次从「用户动作驱动」变成了「有人开着
+ * 标签页就会发生」，这份浪费会被频次放大。窄端点只算计数，且服务端带 5s 缓存。
+ *
+ * `fresh=1` 绕过那 5s 缓存。用法有严格分工，见 fetchSummaryAttentionCounts。
+ *
+ * 直接用 summaryAxios 而不是公共 `get()`：`get()` 把错误压成字符串 Error，
+ * HTTP 状态码就此丢失，而下面的兜底判定必须能区分「404 端点不存在」与
+ * 「503/网络故障」——后者绝不能触发降级重试，那只会在后端抖动时把请求翻倍。
+ */
+export async function getSummaryAttention(options?: { fresh?: boolean }): Promise<SummaryAttentionCounts> {
+    try {
+        const resp = await summaryAxios.get(`${BASE}/summaries/attention`, {
+            params: options?.fresh ? { fresh: 1 } : undefined,
+            timeout: SUMMARY_ATTENTION_TIMEOUT_MS,
+        });
+        // 校验在 404 判定【之内】，但抛的是不带 status 的 Error，所以不会被
+        // fetchSummaryAttentionCounts 误判成「端点不存在」而永久降级到重的那条路径。
+        return assertAttentionCounts(resp.data?.data ?? resp.data);
+    } catch (err) {
+        if (axios.isCancel(err)) throw err;
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        const error = new Error(extractErrorMessage(err)) as Error & { status?: number };
+        if (status) error.status = status;
+        throw error;
+    }
+}
+
+/**
+ * 窄端点是否已被判定为「这个后端没有」。
+ *
+ * 前后端不同步发布是常态（本仓库的 web 可以指向任意一套 summary-api），窄端点
+ * 上线前红点必须照常工作。配套后端对「没有任何总结」返回全零；前端又会在没有
+ * Space 时提前 return，所以这里收到的 404 表示当前后端没有部署该路由。第一次
+ * 404 之后就把结论记下来，之后直接走兜底：
+ * 否则每 15s 的后台轮询都会先撞一次 404 再补一个列表请求，在老后端上把
+ * 请求量【翻倍】——比不做窄端点还糟。
+ *
+ * 只对 404 置位，不对 5xx/网络错误置位：那些是暂时故障，端点本身仍然存在，
+ * 记下来会让一次后端抖动永久降级到重的那条路径。
+ *
+ * 不做「过一段时间再探测一次」：进程生命周期内后端不会中途长出这个端点，
+ * 真发布了也伴随前端刷新。多一个重试计时器只是多一个可以泄漏的东西。
+ */
+let summaryAttentionEndpointMissing = false;
+
+/** 测试用：清掉窄端点缺失的记忆（模块级状态跨用例会串）。 */
+export function resetSummaryAttentionEndpointProbe(): void {
+    summaryAttentionEndpointMissing = false;
+}
+
+/**
+ * 取当前 space 的待关注计数，自带端点缺失兜底。
+ *
+ * `fresh` 的分工是刻意的，别反过来：
+ *   - 用户动作触发的刷新（切 Space、切回标签页、提交/已读之后）传 fresh=true。
+ *     用户刚做完一件事，看到的数字必须是他那次动作之后的，5s 缓存会让红点
+ *     「明明点完了还挂着」，这是最容易被当成 bug 的观感。
+ *   - 后台定时轮询【一律不传】。轮询的价值是「最终会更新」，不是「秒级精确」，
+ *     而它是唯一一条无人值守就会发生的流量：让它吃缓存，N 个用户的 tick 撞在
+ *     一起时后端只算一次。fresh 用在这里等于亲手把服务端缓存作废。
+ */
+export async function fetchSummaryAttentionCounts(options?: { fresh?: boolean }): Promise<SummaryAttentionCounts> {
+    if (!summaryAttentionEndpointMissing) {
+        try {
+            return await getSummaryAttention(options);
+        } catch (err) {
+            if (axios.isCancel(err)) throw err;
+            if ((err as { status?: number })?.status !== 404) throw err;
+            summaryAttentionEndpointMissing = true;
+            // 落到下面的兜底，本次调用不算失败：老后端上红点必须照常亮。
+        }
+    }
+    // 兜底：窄端点尚未部署时，仍从列表端点读同一个 attention_count 字段。
+    // page_size=1 是为了让后端少序列化几条 item，返回的 items 直接丢掉。
+    // 窄端点全量上线后，这段连同 summaryAttentionEndpointMissing 可以一起删。
+    //
+    // timeout 和窄端点用【同一个】值，理由也同一条（见 SUMMARY_ATTENTION_TIMEOUT_MS）：
+    // 这条路径一旦被 404 记忆锁定，就是老后端上轮询唯一的取数来源，同样是无人值守
+    // 发生的。
+    //
+    // 注意这【不】是「从无超时改成有超时」：summaryAxios 由 axios.create 创建，会把
+    // 创建那一刻的 axios.defaults 快照进去，而 @octo/base 的 APIClient 在模块求值期
+    // （`static shared = new APIClient()` → initAxios）就设了 axios.defaults.timeout
+    // = DEFAULT_REQUEST_TIMEOUT_MS（20s，YUJ-2628）。本文件第 2 行 import '@octo/base'
+    // 先于第 47 行的 axios.create 求值，所以兜底请求本来就有一个 20s 的隐式超时。
+    //
+    // 真正的问题是 20s > 轮询基础间隔 15s：一个挂死的兜底请求会让 poll 的 fetching
+    // 标志跨过下一拍（那一拍被互斥直接跳掉），同时 inFlightReads 停在 ≥1，让
+    // acceptRemoteAttentionCount 在这段时间里拒掉全部跨标签页广播。不是永久停摆，
+    // 但确实丢拍，且表现为「红点该动的时候没动」这种不报错的故障。
+    //
+    // 所以这里显式取 10s（< 15s）：让失败在下一拍之前完成销账。顺带把这条不变量从
+    // 「依赖另一个包的全局默认值恰好合适」变成本地显式声明——DEFAULT_REQUEST_TIMEOUT_MS
+    // 是给登录页转圈用的，它没有义务为 summary 轮询的节奏负责，改动它的人也不会想到
+    // 这里。listSummaries 的其它调用点不传 timeout，继续用那个 20s 的全局默认。
+    const resp = await listSummaries({ page: 1, page_size: 1 }, { timeout: SUMMARY_ATTENTION_TIMEOUT_MS });
+    // 兜底路径同样校验：它并不比窄端点更可信，而且它是老后端上的唯一数据源。
+    return assertAttentionCounts({
+        attention_count: resp.attention_count,
+        unread_count: resp.unread_count,
+        pending_invitation_count: resp.pending_invitation_count,
+        pending_submission_count: resp.pending_submission_count,
+    });
 }
 
 export async function getSummaryDetail(taskId: number | string): Promise<SummaryDetail> {
@@ -616,7 +771,13 @@ export async function revokeSummaryShare(shareId: string): Promise<void> {
 export async function markSummaryRead(
     taskId: number,
     cursors: { team_result_id?: number; personal_version_id?: number },
-): Promise<{ is_unread: boolean; has_pending_invitation: boolean; needs_attention: boolean }> {
+): Promise<{
+    is_unread: boolean;
+    has_pending_invitation: boolean;
+    /** 读 ≠ 提交：标读不清除它，红点留到真的 /submit（owner 2026-08-26） */
+    has_pending_submission?: boolean;
+    needs_attention: boolean;
+}> {
     return post(`/summaries/${taskId}/read`, cursors);
 }
 

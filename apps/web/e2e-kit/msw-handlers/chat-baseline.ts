@@ -262,8 +262,26 @@ export const chatBaselineHandlers = [
 
   // === Summary ===
   // 空列表, 界面停在"暂无总结"稳定分支; 不返 200 会无限重试打爆 network.
+  // 四个计数全字段返回: 窄端点 /summaries/attention 若 404, 前端会兜底读这里的
+  // attention_count (见 packages/dmworksummary/src/api/summaryApi.ts
+  // fetchSummaryAttentionCounts), 缺字段会被 assertAttentionCounts 判成畸形响应.
   http.get("*/summary/api/v1/summaries", () =>
-    HttpResponse.json({ code: 0, message: "ok", data: { items: [], total: 0 } })
+    HttpResponse.json({ code: 0, message: "ok", data: {
+      items: [], total: 0,
+      attention_count: 0, unread_count: 0, pending_invitation_count: 0, pending_submission_count: 0,
+    } })
+  ),
+  // 待关注红点的窄端点. 侧边栏 SummaryModule 挂在【所有已登录页面】上, 且带一条
+  // 无人值守的兜底轮询 (utils/summaryAttentionPoll.ts, 15-60s 一拍), 所以这个请求
+  // 会在任意 case 的任意时刻自行发出 —— 不是某个 case 的行为, 因此进 baseline 而
+  // 不是 per-case handler. 漏装的后果是每个 case 都刷 Vite proxy error, e2e gate
+  // 直接 block PR, 并让断言 consoleErrors 为空的用例 (如 @C37) 连带挂掉.
+  //
+  // 带不带 ?fresh=1 是同一条路由 (MSW 路径匹配忽略 query), 一个 handler 覆盖两种形态.
+  http.get("*/summary/api/v1/summaries/attention", () =>
+    HttpResponse.json({ code: 0, message: "ok", data: {
+      attention_count: 0, unread_count: 0, pending_invitation_count: 0, pending_submission_count: 0,
+    } })
   ),
   // Deep-link Summary requests can happen on the fresh document before the
   // per-case handler is installed. Keep these fallbacks scoped to S26 only.
