@@ -103,42 +103,17 @@ async function enableMocksIfE2E(): Promise<void> {
 async function enableMockImIfE2E(): Promise<void> {
   if (import.meta.env.VITE_E2E_MOCK_IM !== "1") return;
   try {
-    const mod = await import("../../e2e-kit/_kit/mock-im-runtime/fake-provider");
+    const [mod, seedModule] = await Promise.all([
+      import("../../e2e-kit/_kit/mock-im-runtime/fake-provider"),
+      import("../../e2e-kit/_kit/mock-im-runtime/communication-seed"),
+    ]);
     const wksdk = await import("wukongimjssdk");
-    const defaultSeed = {
-      currentUid: "e2e-user",
-      spaceId: "e2e-space",
-      users: [
-        {
-          uid: "e2e-contact-human",
-          name: "E2E 联系人",
-          robot: 0,
-          extra: { follow: 1 },
-        },
-        {
-          uid: "e2e-contact-bot",
-          name: "E2E 助手",
-          robot: 1,
-          extra: { follow: 1, robot: 1 },
-        },
-      ],
-      groups: [
-        {
-          group_no: "e2e-contact-group",
-          name: "E2E 项目群",
-          extra: { member_count: 3 },
-        },
-      ],
-      conversations: [],
-      messages: [],
-      subscribers: [],
-    };
     (window as unknown as {
       __installMockImRuntime__: (seed: unknown) => void;
       WKSDK: typeof wksdk.WKSDK;
     }).__installMockImRuntime__ = mod.installFakeProvider as (seed: unknown) => void;
     (window as unknown as { WKSDK: typeof wksdk.WKSDK }).WKSDK = wksdk.WKSDK;
-    mod.installFakeProvider(defaultSeed);
+    mod.installFakeProvider(seedModule.communicationDefaultSeed);
     (window as unknown as {
       __octoCommunicationE2E__?: {
         getOpenChannel: () => { channelID?: string; channelType?: number } | null;
@@ -158,5 +133,5 @@ void main().catch((error) => {
     stack: normalized.stack,
   });
   const root = document.getElementById("root");
-  if (root) root.textContent = `通信模块启动失败：${normalized.message}`;
+  if (root) root.textContent = `Communication module failed to start: ${normalized.message}`;
 });
