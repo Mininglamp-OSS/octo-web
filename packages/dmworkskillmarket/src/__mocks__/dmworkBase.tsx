@@ -177,9 +177,8 @@ export const WKApp = {
   },
 };
 
-/** Mirrors `packages/dmworkbase/src/Service/SpaceService.tsx`. NOTE the role
- *  encoding is 1=owner, 2=admin, 3=member — INVERTED relative to the
- *  marketplace backend (0=member, 1=admin, 2=owner). See `hooks/useSpaceRole.ts`. */
+/** Mirrors `packages/dmworkbase/src/Service/SpaceService.tsx`: role uses the
+ * octo-server encoding 0=member, 1=admin, 2=owner. */
 export interface Space {
   space_id: string;
   name: string;

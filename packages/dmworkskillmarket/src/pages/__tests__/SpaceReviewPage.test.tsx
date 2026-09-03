@@ -12,19 +12,28 @@ vi.mock("../../components/ReviewQueue", () => ({
   ),
 }));
 
-const { updatePolicy } = vi.hoisted(() => ({ updatePolicy: vi.fn() }));
+const { updatePolicy, roleState } = vi.hoisted(() => ({
+  updatePolicy: vi.fn(),
+  roleState: { current: 2 },
+}));
 vi.mock("../../api/skillApi", () => ({
   getReviewPolicy: vi.fn(() => Promise.resolve({ isAutoApproveEnabled: true })),
   updateReviewPolicy: (enabled: boolean) => updatePolicy(enabled),
 }));
 vi.mock("../../hooks/useSpaceRole", () => ({
-  useSpaceRole: () => ({ role: 1, isReviewer: true, loading: false }),
+  isSpaceOwnerRole: (role?: number) => role === 2,
+  useSpaceRole: () => ({
+    role: roleState.current,
+    isReviewer: roleState.current >= 1,
+    loading: false,
+  }),
 }));
 
 const pageTitle = /组织发布管理|skillMarket\.review\.orgTab/;
 
 describe("SpaceReviewPage", () => {
   beforeEach(() => {
+    roleState.current = 2;
     updatePolicy.mockReset();
     updatePolicy.mockResolvedValue({ isAutoApproveEnabled: false });
   });
@@ -48,6 +57,14 @@ describe("SpaceReviewPage", () => {
 
     await waitFor(() => expect(updatePolicy).toHaveBeenCalledWith(false));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("keeps the owner-only policy control hidden from admins", () => {
+    roleState.current = 1;
+    render(<SpaceReviewPage />);
+
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.getByTestId("review-queue")).toBeInTheDocument();
   });
 
   it("delegates every empty/error/loading state to the queue", () => {

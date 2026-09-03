@@ -2,34 +2,27 @@ import { useEffect, useRef, useState } from "react";
 import { SpaceService, WKApp, type Space } from "@octo/base";
 
 /**
- * ⚠️ THE TWO ROLE ENCODINGS IN THIS SYSTEM ARE INVERTED. DO NOT "FIX" THIS. ⚠️
- *
- *   octo-web  (`Space.role`, from `GET space/my`):  1 = owner, 2 = admin, 3 = member
- *   marketplace / octo-server `space_member.role`:  0 = member, 1 = admin, 2 = owner
- *
- * So the reviewer test on THIS side is `role <= 2` (privilege rises as the
- * number goes DOWN), while the backend's is `role >= 1`. A drive-by change to
- * `role >= 2` here to "match the backend" would hand the reviewer queue to
- * every ordinary member. The authoritative wire comment lives at
- * `packages/dmworkbase/src/Service/SpaceService.tsx` (`interface Space`), and
- * `hooks/__tests__/useSpaceRole.test.ts` pins the encoding.
- *
- * This gate is COSMETIC ONLY. It hides the "组织审核" tab from non-admins so
- * they are not shown an action they cannot take; it is NOT an authorization
- * boundary. The server independently enforces the reviewer role and answers
- * `mode=space` list / approve / reject with 403, and cross-Space reads with 404,
- * regardless of what this hook decides.
+ * `GET /v1/space/my` returns octo-server's native `space_member.role` value:
+ * 0=member, 1=admin, 2=owner. These gates are cosmetic only; marketplace still
+ * enforces every authorization decision server-side.
  */
-const OCTO_WEB_REVIEWER_MAX_ROLE = 2;
+const SPACE_ROLE_ADMIN = 1;
+const SPACE_ROLE_OWNER = 2;
 
 export function isSpaceReviewerRole(role: number | undefined): boolean {
   return (
-    typeof role === "number" && role > 0 && role <= OCTO_WEB_REVIEWER_MAX_ROLE
+    typeof role === "number" &&
+    role >= SPACE_ROLE_ADMIN &&
+    role <= SPACE_ROLE_OWNER
   );
 }
 
+export function isSpaceOwnerRole(role: number | undefined): boolean {
+  return role === SPACE_ROLE_OWNER;
+}
+
 export interface UseSpaceRoleResult {
-  /** octo-web encoding (1 owner / 2 admin / 3 member); undefined until resolved. */
+  /** octo-server encoding (0 member / 1 admin / 2 owner); undefined until resolved. */
   role?: number;
   /** Cosmetic gate — true when the current user may see reviewer-only UI. */
   isReviewer: boolean;

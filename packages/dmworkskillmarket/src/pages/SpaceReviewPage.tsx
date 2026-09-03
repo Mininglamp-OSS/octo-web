@@ -3,7 +3,7 @@ import { AlertTriangle } from "lucide-react";
 import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
 import ReviewQueue from "../components/ReviewQueue";
 import { getReviewPolicy, updateReviewPolicy } from "../api/skillApi";
-import { useSpaceRole } from "../hooks/useSpaceRole";
+import { isSpaceOwnerRole, useSpaceRole } from "../hooks/useSpaceRole";
 
 /**
  * "组织发布管理" — the Space reviewer queue, mounted at /mcp-market/review as the
@@ -35,7 +35,7 @@ import { useSpaceRole } from "../hooks/useSpaceRole";
 export default function SpaceReviewPage() {
   useI18n();
   const { role } = useSpaceRole();
-  const isOwner = role === 1;
+  const isOwner = isSpaceOwnerRole(role);
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

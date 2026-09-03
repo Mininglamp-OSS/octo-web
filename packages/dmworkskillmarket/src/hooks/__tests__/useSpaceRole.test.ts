@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { SpaceService, WKApp, type Space } from "@octo/base";
-import { isSpaceReviewerRole, useSpaceRole } from "../useSpaceRole";
+import { isSpaceOwnerRole, isSpaceReviewerRole, useSpaceRole } from "../useSpaceRole";
 
 function space(role: number, spaceId = "space-123"): Space {
   return {
@@ -25,46 +25,49 @@ afterEach(() => {
 });
 
 describe("isSpaceReviewerRole", () => {
-  // Pins the octo-web encoding: 1=owner, 2=admin, 3=member. It is INVERTED
-  // relative to the marketplace backend (0=member, 1=admin, 2=owner), so a
-  // "fix" to `>= 1` here would open the reviewer queue to every member.
-  it("treats owner (1) and admin (2) as reviewers", () => {
+  it("treats admin (1) and owner (2) as reviewers", () => {
     expect(isSpaceReviewerRole(1)).toBe(true);
     expect(isSpaceReviewerRole(2)).toBe(true);
   });
 
-  it("does NOT treat member (3) as a reviewer", () => {
-    expect(isSpaceReviewerRole(3)).toBe(false);
+  it("does NOT treat member (0) as a reviewer", () => {
+    expect(isSpaceReviewerRole(0)).toBe(false);
   });
 
   it("rejects an unresolved or out-of-range role rather than failing open", () => {
     expect(isSpaceReviewerRole(undefined)).toBe(false);
-    expect(isSpaceReviewerRole(0)).toBe(false);
     expect(isSpaceReviewerRole(-1)).toBe(false);
+    expect(isSpaceReviewerRole(3)).toBe(false);
+  });
+
+  it("only treats role 2 as the Space owner", () => {
+    expect(isSpaceOwnerRole(2)).toBe(true);
+    expect(isSpaceOwnerRole(1)).toBe(false);
+    expect(isSpaceOwnerRole(0)).toBe(false);
   });
 });
 
 describe("useSpaceRole", () => {
   it("resolves the current Space's role from getMySpaces", async () => {
     vi.spyOn(SpaceService.shared, "getMySpaces").mockResolvedValue([
-      space(3, "other-space"),
-      space(2, "space-123"),
+      space(0, "other-space"),
+      space(1, "space-123"),
     ]);
 
     const { result } = renderHook(() => useSpaceRole());
 
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.role).toBe(2);
+    expect(result.current.role).toBe(1);
     expect(result.current.isReviewer).toBe(true);
   });
 
-  it("is not a reviewer for a plain member (role 3)", async () => {
-    vi.spyOn(SpaceService.shared, "getMySpaces").mockResolvedValue([space(3)]);
+  it("is not a reviewer for a plain member (role 0)", async () => {
+    vi.spyOn(SpaceService.shared, "getMySpaces").mockResolvedValue([space(0)]);
 
     const { result } = renderHook(() => useSpaceRole());
 
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.role).toBe(3);
+    expect(result.current.role).toBe(0);
     expect(result.current.isReviewer).toBe(false);
   });
 
@@ -111,17 +114,17 @@ describe("useSpaceRole", () => {
     await waitFor(() => expect(result.current.isReviewer).toBe(true));
 
     act(() => {
-      WKApp.mittBus.emit("space-changed", space(3, "space-999"));
+      WKApp.mittBus.emit("space-changed", space(0, "space-999"));
     });
 
-    await waitFor(() => expect(result.current.role).toBe(3));
+    await waitFor(() => expect(result.current.role).toBe(0));
     expect(result.current.isReviewer).toBe(false);
   });
 
   it("re-probes when space-changed arrives without a payload", async () => {
     const probe = vi
       .spyOn(SpaceService.shared, "getMySpaces")
-      .mockResolvedValue([space(3)]);
+      .mockResolvedValue([space(0)]);
 
     const { result } = renderHook(() => useSpaceRole());
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -157,18 +160,18 @@ describe("useSpaceRole", () => {
     // fast-path, while the first probe is still in flight.
     WKApp.shared.currentSpaceId = "space-999";
     act(() => {
-      WKApp.mittBus.emit("space-changed", space(3, "space-999"));
+      WKApp.mittBus.emit("space-changed", space(0, "space-999"));
     });
-    expect(result.current.role).toBe(3);
+    expect(result.current.role).toBe(0);
     expect(result.current.isReviewer).toBe(false);
 
-    // The stale probe now resolves, claiming owner on the OLD space id.
+    // The stale probe now resolves, claiming reviewer on the OLD space id.
     await act(async () => {
       resolveInitial?.([space(1, "space-123")]);
       await Promise.resolve();
     });
 
-    expect(result.current.role).toBe(3);
+    expect(result.current.role).toBe(0);
     expect(result.current.isReviewer).toBe(false);
     expect(result.current.loading).toBe(false);
   });

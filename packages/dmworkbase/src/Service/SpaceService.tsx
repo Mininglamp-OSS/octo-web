@@ -237,7 +237,7 @@ export interface Space {
     logo: string
     member_count: number
     max_users: number // 0 means unlimited
-    role: number // 1: owner, 2: admin, 3: member
+    role: number // 0: member, 1: admin, 2: owner
     created_at: string
 }
 
@@ -245,7 +245,7 @@ export interface SpaceMember {
     uid: string
     name: string
     avatar: string
-    role: number // 1: owner, 2: admin, 3: member
+    role: number // 0: member, 1: admin, 2: owner
     robot: number // 0: user, 1: bot
     created_at: string
 }
