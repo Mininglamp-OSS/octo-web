@@ -36,15 +36,18 @@ describe("SpaceReviewPage", () => {
   });
 
   it("shows the default-enabled policy to owners and confirms before disabling", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<SpaceReviewPage />);
 
     const toggle = await screen.findByRole("checkbox");
     expect(toggle).toBeChecked();
     fireEvent.click(toggle);
 
+    expect(updatePolicy).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: /关闭自动审核|policyDisableTitle/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /确认关闭|policyDisableAction/ }));
+
     await waitFor(() => expect(updatePolicy).toHaveBeenCalledWith(false));
-    expect(window.confirm).toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
   it("delegates every empty/error/loading state to the queue", () => {

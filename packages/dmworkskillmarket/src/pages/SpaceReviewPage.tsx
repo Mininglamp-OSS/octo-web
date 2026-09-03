@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { t, useI18n, WKApp } from "@octo/base";
+import { AlertTriangle } from "lucide-react";
+import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
 import ReviewQueue from "../components/ReviewQueue";
 import { getReviewPolicy, updateReviewPolicy } from "../api/skillApi";
 import { useSpaceRole } from "../hooks/useSpaceRole";
@@ -39,6 +40,7 @@ export default function SpaceReviewPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [disableConfirmOpen, setDisableConfirmOpen] = useState(false);
 
   const loadPolicy = useCallback(() => {
     setLoading(true);
@@ -51,22 +53,40 @@ export default function SpaceReviewPage() {
 
   useEffect(() => {
     loadPolicy();
-    WKApp.mittBus.on("space-changed", loadPolicy);
-    return () => WKApp.mittBus.off("space-changed", loadPolicy);
+    const handleSpaceChanged = () => {
+      setDisableConfirmOpen(false);
+      loadPolicy();
+    };
+    WKApp.mittBus.on("space-changed", handleSpaceChanged);
+    return () => WKApp.mittBus.off("space-changed", handleSpaceChanged);
   }, [loadPolicy]);
 
-  async function handlePolicyChange(next: boolean) {
-    if (!next && !window.confirm(t("skillMarket.review.policyDisableConfirm"))) return;
+  async function savePolicy(next: boolean): Promise<boolean> {
     setSaving(true);
     setError(null);
     try {
       const policy = await updateReviewPolicy(next);
       setEnabled(policy.isAutoApproveEnabled);
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : t("skillMarket.review.policySaveFailed"));
+      return false;
     } finally {
       setSaving(false);
     }
+  }
+
+  function handlePolicyChange(next: boolean) {
+    if (!next) {
+      setError(null);
+      setDisableConfirmOpen(true);
+      return;
+    }
+    void savePolicy(true);
+  }
+
+  async function confirmDisable() {
+    if (await savePolicy(false)) setDisableConfirmOpen(false);
   }
   return (
     <div className="skill-market-page skill-market-page--review">
@@ -101,6 +121,32 @@ export default function SpaceReviewPage() {
         )}
         <ReviewQueue mode="space" />
       </main>
+      <WKModal
+        visible={disableConfirmOpen}
+        onCancel={() => !saving && setDisableConfirmOpen(false)}
+        title={t("skillMarket.review.policyDisableTitle")}
+        footer={
+          <>
+            <WKButton variant="secondary" onClick={() => setDisableConfirmOpen(false)} disabled={saving}>
+              {t("skillMarket.common.cancel")}
+            </WKButton>
+            <WKButton variant="danger" onClick={() => void confirmDisable()} loading={saving}>
+              {t("skillMarket.review.policyDisableAction")}
+            </WKButton>
+          </>
+        }
+      >
+        <div className="skill-market-review-policy-confirm">
+          <span className="skill-market-review-policy-confirm__icon" aria-hidden="true">
+            <AlertTriangle size={22} />
+          </span>
+          <div>
+            <strong>{t("skillMarket.review.policyDisableHeading")}</strong>
+            <p>{t("skillMarket.review.policyDisableConfirm")}</p>
+            {error && <p className="skill-market-review-policy-confirm__error">{error}</p>}
+          </div>
+        </div>
+      </WKModal>
     </div>
   );
 }

@@ -3313,6 +3313,43 @@
 .skill-market-review-policy__toggle { display: flex; align-items: center; gap: 8px; white-space: nowrap; cursor: pointer; }
 .skill-market-review-policy__toggle input { width: 18px; height: 18px; accent-color: #2563eb; }
 
+.skill-market-review-policy-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wk-sp-3);
+  padding: 2px 0 4px;
+}
+
+.skill-market-review-policy-confirm__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--wk-color-error) 10%, transparent);
+  color: var(--wk-color-error);
+}
+
+.skill-market-review-policy-confirm strong {
+  display: block;
+  color: var(--wk-text-strong);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.skill-market-review-policy-confirm p {
+  margin: 6px 0 0;
+  color: var(--wk-text-secondary);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.skill-market-review-policy-confirm .skill-market-review-policy-confirm__error {
+  color: var(--wk-color-error);
+}
+
 .skill-market-review-queue__error {
   margin-bottom: var(--wk-sp-3);
 }
