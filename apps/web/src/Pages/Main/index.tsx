@@ -22,6 +22,7 @@ import {
     resolveInitialSpaceForUser,
 } from "../../features/spacePreference";
 import { requestGuardedMenuChange, requestProgrammaticMenuChange } from "./menuChange";
+import { buildSpaceAdminUrl } from "./spaceAdminUrl";
 import { requestMailWorkspaceSwitch } from "@octo/mail";
 
 // ─── MainContentLeft：纯路由渲染区（Sidebar + 内容） ───────────────────────
@@ -280,11 +281,7 @@ export class MainPage extends Component<{}, MainPageState> {
                                         onCreateSpace={() => this.setState({ showCreateSpace: true })}
                                         canManageSpace={canManageSpace}
                                         onSpaceManagement={() => {
-                                            // 带上当前 Space id，让管理后台默认落到用户正在使用的空间，
-                                            // 而不是可管理列表里的第一个（用户可能同时管理多个空间）。
-                                            window.location.href = currentSpaceId
-                                                ? `/space?spaceId=${encodeURIComponent(currentSpaceId)}`
-                                                : "/space";
+                                            window.location.href = buildSpaceAdminUrl(currentSpaceId);
                                         }}
                                         // 菜单
                                         menusList={vm.menusList}
