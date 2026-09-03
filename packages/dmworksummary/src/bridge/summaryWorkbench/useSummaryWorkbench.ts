@@ -4,11 +4,8 @@ import type {
   CreateAgentSummaryResult,
 } from "../../types/summary";
 import summaryWorkbenchService, {
-  type SummaryWorkbenchConfirmInput,
   type SummaryWorkbenchMessageInput,
-  type SummaryWorkbenchRequestOptions,
-  type SummaryWorkbenchSaveInput,
-  type SummaryWorkbenchStreamCallbacks,
+  type SummaryWorkbenchService,
 } from "../../Service/SummaryWorkbenchService";
 import { genRequestId, genSessionId } from "../../utils/summaryHelpers";
 import { contextItemsFromScope } from "./adapter";
@@ -33,28 +30,14 @@ import {
   type SummaryWorkspaceInputOrigin,
 } from "./protocol";
 
-export interface SummaryWorkbenchControllerService {
-  sendMessage(
-    input: SummaryWorkbenchMessageInput,
-    options?: SummaryWorkbenchRequestOptions
-  ): Promise<SummaryWorkbenchResponse>;
-  streamMessage(
-    input: SummaryWorkbenchMessageInput,
-    callbacks: SummaryWorkbenchStreamCallbacks
-  ): { close: () => void };
-  loadSession(
-    sessionId: string,
-    options?: SummaryWorkbenchRequestOptions
-  ): Promise<SummaryWorkbenchHistoryHydration>;
-  confirmWorkflow(
-    input: SummaryWorkbenchConfirmInput,
-    options?: SummaryWorkbenchRequestOptions
-  ): Promise<SummaryWorkbenchResponse>;
-  savePreview(
-    input: SummaryWorkbenchSaveInput,
-    options?: SummaryWorkbenchRequestOptions
-  ): Promise<CreateAgentSummaryResult>;
-}
+export type SummaryWorkbenchControllerService = Pick<
+  SummaryWorkbenchService,
+  | "sendMessage"
+  | "streamMessage"
+  | "loadSession"
+  | "confirmWorkflow"
+  | "savePreview"
+>;
 
 export interface UseSummaryWorkbenchOptions {
   initialSessionId?: string;

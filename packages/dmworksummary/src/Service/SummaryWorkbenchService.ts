@@ -11,6 +11,7 @@ import {
   postSummaryWorkspaceTurn,
   saveSummaryWorkspacePreview,
   streamSummaryWorkspaceTurn,
+  type SummaryWorkspaceRequestOptions,
 } from "../api/summaryApi";
 import {
   adaptSummaryWorkspaceHistory,
@@ -65,10 +66,7 @@ export interface SummaryWorkbenchSaveInput {
   generationRequestId?: string;
 }
 
-export interface SummaryWorkbenchRequestOptions {
-  signal?: AbortSignal;
-  spaceId?: string;
-}
+export type SummaryWorkbenchRequestOptions = SummaryWorkspaceRequestOptions;
 
 export interface SummaryWorkbenchStreamCallbacks {
   onProgress?: (event: AgentProgressEvent) => void;
