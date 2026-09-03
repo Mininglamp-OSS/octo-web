@@ -597,7 +597,7 @@ function unwrapSummaryWorkspaceEnvelope(payload: unknown, allowNullData = false)
         });
     }
     if (payload.data === undefined || payload.data === null) {
-        if (allowNullData && payload.data === null) return null;
+        if (allowNullData && (payload.data === null || payload.data === undefined)) return null;
         throw new SummaryWorkspaceApiError({
             message: 'Summary workspace response has no data',
             kind: 'protocol',

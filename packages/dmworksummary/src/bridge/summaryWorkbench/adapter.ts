@@ -331,14 +331,14 @@ function decodeState(value: unknown, path: string): SummaryWorkspaceStateDTO {
     scope_version: requirePositiveInteger(record.scope_version, `${path}.scope_version`),
     summary_context: decodeContext(record.summary_context, `${path}.summary_context`),
     current_preview:
-      record.current_preview === null
+      record.current_preview == null
         ? null
         : decodePreview(record.current_preview, `${path}.current_preview`),
     pending_proposal:
-      record.pending_proposal === null
+      record.pending_proposal == null
         ? null
         : decodeProposal(record.pending_proposal, `${path}.pending_proposal`),
-    workflow: record.workflow === null ? null : decodeWorkflow(record.workflow, `${path}.workflow`),
+    workflow: record.workflow == null ? null : decodeWorkflow(record.workflow, `${path}.workflow`),
   };
 }
 
@@ -364,7 +364,7 @@ function decodeContext(value: unknown, path: string): SummaryWorkspaceContextDTO
     (participant, index) => decodeParticipant(participant, `${path}.participants[${index}]`)
   );
   const template =
-    record.template === null
+    record.template == null
       ? null
       : (() => {
           const templateRecord = requireRecord(record.template, `${path}.template`);
@@ -376,7 +376,7 @@ function decodeContext(value: unknown, path: string): SummaryWorkspaceContextDTO
           };
         })();
   const timeRange =
-    record.time_range === null
+    record.time_range == null
       ? null
       : (() => {
           const timeRangeRecord = requireRecord(record.time_range, `${path}.time_range`);

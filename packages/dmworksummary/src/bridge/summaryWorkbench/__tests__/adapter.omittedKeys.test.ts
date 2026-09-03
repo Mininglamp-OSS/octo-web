@@ -16,13 +16,14 @@ import { adaptSummaryWorkspaceTurn } from '../adapter';
 // (the shape a Go omitempty backend actually emits) instead of explicit null.
 function turnWithOmittedPointers(resultType: string, extra?: Record<string, unknown>) {
   return {
-    contract_version: 1,
+    contract_version: '1',
     session_id: 'session-omit',
     request_id: 'req-omit',
     message_id: 11,
     scope_version: 1,
     result_type: resultType,
     reply: '正文',
+    available_actions: [],
     state: {
       scope_version: 1,
       summary_context: {
@@ -31,7 +32,8 @@ function turnWithOmittedPointers(resultType: string, extra?: Record<string, unkn
         referenced_task_ids: [],
         // template / time_range omitted entirely
       },
-      // current_preview / pending_proposal / workflow omitted entirely
+      // current_preview / pending_proposal omitted entirely
+      workflow: extra?.workflow,
     },
     // top-level current_preview / pending_proposal / workflow omitted
     ...extra,
@@ -53,7 +55,7 @@ describe('adapter — omitted optional pointer keys are tolerated (P1-2)', () =>
   it('decodes a workflow_started turn with workflow PRESENT but current_preview/pending_proposal ABSENT', () => {
     const turn = adaptSummaryWorkspaceTurn(
       turnWithOmittedPointers('workflow_started', {
-        workflow: { task_id: 42, status: 'processing', saved: false, scope: 'personal' },
+        workflow: { task_id: 42, status: 2, saved: false, message_id: 11, result_type: 'workflow_started', scope_version: 1, scope: 'personal', task_title: '总结任务', available_actions: ['view_progress', 'continue_chat'] },
       }),
     );
     expect(turn.resultType).toBe('workflow_started');
