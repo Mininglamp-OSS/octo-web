@@ -325,6 +325,56 @@ describe("ConversationWrap", () => {
     expect(wrap.isMentionMe).toBe(true)
   })
 
+  it("uses Space-aware unread on a Person channel where raw unread and spaceUnread diverge (Jerry-Xin rev 3 addendum)", () => {
+    // Person-in-Space：当前 Space 已读完（spaceUnread=0），但 raw unread 因为别的
+    // Space 仍有值 > 0。行的 badge / read state 走 spaceUnread，marker fallback
+    // 必须同源 —— 否则 spaceLastMessage.mention.uids 命中会长期误亮。
+    const originalSpaceId = WKApp.shared.currentSpaceId
+    WKApp.shared.currentSpaceId = "space-1"
+    try {
+      const spaceMsg = message({
+        messageID: "space-mention",
+        content: { mention: { uids: ["me"] } },
+      })
+      const wrap = new ConversationWrap(conversation({
+        channel: { channelID: "peer", channelType: 1 },
+        unread: 3, // raw unread from other Spaces
+        reminders: [],
+        extra: { spaceUnread: 0, spaceLastMessage: spaceMsg },
+        lastMessage: message({ content: {} }),
+      }))
+      // Sanity checks: sibling getters are Space-aware
+      expect(wrap.unread).toBe(0)
+      expect(wrap.lastMessage).toBe(spaceMsg)
+      // Marker gate must agree with the displayed row state
+      expect(wrap.isMentionMe).toBe(false)
+    } finally {
+      WKApp.shared.currentSpaceId = originalSpaceId
+    }
+  })
+
+  it("lights the marker on a Person-in-Space channel while spaceUnread is nonzero", () => {
+    const originalSpaceId = WKApp.shared.currentSpaceId
+    WKApp.shared.currentSpaceId = "space-1"
+    try {
+      const spaceMsg = message({
+        messageID: "space-mention",
+        content: { mention: { uids: ["me"] } },
+      })
+      const wrap = new ConversationWrap(conversation({
+        channel: { channelID: "peer", channelType: 1 },
+        unread: 0,
+        reminders: [],
+        extra: { spaceUnread: 2, spaceLastMessage: spaceMsg },
+        lastMessage: message({ content: {} }),
+      }))
+      expect(wrap.unread).toBe(2)
+      expect(wrap.isMentionMe).toBe(true)
+    } finally {
+      WKApp.shared.currentSpaceId = originalSpaceId
+    }
+  })
+
   it("initializes extras and delegates identity and reload operations", () => {
     const raw = conversation({ extra: undefined })
     const wrap = new ConversationWrap(raw)

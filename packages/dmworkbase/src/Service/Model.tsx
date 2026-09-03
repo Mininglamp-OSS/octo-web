@@ -161,8 +161,11 @@ export class ConversationWrap {
         if (sawMentionReminder && lastSeq <= maxCoveredSeq) return false
 
         // reminder 未覆盖（Person 无 reminder，或 group 新 mention reminder 还没同步）：
-        // unread=0 视作用户已越过此消息（对 Person 尤其重要，否则永远清不掉）。
-        return this.conversation.unread > 0
+        // 用 Space-aware `this.unread` 而不是 raw `conversation.unread`——Person-in-Space
+        // 的行 badge / read state 走 spaceUnread；raw unread 可能来自别的 Space，与当前
+        // Space 的 lastMessage / 展示语义不一致（Jerry-Xin rev 3 addendum）。unread=0
+        // 视作用户已越过此消息（对 Person 尤其重要，否则永远清不掉）。
+        return this.unread > 0
     }
 
     public set isMentionMe(isMentionMe: boolean | undefined) {
