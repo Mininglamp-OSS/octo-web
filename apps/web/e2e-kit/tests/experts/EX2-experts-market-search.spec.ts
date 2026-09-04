@@ -4,6 +4,12 @@
 import { test, expect } from "../../fixtures-authed";
 
 test("@EX2 @p1 @experts @market @search Experts 市场搜索", async ({ authedPage }) => {
+  // authedPage has already booted once; this test then performs another
+  // full-document navigation after installing its scenario. Protect the
+  // bootstrap category request during the new document's MSW registration gap.
+  await authedPage.route("**/api/v1/spaces/*/categories", async (route) => {
+    await route.fulfill({ contentType: "application/json", body: "[]" });
+  });
   await authedPage.addInitScript(() => {
     sessionStorage.setItem("__e2e_scenario", "expert-market-search");
   });
