@@ -252,8 +252,9 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
       canceled: emptyHandledPage(),
     });
     setHandledLoading(true);
+    const spaceGeneration = spaceGenerationRef.current;
     void Promise.all(TERMINAL_STATUSES.map((s) => fetchHandledPage(s, null, false))).finally(() => {
-      setHandledLoading(false);
+      if (spaceGeneration === spaceGenerationRef.current) setHandledLoading(false);
     });
   }, [fetchHandledPage]);
 
@@ -261,10 +262,13 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
     const anyHasMore = TERMINAL_STATUSES.some((s) => handled[s].nextCursor);
     if (!anyHasMore || handledLoading || handledLoadingMore) return;
     setHandledLoadingMore(true);
+    const spaceGeneration = spaceGenerationRef.current;
     const tasks = TERMINAL_STATUSES
       .filter((s) => handled[s].nextCursor)
       .map((s) => fetchHandledPage(s, handled[s].nextCursor, true));
-    void Promise.all(tasks).finally(() => setHandledLoadingMore(false));
+    void Promise.all(tasks).finally(() => {
+      if (spaceGeneration === spaceGenerationRef.current) setHandledLoadingMore(false);
+    });
   }, [fetchHandledPage, handled, handledLoading, handledLoadingMore]);
 
   // Initial + tab-switch fetches.

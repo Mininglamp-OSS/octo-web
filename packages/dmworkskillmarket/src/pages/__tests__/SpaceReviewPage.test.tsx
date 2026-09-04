@@ -121,12 +121,20 @@ describe("SpaceReviewPage", () => {
     expect(screen.getByTestId("review-queue")).toBeInTheDocument();
   });
 
-  it("keeps the policy control hidden from ordinary members", async () => {
+  it("keeps the policy control hidden and avoids policy reads for ordinary members", async () => {
     roleState.current = 0;
     render(<SpaceReviewPage />);
 
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-    await waitFor(() => expect(getPolicy).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(getPolicy).not.toHaveBeenCalled());
+  });
+
+  it("does not render an unfetched policy value when loading fails", async () => {
+    getPolicy.mockRejectedValueOnce(new Error("policy unavailable"));
+    render(<SpaceReviewPage />);
+
+    expect(await screen.findByText("policy unavailable")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
   it("delegates every empty/error/loading state to the queue", async () => {

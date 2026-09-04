@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { SpaceService, WKApp, type Space } from "@octo/base";
-import { isSpaceOwnerRole, isSpaceReviewerRole, useSpaceRole } from "../useSpaceRole";
+import { isSpaceReviewerRole, useSpaceRole } from "../useSpaceRole";
 
 function space(role: number, spaceId = "space-123"): Space {
   return {
@@ -40,11 +40,6 @@ describe("isSpaceReviewerRole", () => {
     expect(isSpaceReviewerRole(3)).toBe(false);
   });
 
-  it("only treats role 2 as the Space owner", () => {
-    expect(isSpaceOwnerRole(2)).toBe(true);
-    expect(isSpaceOwnerRole(1)).toBe(false);
-    expect(isSpaceOwnerRole(0)).toBe(false);
-  });
 });
 
 describe("useSpaceRole", () => {

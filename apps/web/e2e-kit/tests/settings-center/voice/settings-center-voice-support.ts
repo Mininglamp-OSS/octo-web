@@ -49,7 +49,7 @@ export async function prepareVoiceConversation(page: Page, settings: VoiceSeed, 
       }
     }, 100);
   }, { key: VOICE_STORAGE_KEY, settings, conversationName: name, protocolVersion: VOICE_PROTOCOL_VERSION });
-  const openSeededConversation = async () => {
+  const openConversationList = async () => {
     await page.reload();
     await page.getByRole("button", { name: "会话" }).waitFor({ state: "visible", timeout: 15_000 });
     await page.waitForFunction(() => {
@@ -59,17 +59,20 @@ export async function prepareVoiceConversation(page: Page, settings: VoiceSeed, 
     }, undefined, { timeout: 15_000 });
     await page.getByRole("button", { name: "会话" }).click();
     await page.getByRole("button", { name: "最近" }).click();
-    await page.getByText(name, { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
   };
+  await openConversationList();
+  const conversation = page.getByText(name, { exact: true });
   try {
-    await openSeededConversation();
-  } catch {
-    // The mock runtime can become available just after the conversation list's
-    // first subscription snapshot. Reload once so the seeded runtime is the
-    // source of the initial snapshot instead of leaving a rare CI-only timeout.
-    await openSeededConversation();
+    await conversation.waitFor({ state: "visible", timeout: 15_000 });
+  } catch (error) {
+    // Retry only the known first-snapshot race. Installer/readiness/navigation
+    // failures above still fail immediately instead of being hidden by a broad
+    // retry of the entire setup sequence.
+    if (!(error instanceof Error) || error.name !== "TimeoutError") throw error;
+    await openConversationList();
+    await conversation.waitFor({ state: "visible", timeout: 15_000 });
   }
-  await page.getByText(name, { exact: true }).click();
+  await conversation.click();
   await page.getByRole("textbox").waitFor({ state: "visible", timeout: 15_000 });
 }
 

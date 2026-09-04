@@ -34,8 +34,8 @@ import { useSpaceRole } from "../hooks/useSpaceRole";
  */
 export default function SpaceReviewPage() {
   useI18n();
-  const { isReviewer } = useSpaceRole();
-  const [enabled, setEnabled] = useState(true);
+  const { isReviewer, loading: roleLoading } = useSpaceRole();
+  const [enabled, setEnabled] = useState<boolean | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +48,7 @@ export default function SpaceReviewPage() {
   const loadPolicy = useCallback(() => {
     requestGenerationRef.current += 1;
     const requestGeneration = requestGenerationRef.current;
+    setEnabled(undefined);
     setLoading(true);
     setSaving(false);
     setError(null);
@@ -67,17 +68,37 @@ export default function SpaceReviewPage() {
   }, []);
 
   useEffect(() => {
-    loadPolicy();
-    const handleSpaceChanged = () => {
+    const handleSpaceChanged = (payload?: unknown) => {
+      requestGenerationRef.current += 1;
+      setEnabled(undefined);
+      setLoading(true);
+      setSaving(false);
+      setError(null);
       setDisableConfirmOpen(false);
-      loadPolicy();
+      const role = (payload as { role?: unknown } | undefined)?.role;
+      if (typeof role === "number" && role >= 1 && role <= 2) loadPolicy();
+      else if (typeof role === "number") setLoading(false);
     };
     WKApp.mittBus.on("space-changed", handleSpaceChanged);
     return () => {
       requestGenerationRef.current += 1;
       WKApp.mittBus.off("space-changed", handleSpaceChanged);
     };
-  }, [loadPolicy]);
+  }, []);
+
+  useEffect(() => {
+    if (roleLoading) return;
+    if (!isReviewer) {
+      requestGenerationRef.current += 1;
+      setEnabled(undefined);
+      setLoading(false);
+      setSaving(false);
+      setError(null);
+      setDisableConfirmOpen(false);
+      return;
+    }
+    loadPolicy();
+  }, [isReviewer, loadPolicy, roleLoading]);
 
   async function savePolicy(next: boolean): Promise<boolean> {
     requestGenerationRef.current += 1;
@@ -130,15 +151,17 @@ export default function SpaceReviewPage() {
               <p>{t("skillMarket.review.policyDescription")}</p>
               {error && <p className="skill-market-review-policy__error">{error}</p>}
             </div>
-            <label className="skill-market-review-policy__toggle">
-              <input
-                type="checkbox"
-                checked={enabled}
-                disabled={loading || saving}
-                onChange={(event) => void handlePolicyChange(event.target.checked)}
-              />
-              <span>{enabled ? t("skillMarket.review.policyEnabled") : t("skillMarket.review.policyDisabled")}</span>
-            </label>
+            {enabled !== undefined && !error && (
+              <label className="skill-market-review-policy__toggle">
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  disabled={loading || saving}
+                  onChange={(event) => void handlePolicyChange(event.target.checked)}
+                />
+                <span>{enabled ? t("skillMarket.review.policyEnabled") : t("skillMarket.review.policyDisabled")}</span>
+              </label>
+            )}
           </section>
         )}
         <ReviewQueue mode="space" />

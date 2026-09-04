@@ -17,10 +17,6 @@ export function isSpaceReviewerRole(role: number | undefined): boolean {
   );
 }
 
-export function isSpaceOwnerRole(role: number | undefined): boolean {
-  return role === SPACE_ROLE_OWNER;
-}
-
 export interface UseSpaceRoleResult {
   /** octo-server encoding (0 member / 1 admin / 2 owner); undefined until resolved. */
   role?: number;

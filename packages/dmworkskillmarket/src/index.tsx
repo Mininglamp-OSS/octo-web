@@ -16,7 +16,7 @@ export { default as SpaceReviewPage } from "./pages/SpaceReviewPage";
 // headless probe that does. Exported here (rather than dmworkmcp reaching into
 // src/hooks) for the same reason SkillListPage is.
 export { useReviewRequests } from "./hooks/useReviewRequests";
-export { useSpaceRole, isSpaceOwnerRole, isSpaceReviewerRole } from "./hooks/useSpaceRole";
+export { useSpaceRole, isSpaceReviewerRole } from "./hooks/useSpaceRole";
 // The review flow is NOT skill-specific — the connector / 专家 / 专家团 markets in
 // dmworkmcp run the same "private draft → 提交审核 → space" lifecycle over the same
 // `/plugins/review_requests` endpoints. Rather than let a second package
