@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { File, FileText, FolderOpen } from "lucide-react";
 import { useI18n } from "../../i18n";
 import type {
-  DriveFileType,
   DriveSearchHit,
   GlobalSearchDataSource,
 } from "../../Service/SearchTypes";
 import { formatFileSize } from "../../Utils/fileIcon";
+import { driveIconSrc } from "./searchFileIcon";
 import "./drive-search-panel.css";
 
 const PAGE_SIZE = 20;
@@ -71,10 +70,16 @@ function renderHighlight(rawFragment: string): React.ReactNode {
   return nodes.length > 0 ? nodes : fragment;
 }
 
-function renderFileIcon(type: DriveFileType): React.ReactNode {
-  if (type === "folder") return <FolderOpen size={20} aria-hidden />;
-  if (type === "doc") return <FileText size={20} aria-hidden />;
-  return <File size={20} aria-hidden />;
+function renderFileIcon(hit: DriveSearchHit): React.ReactNode {
+  return (
+    <img
+      className="wk-drive-search__icon-img"
+      src={driveIconSrc(hit.type, hit.name, hit.doc_type)}
+      width={48}
+      height={48}
+      alt=""
+    />
+  );
 }
 
 function formatUpdatedAt(iso: string, locale: string): string {
@@ -354,10 +359,8 @@ const DriveSearchPanel: React.FC<DriveSearchPanelProps> = ({
                   className="wk-drive-search__item"
                   onClick={() => onOpenDriveHit?.(hit)}
                 >
-                  <span
-                    className={`wk-drive-search__icon wk-drive-search__icon--${hit.type}`}
-                  >
-                    {renderFileIcon(hit.type)}
+                  <span className="wk-drive-search__icon">
+                    {renderFileIcon(hit)}
                   </span>
                   <span className="wk-drive-search__meta">
                     <span className="wk-drive-search__title">

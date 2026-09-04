@@ -26,33 +26,21 @@
 .wk-doc-search__item:hover {
   background: var(--wk-bg-item-hover);
 }
+/* Icon badge: 38x38 slot holding the 32x32 colour-coded SVG (drive-module
+   icon set). The SVG carries its own background, so the slot stays transparent. */
 .wk-doc-search__icon {
   flex: none;
-  width: 38px;
-  height: 38px;
-  border-radius: var(--wk-r-sm);
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--wk-text-inverse);
-  background: var(--wk-text-accent);
+  background: transparent;
 }
-/* doc_type accent colours. Sourced from the --wk-doc-accent-* semantic tokens
-   (theme/semantic.css), which carry both the light values and the dimmed dark
-   variants, so this file stays token-only and inherits theming automatically. */
-.wk-doc-search__icon--doc {
-  background: var(--wk-doc-accent-doc);
-}
-.wk-doc-search__icon--sheet {
-  background: var(--wk-doc-accent-sheet);
-}
-.wk-doc-search__icon--board {
-  background: var(--wk-doc-accent-board);
-}
-.wk-doc-search__icon--html {
-  background: var(--wk-doc-accent-html);
+.wk-doc-search__icon-img {
+  width: 48px;
+  height: 48px;
+  display: block;
 }
 .wk-doc-search__meta {
   flex: 1;

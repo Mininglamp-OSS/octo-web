@@ -288,6 +288,11 @@ export type DriveSearchScope = "all" | "space";
 export type DriveSearchOwnerScope = "me" | "others";
 export type DriveFileType = "doc" | "blob" | "folder";
 
+/** doc_type sub-kind for drive-search online-doc hits (type='doc'), emitted by
+ *  drive-search merge.go (omitempty). Distinct from DocSearchDocType (docs tab):
+ *  drive-search additionally distinguishes `html_ppt` (HTML 版 PPT). */
+export type DriveDocType = "doc" | "sheet" | "board" | "html" | "html_ppt";
+
 export interface DriveSearchFilters {
   /** Multi-value include (TES-70/TES-72 wire contract); excludes folder hits by
    * requesting only ['blob','doc']. The single-value `type` field was removed to
@@ -337,6 +342,10 @@ export interface DriveSearchHit {
   path: string[];
   name: string;
   type: DriveFileType;
+  /** Present only on type='doc' hits (drive-search merge.go, omitempty). Drives
+   *  the online-doc sub-type icon; absent → generic doc.svg fallback. Distinct
+   *  from DocSearchDocType (docs tab): drive-search adds `html_ppt`. */
+  doc_type?: DriveDocType;
   ext?: string;
   size?: number;
   owner_uid: string;
