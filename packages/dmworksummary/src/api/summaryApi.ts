@@ -754,7 +754,7 @@ export function agentChatStream(params: AgentChatParams, handlers: AgentStreamHa
                 handlers.onError?.({
                     code: 401,
                     message: 'Unauthorized',
-                    transient: true,
+                    transient: false,
                 });
                 return;
             }
@@ -874,7 +874,7 @@ function decodeAgentStreamHttpError(status: number, body: string): AgentErrorEve
     const envelope = isUnknownRecord(payload) ? payload : undefined;
     const nestedError = envelope ? readRecordProperty(envelope, 'error') : undefined;
     const source = nestedError ?? envelope;
-    const code = readNumberProperty(source, 'code') ?? status;
+    const code = readStringOrNumberProperty(source, 'code') ?? status;
     const effectiveStatus = readNumberProperty(source, 'http_status') ?? status;
     const message =
         readStringProperty(source, 'message') ??
@@ -884,7 +884,11 @@ function decodeAgentStreamHttpError(status: number, body: string): AgentErrorEve
     return {
         code,
         message,
-        transient: effectiveStatus >= 500 || effectiveStatus === 404 || effectiveStatus === 405,
+        transient:
+            isRetryableSummaryWorkspaceCode(code) ||
+            effectiveStatus >= 500 ||
+            effectiveStatus === 404 ||
+            effectiveStatus === 405,
     };
 }
 

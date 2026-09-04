@@ -464,10 +464,9 @@ describe("useSummaryWorkbench", () => {
     await act(async () => {
       await result.current.send();
     });
-    expect(sendMessage.mock.calls.slice(0, 2).map(([input]) => input.requestId)).toEqual([
-      "request-first",
-      "request-first",
-    ]);
+    expect(
+      sendMessage.mock.calls.slice(0, 2).map(([input]) => input.requestId)
+    ).toEqual(["request-first", "request-first"]);
     expect(
       result.current.model.messages.filter(
         (message) => message.id === "local-user:request-first"
@@ -992,7 +991,9 @@ describe("useSummaryWorkbench", () => {
   it("keeps polling the same workflow after scope edits without replacing the new scope", async () => {
     vi.useFakeTimers();
     try {
-      loadSession.mockResolvedValueOnce(workflowHydration("workflow_completed"));
+      loadSession.mockResolvedValueOnce(
+        workflowHydration("workflow_completed")
+      );
       const { result, unmount } = renderHook(() =>
         useSummaryWorkbench({
           initialSessionId: "session-1",
@@ -1070,6 +1071,72 @@ describe("useSummaryWorkbench", () => {
         id: "32",
         resultType: "error",
       });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(loadSession).toHaveBeenCalledTimes(1);
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops polling and preserves scope when the workflow session has expired", async () => {
+    vi.useFakeTimers();
+    try {
+      loadSession.mockResolvedValueOnce({
+        sessionId: "session-1",
+        contractVersion: "1",
+        scope: {
+          selectedChannels: [],
+          participants: [],
+          template: null,
+          timeRange: null,
+          referencedTaskIds: [],
+        },
+        modelOptions: {
+          scopeVersion: 1,
+          contextItems: [],
+          messages: [],
+          currentPreview: null,
+          pendingProposal: null,
+          workflow: null,
+        },
+        empty: true,
+      });
+      const onSessionIdChange = vi.fn();
+      const { result, unmount } = renderHook(() =>
+        useSummaryWorkbench({
+          initialSessionId: "session-1",
+          initialScope,
+          autoHydrate: false,
+          service,
+          createSessionId: () => "fresh-after-expiry",
+          createRequestId: () => "request-workflow",
+          onSessionIdChange,
+          workflowPollIntervalMs: 10,
+        })
+      );
+
+      let request!: Promise<SummaryWorkbenchResponse | undefined>;
+      act(() => {
+        request = result.current.send("发起多人总结");
+        streamCallbacks.onDone?.(workflowResponse("workflow_started"));
+      });
+      await act(async () => {
+        await request;
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10);
+      });
+
+      expect(loadSession).toHaveBeenCalledTimes(1);
+      expect(result.current.sessionId).toBe("fresh-after-expiry");
+      expect(result.current.scope).toEqual(initialScope);
+      expect(result.current.model.workflow).toBeNull();
+      expect(result.current.error?.message).toContain("会话已过期");
+      expect(onSessionIdChange).toHaveBeenCalledWith("");
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(100);

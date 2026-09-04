@@ -148,12 +148,14 @@ export class SummaryWorkbenchService {
     return this.transport.streamTurn(buildChatRequest(input), {
       onProgress: callbacks.onProgress,
       onDone: (payload) => {
+        let response: SummaryWorkbenchResponse;
         try {
-          const response = adaptSummaryWorkspaceTurn(payload);
-          callbacks.onDone?.(response);
+          response = adaptSummaryWorkspaceTurn(payload);
         } catch (error) {
           reportError(normalizeWorkspaceError(error));
+          return;
         }
+        callbacks.onDone?.(response);
       },
       onError: (event) => reportError(decodeSummaryWorkspaceStreamError(event)),
     });
@@ -186,7 +188,16 @@ export class SummaryWorkbenchService {
         empty: true,
       };
     }
-    return adaptSummaryWorkspaceHistory(response);
+    const hydration = adaptSummaryWorkspaceHistory(response);
+    if (
+      hydration.modelOptions.messages.length === 0 &&
+      hydration.modelOptions.currentPreview === null &&
+      hydration.modelOptions.pendingProposal === null &&
+      hydration.modelOptions.workflow === null
+    ) {
+      return { ...hydration, empty: true };
+    }
+    return hydration;
   }
 
   async confirmWorkflow(

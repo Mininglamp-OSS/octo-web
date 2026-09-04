@@ -361,7 +361,9 @@ describe("SummaryWorkbenchService", () => {
       contract_version: "1",
       max_time_range_days: 90,
     });
-    await expect(service.getCapabilities({ spaceId: "space-a" })).resolves.toEqual({
+    await expect(
+      service.getCapabilities({ spaceId: "space-a" })
+    ).resolves.toEqual({
       enabled: true,
       contract_version: "1",
       max_time_range_days: 90,
@@ -383,6 +385,35 @@ describe("SummaryWorkbenchService", () => {
       },
       modelOptions: { messages: [], workflow: null },
     });
+  });
+
+  it("treats the backend's full empty History envelope as an empty session", async () => {
+    getHistory.mockResolvedValueOnce({
+      contract_version: "1",
+      session_id: "expired-session",
+      messages: [],
+      state: {
+        scope_version: 1,
+        summary_context: {
+          selected_channels: [],
+          participants: [],
+          template: null,
+          time_range: null,
+          referenced_task_ids: [],
+        },
+        current_preview: null,
+        pending_proposal: null,
+        workflow: null,
+      },
+    });
+
+    await expect(service.loadSession("expired-session")).resolves.toMatchObject(
+      {
+        sessionId: "expired-session",
+        empty: true,
+        modelOptions: { messages: [], workflow: null },
+      }
+    );
   });
 
   it("loads only the reference metadata needed by the workbench", async () => {

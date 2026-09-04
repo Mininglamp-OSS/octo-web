@@ -141,11 +141,23 @@ export default class ChatSelectorModal extends Component<Props, State> {
             // unconfirmed ticks; the committed scope flows back in on open
             // (visible-transition branch above), which is the only reset the
             // picker needs.
-            this.setState({
-                candidates: this.memberCandidatesToChats(this.props.memberCandidates),
-                memberRoles: this.props.memberRoles ?? new Map<string, number>(),
-                loading: this.props.memberLoading ?? false,
-                loadError: this.props.memberLoadError ?? false,
+            this.setState((current) => {
+                const loading = this.props.memberLoading ?? false;
+                const loadError = this.props.memberLoadError ?? false;
+                const candidateIDs = new Set(this.props.memberCandidates?.map((member) => member.uid) ?? []);
+                return {
+                    candidates: this.memberCandidatesToChats(this.props.memberCandidates ?? []),
+                    memberRoles: this.props.memberRoles ?? new Map<string, number>(),
+                    loading,
+                    loadError,
+                    ...(loading || loadError
+                        ? {}
+                        : {
+                            localSelectedMembers: current.localSelectedMembers.filter((member) =>
+                                candidateIDs.has(member.uid),
+                            ),
+                        }),
+                };
             });
         }
     }

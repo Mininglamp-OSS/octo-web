@@ -144,4 +144,66 @@ describe('ChatSelectorModal — pending member selections survive parent re-rend
         const zhangRowAfter = utils!.getAllByText('张三').map((el) => el.closest('.chat-selector-item')).find(Boolean)!;
         expect(zhangRowAfter.querySelector('input')!.checked).toBe(true);
     });
+
+    it('候选并集收缩后只移除失效参与者，并保留仍在并集中的选择', async () => {
+        let utils: ReturnType<typeof rtlRender>;
+        await act(async () => {
+            utils = rtlRender(
+                <ChatSelectorModal
+                    {...baseProps}
+                    mode="members"
+                    channel={null}
+                    memberCandidates={[
+                        { uid: 'u1', name: '张三' },
+                        { uid: 'u2', name: '李四' },
+                    ]}
+                    selectedMembers={[
+                        { uid: 'u1', name: '张三' },
+                        { uid: 'u2', name: '李四' },
+                    ]}
+                    visible={false}
+                />,
+                { legacyRoot: true },
+            );
+        });
+
+        await act(async () => {
+            utils!.rerender(
+                <ChatSelectorModal
+                    {...baseProps}
+                    mode="members"
+                    channel={null}
+                    memberCandidates={[
+                        { uid: 'u1', name: '张三' },
+                        { uid: 'u2', name: '李四' },
+                    ]}
+                    selectedMembers={[
+                        { uid: 'u1', name: '张三' },
+                        { uid: 'u2', name: '李四' },
+                    ]}
+                    visible
+                />,
+            );
+        });
+
+        await act(async () => {
+            utils!.rerender(
+                <ChatSelectorModal
+                    {...baseProps}
+                    mode="members"
+                    channel={null}
+                    memberCandidates={[{ uid: 'u2', name: '李四' }]}
+                    selectedMembers={[
+                        { uid: 'u1', name: '张三' },
+                        { uid: 'u2', name: '李四' },
+                    ]}
+                    visible
+                />,
+            );
+        });
+
+        expect(utils!.queryByText('张三')).not.toBeInTheDocument();
+        const liRow = utils!.getAllByText('李四').map((el) => el.closest('.chat-selector-item')).find(Boolean)!;
+        expect(liRow.querySelector('input')!.checked).toBe(true);
+    });
 });

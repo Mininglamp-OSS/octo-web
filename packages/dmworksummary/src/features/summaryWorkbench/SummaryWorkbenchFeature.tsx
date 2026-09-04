@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Input, Modal, Spin, Toast } from "@douyinfe/semi-ui";
 import { Dap, useI18n } from "@octo/base";
 import WKApp from "@octo/base/src/App";
@@ -259,7 +265,8 @@ export default function SummaryWorkbenchFeature({
         });
         return false;
       }
-    }, [
+    },
+    [
       currentUserId,
       participantCandidateState.sourceKey,
       participantCandidateState.status,
@@ -459,6 +466,10 @@ export default function SummaryWorkbenchFeature({
 
   const send = async () => {
     if (!viewState.canSend) return;
+    if (themeTrackTimer.current) {
+      clearTimeout(themeTrackTimer.current);
+      themeTrackTimer.current = undefined;
+    }
     setOpenSelector(null);
     let message: string | undefined;
     let inputOrigin: SummaryWorkspaceInputOrigin;
@@ -472,10 +483,12 @@ export default function SummaryWorkbenchFeature({
           : t("summary.workbench.intent.personal");
       inputOrigin = "system_intent";
     }
-    Dap.shared.track("smart_summary_agent_message_sent", {});
     const response = await runStartedTask(() =>
       workbench.send(message, inputOrigin)
     );
+    if (isAcceptedResponse(response)) {
+      Dap.shared.track("smart_summary_agent_message_sent", {});
+    }
     observeWorkflow(response);
   };
 
@@ -606,6 +619,10 @@ export default function SummaryWorkbenchFeature({
   };
 
   const resetSession = () => {
+    if (themeTrackTimer.current) {
+      clearTimeout(themeTrackTimer.current);
+      themeTrackTimer.current = undefined;
+    }
     clearSummaryWorkbenchSession(storageScope);
     setReferencedTask(derivedFromTask ?? null);
     setReferencePreviewOpen(false);
@@ -643,7 +660,9 @@ export default function SummaryWorkbenchFeature({
           })
         );
       } else {
-        Toast.warning(t("summary.workbench.notice.savedWithQualityGateWarning"));
+        Toast.warning(
+          t("summary.workbench.notice.savedWithQualityGateWarning")
+        );
       }
     } else {
       Toast.success(t("summary.create.agentSummaryCreated"));
@@ -714,9 +733,11 @@ export default function SummaryWorkbenchFeature({
               // P1-4 (yujiawei review 5087124100): top-of-funnel intent signal
               // was legacy-only. Mirror the legacy debounce (600ms, non-empty,
               // no content) instead of tracking every keystroke.
-              if (themeTrackTimer.current) clearTimeout(themeTrackTimer.current);
+              if (themeTrackTimer.current)
+                clearTimeout(themeTrackTimer.current);
               themeTrackTimer.current = setTimeout(() => {
-                if (value.trim()) Dap.shared.track("smart_summary_theme_input", {});
+                if (value.trim())
+                  Dap.shared.track("smart_summary_theme_input", {});
               }, 600);
             },
             onSend: () => void send(),

@@ -446,6 +446,33 @@ data: {"code":50001
         close();
     });
 
+    it('marks string 40902 as transient so an in-flight request can be retried', async () => {
+        const onError = vi.fn();
+        fetchMock.mockResolvedValueOnce({
+            ok: false,
+            status: 409,
+            text: vi.fn().mockResolvedValue(
+                JSON.stringify({
+                    code: '40902',
+                    message: 'request still in progress',
+                }),
+            ),
+        });
+
+        const { close } = agentChatStream(
+            { session_id: 's1', message: 'q', profile: 'summary' },
+            { onError },
+        );
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        expect(onError).toHaveBeenCalledWith({
+            code: '40902',
+            message: 'request still in progress',
+            transient: true,
+        });
+        close();
+    });
+
     it.each([404, 405])('marks HTTP %s stream unavailability as transient for JSON fallback', async (status) => {
         const onError = vi.fn();
         fetchMock.mockResolvedValueOnce({

@@ -563,6 +563,7 @@ export default function useSummaryWorkbench(
       isConfirming: true,
     }));
 
+    let flight!: MutationFlight<SummaryWorkbenchResponse>;
     const promise = serviceRef.current
       .confirmWorkflow(
         {
@@ -576,10 +577,7 @@ export default function useSummaryWorkbench(
         { signal: controller.signal }
       )
       .then((response: SummaryWorkbenchResponse) => {
-        if (
-          confirmationRef.current?.identity !== identity ||
-          epochRef.current !== epoch
-        ) {
+        if (confirmationRef.current !== flight || epochRef.current !== epoch) {
           return undefined;
         }
         const next = commit((latest: RuntimeState) => ({
@@ -590,10 +588,7 @@ export default function useSummaryWorkbench(
         return response;
       })
       .catch((reason: unknown) => {
-        if (
-          confirmationRef.current?.identity !== identity ||
-          epochRef.current !== epoch
-        ) {
+        if (confirmationRef.current !== flight || epochRef.current !== epoch) {
           return undefined;
         }
         const error = normalizeControllerError(reason);
@@ -606,7 +601,7 @@ export default function useSummaryWorkbench(
         return undefined;
       })
       .finally(() => {
-        if (confirmationRef.current?.identity === identity) {
+        if (confirmationRef.current === flight) {
           confirmationRef.current = null;
           commit((latest: RuntimeState) => ({
             ...latest,
@@ -615,7 +610,8 @@ export default function useSummaryWorkbench(
         }
       });
 
-    confirmationRef.current = { epoch, identity, controller, promise };
+    flight = { epoch, identity, controller, promise };
+    confirmationRef.current = flight;
     return promise;
   }, [commit, notifySessionId]);
 
@@ -659,6 +655,7 @@ export default function useSummaryWorkbench(
         isSaving: true,
       }));
 
+      let flight!: MutationFlight<CreateAgentSummaryResult>;
       const promise = serviceRef.current
         .savePreview(
           {
@@ -674,10 +671,7 @@ export default function useSummaryWorkbench(
           { signal: controller.signal }
         )
         .then((result: CreateAgentSummaryResult) => {
-          if (
-            saveRef.current?.identity !== identity ||
-            epochRef.current !== epoch
-          ) {
+          if (saveRef.current !== flight || epochRef.current !== epoch) {
             return undefined;
           }
           commit((latest: RuntimeState) => ({
@@ -690,10 +684,7 @@ export default function useSummaryWorkbench(
           return result;
         })
         .catch((reason: unknown) => {
-          if (
-            saveRef.current?.identity !== identity ||
-            epochRef.current !== epoch
-          ) {
+          if (saveRef.current !== flight || epochRef.current !== epoch) {
             return undefined;
           }
           const error = normalizeControllerError(reason);
@@ -706,7 +697,7 @@ export default function useSummaryWorkbench(
           return undefined;
         })
         .finally(() => {
-          if (saveRef.current?.identity === identity) {
+          if (saveRef.current === flight) {
             saveRef.current = null;
             commit((latest: RuntimeState) => ({
               ...latest,
@@ -715,7 +706,8 @@ export default function useSummaryWorkbench(
           }
         });
 
-      saveRef.current = { epoch, identity, controller, promise };
+      flight = { epoch, identity, controller, promise };
+      saveRef.current = flight;
       return promise;
     },
     [commit]
@@ -915,7 +907,28 @@ export default function useSummaryWorkbench(
         });
         if (!active || controller.signal.aborted) return;
         if (hydration.empty) {
-          scheduleNext();
+          const expiredError = new SummaryWorkspaceApiError({
+            message: "总结会话已过期，请重新开始。",
+            kind: "business",
+            retryable: false,
+          });
+          const nextSessionId = createSessionIdRef.current();
+          commit((current: RuntimeState) => {
+            if (!isSameRunningWorkflow(current)) return current;
+            const scope = cloneScope(current.scope);
+            return withRuntimeError(
+              createRuntimeState(
+                nextSessionId,
+                scope,
+                createInitialSummaryWorkbenchModel({
+                  layout: current.model.layout,
+                  contextItems: contextItemsFromScope(scope),
+                })
+              ),
+              expiredError
+            );
+          });
+          notifySessionId("");
           return;
         }
         if (operationVersionRef.current !== operationVersion) {
@@ -984,6 +997,7 @@ export default function useSummaryWorkbench(
     activeWorkflowResultType,
     activeWorkflowTaskId,
     commit,
+    notifySessionId,
     runtime.sessionId,
     shouldPollWorkflow,
   ]);
