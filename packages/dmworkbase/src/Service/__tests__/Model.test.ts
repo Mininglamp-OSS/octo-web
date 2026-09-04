@@ -256,6 +256,125 @@ describe("ConversationWrap", () => {
     expect(wrap.isMentionMe).toBe(false)
   })
 
+  it("retires the marker once every mention reminder covers the lastMessage (WS-213 rev 3)", () => {
+    // 读到底后所有 mention reminder done + reminder.messageSeq 覆盖 lastMessage.messageSeq
+    // → 用户已确认 → false（reminder 权威语义）。
+    const wrap = new ConversationWrap(conversation({
+      unread: 0,
+      reminders: [
+        { reminderType: 1, done: true, messageSeq: 42 },
+      ],
+      lastMessage: message({ messageSeq: 42, content: { mention: { uids: ["me"] } } }),
+    }))
+    expect(wrap.isMentionMe).toBe(false)
+  })
+
+  it("keeps the marker on when at least one mention reminder is still undone", () => {
+    const wrap = new ConversationWrap(conversation({
+      reminders: [
+        { reminderType: 1, done: true, messageSeq: 10 },
+        { reminderType: 1, done: false, messageSeq: 20 },
+      ],
+      lastMessage: message({ messageSeq: 20, content: {} }),
+    }))
+    expect(wrap.isMentionMe).toBe(true)
+  })
+
+  it("uses lastMessage fallback only when no mention reminder record exists (pre-sync window)", () => {
+    // reminder 还没同步下来时，前端凭 lastMessage.mention.uids + unread>0 先亮 marker
+    const wrap = new ConversationWrap(conversation({
+      unread: 3,
+      reminders: [],
+      lastMessage: message({ content: { mention: { uids: ["me"] } } }),
+    }))
+    expect(wrap.isMentionMe).toBe(true)
+  })
+
+  it("lights up when a newer mentioning lastMessage postdates every done reminder (P1-1)", () => {
+    // 老的 done reminder（seq=10）不应屏蔽 seq=500 的新 @我：
+    // ReminderManager.reminders 从不删除，新 mention 的 reminder 未同步前，走 fallback。
+    const wrap = new ConversationWrap(conversation({
+      unread: 1,
+      reminders: [
+        { reminderType: 1, done: true, messageSeq: 10 },
+      ],
+      lastMessage: message({ messageSeq: 500, content: { mention: { uids: ["me"] } } }),
+    }))
+    expect(wrap.isMentionMe).toBe(true)
+  })
+
+  it("clears the marker on a Person channel once unread reaches zero (P1-2)", () => {
+    // 1:1 频道不走 reminder sync（reminders.ts:16-23 只处理 group / community topic），
+    // 所以 fallback 必须能凭 unread=0 清除，否则 DM 里的 @我 永远显示。
+    const wrap = new ConversationWrap(conversation({
+      channel: { channelID: "peer", channelType: 1 },
+      unread: 0,
+      reminders: [],
+      lastMessage: message({ content: { mention: { uids: ["me"] } } }),
+    }))
+    expect(wrap.isMentionMe).toBe(false)
+  })
+
+  it("keeps the marker on a Person channel while unread is nonzero (P1-2 counterpart)", () => {
+    const wrap = new ConversationWrap(conversation({
+      channel: { channelID: "peer", channelType: 1 },
+      unread: 2,
+      reminders: [],
+      lastMessage: message({ content: { mention: { uids: ["me"] } } }),
+    }))
+    expect(wrap.isMentionMe).toBe(true)
+  })
+
+  it("uses Space-aware unread on a Person channel where raw unread and spaceUnread diverge (Jerry-Xin rev 3 addendum)", () => {
+    // Person-in-Space：当前 Space 已读完（spaceUnread=0），但 raw unread 因为别的
+    // Space 仍有值 > 0。行的 badge / read state 走 spaceUnread，marker fallback
+    // 必须同源 —— 否则 spaceLastMessage.mention.uids 命中会长期误亮。
+    const originalSpaceId = WKApp.shared.currentSpaceId
+    WKApp.shared.currentSpaceId = "space-1"
+    try {
+      const spaceMsg = message({
+        messageID: "space-mention",
+        content: { mention: { uids: ["me"] } },
+      })
+      const wrap = new ConversationWrap(conversation({
+        channel: { channelID: "peer", channelType: 1 },
+        unread: 3, // raw unread from other Spaces
+        reminders: [],
+        extra: { spaceUnread: 0, spaceLastMessage: spaceMsg },
+        lastMessage: message({ content: {} }),
+      }))
+      // Sanity checks: sibling getters are Space-aware
+      expect(wrap.unread).toBe(0)
+      expect(wrap.lastMessage).toBe(spaceMsg)
+      // Marker gate must agree with the displayed row state
+      expect(wrap.isMentionMe).toBe(false)
+    } finally {
+      WKApp.shared.currentSpaceId = originalSpaceId
+    }
+  })
+
+  it("lights the marker on a Person-in-Space channel while spaceUnread is nonzero", () => {
+    const originalSpaceId = WKApp.shared.currentSpaceId
+    WKApp.shared.currentSpaceId = "space-1"
+    try {
+      const spaceMsg = message({
+        messageID: "space-mention",
+        content: { mention: { uids: ["me"] } },
+      })
+      const wrap = new ConversationWrap(conversation({
+        channel: { channelID: "peer", channelType: 1 },
+        unread: 0,
+        reminders: [],
+        extra: { spaceUnread: 2, spaceLastMessage: spaceMsg },
+        lastMessage: message({ content: {} }),
+      }))
+      expect(wrap.unread).toBe(2)
+      expect(wrap.isMentionMe).toBe(true)
+    } finally {
+      WKApp.shared.currentSpaceId = originalSpaceId
+    }
+  })
+
   it("initializes extras and delegates identity and reload operations", () => {
     const raw = conversation({ extra: undefined })
     const wrap = new ConversationWrap(raw)

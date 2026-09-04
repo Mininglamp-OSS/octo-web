@@ -239,8 +239,13 @@ function makeConversation(options: {
   unread: number;
   mention?: boolean;
   mute?: boolean;
+  channelType?: number;
+  channelID?: string;
 }) {
-  const channel = makeChannel("alice");
+  const channel = makeChannel(
+    options.channelID ?? "alice",
+    options.channelType ?? 1
+  );
   return {
     channel,
     channelInfo: {
@@ -250,7 +255,7 @@ function makeConversation(options: {
       lastOffline: 0,
       top: false,
       orgData: {
-        displayName: "Alice",
+        displayName: options.channelID ?? "Alice",
       },
     },
     unread: options.unread,
@@ -265,7 +270,8 @@ function makeConversation(options: {
 function makeCompactConversation(
   channelID: string,
   channelType: number,
-  parentGroupNo?: string
+  parentGroupNo?: string,
+  options: { isMentionMe?: boolean; unread?: number } = {}
 ) {
   const channel = makeChannel(channelID, channelType);
   return {
@@ -279,8 +285,8 @@ function makeCompactConversation(
         parentGroupNo,
       },
     },
-    unread: 0,
-    isMentionMe: false,
+    unread: options.unread ?? 0,
+    isMentionMe: !!options.isMentionMe,
     simpleReminders: [],
     remoteExtra: {},
     timestamp: 1,
@@ -359,7 +365,7 @@ describe("ConversationList unread indicators", () => {
     ).toBe("14");
   });
 
-  it("renders mention and muted unread count together", () => {
+  it("keeps the mention marker in a muted conversation alongside the muted unread count", () => {
     act(() => {
       ReactDOM.render(
         <ConversationList
@@ -375,12 +381,65 @@ describe("ConversationList unread indicators", () => {
       ".wk-conversationlist-item-indicators"
     );
 
+    // WS-213 review 反馈 P1-2：mute 语义反转需要产品拍板，暂保持既有行为——
+    // 免打扰群里的直接 @我 仍然点亮 marker（与 v1 shipped 行为一致）。
     expect(indicators?.querySelector(".wk-mention")?.textContent).toBe(
       "base.conversationList.mentionMarker"
     );
     expect(
       indicators?.querySelector(".wk-conv-unread-num--muted")?.textContent
     ).toBe("5");
+  });
+
+  it("keeps the mention marker after unread has been cleared (WS-213 core)", () => {
+    // 回归 WS-213 主 case：thread 里 @我 → 读到底（unread=0）→ 返回列表 → 仍显示 @我
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={
+            [makeConversation({ unread: 0, mention: true })] as any
+          }
+        />,
+        container
+      );
+    });
+
+    const indicators = container.querySelector(
+      ".wk-conversationlist-item-indicators"
+    );
+
+    expect(indicators?.querySelector(".wk-mention")?.textContent).toBe(
+      "base.conversationList.mentionMarker"
+    );
+  });
+
+  it("renders the mention marker on a group channel with cleared unread", () => {
+    // 群聊是 WS-213 的主要目标。previous fixtures 都是 Person，缺少 group 覆盖。
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={
+            [
+              makeConversation({
+                unread: 0,
+                mention: true,
+                channelType: 2,
+                channelID: "team-room",
+              }),
+            ] as any
+          }
+        />,
+        container
+      );
+    });
+
+    const indicators = container.querySelector(
+      ".wk-conversationlist-item-indicators"
+    );
+
+    expect(indicators?.querySelector(".wk-mention")?.textContent).toBe(
+      "base.conversationList.mentionMarker"
+    );
   });
 
   it("renders the 1v1 unread-priority marker for an unread DM without mention", () => {
@@ -522,6 +581,90 @@ describe("ConversationList unread indicators", () => {
         ".wk-conv-compact-item--thread .wk-conv-compact-drag-handle"
       )
     ).toBeNull();
+  });
+
+  it("bubbles @我 from a collapsed thread onto the parent group row (WS-213 rev 3, P2-2)", () => {
+    // 折叠态：thread 行不显示，父群行应通过 collapsedThreadHasMention 冒泡出 @我 marker。
+    // 覆盖 renderItem → conversationItem → CompactGroupItem 的整条 wiring，
+    // 而不只是 unread.ts 里的 helper 单测。
+    const parent = makeCompactConversation("group-a", 2);
+    const thread = makeCompactConversation("thread-a", 3, "group-a", {
+      isMentionMe: true,
+    });
+
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={[parent, thread] as any}
+          compact
+          disablePinSplit
+        />,
+        container
+      );
+    });
+
+    // 强制进入 collapsed：如果当前是 expanded，点一下 toggle 收起。
+    const toggle = container.querySelector(
+      ".wk-conv-compact-thread-tag"
+    ) as HTMLElement;
+    expect(toggle).not.toBeNull();
+    if (toggle.querySelector(".lucide-chevron-down")) {
+      act(() => {
+        toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+    }
+
+    expect(
+      container.querySelectorAll(".wk-conv-compact-item--thread")
+    ).toHaveLength(0);
+
+    const parentRow = container.querySelector(
+      ".wk-conv-compact-item--has-threads"
+    );
+    expect(parentRow).not.toBeNull();
+    expect(parentRow?.querySelector(".wk-conv-compact-mention")).not.toBeNull();
+  });
+
+  it("does not double-light @我 when the thread is expanded (WS-213 rev 3, P2-2)", () => {
+    // 展开态：thread 行自己亮 @我，父群行不应再冒泡（否则同一 mention 亮两次）。
+    const parent = makeCompactConversation("group-a", 2);
+    const thread = makeCompactConversation("thread-a", 3, "group-a", {
+      isMentionMe: true,
+    });
+
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={[parent, thread] as any}
+          compact
+          disablePinSplit
+        />,
+        container
+      );
+    });
+
+    // 强制进入 expanded：如果当前 collapsed，点一下 toggle 展开。
+    const toggle = container.querySelector(
+      ".wk-conv-compact-thread-tag"
+    ) as HTMLElement;
+    expect(toggle).not.toBeNull();
+    if (toggle.querySelector(".lucide-chevron-right")) {
+      act(() => {
+        toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+    }
+
+    expect(
+      container.querySelectorAll(".wk-conv-compact-item--thread")
+    ).toHaveLength(1);
+
+    const parentRow = container.querySelector(
+      ".wk-conv-compact-item--has-threads"
+    );
+    expect(parentRow?.querySelector(".wk-conv-compact-mention")).toBeNull();
+
+    const threadRow = container.querySelector(".wk-conv-compact-item--thread");
+    expect(threadRow?.querySelector(".wk-conv-compact-mention")).not.toBeNull();
   });
 });
 
