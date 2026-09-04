@@ -284,6 +284,10 @@ manifest 包含：
 - 检查窗口焦点。
 - 查询麦克风权限。
 
+通信产物的 `apiOrigin` 由 Client 在运行时注入，并且本地验证需要支持 HTTP/WS，
+因此 HTML CSP 的网络指令保留在协议级白名单。具体 origin 的信任边界必须由 Electron
+Client 的导航拦截、窗口创建策略和 session 权限处理器执行，不能依赖构建时写死某个线上域名。
+
 下载实现增加了：
 
 - 仅允许 HTTPS，开发/E2E 场景可显式允许 HTTP。
@@ -386,7 +390,7 @@ Client Space 改变
 
 | 范围 | 结果 |
 | --- | --- |
-| `@octo/chat-core` | 54 tests passed |
+| `@octo/chat-core` | 57 tests passed |
 | `@octo/chat-react` | 24 tests passed |
 | `@octo/base` | 473 files / 4325 tests passed |
 | octo-web unit tests | 113 files / 1419 tests passed |

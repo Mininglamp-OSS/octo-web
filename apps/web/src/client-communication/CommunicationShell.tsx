@@ -68,17 +68,20 @@ function openTarget(target: ConversationTarget) {
 export function CommunicationShell({
   bridge,
   initialPage,
+  initialSpaceId,
   initialPresentation,
   onReady,
 }: {
   bridge: OctoBuddyCommunicationBridge;
   initialPage: CommunicationPage;
+  initialSpaceId: string;
   initialPresentation: CommunicationPresentation;
-  onReady: () => Promise<void>;
+  onReady: (state: { page: CommunicationPage; spaceId: string }) => Promise<void>;
 }) {
   const [activePage, setActivePage] = useState<CommunicationPage>(initialPage);
   const [presentation, setPresentation] = useState<CommunicationPresentation>(initialPresentation);
   const activePageRef = useRef(activePage);
+  const spaceIdRef = useRef(initialSpaceId);
   const routeReadyRef = useRef({ left: false, right: false });
   const commandListenerReadyRef = useRef(false);
   const pendingTargetRef = useRef<ConversationTarget | undefined>();
@@ -115,7 +118,10 @@ export function CommunicationShell({
 
   useEffect(() => {
     const reporter = createReadyReporter(
-      () => onReadyRef.current(),
+      () => onReadyRef.current({
+        page: activePageRef.current,
+        spaceId: spaceIdRef.current,
+      }),
       {
         onExhausted: (error) => {
           console.error("[client-communication] failed to report ready", error);
@@ -159,6 +165,7 @@ export function CommunicationShell({
       }
 
       if (command.type === "spaceChanged") {
+        spaceIdRef.current = command.space.id;
         WKApp.shared.currentSpaceId = command.space.id;
         document.documentElement.dataset.spaceId = command.space.id;
         WKApp.mittBus.emit("space-changed", {

@@ -904,6 +904,28 @@ describe("ManagedChatClient", () => {
       expect(subAdapter!.subscribe).toHaveBeenCalledWith(channelA);
     });
 
+    it("keeps the conversation open and reports subscription setup failures", async () => {
+      const { client, subAdapter } = createClient({ withSubscribe: true });
+      await client.start(bootstrapFor(channelA));
+      const subscribeError = new Error("subscribe failed");
+      subAdapter!.subscribe.mockRejectedValueOnce(subscribeError);
+      const errors: Error[] = [];
+      client.subscribe(ChatClientEvent.Error, (error) => errors.push(error));
+
+      const lease = await client.openConversation(channelA);
+
+      expect(lease.released).toBe(false);
+      expect(client.activeConversation).toBe(lease);
+      expect(client.status).toBe(ChatClientStatus.Connected);
+      expect(errors).toHaveLength(1);
+      expect(errors[0].message).toContain(
+        "ManagedChatClient conversation subscription failed: subscribe failed",
+      );
+
+      await client.stop();
+      expect(subAdapter!.unsubscribe).not.toHaveBeenCalled();
+    });
+
     it("subscribeAdapter.unsubscribe is called on conversation close", async () => {
       const { client, subAdapter } = createClient({ withSubscribe: true });
       await client.start(bootstrapFor(channelA));

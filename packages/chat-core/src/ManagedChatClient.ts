@@ -340,8 +340,11 @@ export class ManagedChatClient<
           try {
             await this._subscribeAdapter.subscribe(channel);
             subscribed = true;
-          } catch {
-            // Subscription setup must not fail the open itself.
+          } catch (error) {
+            this._emit(
+              ChatClientEvent.Error,
+              this._createAdapterError("conversation subscription", [error]),
+            );
           }
           this._throwIfOpenSuperseded(requestGeneration);
         }

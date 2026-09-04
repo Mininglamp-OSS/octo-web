@@ -23,6 +23,7 @@ import appZhCN from "../i18n/zh-CN.json";
 import { installCommunicationAuthExpiryHandler } from "./authLifecycle";
 import { CommunicationShell } from "./CommunicationShell";
 import { requireHostBridge } from "./hostBridge";
+import { reportStartupFailure } from "./startupFailure";
 
 async function main() {
   const host = requireHostBridge();
@@ -88,11 +89,12 @@ async function main() {
         <CommunicationShell
           bridge={host}
           initialPage={bootstrap.initialPage}
+          initialSpaceId={bootstrap.space.id}
           initialPresentation={bootstrap.initialPresentation}
-          onReady={() => host.reportReady({
+          onReady={({ page, spaceId }) => host.reportReady({
             bridgeVersion: 1,
-            page: bootstrap.initialPage,
-            spaceId: bootstrap.space.id,
+            page,
+            spaceId,
             rendererVersion: WKApp.config.appVersion,
           })}
         />
@@ -137,12 +139,4 @@ async function enableMockImIfE2E(): Promise<void> {
   }
 }
 
-void main().catch((error) => {
-  const normalized = error instanceof Error ? error : new Error(String(error));
-  window.octoBuddyCommunication?.reportFatalError({
-    message: normalized.message,
-    stack: normalized.stack,
-  });
-  const root = document.getElementById("root");
-  if (root) root.textContent = `Communication module failed to start: ${normalized.message}`;
-});
+void main().catch(reportStartupFailure);

@@ -121,6 +121,7 @@ describe("CommunicationShell", () => {
         <CommunicationShell
           bridge={mocks.bridge as any}
           initialPage="chat"
+          initialSpaceId="space-a"
           initialPresentation="workspace"
           onReady={onReady}
         />
@@ -130,6 +131,32 @@ describe("CommunicationShell", () => {
     await waitFor(() => expect(onReady).toHaveBeenCalledTimes(1));
     await Promise.resolve();
     expect(onReady).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the latest page and space when commands arrive before ready runs", async () => {
+    const onReady = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <CommunicationShell
+        bridge={mocks.bridge as any}
+        initialPage="chat"
+        initialSpaceId="space-a"
+        initialPresentation="workspace"
+        onReady={onReady}
+      />,
+    );
+
+    expect(mocks.command.listener).toBeTypeOf("function");
+    mocks.command.listener?.({ type: "navigate", page: "contacts" });
+    mocks.command.listener?.({
+      type: "spaceChanged",
+      space: { id: "space-b", name: "Space B" },
+    });
+
+    await waitFor(() => expect(onReady).toHaveBeenCalledWith({
+      page: "contacts",
+      spaceId: "space-b",
+    }));
   });
 
   it("isolates synchronous and asynchronous navigation reporting failures", async () => {
@@ -146,6 +173,7 @@ describe("CommunicationShell", () => {
       <CommunicationShell
         bridge={mocks.bridge as any}
         initialPage="chat"
+        initialSpaceId="space-a"
         initialPresentation="workspace"
         onReady={vi.fn(async () => {})}
       />,
@@ -176,6 +204,7 @@ describe("CommunicationShell", () => {
       <CommunicationShell
         bridge={mocks.bridge as any}
         initialPage="chat"
+        initialSpaceId="space-a"
         initialPresentation="workspace"
         onReady={vi.fn(async () => {})}
       />,
@@ -192,6 +221,7 @@ describe("CommunicationShell", () => {
       <CommunicationShell
         bridge={mocks.bridge as any}
         initialPage="chat"
+        initialSpaceId="space-a"
         initialPresentation="workspace"
         onReady={vi.fn(async () => {})}
       />,
