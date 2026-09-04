@@ -442,20 +442,19 @@ export default function useSummaryWorkbench(
             response,
             requestId
           );
-          const progressSteps =
-            latest.progressEvents.length > 0
-              ? latest.progressEvents.map((event) => ({
-                  phase: event.phase,
-                  ...(event.count === undefined ? {} : { count: event.count }),
-                }))
-              : [{ phase: "understand" }];
+          const progressSteps = latest.progressEvents.map((event) => ({
+            phase: event.phase,
+            ...(event.count === undefined ? {} : { count: event.count }),
+          }));
+          if (progressSteps.length === 0) return completed;
           return {
             ...completed,
             model: attachSummaryMessageProcess(
               completed.model,
               response.messageId,
               {
-                status: "completed",
+                status:
+                  response.resultType === "error" ? "failed" : "completed",
                 steps: progressSteps,
               }
             ),

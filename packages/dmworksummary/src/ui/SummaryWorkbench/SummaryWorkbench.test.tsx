@@ -36,6 +36,7 @@ vi.mock("@octo/base", async () => {
     "summary.common.agentChat.progress.understand": "Understanding request",
     "summary.common.agentChat.progress.retrieve": "Reading chats",
     "summary.status.completed": "Completed",
+    "summary.status.failed": "Failed",
     "summary.common.agentPanel.processedCount": "Processed 8 items",
     "summary.workbench.card.teamConfirmationTitle": "Confirm collaboration",
     "summary.workbench.card.teamConfirmationBadge": "Team workflow",
@@ -359,6 +360,25 @@ describe("SummaryWorkbench", () => {
     );
     expect(screen.getByText("Restoring session")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  });
+
+  it("labels a failed generation process as failed", () => {
+    const state = createState();
+    state.messages[0] = {
+      ...state.messages[0],
+      process: {
+        status: "failed",
+        steps: [{ phase: "retrieve" }],
+      },
+    };
+
+    rtlRender(<SummaryWorkbench state={state} actions={createActions()} />, {
+      legacyRoot: true,
+    });
+
+    const process = screen.getByTestId("summary-workbench-progress");
+    expect(process).toHaveTextContent("Failed");
+    expect(process).toHaveAttribute("data-card-state", "failed");
   });
 
   it("keeps preview revisions in chronological chatbot order", () => {

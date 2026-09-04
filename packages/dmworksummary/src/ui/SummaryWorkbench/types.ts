@@ -26,7 +26,7 @@ export interface SummaryWorkbenchProgressView {
 }
 
 export interface SummaryWorkbenchProcessView {
-  status: "running" | "completed";
+  status: "running" | "completed" | "failed";
   steps: SummaryWorkbenchProgressView[];
 }
 

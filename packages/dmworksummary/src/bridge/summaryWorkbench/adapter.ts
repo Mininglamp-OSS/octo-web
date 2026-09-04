@@ -7,6 +7,7 @@ import type {
 } from "./model";
 import type {
   SummaryWorkbenchAction,
+  SummaryWorkbenchCardView,
   SummaryWorkbenchContextItem,
   SummaryWorkbenchResultType,
 } from "../../ui/SummaryWorkbench/types";

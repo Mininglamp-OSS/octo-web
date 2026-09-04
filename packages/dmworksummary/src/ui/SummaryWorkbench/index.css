@@ -221,6 +221,10 @@
   animation: wk-summary-process-spin 900ms linear infinite;
 }
 
+.wk-summary-workbench-process__indicator--failed {
+  background: var(--wk-color-error);
+}
+
 .wk-summary-workbench-process__status {
   color: var(--wk-text-primary);
   font: var(--wk-text-caption);

@@ -107,6 +107,7 @@ const SummaryWorkbench = ({
     const latestStep = process.steps[process.steps.length - 1];
     if (!latestStep) return null;
     const isRunning = process.status === "running";
+    const isFailed = process.status === "failed";
     const detailsId = `summary-process-${processId.replace(
       /[^a-zA-Z0-9_-]/g,
       "-"
@@ -125,6 +126,8 @@ const SummaryWorkbench = ({
             className={`wk-summary-workbench-process__indicator${
               isRunning
                 ? " wk-summary-workbench-process__indicator--running"
+                : isFailed
+                ? " wk-summary-workbench-process__indicator--failed"
                 : ""
             }`}
             aria-hidden="true"
@@ -135,6 +138,8 @@ const SummaryWorkbench = ({
           >
             {isRunning
               ? t("summary.common.agentChat.generating")
+              : isFailed
+              ? t("summary.status.failed")
               : t("summary.status.completed")}
           </span>
           <span className="wk-summary-workbench-process__current">

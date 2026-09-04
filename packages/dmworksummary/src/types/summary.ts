@@ -476,7 +476,7 @@ export interface AgentDoneEvent {
  * Agent SSE 流式事件类型 — error 事件（任何环节都可能来）
  */
 export interface AgentErrorEvent {
-    code: number;
+    code: string | number;
     message: string;
     transient?: boolean;  // true = 传输层失败可重试, false/undefined = 后端 error 不重试
 }

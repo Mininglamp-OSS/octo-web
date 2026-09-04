@@ -553,6 +553,13 @@ body[theme-mode="dark"] {
   --wk-color-info: var(--wk-blue-dark);
   --wk-color-info-bg: rgba(92, 154, 255, 0.1);
 
+  /* Smart summary template tones follow their dark semantic sources. */
+  --wk-summary-template-blue: var(--wk-color-info);
+  --wk-summary-template-blue-bg: var(--wk-color-info-bg);
+  --wk-summary-template-purple-bg: var(--wk-accent-tint-08);
+  --wk-summary-template-orange: var(--wk-color-warning);
+  --wk-summary-template-orange-bg: var(--wk-color-warning-bg);
+
   /* Danger 状态色（暗色模式） */
   --wk-color-danger-bg: #450a0a;
   --wk-color-danger-border: #7f1d1d;

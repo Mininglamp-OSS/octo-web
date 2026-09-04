@@ -740,9 +740,17 @@ export default function SummaryWorkbenchFeature({
           state={viewState}
           actions={{
             onInputChange: (value) => {
+              const shouldClearTemplate = Boolean(
+                !hasSubmitted &&
+                  !value.trim() &&
+                  workbench.scope.template &&
+                  templateFilledComposer.current !== null &&
+                  workbench.viewState.inputValue ===
+                    templateFilledComposer.current
+              );
               templateFilledComposer.current = null;
               workbench.setComposerValue(value);
-              if (!value.trim() && workbench.scope.template) {
+              if (shouldClearTemplate) {
                 workbench.updateScope({
                   ...workbench.scope,
                   template: null,

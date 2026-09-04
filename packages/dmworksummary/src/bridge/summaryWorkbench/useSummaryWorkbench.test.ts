@@ -385,6 +385,66 @@ describe("useSummaryWorkbench", () => {
     unmount();
   });
 
+  it("marks reported progress as failed for an error turn", async () => {
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "session-1",
+        initialScope,
+        autoHydrate: false,
+        service,
+        createRequestId: () => "request-error",
+      })
+    );
+
+    let request!: Promise<SummaryWorkbenchResponse | undefined>;
+    act(() => {
+      request = result.current.send("总结关键风险");
+      streamCallbacks.onProgress?.({
+        phase: "retrieve",
+        step: 1,
+        ofSteps: 2,
+        elapsed_ms: 100,
+      });
+      streamCallbacks.onDone?.(
+        conversationalResponse({
+          resultType: "error",
+          reply: "生成失败",
+          errorMessage: "生成失败",
+          availableActions: [],
+        })
+      );
+    });
+    await request;
+
+    expect(result.current.model.messages[1]?.process).toEqual({
+      status: "failed",
+      steps: [{ phase: "retrieve" }],
+    });
+    unmount();
+  });
+
+  it("does not invent completed progress for a response without events", async () => {
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "session-1",
+        initialScope,
+        autoHydrate: false,
+        service,
+        createRequestId: () => "request-no-progress",
+      })
+    );
+
+    let request!: Promise<SummaryWorkbenchResponse | undefined>;
+    act(() => {
+      request = result.current.send("总结关键风险");
+      streamCallbacks.onDone?.(conversationalResponse());
+    });
+    await request;
+
+    expect(result.current.model.messages[1]?.process).toBeUndefined();
+    unmount();
+  });
+
   it("falls back to JSON with the same request id after a transient stream error", async () => {
     sendMessage.mockResolvedValue(conversationalResponse());
     const { result, unmount } = renderHook(() =>

@@ -401,6 +401,7 @@ describe("SummaryWorkbenchFeature", () => {
     render(<SummaryWorkbenchFeature spaceId="space-a" />, {
       legacyRoot: true,
     });
+    fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
     fireEvent.change(screen.getByRole("textbox", { name: "summary-request" }), {
       target: { value: "" },
     });
@@ -409,6 +410,48 @@ describe("SummaryWorkbenchFeature", () => {
     expect(current.updateScope).toHaveBeenLastCalledWith(
       expect.objectContaining({ template: null })
     );
+  });
+
+  it("keeps the selected template when clearing the composer after generation", async () => {
+    const current = controller({
+      scope: scope({
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group", name: "Product" },
+        ],
+        template: {
+          templateId: "weekly",
+          label: "Weekly",
+          requirement: "Summarize progress and risks",
+        },
+      }),
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Summarize progress and risks",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: true,
+      },
+      send: vi.fn().mockResolvedValue({
+        resultType: "agent_preview",
+        preview: { version: 1, content: "# Preview", assumptions: [] },
+      }),
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() => expect(current.send).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByRole("textbox", { name: "summary-request" }), {
+      target: { value: "" },
+    });
+
+    expect(current.setComposerValue).toHaveBeenCalledWith("");
+    expect(current.updateScope).not.toHaveBeenCalled();
   });
 
   it("clears the composer and collapses templates as soon as the task starts", async () => {
