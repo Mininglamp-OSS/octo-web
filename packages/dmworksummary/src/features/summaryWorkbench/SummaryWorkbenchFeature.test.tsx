@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   toastInfo: vi.fn(),
   toastWarning: vi.fn(),
   toastSuccess: vi.fn(),
+  modalConfirm: vi.fn(),
   loadParticipantCandidates: vi.fn(),
 }));
 
@@ -74,15 +75,8 @@ vi.mock("@octo/base/src/App", () => ({
   },
 }));
 
-vi.mock("@douyinfe/semi-ui", () => ({
-  Input: ({ value, onChange, showClear: _showClear, ...props }: any) => (
-    <input
-      value={value}
-      onChange={(event) => onChange?.(event.target.value)}
-      {...props}
-    />
-  ),
-  Modal: ({ visible, children, onOk }: any) =>
+vi.mock("@douyinfe/semi-ui", () => {
+  const Modal = ({ visible, children, onOk }: any) =>
     visible ? (
       <div data-testid="modal">
         {children}
@@ -90,17 +84,32 @@ vi.mock("@douyinfe/semi-ui", () => ({
           modal-ok
         </button>
       </div>
-    ) : null,
-  Spin: () => <div data-testid="spin" />,
-  Toast: {
-    info: mocks.toastInfo,
-    warning: mocks.toastWarning,
-    success: mocks.toastSuccess,
-  },
-}));
+    ) : null;
+  Modal.confirm = mocks.modalConfirm;
+  return {
+    Input: ({ value, onChange, showClear: _showClear, ...props }: any) => (
+      <input
+        value={value}
+        onChange={(event) => onChange?.(event.target.value)}
+        {...props}
+      />
+    ),
+    Modal,
+    Spin: () => <div data-testid="spin" />,
+    Toast: {
+      info: mocks.toastInfo,
+      warning: mocks.toastWarning,
+      success: mocks.toastSuccess,
+    },
+  };
+});
 
 vi.mock("../../bridge/summaryWorkbench/useSummaryWorkbench", () => ({
   default: (...args: unknown[]) => mocks.useSummaryWorkbench(...args),
+  sameSummaryWorkbenchScope: (
+    left: SummaryWorkbenchScope,
+    right: SummaryWorkbenchScope
+  ) => JSON.stringify(left) === JSON.stringify(right),
 }));
 
 vi.mock("./participantCandidates", () => ({
@@ -454,7 +463,7 @@ describe("SummaryWorkbenchFeature", () => {
     expect(current.updateScope).not.toHaveBeenCalled();
   });
 
-  it("clears the composer and collapses templates as soon as the task starts", async () => {
+  it("clears the composer, collapses templates, and keeps template selection available", async () => {
     const pendingResponse = deferred<any>();
     const current = controller({
       viewState: {
@@ -494,8 +503,8 @@ describe("SummaryWorkbenchFeature", () => {
     });
     await waitFor(() => expect(current.send).toHaveBeenCalled());
     expect(
-      screen.queryByRole("button", { name: "open-template" })
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "open-template" })
+    ).toBeInTheDocument();
     expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
   });
 
@@ -522,8 +531,54 @@ describe("SummaryWorkbenchFeature", () => {
       expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument()
     );
     expect(
-      screen.queryByRole("button", { name: "open-template" })
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "open-template" })
+    ).toBeInTheDocument();
+  });
+
+  it("warns before a scope edit makes an unsaved preview historical", () => {
+    let confirmOptions: { onOk?: () => void } | undefined;
+    mocks.modalConfirm.mockImplementationOnce((options) => {
+      confirmOptions = options;
+    });
+    const current = controller({
+      scope: scope({
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group", name: "Product" },
+        ],
+      }),
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [{ id: "chat-a", kind: "chat", label: "Product" }],
+        inputValue: "",
+        placeholderKey: "summary.workbench.placeholder.followUp",
+        isSending: false,
+        canSend: false,
+        card: {
+          isStale: false,
+          actions: ["save_preview"],
+        },
+      },
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "remove-chat" }));
+
+    expect(mocks.modalConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "summary.workbench.scopeChange.title",
+        content: "summary.workbench.scopeChange.content",
+      })
+    );
+    expect(current.updateScope).not.toHaveBeenCalled();
+
+    confirmOptions?.onOk?.();
+    expect(current.updateScope).toHaveBeenCalledWith(
+      expect.objectContaining({ selectedChannels: [] })
+    );
   });
 
   it("keeps the composer and templates when the request is not accepted", async () => {
@@ -1159,48 +1214,45 @@ describe("SummaryWorkbenchFeature", () => {
     }
   );
 
-  it(
-    "warns generically when a FAILED save carries an EMPTY gaps list (P1-5)",
-    async () => {
-      const savePreview = vi.fn().mockResolvedValue({
-        task_id: 306,
-        title: "Draft",
-        finish_status: "FAILED",
-        gaps: [],
-      });
-      const onOpenTask = vi.fn();
-      mocks.useSummaryWorkbench.mockReturnValue(
-        controller({
-          model: {
-            currentPreview: { content: "# Draft\nBody" },
-            pendingProposal: null,
-            workflow: null,
-          },
-          savePreview,
-        })
-      );
+  it("warns generically when a FAILED save carries an EMPTY gaps list (P1-5)", async () => {
+    const savePreview = vi.fn().mockResolvedValue({
+      task_id: 306,
+      title: "Draft",
+      finish_status: "FAILED",
+      gaps: [],
+    });
+    const onOpenTask = vi.fn();
+    mocks.useSummaryWorkbench.mockReturnValue(
+      controller({
+        model: {
+          currentPreview: { content: "# Draft\nBody" },
+          pendingProposal: null,
+          workflow: null,
+        },
+        savePreview,
+      })
+    );
 
-      render(
-        <SummaryWorkbenchFeature
-          spaceId="space-a"
-          embedded
-          onOpenTask={onOpenTask}
-        />,
-        { legacyRoot: true }
-      );
-      fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
-      fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
+    render(
+      <SummaryWorkbenchFeature
+        spaceId="space-a"
+        embedded
+        onOpenTask={onOpenTask}
+      />,
+      { legacyRoot: true }
+    );
+    fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
 
-      await waitFor(() => expect(savePreview).toHaveBeenCalledWith("# Draft"));
-      // The generic quality-gate warning key falls through t() to the key
-      // itself in this mock — the assertion is that the user does NOT get
-      // the success toast and DOES get a warning.
-      expect(mocks.toastWarning).toHaveBeenCalled();
-      expect(mocks.toastSuccess).not.toHaveBeenCalled();
-      expect(mocks.markNotificationEligible).toHaveBeenCalledWith(306);
-      expect(onOpenTask).toHaveBeenCalledWith(306);
-    }
-  );
+    await waitFor(() => expect(savePreview).toHaveBeenCalledWith("# Draft"));
+    // The generic quality-gate warning key falls through t() to the key
+    // itself in this mock — the assertion is that the user does NOT get
+    // the success toast and DOES get a warning.
+    expect(mocks.toastWarning).toHaveBeenCalled();
+    expect(mocks.toastSuccess).not.toHaveBeenCalled();
+    expect(mocks.markNotificationEligible).toHaveBeenCalledWith(306);
+    expect(onOpenTask).toHaveBeenCalledWith(306);
+  });
 
   it("keeps the ordinary success feedback for a COMPLETE save", async () => {
     const savePreview = vi.fn().mockResolvedValue({
@@ -1253,7 +1305,11 @@ describe("SummaryWorkbenchFeature", () => {
     );
 
     render(
-      <SummaryWorkbenchFeature spaceId="space-a" embedded onOpenTask={onOpenTask} />,
+      <SummaryWorkbenchFeature
+        spaceId="space-a"
+        embedded
+        onOpenTask={onOpenTask}
+      />,
       { legacyRoot: true }
     );
     fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
@@ -1320,10 +1376,7 @@ describe("SummaryWorkbenchFeature", () => {
     const updateScope = vi.fn();
     mocks.useSummaryWorkbench.mockReturnValue(controller({ updateScope }));
 
-    render(
-      <SummaryWorkbenchFeature spaceId="space-a" />,
-      { legacyRoot: true }
-    );
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, { legacyRoot: true });
 
     expect(mocks.useSummaryWorkbench).toHaveBeenCalledWith(
       expect.objectContaining({

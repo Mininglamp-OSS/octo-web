@@ -32,7 +32,9 @@ import {
   type SummaryWorkbenchTimeRangeScope,
   type SummaryWorkspaceInputOrigin,
 } from "../../bridge/summaryWorkbench/protocol";
-import useSummaryWorkbench from "../../bridge/summaryWorkbench/useSummaryWorkbench";
+import useSummaryWorkbench, {
+  sameSummaryWorkbenchScope,
+} from "../../bridge/summaryWorkbench/useSummaryWorkbench";
 import SummaryWorkbench, {
   type SummaryWorkbenchAction,
   type SummaryWorkbenchContextKind,
@@ -432,7 +434,7 @@ export default function SummaryWorkbenchFeature({
       !busy &&
       participantScopeReady &&
       (composerHasCustomText || (!hasSubmitted && structuredGenerate)),
-    showTemplateTrigger: !hasSubmitted && !templateGalleryOpen,
+    showTemplateTrigger: !templateGalleryOpen,
     sendLabelKey:
       !composerHasCustomText && structuredGenerate
         ? "summary.workbench.composer.generate"
@@ -440,6 +442,36 @@ export default function SummaryWorkbenchFeature({
     errorMessage: displayErrorKey
       ? t(displayErrorKey)
       : workbench.viewState.errorMessage,
+  };
+
+  const updateScopeWithPreviewGuard = (
+    nextScope: SummaryWorkbenchScope,
+    onApplied?: () => void
+  ) => {
+    if (sameSummaryWorkbenchScope(workbench.scope, nextScope)) {
+      onApplied?.();
+      return;
+    }
+    const apply = () => {
+      workbench.updateScope(nextScope);
+      onApplied?.();
+    };
+    const hasUnsavedPreview = Boolean(
+      workbench.viewState.card &&
+        !workbench.viewState.card.isStale &&
+        workbench.viewState.card.actions.includes("save_preview")
+    );
+    if (!hasUnsavedPreview) {
+      apply();
+      return;
+    }
+    Modal.confirm({
+      title: t("summary.workbench.scopeChange.title"),
+      content: t("summary.workbench.scopeChange.content"),
+      okText: t("summary.workbench.scopeChange.confirm"),
+      cancelText: t("summary.common.cancel"),
+      onOk: apply,
+    });
   };
 
   const runStartedTask = async (
@@ -533,7 +565,6 @@ export default function SummaryWorkbenchFeature({
   const handleContextOpen = (kind: SummaryWorkbenchContextKind) => {
     if (busy) return;
     if (kind === "template") {
-      if (hasSubmitted) return;
       setTemplateGalleryOpen(true);
       return;
     }
@@ -558,18 +589,19 @@ export default function SummaryWorkbenchFeature({
     const shouldClearTemplateText =
       kind === "template" && templateFilledComposer.current !== null;
     const result = removeScopeContext(workbench.scope, kind, id);
-    workbench.updateScope(result.scope);
-    if (shouldClearTemplateText) {
-      templateFilledComposer.current = null;
-      workbench.setComposerValue("");
-    }
-    if (kind === "reference") {
-      setReferencedTask(null);
-      setReferencePreviewOpen(false);
-    }
-    if (result.participantsCleared) {
-      Toast.info(t("summary.workbench.notice.participantsCleared"));
-    }
+    updateScopeWithPreviewGuard(result.scope, () => {
+      if (shouldClearTemplateText) {
+        templateFilledComposer.current = null;
+        workbench.setComposerValue("");
+      }
+      if (kind === "reference") {
+        setReferencedTask(null);
+        setReferencePreviewOpen(false);
+      }
+      if (result.participantsCleared) {
+        Toast.info(t("summary.workbench.notice.participantsCleared"));
+      }
+    });
   };
 
   const templateLabels: TemplateSelectorLabels = {
@@ -689,15 +721,16 @@ export default function SummaryWorkbenchFeature({
   );
 
   const applyTemplate = (template: SummaryWorkbenchTemplateScope) => {
-    workbench.updateScope({ ...workbench.scope, template });
-    templateFilledComposer.current = template.requirement;
-    workbench.setComposerValue(template.requirement);
-    setComposerFocusKey((current) => current + 1);
     setPendingTemplate(null);
-    // P1-4 (yujiawei review 5087124100): the workbench path lost this event —
-    // its sole sink was the legacy SummaryCreatePage. Same payload shape as
-    // the legacy emitter: no content, intent only.
-    Dap.shared.track("smart_summary_template_applied", {});
+    updateScopeWithPreviewGuard({ ...workbench.scope, template }, () => {
+      templateFilledComposer.current = template.requirement;
+      workbench.setComposerValue(template.requirement);
+      setComposerFocusKey((current) => current + 1);
+      // P1-4 (yujiawei review 5087124100): the workbench path lost this event —
+      // its sole sink was the legacy SummaryCreatePage. Same payload shape as
+      // the legacy emitter: no content, intent only.
+      Dap.shared.track("smart_summary_template_applied", {});
+    });
   };
 
   const handleTemplateChange = (
@@ -705,11 +738,15 @@ export default function SummaryWorkbenchFeature({
   ) => {
     if (busy) return;
     if (!template) {
-      workbench.updateScope({ ...workbench.scope, template: null });
-      if (templateFilledComposer.current !== null) {
-        templateFilledComposer.current = null;
-        workbench.setComposerValue("");
-      }
+      updateScopeWithPreviewGuard(
+        { ...workbench.scope, template: null },
+        () => {
+          if (templateFilledComposer.current !== null) {
+            templateFilledComposer.current = null;
+            workbench.setComposerValue("");
+          }
+        }
+      );
       return;
     }
 
@@ -773,7 +810,7 @@ export default function SummaryWorkbenchFeature({
             onNewSession: resetSession,
           }}
           contextPanel={
-            templateGalleryOpen && !hasSubmitted ? (
+            templateGalleryOpen ? (
               <TemplateSelectorModal
                 visible
                 inline
@@ -806,11 +843,12 @@ export default function SummaryWorkbenchFeature({
             workbench.scope,
             chatCandidatesToScope(chats)
           );
-          workbench.updateScope(result.scope);
-          setOpenSelector(null);
-          if (result.participantsCleared) {
-            Toast.info(t("summary.workbench.notice.participantsCleared"));
-          }
+          updateScopeWithPreviewGuard(result.scope, () => {
+            setOpenSelector(null);
+            if (result.participantsCleared) {
+              Toast.info(t("summary.workbench.notice.participantsCleared"));
+            }
+          });
         }}
         onCancel={() => setOpenSelector(null)}
       />
@@ -831,11 +869,13 @@ export default function SummaryWorkbenchFeature({
         onConfirm={() => undefined}
         onConfirmMembers={(members: WorkbenchMemberCandidate[]) => {
           if (busy) return;
-          workbench.updateScope({
-            ...workbench.scope,
-            participants: memberCandidatesToScope(members),
-          });
-          setOpenSelector(null);
+          updateScopeWithPreviewGuard(
+            {
+              ...workbench.scope,
+              participants: memberCandidatesToScope(members),
+            },
+            () => setOpenSelector(null)
+          );
         }}
         onCancel={() => setOpenSelector(null)}
       />
@@ -854,11 +894,13 @@ export default function SummaryWorkbenchFeature({
             disabled={busy}
             onChange={(timeRange: SummaryWorkbenchTimeRangeScope | null) => {
               if (busy) return;
-              workbench.updateScope({
-                ...workbench.scope,
-                timeRange,
-              });
-              setOpenSelector(null);
+              updateScopeWithPreviewGuard(
+                {
+                  ...workbench.scope,
+                  timeRange,
+                },
+                () => setOpenSelector(null)
+              );
             }}
           />
         </div>
@@ -882,13 +924,17 @@ export default function SummaryWorkbenchFeature({
         selectedTaskId={referencedTask?.task_id}
         onSelect={(task: SummaryListItem) => {
           if (busy) return;
-          setReferencedTask(task);
-          setReferencePreviewOpen(true);
-          workbench.updateScope({
-            ...workbench.scope,
-            referencedTaskIds: [task.task_id],
-          });
-          setOpenSelector(null);
+          updateScopeWithPreviewGuard(
+            {
+              ...workbench.scope,
+              referencedTaskIds: [task.task_id],
+            },
+            () => {
+              setReferencedTask(task);
+              setReferencePreviewOpen(true);
+              setOpenSelector(null);
+            }
+          );
         }}
         onCancel={() => setOpenSelector(null)}
       />

@@ -247,6 +247,11 @@
       "clearTemplate": "Use no template",
       "clearTimeRange": "Use no time limit"
     },
+    "scopeChange": {
+      "title": "Change the summary scope?",
+      "content": "The current preview will remain in history but can no longer be saved. Generate again to use the new scope.",
+      "confirm": "Change scope"
+    },
     "notice": {
       "participantsCleared": "The participant source chat changed. Select participants again.",
       "participantsPruned": "Participants outside the selected groups were removed.",

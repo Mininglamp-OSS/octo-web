@@ -303,7 +303,7 @@ export default function useSummaryWorkbench(
       const candidate = cloneScope(
         typeof input === "function" ? input(cloneScope(current.scope)) : input
       );
-      if (sameScope(current.scope, candidate)) return false;
+      if (sameSummaryWorkbenchScope(current.scope, candidate)) return false;
 
       retryableGenerationRef.current = null;
       cancelOperations(true);
@@ -477,18 +477,31 @@ export default function useSummaryWorkbench(
         flight.stream?.close();
         flight.fallbackController?.abort();
         if (error.kind !== "abort") {
-          commit((latest: RuntimeState) => ({
-            ...latest,
-            error,
-            model: updateSummaryComposer(latest.model, {
+          commit((latest: RuntimeState) => {
+            const failed = updateSummaryComposer(latest.model, {
               isSending: false,
               errorMessage: error.message,
               ...(flight.restoreComposer &&
               latest.model.composer.value.trim() === ""
                 ? { value: flight.message }
                 : {}),
-            }),
-          }));
+            });
+            const progressSteps = latest.progressEvents.map((event) => ({
+              phase: event.phase,
+              ...(event.count === undefined ? {} : { count: event.count }),
+            }));
+            return {
+              ...latest,
+              error,
+              model:
+                progressSteps.length === 0
+                  ? failed
+                  : attachSummaryMessageProcess(failed, localMessage.id, {
+                      status: "failed",
+                      steps: progressSteps,
+                    }),
+            };
+          });
         } else {
           commit((latest: RuntimeState) => ({
             ...latest,
@@ -1174,7 +1187,7 @@ function cloneScope(scope: SummaryWorkbenchScope): SummaryWorkbenchScope {
   };
 }
 
-function sameScope(
+export function sameSummaryWorkbenchScope(
   left: SummaryWorkbenchScope,
   right: SummaryWorkbenchScope
 ): boolean {

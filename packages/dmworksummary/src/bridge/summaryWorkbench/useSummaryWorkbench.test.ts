@@ -445,6 +445,44 @@ describe("useSummaryWorkbench", () => {
     unmount();
   });
 
+  it("keeps reported progress as failed when the transport aborts the turn", async () => {
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "session-1",
+        initialScope,
+        autoHydrate: false,
+        service,
+        createRequestId: () => "request-transport-error",
+      })
+    );
+
+    let request!: Promise<SummaryWorkbenchResponse | undefined>;
+    act(() => {
+      request = result.current.send("总结关键风险");
+      streamCallbacks.onProgress?.({
+        phase: "retrieve",
+        step: 1,
+        ofSteps: 2,
+        elapsed_ms: 100,
+        count: 12,
+      });
+      streamCallbacks.onError?.(
+        new SummaryWorkspaceApiError({
+          message: "connection closed",
+          kind: "transport",
+          retryable: false,
+        })
+      );
+    });
+    await request;
+
+    expect(result.current.model.messages[0]?.process).toEqual({
+      status: "failed",
+      steps: [{ phase: "retrieve", count: 12 }],
+    });
+    unmount();
+  });
+
   it("falls back to JSON with the same request id after a transient stream error", async () => {
     sendMessage.mockResolvedValue(conversationalResponse());
     const { result, unmount } = renderHook(() =>

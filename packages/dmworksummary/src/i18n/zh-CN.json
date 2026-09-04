@@ -247,6 +247,11 @@
       "clearTemplate": "不使用模板",
       "clearTimeRange": "不限制时间范围"
     },
+    "scopeChange": {
+      "title": "修改总结范围？",
+      "content": "修改后，当前预览会保留为历史版本，但将无法继续保存。需要使用新范围重新生成总结。",
+      "confirm": "修改范围"
+    },
     "notice": {
       "participantsCleared": "参与者来源会话已变化，请重新选择参与者",
       "participantsPruned": "已移除不属于当前所选群聊的参与者",
