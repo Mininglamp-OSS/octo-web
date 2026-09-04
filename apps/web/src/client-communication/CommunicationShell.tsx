@@ -12,17 +12,15 @@ import { ContactsList } from "@octo/contacts";
 import { Channel, WKSDK } from "wukongimjssdk";
 import { getElectronUnreadMessageCount } from "../App/electronUnreadCount";
 import {
-  requireHostBridge,
   type CommunicationPage,
   type CommunicationPresentation,
   type ConversationTarget,
   type HostCommand,
   type NavigationReport,
+  type OctoBuddyCommunicationBridge,
 } from "./hostBridge";
 import { createReadyReporter } from "./readyReporter";
 import "./index.css";
-
-const bridge = requireHostBridge();
 
 function bindLeftRoute(context: WKViewQueueContext) {
   WKApp.routeLeft.setPush = (view) => context.push(view);
@@ -38,7 +36,10 @@ function bindRightRoute(context: WKViewQueueContext) {
   WKApp.routeRight.setPopToRoot = () => context.popToRoot();
 }
 
-function reportNavigation(report: NavigationReport) {
+function reportNavigation(
+  bridge: OctoBuddyCommunicationBridge,
+  report: NavigationReport,
+) {
   void Promise.resolve()
     .then(() => bridge.reportNavigation(report))
     .catch((error: unknown) => {
@@ -46,7 +47,7 @@ function reportNavigation(report: NavigationReport) {
     });
 }
 
-function reportUnread(count: number) {
+function reportUnread(bridge: OctoBuddyCommunicationBridge, count: number) {
   try {
     bridge.reportUnread(count);
   } catch (error) {
@@ -65,10 +66,12 @@ function openTarget(target: ConversationTarget) {
 }
 
 export function CommunicationShell({
+  bridge,
   initialPage,
   initialPresentation,
   onReady,
 }: {
+  bridge: OctoBuddyCommunicationBridge;
   initialPage: CommunicationPage;
   initialPresentation: CommunicationPresentation;
   onReady: () => Promise<void>;
@@ -106,9 +109,9 @@ export function CommunicationShell({
     WKApp.currentMenuId = page;
     WKApp.mittBus.emit("wk:active-menu-changed", { menuId: page });
     setActivePage(page);
-    reportNavigation({ page, source });
-    requestAnimationFrame(() => requestAnimationFrame(() => afterSwitch?.()));
-  }, []);
+    reportNavigation(bridge, { page, source });
+    if (afterSwitch) window.setTimeout(afterSwitch, 0);
+  }, [bridge]);
 
   useEffect(() => {
     const reporter = createReadyReporter(
@@ -171,11 +174,13 @@ export function CommunicationShell({
         WKApp.config.locale = command.locale;
         i18n.setLocale(command.locale, { persist: false });
         document.documentElement.dataset.theme = command.theme;
+        document.documentElement.lang = command.locale;
         WKApp.shared.notifyListener();
         return;
       }
 
       if (command.type === "sessionRevoked") {
+        WKApp.loginInfo.logout();
         window.location.reload();
         return;
       }
@@ -196,7 +201,7 @@ export function CommunicationShell({
   }, [activatePage, initialPage, reportReadyWhenPrepared]);
 
   useEffect(() => {
-    const syncUnread = () => reportUnread(getElectronUnreadMessageCount());
+    const syncUnread = () => reportUnread(bridge, getElectronUnreadMessageCount());
     const conversationManager = WKSDK.shared().conversationManager;
     conversationManager.addConversationListener(syncUnread);
     WKApp.mittBus.on("conversation-list-refreshed", syncUnread);
@@ -205,7 +210,7 @@ export function CommunicationShell({
       conversationManager.removeConversationListener(syncUnread);
       WKApp.mittBus.off("conversation-list-refreshed", syncUnread);
     };
-  }, []);
+  }, [bridge]);
 
   useEffect(() => {
     let previousChannel = "";
@@ -215,7 +220,7 @@ export function CommunicationShell({
       const key = `${channel.channelID}:${channel.channelType}`;
       if (key === previousChannel) return;
       previousChannel = key;
-      reportNavigation({
+      reportNavigation(bridge, {
         page: "chat",
         source: "internal",
         channel: { id: channel.channelID, type: channel.channelType },
@@ -224,7 +229,7 @@ export function CommunicationShell({
     const unsubscribe = WKApp.shared.addListener(reportOpenChannel);
     reportOpenChannel();
     return unsubscribe;
-  }, []);
+  }, [bridge]);
 
   const leftContent = useMemo(() => (
     <div className="communication-page-stack">

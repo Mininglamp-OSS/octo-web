@@ -370,8 +370,10 @@ describe("ManagedChatClient", () => {
       expect(client.status).toBe(ChatClientStatus.Stopped);
     });
 
-    it("reports a prior background release failure from stop", async () => {
-      const { client, subAdapter } = createClient({ withSubscribe: true });
+    it("retries a prior background unsubscribe failure from stop", async () => {
+      const { client, convAdapter, subAdapter } = createClient({
+        withSubscribe: true,
+      });
       await client.start(bootstrapFor(channelA));
       const lease = await client.openConversation(channelA);
       subAdapter!.unsubscribe.mockRejectedValueOnce(
@@ -383,10 +385,48 @@ describe("ManagedChatClient", () => {
         expect(client.status).toBe(ChatClientStatus.Failed);
       });
 
-      await expect(client.stop()).rejects.toThrow(
-        /background unsubscribe failed/
-      );
+      await expect(client.stop()).resolves.toBeUndefined();
+      expect(convAdapter.closeConversation).toHaveBeenCalledTimes(1);
+      expect(subAdapter!.unsubscribe).toHaveBeenCalledTimes(2);
       expect(client.status).toBe(ChatClientStatus.Stopped);
+    });
+
+    it("retries only the unfinished close step from stop", async () => {
+      const { client, convAdapter, subAdapter } = createClient({
+        withSubscribe: true,
+      });
+      await client.start(bootstrapFor(channelA));
+      const lease = await client.openConversation(channelA);
+      convAdapter.closeConversation.mockRejectedValueOnce(
+        new Error("background close failed")
+      );
+
+      lease.release();
+      await vi.waitFor(() => {
+        expect(client.status).toBe(ChatClientStatus.Failed);
+      });
+
+      await expect(client.stop()).resolves.toBeUndefined();
+      expect(convAdapter.closeConversation).toHaveBeenCalledTimes(2);
+      expect(subAdapter!.unsubscribe).toHaveBeenCalledTimes(1);
+      expect(client.status).toBe(ChatClientStatus.Stopped);
+    });
+
+    it("finishes a failed stop teardown before restarting", async () => {
+      const { client, connAdapter, convAdapter } = createClient();
+      await client.start(bootstrapFor(channelA));
+      await client.openConversation(channelA);
+      convAdapter.closeConversation.mockRejectedValueOnce(
+        new Error("stop close failed")
+      );
+
+      await expect(client.stop()).rejects.toThrow(/stop close failed/);
+      expect(client.status).toBe(ChatClientStatus.Stopped);
+
+      await expect(client.start(bootstrapFor(channelB))).resolves.toBeUndefined();
+      expect(convAdapter.closeConversation).toHaveBeenCalledTimes(2);
+      expect(connAdapter.connect).toHaveBeenCalledTimes(2);
+      expect(client.status).toBe(ChatClientStatus.Connected);
     });
 
     it("queues a restart requested while stop is disconnecting", async () => {
@@ -688,6 +728,10 @@ describe("ManagedChatClient", () => {
       expect(client.activeConversation).toBeNull();
       expect(subAdapter!.subscribe).toHaveBeenCalledTimes(1);
       expect(errors).toHaveLength(1);
+
+      await expect(client.stop()).resolves.toBeUndefined();
+      expect(subAdapter!.unsubscribe).toHaveBeenCalledTimes(2);
+      expect(client.status).toBe(ChatClientStatus.Stopped);
     });
 
     it("discards an open superseded while its subscription is pending", async () => {

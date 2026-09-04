@@ -203,7 +203,7 @@ octo-buddy-client WebContentsView 宿主
 构建命令：
 
 ```bash
-VITE_API_URL=<api-origin> pnpm --filter octo-web build:client-communication
+VITE_API_URL=<api-origin> pnpm --filter @octo/web build:client-communication
 ```
 
 输出目录：

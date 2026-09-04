@@ -163,6 +163,26 @@ describe("LoginInfo and WKConfig persistence boundaries", () => {
     expect(info.loginProvider).toBe("oidc");
     expect(info.deviceFlag).toBe(2);
     expect(save).not.toHaveBeenCalled();
+
+    const setStorageItemForSID = vi.spyOn(info, "setStorageItemForSID");
+    info.save();
+    expect(setStorageItemForSID).not.toHaveBeenCalled();
+  });
+
+  it("allows explicitly persistent applied sessions to be saved", () => {
+    const info = new LoginInfo();
+    const setStorageItemForSID = vi.spyOn(info, "setStorageItemForSID");
+
+    info.applySession({
+      uid: "persisted-user",
+      token: "persisted-token",
+      deviceFlag: 2,
+    }, true);
+
+    expect(setStorageItemForSID).toHaveBeenCalledWith(
+      expect.stringContaining("token"),
+      "persisted-token",
+    );
   });
 
   it("round-trips login fields and preserves tri-state real-name status", () => {

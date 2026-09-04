@@ -184,6 +184,7 @@ export function ConversationWindow({
   bindConversationContext,
   conversationProps,
 }: ConversationWindowProps): JSX.Element {
+  const { t } = useI18n();
   const selectionActive = selection?.active === true;
   const inertProps = inactive ? ({ inert: "" } as Record<string, string>) : {};
 
@@ -220,7 +221,7 @@ export function ConversationWindow({
                   <button
                     type="button"
                     className="wk-chat-conversation-header-back"
-                    aria-label="Back"
+                    aria-label={t("common.back")}
                     onClick={(event) => {
                       event.stopPropagation();
                       header.onBack?.();

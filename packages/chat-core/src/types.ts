@@ -200,7 +200,10 @@ export interface ChatClient {
   /** The generic message port — always present at runtime. */
   readonly messages: ChatMessagePort;
 
-  /** Boot the client. Idempotent — safe to call multiple times. */
+  /**
+   * Boot the client. Idempotent while started; repeated calls keep the
+   * bootstrap from the first successful start until `stop()` completes.
+   */
   start(bootstrap: ChatClientBootstrap): Promise<void>;
 
   /** Tear down the client. Idempotent. */

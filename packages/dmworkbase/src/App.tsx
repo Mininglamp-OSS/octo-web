@@ -612,6 +612,7 @@ export type MessageDeleteListener = (
 ) => void;
 
 export class LoginInfo {
+  private _ephemeralSession = false;
   appID!: string;
   shortNo!: string; // 短号
   token?: string;
@@ -661,6 +662,7 @@ export class LoginInfo {
     loginProvider?: string;
     deviceFlag?: number;
   }, persist = false) {
+    this._ephemeralSession = !persist;
     this.uid = session.uid;
     this.token = session.token;
     this.name = session.name ?? "";
@@ -673,6 +675,7 @@ export class LoginInfo {
    * save 保存登录信息
    */
   public save() {
+    if (this._ephemeralSession) return;
     this.setStorageItemForSID("app_id", this.appID ?? "");
     this.setStorageItemForSID("short_no", this.shortNo ?? "");
     this.setStorageItemForSID("uid", this.uid ?? "");
@@ -1048,7 +1051,7 @@ export default class WKApp extends ProviderListener {
   }
 
   // app启动
-  startup(options: { loadLoginInfo?: boolean } = {}) {
+  startup(options: { loadLoginInfo?: boolean; isPC?: boolean } = {}) {
     if (consumeOidcPostLogoutCleanup()) {
       void this.clearLocalLoginState();
     }
@@ -1057,10 +1060,9 @@ export default class WKApp extends ProviderListener {
     }
 
     // 是否是PC端
-    if (
-      isElectronPowered() ||
-      (window as any).__TAURI_IPC__
-    ) {
+    if (options.isPC !== undefined) {
+      this.isPC = options.isPC;
+    } else if (isElectronPowered() || (window as any).__TAURI_IPC__) {
       this.isPC = true;
     }
     const expectedDeviceFlag = getExpectedImDeviceFlag(this.isPC);

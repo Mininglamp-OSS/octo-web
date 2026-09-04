@@ -68,7 +68,13 @@ class ManagedConversationLease implements ChatConversationLease {
   _ensureCleanup(operation: () => Promise<void>): Promise<void> {
     this._released = true;
     if (!this._cleanupPromise) {
-      this._cleanupPromise = operation();
+      const cleanupPromise = Promise.resolve().then(operation).catch((error) => {
+        if (this._cleanupPromise === cleanupPromise) {
+          this._cleanupPromise = null;
+        }
+        throw error;
+      });
+      this._cleanupPromise = cleanupPromise;
     }
     return this._cleanupPromise;
   }
@@ -81,12 +87,20 @@ class ManagedConversationLease implements ChatConversationLease {
     return this._subscribed;
   }
 
+  _markUnsubscribed(): void {
+    this._subscribed = false;
+  }
+
   _markOpened(): void {
     this._opened = true;
   }
 
   get _wasOpened(): boolean {
     return this._opened;
+  }
+
+  _markClosed(): void {
+    this._opened = false;
   }
 }
 
@@ -184,6 +198,12 @@ export class ManagedChatClient<
         return;
       }
 
+      // A previous stop may have failed while releasing a conversation. Retry
+      // the unfinished teardown before opening a new transport.
+      if (this._currentLease) {
+        await this._releaseCurrentLease();
+      }
+
       if (this._connectionNeedsDisconnect) {
         try {
           await this._connectionAdapter.disconnect();
@@ -246,14 +266,16 @@ export class ManagedChatClient<
 
     return this._enqueueOperation(async () => {
       const errors: unknown[] = [];
-      if (this._backgroundTeardownError) {
-        errors.push(this._backgroundTeardownError);
-        this._backgroundTeardownError = null;
-      }
+      const backgroundTeardownError = this._backgroundTeardownError;
+      this._backgroundTeardownError = null;
+      const hadPendingLease = this._currentLease !== null;
       try {
         await this._releaseCurrentLease();
       } catch (error) {
         errors.push(error);
+      }
+      if (backgroundTeardownError && !hadPendingLease) {
+        errors.push(backgroundTeardownError);
       }
 
       if (this._connectionNeedsDisconnect) {
@@ -427,29 +449,31 @@ export class ManagedChatClient<
   private async _teardownLease(lease: ManagedConversationLease): Promise<void> {
     await lease._ensureCleanup(async () => {
       const errors: unknown[] = [];
-      try {
-        await this._conversationAdapter.closeConversation(lease._handle);
-      } catch (error) {
-        errors.push(error);
-      }
-      if (lease._wasSubscribed && this._subscribeAdapter) {
+      if (lease._wasOpened) {
         try {
-          await this._subscribeAdapter.unsubscribe(lease.channel);
+          await this._conversationAdapter.closeConversation(lease._handle);
+          lease._markClosed();
+          this._emit(ChatClientEvent.ConversationClosed, lease.channel);
         } catch (error) {
           errors.push(error);
         }
       }
-      if (this._currentLease === lease) {
-        this._currentLease = null;
-      }
-      if (lease._wasOpened) {
-        this._emit(ChatClientEvent.ConversationClosed, lease.channel);
+      if (lease._wasSubscribed && this._subscribeAdapter) {
+        try {
+          await this._subscribeAdapter.unsubscribe(lease.channel);
+          lease._markUnsubscribed();
+        } catch (error) {
+          errors.push(error);
+        }
       }
       if (errors.length > 0) {
         const error = this._createAdapterError("conversation teardown", errors);
         this._setStatus(ChatClientStatus.Failed);
         this._emit(ChatClientEvent.Error, error);
         throw error;
+      }
+      if (this._currentLease === lease) {
+        this._currentLease = null;
       }
     });
   }

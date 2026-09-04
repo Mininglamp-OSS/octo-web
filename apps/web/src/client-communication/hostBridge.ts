@@ -51,6 +51,7 @@ export interface NavigationReport {
 
 export interface OctoBuddyCommunicationBridge {
   getBootstrap(): Promise<CommunicationBootstrap>;
+  /** May be retried after a timeout; hosts must handle duplicate reports. */
   reportReady(state: {
     bridgeVersion: 1;
     page: CommunicationPage;

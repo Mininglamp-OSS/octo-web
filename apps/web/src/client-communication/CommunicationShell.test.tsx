@@ -2,21 +2,34 @@ import React, { useEffect } from "react";
 import { render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  bridge: {
-    reportNavigation: vi.fn(async () => {}),
-    reportUnread: vi.fn(),
-    onCommand: vi.fn(() => () => {}),
-  },
-  conversationManager: {
-    addConversationListener: vi.fn(),
-    removeConversationListener: vi.fn(),
-  },
-}));
-
-vi.mock("./hostBridge", () => ({
-  requireHostBridge: () => mocks.bridge,
-}));
+const mocks = vi.hoisted(() => {
+  const command = {
+    listener: undefined as ((command: any) => void) | undefined,
+  };
+  return {
+    command,
+    bridge: {
+      getBootstrap: vi.fn(),
+      reportReady: vi.fn(async () => {}),
+      reportNavigation: vi.fn(async () => {}),
+      reportUnread: vi.fn(),
+      reportAuthExpired: vi.fn(),
+      reportFatalError: vi.fn(),
+      onCommand: vi.fn((listener: (command: any) => void) => {
+        command.listener = listener;
+        return () => {
+          if (command.listener === listener) {
+            command.listener = undefined;
+          }
+        };
+      }),
+    },
+    conversationManager: {
+      addConversationListener: vi.fn(),
+      removeConversationListener: vi.fn(),
+    },
+  };
+});
 
 vi.mock("../App/electronUnreadCount", () => ({
   getElectronUnreadMessageCount: () => 0,
@@ -60,6 +73,7 @@ vi.mock("@octo/base", () => {
       currentMenuId: "chat",
       switchToMenuById: undefined,
       config: {},
+      loginInfo: { logout: vi.fn() },
       endpoints: { showConversation: vi.fn() },
       mittBus,
       shared: {
@@ -91,11 +105,12 @@ vi.mock("@octo/base", () => {
 });
 
 import { CommunicationShell } from "./CommunicationShell";
-import { WKApp } from "@octo/base";
+import { WKApp, i18n } from "@octo/base";
 
 describe("CommunicationShell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.command.listener = undefined;
   });
 
   it("reports ready once during the React StrictMode effect cycle", async () => {
@@ -104,6 +119,7 @@ describe("CommunicationShell", () => {
     render(
       <React.StrictMode>
         <CommunicationShell
+          bridge={mocks.bridge as any}
           initialPage="chat"
           initialPresentation="workspace"
           onReady={onReady}
@@ -128,6 +144,7 @@ describe("CommunicationShell", () => {
 
     render(
       <CommunicationShell
+        bridge={mocks.bridge as any}
         initialPage="chat"
         initialPresentation="workspace"
         onReady={vi.fn(async () => {})}
@@ -157,6 +174,7 @@ describe("CommunicationShell", () => {
 
     expect(() => render(
       <CommunicationShell
+        bridge={mocks.bridge as any}
         initialPage="chat"
         initialPresentation="workspace"
         onReady={vi.fn(async () => {})}
@@ -167,5 +185,27 @@ describe("CommunicationShell", () => {
       error,
     );
     consoleSpy.mockRestore();
+  });
+
+  it("updates the document language when the host appearance changes", async () => {
+    render(
+      <CommunicationShell
+        bridge={mocks.bridge as any}
+        initialPage="chat"
+        initialPresentation="workspace"
+        onReady={vi.fn(async () => {})}
+      />,
+    );
+
+    await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+    mocks.command.listener?.({
+      type: "appearanceChanged",
+      theme: "dark",
+      locale: "en-US",
+    });
+
+    expect(document.documentElement.lang).toBe("en-US");
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(i18n.setLocale).toHaveBeenCalledWith("en-US", { persist: false });
   });
 });

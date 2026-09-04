@@ -15,10 +15,12 @@ import { ContactsModule } from "@octo/contacts";
 import { DataSourceModule } from "@octo/datasource";
 import { SummaryModule } from "@dmwork/summary";
 import { registerEnterpriseModules } from "virtual:octo-enterprise-modules";
+import { WKSDK } from "wukongimjssdk";
 import { version as pkgVersion } from "../../package.json";
 import { resolveApiURL } from "../apiURL";
 import appEnUS from "../i18n/en-US.json";
 import appZhCN from "../i18n/zh-CN.json";
+import { installCommunicationAuthExpiryHandler } from "./authLifecycle";
 import { CommunicationShell } from "./CommunicationShell";
 import { requireHostBridge } from "./hostBridge";
 
@@ -56,8 +58,10 @@ async function main() {
   });
   WKApp.config.locale = bootstrap.appearance.locale;
   i18n.init({ locale: bootstrap.appearance.locale });
+  document.documentElement.lang = bootstrap.appearance.locale;
 
   WKApp.shared.registerModule(new BaseModule());
+  installCommunicationAuthExpiryHandler(WKApp.apiClient, WKApp.loginInfo, host);
   WKApp.shared.registerModule(new DataSourceModule());
   WKApp.shared.registerModule(new ContactsModule());
   WKApp.shared.registerModule(new SummaryModule());
@@ -67,7 +71,13 @@ async function main() {
 
   await enableMocksIfE2E();
   await enableMockImIfE2E();
-  WKApp.shared.startup({ loadLoginInfo: false });
+  WKApp.shared.startup({ loadLoginInfo: false, isPC: true });
+  if (
+    WKApp.loginInfo.deviceFlag !== IM_DEVICE_FLAG_PC ||
+    WKSDK.shared().config.deviceFlag !== IM_DEVICE_FLAG_PC
+  ) {
+    throw new Error("Communication renderer requires the PC IM device flag");
+  }
   WKApp.config.themeMode = bootstrap.appearance.theme === "dark" ? ThemeMode.dark : ThemeMode.light;
   document.documentElement.dataset.theme = bootstrap.appearance.theme;
   Dap.shared.init();
@@ -76,6 +86,7 @@ async function main() {
     <React.StrictMode>
       <I18nProvider>
         <CommunicationShell
+          bridge={host}
           initialPage={bootstrap.initialPage}
           initialPresentation={bootstrap.initialPresentation}
           onReady={() => host.reportReady({
