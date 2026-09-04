@@ -1566,9 +1566,46 @@
    keeps only the search + publish actions, so trim its top padding a touch. */
 .wk-mcp-mine__panel > .wk-mcp,
 .wk-mcp-mine__panel > .wk-mcp-expert-page,
-.wk-mcp-mine__panel > .skill-market-page {
+.wk-mcp-mine__panel > .skill-market-page,
+.wk-mcp-mine__panel > .wk-mcp-mine__all {
   flex: 1;
   min-height: 0;
+}
+
+/* The 全部 tab has no market page under it — it renders MineTable directly — so
+   it has to supply the scroll container and padding the other four tabs inherit
+   from their page's own content area. Matches the 我的发布 hero + tab strip inset,
+   or the 全部 table sits flush against the panel edges while every sibling tab
+   is inset. */
+.wk-mcp-mine__all {
+  /* The market pages carry `background: var(--wk-bg-surface)` on their own root;
+     this tab has no page under it, so without this the 全部 panel sat on the base
+     colour while its four siblings sat on the surface one. */
+  background: var(--wk-bg-surface);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  padding: var(--wk-sp-4) var(--wk-sp-6);
+}
+
+/* 我的发布's own chrome — the 我的发布 title and the 全部/技能/连接器/专家/专家团 tab
+   strip — is not responsive: it stays inset by var(--wk-sp-6) at every width, and
+   the panel below it has to keep that left edge or the table visibly steps out
+   from under its own tabs.
+
+   Four of the five tabs already do. The 技能 tab does not: .skill-market-content
+   drops to a flat var(--wk-sp-3) under 760px, which is the right call for the
+   STANDALONE 技能市场 route (a phone, no hero and no tab strip above it to line up
+   with) and the wrong one here, where it made the 技能 table alone sit 12px wider
+   than 全部, 连接器, 专家, 专家团 and than the tab strip directly above it.
+
+   Pinned unconditionally rather than inside a matching media query: above 760px
+   this is already the computed value, so it is a no-op there, and stating it once
+   keeps the panel aligned if the skills page adds another breakpoint later. */
+.wk-mcp-mine__panel .skill-market-content {
+  padding: var(--wk-sp-4) var(--wk-sp-6);
 }
 
 /* variant="mine" hides each page's own title, so lift its search + create
@@ -4488,4 +4525,48 @@
     flex-direction: column;
     align-items: stretch;
   }
+}
+
+/* ReviewSubmitModal — the 发布/升级版本 dialog for connectors, experts and expert
+   teams. Its markup shipped with class names but no rules at all, so the notice,
+   the two fields and the error all rendered as undifferentiated body text. */
+.wk-mcp-review-submit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-4);
+}
+.wk-mcp-review-submit__notice {
+  margin: 0;
+  padding: var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.wk-mcp-review-submit__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
+}
+.wk-mcp-review-submit__field > span {
+  color: var(--wk-text-secondary);
+  font-size: 13px;
+  font-weight: var(--wk-font-medium);
+}
+/* The frozen child set. It states what the submission will carry, so it reads as
+   information rather than as a warning even while it is still loading. */
+.wk-mcp-review-submit__relations {
+  margin: 0;
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.wk-mcp-review-submit__error {
+  margin: 0;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-color-error-bg);
+  color: var(--wk-color-error);
+  font-size: 13px;
 }

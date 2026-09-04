@@ -12,6 +12,9 @@ import {
 import { t, useI18n, WKApp, WKButton, Dap } from "@octo/base";
 import type { Skill, SkillSort } from "../types/skill";
 import { useSkills } from "../hooks/useSkills";
+import { useReviewRequests } from "../hooks/useReviewRequests";
+import { cancelReview, publishPlugin } from "../api/skillApi";
+import { deriveSkillReviewState } from "../utils/review";
 import BotPublishModal from "../components/BotPublishModal";
 import CategoryChips from "../components/CategoryChips";
 import DeleteConfirmModal from "../components/DeleteConfirmModal";
@@ -49,8 +52,22 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [sort, setSort] = useState<SkillSort>("latest");
   const list = useSkills({ mine, selectedTags, sort });
+  // Review state for the "我的" surface. `mode=mine` is applicant-scoped (no
+  // reviewer role needed), but the public catalog shows no review state at all,
+  // so the read is held back to the mine variant to keep discovery cheap.
+  const myReviews = useReviewRequests({ mode: "mine", pageSize: 100, enabled: mine });
   const refreshRef = useRef(list.refresh);
+  const reviewsRefreshRef = useRef(myReviews.refresh);
   const [createVisible, setCreateVisible] = useState(false);
+  // 提交组织审核 / 重新提交 / 发布新版本 all funnel into NewSkillModal's review
+  // mode: it collects the version label + changelog and calls
+  // `POST /plugins/review_requests`. Content edits go through the separate edit
+  // flow first — an owner edit is a mutable draft server-side and never mints a
+  // version on its own.
+  const [reviewSkill, setReviewSkill] = useState<Skill | null>(null);
+  const [reviewInitial, setReviewInitial] = useState<{ version?: string; changelog?: string } | null>(
+    null
+  );
   const [publishMenuOpen, setPublishMenuOpen] = useState(false);
   const [botPublishVisible, setBotPublishVisible] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -65,6 +82,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
   const toastTimerRef = useRef<number | null>(null);
 
   refreshRef.current = list.refresh;
+  reviewsRefreshRef.current = myReviews.refresh;
 
   const showToast = useCallback((message: string) => {
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
@@ -85,12 +103,15 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
     const handleSpaceChanged = () => {
       setPublishMenuOpen(false);
       setCreateVisible(false);
+      setReviewSkill(null);
+      setReviewInitial(null);
       setBotPublishVisible(false);
       setDetailId(null);
       setEditing(null);
       setDeleting(null);
       setInstallSkillId(null);
       refreshRef.current();
+      reviewsRefreshRef.current();
     };
     WKApp.mittBus.on("space-changed", handleSpaceChanged);
     return () => WKApp.mittBus.off("space-changed", handleSpaceChanged);
@@ -155,9 +176,66 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
     list.refresh();
   }
 
-  function handleCreated() {
-    showToast(t("skillMarket.list.created"));
+  function handleCreated(message?: string) {
+    showToast(message ?? t("skillMarket.list.created"));
     list.refresh();
+    // A create can also have submitted a review request; keep the derived row
+    // badges in step with it.
+    myReviews.refresh();
+  }
+
+  function closeCreate() {
+    setCreateVisible(false);
+    setReviewSkill(null);
+    setReviewInitial(null);
+  }
+
+  /** Open NewSkillModal in review-submit mode for an already-published skill. */
+  function openReviewSubmit(skill: Skill, initialChangelog?: string) {
+    setReviewSkill(skill);
+    setReviewInitial(initialChangelog ? { changelog: initialChangelog } : null);
+    setCreateVisible(true);
+  }
+
+  async function handleCancelReview(reviewId: string) {
+    try {
+      await cancelReview(reviewId);
+      showToast(t("skillMarket.review.canceledToast"));
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t("skillMarket.review.cancelFailed"));
+    } finally {
+      // Refresh either way: on a lost race the server already moved the request
+      // out of `pending`, and only a re-read shows the real state.
+      //
+      // Only the plugin list. `cancelReview` is wrapped in
+      // `withReviewInvalidation`, so `myReviews` (and the sidebar badge, and any
+      // other live `useReviewRequests`) has already re-read by the time this
+      // runs — poking it here only cancels that fetch and issues it again.
+      list.refresh();
+    }
+  }
+
+  /**
+   * 发布 from the row. The BACKEND decides what that means from the plugin's
+   * declared visibility — list it now, or open an organization review — so the
+   * toast is chosen from the response rather than guessed at here.
+   */
+  async function handlePublish(skill: Skill) {
+    try {
+      const outcome = await publishPlugin({ pluginId: skill.id, version: skill.version });
+      showToast(
+        outcome.displayStatus === "pending_review"
+          ? t("skillMarket.review.submittedToast")
+          : t("skillMarket.plugin.publishedToast")
+      );
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t("skillMarket.review.submitFailed"));
+    } finally {
+      // Refresh either way: on a conflict the server already knows a state this
+      // page does not, and only a re-read shows it. Plugin list only —
+      // `publishPlugin` invalidates the review reads itself.
+      list.refresh();
+    }
   }
 
   function handleUpdated() {
@@ -171,6 +249,37 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
     // 删除此处命令式 market_card_viewed —— 二者本是对「同一次打开」的双计(owner 决策:留 opened;与 mcp 侧对称)。
     setDetailId(item.id);
   }
+
+  /** Edit from the detail modal — the SECOND entry point into the editor, gated
+   *  with the same predicate as the row's 编辑 button so it cannot route around
+   *  review (mirrors McpMarketListPage.handleEditFromDetail). Passing
+   *  `setEditing` straight through — as this did — let a listed-to-org skill's
+   *  detail modal open EditSkillModal → updateSkill → a full replace that takes
+   *  effect for the whole org, bypassing the review the row gate exists to force.
+   *  The row's onEdit/onUpgrade split (`:447`/`:464`) is the exact predicate:
+   *    - not listed to the org, nothing pending → the normal edit,
+   *    - listed to the org → 升级版本 (the edit becomes the reviewed content),
+   *    - a request pending → refused; the live version must not move while a
+   *      reviewer is looking at the next one. */
+  function handleEditFromDetail(skill: Skill) {
+    const listedToOrg = skill.listingState === "published" && skill.visibility === "space";
+    const pending = skill.displayStatus === "pending_review";
+    if (pending) {
+      showToast(t("skillMarket.review.pendingBlocksEdit"));
+      return;
+    }
+    if (listedToOrg) {
+      openReviewSubmit(skill);
+      return;
+    }
+    setEditing(skill);
+  }
+
+  // Join this user's own review requests onto their rows by plugin id. Review
+  // state is never a column on the plugin (a listed v1 and an in-review v2
+  // coexist server-side), so it is derived here at render time. Empty on the
+  // public catalog — that surface never receives review state or owner actions.
+  const reviewStateByPlugin = deriveSkillReviewState(myReviews.items);
 
   return (
     <div className="skill-market-page">
@@ -226,6 +335,10 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
                   onClick={() => {
                     Dap.shared.track("market_manual_publish_dialog_opened", {});
                     setPublishMenuOpen(false);
+                    // Plain upload, not a review resubmit — clear any review
+                    // context left over from an earlier 提交审核 click.
+                    setReviewSkill(null);
+                    setReviewInitial(null);
                     setCreateVisible(true);
                   }}
                 >
@@ -314,7 +427,17 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
         {!list.loading && !list.error && list.skills.length > 0 && (
           mine ? (
             <MineTable
-              rows={list.skills.map((skill) => ({
+              rows={list.skills.map((skill) => {
+                // The status comes from the server (`display_status`), which folds
+                // the listing state together with the review entity. It used to be
+                // re-derived here from a client-side join of the review list, and
+                // each page got the precedence subtly different — a listed plugin
+                // with a pending upgrade in particular.
+                const status = skill.displayStatus ?? "draft";
+                const pending = status === "pending_review";
+                const listedToOrg = skill.listingState === "published" && skill.visibility === "space";
+                const reviewState = reviewStateByPlugin.get(skill.id);
+                return {
                 id: skill.id,
                 type: "skill" as const,
                 trackItemType: "skill",
@@ -335,19 +458,50 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
                 visibility: skill.visibility,
                 views: skill.viewCount,
                 downloads: skill.downloadCount,
-                updatedAt: skill.updatedAt,
+                status,
+                rejectReason: reviewState?.rejected?.reason,
                 ariaLabel: skill.name,
                 onOpen: () => openDetail(skill),
-                onEdit: () => setEditing(skill),
+                // 编辑 is withheld only from a plugin LISTED TO THE ORG: a direct
+                // edit would take effect immediately for everyone, routing around
+                // review. A private plugin — published or not — has no org audience
+                // to protect and stays editable, and a draft/rejected/delisted row
+                // is editable by definition (that is how you fix and republish).
+                // While a request is pending nothing changes either, so the live
+                // version stays up until a decision lands.
+                onEdit: !listedToOrg && !pending ? () => setEditing(skill) : undefined,
                 onDelete: () => setDeleting(skill),
-                editAria: t("skillMarket.card.editAriaLabel", { values: { name: skill.name } }),
-                deleteAria: t("skillMarket.card.deleteAriaLabel", { values: { name: skill.name } }),
-              }))}
-              visibilityLabel={(v) => t(`skillMarket.visibility.${v}`)}
+                // The shared plugin namespace, same as the connector and expert
+                // pages: one MineTable affordance must not announce itself with
+                // two different accessible names depending on which market you
+                // reached it from. `skillMarket.card.*AriaLabel` stays — SkillCard
+                // and SkillDetailModal are a different affordance.
+                editAria: t("skillMarket.plugin.ariaEdit", { values: { name: skill.name } }),
+                deleteAria: t("skillMarket.plugin.ariaDelete", { values: { name: skill.name } }),
+                // 升级版本 replaces the old 提交审核/重新提交/发布新版本 trio: publishing
+                // is now one backend-decided action, so the only thing left to
+                // offer on a LISTED plugin is a new version.
+                onPublish:
+                  skill.listingState !== "published" && !pending
+                    ? () => void handlePublish(skill)
+                    : undefined,
+                publishAria: t("skillMarket.plugin.ariaPublish", { values: { name: skill.name } }),
+                onUpgrade: listedToOrg && !pending ? () => openReviewSubmit(skill) : undefined,
+                upgradeAria: t("skillMarket.plugin.ariaUpgrade", { values: { name: skill.name } }),
+                onCancelReview:
+                  pending && skill.reviewId
+                    ? () => void handleCancelReview(skill.reviewId as string)
+                    : undefined,
+                cancelReviewAria: t("skillMarket.plugin.ariaCancelReview", { values: { name: skill.name } }),
+                };
+              })}
             />
           ) : (
             <div className="skill-market-grid">
               {list.skills.map((skill) => (
+                // Discovery catalog. No owner-only props on purpose: SkillCard
+                // derives `isOwnerCard` from callback presence, and review state
+                // is applicant-scoped, so neither belongs on a public card.
                 <SkillCard
                   key={skill.id}
                   skill={skill}
@@ -375,14 +529,16 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
         categories={list.categories}
         refreshKey={detailRefreshKey}
         onClose={() => setDetailId(null)}
-        onEdit={mine ? setEditing : undefined}
+        onEdit={mine ? handleEditFromDetail : undefined}
         onDelete={mine ? setDeleting : undefined}
       />
       <NewSkillModal
         visible={createVisible}
         categories={list.categories}
-        onClose={() => setCreateVisible(false)}
+        onClose={closeCreate}
         onCreated={handleCreated}
+        reviewSkill={reviewSkill}
+        reviewInitial={reviewInitial}
       />
       <BotPublishModal
         visible={botPublishVisible}
@@ -393,6 +549,13 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
         categories={list.categories}
         onClose={() => setEditing(null)}
         onUpdated={handleUpdated}
+        onPublished={(message) => {
+          showToast(message);
+          // The listing changed, so the row's status and actions did too. Only
+          // fires after EditSkillModal's `publishPlugin`, which invalidates the
+          // review reads on its own.
+          list.refresh();
+        }}
       />
       <InstallPromptModal
         skillId={installSkillId}

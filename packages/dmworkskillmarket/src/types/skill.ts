@@ -1,6 +1,37 @@
 export type Visibility = "public" | "space" | "private" | "system";
 export type SkillSort = "comprehensive" | "latest" | "views" | "downloads";
 
+/**
+ * The unified plugin type a row belongs to. A `Skill` is the camelCase view of
+ * any unified plugin row, not only skills, so the type it was fetched as has to
+ * travel with it — the 全部 tab dispatches its row avatar, type tag, analytics
+ * label and "open the owning tab" click off this. Mirrors `PluginTypeWire`;
+ * kept as a local literal so this pure type module needs no wire import.
+ */
+export type PluginType = "connector" | "expert" | "expert_team" | "skill";
+
+// ─── Listing lifecycle ───────────────────────────────────────────────────
+
+/**
+ * Whether a plugin is listed, independent of who it is listed TO. `visibility`
+ * is the declared intent ("who should see this once it is listed") and this is
+ * whether it actually is.
+ */
+export type PluginListingState = "draft" | "published" | "delisted";
+
+/**
+ * The single status a client renders, computed BY THE BACKEND from the listing
+ * state plus the review entity. Deriving it client-side is what the old
+ * five-value badge union did, and every page got the precedence subtly
+ * different — a published plugin with a pending upgrade in particular.
+ */
+export type PluginDisplayStatus =
+  | "draft"
+  | "pending_review"
+  | "published"
+  | "rejected"
+  | "delisted";
+
 // ─── Frontend (camelCase) types ────────────────────────────────────────────
 
 export interface Category {
@@ -24,6 +55,11 @@ export interface Skill {
   creatorName?: string;
   spaceId: string;
   visibility: Visibility;
+  /** The unified plugin type this row was fetched as. Absent on the legacy skill
+   *  read; present on every unified `mode=mine` / detail row. The 全部 tab keys
+   *  its per-row dispatch off it, so it must not be silently defaulted to
+   *  "skill". */
+  pluginType?: PluginType;
   version: string;
   readmeContent: string;
   iconUrl: string;
@@ -33,8 +69,73 @@ export interface Skill {
   fileSha256?: string;
   viewCount?: number;
   downloadCount?: number;
+  /** Listing lifecycle and the single status to render. Both are supplied by the
+   *  server on the owner (`mode=mine`) listing and on the detail read; they are
+   *  absent on the public marketplace grid, where every row is published by
+   *  construction. `reviewId` points at the request `displayStatus` reflects, so
+   *  a 取消审核 button has something to act on without a second lookup. */
+  listingState?: PluginListingState;
+  displayStatus?: PluginDisplayStatus;
+  reviewId?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+// ─── Review request types ────────────────────────────────────────────────
+//
+// Review state remains an independent entity, never a column on `Skill`: a
+// listed v1 and an in-review v2 coexist. `display_status` above does NOT
+// re-couple them — it is a derived projection the server computes per read, not
+// a stored field. The snake_case wire shape lives in `api/pluginWire.ts`.
+
+export type ReviewStatus = "pending" | "approved" | "rejected" | "canceled";
+export type ReviewKind = "first" | "upgrade";
+export type ReviewListMode = "mine" | "space";
+export type ReviewTargetScope = "space" | "system";
+export type ReviewDecisionSource = "web" | "im";
+
+export interface ReviewRequest {
+  id: string;
+  pluginId: string;
+  pluginName: string;
+  pluginType: string;
+  /** Resolved display URL. The backend runs `plugin_icon` through the same
+   *  icon-resolution path the plugin list uses, on both review reads, so this is
+   *  safe to bind to an `<img src>`. Still optional — a plugin may carry no icon
+   *  — so consumers must keep a letter-avatar fallback. */
+  pluginIconUrl?: string;
+  /**
+   * The plugin's CURRENT listing state — a live read of the plugin row, not part
+   * of the frozen snapshot this request approved. The two drift on purpose: an
+   * approved request whose plugin a Space admin later took down reads
+   * `delisted`, which is how the queue avoids offering 下架 on something that is
+   * already down. Optional because the server omits it when it has nothing to
+   * report (`omitempty`).
+   */
+  pluginListingState?: PluginListingState;
+  spaceId: string;
+  targetScope: ReviewTargetScope;
+  status: ReviewStatus;
+  kind: ReviewKind;
+  version: string;
+  currentVersion?: string;
+  changelog?: string;
+  /** Reviewable body extracted from the FROZEN package snapshot: SKILL.md, then
+   *  README.md / AGENTS.md, falling back to the manifest description so
+   *  connectors are not blank. The list endpoint omits it; only the detail read
+   *  populates it. Storage-backed attachments are not fetched on that path, so
+   *  it can still be empty — render the preview section only when non-empty. */
+  readmeContent?: string;
+  manifestHash?: string;
+  pluginHash?: string;
+  applicantId: string;
+  applicantName: string;
+  reviewerId?: string;
+  reviewerName?: string;
+  reason?: string;
+  decisionSource?: ReviewDecisionSource;
+  submittedAt: string;
+  reviewedAt?: string;
 }
 
 export interface SkillListQuery {

@@ -15,6 +15,11 @@ import {
   mapPluginSquadListItem,
   fromSkillPlugin,
 } from "./expertWire";
+// Deep import, deliberately — see the identical note in mcpService.ts. The
+// subpath is a leaf module with no imports of its own, so it does not drag the
+// @dmwork/skillmarket React graph into the suites that mock only `axios` +
+// `@octo/base`.
+import { withReviewInvalidation } from "@dmwork/skillmarket/src/api/reviewSignal";
 import type {
   MemberContextWire,
 } from "./expertWire";
@@ -35,6 +40,7 @@ import {
   ExpertListError,
   classifyExpertListError,
   executeExpertListRequest,
+  expertListErrorI18nKey,
 } from "./expertListError";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -69,6 +75,15 @@ function delay<T>(value: T, ms = MOCK_DELAY_MS): Promise<T> {
 }
 
 export type ExpertKindParam = "agent" | "squad";
+
+/**
+ * The audience a tenant may DECLARE for a 专家 / 专家团.
+ *
+ * `system` (全平台) is deliberately absent: it marks a platform-published
+ * record, the tenant write path rejects it, and offering it would let an author
+ * downgrade an official listing into their own Space.
+ */
+export type ExpertVisibility = "private" | "space";
 
 /** Catalog sort modes accepted by the marketplace list endpoints. `installs`
  *  and `views` rank by the resource_metrics counters; `comprehensive` is the
@@ -562,6 +577,95 @@ async function deletePluginReal(id: string): Promise<void> {
 const deleteExpertReal = deletePluginReal;
 const deleteSquadReal = deletePluginReal;
 
+/**
+ * Rewrite ONE field — the declared audience — of an existing 专家 / 专家团.
+ *
+ * The unified plugin API has exactly one tenant write door, `POST
+ * /plugins/upsert`, and it is a FULL REPLACE: a field missing from the body is
+ * written as its zero value, and a child relation missing from `relations` is
+ * soft-deleted. There is no visibility-only endpoint (`/plugins/publish` decides
+ * from the STORED visibility and cannot set it), so the only honest way to move
+ * this one column is to read the record back and echo it unchanged except for
+ * `visibility`.
+ *
+ * Everything below is preservation, not policy:
+ *
+ *   - `manifest_json` / `plugin_json` are echoed VERBATIM. These records are
+ *     authored by a Bot through octo-cli, so this package has no model of their
+ *     contents (the connector path can rebuild its documents from a form; there
+ *     is no expert form). Anything less than a verbatim echo would destroy the
+ *     parts we do not model. The backend supports precisely this round-trip —
+ *     its read path strips storage object keys into a sidecar and its update
+ *     path re-injects them for attachments whose path AND content hash are
+ *     unchanged, so a fetch-edit-save cycle is not rejected.
+ *   - `relations` are echoed WITH `relation_id` and `data`. Matching on
+ *     relation_id makes the backend recognize each edge as untouched; dropping
+ *     the id would soft-delete every child and re-insert it, and dropping `data`
+ *     would lose the squad member wiring (`member_key` / `is_leader`) that makes
+ *     a team installable. This is deliberately NOT loadExpertChildRelations,
+ *     which projects a REVIEW snapshot and drops both fields on purpose.
+ *   - `version` is omitted, which tells the backend to keep the current label.
+ *     The write still snapshots a version server-side.
+ *
+ * Callers must not invoke this when the audience is unchanged — the write would
+ * cost a version snapshot that records no change. `ExpertEditModal` disables its
+ * save button in exactly that case.
+ *
+ * The backend refuses the write with 409 when the record is published to the org
+ * (`listed_requires_review`) or has a review pending; the row's `canEdit` from
+ * resolveReviewRowState mirrors both, so the action is not offered there.
+ */
+async function updateExpertVisibilityReal(
+  id: string,
+  visibility: ExpertVisibility
+): Promise<void> {
+  // include_relations: the echo has to name the current child set, and this is
+  // the same read the detail view already performs.
+  let detail: PluginDetailWire;
+  try {
+    detail = await pluginDetail(id);
+  } catch (err) {
+    if (axios.isCancel(err)) throw err;
+    // `get()` rewraps every failure as an ExpertListError whose `message` is the
+    // bare classification kind ("unknown", "forbidden", …). Translate it here so
+    // the caller can render `err.message` without knowing that.
+    throw new Error(t(expertListErrorI18nKey(err)));
+  }
+  const plugin = detail.plugin;
+  try {
+    await expertAxios.post(`${BASE}/plugins/upsert`, {
+      plugin: {
+        plugin_id: id,
+        plugin_name: plugin.plugin_name,
+        plugin_type: plugin.plugin_type,
+        // Spread-guarded: an explicit `category_id: undefined` serializes away,
+        // but so does an absent one, and the backend reads absent as "clear the
+        // category". Sending the key only when there is a value keeps the two
+        // cases visibly distinct in the request log.
+        ...(plugin.category_id ? { category_id: plugin.category_id } : {}),
+        tags: plugin.tags ?? [],
+        publisher: plugin.publisher ?? "",
+        // The write-canonical stored value, never the presigned display
+        // `icon_url` — echoing the latter would persist an expiring URL.
+        icon: plugin.icon ?? "",
+        visibility,
+        manifest_json: plugin.manifest_json,
+        plugin_json: plugin.plugin_json,
+      },
+      relations: (detail.relations ?? []).map((rel) => ({
+        relation_id: rel.relation_id,
+        target_plugin_id: rel.target_plugin_id,
+        relation_type: rel.relation_type,
+        sort_order: rel.sort_order,
+        ...(rel.data !== undefined ? { data: rel.data } : {}),
+      })),
+    });
+  } catch (err) {
+    if (axios.isCancel(err)) throw err;
+    throw new Error(extractErrorMessage(err));
+  }
+}
+
 /** POST /metrics/track — bump the plugin view counter. Fire-and-forget:
  *  every failure is swallowed here so no call site ever has to remember to
  *  catch a rejection that carries no actionable signal. */
@@ -740,12 +844,136 @@ export function getSquad(id: string): Promise<ExpertSquad> {
   return USE_MOCK ? getSquadMock(id) : getSquadReal(id);
 }
 
-export function deleteExpert(id: string): Promise<void> {
+// Both wrapped for the same reason `deleteMcp` and skillmarket's `deleteSkill`
+// are: deleting a plugin settles its pending review request server-side in the
+// same transaction, so the Space's pending count drops and every review read —
+// the 组织发布管理 badge included — is stale until it re-reads. Attached to the
+// endpoint, not to ExpertMarketListPage.handleConfirmDelete, so the next delete
+// surface cannot forget. See reviewSignal.ts.
+export const deleteExpert = withReviewInvalidation(function deleteExpert(
+  id: string
+): Promise<void> {
   return USE_MOCK ? deleteExpertMock(id) : deleteExpertReal(id);
+});
+
+export const deleteSquad = withReviewInvalidation(function deleteSquad(
+  id: string
+): Promise<void> {
+  return USE_MOCK ? deleteSquadMock(id) : deleteSquadReal(id);
+});
+
+/**
+ * Set the declared audience of one owned 专家 / 专家团 (see
+ * updateExpertVisibilityReal for why this is a full-record echo).
+ *
+ * No mock branch, for the same reason loadExpertChildRelations has none: the
+ * fixtures carry no manifest / package / relation graph, so a mock write could
+ * only pretend, and the whole draft→发布 surface it belongs to (publish, review,
+ * cancel) is real-only anyway. Fail loudly rather than silently succeed.
+ */
+export function updateExpertVisibility(
+  id: string,
+  visibility: ExpertVisibility
+): Promise<void> {
+  if (USE_MOCK) {
+    return Promise.reject(
+      new Error("updateExpertVisibility is not available under USE_MOCK")
+    );
+  }
+  return updateExpertVisibilityReal(id, visibility);
 }
 
-export function deleteSquad(id: string): Promise<void> {
-  return USE_MOCK ? deleteSquadMock(id) : deleteSquadReal(id);
+/** One child relation of a container plugin, shaped for a review submission.
+ *  Structurally the `PluginReviewRelation` of api/pluginReview.ts — declared
+ *  locally so this module keeps its import graph to axios + @octo/base (its unit
+ *  suites mock exactly those two). */
+export interface ExpertChildRelation {
+  targetPluginId: string;
+  relationType: string;
+  sortOrder: number;
+  /** Id of the existing edge, echoed so the backend freezes it untouched
+   *  instead of soft-deleting and re-inserting it. */
+  relationId?: string;
+  /** Opaque per-edge payload — for 专家团 this carries the member's
+   *  `member_key` / `is_leader` wiring that makes the team installable. */
+  data?: Record<string, unknown>;
+}
+
+/**
+ * The plugin's CURRENT direct child relation graph (expert → expert_skill,
+ * expert_team → expert_team_expert), read straight off `/plugins/detail`.
+ *
+ * 专家 / 专家团 are container types: a review snapshot that carries only the
+ * manifest + package is incomplete, because approving it would re-derive the
+ * child set from whatever the live graph happens to be at decision time. The
+ * submit payload therefore has to name the children explicitly, and this is the
+ * authoritative source for that list.
+ *
+ * Read from the RAW relations rather than from the `skills` / `members`
+ * projections on ExpertAgent / ExpertSquad on purpose: those drop soft-deleted
+ * targets, flatten the type into the field name, and (for squads) require an
+ * N+1 fan-out to hydrate — none of which the snapshot needs. Every relation type
+ * present on the row is echoed, so this stays correct if the backend grows
+ * another child edge.
+ *
+ * KNOWN GAP CLOSED: each edge is now echoed WITH its `relation_id` and `data`
+ * (a 专家团 member's `member_key` / `is_leader` wiring). Matching on relation_id
+ * freezes an untouched edge instead of soft-deleting and re-inserting it, and
+ * `data` keeps the wiring that makes the team installable. Mirrors
+ * updateExpertVisibilityReal's echo.
+ */
+export async function loadExpertChildRelations(
+  id: string
+): Promise<ExpertChildRelation[]> {
+  // No mock branch: the fixtures in mock/expertMock.ts carry no relation graph,
+  // and USE_MOCK is pinned false. A mock caller would get an empty list, which
+  // "replace the graph with []" would then act on — so fail loudly instead.
+  if (USE_MOCK) {
+    throw new Error("loadExpertChildRelations is not available under USE_MOCK");
+  }
+  const detail = await pluginDetail(id);
+  return [...(detail.relations ?? [])]
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .map((rel, index) => ({
+      targetPluginId: rel.target_plugin_id,
+      relationType: rel.relation_type,
+      // Re-normalized to a dense 0..n-1 sequence in the order the backend
+      // itself renders children (liveRelations sorts by sort_order), so a
+      // sparse or duplicated stored ordering can't reorder the approved copy.
+      sortOrder: index,
+      // Echoed verbatim so the frozen snapshot keeps each edge's identity and
+      // its 专家团 member wiring (member_key / is_leader) — without them the
+      // backend re-inserts the edge and loses what makes the team installable.
+      relationId: rel.relation_id,
+      ...(rel.data !== undefined ? { data: rel.data } : {}),
+    }));
+}
+
+/** The live FROZEN content of a 专家 / 专家团, read off `/plugins/detail`, to
+ *  echo WITH an upgrade review submission.
+ *
+ * 专家 / 专家团 records are authored by a Bot through octo-cli, not in the
+ * browser, so there is no client-side form to re-collect the content from on an
+ * upgrade. But the backend refuses a contentless submission for an
+ * already-listed plugin (freezeSubmission → `manifest_json/required`, HTTP 400):
+ * snapshotting the still-live row would make the review theatre. The client
+ * therefore reads the current row's own manifest + package and submits them
+ * verbatim — the frozen bytes the reviewer approves are exactly what is live
+ * today, and the listed version keeps serving until the decision.
+ *
+ * Only called on an UPGRADE (an already-listed container). A first listing sends
+ * no content: the row is still a private draft the server can freeze as-is. */
+export async function loadExpertReviewContent(
+  id: string
+): Promise<{ manifestJson: unknown; pluginJson: unknown }> {
+  if (USE_MOCK) {
+    throw new Error("loadExpertReviewContent is not available under USE_MOCK");
+  }
+  const detail = await pluginDetail(id);
+  return {
+    manifestJson: detail.plugin.manifest_json,
+    pluginJson: detail.plugin.plugin_json,
+  };
 }
 
 /** Record one detail view for an expert ("agent") or squad. Fire-and-forget:

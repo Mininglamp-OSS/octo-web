@@ -16,7 +16,9 @@ const changelogPlaceholder = /简述此版本变更内容|skillMarket\.form\.cha
 const saveButton = /保存|skillMarket\.common\.save/;
 const reuploadButton = /重新上传技能包|skillMarket\.upload\.reupload/;
 const selectNewZipLabel = /选择新的技能包文件|skillMarket\.upload\.selectNewFileAriaLabel/;
-const dirtyEditMessage = /确定离开？尚未完成编辑，已上传的文件和填写的信息将丢失。|skillMarket\.confirm\.dirtyEditMessage/;
+// The guard is now an inline bar in the dialog's footer rather than a second
+// stacked dialog; the assertion is on the same warning text either way.
+const dirtyEditMessage = /尚未保存|skillMarket\.confirm\.unsavedMessage/;
 const keepEditing = /继续编辑|skillMarket\.confirm\.keepEditing/;
 const leaveButton = /确认离开|skillMarket\.confirm\.leave/;
 const tagPlaceholder = /输入或选择标签|skillMarket\.form\.tagPlaceholder/;
@@ -235,7 +237,7 @@ describe("EditSkillModal", () => {
     expect(screen.getAllByTitle("协作")).toHaveLength(1);
   });
 
-  it("guards closing after the form is changed and closes the confirm dialog after leaving", async () => {
+  it("guards closing after the form is changed and clears the inline confirm after leaving", async () => {
     const onClose = vi.fn();
     render(<EditSkillModal skill={skill} categories={categories} onClose={onClose} onUpdated={vi.fn()} />);
 
@@ -359,6 +361,55 @@ describe("EditSkillModal", () => {
     expect(screen.queryByText("meeting-note-cleaner.zip")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: saveButton })).toBeDisabled();
     expect(api.updateSkill).not.toHaveBeenCalled();
+  });
+
+  it("keeps the changelog editable and threads it into publishPlugin for a 本组织 publish without re-upload", async () => {
+    // The default skill is `visibility: "space"` and not yet listed, so 发布 is
+    // offered and heads for org review — where the changelog is mandatory. The
+    // field must be live even though nothing was re-uploaded (P1-1), and what the
+    // author types must reach publishPlugin.
+    vi.mocked(api.publishPlugin).mockResolvedValue({
+      pluginId: "meeting-note-cleaner",
+      listingState: "draft",
+      displayStatus: "pending_review",
+    });
+    const onPublished = vi.fn();
+    render(
+      <EditSkillModal
+        skill={skill}
+        categories={categories}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+        onPublished={onPublished}
+      />,
+    );
+
+    const changelogField = screen.getByPlaceholderText(changelogPlaceholder);
+    expect(changelogField).not.toHaveAttribute("readonly");
+    fireEvent.change(changelogField, { target: { value: "首次提交组织审核" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /发布|skillMarket\.plugin\.actionPublish/ }));
+
+    await waitFor(() =>
+      expect(api.publishPlugin).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pluginId: "meeting-note-cleaner",
+          version: "1.1.3",
+          changelog: "首次提交组织审核",
+        }),
+      ),
+    );
+    await waitFor(() => expect(onPublished).toHaveBeenCalled());
+  });
+
+  it("blocks a 本组织 publish until a changelog is entered", () => {
+    render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
+
+    // Empty changelog on the space branch: 发布 is disabled, and clicking it does
+    // not reach publishPlugin. Save (保存草稿) does not require a changelog.
+    expect(screen.getByRole("button", { name: /发布|skillMarket\.plugin\.actionPublish/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /发布|skillMarket\.plugin\.actionPublish/ }));
+    expect(api.publishPlugin).not.toHaveBeenCalled();
   });
 
   it("does not save file metadata when re-upload parsing fails", async () => {

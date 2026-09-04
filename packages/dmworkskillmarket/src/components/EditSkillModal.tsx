@@ -1,17 +1,23 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Box, ImagePlus, Loader2, Upload, XCircle } from "lucide-react";
 import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
-import type { Category, Skill } from "../types/skill";
-import { updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse, getSkillTags } from "../api/skillApi";
+import type { Category, Skill, Visibility } from "../types/skill";
+import { updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse, getSkillTags, publishPlugin } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
+import InlineConfirmBar from "./InlineConfirmBar";
+import { visibilityLabel } from "../utils/labels";
+import { isValidVersion, nextPatch, versionErrorKey } from "../utils/version";
 
 interface EditSkillModalProps {
   skill: Skill | null;
   categories: Category[];
   onClose: () => void;
   onUpdated: (skill: Skill) => void;
+  /** Optional: shows the outcome of a 发布 made from this modal. Without it the
+   *  save still works, it just says nothing about which branch the backend took. */
+  onPublished?: (message: string) => void;
 }
 
 type UploadStage = "idle" | "uploading" | "parsing" | "error";
@@ -19,12 +25,18 @@ type UploadStage = "idle" | "uploading" | "parsing" | "error";
 const MAX_ZIP_SIZE = 20 * 1024 * 1024;
 const SKILL_PACKAGE_ACCEPT = ".zip,.skill";
 
+/**
+ * Seed the version field after a reupload.
+ *
+ * A label the tightened format rejects is the row's GRANDFATHERED one, and
+ * bumping it produces a third value that is neither well-formed nor the stored
+ * label — which is the one combination `/plugins/import` refuses outright
+ * (resolveImportFields: `!validVersion && !isStoredVersionLabel` → 400). So a
+ * legacy label is left exactly as stored; that is the only value a reupload may
+ * still carry, and the author can type a real one over it.
+ */
 function bumpPatch(ver: string): string {
-  const parts = ver.split(".");
-  if (parts.length < 3) return ver;
-  const patch = parseInt(parts[2], 10);
-  parts[2] = String(isNaN(patch) ? 1 : patch + 1);
-  return parts.join(".");
+  return isValidVersion(ver) ? nextPatch(ver) : ver;
 }
 
 function validateZipFile(file: File): string | null {
@@ -34,7 +46,7 @@ function validateZipFile(file: File): string | null {
   return null;
 }
 
-export default function EditSkillModal({ skill, categories, onClose, onUpdated }: EditSkillModalProps) {
+export default function EditSkillModal({ skill, categories, onClose, onUpdated, onPublished }: EditSkillModalProps) {
   useI18n();
   const selectableCategories = useMemo<Category[]>(
     () => categories.filter((category: Category) => category.id !== "all"),
@@ -55,6 +67,16 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
   const [tagSuggestionStyle, setTagSuggestionStyle] = useState<React.CSSProperties>({});
   const [activeTagSuggestion, setActiveTagSuggestion] = useState(0);
   const [tagError, setTagError] = useState<string | null>(null);
+  // The DECLARED audience. Editable here because it is what 发布 reads to decide
+  // whether listing this plugin needs organization review.
+  // Holds the RAW stored visibility, not just the two the radio can express. A
+  // `system` (全平台) or legacy `public` row is admin-managed and this form must
+  // carry it through untouched — narrowing to "private" | "space" here is how an
+  // edit silently demotes a platform-wide plugin to private and delists it from
+  // everyone.
+  const [visibility, setVisibility] = useState<Visibility>("private");
+  // Which footer action is in flight, so only that button spins.
+  const [publishing, setPublishing] = useState(false);
   const [version, setVersion] = useState("1.0.0");
   const [uploadStage, setUploadStage] = useState<UploadStage>("idle");
   const [progress, setProgress] = useState(0);
@@ -94,6 +116,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
     setTagSuggestionStyle({});
     setActiveTagSuggestion(0);
     setTagError(null);
+    setVisibility(skill.visibility);
     setVersion(skill.version);
     setUploadStage("idle");
     setProgress(0);
@@ -102,7 +125,11 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
     setIconPreview(skill.iconUrl || null);
     setIconBlob(null);
     setIconCropFile(null);
-    setChangelog(t("skillMarket.form.currentVersionChangelog"));
+    // Start blank: the field is editable whenever a changelog is actually asked
+    // for (a re-upload, or a 本组织 publish), and seeding it with filler text
+    // would submit that filler as the org-review changelog unless the author
+    // noticed and cleared it. A re-upload also blanks it below.
+    setChangelog("");
     setError(null);
     setConfirmClose(false);
     setTimeout(() => { abortRef.current = false; }, 0);
@@ -129,6 +156,16 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
   }
 
   const tagSubmitError = tagError ?? validateSkillTags(tags, skill?.tags ?? []) ?? getTagDraftError();
+  // Mirrors the backend rule so the form objects before the round trip. Compared
+  // against the STORED label, which is what the server compares against too —
+  // and passed a third time as the grandfathering key, because this field is
+  // SEEDED from that label (see the `setVersion(skill.version)` reset below).
+  // Without the exemption every plugin carrying a pre-tightening label (`1.0`,
+  // `v1.2.3`, `2.0.0-beta.1`) has a permanently dead Save: the field arrives
+  // holding a value this rule rejects and the user is given nothing to do about
+  // it. Save writes through `/plugins/upsert`, which grants exactly this
+  // exemption (WriteRequest.grandfatheredVersion), so the two now agree.
+  const versionError = versionErrorKey(skill?.version, version, skill?.version);
   const canSave = Boolean(
     !busy &&
     uploadStage !== "error" &&
@@ -136,8 +173,39 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
     displayName.trim() &&
     version.trim() &&
     (!parseTaskId || changelog.trim()) &&
+    !versionError &&
     !tagSubmitError,
   );
+
+  // Whether this save leaves the plugin unlisted — either it already is, or
+  // widening the audience is about to un-list it server-side. That is exactly
+  // when 保存草稿 is the honest label and 发布 has something to do; on a published
+  // plugin whose audience is unchanged there is nothing to publish, so the
+  // primary action is not rendered rather than sitting there disabled.
+  // Only private/space are selectable here; anything else is admin-managed.
+  const tenantVisibility = visibility === "private" || visibility === "space";
+  const willBeUnlisted =
+    skill?.listingState !== "published" ||
+    (skill?.visibility !== undefined && visibility !== skill.visibility);
+  // 发布 does NOT inherit the grandfathering. On 本组织 it routes through
+  // `Service.Publish` → `SubmitReview`, which gates on `validVersion` with no
+  // stored-label exemption, so a legacy label that saves fine would 400 on
+  // publish. Recomputing without `stored` is the whole difference. On 仅自己 the
+  // server ignores the submitted version entirely (the immediate branch), so the
+  // save rule is the right one there.
+  const publishVersionError =
+    visibility === "space" ? versionErrorKey(skill?.version, version) : versionError;
+  // 发布 asks for a changelog only when the plugin is headed for organization
+  // review, mirroring the create modal.
+  const canPublishNow =
+    canSave && !publishVersionError && (visibility === "private" || Boolean(changelog.trim()));
+
+  // The changelog field is live in exactly the two cases a changelog is asked
+  // for: a re-upload (a new version was parsed, so save itself requires one) and
+  // a 本组织 publish (the org-review submit requires one — decision "3 强制").
+  // Read-only otherwise, so a 仅自己 save does not present an editable field the
+  // backend would ignore. Its `*` is only truthful when it is actually required.
+  const changelogRequired = Boolean(parseTaskId) || visibility === "space";
 
   function updateTagSuggestionStyle() {
     const field = tagFieldRef.current;
@@ -361,7 +429,13 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
     event.target.value = "";
   }
 
-  async function submit() {
+  /**
+   * `publish=false` saves and stops; `publish=true` saves and then hands the
+   * plugin to the backend's one publish door, which routes on the declared
+   * visibility. Same two-action shape as the create modal, so an author does not
+   * meet a different contract depending on whether the plugin already exists.
+   */
+  async function submit(publish: boolean) {
     if (!skill) return;
     if (!name.trim() || !displayName.trim() || !categoryId || !version.trim() || (parseTaskId && !changelog.trim())) {
       setError(t("skillMarket.form.validationRequired"));
@@ -377,6 +451,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
       ? [...tags, tagDraft.trim()].slice(0, MAX_SKILL_TAGS)
       : tags;
     setSaving(true);
+    setPublishing(publish);
     setError(null);
     try {
       let iconUrl: string | undefined;
@@ -391,18 +466,42 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
         description,
         categoryId,
         tags: submittedTags,
-        // This modal has no visibility control, so preserve the skill's current
-        // visibility explicitly — a re-upload is a full replace and would
-        // otherwise send no visibility, leaving it to a backend default.
-        visibility: skill.visibility,
+        // The declared audience, as edited. A re-upload is a full replace, so it
+        // must always be sent — omitting it would leave the column to a backend
+        // default rather than to what the author chose.
+        //
+        // Widening it on an already-published plugin un-lists the row server-side
+        // (the audience changed, so the listing has to be re-earned through the
+        // normal 发布 path). The hint below says so before the author saves.
+        visibility,
         ...(iconUrl !== undefined ? { iconUrl } : {}),
       });
-      onUpdated(updated);
+      if (publish) {
+        // Saved first, so what gets published is what the author just wrote —
+        // and if widening the audience un-listed the row, this is the step that
+        // earns the listing back through review. The changelog only rides along
+        // on the org-review branch; on 仅自己 the server ignores it, and
+        // publishPlugin omits an empty one from the body regardless.
+        const outcome = await publishPlugin({
+          pluginId: skill.id,
+          version,
+          ...(visibility === "space" ? { changelog } : {}),
+        });
+        onUpdated(updated);
+        onPublished?.(
+          outcome.displayStatus === "pending_review"
+            ? t("skillMarket.review.submittedToast")
+            : t("skillMarket.plugin.publishedToast")
+        );
+      } else {
+        onUpdated(updated);
+      }
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("skillMarket.form.saveFailed"));
     } finally {
       setSaving(false);
+      setPublishing(false);
     }
   }
 
@@ -415,17 +514,65 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
         size="lg"
         className="skill-market-workflow-modal"
         footer={
+          confirmClose ? (
+            <InlineConfirmBar
+              message={t(
+                busy ? "skillMarket.confirm.busyMessage" : "skillMarket.confirm.unsavedMessage"
+              )}
+              actions={[
+                {
+                  label: t(
+                    busy ? "skillMarket.confirm.keepUploading" : "skillMarket.confirm.keepEditing"
+                  ),
+                  onClick: () => setConfirmClose(false),
+                },
+                { label: t("skillMarket.confirm.leave"), variant: "danger", onClick: confirmLeave },
+                // Mid upload there is nothing a save could keep.
+                ...(busy
+                  ? []
+                  : [
+                      {
+                        label: t("skillMarket.confirm.saveAndLeave"),
+                        variant: "primary" as const,
+                        disabled: !canSave,
+                        loading: saving,
+                        onClick: () => void submit(false),
+                      },
+                    ]),
+              ]}
+            />
+          ) : (
           <>
             <WKButton variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</WKButton>
+            {/* Same shape as the create modal. The secondary action is only called
+                保存草稿 when the save actually leaves a draft behind — on a
+                published plugin whose audience is unchanged it is a plain 保存,
+                and there is nothing to publish, so 发布 is not offered at all
+                rather than sitting there permanently disabled. */}
             <WKButton
-              variant="primary"
-              onClick={() => void submit()}
-              loading={saving}
-              disabled={!canSave}
+              variant="secondary"
+              onClick={() => void submit(false)}
+              loading={saving && !publishing}
+              disabled={!canSave || (saving && publishing)}
             >
-              {t("skillMarket.common.save")}
+              {t(
+                willBeUnlisted
+                  ? "skillMarket.plugin.actionSaveDraft"
+                  : "skillMarket.common.save"
+              )}
             </WKButton>
+            {willBeUnlisted && (
+              <WKButton
+                variant="primary"
+                onClick={() => void submit(true)}
+                loading={saving && publishing}
+                disabled={!canPublishNow || (saving && !publishing)}
+              >
+                {t("skillMarket.plugin.actionPublish")}
+              </WKButton>
+            )}
           </>
+          )
         }
       >
         <div className="skill-market-form skill-market-form--workflow">
@@ -491,19 +638,79 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
                   onChange={setVersion}
                   placeholder={t("skillMarket.form.versionPlaceholder")}
                 />
+                {versionError && (
+                  <p className="skill-market-field-error">{t(versionError)}</p>
+                )}
+                {/* Save is fine but 发布 is not: the label is the row's own
+                    grandfathered one and organization publish will not take it.
+                    Say so, otherwise 发布 is a second dead button with no
+                    explanation — the exact failure this change exists to end. */}
+                {!versionError && publishVersionError && (
+                  <p className="skill-market-field-hint">
+                    {t("skillMarket.plugin.versionLegacyBlocksPublish")}
+                  </p>
+                )}
               </label>
               <label>
-                <span>{t("skillMarket.form.changelogLabel")}<i className="skill-market-required">*</i></span>
+                <span>{t("skillMarket.form.changelogLabel")}{changelogRequired && <i className="skill-market-required">*</i>}</span>
                 <WKInput
                   value={changelog}
                   onChange={setChangelog}
                   placeholder={t("skillMarket.form.changelogPlaceholder")}
-                  readOnly={!parseTaskId}
-                  className={!parseTaskId ? "skill-market-input-readonly" : undefined}
+                  readOnly={!changelogRequired}
+                  className={!changelogRequired ? "skill-market-input-readonly" : undefined}
                 />
               </label>
             </div>
           </div>
+
+          <h3 className="skill-market-form__section-title">
+            {t("skillMarket.plugin.columnVisibility")}
+          </h3>
+          {!tenantVisibility ? (
+            // Admin-managed audience. Shown, not editable: a tenant cannot mint
+            // or change 全平台, and the value has to survive the save.
+            <p className="skill-market-form__hint">
+              {visibilityLabel(visibility)} · {t("skillMarket.plugin.visibilityAdminManaged")}
+            </p>
+          ) : (
+          <div className="skill-market-scope-options">
+            {(["private", "space"] as const).map((option) => (
+              <label key={option} className={visibility === option ? "is-selected" : ""}>
+                <input
+                  type="radio"
+                  name="edit-visibility"
+                  value={option}
+                  checked={visibility === option}
+                  onChange={() => setVisibility(option)}
+                />
+                <div>
+                  <strong>
+                    {t(
+                      option === "private"
+                        ? "skillMarket.plugin.visibilityPrivate"
+                        : "skillMarket.plugin.visibilitySpace"
+                    )}
+                  </strong>
+                  <span>
+                    {t(
+                      option === "private"
+                        ? "skillMarket.plugin.visibilityPrivateHint"
+                        : "skillMarket.plugin.visibilitySpaceHint"
+                    )}
+                  </span>
+                </div>
+              </label>
+            ))}
+          </div>
+          )}
+          {/* Saying it before the save, not after: a published plugin whose
+              audience widens stops being listed until it goes through 发布 again,
+              and an author who is not told will read that as their plugin
+              disappearing. */}
+          {skill?.listingState === "published" && visibility !== skill.visibility && (
+            <p className="skill-market-form__hint">{t("skillMarket.plugin.visibilityChangeUnlists")}</p>
+          )}
 
           <h3 className="skill-market-form__section-title">{t("skillMarket.form.basicInfoSection")}</h3>
 
@@ -648,24 +855,6 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
           setIconCropFile(null);
         }}
       />
-      <WKModal
-        visible={confirmClose}
-        onCancel={() => setConfirmClose(false)}
-        title={t("skillMarket.confirm.title")}
-        size="md"
-        footer={
-          <>
-            <WKButton variant="secondary" onClick={() => setConfirmClose(false)}>{t("skillMarket.confirm.keepEditing")}</WKButton>
-            <WKButton variant="danger" onClick={confirmLeave}>{t("skillMarket.confirm.leave")}</WKButton>
-          </>
-        }
-      >
-        <p className="skill-market-confirm-text">
-          {busy
-            ? t("skillMarket.confirm.busyMessage")
-            : t("skillMarket.confirm.dirtyEditMessage")}
-        </p>
-      </WKModal>
     </>
   );
 }

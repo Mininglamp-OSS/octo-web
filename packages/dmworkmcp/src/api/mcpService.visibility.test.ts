@@ -196,3 +196,24 @@ describe("secret placeholder round-trip — preserves the original reference", (
     });
   });
 });
+
+// createMcp used to hardcode `visibility: "private"`, discarding whatever the
+// author declared — which is the single regression this whole change is
+// vulnerable to, because the declared value is exactly what the backend reads to
+// decide whether 发布 lists the connector or opens an organization review.
+// Flattening it here would silently make every connector private-only again, and
+// nothing downstream would complain.
+describe("createMcp visibility", () => {
+  it("forwards the declared audience instead of flattening it to private", () => {
+    const body = toPluginUpsert({ ...form, visibility: "space" }, {
+      categoryId: "cat-1",
+      visibility: "space",
+    });
+    expect(body.plugin.visibility).toBe("space");
+  });
+
+  it("falls back to private when the caller declares nothing", () => {
+    const body = toPluginUpsert(form, { categoryId: "cat-1", visibility: "private" });
+    expect(body.plugin.visibility).toBe("private");
+  });
+});
