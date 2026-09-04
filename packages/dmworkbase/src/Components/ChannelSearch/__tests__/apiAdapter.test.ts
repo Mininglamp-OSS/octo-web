@@ -340,12 +340,15 @@ describe("channel search API adapter response mapping", () => {
     // live. The mapper decodes here so downstream renderers work in original
     // characters.
     //
-    // Wire-format fixtures lifted verbatim from the paired server test
+    // Wire-format fixtures for the mapper-boundary decode.
     //   octo-server modules/messages_search/search_files_test.go
-    //     :: TestSingleFileHit_HostileContentEscaped / ampersand-quote-roundtrip
-    // so the client decodes exactly what the server emits — see the doc
-    // comment on decodeServerEscapedHighlight for the entity set (Go
-    // html.EscapeString: &#34; / &#39; / &lt; / &gt; / &amp;, no &#x2F;).
+    // The name_highlight below is lifted verbatim from that test's
+    // TestSingleFileHit_HostileContentEscaped `wantName`. The content_snippet
+    // is a contract-aligned composite (NOT a verbatim server want-string): it
+    // combines the &#34; / &#39; and raw-slash-passthrough cases so one fixture
+    // covers them together, matching what Go html.EscapeString actually emits
+    // — see the doc comment on decodeServerEscapedHighlight for the entity set
+    // (&#34; / &#39; / &lt; / &gt; / &amp;, no &#x2F;).
     expect(
       mapFileHit(
         {

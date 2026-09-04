@@ -188,6 +188,13 @@ describe("ChannelSearchSnippetContent", () => {
     // Single-decode invariant (no double-unescape): the user-typed characters
     // `&lt;` must survive as literal `&lt;`, not decode all the way to `<`.
     expect(decodeServerEscapedHighlight("&amp;lt;b&amp;gt;")).toBe("&lt;b&gt;");
+    // Regression guard: the OLD Lucene SimpleHTMLEncoder forms (&quot; / &#x27;
+    // / &#x2F;) are NOT in Go html.EscapeString's set, so the server never
+    // emits them and the table must NOT decode them — they pass through as
+    // literal text. Locks out a reintroduction of the round-5 defect.
+    expect(decodeServerEscapedHighlight("&quot; &#x27; &#x2F;")).toBe(
+      "&quot; &#x27; &#x2F;"
+    );
   });
 
   it("never executes injected HTML in a hostile file name highlight (post-decode)", () => {
