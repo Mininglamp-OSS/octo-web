@@ -73,6 +73,14 @@ interface ExpertBase {
   viewCount?: number;
   /** Successful add-to-loop count from resource_metrics (wire `install_count`). */
   installCount?: number;
+  /** Listing lifecycle and the single status to render, both supplied by the
+   *  server on the owner listing (wire `listing_state` / `display_status`).
+   *  `reviewId` points at the request `displayStatus` reflects, so 取消审核 has
+   *  something to act on without a second lookup. Absent on the public catalog,
+   *  where every row is published by construction. */
+  listingState?: "draft" | "published" | "delisted";
+  displayStatus?: "draft" | "pending_review" | "published" | "rejected" | "delisted";
+  reviewId?: string;
   /** Current published version (wire `current_version`), shown in the detail. */
   version?: string;
   /** System prompt / instructions that define how the expert behaves. */

@@ -54,7 +54,7 @@ const MOCK_SPACE = {
   space_no: "e2e-space",
   owner: MOCK_UID,
   status: 1,
-  role: 1,
+  role: 2,
 };
 
 const SP1_CREATED_SPACE = {
@@ -67,7 +67,7 @@ const SP1_CREATED_SPACE = {
   space_no: "sp1-created-space",
   owner: MOCK_UID,
   status: 1,
-  role: 1,
+  role: 2,
 };
 
 function chatFollowScenario(request?: Request): string {
@@ -305,6 +305,16 @@ export const chatBaselineHandlers = [
   http.get("*/conversations/:channelId/:channelType/extra", () =>
     HttpResponse.json({})
   ),
+  // apiClient can retain the `/api/v1` prefix in browser requests. Keep explicit
+  // variants because MSW's leading wildcard does not reliably consume multiple
+  // path segments in every runtime, which previously leaked this call to Vite's
+  // dead CI proxy.
+  http.post("*/api/v1/conversations/:channelId/:channelType/extra", () =>
+    HttpResponse.json({})
+  ),
+  http.get("*/api/v1/conversations/:channelId/:channelType/extra", () =>
+    HttpResponse.json({})
+  ),
   http.get("*/groups/:groupNo/threads", () => HttpResponse.json([])),
   http.post("*/messages/_search_all", () =>
     HttpResponse.json({ items: [], data: [], pagination: {} })
@@ -333,6 +343,14 @@ export const chatBaselineHandlers = [
   // 直接 block PR, 并让断言 consoleErrors 为空的用例 (如 @C37) 连带挂掉.
   //
   // 带不带 ?fresh=1 是同一条路由 (MSW 路径匹配忽略 query), 一个 handler 覆盖两种形态.
+  // Match both absolute and same-origin relative requests. In the production-like
+  // CI bundle this poll can be issued as a relative `/summary/...` URL, which a
+  // leading-wildcard mask does not consistently match in the browser worker.
+  http.get("/summary/api/v1/summaries/attention", () =>
+    HttpResponse.json({ code: 0, message: "ok", data: {
+      attention_count: 0, unread_count: 0, pending_invitation_count: 0, pending_submission_count: 0,
+    } })
+  ),
   http.get("*/summary/api/v1/summaries/attention", () =>
     HttpResponse.json({ code: 0, message: "ok", data: {
       attention_count: 0, unread_count: 0, pending_invitation_count: 0, pending_submission_count: 0,

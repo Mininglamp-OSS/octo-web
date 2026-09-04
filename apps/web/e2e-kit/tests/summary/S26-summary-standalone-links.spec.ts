@@ -2,6 +2,24 @@ import { test, expect, AUTH_KEYS_SUFFIXED, E2E_SID, MOCK_LOCALE, LOCALE_STORAGE_
 import { registerS26SummaryStandaloneLinks } from "../../msw-handlers/s26-summary-standalone-links";
 
 test("@S26 @p1 @summary @deep-link 独立详情与分享链接", async ({ pagePlain }) => {
+  // This scenario performs several full-document navigations. Intercept the
+  // background attention poll at the Playwright boundary so it cannot escape
+  // during the brief interval before each new document registers with MSW.
+  await pagePlain.route("**/summary/api/v1/summaries/attention?*", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        code: 0,
+        message: "ok",
+        data: {
+          attention_count: 0,
+          unread_count: 0,
+          pending_invitation_count: 0,
+          pending_submission_count: 0,
+        },
+      }),
+    });
+  });
   await pagePlain.addInitScript(({ sid, auth, spaceKey, spaceId, localeKey, locale, onboardingKey, scenario }) => {
     const ls = localStorage;
     const ss = sessionStorage;

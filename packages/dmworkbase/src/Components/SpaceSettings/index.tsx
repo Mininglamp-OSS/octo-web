@@ -2,7 +2,7 @@ import { webOrigin } from "../../Utils/docLink";
 import React, { Component } from "react";
 import { Input, Toast, Button } from "@douyinfe/semi-ui";
 import { IconCopy, IconLink } from "@douyinfe/semi-icons";
-import { Space, SpaceService } from "../../Service/SpaceService";
+import { isSpaceAdminOrOwner, isSpaceOwner, Space, SpaceService } from "../../Service/SpaceService";
 import { I18nContext, t } from "../../i18n";
 import { wkConfirm } from "../WKModal";
 import VoiceInputButton, { ReplaceMode, SelectionRange } from "../VoiceInputButton";
@@ -152,11 +152,11 @@ export default class SpaceSettings extends Component<SpaceSettingsProps, SpaceSe
     };
 
     isOwner() {
-        return this.props.space.role === 1;
+        return isSpaceOwner(this.props.space.role);
     }
 
     isAdmin() {
-        return this.props.space.role === 1 || this.props.space.role === 2;
+        return isSpaceAdminOrOwner(this.props.space.role);
     }
 
     render() {

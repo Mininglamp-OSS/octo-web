@@ -21,6 +21,7 @@ import { debounce } from "@octo/base/src/Utils/rateLimit";
 import { OnlineStatusBadge, needShowOnlineStatus, getOnlineTip } from "@octo/base/src/Components/ConversationList";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { shouldShowOnlineStatus, selectOnlineStatusUids } from "./onlineStatusGate";
+import { getSpaceRoleBadge } from "./spaceRoleBadge";
 import ContactsSearch from "../ui/ContactsSearch";
 import { ContactsDirectory, ContactsDirectorySection } from "../ui/ContactsDirectory";
 import type { ContactsDirectorySectionKey } from "../ui/ContactsDirectory/types";
@@ -64,16 +65,20 @@ function normalizeOnlineUid(uid: string): string {
 
 type ContactFilterMode = 'all' | 'bots' | 'humans'
 
+interface SpaceContact extends Contacts {
+    spaceRole?: number
+}
+
 interface ContactListRow {
-    item: Contacts
+    item: SpaceContact
     letter: string
     showLetter: boolean
 }
 
 interface ContactIndexData {
-    items: Contacts[]
+    items: SpaceContact[]
     indexList: string[]
-    indexItemMap: Map<string, Contacts[]>
+    indexItemMap: Map<string, SpaceContact[]>
     listRows: ContactListRow[]
 }
 
@@ -221,6 +226,9 @@ export default class ContactsList extends Component<any, ContactsState> {
     private visibilityHandler!: () => void
     // 组件是否仍挂载：refreshTrackedOnlineStatus 是异步的，回包后 setState 前需确认未卸载
     private mounted = false
+    // Every initial load and Space switch claims a generation. Responses from a
+    // previous Space must never overwrite the active Space's roster or badges.
+    private spaceLoadGeneration = 0
 
     constructor(props: any) {
         super(props)
@@ -258,18 +266,19 @@ export default class ContactsList extends Component<any, ContactsState> {
 
         this.spaceChangedHandler = (space: any) => {
             const sp = space as Space | undefined
+            const generation = ++this.spaceLoadGeneration
             this.clearIndexCache()
             this.contactsSearchIndex = createEmptyContactsSearchIndex()
             this.resetFilterScrollTops()
             this.prefetchedUids.clear()
             if (sp) {
                 this.debouncedSearch.cancel()
-                this.setState({ currentSpace: sp, myGroups: [], myBots: [], spaceBots: [], keyword: '', isSearching: false, searchContacts: [], searchGroups: [], filterMode: 'all', loading: true }, () => {
-                    this.loadAllData(sp.space_id)
+                this.setState({ currentSpace: sp, spaceMembers: [], myGroups: [], myBots: [], spaceBots: [], keyword: '', isSearching: false, searchContacts: [], searchGroups: [], filterMode: 'all', loading: true }, () => {
+                    this.loadAllData(sp.space_id, generation)
                 })
             } else {
                 this.debouncedSearch.cancel()
-                this.setState({ currentSpace: undefined, spaceMembers: [], myBots: [], spaceBots: [], myGroups: [], keyword: '', isSearching: false, searchContacts: [], searchGroups: [], filterMode: 'all' })
+                this.setState({ currentSpace: undefined, spaceMembers: [], myBots: [], spaceBots: [], myGroups: [], keyword: '', isSearching: false, searchContacts: [], searchGroups: [], filterMode: 'all', loading: false })
             }
         }
         WKApp.mittBus.on('space-changed', this.spaceChangedHandler)
@@ -294,14 +303,20 @@ export default class ContactsList extends Component<any, ContactsState> {
         // 首次加载
         const spaceId = WKApp.shared.currentSpaceId
         if (spaceId) {
+            const generation = ++this.spaceLoadGeneration
             SpaceService.shared.getMySpaces().then((spaces) => {
+                if (!this.isCurrentSpaceLoad(spaceId, generation)) return
                 const sp = spaces.find((s) => s.space_id === spaceId)
                 if (sp) {
                     this.setState({ currentSpace: sp }, () => {
-                        this.loadAllData(sp.space_id)
+                        this.loadAllData(sp.space_id, generation)
                     })
+                } else {
+                    this.setState({ loading: false })
                 }
-            }).catch(() => { this.setState({ loading: false }) })
+            }).catch(() => {
+                if (this.isCurrentSpaceLoad(spaceId, generation)) this.setState({ loading: false })
+            })
         } else {
             this.setState({ loading: false })
         }
@@ -309,6 +324,7 @@ export default class ContactsList extends Component<any, ContactsState> {
 
     componentWillUnmount() {
         this.mounted = false
+        this.spaceLoadGeneration += 1
         ContactsListManager.shared.setRefreshList = undefined
         this.unsubscribeChannelInfoListener?.()
         this.unsubscribeChannelInfoListener = undefined
@@ -356,7 +372,13 @@ export default class ContactsList extends Component<any, ContactsState> {
         return all
     }
 
-    private async loadAllData(spaceId: string) {
+    private isCurrentSpaceLoad(spaceId: string, generation: number): boolean {
+        return this.mounted &&
+            generation === this.spaceLoadGeneration &&
+            WKApp.shared.currentSpaceId === spaceId
+    }
+
+    private async loadAllData(spaceId: string, generation: number) {
         try {
             const [members, myBots, spaceBots, myGroups] = await Promise.all([
                 this.fetchAllSpaceMembers(spaceId),
@@ -364,6 +386,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                 WKApp.apiClient.get("/robot/space_bots", { param: { space_id: spaceId } }).catch(() => []),
                 WKApp.apiClient.get(`/group/my?space_id=${spaceId}`).catch(() => []),
             ])
+            if (!this.isCurrentSpaceLoad(spaceId, generation)) return
             this.setState({
                 spaceMembers: members || [],
                 myBots: myBots || [],
@@ -378,7 +401,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                 this.prefetchOnlineStatus((myBots || []).map((b: any) => b.uid))
             })
         } catch {
-            this.setState({ loading: false })
+            if (this.isCurrentSpaceLoad(spaceId, generation)) this.setState({ loading: false })
         }
     }
 
@@ -452,7 +475,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         const { spaceMembers, spaceBots } = this.state
         const myUID = WKApp.loginInfo.uid || ""
 
-        let items: Contacts[]
+        let items: SpaceContact[]
 
         if (filterMode === 'bots') {
             // "只看 AI"：使用 space_bots 展示企业内所有 AI
@@ -462,7 +485,7 @@ export default class ContactsList extends Component<any, ContactsState> {
             items = allBots
                 .filter((b: any) => b.uid !== myUID)
                 .map((b: any) => {
-                    const c = new Contacts()
+                    const c = new Contacts() as SpaceContact
                     c.uid = b.uid
                     c.name = b.name || b.uid
                     c.avatar = b.avatar || ""
@@ -475,35 +498,35 @@ export default class ContactsList extends Component<any, ContactsState> {
         } else if (filterMode === 'humans') {
             const filtered = spaceMembers.filter(m => m.uid !== myUID && m.robot !== 1)
             items = filtered.map(m => {
-                const c = new Contacts()
+                const c = new Contacts() as SpaceContact
                 c.uid = m.uid
                 c.name = m.name
                 c.avatar = m.avatar || ""
                 c.follow = 1
                 c.robot = false
-                ;(c as any)._spaceRole = m.role
+                c.spaceRole = m.role
                 return c
             })
         } else {
             // "全部"：spaceMembers + spaceBots 中不在 members 里的 AI
             const memberUids = new Set(spaceMembers.map(m => m.uid))
-            const memberItems: Contacts[] = spaceMembers
+            const memberItems: SpaceContact[] = spaceMembers
                 .filter(m => m.uid !== myUID)
                 .map(m => {
-                    const c = new Contacts()
+                    const c = new Contacts() as SpaceContact
                     c.uid = m.uid
                     c.name = m.name
                     c.avatar = m.avatar || ""
                     c.follow = 1
                     c.robot = m.robot === 1
-                    ;(c as any)._spaceRole = m.role
+                    c.spaceRole = m.role
                     return c
                 })
             // 补充 spaceBots 中未出现在 members 的 AI
-            const extraBots: Contacts[] = (spaceBots || [])
+            const extraBots: SpaceContact[] = (spaceBots || [])
                 .filter((b: any) => b.uid !== myUID && !memberUids.has(b.uid))
                 .map((b: any) => {
-                    const c = new Contacts()
+                    const c = new Contacts() as SpaceContact
                     c.uid = b.uid
                     c.name = b.name || b.uid
                     c.avatar = b.avatar || ""
@@ -878,6 +901,7 @@ export default class ContactsList extends Component<any, ContactsState> {
     renderContactItem(item: Contacts) {
         let name = (item.name || '').replace(/\*\*/g, '')
         if (item.remark && item.remark !== "") name = item.remark
+        const spaceRoleBadge = getSpaceRoleBadge((item as SpaceContact).spaceRole)
         return (
             <div key={item.uid} className={classnames("wk-contacts-section-item",
                 WKApp.shared.openChannel?.channelType === ChannelTypePerson && WKApp.shared.openChannel?.channelID === item.uid ? "wk-contacts-section-item-selected" : undefined
@@ -890,9 +914,9 @@ export default class ContactsList extends Component<any, ContactsState> {
                 </div>
                 <OverflowTooltip text={name}>
                     {item.robot === true && <AiBadge />}
-                    {(item as any)._spaceRole != null && (item as any)._spaceRole > 0 && (item as any)._spaceRole <= 2 && (
-                        <span className={`wk-contacts-role-badge wk-contacts-role-badge--${(item as any)._spaceRole === 1 ? 'owner' : 'admin'}`}>
-                            {t(`contacts.role.${(item as any)._spaceRole}`)}
+                    {spaceRoleBadge && (
+                        <span className={`wk-contacts-role-badge wk-contacts-role-badge--${spaceRoleBadge.className}`}>
+                            {t(spaceRoleBadge.translationKey)}
                         </span>
                     )}
                 </OverflowTooltip>

@@ -8,7 +8,7 @@ import {
     defaultOnboardingConfig,
     shouldShowOnboarding,
 } from "../../Components/Onboarding/content";
-import { Space, SpaceService } from "@octo/base";
+import { isSpaceAdminOrOwner, Space, SpaceService } from "@octo/base";
 import { JoinSpaceModalConnected, NavRail, MeInfo, SpaceCreate } from "@octo/base";
 import { consumeJoinSuccessNotice, showJoinSuccessToast } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
@@ -256,7 +256,7 @@ export class MainPage extends Component<{}, MainPageState> {
         } = this.state;
         // 客户端 UI 可见性控制：仅在用户拥有任一 Space 的 owner/admin 角色时显示入口；
         // 真正的接口鉴权由 admin SPA 后端负责。allSpaces 来自登录后刷新，角色变更需重新加载。
-        const canManageSpace = allSpaces.some(s => s.role === 1 || s.role === 2);
+        const canManageSpace = allSpaces.some(s => isSpaceAdminOrOwner(s.role));
 
         return (
             <Provider create={() => new MainVM()} render={(vm: MainVM) => {

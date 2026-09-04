@@ -79,6 +79,13 @@ export interface McpListItem {
    *  fixtures without the field still type-check; list cards may promote it to
    *  a badge. */
   visibility?: McpVisibility;
+  /** Listing lifecycle and the single status to render, both supplied by the
+   *  server on the owner listing (wire `listing_state` / `display_status`).
+   *  `reviewId` points at the request `displayStatus` reflects. Absent on the
+   *  public catalog, where every row is published by construction. */
+  listingState?: "draft" | "published" | "delisted";
+  displayStatus?: "draft" | "pending_review" | "published" | "rejected" | "delisted";
+  reviewId?: string;
   /** Snapshot of the publisher's nickname at create time (mcp-v1.md §3.2).
    *  Optional so legacy fixtures without the field still type-check. */
   creatorName?: string;
@@ -261,18 +268,43 @@ export interface CreateMcpParams {
   faqs?: McpFaq[];
   /** Cautions / notes rendered under ⚠️ on the detail page. */
   notes?: string[];
+  /**
+   * The DECLARED audience. Stored as-is and lists nothing on its own — 发布 is
+   * what lists it, and this is the value the backend reads to decide whether
+   * that listing needs organization review.
+   *
+   * Optional, and the omission means something different per path:
+   *   - create: `undefined` → `"private"`, so a caller that declares no
+   *     audience still lands a private draft instead of a backend default.
+   *   - update: `undefined` → preserve the stored value. The editor always
+   *     sends it (an upsert is a full replace, so omitting it would leave the
+   *     column to a backend default), and omits it only for a row whose stored
+   *     visibility the two-option form cannot express — a legacy `system` /
+   *     `public` record, which must not be silently downgraded to `private`.
+   */
+  visibility?: McpDeclaredVisibility;
 }
 
 export type McpVisibility = "public" | "space" | "private" | "system";
+
+/** The subset of `McpVisibility` an author may declare on their own connector.
+ *  `system` (全平台) is admin-only — the tenant API rejects the flip — and
+ *  `public` is not part of the model, so neither is offered by the editor. */
+export type McpDeclaredVisibility = Extract<
+  McpVisibility,
+  "private" | "space"
+>;
 
 /**
  * Payload for updating an existing MCP server entry (PATCH /mcps/{id}).
  * Wire-wise the backend accepts partial updates (fields are pointer types,
  * omitted fields stay unchanged — mcp-v1.md §4.5). The UI always sends the
  * full editable form, so the shape is identical to CreateMcpParams and every
- * editable field gets rewritten. Visibility is intentionally absent and
- * therefore preserved by the backend. Kept as a distinct type alias so callers self-document
- * "I'm editing" vs "I'm creating" — and so a future partial-update UI can
- * narrow to `Partial<CreateMcpParams>` without a signature churn.
+ * editable field gets rewritten — `visibility` included, because a full-replace
+ * upsert that omitted it would leave the column to a backend default rather
+ * than to what the author declared. Kept as a distinct type alias so callers
+ * self-document "I'm editing" vs "I'm creating" — and so a future
+ * partial-update UI can narrow to `Partial<CreateMcpParams>` without a
+ * signature churn.
  */
 export type UpdateMcpParams = CreateMcpParams;

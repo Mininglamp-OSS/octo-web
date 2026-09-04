@@ -109,6 +109,12 @@ export const Toast = {
 
 export const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
 
+// A real (if tiny) emitter rather than no-op on/off: `useSpaceRole` reacts to
+// the `space-changed` mitt event, so its test has to be able to drive it.
+// `on`/`off` keep their previous callable shape, so the existing
+// `vi.spyOn(WKApp.mittBus, "on")` overrides in SkillListPage.test.tsx still work.
+const mittHandlers = new Map<string, Set<(payload?: unknown) => void>>();
+
 export const WKApp = {
   apiClient: {
     config: {
@@ -123,6 +129,19 @@ export const WKApp = {
   shared: {
     currentSpaceId: "space-123",
   },
+  /** Remote feature flags. Mirrors `WKRemoteConfig` defaults (everything off /
+   *  fail-closed) so a gate read in a component does not blow up under test. */
+  remoteConfig: {
+    revokeSecond: 120,
+    threadOn: false,
+    messagesSearchOn: false,
+    docsSearchOn: false,
+    disableUserCreateSpace: false,
+    trackingEnabled: false,
+    stickerCustomEnabled: false,
+  },
+  /** `WKApp.currentMenuId` — the active left-rail menu id, undefined by default. */
+  currentMenuId: undefined as string | undefined,
   routeRight: {
     replaceToRoot: () => undefined,
   },
@@ -131,13 +150,51 @@ export const WKApp = {
   },
   route: {
     register: () => undefined,
+    /** RouteManager.get(path, param) → the registered component. */
+    get: (_path: string, _param?: unknown) => undefined,
+    /** RouteManager.syncPath(path, mode) — records the path, no history push. */
+    syncPath: (path: string, _mode: "push" | "replace" = "push") => {
+      WKApp.route.currentPath = path;
+    },
+    currentPath: undefined as string | undefined,
   },
   menus: {
     register: () => undefined,
   },
   mittBus: {
-    on: () => undefined,
-    off: () => undefined,
+    on: (event: string, handler: (payload?: unknown) => void) => {
+      const handlers =
+        mittHandlers.get(event) ?? new Set<(payload?: unknown) => void>();
+      handlers.add(handler);
+      mittHandlers.set(event, handlers);
+    },
+    off: (event: string, handler: (payload?: unknown) => void) => {
+      mittHandlers.get(event)?.delete(handler);
+    },
+    emit: (event: string, payload?: unknown) => {
+      for (const handler of [...(mittHandlers.get(event) ?? [])]) handler(payload);
+    },
+  },
+};
+
+/** Mirrors `packages/dmworkbase/src/Service/SpaceService.tsx`: role uses the
+ * octo-server encoding 0=member, 1=admin, 2=owner. */
+export interface Space {
+  space_id: string;
+  name: string;
+  description: string;
+  logo: string;
+  member_count: number;
+  max_users: number;
+  role: number;
+  created_at: string;
+}
+
+export const SpaceService = {
+  shared: {
+    getMySpaces: (): Promise<Space[]> => Promise.resolve([]),
+    getSpace: (_spaceId: string): Promise<Space | undefined> =>
+      Promise.resolve(undefined),
   },
 };
 

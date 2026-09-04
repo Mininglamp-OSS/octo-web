@@ -1535,11 +1535,48 @@
   align-items: start;
 }
 
-.skill-market-detail__readme {
+.skill-market-detail__readme,
+.skill-market-review-relations {
   padding: var(--wk-sp-3);
   border: 1px solid var(--wk-border-subtle);
   border-radius: var(--wk-r-md);
   background: var(--wk-bg-surface);
+}
+
+.skill-market-review-relations {
+  margin-bottom: var(--wk-sp-4);
+}
+
+.skill-market-review-relations h3,
+.skill-market-review-relations p {
+  margin: 0;
+}
+
+.skill-market-review-relations ul {
+  display: grid;
+  gap: var(--wk-sp-2);
+  padding: 0;
+  margin: var(--wk-sp-3) 0 0;
+  list-style: none;
+}
+
+.skill-market-review-relations li {
+  padding: var(--wk-sp-2);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-elevated);
+}
+
+.skill-market-review-relations li > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wk-sp-2);
+}
+
+.skill-market-review-relations pre {
+  overflow: auto;
+  margin: var(--wk-sp-2) 0 0;
+  font-family: var(--wk-font-mono);
+  font-size: 12px;
 }
 
 .skill-market-detail__frontmatter {
@@ -2693,31 +2730,67 @@
   gap: var(--wk-sp-2);
 }
 
-/* ── "我的发布" list table (shared MineTable) ─────────────────────────────
-   Token-styled data table used by all three mine tabs (技能 / 连接器 / 专家 /
-   专家团). Grid rows share the header's column template. Discovery grids are
-   untouched. */
+/* ── Plugin list table (shared MineTable) ─────────────────────────────────
+   Token-styled data table used by both "我的发布" (all four plugin tabs) and
+   "组织审核". The two pages render the same nine columns so an owner and a
+   reviewer read the same row; the column set is fixed rather than per-tab.
+   Discovery grids are untouched. */
 .wk-mine-table {
   display: flex;
   flex-direction: column;
+  /* Every host of this table (.wk-mcp-mine__all, .skill-market-content) is a
+     column flex container that scrolls with `overflow: auto`, which makes the
+     table a flex ITEM. A flex item's automatic minimum size is its content
+     height — but only while its own `overflow` is `visible`. The
+     `overflow: hidden` below (which clips the rows to the rounded border) drops
+     that floor to zero, so once the list was taller than the viewport the table
+     was shrunk to fit instead of overflowing: the scroll container never got
+     anything to scroll, the rows past the fold were clipped away, and the
+     header — the only child whose min-content height (18px) is far below its
+     declared 44px — absorbed most of the squeeze and rendered less than half
+     height. It showed up as 全部 vs 技能 because 全部 lists all four plugin types
+     and is the tab that overflows first, but every tab did it once long enough.
+     Opting out of shrinking restores the intended behaviour: the table keeps its
+     content height and the host scrolls. */
+  flex-shrink: 0;
   border: 1px solid var(--wk-border-subtle);
   border-radius: var(--wk-r-lg);
   background: var(--wk-bg-surface);
   overflow: hidden;
 }
+
+/* Nine fixed columns: 名称 / 描述 / 分类 / 版本 / 可见性 / 浏览 / 下载 / 状态 /
+   操作. 名称 and 描述 are the only elastic ones and both truncate, so a long
+   value never reflows the row.
+
+   操作 is a FIXED width, not `minmax(…, max-content)`. The header and every row
+   are separate grid containers, so a content-sized track resolves independently
+   in each one: a row holding 通过 + 拒绝 got a wider 操作 than the header holding
+   the word 操作, and every column to its left shifted to compensate. Across tabs
+   it was worse — 全部 has no row actions at all, so its whole grid resolved
+   differently from 技能's.
+
+   160px is measured, not guessed. A labelled action is 8px padding + 13px icon +
+   4px gap + label + 8px padding; an icon-only action is 30px; the cell gap is
+   4px. The widest combination any page actually wires (see below) is 通过 + 拒绝
+   in en-US at 155.3px; zh-CN's widest is 发布 + 编辑 + 删除 at 127px. 160px clears
+   both with the labels still nowrap.
+
+   Note which combinations are NOT possible: `canEdit` is `!listedToOrg &&
+   !pending` while `canUpgrade` is `listedToOrg && !pending` and
+   `canCancelReview` is `pending` (useMyReviewState.ts), so 升级版本 and 取消审核
+   never appear next to 编辑 — that trio would need 153px (zh) / 183px (en). If a
+   future change lets 编辑 sit beside either of them, this track has to grow with
+   it. */
 .wk-mine-table__head,
 .wk-mine-table__row {
   display: grid;
   grid-template-columns:
-    minmax(240px, 2.4fr) minmax(96px, 1fr) 96px 118px 76px 76px 152px;
+    minmax(180px, 2.2fr) minmax(120px, 1.8fr) minmax(72px, 0.9fr) 84px 96px 64px
+    64px 88px 160px;
   align-items: center;
   gap: var(--wk-sp-3);
   padding: 0 var(--wk-sp-5);
-}
-.wk-mine-table--nostats .wk-mine-table__head,
-.wk-mine-table--nostats .wk-mine-table__row {
-  grid-template-columns:
-    minmax(240px, 2.6fr) minmax(96px, 1fr) 96px 118px 152px;
 }
 .wk-mine-table__head {
   height: 44px;
@@ -2745,14 +2818,21 @@
 .wk-mine-table__col {
   min-width: 0;
 }
-.wk-mine-table__col--num,
-.wk-mine-table__col--updated {
+.wk-mine-table__col--num {
   font-variant-numeric: tabular-nums;
 }
-.wk-mine-table__col--category {
+.wk-mine-table__col--category,
+.wk-mine-table__col--desc {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* 描述 is its own column now rather than a second line under the name. It is
+   elastic, so it has to clamp to one line or a wordy plugin would set the row
+   height for every other row. */
+.wk-mine-table__col--desc {
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
 }
 /* name cell — an activatable open-button wrapping avatar (+ type marker) +
    name/description stack. The button is the flex container so the whole name
@@ -2844,13 +2924,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.wk-mine-table__desc {
-  color: var(--wk-text-tertiary);
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .wk-mine-table__version {
   display: inline-flex;
   align-items: center;
@@ -2882,16 +2955,36 @@
   background: var(--wk-bg-elevated);
   color: var(--wk-text-secondary);
 }
+.wk-mine-table__col--status {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+/* Left-aligned, like the other eight columns. The track is a fixed width, so
+   with flex-end a row carrying one button (组织发布管理 已处理 holds only 下架)
+   parked it at the far right and left the whole rest of the track blank —
+   reading as a gap between 状态 and 操作 rather than as a column. Starting at the
+   track edge also keeps the buttons inside the visible area when the row is
+   wider than its container: the leftover then falls off the right edge instead
+   of the buttons doing so. The header cell shares this class, so 操作 sits
+   directly above its buttons. */
 .wk-mine-table__col--actions {
   display: flex;
   align-items: center;
   gap: var(--wk-sp-1);
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 .wk-mine-table__action {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  /* CJK labels have no spaces, so without nowrap they break at ANY character:
+     squeezed by flex, 发布新版本 collapses to one glyph per line. flex-shrink:0
+     keeps the row from being squeezed in the first place — the actions track is
+     sized to hold the widest real combination (see the grid template) rather
+     than the buttons yielding. */
+  white-space: nowrap;
+  flex: 0 0 auto;
   height: 30px;
   padding: 0 var(--wk-sp-2);
   border: none;
@@ -2908,6 +3001,685 @@
 .wk-mine-table__action--danger {
   color: var(--wk-color-danger);
 }
+/* Icon-only actions. 编辑 / 删除 drop their labels so the row fits alongside the
+   review action, which keeps its label because it is the rare, consequential one
+   and an icon alone would not carry it. The label survives as aria-label (for
+   screen readers) plus title (hover), so nothing is lost but width. */
+.wk-mine-table__action--icon {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+}
 .wk-mine-table__action--danger:hover {
   background: var(--wk-color-danger-bg);
+}
+
+/* ── MineTable name cell + review affordances ──────────────────────── */
+
+.wk-mine-table__namerow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.wk-mine-table__namerow .wk-mine-table__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Type chip beside the name (技能 / 连接器 / 专家 / 专家团). The avatar marker
+   already encodes the type as a colour, but 组织审核 mixes all four types in one
+   queue, so the row needs the word too. Deliberately quiet: it must never
+   out-weigh the name it sits next to. */
+.wk-mine-table__typetag {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-tertiary);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Secondary line under the name — 组织审核 puts 申请人 · 提交时间 here. Muted and
+   single-line so it cannot grow the row. */
+.wk-mine-table__meta {
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-mine-table__review-reason {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--wk-color-error, #ef4444);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* ── Plugin display-status pill ─────────────────────────────────────────
+   Renders `display_status` from the backend (see utils/labels.ts
+   `displayStatusTone`). Built from the same semantic tokens as
+   .wk-mine-table__vis, so `body[theme-mode="dark"]` re-tints it for free — no
+   per-theme overrides here. */
+.wk-plugin-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  max-width: 100%;
+  height: 22px;
+  padding: 0 var(--wk-sp-2);
+  border-radius: var(--wk-r-full);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 草稿 — never submitted; the neutral, no-attention state. */
+.wk-plugin-status--draft {
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-secondary);
+}
+
+/* 审核中 — the one state a reviewer is expected to act on. */
+.wk-plugin-status--pending {
+  background: var(--wk-color-warning-bg);
+  color: var(--wk-color-warning);
+}
+
+/* 已上架 */
+.wk-plugin-status--published {
+  background: var(--wk-color-success-bg);
+  color: var(--wk-color-success);
+}
+
+/* 已拒绝 */
+.wk-plugin-status--rejected {
+  background: var(--wk-color-error-bg);
+  color: var(--wk-color-error);
+}
+
+/* 已下架 — was live, is not any more. Muted rather than red: it is an end
+   state, not a failure. The dotted underline separates it from 草稿 without
+   spending another hue. */
+.wk-plugin-status--delisted {
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-tertiary);
+  text-decoration: underline dotted currentcolor;
+  text-underline-offset: 2px;
+}
+
+.wk-mine-table__action--primary {
+  border-color: var(--wk-color-accent);
+  color: var(--wk-color-accent);
+}
+
+.wk-mine-table__action--primary:hover {
+  background: color-mix(in srgb, var(--wk-color-accent) 8%, transparent);
+}
+
+/* ── MineTable narrow-width behaviour ───────────────────────────────────
+   Nine columns do not fit a narrow content area, and horizontally scrolling a
+   table whose first cell is the only identifying one is worse than dropping
+   cells. So columns retire in reverse order of how much they carry: the two
+   counters first (pure telemetry), then 分类 and 描述, then 版本. 名称, 状态 and
+   操作 survive every breakpoint — you must always be able to tell which plugin
+   a row is, what state it is in, and act on it.
+
+   Each rule re-states grid-template-columns to match the cells still shown;
+   the header and body cells are hidden by the same selectors, so the two stay
+   in step. 操作 keeps the same fixed 160px at every breakpoint — a content-sized
+   track here resolves independently in the header and in each row, which is the
+   misalignment the base rule above documents. */
+@media (max-width: 1280px) {
+  .wk-mine-table__head,
+  .wk-mine-table__row {
+    grid-template-columns:
+      minmax(180px, 2.2fr) minmax(120px, 1.8fr) minmax(72px, 0.9fr) 84px 96px
+      88px 160px;
+  }
+  .wk-mine-table__col--num {
+    display: none;
+  }
+}
+
+@media (max-width: 1080px) {
+  .wk-mine-table__head,
+  .wk-mine-table__row {
+    grid-template-columns:
+      minmax(160px, 2.2fr) minmax(120px, 1.8fr) 84px 96px 88px
+      160px;
+  }
+  .wk-mine-table__col--category {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .wk-mine-table__head,
+  .wk-mine-table__row {
+    grid-template-columns: minmax(140px, 1fr) 84px 96px 88px 160px;
+  }
+  .wk-mine-table__col--desc {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .wk-mine-table__head,
+  .wk-mine-table__row {
+    grid-template-columns: minmax(120px, 1fr) 88px 160px;
+    gap: var(--wk-sp-2);
+    padding-left: var(--wk-sp-3);
+    padding-right: var(--wk-sp-3);
+  }
+  .wk-mine-table__col--version,
+  .wk-mine-table__col--visibility {
+    display: none;
+  }
+  /* The labelled review actions would blow the row apart at this width, so the
+     icon buttons keep their box and text buttons are allowed to shrink. */
+  .wk-mine-table__action {
+    max-width: 96px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .wk-mine-table__action--icon {
+    max-width: none;
+  }
+}
+
+/* ─── Scope choice in NewSkillModal ────────────────────────────────── */
+
+.skill-market-form__scope-section {
+  margin-top: var(--wk-sp-3);
+}
+
+.skill-market-scope-options {
+  display: grid;
+  gap: var(--wk-sp-2);
+  margin-top: var(--wk-sp-2);
+}
+
+.skill-market-scope-options label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-3);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  cursor: pointer;
+  transition: border-color var(--wk-dur-fast) var(--wk-ease), background var(--wk-dur-fast) var(--wk-ease);
+}
+
+.skill-market-scope-options label:hover {
+  border-color: var(--wk-border-default);
+  background: var(--wk-bg-item-hover);
+}
+
+.skill-market-scope-options label.is-selected {
+  border-color: var(--wk-color-accent);
+  background: color-mix(in srgb, var(--wk-color-accent) 5%, transparent);
+}
+
+.skill-market-scope-options input[type="radio"] {
+  margin-top: 2px;
+  accent-color: var(--wk-color-accent);
+}
+
+.skill-market-scope-options label > div {
+  display: grid;
+  gap: 2px;
+}
+
+.skill-market-scope-options label > div strong {
+  color: var(--wk-text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.skill-market-scope-options label > div span {
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+}
+
+/* Review mode info banner in NewSkillModal */
+.skill-market-review-info {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-elevated);
+}
+
+.skill-market-review-info > span:first-child {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--wk-r-sm);
+  overflow: hidden;
+}
+
+.skill-market-review-info > span:first-child img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.skill-market-review-info > span:first-child > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--wk-r-sm);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.skill-market-review-info > div {
+  display: grid;
+  gap: 2px;
+}
+
+.skill-market-review-info > div strong {
+  color: var(--wk-text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.skill-market-review-info > div span {
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+}
+
+/* What actually happens on submit: for an upgrade the listed version stays live
+   until approval, so the notice must not read like an immediate publish. */
+.skill-market-review-notice {
+  margin: 0;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border-left: 2px solid var(--wk-color-primary);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* ─── Review queue (org tab) ──────────────────────────────────────── */
+
+.skill-market-review-queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-3);
+}
+
+.skill-market-review-policy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-6);
+  margin-bottom: var(--wk-sp-5);
+  padding: var(--wk-sp-4) var(--wk-sp-5);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+}
+
+.skill-market-review-policy p {
+  margin: var(--wk-sp-1) 0 0;
+  color: var(--wk-text-secondary);
+}
+
+.skill-market-review-policy .skill-market-review-policy__error {
+  color: var(--wk-color-error);
+}
+
+.skill-market-review-policy__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.skill-market-review-policy__toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--wk-brand-primary);
+}
+
+.skill-market-review-policy-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wk-sp-3);
+  padding: 2px 0 4px;
+}
+
+.skill-market-review-policy-confirm__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--wk-color-error) 10%, transparent);
+  color: var(--wk-color-error);
+}
+
+.skill-market-review-policy-confirm strong {
+  display: block;
+  color: var(--wk-text-strong);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.skill-market-review-policy-confirm p {
+  margin: 6px 0 0;
+  color: var(--wk-text-secondary);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.skill-market-review-policy-confirm .skill-market-review-policy-confirm__error {
+  color: var(--wk-color-error);
+}
+
+.skill-market-review-queue__error {
+  margin-bottom: var(--wk-sp-3);
+}
+
+.skill-market-review-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.skill-market-review-tabs button {
+  position: relative;
+  padding: var(--wk-sp-2) var(--wk-sp-4);
+  border: 0;
+  background: transparent;
+  color: var(--wk-text-secondary);
+  font: 500 14px/1.4 var(--wk-font-sans);
+  cursor: pointer;
+  transition: color var(--wk-dur-fast) var(--wk-ease);
+}
+
+.skill-market-review-tabs button:hover {
+  color: var(--wk-text-primary);
+}
+
+/* Selected state uses --wk-brand-primary (the "选中态" token: brand black in
+   light, accent in dark), the same token 我的发布's 全部/技能/连接器/专家/专家团 strip
+   and the expert strip already use. It used to use --wk-color-accent, which is
+   the AI/link purple — reserved for AI-flavoured elements — so this strip alone
+   rendered its active tab purple while every strip beside it rendered black.
+   The semibold bump comes with it: every other underline strip in the two market
+   packages weights its active tab 600 and this one was the lone 500. Inactive,
+   hover and focus already matched (--wk-text-secondary / --wk-text-primary / the
+   UA focus ring) and are left alone. */
+.skill-market-review-tabs button.is-active {
+  color: var(--wk-brand-primary);
+  font-weight: var(--wk-font-semibold);
+}
+
+.skill-market-review-tabs button.is-active::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: var(--wk-sp-3);
+  right: var(--wk-sp-3);
+  height: 2px;
+  background: var(--wk-brand-primary);
+  border-radius: 1px;
+}
+
+.skill-market-review-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  border-radius: 9px;
+  background: var(--wk-color-error, #ef4444);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.skill-market-review-list {
+  display: grid;
+  gap: var(--wk-sp-2);
+}
+
+.skill-market-review-list--loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wk-sp-2);
+  padding: 40px 0;
+  color: var(--wk-text-tertiary);
+  font-size: 13px;
+}
+
+/* ─── Reject reason modal ──────────────────────────────────────────── */
+
+.skill-market-reject-form {
+  display: flex;
+  gap: var(--wk-sp-3);
+}
+
+.skill-market-reject-form > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--wk-color-error, #ef4444);
+}
+
+.skill-market-reject-form > div {
+  flex: 1;
+  display: grid;
+  gap: var(--wk-sp-2);
+}
+
+.skill-market-reject-form strong {
+  color: var(--wk-text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.skill-market-reject-form p {
+  margin: 0;
+  color: var(--wk-text-tertiary);
+  font-size: 13px;
+}
+
+.skill-market-reject-form textarea {
+  width: 100%;
+  min-height: 84px;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  font: 14px/1.45 var(--wk-font-sans);
+  resize: vertical;
+}
+
+.skill-market-reject-form textarea:focus {
+  outline: none;
+  border-color: var(--wk-color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--wk-color-accent) 20%, transparent);
+}
+
+.skill-market-reject-form__error {
+  color: var(--wk-color-error, #ef4444);
+  font-size: 12px;
+}
+
+/* ─── Review detail badges ─────────────────────────────────────────── */
+
+.skill-market-review-badge--upgrade {
+  background: color-mix(in srgb, var(--wk-color-info) 12%, transparent);
+  color: var(--wk-color-info);
+}
+
+.skill-market-review-badge--first {
+  background: color-mix(in srgb, var(--wk-color-accent) 12%, transparent);
+  color: var(--wk-color-accent);
+}
+
+.skill-market-review-upgrade-callout {
+  padding: var(--wk-sp-3);
+  margin-bottom: var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  background: color-mix(in srgb, var(--wk-color-info) 8%, transparent);
+  color: var(--wk-color-info);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.skill-market-review-rejected-callout {
+  display: grid;
+  gap: 4px;
+  padding: var(--wk-sp-3);
+  margin-bottom: var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  background: color-mix(in srgb, var(--wk-color-error, #ef4444) 8%, transparent);
+}
+
+.skill-market-review-rejected-callout strong {
+  color: var(--wk-color-error, #ef4444);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.skill-market-review-rejected-callout span {
+  color: var(--wk-text-secondary);
+  font-size: 13px;
+}
+
+.skill-market-review-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  color: var(--wk-text-tertiary);
+  cursor: pointer;
+  transition: background var(--wk-dur-fast) var(--wk-ease), color var(--wk-dur-fast) var(--wk-ease);
+}
+
+.skill-market-review-close:hover {
+  background: var(--wk-bg-item-hover);
+  color: var(--wk-text-primary);
+}
+
+.skill-market-spin {
+  animation: skill-market-spin 900ms linear infinite;
+}
+
+
+/* Inline confirmation that replaces a dialog's footer rather than stacking a
+   second dialog over it. It occupies the footer slot, so it inherits the modal's
+   footer padding and border; only the layout and the warning tone are set here. */
+.skill-market-inline-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-4);
+  width: 100%;
+  min-width: 0;
+}
+.skill-market-inline-confirm__message {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  min-width: 0;
+  color: var(--wk-color-warning);
+  font-size: 13px;
+  font-weight: var(--wk-font-medium);
+}
+.skill-market-inline-confirm__message > svg {
+  flex: 0 0 auto;
+}
+.skill-market-inline-confirm__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  flex: 0 0 auto;
+}
+/* Narrow dialogs stack the message above the buttons rather than letting the
+   message truncate — it is the reason the buttons are there. */
+@media (max-width: 640px) {
+  .skill-market-inline-confirm {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .skill-market-inline-confirm__actions {
+    align-self: flex-end;
+  }
+}
+
+/* Used for the consequential notes in a write form — chiefly "changing the
+   audience returns this plugin to a draft", which is the one thing an author
+   must read BEFORE saving. It had no rule at all, so it rendered as body text
+   indistinguishable from a field label in both the skill and expert forms. */
+.skill-market-form__hint {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wk-sp-2);
+  margin: var(--wk-sp-2) 0 0;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-color-warning-bg);
+  color: var(--wk-color-warning);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* Field-level validation message, shown under the input it belongs to rather
+   than in the form-wide error banner — the banner is for failures that arrive
+   from the server and has no way to point at a field. */
+.skill-market-field-error {
+  margin: var(--wk-sp-1) 0 0;
+  color: var(--wk-color-error);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Same slot as .skill-market-field-error but advisory, not a rejection: the
+   field is accepted, one of the actions below it is not. Muted so a form the
+   user CAN submit does not read as broken. */
+.skill-market-field-hint {
+  margin: var(--wk-sp-1) 0 0;
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
 }

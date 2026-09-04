@@ -31,7 +31,7 @@ export async function registerSP1SpaceGateCreate(page: Page): Promise<void> {
     const space = {
       space_id: "sp1-created-space", name: "SP1 新组织", description: "", logo: "",
       create_at: "2026-08-25T00:00:00Z", update_at: "2026-08-25T00:00:00Z",
-      space_no: "sp1-created-space", owner: "e2e-user-1", status: 1, role: 1,
+      space_no: "sp1-created-space", owner: "e2e-user-1", status: 1, role: 2,
     };
     msw.worker.use(
       msw.http.get("*/space/my", () =>

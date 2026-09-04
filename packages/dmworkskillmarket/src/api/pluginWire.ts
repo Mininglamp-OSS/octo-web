@@ -10,6 +10,47 @@ export const SCENE_CODE = "default";
 export type PluginTypeWire = "connector" | "expert" | "expert_team" | "skill";
 export type PluginVisibilityWire = "public" | "space" | "private" | "system";
 
+/** Whether the row is listed. Orthogonal to `visibility`, which only declares
+ *  WHO it is listed to once it is. Note the unrelated `status` int elsewhere on
+ *  the wire — that is the soft-active flag, not this. */
+export type PluginListingStateWire = "draft" | "published" | "delisted";
+
+/** The single status a client renders. Folded server-side out of the listing
+ *  state AND the review entity, which is why it has values the listing state
+ *  does not (`pending_review`, `rejected`) — those live on the review request,
+ *  not on the plugin row. */
+export type PluginDisplayStatusWire =
+  | "draft"
+  | "pending_review"
+  | "published"
+  | "rejected"
+  | "delisted";
+
+/** `POST /plugins/publish` and `POST /plugins/delist` response body.
+ *
+ *  `review_id` is present only when the call opened a review request, i.e. on a
+ *  `space`-visibility publish. A `private` publish lists immediately and returns
+ *  no review id at all — the caller must branch on its presence rather than on
+ *  a locally-guessed visibility, because the backend owns that decision. */
+export interface PluginListingResultWire {
+  plugin_id: string;
+  listing_state: PluginListingStateWire;
+  display_status: PluginDisplayStatusWire;
+  review_id?: string;
+}
+
+/** `error.details` of a failed publish/delist. The server distinguishes the
+ *  refusal reasons here rather than only in `error.message`, so the UI can pick
+ *  its own copy (and its own recovery affordance) per case instead of echoing a
+ *  server string. */
+export interface PluginListingErrorDetailsWire {
+  /** 409: `already_published` / `review_pending` (publish), `not_published`
+   *  (delist). */
+  conflict_reason?: string;
+  /** 403 on delist: the role the caller is missing, `space_admin` today. */
+  required_role?: string;
+}
+
 export interface PluginManifestExampleWire {
   title: string;
   input: string;
@@ -67,6 +108,17 @@ export interface PluginListItemWire {
   download_count: number;
   manifest_json: PluginManifestWire;
   current_version?: string;
+  /** Listing lifecycle. Both fields are owner-scoped: the server only computes
+   *  and emits them for `GET /plugins?mode=mine` and `GET /plugins/detail`, so
+   *  they are absent on the public marketplace grid — optional here rather than
+   *  defaulted, because "not returned" and "draft" are different facts and a
+   *  default would paint every catalog card as a draft. */
+  listing_state?: PluginListingStateWire;
+  display_status?: PluginDisplayStatusWire;
+  /** Set only while a review request is relevant to the row (pending, or the
+   *  rejection being reported). Its presence is what makes 撤回/查看理由
+   *  actionable without a second round-trip to the review list. */
+  review_id?: string;
   created_at: string;
   updated_at: string;
 }
@@ -96,6 +148,58 @@ export interface PluginCategoryWire {
   plugin_types?: string[];
   sort_order: number;
   plugin_count: number;
+}
+
+/** `POST/GET /plugins/review_requests*` response row. Field names mirror
+ *  `internal_api_handler_plugin.reviewRequestResponse` in octo-marketplace's
+ *  `docs/openapi/swagger.yaml` exactly — do not add speculative aliases, an
+ *  unknown key here silently maps to `undefined`.
+ *
+ *  Two backend defects are visible through this shape today:
+ *  - `readme_content` is only ever populated by the detail endpoint, and even
+ *    there the server currently returns "" — render the preview conditionally.
+ *  - `plugin_icon` is the raw storage key, NOT a resolved display URL (unlike
+ *    `PluginListItemWire.icon_url`), so binding it to `<img src>` 404s. Consumers
+ *    must fall back to the letter-avatar. */
+export interface PluginReviewRelationWire {
+  relation_id?: string;
+  target_plugin_id: string;
+  target_plugin_type?: PluginTypeWire;
+  relation_type: string;
+  sort_order: number;
+  data?: Record<string, unknown>;
+}
+
+export interface PluginReviewRequestWire {
+  review_id: string;
+  plugin_id: string;
+  plugin_name?: string;
+  plugin_type?: PluginTypeWire;
+  plugin_icon?: string;
+  /** The plugin's CURRENT listing state, read live off the plugin row rather
+   *  than taken from the frozen snapshot — an approved request whose plugin was
+   *  later delisted reports `delisted`. `omitempty`, so absent is normal. */
+  plugin_listing_state?: PluginListingStateWire;
+  space_id: string;
+  target_scope: string;
+  status: string;
+  kind: string;
+  version: string;
+  current_version?: string;
+  changelog?: string;
+  readme_content?: string;
+  manifest_hash?: string;
+  plugin_hash?: string;
+  /** Detail-only frozen graph that approval will apply. */
+  frozen_relations?: PluginReviewRelationWire[];
+  applicant_id: string;
+  applicant_name?: string;
+  reviewer_id?: string;
+  reviewer_name?: string;
+  reason?: string;
+  decision_source?: string;
+  submitted_at: string;
+  reviewed_at?: string;
 }
 
 /** raw_content of one inline package attachment, or undefined. */

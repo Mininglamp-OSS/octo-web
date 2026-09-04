@@ -27,7 +27,7 @@ export async function registerSP2SpaceInviteLogin(page: Page): Promise<void> {
     }
     if (win.__sp2MswInstalled) return true;
 
-    const space = { space_id: "sp2-invite-space", name: "SP2 邀请空间", space_no: "sp2-invite-space", description: "", logo: "", owner: "e2e-user-1", status: 1, role: 1 };
+    const space = { space_id: "sp2-invite-space", name: "SP2 邀请空间", space_no: "sp2-invite-space", description: "", logo: "", owner: "e2e-user-1", status: 1, role: 2 };
     msw.worker.use(
       msw.http.post("*/user/login", async ({ request }: { request: Request }) => {
         const body = await request.json().catch(() => null) as { username?: string; password?: string } | null;

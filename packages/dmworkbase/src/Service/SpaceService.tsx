@@ -230,6 +230,18 @@ export function shouldSkipMessageForSpace(message: Message): boolean {
     return false
 }
 
+export const SPACE_ROLE_MEMBER = 0
+export const SPACE_ROLE_ADMIN = 1
+export const SPACE_ROLE_OWNER = 2
+
+export function isSpaceAdminOrOwner(role: number): boolean {
+    return role === SPACE_ROLE_ADMIN || role === SPACE_ROLE_OWNER
+}
+
+export function isSpaceOwner(role: number): boolean {
+    return role === SPACE_ROLE_OWNER
+}
+
 export interface Space {
     space_id: string
     name: string
@@ -237,7 +249,7 @@ export interface Space {
     logo: string
     member_count: number
     max_users: number // 0 means unlimited
-    role: number // 1: owner, 2: admin, 3: member
+    role: number // 0: member, 1: admin, 2: owner
     created_at: string
 }
 
@@ -245,7 +257,7 @@ export interface SpaceMember {
     uid: string
     name: string
     avatar: string
-    role: number // 1: owner, 2: admin, 3: member
+    role: number // 0: member, 1: admin, 2: owner
     robot: number // 0: user, 1: bot
     created_at: string
 }

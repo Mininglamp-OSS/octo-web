@@ -16,6 +16,14 @@ import {
   initReupload,
   triggerParse,
   pollParse,
+  createReviewRequest,
+  listReviewRequests,
+  getReviewRequest,
+  approveReview,
+  rejectReview,
+  cancelReview,
+  getReviewPolicy,
+  updateReviewPolicy,
 } from "./skillApiReal";
 
 // Mock global fetch
@@ -69,6 +77,24 @@ function pluginSkillWire(overrides: Record<string, unknown> = {}) {
 }
 
 describe("skillApiReal", () => {
+  it("reads and updates the authenticated Space review policy", async () => {
+    mockFetch
+      .mockReturnValueOnce(jsonResponse({ is_auto_approve_enabled: true }))
+      .mockReturnValueOnce(jsonResponse({ is_auto_approve_enabled: false, updated_at: "2026-09-03T00:00:00Z" }));
+
+    await expect(getReviewPolicy()).resolves.toEqual({ isAutoApproveEnabled: true });
+    await expect(updateReviewPolicy(false)).resolves.toEqual({
+      isAutoApproveEnabled: false,
+      updatedAt: "2026-09-03T00:00:00Z",
+    });
+
+    expect(mockFetch.mock.calls[0][0]).toBe("/market/api/v1/plugin_review_policies");
+    expect(mockFetch.mock.calls[1][1]).toEqual(expect.objectContaining({
+      method: "PATCH",
+      body: JSON.stringify({ is_auto_approve_enabled: false }),
+    }));
+  });
+
   it("getCategories maps the unified category wire to camelCase", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse([
@@ -1124,6 +1150,438 @@ describe("skillApiReal", () => {
 
       await expect(getSkillMd("skill-123")).rejects.toMatchObject({
         name: "AbortError",
+      });
+    });
+  });
+
+  describe("review requests", () => {
+    function reviewWire(overrides: Record<string, unknown> = {}) {
+      return {
+        review_id: "rev-1",
+        plugin_id: "ci-failure-map",
+        plugin_name: "CI 失败分析",
+        plugin_type: "skill",
+        plugin_icon: "plugins/icons/ci.png",
+        space_id: "dev-space",
+        target_scope: "space",
+        status: "pending",
+        kind: "upgrade",
+        version: "1.1.0",
+        current_version: "1.0.2",
+        changelog: "修复解析",
+        manifest_hash: "sha256:aaa",
+        plugin_hash: "sha256:bbb",
+        applicant_id: "u-1",
+        applicant_name: "Jian",
+        decision_source: "web",
+        submitted_at: "2026-08-31T10:00:00Z",
+        ...overrides,
+      };
+    }
+
+    function errorResponse(status: number, code: string, message: string) {
+      return Promise.resolve({
+        ok: false,
+        status,
+        statusText: "Error",
+        json: () => Promise.resolve({ error: { code, message, details: {} } }),
+      });
+    }
+
+    it("createReviewRequest posts the submission and maps the wire row", async () => {
+      mockFetch.mockReturnValueOnce(jsonResponse(reviewWire()));
+
+      const created = await createReviewRequest({
+        pluginId: "ci-failure-map",
+        version: "1.1.0",
+        changelog: "修复解析",
+      });
+
+      expect(created).toEqual({
+        id: "rev-1",
+        pluginId: "ci-failure-map",
+        pluginName: "CI 失败分析",
+        pluginType: "skill",
+        // Raw storage key, not a display URL — see the mapper's comment.
+        pluginIconUrl: "plugins/icons/ci.png",
+        spaceId: "dev-space",
+        targetScope: "space",
+        status: "pending",
+        kind: "upgrade",
+        version: "1.1.0",
+        currentVersion: "1.0.2",
+        changelog: "修复解析",
+        readmeContent: undefined,
+        manifestHash: "sha256:aaa",
+        pluginHash: "sha256:bbb",
+        applicantId: "u-1",
+        applicantName: "Jian",
+        reviewerId: undefined,
+        reviewerName: undefined,
+        reason: undefined,
+        decisionSource: "web",
+        submittedAt: "2026-08-31T10:00:00Z",
+        reviewedAt: undefined,
+      });
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/market/api/v1/plugins/review_requests",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            plugin_id: "ci-failure-map",
+            version: "1.1.0",
+            changelog: "修复解析",
+          }),
+        })
+      );
+    });
+
+    it("createReviewRequest carries the submitted content for an upgrade", async () => {
+      mockFetch.mockReturnValueOnce(jsonResponse(reviewWire()));
+
+      await createReviewRequest({
+        pluginId: "ci-failure-map",
+        version: "1.1.0",
+        changelog: "修复解析",
+        parseTaskId: "task-9",
+        manifestJson: { name: "ci-failure-map", description: "d" },
+        pluginJson: {
+          attachments: [
+            { path: "SKILL.md", content_type: "raw", raw_content: "# new" },
+          ],
+        },
+        relations: [
+          { targetPluginId: "child-1", relationType: "embeds", sortOrder: 2 },
+          { targetPluginId: "child-2", relationType: "embeds" },
+        ],
+      });
+
+      const body = JSON.parse(
+        (mockFetch.mock.calls[0][1] as { body: string }).body
+      );
+      expect(body).toEqual({
+        plugin_id: "ci-failure-map",
+        version: "1.1.0",
+        changelog: "修复解析",
+        parse_task_id: "task-9",
+        manifest_json: { name: "ci-failure-map", description: "d" },
+        plugin_json: {
+          attachments: [
+            { path: "SKILL.md", content_type: "raw", raw_content: "# new" },
+          ],
+        },
+        relations: [
+          { target_plugin_id: "child-1", relation_type: "embeds", sort_order: 2 },
+          { target_plugin_id: "child-2", relation_type: "embeds" },
+        ],
+      });
+    });
+
+    it("createReviewRequest echoes relation_id and data so an untouched 专家团 edge is frozen, not re-inserted", async () => {
+      mockFetch.mockReturnValueOnce(jsonResponse(reviewWire()));
+
+      await createReviewRequest({
+        pluginId: "team-1",
+        version: "1.1.0",
+        changelog: "更新成员",
+        relations: [
+          {
+            targetPluginId: "member-1",
+            relationType: "expert_team_expert",
+            sortOrder: 0,
+            relationId: "rel-1",
+            data: { member_key: "lead", is_leader: true },
+          },
+          // A brand-new edge with no id/data: those keys stay off the wire.
+          { targetPluginId: "member-2", relationType: "expert_team_expert", sortOrder: 1 },
+        ],
+      });
+
+      const body = JSON.parse(
+        (mockFetch.mock.calls[0][1] as { body: string }).body
+      );
+      expect(body.relations).toEqual([
+        {
+          target_plugin_id: "member-1",
+          relation_type: "expert_team_expert",
+          sort_order: 0,
+          relation_id: "rel-1",
+          data: { member_key: "lead", is_leader: true },
+        },
+        {
+          target_plugin_id: "member-2",
+          relation_type: "expert_team_expert",
+          sort_order: 1,
+        },
+      ]);
+    });
+
+    it("createReviewRequest omits absent content fields instead of sending null", async () => {
+      mockFetch.mockReturnValueOnce(jsonResponse(reviewWire()));
+
+      await createReviewRequest({
+        pluginId: "ci-failure-map",
+        version: "1.1.0",
+        changelog: "首次上架",
+      });
+
+      const body = JSON.parse(
+        (mockFetch.mock.calls[0][1] as { body: string }).body
+      );
+      // A `null` manifest would mean "freeze an empty document", which is not
+      // the same request as "no content supplied" (a private draft submit).
+      expect(Object.keys(body)).toEqual(["plugin_id", "version", "changelog"]);
+      expect("manifest_json" in body).toBe(false);
+      expect("plugin_json" in body).toBe(false);
+      expect("relations" in body).toBe(false);
+      expect("parse_task_id" in body).toBe(false);
+    });
+
+    it("createReviewRequest surfaces CONFLICT when a request is already pending", async () => {
+      mockFetch.mockReturnValueOnce(
+        errorResponse(409, "CONFLICT", "a request is already pending")
+      );
+
+      await expect(
+        createReviewRequest({
+          pluginId: "ci-failure-map",
+          version: "1.1.0",
+          changelog: "x",
+        })
+      ).rejects.toMatchObject({
+        name: "SkillMarketApiError",
+        code: "CONFLICT",
+        status: 409,
+      });
+    });
+
+    it("createReviewRequest surfaces NOT_FOUND when the caller does not own the plugin", async () => {
+      mockFetch.mockReturnValueOnce(errorResponse(404, "NOT_FOUND", "not found"));
+
+      await expect(
+        createReviewRequest({
+          pluginId: "someone-elses",
+          version: "1.0.0",
+          changelog: "x",
+        })
+      ).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    });
+
+    it("listReviewRequests sends mode/status/page and synthesizes the next cursor", async () => {
+      mockFetch.mockReturnValueOnce(
+        jsonResponse([reviewWire()], 200, { total: 45, page: 1, page_size: 20 })
+      );
+
+      const page = await listReviewRequests("space", { status: "pending", pageSize: 20 });
+
+      expect(page.total).toBe(45);
+      expect(page.nextCursor).toBe("2");
+      expect(page.items).toHaveLength(1);
+      expect(page.items[0].id).toBe("rev-1");
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/market/api/v1/plugins/review_requests?mode=space&status=pending&page=1&page_size=20",
+        expect.anything()
+      );
+    });
+
+    it("listReviewRequests always sends the required mode and defaults page to 1", async () => {
+      mockFetch.mockReturnValueOnce(
+        jsonResponse([], 200, { total: 0, page: 1, page_size: 20 })
+      );
+
+      const page = await listReviewRequests("mine");
+
+      expect(page).toEqual({ items: [], nextCursor: null, total: 0 });
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/market/api/v1/plugins/review_requests?mode=mine&page=1",
+        expect.anything()
+      );
+    });
+
+    it("listReviewRequests threads no scene_code or plugin_type filter", async () => {
+      mockFetch.mockReturnValueOnce(
+        jsonResponse([], 200, { total: 0, page: 1, page_size: 20 })
+      );
+
+      await listReviewRequests("mine", { page: 3, pageSize: 10 });
+
+      const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).not.toContain("scene_code");
+      expect(url).not.toContain("plugin_type");
+      expect(url).toContain("page=3");
+      expect(url).toContain("page_size=10");
+    });
+
+    it("listReviewRequests returns a null cursor on the last page", async () => {
+      mockFetch.mockReturnValueOnce(
+        jsonResponse([reviewWire()], 200, { total: 21, page: 2, page_size: 20 })
+      );
+
+      const page = await listReviewRequests("space", { page: 2, pageSize: 20 });
+
+      expect(page.nextCursor).toBeNull();
+    });
+
+    it("listReviewRequests maps a null data envelope to an empty page", async () => {
+      mockFetch.mockReturnValueOnce(
+        jsonResponse(null, 200, { total: 0, page: 1, page_size: 20 })
+      );
+
+      await expect(listReviewRequests("mine")).resolves.toEqual({
+        items: [],
+        nextCursor: null,
+        total: 0,
+      });
+    });
+
+    it("listReviewRequests maps FORBIDDEN for mode=space without the reviewer role", async () => {
+      mockFetch.mockReturnValueOnce(
+        errorResponse(403, "FORBIDDEN", "Space reviewer role required")
+      );
+
+      await expect(listReviewRequests("space")).rejects.toMatchObject({
+        name: "SkillMarketApiError",
+        code: "FORBIDDEN",
+        status: 403,
+      });
+    });
+
+    it("listReviewRequests forwards the abort signal", async () => {
+      const controller = new AbortController();
+      mockFetch.mockReturnValueOnce(
+        jsonResponse([], 200, { total: 0, page: 1, page_size: 20 })
+      );
+
+      await listReviewRequests("mine", { signal: controller.signal });
+
+      expect(mockFetch.mock.calls[0][1]).toEqual(
+        expect.objectContaining({ signal: expect.anything() })
+      );
+    });
+
+    it("getReviewRequest encodes the id and exposes the readme snapshot", async () => {
+      mockFetch.mockReturnValueOnce(
+        jsonResponse(reviewWire({
+          review_id: "rev/1",
+          readme_content: "# 标题",
+          frozen_relations: [{
+            relation_id: "rel-1",
+            target_plugin_id: "expert-child-1",
+            target_plugin_type: "expert",
+            relation_type: "team_member",
+            sort_order: 2,
+            data: { is_leader: true, role: "planner", member_key: "lead" },
+          }],
+        }))
+      );
+
+      const detail = await getReviewRequest("rev/1");
+
+      expect(detail.readmeContent).toBe("# 标题");
+      expect(detail.frozenRelations).toEqual([{
+        relationId: "rel-1",
+        targetPluginId: "expert-child-1",
+        targetPluginType: "expert",
+        relationType: "team_member",
+        sortOrder: 2,
+        data: { is_leader: true, role: "planner", member_key: "lead" },
+      }]);
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/market/api/v1/plugins/review_requests/rev%2F1",
+        expect.anything()
+      );
+    });
+
+    it("getReviewRequest tolerates the empty readme the backend actually returns", async () => {
+      // Known backend defect: `readme_content` is never populated today. The
+      // mapper must not invent content; the consumer hides the preview section.
+      mockFetch.mockReturnValueOnce(jsonResponse(reviewWire({ readme_content: "" })));
+
+      await expect(getReviewRequest("rev-1")).resolves.toMatchObject({
+        readmeContent: "",
+      });
+    });
+
+    it("getReviewRequest maps a cross-Space read to NOT_FOUND", async () => {
+      mockFetch.mockReturnValueOnce(errorResponse(404, "NOT_FOUND", "not found"));
+
+      await expect(getReviewRequest("rev-other")).rejects.toMatchObject({
+        name: "SkillMarketApiError",
+        code: "NOT_FOUND",
+        status: 404,
+      });
+    });
+
+    it("approveReview POSTs and discards the plugin-detail payload", async () => {
+      mockFetch.mockReturnValueOnce(jsonResponse({ plugin: { plugin_id: "p1" } }));
+
+      await expect(approveReview("rev-1")).resolves.toBeUndefined();
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/market/api/v1/plugins/review_requests/rev-1/approve",
+        expect.objectContaining({ method: "POST" })
+      );
+    });
+
+    it("approveReview maps a lost decision race to CONFLICT", async () => {
+      mockFetch.mockReturnValueOnce(errorResponse(409, "CONFLICT", "already decided"));
+
+      await expect(approveReview("rev-1")).rejects.toMatchObject({
+        name: "SkillMarketApiError",
+        code: "CONFLICT",
+        status: 409,
+      });
+    });
+
+    it("approveReview maps a missing reviewer role to FORBIDDEN", async () => {
+      mockFetch.mockReturnValueOnce(errorResponse(403, "FORBIDDEN", "reviewer role required"));
+
+      await expect(approveReview("rev-1")).rejects.toMatchObject({
+        code: "FORBIDDEN",
+        status: 403,
+      });
+    });
+
+    it("rejectReview sends the reason in the body", async () => {
+      mockFetch.mockReturnValueOnce(jsonResponse({}));
+
+      await expect(rejectReview("rev-1", "描述不清晰")).resolves.toBeUndefined();
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/market/api/v1/plugins/review_requests/rev-1/reject",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ reason: "描述不清晰" }),
+        })
+      );
+    });
+
+    it("rejectReview maps a missing reason to VALIDATION_ERROR", async () => {
+      mockFetch.mockReturnValueOnce(
+        errorResponse(400, "VALIDATION_ERROR", "reason is required")
+      );
+
+      await expect(rejectReview("rev-1", "")).rejects.toMatchObject({
+        name: "SkillMarketApiError",
+        code: "VALIDATION_ERROR",
+        status: 400,
+      });
+    });
+
+    it("cancelReview POSTs to the cancel route", async () => {
+      mockFetch.mockReturnValueOnce(jsonResponse({}));
+
+      await expect(cancelReview("rev-1")).resolves.toBeUndefined();
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/market/api/v1/plugins/review_requests/rev-1/cancel",
+        expect.objectContaining({ method: "POST" })
+      );
+    });
+
+    it("cancelReview maps a non-applicant cancel to FORBIDDEN", async () => {
+      mockFetch.mockReturnValueOnce(errorResponse(403, "FORBIDDEN", "applicant only"));
+
+      await expect(cancelReview("rev-1")).rejects.toMatchObject({
+        code: "FORBIDDEN",
+        status: 403,
       });
     });
   });
