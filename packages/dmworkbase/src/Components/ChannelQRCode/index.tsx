@@ -5,7 +5,8 @@ import { Channel } from "wukongimjssdk";
 import WKApp from "../../App";
 import Provider from "../../Service/Provider";
 import { ChannelQRCodeVM } from "./vm";
-import { Button, Spin, Toast } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
+import { Button, Toast } from "@douyinfe/semi-ui";
 import { copyToClipboard } from "../../Utils/clipboard";
 import { Dap } from "../../Service/Dap";
 import { I18nContext } from "../../i18n";
@@ -60,7 +61,7 @@ export default class ChannelQRCode extends Component<ChannelQRCodeProps> {
                         <div className="wk-channelqrcode-qrcode">
                             {
                                 vm.qrcodeResp ? undefined : <div className="wk-channelqrcode-qrcode-loading">
-                                    <Spin></Spin>
+                                    <Loading />
                                 </div>
                             }
                             {

@@ -1,5 +1,6 @@
 import React, { Component } from "react"
-import { Button, Spin, Toast, Tooltip } from "@douyinfe/semi-ui"
+import { Loading } from "@octo/ui"
+import { Button, Toast, Tooltip } from "@douyinfe/semi-ui"
 import { Channel } from "wukongimjssdk"
 import { UserPlus, LogOut, Trash2 } from "lucide-react"
 import { Thread, ThreadStatus } from "../../Service/Thread"
@@ -129,7 +130,7 @@ export class ThreadList extends Component<ThreadListProps, ThreadListState> {
       return (
         <div className="wk-thread-list">
           <div className="wk-thread-list-loading">
-            <Spin size="large" />
+            <Loading size="lg" />
           </div>
         </div>
       )

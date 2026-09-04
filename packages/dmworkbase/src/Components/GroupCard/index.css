@@ -24,14 +24,17 @@
     gap: 6px;
 }
 .wk-group-card-tag {
+    box-sizing: border-box;
     display: inline-flex;
     align-items: center;
-    padding: 1px 6px;
-    border-radius: var(--wk-r-xs, 4px);
-    font-size: 10px;
-    font-weight: 500;
-    background: var(--wk-bg-active, #E2E3EA);
-    color: var(--wk-text-secondary, #5C6070);
+    height: var(--wk-sp-5);
+    padding: var(--wk-sp-0-5) var(--wk-sp-2);
+    border-radius: var(--wk-r-full);
+    background: var(--octo-ui-tag-light-gray-bg);
+    color: var(--octo-ui-tag-light-gray-color);
+    font-size: var(--wk-text-size-sm);
+    font-weight: var(--wk-font-medium);
+    line-height: var(--wk-sp-5);
 }
 .wk-group-card-meta {
     font-size: 13px;

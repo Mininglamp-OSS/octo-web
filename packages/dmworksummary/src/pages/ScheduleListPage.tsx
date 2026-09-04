@@ -1,14 +1,13 @@
 import React, { Component } from "react";
 import {
     Button,
-    Spin,
     Toast,
     Modal,
     Switch,
     Popconfirm,
-    Tag,
     Banner,
 } from "@douyinfe/semi-ui";
+import { Loading, Tag } from "@octo/ui";
 import {
     IconArrowLeft,
     IconPlus,
@@ -177,7 +176,7 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
 
                 {loading && (
                     <div className="summary-schedule-loading">
-                        <Spin size="large" />
+                        <Loading size="lg" />
                     </div>
                 )}
 
@@ -205,7 +204,7 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                                     />
                                 </div>
                                 <div className="summary-schedule-card-meta">
-                                    <Tag size="small" color="blue">{getModeLabel(item.summary_mode)}</Tag>
+                                    <Tag size="small" tone="blue">{getModeLabel(item.summary_mode)}</Tag>
                                     <span style={{ marginLeft: 8 }}>{describeSchedule(item.cron_expr, item.interval_days, item.interval_months, item.run_time, item.day_of_week, item.day_of_month)}</span>
                                     <span style={{ marginLeft: 8, color: "var(--semi-color-text-2)" }}>
                                         {getTimeRangeTypeLabel(item.time_range_type)}

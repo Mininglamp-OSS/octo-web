@@ -15,6 +15,7 @@ import {
   type GlobalSearchFilters,
 } from "../../Service/SearchTypes";
 import useSearchPagination from "../../bridge/search/useSearchPagination";
+import { Loading } from "@octo/ui";
 import "./global-content-search-panel.css";
 
 const PAGE_SIZE = 20;
@@ -95,7 +96,7 @@ const GlobalContentSearchPanel: React.FC<GlobalContentSearchPanelProps> = ({
     if (loading) {
       return (
         <div className="wk-channel-search-loading">
-          {t("base.channelSearch.loading")}
+          <Loading text={t("base.channelSearch.loading")} />
         </div>
       );
     }
@@ -159,7 +160,7 @@ const GlobalContentSearchPanel: React.FC<GlobalContentSearchPanelProps> = ({
         {renderResults()}
         {loadingMore && (
           <div className="wk-channel-search-load-more" role="status">
-            {t("base.channelSearch.loading")}
+            <Loading size="sm" text={t("base.channelSearch.loading")} />
           </div>
         )}
         {paginationError && response.items.length > 0 && (

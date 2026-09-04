@@ -1,0 +1,65 @@
+.octo-ui-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  padding: var(--octo-ui-empty-padding-block) var(--octo-ui-empty-padding-inline);
+  font-family: var(--wk-font-sans);
+  text-align: center;
+}
+
+.octo-ui-empty__illustration {
+  width: var(--octo-ui-empty-illustration-size);
+  height: var(--octo-ui-empty-illustration-size);
+  margin-block-end: var(--octo-ui-empty-illustration-margin-block-end);
+  --semi-color-primary: var(--octo-ui-empty-illustration-primary);
+  --semi-color-primary-light-default: var(--octo-ui-empty-illustration-primary-surface);
+}
+
+.octo-ui-empty__illustration svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.octo-ui-empty__illustration svg [fill="#515151"],
+.octo-ui-empty__illustration svg [fill="#1C1C23"] {
+  fill: var(--octo-ui-empty-illustration-ink);
+}
+
+.octo-ui-empty__illustration svg [fill="white"] {
+  fill: var(--octo-ui-empty-illustration-paper);
+}
+
+.octo-ui-empty__illustration svg [fill="#E6E8EA"],
+.octo-ui-empty__illustration svg [fill="#F0F2F3"] {
+  fill: var(--octo-ui-empty-illustration-muted-surface);
+}
+
+.octo-ui-empty__illustration svg [stroke="#515151"],
+.octo-ui-empty__illustration svg [stroke="black"] {
+  stroke: var(--octo-ui-empty-illustration-stroke);
+}
+
+.octo-ui-empty__title {
+  color: var(--octo-ui-empty-title-color);
+  font-size: var(--octo-ui-empty-title-font-size);
+  font-weight: var(--octo-ui-empty-title-font-weight);
+  line-height: var(--octo-ui-empty-title-line-height);
+}
+
+.octo-ui-empty__description {
+  max-width: var(--octo-ui-empty-description-max-width);
+  margin-block-start: var(--octo-ui-empty-description-margin-block-start);
+  color: var(--octo-ui-empty-description-color);
+  font-size: var(--octo-ui-empty-description-font-size);
+  line-height: var(--octo-ui-empty-description-line-height);
+}
+
+.octo-ui-empty__action {
+  display: flex;
+  gap: var(--octo-ui-empty-action-gap);
+  align-items: center;
+  justify-content: center;
+  margin-block-start: var(--octo-ui-empty-action-margin-block-start);
+}

@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@octo/base": "workspace:*",
+    "@octo/ui": "workspace:*",
     "lucide-react": "^0.577.0"
   },
   "devDependencies": {

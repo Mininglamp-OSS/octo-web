@@ -5,7 +5,8 @@ import "./index.css"
 import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
 import classnames from "classnames";
-import { Tooltip } from "@douyinfe/semi-ui";
+import { Empty, Tooltip } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { ChevronRight, Users, Bot, UsersRound } from "lucide-react";
 
 import { Channel, ChannelTypePerson, ChannelTypeGroup, ChannelInfoListener, ChannelInfo } from "wukongimjssdk";
@@ -32,22 +33,47 @@ import {
 import type { ContactsSearchIndex } from "../bridge/contactsSearch/types";
 
 function OverflowTooltip({ text, children }: { text: string; children: React.ReactNode }) {
-    const [visible, setVisible] = useState(false)
+    const [isTruncated, setIsTruncated] = useState(false)
     const textRef = useRef<HTMLSpanElement>(null)
-    const onEnter = useCallback(() => {
-        if (textRef.current && textRef.current.scrollWidth > textRef.current.clientWidth) {
-            setVisible(true)
+    const resizeObserverRef = useRef<ResizeObserver | null>(null)
+
+    const checkTruncation = useCallback(() => {
+        if (textRef.current) {
+            setIsTruncated(textRef.current.scrollWidth > textRef.current.clientWidth)
         }
     }, [])
-    const onLeave = useCallback(() => setVisible(false), [])
-    return (
-        <Tooltip content={text} position="right" trigger="custom" visible={visible}>
-            <div className="wk-contacts-section-item-name" onMouseEnter={onEnter} onMouseLeave={onLeave}>
-                <span ref={textRef} className="wk-contacts-section-item-text">{text}</span>
-                {children}
-            </div>
-        </Tooltip>
+
+    const setTextRef = useCallback((node: HTMLSpanElement | null) => {
+        resizeObserverRef.current?.disconnect()
+        resizeObserverRef.current = null
+        textRef.current = node
+        if (!node) return
+
+        if (typeof ResizeObserver !== "undefined") {
+            resizeObserverRef.current = new ResizeObserver(checkTruncation)
+            resizeObserverRef.current.observe(node)
+        }
+    }, [checkTruncation])
+
+    useEffect(() => {
+        checkTruncation()
+    }, [text, checkTruncation])
+
+    useEffect(() => {
+        window.addEventListener("resize", checkTruncation)
+        return () => {
+            resizeObserverRef.current?.disconnect()
+            window.removeEventListener("resize", checkTruncation)
+        }
+    }, [checkTruncation])
+    const content = (
+        <div className="wk-contacts-section-item-name">
+            <span ref={setTextRef} className="wk-contacts-section-item-text">{text}</span>
+            {children}
+        </div>
     )
+
+    return isTruncated ? <Tooltip content={text} placement="right">{content}</Tooltip> : content
 }
 
 const ITEM_HEIGHT = 44
@@ -763,10 +789,11 @@ export default class ContactsList extends Component<any, ContactsState> {
             <ContactsDirectorySection sectionKey="groups" expanded={isExpanded} icon={<UsersRound size={16} />} label={t("contacts.section.groups")} count={groups.length} onToggle={this.toggleSection}>
                     <div className="wk-contacts-accordion-body">
                         {groups.length === 0 ? (
-                            <div className="wk-contacts-empty">
-                                <UsersRound size={28} className="wk-contacts-empty-icon" />
-                                <div className="wk-contacts-empty-text">{t("contacts.empty.groups")}</div>
-                            </div>
+                            <Empty
+                                illustration={false}
+                                description={t("contacts.empty.groups")}
+                                className="wk-contacts-empty"
+                            />
                         ) : groups.map((g: any) => (
                             <div key={g.group_no} className="wk-contacts-section-item" onClick={() => {
                                 this.handleGroupClick(g.group_no, g.name, g.member_count)
@@ -793,10 +820,11 @@ export default class ContactsList extends Component<any, ContactsState> {
             <ContactsDirectorySection sectionKey="myBots" expanded={isExpanded} icon={<Bot size={16} />} label={t("contacts.section.addedAi")} count={bots.length} onToggle={this.toggleSection}>
                     <div className="wk-contacts-accordion-body">
                         {bots.length === 0 ? (
-                            <div className="wk-contacts-empty">
-                                <Bot size={28} className="wk-contacts-empty-icon" />
-                                <div className="wk-contacts-empty-text">{t("contacts.empty.ai")}</div>
-                            </div>
+                            <Empty
+                                illustration={false}
+                                description={t("contacts.empty.ai")}
+                                className="wk-contacts-empty"
+                            />
                         ) : bots.map((bot: any) => (
                             <div key={bot.uid} className="wk-contacts-section-item" onClick={() => {
                                 this.handleContactClick(bot.uid, true)
@@ -826,10 +854,11 @@ export default class ContactsList extends Component<any, ContactsState> {
                     <>
                         {this.renderFilterChips()}
                         {totalCount === 0 ? (
-                            <div className="wk-contacts-empty">
-                                <Users size={28} className="wk-contacts-empty-icon" />
-                                <div className="wk-contacts-empty-text">{t("contacts.empty.members")}</div>
-                            </div>
+                            <Empty
+                                illustration={false}
+                                description={t("contacts.empty.members")}
+                                className="wk-contacts-empty"
+                            />
                         ) : this.renderContactListWithLetters()}
                     </>
             </ContactsDirectorySection>

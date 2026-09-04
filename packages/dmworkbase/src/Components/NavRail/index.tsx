@@ -1,4 +1,5 @@
 import React, { Component } from "react";
+import { Dot } from "@octo/ui";
 import { Channel, ChannelTypePerson, Space } from "wukongimjssdk";
 import WKApp from "../../App";
 import { Menus } from "../../Service/Menus";
@@ -105,7 +106,9 @@ export default class NavRail extends Component<NavRailProps> {
                                 >
                                     <WKAvatar channel={userChannel} />
                                 </button>
-                                {isOnline && <div className="wk-navrail__user-status" />}
+                                {isOnline && (
+                                    <Dot tone="online" className="wk-navrail__user-status" />
+                                )}
                             </div>
                             <span className="wk-navrail__user-name">{userName}</span>
                         </div>

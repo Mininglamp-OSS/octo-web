@@ -112,6 +112,16 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Octo UI tests
+        run: pnpm --filter @octo/ui test
+      - name: Badge and Dot migration tests
+        run: >-
+          pnpm --filter @octo/base exec vitest run
+          src/Components/ClawHealthCheckItem/ClawHealthCheckItem.test.tsx
+          src/Components/ConversationList/__tests__/layout.test.tsx
+          src/Components/ConversationList/__tests__/onlineBadge.test.tsx
+          src/Components/SidebarTabBar/__tests__/SidebarTabBar.test.tsx
+          src/ui/profileDetail/__tests__/ProfileOnlineStatus.test.tsx
       - name: Agent Mail tests
         run: pnpm --filter @octo/mail test
       - name: Agent Mail typecheck

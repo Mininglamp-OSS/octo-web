@@ -1,5 +1,6 @@
 import React, { Component } from 'react';
-import { Spin, Empty } from '@douyinfe/semi-ui';
+import { Empty } from '@douyinfe/semi-ui';
+import { Loading } from '@octo/ui';
 import { I18nContext } from '@octo/base';
 import SummaryContent from './SummaryContent';
 import { getSummaryDetail, getPersonalResult } from '../api/summaryApi';
@@ -135,7 +136,7 @@ class SummaryReferenceSidePanel extends Component<
                 <div data-testid={summaryTestIds.agentRefSideBody} className="summary-workbench-ref-side-body">
                     {loading && (
                         <div className="summary-workbench-ref-side-loading">
-                            <Spin />
+                            <Loading />
                         </div>
                     )}
                     {!loading && error && <Empty description={error} />}

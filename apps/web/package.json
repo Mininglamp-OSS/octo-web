@@ -55,9 +55,19 @@
     "eject": "react-app-rewired eject",
     "clean": "rimraf node_modules dist-ele build dist-ele .turbo",
     "tauri": "tauri",
+    "prestorybook": "pnpm --filter @octo/ui build",
     "storybook": "storybook dev -p 16006",
+    "prebuild-storybook": "pnpm --filter @octo/ui build",
     "build-storybook": "storybook build",
-    "test:storybook": "vitest run --config vitest.storybook.config.ts"
+    "pretest:storybook": "pnpm --filter @octo/ui build",
+    "test:storybook": "vitest run --config vitest.storybook.config.ts",
+    "prestart": "pnpm --filter @octo/ui build",
+    "predev": "pnpm --filter @octo/ui build",
+    "predev-ele": "pnpm --filter @octo/ui build",
+    "prebuild": "pnpm --filter @octo/ui build",
+    "prebuild:electron": "pnpm --filter @octo/ui build",
+    "prebuild:analyzer": "pnpm --filter @octo/ui build",
+    "prebuild:e2e": "pnpm --filter @octo/ui build"
   },
   "dependencies": {
     "electron-log": "^5.1.2",
@@ -79,6 +89,7 @@
     "@octo/datasource": "workspace:*",
     "@octo/login": "workspace:*",
     "@octo/mail": "workspace:*",
+    "@octo/ui": "workspace:*",
     "@react-pdf-viewer/core": "^3.12.0",
     "@react-pdf-viewer/page-navigation": "^3.12.0",
     "@react-pdf-viewer/thumbnail": "^3.12.0",

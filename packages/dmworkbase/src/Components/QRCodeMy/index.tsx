@@ -4,7 +4,8 @@ import WKApp from "../../App";
 import WKViewQueueHeader from "../WKViewQueueHeader";
 import "./index.css"
 import { QRCodeSVG } from 'qrcode.react';
-import { Spin, Toast } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { I18nContext } from "../../i18n";
 
 interface QRCodeMyState {
@@ -65,7 +66,7 @@ export default class QRCodeMy extends Component<QRCodeMyProps, QRCodeMyState> {
                             {
                                 qrcode ? <QRCodeSVG value={qrcode}
                                     size={250}
-                                    fgColor="#000000"></QRCodeSVG> : <Spin></Spin>
+                                    fgColor="#000000"></QRCodeSVG> : <Loading />
                             }
                         </div>
                         <div className="wk-qrcodemy-content-tip">

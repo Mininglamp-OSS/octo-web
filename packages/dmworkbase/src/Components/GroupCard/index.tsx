@@ -1,5 +1,6 @@
 import React, { Component } from "react";
-import { Button, Spin } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
+import { Button } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import { Channel, ChannelTypeGroup, WKSDK } from "wukongimjssdk";
 import WKAvatar from "../WKAvatar";
@@ -81,7 +82,7 @@ export default class GroupCard extends Component<GroupCardProps, GroupCardState>
             >
                 {loading ? (
                     <div style={{ textAlign: "center", padding: 40 }}>
-                        <Spin size="large" />
+                        <Loading size="lg" />
                     </div>
                 ) : (
                     <div className="wk-group-card-content">

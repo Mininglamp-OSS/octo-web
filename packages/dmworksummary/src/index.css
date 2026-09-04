@@ -892,14 +892,9 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
 .chat-summary-history-empty {
     flex: 1;
     min-height: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
     justify-content: center;
     gap: 8px;
     padding: 24px 16px 48px;
-    text-align: center;
-    color: var(--wk-text-tertiary, #8F959E);
 }
 
 .chat-summary-history-empty--loading {
@@ -1797,8 +1792,6 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
 }
 
 .summary-content-empty {
-    color: var(--semi-color-text-2);
-    text-align: center;
     padding: 40px 0;
 }
 
@@ -3001,9 +2994,6 @@ body[theme-mode="dark"] .summary-template-create-btn:hover {
 
 .selected-sources-empty {
     padding: 18px 14px;
-    text-align: center;
-    font-size: 13px;
-    color: var(--semi-color-text-2);
     background: var(--semi-color-bg-1);
 }
 
@@ -3765,6 +3755,10 @@ body[theme-mode="dark"] .chat-selector-modal {
     padding: 60px 0;
 }
 
+.chat-selector-empty.octo-ui-empty {
+    padding: var(--wk-sp-10) 0;
+}
+
 .chat-selector-item {
     display: flex;
     align-items: center;
@@ -3803,6 +3797,11 @@ body[theme-mode="dark"] .chat-selector-modal {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.chat-selector-item-name > .ai-badge,
+.chat-selector-item-name > .octo-ui-tag {
+    margin-left: var(--wk-sp-1);
 }
 
 .chat-selector-right {

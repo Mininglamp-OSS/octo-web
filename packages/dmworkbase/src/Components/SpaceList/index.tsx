@@ -1,7 +1,8 @@
 import { webOrigin } from "../../Utils/docLink";
 import React, { Component } from "react";
 import { IconPlus, IconSearch, IconLink } from "@douyinfe/semi-icons";
-import { Spin, Toast, Tooltip } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
+import { Toast, Tooltip } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import { Space, SpaceService } from "../../Service/SpaceService";
 import WKApp from "../../App";
@@ -156,7 +157,7 @@ export default class SpaceList extends Component<SpaceListProps, SpaceListState>
 
                 {loading ? (
                     <div className="wk-spacelist-loading">
-                        <Spin size="small" />
+                        <Loading size="sm" />
                     </div>
                 ) : (
                     <div className="wk-spacelist-items">
@@ -181,7 +182,7 @@ export default class SpaceList extends Component<SpaceListProps, SpaceListState>
                                             onClick={(e) => this.handleInvite(space, e)}
                                         >
                                             {inviteLoading === space.space_id
-                                                ? <Spin size="small" />
+                                                ? <Loading size="sm" />
                                                 : <IconLink size="small" />}
                                         </div>
                                     </Tooltip>

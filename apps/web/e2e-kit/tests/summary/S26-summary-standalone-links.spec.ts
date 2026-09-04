@@ -2,6 +2,13 @@ import { test, expect, AUTH_KEYS_SUFFIXED, E2E_SID, MOCK_LOCALE, LOCALE_STORAGE_
 import { registerS26SummaryStandaloneLinks } from "../../msw-handlers/s26-summary-standalone-links";
 
 test("@S26 @p1 @summary @deep-link 独立详情与分享链接", async ({ pagePlain }) => {
+  await pagePlain.route(
+    /\/summary\/api\/v1\/summaries\?page=1&page_size=1$/,
+    (route) =>
+      route.fulfill({
+        json: { code: 0, message: "ok", data: { items: [], total: 0 } },
+      })
+  );
   await pagePlain.addInitScript(({ sid, auth, spaceKey, spaceId, localeKey, locale, onboardingKey, scenario }) => {
     const ls = localStorage;
     const ss = sessionStorage;

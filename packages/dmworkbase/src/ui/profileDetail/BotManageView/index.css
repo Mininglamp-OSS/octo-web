@@ -125,27 +125,8 @@ button.wk-bot-manage-menu-row .wk-bot-manage-menu-right {
     position: absolute;
     top: 50%;
     right: calc(var(--wk-sp-4) + var(--wk-sp-3));
-    width: var(--wk-sp-4);
-    height: var(--wk-sp-4);
-    margin-top: calc(-1 * var(--wk-sp-2));
-    border: 2px solid var(--wk-border-subtle);
-    border-top-color: var(--wk-brand-primary);
-    border-radius: 50%;
-    animation: wk-bot-manage-spin 0.6s linear infinite;
+    transform: translateY(-50%);
     pointer-events: none;
-}
-
-@keyframes wk-bot-manage-spin {
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-/* 尊重系统「减少动态效果」偏好：停转仅保留静态指示（与本仓其他 spinner 一致）。 */
-@media (prefers-reduced-motion: reduce) {
-    .wk-bot-manage-search-spinner {
-        animation: none;
-    }
 }
 
 .wk-bot-manage-search-input {

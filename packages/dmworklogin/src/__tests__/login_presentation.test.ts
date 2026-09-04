@@ -166,7 +166,8 @@ describe("login page presentation", () => {
     const zhCN = readRepoFile("packages/dmworklogin/src/i18n/zh-CN.json");
     const enUS = readRepoFile("packages/dmworklogin/src/i18n/en-US.json");
 
-    expect(source).toContain("Button, Select, Spin, Toast");
+    expect(source).toContain("Button, Select, Toast");
+    expect(source).toContain("import { Loading } from '@octo/ui';");
     expect(source).toContain('className="wk-login-language-select"');
     expect(source).toContain("optionList={locales}");
     expect(source).not.toContain("renderSelectedItem=");

@@ -1,5 +1,6 @@
 import React, { Component, createRef } from "react";
-import { Checkbox, Spin, Empty, Tag } from "@douyinfe/semi-ui";
+import { Checkbox } from "@douyinfe/semi-ui";
+import { Empty, Loading, Tag } from "@octo/ui";
 import { IconSearch } from "@douyinfe/semi-icons";
 import { X } from "lucide-react";
 import { I18nContext } from "@octo/base";
@@ -452,7 +453,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
                             <AiBadge size="small" />
                         )}
                         {item.is_archived && (
-                            <Tag size="small" color="grey">{t("summary.chatSelector.archivedTag")}</Tag>
+                            <Tag size="small" tone="gray">{t("summary.chatSelector.archivedTag")}</Tag>
                         )}
                     </span>
                     {item.member_count !== null && (
@@ -565,10 +566,14 @@ export default class ChatSelectorModal extends Component<Props, State> {
                                 onScroll={this.handleListScroll}
                             >
                                 {loading ? (
-                                    <div className="chat-selector-loading"><Spin /></div>
+                                    <div className="chat-selector-loading"><Loading /></div>
                                 ) : mode === "members" ? (
                                     displayList.length === 0 ? (
-                                        <Empty description={t("summary.chatSelector.noData")} />
+                                        <Empty
+                                            illustration={false}
+                                            description={t("summary.chatSelector.noData")}
+                                            className="chat-selector-empty"
+                                        />
                                     ) : (
                                         <>
                                             <div style={{ height: displayList.length * 40, position: 'relative' }}>
@@ -581,7 +586,11 @@ export default class ChatSelectorModal extends Component<Props, State> {
                                         </>
                                     )
                                 ) : displayList.length === 0 ? (
-                                    <Empty description={t("summary.chatSelector.noData")} />
+                                    <Empty
+                                        illustration={false}
+                                        description={t("summary.chatSelector.noData")}
+                                        className="chat-selector-empty"
+                                    />
                                 ) : (
                                     <>
                                         <div style={{ height: displayList.length * 40, position: 'relative' }}>

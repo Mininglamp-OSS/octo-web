@@ -1,5 +1,6 @@
 import React from "react";
 import type { BotCardSettingRow } from "../../../bridge/profileDetail/botCardSettings";
+import { Loading } from "@octo/ui";
 
 /**
  * CardSettingsView —— L3「卡片消息设置」纯受控视图。
@@ -83,7 +84,7 @@ export function CardSettingsView({
   if (loading && !hasData) {
     return (
       <div className="wk-bot-manage-mention">
-        <div className="wk-bot-manage-loading">{labels.loading}</div>
+        <div className="wk-bot-manage-loading"><Loading text={labels.loading} layout="vertical" /></div>
       </div>
     );
   }

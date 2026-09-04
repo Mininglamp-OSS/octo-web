@@ -23,6 +23,10 @@ vi.mock("@douyinfe/semi-ui", () => ({
   Toast: { success: vi.fn(), error: vi.fn() },
   Tooltip: ({ children }: { children: React.ReactNode }) => children,
 }));
+vi.mock("@octo/ui", () => ({
+  Loading: () => React.createElement("span", { role: "status" }),
+  Tooltip: ({ children }: { children: React.ReactNode }) => children,
+}));
 vi.mock("@octo/base", () => ({
   t: (key: string) => (key === "mcp.card.officialPublisher" ? "官方发布" : key),
   WKButton: ({ children }: { children: React.ReactNode }) =>

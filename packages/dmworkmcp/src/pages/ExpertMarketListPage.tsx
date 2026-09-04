@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowDown, Check, HelpCircle, PackageOpen, Search, SlidersHorizontal, Upload, X } from "lucide-react";
-import { Toast, Tooltip } from "@douyinfe/semi-ui";
+import { Toast } from "@douyinfe/semi-ui";
+import { Tooltip } from "@octo/ui";
 import { t, useI18n, WKApp, WKButton } from "@octo/base";
 import { EXPERT_CATEGORIES } from "../mock/expertMock";
 import type { ExpertItem } from "../mock/expertMock";
@@ -514,8 +515,7 @@ export default function ExpertMarketListPage({
               <Tooltip
                 content={t("mcp.expert.loopIntro")}
                 className="wk-mcp-tooltip-light"
-                mouseEnterDelay={100}
-                position="bottomLeft"
+                placement="bottom-start"
               >
                 <button
                   type="button"

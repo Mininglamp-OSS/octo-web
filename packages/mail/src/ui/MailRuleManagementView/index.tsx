@@ -12,6 +12,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import Loading from "@octo/ui/components/Loading";
 import type {
   AgentMailbox,
   MailRule,
@@ -283,8 +284,7 @@ export default function MailRuleManagementView(
 
         {props.loading ? (
           <div className="octo-mail-rules__state">
-            <LoaderCircle className="is-spinning" size={22} />
-            <span>{t("mail.rules.loading")}</span>
+            <Loading text={t("mail.rules.loading")} layout="vertical" />
           </div>
         ) : null}
         {!props.loading && props.error ? (

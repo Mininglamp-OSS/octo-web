@@ -1,5 +1,6 @@
 import React, { Component, createRef } from 'react';
-import { Modal, Toast, Tag, Button, Dropdown, SplitButtonGroup } from '@douyinfe/semi-ui';
+import { Modal, Toast, Button, Dropdown, SplitButtonGroup } from '@douyinfe/semi-ui';
+import { Tag } from '@octo/ui';
 import { IconPlus, IconClock, IconChevronDown } from '@douyinfe/semi-icons';
 import { WKApp, I18nContext } from '@octo/base';
 import VoiceInputButton from '@octo/base/src/Components/VoiceInputButton';
@@ -1009,7 +1010,9 @@ export default class ChatSummaryNewModal extends Component<
                                     <Tag
                                         key={c.chat_id}
                                         closable
+                                        closeAriaLabel={t('summary.common.delete')}
                                         onClose={() => this.handleRemoveChat(c.chat_id)}
+                                        size="small"
                                         style={{ marginRight: 6, marginBottom: 4 }}
                                     >
                                         {c.name}

@@ -1,4 +1,6 @@
 import React from "react";
+import Empty from "@octo/ui/components/Empty";
+import Loading from "@octo/ui/components/Loading";
 import { Hash, MessageCircleMore } from "lucide-react";
 import ThreadIcon from "../../Components/Icons/ThreadIcon";
 import "./index.css";
@@ -87,12 +89,15 @@ export function GlobalChatSearchLayout({
         <div className="wk-global-chat-search-layout__conversation-list">
           {state.status === "loading" && (
             <div className="wk-global-chat-search-layout__pane-state">
-              <span className="wk-global-chat-search-layout__spinner" />
+              <Loading size="sm" />
             </div>
           )}
           {state.status === "idle" && (
             <div className="wk-global-chat-search-layout__pane-state">
-              {labels.startHint}
+              <Empty
+                illustration={false}
+                description={labels.startHint}
+              />
             </div>
           )}
           {state.status === "error" && (
@@ -102,7 +107,10 @@ export function GlobalChatSearchLayout({
           )}
           {showConversationEmpty && (
             <div className="wk-global-chat-search-layout__pane-state">
-              {labels.emptyHint}
+              <Empty
+                illustration={false}
+                description={labels.emptyHint}
+              />
             </div>
           )}
           {conversations.map((conversation) => {

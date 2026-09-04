@@ -1,4 +1,5 @@
 import React from "react";
+import { Empty } from "@octo/ui";
 import { Search as SearchIcon } from "lucide-react";
 import type { ContactsSearchProps } from "./types";
 import "./index.css";
@@ -49,10 +50,11 @@ function ContactsSearch({
             )}
           </div>
         ) : (
-          <div className="wk-contacts-empty">
-            <SearchIcon size={28} className="wk-contacts-empty-icon" />
-            <div className="wk-contacts-empty-text">{copy.emptyText}</div>
-          </div>
+          <Empty
+            illustration={false}
+            description={copy.emptyText}
+            className="wk-contacts-empty"
+          />
         ))}
     </>
   );

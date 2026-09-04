@@ -1,4 +1,5 @@
 import React from "react"
+import { Empty, Loading } from "@octo/ui"
 import type { AppBotLoadState, AppBotViewItem } from "../../bridge/types"
 import "./index.css"
 
@@ -51,8 +52,7 @@ const AppBotListView: React.FC<AppBotListViewProps> = ({
     if (state === "loading") {
       return (
         <div className="appbot-list-status">
-          <div className="appbot-spinner" />
-          <span>{loadingText}</span>
+          <Loading text={loadingText} />
         </div>
       )
     }
@@ -68,9 +68,11 @@ const AppBotListView: React.FC<AppBotListViewProps> = ({
 
     if (!hasBots) {
       return (
-        <div className="appbot-list-status">
-          <span>{keyword ? noMatchesText : emptyText}</span>
-        </div>
+        <Empty
+          illustration={false}
+          description={keyword ? noMatchesText : emptyText}
+          className="appbot-list-status"
+        />
       )
     }
 

@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
 import type { ListItemSwitchContext } from "../../../Components/ListItem";
+import { Loading } from "@octo/ui";
 import "./index.css";
 
 export interface BotManageViewLabels {
@@ -176,7 +177,7 @@ export function MentionFreeListView({
   if (loading) {
     return (
       <div className="wk-bot-manage-mention">
-        <div className="wk-bot-manage-loading">{labels.loading}</div>
+        <div className="wk-bot-manage-loading"><Loading text={labels.loading} layout="vertical" /></div>
       </div>
     );
   }
@@ -225,10 +226,11 @@ export function MentionFreeListView({
           data-testid="bot-manage-mention-search"
         />
         {searching && (
-          <span
+          <Loading
+            size="sm"
             className="wk-bot-manage-search-spinner"
             data-testid="bot-manage-mention-searching"
-            aria-hidden="true"
+            aria-label={labels.loading}
           />
         )}
       </div>
@@ -291,7 +293,7 @@ export function MentionFreeListView({
         )}
 
         {loadingMore && (
-          <div className="wk-bot-manage-loadmore">{labels.loading}</div>
+          <div className="wk-bot-manage-loadmore"><Loading size="sm" text={labels.loading} /></div>
         )}
       </div>
     </div>

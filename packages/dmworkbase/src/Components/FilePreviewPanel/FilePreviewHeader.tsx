@@ -12,6 +12,7 @@ import { downloadFile } from "../../Utils/download";
 import { FilePreviewInfo } from "./types";
 import { isImageType } from "./config";
 import { useI18n } from "../../i18n";
+import { Loading } from "@octo/ui";
 import "./FilePreviewHeader.css";
 
 /** 对话内文件项 */
@@ -371,7 +372,7 @@ const FilePreviewHeader: React.FC<FilePreviewHeaderProps> = ({
                 {/* 加载更多状态 */}
                 {loadingMoreFiles && (
                   <div className="wk-file-preview-header__dropdown-loading">
-                    {t("base.filePreview.loading")}
+                    <Loading size="sm" text={t("base.filePreview.loading")} />
                   </div>
                 )}
                 {/* 没有更多数据（仅在加载过至少一页后显示） */}
