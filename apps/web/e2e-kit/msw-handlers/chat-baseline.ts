@@ -272,6 +272,11 @@ export const chatBaselineHandlers = [
 
   // === Summary ===
   // 空列表, 界面停在"暂无总结"稳定分支; 不返 200 会无限重试打爆 network.
+  // The shell refreshes this badge independently of the list, including while
+  // opening unrelated deep links, so it belongs in the global baseline.
+  http.get("*/summary/api/v1/summaries/attention", () =>
+    HttpResponse.json({ code: 0, message: "ok", data: { attention_count: 0 } })
+  ),
   http.get("*/summary/api/v1/summaries", () =>
     HttpResponse.json({ code: 0, message: "ok", data: { items: [], total: 0 } })
   ),

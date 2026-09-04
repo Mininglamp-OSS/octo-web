@@ -49,16 +49,26 @@ export async function prepareVoiceConversation(page: Page, settings: VoiceSeed, 
       }
     }, 100);
   }, { key: VOICE_STORAGE_KEY, settings, conversationName: name, protocolVersion: VOICE_PROTOCOL_VERSION });
-  await page.reload();
-  await page.getByRole("button", { name: "会话" }).waitFor({ state: "visible", timeout: 15_000 });
-  await page.waitForFunction(() => {
-    const state = globalThis as { __e2eVoiceSeedReady__?: boolean; __e2eVoiceSeedError__?: string };
-    if (state.__e2eVoiceSeedError__) throw new Error(state.__e2eVoiceSeedError__);
-    return state.__e2eVoiceSeedReady__ === true;
-  }, undefined, { timeout: 15_000 });
-  await page.getByRole("button", { name: "会话" }).click();
-  await page.getByRole("button", { name: "最近" }).click();
-  await page.getByText(name, { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
+  const openSeededConversation = async () => {
+    await page.reload();
+    await page.getByRole("button", { name: "会话" }).waitFor({ state: "visible", timeout: 15_000 });
+    await page.waitForFunction(() => {
+      const state = globalThis as { __e2eVoiceSeedReady__?: boolean; __e2eVoiceSeedError__?: string };
+      if (state.__e2eVoiceSeedError__) throw new Error(state.__e2eVoiceSeedError__);
+      return state.__e2eVoiceSeedReady__ === true;
+    }, undefined, { timeout: 15_000 });
+    await page.getByRole("button", { name: "会话" }).click();
+    await page.getByRole("button", { name: "最近" }).click();
+    await page.getByText(name, { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
+  };
+  try {
+    await openSeededConversation();
+  } catch {
+    // The mock runtime can become available just after the conversation list's
+    // first subscription snapshot. Reload once so the seeded runtime is the
+    // source of the initial snapshot instead of leaving a rare CI-only timeout.
+    await openSeededConversation();
+  }
   await page.getByText(name, { exact: true }).click();
   await page.getByRole("textbox").waitFor({ state: "visible", timeout: 15_000 });
 }
