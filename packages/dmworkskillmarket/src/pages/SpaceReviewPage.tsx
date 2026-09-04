@@ -3,7 +3,7 @@ import { AlertTriangle } from "lucide-react";
 import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
 import ReviewQueue from "../components/ReviewQueue";
 import { getReviewPolicy, updateReviewPolicy } from "../api/skillApi";
-import { isSpaceOwnerRole, useSpaceRole } from "../hooks/useSpaceRole";
+import { useSpaceRole } from "../hooks/useSpaceRole";
 
 /**
  * "组织发布管理" — the Space reviewer queue, mounted at /mcp-market/review as the
@@ -34,8 +34,7 @@ import { isSpaceOwnerRole, useSpaceRole } from "../hooks/useSpaceRole";
  */
 export default function SpaceReviewPage() {
   useI18n();
-  const { role } = useSpaceRole();
-  const isOwner = isSpaceOwnerRole(role);
+  const { isReviewer } = useSpaceRole();
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -101,7 +100,7 @@ export default function SpaceReviewPage() {
         </div>
       </header>
       <main className="skill-market-content">
-        {isOwner && (
+        {isReviewer && (
           <section className="skill-market-review-policy" aria-label={t("skillMarket.review.policyTitle")}>
             <div>
               <strong>{t("skillMarket.review.policyTitle")}</strong>

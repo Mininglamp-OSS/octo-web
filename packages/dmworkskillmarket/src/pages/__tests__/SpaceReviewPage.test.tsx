@@ -21,7 +21,6 @@ vi.mock("../../api/skillApi", () => ({
   updateReviewPolicy: (enabled: boolean) => updatePolicy(enabled),
 }));
 vi.mock("../../hooks/useSpaceRole", () => ({
-  isSpaceOwnerRole: (role?: number) => role === 2,
   useSpaceRole: () => ({
     role: roleState.current,
     isReviewer: roleState.current >= 1,
@@ -44,7 +43,7 @@ describe("SpaceReviewPage", () => {
     expect(screen.getByTestId("review-queue")).toHaveAttribute("data-mode", "space");
   });
 
-  it("shows the default-enabled policy to owners and confirms before disabling", async () => {
+  it("shows the shared policy to reviewers and confirms before disabling", async () => {
     render(<SpaceReviewPage />);
 
     const toggle = await screen.findByRole("checkbox");
@@ -59,12 +58,19 @@ describe("SpaceReviewPage", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
-  it("keeps the owner-only policy control hidden from admins", () => {
+  it("shows the shared policy control to admins", async () => {
     roleState.current = 1;
     render(<SpaceReviewPage />);
 
-    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(await screen.findByRole("checkbox")).toBeInTheDocument();
     expect(screen.getByTestId("review-queue")).toBeInTheDocument();
+  });
+
+  it("keeps the policy control hidden from ordinary members", () => {
+    roleState.current = 0;
+    render(<SpaceReviewPage />);
+
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
   it("delegates every empty/error/loading state to the queue", () => {
