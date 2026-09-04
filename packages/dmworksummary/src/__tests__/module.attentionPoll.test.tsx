@@ -109,11 +109,21 @@ vi.mock("../pages/SummaryCreatePage", () => ({ default: () => null }));
 vi.mock("../pages/SummaryDetailPage", () => ({ default: () => null }));
 vi.mock("../pages/SummaryShareDetailPage", () => ({ default: () => null }));
 vi.mock("../features/summaryShare/SummarySharePreviewFeature", () => ({ default: () => null }));
+vi.mock("../features/summaryWorkbench/SummaryWorkbenchCreateEntry", () => ({
+  default: () => null,
+}));
 vi.mock("../pages/SummaryConfirmPage", () => ({ default: () => null }));
 vi.mock("../pages/ScheduleListPage", () => ({ default: () => null }));
 vi.mock("../api/summaryApi", () => ({
+  confirmSummaryWorkspaceProposal: vi.fn(),
   getChatCandidates: vi.fn(),
+  getSummaryDetail: vi.fn(),
   getSummaryShare: vi.fn(),
+  getSummaryWorkspaceCapabilities: vi.fn(),
+  getSummaryWorkspaceHistory: vi.fn(),
+  postSummaryWorkspaceTurn: vi.fn(),
+  saveSummaryWorkspacePreview: vi.fn(),
+  streamSummaryWorkspaceTurn: vi.fn(),
 }));
 vi.mock("../features/summaryShare/navigation", () => ({
   getOriginalSummaryTaskId: vi.fn(),

@@ -250,7 +250,8 @@
         "errors": {
             "network": "Network error. Try again later.",
             "protocol": "The summary service version is incompatible. Refresh and try again.",
-            "serviceUnavailable": "The summary service is temporarily unavailable. Try again later."
+            "serviceUnavailable": "The summary service is temporarily unavailable. Try again later.",
+            "sessionExpired": "This summary session has expired. Start a new session."
         },
         "card": {
             "teamConfirmationTitle": "Confirm team summary task",

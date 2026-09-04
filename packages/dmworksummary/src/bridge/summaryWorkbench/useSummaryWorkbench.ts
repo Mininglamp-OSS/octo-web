@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { t } from "@octo/base";
 import type {
   AgentProgressEvent,
   CreateAgentSummaryResult,
@@ -908,7 +909,7 @@ export default function useSummaryWorkbench(
         if (!active || controller.signal.aborted) return;
         if (hydration.empty) {
           const expiredError = new SummaryWorkspaceApiError({
-            message: "总结会话已过期，请重新开始。",
+            message: t("summary.workbench.errors.sessionExpired"),
             kind: "business",
             retryable: false,
           });
