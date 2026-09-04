@@ -5,7 +5,7 @@ import "./index.css"
 import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
 import classnames from "classnames";
-import { Tooltip } from "@octo/ui";
+import { Empty, Tooltip } from "@octo/ui";
 import { Toast } from "@douyinfe/semi-ui";
 import { ChevronRight, Users, Bot, UsersRound } from "lucide-react";
 
@@ -789,10 +789,11 @@ export default class ContactsList extends Component<any, ContactsState> {
             <ContactsDirectorySection sectionKey="groups" expanded={isExpanded} icon={<UsersRound size={16} />} label={t("contacts.section.groups")} count={groups.length} onToggle={this.toggleSection}>
                     <div className="wk-contacts-accordion-body">
                         {groups.length === 0 ? (
-                            <div className="wk-contacts-empty">
-                                <UsersRound size={28} className="wk-contacts-empty-icon" />
-                                <div className="wk-contacts-empty-text">{t("contacts.empty.groups")}</div>
-                            </div>
+                            <Empty
+                                illustration={false}
+                                description={t("contacts.empty.groups")}
+                                className="wk-contacts-empty"
+                            />
                         ) : groups.map((g: any) => (
                             <div key={g.group_no} className="wk-contacts-section-item" onClick={() => {
                                 this.handleGroupClick(g.group_no, g.name, g.member_count)
@@ -819,10 +820,11 @@ export default class ContactsList extends Component<any, ContactsState> {
             <ContactsDirectorySection sectionKey="myBots" expanded={isExpanded} icon={<Bot size={16} />} label={t("contacts.section.addedAi")} count={bots.length} onToggle={this.toggleSection}>
                     <div className="wk-contacts-accordion-body">
                         {bots.length === 0 ? (
-                            <div className="wk-contacts-empty">
-                                <Bot size={28} className="wk-contacts-empty-icon" />
-                                <div className="wk-contacts-empty-text">{t("contacts.empty.ai")}</div>
-                            </div>
+                            <Empty
+                                illustration={false}
+                                description={t("contacts.empty.ai")}
+                                className="wk-contacts-empty"
+                            />
                         ) : bots.map((bot: any) => (
                             <div key={bot.uid} className="wk-contacts-section-item" onClick={() => {
                                 this.handleContactClick(bot.uid, true)
@@ -852,10 +854,11 @@ export default class ContactsList extends Component<any, ContactsState> {
                     <>
                         {this.renderFilterChips()}
                         {totalCount === 0 ? (
-                            <div className="wk-contacts-empty">
-                                <Users size={28} className="wk-contacts-empty-icon" />
-                                <div className="wk-contacts-empty-text">{t("contacts.empty.members")}</div>
-                            </div>
+                            <Empty
+                                illustration={false}
+                                description={t("contacts.empty.members")}
+                                className="wk-contacts-empty"
+                            />
                         ) : this.renderContactListWithLetters()}
                     </>
             </ContactsDirectorySection>

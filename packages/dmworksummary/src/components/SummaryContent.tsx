@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import rehypeSanitize from "rehype-sanitize";
-import { Loading } from "@octo/ui";
+import { Empty, Loading } from "@octo/ui";
 import { useI18n } from "@octo/base";
 
 interface SummaryContentProps {
@@ -35,7 +35,13 @@ const SummaryContent: React.FC<SummaryContentProps> = ({ content, loading }) => 
     }
 
     if (!normalized) {
-        return <div className="summary-content-empty">{t("summary.content.empty")}</div>;
+        return (
+            <Empty
+                illustration={false}
+                description={t("summary.content.empty")}
+                className="summary-content-empty"
+            />
+        );
     }
 
     return (

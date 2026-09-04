@@ -122,6 +122,10 @@
     text-align: center;
 }
 
+.summary-selector-empty.octo-ui-empty {
+    padding: var(--wk-sp-10) 0 0;
+}
+
 .summary-selector-footer {
     display: flex;
     align-items: center;

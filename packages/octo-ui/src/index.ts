@@ -42,3 +42,5 @@ export type {
   LoadingProps,
   LoadingSize,
 } from './components/Loading/types'
+export { default as Empty } from './components/Empty'
+export type { EmptyProps } from './components/Empty/types'

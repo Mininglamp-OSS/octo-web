@@ -8,7 +8,7 @@ import React, {
 import { BaseRendererProps } from "../types";
 import PptPageRenderer, { PptPageContent } from "./PptPageRenderer";
 import { useI18n } from "../../../i18n";
-import { Loading } from "@octo/ui";
+import { Empty, Loading } from "@octo/ui";
 import "./PptRenderer.css";
 
 /** PPT 页面数据 */
@@ -139,7 +139,10 @@ const PptRenderer = forwardRef<PptRendererRef, PptRendererProps>(
     if (!pptData || pptData.data.length === 0) {
       return (
         <div className="wk-file-preview-ppt-renderer wk-file-preview-ppt-renderer--empty">
-          {t("base.filePreview.ppt.noContent")}
+          <Empty
+            illustration={false}
+            description={t("base.filePreview.ppt.noContent")}
+          />
         </div>
       );
     }

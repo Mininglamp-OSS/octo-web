@@ -166,6 +166,7 @@ beforeAll(async () => {
     Tooltip: ({ children }: any) => <>{children}</>,
   }));
   vi.doMock("@octo/ui", () => ({
+    Empty: ({ description }: any) => <div data-testid="empty">{description}</div>,
     Tooltip: ({ children }: any) => <>{children}</>,
   }));
   vi.doMock("@tanstack/react-virtual", () => ({ useVirtualizer: () => ({ getVirtualItems: () => [], getTotalSize: () => 0, scrollToOffset: vi.fn() }) }));

@@ -1,6 +1,6 @@
 import React, { Component, createRef } from "react";
-import { Checkbox, Empty } from "@douyinfe/semi-ui";
-import { Loading, Tag } from "@octo/ui";
+import { Checkbox } from "@douyinfe/semi-ui";
+import { Empty, Loading, Tag } from "@octo/ui";
 import { IconSearch } from "@douyinfe/semi-icons";
 import { X } from "lucide-react";
 import { I18nContext } from "@octo/base";
@@ -569,7 +569,11 @@ export default class ChatSelectorModal extends Component<Props, State> {
                                     <div className="chat-selector-loading"><Loading /></div>
                                 ) : mode === "members" ? (
                                     displayList.length === 0 ? (
-                                        <Empty description={t("summary.chatSelector.noData")} />
+                                        <Empty
+                                            illustration={false}
+                                            description={t("summary.chatSelector.noData")}
+                                            className="chat-selector-empty"
+                                        />
                                     ) : (
                                         <>
                                             <div style={{ height: displayList.length * 40, position: 'relative' }}>
@@ -582,7 +586,11 @@ export default class ChatSelectorModal extends Component<Props, State> {
                                         </>
                                     )
                                 ) : displayList.length === 0 ? (
-                                    <Empty description={t("summary.chatSelector.noData")} />
+                                    <Empty
+                                        illustration={false}
+                                        description={t("summary.chatSelector.noData")}
+                                        className="chat-selector-empty"
+                                    />
                                 ) : (
                                     <>
                                         <div style={{ height: displayList.length * 40, position: 'relative' }}>

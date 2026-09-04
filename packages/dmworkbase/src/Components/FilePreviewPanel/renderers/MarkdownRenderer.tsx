@@ -13,7 +13,7 @@ import MarkdownContent from "../../../Messages/Text/MarkdownContent";
 import MarkdownSourceView from "./MarkdownSourceView";
 import MarkdownToc, { shouldShowToc, extractTocItems } from "./MarkdownToc";
 import { useI18n } from "../../../i18n";
-import { Loading } from "@octo/ui";
+import { Empty, Loading } from "@octo/ui";
 import "./MarkdownRenderer.css";
 
 /** 超过此大小的 Markdown 自动使用源码模式（性能考虑） */
@@ -331,9 +331,10 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   if (content === null || content.trim() === "") {
     return (
       <div className="wk-file-preview-markdown-renderer wk-file-preview-markdown-renderer--empty">
-        <span className="wk-file-preview-markdown-renderer__message">
-          {t("base.filePreview.empty")}
-        </span>
+        <Empty
+          illustration={false}
+          description={t("base.filePreview.empty")}
+        />
       </div>
     );
   }

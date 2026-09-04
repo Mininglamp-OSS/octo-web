@@ -5,7 +5,7 @@ import type {
   GlobalSearchDataSource,
 } from "../../Service/SearchTypes";
 import useSearchPagination from "../../bridge/search/useSearchPagination";
-import { Loading } from "@octo/ui";
+import { Empty, Loading } from "@octo/ui";
 import "./doc-search-panel.css";
 
 const PAGE_SIZE = 20;
@@ -136,13 +136,15 @@ const DocSearchPanel: React.FC<DocSearchPanelProps> = ({
       return <div className="wk-doc-search__hint">{error}</div>;
     }
     return (
-      <div className="wk-doc-search__empty">
-        {!trimmed
+      <Empty
+        illustration={false}
+        description={!trimmed
           ? t("base.globalSearch.docs.emptyHint")
           : queryStarted
             ? t("base.globalSearch.docs.noResults")
             : t("base.globalSearch.docs.emptyHint")}
-      </div>
+        className="wk-doc-search__empty"
+      />
     );
   }, [error, items.length, loading, queryStarted, t, trimmed]);
 

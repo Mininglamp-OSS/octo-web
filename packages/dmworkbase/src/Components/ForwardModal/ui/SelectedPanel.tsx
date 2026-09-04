@@ -1,4 +1,5 @@
 import React from "react"
+import { Empty } from "@octo/ui"
 import { useI18n } from "../../../i18n"
 import type { ForwardItem } from "../ForwardModal"
 import type { ForwardBotSnapshot } from "../grant"
@@ -21,9 +22,11 @@ export function SelectedPanel({ selectedItems, onRemove, bots }: SelectedPanelPr
   const { t } = useI18n()
   if (selectedItems.length === 0) {
     return (
-      <div className="wk-fm-empty wk-fm-empty--right">
-        {t("base.forwardModal.noneSelected")}
-      </div>
+      <Empty
+        illustration={false}
+        description={t("base.forwardModal.noneSelected")}
+        className="wk-fm-empty wk-fm-empty--right"
+      />
     )
   }
   return (

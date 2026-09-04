@@ -134,6 +134,10 @@
   color: var(--wk-text-secondary);
 }
 
+.appbot-list-status.octo-ui-empty {
+  padding: var(--wk-sp-10) var(--wk-sp-4);
+}
+
 .appbot-spinner {
   width: var(--wk-sp-5);
   height: var(--wk-sp-5);

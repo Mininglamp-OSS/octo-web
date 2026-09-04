@@ -6,6 +6,7 @@ import { defineConfig } from 'tsup'
 export default defineConfig({
   entry: {
     index: 'src/index.ts',
+    empty: 'src/components/Empty/index.tsx',
     loading: 'src/components/Loading/index.tsx',
   },
   format: ['esm'],
@@ -14,6 +15,7 @@ export default defineConfig({
   clean: true,
   external: [
     '@douyinfe/semi-icons',
+    '@douyinfe/semi-illustrations',
     '@douyinfe/semi-ui',
     'react',
     'react-dom',

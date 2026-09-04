@@ -46,6 +46,11 @@ vi.mock('@douyinfe/semi-icons', () => ({
     IconLink: () => <span>🔗</span>,
 }));
 
+vi.mock('@octo/ui', () => ({
+    Empty: ({ description }: any) => <div data-testid="empty">{description}</div>,
+    Loading: () => <div data-testid="spin">Loading…</div>,
+}));
+
 // Mock summaryApi — the hoisted mockListSummaries is available here
 vi.mock('../../api/summaryApi', () => ({
     listSummaries: (...args: any[]) => mockListSummaries(...args),

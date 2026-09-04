@@ -5,6 +5,7 @@ import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { Bot, Pencil, RefreshCw, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
+import Empty from "@octo/ui/components/Empty";
 import Loading from "@octo/ui/components/Loading";
 import type { Category, Skill, SkillVersion } from "../types/skill";
 import { getSkill, getSkillMd, listVersions, trackSkillView } from "../api/skillApi";
@@ -457,7 +458,12 @@ export default function SkillDetailModal({
                     </div>
                   ))}
                   {versions.length === 0 && !versionsLoading && (
-                    <p className="skill-market-versions__empty">{t("skillMarket.detail.noVersions")}</p>
+                    <div className="skill-market-versions__empty">
+                      <Empty
+                        illustration={false}
+                        description={t("skillMarket.detail.noVersions")}
+                      />
+                    </div>
                   )}
                 </div>
               )}

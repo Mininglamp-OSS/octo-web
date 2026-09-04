@@ -278,6 +278,10 @@
     text-align: center;
 }
 
+.wk-contacts-empty.octo-ui-empty {
+    padding: var(--wk-sp-4);
+}
+
 .wk-contacts-empty-icon {
     color: var(--wk-text-tertiary);
     margin-bottom: var(--wk-sp-3);

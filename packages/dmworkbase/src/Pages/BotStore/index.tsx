@@ -3,7 +3,7 @@ import { Channel, ChannelTypePerson } from "wukongimjssdk"
 import WKApp from "../../App"
 import BotDetailModal from "../../Components/BotDetailModal"
 import { I18nContext } from "../../i18n"
-import { Loading } from "@octo/ui"
+import { Empty, Loading } from "@octo/ui"
 import "./index.css"
 
 interface BotInfo {
@@ -180,11 +180,20 @@ export default class BotStore extends Component<{}, BotStoreState> {
                     {loading && <div className="wk-bot-loading"><Loading text={t("base.botStore.loading")} layout="vertical" /></div>}
                     {!loading && activeTab === "my" && myBots.length === 0 && (
                         <div className="wk-bot-empty">
-                            {t("base.botStore.myEmptyTitle")}<br/>{t("base.botStore.myEmptyHint")}
+                            <Empty
+                                illustration={false}
+                                title={t("base.botStore.myEmptyTitle")}
+                                description={t("base.botStore.myEmptyHint")}
+                            />
                         </div>
                     )}
                     {!loading && activeTab === "store" && spaceBots.length === 0 && (
-                        <div className="wk-bot-empty">{t("base.botStore.storeEmpty")}</div>
+                        <div className="wk-bot-empty">
+                            <Empty
+                                illustration={false}
+                                description={t("base.botStore.storeEmpty")}
+                            />
+                        </div>
                     )}
                     {!loading && activeTab === "my" && myBots.map(bot => this.renderBotCard(bot, false))}
                     {!loading && activeTab === "store" && spaceBots.map(bot => this.renderBotCard(bot, true))}

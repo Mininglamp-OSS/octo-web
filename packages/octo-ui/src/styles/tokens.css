@@ -115,10 +115,39 @@
   --octo-ui-loading-stroke-md: 3.2px;
   --octo-ui-loading-stroke-lg: 4.5px;
   --octo-ui-loading-duration: 0.8s;
+
+  --octo-ui-empty-padding-block: var(--wk-sp-8);
+  --octo-ui-empty-padding-inline: var(--wk-sp-6);
+  --octo-ui-empty-illustration-size: 150px;
+  --octo-ui-empty-illustration-margin-block-end: var(--wk-sp-2);
+  --octo-ui-empty-title-color: var(--wk-text-legacy-title);
+  --octo-ui-empty-title-font-size: var(--wk-text-size-lg);
+  --octo-ui-empty-title-font-weight: var(--wk-font-medium);
+  --octo-ui-empty-title-line-height: calc(var(--wk-sp-5) + var(--wk-sp-0-5));
+  --octo-ui-empty-description-margin-block-start: var(--wk-sp-1);
+  --octo-ui-empty-description-color: var(--wk-text-legacy-tertiary);
+  --octo-ui-empty-description-font-size: var(--wk-text-size-base);
+  --octo-ui-empty-description-line-height: var(--wk-sp-5);
+  --octo-ui-empty-description-max-width: 240px;
+  --octo-ui-empty-action-margin-block-start: calc(var(--wk-sp-4) + var(--wk-sp-0-5));
+  --octo-ui-empty-action-gap: calc(var(--wk-sp-2) + var(--wk-sp-0-5));
+  --octo-ui-empty-illustration-primary: var(--wk-purple-500);
+  --octo-ui-empty-illustration-primary-surface: var(--wk-accent-tint-08);
+  --octo-ui-empty-illustration-ink: var(--wk-brand-black);
+  --octo-ui-empty-illustration-paper: var(--wk-color-white);
+  --octo-ui-empty-illustration-muted-surface: var(--wk-bg-elevated);
+  --octo-ui-empty-illustration-stroke: var(--wk-text-secondary);
 }
 
 body[theme-mode='dark'] {
   --octo-ui-loading-text-color: var(--wk-text-secondary);
+  --octo-ui-empty-title-color: var(--wk-text-primary);
+  --octo-ui-empty-description-color: var(--wk-text-secondary);
+  --octo-ui-empty-illustration-primary-surface: var(--wk-accent-tint-10);
+  --octo-ui-empty-illustration-ink: var(--wk-text-primary);
+  --octo-ui-empty-illustration-paper: var(--wk-bg-surface);
+  --octo-ui-empty-illustration-muted-surface: var(--wk-bg-elevated);
+  --octo-ui-empty-illustration-stroke: var(--wk-text-tertiary);
 
   --octo-ui-tag-muted-icon-color: rgba(var(--semi-grey-9), 0.45);
   --octo-ui-tag-close-hover-bg: rgba(var(--semi-grey-9), 0.12);

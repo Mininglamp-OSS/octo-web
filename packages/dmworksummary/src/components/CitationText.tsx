@@ -5,6 +5,7 @@ import remarkBreaks from 'remark-breaks';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { visit } from 'unist-util-visit';
 import { useI18n } from '@octo/base';
+import { Empty } from '@octo/ui';
 import CitationBadge, { CitationGroupBadge, TeamCitationBadge } from './CitationBadge';
 import { CitationItem, TeamCitationItem, MemberStatus } from '../types/summary';
 import { buildDisplayIndexMap } from './citationFormat';
@@ -283,7 +284,13 @@ const CitationText: React.FC<CitationTextProps> = ({
 
     const normalized = content.trim();
     if (!normalized) {
-        return <div className="summary-content-empty">{t("summary.content.empty")}</div>;
+        return (
+            <Empty
+                illustration={false}
+                description={t("summary.content.empty")}
+                className="summary-content-empty"
+            />
+        );
     }
 
     const hasCitations = !hidePlainCitations && citations && citations.length > 0;

@@ -1,6 +1,7 @@
 import React, { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Search, SlidersHorizontal, X } from "lucide-react";
 import { t, useI18n } from "@octo/base";
+import Empty from "@octo/ui/components/Empty";
 import { getSkillTags } from "../api/skillApi";
 
 interface SearchBarProps {
@@ -202,7 +203,10 @@ const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
                       })
                     ) : (
                       <div className="skill-market-tag-filter__empty">
-                        {t("skillMarket.filter.noTags")}
+                        <Empty
+                          illustration={false}
+                          description={t("skillMarket.filter.noTags")}
+                        />
                       </div>
                     )}
                   </div>

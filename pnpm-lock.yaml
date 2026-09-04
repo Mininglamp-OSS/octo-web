@@ -906,6 +906,10 @@ importers:
         version: 18.3.1(react@18.3.1)
 
   packages/octo-ui:
+    dependencies:
+      '@douyinfe/semi-illustrations':
+        specifier: ^2.93.0
+        version: 2.93.0(react@18.3.1)
     devDependencies:
       '@douyinfe/semi-icons':
         specifier: ^2.93.0

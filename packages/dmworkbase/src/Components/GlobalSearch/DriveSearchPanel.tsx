@@ -7,7 +7,7 @@ import type {
   GlobalSearchDataSource,
 } from "../../Service/SearchTypes";
 import { formatFileSize } from "../../Utils/fileIcon";
-import { Loading } from "@octo/ui";
+import { Empty, Loading } from "@octo/ui";
 import "./drive-search-panel.css";
 
 const PAGE_SIZE = 20;
@@ -329,11 +329,13 @@ const DriveSearchPanel: React.FC<DriveSearchPanelProps> = ({
       return <div className="wk-drive-search__hint">{error}</div>;
     }
     return (
-      <div className="wk-drive-search__empty">
-        {!trimmed
+      <Empty
+        illustration={false}
+        description={!trimmed
           ? t("base.globalSearch.drive.emptyHint")
           : t("base.globalSearch.drive.noResults")}
-      </div>
+        className="wk-drive-search__empty"
+      />
     );
   }, [error, loading, t, trimmed]);
 

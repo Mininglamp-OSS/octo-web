@@ -326,6 +326,10 @@
   color: rgba(28, 28, 35, 0.35);
 }
 
+.wk-fm-empty.octo-ui-empty {
+  padding: 0;
+}
+
 .wk-fm-empty--right {
   height: 100%;
 }

@@ -12,6 +12,11 @@
       "development": "./src/index.ts",
       "import": "./dist/index.js"
     },
+    "./components/Empty": {
+      "types": "./src/components/Empty/index.tsx",
+      "development": "./src/components/Empty/index.tsx",
+      "import": "./dist/empty.js"
+    },
     "./components/Loading": {
       "types": "./src/components/Loading/index.tsx",
       "development": "./src/components/Loading/index.tsx",
@@ -29,12 +34,17 @@
     "src/components/Tooltip/types.ts",
     "src/components/Avatar/types.ts",
     "src/components/AvatarGroup/types.ts",
+    "src/components/Empty/types.ts",
+    "src/components/Empty/index.tsx",
     "src/components/Loading/types.ts",
     "src/components/Loading/index.tsx"
   ],
   "sideEffects": [
     "**/*.css"
   ],
+  "dependencies": {
+    "@douyinfe/semi-illustrations": "^2.93.0"
+  },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
