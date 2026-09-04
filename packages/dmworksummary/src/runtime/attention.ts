@@ -36,11 +36,15 @@ let attentionStarted = false;
 let menuActivatedHandler: (() => void) | null = null;
 let imMessageHandler: ((message: unknown) => void) | null = null;
 let imConnectHandler: ((status: unknown) => void) | null = null;
+let hostVisible = true;
 
 const isDocumentVisible = () =>
   typeof document === "undefined" || document.visibilityState === "visible";
+const isRuntimeVisible = () => hostVisible && isDocumentVisible();
 
-export function initializeSummaryAttentionRuntime(): void {
+export function initializeSummaryAttentionRuntime(
+  options: { observeIm?: boolean } = {}
+): void {
   if (runtimeInitialized) return;
   runtimeInitialized = true;
 
@@ -74,7 +78,7 @@ export function initializeSummaryAttentionRuntime(): void {
       const sample = await readSummaryAttentionCount();
       return sample?.count ?? getSummaryAttentionBadge();
     },
-    isVisible: isDocumentVisible,
+    isVisible: isRuntimeVisible,
   });
 
   attentionLeader = createAttentionLeader({
@@ -85,7 +89,7 @@ export function initializeSummaryAttentionRuntime(): void {
       if (attentionStarted) attentionPoll?.notifyActivity();
     },
     onResignLeader: () => attentionPoll?.stop(),
-    isVisible: isDocumentVisible,
+    isVisible: isRuntimeVisible,
     onRemoteCount: (count, spaceId, sampleAt) => {
       if (!spaceId || spaceId !== WKApp.shared.currentSpaceId) return;
       acceptRemoteAttentionCount(count, sampleAt);
@@ -101,12 +105,13 @@ export function initializeSummaryAttentionRuntime(): void {
   attentionLeader.start();
 
   visibilityHandler = () => {
-    const visible = isDocumentVisible();
+    const visible = isRuntimeVisible();
     attentionPoll?.setVisible(visible);
     attentionLeader?.setVisible(visible);
     if (visible) attentionSync?.trigger();
   };
   focusHandler = () => {
+    if (!isRuntimeVisible()) return;
     attentionSync?.trigger();
     attentionPoll?.notifyActivity();
   };
@@ -120,27 +125,40 @@ export function initializeSummaryAttentionRuntime(): void {
   menuActivatedHandler = () => attentionPoll?.notifyActivity();
   WKApp.mittBus.on("wk:active-menu-changed", menuActivatedHandler);
 
-  try {
-    const sdk = WKSDK.shared();
-    imMessageHandler = (message: unknown) => {
-      if (!isDocumentVisible()) return;
-      if (shouldRefreshForMessage(message)) attentionSync?.trigger();
-    };
-    sdk.chatManager.addMessageListener(imMessageHandler as any);
-    imConnectHandler = (status: unknown) => {
-      if (!isDocumentVisible()) return;
-      if (status === ConnectStatus.Connected) attentionSync?.trigger();
-    };
-    sdk.connectManager.addConnectStatusListener(imConnectHandler as any);
-  } catch {
-    // Attention refresh remains available through focus and visibility events.
+  if (options.observeIm !== false) {
+    try {
+      const sdk = WKSDK.shared();
+      imMessageHandler = (message: unknown) => {
+        if (!isRuntimeVisible()) return;
+        if (shouldRefreshForMessage(message)) attentionSync?.trigger();
+      };
+      sdk.chatManager.addMessageListener(imMessageHandler as any);
+      imConnectHandler = (status: unknown) => {
+        if (!isRuntimeVisible()) return;
+        if (status === ConnectStatus.Connected) attentionSync?.trigger();
+      };
+      sdk.connectManager.addConnectStatusListener(imConnectHandler as any);
+    } catch {
+      // Attention refresh remains available through focus and visibility events.
+    }
   }
 }
 
 export function startSummaryAttentionPolling(): void {
   if (attentionStarted) return;
   attentionStarted = true;
-  if (isDocumentVisible()) attentionPoll?.notifyActivity();
+  if (isRuntimeVisible()) attentionPoll?.notifyActivity();
+}
+
+export function setSummaryAttentionRuntimeVisible(visible: boolean): void {
+  hostVisible = visible;
+  const effectiveVisible = isRuntimeVisible();
+  attentionPoll?.setVisible(effectiveVisible);
+  attentionLeader?.setVisible(effectiveVisible);
+  if (effectiveVisible) {
+    attentionSync?.trigger();
+    if (attentionStarted) attentionPoll?.notifyActivity();
+  }
 }
 
 export function disposeSummaryAttentionRuntime(): void {
@@ -185,6 +203,7 @@ export function disposeSummaryAttentionRuntime(): void {
   attentionPoll?.stop();
   attentionPoll = null;
   attentionStarted = false;
+  hostVisible = true;
 
   if (menuActivatedHandler) {
     WKApp.mittBus.off("wk:active-menu-changed", menuActivatedHandler);

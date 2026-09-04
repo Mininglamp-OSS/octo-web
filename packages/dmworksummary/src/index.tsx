@@ -1,4 +1,10 @@
 export { SummaryModule, startSummaryAttentionPolling } from "./module";
+export {
+  disposeSummaryAttentionRuntime,
+  initializeSummaryAttentionRuntime,
+  setSummaryAttentionRuntimeVisible,
+} from "./runtime/attention";
+export { registerSummaryFoundation } from "./runtime/foundation";
 export { SummaryCommunicationModule } from "./integration/communicationModule";
 export { default as SummaryDetailPage } from "./pages/SummaryDetailPage";
 export { default as SummaryShareDetailPage } from "./pages/SummaryShareDetailPage";

@@ -200,6 +200,11 @@ import {
   startSummaryAttentionPolling,
 } from "../module";
 import {
+  disposeSummaryAttentionRuntime,
+  initializeSummaryAttentionRuntime,
+  setSummaryAttentionRuntimeVisible,
+} from "../runtime/attention";
+import {
   acceptRemoteAttentionCount,
   refreshSummaryAttentionBadge,
   setSummaryAttentionPublisher,
@@ -348,6 +353,34 @@ describe("SummaryModule —— 兜底轮询接线", () => {
     state.visibility = "visible";
     docHandler("visibilitychange")();
     expect(poll.setVisible).toHaveBeenLastCalledWith(true);
+  });
+
+  it("宿主隐藏时暂停运行时，恢复时重新同步", () => {
+    startSummaryAttentionPolling();
+    poll.notifyActivity.mockClear();
+    sync.trigger.mockClear();
+
+    setSummaryAttentionRuntimeVisible(false);
+    expect(poll.setVisible).toHaveBeenLastCalledWith(false);
+    expect(leader.setVisible).toHaveBeenLastCalledWith(false);
+
+    setSummaryAttentionRuntimeVisible(true);
+    expect(poll.setVisible).toHaveBeenLastCalledWith(true);
+    expect(leader.setVisible).toHaveBeenLastCalledWith(true);
+    expect(sync.trigger).toHaveBeenCalledTimes(1);
+    expect(poll.notifyActivity).toHaveBeenCalledTimes(1);
+  });
+
+  it("允许独立 artifact 禁用 IM 事件监听", () => {
+    disposeSummaryModuleListeners();
+    im.messageListeners = [];
+    im.connectListeners = [];
+
+    initializeSummaryAttentionRuntime({ observeIm: false });
+
+    expect(im.messageListeners).toHaveLength(0);
+    expect(im.connectListeners).toHaveLength(0);
+    disposeSummaryAttentionRuntime();
   });
 
   // 🔴 回归：可见性此前只喂给轮询，没喂给 leader。于是隐藏的 leader 一边停着

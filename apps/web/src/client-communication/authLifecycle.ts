@@ -1,4 +1,5 @@
 import type { OctoBuddyCommunicationBridge } from "./hostBridge";
+import { installFeatureAuthExpiryHandler } from "../client-feature/authLifecycle";
 
 interface AuthExpiryClient {
   logoutCallback?: () => void;
@@ -13,18 +14,8 @@ export function installCommunicationAuthExpiryHandler(
   loginInfo: EphemeralLoginInfo,
   bridge: OctoBuddyCommunicationBridge
 ): void {
-  let reported = false;
-  apiClient.logoutCallback = () => {
-    if (reported) return;
-    reported = true;
-    loginInfo.logout();
-    try {
-      bridge.reportAuthExpired("Communication session expired");
-    } catch (error) {
-      console.error(
-        "[client-communication] failed to report expired session",
-        error
-      );
-    }
-  };
+  installFeatureAuthExpiryHandler(apiClient, loginInfo, bridge, {
+    reason: "Communication session expired",
+    logPrefix: "[client-communication]",
+  });
 }
