@@ -17,6 +17,19 @@ import { expertMarketErrorHandlers } from "../../e2e-kit/msw-handlers/expert-mar
 import { skillMarketReviewBadgeHandlers } from "../../e2e-kit/msw-handlers/skill-market-review-badge";
 import { getEnterpriseMockHandlers } from "virtual:octo-enterprise-modules";
 import { http, HttpResponse } from "msw";
+import { MSW_PROBE_HEADER, MSW_PROBE_PATH } from "./swControl";
+
+// MSW 接管探针。只服务 src/mocks/swControl.ts 的 waitForMockInterception():
+// 它靠这条 handler 的标记头判断「MSW 在本 document 里真的开始拦了」，而不是靠
+// worker.start() 返回或 serviceWorker.controller 存在去推断（两者都不等价，
+// 详见 swControl.ts 的注释）。
+//
+// 路径不在任何 vite proxy 前缀下，所以探针没被拦到时只会落到 SPA fallback，
+// 不会污染 e2e 的 proxy-error 计数。放在列表最前面，spec 用 worker.use() 覆盖
+// 业务 handler 时不会把它挡掉。
+const mswProbeHandler = http.get(new RegExp(`${MSW_PROBE_PATH}$`), () =>
+  new HttpResponse(null, { status: 204, headers: { [MSW_PROBE_HEADER]: "1" } }),
+);
 
 const quickMuteStateHandler = http.get(/\/api\/v1\/user\/notification-pause$/, () =>
   HttpResponse.json({ paused: false, paused_until: null, revision: 0, server_time: new Date().toISOString() }),
@@ -44,6 +57,7 @@ const reviewRequestsBadgeFallback = http.get(
 );
 
 export const handlers = [
+  mswProbeHandler,
   ...getEnterpriseMockHandlers(),
   ...mcpOfficialHandlers,
   // Ahead of skillMarketListHandlers: this scenario needs its own

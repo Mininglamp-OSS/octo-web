@@ -52,14 +52,14 @@ vi.mock('@douyinfe/semi-icons', () => ({
     IconMinusCircle: () => null,
     IconExit: () => null,
 }));
-vi.mock('../../utils/summaryMenuBadge', () => ({
-    refreshPendingInvitationBadge: vi.fn(),
+vi.mock('../../utils/summaryAttentionBadge', () => ({
+    refreshSummaryAttentionBadge: vi.fn(),
 }));
 
 import * as api from '../../api/summaryApi';
 import { WKApp, Dap } from '@octo/base';
 import SummaryDetailPage from '../SummaryDetailPage';
-import { refreshPendingInvitationBadge } from '../../utils/summaryMenuBadge';
+import { refreshSummaryAttentionBadge } from '../../utils/summaryAttentionBadge';
 import { summaryTestIds } from '../../utils/testIds';
 
 vi.mock('../../api/summaryApi');
@@ -971,7 +971,7 @@ describe('SummaryDetailPage — 续修5/6/7: schedule 用户操作路径切 task
 
         // 不重拉 schedule 回显，confirmingSchedule 由 finally 复位。
         expect(api.getSchedule).not.toHaveBeenCalled();
-        expect(refreshPendingInvitationBadge).toHaveBeenCalledTimes(1);
+        expect(refreshSummaryAttentionBadge).toHaveBeenCalledTimes(1);
         expect((page.state as any).confirmingSchedule).toBe(false);
     });
 });

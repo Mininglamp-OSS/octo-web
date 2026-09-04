@@ -509,9 +509,27 @@ export interface ListSummariesParams {
 export interface ListSummariesResponse {
     items: SummaryListItem[];
     total: number;
+    /** 未读 ∪ 未处理邀请 ∪ 待提交，与卡片 needs_attention 同源；侧边栏红点取此值 */
     attention_count: number;
     unread_count: number;
     pending_invitation_count: number;
+    /** 多人总结中个人总结已生成但未 /submit 的条数 */
+    pending_submission_count?: number;
+}
+
+/**
+ * `GET /summaries/attention` 的窄响应。字段与 ListSummariesResponse 的计数部分
+ * 同名同口径，是它去掉 `items`/`total` 之后的子集——这样两条取数路径
+ * （窄端点与 page_size=1 兜底）可以共用同一个消费逻辑，不必在调用方分叉。
+ *
+ * 窄端点存在的意义是它可以被后端缓存（5s）且不必扫列表；红点只要计数，
+ * 拉一整页列表项纯属浪费。
+ */
+export interface SummaryAttentionCounts {
+    attention_count: number;
+    unread_count?: number;
+    pending_invitation_count?: number;
+    pending_submission_count?: number;
 }
 
 /** 定时配置参与者（participant_config 内嵌，含 V5 一次性确认态） */
