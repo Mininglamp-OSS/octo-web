@@ -301,6 +301,18 @@ describe("SummaryModule guarded menu switching", () => {
     expect(getChatCandidates).toHaveBeenCalledWith({ keyword: "docs" });
   });
 
+  it("does not duplicate Web registrations when init is called twice", () => {
+    new SummaryModule().init();
+
+    expect(i18n.registerNamespace).toHaveBeenCalledTimes(1);
+    expect(WKApp.route.register).toHaveBeenCalledTimes(6);
+    expect(WKApp.menus.register).toHaveBeenCalledTimes(1);
+    expect(
+      WKApp.endpoints.registerChannelHeaderRightItem
+    ).toHaveBeenCalledTimes(1);
+    expect(WKApp.endpoints.registerChatSummaryPanel).toHaveBeenCalledTimes(1);
+  });
+
   it("opens summary detail only after the guarded switch succeeds", () => {
     let afterSwitch: (() => void) | undefined;
     state.switchToMenuById.mockImplementation(

@@ -13,7 +13,7 @@ import {
 } from "@octo/base";
 import { ContactsModule } from "@octo/contacts";
 import { DataSourceModule } from "@octo/datasource";
-import { SummaryModule } from "@dmwork/summary";
+import { SummaryCommunicationModule } from "@dmwork/summary/src/communication";
 import { registerEnterpriseModules } from "virtual:octo-enterprise-modules";
 import { WKSDK } from "wukongimjssdk";
 import { version as pkgVersion } from "../../package.json";
@@ -65,7 +65,7 @@ async function main() {
   installCommunicationAuthExpiryHandler(WKApp.apiClient, WKApp.loginInfo, host);
   WKApp.shared.registerModule(new DataSourceModule());
   WKApp.shared.registerModule(new ContactsModule());
-  WKApp.shared.registerModule(new SummaryModule());
+  WKApp.shared.registerModule(new SummaryCommunicationModule());
   registerEnterpriseModules({
     registerModule: (module) => WKApp.shared.registerModule(module),
   });
