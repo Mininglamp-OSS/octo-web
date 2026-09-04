@@ -9,6 +9,10 @@ import {
 } from "@octo/base";
 import type { WKViewQueueContext } from "@octo/base/src/Components/WKViewQueue";
 import { ContactsList } from "@octo/contacts";
+import type {
+  SummaryCompletionNotice,
+  SummaryConversationTarget,
+} from "@dmwork/summary/src/host/types";
 import { Channel, WKSDK } from "wukongimjssdk";
 import { getElectronUnreadMessageCount } from "../App/electronUnreadCount";
 import {
@@ -18,6 +22,7 @@ import {
   type HostCommand,
   type NavigationReport,
   type OctoBuddyCommunicationBridge,
+  type SummaryCapabilityRequest,
 } from "./hostBridge";
 import { createReadyReporter } from "./readyReporter";
 import "./index.css";
@@ -217,6 +222,54 @@ export function CommunicationShell({
       conversationManager.removeConversationListener(syncUnread);
       WKApp.mittBus.off("conversation-list-refreshed", syncUnread);
     };
+  }, [bridge]);
+
+  useEffect(() => {
+    if (!bridge.onSummaryRequest || !bridge.respondSummaryRequest) return;
+    return bridge.onSummaryRequest((request: SummaryCapabilityRequest) => {
+      const respond = (response: { ok: boolean; result?: unknown; error?: string }) => {
+        bridge.respondSummaryRequest?.({ requestId: request.requestId, ...response });
+      };
+      const run = async () => {
+        const { legacySummaryMessagingPort } = await import(
+          "@dmwork/summary/src/host/legacySummaryMessaging"
+        );
+        if (request.operation === "loadConversationMembers") {
+          const result = await legacySummaryMessagingPort.loadConversationMembers(
+            request.payload as SummaryConversationTarget
+          );
+          respond({ ok: true, result });
+          return;
+        }
+        if (request.operation === "notifySummaryCompleted") {
+          await legacySummaryMessagingPort.notifySummaryCompleted(
+            request.payload as SummaryCompletionNotice
+          );
+          respond({ ok: true });
+          return;
+        }
+        if (request.operation === "requestForward") {
+          const input = request.payload as { content?: unknown; title?: unknown };
+          const content = typeof input?.content === "string" ? input.content : "";
+          const title = typeof input?.title === "string" ? input.title : "";
+          legacySummaryMessagingPort.requestForward({
+            content,
+            title,
+            onComplete: (result) => respond({ ok: true, result }),
+            onError: (error) => respond({
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          });
+          return;
+        }
+        throw new Error(`Unsupported summary capability: ${request.operation}`);
+      };
+      void run().catch((error) => respond({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      }));
+    });
   }, [bridge]);
 
   useEffect(() => {

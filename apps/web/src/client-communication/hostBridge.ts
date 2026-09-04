@@ -49,6 +49,22 @@ export interface NavigationReport {
   channel?: { id: string; type: number };
 }
 
+export type SummaryCapabilityRequest = {
+  requestId: string;
+  operation:
+    | "loadConversationMembers"
+    | "notifySummaryCompleted"
+    | "requestForward";
+  payload: unknown;
+};
+
+export interface SummaryCapabilityResponse {
+  requestId: string;
+  ok: boolean;
+  result?: unknown;
+  error?: string;
+}
+
 export interface OctoBuddyCommunicationBridge {
   getBootstrap(): Promise<CommunicationBootstrap>;
   /** May be retried after a timeout; hosts must handle duplicate reports. */
@@ -62,6 +78,10 @@ export interface OctoBuddyCommunicationBridge {
   reportUnread(count: number): void;
   reportAuthExpired(reason: string): void;
   reportFatalError(error: { message: string; stack?: string }): void;
+  respondSummaryRequest?(response: SummaryCapabilityResponse): void;
+  onSummaryRequest?(
+    callback: (request: SummaryCapabilityRequest) => void
+  ): () => void;
   onCommand(callback: (command: HostCommand) => void): () => void;
 }
 

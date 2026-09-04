@@ -6,8 +6,13 @@ const mocks = vi.hoisted(() => {
   const command = {
     listener: undefined as ((command: any) => void) | undefined,
   };
+  const summaryRequest = {
+    listener: undefined as ((request: any) => void) | undefined,
+  };
   return {
     command,
+    summaryRequest,
+    loadConversationMembers: vi.fn(async () => [{ uid: "user-1", name: "User 1" }]),
     bridge: {
       getBootstrap: vi.fn(),
       reportReady: vi.fn(async () => {}),
@@ -15,6 +20,13 @@ const mocks = vi.hoisted(() => {
       reportUnread: vi.fn(),
       reportAuthExpired: vi.fn(),
       reportFatalError: vi.fn(),
+      respondSummaryRequest: vi.fn(),
+      onSummaryRequest: vi.fn((listener: (request: any) => void) => {
+        summaryRequest.listener = listener;
+        return () => {
+          if (summaryRequest.listener === listener) summaryRequest.listener = undefined;
+        };
+      }),
       onCommand: vi.fn((listener: (command: any) => void) => {
         command.listener = listener;
         return () => {
@@ -30,6 +42,14 @@ const mocks = vi.hoisted(() => {
     },
   };
 });
+
+vi.mock("@dmwork/summary/src/host/legacySummaryMessaging", () => ({
+  legacySummaryMessagingPort: {
+    loadConversationMembers: mocks.loadConversationMembers,
+    notifySummaryCompleted: vi.fn(async () => {}),
+    requestForward: vi.fn(),
+  },
+}));
 
 vi.mock("../App/electronUnreadCount", () => ({
   getElectronUnreadMessageCount: () => 0,
@@ -111,6 +131,7 @@ describe("CommunicationShell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.command.listener = undefined;
+    mocks.summaryRequest.listener = undefined;
   });
 
   it("reports ready once during the React StrictMode effect cycle", async () => {
@@ -237,5 +258,30 @@ describe("CommunicationShell", () => {
     expect(document.documentElement.lang).toBe("en-US");
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(i18n.setLocale).toHaveBeenCalledWith("en-US", { persist: false });
+  });
+
+  it("serves summary messaging requests through the communication runtime", async () => {
+    render(
+      <CommunicationShell
+        bridge={mocks.bridge as any}
+        initialPage="chat"
+        initialSpaceId="space-a"
+        initialPresentation="workspace"
+        onReady={vi.fn(async () => {})}
+      />,
+    );
+
+    await waitFor(() => expect(mocks.summaryRequest.listener).toBeTypeOf("function"));
+    mocks.summaryRequest.listener?.({
+      requestId: "request-1",
+      operation: "loadConversationMembers",
+      payload: { channelId: "group-1", channelType: 2 },
+    });
+
+    await waitFor(() => expect(mocks.bridge.respondSummaryRequest).toHaveBeenCalledWith({
+      requestId: "request-1",
+      ok: true,
+      result: [{ uid: "user-1", name: "User 1" }],
+    }));
   });
 });
