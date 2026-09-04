@@ -20,20 +20,28 @@ export interface SummaryWorkbenchContextItem {
   label: string;
 }
 
-export interface SummaryWorkbenchMessageView {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  resultType?: SummaryWorkbenchResultType;
-}
-
 export interface SummaryWorkbenchProgressView {
   phase: string;
   count?: number;
 }
 
+export interface SummaryWorkbenchProcessView {
+  status: "running" | "completed";
+  steps: SummaryWorkbenchProgressView[];
+}
+
+export interface SummaryWorkbenchMessageView {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  resultType?: SummaryWorkbenchResultType;
+  card?: SummaryWorkbenchCardView;
+  process?: SummaryWorkbenchProcessView;
+}
+
 interface SummaryWorkbenchCardBase {
   isStale: boolean;
+  isHistorical?: boolean;
   actions: SummaryWorkbenchAction[];
 }
 
@@ -64,7 +72,10 @@ export type SummaryWorkbenchCardView =
   | SummaryWorkbenchWorkflowCard
   | SummaryWorkbenchPreviewCard;
 
-const CARD_ACTIONS: Record<SummaryWorkbenchCardView["kind"], readonly SummaryWorkbenchAction[]> = {
+const CARD_ACTIONS: Record<
+  SummaryWorkbenchCardView["kind"],
+  readonly SummaryWorkbenchAction[]
+> = {
   team_confirmation: ["confirm_workflow", "continue_chat"],
   workflow_started: ["view_progress", "continue_chat"],
   workflow_completed: ["view_summary"],

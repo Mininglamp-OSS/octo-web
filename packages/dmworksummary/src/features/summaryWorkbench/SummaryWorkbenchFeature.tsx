@@ -81,6 +81,7 @@ export interface SummaryWorkbenchFeatureProps {
   onCreated?: () => void;
   onOpenTask?: (taskId: number) => void;
   maxTimeRangeDays?: number;
+  directTeamWorkflow?: boolean;
 }
 
 type OpenSelector = Exclude<SummaryWorkbenchContextKind, "template"> | null;
@@ -130,6 +131,7 @@ export default function SummaryWorkbenchFeature({
   onCreated,
   onOpenTask,
   maxTimeRangeDays = DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS,
+  directTeamWorkflow = false,
 }: SummaryWorkbenchFeatureProps) {
   const { t, format } = useI18n();
   const currentUserId = WKApp.loginInfo.uid || "";
@@ -483,8 +485,16 @@ export default function SummaryWorkbenchFeature({
           : t("summary.workbench.intent.personal");
       inputOrigin = "system_intent";
     }
+    const action =
+      directTeamWorkflow &&
+      !hasSubmitted &&
+      workbench.scope.participants.length > 0
+        ? "start_team_workflow"
+        : "chat";
     const response = await runStartedTask(() =>
-      workbench.send(message, inputOrigin)
+      action === "start_team_workflow"
+        ? workbench.send(message, inputOrigin, action)
+        : workbench.send(message, inputOrigin)
     );
     if (isAcceptedResponse(response)) {
       Dap.shared.track("smart_summary_agent_message_sent", {});
@@ -605,6 +615,8 @@ export default function SummaryWorkbenchFeature({
 
   const timeRangeLabels: TimeRangeSelectorLabels = {
     last7Days: t("summary.timeRange.last7d"),
+    last15Days: t("summary.timeRange.last15d"),
+    last30Days: t("summary.timeRange.lastMonth"),
     custom: t("summary.workbench.selector.customTimeRange"),
     clear: t("summary.workbench.selector.clearTimeRange"),
     startPlaceholder: t("summary.timeRange.startPlaceholder"),
@@ -730,6 +742,12 @@ export default function SummaryWorkbenchFeature({
             onInputChange: (value) => {
               templateFilledComposer.current = null;
               workbench.setComposerValue(value);
+              if (!value.trim() && workbench.scope.template) {
+                workbench.updateScope({
+                  ...workbench.scope,
+                  template: null,
+                });
+              }
               // P1-4 (yujiawei review 5087124100): top-of-funnel intent signal
               // was legacy-only. Mirror the legacy debounce (600ms, non-empty,
               // no content) instead of tracking every keystroke.

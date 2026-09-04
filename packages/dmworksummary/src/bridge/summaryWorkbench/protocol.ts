@@ -7,6 +7,8 @@ export const DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS = 31;
 
 export type SummaryWorkspaceInputOrigin = "user" | "template" | "system_intent";
 
+export type SummaryWorkspaceChatAction = "chat" | "start_team_workflow";
+
 export const SUMMARY_WORKSPACE_RESULT_TYPES = [
   "clarification",
   "explanation",
@@ -97,7 +99,7 @@ export interface SummaryWorkspaceContextDTO {
 export interface SummaryWorkspaceChatRequestDTO {
   session_id: string;
   profile: typeof SUMMARY_WORKSPACE_PROFILE;
-  action: "chat";
+  action: SummaryWorkspaceChatAction;
   message: string;
   input_origin: SummaryWorkspaceInputOrigin;
   request_id: string;
@@ -127,6 +129,7 @@ export interface SummaryWorkspaceCapabilitiesDTO {
   enabled: boolean;
   contract_version: string;
   max_time_range_days: number;
+  direct_team_workflow: boolean;
 }
 
 export interface SummaryWorkspacePreviewDTO {
@@ -194,6 +197,7 @@ export interface SummaryWorkspaceHistoryMessageDTO {
   scope_version: number;
   artifact_version?: number;
   available_actions?: SummaryWorkspaceAction[];
+  preview?: SummaryWorkspacePreviewDTO;
 }
 
 export interface SummaryWorkspaceHistoryDTO {

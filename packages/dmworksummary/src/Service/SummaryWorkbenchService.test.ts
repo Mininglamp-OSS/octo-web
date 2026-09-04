@@ -119,6 +119,32 @@ describe("SummaryWorkbenchService", () => {
     );
   });
 
+  it("builds a direct team workflow request when requested", async () => {
+    postTurn.mockResolvedValue(clarificationTurn());
+
+    await service.sendMessage({
+      sessionId: "session-1",
+      message: "直接生成多人总结",
+      inputOrigin: "system_intent",
+      action: "start_team_workflow",
+      requestId: "request-team-1",
+      scopeVersion: 1,
+      scope: {
+        ...scope,
+        participants: [{ userId: "u1", userName: "张三" }],
+      },
+    });
+
+    expect(postTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "start_team_workflow",
+        input_origin: "system_intent",
+        request_id: "request-team-1",
+      }),
+      {}
+    );
+  });
+
   it("decodes SSE done with the same adapter as JSON", () => {
     streamTurn.mockReturnValue({ close: vi.fn() });
     const onDone = vi.fn();
@@ -360,6 +386,7 @@ describe("SummaryWorkbenchService", () => {
       enabled: true,
       contract_version: "1",
       max_time_range_days: 90,
+      direct_team_workflow: true,
     });
     await expect(
       service.getCapabilities({ spaceId: "space-a" })
@@ -367,6 +394,7 @@ describe("SummaryWorkbenchService", () => {
       enabled: true,
       contract_version: "1",
       max_time_range_days: 90,
+      direct_team_workflow: true,
     });
     expect(getCapabilities).toHaveBeenCalledWith({ spaceId: "space-a" });
   });

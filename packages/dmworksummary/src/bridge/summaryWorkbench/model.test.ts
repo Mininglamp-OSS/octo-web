@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SummaryWorkbenchContextItem } from "../../ui/SummaryWorkbench/types";
 import {
   applySummaryResponse,
+  attachSummaryMessageProcess,
   canSaveCurrentPreview,
   createInitialSummaryWorkbenchModel,
   deriveSummaryWorkbenchView,
@@ -24,6 +25,28 @@ const templateContext: SummaryWorkbenchContextItem = {
 };
 
 describe("summary workbench model", () => {
+  it("attaches generation progress to the matching assistant turn", () => {
+    const responded = applySummaryResponse(
+      createInitialSummaryWorkbenchModel(),
+      {
+        messageId: "assistant-1",
+        reply: "已生成总结。",
+        resultType: "explanation",
+      }
+    );
+    const withProcess = attachSummaryMessageProcess(responded, "assistant-1", {
+      status: "completed",
+      steps: [{ phase: "retrieve", count: 8 }],
+    });
+
+    expect(
+      deriveSummaryWorkbenchView(withProcess).messages[0]?.process
+    ).toEqual({
+      status: "completed",
+      steps: [{ phase: "retrieve", count: 8 }],
+    });
+  });
+
   it("creates the explicit domain state and derives composer presentation", () => {
     const initial = createInitialSummaryWorkbenchModel({ layout: "panel" });
 
@@ -172,6 +195,17 @@ describe("summary workbench model", () => {
     });
     expect(canSaveCurrentPreview(revision)).toBe(true);
     expect(deriveSummaryWorkbenchView(revision).card).toMatchObject({
+      actions: ["save_preview"],
+    });
+    const revisionView = deriveSummaryWorkbenchView(revision);
+    expect(revisionView.messages[0]?.card).toMatchObject({
+      kind: "agent_preview",
+      isHistorical: true,
+      actions: [],
+    });
+    expect(revisionView.messages[1]?.card).toMatchObject({
+      kind: "agent_revision",
+      isHistorical: false,
       actions: ["save_preview"],
     });
 

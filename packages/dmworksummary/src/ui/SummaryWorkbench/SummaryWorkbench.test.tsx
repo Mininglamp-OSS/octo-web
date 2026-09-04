@@ -26,10 +26,16 @@ vi.mock("@octo/base", async () => {
     "summary.workbench.context.timeRange": "Time range",
     "summary.workbench.context.reference": "Reference summary",
     "summary.workbench.composer.send": "Send",
+    "summary.workbench.message.assistant": "Summary assistant",
+    "summary.workbench.message.user": "You",
+    "summary.workbench.message.userAvatar": "Me",
+    "summary.workbench.message.conversation": "Summary conversation",
     "summary.workbench.actions.newSession": "New session",
     "summary.workbench.loadingHistory": "Restoring session",
     "summary.common.agentChat.viewGenerationProcess": "Generation progress",
+    "summary.common.agentChat.progress.understand": "Understanding request",
     "summary.common.agentChat.progress.retrieve": "Reading chats",
+    "summary.status.completed": "Completed",
     "summary.common.agentPanel.processedCount": "Processed 8 items",
     "summary.workbench.card.teamConfirmationTitle": "Confirm collaboration",
     "summary.workbench.card.teamConfirmationBadge": "Team workflow",
@@ -40,6 +46,8 @@ vi.mock("@octo/base", async () => {
     "summary.workbench.card.previewTitle": "Preview draft",
     "summary.workbench.card.previewBadge": "Preview",
     "summary.workbench.card.revisionBadge": "Revision",
+    "summary.workbench.card.historicalBadge": "Previous version",
+    "summary.workbench.card.currentBadge": "Current version",
     "summary.workbench.card.staleBadge": "Outdated",
     "summary.workbench.card.participants": "Participants",
     "summary.workbench.card.template": "Template",
@@ -313,7 +321,13 @@ describe("SummaryWorkbench", () => {
     const actions = createActions();
     actions.onNewSession = vi.fn();
     const state = createState();
-    state.progressSteps = [{ phase: "retrieve", count: 8 }];
+    state.messages[0] = {
+      ...state.messages[0],
+      process: {
+        status: "completed",
+        steps: [{ phase: "retrieve", count: 8 }],
+      },
+    };
 
     const { rerender } = rtlRender(
       <SummaryWorkbench state={state} actions={actions} />,
@@ -323,6 +337,17 @@ describe("SummaryWorkbench", () => {
     expect(screen.getByTestId("summary-workbench-progress")).toHaveTextContent(
       "Reading chats"
     );
+    const firstMessage = screen.getAllByTestId("summary-workbench-message")[0];
+    const process = within(firstMessage).getByTestId(
+      "summary-workbench-progress"
+    );
+    expect(process).toBeInTheDocument();
+    expect(process).not.toHaveAttribute("open");
+    expect(
+      process.compareDocumentPosition(
+        within(firstMessage).getByText("What should I summarize?")
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).not.toBe(0);
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
     expect(actions.onNewSession).toHaveBeenCalledTimes(1);
 
@@ -334,6 +359,88 @@ describe("SummaryWorkbench", () => {
     );
     expect(screen.getByText("Restoring session")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  });
+
+  it("keeps preview revisions in chronological chatbot order", () => {
+    const state = createState({
+      kind: "agent_revision",
+      isStale: false,
+      version: 2,
+      content: "Summary V2",
+      assumptions: [],
+      actions: ["save_preview"],
+    });
+    state.messages = [
+      {
+        id: "preview-1",
+        role: "assistant",
+        content: "First draft",
+        resultType: "agent_preview",
+        card: {
+          kind: "agent_preview",
+          isStale: false,
+          isHistorical: true,
+          version: 1,
+          content: "Summary V1",
+          assumptions: [],
+          actions: [],
+        },
+      },
+      {
+        id: "feedback-1",
+        role: "user",
+        content: "Add delivery risks",
+      },
+      {
+        id: "preview-2",
+        role: "assistant",
+        content: "Updated draft",
+        resultType: "agent_revision",
+        card: {
+          kind: "agent_revision",
+          isStale: false,
+          version: 2,
+          content: "Summary V2",
+          assumptions: [],
+          actions: ["save_preview"],
+        },
+      },
+    ];
+
+    rtlRender(<SummaryWorkbench state={state} actions={createActions()} />, {
+      legacyRoot: true,
+    });
+
+    const cards = screen.getAllByTestId("summary-workbench-result-card");
+    expect(cards).toHaveLength(2);
+    expect(cards[0]).toHaveTextContent("Summary V1");
+    expect(cards[0]).toHaveTextContent("Previous version");
+    expect(cards[1]).toHaveTextContent("Summary V2");
+    expect(cards[1]).toHaveTextContent("Current version");
+    expect(
+      screen.getByText("Add delivery risks").compareDocumentPosition(cards[1]) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).not.toBe(0);
+    expect(
+      screen.getAllByRole("button", { name: "Save preview" })
+    ).toHaveLength(1);
+  });
+
+  it("shows immediate understanding progress before the first SSE event", () => {
+    const state = createState();
+    state.isSending = true;
+    state.progressSteps = [];
+
+    rtlRender(<SummaryWorkbench state={state} actions={createActions()} />, {
+      legacyRoot: true,
+    });
+
+    expect(screen.getByTestId("summary-workbench-progress")).toHaveTextContent(
+      "Understanding request"
+    );
+    expect(
+      screen.getAllByTestId("summary-workbench-message").at(-1)
+    ).toHaveClass("wk-summary-workbench-message--pending");
   });
 
   it("locks scope controls while busy and renders a zero progress count", () => {

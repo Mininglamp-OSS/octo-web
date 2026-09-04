@@ -29,6 +29,7 @@ import {
   SummaryWorkspaceApiError,
   serializeSummaryWorkbenchScope,
   type SummaryWorkbenchScope,
+  type SummaryWorkspaceChatAction,
   type SummaryWorkspaceCapabilitiesDTO,
   type SummaryWorkspaceChatRequestDTO,
   type SummaryWorkspaceConfirmRequestDTO,
@@ -41,6 +42,7 @@ export interface SummaryWorkbenchMessageInput {
   sessionId: string;
   message: string;
   inputOrigin?: SummaryWorkspaceInputOrigin;
+  action?: SummaryWorkspaceChatAction;
   requestId: string;
   scopeVersion: number;
   scope: SummaryWorkbenchScope;
@@ -278,7 +280,7 @@ function buildChatRequest(
   return {
     session_id: input.sessionId,
     profile: SUMMARY_WORKSPACE_PROFILE,
-    action: "chat",
+    action: input.action ?? "chat",
     message: input.message,
     input_origin: input.inputOrigin ?? "user",
     request_id: input.requestId,

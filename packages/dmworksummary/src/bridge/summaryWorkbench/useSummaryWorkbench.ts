@@ -13,6 +13,7 @@ import { contextItemsFromScope } from "./adapter";
 import type { SummaryWorkbenchHistoryHydration } from "./adapter";
 import {
   applySummaryResponse,
+  attachSummaryMessageProcess,
   canSaveCurrentPreview,
   createInitialSummaryWorkbenchModel,
   deriveSummaryWorkbenchView,
@@ -28,6 +29,7 @@ import {
   SummaryWorkspaceApiError,
   serializeSummaryWorkbenchScope,
   type SummaryWorkbenchScope,
+  type SummaryWorkspaceChatAction,
   type SummaryWorkspaceInputOrigin,
 } from "./protocol";
 
@@ -80,7 +82,8 @@ export interface SummaryWorkbenchController {
   updateScope: (scope: SummaryWorkbenchScopeInput) => boolean;
   send: (
     message?: string,
-    inputOrigin?: SummaryWorkspaceInputOrigin
+    inputOrigin?: SummaryWorkspaceInputOrigin,
+    action?: SummaryWorkspaceChatAction
   ) => Promise<SummaryWorkbenchResponse | undefined>;
   confirmWorkflow: () => Promise<SummaryWorkbenchResponse | undefined>;
   savePreview: (
@@ -329,7 +332,8 @@ export default function useSummaryWorkbench(
       messageOverride?: string,
       inputOrigin: SummaryWorkspaceInputOrigin = messageOverride === undefined
         ? "user"
-        : "system_intent"
+        : "system_intent",
+      action: SummaryWorkspaceChatAction = "chat"
     ): Promise<SummaryWorkbenchResponse | undefined> => {
       const existing = generationRef.current;
       if (existing) return existing.promise;
@@ -350,7 +354,8 @@ export default function useSummaryWorkbench(
         current.sessionId,
         current.scope,
         message,
-        inputOrigin
+        inputOrigin,
+        action
       );
       const previousAttempt = retryableGenerationRef.current;
       const requestId =
@@ -362,6 +367,7 @@ export default function useSummaryWorkbench(
         sessionId: current.sessionId,
         message,
         inputOrigin,
+        ...(action === "chat" ? {} : { action }),
         requestId,
         scopeVersion: current.model.scopeVersion,
         scope: cloneScope(current.scope),
@@ -430,9 +436,31 @@ export default function useSummaryWorkbench(
           retryableGenerationRef.current = null;
         }
         flight.stream?.close();
-        const next = commit((latest: RuntimeState) =>
-          applyControllerResponse(latest, response, requestId)
-        );
+        const next = commit((latest: RuntimeState) => {
+          const completed = applyControllerResponse(
+            latest,
+            response,
+            requestId
+          );
+          const progressSteps =
+            latest.progressEvents.length > 0
+              ? latest.progressEvents.map((event) => ({
+                  phase: event.phase,
+                  ...(event.count === undefined ? {} : { count: event.count }),
+                }))
+              : [{ phase: "understand" }];
+          return {
+            ...completed,
+            model: attachSummaryMessageProcess(
+              completed.model,
+              response.messageId,
+              {
+                status: "completed",
+                steps: progressSteps,
+              }
+            ),
+          };
+        });
         notifySessionId(next.sessionId);
         flight.resolve(response);
       };
@@ -1172,13 +1200,15 @@ function generationRetryIdentity(
   sessionId: string,
   scope: SummaryWorkbenchScope,
   message: string,
-  inputOrigin: SummaryWorkspaceInputOrigin
+  inputOrigin: SummaryWorkspaceInputOrigin,
+  action: SummaryWorkspaceChatAction
 ): string {
   return JSON.stringify([
     sessionId,
     scopeFingerprint(scope),
     message,
     inputOrigin,
+    action,
   ]);
 }
 

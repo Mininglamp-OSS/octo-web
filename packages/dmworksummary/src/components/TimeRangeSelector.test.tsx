@@ -26,6 +26,8 @@ vi.mock("@douyinfe/semi-ui", () => ({
 
 const labels: TimeRangeSelectorLabels = {
     last7Days: "Last 7 days",
+    last15Days: "Last 15 days",
+    last30Days: "Last month",
     custom: "Custom",
     clear: "Clear",
     startPlaceholder: "Start",
@@ -64,6 +66,36 @@ describe("TimeRangeSelector", () => {
         expect(new Date(nextValue.end).getDate()).toBe(27);
         expect(new Date(nextValue.end).getHours()).toBe(23);
         expect(nextValue.label).toBe("Last 7 days");
+    });
+
+    it.each([
+        ["Last 15 days", 15, 13],
+        ["Last month", 30, 29],
+    ])("emits the %s preset", (label, days, expectedStartDay) => {
+        const onChange = vi.fn();
+        const view = render(
+            <TimeRangeSelector
+                value={null}
+                onChange={onChange}
+                labels={labels}
+                now={new Date(2026, 7, 27, 10, 30)}
+            />,
+            { legacyRoot: true }
+        );
+
+        fireEvent.click(view.getByRole("button", { name: label }));
+
+        const nextValue = onChange.mock.calls[0][0];
+        expect(new Date(nextValue.start).getDate()).toBe(expectedStartDay);
+        expect(new Date(nextValue.end).getDate()).toBe(27);
+        expect(nextValue.label).toBe(label);
+        expect(
+            Math.round(
+                (new Date(nextValue.end).getTime() -
+                    new Date(nextValue.start).getTime()) /
+                    (24 * 60 * 60 * 1000)
+            )
+        ).toBe(days);
     });
 
     it("opens the custom picker and emits a stable caller-formatted label", () => {

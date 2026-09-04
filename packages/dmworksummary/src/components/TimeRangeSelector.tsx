@@ -5,10 +5,14 @@ import "./TimeRangeSelector.css";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const LAST_SEVEN_DAYS = 7;
+const LAST_FIFTEEN_DAYS = 15;
+const LAST_THIRTY_DAYS = 30;
 const LONG_RANGE_WARNING_DAYS = 31;
 
 export interface TimeRangeSelectorLabels {
   last7Days: string;
+  last15Days: string;
+  last30Days: string;
   custom: string;
   clear: string;
   startPlaceholder: string;
@@ -86,16 +90,20 @@ export function createCustomTimeRange(
   };
 }
 
-function isLastSevenDays(
+function presetDaysForValue(
   value: SummaryWorkbenchTimeRangeScope | null,
   now: Date
-): boolean {
+): number | undefined {
   const dates = scopeDates(value);
-  if (!dates) return false;
-  const expected = createLastDaysTimeRange(now, LAST_SEVEN_DAYS, "");
-  return (
-    sameLocalDate(dates[0], new Date(expected.start)) &&
-    sameLocalDate(dates[1], new Date(expected.end))
+  if (!dates) return undefined;
+  return [LAST_SEVEN_DAYS, LAST_FIFTEEN_DAYS, LAST_THIRTY_DAYS].find(
+    (days) => {
+      const expected = createLastDaysTimeRange(now, days, "");
+      return (
+        sameLocalDate(dates[0], new Date(expected.start)) &&
+        sameLocalDate(dates[1], new Date(expected.end))
+      );
+    }
   );
 }
 
@@ -112,11 +120,11 @@ export default function TimeRangeSelector({
     [now]
   );
   const [showCustom, setShowCustom] = useState(
-    () => value !== null && !isLastSevenDays(value, referenceNow)
+    () => value !== null && presetDaysForValue(value, referenceNow) === undefined
   );
   const [error, setError] = useState("");
   const selectedDates = scopeDates(value);
-  const lastSevenDaysSelected = isLastSevenDays(value, referenceNow);
+  const selectedPresetDays = presetDaysForValue(value, referenceNow);
   const isLongRange = Boolean(
     selectedDates &&
       selectedDates[1].getTime() - selectedDates[0].getTime() >
@@ -125,15 +133,13 @@ export default function TimeRangeSelector({
 
   useEffect(() => {
     if (!value) return;
-    setShowCustom(!isLastSevenDays(value, referenceNow));
+    setShowCustom(presetDaysForValue(value, referenceNow) === undefined);
   }, [referenceNow, value]);
 
-  const selectLastSevenDays = () => {
+  const selectPreset = (days: number, label: string) => {
     setShowCustom(false);
     setError("");
-    onChange(
-      createLastDaysTimeRange(referenceNow, LAST_SEVEN_DAYS, labels.last7Days)
-    );
+    onChange(createLastDaysTimeRange(referenceNow, days, label));
   };
 
   const selectCustom = () => {
@@ -164,26 +170,35 @@ export default function TimeRangeSelector({
   };
 
   const datePickerValue: [Date, Date] | undefined =
-    showCustom && selectedDates && !lastSevenDaysSelected
+    showCustom && selectedDates && selectedPresetDays === undefined
       ? selectedDates
       : undefined;
+
+  const presets = [
+    { days: LAST_SEVEN_DAYS, label: labels.last7Days },
+    { days: LAST_FIFTEEN_DAYS, label: labels.last15Days },
+    { days: LAST_THIRTY_DAYS, label: labels.last30Days },
+  ];
 
   return (
     <div className="wk-time-range-selector">
       <div className="wk-time-range-selector__presets">
-        <button
-          type="button"
-          className={`wk-time-range-selector__preset${
-            lastSevenDaysSelected
-              ? " wk-time-range-selector__preset--active"
-              : ""
-          }`}
-          aria-pressed={lastSevenDaysSelected}
-          disabled={disabled}
-          onClick={selectLastSevenDays}
-        >
-          {labels.last7Days}
-        </button>
+        {presets.map((preset) => (
+          <button
+            key={preset.days}
+            type="button"
+            className={`wk-time-range-selector__preset${
+              selectedPresetDays === preset.days
+                ? " wk-time-range-selector__preset--active"
+                : ""
+            }`}
+            aria-pressed={selectedPresetDays === preset.days}
+            disabled={disabled || preset.days > maxDays}
+            onClick={() => selectPreset(preset.days, preset.label)}
+          >
+            {preset.label}
+          </button>
+        ))}
         <button
           type="button"
           className={`wk-time-range-selector__preset${

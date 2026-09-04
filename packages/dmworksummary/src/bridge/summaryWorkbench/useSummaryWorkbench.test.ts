@@ -373,6 +373,10 @@ describe("useSummaryWorkbench", () => {
       label: "#7",
     });
     expect(result.current.model.messages).toHaveLength(2);
+    expect(result.current.model.messages[1]?.process).toEqual({
+      status: "completed",
+      steps: [{ phase: "retrieve", count: 30 }],
+    });
     expect(result.current.latestProgress).toMatchObject({
       phase: "retrieve",
       count: 30,
@@ -598,6 +602,47 @@ describe("useSummaryWorkbench", () => {
     ).toEqual([
       { requestId: "request-template", inputOrigin: "template" },
       { requestId: "request-user", inputOrigin: "user" },
+    ]);
+    unmount();
+  });
+
+  it("keeps direct team workflow distinct from a normal chat retry", async () => {
+    sendMessage.mockRejectedValue(
+      new SummaryWorkspaceApiError({
+        message: "gateway timeout",
+        kind: "transport",
+        retryable: true,
+      })
+    );
+    const requestIds = ["request-direct", "request-chat"];
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "session-1",
+        initialScope,
+        autoHydrate: false,
+        preferStreaming: false,
+        service,
+        createRequestId: () => requestIds.shift() ?? "request-unexpected",
+      })
+    );
+
+    await act(async () => {
+      await result.current.send(
+        "发起多人总结",
+        "system_intent",
+        "start_team_workflow"
+      );
+      await result.current.send("发起多人总结", "system_intent");
+    });
+
+    expect(
+      sendMessage.mock.calls.map(([input]) => ({
+        requestId: input.requestId,
+        action: input.action,
+      }))
+    ).toEqual([
+      { requestId: "request-direct", action: "start_team_workflow" },
+      { requestId: "request-chat", action: undefined },
     ]);
     unmount();
   });

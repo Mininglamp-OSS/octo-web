@@ -51,6 +51,7 @@ export default function SummaryWorkbenchCreateEntry(
             onCreated={props.onCreated}
             onOpenTask={props.onOpenTask}
             maxTimeRangeDays={availability.maxTimeRangeDays}
+            directTeamWorkflow={availability.directTeamWorkflow}
           />
         )}
         renderLegacy={() => (

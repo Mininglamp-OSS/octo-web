@@ -310,6 +310,79 @@ describe("summary workspace adapter", () => {
     expect(isTeamProposalConfirmable(model)).toBe(true);
   });
 
+  it("hydrates every historical preview as an inline read-only card", () => {
+    const preview = (
+      messageId: number,
+      resultType: "agent_preview" | "agent_revision",
+      version: number,
+      content: string,
+      actions: string[]
+    ) => ({
+      message_id: messageId,
+      result_type: resultType,
+      scope_version: 2,
+      artifact_version: version,
+      snapshot_version: 1,
+      content,
+      assumptions: [],
+      available_actions: actions,
+    });
+    const currentPreview = preview(
+      20,
+      "agent_revision",
+      2,
+      "# 总结 V2",
+      ["save_preview", "continue_chat"]
+    );
+    const hydration = adaptSummaryWorkspaceHistory({
+      contract_version: "1",
+      session_id: "session-history",
+      messages: [
+        {
+          id: 10,
+          role: "assistant",
+          content: "第一版",
+          result_type: "agent_preview",
+          scope_version: 2,
+          artifact_version: 1,
+          available_actions: [],
+          preview: preview(10, "agent_preview", 1, "# 总结 V1", []),
+        },
+        {
+          id: 15,
+          role: "user",
+          content: "补充风险",
+          scope_version: 2,
+        },
+        {
+          id: 20,
+          role: "assistant",
+          content: "第二版",
+          result_type: "agent_revision",
+          scope_version: 2,
+          artifact_version: 2,
+          available_actions: ["save_preview", "continue_chat"],
+          preview: currentPreview,
+        },
+      ],
+      state: { ...emptyState(2), current_preview: currentPreview },
+    });
+
+    expect(hydration.modelOptions.messages[0]).toMatchObject({
+      id: "10",
+      card: { kind: "agent_preview", content: "# 总结 V1", actions: [] },
+    });
+    expect(hydration.modelOptions.messages[1]).not.toHaveProperty("card");
+    expect(hydration.modelOptions.messages[2]).toMatchObject({
+      id: "20",
+      card: {
+        kind: "agent_revision",
+        content: "# 总结 V2",
+        actions: ["save_preview", "continue_chat"],
+      },
+    });
+  });
+
   it("rejects History when artifact state points at a user or mismatched message", () => {
     const currentPreview = {
       message_id: 18,
@@ -392,11 +465,13 @@ describe("summary workspace adapter", () => {
         enabled: true,
         contract_version: "1",
         max_time_range_days: 90,
+        direct_team_workflow: true,
       })
     ).toEqual({
       enabled: true,
       contract_version: "1",
       max_time_range_days: 90,
+      direct_team_workflow: true,
     });
     expect(
       decodeSummaryWorkspaceCapabilities({
@@ -407,6 +482,7 @@ describe("summary workspace adapter", () => {
       enabled: true,
       contract_version: "1",
       max_time_range_days: 31,
+      direct_team_workflow: false,
     });
   });
 

@@ -126,6 +126,11 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
         {state.contextItems.find((item: any) => item.kind === "reference")
           ?.label ?? ""}
       </span>
+      <input
+        aria-label="summary-request"
+        value={state.inputValue}
+        onChange={(event) => actions.onInputChange(event.target.value)}
+      />
       <button type="button" onClick={actions.onSend}>
         send
       </button>
@@ -372,6 +377,40 @@ describe("SummaryWorkbenchFeature", () => {
     expect(screen.getByTestId("template-selector")).toBeInTheDocument();
   });
 
+  it("clears the selected template when its generated text is deleted", () => {
+    const current = controller({
+      scope: scope({
+        template: {
+          templateId: "weekly",
+          label: "Weekly",
+          requirement: "Summarize progress and risks",
+        },
+      }),
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Summarize progress and risks",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: true,
+      },
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "summary-request" }), {
+      target: { value: "" },
+    });
+
+    expect(current.setComposerValue).toHaveBeenCalledWith("");
+    expect(current.updateScope).toHaveBeenLastCalledWith(
+      expect.objectContaining({ template: null })
+    );
+  });
+
   it("clears the composer and collapses templates as soon as the task starts", async () => {
     const pendingResponse = deferred<any>();
     const current = controller({
@@ -533,7 +572,7 @@ describe("SummaryWorkbenchFeature", () => {
     });
     mocks.useSummaryWorkbench.mockReturnValue(current);
 
-    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+    render(<SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />, {
       legacyRoot: true,
     });
     fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
@@ -661,7 +700,7 @@ describe("SummaryWorkbenchFeature", () => {
     });
     mocks.useSummaryWorkbench.mockReturnValue(current);
 
-    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+    render(<SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />, {
       legacyRoot: true,
     });
     fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
@@ -674,9 +713,98 @@ describe("SummaryWorkbenchFeature", () => {
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
     await waitFor(() =>
-      expect(send).toHaveBeenCalledWith("team-intent", "system_intent")
+      expect(send).toHaveBeenCalledWith(
+        "team-intent",
+        "system_intent",
+        "start_team_workflow"
+      )
     );
     expect(mocks.markNotificationEligible).toHaveBeenCalledWith(202);
+  });
+
+  it("keeps the confirmation route when direct team workflow is not advertised", async () => {
+    const send = vi.fn().mockResolvedValue({
+      resultType: "workflow_confirmation",
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(
+      controller({
+        scope: scope({
+          participants: [{ userId: "user-a", userName: "Alex" }],
+          template: {
+            templateId: "weekly",
+            label: "Weekly",
+            requirement: "Summarize progress",
+          },
+        }),
+        send,
+      })
+    );
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-can-send",
+        "true"
+      )
+    );
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith("team-intent", "system_intent")
+    );
+  });
+
+  it("uses normal chat for follow-up messages after a direct team launch", async () => {
+    const send = vi.fn().mockResolvedValue({
+      resultType: "workflow_started",
+      workflow: { taskId: 204, taskTitle: "Team update" },
+    });
+    const current = controller({
+      scope: scope({
+        participants: [{ userId: "user-a", userName: "Alex" }],
+      }),
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Create the team summary",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: true,
+      },
+      send,
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    const view = render(
+      <SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />,
+      { legacyRoot: true }
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-can-send",
+        "true"
+      )
+    );
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+
+    current.viewState.inputValue = "Add delivery risks";
+    view.rerender(
+      <SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    expect(send).toHaveBeenNthCalledWith(
+      1,
+      undefined,
+      "user",
+      "start_team_workflow"
+    );
+    expect(send).toHaveBeenNthCalledWith(2, undefined, "user");
   });
 
   it.each([
@@ -709,7 +837,7 @@ describe("SummaryWorkbenchFeature", () => {
       })
     );
 
-    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+    render(<SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />, {
       legacyRoot: true,
     });
     await waitFor(() =>
@@ -720,7 +848,13 @@ describe("SummaryWorkbenchFeature", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
-    await waitFor(() => expect(send).toHaveBeenCalledWith(undefined, "user"));
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith(
+        undefined,
+        "user",
+        "start_team_workflow"
+      )
+    );
   });
 
   it("disables chat plus participants until a template or user request is added", () => {

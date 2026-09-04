@@ -169,6 +169,50 @@ export function adaptSummaryWorkspaceHistory(value: unknown): SummaryWorkbenchHi
   const messages = history.messages.map((message) => {
     const artifact = artifactByMessageId.get(message.id);
     const resultType = artifact?.resultType ?? message.result_type;
+    const preview =
+      message.preview ??
+      (currentPreview?.message_id === message.id ? currentPreview : undefined);
+    if (
+      preview &&
+      (message.role !== "assistant" ||
+        preview.message_id !== message.id ||
+        preview.result_type !== resultType ||
+        preview.scope_version !== message.scope_version ||
+        preview.artifact_version !== message.artifact_version)
+    ) {
+      throw protocolError("History artifact metadata does not match its message");
+    }
+    const card: SummaryWorkbenchCardView | undefined = preview
+      ? {
+          kind: preview.result_type,
+          version: preview.artifact_version,
+          content: preview.content,
+          assumptions: [...preview.assumptions],
+          isStale: preview.scope_version !== authoritativeState.scopeVersion,
+          actions: [...preview.available_actions],
+        }
+      : pendingProposal?.message_id === message.id
+      ? {
+          kind: "team_confirmation",
+          participantNames: pendingProposal.participants.map(
+            (participant) => participant.user_name ?? participant.user_id
+          ),
+          requirement: pendingProposal.requirement,
+          templateLabel: pendingProposal.template_label,
+          timeRangeLabel: pendingProposal.time_range_label,
+          isStale: pendingProposal.scope_version !== authoritativeState.scopeVersion,
+          actions: [...pendingProposal.available_actions],
+        }
+      : workflow?.message_id === message.id
+      ? {
+          kind: workflow.result_type,
+          taskId: workflow.task_id,
+          taskTitle: workflow.task_title,
+          participantCount: workflow.participant_count,
+          isStale: false,
+          actions: [...workflow.available_actions],
+        }
+      : undefined;
     const workbenchMessage: SummaryWorkbenchMessage = {
       id: String(message.id),
       role: message.role,
@@ -176,6 +220,7 @@ export function adaptSummaryWorkspaceHistory(value: unknown): SummaryWorkbenchHi
       resultType,
       scopeVersion: artifact?.scopeVersion ?? message.scope_version,
       availableActions: artifact?.actions ?? [...(message.available_actions ?? [])],
+      ...(card ? { card } : {}),
     };
     return workbenchMessage;
   });
@@ -225,6 +270,13 @@ export function decodeSummaryWorkspaceCapabilities(
       record.max_time_range_days === undefined
         ? DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS
         : requirePositiveInteger(record.max_time_range_days, "capabilities.max_time_range_days"),
+    direct_team_workflow:
+      record.direct_team_workflow === undefined
+        ? false
+        : requireBoolean(
+            record.direct_team_workflow,
+            "capabilities.direct_team_workflow"
+          ),
   };
 }
 
@@ -322,6 +374,10 @@ function decodeHistoryMessage(value: unknown, path: string): SummaryWorkspaceHis
       record.available_actions === undefined || record.available_actions === null
         ? undefined
         : decodeActions(record.available_actions, `${path}.available_actions`),
+    preview:
+      record.preview === undefined || record.preview === null
+        ? undefined
+        : decodePreview(record.preview, `${path}.preview`),
   };
 }
 

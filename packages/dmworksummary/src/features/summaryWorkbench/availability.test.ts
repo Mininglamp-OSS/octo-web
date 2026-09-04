@@ -8,12 +8,14 @@ import {
 function capability(
     enabled = true,
     contractVersion = "1",
-    maxTimeRangeDays = 90
+    maxTimeRangeDays = 90,
+    directTeamWorkflow = false
 ) {
     return {
         enabled,
         contract_version: contractVersion,
         max_time_range_days: maxTimeRangeDays,
+        direct_team_workflow: directTeamWorkflow,
     };
 }
 
@@ -48,6 +50,7 @@ describe("SummaryWorkbenchAvailability", () => {
             spaceId: "space-a",
             reason: "supported",
             maxTimeRangeDays: 90,
+            directTeamWorkflow: false,
         });
         await expect(second).resolves.toMatchObject({ status: "enabled" });
         await availability.resolve("space-a");

@@ -16,18 +16,22 @@ vi.mock("./Entry", () => ({
         renderNew,
     }: {
         renderNew: (availability: unknown) => React.ReactNode;
-    }) => <>{renderNew({ maxTimeRangeDays: 90 })}</>,
+    }) => <>{renderNew({ maxTimeRangeDays: 90, directTeamWorkflow: true })}</>,
 }));
 
 vi.mock("./SummaryWorkbenchFeature", () => ({
     default: (props: {
         maxTimeRangeDays?: number;
+        directTeamWorkflow?: boolean;
     }) => {
         const [draft, setDraft] = React.useState("");
         return (
             <div>
                 <span data-testid="max-time-range-days">
                     {props.maxTimeRangeDays}
+                </span>
+                <span data-testid="direct-team-workflow">
+                    {String(props.directTeamWorkflow)}
                 </span>
                 <input
                     aria-label="workbench-draft"
@@ -51,6 +55,9 @@ describe("SummaryWorkbenchCreateEntry", () => {
 
         expect(screen.getByTestId("max-time-range-days")).toHaveTextContent(
             "90"
+        );
+        expect(screen.getByTestId("direct-team-workflow")).toHaveTextContent(
+            "true"
         );
     });
 
