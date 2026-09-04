@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
@@ -36,20 +36,23 @@ export default function ReviewDetailDrawer({
   const [rejectOpen, setRejectOpen] = useState(false);
   const [iconError, setIconError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const reviewIdRef = useRef(reviewId);
+  reviewIdRef.current = reviewId;
 
   const retry = useCallback(() => setReloadKey((key) => key + 1), []);
 
   useEffect(() => {
-    if (!reviewId) {
-      setReview(null);
-      setError(null);
-      setIconError(false);
-      return;
-    }
-    let alive = true;
-    setLoading(true);
+    // This component remains mounted while reviewId changes. Reset every action
+    // state before loading the next record so a reject dialog or in-flight
+    // action from the previous review cannot attach itself to the new one.
+    setReview(null);
     setError(null);
     setIconError(false);
+    setRejectOpen(false);
+    setActing(false);
+    setLoading(Boolean(reviewId));
+    if (!reviewId) return;
+    let alive = true;
     getReviewRequest(reviewId)
       .then((item) => {
         if (alive) setReview(item);
@@ -68,16 +71,19 @@ export default function ReviewDetailDrawer({
 
   async function handleApprove() {
     if (!review) return;
+    const actionReviewId = review.id;
     setActing(true);
     setError(null);
     try {
-      await approveReview(review.id);
+      await approveReview(actionReviewId);
+      if (reviewIdRef.current !== actionReviewId) return;
       onDecided();
       onClose();
     } catch (err) {
+      if (reviewIdRef.current !== actionReviewId) return;
       setError(err instanceof Error ? err.message : t("skillMarket.review.approveFailed"));
     } finally {
-      setActing(false);
+      if (reviewIdRef.current === actionReviewId) setActing(false);
     }
   }
 
@@ -280,18 +286,21 @@ export default function ReviewDetailDrawer({
           pluginName={review.pluginName}
           onClose={() => setRejectOpen(false)}
           onConfirm={async (reason) => {
+            const actionReviewId = review.id;
             // Defect 2 fix: wrap with try/catch so CONFLICT surfaces as an
             // inline error instead of leaving the drawer open with no feedback.
             // On success, propagate to parent (which refreshes queues).
             try {
-              await rejectReview(review.id, reason);
+              await rejectReview(actionReviewId, reason);
             } catch (err) {
+              if (reviewIdRef.current !== actionReviewId) return;
               setError(err instanceof Error ? err.message : t("skillMarket.review.actionFailed"));
               setRejectOpen(false);
               // Reload to reconcile any concurrent-decision state.
               retry();
               throw err;
             }
+            if (reviewIdRef.current !== actionReviewId) return;
             setRejectOpen(false);
             onDecided();
             onClose();

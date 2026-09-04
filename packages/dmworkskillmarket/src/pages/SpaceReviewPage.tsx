@@ -3,7 +3,7 @@ import { AlertTriangle } from "lucide-react";
 import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
 import ReviewQueue from "../components/ReviewQueue";
 import { getReviewPolicy, updateReviewPolicy } from "../api/skillApi";
-import { useSpaceRole } from "../hooks/useSpaceRole";
+import { isSpaceReviewerRole, useSpaceRole } from "../hooks/useSpaceRole";
 
 /**
  * "组织发布管理" — the Space reviewer queue, mounted at /mcp-market/review as the
@@ -38,7 +38,8 @@ export default function SpaceReviewPage() {
   const [enabled, setEnabled] = useState<boolean | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [disableConfirmOpen, setDisableConfirmOpen] = useState(false);
   // Loads and saves are tied to the Space that started them. Switching Space
   // invalidates every older request so a slow response from A cannot overwrite
@@ -51,7 +52,8 @@ export default function SpaceReviewPage() {
     setEnabled(undefined);
     setLoading(true);
     setSaving(false);
-    setError(null);
+    setLoadError(null);
+    setSaveError(null);
     getReviewPolicy()
       .then((policy) => {
         if (requestGeneration !== requestGenerationRef.current) return;
@@ -59,7 +61,7 @@ export default function SpaceReviewPage() {
       })
       .catch((err) => {
         if (requestGeneration !== requestGenerationRef.current) return;
-        setError(err instanceof Error ? err.message : t("skillMarket.review.policyLoadFailed"));
+        setLoadError(err instanceof Error ? err.message : t("skillMarket.review.policyLoadFailed"));
       })
       .finally(() => {
         if (requestGeneration !== requestGenerationRef.current) return;
@@ -73,10 +75,11 @@ export default function SpaceReviewPage() {
       setEnabled(undefined);
       setLoading(true);
       setSaving(false);
-      setError(null);
+      setLoadError(null);
+      setSaveError(null);
       setDisableConfirmOpen(false);
       const role = (payload as { role?: unknown } | undefined)?.role;
-      if (typeof role === "number" && role >= 1 && role <= 2) loadPolicy();
+      if (typeof role === "number" && isSpaceReviewerRole(role)) loadPolicy();
       else if (typeof role === "number") setLoading(false);
     };
     WKApp.mittBus.on("space-changed", handleSpaceChanged);
@@ -93,7 +96,8 @@ export default function SpaceReviewPage() {
       setEnabled(undefined);
       setLoading(false);
       setSaving(false);
-      setError(null);
+      setLoadError(null);
+      setSaveError(null);
       setDisableConfirmOpen(false);
       return;
     }
@@ -104,7 +108,7 @@ export default function SpaceReviewPage() {
     requestGenerationRef.current += 1;
     const requestGeneration = requestGenerationRef.current;
     setSaving(true);
-    setError(null);
+    setSaveError(null);
     try {
       const policy = await updateReviewPolicy(next);
       if (requestGeneration !== requestGenerationRef.current) return false;
@@ -112,7 +116,7 @@ export default function SpaceReviewPage() {
       return true;
     } catch (err) {
       if (requestGeneration !== requestGenerationRef.current) return false;
-      setError(err instanceof Error ? err.message : t("skillMarket.review.policySaveFailed"));
+      setSaveError(err instanceof Error ? err.message : t("skillMarket.review.policySaveFailed"));
       return false;
     } finally {
       if (requestGeneration === requestGenerationRef.current) setSaving(false);
@@ -121,7 +125,7 @@ export default function SpaceReviewPage() {
 
   function handlePolicyChange(next: boolean) {
     if (!next) {
-      setError(null);
+      setSaveError(null);
       setDisableConfirmOpen(true);
       return;
     }
@@ -149,14 +153,16 @@ export default function SpaceReviewPage() {
             <div>
               <strong>{t("skillMarket.review.policyTitle")}</strong>
               <p>{t("skillMarket.review.policyDescription")}</p>
-              {error && <p className="skill-market-review-policy__error">{error}</p>}
+              {(loadError || saveError) && (
+                <p className="skill-market-review-policy__error">{loadError || saveError}</p>
+              )}
             </div>
-            {enabled !== undefined && !error && (
+            {enabled !== undefined && !loadError && (
               <label className="skill-market-review-policy__toggle">
                 <input
                   type="checkbox"
                   checked={enabled}
-                  disabled={loading || saving}
+                  disabled={saving}
                   onChange={(event) => void handlePolicyChange(event.target.checked)}
                 />
                 <span>{enabled ? t("skillMarket.review.policyEnabled") : t("skillMarket.review.policyDisabled")}</span>
@@ -188,7 +194,7 @@ export default function SpaceReviewPage() {
           <div>
             <strong>{t("skillMarket.review.policyDisableHeading")}</strong>
             <p>{t("skillMarket.review.policyDisableConfirm")}</p>
-            {error && <p className="skill-market-review-policy-confirm__error">{error}</p>}
+            {saveError && <p className="skill-market-review-policy-confirm__error">{saveError}</p>}
           </div>
         </div>
       </WKModal>

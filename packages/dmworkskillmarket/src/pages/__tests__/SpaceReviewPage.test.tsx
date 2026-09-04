@@ -23,6 +23,7 @@ vi.mock("../../api/skillApi", () => ({
   updateReviewPolicy: (enabled: boolean) => updatePolicy(enabled),
 }));
 vi.mock("../../hooks/useSpaceRole", () => ({
+  isSpaceReviewerRole: (role: number | undefined) => role === 1 || role === 2,
   useSpaceRole: () => ({
     role: roleState.current,
     isReviewer: roleState.current >= 1,
@@ -135,6 +136,33 @@ describe("SpaceReviewPage", () => {
 
     expect(await screen.findByText("policy unavailable")).toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
+  it("keeps the disabled policy toggle available after an enable save fails", async () => {
+    getPolicy.mockResolvedValueOnce({ isAutoApproveEnabled: false });
+    updatePolicy.mockRejectedValueOnce(new Error("save unavailable"));
+    render(<SpaceReviewPage />);
+
+    const toggle = await screen.findByRole("checkbox");
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+
+    expect(await screen.findByText("save unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox")).not.toBeChecked();
+  });
+
+  it("keeps the enabled policy toggle after a disable save fails and the dialog closes", async () => {
+    updatePolicy.mockRejectedValueOnce(new Error("save unavailable"));
+    render(<SpaceReviewPage />);
+
+    const toggle = await screen.findByRole("checkbox");
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: /确认关闭|policyDisableAction/ }));
+    expect((await screen.findAllByText("save unavailable")).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /取消|common\.cancel/ }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("checkbox")).toBeChecked();
   });
 
   it("delegates every empty/error/loading state to the queue", async () => {

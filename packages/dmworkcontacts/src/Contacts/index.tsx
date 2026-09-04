@@ -485,7 +485,7 @@ export default class ContactsList extends Component<any, ContactsState> {
             items = allBots
                 .filter((b: any) => b.uid !== myUID)
                 .map((b: any) => {
-                    const c = new Contacts()
+                    const c = new Contacts() as SpaceContact
                     c.uid = b.uid
                     c.name = b.name || b.uid
                     c.avatar = b.avatar || ""
@@ -498,7 +498,7 @@ export default class ContactsList extends Component<any, ContactsState> {
         } else if (filterMode === 'humans') {
             const filtered = spaceMembers.filter(m => m.uid !== myUID && m.robot !== 1)
             items = filtered.map(m => {
-                const c = new Contacts()
+                const c = new Contacts() as SpaceContact
                 c.uid = m.uid
                 c.name = m.name
                 c.avatar = m.avatar || ""
@@ -513,7 +513,7 @@ export default class ContactsList extends Component<any, ContactsState> {
             const memberItems: SpaceContact[] = spaceMembers
                 .filter(m => m.uid !== myUID)
                 .map(m => {
-                    const c = new Contacts()
+                    const c = new Contacts() as SpaceContact
                     c.uid = m.uid
                     c.name = m.name
                     c.avatar = m.avatar || ""
@@ -526,7 +526,7 @@ export default class ContactsList extends Component<any, ContactsState> {
             const extraBots: SpaceContact[] = (spaceBots || [])
                 .filter((b: any) => b.uid !== myUID && !memberUids.has(b.uid))
                 .map((b: any) => {
-                    const c = new Contacts()
+                    const c = new Contacts() as SpaceContact
                     c.uid = b.uid
                     c.name = b.name || b.uid
                     c.avatar = b.avatar || ""
