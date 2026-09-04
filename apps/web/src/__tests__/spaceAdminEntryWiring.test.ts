@@ -7,39 +7,40 @@
  * WKApp.shared.currentSpaceId,但它的 getMySpaces() 失败分支只弹 toast、不触发
  * re-render,于是切换空间后若刷新列表失败,render 闭包捕获的就是上一个空间 id。
  *
- * 这里沿用本仓 layoutPendingInviteToast.test.ts 的做法:读源码断言调用形状,
- * 这样将来把它改回 render 闭包会立刻失败,而不是静默回归。
+ * 这里沿用本仓 layoutPendingInviteToast.test.ts 的做法:读源码断言调用形状。
+ * 断言的是「点击时从 WKApp.shared 取值」这个语义,而不是某一种写法 —— 先把值
+ * 存进局部变量再传给 buildSpaceAdminUrl 同样正确,不应该被判失败。
  */
 import * as fs from 'fs';
 import * as path from 'path';
 
 describe('Main nav 空间管理入口的接线', () => {
     let source: string;
-    let handlerBody: string;
+    let handlerCode: string;
 
     beforeAll(() => {
         source = fs.readFileSync(
             path.join(__dirname, '../Pages/Main/index.tsx'), 'utf-8');
-        // 取 onSpaceManagement={...} 到下一个 prop 之前的这段,只针对 handler 断言,
-        // 避免匹配到文件里别处对 currentSpaceId 的合法使用(如 NavRail 的高亮 prop)。
-        const match = source.match(/onSpaceManagement=\{([\s\S]*?)\n\s{40}\/\//);
-        expect(match).not.toBeNull();
-        handlerBody = match![1];
+        // 锚定到下一个 prop(menusList)而不是缩进宽度或某条注释:重新格式化、
+        // 调整缩进、改写注释都不该让这个测试失效。
+        const match = source.match(/onSpaceManagement=\{([\s\S]*?)\n\s*menusList=/);
+        expect(match, 'onSpaceManagement handler not found in Main/index.tsx').not.toBeNull();
+        // 去掉注释后再断言,避免被注释里的文字（或被注释掉的旧代码）影响判断。
+        handlerCode = match![1]
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .replace(/\/\/[^\n]*/g, '');
     });
 
-    it('handler 内部直接从 WKApp.shared 读当前空间,不依赖 render 作用域的变量', () => {
-        expect(handlerBody).toMatch(/buildSpaceAdminUrl\(\s*WKApp\.shared\.currentSpaceId\s*\)/);
+    it('点击时从 WKApp.shared 读当前空间,而不是 render 作用域捕获的值', () => {
+        // 关键回归点。回退成 buildSpaceAdminUrl(currentSpaceId)(render 闭包)时,
+        // handler 体里就不再出现这个符号,本用例失败。
+        expect(handlerCode).toMatch(/WKApp\.shared\.currentSpaceId/);
     });
 
-    it('handler 没有把 render 作用域的 currentSpaceId 传进 buildSpaceAdminUrl', () => {
-        // 关键回归点:buildSpaceAdminUrl(currentSpaceId) 这种裸变量形式必须不出现。
-        expect(handlerBody).not.toMatch(/buildSpaceAdminUrl\(\s*currentSpaceId\s*\)/);
-    });
-
-    it('导航目标来自 buildSpaceAdminUrl,没有绕过它硬编码路径', () => {
-        expect(handlerBody).toMatch(/window\.location\.href\s*=\s*buildSpaceAdminUrl\(/);
-        expect(handlerBody).not.toMatch(/["'`]\/space["'`]/);
-        expect(handlerBody).not.toMatch(/["'`]\/admin\/space/);
+    it('导航目标由 buildSpaceAdminUrl 生成,没有绕过它硬编码路径', () => {
+        expect(handlerCode).toMatch(/window\.location\.href\s*=\s*buildSpaceAdminUrl\(/);
+        expect(handlerCode).not.toMatch(/["'`]\/space["'`]/);
+        expect(handlerCode).not.toMatch(/["'`]\/admin\/space/);
     });
 
     it('buildSpaceAdminUrl 是从本地模块导入的', () => {

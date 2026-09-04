@@ -13,6 +13,6 @@
 // `/admin/` 由 try_files 落到 SPA index.html,浏览器 URL 上的 query 原样保留,
 // SpaceEntry 的 `readRequestedSpaceId()` 才读得到。
 export function buildSpaceAdminUrl(currentSpaceId: string | undefined | null): string {
-  if (!currentSpaceId) return '/admin/space'
-  return `/admin/space?spaceId=${encodeURIComponent(currentSpaceId)}`
+  if (!currentSpaceId) return "/admin/space";
+  return `/admin/space?spaceId=${encodeURIComponent(currentSpaceId)}`;
 }
