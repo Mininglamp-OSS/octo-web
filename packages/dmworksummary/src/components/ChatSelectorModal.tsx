@@ -6,7 +6,7 @@ import { I18nContext } from "@octo/base";
 import { Dap } from "@octo/base";
 import WKAvatar, { isBot } from "@octo/base/src/Components/WKAvatar";
 import AiBadge from "@octo/base/src/Components/AiBadge";
-import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
+import { Channel, ChannelTypePerson } from "wukongimjssdk";
 import type { ChatCandidate } from "../types/summary";
 import * as api from "../api/summaryApi";
 import WKApp from "@octo/base/src/App";
@@ -14,6 +14,8 @@ import { SpaceService } from "@octo/base/src/Service/SpaceService";
 import SidebarService, { SidebarTargetType } from "@octo/base/src/Service/SidebarService";
 import { MAX_CHAT_SELECT, MAX_PARTICIPANT_SELECT } from "../constants/limits";
 import { summaryTestIds } from "../utils/testIds";
+import { legacySummaryMessagingPort } from "../host";
+import type { SummaryMessagingPort } from "../host";
 
 interface MemberCandidate {
     uid: string;
@@ -38,6 +40,7 @@ interface Props {
     groupOnly?: boolean;
     selectedMembers?: MemberCandidate[];
     onConfirmMembers?: (members: MemberCandidate[]) => void;
+    messaging?: SummaryMessagingPort;
 }
 
 interface State {
@@ -177,26 +180,28 @@ export default class ChatSelectorModal extends Component<Props, State> {
         // 参与者候选只含人类他人：两条路径都排除当前用户（自己）与机器人/AI，
         // 与后端 contactsSync 的既有语义一致（datasource.ts 的 space 成员同步
         // 也显式 `m.uid === loginInfo.uid continue` 排除自己）。
-        const myUid = WKApp.loginInfo?.uid;
+        const messaging = this.props.messaging ?? legacySummaryMessagingPort;
+        const myUid = messaging.getCurrentUser().uid;
         this.setState({ loading: true, loadError: false });
         try {
             if (channel) {
                 // 有选中聊天：加载该群聊成员
-                const sdk = WKSDK.shared();
-                await sdk.channelManager.syncSubscribes(channel);
+                const subscribers = await messaging.loadConversationMembers({
+                    channelId: channel.channelID,
+                    channelType: channel.channelType,
+                });
                 if (seq !== this.reqSeq) return;
-                const subscribers = sdk.channelManager.getSubscribes(channel) || [];
-                const humans = subscribers.filter((m: any) => !m.is_bot && !isBot(m.uid) && m.uid !== myUid);
+                const humans = subscribers.filter((m) => !m.isBot && !isBot(m.uid) && m.uid !== myUid);
                 const roles = new Map<string, number>();
                 for (const m of humans) {
                     if (m.role != null) roles.set(m.uid, m.role);
                 }
                 this.setState({
                     memberRoles: roles,
-                    candidates: humans.map((m: any) => ({
+                    candidates: humans.map((m) => ({
                         chat_id: m.uid,
                         chat_type: "direct" as const,
-                        name: m.name || m.uid,
+                        name: m.name,
                         member_count: null,
                     })),
                 });

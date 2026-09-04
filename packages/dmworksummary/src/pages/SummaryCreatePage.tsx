@@ -54,7 +54,7 @@ import type {
     CreateAgentSummaryParams,
 } from "../types/summary";
 import { SummaryMode, SourceType } from "../types/summary";
-import { Channel, WKSDK } from "wukongimjssdk";
+import { Channel } from "wukongimjssdk";
 import {
     genSessionId,
     genRequestId,
@@ -77,6 +77,7 @@ import {
   type ResolvableTemplate,
 } from "../utils/templateResolver";
 import { summaryTestIds } from "../utils/testIds";
+import type { SummaryMessagingPort } from "../host";
 
 const { Text } = Typography;
 
@@ -105,6 +106,7 @@ interface SummaryCreatePageProps {
      * mount 时若为 agent 会自动进入 agent 模式（恢复历史 session）。
      */
     initialMode?: "normal" | "agent";
+    messaging?: SummaryMessagingPort;
 }
 
 interface SummaryCreatePageState {
@@ -1666,6 +1668,7 @@ export default class SummaryCreatePage extends Component<
 
                 {/* Modals */}
                 <ChatSelectorModal
+                    messaging={this.props.messaging}
                     visible={showChatSelector}
                     selected={selectedChats}
                     maxSelect={MAX_CHAT_SELECT}
@@ -1675,6 +1678,7 @@ export default class SummaryCreatePage extends Component<
                     onCancel={() => this.setState({ showChatSelector: false })}
                 />
                 <ChatSelectorModal
+                    messaging={this.props.messaging}
                     visible={showMemberSelector}
                     mode="members"
                     channel={memberSelectorChannel}

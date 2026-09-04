@@ -3,6 +3,8 @@ import { render as rtlRender, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import CitationText from './CitationText';
 import type { CitationItem, TeamCitationItem, MemberStatus } from '../types/summary';
+import { SummaryMessagingProvider } from '../host';
+import type { SummaryMessagingPort } from '../host';
 
 // @octo/base is aliased to the dmworkBase mock by vitest.config.ts, so useI18n /
 // i18n already resolve. We only need to tame the semi-ui Popover here: the real
@@ -72,6 +74,42 @@ function badgeByText(text: string) {
 }
 
 describe('CitationText — [n] vs [Pn] parsing', () => {
+    it('delegates citation navigation to the messaging host', () => {
+        const openConversation = vi.fn(async () => {});
+        const messaging = {
+            getCurrentUser: () => ({ uid: 'me', displayName: 'Me' }),
+            loadConversationMembers: vi.fn(async () => []),
+            openConversation,
+            notifySummaryCompleted: vi.fn(async () => {}),
+            requestForward: vi.fn(),
+            subscribeInvalidation: () => () => {},
+        } satisfies SummaryMessagingPort;
+
+        render(
+            <SummaryMessagingProvider value={messaging}>
+                <CitationText
+                    content="私聊引用 [1]"
+                    citations={[
+                        makeCitation({
+                            channel_id: 'me@peer',
+                            channel_type: 1,
+                            message_seq: 88,
+                        }),
+                    ]}
+                />
+            </SummaryMessagingProvider>,
+        );
+
+        fireEvent.click(badgeByText('[1]')!);
+        fireEvent.click(screen.getByText('跳转到原文 →'));
+
+        expect(openConversation).toHaveBeenCalledWith({
+            channelId: 'peer',
+            channelType: 1,
+            messageSeq: 88,
+        });
+    });
+
     it('keeps same-sequence citations from different channels as distinct messages', () => {
         render(
             <CitationText

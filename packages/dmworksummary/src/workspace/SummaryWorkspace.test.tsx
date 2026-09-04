@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
 import type { SummaryWorkspaceRoute } from "./types";
+import type { SummaryMessagingPort } from "../host";
 
 vi.mock("../pages/SummaryListPage", () => ({
   default: ({ onCreateNew, onViewDetail, refreshKey }: any) => (
@@ -90,6 +91,7 @@ function Harness({
   onRouteChange = vi.fn(),
   onOpenConversation = vi.fn(async () => {}),
   onBadgeChange,
+  messaging,
 }: {
   initialRoute: SummaryWorkspaceRoute;
   onRouteChange?: (route: SummaryWorkspaceRoute) => void;
@@ -98,6 +100,7 @@ function Harness({
     channelType: number;
   }) => Promise<void>;
   onBadgeChange?: (count: number) => void;
+  messaging?: SummaryMessagingPort;
 }) {
   const [route, setRoute] = useState(initialRoute);
   return (
@@ -109,6 +112,7 @@ function Harness({
       }}
       onOpenConversation={onOpenConversation}
       onBadgeChange={onBadgeChange}
+      messaging={messaging}
     />
   );
 }
@@ -211,5 +215,31 @@ describe("SummaryWorkspace", () => {
 
     expect(() => setSummaryAttentionBadge(2)).not.toThrow();
     expect(onBadgeChange).toHaveBeenCalledWith(2);
+  });
+
+  it("refreshes the list when the messaging host invalidates summary data", () => {
+    let invalidate = () => {};
+    const unsubscribe = vi.fn();
+    const messaging = {
+      getCurrentUser: () => ({ uid: "u1", displayName: "User" }),
+      loadConversationMembers: vi.fn(async () => []),
+      openConversation: vi.fn(async () => {}),
+      notifySummaryCompleted: vi.fn(async () => {}),
+      requestForward: vi.fn(),
+      subscribeInvalidation: vi.fn((listener: () => void) => {
+        invalidate = listener;
+        return unsubscribe;
+      }),
+    } satisfies SummaryMessagingPort;
+    const view = render(
+      <Harness initialRoute={{ view: "list" }} messaging={messaging} />
+    );
+
+    expect(screen.getByTestId("workspace-list-refresh")).toHaveTextContent("0");
+    act(() => invalidate());
+    expect(screen.getByTestId("workspace-list-refresh")).toHaveTextContent("1");
+
+    view.unmount();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 });

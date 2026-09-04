@@ -1,9 +1,10 @@
 import type { SummaryReferenceTask } from "../types/summary";
+import type {
+  SummaryConversationTarget,
+  SummaryMessagingPort,
+} from "../host/types";
 
-export interface SummaryConversationTarget {
-  channelId: string;
-  channelType: number;
-}
+export type { SummaryConversationTarget } from "../host/types";
 
 export type SummaryWorkspaceRoute =
   | { view: "list" }
@@ -25,6 +26,7 @@ export type SummaryWorkspaceRoute =
 export interface SummaryWorkspaceProps {
   route: SummaryWorkspaceRoute;
   onRouteChange: (route: SummaryWorkspaceRoute) => void;
-  onOpenConversation: (target: SummaryConversationTarget) => Promise<void>;
+  onOpenConversation?: (target: SummaryConversationTarget) => Promise<void>;
   onBadgeChange?: (count: number) => void;
+  messaging?: SummaryMessagingPort;
 }

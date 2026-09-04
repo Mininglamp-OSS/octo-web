@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { useI18n } from "@octo/base";
 import ScheduleListPage from "../pages/ScheduleListPage";
@@ -12,6 +12,10 @@ import {
   subscribeSummaryAttentionBadge,
 } from "../utils/summaryAttentionBadge";
 import type { SummaryReferenceTask } from "../types/summary";
+import {
+  legacySummaryMessagingPort,
+  SummaryMessagingProvider,
+} from "../host";
 import type { SummaryWorkspaceProps, SummaryWorkspaceRoute } from "./types";
 import "./index.css";
 
@@ -20,9 +24,25 @@ export default function SummaryWorkspace({
   onRouteChange,
   onOpenConversation,
   onBadgeChange,
+  messaging,
 }: SummaryWorkspaceProps) {
   const { t } = useI18n();
   const [listRefreshKey, setListRefreshKey] = useState(0);
+  const messagingPort = useMemo(() => {
+    const base = messaging ?? legacySummaryMessagingPort;
+    if (!onOpenConversation) return base;
+    return {
+      getCurrentUser: () => base.getCurrentUser(),
+      loadConversationMembers: (target) =>
+        base.loadConversationMembers(target),
+      openConversation: onOpenConversation,
+      notifySummaryCompleted: (input) =>
+        base.notifySummaryCompleted(input),
+      requestForward: (input) => base.requestForward(input),
+      subscribeInvalidation: (listener) =>
+        base.subscribeInvalidation(listener),
+    };
+  }, [messaging, onOpenConversation]);
 
   useEffect(() => {
     if (!onBadgeChange) return undefined;
@@ -34,12 +54,21 @@ export default function SummaryWorkspace({
     return subscribeSummaryAttentionBadge(onBadgeChange);
   }, [onBadgeChange]);
 
+  const refreshList = useCallback(
+    () => setListRefreshKey((value) => value + 1),
+    []
+  );
+
+  useEffect(
+    () => messagingPort.subscribeInvalidation(refreshList),
+    [messagingPort, refreshList]
+  );
+
   const showList = () => onRouteChange({ view: "list" });
   const showCreate = (mode: "normal" | "agent" | "unified" = "normal") =>
     onRouteChange({ view: "create", mode: mode === "unified" ? "normal" : mode, source: "summary_list" });
   const showDetail = (taskId: number) =>
     onRouteChange({ view: "detail", taskId });
-  const refreshList = () => setListRefreshKey((value) => value + 1);
   const refreshListAndShow = () => {
     refreshList();
     showList();
@@ -65,6 +94,7 @@ export default function SummaryWorkspace({
             derivedFromTask={currentRoute.derivedFromTask}
             onOpenTask={showDetail}
             onCreated={refreshList}
+            messaging={messagingPort}
             onSubmit={(taskId) => {
               refreshList();
               showDetail(taskId);
@@ -78,6 +108,7 @@ export default function SummaryWorkspace({
             emitSelection
             onAfterMutate={refreshListAndShow}
             onContinueRefine={continueRefine}
+            messaging={messagingPort}
             onViewConfirm={(taskId) =>
               onRouteChange({ view: "confirm", taskId })
             }
@@ -88,7 +119,9 @@ export default function SummaryWorkspace({
           <SummaryShareDetailPage
             shareId={currentRoute.shareId}
             originChannel={currentRoute.originConversation}
-            onOpenConversation={onOpenConversation}
+            onOpenConversation={(target) =>
+              messagingPort.openConversation(target)
+            }
           />
         );
       case "confirm":
@@ -107,33 +140,35 @@ export default function SummaryWorkspace({
   };
 
   return (
-    <div
-      className={`summary-workspace summary-workspace--${route.view}`}
-      data-testid="summary-workspace"
-    >
-      <aside className="summary-workspace__list">
-        <SummaryListPage
-          embedded
-          refreshKey={listRefreshKey}
-          onCreateNew={showCreate}
-          onViewDetail={showDetail}
-        />
-      </aside>
-      {route.view !== "list" ? (
-        <main className="summary-workspace__content">
-          <button
-            type="button"
-            className="summary-workspace__mobile-back"
-            onClick={showList}
-            aria-label={t("summary.chatSummary.back")}
-          >
-            <ChevronLeft size={18} />
-            <span>{t("summary.chatSummary.back")}</span>
-          </button>
-          <div className="summary-workspace__page">{renderContent(route)}</div>
-        </main>
-      ) : null}
-    </div>
+    <SummaryMessagingProvider value={messagingPort}>
+      <div
+        className={`summary-workspace summary-workspace--${route.view}`}
+        data-testid="summary-workspace"
+      >
+        <aside className="summary-workspace__list">
+          <SummaryListPage
+            embedded
+            refreshKey={listRefreshKey}
+            onCreateNew={showCreate}
+            onViewDetail={showDetail}
+          />
+        </aside>
+        {route.view !== "list" ? (
+          <main className="summary-workspace__content">
+            <button
+              type="button"
+              className="summary-workspace__mobile-back"
+              onClick={showList}
+              aria-label={t("summary.chatSummary.back")}
+            >
+              <ChevronLeft size={18} />
+              <span>{t("summary.chatSummary.back")}</span>
+            </button>
+            <div className="summary-workspace__page">{renderContent(route)}</div>
+          </main>
+        ) : null}
+      </div>
+    </SummaryMessagingProvider>
   );
 }
 

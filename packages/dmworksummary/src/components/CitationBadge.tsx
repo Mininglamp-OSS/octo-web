@@ -2,13 +2,12 @@ import React, { useContext, useMemo, useRef, useState, useCallback, useEffect } 
 import { Popover } from "@douyinfe/semi-ui";
 import { i18n, useI18n } from "@octo/base";
 import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
-import WKApp from "@octo/base/src/App";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
-import { ShowConversationOptions } from "@octo/base/src/EndpointCommon";
 import { ChannelTypeCommunityTopic } from "@octo/base/src/Service/Const";
 import CitationText, { CitationContext } from './CitationText';
 import { CitationItem, CitationContextMessage, TeamCitationItem, MemberStatus } from '../types/summary';
 import { formatGroupLabel } from './citationFormat';
+import { useSummaryMessaging } from "../host";
 import './CitationBadge.css';
 
 /** Hover-preview delay (ms) tuned to match Perplexity/Kimi */
@@ -236,6 +235,7 @@ function ContextMessages({ messages }: { messages?: CitationContextMessage[] }) 
 
 function JumpLink({ citation, badgeKey, closeKey }: { citation: CitationItem; badgeKey: string; closeKey: (key: string) => void }) {
     const { t } = useI18n();
+    const messaging = useSummaryMessaging();
     if (!citation.channel_id || !citation.message_seq || citation.channel_type == null) return null;
     return (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
@@ -250,13 +250,16 @@ function JumpLink({ citation, badgeKey, closeKey }: { citation: CitationItem; ba
                     let channelId = citation.channel_id!;
                     const channelType = resolveChannelType(citation.channel_type);
                     if (channelType === ChannelTypePerson && channelId.includes('@')) {
-                        const loginUid = WKApp.loginInfo.uid;
+                        const loginUid = messaging.getCurrentUser().uid;
                         channelId = channelId.split('@').find(id => id !== loginUid) || channelId;
                     }
-                    const channel = new Channel(channelId, channelType);
-                    const opts = new ShowConversationOptions();
-                    opts.initLocateMessageSeq = citation.message_seq;
-                    WKApp.endpoints.showConversation(channel, opts);
+                    void messaging.openConversation({
+                        channelId,
+                        channelType,
+                        messageSeq: citation.message_seq,
+                    }).catch((error) => {
+                        console.warn("[CitationBadge] failed to open conversation", error);
+                    });
                 }}
             >
                 {t("summary.citation.jumpToOriginal")}

@@ -4,6 +4,7 @@ import { SpaceService } from "@octo/base/src/Service/SpaceService";
 import { Channel, ChannelTypeGroup, WKSDK } from "wukongimjssdk";
 import type { SummaryWorkbenchChannelScope } from "../../bridge/summaryWorkbench/protocol";
 import type { WorkbenchMemberCandidate } from "./scope";
+import type { SummaryMessagingPort } from "../../host";
 
 const PARTICIPANT_MEMBER_LOAD_CONCURRENCY = 4;
 
@@ -97,6 +98,7 @@ export async function loadParticipantCandidates(
     currentUserId: string;
     spaceId: string;
     loader?: ParticipantCandidateLoader;
+    messaging?: SummaryMessagingPort;
   }
 ): Promise<ParticipantCandidateLoadResult> {
   const loader = options.loader ?? defaultLoader;
@@ -131,7 +133,12 @@ export async function loadParticipantCandidates(
     const memberLists = await mapWithConcurrency(
       channels,
       PARTICIPANT_MEMBER_LOAD_CONCURRENCY,
-      (channel) => loader.loadGroupMembers(channel)
+      async (channel) => options.messaging
+        ? (await options.messaging.loadConversationMembers({
+            channelId: channel.chatId,
+            channelType: ChannelTypeGroup,
+          })).map((member) => ({ ...member, is_bot: member.isBot }))
+        : loader.loadGroupMembers(channel)
     );
     memberLists.flat().forEach((member) => addMember(member, "group"));
   }

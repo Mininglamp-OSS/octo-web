@@ -8,6 +8,7 @@ import React, {
 import { Input, Modal, Spin, Toast } from "@douyinfe/semi-ui";
 import { Dap, useI18n } from "@octo/base";
 import WKApp from "@octo/base/src/App";
+import type { SummaryMessagingPort } from "../../host";
 import SummaryDetailPage from "../../pages/SummaryDetailPage";
 import ChatSelectorModal from "../../components/ChatSelectorModal";
 import SummaryReferencePicker from "../../components/SummaryReferencePicker";
@@ -88,6 +89,7 @@ export interface SummaryWorkbenchFeatureProps {
   onOpenTask?: (taskId: number) => void;
   maxTimeRangeDays?: number;
   directTeamWorkflow?: boolean;
+  messaging?: SummaryMessagingPort;
 }
 
 type OpenSelector = Exclude<SummaryWorkbenchContextKind, "template"> | null;
@@ -150,9 +152,10 @@ export default function SummaryWorkbenchFeature({
   onOpenTask,
   maxTimeRangeDays = DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS,
   directTeamWorkflow = false,
+  messaging,
 }: SummaryWorkbenchFeatureProps) {
   const { t, format } = useI18n();
-  const currentUserId = WKApp.loginInfo.uid || "";
+  const currentUserId = messaging?.getCurrentUser().uid ?? WKApp.loginInfo.uid ?? "";
   const initialScope = useMemo(
     () => initialScopeFor(channel, derivedFromTask),
     [channel?.channelID, channel?.channelType, derivedFromTask?.task_id]
@@ -295,6 +298,7 @@ export default function SummaryWorkbenchFeature({
         const result = await loadParticipantCandidates(channels, {
           currentUserId,
           spaceId,
+          messaging,
         });
         if (seq !== participantLoadSeq.current) return false;
         const latestScope = latestScopeRef.current;
@@ -330,6 +334,7 @@ export default function SummaryWorkbenchFeature({
     },
     [
       currentUserId,
+      messaging,
       applyParticipantPrune,
       participantCandidateState.sourceKey,
       participantCandidateState.status,

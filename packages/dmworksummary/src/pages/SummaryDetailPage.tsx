@@ -27,15 +27,10 @@ import {
   IconMore,
 } from "@douyinfe/semi-icons";
 import { Bot, ChevronDown, Check, X } from "lucide-react";
-import WKSDK, { Channel, ChannelTypeGroup, MessageText } from "wukongimjssdk";
 import {
   I18nContext,
   t,
-  ForwardService,
-  interpretForwardResult,
   titleContextStore,
-  SummaryTipContent,
-  isConversationDisbanded,
   Dap,
   // CR: 必须走包的 public index，不能深路径 import `@octo/base/src/...`。
   // dmworksummary 的 vitest.config.ts 末尾有一条**字符串** alias
@@ -56,9 +51,7 @@ import RouteContext, {
 import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
 import RoutePage from "@octo/base/src/Components/RoutePage";
 import { Channel as WkChannel } from "wukongimjssdk";
-import { splitSummaryText } from "../utils/splitMessage";
 import { convertDocErrorMessage } from "../utils/convertDocError";
-import { sendGroupSummaryCompletionTips } from "../utils/groupSummaryNotify";
 import { applyRegenerateVoiceInput } from "../utils/regenerateInput";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
@@ -103,6 +96,8 @@ import SelectedSourcesPanel from "../components/SelectedSourcesPanel";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import SummaryEditor from "../components/SummaryEditor";
 import SummaryVersionPanel from "../components/SummaryVersionPanel";
+import { legacySummaryMessagingPort } from "../host";
+import type { SummaryMessagingPort } from "../host";
 
 interface SummaryDetailPageProps {
     taskId?: number | string;
@@ -116,6 +111,7 @@ interface SummaryDetailPageProps {
   onContinueRefine?: (task: SummaryReferenceTask) => void;
   /** Controlled workspace navigation for legacy task confirmation. */
   onViewConfirm?: (taskId: number) => void;
+  messaging?: SummaryMessagingPort;
 }
 
 type RegenerateMode = "refine" | "full";
@@ -199,7 +195,6 @@ interface SummaryDetailPageState {
     convertingKey: string | null;
 }
 
-const INTER_MESSAGE_DELAY_MS = 200;
 const PERSONAL_RESULT_POLL_INTERVAL_MS = 1500;
 const WORKFLOW_COMPLETE_REVEAL_DELAY_MS = 650;
 
@@ -255,6 +250,10 @@ export default class SummaryDetailPage extends Component<
     private regenerateVoiceMode: RegenerateMode | null = null;
     /** 转文档的同步重入闸（P1-b：semi-ui loading 不禁点，双击会创建两份文档）。 */
     private convertInFlight = false;
+
+    private get messaging(): SummaryMessagingPort {
+        return this.props.messaging ?? legacySummaryMessagingPort;
+    }
 
     private handleRegenerateVoiceRecordingStart = () => {
         this.regenerateVoiceMode = this.state.regenerateMode;
@@ -1409,31 +1408,11 @@ export default class SummaryDetailPage extends Component<
     previousStatus: number | undefined,
     detail: SummaryDetail
   ) {
-        void sendGroupSummaryCompletionTips(
-            previousStatus,
-            detail,
-            WKApp.loginInfo.uid,
-            TaskStatus.COMPLETED,
-            ChannelTypeGroup,
-            {
-                sendToChannel: async (channel, currentUserId) => {
-          const name =
-            WKApp.loginInfo.selfDisplayName?.() ||
-            WKApp.loginInfo.name ||
-            currentUserId;
-                    // Iterate #1379: emit a WK_TIP (2000) system-range tip so
-                    // Web and native clients render it via their built-in
-                    // SystemContent path with no per-type adaptation.
-          const content = new SummaryTipContent().setSender(
-            currentUserId,
-            name
-          );
-                    await WKSDK.shared().chatManager.send(content, channel);
-                },
-                isDisbanded: isConversationDisbanded,
-                warn: (message, context) => console.warn(message, context),
-      }
-        );
+        void this.messaging
+            .notifySummaryCompleted({ previousStatus, detail })
+            .catch((error) => {
+                console.warn("[SummaryDetailPage] completion notice failed", error);
+            });
     }
 
     private startSummaryStream(taskId: number) {
@@ -2881,48 +2860,31 @@ export default class SummaryDetailPage extends Component<
         if (!sourceContent.trim()) return;
         // 埋点 310:打开「转发到聊天」的会话选择面板（有正文可转发时才算打开）。
         Dap.shared.track("smart_summary_forward_panel_opened", {});
-    WKApp.shared.baseContext.showConversationSelect(
-      async (channels: Channel[]) => {
-        const cleanContent = sourceContent
-          .replace(/\[\d+\]/g, "")
-          .replace(/  +/g, " ")
-          .trim();
-            const chunks = splitSummaryText(cleanContent);
-
-            // 长文分块 → 同 channel 内 serial 保序 + interMessageDelayMs 节流；
-            // 跨 channel 也走 serial（保持与原实现一致的顺序体验）。
-            // 原先手写的 space_id monkey-patch 由 ForwardService 内部
-            // wrapSendContentForInjection + opts.spaceId 代替。
-            const result = await ForwardService.send(
-                channels,
-                () => chunks.map((c) => new MessageText(c)),
-                {
-                    channelMode: "serial",
-                    messageMode: "serial",
-                    interMessageDelayMs: INTER_MESSAGE_DELAY_MS,
-                    spaceId: WKApp.shared.currentSpaceId,
-          }
-            );
-
-            // 分母保持 channels 数（scope='targets'），不改动用户可见的 Toast 语义。
-            const state = interpretForwardResult(result, "targets");
-            if (state.kind === "all-failed") {
+    const cleanContent = sourceContent
+      .replace(/\[\d+\]/g, "")
+      .replace(/  +/g, " ")
+      .trim();
+    this.messaging.requestForward({
+      content: cleanContent,
+      title: t("summary.detail.forwardToChat"),
+      onComplete: (state) => {
+        if (state.kind === "all-failed") {
                 Toast.error(t("summary.detail.forwardFailed"));
-            } else if (state.kind === "partial") {
+        } else if (state.kind === "partial") {
           Toast.error(
             t("summary.detail.partialForwardFailed", {
               values: { failed: state.failed, total: state.total },
             })
           );
-            } else {
+        } else {
                 Toast.success(t("summary.detail.forwarded"));
-            }
-            // 埋点 311:总结已转发（只要不是全部失败即算一次成功转发；隐私 props 恒空）。
+        }
+        // 埋点 311:总结已转发（只要不是全部失败即算一次成功转发；隐私 props 恒空）。
         if (state.kind !== "all-failed")
           Dap.shared.track("smart_summary_forwarded", {});
       },
-      t("summary.detail.forwardToChat")
-    );
+      onError: () => Toast.error(t("summary.detail.forwardFailed")),
+    });
     };
 
     /**
