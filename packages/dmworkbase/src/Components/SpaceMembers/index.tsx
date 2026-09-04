@@ -1,6 +1,15 @@
 import React, { Component } from "react";
 import { Toast } from "@douyinfe/semi-ui";
-import { SpaceMember, SpaceService, Space } from "../../Service/SpaceService";
+import {
+    isSpaceAdminOrOwner,
+    isSpaceOwner,
+    SPACE_ROLE_ADMIN,
+    SPACE_ROLE_MEMBER,
+    SPACE_ROLE_OWNER,
+    SpaceMember,
+    SpaceService,
+    Space,
+} from "../../Service/SpaceService";
 import WKApp from "../../App";
 import { I18nContext } from "../../i18n";
 import "./index.css";
@@ -16,9 +25,9 @@ interface SpaceMembersState {
 }
 
 const RoleColors: Record<number, string> = {
-    1: "#fa709a",
-    2: "#667eea",
-    3: "#999",
+    [SPACE_ROLE_OWNER]: "#fa709a",
+    [SPACE_ROLE_ADMIN]: "#667eea",
+    [SPACE_ROLE_MEMBER]: "#999",
 };
 
 export default class SpaceMembers extends Component<SpaceMembersProps, SpaceMembersState> {
@@ -82,14 +91,18 @@ export default class SpaceMembers extends Component<SpaceMembersProps, SpaceMemb
         }
     };
 
-    isAdmin() {
-        return this.props.space.role <= 2;
+    canManageMembers() {
+        return isSpaceAdminOrOwner(this.props.space.role);
+    }
+
+    canManageRoles() {
+        return isSpaceOwner(this.props.space.role);
     }
 
     roleLabel(role: number) {
         const { t } = this.context;
-        if (role === 1) return t("base.spaceMembers.creator");
-        if (role === 2) return t("base.spaceMembers.admin");
+        if (role === SPACE_ROLE_OWNER) return t("base.spaceMembers.creator");
+        if (role === SPACE_ROLE_ADMIN) return t("base.spaceMembers.admin");
         return t("base.spaceMembers.member");
     }
 
@@ -97,7 +110,8 @@ export default class SpaceMembers extends Component<SpaceMembersProps, SpaceMemb
         const { space, onClose } = this.props;
         const { members, loading } = this.state;
         const myUid = WKApp.loginInfo.uid;
-        const isAdmin = this.isAdmin();
+        const canManageMembers = this.canManageMembers();
+        const canManageRoles = this.canManageRoles();
         const { t } = this.context;
 
         return (
@@ -139,20 +153,20 @@ export default class SpaceMembers extends Component<SpaceMembersProps, SpaceMemb
                                         </span>
                                     </div>
                                 </div>
-                                {isAdmin && member.uid !== myUid && member.role !== 1 && (
+                                {canManageMembers && member.uid !== myUid && member.role !== SPACE_ROLE_OWNER && (
                                     <div className="wk-spacemembers-item-actions">
-                                        {member.role === 3 && (
+                                        {canManageRoles && member.role === SPACE_ROLE_MEMBER && (
                                             <button
                                                 className="wk-spacemembers-action-btn"
-                                                onClick={() => this.handleRoleChange(member.uid, 2)}
+                                                onClick={() => this.handleRoleChange(member.uid, SPACE_ROLE_ADMIN)}
                                             >
                                                 {t("base.spaceMembers.setAdmin")}
                                             </button>
                                         )}
-                                        {member.role === 2 && (
+                                        {canManageRoles && member.role === SPACE_ROLE_ADMIN && (
                                             <button
                                                 className="wk-spacemembers-action-btn"
-                                                onClick={() => this.handleRoleChange(member.uid, 3)}
+                                                onClick={() => this.handleRoleChange(member.uid, SPACE_ROLE_MEMBER)}
                                             >
                                                 {t("base.spaceMembers.cancelAdmin")}
                                             </button>

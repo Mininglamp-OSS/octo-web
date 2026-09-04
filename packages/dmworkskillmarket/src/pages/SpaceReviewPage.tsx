@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
 import ReviewQueue from "../components/ReviewQueue";
@@ -40,14 +40,30 @@ export default function SpaceReviewPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [disableConfirmOpen, setDisableConfirmOpen] = useState(false);
+  // Loads and saves are tied to the Space that started them. Switching Space
+  // invalidates every older request so a slow response from A cannot overwrite
+  // the policy, error, or busy state currently shown for B.
+  const requestGenerationRef = useRef(0);
 
   const loadPolicy = useCallback(() => {
+    requestGenerationRef.current += 1;
+    const requestGeneration = requestGenerationRef.current;
     setLoading(true);
+    setSaving(false);
     setError(null);
     getReviewPolicy()
-      .then((policy) => setEnabled(policy.isAutoApproveEnabled))
-      .catch((err) => setError(err instanceof Error ? err.message : t("skillMarket.review.policyLoadFailed")))
-      .finally(() => setLoading(false));
+      .then((policy) => {
+        if (requestGeneration !== requestGenerationRef.current) return;
+        setEnabled(policy.isAutoApproveEnabled);
+      })
+      .catch((err) => {
+        if (requestGeneration !== requestGenerationRef.current) return;
+        setError(err instanceof Error ? err.message : t("skillMarket.review.policyLoadFailed"));
+      })
+      .finally(() => {
+        if (requestGeneration !== requestGenerationRef.current) return;
+        setLoading(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -57,21 +73,28 @@ export default function SpaceReviewPage() {
       loadPolicy();
     };
     WKApp.mittBus.on("space-changed", handleSpaceChanged);
-    return () => WKApp.mittBus.off("space-changed", handleSpaceChanged);
+    return () => {
+      requestGenerationRef.current += 1;
+      WKApp.mittBus.off("space-changed", handleSpaceChanged);
+    };
   }, [loadPolicy]);
 
   async function savePolicy(next: boolean): Promise<boolean> {
+    requestGenerationRef.current += 1;
+    const requestGeneration = requestGenerationRef.current;
     setSaving(true);
     setError(null);
     try {
       const policy = await updateReviewPolicy(next);
+      if (requestGeneration !== requestGenerationRef.current) return false;
       setEnabled(policy.isAutoApproveEnabled);
       return true;
     } catch (err) {
+      if (requestGeneration !== requestGenerationRef.current) return false;
       setError(err instanceof Error ? err.message : t("skillMarket.review.policySaveFailed"));
       return false;
     } finally {
-      setSaving(false);
+      if (requestGeneration === requestGenerationRef.current) setSaving(false);
     }
   }
 

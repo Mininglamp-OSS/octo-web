@@ -2,15 +2,15 @@
 
 ## Behavior List
 
-- Space owners see the automatic-review setting on Publication management.
+- Space owners and admins see the automatic-review setting on Publication management.
 - The switch is on when no override exists; turning it off asks for confirmation.
-- Admins may use the review queue but do not see the owner-only setting.
+- Space owners and admins may use the review queue and change the shared setting.
 - Space changes reload both the role and policy.
 
 ## File Map
 
 - `packages/dmworkskillmarket/src/api/skillApiReal.ts`: policy wire calls.
-- `packages/dmworkskillmarket/src/pages/SpaceReviewPage.tsx`: owner setting UI.
+- `packages/dmworkskillmarket/src/pages/SpaceReviewPage.tsx`: owner/admin setting UI.
 - `packages/dmworkskillmarket/src/i18n/*.json`: user-facing copy.
 - `packages/dmworkskillmarket/src/index.css`: setting presentation.
 

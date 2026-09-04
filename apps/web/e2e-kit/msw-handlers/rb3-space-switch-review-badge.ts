@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 // 切换组织后的审核徽标 (RB3).
 //
-// Two Spaces, the user is owner (role 1) in both, and each has a DIFFERENT
+// Two Spaces, the user is owner (role 2) in both, and each has a DIFFERENT
 // non-zero number of pending review requests. Every review read carries the
 // active Space in the `X-Space-Id` header (see @dmwork/skillmarket
 // api/skillApiReal.ts `getAuthHeaders`), so this handler answers the SAME
@@ -54,7 +54,7 @@ export async function registerRb3SpaceSwitchReviewBadge(page: Page): Promise<voi
       space_no: id,
       owner: "e2e-user-1",
       status: 1,
-      role: 1,
+      role: 2,
       member_count: 1,
       max_users: 0,
     });

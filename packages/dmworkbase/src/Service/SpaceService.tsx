@@ -230,6 +230,18 @@ export function shouldSkipMessageForSpace(message: Message): boolean {
     return false
 }
 
+export const SPACE_ROLE_MEMBER = 0
+export const SPACE_ROLE_ADMIN = 1
+export const SPACE_ROLE_OWNER = 2
+
+export function isSpaceAdminOrOwner(role: number): boolean {
+    return role === SPACE_ROLE_ADMIN || role === SPACE_ROLE_OWNER
+}
+
+export function isSpaceOwner(role: number): boolean {
+    return role === SPACE_ROLE_OWNER
+}
+
 export interface Space {
     space_id: string
     name: string

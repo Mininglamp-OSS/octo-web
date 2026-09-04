@@ -10,14 +10,20 @@ vi.mock("../../App", () => ({
   },
 }));
 
-import { SpaceService, type SpaceMember } from "../SpaceService";
+import {
+  isSpaceAdminOrOwner,
+  isSpaceOwner,
+  SPACE_ROLE_MEMBER,
+  SpaceService,
+  type SpaceMember,
+} from "../SpaceService";
 
 function member(uid: string): SpaceMember {
   return {
     uid,
     name: uid,
     avatar: "",
-    role: 3,
+    role: SPACE_ROLE_MEMBER,
     robot: 0,
     created_at: "",
   };
@@ -27,6 +33,17 @@ function member(uid: string): SpaceMember {
 function fullPage(size: number): SpaceMember[] {
   return Array.from({ length: size }, (_, i) => member(`u${i}`));
 }
+
+describe("Space role helpers", () => {
+  it("uses the 0=member, 1=admin, 2=owner encoding", () => {
+    expect(isSpaceAdminOrOwner(0)).toBe(false);
+    expect(isSpaceAdminOrOwner(1)).toBe(true);
+    expect(isSpaceAdminOrOwner(2)).toBe(true);
+    expect(isSpaceOwner(0)).toBe(false);
+    expect(isSpaceOwner(1)).toBe(false);
+    expect(isSpaceOwner(2)).toBe(true);
+  });
+});
 
 describe("SpaceService member pagination", () => {
   beforeEach(() => {

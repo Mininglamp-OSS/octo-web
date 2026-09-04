@@ -15,7 +15,7 @@ const reviewLabel = /组织发布管理|mcp\.sidebar\.review/;
 const mineLabel = /我的发布|mcp\.sidebar\.mine/;
 
 const h = vi.hoisted(() => ({
-  spaceRole: { role: 3 as number | undefined, isReviewer: false, loading: false },
+  spaceRole: { role: 0 as number | undefined, isReviewer: false, loading: false },
   pendingCount: 0,
   reviewOptions: [] as Array<Record<string, unknown>>,
   reviewRefresh: vi.fn(),
@@ -115,7 +115,7 @@ function rowLabels(): string[] {
 }
 
 beforeEach(() => {
-  h.spaceRole = { role: 3, isReviewer: false, loading: false };
+  h.spaceRole = { role: 0, isReviewer: false, loading: false };
   h.pendingCount = 0;
   h.reviewOptions = [];
   h.busHandlers = {};
@@ -163,7 +163,7 @@ describe("MarketSidebar 组织发布管理 entry", () => {
   });
 
   it("shows the entry to a Space admin and badges the pending count", () => {
-    h.spaceRole = { role: 2, isReviewer: true, loading: false };
+    h.spaceRole = { role: 1, isReviewer: true, loading: false };
     h.pendingCount = 3;
     render();
 
@@ -212,7 +212,7 @@ describe("MarketSidebar 组织发布管理 entry", () => {
 
     // Role comes back "member" — the gate closes and the sidebar must move the
     // user to a permitted route rather than leave them on a 403ing view.
-    h.spaceRole = { role: 3, isReviewer: false, loading: false };
+    h.spaceRole = { role: 0, isReviewer: false, loading: false };
     render();
 
     expect(h.replaceToRoot.mock.calls.at(-1)![0].type).toBe(SkillListPage);
@@ -228,7 +228,7 @@ describe("MarketSidebar 组织发布管理 entry", () => {
     render();
     expect(h.replaceToRoot.mock.calls.at(-1)![0].type).toBe(SpaceReviewPage);
 
-    h.spaceRole = { role: 3, isReviewer: false, loading: false };
+    h.spaceRole = { role: 0, isReviewer: false, loading: false };
     render();
 
     expect(h.replaceToRoot.mock.calls.at(-1)![0].type).toBe(SkillListPage);
@@ -248,25 +248,25 @@ describe("MarketSidebar 组织发布管理 entry", () => {
  */
 describe("MarketSidebar review badge across a Space switch", () => {
   it("re-reads the pending count when the Space changes", () => {
-    h.spaceRole = { role: 1, isReviewer: true, loading: false };
+    h.spaceRole = { role: 2, isReviewer: true, loading: false };
     h.pendingCount = 2;
     render();
     h.reviewRefresh.mockClear();
 
-    act(() => emitBus("space-changed", { space_id: "space-b", role: 1 }));
+    act(() => emitBus("space-changed", { space_id: "space-b", role: 2 }));
 
     expect(h.reviewRefresh).toHaveBeenCalledTimes(1);
   });
 
   it("stops re-reading once the sidebar unmounts", () => {
-    h.spaceRole = { role: 1, isReviewer: true, loading: false };
+    h.spaceRole = { role: 2, isReviewer: true, loading: false };
     render();
     act(() => {
       ReactDOM.unmountComponentAtNode(container!);
     });
     h.reviewRefresh.mockClear();
 
-    act(() => emitBus("space-changed", { space_id: "space-b", role: 1 }));
+    act(() => emitBus("space-changed", { space_id: "space-b", role: 2 }));
 
     expect(h.reviewRefresh).not.toHaveBeenCalled();
   });

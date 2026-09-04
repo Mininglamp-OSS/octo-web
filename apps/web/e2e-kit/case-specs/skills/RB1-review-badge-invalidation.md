@@ -16,7 +16,7 @@
 
 ## 前置条件
 
-- fixture: `fixtures-authed`，使用本地 mock 登录和 mock IM runtime；mock 用户在 `e2e-space-001` 中 `role: 1`（owner），因此可见 reviewer 专属入口。
+- fixture: `fixtures-authed`，使用本地 mock 登录和 mock IM runtime；mock 用户在 `e2e-space-001` 中 `role: 2`（owner），因此可见 reviewer 专属入口。
 - 页面初始化前设置 `sessionStorage.__e2e_scenario = "skill-market-review-badge"`，并清除 `__e2e_rb1_loaded`，启用本 case 的 MSW handler 并重置其队列状态。
 - Per-case MSW handler: `e2e-kit/msw-handlers/skill-market-review-badge.ts`
   - `GET /market/api/v1/plugins/review_requests` — 有状态：初始返回 1 条 pending 记录。

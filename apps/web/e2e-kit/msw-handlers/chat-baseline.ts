@@ -54,7 +54,7 @@ const MOCK_SPACE = {
   space_no: "e2e-space",
   owner: MOCK_UID,
   status: 1,
-  role: 1,
+  role: 2,
 };
 
 const SP1_CREATED_SPACE = {
@@ -67,7 +67,7 @@ const SP1_CREATED_SPACE = {
   space_no: "sp1-created-space",
   owner: MOCK_UID,
   status: 1,
-  role: 1,
+  role: 2,
 };
 
 function chatFollowScenario(request?: Request): string {

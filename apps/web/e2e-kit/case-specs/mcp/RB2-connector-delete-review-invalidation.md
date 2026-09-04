@@ -30,7 +30,7 @@ RB1 守护的是「做出审核决策」这条路径；本 case 守护另一条�
 
 ## 前置条件
 
-- fixture: `fixtures-authed`；mock 用户在 `e2e-space-001` 中 `role: 1`（owner），可见 reviewer 专属入口。
+- fixture: `fixtures-authed`；mock 用户在 `e2e-space-001` 中 `role: 2`（owner），可见 reviewer 专属入口。
 - Per-case MSW handler: `e2e-kit/msw-handlers/rb2-connector-delete-review.ts`，
   用 C40 的运行时 `window.__msw.worker.use` 方式安装。
   - `GET /market/api/v1/plugins`（`mode=mine&plugin_type=connector`）— 未删除时返回该连接器。

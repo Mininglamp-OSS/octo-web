@@ -31,7 +31,7 @@
 - fixture: `fixtures-authed`。
 - Per-case MSW handler: `e2e-kit/msw-handlers/rb3-space-switch-review-badge.ts`
   - `GET /space/my` — 返回两个 Space：甲组织 `e2e-space-001`、乙组织 `e2e-space-002`，
-    用户在两边都是 `role: 1`（owner）。
+    用户在两边都是 `role: 2`（owner）。
   - `GET /market/api/v1/plugins/review_requests` — **按请求头 `X-Space-Id` 分流**：
     甲组织 1 条 pending，乙组织 3 条。
   - 两边都是**非零**且**不相等**，这是本 case 的关键：`1 → 0` 是有歧义的，因为探针被

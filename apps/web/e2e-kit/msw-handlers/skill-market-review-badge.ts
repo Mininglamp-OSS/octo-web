@@ -86,6 +86,17 @@ function pageOf(items: PendingRequest[], url: URL) {
 }
 
 export const skillMarketReviewBadgeHandlers = [
+  http.get(`*${API_BASE}/plugin_review_policies`, () => {
+    if (!enabled()) return undefined;
+    return HttpResponse.json({ data: { is_auto_approve_enabled: true } });
+  }),
+  http.patch(`*${API_BASE}/plugin_review_policies`, async ({ request }) => {
+    if (!enabled()) return undefined;
+    const body = await request.json() as { is_auto_approve_enabled?: boolean };
+    return HttpResponse.json({
+      data: { is_auto_approve_enabled: body.is_auto_approve_enabled === true },
+    });
+  }),
   http.post(`*${API_BASE}/plugins/review_requests/:id/approve`, ({ params }) => {
     if (!enabled()) return undefined;
     const id = String(params.id);
