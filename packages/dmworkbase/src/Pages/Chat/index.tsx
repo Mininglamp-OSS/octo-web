@@ -1,5 +1,5 @@
 import React, { Component, ReactNode } from "react";
-import { Conversation } from "../../Components/Conversation";
+import { ConversationWindow } from "../../Components/ConversationWindow";
 import ConversationList, {
   ConvFilter,
 } from "../../Components/ConversationList";
@@ -100,6 +100,7 @@ import {
   shouldHideRecentUnreadBadge,
   unreadContribution,
 } from "./sidebarUnreadBadge";
+import { getLegacyChatRuntime } from "../../features/chat-capability/legacyChatClient";
 
 // 消息 ACK 只代表发送成功；后端把归档子区恢复为活跃存在短暂异步窗口。
 // 实测立即 threadGet 可能仍返回 Archived，因此发送后用短轮询等后端状态落稳。
@@ -208,13 +209,15 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
       parentGroupNo,
       missingFollowMuteAuthority
     );
-    const ready =
-      !!channelInfo && (!parentGroupNo || !!parentChannelInfo);
-    return { ready, muted: isEffectivelyMuted({
-      isThread,
-      channelInfo,
-      parentChannelInfo,
-    }) };
+    const ready = !!channelInfo && (!parentGroupNo || !!parentChannelInfo);
+    return {
+      ready,
+      muted: isEffectivelyMuted({
+        isThread,
+        channelInfo,
+        parentChannelInfo,
+      }),
+    };
   };
 
   // sidebar items 是 /sidebar/sync 的快照，IM 缓存里 conv 才是 reactive 的。
@@ -261,19 +264,21 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
     const unread = liveConv ? liveConv.unread || 0 : it.unread || 0;
     if (unread <= 0) return sum;
     const muteState = getItemMuteState(it);
-    return sum + unreadContribution({
-      unread,
-      muteAuthorityReady: muteState.ready,
-      muted: muteState.muted,
-    });
+    return (
+      sum +
+      unreadContribution({
+        unread,
+        muteAuthorityReady: muteState.ready,
+        muted: muteState.muted,
+      })
+    );
   }, 0);
 
   const recentUnread = conversations.reduce(
     (sum: number, c: ConversationWrap) => {
       const unread = c.unread || 0;
       if (unread <= 0) return sum;
-      const isThread =
-        c.channel.channelType === ChannelTypeCommunityTopic;
+      const isThread = c.channel.channelType === ChannelTypeCommunityTopic;
       const parentGroupNo = isThread
         ? (c.channelInfo?.orgData?.parentGroupNo as string | undefined) ||
           parseThreadChannelId(c.channel.channelID)?.groupNo
@@ -283,13 +288,16 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
         parentGroupNo,
         missingRecentMuteAuthority
       );
-      return sum + unreadContribution({
-        unread,
-        muteAuthorityReady:
-          !!authority.channelInfo &&
-          (!parentGroupNo || !!authority.parentChannelInfo),
-        muted: isMutedForRecentConversation(c),
-      });
+      return (
+        sum +
+        unreadContribution({
+          unread,
+          muteAuthorityReady:
+            !!authority.channelInfo &&
+            (!parentGroupNo || !!authority.parentChannelInfo),
+          muted: isMutedForRecentConversation(c),
+        })
+      );
     },
     0
   );
@@ -398,6 +406,7 @@ export class ChatContentPage extends Component<
   private _unsubscribeChannelInfoListener?: () => void;
   private _unsubscribeChannelSearchConfig?: () => void;
   private readonly titlePageOwner = Symbol("chat-content-page");
+  private readonly chatRuntime = getLegacyChatRuntime();
   private readonly channelSettingPanelRef = React.createRef<HTMLDivElement>();
   private readonly chatContentRef = React.createRef<HTMLDivElement>();
   private channelSettingReturnFocusElement?: HTMLElement;
@@ -874,11 +883,7 @@ export class ChatContentPage extends Component<
     prevState: ChatContentPageState
   ) {
     if (!prevState.showChannelSetting && this.state.showChannelSetting) {
-      document.addEventListener(
-        "keydown",
-        this._onChannelSettingKeyDown,
-        true
-      );
+      document.addEventListener("keydown", this._onChannelSettingKeyDown, true);
       this.shouldRestoreChannelSettingFocus = false;
       this.channelSettingPanelRef.current?.focus();
     } else if (prevState.showChannelSetting && !this.state.showChannelSetting) {
@@ -1120,6 +1125,165 @@ export class ChatContentPage extends Component<
     return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
   }
 
+  private renderConversationHeaderAvatar(
+    channel: Channel,
+    isThreadChannel: boolean
+  ): ReactNode {
+    if (channel.channelType === ChannelTypeGroup) {
+      return (
+        <WKAvatar
+          key={WKApp.shared.getChannelAvatarTag(channel)}
+          channel={channel}
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: "var(--wk-avatar-radius, 50%)",
+            flexShrink: 0,
+          }}
+        />
+      );
+    }
+    if (isThreadChannel) {
+      return (
+        <div className="wk-chat-conversation-header-channel-thread-icon">
+          <ThreadIcon size={18} color="var(--wk-text-secondary, #5C6070)" />
+        </div>
+      );
+    }
+    return <img alt="" src={WKApp.shared.avatarChannel(channel)} />;
+  }
+
+  private renderConversationHeaderTitle(
+    channel: Channel,
+    channelInfo: ChannelInfo | undefined,
+    threadParentGroupNo: string | undefined
+  ): ReactNode {
+    if (
+      channel.channelType !== ChannelTypeCommunityTopic ||
+      !threadParentGroupNo
+    ) {
+      return channelInfo?.orgData?.displayName;
+    }
+
+    return (
+      <>
+        <button
+          type="button"
+          className="wk-chat-conversation-header-parent-group"
+          onClick={() => {
+            WKApp.endpoints.showConversation(
+              this.parentGroupChannel ||
+                new Channel(threadParentGroupNo, ChannelTypeGroup)
+            );
+          }}
+        >
+          {getImChannelInfo(
+            WKSDK.shared(),
+            new Channel(threadParentGroupNo, ChannelTypeGroup)
+          )?.title || threadParentGroupNo}
+        </button>
+        <span className="wk-chat-conversation-header-separator">
+          <ChevronRight aria-hidden="true" size={14} />
+        </span>
+        <span className="wk-chat-conversation-header-thread-name">
+          {channelInfo?.orgData?.displayName}
+        </span>
+      </>
+    );
+  }
+
+  private renderConversationHeaderActions(
+    channel: Channel,
+    isThreadChannel: boolean,
+    showChannelSetting: boolean
+  ): ReactNode {
+    return (
+      <>
+        {WKApp.endpoints
+          .channelHeaderRightItems(channel)
+          .map((item: ReactNode, index: number) => (
+            <div
+              key={index}
+              className="wk-chat-conversation-header-right-item"
+              onClick={(event) => event.stopPropagation()}
+            >
+              {item}
+            </div>
+          ))}
+        {!isThreadChannel &&
+          channel.channelType === ChannelTypeGroup &&
+          WKApp.remoteConfig.threadOn && (
+            <div
+              data-testid="chat-thread-panel-entry"
+              className="wk-chat-conversation-header-right-item"
+              onClick={(event) => {
+                event.stopPropagation();
+                const isThreadListVisibleNow =
+                  this.state.showThreadPanel &&
+                  !this.state.previewFile &&
+                  !this.state.activeThread;
+                if (!isThreadListVisibleNow) {
+                  Dap.shared.track("channel_subchannel_panel_opened", {});
+                }
+                this.setState((previousState) => {
+                  const isThreadListVisible =
+                    previousState.showThreadPanel &&
+                    !previousState.previewFile &&
+                    !previousState.activeThread;
+                  return isThreadListVisible
+                    ? closeChatRightPanels()
+                    : openChatRightPanel("thread");
+                });
+              }}
+              title={t("base.chatPage.threadPanel")}
+            >
+              <ThreadIcon size={20} color="currentColor" />
+            </div>
+          )}
+        <div
+          data-testid="chat-channel-setting-entry"
+          className="wk-chat-conversation-header-right-item"
+          role="button"
+          tabIndex={0}
+          aria-controls="chat-channel-setting-panel"
+          aria-expanded={showChannelSetting}
+          aria-label={t("base.channelSetting.title")}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (this.state.showChannelSetting) {
+              this._closeChannelSetting();
+              return;
+            }
+            this.channelSettingReturnFocusElement = event.currentTarget;
+            if (channel.channelType === ChannelTypeGroup) {
+              Dap.shared.track("group_info_panel_opened", {});
+            }
+            this.setState(openChatRightPanel("channelSetting"));
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              event.currentTarget.click();
+            }
+          }}
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 16 16"
+            fill="currentColor"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path d="M4.66658 7.99998C4.66658 8.92045 3.92039 9.66665 2.99992 9.66665C2.07945 9.66665 1.33325 8.92045 1.33325 7.99998C1.33325 7.07951 2.07945 6.33331 2.99992 6.33331C3.92039 6.33331 4.66658 7.07951 4.66658 7.99998Z" />
+            <path d="M9.66659 7.99998C9.66659 8.92045 8.92039 9.66665 7.99992 9.66665C7.07945 9.66665 6.33325 8.92045 6.33325 7.99998C6.33325 7.07951 7.07945 6.33331 7.99992 6.33331C8.92039 6.33331 9.66659 7.07951 9.66659 7.99998Z" />
+            <path d="M12.9999 9.66665C13.9204 9.66665 14.6666 8.92045 14.6666 7.99998C14.6666 7.07951 13.9204 6.33331 12.9999 6.33331C12.0795 6.33331 11.3333 7.07951 11.3333 7.99998C11.3333 8.92045 12.0795 9.66665 12.9999 9.66665Z" />
+          </svg>
+          <div className="wk-conversation-header-mask" />
+        </div>
+      </>
+    );
+  }
+
   render(): React.ReactNode {
     const { channel, initLocateMessageSeq } = this.props;
     const {
@@ -1158,291 +1322,97 @@ export class ChatContentPage extends Component<
           webhookIssuePreviewTarget ? "wk-chat-webhook-preview-open" : ""
         )}
       >
-        <div
-          ref={this.chatContentRef}
-          className={classNames(
-            "wk-chat-content-chat",
-            selectionMode ? "wk-chat-content-chat-selection" : undefined
-          )}
-          aria-hidden={showChannelSetting || undefined}
-          {...(showChannelSetting ? { inert: "" } : {})}
-        >
-          <div
-            className={classNames(
-              "wk-chat-conversation-header",
-              selectionMode
-                ? "wk-chat-conversation-header-selection"
-                : undefined
-            )}
-          >
-            <div className="wk-chat-conversation-header-content">
-              <div className="wk-chat-conversation-header-left">
-                {selectionMode ? (
-                  <div className="wk-chat-conversation-selection-header">
-                    <div className="wk-chat-conversation-selection-title">
-                      {t("base.chatPage.selectionCount", {
-                        values: { count: selectedCount },
-                      })}
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div
-                      className="wk-chat-conversation-header-back"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        WKApp.routeRight.pop();
-                      }}
-                    >
-                      <div className="wk-chat-conversation-header-back-icon"></div>
-                    </div>
-                    <div className="wk-chat-conversation-header-channel">
-                      <div className="wk-chat-conversation-header-channel-avatar">
-                        {channel.channelType === ChannelTypeGroup ? (
-                          // 群聊：真实头像
-                          <WKAvatar
-                            key={WKApp.shared.getChannelAvatarTag(channel)}
-                            channel={channel}
-                            style={{
-                              width: 28,
-                              height: 28,
-                              borderRadius: "var(--wk-avatar-radius, 50%)",
-                              flexShrink: 0,
-                            }}
-                          />
-                        ) : channel.channelType ===
-                          ChannelTypeCommunityTopic ? (
-                          // 子区：🧵 icon，圆角背景（对齐群聊 hash-icon 样式）
-                          <div className="wk-chat-conversation-header-channel-thread-icon">
-                            <ThreadIcon
-                              size={18}
-                              color="var(--wk-text-secondary, #5C6070)"
-                            />
-                          </div>
-                        ) : (
-                          // 私聊：头像
-                          <img
-                            alt=""
-                            src={WKApp.shared.avatarChannel(channel)}
-                          ></img>
-                        )}
-                      </div>
-                      <div className="wk-chat-conversation-header-channel-info">
-                        <div
-                          className={classNames(
-                            "wk-chat-conversation-header-channel-info-name",
-                            isThreadChannel &&
-                              threadParentGroupNo &&
-                              "wk-chat-conversation-header-channel-info-name--thread"
-                          )}
-                        >
-                          {isThreadChannel && threadParentGroupNo ? (
-                            <>
-                              {/* 面包屑：父群组 › 子区名 */}
-                              <span
-                                className="wk-chat-conversation-header-parent-group"
-                                style={{ cursor: "pointer" }}
-                                onClick={() => {
-                                  WKApp.endpoints.showConversation(
-                                    this.parentGroupChannel ||
-                                      new Channel(
-                                        threadParentGroupNo,
-                                        ChannelTypeGroup
-                                      )
-                                  );
-                                }}
-                              >
-                                {getImChannelInfo(
-                                  WKSDK.shared(),
-                                  new Channel(
-                                    threadParentGroupNo,
-                                    ChannelTypeGroup
-                                  )
-                                )?.title || threadParentGroupNo}
-                              </span>
-                              <span className="wk-chat-conversation-header-separator">
-                                <ChevronRight aria-hidden="true" size={14} />
-                              </span>
-                              <span className="wk-chat-conversation-header-thread-name">
-                                {channelInfo?.orgData?.displayName}
-                              </span>
-                            </>
-                          ) : (
-                            channelInfo?.orgData?.displayName
-                          )}
-                        </div>
-                        <div className="wk-chat-conversation-header-channel-info-tip"></div>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="wk-chat-conversation-header-right">
-                {selectionMode ? (
-                  <button
-                    type="button"
-                    className="wk-chat-conversation-selection-cancel"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      this.conversationContext?.clearCheckedMessages();
-                      this.conversationContext?.setEditOn(false);
-                    }}
-                  >
-                    {t("base.common.cancel")}
-                  </button>
-                ) : (
-                  <>
-                    {WKApp.endpoints
-                      .channelHeaderRightItems(channel)
-                      .map((item: any, i: number) => {
-                        return (
-                          <div
-                            key={i}
-                            className="wk-chat-conversation-header-right-item"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {item}
-                          </div>
-                        );
-                      })}
-                    {/* 子区按钮 - 切换子区列表 */}
-                    {!isThreadChannel &&
-                      channel.channelType === ChannelTypeGroup &&
-                      WKApp.remoteConfig.threadOn && (
-                        <div
-                          data-testid="chat-thread-panel-entry"
-                          className="wk-chat-conversation-header-right-item"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // channel_subchannel_panel_opened:仅在「打开」边沿(当前子区列表未显示)且为
-                            // 群频道时发一次。原挂在 GET /groups/:id/threads 的 2xx 通道会被删除/归档/重试刷新
-                            // 反复触发;二审又发现改挂到 ThreadList.componentDidMount 是死组件(实际渲染的是
-                            // ThreadPanel),永不触发。收口到这个真正的子区 header 开关点(见二审 P1-2),
-                            // 与上方 group_info_panel_opened 同一「仅开边沿」写法,file-preview 复用 ThreadPanel 不误计。
-                            {
-                              const isThreadListVisibleNow =
-                                this.state.showThreadPanel &&
-                                !this.state.previewFile &&
-                                !this.state.activeThread;
-                              if (!isThreadListVisibleNow) {
-                                Dap.shared.track("channel_subchannel_panel_opened", {});
-                              }
-                            }
-                            this.setState((prevState) => {
-                              // 如果有文件预览或其他面板打开，视为"子区列表未显示"，点击应打开子区列表
-                              const isThreadListVisible =
-                                prevState.showThreadPanel &&
-                                !prevState.previewFile &&
-                                !prevState.activeThread;
-                              return isThreadListVisible
-                                ? closeChatRightPanels()
-                                : openChatRightPanel("thread");
-                            });
-                          }}
-                          title={t("base.chatPage.threadPanel")}
-                        >
-                          <ThreadIcon size={20} color="currentColor" />
-                        </div>
-                      )}
-                    <div
-                      data-testid="chat-channel-setting-entry"
-                      className="wk-chat-conversation-header-right-item"
-                      role="button"
-                      tabIndex={0}
-                      aria-controls="chat-channel-setting-panel"
-                      aria-expanded={showChannelSetting}
-                      aria-label={t("base.channelSetting.title")}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (this.state.showChannelSetting) {
-                          this._closeChannelSetting();
-                          return;
-                        }
-                        this.channelSettingReturnFocusElement = e.currentTarget;
-                        // group_info_panel_opened:仅开面板(opening)且为群频道时发,props 恒空
-                        if (channel.channelType === ChannelTypeGroup) {
-                          Dap.shared.track("group_info_panel_opened", {});
-                        }
-                        this.setState(openChatRightPanel("channelSetting"));
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          event.currentTarget.click();
-                        }
-                      }}
-                    >
-                      <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 16 16"
-                        fill="currentColor"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <path d="M4.66658 7.99998C4.66658 8.92045 3.92039 9.66665 2.99992 9.66665C2.07945 9.66665 1.33325 8.92045 1.33325 7.99998C1.33325 7.07951 2.07945 6.33331 2.99992 6.33331C3.92039 6.33331 4.66658 7.07951 4.66658 7.99998Z" />
-                        <path d="M9.66659 7.99998C9.66659 8.92045 8.92039 9.66665 7.99992 9.66665C7.07945 9.66665 6.33325 8.92045 6.33325 7.99998C6.33325 7.07951 7.07945 6.33331 7.99992 6.33331C8.92039 6.33331 9.66659 7.07951 9.66659 7.99998Z" />
-                        <path d="M12.9999 9.66665C13.9204 9.66665 14.6666 8.92045 14.6666 7.99998C14.6666 7.07951 13.9204 6.33331 12.9999 6.33331C12.0795 6.33331 11.3333 7.07951 11.3333 7.99998C11.3333 8.92045 12.0795 9.66665 12.9999 9.66665Z" />
-                      </svg>
-                      <div className="wk-conversation-header-mask"></div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="wk-chat-conversation">
-            <ErrorBoundary moduleName={t("base.chatPage.chatModuleName")}>
-              <Conversation
-                initLocateMessageSeq={initLocateMessageSeq}
-                shouldShowHistorySplit={true}
-                onContext={(ctx) => {
-                  this.conversationContext = ctx;
-                  (WKApp.shared as any).activeConversationContext = ctx;
-                  this.setState({
-                    selectionMode: ctx.editOn(),
-                    selectedCount: ctx.getCheckedMessageCount(),
-                  });
-                }}
-                onSelectionStateChange={({ editOn, checkedCount }) => {
-                  this.setState({
-                    selectionMode: editOn,
-                    selectedCount: checkedCount,
-                  });
-                }}
-                onOpenThreadPanel={(threadChannelId, threadName) => {
-                  const threadInfo = parseThreadChannelId(threadChannelId);
-                  if (threadInfo) {
-                    this.setState(
-                      openChatRightPanel("thread", {
-                        activeThread: buildThreadStub(
-                          threadInfo.shortId,
-                          threadInfo.groupNo,
-                          threadChannelId,
-                          threadName
-                        ),
-                      })
-                    );
-                  }
-                }}
-                onOpenWebhookPreview={this._openWebhookPreview}
-                key={channel.getChannelKey()}
-                chatBg={
-                  WKApp.config.themeMode === ThemeMode.dark
-                    ? undefined
-                    : require("./assets/chat_bg.svg").default
+        <ConversationWindow
+          client={this.chatRuntime.client}
+          channel={channel}
+          errorModuleName={t("base.chatPage.chatModuleName")}
+          bindConversationContext={this.chatRuntime.bindConversationContext}
+          surfaceRef={this.chatContentRef}
+          inactive={showChannelSetting}
+          header={{
+            avatar: this.renderConversationHeaderAvatar(
+              channel,
+              isThreadChannel
+            ),
+            title: this.renderConversationHeaderTitle(
+              channel,
+              channelInfo,
+              threadParentGroupNo
+            ),
+            titleClassName: classNames(
+              isThreadChannel &&
+                threadParentGroupNo &&
+                "wk-chat-conversation-header-channel-info-name--thread"
+            ),
+            onBack: () => {
+              WKApp.routeRight.pop();
+            },
+            actions: this.renderConversationHeaderActions(
+              channel,
+              isThreadChannel,
+              showChannelSetting
+            ),
+          }}
+          selection={
+            selectionMode
+              ? {
+                  active: true,
+                  count: selectedCount,
+                  label: t("base.chatPage.selectionCount", {
+                    values: { count: selectedCount },
+                  }),
+                  cancelLabel: t("base.common.cancel"),
+                  onCancel: () => {
+                    this.conversationContext?.clearCheckedMessages();
+                    this.conversationContext?.setEditOn(false);
+                  },
                 }
-                channel={channel}
-                activePreviewMessageId={this.state.activePreviewMessageId}
-                inputNotice={
-                  isThreadChannel && threadStatus === ThreadStatus.Archived
-                    ? t("base.chatPage.archivedThreadNotice")
-                    : undefined
-                }
-                onMessageSent={this.handleConversationMessageSent}
-              ></Conversation>
-            </ErrorBoundary>
-          </div>
-        </div>
+              : undefined
+          }
+          conversationProps={{
+            initLocateMessageSeq,
+            onContext: (ctx) => {
+              this.conversationContext = ctx;
+              (WKApp.shared as any).activeConversationContext = ctx;
+              this.setState({
+                selectionMode: ctx.editOn(),
+                selectedCount: ctx.getCheckedMessageCount(),
+              });
+            },
+            onSelectionStateChange: ({ editOn, checkedCount }) => {
+              this.setState({
+                selectionMode: editOn,
+                selectedCount: checkedCount,
+              });
+            },
+            onOpenThreadPanel: (threadChannelId, threadName) => {
+              const threadInfo = parseThreadChannelId(threadChannelId);
+              if (threadInfo) {
+                this.setState(
+                  openChatRightPanel("thread", {
+                    activeThread: buildThreadStub(
+                      threadInfo.shortId,
+                      threadInfo.groupNo,
+                      threadChannelId,
+                      threadName
+                    ),
+                  })
+                );
+              }
+            },
+            onOpenWebhookPreview: this._openWebhookPreview,
+            chatBg:
+              WKApp.config.themeMode === ThemeMode.dark
+                ? undefined
+                : require("./assets/chat_bg.svg").default,
+            activePreviewMessageId: this.state.activePreviewMessageId,
+            inputNotice:
+              isThreadChannel && threadStatus === ThreadStatus.Archived
+                ? t("base.chatPage.archivedThreadNotice")
+                : undefined,
+            onMessageSent: this.handleConversationMessageSent,
+          }}
+        />
 
         {showChannelSetting && (
           <div
@@ -2065,17 +2035,21 @@ export default class ChatPage extends Component<any, ChatPageState> {
                       if (linksBridge) {
                         const absoluteUrl = resolveDocLinkForExternalOpen(
                           url,
-                          apiUrlOrigin(),
+                          apiUrlOrigin()
                         );
                         linksBridge
                           .openExternal(absoluteUrl)
                           .then((result) => {
                             if (!result.ok) {
-                              Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                              Toast.warning(
+                                t("base.globalSearch.docs.popupBlocked")
+                              );
                             }
                           })
                           .catch(() => {
-                            Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                            Toast.warning(
+                              t("base.globalSearch.docs.popupBlocked")
+                            );
                           });
                         return;
                       }
@@ -2189,7 +2163,9 @@ class ChatMenusPopover extends Component<
             return (
               <li
                 key={i}
-                data-track={c.key === "start-group" ? "channel_create_started" : undefined}
+                data-track={
+                  c.key === "start-group" ? "channel_create_started" : undefined
+                }
                 onClick={() => {
                   if (c.onClick) {
                     c.onClick();

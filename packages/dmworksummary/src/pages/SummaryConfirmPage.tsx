@@ -10,7 +10,7 @@ import { Loading } from "@octo/ui";
 import WKApp from "@octo/base/src/App";
 import SummaryDetailPage from "./SummaryDetailPage";
 import * as api from "../api/summaryApi";
-import { refreshPendingInvitationBadge } from "../utils/summaryMenuBadge";
+import { refreshSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
 import type { SummaryDetail, SourceItem, Participant } from "../types/summary";
 import { TaskStatus } from "../types/summary";
 import { formatDate } from "../utils/summaryHelpers";
@@ -86,7 +86,7 @@ export default class SummaryConfirmPage extends Component<SummaryConfirmPageProp
             await api.confirmParticipation(this.taskId, selectedSources);
             Toast.success(t("summary.confirmPage.confirmed"));
             // #1359 接受邀请后侧边栏红点减 1（后端重算 space 级计数）。
-            refreshPendingInvitationBadge();
+            refreshSummaryAttentionBadge();
             this.loadData();
         } catch (err: any) {
             Toast.error(err.message || t("summary.confirmPage.confirmFailed"));
@@ -102,7 +102,7 @@ export default class SummaryConfirmPage extends Component<SummaryConfirmPageProp
             await api.declineParticipation(this.taskId);
             Toast.success(t("summary.confirmPage.declined"));
             // #1359 拒绝邀请同样消除未处理状态，刷新红点。
-            refreshPendingInvitationBadge();
+            refreshSummaryAttentionBadge();
             WKApp.routeLeft.popToRoot();
         } catch (err: any) {
             Toast.error(err.message || t("summary.common.operationFailed"));

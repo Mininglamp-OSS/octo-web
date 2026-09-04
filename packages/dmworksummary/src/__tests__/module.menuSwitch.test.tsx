@@ -16,6 +16,7 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("@octo/base", () => ({
+  getSessionSid: () => "sid-test",
   i18n: { registerNamespace: vi.fn() },
   t: (key: string) => key,
   Dap: { shared: { track: vi.fn() } },
@@ -61,9 +62,15 @@ vi.mock("../features/summaryShare/navigation", () => ({
 vi.mock("../utils/chatSummaryActions", () => ({
   notifyChatSummaryCreated: vi.fn(),
 }));
-vi.mock("../utils/summaryMenuBadge", () => ({
-  getPendingInvitationBadge: () => 0,
-  refreshPendingInvitationBadge: vi.fn(),
+vi.mock("../utils/summaryAttentionBadge", () => ({
+  getSummaryAttentionBadge: () => 0,
+  refreshSummaryAttentionBadge: vi.fn(),
+  setSummaryAttentionBadge: vi.fn(),
+  // 广播排序相关的两个出口：init 会接广播钩子（setSummaryAttentionPublisher），
+  // leader 收到广播时走 acceptRemoteAttentionCount。本用例只关心菜单切换，
+  // 但 mock 缺一个导出就会让整个 init 抛错。
+  acceptRemoteAttentionCount: vi.fn(),
+  setSummaryAttentionPublisher: vi.fn(),
 }));
 vi.mock("../utils/channelType", () => ({
   isSupportedChannelType: () => true,
@@ -78,7 +85,7 @@ import { WKApp } from "@octo/base";
 import { getSummaryShare } from "../api/summaryApi";
 import SummaryCreatePage from "../pages/SummaryCreatePage";
 import { SummaryModule } from "../module";
-import { refreshPendingInvitationBadge } from "../utils/summaryMenuBadge";
+import { refreshSummaryAttentionBadge, setSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
 
 function registeredHandler(event: string): () => void {
   const call = vi.mocked(WKApp.mittBus.on).mock.calls.find(
@@ -157,10 +164,10 @@ describe("SummaryModule guarded menu switching", () => {
     expect(state.replaceToRoot).toHaveBeenCalledTimes(1);
   });
 
-  it("refreshes the invitation badge once when the initial Space becomes ready", () => {
+  it("refreshes the attention badge once when the initial Space becomes ready", () => {
     registeredHandler("space-ready")();
 
-    expect(refreshPendingInvitationBadge).toHaveBeenCalledTimes(1);
+    expect(refreshSummaryAttentionBadge).toHaveBeenCalledTimes(1);
   });
 
   it("NavRail summary onPress opens the create page by default without pushing a duplicate list page", () => {
@@ -209,12 +216,34 @@ describe("SummaryModule guarded menu switching", () => {
 
   it("does not double-fetch when boot repairs Space before publishing ready", () => {
     registeredHandler("space-changed")();
-    expect(refreshPendingInvitationBadge).not.toHaveBeenCalled();
+    expect(refreshSummaryAttentionBadge).not.toHaveBeenCalled();
 
     registeredHandler("space-ready")();
-    expect(refreshPendingInvitationBadge).toHaveBeenCalledTimes(1);
+    expect(refreshSummaryAttentionBadge).toHaveBeenCalledTimes(1);
 
     registeredHandler("space-changed")();
-    expect(refreshPendingInvitationBadge).toHaveBeenCalledTimes(2);
+    expect(refreshSummaryAttentionBadge).toHaveBeenCalledTimes(2);
+  });
+
+  it("zeroes the badge on a Space switch so a failed refresh cannot show the previous Space's count", () => {
+    // The refresh fails silently by design (the badge is a nicety, not worth a
+    // toast). Without zeroing first, that failure mode is "another Space's
+    // number" rather than "no number" — far more misleading now that the count
+    // means unread ∪ invitations ∪ pending submissions rather than invitations
+    // alone.
+    registeredHandler("space-ready")();
+    vi.mocked(setSummaryAttentionBadge).mockClear();
+
+    registeredHandler("space-changed")();
+
+    expect(setSummaryAttentionBadge).toHaveBeenCalledWith(0);
+  });
+
+  it("does not zero the badge on the cold-start space-changed that precedes space-ready", () => {
+    // Boot may emit space-changed before space-ready; that path deliberately
+    // defers to space-ready, so it must not clear the badge either.
+    registeredHandler("space-changed")();
+
+    expect(setSummaryAttentionBadge).not.toHaveBeenCalled();
   });
 });

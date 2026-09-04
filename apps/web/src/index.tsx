@@ -9,7 +9,7 @@ import  { BaseModule, I18nProvider, i18n, WKApp, Dap, isElectronPowered } from '
 import  { LoginModule, BindModule } from '@octo/login';
 import  { DataSourceModule } from '@octo/datasource';
 import {ContactsModule} from '@octo/contacts';
-import { SummaryModule } from '@dmwork/summary';
+import { SummaryModule, startSummaryAttentionPolling } from '@dmwork/summary';
 import { McpMarketModule } from '@dmwork/mcp';
 import { SkillMarketModule } from '@dmwork/skillmarket';
 import { AppBotModule } from '@dmwork/appbot';
@@ -108,7 +108,34 @@ async function enableMocksIfE2E(): Promise<void> {
   try {
     const { worker } = await import("./mocks/browser");
     const msw = await import("msw");
+    const { waitForServiceWorkerControl, MSW_CONTROL_TIMEOUT_MS, waitForMockInterception, MSW_PROBE_TIMEOUT_MS } =
+      await import("./mocks/swControl");
     await worker.start({ onUnhandledRequest: "bypass" });
+    // start() 之后还要等真正【接管】: 否则 __MSW_READY__ 会在 SW 尚未 control 本
+    // client 时就变成 true, boot 期间的请求绕过 MSW 直达 dev server, 在 e2e 上表现
+    // 为 "proxy errors" (详见 mocks/swControl.ts 的注释).
+    // 这个 await 同时把 __MSW_READY__ 的语义修正成它一直声称的那个:
+    // 「从现在起请求会被拦」—— 二十多个 spec 和 e2eReady 都以它为 boot 闸门.
+    const controlled = await waitForServiceWorkerControl(MSW_CONTROL_TIMEOUT_MS);
+    if (!controlled) {
+      // 降级: 仍然放行 boot (卡死 boot 比漏一个请求糟得多). 打印出来让 e2e 失败时
+      // 能一眼定位, 而不是从一堆 proxy error 里反推.
+      console.warn(
+        `[e2e] MSW worker started but did not take control within ${MSW_CONTROL_TIMEOUT_MS}ms; ` +
+          "boot-time requests may bypass mocks",
+      );
+    }
+    // 接管到位【仍不等于】本 document 会被拦: MSW 只对登记过的 client 施加 mock,
+    // 而一个 spec 内的第二次导航会让 controller 立刻非空 (SW 早已激活) 却还没登记完,
+    // 接管等待因此一拍都不等就通过 —— 这是 @S26 那类多次导航 spec 上概率性泄漏的
+    // 真正成因. 所以不再推断, 直接实测一发: 打一个只有 MSW 才会应答的探针.
+    const intercepting = await waitForMockInterception(MSW_PROBE_TIMEOUT_MS);
+    if (!intercepting) {
+      console.warn(
+        `[e2e] MSW did not intercept a probe request within ${MSW_PROBE_TIMEOUT_MS}ms; ` +
+          "requests may bypass mocks",
+      );
+    }
     const w = window as unknown as {
       __MSW_READY__: boolean;
       __msw?: { worker: typeof worker; http: typeof msw.http; HttpResponse: typeof msw.HttpResponse };
@@ -146,6 +173,13 @@ async function main(): Promise<void> {
   await enableMocksIfE2E();
   await enableMockImIfE2E();
   WKApp.shared.startup(); // app启动
+  // 启动智能总结的兜底轮询。必须【放在 startup() 之后】而不是让 SummaryModule.init()
+  // 立刻启动: init() 在模块顶层语句里同步执行 (registerModule), 比 enableMocksIfE2E()
+  // 更早 —— 若 leader.start() 里 promote() 立刻 void tick(), 第一发 fetch 会在 MSW 还没
+  // 激活前就排上 microtask, 直达 vite proxy, e2e 下 fail-closed. 见 dmworksummary/module.tsx
+  // 里 startSummaryAttentionPolling 的注释。startup() 之后调, loginInfo 已 load、
+  // Space 列表开始拉 (首刷由 space-ready 触发); 未登录 / 无 Space 时第一拍读自己 return null.
+  startSummaryAttentionPolling();
   // 埋点蒙版底座(octo-dap 采集方案):启动时初始化一次,装事件委托 / MutationObserver /
   // fetch-XHR 包裹 / 卸载兜底。默认 ship dark(fail-closed,不采),仅当 remoteConfig 下发
   // tracking_enabled 为真时才开采;字段缺失 / false / 拉取失败一律不采,前端一个请求都不发

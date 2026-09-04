@@ -32,6 +32,8 @@ export interface WKLayoutProps {
     contentRight?:JSX.Element
     onLeftContext?:(context:WKViewQueueContext)=>void
     onRightContext?:(context:WKViewQueueContext)=>void
+    /** Embedded hosts already provide their own primary navigation rail. */
+    embedded?: boolean
 }
 
 interface WKLayoutState {
@@ -230,13 +232,13 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
     }
 
     render() {
-        const { onRenderTab, contentLeft,contentRight,onLeftContext,onRightContext } = this.props
+        const { onRenderTab, contentLeft,contentRight,onLeftContext,onRightContext, embedded = false } = this.props
         const isExtension = (window as any).__POWERED_EXTENSION__
         const isSmallScreen = window.innerWidth <= SMALL_SCREEN_WIDTH
         const { leftWidth, navRailWidth, isDragging, draggingTarget } = this.state
 
         const clampedNavRailWidth = isSmallScreen ? NAV_RAIL_DEFAULT_WIDTH : clampNavRailWidth(navRailWidth, this.cachedLayoutWidth)
-        const navRailWidthPx = `${clampedNavRailWidth}px`
+        const navRailWidthPx = embedded ? "0px" : `${clampedNavRailWidth}px`
         const isNavRailExpanded = clampedNavRailWidth >= NAV_RAIL_EXPANDED_THRESHOLD
 
         const tabElement = <div
@@ -310,8 +312,12 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
             ref={this.layoutRef}
             style={isSmallScreen ? undefined : { '--wk-width-layout-tab': navRailWidthPx } as React.CSSProperties}
         >
-            {isExtension ? <>{contentElement}{tabElement}</> : <>{tabElement}{contentElement}</>}
-            {!isSmallScreen && !isExtension && (
+            {embedded
+                ? contentElement
+                : isExtension
+                    ? <>{contentElement}{tabElement}</>
+                    : <>{tabElement}{contentElement}</>}
+            {!embedded && !isSmallScreen && !isExtension && (
                 <div
                     className={classNames("wk-layout-nav-splitter", isDragging && draggingTarget === "nav" && "wk-layout-nav-splitter-active")}
                     onMouseDown={this.onNavDragStart}

@@ -3108,6 +3108,7 @@ export class Conversation
             <>
               <ConversationSelectionStateBridge
                 editOn={vm.editOn}
+                checkedCount={vm.getCheckedMessages?.().length ?? 0}
                 onChange={this.props.onSelectionStateChange}
               />
               <div

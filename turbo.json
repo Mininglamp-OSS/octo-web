@@ -39,6 +39,8 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "../../pnpm-lock.yaml",
+        "../../packages/chat-core/**",
+        "../../packages/chat-react/**",
         "../../packages/dmworkappbot/**",
         "../../packages/dmworkbase/**",
         "../../packages/dmworkcontacts/**",

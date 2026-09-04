@@ -44,7 +44,7 @@ import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
 import { SUMMARY_INPUT_MAX_LENGTH } from "../constants/limits";
 import { deriveSummaryDisplayContent } from "../utils/templateResolver";
-import { refreshPendingInvitationBadge } from "../utils/summaryMenuBadge";
+import { refreshSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
 // RefineSection 已移除 — 反馈修改改为在智能总结 chat 里引用总结迭代
 // (见 CHAT-REFERENCE-BASED-DESIGN-v1)
 import OverflowTooltip from "../components/OverflowTooltip";
@@ -730,9 +730,22 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 taskId: detail.task_id,
                                 isUnread: attention.is_unread,
                                 needsAttention: attention.needs_attention,
+                                hasPendingSubmission: attention.has_pending_submission,
                             },
                         }));
                     }
+                    // 读是 attention_count 最频繁的减少来源（后端 unread 项直接降），
+                    // 而侧边栏只由全局列表 loadData 回写，summary-read 不触发
+                    // loadData。不刷的话：读完三条未读，三个红点都消失、导航栏依旧
+                    // 显示 3，直到切模块或切 Space 才自愈。放在详情页而非列表的
+                    // handleSummaryRead_，因为列表未挂载（聊天侧栏/深链）时同样需要刷。
+                    //
+                    // ❗ 刷新在 task 守卫【之外】（CR round-5 P2-2）：服务端的读已经提交，
+                    // attention_count 已经降了。守卫拦的是“这条响应还属不属于当前 task”，
+                    // 对卡片事件是对的；但计数是 **Space 级** 的，与是哪条 task 无关。
+                    // 放在守卫内的话，用户在往返期间点开另一条总结，这次读就永远不会
+                    // 反映到导航栏。refresh 自带 Space 守卫与 ticket 排序，重复调用安全。
+                    refreshSummaryAttentionBadge();
                 }).catch(() => { /* keep unread on failure */ });
             }
             if (detail.status === TaskStatus.COMPLETED && detail.result) {
@@ -871,9 +884,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 taskId: requestTaskId,
                                 isUnread: attention.is_unread,
                                 needsAttention: attention.needs_attention,
+                                hasPendingSubmission: attention.has_pending_submission,
                             },
                         }));
                     }
+                    // 同上：标读降低了后端 attention_count，必须重新拉一次侧边栏计数；
+                    // 同样放在 task 守卫之外，因为计数是 Space 级的（CR round-5 P2-2）。
+                    refreshSummaryAttentionBadge();
                 }).catch(() => { /* keep unread on failure */ });
             }
             if (result.content?.trim()) {
@@ -963,6 +980,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             // may remain PROCESSING. Status polling cannot detect that change, so explicitly
             // notify the list to reload.
             window.dispatchEvent(new CustomEvent("summary-task-regenerated", { detail: { taskIds: [this.taskId] } }));
+            // has_pending_submission 现在也计入 attention_count，而侧边栏红点只由
+            // 全局列表回写；列表未挂载（聊天内打开详情 / 深链直进）时没人刷它。
+            // 与邀请确认同理，提交后主动重算一次 space 级计数。
+            refreshSummaryAttentionBadge();
         } catch (err: any) {
             Toast.error(err.message || t("summary.detail.submitFailed"));
         }
@@ -980,6 +1001,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             // （携 taskIds，与现有广播机制一致）供详情页自身及其他潜在监听者。
             window.dispatchEvent(new CustomEvent("summary-status-change", { detail: { taskIds: [this.taskId] } }));
             window.dispatchEvent(new CustomEvent("summary-task-regenerated", { detail: { taskIds: [this.taskId] } }));
+            // 接受/拒绝都消除了本条的待处理邀请，侧边栏计数需重算（与
+            // SummaryConfirmPage 同一语义；详情页是另一个应答入口）。
+            refreshSummaryAttentionBadge();
         } catch (err: any) {
             Toast.error(err.message || t("summary.common.operationFailed"));
         }
@@ -1034,6 +1058,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 WKApp.routeRight.popToRoot();
             }
             WKApp.mittBus.emit("summary-list-refresh-requested" as any);
+            // 删除未读/待提交的总结会降低后端计数，但上面的事件只能叫醒【已挂载】
+            // 的全局列表。聊天侧栏/深链下列表未挂载时无人回写，角标会过计。
+            // submit / 邀请应答 / 标读 都已有触点，delete 是最后一个缺口（CR round-6 P2）。
+            refreshSummaryAttentionBadge();
         } catch (err: any) {
             if (this.taskId !== requestTaskId) return;
             Toast.error(err.message || t("summary.common.deleteFailed"));
@@ -4073,9 +4101,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         this.setState({ confirmingSchedule: true });
         try {
             await api.confirmSchedule(scheduleItem.schedule_id);
-            // schedule 邀请也是 pending_invitation_count 的组成部分；确认成功后
+            // schedule 邀请也是 attention_count 的组成部分；确认成功后
             // 立即按当前 Space 重算，即使等待期间用户已切到另一条总结。
-            refreshPendingInvitationBadge();
+            refreshSummaryAttentionBadge();
             // 迟到（已切 task）：不回显新 task（confirmingSchedule 由 finally 复位）。
             if (this.taskId !== requestTaskId) return;
             Toast.success(t("summary.detail.scheduleConfirmed"));

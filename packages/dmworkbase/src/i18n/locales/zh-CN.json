@@ -266,6 +266,8 @@
   "conversation.deleteConfirm.confirm": "确认",
   "conversation.deleteConfirm.content": "删除的消息将从你的会话记录中消失，但仍然对会话内其他人可见。",
   "conversation.deleteConfirm.failed": "删除失败，请重试",
+  "conversation.openFailed": "会话打开失败",
+  "conversation.retry": "重试",
   "conversation.deleteConfirm.title": "确认删除消息？",
   "conversation.disband.inputNotice": "群聊已解散，无法发送消息",
   "conversation.disband.threadCreateDisabled": "群聊已解散，无法创建子区",
