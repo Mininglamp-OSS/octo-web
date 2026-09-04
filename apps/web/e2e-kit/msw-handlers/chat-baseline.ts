@@ -250,6 +250,16 @@ export const chatBaselineHandlers = [
   http.get("*/conversations/:channelId/:channelType/extra", () =>
     HttpResponse.json({})
   ),
+  // apiClient can retain the `/api/v1` prefix in browser requests. Keep explicit
+  // variants because MSW's leading wildcard does not reliably consume multiple
+  // path segments in every runtime, which previously leaked this call to Vite's
+  // dead CI proxy.
+  http.post("*/api/v1/conversations/:channelId/:channelType/extra", () =>
+    HttpResponse.json({})
+  ),
+  http.get("*/api/v1/conversations/:channelId/:channelType/extra", () =>
+    HttpResponse.json({})
+  ),
   http.get("*/groups/:groupNo/threads", () => HttpResponse.json([])),
   http.post("*/messages/_search_all", () =>
     HttpResponse.json({ items: [], data: [], pagination: {} })

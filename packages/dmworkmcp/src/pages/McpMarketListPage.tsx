@@ -253,6 +253,10 @@ export default class McpMarketListPage extends Component<
    *  `deletingItem` likewise keeps a live 编辑 / 删除 bound to the old Space's
    *  plugin id. SkillListPage.tsx:102-118 clears all of these. */
   private handleSpaceChanged_ = () => {
+    // Invalidate list and detail continuations synchronously. The setState
+    // callback runs later, so relying on loadData() alone leaves a window where
+    // an old-Space detail response can reopen a modal under the new Space.
+    this.requestVersion += 1;
     this.cancelTagFetch_();
     this.setState({
       tagsSelected: [],
@@ -516,10 +520,13 @@ export default class McpMarketListPage extends Component<
    *  fetch the full row first. Toast on failure — do NOT silently open a
    *  half-empty modal. */
   private handleEditFromCard = async (item: McpListItem) => {
+    const requestVersion = this.requestVersion;
     try {
       const detail = await fetchMcpDetail(item.id);
+      if (requestVersion !== this.requestVersion) return;
       this.setState({ editingDetail: detail, createVisible: true });
     } catch (err) {
+      if (requestVersion !== this.requestVersion) return;
       Toast.error(err instanceof Error ? err.message : t("mcp.edit.failed"));
     }
   };
@@ -565,10 +572,13 @@ export default class McpMarketListPage extends Component<
    *  authored in McpCreateModal's review mode and travels WITH the review
    *  request; the org keeps seeing the current version until approval. */
   private openPublishVersion = async (item: McpListItem) => {
+    const requestVersion = this.requestVersion;
     try {
       const detail = await fetchMcpDetail(item.id);
+      if (requestVersion !== this.requestVersion) return;
       this.setState({ reviewEditingDetail: detail, createVisible: true });
     } catch (err) {
+      if (requestVersion !== this.requestVersion) return;
       Toast.error(err instanceof Error ? err.message : t("mcp.edit.failed"));
     }
   };
