@@ -73,10 +73,12 @@ async function main() {
 
   WKApp.shared.registerModule(new BaseModule());
   WKApp.shared.registerModule(new DataSourceModule());
-  installFeatureAuthExpiryHandler(WKApp.apiClient, WKApp.loginInfo, host, {
-    reason: "Summary session expired",
-    logPrefix: "[client-summary]",
-  });
+  if (import.meta.env.VITE_E2E_MOCK !== "1") {
+    installFeatureAuthExpiryHandler(WKApp.apiClient, WKApp.loginInfo, host, {
+      reason: "Summary session expired",
+      logPrefix: "[client-summary]",
+    });
+  }
   WKApp.remoteConfig.startRequestConfig();
   Dap.shared.init();
   initializeSummaryAttentionRuntime({ observeIm: false });
