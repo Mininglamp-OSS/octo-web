@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import ThreadIcon from "../Icons/ThreadIcon";
 import classNames from "classnames";
-import { Conversation } from "../Conversation";
+import { ConversationSurface } from "../ConversationWindow";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
 import {
   canManageThread,
@@ -33,8 +33,8 @@ import {
 } from "../../Service/threadPermission";
 import { extractErrorMsg } from "../../Service/APIClient";
 import ChannelWebhookPanel from "../ChannelWebhook";
-import { ErrorBoundary } from "../ErrorBoundary";
 import WKApp from "../../App";
+import { getLegacyChatRuntime } from "../../features/chat-capability/legacyChatClient";
 import { ShowConversationOptions } from "../../EndpointCommon";
 import { formatRelativeTime } from "../../Utils/time";
 import { isChannelDisbanded } from "../../Utils/groupDisband";
@@ -239,6 +239,7 @@ export default class ThreadPanel extends Component<
   /** 组件是否已卸载，撤销 Toast 渲染在全局 portal，卸载后回调需短路 */
   private isUnmounted = false;
   private _unsubscribeRemoteConfig?: () => void;
+  private readonly chatRuntime = getLegacyChatRuntime();
 
   constructor(props: ThreadPanelProps) {
     super(props);
@@ -1958,20 +1959,20 @@ export default class ThreadPanel extends Component<
 
     return (
       <div className="wk-thread-panel-conversation">
-        <ErrorBoundary moduleName={t("base.threadPanel.messagesModuleName")}>
-          <Conversation
-            key={thread.channel_id}
-            channel={threadChannel}
-            isAuxiliary
-            shouldShowHistorySplit={false}
-            inputNotice={
+        <ConversationSurface
+          key={thread.channel_id}
+          client={this.chatRuntime.client}
+          channel={threadChannel}
+          mode="auxiliary"
+          errorModuleName={t("base.threadPanel.messagesModuleName")}
+          conversationProps={{
+            inputNotice:
               thread.status === ThreadStatus.Archived
                 ? t("base.threadPanel.archivedInputNotice")
-                : undefined
-            }
-            onMessageSent={this.handleThreadMessageSent}
-          />
-        </ErrorBoundary>
+                : undefined,
+            onMessageSent: this.handleThreadMessageSent,
+          }}
+        />
       </div>
     );
   }

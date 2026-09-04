@@ -171,6 +171,40 @@ test("@CH23 @p1 @chat @conversation 详情顶部显示标题并打开群详情",
   await expect(authedPage.locator(".wk-chat-content-right")).toHaveClass(/wk-chat-channelsetting-open/);
 });
 
+test("@CH46 @p1 @chat @conversation 输入区始终贴住会话底部", async ({ authedPage }) => {
+  await openConversation(authedPage);
+
+  const geometry = await authedPage.evaluate(() => {
+    const conversationRegion = document.querySelector(".wk-chat-conversation");
+    const surface = document.querySelector(".wk-chat-conversation-surface");
+    const conversation = document.querySelector(".wk-conversation");
+    const footer = document.querySelector(".wk-conversation-footer");
+    if (!conversationRegion || !surface || !conversation || !footer) {
+      throw new Error("聊天窗口布局节点不完整");
+    }
+    const regionRect = conversationRegion.getBoundingClientRect();
+    const surfaceRect = surface.getBoundingClientRect();
+    const conversationRect = conversation.getBoundingClientRect();
+    const footerRect = footer.getBoundingClientRect();
+    return {
+      regionHeight: regionRect.height,
+      surfaceHeight: surfaceRect.height,
+      conversationHeight: conversationRect.height,
+      regionBottom: regionRect.bottom,
+      surfaceBottom: surfaceRect.bottom,
+      conversationBottom: conversationRect.bottom,
+      footerBottom: footerRect.bottom,
+    };
+  });
+
+  expect(geometry.regionHeight).toBeGreaterThan(200);
+  expect(Math.abs(geometry.surfaceHeight - geometry.regionHeight)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.conversationHeight - geometry.regionHeight)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.surfaceBottom - geometry.regionBottom)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.conversationBottom - geometry.regionBottom)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.footerBottom - geometry.regionBottom)).toBeLessThanOrEqual(2);
+});
+
 test(
   "@CH43 @p1 @chat @conversation 群详情遮罩覆盖聊天浮动按钮",
   async ({ authedPage }) => {
