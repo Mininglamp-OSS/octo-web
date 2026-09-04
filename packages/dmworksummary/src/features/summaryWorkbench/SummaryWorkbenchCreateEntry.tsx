@@ -1,6 +1,6 @@
 import React from "react";
 import { Spin } from "@douyinfe/semi-ui";
-import type { SummaryListItem } from "../../types/summary";
+import type { SummaryReferenceTask } from "../../types/summary";
 import LegacySummaryCreatePage from "../../pages/SummaryCreatePage";
 import SummaryWorkbenchEntry from "./Entry";
 import SummaryWorkbenchFeature from "./SummaryWorkbenchFeature";
@@ -9,7 +9,7 @@ import "./SummaryWorkbenchFeature.css";
 
 export interface SummaryWorkbenchCreateEntryProps {
   onCreated?: () => void;
-  derivedFromTask?: SummaryListItem;
+  derivedFromTask?: SummaryReferenceTask;
   channel?: { channelID: string; channelType: number };
   embedded?: boolean;
   onClose?: () => void;

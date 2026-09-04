@@ -81,7 +81,7 @@ import "./SummaryWorkbenchFeature.css";
 export interface SummaryWorkbenchFeatureProps {
   spaceId: string;
   channel?: { channelID: string; channelType: number };
-  derivedFromTask?: SummaryListItem;
+  derivedFromTask?: Pick<SummaryListItem, "task_id" | "title">;
   embedded?: boolean;
   source?: string;
   onCreated?: () => void;
@@ -99,7 +99,7 @@ type ParticipantCandidateState = ParticipantCandidateLoadResult & {
 
 function initialScopeFor(
   channel: SummaryWorkbenchFeatureProps["channel"],
-  derivedFromTask: SummaryListItem | undefined
+  derivedFromTask: SummaryWorkbenchFeatureProps["derivedFromTask"]
 ): SummaryWorkbenchScope {
   const scope = emptySummaryWorkbenchScope();
   if (channel) {
@@ -618,7 +618,7 @@ export default function SummaryWorkbenchFeature({
   };
 
   const openTask = (taskId: number) => {
-    if (embedded && onOpenTask) {
+    if (onOpenTask) {
       onOpenTask(taskId);
       return;
     }

@@ -18,16 +18,28 @@ vi.mock("@octo/base/src/App", () => ({
     default: { loginInfo: {} },
     I18nContext: React.createContext({ t: (key: string) => key }),
 }));
-vi.mock("@octo/base/src/Components/VoiceInputButton", () => ({ default: () => null }));
-vi.mock("@octo/base/src/Service/Context", () => ({ default: React.createContext(null) }));
-vi.mock("@octo/base/src/Components/Subscribers/list", () => ({ SubscriberList: () => null }));
+vi.mock("@octo/base/src/Components/VoiceInputButton", () => ({
+  default: () => null,
+}));
+vi.mock("@octo/base/src/Service/Context", () => ({
+  default: React.createContext(null),
+}));
+vi.mock("@octo/base/src/Components/Subscribers/list", () => ({
+  SubscriberList: () => null,
+}));
 vi.mock("@octo/base/src/Components/RoutePage", () => ({ default: () => null }));
 vi.mock("../SummaryConfirmPage", () => ({ default: () => null }));
 vi.mock("../../components/CitationText", () => ({ default: () => null }));
-vi.mock("../../components/SelectedSourcesPanel", () => ({ default: () => null }));
-vi.mock("../../components/ScheduleConfigModal", () => ({ default: () => null }));
+vi.mock("../../components/SelectedSourcesPanel", () => ({
+  default: () => null,
+}));
+vi.mock("../../components/ScheduleConfigModal", () => ({
+  default: () => null,
+}));
 vi.mock("../../components/SummaryEditor", () => ({ default: () => null }));
-vi.mock("../../components/SummaryVersionPanel", () => ({ default: () => null }));
+vi.mock("../../components/SummaryVersionPanel", () => ({
+  default: () => null,
+}));
 vi.mock("../../components/OverflowTooltip", () => ({ default: () => null }));
 
 vi.mock("wukongimjssdk", () => ({
@@ -38,13 +50,24 @@ vi.mock("wukongimjssdk", () => ({
 
 vi.mock("@douyinfe/semi-ui", () => {
     const Passthrough = ({ children }: any) => children ?? null;
-    const Modal = ({ children, visible, onCancel }: any) => visible ? <div data-testid="regenerate-modal" data-has-cancel={Boolean(onCancel)}>{children}</div> : null;
+  const Modal = ({ children, visible, onCancel }: any) =>
+    visible ? (
+      <div data-testid="regenerate-modal" data-has-cancel={Boolean(onCancel)}>
+        {children}
+      </div>
+    ) : null;
     const Dropdown: any = Passthrough;
     Dropdown.Menu = Passthrough;
     Dropdown.Item = Passthrough;
     return {
-        Button: Passthrough, Spin: Passthrough, Banner: Passthrough, Tag: Passthrough,
-        Modal, Popconfirm: Passthrough, Tooltip: Passthrough, Dropdown,
+    Button: Passthrough,
+    Spin: Passthrough,
+    Banner: Passthrough,
+    Tag: Passthrough,
+    Modal,
+    Popconfirm: Passthrough,
+    Tooltip: Passthrough,
+    Dropdown,
         Toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
     };
 });
@@ -59,11 +82,14 @@ import * as api from "../../api/summaryApi";
 import SummaryDetailPage from "../SummaryDetailPage";
 import { SummaryMode } from "../../types/summary";
 
-function makePage() {
-    const page = new SummaryDetailPage({ taskId: 1 });
+function makePage(props: Record<string, unknown> = {}) {
+  const page = new SummaryDetailPage({ taskId: 1, ...props });
     (page as any).context = { t: (key: string) => key };
     (page as any).setState = function (this: any, patch: any) {
-        this.state = { ...this.state, ...(typeof patch === "function" ? patch(this.state) : patch) };
+    this.state = {
+      ...this.state,
+      ...(typeof patch === "function" ? patch(this.state) : patch),
+    };
     };
     page.state = {
         ...page.state,
@@ -90,31 +116,91 @@ describe("SummaryDetailPage regenerate dialog", () => {
         expect(page.state.regenerateTopic).toBe("Preferred topic");
     });
 
+  it("delegates continue-refine and confirmation navigation when controlled", () => {
+    const onContinueRefine = vi.fn();
+    const onViewConfirm = vi.fn();
+    const page = makePage({ onContinueRefine, onViewConfirm });
+    page.state = {
+      ...page.state,
+      detail: { ...page.state.detail, referenceable: true },
+    } as any;
+
+    page.handleContinueRefine();
+    (page as any).handleViewConfirm();
+
+    expect(onContinueRefine).toHaveBeenCalledWith(
+      expect.objectContaining({ task_id: 1, title: "Legacy title" })
+    );
+    expect(onViewConfirm).toHaveBeenCalledWith(1);
+  });
+
     it("passes the mode-specific action, disabled state, and close handler to the modal", () => {
         const page = makePage();
-        const findElement = (node: any, predicate: (element: any) => boolean): any => {
+    const findElement = (
+      node: any,
+      predicate: (element: any) => boolean
+    ): any => {
             if (!node || typeof node !== "object") return null;
             if (predicate(node)) return node;
-            return React.Children.toArray(node.props?.children).map((child) => findElement(child, predicate)).find(Boolean) ?? null;
+      return (
+        React.Children.toArray(node.props?.children)
+          .map((child) => findElement(child, predicate))
+          .find(Boolean) ?? null
+      );
         };
 
-        page.state = { ...page.state, showRegenerateModal: true, regenerateMode: "refine", refineFeedback: "Update risks", detail: { ...page.state.detail, result_id: undefined } as any };
-        const refineModal = findElement(page.render(), (element) => element.type?.name === "Modal" && element.props.className === "summary-confirm");
-        const refineAction = findElement(refineModal, (element) => element.type === "button" && element.props.children === "summary.detail.refineAction");
+    page.state = {
+      ...page.state,
+      showRegenerateModal: true,
+      regenerateMode: "refine",
+      refineFeedback: "Update risks",
+      detail: { ...page.state.detail, result_id: undefined } as any,
+    };
+    const refineModal = findElement(
+      page.render(),
+      (element) =>
+        element.type?.name === "Modal" &&
+        element.props.className === "summary-confirm"
+    );
+    const refineAction = findElement(
+      refineModal,
+      (element) =>
+        element.type === "button" &&
+        element.props.children === "summary.detail.refineAction"
+    );
 
         expect(refineModal.props.onCancel).toBe(page.handleRegenerateCancel);
         expect(refineAction.props.disabled).toBe(true);
 
-        page.state = { ...page.state, regenerateMode: "full", regenerateTopic: "New topic" };
-        const fullModal = findElement(page.render(), (element) => element.type?.name === "Modal" && element.props.className === "summary-confirm");
-        const fullAction = findElement(fullModal, (element) => element.type === "button" && element.props.children === "summary.detail.regenerate");
+    page.state = {
+      ...page.state,
+      regenerateMode: "full",
+      regenerateTopic: "New topic",
+    };
+    const fullModal = findElement(
+      page.render(),
+      (element) =>
+        element.type?.name === "Modal" &&
+        element.props.className === "summary-confirm"
+    );
+    const fullAction = findElement(
+      fullModal,
+      (element) =>
+        element.type === "button" &&
+        element.props.children === "summary.detail.regenerate"
+    );
 
         expect(fullAction.props.disabled).toBe(false);
     });
 
     it("does not start refine submission without a base result", async () => {
         const page = makePage();
-        page.state = { ...page.state, regenerateMode: "refine", refineFeedback: "Tighten risks", detail: { ...page.state.detail, result_id: undefined } as any };
+    page.state = {
+      ...page.state,
+      regenerateMode: "refine",
+      refineFeedback: "Tighten risks",
+      detail: { ...page.state.detail, result_id: undefined } as any,
+    };
 
         await page.handleRegenerateConfirm();
 
@@ -125,17 +211,28 @@ describe("SummaryDetailPage regenerate dialog", () => {
     it("submits the full-mode topic to the regeneration API", async () => {
         vi.mocked(api.regenerateSummary).mockResolvedValue({} as any);
         const page = makePage();
-        page.state = { ...page.state, regenerateMode: "full", regenerateTopic: "New project summary" };
+    page.state = {
+      ...page.state,
+      regenerateMode: "full",
+      regenerateTopic: "New project summary",
+    };
         (page as any).loadDetail = vi.fn();
 
         await page.handleRegenerateConfirm();
 
-        expect(api.regenerateSummary).toHaveBeenCalledWith(1, { topic: "New project summary" });
+    expect(api.regenerateSummary).toHaveBeenCalledWith(1, {
+      topic: "New project summary",
+    });
     });
 
     it("keeps a voice transcription in the mode active when recording began", () => {
         const page = makePage();
-        page.state = { ...page.state, regenerateMode: "refine", refineFeedback: "", regenerateTopic: "Original topic" };
+    page.state = {
+      ...page.state,
+      regenerateMode: "refine",
+      refineFeedback: "",
+      regenerateTopic: "Original topic",
+    };
 
         (page as any).handleRegenerateVoiceRecordingStart();
         page.state = { ...page.state, regenerateMode: "full" };
