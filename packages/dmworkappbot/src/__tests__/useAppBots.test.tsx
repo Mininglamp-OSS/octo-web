@@ -3,32 +3,9 @@ import React from "react";
 import ReactDOM from "react-dom";
 import { act } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const state = vi.hoisted(() => ({
-  currentSpaceId: "space-a",
-  handlers: new Map<string, () => void>(),
-  getMySpaces: vi.fn(),
-  track: vi.fn(),
-}));
-
-vi.mock("@octo/base", () => ({
-  Dap: { shared: { track: state.track } },
-  SpaceService: { shared: { getMySpaces: state.getMySpaces } },
-  WKApp: {
-    shared: {
-      get currentSpaceId() {
-        return state.currentSpaceId;
-      },
-    },
-    mittBus: {
-      on: (event: string, handler: () => void) =>
-        state.handlers.set(event, handler),
-      off: (event: string, handler: () => void) => {
-        if (state.handlers.get(event) === handler) state.handlers.delete(event);
-      },
-    },
-  },
-}));
+import { useAppBots } from "../bridge/useAppBots";
+import { AppBotHostProvider } from "../host/AppBotHostContext";
+import type { AppBotHostCapabilities, AppBotSpace } from "../host/types";
 
 vi.mock("../Service/AppBotService", () => ({
   default: {
@@ -37,14 +14,45 @@ vi.mock("../Service/AppBotService", () => ({
 }));
 
 import AppBotService from "../Service/AppBotService";
-import { useAppBots } from "../bridge/useAppBots";
+
+const state = {
+  currentSpace: { id: "space-a", name: "Alpha" } as AppBotSpace,
+  spaceChangedListener: undefined as (() => void) | undefined,
+};
+
+const host: AppBotHostCapabilities = {
+  getCurrentSpace: () => state.currentSpace,
+  resolveSpaceName: vi.fn(async (spaceId) =>
+    spaceId === "space-b" ? "Beta" : "Alpha"
+  ),
+  subscribeSpaceChanged: vi.fn((listener) => {
+    state.spaceChangedListener = listener;
+    return () => {
+      if (state.spaceChangedListener === listener) {
+        state.spaceChangedListener = undefined;
+      }
+    };
+  }),
+  openConversation: vi.fn(async () => {}),
+  clearConversation: vi.fn(),
+  isOctoAssistant: () => false,
+  track: vi.fn(),
+};
 
 let container: HTMLDivElement;
 let latest: ReturnType<typeof useAppBots> | undefined;
 
-function Harness({ onSpaceChanged }: { onSpaceChanged: () => void }) {
+function HookHarness({ onSpaceChanged }: { onSpaceChanged: () => void }) {
   latest = useAppBots({ onSpaceChanged });
   return null;
+}
+
+function Harness({ onSpaceChanged }: { onSpaceChanged: () => void }) {
+  return (
+    <AppBotHostProvider host={host}>
+      <HookHarness onSpaceChanged={onSpaceChanged} />
+    </AppBotHostProvider>
+  );
 }
 
 async function flushEffects() {
@@ -52,17 +60,13 @@ async function flushEffects() {
   await Promise.resolve();
 }
 
-describe("useAppBots Web behavior", () => {
+describe("useAppBots host behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    state.handlers.clear();
-    state.currentSpaceId = "space-a";
+    state.currentSpace = { id: "space-a", name: "Alpha" };
+    state.spaceChangedListener = undefined;
     latest = undefined;
     vi.mocked(AppBotService.getAvailableBots).mockResolvedValue([]);
-    state.getMySpaces.mockResolvedValue([
-      { space_id: "space-a", name: "Alpha" },
-      { space_id: "space-b", name: "Beta" },
-    ]);
     container = document.createElement("div");
     document.body.appendChild(container);
   });
@@ -72,7 +76,7 @@ describe("useAppBots Web behavior", () => {
     container.remove();
   });
 
-  it("reloads bots and resets the current selection when Space changes", async () => {
+  it("reloads bots from the host and resets selection when Space changes", async () => {
     const onSpaceChanged = vi.fn();
 
     await act(async () => {
@@ -82,29 +86,69 @@ describe("useAppBots Web behavior", () => {
 
     expect(AppBotService.getAvailableBots).toHaveBeenCalledWith("space-a");
     expect(latest?.spaceName).toBe("Alpha");
-    expect(state.handlers.has("space-changed")).toBe(true);
+    expect(host.resolveSpaceName).not.toHaveBeenCalled();
+    expect(state.spaceChangedListener).toBeTypeOf("function");
 
-    state.currentSpaceId = "space-b";
+    state.currentSpace = { id: "space-b", name: "" };
     await act(async () => {
-      state.handlers.get("space-changed")?.();
+      state.spaceChangedListener?.();
       await flushEffects();
     });
 
     expect(onSpaceChanged).toHaveBeenCalledTimes(1);
     expect(AppBotService.getAvailableBots).toHaveBeenLastCalledWith("space-b");
+    expect(host.resolveSpaceName).toHaveBeenCalledWith("space-b");
     expect(latest?.spaceName).toBe("Beta");
   });
 
-  it("unsubscribes its Space listener when the page unmounts", async () => {
+  it("unsubscribes its host Space listener when the workspace unmounts", async () => {
     await act(async () => {
       ReactDOM.render(<Harness onSpaceChanged={vi.fn()} />, container);
       await flushEffects();
     });
 
-    expect(state.handlers.has("space-changed")).toBe(true);
+    expect(state.spaceChangedListener).toBeTypeOf("function");
 
     act(() => ReactDOM.unmountComponentAtNode(container));
 
-    expect(state.handlers.has("space-changed")).toBe(false);
+    expect(state.spaceChangedListener).toBeUndefined();
+  });
+
+  it("ignores a stale Space name response after switching away and back", async () => {
+    let resolveFirstName: ((name: string) => void) | undefined;
+    vi.mocked(host.resolveSpaceName)
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveFirstName = resolve;
+          })
+      )
+      .mockResolvedValueOnce("Alpha latest");
+    state.currentSpace = { id: "space-a", name: "" };
+
+    await act(async () => {
+      ReactDOM.render(<Harness onSpaceChanged={vi.fn()} />, container);
+      await flushEffects();
+    });
+
+    state.currentSpace = { id: "space-b", name: "Beta" };
+    await act(async () => {
+      state.spaceChangedListener?.();
+      await flushEffects();
+    });
+
+    state.currentSpace = { id: "space-a", name: "" };
+    await act(async () => {
+      state.spaceChangedListener?.();
+      await flushEffects();
+    });
+    expect(latest?.spaceName).toBe("Alpha latest");
+
+    await act(async () => {
+      resolveFirstName?.("Alpha stale");
+      await flushEffects();
+    });
+
+    expect(latest?.spaceName).toBe("Alpha latest");
   });
 });
