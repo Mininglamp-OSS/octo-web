@@ -343,6 +343,14 @@ export const chatBaselineHandlers = [
   // 直接 block PR, 并让断言 consoleErrors 为空的用例 (如 @C37) 连带挂掉.
   //
   // 带不带 ?fresh=1 是同一条路由 (MSW 路径匹配忽略 query), 一个 handler 覆盖两种形态.
+  // Match both absolute and same-origin relative requests. In the production-like
+  // CI bundle this poll can be issued as a relative `/summary/...` URL, which a
+  // leading-wildcard mask does not consistently match in the browser worker.
+  http.get("/summary/api/v1/summaries/attention", () =>
+    HttpResponse.json({ code: 0, message: "ok", data: {
+      attention_count: 0, unread_count: 0, pending_invitation_count: 0, pending_submission_count: 0,
+    } })
+  ),
   http.get("*/summary/api/v1/summaries/attention", () =>
     HttpResponse.json({ code: 0, message: "ok", data: {
       attention_count: 0, unread_count: 0, pending_invitation_count: 0, pending_submission_count: 0,
