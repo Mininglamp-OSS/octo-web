@@ -53,6 +53,16 @@ export interface ChannelSearchFileInfo {
   url?: string;
   downloadUrl?: string;
   previewUrl?: string | null;
+  // NOTE: `nameHighlight` / `contentSnippet` are already entity-decoded at the
+  // mapper boundary (`SearchResultMapper.ts:466-471`, via
+  // `decodeServerEscapedHighlight`). The values carry live `<mark>`/`</mark>`
+  // tags but their surrounding text is HTML-unsafe by construction (the entity
+  // escaping that made the wire safe has already been reversed). MUST be
+  // rendered as React text (see `ChannelSearchSnippetContent`); NEVER pass to
+  // `dangerouslySetInnerHTML` — the neighbouring `sanitizeHighlight` sites in
+  // `Components/GlobalSearch/item-file.tsx`, `item-group.tsx`, `item-message.tsx`,
+  // `item-contacts.tsx` operate on different fields and follow a different
+  // contract; do not route these two through those sinks.
   // Server-side highlight of the file name (keyword wrapped in <mark>). Present
   // only when the keyword matched the name. Empty on browse/body-only hits — the
   // UI then falls back to client-side highlighting of `name`.
