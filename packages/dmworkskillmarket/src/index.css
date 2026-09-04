@@ -1535,11 +1535,48 @@
   align-items: start;
 }
 
-.skill-market-detail__readme {
+.skill-market-detail__readme,
+.skill-market-review-relations {
   padding: var(--wk-sp-3);
   border: 1px solid var(--wk-border-subtle);
   border-radius: var(--wk-r-md);
   background: var(--wk-bg-surface);
+}
+
+.skill-market-review-relations {
+  margin-bottom: var(--wk-sp-4);
+}
+
+.skill-market-review-relations h3,
+.skill-market-review-relations p {
+  margin: 0;
+}
+
+.skill-market-review-relations ul {
+  display: grid;
+  gap: var(--wk-sp-2);
+  padding: 0;
+  margin: var(--wk-sp-3) 0 0;
+  list-style: none;
+}
+
+.skill-market-review-relations li {
+  padding: var(--wk-sp-2);
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-bg-elevated);
+}
+
+.skill-market-review-relations li > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wk-sp-2);
+}
+
+.skill-market-review-relations pre {
+  overflow: auto;
+  margin: var(--wk-sp-2) 0 0;
+  font-family: var(--wk-font-mono);
+  font-size: 12px;
 }
 
 .skill-market-detail__frontmatter {

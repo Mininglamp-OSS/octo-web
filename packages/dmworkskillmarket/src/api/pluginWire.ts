@@ -161,6 +161,15 @@ export interface PluginCategoryWire {
  *  - `plugin_icon` is the raw storage key, NOT a resolved display URL (unlike
  *    `PluginListItemWire.icon_url`), so binding it to `<img src>` 404s. Consumers
  *    must fall back to the letter-avatar. */
+export interface PluginReviewRelationWire {
+  relation_id?: string;
+  target_plugin_id: string;
+  target_plugin_type?: PluginTypeWire;
+  relation_type: string;
+  sort_order: number;
+  data?: Record<string, unknown>;
+}
+
 export interface PluginReviewRequestWire {
   review_id: string;
   plugin_id: string;
@@ -181,6 +190,8 @@ export interface PluginReviewRequestWire {
   readme_content?: string;
   manifest_hash?: string;
   plugin_hash?: string;
+  /** Detail-only frozen graph that approval will apply. */
+  frozen_relations?: PluginReviewRelationWire[];
   applicant_id: string;
   applicant_name?: string;
   reviewer_id?: string;

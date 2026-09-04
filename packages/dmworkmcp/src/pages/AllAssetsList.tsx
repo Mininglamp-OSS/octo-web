@@ -80,6 +80,14 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
   // cannot rely on a remount to reset it.
   useEffect(() => {
     const handleSpaceChanged = () => {
+      // Invalidate every load/action continuation before removing identifiers
+      // from the Space being left. This also closes a destructive confirmation
+      // synchronously instead of leaving it live under the new request header.
+      requestRef.current += 1;
+      setItems([]);
+      setError(null);
+      setBusyId(null);
+      setDeleting(null);
       void load();
     };
     WKApp.mittBus.on("space-changed", handleSpaceChanged);
@@ -91,14 +99,21 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
    *  reload settles so a second click cannot race it. */
   const run = useCallback(
     async (id: string, action: () => Promise<void>, failKey: string) => {
+      const version = requestRef.current;
       setBusyId(id);
       try {
         await action();
       } catch (err) {
+        if (version !== requestRef.current) return;
         Toast.error(err instanceof Error ? err.message : t(failKey));
       } finally {
-        await load();
-        setBusyId(null);
+        if (version !== requestRef.current) return;
+        const reload = load();
+        const reloadVersion = requestRef.current;
+        await reload;
+        // `load` increments the request version; only clear this action's state
+        // when no Space switch or newer load superseded that reload.
+        if (reloadVersion === requestRef.current) setBusyId(null);
       }
     },
     [load]

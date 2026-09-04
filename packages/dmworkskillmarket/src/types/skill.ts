@@ -94,6 +94,15 @@ export type ReviewListMode = "mine" | "space";
 export type ReviewTargetScope = "space" | "system";
 export type ReviewDecisionSource = "web" | "im" | "policy";
 
+export interface ReviewRelation {
+  relationId?: string;
+  targetPluginId: string;
+  targetPluginType?: string;
+  relationType: string;
+  sortOrder: number;
+  data?: Record<string, unknown>;
+}
+
 export interface ReviewRequest {
   id: string;
   pluginId: string;
@@ -128,6 +137,8 @@ export interface ReviewRequest {
   readmeContent?: string;
   manifestHash?: string;
   pluginHash?: string;
+  /** Detail-only frozen relation graph that approval will publish. */
+  frozenRelations?: ReviewRelation[];
   applicantId: string;
   applicantName: string;
   reviewerId?: string;

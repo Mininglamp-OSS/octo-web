@@ -1461,12 +1461,31 @@ describe("skillApiReal", () => {
 
     it("getReviewRequest encodes the id and exposes the readme snapshot", async () => {
       mockFetch.mockReturnValueOnce(
-        jsonResponse(reviewWire({ review_id: "rev/1", readme_content: "# 标题" }))
+        jsonResponse(reviewWire({
+          review_id: "rev/1",
+          readme_content: "# 标题",
+          frozen_relations: [{
+            relation_id: "rel-1",
+            target_plugin_id: "expert-child-1",
+            target_plugin_type: "expert",
+            relation_type: "team_member",
+            sort_order: 2,
+            data: { is_leader: true, role: "planner", member_key: "lead" },
+          }],
+        }))
       );
 
       const detail = await getReviewRequest("rev/1");
 
       expect(detail.readmeContent).toBe("# 标题");
+      expect(detail.frozenRelations).toEqual([{
+        relationId: "rel-1",
+        targetPluginId: "expert-child-1",
+        targetPluginType: "expert",
+        relationType: "team_member",
+        sortOrder: 2,
+        data: { is_leader: true, role: "planner", member_key: "lead" },
+      }]);
       expect(mockFetch).toHaveBeenCalledWith(
         "/market/api/v1/plugins/review_requests/rev%2F1",
         expect.anything()

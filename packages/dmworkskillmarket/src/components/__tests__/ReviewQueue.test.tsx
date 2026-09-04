@@ -1,6 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor, act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { WKApp } from "@octo/base";
 import ReviewQueue from "../ReviewQueue";
 import type { PagedResult, ReviewRequest } from "../../types/skill";
 import * as api from "../../api/skillApi";
@@ -252,6 +253,52 @@ describe("ReviewQueue", () => {
     render(<ReviewQueue mode="space" />);
 
     expect(await screen.findByText(/v1\.0\.0.*v1\.1\.0/)).toBeInTheDocument();
+  });
+
+  it("clears the old Space rows while the replacement fetch is pending", async () => {
+    let resolveNew: (value: PagedResult<ReviewRequest>) => void = () => {};
+    vi.mocked(api.listReviewRequests)
+      .mockResolvedValueOnce(page([request({ pluginName: "Space A request", spaceId: "space-a" })]))
+      .mockImplementationOnce(
+        () => new Promise((resolve) => { resolveNew = resolve; }),
+      );
+
+    render(<ReviewQueue mode="space" />);
+    expect(await screen.findByText("Space A request")).toBeInTheDocument();
+    act(() => {
+      WKApp.mittBus.emit("space-changed", { space_id: "space-b", role: 2 });
+    });
+
+    expect(screen.queryByText("Space A request")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: approveName("Space A request") })).not.toBeInTheDocument();
+    await act(async () => {
+      resolveNew(page([request({ id: "rev-b", pluginName: "Space B request", spaceId: "space-b" })]));
+    });
+    expect(await screen.findByText("Space B request")).toBeInTheDocument();
+  });
+
+  it("ignores an old-Space action continuation after switching Space", async () => {
+    let rejectApprove: (reason: Error) => void = () => {};
+    vi.mocked(api.listReviewRequests)
+      .mockResolvedValueOnce(page([request({ pluginName: "Space A request" })]))
+      .mockResolvedValueOnce(page([request({ id: "rev-b", pluginName: "Space B request", spaceId: "space-b" })]));
+    vi.mocked(api.approveReview).mockImplementationOnce(
+      () => new Promise<void>((_resolve, reject) => { rejectApprove = reject; }),
+    );
+
+    render(<ReviewQueue mode="space" />);
+    fireEvent.click(await screen.findByRole("button", { name: approveName("Space A request") }));
+    act(() => {
+      WKApp.mittBus.emit("space-changed", { space_id: "space-b", role: 2 });
+    });
+    expect(await screen.findByText("Space B request")).toBeInTheDocument();
+
+    await act(async () => {
+      rejectApprove(new Error("old Space failure"));
+    });
+    expect(screen.queryByText("old Space failure")).not.toBeInTheDocument();
+    expect(screen.getByText("Space B request")).toBeInTheDocument();
+    expect(api.listReviewRequests).toHaveBeenCalledTimes(2);
   });
 
   it("surfaces a load failure instead of an empty state", async () => {

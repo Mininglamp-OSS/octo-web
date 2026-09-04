@@ -237,6 +237,8 @@
     "fieldChangelog": "更新说明",
     "fieldReviewer": "审核人",
     "fieldReviewedAt": "审核时间",
+    "relationsTitle": "提交时的关联关系",
+    "relationsEmpty": "无关联插件",
     "rejectModalTitle": "拒绝审核",
     "rejectModalHeadingNamed": "拒绝「{{name}}」的上架申请",
     "rejectModalHeading": "拒绝该上架申请",

@@ -236,6 +236,30 @@ export default function ReviewDetailDrawer({
                 )}
               </tbody>
             </table>
+            {review.frozenRelations && (
+              <section className="skill-market-review-relations" aria-label={t("skillMarket.review.relationsTitle")}>
+                <h3>{t("skillMarket.review.relationsTitle")}</h3>
+                {review.frozenRelations.length === 0 ? (
+                  <p>{t("skillMarket.review.relationsEmpty")}</p>
+                ) : (
+                  <ul>
+                    {review.frozenRelations.map((relation, index) => (
+                      <li key={relation.relationId ?? `${relation.targetPluginId}-${relation.relationType}-${index}`}>
+                        <div>
+                          <strong>{relation.targetPluginId}</strong>
+                          {relation.targetPluginType && <span>{relation.targetPluginType}</span>}
+                          <span>{relation.relationType}</span>
+                          <span>#{relation.sortOrder}</span>
+                        </div>
+                        {relation.data && Object.keys(relation.data).length > 0 && (
+                          <pre>{JSON.stringify(relation.data, null, 2)}</pre>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
             {review.readmeContent && (
               // The frozen submission snapshot, i.e. exactly the SKILL.md that
               // would go live. Sanitized: it is untrusted applicant content.

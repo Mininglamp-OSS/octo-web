@@ -125,6 +125,10 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
   const [pendingLoadingMore, setPendingLoadingMore] = useState(false);
   const [pendingError, setPendingError] = useState<string | null>(null);
   const pendingAbortRef = useRef<AbortController | null>(null);
+  // Incremented synchronously on every Space switch. Abort normally stops an
+  // older fetch, while this generation also protects against transports/mocks
+  // that resolve after abort and against stale action continuations.
+  const spaceGenerationRef = useRef(0);
 
   // Handled tab: three independent per-status lists (defect 4).
   type AbortRefMap = { [K in HandledStatus]: AbortController | null };
@@ -151,6 +155,7 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
       if (pendingAbortRef.current) pendingAbortRef.current.abort();
       const controller = new AbortController();
       pendingAbortRef.current = controller;
+      const spaceGeneration = spaceGenerationRef.current;
       const isMore = Boolean(nextCursor);
       if (isMore) setPendingLoadingMore(true);
       else setPendingLoading(true);
@@ -163,16 +168,16 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
           pageSize: PAGE_SIZE,
           signal: controller.signal,
         });
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || spaceGeneration !== spaceGenerationRef.current) return;
         setPendingItems((cur) => (isMore ? [...cur, ...result.items] : result.items));
         setPendingTotal(result.total);
         setPendingCursor(result.nextCursor);
       } catch (err) {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || spaceGeneration !== spaceGenerationRef.current) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
         setPendingError(err instanceof Error ? err.message : t("skillMarket.common.loadFailed"));
       } finally {
-        if (!controller.signal.aborted) {
+        if (!controller.signal.aborted && spaceGeneration === spaceGenerationRef.current) {
           setPendingLoading(false);
           setPendingLoadingMore(false);
         }
@@ -197,6 +202,7 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
       if (prev) prev.abort();
       const controller = new AbortController();
       handledAbortRefs.current[status] = controller;
+      const spaceGeneration = spaceGenerationRef.current;
       setHandled((cur) => ({
         ...cur,
         [status]: { ...cur[status], loading: true, error: null },
@@ -209,7 +215,7 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
           pageSize: PAGE_SIZE,
           signal: controller.signal,
         });
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || spaceGeneration !== spaceGenerationRef.current) return;
         setHandled((cur) => {
           const existing = cur[status];
           return {
@@ -224,7 +230,7 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
           };
         });
       } catch (err) {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || spaceGeneration !== spaceGenerationRef.current) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
         setHandled((cur) => ({
           ...cur,
@@ -296,10 +302,29 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
     if (activeTab === "handled") refreshHandled();
   }, [activeTab, refreshHandled, refreshPending]);
 
-  useEffect(() => {
-    WKApp.mittBus.on("space-changed", refreshAll);
-    return () => WKApp.mittBus.off("space-changed", refreshAll);
+  const handleSpaceChanged = useCallback(() => {
+    // Invalidate first, then abort and synchronously remove every identifier and
+    // row belonging to the Space being left. The new fetch captures the new
+    // generation, so even an abort-insensitive old promise cannot repopulate it.
+    spaceGenerationRef.current += 1;
+    pendingAbortRef.current?.abort();
+    TERMINAL_STATUSES.forEach((status) => handledAbortRefs.current[status]?.abort());
+    setPendingItems([]);
+    setPendingCursor(null);
+    setPendingTotal(0);
+    setPendingError(null);
+    setPendingLoadingMore(false);
+    setHandled(initialHandled());
+    setHandledLoading(false);
+    setHandledLoadingMore(false);
+    setIconErrors({});
+    refreshAll();
   }, [refreshAll]);
+
+  useEffect(() => {
+    WKApp.mittBus.on("space-changed", handleSpaceChanged);
+    return () => WKApp.mittBus.off("space-changed", handleSpaceChanged);
+  }, [handleSpaceChanged]);
 
   const rows: ReviewRequest[] = useMemo(() => {
     if (activeTab === "pending") return pendingItems;
@@ -346,15 +371,19 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
   // row stays disabled and a second click cannot race against the in-flight
   // reconcile.
   async function handleApprove(item: ReviewRequest) {
+    const spaceGeneration = spaceGenerationRef.current;
     setActingId(item.id);
     setError(null);
     try {
       await approveReview(item.id);
+      if (spaceGeneration !== spaceGenerationRef.current) return;
       await refreshAllAsync();
     } catch (err) {
+      if (spaceGeneration !== spaceGenerationRef.current) return;
       setError(err instanceof Error ? err.message : t("skillMarket.review.actionFailed"));
       await refreshAllAsync();
     } finally {
+      if (spaceGeneration !== spaceGenerationRef.current) return;
       // Clear only if this action still owns the slot: a second row starting
       // mid-flight moves actingId to its own id, and an unconditional clear here
       // would re-enable that row while its POST is still in flight.
@@ -363,15 +392,19 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
   }
 
   async function handleCancel(item: ReviewRequest) {
+    const spaceGeneration = spaceGenerationRef.current;
     setActingId(item.id);
     setError(null);
     try {
       await cancelReview(item.id);
+      if (spaceGeneration !== spaceGenerationRef.current) return;
       await refreshAllAsync();
     } catch (err) {
+      if (spaceGeneration !== spaceGenerationRef.current) return;
       setError(err instanceof Error ? err.message : t("skillMarket.review.cancelFailed"));
       await refreshAllAsync();
     } finally {
+      if (spaceGeneration !== spaceGenerationRef.current) return;
       setActingId((cur) => (cur === item.id ? null : cur));
     }
   }
@@ -563,21 +596,26 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
         }}
         onConfirm={async (reason) => {
           if (!delistTarget) return;
+          const spaceGeneration = spaceGenerationRef.current;
           const id = delistTarget.id;
           setActingId(id);
           setError(null);
           try {
             await delistPlugin({ pluginId: delistTarget.pluginId, reason });
           } catch (err) {
+            if (spaceGeneration !== spaceGenerationRef.current) return;
             // Same shape as reject: a 409 here means somebody already took it
             // down, or the author republished under us. Surface it on the queue
             // banner AND inside the modal, then reconcile.
             setError(err instanceof Error ? err.message : t("skillMarket.review.delistFailed"));
             await refreshAllAsync();
+            if (spaceGeneration !== spaceGenerationRef.current) return;
             setActingId((cur) => (cur === id ? null : cur));
             throw err;
           }
+          if (spaceGeneration !== spaceGenerationRef.current) return;
           await refreshAllAsync();
+          if (spaceGeneration !== spaceGenerationRef.current) return;
           setActingId((cur) => (cur === id ? null : cur));
           setDelistTarget(null);
         }}
@@ -591,23 +629,28 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
         }}
         onConfirm={async (reason) => {
           if (!rejectTarget) return;
+          const spaceGeneration = spaceGenerationRef.current;
           const id = rejectTarget.id;
           setActingId(id);
           setError(null);
           try {
             await rejectReview(id, reason);
           } catch (err) {
+            if (spaceGeneration !== spaceGenerationRef.current) return;
             // Defect 2 fix: surface wire errors (e.g. 409 another admin
             // already decided) — queue-level banner + modal inline error
             // (the modal's own catch sets its error state when we throw).
             setError(err instanceof Error ? err.message : t("skillMarket.review.actionFailed"));
             await refreshAllAsync();
+            if (spaceGeneration !== spaceGenerationRef.current) return;
             setActingId((cur) => (cur === id ? null : cur));
             throw err; // let RejectReasonModal display its own inline error
           }
+          if (spaceGeneration !== spaceGenerationRef.current) return;
           // Success path: keep actingId set until refresh settles so the
           // row stays disabled (defect 3).
           await refreshAllAsync();
+          if (spaceGeneration !== spaceGenerationRef.current) return;
           setActingId((cur) => (cur === id ? null : cur));
           setRejectTarget(null);
         }}

@@ -237,6 +237,8 @@
     "fieldChangelog": "Changelog",
     "fieldReviewer": "Reviewer",
     "fieldReviewedAt": "Reviewed at",
+    "relationsTitle": "Frozen relationships",
+    "relationsEmpty": "No related plugins",
     "rejectModalTitle": "Reject request",
     "rejectModalHeadingNamed": "Reject the listing request for “{{name}}”",
     "rejectModalHeading": "Reject this listing request",
