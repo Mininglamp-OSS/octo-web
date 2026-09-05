@@ -67,7 +67,7 @@ jobs:
         working-directory: apps/web
         run: pnpm build:e2e
       - name: Upload build-e2e artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-e2e
           path: apps/web/build-e2e/
@@ -183,7 +183,7 @@ jobs:
           fi
       - name: Upload playwright report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report-all
           path: |
