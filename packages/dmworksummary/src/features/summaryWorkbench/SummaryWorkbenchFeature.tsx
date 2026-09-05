@@ -669,6 +669,8 @@ export default function SummaryWorkbenchFeature({
     descriptionPlaceholder: t(
       "summary.templates.custom.descriptionPlaceholder"
     ),
+    customPromptTopic: t("summary.templates.custom.promptTopic"),
+    customPromptContext: t("summary.templates.custom.promptContext"),
     editHint: t("summary.templates.custom.editHint"),
     deleteConfirmTitle: t("summary.templates.custom.deleteConfirmTitle"),
     deleteConfirmContent: (name) =>

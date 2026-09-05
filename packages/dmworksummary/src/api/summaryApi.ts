@@ -855,7 +855,8 @@ export function agentChatStream(params: AgentChatParams, handlers: AgentStreamHa
         close: () => {
             aborted = true;
             controller.abort();
-            reader?.cancel();
+            const cancelPromise = reader?.cancel();
+            if (cancelPromise) void cancelPromise.catch(() => undefined);
         },
     };
 }
@@ -887,6 +888,8 @@ function decodeAgentStreamHttpError(status: number, body: string): AgentErrorEve
         transient:
             isRetryableSummaryWorkspaceCode(code) ||
             effectiveStatus >= 500 ||
+            // During staged rollout the stream route may lag behind the JSON route;
+            // allow one stream-to-JSON fallback while 404/405 indicates that gap.
             effectiveStatus === 404 ||
             effectiveStatus === 405,
     };

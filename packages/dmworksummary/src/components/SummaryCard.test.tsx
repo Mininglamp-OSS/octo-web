@@ -483,19 +483,27 @@ describe('SummaryCard completed actions', () => {
     });
 
     it('hides continue refining when an Agent summary is not referenceable', () => {
+        const onRegenerate = vi.fn();
         render(
             <SummaryCard
                 task={makeItem({ status: TaskStatus.COMPLETED, trigger_type: TriggerType.AGENT, referenceable: false }) as any}
                 onClick={noop}
                 onDelete={noop}
                 onContinueOptimize={noop}
+                onRegenerate={onRegenerate}
+                onEdit={noop}
                 unifiedAgentActions
             />,
         );
 
         openCardMenu();
         expect(screen.queryByText('继续优化')).not.toBeInTheDocument();
+        expect(screen.getByText('重新生成')).toBeInTheDocument();
+        expect(screen.queryByText('编辑')).not.toBeInTheDocument();
         expect(screen.getByText('删除')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByText('重新生成'));
+        expect(onRegenerate).toHaveBeenCalledWith(1);
     });
 
     it('hides action items whose handlers are not provided', () => {

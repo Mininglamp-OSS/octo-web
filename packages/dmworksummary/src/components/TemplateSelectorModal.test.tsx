@@ -43,6 +43,8 @@ const labels: TemplateSelectorLabels = {
   descriptionLabel: "Requirement",
   namePlaceholder: "Template name",
   descriptionPlaceholder: "Template requirement",
+  customPromptTopic: "Summary topic",
+  customPromptContext: "Content focus",
   editHint: "Personal configuration",
   deleteConfirmTitle: "Delete template",
   deleteConfirmContent: (name) => `Delete ${name}?`,
@@ -242,10 +244,48 @@ describe("TemplateSelectorModal", () => {
 
   it("falls back to description when a template has no pattern", () => {
     expect(
-      topicTemplateToWorkbenchScope({
-        ...builtInTemplate,
-        pattern: "",
-      }).requirement
+      topicTemplateToWorkbenchScope(
+        {
+          ...builtInTemplate,
+          pattern: "",
+        },
+        labels
+      ).requirement
     ).toBe("Summarize weekly work");
+  });
+
+  it("resolves parameterized template tokens into user-facing labels", () => {
+    const scope = topicTemplateToWorkbenchScope(
+      {
+        ...builtInTemplate,
+        type: "parameterized",
+        pattern: "Summarize {project_name} progress",
+        placeholders: [
+          { key: "project_name", label: "Project name", position: [10, 22] },
+        ],
+      },
+      labels
+    );
+
+    expect(scope.requirement).toBe("Summarize Project name progress");
+    expect(scope.requirement).not.toContain("{project_name}");
+  });
+
+  it("frames custom templates with localized topic and focus labels", () => {
+    const scope = topicTemplateToWorkbenchScope(
+      {
+        ...builtInTemplate,
+        id: "custom-1",
+        label: "Decision log",
+        description: "Only decisions and owners",
+        pattern: "",
+        is_custom: true,
+      },
+      labels
+    );
+
+    expect(scope.requirement).toBe(
+      "Summary topic: Decision log\nContent focus: Only decisions and owners"
+    );
   });
 });

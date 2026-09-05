@@ -18,7 +18,10 @@ import type {
   TopicTemplate,
   TopicTemplatesResponse,
 } from "../types/summary";
-import { getTemplateEditableFields } from "../utils/templateResolver";
+import {
+  computeTemplateSelection,
+  getTemplateEditableFields,
+} from "../utils/templateResolver";
 import TemplateCard from "./TemplateCard";
 import "./TemplateSelectorModal.css";
 
@@ -63,6 +66,8 @@ export interface TemplateSelectorLabels {
   descriptionLabel: string;
   namePlaceholder: string;
   descriptionPlaceholder: string;
+  customPromptTopic: string;
+  customPromptContext: string;
   editHint: string;
   deleteConfirmTitle: string;
   deleteConfirmContent: (name: string) => string;
@@ -96,13 +101,26 @@ const defaultDataSource: TemplateSelectorDataSource = {
 };
 
 export function topicTemplateToWorkbenchScope(
-  template: TopicTemplate
+  template: TopicTemplate,
+  labels: Pick<
+    TemplateSelectorLabels,
+    "customPromptTopic" | "customPromptContext"
+  >
 ): SummaryWorkbenchTemplateScope {
   const version = (template as VersionedTopicTemplate).version;
+  const resolvedTemplate = template.is_custom
+    ? computeTemplateSelection(template, {
+        topic: labels.customPromptTopic,
+        context: labels.customPromptContext,
+      })
+    : computeTemplateSelection({
+        ...template,
+        pattern: template.pattern.trim() || template.description.trim(),
+      });
   return {
     templateId: template.id,
     label: template.label,
-    requirement: template.pattern.trim() || template.description.trim(),
+    requirement: resolvedTemplate.text,
     ...(typeof version === "number" ? { version } : {}),
   };
 }
@@ -213,10 +231,10 @@ export default function TemplateSelectorModal({
   const propagateSelectedTemplateUpdate = useCallback(
     (updated: TopicTemplate) => {
       if (value?.templateId === updated.id) {
-        onChange(topicTemplateToWorkbenchScope(updated));
+        onChange(topicTemplateToWorkbenchScope(updated, labels));
       }
     },
-    [onChange, value?.templateId]
+    [labels, onChange, value?.templateId]
   );
 
   const startCreating = () => {
@@ -314,7 +332,7 @@ export default function TemplateSelectorModal({
         template={template}
         selected={value?.templateId === template.id}
         onClick={(selected: TopicTemplate) =>
-          onChange(topicTemplateToWorkbenchScope(selected))
+          onChange(topicTemplateToWorkbenchScope(selected, labels))
         }
         onEdit={startEditing}
         onDelete={template.is_custom ? requestCustomDelete : undefined}

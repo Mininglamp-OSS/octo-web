@@ -583,6 +583,40 @@ data: {"code":50001
         expect(mockReader.cancel).toHaveBeenCalled();
     });
 
+    it('handles a rejected reader cancellation when close() is called', async () => {
+        const mockReader = {
+            read: vi.fn().mockImplementation(() => new Promise(() => {})),
+            cancel: vi.fn().mockRejectedValue(new Error('reader already closed')),
+            releaseLock: vi.fn(),
+        };
+
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            body: {
+                getReader: () => mockReader,
+            },
+        });
+
+        const { close } = agentChatStream(
+            {
+                session_id: 'test-session',
+                message: 'test question',
+                profile: 'summary',
+            },
+            {
+                onProgress: vi.fn(),
+                onDone: vi.fn(),
+                onError: vi.fn(),
+            },
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        close();
+        await Promise.resolve();
+
+        expect(mockReader.cancel).toHaveBeenCalled();
+    });
+
     it('aborts the HTTP request when close() is called before response headers arrive', async () => {
         const onProgress = vi.fn();
         const onDone = vi.fn();
