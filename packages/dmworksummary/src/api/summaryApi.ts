@@ -38,11 +38,18 @@ import type {
     GetSummaryShareResponse,
     SummaryAttentionCounts,
 } from '../types/summary';
-
 // 待关注计数的响应形状从本文件再导出一次：调用方（summaryAttentionBadge）只与
 // api 层打交道，不必再去 types/summary 里找一个只服务于这条路径的类型。
 export type { SummaryAttentionCounts };
 import { SummaryMode } from '../types/summary';
+import {
+    SUMMARY_WORKSPACE_PROFILE,
+    SummaryWorkspaceApiError,
+    type SummaryWorkspaceChatRequestDTO,
+    type SummaryWorkspaceConfirmRequestDTO,
+    type SummaryWorkspaceSavePreviewRequestDTO,
+    type SummaryWorkspaceStreamHandlers,
+} from '../bridge/summaryWorkbench/protocol';
 
 const summaryAxios = axios.create({ baseURL: '' });
 
@@ -72,9 +79,7 @@ summaryAxios.interceptors.request.use((config) => {
         config.headers['token'] = token;
     }
     const spaceId = WKApp.shared.currentSpaceId;
-    const hasExplicitSpace = Object.keys(config.headers).some(
-        (name) => name.toLowerCase() === 'x-space-id',
-    );
+    const hasExplicitSpace = Object.keys(config.headers).some((name) => name.toLowerCase() === 'x-space-id');
     if (spaceId && !hasExplicitSpace) {
         config.headers['X-Space-Id'] = spaceId;
     }
@@ -131,7 +136,12 @@ function assertAttentionCounts(data: unknown): SummaryAttentionCounts {
 }
 
 function extractErrorMessage(err: unknown): string {
-    const axiosErr = err as { response?: { status?: number; data?: { message?: string; msg?: string; error?: { message?: string } } } };
+    const axiosErr = err as {
+        response?: {
+            status?: number;
+            data?: { message?: string; msg?: string; error?: { message?: string } };
+        };
+    };
     const status = axiosErr?.response?.status;
     const data = axiosErr?.response?.data;
     const msg = data?.message || data?.msg || data?.error?.message;
@@ -148,7 +158,10 @@ function extractErrorMessage(err: unknown): string {
 // Backend wraps responses in {code, message, data} envelope — unwrap .data
 async function get<T>(path: string, params?: Record<string, unknown>, config?: AxiosRequestConfig): Promise<T> {
     try {
-        const resp = await summaryAxios.get(`${BASE}${path}`, { params, ...config });
+        const resp = await summaryAxios.get(`${BASE}${path}`, {
+            params,
+            ...config,
+        });
         return resp.data?.data ?? resp.data;
     } catch (err) {
         // Preserve cancellation identity so callers can use axios.isCancel(err)
@@ -176,7 +189,12 @@ function trackOnEnvelopeSuccess(
     if (code === 0) Dap.shared.track(event, props);
 }
 
-async function post<T>(path: string, data?: unknown, successEvent?: string, successProps: Record<string, unknown> = {}): Promise<T> {
+async function post<T>(
+    path: string,
+    data?: unknown,
+    successEvent?: string,
+    successProps: Record<string, unknown> = {},
+): Promise<T> {
     try {
         const resp = await summaryAxios.post(`${BASE}${path}`, data);
         trackOnEnvelopeSuccess(resp, successEvent, successProps);
@@ -187,7 +205,12 @@ async function post<T>(path: string, data?: unknown, successEvent?: string, succ
     }
 }
 
-async function put<T>(path: string, data?: unknown, successEvent?: string, successProps: Record<string, unknown> = {}): Promise<T> {
+async function put<T>(
+    path: string,
+    data?: unknown,
+    successEvent?: string,
+    successProps: Record<string, unknown> = {},
+): Promise<T> {
     try {
         const resp = await summaryAxios.put(`${BASE}${path}`, data);
         trackOnEnvelopeSuccess(resp, successEvent, successProps);
@@ -211,12 +234,11 @@ async function del<T>(path: string, successEvent?: string, successProps: Record<
 
 // ─── Core Summary Operations ───────────────────────────
 
-
 export interface SummaryStreamEvent {
-    type: "start" | "stage" | "delta" | "snapshot" | "done" | "error" | string;
+    type: 'start' | 'stage' | 'delta' | 'snapshot' | 'done' | 'error' | string;
     task_id?: number;
     run_id?: string;
-    scope?: "personal" | "team" | string;
+    scope?: 'personal' | 'team' | string;
     stage?: string;
     delta?: string;
     content?: string;
@@ -242,20 +264,20 @@ function buildSummaryURL(path: string): string {
 }
 
 function parseSSEBlock(block: string): SummaryStreamEvent | null {
-    let eventType = "message";
+    let eventType = 'message';
     const dataLines: string[] = [];
     for (const rawLine of block.split(/\r?\n/)) {
         const line = rawLine.trimEnd();
-        if (!line || line.startsWith(":")) continue;
-        if (line.startsWith("event:")) {
-            eventType = line.slice("event:".length).trim();
-        } else if (line.startsWith("data:")) {
-            dataLines.push(line.slice("data:".length).trimStart());
+        if (!line || line.startsWith(':')) continue;
+        if (line.startsWith('event:')) {
+            eventType = line.slice('event:'.length).trim();
+        } else if (line.startsWith('data:')) {
+            dataLines.push(line.slice('data:'.length).trimStart());
         }
     }
     if (dataLines.length === 0) return null;
-    const data = dataLines.join("\n");
-    if (data === "[DONE]") return { type: "done" };
+    const data = dataLines.join('\n');
+    if (data === '[DONE]') return { type: 'done' };
     try {
         const parsed = JSON.parse(data) as SummaryStreamEvent;
         return { ...parsed, type: parsed.type || eventType };
@@ -266,14 +288,14 @@ function parseSSEBlock(block: string): SummaryStreamEvent | null {
 
 function buildStreamHeaders(hasBody = false): Record<string, string> {
     const headers: Record<string, string> = {
-        Accept: "text/event-stream",
-        "Accept-Language": buildAcceptLanguage(),
+        Accept: 'text/event-stream',
+        'Accept-Language': buildAcceptLanguage(),
     };
-    if (hasBody) headers["Content-Type"] = "application/json";
+    if (hasBody) headers['Content-Type'] = 'application/json';
     const token = WKApp.loginInfo.token;
     if (token) headers.token = token;
     const spaceId = WKApp.shared.currentSpaceId;
-    if (spaceId) headers["X-Space-Id"] = spaceId;
+    if (spaceId) headers['X-Space-Id'] = spaceId;
     return headers;
 }
 
@@ -281,7 +303,7 @@ async function consumeSSE(resp: Response, onEvent: (event: SummaryStreamEvent) =
     if (!resp.body) return;
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
-    let buffer = "";
+    let buffer = '';
     let completed = false;
     try {
         while (true) {
@@ -340,24 +362,28 @@ async function streamRequest(
 export async function streamSummary(
     taskId: number,
     options: {
-        scope?: "personal" | "team";
+        scope?: 'personal' | 'team';
         signal?: AbortSignal;
         onEvent: (event: SummaryStreamEvent) => void;
     },
 ): Promise<void> {
     const params = new URLSearchParams();
-    if (options.scope) params.set("scope", options.scope);
-    const suffix = params.toString() ? `?${params.toString()}` : "";
-    await streamRequest(`/summaries/${taskId}/stream${suffix}`, {
-        method: "GET",
-        headers: buildStreamHeaders(),
-        signal: options.signal,
-    }, options.onEvent);
+    if (options.scope) params.set('scope', options.scope);
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    await streamRequest(
+        `/summaries/${taskId}/stream${suffix}`,
+        {
+            method: 'GET',
+            headers: buildStreamHeaders(),
+            signal: options.signal,
+        },
+        options.onEvent,
+    );
 }
 
 // 二审 P1「smart_summary_started 双发」修复:本事件的**唯一**收口点在 api 层(envelope code===0 才发),
 // 而非页面/按钮。因为「HTTP200 + code≠0」是逻辑失败,只有 api 层能看到 code(见 trackOnEnvelopeSuccess)。
-// 各创建入口(SummaryCreatePage normal / ChatSummaryNewModal / agent 模式)把维度 props 传进来,
+// 各创建入口把维度 props 传进来,
 // 由这里按业务码 gate 后发一次 —— 计数与 props 在所有入口一致。
 export async function createSummary(
     params: CreateSummaryParams,
@@ -414,6 +440,236 @@ export async function createAgentSummary(
     return data;
 }
 
+export interface SummaryWorkspaceRequestOptions {
+    signal?: AbortSignal;
+    spaceId?: string;
+}
+
+export interface SummaryWorkspaceIdempotentOptions extends SummaryWorkspaceRequestOptions {
+    idempotencyKey: string;
+}
+
+/** Raw transport for the new summary workspace. Runtime DTO validation lives in the Service adapter. */
+export async function getSummaryWorkspaceCapabilities(options: SummaryWorkspaceRequestOptions = {}): Promise<unknown> {
+    return requestSummaryWorkspace(() =>
+        summaryAxios.get(`${BASE}/summary-workbench/capabilities`, {
+            ...(options.spaceId ? { headers: { 'X-Space-Id': options.spaceId } } : {}),
+            signal: options.signal,
+        }),
+    );
+}
+
+export async function postSummaryWorkspaceTurn(
+    request: SummaryWorkspaceChatRequestDTO,
+    options: SummaryWorkspaceRequestOptions = {},
+): Promise<unknown> {
+    return requestSummaryWorkspace(() =>
+        summaryAxios.post(`${BASE}/agent/chat`, request, {
+            signal: options.signal,
+            timeout: 120000,
+        }),
+    );
+}
+
+export function streamSummaryWorkspaceTurn(
+    request: SummaryWorkspaceChatRequestDTO,
+    handlers: SummaryWorkspaceStreamHandlers,
+): { close: () => void } {
+    return agentChatStream(request, {
+        onProgress: handlers.onProgress,
+        onDone: (event) => handlers.onDone?.(event),
+        onError: handlers.onError,
+    });
+}
+
+export async function getSummaryWorkspaceHistory(
+    sessionId: string,
+    options: SummaryWorkspaceRequestOptions = {},
+): Promise<unknown> {
+    return requestSummaryWorkspace(
+        () =>
+            summaryAxios.get(`${BASE}/agent/chat/history`, {
+                params: { session_id: sessionId, profile: SUMMARY_WORKSPACE_PROFILE },
+                signal: options.signal,
+            }),
+        { allowNullData: true },
+    );
+}
+
+export async function confirmSummaryWorkspaceProposal(
+    request: SummaryWorkspaceConfirmRequestDTO,
+    options: SummaryWorkspaceIdempotentOptions,
+): Promise<unknown> {
+    const sessionId = encodeURIComponent(request.session_id);
+    const proposalVersion = encodeURIComponent(String(request.proposal_version));
+    return requestSummaryWorkspace(() =>
+        summaryAxios.post(
+            `${BASE}/agent/summary-sessions/${sessionId}/proposals/${proposalVersion}/confirm`,
+            {
+                proposal_token: request.proposal_token,
+                scope_version: request.scope_version,
+                summary_context: request.summary_context,
+            },
+            {
+                headers: { 'Idempotency-Key': options.idempotencyKey },
+                signal: options.signal,
+            },
+        ),
+    );
+}
+
+export async function saveSummaryWorkspacePreview(
+    request: SummaryWorkspaceSavePreviewRequestDTO,
+    options: SummaryWorkspaceIdempotentOptions,
+): Promise<unknown> {
+    return requestSummaryWorkspace(() =>
+        summaryAxios.post(`${BASE}/summaries/agent`, request, {
+            headers: { 'Idempotency-Key': options.idempotencyKey },
+            signal: options.signal,
+        }),
+    );
+}
+
+async function requestSummaryWorkspace(
+    request: () => Promise<{ data?: unknown }>,
+    options: { allowNullData?: boolean } = {},
+): Promise<unknown> {
+    try {
+        const response = await request();
+        return unwrapSummaryWorkspaceEnvelope(response.data, options.allowNullData === true);
+    } catch (error) {
+        if (error instanceof SummaryWorkspaceApiError) throw error;
+        if (axios.isCancel(error)) {
+            throw new SummaryWorkspaceApiError({
+                message: 'Summary workspace request was cancelled',
+                kind: 'abort',
+                retryable: false,
+            });
+        }
+
+        const response = readRecordProperty(error, 'response');
+        const responseData = response ? readRecordProperty(response, 'data') : undefined;
+        const httpStatus = response ? readNumberProperty(response, 'status') : undefined;
+        const businessError = createSummaryWorkspaceBusinessError(responseData, httpStatus);
+        if (businessError) throw businessError;
+        const errorSource = responseData ? readRecordProperty(responseData, 'error') ?? responseData : undefined;
+        const effectiveHttpStatus = readNumberProperty(errorSource, 'http_status') ?? httpStatus;
+        const message =
+            readStringProperty(errorSource, 'message') ??
+            readStringProperty(responseData, 'msg') ??
+            (error instanceof Error ? error.message : 'Summary workspace request failed');
+        throw new SummaryWorkspaceApiError({
+            message,
+            kind: 'transport',
+            code: readStringOrNumberProperty(errorSource, 'code'),
+            httpStatus: effectiveHttpStatus,
+            detail: readStringProperty(errorSource, 'detail') ?? readStringProperty(errorSource, 'details'),
+            retryable: effectiveHttpStatus === undefined || effectiveHttpStatus >= 500,
+        });
+    }
+}
+
+function unwrapSummaryWorkspaceEnvelope(payload: unknown, allowNullData = false): unknown {
+    if (!isUnknownRecord(payload)) {
+        throw new SummaryWorkspaceApiError({
+            message: 'Invalid summary workspace response envelope',
+            kind: 'protocol',
+        });
+    }
+    const code = payload.code;
+    if (typeof code !== 'number') {
+        throw new SummaryWorkspaceApiError({
+            message: 'Invalid summary workspace response envelope',
+            kind: 'protocol',
+        });
+    }
+    if (code !== 0) {
+        const data = readRecordProperty(payload, 'data');
+        const retryable = isRetryableSummaryWorkspaceCode(code);
+        throw new SummaryWorkspaceApiError({
+            message: readStringProperty(payload, 'message') ?? 'Summary workspace request failed',
+            kind: retryable ? 'transport' : 'business',
+            code,
+            detail: readStringProperty(payload, 'detail'),
+            recoveryAction: readStringProperty(data, 'recovery_action'),
+            taskId: readSummaryWorkspaceTaskId(data),
+            retryable,
+        });
+    }
+    if (payload.data === undefined || payload.data === null) {
+        if (allowNullData && (payload.data === null || payload.data === undefined)) return null;
+        throw new SummaryWorkspaceApiError({
+            message: 'Summary workspace response has no data',
+            kind: 'protocol',
+        });
+    }
+    return payload.data;
+}
+
+function createSummaryWorkspaceBusinessError(
+    payload: Record<string, unknown> | undefined,
+    httpStatus: number | undefined,
+): SummaryWorkspaceApiError | undefined {
+    if (!payload) return undefined;
+    const nestedError = readRecordProperty(payload, 'error');
+    const source = nestedError ?? payload;
+    const code = readStringOrNumberProperty(source, 'code');
+    if (code === undefined || code === 0) return undefined;
+    const effectiveHttpStatus = readNumberProperty(source, 'http_status') ?? httpStatus;
+    if (effectiveHttpStatus !== undefined && effectiveHttpStatus >= 500) return undefined;
+    const data = readRecordProperty(payload, 'data');
+    const retryable = isRetryableSummaryWorkspaceCode(code);
+    return new SummaryWorkspaceApiError({
+        message:
+            readStringProperty(source, 'message') ??
+            readStringProperty(payload, 'message') ??
+            'Summary workspace request failed',
+        kind: retryable ? 'transport' : 'business',
+        code,
+        httpStatus: effectiveHttpStatus,
+        detail: readStringProperty(source, 'detail') ?? readStringProperty(source, 'details'),
+        recoveryAction: readStringProperty(data, 'recovery_action'),
+        taskId: readSummaryWorkspaceTaskId(data),
+        retryable,
+    });
+}
+
+function isRetryableSummaryWorkspaceCode(code: number | string): boolean {
+    return code === 40902 || code === '40902';
+}
+
+function readSummaryWorkspaceTaskId(data: Record<string, unknown> | undefined): number | undefined {
+    return readNumberProperty(data, 'task_id') ?? readNumberProperty(data, 'existing_task_id');
+}
+
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readRecordProperty(value: unknown, property: string): Record<string, unknown> | undefined {
+    if (!isUnknownRecord(value)) return undefined;
+    const candidate = value[property];
+    return isUnknownRecord(candidate) ? candidate : undefined;
+}
+
+function readStringProperty(value: unknown, property: string): string | undefined {
+    if (!isUnknownRecord(value)) return undefined;
+    const candidate = value[property];
+    return typeof candidate === 'string' ? candidate : undefined;
+}
+
+function readNumberProperty(value: unknown, property: string): number | undefined {
+    if (!isUnknownRecord(value)) return undefined;
+    const candidate = value[property];
+    return typeof candidate === 'number' ? candidate : undefined;
+}
+
+function readStringOrNumberProperty(value: unknown, property: string): string | number | undefined {
+    if (!isUnknownRecord(value)) return undefined;
+    const candidate = value[property];
+    return typeof candidate === 'string' || typeof candidate === 'number' ? candidate : undefined;
+}
+
 // Agent 交互式问答（非流式一问一答）。POST /summary/api/v1/agent/chat。
 // 不复用公共 post()：post() 只 `data?.data ?? data`，不校验业务 code，
 // HTTP200 + {code:非0,data:null} 会被当成功、undefined 追进气泡。这里自行
@@ -422,7 +678,9 @@ export async function agentChat(params: AgentChatParams): Promise<AgentChatResul
     try {
         // agent 是多步回环（LLM→工具→LLM…），单次问答可能耗时数十秒，
         // 远超默认 20s 超时。给这个请求单独放宽到 120s，避免链路没跑完就被前端掐断。
-        const resp = await summaryAxios.post(`${BASE}/agent/chat`, params, { timeout: 120000 });
+        const resp = await summaryAxios.post(`${BASE}/agent/chat`, params, {
+            timeout: 120000,
+        });
         if (resp.data?.code !== 0) {
             throw new Error(resp.data?.message || 'agent chat failed');
         }
@@ -431,7 +689,11 @@ export async function agentChat(params: AgentChatParams): Promise<AgentChatResul
             throw new Error(resp.data?.message || 'agent chat failed');
         }
         // SS-11: surface run_id when present (V2 on); omitted by legacy backend.
-        return { reply: data.reply, session_id: data.session_id, run_id: data.run_id };
+        return {
+            reply: data.reply,
+            session_id: data.session_id,
+            run_id: data.run_id,
+        };
     } catch (err) {
         if (axios.isCancel(err)) throw err;
         if (err instanceof Error) throw err;
@@ -443,7 +705,9 @@ export async function agentChat(params: AgentChatParams): Promise<AgentChatResul
 // 复用公共 get()（envelope 解包 .data + 错误处理），后端按 session_id 返回该会话
 // 已持久化的全部消息。data 缺省时兜底为空历史，便于「无历史 → 空白新开场」分支。
 export async function getAgentChatHistory(sessionId: string): Promise<AgentChatHistory> {
-    const data = await get<AgentChatHistory | null>('/agent/chat/history', { session_id: sessionId });
+    const data = await get<AgentChatHistory | null>('/agent/chat/history', {
+        session_id: sessionId,
+    });
     return {
         session_id: data?.session_id || sessionId,
         messages: Array.isArray(data?.messages) ? data!.messages : [],
@@ -453,17 +717,15 @@ export async function getAgentChatHistory(sessionId: string): Promise<AgentChatH
 /**
  * Agent 交互式问答 SSE 流式版。POST /summary/api/v1/agent/chat/stream。
  * 手动消费 fetch + ReadableStream 解析 SSE 帧(不用 EventSource — EventSource 不支持 POST body)。
- * 
+ *
  * @param params - 请求参数(和 agentChat 一致)
  * @param handlers - 事件回调: onProgress / onDone / onError
- * @returns {{ close: () => void }} - 关闭 reader 的句柄,组件卸载/用户取消时调用
+ * @returns {{ close: () => void }} - 中止 HTTP 请求并关闭 reader 的句柄,组件卸载/用户取消时调用
  */
-export function agentChatStream(
-    params: AgentChatParams,
-    handlers: AgentStreamHandlers,
-): { close: () => void } {
+export function agentChatStream(params: AgentChatParams, handlers: AgentStreamHandlers): { close: () => void } {
     let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
     let aborted = false;
+    const controller = new AbortController();
 
     const url = `${resolveSummaryBaseURL()}${BASE}/agent/chat/stream`;
     const token = WKApp.loginInfo.token;
@@ -474,7 +736,7 @@ export function agentChatStream(
         try {
             const headers: Record<string, string> = {
                 'Content-Type': 'application/json',
-                'Accept': 'text/event-stream',
+                Accept: 'text/event-stream',
                 'Accept-Language': buildAcceptLanguage(),
             };
             if (token) headers['token'] = token;
@@ -484,24 +746,22 @@ export function agentChatStream(
                 method: 'POST',
                 headers,
                 body: JSON.stringify(params),
+                signal: controller.signal,
             });
-
 
             if (resp.status === 401) {
                 WKApp.shared.logout();
-                handlers.onError?.({ code: 401, message: 'Unauthorized', transient: true });
+                handlers.onError?.({
+                    code: 401,
+                    message: 'Unauthorized',
+                    transient: false,
+                });
                 return;
             }
             if (!resp.ok) {
                 const text = await resp.text();
-                let errMsg = `HTTP ${resp.status}`;
-                try {
-                    const json = JSON.parse(text);
-                    errMsg = json?.message || errMsg;
-                } catch {
-                    // text 不是 JSON,用 HTTP status
-                }
-                throw new Error(errMsg);
+                handlers.onError?.(decodeAgentStreamHttpError(resp.status, text));
+                return;
             }
 
             if (!resp.body) {
@@ -528,12 +788,11 @@ export function agentChatStream(
                 const lines = buffer.replace(/\r\n?/g, '\n').split('\n');
                 buffer = lines.pop() || ''; // 最后一行可能不完整,留在 buffer
 
-
                 for (const line of lines) {
                     if (line.startsWith('event:')) {
                         pendingEvent = line.slice(6).trim();
                     } else if (line.startsWith('data:')) {
-                        pendingData += (pendingData ? "\n" : "") + line.slice(5).trim();
+                        pendingData += (pendingData ? '\n' : '') + line.slice(5).trim();
                     } else if (line === '') {
                         // 空行是帧边界,解析并分发
                         if (pendingEvent && pendingData) {
@@ -577,7 +836,11 @@ export function agentChatStream(
             }
             // 流已关闭,但如果没收到 done 事件,触发错误让 UI 解锁
             if (!aborted && !receivedDone && !receivedError) {
-                handlers.onError?.({ code: 50000, message: 'stream closed without done', transient: true });
+                handlers.onError?.({
+                    code: 50000,
+                    message: 'stream closed without done',
+                    transient: true,
+                });
             }
         } catch (err: unknown) {
             if (aborted) return; // 用户手动关闭,不回调 error
@@ -591,8 +854,45 @@ export function agentChatStream(
     return {
         close: () => {
             aborted = true;
-            reader?.cancel();
+            controller.abort();
+            const cancelPromise = reader?.cancel();
+            if (cancelPromise) void cancelPromise.catch(() => undefined);
         },
+    };
+}
+
+function decodeAgentStreamHttpError(status: number, body: string): AgentErrorEvent {
+    let payload: unknown;
+    try {
+        payload = JSON.parse(body);
+    } catch {
+        return {
+            code: status,
+            message: `HTTP ${status}`,
+            // During staged rollout the stream route may lag behind the JSON
+            // route, and gateways commonly return HTML/plain-text 404/405.
+            transient: status >= 500 || status === 404 || status === 405,
+        };
+    }
+    const envelope = isUnknownRecord(payload) ? payload : undefined;
+    const nestedError = envelope ? readRecordProperty(envelope, 'error') : undefined;
+    const source = nestedError ?? envelope;
+    const code = readStringOrNumberProperty(source, 'code') ?? status;
+    const effectiveStatus = readNumberProperty(source, 'http_status') ?? status;
+    const message =
+        readStringProperty(source, 'message') ??
+        readStringProperty(envelope, 'message') ??
+        readStringProperty(envelope, 'error') ??
+        `HTTP ${status}`;
+    return {
+        code,
+        message,
+        transient:
+            isRetryableSummaryWorkspaceCode(code) ||
+            effectiveStatus >= 500 ||
+            // Allow one stream-to-JSON fallback while 404/405 indicates that gap.
+            effectiveStatus === 404 ||
+            effectiveStatus === 405,
     };
 }
 
@@ -792,14 +1092,21 @@ export async function regenerateSummary(taskId: number, body?: { topic?: string 
 export async function streamRefineSummary(
     taskId: number,
     body: { feedback: string; base_result_id: number },
-    options: { signal?: AbortSignal; onEvent: (event: SummaryStreamEvent) => void },
+    options: {
+        signal?: AbortSignal;
+        onEvent: (event: SummaryStreamEvent) => void;
+    },
 ): Promise<void> {
-    await streamRequest(`/summaries/${taskId}/refine/stream`, {
-        method: "POST",
-        headers: buildStreamHeaders(true),
-        body: JSON.stringify(body),
-        signal: options.signal,
-    }, options.onEvent);
+    await streamRequest(
+        `/summaries/${taskId}/refine/stream`,
+        {
+            method: 'POST',
+            headers: buildStreamHeaders(true),
+            body: JSON.stringify(body),
+            signal: options.signal,
+        },
+        options.onEvent,
+    );
 }
 
 export async function refineSummary(
@@ -826,15 +1133,15 @@ export async function refineSummary(
     } catch (err: unknown) {
         if (axios.isCancel(err)) throw err;
         const axiosErr = err as { code?: string; response?: { status?: number } };
-        const msg = axiosErr?.code === 'ECONNABORTED'
-            ? 'Summary refine request timed out. Please check whether summary-api can reach the LLM service.'
-            : extractErrorMessage(err);
+        const msg =
+            axiosErr?.code === 'ECONNABORTED'
+                ? 'Summary refine request timed out. Please check whether summary-api can reach the LLM service.'
+                : extractErrorMessage(err);
         const error = new Error(msg) as Error & { status?: number };
         if (axiosErr?.response?.status) error.status = axiosErr.response.status;
         throw error;
     }
 }
-
 
 export async function regeneratePersonalSummary(
     taskId: number,
@@ -850,14 +1157,21 @@ export async function regeneratePersonalSummary(
 export async function streamRefinePersonalSummary(
     taskId: number,
     body: { feedback: string; base_result_id: number; base_version?: number },
-    options: { signal?: AbortSignal; onEvent: (event: SummaryStreamEvent) => void },
+    options: {
+        signal?: AbortSignal;
+        onEvent: (event: SummaryStreamEvent) => void;
+    },
 ): Promise<void> {
-    await streamRequest(`/summaries/${taskId}/personal-refine/stream`, {
-        method: "POST",
-        headers: buildStreamHeaders(true),
-        body: JSON.stringify(body),
-        signal: options.signal,
-    }, options.onEvent);
+    await streamRequest(
+        `/summaries/${taskId}/personal-refine/stream`,
+        {
+            method: 'POST',
+            headers: buildStreamHeaders(true),
+            body: JSON.stringify(body),
+            signal: options.signal,
+        },
+        options.onEvent,
+    );
 }
 
 export async function refinePersonalSummary(
@@ -884,9 +1198,10 @@ export async function refinePersonalSummary(
     } catch (err: unknown) {
         if (axios.isCancel(err)) throw err;
         const axiosErr = err as { code?: string; response?: { status?: number } };
-        const msg = axiosErr?.code === 'ECONNABORTED'
-            ? 'Summary refine request timed out. Please check whether summary-api can reach the LLM service.'
-            : extractErrorMessage(err);
+        const msg =
+            axiosErr?.code === 'ECONNABORTED'
+                ? 'Summary refine request timed out. Please check whether summary-api can reach the LLM service.'
+                : extractErrorMessage(err);
         const error = new Error(msg) as Error & { status?: number };
         if (axiosErr?.response?.status) error.status = axiosErr.response.status;
         throw error;
@@ -903,14 +1218,16 @@ export async function listPersonalSummaryVersions(
 export async function restorePersonalSummaryVersion(
     taskId: number,
     versionId: number,
-): Promise<{ task_id: number; result_id: number; version_id: number; version: number }> {
+): Promise<{
+    task_id: number;
+    result_id: number;
+    version_id: number;
+    version: number;
+}> {
     return post(`/summaries/${taskId}/personal-versions/${versionId}/restore`);
 }
 
-export async function getPersonalSummaryVersion(
-    taskId: number,
-    versionId: number,
-): Promise<SummaryVersionDetail> {
+export async function getPersonalSummaryVersion(taskId: number, versionId: number): Promise<SummaryVersionDetail> {
     return get(`/summaries/${taskId}/personal-versions/${versionId}`);
 }
 
@@ -928,10 +1245,7 @@ export async function restoreSummaryVersion(
     return post(`/summaries/${taskId}/versions/${resultId}/restore`);
 }
 
-export async function getSummaryVersion(
-    taskId: number,
-    resultId: number,
-): Promise<SummaryVersionDetail> {
+export async function getSummaryVersion(taskId: number, resultId: number): Promise<SummaryVersionDetail> {
     return get(`/summaries/${taskId}/versions/${resultId}`);
 }
 
@@ -951,7 +1265,9 @@ export async function editSummary(
     } catch (err: unknown) {
         // Preserve cancellation identity so callers can use axios.isCancel(err)
         if (axios.isCancel(err)) throw err;
-        const axiosErr = err as { response?: { status?: number; data?: { error?: { message?: string } } } };
+        const axiosErr = err as {
+            response?: { status?: number; data?: { error?: { message?: string } } };
+        };
         const status = axiosErr?.response?.status;
         const msg = extractErrorMessage(err);
         const error = new Error(msg) as Error & { status?: number };
@@ -963,10 +1279,7 @@ export async function editSummary(
 // need3 + need6：编辑「自己的个人报告」。后端按 (task_id, user_id=自己) 定位，
 // 只能改自己那条，无法触碰他人；成功后后端自动触发团队总结重算（meta_summary）。
 // F2：body 严格 {content}——后端 PersonalEdit 只 bind content，不带 base_result_id（契约清洁）。
-export async function personalEditSummary(
-    taskId: number,
-    content: string,
-): Promise<{ edited_at: string }> {
+export async function personalEditSummary(taskId: number, content: string): Promise<{ edited_at: string }> {
     return put(`/summaries/${taskId}/personal-edit`, { content });
 }
 
@@ -978,12 +1291,11 @@ export async function personalEditSummary(
 // SummaryEditor.handleSave 的 409 分支硬依赖 error.status === 409，
 // put helper 的 catch 把 axios error 转成 new Error(extractErrorMessage(err))，
 // 丢失 response.status -> 409 分支永远不触发，编辑器无法关闭。
-export async function personalDraftSummary(
-    taskId: number,
-    content: string,
-): Promise<void> {
+export async function personalDraftSummary(taskId: number, content: string): Promise<void> {
     try {
-        await summaryAxios.put(`${BASE}/summaries/${taskId}/personal-draft`, { content });
+        await summaryAxios.put(`${BASE}/summaries/${taskId}/personal-draft`, {
+            content,
+        });
     } catch (err: unknown) {
         // Preserve cancellation identity so callers can use axios.isCancel(err)
         if (axios.isCancel(err)) throw err;
@@ -1014,7 +1326,6 @@ export async function leaveSummary(taskId: number): Promise<void> {
 export async function removeMember(taskId: number, uid: string): Promise<void> {
     return del(`/summaries/${taskId}/members?uid=${encodeURIComponent(uid)}`);
 }
-
 
 // refineAgentSummary 已移除 — 反馈修改改为在智能总结 chat 里引用总结迭代
 // (见 CHAT-REFERENCE-BASED-DESIGN-v1)。后端 POST /summaries/:id/refine 端点也已删除。
@@ -1077,7 +1388,7 @@ export async function getParticipants(taskId: number): Promise<Participant[]> {
 
 export async function getTemplates(): Promise<SummaryTemplate[]> {
     const data = await get<{ templates: TopicTemplate[] }>('/summary-templates');
-    return (data?.templates || []).map(t => ({
+    return (data?.templates || []).map((t) => ({
         template_id: t.id,
         name: t.label,
         description: t.description,
@@ -1103,7 +1414,10 @@ export async function updateMyTopicTemplate(
     templateId: string,
     payload: CustomTopicTemplatePayload,
 ): Promise<TopicTemplate> {
-    const data = await put<{ template: TopicTemplate }>(`/summary-templates/${encodeURIComponent(templateId)}/my`, payload);
+    const data = await put<{ template: TopicTemplate }>(
+        `/summary-templates/${encodeURIComponent(templateId)}/my`,
+        payload,
+    );
     return data.template;
 }
 
@@ -1113,7 +1427,11 @@ export async function resetMyTopicTemplate(templateId: string): Promise<TopicTem
 }
 
 export async function createCustomTopicTemplate(payload: CustomTopicTemplatePayload): Promise<TopicTemplate> {
-    const data = await post<{ template: TopicTemplate }>('/summary-templates/my', payload, 'smart_summary_custom_template_created');
+    const data = await post<{ template: TopicTemplate }>(
+        '/summary-templates/my',
+        payload,
+        'smart_summary_custom_template_created',
+    );
     return data.template;
 }
 
@@ -1121,7 +1439,10 @@ export async function updateCustomTopicTemplate(
     templateId: string,
     payload: CustomTopicTemplatePayload,
 ): Promise<TopicTemplate> {
-    const data = await put<{ template: TopicTemplate }>(`/summary-templates/my/${encodeURIComponent(templateId)}`, payload);
+    const data = await put<{ template: TopicTemplate }>(
+        `/summary-templates/my/${encodeURIComponent(templateId)}`,
+        payload,
+    );
     return data.template;
 }
 
@@ -1142,7 +1463,10 @@ export async function inferScope(topic: string): Promise<InferResult> {
 function normalizeScheduleItem<T extends { is_active?: unknown } | null | undefined>(item: T): T {
     if (!item || typeof item !== 'object') return item;
     const v = (item as { is_active?: unknown }).is_active;
-    return { ...(item as object), is_active: v === true || v === 1 || v === '1' } as T;
+    return {
+        ...(item as object),
+        is_active: v === true || v === 1 || v === '1',
+    } as T;
 }
 
 export async function getSchedule(scheduleId: number): Promise<ScheduleItem> {
@@ -1150,7 +1474,9 @@ export async function getSchedule(scheduleId: number): Promise<ScheduleItem> {
 }
 
 export async function createSchedule(params: CreateScheduleParams): Promise<ScheduleItem> {
-    return normalizeScheduleItem(await post<ScheduleItem>('/summary-schedules', params, 'smart_summary_timer_configured'));
+    return normalizeScheduleItem(
+        await post<ScheduleItem>('/summary-schedules', params, 'smart_summary_timer_configured'),
+    );
 }
 
 export async function listSchedules(): Promise<ScheduleItem[]> {
@@ -1159,7 +1485,9 @@ export async function listSchedules(): Promise<ScheduleItem[]> {
 }
 
 export async function updateSchedule(scheduleId: number, params: UpdateScheduleParams): Promise<ScheduleItem> {
-    return normalizeScheduleItem(await put<ScheduleItem>(`/summary-schedules/${scheduleId}`, params, 'smart_summary_timer_configured'));
+    return normalizeScheduleItem(
+        await put<ScheduleItem>(`/summary-schedules/${scheduleId}`, params, 'smart_summary_timer_configured'),
+    );
 }
 
 export async function deleteSchedule(scheduleId: number): Promise<void> {
@@ -1167,7 +1495,11 @@ export async function deleteSchedule(scheduleId: number): Promise<void> {
 }
 
 export async function toggleSchedule(scheduleId: number, isActive: boolean): Promise<ScheduleItem> {
-    return normalizeScheduleItem(await put<ScheduleItem>(`/summary-schedules/${scheduleId}/toggle`, { is_active: isActive }));
+    return normalizeScheduleItem(
+        await put<ScheduleItem>(`/summary-schedules/${scheduleId}/toggle`, {
+            is_active: isActive,
+        }),
+    );
 }
 
 // V5：schedule 级「一次性确认」。对当前登录用户在该 schedule 的 participant_config
@@ -1179,7 +1511,11 @@ export async function confirmSchedule(scheduleId: number): Promise<void> {
 
 // ─── Candidate Selection ───────────────────────────────
 
-export async function getChatCandidates(params?: { keyword?: string; chat_type?: string; include_archived?: boolean }): Promise<ChatCandidate[]> {
+export async function getChatCandidates(params?: {
+    keyword?: string;
+    chat_type?: string;
+    include_archived?: boolean;
+}): Promise<ChatCandidate[]> {
     const data = await get<ChatCandidate[]>('/summary-chat-candidates', params as Record<string, unknown>);
     return data || [];
 }

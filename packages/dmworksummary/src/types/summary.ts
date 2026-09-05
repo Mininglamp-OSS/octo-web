@@ -357,13 +357,13 @@ export interface CreateAgentSummaryParams {
 }
 
 /**
- * v2 完成判定(SS-07 / SS-11)。COMPLETE = 完整交付;PARTIAL = 有缺口但可保存
- * (前端应展示警示 + gaps)。FAILED 不会出现在成功响应里——后端直接 422/42200 拒存。
+ * v2 完成判定(SS-07 / SS-11)。COMPLETE = 完整交付;PARTIAL = 有覆盖缺口;
+ * FAILED = 总结已保存，但质量门发现硬性缺口。PARTIAL / FAILED 都应向用户展示 gaps 警示。
  */
-export type FinishStatus = 'COMPLETE' | 'PARTIAL';
+export type FinishStatus = 'COMPLETE' | 'PARTIAL' | 'FAILED';
 
 /**
- * v2 覆盖/质量缺口(SS-07 finishgate.Gap)。用于 PARTIAL 时向用户披露"哪里没盖全"。
+ * v2 覆盖/质量缺口(SS-07 finishgate.Gap)。用于 PARTIAL / FAILED 时向用户披露具体问题。
  */
 export interface CoverageGap {
     /** 缺口种类,如 tool_error / coverage / evidence 等(后端枚举,前端按需归类展示)。 */
@@ -384,9 +384,9 @@ export interface CreateAgentSummaryResult {
     task_no: string;
     status: number;
     created_at: string;
-    /** v2:COMPLETE / PARTIAL(FAILED 走 422,不会到这里)。 */
+    /** v2:COMPLETE / PARTIAL / FAILED；三者都表示保存请求已成功。 */
     finish_status?: FinishStatus;
-    /** v2:PARTIAL 时的覆盖缺口清单;COMPLETE 时为空数组。 */
+    /** v2:PARTIAL / FAILED 时的缺口清单;COMPLETE 时为空数组。 */
     gaps?: CoverageGap[];
 }
 export interface ChatMessage {
@@ -476,7 +476,7 @@ export interface AgentDoneEvent {
  * Agent SSE 流式事件类型 — error 事件（任何环节都可能来）
  */
 export interface AgentErrorEvent {
-    code: number;
+    code: string | number;
     message: string;
     transient?: boolean;  // true = 传输层失败可重试, false/undefined = 后端 error 不重试
 }

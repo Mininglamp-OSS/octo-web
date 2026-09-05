@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import axios from 'axios';
 import { Dap } from '@octo/base';
+import type { SummaryWorkspaceChatRequestDTO } from '../../bridge/summaryWorkbench/protocol';
 
 const { mockGet, mockPost, mockPut, mockDelete, mockRequestUse, mockResponseUse } = vi.hoisted(() => ({
     mockGet: vi.fn(),
@@ -441,6 +442,286 @@ describe('summaryApi', () => {
             await expect(
                 agentChat({ message: '总结今天', session_id: 's-1' }),
             ).rejects.toThrow('x');
+        });
+    });
+
+    describe('summary workspace transport', () => {
+        const request: SummaryWorkspaceChatRequestDTO = {
+            session_id: 'session-1',
+            profile: 'summary_workspace',
+            action: 'chat',
+            message: '帮我总结风险',
+            input_origin: 'user',
+            request_id: 'request-1',
+            scope_version: 2,
+            summary_context: {
+                selected_channels: [],
+                participants: [],
+                template: null,
+                time_range: null,
+                referenced_task_ids: [],
+            },
+        };
+
+        it('posts the structured chat request without changing the legacy endpoint', async () => {
+            const { postSummaryWorkspaceTurn } = await import('../summaryApi');
+            const data = { contract_version: '2', result_type: 'clarification' };
+            mockPost.mockResolvedValueOnce({ data: { code: 0, data } });
+
+            await expect(postSummaryWorkspaceTurn(request)).resolves.toEqual(data);
+            expect(mockPost).toHaveBeenCalledWith('/summary/api/v1/agent/chat', request, { signal: undefined, timeout: 120000 });
+        });
+
+        it('loads capabilities and History through strict envelopes', async () => {
+            const { getSummaryWorkspaceCapabilities, getSummaryWorkspaceHistory } = await import('../summaryApi');
+            mockGet
+                .mockResolvedValueOnce({
+                    data: { code: 0, data: { enabled: true, contract_version: '2' } },
+                })
+                .mockResolvedValueOnce({
+                    data: { code: 0, data: { session_id: 'session/1' } },
+                });
+
+            await expect(getSummaryWorkspaceCapabilities({ spaceId: 'space-a' })).resolves.toMatchObject({
+                enabled: true,
+            });
+            await expect(getSummaryWorkspaceHistory('session/1')).resolves.toEqual({
+                session_id: 'session/1',
+            });
+
+            expect(mockGet).toHaveBeenNthCalledWith(1, '/summary/api/v1/summary-workbench/capabilities', {
+                headers: { 'X-Space-Id': 'space-a' },
+                signal: undefined,
+            });
+            expect(mockGet).toHaveBeenNthCalledWith(2, '/summary/api/v1/agent/chat/history', {
+                params: { session_id: 'session/1', profile: 'summary_workspace' },
+                signal: undefined,
+            });
+        });
+
+        it('treats a successful History envelope with data:null as an empty session', async () => {
+            const { getSummaryWorkspaceHistory } = await import('../summaryApi');
+            mockGet.mockResolvedValueOnce({ data: { code: 0, data: null } });
+
+            await expect(getSummaryWorkspaceHistory('empty-session')).resolves.toBeNull();
+        });
+
+        it('sends proposal confirmation and preview save with idempotency headers', async () => {
+            const { confirmSummaryWorkspaceProposal, saveSummaryWorkspacePreview } = await import('../summaryApi');
+            mockPost
+                .mockResolvedValueOnce({
+                    data: { code: 0, data: { result_type: 'workflow_started' } },
+                })
+                .mockResolvedValueOnce({
+                    data: {
+                        code: 0,
+                        data: { task_id: 89, task_no: 'SUM-89', status: 3, created_at: '2026-08-26T10:00:00Z' },
+                    },
+                });
+
+            await confirmSummaryWorkspaceProposal(
+                {
+                    session_id: 'session/1',
+                    proposal_version: 3,
+                    proposal_token: 'proposal-token',
+                    scope_version: 2,
+                    summary_context: request.summary_context,
+                },
+                { idempotencyKey: 'confirm-key' },
+            );
+            await saveSummaryWorkspacePreview(
+                {
+                    session_id: 'session/1',
+                    agent_message_id: 18,
+                    snapshot_version: 1,
+                    scope_version: 2,
+                    expected_artifact_version: 3,
+                },
+                { idempotencyKey: 'save-key' },
+            );
+
+            expect(mockPost).toHaveBeenNthCalledWith(
+                1,
+                '/summary/api/v1/agent/summary-sessions/session%2F1/proposals/3/confirm',
+                {
+                    proposal_token: 'proposal-token',
+                    scope_version: 2,
+                    summary_context: request.summary_context,
+                },
+                { headers: { 'Idempotency-Key': 'confirm-key' }, signal: undefined },
+            );
+            expect(mockPost).toHaveBeenNthCalledWith(
+                2,
+                '/summary/api/v1/summaries/agent',
+                {
+                    session_id: 'session/1',
+                    agent_message_id: 18,
+                    snapshot_version: 1,
+                    scope_version: 2,
+                    expected_artifact_version: 3,
+                },
+                { headers: { 'Idempotency-Key': 'save-key' }, signal: undefined },
+            );
+        });
+
+        it('preserves business errors instead of flattening their code', async () => {
+            const { postSummaryWorkspaceTurn } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                data: {
+                    code: 40901,
+                    message: 'scope stale',
+                    detail: 'reload',
+                    data: null,
+                },
+            });
+
+            const error = await postSummaryWorkspaceTurn(request).catch((caught) => caught);
+            expect(error).toMatchObject({
+                name: 'SummaryWorkspaceApiError',
+                kind: 'business',
+                code: 40901,
+                detail: 'reload',
+                retryable: false,
+            });
+        });
+
+        it('preserves HTTP 409 business recovery metadata', async () => {
+            const { postSummaryWorkspaceTurn } = await import('../summaryApi');
+            mockPost.mockRejectedValueOnce(
+                Object.assign(new Error('conflict'), {
+                    response: {
+                        status: 409,
+                        data: {
+                            code: 40009,
+                            message: 'idempotency key conflict',
+                            data: {
+                                task_id: 89,
+                                recovery_action: 'open_existing_summary',
+                            },
+                        },
+                    },
+                }),
+            );
+
+            await expect(postSummaryWorkspaceTurn(request)).rejects.toMatchObject({
+                kind: 'business',
+                code: 40009,
+                httpStatus: 409,
+                taskId: 89,
+                recoveryAction: 'open_existing_summary',
+                retryable: false,
+            });
+        });
+
+        it('accepts existing_task_id from idempotency conflict metadata', async () => {
+            const { postSummaryWorkspaceTurn } = await import('../summaryApi');
+            mockPost.mockRejectedValueOnce(
+                Object.assign(new Error('conflict'), {
+                    response: {
+                        status: 409,
+                        data: {
+                            code: 40009,
+                            message: 'idempotency key conflict',
+                            data: {
+                                existing_task_id: 91,
+                                recovery_action: 'open_existing_summary',
+                            },
+                        },
+                    },
+                }),
+            );
+
+            await expect(postSummaryWorkspaceTurn(request)).rejects.toMatchObject({
+                kind: 'business',
+                code: 40009,
+                httpStatus: 409,
+                taskId: 91,
+                recoveryAction: 'open_existing_summary',
+                retryable: false,
+            });
+        });
+
+        it('classifies HTTP 40902 as retryable transport like SSE', async () => {
+            const { postSummaryWorkspaceTurn } = await import('../summaryApi');
+            mockPost.mockRejectedValueOnce(
+                Object.assign(new Error('in progress'), {
+                    response: {
+                        status: 409,
+                        data: {
+                            code: 40902,
+                            message: 'request still in progress',
+                        },
+                    },
+                }),
+            );
+
+            await expect(postSummaryWorkspaceTurn(request)).rejects.toMatchObject({
+                kind: 'transport',
+                code: 40902,
+                httpStatus: 409,
+                retryable: true,
+            });
+        });
+
+        it('recognizes nested structured business errors', async () => {
+            const { postSummaryWorkspaceTurn } = await import('../summaryApi');
+            mockPost.mockRejectedValueOnce(
+                Object.assign(new Error('unprocessable'), {
+                    response: {
+                        status: 422,
+                        data: {
+                            error: {
+                                code: 42200,
+                                message: 'summary validation failed',
+                                http_status: 422,
+                                details: 'coverage gap',
+                            },
+                        },
+                    },
+                }),
+            );
+
+            await expect(postSummaryWorkspaceTurn(request)).rejects.toMatchObject({
+                kind: 'business',
+                code: 42200,
+                httpStatus: 422,
+                detail: 'coverage gap',
+                retryable: false,
+            });
+        });
+
+        it('keeps HTTP 500 envelopes retryable transport errors', async () => {
+            const { postSummaryWorkspaceTurn } = await import('../summaryApi');
+            mockPost.mockRejectedValueOnce(
+                Object.assign(new Error('server failed'), {
+                    response: {
+                        status: 500,
+                        data: {
+                            code: 50000,
+                            message: 'temporary backend failure',
+                        },
+                    },
+                }),
+            );
+
+            await expect(postSummaryWorkspaceTurn(request)).rejects.toMatchObject({
+                kind: 'transport',
+                code: 50000,
+                httpStatus: 500,
+                retryable: true,
+            });
+        });
+
+        it('rejects a missing envelope code or data as a protocol error', async () => {
+            const { postSummaryWorkspaceTurn } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({ data: { data: {} } }).mockResolvedValueOnce({ data: { code: 0, data: null } });
+
+            await expect(postSummaryWorkspaceTurn(request)).rejects.toMatchObject({
+                kind: 'protocol',
+            });
+            await expect(postSummaryWorkspaceTurn(request)).rejects.toMatchObject({
+                kind: 'protocol',
+            });
         });
     });
 
