@@ -555,6 +555,16 @@
   white-space: pre-wrap;
 }
 
+.octo-mail-thread-card__html-body {
+  display: block;
+  width: 100%;
+  min-height: 80px;
+  margin: 0;
+  border: 0;
+  color-scheme: only light;
+  background: Canvas;
+}
+
 .octo-mail-thread-card__attachments {
   display: grid;
   gap: var(--wk-sp-2);
@@ -633,6 +643,22 @@
 .octo-mail-thread-card__attachments-note {
   color: var(--wk-text-tertiary);
   font-size: var(--wk-text-size-xs);
+}
+
+.octo-mail-body-truncated {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  margin-bottom: var(--wk-sp-3);
+  padding: var(--wk-sp-3);
+  color: var(--wk-text-secondary);
+  background: var(--wk-bg-base);
+  border-radius: var(--wk-r-sm);
+  font-size: var(--wk-text-size-sm);
+}
+
+.octo-mail-body-truncated > span {
+  flex: 1;
 }
 
 .octo-mail-raw-hint {

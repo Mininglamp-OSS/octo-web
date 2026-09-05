@@ -904,6 +904,9 @@ importers:
       '@octo/base':
         specifier: workspace:*
         version: link:../dmworkbase
+      dompurify:
+        specifier: ^3.4.2
+        version: 3.4.2
       lucide-react:
         specifier: ^0.577.0
         version: 0.577.0(react@18.3.1)
