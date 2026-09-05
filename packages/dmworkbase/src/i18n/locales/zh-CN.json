@@ -89,6 +89,7 @@
   "download.failed": "下载失败：{{filename}}",
   "channelSearch.downloadUnavailable": "暂无可下载地址",
   "channelSearch.emptyHint": "输入关键字或使用筛选查找消息记录",
+  "channelSearch.fileContentHit": "正文命中",
   "channelSearch.fileMore": "文件操作",
   "channelSearch.filter.clear": "清除",
   "channelSearch.filter.apply": "确定",

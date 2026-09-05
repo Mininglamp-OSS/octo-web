@@ -6,6 +6,14 @@ type HighlightRange = {
   end: number;
 };
 
+/**
+ * Re-exported from `../../Service/decodeServerEscapedHighlight` (a dep-free
+ * Service-layer module) so downstream data-layer callers can consume this
+ * helper without pulling React/App into their test boundaries. That module
+ * carries the full behavioural contract — see its top-of-file comment.
+ */
+export { decodeServerEscapedHighlight } from "../../Service/decodeServerEscapedHighlight";
+
 export type ChannelSearchSnippetToken =
   | {
       type: "text";
@@ -19,10 +27,7 @@ export type ChannelSearchSnippetToken =
       highlighted: boolean;
     };
 
-export function parseChannelSearchSnippetHighlights(
-  text = "",
-  keyword = ""
-) {
+export function parseChannelSearchSnippetHighlights(text = "", keyword = "") {
   const markPattern = /<mark>([\s\S]*?)<\/mark>/gi;
   const ranges: HighlightRange[] = [];
   const parts: string[] = [];
@@ -32,6 +37,12 @@ export function parseChannelSearchSnippetHighlights(
 
   while ((match = markPattern.exec(text))) {
     if (match.index > cursor) {
+      // Encoding-agnostic: caller decodes at the mapper boundary for fields
+      // whose contract says "server-escaped" (currently NameHighlight and
+      // ContentSnippet on FileHit). Pre-existing shared paths (MessageHit
+      // .Snippet, richText, mergeForward) stay raw and are passed through
+      // verbatim, so a genuine `&amp;` a user typed in a message body is
+      // preserved instead of silently rewritten to `&`.
       const plainText = text.slice(cursor, match.index);
       parts.push(plainText);
       plainLength += plainText.length;
@@ -186,11 +197,7 @@ export function buildChannelSearchSnippetTokens(
     const matchIndex = match?.index;
     const matchedText = match?.[0];
 
-    if (
-      matchIndex === undefined ||
-      !matchedText ||
-      matchedText.length === 0
-    ) {
+    if (matchIndex === undefined || !matchedText || matchedText.length === 0) {
       break;
     }
 

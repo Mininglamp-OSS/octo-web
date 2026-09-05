@@ -1,6 +1,7 @@
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 import { ChannelTypeCommunityTopic } from "./Const";
 import { parseThreadChannelId } from "./Thread";
+import { decodeServerEscapedHighlight } from "./decodeServerEscapedHighlight";
 import type {
   ChannelSearchFileInfo,
   ChannelSearchFilters,
@@ -132,6 +133,8 @@ export type FileSearchHit = {
   file_ext?: string;
   download_url?: string;
   preview_url?: string | null;
+  name_highlight?: string;
+  content_snippet?: string;
   sender_id?: string;
   sender_name?: string;
   sender_avatar_url?: string;
@@ -460,6 +463,12 @@ export function mapFileHit(
     url: hit.preview_url || hit.download_url || "",
     downloadUrl: hit.download_url,
     previewUrl: hit.preview_url,
+    nameHighlight: hit.name_highlight
+      ? decodeServerEscapedHighlight(hit.name_highlight)
+      : undefined,
+    contentSnippet: hit.content_snippet
+      ? decodeServerEscapedHighlight(hit.content_snippet)
+      : undefined,
   };
   return {
     id: hit.message_id || `${hit.message_seq || 0}`,

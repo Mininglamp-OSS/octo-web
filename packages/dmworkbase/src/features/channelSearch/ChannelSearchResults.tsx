@@ -495,6 +495,42 @@ const FileInlineResult = React.memo(function FileInlineResult({
     fileName,
     item.file?.extension
   );
+  // File-name label: prefer the server-side <mark>-tagged whole-field
+  // nameHighlight so analyzer-mediated matches (English stemming, CJK token
+  // analysis, synonyms) and extension-only matches (query "xlsx" -> data.xlsx)
+  // are highlighted here the same way they are in the File tab. This branch
+  // shows the full name including extension because the server marks may
+  // straddle or fall inside the extension, and stripping around live <mark>
+  // tags safely is fragile. When nameHighlight is absent the chat-tab keeps
+  // its established extension-stripped inline form + client-side keyword
+  // fallback.
+  const nameHighlight = item.file?.nameHighlight;
+  // Prefer server-side whole-field highlight when present; `||` (not `??`)
+  // matches the File-tab convention at FileResultItem (line ~646) and the
+  // documented contract at SearchTypes.ts:56-58 which treats an empty string
+  // as "absent" (server may either omit the field or return empty; both fall
+  // through to the plain client-side name).
+  const nameLabelText = nameHighlight || inlineFileName;
+  // The below-card body-content match block: rendered when the server
+  // returned a highlighted body fragment for this file message. Sibling to
+  // the file card, never modifies it; a name-only hit renders no extra DOM.
+  const contentSnippet = item.file?.contentSnippet;
+
+  const fileCard = (
+    <div className="wk-channel-search-inline-file-card">
+      <div className="wk-channel-search-inline-file-icon">
+        <img src={fileIconSrc} alt="" />
+      </div>
+      <div className="wk-channel-search-inline-file-body">
+        <div className="wk-channel-search-inline-file-name">
+          <ChannelSearchSnippetContent text={nameLabelText} keyword={keyword} />
+        </div>
+        <div className="wk-channel-search-inline-file-size">
+          {compactFileSize(item.file?.size || 0)}
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="wk-channel-search-result wk-channel-search-file-inline">
@@ -515,22 +551,22 @@ const FileInlineResult = React.memo(function FileInlineResult({
             })}
           </span>
         </div>
-        <div className="wk-channel-search-inline-file-card">
-          <div className="wk-channel-search-inline-file-icon">
-            <img src={fileIconSrc} alt="" />
-          </div>
-          <div className="wk-channel-search-inline-file-body">
-            <div className="wk-channel-search-inline-file-name">
+        {contentSnippet ? (
+          <>
+            {fileCard}
+            <div className="wk-channel-search-file-snippet-below">
+              <span className="wk-channel-search-file-snippet-below-label">
+                {t("base.channelSearch.fileContentHit")}
+              </span>
               <ChannelSearchSnippetContent
-                text={inlineFileName}
+                text={contentSnippet}
                 keyword={keyword}
               />
             </div>
-            <div className="wk-channel-search-inline-file-size">
-              {compactFileSize(item.file?.size || 0)}
-            </div>
-          </div>
-        </div>
+          </>
+        ) : (
+          fileCard
+        )}
       </div>
       {canLocateChannelSearchItem(item) && (
         <button
@@ -609,6 +645,11 @@ const FileResultItem = React.memo(function FileResultItem({
   const menuRef = useRef<HTMLDivElement>(null);
   const sender = resolveSender(item, getSender);
   const fileName = item.file?.name || t("base.conversation.file.unknown");
+  // Prefer the server-side highlighted name (keyword wrapped in <mark>). The
+  // snippet component parses those marks; when absent it falls back to
+  // client-side keyword highlighting of the raw name.
+  const fileNameContent = item.file?.nameHighlight || fileName;
+  const contentSnippet = item.file?.contentSnippet;
   const fileIconSrc = resolveChannelSearchFileIconSrc(
     fileName,
     item.file?.extension
@@ -651,8 +692,19 @@ const FileResultItem = React.memo(function FileResultItem({
       </div>
       <div className="wk-channel-search-file-body">
         <div className="wk-channel-search-file-name">
-          <ChannelSearchSnippetContent text={fileName} keyword={keyword} />
+          <ChannelSearchSnippetContent
+            text={fileNameContent}
+            keyword={keyword}
+          />
         </div>
+        {contentSnippet && (
+          <div className="wk-channel-search-file-content-snippet">
+            <ChannelSearchSnippetContent
+              text={contentSnippet}
+              keyword={keyword}
+            />
+          </div>
+        )}
         <div className="wk-channel-search-file-meta">
           <span>{sender.name}</span>
           <span>{compactFileSize(item.file?.size || 0)}</span>
