@@ -21,6 +21,7 @@ import { resolveApiURL } from "../apiURL";
 import appEnUS from "../i18n/en-US.json";
 import appZhCN from "../i18n/zh-CN.json";
 import { installCommunicationAuthExpiryHandler } from "./authLifecycle";
+import { assertClientFeatureBootstrap } from "../client-feature/bootstrapContract";
 import { CommunicationShell } from "./CommunicationShell";
 import { requireHostBridge } from "./hostBridge";
 import { reportStartupFailure } from "./startupFailure";
@@ -28,9 +29,7 @@ import { reportStartupFailure } from "./startupFailure";
 async function main() {
   const host = requireHostBridge();
   const bootstrap = await host.getBootstrap();
-  if (bootstrap.bridgeVersion !== 1 || bootstrap.featureId !== "communication") {
-    throw new Error(`Unsupported communication bridge version: ${bootstrap.bridgeVersion}`);
-  }
+  assertClientFeatureBootstrap(bootstrap, "communication");
 
   WKApp.apiClient.config.apiURL = resolveApiURL({
     isDesktop: true,

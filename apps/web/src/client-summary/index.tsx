@@ -23,6 +23,7 @@ import { resolveApiURL } from "../apiURL";
 import appEnUS from "../i18n/en-US.json";
 import appZhCN from "../i18n/zh-CN.json";
 import { installFeatureAuthExpiryHandler } from "../client-feature/authLifecycle";
+import { assertClientFeatureBootstrap } from "../client-feature/bootstrapContract";
 import { SummaryShell } from "./SummaryShell";
 import { requireSummaryHostBridge } from "./hostBridge";
 import { reportSummaryStartupFailure } from "./startupFailure";
@@ -30,11 +31,7 @@ import { reportSummaryStartupFailure } from "./startupFailure";
 async function main() {
   const host = requireSummaryHostBridge();
   const bootstrap = await host.getBootstrap();
-  if (bootstrap.bridgeVersion !== 1 || bootstrap.featureId !== "summary") {
-    throw new Error(
-      `Unsupported summary bridge version: ${bootstrap.bridgeVersion}`
-    );
-  }
+  assertClientFeatureBootstrap(bootstrap, "summary");
 
   WKApp.apiClient.config.apiURL = resolveApiURL({
     isDesktop: true,

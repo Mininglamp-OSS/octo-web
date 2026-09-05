@@ -19,6 +19,7 @@ import { resolveApiURL } from "../apiURL";
 import appEnUS from "../i18n/en-US.json";
 import appZhCN from "../i18n/zh-CN.json";
 import { installFeatureAuthExpiryHandler } from "../client-feature/authLifecycle";
+import { assertClientFeatureBootstrap } from "../client-feature/bootstrapContract";
 import { AppsShell } from "./AppsShell";
 import { requireAppsHostBridge } from "./hostBridge";
 import { reportAppsStartupFailure } from "./startupFailure";
@@ -26,11 +27,7 @@ import { reportAppsStartupFailure } from "./startupFailure";
 async function main() {
   const host = requireAppsHostBridge();
   const bootstrap = await host.getBootstrap();
-  if (bootstrap.bridgeVersion !== 1 || bootstrap.featureId !== "apps") {
-    throw new Error(
-      `Unsupported apps bridge version: ${bootstrap.bridgeVersion}`
-    );
-  }
+  assertClientFeatureBootstrap(bootstrap, "apps");
 
   WKApp.apiClient.config.apiURL = resolveApiURL({
     isDesktop: true,
