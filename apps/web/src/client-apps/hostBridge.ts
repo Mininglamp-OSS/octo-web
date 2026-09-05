@@ -2,6 +2,7 @@ import type { AppBotConversationTarget } from "@dmwork/appbot";
 
 export interface AppsBootstrap {
   bridgeVersion: 1;
+  featureId: "apps";
   session: {
     uid: string;
     token: string;

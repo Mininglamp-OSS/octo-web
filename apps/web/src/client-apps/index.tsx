@@ -26,7 +26,7 @@ import { reportAppsStartupFailure } from "./startupFailure";
 async function main() {
   const host = requireAppsHostBridge();
   const bootstrap = await host.getBootstrap();
-  if (bootstrap.bridgeVersion !== 1) {
+  if (bootstrap.bridgeVersion !== 1 || bootstrap.featureId !== "apps") {
     throw new Error(
       `Unsupported apps bridge version: ${bootstrap.bridgeVersion}`
     );

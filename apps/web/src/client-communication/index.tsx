@@ -28,7 +28,7 @@ import { reportStartupFailure } from "./startupFailure";
 async function main() {
   const host = requireHostBridge();
   const bootstrap = await host.getBootstrap();
-  if (bootstrap.bridgeVersion !== 1) {
+  if (bootstrap.bridgeVersion !== 1 || bootstrap.featureId !== "communication") {
     throw new Error(`Unsupported communication bridge version: ${bootstrap.bridgeVersion}`);
   }
 

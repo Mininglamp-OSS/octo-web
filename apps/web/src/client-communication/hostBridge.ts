@@ -10,6 +10,7 @@ export interface ConversationTarget {
 
 export interface CommunicationBootstrap {
   bridgeVersion: 1;
+  featureId: "communication";
   session: {
     uid: string;
     token: string;

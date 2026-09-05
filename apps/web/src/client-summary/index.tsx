@@ -30,7 +30,7 @@ import { reportSummaryStartupFailure } from "./startupFailure";
 async function main() {
   const host = requireSummaryHostBridge();
   const bootstrap = await host.getBootstrap();
-  if (bootstrap.bridgeVersion !== 1) {
+  if (bootstrap.bridgeVersion !== 1 || bootstrap.featureId !== "summary") {
     throw new Error(
       `Unsupported summary bridge version: ${bootstrap.bridgeVersion}`
     );

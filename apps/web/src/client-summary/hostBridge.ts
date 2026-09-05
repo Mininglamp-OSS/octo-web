@@ -8,6 +8,7 @@ import type { SummaryWorkspaceRoute } from "@dmwork/summary";
 
 export interface SummaryBootstrap {
   bridgeVersion: 1;
+  featureId: "summary";
   session: {
     uid: string;
     token: string;
