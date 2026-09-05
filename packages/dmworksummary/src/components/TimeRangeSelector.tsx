@@ -75,6 +75,7 @@ export function createLastDaysTimeRange(
     start: start.toISOString(),
     end: end.toISOString(),
     label,
+    source: "picker",
   };
 }
 
@@ -87,6 +88,7 @@ export function createCustomTimeRange(
     start: startOfLocalDay(start).toISOString(),
     end: endOfLocalDay(end).toISOString(),
     label,
+    source: "picker",
   };
 }
 

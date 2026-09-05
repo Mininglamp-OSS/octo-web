@@ -250,11 +250,14 @@
     "scopeChange": {
       "title": "Change the summary scope?",
       "content": "The current preview will remain in history but can no longer be saved. Generate again to use the new scope.",
+      "proposalContent": "The current collaboration proposal will become invalid and must be regenerated before collaboration can start.",
+      "changedWhileConfirming": "The summary scope changed. Please make the selection again.",
       "confirm": "Change scope"
     },
     "notice": {
       "participantsCleared": "The participant source chat changed. Select participants again.",
       "participantsPruned": "Participants outside the selected groups were removed.",
+      "participantsPrunedArtifactInvalidated": "Participant access changed. The previous result remains in history; generate a new result to continue.",
       "participantCandidatesLoadFailed": "Some group members failed to load. Try again.",
       "selectSingleChatForParticipants": "Participant selection supports up to 30 group chats only.",
       "savedWithQualityGap": "Summary saved with a quality warning: {{detail}}",

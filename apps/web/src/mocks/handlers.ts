@@ -44,7 +44,7 @@ const summaryWorkbenchCapabilityHandler = http.get(
       message: "ok",
       data: {
         enabled: false,
-        contract_version: "1",
+        contract_version: "2",
         max_time_range_days: 31,
       },
     }),

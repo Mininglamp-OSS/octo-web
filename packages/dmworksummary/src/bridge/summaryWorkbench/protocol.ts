@@ -1,6 +1,6 @@
 import type { AgentProgressEvent } from "../../types/summary";
 
-export const SUMMARY_WORKSPACE_CONTRACT_VERSION = "1";
+export const SUMMARY_WORKSPACE_CONTRACT_VERSION = "2";
 export const SUMMARY_WORKSPACE_PROFILE = "summary_workspace";
 export const SUMMARY_WORKSPACE_SNAPSHOT_VERSION = 1 as const;
 export const DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS = 31;
@@ -53,6 +53,7 @@ export interface SummaryWorkbenchTimeRangeScope {
   start: string;
   end: string;
   label: string;
+  source?: "picker" | "default" | "conversation";
 }
 
 export interface SummaryWorkbenchScope {
@@ -86,6 +87,7 @@ export interface SummaryWorkspaceTimeRangeDTO {
   start: string;
   end: string;
   label: string;
+  source: "picker" | "default" | "conversation";
 }
 
 export interface SummaryWorkspaceContextDTO {
@@ -273,6 +275,7 @@ export function serializeSummaryWorkbenchScope(
           start: scope.timeRange.start,
           end: scope.timeRange.end,
           label: scope.timeRange.label,
+          source: scope.timeRange.source ?? "picker",
         }
       : null,
     referenced_task_ids: [...scope.referencedTaskIds],

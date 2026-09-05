@@ -30,6 +30,7 @@ import {
   type SummaryWorkspaceProposalDTO,
   type SummaryWorkspaceResultType,
   type SummaryWorkspaceStateDTO,
+  type SummaryWorkspaceTimeRangeDTO,
   type SummaryWorkspaceTurnDTO,
   type SummaryWorkspaceWorkflowDTO,
 } from "./protocol";
@@ -441,6 +442,13 @@ function decodeContext(value: unknown, path: string): SummaryWorkspaceContextDTO
             start: requireString(timeRangeRecord.start, `${path}.time_range.start`),
             end: requireString(timeRangeRecord.end, `${path}.time_range.end`),
             label: requireString(timeRangeRecord.label, `${path}.time_range.label`),
+            source:
+              timeRangeRecord.source === undefined
+                ? "picker"
+                : requireTimeRangeSource(
+                    timeRangeRecord.source,
+                    `${path}.time_range.source`
+                  ),
           };
         })();
   const referencedTaskIds = requireArray(
@@ -658,6 +666,7 @@ function toWorkbenchScope(context: SummaryWorkspaceContextDTO): SummaryWorkbench
           start: context.time_range.start,
           end: context.time_range.end,
           label: context.time_range.label,
+          source: context.time_range.source,
         }
       : null,
     referencedTaskIds: [...context.referenced_task_ids],
@@ -789,6 +798,21 @@ function isSummaryWorkspaceResultType(value: string): value is SummaryWorkspaceR
 
 function isSummaryWorkspaceAction(value: string): value is SummaryWorkspaceAction {
   return (SUMMARY_WORKSPACE_ACTIONS as readonly string[]).includes(value);
+}
+
+function requireTimeRangeSource(
+  value: unknown,
+  path: string
+): SummaryWorkspaceTimeRangeDTO["source"] {
+  const source = requireString(value, path);
+  if (
+    source === "picker" ||
+    source === "default" ||
+    source === "conversation"
+  ) {
+    return source;
+  }
+  throw protocolError(`${path} must be picker, default, or conversation`);
 }
 
 function requireRecord(value: unknown, path: string): UnknownRecord {

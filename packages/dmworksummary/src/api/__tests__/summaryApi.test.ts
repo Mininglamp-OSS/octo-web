@@ -465,7 +465,7 @@ describe('summaryApi', () => {
 
         it('posts the structured chat request without changing the legacy endpoint', async () => {
             const { postSummaryWorkspaceTurn } = await import('../summaryApi');
-            const data = { contract_version: '1', result_type: 'clarification' };
+            const data = { contract_version: '2', result_type: 'clarification' };
             mockPost.mockResolvedValueOnce({ data: { code: 0, data } });
 
             await expect(postSummaryWorkspaceTurn(request)).resolves.toEqual(data);
@@ -476,7 +476,7 @@ describe('summaryApi', () => {
             const { getSummaryWorkspaceCapabilities, getSummaryWorkspaceHistory } = await import('../summaryApi');
             mockGet
                 .mockResolvedValueOnce({
-                    data: { code: 0, data: { enabled: true, contract_version: '1' } },
+                    data: { code: 0, data: { enabled: true, contract_version: '2' } },
                 })
                 .mockResolvedValueOnce({
                     data: { code: 0, data: { session_id: 'session/1' } },

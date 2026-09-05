@@ -48,7 +48,7 @@ function emptyState(scopeVersion = 1) {
 describe("summary workspace adapter", () => {
   it("maps a trusted preview and filters unknown actions", () => {
     const response = adaptSummaryWorkspaceTurn({
-      contract_version: "1",
+      contract_version: "2",
       session_id: "session-1",
       message_id: 18,
       result_type: "agent_preview",
@@ -112,7 +112,7 @@ describe("summary workspace adapter", () => {
   it("rejects preview snapshot versions other than the v1 literal", () => {
     expect(() =>
       adaptSummaryWorkspaceTurn({
-        contract_version: "1",
+        contract_version: "2",
         session_id: "session-1",
         message_id: 18,
         result_type: "agent_preview",
@@ -139,7 +139,7 @@ describe("summary workspace adapter", () => {
 
   it("preserves server-authoritative context and state for conversational turns", () => {
     const response = adaptSummaryWorkspaceTurn({
-      contract_version: "1",
+      contract_version: "2",
       session_id: "session-server",
       message_id: 19,
       result_type: "clarification",
@@ -177,7 +177,7 @@ describe("summary workspace adapter", () => {
   it("fails closed when result_type or artifact state is invalid", () => {
     expect(() =>
       adaptSummaryWorkspaceTurn({
-        contract_version: "1",
+        contract_version: "2",
         session_id: "session-1",
         message_id: 18,
         result_type: "future_result",
@@ -190,7 +190,7 @@ describe("summary workspace adapter", () => {
 
     expect(() =>
       adaptSummaryWorkspaceTurn({
-        contract_version: "1",
+        contract_version: "2",
         session_id: "session-1",
         message_id: 18,
         result_type: "agent_preview",
@@ -205,7 +205,7 @@ describe("summary workspace adapter", () => {
   it("requires completed workflows to be server-confirmed as saved", () => {
     expect(() =>
       adaptSummaryWorkspaceTurn({
-        contract_version: "1",
+        contract_version: "2",
         session_id: "session-1",
         message_id: 20,
         result_type: "workflow_completed",
@@ -232,7 +232,7 @@ describe("summary workspace adapter", () => {
 
   it("hydrates History with the latest preview as the only saveable artifact", () => {
     const hydration = adaptSummaryWorkspaceHistory({
-      contract_version: "1",
+      contract_version: "2",
       session_id: "session-1",
       messages: [
         {
@@ -279,7 +279,7 @@ describe("summary workspace adapter", () => {
 
   it("hydrates a proposal token used by deterministic confirmation", () => {
     const hydration = adaptSummaryWorkspaceHistory({
-      contract_version: "1",
+      contract_version: "2",
       session_id: "session-team",
       messages: [
         {
@@ -335,7 +335,7 @@ describe("summary workspace adapter", () => {
       ["save_preview", "continue_chat"]
     );
     const hydration = adaptSummaryWorkspaceHistory({
-      contract_version: "1",
+      contract_version: "2",
       session_id: "session-history",
       messages: [
         {
@@ -395,7 +395,7 @@ describe("summary workspace adapter", () => {
       available_actions: ["save_preview"],
     };
     const history = {
-      contract_version: "1",
+      contract_version: "2",
       session_id: "session-1",
       messages: [
         {
@@ -463,24 +463,24 @@ describe("summary workspace adapter", () => {
     expect(
       decodeSummaryWorkspaceCapabilities({
         enabled: true,
-        contract_version: "1",
+        contract_version: "2",
         max_time_range_days: 90,
         direct_team_workflow: true,
       })
     ).toEqual({
       enabled: true,
-      contract_version: "1",
+      contract_version: "2",
       max_time_range_days: 90,
       direct_team_workflow: true,
     });
     expect(
       decodeSummaryWorkspaceCapabilities({
         enabled: true,
-        contract_version: "1",
+        contract_version: "2",
       })
     ).toEqual({
       enabled: true,
-      contract_version: "1",
+      contract_version: "2",
       max_time_range_days: 31,
       direct_team_workflow: false,
     });
@@ -490,13 +490,13 @@ describe("summary workspace adapter", () => {
     expect(() =>
       decodeSummaryWorkspaceCapabilities({
         enabled: true,
-        contract_version: "2",
+        contract_version: "3",
       })
-    ).toThrow("capabilities.contract_version must be 1");
+    ).toThrow("capabilities.contract_version must be 2");
 
     expect(() =>
       adaptSummaryWorkspaceTurn({
-        contract_version: "2",
+        contract_version: "3",
         session_id: "session-1",
         message_id: 10,
         result_type: "clarification",
@@ -505,16 +505,16 @@ describe("summary workspace adapter", () => {
         available_actions: ["continue_chat"],
         state: emptyState(),
       })
-    ).toThrow("turn.contract_version must be 1");
+    ).toThrow("turn.contract_version must be 2");
 
     expect(() =>
       adaptSummaryWorkspaceHistory({
-        contract_version: "2",
+        contract_version: "3",
         session_id: "session-1",
         messages: [],
         state: emptyState(),
       })
-    ).toThrow("history.contract_version must be 1");
+    ).toThrow("history.contract_version must be 2");
   });
 
   it("decodes the existing agent-save task response", () => {

@@ -1,5 +1,5 @@
-// RED tests for PR #1593 P1-2 / P1-3 (yujiawei review 5087124100):
-// the decoder demanded an EXPLICIT null and hard-failed on an omitted key.
+// Regression coverage for PR #1593 P1-2 / P1-3 (yujiawei review 5087124100):
+// the decoder previously demanded an EXPLICIT null and hard-failed on an omitted key.
 // Go backends default to omitempty for pointer fields, so a turn whose
 // pending_proposal / workflow / current_preview keys are ABSENT (not null)
 // routed undefined into decodeProposal(undefined) etc. -> requireRecord
@@ -7,7 +7,7 @@
 // asymmetry in the envelope: getSummaryWorkspaceHistory (allowNullData)
 // threw "no data" when the backend omitted `data` instead of null.
 //
-// Expected at this head (pre-fix): these tests FAIL with protocol-error text.
+// These tests lock the accepted omitted-pointer contract.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { adaptSummaryWorkspaceTurn } from '../adapter';
@@ -16,7 +16,7 @@ import { adaptSummaryWorkspaceTurn } from '../adapter';
 // (the shape a Go omitempty backend actually emits) instead of explicit null.
 function turnWithOmittedPointers(resultType: string, extra?: Record<string, unknown>) {
   return {
-    contract_version: '1',
+    contract_version: '2',
     session_id: 'session-omit',
     request_id: 'req-omit',
     message_id: 11,

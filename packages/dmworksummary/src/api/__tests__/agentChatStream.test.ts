@@ -201,7 +201,7 @@ data: {"reply":"r","session_id":"s1","run_id":"run-abc"}
     it('preserves the structured summary workspace done payload', async () => {
         const onDone = vi.fn();
         const payload = {
-            contract_version: '1',
+            contract_version: '2',
             reply: '需要确认协作要求。',
             session_id: 'session-1',
             message_id: 22,

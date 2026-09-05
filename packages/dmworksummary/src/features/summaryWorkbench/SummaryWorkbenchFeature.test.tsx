@@ -535,6 +535,51 @@ describe("SummaryWorkbenchFeature", () => {
     ).toBeInTheDocument();
   });
 
+  it("allows sending a newly selected template after the first turn", async () => {
+    const current = controller({
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Initial request",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: true,
+      },
+      send: vi.fn().mockResolvedValue({
+        resultType: "agent_preview",
+        preview: { content: "Draft" },
+      }),
+    });
+    current.updateScope = vi.fn((nextScope: SummaryWorkbenchScope) => {
+      current.scope = nextScope;
+      return true;
+    });
+    current.setComposerValue = vi.fn((value: string) => {
+      current.viewState.inputValue = value;
+    });
+    current.restoreComposerValue = vi.fn((value: string) => {
+      current.viewState.inputValue = value;
+    });
+    mocks.useSummaryWorkbench.mockImplementation(() => current);
+
+    const view = render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() => expect(current.send).toHaveBeenCalledTimes(1));
+    view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "open-template" }));
+    fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
+    view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
+
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "true"
+    );
+  });
+
   it("warns before a scope edit makes an unsaved preview historical", () => {
     let confirmOptions: { onOk?: () => void } | undefined;
     mocks.modalConfirm.mockImplementationOnce((options) => {
@@ -578,6 +623,86 @@ describe("SummaryWorkbenchFeature", () => {
     confirmOptions?.onOk?.();
     expect(current.updateScope).toHaveBeenCalledWith(
       expect.objectContaining({ selectedChannels: [] })
+    );
+  });
+
+  it("warns before a scope edit invalidates a team proposal", () => {
+    const current = controller({
+      scope: scope({
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group", name: "Product" },
+        ],
+      }),
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [{ id: "chat-a", kind: "chat", label: "Product" }],
+        inputValue: "",
+        placeholderKey: "summary.workbench.placeholder.teamConfirmation",
+        isSending: false,
+        canSend: false,
+        card: {
+          kind: "team_confirmation",
+          isStale: false,
+          actions: ["confirm_workflow", "continue_chat"],
+        },
+      },
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "remove-chat" }));
+
+    expect(mocks.modalConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: "summary.workbench.scopeChange.proposalContent",
+      })
+    );
+    expect(current.updateScope).not.toHaveBeenCalled();
+  });
+
+  it("explains when participant pruning invalidates an active artifact", async () => {
+    mocks.loadParticipantCandidates.mockResolvedValueOnce({
+      members: [],
+      roles: new Map(),
+    });
+    const current = controller({
+      scope: scope({
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group", name: "Product" },
+        ],
+        participants: [{ userId: "user-a", userName: "Alex" }],
+      }),
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "",
+        placeholderKey: "summary.workbench.placeholder.followUp",
+        isSending: false,
+        canSend: false,
+        card: {
+          kind: "agent_preview",
+          isStale: false,
+          actions: ["save_preview", "continue_chat"],
+        },
+      },
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+
+    await waitFor(() =>
+      expect(mocks.toastWarning).toHaveBeenCalledWith(
+        "summary.workbench.notice.participantsPrunedArtifactInvalidated"
+      )
+    );
+    expect(current.updateScope).toHaveBeenCalledWith(
+      expect.objectContaining({ participants: [] })
     );
   });
 

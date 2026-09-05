@@ -8,6 +8,7 @@ import {
   deriveSummaryWorkbenchView,
   isTeamProposalConfirmable,
   markCurrentSummaryPreviewSaved,
+  summaryScopeChangeImpact,
   updateSummaryComposer,
   updateSummaryScope,
 } from "./model";
@@ -255,6 +256,8 @@ describe("summary workbench model", () => {
     expect(changed.scopeVersion).toBe(preview.scopeVersion + 1);
     expect(changed.currentPreview).toEqual(preview.currentPreview);
     expect(canSaveCurrentPreview(changed)).toBe(false);
+    expect(summaryScopeChangeImpact(preview)).toBe("preview");
+    expect(summaryScopeChangeImpact(changed)).toBeNull();
     expect(deriveSummaryWorkbenchView(changed)).toMatchObject({
       placeholderKey: "summary.workbench.placeholder.scopeChanged",
       card: {
@@ -287,6 +290,7 @@ describe("summary workbench model", () => {
     });
 
     expect(isTeamProposalConfirmable(proposed)).toBe(true);
+    expect(summaryScopeChangeImpact(proposed)).toBe("team_proposal");
 
     const changed = updateSummaryScope(proposed, {
       contextItems: [
@@ -296,6 +300,7 @@ describe("summary workbench model", () => {
     });
 
     expect(isTeamProposalConfirmable(changed)).toBe(false);
+    expect(summaryScopeChangeImpact(changed)).toBeNull();
     expect(deriveSummaryWorkbenchView(changed).card).toMatchObject({
       kind: "team_confirmation",
       isStale: true,

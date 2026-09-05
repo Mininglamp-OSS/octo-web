@@ -39,7 +39,7 @@ function state(scopeVersion = 1) {
 
 function clarificationTurn() {
   return {
-    contract_version: "1",
+    contract_version: "2",
     session_id: "session-1",
     message_id: 10,
     result_type: "clarification",
@@ -228,7 +228,7 @@ describe("SummaryWorkbenchService", () => {
 
   it("confirms a server proposal through the deterministic endpoint", async () => {
     confirmProposal.mockResolvedValue({
-      contract_version: "1",
+      contract_version: "2",
       session_id: "session-1",
       message_id: 22,
       result_type: "workflow_started",
@@ -384,7 +384,7 @@ describe("SummaryWorkbenchService", () => {
   it("loads capabilities through the strict decoder", async () => {
     getCapabilities.mockResolvedValue({
       enabled: true,
-      contract_version: "1",
+      contract_version: "2",
       max_time_range_days: 90,
       direct_team_workflow: true,
     });
@@ -392,7 +392,7 @@ describe("SummaryWorkbenchService", () => {
       service.getCapabilities({ spaceId: "space-a" })
     ).resolves.toEqual({
       enabled: true,
-      contract_version: "1",
+      contract_version: "2",
       max_time_range_days: 90,
       direct_team_workflow: true,
     });
@@ -404,7 +404,7 @@ describe("SummaryWorkbenchService", () => {
 
     await expect(service.loadSession("session-empty")).resolves.toMatchObject({
       sessionId: "session-empty",
-      contractVersion: "1",
+      contractVersion: "2",
       empty: true,
       scope: {
         selectedChannels: [],
@@ -417,7 +417,7 @@ describe("SummaryWorkbenchService", () => {
 
   it("treats the backend's full empty History envelope as an empty session", async () => {
     getHistory.mockResolvedValueOnce({
-      contract_version: "1",
+      contract_version: "2",
       session_id: "expired-session",
       messages: [],
       state: {

@@ -250,11 +250,14 @@
     "scopeChange": {
       "title": "修改总结范围？",
       "content": "修改后，当前预览会保留为历史版本，但将无法继续保存。需要使用新范围重新生成总结。",
+      "proposalContent": "修改后，当前多人协作方案会失效，需要重新生成后才能发起协作。",
+      "changedWhileConfirming": "总结范围已发生变化，请重新选择。",
       "confirm": "修改范围"
     },
     "notice": {
       "participantsCleared": "参与者来源会话已变化，请重新选择参与者",
       "participantsPruned": "已移除不属于当前所选群聊的参与者",
+      "participantsPrunedArtifactInvalidated": "参与者权限已变化，原结果已保留为历史，请重新生成。",
       "participantCandidatesLoadFailed": "部分群成员加载失败，请重试",
       "selectSingleChatForParticipants": "选择参与者时仅支持最多 30 个群聊",
       "savedWithQualityGap": "总结已保存，但存在质量缺口：{{detail}}",

@@ -153,6 +153,8 @@ const EMPTY_SCOPE: SummaryWorkbenchScope = {
 };
 
 export const DEFAULT_SUMMARY_WORKFLOW_POLL_INTERVAL_MS = 3_000;
+const MAX_SUMMARY_WORKFLOW_POLL_FAILURES = 5;
+const MAX_SUMMARY_WORKFLOW_POLL_BACKOFF_MS = 30_000;
 
 export default function useSummaryWorkbench(
   options: UseSummaryWorkbenchOptions = {}
@@ -909,13 +911,11 @@ export default function useSummaryWorkbench(
     const controller = new AbortController();
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let consecutiveFailures = 0;
 
-    const scheduleNext = () => {
+    const scheduleNext = (delay = workflowPollIntervalMsRef.current) => {
       if (!active) return;
-      timer = setTimeout(
-        pollAuthoritativeHistory,
-        workflowPollIntervalMsRef.current
-      );
+      timer = setTimeout(pollAuthoritativeHistory, delay);
     };
 
     const isSameRunningWorkflow = (current: RuntimeState) => {
@@ -946,6 +946,7 @@ export default function useSummaryWorkbench(
         const hydration = await serviceRef.current.loadSession(sessionId, {
           signal: controller.signal,
         });
+        consecutiveFailures = 0;
         if (!active || controller.signal.aborted) return;
         if (hydration.empty) {
           const expiredError = new SummaryWorkspaceApiError({
@@ -1019,12 +1020,27 @@ export default function useSummaryWorkbench(
         });
 
         if (continuePolling) scheduleNext();
-      } catch {
+      } catch (reason) {
         if (!active || controller.signal.aborted) return;
-        // A background refresh is best-effort. Keep the truthful
-        // running card visible and retry instead of surfacing a
-        // transient History failure as a new Agent turn.
-        scheduleNext();
+        const error = normalizeControllerError(reason);
+        consecutiveFailures += 1;
+        if (
+          !error.retryable ||
+          consecutiveFailures >= MAX_SUMMARY_WORKFLOW_POLL_FAILURES
+        ) {
+          commit((current: RuntimeState) =>
+            isSameRunningWorkflow(current)
+              ? withRuntimeError(current, error)
+              : current
+          );
+          return;
+        }
+        scheduleNext(
+          Math.min(
+            workflowPollIntervalMsRef.current * 2 ** consecutiveFailures,
+            MAX_SUMMARY_WORKFLOW_POLL_BACKOFF_MS
+          )
+        );
       }
     }
 

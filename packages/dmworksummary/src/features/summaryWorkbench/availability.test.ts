@@ -7,7 +7,7 @@ import {
 
 function capability(
     enabled = true,
-    contractVersion = "1",
+    contractVersion = "2",
     maxTimeRangeDays = 90,
     directTeamWorkflow = false
 ) {
@@ -89,11 +89,11 @@ describe("SummaryWorkbenchAvailability", () => {
 
     it.each([
         [capability(false), "server_disabled"],
-        [capability(true, "2"), "unsupported_contract"],
+    [capability(true, "3"), "unsupported_contract"],
         [
             {
                 enabled: "yes",
-                contract_version: "1",
+                contract_version: "2",
                 max_time_range_days: 90,
             },
             "invalid_response",

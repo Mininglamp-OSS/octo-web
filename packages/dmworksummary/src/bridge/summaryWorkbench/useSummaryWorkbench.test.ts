@@ -115,7 +115,7 @@ function previewResponse(
 function proposalHydration(scope = initialScope) {
   return {
     sessionId: "session-1",
-    contractVersion: "1",
+    contractVersion: "2",
     scope,
     modelOptions: {
       scopeVersion: 1,
@@ -151,7 +151,7 @@ function previewHydration(scope = initialScope) {
   }
   return {
     sessionId: "session-1",
-    contractVersion: "1",
+    contractVersion: "2",
     scope,
     modelOptions: {
       scopeVersion: 1,
@@ -230,7 +230,7 @@ function workflowHydration(
   }
   return {
     sessionId: "session-1",
-    contractVersion: "1",
+    contractVersion: "2",
     scope: initialScope,
     modelOptions: {
       scopeVersion: 1,
@@ -253,7 +253,7 @@ function workflowHydration(
 function workflowErrorHydration() {
   return {
     sessionId: "session-1",
-    contractVersion: "1",
+    contractVersion: "2",
     scope: initialScope,
     modelOptions: {
       scopeVersion: 1,
@@ -1225,12 +1225,57 @@ describe("useSummaryWorkbench", () => {
     }
   });
 
+  it("stops polling after a non-retryable History protocol error", async () => {
+    vi.useFakeTimers();
+    try {
+      loadSession.mockRejectedValue(
+        new SummaryWorkspaceApiError({
+          message: "invalid history payload",
+          kind: "protocol",
+          retryable: false,
+        })
+      );
+      const { result, unmount } = renderHook(() =>
+        useSummaryWorkbench({
+          initialSessionId: "session-1",
+          initialScope,
+          autoHydrate: false,
+          service,
+          createRequestId: () => "request-workflow",
+          workflowPollIntervalMs: 10,
+        })
+      );
+
+      await act(async () => {
+        const request = result.current.send("发起多人总结");
+        streamCallbacks.onDone?.(workflowResponse("workflow_started"));
+        await request;
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10);
+      });
+
+      expect(loadSession).toHaveBeenCalledTimes(1);
+      expect(result.current.error).toMatchObject({
+        kind: "protocol",
+        retryable: false,
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      expect(loadSession).toHaveBeenCalledTimes(1);
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("stops polling and preserves scope when the workflow session has expired", async () => {
     vi.useFakeTimers();
     try {
       loadSession.mockResolvedValueOnce({
         sessionId: "session-1",
-        contractVersion: "1",
+        contractVersion: "2",
         scope: {
           selectedChannels: [],
           participants: [],
@@ -1582,7 +1627,7 @@ describe("useSummaryWorkbench", () => {
   it("does not persist an empty History session before the first server turn", async () => {
     loadSession.mockResolvedValueOnce({
       sessionId: "client-only-session",
-      contractVersion: "1",
+      contractVersion: "2",
       scope: initialScope,
       modelOptions: { messages: [] },
       empty: true,

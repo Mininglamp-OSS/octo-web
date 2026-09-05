@@ -437,6 +437,16 @@ export function isTeamProposalConfirmable(
   );
 }
 
+export type SummaryScopeChangeImpact = "preview" | "team_proposal";
+
+export function summaryScopeChangeImpact(
+  model: SummaryWorkbenchModel
+): SummaryScopeChangeImpact | null {
+  if (canSaveCurrentPreview(model)) return "preview";
+  if (isTeamProposalConfirmable(model)) return "team_proposal";
+  return null;
+}
+
 export function deriveSummaryWorkbenchView(
   model: SummaryWorkbenchModel
 ): SummaryWorkbenchViewState {

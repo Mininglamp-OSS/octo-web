@@ -104,7 +104,7 @@ describe('SummaryListPage mode entry navigation', () => {
                 enabled: true,
                 spaceId: 'space-123',
                 reason: 'supported',
-                contractVersion: '1',
+                contractVersion: '2',
                 checkedAt: 1,
             });
         }

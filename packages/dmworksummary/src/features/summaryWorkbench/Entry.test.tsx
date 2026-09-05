@@ -46,7 +46,7 @@ describe("SummaryWorkbenchEntry", () => {
 
         response.resolve({
             enabled: true,
-            contract_version: "1",
+            contract_version: "2",
             max_time_range_days: 90,
             direct_team_workflow: true,
         });
@@ -57,7 +57,7 @@ describe("SummaryWorkbenchEntry", () => {
         const availability = new SummaryWorkbenchAvailability({
             getCapabilities: vi.fn().mockResolvedValue({
                 enabled: true,
-                contract_version: "2",
+                contract_version: "3",
                 max_time_range_days: 90,
                 direct_team_workflow: false,
             }),
@@ -75,13 +75,13 @@ describe("SummaryWorkbenchEntry", () => {
                 .fn()
                 .mockResolvedValueOnce({
                     enabled: true,
-                    contract_version: "1",
+                    contract_version: "2",
                     max_time_range_days: 90,
                     direct_team_workflow: true,
                 })
                 .mockResolvedValueOnce({
                     enabled: false,
-                    contract_version: "1",
+                    contract_version: "2",
                     max_time_range_days: 90,
                     direct_team_workflow: false,
                 }),
@@ -111,13 +111,13 @@ describe("SummaryWorkbenchEntry", () => {
                 .fn()
                 .mockResolvedValueOnce({
                     enabled: true,
-                    contract_version: "1",
+                    contract_version: "2",
                     max_time_range_days: 90,
                     direct_team_workflow: true,
                 })
                 .mockResolvedValueOnce({
                     enabled: false,
-                    contract_version: "1",
+                    contract_version: "2",
                     max_time_range_days: 90,
                     direct_team_workflow: false,
                 }),

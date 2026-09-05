@@ -24,7 +24,11 @@ import {
 } from "../../constants/limits";
 import { TOPIC_TEMPLATES } from "../../constants/templates";
 import summaryWorkbenchService from "../../Service/SummaryWorkbenchService";
-import type { SummaryWorkbenchResponse } from "../../bridge/summaryWorkbench/model";
+import {
+  summaryScopeChangeImpact,
+  type SummaryScopeChangeImpact,
+  type SummaryWorkbenchResponse,
+} from "../../bridge/summaryWorkbench/model";
 import {
   DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS,
   type SummaryWorkbenchScope,
@@ -118,6 +122,20 @@ function errorMessageKey(httpStatus?: number, kind?: string): string {
   return "";
 }
 
+function controllerScopeChangeImpact(
+  workbench: ReturnType<typeof useSummaryWorkbench>
+): SummaryScopeChangeImpact | null {
+  if (Array.isArray(workbench.model.messages)) {
+    const impact = summaryScopeChangeImpact(workbench.model);
+    if (impact) return impact;
+  }
+  const card = workbench.viewState.card;
+  if (!card || card.isStale) return null;
+  if (card.actions.includes("save_preview")) return "preview";
+  if (card.actions.includes("confirm_workflow")) return "team_proposal";
+  return null;
+}
+
 function isAcceptedResponse(
   response?: SummaryWorkbenchResponse
 ): response is Exclude<SummaryWorkbenchResponse, { resultType: "error" }> {
@@ -196,6 +214,9 @@ export default function SummaryWorkbenchFeature({
     },
   });
   const latestScopeRef = useRef(workbench.scope);
+  const latestScopeChangeImpactRef = useRef<SummaryScopeChangeImpact | null>(
+    controllerScopeChangeImpact(workbench)
+  );
   const participantLoadSeq = useRef(0);
   const [participantCandidateState, setParticipantCandidateState] =
     useState<ParticipantCandidateState>({
@@ -205,6 +226,7 @@ export default function SummaryWorkbenchFeature({
       roles: new Map<string, number>(),
     });
   latestScopeRef.current = workbench.scope;
+  latestScopeChangeImpactRef.current = controllerScopeChangeImpact(workbench);
 
   const refreshParticipantCandidates = useCallback(
     async (force = false) => {
@@ -255,8 +277,15 @@ export default function SummaryWorkbenchFeature({
         });
         const retained = retainValidParticipants(latestScope, result.members);
         if (retained.removedCount > 0) {
+          const impact = latestScopeChangeImpactRef.current;
           workbench.updateScope(retained.scope);
-          Toast.info(t("summary.workbench.notice.participantsPruned"));
+          Toast.warning(
+            t(
+              impact
+                ? "summary.workbench.notice.participantsPrunedArtifactInvalidated"
+                : "summary.workbench.notice.participantsPruned"
+            )
+          );
         }
         return true;
       } catch {
@@ -433,7 +462,11 @@ export default function SummaryWorkbenchFeature({
     canSend:
       !busy &&
       participantScopeReady &&
-      (composerHasCustomText || (!hasSubmitted && structuredGenerate)),
+      (composerHasCustomText ||
+        (!hasSubmitted && structuredGenerate) ||
+        (hasSubmitted &&
+          templateFilledComposer.current !== null &&
+          structuredGenerate)),
     showTemplateTrigger: !templateGalleryOpen,
     sendLabelKey:
       !composerHasCustomText && structuredGenerate
@@ -448,26 +481,31 @@ export default function SummaryWorkbenchFeature({
     nextScope: SummaryWorkbenchScope,
     onApplied?: () => void
   ) => {
-    if (sameSummaryWorkbenchScope(workbench.scope, nextScope)) {
+    const baseScope = workbench.scope;
+    if (sameSummaryWorkbenchScope(baseScope, nextScope)) {
       onApplied?.();
       return;
     }
     const apply = () => {
+      if (!sameSummaryWorkbenchScope(latestScopeRef.current, baseScope)) {
+        Toast.info(t("summary.workbench.scopeChange.changedWhileConfirming"));
+        return;
+      }
       workbench.updateScope(nextScope);
       onApplied?.();
     };
-    const hasUnsavedPreview = Boolean(
-      workbench.viewState.card &&
-        !workbench.viewState.card.isStale &&
-        workbench.viewState.card.actions.includes("save_preview")
-    );
-    if (!hasUnsavedPreview) {
+    const impact = controllerScopeChangeImpact(workbench);
+    if (!impact) {
       apply();
       return;
     }
     Modal.confirm({
       title: t("summary.workbench.scopeChange.title"),
-      content: t("summary.workbench.scopeChange.content"),
+      content: t(
+        impact === "team_proposal"
+          ? "summary.workbench.scopeChange.proposalContent"
+          : "summary.workbench.scopeChange.content"
+      ),
       okText: t("summary.workbench.scopeChange.confirm"),
       cancelText: t("summary.common.cancel"),
       onOk: apply,
@@ -721,8 +759,8 @@ export default function SummaryWorkbenchFeature({
   );
 
   const applyTemplate = (template: SummaryWorkbenchTemplateScope) => {
-    setPendingTemplate(null);
     updateScopeWithPreviewGuard({ ...workbench.scope, template }, () => {
+      setPendingTemplate(null);
       templateFilledComposer.current = template.requirement;
       workbench.setComposerValue(template.requirement);
       setComposerFocusKey((current) => current + 1);
@@ -897,7 +935,9 @@ export default function SummaryWorkbenchFeature({
               updateScopeWithPreviewGuard(
                 {
                   ...workbench.scope,
-                  timeRange,
+                  timeRange: timeRange
+                    ? { ...timeRange, source: "picker" }
+                    : null,
                 },
                 () => setOpenSelector(null)
               );

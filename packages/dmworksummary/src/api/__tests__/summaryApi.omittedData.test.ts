@@ -4,7 +4,7 @@
 // has no data" — a protocol-error banner on a brand-new workbench instead of
 // the blank canvas.
 //
-// Expected at this head (pre-fix): FAIL with that throw.
+// This regression locks the accepted omitted-data contract.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
