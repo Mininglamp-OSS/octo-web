@@ -125,10 +125,8 @@ function errorMessageKey(httpStatus?: number, kind?: string): string {
 function controllerScopeChangeImpact(
   workbench: ReturnType<typeof useSummaryWorkbench>
 ): SummaryScopeChangeImpact | null {
-  if (Array.isArray(workbench.model.messages)) {
-    const impact = summaryScopeChangeImpact(workbench.model);
-    if (impact) return impact;
-  }
+  const impact = summaryScopeChangeImpact(workbench.model);
+  if (impact) return impact;
   const card = workbench.viewState.card;
   if (!card || card.isStale) return null;
   if (card.actions.includes("save_preview")) return "preview";
@@ -999,9 +997,9 @@ export default function SummaryWorkbenchFeature({
           placeholder={t("summary.create.titlePlaceholder")}
           onChange={setSaveTitle}
         />
-        {workbench.error && (
+        {viewState.errorMessage && (
           <div className="wk-summary-workbench-feature__save-error">
-            {workbench.error.message}
+            {viewState.errorMessage}
           </div>
         )}
       </Modal>

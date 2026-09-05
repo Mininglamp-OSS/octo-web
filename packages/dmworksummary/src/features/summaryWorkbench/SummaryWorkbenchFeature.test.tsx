@@ -262,17 +262,22 @@ function scope(
 }
 
 function controller(overrides: Record<string, unknown> = {}) {
-  return {
+  const base = {
     sessionId: "session-a",
     scope: scope(),
     model: {
+      layout: "full",
+      scopeVersion: 1,
+      contextItems: [],
+      messages: [] as Array<Record<string, unknown>>,
       currentPreview: null,
       pendingProposal: null,
       workflow: null,
+      composer: { value: "", isSending: false },
     },
     viewState: {
       layout: "full",
-      messages: [],
+      messages: [] as Array<Record<string, unknown>>,
       contextItems: [],
       inputValue: "",
       placeholderKey: "summary.workbench.placeholder.initial",
@@ -296,7 +301,51 @@ function controller(overrides: Record<string, unknown> = {}) {
     resetSession: vi.fn(),
     cancelActiveRequest: vi.fn(),
     clearError: vi.fn(),
+  };
+  const modelOverrides =
+    (overrides.model as Record<string, unknown> | undefined) ?? {};
+  const currentPreview = modelOverrides.currentPreview
+    ? {
+        messageId: "preview-message",
+        resultType: "agent_preview",
+        scopeVersion: 1,
+        version: 1,
+        snapshotVersion: 1,
+        content: "",
+        assumptions: [],
+        availableActions: ["save_preview"],
+        ...(modelOverrides.currentPreview as Record<string, unknown>),
+      }
+    : modelOverrides.currentPreview;
+  const pendingProposal = modelOverrides.pendingProposal
+    ? {
+        messageId: "proposal-message",
+        resultType: "workflow_confirmation",
+        scopeVersion: 1,
+        proposalVersion: 1,
+        proposalToken: "proposal-token",
+        participantNames: [],
+        requirement: "",
+        availableActions: ["confirm_workflow"],
+        ...(modelOverrides.pendingProposal as Record<string, unknown>),
+      }
+    : modelOverrides.pendingProposal;
+  const messages =
+    (modelOverrides.messages as unknown[] | undefined) ?? base.model.messages;
+  return {
+    ...base,
     ...overrides,
+    model: {
+      ...base.model,
+      ...modelOverrides,
+      messages,
+      ...(currentPreview !== undefined ? { currentPreview } : {}),
+      ...(pendingProposal !== undefined ? { pendingProposal } : {}),
+    },
+    viewState: {
+      ...base.viewState,
+      ...((overrides.viewState as Record<string, unknown> | undefined) ?? {}),
+    },
   };
 }
 
@@ -591,6 +640,19 @@ describe("SummaryWorkbenchFeature", () => {
           { chatId: "chat-a", chatType: "group", name: "Product" },
         ],
       }),
+      model: {
+        messages: [
+          {
+            id: "preview-message",
+            role: "assistant",
+            content: "# Draft",
+            resultType: "agent_preview",
+            scopeVersion: 1,
+            availableActions: ["save_preview"],
+          },
+        ],
+        currentPreview: { content: "# Draft" },
+      },
       viewState: {
         layout: "full",
         messages: [],
@@ -633,6 +695,19 @@ describe("SummaryWorkbenchFeature", () => {
           { chatId: "chat-a", chatType: "group", name: "Product" },
         ],
       }),
+      model: {
+        messages: [
+          {
+            id: "proposal-message",
+            role: "assistant",
+            content: "请确认协作",
+            resultType: "workflow_confirmation",
+            scopeVersion: 1,
+            availableActions: ["confirm_workflow"],
+          },
+        ],
+        pendingProposal: {},
+      },
       viewState: {
         layout: "full",
         messages: [],
@@ -1451,11 +1526,22 @@ describe("SummaryWorkbenchFeature", () => {
     mocks.useSummaryWorkbench.mockReturnValue(
       controller({
         model: {
+          messages: [],
           currentPreview: { content: "# Draft\nBody" },
           pendingProposal: null,
           workflow: null,
         },
         error: new Error("保存失败，请重试"),
+        viewState: {
+          layout: "full",
+          messages: [],
+          contextItems: [],
+          inputValue: "",
+          placeholderKey: "summary.workbench.placeholder.initial",
+          isSending: false,
+          canSend: false,
+          errorMessage: "保存失败，请重试",
+        },
       })
     );
 
@@ -1465,6 +1551,36 @@ describe("SummaryWorkbenchFeature", () => {
     fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
 
     expect(screen.getByText("保存失败，请重试")).toBeInTheDocument();
+  });
+
+  it("hides a raw server save failure inside the save dialog", () => {
+    mocks.useSummaryWorkbench.mockReturnValue(
+      controller({
+        model: {
+          messages: [],
+          currentPreview: { content: "# Draft\nBody" },
+          pendingProposal: null,
+          workflow: null,
+        },
+        error: {
+          message: "upstream gateway secret detail",
+          httpStatus: 500,
+          kind: "server",
+        },
+      })
+    );
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
+
+    expect(
+      screen.getByText("summary.workbench.errors.serviceUnavailable")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("upstream gateway secret detail")
+    ).not.toBeInTheDocument();
   });
 
   it("opens a completed Workflow task through the embedded detail callback", () => {
