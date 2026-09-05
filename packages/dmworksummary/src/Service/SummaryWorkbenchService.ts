@@ -85,7 +85,8 @@ export interface SummaryWorkbenchTransport {
   ): Promise<unknown>;
   streamTurn(
     request: SummaryWorkspaceChatRequestDTO,
-    handlers: SummaryWorkspaceStreamHandlers
+    handlers: SummaryWorkspaceStreamHandlers,
+    options?: SummaryWorkbenchRequestOptions
   ): { close: () => void };
   getHistory(
     sessionId: string,
@@ -143,24 +144,29 @@ export class SummaryWorkbenchService {
 
   streamMessage(
     input: SummaryWorkbenchMessageInput,
-    callbacks: SummaryWorkbenchStreamCallbacks
+    callbacks: SummaryWorkbenchStreamCallbacks,
+    options: SummaryWorkbenchRequestOptions = {}
   ): { close: () => void } {
     const reportError = (error: SummaryWorkspaceApiError) =>
       callbacks.onError?.(error);
-    return this.transport.streamTurn(buildChatRequest(input), {
-      onProgress: callbacks.onProgress,
-      onDone: (payload) => {
-        let response: SummaryWorkbenchResponse;
-        try {
-          response = adaptSummaryWorkspaceTurn(payload);
-        } catch (error) {
-          reportError(normalizeWorkspaceError(error));
-          return;
-        }
-        callbacks.onDone?.(response);
+    return this.transport.streamTurn(
+      buildChatRequest(input),
+      {
+        onProgress: callbacks.onProgress,
+        onDone: (payload) => {
+          let response: SummaryWorkbenchResponse;
+          try {
+            response = adaptSummaryWorkspaceTurn(payload);
+          } catch (error) {
+            reportError(normalizeWorkspaceError(error));
+            return;
+          }
+          callbacks.onDone?.(response);
+        },
+        onError: (event) => reportError(decodeSummaryWorkspaceStreamError(event)),
       },
-      onError: (event) => reportError(decodeSummaryWorkspaceStreamError(event)),
-    });
+      options
+    );
   }
 
   async loadSession(
@@ -261,13 +267,22 @@ export class SummaryWorkbenchService {
         error.taskId !== undefined &&
         error.taskId > 0
       ) {
-        const detail = await this.transport.getSummaryDetail(error.taskId);
-        return {
-          task_id: detail.task_id,
-          task_no: detail.task_no,
-          status: detail.status,
-          created_at: detail.created_at,
-        };
+        try {
+          const detail = await this.transport.getSummaryDetail(error.taskId);
+          return {
+            task_id: detail.task_id,
+            task_no: detail.task_no,
+            status: detail.status,
+            created_at: detail.created_at,
+          };
+        } catch {
+          return {
+            task_id: error.taskId,
+            task_no: "",
+            status: 0,
+            created_at: "",
+          };
+        }
       }
       throw error;
     }

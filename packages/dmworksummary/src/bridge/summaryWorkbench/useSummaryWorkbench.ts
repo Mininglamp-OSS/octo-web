@@ -43,6 +43,7 @@ export type SummaryWorkbenchControllerService = Pick<
 >;
 
 export interface UseSummaryWorkbenchOptions {
+  spaceId?: string;
   initialSessionId?: string;
   initialScope?: SummaryWorkbenchScope;
   layout?: SummaryWorkbenchModel["layout"];
@@ -168,6 +169,7 @@ export default function useSummaryWorkbench(
     options.createIdempotencyKey ?? genRequestId
   );
   const onSessionIdChangeRef = useRef(options.onSessionIdChange);
+  const spaceIdRef = useRef(normalizeSpaceId(options.spaceId));
   const preferStreamingRef = useRef(options.preferStreaming ?? true);
   const workflowPollIntervalMsRef = useRef(
     options.workflowPollIntervalMs ?? DEFAULT_SUMMARY_WORKFLOW_POLL_INTERVAL_MS
@@ -189,6 +191,7 @@ export default function useSummaryWorkbench(
 
   serviceRef.current = options.service ?? summaryWorkbenchService;
   onSessionIdChangeRef.current = options.onSessionIdChange;
+  spaceIdRef.current = normalizeSpaceId(options.spaceId);
   preferStreamingRef.current = options.preferStreaming ?? true;
   workflowPollIntervalMsRef.current = Math.max(
     1,
@@ -522,7 +525,10 @@ export default function useSummaryWorkbench(
         const controller = new AbortController();
         flight.fallbackController = controller;
         void serviceRef.current
-          .sendMessage(input, { signal: controller.signal })
+          .sendMessage(input, {
+            signal: controller.signal,
+            ...(spaceIdRef.current ? { spaceId: spaceIdRef.current } : {}),
+          })
           .then(finish)
           .catch(fail);
       };
@@ -547,7 +553,7 @@ export default function useSummaryWorkbench(
       }
 
       try {
-        const stream = serviceRef.current.streamMessage(input, {
+        const callbacks = {
           onProgress: (event: AgentProgressEvent) => {
             if (!isCurrent() || flight.fallbackStarted) return;
             commit((latest: RuntimeState) => ({
@@ -560,7 +566,12 @@ export default function useSummaryWorkbench(
             finish(response);
           },
           onError: handleStreamError,
-        });
+        };
+        const stream = spaceIdRef.current
+          ? serviceRef.current.streamMessage(input, callbacks, {
+              spaceId: spaceIdRef.current,
+            })
+          : serviceRef.current.streamMessage(input, callbacks);
         if (isCurrent() && !flight.fallbackStarted) {
           flight.stream = stream;
         } else {
@@ -617,7 +628,10 @@ export default function useSummaryWorkbench(
           scope: cloneScope(current.scope),
           idempotencyKey: key,
         },
-        { signal: controller.signal }
+        {
+          signal: controller.signal,
+          ...(spaceIdRef.current ? { spaceId: spaceIdRef.current } : {}),
+        }
       )
       .then((response: SummaryWorkbenchResponse) => {
         if (confirmationRef.current !== flight || epochRef.current !== epoch) {
@@ -711,7 +725,10 @@ export default function useSummaryWorkbench(
             ...(normalizedTitle ? { title: normalizedTitle } : {}),
             ...(generationRequestId ? { generationRequestId } : {}),
           },
-          { signal: controller.signal }
+          {
+            signal: controller.signal,
+            ...(spaceIdRef.current ? { spaceId: spaceIdRef.current } : {}),
+          }
         )
         .then((result: CreateAgentSummaryResult) => {
           if (saveRef.current !== flight || epochRef.current !== epoch) {
@@ -779,7 +796,10 @@ export default function useSummaryWorkbench(
 
       let flight!: HydrationFlight;
       const promise = serviceRef.current
-        .loadSession(sessionId, { signal: controller.signal })
+        .loadSession(sessionId, {
+          signal: controller.signal,
+          ...(spaceIdRef.current ? { spaceId: spaceIdRef.current } : {}),
+        })
         .then((hydration: SummaryWorkbenchHistoryHydration) => {
           if (hydrationRef.current !== flight || epochRef.current !== epoch) {
             return false;
@@ -910,7 +930,7 @@ export default function useSummaryWorkbench(
     const taskId = activeWorkflowTaskId;
     const controller = new AbortController();
     let active = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     let consecutiveFailures = 0;
 
     const scheduleNext = (delay = workflowPollIntervalMsRef.current) => {
@@ -945,6 +965,7 @@ export default function useSummaryWorkbench(
       try {
         const hydration = await serviceRef.current.loadSession(sessionId, {
           signal: controller.signal,
+          ...(spaceIdRef.current ? { spaceId: spaceIdRef.current } : {}),
         });
         consecutiveFailures = 0;
         if (!active || controller.signal.aborted) return;
@@ -1047,7 +1068,7 @@ export default function useSummaryWorkbench(
     scheduleNext();
     return () => {
       active = false;
-      if (timer !== undefined) clearTimeout(timer);
+      if (timer !== null) clearTimeout(timer);
       controller.abort();
     };
   }, [
@@ -1242,6 +1263,11 @@ function generationRetryIdentity(
 
 function normalizeSessionId(sessionId: string | undefined): string {
   return sessionId?.trim() ?? "";
+}
+
+function normalizeSpaceId(spaceId: string | undefined): string | undefined {
+  const normalized = spaceId?.trim();
+  return normalized || undefined;
 }
 
 function normalizeControllerError(error: unknown): SummaryWorkspaceApiError {

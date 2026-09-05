@@ -199,6 +199,7 @@ export default function SummaryWorkbenchFeature({
   const themeTrackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const workbench = useSummaryWorkbench({
+    spaceId,
     initialSessionId,
     initialScope,
     layout: embedded ? "panel" : "full",
@@ -538,7 +539,7 @@ export default function SummaryWorkbenchFeature({
     if (!viewState.canSend) return;
     if (themeTrackTimer.current) {
       clearTimeout(themeTrackTimer.current);
-      themeTrackTimer.current = undefined;
+      themeTrackTimer.current = null;
     }
     setOpenSelector(null);
     let message: string | undefined;
@@ -703,7 +704,7 @@ export default function SummaryWorkbenchFeature({
   const resetSession = () => {
     if (themeTrackTimer.current) {
       clearTimeout(themeTrackTimer.current);
-      themeTrackTimer.current = undefined;
+      themeTrackTimer.current = null;
     }
     clearSummaryWorkbenchSession(storageScope);
     setReferencedTask(derivedFromTask ?? null);
@@ -837,6 +838,7 @@ export default function SummaryWorkbenchFeature({
               if (themeTrackTimer.current)
                 clearTimeout(themeTrackTimer.current);
               themeTrackTimer.current = setTimeout(() => {
+                themeTrackTimer.current = null;
                 if (value.trim())
                   Dap.shared.track("smart_summary_theme_input", {});
               }, 600);

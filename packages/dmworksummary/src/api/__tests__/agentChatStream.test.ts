@@ -257,10 +257,19 @@ data: {"reply":"r","session_id":"s1","run_id":"run-abc"}
                 },
             },
             { onDone },
+            { spaceId: 'explicit-space' },
         );
         await new Promise((resolve) => setTimeout(resolve, 100));
 
         expect(onDone).toHaveBeenCalledWith(payload);
+        expect(fetchMock).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({
+                headers: expect.objectContaining({
+                    'X-Space-Id': 'explicit-space',
+                }),
+            }),
+        );
         close();
     });
 

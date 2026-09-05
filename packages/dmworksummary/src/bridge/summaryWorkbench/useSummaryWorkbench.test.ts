@@ -70,6 +70,29 @@ function conversationalResponse(
   } as SummaryWorkbenchResponse;
 }
 
+function explanationResponse(
+  messageId: string,
+  scope: SummaryWorkbenchScope = initialScope,
+  scopeVersion = 1
+): SummaryWorkbenchResponse {
+  return {
+    messageId,
+    sessionId: "session-1",
+    reply: "已完成。",
+    resultType: "explanation",
+    scopeVersion,
+    availableActions: ["continue_chat"],
+    authoritativeState: {
+      scopeVersion,
+      scope,
+      contextItems: contextItemsFromScope(scope),
+      currentPreview: null,
+      pendingProposal: null,
+      workflow: null,
+    },
+  };
+}
+
 function previewResponse(
   messageId = "18",
   scope: SummaryWorkbenchScope = initialScope,
@@ -313,6 +336,7 @@ describe("useSummaryWorkbench", () => {
   it("sends the complete scope once and adopts server-authoritative state", async () => {
     const { result, unmount } = renderHook(() =>
       useSummaryWorkbench({
+        spaceId: "space-a",
         initialSessionId: "session-1",
         initialScope,
         autoHydrate: false,
@@ -340,7 +364,8 @@ describe("useSummaryWorkbench", () => {
         scopeVersion: 1,
         scope: initialScope,
       },
-      expect.any(Object)
+      expect.any(Object),
+      { spaceId: "space-a" }
     );
     expect(result.current.model.messages).toEqual([
       expect.objectContaining({
@@ -524,14 +549,7 @@ describe("useSummaryWorkbench", () => {
   });
 
   it("reuses the request id for an unchanged manual retry and clears it after success", async () => {
-    const successfulReply = (messageId: string): SummaryWorkbenchResponse => ({
-      messageId,
-      sessionId: "session-1",
-      reply: "已完成。",
-      resultType: "explanation",
-      scopeVersion: 1,
-      availableActions: ["continue_chat"],
-    });
+    const successfulReply = explanationResponse;
     sendMessage
       .mockRejectedValueOnce(
         new SummaryWorkspaceApiError({
@@ -1434,9 +1452,10 @@ describe("useSummaryWorkbench", () => {
       );
 
       let workflowRequest!: Promise<SummaryWorkbenchResponse | undefined>;
+      const startedWorkflow = workflowResponse("workflow_started");
       act(() => {
         workflowRequest = result.current.send("发起多人总结");
-        callbacks[0].onDone?.(workflowResponse("workflow_started"));
+        callbacks[0].onDone?.(startedWorkflow);
       });
       await act(async () => {
         await workflowRequest;
@@ -1449,12 +1468,8 @@ describe("useSummaryWorkbench", () => {
       act(() => {
         followUpRequest = result.current.send();
         callbacks[1].onDone?.({
-          messageId: "32",
-          sessionId: "session-1",
-          reply: "会基于当前会话范围执行。",
-          resultType: "explanation",
-          scopeVersion: 1,
-          availableActions: ["continue_chat"],
+          ...explanationResponse("32"),
+          authoritativeState: startedWorkflow.authoritativeState,
         });
       });
       await act(async () => {

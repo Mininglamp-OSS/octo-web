@@ -468,8 +468,12 @@ describe('summaryApi', () => {
             const data = { contract_version: '2', result_type: 'clarification' };
             mockPost.mockResolvedValueOnce({ data: { code: 0, data } });
 
-            await expect(postSummaryWorkspaceTurn(request)).resolves.toEqual(data);
-            expect(mockPost).toHaveBeenCalledWith('/summary/api/v1/agent/chat', request, { signal: undefined, timeout: 120000 });
+            await expect(postSummaryWorkspaceTurn(request, { spaceId: 'space-a' })).resolves.toEqual(data);
+            expect(mockPost).toHaveBeenCalledWith('/summary/api/v1/agent/chat', request, {
+                headers: { 'X-Space-Id': 'space-a' },
+                signal: undefined,
+                timeout: 120000,
+            });
         });
 
         it('loads capabilities and History through strict envelopes', async () => {
@@ -485,7 +489,7 @@ describe('summaryApi', () => {
             await expect(getSummaryWorkspaceCapabilities({ spaceId: 'space-a' })).resolves.toMatchObject({
                 enabled: true,
             });
-            await expect(getSummaryWorkspaceHistory('session/1')).resolves.toEqual({
+            await expect(getSummaryWorkspaceHistory('session/1', { spaceId: 'space-a' })).resolves.toEqual({
                 session_id: 'session/1',
             });
 
@@ -495,6 +499,7 @@ describe('summaryApi', () => {
             });
             expect(mockGet).toHaveBeenNthCalledWith(2, '/summary/api/v1/agent/chat/history', {
                 params: { session_id: 'session/1', profile: 'summary_workspace' },
+                headers: { 'X-Space-Id': 'space-a' },
                 signal: undefined,
             });
         });
@@ -527,7 +532,7 @@ describe('summaryApi', () => {
                     scope_version: 2,
                     summary_context: request.summary_context,
                 },
-                { idempotencyKey: 'confirm-key' },
+                { idempotencyKey: 'confirm-key', spaceId: 'space-a' },
             );
             await saveSummaryWorkspacePreview(
                 {
@@ -537,7 +542,7 @@ describe('summaryApi', () => {
                     scope_version: 2,
                     expected_artifact_version: 3,
                 },
-                { idempotencyKey: 'save-key' },
+                { idempotencyKey: 'save-key', spaceId: 'space-a' },
             );
 
             expect(mockPost).toHaveBeenNthCalledWith(
@@ -548,7 +553,13 @@ describe('summaryApi', () => {
                     scope_version: 2,
                     summary_context: request.summary_context,
                 },
-                { headers: { 'Idempotency-Key': 'confirm-key' }, signal: undefined },
+                {
+                    headers: {
+                        'Idempotency-Key': 'confirm-key',
+                        'X-Space-Id': 'space-a',
+                    },
+                    signal: undefined,
+                },
             );
             expect(mockPost).toHaveBeenNthCalledWith(
                 2,
@@ -560,7 +571,13 @@ describe('summaryApi', () => {
                     scope_version: 2,
                     expected_artifact_version: 3,
                 },
-                { headers: { 'Idempotency-Key': 'save-key' }, signal: undefined },
+                {
+                    headers: {
+                        'Idempotency-Key': 'save-key',
+                        'X-Space-Id': 'space-a',
+                    },
+                    signal: undefined,
+                },
             );
         });
 

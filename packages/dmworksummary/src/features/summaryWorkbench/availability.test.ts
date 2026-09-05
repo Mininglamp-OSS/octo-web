@@ -139,12 +139,12 @@ describe("SummaryWorkbenchAvailability", () => {
         });
     });
 
-    it("times out, aborts the transport signal, and caches the fail-closed decision", async () => {
+    it("retries one timeout, aborts both transport signals, and caches the fail-closed decision", async () => {
         vi.useFakeTimers();
-        let transportSignal: AbortSignal | undefined;
+        const transportSignals: AbortSignal[] = [];
         const source: SummaryWorkbenchCapabilitySource = {
             getCapabilities: vi.fn(({ signal } = {}) => {
-                transportSignal = signal;
+                if (signal) transportSignals.push(signal);
                 return new Promise(() => undefined);
             }),
         };
@@ -155,13 +155,47 @@ describe("SummaryWorkbenchAvailability", () => {
         const result = availability.resolve("space-a");
         await Promise.resolve();
         await vi.advanceTimersByTimeAsync(50);
+        await vi.advanceTimersByTimeAsync(50);
 
         await expect(result).resolves.toMatchObject({
             status: "disabled",
             reason: "timeout",
         });
-        expect(transportSignal?.aborted).toBe(true);
+        expect(transportSignals).toHaveLength(2);
+        expect(transportSignals.every((signal) => signal.aborted)).toBe(true);
         await availability.resolve("space-a");
+        expect(source.getCapabilities).toHaveBeenCalledTimes(2);
+    });
+
+    it("recovers when the single retry succeeds after a transient failure", async () => {
+        const source: SummaryWorkbenchCapabilitySource = {
+            getCapabilities: vi
+                .fn()
+                .mockRejectedValueOnce(new Error("temporary outage"))
+                .mockResolvedValueOnce(capability()),
+        };
+        const availability = new SummaryWorkbenchAvailability(source);
+
+        await expect(availability.resolve("space-a")).resolves.toMatchObject({
+            status: "enabled",
+            reason: "supported",
+        });
+        expect(source.getCapabilities).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+        [capability(false), "server_disabled"],
+        [capability(true, "3"), "unsupported_contract"],
+    ])("does not retry permanent capability decision %#", async (payload, reason) => {
+        const source: SummaryWorkbenchCapabilitySource = {
+            getCapabilities: vi.fn().mockResolvedValue(payload),
+        };
+        const availability = new SummaryWorkbenchAvailability(source);
+
+        await expect(availability.resolve("space-a")).resolves.toMatchObject({
+            status: "disabled",
+            reason,
+        });
         expect(source.getCapabilities).toHaveBeenCalledOnce();
     });
 

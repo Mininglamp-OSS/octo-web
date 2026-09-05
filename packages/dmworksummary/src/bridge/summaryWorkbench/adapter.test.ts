@@ -420,6 +420,37 @@ describe("summary workspace adapter", () => {
     );
   });
 
+  it("accepts a matching preview when the History message omits optional artifact_version", () => {
+    const currentPreview = {
+      message_id: 18,
+      result_type: "agent_preview",
+      scope_version: 2,
+      artifact_version: 3,
+      snapshot_version: 1,
+      content: "# 风险总结",
+      assumptions: [],
+      available_actions: ["save_preview"],
+    };
+
+    expect(
+      adaptSummaryWorkspaceHistory({
+        contract_version: "2",
+        session_id: "session-1",
+        messages: [
+          {
+            id: 18,
+            role: "assistant",
+            content: "已生成总结",
+            result_type: "agent_preview",
+            scope_version: 2,
+            preview: currentPreview,
+          },
+        ],
+        state: { ...emptyState(2), current_preview: currentPreview },
+      }).modelOptions.currentPreview
+    ).toMatchObject({ version: 3, content: "# 风险总结" });
+  });
+
   it("serializes rich scope without deriving request data from display chips", () => {
     expect(
       serializeSummaryWorkbenchScope({

@@ -153,37 +153,62 @@ export class SummaryWorkbenchAvailability {
   }
 
   private createPending(spaceId: string): PendingAvailability {
-    const controller = new AbortController();
-    let rejectTimeout: (reason: typeof TIMEOUT | typeof CANCELLED) => void = () => undefined;
-    let timer: ReturnType<typeof setTimeout>;
+    let controller: AbortController | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+    let rejectCancelled: (reason: typeof CANCELLED) => void = () => undefined;
+    const cancellationPromise = new Promise<never>((_, reject) => {
+      rejectCancelled = reject;
+    });
     const pending: PendingAvailability = {
       consumers: 0,
       cancel: () => {
-        clearTimeout(timer);
-        controller.abort();
-        rejectTimeout(CANCELLED);
+        cancelled = true;
+        if (timer !== null) clearTimeout(timer);
+        controller?.abort();
+        rejectCancelled(CANCELLED);
       },
       promise: Promise.resolve(this.disabledDecision(spaceId, "unavailable")),
     };
 
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      rejectTimeout = reject;
-      timer = setTimeout(() => {
-        controller.abort();
-        reject(TIMEOUT);
-      }, this.timeoutMs);
-    });
-    pending.promise = Promise.race([
-      Promise.resolve().then(() =>
-        this.source.getCapabilities({
-          signal: controller.signal,
-          spaceId,
-        })
-      ),
-      timeoutPromise,
-    ])
-      .then((value) => this.evaluate(spaceId, value))
-      .catch((error: unknown) => this.fromFailure(spaceId, error))
+    const runAttempt = async (): Promise<SummaryWorkbenchAvailabilityDecision> => {
+      if (cancelled) return this.disabledDecision(spaceId, "aborted");
+      controller = new AbortController();
+      const attemptController = controller;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          attemptController.abort();
+          reject(TIMEOUT);
+        }, this.timeoutMs);
+      });
+      try {
+        const value = await Promise.race([
+          Promise.resolve().then(() =>
+            this.source.getCapabilities({
+              signal: attemptController.signal,
+              spaceId,
+            })
+          ),
+          timeoutPromise,
+          cancellationPromise,
+        ]);
+        return this.evaluate(spaceId, value);
+      } catch (error) {
+        return this.fromFailure(spaceId, error);
+      } finally {
+        if (timer !== null) clearTimeout(timer);
+        timer = null;
+        if (controller === attemptController) controller = null;
+      }
+    };
+
+    pending.promise = (async () => {
+      const first = await runAttempt();
+      if (!cancelled && shouldRetryCapabilityDecision(first)) {
+        return runAttempt();
+      }
+      return first;
+    })()
       .then((decision) => {
         if (this.pending.get(spaceId) === pending) {
           this.cache.set(spaceId, decision);
@@ -191,7 +216,7 @@ export class SummaryWorkbenchAvailability {
         return decision;
       })
       .finally(() => {
-        clearTimeout(timer);
+        if (timer !== null) clearTimeout(timer);
         if (this.pending.get(spaceId) === pending) {
           this.pending.delete(spaceId);
         }
@@ -353,6 +378,17 @@ export function normalizeSummaryWorkbenchSpaceId(spaceId: string | null | undefi
 
 function loadingState(spaceId: string): SummaryWorkbenchLoadingAvailability {
   return { status: "loading", enabled: false, spaceId };
+}
+
+function shouldRetryCapabilityDecision(
+  decision: SummaryWorkbenchAvailabilityDecision
+): boolean {
+  return (
+    decision.status === "disabled" &&
+    (decision.reason === "timeout" ||
+      decision.reason === "unavailable" ||
+      decision.reason === "invalid_response")
+  );
 }
 
 function isCapabilities(value: unknown): value is SummaryWorkspaceCapabilitiesDTO {

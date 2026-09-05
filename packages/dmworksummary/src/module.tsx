@@ -47,6 +47,7 @@ let _attentionStarted = false;
 let _menuActivatedHandler: (() => void) | null = null;
 let _imMessageHandler: ((message: unknown) => void) | null = null;
 let _imConnectHandler: ((status: unknown) => void) | null = null;
+let _openChatWithReferenceHandler: EventListener | null = null;
 /**
  * 本标签页此刻是否可见。SSR / 测试环境没有 document，按可见处理（那里没有
  * 「后台标签页」的概念，一律当前台才不会把功能整个关掉）。
@@ -170,7 +171,10 @@ export class SummaryModule implements IModule {
         // 通过 window 事件与详情页解耦(避免循环导入),这里 addEventListener
         // 后统一走 WKApp.routeRight.push 弹出新的统一工作台实例。
         // 见 CHAT-REFERENCE-BASED-DESIGN-v1。
-        window.addEventListener('summary-open-chat-with-reference', ((e: CustomEvent) => {
+        if (_openChatWithReferenceHandler) {
+            window.removeEventListener('summary-open-chat-with-reference', _openChatWithReferenceHandler);
+        }
+        _openChatWithReferenceHandler = ((e: CustomEvent) => {
             const task = e.detail;
             if (!task || !task.task_id) return;
             WKApp.routeRight.push(
@@ -180,7 +184,8 @@ export class SummaryModule implements IModule {
                     legacyInitialMode="agent"
                 />
             );
-        }) as EventListener);
+        }) as EventListener;
+        window.addEventListener('summary-open-chat-with-reference', _openChatWithReferenceHandler);
 
         WKApp.route.register("/summary/detail", (param: any) => {
             return <SummaryDetailPage taskId={param?.taskId} emitSelection />;
@@ -497,6 +502,10 @@ export function disposeSummaryModuleListeners(): void {
         window.removeEventListener('focus', _focusHandler);
     }
     _focusHandler = null;
+    if (_openChatWithReferenceHandler && typeof window !== 'undefined') {
+        window.removeEventListener('summary-open-chat-with-reference', _openChatWithReferenceHandler);
+    }
+    _openChatWithReferenceHandler = null;
     try {
         const sdk = WKSDK.shared();
         if (_imMessageHandler) sdk.chatManager.removeMessageListener(_imMessageHandler as any);

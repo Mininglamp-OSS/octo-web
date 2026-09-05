@@ -119,6 +119,59 @@ describe("SummaryWorkbenchService", () => {
     );
   });
 
+  it("threads the explicit Space through JSON, stream, History, confirm, and save transports", async () => {
+    postTurn.mockResolvedValue(clarificationTurn());
+    streamTurn.mockReturnValue({ close: vi.fn() });
+    getHistory.mockResolvedValue(null);
+    confirmProposal.mockResolvedValue(clarificationTurn());
+    savePreview.mockResolvedValue({
+      task_id: 89,
+      task_no: "SUM-89",
+      status: 3,
+      created_at: "2026-08-26T10:00:00Z",
+    });
+    const options = { spaceId: "space-a" };
+    const input = {
+      sessionId: "session-1",
+      message: "帮我总结风险",
+      requestId: "request-1",
+      scopeVersion: 1,
+      scope,
+    };
+
+    await service.sendMessage(input, options);
+    service.streamMessage(input, {}, options);
+    await service.loadSession("session-1", options);
+    await service.confirmWorkflow(
+      {
+        sessionId: "session-1",
+        proposalVersion: 1,
+        proposalToken: "proposal-token",
+        scopeVersion: 1,
+        scope,
+        idempotencyKey: "confirm-key",
+      },
+      options
+    );
+    await service.savePreview(
+      {
+        sessionId: "session-1",
+        messageId: "18",
+        snapshotVersion: 1,
+        scopeVersion: 1,
+        artifactVersion: 1,
+        idempotencyKey: "save-key",
+      },
+      options
+    );
+
+    expect(postTurn.mock.calls[0]?.[1]).toEqual(options);
+    expect(streamTurn.mock.calls[0]?.[2]).toEqual(options);
+    expect(getHistory.mock.calls[0]?.[1]).toEqual(options);
+    expect(confirmProposal.mock.calls[0]?.[1]).toMatchObject(options);
+    expect(savePreview.mock.calls[0]?.[1]).toMatchObject(options);
+  });
+
   it("builds a direct team workflow request when requested", async () => {
     postTurn.mockResolvedValue(clarificationTurn());
 
@@ -348,6 +401,35 @@ describe("SummaryWorkbenchService", () => {
       })
     ).resolves.toMatchObject({ task_id: 89, task_no: "SUM-89" });
     expect(getSummaryDetail).toHaveBeenCalledWith(89);
+  });
+
+  it("keeps the known task id when save recovery detail enrichment fails", async () => {
+    savePreview.mockRejectedValueOnce(
+      new SummaryWorkspaceApiError({
+        message: "already saved",
+        kind: "business",
+        code: 40009,
+        recoveryAction: "open_existing_summary",
+        taskId: 89,
+      })
+    );
+    getSummaryDetail.mockRejectedValueOnce(new Error("detail unavailable"));
+
+    await expect(
+      service.savePreview({
+        sessionId: "session-1",
+        messageId: "18",
+        snapshotVersion: 1,
+        scopeVersion: 1,
+        artifactVersion: 3,
+        idempotencyKey: "save-key",
+      })
+    ).resolves.toEqual({
+      task_id: 89,
+      task_no: "",
+      status: 0,
+      created_at: "",
+    });
   });
 
   it("rejects an invalid preview message id before issuing a request", async () => {

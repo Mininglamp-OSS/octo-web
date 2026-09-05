@@ -180,7 +180,8 @@ export function adaptSummaryWorkspaceHistory(value: unknown): SummaryWorkbenchHi
         preview.message_id !== message.id ||
         preview.result_type !== resultType ||
         preview.scope_version !== message.scope_version ||
-        preview.artifact_version !== message.artifact_version)
+        (message.artifact_version !== undefined &&
+          preview.artifact_version !== message.artifact_version))
     ) {
       throw protocolError("History artifact metadata does not match its message");
     }
@@ -237,6 +238,7 @@ export function adaptSummaryWorkspaceHistory(value: unknown): SummaryWorkbenchHi
       message.result_type !== artifact.resultType ||
       message.scope_version !== artifact.scopeVersion ||
       (artifact.artifactVersion !== undefined &&
+        message.artifact_version !== undefined &&
         message.artifact_version !== artifact.artifactVersion)
     ) {
       throw protocolError("History artifact metadata does not match its message");

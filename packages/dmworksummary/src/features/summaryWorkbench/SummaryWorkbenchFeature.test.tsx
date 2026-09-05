@@ -1621,6 +1621,7 @@ describe("SummaryWorkbenchFeature", () => {
 
     expect(mocks.useSummaryWorkbench).toHaveBeenCalledWith(
       expect.objectContaining({
+        spaceId: "space-a",
         initialSessionId: "restored-session",
         autoHydrate: true,
       })

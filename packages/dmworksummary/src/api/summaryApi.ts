@@ -465,6 +465,7 @@ export async function postSummaryWorkspaceTurn(
 ): Promise<unknown> {
     return requestSummaryWorkspace(() =>
         summaryAxios.post(`${BASE}/agent/chat`, request, {
+            ...(options.spaceId ? { headers: { 'X-Space-Id': options.spaceId } } : {}),
             signal: options.signal,
             timeout: 120000,
         }),
@@ -474,12 +475,13 @@ export async function postSummaryWorkspaceTurn(
 export function streamSummaryWorkspaceTurn(
     request: SummaryWorkspaceChatRequestDTO,
     handlers: SummaryWorkspaceStreamHandlers,
+    options: SummaryWorkspaceRequestOptions = {},
 ): { close: () => void } {
     return agentChatStream(request, {
         onProgress: handlers.onProgress,
         onDone: (event) => handlers.onDone?.(event),
         onError: handlers.onError,
-    });
+    }, options);
 }
 
 export async function getSummaryWorkspaceHistory(
@@ -490,6 +492,7 @@ export async function getSummaryWorkspaceHistory(
         () =>
             summaryAxios.get(`${BASE}/agent/chat/history`, {
                 params: { session_id: sessionId, profile: SUMMARY_WORKSPACE_PROFILE },
+                ...(options.spaceId ? { headers: { 'X-Space-Id': options.spaceId } } : {}),
                 signal: options.signal,
             }),
         { allowNullData: true },
@@ -511,7 +514,10 @@ export async function confirmSummaryWorkspaceProposal(
                 summary_context: request.summary_context,
             },
             {
-                headers: { 'Idempotency-Key': options.idempotencyKey },
+                headers: {
+                    'Idempotency-Key': options.idempotencyKey,
+                    ...(options.spaceId ? { 'X-Space-Id': options.spaceId } : {}),
+                },
                 signal: options.signal,
             },
         ),
@@ -524,7 +530,10 @@ export async function saveSummaryWorkspacePreview(
 ): Promise<unknown> {
     return requestSummaryWorkspace(() =>
         summaryAxios.post(`${BASE}/summaries/agent`, request, {
-            headers: { 'Idempotency-Key': options.idempotencyKey },
+            headers: {
+                'Idempotency-Key': options.idempotencyKey,
+                ...(options.spaceId ? { 'X-Space-Id': options.spaceId } : {}),
+            },
             signal: options.signal,
         }),
     );
@@ -722,14 +731,18 @@ export async function getAgentChatHistory(sessionId: string): Promise<AgentChatH
  * @param handlers - 事件回调: onProgress / onDone / onError
  * @returns {{ close: () => void }} - 中止 HTTP 请求并关闭 reader 的句柄,组件卸载/用户取消时调用
  */
-export function agentChatStream(params: AgentChatParams, handlers: AgentStreamHandlers): { close: () => void } {
+export function agentChatStream(
+    params: AgentChatParams,
+    handlers: AgentStreamHandlers,
+    options: SummaryWorkspaceRequestOptions = {},
+): { close: () => void } {
     let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
     let aborted = false;
     const controller = new AbortController();
 
     const url = `${resolveSummaryBaseURL()}${BASE}/agent/chat/stream`;
     const token = WKApp.loginInfo.token;
-    const spaceId = WKApp.shared.currentSpaceId;
+    const spaceId = options.spaceId ?? WKApp.shared.currentSpaceId;
 
     // 启动消费
     (async () => {

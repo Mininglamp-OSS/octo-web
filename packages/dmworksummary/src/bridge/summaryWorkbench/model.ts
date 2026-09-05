@@ -96,7 +96,7 @@ interface SummaryResponseBase {
   runId?: string;
   scopeVersion?: number;
   availableActions?: SummaryWorkbenchAction[];
-  authoritativeState?: SummaryWorkbenchAuthoritativeState;
+  authoritativeState: SummaryWorkbenchAuthoritativeState;
 }
 
 interface ConversationalSummaryResponse extends SummaryResponseBase {
@@ -149,6 +149,14 @@ export type SummaryWorkbenchResponse =
   | TeamConfirmationSummaryResponse
   | WorkflowSummaryResponse;
 
+type SummaryWorkbenchModelResponse = SummaryWorkbenchResponse extends infer Response
+  ? Response extends SummaryWorkbenchResponse
+    ? Omit<Response, "authoritativeState"> & {
+        authoritativeState?: SummaryWorkbenchAuthoritativeState;
+      }
+    : never
+  : never;
+
 export interface SummaryWorkbenchScopeUpdate {
   contextItems: SummaryWorkbenchContextItem[];
   /** Server-authoritative scope version, when one is already available. */
@@ -199,7 +207,7 @@ export function createInitialSummaryWorkbenchModel(
 
 export function applySummaryResponse(
   model: SummaryWorkbenchModel,
-  response: SummaryWorkbenchResponse
+  response: SummaryWorkbenchModelResponse
 ): SummaryWorkbenchModel {
   const responseScopeVersion = response.scopeVersion ?? model.scopeVersion;
   const availableActions = [...(response.availableActions ?? [])];
@@ -288,6 +296,8 @@ export function applySummaryResponse(
       break;
   }
 
+  // The public response type requires authoritative state. Keep the runtime
+  // guard for hand-written fixtures and defensive compatibility with stale JS.
   const synchronized = response.authoritativeState
     ? applySummaryAuthoritativeState(responseModel, response.authoritativeState)
     : responseModel;
