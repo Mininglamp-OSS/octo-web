@@ -441,3 +441,101 @@ describe('SummaryCard AI Generated Badge', () => {
         expect(screen.queryByText(/对话生成/)).not.toBeInTheDocument();
     });
 });
+
+describe('SummaryCard completed actions', () => {
+    it('Agent summary only offers continue refining and delete', () => {
+        const onContinueOptimize = vi.fn();
+        render(
+            <SummaryCard
+                task={makeItem({ status: TaskStatus.COMPLETED, trigger_type: TriggerType.AGENT }) as any}
+                onClick={noop}
+                onDelete={noop}
+                onContinueOptimize={onContinueOptimize}
+                unifiedAgentActions
+            />,
+        );
+
+        openCardMenu();
+        expect(screen.getByText('继续优化')).toBeInTheDocument();
+        expect(screen.getByText('删除')).toBeInTheDocument();
+        expect(screen.queryByText('重新生成')).not.toBeInTheDocument();
+        expect(screen.queryByText('编辑')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByText('继续优化'));
+        expect(onContinueOptimize).toHaveBeenCalledWith(1);
+    });
+
+    it('Legacy Agent summary keeps regenerate and edit actions', () => {
+        render(
+            <SummaryCard
+                task={makeItem({ status: TaskStatus.COMPLETED, trigger_type: TriggerType.AGENT }) as any}
+                onClick={noop}
+                onDelete={noop}
+                onRegenerate={noop}
+                onEdit={noop}
+            />,
+        );
+
+        openCardMenu();
+        expect(screen.getByText('重新生成')).toBeInTheDocument();
+        expect(screen.getByText('编辑')).toBeInTheDocument();
+        expect(screen.queryByText('继续优化')).not.toBeInTheDocument();
+    });
+
+    it('hides continue refining when an Agent summary is not referenceable', () => {
+        const onRegenerate = vi.fn();
+        render(
+            <SummaryCard
+                task={makeItem({ status: TaskStatus.COMPLETED, trigger_type: TriggerType.AGENT, referenceable: false }) as any}
+                onClick={noop}
+                onDelete={noop}
+                onContinueOptimize={noop}
+                onRegenerate={onRegenerate}
+                onEdit={noop}
+                unifiedAgentActions
+            />,
+        );
+
+        openCardMenu();
+        expect(screen.queryByText('继续优化')).not.toBeInTheDocument();
+        expect(screen.getByText('重新生成')).toBeInTheDocument();
+        expect(screen.queryByText('编辑')).not.toBeInTheDocument();
+        expect(screen.getByText('删除')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByText('重新生成'));
+        expect(onRegenerate).toHaveBeenCalledWith(1);
+    });
+
+    it('hides action items whose handlers are not provided', () => {
+        render(
+            <SummaryCard
+                task={makeItem({ status: TaskStatus.COMPLETED, trigger_type: TriggerType.MANUAL }) as any}
+                onClick={noop}
+                onDelete={noop}
+            />,
+        );
+
+        openCardMenu();
+        expect(screen.queryByText('重新生成')).not.toBeInTheDocument();
+        expect(screen.queryByText('编辑')).not.toBeInTheDocument();
+        expect(screen.getByText('删除')).toBeInTheDocument();
+    });
+
+    it('Workflow summary keeps regenerate, edit, and delete', () => {
+        render(
+            <SummaryCard
+                task={makeItem({ status: TaskStatus.COMPLETED, trigger_type: TriggerType.MANUAL }) as any}
+                onClick={noop}
+                onDelete={noop}
+                onRegenerate={noop}
+                onEdit={noop}
+            />,
+        );
+
+        openCardMenu();
+        expect(screen.getByText('重新生成')).toBeInTheDocument();
+        expect(screen.getByText('编辑')).toBeInTheDocument();
+        expect(screen.getByText('删除')).toBeInTheDocument();
+        expect(screen.queryByText('继续优化')).not.toBeInTheDocument();
+    });
+});

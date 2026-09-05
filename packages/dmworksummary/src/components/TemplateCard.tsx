@@ -9,46 +9,79 @@ const ICON_MAP: Record<string, React.FC<{ size?: number }>> = {
     MessageSquare,
 };
 
+type TemplateTone = 'blue' | 'purple' | 'orange' | 'cyan';
+
+const TEMPLATE_TONES: Record<string, TemplateTone> = {
+    project_progress: 'blue',
+    task_tracking: 'blue',
+    okr_alignment: 'blue',
+    weekly_report: 'purple',
+    personal_weekly_report: 'purple',
+    todo_extraction: 'orange',
+    chat_content: 'cyan',
+    feedback_triage: 'cyan',
+};
+
+function resolveTemplateTone(template: TopicTemplate): TemplateTone {
+    if (template.is_custom) return 'purple';
+    if (TEMPLATE_TONES[template.id]) return TEMPLATE_TONES[template.id];
+    if (template.icon === 'Calendar') return 'purple';
+    if (template.icon === 'MessageSquare') return 'cyan';
+    if (template.icon === 'ListChecks') return 'orange';
+    return 'blue';
+}
+
 interface TemplateCardProps {
     template: TopicTemplate;
     onClick: (template: TopicTemplate) => void;
+    selected?: boolean;
     onEdit?: (template: TopicTemplate) => void;
     onDelete?: (template: TopicTemplate) => void;
     editLabel?: string;
     deleteLabel?: string;
 }
 
-const TemplateCard: React.FC<TemplateCardProps> = ({ template, onClick, onEdit, onDelete, editLabel, deleteLabel }) => {
+const TemplateCard: React.FC<TemplateCardProps> = ({
+    template,
+    onClick,
+    selected,
+    onEdit,
+    onDelete,
+    editLabel,
+    deleteLabel,
+}) => {
     const IconComponent = ICON_MAP[template.icon] ?? FileText;
+    const tone = resolveTemplateTone(template);
 
     return (
         <div
             className={`chat-summary-template-card${template.is_custom ? ' chat-summary-template-card-custom' : ''}`}
-            onClick={() => onClick(template)}
+            data-template-tone={tone}
         >
-            <div className="chat-summary-template-card-content">
-                <div className="chat-summary-template-card-header">
-                    <span className="chat-summary-template-card-icon">
-                        <IconComponent size={16} />
+            <button
+                type="button"
+                className="chat-summary-template-card-select"
+                aria-label={template.label}
+                aria-pressed={selected}
+                onClick={() => onClick(template)}
+            >
+                <span className="chat-summary-template-card-content">
+                    <span className="chat-summary-template-card-icon" aria-hidden="true">
+                        <IconComponent size={18} />
                     </span>
-                    <span className="chat-summary-template-card-title">
-                        {template.label}
+                    <span className="chat-summary-template-card-copy">
+                        <span className="chat-summary-template-card-title">{template.label}</span>
+                        <span className="chat-summary-template-card-desc">{template.description}</span>
                     </span>
-                </div>
-                <div className="chat-summary-template-card-desc">
-                    {template.description}
-                </div>
-            </div>
+                </span>
+            </button>
             {(onEdit || onDelete) && (
                 <div className="chat-summary-template-actions">
                     {onEdit && (
                         <button
                             type="button"
                             className="chat-summary-template-edit"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onEdit(template);
-                            }}
+                            onClick={() => onEdit(template)}
                             aria-label={editLabel}
                         >
                             <Pencil size={14} />
@@ -58,10 +91,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({ template, onClick, onEdit, 
                         <button
                             type="button"
                             className="chat-summary-template-delete"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onDelete(template);
-                            }}
+                            onClick={() => onDelete(template)}
                             aria-label={deleteLabel}
                         >
                             <Trash2 size={14} />

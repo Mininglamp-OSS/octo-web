@@ -109,11 +109,21 @@ vi.mock("../pages/SummaryCreatePage", () => ({ default: () => null }));
 vi.mock("../pages/SummaryDetailPage", () => ({ default: () => null }));
 vi.mock("../pages/SummaryShareDetailPage", () => ({ default: () => null }));
 vi.mock("../features/summaryShare/SummarySharePreviewFeature", () => ({ default: () => null }));
+vi.mock("../features/summaryWorkbench/SummaryWorkbenchCreateEntry", () => ({
+  default: () => null,
+}));
 vi.mock("../pages/SummaryConfirmPage", () => ({ default: () => null }));
 vi.mock("../pages/ScheduleListPage", () => ({ default: () => null }));
 vi.mock("../api/summaryApi", () => ({
+  confirmSummaryWorkspaceProposal: vi.fn(),
   getChatCandidates: vi.fn(),
+  getSummaryDetail: vi.fn(),
   getSummaryShare: vi.fn(),
+  getSummaryWorkspaceCapabilities: vi.fn(),
+  getSummaryWorkspaceHistory: vi.fn(),
+  postSummaryWorkspaceTurn: vi.fn(),
+  saveSummaryWorkspacePreview: vi.fn(),
+  streamSummaryWorkspaceTurn: vi.fn(),
 }));
 vi.mock("../features/summaryShare/navigation", () => ({
   getOriginalSummaryTaskId: vi.fn(),
@@ -515,11 +525,13 @@ describe("SummaryModule —— 定时器与监听的拆线", () => {
   it("拆线后 visibility / focus 监听也一并摘掉（与既有 teardown 同一套做法）", () => {
     expect(state.docHandlers.has("visibilitychange")).toBe(true);
     expect(state.winHandlers.has("focus")).toBe(true);
+    expect(state.winHandlers.has("summary-open-chat-with-reference")).toBe(true);
 
     disposeSummaryModuleListeners();
 
     expect(state.docHandlers.has("visibilitychange")).toBe(false);
     expect(state.winHandlers.has("focus")).toBe(false);
+    expect(state.winHandlers.has("summary-open-chat-with-reference")).toBe(false);
   });
 
   it("拆线后残留的事件再来也不会碰到轮询（句柄已置空）", () => {

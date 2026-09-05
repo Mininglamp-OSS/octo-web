@@ -17,7 +17,7 @@ const sanityConfig = {
 };
 
 test.describe("@S2 @p1 @summary @list @summary-list @summary-create S2 — Summary 空态创建入口", () => {
-  test("从空态进入 Summary 创建页", async ({ authedPage }) => {
+  test("capability 关闭时从空态进入 Legacy 创建页", async ({ authedPage }) => {
     await registerS2SummaryEmptyCreateEntry(authedPage);
     const ctx = startRequestMonitor(authedPage, sanityConfig);
 
@@ -44,6 +44,26 @@ test.describe("@S2 @p1 @summary @list @summary-list @summary-create S2 — Summa
       "placeholder",
       "请输入你想总结的主题，例如：总结本周项目进展、整理客户反馈要点"
     );
+
+    await sanityCheck(authedPage, ctx);
+  });
+
+  test("capability 开启时从空态直接进入统一 Workbench", async ({ authedPage }) => {
+    await registerS2SummaryEmptyCreateEntry(authedPage, {
+      workbenchEnabled: true,
+    });
+    const ctx = startRequestMonitor(authedPage, sanityConfig);
+
+    await authedPage.getByRole("button", { name: "智能总结" }).click();
+    await expect(authedPage.getByText("暂无总结记录")).toBeVisible({
+      timeout: 15_000,
+    });
+    await authedPage.getByTestId(T.createEntry).click();
+
+    await expect(authedPage.getByTestId(T.workbenchFeature)).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(authedPage.getByTestId(T.createTopic)).toHaveCount(0);
 
     await sanityCheck(authedPage, ctx);
   });
