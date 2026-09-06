@@ -837,6 +837,7 @@ describe("SummaryWorkbenchFeature", () => {
         placeholderKey: "summary.workbench.placeholder.initial",
         isSending: false,
         canSend: false,
+        errorMessage: "",
       },
     });
     mocks.useSummaryWorkbench.mockReturnValue(current);
@@ -852,6 +853,78 @@ describe("SummaryWorkbenchFeature", () => {
       )
     );
     expect(screen.getByTestId("workbench-ui")).toHaveAttribute("data-can-send", "false");
+  });
+
+  it("explains why participants cannot be used with the selected chats", () => {
+    const current = controller({
+      scope: scope({
+        selectedChannels: [
+          { chatId: "direct-a", chatType: "direct", name: "Alex" },
+        ],
+        participants: [{ userId: "user-a", userName: "Alex" }],
+      }),
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Summarize updates",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: false,
+      },
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+
+    expect(mocks.loadParticipantCandidates).not.toHaveBeenCalled();
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-error-message",
+      "summary.workbench.notice.participantsUnsupportedForSelectedChats"
+    );
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "false"
+    );
+  });
+
+  it("does not reload ready participant candidates when the first participant is selected", async () => {
+    const current = controller({
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Summarize updates",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: false,
+      },
+    });
+    mocks.useSummaryWorkbench.mockImplementation(() => current);
+
+    const { rerender } = render(
+      <SummaryWorkbenchFeature spaceId="space-a" />,
+      { legacyRoot: true }
+    );
+    fireEvent.click(screen.getByRole("button", { name: "open-participant" }));
+    await waitFor(() =>
+      expect(mocks.loadParticipantCandidates).toHaveBeenCalledTimes(1)
+    );
+
+    current.scope = scope({
+      participants: [{ userId: "user-a", userName: "Alex" }],
+    });
+    rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-can-send",
+        "true"
+      )
+    );
+    expect(mocks.loadParticipantCandidates).toHaveBeenCalledTimes(1);
   });
 
   it("defers participant pruning until an in-flight save settles", async () => {

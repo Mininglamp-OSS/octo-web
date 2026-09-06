@@ -359,7 +359,7 @@ export default function SummaryWorkbenchFeature({
           }
     );
     if (participantsPresent && participantScopeKey) {
-      void refreshParticipantCandidates(true);
+      void refreshParticipantCandidates();
     }
   }, [participantScopeKey, participantsPresent]);
 
@@ -482,6 +482,12 @@ export default function SummaryWorkbenchFeature({
     (Boolean(participantScopeKey) &&
       participantCandidateState.sourceKey === participantScopeKey &&
       participantCandidateState.status === "ready");
+  const participantScopeInvalid = participantsPresent && !participantScopeKey;
+  const participantScopeErrorMessage = participantScopeInvalid
+    ? t("summary.workbench.notice.participantsUnsupportedForSelectedChats")
+    : participantsPresent && participantCandidateState.status === "error"
+    ? t("summary.workbench.notice.participantCandidatesLoadFailed")
+    : undefined;
   const displayErrorKey = errorMessageKey(
     workbench.error?.httpStatus,
     workbench.error?.kind
@@ -513,10 +519,7 @@ export default function SummaryWorkbenchFeature({
         : "summary.workbench.composer.send",
     errorMessage: displayErrorKey
       ? t(displayErrorKey)
-      : workbench.viewState.errorMessage ??
-        (participantsPresent && participantCandidateState.status === "error"
-          ? t("summary.workbench.notice.participantCandidatesLoadFailed")
-          : undefined),
+      : workbench.viewState.errorMessage || participantScopeErrorMessage,
   };
 
   const updateScopeWithPreviewGuard = (

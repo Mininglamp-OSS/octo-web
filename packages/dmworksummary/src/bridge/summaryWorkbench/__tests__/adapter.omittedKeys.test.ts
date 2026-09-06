@@ -102,6 +102,118 @@ describe('adapter — omitted optional pointer keys are tolerated (P1-2)', () =>
       card: { kind: 'agent_preview', version: 3 },
     });
   });
+
+  it('hydrates a non-current historical preview when optional result_type is omitted', () => {
+    const oldPreview = {
+      message_id: 18,
+      result_type: 'agent_preview',
+      scope_version: 2,
+      artifact_version: 3,
+      snapshot_version: 1,
+      content: '# 风险总结 V1',
+      assumptions: [],
+      available_actions: [],
+    };
+    const currentPreview = {
+      ...oldPreview,
+      message_id: 20,
+      result_type: 'agent_revision',
+      artifact_version: 4,
+      content: '# 风险总结 V2',
+      available_actions: ['save_preview'],
+    };
+
+    const history = adaptSummaryWorkspaceHistory({
+      contract_version: '2',
+      session_id: 'session-omit-old-preview-type',
+      messages: [
+        {
+          id: 18,
+          role: 'assistant',
+          content: '第一版总结',
+          scope_version: 2,
+          artifact_version: 3,
+          preview: oldPreview,
+        },
+        {
+          id: 20,
+          role: 'assistant',
+          content: '第二版总结',
+          result_type: 'agent_revision',
+          scope_version: 2,
+          artifact_version: 4,
+          preview: currentPreview,
+        },
+      ],
+      state: {
+        scope_version: 2,
+        summary_context: {
+          selected_channels: [],
+          participants: [],
+          referenced_task_ids: [],
+        },
+        current_preview: currentPreview,
+      },
+    });
+
+    expect(history.modelOptions.messages).toEqual([
+      expect.objectContaining({
+        id: '18',
+        resultType: 'agent_preview',
+        card: expect.objectContaining({
+          kind: 'agent_preview',
+          content: '# 风险总结 V1',
+        }),
+      }),
+      expect.objectContaining({
+        id: '20',
+        resultType: 'agent_revision',
+        card: expect.objectContaining({
+          kind: 'agent_revision',
+          content: '# 风险总结 V2',
+        }),
+      }),
+    ]);
+  });
+
+  it('still rejects a non-current preview when an explicit result_type conflicts', () => {
+    const oldPreview = {
+      message_id: 18,
+      result_type: 'agent_preview',
+      scope_version: 2,
+      artifact_version: 3,
+      snapshot_version: 1,
+      content: '# 风险总结 V1',
+      assumptions: [],
+      available_actions: [],
+    };
+
+    expect(() =>
+      adaptSummaryWorkspaceHistory({
+        contract_version: '2',
+        session_id: 'session-conflicting-old-preview-type',
+        messages: [
+          {
+            id: 18,
+            role: 'assistant',
+            content: '第一版总结',
+            result_type: 'agent_revision',
+            scope_version: 2,
+            artifact_version: 3,
+            preview: oldPreview,
+          },
+        ],
+        state: {
+          scope_version: 2,
+          summary_context: {
+            selected_channels: [],
+            participants: [],
+            referenced_task_ids: [],
+          },
+        },
+      })
+    ).toThrow('History artifact metadata does not match its message');
+  });
 });
 
 // P1-3 test moved to src/api/__tests__/summaryApi.omittedData.test.ts —

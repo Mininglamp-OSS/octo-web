@@ -1,4 +1,5 @@
 import type { CoverageGap, CreateAgentSummaryResult, FinishStatus } from "../../types/summary";
+import { MAX_CHAT_SELECT } from "../../constants/limits";
 import type {
   CreateSummaryWorkbenchModelOptions,
   SummaryWorkbenchAuthoritativeState,
@@ -43,6 +44,23 @@ export interface SummaryWorkbenchHistoryHydration {
   scope: SummaryWorkbenchScope;
   modelOptions: CreateSummaryWorkbenchModelOptions;
   empty?: boolean;
+}
+
+function resolveHistoryResultType(
+  messageResultType?: SummaryWorkbenchResultType,
+  artifactResultType?: SummaryWorkbenchResultType,
+  previewResultType?: SummaryWorkbenchResultType
+): SummaryWorkbenchResultType | undefined {
+  const resultType = artifactResultType ?? previewResultType ?? messageResultType;
+  if (
+    resultType !== undefined &&
+    [messageResultType, artifactResultType, previewResultType].some(
+      (candidate) => candidate !== undefined && candidate !== resultType
+    )
+  ) {
+    throw protocolError("History artifact metadata does not match its message");
+  }
+  return resultType;
 }
 
 export function adaptSummaryWorkspaceTurn(value: unknown): SummaryWorkbenchResponse {
@@ -170,15 +188,18 @@ export function adaptSummaryWorkspaceHistory(value: unknown): SummaryWorkbenchHi
 
   const messages = history.messages.map((message) => {
     const artifact = artifactByMessageId.get(message.id);
-    const resultType = artifact?.resultType ?? message.result_type;
     const preview =
       message.preview ??
       (currentPreview?.message_id === message.id ? currentPreview : undefined);
+    const resultType = resolveHistoryResultType(
+      message.result_type,
+      artifact?.resultType,
+      preview?.result_type
+    );
     if (
       preview &&
       (message.role !== "assistant" ||
         preview.message_id !== message.id ||
-        preview.result_type !== resultType ||
         preview.scope_version !== message.scope_version ||
         (message.artifact_version !== undefined &&
           preview.artifact_version !== message.artifact_version))
@@ -235,7 +256,8 @@ export function adaptSummaryWorkspaceHistory(value: unknown): SummaryWorkbenchHi
     }
     if (
       message.role !== "assistant" ||
-      (message.result_type ?? artifact.resultType) !== artifact.resultType ||
+      resolveHistoryResultType(message.result_type, artifact.resultType) !==
+        artifact.resultType ||
       message.scope_version !== artifact.scopeVersion ||
       (artifact.artifactVersion !== undefined &&
         message.artifact_version !== undefined &&
@@ -644,17 +666,24 @@ function toAuthoritativeState(
 }
 
 function toWorkbenchScope(context: SummaryWorkspaceContextDTO): SummaryWorkbenchScope {
+  const selectedChannels = context.selected_channels.map((channel) => ({
+    chatId: channel.chat_id,
+    chatType: channel.chat_type,
+    name: channel.name,
+    ...(channel.is_archived === undefined ? {} : { isArchived: channel.is_archived }),
+  }));
+  const supportsParticipants =
+    selectedChannels.length === 0 ||
+    (selectedChannels.length <= MAX_CHAT_SELECT &&
+      selectedChannels.every((channel) => channel.chatType === "group"));
   return {
-    selectedChannels: context.selected_channels.map((channel) => ({
-      chatId: channel.chat_id,
-      chatType: channel.chat_type,
-      name: channel.name,
-      ...(channel.is_archived === undefined ? {} : { isArchived: channel.is_archived }),
-    })),
-    participants: context.participants.map((participant) => ({
-      userId: participant.user_id,
-      ...(participant.user_name ? { userName: participant.user_name } : {}),
-    })),
+    selectedChannels,
+    participants: supportsParticipants
+      ? context.participants.map((participant) => ({
+          userId: participant.user_id,
+          ...(participant.user_name ? { userName: participant.user_name } : {}),
+        }))
+      : [],
     template: context.template
       ? {
           templateId: context.template.template_id,

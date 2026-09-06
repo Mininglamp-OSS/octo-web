@@ -383,6 +383,33 @@ describe("summary workspace adapter", () => {
     });
   });
 
+  it("drops participants from a server scope that cannot support participant selection", () => {
+    const hydration = adaptSummaryWorkspaceHistory({
+      contract_version: "2",
+      session_id: "session-invalid-participant-scope",
+      messages: [],
+      state: {
+        ...emptyState(2),
+        summary_context: {
+          ...summaryContext,
+          selected_channels: [
+            {
+              chat_id: "direct-1",
+              chat_type: "direct",
+              name: "张三",
+            },
+          ],
+          participants: [{ user_id: "u1", user_name: "张三" }],
+        },
+      },
+    });
+
+    expect(hydration.scope).toMatchObject({
+      selectedChannels: [{ chatId: "direct-1", chatType: "direct" }],
+      participants: [],
+    });
+  });
+
   it("rejects History when artifact state points at a user or mismatched message", () => {
     const currentPreview = {
       message_id: 18,

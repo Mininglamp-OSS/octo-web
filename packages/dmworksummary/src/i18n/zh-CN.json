@@ -259,6 +259,7 @@
       "participantsPruned": "已移除不属于当前所选群聊的参与者",
       "participantsPrunedArtifactInvalidated": "参与者权限已变化，原结果已保留为历史，请重新生成。",
       "participantCandidatesLoadFailed": "部分群成员加载失败，请重试",
+      "participantsUnsupportedForSelectedChats": "当前会话范围不支持参与者，请仅选择群聊且不超过 30 个",
       "selectSingleChatForParticipants": "选择参与者时仅支持最多 30 个群聊",
       "savedWithQualityGap": "总结已保存，但存在质量缺口：{{detail}}",
       "savedWithQualityGateWarning": "总结已保存，但未通过完整质量校验，请人工核对后使用。"
