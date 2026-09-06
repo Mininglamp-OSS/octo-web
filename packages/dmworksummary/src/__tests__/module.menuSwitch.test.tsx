@@ -17,7 +17,7 @@ const state = vi.hoisted(() => ({
 
 vi.mock("@octo/base", () => ({
   getSessionSid: () => "sid-test",
-  i18n: { registerNamespace: vi.fn(), hasMessage: () => false },
+  i18n: { registerNamespace: vi.fn() },
   t: (key: string) => key,
   Dap: { shared: { track: vi.fn() } },
   Menus: class {},
@@ -168,6 +168,20 @@ describe("SummaryModule guarded menu switching", () => {
     registeredHandler("space-ready")();
 
     expect(refreshSummaryAttentionBadge).toHaveBeenCalledTimes(1);
+  });
+
+  it("assigns menu.shortTitle from summary.menu.titleShort for the NavRail collapsed short form (#1635)", () => {
+    // `Menus` is stubbed above as `class {}` so constructor args (title/icon)
+    // are dropped, but post-construction assignments (shortTitle, badge,
+    // onPress) still land on the returned instance. That is enough to pin
+    // the contract this PR is responsible for: the summary menu factory
+    // MUST assign shortTitle from translate("summary.menu.titleShort") so
+    // NavRail can render the short variant in the collapsed rail. The mocked
+    // translate returns the key verbatim (`(k) => k`); the concrete strings
+    // (`Summary` / `智能总结`) are locked by the JSON parity check the i18n
+    // scanner enforces.
+    const menu = summaryMenuFactory()() as { shortTitle?: string };
+    expect(menu.shortTitle).toBe("summary.menu.titleShort");
   });
 
   it("NavRail summary onPress opens the create page by default without pushing a duplicate list page", () => {

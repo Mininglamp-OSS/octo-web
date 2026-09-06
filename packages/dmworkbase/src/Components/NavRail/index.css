@@ -571,16 +571,23 @@
  * 双 span 变体（NavItem 提供 shortLabel 时渲染）:collapsed rail 只显示 --short,
  * expanded rail 只显示 --full。DOM 里两个都在,视觉切换纯靠 CSS,组件层保持 dumb,
  * 也不需要拿到当前布局宽度。见 #1635。
+ *
+ * 关键:override 用 `.wk-layout-tab-expanded .wk-navrail__item-label.wk-navrail__item-label--full`
+ * 这种复合选择器 (specificity 0,3,0),压过下面共享的
+ * `.wk-layout-tab-expanded .wk-navrail__item-label` (0,2,0) —— 否则 source order
+ * 决定,共享规则会把 --short 也拉成 inline-flex,expanded rail 同时显示两个 span
+ * ("AI Summary Summary")。round 2 曾在此处翻车,靠 collapsedLayout.test 里的
+ * specificity/顺序断言把关。
  */
 .wk-navrail__item-label--full {
     display: none;
 }
 
-.wk-layout-tab-expanded .wk-navrail__item-label--full {
+.wk-layout-tab-expanded .wk-navrail__item-label.wk-navrail__item-label--full {
     display: inline-flex;
 }
 
-.wk-layout-tab-expanded .wk-navrail__item-label--short {
+.wk-layout-tab-expanded .wk-navrail__item-label.wk-navrail__item-label--short {
     display: none;
 }
 

@@ -17,15 +17,19 @@ export interface NavItemProps {
 
 export default function NavItem({ icon, label, shortLabel, active, badge, onClick, trackObjectId }: NavItemProps) {
     const badgeLabel = badge && badge > 99 ? "99+" : badge;
-    const hasDistinctShort = !!shortLabel && shortLabel.length > 0 && shortLabel !== label;
+    const hasDistinctShort = !!shortLabel && shortLabel !== label;
 
     return (
         <button
             type="button"
             className={`wk-navrail__item${active ? " wk-navrail__item--active" : ""}`}
             aria-label={label}
-            // 只在文案会被 CSS 截断的方向(collapsed rail 且短≠全)才挂 native tooltip,
-            // 避免给 fully-visible 的 `Chats` / `Contacts` 加冗余悬浮提示。
+            // 只在 short≠full 时挂 native tooltip,避免 fully-visible 的
+            // `Chats` / `Contacts` 冒冗余悬浮提示。tooltip 在 collapsed 和
+            // expanded rail 都会出现:expanded 下文案已完整,tooltip 是冗余但
+            // 无害;做真正 layout-aware 需要在 DOM 外拿到 `.wk-layout-tab-expanded`
+            // 状态,超出本 PR 范围,后续可考虑用 accessible tooltip 组件替换
+            // (native title 对键盘 / 触屏用户不可达,见 #1635 Not in scope)。
             title={hasDistinctShort ? label : undefined}
             aria-current={active ? "page" : undefined}
             data-track="nav_tab_switched"

@@ -202,15 +202,14 @@ export class SummaryModule implements IModule {
                     <SummaryMenuIcon />,
                     <SummaryMenuIcon active />,
                 );
-                // NavRail collapsed 状态 label 只有 ~52px,英文 `AI Summary` (63px) 会被
-                // ellipsis 截成 `Sum...`;用 titleShort 走窄容器 label(#1635)。
-                // zh-CN 的 titleShort 就是 `智能总结`(与 title 同值),让 NavItem 的
-                // `shortLabel === label` 判断塌回单 span 渲染,不改变 zh-CN 视觉。i18n:check
-                // 强制两 locale 对称,所以两个都得写;hasMessage 门保留作为未来新 locale
-                // 缺 key 的降级路径。
-                if (i18n.hasMessage("summary.menu.titleShort")) {
-                    menu.shortTitle = translate("summary.menu.titleShort");
-                }
+                // NavRail collapsed 状态 label 只有 ~52px,英文 `AI Summary` (63px)
+                // 会被 CSS ellipsis 截成 `Sum...`。走 titleShort 变体,窄容器 label
+                // 渲染 `Summary`,expanded rail 靠 CSS 切回 `AI Summary`(见 #1635)。
+                //
+                // zh-CN 的 titleShort 与 title 同为 `智能总结` —— i18n:check 强制
+                // 两 locale key 对称,产品也不需要 zh-CN 短形式。NavItem 里
+                // `shortLabel === label` 判断会塌回单 span,视觉与旧行为一致。
+                menu.shortTitle = translate("summary.menu.titleShort");
                 // #1359 待关注红点（未读 ∪ 未处理邀请 ∪ 待提交）：badge 字段与 NavRail
                 // 渲染已存在，此处每次 render 读最新计数即可（宿主 forceUpdate 驱动重绘）。
                 menu.badge = getSummaryAttentionBadge();

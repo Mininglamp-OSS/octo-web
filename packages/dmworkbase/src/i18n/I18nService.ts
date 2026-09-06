@@ -140,19 +140,6 @@ export class I18nService {
     return interpolate(message, options?.values);
   }
 
-  /**
-   * True when `key` is defined in the specified locale (default: the current
-   * locale). Distinct from `t(key)` — the translator falls through to the
-   * default locale on a miss, which is the wrong signal when a caller wants
-   * to know whether the current locale really provides a locale-appropriate
-   * value (e.g. to decide whether to opt into a locale-specific short
-   * variant instead of silently taking the en-US fallback).
-   */
-  hasMessage(key: string, locale?: Locale): boolean {
-    const target = locale || this.locale;
-    return this.messages[target]?.[key] !== undefined;
-  }
-
   private notify() {
     Array.from(this.listeners).forEach((listener) => {
       try {
