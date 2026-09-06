@@ -152,6 +152,81 @@ Do not translate:
 
 When excluding a source file from hardcoded Chinese checks, record the reason in `.i18n/scan-config.json`. Do not add broad ignores without a concrete non-UI reason.
 
+## Copy Length Budgets & Constrained Layouts
+
+Constrained layouts — nav labels, tabs, buttons, date columns, table cells with fixed widths — are where localization most often fails. English source strings are typically the shortest form; other languages expand significantly, and the shorter the source, the higher the expansion ratio. Octo uses Chinese as the primary source, which magnifies the effect: short Chinese labels can grow by an order of magnitude when translated to English.
+
+### Reference Expansion Ratios (W3C / IBM)
+
+Source: W3C "Text size in translation" (citing IBM Guidelines to Design Global Solutions).
+
+| English source length | Average expansion |
+|---|---|
+| ≤ 10 chars | 200-300% |
+| 11-20 | 180-200% |
+| 21-30 | 160-180% |
+| 31-50 | 140-160% |
+| > 70 | ~130% |
+
+Chinese → English expansion for short strings is often even larger than the table above. Real examples from Octo Web:
+
+- `智能总结` (4 chars) → `AI Summary` (10 chars, 2.5×)
+- `前天` (2 chars) → `The day before yesterday` (24 chars, 12×)
+- `昨天` (2 chars) → `Yesterday` (9 chars, 4.5×)
+
+Design for the worst-case locale, not the source locale.
+
+### Constrained Container Inventory & Budgets
+
+The following containers in Octo Web have fixed or narrow width constraints. When adding or migrating a translation key rendered in one of these containers, the translated string in **any** locale must fit the budget below.
+
+| Container | Component | Character budget | Notes |
+|---|---|---|---|
+| NavRail label (top-level menu) | `packages/dmworkbase/src/Components/NavRail/NavItem.tsx` | ≤ 10 chars | Icon 40px + label area ~60-80px; use `.short` variant for longer copy |
+| Chat list date column | ChannelList row (locate during WS-216) | ≤ 12 chars | Must not truncate time digits; go through `format.relativeTime` short mode |
+| Tab title | Tabs / SegmentedControl surfaces | ≤ 12 chars | |
+| Primary button (fixed-width toolbar) | Toolbar / ActionBar | ≤ 18 chars | |
+| Table column header (fixed-width) | Table headers with hard `width` | ≤ 14 chars | |
+
+Add rows to this table when a new narrow container is discovered. Do not delete rows without evidence the container is no longer constrained.
+
+### Design Layers (in order of preference)
+
+1. **Reserve space in layout, not in copy.** Layout containers use `min-width` + `width: max-content` + `max-width: 100%`, not `width: <fixed-px>`. Reserve for source × 2 as a rule of thumb.
+2. **Short-variant keys.** When a base translation exceeds the budget in any locale, add a `.short` variant key. Consumers in constrained containers resolve `<key>.short` first, fall back to `<key>`. Example: `nav.summary` = `AI Summary` (full), `nav.summary.short` = `Summary` (fits NavRail budget). When you add a `.short`, add it in **every** locale file — English-only `.short` variants leave zh-CN (and any future locale) still overflowing.
+3. **Locale-sensitive short formats for dates/times/numbers.** Dates, times, relative times, and numbers in constrained containers must go through `format.relativeTime` / `format.dateTime` / `format.number`. Never hand-translate `"the day before yesterday"`. Reference short-format ladder for relative time:
+   - Today → `HH:mm`
+   - Yesterday → `Yesterday` / `1d ago`
+   - This week → weekday abbrev (`Wed`) or `2d ago`
+   - This year → `MMM d` (`Sep 4`)
+   - Prior years → `M/d/yy` or `MMM d, yyyy`
+4. **Truncation + tooltip (last resort).** `text-overflow: ellipsis` + `title` attribute (or `aria-label`) so users can hover to see the full copy. Ellipsis without a tooltip is an accessibility bug (W3C WAI, Baymard).
+
+### Anti-patterns
+
+- ❌ Direct translation of a phrase that exceeds the budget (`The day before yesterday`, `AI Summary` in NavRail).
+- ❌ Ellipsis without `title` / `aria-label` fallback.
+- ❌ Fixed pixel widths on layout containers holding translatable copy.
+- ❌ Reducing font-size to fit — accessibility regression.
+- ❌ Adding a `.short` variant in English only, leaving zh-CN and future locales unaddressed.
+- ❌ Hard-coded date/time phrases in place of `format.relativeTime` / `format.dateTime`.
+
+### Verification Checklist (for PRs touching constrained layouts)
+
+- [ ] `pnpm i18n:check` passes, including length assertions once WS-218 lands.
+- [ ] Every locale file (`zh-CN`, `en-US`, and any future locales) carries the `.short` variant for keys rendered in constrained containers.
+- [ ] Manual browser verification in both `zh-CN` and `en-US` for the touched screens.
+- [ ] Ellipsis-truncated elements have `title` or `aria-label`.
+- [ ] Date / time / number rendering goes through `format.*`, not a translated string.
+
+### References
+
+- W3C "Text size in translation": https://www.w3.org/International/articles/article-text-size.en
+- IBM Globalization — Guidelines to design global solutions
+- Material Design 3 Navigation Bar (accessibility): https://m3.material.io/components/navigation-bar/accessibility
+- Apple Human Interface Guidelines — Localization: https://developer.apple.com/localization/
+- SimpleLocalize — Text expansion in UI localization: https://simplelocalize.io/blog/posts/text-expansion-ui-localization/
+
 ## Adding New Copy
 
 For new user-visible copy:
