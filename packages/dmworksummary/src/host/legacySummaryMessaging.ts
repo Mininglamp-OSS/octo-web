@@ -76,7 +76,7 @@ export const legacySummaryMessagingPort: SummaryMessagingPort = {
     );
   },
 
-  requestForward({ content, title, onComplete, onError }) {
+  requestForward({ content, title, onComplete, onError, onCancel }) {
     WKApp.shared.baseContext.showConversationSelect(
       async (channels: Channel[]) => {
         try {
@@ -96,7 +96,9 @@ export const legacySummaryMessagingPort: SummaryMessagingPort = {
           onError?.(error);
         }
       },
-      title
+      title,
+      undefined,
+      onCancel
     );
   },
 

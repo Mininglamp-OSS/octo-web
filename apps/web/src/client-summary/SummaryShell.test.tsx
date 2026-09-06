@@ -148,9 +148,29 @@ describe("SummaryShell", () => {
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(document.documentElement.lang).toBe("en-US");
     expect(document.documentElement.dataset.hostVisibility).toBe("hidden");
-    expect(mocks.setRuntimeVisible).toHaveBeenCalledWith(false);
+    expect(mocks.setRuntimeVisible).not.toHaveBeenCalled();
     expect(i18n.setLocale).toHaveBeenCalledWith("en-US", { persist: false });
     expect(invalidate).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps badge polling active while detached and pauses it with the host window", () => {
+    render(
+      <SummaryShell
+        bridge={mocks.bridge as any}
+        initialRoute={{ view: "list" }}
+        initialSpaceId="space-a"
+        onReady={vi.fn(async () => {})}
+      />
+    );
+
+    act(() => mocks.command.listener?.({ type: "suspend" }));
+    expect(mocks.setRuntimeVisible).not.toHaveBeenCalled();
+
+    act(() => mocks.command.listener?.({ type: "hostVisibilityChanged", visible: false }));
+    expect(mocks.setRuntimeVisible).toHaveBeenLastCalledWith(false);
+
+    act(() => mocks.command.listener?.({ type: "hostVisibilityChanged", visible: true }));
+    expect(mocks.setRuntimeVisible).toHaveBeenLastCalledWith(true);
   });
 
   it("isolates route and badge reporting failures", async () => {

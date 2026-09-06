@@ -22,6 +22,7 @@ import appEnUS from "../i18n/en-US.json";
 import appZhCN from "../i18n/zh-CN.json";
 import { installCommunicationAuthExpiryHandler } from "./authLifecycle";
 import { assertClientFeatureBootstrap } from "../client-feature/bootstrapContract";
+import { enableClientFeatureMocks } from "../client-feature/e2eMocks";
 import { CommunicationShell } from "./CommunicationShell";
 import { requireHostBridge } from "./hostBridge";
 import { reportStartupFailure } from "./startupFailure";
@@ -69,7 +70,7 @@ async function main() {
     registerModule: (module) => WKApp.shared.registerModule(module),
   });
 
-  await enableMocksIfE2E();
+  await enableClientFeatureMocks("communication");
   await enableMockImIfE2E();
   WKApp.shared.startup({ loadLoginInfo: false, isPC: true });
   if (
@@ -100,16 +101,6 @@ async function main() {
       </I18nProvider>
     </React.StrictMode>,
   );
-}
-
-async function enableMocksIfE2E(): Promise<void> {
-  if (import.meta.env.VITE_E2E_MOCK !== "1") return;
-  try {
-    const { worker } = await import("../mocks/browser");
-    await worker.start({ onUnhandledRequest: "bypass" });
-  } catch (error) {
-    console.warn("[communication-e2e] MSW disabled:", error);
-  }
 }
 
 async function enableMockImIfE2E(): Promise<void> {

@@ -72,6 +72,12 @@ export function AppsShell({
         window.location.reload();
         return;
       }
+      if (command.type === "hostVisibilityChanged") {
+        document.documentElement.dataset.hostVisibility = command.visible
+          ? "visible"
+          : "hidden";
+        return;
+      }
       document.documentElement.dataset.hostVisibility =
         command.type === "suspend" ? "hidden" : "visible";
     });

@@ -45,6 +45,27 @@ export async function buildClientFeature({
     throw new Error(`[build-${featureId}] VITE_API_URL is required`);
   }
 
+  const statusResult = childProcess.spawnSync(
+    "git",
+    ["status", "--porcelain", "--untracked-files=normal"],
+    { cwd: appDir, encoding: "utf8" }
+  );
+  if (statusResult.error || statusResult.status !== 0) {
+    throw new Error(
+      `[build-${featureId}] failed to inspect git worktree: ${
+        statusResult.error?.message ||
+        statusResult.stderr?.trim() ||
+        `exit ${statusResult.status}`
+      }`
+    );
+  }
+  const sourceDirty = Boolean(statusResult.stdout?.trim());
+  if (sourceDirty && process.env.OCTO_ALLOW_DIRTY_CLIENT_ARTIFACT !== "1") {
+    throw new Error(
+      `[build-${featureId}] refusing to build from a dirty worktree; commit the source or set OCTO_ALLOW_DIRTY_CLIENT_ARTIFACT=1 for local E2E only`
+    );
+  }
+
   const viteBin = path.join(
     path.dirname(require.resolve("vite/package.json")),
     "bin",
@@ -98,6 +119,7 @@ export async function buildClientFeature({
     entry: "index.html",
     hostBridgeMajor: 1,
     contractRevision,
+    sourceDirty,
     e2eMock: buildEnv.e2eMock || (includeImMock && buildEnv.e2eMockIm),
     mockFlags: {
       api: buildEnv.viteEnv.VITE_E2E_MOCK,

@@ -12,7 +12,12 @@ const mocks = vi.hoisted(() => {
   return {
     command,
     summaryRequest,
+    getCurrentImChannelInfo: vi.fn(),
+    setCurrentImChannelInfoCache: vi.fn(),
+    findCurrentImConversation: vi.fn(),
+    createCurrentEmptyImConversation: vi.fn(),
     loadConversationMembers: vi.fn(async () => [{ uid: "user-1", name: "User 1" }]),
+    requestForward: vi.fn(),
     bridge: {
       getBootstrap: vi.fn(),
       reportReady: vi.fn(async () => {}),
@@ -47,7 +52,7 @@ vi.mock("@dmwork/summary/src/host/legacySummaryMessaging", () => ({
   legacySummaryMessagingPort: {
     loadConversationMembers: mocks.loadConversationMembers,
     notifySummaryCompleted: vi.fn(async () => {}),
-    requestForward: vi.fn(),
+    requestForward: mocks.requestForward,
   },
 }));
 
@@ -65,6 +70,12 @@ vi.mock("wukongimjssdk", () => ({
       public channelID: string,
       public channelType: number,
     ) {}
+  },
+  ChannelInfo: class ChannelInfo {
+    channel?: { channelID: string; channelType: number };
+    title = "";
+    logo = "";
+    orgData: Record<string, unknown> = {};
   },
   WKSDK: {
     shared: () => ({ conversationManager: mocks.conversationManager }),
@@ -86,6 +97,10 @@ vi.mock("@octo/base", () => {
   };
   return {
     ChatPage: () => <div>chat</div>,
+    getCurrentImChannelInfo: mocks.getCurrentImChannelInfo,
+    setCurrentImChannelInfoCache: mocks.setCurrentImChannelInfoCache,
+    findCurrentImConversation: mocks.findCurrentImConversation,
+    createCurrentEmptyImConversation: mocks.createCurrentEmptyImConversation,
     ThemeMode: { light: "light", dark: "dark" },
     WKApp: {
       routeLeft: { ...route },
@@ -132,6 +147,7 @@ describe("CommunicationShell", () => {
     vi.clearAllMocks();
     mocks.command.listener = undefined;
     mocks.summaryRequest.listener = undefined;
+    mocks.getCurrentImChannelInfo.mockReturnValue(undefined);
   });
 
   it("reports ready once during the React StrictMode effect cycle", async () => {
@@ -260,6 +276,89 @@ describe("CommunicationShell", () => {
     expect(i18n.setLocale).toHaveBeenCalledWith("en-US", { persist: false });
   });
 
+  it("preserves app metadata when opening a bot conversation", async () => {
+    render(
+      <CommunicationShell
+        bridge={mocks.bridge as any}
+        initialPage="chat"
+        initialSpaceId="space-a"
+        initialPresentation="workspace"
+        onReady={vi.fn(async () => {})}
+      />,
+    );
+
+    await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+    mocks.command.listener?.({
+      type: "navigate",
+      page: "chat",
+      presentation: "conversation",
+      target: {
+        channelId: "bot-1",
+        channelType: 1,
+        displayName: "Docs Bot",
+        avatar: "users/bot-1/avatar",
+        metadata: { displayName: "Docs Bot", robot: 1, name: "Docs Bot" },
+      },
+    });
+
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalled());
+    expect(mocks.setCurrentImChannelInfoCache).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Docs Bot",
+      logo: "users/bot-1/avatar",
+      orgData: { displayName: "Docs Bot", robot: 1, name: "Docs Bot" },
+    }));
+    expect(mocks.createCurrentEmptyImConversation).toHaveBeenCalledWith(expect.objectContaining({
+      channelID: "bot-1",
+      channelType: 1,
+    }));
+  });
+
+  it("merges app metadata into an existing bot channel without dropping server fields", async () => {
+    const cached = {
+      channel: undefined,
+      title: "Server Bot",
+      logo: "server-avatar",
+      orgData: { bot_commands: [{ command: "help" }], online: 1 },
+    };
+    mocks.getCurrentImChannelInfo.mockReturnValue(cached);
+
+    render(
+      <CommunicationShell
+        bridge={mocks.bridge as any}
+        initialPage="chat"
+        initialSpaceId="space-a"
+        initialPresentation="workspace"
+        onReady={vi.fn(async () => {})}
+      />,
+    );
+
+    await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+    mocks.command.listener?.({
+      type: "navigate",
+      page: "chat",
+      presentation: "conversation",
+      target: {
+        channelId: "bot-1",
+        channelType: 1,
+        displayName: "Docs Bot",
+        metadata: { displayName: "Docs Bot", robot: 1, name: "Docs Bot" },
+      },
+    });
+
+    await waitFor(() => expect(mocks.setCurrentImChannelInfoCache).toHaveBeenCalled());
+    expect(cached).toMatchObject({
+      title: "Docs Bot",
+      logo: "server-avatar",
+      orgData: {
+        bot_commands: [{ command: "help" }],
+        online: 1,
+        displayName: "Docs Bot",
+        robot: 1,
+        name: "Docs Bot",
+      },
+    });
+  });
+
   it("serves summary messaging requests through the communication runtime", async () => {
     render(
       <CommunicationShell
@@ -283,5 +382,32 @@ describe("CommunicationShell", () => {
       ok: true,
       result: [{ uid: "user-1", name: "User 1" }],
     }));
+  });
+
+  it("finishes a summary forward request immediately when selection is cancelled", async () => {
+    render(
+      <CommunicationShell
+        bridge={mocks.bridge as any}
+        initialPage="chat"
+        initialSpaceId="space-a"
+        initialPresentation="workspace"
+        onReady={vi.fn(async () => {})}
+      />,
+    );
+
+    await waitFor(() => expect(mocks.summaryRequest.listener).toBeTypeOf("function"));
+    mocks.summaryRequest.listener?.({
+      requestId: "request-cancel",
+      operation: "requestForward",
+      payload: { content: "summary", title: "Forward" },
+    });
+
+    await waitFor(() => expect(mocks.requestForward).toHaveBeenCalled());
+    mocks.requestForward.mock.calls[0][0].onCancel();
+    expect(mocks.bridge.respondSummaryRequest).toHaveBeenCalledWith({
+      requestId: "request-cancel",
+      ok: true,
+      result: null,
+    });
   });
 });

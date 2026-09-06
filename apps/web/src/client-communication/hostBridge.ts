@@ -6,6 +6,9 @@ export interface ConversationTarget {
   channelType: number;
   messageSeq?: number;
   openChannelSearch?: boolean;
+  displayName?: string;
+  avatar?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CommunicationBootstrap {
@@ -42,6 +45,7 @@ export type HostCommand =
   | { type: "appearanceChanged"; theme: "light" | "dark"; locale: "zh-CN" | "en-US" }
   | { type: "suspend" }
   | { type: "resume" }
+  | { type: "hostVisibilityChanged"; visible: boolean }
   | { type: "sessionRevoked" };
 
 export interface NavigationReport {

@@ -25,6 +25,7 @@ export type AppsHostCommand =
   | { type: "reload" }
   | { type: "suspend" }
   | { type: "resume" }
+  | { type: "hostVisibilityChanged"; visible: boolean }
   | { type: "sessionRevoked" };
 
 export interface OctoBuddyAppsBridge {

@@ -20,6 +20,7 @@ import appEnUS from "../i18n/en-US.json";
 import appZhCN from "../i18n/zh-CN.json";
 import { installFeatureAuthExpiryHandler } from "../client-feature/authLifecycle";
 import { assertClientFeatureBootstrap } from "../client-feature/bootstrapContract";
+import { enableClientFeatureMocks } from "../client-feature/e2eMocks";
 import { AppsShell } from "./AppsShell";
 import { requireAppsHostBridge } from "./hostBridge";
 import { reportAppsStartupFailure } from "./startupFailure";
@@ -66,6 +67,7 @@ async function main() {
 
   WKApp.shared.registerModule(new BaseModule());
   WKApp.shared.registerModule(new DataSourceModule());
+  await enableClientFeatureMocks("apps");
   if (import.meta.env.VITE_E2E_MOCK !== "1") {
     installFeatureAuthExpiryHandler(WKApp.apiClient, WKApp.loginInfo, host, {
       reason: "Apps session expired",

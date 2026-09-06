@@ -68,11 +68,12 @@ export function SummaryShell({
         bridge.loadConversationMembers(target),
       openConversation: (target) => bridge.openConversation(target),
       notifySummaryCompleted: (input) => bridge.notifySummaryCompleted(input),
-      requestForward: ({ content, title, onComplete, onError }) => {
+      requestForward: ({ content, title, onComplete, onError, onCancel }) => {
         void bridge
           .requestForward({ content, title })
           .then((result) => {
             if (result) onComplete(result);
+            else onCancel?.();
           })
           .catch((error) => onError?.(error));
       },
@@ -116,11 +117,17 @@ export function SummaryShell({
         window.location.reload();
         return;
       }
+      if (command.type === "hostVisibilityChanged") {
+        document.documentElement.dataset.hostVisibility = command.visible
+          ? "visible"
+          : "hidden";
+        setSummaryAttentionRuntimeVisible(command.visible);
+        return;
+      }
       const visible = command.type === "resume";
       document.documentElement.dataset.hostVisibility = visible
         ? "visible"
         : "hidden";
-      setSummaryAttentionRuntimeVisible(visible);
     });
     return dispose;
   }, [bridge, setControlledRoute]);

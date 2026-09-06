@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChatPage,
+  createCurrentEmptyImConversation,
+  findCurrentImConversation,
+  getCurrentImChannelInfo,
+  setCurrentImChannelInfoCache,
   ThemeMode,
   WKApp,
   WKBase,
@@ -13,7 +17,7 @@ import type {
   SummaryCompletionNotice,
   SummaryConversationTarget,
 } from "@dmwork/summary/src/host/types";
-import { Channel, WKSDK } from "wukongimjssdk";
+import { Channel, ChannelInfo, WKSDK } from "wukongimjssdk";
 import { getElectronUnreadMessageCount } from "../App/electronUnreadCount";
 import {
   type CommunicationPage,
@@ -61,13 +65,29 @@ function reportUnread(bridge: OctoBuddyCommunicationBridge, count: number) {
 }
 
 function openTarget(target: ConversationTarget) {
-  WKApp.endpoints.showConversation(
-    new Channel(target.channelId, target.channelType),
-    {
-      initLocateMessageSeq: target.messageSeq,
-      openChannelSearch: target.openChannelSearch,
-    },
-  );
+  const channel = new Channel(target.channelId, target.channelType);
+  if (target.displayName || target.avatar || target.metadata) {
+    const info = getCurrentImChannelInfo<Channel, ChannelInfo>(channel) || new ChannelInfo();
+    info.channel = channel;
+    if (target.displayName) info.title = target.displayName;
+    else if (!info.title) info.title = target.channelId;
+    if (target.avatar) info.logo = target.avatar;
+    const existingMetadata = info.orgData && typeof info.orgData === "object"
+      ? info.orgData
+      : {};
+    info.orgData = {
+      ...existingMetadata,
+      ...(target.metadata || {}),
+    };
+    setCurrentImChannelInfoCache(info);
+    if (!findCurrentImConversation(channel)) {
+      createCurrentEmptyImConversation(channel);
+    }
+  }
+  WKApp.endpoints.showConversation(channel, {
+    initLocateMessageSeq: target.messageSeq,
+    openChannelSearch: target.openChannelSearch,
+  });
 }
 
 export function CommunicationShell({
@@ -196,6 +216,12 @@ export function CommunicationShell({
         window.location.reload();
         return;
       }
+      if (command.type === "hostVisibilityChanged") {
+        document.documentElement.dataset.hostVisibility = command.visible
+          ? "visible"
+          : "hidden";
+        return;
+      }
 
       if (command.type === "suspend" || command.type === "resume") {
         document.documentElement.dataset.hostVisibility = command.type === "suspend" ? "hidden" : "visible";
@@ -260,6 +286,7 @@ export function CommunicationShell({
               ok: false,
               error: error instanceof Error ? error.message : String(error),
             }),
+            onCancel: () => respond({ ok: true, result: null }),
           });
           return;
         }

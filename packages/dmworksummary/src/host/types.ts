@@ -30,6 +30,7 @@ export interface SummaryForwardRequest {
   title: string;
   onComplete: (result: SummaryForwardOutcome) => void;
   onError?: (error: unknown) => void;
+  onCancel?: () => void;
 }
 
 export interface SummaryMessagingPort {
