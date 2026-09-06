@@ -57,6 +57,9 @@ export default class MenusManager {
 export class Menus {
   id!: string;
   title!: string;
+  /** 窄容器 (NavRail 竖排 icon 56×54) 下显示的短版本；缺省则回退到 title。
+   *  为拉丁语系长文案(如 "AI Summary")预留位;详见 WS-216。 */
+  shortTitle?: string;
   icon!: JSX.Element;
   selectedIcon!: JSX.Element
   routePath!: string;

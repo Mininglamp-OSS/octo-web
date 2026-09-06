@@ -147,7 +147,8 @@
         "everyNMonths": "每 {{months}} 个月{{at}}"
     },
     "menu": {
-        "title": "智能总结"
+        "title": "智能总结",
+        "titleShort": "总结"
     },
     "list": {
         "needsAttention": "需要关注",
