@@ -27,6 +27,12 @@ const ACCENT_MAP = {
 };
 
 const PLACEHOLDER_PATTERN = /\{\{\s*[\w.-]+\s*\}\}/g;
+// URL-shaped substrings are preserved verbatim — accenting `https://a.com/x.png`
+// yields characters a reviewer eyeballing an en-XA screen cannot tell apart
+// from real link corruption. Covers http/https/mailto/tel plus scheme-relative
+// (`//host/…`) — the shapes that actually appear in the current locale files.
+// A run stops at whitespace or a closing markdown-link paren.
+const URL_PATTERN = /(?:https?:\/\/|mailto:|tel:|\/\/)[^\s)]+/g;
 const DEFAULT_PADDING_RATIO = 0.4;
 
 // Single-code-point padder so `pad * ratio` matches the documented percentage
@@ -46,20 +52,24 @@ export function transformString(input, { paddingRatio = DEFAULT_PADDING_RATIO } 
   if (typeof input !== "string") return input;
   if (input.length === 0) return input;
 
-  const placeholders = [];
-  const masked = input.replace(PLACEHOLDER_PATTERN, (match) => {
-    const marker = `${MASK_OPEN}${placeholders.length}${MASK_CLOSE}`;
-    placeholders.push(match);
+  const preserved = [];
+  // Mask URLs first so a `{{name}}` inside a URL still masks as a URL, not a
+  // placeholder. Both patterns funnel through the same «N» sentinel list.
+  const mask = (pattern, text) => text.replace(pattern, (match) => {
+    const marker = `${MASK_OPEN}${preserved.length}${MASK_CLOSE}`;
+    preserved.push(match);
     return marker;
   });
+  const masked = mask(PLACEHOLDER_PATTERN, mask(URL_PATTERN, input));
 
   const accented = Array.from(masked)
     .map((ch) => (ACCENT_MAP[ch] || ch))
     .join("");
 
-  const restored = accented.replace(MASK_MATCH, (_, index) => placeholders[Number(index)]);
+  const restored = accented.replace(MASK_MATCH, (_, index) => preserved[Number(index)]);
 
-  const visibleLength = Array.from(input.replace(PLACEHOLDER_PATTERN, "")).length;
+  const visibleInput = input.replace(URL_PATTERN, "").replace(PLACEHOLDER_PATTERN, "");
+  const visibleLength = Array.from(visibleInput).length;
   const padCount = Math.ceil(visibleLength * paddingRatio);
   const padding = padCount > 0 ? PAD_CHAR.repeat(padCount) : "";
 

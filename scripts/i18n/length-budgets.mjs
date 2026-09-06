@@ -18,11 +18,22 @@
  *   any other char — literal
  */
 
-export function normalizeBudgets(raw, { onSkip } = {}) {
-  if (!raw || typeof raw !== "object") return [];
-  const budgets = Array.isArray(raw.budgets) ? raw.budgets : [];
+export function normalizeBudgets(raw, { onSkip, onRootError } = {}) {
+  if (raw == null) return [];
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    onRootError?.({ reason: `root must be an object with a "budgets" array, got ${Array.isArray(raw) ? "array" : typeof raw}` });
+    return [];
+  }
+  if (!Object.prototype.hasOwnProperty.call(raw, "budgets")) {
+    // Blank scaffold ({ "$comment": "..." }) — legitimate empty state, not an error.
+    return [];
+  }
+  if (!Array.isArray(raw.budgets)) {
+    onRootError?.({ reason: `"budgets" must be an array, got ${typeof raw.budgets}` });
+    return [];
+  }
   const normalized = [];
-  budgets.forEach((entry, index) => {
+  raw.budgets.forEach((entry, index) => {
     const reason = validateBudgetEntry(entry);
     if (reason) {
       onSkip?.({ index, entry, reason });

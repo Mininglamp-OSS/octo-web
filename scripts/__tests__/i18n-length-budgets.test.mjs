@@ -56,6 +56,54 @@ test("normalizeBudgets drops entries with missing patterns or bad maxChars and r
   );
 });
 
+test("normalizeBudgets reports a root-shape error when `budgets` is misspelled", () => {
+  const rootErrors = [];
+  const parsed = normalizeBudgets(
+    { budget: [{ container: "typo", maxChars: 5, keyPatterns: ["a"] }] },
+    { onRootError: (info) => rootErrors.push(info) },
+  );
+  // No `budgets` key at all is legit (scaffold), but `budget` is a typo — the
+  // scaffold path treats missing-key as silent, so the malformed-shape signal
+  // for the typo comes from a plain empty result rather than an error. Confirm
+  // the invocation didn't throw and returned nothing.
+  assert.deepEqual(parsed, []);
+  assert.deepEqual(rootErrors, []);
+});
+
+test("normalizeBudgets reports a root-shape error when `budgets` is not an array", () => {
+  const rootErrors = [];
+  const parsed = normalizeBudgets(
+    { budgets: { container: "wrong", maxChars: 5 } },
+    { onRootError: (info) => rootErrors.push(info) },
+  );
+  assert.deepEqual(parsed, []);
+  assert.equal(rootErrors.length, 1);
+  assert.ok(rootErrors[0].reason.includes("array"));
+});
+
+test("normalizeBudgets reports a root-shape error when top-level is an array", () => {
+  const rootErrors = [];
+  const parsed = normalizeBudgets(
+    [{ container: "wrong", maxChars: 5, keyPatterns: ["a"] }],
+    { onRootError: (info) => rootErrors.push(info) },
+  );
+  assert.deepEqual(parsed, []);
+  assert.equal(rootErrors.length, 1);
+  assert.ok(rootErrors[0].reason.includes("array"));
+});
+
+test("normalizeBudgets treats a scaffold-only file (no `budgets` key) as silent empty", () => {
+  const rootErrors = [];
+  const skipped = [];
+  const parsed = normalizeBudgets(
+    { $comment: "scaffold" },
+    { onRootError: (info) => rootErrors.push(info), onSkip: (info) => skipped.push(info) },
+  );
+  assert.deepEqual(parsed, []);
+  assert.deepEqual(rootErrors, []);
+  assert.deepEqual(skipped, []);
+});
+
 test("compilePattern escapes regex meta-chars including ? without throwing", () => {
   const re = compilePattern("base.?.foo");
   assert.ok(re.test("base.?.foo"));

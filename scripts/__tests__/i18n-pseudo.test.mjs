@@ -56,3 +56,30 @@ test("transformString handles multiple placeholders and preserves their order", 
   assert.ok(firstIdx !== -1 && secondIdx !== -1, `placeholders missing: ${out}`);
   assert.ok(firstIdx < secondIdx, `placeholder order changed: ${out}`);
 });
+
+test("transformString preserves URL-shaped substrings verbatim", () => {
+  const out = transformString("Visit https://example.com/avatar.png to upload");
+  assert.ok(out.includes("https://example.com/avatar.png"), `URL corrupted: ${out}`);
+  // Surrounding prose is still accented so the string looks pseudo-localized.
+  assert.ok(out.includes("Νíšíţ"), `surrounding text not accented: ${out}`);
+});
+
+test("transformString preserves Markdown link destination inside [text](url)", () => {
+  const out = transformString("See [our docs](https://docs.example.com/i18n) for details");
+  assert.ok(out.includes("(https://docs.example.com/i18n)"), `md link corrupted: ${out}`);
+});
+
+test("transformString preserves mailto: and tel: URIs", () => {
+  const out = transformString("Contact mailto:help@example.com or tel:+15551234567 now");
+  assert.ok(out.includes("mailto:help@example.com"), `mailto corrupted: ${out}`);
+  assert.ok(out.includes("tel:+15551234567"), `tel corrupted: ${out}`);
+});
+
+test("transformString: URL length does not count toward padding budget", () => {
+  const withUrl = transformString("A https://example.com/very/long/path/that/would/skew/padding B");
+  const withoutUrl = transformString("A B");
+  // With and without URL should produce the same padding count — the visible
+  // (paddable) portion is just "A  B" in both cases.
+  const padOnly = (s) => s.replace(/\[|\]|https?:\/\/\S+/g, "").replace(/[^·]/g, "").length;
+  assert.equal(padOnly(withUrl), padOnly(withoutUrl));
+});

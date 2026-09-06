@@ -90,6 +90,9 @@ async function loadLengthBudgets() {
   try {
     const parsed = JSON.parse(await fs.readFile(lengthBudgetsPath, "utf8"));
     lengthBudgets = normalizeBudgets(parsed, {
+      onRootError: ({ reason }) => {
+        console.warn(`.i18n/length-budgets.json: root-shape error — ${reason}. No budgets loaded.`);
+      },
       onSkip: ({ index, entry, reason }) => {
         const label = (entry && typeof entry === "object" && typeof entry.container === "string" && entry.container)
           || (entry && typeof entry === "object" && Array.isArray(entry.keyPatterns) && entry.keyPatterns[0])
@@ -819,7 +822,7 @@ async function main() {
       }
       process.exit(1);
     }
-    console.log(`i18n check passed: ${candidates.length} candidates within baseline; locale keys healthy`);
+    console.log(`i18n check passed: ${candidates.length} candidates within baseline; locale keys healthy; ${lengthBudgets.length} length-budget rule(s) loaded`);
     return;
   }
 
@@ -828,7 +831,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`i18n scan completed: ${candidates.length} candidates; ${localeReport.issueCount} locale key issues`);
+  console.log(`i18n scan completed: ${candidates.length} candidates; ${localeReport.issueCount} locale key issues; ${lengthBudgets.length} length-budget rule(s) loaded`);
   console.log("Reports written to .i18n/reports");
 }
 
