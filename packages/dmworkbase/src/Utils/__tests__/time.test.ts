@@ -76,38 +76,41 @@ describe("formatMessageTimestamp", () => {
         i18n.setLocale("en-US", { notify: false, persist: false })
 
         // Today → HH:mm
-        expect(getTimeStringAutoShort2(new Date(2026, 5, 8, 9, 27).getTime(), false)).toMatch(/^\d{2}:\d{2}$/)
+        expect(getTimeStringAutoShort2(new Date(2026, 5, 8, 9, 27).getTime(), false)).toBe("09:27")
         // Yesterday → "Yesterday HH:mm"
         expect(getTimeStringAutoShort2(new Date(2026, 5, 7, 4, 12).getTime(), true)).toBe("Yesterday 04:12")
-        // 2 days ago → short "2d ago HH:mm", not "The day before yesterday …"
-        const twoDaysAgo = getTimeStringAutoShort2(new Date(2026, 5, 6, 21, 34).getTime(), true)
-        expect(twoDaysAgo).toBe("2d ago 21:34")
-        expect(twoDaysAgo).not.toContain("day before yesterday")
-        // Within a week → short weekday, not long ("Tue" not "Tuesday")
-        const sameWeek = getTimeStringAutoShort2(new Date(2026, 5, 2, 15, 20).getTime(), true)
-        expect(sameWeek).toBe("Tue 15:20")
-        expect(sameWeek).not.toContain("Tuesday")
-        // Older-than-a-week same-year → localized numeric calendar date + time (not "10 days ago").
-        // Intl date is locale-shaped; only assert time suffix and that the label carries no long-form
-        // weekday text, then check the 96px column budget for the pathological cross-year case below.
-        const olderSameYear = getTimeStringAutoShort2(new Date(2026, 3, 12, 8, 20).getTime(), true)
-        expect(olderSameYear).toMatch(/ \d{2}:\d{2}$/)
-        expect(olderSameYear).not.toContain("Wednesday")
-        // Cross-year → same numeric calendar path (formatCalendarDate switches to en-US Intl format).
-        const crossYear = getTimeStringAutoShort2(new Date(2025, 11, 31, 23, 59).getTime(), true)
-        expect(crossYear).toMatch(/ \d{2}:\d{2}$/)
-        expect(crossYear).toContain("2025")
-        // Every en-US bucket must stay within the ~16-char / 96px date-column budget.
-        for (const label of [
-            getTimeStringAutoShort2(new Date(2026, 5, 8, 9, 27).getTime(), false),
-            getTimeStringAutoShort2(new Date(2026, 5, 7, 4, 12).getTime(), true),
-            twoDaysAgo,
-            sameWeek,
-            olderSameYear,
-            crossYear,
-        ]) {
-            expect(label.length).toBeLessThanOrEqual(16)
-        }
+
+        // 2 days ago — default (non-compact) keeps the natural English prose used
+        // in the chat stream / global search / thread-created surfaces.
+        expect(getTimeStringAutoShort2(new Date(2026, 5, 6, 21, 34).getTime(), true))
+            .toBe("The day before yesterday 21:34")
+        // 2 days ago — compact=true is the conversation-list opt-in; only this
+        // caller trades prose for `2d ago` to fit the 112px date column.
+        expect(getTimeStringAutoShort2(new Date(2026, 5, 6, 21, 34).getTime(), true, true))
+            .toBe("2d ago 21:34")
+
+        // Within a week → short weekday under en-US (matches formatMessageTimestamp).
+        expect(getTimeStringAutoShort2(new Date(2026, 5, 2, 15, 20).getTime(), true))
+            .toBe("Tue 15:20")
+
+        // Older-than-a-week same-year → en-US numeric Intl format `M/D/YYYY HH:mm`.
+        // Test node's ICU emits e.g. "4/12/2026" for Intl.DateTimeFormat with
+        // month/day/year all numeric; pin the exact string so a future format
+        // regression in this bucket (the one that hit the 96px cap in round 1)
+        // is caught instead of masked by a loose char-count budget.
+        expect(getTimeStringAutoShort2(new Date(2026, 3, 12, 8, 20).getTime(), true))
+            .toBe("4/12/2026 08:20")
+        // Cross-year → same `M/D/YYYY HH:mm` path.
+        expect(getTimeStringAutoShort2(new Date(2025, 11, 31, 23, 59).getTime(), true))
+            .toBe("12/31/2025 23:59")
+
+        // NOTE on width coverage: this Vitest / jsdom suite has no layout engine,
+        // so char count is *not* a proxy for pixel width in a proportional font
+        // (`Yesterday 04:12` = 15 chars ≈ 83px vs `12/31/2025 23:59` = 16 chars
+        // ≈ 95px). The 112px `.wk-conversationlist-item-time { max-width }` is
+        // pinned by a separate stylesheet assertion in the ConversationList
+        // layout test; a rendered-width regression would need Playwright
+        // coverage of the conversation-list row (out of scope for this file).
     })
 
     it("emits the short zh-CN weekday for the within-a-week bucket", () => {

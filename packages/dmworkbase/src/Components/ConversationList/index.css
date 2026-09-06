@@ -167,10 +167,14 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   display: flex;
   align-items: center;
   margin-left: auto;
-  max-width: 96px;
+  /* 上限按 helper 当前能产出的最长标签定 —— 数字日期桶
+     `12/31/2025 23:59` (en-US) / `2025/12/31 23:59` (zh-CN) 在 11px xs 字号
+     的 fallback 字体下测得约 95px,原 96px 上限刚好把尾部分钟截成
+     `12/31/2025 23:5…` (Octo-Q reviewer P1)。112px 留 ~15px 余量,
+     240px 侧栏最窄档下 name 列剩余空间仍够。 */
+  max-width: 112px;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .wk-conversationlist-item-time > span {

@@ -54,12 +54,16 @@ function formatShortWeekday(date: Date) {
 * @param  {[long]} timestamp 时间戳（单位：毫秒），形如：1550789954260
 * @param {boolean} mustIncludeTime true表示输出的格式里一定会包含“时间:分钟”
 * ，否则不包含（参考微信，不包含时分的情况，用于首页“消息”中显示时）
+* @param {boolean} [compact=false] 只由窄容器 (会话列表 date 列, 见 WS-216 /
+* GitHub #1629) 传入 true;强制 -2d 桶走短版本 (en-US `2d ago`, zh-CN `前天`)。
+* 默认 false 保持原语 (`The day before yesterday` / `前天`),避免共享 helper
+* 把短文案外溢到 MergeforwardMessageList / GlobalSearch / ThreadCreated。
 *
 * @return {string} 输出格式形如：“刚刚”、“10:30”、“昨天 12:04”、“前天 20:51”、“周二”、“2019/2/21 12:09”等形式
 * @author 即时通讯网([url=http://www.52im.net]http://www.52im.net[/url])
 * @since 1.1
 */
-export function getTimeStringAutoShort2(timestamp:number, mustIncludeTime:boolean) {
+export function getTimeStringAutoShort2(timestamp:number, mustIncludeTime:boolean, compact:boolean = false) {
 
     // 当前时间
     const currentDate = new Date();
@@ -110,9 +114,12 @@ export function getTimeStringAutoShort2(timestamp:number, mustIncludeTime:boolea
             // 这两者间只相差2小时，直接用“deltaTime/(3600 * 1000)” > 24小时来判断是否昨天，就完全是扯蛋的逻辑了）
             if (srcMonth === (yesterdayDate.getMonth() + 1) && srcDateD === yesterdayDate.getDate())
                 ret = t("base.time.yesterday") + timeExtraStr;// -1d
-            // “前天”判断逻辑同上
+            // “前天”判断逻辑同上;窄容器 (compact=true) 走 `.dayBeforeYesterdayShort`
+            // (en-US `2d ago`),不动其它 3 个共享 caller 的英文原语,避免共享 helper
+            // 把短文案外溢到 MergeforwardMessageList / GlobalSearch / ThreadCreated
+            // (Octo-Q reviewer P2 · WS-216)。
             else if (srcMonth === (beforeYesterdayDate.getMonth() + 1) && srcDateD === beforeYesterdayDate.getDate())
-                ret = t("base.time.dayBeforeYesterday") + timeExtraStr;// -2d
+                ret = t(compact ? "base.time.dayBeforeYesterdayShort" : "base.time.dayBeforeYesterday") + timeExtraStr;// -2d
             else {
                 // 跟当前时间相差的小时数
                 const deltaHour = (deltaTime / (3600 * 1000));

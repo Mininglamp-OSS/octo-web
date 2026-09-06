@@ -922,6 +922,7 @@ export default class ConversationList extends Component<
                   <span>
                     {getTimeStringAutoShort2(
                       conversationWrap.timestamp * 1000,
+                      true,
                       true
                     )}
                   </span>
