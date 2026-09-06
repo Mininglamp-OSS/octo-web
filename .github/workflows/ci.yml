@@ -142,6 +142,10 @@ jobs:
           src/pages/__tests__/SummaryCreatePage.test.tsx
       - name: I18n check
         run: pnpm i18n:check
+      - name: I18n pseudo-localization freshness
+        run: pnpm i18n:pseudo:check
+      - name: I18n script tests
+        run: pnpm i18n:scripts:test
       - name: Voice and settings regression tests
         run: >-
           pnpm --filter @octo/base exec vitest run

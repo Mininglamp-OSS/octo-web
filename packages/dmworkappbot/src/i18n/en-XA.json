@@ -1,0 +1,15 @@
+{
+  "action.retry": "[Ŕéţŕý ᴥ ᴥ]",
+  "error.connectFailed": "[Úñáβĺé ţö çöññéçţ ţö ţĥíš áρρ. Ρĺéášé ţŕý áĝáíñ ĺáţéŕ. ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ]",
+  "list.defaultDescription": "[Äρρ Ɓöţ ᴥ ᴥ ᴥ]",
+  "menu.title": "[Äρρš ᴥ ᴥ]",
+  "page.searchPlaceholder": "[Šéáŕçĥ ᴥ ᴥ ᴥ]",
+  "page.title": "[Äρρš ᴥ ᴥ]",
+  "section.platform": "[Ρĺáţƒöŕɱ áρρš ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ]",
+  "section.space": "[Öŕĝáñížáţíöñ áρρš ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ]",
+  "section.spaceWithName": "[Öŕĝáñížáţíöñ áρρš · {{name}} ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ]",
+  "state.empty": "[Ñö áρρš áνáíĺáβĺé ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ]",
+  "state.loadFailed": "[Ƒáíĺéδ ţö ĺöáδ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ]",
+  "state.loading": "[Ĺöáδíñĝ... ᴥ ᴥ ᴥ ᴥ]",
+  "state.noMatches": "[Ñö ɱáţçĥíñĝ áρρš ƒöúñδ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ ᴥ]"
+}

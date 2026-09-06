@@ -8,15 +8,17 @@ Before changing user-visible copy, read these files:
 
 1. `docs/i18n-agent-guide.md`
 2. `.i18n/scan-config.json`
+3. `.i18n/length-budgets.json`
 
 After changing user-visible copy, run:
 
 ```bash
 pnpm i18n:check
+pnpm i18n:pseudo         # regenerate en-XA.json for any touched en-US.json
 git diff --check
 ```
 
-If layout may be affected by English copy length, also verify the touched screens in both `zh-CN` and `en-US`.
+If layout may be affected by English copy length, also verify the touched screens in `zh-CN`, `en-US`, and the pseudo-locale `en-XA` (see § Copy Length Budgets & Constrained Layouts).
 
 ## Architecture Rules
 
@@ -152,6 +154,73 @@ Do not translate:
 
 When excluding a source file from hardcoded Chinese checks, record the reason in `.i18n/scan-config.json`. Do not add broad ignores without a concrete non-UI reason.
 
+## Copy Length Budgets & Constrained Layouts
+
+Constrained layouts — NavRail labels, tab titles, buttons, fixed-width table cells, date columns — are where localization fails most visibly. English source strings are typically the shortest form; other languages expand, and the shorter the source the higher the expansion ratio. W3C's guidance (citing IBM's *Guidelines to Design Global Solutions*) is roughly:
+
+| Source length (chars) | Average expansion |
+|---|---|
+| ≤ 10 | 200 – 300 % |
+| 11 – 20 | 180 – 200 % |
+| 21 – 30 | 160 – 180 % |
+| 31 – 50 | 140 – 160 % |
+| > 70 | ~130 % |
+
+For Chinese source (Octo's primary), expansion into English can be even steeper: a 4-character `智能总结` becomes 10-character `AI Summary` (2.5×); a 2-character `前天` becomes 25-character `The day before yesterday` (12.5×).
+
+### Enforcement — `pnpm i18n:check`
+
+The check reads `.i18n/length-budgets.json` and fails when any locale's translation of a matched key exceeds its budget. Each budget declares a container, a `maxChars` limit, and a list of `keyPatterns` (glob-lite: `*` matches one dot-separated segment, `**` matches one or more):
+
+```json
+{
+  "budgets": [
+    {
+      "container": "navRailLabel",
+      "maxChars": 10,
+      "notes": "NavRail top-level menu — icon 40px + label area ~60-80px",
+      "keyPatterns": ["base.navRail.*", "app.navRail.*"]
+    },
+    {
+      "container": "chatListDate",
+      "maxChars": 12,
+      "keyPatterns": ["base.time.*"]
+    }
+  ]
+}
+```
+
+### Escape hatch — `.short` variants
+
+When a translation cannot fit its container but the source language reads well at full length, ship a sibling `<key>.short` value. The check accepts a violation if `<key>.short` fits the budget in the same locale. Consumers in constrained containers should resolve `<key>.short` first, then fall back to `<key>`:
+
+```json
+{
+  "time.dayBeforeYesterday": "The day before yesterday",
+  "time.dayBeforeYesterday.short": "2d ago"
+}
+```
+
+Keep both keys — full copy stays available for tooltips, aria labels, and roomy layouts.
+
+### Pseudo-localization — `pnpm i18n:pseudo`
+
+`pnpm i18n:pseudo` regenerates `en-XA.json` next to every `en-US.json`. `en-XA` is the industry pseudo-locale (W3C, Chrome, Android) and the output ships three visual signals to catch layout breakage before real translations arrive:
+
+- Accent substitutions (`á`, `β`, `ç`, …) — proves the string was routed through `t()` instead of hard-coded.
+- 40 % length padding — matches the average expansion ratio; if pseudo overflows, real French/German will too.
+- Wrapping brackets — anything that clips shows a truncated `]`, so the reviewer does not need a design mock.
+
+Placeholders (`{{name}}`) are preserved, so runtime substitution keeps working. CI runs `pnpm i18n:pseudo:check` to fail when `en-XA.json` drifts from `en-US.json`; regenerate before committing English changes.
+
+Runtime toggling to `en-XA` for browser preview is out of scope for the generator — load the file into `I18nService` locally when you need to eyeball a screen.
+
+### Design layers, in order of preference
+
+1. **Reserve space.** Containers use `min-width` + `width: max-content` + `max-width: 100%`, not a hardcoded `width`. Reserve for source × 2 as a rule of thumb.
+2. **Short variants.** When space cannot be reserved, ship `<key>.short`.
+3. **Wrap or truncate with an accessible fallback.** Truncate visually but keep the full copy in `title` / `aria-label`.
+
 ## Adding New Copy
 
 For new user-visible copy:
@@ -160,7 +229,8 @@ For new user-visible copy:
 2. Add the key to both `zh-CN.json` and `en-US.json`.
 3. Use `useI18n()` or `t()` at the callsite.
 4. Run `pnpm i18n:check`.
-5. If the text is visible in a constrained layout, verify both languages in the browser.
+5. Run `pnpm i18n:pseudo` if you touched `en-US.json`, and commit the regenerated `en-XA.json`.
+6. If the text is visible in a constrained layout, verify all three locales in the browser and confirm the budget entry in `.i18n/length-budgets.json` (add a `.short` variant if the copy overflows).
 
 ## Migrating Existing Copy
 
@@ -195,5 +265,6 @@ For large i18n work, prefer a small number of meaningful commits grouped by runt
 Every PR that changes UI copy should include:
 
 - `pnpm i18n:check` result.
+- `pnpm i18n:pseudo` regenerated `en-XA.json` (committed) when `en-US.json` changed.
 - Focused test result for touched packages.
-- Browser notes for both `zh-CN` and `en-US` when layout may change.
+- Browser notes for `zh-CN`, `en-US`, and — when a narrow container is in play — `en-XA` for the pseudo-locale layout check.

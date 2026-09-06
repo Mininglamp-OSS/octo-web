@@ -3,16 +3,19 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import ts from "typescript";
+import { normalizeBudgets, checkResource as checkResourceBudgets } from "./i18n/length-budgets.mjs";
 
 const root = process.cwd();
 const reportDir = path.join(root, ".i18n", "reports");
 const baselinePath = path.join(root, ".i18n", "hardcoded-strings-baseline.json");
 const scanConfigPath = path.join(root, ".i18n", "scan-config.json");
+const lengthBudgetsPath = path.join(root, ".i18n", "length-budgets.json");
 const sourceRoots = ["apps/web/src", "packages"];
 const cjkPattern = /[\u3400-\u9fff\uf900-\ufaff]/;
 const sourceExts = new Set([".ts", ".tsx"]);
 const supportedLocales = ["zh-CN", "en-US"];
 let scanConfig = { ignoredFiles: [] };
+let lengthBudgets = [];
 
 const namespaceByDir = {
   dmworkappbot: "appbot",
@@ -81,6 +84,20 @@ async function loadScanConfig() {
     if (error?.code !== "ENOENT") throw error;
     scanConfig = { ignoredFiles: [] };
   }
+}
+
+async function loadLengthBudgets() {
+  try {
+    const parsed = JSON.parse(await fs.readFile(lengthBudgetsPath, "utf8"));
+    lengthBudgets = normalizeBudgets(parsed);
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+    lengthBudgets = [];
+  }
+}
+
+function checkLengthBudgetsForResource(entriesByLocale, namespace) {
+  return checkResourceBudgets(entriesByLocale, namespace, lengthBudgets, supportedLocales);
 }
 
 async function walk(dir) {
@@ -474,6 +491,16 @@ async function checkLocaleResources() {
         }
       }
     }
+
+    for (const violation of checkLengthBudgetsForResource(entriesByLocale, namespace)) {
+      issues.push({
+        type: "length-budget-violation",
+        dir,
+        namespace,
+        packageName,
+        ...violation,
+      });
+    }
   }
 
   const keyUsages = await collectTranslationKeyUsages();
@@ -661,11 +688,19 @@ function renderLocaleReport(report) {
   const rows = report.issues.slice(0, 200).map((issue) => {
     const location = issue.file || issue.dir || issue.examples?.[0]?.file || "";
     const key = issue.key || "";
-    const details = issue.type === "placeholder-mismatch"
-      ? `expected: ${issue.expected.join(", ") || "(none)"}; actual: ${issue.actual.join(", ") || "(none)"}`
-      : issue.message || (issue.examples?.length
-          ? issue.examples.map((example) => `${example.file}:${example.line}`).join(", ")
-          : "");
+    let details;
+    if (issue.type === "placeholder-mismatch") {
+      details = `expected: ${issue.expected.join(", ") || "(none)"}; actual: ${issue.actual.join(", ") || "(none)"}`;
+    } else if (issue.type === "length-budget-violation") {
+      const shortHint = issue.shortAvailable
+        ? `\`${issue.shortKey}\` length ${issue.shortLength} > budget`
+        : `add \`${issue.shortKey}\` ≤ ${issue.budget}`;
+      details = `length=${issue.length}; budget=${issue.budget}${issue.container ? ` (${issue.container})` : ""}; ${shortHint}`;
+    } else {
+      details = issue.message || (issue.examples?.length
+        ? issue.examples.map((example) => `${example.file}:${example.line}`).join(", ")
+        : "");
+    }
     return `| ${issue.type} | ${issue.locale || ""} | \`${key}\` | \`${location}\` | ${escapeMarkdownCell(details)} |`;
   });
 
@@ -725,6 +760,7 @@ function checkAgainstBaseline(candidates, baseline) {
 
 async function main() {
   await loadScanConfig();
+  await loadLengthBudgets();
   const command = process.argv[2] || "scan";
   const candidates = await scan();
   const localeReport = await checkLocaleResources();
@@ -749,6 +785,14 @@ async function main() {
       if (localeReport.issueCount > 0) {
         console.error(`i18n locale check failed: ${localeReport.issueCount} locale key issues found.`);
         for (const issue of localeReport.issues.slice(0, 20)) {
+          if (issue.type === "length-budget-violation") {
+            const containerLabel = issue.container ? ` [${issue.container}]` : "";
+            const shortHint = issue.shortAvailable
+              ? ` (found ${issue.shortKey} but length ${issue.shortLength} still exceeds budget)`
+              : ` (add ${issue.shortKey} with length ≤ ${issue.budget})`;
+            console.error(`- length-budget-violation${containerLabel}: ${issue.locale} ${issue.key} length=${issue.length} budget=${issue.budget}${shortHint}`);
+            continue;
+          }
           const location = issue.file || issue.dir || issue.examples?.[0]?.file || "";
           console.error(`- ${issue.type}: ${issue.locale || ""} ${issue.key || ""} ${location}`.trim());
         }
