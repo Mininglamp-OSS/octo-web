@@ -123,5 +123,17 @@ describe("formatMessageTimestamp", () => {
         const sameWeek = getTimeStringAutoShort2(new Date(2026, 5, 2, 15, 20).getTime(), true)
         expect(sameWeek).toBe("周二 15:20")
         expect(sameWeek).not.toContain("星期二")
+
+        // zh-CN -2d: `前天` in both compact and non-compact paths. The two keys
+        // (`.dayBeforeYesterday` and `.dayBeforeYesterdayShort`) are defined
+        // identically in zh-CN.json to satisfy i18n:check parity; this test
+        // pins them equal so a translator editing one and not the other
+        // (silently forking the conversation list from the chat stream)
+        // trips CI.
+        const twoDaysAgoDefault = getTimeStringAutoShort2(new Date(2026, 5, 6, 21, 34).getTime(), true)
+        const twoDaysAgoCompact = getTimeStringAutoShort2(new Date(2026, 5, 6, 21, 34).getTime(), true, true)
+        expect(twoDaysAgoDefault).toBe("前天 21:34")
+        expect(twoDaysAgoCompact).toBe("前天 21:34")
+        expect(twoDaysAgoCompact).toBe(twoDaysAgoDefault)
     })
 })

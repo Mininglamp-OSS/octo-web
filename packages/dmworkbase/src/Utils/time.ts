@@ -55,9 +55,21 @@ function formatShortWeekday(date: Date) {
 * @param {boolean} mustIncludeTime true表示输出的格式里一定会包含“时间:分钟”
 * ，否则不包含（参考微信，不包含时分的情况，用于首页“消息”中显示时）
 * @param {boolean} [compact=false] 只由窄容器 (会话列表 date 列, 见 WS-216 /
-* GitHub #1629) 传入 true;强制 -2d 桶走短版本 (en-US `2d ago`, zh-CN `前天`)。
-* 默认 false 保持原语 (`The day before yesterday` / `前天`),避免共享 helper
-* 把短文案外溢到 MergeforwardMessageList / GlobalSearch / ThreadCreated。
+* GitHub #1629) 传入 true。**只影响 -2d 桶的文案选择**:compact 时读
+* `.dayBeforeYesterdayShort` (en-US `2d ago`),默认读 `.dayBeforeYesterday`
+* (en-US `The day before yesterday`),从而不让"2d ago"外溢到 MergeforwardMessageList
+* / GlobalSearch / ThreadCreated。
+*
+* 注意:一周内 weekday 桶用短版本 (`Wed` / `周三`) 是**全局的、故意的**,
+* 不受 compact 控制 —— 与 `formatMessageTimestamp` (同文件, 已用 short weekday)
+* 保持一致,四个 caller 都按同样的短写法渲染,避免同一时间戳在不同 UI 面出
+* 两种周几表达。若日后需要按 caller 差异化 weekday,再把它也挂到 compact 上。
+*
+* 布局耦合:时分后缀恒用 24 小时格式 `hh:mm` (见 `timeExtraStr` 的 `_formatDate`
+* 调用);会话列表 `.wk-conversationlist-item-time { max-width: 112px }` 就是按
+* 最长 24h 标签 `12/31/2025 23:59` (~95px 实测) 定的。若日后本 helper 或某个
+* caller 换 12h (`hh:mm A`),`12/31/2025 11:59 PM` 会撑破 cap,那时 layout
+* 上限得跟着调。
 *
 * @return {string} 输出格式形如：“刚刚”、“10:30”、“昨天 12:04”、“前天 20:51”、“周二”、“2019/2/21 12:09”等形式
 * @author 即时通讯网([url=http://www.52im.net]http://www.52im.net[/url])
@@ -115,18 +127,22 @@ export function getTimeStringAutoShort2(timestamp:number, mustIncludeTime:boolea
             if (srcMonth === (yesterdayDate.getMonth() + 1) && srcDateD === yesterdayDate.getDate())
                 ret = t("base.time.yesterday") + timeExtraStr;// -1d
             // “前天”判断逻辑同上;窄容器 (compact=true) 走 `.dayBeforeYesterdayShort`
-            // (en-US `2d ago`),不动其它 3 个共享 caller 的英文原语,避免共享 helper
-            // 把短文案外溢到 MergeforwardMessageList / GlobalSearch / ThreadCreated
-            // (Octo-Q reviewer P2 · WS-216)。
+            // (en-US `2d ago`),不动其它 3 个共享 caller 的英文原语,避免"2d ago"
+            // 外溢到 MergeforwardMessageList / GlobalSearch / ThreadCreated。
+            // t() 拆到 ternary 外面,scripts/i18n-scan.mjs 才能静态识别两个 key
+            // (它只认第一参数是字符串字面量的 t() 调用)。
             else if (srcMonth === (beforeYesterdayDate.getMonth() + 1) && srcDateD === beforeYesterdayDate.getDate())
-                ret = t(compact ? "base.time.dayBeforeYesterdayShort" : "base.time.dayBeforeYesterday") + timeExtraStr;// -2d
+                ret = (compact ? t("base.time.dayBeforeYesterdayShort") : t("base.time.dayBeforeYesterday")) + timeExtraStr;// -2d
             else {
                 // 跟当前时间相差的小时数
                 const deltaHour = (deltaTime / (3600 * 1000));
 
                 // 如果小于或等 7*24小时就显示星期几
                 if (deltaHour <= 7 * 24) {
-                    // 取出当前是星期几（用短格式，保持 date 列在 en-US 下不撑爆）
+                    // 取出当前是星期几。用 short weekday (`Wed` / `周三`) 是**全局的
+                    // 故意行为**,不受 compact 控制 —— 与 formatMessageTimestamp (同
+                    // 文件,已用 short weekday) 对齐,四个 caller 都按同一份短写法
+                    // 渲染。若日后需要按 caller 差异化 weekday,再挂 compact。
                     const weedayDesc = formatShortWeekday(srcDate);
                     ret = weedayDesc + timeExtraStr;
                 }
