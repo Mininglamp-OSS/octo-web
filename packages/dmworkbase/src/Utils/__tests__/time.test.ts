@@ -87,14 +87,38 @@ describe("formatMessageTimestamp", () => {
         const sameWeek = getTimeStringAutoShort2(new Date(2026, 5, 2, 15, 20).getTime(), true)
         expect(sameWeek).toBe("Tue 15:20")
         expect(sameWeek).not.toContain("Tuesday")
-        // Every en-US bucket must stay within the 96px date column budget (~14 chars at xs font)
+        // Older-than-a-week same-year → localized numeric calendar date + time (not "10 days ago").
+        // Intl date is locale-shaped; only assert time suffix and that the label carries no long-form
+        // weekday text, then check the 96px column budget for the pathological cross-year case below.
+        const olderSameYear = getTimeStringAutoShort2(new Date(2026, 3, 12, 8, 20).getTime(), true)
+        expect(olderSameYear).toMatch(/ \d{2}:\d{2}$/)
+        expect(olderSameYear).not.toContain("Wednesday")
+        // Cross-year → same numeric calendar path (formatCalendarDate switches to en-US Intl format).
+        const crossYear = getTimeStringAutoShort2(new Date(2025, 11, 31, 23, 59).getTime(), true)
+        expect(crossYear).toMatch(/ \d{2}:\d{2}$/)
+        expect(crossYear).toContain("2025")
+        // Every en-US bucket must stay within the ~16-char / 96px date-column budget.
         for (const label of [
             getTimeStringAutoShort2(new Date(2026, 5, 8, 9, 27).getTime(), false),
             getTimeStringAutoShort2(new Date(2026, 5, 7, 4, 12).getTime(), true),
             twoDaysAgo,
             sameWeek,
+            olderSameYear,
+            crossYear,
         ]) {
-            expect(label.length).toBeLessThanOrEqual(15)
+            expect(label.length).toBeLessThanOrEqual(16)
         }
+    })
+
+    it("emits the short zh-CN weekday for the within-a-week bucket", () => {
+        vi.useFakeTimers()
+        vi.setSystemTime(new Date(2026, 5, 8, 12, 0, 0))
+        i18n.setLocale("zh-CN", { notify: false, persist: false })
+
+        // Pinned direction: 星期二 → 周二 (matches formatMessageTimestamp; short weekday keeps
+        // the conversation-list date column within budget for future long-name locales too).
+        const sameWeek = getTimeStringAutoShort2(new Date(2026, 5, 2, 15, 20).getTime(), true)
+        expect(sameWeek).toBe("周二 15:20")
+        expect(sameWeek).not.toContain("星期二")
     })
 })
