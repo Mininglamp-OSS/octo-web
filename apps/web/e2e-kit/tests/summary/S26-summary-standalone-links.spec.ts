@@ -1,4 +1,5 @@
 import { test, expect, AUTH_KEYS_SUFFIXED, E2E_SID, MOCK_LOCALE, LOCALE_STORAGE_KEY, ONBOARDING_STORAGE_KEY, SPACE_STORAGE_KEY } from "../../fixtures-authed";
+import { waitForMswReady } from "../../_lib/e2eReady";
 import { registerS26SummaryStandaloneLinks } from "../../msw-handlers/s26-summary-standalone-links";
 
 test("@S26 @p1 @summary @deep-link 独立详情与分享链接", async ({ pagePlain }) => {
@@ -12,9 +13,10 @@ test("@S26 @p1 @summary @deep-link 独立详情与分享链接", async ({ pagePl
   }, { sid: E2E_SID, auth: AUTH_KEYS_SUFFIXED, spaceKey: SPACE_STORAGE_KEY, spaceId: "e2e-space-001", localeKey: LOCALE_STORAGE_KEY, locale: MOCK_LOCALE, onboardingKey: ONBOARDING_STORAGE_KEY, scenario: "s26-summary-standalone-links" });
 
   await pagePlain.goto(`/?sid=${E2E_SID}`);
-  await pagePlain.waitForFunction(() => (globalThis as { __MSW_READY__?: boolean }).__MSW_READY__ === true);
+  await waitForMswReady(pagePlain);
   await registerS26SummaryStandaloneLinks(pagePlain);
   await pagePlain.goto(`/s/e2e-task-026?sid=${E2E_SID}`);
+  await waitForMswReady(pagePlain);
   await pagePlain.waitForFunction(() => {
     const w = globalThis as { __s26MswInstalled?: boolean; __s26MswError?: string };
     if (w.__s26MswError) throw new Error(w.__s26MswError);
@@ -25,12 +27,15 @@ test("@S26 @p1 @summary @deep-link 独立详情与分享链接", async ({ pagePl
   await expect(pagePlain.getByText("登录", { exact: true })).toHaveCount(0);
 
   await pagePlain.goto(`/s/share/e2e-share-026?sid=${E2E_SID}`);
+  await waitForMswReady(pagePlain);
   await expect(pagePlain.getByRole("heading", { name: "S26 分享总结" })).toBeVisible({ timeout: 15_000 });
   await expect(pagePlain.getByText("这是从分享链接直接打开的总结正文。", { exact: true })).toBeVisible();
   await expect(pagePlain.getByText("登录", { exact: true })).toHaveCount(0);
 
   await pagePlain.goto(`/s?sid=${E2E_SID}`);
+  await waitForMswReady(pagePlain);
   await expect(pagePlain.getByRole("heading", { name: /S26 .*详情/ })).toHaveCount(0);
   await pagePlain.goto(`/s/e2e-task-026/extra?sid=${E2E_SID}`);
+  await waitForMswReady(pagePlain);
   await expect(pagePlain.getByRole("heading", { name: /S26 .*详情/ })).toHaveCount(0);
 });
