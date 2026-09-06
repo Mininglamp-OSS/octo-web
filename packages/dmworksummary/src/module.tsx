@@ -204,8 +204,10 @@ export class SummaryModule implements IModule {
                 );
                 // NavRail collapsed 状态 label 只有 ~52px,英文 `AI Summary` (63px) 会被
                 // ellipsis 截成 `Sum...`;用 titleShort 走窄容器 label(#1635)。
-                // 仅在当前 locale 真提供了 titleShort 时才注入 — hasMessage 屏蔽
-                // 掉 t() 的跨 locale fallback,避免 zh-CN 拿到 en-US 的 `Summary`。
+                // zh-CN 的 titleShort 就是 `智能总结`(与 title 同值),让 NavItem 的
+                // `shortLabel === label` 判断塌回单 span 渲染,不改变 zh-CN 视觉。i18n:check
+                // 强制两 locale 对称,所以两个都得写;hasMessage 门保留作为未来新 locale
+                // 缺 key 的降级路径。
                 if (i18n.hasMessage("summary.menu.titleShort")) {
                     menu.shortTitle = translate("summary.menu.titleShort");
                 }
