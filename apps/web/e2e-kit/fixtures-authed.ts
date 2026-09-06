@@ -37,10 +37,18 @@ const MOCK_LOCALE = "zh-CN";
 
 async function installGlobalMockFallbackRoutes(page: Page): Promise<void> {
   // Playwright routes only see these requests when the MSW service worker did
-  // not intercept them. Keep deterministic baseline responses here so a brief
-  // client-registration gap cannot escape to Vite's intentionally dead proxy.
+  // not intercept them. Use deterministic responses only before MSW reports
+  // ready; after readiness, fall through so a missing handler remains visible
+  // to the proxy-error merge gate.
   await page.route("**/summary/api/v1/summaries/attention*", async (route) => {
     if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const mswReady = await page
+      .evaluate(() => (globalThis as { __MSW_READY__?: boolean }).__MSW_READY__ === true)
+      .catch(() => false);
+    if (mswReady) {
       await route.fallback();
       return;
     }
@@ -65,7 +73,17 @@ async function installGlobalMockFallbackRoutes(page: Page): Promise<void> {
       await route.fallback();
       return;
     }
-    const scenario = new URL(route.request().url()).searchParams.get("e2e_chat_follow") ?? "";
+    const mswReady = await page
+      .evaluate(() => (globalThis as { __MSW_READY__?: boolean }).__MSW_READY__ === true)
+      .catch(() => false);
+    if (mswReady) {
+      await route.fallback();
+      return;
+    }
+    const scenario =
+      route.request().headers()["x-e2e-chat-follow-scenario"] ??
+      new URL(route.request().url()).searchParams.get("e2e_chat_follow") ??
+      "";
     const groups = scenario.startsWith("sort:")
       ? [
           { group_no: "e2e-chat-layout-group-a", name: "E2E 关注群 A", category_sort: 0 },

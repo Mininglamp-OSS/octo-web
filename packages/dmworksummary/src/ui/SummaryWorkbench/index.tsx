@@ -394,11 +394,15 @@ const SummaryWorkbench = ({
     if (
       event.key !== "Enter" ||
       event.shiftKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey ||
       event.nativeEvent.isComposing
     )
       return;
+    if (!state.canSend || state.isSending) return;
     event.preventDefault();
-    if (state.canSend && !state.isSending) actions.onSend();
+    actions.onSend();
   };
 
   return (

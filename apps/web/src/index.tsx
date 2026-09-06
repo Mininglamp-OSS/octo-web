@@ -149,8 +149,8 @@ async function enableMocksIfE2E(): Promise<void> {
     window.addEventListener("pagehide", markDocumentNotReady, { once: true });
     window.addEventListener("beforeunload", markDocumentNotReady, { once: true });
   } catch (e) {
-    // MSW SW 拿不到 (如 e2e no-mock scenario 拦了 mockServiceWorker.js): 静默继续,
-    // 让 app 正常启动. __MSW_READY__ 不 set, no-mock spec 也不 wait 它.
+    // MSW SW 拿不到时保留 app 启动，但明确写入失败原因。使用 mock 的 spec 通过
+    // waitForMswReady 立即失败；no-mock spec 不等待该标记，行为保持不变。
     const message = e instanceof Error ? e.message : String(e);
     readiness.__MSW_ERROR__ = message;
     console.warn("[e2e] MSW disabled:", e);

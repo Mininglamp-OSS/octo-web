@@ -10,7 +10,7 @@
 /** Threshold below which the group badge lists all indices explicitly. */
 export const RANGE_THRESHOLD = 3;
 
-const alternateCitationPattern = /(?:【\s*([0-9０-９]{1,5})\s*】|［\s*([0-9０-９]{1,5})\s*］)/g;
+const alternateCitationPattern = /(?:【\s*([0-9０-９]{1,5})\s*】|［\s*([0-9０-９]{1,5})\s*］)(?!\()/g;
 
 function normalizeDigits(value: string): string {
     return Array.from(value, char => {
@@ -20,9 +20,11 @@ function normalizeDigits(value: string): string {
 }
 
 /**
- * Compatibility for persisted summaries whose model emitted Chinese/full-width
- * numeric citation brackets. Only markers backed by an actual citation entry
- * are canonicalized, so ordinary text such as 【2026】 remains untouched.
+ * Compatibility for Markdown text nodes whose model emitted Chinese/full-width
+ * numeric citation brackets. Call this after Markdown parsing so fenced code,
+ * inline code, and link syntax are never rewritten. Only markers backed by an
+ * actual citation entry are canonicalized, so ordinary text such as 【2026】
+ * remains untouched.
  */
 export function normalizeCitationMarkersForDisplay(content: string, validIndices: number[]): string {
     const valid = new Set(validIndices);

@@ -10,7 +10,7 @@
 // These tests lock the accepted omitted-pointer contract.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { adaptSummaryWorkspaceTurn } from '../adapter';
+import { adaptSummaryWorkspaceHistory, adaptSummaryWorkspaceTurn } from '../adapter';
 
 // A minimal valid turn payload with every optional pointer key OMITTED
 // (the shape a Go omitempty backend actually emits) instead of explicit null.
@@ -59,6 +59,48 @@ describe('adapter — omitted optional pointer keys are tolerated (P1-2)', () =>
       }),
     );
     expect(turn.resultType).toBe('workflow_started');
+  });
+
+  it('hydrates a preview history message when optional result_type is omitted', () => {
+    const preview = {
+      message_id: 18,
+      result_type: 'agent_preview',
+      scope_version: 2,
+      artifact_version: 3,
+      snapshot_version: 1,
+      content: '# 风险总结',
+      assumptions: [],
+      available_actions: ['save_preview'],
+    };
+
+    const history = adaptSummaryWorkspaceHistory({
+      contract_version: '2',
+      session_id: 'session-omit',
+      messages: [
+        {
+          id: 18,
+          role: 'assistant',
+          content: '已生成总结',
+          scope_version: 2,
+          artifact_version: 3,
+          preview,
+        },
+      ],
+      state: {
+        scope_version: 2,
+        summary_context: {
+          selected_channels: [],
+          participants: [],
+          referenced_task_ids: [],
+        },
+        current_preview: preview,
+      },
+    });
+
+    expect(history.modelOptions.messages?.[0]).toMatchObject({
+      resultType: 'agent_preview',
+      card: { kind: 'agent_preview', version: 3 },
+    });
   });
 });
 

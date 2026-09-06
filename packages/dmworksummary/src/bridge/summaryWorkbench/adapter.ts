@@ -235,7 +235,7 @@ export function adaptSummaryWorkspaceHistory(value: unknown): SummaryWorkbenchHi
     }
     if (
       message.role !== "assistant" ||
-      message.result_type !== artifact.resultType ||
+      (message.result_type ?? artifact.resultType) !== artifact.resultType ||
       message.scope_version !== artifact.scopeVersion ||
       (artifact.artifactVersion !== undefined &&
         message.artifact_version !== undefined &&

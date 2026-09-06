@@ -318,6 +318,23 @@ describe("SummaryWorkbench", () => {
     expect(actions.onRemoveContext).toHaveBeenCalledWith("chat", "chat-1");
   });
 
+  it("does not swallow Enter when sending is unavailable", () => {
+    const actions = createActions();
+    const state = createState();
+    state.canSend = false;
+    rtlRender(<SummaryWorkbench state={state} actions={actions} />, {
+      legacyRoot: true,
+    });
+
+    const allowed = fireEvent.keyDown(screen.getByRole("textbox"), {
+      key: "Enter",
+      shiftKey: false,
+    });
+
+    expect(allowed).toBe(true);
+    expect(actions.onSend).not.toHaveBeenCalled();
+  });
+
   it("renders session recovery and progress without exposing extra result actions", () => {
     const actions = createActions();
     actions.onNewSession = vi.fn();

@@ -178,6 +178,20 @@ describe('CitationText — [n] vs [Pn] parsing', () => {
         expect(screen.queryByText('［９］')).toBeNull();
     });
 
+    it('normalizes full-width citations only in prose text nodes', () => {
+        render(
+            <CitationText
+                content={'正文引用【1】\n\n`arr【1】`\n\n```js\nconst x = data【1】;\n```\n\n见［1］(备注)'}
+                citations={[makeCitation({ index: 1 })]}
+            />,
+        );
+
+        expect(badgeByText('[1]')).toBeTruthy();
+        expect(screen.getByText('arr【1】')).toBeInTheDocument();
+        expect(screen.getByText('const x = data【1】;')).toBeInTheDocument();
+        expect(document.body.textContent).toContain('见［1］(备注)');
+    });
+
     it('1) renders normal [n] and team [P1] side by side without crosstalk', () => {
         render(
             <CitationText

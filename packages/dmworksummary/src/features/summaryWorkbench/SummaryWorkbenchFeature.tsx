@@ -212,11 +212,21 @@ export default function SummaryWorkbenchFeature({
       }
     },
   });
+  const busy =
+    workbench.viewState.isSending ||
+    workbench.isHydrating ||
+    workbench.isConfirming ||
+    workbench.isSaving;
   const latestScopeRef = useRef(workbench.scope);
   const latestScopeChangeImpactRef = useRef<SummaryScopeChangeImpact | null>(
     controllerScopeChangeImpact(workbench)
   );
   const participantLoadSeq = useRef(0);
+  const busyRef = useRef(busy);
+  const pendingParticipantPruneRef = useRef<{
+    sourceKey: string;
+    members: WorkbenchMemberCandidate[];
+  } | null>(null);
   const [participantCandidateState, setParticipantCandidateState] =
     useState<ParticipantCandidateState>({
       sourceKey: "",
@@ -226,6 +236,27 @@ export default function SummaryWorkbenchFeature({
     });
   latestScopeRef.current = workbench.scope;
   latestScopeChangeImpactRef.current = controllerScopeChangeImpact(workbench);
+  busyRef.current = busy;
+
+  const applyParticipantPrune = useCallback(
+    (sourceKey: string, members: WorkbenchMemberCandidate[]) => {
+      const latestScope = latestScopeRef.current;
+      if (participantSourceKey(latestScope) !== sourceKey) return;
+      const retained = retainValidParticipants(latestScope, members);
+      if (retained.removedCount === 0) return;
+
+      const impact = latestScopeChangeImpactRef.current;
+      workbench.updateScope(retained.scope);
+      Toast.warning(
+        t(
+          impact
+            ? "summary.workbench.notice.participantsPrunedArtifactInvalidated"
+            : "summary.workbench.notice.participantsPruned"
+        )
+      );
+    },
+    [t, workbench]
+  );
 
   const refreshParticipantCandidates = useCallback(
     async (force = false) => {
@@ -276,15 +307,14 @@ export default function SummaryWorkbenchFeature({
         });
         const retained = retainValidParticipants(latestScope, result.members);
         if (retained.removedCount > 0) {
-          const impact = latestScopeChangeImpactRef.current;
-          workbench.updateScope(retained.scope);
-          Toast.warning(
-            t(
-              impact
-                ? "summary.workbench.notice.participantsPrunedArtifactInvalidated"
-                : "summary.workbench.notice.participantsPruned"
-            )
-          );
+          if (busyRef.current) {
+            pendingParticipantPruneRef.current = {
+              sourceKey,
+              members: result.members,
+            };
+          } else {
+            applyParticipantPrune(sourceKey, result.members);
+          }
         }
         return true;
       } catch {
@@ -300,6 +330,7 @@ export default function SummaryWorkbenchFeature({
     },
     [
       currentUserId,
+      applyParticipantPrune,
       participantCandidateState.sourceKey,
       participantCandidateState.status,
       spaceId,
@@ -309,8 +340,14 @@ export default function SummaryWorkbenchFeature({
   );
 
   const participantScopeKey = participantSourceKey(workbench.scope);
+  const participantsPresent = workbench.scope.participants.length > 0;
   useEffect(() => {
     participantLoadSeq.current += 1;
+    if (
+      pendingParticipantPruneRef.current?.sourceKey !== participantScopeKey
+    ) {
+      pendingParticipantPruneRef.current = null;
+    }
     setParticipantCandidateState((current) =>
       current.sourceKey === (participantScopeKey ?? "")
         ? current
@@ -321,10 +358,18 @@ export default function SummaryWorkbenchFeature({
             roles: new Map<string, number>(),
           }
     );
-    if (workbench.scope.participants.length > 0 && participantScopeKey) {
+    if (participantsPresent && participantScopeKey) {
       void refreshParticipantCandidates(true);
     }
-  }, [participantScopeKey]);
+  }, [participantScopeKey, participantsPresent]);
+
+  useEffect(() => {
+    if (busy) return;
+    const pending = pendingParticipantPruneRef.current;
+    if (!pending) return;
+    pendingParticipantPruneRef.current = null;
+    applyParticipantPrune(pending.sourceKey, pending.members);
+  }, [applyParticipantPrune, busy]);
 
   // Unmount: clear the theme-input debounce so a pending track cannot fire
   // after the user has left (same rationale as the legacy page's cleanup).
@@ -432,11 +477,6 @@ export default function SummaryWorkbenchFeature({
     workbench.scope,
     composerHasCustomText
   );
-  const busy =
-    workbench.viewState.isSending ||
-    workbench.isHydrating ||
-    workbench.isConfirming ||
-    workbench.isSaving;
   const participantScopeReady =
     workbench.scope.participants.length === 0 ||
     (Boolean(participantScopeKey) &&
@@ -473,7 +513,10 @@ export default function SummaryWorkbenchFeature({
         : "summary.workbench.composer.send",
     errorMessage: displayErrorKey
       ? t(displayErrorKey)
-      : workbench.viewState.errorMessage,
+      : workbench.viewState.errorMessage ??
+        (participantsPresent && participantCandidateState.status === "error"
+          ? t("summary.workbench.notice.participantCandidatesLoadFailed")
+          : undefined),
   };
 
   const updateScopeWithPreviewGuard = (

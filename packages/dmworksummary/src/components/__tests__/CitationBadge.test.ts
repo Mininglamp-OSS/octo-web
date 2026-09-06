@@ -14,6 +14,10 @@ describe('normalizeCitationMarkersForDisplay', () => {
     it('preserves numeric brackets without a matching citation', () => {
         expect(normalizeCitationMarkersForDisplay('版本【2026】和引用【1】', [1])).toBe('版本【2026】和引用[1]');
     });
+
+    it('does not turn a full-width marker followed by parentheses into link syntax', () => {
+        expect(normalizeCitationMarkersForDisplay('见［1］(备注)', [1])).toBe('见［1］(备注)');
+    });
 });
 
 // Product spec for group badge label (see CitationBadge.tsx):

@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SummaryWorkbenchScope } from "../../bridge/summaryWorkbench/protocol";
 import SummaryWorkbenchFeature from "./SummaryWorkbenchFeature";
+import type { WorkbenchMemberCandidate } from "./scope";
 
 const mocks = vi.hoisted(() => ({
   useSummaryWorkbench: vi.fn(),
@@ -130,6 +131,7 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
       data-testid="workbench-ui"
       data-can-send={String(state.canSend)}
       data-send-label={state.sendLabelKey}
+      data-error-message={state.errorMessage ?? ""}
     >
       <span data-testid="reference-label">
         {state.contextItems.find((item: any) => item.kind === "reference")
@@ -778,6 +780,118 @@ describe("SummaryWorkbenchFeature", () => {
     );
     expect(current.updateScope).toHaveBeenCalledWith(
       expect.objectContaining({ participants: [] })
+    );
+  });
+
+  it("loads candidates after hydration restores a participant-only scope", async () => {
+    const current = controller({
+      isHydrating: true,
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Summarize the participant updates",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: false,
+      },
+    });
+    mocks.useSummaryWorkbench.mockImplementation(() => current);
+
+    const { rerender } = render(
+      <SummaryWorkbenchFeature spaceId="space-a" />,
+      { legacyRoot: true }
+    );
+    expect(mocks.loadParticipantCandidates).not.toHaveBeenCalled();
+
+    current.scope = scope({
+      participants: [{ userId: "user-a", userName: "Alex" }],
+    });
+    current.isHydrating = false;
+    rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
+
+    await waitFor(() =>
+      expect(mocks.loadParticipantCandidates).toHaveBeenCalledTimes(1)
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-can-send",
+        "true"
+      )
+    );
+  });
+
+  it("surfaces participant candidate load failures in the main workbench", async () => {
+    mocks.loadParticipantCandidates.mockRejectedValueOnce(
+      new Error("member sync failed")
+    );
+    const current = controller({
+      scope: scope({
+        participants: [{ userId: "user-a", userName: "Alex" }],
+      }),
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Summarize updates",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: false,
+      },
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-error-message",
+        "summary.workbench.notice.participantCandidatesLoadFailed"
+      )
+    );
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute("data-can-send", "false");
+  });
+
+  it("defers participant pruning until an in-flight save settles", async () => {
+    const candidateLoad = deferred<{
+      members: WorkbenchMemberCandidate[];
+      roles: Map<string, number>;
+    }>();
+    mocks.loadParticipantCandidates.mockReturnValueOnce(candidateLoad.promise);
+    let current = controller({
+      scope: scope({
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group", name: "Product" },
+        ],
+        participants: [{ userId: "user-a", userName: "Alex" }],
+      }),
+    });
+    mocks.useSummaryWorkbench.mockImplementation(() => current);
+
+    const { rerender } = render(
+      <SummaryWorkbenchFeature spaceId="space-a" />,
+      { legacyRoot: true }
+    );
+    await waitFor(() =>
+      expect(mocks.loadParticipantCandidates).toHaveBeenCalledTimes(1)
+    );
+
+    current = { ...current, isSaving: true };
+    rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
+    candidateLoad.resolve({ members: [], roles: new Map() });
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toBeInTheDocument()
+    );
+    expect(current.updateScope).not.toHaveBeenCalled();
+
+    current = { ...current, isSaving: false };
+    rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
+    await waitFor(() =>
+      expect(current.updateScope).toHaveBeenCalledWith(
+        expect.objectContaining({ participants: [] })
+      )
     );
   });
 
