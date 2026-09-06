@@ -1,5 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { formatGroupLabel, RANGE_THRESHOLD, buildDisplayIndexMap } from '../citationFormat';
+import {
+    formatGroupLabel,
+    RANGE_THRESHOLD,
+    buildDisplayIndexMap,
+    normalizeCitationMarkersForDisplay,
+} from '../citationFormat';
+
+describe('normalizeCitationMarkersForDisplay', () => {
+    it('canonicalizes Chinese and full-width markers backed by citations', () => {
+        expect(normalizeCitationMarkersForDisplay('依据【1】和［２］', [1, 2])).toBe('依据[1]和[2]');
+    });
+
+    it('preserves numeric brackets without a matching citation', () => {
+        expect(normalizeCitationMarkersForDisplay('版本【2026】和引用【1】', [1])).toBe('版本【2026】和引用[1]');
+    });
+});
 
 // Product spec for group badge label (see CitationBadge.tsx):
 //   len=1  -> handled by CitationBadge (single [N]), not tested here

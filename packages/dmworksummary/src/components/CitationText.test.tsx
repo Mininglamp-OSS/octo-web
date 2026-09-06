@@ -162,6 +162,22 @@ describe('CitationText — [n] vs [Pn] parsing', () => {
         expect(popover.textContent).not.toContain('引用 [9]');
     });
 
+    it('renders full-width citation markers as clickable badges when citation data exists', () => {
+        render(
+            <CitationText
+                content="全角引用【8】［９］"
+                citations={[
+                    makeCitation({ index: 8, message_seq: 108, content: '第一条被引用消息' }),
+                    makeCitation({ index: 9, message_seq: 109, content: '第二条被引用消息' }),
+                ]}
+            />,
+        );
+
+        expect(badgeByText('[1,2]')).toBeTruthy();
+        expect(screen.queryByText('【8】')).toBeNull();
+        expect(screen.queryByText('［９］')).toBeNull();
+    });
+
     it('1) renders normal [n] and team [P1] side by side without crosstalk', () => {
         render(
             <CitationText

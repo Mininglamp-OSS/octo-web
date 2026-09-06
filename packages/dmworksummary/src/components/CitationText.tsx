@@ -7,7 +7,7 @@ import { visit } from 'unist-util-visit';
 import { useI18n } from '@octo/base';
 import CitationBadge, { CitationGroupBadge, TeamCitationBadge } from './CitationBadge';
 import { CitationItem, TeamCitationItem, MemberStatus } from '../types/summary';
-import { buildDisplayIndexMap } from './citationFormat';
+import { buildDisplayIndexMap, normalizeCitationMarkersForDisplay } from './citationFormat';
 
 export interface CitationContextValue {
     activeKey: string | null;
@@ -281,13 +281,19 @@ const CitationText: React.FC<CitationTextProps> = ({
         setActiveKey(prev => (prev === key ? null : prev));
     }, []);
 
-    const normalized = content.trim();
-    if (!normalized) {
+    const trimmed = content.trim();
+    if (!trimmed) {
         return <div className="summary-content-empty">{t("summary.content.empty")}</div>;
     }
 
     const hasCitations = !hidePlainCitations && citations && citations.length > 0;
     const hasTeamCitations = teamCitations && teamCitations.length > 0;
+    const normalized = hasCitations
+        ? normalizeCitationMarkersForDisplay(
+              trimmed,
+              citations.map(citation => citation.index),
+          )
+        : trimmed;
     // Build display-index map from the raw source (reading-order rank starting
     // at 1) so users don't see raw pool positions like [37]. Data is unchanged
     // — only the label the badge renders differs from the internal index. The
