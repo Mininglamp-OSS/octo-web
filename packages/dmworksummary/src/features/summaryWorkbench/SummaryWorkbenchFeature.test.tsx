@@ -1,6 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { adaptSummaryWorkspaceHistory } from "../../bridge/summaryWorkbench/adapter";
 import type { SummaryWorkbenchScope } from "../../bridge/summaryWorkbench/protocol";
 import SummaryWorkbenchFeature from "./SummaryWorkbenchFeature";
 import type { WorkbenchMemberCandidate } from "./scope";
@@ -856,13 +857,23 @@ describe("SummaryWorkbenchFeature", () => {
   });
 
   it("explains why participants cannot be used with the selected chats", () => {
+    const invalidScope = adaptSummaryWorkspaceHistory({
+      contract_version: "2",
+      session_id: "session-invalid-participant-scope",
+      messages: [],
+      state: {
+        scope_version: 1,
+        summary_context: {
+          selected_channels: [
+            { chat_id: "direct-a", chat_type: "direct", name: "Alex" },
+          ],
+          participants: [{ user_id: "user-a", user_name: "Alex" }],
+          referenced_task_ids: [],
+        },
+      },
+    }).scope;
     const current = controller({
-      scope: scope({
-        selectedChannels: [
-          { chatId: "direct-a", chatType: "direct", name: "Alex" },
-        ],
-        participants: [{ userId: "user-a", userName: "Alex" }],
-      }),
+      scope: invalidScope,
       viewState: {
         layout: "full",
         messages: [],
@@ -879,6 +890,9 @@ describe("SummaryWorkbenchFeature", () => {
       legacyRoot: true,
     });
 
+    expect(invalidScope.participants).toEqual([
+      { userId: "user-a", userName: "Alex" },
+    ]);
     expect(mocks.loadParticipantCandidates).not.toHaveBeenCalled();
     expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
       "data-error-message",

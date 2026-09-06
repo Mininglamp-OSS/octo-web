@@ -1,5 +1,4 @@
 import type { CoverageGap, CreateAgentSummaryResult, FinishStatus } from "../../types/summary";
-import { MAX_CHAT_SELECT } from "../../constants/limits";
 import type {
   CreateSummaryWorkbenchModelOptions,
   SummaryWorkbenchAuthoritativeState,
@@ -666,24 +665,17 @@ function toAuthoritativeState(
 }
 
 function toWorkbenchScope(context: SummaryWorkspaceContextDTO): SummaryWorkbenchScope {
-  const selectedChannels = context.selected_channels.map((channel) => ({
-    chatId: channel.chat_id,
-    chatType: channel.chat_type,
-    name: channel.name,
-    ...(channel.is_archived === undefined ? {} : { isArchived: channel.is_archived }),
-  }));
-  const supportsParticipants =
-    selectedChannels.length === 0 ||
-    (selectedChannels.length <= MAX_CHAT_SELECT &&
-      selectedChannels.every((channel) => channel.chatType === "group"));
   return {
-    selectedChannels,
-    participants: supportsParticipants
-      ? context.participants.map((participant) => ({
-          userId: participant.user_id,
-          ...(participant.user_name ? { userName: participant.user_name } : {}),
-        }))
-      : [],
+    selectedChannels: context.selected_channels.map((channel) => ({
+      chatId: channel.chat_id,
+      chatType: channel.chat_type,
+      name: channel.name,
+      ...(channel.is_archived === undefined ? {} : { isArchived: channel.is_archived }),
+    })),
+    participants: context.participants.map((participant) => ({
+      userId: participant.user_id,
+      ...(participant.user_name ? { userName: participant.user_name } : {}),
+    })),
     template: context.template
       ? {
           templateId: context.template.template_id,

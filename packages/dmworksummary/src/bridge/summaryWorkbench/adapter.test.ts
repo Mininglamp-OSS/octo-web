@@ -383,7 +383,7 @@ describe("summary workspace adapter", () => {
     });
   });
 
-  it("drops participants from a server scope that cannot support participant selection", () => {
+  it("preserves participants from a server scope that needs user correction", () => {
     const hydration = adaptSummaryWorkspaceHistory({
       contract_version: "2",
       session_id: "session-invalid-participant-scope",
@@ -406,7 +406,7 @@ describe("summary workspace adapter", () => {
 
     expect(hydration.scope).toMatchObject({
       selectedChannels: [{ chatId: "direct-1", chatType: "direct" }],
-      participants: [],
+      participants: [{ userId: "u1", userName: "张三" }],
     });
   });
 
