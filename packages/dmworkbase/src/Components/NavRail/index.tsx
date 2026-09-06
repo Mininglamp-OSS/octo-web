@@ -120,7 +120,6 @@ export default class NavRail extends Component<NavRailProps> {
                                 key={menus.id}
                                 icon={menus.id === currentMenus?.id ? menus.selectedIcon : menus.icon}
                                 label={menus.title}
-                                shortLabel={menus.shortTitle}
                                 active={menus.id === currentMenus?.id}
                                 badge={menus.badge && menus.badge > 0 ? menus.badge : undefined}
                                 trackObjectId={menus.routePath}

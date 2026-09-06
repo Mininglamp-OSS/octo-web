@@ -202,9 +202,6 @@ export class SummaryModule implements IModule {
                     <SummaryMenuIcon />,
                     <SummaryMenuIcon active />,
                 );
-                // NavRail 竖排 label 只有 ~44px 可用宽,英文 "AI Summary" (10 字符) 会被
-                // ellipsis 截成 "Sum...";用 titleShort 变体走窄容器 label(WS-216)。
-                menu.shortTitle = translate("summary.menu.titleShort");
                 // #1359 待关注红点（未读 ∪ 未处理邀请 ∪ 待提交）：badge 字段与 NavRail
                 // 渲染已存在，此处每次 render 读最新计数即可（宿主 forceUpdate 驱动重绘）。
                 menu.badge = getSummaryAttentionBadge();

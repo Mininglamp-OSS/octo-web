@@ -147,8 +147,7 @@
         "everyNMonths": "Every {{months}} month(s){{at}}"
     },
     "menu": {
-        "title": "AI Summary",
-        "titleShort": "Summary"
+        "title": "AI Summary"
     },
     "list": {
         "needsAttention": "Needs attention",
