@@ -25,7 +25,7 @@
     "i18n:baseline": "node scripts/i18n-scan.mjs baseline",
     "i18n:pseudo": "node scripts/i18n-pseudo.mjs generate",
     "i18n:pseudo:check": "node scripts/i18n-pseudo.mjs check",
-    "i18n:scripts:test": "node --test scripts/__tests__/i18n-length-budgets.test.mjs scripts/__tests__/i18n-pseudo.test.mjs",
+    "i18n:scripts:test": "node --test 'scripts/__tests__/i18n-*.test.mjs'",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "gen:component": "node scripts/gen-component.mjs",
     "new:worktree": "node scripts/run-bash-script.mjs scripts/new-worktree.sh",

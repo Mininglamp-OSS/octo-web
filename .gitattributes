@@ -9,3 +9,14 @@ Dockerfile.* text eol=lf
 # Unified diff context lines may be a single space by format; do not flag generated patch files.
 *.patch whitespace=-blank-at-eol
 
+# i18n pseudo-localization files (en-XA.json) are byte-compared against the generator output
+# in `pnpm i18n:pseudo:check`. Without an explicit LF pin, Windows checkouts with
+# core.autocrlf=true would report the whole set as drifted on the first clone.
+apps/*/src/i18n/en-XA.json text eol=lf
+packages/**/i18n/en-XA.json text eol=lf
+
+# i18n transform modules are text but the first check-in (pre-review) contained embedded NUL
+# bytes as placeholder sentinels; git's binary-heuristic latched them as binary. Pin as text
+# so GitHub renders diffs and inline comments on future edits.
+scripts/i18n/*.mjs text
+

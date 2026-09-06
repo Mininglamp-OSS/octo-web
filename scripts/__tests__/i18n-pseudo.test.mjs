@@ -2,14 +2,19 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { transformResource, transformString } from "../i18n/pseudo.mjs";
 
-test("transformString wraps in brackets and pads by ~40%", () => {
-  const out = transformString("Confirm booking");
+test("transformString wraps in brackets and pads visible text by exactly 40%", () => {
+  const out = transformString("Confirm booking"); // 15 visible chars → ceil(15 * 0.4) = 6 pad chars
   assert.ok(out.startsWith("["), out);
   assert.ok(out.endsWith("]"), out);
   const bodyLength = Array.from(out).length - 2;
-  // Source is 15 chars → 40% padding = 6 pad tokens, each 2 chars wide (" ᴥ")
-  // Expect body ≥ 15 (accented copy) + 12 (padding)
-  assert.ok(bodyLength >= 27, `body length ${bodyLength} unexpectedly small: ${out}`);
+  // 14 accented letters + 1 preserved space + 6 pad chars = 21
+  assert.equal(bodyLength, 21, `unexpected body length: ${out}`);
+});
+
+test("transformString padding ratio is configurable", () => {
+  const out = transformString("Save", { paddingRatio: 1 }); // 4 chars → 4 pads
+  const bodyLength = Array.from(out).length - 2;
+  assert.equal(bodyLength, 8, `unexpected body length: ${out}`);
 });
 
 test("transformString accents ASCII letters", () => {

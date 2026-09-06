@@ -22,24 +22,44 @@ test("compilePattern matches double-star as multi-segment", () => {
   assert.ok(!re.test("base.navigation.summary"));
 });
 
-test("measureCopy strips {{tokens}} before counting graphemes", () => {
+test("measureCopy strips {{tokens}} before counting code points", () => {
   assert.equal(measureCopy("Hello {{name}}!"), "Hello !".length);
   assert.equal(measureCopy("AI Summary"), 10);
   assert.equal(measureCopy("智能总结"), 4);
 });
 
-test("normalizeBudgets drops entries with missing patterns or bad maxChars", () => {
-  const parsed = normalizeBudgets({
-    budgets: [
-      { container: "ok", maxChars: 10, keyPatterns: ["base.a.*"] },
-      { container: "no-patterns", maxChars: 10, keyPatterns: [] },
-      { container: "bad-max", maxChars: 0, keyPatterns: ["x"] },
-      { container: "missing-max", keyPatterns: ["y"] },
-      "not-an-object",
-    ],
-  });
+test("normalizeBudgets drops entries with missing patterns or bad maxChars and reports each skip", () => {
+  const skipped = [];
+  const parsed = normalizeBudgets(
+    {
+      budgets: [
+        { container: "ok", maxChars: 10, keyPatterns: ["base.a.*"] },
+        { container: "no-patterns", maxChars: 10, keyPatterns: [] },
+        { container: "bad-max", maxChars: 0, keyPatterns: ["x"] },
+        { container: "missing-max", keyPatterns: ["y"] },
+        "not-an-object",
+      ],
+    },
+    { onSkip: (info) => skipped.push(info) },
+  );
   assert.equal(parsed.length, 1);
   assert.equal(parsed[0].container, "ok");
+  assert.equal(skipped.length, 4);
+  assert.deepEqual(
+    skipped.map((s) => [s.index, s.reason.split(" ")[0]]),
+    [
+      [1, "keyPatterns"],
+      [2, "missing"],
+      [3, "missing"],
+      [4, "not"],
+    ],
+  );
+});
+
+test("compilePattern escapes regex meta-chars including ? without throwing", () => {
+  const re = compilePattern("base.?.foo");
+  assert.ok(re.test("base.?.foo"));
+  assert.ok(!re.test("base.x.foo"));
 });
 
 test("findBudget returns first matching budget in order", () => {
@@ -71,6 +91,11 @@ test("checkResource flags NavRail label that exceeds budget without .short", () 
   assert.equal(violations[0].locale, "en-US");
   assert.equal(violations[0].key, "base.summaryCard.title");
   assert.equal(violations[0].shortAvailable, false);
+  // Reported shortKey must equal the un-prefixed lookup key so a developer
+  // who literally pastes the hint into the same JSON file clears the
+  // violation. (Namespace-prefixing this hint on un-prefixed packages
+  // silently misled developers before — regression guard.)
+  assert.equal(violations[0].shortKey, "summaryCard.title.short");
 });
 
 test("checkResource resolves violation when a fitting .short variant exists", () => {
@@ -121,16 +146,30 @@ test("checkResource is a no-op when budgets are empty", () => {
   assert.deepEqual(violations, []);
 });
 
-test("interpolation tokens are ignored when measuring — a variable-only string can still fit", () => {
+test("checkResource: adding exactly the reported shortKey to the same file clears the violation (P1-1 regression)", () => {
   const budgets = normalizeBudgets({
-    budgets: [{ container: "pill", maxChars: 3, keyPatterns: ["base.count.short"] }],
+    budgets: [{ container: "chatListDate", maxChars: 12, keyPatterns: ["base.time.dayBeforeYesterday"] }],
   });
-  const violations = checkResource(
-    { "en-US": { "count.short": "{{count}}!" } },
-    "base",
-    budgets,
-    ["en-US"],
-  );
-  // "count.short" ends with `.short` — treated as a short-variant carrier, skipped from the primary check.
-  assert.deepEqual(violations, []);
+  // Package stores keys un-prefixed (like every dir except mail).
+  const entries = {
+    "en-US": { "time.dayBeforeYesterday": "The day before yesterday" },
+  };
+  const first = checkResource(entries, "base", budgets, ["en-US"]);
+  assert.equal(first.length, 1);
+  // Simulate the developer literally following the CLI hint: add the reported key + fitting value.
+  entries["en-US"][first[0].shortKey] = "2d ago";
+  const second = checkResource(entries, "base", budgets, ["en-US"]);
+  assert.deepEqual(second, []);
+});
+
+test("checkResource: mail namespace (keys stored pre-prefixed) — hint is still copy-pasteable", () => {
+  const budgets = normalizeBudgets({
+    budgets: [{ container: "tabTitle", maxChars: 5, keyPatterns: ["mail.folders.inbox"] }],
+  });
+  const entries = { "en-US": { "mail.folders.inbox": "Inbox Folder" } };
+  const first = checkResource(entries, "mail", budgets, ["en-US"]);
+  assert.equal(first.length, 1);
+  entries["en-US"][first[0].shortKey] = "Inbox";
+  const second = checkResource(entries, "mail", budgets, ["en-US"]);
+  assert.deepEqual(second, []);
 });

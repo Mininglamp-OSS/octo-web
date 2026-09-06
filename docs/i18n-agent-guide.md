@@ -190,6 +190,8 @@ The check reads `.i18n/length-budgets.json` and fails when any locale's translat
 }
 ```
 
+Matching is **first-match-wins** in the order listed — put specific rules above wide catch-alls (a `base.**` rule at the top of the file would shadow every narrower budget below it). Malformed entries (missing `maxChars`, empty `keyPatterns`, wrong types) are skipped with a `.i18n/length-budgets.json: skipped budget […] — <reason>` warning; scan the CI log if a rule you added seems ignored.
+
 ### Escape hatch — `.short` variants
 
 When a translation cannot fit its container but the source language reads well at full length, ship a sibling `<key>.short` value. The check accepts a violation if `<key>.short` fits the budget in the same locale. Consumers in constrained containers should resolve `<key>.short` first, then fall back to `<key>`:

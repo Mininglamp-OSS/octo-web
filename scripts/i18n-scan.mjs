@@ -89,7 +89,14 @@ async function loadScanConfig() {
 async function loadLengthBudgets() {
   try {
     const parsed = JSON.parse(await fs.readFile(lengthBudgetsPath, "utf8"));
-    lengthBudgets = normalizeBudgets(parsed);
+    lengthBudgets = normalizeBudgets(parsed, {
+      onSkip: ({ index, entry, reason }) => {
+        const label = (entry && typeof entry === "object" && typeof entry.container === "string" && entry.container)
+          || (entry && typeof entry === "object" && Array.isArray(entry.keyPatterns) && entry.keyPatterns[0])
+          || `#${index}`;
+        console.warn(`.i18n/length-budgets.json: skipped budget [${label}] — ${reason}`);
+      },
+    });
   } catch (error) {
     if (error?.code !== "ENOENT") throw error;
     lengthBudgets = [];
