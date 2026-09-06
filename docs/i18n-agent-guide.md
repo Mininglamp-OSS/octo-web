@@ -177,12 +177,12 @@ For Octo, source strings are usually Chinese, not English. Chinese → English e
 
 ### Constrained Container Inventory & Budgets
 
-The following containers in Octo Web have fixed or narrow width constraints. When adding or migrating a translation key rendered in one of these containers, the translated string in **any** locale must fit the budget below. Budgets are conservative maxes derived from the current CSS; measure again if the layout changes.
+The following containers in Octo Web have fixed or narrow width constraints. When adding or migrating a translation key rendered in one of these containers, the translated string in **any** locale must fit the budget below. Budgets are conservative maxes derived from the current CSS and the current formatter outputs; measure again if the layout changes.
 
 | Container | Component / consumer | Character budget | Notes |
 |---|---|---|---|
-| NavRail label — collapsed rail | `packages/dmworkbase/src/Components/NavRail/NavItem.tsx` + `.wk-navrail__item` / `.wk-navrail__item-label` in `packages/dmworkbase/src/Components/NavRail/index.css` | ≤ 8 chars | Applies only to the collapsed rail (item 56×54, icon 20×20, label padding-inline 4px → usable label ~44px at font-size `--wk-text-size-tiny`). Expanded rail (`.wk-layout-tab-expanded .wk-navrail__item`, row layout with `width: 100%`) is not budget-limited here. |
-| Chat list date column | `packages/dmworkbase/src/Components/ConversationList/index.tsx` (`.wk-conversationlist-item-time`) rendering `getTimeStringAutoShort2` from `packages/dmworkbase/src/Utils/time.ts` | ≤ 12 chars | Cell shares the row header line with the conversation name; must not truncate time digits. The English key `time.dayBeforeYesterday` = "The day before yesterday" is currently rendered here and overflows — long forms like this need a shorter locale form or a numeric/date fallback (see Design Layer 3). |
+| NavRail label — collapsed rail | `packages/dmworkbase/src/Components/NavRail/NavItem.tsx` + `.wk-navrail__item` / `.wk-navrail__item-label` in `packages/dmworkbase/src/Components/NavRail/index.css` | ≤ 8 chars | **Deliberate design carve-out**: the collapsed rail is a fixed 56 px icon-first grid (item 56×54, icon 20×20, label padding-inline 4px → usable label ~44px at font-size `--wk-text-size-tiny`). Design layer 1 ("reserve space in layout") does **not** apply here — the whole point of the collapsed rail is a constant grid; extra chars are absorbed by editing copy or by dropping to icon-only. The expanded rail (`.wk-layout-tab-expanded .wk-navrail__item`, row layout with `width: 100%`) is not budget-limited here. |
+| Chat list date column | `packages/dmworkbase/src/Components/ConversationList/index.tsx` (`.wk-conversationlist-item-time`) rendering `getTimeStringAutoShort2` from `packages/dmworkbase/src/Utils/time.ts` | ≤ 16 chars | Cell is `flex-shrink: 0` and shares the header line with a `flex: 1; min-width: 0` conversation title, so an oversized time string does **not** truncate itself — it hogs the row and forces the title to truncate more. Budget covers realistic worst-case outputs the formatter already produces: `Yesterday 21:34` (15), `2026-09-06 10:00` (16), `Wed 10:30` (9). The current English `time.dayBeforeYesterday` value ("The day before yesterday") plus a time suffix reaches ~30 chars in this cell and blows the budget — see Design Layer 3 for the fix. |
 | Tab title | Tabs / SegmentedControl surfaces | ≤ 12 chars | Verify per usage — some tab rows scroll horizontally and need no budget. |
 | Primary button (fixed-width toolbar) | Toolbar / ActionBar surfaces with hard `width` on the button | ≤ 18 chars | Skip if the toolbar uses `width: max-content`. |
 | Table column header (fixed-width) | Table headers with hard `width` | ≤ 14 chars | Skip if the table auto-sizes columns. |
@@ -191,43 +191,67 @@ Add rows to this table when a new narrow container is discovered. Do not delete 
 
 ### Design Layers (in order of preference)
 
-1. **Reserve space in layout, not in copy.** Layout containers use `min-width` + `width: max-content` + `max-width: 100%`, not `width: <fixed-px>`. Reserve for source × 2 as a rule of thumb.
-2. **Short-variant keys (proposed convention).** When a base translation exceeds the budget in any locale, add a sibling `.short` key. Call sites in constrained containers resolve the short form first and fall back to the base key. There is currently no dedicated helper for this; use the existing `defaultValue` option on `t()`:
+1. **Reserve space in layout, not in copy.** Layout containers use `min-width` + `width: max-content` + `max-width: 100%`, not `width: <fixed-px>`. Reserve for source × 2 as a rule of thumb. Deliberate design-constraint carve-outs (e.g. the fixed-grid collapsed NavRail above) are the exception, not the rule; those cases skip straight to layers 2/3.
 
-   ```ts
-   // Proposed convention for constrained-container call sites.
-   const label = t(`${key}.short`, { defaultValue: t(key) });
-   ```
+2. **Short-variant keys (proposed convention, `.short` suffix).** When a base translation exceeds a budget in any locale, add a sibling `.short` key **atomically in every locale file at the same time**. This is a hard requirement, not a nice-to-have — see below for why.
 
-   Example keys: `nav.summary` = `AI Summary` (full), `nav.summary.short` = `Summary` (fits collapsed NavRail budget). When you add a `.short`, add it in **every** locale file — English-only `.short` variants leave zh-CN (and any future locale) still overflowing.
+   **Why not "fall back at the call site":** `t()`'s resolution order (see `packages/dmworkbase/src/i18n/I18nService.ts`) is:
 
-3. **Locale-sensitive short formats for dates/times/numbers.** Dates, times, relative times, and numbers in constrained containers must go through `format.dateTime` / `format.time` / `format.relativeTime` / `format.number` from `@octo/base`, not through translated phrase keys. Never hand-translate `"the day before yesterday"` (`time.dayBeforeYesterday`); render the underlying timestamp through a formatter that produces a fixed-width output. The current `format.relativeTime` wraps `Intl.RelativeTimeFormat` with `numeric: "auto"` and takes only `(value, unit)` — there is no short-mode option today. Constrained chat/list surfaces that need `HH:mm` / weekday-abbrev / `MMM d` / `M/d/yy` should build those via `format.dateTime` / `format.time` with explicit `Intl.DateTimeFormatOptions`, not by adding phrase translations.
+   1. `messages[activeLocale][key]`
+   2. `messages[defaultLocale][key]` (`defaultLocale` is `zh-CN`)
+   3. `options.defaultValue`
+   4. `key` (raw)
+
+   So `t(\`${key}.short\`, { defaultValue: t(key) })` is **unsafe**: if only zh-CN adds `foo.short` and en-US does not, an active en-US user gets the zh-CN short string via step 2 (Chinese leaks into the English UI) and never reaches the `defaultValue`. A missing `.short` never falls back to the base key of the same locale. The safe recipe is therefore:
+
+   - Add `foo.short` to **every** locale JSON at the same time, or don't add it in any.
+   - Callers pick the key explicitly by container, not by fallback:
+
+     ```ts
+     // Constrained container:
+     const label = t(narrowSurface ? `${key}.short` : key);
+     ```
+
+   - `pnpm i18n:check` should assert atomic locale coverage for any key with a `.short` sibling (any locale has `foo.short` ⇒ every locale has `foo.short`). Wire this in when the length-assertion pass lands.
+
+   **Go-forward vs. grandfathered.** A different suffix convention already exists in the codebase — camelCase `Short` (e.g. `conversationList.minutesAgoShort`, `filePreview.pdf.noBookmarksShort`, `globalSearch.aggregated.messagesShort`, `subscribers.minutesAgoShort`, `dmworkskillmarket:reuploadShort`). Those keys are **grandfathered**; do not migrate them just to change the suffix. For **new** constrained-container keys, prefer the dotted `.short` sibling because it groups with its base in flat JSON and is trivial for `i18n:check` to pair up. Whichever convention a caller uses, the atomic-locale-coverage rule above still applies.
+
+3. **Locale-sensitive short formats for dates/times/numbers.** Dates, times, relative times, and numbers in constrained containers must go through `format.dateTime` / `format.time` / `format.relativeTime` / `format.number` from `@octo/base`, **not** through translated phrase keys — this rule and the "shorter locale form" note on the date column are the same rule. If a shorter phrasing is needed (e.g. the current `Yesterday HH:mm` composition or a locale-native "yesterday" produced by `Intl.RelativeTimeFormat`), it should come from the formatter, not from a translation key. If a truly custom short form is unavoidable, add it as a helper on the formatter, not as a new phrase key in the resource files.
+
+   The current `format.relativeTime` wraps `Intl.RelativeTimeFormat` with `numeric: "auto"` and takes only `(value, unit)` — there is no short-mode option today. Constrained chat/list surfaces that need `HH:mm` / weekday-abbrev / `MMM d` / `M/d/yy` should build those via `format.dateTime` / `format.time` with explicit `Intl.DateTimeFormatOptions`.
 
    Reference ladder to aim for in constrained rows (implement per surface, do not hard-code phrasing):
 
    - Today → `HH:mm`
-   - Yesterday → `format.relativeTime(-1, "day")` (locale-native short form; do not hand-translate)
-   - This week → weekday abbrev via `format.dateTime(t, { weekday: "short" })`
-   - This year → `format.dateTime(t, { month: "short", day: "numeric" })`
-   - Prior years → `format.dateTime(t, { year: "2-digit", month: "numeric", day: "numeric" })`
+   - Yesterday → `format.relativeTime(-1, "day")` (locale-native short form; do not hand-translate) or `format.time(ts)` for a pure `HH:mm`
+   - This week → weekday abbrev via `format.dateTime(ts, { weekday: "short" })`
+   - This year → `format.dateTime(ts, { month: "short", day: "numeric" })`
+   - Prior years → `format.dateTime(ts, { year: "2-digit", month: "numeric", day: "numeric" })`
 
-4. **Truncation + tooltip (last resort).** `text-overflow: ellipsis` + `title` attribute (or `aria-label`) so users can hover to see the full copy. Ellipsis without a tooltip is an accessibility bug (W3C WAI, Baymard).
+4. **Truncation + tooltip (last resort).** `text-overflow: ellipsis` on the element that clips, plus **both** of the following (they are not interchangeable):
+
+   - `title="{full text}"` for the **visible hover tooltip** — sighted mouse users need this to read the truncated content on hover; screen readers may or may not surface it depending on platform.
+   - `aria-label="{full text}"` (or the equivalent accessible name via visually-hidden text) for the **accessible name** — required for keyboard-only and AT users; `title` alone is not a reliable accessible name in every AT.
+
+   Ellipsis with neither is a hard accessibility bug (W3C WAI, Baymard). Ellipsis with only one covers only half the audience.
 
 ### Anti-patterns
 
 - ❌ Direct translation of a phrase that exceeds the budget (`The day before yesterday`, `AI Summary` in a collapsed NavRail label).
-- ❌ Ellipsis without `title` / `aria-label` fallback.
-- ❌ Fixed pixel widths on layout containers holding translatable copy.
+- ❌ Ellipsis without both a `title` and an accessible name — see Layer 4.
+- ❌ Fixed pixel widths on layout containers holding translatable copy (outside a deliberate design-constraint carve-out).
 - ❌ Reducing font-size to fit — accessibility regression.
-- ❌ Adding a `.short` variant in English only, leaving zh-CN and future locales unaddressed.
-- ❌ Hard-coded date/time phrases in place of `format.dateTime` / `format.time` / `format.relativeTime`.
+- ❌ Adding a `.short` (or grandfathered `Short`) variant in one locale only — it silently leaks the other locale's short string into the un-updated locale via `t()`'s default-locale fallback.
+- ❌ Using `defaultValue` as a `.short → base` fallback at the call site — see Layer 2 for why this is unsafe.
+- ❌ Hard-coded date/time phrases in place of `format.dateTime` / `format.time` / `format.relativeTime`, whether via `t()` or inline literals.
 
 ### Verification Checklist (for PRs touching constrained layouts)
 
 - [ ] `pnpm i18n:check` passes.
-- [ ] Every locale file (`zh-CN`, `en-US`, and any future locales) carries the `.short` variant for keys rendered in constrained containers.
+- [ ] Every locale file (`zh-CN`, `en-US`, and any future locales) carries the `.short` (or grandfathered `Short`) sibling atomically — no locale is missing it if any locale has it.
+- [ ] Call sites in constrained containers select the short/base key explicitly, not via a `t(..., { defaultValue: t(base) })` fallback (which leaks zh-CN into en-US when only one locale has the sibling).
 - [ ] Manual browser verification in both `zh-CN` and `en-US` for the touched screens.
-- [ ] Ellipsis-truncated elements have `title` or `aria-label`.
+- [ ] Ellipsis-truncated elements have **both** `title` (visible hover tooltip) and an accessible name (`aria-label` or equivalent).
 - [ ] Date / time / number rendering goes through `format.*` (or an explicit `Intl.*` call), not a translated phrase.
 
 ### References
