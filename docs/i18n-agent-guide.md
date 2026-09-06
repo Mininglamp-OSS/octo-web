@@ -182,7 +182,7 @@ The following containers in Octo Web have fixed or narrow width constraints. Whe
 | Container | Component / consumer | Character budget | Notes |
 |---|---|---|---|
 | NavRail label — collapsed rail | `packages/dmworkbase/src/Components/NavRail/NavItem.tsx` + `.wk-navrail__item` / `.wk-navrail__item-label` in `packages/dmworkbase/src/Components/NavRail/index.css` | ≤ 8 chars | **Deliberate design carve-out**: the collapsed rail is a fixed 56 px icon-first grid (item 56×54, icon 20×20, label padding-inline 4px → usable label ~44px at font-size `--wk-text-size-tiny`). Design layer 1 ("reserve space in layout") does **not** apply here — the whole point of the collapsed rail is a constant grid; extra chars are absorbed by editing copy or by dropping to icon-only. The expanded rail (`.wk-layout-tab-expanded .wk-navrail__item`, row layout with `width: 100%`) is not budget-limited here. |
-| Chat list date column | `packages/dmworkbase/src/Components/ConversationList/index.tsx` (`.wk-conversationlist-item-time`) rendering `getTimeStringAutoShort2` from `packages/dmworkbase/src/Utils/time.ts` | ≤ 16 chars | Cell is `flex-shrink: 0` and shares the header line with a `flex: 1; min-width: 0` conversation title, so an oversized time string does **not** truncate itself — it hogs the row and forces the title to truncate more. Budget covers realistic worst-case outputs the formatter already produces: `Yesterday 21:34` (15), `2026-09-06 10:00` (16), `Wed 10:30` (9). The current English `time.dayBeforeYesterday` value ("The day before yesterday") plus a time suffix reaches ~30 chars in this cell and blows the budget — see Design Layer 3 for the fix. |
+| Chat list date column | `packages/dmworkbase/src/Components/ConversationList/index.tsx` (`.wk-conversationlist-item-time`) rendering `getTimeStringAutoShort2` from `packages/dmworkbase/src/Utils/time.ts` | ≤ 16 chars | Cell is `flex-shrink: 0` and shares the header line with a `flex: 1; min-width: 0` conversation title, so an oversized time string does **not** truncate itself — it hogs the row and forces the title to truncate more. Budget covers realistic worst-case outputs the formatter already produces (`getTimeStringAutoShort2` uses `Intl` `weekday: "long"` and formats cross-year as `yyyy/M/d`): `Yesterday 21:34` (15), `2026/12/26 10:00` (16), `Wednesday 10:30` (15). The current English `time.dayBeforeYesterday` value ("The day before yesterday") plus a time suffix reaches ~30 chars in this cell and blows the budget — see Design Layer 3 for the fix. |
 | Tab title | Tabs / SegmentedControl surfaces | ≤ 12 chars | Verify per usage — some tab rows scroll horizontally and need no budget. |
 | Primary button (fixed-width toolbar) | Toolbar / ActionBar surfaces with hard `width` on the button | ≤ 18 chars | Skip if the toolbar uses `width: max-content`. |
 | Table column header (fixed-width) | Table headers with hard `width` | ≤ 14 chars | Skip if the table auto-sizes columns. |
@@ -202,7 +202,7 @@ Add rows to this table when a new narrow container is discovered. Do not delete 
    3. `options.defaultValue`
    4. `key` (raw)
 
-   So `t(\`${key}.short\`, { defaultValue: t(key) })` is **unsafe**: if only zh-CN adds `foo.short` and en-US does not, an active en-US user gets the zh-CN short string via step 2 (Chinese leaks into the English UI) and never reaches the `defaultValue`. A missing `.short` never falls back to the base key of the same locale. The safe recipe is therefore:
+   So ``t(`${key}.short`, { defaultValue: t(key) })`` is **unsafe**: if only zh-CN adds `foo.short` and en-US does not, an active en-US user gets the zh-CN short string via step 2 (Chinese leaks into the English UI) and never reaches the `defaultValue`. A missing `.short` never falls back to the base key of the same locale. The safe recipe is therefore:
 
    - Add `foo.short` to **every** locale JSON at the same time, or don't add it in any.
    - Callers pick the key explicitly by container, not by fallback:
@@ -212,7 +212,7 @@ Add rows to this table when a new narrow container is discovered. Do not delete 
      const label = t(narrowSurface ? `${key}.short` : key);
      ```
 
-   - `pnpm i18n:check` should assert atomic locale coverage for any key with a `.short` sibling (any locale has `foo.short` ⇒ every locale has `foo.short`). Wire this in when the length-assertion pass lands.
+   - `pnpm i18n:check` **already enforces this**: its `missing-key` rule (see `scripts/i18n-scan.mjs`, function `checkLocaleResources`) flags any key present in one locale but absent from another and fails the check. Do not rely on a future length-assertion pass to catch the mismatch — the atomic-coverage rule is enforced today via `missing-key`. A separate length-assertion pass is only about *budget* enforcement, not coverage.
 
    **Go-forward vs. grandfathered.** A different suffix convention already exists in the codebase — camelCase `Short` (e.g. `conversationList.minutesAgoShort`, `filePreview.pdf.noBookmarksShort`, `globalSearch.aggregated.messagesShort`, `subscribers.minutesAgoShort`, `dmworkskillmarket:reuploadShort`). Those keys are **grandfathered**; do not migrate them just to change the suffix. For **new** constrained-container keys, prefer the dotted `.short` sibling because it groups with its base in flat JSON and is trivial for `i18n:check` to pair up. Whichever convention a caller uses, the atomic-locale-coverage rule above still applies.
 
@@ -247,8 +247,8 @@ Add rows to this table when a new narrow container is discovered. Do not delete 
 
 ### Verification Checklist (for PRs touching constrained layouts)
 
-- [ ] `pnpm i18n:check` passes.
-- [ ] Every locale file (`zh-CN`, `en-US`, and any future locales) carries the `.short` (or grandfathered `Short`) sibling atomically — no locale is missing it if any locale has it.
+- [ ] `pnpm i18n:check` passes — this already enforces atomic locale coverage via its `missing-key` rule.
+- [ ] Every locale file (`zh-CN`, `en-US`, and any future locales) carries the `.short` (or grandfathered `Short`) sibling atomically — no locale is missing it if any locale has it. (Enforced by `pnpm i18n:check` above; the manual bullet is a reminder.)
 - [ ] Call sites in constrained containers select the short/base key explicitly, not via a `t(..., { defaultValue: t(base) })` fallback (which leaks zh-CN into en-US when only one locale has the sibling).
 - [ ] Manual browser verification in both `zh-CN` and `en-US` for the touched screens.
 - [ ] Ellipsis-truncated elements have **both** `title` (visible hover tooltip) and an accessible name (`aria-label` or equivalent).
