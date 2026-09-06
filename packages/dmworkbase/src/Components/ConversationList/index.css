@@ -167,7 +167,15 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   display: flex;
   align-items: center;
   margin-left: auto;
+  max-width: 96px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wk-conversationlist-item-time > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wk-conversationlist-item-lastmsg {

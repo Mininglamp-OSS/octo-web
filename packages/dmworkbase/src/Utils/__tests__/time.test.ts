@@ -69,4 +69,32 @@ describe("formatMessageTimestamp", () => {
         expect(formatRelativeTime(new Date(Date.now() - 2 * 86400_000).toISOString())).toBe("前天")
         expect(formatRelativeTime(new Date(Date.now() - 10 * 86400_000).toISOString())).toMatch(/^2026\//)
     })
+
+    it("uses short English labels for date column so it does not overflow", () => {
+        vi.useFakeTimers()
+        vi.setSystemTime(new Date(2026, 5, 8, 12, 0, 0))
+        i18n.setLocale("en-US", { notify: false, persist: false })
+
+        // Today → HH:mm
+        expect(getTimeStringAutoShort2(new Date(2026, 5, 8, 9, 27).getTime(), false)).toMatch(/^\d{2}:\d{2}$/)
+        // Yesterday → "Yesterday HH:mm"
+        expect(getTimeStringAutoShort2(new Date(2026, 5, 7, 4, 12).getTime(), true)).toBe("Yesterday 04:12")
+        // 2 days ago → short "2d ago HH:mm", not "The day before yesterday …"
+        const twoDaysAgo = getTimeStringAutoShort2(new Date(2026, 5, 6, 21, 34).getTime(), true)
+        expect(twoDaysAgo).toBe("2d ago 21:34")
+        expect(twoDaysAgo).not.toContain("day before yesterday")
+        // Within a week → short weekday, not long ("Tue" not "Tuesday")
+        const sameWeek = getTimeStringAutoShort2(new Date(2026, 5, 2, 15, 20).getTime(), true)
+        expect(sameWeek).toBe("Tue 15:20")
+        expect(sameWeek).not.toContain("Tuesday")
+        // Every en-US bucket must stay within the 96px date column budget (~14 chars at xs font)
+        for (const label of [
+            getTimeStringAutoShort2(new Date(2026, 5, 8, 9, 27).getTime(), false),
+            getTimeStringAutoShort2(new Date(2026, 5, 7, 4, 12).getTime(), true),
+            twoDaysAgo,
+            sameWeek,
+        ]) {
+            expect(label.length).toBeLessThanOrEqual(15)
+        }
+    })
 })

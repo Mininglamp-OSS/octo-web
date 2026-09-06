@@ -41,10 +41,6 @@ function formatCalendarDate(date: Date) {
     }).format(date);
 }
 
-function formatWeekday(date: Date) {
-    return new Intl.DateTimeFormat(i18n.getLocale(), { weekday: "long" }).format(date);
-}
-
 function formatShortWeekday(date: Date) {
     return new Intl.DateTimeFormat(i18n.getLocale(), { weekday: "short" }).format(date);
 }
@@ -123,8 +119,8 @@ export function getTimeStringAutoShort2(timestamp:number, mustIncludeTime:boolea
 
                 // 如果小于或等 7*24小时就显示星期几
                 if (deltaHour <= 7 * 24) {
-                    // 取出当前是星期几
-                    const weedayDesc = formatWeekday(srcDate);
+                    // 取出当前是星期几（用短格式，保持 date 列在 en-US 下不撑爆）
+                    const weedayDesc = formatShortWeekday(srcDate);
                     ret = weedayDesc + timeExtraStr;
                 }
                 // 否则直接显示完整日期时间
