@@ -66,7 +66,7 @@ const im = vi.hoisted(() => ({
 
 vi.mock("@octo/base", () => ({
   getSessionSid: () => "sid-test",
-  i18n: { registerNamespace: vi.fn() },
+  i18n: { registerNamespace: vi.fn(), hasMessage: () => false },
   t: (key: string) => key,
   Dap: { shared: { track: vi.fn() } },
   Menus: class {},

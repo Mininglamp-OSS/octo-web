@@ -567,6 +567,23 @@
     text-align: center;
 }
 
+/*
+ * 双 span 变体（NavItem 提供 shortLabel 时渲染）:collapsed rail 只显示 --short,
+ * expanded rail 只显示 --full。DOM 里两个都在,视觉切换纯靠 CSS,组件层保持 dumb,
+ * 也不需要拿到当前布局宽度。见 #1635。
+ */
+.wk-navrail__item-label--full {
+    display: none;
+}
+
+.wk-layout-tab-expanded .wk-navrail__item-label--full {
+    display: inline-flex;
+}
+
+.wk-layout-tab-expanded .wk-navrail__item-label--short {
+    display: none;
+}
+
 .wk-layout-tab-expanded .wk-navrail__item-label {
     display: inline-flex;
     width: auto;

@@ -93,4 +93,25 @@ describe("I18nService", () => {
       }),
     ).not.toThrow();
   });
+
+  it("hasMessage reports current-locale presence without applying cross-locale fallback", () => {
+    const service = createService();
+
+    // zh-CN provides both keys.
+    expect(service.hasMessage("demo.greeting")).toBe(true);
+    expect(service.hasMessage("demo.fallbackOnly")).toBe(true);
+
+    service.setLocale("en-US", { persist: false });
+
+    // en-US has greeting but not fallbackOnly. `t()` masks that with the
+    // zh-CN fallback; hasMessage must report the truth so callers can decide
+    // whether the current locale genuinely provides a locale-appropriate value.
+    expect(service.hasMessage("demo.greeting")).toBe(true);
+    expect(service.hasMessage("demo.fallbackOnly")).toBe(false);
+    expect(service.t("demo.fallbackOnly")).toBe("默认文案");
+
+    // Explicit locale argument overrides current.
+    expect(service.hasMessage("demo.fallbackOnly", "zh-CN")).toBe(true);
+    expect(service.hasMessage("demo.missing")).toBe(false);
+  });
 });

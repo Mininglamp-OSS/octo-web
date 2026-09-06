@@ -202,6 +202,13 @@ export class SummaryModule implements IModule {
                     <SummaryMenuIcon />,
                     <SummaryMenuIcon active />,
                 );
+                // NavRail collapsed 状态 label 只有 ~52px,英文 `AI Summary` (63px) 会被
+                // ellipsis 截成 `Sum...`;用 titleShort 走窄容器 label(#1635)。
+                // 仅在当前 locale 真提供了 titleShort 时才注入 — hasMessage 屏蔽
+                // 掉 t() 的跨 locale fallback,避免 zh-CN 拿到 en-US 的 `Summary`。
+                if (i18n.hasMessage("summary.menu.titleShort")) {
+                    menu.shortTitle = translate("summary.menu.titleShort");
+                }
                 // #1359 待关注红点（未读 ∪ 未处理邀请 ∪ 待提交）：badge 字段与 NavRail
                 // 渲染已存在，此处每次 render 读最新计数即可（宿主 forceUpdate 驱动重绘）。
                 menu.badge = getSummaryAttentionBadge();
