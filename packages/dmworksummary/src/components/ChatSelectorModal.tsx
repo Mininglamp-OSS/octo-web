@@ -644,7 +644,11 @@ export default class ChatSelectorModal extends Component<Props, State> {
                                     <div className="chat-selector-loading"><Loading /></div>
                                 ) : mode === "members" && this.state.loadError ? (
                                     <div className="chat-selector-loading">
-                                        <Empty description={t("summary.workbench.notice.participantCandidatesLoadFailed")} />
+                                        <Empty
+                                            illustration={false}
+                                            description={t("summary.workbench.notice.participantCandidatesLoadFailed")}
+                                            className="chat-selector-empty"
+                                        />
                                         <button
                                             type="button"
                                             className="chat-selector-btn chat-selector-btn--confirm"

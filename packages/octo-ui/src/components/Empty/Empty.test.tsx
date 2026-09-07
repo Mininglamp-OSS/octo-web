@@ -47,6 +47,7 @@ describe("Empty", () => {
         display: block;
         max-width: 100%;
         max-height: 100%;
+        height: auto;
       }
 
       .octo-ui-empty__illustration--default {
@@ -80,6 +81,7 @@ describe("Empty", () => {
     expect(illustration.classList.contains("octo-ui-empty__illustration--default")).toBe(false);
     expect(window.getComputedStyle(illustration).width).not.toBe("150px");
     expect(window.getComputedStyle(svg).width).not.toBe("100%");
+    expect(window.getComputedStyle(svg).height).toBe("auto");
     expect(svg.getAttribute("width")).toBe("28");
     expect(svg.getAttribute("height")).toBe("28");
 
