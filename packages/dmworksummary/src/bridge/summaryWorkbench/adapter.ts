@@ -65,16 +65,20 @@ function resolveHistoryResultType(
 export function adaptSummaryWorkspaceTurn(value: unknown): SummaryWorkbenchResponse {
   const turn = decodeSummaryWorkspaceTurn(value);
   const actions = [...turn.available_actions];
+  const authoritativeState = toAuthoritativeState(turn.state, {
+    messageId: turn.message_id,
+    actions,
+  });
   const common = {
     messageId: String(turn.message_id),
     reply: turn.reply,
     sessionId: turn.session_id,
     runId: turn.run_id,
+    // The reply itself was produced against the server-reported version.
+    // `authoritativeState.scopeVersion` may be one higher when the client had
+    // to normalize an unsupported multi-reference scope for the next request.
     scopeVersion: turn.state.scope_version,
-    authoritativeState: toAuthoritativeState(turn.state, {
-      messageId: turn.message_id,
-      actions,
-    }),
+    authoritativeState,
   };
 
   switch (turn.result_type) {
@@ -606,11 +610,18 @@ function toAuthoritativeState(
   turn?: { messageId: number; actions: SummaryWorkbenchAction[] }
 ): SummaryWorkbenchAuthoritativeState {
   const scope = toWorkbenchScope(state.summary_context);
+  // Dropping unsupported extra references is a real scope mutation. Advance
+  // the version so the next request cannot reuse the server's old version
+  // with a different scope hash and fail with a 409 scope conflict.
+  const scopeWasNormalized =
+    state.summary_context.referenced_task_ids.length !==
+    scope.referencedTaskIds.length;
+  const scopeVersion = state.scope_version + (scopeWasNormalized ? 1 : 0);
   const constrainCurrentActions = (messageId: number, actions: SummaryWorkbenchAction[]) =>
     turn?.messageId === messageId ? intersectActions(turn.actions, actions) : actions;
 
   return {
-    scopeVersion: state.scope_version,
+    scopeVersion,
     scope,
     contextItems: contextItemsFromScope(scope),
     currentPreview: state.current_preview

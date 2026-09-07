@@ -23,6 +23,12 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@octo/base", () => ({
   Dap: { shared: { track: mocks.track } },
+  getImChannelInfo: () => ({
+    title: "mock-channel-title",
+    orgData: {},
+  }),
+  ChannelTypeCommunityTopic: 5,
+  parseThreadChannelId: () => null,
   useI18n: () => ({
     t: (key: string) => {
       return (
@@ -138,6 +144,7 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
       data-send-label={state.sendLabelKey}
       data-error-message={state.errorMessage ?? ""}
       data-reference-preview-open={String(state.referencePreviewOpen)}
+      data-reference-preview-id={state.referencePreviewId ?? ""}
     >
       <span data-testid="reference-label">
         {state.contextItems.find((item: any) => item.kind === "reference")
@@ -2019,6 +2026,80 @@ describe("SummaryWorkbenchFeature", () => {
       "data-reference-preview-open",
       "false"
     );
+  });
+
+  it("keeps the reference preview toggle usable while generation is running", async () => {
+    mocks.getSummaryDetail.mockResolvedValue({
+      task_id: 42,
+      title: "Restored summary",
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(
+      controller({
+        scope: scope({ referencedTaskIds: [42] }),
+        viewState: {
+          layout: "full",
+          messages: [],
+          contextItems: [{ kind: "reference", id: "42", label: "#42" }],
+          inputValue: "",
+          placeholderKey: "summary.workbench.placeholder.initial",
+          isSending: true,
+          canSend: false,
+        },
+      })
+    );
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    await waitFor(() => expect(mocks.getSummaryDetail).toHaveBeenCalledWith(42));
+
+    fireEvent.click(screen.getByRole("button", { name: "open-reference" }));
+
+    expect(screen.getByTestId("reference-side-panel")).toHaveTextContent("42");
+  });
+
+  it("assigns a unique preview id to each mounted workbench instance", async () => {
+    mocks.getSummaryDetail.mockResolvedValue({
+      task_id: 42,
+      title: "Restored summary",
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(
+      controller({
+        scope: scope({ referencedTaskIds: [42] }),
+        viewState: {
+          layout: "full",
+          messages: [],
+          contextItems: [{ kind: "reference", id: "42", label: "#42" }],
+          inputValue: "",
+          placeholderKey: "summary.workbench.placeholder.initial",
+          isSending: false,
+          canSend: false,
+        },
+      })
+    );
+
+    render(
+      <>
+        <SummaryWorkbenchFeature spaceId="space-a" />
+        <SummaryWorkbenchFeature spaceId="space-a" />
+      </>,
+      { legacyRoot: true }
+    );
+    await waitFor(() => expect(mocks.getSummaryDetail).toHaveBeenCalledTimes(2));
+
+    screen
+      .getAllByRole("button", { name: "open-reference" })
+      .forEach((button) => fireEvent.click(button));
+
+    const panelIds = screen
+      .getAllByTestId("reference-side-panel")
+      .map((panel) => panel.id);
+    const triggerIds = screen
+      .getAllByTestId("workbench-ui")
+      .map((workbench) => workbench.getAttribute("data-reference-preview-id"));
+    expect(panelIds.every(Boolean)).toBe(true);
+    expect(new Set(panelIds).size).toBe(2);
+    expect(triggerIds).toEqual(panelIds);
   });
 
   it("keeps the hydrated reference id selected when detail loading fails", async () => {

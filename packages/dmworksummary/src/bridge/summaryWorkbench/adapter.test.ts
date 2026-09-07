@@ -198,8 +198,16 @@ describe("summary workspace adapter", () => {
       },
     });
 
-    // Scope submitted on the wire is capped to the primary reference.
+    // Scope submitted on the wire is capped to the primary reference, and the
+    // lossy normalization advances the version so the backend accepts the new
+    // scope hash instead of treating it as a same-version conflict.
+    expect(response.scopeVersion).toBe(4);
+    expect(response.authoritativeState?.scopeVersion).toBe(5);
     expect(response.authoritativeState?.scope.referencedTaskIds).toEqual([7]);
+    expect(
+      serializeSummaryWorkbenchScope(response.authoritativeState!.scope)
+        .referenced_task_ids
+    ).toEqual([7]);
     // And the derived UI context items only carry that one reference — so
     // the chip the user sees matches the id the backend receives.
     const referenceItems = response.authoritativeState?.contextItems.filter(
@@ -208,6 +216,27 @@ describe("summary workspace adapter", () => {
     expect(referenceItems).toEqual([
       { id: "7", kind: "reference", label: "#7" },
     ]);
+  });
+
+  it("normalizes multi-reference history with a new scope version", () => {
+    const hydration = adaptSummaryWorkspaceHistory({
+      contract_version: "2",
+      session_id: "session-history-multi-ref",
+      messages: [],
+      state: {
+        ...emptyState(4),
+        summary_context: {
+          ...summaryContext,
+          referenced_task_ids: [7, 8, 9],
+        },
+      },
+    });
+
+    expect(hydration.modelOptions.scopeVersion).toBe(5);
+    expect(hydration.scope.referencedTaskIds).toEqual([7]);
+    expect(
+      serializeSummaryWorkbenchScope(hydration.scope).referenced_task_ids
+    ).toEqual([7]);
   });
 
   it("fails closed when result_type or artifact state is invalid", () => {

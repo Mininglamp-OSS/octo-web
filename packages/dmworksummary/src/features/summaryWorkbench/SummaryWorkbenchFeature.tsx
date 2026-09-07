@@ -93,7 +93,13 @@ export interface SummaryWorkbenchFeatureProps {
 
 type OpenSelector = Exclude<SummaryWorkbenchContextKind, "template"> | null;
 type ReferencedTask = Pick<SummaryListItem, "task_id" | "title">;
-const REFERENCE_PREVIEW_ID = "summary-workbench-reference-preview";
+let referencePreviewIdSequence = 0;
+
+function createReferencePreviewId(): string {
+  referencePreviewIdSequence += 1;
+  return `summary-workbench-reference-preview-${referencePreviewIdSequence}`;
+}
+
 type ParticipantCandidateState = ParticipantCandidateLoadResult & {
   sourceKey: string;
   status: "idle" | "loading" | "ready" | "error";
@@ -154,6 +160,7 @@ export default function SummaryWorkbenchFeature({
   directTeamWorkflow = false,
 }: SummaryWorkbenchFeatureProps) {
   const { t, format } = useI18n();
+  const [referencePreviewId] = useState(createReferencePreviewId);
   const currentUserId = WKApp.loginInfo.uid || "";
   const initialScope = useMemo(
     () => initialScopeFor(channel, derivedFromTask),
@@ -523,7 +530,7 @@ export default function SummaryWorkbenchFeature({
       ? t(displayErrorKey)
       : workbench.viewState.errorMessage || participantScopeErrorMessage,
     referencePreviewOpen,
-    referencePreviewId: REFERENCE_PREVIEW_ID,
+    referencePreviewId,
   };
 
   const updateScopeWithPreviewGuard = (
@@ -910,7 +917,7 @@ export default function SummaryWorkbenchFeature({
 
       {referencePreviewOpen && referencedTask && (
         <SummaryReferenceSidePanel
-          id={REFERENCE_PREVIEW_ID}
+          id={referencePreviewId}
           taskId={referencedTask.task_id}
           onClose={() => setReferencePreviewOpen(false)}
         />

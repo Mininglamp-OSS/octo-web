@@ -606,6 +606,36 @@ describe("SummaryWorkbench", () => {
     );
   });
 
+  it("keeps a selected reference preview available while sending but disables it while hydrating", () => {
+    const actions = createActions();
+    const state = createState();
+    state.isSending = true;
+    state.contextItems.push({
+      id: "summary-1",
+      kind: "reference",
+      label: "Last weekly summary",
+    });
+
+    const { rerender } = rtlRender(
+      <SummaryWorkbench state={state} actions={actions} />,
+      { legacyRoot: true }
+    );
+    const referenceTrigger = screen.getByRole("button", {
+      name: "Reference summary: Last weekly summary",
+    });
+    expect(referenceTrigger).toBeEnabled();
+    fireEvent.click(referenceTrigger);
+    expect(actions.onOpenContext).toHaveBeenCalledWith("reference");
+
+    rerender(
+      <SummaryWorkbench
+        state={{ ...state, isHydrating: true }}
+        actions={actions}
+      />
+    );
+    expect(referenceTrigger).toBeDisabled();
+  });
+
   it("renders team confirmation details and only the supplied actions", () => {
     const card: SummaryWorkbenchCardView = {
       kind: "team_confirmation",
