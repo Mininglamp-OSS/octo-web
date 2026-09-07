@@ -96,8 +96,10 @@ const DRIVE_DOC_ICONS: Record<DriveDocType, string> = {
 };
 
 /** Pull the extension off a file name, case- and dot-insensitive. Returns `''`
- *  for names with no dot or a trailing dot only. */
-export function extOf(name: string): string {
+ *  for names with no dot, a trailing dot only, or a nullish / non-string value
+ *  (defensive against upstream boundary rows where `name` is not validated). */
+export function extOf(name: string | undefined | null): string {
+  if (typeof name !== "string" || name.length === 0) return "";
   const dot = name.lastIndexOf(".");
   if (dot < 0 || dot === name.length - 1) return "";
   return name.slice(dot + 1).toLowerCase();
@@ -105,23 +107,33 @@ export function extOf(name: string): string {
 
 /** Icon for a file resolved purely by its name's extension (blob drive hits and
  *  chat-file hits share this). Unknown extensions fall back to default.svg. */
-export function fileIconSrc(name: string): string {
-  return EXT_ICONS[extOf(name)] ?? defaultIcon;
+export function fileIconSrc(name: string | undefined | null): string {
+  const ext = extOf(name);
+  if (!ext) return defaultIcon;
+  return Object.prototype.hasOwnProperty.call(EXT_ICONS, ext)
+    ? EXT_ICONS[ext]
+    : defaultIcon;
 }
 
 /** Icon for a drive online-doc hit (type='doc') by its backend `doc_type`.
  *  Missing or unknown doc_type falls back to the generic doc.svg (same glyph as
  *  .docx), so a doc hit never breaks when the field is absent. */
 export function driveDocIconSrc(docType?: string): string {
-  return (docType && DRIVE_DOC_ICONS[docType as DriveDocType]) || docIcon;
+  if (typeof docType !== "string" || docType.length === 0) return docIcon;
+  return Object.prototype.hasOwnProperty.call(DRIVE_DOC_ICONS, docType)
+    ? DRIVE_DOC_ICONS[docType as DriveDocType]
+    : docIcon;
 }
 
 /** Icon for a drive search hit: online-docs dispatch by `doc_type` (falling back
  *  to the generic doc glyph), blobs dispatch by extension, folders fall back to
- *  the generic default (legacy pack lacks a dedicated folder glyph). */
+ *  the generic default (legacy pack lacks a dedicated folder glyph). Both `name`
+ *  and `docType` are treated defensively — the drive-search service boundary
+ *  filter validates only `file_id` and `space_id`, so a row can reach render
+ *  with a nullish `name`. */
 export function driveIconSrc(
   type: DriveFileType,
-  name: string,
+  name: string | undefined | null,
   docType?: string
 ): string {
   if (type === "folder") return defaultIcon;
@@ -129,7 +141,12 @@ export function driveIconSrc(
   return fileIconSrc(name);
 }
 
-/** Icon for a cloud-doc (docs tab) by its kind. */
-export function docIconSrc(kind: DocSearchDocType): string {
-  return DOC_ICONS[kind];
+/** Icon for a cloud-doc (docs tab) by its kind. Unknown / out-of-enum kinds
+ *  fall back to `default.svg` so a stale front-end shipped against an older
+ *  DocSearchDocType enum never renders a blank icon slot. */
+export function docIconSrc(kind: DocSearchDocType | string | undefined): string {
+  if (typeof kind !== "string" || kind.length === 0) return defaultIcon;
+  return Object.prototype.hasOwnProperty.call(DOC_ICONS, kind)
+    ? DOC_ICONS[kind as DocSearchDocType]
+    : defaultIcon;
 }

@@ -157,4 +157,64 @@ describe("docIconSrc (docs tab)", () => {
   it("uses a doc glyph distinct from the default fallback", () => {
     expect(docIconSrc("doc")).not.toBe(DEFAULT_SRC);
   });
+
+  it("falls back to default.svg for unknown / out-of-enum kinds", () => {
+    // A stale front-end shipped against an older DocSearchDocType enum must
+    // never render a blank icon slot when the backend introduces a new kind.
+    expect(docIconSrc("unknown_kind" as never)).toBe(DEFAULT_SRC);
+    expect(docIconSrc("" as never)).toBe(DEFAULT_SRC);
+    expect(docIconSrc(undefined as never)).toBe(DEFAULT_SRC);
+  });
+
+  it("resists prototype-chain keys", () => {
+    // hasOwnProperty gate — a wire value like `__proto__` / `toString` must
+    // NOT accidentally resolve to `Object.prototype[key]`.
+    expect(docIconSrc("__proto__" as never)).toBe(DEFAULT_SRC);
+    expect(docIconSrc("toString" as never)).toBe(DEFAULT_SRC);
+  });
+});
+
+describe("defensive value handling (boundary crashes)", () => {
+  // Regression guard for the P1 crash: the drive-search service boundary
+  // validates only `file_id` and `space_id` (see SearchService.searchDrive),
+  // so a row with a nullish / non-string `name` can reach render. The old
+  // `driveIconSrc` reached `extOf(name).lastIndexOf` on that value and
+  // threw a TypeError during render, tripping the ErrorBoundary and
+  // replacing the entire GlobalSearch surface with the error fallback.
+
+  it("extOf tolerates nullish and non-string input", () => {
+    expect(extOf(undefined)).toBe("");
+    expect(extOf(null)).toBe("");
+    expect(extOf("")).toBe("");
+    expect(extOf("noext")).toBe("");
+    expect(extOf("trailing.")).toBe("");
+  });
+
+  it("fileIconSrc returns default.svg on nullish name (no throw)", () => {
+    expect(fileIconSrc(undefined)).toBe(DEFAULT_SRC);
+    expect(fileIconSrc(null)).toBe(DEFAULT_SRC);
+    expect(fileIconSrc("")).toBe(DEFAULT_SRC);
+  });
+
+  it("driveIconSrc renders a blob hit with nullish name without throwing", () => {
+    // The exact production path DriveSearchPanel.renderFileIcon takes when
+    // a malformed row slips past the service-boundary filter.
+    expect(() => driveIconSrc("blob", undefined)).not.toThrow();
+    expect(() => driveIconSrc("blob", null)).not.toThrow();
+    expect(driveIconSrc("blob", undefined)).toBe(DEFAULT_SRC);
+    expect(driveIconSrc("blob", null)).toBe(DEFAULT_SRC);
+  });
+
+  it("driveDocIconSrc resists prototype-chain keys and unknown docType", () => {
+    expect(driveDocIconSrc("__proto__")).toBe(driveDocIconSrc(undefined));
+    expect(driveDocIconSrc("toString")).toBe(driveDocIconSrc(undefined));
+    expect(driveDocIconSrc("nonsense")).toBe(driveDocIconSrc(undefined));
+  });
+
+  it("fileIconSrc resists prototype-chain extensions", () => {
+    // `file.__proto__` would compute extOf → "__proto__", which used to hit
+    // Object.prototype.__proto__ instead of falling through to default.svg.
+    expect(fileIconSrc("weird.__proto__")).toBe(DEFAULT_SRC);
+    expect(fileIconSrc("weird.toString")).toBe(DEFAULT_SRC);
+  });
 });
