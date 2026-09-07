@@ -9,6 +9,22 @@ test("@S26 @p1 @summary @deep-link 独立详情与分享链接", async ({ pagePl
         json: { code: 0, message: "ok", data: { items: [], total: 0 } },
       })
   );
+  await pagePlain.route(
+    /\/summary\/api\/v1\/summaries\/attention(?:\?.*)?$/,
+    (route) =>
+      route.fulfill({
+        json: {
+          code: 0,
+          message: "ok",
+          data: {
+            attention_count: 0,
+            unread_count: 0,
+            pending_invitation_count: 0,
+            pending_submission_count: 0,
+          },
+        },
+      })
+  );
   await pagePlain.addInitScript(({ sid, auth, spaceKey, spaceId, localeKey, locale, onboardingKey, scenario }) => {
     const ls = localStorage;
     const ss = sessionStorage;
