@@ -278,7 +278,6 @@ describe("ConversationWrap", () => {
       reminders: [],
       lastMessage: message({
         channel: { channelID: "group-read", channelType: 2 },
-        messageSeq: 42,
         content: { mention: { uids: ["me"] } },
       }),
     }))

@@ -16,6 +16,9 @@ import {
 } from "vitest";
 
 let ConversationList: typeof import("../index").default;
+let ActualConversationWrap: typeof import(
+  "../../../Service/Model"
+).ConversationWrap;
 let container: HTMLDivElement;
 const apiPut = vi.fn();
 const toastError = vi.fn();
@@ -47,6 +50,7 @@ beforeAll(async () => {
   vi.doMock("wukongimjssdk", () => {
     const sdk = {
       shared: () => ({
+        config: { uid: "u1" },
         channelManager: {
           addListener: vi.fn(),
           removeListener: vi.fn(),
@@ -128,10 +132,15 @@ beforeAll(async () => {
     },
   }));
 
-  vi.doMock("../../../Service/Const", () => ({
-    ChannelTypeCommunityTopic: 3,
-    EndpointID: {},
-  }));
+  vi.doMock("../../../Service/Const", async () => {
+    const actual = await vi.importActual<
+      typeof import("../../../Service/Const")
+    >("../../../Service/Const");
+    return {
+      ...actual,
+      ChannelTypeCommunityTopic: 3,
+    };
+  });
 
   vi.doMock("../../../Service/Thread", async () => {
     const actual = await vi.importActual<typeof import("../../../Service/Thread")>(
@@ -166,6 +175,23 @@ beforeAll(async () => {
     muteChannelSetting: vi.fn(() => Promise.resolve()),
     topChannelSetting,
   }));
+
+  vi.doMock("../../../Service/EmojiService", () => ({
+    DefaultEmojiService: {
+      shared: { emojiRegExp: () => /(?!)/ },
+    },
+  }));
+
+  vi.doMock("../../../Service/SpaceService", () => ({
+    getSpaceFilteredLastMessage: (conversation: any) =>
+      conversation.lastMessage,
+    SYSTEM_BOTS: new Set(),
+  }));
+
+  const actualModel = await vi.importActual<
+    typeof import("../../../Service/Model")
+  >("../../../Service/Model");
+  ActualConversationWrap = actualModel.ConversationWrap;
 
   vi.doMock("../../../Service/Model", () => ({
     MessageWrap: class {},
@@ -292,6 +318,18 @@ function makeCompactConversation(
     timestamp: 1,
     lastMessage: undefined,
   };
+}
+
+function makeReadMentionConversation(channelID: string) {
+  const raw = makeCompactConversation(channelID, 2, undefined, { unread: 0 });
+  return new ActualConversationWrap({
+    ...raw,
+    reminders: [],
+    lastMessage: {
+      channel: raw.channel,
+      content: { mention: { uids: ["u1"] } },
+    },
+  } as any);
 }
 
 function openContextMenu(selector: string) {
@@ -628,12 +666,9 @@ describe("ConversationList unread indicators", () => {
   });
 
   it("does not revive an acknowledged parent mention from ordinary collapsed thread unread (#1625)", () => {
-    // Model 层已将父群的历史 mention 解析为 false；子区只有普通未读。
-    // 折叠后父群应聚合 unread，但不能把该 unread 与父群历史 mention 重新组合。
-    const parent = makeCompactConversation("group-read", 2, undefined, {
-      isMentionMe: false,
-      unread: 0,
-    });
+    // 父群最后一条消息仍然 @我，但 unread 已清零且 reminder 重载后为空。
+    // 这里使用真实 ConversationWrap getter，确保子区普通未读不能重新暴露历史 mention。
+    const parent = makeReadMentionConversation("group-read");
     const thread = makeCompactConversation("thread-plain", 3, "group-read", {
       isMentionMe: false,
       unread: 1,
@@ -660,6 +695,9 @@ describe("ConversationList unread indicators", () => {
       });
     }
 
+    expect(
+      container.querySelectorAll(".wk-conv-compact-item--thread")
+    ).toHaveLength(0);
     const parentRow = container.querySelector(
       ".wk-conv-compact-item--has-threads"
     );
