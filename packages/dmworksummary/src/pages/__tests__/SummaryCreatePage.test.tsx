@@ -835,6 +835,7 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
 
     it.each(['PARTIAL', 'FAILED'] as const)('shows successful save feedback after a %s legacy Agent verdict', async (finishStatus) => {
         const { Toast } = await import('@douyinfe/semi-ui');
+        const trackSpy = vi.spyOn(Dap.shared, 'track');
         (api.createAgentSummary as any).mockResolvedValueOnce({
             task_id: 1,
             finish_status: finishStatus,
@@ -849,6 +850,16 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
 
         expect(Toast.success).toHaveBeenCalledWith('AI 总结已保存');
         expect(Toast.warning).not.toHaveBeenCalled();
+        expect(trackSpy).toHaveBeenCalledWith(
+            'smart_summary_quality_gate',
+            expect.objectContaining({
+                task_id: 1,
+                finish_status: finishStatus,
+                gap_count: 1,
+                first_gap_kind: 'citation',
+                trigger_mode: 'agent',
+            }),
+        );
     });
 });
 

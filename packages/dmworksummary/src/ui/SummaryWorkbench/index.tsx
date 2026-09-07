@@ -60,9 +60,12 @@ const SummaryWorkbench = ({
   const composerContextItems = state.contextItems.filter(
     (item) => item.kind !== REFERENCE_CONTEXT_KIND
   );
-  const referenceContextItems = state.contextItems.filter(
-    (item) => item.kind === REFERENCE_CONTEXT_KIND
-  );
+  // The product supports one referenced summary. Keep the UI defensive when
+  // older or malformed history carries more than one id: only the primary
+  // reference becomes an interactive control.
+  const referenceContextItems = state.contextItems
+    .filter((item) => item.kind === REFERENCE_CONTEXT_KIND)
+    .slice(0, 1);
   const composerContextKinds = state.showTemplateTrigger
     ? [...COMPOSER_CONTEXT_KINDS, "template" as const]
     : COMPOSER_CONTEXT_KINDS;
@@ -434,7 +437,7 @@ const SummaryWorkbench = ({
               )}
               {referenceContextItems.map((item) => (
                 <span
-                  className="wk-summary-workbench-context__item"
+                  className="wk-summary-workbench-context__item wk-summary-workbench-context__item--reference"
                   key={`${item.kind}:${item.id}`}
                 >
                   <WKButton
@@ -448,11 +451,17 @@ const SummaryWorkbench = ({
                     }`}
                     disabled={isComposerDisabled}
                     aria-expanded={Boolean(state.referencePreviewOpen)}
+                    aria-controls={state.referencePreviewId}
+                    aria-label={`${t(
+                      CONTEXT_LABEL_KEYS[REFERENCE_CONTEXT_KIND]
+                    )}: ${item.label}`}
                     onClick={() =>
                       actions.onOpenContext(REFERENCE_CONTEXT_KIND)
                     }
                   >
-                    <span>{item.label}</span>
+                    <span className="wk-summary-workbench-context__reference-title">
+                      {item.label}
+                    </span>
                     <span
                       className="wk-summary-workbench-context__reference-chevron"
                       aria-hidden="true"

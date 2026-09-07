@@ -164,7 +164,8 @@ describe("SummaryWorkbench", () => {
       kind: "reference",
       label: "Last weekly summary",
     });
-    const { container } = rtlRender(
+    state.referencePreviewId = "summary-workbench-reference-preview";
+    const { container, rerender } = rtlRender(
       <SummaryWorkbench state={state} actions={actions} />,
       { legacyRoot: true }
     );
@@ -206,17 +207,32 @@ describe("SummaryWorkbench", () => {
     });
 
     const referenceTrigger = screen.getByRole("button", {
-      name: "Last weekly summary",
+      name: "Reference summary: Last weekly summary",
     });
     expect(headerActions).toContainElement(referenceTrigger);
     expect(
       screen.queryByRole("button", { name: "Reference summary" })
     ).not.toBeInTheDocument();
     expect(referenceTrigger).toHaveAttribute("aria-expanded", "false");
+    expect(referenceTrigger).toHaveAttribute(
+      "aria-controls",
+      "summary-workbench-reference-preview"
+    );
+    expect(within(referenceTrigger).getByText("Last weekly summary")).toHaveClass(
+      "wk-summary-workbench-context__reference-title"
+    );
     expect(screen.getByRole("button", { name: "New session" })).toHaveClass(
       "wk-btn--primary"
     );
     expect(composer).not.toContainElement(referenceTrigger);
+
+    state.referencePreviewOpen = true;
+    rerender(<SummaryWorkbench state={state} actions={actions} />);
+    expect(referenceTrigger).toHaveAttribute("aria-expanded", "true");
+    expect(referenceTrigger).toHaveClass(
+      "wk-summary-workbench-context__reference-open--active"
+    );
+
     fireEvent.click(referenceTrigger);
     fireEvent.click(
       screen.getByRole("button", { name: "Remove Last weekly summary" })
@@ -244,6 +260,56 @@ describe("SummaryWorkbench", () => {
     );
 
     expect(actions.onOpenContext).toHaveBeenCalledWith("reference");
+  });
+
+  it("renders only the primary reference when defensive state contains more than one", () => {
+    const state = createState();
+    state.contextItems.push(
+      { id: "summary-1", kind: "reference", label: "Primary summary" },
+      { id: "summary-2", kind: "reference", label: "Extra summary" }
+    );
+
+    rtlRender(<SummaryWorkbench state={state} actions={createActions()} />, {
+      legacyRoot: true,
+    });
+
+    expect(
+      screen.getByRole("button", {
+        name: "Reference summary: Primary summary",
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: "Reference summary: Extra summary",
+      })
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps a long reference title separate from the disclosure chevron", () => {
+    const longTitle =
+      "A very long referenced summary title that must truncate without hiding the disclosure chevron";
+    const state = createState();
+    state.contextItems.push({
+      id: "summary-long-title",
+      kind: "reference",
+      label: longTitle,
+    });
+
+    rtlRender(<SummaryWorkbench state={state} actions={createActions()} />, {
+      legacyRoot: true,
+    });
+
+    const referenceTrigger = screen.getByRole("button", {
+      name: `Reference summary: ${longTitle}`,
+    });
+    expect(within(referenceTrigger).getByText(longTitle)).toHaveClass(
+      "wk-summary-workbench-context__reference-title"
+    );
+    expect(
+      referenceTrigger.querySelector(
+        ".wk-summary-workbench-context__reference-chevron"
+      )
+    ).toBeInTheDocument();
   });
 
   it("renders an expanded context panel above the composer", () => {

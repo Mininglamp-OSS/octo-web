@@ -225,16 +225,17 @@ vi.mock("../../components/TimeRangeSelector", () => ({
   ),
 }));
 vi.mock("../../components/SummaryReferenceSidePanel", () => ({
-  default: ({ taskId }: { taskId: number }) => (
-    <div data-testid="reference-side-panel">{taskId}</div>
+  default: ({ taskId, id }: { taskId: number; id?: string }) => (
+    <div id={id} data-testid="reference-side-panel">
+      {taskId}
+    </div>
   ),
 }));
 vi.mock("../../components/SummaryReferencePicker", () => ({
-  default: ({ visible, onSelect, selectedTaskId }: any) =>
+  default: ({ visible, onSelect }: any) =>
     visible ? (
       <button
         type="button"
-        data-selected-task-id={selectedTaskId}
         onClick={() => onSelect({ task_id: 42, title: "Prior summary" })}
       >
         choose-reference
@@ -1604,6 +1605,16 @@ describe("SummaryWorkbenchFeature", () => {
         "summary.create.agentSummaryCreated"
       );
       expect(mocks.toastWarning).not.toHaveBeenCalled();
+      expect(mocks.track).toHaveBeenCalledWith(
+        "smart_summary_quality_gate",
+        expect.objectContaining({
+          task_id: 304,
+          finish_status: finishStatus,
+          gap_count: 2,
+          first_gap_kind: "citation",
+          trigger_mode: "agent",
+        })
+      );
       expect(screen.queryByTestId("modal")).not.toBeInTheDocument();
       expect(mocks.markNotificationEligible).toHaveBeenCalledWith(304);
       expect(onOpenTask).toHaveBeenCalledWith(304);
@@ -1645,6 +1656,15 @@ describe("SummaryWorkbenchFeature", () => {
       "summary.create.agentSummaryCreated"
     );
     expect(mocks.toastWarning).not.toHaveBeenCalled();
+    expect(mocks.track).toHaveBeenCalledWith(
+      "smart_summary_quality_gate",
+      expect.objectContaining({
+        task_id: 306,
+        finish_status: "FAILED",
+        gap_count: 0,
+        trigger_mode: "agent",
+      })
+    );
     expect(mocks.markNotificationEligible).toHaveBeenCalledWith(306);
     expect(onOpenTask).toHaveBeenCalledWith(306);
   });
@@ -1884,7 +1904,7 @@ describe("SummaryWorkbenchFeature", () => {
     );
   });
 
-  it("restores hydrated reference metadata, picker selection, and preview", async () => {
+  it("restores hydrated reference metadata and toggles its preview", async () => {
     mocks.getSummaryDetail.mockResolvedValue({
       task_id: 42,
       title: "Restored summary",

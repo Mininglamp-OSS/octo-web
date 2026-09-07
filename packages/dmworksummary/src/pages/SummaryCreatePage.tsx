@@ -54,6 +54,7 @@ import {
     writeAgentChatRequestId,
     clearAgentChatRequestId,
 } from "../utils/summaryHelpers";
+import { trackAgentSummaryQuality } from "../utils/summaryQualityDiagnostics";
 import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, limitTemplateSummaryContent, type ResolvableTemplate } from "../utils/templateResolver";
 import { summaryTestIds } from "../utils/testIds";
 
@@ -1011,6 +1012,13 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             // finish_status and gaps remain available as internal diagnostics,
             // but the task was created successfully and users only need the
             // save outcome here.
+            trackAgentSummaryQuality(result, {
+                object_id: this.props.channel?.channelID,
+                source: this.props.source,
+                entry_point: this.props.source,
+                entry_source: this.props.source,
+                trigger_mode: 'agent',
+            });
             Toast.success(t('summary.create.agentSummaryCreated'));
 
             // 保存成功 → 销毁 chat session 工作台:

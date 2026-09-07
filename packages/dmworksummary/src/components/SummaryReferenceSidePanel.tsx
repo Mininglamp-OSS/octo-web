@@ -27,6 +27,7 @@ import './SummaryReferenceSidePanel.css';
 interface SummaryReferenceSidePanelProps {
     taskId: number | null;
     onClose: () => void;
+    id?: string;
 }
 
 interface SummaryReferenceSidePanelState {
@@ -102,7 +103,7 @@ class SummaryReferenceSidePanel extends Component<
     };
 
     render() {
-        const { taskId, onClose } = this.props;
+        const { taskId, onClose, id } = this.props;
         const { loading, detail, personalResult, error } = this.state;
         const { t } = this.context;
 
@@ -115,7 +116,7 @@ class SummaryReferenceSidePanel extends Component<
             : personalResult?.content || '';
 
         return (
-            <div data-testid={summaryTestIds.agentRefSidePanel} className="summary-workbench-ref-side">
+            <div id={id} data-testid={summaryTestIds.agentRefSidePanel} className="summary-workbench-ref-side">
                 <div className="summary-workbench-ref-side-header">
                     <span data-testid={summaryTestIds.agentRefSideTitle} className="summary-workbench-ref-side-title" title={title}>
                         {title}

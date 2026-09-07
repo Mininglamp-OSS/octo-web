@@ -112,6 +112,7 @@ export interface SummaryWorkbenchViewState {
   errorMessage?: string;
   showTemplateTrigger?: boolean;
   referencePreviewOpen?: boolean;
+  referencePreviewId?: string;
 }
 
 export interface SummaryWorkbenchActions {

@@ -46,6 +46,7 @@ import SummaryWorkbench, {
 import type { ChatCandidate, SummaryListItem } from "../../types/summary";
 import { channelToChatCandidate } from "../../utils/channelConvert";
 import { markAgentSummaryNotificationEligible } from "../../utils/groupSummaryNotify";
+import { trackAgentSummaryQuality } from "../../utils/summaryQualityDiagnostics";
 import {
   deriveSummaryTitle,
   resolveTemplate,
@@ -92,6 +93,7 @@ export interface SummaryWorkbenchFeatureProps {
 
 type OpenSelector = Exclude<SummaryWorkbenchContextKind, "template"> | null;
 type ReferencedTask = Pick<SummaryListItem, "task_id" | "title">;
+const REFERENCE_PREVIEW_ID = "summary-workbench-reference-preview";
 type ParticipantCandidateState = ParticipantCandidateLoadResult & {
   sourceKey: string;
   status: "idle" | "loading" | "ready" | "error";
@@ -521,6 +523,7 @@ export default function SummaryWorkbenchFeature({
       ? t(displayErrorKey)
       : workbench.viewState.errorMessage || participantScopeErrorMessage,
     referencePreviewOpen,
+    referencePreviewId: REFERENCE_PREVIEW_ID,
   };
 
   const updateScopeWithPreviewGuard = (
@@ -779,6 +782,12 @@ export default function SummaryWorkbenchFeature({
     handledSavedTaskIds.current.add(result.task_id);
     // finish_status and gaps are internal quality diagnostics. A created task
     // is a successful user action regardless of its non-blocking gate verdict.
+    trackAgentSummaryQuality(result, {
+      source,
+      entry_point: source,
+      entry_source: source,
+      trigger_mode: "agent",
+    });
     Toast.success(t("summary.create.agentSummaryCreated"));
     notifyCreated(result.task_id, "agent");
     openTask(result.task_id);
@@ -897,6 +906,7 @@ export default function SummaryWorkbenchFeature({
 
       {referencePreviewOpen && referencedTask && (
         <SummaryReferenceSidePanel
+          id={REFERENCE_PREVIEW_ID}
           taskId={referencedTask.task_id}
           onClose={() => setReferencePreviewOpen(false)}
         />
@@ -993,7 +1003,6 @@ export default function SummaryWorkbenchFeature({
 
       <SummaryReferencePicker
         visible={openSelector === "reference"}
-        selectedTaskId={referencedTask?.task_id}
         onSelect={(task: SummaryListItem) => {
           if (busy) return;
           updateScopeWithPreviewGuard(
