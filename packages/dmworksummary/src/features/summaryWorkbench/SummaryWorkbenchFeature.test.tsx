@@ -535,7 +535,7 @@ describe("SummaryWorkbenchFeature", () => {
     expect(current.updateScope).not.toHaveBeenCalled();
   });
 
-  it("clears the composer and removes template selection after the first accepted turn", async () => {
+  it.each(["agent_preview", "clarification"])("clears the composer and locks templates after an accepted %s turn", async (resultType) => {
     const pendingResponse = deferred<any>();
     const current = controller({
       scope: scope({
@@ -577,8 +577,8 @@ describe("SummaryWorkbenchFeature", () => {
     expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
 
     pendingResponse.resolve({
-      resultType: "agent_preview",
-      preview: { content: "Draft" },
+      resultType,
+      ...(resultType === "agent_preview" ? { preview: { content: "Draft" } } : {}),
     });
     await waitFor(() => expect(current.send).toHaveBeenCalled());
     expect(
@@ -594,7 +594,7 @@ describe("SummaryWorkbenchFeature", () => {
     expect(current.updateScope).not.toHaveBeenCalled();
   });
 
-  it("collapses templates after restoring a session that already has messages", async () => {
+  it.each(["agent_preview", "clarification"] as const)("keeps templates locked after restoring an accepted %s turn", async (resultType) => {
     localStorage.setItem(
       "summary-workbench-session:v2:test-uid:space-a:global",
       "restored-session"
@@ -609,7 +609,7 @@ describe("SummaryWorkbenchFeature", () => {
 
     current.isHydrating = false;
     current.viewState.messages = [
-      { id: "message-a", role: "assistant", content: "Restored response" },
+      { id: "message-a", role: "assistant", content: "Restored response", resultType },
     ];
     view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
 
@@ -1701,6 +1701,46 @@ describe("SummaryWorkbenchFeature", () => {
     );
     expect(mocks.markNotificationEligible).toHaveBeenCalledWith(306);
     expect(onOpenTask).toHaveBeenCalledWith(306);
+  });
+
+  it("tracks an unreported verdict without exposing gap details or changing save success", async () => {
+    const savePreview = vi.fn().mockResolvedValue({
+      task_id: 308,
+      title: "Draft",
+      gaps: [{ kind: "citation", detail: "private diagnostic detail" }],
+    });
+    const onOpenTask = vi.fn();
+    mocks.useSummaryWorkbench.mockReturnValue(
+      controller({
+        model: {
+          currentPreview: { content: "# Draft\nBody" },
+          pendingProposal: null,
+          workflow: null,
+        },
+        savePreview,
+      })
+    );
+    render(
+      <SummaryWorkbenchFeature spaceId="space-a" embedded onOpenTask={onOpenTask} />,
+      { legacyRoot: true }
+    );
+    fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
+    await waitFor(() => expect(onOpenTask).toHaveBeenCalledWith(308));
+    const events = mocks.track.mock.calls.filter(
+      (call: unknown[]) => call[0] === "smart_summary_quality_gate"
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0][1]).toMatchObject({
+      task_id: 308,
+      finish_status: "unreported",
+      gap_count: 1,
+      first_gap_kind: "citation",
+    });
+    expect(JSON.stringify(events[0][1])).not.toContain("private diagnostic detail");
+    expect(mocks.toastSuccess).toHaveBeenCalledWith("summary.create.agentSummaryCreated");
+    expect(mocks.toastWarning).not.toHaveBeenCalled();
+    expect(mocks.markNotificationEligible).toHaveBeenCalledWith(308);
   });
 
   it("keeps the ordinary success feedback for a COMPLETE save", async () => {

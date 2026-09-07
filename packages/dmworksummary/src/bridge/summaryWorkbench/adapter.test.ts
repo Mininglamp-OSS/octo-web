@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applySummaryResponse,
   canSaveCurrentPreview,
   createInitialSummaryWorkbenchModel,
   deriveSummaryWorkbenchView,
@@ -263,6 +264,79 @@ describe("summary workspace adapter", () => {
     const card = deriveSummaryWorkbenchView(model).card;
     expect(card).toMatchObject({ isStale: true });
     expect(card?.actions).not.toContain("save_preview");
+  });
+
+  it.each([{ referencedTaskIds: [] }, { referencedTaskIds: [7] }])("preserves a current preview when reference normalization is lossless ($referencedTaskIds)", ({ referencedTaskIds }) => {
+    const hydration = adaptSummaryWorkspaceHistory({
+      contract_version: "2",
+      session_id: "session-current",
+      messages: [{ id: 18, role: "assistant", content: "Current", result_type: "agent_preview", scope_version: 4, artifact_version: 3, available_actions: ["save_preview", "continue_chat"] }],
+      state: {
+        ...emptyState(4),
+        summary_context: { ...summaryContext, referenced_task_ids: referencedTaskIds },
+        current_preview: {
+          message_id: 18, result_type: "agent_preview", scope_version: 4,
+          artifact_version: 3, snapshot_version: 1, content: "# Current",
+          assumptions: [], available_actions: ["save_preview", "continue_chat"],
+        },
+      },
+    });
+    const model = createInitialSummaryWorkbenchModel(hydration.modelOptions);
+    expect(model.scopeVersion).toBe(4);
+    expect(model.currentPreview?.scopeVersion).toBe(4);
+    expect(canSaveCurrentPreview(model)).toBe(true);
+    expect(serializeSummaryWorkbenchScope(hydration.scope).referenced_task_ids).toEqual(referencedTaskIds);
+  });
+
+  it("rejects a normalized legacy proposal and accepts a fresh preview without repeated version bumps", () => {
+    const hydration = adaptSummaryWorkspaceHistory({
+      contract_version: "2",
+      session_id: "session-recovery",
+      messages: [{ id: 30, role: "assistant", content: "Confirm", result_type: "workflow_confirmation", scope_version: 4, available_actions: ["confirm_workflow"] }],
+      state: {
+        ...emptyState(4),
+        summary_context: { ...summaryContext, referenced_task_ids: [7, 8] },
+        pending_proposal: {
+          message_id: 30, scope_version: 4, proposal_version: 2,
+          proposal_token: "legacy-proposal", participants: [{ user_id: "u1" }],
+          requirement: "Summarize progress", available_actions: ["confirm_workflow"],
+        },
+      },
+    });
+    const stale = createInitialSummaryWorkbenchModel(hydration.modelOptions);
+    expect(stale.scopeVersion).toBe(5);
+    expect(stale.pendingProposal?.scopeVersion).toBe(4);
+    expect(isTeamProposalConfirmable(stale)).toBe(false);
+    expect(deriveSummaryWorkbenchView(stale).card?.actions).not.toContain("confirm_workflow");
+    const submittedContext = serializeSummaryWorkbenchScope(hydration.scope);
+    expect(submittedContext.referenced_task_ids).toEqual([7]);
+
+    // The server accepts the advanced scope and returns a new artifact for it.
+    const state = {
+      ...emptyState(stale.scopeVersion),
+      summary_context: submittedContext,
+      current_preview: {
+        message_id: 31, result_type: "agent_preview", scope_version: stale.scopeVersion,
+        artifact_version: 4, snapshot_version: 1, content: "# Regenerated from reference 7",
+        assumptions: [], available_actions: ["save_preview", "continue_chat"],
+      },
+    };
+    const response = adaptSummaryWorkspaceTurn({
+      contract_version: "2", session_id: hydration.sessionId, message_id: 31,
+      result_type: "agent_preview", reply: "Regenerated", scope_version: stale.scopeVersion,
+      artifact_version: 4, available_actions: ["save_preview", "continue_chat"], state,
+    });
+    const recovered = applySummaryResponse(stale, response);
+    expect(recovered.scopeVersion).toBe(5);
+    expect(recovered.currentPreview?.scopeVersion).toBe(5);
+    expect(recovered.pendingProposal).toBeNull();
+    expect(canSaveCurrentPreview(recovered)).toBe(true);
+    const reloaded = adaptSummaryWorkspaceHistory({
+      contract_version: "2", session_id: hydration.sessionId,
+      messages: [{ id: 31, role: "assistant", content: "Regenerated", result_type: "agent_preview", scope_version: 5, artifact_version: 4, available_actions: ["save_preview", "continue_chat"] }], state,
+    });
+    expect(reloaded.modelOptions.scopeVersion).toBe(5);
+    expect(canSaveCurrentPreview(createInitialSummaryWorkbenchModel(reloaded.modelOptions))).toBe(true);
   });
 
   it("fails closed when result_type or artifact state is invalid", () => {
