@@ -7,6 +7,7 @@ import { MyBot, OboGrant, PersonaSettingsVM } from "./vm"
 import PersonaEdit from "./PersonaEdit"
 import { I18nContext, useI18n } from "../../i18n"
 import VoiceInputButton, { ReplaceMode, SelectionRange } from "../VoiceInputButton"
+import { Loading } from "@octo/ui"
 import "./index.css"
 
 /**
@@ -194,7 +195,7 @@ class PersonaListBody extends Component<PersonaListBodyProps> {
 
                 {vm.loading && (
                     <div className="wk-persona-loading">
-                        {t("base.persona.loading")}
+                        <Loading text={t("base.persona.loading")} layout="vertical" />
                     </div>
                 )}
 
@@ -415,7 +416,7 @@ function PersonaCreate(props: {
         <div className="wk-persona-create">
             {vm.myBotsLoading && (
                 <div className="wk-persona-loading">
-                    {t("base.persona.loading")}
+                    <Loading text={t("base.persona.loading")} layout="vertical" />
                 </div>
             )}
             {!vm.myBotsLoading && vm.myBots.length === 0 && (

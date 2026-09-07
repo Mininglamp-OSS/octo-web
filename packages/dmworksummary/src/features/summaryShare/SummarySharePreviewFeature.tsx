@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { Button, Spin } from "@douyinfe/semi-ui";
+import { Button } from "@douyinfe/semi-ui";
 import { IconClose } from "@douyinfe/semi-icons";
+import { Loading } from "@octo/ui";
 import { useI18n } from "@octo/base";
 import { getSummaryShare } from "../../api/summaryApi";
 import type { SummaryShareSnapshot } from "../../types/summary";
@@ -37,7 +38,7 @@ export default function SummarySharePreviewFeature({ shareId, onClose, onOpenDet
                 <Button theme="borderless" icon={<IconClose />} aria-label={t("summary.share.close")} onClick={onClose} />
             </header>
             <main className="summary-share-preview__body">
-                {!snapshot && !error ? <div className="summary-share-preview__state"><Spin />{t("summary.share.loading")}</div> : null}
+                {!snapshot && !error ? <div className="summary-share-preview__state"><Loading />{t("summary.share.loading")}</div> : null}
                 {error ? <div className="summary-share-preview__state">{t("summary.share.unavailable")}</div> : null}
                 {snapshot ? <SummaryShareContent
                     snapshot={snapshot}

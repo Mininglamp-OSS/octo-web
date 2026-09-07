@@ -28,7 +28,7 @@ describe('ClawHealthCheckItem', () => {
     );
 
     const dot = screen.getByTestId('claw-health-check-item-dot');
-    expect(dot).toHaveClass('hc-dot--success');
+    expect(dot).toHaveClass('octo-ui-dot--success');
   });
 
   it('renders warning status with yellow dot', () => {
@@ -41,7 +41,7 @@ describe('ClawHealthCheckItem', () => {
     );
 
     const dot = screen.getByTestId('claw-health-check-item-dot');
-    expect(dot).toHaveClass('hc-dot--warning');
+    expect(dot).toHaveClass('octo-ui-dot--warning');
   });
 
   it('renders error status with red dot', () => {
@@ -54,7 +54,7 @@ describe('ClawHealthCheckItem', () => {
     );
 
     const dot = screen.getByTestId('claw-health-check-item-dot');
-    expect(dot).toHaveClass('hc-dot--error');
+    expect(dot).toHaveClass('octo-ui-dot--danger');
   });
 
   it('accepts custom className', () => {
@@ -92,12 +92,12 @@ describe('ClawHealthCheckItem', () => {
     const { rerender } = render(
       <ClawHealthCheckItem status="success" label="Test" value="OK" />
     );
-    expect(screen.getByTestId('claw-health-check-item-dot')).toHaveClass('hc-dot--success');
+    expect(screen.getByTestId('claw-health-check-item-dot')).toHaveClass('octo-ui-dot--success');
 
     rerender(<ClawHealthCheckItem status="warning" label="Test" value="OK" />);
-    expect(screen.getByTestId('claw-health-check-item-dot')).toHaveClass('hc-dot--warning');
+    expect(screen.getByTestId('claw-health-check-item-dot')).toHaveClass('octo-ui-dot--warning');
 
     rerender(<ClawHealthCheckItem status="error" label="Test" value="OK" />);
-    expect(screen.getByTestId('claw-health-check-item-dot')).toHaveClass('hc-dot--error');
+    expect(screen.getByTestId('claw-health-check-item-dot')).toHaveClass('octo-ui-dot--danger');
   });
 });

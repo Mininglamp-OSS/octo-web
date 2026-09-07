@@ -1,4 +1,5 @@
 import React from "react"
+import { Badge } from "@octo/ui"
 import { useI18n } from "../../i18n"
 import "./index.css"
 
@@ -37,9 +38,11 @@ const SidebarTabBar: React.FC<SidebarTabBarProps> = ({
                 >
                     <span className="wk-sidebar-tabbar__label">{t("base.sidebarTabBar.follow")}</span>
                     {followUnread > 0 && (
-                        <span className="wk-sidebar-tabbar__badge">
-                            {followUnread > 99 ? '99+' : followUnread}
-                        </span>
+                        <Badge
+                            count={followUnread}
+                            variant="soft"
+                            className="wk-sidebar-tabbar__badge"
+                        />
                     )}
                 </button>
                 <button
@@ -48,9 +51,11 @@ const SidebarTabBar: React.FC<SidebarTabBarProps> = ({
                 >
                     <span className="wk-sidebar-tabbar__label">{t("base.sidebarTabBar.recent")}</span>
                     {recentUnread > 0 && (
-                        <span className="wk-sidebar-tabbar__badge">
-                            {recentUnread > 99 ? '99+' : recentUnread}
-                        </span>
+                        <Badge
+                            count={recentUnread}
+                            variant="soft"
+                            className="wk-sidebar-tabbar__badge"
+                        />
                     )}
                 </button>
             </div>

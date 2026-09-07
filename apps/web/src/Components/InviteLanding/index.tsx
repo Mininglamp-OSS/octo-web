@@ -1,7 +1,8 @@
 import React, { Component } from "react";
 import { I18nContext, WKApp, apiFetchJson, computeAndSaveJoinSuccess, setSessionSid, t, toJoinApprovalStatus, Dap } from "@octo/base";
 import type { JoinSpaceStatus } from "@octo/base";
-import { Button, Spin, Toast } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
+import { Button, Toast } from "@douyinfe/semi-ui";
 import { buildPostLoginRedirectUrl } from "../../Layout/postLoginRedirect";
 import { persistActiveSpace, readLastSpaceId } from "../../features/spacePreference";
 import "./index.css";
@@ -369,7 +370,7 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
         const isLoggedIn = WKApp.shared.isLogined();
 
         if (loading) {
-            return <div className="invite-landing"><Spin size="large" /></div>;
+            return <div className="invite-landing"><Loading size="lg" /></div>;
         }
 
         // dmworkim#1319: need_space 分支

@@ -5,6 +5,7 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import JSZip from "jszip";
 import { FileText } from "lucide-react";
 import { t, useI18n } from "@octo/base";
+import Loading from "@octo/ui/components/Loading";
 import { fetchSkillPackage } from "../api/expertService";
 import type { ExpertSkill } from "../mock/expertMock";
 
@@ -303,7 +304,7 @@ export default function ExpertSkillBrowser({
   return (
     <div className="wk-mcp-expert-skill__browser">
       {loading ? (
-        <p className="wk-mcp-expert-skill__state">{t("mcp.expert.loading")}</p>
+        <p className="wk-mcp-expert-skill__state"><Loading text={t("mcp.expert.loading")} /></p>
       ) : error ? (
         <p className="wk-mcp-expert-skill__state wk-mcp-expert-skill__state--error">
           {t("mcp.expert.loadError")}
@@ -336,7 +337,7 @@ export default function ExpertSkillBrowser({
 
           <div className="wk-mcp-expert-skill__viewer">
             {view === undefined ? (
-              <p className="wk-mcp-expert-skill__state">{t("mcp.expert.loading")}</p>
+              <p className="wk-mcp-expert-skill__state"><Loading size="sm" text={t("mcp.expert.loading")} /></p>
             ) : view.kind === "md" ? (
               <div className="wk-mcp-expert-skill__md">
                 <ReactMarkdown

@@ -23,6 +23,10 @@ vi.mock("@douyinfe/semi-ui", () => ({
   Toast: { success: vi.fn(), error: vi.fn() },
   Spin: () => null,
 }));
+vi.mock("@octo/ui", () => ({
+  Loading: () => React.createElement("span", { role: "status" }),
+  Tooltip: ({ children }: { children: React.ReactNode }) => children,
+}));
 // WKModal renders footer + children inline; WKButton is a plain button.
 // wkConfirm is intentionally a throwing stub — if the component still called
 // it (the old modal-on-modal path), the test would blow up.

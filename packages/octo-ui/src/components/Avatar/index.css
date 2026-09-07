@@ -1,0 +1,207 @@
+.octo-ui-avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--octo-ui-avatar-size);
+  height: var(--octo-ui-avatar-size);
+  overflow: hidden;
+  border-radius: var(--wk-avatar-radius, var(--wk-r-circle));
+  font-family: var(--wk-font-sans);
+  font-size: var(--octo-ui-avatar-font-size);
+  font-weight: var(--wk-font-medium);
+  line-height: 1;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.octo-ui-avatar--person {
+  border: 0;
+  color: var(--wk-color-white);
+}
+
+.octo-ui-avatar--group {
+  border: var(--octo-ui-avatar-border-width) solid currentColor;
+}
+
+.octo-ui-avatar--size-16 {
+  --octo-ui-avatar-size: var(--octo-ui-avatar-size-16);
+  --octo-ui-avatar-font-size: var(--octo-ui-avatar-font-size-16);
+}
+
+.octo-ui-avatar--size-20 {
+  --octo-ui-avatar-size: var(--octo-ui-avatar-size-20);
+  --octo-ui-avatar-font-size: var(--octo-ui-avatar-font-size-default);
+}
+
+.octo-ui-avatar--size-28 {
+  --octo-ui-avatar-size: var(--octo-ui-avatar-size-28);
+  --octo-ui-avatar-font-size: var(--octo-ui-avatar-font-size-default);
+}
+
+.octo-ui-avatar--size-32 {
+  --octo-ui-avatar-size: var(--octo-ui-avatar-size-32);
+  --octo-ui-avatar-font-size: var(--octo-ui-avatar-font-size-default);
+}
+
+.octo-ui-avatar--size-40 {
+  --octo-ui-avatar-size: var(--octo-ui-avatar-size-40);
+  --octo-ui-avatar-font-size: var(--octo-ui-avatar-font-size-large);
+}
+
+.octo-ui-avatar__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.octo-ui-avatar__lines {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: var(--octo-ui-avatar-group-line-height);
+}
+
+.octo-ui-avatar__group-icon {
+  width: var(--octo-ui-avatar-group-icon-size);
+  height: var(--octo-ui-avatar-group-icon-size);
+  fill: currentColor;
+}
+
+.octo-ui-avatar--tone-0.octo-ui-avatar--person {
+  background: var(--octo-ui-avatar-tone-0-solid);
+}
+
+.octo-ui-avatar--tone-0.octo-ui-avatar--group {
+  background: var(--octo-ui-avatar-tone-0-surface);
+  color: var(--octo-ui-avatar-tone-0-solid);
+}
+
+.octo-ui-avatar--tone-0 .octo-ui-avatar__group-icon-secondary {
+  fill: var(--octo-ui-avatar-tone-0-icon);
+}
+
+.octo-ui-avatar--tone-1.octo-ui-avatar--person {
+  background: var(--octo-ui-avatar-tone-1-solid);
+}
+
+.octo-ui-avatar--tone-1.octo-ui-avatar--group {
+  background: var(--octo-ui-avatar-tone-1-surface);
+  color: var(--octo-ui-avatar-tone-1-solid);
+}
+
+.octo-ui-avatar--tone-1 .octo-ui-avatar__group-icon-secondary {
+  fill: var(--octo-ui-avatar-tone-1-icon);
+}
+
+.octo-ui-avatar--tone-2.octo-ui-avatar--person {
+  background: var(--octo-ui-avatar-tone-2-solid);
+}
+
+.octo-ui-avatar--tone-2.octo-ui-avatar--group {
+  background: var(--octo-ui-avatar-tone-2-surface);
+  color: var(--octo-ui-avatar-tone-2-solid);
+}
+
+.octo-ui-avatar--tone-2 .octo-ui-avatar__group-icon-secondary {
+  fill: var(--octo-ui-avatar-tone-2-icon);
+}
+
+.octo-ui-avatar--tone-3.octo-ui-avatar--person {
+  background: var(--octo-ui-avatar-tone-3-solid);
+}
+
+.octo-ui-avatar--tone-3.octo-ui-avatar--group {
+  background: var(--octo-ui-avatar-tone-3-surface);
+  color: var(--octo-ui-avatar-tone-3-solid);
+}
+
+.octo-ui-avatar--tone-3 .octo-ui-avatar__group-icon-secondary {
+  fill: var(--octo-ui-avatar-tone-3-icon);
+}
+
+.octo-ui-avatar--tone-4.octo-ui-avatar--person {
+  background: var(--octo-ui-avatar-tone-4-solid);
+}
+
+.octo-ui-avatar--tone-4.octo-ui-avatar--group {
+  background: var(--octo-ui-avatar-tone-4-surface);
+  color: var(--octo-ui-avatar-tone-4-solid);
+}
+
+.octo-ui-avatar--tone-4 .octo-ui-avatar__group-icon-secondary {
+  fill: var(--octo-ui-avatar-tone-4-icon);
+}
+
+.octo-ui-avatar--tone-5.octo-ui-avatar--person {
+  background: var(--octo-ui-avatar-tone-5-solid);
+}
+
+.octo-ui-avatar--tone-5.octo-ui-avatar--group {
+  background: var(--octo-ui-avatar-tone-5-surface);
+  color: var(--octo-ui-avatar-tone-5-solid);
+}
+
+.octo-ui-avatar--tone-5 .octo-ui-avatar__group-icon-secondary {
+  fill: var(--octo-ui-avatar-tone-5-icon);
+}
+
+.octo-ui-avatar--tone-6.octo-ui-avatar--person {
+  background: var(--octo-ui-avatar-tone-6-solid);
+}
+
+.octo-ui-avatar--tone-6.octo-ui-avatar--group {
+  background: var(--octo-ui-avatar-tone-6-surface);
+  color: var(--octo-ui-avatar-tone-6-solid);
+}
+
+.octo-ui-avatar--tone-6 .octo-ui-avatar__group-icon-secondary {
+  fill: var(--octo-ui-avatar-tone-6-icon);
+}
+
+.octo-ui-avatar--tone-7.octo-ui-avatar--person {
+  background: var(--octo-ui-avatar-tone-7-solid);
+}
+
+.octo-ui-avatar--tone-7.octo-ui-avatar--group {
+  background: var(--octo-ui-avatar-tone-7-surface);
+  color: var(--octo-ui-avatar-tone-7-solid);
+}
+
+.octo-ui-avatar--tone-7 .octo-ui-avatar__group-icon-secondary {
+  fill: var(--octo-ui-avatar-tone-7-icon);
+}
+
+.octo-ui-avatar--tone-8.octo-ui-avatar--person {
+  background: var(--octo-ui-avatar-tone-8-solid);
+}
+
+.octo-ui-avatar--tone-8.octo-ui-avatar--group {
+  background: var(--octo-ui-avatar-tone-8-surface);
+  color: var(--octo-ui-avatar-tone-8-solid);
+}
+
+.octo-ui-avatar--tone-8 .octo-ui-avatar__group-icon-secondary {
+  fill: var(--octo-ui-avatar-tone-8-icon);
+}
+
+.octo-ui-avatar--tone-9.octo-ui-avatar--person {
+  background: var(--octo-ui-avatar-tone-9-solid);
+}
+
+.octo-ui-avatar--tone-9.octo-ui-avatar--group {
+  background: var(--octo-ui-avatar-tone-9-surface);
+  color: var(--octo-ui-avatar-tone-9-solid);
+}
+
+.octo-ui-avatar--tone-9 .octo-ui-avatar__group-icon-secondary {
+  fill: var(--octo-ui-avatar-tone-9-icon);
+}
+
+/* Image avatars keep the source artwork's own transparent pixels. */
+.octo-ui-avatar.octo-ui-avatar--has-image {
+  background: none;
+}

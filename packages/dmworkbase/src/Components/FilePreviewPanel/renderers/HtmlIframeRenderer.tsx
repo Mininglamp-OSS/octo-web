@@ -11,8 +11,8 @@ import React, {
   useState,
   useEffect,
 } from "react";
-import { LoaderCircle } from "lucide-react";
 import { useI18n } from "../../../i18n";
+import { Empty, Loading } from "@octo/ui";
 import "./HtmlIframeRenderer.css";
 
 /**
@@ -77,7 +77,10 @@ const HtmlIframeRenderer = forwardRef<
   if (!url && !srcDoc) {
     return (
       <div className="wk-file-preview-html-iframe wk-file-preview-html-iframe--empty">
-        {t("base.filePreview.empty")}
+        <Empty
+          illustration={false}
+          description={t("base.filePreview.empty")}
+        />
       </div>
     );
   }
@@ -86,7 +89,7 @@ const HtmlIframeRenderer = forwardRef<
     <>
       {loading && (
         <div className="wk-file-preview-html-iframe__loading">
-          <LoaderCircle className="wk-file-preview-html-iframe__spinner" />
+          <Loading aria-label={t("base.filePreview.loading")} />
         </div>
       )}
       {blobUrl && (

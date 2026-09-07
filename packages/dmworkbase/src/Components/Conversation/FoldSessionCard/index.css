@@ -114,10 +114,6 @@
 }
 
 .wk-fold-session-card-live-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--wk-color-success);
   animation: wk-fold-session-live-dot 1.5s ease-in-out infinite;
 }
 

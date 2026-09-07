@@ -7,6 +7,11 @@ import "@testing-library/jest-dom/vitest"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import AppBotListView, { AppBotListViewProps } from "../ui/AppBotListView"
 
+vi.mock("@octo/ui", () => ({
+  Empty: ({ description }: any) => <div data-testid="empty">{description}</div>,
+  Loading: ({ text }: any) => <div data-testid="loading">{text}</div>,
+}))
+
 let container: HTMLDivElement
 
 const baseProps = (overrides: Partial<AppBotListViewProps> = {}): AppBotListViewProps => ({

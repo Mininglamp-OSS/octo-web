@@ -4,6 +4,7 @@ import { BaseRendererProps } from "../types";
 import { RenderMode, formatFileSize } from "../config";
 import { downloadFile } from "../../../Utils/download";
 import { useI18n } from "../../../i18n";
+import { Loading } from "@octo/ui";
 import "./CodeRenderer.css";
 import "./code-highlight.css";
 
@@ -79,8 +80,7 @@ const CodeRendererBase: React.FC<CodeRendererBaseProps> = ({
   if (loading) {
     return (
       <div className="wk-file-preview-code-renderer wk-file-preview-code-renderer--loading">
-        <div className="wk-file-preview-code-renderer__spinner" />
-        <span>{t("base.filePreview.loading")}</span>
+        <Loading text={t("base.filePreview.loading")} layout="vertical" />
       </div>
     );
   }

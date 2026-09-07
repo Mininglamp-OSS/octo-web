@@ -5,12 +5,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
-  LoaderCircle,
   Mail,
   RefreshCw,
   Search,
   Star,
 } from "lucide-react";
+import Loading from "@octo/ui/components/Loading";
 import type {
   DeliveryStatus,
   Mailbox,
@@ -140,8 +140,7 @@ export default function MailRecordsView(props: MailRecordsViewProps) {
       <div className="octo-mail-record-list">
         {props.loading ? (
           <div className="octo-mail-record-state">
-            <LoaderCircle className="is-spinning" size={22} />
-            <span>{t("mail.status.loading")}</span>
+            <Loading text={t("mail.status.loading")} layout="vertical" />
           </div>
         ) : null}
         {!props.loading && props.error ? (

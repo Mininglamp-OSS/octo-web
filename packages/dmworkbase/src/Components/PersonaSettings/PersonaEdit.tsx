@@ -5,6 +5,7 @@ import { Switch, Toast } from "@douyinfe/semi-ui"
 import { OboGrant, OboScope, PersonaEditVM } from "./vm"
 import { I18nContext } from "../../i18n"
 import VoiceInputButton, { ReplaceMode, SelectionRange } from "../VoiceInputButton"
+import { Loading } from "@octo/ui"
 
 /**
  * PersonaEdit — 单个 grant 的编辑页（mode + global toggle + scope 列表 + 删除）。
@@ -300,7 +301,7 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
                                 <div className="wk-persona-edit-scope-list">
                                     {vm.loading && (
                                         <div className="wk-persona-edit-scope-empty">
-                                            {t("base.persona.loading")}
+                                            <Loading text={t("base.persona.loading")} />
                                         </div>
                                     )}
                                     {vm.isBackendMissing && (

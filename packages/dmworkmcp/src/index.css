@@ -880,39 +880,13 @@
   padding: 2px 0;
 }
 
-/* Light-surface tooltip. Semi's default is a dark popover which reads as an
-   OS-level tooltip; for this content (a cluster of chips extending the tag
-   row) we want the surface to feel like a floating card so the chips keep
-   their normal accent colours.
-   IMPORTANT: `.wk-mcp-tooltip-light` is applied to the SAME element that
-   already carries `.semi-tooltip-wrapper` — Semi merges the caller's
-   `className` onto the wrapper. So the wrapper selector must join the two
-   classes without a space; a descendant selector (`.wk-mcp-tooltip-light
-   .semi-tooltip-wrapper`) misses because there's no ancestor–descendant
-   relation, and the dark fill leaked through. */
-.wk-mcp-tooltip-light.semi-tooltip-wrapper,
-.wk-mcp-tooltip-light .semi-tooltip-content {
-  background: #ffffff;
-  color: #1f2937;
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  border-radius: 8px;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12),
-    0 2px 6px rgba(15, 23, 42, 0.06);
-}
-
-/* Content already sits inside the wrapper's box; kill the redundant shadow
-   so the two elevations don't stack. */
-.wk-mcp-tooltip-light .semi-tooltip-content {
-  box-shadow: none;
-  border: none;
-  padding: 8px 10px;
-}
-
-/* Semi renders a tiny arrow — recolour it so the transition into the light
-   surface is seamless. */
-.wk-mcp-tooltip-light .semi-tooltip-icon-arrow,
-.wk-mcp-tooltip-light .semi-tooltip-icon-arrow path {
-  fill: #ffffff;
+.octo-ui-tooltip .wk-mcp-tag-overflow .wk-mcp-tag--accent {
+  background: color-mix(
+    in srgb,
+    var(--octo-ui-tooltip-action-color) 18%,
+    transparent
+  );
+  color: var(--octo-ui-tooltip-action-color);
 }
 
 .wk-mcp-card__slogan {

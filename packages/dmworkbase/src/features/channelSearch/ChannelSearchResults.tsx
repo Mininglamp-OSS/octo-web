@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useRef } from "react";
-import { Toast, Tooltip } from "@douyinfe/semi-ui";
+import { Tooltip } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { Download, MoreHorizontal, Play } from "lucide-react";
 import WKAvatar from "../../Components/WKAvatar";
 import IconClick from "../../Components/IconClick";
@@ -123,7 +124,7 @@ const LocateIconButton = React.memo(function LocateIconButton({
   const label = t("base.channelSearch.locateToChatPosition");
 
   return (
-    <Tooltip content={label} position="top">
+    <Tooltip content={label}>
       <button
         aria-label={label}
         className={className}

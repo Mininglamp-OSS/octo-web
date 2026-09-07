@@ -14,6 +14,7 @@ import {
   Unlink,
   X,
 } from "lucide-react";
+import Loading from "@octo/ui/components/Loading";
 import type { AgentMailbox, AgentOutboundMode } from "../../bridge/types";
 import {
   agentMailboxLocalpartMaxLength,
@@ -114,8 +115,7 @@ export default function MailAddressManagementView(
 
         {props.loading ? (
           <div className="octo-mail-addresses__state">
-            <LoaderCircle className="is-spinning" size={22} />
-            <span>{t("mail.addresses.loading")}</span>
+            <Loading text={t("mail.addresses.loading")} layout="vertical" />
           </div>
         ) : null}
         {!props.loading && props.error ? (

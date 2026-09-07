@@ -1,0 +1,52 @@
+.octo-ui-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: var(--octo-ui-badge-size);
+  height: var(--octo-ui-badge-size);
+  padding: 0 var(--octo-ui-badge-padding-x);
+  border-radius: var(--wk-r-full);
+  background: var(--octo-ui-badge-bg);
+  color: var(--octo-ui-badge-color);
+  font-family: var(--wk-font-sans);
+  font-size: var(--octo-ui-badge-font-size);
+  font-weight: var(--wk-font-semibold);
+  line-height: var(--octo-ui-badge-size);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+:where(.octo-ui-badge--default) {
+  --octo-ui-badge-size: var(--wk-sp-4);
+  --octo-ui-badge-padding-x: var(--wk-sp-1);
+  --octo-ui-badge-font-size: var(--wk-text-size-tiny);
+}
+
+:where(.octo-ui-badge--small) {
+  --octo-ui-badge-size: var(--wk-sp-3);
+  --octo-ui-badge-padding-x: var(--wk-sp-1);
+  --octo-ui-badge-font-size: var(--wk-text-size-badge);
+}
+
+:where(.octo-ui-badge--strong) {
+  --octo-ui-badge-bg: var(
+    --octo-ui-badge-strong-bg,
+    var(--wk-color-danger)
+  );
+  --octo-ui-badge-color: var(
+    --octo-ui-badge-strong-color,
+    var(--wk-color-white)
+  );
+}
+
+:where(.octo-ui-badge--soft) {
+  --octo-ui-badge-bg: var(
+    --octo-ui-badge-soft-bg,
+    var(--wk-badge-danger-bg)
+  );
+  --octo-ui-badge-color: var(
+    --octo-ui-badge-soft-color,
+    var(--wk-badge-danger-text)
+  );
+}

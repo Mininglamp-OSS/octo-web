@@ -19,15 +19,13 @@
  * 在线状态点
  * 位置：右下角
  * 尺寸：6×6
- * 颜色：成功色（绿色）
+ * 颜色：头像在线态绿色
  */
 .wk-msg-avatar-online-dot {
+  --octo-ui-dot-color: var(--wk-color-online);
+
   position: absolute;
   right: 0;
   bottom: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: var(--wk-color-online);
   border: 1px solid var(--wk-bg-surface);
 }

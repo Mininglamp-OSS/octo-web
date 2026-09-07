@@ -4,6 +4,7 @@ import '../FileViewer/FileViewer.css';
 import type { FileGroup, FileContent } from '../FileViewer/FileViewer';
 import AgentCardService, { type AgentCardData } from '../../Service/AgentCardService';
 import { useI18n } from '../../i18n';
+import { Loading } from '@octo/ui';
 import './ClawCoreFilesTab.css';
 
 export interface ClawCoreFilesTabProps {
@@ -81,8 +82,7 @@ export default function ClawCoreFilesTab({ botId, height = '100%', agentCardData
     return (
       <div className="claw-core-files-tab" data-testid="claw-core-files-tab-loading" style={{ height }}>
         <div className="loading-state">
-          <div className="loading-spinner" />
-          <div className="loading-text">{t("base.claw.loading")}</div>
+          <Loading text={t("base.claw.loading")} layout="vertical" />
         </div>
       </div>
     );

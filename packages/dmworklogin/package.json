@@ -4,6 +4,7 @@
   "main": "src/index.tsx",
   "dependencies": {
     "@octo/base": "workspace:*",
+    "@octo/ui": "workspace:*",
     "@douyinfe/semi-icons": "^2.93.0",
     "@douyinfe/semi-ui": "^2.93.0",
     "@types/qrcode.react": "^1.0.2",

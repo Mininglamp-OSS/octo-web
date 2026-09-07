@@ -1,5 +1,6 @@
 import React from 'react'
 import { useI18n } from '../../i18n'
+import AITag from '../AITag'
 import './index.css'
 
 export interface AIParticipant {
@@ -85,9 +86,9 @@ export default function AIMessageCard({
           </span>
           
           {/* AI Tag */}
-          <span className="wk-ai-message-card__tag">
+          <AITag>
             {tagLabel}
-          </span>
+          </AITag>
           
           {/* 展开/收起按钮 */}
           <button

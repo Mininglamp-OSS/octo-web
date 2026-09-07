@@ -1,6 +1,7 @@
 import React from "react";
 import { Switch } from "@douyinfe/semi-ui";
 import WKButton from "../../../Components/WKButton";
+import { Loading } from "@octo/ui";
 import "./index.css";
 
 export type GroupManagementMemberRole = "owner" | "manager" | "botAdmin";
@@ -179,7 +180,7 @@ export default function GroupManagementView({
   if (loading) {
     return (
       <div className="wk-group-management">
-        <div className="wk-group-management-loading">{labels.loading}</div>
+        <div className="wk-group-management-loading"><Loading text={labels.loading} layout="vertical" /></div>
       </div>
     );
   }

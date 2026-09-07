@@ -1,4 +1,5 @@
-import { Input, Spin } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
+import { Input } from "@douyinfe/semi-ui";
 import { Camera, Check, ChevronRight, Edit3, QrCode } from "lucide-react";
 import React from "react";
 import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
@@ -144,7 +145,7 @@ export default function MeInfoPanel({
                     <Camera size={18} />
                 </span>
                 {uploadingAvatar && <span className="wk-meinfo-avatar-loading" aria-hidden="true">
-                    <Spin size="small" />
+                    <Loading size="sm" />
                 </span>}
             </button>
             <div className="wk-meinfo-header-main">

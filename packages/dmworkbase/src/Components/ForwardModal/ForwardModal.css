@@ -326,6 +326,10 @@
   color: rgba(28, 28, 35, 0.35);
 }
 
+.wk-fm-empty.octo-ui-empty {
+  padding: 0;
+}
+
 .wk-fm-empty--right {
   height: 100%;
 }
@@ -397,11 +401,21 @@
  * 复用会话列表的 .wk-conversationlist-item-external-tag 类名与视觉
  * （参见 packages/dmworkbase/src/Components/ConversationList/index.css）
  * 这里再声明一次，保证 ForwardModal 单独渲染（如 Storybook）时样式也生效。
- * 紫色背景/文字由 Semi UI 的 <Tag color="purple" /> 提供，本规则仅补 layout。
+ * 完整视觉与会话列表保持一致；这里仅保证 ForwardModal 独立渲染时可用。
  */
 .wk-fm-item .wk-conversationlist-item-external-tag {
-  margin-left: var(--wk-sp-1, 4px);
-  font-size: var(--wk-text-size-tiny, 10px);
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--wk-sp-4);
+  margin-left: var(--wk-sp-1);
+  padding: 0 var(--wk-sp-1-5);
+  border-radius: var(--wk-r-full);
+  background: rgba(var(--semi-purple-5), 0.15);
+  color: rgba(var(--semi-purple-8), 1);
+  font-size: var(--wk-text-size-tiny);
+  font-weight: var(--wk-font-medium);
+  line-height: var(--wk-sp-4);
   flex-shrink: 0;
 }
 

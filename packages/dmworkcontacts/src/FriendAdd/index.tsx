@@ -2,7 +2,8 @@ import { WKApp, WKViewQueueHeader, QRCodeMy, Search, I18nContext, t } from "@oct
 import {WKBase, WKBaseContext } from "@octo/base";
 import React from "react";
 import { Component, ReactNode } from "react";
-import { Spin,Toast } from '@douyinfe/semi-ui';
+import { Toast } from '@douyinfe/semi-ui';
+import { Loading } from "@octo/ui";
 import "./index.css"
 
 export interface FriendAddProps {
@@ -62,15 +63,16 @@ export class FriendAdd extends Component<FriendAddProps,FriendAddState> {
             <div className="wk-friendadd">
             <WKViewQueueHeader title={t("contacts.friendAdd.title")} onBack={onBack} />
             <div className="wk-friendadd-content">
-                <Spin spinning={spinning}>
-                <Search placeholder={t("contacts.friendAdd.searchPlaceholder", { values: { appName: WKApp.config.appName } })} onChange={(v)=>{
-                    this.setState({
-                        keyword: v
-                    })
-                }} onEnterPress={()=>{
-                    this.searchUser()
-                }}></Search>
-                </Spin>
+                <div className="wk-friendadd-search" aria-busy={spinning}>
+                    <Search placeholder={t("contacts.friendAdd.searchPlaceholder", { values: { appName: WKApp.config.appName } })} onChange={(v)=>{
+                        this.setState({
+                            keyword: v
+                        })
+                    }} onEnterPress={()=>{
+                        this.searchUser()
+                    }}></Search>
+                    {spinning ? <div className="wk-friendadd-search-loading"><Loading /></div> : undefined}
+                </div>
                 <div className="wk-friendadd-content-qrcode">
                         {t("contacts.friendAdd.myShortNo", { values: { appName: WKApp.config.appName, shortNo: WKApp.loginInfo.shortNo } })} <img onClick={()=>{
                             WKApp.routeLeft.push(<QRCodeMy></QRCodeMy>)

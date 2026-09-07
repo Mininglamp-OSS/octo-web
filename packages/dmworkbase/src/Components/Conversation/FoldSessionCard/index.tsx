@@ -1,5 +1,6 @@
 import classNames from "classnames";
 import React, { HTMLProps, ReactNode } from "react";
+import { Dot } from "@octo/ui";
 import Checkbox from "../../Checkbox";
 import { useI18n } from "../../../i18n";
 import "./index.css";
@@ -109,9 +110,10 @@ const FoldSessionCard: React.FC<FoldSessionCardProps> = ({
         */}
         <div className="wk-fold-session-card-meta">
           {isActive ? (
-            <span
+            <Dot
+              size="small"
+              tone="success"
               className="wk-fold-session-card-live-dot"
-              aria-hidden="true"
             />
           ) : null}
           {isActive ? (

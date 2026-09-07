@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from "react";
-import { Tag, Button, Input } from "@douyinfe/semi-ui";
+import { Button, Input } from "@douyinfe/semi-ui";
+import { Tag } from "@octo/ui";
 import { IconPlus } from "@douyinfe/semi-icons";
 import { useI18n } from "@octo/base";
 import "./SummarySelectors.css";
@@ -52,9 +53,10 @@ const ParticipantSelector: React.FC<ParticipantSelectorProps> = ({
                     <Tag
                         key={p.user_id}
                         closable
+                        closeAriaLabel={t("summary.common.delete")}
                         onClose={() => handleRemove(index)}
-                        size="large"
-                        color="violet"
+                        size="small"
+                        tone="purple"
                         className="summary-participant-tag"
                     >
                         {p.user_name || t("summary.common.userFallback", { values: { id: p.user_id } })}

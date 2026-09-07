@@ -1,5 +1,6 @@
 import React, { Component } from "react";
-import { Button, Spin } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
+import { Button } from "@douyinfe/semi-ui";
 import { Toast } from "@douyinfe/semi-ui";
 import { Channel } from "wukongimjssdk";
 import WKApp from "../../App";
@@ -263,7 +264,7 @@ export class GroupMdEditor extends Component<
       return (
         <div className="wk-groupmd-editor">
           <div className="wk-groupmd-loading">
-            <Spin size="large" />
+            <Loading size="lg" />
           </div>
         </div>
       );

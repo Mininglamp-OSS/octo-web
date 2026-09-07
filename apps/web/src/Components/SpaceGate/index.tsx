@@ -1,7 +1,8 @@
 import React, { Component } from "react";
 import { I18nContext, WKApp, t } from "@octo/base";
 import { SpaceService } from "@octo/base";
-import { Input, Button, Toast, Spin } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
+import { Input, Button, Toast } from "@douyinfe/semi-ui";
 import { SpaceCreate } from "@octo/base";
 import { LogOut } from "lucide-react";
 import {
@@ -135,7 +136,7 @@ export default class SpaceGate extends Component<{}, SpaceGateState> {
         if (loading && !noSpace) {
             return (
                 <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
-                    <Spin size="large" />
+                    <Loading size="lg" />
                 </div>
             );
         }

@@ -28,6 +28,7 @@ import WKApp from "../../App";
 import { Dap } from "../../Service/Dap";
 import { stripSpacePrefix } from "../../Service/SpacePrefix";
 import { hasEffectiveFilters } from "../../Service/SearchResultMapper";
+import { Loading } from "@octo/ui";
 import { ChannelSearchFilterPopover as FilterPopover } from "./ChannelSearchFilters";
 import {
   ChannelSearchEmpty as SearchEmpty,
@@ -238,7 +239,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
     if (loading) {
       return (
         <div className="wk-channel-search-loading">
-          {t("base.channelSearch.loading")}
+          <Loading text={t("base.channelSearch.loading")} />
         </div>
       );
     }
@@ -383,7 +384,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
         {renderResults()}
         {loadingMore && (
           <div className="wk-channel-search-load-more" role="status">
-            {t("base.channelSearch.loading")}
+            <Loading size="sm" text={t("base.channelSearch.loading")} />
           </div>
         )}
         {paginationError && response.items.length > 0 && (

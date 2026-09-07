@@ -1,5 +1,6 @@
 import React from "react";
-import { Button, Tag } from "@douyinfe/semi-ui";
+import { Button } from "@douyinfe/semi-ui";
+import { Tag } from "@octo/ui";
 import { IconHistory, IconClose } from "@douyinfe/semi-icons";
 import { ChevronRight } from "lucide-react";
 import { useI18n } from "@octo/base";
@@ -129,12 +130,12 @@ const SummaryVersionPanel: React.FC<SummaryVersionPanelProps> = ({
                                     <span className="version-card__title">
                                         <strong>{formatVersionOperation(version)}</strong>
                                         {isCurrent && (
-                                            <Tag color="violet" size="small">
+                                            <Tag tone="purple" size="small">
                                                 {t("summary.detail.currentVersion")}
                                             </Tag>
                                         )}
                                         {version.operation_type === "scheduled_generate" && !isCurrent && (
-                                            <Tag color="green" size="small">
+                                            <Tag tone="green" size="small">
                                                 {t("summary.detail.versionScheduledTaskTag")}
                                             </Tag>
                                         )}

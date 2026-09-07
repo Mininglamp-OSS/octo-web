@@ -41,18 +41,6 @@
     margin: 0 0 32px;
 }
 
-/* 用更具体的选择器覆盖 Semi Button，替代 !important */
-.wk-join-approval-card .wk-join-approval-btn.semi-button {
+.wk-join-approval-btn {
     width: 100%;
-    height: 44px;
-    font-size: 16px;
-    border-radius: 8px;
-    background-color: var(--wk-brand-primary);
-    border-color: var(--wk-brand-primary);
-    color: var(--wk-text-inverse);
-}
-
-.wk-join-approval-card .wk-join-approval-btn.semi-button:hover {
-    background-color: var(--wk-brand-primary-hover);
-    border-color: var(--wk-brand-primary-hover);
 }

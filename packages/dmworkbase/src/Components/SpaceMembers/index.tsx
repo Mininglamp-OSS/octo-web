@@ -3,6 +3,7 @@ import { Toast } from "@douyinfe/semi-ui";
 import { SpaceMember, SpaceService, Space } from "../../Service/SpaceService";
 import WKApp from "../../App";
 import { I18nContext } from "../../i18n";
+import { Loading } from "@octo/ui";
 import "./index.css";
 
 export interface SpaceMembersProps {
@@ -118,7 +119,7 @@ export default class SpaceMembers extends Component<SpaceMembersProps, SpaceMemb
                 <div className="wk-spacemembers-list">
                     {loading ? (
                         <div className="wk-spacemembers-loading">
-                            {t("base.spaceMembers.loading")}
+                            <Loading text={t("base.spaceMembers.loading")} layout="vertical" />
                         </div>
                     ) : (
                         members.map((member) => (

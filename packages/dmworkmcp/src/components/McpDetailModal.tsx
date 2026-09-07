@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { WKModal, WKButton, t, Dap } from "@octo/base";
-import { Toast, Spin } from "@douyinfe/semi-ui";
+import { Toast } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
 import { IconWrenchStroked } from "@douyinfe/semi-icons";
 import { Bot, ShieldCheck, UserRound } from "lucide-react";
 import { deleteMcp, fetchMcpDetail } from "../api/mcpService";
@@ -367,7 +368,7 @@ const McpDetailModal: React.FC<McpDetailModalProps> = ({
     >
       {loading || !detail ? (
         <div className="wk-mcp__state">
-          <Spin />
+          <Loading />
         </div>
       ) : (
         <div className="wk-mcp-detail">

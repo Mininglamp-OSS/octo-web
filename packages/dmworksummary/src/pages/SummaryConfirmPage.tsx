@@ -1,12 +1,12 @@
 import React, { Component } from "react";
 import {
     Button,
-    Spin,
     Toast,
     Banner,
 } from "@douyinfe/semi-ui";
 import { IconArrowLeft } from "@douyinfe/semi-icons";
 import { I18nContext, t } from "@octo/base";
+import { Loading } from "@octo/ui";
 import WKApp from "@octo/base/src/App";
 import SummaryDetailPage from "./SummaryDetailPage";
 import * as api from "../api/summaryApi";
@@ -124,7 +124,7 @@ export default class SummaryConfirmPage extends Component<SummaryConfirmPageProp
 
                 {loading && (
                     <div className="summary-confirm-loading">
-                        <Spin size="large" />
+                        <Loading size="lg" />
                     </div>
                 )}
 

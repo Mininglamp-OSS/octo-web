@@ -73,20 +73,7 @@
     flex-shrink: 0;
 }
 
-/* 未读 Badge — 设计稿: 淡红底红字 */
+/* 未读 Badge — 基础外观由 @octo/ui Badge 提供 */
 .wk-sidebar-tabbar__badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 5px;
-    background: var(--wk-badge-danger-bg);
-    color: var(--wk-badge-danger-text);
-    font-size: var(--wk-text-size-tiny);
-    font-weight: 600;
-    font-family: var(--wk-font-sans);
-    border-radius: var(--wk-r-md);
     flex-shrink: 0;
-    line-height: 1;
 }

@@ -15,7 +15,8 @@ import ChatConversationList, {
 import Provider from "../../Service/Provider";
 import { ErrorBoundary } from "../../Components/ErrorBoundary";
 
-import { Spin, Popover, Toast } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
+import { Popover, Toast } from "@douyinfe/semi-ui";
 import { getElectronLinksBridge } from "../../electron/desktopBridge";
 import WKButton from "../../Components/WKButton";
 import WKModal from "../../Components/WKModal";
@@ -1818,7 +1819,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                     <div className="wk-chat-conversation-list">
                       {vm.loading ? (
                         <div className="wk-chat-conversation-list-loading">
-                          <Spin style={{ marginTop: "20px" }} />
+                          <Loading style={{ marginTop: "20px" }} />
                         </div>
                       ) : activeTab === "recent" &&
                         vm.filteredConversations.length === 0 ? (

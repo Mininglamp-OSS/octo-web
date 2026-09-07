@@ -11,11 +11,12 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import { LoaderCircle, Code2, Eye, AlertCircle } from "lucide-react";
+import { Code2, Eye, AlertCircle } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import HtmlIframeRenderer from "./HtmlIframeRenderer";
 import { useI18n } from "../../../i18n";
+import { Loading } from "@octo/ui";
 import "./PptRenderer.css";
 
 /** PPT 页面内容类型 */
@@ -203,10 +204,7 @@ const PptPageRenderer: React.FC<PptPageRendererProps> = (props) => {
   // 渲染加载状态
   const renderLoading = () => (
     <div className="wk-file-preview-ppt-page__loading">
-      <LoaderCircle className="wk-file-preview-ppt-page__spinner" />
-      <span className="wk-file-preview-ppt-page__loading-text">
-        {t("base.filePreview.loading")}
-      </span>
+      <Loading text={t("base.filePreview.loading")} layout="vertical" />
     </div>
   );
 

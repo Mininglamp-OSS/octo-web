@@ -1,4 +1,4 @@
-import { Tag, Toast } from "@douyinfe/semi-ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { QrCode } from "lucide-react";
 import React from "react";
 import type { ChannelInfo } from "wukongimjssdk";
@@ -174,9 +174,9 @@ export function buildGroupProfileRows({
   const groupName = isExternalGroup ? (
     <span>
       {channelInfo?.title}
-      <Tag color="orange" size="small" style={{ marginLeft: 6 }}>
+      <span className="wk-channelsetting-external-group-tag">
         {t("base.module.channelSettings.externalGroup")}
-      </Tag>
+      </span>
     </span>
   ) : (
     channelInfo?.title

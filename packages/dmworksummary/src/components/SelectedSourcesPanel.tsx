@@ -1,5 +1,6 @@
 import React from "react";
 import { useI18n } from "@octo/base";
+import { Empty } from "@octo/ui";
 import { MessageSquareText, UsersRound } from "lucide-react";
 import type { SourceItem } from "../types/summary";
 import { SourceType, type SourceTypeValue } from "../types/summary";
@@ -41,9 +42,11 @@ const SelectedSourcesPanel: React.FC<SelectedSourcesPanelProps> = ({ sources = [
                     ))}
                 </div>
             ) : (
-                <div className="selected-sources-empty">
-                    {t("summary.source.empty")}
-                </div>
+                <Empty
+                    illustration={false}
+                    description={t("summary.source.empty")}
+                    className="selected-sources-empty"
+                />
             )}
         </section>
     );

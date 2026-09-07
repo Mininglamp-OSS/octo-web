@@ -166,15 +166,14 @@ describe("ClawInfoModal", () => {
   /**
    * AC-3: 加载中状态
    */
-  it("应该在加载时显示 Spin", () => {
+  it("应该在加载时显示 Loading", () => {
     vi.mocked(AgentCardService.getAgentCard).mockImplementation(
       () => new Promise(() => {}) // 永远不 resolve，保持 loading 状态
     );
 
     render(<ClawInfoModal botId="loading_bot" visible={true} onClose={() => {}} />);
 
-    // Semi UI Spin 渲染为 .semi-spin
-    expect(document.querySelector(".semi-spin")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
   });
 
   /**

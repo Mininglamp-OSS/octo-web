@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import SyntaxHighlighter from "react-syntax-highlighter";
 import { formatFileSize, getRenderMode } from "../config";
 import { useI18n } from "../../../i18n";
+import { Empty } from "@octo/ui";
 import "./MarkdownSourceView.css";
 import "./code-highlight.css";
 
@@ -40,9 +41,10 @@ const MarkdownSourceView: React.FC<MarkdownSourceViewProps> = ({
   if (!content || content.trim() === "") {
     return (
       <div className="wk-markdown-source-view wk-markdown-source-view--empty">
-        <span className="wk-markdown-source-view__message">
-          {t("base.filePreview.empty")}
-        </span>
+        <Empty
+          illustration={false}
+          description={t("base.filePreview.empty")}
+        />
       </div>
     );
   }

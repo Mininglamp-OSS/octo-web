@@ -40,6 +40,19 @@
   color: var(--wk-text-secondary);
 }
 
+.wk-renderer-state__empty {
+  padding: 0;
+  --octo-ui-empty-description-max-width: 80%;
+}
+
+.wk-renderer-state__empty.octo-ui-empty {
+  padding: 0;
+}
+
+.wk-renderer-state__empty .octo-ui-empty__description {
+  word-break: break-word;
+}
+
 /* Message */
 .wk-renderer-state__message {
   text-align: center;

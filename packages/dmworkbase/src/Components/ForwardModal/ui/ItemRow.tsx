@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from "react"
 import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk"
-import { Tag } from "@douyinfe/semi-ui"
 import Checkbox from "../../Checkbox"
 import AiBadge from "../../AiBadge"
 import WKAvatar from "../../WKAvatar"
@@ -112,13 +111,9 @@ function ItemRowInner({ item, selected, flat, showMeta, onToggle, botPreview }: 
         </div>
       )}
       {!showMeta && isExternalGroup && (
-        <Tag
-          size="small"
-          color="purple"
-          className="wk-conversationlist-item-external-tag"
-        >
+        <span className="wk-conversationlist-item-external-tag">
           {t("base.forwardModal.external")}
-        </Tag>
+        </span>
       )}
       {!showMeta && item.isAI && <AiBadge />}
     </div>

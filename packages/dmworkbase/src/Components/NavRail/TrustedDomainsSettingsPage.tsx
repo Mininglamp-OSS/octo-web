@@ -1,5 +1,6 @@
 import React from "react";
-import { Spin, Toast } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { t } from "../../i18n";
 import { createTrustedDomainsAdapter } from "../../Runtime/adapters";
 import type { RuntimeEnvironment } from "../../Runtime";
@@ -54,7 +55,7 @@ export default function TrustedDomainsSettingsPage({ environment }: TrustedDomai
           {!adapter ? (
             <div className="wk-settings-center__trusted-domains-status">{t("base.navRail.settingsCenter.trustedDomains.unavailable")}</div>
           ) : hosts === null ? (
-            <div className="wk-settings-center__trusted-domains-status" aria-busy="true"><Spin /></div>
+            <div className="wk-settings-center__trusted-domains-status" aria-busy="true"><Loading /></div>
           ) : hosts.length === 0 ? (
             <div className="wk-settings-center__trusted-domains-empty">{t("base.navRail.settingsCenter.trustedDomains.empty")}</div>
           ) : (

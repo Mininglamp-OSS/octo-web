@@ -1,5 +1,6 @@
 import React from "react";
-import { Input, Spin } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
+import { Input } from "@douyinfe/semi-ui";
 import { IconEdit } from "@douyinfe/semi-icons";
 import Sections from "../../../Components/Sections";
 import WKButton from "../../../Components/WKButton";
@@ -81,7 +82,7 @@ function UserInfoView({
       contentClassName="wk-userinfo-content"
       loadingClassName="wk-userinfo-loading"
       loading={loading}
-      loadingNode={<Spin />}
+      loadingNode={<Loading />}
       footer={
         <ProfileDetailFooter
           className="wk-userInfo-footer"

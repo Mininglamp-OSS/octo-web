@@ -149,6 +149,21 @@
     font-size: var(--wk-text-size-md);
 }
 
+.wk-subscrierlist-bot-admin-tag {
+    display: inline-flex;
+    align-items: center;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    height: var(--wk-sp-5);
+    padding: var(--wk-sp-0-5) var(--wk-sp-2);
+    border-radius: var(--wk-r-full);
+    background: rgba(var(--semi-green-5), 0.15);
+    color: rgba(var(--semi-green-8), 1);
+    font-size: var(--wk-text-size-sm);
+    font-weight: var(--wk-font-medium);
+    line-height: var(--wk-sp-5);
+}
+
 .wk-subscrierlist-item-source {
     margin-left: 4px;
     font-size: 12px;

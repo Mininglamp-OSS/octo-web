@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from "react";
-import { Select, Tag, Button, Input } from "@douyinfe/semi-ui";
+import { Select, Button, Input } from "@douyinfe/semi-ui";
+import { Tag } from "@octo/ui";
 import { IconPlus } from "@douyinfe/semi-icons";
 import { useI18n } from "@octo/base";
 import type { SourceItem, SourceTypeValue } from "../types/summary";
@@ -63,9 +64,10 @@ const SourceSelector: React.FC<SourceSelectorProps> = ({
                     <Tag
                         key={`${source.source_type}-${source.source_id}`}
                         closable
+                        closeAriaLabel={t("summary.common.delete")}
                         onClose={() => handleRemove(index)}
-                        color="blue"
-                        size="large"
+                        tone="blue"
+                        size="small"
                         style={{ marginBottom: 4, marginRight: 4 }}
                     >
                         [{getSourceTypeLabel(source.source_type)}] {source.source_name || source.source_id}

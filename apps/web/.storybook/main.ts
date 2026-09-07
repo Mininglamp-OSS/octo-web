@@ -86,6 +86,11 @@ const config: StorybookConfig = {
           '@octo/base': path.resolve(__dirname, '../../../packages/dmworkbase'),
           '@octo/contacts': path.resolve(__dirname, '../../../packages/dmworkcontacts'),
           '@octo/login': path.resolve(__dirname, '../../../packages/dmworklogin'),
+          '@octo/ui/styles.css': path.resolve(
+            __dirname,
+            '../../../packages/octo-ui/src/styles/index.css',
+          ),
+          '@octo/ui': path.resolve(__dirname, '../../../packages/octo-ui/src/index.ts'),
         },
         dedupe: ['react', 'react-dom'],
       },

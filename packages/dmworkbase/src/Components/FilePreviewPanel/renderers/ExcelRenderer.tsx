@@ -7,6 +7,7 @@ import { RendererState } from "./RendererState";
 import { useFileContent } from "../hooks/useFileContent";
 import FileTooLarge from "./FileTooLarge";
 import { t, useI18n } from "../../../i18n";
+import { Empty } from "@octo/ui";
 import "./ExcelRenderer.css";
 
 export interface ExcelRendererProps extends BaseRendererProps {}
@@ -150,7 +151,10 @@ function SheetTable({ sheetData }: { sheetData: SheetData }) {
   if (!data || data.length === 0) {
     return (
       <div className="wk-file-preview-excel-renderer--empty">
-        <span>{t("base.filePreview.empty")}</span>
+        <Empty
+          illustration={false}
+          description={t("base.filePreview.empty")}
+        />
       </div>
     );
   }

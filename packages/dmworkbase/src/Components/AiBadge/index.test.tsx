@@ -8,6 +8,8 @@ describe("AiBadge", () => {
         const html = renderToStaticMarkup(<AiBadge />);
         expect(html).toContain(">AI</span>");
         expect(html).toContain("ai-badge-default");
+        expect(html).toContain("wk-ai-tag--xs");
+        expect(html).not.toContain("wk-ai-tag--small");
     });
 
     it("renders a product-specific label and forwards span accessibility attributes", () => {

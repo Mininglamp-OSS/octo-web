@@ -106,4 +106,24 @@ describe('SidebarTabBar', () => {
 
     expect(onActiveTabClick).toHaveBeenCalledWith('recent')
   })
+
+  it('renders follow and recent unread counts with the shared soft badge', () => {
+    act(() => {
+      ReactDOM.render(
+        <SidebarTabBar
+          activeTab="recent"
+          followUnread={100}
+          recentUnread={3}
+          onTabChange={() => {}}
+        />,
+        container
+      )
+    })
+
+    const badges = container.querySelectorAll('.wk-sidebar-tabbar__badge')
+    expect(badges).toHaveLength(2)
+    expect(badges[0].classList.contains('octo-ui-badge--soft')).toBe(true)
+    expect(badges[0].textContent).toBe('99+')
+    expect(badges[1].textContent).toBe('3')
+  })
 })

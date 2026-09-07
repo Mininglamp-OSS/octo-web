@@ -2,6 +2,7 @@ import React, { Component } from 'react';
 import axios from 'axios';
 import { Toast } from '@douyinfe/semi-ui';
 import { I18nContext } from '@octo/base';
+import { Empty, Loading } from '@octo/ui';
 import { X } from 'lucide-react';
 import * as summaryApi from '../api/summaryApi';
 import type { SummaryListItem } from '../types/summary';
@@ -217,17 +218,15 @@ export default class ChatSummaryHistory extends Component<
 
                 {loading ? (
                     <div className="chat-summary-history-empty chat-summary-history-empty--loading">
-                        {t('summary.common.loading')}
+                        <Loading text={t('summary.common.loading')} />
                     </div>
                 ) : items.length === 0 ? (
-                    <div className="chat-summary-history-empty">
-                        <div className="chat-summary-history-empty-title">
-                            {t('summary.list.emptyTitle')}
-                        </div>
-                        <div className="chat-summary-history-empty-description">
-                            {t('summary.chatSummary.emptyDescription')}
-                        </div>
-                    </div>
+                    <Empty
+                        illustration={false}
+                        title={t('summary.list.emptyTitle')}
+                        description={t('summary.chatSummary.emptyDescription')}
+                        className="chat-summary-history-empty"
+                    />
                 ) : (
                     <div className="chat-summary-history-list">
                         {items.map((item) => (

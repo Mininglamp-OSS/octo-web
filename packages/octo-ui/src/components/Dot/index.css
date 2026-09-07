@@ -1,0 +1,59 @@
+.octo-ui-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: var(--octo-ui-dot-size);
+  height: var(--octo-ui-dot-size);
+  border-radius: var(--wk-r-circle);
+  background: var(--octo-ui-dot-color);
+  vertical-align: middle;
+}
+
+:where(.octo-ui-dot--default) {
+  --octo-ui-dot-size: var(--wk-sp-2);
+}
+
+:where(.octo-ui-dot--small) {
+  --octo-ui-dot-size: var(--wk-sp-1-5);
+}
+
+:where(.octo-ui-dot--neutral) {
+  --octo-ui-dot-color: var(
+    --octo-ui-dot-neutral-color,
+    var(--wk-text-tertiary)
+  );
+}
+
+:where(.octo-ui-dot--danger) {
+  --octo-ui-dot-color: var(
+    --octo-ui-dot-danger-color,
+    var(--wk-color-danger)
+  );
+}
+
+:where(.octo-ui-dot--success) {
+  --octo-ui-dot-color: var(
+    --octo-ui-dot-success-color,
+    var(--wk-color-success)
+  );
+}
+
+:where(.octo-ui-dot--warning) {
+  --octo-ui-dot-color: var(
+    --octo-ui-dot-warning-color,
+    var(--wk-color-warning)
+  );
+}
+
+:where(.octo-ui-dot--info) {
+  --octo-ui-dot-color: var(
+    --octo-ui-dot-info-color,
+    var(--wk-color-accent)
+  );
+}
+
+:where(.octo-ui-dot--online) {
+  --octo-ui-dot-color: var(
+    --octo-ui-dot-online-color,
+    var(--wk-color-online)
+  );
+}

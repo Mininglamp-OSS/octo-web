@@ -1,4 +1,5 @@
-import { Button, Spin } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
+import { Button } from "@douyinfe/semi-ui";
 import classNames from "classnames";
 import { Channel, ChannelInfo, Subscriber } from "wukongimjssdk";
 import React from "react";
@@ -70,7 +71,7 @@ export default class ChannelSetting extends Component<ChannelSettingProps> {
                 context.setRouteData(vm.routeData)
                 return <div className="wk-channelsetting-content">
                     {
-                        vm.channelInfo ? <Sections sections={vm.sections(context)}></Sections> : <div className="wk-channelsetting-content-loading"><Spin ></Spin></div>
+                        vm.channelInfo ? <Sections sections={vm.sections(context)}></Sections> : <div className="wk-channelsetting-content-loading"><Loading /></div>
                     }
                 </div>
             }} />

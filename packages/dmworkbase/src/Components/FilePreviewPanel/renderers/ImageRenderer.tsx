@@ -3,6 +3,7 @@ import { BaseRendererProps } from "../types";
 import { isFileTooLarge } from "../config";
 import FileTooLarge from "./FileTooLarge";
 import { useI18n } from "../../../i18n";
+import { Loading } from "@octo/ui";
 import "./ImageRenderer.css";
 
 export interface ImageRendererProps extends BaseRendererProps {
@@ -152,10 +153,7 @@ const ImageRenderer: React.FC<ImageRendererProps> = ({
       <div className="wk-file-preview-image-renderer__content">
         {loading && (
           <div className="wk-file-preview-image-renderer__loading">
-            <div className="wk-file-preview-image-renderer__spinner" />
-            <span className="wk-file-preview-image-renderer__loading-text">
-              {t("base.filePreview.loading")}
-            </span>
+            <Loading text={t("base.filePreview.loading")} layout="vertical" />
           </div>
         )}
 

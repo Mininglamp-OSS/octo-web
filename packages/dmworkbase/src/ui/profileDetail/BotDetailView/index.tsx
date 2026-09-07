@@ -1,5 +1,6 @@
 import React from "react";
-import { Button, Input, Spin } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
+import { Button, Input } from "@douyinfe/semi-ui";
 import {
   IconAlertCircle,
   IconCamera,
@@ -174,7 +175,7 @@ export function BotDetailView({
       contentClassName="wk-bot-detail-scroll"
       loadingClassName="wk-bot-detail-loading"
       loading={loading}
-      loadingNode={<Spin size="large" />}
+      loadingNode={<Loading size="lg" />}
       closeLabel={labels.close}
       onClose={onClose}
       footer={
@@ -247,7 +248,7 @@ export function BotDetailView({
               </div>
               {uploadingAvatar && (
                 <div className="wk-bot-detail-avatar-loading">
-                  <Spin />
+                  <Loading />
                 </div>
               )}
               <input

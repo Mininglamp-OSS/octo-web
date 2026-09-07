@@ -5,6 +5,7 @@ import type {
   GlobalSearchDataSource,
 } from "../../Service/SearchTypes";
 import useSearchPagination from "../../bridge/search/useSearchPagination";
+import { Empty, Loading } from "@octo/ui";
 import "./doc-search-panel.css";
 
 const PAGE_SIZE = 20;
@@ -127,7 +128,7 @@ const DocSearchPanel: React.FC<DocSearchPanelProps> = ({
     if (loading) {
       return (
         <div className="wk-doc-search__hint">
-          {t("base.globalSearch.docs.loading")}
+          <Loading text={t("base.globalSearch.docs.loading")} />
         </div>
       );
     }
@@ -135,13 +136,15 @@ const DocSearchPanel: React.FC<DocSearchPanelProps> = ({
       return <div className="wk-doc-search__hint">{error}</div>;
     }
     return (
-      <div className="wk-doc-search__empty">
-        {!trimmed
+      <Empty
+        illustration={false}
+        description={!trimmed
           ? t("base.globalSearch.docs.emptyHint")
           : queryStarted
             ? t("base.globalSearch.docs.noResults")
             : t("base.globalSearch.docs.emptyHint")}
-      </div>
+        className="wk-doc-search__empty"
+      />
     );
   }, [error, items.length, loading, queryStarted, t, trimmed]);
 
@@ -190,7 +193,7 @@ const DocSearchPanel: React.FC<DocSearchPanelProps> = ({
             dead-ends the query. Mirrors GlobalContentSearchPanel. */}
         {loadingMore && (
           <div className="wk-doc-search__hint" role="status">
-            {t("base.globalSearch.docs.loading")}
+            <Loading size="sm" text={t("base.globalSearch.docs.loading")} />
           </div>
         )}
         {paginationError && (

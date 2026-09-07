@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Button, Spin } from "@douyinfe/semi-ui";
+import { Button } from "@douyinfe/semi-ui";
 import { IconArrowLeft } from "@douyinfe/semi-icons";
+import { Loading } from "@octo/ui";
 import { Channel } from "wukongimjssdk";
 import { titleContextStore, useI18n, WKApp } from "@octo/base";
 import { getSummaryShare } from "../api/summaryApi";
@@ -56,7 +57,7 @@ export default function SummaryShareDetailPage({ shareId, originChannel }: Summa
 
     if (!snapshot) {
         return <div className="summary-share-detail__state">
-            {error ? <><p>{t("summary.share.unavailable")}</p><Button onClick={() => setReload((value: number) => value + 1)}>{t("summary.share.retry")}</Button></> : <Spin />}
+            {error ? <><p>{t("summary.share.unavailable")}</p><Button onClick={() => setReload((value: number) => value + 1)}>{t("summary.share.retry")}</Button></> : <Loading />}
         </div>;
     }
 

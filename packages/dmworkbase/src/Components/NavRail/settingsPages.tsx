@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ChevronRight, ExternalLink } from "lucide-react";
-import { Spin, Switch, Toast } from "@douyinfe/semi-ui";
+import { Loading } from "@octo/ui";
+import { Switch, Toast } from "@douyinfe/semi-ui";
 import DOMPurify from "dompurify";
 import { QRCodeSVG } from "qrcode.react";
 import WKApp, { ThemeMode } from "../../App";
@@ -458,7 +459,7 @@ function VoiceInputSettingsPage({ environment }: { environment: import("../../Ru
     <button type="button" className="wk-settings-center__voice-consent-back" onClick={() => setShowConsent(false)}>← {t("base.navRail.settingsCenter.voiceConsent.back")}</button>
     <header className="wk-settings-center__page-header"><h2>{t("base.navRail.settingsCenter.voiceConsent.pageTitle")}</h2></header>
     <div className="wk-settings-center__voice-consent-card">
-      {consentLoading && <div className="wk-settings-center__voice-consent-loading"><Spin /></div>}
+      {consentLoading && <div className="wk-settings-center__voice-consent-loading"><Loading /></div>}
       {consentError && !consentLoading && <div className="wk-settings-center__voice-consent-error">{t("base.navRail.voiceNotice.loadFailed")}</div>}
       {consentContent && <div className="wk-settings-center__voice-consent-document" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(consentContent) }} />}
     </div>
@@ -517,7 +518,7 @@ function ResourceCard({ id, title, description, status, category, action }: Reso
   if (category === "clients") {
     return <article className="wk-settings-center__resource-card wk-settings-center__resource-card--clients" data-resource-status={status}>
       <div className="wk-settings-center__client-head"><span className="wk-settings-center__resource-icon" aria-hidden="true"><ResourceBrandIcon id={id} /></span><h4>{title}</h4></div>
-      {isMobile ? <div className="wk-settings-center__resource-qr" aria-label={`${title} QR code`} aria-busy={qrState.status === "loading"}>{qrState.status === "ready" ? <QRCodeSVG value={qrState.downloadUrl} size={104} /> : qrState.status === "loading" ? <Spin /> : <div className="wk-settings-center__resource-qr-error" role="alert"><span>{t("base.navRail.settingsCenter.value.qrLoadFailed")}</span><button type="button" className="wk-settings-center__manage-button" onClick={qrState.retry}>{t("base.navRail.settingsCenter.action.retry")}</button></div>}</div> : <div className="wk-settings-center__client-status"><span>{description}</span>{status === "coming-soon" && <SettingsStatusTag tone="neutral" label={t("base.navRail.settingsCenter.value.comingSoon")} />}</div>}
+      {isMobile ? <div className="wk-settings-center__resource-qr" aria-label={`${title} QR code`} aria-busy={qrState.status === "loading"}>{qrState.status === "ready" ? <QRCodeSVG value={qrState.downloadUrl} size={104} /> : qrState.status === "loading" ? <Loading /> : <div className="wk-settings-center__resource-qr-error" role="alert"><span>{t("base.navRail.settingsCenter.value.qrLoadFailed")}</span><button type="button" className="wk-settings-center__manage-button" onClick={qrState.retry}>{t("base.navRail.settingsCenter.action.retry")}</button></div>}</div> : <div className="wk-settings-center__client-status"><span>{description}</span>{status === "coming-soon" && <SettingsStatusTag tone="neutral" label={t("base.navRail.settingsCenter.value.comingSoon")} />}</div>}
       {action && <div className="wk-settings-center__resource-actions">{action}</div>}
     </article>;
   }

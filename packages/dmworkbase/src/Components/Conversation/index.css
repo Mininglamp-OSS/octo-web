@@ -148,28 +148,9 @@ body[theme-mode="dark"] .wk-conversation-content {
   display: inline-block;
 }
 
-/* Tooltip */
-.wk-fold-session-tooltip {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
-  background: rgba(28, 28, 35, 0.9);
-  color: #ffffff;
-  padding: 12px;
-  border-radius: 8px;
-  font-size: 14px;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-  transition-delay: 0s;
-  z-index: 1000;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.wk-fold-session-participants-collapsed:hover .wk-fold-session-tooltip {
-  opacity: 1;
-  transition-delay: 0.3s;
+.wk-fold-session-tooltip-content {
+  display: flex;
+  flex-direction: column;
 }
 
 .wk-fold-session-tooltip-item {
@@ -194,22 +175,6 @@ body[theme-mode="dark"] .wk-conversation-content {
 .wk-fold-session-tooltip-name {
   font-size: 14px;
   font-weight: 500;
-}
-
-.wk-fold-session-tag {
-  font-size: 11px;
-  font-weight: 500;
-  color: #ffffff;
-  background: linear-gradient(90deg, #7b89f4 0%, #9d78f5 100%);
-  border: none;
-  padding: 0 6px;
-  border-radius: 4px;
-  height: 18px;
-  line-height: 16px;
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap;
-  flex-shrink: 0;
 }
 
 /* 标题行时间 */

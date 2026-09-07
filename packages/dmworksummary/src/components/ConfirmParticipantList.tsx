@@ -1,5 +1,7 @@
 import React from "react";
-import { List, Tag } from "@douyinfe/semi-ui";
+import { List } from "@douyinfe/semi-ui";
+import { Tag } from "@octo/ui";
+import type { TagTone } from "@octo/ui";
 import { IconTickCircle, IconClock, IconClose } from "@douyinfe/semi-icons";
 import { useI18n } from "@octo/base";
 import type { Participant } from "../types/summary";
@@ -26,7 +28,7 @@ function statusLabel(status: number): string {
     return getParticipantStatusLabel(status);
 }
 
-function statusColor(status: number): string {
+function statusTone(status: number): TagTone {
     switch (status) {
         case ParticipantStatus.CONFIRMED: return "green";
         case ParticipantStatus.DECLINED: return "red";
@@ -59,7 +61,7 @@ const ConfirmParticipantList: React.FC<ConfirmParticipantListProps> = ({
                         </div>
                     }
                     extra={
-                        <Tag color={statusColor(p.status ?? 0) as any} size="small">
+                        <Tag tone={statusTone(p.status ?? 0)} size="small">
                             {statusLabel(p.status ?? 0)}
                         </Tag>
                     }

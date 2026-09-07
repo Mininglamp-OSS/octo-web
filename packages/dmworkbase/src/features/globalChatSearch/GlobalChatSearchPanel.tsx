@@ -13,6 +13,7 @@ import type {
 import useGlobalChatSearch from "../../bridge/globalChatSearch/useGlobalChatSearch";
 import GlobalChatSearchLayout from "../../ui/GlobalChatSearchLayout";
 import { useI18n } from "../../i18n";
+import { Loading } from "@octo/ui";
 import "./global-chat-search-panel.css";
 
 interface GlobalChatSearchPanelProps {
@@ -95,7 +96,7 @@ export function GlobalChatSearchPanel({
     ) {
       return (
         <div className="wk-global-chat-search-panel__state">
-          {t("base.channelSearch.loading")}
+          <Loading text={t("base.channelSearch.loading")} />
         </div>
       );
     }
@@ -119,7 +120,7 @@ export function GlobalChatSearchPanel({
         ))}
         {search.result.isLoadingMore && (
           <div className="wk-global-chat-search-panel__load-more">
-            {t("base.channelSearch.loading")}
+            <Loading size="sm" text={t("base.channelSearch.loading")} />
           </div>
         )}
         <div ref={loadMoreSentinelRef} />

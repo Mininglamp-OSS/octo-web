@@ -1,0 +1,78 @@
+.octo-ui-tooltip.octo-ui-tooltip {
+  box-sizing: border-box;
+  width: max-content;
+  max-width: var(--octo-ui-tooltip-max-width);
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border-radius: var(--wk-r-sm);
+  background-color: var(--octo-ui-tooltip-bg);
+  box-shadow: none;
+  color: var(--octo-ui-tooltip-color);
+  font-family: var(--wk-font-sans);
+  font-size: var(--wk-text-size-md);
+  line-height: var(--octo-ui-tooltip-line-height);
+  overflow-wrap: anywhere;
+  text-align: left;
+  white-space: normal;
+}
+
+.octo-ui-tooltip--horizontal-actions.octo-ui-tooltip {
+  padding-right: var(--wk-sp-1);
+}
+
+.octo-ui-tooltip__content {
+  display: flex;
+  min-width: 0;
+}
+
+.octo-ui-tooltip__content--horizontal {
+  align-items: center;
+  gap: var(--wk-sp-3);
+}
+
+.octo-ui-tooltip__content--shortcut {
+  gap: var(--wk-sp-2);
+}
+
+.octo-ui-tooltip__content--vertical {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--wk-sp-1);
+}
+
+.octo-ui-tooltip__title {
+  font-weight: var(--wk-font-semibold);
+}
+
+.octo-ui-tooltip__body--muted {
+  color: var(--octo-ui-tooltip-muted-color);
+}
+
+.octo-ui-tooltip__content--vertical .octo-ui-tooltip__body {
+  display: flex;
+  flex-direction: column;
+}
+
+.octo-ui-tooltip__shortcut {
+  flex: none;
+  color: var(--octo-ui-tooltip-shortcut-color);
+}
+
+.octo-ui-tooltip__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  flex: none;
+}
+
+.octo-ui-tooltip__content--vertical .octo-ui-tooltip__actions {
+  margin-top: var(--wk-sp-1);
+}
+
+.octo-ui-tooltip .octo-ui-button--text {
+  color: var(--octo-ui-tooltip-action-color);
+}
+
+.octo-ui-tooltip .octo-ui-button--text:hover:not(:disabled),
+.octo-ui-tooltip .octo-ui-button--text:active:not(:disabled) {
+  color: var(--octo-ui-tooltip-action-hover-color);
+}

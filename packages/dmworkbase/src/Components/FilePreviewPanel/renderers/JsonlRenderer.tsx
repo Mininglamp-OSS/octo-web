@@ -15,6 +15,7 @@ import {
 import { formatFileSize } from "../config";
 import CodeRendererBase from "./CodeRendererBase";
 import { useI18n } from "../../../i18n";
+import { Empty } from "@octo/ui";
 import "./JsonlRenderer.css";
 import "./code-highlight.css";
 
@@ -106,7 +107,10 @@ const JsonlRenderer: React.FC<JsonlRendererProps> = ({ file, onError }) => {
   if (content === null || tableData.length === 0) {
     return (
       <div className="wk-file-preview-jsonl-renderer wk-file-preview-jsonl-renderer--empty">
-        <span>{t("base.filePreview.jsonl.emptyOrInvalid")}</span>
+        <Empty
+          illustration={false}
+          description={t("base.filePreview.jsonl.emptyOrInvalid")}
+        />
       </div>
     );
   }

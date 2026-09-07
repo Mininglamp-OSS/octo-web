@@ -64,20 +64,6 @@
   color: transparent;
 }
 
-/* AI Tag (渐变背景) */
-.wk-ai-message-card__tag {
-  display: inline-flex;
-  align-items: center;
-  height: 18px;
-  padding: 0 6px;
-  background: linear-gradient(90deg, #44C5FB 0%, #7D58F5 100%);
-  color: #FFFFFF;
-  font-size: 11px;
-  font-weight: 500;
-  border-radius: 4px;
-  white-space: nowrap;
-}
-
 /* 展开/收起按钮 */
 .wk-ai-message-card__toggle {
   margin-left: auto;

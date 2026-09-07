@@ -27,7 +27,9 @@
 }
 
 .wk-subscribers-item img,
-.wk-subscribers-item-avatar-wrap img {
+.wk-subscribers-item-avatar-wrap img,
+.wk-subscribers-item .wk-avatar,
+.wk-subscribers-item-avatar-wrap .wk-avatar {
     width: calc(var(--wk-sp-12) + var(--wk-sp-2));
     height: calc(var(--wk-sp-12) + var(--wk-sp-2));
     border-radius: var(--wk-avatar-radius, 50%);

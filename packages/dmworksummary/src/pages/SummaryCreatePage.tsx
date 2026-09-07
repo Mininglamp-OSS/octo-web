@@ -4,10 +4,9 @@ import {
     Button,
     Toast,
     Typography,
-    Tag,
-    Tooltip,
     Modal,
 } from "@douyinfe/semi-ui";
+import { Tooltip } from "@octo/ui";
 import { I18nContext, t, Dap } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
@@ -1365,7 +1364,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                         {selectedChats.length > this.state.visibleChipCount && (
                                             <Tooltip
                                                 content={selectedChats.map((c) => c.name).join("、")}
-                                                position="top"
                                             >
                                                 <span className="summary-workbench-chat-chip-overflow">
                                                     ...+{selectedChats.length - this.state.visibleChipCount}
@@ -1422,7 +1420,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                         {selectedMembers.length > this.state.visibleMemberChipCount && (
                                             <Tooltip
                                                 content={selectedMembers.map((m) => m.name).join("、")}
-                                                position="top"
                                             >
                                                 <span className="summary-workbench-chat-chip-overflow">
                                                     ...+{selectedMembers.length - this.state.visibleMemberChipCount}

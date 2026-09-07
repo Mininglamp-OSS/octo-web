@@ -7,7 +7,6 @@ import {
   ChevronRight,
   FileText,
   Inbox,
-  LoaderCircle,
   Mail,
   PenLine,
   RefreshCw,
@@ -16,6 +15,7 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
+import Loading from "@octo/ui/components/Loading";
 import type { AgentMailbox, MailIdentity, Mailbox } from "../../bridge/types";
 import { inferMailboxRole } from "../../bridge/mailbox";
 import "./index.css";
@@ -266,8 +266,7 @@ export default function MailSidebarView(props: MailSidebarViewProps) {
         >
           {loading ? (
             <div className="octo-mail-sidebar-state">
-              <LoaderCircle className="is-spinning" size={18} />
-              <span>{t("mail.status.loading")}</span>
+              <Loading size="sm" text={t("mail.status.loading")} />
             </div>
           ) : null}
           {!loading && error ? (

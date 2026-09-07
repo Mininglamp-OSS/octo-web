@@ -13,6 +13,10 @@
     text-align: center;
 }
 
+.summary-reference-picker-empty.octo-ui-empty {
+    padding: var(--wk-sp-10) 0;
+}
+
 .summary-reference-picker-item {
     cursor: pointer;
     padding: 8px 12px;

@@ -1,5 +1,6 @@
 import React from "react";
 import { Sparkles } from "lucide-react";
+import AITag from "../../ui/AITag";
 import "./index.css";
 
 export interface SummaryCardViewProps {
@@ -42,10 +43,10 @@ export function SummaryCardView(props: SummaryCardViewProps) {
           <h3 title={title}>{title}</h3>
           <p>{labels.generated}</p>
         </div>
-        <span className="wk-message-summary-card__ai-tag">
+        <AITag className="wk-message-summary-card__ai-tag">
           <Sparkles size={12} aria-hidden="true" />
           {labels.ai}
-        </span>
+        </AITag>
       </header>
 
       {hasMeta ? <div className="wk-message-summary-card__meta">

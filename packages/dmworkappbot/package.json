@@ -5,6 +5,7 @@
   "main": "src/index.tsx",
   "dependencies": {
     "@octo/base": "workspace:*",
+    "@octo/ui": "workspace:*",
     "wukongimjssdk": "^1.3.5"
   },
   "devDependencies": {

@@ -1,6 +1,8 @@
 import { Channel, ChannelTypePerson, ChannelTypeGroup } from "wukongimjssdk";
 import React from "react";
 import { Component, CSSProperties } from "react";
+import { Avatar } from "@octo/ui";
+import type { AvatarSize } from "@octo/ui";
 import classNames from "classnames";
 import WKApp from "../../App";
 import { getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
@@ -18,6 +20,7 @@ export function isBot(uid: string): boolean {
 interface WKAvatarProps {
     channel?: Channel
     src?: string
+    size?: AvatarSize
     style?: CSSProperties
     random?: string
     /**
@@ -61,7 +64,7 @@ function findScrollParent(node: HTMLElement | null): HTMLElement | null {
 
 export default class WKAvatar extends Component<WKAvatarProps, WKAvatarState> {
 
-    private imgRef = React.createRef<HTMLImageElement>()
+    private avatarRef = React.createRef<HTMLSpanElement>()
     private observer: IntersectionObserver | null = null
     private realSrcCached = ""
 
@@ -98,7 +101,7 @@ export default class WKAvatar extends Component<WKAvatarProps, WKAvatarState> {
             this.setState({ src: this.realSrcCached })
             return
         }
-        const target = this.imgRef.current
+        const target = this.avatarRef.current
         if (!target) return
         const root = findScrollParent(target)
         this.observer = new IntersectionObserver((entries) => {
@@ -188,17 +191,27 @@ export default class WKAvatar extends Component<WKAvatarProps, WKAvatarState> {
     }
 
     render() {
-        const { style } = this.props
+        const { style, size = 40 } = this.props
         // 空 src 时渲染 <img> 仍需占位（用 defaultAvatarSVG，避免浏览器 broken-image）
         const displaySrc = this.state.src || defaultAvatarSVG
-        return <img
-            ref={this.imgRef}
+        return <Avatar
+            ref={this.avatarRef}
             alt=""
+            size={size}
             style={style}
             className={classNames("wk-avatar", this.getAvatarClass())}
             src={displaySrc}
-            onError={this.handleImgError}
-            decoding="async"
+            imageLoading="eager"
+            imageDecoding="async"
+            onImageError={this.handleImgError}
+            fallbackIcon={
+                <img
+                    alt=""
+                    className="wk-avatar__fallback-image"
+                    src={defaultAvatarSVG}
+                    decoding="async"
+                />
+            }
         />
     }
 }

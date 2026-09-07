@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Button, Input, Spin, Toast } from '@douyinfe/semi-ui'
+import { Button, Input, Toast } from '@douyinfe/semi-ui'
 import { replaceWithShellDocument, WKApp } from '@octo/base'
+import { Loading } from '@octo/ui'
 import { clearBindEntry } from './bindEntryState'
 import {
   clearPendingOidcLogin,
@@ -434,7 +435,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
 
         {stage.kind === 'loading_info' || stage.kind === 'init' ? (
           <div style={{ textAlign: 'center', padding: '40px 0' }}>
-            <Spin />
+            <Loading />
           </div>
         ) : null}
 
@@ -451,7 +452,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
 
         {stage.kind === 'success' ? (
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <Spin />
+            <Loading />
           </div>
         ) : null}
 
@@ -471,7 +472,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
 
         {stage.kind === 'creating' ? (
           <div className="wk-bind-loader">
-            <Spin size="large" />
+            <Loading size="lg" />
             <div className="wk-bind-loader-title">{t('bind.creatingAccount')}</div>
             <div className="wk-bind-loader-sub">{t('bind.loaderSub')}</div>
           </div>
@@ -582,7 +583,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
 
         {stage.kind === 'confirming' ? (
           <div className="wk-bind-loader">
-            <Spin size="large" />
+            <Loading size="lg" />
             <div className="wk-bind-loader-title">{t('bind.validating')}</div>
             <div className="wk-bind-loader-sub">{t('bind.loaderSub')}</div>
           </div>

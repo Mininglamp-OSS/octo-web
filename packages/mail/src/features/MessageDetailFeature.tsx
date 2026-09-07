@@ -20,6 +20,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useI18n, wkConfirm, WKApp } from "@octo/base";
+import Loading from "@octo/ui/components/Loading";
 import MailService from "../Service/MailService";
 import type {
   ComposeMode,
@@ -427,8 +428,7 @@ export default function MessageDetailFeature({
     return (
       <div className="octo-mail-content">
         <div className="octo-mail-content-state">
-          <LoaderCircle className="is-spinning" size={24} />
-          <span>{t("mail.status.loading")}</span>
+          <Loading text={t("mail.status.loading")} layout="vertical" />
         </div>
       </div>
     );

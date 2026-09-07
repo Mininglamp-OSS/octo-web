@@ -6,7 +6,8 @@ import WKApp from "../../App";
 import { FileContent } from "./FileContent";
 import { downloadFile } from "../../Utils/download";
 import { WKSDK, Task, TaskStatus, MessageStatus } from "wukongimjssdk";
-import { Toast, Tooltip } from "@douyinfe/semi-ui";
+import { Tooltip } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import WKModal from "../../Components/WKModal";
 import MarkdownContent from "../Text/MarkdownContent";
 import MessageRow from "../../ui/message/MessageRow";
@@ -930,7 +931,6 @@ export class FileCell extends MessageCell<any, FileCellState> {
                               ? t("base.messageFile.viewInDrive")
                               : t("base.messageFile.saveToDrive")
                         }
-                        position="top"
                       >
                         <div
                           className="wk-message-file-action"
@@ -984,7 +984,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
                         </div>
                       </Tooltip>
                     )}
-                    <Tooltip content={t("base.conversation.file.download")} position="top">
+                    <Tooltip content={t("base.conversation.file.download")}>
                       <div
                         className="wk-message-file-action"
                         aria-label={t("base.conversation.file.download")}

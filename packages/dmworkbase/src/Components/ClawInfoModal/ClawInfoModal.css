@@ -56,27 +56,12 @@
   gap: 4px;
 }
 
-.claw-info-meta__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #d1d5db;
-}
-
 .claw-info-meta__status[data-status="running"] {
   color: var(--wk-color-success);
 }
 
-.claw-info-meta__status[data-status="running"] .claw-info-meta__dot {
-  background: var(--wk-color-success);
-}
-
 .claw-info-meta__status[data-status="idle"] {
   color: var(--wk-color-warning);
-}
-
-.claw-info-meta__status[data-status="idle"] .claw-info-meta__dot {
-  background: var(--wk-color-warning);
 }
 
 /* 上报时间指示器 */

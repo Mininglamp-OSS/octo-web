@@ -15,7 +15,7 @@ import WKAvatar, { isBot } from "../WKAvatar";
 import AiBadge from "../AiBadge";
 import BotDetailModal from "../BotDetailModal";
 import { Checkbox } from "@douyinfe/semi-ui/lib/es/checkbox";
-import { Tag, Toast } from "@douyinfe/semi-ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { GroupRole } from "../../Service/Const";
 import { debounce, throttle } from "../../Utils/rateLimit";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
@@ -453,13 +453,9 @@ export class SubscriberList extends Component<
                             )}
                             {itemIsBot && <AiBadge />}
                             {itemIsBot && isBotAdmin && (
-                              <Tag
-                                size="small"
-                                color="green"
-                                style={{ marginLeft: 4 }}
-                              >
+                              <span className="wk-subscrierlist-bot-admin-tag">
                                 {this.context.t("base.subscribers.botAdmin")}
-                              </Tag>
+                              </span>
                             )}
                           </div>
                           <div

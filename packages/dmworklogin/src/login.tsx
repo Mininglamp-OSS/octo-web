@@ -1,5 +1,6 @@
 import React, { Component, useState, useEffect, useRef } from "react";
-import { Button, Select, Spin, Toast } from '@douyinfe/semi-ui';
+import { Button, Select, Toast } from '@douyinfe/semi-ui';
+import { Loading } from '@octo/ui';
 // 不引入特定渠道 icon (Mail / Phone 都不准确, Aegis 同时支持邮箱和手机号).
 // 主按钮纯文字, 避免锁定到任意一种登录方式让用户产生 "我没邮箱不能登" 的误判.
 import './login.css'
@@ -142,7 +143,7 @@ const OidcResumingOverlay: React.FC<{ vm: LoginVM }> = ({ vm }) => {
     const providerName = vm.oidcResumingProviderName || 'SSO'
     return (
         <div className="wk-login-content-oidc-overlay">
-            <Spin />
+            <Loading />
             <div className="wk-login-content-oidc-overlay-text">
                 {t('oidc.resuming', { values: { provider: providerName } })}
             </div>
@@ -588,7 +589,7 @@ class Login extends Component<any, LoginState> {
                         >
                             {ssoConfigPending ? (
                                 <div className="wk-login-content-config-status" role="status" aria-live="polite">
-                                    <Spin />
+                                    <Loading />
                                     <div className="wk-login-content-config-status-title">{t('login.ssoConfigLoadingTitle')}</div>
                                     <div className="wk-login-content-config-status-sub">{t('login.ssoConfigLoadingSub')}</div>
                                 </div>
@@ -792,20 +793,19 @@ class Login extends Component<any, LoginState> {
 
                             {/* QR code card */}
                             <div className="wk-login-qr-card">
-                                <Spin size="large" spinning={vm.qrcodeLoading}>
-                                    <div className="wk-login-content-scanlogin-qrcode-wrap">
-                                        <div className="wk-login-content-scanlogin-qrcode">
-                                            {vm.qrcodeLoading || !vm.qrcode ? undefined : <QRCodeSVG value={vm.qrcode} size={176} fgColor={WKApp.config.themeColor}></QRCodeSVG>}
-                                            <div className={classNames("wk-login-content-scanlogin-qrcode-avatar", vm.showAvatar() ? "wk-login-content-scanlogin-qrcode-avatar-show" : undefined)}>
-                                                {vm.showAvatar() ? <img src={WKApp.shared.avatarUser(vm.uid!)}></img> : undefined}
-                                            </div>
-                                            {!vm.autoRefresh ? <div className="wk-login-content-scanlogin-qrcode-expire">
-                                                <p>{t('qr.expired')}</p>
-                                                <img onClick={() => { vm.reStartAdvance() }} src={require("./assets/refresh.png")}></img>
-                                            </div> : undefined}
+                                <div className="wk-login-content-scanlogin-qrcode-wrap">
+                                    <div className="wk-login-content-scanlogin-qrcode">
+                                        {vm.qrcodeLoading ? <Loading size="lg" /> : undefined}
+                                        {vm.qrcodeLoading || !vm.qrcode ? undefined : <QRCodeSVG value={vm.qrcode} size={176} fgColor={WKApp.config.themeColor}></QRCodeSVG>}
+                                        <div className={classNames("wk-login-content-scanlogin-qrcode-avatar", vm.showAvatar() ? "wk-login-content-scanlogin-qrcode-avatar-show" : undefined)}>
+                                            {vm.showAvatar() ? <img src={WKApp.shared.avatarUser(vm.uid!)}></img> : undefined}
                                         </div>
+                                        {!vm.autoRefresh ? <div className="wk-login-content-scanlogin-qrcode-expire">
+                                            <p>{t('qr.expired')}</p>
+                                            <img onClick={() => { vm.reStartAdvance() }} src={require("./assets/refresh.png")}></img>
+                                        </div> : undefined}
                                     </div>
-                                </Spin>
+                                </div>
                                 <div className="wk-login-qr-tip">{t('qr.tip', { values: { appName: WKApp.config.appName || 'Octo' } })}</div>
                             </div>
 

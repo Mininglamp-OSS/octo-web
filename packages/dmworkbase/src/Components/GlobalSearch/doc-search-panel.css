@@ -95,6 +95,10 @@
   color: var(--wk-text-tertiary);
   font-size: 13px;
 }
+
+.wk-doc-search__empty.octo-ui-empty {
+  padding: var(--wk-sp-6) var(--wk-sp-4);
+}
 .wk-doc-search__loadmore {
   display: flex;
   gap: var(--wk-sp-2);

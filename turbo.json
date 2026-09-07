@@ -16,7 +16,23 @@
         "build/**"
       ]
     },
+    "@octo/ui#build": {
+      "outputs": [
+        "dist/**"
+      ]
+    },
+    "Octo 插件端#build": {
+      "dependsOn": [
+        "@octo/ui#build"
+      ],
+      "outputs": [
+        ".output/**"
+      ]
+    },
     "@octo/web#build": {
+      "dependsOn": [
+        "@octo/ui#build"
+      ],
       "outputs": [
         "build/**"
       ],
@@ -32,6 +48,7 @@
         "../../packages/dmworklogin/**",
         "../../packages/mail/**",
         "../../packages/dmworkmcp/**",
+        "../../packages/octo-ui/**",
         "../../packages/dmworkskillmarket/**",
         "../../packages/dmworksummary/**",
         "!../../packages/**/node_modules/**",

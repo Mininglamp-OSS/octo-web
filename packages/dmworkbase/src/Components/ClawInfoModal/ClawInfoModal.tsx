@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Spin, Empty, Tooltip } from "@douyinfe/semi-ui";
+import { Dot, Loading, Tooltip } from "@octo/ui";
+import { Empty } from "@douyinfe/semi-ui";
 import { IconClose } from "@douyinfe/semi-icons";
 import { Clock } from "lucide-react";
 import WKModal from "../WKModal";
@@ -217,7 +218,7 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
     if (loading) {
       return (
         <div className="claw-info-loading">
-          <Spin size="large" />
+          <Loading size="lg" />
         </div>
       );
     }
@@ -319,7 +320,16 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
                   className="claw-info-meta__status"
                   data-status={data?.runtime_info?.process_status || "unknown"}
                 >
-                  <span className="claw-info-meta__dot" />
+                  <Dot
+                    size="small"
+                    tone={
+                      data?.runtime_info?.process_status === "running"
+                        ? "success"
+                        : data?.runtime_info?.process_status === "idle"
+                        ? "warning"
+                        : "neutral"
+                    }
+                  />
                   {data?.runtime_info?.process_status === "running"
                     ? t("base.claw.status.running")
                     : data?.runtime_info?.process_status === "idle"
@@ -335,7 +345,7 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
                           time: getRelativeTime(data.last_report_at, format, t),
                         },
                       })}
-                      position="bottom"
+                      placement="bottom"
                     >
                       <span
                         className="claw-info-meta__report-time"
@@ -398,7 +408,7 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
             <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
               {loading ? (
                 <div className="claw-info-loading">
-                  <Spin size="large" />
+                  <Loading size="lg" />
                 </div>
               ) : data?.runtime_info ? (
                 <ClawOverviewTab

@@ -1,5 +1,5 @@
 import React from "react";
-import { Tag } from "@douyinfe/semi-ui";
+import { Tag } from "@octo/ui";
 import type { TaskStatusType } from "../types/summary";
 import { getStatusLabel, getStatusColor } from "../utils/summaryHelpers";
 
@@ -9,7 +9,7 @@ interface TaskStatusBadgeProps {
 
 const TaskStatusBadge: React.FC<TaskStatusBadgeProps> = ({ status }) => {
     return (
-        <Tag color={getStatusColor(status) as any} size="small">
+        <Tag tone={getStatusColor(status)} size="small">
             {getStatusLabel(status)}
         </Tag>
     );
