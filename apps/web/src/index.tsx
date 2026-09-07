@@ -105,6 +105,12 @@ WKApp.shared.registerModule(new MailModule()); // Agent Mail workspace
 // 动态覆盖 handler 支持有状态场景 (page.route 拦不到 MSW SW 层).
 async function enableMocksIfE2E(): Promise<void> {
   if (import.meta.env.VITE_E2E_MOCK !== "1") return;
+  const readiness = window as unknown as {
+    __MSW_READY__?: boolean;
+    __MSW_ERROR__?: string;
+  };
+  readiness.__MSW_READY__ = false;
+  delete readiness.__MSW_ERROR__;
   try {
     const { worker } = await import("./mocks/browser");
     const msw = await import("msw");
@@ -118,11 +124,8 @@ async function enableMocksIfE2E(): Promise<void> {
     // 「从现在起请求会被拦」—— 二十多个 spec 和 e2eReady 都以它为 boot 闸门.
     const controlled = await waitForServiceWorkerControl(MSW_CONTROL_TIMEOUT_MS);
     if (!controlled) {
-      // 降级: 仍然放行 boot (卡死 boot 比漏一个请求糟得多). 打印出来让 e2e 失败时
-      // 能一眼定位, 而不是从一堆 proxy error 里反推.
-      console.warn(
-        `[e2e] MSW worker started but did not take control within ${MSW_CONTROL_TIMEOUT_MS}ms; ` +
-          "boot-time requests may bypass mocks",
+      throw new Error(
+        `MSW worker started but did not take control within ${MSW_CONTROL_TIMEOUT_MS}ms`,
       );
     }
     // 接管到位【仍不等于】本 document 会被拦: MSW 只对登记过的 client 施加 mock,
@@ -131,9 +134,8 @@ async function enableMocksIfE2E(): Promise<void> {
     // 真正成因. 所以不再推断, 直接实测一发: 打一个只有 MSW 才会应答的探针.
     const intercepting = await waitForMockInterception(MSW_PROBE_TIMEOUT_MS);
     if (!intercepting) {
-      console.warn(
-        `[e2e] MSW did not intercept a probe request within ${MSW_PROBE_TIMEOUT_MS}ms; ` +
-          "requests may bypass mocks",
+      throw new Error(
+        `MSW did not intercept a probe request within ${MSW_PROBE_TIMEOUT_MS}ms`,
       );
     }
     const w = window as unknown as {
@@ -142,9 +144,16 @@ async function enableMocksIfE2E(): Promise<void> {
     };
     w.__msw = { worker, http: msw.http, HttpResponse: msw.HttpResponse };
     w.__MSW_READY__ = true;
+    const markDocumentNotReady = () => {
+      w.__MSW_READY__ = false;
+    };
+    window.addEventListener("pagehide", markDocumentNotReady, { once: true });
+    window.addEventListener("beforeunload", markDocumentNotReady, { once: true });
   } catch (e) {
-    // MSW SW 拿不到 (如 e2e no-mock scenario 拦了 mockServiceWorker.js): 静默继续,
-    // 让 app 正常启动. __MSW_READY__ 不 set, no-mock spec 也不 wait 它.
+    // MSW SW 拿不到时保留 app 启动，但明确写入失败原因。使用 mock 的 spec 通过
+    // waitForMswReady 立即失败；no-mock spec 不等待该标记，行为保持不变。
+    const message = e instanceof Error ? e.message : String(e);
+    readiness.__MSW_ERROR__ = message;
     console.warn("[e2e] MSW disabled:", e);
   }
 }

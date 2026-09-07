@@ -3,10 +3,11 @@ import WKSDK, { ConnectStatus } from "wukongimjssdk";
 import type { IModule } from "@octo/base";
 import { i18n, WKApp, Menus, t as translate, Dap, getSessionSid } from "@octo/base";
 import SummaryListPage from "./pages/SummaryListPage";
-import SummaryCreatePage from "./pages/SummaryCreatePage";
 import SummaryDetailPage from "./pages/SummaryDetailPage";
 import SummaryShareDetailPage from "./pages/SummaryShareDetailPage";
 import SummarySharePreviewFeature from "./features/summaryShare/SummarySharePreviewFeature";
+import SummaryWorkbenchCreateEntry from "./features/summaryWorkbench/SummaryWorkbenchCreateEntry";
+import { summaryWorkbenchAvailability } from "./features/summaryWorkbench/availability";
 import SummaryConfirmPage from "./pages/SummaryConfirmPage";
 import ScheduleListPage from "./pages/ScheduleListPage";
 import { getChatCandidates, getSummaryShare } from "./api/summaryApi";
@@ -46,6 +47,7 @@ let _attentionStarted = false;
 let _menuActivatedHandler: (() => void) | null = null;
 let _imMessageHandler: ((message: unknown) => void) | null = null;
 let _imConnectHandler: ((status: unknown) => void) | null = null;
+let _openChatWithReferenceHandler: EventListener | null = null;
 /**
  * 本标签页此刻是否可见。SSR / 测试环境没有 document，按可见处理（那里没有
  * 「后台标签页」的概念，一律当前台才不会把功能整个关掉）。
@@ -157,18 +159,33 @@ export class SummaryModule implements IModule {
         });
 
         WKApp.route.register("/summary/create", () => {
-            return <SummaryCreatePage source="summary_home" />;
+            return (
+                <SummaryWorkbenchCreateEntry
+                    source="summary_home"
+                    legacyInitialMode="normal"
+                />
+            );
         });
 
         // 详情页「继续优化」按钮 → 打开新的 chat + 预填引用。
         // 通过 window 事件与详情页解耦(避免循环导入),这里 addEventListener
-        // 后统一走 WKApp.routeRight.push 弹出新的 SummaryCreatePage 实例。
+        // 后统一走 WKApp.routeRight.push 弹出新的统一工作台实例。
         // 见 CHAT-REFERENCE-BASED-DESIGN-v1。
-        window.addEventListener('summary-open-chat-with-reference', ((e: CustomEvent) => {
+        if (_openChatWithReferenceHandler) {
+            window.removeEventListener('summary-open-chat-with-reference', _openChatWithReferenceHandler);
+        }
+        _openChatWithReferenceHandler = ((e: CustomEvent) => {
             const task = e.detail;
             if (!task || !task.task_id) return;
-            WKApp.routeRight.push(<SummaryCreatePage derivedFromTask={task} source="detail_optimize" />);
-        }) as EventListener);
+            WKApp.routeRight.push(
+                <SummaryWorkbenchCreateEntry
+                    derivedFromTask={task}
+                    source="detail_optimize"
+                    legacyInitialMode="agent"
+                />
+            );
+        }) as EventListener;
+        window.addEventListener('summary-open-chat-with-reference', _openChatWithReferenceHandler);
 
         WKApp.route.register("/summary/detail", (param: any) => {
             return <SummaryDetailPage taskId={param?.taskId} emitSelection />;
@@ -191,7 +208,7 @@ export class SummaryModule implements IModule {
         // 导致「多人协作 / 多人定时」入口在主导航上找不到。菜单 id 须为 "summary"，
         // 与 WKApp.switchToMenuById("summary") 及 SummaryListPage 监听的 wk:nav-menu-activated
         // (menuId === "summary") 保持一致；路由指向 /summary 列表页（列表页内「+」下拉选择
-        // 总结方式：快速总结 / Agent 总结，进入对应创建页，可选参与者 + 定时）。
+        // 总结方式：快速总结 / Agent 总结，进入对应创建页；定时更新在总结详情页配置。
         WKApp.menus.register(
             "summary",
             () => {
@@ -226,10 +243,10 @@ export class SummaryModule implements IModule {
                         return;
                     }
                     WKApp.routeRight.replaceToRoot(
-                        <SummaryCreatePage
+                        <SummaryWorkbenchCreateEntry
                             source="summary_home"
-                            key={`home-normal-${++summaryHomeEntrySeq}`}
-                            initialMode="normal"
+                            key={`home-workbench-${++summaryHomeEntrySeq}`}
+                            legacyInitialMode="normal"
                         />
                     );
                 };
@@ -240,6 +257,7 @@ export class SummaryModule implements IModule {
 
         let initialSpaceReady = false;
         _spaceChangedHandler = () => {
+            summaryWorkbenchAvailability.invalidate();
             WKApp.mittBus.emit('summary-space-changed');
             // Main 冷启动若修正了缓存 Space，会先发 space-changed 再发
             // space-ready；首刷统一交给 space-ready，避免同一次启动请求两次。
@@ -484,6 +502,10 @@ export function disposeSummaryModuleListeners(): void {
         window.removeEventListener('focus', _focusHandler);
     }
     _focusHandler = null;
+    if (_openChatWithReferenceHandler && typeof window !== 'undefined') {
+        window.removeEventListener('summary-open-chat-with-reference', _openChatWithReferenceHandler);
+    }
+    _openChatWithReferenceHandler = null;
     try {
         const sdk = WKSDK.shared();
         if (_imMessageHandler) sdk.chatManager.removeMessageListener(_imMessageHandler as any);

@@ -20,6 +20,9 @@ vi.mock('@douyinfe/semi-icons', () => ({
     IconRefresh: () => null,
 }));
 vi.mock('../../components/SummaryCard', () => ({ default: () => null }));
+vi.mock('../../features/summaryWorkbench/SummaryWorkbenchCreateEntry', () => ({
+    default: () => null,
+}));
 vi.mock('../SummaryCreatePage', () => ({ default: () => null }));
 vi.mock('../SummaryDetailPage', () => ({ default: () => null }));
 vi.mock('../../api/summaryApi');

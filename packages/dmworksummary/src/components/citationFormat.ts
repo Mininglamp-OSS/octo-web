@@ -10,6 +10,30 @@
 /** Threshold below which the group badge lists all indices explicitly. */
 export const RANGE_THRESHOLD = 3;
 
+const alternateCitationPattern = /(?:【\s*([0-9０-９]{1,5})\s*】|［\s*([0-9０-９]{1,5})\s*］)(?!\()/g;
+
+function normalizeDigits(value: string): string {
+    return Array.from(value, char => {
+        const code = char.charCodeAt(0);
+        return code >= 0xff10 && code <= 0xff19 ? String.fromCharCode(code - 0xfee0) : char;
+    }).join('');
+}
+
+/**
+ * Compatibility for Markdown text nodes whose model emitted Chinese/full-width
+ * numeric citation brackets. Call this after Markdown parsing so fenced code,
+ * inline code, and link syntax are never rewritten. Only markers backed by an
+ * actual citation entry are canonicalized, so ordinary text such as 【2026】
+ * remains untouched.
+ */
+export function normalizeCitationMarkersForDisplay(content: string, validIndices: number[]): string {
+    const valid = new Set(validIndices);
+    return content.replace(alternateCitationPattern, (match, cjkDigits: string, fullwidthDigits: string) => {
+        const index = Number(normalizeDigits(cjkDigits || fullwidthDigits));
+        return valid.has(index) ? `[${index}]` : match;
+    });
+}
+
 /**
  * Group-label formatting rule (per product spec):
  *   1  citation  -> single [N] badge (handled by remarkCitation, not here)

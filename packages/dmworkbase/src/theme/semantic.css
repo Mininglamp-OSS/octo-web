@@ -25,6 +25,16 @@
   --wk-color-accent: var(--wk-purple-500); /* Figma: Thread 链接、AI 标签 */
   --wk-color-accent-hover: var(--wk-purple-600);
 
+  /* ── Smart summary template tones ── */
+  --wk-summary-template-blue: var(--wk-color-info);
+  --wk-summary-template-blue-bg: var(--wk-color-info-bg);
+  --wk-summary-template-purple: var(--wk-color-accent);
+  --wk-summary-template-purple-bg: var(--wk-accent-tint-08);
+  --wk-summary-template-orange: var(--wk-color-warning);
+  --wk-summary-template-orange-bg: var(--wk-color-warning-bg);
+  --wk-summary-template-cyan: var(--wk-teal-500);
+  --wk-summary-template-cyan-bg: var(--wk-teal-alpha-08);
+
   /* ── Onboarding intro fixed palette（对齐 onboarding-clean，固定深色视觉） ── */
   --wk-onboarding-overlay-bg: rgba(235, 239, 247, 0.34);
   --wk-onboarding-overlay-enter-bg: rgba(235, 239, 247, 0.22);
@@ -239,6 +249,7 @@
   --wk-sp-1: 4px;
   --wk-sp-1-5: 6px;
   --wk-sp-2: 8px;
+  --wk-sp-2-5: 10px;
   --wk-sp-3: 12px;
   --wk-sp-4: 16px;
   --wk-sp-5: 20px;
@@ -250,7 +261,9 @@
   /* ── Border Radius ── */
   --wk-r-xs: 3px; /* Figma: Tag, 导航项 */
   --wk-r-sm: 6px;
+  --wk-r-input: var(--wk-r-sm);
   --wk-r-md: 8px; /* Figma: 消息气泡, 图片 */
+  --wk-r-overlay: 12px;
   --wk-r-lg: 16px; /* Figma: 头像 */
   --wk-r-xl: 20px;
   --wk-r-mention-entity: 4px; /* 已发布普通成员 mention 胶囊圆角 */
@@ -269,6 +282,9 @@
   --wk-nav-w: 56px; /* Figma: 侧边栏折叠宽度 */
   --wk-sidebar-w: 240px; /* Figma 参考值；实际宽度由用户拖拽控制，默认 300px (App.css --wk-width-layout-content-left) */
   --wk-task-rail-w: 320px;
+  --wk-header-height: 48px;
+  --wk-feed-width: 760px;
+  --wk-composer-width: 1112px;
 
   /* ── Z-index ── */
   --wk-z-base: 0;
@@ -536,6 +552,13 @@ body[theme-mode="dark"] {
   --wk-color-error-bg: rgba(255, 92, 114, 0.1);
   --wk-color-info: var(--wk-blue-dark);
   --wk-color-info-bg: rgba(92, 154, 255, 0.1);
+
+  /* Smart summary template tones follow their dark semantic sources. */
+  --wk-summary-template-blue: var(--wk-color-info);
+  --wk-summary-template-blue-bg: var(--wk-color-info-bg);
+  --wk-summary-template-purple-bg: var(--wk-accent-tint-08);
+  --wk-summary-template-orange: var(--wk-color-warning);
+  --wk-summary-template-orange-bg: var(--wk-color-warning-bg);
 
   /* Danger 状态色（暗色模式） */
   --wk-color-danger-bg: #450a0a;

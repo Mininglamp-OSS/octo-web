@@ -7,8 +7,8 @@
 
 /**
  * 等接管的时限。5s 远超实际所需（正常是几十毫秒），同时明显短于 e2e fixture 里
- * `__MSW_READY__` 那个 15s 的等待，保证降级路径上 fixture 看到的是「就绪了但没拦到」
- * 这种可诊断的失败，而不是一个 boot 超时。
+ * `__MSW_READY__` 那个 15s 的等待。超时后调用方写入 `__MSW_ERROR__`，fixture 会
+ * 立即报告接管失败，而不是继续启动并让请求泄漏到 dev proxy。
  */
 export const MSW_CONTROL_TIMEOUT_MS = 5_000;
 
@@ -30,21 +30,20 @@ export const MSW_CONTROL_TIMEOUT_MS = 5_000;
  * 会一直增加（`summaries/attention` 就是新加的），逐个补是打地鼠，而且补的是症状。
  * 在这里等一次，所有现有和未来的 boot 端点一起被覆盖。
  *
- * 有界等待，且调用方【无论如何都往下走】：超时后仍然会设 `__MSW_READY__`。
- * 拿不到接管时把 boot 卡死会让二十多个 spec 的 `__MSW_READY__` 等待一起超时，
- * 比漏一个请求糟得多；保持「最差也不劣于改动前」。
+ * 有界等待并 fail-fast：拿不到接管时调用方不会设置 `__MSW_READY__`，而是设置
+ * `__MSW_ERROR__`。所有通过 `waitForMswReady` 等待的 spec 会直接得到根因，避免
+ * 带着未接管的 mock 环境继续运行并产生误导性的业务失败。
  *
  * @param timeoutMs 等待上限
  * @param nav 注入点，仅供单测替换 navigator；生产调用不传
- * @returns 是否在时限内确认了接管（false 表示走了降级，调用方据此打告警）
+ * @returns 是否在时限内确认了接管（false 表示调用方应终止 mock 启动）
  */
 export async function waitForServiceWorkerControl(
   timeoutMs: number = MSW_CONTROL_TIMEOUT_MS,
   nav: Pick<Navigator, "serviceWorker"> | undefined = typeof navigator === "undefined" ? undefined : navigator,
 ): Promise<boolean> {
   const sw = nav?.serviceWorker;
-  // 不支持 SW（非安全上下文、被策略禁用）时直接返回：调用方会照常设
-  // __MSW_READY__，行为与改动前一致。
+  // 不支持 SW（非安全上下文、被策略禁用）时返回 false，由调用方 fail-fast。
   if (!sw) return false;
   // 常见情形（页面 reload、SW 已在控）走这条：controller 已经在了，一拍都不用等。
   if (sw.controller) return true;
@@ -105,13 +104,12 @@ export const MSW_PROBE_ATTEMPT_TIMEOUT_MS = 500;
  * 带标记头的那个。拦到了才算就绪。这也让 `__MSW_READY__` 从「start() 返回了」变成
  * 它一直声称的那件事——「从现在起请求会被拦」。
  *
- * 和接管等待同一套降级哲学：有界，且调用方【无论如何都往下走】。拿不到就打告警并
- * 照常置 `__MSW_READY__`；把 boot 卡死会让二十多个 spec 的闸门一起超时，比偶发漏一个
- * 请求糟得多。
+ * 和接管等待一样采用有界 fail-fast：拿不到拦截能力就返回 false，由调用方设置
+ * `__MSW_ERROR__`，让 fixture 直接报告根因，不允许测试在半 mock 状态下继续。
  *
  * @param timeoutMs 等待上限
  * @param deps 注入点，仅供单测替换 fetch / 时钟 / sleep；生产调用不传
- * @returns 是否确认拦到（false 表示走了降级，调用方据此打告警）
+ * @returns 是否确认拦到（false 表示调用方应终止 mock 启动）
  */
 export async function waitForMockInterception(
   timeoutMs: number = MSW_PROBE_TIMEOUT_MS,
@@ -122,8 +120,7 @@ export async function waitForMockInterception(
   } = {},
 ): Promise<boolean> {
   const fetchFn = deps.fetchFn ?? (typeof fetch === "undefined" ? undefined : fetch);
-  // 环境里没有 fetch（极端 polyfill 情况）时按降级处理，绝不抛：抛出去会被
-  // index.tsx 的 catch 吞掉并【不】设 __MSW_READY__，把「没探到」升级成「MSW 不可用」。
+  // 环境里没有 fetch（极端 polyfill 情况）时返回 false，由调用方 fail-fast。
   if (!fetchFn) return false;
   const now = deps.now ?? ((): number => Date.now());
   const sleep = deps.sleep ?? ((ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms)));
