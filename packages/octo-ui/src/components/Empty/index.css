@@ -9,8 +9,11 @@
 }
 
 .octo-ui-empty__illustration {
-  width: var(--octo-ui-empty-illustration-size);
-  height: var(--octo-ui-empty-illustration-size);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: var(--octo-ui-empty-illustration-size);
+  max-height: var(--octo-ui-empty-illustration-size);
   margin-block-end: var(--octo-ui-empty-illustration-margin-block-end);
   --semi-color-primary: var(--octo-ui-empty-illustration-primary);
   --semi-color-primary-light-default: var(--octo-ui-empty-illustration-primary-surface);
@@ -18,6 +21,16 @@
 
 .octo-ui-empty__illustration svg {
   display: block;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.octo-ui-empty__illustration--default {
+  width: var(--octo-ui-empty-illustration-size);
+  height: var(--octo-ui-empty-illustration-size);
+}
+
+.octo-ui-empty__illustration--default svg {
   width: 100%;
   height: 100%;
 }

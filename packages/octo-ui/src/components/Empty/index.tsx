@@ -14,7 +14,7 @@ const Empty = forwardRef<HTMLDivElement, EmptyProps>(function Empty(
   {
     title,
     description,
-    illustration = <DefaultEmptyIllustration />,
+    illustration,
     action,
     className,
     ...rest
@@ -22,11 +22,17 @@ const Empty = forwardRef<HTMLDivElement, EmptyProps>(function Empty(
   ref
 ) {
   const classes = ["octo-ui-empty", className].filter(Boolean).join(" ");
+  const isDefaultIllustration = illustration === undefined;
+  const resolvedIllustration = isDefaultIllustration ? <DefaultEmptyIllustration /> : illustration;
+  const illustrationClasses = [
+    "octo-ui-empty__illustration",
+    isDefaultIllustration ? "octo-ui-empty__illustration--default" : null,
+  ].filter(Boolean).join(" ");
 
   return (
     <div ref={ref} className={classes} {...rest}>
-      {shouldRenderSlot(illustration) ? (
-        <div className="octo-ui-empty__illustration">{illustration}</div>
+      {shouldRenderSlot(resolvedIllustration) ? (
+        <div className={illustrationClasses}>{resolvedIllustration}</div>
       ) : null}
       {shouldRenderSlot(title) ? (
         <div className="octo-ui-empty__title">{title}</div>

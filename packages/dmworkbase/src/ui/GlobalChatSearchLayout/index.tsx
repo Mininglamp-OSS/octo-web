@@ -1,5 +1,6 @@
 import React from "react";
-import { Empty, Loading } from "@octo/ui";
+import { Empty } from "@octo/ui/components/Empty";
+import { Loading } from "@octo/ui/components/Loading";
 import { Hash, MessageCircleMore } from "lucide-react";
 import ThreadIcon from "../../Components/Icons/ThreadIcon";
 import "./index.css";

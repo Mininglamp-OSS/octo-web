@@ -288,13 +288,6 @@
     opacity: 0.6;
 }
 
-.wk-contacts-empty-text {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--wk-text-secondary);
-    margin-bottom: var(--wk-sp-1);
-}
-
 .wk-contacts-empty-sub {
     font-size: 12px;
     color: var(--wk-text-tertiary);

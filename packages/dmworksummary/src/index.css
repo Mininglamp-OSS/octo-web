@@ -890,10 +890,19 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
 }
 
 .chat-summary-history-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     flex: 1;
     min-height: 0;
     justify-content: center;
     gap: 8px;
+    padding: 24px 16px 48px;
+    text-align: center;
+    color: var(--wk-text-secondary);
+}
+
+.chat-summary-history-empty.octo-ui-empty {
     padding: 24px 16px 48px;
 }
 
@@ -1780,6 +1789,10 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
 }
 
 .summary-content-empty {
+    padding: 40px 0;
+}
+
+.summary-content-empty.octo-ui-empty {
     padding: 40px 0;
 }
 
@@ -2983,6 +2996,10 @@ body[theme-mode="dark"] .summary-template-create-btn:hover {
 .selected-sources-empty {
     padding: 18px 14px;
     background: var(--semi-color-bg-1);
+}
+
+.selected-sources-empty.octo-ui-empty {
+    padding: 18px 14px;
 }
 
 /* ========== 侧边栏内详情视图（列表 ↔ 详情 二级导航） ========== */

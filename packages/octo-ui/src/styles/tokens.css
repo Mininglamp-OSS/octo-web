@@ -142,7 +142,7 @@
 body[theme-mode='dark'] {
   --octo-ui-loading-text-color: var(--wk-text-secondary);
   --octo-ui-empty-title-color: var(--wk-text-primary);
-  --octo-ui-empty-description-color: var(--wk-text-secondary);
+  --octo-ui-empty-description-color: var(--wk-text-primary);
   --octo-ui-empty-illustration-primary-surface: var(--wk-accent-tint-10);
   --octo-ui-empty-illustration-ink: var(--wk-text-primary);
   --octo-ui-empty-illustration-paper: var(--wk-bg-surface);

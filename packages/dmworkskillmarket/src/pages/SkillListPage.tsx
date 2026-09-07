@@ -10,7 +10,8 @@ import {
   Upload,
 } from "lucide-react";
 import { t, useI18n, WKApp, WKButton, Dap } from "@octo/base";
-import { Empty, Loading } from "@octo/ui";
+import { Empty } from "@octo/ui/components/Empty";
+import { Loading } from "@octo/ui/components/Loading";
 import type { Skill, SkillSort } from "../types/skill";
 import { useSkills } from "../hooks/useSkills";
 import BotPublishModal from "../components/BotPublishModal";

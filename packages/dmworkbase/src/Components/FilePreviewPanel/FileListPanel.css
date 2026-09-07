@@ -79,12 +79,12 @@
   color: var(--wk-text-tertiary);
 }
 
-.wk-file-list-panel__empty-icon {
-  color: var(--wk-text-quaternary);
+.wk-file-list-panel__empty > .octo-ui-empty {
+  padding: 0;
 }
 
-.wk-file-list-panel__empty-text {
-  font-size: var(--wk-text-size-sm);
+.wk-file-list-panel__empty-icon {
+  color: var(--wk-text-quaternary);
 }
 
 /* ============================================

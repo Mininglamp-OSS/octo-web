@@ -45,6 +45,10 @@
   --octo-ui-empty-description-max-width: 80%;
 }
 
+.wk-renderer-state__empty.octo-ui-empty {
+  padding: 0;
+}
+
 .wk-renderer-state__empty .octo-ui-empty__description {
   word-break: break-word;
 }
