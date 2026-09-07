@@ -61,6 +61,16 @@ vi.mock("@octo/base/src/App", () => ({
     },
     format: { date: (value: unknown) => String(value) },
   }),
+  // PR #1637 P2 support: tests that pass a `channel` prop trigger
+  // `channelToChatCandidate`, which imports these three helpers from
+  // @octo/base. The alias in vitest.config.ts routes @octo/base and
+  // @octo/base/src/App to the same shim, so this vi.mock must expose them.
+  getImChannelInfo: () => ({
+    title: "mock-channel-title",
+    orgData: {},
+  }),
+  ChannelTypeCommunityTopic: 5,
+  parseThreadChannelId: () => null,
   default: {
     loginInfo: { uid: "test-uid" },
     routeRight: {
@@ -1698,6 +1708,62 @@ describe("SummaryWorkbenchFeature", () => {
       "summary.create.agentSummaryCreated"
     );
     expect(mocks.toastWarning).not.toHaveBeenCalled();
+  });
+
+  it("carries channelID as object_id on the smart_summary_quality_gate event, and never uploads gap.detail (PR #1637 P2)", async () => {
+    // Two assertions in one test:
+    //   1. The workbench save path must include `object_id: channel.channelID`
+    //      so the event can be joined at the envelope level, matching the
+    //      sibling emission from pages/SummaryCreatePage.tsx.
+    //   2. `gap.detail` must never reach the diagnostics payload — the
+    //      contract in types/summary.ts says gap detail is not uploaded, and
+    //      `PROP_KEY_BLACKLIST` does not include a "detail" alias, so this
+    //      needs an explicit negative assertion.
+    const savePreview = vi.fn().mockResolvedValue({
+      task_id: 307,
+      title: "Draft",
+      finish_status: "PARTIAL",
+      gaps: [{ kind: "citation", detail: "secret gap detail — do not upload" }],
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(
+      controller({
+        model: {
+          currentPreview: { content: "# Draft\nBody" },
+          pendingProposal: null,
+          workflow: null,
+        },
+        savePreview,
+      })
+    );
+
+    render(
+      <SummaryWorkbenchFeature
+        spaceId="space-a"
+        channel={{ channelID: "channel-42", channelType: 1 }}
+      />,
+      { legacyRoot: true }
+    );
+    fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
+
+    await waitFor(() => expect(savePreview).toHaveBeenCalledWith("# Draft"));
+    expect(mocks.track).toHaveBeenCalledWith(
+      "smart_summary_quality_gate",
+      expect.objectContaining({
+        object_id: "channel-42",
+        task_id: 307,
+        finish_status: "PARTIAL",
+        gap_count: 1,
+        first_gap_kind: "citation",
+      })
+    );
+    // Negative assertion: no field carrying the raw gap detail leaks through.
+    const trackCall = mocks.track.mock.calls.find(
+      (call: unknown[]) => call[0] === "smart_summary_quality_gate"
+    );
+    expect(trackCall?.[1]).not.toHaveProperty("first_gap_detail");
+    expect(trackCall?.[1]).not.toHaveProperty("gap_detail");
+    expect(JSON.stringify(trackCall?.[1])).not.toContain("secret gap detail");
   });
 
   it("handles the same recovered save result only once", async () => {

@@ -60,12 +60,12 @@ const SummaryWorkbench = ({
   const composerContextItems = state.contextItems.filter(
     (item) => item.kind !== REFERENCE_CONTEXT_KIND
   );
-  // The product supports one referenced summary. Keep the UI defensive when
-  // older or malformed history carries more than one id: only the primary
-  // reference becomes an interactive control.
-  const referenceContextItems = state.contextItems
-    .filter((item) => item.kind === REFERENCE_CONTEXT_KIND)
-    .slice(0, 1);
+  // Reference items are already capped at one entry by `toWorkbenchScope`
+  // (see PR #1637 P1 fix — normalization at the decode boundary), so no
+  // further slicing is required here.
+  const referenceContextItems = state.contextItems.filter(
+    (item) => item.kind === REFERENCE_CONTEXT_KIND
+  );
   const composerContextKinds = state.showTemplateTrigger
     ? [...COMPOSER_CONTEXT_KINDS, "template" as const]
     : COMPOSER_CONTEXT_KINDS;
@@ -449,9 +449,17 @@ const SummaryWorkbench = ({
                         ? " wk-summary-workbench-context__reference-open--active"
                         : ""
                     }`}
-                    disabled={isComposerDisabled}
+                    // Read-only disclosure toggle — gate only on hydration, not on
+                    // isSending. Opening/collapsing the side panel mutates no scope,
+                    // and the user often wants to re-read the referenced summary
+                    // exactly while an agent generation is in flight.
+                    disabled={Boolean(state.isHydrating)}
                     aria-expanded={Boolean(state.referencePreviewOpen)}
-                    aria-controls={state.referencePreviewId}
+                    aria-controls={
+                      state.referencePreviewOpen
+                        ? state.referencePreviewId
+                        : undefined
+                    }
                     aria-label={`${t(
                       CONTEXT_LABEL_KEYS[REFERENCE_CONTEXT_KIND]
                     )}: ${item.label}`}

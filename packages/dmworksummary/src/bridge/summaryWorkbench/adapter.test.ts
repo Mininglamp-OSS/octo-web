@@ -174,6 +174,42 @@ describe("summary workspace adapter", () => {
     });
   });
 
+  it("normalizes multi-id referenced_task_ids at the decode boundary so wire and UI cannot disagree (PR #1637 P1)", () => {
+    // Legacy or malformed server state may carry more than one referenced task
+    // id. The product supports one referenced summary, so `toWorkbenchScope`
+    // must cap the array at decode time — otherwise the UI renders one chip
+    // while `serializeSummaryWorkbenchScope` still ships the full array on the
+    // wire, and the summary is generated from a task the user cannot see.
+    const response = adaptSummaryWorkspaceTurn({
+      contract_version: "2",
+      session_id: "session-multi-ref",
+      message_id: 21,
+      result_type: "clarification",
+      reply: "多引用会话恢复",
+      scope_version: 4,
+      run_id: "run-21",
+      available_actions: ["continue_chat"],
+      state: {
+        ...emptyState(4),
+        summary_context: {
+          ...summaryContext,
+          referenced_task_ids: [7, 8, 9],
+        },
+      },
+    });
+
+    // Scope submitted on the wire is capped to the primary reference.
+    expect(response.authoritativeState?.scope.referencedTaskIds).toEqual([7]);
+    // And the derived UI context items only carry that one reference — so
+    // the chip the user sees matches the id the backend receives.
+    const referenceItems = response.authoritativeState?.contextItems.filter(
+      (item) => item.kind === "reference"
+    );
+    expect(referenceItems).toEqual([
+      { id: "7", kind: "reference", label: "#7" },
+    ]);
+  });
+
   it("fails closed when result_type or artifact state is invalid", () => {
     expect(() =>
       adaptSummaryWorkspaceTurn({

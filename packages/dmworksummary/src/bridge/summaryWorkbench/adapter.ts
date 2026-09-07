@@ -692,7 +692,11 @@ function toWorkbenchScope(context: SummaryWorkspaceContextDTO): SummaryWorkbench
           source: context.time_range.source,
         }
       : null,
-    referencedTaskIds: [...context.referenced_task_ids],
+    // Product supports one referenced summary. Normalize at the decode boundary
+    // so the rendered chip and the submitted scope cannot disagree — legacy or
+    // malformed server state carrying more than one id gets capped here rather
+    // than at render, keeping the wire in agreement with the UI.
+    referencedTaskIds: context.referenced_task_ids.slice(0, 1),
   };
 }
 

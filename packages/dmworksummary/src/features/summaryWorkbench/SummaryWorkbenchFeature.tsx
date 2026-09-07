@@ -650,14 +650,17 @@ export default function SummaryWorkbenchFeature({
   };
 
   const handleContextOpen = (kind: SummaryWorkbenchContextKind) => {
-    if (busy) return;
-    if (kind === "template") {
-      setTemplateGalleryOpen(true);
-      return;
-    }
+    // Reference is a read-only preview toggle — mutates no scope and must
+    // remain usable while sending/hydrating. Gate the scope-mutating branches
+    // (template / participant / other pickers) only.
     if (kind === "reference" && referencedTask) {
       setOpenSelector(null);
       setReferencePreviewOpen((open) => !open);
+      return;
+    }
+    if (busy) return;
+    if (kind === "template") {
+      setTemplateGalleryOpen(true);
       return;
     }
     if (kind === "participant" && !canSelectParticipants(workbench.scope)) {
@@ -783,6 +786,7 @@ export default function SummaryWorkbenchFeature({
     // finish_status and gaps are internal quality diagnostics. A created task
     // is a successful user action regardless of its non-blocking gate verdict.
     trackAgentSummaryQuality(result, {
+      object_id: channel?.channelID,
       source,
       entry_point: source,
       entry_source: source,

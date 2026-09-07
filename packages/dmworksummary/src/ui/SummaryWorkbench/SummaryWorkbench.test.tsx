@@ -214,10 +214,10 @@ describe("SummaryWorkbench", () => {
       screen.queryByRole("button", { name: "Reference summary" })
     ).not.toBeInTheDocument();
     expect(referenceTrigger).toHaveAttribute("aria-expanded", "false");
-    expect(referenceTrigger).toHaveAttribute(
-      "aria-controls",
-      "summary-workbench-reference-preview"
-    );
+    // PR #1637 P2 (yujiawei): `aria-controls` must not dangle. The side panel
+    // only mounts when open, so the collapsed state must not point at an
+    // element absent from the DOM.
+    expect(referenceTrigger).not.toHaveAttribute("aria-controls");
     expect(within(referenceTrigger).getByText("Last weekly summary")).toHaveClass(
       "wk-summary-workbench-context__reference-title"
     );
@@ -229,6 +229,11 @@ describe("SummaryWorkbench", () => {
     state.referencePreviewOpen = true;
     rerender(<SummaryWorkbench state={state} actions={actions} />);
     expect(referenceTrigger).toHaveAttribute("aria-expanded", "true");
+    // When expanded the panel mounts, so `aria-controls` correctly resolves.
+    expect(referenceTrigger).toHaveAttribute(
+      "aria-controls",
+      "summary-workbench-reference-preview"
+    );
     expect(referenceTrigger).toHaveClass(
       "wk-summary-workbench-context__reference-open--active"
     );
@@ -262,12 +267,19 @@ describe("SummaryWorkbench", () => {
     expect(actions.onOpenContext).toHaveBeenCalledWith("reference");
   });
 
-  it("renders only the primary reference when defensive state contains more than one", () => {
+  it("renders every reference item state provides (normalization happens upstream in toWorkbenchScope — see adapter.test.ts for the wire cap; PR #1637 P1)", () => {
+    // Before PR #1637's P1 fix, this component sliced context items at
+    // render time. That desynchronized the UI from the serialized scope, so
+    // the fix moved the single-reference cap to `toWorkbenchScope` at the
+    // decode boundary. The UI is now a faithful view of `state.contextItems`
+    // — if state carries more than one reference item, that is a bug at the
+    // decode layer, not something the view should silently hide.
     const state = createState();
-    state.contextItems.push(
-      { id: "summary-1", kind: "reference", label: "Primary summary" },
-      { id: "summary-2", kind: "reference", label: "Extra summary" }
-    );
+    state.contextItems.push({
+      id: "summary-1",
+      kind: "reference",
+      label: "Primary summary",
+    });
 
     rtlRender(<SummaryWorkbench state={state} actions={createActions()} />, {
       legacyRoot: true,
@@ -278,11 +290,6 @@ describe("SummaryWorkbench", () => {
         name: "Reference summary: Primary summary",
       })
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", {
-        name: "Reference summary: Extra summary",
-      })
-    ).not.toBeInTheDocument();
   });
 
   it("keeps a long reference title separate from the disclosure chevron", () => {
