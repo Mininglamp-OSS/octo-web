@@ -233,3 +233,7 @@
     font-size: 13px;
     line-height: 1.8;
 }
+
+.wk-bot-empty > .octo-ui-empty {
+    padding: 0;
+}

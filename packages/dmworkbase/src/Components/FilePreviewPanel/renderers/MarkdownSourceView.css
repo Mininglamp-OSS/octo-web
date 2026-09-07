@@ -50,10 +50,6 @@
   font-size: var(--wk-text-size-md);
 }
 
-.wk-markdown-source-view__message {
-  text-align: center;
-}
-
 /* ── 代码高亮容器样式覆盖 ── */
 .wk-markdown-source-view.wk-code-highlight-container {
   padding: 0;

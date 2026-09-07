@@ -146,6 +146,10 @@
   text-align: center;
 }
 
+.wk-global-chat-search-layout__pane-state > .octo-ui-empty {
+  padding: 0;
+}
+
 .wk-global-chat-search-layout__pane-state.is-error {
   color: var(--wk-color-error);
 }

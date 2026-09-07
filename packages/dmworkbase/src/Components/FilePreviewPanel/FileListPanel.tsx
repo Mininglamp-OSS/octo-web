@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { FolderOpen, X } from "lucide-react";
 import { ConversationFile } from "./FilePreviewHeader";
 import { formatFileSize, isImageType } from "./config";
 import { getFileIcon as getFileIconUrl } from "../../Utils/fileIcon";
@@ -211,7 +211,9 @@ const FileListPanel: React.FC<FileListPanelProps> = ({
         ) : files.length === 0 ? (
           <div className="wk-file-list-panel__empty">
             <Empty
-              illustration={false}
+              illustration={
+                <FolderOpen size={32} className="wk-file-list-panel__empty-icon" />
+              }
               description={t("base.filePreview.noFiles")}
             />
           </div>

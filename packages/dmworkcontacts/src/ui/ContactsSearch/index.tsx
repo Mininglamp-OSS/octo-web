@@ -51,7 +51,9 @@ function ContactsSearch({
           </div>
         ) : (
           <Empty
-            illustration={false}
+            illustration={
+              <SearchIcon size={28} className="wk-contacts-empty-icon" />
+            }
             description={copy.emptyText}
             className="wk-contacts-empty"
           />

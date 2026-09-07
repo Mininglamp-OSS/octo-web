@@ -790,7 +790,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                     <div className="wk-contacts-accordion-body">
                         {groups.length === 0 ? (
                             <Empty
-                                illustration={false}
+                                illustration={<UsersRound size={28} className="wk-contacts-empty-icon" />}
                                 description={t("contacts.empty.groups")}
                                 className="wk-contacts-empty"
                             />
@@ -821,7 +821,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                     <div className="wk-contacts-accordion-body">
                         {bots.length === 0 ? (
                             <Empty
-                                illustration={false}
+                                illustration={<Bot size={28} className="wk-contacts-empty-icon" />}
                                 description={t("contacts.empty.ai")}
                                 className="wk-contacts-empty"
                             />
@@ -855,7 +855,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                         {this.renderFilterChips()}
                         {totalCount === 0 ? (
                             <Empty
-                                illustration={false}
+                                illustration={<Users size={28} className="wk-contacts-empty-icon" />}
                                 description={t("contacts.empty.members")}
                                 className="wk-contacts-empty"
                             />

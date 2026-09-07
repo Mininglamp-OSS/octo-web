@@ -11,3 +11,11 @@ Object.defineProperty(globalThis, "IntersectionObserver", {
   configurable: true,
   value: MockIntersectionObserver,
 });
+
+if (typeof HTMLCanvasElement !== "undefined") {
+  const canvasContext = new Proxy({}, { get: () => () => undefined });
+  Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+    configurable: true,
+    value: () => canvasContext,
+  });
+}

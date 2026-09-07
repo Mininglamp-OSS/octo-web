@@ -5,12 +5,12 @@ import {
   ArrowDown,
   Bot,
   ChevronDown,
+  PackageOpen,
   RefreshCw,
   Upload,
 } from "lucide-react";
 import { t, useI18n, WKApp, WKButton, Dap } from "@octo/base";
-import Empty from "@octo/ui/components/Empty";
-import Loading from "@octo/ui/components/Loading";
+import { Empty, Loading } from "@octo/ui";
 import type { Skill, SkillSort } from "../types/skill";
 import { useSkills } from "../hooks/useSkills";
 import BotPublishModal from "../components/BotPublishModal";
@@ -309,7 +309,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
         {!list.loading && !list.error && list.skills.length === 0 && (
           <div className="skill-market-state">
             <Empty
-              illustration={false}
+              illustration={<PackageOpen size={56} />}
               title={t("skillMarket.list.empty")}
             />
           </div>

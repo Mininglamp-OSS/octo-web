@@ -44,4 +44,26 @@ describe("Empty", () => {
     expect(html).toContain("octo-ui-empty custom-empty");
     expect(html).toContain('data-testid="empty"');
   });
+
+  it("suppresses nullish slots without reserving illustration space", () => {
+    const html = renderToStaticMarkup(
+      <Empty illustration={null} title={null} description={undefined} />
+    );
+
+    expect(html).not.toContain("octo-ui-empty__illustration");
+    expect(html).not.toContain("octo-ui-empty__title");
+    expect(html).not.toContain("octo-ui-empty__description");
+  });
+
+  it("renders numeric zero slot content", () => {
+    const html = renderToStaticMarkup(
+      <Empty illustration={false} title={0} description={0} action={0} />
+    );
+
+    expect(html).toContain("octo-ui-empty__title");
+    expect(html).toContain("octo-ui-empty__description");
+    expect(html).toContain("octo-ui-empty__action");
+    expect(html).toContain(">0<");
+  });
+
 });

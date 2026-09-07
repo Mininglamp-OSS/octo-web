@@ -59,7 +59,7 @@ export const DesignVariants: Story = {
         <Empty
           title="暂无数据"
           description="这里还什么都没有，先去新建一条试试吧"
-          illustration={<IllustrationNoContent />}
+          illustration={<IllustrationNoContent aria-hidden="true" focusable={false} />}
           action={<Button variant="secondary">新建</Button>}
         />
       </div>
@@ -67,7 +67,7 @@ export const DesignVariants: Story = {
         <Empty
           title="搜索无结果"
           description="没找到相关内容，换个关键词再试试"
-          illustration={<IllustrationNoResult />}
+          illustration={<IllustrationNoResult aria-hidden="true" focusable={false} />}
           action={<Button variant="secondary">清空筛选</Button>}
         />
       </div>
@@ -75,7 +75,7 @@ export const DesignVariants: Story = {
         <Empty
           title="暂无访问权限"
           description="你没有查看该内容的权限，可联系管理员开通"
-          illustration={<IllustrationNoAccess />}
+          illustration={<IllustrationNoAccess aria-hidden="true" focusable={false} />}
           action={<Button variant="secondary">申请权限</Button>}
         />
       </div>
@@ -83,7 +83,7 @@ export const DesignVariants: Story = {
         <Empty
           title="网络连接失败"
           description="网络似乎出了点问题，请检查后重试"
-          illustration={<IllustrationFailure />}
+          illustration={<IllustrationFailure aria-hidden="true" focusable={false} />}
           action={<Button variant="secondary">重新加载</Button>}
         />
       </div>

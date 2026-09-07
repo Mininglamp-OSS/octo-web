@@ -420,6 +420,10 @@
   font: 500 13px/1.4 var(--wk-font-sans);
 }
 
+.skill-market-tag-filter__empty > .octo-ui-empty {
+  padding: 0;
+}
+
 .skill-market-tag-filter__footer {
   display: flex;
   align-items: center;
@@ -1228,6 +1232,11 @@
   text-align: center;
 }
 
+.skill-market-state > .octo-ui-empty,
+.skill-market-modal-state > .octo-ui-empty {
+  padding: 0;
+}
+
 .skill-market-state strong {
   color: var(--wk-text-secondary);
   font-size: 16px;
@@ -1766,6 +1775,10 @@
   color: var(--wk-text-tertiary);
   font-size: 13px;
   padding: var(--wk-sp-2) 0;
+}
+
+.skill-market-versions__empty > .octo-ui-empty {
+  padding: 0;
 }
 
 /* ─── Publish Version Modal ───────────────────────────────────────── */

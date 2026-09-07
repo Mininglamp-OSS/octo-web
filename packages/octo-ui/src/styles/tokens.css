@@ -125,7 +125,7 @@
   --octo-ui-empty-title-font-weight: var(--wk-font-medium);
   --octo-ui-empty-title-line-height: calc(var(--wk-sp-5) + var(--wk-sp-0-5));
   --octo-ui-empty-description-margin-block-start: var(--wk-sp-1);
-  --octo-ui-empty-description-color: var(--wk-text-legacy-tertiary);
+  --octo-ui-empty-description-color: var(--wk-text-tertiary);
   --octo-ui-empty-description-font-size: var(--wk-text-size-base);
   --octo-ui-empty-description-line-height: var(--wk-sp-5);
   --octo-ui-empty-description-max-width: 240px;

@@ -901,18 +901,6 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     padding-top: 24px;
 }
 
-.chat-summary-history-empty-title {
-    color: var(--wk-text-secondary, #646A73);
-    font-size: 14px;
-}
-
-.chat-summary-history-empty-description {
-    max-width: 260px;
-    color: var(--wk-text-tertiary, #8F959E);
-    font-size: 12px;
-    line-height: 18px;
-}
-
 .chat-summary-history-list {
     flex: 1;
     min-height: 0;
