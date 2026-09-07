@@ -319,6 +319,32 @@ describe("ConversationWrap", () => {
     expect(wrap.isMentionMe).toBe(true)
   })
 
+  it("falls back to unread when reminder coverage lacks a usable messageSeq", () => {
+    const withoutEitherSeq = new ConversationWrap(conversation({
+      unread: 2,
+      reminders: [
+        { reminderType: 1, done: true, messageSeq: undefined },
+      ],
+      lastMessage: message({
+        messageSeq: undefined,
+        content: { mention: { uids: ["me"] } },
+      }),
+    }))
+    expect(withoutEitherSeq.isMentionMe).toBe(true)
+
+    const withoutLastMessageSeq = new ConversationWrap(conversation({
+      unread: 2,
+      reminders: [
+        { reminderType: 1, done: true, messageSeq: 10 },
+      ],
+      lastMessage: message({
+        messageSeq: undefined,
+        content: { mention: { uids: ["me"] } },
+      }),
+    }))
+    expect(withoutLastMessageSeq.isMentionMe).toBe(true)
+  })
+
   it("clears the marker on a Person channel once unread reaches zero (P1-2)", () => {
     // 1:1 频道不走 reminder sync（reminders.ts:16-23 只处理 group / community topic），
     // 所以 fallback 必须能凭 unread=0 清除，否则 DM 里的 @我 永远显示。

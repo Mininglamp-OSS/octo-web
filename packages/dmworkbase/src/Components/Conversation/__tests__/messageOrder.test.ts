@@ -1316,16 +1316,20 @@ describe("ConversationVM message ordering", () => {
         vm.browseToMessageSeq = 1
         vm.didMount()
 
-        const conversation: any = { channel: new Channel("u1", 1), unread: 3, isMentionMe: true }
+        let mentionWrites = 0
+        const conversation: any = { channel: new Channel("u1", 1), unread: 3 }
+        Object.defineProperty(conversation, "isMentionMe", {
+            configurable: true,
+            get: () => true,
+            set: () => { mentionWrites += 1 },
+        })
         sdkState.conversationListener(conversation, "update")
         expect(vm.unreadCount).toBe(3)
         vm.browseToMessageSeq = 3
         sdkState.conversationListener(conversation, "update")
         expect(conversation.unread).toBe(0)
-        // 已读到底不再主动清 SDK 的 isMentionMe（WS-213 方案 A）：
-        // 权威源是 ConversationWrap.isMentionMe getter（reminders + lastMessage.mention.uids），
-        // 前端不再重复覆盖 SDK 内的 field。
-        expect(conversation.isMentionMe).toBe(true)
+        // 已读到底不再写 SDK 的 isMentionMe；权威源是 ConversationWrap getter。
+        expect(mentionWrites).toBe(0)
 
         const base: any = { channel: new Channel("u1", 1), header: {}, contentType: 1, send: false, fromUID: "u2", clientMsgNo: "new" }
         sdkState.messageListener({ ...base, channel: new Channel("other", 1) })

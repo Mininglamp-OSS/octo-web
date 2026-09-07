@@ -158,7 +158,13 @@ export class ConversationWrap {
 
         // done 的 reminder 覆盖当前 lastMessage → 用户已确认，marker 应清。
         const lastSeq = lastMessage?.messageSeq ?? 0
-        if (sawMentionReminder && lastSeq <= maxCoveredSeq) return false
+        // 缺失/未落盘的 seq 不能证明覆盖关系；此时继续走 unread 水位兜底。
+        if (
+            sawMentionReminder
+            && lastSeq > 0
+            && maxCoveredSeq > 0
+            && lastSeq <= maxCoveredSeq
+        ) return false
 
         // reminder 未覆盖（Person 无 reminder，或 group 新 mention reminder 还没同步）：
         // 用 Space-aware `this.unread` 而不是 raw `conversation.unread`——Person-in-Space

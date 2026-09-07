@@ -23,6 +23,9 @@ let container: HTMLDivElement;
 const apiPut = vi.fn();
 const toastError = vi.fn();
 const notifyConversationListeners = vi.fn();
+const reminderDone = vi.fn(() => Promise.resolve());
+const mittEmit = vi.fn();
+const browserUnreadPublish = vi.fn();
 const topChannelSetting = vi.fn(() => Promise.resolve());
 
 class MockChannel {
@@ -59,6 +62,9 @@ beforeAll(async () => {
         },
         conversationManager: {
           notifyConversationListeners,
+        },
+        reminderManager: {
+          done: reminderDone,
         },
       }),
     };
@@ -129,7 +135,14 @@ beforeAll(async () => {
       },
       apiClient: { put: apiPut },
       conversationProvider: { deleteConversation: vi.fn() },
+      mittBus: { emit: mittEmit },
     },
+  }));
+
+  vi.doMock("../../../features/documentTitle", () => ({
+    getBrowserUnreadConversationSync: () => ({
+      publish: browserUnreadPublish,
+    }),
   }));
 
   vi.doMock("../../../Service/Const", async () => {
@@ -863,9 +876,13 @@ describe("ConversationList context-menu matrix", () => {
   });
 
   it("keeps unread state and reports an error when clear-unread fails", async () => {
+    const reminders = [
+      { reminderID: 7, messageSeq: 10, reminderType: 1, done: false },
+    ];
     const conversation = {
       ...makeConversation({ unread: 5 }),
-      conversation: { unread: 5, extra: {} },
+      reminders,
+      conversation: { unread: 5, extra: {}, reminders },
     };
     const error = new Error("clear failed");
     apiPut.mockRejectedValueOnce(error);
@@ -892,6 +909,40 @@ describe("ConversationList context-menu matrix", () => {
       unread: 0,
     });
     expect(conversation.conversation.unread).toBe(5);
+    expect(reminderDone).not.toHaveBeenCalled();
     expect(toastError).toHaveBeenCalledWith("base.conversationList.error.clearUnreadFailed");
+  });
+
+  it("marks unresolved mention reminders done when marking a conversation as read", async () => {
+    const reminders = [
+      { reminderID: 7, messageSeq: 10, reminderType: 1, done: false },
+      { reminderID: 8, messageSeq: 9, reminderType: 1, done: true },
+      { reminderID: 9, messageSeq: 8, reminderType: 2, done: false },
+    ];
+    const conversation = {
+      ...makeConversation({ unread: 5, mention: true }),
+      reminders,
+      conversation: { unread: 5, extra: {}, reminders },
+    };
+    apiPut.mockResolvedValueOnce({});
+
+    act(() => {
+      ReactDOM.render(
+        <ConversationList conversations={[conversation] as any} />,
+        container
+      );
+    });
+    openContextMenu(".wk-conversationlist-item");
+
+    await act(async () => {
+      (container.querySelector(
+        '[data-menu-title="base.conversationList.context.markAsRead"]'
+      ) as HTMLElement).click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(conversation.conversation.unread).toBe(0);
+    expect(reminderDone).toHaveBeenCalledWith([7]);
   });
 });

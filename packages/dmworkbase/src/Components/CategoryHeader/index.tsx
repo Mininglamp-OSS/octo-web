@@ -160,11 +160,13 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = ({
                 ) : null}
             </span>
             {/* 分组折叠时才显示角标，展开时隐藏 */}
-            {isCollapsed && !isEmpty && !!unreadCount && unreadCount > 0 && (
+            {isCollapsed && !isEmpty && ((unreadCount ?? 0) > 0 || hasMention) && (
                 <span className="wk-category-header__badges">
-                    <span className="wk-category-header__badge">
-                        {unreadCount > 99 ? "99+" : unreadCount}
-                    </span>
+                    {(unreadCount ?? 0) > 0 && (
+                        <span className="wk-category-header__badge">
+                            {(unreadCount ?? 0) > 99 ? "99+" : unreadCount}
+                        </span>
+                    )}
                     {hasMention && (
                         <span className="wk-category-header__badge wk-category-header__badge--mention">@</span>
                     )}

@@ -51,6 +51,7 @@ import AiBadge from "../AiBadge";
 import ConversationVM from "../Conversation/vm";
 import { I18nContext, t, useI18n } from "../../i18n";
 import { formatDraftPreview } from "../../Utils/draftPreview";
+import { selectDoneReminderIDs } from "../Conversation/reminderDone";
 import {
   collapsedThreadHasMention,
   collapsedThreadUnread,
@@ -797,17 +798,18 @@ export default class ConversationList extends Component<
     const selected = select && select.isEqual(conversationWrap.channel);
     // compact mode nests collapsed threads under the parent group, so the
     // parent item receives the collapsed unread count. Recent mode renders
-    // threads as independent rows and must keep parent unread independent.
+    // threads as independent rows and must keep both parent unread and mention
+    // state independent from their child threads.
     const totalUnread = conversationWrap.unread + threadUnread;
+    const hasMention = conversationWrap.isMentionMe;
+    const visibleSimpleReminders = conversationWrap.simpleReminders?.filter(
+      (r) => !r.done && r.reminderType !== ReminderType.ReminderTypeMentionMe
+    );
     const effectiveMute = isEffectivelyMuted({
       isThread,
       channelInfo,
       parentChannelInfo,
     });
-    const hasMention = conversationWrap.isMentionMe || threadHasMention;
-    const visibleSimpleReminders = conversationWrap.simpleReminders?.filter(
-      (r) => !r.done && r.reminderType !== ReminderType.ReminderTypeMentionMe
-    );
     // 非 compact 下子区按 design v3.1 走扁平时间序，左侧用父频道头像，
     // 不再套 .wk-conversationlist-item-thread（避免缩进 + 树形连接线视觉嵌套）。
     const avatarChannel = isThread && parentChannel ? parentChannel : conversationWrap.channel;
@@ -1476,6 +1478,13 @@ export default class ConversationList extends Component<
                 icon: BrushCleaning,
                 onClick: () => {
                   if (!channel) return;
+                  const doneMentionReminderIDs = selectDoneReminderIDs(
+                    conv.reminders,
+                    {
+                      scrolledToBottom: true,
+                      isVisible: () => false,
+                    }
+                  );
                   void WKApp.apiClient
                     .put("conversation/clearUnread", {
                       channel_id: channel.channelID,
@@ -1508,6 +1517,11 @@ export default class ConversationList extends Component<
                         unread: 0,
                       });
                       WKApp.mittBus.emit("sidebar-reload" as any);
+                      if (doneMentionReminderIDs.length > 0) {
+                        return WKSDK.shared().reminderManager.done(
+                          doneMentionReminderIDs
+                        );
+                      }
                     })
                     .catch((err) => {
                       Toast.error(
