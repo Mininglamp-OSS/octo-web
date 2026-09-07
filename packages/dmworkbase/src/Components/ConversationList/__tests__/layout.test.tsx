@@ -391,8 +391,10 @@ describe("ConversationList unread indicators", () => {
     ).toBe("5");
   });
 
-  it("keeps the mention marker after unread has been cleared (WS-213 core)", () => {
-    // 回归 WS-213 主 case：thread 里 @我 → 读到底（unread=0）→ 返回列表 → 仍显示 @我
+  it("renders an authoritative mention signal independently of the row unread count", () => {
+    // 这里只验证渲染层契约：上游已经判定 isMentionMe=true 时，不再由行级 unread
+    // 二次屏蔽。读到底后该信号是否仍为 true，由 ConversationWrap 的 reminder/
+    // read-watermark 规则决定并在 Model.test.ts 中覆盖。
     act(() => {
       ReactDOM.render(
         <ConversationList
@@ -413,8 +415,8 @@ describe("ConversationList unread indicators", () => {
     );
   });
 
-  it("renders the mention marker on a group channel with cleared unread", () => {
-    // 群聊是 WS-213 的主要目标。previous fixtures 都是 Person，缺少 group 覆盖。
+  it("renders an authoritative mention signal on a group row with zero unread", () => {
+    // 群聊是 WS-213 的主要目标；本用例只验证行组件消费已解析 mention 信号的行为。
     act(() => {
       ReactDOM.render(
         <ConversationList
@@ -623,6 +625,49 @@ describe("ConversationList unread indicators", () => {
     );
     expect(parentRow).not.toBeNull();
     expect(parentRow?.querySelector(".wk-conv-compact-mention")).not.toBeNull();
+  });
+
+  it("does not revive an acknowledged parent mention from ordinary collapsed thread unread (#1625)", () => {
+    // Model 层已将父群的历史 mention 解析为 false；子区只有普通未读。
+    // 折叠后父群应聚合 unread，但不能把该 unread 与父群历史 mention 重新组合。
+    const parent = makeCompactConversation("group-read", 2, undefined, {
+      isMentionMe: false,
+      unread: 0,
+    });
+    const thread = makeCompactConversation("thread-plain", 3, "group-read", {
+      isMentionMe: false,
+      unread: 1,
+    });
+
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={[parent, thread] as any}
+          compact
+          disablePinSplit
+        />,
+        container
+      );
+    });
+
+    const toggle = container.querySelector(
+      ".wk-conv-compact-thread-tag"
+    ) as HTMLElement;
+    expect(toggle).not.toBeNull();
+    if (toggle.querySelector(".lucide-chevron-down")) {
+      act(() => {
+        toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+    }
+
+    const parentRow = container.querySelector(
+      ".wk-conv-compact-item--has-threads"
+    );
+    expect(parentRow).not.toBeNull();
+    expect(parentRow?.querySelector(".wk-conv-compact-mention")).toBeNull();
+    expect(parentRow?.querySelector(".wk-conv-compact-badge")?.textContent).toBe(
+      "1"
+    );
   });
 
   it("does not double-light @我 when the thread is expanded (WS-213 rev 3, P2-2)", () => {

@@ -154,13 +154,13 @@ afterEach(() => {
     container.remove()
 })
 
-function groupConv(groupNo: string) {
+function groupConv(groupNo: string, options: { unread?: number; isMentionMe?: boolean } = {}) {
     return {
         channel: { channelID: groupNo, channelType: ChannelTypeGroup },
         channelInfo: { orgData: {} },
         timestamp: 100,
-        unread: 0,
-        isMentionMe: false,
+        unread: options.unread ?? 0,
+        isMentionMe: options.isMentionMe ?? false,
     }
 }
 
@@ -262,6 +262,28 @@ describe("ConversationListGrouped — 归档子区过滤 (issue #345)", () => {
         })
 
         expect(container.textContent || "").toContain("grpA____tUnknown")
+    })
+
+    it("does not combine an acknowledged mention from one group with another group's unread (#1625)", () => {
+        const twoGroupCategories = [{
+            ...categories[0],
+            groups: [{ group_no: "grpA" }, { group_no: "grpB" }],
+        }]
+        const conversations = [
+            // ConversationWrap 已根据 reminder/read watermark 将历史 mention 解析为 false。
+            groupConv("grpA", { unread: 0, isMentionMe: false }),
+            // 同分类另一个群只有普通未读。
+            groupConv("grpB", { unread: 1, isMentionMe: false }),
+        ]
+
+        renderGrouped({
+            conversations: conversations as any,
+            categories: twoGroupCategories as any,
+        })
+
+        const category = lastCategoryProps.categories.find((item: any) => item.id === "cat-a")
+        expect(category.unreadCount).toBe(1)
+        expect(category.hasMention).toBe(false)
     })
 
     it("renders loading/error/empty fallbacks and accepts drag lifecycle events", () => {

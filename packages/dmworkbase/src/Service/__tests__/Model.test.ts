@@ -269,6 +269,23 @@ describe("ConversationWrap", () => {
     expect(wrap.isMentionMe).toBe(false)
   })
 
+  it("does not revive a read group mention from lastMessage after reminder reload (#1625)", () => {
+    // 已读 reminder 在全量重载后可能不再返回。即使最后一条消息仍然 @我，
+    // 群聊自身 unread=0 也必须作为已读水位，不能让其他会话/子区的未读重新点亮它。
+    const wrap = new ConversationWrap(conversation({
+      channel: { channelID: "group-read", channelType: 2 },
+      unread: 0,
+      reminders: [],
+      lastMessage: message({
+        channel: { channelID: "group-read", channelType: 2 },
+        messageSeq: 42,
+        content: { mention: { uids: ["me"] } },
+      }),
+    }))
+
+    expect(wrap.isMentionMe).toBe(false)
+  })
+
   it("keeps the marker on when at least one mention reminder is still undone", () => {
     const wrap = new ConversationWrap(conversation({
       reminders: [
