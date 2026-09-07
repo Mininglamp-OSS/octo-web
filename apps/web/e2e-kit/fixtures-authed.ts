@@ -1,6 +1,6 @@
 /* eslint-disable no-undef -- e2e code runs in Node, process is available */
 /* eslint-disable react-hooks/rules-of-hooks -- `use` here is Playwright fixture callback */
-import { test as base, expect, type Page } from "@playwright/test";
+import { test as base, expect, type Page, type Request } from "@playwright/test";
 import { MOCK_IM_SEED_STORAGE_KEY } from "./_kit/mock-im-runtime";
 import { waitForMswReady } from "./_lib/e2eReady";
 
@@ -35,7 +35,7 @@ const ONBOARDING_STORAGE_KEY = "octo:onboarding:seen";
 const MOCK_SPACE_ID = "e2e-space-001";
 const MOCK_LOCALE = "zh-CN";
 
-async function isPreMswReadyRequest(page: Page, requestStartedAt: number): Promise<boolean> {
+async function isPreMswReadyRequest(page: Page, requestStartedAt: number | undefined): Promise<boolean> {
   const readiness = await page.evaluate(() => {
     const state = globalThis as unknown as {
       __MSW_READY__?: boolean;
@@ -48,10 +48,17 @@ async function isPreMswReadyRequest(page: Page, requestStartedAt: number): Promi
   }).catch(() => ({ ready: false, readyAt: undefined }));
 
   if (!readiness.ready) return true;
-  return typeof readiness.readyAt === "number" && requestStartedAt > 0 && requestStartedAt < readiness.readyAt;
+  return typeof readiness.readyAt === "number" &&
+    typeof requestStartedAt === "number" &&
+    requestStartedAt < readiness.readyAt;
 }
 
 async function installGlobalMockFallbackRoutes(page: Page): Promise<void> {
+  const requestStartedAt = new WeakMap<Request, number>();
+  page.on("request", (request) => {
+    requestStartedAt.set(request, Date.now());
+  });
+
   // Playwright routes only see these requests when the MSW service worker did
   // not intercept them. Fulfill only requests that started before MSW became
   // ready. Comparing timestamps avoids the race where readiness flips after a
@@ -63,7 +70,8 @@ async function installGlobalMockFallbackRoutes(page: Page): Promise<void> {
       await route.fallback();
       return;
     }
-    if (!(await isPreMswReadyRequest(page, route.request().timing().startTime))) {
+    const startedAt = requestStartedAt.get(route.request());
+    if (!(await isPreMswReadyRequest(page, startedAt))) {
       await route.fallback();
       return;
     }
@@ -88,7 +96,8 @@ async function installGlobalMockFallbackRoutes(page: Page): Promise<void> {
       await route.fallback();
       return;
     }
-    if (!(await isPreMswReadyRequest(page, route.request().timing().startTime))) {
+    const startedAt = requestStartedAt.get(route.request());
+    if (!(await isPreMswReadyRequest(page, startedAt))) {
       await route.fallback();
       return;
     }

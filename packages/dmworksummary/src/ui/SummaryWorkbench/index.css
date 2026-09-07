@@ -31,7 +31,12 @@
   flex: 0 0 auto;
   box-sizing: border-box;
   padding: var(--wk-sp-4) var(--wk-sp-6);
+  border-bottom: thin solid var(--wk-border-default);
   background: var(--wk-bg-surface);
+}
+
+.wk-summary-workbench--full .wk-summary-workbench__header {
+  border-bottom: 0;
 }
 
 .wk-summary-workbench__heading {

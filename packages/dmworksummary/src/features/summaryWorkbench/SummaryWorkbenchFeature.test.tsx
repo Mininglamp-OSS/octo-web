@@ -538,10 +538,17 @@ describe("SummaryWorkbenchFeature", () => {
   it("clears the composer and removes template selection after the first accepted turn", async () => {
     const pendingResponse = deferred<any>();
     const current = controller({
+      scope: scope({
+        template: {
+          templateId: "weekly",
+          label: "Weekly",
+          requirement: "Summarize progress and risks",
+        },
+      }),
       viewState: {
         layout: "full",
         messages: [],
-        contextItems: [],
+        contextItems: [{ id: "weekly", kind: "template", label: "Weekly" }],
         inputValue: "Summarize the launch risks",
         placeholderKey: "summary.workbench.placeholder.initial",
         isSending: false,
