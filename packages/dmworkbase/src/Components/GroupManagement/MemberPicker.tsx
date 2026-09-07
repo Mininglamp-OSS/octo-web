@@ -4,6 +4,7 @@ import { Channel, Subscriber } from "wukongimjssdk";
 import Provider from "../../Service/Provider";
 import { SubscriberListVM } from "../Subscribers/list_vm";
 import WKAvatar from "../WKAvatar";
+import Checkbox from "../Checkbox";
 import { debounce, throttle } from "../../Utils/rateLimit";
 import "./MemberPicker.css";
 
@@ -160,25 +161,14 @@ export class GroupManagementMemberPicker extends Component<
                     const selected = this.isSelected(subscriber.uid);
                     const name = this.displayName(subscriber);
                     return (
-                      <button
+                      <Checkbox
                         key={subscriber.uid}
-                        type="button"
                         className="wk-group-member-picker-item"
-                        onClick={() => this.toggleSelect(subscriber)}
+                        checked={selected}
+                        disabled={this.isDisabled(subscriber.uid)}
+                        ariaLabel={name}
+                        onChange={() => this.toggleSelect(subscriber)}
                       >
-                        <span
-                          className={`wk-group-member-picker-check${
-                            selected
-                              ? " wk-group-member-picker-check--selected"
-                              : ""
-                          }`}
-                          role="checkbox"
-                          aria-checked={selected}
-                        >
-                          {selected && (
-                            <span className="wk-group-member-picker-check-dot" />
-                          )}
-                        </span>
                         <span className="wk-group-member-picker-avatar">
                           <WKAvatar src={subscriber.avatar} />
                         </span>
@@ -188,7 +178,7 @@ export class GroupManagementMemberPicker extends Component<
                         >
                           {name}
                         </span>
-                      </button>
+                      </Checkbox>
                     );
                   })
                 )}

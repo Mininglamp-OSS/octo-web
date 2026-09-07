@@ -489,4 +489,63 @@ describe('ChatSelectorModal — members-mode candidate source (issue #200)', () 
         expect(mockGetRoster).not.toHaveBeenCalled();
         expect(utils.getByText('李四')).toBeInTheDocument();
     });
+
+    it('受控成员加载失败时阻止确认并允许重试', async () => {
+        const onRetryMembers = vi.fn();
+        let utils: ReturnType<typeof rtlRender>;
+        await act(async () => {
+            utils = rtlRender(
+                <ChatSelectorModal
+                    {...baseProps}
+                    mode="members"
+                    memberCandidates={[]}
+                    memberLoadError
+                    onRetryMembers={onRetryMembers}
+                    selectedMembers={[]}
+                    visible={false}
+                />,
+                { legacyRoot: true },
+            );
+        });
+        await act(async () => {
+            utils!.rerender(
+                <ChatSelectorModal
+                    {...baseProps}
+                    mode="members"
+                    memberCandidates={[]}
+                    memberLoadError
+                    onRetryMembers={onRetryMembers}
+                    selectedMembers={[]}
+                    visible
+                />,
+            );
+        });
+
+        expect(utils!.getByTestId('summary-member-selector-confirm-btn')).toBeDisabled();
+        fireEvent.click(utils!.getByRole('button', { name: '重试' }));
+        expect(onRetryMembers).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('ChatSelectorModal — group-only selection', () => {
+    it('hides direct chats and threads when participants are already selected', async () => {
+        setupSidebar([], []);
+        mockGetChatCandidates.mockResolvedValue([GROUP_A, DIRECT_X, ACTIVE_THREAD]);
+        let utils: ReturnType<typeof rtlRender>;
+        await act(async () => {
+            utils = rtlRender(
+                <ChatSelectorModal {...baseProps} groupOnly visible={false} />,
+                { legacyRoot: true },
+            );
+        });
+        await act(async () => {
+            utils!.rerender(<ChatSelectorModal {...baseProps} groupOnly visible />);
+            await flushPromises();
+        });
+
+        expect(utils!.getByText('Group A')).toBeInTheDocument();
+        expect(utils!.queryByText('Direct X')).not.toBeInTheDocument();
+        expect(utils!.queryByText('Active Thread')).not.toBeInTheDocument();
+        expect(utils!.queryByRole('button', { name: '全部私聊' })).not.toBeInTheDocument();
+    });
 });

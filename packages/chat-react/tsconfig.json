@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig/react-library.json",
+  "compilerOptions": {
+    "lib": ["es2020", "dom", "dom.iterable"],
+    "jsx": "react-jsx"
+  },
+  "include": ["src"],
+  "exclude": [
+    "dist",
+    "build",
+    "node_modules",
+    "src/__tests__"
+  ]
+}

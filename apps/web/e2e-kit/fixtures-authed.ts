@@ -1,6 +1,8 @@
 /* eslint-disable no-undef -- e2e code runs in Node, process is available */
 /* eslint-disable react-hooks/rules-of-hooks -- `use` here is Playwright fixture callback */
 import { test as base, expect, type Page } from "@playwright/test";
+import { MOCK_IM_SEED_STORAGE_KEY } from "./_kit/mock-im-runtime";
+import { waitForMswReady } from "./_lib/e2eReady";
 
 /**
  * octo-web authedPage fixture.
@@ -27,12 +29,80 @@ const AUTH_KEYS_SUFFIXED = {
   sex: "1",
   login_provider: "",
 };
-
 const SPACE_STORAGE_KEY = "currentSpaceId";
 const LOCALE_STORAGE_KEY = "octo:locale";
 const ONBOARDING_STORAGE_KEY = "octo:onboarding:seen";
 const MOCK_SPACE_ID = "e2e-space-001";
 const MOCK_LOCALE = "zh-CN";
+
+async function installGlobalMockFallbackRoutes(page: Page): Promise<void> {
+  // Playwright routes only see these requests when the MSW service worker did
+  // not intercept them. Use deterministic responses only before MSW reports
+  // ready; after readiness, fall through so a missing handler remains visible
+  // to the proxy-error merge gate.
+  await page.route("**/summary/api/v1/summaries/attention*", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const mswReady = await page
+      .evaluate(() => (globalThis as { __MSW_READY__?: boolean }).__MSW_READY__ === true)
+      .catch(() => false);
+    if (mswReady) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        code: 0,
+        message: "ok",
+        data: {
+          attention_count: 0,
+          unread_count: 0,
+          pending_invitation_count: 0,
+          pending_submission_count: 0,
+        },
+      }),
+    });
+  });
+
+  await page.route("**/api/v1/spaces/*/categories*", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const mswReady = await page
+      .evaluate(() => (globalThis as { __MSW_READY__?: boolean }).__MSW_READY__ === true)
+      .catch(() => false);
+    if (mswReady) {
+      await route.fallback();
+      return;
+    }
+    const scenario =
+      route.request().headers()["x-e2e-chat-follow-scenario"] ??
+      new URL(route.request().url()).searchParams.get("e2e_chat_follow") ??
+      "";
+    const groups = scenario.startsWith("sort:")
+      ? [
+          { group_no: "e2e-chat-layout-group-a", name: "E2E 关注群 A", category_sort: 0 },
+          { group_no: "e2e-chat-layout-group-b", name: "E2E 关注群 B", category_sort: 1 },
+        ]
+      : scenario
+        ? [{ group_no: "e2e-chat-layout-group", name: "E2E Chat 布局群", category_sort: 1 }]
+        : [];
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(
+        scenario
+          ? [{ category_id: "e2e-category", name: "工作", sort: 0, is_default: false, groups }]
+          : [],
+      ),
+    });
+  });
+}
 
 type Fixtures = {
   authedPage: Page;
@@ -69,6 +139,7 @@ export const test = base.extend<Fixtures>({
     );
 
     if (target === "local") {
+      await installGlobalMockFallbackRoutes(page);
       await page.addInitScript(
         ({
           sid,
@@ -97,15 +168,15 @@ export const test = base.extend<Fixtures>({
         },
       );
 
-      // 每次页面加载都自动装 empty seed. 用 addInitScript 是因为 SPA 路由切页
-      // (goto /chat) 会 full reload, window scope 的 seed 被清; fixture 装的
-      // 那次只在 goto('/') 生效, 后续 spec goto 别的 URL 会掉线.
+      // 每次页面加载都自动装 seed. 用 addInitScript 是因为 SPA 路由切页
+      // (goto /chat) 会 full reload, window scope 的 seed 被清. spec 写入过
+      // case-specific seed 时优先恢复它，否则使用 empty seed.
       //
       // 逻辑: 等 __installMockImRuntime__ hook 挂上 (index.tsx 里 await import 挂),
-      // 然后调一次 install 装 empty seed. spec 里 case-specific handler / seed
-      // 通过再 installMockImRuntime(page, {...}) 覆盖.
+      // 然后调一次 install. fixture 与 installMockImRuntime 都从同一个
+      // sessionStorage key 读取，避免两个 addInitScript 以不确定顺序互相覆盖.
       await page.addInitScript(
-        ({ currentUid, spaceId }: { currentUid: string; spaceId: string }) => {
+        ({ currentUid, spaceId, seedStorageKey }: { currentUid: string; spaceId: string; seedStorageKey: string }) => {
           type W = { __installMockImRuntime__?: (s: unknown) => void };
           const emptySeed = {
             currentUid,
@@ -122,8 +193,16 @@ export const test = base.extend<Fixtures>({
             tries += 1;
             const w = globalThis as unknown as W;
             if (typeof w.__installMockImRuntime__ === "function") {
+              let nextSeed: unknown = emptySeed;
               try {
-                w.__installMockImRuntime__(emptySeed);
+                const persisted = sessionStorage.getItem(seedStorageKey);
+                if (persisted) nextSeed = JSON.parse(persisted);
+              } catch (e) {
+                // eslint-disable-next-line no-console
+                console.warn("[fixture] persisted mock-im seed is invalid:", e);
+              }
+              try {
+                w.__installMockImRuntime__(nextSeed);
               } catch (e) {
                 // eslint-disable-next-line no-console
                 console.warn("[fixture] mock-im install failed:", e);
@@ -135,18 +214,18 @@ export const test = base.extend<Fixtures>({
             }
           }, 100);
         },
-        { currentUid: AUTH_KEYS_SUFFIXED.uid, spaceId: MOCK_SPACE_ID },
+        {
+          currentUid: AUTH_KEYS_SUFFIXED.uid,
+          spaceId: MOCK_SPACE_ID,
+          seedStorageKey: MOCK_IM_SEED_STORAGE_KEY,
+        },
       );
 
       await page.goto(`/?sid=${E2E_SID}`);
 
       // MSW 启动就绪信号 (仅在 VITE_E2E_MOCK=1 场景, index.tsx 会设 __MSW_READY__).
       // 有 SW 拦截才继续 goto 具体 case 页面; 避免竞态.
-      await page.waitForFunction(
-        () => (globalThis as unknown as { __MSW_READY__?: boolean }).__MSW_READY__ === true,
-        undefined,
-        { timeout: 15_000 }
-      );
+      await waitForMswReady(page);
 
       // 等 fake provider install 完成 (addInitScript 的轮询已跑一次)
       await page.waitForFunction(
@@ -175,8 +254,12 @@ export const test = base.extend<Fixtures>({
   },
 
   pagePlain: async ({ page }, use) => {
-    // 不预置任何 storage, 不 goto, 不 wait MSW. spec 拿到就是 vanilla page.
+    // 不预置 auth/storage, 不 goto, 不 wait MSW. 仅安装两个全局后台请求的
+    // network fallback，防止 MSW client 切换窗口把请求泄漏到 Vite dead proxy.
     // spec 需要禁 service worker 时可以自己 context.route('**/mockServiceWorker.js') 拦.
+    if ((process.env.E2E_TARGET ?? "local") === "local") {
+      await installGlobalMockFallbackRoutes(page);
+    }
     await use(page);
   },
 });

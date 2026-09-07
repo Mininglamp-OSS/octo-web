@@ -2614,22 +2614,11 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     margin-top: 4px;
 }
 
-/* 右下角按钮组：SplitButtonGroup（主按钮 + 模式下拉），与 ChatSummaryNewModal 一致。
-   chevron 触发按钮加紧凑 padding，避免默认 16px 左右 padding 撑宽图标按钮。 */
-.chat-summary-modal-split .semi-button:last-child {
-    padding-left: var(--wk-sp-2, 8px);
-    padding-right: var(--wk-sp-2, 8px);
-}
-
 @media (max-width: 600px) {
     .summary-workbench-actions {
         flex-direction: column;
         align-items: stretch;
         gap: 12px;
-    }
-
-    .chat-summary-modal-split {
-        align-self: flex-end;
     }
 }
 
@@ -2639,12 +2628,31 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     padding: 16px;
     border: 1px solid transparent;
     border-radius: 12px;
-    cursor: pointer;
     background-color: var(--wk-bg-legacy-card);
     transition: background-color 0.15s;
     overflow: hidden;
     position: relative;
     box-sizing: border-box;
+}
+
+.chat-summary-template-card-select {
+    width: 100%;
+    padding: 0;
+    border: 0;
+    color: inherit;
+    background: transparent;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.chat-summary-template-card-select:focus-visible {
+    outline: none;
+}
+
+.chat-summary-template-card:focus-within {
+    border-color: var(--wk-border-glow);
+    box-shadow: var(--wk-ring-primary);
 }
 
 body[theme-mode="dark"] .chat-summary-template-card {
@@ -2686,16 +2694,18 @@ body[theme-mode="dark"] .chat-summary-template-card:active {
 
 .chat-summary-template-card-content {
     display: flex;
-    flex-direction: column;
-    gap: 4px;
+    align-items: flex-start;
+    gap: 8px;
     flex: 1;
     min-width: 0;
 }
 
-.chat-summary-template-card-header {
+.chat-summary-template-card-copy {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .chat-summary-template-card-title {
@@ -2713,7 +2723,6 @@ body[theme-mode="dark"] .chat-summary-template-card:active {
     font-size: 12px;
     font-weight: 400;
     line-height: 16px;
-    padding-left: 24px;
     overflow: hidden;
     text-overflow: ellipsis;
     display: -webkit-box;
@@ -2793,10 +2802,6 @@ body[theme-mode="dark"] .summary-template-create-btn:hover {
 .summary-workbench--panel .summary-template-custom-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
-}
-
-.chat-summary-new-modal .summary-template-custom-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .chat-summary-template-actions {
@@ -3264,41 +3269,6 @@ body[theme-mode="dark"] .summary-template-create-btn:hover {
 .summary-template-edit-actions {
     margin-top: var(--wk-sp-4);
     margin-bottom: var(--wk-sp-2);
-}
-
-.summary-template-section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--wk-sp-3);
-}
-
-
-.chat-summary-modal-templates-heading {
-    padding: 0 var(--wk-sp-3);
-    margin-bottom: var(--wk-sp-3);
-}
-
-.summary-template-more-button {
-    border: 0;
-    background: transparent;
-    color: var(--semi-color-primary);
-    font-size: var(--wk-text-size-sm);
-    line-height: var(--wk-line-height-sm);
-    padding: var(--wk-sp-1) 0;
-    cursor: pointer;
-    white-space: nowrap;
-}
-
-.summary-template-more-button:hover {
-    color: var(--semi-color-primary-hover);
-}
-
-.summary-more-template-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--wk-sp-3);
-    padding-bottom: var(--wk-sp-3);
 }
 
 .summary-template-limit-hint {

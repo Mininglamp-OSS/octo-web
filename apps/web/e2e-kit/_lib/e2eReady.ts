@@ -22,10 +22,10 @@ export async function waitForE2EReady(page: Page, options: ReadyOptions): Promis
     throw new Error(`[e2e readiness] ${label} 未就绪 (${timeout}ms): ${cause.message}`);
   });
 }
-
 export function waitForMswReady(page: Page, timeout = 15_000): Promise<void> {
   return waitForE2EReady(page, {
     readyKey: "__MSW_READY__",
+    errorKey: "__MSW_ERROR__",
     timeout,
     label: "MSW",
   });

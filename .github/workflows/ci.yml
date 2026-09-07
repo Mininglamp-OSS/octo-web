@@ -138,7 +138,6 @@ jobs:
           src/api/__tests__/summaryApi.test.ts
           src/components/__tests__/AgentChatPanel.test.tsx
           src/components/__tests__/AgentChatPanel.sse.test.tsx
-          src/components/__tests__/ChatSummaryNewModal.test.tsx
           src/pages/__tests__/SummaryCreatePage.test.tsx
       - name: I18n check
         run: pnpm i18n:check

@@ -16,6 +16,7 @@ playwright-report
 out/
 build
 build-e2e
+apps/web/build-client-communication/
 *.tsbuildinfo
 
 # misc

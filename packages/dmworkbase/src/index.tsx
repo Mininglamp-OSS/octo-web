@@ -44,6 +44,22 @@ export * from './features/chat-composer'
 export type { default as ConversationContext} from './Components/Conversation/context'
 export { Conversation } from './Components/Conversation'
 export type { ConversationProps } from './Components/Conversation'
+export {
+  ConversationSurface,
+  ConversationWindow,
+} from './Components/ConversationWindow'
+export type {
+  ConversationSurfaceProps,
+  ConversationWindowHeaderModel,
+  ConversationWindowMode,
+  ConversationWindowProps,
+  ConversationWindowSelectionModel,
+} from './Components/ConversationWindow'
+export {
+  createLegacyChatRuntime,
+  getLegacyChatRuntime,
+} from './features/chat-capability/legacyChatClient'
+export type { LegacyChatRuntime } from './features/chat-capability/legacyChatClient'
 export type {
   InitialCompose,
   InitialComposeState,

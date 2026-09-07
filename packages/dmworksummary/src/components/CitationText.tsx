@@ -7,7 +7,7 @@ import { visit } from 'unist-util-visit';
 import { useI18n } from '@octo/base';
 import CitationBadge, { CitationGroupBadge, TeamCitationBadge } from './CitationBadge';
 import { CitationItem, TeamCitationItem, MemberStatus } from '../types/summary';
-import { buildDisplayIndexMap } from './citationFormat';
+import { buildDisplayIndexMap, normalizeCitationMarkersForDisplay } from './citationFormat';
 
 export interface CitationContextValue {
     activeKey: string | null;
@@ -56,13 +56,19 @@ const citationSchema = {
     },
 };
 
-function remarkCitation() {
+function remarkCitation(validIndices: number[]) {
     return (tree: any) => {
+        // Normalize only parsed prose text. remark does not expose fenced or
+        // inline code as `text` nodes, so display compatibility cannot mutate
+        // code samples or accidentally create Markdown link syntax.
         // Build the reading-order display map from the visible text nodes only
         // (visit 'text' never enters code / inlineCode), in document order — so
         // numbering matches exactly what renders as a badge below (#1003 P1).
         const textSegments: string[] = [];
-        visit(tree, 'text', (node: any) => { textSegments.push(node.value); });
+        visit(tree, 'text', (node: any) => {
+            node.value = normalizeCitationMarkersForDisplay(node.value, validIndices);
+            textSegments.push(node.value);
+        });
         const displayIndexMap = buildDisplayIndexMap(textSegments);
         const resolveDisplay = (raw: number) => displayIndexMap.get(raw) ?? raw;
 
@@ -281,8 +287,8 @@ const CitationText: React.FC<CitationTextProps> = ({
         setActiveKey(prev => (prev === key ? null : prev));
     }, []);
 
-    const normalized = content.trim();
-    if (!normalized) {
+    const trimmed = content.trim();
+    if (!trimmed) {
         return <div className="summary-content-empty">{t("summary.content.empty")}</div>;
     }
 
@@ -293,7 +299,7 @@ const CitationText: React.FC<CitationTextProps> = ({
     // — only the label the badge renders differs from the internal index. The
     // reading-order map is built inside remarkCitation from the AST text nodes
     // (so code-span `[n]` never pollutes numbering — #1003 P1).
-    const citationPlugin = () => remarkCitation();
+    const citationPlugin = () => remarkCitation(citations.map(citation => citation.index));
     const remarkPlugins: any[] = [remarkGfm, remarkBreaks];
     if (hasCitations) remarkPlugins.push(citationPlugin);
     if (hasTeamCitations) remarkPlugins.push(remarkTeamCitation);
@@ -306,7 +312,7 @@ const CitationText: React.FC<CitationTextProps> = ({
                     rehypePlugins={[[rehypeSanitize, citationSchema]]}
                     components={markdownComponents(citations, teamCitations, members, disableTeamMemberPreview)}
                 >
-                    {normalized}
+                    {trimmed}
                 </ReactMarkdown>
             </div>
         </CitationContext.Provider>

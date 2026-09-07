@@ -10,7 +10,7 @@ import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
 import { I18nContext, t, WKApp, Dap } from "@octo/base";
 import * as api from "../api/summaryApi";
-import { setPendingInvitationBadge } from "../utils/summaryMenuBadge";
+import { abandonSummaryAttentionRead, beginSummaryAttentionRead, commitSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
 import type {
     SummaryListItem,
     ListSummariesParams,
@@ -20,17 +20,23 @@ import { TaskStatus } from "../types/summary";
 import { getStatusLabel, isTerminalStatus } from "../utils/summaryHelpers";
 import { summaryTestIds } from "../utils/testIds";
 import SummaryCard from "../components/SummaryCard";
+import SummaryWorkbenchEntry from "../features/summaryWorkbench/Entry";
+import SummaryWorkbenchCreateEntry from "../features/summaryWorkbench/SummaryWorkbenchCreateEntry";
 import SummaryCreatePage from "./SummaryCreatePage";
 import SummaryDetailPage from "./SummaryDetailPage";
+
+type SummaryCreateEntryMode = "pending" | "unified" | "legacy";
 
 interface SummaryListPageProps {
     channelId?: string;
     /** Called when the user clicks the close button (panel mode only). */
     onClose?: () => void;
     /** Called when the user clicks "new summary" in panel mode. */
-    onCreateNew?: (mode?: "normal" | "agent") => void;
+    onCreateNew?: (mode?: "normal" | "agent" | "unified") => void;
     /** Called when a card is clicked in panel mode (instead of routeRight.push). */
     onViewDetail?: (taskId: number) => void;
+    /** Opens continue-optimization inside the host panel when provided. */
+    onContinueOptimize?: (task: SummaryListItem) => void;
 }
 
 interface SummaryListPageState {
@@ -111,17 +117,32 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             taskId: number;
             isUnread?: boolean;
             needsAttention?: boolean;
+            hasPendingSubmission?: boolean;
         }>).detail;
         const taskId = detail?.taskId;
         if (!detail || !taskId) return;
         this.setState(({ items }) => ({
-            items: items.map(item => item.task_id === taskId
-                ? {
+            items: items.map(item => {
+                if (item.task_id !== taskId) return item;
+                // 看过 ≠ 已提交（owner 2026-08-26）：标读不清除待提交红点。
+                //
+                // 红点信号只信服务端刚回的 needsAttention / hasPendingSubmission，
+                // 不用旧 item 的待提交值参与 needs_attention，避免把陈旧字段重新钉回红点。
+                // 但卡片字段本身保留旧值作为老后端兼容：旧接口不返回该字段时，维持
+                // 线上既有的等待态展示；新接口返回值时则以新值覆盖。
+                const pendingSubmission = detail.hasPendingSubmission;
+                return {
                     ...item,
                     is_unread: detail.isUnread ?? false,
-                    needs_attention: detail.needsAttention ?? Boolean(item.has_pending_invitation),
-                }
-                : item),
+                    has_pending_submission: pendingSubmission ?? item.has_pending_submission,
+                    // 两个信号分开处理：
+                    // ・邀请：新后端的 needsAttention 已包含它；旧后端省略字段时回退到卡片标记。
+                    // ・待提交：新后端的 needs_attention 已含它，这里的 OR 是冗余安全网；
+                    //   旧后端下 pendingSubmission 为 undefined，OR 不会凭空造出红点。
+                    needs_attention: (detail.needsAttention ?? Boolean(item.has_pending_invitation))
+                        || Boolean(pendingSubmission),
+                };
+            }),
         }));
     };
 
@@ -201,6 +222,23 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         // would still commit.
         const seq = ++this.loadDataSeq;
         const requestSpaceId = WKApp.shared.currentSpaceId;
+        // 领一个待关注计数的读取号，必须在 await 之前：号码代表“这份数据是
+        // 什么时候向服务端要的”。列表与 page_size=1 探测是两个并行写者，按发出
+        // 时刻排序；否则一个先发后到、快照更旧的列表响应会盖掉用户刚触发的
+        // 正确探测（读/提交/应答），红点卡在陈值。
+        // 样本时刻同样在 await 之前取。列表端点【没有】那层 5s 缓存，所以不折算：
+        // 发出时刻就是它反映的时刻。
+        //
+        // 显式传，而不是让 commit 走 `?? Date.now()` 的缺省：那个缺省会在 await
+        // 【之后】求值，记下的是【到达】时刻，而其它写者记的都是【发出】时刻。列表
+        // 又恰好是最慢的那个请求（它 join 参与者、逐行算 needs_attention，本 PR 加窄
+        // 端点就是为了避开它）。一次 2s 的列表加载会把水位凭空抬高 2s，之后约
+        // latency + ATTENTION_CACHE_TTL_MS 内发出的非 fresh 轮询读会被水位闸静默丢掉。
+        const attentionIssuedAt = Date.now();
+        const attentionTicket = this.props.channelId ? null : beginSummaryAttentionRead(attentionIssuedAt);
+        // 票号是否已被成功消费。finally 里据此决定还不还号：成功 commit 后
+        // 若把号还回去，等于给更早的陈旧快照开后门。
+        let attentionCommitted = false;
         this.isLoadingData = true;
         // Only toggle loading. Do NOT pre-set page:1 / hasMore:true here —
         // if the request fails in silent mode we would leave items at the
@@ -230,8 +268,25 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             if (!this.isMounted_ || WKApp.shared.currentSpaceId !== requestSpaceId) return;
             // #1359 只有全局列表拥有写 NavRail badge 的职责。后端 count 虽然是
             // Space 级，但聊天侧栏是嵌入式 channel 实例，不应改写全局导航状态。
-            if (!this.props.channelId) {
-                setPendingInvitationBadge(resp.pending_invitation_count ?? 0);
+            // 用发请求前领的 ticket 提交：期间若有更新的读取发出，本次就是陈旧
+            // 快照，丢弃即可——那个更新的读取会带回正确值。
+            if (attentionTicket !== null) {
+                // 号在这里就销掉（commit 或 abandon 二者之一），finally 不再重复处理。
+                attentionCommitted = true;
+                if (Number.isFinite(resp.attention_count)) {
+                    commitSummaryAttentionBadge(attentionTicket, resp.attention_count as number, attentionIssuedAt);
+                } else {
+                    // 不再 `?? 0`。那是 api/summaryApi.ts 的 assertAttentionCounts 这一轮
+                    // 专门要消掉的静默归零模式：一个信封错位的响应（网关改包装、后端返回
+                    // HTML 错误页、字段改名）会让 attention_count 取到 undefined，`?? 0`
+                    // 把它当成正常样本落盘，红点静默清零——而且这条写入还会被广播出去，
+                    // 把错误放大到全部标签页。窄端点与 404 兜底两条路都已经过校验，这里
+                    // 是最后一个缺口。
+                    //
+                    // 按失败处理（还号 + 保持旧值），与那两条路「抛出去、上层退避」的策略
+                    // 一致：没有红点和红点不对用户分辨不出来，也不会报 bug。
+                    abandonSummaryAttentionRead(attentionTicket);
+                }
             }
             this.setState({
                 items: resp.items,
@@ -266,6 +321,15 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             // the newer one is still in flight. Only the current loadData
             // is allowed to release the guard.
             if (seq === this.loadDataSeq) this.isLoadingData = false;
+            // Ticket liveness: this loadData took a ticket
+            // but never committed it (superseded by a newer loadData,
+            // unmounted, Space changed, or the request failed). Release the
+            // number so it cannot strand an older in-flight read that still
+            // carries the correct count. No-op once a newer read owns the
+            // sequence; never runs after a successful commit.
+            if (attentionTicket !== null && !attentionCommitted) {
+                abandonSummaryAttentionRead(attentionTicket);
+            }
         }
     }
 
@@ -476,14 +540,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             });
         } else {
             this.setState({ items: [], total: 0, activeTaskId: null }, () => {
-                if (this.props.onCreateNew) {
-                    this.props.onCreateNew();
-                } else {
-                    WKApp.routeRight.popToRoot();
-                    WKApp.routeRight.push(
-                        <SummaryCreatePage source="summary_list" />
-                    );
-                }
+                this.openCapabilityGatedCreate();
             });
         }
     };
@@ -547,6 +604,18 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         }, 300);
     };
 
+    handleContinueOptimize = (taskId: number) => {
+        const task = this.state.items.find(item => item.task_id === taskId);
+        if (!task) return;
+        if (this.props.onContinueOptimize) {
+            this.props.onContinueOptimize(task);
+            return;
+        }
+        window.dispatchEvent(
+            new CustomEvent("summary-open-chat-with-reference", { detail: task })
+        );
+    };
+
     handleEdit = (taskId: number) => {
         this.handleCardClick(taskId);
         // 300ms delay allows detail page to mount and register event listener
@@ -583,7 +652,38 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         );
     };
 
+    private openCapabilityGatedCreate = () => {
+        if (this.props.onCreateNew) {
+            this.props.onCreateNew("unified");
+            return;
+        }
+        WKApp.routeRight.popToRoot();
+        WKApp.routeRight.push(
+            <SummaryWorkbenchCreateEntry
+                key={`unified-${++this.createEntrySeq}`}
+                source="summary_list"
+            />
+        );
+    };
+
+    handleUnifiedCreate = () => {
+        Dap.shared.track("smart_summary_create_clicked", {});
+        this.openCapabilityGatedCreate();
+    };
+
     render() {
+        const spaceId = String(WKApp.shared.currentSpaceId ?? "").trim();
+        return (
+            <SummaryWorkbenchEntry
+                spaceId={spaceId}
+                renderPending={() => this.renderList("pending")}
+                renderNew={() => this.renderList("unified")}
+                renderLegacy={() => this.renderList("legacy")}
+            />
+        );
+    }
+
+    private renderList(createEntryMode: SummaryCreateEntryMode) {
         const { items, total, pageSize, loading, loadingMore, hasMore, error, statusFilter, keyword, activeTaskId } = this.state;
         const { channelId, onClose } = this.props;
         const { locale, t: translate } = this.context;
@@ -597,40 +697,49 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                         {isPanel ? translate("summary.chatSummary.panelTitle") : translate("summary.list.title")}
                     </h2>
                     <div className="summary-list-header-actions">
-                        {/* 单一「+」入口：点击只弹下拉（快速总结 / Agent 总结），
-                            不再是「主按钮直接建 + 独立箭头下拉」的组合按钮。
-                            不用 Semi Tooltip 包 Dropdown——Semi Tooltip 把 hover 处理器
-                            注入到直接子节点，Dropdown 不会把事件转发给触发按钮，
-                            hover 提示会失效；用原生 title + aria-label 兜底。 */}
-                        <Dropdown
-                            trigger="click"
-                            position="bottomRight"
-                            render={(
-                                <Dropdown.Menu>
-                                    <Dropdown.Item
-                                        data-testid={summaryTestIds.listNormalTab}
-                                        onClick={() => this.handleCreate("normal")}
-                                    >
-                                        {translate("summary.create.start")}
-                                    </Dropdown.Item>
-                                    <Dropdown.Item
-                                        data-testid={summaryTestIds.listAgentTab}
-                                        onClick={() => this.handleCreate("agent")}
-                                    >
-                                        {translate("summary.create.agentStart")}
-                                    </Dropdown.Item>
-                                </Dropdown.Menu>
-                            )}
-                        >
+                        {createEntryMode === "legacy" ? (
+                            /* Legacy 保留原模式下拉；定时更新统一在总结详情页配置。 */
+                            <Dropdown
+                                trigger="click"
+                                position="bottomRight"
+                                render={(
+                                    <Dropdown.Menu>
+                                        <Dropdown.Item
+                                            data-testid={summaryTestIds.listNormalTab}
+                                            onClick={() => this.handleCreate("normal")}
+                                        >
+                                            {translate("summary.create.start")}
+                                        </Dropdown.Item>
+                                        <Dropdown.Item
+                                            data-testid={summaryTestIds.listAgentTab}
+                                            onClick={() => this.handleCreate("agent")}
+                                        >
+                                            {translate("summary.create.agentStart")}
+                                        </Dropdown.Item>
+                                    </Dropdown.Menu>
+                                )}
+                            >
+                                <Button
+                                    data-testid={summaryTestIds.listModeSwitch}
+                                    className="summary-list-create-icon-btn"
+                                    icon={<IconPlus />}
+                                    theme="borderless"
+                                    aria-label={translate("summary.list.createTooltip")}
+                                    title={translate("summary.list.createTooltip")}
+                                />
+                            </Dropdown>
+                        ) : (
                             <Button
                                 data-testid={summaryTestIds.listModeSwitch}
                                 className="summary-list-create-icon-btn"
                                 icon={<IconPlus />}
                                 theme="borderless"
+                                disabled={createEntryMode === "pending"}
+                                onClick={createEntryMode === "unified" ? this.handleUnifiedCreate : undefined}
                                 aria-label={translate("summary.list.createTooltip")}
                                 title={translate("summary.list.createTooltip")}
                             />
-                        </Dropdown>
+                        )}
                         {isPanel && onClose && (
                             <Button
                                 icon={<X size={18} />}
@@ -704,7 +813,17 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                             <>
                                 <div className="summary-list-empty-title">{translate("summary.list.emptyTitle")}</div>
                                 <div className="summary-list-empty-desc">{translate("summary.chatSummary.emptyDescription")}</div>
-                                <Button data-testid={summaryTestIds.createEntry} theme="solid" onClick={() => this.handleCreate("normal")} style={{ marginTop: 16 }}>
+                                <Button
+                                    data-testid={summaryTestIds.createEntry}
+                                    theme="solid"
+                                    disabled={createEntryMode === "pending"}
+                                    onClick={createEntryMode === "unified"
+                                        ? this.handleUnifiedCreate
+                                        : createEntryMode === "legacy"
+                                        ? () => this.handleCreate("normal")
+                                        : undefined}
+                                    style={{ marginTop: 16 }}
+                                >
                                     {translate("summary.chatSummary.createNew")}
                                 </Button>
                             </>
@@ -715,7 +834,17 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                                 <div className="summary-list-empty-desc">
                                     {translate("summary.list.emptyDesc")}
                                 </div>
-                                <Button data-testid={summaryTestIds.createEntry} theme="solid" onClick={() => this.handleCreate("normal")} style={{ marginTop: 16 }}>
+                                <Button
+                                    data-testid={summaryTestIds.createEntry}
+                                    theme="solid"
+                                    disabled={createEntryMode === "pending"}
+                                    onClick={createEntryMode === "unified"
+                                        ? this.handleUnifiedCreate
+                                        : createEntryMode === "legacy"
+                                        ? () => this.handleCreate("normal")
+                                        : undefined}
+                                    style={{ marginTop: 16 }}
+                                >
                                     {translate("summary.list.createFirst")}
                                 </Button>
                             </>
@@ -736,8 +865,10 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                                 onLeave={this.handleLeave}
                                 onRetry={this.handleRetry}
                                 onRegenerate={this.handleRegenerate}
+                                onContinueOptimize={this.handleContinueOptimize}
                                 onEdit={this.handleEdit}
                                 onCancel={this.handleCancel}
+                                unifiedAgentActions={createEntryMode === "unified"}
                             />
                         ))}
                         {loadingMore && (

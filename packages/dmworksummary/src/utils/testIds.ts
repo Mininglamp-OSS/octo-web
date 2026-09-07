@@ -23,6 +23,9 @@ export const summaryTestIds = {
     createSelectMembers: "summary-create-select-members",
     createSubmit: "summary-create-submit",
 
+    // ── Unified workbench ──
+    workbenchFeature: "summary-workbench-feature",
+
     // ── Chat selector modal ──
     chatSelectorModal: "summary-chat-selector-modal",
     chatSelectorAllGroupsTab: "summary-chat-selector-all-groups-tab",

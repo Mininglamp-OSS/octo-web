@@ -612,6 +612,7 @@ export type MessageDeleteListener = (
 ) => void;
 
 export class LoginInfo {
+  private _ephemeralSession = false;
   appID!: string;
   shortNo!: string; // 短号
   token?: string;
@@ -654,10 +655,27 @@ export class LoginInfo {
   realName?: string;
   realnameVerifiedAt?: number; // Unix 秒或毫秒，后端未定义前端不展示即可
 
+  public applySession(session: {
+    uid: string;
+    token: string;
+    name?: string;
+    loginProvider?: string;
+    deviceFlag?: number;
+  }, persist = false) {
+    this._ephemeralSession = !persist;
+    this.uid = session.uid;
+    this.token = session.token;
+    this.name = session.name ?? "";
+    this.loginProvider = session.loginProvider;
+    this.deviceFlag = session.deviceFlag;
+    if (persist) this.save();
+  }
+
   /**
    * save 保存登录信息
    */
   public save() {
+    if (this._ephemeralSession) return;
     this.setStorageItemForSID("app_id", this.appID ?? "");
     this.setStorageItemForSID("short_no", this.shortNo ?? "");
     this.setStorageItemForSID("uid", this.uid ?? "");
@@ -1033,17 +1051,18 @@ export default class WKApp extends ProviderListener {
   }
 
   // app启动
-  startup() {
+  startup(options: { loadLoginInfo?: boolean; isPC?: boolean } = {}) {
     if (consumeOidcPostLogoutCleanup()) {
       void this.clearLocalLoginState();
     }
-    WKApp.loginInfo.load(); // 加载登录信息
+    if (options.loadLoginInfo !== false) {
+      WKApp.loginInfo.load(); // 加载登录信息
+    }
 
     // 是否是PC端
-    if (
-      isElectronPowered() ||
-      (window as any).__TAURI_IPC__
-    ) {
+    if (options.isPC !== undefined) {
+      this.isPC = options.isPC;
+    } else if (isElectronPowered() || (window as any).__TAURI_IPC__) {
       this.isPC = true;
     }
     const expectedDeviceFlag = getExpectedImDeviceFlag(this.isPC);

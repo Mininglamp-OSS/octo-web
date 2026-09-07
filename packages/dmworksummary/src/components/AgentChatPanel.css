@@ -72,6 +72,13 @@
 
 .agent-chat-textarea {
     flex: 1;
+    /* flex item 默认 min-width:auto，不能小于自身 min-content。
+       <textarea> 的 intrinsic min-content 在 Firefox/WebKit 上远大于 Blink，
+       不覆盖会把同行的「发送/保存为总结」按钮推出 .agent-chat-panel-input
+       可视区，再被 .agent-chat-panel{overflow:hidden} 裁掉，表现为按钮消失。
+       显式置 0 让 flex:1 的收缩生效；Chrome 上行为不变（其 intrinsic size
+       本来就极小）。 */
+    min-width: 0;
     resize: none;
     max-height: 120px;
     padding: var(--wk-sp-2, 8px);

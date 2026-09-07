@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   switchToMenuById: vi.fn(),
@@ -16,6 +16,7 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("@octo/base", () => ({
+  getSessionSid: () => "sid-test",
   i18n: { registerNamespace: vi.fn() },
   t: (key: string) => key,
   Dap: { shared: { track: vi.fn() } },
@@ -42,9 +43,14 @@ vi.mock("@octo/base", () => ({
 }));
 
 vi.mock("../pages/SummaryListPage", () => ({ default: () => null }));
-vi.mock("../pages/SummaryCreatePage", () => ({ default: () => null }));
 vi.mock("../pages/SummaryDetailPage", () => ({ default: () => null }));
 vi.mock("../pages/SummaryShareDetailPage", () => ({ default: () => null }));
+vi.mock("../features/summaryWorkbench/SummaryWorkbenchCreateEntry", () => ({
+  default: () => null,
+}));
+vi.mock("../features/summaryWorkbench/availability", () => ({
+  summaryWorkbenchAvailability: { invalidate: vi.fn() },
+}));
 vi.mock("../features/summaryShare/SummarySharePreviewFeature", () => ({
   default: () => null,
 }));
@@ -61,9 +67,15 @@ vi.mock("../features/summaryShare/navigation", () => ({
 vi.mock("../utils/chatSummaryActions", () => ({
   notifyChatSummaryCreated: vi.fn(),
 }));
-vi.mock("../utils/summaryMenuBadge", () => ({
-  getPendingInvitationBadge: () => 0,
-  refreshPendingInvitationBadge: vi.fn(),
+vi.mock("../utils/summaryAttentionBadge", () => ({
+  getSummaryAttentionBadge: () => 0,
+  refreshSummaryAttentionBadge: vi.fn(),
+  setSummaryAttentionBadge: vi.fn(),
+  // 广播排序相关的两个出口：init 会接广播钩子（setSummaryAttentionPublisher），
+  // leader 收到广播时走 acceptRemoteAttentionCount。本用例只关心菜单切换，
+  // 但 mock 缺一个导出就会让整个 init 抛错。
+  acceptRemoteAttentionCount: vi.fn(),
+  setSummaryAttentionPublisher: vi.fn(),
 }));
 vi.mock("../utils/channelType", () => ({
   isSupportedChannelType: () => true,
@@ -76,9 +88,13 @@ vi.mock("../components/ChatSummaryPanel", () => ({ default: () => null }));
 import React from "react";
 import { WKApp } from "@octo/base";
 import { getSummaryShare } from "../api/summaryApi";
-import SummaryCreatePage from "../pages/SummaryCreatePage";
+import SummaryWorkbenchCreateEntry from "../features/summaryWorkbench/SummaryWorkbenchCreateEntry";
+import { summaryWorkbenchAvailability } from "../features/summaryWorkbench/availability";
+import ScheduleListPage from "../pages/ScheduleListPage";
 import { SummaryModule } from "../module";
-import { refreshPendingInvitationBadge } from "../utils/summaryMenuBadge";
+import { refreshSummaryAttentionBadge, setSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
+
+let windowEventHandlers: Map<string, EventListener>;
 
 function registeredHandler(event: string): () => void {
   const call = vi.mocked(WKApp.mittBus.on).mock.calls.find(
@@ -95,12 +111,28 @@ function summaryMenuFactory(): () => { onPress?: (reentry?: boolean) => void } {
   return factory;
 }
 
+function registeredRoute(path: string): (param?: unknown) => React.ReactElement {
+  const call = vi.mocked(WKApp.route.register).mock.calls.find(
+    ([registeredPath]) => registeredPath === path
+  );
+  if (!call) throw new Error(`Missing ${path} route`);
+  return call[1] as (param?: unknown) => React.ReactElement;
+}
+
 describe("SummaryModule guarded menu switching", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     state.currentMenuId = "mail";
     state.shared.currentSpaceId = "space-a";
+    windowEventHandlers = new Map();
+    vi.spyOn(window, "addEventListener").mockImplementation((type, listener) => {
+      windowEventHandlers.set(type, listener as EventListener);
+    });
     new SummaryModule().init();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("opens summary detail only after the guarded switch succeeds", () => {
@@ -157,10 +189,38 @@ describe("SummaryModule guarded menu switching", () => {
     expect(state.replaceToRoot).toHaveBeenCalledTimes(1);
   });
 
-  it("refreshes the invitation badge once when the initial Space becomes ready", () => {
+  it("refreshes the attention badge once when the initial Space becomes ready", () => {
     registeredHandler("space-ready")();
 
-    expect(refreshPendingInvitationBadge).toHaveBeenCalledTimes(1);
+    expect(refreshSummaryAttentionBadge).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes manual creation through the unified entry while schedules stay Legacy", () => {
+    const createEntry = registeredRoute("/summary/create")();
+    const scheduleEntry = registeredRoute("/summary/schedules")();
+
+    expect(createEntry.type).toBe(SummaryWorkbenchCreateEntry);
+    expect(createEntry.props.source).toBe("summary_home");
+    expect(createEntry.props.legacyInitialMode).toBe("normal");
+    expect(scheduleEntry.type).toBe(ScheduleListPage);
+  });
+
+  it("opens detail optimization in the unified entry with the referenced task", () => {
+    const task = { task_id: 42, title: "Weekly summary" };
+    const handler = windowEventHandlers.get("summary-open-chat-with-reference");
+    expect(handler).toBeTruthy();
+
+    handler?.(new CustomEvent("summary-open-chat-with-reference", {
+      detail: task,
+    }));
+
+    const push = vi.mocked(WKApp.routeRight.push);
+    expect(push).toHaveBeenCalledTimes(1);
+    const entry = push.mock.calls[0][0] as React.ReactElement;
+    expect(entry.type).toBe(SummaryWorkbenchCreateEntry);
+    expect(entry.props.derivedFromTask).toBe(task);
+    expect(entry.props.source).toBe("detail_optimize");
+    expect(entry.props.legacyInitialMode).toBe("agent");
   });
 
   it("NavRail summary onPress opens the create page by default without pushing a duplicate list page", () => {
@@ -177,12 +237,12 @@ describe("SummaryModule guarded menu switching", () => {
     expect(state.replaceToRoot).toHaveBeenCalledTimes(1);
 
     const pushed = state.replaceToRoot.mock.calls[0][0] as React.ReactElement;
-    expect(pushed.type).toBe(SummaryCreatePage); // 创建页，不是 SummaryListPage
+    expect(pushed.type).toBe(SummaryWorkbenchCreateEntry); // 统一入口，不是 SummaryListPage
     expect(pushed.props.source).toBe("summary_home");
-    expect(pushed.props.initialMode).toBe("normal");
+    expect(pushed.props.legacyInitialMode).toBe("normal");
     // P2-1/P2-5：key 必须存在且随每次进入变化——固定 key 会命中 WKViewQueue 的
     // React 复用分支，重复点菜单不会「重置回默认创建页」。
-    expect(String(pushed.key).startsWith("home-normal-")).toBe(true);
+    expect(String(pushed.key).startsWith("home-workbench-")).toBe(true);
 
     // 再次进入：key 必须不同（强制重挂载，保证重置语义）。
     menu.onPress?.(true);
@@ -209,12 +269,36 @@ describe("SummaryModule guarded menu switching", () => {
 
   it("does not double-fetch when boot repairs Space before publishing ready", () => {
     registeredHandler("space-changed")();
-    expect(refreshPendingInvitationBadge).not.toHaveBeenCalled();
+    expect(summaryWorkbenchAvailability.invalidate).toHaveBeenCalledTimes(1);
+    expect(refreshSummaryAttentionBadge).not.toHaveBeenCalled();
 
     registeredHandler("space-ready")();
-    expect(refreshPendingInvitationBadge).toHaveBeenCalledTimes(1);
+    expect(refreshSummaryAttentionBadge).toHaveBeenCalledTimes(1);
 
     registeredHandler("space-changed")();
-    expect(refreshPendingInvitationBadge).toHaveBeenCalledTimes(2);
+    expect(summaryWorkbenchAvailability.invalidate).toHaveBeenCalledTimes(2);
+    expect(refreshSummaryAttentionBadge).toHaveBeenCalledTimes(2);
+  });
+
+  it("zeroes the badge on a Space switch so a failed refresh cannot show the previous Space's count", () => {
+    // The refresh fails silently by design (the badge is a nicety, not worth a
+    // toast). Without zeroing first, that failure mode is "another Space's
+    // number" rather than "no number" — far more misleading now that the count
+    // means unread ∪ invitations ∪ pending submissions rather than invitations
+    // alone.
+    registeredHandler("space-ready")();
+    vi.mocked(setSummaryAttentionBadge).mockClear();
+
+    registeredHandler("space-changed")();
+
+    expect(setSummaryAttentionBadge).toHaveBeenCalledWith(0);
+  });
+
+  it("does not zero the badge on the cold-start space-changed that precedes space-ready", () => {
+    // Boot may emit space-changed before space-ready; that path deliberately
+    // defers to space-ready, so it must not clear the badge either.
+    registeredHandler("space-changed")();
+
+    expect(setSummaryAttentionBadge).not.toHaveBeenCalled();
   });
 });

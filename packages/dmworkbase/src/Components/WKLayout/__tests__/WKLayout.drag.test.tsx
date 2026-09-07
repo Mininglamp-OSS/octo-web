@@ -1,16 +1,50 @@
+// @vitest-environment jsdom
+
 import React from "react"
-import { cleanup, fireEvent, render } from "@testing-library/react"
-import { afterEach, describe, expect, it } from "vitest"
+import ReactDOM from "react-dom"
+import { act } from "react-dom/test-utils"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { WKLayout } from "../index"
 
+let container: HTMLDivElement
+
+beforeEach(() => {
+    container = document.createElement("div")
+    document.body.appendChild(container)
+})
+
 afterEach(() => {
-    cleanup()
+    act(() => {
+        ReactDOM.unmountComponentAtNode(container)
+    })
+    container.remove()
     localStorage.clear()
 })
 
+const renderLayout = (element: React.ReactElement) => {
+    act(() => {
+        ReactDOM.render(element, container)
+    })
+}
+
 describe("WKLayout NavRail drag", () => {
+    it("removes the NavRail and its splitter in embedded mode", () => {
+        renderLayout(
+            <WKLayout
+                embedded
+                onRenderTab={() => <nav>Navigation</nav>}
+                contentLeft={<div>Conversation list</div>}
+                contentRight={<div>Conversation</div>}
+            />,
+        )
+
+        expect(container.querySelector(".wk-layout-tab")).toBeNull()
+        expect(container.querySelector(".wk-layout-nav-splitter")).toBeNull()
+        expect(container.querySelector(".wk-layout-content")).not.toBeNull()
+    })
+
     it("expands the NavRail when its splitter is dragged to the right", () => {
-        const { container } = render(
+        renderLayout(
             <WKLayout
                 onRenderTab={() => <nav>Navigation</nav>}
                 contentLeft={<div>Conversation list</div>}
@@ -24,9 +58,11 @@ describe("WKLayout NavRail drag", () => {
         expect(splitter).not.toBeNull()
         expect(navRail?.style.width).toBe("56px")
 
-        fireEvent.mouseDown(splitter!, { clientX: 56 })
-        fireEvent.mouseMove(document, { clientX: 57 })
-        fireEvent.mouseUp(document)
+        act(() => {
+            splitter!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientX: 56 }))
+            document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 57 }))
+            document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }))
+        })
 
         expect(navRail?.style.width).toBe("180px")
         expect(navRail?.classList.contains("wk-layout-tab-expanded")).toBe(true)
