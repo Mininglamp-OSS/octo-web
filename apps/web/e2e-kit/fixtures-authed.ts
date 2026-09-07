@@ -37,18 +37,11 @@ const MOCK_LOCALE = "zh-CN";
 
 async function installGlobalMockFallbackRoutes(page: Page): Promise<void> {
   // Playwright routes only see these requests when the MSW service worker did
-  // not intercept them. Use deterministic responses only before MSW reports
-  // ready; after readiness, fall through so a missing handler remains visible
-  // to the proxy-error merge gate.
+  // not intercept them. If a request reaches this fallback, fulfill the known
+  // boot endpoint directly; checking __MSW_READY__ here is racy because the
+  // flag can turn true after the request already escaped the service worker.
   await page.route("**/summary/api/v1/summaries/attention*", async (route) => {
     if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    const mswReady = await page
-      .evaluate(() => (globalThis as { __MSW_READY__?: boolean }).__MSW_READY__ === true)
-      .catch(() => false);
-    if (mswReady) {
       await route.fallback();
       return;
     }
@@ -70,13 +63,6 @@ async function installGlobalMockFallbackRoutes(page: Page): Promise<void> {
 
   await page.route("**/api/v1/spaces/*/categories*", async (route) => {
     if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    const mswReady = await page
-      .evaluate(() => (globalThis as { __MSW_READY__?: boolean }).__MSW_READY__ === true)
-      .catch(() => false);
-    if (mswReady) {
       await route.fallback();
       return;
     }
