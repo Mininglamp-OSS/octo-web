@@ -520,6 +520,7 @@ export default function SummaryWorkbenchFeature({
     errorMessage: displayErrorKey
       ? t(displayErrorKey)
       : workbench.viewState.errorMessage || participantScopeErrorMessage,
+    referencePreviewOpen,
   };
 
   const updateScopeWithPreviewGuard = (
@@ -651,6 +652,11 @@ export default function SummaryWorkbenchFeature({
       setTemplateGalleryOpen(true);
       return;
     }
+    if (kind === "reference" && referencedTask) {
+      setOpenSelector(null);
+      setReferencePreviewOpen((open) => !open);
+      return;
+    }
     if (kind === "participant" && !canSelectParticipants(workbench.scope)) {
       Toast.info(t("summary.workbench.notice.selectSingleChatForParticipants"));
       return;
@@ -658,9 +664,6 @@ export default function SummaryWorkbenchFeature({
     setOpenSelector(kind);
     if (kind === "participant") {
       void refreshParticipantCandidates();
-    }
-    if (kind === "reference" && referencedTask) {
-      setReferencePreviewOpen(true);
     }
   };
 
@@ -774,28 +777,9 @@ export default function SummaryWorkbenchFeature({
     setSaveDialogOpen(false);
     if (handledSavedTaskIds.current.has(result.task_id)) return;
     handledSavedTaskIds.current.add(result.task_id);
-    // P1-5 (yujiawei review 5087124100): gate the warning on finish_status,
-    // not on gaps[0].detail — {finish_status:"FAILED", gaps:[]} previously
-    // produced a success toast. Show gap detail when present, otherwise a
-    // generic quality-gate warning.
-    const qualityGateHit =
-      result.finish_status === "PARTIAL" || result.finish_status === "FAILED";
-    if (qualityGateHit) {
-      const firstGapDetail = result.gaps?.[0]?.detail;
-      if (firstGapDetail) {
-        Toast.warning(
-          t("summary.workbench.notice.savedWithQualityGap", {
-            values: { detail: firstGapDetail },
-          })
-        );
-      } else {
-        Toast.warning(
-          t("summary.workbench.notice.savedWithQualityGateWarning")
-        );
-      }
-    } else {
-      Toast.success(t("summary.create.agentSummaryCreated"));
-    }
+    // finish_status and gaps are internal quality diagnostics. A created task
+    // is a successful user action regardless of its non-blocking gate verdict.
+    Toast.success(t("summary.create.agentSummaryCreated"));
     notifyCreated(result.task_id, "agent");
     openTask(result.task_id);
   };

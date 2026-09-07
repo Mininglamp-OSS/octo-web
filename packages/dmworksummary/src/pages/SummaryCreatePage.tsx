@@ -1008,18 +1008,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             });
             markAgentSummaryNotificationEligible(result.task_id);
 
-            const qualityGateHit = result.finish_status === 'PARTIAL' || result.finish_status === 'FAILED';
-            const firstGapDetail = qualityGateHit ? result.gaps?.[0]?.detail : undefined;
-            if (firstGapDetail) {
-                Toast.warning(t('summary.workbench.notice.savedWithQualityGap', {
-                    values: { detail: firstGapDetail },
-                }));
-            } else if (qualityGateHit) {
-                // P1-5: FAILED/PARTIAL with an empty gaps list must not read as success.
-                Toast.warning(t('summary.workbench.notice.savedWithQualityGateWarning'));
-            } else {
-                Toast.success(t('summary.create.agentSummaryCreated'));
-            }
+            // finish_status and gaps remain available as internal diagnostics,
+            // but the task was created successfully and users only need the
+            // save outcome here.
+            Toast.success(t('summary.create.agentSummaryCreated'));
 
             // 保存成功 → 销毁 chat session 工作台:
             //   1. 清 localStorage 里的 session_id(不然下次进 agent 会误恢复空 session)

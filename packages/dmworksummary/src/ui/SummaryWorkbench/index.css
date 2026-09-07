@@ -116,19 +116,39 @@
 .wk-summary-workbench-context__item {
   display: inline-flex;
   align-items: center;
-  gap: var(--wk-sp-1);
   max-width: 100%;
-  padding-left: var(--wk-sp-2);
   border-radius: var(--wk-r-full);
   color: var(--wk-text-secondary);
   background: var(--wk-bg-elevated);
   font: var(--wk-text-caption);
+  overflow: hidden;
 }
 
-.wk-summary-workbench-context__item > span:first-child {
+.wk-summary-workbench-context__reference-open.wk-btn {
+  min-width: 0;
+  max-width: 100%;
+  border-color: transparent;
+  border-radius: var(--wk-r-full);
+  color: var(--wk-text-secondary);
+  background: transparent;
+}
+
+.wk-summary-workbench-context__reference-open.wk-btn:hover:not(:disabled),
+.wk-summary-workbench-context__reference-open--active.wk-btn {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-hover);
+}
+
+.wk-summary-workbench-context__reference-open > span:first-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.wk-summary-workbench-context__reference-chevron {
+  flex-shrink: 0;
+  font-size: var(--wk-text-size-base);
+  line-height: 1;
 }
 
 .wk-summary-workbench-context__remove.wk-btn {

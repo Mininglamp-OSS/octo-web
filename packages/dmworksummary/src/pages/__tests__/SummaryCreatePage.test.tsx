@@ -833,7 +833,7 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         );
     });
 
-    it.each(['PARTIAL', 'FAILED'] as const)('shows the first quality gap after a %s legacy Agent save', async (finishStatus) => {
+    it.each(['PARTIAL', 'FAILED'] as const)('shows successful save feedback after a %s legacy Agent verdict', async (finishStatus) => {
         const { Toast } = await import('@douyinfe/semi-ui');
         (api.createAgentSummary as any).mockResolvedValueOnce({
             task_id: 1,
@@ -847,8 +847,8 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
 
         await act(async () => { await instance.handleSaveAsSummary('t'); });
 
-        expect(Toast.warning).toHaveBeenCalledWith('总结已保存，但存在质量缺口：引用完整性校验失败');
-        expect(Toast.success).not.toHaveBeenCalled();
+        expect(Toast.success).toHaveBeenCalledWith('AI 总结已保存');
+        expect(Toast.warning).not.toHaveBeenCalled();
     });
 });
 

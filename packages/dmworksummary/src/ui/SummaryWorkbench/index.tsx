@@ -421,27 +421,45 @@ const SummaryWorkbench = ({
           </div>
           <div className="wk-summary-workbench__header-actions">
             <div className="wk-summary-workbench__reference-context">
-              <WKButton
-                type="button"
-                size="sm"
-                variant="ghost"
-                className={
-                  referenceContextItems.length > 0
-                    ? "wk-summary-workbench-context__trigger--active"
-                    : undefined
-                }
-                aria-pressed={referenceContextItems.length > 0}
-                disabled={isComposerDisabled}
-                onClick={() => actions.onOpenContext(REFERENCE_CONTEXT_KIND)}
-              >
-                {t(CONTEXT_LABEL_KEYS[REFERENCE_CONTEXT_KIND])}
-              </WKButton>
+              {referenceContextItems.length === 0 && (
+                <WKButton
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={isComposerDisabled}
+                  onClick={() => actions.onOpenContext(REFERENCE_CONTEXT_KIND)}
+                >
+                  {t(CONTEXT_LABEL_KEYS[REFERENCE_CONTEXT_KIND])}
+                </WKButton>
+              )}
               {referenceContextItems.map((item) => (
                 <span
                   className="wk-summary-workbench-context__item"
                   key={`${item.kind}:${item.id}`}
                 >
-                  <span>{item.label}</span>
+                  <WKButton
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className={`wk-summary-workbench-context__reference-open${
+                      state.referencePreviewOpen
+                        ? " wk-summary-workbench-context__reference-open--active"
+                        : ""
+                    }`}
+                    disabled={isComposerDisabled}
+                    aria-expanded={Boolean(state.referencePreviewOpen)}
+                    onClick={() =>
+                      actions.onOpenContext(REFERENCE_CONTEXT_KIND)
+                    }
+                  >
+                    <span>{item.label}</span>
+                    <span
+                      className="wk-summary-workbench-context__reference-chevron"
+                      aria-hidden="true"
+                    >
+                      ›
+                    </span>
+                  </WKButton>
                   <WKButton
                     type="button"
                     size="sm"

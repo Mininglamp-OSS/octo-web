@@ -24,10 +24,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@octo/base", () => ({
   Dap: { shared: { track: mocks.track } },
   useI18n: () => ({
-    t: (key: string, options?: { values?: Record<string, unknown> }) => {
-      if (key === "summary.workbench.notice.savedWithQualityGap") {
-        return `quality-warning:${String(options?.values?.detail ?? "")}`;
-      }
+    t: (key: string) => {
       return (
         {
           "summary.workbench.intent.personal": "personal-intent",
@@ -52,10 +49,7 @@ vi.mock("@octo/base", () => ({
 vi.mock("@octo/base/src/App", () => ({
   Dap: { shared: { track: mocks.track } },
   useI18n: () => ({
-    t: (key: string, options?: { values?: Record<string, unknown> }) => {
-      if (key === "summary.workbench.notice.savedWithQualityGap") {
-        return `quality-warning:${String(options?.values?.detail ?? "")}`;
-      }
+    t: (key: string) => {
       return (
         {
           "summary.workbench.intent.personal": "personal-intent",
@@ -133,6 +127,7 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
       data-can-send={String(state.canSend)}
       data-send-label={state.sendLabelKey}
       data-error-message={state.errorMessage ?? ""}
+      data-reference-preview-open={String(state.referencePreviewOpen)}
     >
       <span data-testid="reference-label">
         {state.contextItems.find((item: any) => item.kind === "reference")
@@ -1570,7 +1565,7 @@ describe("SummaryWorkbenchFeature", () => {
   });
 
   it.each(["PARTIAL", "FAILED"] as const)(
-    "warns about the first quality gap after a %s save without blocking creation",
+    "shows successful save feedback after a %s quality verdict",
     async (finishStatus) => {
       const savePreview = vi.fn().mockResolvedValue({
         task_id: 304,
@@ -1605,17 +1600,17 @@ describe("SummaryWorkbenchFeature", () => {
       fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
 
       await waitFor(() => expect(savePreview).toHaveBeenCalledWith("# Draft"));
-      expect(mocks.toastWarning).toHaveBeenCalledWith(
-        "quality-warning:引用完整性校验失败"
+      expect(mocks.toastSuccess).toHaveBeenCalledWith(
+        "summary.create.agentSummaryCreated"
       );
-      expect(mocks.toastSuccess).not.toHaveBeenCalled();
+      expect(mocks.toastWarning).not.toHaveBeenCalled();
       expect(screen.queryByTestId("modal")).not.toBeInTheDocument();
       expect(mocks.markNotificationEligible).toHaveBeenCalledWith(304);
       expect(onOpenTask).toHaveBeenCalledWith(304);
     }
   );
 
-  it("warns generically when a FAILED save carries an EMPTY gaps list (P1-5)", async () => {
+  it("shows successful save feedback when a FAILED verdict has no gaps", async () => {
     const savePreview = vi.fn().mockResolvedValue({
       task_id: 306,
       title: "Draft",
@@ -1646,11 +1641,10 @@ describe("SummaryWorkbenchFeature", () => {
     fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
 
     await waitFor(() => expect(savePreview).toHaveBeenCalledWith("# Draft"));
-    // The generic quality-gate warning key falls through t() to the key
-    // itself in this mock — the assertion is that the user does NOT get
-    // the success toast and DOES get a warning.
-    expect(mocks.toastWarning).toHaveBeenCalled();
-    expect(mocks.toastSuccess).not.toHaveBeenCalled();
+    expect(mocks.toastSuccess).toHaveBeenCalledWith(
+      "summary.create.agentSummaryCreated"
+    );
+    expect(mocks.toastWarning).not.toHaveBeenCalled();
     expect(mocks.markNotificationEligible).toHaveBeenCalledWith(306);
     expect(onOpenTask).toHaveBeenCalledWith(306);
   });
@@ -1923,9 +1917,22 @@ describe("SummaryWorkbenchFeature", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "open-reference" }));
     expect(
-      screen.getByRole("button", { name: "choose-reference" })
-    ).toHaveAttribute("data-selected-task-id", "42");
+      screen.queryByRole("button", { name: "choose-reference" })
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId("reference-side-panel")).toHaveTextContent("42");
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-reference-preview-open",
+      "true"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "open-reference" }));
+    expect(
+      screen.queryByTestId("reference-side-panel")
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-reference-preview-open",
+      "false"
+    );
   });
 
   it("keeps the hydrated reference id selected when detail loading fails", async () => {
@@ -1956,8 +1963,8 @@ describe("SummaryWorkbenchFeature", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "open-reference" }));
     expect(
-      screen.getByRole("button", { name: "choose-reference" })
-    ).toHaveAttribute("data-selected-task-id", "73");
+      screen.queryByRole("button", { name: "choose-reference" })
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId("reference-side-panel")).toHaveTextContent("73");
   });
 });

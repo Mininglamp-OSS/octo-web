@@ -155,7 +155,7 @@ function renderWorkbench(card?: SummaryWorkbenchCardView) {
 }
 
 describe("SummaryWorkbench", () => {
-  it("renders three scope controls below the textarea and reference in the header", () => {
+  it("renders three scope controls below the textarea and the selected reference in the header", () => {
     const actions = createActions();
     actions.onNewSession = vi.fn();
     const state = createState();
@@ -206,26 +206,44 @@ describe("SummaryWorkbench", () => {
     });
 
     const referenceTrigger = screen.getByRole("button", {
-      name: "Reference summary",
+      name: "Last weekly summary",
     });
     expect(headerActions).toContainElement(referenceTrigger);
-    expect(headerActions).toContainElement(
-      screen.getByText("Last weekly summary")
-    );
-    expect(referenceTrigger).toHaveClass("wk-btn--ghost");
+    expect(
+      screen.queryByRole("button", { name: "Reference summary" })
+    ).not.toBeInTheDocument();
+    expect(referenceTrigger).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByRole("button", { name: "New session" })).toHaveClass(
       "wk-btn--primary"
     );
     expect(composer).not.toContainElement(referenceTrigger);
-    expect(composer).not.toContainElement(
-      screen.getByText("Last weekly summary")
-    );
     fireEvent.click(referenceTrigger);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove Last weekly summary" })
+    );
 
     contexts.forEach(([, kind], index) => {
       expect(actions.onOpenContext).toHaveBeenNthCalledWith(index + 1, kind);
     });
     expect(actions.onOpenContext).toHaveBeenNthCalledWith(4, "reference");
+    expect(actions.onRemoveContext).toHaveBeenCalledWith(
+      "reference",
+      "summary-1"
+    );
+  });
+
+  it("renders the reference picker trigger when no reference is selected", () => {
+    const actions = createActions();
+    rtlRender(
+      <SummaryWorkbench state={createState()} actions={actions} />,
+      { legacyRoot: true }
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reference summary" })
+    );
+
+    expect(actions.onOpenContext).toHaveBeenCalledWith("reference");
   });
 
   it("renders an expanded context panel above the composer", () => {
