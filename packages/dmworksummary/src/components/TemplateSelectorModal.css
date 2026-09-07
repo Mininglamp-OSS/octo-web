@@ -314,6 +314,7 @@
 .wk-template-selector-editor__actions {
     gap: var(--wk-sp-2);
     margin-top: var(--wk-sp-5);
+    margin-bottom: var(--wk-sp-4);
 }
 
 .wk-template-selector-editor__spacer {

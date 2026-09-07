@@ -528,7 +528,7 @@ describe("SummaryWorkbenchFeature", () => {
     expect(current.updateScope).not.toHaveBeenCalled();
   });
 
-  it("clears the composer, collapses templates, and keeps template selection available", async () => {
+  it("clears the composer and removes template selection after the first accepted turn", async () => {
     const pendingResponse = deferred<any>();
     const current = controller({
       viewState: {
@@ -568,8 +568,8 @@ describe("SummaryWorkbenchFeature", () => {
     });
     await waitFor(() => expect(current.send).toHaveBeenCalled());
     expect(
-      screen.getByRole("button", { name: "open-template" })
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "open-template" })
+    ).not.toBeInTheDocument();
     expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
   });
 
@@ -596,11 +596,11 @@ describe("SummaryWorkbenchFeature", () => {
       expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument()
     );
     expect(
-      screen.getByRole("button", { name: "open-template" })
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "open-template" })
+    ).not.toBeInTheDocument();
   });
 
-  it("allows sending a newly selected template after the first turn", async () => {
+  it("does not allow reopening templates after the first turn", async () => {
     const current = controller({
       viewState: {
         layout: "full",
@@ -635,14 +635,10 @@ describe("SummaryWorkbenchFeature", () => {
     await waitFor(() => expect(current.send).toHaveBeenCalledTimes(1));
     view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "open-template" }));
-    fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
-    view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
-
-    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
-      "data-can-send",
-      "true"
-    );
+    expect(
+      screen.queryByRole("button", { name: "open-template" })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
   });
 
   it("warns before a scope edit makes an unsaved preview historical", () => {

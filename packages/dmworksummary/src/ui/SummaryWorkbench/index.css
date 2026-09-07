@@ -31,7 +31,6 @@
   flex: 0 0 auto;
   box-sizing: border-box;
   padding: var(--wk-sp-4) var(--wk-sp-6);
-  border-bottom: thin solid var(--wk-border-default);
   background: var(--wk-bg-surface);
 }
 
@@ -617,7 +616,7 @@
   );
   min-width: 0;
   min-height: 0;
-  margin: 0 auto var(--wk-sp-6);
+  margin: var(--wk-sp-4) auto var(--wk-sp-6);
   overflow: hidden;
 }
 

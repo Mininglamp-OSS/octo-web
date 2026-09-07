@@ -521,7 +521,7 @@ export default function SummaryWorkbenchFeature({
         (hasSubmitted &&
           templateFilledComposer.current !== null &&
           structuredGenerate)),
-    showTemplateTrigger: !templateGalleryOpen,
+    showTemplateTrigger: !hasSubmitted && !templateGalleryOpen,
     sendLabelKey:
       !composerHasCustomText && structuredGenerate
         ? "summary.workbench.composer.generate"
@@ -667,6 +667,7 @@ export default function SummaryWorkbenchFeature({
     }
     if (busy) return;
     if (kind === "template") {
+      if (hasSubmitted) return;
       setTemplateGalleryOpen(true);
       return;
     }
@@ -900,7 +901,7 @@ export default function SummaryWorkbenchFeature({
             onNewSession: resetSession,
           }}
           contextPanel={
-            templateGalleryOpen ? (
+            templateGalleryOpen && !hasSubmitted ? (
               <TemplateSelectorModal
                 visible
                 inline
