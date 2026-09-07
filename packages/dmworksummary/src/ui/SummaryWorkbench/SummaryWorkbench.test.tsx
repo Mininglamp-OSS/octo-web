@@ -280,6 +280,11 @@ describe("SummaryWorkbench", () => {
       kind: "reference",
       label: "Primary summary",
     });
+    state.contextItems.push({
+      id: "summary-2",
+      kind: "reference",
+      label: "Secondary summary",
+    });
 
     rtlRender(<SummaryWorkbench state={state} actions={createActions()} />, {
       legacyRoot: true,
@@ -290,6 +295,33 @@ describe("SummaryWorkbench", () => {
         name: "Reference summary: Primary summary",
       })
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Reference summary: Secondary summary",
+      })
+    ).toBeInTheDocument();
+  });
+
+  it("disables removing the selected template after the first accepted turn", () => {
+    const actions = createActions();
+    const state = createState();
+    state.templateLocked = true;
+    state.contextItems.push({
+      id: "weekly",
+      kind: "template",
+      label: "Weekly",
+    });
+
+    rtlRender(<SummaryWorkbench state={state} actions={actions} />, {
+      legacyRoot: true,
+    });
+
+    const removeButton = screen.getByRole("button", {
+      name: "Remove Weekly",
+    });
+    expect(removeButton).toBeDisabled();
+    fireEvent.click(removeButton);
+    expect(actions.onRemoveContext).not.toHaveBeenCalled();
   });
 
   it("keeps a long reference title separate from the disclosure chevron", () => {

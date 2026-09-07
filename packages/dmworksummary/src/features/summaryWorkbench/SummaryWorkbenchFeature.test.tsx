@@ -143,6 +143,7 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
       data-can-send={String(state.canSend)}
       data-send-label={state.sendLabelKey}
       data-error-message={state.errorMessage ?? ""}
+      data-template-locked={String(state.templateLocked)}
       data-reference-preview-open={String(state.referencePreviewOpen)}
       data-reference-preview-id={state.referencePreviewId ?? ""}
     >
@@ -184,6 +185,12 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
         onClick={() => actions.onRemoveContext("chat", "chat-a")}
       >
         remove-chat
+      </button>
+      <button
+        type="button"
+        onClick={() => actions.onRemoveContext("template", "weekly")}
+      >
+        remove-template
       </button>
       <button
         type="button"
@@ -571,6 +578,13 @@ describe("SummaryWorkbenchFeature", () => {
       screen.queryByRole("button", { name: "open-template" })
     ).not.toBeInTheDocument();
     expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-template-locked",
+      "true"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "remove-template" }));
+    expect(current.updateScope).not.toHaveBeenCalled();
   });
 
   it("collapses templates after restoring a session that already has messages", async () => {

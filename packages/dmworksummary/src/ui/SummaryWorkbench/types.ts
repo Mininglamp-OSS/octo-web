@@ -111,6 +111,7 @@ export interface SummaryWorkbenchViewState {
   sendLabelKey?: string;
   errorMessage?: string;
   showTemplateTrigger?: boolean;
+  templateLocked?: boolean;
   referencePreviewOpen?: boolean;
   referencePreviewId?: string;
 }

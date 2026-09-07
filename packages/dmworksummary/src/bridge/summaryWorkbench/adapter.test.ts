@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canSaveCurrentPreview,
   createInitialSummaryWorkbenchModel,
+  deriveSummaryWorkbenchView,
   isTeamProposalConfirmable,
 } from "./model";
 import {
@@ -218,25 +219,50 @@ describe("summary workspace adapter", () => {
     ]);
   });
 
-  it("normalizes multi-reference history with a new scope version", () => {
+  it("marks an existing preview stale when multi-reference history is normalized", () => {
     const hydration = adaptSummaryWorkspaceHistory({
       contract_version: "2",
       session_id: "session-history-multi-ref",
-      messages: [],
+      messages: [
+        {
+          id: 18,
+          role: "assistant",
+          content: "已生成一版预览。",
+          result_type: "agent_preview",
+          scope_version: 4,
+          artifact_version: 3,
+          available_actions: ["save_preview", "continue_chat"],
+        },
+      ],
       state: {
         ...emptyState(4),
         summary_context: {
           ...summaryContext,
           referenced_task_ids: [7, 8, 9],
         },
+        current_preview: {
+          message_id: 18,
+          result_type: "agent_preview",
+          scope_version: 4,
+          artifact_version: 3,
+          snapshot_version: 1,
+          content: "# 风险总结",
+          assumptions: [],
+          available_actions: ["save_preview", "continue_chat"],
+        },
       },
     });
+    const model = createInitialSummaryWorkbenchModel(hydration.modelOptions);
 
     expect(hydration.modelOptions.scopeVersion).toBe(5);
     expect(hydration.scope.referencedTaskIds).toEqual([7]);
     expect(
       serializeSummaryWorkbenchScope(hydration.scope).referenced_task_ids
     ).toEqual([7]);
+    expect(canSaveCurrentPreview(model)).toBe(false);
+    const card = deriveSummaryWorkbenchView(model).card;
+    expect(card).toMatchObject({ isStale: true });
+    expect(card?.actions).not.toContain("save_preview");
   });
 
   it("fails closed when result_type or artifact state is invalid", () => {

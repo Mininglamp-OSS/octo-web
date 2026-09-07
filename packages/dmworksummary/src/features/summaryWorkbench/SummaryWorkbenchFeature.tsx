@@ -522,6 +522,7 @@ export default function SummaryWorkbenchFeature({
           templateFilledComposer.current !== null &&
           structuredGenerate)),
     showTemplateTrigger: !hasSubmitted && !templateGalleryOpen,
+    templateLocked: hasSubmitted,
     sendLabelKey:
       !composerHasCustomText && structuredGenerate
         ? "summary.workbench.composer.generate"
@@ -686,6 +687,7 @@ export default function SummaryWorkbenchFeature({
     id: string
   ) => {
     if (busy) return;
+    if (kind === "template" && hasSubmitted) return;
     const shouldClearTemplateText =
       kind === "template" && templateFilledComposer.current !== null;
     const result = removeScopeContext(workbench.scope, kind, id);

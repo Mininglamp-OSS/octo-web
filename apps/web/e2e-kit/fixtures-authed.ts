@@ -7,8 +7,8 @@ import { waitForMswReady } from "./_lib/e2eReady";
 /**
  * octo-web authedPage fixture.
  *
- * 走 kit 的 `E2E_TARGET=local` 分支 + Lite mock 模式 (page.route in specs).
- * MSW 未装, 不 wait __MSW_READY__.
+ * 走 kit 的 `E2E_TARGET=local` 分支 + MSW mock 模式，fixture 会等待
+ * `__MSW_READY__` 后再交给用例；page.route 只兜底 MSW 接管前已发出的启动请求。
  *
  * SID 策略:
  *   octo-web 的 auth localStorage 键是 `${key}${sid}` 模式 (SessionScope.ts).
@@ -35,13 +35,35 @@ const ONBOARDING_STORAGE_KEY = "octo:onboarding:seen";
 const MOCK_SPACE_ID = "e2e-space-001";
 const MOCK_LOCALE = "zh-CN";
 
+async function isPreMswReadyRequest(page: Page, requestStartedAt: number): Promise<boolean> {
+  const readiness = await page.evaluate(() => {
+    const state = globalThis as unknown as {
+      __MSW_READY__?: boolean;
+      __MSW_READY_AT__?: number;
+    };
+    return {
+      ready: state.__MSW_READY__ === true,
+      readyAt: state.__MSW_READY_AT__,
+    };
+  }).catch(() => ({ ready: false, readyAt: undefined }));
+
+  if (!readiness.ready) return true;
+  return typeof readiness.readyAt === "number" && requestStartedAt > 0 && requestStartedAt < readiness.readyAt;
+}
+
 async function installGlobalMockFallbackRoutes(page: Page): Promise<void> {
   // Playwright routes only see these requests when the MSW service worker did
-  // not intercept them. If a request reaches this fallback, fulfill the known
-  // boot endpoint directly; checking __MSW_READY__ here is racy because the
-  // flag can turn true after the request already escaped the service worker.
+  // not intercept them. Fulfill only requests that started before MSW became
+  // ready. Comparing timestamps avoids the race where readiness flips after a
+  // request escaped the worker but before this route callback checks the flag.
+  // Requests that start after readiness fall through so missing MSW handlers
+  // remain visible to the proxy-error merge gate.
   await page.route("**/summary/api/v1/summaries/attention*", async (route) => {
     if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    if (!(await isPreMswReadyRequest(page, route.request().timing().startTime))) {
       await route.fallback();
       return;
     }
@@ -63,6 +85,10 @@ async function installGlobalMockFallbackRoutes(page: Page): Promise<void> {
 
   await page.route("**/api/v1/spaces/*/categories*", async (route) => {
     if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    if (!(await isPreMswReadyRequest(page, route.request().timing().startTime))) {
       await route.fallback();
       return;
     }

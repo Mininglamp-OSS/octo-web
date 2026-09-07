@@ -628,7 +628,10 @@ const SummaryWorkbench = ({
                   iconOnly
                   icon={<span aria-hidden="true">×</span>}
                   className="wk-summary-workbench-context__remove"
-                  disabled={isComposerDisabled}
+                  disabled={
+                    isComposerDisabled ||
+                    (item.kind === "template" && Boolean(state.templateLocked))
+                  }
                   aria-label={t("summary.workbench.context.remove", {
                     values: {
                       label: item.label,
