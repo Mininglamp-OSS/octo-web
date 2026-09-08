@@ -1,6 +1,7 @@
 import React from "react";
 import { Spin } from "@douyinfe/semi-ui";
-import type { SummaryListItem } from "../../types/summary";
+import type { SummaryReferenceTask } from "../../types/summary";
+import type { SummaryMessagingPort } from "../../host";
 import LegacySummaryCreatePage from "../../pages/SummaryCreatePage";
 import SummaryWorkbenchEntry from "./Entry";
 import SummaryWorkbenchFeature from "./SummaryWorkbenchFeature";
@@ -9,7 +10,7 @@ import "./SummaryWorkbenchFeature.css";
 
 export interface SummaryWorkbenchCreateEntryProps {
   onCreated?: () => void;
-  derivedFromTask?: SummaryListItem;
+  derivedFromTask?: SummaryReferenceTask;
   channel?: { channelID: string; channelType: number };
   embedded?: boolean;
   onClose?: () => void;
@@ -17,6 +18,7 @@ export interface SummaryWorkbenchCreateEntryProps {
   onOpenTask?: (taskId: number) => void;
   source?: string;
   legacyInitialMode?: "normal" | "agent";
+  messaging?: SummaryMessagingPort;
 }
 
 export default function SummaryWorkbenchCreateEntry(
@@ -52,6 +54,7 @@ export default function SummaryWorkbenchCreateEntry(
             onOpenTask={props.onOpenTask}
             maxTimeRangeDays={availability.maxTimeRangeDays}
             directTeamWorkflow={availability.directTeamWorkflow}
+            messaging={props.messaging}
           />
         )}
         renderLegacy={() => (
@@ -64,6 +67,7 @@ export default function SummaryWorkbenchCreateEntry(
             onSubmit={props.onSubmit}
             source={props.source}
             initialMode={props.legacyInitialMode}
+            messaging={props.messaging}
           />
         )}
       />

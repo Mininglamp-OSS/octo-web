@@ -6,10 +6,15 @@ export interface ConversationTarget {
   channelType: number;
   messageSeq?: number;
   openChannelSearch?: boolean;
+  displayName?: string;
+  avatar?: string;
+  metadata?: Record<string, unknown>;
+  variant?: "app-bot";
 }
 
 export interface CommunicationBootstrap {
   bridgeVersion: 1;
+  featureId: "communication";
   session: {
     uid: string;
     token: string;
@@ -41,6 +46,7 @@ export type HostCommand =
   | { type: "appearanceChanged"; theme: "light" | "dark"; locale: "zh-CN" | "en-US" }
   | { type: "suspend" }
   | { type: "resume" }
+  | { type: "hostVisibilityChanged"; visible: boolean }
   | { type: "sessionRevoked" };
 
 export interface NavigationReport {
@@ -49,7 +55,28 @@ export interface NavigationReport {
   channel?: { id: string; type: number };
 }
 
+export type SummaryCapabilityRequest = {
+  requestId: string;
+  spaceId: string;
+  operation:
+    | "loadConversationMembers"
+    | "notifySummaryCompleted"
+    | "requestForward";
+  payload: unknown;
+};
+
+export interface SummaryCapabilityResponse {
+  requestId: string;
+  ok: boolean;
+  result?: unknown;
+  error?: string;
+}
+
 export interface OctoBuddyCommunicationBridge {
+  openSummary(request: {
+    route: import("@dmwork/summary").SummaryWorkspaceRoute;
+    spaceId: string;
+  }): Promise<void>;
   getBootstrap(): Promise<CommunicationBootstrap>;
   /** May be retried after a timeout; hosts must handle duplicate reports. */
   reportReady(state: {
@@ -62,6 +89,10 @@ export interface OctoBuddyCommunicationBridge {
   reportUnread(count: number): void;
   reportAuthExpired(reason: string): void;
   reportFatalError(error: { message: string; stack?: string }): void;
+  respondSummaryRequest?(response: SummaryCapabilityResponse): void;
+  onSummaryRequest?(
+    callback: (request: SummaryCapabilityRequest) => void
+  ): () => void;
   onCommand(callback: (command: HostCommand) => void): () => void;
 }
 

@@ -1928,7 +1928,7 @@ describe("SummaryWorkbenchFeature", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("opens a completed Workflow task through the embedded detail callback", () => {
+  it.each([true, false])("opens a completed Workflow task through the host callback (embedded=%s)", (embedded) => {
     const onOpenTask = vi.fn();
     mocks.useSummaryWorkbench.mockReturnValue(
       controller({
@@ -1943,7 +1943,7 @@ describe("SummaryWorkbenchFeature", () => {
     render(
       <SummaryWorkbenchFeature
         spaceId="space-a"
-        embedded
+        embedded={embedded}
         onOpenTask={onOpenTask}
       />,
       { legacyRoot: true }

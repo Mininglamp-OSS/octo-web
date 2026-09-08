@@ -25,10 +25,18 @@ const poll = vi.hoisted(() => {
   let started = false;
   let visible = true;
   return {
-    start: vi.fn(() => { started = true; }),
-    stop: vi.fn(() => { started = false; }),
-    notifyActivity: vi.fn(() => { /* real impl guards: if (!started || !visible) return; */ }),
-    setVisible: vi.fn((v: boolean) => { visible = v; }),
+    start: vi.fn(() => {
+      started = true;
+    }),
+    stop: vi.fn(() => {
+      started = false;
+    }),
+    notifyActivity: vi.fn(() => {
+      /* real impl guards: if (!started || !visible) return; */
+    }),
+    setVisible: vi.fn((v: boolean) => {
+      visible = v;
+    }),
     getCurrentIntervalMs: () => 15_000,
     isFetching: () => false,
     // helper for tests
@@ -129,11 +137,15 @@ vi.mock("../features/summaryShare/navigation", () => ({
   getOriginalSummaryTaskId: vi.fn(),
   shouldOpenOriginalSummary: () => false,
 }));
-vi.mock("../utils/chatSummaryActions", () => ({ notifyChatSummaryCreated: vi.fn() }));
+vi.mock("../utils/chatSummaryActions", () => ({
+  notifyChatSummaryCreated: vi.fn(),
+}));
 vi.mock("../utils/summaryAttentionBadge", () => ({
   getSummaryAttentionBadge: () => 0,
   // 返回 { count, sampleAt }：sampleAt 是广播排序用的样本时刻。
-  readSummaryAttentionCount: vi.fn().mockResolvedValue({ count: 0, sampleAt: 1_000 }),
+  readSummaryAttentionCount: vi
+    .fn()
+    .mockResolvedValue({ count: 0, sampleAt: 1_000 }),
   refreshSummaryAttentionBadge: vi.fn(),
   setSummaryAttentionBadge: vi.fn(),
   acceptRemoteAttentionCount: vi.fn(),
@@ -154,19 +166,22 @@ vi.mock("../utils/summaryAttentionLeader", () => ({
 vi.mock("../utils/summaryAttentionSync", () => ({
   createAttentionSync: () => sync,
   // 只有显式标记的消息才算「值得刷新」，免得把真实的 contentType 区间抄进测试。
-  shouldRefreshForMessage: (message: unknown) => (message as { match?: boolean })?.match === true,
+  shouldRefreshForMessage: (message: unknown) =>
+    (message as { match?: boolean })?.match === true,
 }));
 vi.mock("wukongimjssdk", () => ({
   default: {
     shared: () => ({
       chatManager: {
-        addMessageListener: (h: (message: unknown) => void) => im.messageListeners.push(h),
+        addMessageListener: (h: (message: unknown) => void) =>
+          im.messageListeners.push(h),
         removeMessageListener: (h: (message: unknown) => void) => {
           im.messageListeners = im.messageListeners.filter((x) => x !== h);
         },
       },
       connectManager: {
-        addConnectStatusListener: (h: (status: unknown) => void) => im.connectListeners.push(h),
+        addConnectStatusListener: (h: (status: unknown) => void) =>
+          im.connectListeners.push(h),
         removeConnectStatusListener: (h: (status: unknown) => void) => {
           im.connectListeners = im.connectListeners.filter((x) => x !== h);
         },
@@ -179,7 +194,16 @@ vi.mock("../utils/channelType", () => ({ isSupportedChannelType: () => true }));
 vi.mock("../components/ChatSummaryStarButton", () => ({ default: () => null }));
 vi.mock("../components/ChatSummaryPanel", () => ({ default: () => null }));
 
-import { SummaryModule, disposeSummaryModuleListeners, startSummaryAttentionPolling } from "../module";
+import {
+  SummaryModule,
+  disposeSummaryModuleListeners,
+  startSummaryAttentionPolling,
+} from "../module";
+import {
+  disposeSummaryAttentionRuntime,
+  initializeSummaryAttentionRuntime,
+  setSummaryAttentionRuntimeVisible,
+} from "../runtime/attention";
 import {
   acceptRemoteAttentionCount,
   refreshSummaryAttentionBadge,
@@ -209,19 +233,31 @@ describe("SummaryModule —— 兜底轮询接线", () => {
     im.messageListeners = [];
     im.connectListeners = [];
 
-    vi.spyOn(document, "addEventListener").mockImplementation(((event: string, handler: any) => {
+    vi.spyOn(document, "addEventListener").mockImplementation(((
+      event: string,
+      handler: any
+    ) => {
       state.docHandlers.set(event, handler);
     }) as any);
-    vi.spyOn(document, "removeEventListener").mockImplementation(((event: string) => {
+    vi.spyOn(document, "removeEventListener").mockImplementation(((
+      event: string
+    ) => {
       state.docHandlers.delete(event);
     }) as any);
-    vi.spyOn(window, "addEventListener").mockImplementation(((event: string, handler: any) => {
+    vi.spyOn(window, "addEventListener").mockImplementation(((
+      event: string,
+      handler: any
+    ) => {
       state.winHandlers.set(event, handler);
     }) as any);
-    vi.spyOn(window, "removeEventListener").mockImplementation(((event: string) => {
+    vi.spyOn(window, "removeEventListener").mockImplementation(((
+      event: string
+    ) => {
       state.winHandlers.delete(event);
     }) as any);
-    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => state.visibility);
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(
+      () => state.visibility
+    );
 
     new SummaryModule().init();
   });
@@ -285,14 +321,21 @@ describe("SummaryModule —— 兜底轮询接线", () => {
 
     publisher(5, 1_700_000_000_000);
 
-    expect(leader.publish).toHaveBeenCalledWith(5, "space-a", 1_700_000_000_000);
+    expect(leader.publish).toHaveBeenCalledWith(
+      5,
+      "space-a",
+      1_700_000_000_000
+    );
   });
 
   it("只接受与本标签页当前 Space 相同的广播", () => {
     captured.leaderDeps.onRemoteCount(7, "space-a", 1_700_000_000_000);
     // 广播不再直接 setSummaryAttentionBadge：那是 last-write-wins，会让 leader
     // 一条更早发出的响应把本地刚 commit 的新值盖回去。改走同一个排序域。
-    expect(acceptRemoteAttentionCount).toHaveBeenCalledWith(7, 1_700_000_000_000);
+    expect(acceptRemoteAttentionCount).toHaveBeenCalledWith(
+      7,
+      1_700_000_000_000
+    );
 
     vi.mocked(acceptRemoteAttentionCount).mockClear();
 
@@ -310,6 +353,34 @@ describe("SummaryModule —— 兜底轮询接线", () => {
     state.visibility = "visible";
     docHandler("visibilitychange")();
     expect(poll.setVisible).toHaveBeenLastCalledWith(true);
+  });
+
+  it("宿主隐藏时暂停运行时，恢复时重新同步", () => {
+    startSummaryAttentionPolling();
+    poll.notifyActivity.mockClear();
+    sync.trigger.mockClear();
+
+    setSummaryAttentionRuntimeVisible(false);
+    expect(poll.setVisible).toHaveBeenLastCalledWith(false);
+    expect(leader.setVisible).toHaveBeenLastCalledWith(false);
+
+    setSummaryAttentionRuntimeVisible(true);
+    expect(poll.setVisible).toHaveBeenLastCalledWith(true);
+    expect(leader.setVisible).toHaveBeenLastCalledWith(true);
+    expect(sync.trigger).toHaveBeenCalledTimes(1);
+    expect(poll.notifyActivity).toHaveBeenCalledTimes(1);
+  });
+
+  it("允许独立 artifact 禁用 IM 事件监听", () => {
+    disposeSummaryModuleListeners();
+    im.messageListeners = [];
+    im.connectListeners = [];
+
+    initializeSummaryAttentionRuntime({ observeIm: false });
+
+    expect(im.messageListeners).toHaveLength(0);
+    expect(im.connectListeners).toHaveLength(0);
+    disposeSummaryAttentionRuntime();
   });
 
   // 🔴 回归：可见性此前只喂给轮询，没喂给 leader。于是隐藏的 leader 一边停着
@@ -366,7 +437,8 @@ describe("SummaryModule —— 兜底轮询接线", () => {
     mittHandler("space-changed")();
 
     const pollOrder = poll.notifyActivity.mock.invocationCallOrder[0];
-    const freshOrder = vi.mocked(badge.refreshSummaryAttentionBadge).mock.invocationCallOrder[0];
+    const freshOrder = vi.mocked(badge.refreshSummaryAttentionBadge).mock
+      .invocationCallOrder[0];
     expect(pollOrder).toBeLessThan(freshOrder);
   });
 
@@ -402,19 +474,31 @@ describe("SummaryModule —— IM / 重连刷新的可见性门", () => {
     im.messageListeners = [];
     im.connectListeners = [];
 
-    vi.spyOn(document, "addEventListener").mockImplementation(((event: string, handler: any) => {
+    vi.spyOn(document, "addEventListener").mockImplementation(((
+      event: string,
+      handler: any
+    ) => {
       state.docHandlers.set(event, handler);
     }) as any);
-    vi.spyOn(document, "removeEventListener").mockImplementation(((event: string) => {
+    vi.spyOn(document, "removeEventListener").mockImplementation(((
+      event: string
+    ) => {
       state.docHandlers.delete(event);
     }) as any);
-    vi.spyOn(window, "addEventListener").mockImplementation(((event: string, handler: any) => {
+    vi.spyOn(window, "addEventListener").mockImplementation(((
+      event: string,
+      handler: any
+    ) => {
       state.winHandlers.set(event, handler);
     }) as any);
-    vi.spyOn(window, "removeEventListener").mockImplementation(((event: string) => {
+    vi.spyOn(window, "removeEventListener").mockImplementation(((
+      event: string
+    ) => {
       state.winHandlers.delete(event);
     }) as any);
-    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => state.visibility);
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(
+      () => state.visibility
+    );
 
     new SummaryModule().init();
   });
@@ -474,16 +558,26 @@ describe("SummaryModule —— 定时器与监听的拆线", () => {
     state.docHandlers.clear();
     state.winHandlers.clear();
 
-    vi.spyOn(document, "addEventListener").mockImplementation(((event: string, handler: any) => {
+    vi.spyOn(document, "addEventListener").mockImplementation(((
+      event: string,
+      handler: any
+    ) => {
       state.docHandlers.set(event, handler);
     }) as any);
-    vi.spyOn(document, "removeEventListener").mockImplementation(((event: string) => {
+    vi.spyOn(document, "removeEventListener").mockImplementation(((
+      event: string
+    ) => {
       state.docHandlers.delete(event);
     }) as any);
-    vi.spyOn(window, "addEventListener").mockImplementation(((event: string, handler: any) => {
+    vi.spyOn(window, "addEventListener").mockImplementation(((
+      event: string,
+      handler: any
+    ) => {
       state.winHandlers.set(event, handler);
     }) as any);
-    vi.spyOn(window, "removeEventListener").mockImplementation(((event: string) => {
+    vi.spyOn(window, "removeEventListener").mockImplementation(((
+      event: string
+    ) => {
       state.winHandlers.delete(event);
     }) as any);
 
@@ -570,19 +664,31 @@ describe("startSummaryAttentionPolling —— 启动顺序守卫", () => {
     im.messageListeners = [];
     im.connectListeners = [];
 
-    vi.spyOn(document, "addEventListener").mockImplementation(((event: string, handler: any) => {
+    vi.spyOn(document, "addEventListener").mockImplementation(((
+      event: string,
+      handler: any
+    ) => {
       state.docHandlers.set(event, handler);
     }) as any);
-    vi.spyOn(document, "removeEventListener").mockImplementation(((event: string) => {
+    vi.spyOn(document, "removeEventListener").mockImplementation(((
+      event: string
+    ) => {
       state.docHandlers.delete(event);
     }) as any);
-    vi.spyOn(window, "addEventListener").mockImplementation(((event: string, handler: any) => {
+    vi.spyOn(window, "addEventListener").mockImplementation(((
+      event: string,
+      handler: any
+    ) => {
       state.winHandlers.set(event, handler);
     }) as any);
-    vi.spyOn(window, "removeEventListener").mockImplementation(((event: string) => {
+    vi.spyOn(window, "removeEventListener").mockImplementation(((
+      event: string
+    ) => {
       state.winHandlers.delete(event);
     }) as any);
-    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => state.visibility);
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(
+      () => state.visibility
+    );
 
     // 注意: 本文件里 createAttentionLeader 被 mock 成返回 { start: vi.fn(), ... },
     // 所以 _attentionLeader.start() 是 no-op, 不会同步 beat/promote. 真实代码里

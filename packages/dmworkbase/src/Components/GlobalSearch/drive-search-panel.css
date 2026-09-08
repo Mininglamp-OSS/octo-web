@@ -27,25 +27,22 @@
 .wk-drive-search__item:hover {
   background: var(--wk-bg-item-hover);
 }
-/* Icon badge: same 38x38 / radius / glyph colour as .wk-doc-search__icon.
-   Folder + generic files fall back to the accent fill (doc panel's default
-   icon background); the doc type overrides to the shared doc accent. The
-   lucide glyph paints with currentColor = --wk-text-inverse. */
+/* Icon badge: 38x38 slot holding the 32x32 colour-coded SVG (drive-module
+   icon set). The SVG carries its own background, so the slot stays transparent
+   (matches .wk-doc-search__icon). */
 .wk-drive-search__icon {
   flex: none;
-  width: 38px;
-  height: 38px;
-  border-radius: var(--wk-r-sm);
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--wk-text-inverse);
-  background: var(--wk-text-accent);
+  background: transparent;
 }
-.wk-drive-search__icon--doc {
-  background: var(--wk-doc-accent-doc);
+.wk-drive-search__icon-img {
+  width: 48px;
+  height: 48px;
+  display: block;
 }
 .wk-drive-search__meta {
   flex: 1;

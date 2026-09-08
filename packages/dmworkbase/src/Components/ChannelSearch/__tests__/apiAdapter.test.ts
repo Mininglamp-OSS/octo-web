@@ -316,6 +316,93 @@ describe("channel search API adapter response mapping", () => {
     });
 
     expect(
+      mapFileHit(
+        {
+          message_id: "f2",
+          message_seq: 21,
+          file_name: "quarterly-report.pdf",
+          name_highlight: "quarterly-<mark>report</mark>.pdf",
+          content_snippet: "...annual <mark>revenue</mark> grew...",
+          sender_id: "u9",
+          sent_at: "2026-01-02T00:00:00Z",
+        },
+        query
+      ).file
+    ).toMatchObject({
+      name: "quarterly-report.pdf",
+      nameHighlight: "quarterly-<mark>report</mark>.pdf",
+      contentSnippet: "...annual <mark>revenue</mark> grew...",
+    });
+
+    // mapFileHit decodes server-escaped highlight entities at the boundary:
+    // the server-side escapeHighlightFragment (octo-server) HTML-escapes
+    // uploader-controlled name/body content and leaves only <mark>/</mark>
+    // live. The mapper decodes here so downstream renderers work in original
+    // characters.
+    //
+    // Wire-format fixtures for the mapper-boundary decode.
+    //   octo-server modules/messages_search/search_files_test.go
+    // The name_highlight below is lifted verbatim from that test's
+    // TestSingleFileHit_HostileContentEscaped `wantName`. The content_snippet
+    // is a contract-aligned composite (NOT a verbatim server want-string): it
+    // combines the &#34; / &#39; and raw-slash-passthrough cases so one fixture
+    // covers them together, matching what Go html.EscapeString actually emits
+    // — see the doc comment on decodeServerEscapedHighlight for the entity set
+    // (&#34; / &#39; / &lt; / &gt; / &amp;, no &#x2F;).
+    expect(
+      mapFileHit(
+        {
+          message_id: "f3",
+          message_seq: 22,
+          file_name: "<img src=x onerror=alert(1)>.pdf",
+          // Wire string as octo-server's escapeHighlightFragment would emit
+          // it — hostile HTML entity-escaped, only the highlighter's
+          // <mark>/</mark> pair kept live.
+          name_highlight: "&lt;img src=x onerror=alert(1)&gt;.<mark>pdf</mark>",
+          // Server emits &#34; for double-quote (decimal), not &quot;, and
+          // &#39; for apostrophe (decimal), not hex &#x27; — mirrors
+          // TestEscapeHighlightFragment's ampersand-quote-roundtrip case.
+          // Slash passes through raw (Go html.EscapeString does not touch it).
+          content_snippet:
+            "quarterly &#34;summary&#34; on John&#39;s <mark>report</mark> at https://acme.co/q3",
+          sender_id: "u9",
+          sent_at: "2026-01-02T00:00:00Z",
+        },
+        query
+      ).file
+    ).toMatchObject({
+      // Raw file_name unchanged (long-shipped contract; clients that render
+      // this field must sanitise themselves — unchanged by this PR).
+      name: "<img src=x onerror=alert(1)>.pdf",
+      // Escaped entities decoded, <mark> preserved. Downstream parser will
+      // extract <mark> and render every other segment as a React text node.
+      nameHighlight: "<img src=x onerror=alert(1)>.<mark>pdf</mark>",
+      contentSnippet:
+        'quarterly "summary" on John\'s <mark>report</mark> at https://acme.co/q3',
+    });
+
+    // Empty / absent highlight fields stay undefined (SearchTypes.ts contract:
+    // "absent on browse or body-only hits"), so the chat-tab || fallback lands
+    // on the plain client-side name instead of a blank card.
+    expect(
+      mapFileHit(
+        {
+          message_id: "f4",
+          message_seq: 23,
+          file_name: "budget.pdf",
+          name_highlight: "",
+          sender_id: "u9",
+          sent_at: "2026-01-02T00:00:00Z",
+        },
+        query
+      ).file
+    ).toMatchObject({
+      name: "budget.pdf",
+      nameHighlight: undefined,
+      contentSnippet: undefined,
+    });
+
+    expect(
       mapMediaHit(
         {
           message_id: "p1",

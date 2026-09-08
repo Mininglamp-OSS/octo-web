@@ -12,9 +12,17 @@ import "./SummaryShareDetailPage.css";
 interface SummaryShareDetailPageProps {
     shareId?: string;
     originChannel?: { channelId: string; channelType: number };
+  onOpenConversation?: (target: {
+    channelId: string;
+    channelType: number;
+  }) => void | Promise<void>;
 }
 
-export default function SummaryShareDetailPage({ shareId, originChannel }: SummaryShareDetailPageProps) {
+export default function SummaryShareDetailPage({
+  shareId,
+  originChannel,
+  onOpenConversation,
+}: SummaryShareDetailPageProps) {
     const { t, locale } = useI18n();
     const [snapshot, setSnapshot] = useState<SummaryShareSnapshot | null>(null);
     const [error, setError] = useState(false);
@@ -46,42 +54,75 @@ export default function SummaryShareDetailPage({ shareId, originChannel }: Summa
     }, [locale, snapshot, t]);
 
     useEffect(() => {
-        if (!shareId) { setError(true); return; }
+    if (!shareId) {
+      setError(true);
+      return;
+    }
         let active = true;
-        setSnapshot(null); setError(false);
-        void getSummaryShare(shareId).then((response) => { if (active) setSnapshot(response.snapshot); })
-            .catch(() => { if (active) setError(true); });
-        return () => { active = false; };
+    setSnapshot(null);
+    setError(false);
+    void getSummaryShare(shareId)
+      .then((response) => {
+        if (active) setSnapshot(response.snapshot);
+      })
+      .catch(() => {
+        if (active) setError(true);
+      });
+    return () => {
+      active = false;
+    };
     }, [shareId, reload]);
 
     if (!snapshot) {
-        return <div className="summary-share-detail__state">
-            {error ? <><p>{t("summary.share.unavailable")}</p><Button onClick={() => setReload((value: number) => value + 1)}>{t("summary.share.retry")}</Button></> : <Spin />}
-        </div>;
+    return (
+      <div className="summary-share-detail__state">
+        {error ? (
+          <>
+            <p>{t("summary.share.unavailable")}</p>
+            <Button onClick={() => setReload((value: number) => value + 1)}>
+              {t("summary.share.retry")}
+            </Button>
+          </>
+        ) : (
+          <Spin />
+        )}
+      </div>
+    );
     }
 
     const snapshotSources = snapshot.source_name
-        ? [{
+    ? [
+        {
             source_type: SourceType.DIRECT_MESSAGE,
             source_id: "snapshot-source",
             source_name: snapshot.source_name,
-        }]
+        },
+      ]
         : [];
 
-    return <div className="summary-share-detail">
+  return (
+    <div className="summary-share-detail">
         <header className="summary-share-detail__header">
-            {originChannel ? <Button
+        {originChannel ? (
+          <Button
                 className="summary-share-detail__back"
                 size="small"
                 theme="borderless"
                 type="tertiary"
                 icon={<IconArrowLeft />}
-                onClick={() => WKApp.endpoints.showConversation(
-                    new Channel(originChannel.channelId, originChannel.channelType),
-                )}
+            onClick={() => {
+              if (onOpenConversation) {
+                void onOpenConversation(originChannel);
+                return;
+              }
+              WKApp.endpoints.showConversation(
+                new Channel(originChannel.channelId, originChannel.channelType)
+              );
+            }}
             >
                 {t("summary.share.backToChat")}
-            </Button> : null}
+          </Button>
+        ) : null}
             <h1 title={snapshot.title || t("summary.share.defaultTitle")}>
                 {snapshot.title || t("summary.share.defaultTitle")}
             </h1>
@@ -93,12 +134,20 @@ export default function SummaryShareDetailPage({ shareId, originChannel }: Summa
                         snapshot={snapshot}
                         locale={locale}
                         metaLabel={t("summary.share.metaLabel")}
-                        participantText={snapshot.participant_count > 0
-                            ? t("summary.share.participantCount", { values: { count: snapshot.participant_count } })
-                            : ""}
-                        messageText={snapshot.message_count > 0
-                            ? t("summary.share.messageCount", { values: { count: snapshot.message_count } })
-                            : ""}
+              participantText={
+                snapshot.participant_count > 0
+                  ? t("summary.share.participantCount", {
+                      values: { count: snapshot.participant_count },
+                    })
+                  : ""
+              }
+              messageText={
+                snapshot.message_count > 0
+                  ? t("summary.share.messageCount", {
+                      values: { count: snapshot.message_count },
+                    })
+                  : ""
+              }
                     />
                 </div>
             </main>
@@ -108,5 +157,6 @@ export default function SummaryShareDetailPage({ shareId, originChannel }: Summa
                 </div>
             </footer>
         </div>
-    </div>;
+    </div>
+  );
 }

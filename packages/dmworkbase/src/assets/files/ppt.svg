@@ -1,0 +1,6 @@
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="48" height="48" rx="8" fill="white"/>
+<path d="M15.5 8H30L38 16V35C38 37.2091 36.2091 39 34 39H15.5C13.2909 39 11.5 37.2091 11.5 35V12C11.5 9.7909 13.2909 8 15.5 8Z" fill="#FF6B3D"/>
+<path d="M30 8L38 16H33C31.3431 16 30 14.6569 30 13V8Z" fill="#FFB59E"/>
+<text x="24.75" y="30.5" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="700" fill="#fff">PPT</text>
+</svg>

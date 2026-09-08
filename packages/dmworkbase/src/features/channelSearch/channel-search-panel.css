@@ -408,11 +408,7 @@
   height: 32px;
   transform: translate(-50%, -50%);
   border-radius: var(--wk-r-full);
-  background: color-mix(
-    in srgb,
-    var(--wk-brand-primary) 35%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--wk-brand-primary) 35%, transparent);
   color: var(--wk-text-on-brand);
   pointer-events: none;
 }
@@ -431,25 +427,16 @@
   opacity: 0;
   border: none;
   border-radius: var(--wk-r-full);
-  background: color-mix(
-    in srgb,
-    var(--wk-brand-primary) 40%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--wk-brand-primary) 40%, transparent);
   color: var(--wk-text-on-brand);
   cursor: pointer;
-  transition:
-    background var(--wk-dur-fast) var(--wk-ease),
+  transition: background var(--wk-dur-fast) var(--wk-ease),
     opacity var(--wk-dur-fast) var(--wk-ease);
 }
 
 .wk-channel-search-media-locate:hover,
 .wk-channel-search-media-locate:focus-visible {
-  background: color-mix(
-    in srgb,
-    var(--wk-brand-primary) 60%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--wk-brand-primary) 60%, transparent);
 }
 
 .wk-channel-search-media-thumb:hover .wk-channel-search-media-locate,
@@ -490,6 +477,33 @@
   padding: var(--wk-sp-1) var(--wk-sp-2) var(--wk-sp-1) var(--wk-sp-1);
   border-radius: var(--wk-r-md);
   background: var(--wk-bg-elevated);
+}
+
+/* Below-card body-content match block for a chat-tab file message. The file
+ * card itself stays visually untouched — the block is a sibling below it —
+ * so it reads as "search hit context" rather than mutating the message card.
+ *
+ * Style is intentionally lightweight (no fill, no boxed badge): a thin left
+ * blue rule (--wk-color-info, the info-tone accent — brand purple is
+ * deliberately not used in content areas) plus a tinted label carry the
+ * "hit context" signal without pulling weight from the file card above. */
+.wk-channel-search-file-snippet-below {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: var(--wk-sp-1);
+  padding: 0 0 0 var(--wk-sp-2);
+  border-left: 2px solid var(--wk-color-info);
+  color: var(--wk-text-secondary);
+  font: 400 12px/20px var(--wk-font-sans);
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.wk-channel-search-file-snippet-below-label {
+  margin-right: var(--wk-sp-1);
+  color: var(--wk-color-info);
+  font: 500 12px/20px var(--wk-font-sans);
 }
 
 .wk-channel-search-inline-file-icon {
@@ -553,6 +567,17 @@
   font: 400 14px/20px var(--wk-font-sans);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.wk-channel-search-file-content-snippet {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: var(--wk-sp-1);
+  color: var(--wk-text-secondary);
+  font: 400 12px/18px var(--wk-font-sans);
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .wk-channel-search-file-meta {
@@ -619,8 +644,7 @@
   right: calc(var(--wk-sp-0-5) * -1);
   z-index: var(--wk-z-dropdown);
   width: 243px;
-  padding: calc(var(--wk-sp-4) + var(--wk-sp-0-5)) var(--wk-sp-4)
-    var(--wk-sp-4);
+  padding: calc(var(--wk-sp-4) + var(--wk-sp-0-5)) var(--wk-sp-4) var(--wk-sp-4);
   border-radius: var(--wk-r-md);
   background: var(--wk-bg-surface);
   box-shadow: var(--wk-shadow-lg), 0 0 0 1px var(--wk-border-subtle);
@@ -664,8 +688,8 @@
   align-items: center;
   min-height: 32px;
   gap: var(--wk-sp-1);
-  padding: var(--wk-sp-1) calc(var(--wk-sp-6) + var(--wk-sp-1))
-    var(--wk-sp-1) var(--wk-sp-2);
+  padding: var(--wk-sp-1) calc(var(--wk-sp-6) + var(--wk-sp-1)) var(--wk-sp-1)
+    var(--wk-sp-2);
   border-radius: var(--wk-r-sm);
   background: var(--wk-bg-elevated);
   cursor: text;

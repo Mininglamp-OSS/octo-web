@@ -191,3 +191,46 @@ export const Truncated: Story = {
     })),
   },
 };
+
+// 8. 图标全覆盖:folder / 在线文档(doc) + 各扩展名的 blob,验证 driveIconSrc
+//    的按扩展名分派命中了 drive-module 彩色图标集(而非旧的 lucide 线框图标)。
+export const IconVariety: Story = {
+  args: {
+    keyword: "文件",
+    isActive: true,
+    dataSource: makeDataSource(async () => {
+      const base = makeHits(1)[0];
+      // folder + doc 走类型分派;其余按扩展名走 fileIconSrc。
+      const specs: Array<{ type: DriveSearchHit["type"]; name: string }> = [
+        { type: "folder", name: "设计稿" },
+        { type: "doc", name: "需求说明" },
+        { type: "blob", name: "季度报告.pdf" },
+        { type: "blob", name: "预算表.xlsx" },
+        { type: "blob", name: "汇报.pptx" },
+        { type: "blob", name: "导出数据.csv" },
+        { type: "blob", name: "归档.zip" },
+        { type: "blob", name: "宣传片.mp4" },
+        { type: "blob", name: "录音.mp3" },
+        { type: "blob", name: "动图.gif" },
+        { type: "blob", name: "截图.png" },
+        { type: "blob", name: "页面.html" },
+        { type: "blob", name: "README.md" },
+        { type: "blob", name: "笔记.txt" },
+        { type: "blob", name: "index.ts" },
+        { type: "blob", name: "未知类型.xyz" },
+      ];
+      return {
+        total: specs.length,
+        truncated: false,
+        items: specs.map((s, i) => ({
+          ...base,
+          file_id: 2000 + i,
+          name: s.name,
+          type: s.type,
+          ext: s.type === "folder" ? undefined : s.name.split(".").pop(),
+          size: s.type === "folder" ? undefined : 12_288 + i * 2048,
+        })),
+      };
+    }),
+  },
+};

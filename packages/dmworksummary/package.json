@@ -2,6 +2,22 @@
   "name": "@dmwork/summary",
   "version": "1.0.0",
   "main": "src/index.tsx",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./communication": "./src/communication.ts",
+    "./messaging": "./src/host/index.ts",
+    "./workspace": "./src/workspace.ts",
+    "./package.json": "./package.json",
+    "./src/*": "./src/*"
+  },
+  "typesVersions": {
+    "*": {
+      "communication": ["src/communication.ts"],
+      "messaging": ["src/host/index.ts"],
+      "workspace": ["src/workspace.ts"],
+      "*": ["*"]
+    }
+  },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
