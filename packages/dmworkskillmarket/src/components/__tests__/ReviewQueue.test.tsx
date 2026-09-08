@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ReviewQueue from "../ReviewQueue";
 import type { PagedResult, ReviewRequest } from "../../types/skill";
 import * as api from "../../api/skillApi";
+import { WKApp } from "@octo/base";
 
 vi.mock("../../api/skillApi");
 
@@ -260,5 +261,44 @@ describe("ReviewQueue", () => {
     render(<ReviewQueue mode="space" />);
 
     expect(await screen.findByText("boom")).toBeInTheDocument();
+  });
+
+  // A Space switch must drop every row and identifier belonging to the Space
+  // being left BEFORE the replacement read lands. The render guards are
+  // `rows.length === 0`, so rows left in state keep Space A's queue on screen —
+  // presented as Space B's, with 通过 / 拒绝 / 下架 live — and neither the
+  // spinner nor the error block can render over it.
+  it("drops the previous Space's rows synchronously on a Space switch", async () => {
+    render(<ReviewQueue mode="space" />);
+    await screen.findByText("CI 失败分析");
+
+    // The replacement read never settles, so anything still on screen
+    // afterwards can only be uncleared Space A state.
+    vi.mocked(api.listReviewRequests).mockReturnValue(
+      new Promise<PagedResult<ReviewRequest>>(() => {})
+    );
+
+    act(() => {
+      WKApp.mittBus.emit("space-changed", { space_id: "space-b", role: 1 });
+    });
+
+    expect(screen.queryByText("CI 失败分析")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: approveName() })
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the error rather than the previous Space's rows when the replacement read fails", async () => {
+    render(<ReviewQueue mode="space" />);
+    await screen.findByText("CI 失败分析");
+
+    vi.mocked(api.listReviewRequests).mockRejectedValue(new Error("offline"));
+
+    await act(async () => {
+      WKApp.mittBus.emit("space-changed", { space_id: "space-b", role: 1 });
+    });
+
+    expect(await screen.findByText("offline")).toBeInTheDocument();
+    expect(screen.queryByText("CI 失败分析")).not.toBeInTheDocument();
   });
 });
