@@ -271,12 +271,29 @@ received 401 and cleared the active Space. The fixture is corrected and asserts
 the posted `X-Space-Id`; the production Space guard is retained unchanged.
 Those earlier failures are not live-backend acceptance evidence.
 
+## PR #1637 Product Decisions and Backend Contract
+
+- The product owner directly decided: “保存失败时需要报错；质量问题不再展示给前端。”
+  A transport, protocol, validation or task-creation failure remains a user-visible
+  save error. `PARTIAL` / `FAILED` returned after task creation are internal quality
+  diagnostics and keep the normal save-success feedback; gap detail is not rendered.
+- This decision intentionally supersedes the earlier quality-gate warning behavior
+  and its P1-5 regression expectation. Workbench and legacy tests now pin the new
+  distinction between a real save failure and a post-save quality verdict.
+- Single-reference normalization advances `scope_version` because backend main
+  accepts a higher client version, persists the incoming `scope_json` / `scope_hash`,
+  and clears folded preview, proposal and workflow state. Contract evidence:
+  [`BeginTurn`](https://github.com/Mininglamp-OSS/octo-smart-summary/blob/391134cc8c25226287e58a26204616d42a200e6d/internal/api/handler/agent_workspace_store.go#L169-L190),
+  [`TestAgentWorkspaceStoreLoadHistoryUsesCurrentScopeOnly`](https://github.com/Mininglamp-OSS/octo-smart-summary/blob/391134cc8c25226287e58a26204616d42a200e6d/internal/api/handler/agent_workspace_store_test.go#L51-L104),
+  and [`TestAgentWorkspaceStoreScopeChangeClearsFoldedArtifacts`](https://github.com/Mininglamp-OSS/octo-smart-summary/blob/391134cc8c25226287e58a26204616d42a200e6d/internal/api/handler/agent_workspace_store_test.go#L202-L247).
+
 ## Upstream Reconciliation
 
 - Rebased all 11 branch commits onto `upstream/main` at `9e33837a`.
 - Rebased HEAD is `251c63e3`; no unresolved conflicts remain.
-- Preserved the unified workbench, capability fallback, quality-gate warnings,
-  Space capability invalidation and removal of scheduling from manual creation.
+- Preserved the unified workbench, capability fallback, internal quality diagnostics,
+  save-failure error feedback, Space capability invalidation and removal of scheduling
+  from manual creation.
 - `SummaryWorkspace` now uses the unified entry. Explicit host callbacks work
   for full-width as well as embedded-panel layouts; group members use the host
   messaging port when supplied.

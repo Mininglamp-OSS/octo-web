@@ -780,6 +780,26 @@ describe("summary workspace adapter", () => {
     });
   });
 
+  it("accepts internal quality gaps when the backend omits unused detail", () => {
+    expect(
+      decodeSummaryWorkspaceSaveResult({
+        task_id: 91,
+        task_no: "SUM-91",
+        status: 3,
+        created_at: "2026-08-26T10:02:00Z",
+        finish_status: "PARTIAL",
+        gaps: [{ kind: "coverage" }],
+      })
+    ).toEqual({
+      task_id: 91,
+      task_no: "SUM-91",
+      status: 3,
+      created_at: "2026-08-26T10:02:00Z",
+      finish_status: "PARTIAL",
+      gaps: [{ kind: "coverage" }],
+    });
+  });
+
   it("treats stream code 40902 as retryable even when transient is omitted", () => {
     expect(
       decodeSummaryWorkspaceStreamError({

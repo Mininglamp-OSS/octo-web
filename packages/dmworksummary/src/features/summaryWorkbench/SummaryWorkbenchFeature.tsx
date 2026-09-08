@@ -161,7 +161,6 @@ function hasAcceptedHydratedTurn(
       messages.some(
         (message) =>
           message.role === "assistant" &&
-          message.resultType !== undefined &&
           message.resultType !== "error"
       )
   );
@@ -246,6 +245,13 @@ export default function SummaryWorkbenchFeature({
     workbench.isHydrating ||
     workbench.isConfirming ||
     workbench.isSaving;
+  const templateLocked =
+    hasSubmitted ||
+    (!workbench.isHydrating &&
+      hasAcceptedHydratedTurn(
+        workbench.viewState.messages,
+        workbench.viewState.card
+      ));
   const latestScopeRef = useRef(workbench.scope);
   const latestScopeChangeImpactRef = useRef<SummaryScopeChangeImpact | null>(
     controllerScopeChangeImpact(workbench)
@@ -541,12 +547,12 @@ export default function SummaryWorkbenchFeature({
       !busy &&
       participantScopeReady &&
       (composerHasCustomText ||
-        (!hasSubmitted && structuredGenerate) ||
-        (hasSubmitted &&
+        (!templateLocked && structuredGenerate) ||
+        (templateLocked &&
           templateFilledComposer.current !== null &&
           structuredGenerate)),
-    showTemplateTrigger: !hasSubmitted && !templateGalleryOpen,
-    templateLocked: hasSubmitted,
+    showTemplateTrigger: !templateLocked && !templateGalleryOpen,
+    templateLocked,
     sendLabelKey:
       !composerHasCustomText && structuredGenerate
         ? "summary.workbench.composer.generate"
@@ -638,7 +644,7 @@ export default function SummaryWorkbenchFeature({
     }
     const action =
       directTeamWorkflow &&
-      !hasSubmitted &&
+      !templateLocked &&
       workbench.scope.participants.length > 0
         ? "start_team_workflow"
         : "chat";
@@ -692,7 +698,7 @@ export default function SummaryWorkbenchFeature({
     }
     if (busy) return;
     if (kind === "template") {
-      if (hasSubmitted) return;
+      if (templateLocked) return;
       setTemplateGalleryOpen(true);
       return;
     }
@@ -711,7 +717,7 @@ export default function SummaryWorkbenchFeature({
     id: string
   ) => {
     if (busy) return;
-    if (kind === "template" && hasSubmitted) return;
+    if (kind === "template" && templateLocked) return;
     const shouldClearTemplateText =
       kind === "template" && templateFilledComposer.current !== null;
     const result = removeScopeContext(workbench.scope, kind, id);
@@ -838,6 +844,10 @@ export default function SummaryWorkbenchFeature({
   );
 
   const applyTemplate = (template: SummaryWorkbenchTemplateScope) => {
+    if (templateLocked) {
+      setPendingTemplate(null);
+      return;
+    }
     updateScopeWithPreviewGuard({ ...workbench.scope, template }, () => {
       setPendingTemplate(null);
       templateFilledComposer.current = template.requirement;
@@ -853,7 +863,7 @@ export default function SummaryWorkbenchFeature({
   const handleTemplateChange = (
     template: SummaryWorkbenchTemplateScope | null
   ) => {
-    if (busy) return;
+    if (busy || templateLocked) return;
     if (!template) {
       updateScopeWithPreviewGuard(
         { ...workbench.scope, template: null },
@@ -895,7 +905,7 @@ export default function SummaryWorkbenchFeature({
           actions={{
             onInputChange: (value) => {
               const shouldClearTemplate = Boolean(
-                !hasSubmitted &&
+                !templateLocked &&
                   !value.trim() &&
                   workbench.scope.template &&
                   templateFilledComposer.current !== null &&
@@ -928,7 +938,7 @@ export default function SummaryWorkbenchFeature({
             onNewSession: resetSession,
           }}
           contextPanel={
-            templateGalleryOpen && !hasSubmitted ? (
+            templateGalleryOpen && !templateLocked ? (
               <TemplateSelectorModal
                 visible
                 inline
@@ -1028,7 +1038,7 @@ export default function SummaryWorkbenchFeature({
       </Modal>
 
       <Modal
-        visible={pendingTemplate !== null}
+        visible={pendingTemplate !== null && !templateLocked}
         title={t("summary.workbench.selector.replaceTemplateTitle")}
         okText={t("summary.workbench.selector.replaceTemplateConfirm")}
         cancelText={t("summary.common.cancel")}

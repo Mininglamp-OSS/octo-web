@@ -594,7 +594,11 @@ describe("SummaryWorkbenchFeature", () => {
     expect(current.updateScope).not.toHaveBeenCalled();
   });
 
-  it.each(["agent_preview", "clarification"] as const)("keeps templates locked after restoring an accepted %s turn", async (resultType) => {
+  it.each([
+    ["agent_preview", "agent_preview"],
+    ["clarification", "clarification"],
+    ["assistant turn without a result type", undefined],
+  ] as const)("keeps templates locked after restoring an accepted %s", async (_caseName, resultType) => {
     localStorage.setItem(
       "summary-workbench-session:v2:test-uid:space-a:global",
       "restored-session"
@@ -609,7 +613,12 @@ describe("SummaryWorkbenchFeature", () => {
 
     current.isHydrating = false;
     current.viewState.messages = [
-      { id: "message-a", role: "assistant", content: "Restored response", resultType },
+      {
+        id: "message-a",
+        role: "assistant",
+        content: "Restored response",
+        ...(resultType === undefined ? {} : { resultType }),
+      },
     ];
     view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
 
@@ -1148,6 +1157,46 @@ describe("SummaryWorkbenchFeature", () => {
     expect(current.updateScope).toHaveBeenCalledTimes(1);
     expect(current.setComposerValue).toHaveBeenCalledWith(
       "Summarize progress and risks"
+    );
+  });
+
+  it("dismisses a pending template replacement when the restored conversation locks templates", async () => {
+    const current = controller({
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Keep my custom requirement",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: true,
+      },
+    });
+    mocks.useSummaryWorkbench.mockImplementation(() => current);
+
+    const view = render(
+      <SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />,
+      { legacyRoot: true }
+    );
+    fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
+    expect(screen.getByRole("button", { name: "modal-ok" })).toBeInTheDocument();
+
+    current.viewState.messages = [
+      { id: "message-a", role: "assistant", content: "Restored response" },
+    ];
+    view.rerender(
+      <SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "modal-ok" })
+      ).not.toBeInTheDocument()
+    );
+    expect(current.updateScope).not.toHaveBeenCalled();
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-template-locked",
+      "true"
     );
   });
 
@@ -1810,7 +1859,7 @@ describe("SummaryWorkbenchFeature", () => {
     expect(mocks.toastWarning).not.toHaveBeenCalled();
   });
 
-  it("carries channelID as object_id on the smart_summary_quality_gate event, and never uploads gap.detail (PR #1637 P2)", async () => {
+  it("carries channelID, bounds unknown gap kinds, and never uploads gap.detail (PR #1637 P2)", async () => {
     // Two assertions in one test:
     //   1. The workbench save path must include `object_id: channel.channelID`
     //      so the event can be joined at the envelope level, matching the
@@ -1823,7 +1872,12 @@ describe("SummaryWorkbenchFeature", () => {
       task_id: 307,
       title: "Draft",
       finish_status: "PARTIAL",
-      gaps: [{ kind: "citation", detail: "secret gap detail — do not upload" }],
+      gaps: [
+        {
+          kind: "customer-email@example.com",
+          detail: "secret gap detail — do not upload",
+        },
+      ],
     });
     mocks.useSummaryWorkbench.mockReturnValue(
       controller({
@@ -1854,7 +1908,7 @@ describe("SummaryWorkbenchFeature", () => {
         task_id: 307,
         finish_status: "PARTIAL",
         gap_count: 1,
-        first_gap_kind: "citation",
+        first_gap_kind: "other",
       })
     );
     // Negative assertion: no field carrying the raw gap detail leaks through.
@@ -1864,6 +1918,9 @@ describe("SummaryWorkbenchFeature", () => {
     expect(trackCall?.[1]).not.toHaveProperty("first_gap_detail");
     expect(trackCall?.[1]).not.toHaveProperty("gap_detail");
     expect(JSON.stringify(trackCall?.[1])).not.toContain("secret gap detail");
+    expect(JSON.stringify(trackCall?.[1])).not.toContain(
+      "customer-email@example.com"
+    );
   });
 
   it("handles the same recovered save result only once", async () => {

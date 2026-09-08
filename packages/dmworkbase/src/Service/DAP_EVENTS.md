@@ -20,7 +20,10 @@ runtime-disjoint emit sites, see that row):
 (channel/group id, account uid) and the bounded, non-content diagnostics explicitly
 registered in this table. `smart_summary_quality_gate` may carry `task_id`,
 `finish_status`, `gap_count`, optional `first_gap_kind`, and existing entry-context
-dimensions. It never carries `gaps[].detail`, summary content, keywords, or PII.
+dimensions. `first_gap_kind` is normalized to the documented category allowlist
+(`channel`, `coverage`, `truncation`, `output_truncation`, `dropped`, `citation`,
+`tool_error`, `evidence`, or `other`). It never carries `gaps[].detail`, summary
+content, keywords, or PII.
 See issue #1406 (privacy constraint amended round-6 to permit opaque `object_id`);
 the quality-gate row below records the additional bounded diagnostic envelope.
 

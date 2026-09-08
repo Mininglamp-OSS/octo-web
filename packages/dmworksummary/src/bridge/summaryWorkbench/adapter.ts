@@ -612,7 +612,9 @@ function toAuthoritativeState(
   const scope = toWorkbenchScope(state.summary_context);
   // Dropping unsupported extra references is a real scope mutation. Advance
   // the version so the next request cannot reuse the server's old version
-  // with a different scope hash and fail with a 409 scope conflict.
+  // with a different scope hash and fail with a 409 scope conflict. Backend
+  // main accepts a higher client scope_version, persists its scope_json/hash,
+  // and clears folded artifacts; see docs/summary-apps-artifact-review-fixes.md.
   const scopeWasNormalized =
     state.summary_context.referenced_task_ids.length !==
     scope.referencedTaskIds.length;
@@ -792,9 +794,10 @@ function decodeCoverageGaps(value: unknown): CoverageGap[] | undefined {
   return requireArray(value, "save_result.gaps").map((gap, index) => {
     const path = `save_result.gaps[${index}]`;
     const record = requireRecord(gap, path);
+    const detail = optionalString(record.detail, `${path}.detail`);
     return {
       kind: requireString(record.kind, `${path}.kind`),
-      detail: requireString(record.detail, `${path}.detail`),
+      ...(detail === undefined ? {} : { detail }),
       ...(record.error_code === undefined || record.error_code === null
         ? {}
         : {

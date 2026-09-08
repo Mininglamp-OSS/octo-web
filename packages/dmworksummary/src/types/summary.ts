@@ -387,8 +387,8 @@ export type FinishStatus = 'COMPLETE' | 'PARTIAL' | 'FAILED';
 export interface CoverageGap {
     /** 缺口种类,如 tool_error / coverage / evidence 等；前端仅用于内部诊断聚合。 */
     kind: string;
-    /** 人类可读的缺口说明；不向用户展示，也不随诊断埋点上报。 */
-    detail: string;
+    /** 可选的人类可读缺口说明；不向用户展示，也不随诊断埋点上报。 */
+    detail?: string;
     /** 可选:关联的结构化错误码。 */
     error_code?: string;
 }
