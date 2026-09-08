@@ -12,6 +12,7 @@ import type {
 } from "../../host/types";
 import * as api from "../../api/summaryApi";
 import { summaryTestIds } from "../../utils/testIds";
+import { isActiveSummaryGroupMember } from "../../host/memberPolicy";
 import "../../components/SummarySelectors.css";
 
 interface MemberCandidate {
@@ -156,7 +157,10 @@ export default class SummaryAddMemberModal extends Component<Props, State> {
             if (!this.snapshotStillValid(snap)) return;
             const excluded = new Set(this.props.existingMemberIds);
             const candidates = members
-                .filter((m: SummaryConversationMember) => !m.isBot && !isBot(m.uid) && !excluded.has(m.uid))
+                .filter((m: SummaryConversationMember) =>
+                    Boolean(m.uid) && isActiveSummaryGroupMember(m) &&
+                    !m.isBot && !isBot(m.uid) && !excluded.has(m.uid)
+                )
                 .map((m: SummaryConversationMember): MemberCandidate => ({
                     uid: m.uid,
                     name: m.name,

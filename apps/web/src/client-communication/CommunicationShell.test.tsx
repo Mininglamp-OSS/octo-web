@@ -48,7 +48,7 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("@dmwork/summary/src/host/legacySummaryMessaging", () => ({
+vi.mock("@dmwork/summary/messaging", () => ({
   legacySummaryMessagingPort: {
     loadConversationMembers: mocks.loadConversationMembers,
     notifySummaryCompleted: vi.fn(async () => {}),
@@ -64,7 +64,7 @@ vi.mock("@octo/contacts", () => ({
   ContactsList: () => <div>contacts</div>,
 }));
 
-vi.mock("@dmwork/appbot/src/features/AppBotConversationView", () => ({
+vi.mock("@dmwork/appbot/conversation", () => ({
   renderAppBotConversation: (target: { displayName: string }, channel: unknown) =>
     <div className="appbot-chat-wrap" data-channel={JSON.stringify(channel)}>{target.displayName}</div>,
 }));

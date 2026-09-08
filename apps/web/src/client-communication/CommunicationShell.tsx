@@ -14,11 +14,11 @@ import {
 } from "@octo/base";
 import type { WKViewQueueContext } from "@octo/base/src/Components/WKViewQueue";
 import { ContactsList } from "@octo/contacts";
-import { renderAppBotConversation } from "@dmwork/appbot/src/features/AppBotConversationView";
+import { renderAppBotConversation } from "@dmwork/appbot/conversation";
 import type {
   SummaryCompletionNotice,
   SummaryConversationTarget,
-} from "@dmwork/summary/src/host/types";
+} from "@dmwork/summary/messaging";
 import { Channel, ChannelInfo, WKSDK } from "wukongimjssdk";
 import { getElectronUnreadMessageCount } from "../App/electronUnreadCount";
 import {
@@ -299,7 +299,7 @@ export function CommunicationShell({
       const run = async () => {
         if (!isActive()) throw new Error("Summary request context expired");
         const { legacySummaryMessagingPort } = await import(
-          "@dmwork/summary/src/host/legacySummaryMessaging"
+          "@dmwork/summary/messaging"
         );
         if (!isActive()) throw new Error("Summary request context expired");
         if (request.operation === "loadConversationMembers") {

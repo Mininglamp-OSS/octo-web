@@ -165,10 +165,16 @@ export function SummaryShell({
         setSummaryAttentionRuntimeVisible(command.visible);
         return;
       }
-      const visible = command.type === "resume";
-      document.documentElement.dataset.hostVisibility = visible
-        ? "visible"
-        : "hidden";
+      if (command.type === "suspend") {
+        document.documentElement.dataset.hostVisibility = "hidden";
+        return;
+      }
+      if (command.type === "resume") {
+        document.documentElement.dataset.hostVisibility = "visible";
+        return;
+      }
+      // Unknown commands must not change visibility
+      return;
     });
     return dispose;
   }, [bridge, setControlledRoute]);

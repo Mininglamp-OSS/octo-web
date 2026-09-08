@@ -140,4 +140,37 @@ describe("AppsShell", () => {
     act(() => mocks.command.listener?.({ type: "reload" }));
     await waitFor(() => expect(mocks.workspaceMounts).toBe(2));
   });
+
+  it("sets hostVisibility explicitly for suspend and resume", () => {
+    render(
+      <AppsShell
+        bridge={mocks.bridge as any}
+        initialSpace={{ id: "space-a", name: "Space A" }}
+        onReady={vi.fn(async () => {})}
+      />
+    );
+
+    act(() => mocks.command.listener?.({ type: "suspend" }));
+    expect(document.documentElement.dataset.hostVisibility).toBe("hidden");
+
+    act(() => mocks.command.listener?.({ type: "resume" }));
+    expect(document.documentElement.dataset.hostVisibility).toBe("visible");
+  });
+
+  it("ignores unknown commands without changing visibility", () => {
+    render(
+      <AppsShell
+        bridge={mocks.bridge as any}
+        initialSpace={{ id: "space-a", name: "Space A" }}
+        onReady={vi.fn(async () => {})}
+      />
+    );
+
+    document.documentElement.dataset.hostVisibility = "visible";
+    act(() => mocks.command.listener?.({ type: "unknownCommand" as any }));
+    expect(document.documentElement.dataset.hostVisibility).toBe("visible");
+
+    act(() => mocks.command.listener?.({ type: "someRandomEvent" as any }));
+    expect(document.documentElement.dataset.hostVisibility).toBe("visible");
+  });
 });

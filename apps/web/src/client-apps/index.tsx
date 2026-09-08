@@ -68,12 +68,10 @@ async function main() {
   WKApp.shared.registerModule(new BaseModule());
   WKApp.shared.registerModule(new DataSourceModule());
   await enableClientFeatureMocks("apps");
-  if (import.meta.env.VITE_E2E_MOCK !== "1") {
-    installFeatureAuthExpiryHandler(WKApp.apiClient, WKApp.loginInfo, host, {
-      reason: "Apps session expired",
-      logPrefix: "[client-apps]",
-    });
-  }
+  installFeatureAuthExpiryHandler(WKApp.apiClient, WKApp.loginInfo, host, {
+    reason: "Apps session expired",
+    logPrefix: "[client-apps]",
+  });
   WKApp.remoteConfig.startRequestConfig();
   Dap.shared.init();
 

@@ -503,6 +503,7 @@
     "scheduleSaved": "Scheduled update saved",
     "scheduleCreated": "Scheduled update created",
     "forwardFailed": "Failed to forward",
+    "forwardContextChanged": "The forwarding context changed. Please reopen the summary and try again.",
     "partialForwardFailed": "Failed to forward to some channels ({{failed}}/{{total}})",
     "forwarded": "Forwarded",
     "forwardToChat": "Forward to chat",

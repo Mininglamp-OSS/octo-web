@@ -78,8 +78,16 @@ export function AppsShell({
           : "hidden";
         return;
       }
-      document.documentElement.dataset.hostVisibility =
-        command.type === "suspend" ? "hidden" : "visible";
+      if (command.type === "suspend") {
+        document.documentElement.dataset.hostVisibility = "hidden";
+        return;
+      }
+      if (command.type === "resume") {
+        document.documentElement.dataset.hostVisibility = "visible";
+        return;
+      }
+      // Unknown commands must not change visibility
+      return;
     });
     return dispose;
   }, [bridge]);

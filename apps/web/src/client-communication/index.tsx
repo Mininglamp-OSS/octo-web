@@ -13,7 +13,7 @@ import {
 } from "@octo/base";
 import { ContactsModule } from "@octo/contacts";
 import { DataSourceModule } from "@octo/datasource";
-import { SummaryCommunicationModule } from "@dmwork/summary/src/communication";
+import { SummaryCommunicationModule } from "@dmwork/summary/communication";
 import { registerEnterpriseModules } from "virtual:octo-enterprise-modules";
 import { WKSDK } from "wukongimjssdk";
 import { version as pkgVersion } from "../../package.json";

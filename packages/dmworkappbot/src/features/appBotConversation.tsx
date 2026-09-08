@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import AppBotService from "../Service/AppBotService";
 import type { AppBotViewItem } from "../bridge/types";
 import { useAppBotHost } from "../host/AppBotHostContext";
@@ -10,6 +10,12 @@ import { showErrorToast } from "./appBotToast";
 
 interface OpenAppBotConversationDeps {
   applyBot: (robotUid: string) => Promise<unknown>;
+}
+
+interface OpenAppBotConversationCallbacks {
+  onApplied?: () => void;
+  /** Fail-safe guard checked before every post-await side effect. */
+  isCurrent?: () => boolean;
 }
 
 export function createAppBotConversationTarget(
@@ -50,12 +56,29 @@ export async function openAppBotConversation(
   bot: AppBotViewItem,
   host: AppBotHostCapabilities,
   deps: OpenAppBotConversationDeps = defaultDeps,
-  callbacks: { onApplied?: () => void } = {}
+  callbacks: OpenAppBotConversationCallbacks = {}
 ) {
-  await deps.applyBot(bot.uid);
-  callbacks.onApplied?.();
-  trackAppOpened(host, bot);
-  await host.openConversation(createAppBotConversationTarget(bot));
+  const spaceId = host.getCurrentSpace().id;
+  let spaceChanged = false;
+  const unsubscribe = host.subscribeSpaceChanged(() => {
+    spaceChanged = true;
+  });
+  const isCurrent = () =>
+    !spaceChanged &&
+    host.getCurrentSpace().id === spaceId &&
+    callbacks.isCurrent?.() !== false;
+
+  try {
+    await deps.applyBot(bot.uid);
+    if (!isCurrent()) return;
+    callbacks.onApplied?.();
+    if (!isCurrent()) return;
+    trackAppOpened(host, bot);
+    if (!isCurrent()) return;
+    await host.openConversation(createAppBotConversationTarget(bot));
+  } finally {
+    unsubscribe();
+  }
 }
 
 interface UseAppBotConversationOptions {
@@ -70,8 +93,20 @@ export function useAppBotConversation({
   const host = useAppBotHost();
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
   const isSelectingRef = useRef(false);
+  const generationRef = useRef(0);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      isSelectingRef.current = false;
+      generationRef.current += 1;
+    };
+  }, []);
 
   const resetSelection = useCallback(() => {
+    generationRef.current += 1;
     isSelectingRef.current = false;
     setSelectedUid(null);
     host.clearConversation();
@@ -81,15 +116,23 @@ export function useAppBotConversation({
     async (bot: AppBotViewItem) => {
       if (isSelectingRef.current) return;
       isSelectingRef.current = true;
+      const generation = generationRef.current;
       try {
         await openAppBotConversation(bot, host, undefined, {
           onApplied: () => setSelectedUid(bot.uid),
+          isCurrent: () =>
+            isMountedRef.current && generation === generationRef.current,
         });
       } catch (err) {
+        if (!isMountedRef.current || generation !== generationRef.current) {
+          return;
+        }
         console.error("[AppBotPage] handleSelect failed:", err);
         onError(connectFailedMessage);
       } finally {
-        isSelectingRef.current = false;
+        if (generation === generationRef.current) {
+          isSelectingRef.current = false;
+        }
       }
     },
     [connectFailedMessage, host, onError]

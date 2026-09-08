@@ -12,6 +12,9 @@ export interface SummaryConversationMember {
   name: string;
   role?: number;
   isBot?: boolean;
+  isDeleted?: boolean;
+  status?: number;
+  avatar?: string;
 }
 
 export interface SummaryCompletionNotice {

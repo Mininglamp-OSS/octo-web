@@ -61,6 +61,9 @@ import { WKApp, Dap } from '@octo/base';
 import SummaryDetailPage from '../SummaryDetailPage';
 import { refreshSummaryAttentionBadge } from '../../utils/summaryAttentionBadge';
 import { summaryTestIds } from '../../utils/testIds';
+import { SummaryForwardContextExpiredError } from '../../host/forwardErrors';
+import type { SummaryForwardRequest, SummaryMessagingPort } from '../../host/types';
+import { Toast } from '@douyinfe/semi-ui';
 
 vi.mock('../../api/summaryApi');
 
@@ -72,6 +75,32 @@ function makePage(taskId: number | string) {
     };
     return page;
 }
+
+describe('SummaryDetailPage forwarding feedback', () => {
+    it('reports an expired context separately from a normal send failure', () => {
+        const requestForward = vi.fn<(request: SummaryForwardRequest) => void>();
+        const messaging: SummaryMessagingPort = {
+            getCurrentUser: () => ({ uid: 'me', displayName: 'Me' }),
+            loadConversationMembers: async () => [],
+            openConversation: async () => {},
+            notifySummaryCompleted: async () => {},
+            requestForward,
+            subscribeInvalidation: () => () => {},
+        };
+        const page = new SummaryDetailPage({ taskId: 1, messaging });
+        page.state = {
+            ...page.state,
+            detail: baseDetail({ result: { content: 'Summary text' } }) as any,
+        };
+        page.handleForwardToChat();
+        const request = requestForward.mock.calls[0][0];
+        request.onError?.(new SummaryForwardContextExpiredError());
+        expect(Toast.error).toHaveBeenLastCalledWith('转发上下文已变化，请重新打开总结后重试。');
+        request.onError?.(new Error('network'));
+        expect(Toast.error).toHaveBeenLastCalledWith('转发失败');
+        expect(request.onCancel).toBeUndefined();
+    });
+});
 
 describe('SummaryDetailPage — 历史版本引用隐私', () => {
     it('团队历史预览默认隐藏原始聊天引用', () => {

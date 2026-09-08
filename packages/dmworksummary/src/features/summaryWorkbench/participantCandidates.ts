@@ -5,6 +5,8 @@ import { Channel, ChannelTypeGroup, WKSDK } from "wukongimjssdk";
 import type { SummaryWorkbenchChannelScope } from "../../bridge/summaryWorkbench/protocol";
 import type { WorkbenchMemberCandidate } from "./scope";
 import type { SummaryMessagingPort } from "../../host";
+import { toSummaryConversationMember } from "../../host/subscriberMembers";
+import { isActiveSummaryGroupMember } from "../../host/memberPolicy";
 
 const PARTICIPANT_MEMBER_LOAD_CONCURRENCY = 4;
 
@@ -17,6 +19,8 @@ interface RawMember {
   avatar?: string;
   robot?: number | boolean;
   is_bot?: boolean;
+  isBot?: boolean;
+  isDeleted?: boolean;
   is_deleted?: number | boolean;
   status?: number;
   role?: number;
@@ -37,7 +41,7 @@ const defaultLoader: ParticipantCandidateLoader = {
     const sdk = WKSDK.shared();
     const sdkChannel = new Channel(channel.chatId, ChannelTypeGroup);
     await sdk.channelManager.syncSubscribes(sdkChannel);
-    return sdk.channelManager.getSubscribes(sdkChannel) || [];
+    return (sdk.channelManager.getSubscribes(sdkChannel) || []).map(toSummaryConversationMember);
   },
   async loadSpaceMembers(spaceId) {
     if (spaceId) {
@@ -57,14 +61,14 @@ function memberName(member: RawMember, uid: string): string {
 }
 
 function isHumanMember(member: RawMember, uid: string): boolean {
-  return Boolean(uid) && !member.is_bot && member.robot !== 1 && member.robot !== true && !isBot(uid);
+  return Boolean(uid) && !member.isBot && !member.is_bot && member.robot !== 1 && member.robot !== true && !isBot(uid);
 }
 
 function isActiveGroupMember(member: RawMember): boolean {
   return (
+    isActiveSummaryGroupMember(member) &&
     member.is_deleted !== 1 &&
-    member.is_deleted !== true &&
-    (member.status === undefined || member.status === 1)
+    member.is_deleted !== true
   );
 }
 
@@ -137,7 +141,7 @@ export async function loadParticipantCandidates(
         ? (await options.messaging.loadConversationMembers({
             channelId: channel.chatId,
             channelType: ChannelTypeGroup,
-          })).map((member) => ({ ...member, is_bot: member.isBot }))
+          }))
         : loader.loadGroupMembers(channel)
     );
     memberLists.flat().forEach((member) => addMember(member, "group"));

@@ -246,4 +246,39 @@ describe("SummaryShell", () => {
     );
     consoleSpy.mockRestore();
   });
+
+  it("sets hostVisibility explicitly for suspend and resume", () => {
+    render(
+      <SummaryShell
+        bridge={mocks.bridge as any}
+        initialRoute={{ view: "list" }}
+        initialSpaceId="space-a"
+        onReady={vi.fn(async () => {})}
+      />
+    );
+
+    act(() => mocks.command.listener?.({ type: "suspend" }));
+    expect(document.documentElement.dataset.hostVisibility).toBe("hidden");
+
+    act(() => mocks.command.listener?.({ type: "resume" }));
+    expect(document.documentElement.dataset.hostVisibility).toBe("visible");
+  });
+
+  it("ignores unknown commands without changing visibility", () => {
+    render(
+      <SummaryShell
+        bridge={mocks.bridge as any}
+        initialRoute={{ view: "list" }}
+        initialSpaceId="space-a"
+        onReady={vi.fn(async () => {})}
+      />
+    );
+
+    document.documentElement.dataset.hostVisibility = "visible";
+    act(() => mocks.command.listener?.({ type: "unknownCommand" as any }));
+    expect(document.documentElement.dataset.hostVisibility).toBe("visible");
+
+    act(() => mocks.command.listener?.({ type: "someRandomEvent" as any }));
+    expect(document.documentElement.dataset.hostVisibility).toBe("visible");
+  });
 });

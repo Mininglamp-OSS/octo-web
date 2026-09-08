@@ -5,6 +5,8 @@ import SummaryAddMemberModal from './SummaryAddMemberModal';
 import * as api from '../../api/summaryApi';
 import WKApp from '@octo/base/src/App';
 import type { SummaryMessagingPort, SummaryConversationTarget } from '../../host';
+import { summarySubscribers } from '../../__tests__/fixtures/summarySubscribers';
+import { toSummaryConversationMember } from '../../host/subscriberMembers';
 
 const mockToast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn() }));
 
@@ -99,6 +101,16 @@ beforeEach(() => {
 });
 
 describe('SummaryAddMemberModal', () => {
+    it('filters host DTO eligibility without needing a local bot cache', async () => {
+        const loadConversationMembers = vi.fn(async () => summarySubscribers().map(toSummaryConversationMember));
+        const { utils } = renderVisible({ messaging: makeMessaging({ loadConversationMembers }) });
+        await waitFor(() => expect(utils.queryByText('Verified name')).not.toBeNull());
+        expect(utils.queryByText('Remark')).not.toBeNull();
+        for (const uid of ['app-bot', 'inactive', 'deleted']) {
+            expect(utils.queryByTestId(`summary-add-member-row-${uid}`)).toBeNull();
+        }
+    });
+
     it('renders nothing when not visible', () => {
         const messaging = makeMessaging();
         const base = {

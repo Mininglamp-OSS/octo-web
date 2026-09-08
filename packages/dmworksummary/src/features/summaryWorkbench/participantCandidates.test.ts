@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { WKSDK } from "wukongimjssdk";
+import { summarySubscribers } from "../../__tests__/fixtures/summarySubscribers";
+import { legacySummaryMessagingPort } from "../../host/legacySummaryMessaging";
 import type { SummaryMessagingPort } from "../../host";
 import type { SummaryWorkbenchChannelScope } from "../../bridge/summaryWorkbench/protocol";
 import { loadParticipantCandidates } from "./participantCandidates";
@@ -8,7 +11,25 @@ const groups: SummaryWorkbenchChannelScope[] = [
   { chatId: "group-b", chatType: "group", name: "B" },
 ];
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("participant candidate loading", () => {
+  it.each(["web", "host"] as const)("filters real SDK member DTOs on the %s path", async (mode) => {
+    const manager = WKSDK.shared().channelManager;
+    vi.spyOn(manager, "syncSubscribes").mockResolvedValue(undefined);
+    vi.spyOn(manager, "getSubscribes").mockReturnValue(summarySubscribers());
+    const result = await loadParticipantCandidates(groups, {
+      currentUserId: "self",
+      spaceId: "space-a",
+      messaging: mode === "host" ? legacySummaryMessagingPort : undefined,
+    });
+    expect(result.members).toEqual([
+      { uid: "human", name: "Remark" },
+      { uid: "verified", name: "Verified name" },
+    ]);
+    expect(result.roles.get("human")).toBe(2);
+  });
+
   it("uses the supplied host without reading the local IM member loader", async () => {
     const loadGroupMembers = vi.fn(async () => { throw new Error("unexpected local IM read"); });
     const loadConversationMembers = vi.fn(async () => [

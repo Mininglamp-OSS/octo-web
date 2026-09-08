@@ -503,6 +503,7 @@
     "scheduleSaved": "定时更新已保存",
     "scheduleCreated": "定时更新已创建",
     "forwardFailed": "转发失败",
+    "forwardContextChanged": "转发上下文已变化，请重新打开总结后重试。",
     "partialForwardFailed": "部分频道转发失败 ({{failed}}/{{total}})",
     "forwarded": "已转发",
     "forwardToChat": "转发到聊天",

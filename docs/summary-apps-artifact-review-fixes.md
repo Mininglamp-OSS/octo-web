@@ -1,5 +1,167 @@
 # Artifact Review Fixes
 
+## PR 1640 Follow-up Plan (2026-09-08)
+
+### Behavior List
+
+- Summary member selection excludes bots and inactive/deleted group members
+  without relying on the Summary renderer's IM cache.
+- Switching Space or resetting Apps invalidates pending app selections before
+  they can update selection, report analytics, or open a conversation.
+- Mock artifact builds require an explicit opt-in; Apps retains the same host
+  authentication-expiry behavior under tests and production.
+- An expired forwarding context reports a retryable error; a user-initiated
+  cancellation remains silent.
+- Unknown host commands do not change renderer visibility. Summary and Apps
+  entry startup must not start an IM connection, including through modules.
+
+### File Map
+
+- `packages/dmworksummary/src/host/`: complete member DTO, subscriber adapter,
+  active-member policy and forwarding-context handling.
+- Summary member/workbench features: consume the member policy and test the
+  actual SDK-to-host conversion without a populated Summary IM cache.
+- `packages/dmworkappbot/src/features/appBotConversation.tsx`: invalidate stale
+  selections, including Space A-to-B-to-A and overlapping requests.
+- `apps/web/scripts/client-feature-build*.mjs`: explicit mock-build gate.
+- `apps/web/src/client-{apps,summary}/`: authentication, visibility and boot tests.
+- Package public sub-entries and Communication imports: expose focused APIs
+  without routing consumers through full feature modules.
+- `SummaryDetailPage.tsx`: remove formatting-only churn while retaining all
+  semantic changes; verify normalized syntax before and after cleanup.
+
+### PR Scope
+
+Address the current review without changing backend endpoints, adding Web
+entries, migrating Client main, or publishing generated artifacts. Preserve
+Web adapters and frozen Client integration compatibility. No commit or push is
+part of this repair step.
+
+### Verification Plan
+
+- Focused member, forwarding, Apps-race, artifact-build and entry-startup tests.
+- Full Web, Summary and Apps unit suites plus i18n and diff checks.
+- Default Web production build and isolated three-artifact builds.
+- Default Web Summary E2E and frozen Client integration regression when the
+  local test harness is available; keep mock outputs out of preview resources.
+- Document static findings separately from server-side membership validation
+  and live microphone/production-backend acceptance.
+
+### Completed Repairs
+
+- Map real SDK `Subscriber` records to host DTOs, preserving bot flags from
+  `orgData`, deletion/status, avatar and the canonical display name. Both Web
+  Workbench and standalone member selection reject inactive/deleted members.
+  Tests use real SDK instances and do not require a populated local bot cache.
+- Invalidate pending Apps selections on Space changes, reset and unmount.
+  A-to-B-to-A cannot revive an old request; its `finally` cannot unlock a newer
+  selection. Cover the helper and mounted React hook.
+- Reject resolved API/IM mock build flags unless the process environment
+  explicitly contains `OCTO_ALLOW_MOCK_CLIENT_ARTIFACT=1`. Neither dotenv nor
+  the dirty-worktree opt-in can grant this authorization.
+- Always install Apps' host auth-expiry handler after module/mock setup.
+  HTTP 401 exercises the actual APIClient interceptor in both mock and normal
+  entry boots; HTTP 403 remains a non-auth error.
+- Report expired forwarding context through `onError` and show localized
+  retry feedback in Web. User cancellation remains silent. Retain the existing
+  Communication and Summary guards against stale cross-Space callbacks.
+- Make Summary/Apps suspend and resume explicit; unknown commands do nothing.
+- Export focused package sub-entries and migrate Communication consumers.
+  Preserve legacy `/src/*` compatibility and Node10 TypeScript resolution.
+- Remove formatting-only changes from `SummaryDetailPage.tsx`. The final page
+  diff against upstream is +114/-78 lines, down from +1673/-526 in the PR head.
+  The mechanical restoration checked normalized AST and emitted-JS equivalence;
+  the resulting page also passed unit and default Web E2E regressions.
+
+### Verification Results (2026-09-08)
+
+| Check | Result |
+| --- | --- |
+| Web unit suite | 1,487 passed, 130 files |
+| Summary unit suite | 1,221 passed, 81 files |
+| Apps unit suite | 42 passed, 10 files |
+| Real entry boot / API interceptor regressions | 5 passed, included in Web suite |
+| i18n and `git diff --check` | Passed |
+| Default Web non-mock production build and E2E build | Passed |
+| Default Web Summary E2E | 30 passed |
+| Communication / Summary / Apps artifact builds | All 3 non-mock and all 3 mock builds passed |
+| Isolated frozen-Client build and artifact integration E2E | Build passed; 9 tests passed after fixture correction below |
+
+Unit suite commands:
+
+```bash
+pnpm --dir apps/web exec vitest run --maxWorkers=4 --testTimeout=15000
+pnpm --dir packages/dmworksummary exec vitest run --maxWorkers=4
+pnpm --dir packages/dmworkappbot exec vitest run
+pnpm i18n:check
+git diff --check
+```
+
+The unmodified Web suite's macOS installer test exceeded its default 5-second
+timeout in earlier runs. The final command allows 15 seconds and passes; no
+updater source or test was changed. This is not a claim that the default timeout
+is reliable on this machine. Standalone Summary typechecking still has existing
+React/Semi typing failures and is not reported as passing.
+
+The no-IM tests now dynamically import the actual feature entries after
+installing a valid bootstrap and spies. They execute real BaseModule,
+DataSourceModule and feature initialization, require the React render boundary
+to be reached, and observe `startup`, `connectIM` and the SDK connection method.
+UI rendering, external requests, analytics and MSW installation are test
+boundaries; this is not a real WebSocket or production-backend acceptance run.
+Timers, interceptors, mocks and Summary attention runtime are cleaned up.
+
+### Isolated Client Verification
+
+Verification artifacts and the temporary Client copy are under:
+
+```text
+/var/folders/m3/52j9pv3x2wq9nj9frn0wx6j00000gn/T/octo-pr1640-artifacts-XjGRvp
+```
+
+The copy uses the frozen Client source, with its three expected artifact commit
+IDs changed only in that copy from `251c63e3` to `7cd1e2de`. Artifacts record
+`sourceDirty: true` because these Web repairs are uncommitted. Non-mock build
+success does not make these release artifacts. The original Client worktree,
+its pins, preview resources and live backend were not changed.
+
+The first integration run passed 8 tests and failed the add-member case: its
+seed omitted `status`, which the existing mock provider converts to `0`.
+The repaired member policy correctly excluded those records. Only the copied
+test fixture was changed to explicitly give active members `status: 1`; it also
+adds a robot and a `status: 0` member and asserts both are absent from the modal.
+With those inputs, all 9 integration tests pass. Carry that fixture correction
+into the separate Client artifact-update change; the original frozen test is
+not claimed to pass unchanged against these new artifacts.
+
+Intentional mock artifact builds now require this additional process flag,
+in a disposable build worktree:
+
+```bash
+OCTO_ALLOW_MOCK_CLIENT_ARTIFACT=1 \
+OCTO_ALLOW_DIRTY_CLIENT_ARTIFACT=1 \
+VITE_E2E_MOCK=1 VITE_E2E_MOCK_IM=1 \
+VITE_API_URL=https://octobuddy.e2e.invalid \
+pnpm --dir apps/web run build:client-summary
+```
+
+Use the same explicit opt-in for `build:client-apps` and
+`build:client-communication`. Clean release builds must use mock flags `0` and
+must not rely on the dirty-worktree opt-in.
+
+### Review Boundaries
+
+- SDK `getSubscribes()` already filters deleted entries. The fix preserves
+  deletion/status through the DTO and adds defensive filtering, rather than
+  claiming that the SDK always returns deleted members.
+- Client already rejects mock manifests outside E2E and validates trusted
+  frames. The build gate is additional protection, not a new Client gate.
+- Server-side add-member authorization, live production API behavior, real
+  microphone capture and OS permission dialogs were not verified here.
+- `upstream/main` was fetched and the PR branch rebase was a no-op at
+  `9e33837a`. This repair remains local on top of `7cd1e2de`; nothing was
+  committed, pushed, merged or released in this step.
+
 ## Behavior List
 
 - Summary cards in Communication open the corresponding Summary task or share.

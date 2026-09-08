@@ -15,6 +15,8 @@ import { TaskStatus } from "../types/summary";
 import { sendGroupSummaryCompletionTips } from "../utils/groupSummaryNotify";
 import { splitSummaryText } from "../utils/splitMessage";
 import type { SummaryMessagingPort } from "./types";
+import { toSummaryConversationMember } from "./subscriberMembers";
+import { SummaryForwardContextExpiredError } from "./forwardErrors";
 
 const INTER_MESSAGE_DELAY_MS = 200;
 
@@ -32,14 +34,7 @@ export const legacySummaryMessagingPort: SummaryMessagingPort = {
     const channel = new Channel(target.channelId, target.channelType);
     const sdk = WKSDK.shared();
     await sdk.channelManager.syncSubscribes(channel);
-    return (sdk.channelManager.getSubscribes(channel) || []).map(
-      (member: any) => ({
-        uid: member.uid,
-        name: member.name || member.uid,
-        role: member.role,
-        isBot: !!member.is_bot,
-      })
-    );
+    return (sdk.channelManager.getSubscribes(channel) || []).map(toSummaryConversationMember);
   },
 
   async openConversation(target) {
@@ -81,13 +76,13 @@ export const legacySummaryMessagingPort: SummaryMessagingPort = {
     const active = () => WKApp.shared.currentSpaceId === spaceId && (isActive?.() ?? true);
     WKApp.shared.baseContext.showConversationSelect(
       async (channels: Channel[]) => {
-        if (!active()) { onCancel?.(); return; }
+        if (!active()) { onError?.(new SummaryForwardContextExpiredError()); return; }
         try {
           const chunks = splitSummaryText(content);
           const result = await ForwardService.send(
             channels,
             () => {
-              if (!active()) throw new Error("Summary forwarding context expired");
+              if (!active()) throw new SummaryForwardContextExpiredError();
               return chunks.map((chunk) => new MessageText(chunk));
             },
             {
@@ -97,9 +92,10 @@ export const legacySummaryMessagingPort: SummaryMessagingPort = {
               spaceId,
             }
           );
+          if (!active()) { onError?.(new SummaryForwardContextExpiredError()); return; }
           onComplete(interpretForwardResult(result, "targets"));
         } catch (error) {
-          onError?.(error);
+          onError?.(active() ? error : new SummaryForwardContextExpiredError());
         }
       },
       title,

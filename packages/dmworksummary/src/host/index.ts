@@ -1,4 +1,5 @@
 export { legacySummaryMessagingPort } from "./legacySummaryMessaging";
+export { SummaryForwardContextExpiredError } from "./forwardErrors";
 export {
   SummaryMessagingProvider,
   useSummaryMessaging,
