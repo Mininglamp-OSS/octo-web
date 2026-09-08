@@ -1,11 +1,15 @@
 import APIClient from "@octo/base/src/Service/APIClient";
 import {
   decodeContentCatalog,
+  decodeContentGeneration,
   decodeFormalVersion,
   decodeFormalVersionPage,
 } from "../bridge/summaryWorkbench/formalContent";
 import type {
   SummaryContentCatalog,
+  SummaryContentBaseline,
+  SummaryContentGeneration,
+  SummaryContentRefineRequest,
   SummaryFormalVersion,
   SummaryFormalVersionPage,
 } from "./SummaryContentContract";
@@ -21,6 +25,12 @@ export interface SummaryContentTransport {
     path: string,
     options: SummaryContentReadOptions,
     query?: Record<string, string | number>
+  ): Promise<unknown>;
+  // Optional so read-only hosts remain usable during the compatibility rollout.
+  command?(
+    path: string,
+    options: SummaryContentReadOptions,
+    data: Record<string, unknown>
   ): Promise<unknown>;
 }
 
@@ -40,6 +50,12 @@ const defaultTransport: SummaryContentTransport = {
       { headers: { "X-Space-Id": options.spaceId }, signal: options.signal, param: query }
     );
   },
+  command(path, options, data) {
+    return APIClient.shared.post(
+      resolveContentApiURL(path, APIClient.shared.config.apiURL, window.location.origin), data,
+      { headers: { "X-Space-Id": options.spaceId }, signal: options.signal }
+    );
+  },
 };
 
 function summaryPath(summaryId: number, options: SummaryContentReadOptions): string {
@@ -53,7 +69,34 @@ function contentPath(summaryId: number, contentId: string, options: SummaryConte
   if (!/^sc1_[A-Za-z0-9_-]+$/.test(contentId)) {
     throw new SummaryContentProtocolError("Formal content identity is required");
   }
-  return `${summaryPath(summaryId, options)}/${encodeURIComponent(contentId)}/versions`;
+  return `${summaryPath(summaryId, options)}/${encodeURIComponent(contentId)}`;
+}
+
+function checkedBaseline(baseline: SummaryContentBaseline): Record<string, unknown> {
+  if (!/^sv1_[A-Za-z0-9_-]+$/.test(baseline.expected_current_version_id) ||
+      !Number.isSafeInteger(baseline.expected_content_revision) || baseline.expected_content_revision < 1) {
+    throw new SummaryContentProtocolError("A current formal version and revision are required");
+  }
+  return {
+    expected_current_version_id: baseline.expected_current_version_id,
+    expected_content_revision: baseline.expected_content_revision,
+  };
+}
+
+function generationPath(summaryId: number, contentId: string, generationId: string, options: SummaryContentReadOptions): string {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(generationId)) {
+    throw new SummaryContentProtocolError("A durable generation identity is required");
+  }
+  return `${contentPath(summaryId, contentId, options)}/generations/${generationId}`;
+}
+
+function decodeChangedCurrent(value: unknown, baseline: SummaryContentBaseline): SummaryFormalVersion {
+  const version = decodeFormalVersion(value, baseline.content_id);
+  if (!version.is_current || version.pending_application ||
+      version.content_revision !== baseline.expected_content_revision + 1) {
+    throw new SummaryContentProtocolError("Command did not return the next current revision");
+  }
+  return version;
 }
 
 export class SummaryContentService {
@@ -61,7 +104,11 @@ export class SummaryContentService {
 
   async loadContents(summaryId: number, options: SummaryContentReadOptions): Promise<SummaryContentCatalog> {
     const result = await this.transport.read(summaryPath(summaryId, options), options);
-    return decodeContentCatalog(result, summaryId);
+    const catalog = decodeContentCatalog(result, summaryId);
+    if (catalog.contents.some((content) => content.active_generation && content.active_generation.space_id !== options.spaceId)) {
+      throw new SummaryContentProtocolError("Generation response does not match its Space");
+    }
+    return catalog;
   }
 
   async loadVersions(
@@ -74,7 +121,7 @@ export class SummaryContentService {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
       throw new SummaryContentProtocolError("Version page limit is invalid");
     }
-    const result = await this.transport.read(contentPath(summaryId, contentId, options), options, {
+    const result = await this.transport.read(`${contentPath(summaryId, contentId, options)}/versions`, options, {
       cursor: page.cursor ?? "",
       limit,
     });
@@ -91,13 +138,66 @@ export class SummaryContentService {
       throw new SummaryContentProtocolError("Formal version identity is required");
     }
     const result = await this.transport.read(
-      `${contentPath(summaryId, contentId, options)}/${encodeURIComponent(versionId)}`, options
+      `${contentPath(summaryId, contentId, options)}/versions/${encodeURIComponent(versionId)}`, options
     );
     const version = decodeFormalVersion(result, contentId);
     if (version.version_id !== versionId) {
       throw new SummaryContentProtocolError("Version response does not match its request");
     }
     return version;
+  }
+
+  private command(path: string, options: SummaryContentReadOptions, data: Record<string, unknown>): Promise<unknown> {
+    if (!this.transport.command) {
+      throw new SummaryContentProtocolError("Formal content writes are unavailable");
+    }
+    return this.transport.command(path, options, data);
+  }
+
+  async editCurrent(summaryId: number, baseline: SummaryContentBaseline, content: string, options: SummaryContentReadOptions): Promise<SummaryFormalVersion> {
+    if (!content.trim() || new TextEncoder().encode(content).length > 500 * 1024) {
+      throw new SummaryContentProtocolError("Content is empty or too large");
+    }
+    const result = await this.command(`${contentPath(summaryId, baseline.content_id, options)}/edit`, options, {
+      ...checkedBaseline(baseline), content,
+    });
+    return decodeChangedCurrent(result, baseline);
+  }
+
+  async restoreCurrent(summaryId: number, baseline: SummaryContentBaseline, sourceVersionId: string, options: SummaryContentReadOptions): Promise<SummaryFormalVersion> {
+    if (!/^sv1_[A-Za-z0-9_-]+$/.test(sourceVersionId) || sourceVersionId === baseline.expected_current_version_id) {
+      throw new SummaryContentProtocolError("A different formal source version is required");
+    }
+    const result = await this.command(`${contentPath(summaryId, baseline.content_id, options)}/restore`, options, {
+      ...checkedBaseline(baseline), source_version_id: sourceVersionId,
+    });
+    return decodeChangedCurrent(result, baseline);
+  }
+
+  async refineCurrent(summaryId: number, request: SummaryContentRefineRequest, options: SummaryContentReadOptions): Promise<SummaryContentGeneration> {
+    if (!request.feedback.trim() || Array.from(request.feedback).length > 2000 ||
+        !request.idempotency_key.trim() || new TextEncoder().encode(request.idempotency_key).length > 128) {
+      throw new SummaryContentProtocolError("Feedback and a stable idempotency key are required");
+    }
+    const result = await this.command(`${contentPath(summaryId, request.content_id, options)}/generations/refine`, options, {
+      ...checkedBaseline(request), feedback: request.feedback, idempotency_key: request.idempotency_key,
+    });
+    return decodeContentGeneration(result, { summaryId, contentId: request.content_id, spaceId: options.spaceId });
+  }
+
+  async loadGeneration(summaryId: number, contentId: string, generationId: string, options: SummaryContentReadOptions): Promise<SummaryContentGeneration> {
+    const result = await this.transport.read(generationPath(summaryId, contentId, generationId, options), options);
+    return decodeContentGeneration(result, { summaryId, contentId, generationId, spaceId: options.spaceId });
+  }
+
+  async cancelGeneration(summaryId: number, contentId: string, generationId: string, options: SummaryContentReadOptions): Promise<SummaryContentGeneration> {
+    const result = await this.command(`${generationPath(summaryId, contentId, generationId, options)}/cancel`, options, {});
+    return decodeContentGeneration(result, { summaryId, contentId, generationId, spaceId: options.spaceId });
+  }
+
+  async applyCandidate(summaryId: number, baseline: SummaryContentBaseline, generationId: string, options: SummaryContentReadOptions): Promise<SummaryFormalVersion> {
+    const result = await this.command(`${generationPath(summaryId, baseline.content_id, generationId, options)}/apply`, options, checkedBaseline(baseline));
+    return decodeChangedCurrent(result, baseline);
   }
 }
 

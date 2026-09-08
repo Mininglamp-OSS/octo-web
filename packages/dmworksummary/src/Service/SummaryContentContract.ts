@@ -41,6 +41,7 @@ export interface SummaryFormalVersion {
   generation_id?: string;
   provisional: boolean;
   is_current: boolean;
+  pending_application?: boolean;
   edited_at?: string;
   edited_by?: string;
   restored_from_version_id?: string;
@@ -57,9 +58,7 @@ export interface SummaryFormalContent {
   current_version: SummaryFormalVersion | null;
   capabilities: SummaryContentCapabilities;
   generation_config: SummaryContentConfiguration;
-  // The compatibility-read phase never advertises a generation it cannot
-  // recover. The run protocol will be introduced with the coordinated writers.
-  active_generation: null;
+  active_generation: SummaryContentGeneration | null;
   integrity: "consistent" | "provisional" | "normalization_required" | "repair_required";
 }
 
@@ -80,6 +79,35 @@ export interface SummaryContentBaseline {
   content_id: string;
   expected_current_version_id: string;
   expected_content_revision: number;
+}
+
+export interface SummaryContentGeneration {
+  generation_id: string;
+  space_id: string;
+  task_id: number;
+  content_id: string;
+  operation_type: string;
+  executor: string;
+  generation_scope: "content" | "task";
+  parent_generation_id?: string;
+  status: "pending" | "running" | "completed" | "conflict" | "failed" | "cancelled";
+  stage: string;
+  effective_at: string;
+  base_version_id: string;
+  base_content_revision: number;
+  config_revision: number;
+  output_version_id?: string;
+  applied: boolean;
+  cancel_requested: boolean;
+  conflict_reason?: string;
+  error_code?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SummaryContentRefineRequest extends SummaryContentBaseline {
+  feedback: string;
+  idempotency_key: string;
 }
 
 export class SummaryContentProtocolError extends Error {

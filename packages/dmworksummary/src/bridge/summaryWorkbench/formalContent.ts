@@ -5,6 +5,7 @@ import {
   type SummaryContentCapabilities,
   type SummaryContentCatalog,
   type SummaryContentConfiguration,
+  type SummaryContentGeneration,
   type SummaryFormalContent,
   type SummaryFormalVersion,
   type SummaryFormalVersionPage,
@@ -130,6 +131,7 @@ export function decodeFormalVersion(value: unknown, expectedContentId: string): 
   if (visibility === "permission_hidden" && citations.length > 0) return invalid();
   if (teamVisibility === "historical_identity_only" &&
       team.some((c) => c.personal_result_id !== undefined || c.task_id !== undefined)) return invalid();
+  if (v.pending_application === true && (v.is_current === true || !v.generation_id)) return invalid();
   return {
     content_id: contentToken(v.content_id, "sc1_"), version_id: contentToken(v.version_id, "sv1_"),
     version: count(v.version, 1), content_revision: count(v.content_revision),
@@ -140,19 +142,55 @@ export function decodeFormalVersion(value: unknown, expectedContentId: string): 
     base_content_revision: count(v.base_content_revision),
     generation_id: optionalText(v.generation_id),
     provisional: flag(v.provisional), is_current: flag(v.is_current),
+    pending_application: v.pending_application === undefined ? false : flag(v.pending_application),
     edited_at: optionalText(v.edited_at), edited_by: optionalText(v.edited_by),
     restored_from_version_id: v.restored_from_version_id === undefined ? undefined : contentToken(v.restored_from_version_id, "sv1_"),
     restored_at: optionalText(v.restored_at), generated_at: text(v.generated_at),
   };
 }
 
-function content(value: unknown): SummaryFormalContent {
+export function decodeContentGeneration(
+  value: unknown,
+  expected: { summaryId: number; contentId: string; spaceId?: string; generationId?: string; allowTaskScope?: boolean }
+): SummaryContentGeneration {
+  const v = body(value);
+  if (typeof v.generation_id !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(v.generation_id)) return invalid();
+  if (v.generation_scope !== "content" && v.generation_scope !== "task") return invalid();
+  if (v.task_id !== expected.summaryId ||
+      (v.content_id !== expected.contentId && !(expected.allowTaskScope && v.generation_scope === "task")) ||
+      (expected.spaceId !== undefined && v.space_id !== expected.spaceId) ||
+      (expected.generationId !== undefined && v.generation_id !== expected.generationId)) return invalid();
+  if (v.status !== "pending" && v.status !== "running" && v.status !== "completed" &&
+      v.status !== "conflict" && v.status !== "failed" && v.status !== "cancelled") return invalid();
+  const output = v.output_version_id === undefined ? undefined : contentToken(v.output_version_id, "sv1_");
+  const applied = flag(v.applied);
+  if ((v.status === "conflict" && (!output || applied)) ||
+      ((v.status === "pending" || v.status === "running") && (output || applied)) ||
+      (v.generation_scope === "content" && v.status === "completed" && (!output || !applied)) ||
+      ((v.status === "failed" || v.status === "cancelled") && applied)) return invalid();
+  return {
+    generation_id: text(v.generation_id), space_id: text(v.space_id), task_id: count(v.task_id, 1),
+    content_id: contentToken(v.content_id, "sc1_"), operation_type: text(v.operation_type), executor: text(v.executor),
+    generation_scope: v.generation_scope, parent_generation_id: optionalText(v.parent_generation_id),
+    status: v.status, stage: text(v.stage), effective_at: text(v.effective_at),
+    base_version_id: contentToken(v.base_version_id, "sv1_"), base_content_revision: count(v.base_content_revision),
+    config_revision: count(v.config_revision), output_version_id: output, applied,
+    cancel_requested: flag(v.cancel_requested), conflict_reason: optionalText(v.conflict_reason),
+    error_code: optionalText(v.error_code), created_at: text(v.created_at), updated_at: text(v.updated_at),
+  };
+}
+
+function content(value: unknown, summaryId: number): SummaryFormalContent {
   const c = record(value);
   const id = contentToken(c.content_id, "sc1_");
   if (c.kind !== "result" && c.kind !== "personal") return invalid();
   if (c.integrity !== "consistent" && c.integrity !== "provisional" &&
       c.integrity !== "normalization_required" && c.integrity !== "repair_required") return invalid();
-  if (c.active_generation !== null) return invalid();
+  const active = c.active_generation === null ? null : decodeContentGeneration(c.active_generation, {
+    summaryId, contentId: id, allowTaskScope: true,
+  });
+  if (active && active.status !== "pending" && active.status !== "running") return invalid();
   const current = c.current_version === null ? null : decodeFormalVersion(c.current_version, id);
   const revision = count(c.content_revision);
   if (current && (!current.is_current || current.content_revision !== revision)) return invalid();
@@ -160,7 +198,7 @@ function content(value: unknown): SummaryFormalContent {
     content_id: id, kind: c.kind, owner_id: optionalText(c.owner_id), is_main: flag(c.is_main),
     content_revision: revision, current_version: current,
     capabilities: capabilities(c.capabilities), generation_config: configuration(c.generation_config),
-    active_generation: null, integrity: c.integrity,
+    active_generation: active, integrity: c.integrity,
   };
 }
 
@@ -168,7 +206,7 @@ export function decodeContentCatalog(value: unknown, expectedSummaryId: number):
   const v = body(value);
   if (v.contract_version !== 1 || v.summary_id !== expectedSummaryId ||
       (v.created_via !== "unknown" && v.created_via !== "agent" && v.created_via !== "workflow")) return invalid();
-  const contents = array(v.contents).map(content);
+  const contents = array(v.contents).map((item) => content(item, expectedSummaryId));
   const mainId = contentToken(v.main_content_id, "sc1_");
   if (new Set(contents.map((c) => c.content_id)).size !== contents.length ||
       contents.filter((c) => c.is_main).length !== 1 ||
@@ -188,8 +226,10 @@ export function decodeFormalVersionPage(value: unknown, contentId: string): Summ
 
 /** No preview, reference-task ID or display citation number can become a CAS baseline. */
 export function formalContentBaseline(content: SummaryFormalContent): SummaryContentBaseline | null {
+  const canNormalize = content.integrity === "normalization_required" &&
+    (content.capabilities.can_edit || content.capabilities.can_refine);
   if (!content.current_version ||
-      (content.integrity !== "consistent" && content.integrity !== "provisional")) return null;
+      (content.integrity !== "consistent" && content.integrity !== "provisional" && !canNormalize)) return null;
   return {
     content_id: content.content_id,
     expected_current_version_id: content.current_version.version_id,

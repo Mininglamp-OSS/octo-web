@@ -3,12 +3,25 @@ import { SummaryContentService, resolveContentApiURL } from "./SummaryContentSer
 import { SummaryContentProtocolError } from "./SummaryContentContract";
 import {
   decodeContentCatalog,
+  decodeContentGeneration,
   decodeFormalVersion,
   formalContentBaseline,
 } from "../bridge/summaryWorkbench/formalContent";
 
 const contentId = "sc1_personal";
 const versionId = "sv1_first";
+const generationId = "11111111-1111-4111-8111-111111111111";
+
+function generation() {
+  return {
+    generation_id: generationId, space_id: "space-a", task_id: 12, content_id: contentId,
+    operation_type: "refine", executor: "refine", generation_scope: "content", status: "pending",
+    stage: "queued", effective_at: "2026-09-08T10:00:00+08:00",
+    base_version_id: versionId, base_content_revision: 3, config_revision: 0,
+    applied: false, cancel_requested: false, created_at: "2026-09-08T10:00:00+08:00",
+    updated_at: "2026-09-08T10:00:00+08:00",
+  };
+}
 
 function version() {
   return {
@@ -114,6 +127,9 @@ describe("SummaryContentService compatibility reads", () => {
       content_id: contentId, expected_current_version_id: versionId, expected_content_revision: 3,
     });
     expect(formalContentBaseline({ ...decoded, integrity: "normalization_required" })).toBeNull();
+    expect(formalContentBaseline({
+      ...decoded, integrity: "normalization_required", capabilities: { ...decoded.capabilities, can_edit: true },
+    })?.expected_content_revision).toBe(3);
     expect(formalContentBaseline({ ...decoded, current_version: null })).toBeNull();
   });
 
@@ -133,5 +149,90 @@ describe("SummaryContentService compatibility reads", () => {
     expect(resolveContentApiURL(path, "https://octo.example/api/v1/", "chrome-extension://example"))
       .toBe(`https://octo.example${path}`);
     expect(() => resolveContentApiURL(path, "", "chrome-extension://example")).toThrow();
+  });
+});
+
+describe("SummaryContentService coordinated commands", () => {
+  const baseline = {
+    content_id: contentId, expected_current_version_id: versionId, expected_content_revision: 3,
+  };
+  const options = { spaceId: "space-a", signal: new AbortController().signal };
+  const root = `/summary/api/v1/summaries/12/contents/${contentId}`;
+
+  it("sends edit and restore baselines without rewriting citation identities", async () => {
+    const command = vi.fn().mockResolvedValue({ ...version(), content_revision: 4 });
+    const service = new SummaryContentService({ read: vi.fn(), command });
+    await service.editCurrent(12, baseline, "edited [7] [P7]", options);
+    expect(command).toHaveBeenLastCalledWith(`${root}/edit`, options, {
+      expected_current_version_id: versionId, expected_content_revision: 3, content: "edited [7] [P7]",
+    });
+    await service.restoreCurrent(12, baseline, "sv1_history", options);
+    expect(command).toHaveBeenLastCalledWith(`${root}/restore`, options, {
+      expected_current_version_id: versionId, expected_content_revision: 3, source_version_id: "sv1_history",
+    });
+  });
+
+  it("preserves the same idempotency key on refinement retry", async () => {
+    const command = vi.fn().mockResolvedValue(generation());
+    const service = new SummaryContentService({ read: vi.fn(), command });
+    const request = { ...baseline, idempotency_key: "retry-stable-key", feedback: "Make concise" };
+    const first = await service.refineCurrent(12, request, options);
+    const retry = await service.refineCurrent(12, request, options);
+    expect(first.generation_id).toBe(retry.generation_id);
+    expect(command).toHaveBeenNthCalledWith(2, `${root}/generations/refine`, options, {
+      expected_current_version_id: versionId, expected_content_revision: 3,
+      idempotency_key: "retry-stable-key", feedback: "Make concise",
+    });
+  });
+
+  it("loads, cancels and applies a persisted run with explicit Space", async () => {
+    const read = vi.fn().mockResolvedValue(generation());
+    const command = vi.fn().mockResolvedValue({ ...generation(), status: "cancelled", cancel_requested: true });
+    const service = new SummaryContentService({ read, command });
+    await service.loadGeneration(12, contentId, generationId, options);
+    expect(read).toHaveBeenCalledWith(`${root}/generations/${generationId}`, options);
+    await service.cancelGeneration(12, contentId, generationId, options);
+    expect(command).toHaveBeenLastCalledWith(`${root}/generations/${generationId}/cancel`, options, {});
+    command.mockResolvedValue({ ...version(), version_id: "sv1_candidate", content_revision: 4 });
+    await service.applyCandidate(12, baseline, generationId, options);
+    expect(command).toHaveBeenLastCalledWith(`${root}/generations/${generationId}/apply`, options, {
+      expected_current_version_id: versionId, expected_content_revision: 3,
+    });
+  });
+
+  it("rejects preview/stale identities, missing revisions and missing retry keys before transport", async () => {
+    const command = vi.fn();
+    const read = vi.fn();
+    const service = new SummaryContentService({ read, command });
+    await expect(service.editCurrent(12, { ...baseline, expected_content_revision: 0 }, "edit", options)).rejects.toThrow(SummaryContentProtocolError);
+    await expect(service.restoreCurrent(12, baseline, versionId, options)).rejects.toThrow(SummaryContentProtocolError);
+    await expect(service.refineCurrent(12, { ...baseline, feedback: "short", idempotency_key: "" }, options)).rejects.toThrow(SummaryContentProtocolError);
+    await expect(service.cancelGeneration(12, contentId, "preview-1", options)).rejects.toThrow(SummaryContentProtocolError);
+    await expect(new SummaryContentService({ read }).editCurrent(12, baseline, "edit", options)).rejects.toThrow(SummaryContentProtocolError);
+    expect(command).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("decodes reloadable runs without retaining private input or cross-Space responses", () => {
+    const response = catalog();
+    const decoded = decodeContentCatalog({
+      ...response, contents: [{ ...response.contents[0], active_generation: generation() }],
+    }, 12);
+    expect(decoded.contents[0].active_generation?.generation_id).toBe(generationId);
+    const expected = { summaryId: 12, contentId, spaceId: "space-a" };
+    expect(decodeContentGeneration({
+      ...generation(), input_json: { content: "private" }, execution_token: 99,
+    }, expected)).not.toHaveProperty("input_json");
+    expect(() => decodeContentGeneration({ ...generation(), space_id: "other" }, expected)).toThrow(SummaryContentProtocolError);
+    expect(() => decodeContentGeneration({ ...generation(), content_id: "sc1_other" }, expected)).toThrow(SummaryContentProtocolError);
+    expect(() => decodeContentGeneration({ ...generation(), status: "conflict" }, expected)).toThrow(SummaryContentProtocolError);
+  });
+
+  it("rejects a successful command response with a stale revision or historical row", async () => {
+    const command = vi.fn().mockResolvedValue(version());
+    const service = new SummaryContentService({ read: vi.fn(), command });
+    await expect(service.editCurrent(12, baseline, "edit", options)).rejects.toThrow(SummaryContentProtocolError);
+    command.mockResolvedValue({ ...version(), content_revision: 4, is_current: false });
+    await expect(service.applyCandidate(12, baseline, generationId, options)).rejects.toThrow(SummaryContentProtocolError);
   });
 });

@@ -27,3 +27,21 @@ Only the summary module's unified formal-content workflow and compatibility cont
 3. Story verification in light/dark and zh-CN/en-US for new presentation states.
 4. API/worker/web mirror test at the existing local environment after preserving its configuration and prior images.
 5. Personal and team workflows, six-version pagination, edit/restore invariants, conflict/cancel/reload/Space switch and private citation isolation; record actual results before opening a PR.
+
+## Formal command continuation (2026-09-08)
+
+The existing `SummaryContentService` and Workbench formal-content bridge now
+support edit/restore, durable refinement requests, run reads/cancellation and
+candidate application. Requests carry explicit Space, formal version/revision
+baselines and a caller-owned stable idempotency key. Responses validate target
+identity, run state, next current revision and citation privacy; preview IDs
+cannot become formal write baselines.
+
+This is Service/bridge preparation, **not UI action wiring**. Backend production
+command routes remain unmounted while legacy writers, cleaners and scheduling
+are integrated. No route, menu, button, Story or visual design was introduced
+in this slice. The existing Workbench remains the sole intended entry.
+
+Verification: 82 Summary test files / 1,236 tests passed, production Web build
+and i18n check passed. Typecheck retains the same 6,025 pristine-upstream
+diagnostics, with no added diagnostics after path/line/footer normalization.
