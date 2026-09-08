@@ -3,6 +3,7 @@ import type {
   CreateAgentSummaryResult,
   SummaryDetail,
 } from "../types/summary";
+import { summaryContentService, type SummaryContentService } from "./SummaryContentService";
 import {
   confirmSummaryWorkspaceProposal,
   getSummaryDetail,
@@ -114,7 +115,8 @@ const defaultTransport: SummaryWorkbenchTransport = {
 
 export class SummaryWorkbenchService {
   constructor(
-    private readonly transport: SummaryWorkbenchTransport = defaultTransport
+    private readonly transport: SummaryWorkbenchTransport = defaultTransport,
+    readonly formalContents: SummaryContentService = summaryContentService
   ) {}
 
   async getCapabilities(

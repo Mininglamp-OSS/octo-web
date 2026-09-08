@@ -31,6 +31,7 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom'],
     alias: [
+      { find: /^@octo\/base\/src\/Service\/APIClient$/, replacement: path.resolve(root, 'packages/dmworkbase/src/Service/APIClient.ts') },
       { find: /^@octo\/base\/src\/Components\/VoiceInputButton$/, replacement: path.resolve(__dirname, 'src/__mocks__/VoiceInputButton.tsx') },
       { find: /^@octo\/base\/src\/Components\/AiBadge$/, replacement: path.resolve(__dirname, 'src/__mocks__/AiBadge.tsx') },
       { find: /^@octo\/base\/src\/Components\/WKAvatar$/, replacement: path.resolve(__dirname, 'src/__mocks__/WKAvatar.tsx') },
