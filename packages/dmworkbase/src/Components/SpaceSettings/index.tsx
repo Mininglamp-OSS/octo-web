@@ -163,6 +163,7 @@ export default class SpaceSettings extends Component<SpaceSettingsProps, SpaceSe
         const { onClose, onMembersClick } = this.props;
         const { name, description, saving } = this.state;
         const isOwner = this.isOwner();
+        const canEditSpace = this.isAdmin();
 
         return (
             <div className="wk-spacesettings">
@@ -179,7 +180,7 @@ export default class SpaceSettings extends Component<SpaceSettingsProps, SpaceSe
                             value={name}
                             onChange={(v) => this.setState({ name: v })}
                             maxLength={32}
-                            disabled={!isOwner}
+                            disabled={!canEditSpace}
                         />
                     </div>
                     <div className="wk-spacesettings-field">
@@ -192,9 +193,9 @@ export default class SpaceSettings extends Component<SpaceSettingsProps, SpaceSe
                                 onChange={(e) => this.setState({ description: e.target.value.slice(0, 200) })}
                                 maxLength={200}
                                 rows={3}
-                                disabled={!isOwner}
+                                disabled={!canEditSpace}
                             />
-                            {isOwner && (
+                            {canEditSpace && (
                                 <VoiceInputButton
                                     inputRef={this.descriptionRef}
                                     onTranscribed={this.handleVoiceTranscribed}
@@ -206,7 +207,7 @@ export default class SpaceSettings extends Component<SpaceSettingsProps, SpaceSe
                             )}
                         </div>
                     </div>
-                    {isOwner && (
+                    {canEditSpace && (
                         <button
                             className="wk-spacesettings-btn wk-spacesettings-btn-primary"
                             onClick={this.handleSave}

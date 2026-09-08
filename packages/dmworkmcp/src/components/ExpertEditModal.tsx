@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AlertCircle, Bot, UserRound, Users } from "lucide-react";
-import { t, useI18n, WKButton, WKModal } from "@octo/base";
+import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
 import type { ExpertItem } from "../mock/expertMock";
 import { updateExpertVisibility } from "../api/expertService";
 import type { ExpertVisibility } from "../api/expertService";
@@ -79,6 +79,21 @@ export default function ExpertEditModal({
   // Which footer action is in flight, so only that button spins.
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const spaceGenerationRef = useRef(0);
+
+  useEffect(() => {
+    const handleSpaceChanged = () => {
+      spaceGenerationRef.current += 1;
+      setSaving(false);
+      setPublishing(false);
+      setError(null);
+    };
+    WKApp.mittBus.on("space-changed", handleSpaceChanged);
+    return () => {
+      spaceGenerationRef.current += 1;
+      WKApp.mittBus.off("space-changed", handleSpaceChanged);
+    };
+  }, []);
 
   // Reseed on every open / target switch so a previous session's selection or
   // error never leaks into the next record.
@@ -112,12 +127,15 @@ export default function ExpertEditModal({
    */
   async function submit(publish: boolean) {
     if (!item) return;
+    const actionGeneration = spaceGenerationRef.current;
+    const isCurrentSpace = () => actionGeneration === spaceGenerationRef.current;
     setSaving(true);
     setPublishing(publish);
     setError(null);
     try {
       if (dirty) {
         await updateExpertVisibility(item.id, visibility);
+        if (!isCurrentSpace()) return;
       }
       if (publish) {
         const outcome = await publishPluginListing(item.id, {
@@ -125,6 +143,7 @@ export default function ExpertEditModal({
           // backend then reuses the draft's current version.
           ...(item.version ? { version: item.version } : {}),
         });
+        if (!isCurrentSpace()) return;
         onSaved(
           outcome.displayStatus === "pending_review"
             ? t("skillMarket.review.submittedToast")
@@ -139,14 +158,17 @@ export default function ExpertEditModal({
       }
       onClose();
     } catch (err) {
+      if (!isCurrentSpace()) return;
       // A 409 lands here too (the record was listed or a review opened while
       // this modal was open). Show the server's reason and keep the modal up —
       // the page reloads only on success, so the stale row stays visible with an
       // explanation rather than silently reverting.
       setError(err instanceof Error ? err.message : t("skillMarket.form.saveFailed"));
     } finally {
-      setSaving(false);
-      setPublishing(false);
+      if (isCurrentSpace()) {
+        setSaving(false);
+        setPublishing(false);
+      }
     }
   }
 

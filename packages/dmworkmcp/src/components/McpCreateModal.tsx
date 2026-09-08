@@ -1,6 +1,6 @@
 import { versionErrorKey } from "@dmwork/skillmarket";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { WKModal, WKInput, WKButton, t, Dap } from "@octo/base";
+import { WKModal, WKInput, WKButton, WKApp, t, Dap } from "@octo/base";
 import { Select, Switch, TextArea, Toast } from "@douyinfe/semi-ui";
 import {
   buildConnectorReviewContent,
@@ -635,6 +635,20 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
   const [reviewChangelog, setReviewChangelog] = useState("");
 
   const iconInputRef = useRef<HTMLInputElement>(null);
+  const spaceGenerationRef = useRef(0);
+
+  useEffect(() => {
+    const handleSpaceChanged = () => {
+      spaceGenerationRef.current += 1;
+      setSubmitting(false);
+      setPublishing(false);
+    };
+    WKApp.mittBus.on("space-changed", handleSpaceChanged);
+    return () => {
+      spaceGenerationRef.current += 1;
+      WKApp.mittBus.off("space-changed", handleSpaceChanged);
+    };
+  }, []);
 
   // Review mode IS an edit of an existing record as far as the form is
   // concerned — it just posts the result somewhere else.
@@ -1010,6 +1024,8 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
    * the live row nor lists anything.
    */
   const handleSubmit = async (publish: boolean) => {
+    const actionGeneration = spaceGenerationRef.current;
+    const isCurrentSpace = () => actionGeneration === spaceGenerationRef.current;
     const tagError = validateMcpTags(form.tags);
     if (tagError) {
       Toast.warning(tagError);
@@ -1063,7 +1079,9 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
         // prefix, so a synthetic value for the create case is fine.
         const prefix = isEdit && editing ? editing.id : "new";
         iconOverride = await uploadMcpIcon(prefix, iconFile);
+        if (!isCurrentSpace()) return;
       } catch {
+        if (!isCurrentSpace()) return;
         Toast.warning(t("mcp.create.iconUploadFailed"));
         // Fall through — submit the record without a fresh icon rather than
         // blocking the whole create/edit on a transient upload failure.
@@ -1120,6 +1138,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
         // until a reviewer approves. `relations` is deliberately absent: a
         // connector is a leaf type with no child graph to declare.
         const content = await buildConnectorReviewContent(editing.id, payload);
+        if (!isCurrentSpace()) return;
         await submitPluginReview({
           pluginId: editing.id,
           version: reviewVersion.trim(),
@@ -1127,16 +1146,19 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
           manifestJson: content.manifestJson,
           pluginJson: content.pluginJson,
         });
+        if (!isCurrentSpace()) return;
         resetAll();
         onReviewSubmitted?.(t("skillMarket.review.submittedToast"));
       } else if (isEdit && editing) {
         const updated = await updateMcp(editing.id, payload);
+        if (!isCurrentSpace()) return;
         if (publish) {
           // Saved first, so what gets published is what the author just wrote —
           // and if widening the audience un-listed the row, this is the step
           // that earns the listing back through review.
           publishStarted = true;
           const message = await publishSaved(editing.id);
+          if (!isCurrentSpace()) return;
           resetAll();
           // Both fire: onSaved patches the edited content into the row, and the
           // outcome callback carries the message plus the reload the moved
@@ -1160,10 +1182,16 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
         } else {
           await updateMcp(pluginId, payload);
         }
+        // The row was written in the Space we just left. Drop it here rather
+        // than remembering the id: carrying it into the new Space's modal state
+        // would let a later publish press target an old-Space connector under
+        // the new Space header. The record stays reachable in its own Space.
+        if (!isCurrentSpace()) return;
         setCreatedPluginId(pluginId);
         if (publish) {
           publishStarted = true;
           const message = await publishSaved(pluginId);
+          if (!isCurrentSpace()) return;
           resetAll();
           // Only the outcome callback here: it reloads the list anyway, so
           // calling onSaved() as well would fetch the same page twice.
@@ -1176,6 +1204,9 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
       }
       onClose();
     } catch (err: unknown) {
+      // A failure that belongs to the Space being left must not surface over the
+      // new Space's form.
+      if (!isCurrentSpace()) return;
       const fallback =
         isReview || publishStarted
           ? t("skillMarket.review.submitFailed")
@@ -1192,8 +1223,13 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
           : message
       );
     } finally {
-      setSubmitting(false);
-      setPublishing(false);
+      // On a Space switch the handler already reset both flags for the new
+      // Space's form; clearing them here would report this action's completion
+      // onto a form it no longer belongs to.
+      if (isCurrentSpace()) {
+        setSubmitting(false);
+        setPublishing(false);
+      }
     }
   };
 
