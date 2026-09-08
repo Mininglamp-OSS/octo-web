@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { SummaryMessagingPort } from "../../host";
 import type { SummaryWorkbenchChannelScope } from "../../bridge/summaryWorkbench/protocol";
 import { loadParticipantCandidates } from "./participantCandidates";
 
@@ -8,6 +9,34 @@ const groups: SummaryWorkbenchChannelScope[] = [
 ];
 
 describe("participant candidate loading", () => {
+  it("uses the supplied host without reading the local IM member loader", async () => {
+    const loadGroupMembers = vi.fn(async () => { throw new Error("unexpected local IM read"); });
+    const loadConversationMembers = vi.fn(async () => [
+      { uid: "self", name: "Me" },
+      { uid: "human", name: "Human", role: 2 },
+      { uid: "bot", name: "Bot", isBot: true },
+    ]);
+    const messaging: SummaryMessagingPort = {
+      getCurrentUser: () => ({ uid: "self", displayName: "Me" }),
+      loadConversationMembers,
+      openConversation: vi.fn(async () => {}),
+      notifySummaryCompleted: vi.fn(async () => {}),
+      requestForward: vi.fn(),
+      subscribeInvalidation: () => () => {},
+    };
+    const result = await loadParticipantCandidates(groups, {
+      currentUserId: "self", spaceId: "space-a", messaging,
+      loader: { loadGroupMembers, loadSpaceMembers: async () => [] },
+    });
+    expect(loadGroupMembers).not.toHaveBeenCalled();
+    expect(loadConversationMembers.mock.calls).toEqual([
+      [{ channelId: "group-a", channelType: 2 }],
+      [{ channelId: "group-b", channelType: 2 }],
+    ]);
+    expect(result.members).toEqual([{ uid: "human", name: "Human" }]);
+    expect(result.roles.get("human")).toBe(2);
+  });
+
   it("merges selected group members by uid and keeps the strongest role", async () => {
     const result = await loadParticipantCandidates(groups, {
       currentUserId: "self",

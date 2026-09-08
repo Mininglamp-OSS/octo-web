@@ -5,11 +5,15 @@ import { setSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
 import type { SummaryWorkspaceRoute } from "./types";
 import type { SummaryMessagingPort } from "../host";
 
+vi.mock("../api/summaryApi", () => ({
+  getSummaryShare: vi.fn(async () => ({ source_accessible: false })),
+}));
 vi.mock("../pages/SummaryListPage", () => ({
   default: ({ onCreateNew, onViewDetail, refreshKey }: any) => (
     <div data-testid="workspace-list">
       <span data-testid="workspace-list-refresh">{refreshKey}</span>
       <button onClick={() => onCreateNew("agent")}>create-agent</button>
+      <button onClick={() => onCreateNew("unified")}>create-unified</button>
       <button onClick={() => onViewDetail(17)}>open-detail</button>
     </div>
   ),
@@ -118,6 +122,17 @@ function Harness({
 }
 
 describe("SummaryWorkspace", () => {
+  it("routes unified creation and completed tasks inside the workspace", () => {
+    const onRouteChange = vi.fn();
+    render(<Harness initialRoute={{ view: "list" }} onRouteChange={onRouteChange} />);
+    fireEvent.click(screen.getByText("create-unified"));
+    expect(onRouteChange).toHaveBeenLastCalledWith({
+      view: "create", mode: "normal", source: "summary_list",
+    });
+    fireEvent.click(screen.getByText("open-workbench-task"));
+    expect(onRouteChange).toHaveBeenLastCalledWith({ view: "detail", taskId: 24 });
+  });
+
   beforeEach(() => {
     setSummaryAttentionBadge(0);
   });
@@ -170,7 +185,7 @@ describe("SummaryWorkspace", () => {
     });
   });
 
-  it("delegates return-to-chat to the host", () => {
+  it("delegates return-to-chat to the host", async () => {
     const onOpenConversation = vi.fn(async () => {});
     render(
       <Harness
@@ -183,7 +198,7 @@ describe("SummaryWorkspace", () => {
       />
     );
 
-    fireEvent.click(screen.getByText("back-to-chat"));
+    fireEvent.click(await screen.findByText("back-to-chat"));
     expect(onOpenConversation).toHaveBeenCalledWith({
       channelId: "group-1",
       channelType: 2,

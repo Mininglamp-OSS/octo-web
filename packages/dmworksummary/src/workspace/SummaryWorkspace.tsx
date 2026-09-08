@@ -6,7 +6,7 @@ import SummaryConfirmPage from "../pages/SummaryConfirmPage";
 import SummaryWorkbenchCreateEntry from "../features/summaryWorkbench/SummaryWorkbenchCreateEntry";
 import SummaryDetailPage from "../pages/SummaryDetailPage";
 import SummaryListPage from "../pages/SummaryListPage";
-import SummaryShareDetailPage from "../pages/SummaryShareDetailPage";
+import SummaryShareRoute from "./SummaryShareRoute";
 import {
   getSummaryAttentionBadge,
   subscribeSummaryAttentionBadge,
@@ -105,6 +105,7 @@ export default function SummaryWorkspace({
         return (
           <SummaryDetailPage
             taskId={currentRoute.taskId}
+            originChannel={currentRoute.originConversation}
             emitSelection
             onAfterMutate={refreshListAndShow}
             onContinueRefine={continueRefine}
@@ -116,12 +117,11 @@ export default function SummaryWorkspace({
         );
       case "share":
         return (
-          <SummaryShareDetailPage
-            shareId={currentRoute.shareId}
-            originChannel={currentRoute.originConversation}
-            onOpenConversation={(target) =>
-              messagingPort.openConversation(target)
-            }
+          <SummaryShareRoute
+            key={`${currentRoute.shareId}:${Boolean(currentRoute.preview)}`}
+            route={currentRoute}
+            onRouteChange={onRouteChange}
+            messaging={messagingPort}
           />
         );
       case "confirm":

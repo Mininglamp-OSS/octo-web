@@ -44,19 +44,20 @@ export interface OctoBuddySummaryBridge {
     spaceId: string;
     rendererVersion: string;
   }): Promise<void>;
-  reportRoute(route: SummaryWorkspaceRoute): void;
-  reportBadge(count: number): void;
+  reportRoute(report: { route: SummaryWorkspaceRoute; spaceId: string }): void;
+  reportBadge(report: { count: number; spaceId: string }): void;
   reportAuthExpired(reason: string): void;
   reportFatalError(error: { message: string; stack?: string }): void;
-  openConversation(target: SummaryConversationTarget): Promise<void>;
+  openConversation(target: SummaryConversationTarget, spaceId: string): Promise<void>;
   loadConversationMembers(
-    target: SummaryConversationTarget
+    target: SummaryConversationTarget,
+    spaceId: string
   ): Promise<SummaryConversationMember[]>;
-  notifySummaryCompleted(input: SummaryCompletionNotice): Promise<void>;
+  notifySummaryCompleted(input: SummaryCompletionNotice, spaceId: string): Promise<void>;
   requestForward(input: {
     content: string;
     title: string;
-  }): Promise<SummaryForwardOutcome | null>;
+  }, spaceId: string): Promise<SummaryForwardOutcome | null>;
   onCommand(callback: (command: SummaryHostCommand) => void): () => void;
 }
 

@@ -7,6 +7,7 @@ void buildClientFeature({
   configFile: "vite.client-summary.config.ts",
   sourceEntry: "client-summary.html",
   outputDirectory: "build-client-summary",
+  contractRevision: 2,
 }).catch((error) => {
   console.error(`[build-client-summary] failed: ${error.message}`);
   process.exit(1);

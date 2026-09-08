@@ -5,9 +5,11 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import { ThemeMode, WKApp, i18n } from "@octo/base";
 import {
   setSummaryAttentionRuntimeVisible,
+  resetSummaryAttentionScope,
   SummaryWorkspace,
   type SummaryMessagingPort,
   type SummaryWorkspaceRoute,
@@ -39,6 +41,8 @@ export function SummaryShell({
   const [route, setRoute] = useState(initialRoute);
   const routeRef = useRef(route);
   const spaceIdRef = useRef(initialSpaceId);
+  const scopeRevision = useRef(0);
+  const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const invalidationListeners = useRef(new Set<() => void>());
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
@@ -48,7 +52,11 @@ export function SummaryShell({
       routeRef.current = next;
       setRoute(next);
       if (report) {
-        reportSafely("failed to report route", () => bridge.reportRoute(next));
+        const revision = scopeRevision.current;
+        const spaceId = spaceIdRef.current;
+        reportSafely("failed to report route", () => {
+          if (revision === scopeRevision.current) bridge.reportRoute({ route: next, spaceId });
+        });
       }
     },
     [bridge]
@@ -64,26 +72,50 @@ export function SummaryShell({
           WKApp.loginInfo.uid ||
           "",
       }),
-      loadConversationMembers: (target) =>
-        bridge.loadConversationMembers(target),
-      openConversation: (target) => bridge.openConversation(target),
-      notifySummaryCompleted: (input) => bridge.notifySummaryCompleted(input),
+      loadConversationMembers: async (target) => {
+        if (workspaceRevision !== scopeRevision.current) return [];
+        const members = await bridge.loadConversationMembers(target, spaceIdRef.current);
+        return workspaceRevision === scopeRevision.current ? members : [];
+      },
+      openConversation: async (target) => {
+        if (workspaceRevision === scopeRevision.current) await bridge.openConversation(target, spaceIdRef.current);
+      },
+      notifySummaryCompleted: async (input) => {
+        if (workspaceRevision === scopeRevision.current) await bridge.notifySummaryCompleted(input, spaceIdRef.current);
+      },
       requestForward: ({ content, title, onComplete, onError, onCancel }) => {
+        if (workspaceRevision !== scopeRevision.current) return;
         void bridge
-          .requestForward({ content, title })
+          .requestForward({ content, title }, spaceIdRef.current)
           .then((result) => {
+            if (workspaceRevision !== scopeRevision.current) return;
             if (result) onComplete(result);
             else onCancel?.();
           })
-          .catch((error) => onError?.(error));
+          .catch((error) => {
+            if (workspaceRevision === scopeRevision.current) onError?.(error);
+          });
       },
       subscribeInvalidation: (listener) => {
         invalidationListeners.current.add(listener);
         return () => invalidationListeners.current.delete(listener);
       },
     }),
-    [bridge]
+    [bridge, workspaceRevision]
   );
+
+  const onWorkspaceRouteChange = useCallback((next: SummaryWorkspaceRoute) => {
+    if (workspaceRevision === scopeRevision.current) setControlledRoute(next);
+  }, [workspaceRevision, setControlledRoute]);
+
+  const onBadgeChange = useCallback((count: number) => {
+    if (workspaceRevision !== scopeRevision.current) return;
+    try {
+      bridge.reportBadge({ count, spaceId: spaceIdRef.current });
+    } catch (error) {
+      console.error("[client-summary] failed to report badge", error);
+    }
+  }, [bridge, workspaceRevision]);
 
   useEffect(() => {
     const dispose = bridge.onCommand((command: SummaryHostCommand) => {
@@ -92,10 +124,19 @@ export function SummaryShell({
         return;
       }
       if (command.type === "spaceChanged") {
+        if (spaceIdRef.current === command.space.id) return;
+        scopeRevision.current++;
+        invalidationListeners.current.clear();
         spaceIdRef.current = command.space.id;
         WKApp.shared.currentSpaceId = command.space.id;
         document.documentElement.dataset.spaceId = command.space.id;
-        invalidationListeners.current.forEach((listener) => listener());
+        resetSummaryAttentionScope();
+        // Unmount every old page before subsequent host commands can navigate.
+        flushSync(() => {
+          setWorkspaceRevision(scopeRevision.current);
+          setControlledRoute({ view: "list" }, false);
+        });
+        WKApp.mittBus.emit("space-changed", command.space.id);
         return;
       }
       if (command.type === "appearanceChanged") {
@@ -151,15 +192,10 @@ export function SummaryShell({
 
   return (
     <SummaryWorkspace
+      key={workspaceRevision}
       route={route}
-      onRouteChange={setControlledRoute}
-      onBadgeChange={(count) => {
-        try {
-          bridge.reportBadge(count);
-        } catch (error) {
-          console.error("[client-summary] failed to report badge", error);
-        }
-      }}
+      onRouteChange={onWorkspaceRouteChange}
+      onBadgeChange={onBadgeChange}
       messaging={messaging}
     />
   );

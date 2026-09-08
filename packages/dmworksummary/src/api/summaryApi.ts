@@ -86,11 +86,20 @@ summaryAxios.interceptors.request.use((config) => {
     return config;
 });
 
+function expireSummarySession(): void {
+    // Embedded hosts own session teardown; the default Web callback still logs out.
+    if (WKApp.apiClient?.logoutCallback) {
+        WKApp.apiClient.logoutCallback();
+    } else {
+        void WKApp.shared.logout();
+    }
+}
+
 summaryAxios.interceptors.response.use(
     (resp) => resp,
     (err) => {
         if (err?.response?.status === 401) {
-            WKApp.shared.logout();
+            expireSummarySession();
         }
         return Promise.reject(err);
     },
@@ -344,7 +353,7 @@ async function streamRequest(
 ): Promise<void> {
     const resp = await fetch(buildSummaryURL(path), init);
     if (resp.status === 401) {
-        WKApp.shared.logout();
+        expireSummarySession();
     }
     if (!resp.ok) {
         let message = `Summary stream failed (${resp.status})`;
@@ -763,7 +772,7 @@ export function agentChatStream(
             });
 
             if (resp.status === 401) {
-                WKApp.shared.logout();
+                expireSummarySession();
                 handlers.onError?.({
                     code: 401,
                     message: 'Unauthorized',

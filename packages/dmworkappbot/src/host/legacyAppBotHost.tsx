@@ -1,7 +1,5 @@
-import React from "react";
 import { Channel, ChannelInfo } from "wukongimjssdk";
 import {
-  Conversation,
   Dap,
   SpaceService,
   WKApp,
@@ -9,24 +7,8 @@ import {
   findCurrentImConversation,
   setCurrentImChannelInfoCache,
 } from "@octo/base";
-import AppBotAvatar from "../features/AppBotAvatar";
-import AppBotChatHeader from "../ui/AppBotChatHeader";
-import type { AppBotConversationTarget, AppBotHostCapabilities } from "./types";
-
-function renderConversation(
-  target: AppBotConversationTarget,
-  channel: Channel
-) {
-  return (
-    <div key={channel.getChannelKey()} className="appbot-chat-wrap">
-      <AppBotChatHeader
-        avatar={<AppBotAvatar uid={target.channelId} />}
-        displayName={target.displayName}
-      />
-      <Conversation channel={channel} />
-    </div>
-  );
-}
+import { renderAppBotConversation } from "../features/AppBotConversationView";
+import type { AppBotHostCapabilities } from "./types";
 
 export const legacyAppBotHost: AppBotHostCapabilities = {
   getCurrentSpace() {
@@ -60,7 +42,7 @@ export const legacyAppBotHost: AppBotHostCapabilities = {
       createCurrentEmptyImConversation(channel);
     }
 
-    WKApp.routeRight.replaceToRoot(renderConversation(target, channel));
+    WKApp.routeRight.replaceToRoot(renderAppBotConversation(target, channel));
   },
 
   clearConversation() {

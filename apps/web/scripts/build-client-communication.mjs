@@ -7,6 +7,7 @@ void buildClientFeature({
   configFile: "vite.client-communication.config.ts",
   sourceEntry: "client-communication.html",
   outputDirectory: "build-client-communication",
+  contractRevision: 3,
   includeImMock: true,
 }).catch((error) => {
   console.error(`[build-client-communication] failed: ${error.message}`);

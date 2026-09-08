@@ -25,6 +25,7 @@ import {
     hasInFlightAttentionRead,
     readSummaryAttentionCount,
     resetSummaryAttentionOrdering,
+    resetSummaryAttentionScope,
     setSummaryAttentionPublisher,
     ATTENTION_CACHE_TTL_MS,
     REMOTE_SAMPLE_FUTURE_TOLERANCE_MS,
@@ -54,6 +55,27 @@ describe('summaryAttentionBadge (#1359)', () => {
 
     it('getSummaryAttentionBadge 初始返回 0', () => {
         expect(getSummaryAttentionBadge()).toBe(0);
+    });
+
+    it('resets the workspace scope and discards late A-B-A counts and broadcasts', async () => {
+        const pending = deferred<any>();
+        vi.mocked(api.fetchSummaryAttentionCounts).mockReturnValueOnce(pending.promise);
+        const publisher = vi.fn();
+        setSummaryAttentionPublisher(publisher);
+        setSummaryAttentionBadge(7);
+        const firstA = readSummaryAttentionCount({ fresh: true });
+        WKApp.shared.currentSpaceId = 'space-b';
+        resetSummaryAttentionScope();
+        expect(getSummaryAttentionBadge()).toBe(0);
+        WKApp.shared.currentSpaceId = 'space-123';
+        resetSummaryAttentionScope();
+        pending.resolve({ attention_count: 9 });
+        await expect(firstA).resolves.toBeNull();
+        expect(getSummaryAttentionBadge()).toBe(0);
+        expect(publisher).not.toHaveBeenCalled();
+        const ticket = beginSummaryAttentionRead();
+        commitSummaryAttentionBadge(ticket, 2);
+        expect(getSummaryAttentionBadge()).toBe(2);
     });
 
     it('setSummaryAttentionBadge 更新计数并触发 menus.refresh', () => {

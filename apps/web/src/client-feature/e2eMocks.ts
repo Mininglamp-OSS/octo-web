@@ -10,6 +10,10 @@ export async function enableClientFeatureMocks(label: string): Promise<void> {
       waitForServiceWorkerControl,
     } = await import("../mocks/swControl");
     await worker.start({ onUnhandledRequest: "bypass" });
+    const { http, HttpResponse } = await import("msw");
+    (window as unknown as {
+      __msw?: { worker: typeof worker; http: typeof http; HttpResponse: typeof HttpResponse };
+    }).__msw = { worker, http, HttpResponse };
     const usesInterceptorFallback = window.location.protocol === "file:";
     const controlled =
       usesInterceptorFallback ||

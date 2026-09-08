@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   },
   workspaceProps: undefined as any,
   setRuntimeVisible: vi.fn(),
+  resetScope: vi.fn(),
   bridge: {
     reportRoute: vi.fn(),
     reportBadge: vi.fn(),
@@ -30,6 +31,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@dmwork/summary", () => ({
   setSummaryAttentionRuntimeVisible: mocks.setRuntimeVisible,
+  resetSummaryAttentionScope: mocks.resetScope,
   SummaryWorkspace: (props: any) => {
     mocks.workspaceProps = props;
     return <div data-testid="summary-workspace" />;
@@ -39,6 +41,7 @@ vi.mock("@dmwork/summary", () => ({
 vi.mock("@octo/base", () => ({
   ThemeMode: { light: "light", dark: "dark" },
   WKApp: {
+    mittBus: { emit: vi.fn() },
     config: {},
     loginInfo: {
       uid: "user-a",
@@ -62,6 +65,7 @@ describe("SummaryShell", () => {
     vi.clearAllMocks();
     mocks.command.listener = undefined;
     mocks.workspaceProps = undefined;
+    WKApp.shared.currentSpaceId = "space-a";
     document.documentElement.removeAttribute("data-space-id");
     document.documentElement.removeAttribute("data-theme");
     document.documentElement.removeAttribute("data-host-visibility");
@@ -112,7 +116,7 @@ describe("SummaryShell", () => {
     });
     await waitFor(() =>
       expect(mocks.bridge.reportRoute).toHaveBeenCalledWith({
-        view: "schedules",
+        route: { view: "schedules" }, spaceId: "space-a",
       })
     );
   });
@@ -150,7 +154,39 @@ describe("SummaryShell", () => {
     expect(document.documentElement.dataset.hostVisibility).toBe("hidden");
     expect(mocks.setRuntimeVisible).not.toHaveBeenCalled();
     expect(i18n.setLocale).toHaveBeenCalledWith("en-US", { persist: false });
-    expect(invalidate).toHaveBeenCalledTimes(2);
+    expect(invalidate).not.toHaveBeenCalled();
+    expect(mocks.resetScope).toHaveBeenCalledTimes(1);
+    expect(WKApp.mittBus.emit).toHaveBeenCalledWith("space-changed", "space-b");
+  });
+
+  it("drops old routes, badges and messaging callbacks across Space changes, including A-B-A", async () => {
+    let finishForward!: (value: null) => void;
+    mocks.bridge.requestForward.mockReturnValueOnce(new Promise((resolve) => { finishForward = resolve; }));
+    render(<SummaryShell
+      bridge={mocks.bridge as any}
+      initialRoute={{ view: "detail", taskId: 42 }}
+      initialSpaceId="space-a"
+      onReady={vi.fn(async () => {})}
+    />);
+    const old = mocks.workspaceProps;
+    const onCancel = vi.fn();
+    old.messaging.requestForward({ content: "old", title: "old", onCancel });
+    act(() => mocks.command.listener?.({ type: "spaceChanged", space: { id: "space-b", name: "B" } }));
+    expect(mocks.workspaceProps.route).toEqual({ view: "list" });
+    act(() => mocks.command.listener?.({ type: "spaceChanged", space: { id: "space-a", name: "A" } }));
+    act(() => old.onRouteChange({ view: "detail", taskId: 42 }));
+    old.onBadgeChange(7);
+    await old.messaging.openConversation({ channelId: "old", channelType: 2 });
+    await old.messaging.notifySummaryCompleted({});
+    finishForward(null);
+    await Promise.resolve();
+    expect(mocks.workspaceProps.route).toEqual({ view: "list" });
+    expect(mocks.bridge.openConversation).not.toHaveBeenCalled();
+    expect(mocks.bridge.notifySummaryCompleted).not.toHaveBeenCalled();
+    expect(mocks.bridge.reportBadge).not.toHaveBeenCalled();
+    expect(onCancel).not.toHaveBeenCalled();
+    mocks.workspaceProps.onBadgeChange(2);
+    expect(mocks.bridge.reportBadge).toHaveBeenLastCalledWith({ count: 2, spaceId: "space-a" });
   });
 
   it("keeps badge polling active while detached and pauses it with the host window", () => {

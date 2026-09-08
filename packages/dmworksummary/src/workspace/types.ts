@@ -14,10 +14,11 @@ export type SummaryWorkspaceRoute =
       source?: string;
       derivedFromTask?: SummaryReferenceTask;
     }
-  | { view: "detail"; taskId: number }
+  | { view: "detail"; taskId: number | string; originConversation?: SummaryConversationTarget }
   | {
       view: "share";
       shareId: string;
+      preview?: boolean;
       originConversation?: SummaryConversationTarget;
     }
   | { view: "confirm"; taskId: number }

@@ -2117,6 +2117,43 @@ describe('批次B 需求7：成员状态区「添加成员」按钮 gate=can_add
     });
 });
 
+describe('SummaryDetailPage — 添加成员：messaging 面板模式走 Modal，Web 走 routeRight', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    const messagingPort = () => ({
+        getCurrentUser: () => ({ uid: 'me', displayName: 'Me' }),
+        loadConversationMembers: vi.fn(async () => []),
+        openConversation: vi.fn(async () => {}),
+        notifySummaryCompleted: vi.fn(async () => {}),
+        requestForward: vi.fn(),
+        subscribeInvalidation: vi.fn(() => () => {}),
+    });
+
+    it('未传 messaging：handleOpenAddMember 仍走默认 routeRight 路由', () => {
+        const page = makePage(1);
+        page.state = { ...(page.state as any), detail: multiCollabDetail({ can_add_member: true }) };
+        const push = vi.spyOn(WKApp.routeRight, 'push');
+        (page as any).handleOpenAddMember();
+        expect(push).toHaveBeenCalled();
+        expect(page.state.showAddMemberModal).toBe(false);
+        push.mockRestore();
+    });
+
+    it('传 messaging：不调 routeRight，改为打开添加成员 Modal', () => {
+        const page = new SummaryDetailPage({ taskId: 1, messaging: messagingPort() } as any);
+        (page as any).context = { t: (k: string) => k };
+        (page as any).setState = function (this: any, patch: any) {
+            this.state = { ...this.state, ...(typeof patch === 'function' ? patch(this.state) : patch) };
+        };
+        page.state = { ...(page.state as any), detail: multiCollabDetail({ can_add_member: true }) };
+        const push = vi.spyOn(WKApp.routeRight, 'push');
+        (page as any).handleOpenAddMember();
+        expect(push).not.toHaveBeenCalled();
+        expect(page.state.showAddMemberModal).toBe(true);
+        push.mockRestore();
+    });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 批次B 回炉（reviewer F1/F2）：编辑态互斥 + 切 task 复位 + 编辑分支权限双校验；
 // personal-edit body 严格 {content}（不带 base_result_id）。

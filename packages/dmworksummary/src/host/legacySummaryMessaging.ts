@@ -76,19 +76,25 @@ export const legacySummaryMessagingPort: SummaryMessagingPort = {
     );
   },
 
-  requestForward({ content, title, onComplete, onError, onCancel }) {
+  requestForward({ content, title, onComplete, onError, onCancel, isActive }) {
+    const spaceId = WKApp.shared.currentSpaceId;
+    const active = () => WKApp.shared.currentSpaceId === spaceId && (isActive?.() ?? true);
     WKApp.shared.baseContext.showConversationSelect(
       async (channels: Channel[]) => {
+        if (!active()) { onCancel?.(); return; }
         try {
           const chunks = splitSummaryText(content);
           const result = await ForwardService.send(
             channels,
-            () => chunks.map((chunk) => new MessageText(chunk)),
+            () => {
+              if (!active()) throw new Error("Summary forwarding context expired");
+              return chunks.map((chunk) => new MessageText(chunk));
+            },
             {
               channelMode: "serial",
               messageMode: "serial",
               interMessageDelayMs: INTER_MESSAGE_DELAY_MS,
-              spaceId: WKApp.shared.currentSpaceId,
+              spaceId,
             }
           );
           onComplete(interpretForwardResult(result, "targets"));

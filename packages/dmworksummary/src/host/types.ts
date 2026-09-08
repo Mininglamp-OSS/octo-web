@@ -26,6 +26,7 @@ export interface SummaryForwardOutcome {
 }
 
 export interface SummaryForwardRequest {
+  isActive?: () => boolean;
   content: string;
   title: string;
   onComplete: (result: SummaryForwardOutcome) => void;

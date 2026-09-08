@@ -9,6 +9,7 @@ export interface ConversationTarget {
   displayName?: string;
   avatar?: string;
   metadata?: Record<string, unknown>;
+  variant?: "app-bot";
 }
 
 export interface CommunicationBootstrap {
@@ -56,6 +57,7 @@ export interface NavigationReport {
 
 export type SummaryCapabilityRequest = {
   requestId: string;
+  spaceId: string;
   operation:
     | "loadConversationMembers"
     | "notifySummaryCompleted"
@@ -71,6 +73,10 @@ export interface SummaryCapabilityResponse {
 }
 
 export interface OctoBuddyCommunicationBridge {
+  openSummary(request: {
+    route: import("@dmwork/summary").SummaryWorkspaceRoute;
+    spaceId: string;
+  }): Promise<void>;
   getBootstrap(): Promise<CommunicationBootstrap>;
   /** May be retried after a timeout; hosts must handle duplicate reports. */
   reportReady(state: {

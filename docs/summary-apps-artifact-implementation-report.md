@@ -4,8 +4,8 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 状态 | 已实现，等待提交与远端评审 |
-| 日期 | 2026-09-06 |
+| 状态 | 评审问题已修复且本地回归通过；本次提交纳入 Web 修复，Client 与生产产物待对齐 |
+| 日期 | 2026-09-08 |
 | Web worktree | `/Users/will/Project/octo/octo-web-summary-apps-artifacts` |
 | Web 分支 | `feat/summary-apps-artifacts` |
 | Client worktree | `/Users/will/Project/octo/octo-buddy-client-chat-capability-integration` |
@@ -171,13 +171,21 @@ Summary badge 按 Space 隔离；Space 切换时先清零，再由新 Space 的 
 - Summary 转发取消会立即返回 `null`，不会留下十分钟悬挂请求。
 - Communication View 保持原实例，跨模块跳转不会重建 IM runtime。
 - Client 接收 Communication 导航回报时保留已有机器人 metadata。
+- Communication 中的总结卡片通过受限 IPC 打开 Summary 详情或分享预览，
+  不依赖完整 Web 的顶层菜单路由；旧消息的 `task_no` 仍可使用。
+- Summary 切换 Space 时重建工作区，清除详情、草稿、成员选择和旧 attention 读取；
+  旧工作区的路由、红点及聊天动作回调失效。
+- 独立详情的添加成员使用 `SummaryMessagingPort` 加载候选，
+  仍调用原 `POST /summaries/:id/members`；默认 Web 继续使用原成员路由。
 
 ## 6. 安全与发布保护
 
 已实现以下边界：
 
 - Renderer 使用 `contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`。
-- Summary/Apps partition 使用 deny-all Electron permission policy。
+- Apps partition 拒绝全部 Electron permission；Summary 只允许当前可信主 frame
+  发起纯音频请求，其他 frame、摄像头及未知权限仍拒绝。macOS 系统授权返回后
+  再校验 View、入口 URL 和生命周期，退出登录后不得恢复旧授权。
 - child IPC 校验 sender、mainFrame 和精确 artifact entry URL。
 - IPC payload 进行运行时校验。
 - artifact entry 必须是根目录下真实存在的顶层文件。
@@ -186,6 +194,8 @@ Summary badge 按 Space 隔离；Space 切换时先清零，再由新 Space 的 
 - E2E dirty artifact 仅在 `E2E_TEST` 和显式 allow flag 同时存在时允许加载。
 - Token 只通过 preload bootstrap 返回，不放入 URL/query。
 - 外部导航被阻止，仅允许通过系统浏览器打开安全的 HTTP/HTTPS URL。
+- Communication 的 `contractRevision` 为 `3`，Summary 为 `2`，Apps 为 `1`。
+  旧协议产物会被拒绝，避免静默混用缺少卡片导航或 Space 作用域的 Bridge。
 
 ## 7. E2E Mock 策略
 
@@ -199,11 +209,14 @@ Artifact 启动逻辑会：
 4. 两种模式都发送专用探针并验证响应标记。
 5. 只有确认请求已被拦截后才设置 `window.__MSW_READY__ = true`。
 
-因此 Client E2E 不访问线上接口，也不会因为 `file://` 无法注册 Service Worker 而卡在 loading。
+Client E2E 的登录态及启动器固定使用保留域名 `octobuddy.e2e.invalid`，
+避免遗漏的 mock 请求访问线上。探针仅证明拦截机制就绪，不证明每条业务请求都有 handler。
+`file://` 使用 interceptor fallback，不等待不存在的 Service Worker controller。
 
 ## 8. 验证结果
 
-已通过：
+下表保留拆分初版的验证记录，不代表 2026-09-07 修复后的所有产物已重新发布。
+本轮逐项结果见 [Artifact Review Fixes](./summary-apps-artifact-review-fixes.md)。
 
 | 验证项 | 结果 |
 | --- | --- |
@@ -293,6 +306,11 @@ pnpm exec playwright test tests/e2e/embedded-features.spec.ts
 5. 再跑 Client unit、typecheck、build 和 Artifact E2E。
 6. Client 继续保留在冻结 worktree；未经确认不提交，也不与当前 `main` 合并。
 7. 最新 Client `main` 的适配在独立 worktree 和独立 PR 中处理。
+
+2026-09-07 的验证未执行上述提交与生产产物更新。2026-09-08 本次提交仅纳入
+Web 源码、测试与文档，不包含 Client 修改或生成产物。当前 resources 内的旧 Communication /
+Summary 产物与当前宿主协议不兼容；本地回归使用隔离目录中的 E2E 产物，
+不能把测试产物当作生产资源提交。
 
 ## 11. 回滚
 

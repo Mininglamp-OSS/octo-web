@@ -51,6 +51,22 @@
   max-width: none;
 }
 
+/* The embedded detail shares its viewport with the list and host navigation. */
+.summary-workspace .summary-detail-title-row {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.summary-workspace .summary-detail-header-title-wrap {
+  flex: 1 1 240px;
+}
+
+.summary-workspace .summary-detail-header-actions {
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
 .summary-workspace__mobile-back {
   display: none;
   align-items: center;

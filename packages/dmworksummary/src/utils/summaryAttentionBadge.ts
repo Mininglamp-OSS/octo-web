@@ -26,6 +26,7 @@ import * as api from "../api/summaryApi";
  * 已接线 setRefresh → forceUpdate），NavRail 即重绘。
  */
 let summaryAttentionBadge = 0;
+let attentionScopeRevision = 0;
 const summaryAttentionListeners = new Set<(count: number) => void>();
 // 计数读取的单调取号。写入按【请求发出时刻】排序，而不是按响应到达顺序：
 // 只有“自己发出后再没人发过新读取”的响应才能落盘。现在有【三个】并发写者
@@ -103,6 +104,16 @@ export function attentionSampleAt(issuedAt: number, fresh: boolean): number {
 
 export function getSummaryAttentionBadge(): number {
     return summaryAttentionBadge;
+}
+
+/** A new workspace must not inherit counts or pending tickets from its predecessor. */
+export function resetSummaryAttentionScope(): void {
+    attentionScopeRevision++;
+    issueSeq++;
+    inFlightSamples.clear();
+    abandonedTickets.clear();
+    lastCommittedSampleAt = 0;
+    setSummaryAttentionBadge(0);
 }
 
 export function subscribeSummaryAttentionBadge(
@@ -406,6 +417,7 @@ export async function readSummaryAttentionCount(options?: {
   fresh?: boolean;
 }): Promise<{ count: number; sampleAt: number } | null> {
     const spaceId = WKApp.shared.currentSpaceId;
+    const scopeRevision = attentionScopeRevision;
   if (!WKApp.loginInfo.isLogined() || !WKApp.loginInfo.uid || !spaceId)
     return null;
     if (!e2eMockReady()) return null;
@@ -426,7 +438,7 @@ export async function readSummaryAttentionCount(options?: {
         abandonSummaryAttentionRead(ticket);
         throw err;
     }
-    if (WKApp.shared.currentSpaceId !== spaceId) {
+    if (WKApp.shared.currentSpaceId !== spaceId || scopeRevision !== attentionScopeRevision) {
         // 跨 Space 早退：本次读取作废，把号还回去，别把仍在飞的
         // 更早读取一并卡死（ticket liveness）。
         abandonSummaryAttentionRead(ticket);

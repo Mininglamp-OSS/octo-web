@@ -72,15 +72,14 @@ async function main() {
   WKApp.shared.registerModule(new BaseModule());
   WKApp.shared.registerModule(new DataSourceModule());
   await enableClientFeatureMocks("summary");
-  if (import.meta.env.VITE_E2E_MOCK !== "1") {
-    installFeatureAuthExpiryHandler(WKApp.apiClient, WKApp.loginInfo, host, {
-      reason: "Summary session expired",
-      logPrefix: "[client-summary]",
-    });
-  }
+  installFeatureAuthExpiryHandler(WKApp.apiClient, WKApp.loginInfo, host, {
+    reason: "Summary session expired",
+    logPrefix: "[client-summary]",
+  });
   WKApp.remoteConfig.startRequestConfig();
   Dap.shared.init();
   initializeSummaryAttentionRuntime({ observeIm: false });
+  WKApp.mittBus.emit("space-ready");
   startSummaryAttentionPolling();
 
   createRoot(document.getElementById("root")!).render(

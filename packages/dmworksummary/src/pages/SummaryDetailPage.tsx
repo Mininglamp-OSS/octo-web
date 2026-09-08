@@ -90,6 +90,7 @@ import {
 } from "../utils/summaryHelpers";
 import { summaryTestIds } from "../utils/testIds";
 import CitationText from "../components/CitationText";
+import SummaryAddMemberModal from "../features/summaryMembers/SummaryAddMemberModal";
 import SummaryResultActions from "../components/SummaryResultActions";
 import { stripCitationMarkers } from "../components/citationStrip";
 import SelectedSourcesPanel from "../components/SelectedSourcesPanel";
@@ -97,7 +98,7 @@ import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import SummaryEditor from "../components/SummaryEditor";
 import SummaryVersionPanel from "../components/SummaryVersionPanel";
 import { legacySummaryMessagingPort } from "../host";
-import type { SummaryMessagingPort } from "../host";
+import type { SummaryConversationTarget, SummaryMessagingPort } from "../host";
 
 interface SummaryDetailPageProps {
     taskId?: number | string;
@@ -193,6 +194,8 @@ interface SummaryDetailPageState {
      */
     copyingKey: string | null;
     convertingKey: string | null;
+    /** 面板模式添加成员弹窗可见性 */
+    showAddMemberModal: boolean;
 }
 
 const PERSONAL_RESULT_POLL_INTERVAL_MS = 1500;
@@ -336,6 +339,7 @@ export default class SummaryDetailPage extends Component<
         teamStreamError: null,
         copyingKey: null,
         convertingKey: null,
+        showAddMemberModal: false,
     };
 
     private personalPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -4824,11 +4828,33 @@ export default class SummaryDetailPage extends Component<
     };
 
     // need7：creator 添加新成员。选定后调 POST /members，成功 loadDetail 刷新（新成员 Pending）。
+    private addMemberConversationTarget(): SummaryConversationTarget {
+        const detail = this.state.detail;
+        const tId = this.taskId;
+        const channelId = detail?.origin_channel_id || "";
+        // origin_channel_type 映射：后端类型 1=群聊/2=子区/3=私聊。
+        // loadConversationMembers 需要 IM SDK 的 channelType（2=群聊/1=私聊/5=子区），
+        // 复用 handleOpenAddMember 同一转换逻辑。
+        const rawType = detail?.origin_channel_type ?? 2;
+        const channelType =
+            rawType === 1 ? 2 : rawType === 3 ? 1 : 2;
+        return {
+            channelId: channelId || (tId != null ? String(tId) : ""),
+            channelType,
+        };
+    }
+
     handleOpenAddMember = () => {
         if (this.taskId == null) return;
         const detail = this.state.detail;
         if (!detail) return;
-        // 推断频道：origin_channel_id + origin_channel_type
+        // 面板模式：用 Semi Modal 代替 WKApp.routeRight.push，绕过缺少 SubscriberList
+        // 的代码包拆分问题。
+        if (this.props.messaging) {
+            this.setState({ showAddMemberModal: true });
+            return;
+        }
+        // 传统 Web 路由：通过 SubscriberList 路由页面添加成员。
         const channelId = detail.origin_channel_id;
     const channelType =
       detail.origin_channel_type === 1
@@ -5668,6 +5694,24 @@ export default class SummaryDetailPage extends Component<
           }
                     onDisable={this.handleScheduleDisable}
                     disabling={this.state.scheduleDisabling}
+                />
+                <SummaryAddMemberModal
+                    visible={this.state.showAddMemberModal}
+                    taskId={this.taskId!}
+                    target={this.addMemberConversationTarget()}
+                    existingMemberIds={
+                        (this.state.detail?.participants || []).map(
+                            (p) => p.user_id
+                        )
+                    }
+                    messaging={this.messaging}
+                    onClose={() =>
+                        this.setState({ showAddMemberModal: false })
+                    }
+                    onSuccess={() => {
+                        this.setState({ showAddMemberModal: false });
+                        this.loadDetail();
+                    }}
                 />
                 {/* need7：添加成员复用 SubscriberList 路由页面，见 handleOpenAddMember */}
                 <Modal
