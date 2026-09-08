@@ -853,7 +853,7 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         expect(isAgentSummaryNotificationEligible(1)).toBe(true);
     });
 
-    it.each(['PARTIAL', 'FAILED'] as const)('shows successful save feedback after a %s legacy Agent verdict', async (finishStatus) => {
+    it.each(['PARTIAL', 'FAILED'] as const)('keeps save success for a created legacy task with an internal %s quality verdict (owner-confirmed P1 policy)', async (finishStatus) => {
         const { Toast } = await import('@douyinfe/semi-ui');
         const trackSpy = vi.spyOn(Dap.shared, 'track');
         (api.createAgentSummary as any).mockResolvedValueOnce({

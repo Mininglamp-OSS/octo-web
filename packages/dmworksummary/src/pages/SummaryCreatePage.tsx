@@ -1115,9 +1115,9 @@ export default class SummaryCreatePage extends Component<
             });
             markAgentSummaryNotificationEligible(result.task_id);
 
-            // finish_status and gaps remain available as internal diagnostics,
-            // but the task was created successfully and users only need the
-            // save outcome here.
+            // Reaching this branch means task creation/save succeeded. Actual
+            // request failures remain in the catch/error path; finish_status
+            // and gaps are post-save internal quality diagnostics only.
             trackAgentSummaryQuality(result, {
                 object_id: this.props.channel?.channelID,
                 source: this.props.source,

@@ -731,6 +731,7 @@
     "buttonTip": "点击选择一份已有总结作为参考",
     "badge": "已引用",
     "remove": "移除引用",
+    "closePreview": "关闭预览",
     "previewTitle": "总结预览",
     "previewLatestHint": "以下内容为该总结的最新版本(可能已经被更新过,与您引用时的快照不完全一致)",
     "previewNotFound": "该总结已删除或您无权访问",

@@ -42,7 +42,9 @@ import useSummaryWorkbench, {
 } from "../../bridge/summaryWorkbench/useSummaryWorkbench";
 import SummaryWorkbench, {
   type SummaryWorkbenchAction,
+  type SummaryWorkbenchCardView,
   type SummaryWorkbenchContextKind,
+  type SummaryWorkbenchMessageView,
 } from "../../ui/SummaryWorkbench";
 import type { ChatCandidate, SummaryListItem } from "../../types/summary";
 import { channelToChatCandidate } from "../../utils/channelConvert";
@@ -148,6 +150,21 @@ function isAcceptedResponse(
   response?: SummaryWorkbenchResponse
 ): response is Exclude<SummaryWorkbenchResponse, { resultType: "error" }> {
   return Boolean(response && response.resultType !== "error");
+}
+
+function hasAcceptedHydratedTurn(
+  messages: SummaryWorkbenchMessageView[],
+  card?: SummaryWorkbenchCardView
+): boolean {
+  return Boolean(
+    card ||
+      messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.resultType !== undefined &&
+          message.resultType !== "error"
+      )
+  );
 }
 
 export default function SummaryWorkbenchFeature({
@@ -401,8 +418,10 @@ export default function SummaryWorkbenchFeature({
     if (!hydrationObserved.current) return;
     hydrationObserved.current = false;
     if (
-      workbench.viewState.messages.length > 0 ||
-      Boolean(workbench.viewState.card)
+      hasAcceptedHydratedTurn(
+        workbench.viewState.messages,
+        workbench.viewState.card
+      )
     ) {
       setHasSubmitted(true);
       setTemplateGalleryOpen(false);
@@ -410,7 +429,7 @@ export default function SummaryWorkbenchFeature({
   }, [
     workbench.isHydrating,
     workbench.viewState.card,
-    workbench.viewState.messages.length,
+    workbench.viewState.messages,
   ]);
 
   const referencedTaskId = workbench.scope.referencedTaskIds[0];
@@ -798,8 +817,9 @@ export default function SummaryWorkbenchFeature({
     setSaveDialogOpen(false);
     if (handledSavedTaskIds.current.has(result.task_id)) return;
     handledSavedTaskIds.current.add(result.task_id);
-    // finish_status and gaps are internal quality diagnostics. A created task
-    // is a successful user action regardless of its non-blocking gate verdict.
+    // Reaching this branch means task creation/save succeeded. Transport,
+    // protocol, and task-creation failures stay on the existing error path;
+    // finish_status and gaps are post-save internal quality diagnostics only.
     trackAgentSummaryQuality(result, {
       object_id: channel?.channelID,
       source,

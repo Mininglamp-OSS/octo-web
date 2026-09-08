@@ -121,14 +121,16 @@ class SummaryReferenceSidePanel extends Component<
                     <span data-testid={summaryTestIds.agentRefSideTitle} className="summary-workbench-ref-side-title" title={title}>
                         {title}
                     </span>
-                    <span
+                    <button
+                        type="button"
                         data-testid={summaryTestIds.agentRefSideCloseBtn}
                         className="summary-workbench-ref-side-close"
                         onClick={onClose}
-                        title={t('summary.chatReference.remove')}
+                        aria-label={t('summary.chatReference.closePreview')}
+                        title={t('summary.chatReference.closePreview')}
                     >
                         ×
-                    </span>
+                    </button>
                 </div>
                 <div className="summary-workbench-ref-side-hint">
                     {t('summary.chatReference.previewLatestHint')}

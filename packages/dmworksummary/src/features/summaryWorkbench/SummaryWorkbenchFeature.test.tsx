@@ -621,6 +621,42 @@ describe("SummaryWorkbenchFeature", () => {
     ).not.toBeInTheDocument();
   });
 
+  it.each([
+    ["a lone user message", { id: "message-a", role: "user", content: "Draft request" }],
+    [
+      "an error-only assistant response",
+      {
+        id: "message-a",
+        role: "assistant",
+        content: "Request failed",
+        resultType: "error",
+      },
+    ],
+  ])("keeps templates available after restoring %s", async (_caseName, message) => {
+    localStorage.setItem(
+      "summary-workbench-session:v2:test-uid:space-a:global",
+      "restored-session"
+    );
+    const current = controller({ isHydrating: true });
+    mocks.useSummaryWorkbench.mockImplementation(() => current);
+
+    const view = render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+
+    current.isHydrating = false;
+    current.viewState.messages = [message];
+    view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("template-selector")).toBeInTheDocument()
+    );
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-template-locked",
+      "false"
+    );
+  });
+
   it("does not allow reopening templates after the first turn", async () => {
     const current = controller({
       viewState: {
@@ -1600,7 +1636,7 @@ describe("SummaryWorkbenchFeature", () => {
   });
 
   it.each(["PARTIAL", "FAILED"] as const)(
-    "shows successful save feedback after a %s quality verdict",
+    "keeps save success for a created task with an internal %s quality verdict (owner-confirmed P1 policy)",
     async (finishStatus) => {
       const savePreview = vi.fn().mockResolvedValue({
         task_id: 304,
@@ -1655,7 +1691,7 @@ describe("SummaryWorkbenchFeature", () => {
     }
   );
 
-  it("shows successful save feedback when a FAILED verdict has no gaps", async () => {
+  it("keeps save success for a created task when an internal FAILED verdict has no gaps (owner-confirmed P1 policy)", async () => {
     const savePreview = vi.fn().mockResolvedValue({
       task_id: 306,
       title: "Draft",
