@@ -32,7 +32,11 @@ vi.mock("@octo/base", () => ({
   DEFAULT_REQUEST_TIMEOUT_MS: 20000,
 }));
 
-import { loadExpertChildRelations, updateExpertVisibility } from "./expertService";
+import {
+  loadExpertChildRelations,
+  loadExpertReviewSnapshot,
+  updateExpertVisibility,
+} from "./expertService";
 
 /**
  * A squad as the backend returns it: a category, a publisher, a stored icon key
@@ -227,6 +231,73 @@ describe("loadExpertChildRelations — the review-submit snapshot", () => {
         relationId: "rel-2",
         data: { member_key: "worker" },
       },
+    ]);
+  });
+});
+
+/**
+ * The upgrade snapshot has to be ONE revision of the record.
+ *
+ * Composed from two reads — `loadExpertReviewContent` + `loadExpertChildRelations`,
+ * as `ReviewSubmitModal` used to resolve them under `Promise.all` — a Bot write
+ * landing between the two responses freezes content from one revision together
+ * with the relation graph of another. Those bytes were never live at any instant,
+ * and nothing downstream catches it: the payload carries no revision token, the
+ * backend validates the submitted manifest only against fields a content update
+ * does not change and takes submitted `relations` as authoritative without
+ * cross-checking them, and at approval the chimera is applied to the live row.
+ */
+describe("loadExpertReviewSnapshot — one revision, one read", () => {
+  beforeEach(() => {
+    mock.instance.get.mockReset();
+    mock.instance.post.mockReset();
+  });
+
+  it("reads /plugins/detail exactly once", async () => {
+    wire();
+
+    await loadExpertReviewSnapshot("squad-1");
+
+    const detailReads = mock.instance.get.mock.calls.filter((c: unknown[]) =>
+      String(c[0]).endsWith("/plugins/detail")
+    );
+    expect(detailReads).toHaveLength(1);
+  });
+
+  it("takes content and relations from the SAME response", async () => {
+    // Revision A, then a revision B in which the Bot rewrote the manifest and
+    // dropped a member. A two-read composition would mix them.
+    const revisionB = {
+      plugin: {
+        ...SQUAD_WIRE.plugin,
+        current_version: "2.5.0",
+        manifest_json: { description: "REVISION B", labels: ["b"] },
+      },
+      relations: [SQUAD_WIRE.relations[0]],
+    };
+    const responses = [SQUAD_WIRE, revisionB];
+    let call = 0;
+    mock.instance.get.mockImplementation((url: string) => {
+      if (url.endsWith("/plugins/detail")) {
+        const body = responses[Math.min(call, responses.length - 1)];
+        call += 1;
+        return Promise.resolve({ data: { data: body } });
+      }
+      return Promise.resolve({ data: { data: {} } });
+    });
+
+    const snapshot = await loadExpertReviewSnapshot("squad-1");
+
+    // Revision A throughout: A's manifest AND A's two member edges. Under the
+    // old composition the relations came from A while the content came from B —
+    // a squad whose manifest describes a team the frozen graph contradicts.
+    expect(snapshot.content.manifestJson).toEqual({
+      description: "d",
+      labels: ["a", "b"],
+    });
+    expect(snapshot.relations.map((r) => r.targetPluginId)).toEqual([
+      "member-a",
+      "member-b",
     ]);
   });
 });

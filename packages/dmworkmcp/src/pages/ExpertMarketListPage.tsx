@@ -16,8 +16,7 @@ import {
   listMyExperts,
   listMySquads,
   listSquads,
-  loadExpertChildRelations,
-  loadExpertReviewContent,
+  loadExpertReviewSnapshot,
   prefetchLoopTargets,
 } from "../api/expertService";
 import type { ExpertCatalogSort, ExpertCategoryCount } from "../api/expertService";
@@ -522,10 +521,10 @@ export default function ExpertMarketListPage({
 
   // -------- 组织审核 (Space review) --------
   // 专家 / 专家团 are CONTAINER types: the record owns child relations
-  // (expert_skill / expert_team_expert). A review submission whose `relations`
-  // field is absent inherits whatever the live graph is at approval time, so the
-  // snapshot would be incomplete — every submission from here names the current
-  // child set explicitly (see loadExpertChildRelations).
+  // (expert_skill / expert_team_expert). A submission whose `relations` field is
+  // absent lets the server freeze its OWN detail read at submit time, so the
+  // frozen child set would not be the one this page resolved — every submission
+  // from here names the current child set explicitly.
   const openReviewSubmit = (item: ExpertItem, initialChangelog?: string) => {
     const isUpgrade = normalizeVisibility(item.visibility) !== "private";
     setReviewTarget({
@@ -534,14 +533,18 @@ export default function ExpertMarketListPage({
       version: item.version,
       isUpgrade,
       initialChangelog,
-      // An UPGRADE of an already-listed 专家/专家团 must echo its own live content:
-      // the backend refuses a contentless submission on a listed plugin (400).
-      // A first listing of a private draft sends none — the server freezes the
-      // row itself — so the loader is wired only on the upgrade path.
-      ...(isUpgrade
-        ? { loadContent: () => loadExpertReviewContent(item.id) }
-        : {}),
-      loadRelations: () => loadExpertChildRelations(item.id),
+      // ONE detail read backs both halves. Content and relations MUST come from
+      // the same revision: composed from two reads, a Bot write landing between
+      // them freezes a snapshot that was never live, and nothing downstream
+      // detects it (see loadExpertReviewSnapshot).
+      //
+      // An UPGRADE of an already-listed record must echo its own live content —
+      // the backend refuses a contentless submission on a listed plugin (400) —
+      // while a first listing of a private draft sends none, because the server
+      // can freeze the draft row as-is. Only `needs` differs between the two
+      // paths; the read does not.
+      loadSnapshot: () => loadExpertReviewSnapshot(item.id),
+      needs: { relations: true, content: isUpgrade },
     });
   };
 
