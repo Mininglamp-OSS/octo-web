@@ -20,7 +20,29 @@ vi.mock("@octo/base", () => ({
   i18n: { registerNamespace: vi.fn() },
   t: (key: string) => key,
   Dap: { shared: { track: vi.fn() } },
-  Menus: class {},
+  Menus: class {
+    id: string;
+    routePath: string;
+    title: string;
+    icon: React.ReactElement;
+    selectedIcon: React.ReactElement;
+    badge?: number;
+    onPress?: (reentry?: boolean) => void;
+
+    constructor(
+      id: string,
+      routePath: string,
+      title: string,
+      icon: React.ReactElement,
+      selectedIcon: React.ReactElement
+    ) {
+      this.id = id;
+      this.routePath = routePath;
+      this.title = title;
+      this.icon = icon;
+      this.selectedIcon = selectedIcon;
+    }
+  },
   WKApp: {
     get currentMenuId() {
       return state.currentMenuId;
@@ -30,7 +52,11 @@ vi.mock("@octo/base", () => ({
     },
     shared: state.shared,
     routeLeft: { popToRoot: state.popToRoot },
-    routeRight: { replaceToRoot: state.replaceToRoot, push: vi.fn(), popToRoot: state.popToRoot },
+    routeRight: {
+      replaceToRoot: state.replaceToRoot,
+      push: vi.fn(),
+      popToRoot: state.popToRoot,
+    },
     route: { register: vi.fn() },
     menus: { register: vi.fn() },
     mittBus: { on: vi.fn(), off: vi.fn(), emit: vi.fn() },
@@ -80,33 +106,79 @@ vi.mock("../utils/summaryAttentionBadge", () => ({
 vi.mock("../utils/channelType", () => ({
   isSupportedChannelType: () => true,
 }));
+vi.mock("../utils/summaryAttentionSync", () => ({
+  createAttentionSync: () => ({ trigger: vi.fn(), cancel: vi.fn() }),
+  shouldRefreshForMessage: () => false,
+}));
+vi.mock("../utils/summaryAttentionPoll", () => ({
+  createAttentionPoll: () => ({
+    start: vi.fn(),
+    stop: vi.fn(),
+    setVisible: vi.fn(),
+    notifyActivity: vi.fn(),
+  }),
+}));
+vi.mock("../utils/summaryAttentionLeader", () => ({
+  createAttentionLeader: () => ({
+    start: vi.fn(),
+    stop: vi.fn(),
+    setVisible: vi.fn(),
+    publish: vi.fn(),
+  }),
+}));
+vi.mock("wukongimjssdk", () => ({
+  default: {
+    shared: () => ({
+      chatManager: {
+        addMessageListener: vi.fn(),
+        removeMessageListener: vi.fn(),
+      },
+      connectManager: {
+        addConnectStatusListener: vi.fn(),
+        removeConnectStatusListener: vi.fn(),
+      },
+    }),
+  },
+  ConnectStatus: { Connected: "Connected" },
+}));
 vi.mock("../components/ChatSummaryStarButton", () => ({
   default: () => null,
 }));
 vi.mock("../components/ChatSummaryPanel", () => ({ default: () => null }));
 
 import React from "react";
-import { WKApp } from "@octo/base";
-import { getSummaryShare } from "../api/summaryApi";
 import SummaryWorkbenchCreateEntry from "../features/summaryWorkbench/SummaryWorkbenchCreateEntry";
 import { summaryWorkbenchAvailability } from "../features/summaryWorkbench/availability";
+import { Dap, i18n, WKApp } from "@octo/base";
+import { getChatCandidates, getSummaryShare } from "../api/summaryApi";
+import ChatSummaryPanel from "../components/ChatSummaryPanel";
+import ChatSummaryStarButton from "../components/ChatSummaryStarButton";
+import SummaryDetailPage from "../pages/SummaryDetailPage";
+import SummaryListPage from "../pages/SummaryListPage";
+import SummaryShareDetailPage from "../pages/SummaryShareDetailPage";
+import SummaryConfirmPage from "../pages/SummaryConfirmPage";
 import ScheduleListPage from "../pages/ScheduleListPage";
-import { SummaryModule } from "../module";
-import { refreshSummaryAttentionBadge, setSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
+import { disposeSummaryModuleListeners, SummaryModule } from "../module";
+import {
+  refreshSummaryAttentionBadge,
+  setSummaryAttentionBadge,
+} from "../utils/summaryAttentionBadge";
 
 let windowEventHandlers: Map<string, EventListener>;
 
 function registeredHandler(event: string): () => void {
-  const call = vi.mocked(WKApp.mittBus.on).mock.calls.find(
-    ([registeredEvent]) => registeredEvent === event
-  );
+  const call = vi
+    .mocked(WKApp.mittBus.on)
+    .mock.calls.find(([registeredEvent]) => registeredEvent === event);
   if (!call) throw new Error(`Missing ${event} handler`);
   return call[1] as () => void;
 }
 
 function summaryMenuFactory(): () => { onPress?: (reentry?: boolean) => void } {
   const reg = vi.mocked(WKApp.menus.register);
-  const factory = reg.mock.calls.find(([id]) => id === "summary")?.[1] as unknown as () => { onPress?: (reentry?: boolean) => void };
+  const factory = reg.mock.calls.find(
+    ([id]) => id === "summary"
+  )?.[1] as unknown as () => { onPress?: (reentry?: boolean) => void };
   expect(factory).toBeTruthy();
   return factory;
 }
@@ -133,6 +205,112 @@ describe("SummaryModule guarded menu switching", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    disposeSummaryModuleListeners();
+  });
+
+  it("preserves the legacy Web registration contract", async () => {
+    expect(i18n.registerNamespace).toHaveBeenCalledWith("summary", {
+      "zh-CN": expect.any(Object),
+      "en-US": expect.any(Object),
+    });
+
+    const routeRegistrations = vi.mocked(WKApp.route.register).mock.calls;
+    expect(routeRegistrations.map(([path]) => path)).toEqual([
+      "/summary",
+      "/summary/create",
+      "/summary/detail",
+      "/summary/share",
+      "/summary/confirm",
+      "/summary/schedules",
+    ]);
+
+    const expectedRouteComponents = new Map<string, React.ElementType>([
+      ["/summary", SummaryListPage],
+      ["/summary/create", SummaryWorkbenchCreateEntry],
+      ["/summary/detail", SummaryDetailPage],
+      ["/summary/share", SummaryShareDetailPage],
+      ["/summary/confirm", SummaryConfirmPage],
+      ["/summary/schedules", ScheduleListPage],
+    ]);
+    for (const [path, factory] of routeRegistrations) {
+      const element = (
+        factory as (params?: Record<string, unknown>) => React.ReactElement
+      )({
+        taskId: 42,
+        shareId: "share-1",
+      });
+      expect(element.type).toBe(expectedRouteComponents.get(path));
+    }
+
+    expect(WKApp.menus.register).toHaveBeenCalledWith(
+      "summary",
+      expect.any(Function),
+      4002
+    );
+    const menu = summaryMenuFactory()() as {
+      id: string;
+      routePath: string;
+      title: string;
+      badge?: number;
+      onPress?: (reentry?: boolean) => void;
+    };
+    expect(menu).toMatchObject({
+      id: "summary",
+      routePath: "/summary",
+      title: "summary.menu.title",
+      badge: 0,
+    });
+
+    menu.onPress?.(false);
+    expect(Dap.shared.track).toHaveBeenCalledWith(
+      "smart_summary_module_entered",
+      {}
+    );
+
+    expect(WKApp.endpoints.registerChannelHeaderRightItem).toHaveBeenCalledWith(
+      "channelheader.summary",
+      expect.any(Function),
+      5100
+    );
+    const headerRenderer = vi.mocked(
+      WKApp.endpoints.registerChannelHeaderRightItem
+    ).mock.calls[0][1];
+    const header = headerRenderer({
+      channel: { channelID: "group-1", channelType: 2 },
+    } as never) as React.ReactElement;
+    expect(header.type).toBe(ChatSummaryStarButton);
+
+    expect(WKApp.endpoints.registerChatSummaryPanel).toHaveBeenCalledWith(
+      "chatsummarypanel",
+      expect.any(Function)
+    );
+    const panelRenderer = vi.mocked(WKApp.endpoints.registerChatSummaryPanel)
+      .mock.calls[0][1];
+    const panel = panelRenderer({
+      channel: { channelID: "group-1", channelType: 2 },
+      onClose: vi.fn(),
+      summaryPanelView: "history",
+    } as never) as React.ReactElement;
+    expect(panel.type).toBe(ChatSummaryPanel);
+    expect(panel.props.visible).toBe(true);
+
+    vi.mocked(getChatCandidates).mockResolvedValueOnce([] as never);
+    await expect(
+      WKApp.searchChatCandidates?.({ keyword: "docs" } as never)
+    ).resolves.toEqual([]);
+    expect(getChatCandidates).toHaveBeenCalledWith({ keyword: "docs" });
+  });
+
+  it("does not duplicate Web registrations when init is called twice", () => {
+    new SummaryModule().init();
+
+    expect(i18n.registerNamespace).toHaveBeenCalledTimes(1);
+    expect(WKApp.route.register).toHaveBeenCalledTimes(6);
+    expect(WKApp.menus.register).toHaveBeenCalledTimes(1);
+    expect(
+      WKApp.endpoints.registerChannelHeaderRightItem
+    ).toHaveBeenCalledTimes(1);
+    expect(WKApp.endpoints.registerChatSummaryPanel).toHaveBeenCalledTimes(1);
   });
 
   it("opens summary detail only after the guarded switch succeeds", () => {
@@ -255,7 +433,11 @@ describe("SummaryModule guarded menu switching", () => {
     // P1-2：WKLayout 在 ≤640px 把右栏渲染为覆盖 NavRail 的 fixed 层（z-index 20 > 10），
     // 创建页非面板模式没有返回控件，推入即困住用户。小屏应保持 popToRoot 旧行为。
     const originalWidth = window.innerWidth;
-    Object.defineProperty(window, "innerWidth", { value: 600, configurable: true, writable: true });
+    Object.defineProperty(window, "innerWidth", {
+      value: 600,
+      configurable: true,
+      writable: true,
+    });
     try {
       const menu = summaryMenuFactory()();
       menu.onPress?.(false);
@@ -263,7 +445,11 @@ describe("SummaryModule guarded menu switching", () => {
       expect(state.popToRoot).toHaveBeenCalledTimes(2); // routeLeft + routeRight
       expect(state.replaceToRoot).not.toHaveBeenCalled();
     } finally {
-      Object.defineProperty(window, "innerWidth", { value: originalWidth, configurable: true, writable: true });
+      Object.defineProperty(window, "innerWidth", {
+        value: originalWidth,
+        configurable: true,
+        writable: true,
+      });
     }
   });
 

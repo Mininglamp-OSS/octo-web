@@ -17,8 +17,15 @@ runtime-disjoint emit sites, see that row):
 - `helper` — gated helper (trackMessage.ts sendack-consumed intents; summaryApi.ts envelope-code gate).
 
 **Privacy**: props are `{}` except an opaque `object_id` join key on a few events
-(channel/group id, account uid) — internal random ids, never content/keyword/PII.
-See issue #1406 (privacy constraint amended round-6 to permit opaque `object_id`).
+(channel/group id, account uid) and the bounded, non-content diagnostics explicitly
+registered in this table. `smart_summary_quality_gate` may carry `task_id`,
+`finish_status`, `gap_count`, optional `first_gap_kind`, and existing entry-context
+dimensions. `first_gap_kind` is normalized to the documented category allowlist
+(`channel`, `coverage`, `truncation`, `output_truncation`, `dropped`, `citation`,
+`tool_error`, `evidence`, or `other`). It never carries `gaps[].detail`, summary
+content, keywords, or PII.
+See issue #1406 (privacy constraint amended round-6 to permit opaque `object_id`);
+the quality-gate row below records the additional bounded diagnostic envelope.
 
 **`channel_id` 归一约定 (#1452 R10 P2-2)**: 本 PR 新增/收口的所有命令式事件统一发 **bare
 channel_id** —— 即经 `stripSpacePrefix()` 去掉 Space 部署下的 `s<32hex>_` 前缀,取裸 group_no /
@@ -42,7 +49,7 @@ events by the negative `channelUniqueness` / FetchRules guards asserting they mu
 appear in the path channel. Genuinely unpinned positive fires are the honest gap this
 table surfaces for follow-up.
 
-Total rows in this table: **148** (`grep -c '^| \`'` — includes the 4 infra rows and a
+Total rows in this table: **151** (`grep -c '^| \`'` — includes the 4 infra rows and a
 handful of removed-rule tombstones kept as ~~struck~~ history; the earlier "132 wired"
 figure was stale and is dropped to avoid a count that contradicts the table). Out of
 scope: octo-docs, octo-fleet.
@@ -172,6 +179,7 @@ scope: octo-docs, octo-fleet.
 | `smart_summary_mode_switched` | imperative | `SummaryListPage.handleCreate(mode)` when `mode==="agent"` — 列表页「+」下拉显式选择 Agent 总结（创建页内切换入口已随智能总结模式选择上移移除）；props `{to:"agent"}` | normal 入口（create_clicked 即可，不视为切换） | — | — |
 | `smart_summary_module_entered` | imperative | NavRail "summary" top entry `onPress` when `!reentry` | Re-clicking the already-active summary menu (`reentry`, host passes prevMenuId===id) | reentry guard | — |
 | `smart_summary_opened` | imperative | SummaryCard `onClick` opening detail (dynamic testid can't use delegation) | — | — | — |
+| `smart_summary_quality_gate` | imperative | After an Agent summary task has been created successfully, `trackAgentSummaryQuality` emits from the unified workbench save path (`SummaryWorkbenchFeature.savePreview`) and the legacy Agent save path (`SummaryCreatePage.handleSaveAsSummary`). Props are bounded to `task_id`, `finish_status` (`unreported` when the optional verdict is absent), `gap_count`, optional `first_gap_kind`, and existing context dimensions such as `object_id`, `source`, `entry_point`, `entry_source`, and `trigger_mode` | Transport, protocol, or task-creation/save failure; never carries `gaps[].detail`, summary content, keywords, or other user content | Workbench: `handledSavedTaskIds` dedupes by `task_id`; legacy: one emission in the successful save lifecycle before session teardown | SummaryWorkbenchFeature.test.tsx — owner-confirmed PARTIAL/FAILED save-success cases, missing-verdict case, `gap.detail` negative assertion, and recovered-result dedup; SummaryCreatePage.test.tsx — owner-confirmed PARTIAL/FAILED save-success and missing-verdict cases |
 | `smart_summary_regenerated` | helper | `regenerateSummary` (POST `/summaries/:taskId/regenerate`, by-group) **and** `regeneratePersonalSummary` (POST `/summaries/:taskId/personal-regenerate`, by-person) when the response envelope `code===0` — both are the SAME full-regenerate funnel step, so both feed one event (八审 P2 补 by-person 分支,否则 dialog_opened→regenerated 漏斗在 by-person 侧断裂) | `code!==0` / missing code (logical failure). NOT refine-by-feedback — that is a semantically distinct "按反馈微调" action, deliberately excluded from this full-regenerate funnel | Api-layer sink; `code===0` gate | — |
 | `smart_summary_scope_channel_selected` | imperative | `handleToggle` add branch (selecting a channel) | Deselect (uncheck); old GET `/summary-chat-candidates` list-load inference (removed) | Add-edge only | FetchRules.test.ts uiOnly-path-ban `it('这些「UI 采集专属」事件名不得再出现在 path 通道规则表里')` |
 | `smart_summary_scope_participant_selected` | imperative | `handleToggle` add branch (selecting a member) | Deselect (uncheck); old GET `/summary-member-candidates` list-load inference (removed) | Add-edge only | FetchRules.test.ts uiOnly-path-ban `it('这些「UI 采集专属」事件名不得再出现在 path 通道规则表里')` |

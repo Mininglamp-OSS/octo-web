@@ -560,13 +560,14 @@
   pointer-events: auto;
   width: var(--wk-wdith-chat-channelsetting);
   height: 100%;
-  transition: margin-right 150ms ease-in-out 0s;
-  position: absolute;
+  transform: translate3d(100%, 0, 0);
+  transition: transform 150ms ease-in-out;
+  /* Keep the drawer out of the chat layout so it only overlays the page. */
+  position: fixed;
   z-index: calc(var(--wk-z-modal) + 11);
   top: 0;
   right: 0;
   border-left: var(--wk-line);
-  margin-right: calc(0px - var(--wk-wdith-chat-channelsetting));
   background-color: var(--wk-color-secondary);
 
   box-shadow: 0 0.25rem 0.5rem 0.125rem rgba(114, 114, 114, 0.25098); /* stylelint-disable-line */
@@ -582,7 +583,7 @@ body[theme-mode="dark"] .wk-chat-channelsetting {
 }
 
 .wk-chat-content-right.wk-chat-channelsetting-open .wk-chat-channelsetting {
-  margin-right: 0px;
+  transform: translate3d(0, 0, 0);
 }
 
 .wk-chat-channel-search-panel {

@@ -1,14 +1,14 @@
 /* eslint-disable no-undef -- e2e code runs in Node, process is available */
 /* eslint-disable react-hooks/rules-of-hooks -- `use` here is Playwright fixture callback */
-import { test as base, expect, type Page } from "@playwright/test";
+import { test as base, expect, type Page, type Request } from "@playwright/test";
 import { MOCK_IM_SEED_STORAGE_KEY } from "./_kit/mock-im-runtime";
 import { waitForMswReady } from "./_lib/e2eReady";
 
 /**
  * octo-web authedPage fixture.
  *
- * 走 kit 的 `E2E_TARGET=local` 分支 + Lite mock 模式 (page.route in specs).
- * MSW 未装, 不 wait __MSW_READY__.
+ * 走 kit 的 `E2E_TARGET=local` 分支 + MSW mock 模式，fixture 会等待
+ * `__MSW_READY__` 后再交给用例；page.route 只兜底 MSW 接管前已发出的启动请求。
  *
  * SID 策略:
  *   octo-web 的 auth localStorage 键是 `${key}${sid}` 模式 (SessionScope.ts).
@@ -35,20 +35,43 @@ const ONBOARDING_STORAGE_KEY = "octo:onboarding:seen";
 const MOCK_SPACE_ID = "e2e-space-001";
 const MOCK_LOCALE = "zh-CN";
 
+async function isPreMswReadyRequest(page: Page, requestStartedAt: number | undefined): Promise<boolean> {
+  const readiness = await page.evaluate(() => {
+    const state = globalThis as unknown as {
+      __MSW_READY__?: boolean;
+      __MSW_READY_AT__?: number;
+    };
+    return {
+      ready: state.__MSW_READY__ === true,
+      readyAt: state.__MSW_READY_AT__,
+    };
+  }).catch(() => ({ ready: false, readyAt: undefined }));
+
+  if (!readiness.ready) return true;
+  return typeof readiness.readyAt === "number" &&
+    typeof requestStartedAt === "number" &&
+    requestStartedAt < readiness.readyAt;
+}
+
 async function installGlobalMockFallbackRoutes(page: Page): Promise<void> {
+  const requestStartedAt = new WeakMap<Request, number>();
+  page.on("request", (request) => {
+    requestStartedAt.set(request, Date.now());
+  });
+
   // Playwright routes only see these requests when the MSW service worker did
-  // not intercept them. Use deterministic responses only before MSW reports
-  // ready; after readiness, fall through so a missing handler remains visible
-  // to the proxy-error merge gate.
+  // not intercept them. Fulfill only requests that started before MSW became
+  // ready. Comparing timestamps avoids the race where readiness flips after a
+  // request escaped the worker but before this route callback checks the flag.
+  // Requests that start after readiness fall through so missing MSW handlers
+  // remain visible to the proxy-error merge gate.
   await page.route("**/summary/api/v1/summaries/attention*", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;
     }
-    const mswReady = await page
-      .evaluate(() => (globalThis as { __MSW_READY__?: boolean }).__MSW_READY__ === true)
-      .catch(() => false);
-    if (mswReady) {
+    const startedAt = requestStartedAt.get(route.request());
+    if (!(await isPreMswReadyRequest(page, startedAt))) {
       await route.fallback();
       return;
     }
@@ -73,10 +96,8 @@ async function installGlobalMockFallbackRoutes(page: Page): Promise<void> {
       await route.fallback();
       return;
     }
-    const mswReady = await page
-      .evaluate(() => (globalThis as { __MSW_READY__?: boolean }).__MSW_READY__ === true)
-      .catch(() => false);
-    if (mswReady) {
+    const startedAt = requestStartedAt.get(route.request());
+    if (!(await isPreMswReadyRequest(page, startedAt))) {
       await route.fallback();
       return;
     }

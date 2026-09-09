@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { resolveCommunicationBuildEnv } from "../../scripts/client-communication-build-env.mjs";
 
 describe("resolveCommunicationBuildEnv", () => {
-  it("uses Vite-loaded mock flags when process env is unset", () => {
+  it("uses Vite-loaded mock flags with explicit mock-build opt-in", () => {
     const result = resolveCommunicationBuildEnv(
-      {},
+      { OCTO_ALLOW_MOCK_CLIENT_ARTIFACT: "1" },
       {
         VITE_API_URL: "https://im.example.test",
         VITE_E2E_MOCK_IM: "1",

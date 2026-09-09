@@ -1,16 +1,14 @@
 import React, { Component } from "react";
-import {
-    Button,
-    Dropdown,
-    Spin,
-    Toast,
-    Banner,
-} from "@douyinfe/semi-ui";
+import { Button, Dropdown, Spin, Toast, Banner } from "@douyinfe/semi-ui";
 import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
 import { I18nContext, t, WKApp, Dap } from "@octo/base";
 import * as api from "../api/summaryApi";
-import { abandonSummaryAttentionRead, beginSummaryAttentionRead, commitSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
+import {
+  abandonSummaryAttentionRead,
+  beginSummaryAttentionRead,
+  commitSummaryAttentionBadge,
+} from "../utils/summaryAttentionBadge";
 import type {
     SummaryListItem,
     ListSummariesParams,
@@ -29,6 +27,10 @@ type SummaryCreateEntryMode = "pending" | "unified" | "legacy";
 
 interface SummaryListPageProps {
     channelId?: string;
+  /** Compact list styling for a host-owned workspace pane. */
+  embedded?: boolean;
+  /** Host-owned refresh signal for a controlled workspace. */
+  refreshKey?: number;
     /** Called when the user clicks the close button (panel mode only). */
     onClose?: () => void;
     /** Called when the user clicks "new summary" in panel mode. */
@@ -56,13 +58,19 @@ interface SummaryListPageState {
 export const getStatusOptions = () => [
     { value: "", label: t("summary.list.allStatus") },
     { value: TaskStatus.PENDING, label: getStatusLabel(TaskStatus.PENDING) },
-    { value: TaskStatus.PROCESSING, label: getStatusLabel(TaskStatus.PROCESSING) },
+  {
+    value: TaskStatus.PROCESSING,
+    label: getStatusLabel(TaskStatus.PROCESSING),
+  },
     { value: TaskStatus.COMPLETED, label: getStatusLabel(TaskStatus.COMPLETED) },
     { value: TaskStatus.FAILED, label: getStatusLabel(TaskStatus.FAILED) },
     { value: TaskStatus.CANCELLED, label: getStatusLabel(TaskStatus.CANCELLED) },
 ];
 
-export default class SummaryListPage extends Component<SummaryListPageProps, SummaryListPageState> {
+export default class SummaryListPage extends Component<
+  SummaryListPageProps,
+  SummaryListPageState
+> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
 
@@ -113,16 +121,18 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     private handleTaskRegenerated_ = () => this.loadData();
 
     private handleSummaryRead_ = (event: Event) => {
-        const detail = (event as CustomEvent<{
+    const detail = (
+      event as CustomEvent<{
             taskId: number;
             isUnread?: boolean;
             needsAttention?: boolean;
             hasPendingSubmission?: boolean;
-        }>).detail;
+      }>
+    ).detail;
         const taskId = detail?.taskId;
         if (!detail || !taskId) return;
         this.setState(({ items }) => ({
-            items: items.map(item => {
+      items: items.map((item) => {
                 if (item.task_id !== taskId) return item;
                 // 看过 ≠ 已提交（owner 2026-08-26）：标读不清除待提交红点。
                 //
@@ -134,13 +144,15 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 return {
                     ...item,
                     is_unread: detail.isUnread ?? false,
-                    has_pending_submission: pendingSubmission ?? item.has_pending_submission,
+          has_pending_submission:
+            pendingSubmission ?? item.has_pending_submission,
                     // 两个信号分开处理：
                     // ・邀请：新后端的 needsAttention 已包含它；旧后端省略字段时回退到卡片标记。
                     // ・待提交：新后端的 needs_attention 已含它，这里的 OR 是冗余安全网；
                     //   旧后端下 pendingSubmission 为 undefined，OR 不会凭空造出红点。
-                    needs_attention: (detail.needsAttention ?? Boolean(item.has_pending_invitation))
-                        || Boolean(pendingSubmission),
+          needs_attention:
+            (detail.needsAttention ?? Boolean(item.has_pending_invitation)) ||
+            Boolean(pendingSubmission),
                 };
             }),
         }));
@@ -157,7 +169,9 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         if (typeof taskId !== "number") return;
         // 只清「自己」——切 task 时旧详情卸载与新详情挂载的顺序不确定，
         // 仅当当前高亮正是这个 taskId 才清空，避免误清掉已切到的新卡片。
-        this.setState((state) => (state.activeTaskId === taskId ? { activeTaskId: null } : null));
+    this.setState((state) =>
+      state.activeTaskId === taskId ? { activeTaskId: null } : null
+    );
     };
 
     private handleNavMenuActivated_ = ({ menuId }: { menuId: string }) => {
@@ -171,15 +185,27 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         this.loadData();
         WKApp.mittBus.on("summary-space-changed", this.handleSpaceChanged_);
         WKApp.mittBus.on("wk:nav-menu-activated", this.handleNavMenuActivated_);
-        WKApp.mittBus.on("summary-list-refresh-requested" as any, this.handleListRefreshRequested_);
-        window.addEventListener("summary-task-regenerated", this.handleTaskRegenerated_);
+    WKApp.mittBus.on(
+      "summary-list-refresh-requested" as any,
+      this.handleListRefreshRequested_
+    );
+    window.addEventListener(
+      "summary-task-regenerated",
+      this.handleTaskRegenerated_
+    );
         window.addEventListener("summary-read", this.handleSummaryRead_);
         window.addEventListener("summary-detail-active", this.handleDetailActive_);
-        window.addEventListener("summary-detail-inactive", this.handleDetailInactive_);
+    window.addEventListener(
+      "summary-detail-inactive",
+      this.handleDetailInactive_
+    );
     }
 
     componentDidUpdate(prevProps: SummaryListPageProps) {
-        if (prevProps.channelId !== this.props.channelId) {
+    if (
+      prevProps.channelId !== this.props.channelId ||
+      prevProps.refreshKey !== this.props.refreshKey
+    ) {
             this.loadData();
         }
     }
@@ -191,11 +217,23 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         this.stopBatchPoll();
         WKApp.mittBus.off("summary-space-changed", this.handleSpaceChanged_);
         WKApp.mittBus.off("wk:nav-menu-activated", this.handleNavMenuActivated_);
-        WKApp.mittBus.off("summary-list-refresh-requested" as any, this.handleListRefreshRequested_);
-        window.removeEventListener("summary-task-regenerated", this.handleTaskRegenerated_);
+    WKApp.mittBus.off(
+      "summary-list-refresh-requested" as any,
+      this.handleListRefreshRequested_
+    );
+    window.removeEventListener(
+      "summary-task-regenerated",
+      this.handleTaskRegenerated_
+    );
         window.removeEventListener("summary-read", this.handleSummaryRead_);
-        window.removeEventListener("summary-detail-active", this.handleDetailActive_);
-        window.removeEventListener("summary-detail-inactive", this.handleDetailInactive_);
+    window.removeEventListener(
+      "summary-detail-active",
+      this.handleDetailActive_
+    );
+    window.removeEventListener(
+      "summary-detail-inactive",
+      this.handleDetailInactive_
+    );
     }
 
     async fetchData(): Promise<{ items: SummaryListItem[]; total: number }> {
@@ -235,7 +273,9 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         // 端点就是为了避开它）。一次 2s 的列表加载会把水位凭空抬高 2s，之后约
         // latency + ATTENTION_CACHE_TTL_MS 内发出的非 fresh 轮询读会被水位闸静默丢掉。
         const attentionIssuedAt = Date.now();
-        const attentionTicket = this.props.channelId ? null : beginSummaryAttentionRead(attentionIssuedAt);
+    const attentionTicket = this.props.channelId
+      ? null
+      : beginSummaryAttentionRead(attentionIssuedAt);
         // 票号是否已被成功消费。finally 里据此决定还不还号：成功 commit 后
         // 若把号还回去，等于给更早的陈旧快照开后门。
         let attentionCommitted = false;
@@ -248,7 +288,9 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         // Silent refresh keeps the existing error banner if any (round-8
         // yujiawei P2-2): a user-visible error the user already saw must
         // not be erased by an automatic background refresh.
-        this.setState(opts.silent ? { loading: true } : { loading: true, error: null });
+    this.setState(
+      opts.silent ? { loading: true } : { loading: true, error: null }
+    );
         try {
             const { pageSize, statusFilter, keyword } = this.state;
             const params: ListSummariesParams = {
@@ -265,7 +307,8 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             // drop setState on an unmounted fiber but the callback would
             // still be scheduled. Also bind the response to the Space that
             // issued it so an unmounted/late list cannot commit stale data.
-            if (!this.isMounted_ || WKApp.shared.currentSpaceId !== requestSpaceId) return;
+      if (!this.isMounted_ || WKApp.shared.currentSpaceId !== requestSpaceId)
+        return;
             // #1359 只有全局列表拥有写 NavRail badge 的职责。后端 count 虽然是
             // Space 级，但聊天侧栏是嵌入式 channel 实例，不应改写全局导航状态。
             // 用发请求前领的 ticket 提交：期间若有更新的读取发出，本次就是陈旧
@@ -274,7 +317,11 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 // 号在这里就销掉（commit 或 abandon 二者之一），finally 不再重复处理。
                 attentionCommitted = true;
                 if (Number.isFinite(resp.attention_count)) {
-                    commitSummaryAttentionBadge(attentionTicket, resp.attention_count as number, attentionIssuedAt);
+          commitSummaryAttentionBadge(
+            attentionTicket,
+            resp.attention_count as number,
+            attentionIssuedAt
+          );
                 } else {
                     // 不再 `?? 0`。那是 api/summaryApi.ts 的 assertAttentionCounts 这一轮
                     // 专门要消掉的静默归零模式：一个信封错位的响应（网关改包装、后端返回
@@ -288,7 +335,8 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                     abandonSummaryAttentionRead(attentionTicket);
                 }
             }
-            this.setState({
+      this.setState(
+        {
                 items: resp.items,
                 page: 1,
                 total: resp.total,
@@ -299,9 +347,11 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 // that sits above a perfectly fresh list.
                 error: null,
                 hasMore: resp.items.length < resp.total,
-            }, () => {
+        },
+        () => {
                 if (this.isMounted_) this.maybeStartBatchPoll();
-            });
+        }
+      );
         } catch (err: any) {
             if (seq !== this.loadDataSeq) return;
             if (!this.isMounted_) return;
@@ -313,7 +363,10 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 this.setState({ loading: false });
                 return;
             }
-            this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
+      this.setState({
+        error: err.message || t("summary.common.loadingFailed"),
+        loading: false,
+      });
         } finally {
             // Sequence-owned clear (round-9 yujiawei P2-2): with two
             // overlapping loadData calls, the older stale one returning
@@ -345,8 +398,13 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         // isLoadingData is a synchronous flag set at loadData entry: closes
         // the "loadData started first, scroll fires before React commits
         // loading:true" ordering that reading state.loading would miss.
-        if (this.state.loadingMore || !this.state.hasMore
-            || this.state.loading || this.isLoadingData) return;
+    if (
+      this.state.loadingMore ||
+      !this.state.hasMore ||
+      this.state.loading ||
+      this.isLoadingData
+    )
+      return;
         // Also capture loadDataSeq: if any loadData starts and bumps it
         // while our request is in flight, the list will be reset under us
         // and our appended batch would splice a hole. Discard on mismatch.
@@ -369,12 +427,15 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 this.setState({ loadingMore: false });
                 return;
             }
-            this.setState(prev => ({
+      this.setState(
+        (prev) => ({
                 items: [...prev.items, ...resp.items],
                 page: nextPage,
                 loadingMore: false,
                 hasMore: prev.items.length + resp.items.length < resp.total,
-            }), () => this.maybeStartBatchPoll());
+        }),
+        () => this.maybeStartBatchPoll()
+      );
         } catch {
             this.setState({ loadingMore: false });
         }
@@ -382,12 +443,13 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
 
     private maybeStartBatchPoll() {
         const activeIds = this.state.items
-            .filter(item =>
+      .filter(
+        (item) =>
                 item.status === TaskStatus.PENDING ||
                 item.status === TaskStatus.WAITING_CONFIRM ||
                 item.status === TaskStatus.PROCESSING
             )
-            .map(item => item.task_id);
+      .map((item) => item.task_id);
 
         if (activeIds.length === 0) {
             this.stopBatchPoll();
@@ -397,12 +459,13 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         this.stopBatchPoll();
         this.batchPollTimer = setInterval(() => {
             const currentActiveIds = this.state.items
-                .filter(item =>
+        .filter(
+          (item) =>
                     item.status === TaskStatus.PENDING ||
                     item.status === TaskStatus.WAITING_CONFIRM ||
                     item.status === TaskStatus.PROCESSING
                 )
-                .map(item => item.task_id);
+        .map((item) => item.task_id);
             if (currentActiveIds.length === 0) {
                 this.stopBatchPoll();
                 return;
@@ -416,11 +479,13 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         this.isBatchPolling = true;
         try {
             const updates = await api.batchStatus(taskIds);
-            window.dispatchEvent(new CustomEvent("summary-batch-heartbeat", { detail: { taskIds } }));
-            const updateMap = new Map(updates.map(u => [u.id, u]));
+      window.dispatchEvent(
+        new CustomEvent("summary-batch-heartbeat", { detail: { taskIds } })
+      );
+      const updateMap = new Map(updates.map((u) => [u.id, u]));
             let changed = false;
             const changedIds: number[] = [];
-            const newItems = this.state.items.map(item => {
+      const newItems = this.state.items.map((item) => {
                 const update = updateMap.get(item.task_id);
                 if (update && update.status !== item.status) {
                     changed = true;
@@ -444,7 +509,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 // 保留 items 里的 non-terminal 状态,下次 poll tick 依然 detect
                 // change → 自动 retry refresh。渲染层因 loading:true 会 unmount
                 // 列表容器,用户看不到瞬时的 "still-non-terminal" 状态。
-                const hasTerminal = changedIds.some(id => {
+        const hasTerminal = changedIds.some((id) => {
                     const u = updateMap.get(id);
                     return !!u && isTerminalStatus(u.status);
                 });
@@ -456,7 +521,11 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                         this.maybeStartBatchPoll();
                     });
                 }
-                window.dispatchEvent(new CustomEvent("summary-status-change", { detail: { taskIds: changedIds } }));
+        window.dispatchEvent(
+          new CustomEvent("summary-status-change", {
+            detail: { taskIds: changedIds },
+          })
+        );
             }
         } catch {
             // ignore
@@ -530,14 +599,19 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         const fresh = await this.fetchData();
         if (fresh.items.length > 0) {
             const next = fresh.items[0];
-            this.setState({ activeTaskId: next.task_id, items: fresh.items, total: fresh.total }, () => {
+      this.setState(
+        { activeTaskId: next.task_id, items: fresh.items, total: fresh.total },
+        () => {
                 if (this.props.onViewDetail) {
                     this.props.onViewDetail(next.task_id);
                 } else {
                     WKApp.routeRight.popToRoot();
-                    WKApp.routeRight.push(<SummaryDetailPage taskId={next.task_id} emitSelection />);
+            WKApp.routeRight.push(
+              <SummaryDetailPage taskId={next.task_id} emitSelection />
+            );
                 }
-            });
+        }
+      );
         } else {
             this.setState({ items: [], total: 0, activeTaskId: null }, () => {
                 this.openCapabilityGatedCreate();
@@ -551,7 +625,9 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             this.props.onViewDetail(taskId);
         } else {
             WKApp.routeRight.popToRoot();
-            WKApp.routeRight.push(<SummaryDetailPage taskId={taskId} emitSelection />);
+      WKApp.routeRight.push(
+        <SummaryDetailPage taskId={taskId} emitSelection />
+      );
         }
     };
 
@@ -569,7 +645,11 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     handleRespond = async (taskId: number, action: "accept" | "reject") => {
         try {
             await api.respondToTask(taskId, action);
-            Toast.success(action === "accept" ? t("summary.action.accepted") : t("summary.action.rejected"));
+      Toast.success(
+        action === "accept"
+          ? t("summary.action.accepted")
+          : t("summary.action.rejected")
+      );
             this.loadData();
         } catch (err: any) {
             Toast.error(err.message || t("summary.common.operationFailed"));
@@ -578,7 +658,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
 
     handleRetry = async (taskId: number) => {
         try {
-            const task = this.state.items.find(i => i.task_id === taskId);
+      const task = this.state.items.find((i) => i.task_id === taskId);
             await api.regenerateSummary(taskId, { topic: task?.title || "" });
             Toast.success(t("summary.list.retrySuccess"));
             this.loadData();
@@ -600,7 +680,9 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     handleRegenerate = (taskId: number) => {
         this.handleCardClick(taskId);
         setTimeout(() => {
-            window.dispatchEvent(new CustomEvent("summary-detail-regenerate", { detail: { taskId } }));
+      window.dispatchEvent(
+        new CustomEvent("summary-detail-regenerate", { detail: { taskId } })
+      );
         }, 300);
     };
 
@@ -621,7 +703,9 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         // 300ms delay allows detail page to mount and register event listener
         // before dispatching the edit action event
         setTimeout(() => {
-            window.dispatchEvent(new CustomEvent("summary-detail-edit", { detail: { taskId } }));
+      window.dispatchEvent(
+        new CustomEvent("summary-detail-edit", { detail: { taskId } })
+      );
         }, 300);
     };
 
@@ -688,13 +772,20 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         const { channelId, onClose } = this.props;
         const { locale, t: translate } = this.context;
         const statusOptions = getStatusOptions();
-        const isPanel = Boolean(channelId);
+    const isPanel = Boolean(channelId) || this.props.embedded === true;
 
         return (
-            <div data-testid={summaryTestIds.list} className={`summary-list-page${isPanel ? " summary-list-page--panel" : ""}`}>
+      <div
+        data-testid={summaryTestIds.list}
+        className={`summary-list-page${
+          isPanel ? " summary-list-page--panel" : ""
+        }`}
+      >
                 <div className="summary-list-header">
                     <h2 className="summary-list-title">
-                        {isPanel ? translate("summary.chatSummary.panelTitle") : translate("summary.list.title")}
+            {isPanel
+              ? translate("summary.chatSummary.panelTitle")
+              : translate("summary.list.title")}
                     </h2>
                     <div className="summary-list-header-actions">
                         {createEntryMode === "legacy" ? (
@@ -779,8 +870,14 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                             </Dropdown.Menu>
                         }
                     >
-                        <div data-testid={summaryTestIds.listStatusFilter} className="summary-list-status-trigger">
-                            <span>{statusOptions.find((o) => o.value === (statusFilter ?? ""))?.label ?? statusOptions[0]?.label}</span>
+            <div
+              data-testid={summaryTestIds.listStatusFilter}
+              className="summary-list-status-trigger"
+            >
+              <span>
+                {statusOptions.find((o) => o.value === (statusFilter ?? ""))
+                  ?.label ?? statusOptions[0]?.label}
+              </span>
                             <ChevronDown size={14} />
                         </div>
                     </Dropdown>
@@ -796,7 +893,9 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                     >
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <span>{translate("summary.list.networkError")}</span>
-                            <Button size="small" onClick={() => this.loadData()}>{translate("summary.common.retry")}</Button>
+              <Button size="small" onClick={() => this.loadData()}>
+                {translate("summary.common.retry")}
+              </Button>
                         </div>
                     </Banner>
                 )}
@@ -830,7 +929,9 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                         ) : (
                             <>
                                 <div className="summary-list-empty-icon">📄</div>
-                                <div className="summary-list-empty-title">{translate("summary.list.emptyTitle")}</div>
+                <div className="summary-list-empty-title">
+                  {translate("summary.list.emptyTitle")}
+                </div>
                                 <div className="summary-list-empty-desc">
                                     {translate("summary.list.emptyDesc")}
                                 </div>
@@ -853,7 +954,11 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 )}
 
                 {!loading && items.length > 0 && (
-                    <div data-testid={summaryTestIds.listContent} className="summary-list-content" onScroll={this.handleScroll}>
+          <div
+            data-testid={summaryTestIds.listContent}
+            className="summary-list-content"
+            onScroll={this.handleScroll}
+          >
                         {items.map((item) => (
                             <SummaryCard
                                 key={item.task_id}

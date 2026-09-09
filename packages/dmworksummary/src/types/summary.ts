@@ -3,7 +3,7 @@ export const SummaryMode = {
     BY_GROUP: 1,
     BY_PERSON: 2,
 } as const;
-export type SummaryModeType = typeof SummaryMode[keyof typeof SummaryMode];
+export type SummaryModeType = (typeof SummaryMode)[keyof typeof SummaryMode];
 
 /** 任务状态 */
 export const TaskStatus = {
@@ -14,7 +14,7 @@ export const TaskStatus = {
     FAILED: 4,
     CANCELLED: 5,
 } as const;
-export type TaskStatusType = typeof TaskStatus[keyof typeof TaskStatus];
+export type TaskStatusType = (typeof TaskStatus)[keyof typeof TaskStatus];
 
 /** 触发类型 */
 export const TriggerType = {
@@ -23,7 +23,7 @@ export const TriggerType = {
     AGENT: 3,
     BOT: 4,
 } as const;
-export type TriggerTypeType = typeof TriggerType[keyof typeof TriggerType];
+export type TriggerTypeType = (typeof TriggerType)[keyof typeof TriggerType];
 
 /** 信息来源类型 */
 export const SourceType = {
@@ -31,7 +31,7 @@ export const SourceType = {
     THREAD: 2,
     DIRECT_MESSAGE: 3,
 } as const;
-export type SourceTypeValue = typeof SourceType[keyof typeof SourceType];
+export type SourceTypeValue = (typeof SourceType)[keyof typeof SourceType];
 
 /** 参与者状态 */
 export const ParticipantStatus = {
@@ -217,6 +217,25 @@ export interface SummaryListItem {
     reference_unavailable_reason?: string | null;
 }
 
+export interface SummaryReferenceTask {
+  task_id: number;
+  title: string;
+  task_no?: string;
+  topic?: string;
+  summary_mode?: SummaryModeType;
+  status?: TaskStatusType;
+  trigger_type?: number;
+  creator_id?: string;
+  time_range_start?: string;
+  time_range_end?: string;
+  sources?: SourceItem[];
+  total_msg_count?: number;
+  origin_channel_id?: string;
+  origin_channel_type?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 /** 详情 */
 export interface SummaryDetail {
     task_id: number;
@@ -358,18 +377,18 @@ export interface CreateAgentSummaryParams {
 
 /**
  * v2 完成判定(SS-07 / SS-11)。COMPLETE = 完整交付;PARTIAL = 有覆盖缺口;
- * FAILED = 总结已保存，但质量门发现硬性缺口。PARTIAL / FAILED 都应向用户展示 gaps 警示。
+ * FAILED = 总结已保存，但质量门发现硬性缺口。该字段用于内部诊断，不改变用户保存成功语义。
  */
 export type FinishStatus = 'COMPLETE' | 'PARTIAL' | 'FAILED';
 
 /**
- * v2 覆盖/质量缺口(SS-07 finishgate.Gap)。用于 PARTIAL / FAILED 时向用户披露具体问题。
+ * v2 覆盖/质量缺口(SS-07 finishgate.Gap)。保留为内部诊断信息，不直接向用户展示。
  */
 export interface CoverageGap {
-    /** 缺口种类,如 tool_error / coverage / evidence 等(后端枚举,前端按需归类展示)。 */
+    /** 缺口种类,如 tool_error / coverage / evidence 等；前端仅用于内部诊断聚合。 */
     kind: string;
-    /** 人类可读的缺口说明。 */
-    detail: string;
+    /** 可选的人类可读缺口说明；不向用户展示，也不随诊断埋点上报。 */
+    detail?: string;
     /** 可选:关联的结构化错误码。 */
     error_code?: string;
 }
@@ -386,11 +405,11 @@ export interface CreateAgentSummaryResult {
     created_at: string;
     /** v2:COMPLETE / PARTIAL / FAILED；三者都表示保存请求已成功。 */
     finish_status?: FinishStatus;
-    /** v2:PARTIAL / FAILED 时的缺口清单;COMPLETE 时为空数组。 */
+    /** v2:PARTIAL / FAILED 时的内部诊断清单；前端仅聚合首个 kind，不展示 detail。 */
     gaps?: CoverageGap[];
 }
 export interface ChatMessage {
-    role: 'user' | 'assistant';
+  role: "user" | "assistant";
     content: string;
 }
 
@@ -416,7 +435,9 @@ export interface AgentChatParams {
     /** v2 预留:后端可能返回 run_id；当前保存链路使用 request_id 绑定 Run。 */
     run_id?: string;
     /** 用户在 UI 中明确选定、希望 agent 默认处理的聊天。 */
-    selected_channels?: Array<Pick<ChatCandidate, 'chat_id' | 'chat_type' | 'name' | 'is_archived'>>;
+  selected_channels?: Array<
+    Pick<ChatCandidate, "chat_id" | "chat_type" | "name" | "is_archived">
+  >;
 }
 
 /** Agent 对话响应（post() 已解包 data） */
@@ -454,7 +475,7 @@ export interface AgentProgressEvent {
      * 抽象阶段枚举（后端脱敏，不再暴露原始工具名）：
      * understand 理解需求 | retrieve 检索 | filter 筛选 | distill 提炼 | compose 汇总 | reply 生成回复
      */
-    phase: 'understand' | 'retrieve' | 'filter' | 'distill' | 'compose' | 'reply';
+  phase: "understand" | "retrieve" | "filter" | "distill" | "compose" | "reply";
     step: number;
     ofSteps: number;
     elapsed_ms: number;
@@ -602,7 +623,7 @@ export interface CreateScheduleParams {
      * 校验 task 归属 → 建定时 → Update summary_task.schedule_id 绑定（一对一约束）。
      * 不带 scope 的旧两步式（create 再 update 绑定）已被后端 C1 直接 400 拒绝。
      */
-    scope?: 'task';
+  scope?: "task";
     /** scope==='task' 时必填：把新建定时原子绑定到该 task。 */
     task_id?: number;
     /**
@@ -634,7 +655,7 @@ export interface UpdateScheduleParams {
      * mutating the shared row. Omit (schedule list page) to edit the template
      * in place.
      */
-    scope?: 'task';
+  scope?: "task";
     /** Required when scope === 'task': the task whose schedule_id is rebound. */
     task_id?: number;
     /**
@@ -737,7 +758,7 @@ export interface TopicTemplate {
     label: string;
     icon: string;
     description: string;
-    type: 'fixed' | 'parameterized';
+  type: "fixed" | "parameterized";
     pattern: string;
     placeholders?: TopicTemplatePlaceholder[];
     is_custom?: boolean;
@@ -770,7 +791,7 @@ export interface LocalTopicTemplatePlaceholder {
 export interface LocalTopicTemplate {
     id: string;
     icon: string;
-    type: 'fixed' | 'parameterized';
+  type: "fixed" | "parameterized";
     labelKey: string;
     descriptionKey: string;
     patternKey: string;

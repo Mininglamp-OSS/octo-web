@@ -1,0 +1,99 @@
+.summary-workspace {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+}
+
+.summary-workspace--list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.summary-workspace__list,
+.summary-workspace__content,
+.summary-workspace__page {
+  min-width: 0;
+  min-height: 0;
+}
+
+.summary-workspace__list {
+  overflow: hidden;
+  border-right: 1px solid var(--wk-line-color);
+}
+
+.summary-workspace--list .summary-workspace__list {
+  border-right: 0;
+}
+
+.summary-workspace__list .summary-list-page {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+.summary-workspace__content,
+.summary-workspace__page {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.summary-workspace__page {
+  flex: 1;
+}
+
+.summary-workspace__page > * {
+  width: 100%;
+  max-width: none;
+}
+
+/* The embedded detail shares its viewport with the list and host navigation. */
+.summary-workspace .summary-detail-title-row {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.summary-workspace .summary-detail-header-title-wrap {
+  flex: 1 1 240px;
+}
+
+.summary-workspace .summary-detail-header-actions {
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.summary-workspace__mobile-back {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--wk-line-color);
+  color: var(--wk-text-secondary);
+  background: var(--wk-bg-surface);
+  cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .summary-workspace {
+    display: block;
+  }
+
+  .summary-workspace:not(.summary-workspace--list) .summary-workspace__list {
+    display: none;
+  }
+
+  .summary-workspace__content {
+    height: 100%;
+  }
+
+  .summary-workspace__mobile-back {
+    display: flex;
+  }
+}

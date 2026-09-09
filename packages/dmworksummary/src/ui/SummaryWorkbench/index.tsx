@@ -60,6 +60,9 @@ const SummaryWorkbench = ({
   const composerContextItems = state.contextItems.filter(
     (item) => item.kind !== REFERENCE_CONTEXT_KIND
   );
+  // Reference items are already capped at one entry by `toWorkbenchScope`
+  // (see PR #1637 P1 fix — normalization at the decode boundary), so no
+  // further slicing is required here.
   const referenceContextItems = state.contextItems.filter(
     (item) => item.kind === REFERENCE_CONTEXT_KIND
   );
@@ -421,27 +424,59 @@ const SummaryWorkbench = ({
           </div>
           <div className="wk-summary-workbench__header-actions">
             <div className="wk-summary-workbench__reference-context">
-              <WKButton
-                type="button"
-                size="sm"
-                variant="ghost"
-                className={
-                  referenceContextItems.length > 0
-                    ? "wk-summary-workbench-context__trigger--active"
-                    : undefined
-                }
-                aria-pressed={referenceContextItems.length > 0}
-                disabled={isComposerDisabled}
-                onClick={() => actions.onOpenContext(REFERENCE_CONTEXT_KIND)}
-              >
-                {t(CONTEXT_LABEL_KEYS[REFERENCE_CONTEXT_KIND])}
-              </WKButton>
+              {referenceContextItems.length === 0 && (
+                <WKButton
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={isComposerDisabled}
+                  onClick={() => actions.onOpenContext(REFERENCE_CONTEXT_KIND)}
+                >
+                  {t(CONTEXT_LABEL_KEYS[REFERENCE_CONTEXT_KIND])}
+                </WKButton>
+              )}
               {referenceContextItems.map((item) => (
                 <span
-                  className="wk-summary-workbench-context__item"
+                  className="wk-summary-workbench-context__item wk-summary-workbench-context__item--reference"
                   key={`${item.kind}:${item.id}`}
                 >
-                  <span>{item.label}</span>
+                  <WKButton
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className={`wk-summary-workbench-context__reference-open${
+                      state.referencePreviewOpen
+                        ? " wk-summary-workbench-context__reference-open--active"
+                        : ""
+                    }`}
+                    // Read-only disclosure toggle — gate only on hydration, not on
+                    // isSending. Opening/collapsing the side panel mutates no scope,
+                    // and the user often wants to re-read the referenced summary
+                    // exactly while an agent generation is in flight.
+                    disabled={Boolean(state.isHydrating)}
+                    aria-expanded={Boolean(state.referencePreviewOpen)}
+                    aria-controls={
+                      state.referencePreviewOpen
+                        ? state.referencePreviewId
+                        : undefined
+                    }
+                    aria-label={`${t(
+                      CONTEXT_LABEL_KEYS[REFERENCE_CONTEXT_KIND]
+                    )}: ${item.label}`}
+                    onClick={() =>
+                      actions.onOpenContext(REFERENCE_CONTEXT_KIND)
+                    }
+                  >
+                    <span className="wk-summary-workbench-context__reference-title">
+                      {item.label}
+                    </span>
+                    <span
+                      className="wk-summary-workbench-context__reference-chevron"
+                      aria-hidden="true"
+                    >
+                      ›
+                    </span>
+                  </WKButton>
                   <WKButton
                     type="button"
                     size="sm"
@@ -593,7 +628,10 @@ const SummaryWorkbench = ({
                   iconOnly
                   icon={<span aria-hidden="true">×</span>}
                   className="wk-summary-workbench-context__remove"
-                  disabled={isComposerDisabled}
+                  disabled={
+                    isComposerDisabled ||
+                    (item.kind === "template" && Boolean(state.templateLocked))
+                  }
                   aria-label={t("summary.workbench.context.remove", {
                     values: {
                       label: item.label,

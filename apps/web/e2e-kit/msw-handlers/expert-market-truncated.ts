@@ -1,8 +1,6 @@
 import { http, HttpResponse } from "msw";
 
-// Unified plugin surface (octo-marketplace). The list fetch caps at page_size
-// 100 while the true total is 101, so the page renders the "仅显示前 100 项"
-// truncation notice (total from pagination.total exceeds the loaded slice).
+// Apply keyword filtering before pagination, matching the unified plugin API.
 const API_BASE = "/market/api/v1";
 
 function enabled(): boolean {
@@ -38,36 +36,39 @@ const firstPlugin = {
   updated_at: "2026-07-20T08:00:00Z",
 };
 
-// 100 loaded rows against a true total of 101 → one page over the cap.
-const plugins = [
-  firstPlugin,
-  ...Array.from({ length: 99 }, (_, index) => ({
-    ...firstPlugin,
-    plugin_id: `catalog-expert-${index + 2}`,
-    plugin_name: `目录专家${index + 2}`,
-    visibility: "space" as const,
-    tags: ["目录"],
-    manifest_json: {
-      name: `catalog-expert-${index + 2}`,
-      description: `用于分页边界验证的目录专家 ${index + 2}。`,
-      labels: ["目录"],
-    },
-  })),
-];
+// Production regression: matching names at positions 66 and 112.
+const plugins = Array.from({ length: 112 }, (_, index) => ({
+  ...firstPlugin,
+  plugin_id: `catalog-expert-${index + 1}`,
+  plugin_name: index === 65 ? "数据分析报告专家" : index === 111 ? "数据分析报告师" : `目录专家${index + 1}`,
+  tags: index === 111 ? ["rare-report"] : index < 50 ? [`topic-${index}`] : firstPlugin.tags,
+}));
 
 export const expertMarketTruncatedHandlers = [
-  http.get(`*${API_BASE}/plugins`, () => {
+  http.get(`*${API_BASE}/plugins`, ({ request }) => {
     if (!enabled()) return undefined;
+    const params = new URL(request.url).searchParams;
+    const q = (params.get("q") ?? "").toLowerCase();
+    const page = Number(params.get("page") ?? 1);
+    const pageSize = Number(params.get("page_size") ?? 100);
+    const tags = [...params.getAll("tag"), ...params.getAll("tag[]")];
+    const filtered = plugins.filter((plugin) => plugin.plugin_name.toLowerCase().includes(q) && tags.every((tag) => plugin.tags.includes(tag)));
     return HttpResponse.json({
-      data: plugins,
-      pagination: { total: 101, page: 1, page_size: 100 },
+      data: filtered.slice((page - 1) * pageSize, page * pageSize),
+      pagination: { total: filtered.length, page, page_size: pageSize },
     });
+  }),
+  http.get(`*${API_BASE}/plugin_tags`, ({ request }) => {
+    if (!enabled()) return undefined;
+    const tags = Array.from(new Set(plugins.flatMap((plugin) => plugin.tags)));
+    const q = (new URL(request.url).searchParams.get("q") ?? "").toLowerCase();
+    return HttpResponse.json({ data: tags.filter((name) => name.toLowerCase().includes(q)).slice(0, 50).map((name) => ({ name, count: 1 })) });
   }),
   http.get(`*${API_BASE}/plugin_categories`, () => {
     if (!enabled()) return undefined;
     return HttpResponse.json({
       data: [
-        { category_id: "dev-tools", name: "研发工具", sort_order: 0, plugin_count: 101 },
+        { category_id: "dev-tools", name: "研发工具", sort_order: 0, plugin_count: 112 },
       ],
     });
   }),

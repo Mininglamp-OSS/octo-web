@@ -106,9 +106,11 @@ async function enableMocksIfE2E(): Promise<void> {
   if (import.meta.env.VITE_E2E_MOCK !== "1") return;
   const readiness = window as unknown as {
     __MSW_READY__?: boolean;
+    __MSW_READY_AT__?: number;
     __MSW_ERROR__?: string;
   };
   readiness.__MSW_READY__ = false;
+  delete readiness.__MSW_READY_AT__;
   delete readiness.__MSW_ERROR__;
   try {
     const { worker } = await import("./mocks/browser");
@@ -139,12 +141,15 @@ async function enableMocksIfE2E(): Promise<void> {
     }
     const w = window as unknown as {
       __MSW_READY__: boolean;
+      __MSW_READY_AT__?: number;
       __msw?: { worker: typeof worker; http: typeof msw.http; HttpResponse: typeof msw.HttpResponse };
     };
     w.__msw = { worker, http: msw.http, HttpResponse: msw.HttpResponse };
+    w.__MSW_READY_AT__ = Date.now();
     w.__MSW_READY__ = true;
     const markDocumentNotReady = () => {
       w.__MSW_READY__ = false;
+      delete w.__MSW_READY_AT__;
     };
     window.addEventListener("pagehide", markDocumentNotReady, { once: true });
     window.addEventListener("beforeunload", markDocumentNotReady, { once: true });

@@ -132,6 +132,7 @@
 .summary-detail-content-scroll {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 0;
     background: var(--wk-bg-surface);
 }
@@ -1044,10 +1045,11 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     min-height: 49px;
     padding: 12px 24px;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 16px;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
+    row-gap: 8px;
     border-bottom: 1px solid var(--wk-border-subtle);
     background: var(--wk-bg-surface);
     position: relative;
@@ -1093,7 +1095,7 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    flex: 1;
+    flex: 1 1 240px;
     min-width: 0;
 }
 
@@ -1115,7 +1117,8 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     gap: 6px;
     flex-wrap: wrap;
     justify-content: flex-end;
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    max-width: 100%;
     min-width: 0;
 }
 
@@ -2279,6 +2282,30 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
         padding: 20px 16px;
     }
 
+    .summary-detail-title-row {
+        padding: 12px 20px;
+    }
+
+    .summary-detail-content-inner {
+        padding: 20px 24px;
+    }
+
+    .summary-detail-result,
+    .summary-detail-personal,
+    .summary-detail-team,
+    .summary-detail-members {
+        padding: 20px;
+    }
+
+    .summary-content-markdown code {
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .summary-content-markdown pre code {
+        white-space: pre;
+    }
+
     .summary-create-footer {
         gap: 8px;
     }
@@ -2891,6 +2918,21 @@ body[theme-mode="dark"] .summary-template-create-btn:hover {
         padding: 16px 12px;
     }
 
+    .summary-detail-title-row {
+        padding: 12px 16px;
+    }
+
+    .summary-detail-content-inner {
+        padding: 16px;
+    }
+
+    .summary-detail-result,
+    .summary-detail-personal,
+    .summary-detail-team,
+    .summary-detail-members {
+        padding: 16px;
+    }
+
     .summary-list-header {
         flex-direction: column;
         align-items: flex-start;
@@ -3067,8 +3109,19 @@ body[theme-mode="dark"] .summary-template-create-btn:hover {
 }
 
 .wk-summary-panel-detail .summary-detail-header-actions {
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     justify-content: flex-end;
+    max-width: 100%;
+}
+
+.wk-summary-panel-detail .summary-detail-title-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    row-gap: 8px;
+}
+
+.wk-summary-panel-detail .summary-detail-header-title-wrap {
+    flex: 1 1 240px;
 }
 
 /* flex 子项默认 min-width:auto 会被长内容撑破，统一兜底 */

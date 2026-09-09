@@ -69,8 +69,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: calc(var(--wk-sp-6) + var(--wk-sp-1));
-  height: calc(var(--wk-sp-6) + var(--wk-sp-1));
+  width: var(--wk-sp-10);
+  height: var(--wk-sp-10);
   border-radius: var(--wk-avatar-radius);
   object-fit: cover;
 }

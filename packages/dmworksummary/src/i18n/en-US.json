@@ -260,9 +260,7 @@
       "participantsPrunedArtifactInvalidated": "Participant access changed. The previous result remains in history; generate a new result to continue.",
       "participantCandidatesLoadFailed": "Some group members failed to load. Try again.",
       "participantsUnsupportedForSelectedChats": "Participants require group chats only, with no more than 30 chats selected.",
-      "selectSingleChatForParticipants": "Participant selection supports up to 30 group chats only.",
-      "savedWithQualityGap": "Summary saved with a quality warning: {{detail}}",
-      "savedWithQualityGateWarning": "Summary saved, but it did not pass the full quality check. Please review before use."
+      "selectSingleChatForParticipants": "Participant selection supports up to 30 group chats only."
     },
     "errors": {
       "network": "Network error. Try again later.",
@@ -503,6 +501,7 @@
     "scheduleSaved": "Scheduled update saved",
     "scheduleCreated": "Scheduled update created",
     "forwardFailed": "Failed to forward",
+    "forwardContextChanged": "The forwarding context changed. Please reopen the summary and try again.",
     "partialForwardFailed": "Failed to forward to some channels ({{failed}}/{{total}})",
     "forwarded": "Forwarded",
     "forwardToChat": "Forward to chat",
@@ -732,6 +731,7 @@
     "buttonTip": "Click to reference an existing summary",
     "badge": "Referenced",
     "remove": "Remove reference",
+    "closePreview": "Close preview",
     "previewTitle": "Summary preview",
     "previewLatestHint": "Showing the latest version of this summary (may have been updated since you referenced it)",
     "previewNotFound": "This summary was deleted or you don't have access",

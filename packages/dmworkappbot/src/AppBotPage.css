@@ -6,12 +6,6 @@
   background: var(--wk-bg-surface);
 }
 
-.appbot-chat-wrap {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
 .appbot-toast {
   position: fixed;
   top: var(--wk-sp-4);

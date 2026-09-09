@@ -833,8 +833,29 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         );
     });
 
-    it.each(['PARTIAL', 'FAILED'] as const)('shows the first quality gap after a %s legacy Agent save', async (finishStatus) => {
+    it('records a missing legacy verdict as unreported without changing save success', async () => {
         const { Toast } = await import('@douyinfe/semi-ui');
+        const trackSpy = vi.spyOn(Dap.shared, 'track');
+        vi.mocked(api.createAgentSummary).mockResolvedValueOnce({
+            task_id: 1, task_no: 'SUM-1', status: 3, created_at: '2026-09-07T08:00:00Z',
+        });
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({ sessionId: 'sess-unreported', mode: 'agent' });
+        });
+        await act(async () => { await instance.handleSaveAsSummary('t'); });
+        const events = trackSpy.mock.calls.filter(([name]) => name === 'smart_summary_quality_gate');
+        expect(events).toHaveLength(1);
+        expect(events[0][1]).toMatchObject({ task_id: 1, finish_status: 'unreported', gap_count: 0 });
+        expect(events[0][1]).not.toHaveProperty('first_gap_kind');
+        expect(Toast.success).toHaveBeenCalledWith('AI 总结已保存');
+        expect(Toast.warning).not.toHaveBeenCalled();
+        expect(isAgentSummaryNotificationEligible(1)).toBe(true);
+    });
+
+    it.each(['PARTIAL', 'FAILED'] as const)('keeps save success for a created legacy task with an internal %s quality verdict (owner-confirmed P1 policy)', async (finishStatus) => {
+        const { Toast } = await import('@douyinfe/semi-ui');
+        const trackSpy = vi.spyOn(Dap.shared, 'track');
         (api.createAgentSummary as any).mockResolvedValueOnce({
             task_id: 1,
             finish_status: finishStatus,
@@ -847,8 +868,18 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
 
         await act(async () => { await instance.handleSaveAsSummary('t'); });
 
-        expect(Toast.warning).toHaveBeenCalledWith('总结已保存，但存在质量缺口：引用完整性校验失败');
-        expect(Toast.success).not.toHaveBeenCalled();
+        expect(Toast.success).toHaveBeenCalledWith('AI 总结已保存');
+        expect(Toast.warning).not.toHaveBeenCalled();
+        expect(trackSpy).toHaveBeenCalledWith(
+            'smart_summary_quality_gate',
+            expect.objectContaining({
+                task_id: 1,
+                finish_status: finishStatus,
+                gap_count: 1,
+                first_gap_kind: 'citation',
+                trigger_mode: 'agent',
+            }),
+        );
     });
 });
 

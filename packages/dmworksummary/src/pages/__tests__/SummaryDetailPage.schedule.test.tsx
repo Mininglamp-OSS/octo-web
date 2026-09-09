@@ -61,6 +61,9 @@ import { WKApp, Dap } from '@octo/base';
 import SummaryDetailPage from '../SummaryDetailPage';
 import { refreshSummaryAttentionBadge } from '../../utils/summaryAttentionBadge';
 import { summaryTestIds } from '../../utils/testIds';
+import { SummaryForwardContextExpiredError } from '../../host/forwardErrors';
+import type { SummaryForwardRequest, SummaryMessagingPort } from '../../host/types';
+import { Toast } from '@douyinfe/semi-ui';
 
 vi.mock('../../api/summaryApi');
 
@@ -72,6 +75,32 @@ function makePage(taskId: number | string) {
     };
     return page;
 }
+
+describe('SummaryDetailPage forwarding feedback', () => {
+    it('reports an expired context separately from a normal send failure', () => {
+        const requestForward = vi.fn<(request: SummaryForwardRequest) => void>();
+        const messaging: SummaryMessagingPort = {
+            getCurrentUser: () => ({ uid: 'me', displayName: 'Me' }),
+            loadConversationMembers: async () => [],
+            openConversation: async () => {},
+            notifySummaryCompleted: async () => {},
+            requestForward,
+            subscribeInvalidation: () => () => {},
+        };
+        const page = new SummaryDetailPage({ taskId: 1, messaging });
+        page.state = {
+            ...page.state,
+            detail: baseDetail({ result: { content: 'Summary text' } }) as any,
+        };
+        page.handleForwardToChat();
+        const request = requestForward.mock.calls[0][0];
+        request.onError?.(new SummaryForwardContextExpiredError());
+        expect(Toast.error).toHaveBeenLastCalledWith('转发上下文已变化，请重新打开总结后重试。');
+        request.onError?.(new Error('network'));
+        expect(Toast.error).toHaveBeenLastCalledWith('转发失败');
+        expect(request.onCancel).toBeUndefined();
+    });
+});
 
 describe('SummaryDetailPage — 历史版本引用隐私', () => {
     it('团队历史预览默认隐藏原始聊天引用', () => {
@@ -2114,6 +2143,43 @@ describe('批次B 需求7：成员状态区「添加成员」按钮 gate=can_add
         vi.mocked(api.addMembers).mockResolvedValue(undefined as any);
         await api.addMembers(9, ['a', 'b']);
         expect(api.addMembers).toHaveBeenCalledWith(9, ['a', 'b']);
+    });
+});
+
+describe('SummaryDetailPage — 添加成员：messaging 面板模式走 Modal，Web 走 routeRight', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    const messagingPort = () => ({
+        getCurrentUser: () => ({ uid: 'me', displayName: 'Me' }),
+        loadConversationMembers: vi.fn(async () => []),
+        openConversation: vi.fn(async () => {}),
+        notifySummaryCompleted: vi.fn(async () => {}),
+        requestForward: vi.fn(),
+        subscribeInvalidation: vi.fn(() => () => {}),
+    });
+
+    it('未传 messaging：handleOpenAddMember 仍走默认 routeRight 路由', () => {
+        const page = makePage(1);
+        page.state = { ...(page.state as any), detail: multiCollabDetail({ can_add_member: true }) };
+        const push = vi.spyOn(WKApp.routeRight, 'push');
+        (page as any).handleOpenAddMember();
+        expect(push).toHaveBeenCalled();
+        expect(page.state.showAddMemberModal).toBe(false);
+        push.mockRestore();
+    });
+
+    it('传 messaging：不调 routeRight，改为打开添加成员 Modal', () => {
+        const page = new SummaryDetailPage({ taskId: 1, messaging: messagingPort() } as any);
+        (page as any).context = { t: (k: string) => k };
+        (page as any).setState = function (this: any, patch: any) {
+            this.state = { ...this.state, ...(typeof patch === 'function' ? patch(this.state) : patch) };
+        };
+        page.state = { ...(page.state as any), detail: multiCollabDetail({ can_add_member: true }) };
+        const push = vi.spyOn(WKApp.routeRight, 'push');
+        (page as any).handleOpenAddMember();
+        expect(push).not.toHaveBeenCalled();
+        expect(page.state.showAddMemberModal).toBe(true);
+        push.mockRestore();
     });
 });
 

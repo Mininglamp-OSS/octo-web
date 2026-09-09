@@ -33,6 +33,13 @@ export const summaryTestIds = {
     chatSelectorSearchInput: "summary-chat-selector-search-input",
     memberSelectorConfirmBtn: "summary-member-selector-confirm-btn",
 
+    // ── Add-member modal (summary detail, messaging panel mode) ──
+    addMemberModal: "summary-add-member-modal",
+    addMemberSearchInput: "summary-add-member-search-input",
+    addMemberRetryBtn: "summary-add-member-retry-btn",
+    addMemberConfirmBtn: "summary-add-member-confirm-btn",
+    addMemberMemberRow: (userId: string) => `summary-add-member-row-${userId}`,
+
     // ── Detail page ──
     detail: (taskId: number) => `summary-detail-${taskId}`,
     detailPage: "summary-detail-page",

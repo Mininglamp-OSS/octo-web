@@ -8,8 +8,13 @@ import { getSummaryShare } from "../../api/summaryApi";
 vi.mock("../../api/summaryApi", () => ({ getSummaryShare: vi.fn() }));
 vi.mock("@douyinfe/semi-icons", () => ({ IconArrowLeft: () => null }));
 vi.mock("@douyinfe/semi-ui", () => ({
-    Button: ({ children, onClick }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
-        <button type="button" onClick={onClick}>{children}</button>
+  Button: ({
+    children,
+    onClick,
+  }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+    <button type="button" onClick={onClick}>
+      {children}
+    </button>
     ),
     Spin: () => <span>loading</span>,
 }));
@@ -23,11 +28,21 @@ const response = {
     share_id: "share-1",
     source_accessible: false,
     snapshot: {
-        id: 1, task_id: 2, task_no: "ST2", space_id: "space-1",
-        title: "Shared summary", source_name: "Project group", source_count: 1,
-        participant_count: 3, message_count: 12,
-        time_range_start: "2026-07-15T00:00:00Z", time_range_end: "2026-07-16T00:00:00Z",
-        summary_mode: 1, result_version: 1, preview: "Preview", content: "## Result",
+    id: 1,
+    task_id: 2,
+    task_no: "ST2",
+    space_id: "space-1",
+    title: "Shared summary",
+    source_name: "Project group",
+    source_count: 1,
+    participant_count: 3,
+    message_count: 12,
+    time_range_start: "2026-07-15T00:00:00Z",
+    time_range_end: "2026-07-16T00:00:00Z",
+    summary_mode: 1,
+    result_version: 1,
+    preview: "Preview",
+    content: "## Result",
         created_at: "2026-07-16T01:00:00Z",
     },
 };
@@ -43,10 +58,12 @@ describe("SummaryShareDetailPage return to chat", () => {
     });
 
     it("opens the source conversation when entered from a summary card", async () => {
-        render(<SummaryShareDetailPage
+    render(
+      <SummaryShareDetailPage
             shareId="share-1"
             originChannel={{ channelId: "group-1", channelType: 2 }}
-        />);
+      />
+    );
 
         fireEvent.click(await screen.findByRole("button", { name: "返回群聊" }));
 
@@ -56,6 +73,25 @@ describe("SummaryShareDetailPage return to chat", () => {
             channelType: 2,
         });
     });
+
+  it("delegates source conversation opening to a controlled host", async () => {
+    const onOpenConversation = vi.fn(async () => {});
+    render(
+      <SummaryShareDetailPage
+        shareId="share-1"
+        originChannel={{ channelId: "group-1", channelType: 2 }}
+        onOpenConversation={onOpenConversation}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "返回群聊" }));
+
+    expect(onOpenConversation).toHaveBeenCalledWith({
+      channelId: "group-1",
+      channelType: 2,
+    });
+    expect(showConversation).not.toHaveBeenCalled();
+  });
 
     it("hides the action on a direct share link", async () => {
         render(<SummaryShareDetailPage shareId="share-1" />);

@@ -196,6 +196,10 @@ jobs:
           src/components/__tests__/SummaryResultActions.test.tsx
           src/api/__tests__/summaryApi.test.ts
           src/utils/convertDocError.test.ts
+          src/bridge/summaryWorkbench/adapter.test.ts
+          src/features/summaryWorkbench/SummaryWorkbenchFeature.test.tsx
+          src/components/__tests__/SummaryReferenceSidePanel.test.tsx
+          src/ui/SummaryWorkbench/SummaryWorkbench.test.tsx
       - name: Electron main-process unit tests
         run: pnpm --filter @octo/web exec vitest run src-election src/__tests__/oidcLogoutWiring.test.ts
       - name: Type-check Electron main-process tests

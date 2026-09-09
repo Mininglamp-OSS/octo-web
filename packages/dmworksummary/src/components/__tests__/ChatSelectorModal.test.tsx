@@ -4,6 +4,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ChatSelectorModal from '../ChatSelectorModal';
 import WKApp from '@octo/base/src/App';
 import type { ChatCandidate } from '../../types/summary';
+import type { SummaryMessagingPort } from '../../host';
+import { Channel } from 'wukongimjssdk';
 
 const mockGetChatCandidates = vi.fn();
 const mockSidebarSync = vi.fn();
@@ -547,5 +549,36 @@ describe('ChatSelectorModal — group-only selection', () => {
         expect(utils!.queryByText('Direct X')).not.toBeInTheDocument();
         expect(utils!.queryByText('Active Thread')).not.toBeInTheDocument();
         expect(utils!.queryByRole('button', { name: '全部私聊' })).not.toBeInTheDocument();
+    });
+});
+
+describe('ChatSelectorModal messaging host', () => {
+    it('loads conversation members through the host and filters self and bots', async () => {
+        const loadConversationMembers = vi.fn().mockResolvedValue([
+            { uid: 'u1', name: 'Alice', role: 2 },
+            { uid: 'test-uid', name: 'Me', role: 1 },
+            { uid: 'bot1', name: 'Bot', isBot: true },
+        ]);
+        const messaging: SummaryMessagingPort = {
+            getCurrentUser: () => ({ uid: 'test-uid', displayName: 'Me' }),
+            loadConversationMembers,
+            openConversation: vi.fn(async () => {}),
+            notifySummaryCompleted: vi.fn(async () => {}),
+            requestForward: vi.fn(),
+            subscribeInvalidation: () => () => {},
+        };
+        const props = {
+            ...baseProps, messaging, mode: 'members' as const,
+            channel: new Channel('group-1', 2), selectedMembers: [],
+        };
+        const utils = rtlRender(<ChatSelectorModal {...props} visible={false} />, { legacyRoot: true });
+        await act(async () => {
+            utils.rerender(<ChatSelectorModal {...props} visible />);
+            await flushPromises();
+        });
+        expect(loadConversationMembers).toHaveBeenCalledWith({ channelId: 'group-1', channelType: 2 });
+        expect(utils.getByText('Alice')).toBeInTheDocument();
+        expect(utils.queryByText('Me')).not.toBeInTheDocument();
+        expect(utils.queryByText('Bot')).not.toBeInTheDocument();
     });
 });

@@ -77,6 +77,10 @@ export const expertMarketListHandlers = [
       pagination: { total: 1, page: 1, page_size: 100 },
     });
   }),
+  http.get(`*${API_BASE}/plugin_tags`, () => {
+    if (!enabled()) return undefined;
+    return HttpResponse.json({ data: expertPlugin.tags.map((name) => ({ name, count: 1 })) });
+  }),
   http.get(`*${API_BASE}/plugin_categories`, () => {
     if (!enabled()) return undefined;
     return HttpResponse.json({

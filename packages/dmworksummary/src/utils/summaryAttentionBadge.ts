@@ -1,5 +1,5 @@
-import { WKApp } from '@octo/base';
-import * as api from '../api/summaryApi';
+import { WKApp } from "@octo/base";
+import * as api from "../api/summaryApi";
 
 /**
  * 侧边栏「智能总结」菜单的待关注红点计数 (#1359；口径扩展见下)。
@@ -26,6 +26,8 @@ import * as api from '../api/summaryApi';
  * 已接线 setRefresh → forceUpdate），NavRail 即重绘。
  */
 let summaryAttentionBadge = 0;
+let attentionScopeRevision = 0;
+const summaryAttentionListeners = new Set<(count: number) => void>();
 // 计数读取的单调取号。写入按【请求发出时刻】排序，而不是按响应到达顺序：
 // 只有“自己发出后再没人发过新读取”的响应才能落盘。现在有【三个】并发写者
 // 共用同一个号段：全局列表 loadData、用户动作触发的探测，以及后台兜底轮询
@@ -104,6 +106,36 @@ export function getSummaryAttentionBadge(): number {
     return summaryAttentionBadge;
 }
 
+/** A new workspace must not inherit counts or pending tickets from its predecessor. */
+export function resetSummaryAttentionScope(): void {
+    attentionScopeRevision++;
+    issueSeq++;
+    inFlightSamples.clear();
+    abandonedTickets.clear();
+    lastCommittedSampleAt = 0;
+    setSummaryAttentionBadge(0);
+}
+
+export function subscribeSummaryAttentionBadge(
+  listener: (count: number) => void
+): () => void {
+  summaryAttentionListeners.add(listener);
+  return () => summaryAttentionListeners.delete(listener);
+}
+
+function notifySummaryAttentionListeners(count: number): void {
+  summaryAttentionListeners.forEach((listener) => {
+    try {
+      listener(count);
+    } catch (error) {
+      console.warn(
+        "[SummaryWorkspace] Failed to report attention badge:",
+        error
+      );
+    }
+  });
+}
+
 /** 本标签页当前是否有读取在飞（诊断与测试用；广播判定见 inFlightSamples）。 */
 export function hasInFlightAttentionRead(): boolean {
     return inFlightSamples.size > 0;
@@ -133,10 +165,11 @@ function newestInFlightSampleAt(): number {
  * 广播只在这一处发出，不要再给轮询的 onCount 接一份：两处都发就是同一个
  * 样本广播两次（第二次因 sampleAt 相等而被对端丢弃，只是白跑一轮）。
  */
-let attentionPublisher: ((count: number, sampleAt: number) => void) | null = null;
+let attentionPublisher: ((count: number, sampleAt: number) => void) | null =
+  null;
 
 export function setSummaryAttentionPublisher(
-    publisher: ((count: number, sampleAt: number) => void) | null,
+  publisher: ((count: number, sampleAt: number) => void) | null
 ): void {
     attentionPublisher = publisher;
 }
@@ -171,7 +204,11 @@ export function beginSummaryAttentionRead(sampleAt?: number): number {
  * 必须调 abandonSummaryAttentionRead 把号还回去（ticket liveness）。
  * 若它失败，按“静默失败保持旧值”的一贯策略，宁可不刷也不写旧数。
  */
-export function commitSummaryAttentionBadge(ticket: number, count: number, sampleAt?: number): void {
+export function commitSummaryAttentionBadge(
+  ticket: number,
+  count: number,
+  sampleAt?: number
+): void {
     // 本地读取结束：无论是否落盘，它都不再在飞了。放在 seq 判定【之前】，
     // 被更新的读取顶掉的那次也必须销账，否则它的样本时刻会永久挂在在飞表里
     // 把广播堵死。
@@ -220,7 +257,10 @@ export function commitSummaryAttentionBadge(ticket: number, count: number, sampl
  *
  * @returns 是否真的写入了（测试与诊断用）。
  */
-export function acceptRemoteAttentionCount(count: number, sampleAt: number): boolean {
+export function acceptRemoteAttentionCount(
+  count: number,
+  sampleAt: number
+): boolean {
     if (!Number.isFinite(count) || !Number.isFinite(sampleAt)) return false;
     // 落在未来的样本时刻一律丢弃。只校验「是有限数」不够：lastCommittedSampleAt 是
     // 单调不减的水位，一旦被推到未来，【之后每一次】本地落盘（严格 <）和每一条广播
@@ -302,6 +342,7 @@ export function setSummaryAttentionBadge(count: number): void {
     if (next === summaryAttentionBadge) return;
     summaryAttentionBadge = next;
     WKApp.menus.refresh();
+  notifySummaryAttentionListeners(next);
 }
 
 /**
@@ -323,9 +364,11 @@ export function setSummaryAttentionBadge(count: number): void {
  * 判断恒真。
  */
 function e2eMockReady(): boolean {
-    if (import.meta.env.VITE_E2E_MOCK !== '1') return true;
-    if (typeof window === 'undefined') return true;
-    return (window as unknown as { __MSW_READY__?: boolean }).__MSW_READY__ === true;
+  if (import.meta.env.VITE_E2E_MOCK !== "1") return true;
+  if (typeof window === "undefined") return true;
+  return (
+    (window as unknown as { __MSW_READY__?: boolean }).__MSW_READY__ === true
+  );
 }
 
 /**
@@ -370,11 +413,13 @@ export async function refreshSummaryAttentionBadge(): Promise<void> {
  * 复制三份。所有早退路径都必须还号，否则号段停在一个再也不会提交的号上，
  * 一个发出更早、仍在飞、携带正确值的读取会被一并作废（ticket liveness）。
  */
-export async function readSummaryAttentionCount(
-    options?: { fresh?: boolean },
-): Promise<{ count: number; sampleAt: number } | null> {
+export async function readSummaryAttentionCount(options?: {
+  fresh?: boolean;
+}): Promise<{ count: number; sampleAt: number } | null> {
     const spaceId = WKApp.shared.currentSpaceId;
-    if (!WKApp.loginInfo.isLogined() || !WKApp.loginInfo.uid || !spaceId) return null;
+    const scopeRevision = attentionScopeRevision;
+  if (!WKApp.loginInfo.isLogined() || !WKApp.loginInfo.uid || !spaceId)
+    return null;
     if (!e2eMockReady()) return null;
 
     const fresh = options?.fresh === true;
@@ -393,7 +438,7 @@ export async function readSummaryAttentionCount(
         abandonSummaryAttentionRead(ticket);
         throw err;
     }
-    if (WKApp.shared.currentSpaceId !== spaceId) {
+    if (WKApp.shared.currentSpaceId !== spaceId || scopeRevision !== attentionScopeRevision) {
         // 跨 Space 早退：本次读取作废，把号还回去，别把仍在飞的
         // 更早读取一并卡死（ticket liveness）。
         abandonSummaryAttentionRead(ticket);

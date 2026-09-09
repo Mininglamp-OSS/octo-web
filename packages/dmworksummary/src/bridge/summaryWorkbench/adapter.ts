@@ -65,16 +65,20 @@ function resolveHistoryResultType(
 export function adaptSummaryWorkspaceTurn(value: unknown): SummaryWorkbenchResponse {
   const turn = decodeSummaryWorkspaceTurn(value);
   const actions = [...turn.available_actions];
+  const authoritativeState = toAuthoritativeState(turn.state, {
+    messageId: turn.message_id,
+    actions,
+  });
   const common = {
     messageId: String(turn.message_id),
     reply: turn.reply,
     sessionId: turn.session_id,
     runId: turn.run_id,
+    // The reply itself was produced against the server-reported version.
+    // `authoritativeState.scopeVersion` may be one higher when the client had
+    // to normalize an unsupported multi-reference scope for the next request.
     scopeVersion: turn.state.scope_version,
-    authoritativeState: toAuthoritativeState(turn.state, {
-      messageId: turn.message_id,
-      actions,
-    }),
+    authoritativeState,
   };
 
   switch (turn.result_type) {
@@ -606,11 +610,20 @@ function toAuthoritativeState(
   turn?: { messageId: number; actions: SummaryWorkbenchAction[] }
 ): SummaryWorkbenchAuthoritativeState {
   const scope = toWorkbenchScope(state.summary_context);
+  // Dropping unsupported extra references is a real scope mutation. Advance
+  // the version so the next request cannot reuse the server's old version
+  // with a different scope hash and fail with a 409 scope conflict. Backend
+  // main accepts a higher client scope_version, persists its scope_json/hash,
+  // and clears folded artifacts; see docs/summary-apps-artifact-review-fixes.md.
+  const scopeWasNormalized =
+    state.summary_context.referenced_task_ids.length !==
+    scope.referencedTaskIds.length;
+  const scopeVersion = state.scope_version + (scopeWasNormalized ? 1 : 0);
   const constrainCurrentActions = (messageId: number, actions: SummaryWorkbenchAction[]) =>
     turn?.messageId === messageId ? intersectActions(turn.actions, actions) : actions;
 
   return {
-    scopeVersion: state.scope_version,
+    scopeVersion,
     scope,
     contextItems: contextItemsFromScope(scope),
     currentPreview: state.current_preview
@@ -692,7 +705,11 @@ function toWorkbenchScope(context: SummaryWorkspaceContextDTO): SummaryWorkbench
           source: context.time_range.source,
         }
       : null,
-    referencedTaskIds: [...context.referenced_task_ids],
+    // Product supports one referenced summary. Normalize at the decode boundary
+    // so the rendered chip and the submitted scope cannot disagree — legacy or
+    // malformed server state carrying more than one id gets capped here rather
+    // than at render, keeping the wire in agreement with the UI.
+    referencedTaskIds: context.referenced_task_ids.slice(0, 1),
   };
 }
 
@@ -777,9 +794,10 @@ function decodeCoverageGaps(value: unknown): CoverageGap[] | undefined {
   return requireArray(value, "save_result.gaps").map((gap, index) => {
     const path = `save_result.gaps[${index}]`;
     const record = requireRecord(gap, path);
+    const detail = optionalString(record.detail, `${path}.detail`);
     return {
       kind: requireString(record.kind, `${path}.kind`),
-      detail: requireString(record.detail, `${path}.detail`),
+      ...(detail === undefined ? {} : { detail }),
       ...(record.error_code === undefined || record.error_code === null
         ? {}
         : {

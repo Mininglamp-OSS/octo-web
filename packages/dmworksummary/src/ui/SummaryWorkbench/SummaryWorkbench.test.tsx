@@ -155,7 +155,7 @@ function renderWorkbench(card?: SummaryWorkbenchCardView) {
 }
 
 describe("SummaryWorkbench", () => {
-  it("renders three scope controls below the textarea and reference in the header", () => {
+  it("renders three scope controls below the textarea and the selected reference in the header", () => {
     const actions = createActions();
     actions.onNewSession = vi.fn();
     const state = createState();
@@ -164,7 +164,8 @@ describe("SummaryWorkbench", () => {
       kind: "reference",
       label: "Last weekly summary",
     });
-    const { container } = rtlRender(
+    state.referencePreviewId = "summary-workbench-reference-preview";
+    const { container, rerender } = rtlRender(
       <SummaryWorkbench state={state} actions={actions} />,
       { legacyRoot: true }
     );
@@ -206,26 +207,148 @@ describe("SummaryWorkbench", () => {
     });
 
     const referenceTrigger = screen.getByRole("button", {
-      name: "Reference summary",
+      name: "Reference summary: Last weekly summary",
     });
     expect(headerActions).toContainElement(referenceTrigger);
-    expect(headerActions).toContainElement(
-      screen.getByText("Last weekly summary")
+    expect(
+      screen.queryByRole("button", { name: "Reference summary" })
+    ).not.toBeInTheDocument();
+    expect(referenceTrigger).toHaveAttribute("aria-expanded", "false");
+    // PR #1637 P2 (yujiawei): `aria-controls` must not dangle. The side panel
+    // only mounts when open, so the collapsed state must not point at an
+    // element absent from the DOM.
+    expect(referenceTrigger).not.toHaveAttribute("aria-controls");
+    expect(within(referenceTrigger).getByText("Last weekly summary")).toHaveClass(
+      "wk-summary-workbench-context__reference-title"
     );
-    expect(referenceTrigger).toHaveClass("wk-btn--ghost");
     expect(screen.getByRole("button", { name: "New session" })).toHaveClass(
       "wk-btn--primary"
     );
     expect(composer).not.toContainElement(referenceTrigger);
-    expect(composer).not.toContainElement(
-      screen.getByText("Last weekly summary")
+
+    state.referencePreviewOpen = true;
+    rerender(<SummaryWorkbench state={state} actions={actions} />);
+    expect(referenceTrigger).toHaveAttribute("aria-expanded", "true");
+    // When expanded the panel mounts, so `aria-controls` correctly resolves.
+    expect(referenceTrigger).toHaveAttribute(
+      "aria-controls",
+      "summary-workbench-reference-preview"
     );
+    expect(referenceTrigger).toHaveClass(
+      "wk-summary-workbench-context__reference-open--active"
+    );
+
     fireEvent.click(referenceTrigger);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove Last weekly summary" })
+    );
 
     contexts.forEach(([, kind], index) => {
       expect(actions.onOpenContext).toHaveBeenNthCalledWith(index + 1, kind);
     });
     expect(actions.onOpenContext).toHaveBeenNthCalledWith(4, "reference");
+    expect(actions.onRemoveContext).toHaveBeenCalledWith(
+      "reference",
+      "summary-1"
+    );
+  });
+
+  it("renders the reference picker trigger when no reference is selected", () => {
+    const actions = createActions();
+    rtlRender(
+      <SummaryWorkbench state={createState()} actions={actions} />,
+      { legacyRoot: true }
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reference summary" })
+    );
+
+    expect(actions.onOpenContext).toHaveBeenCalledWith("reference");
+  });
+
+  it("renders every reference item state provides (normalization happens upstream in toWorkbenchScope — see adapter.test.ts for the wire cap; PR #1637 P1)", () => {
+    // Before PR #1637's P1 fix, this component sliced context items at
+    // render time. That desynchronized the UI from the serialized scope, so
+    // the fix moved the single-reference cap to `toWorkbenchScope` at the
+    // decode boundary. The UI is now a faithful view of `state.contextItems`
+    // — if state carries more than one reference item, that is a bug at the
+    // decode layer, not something the view should silently hide.
+    const state = createState();
+    state.contextItems.push({
+      id: "summary-1",
+      kind: "reference",
+      label: "Primary summary",
+    });
+    state.contextItems.push({
+      id: "summary-2",
+      kind: "reference",
+      label: "Secondary summary",
+    });
+
+    rtlRender(<SummaryWorkbench state={state} actions={createActions()} />, {
+      legacyRoot: true,
+    });
+
+    expect(
+      screen.getByRole("button", {
+        name: "Reference summary: Primary summary",
+      })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Reference summary: Secondary summary",
+      })
+    ).toBeInTheDocument();
+  });
+
+  it("disables removing the selected template after the first accepted turn", () => {
+    const actions = createActions();
+    const state = createState();
+    state.templateLocked = true;
+    state.contextItems.push({
+      id: "weekly",
+      kind: "template",
+      label: "Weekly",
+    });
+
+    rtlRender(<SummaryWorkbench state={state} actions={actions} />, {
+      legacyRoot: true,
+    });
+
+    const removeButton = screen.getByRole("button", {
+      name: "Remove Weekly",
+    });
+    expect(removeButton).toBeDisabled();
+    fireEvent.click(removeButton);
+    expect(actions.onRemoveContext).not.toHaveBeenCalled();
+  });
+
+  it("keeps a long reference title separate from the disclosure chevron", () => {
+    const longTitle =
+      "A very long referenced summary title that must truncate without hiding the disclosure chevron";
+    const state = createState();
+    state.contextItems.push({
+      id: "summary-long-title",
+      kind: "reference",
+      label: longTitle,
+    });
+
+    rtlRender(<SummaryWorkbench state={state} actions={createActions()} />, {
+      legacyRoot: true,
+    });
+
+    const referenceTrigger = screen.getByRole("button", {
+      name: `Reference summary: ${longTitle}`,
+    });
+    expect(within(referenceTrigger).getByText(longTitle)).toHaveClass(
+      "wk-summary-workbench-context__reference-title"
+    );
+    expect(
+      referenceTrigger.querySelector(
+        ".wk-summary-workbench-context__reference-chevron"
+      )
+    ).toBeInTheDocument();
   });
 
   it("renders an expanded context panel above the composer", () => {
@@ -513,6 +636,36 @@ describe("SummaryWorkbench", () => {
     expect(screen.getByTestId("summary-workbench-progress")).toHaveTextContent(
       "Processed 0 items"
     );
+  });
+
+  it("keeps a selected reference preview available while sending but disables it while hydrating", () => {
+    const actions = createActions();
+    const state = createState();
+    state.isSending = true;
+    state.contextItems.push({
+      id: "summary-1",
+      kind: "reference",
+      label: "Last weekly summary",
+    });
+
+    const { rerender } = rtlRender(
+      <SummaryWorkbench state={state} actions={actions} />,
+      { legacyRoot: true }
+    );
+    const referenceTrigger = screen.getByRole("button", {
+      name: "Reference summary: Last weekly summary",
+    });
+    expect(referenceTrigger).toBeEnabled();
+    fireEvent.click(referenceTrigger);
+    expect(actions.onOpenContext).toHaveBeenCalledWith("reference");
+
+    rerender(
+      <SummaryWorkbench
+        state={{ ...state, isHydrating: true }}
+        actions={actions}
+      />
+    );
+    expect(referenceTrigger).toBeDisabled();
   });
 
   it("renders team confirmation details and only the supplied actions", () => {

@@ -260,9 +260,7 @@
       "participantsPrunedArtifactInvalidated": "参与者权限已变化，原结果已保留为历史，请重新生成。",
       "participantCandidatesLoadFailed": "部分群成员加载失败，请重试",
       "participantsUnsupportedForSelectedChats": "当前会话范围不支持参与者，请仅选择群聊且不超过 30 个",
-      "selectSingleChatForParticipants": "选择参与者时仅支持最多 30 个群聊",
-      "savedWithQualityGap": "总结已保存，但存在质量缺口：{{detail}}",
-      "savedWithQualityGateWarning": "总结已保存，但未通过完整质量校验，请人工核对后使用。"
+      "selectSingleChatForParticipants": "选择参与者时仅支持最多 30 个群聊"
     },
     "errors": {
       "network": "网络连接异常，请稍后重试",
@@ -503,6 +501,7 @@
     "scheduleSaved": "定时更新已保存",
     "scheduleCreated": "定时更新已创建",
     "forwardFailed": "转发失败",
+    "forwardContextChanged": "转发上下文已变化，请重新打开总结后重试。",
     "partialForwardFailed": "部分频道转发失败 ({{failed}}/{{total}})",
     "forwarded": "已转发",
     "forwardToChat": "转发到聊天",
@@ -732,6 +731,7 @@
     "buttonTip": "点击选择一份已有总结作为参考",
     "badge": "已引用",
     "remove": "移除引用",
+    "closePreview": "关闭预览",
     "previewTitle": "总结预览",
     "previewLatestHint": "以下内容为该总结的最新版本(可能已经被更新过,与您引用时的快照不完全一致)",
     "previewNotFound": "该总结已删除或您无权访问",

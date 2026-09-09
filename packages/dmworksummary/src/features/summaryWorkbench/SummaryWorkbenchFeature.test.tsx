@@ -23,11 +23,14 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@octo/base", () => ({
   Dap: { shared: { track: mocks.track } },
+  getImChannelInfo: () => ({
+    title: "mock-channel-title",
+    orgData: {},
+  }),
+  ChannelTypeCommunityTopic: 5,
+  parseThreadChannelId: () => null,
   useI18n: () => ({
-    t: (key: string, options?: { values?: Record<string, unknown> }) => {
-      if (key === "summary.workbench.notice.savedWithQualityGap") {
-        return `quality-warning:${String(options?.values?.detail ?? "")}`;
-      }
+    t: (key: string) => {
       return (
         {
           "summary.workbench.intent.personal": "personal-intent",
@@ -52,10 +55,7 @@ vi.mock("@octo/base", () => ({
 vi.mock("@octo/base/src/App", () => ({
   Dap: { shared: { track: mocks.track } },
   useI18n: () => ({
-    t: (key: string, options?: { values?: Record<string, unknown> }) => {
-      if (key === "summary.workbench.notice.savedWithQualityGap") {
-        return `quality-warning:${String(options?.values?.detail ?? "")}`;
-      }
+    t: (key: string) => {
       return (
         {
           "summary.workbench.intent.personal": "personal-intent",
@@ -67,6 +67,16 @@ vi.mock("@octo/base/src/App", () => ({
     },
     format: { date: (value: unknown) => String(value) },
   }),
+  // PR #1637 P2 support: tests that pass a `channel` prop trigger
+  // `channelToChatCandidate`, which imports these three helpers from
+  // @octo/base. The alias in vitest.config.ts routes @octo/base and
+  // @octo/base/src/App to the same shim, so this vi.mock must expose them.
+  getImChannelInfo: () => ({
+    title: "mock-channel-title",
+    orgData: {},
+  }),
+  ChannelTypeCommunityTopic: 5,
+  parseThreadChannelId: () => null,
   default: {
     loginInfo: { uid: "test-uid" },
     routeRight: {
@@ -133,6 +143,9 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
       data-can-send={String(state.canSend)}
       data-send-label={state.sendLabelKey}
       data-error-message={state.errorMessage ?? ""}
+      data-template-locked={String(state.templateLocked)}
+      data-reference-preview-open={String(state.referencePreviewOpen)}
+      data-reference-preview-id={state.referencePreviewId ?? ""}
     >
       <span data-testid="reference-label">
         {state.contextItems.find((item: any) => item.kind === "reference")
@@ -172,6 +185,12 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
         onClick={() => actions.onRemoveContext("chat", "chat-a")}
       >
         remove-chat
+      </button>
+      <button
+        type="button"
+        onClick={() => actions.onRemoveContext("template", "weekly")}
+      >
+        remove-template
       </button>
       <button
         type="button"
@@ -230,16 +249,17 @@ vi.mock("../../components/TimeRangeSelector", () => ({
   ),
 }));
 vi.mock("../../components/SummaryReferenceSidePanel", () => ({
-  default: ({ taskId }: { taskId: number }) => (
-    <div data-testid="reference-side-panel">{taskId}</div>
+  default: ({ taskId, id }: { taskId: number; id?: string }) => (
+    <div id={id} data-testid="reference-side-panel">
+      {taskId}
+    </div>
   ),
 }));
 vi.mock("../../components/SummaryReferencePicker", () => ({
-  default: ({ visible, onSelect, selectedTaskId }: any) =>
+  default: ({ visible, onSelect }: any) =>
     visible ? (
       <button
         type="button"
-        data-selected-task-id={selectedTaskId}
         onClick={() => onSelect({ task_id: 42, title: "Prior summary" })}
       >
         choose-reference
@@ -515,13 +535,20 @@ describe("SummaryWorkbenchFeature", () => {
     expect(current.updateScope).not.toHaveBeenCalled();
   });
 
-  it("clears the composer, collapses templates, and keeps template selection available", async () => {
+  it.each(["agent_preview", "clarification"])("clears the composer and locks templates after an accepted %s turn", async (resultType) => {
     const pendingResponse = deferred<any>();
     const current = controller({
+      scope: scope({
+        template: {
+          templateId: "weekly",
+          label: "Weekly",
+          requirement: "Summarize progress and risks",
+        },
+      }),
       viewState: {
         layout: "full",
         messages: [],
-        contextItems: [],
+        contextItems: [{ id: "weekly", kind: "template", label: "Weekly" }],
         inputValue: "Summarize the launch risks",
         placeholderKey: "summary.workbench.placeholder.initial",
         isSending: false,
@@ -550,17 +577,28 @@ describe("SummaryWorkbenchFeature", () => {
     expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
 
     pendingResponse.resolve({
-      resultType: "agent_preview",
-      preview: { content: "Draft" },
+      resultType,
+      ...(resultType === "agent_preview" ? { preview: { content: "Draft" } } : {}),
     });
     await waitFor(() => expect(current.send).toHaveBeenCalled());
     expect(
-      screen.getByRole("button", { name: "open-template" })
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "open-template" })
+    ).not.toBeInTheDocument();
     expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-template-locked",
+      "true"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "remove-template" }));
+    expect(current.updateScope).not.toHaveBeenCalled();
   });
 
-  it("collapses templates after restoring a session that already has messages", async () => {
+  it.each([
+    ["agent_preview", "agent_preview"],
+    ["clarification", "clarification"],
+    ["assistant turn without a result type", undefined],
+  ] as const)("keeps templates locked after restoring an accepted %s", async (_caseName, resultType) => {
     localStorage.setItem(
       "summary-workbench-session:v2:test-uid:space-a:global",
       "restored-session"
@@ -575,7 +613,12 @@ describe("SummaryWorkbenchFeature", () => {
 
     current.isHydrating = false;
     current.viewState.messages = [
-      { id: "message-a", role: "assistant", content: "Restored response" },
+      {
+        id: "message-a",
+        role: "assistant",
+        content: "Restored response",
+        ...(resultType === undefined ? {} : { resultType }),
+      },
     ];
     view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
 
@@ -583,11 +626,47 @@ describe("SummaryWorkbenchFeature", () => {
       expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument()
     );
     expect(
-      screen.getByRole("button", { name: "open-template" })
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "open-template" })
+    ).not.toBeInTheDocument();
   });
 
-  it("allows sending a newly selected template after the first turn", async () => {
+  it.each([
+    ["a lone user message", { id: "message-a", role: "user", content: "Draft request" }],
+    [
+      "an error-only assistant response",
+      {
+        id: "message-a",
+        role: "assistant",
+        content: "Request failed",
+        resultType: "error",
+      },
+    ],
+  ])("keeps templates available after restoring %s", async (_caseName, message) => {
+    localStorage.setItem(
+      "summary-workbench-session:v2:test-uid:space-a:global",
+      "restored-session"
+    );
+    const current = controller({ isHydrating: true });
+    mocks.useSummaryWorkbench.mockImplementation(() => current);
+
+    const view = render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+
+    current.isHydrating = false;
+    current.viewState.messages = [message];
+    view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("template-selector")).toBeInTheDocument()
+    );
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-template-locked",
+      "false"
+    );
+  });
+
+  it("does not allow reopening templates after the first turn", async () => {
     const current = controller({
       viewState: {
         layout: "full",
@@ -622,14 +701,10 @@ describe("SummaryWorkbenchFeature", () => {
     await waitFor(() => expect(current.send).toHaveBeenCalledTimes(1));
     view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "open-template" }));
-    fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
-    view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
-
-    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
-      "data-can-send",
-      "true"
-    );
+    expect(
+      screen.queryByRole("button", { name: "open-template" })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
   });
 
   it("warns before a scope edit makes an unsaved preview historical", () => {
@@ -1082,6 +1157,46 @@ describe("SummaryWorkbenchFeature", () => {
     expect(current.updateScope).toHaveBeenCalledTimes(1);
     expect(current.setComposerValue).toHaveBeenCalledWith(
       "Summarize progress and risks"
+    );
+  });
+
+  it("dismisses a pending template replacement when the restored conversation locks templates", async () => {
+    const current = controller({
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Keep my custom requirement",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: true,
+      },
+    });
+    mocks.useSummaryWorkbench.mockImplementation(() => current);
+
+    const view = render(
+      <SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />,
+      { legacyRoot: true }
+    );
+    fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
+    expect(screen.getByRole("button", { name: "modal-ok" })).toBeInTheDocument();
+
+    current.viewState.messages = [
+      { id: "message-a", role: "assistant", content: "Restored response" },
+    ];
+    view.rerender(
+      <SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "modal-ok" })
+      ).not.toBeInTheDocument()
+    );
+    expect(current.updateScope).not.toHaveBeenCalled();
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-template-locked",
+      "true"
     );
   });
 
@@ -1570,7 +1685,7 @@ describe("SummaryWorkbenchFeature", () => {
   });
 
   it.each(["PARTIAL", "FAILED"] as const)(
-    "warns about the first quality gap after a %s save without blocking creation",
+    "keeps save success for a created task with an internal %s quality verdict (owner-confirmed P1 policy)",
     async (finishStatus) => {
       const savePreview = vi.fn().mockResolvedValue({
         task_id: 304,
@@ -1605,17 +1720,27 @@ describe("SummaryWorkbenchFeature", () => {
       fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
 
       await waitFor(() => expect(savePreview).toHaveBeenCalledWith("# Draft"));
-      expect(mocks.toastWarning).toHaveBeenCalledWith(
-        "quality-warning:引用完整性校验失败"
+      expect(mocks.toastSuccess).toHaveBeenCalledWith(
+        "summary.create.agentSummaryCreated"
       );
-      expect(mocks.toastSuccess).not.toHaveBeenCalled();
+      expect(mocks.toastWarning).not.toHaveBeenCalled();
+      expect(mocks.track).toHaveBeenCalledWith(
+        "smart_summary_quality_gate",
+        expect.objectContaining({
+          task_id: 304,
+          finish_status: finishStatus,
+          gap_count: 2,
+          first_gap_kind: "citation",
+          trigger_mode: "agent",
+        })
+      );
       expect(screen.queryByTestId("modal")).not.toBeInTheDocument();
       expect(mocks.markNotificationEligible).toHaveBeenCalledWith(304);
       expect(onOpenTask).toHaveBeenCalledWith(304);
     }
   );
 
-  it("warns generically when a FAILED save carries an EMPTY gaps list (P1-5)", async () => {
+  it("keeps save success for a created task when an internal FAILED verdict has no gaps (owner-confirmed P1 policy)", async () => {
     const savePreview = vi.fn().mockResolvedValue({
       task_id: 306,
       title: "Draft",
@@ -1646,13 +1771,61 @@ describe("SummaryWorkbenchFeature", () => {
     fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
 
     await waitFor(() => expect(savePreview).toHaveBeenCalledWith("# Draft"));
-    // The generic quality-gate warning key falls through t() to the key
-    // itself in this mock — the assertion is that the user does NOT get
-    // the success toast and DOES get a warning.
-    expect(mocks.toastWarning).toHaveBeenCalled();
-    expect(mocks.toastSuccess).not.toHaveBeenCalled();
+    expect(mocks.toastSuccess).toHaveBeenCalledWith(
+      "summary.create.agentSummaryCreated"
+    );
+    expect(mocks.toastWarning).not.toHaveBeenCalled();
+    expect(mocks.track).toHaveBeenCalledWith(
+      "smart_summary_quality_gate",
+      expect.objectContaining({
+        task_id: 306,
+        finish_status: "FAILED",
+        gap_count: 0,
+        trigger_mode: "agent",
+      })
+    );
     expect(mocks.markNotificationEligible).toHaveBeenCalledWith(306);
     expect(onOpenTask).toHaveBeenCalledWith(306);
+  });
+
+  it("tracks an unreported verdict without exposing gap details or changing save success", async () => {
+    const savePreview = vi.fn().mockResolvedValue({
+      task_id: 308,
+      title: "Draft",
+      gaps: [{ kind: "citation", detail: "private diagnostic detail" }],
+    });
+    const onOpenTask = vi.fn();
+    mocks.useSummaryWorkbench.mockReturnValue(
+      controller({
+        model: {
+          currentPreview: { content: "# Draft\nBody" },
+          pendingProposal: null,
+          workflow: null,
+        },
+        savePreview,
+      })
+    );
+    render(
+      <SummaryWorkbenchFeature spaceId="space-a" embedded onOpenTask={onOpenTask} />,
+      { legacyRoot: true }
+    );
+    fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
+    await waitFor(() => expect(onOpenTask).toHaveBeenCalledWith(308));
+    const events = mocks.track.mock.calls.filter(
+      (call: unknown[]) => call[0] === "smart_summary_quality_gate"
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0][1]).toMatchObject({
+      task_id: 308,
+      finish_status: "unreported",
+      gap_count: 1,
+      first_gap_kind: "citation",
+    });
+    expect(JSON.stringify(events[0][1])).not.toContain("private diagnostic detail");
+    expect(mocks.toastSuccess).toHaveBeenCalledWith("summary.create.agentSummaryCreated");
+    expect(mocks.toastWarning).not.toHaveBeenCalled();
+    expect(mocks.markNotificationEligible).toHaveBeenCalledWith(308);
   });
 
   it("keeps the ordinary success feedback for a COMPLETE save", async () => {
@@ -1684,6 +1857,70 @@ describe("SummaryWorkbenchFeature", () => {
       "summary.create.agentSummaryCreated"
     );
     expect(mocks.toastWarning).not.toHaveBeenCalled();
+  });
+
+  it("carries channelID, bounds unknown gap kinds, and never uploads gap.detail (PR #1637 P2)", async () => {
+    // Two assertions in one test:
+    //   1. The workbench save path must include `object_id: channel.channelID`
+    //      so the event can be joined at the envelope level, matching the
+    //      sibling emission from pages/SummaryCreatePage.tsx.
+    //   2. `gap.detail` must never reach the diagnostics payload — the
+    //      contract in types/summary.ts says gap detail is not uploaded, and
+    //      `PROP_KEY_BLACKLIST` does not include a "detail" alias, so this
+    //      needs an explicit negative assertion.
+    const savePreview = vi.fn().mockResolvedValue({
+      task_id: 307,
+      title: "Draft",
+      finish_status: "PARTIAL",
+      gaps: [
+        {
+          kind: "customer-email@example.com",
+          detail: "secret gap detail — do not upload",
+        },
+      ],
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(
+      controller({
+        model: {
+          currentPreview: { content: "# Draft\nBody" },
+          pendingProposal: null,
+          workflow: null,
+        },
+        savePreview,
+      })
+    );
+
+    render(
+      <SummaryWorkbenchFeature
+        spaceId="space-a"
+        channel={{ channelID: "channel-42", channelType: 1 }}
+      />,
+      { legacyRoot: true }
+    );
+    fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
+
+    await waitFor(() => expect(savePreview).toHaveBeenCalledWith("# Draft"));
+    expect(mocks.track).toHaveBeenCalledWith(
+      "smart_summary_quality_gate",
+      expect.objectContaining({
+        object_id: "channel-42",
+        task_id: 307,
+        finish_status: "PARTIAL",
+        gap_count: 1,
+        first_gap_kind: "other",
+      })
+    );
+    // Negative assertion: no field carrying the raw gap detail leaks through.
+    const trackCall = mocks.track.mock.calls.find(
+      (call: unknown[]) => call[0] === "smart_summary_quality_gate"
+    );
+    expect(trackCall?.[1]).not.toHaveProperty("first_gap_detail");
+    expect(trackCall?.[1]).not.toHaveProperty("gap_detail");
+    expect(JSON.stringify(trackCall?.[1])).not.toContain("secret gap detail");
+    expect(JSON.stringify(trackCall?.[1])).not.toContain(
+      "customer-email@example.com"
+    );
   });
 
   it("handles the same recovered save result only once", async () => {
@@ -1784,7 +2021,7 @@ describe("SummaryWorkbenchFeature", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("opens a completed Workflow task through the embedded detail callback", () => {
+  it.each([true, false])("opens a completed Workflow task through the host callback (embedded=%s)", (embedded) => {
     const onOpenTask = vi.fn();
     mocks.useSummaryWorkbench.mockReturnValue(
       controller({
@@ -1799,7 +2036,7 @@ describe("SummaryWorkbenchFeature", () => {
     render(
       <SummaryWorkbenchFeature
         spaceId="space-a"
-        embedded
+        embedded={embedded}
         onOpenTask={onOpenTask}
       />,
       { legacyRoot: true }
@@ -1890,7 +2127,7 @@ describe("SummaryWorkbenchFeature", () => {
     );
   });
 
-  it("restores hydrated reference metadata, picker selection, and preview", async () => {
+  it("restores hydrated reference metadata and toggles its preview", async () => {
     mocks.getSummaryDetail.mockResolvedValue({
       task_id: 42,
       title: "Restored summary",
@@ -1923,9 +2160,96 @@ describe("SummaryWorkbenchFeature", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "open-reference" }));
     expect(
-      screen.getByRole("button", { name: "choose-reference" })
-    ).toHaveAttribute("data-selected-task-id", "42");
+      screen.queryByRole("button", { name: "choose-reference" })
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId("reference-side-panel")).toHaveTextContent("42");
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-reference-preview-open",
+      "true"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "open-reference" }));
+    expect(
+      screen.queryByTestId("reference-side-panel")
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-reference-preview-open",
+      "false"
+    );
+  });
+
+  it("keeps the reference preview toggle usable while generation is running", async () => {
+    mocks.getSummaryDetail.mockResolvedValue({
+      task_id: 42,
+      title: "Restored summary",
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(
+      controller({
+        scope: scope({ referencedTaskIds: [42] }),
+        viewState: {
+          layout: "full",
+          messages: [],
+          contextItems: [{ kind: "reference", id: "42", label: "#42" }],
+          inputValue: "",
+          placeholderKey: "summary.workbench.placeholder.initial",
+          isSending: true,
+          canSend: false,
+        },
+      })
+    );
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    await waitFor(() => expect(mocks.getSummaryDetail).toHaveBeenCalledWith(42));
+
+    fireEvent.click(screen.getByRole("button", { name: "open-reference" }));
+
+    expect(screen.getByTestId("reference-side-panel")).toHaveTextContent("42");
+  });
+
+  it("assigns a unique preview id to each mounted workbench instance", async () => {
+    mocks.getSummaryDetail.mockResolvedValue({
+      task_id: 42,
+      title: "Restored summary",
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(
+      controller({
+        scope: scope({ referencedTaskIds: [42] }),
+        viewState: {
+          layout: "full",
+          messages: [],
+          contextItems: [{ kind: "reference", id: "42", label: "#42" }],
+          inputValue: "",
+          placeholderKey: "summary.workbench.placeholder.initial",
+          isSending: false,
+          canSend: false,
+        },
+      })
+    );
+
+    render(
+      <>
+        <SummaryWorkbenchFeature spaceId="space-a" />
+        <SummaryWorkbenchFeature spaceId="space-a" />
+      </>,
+      { legacyRoot: true }
+    );
+    await waitFor(() => expect(mocks.getSummaryDetail).toHaveBeenCalledTimes(2));
+
+    screen
+      .getAllByRole("button", { name: "open-reference" })
+      .forEach((button) => fireEvent.click(button));
+
+    const panelIds = screen
+      .getAllByTestId("reference-side-panel")
+      .map((panel) => panel.id);
+    const triggerIds = screen
+      .getAllByTestId("workbench-ui")
+      .map((workbench) => workbench.getAttribute("data-reference-preview-id"));
+    expect(panelIds.every(Boolean)).toBe(true);
+    expect(new Set(panelIds).size).toBe(2);
+    expect(triggerIds).toEqual(panelIds);
   });
 
   it("keeps the hydrated reference id selected when detail loading fails", async () => {
@@ -1956,8 +2280,8 @@ describe("SummaryWorkbenchFeature", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "open-reference" }));
     expect(
-      screen.getByRole("button", { name: "choose-reference" })
-    ).toHaveAttribute("data-selected-task-id", "73");
+      screen.queryByRole("button", { name: "choose-reference" })
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId("reference-side-panel")).toHaveTextContent("73");
   });
 });
