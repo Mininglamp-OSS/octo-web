@@ -41,7 +41,14 @@ interface ScheduleListPageState {
     formLoading: boolean;
 }
 
-export default class ScheduleListPage extends Component<{}, ScheduleListPageState> {
+interface ScheduleListPageProps {
+  onBack?: () => void;
+}
+
+export default class ScheduleListPage extends Component<
+  ScheduleListPageProps,
+  ScheduleListPageState
+> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
 
@@ -65,11 +72,18 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
             const schedules = await api.listSchedules();
             this.setState({ schedules, loading: false });
         } catch (err: any) {
-            this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
+      this.setState({
+        error: err.message || t("summary.common.loadingFailed"),
+        loading: false,
+      });
         }
     }
 
     handleBack = () => {
+    if (this.props.onBack) {
+      this.props.onBack();
+      return;
+    }
         WKApp.routeLeft.popToRoot();
     };
 
@@ -97,7 +111,7 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
             // （已有 confirm_policy）则保留/透传其原值；缺省按多人=1。单人不传，走后端兜底。
             const isMultiPerson = (editingSchedule.participants?.length ?? 0) > 1;
             const confirmPolicy = isMultiPerson
-                ? (editingSchedule.confirm_policy ?? 1)
+        ? editingSchedule.confirm_policy ?? 1
                 : undefined;
             const updateParams: UpdateScheduleParams = {
                 title: params.title,
@@ -110,11 +124,17 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                 run_time: params.run_time ?? "",
                 time_range_type: params.time_range_type,
                 sources: params.sources,
-                ...(confirmPolicy !== undefined ? { confirm_policy: confirmPolicy } : {}),
+        ...(confirmPolicy !== undefined
+          ? { confirm_policy: confirmPolicy }
+          : {}),
             };
             await api.updateSchedule(editingSchedule.schedule_id, updateParams);
             Toast.success(t("summary.schedule.updateSuccess"));
-            this.setState({ showEditModal: false, editingSchedule: null, formLoading: false });
+      this.setState({
+        showEditModal: false,
+        editingSchedule: null,
+        formLoading: false,
+      });
             this.loadData();
         } catch (err: any) {
             Toast.error(err.message || t("summary.common.updateFailed"));
@@ -135,7 +155,9 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
     handleToggle = async (id: number, isActive: boolean) => {
         try {
             await api.toggleSchedule(id, isActive);
-            Toast.success(isActive ? t("summary.schedule.enabled") : t("summary.schedule.paused"));
+      Toast.success(
+        isActive ? t("summary.schedule.enabled") : t("summary.schedule.paused")
+      );
             this.loadData();
         } catch (err: any) {
             Toast.error(err.message || t("summary.common.operationFailed"));
@@ -143,13 +165,25 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
     };
 
     render() {
-        const { schedules, loading, error, showCreateModal, showEditModal, editingSchedule, formLoading } = this.state;
+    const {
+      schedules,
+      loading,
+      error,
+      showCreateModal,
+      showEditModal,
+      editingSchedule,
+      formLoading,
+    } = this.state;
         const { t: translate } = this.context;
 
         return (
             <div className="summary-schedule-page">
                 <div className="summary-schedule-header">
-                    <Button icon={<IconArrowLeft />} theme="borderless" onClick={this.handleBack} />
+          <Button
+            icon={<IconArrowLeft />}
+            theme="borderless"
+            onClick={this.handleBack}
+          />
                     <h2>{translate("summary.schedule.pageTitle")}</h2>
                     <Button
                         icon={<IconPlus />}
@@ -170,7 +204,9 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                     >
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <span>{translate("summary.common.loadingFailed")}</span>
-                            <Button size="small" onClick={() => this.loadData()}>{translate("summary.common.retry")}</Button>
+              <Button size="small" onClick={() => this.loadData()}>
+                {translate("summary.common.retry")}
+              </Button>
                         </div>
                     </Banner>
                 )}
@@ -184,7 +220,10 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                 {!loading && schedules.length === 0 && !error && (
                     <div className="summary-schedule-empty">
                         <p>{translate("summary.schedule.empty")}</p>
-                        <Button theme="solid" onClick={() => this.setState({ showCreateModal: true })}>
+            <Button
+              theme="solid"
+              onClick={() => this.setState({ showCreateModal: true })}
+            >
                             {translate("summary.schedule.createFirst")}
                         </Button>
                     </div>
@@ -196,33 +235,56 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                             <div key={item.schedule_id} className="summary-schedule-card">
                                 <div className="summary-schedule-card-header">
                                     <span className="summary-schedule-card-title">
-                                        {item.title || translate("summary.schedule.fallbackTitle", { values: { id: item.schedule_id } })}
+                    {item.title ||
+                      translate("summary.schedule.fallbackTitle", {
+                        values: { id: item.schedule_id },
+                      })}
                                     </span>
                                     <Switch
                                         checked={item.is_active}
-                                        onChange={(checked) => this.handleToggle(item.schedule_id, checked)}
+                    onChange={(checked) =>
+                      this.handleToggle(item.schedule_id, checked)
+                    }
                                         size="small"
                                     />
                                 </div>
                                 <div className="summary-schedule-card-meta">
-                                    <Tag size="small" color="blue">{getModeLabel(item.summary_mode)}</Tag>
-                                    <span style={{ marginLeft: 8 }}>{describeSchedule(item.cron_expr, item.interval_days, item.interval_months, item.run_time, item.day_of_week, item.day_of_month)}</span>
-                                    <span style={{ marginLeft: 8, color: "var(--semi-color-text-2)" }}>
+                  <Tag size="small" color="blue">
+                    {getModeLabel(item.summary_mode)}
+                  </Tag>
+                  <span style={{ marginLeft: 8 }}>
+                    {describeSchedule(
+                      item.cron_expr,
+                      item.interval_days,
+                      item.interval_months,
+                      item.run_time,
+                      item.day_of_week,
+                      item.day_of_month
+                    )}
+                  </span>
+                  <span
+                    style={{ marginLeft: 8, color: "var(--semi-color-text-2)" }}
+                  >
                                         {getTimeRangeTypeLabel(item.time_range_type)}
                                     </span>
                                 </div>
                                 <div className="summary-schedule-card-sources">
-                                    {translate("summary.source.label")}{(item.sources ?? []).map((s) => s.source_name || s.source_id).join("、") || "-"}
+                  {translate("summary.source.label")}
+                  {(item.sources ?? [])
+                    .map((s) => s.source_name || s.source_id)
+                    .join("、") || "-"}
                                 </div>
                                 <div className="summary-schedule-card-actions">
                                     <Button
                                         icon={<IconEdit />}
                                         size="small"
                                         theme="borderless"
-                                        onClick={() => this.setState({
+                    onClick={() =>
+                      this.setState({
                                             showEditModal: true,
                                             editingSchedule: item,
-                                        })}
+                      })
+                    }
                                     />
                                     <Popconfirm
                                         title={translate("summary.schedule.deleteTitle")}
@@ -259,7 +321,9 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                 <Modal
                     title={translate("summary.schedule.editModalTitle")}
                     visible={showEditModal}
-                    onCancel={() => this.setState({ showEditModal: false, editingSchedule: null })}
+          onCancel={() =>
+            this.setState({ showEditModal: false, editingSchedule: null })
+          }
                     footer={null}
                     width={520}
                 >
@@ -277,7 +341,9 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                                 <Banner
                                     type="warning"
                                     closeIcon={null}
-                                    description={translate("summary.schedule.config.legacyCronWarning")}
+                  description={translate(
+                    "summary.schedule.config.legacyCronWarning"
+                  )}
                                     style={{ marginBottom: 16 }}
                                     fullMode={false}
                                 />
@@ -296,7 +362,9 @@ export default class ScheduleListPage extends Component<{}, ScheduleListPageStat
                                     sources: editingSchedule.sources ?? [],
                                 }}
                                 onSubmit={this.handleUpdate}
-                                onCancel={() => this.setState({ showEditModal: false, editingSchedule: null })}
+                onCancel={() =>
+                  this.setState({ showEditModal: false, editingSchedule: null })
+                }
                                 loading={formLoading}
                             />
                         </>

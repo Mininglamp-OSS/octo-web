@@ -22,6 +22,7 @@ export const T = {
     createSelectChat: "summary-create-select-chat",
     createSelectMembers: "summary-create-select-members",
     createSubmit: "summary-create-submit",
+    workbenchFeature: "summary-workbench-feature",
     // Mode-select dropdown on the single list-page "+" entry (mirror of prod testIds.ts)
     listModeSwitch: "summary-list-mode-switch",
     listNormalTab: "summary-list-normal-tab",
@@ -33,6 +34,13 @@ export const T = {
     chatSelectorConfirmBtn: "summary-chat-selector-confirm-btn",
     chatSelectorSearchInput: "summary-chat-selector-search-input",
     memberSelectorConfirmBtn: "summary-member-selector-confirm-btn",
+
+    // Add-member modal
+    addMemberModal: "summary-add-member-modal",
+    addMemberSearchInput: "summary-add-member-search-input",
+    addMemberRetryBtn: "summary-add-member-retry-btn",
+    addMemberConfirmBtn: "summary-add-member-confirm-btn",
+    addMemberMemberRow: (userId: string) => `summary-add-member-row-${userId}`,
 
     // Detail page
     detail: (taskId: number) => `summary-detail-${taskId}`,

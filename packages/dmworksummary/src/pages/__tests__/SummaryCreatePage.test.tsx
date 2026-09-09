@@ -63,7 +63,6 @@ vi.mock('@douyinfe/semi-icons', () => ({
 vi.mock('../../api/summaryApi', () => ({
     createSummary: vi.fn().mockResolvedValue({ task_id: 1 }),
     createAgentSummary: vi.fn().mockResolvedValue({ task_id: 1 }),
-    createSchedule: vi.fn().mockResolvedValue({}),
     getTopicTemplatesConfig: vi.fn().mockResolvedValue({ templates: [], custom_template_limit: 30 }),
     updateMyTopicTemplate: vi.fn().mockResolvedValue({}),
     resetMyTopicTemplate: vi.fn().mockResolvedValue({}),
@@ -78,7 +77,6 @@ vi.mock('../../api/summaryApi', () => ({
 vi.mock('../SummaryDetailPage', () => ({ default: () => null }));
 vi.mock('../../components/ChatSelectorModal', () => ({ default: () => null }));
 vi.mock('../../components/MemberSelectorModal', () => ({ default: () => null }));
-vi.mock('../../components/ScheduleConfigModal', () => ({ default: () => null }));
 
 import { getTopicTemplatesConfig } from '../../api/summaryApi';
 
@@ -832,6 +830,55 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         expect(api.createAgentSummary).toHaveBeenCalledWith(
             expect.objectContaining({ session_id: 'sess-4', request_id: 'req-page-1' }),
             expect.any(Object),
+        );
+    });
+
+    it('records a missing legacy verdict as unreported without changing save success', async () => {
+        const { Toast } = await import('@douyinfe/semi-ui');
+        const trackSpy = vi.spyOn(Dap.shared, 'track');
+        vi.mocked(api.createAgentSummary).mockResolvedValueOnce({
+            task_id: 1, task_no: 'SUM-1', status: 3, created_at: '2026-09-07T08:00:00Z',
+        });
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({ sessionId: 'sess-unreported', mode: 'agent' });
+        });
+        await act(async () => { await instance.handleSaveAsSummary('t'); });
+        const events = trackSpy.mock.calls.filter(([name]) => name === 'smart_summary_quality_gate');
+        expect(events).toHaveLength(1);
+        expect(events[0][1]).toMatchObject({ task_id: 1, finish_status: 'unreported', gap_count: 0 });
+        expect(events[0][1]).not.toHaveProperty('first_gap_kind');
+        expect(Toast.success).toHaveBeenCalledWith('AI 总结已保存');
+        expect(Toast.warning).not.toHaveBeenCalled();
+        expect(isAgentSummaryNotificationEligible(1)).toBe(true);
+    });
+
+    it.each(['PARTIAL', 'FAILED'] as const)('keeps save success for a created legacy task with an internal %s quality verdict (owner-confirmed P1 policy)', async (finishStatus) => {
+        const { Toast } = await import('@douyinfe/semi-ui');
+        const trackSpy = vi.spyOn(Dap.shared, 'track');
+        (api.createAgentSummary as any).mockResolvedValueOnce({
+            task_id: 1,
+            finish_status: finishStatus,
+            gaps: [{ kind: 'citation', detail: '引用完整性校验失败' }],
+        });
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({ sessionId: 'sess-gap', mode: 'agent' });
+        });
+
+        await act(async () => { await instance.handleSaveAsSummary('t'); });
+
+        expect(Toast.success).toHaveBeenCalledWith('AI 总结已保存');
+        expect(Toast.warning).not.toHaveBeenCalled();
+        expect(trackSpy).toHaveBeenCalledWith(
+            'smart_summary_quality_gate',
+            expect.objectContaining({
+                task_id: 1,
+                finish_status: finishStatus,
+                gap_count: 1,
+                first_gap_kind: 'citation',
+                trigger_mode: 'agent',
+            }),
         );
     });
 });

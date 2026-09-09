@@ -681,10 +681,14 @@ async function trackExpertViewReal(_kind: ExpertKindParam, id: string): Promise<
   }
 }
 
-async function listExpertTagsReal(kind: ExpertKindParam): Promise<string[]> {
+async function listExpertTagsReal(kind: ExpertKindParam, mine: boolean, keyword?: string): Promise<string[]> {
   const data = await get<{ name: string; count: number }[] | null>(
     "/plugin_tags",
-    { plugin_type: pluginTypeOf(kind) }
+    {
+      plugin_type: pluginTypeOf(kind), scene_code: SCENE_CODE,
+      ...(mine ? { mode: "mine" } : {}),
+      ...(keyword?.trim() ? { q: keyword.trim() } : {}),
+    }
   );
   return Array.isArray(data) ? data.map((tag) => tag.name) : [];
 }
@@ -708,9 +712,7 @@ function matchesFilters(item: ExpertItem, params: ListExpertParams): boolean {
   const tags = params.tags ?? [];
   const matchKeyword =
     !keyword ||
-    item.name.toLowerCase().includes(keyword) ||
-    item.summary.toLowerCase().includes(keyword) ||
-    item.tags.some((tag) => tag.toLowerCase().includes(keyword));
+    item.name.toLowerCase().includes(keyword);
   const matchCategory =
     !category ||
     category === ALL_CATEGORY ||
@@ -796,15 +798,17 @@ const trackExpertViewMock = (kind: ExpertKindParam, id: string): Promise<void> =
   return delay(undefined);
 };
 
-function listExpertTagsMock(kind: ExpertKindParam): Promise<string[]> {
-  const source: ExpertItem[] = kind === "squad" ? mockSquads : mockAgents;
+function listExpertTagsMock(kind: ExpertKindParam, mine: boolean, keyword?: string): Promise<string[]> {
+  const all: ExpertItem[] = kind === "squad" ? mockSquads : mockAgents;
+  const source = mine ? all.filter(isMine) : all;
   const counts = new Map<string, number>();
   for (const item of source) {
     for (const tag of item.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
   }
   const names = Array.from(counts.entries())
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([name]) => name);
+    .map(([name]) => name)
+    .filter((name) => !keyword?.trim() || name.toLowerCase().includes(keyword.trim().toLowerCase()));
   return delay(names);
 }
 
@@ -932,7 +936,15 @@ export async function loadExpertChildRelations(
     throw new Error("loadExpertChildRelations is not available under USE_MOCK");
   }
   const detail = await pluginDetail(id);
-  return [...(detail.relations ?? [])]
+  return mapChildRelations(detail.relations);
+}
+
+/** The child-relation projection, split out so the upgrade snapshot can derive
+ *  it from the SAME detail response its content comes from. */
+function mapChildRelations(
+  relations: PluginDetailWire["relations"]
+): ExpertChildRelation[] {
+  return [...(relations ?? [])]
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
     .map((rel, index) => ({
       targetPluginId: rel.target_plugin_id,
@@ -976,6 +988,44 @@ export async function loadExpertReviewContent(
   };
 }
 
+/** The full upgrade snapshot for a 专家 / 专家团 — content AND child relations —
+ *  derived from ONE `/plugins/detail` read.
+ *
+ * WHY NOT compose `loadExpertReviewContent` + `loadExpertChildRelations`: those
+ * each issue their own detail GET, and `ReviewSubmitModal` resolves the two
+ * loaders under `Promise.all`. A Bot write — the only way these records are
+ * authored — landing between the two responses freezes content from one revision
+ * together with the relation graph of another: internally inconsistent bytes
+ * that were never live at any instant. Nothing downstream detects it. The submit
+ * payload carries no revision token, the backend validates the submitted
+ * manifest only against fields a content update does not change and treats
+ * submitted `relations` as authoritative without cross-checking them against the
+ * submitted content, and at approval the chimera is applied to the live row
+ * having passed a review where it looked entirely normal.
+ *
+ * This is not a narrow window: an upgrade submission is typically triggered
+ * BECAUSE the Bot just updated the record, so submissions cluster around write
+ * activity. Deriving both projections from a single response is what makes the
+ * frozen snapshot a coherent past state — the uniformly-stale snapshot the
+ * design already accepts, rather than a state that never existed.
+ */
+export async function loadExpertReviewSnapshot(id: string): Promise<{
+  content: { manifestJson: unknown; pluginJson: unknown };
+  relations: ExpertChildRelation[];
+}> {
+  if (USE_MOCK) {
+    throw new Error("loadExpertReviewSnapshot is not available under USE_MOCK");
+  }
+  const detail = await pluginDetail(id);
+  return {
+    content: {
+      manifestJson: detail.plugin.manifest_json,
+      pluginJson: detail.plugin.plugin_json,
+    },
+    relations: mapChildRelations(detail.relations),
+  };
+}
+
 /** Record one detail view for an expert ("agent") or squad. Fire-and-forget:
  *  never rejects — failures are swallowed inside (a lost view is meaningless
  *  to the user and must not surface). */
@@ -983,9 +1033,11 @@ export function trackExpertView(kind: ExpertKindParam, id: string): Promise<void
   return USE_MOCK ? trackExpertViewMock(kind, id) : trackExpertViewReal(kind, id);
 }
 
-/** GET /expert_tags?kind= — tag names for the current tab's popover. */
-export function listExpertTags(kind: ExpertKindParam): Promise<string[]> {
-  return USE_MOCK ? listExpertTagsMock(kind) : listExpertTagsReal(kind);
+/** GET /plugin_tags — scoped tag suggestions, filtered before the server limit. */
+export function listExpertTags(kind: ExpertKindParam, options: { mine?: boolean; keyword?: string } = {}): Promise<string[]> {
+  return USE_MOCK
+    ? listExpertTagsMock(kind, options.mine ?? false, options.keyword)
+    : listExpertTagsReal(kind, options.mine ?? false, options.keyword);
 }
 
 /** GET /expert_categories?kind= — category chips with live counts (no "全部"). */

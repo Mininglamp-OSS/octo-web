@@ -13,7 +13,7 @@ import {
 } from "@octo/base";
 import { ContactsModule } from "@octo/contacts";
 import { DataSourceModule } from "@octo/datasource";
-import { SummaryModule } from "@dmwork/summary";
+import { SummaryCommunicationModule } from "@dmwork/summary/communication";
 import { registerEnterpriseModules } from "virtual:octo-enterprise-modules";
 import { WKSDK } from "wukongimjssdk";
 import { version as pkgVersion } from "../../package.json";
@@ -21,6 +21,8 @@ import { resolveApiURL } from "../apiURL";
 import appEnUS from "../i18n/en-US.json";
 import appZhCN from "../i18n/zh-CN.json";
 import { installCommunicationAuthExpiryHandler } from "./authLifecycle";
+import { assertClientFeatureBootstrap } from "../client-feature/bootstrapContract";
+import { enableClientFeatureMocks } from "../client-feature/e2eMocks";
 import { CommunicationShell } from "./CommunicationShell";
 import { requireHostBridge } from "./hostBridge";
 import { reportStartupFailure } from "./startupFailure";
@@ -28,9 +30,7 @@ import { reportStartupFailure } from "./startupFailure";
 async function main() {
   const host = requireHostBridge();
   const bootstrap = await host.getBootstrap();
-  if (bootstrap.bridgeVersion !== 1) {
-    throw new Error(`Unsupported communication bridge version: ${bootstrap.bridgeVersion}`);
-  }
+  assertClientFeatureBootstrap(bootstrap, "communication");
 
   WKApp.apiClient.config.apiURL = resolveApiURL({
     isDesktop: true,
@@ -65,12 +65,12 @@ async function main() {
   installCommunicationAuthExpiryHandler(WKApp.apiClient, WKApp.loginInfo, host);
   WKApp.shared.registerModule(new DataSourceModule());
   WKApp.shared.registerModule(new ContactsModule());
-  WKApp.shared.registerModule(new SummaryModule());
+  WKApp.shared.registerModule(new SummaryCommunicationModule());
   registerEnterpriseModules({
     registerModule: (module) => WKApp.shared.registerModule(module),
   });
 
-  await enableMocksIfE2E();
+  await enableClientFeatureMocks("communication");
   await enableMockImIfE2E();
   WKApp.shared.startup({ loadLoginInfo: false, isPC: true });
   if (
@@ -101,16 +101,6 @@ async function main() {
       </I18nProvider>
     </React.StrictMode>,
   );
-}
-
-async function enableMocksIfE2E(): Promise<void> {
-  if (import.meta.env.VITE_E2E_MOCK !== "1") return;
-  try {
-    const { worker } = await import("../mocks/browser");
-    await worker.start({ onUnhandledRequest: "bypass" });
-  } catch (error) {
-    console.warn("[communication-e2e] MSW disabled:", error);
-  }
 }
 
 async function enableMockImIfE2E(): Promise<void> {

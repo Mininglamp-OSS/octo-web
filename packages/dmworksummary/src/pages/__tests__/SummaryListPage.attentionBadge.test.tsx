@@ -18,11 +18,15 @@ vi.mock('@douyinfe/semi-ui', () => ({
     Tooltip: () => null,
 }));
 vi.mock('@douyinfe/semi-icons', () => ({
+    IconChevronDown: () => null,
     IconSearch: () => null,
     IconPlus: () => null,
     IconRefresh: () => null,
 }));
 vi.mock('../../components/SummaryCard', () => ({ default: () => null }));
+vi.mock('../../features/summaryWorkbench/SummaryWorkbenchCreateEntry', () => ({
+    default: () => null,
+}));
 vi.mock('../SummaryCreatePage', () => ({ default: () => null }));
 vi.mock('../SummaryDetailPage', () => ({ default: () => null }));
 vi.mock('../../api/summaryApi');

@@ -5,6 +5,7 @@ import type {
   GlobalSearchDataSource,
 } from "../../Service/SearchTypes";
 import useSearchPagination from "../../bridge/search/useSearchPagination";
+import { docIconSrc } from "./searchFileIcon";
 import "./doc-search-panel.css";
 
 const PAGE_SIZE = 20;
@@ -57,13 +58,6 @@ function renderHighlight(rawFragment: string): React.ReactNode {
   if (cursor < fragment.length) nodes.push(fragment.slice(cursor));
   return nodes.length > 0 ? nodes : fragment;
 }
-
-const DOC_TYPE_BADGE: Record<string, string> = {
-  doc: "DOC",
-  sheet: "XLS",
-  board: "BRD",
-  html: "WEB",
-};
 
 function formatUpdatedAt(ms: number | null, locale: string): string {
   if (!ms) return "";
@@ -161,12 +155,14 @@ const DocSearchPanel: React.FC<DocSearchPanelProps> = ({
                 className="wk-doc-search__item"
                 onClick={() => onOpenDoc?.(item)}
               >
-                <span
-                  className={`wk-doc-search__icon wk-doc-search__icon--${
-                    DOC_TYPE_BADGE[item.docType] ? item.docType : "doc"
-                  }`}
-                >
-                  {DOC_TYPE_BADGE[item.docType] ?? "DOC"}
+                <span className="wk-doc-search__icon">
+                  <img
+                    className="wk-doc-search__icon-img"
+                    src={docIconSrc(item.docType)}
+                    width={48}
+                    height={48}
+                    alt=""
+                  />
                 </span>
                 <span className="wk-doc-search__meta">
                   <span className="wk-doc-search__title">

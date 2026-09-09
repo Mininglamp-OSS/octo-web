@@ -22,6 +22,7 @@ import {
     resolveInitialSpaceForUser,
 } from "../../features/spacePreference";
 import { requestGuardedMenuChange, requestProgrammaticMenuChange } from "./menuChange";
+import { buildSpaceAdminUrl } from "./spaceAdminUrl";
 import { requestMailWorkspaceSwitch } from "@octo/mail";
 
 // ─── MainContentLeft：纯路由渲染区（Sidebar + 内容） ───────────────────────
@@ -279,7 +280,11 @@ export class MainPage extends Component<{}, MainPageState> {
                                         onJoinSpace={() => this.setState({ showJoinSpace: true })}
                                         onCreateSpace={() => this.setState({ showCreateSpace: true })}
                                         canManageSpace={canManageSpace}
-                                        onSpaceManagement={() => { window.location.href = "/space"; }}
+                                        onSpaceManagement={() => {
+                                            // 点击时再读，避免在 applySpaceSelection 的 getMySpaces 失败分支
+                                            // (只弹 toast、不 re-render) 后短暂窗口内用到 render 时闭包捕获的旧 id。
+                                            window.location.href = buildSpaceAdminUrl(WKApp.shared.currentSpaceId);
+                                        }}
                                         // 菜单
                                         menusList={vm.menusList}
                                         currentMenus={vm.currentMenus}

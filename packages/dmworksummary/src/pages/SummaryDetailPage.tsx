@@ -12,15 +12,10 @@ import {
 } from "@douyinfe/semi-ui";
 import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconRefresh, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
 import { Bot, ChevronDown, Check, X } from "lucide-react";
-import WKSDK, { Channel, ChannelTypeGroup, MessageText } from "wukongimjssdk";
 import {
   I18nContext,
   t,
-  ForwardService,
-  interpretForwardResult,
   titleContextStore,
-  SummaryTipContent,
-  isConversationDisbanded,
   Dap,
   // CR: 必须走包的 public index，不能深路径 import `@octo/base/src/...`。
   // dmworksummary 的 vitest.config.ts 末尾有一条**字符串** alias
@@ -36,9 +31,7 @@ import RouteContext, { RouteContextConfig } from "@octo/base/src/Service/Context
 import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
 import RoutePage from "@octo/base/src/Components/RoutePage";
 import { Channel as WkChannel } from "wukongimjssdk";
-import { splitSummaryText } from "../utils/splitMessage";
 import { convertDocErrorMessage } from "../utils/convertDocError";
-import { sendGroupSummaryCompletionTips } from "../utils/groupSummaryNotify";
 import { applyRegenerateVoiceInput } from "../utils/regenerateInput";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
@@ -57,6 +50,7 @@ import type {
     WorkflowStage,
     SummaryVersionDetail,
     SummaryVersionItem,
+    SummaryReferenceTask,
 } from "../types/summary";
 import { TaskStatus, SummaryMode, ParticipantStatus, TriggerType } from "../types/summary";
 import {
@@ -71,12 +65,15 @@ import {
 } from "../utils/summaryHelpers";
 import { summaryTestIds } from "../utils/testIds";
 import CitationText from "../components/CitationText";
+import SummaryAddMemberModal from "../features/summaryMembers/SummaryAddMemberModal";
 import SummaryResultActions from "../components/SummaryResultActions";
 import { stripCitationMarkers } from "../components/citationStrip";
 import SelectedSourcesPanel from "../components/SelectedSourcesPanel";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import SummaryEditor from "../components/SummaryEditor";
 import SummaryVersionPanel from "../components/SummaryVersionPanel";
+import { legacySummaryMessagingPort, SummaryForwardContextExpiredError } from "../host";
+import type { SummaryConversationTarget, SummaryMessagingPort } from "../host";
 
 interface SummaryDetailPageProps {
     taskId?: number | string;
@@ -86,6 +83,11 @@ interface SummaryDetailPageProps {
      *  instances (ChatSummaryPanel, SummaryConfirmPage) must not pollute the
      *  list selection state. */
     emitSelection?: boolean;
+    /** Controlled workspace navigation for the continue-refine action. */
+    onContinueRefine?: (task: SummaryReferenceTask) => void;
+    /** Controlled workspace navigation for legacy task confirmation. */
+    onViewConfirm?: (taskId: number) => void;
+    messaging?: SummaryMessagingPort;
 }
 
 type RegenerateMode = "refine" | "full";
@@ -167,9 +169,10 @@ interface SummaryDetailPageState {
      */
     copyingKey: string | null;
     convertingKey: string | null;
+    /** 面板模式添加成员弹窗可见性 */
+    showAddMemberModal: boolean;
 }
 
-const INTER_MESSAGE_DELAY_MS = 200;
 const PERSONAL_RESULT_POLL_INTERVAL_MS = 1500;
 const WORKFLOW_COMPLETE_REVEAL_DELAY_MS = 650;
 
@@ -214,6 +217,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private regenerateVoiceMode: RegenerateMode | null = null;
     /** 转文档的同步重入闸（P1-b：semi-ui loading 不禁点，双击会创建两份文档）。 */
     private convertInFlight = false;
+
+    private get messaging(): SummaryMessagingPort {
+        return this.props.messaging ?? legacySummaryMessagingPort;
+    }
 
     private handleRegenerateVoiceRecordingStart = () => {
         this.regenerateVoiceMode = this.state.regenerateMode;
@@ -294,6 +301,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         teamStreamError: null,
         copyingKey: null,
         convertingKey: null,
+        showAddMemberModal: false,
     };
 
     private personalPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -1222,27 +1230,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     private notifyGroupsOnCompletion(previousStatus: number | undefined, detail: SummaryDetail) {
-        void sendGroupSummaryCompletionTips(
-            previousStatus,
-            detail,
-            WKApp.loginInfo.uid,
-            TaskStatus.COMPLETED,
-            ChannelTypeGroup,
-            {
-                sendToChannel: async (channel, currentUserId) => {
-                    const name = WKApp.loginInfo.selfDisplayName?.()
-                        || WKApp.loginInfo.name
-                        || currentUserId;
-                    // Iterate #1379: emit a WK_TIP (2000) system-range tip so
-                    // Web and native clients render it via their built-in
-                    // SystemContent path with no per-type adaptation.
-                    const content = new SummaryTipContent().setSender(currentUserId, name);
-                    await WKSDK.shared().chatManager.send(content, channel);
-                },
-                isDisbanded: isConversationDisbanded,
-                warn: (message, context) => console.warn(message, context),
-            },
-        );
+        void this.messaging
+            .notifySummaryCompleted({ previousStatus, detail })
+            .catch((error) => {
+                console.warn("[SummaryDetailPage] completion notice failed", error);
+            });
     }
 
 
@@ -2350,23 +2342,37 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { detail } = this.state;
         if (!detail) return;
         if (!this.canRefineCurrentDetail()) return;
-        const event = new CustomEvent('summary-open-chat-with-reference', {
-            detail: {
-                task_id: detail.task_id,
-                title: detail.title,
-                trigger_type: detail.trigger_type,
-                status: detail.status,
-                creator_id: detail.creator_id,
-                summary_mode: detail.summary_mode,
-                time_range_start: detail.time_range_start,
-                time_range_end: detail.time_range_end,
-                sources: detail.sources || [],
-                total_msg_count: 0,
-                created_at: '',
-                updated_at: '',
-            },
+        const referenceTask = {
+            task_id: detail.task_id,
+            title: detail.title,
+            trigger_type: detail.trigger_type,
+            status: detail.status,
+            creator_id: detail.creator_id,
+            summary_mode: detail.summary_mode,
+            time_range_start: detail.time_range_start,
+            time_range_end: detail.time_range_end,
+            sources: detail.sources || [],
+            total_msg_count: 0,
+            created_at: "",
+            updated_at: "",
+        } satisfies SummaryReferenceTask;
+        if (this.props.onContinueRefine) {
+            this.props.onContinueRefine(referenceTask);
+            return;
+        }
+        const event = new CustomEvent("summary-open-chat-with-reference", {
+            detail: referenceTask,
         });
         window.dispatchEvent(event);
+    };
+
+    private handleViewConfirm = () => {
+        if (this.taskId == null) return;
+        if (this.props.onViewConfirm) {
+            this.props.onViewConfirm(this.taskId);
+            return;
+        }
+        WKApp.routeLeft.push(<SummaryConfirmPage taskId={this.taskId} />);
     };
 
     handleForwardToChat = () => {
@@ -2381,37 +2387,27 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (!sourceContent.trim()) return;
         // 埋点 310:打开「转发到聊天」的会话选择面板（有正文可转发时才算打开）。
         Dap.shared.track("smart_summary_forward_panel_opened", {});
-        WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[]) => {
-            const cleanContent = sourceContent.replace(/\[\d+\]/g, '').replace(/  +/g, ' ').trim();
-            const chunks = splitSummaryText(cleanContent);
-
-            // 长文分块 → 同 channel 内 serial 保序 + interMessageDelayMs 节流；
-            // 跨 channel 也走 serial（保持与原实现一致的顺序体验）。
-            // 原先手写的 space_id monkey-patch 由 ForwardService 内部
-            // wrapSendContentForInjection + opts.spaceId 代替。
-            const result = await ForwardService.send(
-                channels,
-                () => chunks.map((c) => new MessageText(c)),
-                {
-                    channelMode: "serial",
-                    messageMode: "serial",
-                    interMessageDelayMs: INTER_MESSAGE_DELAY_MS,
-                    spaceId: WKApp.shared.currentSpaceId,
-                },
-            );
-
-            // 分母保持 channels 数（scope='targets'），不改动用户可见的 Toast 语义。
-            const state = interpretForwardResult(result, "targets");
-            if (state.kind === "all-failed") {
-                Toast.error(t("summary.detail.forwardFailed"));
-            } else if (state.kind === "partial") {
-                Toast.error(t("summary.detail.partialForwardFailed", { values: { failed: state.failed, total: state.total } }));
-            } else {
-                Toast.success(t("summary.detail.forwarded"));
-            }
-            // 埋点 311:总结已转发（只要不是全部失败即算一次成功转发；隐私 props 恒空）。
-            if (state.kind !== "all-failed") Dap.shared.track("smart_summary_forwarded", {});
-        }, t("summary.detail.forwardToChat"));
+        const cleanContent = sourceContent.replace(/\[\d+\]/g, '').replace(/  +/g, ' ').trim();
+        this.messaging.requestForward({
+            content: cleanContent,
+            title: t("summary.detail.forwardToChat"),
+            onComplete: (state) => {
+                if (state.kind === "all-failed") {
+                    Toast.error(t("summary.detail.forwardFailed"));
+                } else if (state.kind === "partial") {
+                    Toast.error(t("summary.detail.partialForwardFailed", { values: { failed: state.failed, total: state.total } }));
+                } else {
+                    Toast.success(t("summary.detail.forwarded"));
+                }
+                // 埋点 311:总结已转发（只要不是全部失败即算一次成功转发；隐私 props 恒空）。
+                if (state.kind !== "all-failed") Dap.shared.track("smart_summary_forwarded", {});
+            },
+            onError: (error) => Toast.error(t(
+                error instanceof SummaryForwardContextExpiredError
+                    ? "summary.detail.forwardContextChanged"
+                    : "summary.detail.forwardFailed"
+            )),
+        });
     };
 
     /**
@@ -3731,7 +3727,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <IconClose style={{ fontSize: 14 }} />
                         <span>
                             {m.user_name}
-                            <span style={{ color: "var(--semi-color-text-3)", fontWeight: 400 }}> · </span>
+                            <span style={{ color: "var(--semi-color-text-3)", fontWeight: 400 }}>{" "}·{" "}</span>
                             <span style={{ fontSize: 13, color: "var(--semi-color-text-2)", fontWeight: 400 }}>
                                 {t("summary.confirmPage.declined")}
                             </span>
@@ -3957,11 +3953,33 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     // need7：creator 添加新成员。选定后调 POST /members，成功 loadDetail 刷新（新成员 Pending）。
+    private addMemberConversationTarget(): SummaryConversationTarget {
+        const detail = this.state.detail;
+        const tId = this.taskId;
+        const channelId = detail?.origin_channel_id || "";
+        // origin_channel_type 映射：后端类型 1=群聊/2=子区/3=私聊。
+        // loadConversationMembers 需要 IM SDK 的 channelType（2=群聊/1=私聊/5=子区），
+        // 复用 handleOpenAddMember 同一转换逻辑。
+        const rawType = detail?.origin_channel_type ?? 2;
+        const channelType =
+            rawType === 1 ? 2 : rawType === 3 ? 1 : 2;
+        return {
+            channelId: channelId || (tId != null ? String(tId) : ""),
+            channelType,
+        };
+    }
+
     handleOpenAddMember = () => {
         if (this.taskId == null) return;
         const detail = this.state.detail;
         if (!detail) return;
-        // 推断频道：origin_channel_id + origin_channel_type
+        // 面板模式：用 Semi Modal 代替 WKApp.routeRight.push，绕过缺少 SubscriberList
+        // 的代码包拆分问题。
+        if (this.props.messaging) {
+            this.setState({ showAddMemberModal: true });
+            return;
+        }
+        // 传统 Web 路由：通过 SubscriberList 路由页面添加成员。
         const channelId = detail.origin_channel_id;
         const channelType = detail.origin_channel_type === 1 ? 2 : detail.origin_channel_type === 3 ? 1 : 2;
         const channel = channelId ? new WkChannel(channelId, channelType) : new WkChannel(this.taskId.toString(), 2);
@@ -4544,7 +4562,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                             <p style={{ fontSize: 14, color: "var(--semi-color-text-2)", marginTop: 8, marginBottom: 16 }}>
                                                 {t("summary.detail.waitingConfirmDesc")}
                                             </p>
-                                            <Button onClick={() => WKApp.routeLeft.push(<SummaryConfirmPage taskId={this.taskId} />)}>
+                                            <Button onClick={this.handleViewConfirm}>
                                                 {t("summary.detail.viewConfirmStatus")}
                                             </Button>
                                         </div>
@@ -4626,6 +4644,24 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     hasExisting={!!this.state.scheduleItem && this.state.scheduleItem.is_active !== false}
                     onDisable={this.handleScheduleDisable}
                     disabling={this.state.scheduleDisabling}
+                />
+                <SummaryAddMemberModal
+                    visible={this.state.showAddMemberModal}
+                    taskId={this.taskId!}
+                    target={this.addMemberConversationTarget()}
+                    existingMemberIds={
+                        (this.state.detail?.participants || []).map(
+                            (p) => p.user_id
+                        )
+                    }
+                    messaging={this.messaging}
+                    onClose={() =>
+                        this.setState({ showAddMemberModal: false })
+                    }
+                    onSuccess={() => {
+                        this.setState({ showAddMemberModal: false });
+                        this.loadDetail();
+                    }}
                 />
                 {/* need7：添加成员复用 SubscriberList 路由页面，见 handleOpenAddMember */}
                 <Modal

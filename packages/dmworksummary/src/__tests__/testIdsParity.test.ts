@@ -159,6 +159,7 @@ describe('testIds parity guard (prod <-> e2e)', () => {
     { key: 'cardRejectBtn', args: [250252],         expected: 'summary-card-reject-250252' },
     { key: 'detailMemberRow', args: ['e2e-user-1'], expected: 'summary-detail-member-row-e2e-user-1' },
     { key: 'versionCard',   args: [2],              expected: 'summary-version-card-2' },
+    { key: 'addMemberMemberRow', args: ['u-42'],    expected: 'summary-add-member-row-u-42' },
   ];
 
   for (const { key, args, expected } of dynamicSamples) {

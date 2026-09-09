@@ -113,6 +113,7 @@ export interface WKBaseState {
   alertTitle?: string;
   onAlertOk?: () => void;
   conversationSelectFinished?: (channel: Channel[]) => void;
+  conversationSelectCancelled?: () => void;
 
   showGlobalModal?: boolean; // 显示全局弹窗
   globalModalOptions?: GlobalModalOptions;
@@ -147,7 +148,8 @@ export interface WKBaseContext {
   showConversationSelect(
     onFinished?: (channels: Channel[]) => void,
     title?: string,
-    forward?: DocForwardOpen
+    forward?: DocForwardOpen,
+    onCancel?: () => void
   ): void;
 
   // 显示用户信息
@@ -252,7 +254,8 @@ export default class WKBase
   showConversationSelect(
     onFinished?: (channels: Channel[]) => void,
     title?: string,
-    forward?: DocForwardOpen
+    forward?: DocForwardOpen,
+    onCancel?: () => void
   ) {
     // feature #511: stash the forward payload so the finished handler can run the host-side
     // "先授权后发" orchestration. Cleared on cancel/close so a later plain forward isn't affected.
@@ -260,6 +263,7 @@ export default class WKBase
     this.setState((prev) => ({
       showConversationSelect: true,
       conversationSelectFinished: onFinished,
+      conversationSelectCancelled: onCancel,
       conversationSelectTitle: title,
       conversationSelectGrant: forward
         ? {
@@ -506,6 +510,7 @@ export default class WKBase
       conversationSelectKey,
       conversationSelectGrant,
       conversationSelectFinished,
+      conversationSelectCancelled,
       onAlertOk,
       alertContent,
       alertTitle,
@@ -574,11 +579,15 @@ export default class WKBase
           width={625}
           options={{ mask: false }}
           onCancel={() => {
+            const onCancel = conversationSelectCancelled;
             this.docForward = undefined;
             this.setState({
               showConversationSelect: false,
               conversationSelectGrant: undefined,
+              conversationSelectFinished: undefined,
+              conversationSelectCancelled: undefined,
             });
+            onCancel?.();
           }}
         >
           <ConversationSelect
@@ -590,6 +599,8 @@ export default class WKBase
               this.setState({
                 showConversationSelect: false,
                 conversationSelectGrant: undefined,
+                conversationSelectFinished: undefined,
+                conversationSelectCancelled: undefined,
               });
               if (forward) {
                 // feature #511: host owns "先授权后发" + send + partial-failure Toast.
@@ -601,11 +612,15 @@ export default class WKBase
               }
             }}
             onCancel={() => {
+              const onCancel = conversationSelectCancelled;
               this.docForward = undefined;
               this.setState({
                 showConversationSelect: false,
                 conversationSelectGrant: undefined,
+                conversationSelectFinished: undefined,
+                conversationSelectCancelled: undefined,
               });
+              onCancel?.();
             }}
             title={conversationSelectTitle}
           ></ConversationSelect>

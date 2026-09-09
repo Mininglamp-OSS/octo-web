@@ -3,6 +3,23 @@
   "version": "1.0.0",
   "private": true,
   "main": "src/index.tsx",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./conversation": "./src/conversation.ts",
+    "./workspace": "./src/workspace.ts",
+    "./package.json": "./package.json",
+    "./src/*": "./src/*"
+  },
+  "typesVersions": {
+    "*": {
+      "conversation": ["src/conversation.ts"],
+      "workspace": ["src/workspace.ts"],
+      "*": ["*"]
+    }
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
   "dependencies": {
     "@octo/base": "workspace:*",
     "wukongimjssdk": "^1.3.5"

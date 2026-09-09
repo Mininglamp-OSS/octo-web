@@ -1,134 +1,146 @@
-import React, { useCallback, useRef, useState } from "react"
-import { Channel, ChannelInfo, ChannelTypePerson } from "wukongimjssdk"
-import {
-  Conversation,
-  Dap,
-  WKApp,
-  createCurrentEmptyImConversation,
-  findCurrentImConversation,
-  setCurrentImChannelInfoCache,
-} from "@octo/base"
-import AppBotService from "../Service/AppBotService"
-import type { AppBotViewItem } from "../bridge/types"
-import AppBotAvatar from "./AppBotAvatar"
-import { showErrorToast } from "./appBotToast"
-import AppBotChatHeader from "../ui/AppBotChatHeader"
+import { useCallback, useEffect, useRef, useState } from "react";
+import AppBotService from "../Service/AppBotService";
+import type { AppBotViewItem } from "../bridge/types";
+import { useAppBotHost } from "../host/AppBotHostContext";
+import type {
+  AppBotConversationTarget,
+  AppBotHostCapabilities,
+} from "../host/types";
+import { showErrorToast } from "./appBotToast";
 
 interface OpenAppBotConversationDeps {
-  applyBot: (robotUid: string) => Promise<unknown>
-  setChannelInfo: (info: ChannelInfo) => void
-  findConversation: (channel: Channel) => unknown
-  createEmptyConversation?: (channel: Channel) => unknown
-  replaceToRoot: (element: React.ReactElement) => void
+  applyBot: (robotUid: string) => Promise<unknown>;
 }
 
-function createAppBotChannel(bot: AppBotViewItem) {
-  return new Channel(bot.uid, ChannelTypePerson)
+interface OpenAppBotConversationCallbacks {
+  onApplied?: () => void;
+  /** Fail-safe guard checked before every post-await side effect. */
+  isCurrent?: () => boolean;
 }
 
-function createAppBotChannelInfo(bot: AppBotViewItem, channel: Channel) {
-  const info = new ChannelInfo()
-  info.channel = channel
-  info.title = bot.displayName
-  info.logo = `users/${bot.uid}/avatar`
-  info.orgData = {
-    displayName: bot.displayName,
-    robot: 1,
-    name: bot.displayName,
-  }
-  return info
-}
-
-function renderAppBotConversation(bot: AppBotViewItem, channel: Channel) {
-  return (
-    <div key={channel.getChannelKey()} className="appbot-chat-wrap">
-      <AppBotChatHeader
-        avatar={<AppBotAvatar uid={bot.uid} />}
-        displayName={bot.displayName}
-      />
-      <Conversation channel={channel} />
-    </div>
-  )
-}
-
-function defaultOpenConversationDeps(): OpenAppBotConversationDeps {
+export function createAppBotConversationTarget(
+  bot: AppBotViewItem
+): AppBotConversationTarget {
   return {
-    applyBot: AppBotService.applyBot,
-    setChannelInfo: (info) => setCurrentImChannelInfoCache(info),
-    findConversation: (channel) => findCurrentImConversation(channel),
-    createEmptyConversation: (channel) => createCurrentEmptyImConversation(channel),
-    replaceToRoot: (element) => WKApp.routeRight.replaceToRoot(element),
-  }
+    channelId: bot.uid,
+    channelType: 1,
+    displayName: bot.displayName,
+    avatar: `users/${bot.uid}/avatar`,
+    metadata: {
+      displayName: bot.displayName,
+      robot: 1,
+      name: bot.displayName,
+    },
+  };
 }
+
+function trackAppOpened(host: AppBotHostCapabilities, bot: AppBotViewItem) {
+  if (host.isOctoAssistant(bot.uid)) {
+    host.track("octo_assistant_opened", {
+      source: "app_bot_list",
+    });
+    return;
+  }
+
+  host.track("app_opened", {
+    app_name: bot.displayName,
+    app_category: bot.scope,
+  });
+}
+
+const defaultDeps: OpenAppBotConversationDeps = {
+  applyBot: (robotUid) => AppBotService.applyBot(robotUid),
+};
 
 export async function openAppBotConversation(
   bot: AppBotViewItem,
-  deps: OpenAppBotConversationDeps = defaultOpenConversationDeps(),
-  callbacks: { onApplied?: () => void } = {},
+  host: AppBotHostCapabilities,
+  deps: OpenAppBotConversationDeps = defaultDeps,
+  callbacks: OpenAppBotConversationCallbacks = {}
 ) {
-  await deps.applyBot(bot.uid)
-  callbacks.onApplied?.()
+  const spaceId = host.getCurrentSpace().id;
+  let spaceChanged = false;
+  const unsubscribe = host.subscribeSpaceChanged(() => {
+    spaceChanged = true;
+  });
+  const isCurrent = () =>
+    !spaceChanged &&
+    host.getCurrentSpace().id === spaceId &&
+    callbacks.isCurrent?.() !== false;
 
-  // 埋点：判别是否为 Octo Assistant（octo-dap S3 / YUJ-277）
-  const isOctoAssistant = WKApp.remoteConfig.octoAssistantUids.includes(bot.uid)
-  if (isOctoAssistant) {
-    Dap.shared.track("octo_assistant_opened", {
-      source: "app_bot_list",
-    })
-  } else {
-    Dap.shared.track("app_opened", {
-      app_name: bot.displayName,
-      app_category: bot.scope,
-    })
+  try {
+    await deps.applyBot(bot.uid);
+    if (!isCurrent()) return;
+    callbacks.onApplied?.();
+    if (!isCurrent()) return;
+    trackAppOpened(host, bot);
+    if (!isCurrent()) return;
+    await host.openConversation(createAppBotConversationTarget(bot));
+  } finally {
+    unsubscribe();
   }
-
-  const channel = createAppBotChannel(bot)
-  const info = createAppBotChannelInfo(bot, channel)
-  deps.setChannelInfo(info)
-
-  if (!deps.findConversation(channel) && deps.createEmptyConversation) {
-    deps.createEmptyConversation(channel)
-  }
-
-  deps.replaceToRoot(renderAppBotConversation(bot, channel))
 }
 
 interface UseAppBotConversationOptions {
-  connectFailedMessage: string
-  onError?: (message: string) => void
+  connectFailedMessage: string;
+  onError?: (message: string) => void;
 }
 
 export function useAppBotConversation({
   connectFailedMessage,
   onError = showErrorToast,
 }: UseAppBotConversationOptions) {
-  const [selectedUid, setSelectedUid] = useState<string | null>(null)
-  const isSelectingRef = useRef(false)
+  const host = useAppBotHost();
+  const [selectedUid, setSelectedUid] = useState<string | null>(null);
+  const isSelectingRef = useRef(false);
+  const generationRef = useRef(0);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      isSelectingRef.current = false;
+      generationRef.current += 1;
+    };
+  }, []);
 
   const resetSelection = useCallback(() => {
-    isSelectingRef.current = false
-    setSelectedUid(null)
-    WKApp.routeRight.popToRoot()
-  }, [])
+    generationRef.current += 1;
+    isSelectingRef.current = false;
+    setSelectedUid(null);
+    host.clearConversation();
+  }, [host]);
 
-  const selectBot = useCallback(async (bot: AppBotViewItem) => {
-    if (isSelectingRef.current) return
-    isSelectingRef.current = true
-    try {
-      await openAppBotConversation(bot, undefined, {
-        onApplied: () => setSelectedUid(bot.uid),
-      })
-    } catch (err) {
-      console.error("[AppBotPage] handleSelect failed:", err)
-      onError(connectFailedMessage)
-    } finally {
-      isSelectingRef.current = false
-    }
-  }, [connectFailedMessage, onError])
+  const selectBot = useCallback(
+    async (bot: AppBotViewItem) => {
+      if (isSelectingRef.current) return;
+      isSelectingRef.current = true;
+      const generation = generationRef.current;
+      try {
+        await openAppBotConversation(bot, host, undefined, {
+          onApplied: () => setSelectedUid(bot.uid),
+          isCurrent: () =>
+            isMountedRef.current && generation === generationRef.current,
+        });
+      } catch (err) {
+        if (!isMountedRef.current || generation !== generationRef.current) {
+          return;
+        }
+        console.error("[AppBotPage] handleSelect failed:", err);
+        onError(connectFailedMessage);
+      } finally {
+        if (generation === generationRef.current) {
+          isSelectingRef.current = false;
+        }
+      }
+    },
+    [connectFailedMessage, host, onError]
+  );
 
   return {
     selectedUid,
     selectBot,
     resetSelection,
-  }
+  };
 }

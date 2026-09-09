@@ -17,8 +17,15 @@ runtime-disjoint emit sites, see that row):
 - `helper` — gated helper (trackMessage.ts sendack-consumed intents; summaryApi.ts envelope-code gate).
 
 **Privacy**: props are `{}` except an opaque `object_id` join key on a few events
-(channel/group id, account uid) — internal random ids, never content/keyword/PII.
-See issue #1406 (privacy constraint amended round-6 to permit opaque `object_id`).
+(channel/group id, account uid) and the bounded, non-content diagnostics explicitly
+registered in this table. `smart_summary_quality_gate` may carry `task_id`,
+`finish_status`, `gap_count`, optional `first_gap_kind`, and existing entry-context
+dimensions. `first_gap_kind` is normalized to the documented category allowlist
+(`channel`, `coverage`, `truncation`, `output_truncation`, `dropped`, `citation`,
+`tool_error`, `evidence`, or `other`). It never carries `gaps[].detail`, summary
+content, keywords, or PII.
+See issue #1406 (privacy constraint amended round-6 to permit opaque `object_id`);
+the quality-gate row below records the additional bounded diagnostic envelope.
 
 **`channel_id` 归一约定 (#1452 R10 P2-2)**: 本 PR 新增/收口的所有命令式事件统一发 **bare
 channel_id** —— 即经 `stripSpacePrefix()` 去掉 Space 部署下的 `s<32hex>_` 前缀,取裸 group_no /
@@ -42,7 +49,7 @@ events by the negative `channelUniqueness` / FetchRules guards asserting they mu
 appear in the path channel. Genuinely unpinned positive fires are the honest gap this
 table surfaces for follow-up.
 
-Total rows in this table: **148** (`grep -c '^| \`'` — includes the 4 infra rows and a
+Total rows in this table: **151** (`grep -c '^| \`'` — includes the 4 infra rows and a
 handful of removed-rule tombstones kept as ~~struck~~ history; the earlier "132 wired"
 figure was stale and is dropped to avoid a count that contradicts the table). Out of
 scope: octo-docs, octo-fleet.
@@ -172,14 +179,15 @@ scope: octo-docs, octo-fleet.
 | `smart_summary_mode_switched` | imperative | `SummaryListPage.handleCreate(mode)` when `mode==="agent"` — 列表页「+」下拉显式选择 Agent 总结（创建页内切换入口已随智能总结模式选择上移移除）；props `{to:"agent"}` | normal 入口（create_clicked 即可，不视为切换） | — | — |
 | `smart_summary_module_entered` | imperative | NavRail "summary" top entry `onPress` when `!reentry` | Re-clicking the already-active summary menu (`reentry`, host passes prevMenuId===id) | reentry guard | — |
 | `smart_summary_opened` | imperative | SummaryCard `onClick` opening detail (dynamic testid can't use delegation) | — | — | — |
+| `smart_summary_quality_gate` | imperative | After an Agent summary task has been created successfully, `trackAgentSummaryQuality` emits from the unified workbench save path (`SummaryWorkbenchFeature.savePreview`) and the legacy Agent save path (`SummaryCreatePage.handleSaveAsSummary`). Props are bounded to `task_id`, `finish_status` (`unreported` when the optional verdict is absent), `gap_count`, optional `first_gap_kind`, and existing context dimensions such as `object_id`, `source`, `entry_point`, `entry_source`, and `trigger_mode` | Transport, protocol, or task-creation/save failure; never carries `gaps[].detail`, summary content, keywords, or other user content | Workbench: `handledSavedTaskIds` dedupes by `task_id`; legacy: one emission in the successful save lifecycle before session teardown | SummaryWorkbenchFeature.test.tsx — owner-confirmed PARTIAL/FAILED save-success cases, missing-verdict case, `gap.detail` negative assertion, and recovered-result dedup; SummaryCreatePage.test.tsx — owner-confirmed PARTIAL/FAILED save-success and missing-verdict cases |
 | `smart_summary_regenerated` | helper | `regenerateSummary` (POST `/summaries/:taskId/regenerate`, by-group) **and** `regeneratePersonalSummary` (POST `/summaries/:taskId/personal-regenerate`, by-person) when the response envelope `code===0` — both are the SAME full-regenerate funnel step, so both feed one event (八审 P2 补 by-person 分支,否则 dialog_opened→regenerated 漏斗在 by-person 侧断裂) | `code!==0` / missing code (logical failure). NOT refine-by-feedback — that is a semantically distinct "按反馈微调" action, deliberately excluded from this full-regenerate funnel | Api-layer sink; `code===0` gate | — |
 | `smart_summary_scope_channel_selected` | imperative | `handleToggle` add branch (selecting a channel) | Deselect (uncheck); old GET `/summary-chat-candidates` list-load inference (removed) | Add-edge only | FetchRules.test.ts uiOnly-path-ban `it('这些「UI 采集专属」事件名不得再出现在 path 通道规则表里')` |
 | `smart_summary_scope_participant_selected` | imperative | `handleToggle` add branch (selecting a member) | Deselect (uncheck); old GET `/summary-member-candidates` list-load inference (removed) | Add-edge only | FetchRules.test.ts uiOnly-path-ban `it('这些「UI 采集专属」事件名不得再出现在 path 通道规则表里')` |
 | `smart_summary_searched` | imperative | After 400ms debounce in `handleKeywordChange`, only when `value.trim()` non-empty; keyword value never collected | Empty/whitespace keyword | Debounce timer | — |
-| `smart_summary_started` | helper | `createSummary`/`createAgentSummary` — emitted only in the api layer when response envelope `code===0` (`trackOnEnvelopeSuccess`), once, with caller-supplied props | `code!==0` (HTTP200 + logical failure); `code===null` or MISSING code (gateway envelope, same failure signature); agent business failure | Single api-layer sink across all create entries (normal / ChatSummaryNewModal / agent) | summaryApi.test.ts `it('emits once with the caller props when envelope code===0')`, `it('does NOT emit when envelope code!==0 (HTTP200 + 逻辑失败)')`, `it('does NOT emit when envelope code===null (空/网关信封,P2-5)')`, `it('does NOT emit when envelope code 缺省...六审 P2')`, `it('agent mode emits once after envelope success (P2-2)')`, `it('agent mode does NOT emit on business failure (code!==0)')` |
+| `smart_summary_started` | helper | `createSummary`/`createAgentSummary` — emitted only in the api layer when response envelope `code===0` (`trackOnEnvelopeSuccess`), once, with caller-supplied props; PLUS a component-level sink: `SummaryWorkbenchFeature.notifyCreated` tracks `smart_summary_started` once per taskId (`notifiedTaskIds` dedupe) when a workbench-created preview is saved or a workbench workflow is created | `code!==0` (HTTP200 + logical failure); `code===null` or MISSING code (gateway envelope, same failure signature); agent business failure | Two sinks by design (api layer for legacy create entries; workbench component for the unified workbench entry) — deduped per taskId so one action cannot double-emit; no createSummary/createAgentSummary call exists in the workbench tree | summaryApi.test.ts `it('emits once with the caller props when envelope code===0')`, `it('does NOT emit when envelope code!==0 (HTTP200 + 逻辑失败)')`, `it('does NOT emit when envelope code===null (空/网关信封,P2-5)')`, `it('does NOT emit when envelope code 缺省...六审 P2')`, `it('agent mode emits once after envelope success (P2-2)')`, `it('agent mode does NOT emit on business failure (code!==0)')` |
 | `smart_summary_status_filtered` | imperative | `handleStatusChange` — status-filter dropdown change; status value not collected | — | — | — |
-| `smart_summary_template_applied` | imperative | `handleTemplateClick` — built-in and custom template cards both funnel here | — | — | — |
-| `smart_summary_theme_input` | imperative | Topic textarea `onChange` after 600ms debounce, only when non-empty; content never collected | Empty topic; fire after unmount (debounce timer cleared on unmount); fire after submit (timer cleared in `handleSubmit` — user已进入生成,八审 P2) | Debounce timer reset per keystroke, cleared on unmount and on submit | — |
+| `smart_summary_template_applied` | imperative | `handleTemplateClick` — built-in and custom template cards both funnel here; PLUS `SummaryWorkbenchFeature.applyTemplate` (unified workbench entry), payload empty | — | — | — |
+| `smart_summary_theme_input` | imperative | Topic textarea `onChange` after 600ms debounce, only when non-empty; content never collected; PLUS workbench composer `onInputChange` after 600ms debounce (SummaryWorkbenchFeature, timer cleared on unmount) | Empty topic; fire after unmount (debounce timer cleared on unmount); fire after submit (timer cleared in `handleSubmit` — user已进入生成,八审 P2) | Debounce timer reset per keystroke, cleared on unmount and on submit | — |
 | `smart_summary_timer_configured` | helper | `createSummarySchedule` (POST `/summary-schedules`) and `updateSummarySchedule` (PUT `/summary-schedules/:id`) when the response envelope `code===0`; both create+edit of a scheduled summary funnel here | `code!==0` / missing code (logical failure) | Api-layer sink; `code===0` gate | — |
 | `smart_summary_timer_dialog_opened` | imperative | `openScheduleModal` — opening the scheduled-summary config dialog; props empty | — | — | — |
 | `thread_expanded` | imperative | Fold-session toggle `onClick` when `wasExpanded===false` (expanding); props empty | Collapsing (wasExpanded true) | Expand-edge only | — |

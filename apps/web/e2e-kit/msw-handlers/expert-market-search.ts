@@ -1,8 +1,6 @@
 import { http, HttpResponse } from "msw";
 
-// Unified plugin surface (octo-marketplace). Keyword filtering is client-side
-// over the fetched slice, so the list endpoint returns the full catalog and the
-// page narrows it as the user types.
+// Apply keyword filtering before pagination, matching the unified plugin API.
 const API_BASE = "/market/api/v1";
 
 function enabled(): boolean {
@@ -65,12 +63,22 @@ const plugins = [
 ];
 
 export const expertMarketSearchHandlers = [
-  http.get(`*${API_BASE}/plugins`, () => {
+  http.get(`*${API_BASE}/plugins`, ({ request }) => {
     if (!enabled()) return undefined;
+    const params = new URL(request.url).searchParams;
+    const q = (params.get("q") ?? "").toLowerCase();
+    const page = Number(params.get("page") ?? 1);
+    const pageSize = Number(params.get("page_size") ?? 100);
+    const filtered = plugins.filter((plugin) => plugin.plugin_name.toLowerCase().includes(q));
     return HttpResponse.json({
-      data: plugins,
-      pagination: { total: 2, page: 1, page_size: 100 },
+      data: filtered.slice((page - 1) * pageSize, page * pageSize),
+      pagination: { total: filtered.length, page, page_size: pageSize },
     });
+  }),
+  http.get(`*${API_BASE}/plugin_tags`, () => {
+    if (!enabled()) return undefined;
+    const tags = Array.from(new Set(plugins.flatMap((plugin) => plugin.tags)));
+    return HttpResponse.json({ data: tags.map((name) => ({ name, count: 1 })) });
   }),
   http.get(`*${API_BASE}/plugin_categories`, () => {
     if (!enabled()) return undefined;

@@ -1,10 +1,5 @@
 import React, { Component } from "react";
-import {
-    Button,
-    Spin,
-    Toast,
-    Banner,
-} from "@douyinfe/semi-ui";
+import { Button, Spin, Toast, Banner } from "@douyinfe/semi-ui";
 import { IconArrowLeft } from "@douyinfe/semi-icons";
 import { I18nContext, t } from "@octo/base";
 import WKApp from "@octo/base/src/App";
@@ -19,6 +14,8 @@ import ConfirmParticipantList from "../components/ConfirmParticipantList";
 
 interface SummaryConfirmPageProps {
     taskId?: number;
+  onBack?: () => void;
+  onDeclined?: () => void;
 }
 
 interface SummaryConfirmPageState {
@@ -30,7 +27,10 @@ interface SummaryConfirmPageState {
     error: string | null;
 }
 
-export default class SummaryConfirmPage extends Component<SummaryConfirmPageProps, SummaryConfirmPageState> {
+export default class SummaryConfirmPage extends Component<
+  SummaryConfirmPageProps,
+  SummaryConfirmPageState
+> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
 
@@ -66,11 +66,18 @@ export default class SummaryConfirmPage extends Component<SummaryConfirmPageProp
                 loading: false,
             });
         } catch (err: any) {
-            this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
+      this.setState({
+        error: err.message || t("summary.common.loadingFailed"),
+        loading: false,
+      });
         }
     }
 
     handleBack = () => {
+    if (this.props.onBack) {
+      this.props.onBack();
+      return;
+    }
         WKApp.routeLeft.push(<SummaryDetailPage taskId={this.taskId} />);
     };
 
@@ -103,7 +110,11 @@ export default class SummaryConfirmPage extends Component<SummaryConfirmPageProp
             Toast.success(t("summary.confirmPage.declined"));
             // #1359 拒绝邀请同样消除未处理状态，刷新红点。
             refreshSummaryAttentionBadge();
+      if (this.props.onDeclined) {
+        this.props.onDeclined();
+      } else {
             WKApp.routeLeft.popToRoot();
+      }
         } catch (err: any) {
             Toast.error(err.message || t("summary.common.operationFailed"));
         } finally {
@@ -112,13 +123,24 @@ export default class SummaryConfirmPage extends Component<SummaryConfirmPageProp
     };
 
     render() {
-        const { detail, participants, selectedSources, loading, submitting, error } = this.state;
+    const {
+      detail,
+      participants,
+      selectedSources,
+      loading,
+      submitting,
+      error,
+    } = this.state;
         const { t: translate } = this.context;
 
         return (
             <div className="summary-confirm-page">
                 <div className="summary-confirm-header">
-                    <Button icon={<IconArrowLeft />} theme="borderless" onClick={this.handleBack} />
+          <Button
+            icon={<IconArrowLeft />}
+            theme="borderless"
+            onClick={this.handleBack}
+          />
                     <h2>{translate("summary.confirmPage.title")}</h2>
                 </div>
 
@@ -138,7 +160,9 @@ export default class SummaryConfirmPage extends Component<SummaryConfirmPageProp
                     >
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <span>{translate("summary.common.loadingFailed")}</span>
-                            <Button size="small" onClick={() => this.loadData()}>{translate("summary.common.retry")}</Button>
+              <Button size="small" onClick={() => this.loadData()}>
+                {translate("summary.common.retry")}
+              </Button>
                         </div>
                     </Banner>
                 )}
@@ -148,7 +172,9 @@ export default class SummaryConfirmPage extends Component<SummaryConfirmPageProp
                         <div className="summary-confirm-invite">
                             <p>{translate("summary.confirmPage.inviteTitle")}</p>
                             <p className="summary-confirm-time">
-                                {translate("summary.confirmPage.timeRange")}{formatDate(detail.time_range_start)} ~ {formatDate(detail.time_range_end)}
+                {translate("summary.confirmPage.timeRange")}
+                {formatDate(detail.time_range_start)} ~{" "}
+                {formatDate(detail.time_range_end)}
                             </p>
                         </div>
 
@@ -156,7 +182,9 @@ export default class SummaryConfirmPage extends Component<SummaryConfirmPageProp
                             <h4>{translate("summary.confirmPage.sourcePrompt")}</h4>
                             <SourceSelector
                                 value={selectedSources}
-                                onChange={(sources) => this.setState({ selectedSources: sources })}
+                onChange={(sources) =>
+                  this.setState({ selectedSources: sources })
+                }
                             />
                         </div>
 

@@ -70,6 +70,32 @@ describe("CategoryHeader drag handle", () => {
   });
 });
 
+describe("CategoryHeader collapsed badges", () => {
+  it("shows an unresolved mention even when unread is zero", () => {
+    act(() => {
+      ReactDOM.render(
+        <CategoryHeader
+          name="研发"
+          unreadCount={0}
+          hasMention
+          isCollapsed
+          onToggle={vi.fn()}
+        />,
+        container
+      );
+    });
+
+    expect(
+      container.querySelector(".wk-category-header__badge--mention")
+    ).not.toBeNull();
+    expect(
+      container.querySelector(
+        ".wk-category-header__badge:not(.wk-category-header__badge--mention)"
+      )
+    ).toBeNull();
+  });
+});
+
 describe("CategoryHeader management menu", () => {
   it("renders an accessible MoreHorizontal button only when an action is available", () => {
     const onToggle = vi.fn();

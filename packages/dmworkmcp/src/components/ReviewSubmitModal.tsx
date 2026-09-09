@@ -27,27 +27,41 @@ export interface ReviewSubmitTarget {
   /** Prefilled changelog — used by 重新提交 to carry the rejected attempt's text. */
   initialChangelog?: string;
   /**
-   * Fetch the live FROZEN content (manifest + package) to submit WITH an
-   * upgrade. Present ONLY for an already-listed container (专家 / 专家团) upgrade:
-   * the backend refuses a contentless submission for a listed plugin
-   * field-agnostically (freezeSubmission → `manifest_json/required`, HTTP 400),
-   * because snapshotting the still-live row would make the review theatre. A
-   * 专家/专家团 has no client-side authoring surface, so the client echoes the
-   * live row's own content — the same contract skill/connector upgrades follow
-   * through their full-form review modes. Absent for a FIRST listing (the row is
-   * a private draft the server can freeze as-is) and for leaf connectors (which
-   * upgrade through McpCreateModal's review mode instead).
+   * Resolve everything the submission must freeze, in ONE read.
+   *
+   * `content` is the live FROZEN manifest + package, required WITH an upgrade of
+   * an already-listed container (专家 / 专家团): the backend refuses a contentless
+   * submission for a listed plugin field-agnostically (freezeSubmission →
+   * `manifest_json/required`, HTTP 400), because snapshotting the still-live row
+   * would make the review theatre. A 专家/专家团 has no client-side authoring
+   * surface, so the client echoes the live row's own content — the same contract
+   * skill/connector upgrades follow through their full-form review modes.
+   *
+   * `relations` is the CURRENT child relation graph. The review payload treats an
+   * absent `relations` as "the server freezes its own read" and a present one
+   * (even `[]`) as "replace with exactly this", so a container has to name its
+   * children or the snapshot is incomplete, while a leaf type (connector) must
+   * not send the field at all.
+   *
+   * MUST be backed by a single detail read. Splitting this into per-half loaders
+   * lets a write land between them and freezes content from one revision with
+   * relations from another — bytes that were never live together, which nothing
+   * downstream detects. See `loadExpertReviewSnapshot`.
+   *
+   * Absent entirely for a FIRST listing (the row is a private draft the server
+   * can freeze as-is) and for leaf connectors (which upgrade through
+   * McpCreateModal's review mode instead).
    */
-  loadContent?: () => Promise<{ manifestJson: unknown; pluginJson: unknown }>;
+  loadSnapshot?: () => Promise<{
+    content?: { manifestJson: unknown; pluginJson: unknown };
+    relations?: PluginReviewRelation[];
+  }>;
   /**
-   * Resolve the plugin's CURRENT child relation graph. Present ONLY for the
-   * container types (专家 / 专家团): the review payload treats an absent
-   * `relations` as "inherit the live graph" and a present one (even `[]`) as
-   * "replace with exactly this", so a container has to name its children or the
-   * snapshot is incomplete, while a leaf type (connector) must not send the
-   * field at all.
+   * Which halves this submission must carry. Drives the fail-closed gate, and has
+   * to be known BEFORE the read resolves, so it cannot be inferred from the
+   * snapshot itself.
    */
-  loadRelations?: () => Promise<PluginReviewRelation[]>;
+  needs?: { content?: boolean; relations?: boolean };
 }
 
 interface ReviewSubmitModalProps {
@@ -81,10 +95,10 @@ export function bumpPatch(version: string | undefined): string {
  *     through McpCreateModal's review mode instead (it needs the whole form),
  *   - a 专家 / 专家团 UPGRADE has no client-side content authoring (records are
  *     written by a Bot through octo-cli), so the modal fetches the live row's
- *     own frozen content via `target.loadContent` and echoes it: the backend
- *     refuses a contentless submission on an already-listed plugin, so the
- *     client submits the current bytes without disturbing the live row until
- *     approval.
+ *     own frozen content via `target.loadSnapshot` — the same single read that
+ *     resolves the child relations — and echoes it: the backend refuses a
+ *     contentless submission on an already-listed plugin, so the client submits
+ *     the current bytes without disturbing the live row until approval.
  */
 export default function ReviewSubmitModal({
   target,
@@ -116,12 +130,12 @@ export default function ReviewSubmitModal({
   // guard against. Mirrors useSpaceRole's generationRef.
   const generationRef = useRef(0);
 
-  const needsRelations = Boolean(target?.loadRelations);
-  const needsContent = Boolean(target?.loadContent);
+  const needsRelations = Boolean(target?.needs?.relations);
+  const needsContent = Boolean(target?.needs?.content);
 
   const resolveTarget = useCallback((item: ReviewSubmitTarget) => {
     const generation = ++generationRef.current;
-    if (!item.loadRelations && !item.loadContent) {
+    if (!item.loadSnapshot) {
       setRelations(undefined);
       setContent(undefined);
       setResolveError(null);
@@ -130,23 +144,21 @@ export default function ReviewSubmitModal({
     }
     setResolving(true);
     setResolveError(null);
-    // One detail read backs both loaders, but they are independent promises;
-    // resolve them together so `resolving` clears only when BOTH are in.
-    Promise.all([
-      item.loadRelations ? item.loadRelations() : Promise.resolve(undefined),
-      item.loadContent ? item.loadContent() : Promise.resolve(undefined),
-    ])
-      .then(([list, live]) => {
+    // ONE read backs both halves, so the frozen content and the frozen relation
+    // graph are always the same revision of the record.
+    item
+      .loadSnapshot()
+      .then((snapshot) => {
         if (generation !== generationRef.current) return;
-        setRelations(list);
-        setContent(live);
+        setRelations(snapshot.relations);
+        setContent(snapshot.content);
       })
       .catch((err: unknown) => {
         if (generation !== generationRef.current) return;
         // Fail CLOSED. Submitting without relations would silently fall back to
-        // "inherit the live graph", producing exactly the incomplete snapshot
-        // this resolution exists to prevent; submitting `[]` would wipe the
-        // children on approve; submitting without content 400s on a listed
+        // "the server freezes its own read", producing exactly the incomplete
+        // snapshot this resolution exists to prevent; submitting `[]` would wipe
+        // the children on approve; submitting without content 400s on a listed
         // plugin. So on any failure, block and offer a retry.
         setRelations(undefined);
         setContent(undefined);

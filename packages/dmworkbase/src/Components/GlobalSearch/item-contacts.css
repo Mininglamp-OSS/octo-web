@@ -22,7 +22,7 @@ body[theme-mode=dark] .wk-item-contacts:hover {
     font-size: 14px;
     font-weight: 500;
     /* 用 flex 让 .wk-search-result-item-space 的
-       text-overflow: ellipsis + max-width 在同一行水平收敛生效。
+       text-overflow: ellipsis 在同一行按可用空间收敛生效。
        baseline 对齐保证 @SpaceName 后缀与姓名底部对齐，避免视觉错位。 */
     display: flex;
     align-items: baseline;
@@ -48,9 +48,9 @@ mark {
     font-weight: 400;
     color: var(--wk-text-secondary);
     line-height: 1.3;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 12rem;
-    flex-shrink: 1;
+    flex: 0 1 auto;
 }

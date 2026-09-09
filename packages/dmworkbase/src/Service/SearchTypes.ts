@@ -53,6 +53,24 @@ export interface ChannelSearchFileInfo {
   url?: string;
   downloadUrl?: string;
   previewUrl?: string | null;
+  // NOTE: `nameHighlight` / `contentSnippet` are already entity-decoded at the
+  // mapper boundary (`SearchResultMapper.ts:466-471`, via
+  // `decodeServerEscapedHighlight`). The values carry live `<mark>`/`</mark>`
+  // tags but their surrounding text is HTML-unsafe by construction (the entity
+  // escaping that made the wire safe has already been reversed). MUST be
+  // rendered as React text (see `ChannelSearchSnippetContent`); NEVER pass to
+  // `dangerouslySetInnerHTML` — the neighbouring `sanitizeHighlight` sites in
+  // `Components/GlobalSearch/item-file.tsx`, `item-group.tsx`, `item-message.tsx`,
+  // `item-contacts.tsx` operate on different fields and follow a different
+  // contract; do not route these two through those sinks.
+  // Server-side highlight of the file name (keyword wrapped in <mark>). Present
+  // only when the keyword matched the name. Empty on browse/body-only hits — the
+  // UI then falls back to client-side highlighting of `name`.
+  nameHighlight?: string;
+  // Server-side <mark>-wrapped fragment of the extracted file body, explaining a
+  // body-only match (keyword appears in content, not name). Absent when the body
+  // didn't match.
+  contentSnippet?: string;
 }
 
 export interface ChannelSearchMediaInfo {
@@ -270,6 +288,11 @@ export type DriveSearchScope = "all" | "space";
 export type DriveSearchOwnerScope = "me" | "others";
 export type DriveFileType = "doc" | "blob" | "folder";
 
+/** doc_type sub-kind for drive-search online-doc hits (type='doc'), emitted by
+ *  drive-search merge.go (omitempty). Distinct from DocSearchDocType (docs tab):
+ *  drive-search additionally distinguishes `html_ppt` (HTML 版 PPT). */
+export type DriveDocType = "doc" | "sheet" | "board" | "html" | "html_ppt";
+
 export interface DriveSearchFilters {
   /** Multi-value include (TES-70/TES-72 wire contract); excludes folder hits by
    * requesting only ['blob','doc']. The single-value `type` field was removed to
@@ -319,6 +342,10 @@ export interface DriveSearchHit {
   path: string[];
   name: string;
   type: DriveFileType;
+  /** Present only on type='doc' hits (drive-search merge.go, omitempty). Drives
+   *  the online-doc sub-type icon; absent → generic doc.svg fallback. Distinct
+   *  from DocSearchDocType (docs tab): drive-search adds `html_ppt`. */
+  doc_type?: DriveDocType;
   ext?: string;
   size?: number;
   owner_uid: string;

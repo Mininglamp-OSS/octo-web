@@ -12,40 +12,50 @@ import { I18nContext, t, Dap } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
-import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
+import type {
+  ReplaceMode,
+  SelectionRange,
+} from "@octo/base/src/Components/VoiceInputButton";
 import * as api from "../api/summaryApi";
 import { getTopicTemplatesConfig, getTopicTemplates } from "../api/summaryApi";
-import { chatTypeToOriginChannelType, getOriginChannelType } from "../utils/channelType";
+import {
+  chatTypeToOriginChannelType,
+  getOriginChannelType,
+} from "../utils/channelType";
 import { markAgentSummaryNotificationEligible } from "../utils/groupSummaryNotify";
 import { channelToChatCandidate } from "../utils/channelConvert";
 import SummaryDetailPage from "./SummaryDetailPage";
 import ChatSelectorModal from "../components/ChatSelectorModal";
-import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import TemplateCard from "../components/TemplateCard";
 import AgentChatPanel from "../components/AgentChatPanel";
-import RouteContext, { RouteContextConfig } from "@octo/base/src/Service/Context";
+import RouteContext, {
+  RouteContextConfig,
+} from "@octo/base/src/Service/Context";
 import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
 import RoutePage from "@octo/base/src/Components/RoutePage";
 import SummaryReferencePicker from "../components/SummaryReferencePicker";
 import SummaryPreviewModal from "../components/SummaryPreviewModal";
 import SummaryReferenceSidePanel from "../components/SummaryReferenceSidePanel";
 import { TOPIC_TEMPLATES } from "../constants/templates";
-import { MAX_CHAT_SELECT, SUMMARY_INPUT_MAX_LENGTH, TEMPLATE_CONTENT_MAX_LENGTH, TEMPLATE_NAME_MAX_LENGTH } from "../constants/limits";
+import {
+  MAX_CHAT_SELECT,
+  SUMMARY_INPUT_MAX_LENGTH,
+  TEMPLATE_CONTENT_MAX_LENGTH,
+  TEMPLATE_NAME_MAX_LENGTH,
+} from "../constants/limits";
 import type {
     CreateSummaryParams,
     ChatMessage,
     ChatCandidate,
     MemberCandidate,
-    ScheduleConfig,
     TopicTemplate,
     SummaryListItem,
+  SummaryReferenceTask,
     CreateAgentSummaryParams,
 } from "../types/summary";
 import { SummaryMode, SourceType } from "../types/summary";
-import { Channel, WKSDK } from "wukongimjssdk";
+import { Channel } from "wukongimjssdk";
 import {
-    describeSchedule,
-    scheduleToParams,
     genSessionId,
     genRequestId,
     readAgentChatSession,
@@ -58,8 +68,17 @@ import {
     writeAgentChatRequestId,
     clearAgentChatRequestId,
 } from "../utils/summaryHelpers";
-import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, limitTemplateSummaryContent, type ResolvableTemplate } from "../utils/templateResolver";
+import { trackAgentSummaryQuality } from "../utils/summaryQualityDiagnostics";
+import {
+  resolveTemplate,
+  computeTemplateSelection,
+  getTemplateEditableFields,
+  deriveSummaryTitle,
+  limitTemplateSummaryContent,
+  type ResolvableTemplate,
+} from "../utils/templateResolver";
 import { summaryTestIds } from "../utils/testIds";
+import type { SummaryMessagingPort } from "../host";
 
 const { Text } = Typography;
 
@@ -71,7 +90,7 @@ interface SummaryCreatePageProps {
      * 达到"用户手动打开 chat + 手动引用"的完成态。
      * 见 CHAT-REFERENCE-BASED-DESIGN-v1。
      */
-    derivedFromTask?: SummaryListItem;
+  derivedFromTask?: SummaryReferenceTask;
     /** 当前聊天会话（面板模式）。传入后自动预选该会话。 */
     channel?: { channelID: string; channelType: number };
     /** 面板内嵌模式：不使用 routeRight 导航，改用回调。 */
@@ -88,25 +107,24 @@ interface SummaryCreatePageProps {
      * mount 时若为 agent 会自动进入 agent 模式（恢复历史 session）。
      */
     initialMode?: "normal" | "agent";
+    messaging?: SummaryMessagingPort;
 }
 
 interface SummaryCreatePageState {
     topic: string;
     appliedTemplateLabel: string;
     customTemplateLimit: number;
-    mode: 'normal' | 'agent';
+  mode: "normal" | "agent";
     templates: ResolvableTemplate[];
     templatePlaceholderRange: [number, number] | null;
     selectedChats: ChatCandidate[];
     selectedMembers: MemberCandidate[];
-    scheduleConfig: ScheduleConfig | null;
     showChatSelector: boolean;
     showMemberSelector: boolean;
     memberSelectorChannel: Channel | null;
     memberSelectorExcluded: string[];
     memberSelectorSelectedItems: (() => any[]) | null;
     memberSelectorOnSelect: ((items: any[]) => void) | null;
-    showScheduleConfig: boolean;
     submitting: boolean;
     agentSubmitting: boolean;
     savingSummary: boolean;
@@ -118,7 +136,7 @@ interface SummaryCreatePageState {
      * chat 引用的已有总结(单选,v1)。仅首轮生效,选中后随 first message 发给后端。
      * 见 CHAT-REFERENCE-BASED-DESIGN-v1。
      */
-    referencedTask: SummaryListItem | null;
+  referencedTask: SummaryReferenceTask | null;
     /** 引用选择器 Modal 打开状态 */
     showReferencePicker: boolean;
     /**
@@ -145,7 +163,10 @@ interface SummaryCreatePageState {
     visibleMemberChipCount: number;
 }
 
-export default class SummaryCreatePage extends Component<SummaryCreatePageProps, SummaryCreatePageState> {
+export default class SummaryCreatePage extends Component<
+  SummaryCreatePageProps,
+  SummaryCreatePageState
+> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
 
@@ -166,20 +187,18 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             return [channelToChatCandidate(ch)];
         })(),
         selectedMembers: [],
-        scheduleConfig: null,
         showChatSelector: false,
         showMemberSelector: false,
         memberSelectorChannel: null,
         memberSelectorExcluded: [],
         memberSelectorSelectedItems: null,
         memberSelectorOnSelect: null,
-        showScheduleConfig: false,
         submitting: false,
         agentSubmitting: false,
         savingSummary: false,
         messages: [],
-        sessionId: '',
-        agentRequestId: '',
+    sessionId: "",
+    agentRequestId: "",
         referencedTask: null,
         showReferencePicker: false,
         previewTaskId: null,
@@ -198,7 +217,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     private agentSendInFlight = false;
 
     // 完整创建页无频道上下文：session_id 落到统一兜底 key（见 summaryHelpers）。
-    // 单独抽成方法便于与 ChatSummaryNewModal（按 channelID 隔离）保持对称。
     private agentChannelId(): string | undefined {
         return this.props.channel?.channelID;
     }
@@ -216,35 +234,36 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         if (!selectChat) return;
         // 面板模式：actions 是竖向堆叠，不需要 JS 计算宽度
         if (this.props.embedded) {
-            selectChat.style.width = '';
-            selectChat.style.flex = '';
-            selectChat.style.maxWidth = '';
+      selectChat.style.width = "";
+      selectChat.style.flex = "";
+      selectChat.style.maxWidth = "";
             return;
         }
         const actions = selectChat.parentElement;
         if (!actions) return;
-        // 创建页右下角从「SplitButtonGroup(开始总结下拉)」收敛为单个 createSubmit 按钮，
-        // 宽度预留即减该按钮宽度（原逻辑减 .chat-summary-modal-split，已随下拉删除）。
+        // 创建页右下角已收敛为单个 createSubmit 按钮，宽度预留只需减去该按钮宽度。
         const submitBtn = actions.querySelector('[data-testid="summary-create-submit"]');
         const actionsWidth = actions.clientWidth;
         const groupWidth = submitBtn ? (submitBtn as HTMLElement).offsetWidth : 0;
         const gap = 24;
         const width = actionsWidth - groupWidth - gap;
-        selectChat.style.width = width + 'px';
-        selectChat.style.flex = 'none';
-        selectChat.style.maxWidth = width + 'px';
+    selectChat.style.width = width + "px";
+    selectChat.style.flex = "none";
+    selectChat.style.maxWidth = width + "px";
     };
 
     private applyChipOverflow = (
         container: HTMLDivElement | null,
-        setCount: (n: number) => void,
+    setCount: (n: number) => void
     ) => {
         if (!container) return;
-        const chips = container.querySelectorAll('.summary-workbench-chat-chip');
+    const chips = container.querySelectorAll(".summary-workbench-chat-chip");
         if (chips.length === 0) return;
 
         // 临时显示所有芯片来测量真实宽度
-        chips.forEach(c => c.classList.remove('summary-workbench-chat-chip--hidden'));
+    chips.forEach((c) =>
+      c.classList.remove("summary-workbench-chat-chip--hidden")
+    );
 
         const containerWidth = container.clientWidth;
         // 预留 overflow 指示器空间（约 50px）
@@ -283,7 +302,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         // 先恢复隐藏状态
         chips.forEach((c, i) => {
             if (i >= visible2) {
-                c.classList.add('summary-workbench-chat-chip--hidden');
+        c.classList.add("summary-workbench-chat-chip--hidden");
             }
         });
 
@@ -293,13 +312,13 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     private updateVisibleChipCount = () => {
         this.updateSelectChatWidth();
         this.applyChipOverflow(this.chipsContainerRef.current, (n) =>
-            this.setState({ visibleChipCount: n }),
+      this.setState({ visibleChipCount: n })
         );
     };
 
     private updateVisibleMemberChipCount = () => {
         this.applyChipOverflow(this.memberChipsContainerRef.current, (n) =>
-            this.setState({ visibleMemberChipCount: n }),
+      this.setState({ visibleMemberChipCount: n })
         );
     };
 
@@ -332,17 +351,17 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             clearAgentChatSession(this.agentChannelId());
             clearAgentChatRequestId(this.agentChannelId());
             this.setState({
-                mode: 'agent',
+        mode: "agent",
                 referencedTask: this.props.derivedFromTask,
-                sessionId: '',
-                agentRequestId: '',
+        sessionId: "",
+        agentRequestId: "",
                 messages: [],
             });
             // 与 session_id 同生命周期持久化引用总结，避免 refresh/重进后
             // referencedTask 只活在 React state 里而丢失 → 保存时 400。
             writeAgentChatReferenced(this.agentChannelId(), {
                 task_id: this.props.derivedFromTask.task_id,
-                title: this.props.derivedFromTask.title ?? '',
+        title: this.props.derivedFromTask.title ?? "",
             });
         } else if (this.props.initialMode === "agent") {
             // 列表页「+」下拉选择 Agent 总结进入：恢复历史 session 并回显。
@@ -359,19 +378,29 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }
     }
 
-    componentDidUpdate(prevProps: SummaryCreatePageProps, prevState: SummaryCreatePageState) {
+  componentDidUpdate(
+    prevProps: SummaryCreatePageProps,
+    prevState: SummaryCreatePageState
+  ) {
         // selectedChats 或 mode 变化都会改变 start-group 宽度（mode=agent 时主按钮隐藏），
         // 需要重算 select-chat 宽度与芯片溢出，避免残留上一次计算的宽度。
-        if (prevState.selectedChats !== this.state.selectedChats || prevState.mode !== this.state.mode) {
+    if (
+      prevState.selectedChats !== this.state.selectedChats ||
+      prevState.mode !== this.state.mode
+    ) {
             this.updateSelectChatWidth();
-            this.setState({ visibleChipCount: 999 }, () => this.updateVisibleChipCount());
+      this.setState({ visibleChipCount: 999 }, () =>
+        this.updateVisibleChipCount()
+      );
             // Agent→Normal 往返后 textarea 重新挂载（无内联高度），恢复按内容自动增高；
             // 参与者 chip 区同样重新挂载，需按新宽度重算溢出。
             this.autoResizeTextarea();
             this.updateVisibleMemberChipCount();
         }
         if (prevState.selectedMembers !== this.state.selectedMembers) {
-            this.setState({ visibleMemberChipCount: 999 }, () => this.updateVisibleMemberChipCount());
+      this.setState({ visibleMemberChipCount: 999 }, () =>
+        this.updateVisibleMemberChipCount()
+      );
         }
     }
 
@@ -387,19 +416,24 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }
     }
 
-
     private handleTemplateEdit = (template: TopicTemplate) => {
         this.setState({
             editingTemplate: template,
             creatingCustomTemplate: false,
             editingTemplateLabel: getTemplateEditableFields(template).label,
-            editingTemplateDescription: getTemplateEditableFields(template).description,
+      editingTemplateDescription:
+        getTemplateEditableFields(template).description,
         });
     };
 
     private canCreateCustomTemplate = () => {
-        const resolvedTemplates = this.state.templates.map((tpl) => resolveTemplate(tpl, this.context.t));
-        return resolvedTemplates.filter((tpl) => tpl.is_custom).length < this.state.customTemplateLimit;
+    const resolvedTemplates = this.state.templates.map((tpl) =>
+      resolveTemplate(tpl, this.context.t)
+    );
+    return (
+      resolvedTemplates.filter((tpl) => tpl.is_custom).length <
+      this.state.customTemplateLimit
+    );
     };
 
     private handleCustomTemplateCreate = () => {
@@ -428,7 +462,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
     private replaceTemplateInState(template: TopicTemplate) {
         this.setState((prev) => ({
-            templates: prev.templates.map((tpl) => (tpl.id === template.id ? template : tpl)),
+      templates: prev.templates.map((tpl) =>
+        tpl.id === template.id ? template : tpl
+      ),
         }));
     }
 
@@ -457,7 +493,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         this.setState({ savingTemplate: true });
         try {
             if (creatingCustomTemplate) {
-                const template = await api.createCustomTopicTemplate({ label, description });
+        const template = await api.createCustomTopicTemplate({
+          label,
+          description,
+        });
                 this.appendTemplateToState(template);
                 // 真创建成功后才 emit(§started-vs-created):挂在 Save 按钮点击上会把
                 // 被服务端拒绝/取消的尝试也计一次创建,虚高成功率。带 object_id 供归因。
@@ -467,19 +506,30 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 });
                 Toast.success(t("summary.templates.custom.createSuccess"));
             } else if (editingTemplate?.is_custom) {
-                const template = await api.updateCustomTopicTemplate(editingTemplate.id, { label, description });
+        const template = await api.updateCustomTopicTemplate(
+          editingTemplate.id,
+          { label, description }
+        );
                 this.replaceTemplateInState(template);
                 Toast.success(t("summary.templates.custom.saveSuccess"));
             } else if (editingTemplate) {
-                const template = await api.updateMyTopicTemplate(editingTemplate.id, { label, description });
+        const template = await api.updateMyTopicTemplate(editingTemplate.id, {
+          label,
+          description,
+        });
                 this.replaceTemplateInState(template);
                 Toast.success(t("summary.templates.custom.saveSuccess"));
             }
             this.clearTemplateEditor();
         } catch (err: any) {
-            Toast.error(err?.message || t(creatingCustomTemplate
+      Toast.error(
+        err?.message ||
+          t(
+            creatingCustomTemplate
                 ? "summary.templates.custom.createFailed"
-                : "summary.templates.custom.saveFailed"));
+              : "summary.templates.custom.saveFailed"
+          )
+      );
         } finally {
             this.setState({ savingTemplate: false });
         }
@@ -508,7 +558,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         if (!target?.is_custom) return;
         Modal.confirm({
             title: t("summary.templates.custom.deleteConfirmTitle"),
-            content: t("summary.templates.custom.deleteConfirmContent", { values: { name: target.label } }),
+      content: t("summary.templates.custom.deleteConfirmContent", {
+        values: { name: target.label },
+      }),
             okText: t("summary.templates.custom.delete"),
             cancelText: t("summary.common.cancel"),
             okButtonProps: { type: "danger" },
@@ -543,7 +595,14 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
         if (range) {
             const [start, end] = range;
-            this.setState({ topic: text, appliedTemplateLabel: template.label, templatePlaceholderRange: [start, end] }, this.autoResizeTextarea);
+      this.setState(
+        {
+          topic: text,
+          appliedTemplateLabel: template.label,
+          templatePlaceholderRange: [start, end],
+        },
+        this.autoResizeTextarea
+      );
 
             setTimeout(() => {
                 const input = this.textareaRef.current;
@@ -552,7 +611,14 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 input.setSelectionRange(start, end);
             }, 0);
         } else {
-            this.setState({ topic: text, appliedTemplateLabel: template.label, templatePlaceholderRange: null }, this.autoResizeTextarea);
+      this.setState(
+        {
+          topic: text,
+          appliedTemplateLabel: template.label,
+          templatePlaceholderRange: null,
+        },
+        this.autoResizeTextarea
+      );
 
             setTimeout(() => {
                 this.textareaRef.current?.focus();
@@ -561,7 +627,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     private handleReselectTemplate = () => {
-        this.setState({ topic: "", appliedTemplateLabel: "", templatePlaceholderRange: null }, this.autoResizeTextarea);
+    this.setState(
+      { topic: "", appliedTemplateLabel: "", templatePlaceholderRange: null },
+      this.autoResizeTextarea
+    );
         setTimeout(() => {
             this.textareaRef.current?.focus();
         }, 0);
@@ -585,16 +654,15 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         el.style.height = `${el.scrollHeight}px`;
     };
 
-    getScheduleLabel(cfg: ScheduleConfig): string {
-        const { cron_expr, interval_days, interval_months, run_time, day_of_week, day_of_month } = scheduleToParams(cfg);
-        return describeSchedule(cron_expr, interval_days, interval_months, run_time, day_of_week, day_of_month);
-    }
-
     canSubmit(): boolean {
         return this.state.topic.trim().length > 0;
     }
 
-    handleVoiceTranscribed = (text: string, mode: ReplaceMode, savedRange?: SelectionRange) => {
+  handleVoiceTranscribed = (
+    text: string,
+    mode: ReplaceMode,
+    savedRange?: SelectionRange
+  ) => {
         if (mode === "all") {
             const topic = this.state.appliedTemplateLabel
                 ? limitTemplateSummaryContent(text, TEMPLATE_CONTENT_MAX_LENGTH)
@@ -603,7 +671,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         } else if (mode === "selection" && savedRange) {
             // Note: savedRange indices are from recording start; assumes input is read-only during recording
             this.setState((prev) => {
-                const updated = prev.topic.slice(0, savedRange.from) + text + prev.topic.slice(savedRange.to);
+        const updated =
+          prev.topic.slice(0, savedRange.from) +
+          text +
+          prev.topic.slice(savedRange.to);
                 return {
                     topic: prev.appliedTemplateLabel
                         ? limitTemplateSummaryContent(updated, TEMPLATE_CONTENT_MAX_LENGTH)
@@ -624,7 +695,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     handleSubmit = async () => {
-        const { topic, selectedChats, selectedMembers, scheduleConfig } = this.state;
+        const { topic, selectedChats, selectedMembers } = this.state;
         if (!this.canSubmit()) return;
         // 八审 P2:提交即取消未触发的主题输入去抖 —— 用户已从「填主题」进到「生成」,
         // 600ms 后再补发 smart_summary_theme_input 会把一次已转化的输入多计一次。
@@ -636,7 +707,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
         // smart_summary_started 收口在 api 层(summaryApi.createSummary → envelope code===0 gate),
         // 不在此页面/按钮发 —— 因为 HTTP200+code≠0 是逻辑失败,只有 api 层看得到 code,且多入口
-        // (本页 normal / ChatSummaryNewModal / agent 模式)共用一个收口点才能计数与 props 一致
+        // 共用一个收口点才能保证计数与 props 一致
         // (见二审 P1「smart_summary_started 双发」)。此处只把维度 props 透传给 createSummary。
         // trigger_mode 恒为 'normal'(agent 分支走 handleAgentSubmit,永不到此)。
         const startedProps = {
@@ -673,7 +744,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             }
 
             if (selectedMembers.length > 0) {
-                params.participants = selectedMembers.map((m) => ({ user_id: m.user_id }));
+        params.participants = selectedMembers.map((m) => ({
+          user_id: m.user_id,
+        }));
                 params.summary_mode = SummaryMode.BY_PERSON;
             }
 
@@ -685,47 +758,17 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             // 不会让历史任务追溯群发。
             markAgentSummaryNotificationEligible(result.task_id);
 
-            // If schedule is configured, create it in ONE step bound to the new task.
-            // 后端 create 接口在 scope='task' + task_id 下已在一个事务里原子完成
-            //   校验 task 归属 → 建定时 → Update summary_task.schedule_id 绑定（一对一约束）。
-            // 不再需要第二步 update 绑定，也不会产生游离定时，所以去掉 B2 回滚。
-            if (scheduleConfig !== null) {
-                const { cron_expr, interval_days, interval_months, day_of_week, day_of_month, run_time } = scheduleToParams(scheduleConfig);
-                // V5/§6.1：多人（participants 非空）+ 定时默认 confirm_policy=1（一次性确认）；
-                // 单人定时不传（走后端 AUTO 兜底）。
-                const isMultiPerson = !!params.participants && params.participants.length > 0;
-                try {
-                    await api.createSchedule({
-                        title: summaryTitle,
-                        summary_mode: params.summary_mode || SummaryMode.BY_PERSON,
-                        cron_expr,
-                        interval_days,
-                        interval_months,
-                        day_of_week,
-                        day_of_month,
-                        run_time,
-                        time_range_type: 2,
-                        sources: params.sources || [],
-                        participants: params.participants,
-                        ...(isMultiPerson ? { confirm_policy: 1 } : {}),
-                        scope: 'task',
-                        task_id: result.task_id,
-                    });
-                } catch (scheduleErr: any) {
-                    // 总结本身已创建成功；定时创建失败仅提示（后端返回中文 message）。
-                    Toast.error(scheduleErr.message || t("summary.create.scheduleFailed"));
-                }
-            }
-
             Toast.success(t("summary.create.success"));
 
             // 派发创建事件，通知 ChatSummaryStarButton 刷新计数
-            const channelId = this.props.channel?.channelID ?? '';
-            window.dispatchEvent(new CustomEvent('chat-summary-created', {
+      const channelId = this.props.channel?.channelID ?? "";
+      window.dispatchEvent(
+        new CustomEvent("chat-summary-created", {
                 detail: { taskId: result.task_id, channelId },
-            }));
+        })
+      );
 
-            if (this.props.embedded) {
+      if (this.props.onSubmit) {
                 this.props.onSubmit?.(result.task_id);
             } else {
                 // 非面板路径（NavRail 默认创建页 / /summary/create / 列表「+」）创建成功后
@@ -733,7 +776,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 // 面板路径由宿主 ChatSummaryPanel 自行派发，这里不重复。
                 WKApp.mittBus.emit("summary-list-refresh-requested" as any);
                 WKApp.routeRight.popToRoot();
-                WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} emitSelection />);
+        WKApp.routeRight.push(
+          <SummaryDetailPage taskId={result.task_id} emitSelection />
+        );
             }
             this.props.onCreated?.();
         } catch (err: any) {
@@ -765,7 +810,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         writeAgentChatSession(this.agentChannelId(), sessionId);
 
         this.setState((prev) => ({
-            messages: [...prev.messages, { role: 'user', content: trimmed }],
+      messages: [...prev.messages, { role: "user", content: trimmed }],
             sessionId,
             agentSubmitting: true,
             error: null,
@@ -775,7 +820,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             const res = await api.agentChat({
                 message: trimmed,
                 session_id: sessionId,
-                profile: 'summary',
+        profile: "summary",
                 request_id: requestId,
             });
             // 后端回传 session_id 非空则回填并持久化（与后端持久化的会话保持一致）。
@@ -783,7 +828,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             writeAgentChatSession(this.agentChannelId(), nextSessionId);
             writeAgentChatRequestId(this.agentChannelId(), requestId);
             this.setState((prev) => ({
-                messages: [...prev.messages, { role: 'assistant', content: res.reply }],
+        messages: [...prev.messages, { role: "assistant", content: res.reply }],
                 sessionId: nextSessionId,
                 agentRequestId: requestId,
             }));
@@ -792,7 +837,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             const msg = err?.message || t("summary.common.createFailed");
             Toast.error(msg);
             this.setState((prev) => ({
-                messages: [...prev.messages, { role: 'assistant', content: msg }],
+        messages: [...prev.messages, { role: "assistant", content: msg }],
             }));
         } finally {
             this.agentSendInFlight = false;
@@ -832,7 +877,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 nextState.agentRequestId = requestId;
             }
             return nextState;
-        }, () => {
+      },
+      () => {
             const channelId = this.agentChannelId();
             const pairedSessionId = sessionId || this.state.sessionId;
             // Persist the successful session/request pair after state commits.
@@ -846,10 +892,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             if (requestId) {
                 writeAgentChatRequestId(channelId, requestId);
             }
-        });
+      }
+    );
     };
     handlePrimaryClick = () => {
-        if (this.state.mode !== 'agent') {
+    if (this.state.mode !== "agent") {
             void this.handleSubmit();
         }
     };
@@ -858,7 +905,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         const { selectedChats } = this.state;
         const chat = selectedChats[0];
         const channel = chat
-            ? new Channel(chat.chat_id, chat.chat_type === "thread" ? 5 : chat.chat_type === "direct" ? 1 : 2)
+      ? new Channel(
+          chat.chat_id,
+          chat.chat_type === "thread" ? 5 : chat.chat_type === "direct" ? 1 : 2
+        )
             : null;
         this.setState({
             showMemberSelector: true,
@@ -889,11 +939,14 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         // 无 → 保持 state 现值（可能是 mount 时 derivedFromTask 塞进来的）。
         const storedRef = readAgentChatReferenced(this.agentChannelId());
         this.setState((prev) => ({
-            mode: 'agent',
+      mode: "agent",
             sessionId: stored || prev.sessionId,
             agentRequestId: storedRequestId || prev.agentRequestId,
             referencedTask: storedRef
-                ? { task_id: storedRef.task_id, title: storedRef.title } as SummaryListItem
+        ? ({
+            task_id: storedRef.task_id,
+            title: storedRef.title,
+          } as SummaryListItem)
                 : prev.referencedTask,
         }));
         if (stored) void this.loadAgentHistory(stored);
@@ -908,7 +961,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         try {
             const data = await api.getAgentChatHistory(sessionId);
             if (token !== this.historyLoadToken) return;
-            if (this.state.sessionId !== sessionId || this.state.mode !== 'agent') return;
+      if (this.state.sessionId !== sessionId || this.state.mode !== "agent")
+        return;
             if (this.state.messages.length > 0) return;
             if (data.messages.length === 0) return;
             this.setState({ messages: data.messages });
@@ -927,8 +981,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         this.historyLoadToken++;
         this.setState({
             messages: [],
-            sessionId: '',
-            agentRequestId: '',
+      sessionId: "",
+      agentRequestId: "",
             referencedTask: null,
             showReferencePicker: false,
             error: null,
@@ -943,7 +997,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
      * 引用**全程可增减**(不再首轮锁定) —— 后端每轮都会重新拼引用进 system,
      * 见 CHAT-REFERENCE-BASED-DESIGN-v1 多轮上下文修复。
      */
-    private renderReferenceHeader = (translate: (k: string) => string): React.ReactNode => {
+  private renderReferenceHeader = (
+    translate: (k: string) => string
+  ): React.ReactNode => {
         const { referencedTask } = this.state;
 
         if (referencedTask) {
@@ -951,12 +1007,14 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 <div
                     data-testid={summaryTestIds.agentRefCard}
                     className="summary-workbench-ref-card"
-                    onClick={() => this.setState((prev) => ({ sidePanelOpen: !prev.sidePanelOpen }))}
-                    style={{ cursor: 'pointer' }}
-                    title={translate('summary.chatReference.previewTitle')}
+          onClick={() =>
+            this.setState((prev) => ({ sidePanelOpen: !prev.sidePanelOpen }))
+          }
+          style={{ cursor: "pointer" }}
+          title={translate("summary.chatReference.previewTitle")}
                 >
                     <span className="summary-workbench-ref-card-label">
-                        {translate('summary.chatReference.badge')}
+            {translate("summary.chatReference.badge")}
                     </span>
                     <span className="summary-workbench-ref-card-title">
                         {referencedTask.title || `task_id=${referencedTask.task_id}`}
@@ -972,7 +1030,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             // 引用同步清持久化，避免 refresh 后又回填。
                             clearAgentChatReferenced(this.agentChannelId());
                         }}
-                        title={translate('summary.chatReference.remove')}
+            title={translate("summary.chatReference.remove")}
                     >
                         ✕
                     </span>
@@ -1020,7 +1078,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             if (selectedChats.length > 0) {
                 const origin = selectedChats[0];
                 params.origin_channel_id = origin.chat_id;
-                params.origin_channel_type = chatTypeToOriginChannelType(origin.chat_type);
+        params.origin_channel_type = chatTypeToOriginChannelType(
+          origin.chat_type
+        );
                 params.sources = selectedChats.map((c) => ({
                     source_type: chatTypeToOriginChannelType(c.chat_type),
                     source_id: c.chat_id,
@@ -1051,10 +1111,20 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 source: this.props.source,
                 entry_point: this.props.source,
                 entry_source: this.props.source,
-                trigger_mode: 'agent',
+        trigger_mode: "agent",
             });
             markAgentSummaryNotificationEligible(result.task_id);
 
+            // Reaching this branch means task creation/save succeeded. Actual
+            // request failures remain in the catch/error path; finish_status
+            // and gaps are post-save internal quality diagnostics only.
+            trackAgentSummaryQuality(result, {
+                object_id: this.props.channel?.channelID,
+                source: this.props.source,
+                entry_point: this.props.source,
+                entry_source: this.props.source,
+                trigger_mode: 'agent',
+            });
             Toast.success(t('summary.create.agentSummaryCreated'));
 
             // 保存成功 → 销毁 chat session 工作台:
@@ -1068,8 +1138,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             this.historyLoadToken++;
             this.setState({
                 messages: [],
-                sessionId: '',
-                agentRequestId: '',
+        sessionId: "",
+        agentRequestId: "",
                 referencedTask: null,
                 showReferencePicker: false,
             });
@@ -1083,7 +1153,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             window.dispatchEvent(event);
             
             // 跳转到详情页
-            if (this.props.embedded) {
+            if (this.props.onSubmit) {
                 this.props.onSubmit?.(result.task_id);
             } else {
                 // 非面板路径：保存为总结成功后通知左侧列表刷新（同 handleSubmit）。
@@ -1117,22 +1187,24 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 // 见 SUM-161 fast-follow · CHAT-REFERENCE-BASED-DESIGN-v1。
                 if (code === 40001) {
                     if (this.state.referencedTask) {
-                        Toast.error(t('summary.create.savedNoOriginRetry'));
+            Toast.error(t("summary.create.savedNoOriginRetry"));
                     } else {
-                        Toast.error(t('summary.create.savedReferenceLostRetry'));
+            Toast.error(t("summary.create.savedReferenceLostRetry"));
                     }
                     return false;
                 }
             }
             // 其他错误
-            const message = err instanceof Error ? err.message : t('summary.common.createFailedRetry');
+      const message =
+        err instanceof Error
+          ? err.message
+          : t("summary.common.createFailedRetry");
             Toast.error(message);
             return false;
         } finally {
             this.setState({ savingSummary: false });
         }
     };
-
 
     render() {
         const {
@@ -1141,8 +1213,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             customTemplateLimit,
             mode,
             templates,
-            selectedChats, selectedMembers, scheduleConfig,
-            showChatSelector, showMemberSelector, showScheduleConfig,
+            selectedChats, selectedMembers,
+            showChatSelector, showMemberSelector,
             memberSelectorChannel, memberSelectorExcluded, memberSelectorOnSelect,
             submitting, agentSubmitting, error, editingTemplate, creatingCustomTemplate,
             editingTemplateLabel, editingTemplateDescription, savingTemplate,
@@ -1150,24 +1222,35 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         } = this.state;
         const { t: translate } = this.context;
         // 模板在 render() 用当前 locale 解析，切语言即时刷新（不在 state 烘焙）。
-        const resolvedTemplates = templates.map((tpl) => resolveTemplate(tpl, translate));
+    const resolvedTemplates = templates.map((tpl) =>
+      resolveTemplate(tpl, translate)
+    );
         const builtinTemplates = resolvedTemplates.filter((tpl) => !tpl.is_custom);
         const customTemplates = resolvedTemplates.filter((tpl) => tpl.is_custom);
-        const canCreateCustomTemplate = customTemplates.length < customTemplateLimit;
-        const isCustomEditor = creatingCustomTemplate || !!editingTemplate?.is_custom;
+    const canCreateCustomTemplate =
+      customTemplates.length < customTemplateLimit;
+    const isCustomEditor =
+      creatingCustomTemplate || !!editingTemplate?.is_custom;
         const templateEditorVisible = creatingCustomTemplate || !!editingTemplate;
 
         return (
-            <div data-testid={summaryTestIds.create} className={`summary-workbench${this.props.embedded ? " summary-workbench--panel" : ""}`}>
+      <div
+        data-testid={summaryTestIds.create}
+        className={`summary-workbench${
+          this.props.embedded ? " summary-workbench--panel" : ""
+        }`}
+      >
                 {/* Header */}
                 <div className="summary-workbench-header">
                     <span className="summary-workbench-header-emoji">🚀</span>
-                    <span className="summary-workbench-title">{translate("summary.create.title")}</span>
+          <span className="summary-workbench-title">
+            {translate("summary.create.title")}
+          </span>
                 </div>
 
                 {/* Content card */}
                 <div className="summary-workbench-card">
-                    {mode === 'agent' ? (
+          {mode === "agent" ? (
                         // Agent 交互式问答：面板自带输入框，隐藏顶部大 textarea + 4 模板卡片。
                         // SidePanel 打开时: 加 --with-side class → flex 左右分栏
                         //   左: main (AgentChatPanel 撑满剩余宽度)
@@ -1186,7 +1269,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     onUserMessage={this.handleAgentUserMessage}
                                     onAssistantMessage={this.handleAgentAssistantMessage}
                                     sessionId={this.state.sessionId}
-                                    profile={this.state.referencedTask ? "summary_refine" : "summary"}
+                  profile={
+                    this.state.referencedTask ? "summary_refine" : "summary"
+                  }
                                     messages={messages}
                                     onSend={this.handleAgentSend}
                                     sending={agentSubmitting}
@@ -1221,7 +1306,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     // 用户选择新引用 → 同步持久化 → refresh 后仍在。
                                     writeAgentChatReferenced(this.agentChannelId(), {
                                         task_id: task.task_id,
-                                        title: task.title ?? '',
+                    title: task.title ?? "",
                                     });
                                 }}
                                 selectedTaskId={this.state.referencedTask?.task_id}
@@ -1242,23 +1327,35 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             value={topic}
                             onChange={(e) => {
                                 const nextTopic = appliedTemplateLabel
-                                    ? limitTemplateSummaryContent(e.target.value, TEMPLATE_CONTENT_MAX_LENGTH)
+                      ? limitTemplateSummaryContent(
+                          e.target.value,
+                          TEMPLATE_CONTENT_MAX_LENGTH
+                        )
                                     : e.target.value.slice(0, SUMMARY_INPUT_MAX_LENGTH);
-                                this.setState({ topic: nextTopic, templatePlaceholderRange: null });
+                    this.setState({
+                      topic: nextTopic,
+                      templatePlaceholderRange: null,
+                    });
                                 this.autoResizeTextarea();
                                 // 埋点 295:主题输入去抖 600ms 后发一次，仅在非空时发，不采内容。
-                                if (this.themeTrackTimer) clearTimeout(this.themeTrackTimer);
+                    if (this.themeTrackTimer)
+                      clearTimeout(this.themeTrackTimer);
                                 this.themeTrackTimer = setTimeout(() => {
-                                    if (nextTopic.trim()) Dap.shared.track("smart_summary_theme_input", {});
+                      if (nextTopic.trim())
+                        Dap.shared.track("smart_summary_theme_input", {});
                                 }, 600);
                             }}
                             onFocus={this.handleInputFocus}
                             placeholder={translate("summary.create.topicPlaceholder")}
                             rows={3}
-                            maxLength={appliedTemplateLabel ? undefined : SUMMARY_INPUT_MAX_LENGTH}
+                  maxLength={
+                    appliedTemplateLabel ? undefined : SUMMARY_INPUT_MAX_LENGTH
+                  }
                         />
                         <div className="summary-workbench-char-count">
-                            <span>{topic.length}/{SUMMARY_INPUT_MAX_LENGTH}</span>
+                  <span>
+                    {topic.length}/{SUMMARY_INPUT_MAX_LENGTH}
+                  </span>
                             <VoiceInputButton
                                 inputRef={this.textareaRef}
                                 onTranscribed={this.handleVoiceTranscribed}
@@ -1269,14 +1366,18 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         </div>
                         {topic.length >= SUMMARY_INPUT_MAX_LENGTH && (
                             <div className="summary-workbench-char-limit-warn">
-                                {translate("summary.common.charLimitReached", { values: { count: SUMMARY_INPUT_MAX_LENGTH } })}
+                    {translate("summary.common.charLimitReached", {
+                      values: { count: SUMMARY_INPUT_MAX_LENGTH },
+                    })}
                             </div>
                         )}
                     </div>
                     {topic.trim() && appliedTemplateLabel && (
                         <div className="summary-template-applied-bar">
                             <span className="summary-template-applied-text">
-                                {translate("summary.templates.custom.applied", { values: { name: appliedTemplateLabel } })}
+                    {translate("summary.templates.custom.applied", {
+                      values: { name: appliedTemplateLabel },
+                    })}
                             </span>
                             <button
                                 type="button"
@@ -1291,7 +1392,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     {/* Templates */}
                     {!topic.trim() && (
                         <div className="summary-workbench-templates-section">
-                            <div className="summary-workbench-templates-label">{translate("summary.create.templatesTitle")}</div>
+                  <div className="summary-workbench-templates-label">
+                    {translate("summary.create.templatesTitle")}
+                  </div>
                             <div className="summary-workbench-templates">
                                 {builtinTemplates.map((tpl) => (
                                     <TemplateCard
@@ -1306,7 +1409,15 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             <div className="summary-template-custom-section">
                                 <div className="summary-template-custom-header">
                                     <div className="summary-template-custom-title">
-                                        {translate("summary.templates.custom.myTemplatesTitleWithCount", { values: { count: customTemplates.length, limit: customTemplateLimit } })}
+                        {translate(
+                          "summary.templates.custom.myTemplatesTitleWithCount",
+                          {
+                            values: {
+                              count: customTemplates.length,
+                              limit: customTemplateLimit,
+                            },
+                          }
+                        )}
                                     </div>
                                     <Button
                                         className="summary-template-create-btn"
@@ -1333,8 +1444,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                                 onClick={this.handleTemplateClick}
                                                 onEdit={this.handleTemplateEdit}
                                                 onDelete={this.requestCustomTemplateDelete}
-                                                editLabel={translate("summary.templates.custom.edit")}
-                                                deleteLabel={translate("summary.templates.custom.delete")}
+                            editLabel={translate(
+                              "summary.templates.custom.edit"
+                            )}
+                            deleteLabel={translate(
+                              "summary.templates.custom.delete"
+                            )}
                                             />
                                         ))}
                                     </div>
@@ -1364,7 +1479,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
                     {/* Action bar */}
                     <div className="summary-workbench-actions">
-                        <div className="summary-workbench-select-chat" ref={this.selectChatRef}>
+            <div
+              className="summary-workbench-select-chat"
+              ref={this.selectChatRef}
+            >
                             <div className="summary-workbench-select-chat-header">
                                 <span className="summary-workbench-select-chat-title">
                                     {translate("summary.create.selectChat")}
@@ -1376,23 +1494,45 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             </div>
                             {selectedChats.length > 0 ? (
                                 <div className="summary-workbench-chat-row">
-                                    <div className="summary-workbench-chat-chips" ref={this.chipsContainerRef}>
+                  <div
+                    className="summary-workbench-chat-chips"
+                    ref={this.chipsContainerRef}
+                  >
                                         {selectedChats.map((c, idx) => (
                                             <div
                                                 key={c.chat_id}
-                                                className={`summary-workbench-chat-chip${idx >= this.state.visibleChipCount ? " summary-workbench-chat-chip--hidden" : ""}`}
+                        className={`summary-workbench-chat-chip${
+                          idx >= this.state.visibleChipCount
+                            ? " summary-workbench-chat-chip--hidden"
+                            : ""
+                        }`}
                                             >
                                                 <WKAvatar
-                                                    channel={new Channel(c.chat_id, c.chat_type === 'thread' ? 5 : c.chat_type === 'group' ? 2 : 1)}
+                          channel={
+                            new Channel(
+                              c.chat_id,
+                              c.chat_type === "thread"
+                                ? 5
+                                : c.chat_type === "group"
+                                ? 2
+                                : 1
+                            )
+                          }
                                                     style={{ width: 16, height: 16, borderRadius: "50%" }}
                                                 />
-                                                <span className="summary-workbench-chat-chip-name">{c.name}</span>
+                        <span className="summary-workbench-chat-chip-name">
+                          {c.name}
+                        </span>
                                                 <button
                                                     type="button"
                                                     className="summary-workbench-chat-chip-close"
-                                                    onClick={() => this.setState({
-                                                        selectedChats: selectedChats.filter((x) => x.chat_id !== c.chat_id)
-                                                    })}
+                          onClick={() =>
+                            this.setState({
+                              selectedChats: selectedChats.filter(
+                                (x) => x.chat_id !== c.chat_id
+                              ),
+                            })
+                          }
                                                 >
                                                     <X size={12} />
                                                 </button>
@@ -1404,7 +1544,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                                 position="top"
                                             >
                                                 <span className="summary-workbench-chat-chip-overflow">
-                                                    ...+{selectedChats.length - this.state.visibleChipCount}
+                          ...+
+                          {selectedChats.length - this.state.visibleChipCount}
                                                 </span>
                                             </Tooltip>
                                         )}
@@ -1430,38 +1571,60 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 </button>
                             )}
                             {/* 选择参与者（仅普通模式；Agent 模式不提供多人协作入口） */}
-                            {mode !== 'agent' && (
+              {mode !== "agent" && (
                             <div className="summary-workbench-chat-row">
                                 {selectedMembers.length > 0 && (
-                                    <div className="summary-workbench-chat-chips" ref={this.memberChipsContainerRef}>
+                    <div
+                      className="summary-workbench-chat-chips"
+                      ref={this.memberChipsContainerRef}
+                    >
                                         {selectedMembers.map((m, idx) => (
                                             <div
                                                 key={m.user_id}
-                                                className={`summary-workbench-chat-chip${idx >= this.state.visibleMemberChipCount ? " summary-workbench-chat-chip--hidden" : ""}`}
+                          className={`summary-workbench-chat-chip${
+                            idx >= this.state.visibleMemberChipCount
+                              ? " summary-workbench-chat-chip--hidden"
+                              : ""
+                          }`}
                                             >
                                                 <WKAvatar
                                                     channel={new Channel(m.user_id, 1)}
-                                                    style={{ width: 16, height: 16, borderRadius: "50%" }}
+                            style={{
+                              width: 16,
+                              height: 16,
+                              borderRadius: "50%",
+                            }}
                                                 />
-                                                <span className="summary-workbench-chat-chip-name">{m.name}</span>
+                          <span className="summary-workbench-chat-chip-name">
+                            {m.name}
+                          </span>
                                                 <button
                                                     type="button"
                                                     className="summary-workbench-chat-chip-close"
-                                                    onClick={() => this.setState({
-                                                        selectedMembers: selectedMembers.filter((x) => x.user_id !== m.user_id)
-                                                    })}
+                            onClick={() =>
+                              this.setState({
+                                selectedMembers: selectedMembers.filter(
+                                  (x) => x.user_id !== m.user_id
+                                ),
+                              })
+                            }
                                                 >
                                                     <X size={12} />
                                                 </button>
                                             </div>
                                         ))}
-                                        {selectedMembers.length > this.state.visibleMemberChipCount && (
+                      {selectedMembers.length >
+                        this.state.visibleMemberChipCount && (
                                             <Tooltip
-                                                content={selectedMembers.map((m) => m.name).join("、")}
+                          content={selectedMembers
+                            .map((m) => m.name)
+                            .join("、")}
                                                 position="top"
                                             >
                                                 <span className="summary-workbench-chat-chip-overflow">
-                                                    ...+{selectedMembers.length - this.state.visibleMemberChipCount}
+                            ...+
+                            {selectedMembers.length -
+                              this.state.visibleMemberChipCount}
                                                 </span>
                                             </Tooltip>
                                         )}
@@ -1480,7 +1643,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             )}
                         </div>
                         {/* 右下角：主提交按钮。总结方式选择已上移到列表页「+」下拉，此处不再提供切换。 */}
-                        {mode !== 'agent' && (
+            {mode !== "agent" && (
                             <Button
                                 data-testid={summaryTestIds.createSubmit}
                                 theme="solid"
@@ -1489,7 +1652,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 onClick={this.handlePrimaryClick}
                             >
                                 <Sparkles size={16} />
-                                {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
+                                {submitting
+                                    ? translate("summary.create.submitting")
+                                    : translate("summary.create.start")}
                             </Button>
                         )}
                     </div>
@@ -1503,28 +1668,31 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
                 {/* Modals */}
                 <ChatSelectorModal
+                    messaging={this.props.messaging}
                     visible={showChatSelector}
                     selected={selectedChats}
                     maxSelect={MAX_CHAT_SELECT}
-                    onConfirm={(chats) => this.setState({ selectedChats: chats, showChatSelector: false })}
+          onConfirm={(chats) =>
+            this.setState({ selectedChats: chats, showChatSelector: false })
+          }
                     onCancel={() => this.setState({ showChatSelector: false })}
                 />
-                <ScheduleConfigModal
-                    visible={showScheduleConfig}
-                    value={scheduleConfig ?? { unit: "week", every: 1, time: "09:00" }}
-                    onConfirm={(cfg) => this.setState({ scheduleConfig: cfg, showScheduleConfig: false })}
-                    onCancel={() => this.setState({ showScheduleConfig: false })}
-                    showGenerationInstruction={false}
-                />
                 <ChatSelectorModal
+                    messaging={this.props.messaging}
                     visible={showMemberSelector}
                     mode="members"
                     channel={memberSelectorChannel}
                     selected={[]}
-                    selectedMembers={selectedMembers.map(m => ({ uid: m.user_id, name: m.name }))}
+          selectedMembers={selectedMembers.map((m) => ({
+            uid: m.user_id,
+            name: m.name,
+          }))}
                     onConfirmMembers={(members) => {
                         this.setState({
-                            selectedMembers: members.map(m => ({ user_id: m.uid, name: m.name })),
+              selectedMembers: members.map((m) => ({
+                user_id: m.uid,
+                name: m.name,
+              })),
                             showMemberSelector: false,
                         });
                     }}
@@ -1532,11 +1700,13 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 />
                 <Modal
                     visible={templateEditorVisible}
-                    title={translate(creatingCustomTemplate
+          title={translate(
+            creatingCustomTemplate
                         ? "summary.templates.custom.createTitle"
                         : isCustomEditor
                         ? "summary.templates.custom.editCustomTitle"
-                        : "summary.templates.custom.editTitle")}
+              : "summary.templates.custom.editTitle"
+          )}
                     onCancel={this.closeTemplateEdit}
                     footer={null}
                     width={560}
@@ -1551,8 +1721,17 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             value={editingTemplateLabel}
                             maxLength={TEMPLATE_NAME_MAX_LENGTH}
                             disabled={savingTemplate}
-                            placeholder={translate("summary.templates.custom.namePlaceholder")}
-                            onChange={(e) => this.setState({ editingTemplateLabel: e.target.value.slice(0, TEMPLATE_NAME_MAX_LENGTH) })}
+              placeholder={translate(
+                "summary.templates.custom.namePlaceholder"
+              )}
+              onChange={(e) =>
+                this.setState({
+                  editingTemplateLabel: e.target.value.slice(
+                    0,
+                    TEMPLATE_NAME_MAX_LENGTH
+                  ),
+                })
+              }
                         />
                     </div>
                     <div className="summary-template-edit-field">
@@ -1564,8 +1743,17 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             value={editingTemplateDescription}
                             maxLength={TEMPLATE_CONTENT_MAX_LENGTH}
                             disabled={savingTemplate}
-                            placeholder={translate("summary.templates.custom.descriptionPlaceholder")}
-                            onChange={(e) => this.setState({ editingTemplateDescription: e.target.value.slice(0, TEMPLATE_CONTENT_MAX_LENGTH) })}
+              placeholder={translate(
+                "summary.templates.custom.descriptionPlaceholder"
+              )}
+              onChange={(e) =>
+                this.setState({
+                  editingTemplateDescription: e.target.value.slice(
+                    0,
+                    TEMPLATE_CONTENT_MAX_LENGTH
+                  ),
+                })
+              }
                         />
                     </div>
                     <div className="summary-template-edit-hint">
@@ -1573,12 +1761,19 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     </div>
                     <div className="summary-editor-actions summary-template-edit-actions">
                         {editingTemplate?.is_custom && (
-                            <Button type="danger" onClick={() => this.requestCustomTemplateDelete()} disabled={savingTemplate}>
+              <Button
+                type="danger"
+                onClick={() => this.requestCustomTemplateDelete()}
+                disabled={savingTemplate}
+              >
                                 {translate("summary.templates.custom.delete")}
                             </Button>
                         )}
                         {editingTemplate && !editingTemplate.is_custom && (
-                            <Button onClick={this.handleTemplateReset} disabled={savingTemplate}>
+              <Button
+                onClick={this.handleTemplateReset}
+                disabled={savingTemplate}
+              >
                                 {translate("summary.templates.custom.reset")}
                             </Button>
                         )}
@@ -1588,7 +1783,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         <Button
                             theme="solid"
                             loading={savingTemplate}
-                            disabled={!editingTemplateLabel.trim() || !editingTemplateDescription.trim() || savingTemplate}
+              disabled={
+                !editingTemplateLabel.trim() ||
+                !editingTemplateDescription.trim() ||
+                savingTemplate
+              }
                             onClick={this.handleTemplateSave}
                         >
                             {translate("summary.common.save")}

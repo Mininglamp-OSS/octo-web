@@ -53,11 +53,16 @@ describe("DocSearchPanel renderHighlight — <em>-only XSS allowlist", () => {
       "<em>ok</em> <script>alert(1)</script> <img src=x onerror=alert(1)>"
     );
     await screen.findByText("ok");
-    // No live <script>/<img> element was created from the fragment.
-    expect(container.querySelector("script")).toBeNull();
-    expect(container.querySelector("img")).toBeNull();
+    // No live <script>/<img> element was created from the fragment. The
+    // fragment renders inside .wk-doc-search__snippet, so scope the check there
+    // (the row's leading .wk-doc-search__icon-img is legitimate chrome, not
+    // fragment output).
+    const snippet = container.querySelector(".wk-doc-search__snippet");
+    expect(snippet).not.toBeNull();
+    expect(snippet!.querySelector("script")).toBeNull();
+    expect(snippet!.querySelector("img")).toBeNull();
     // The dangerous markup survives as escaped text content.
-    expect(container.textContent).toContain("<script>alert(1)</script>");
+    expect(snippet!.textContent).toContain("<script>alert(1)</script>");
   });
 
   it("treats HTML nested inside <em> as text, not elements", async () => {

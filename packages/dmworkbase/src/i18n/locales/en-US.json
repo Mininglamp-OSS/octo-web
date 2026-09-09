@@ -89,6 +89,7 @@
   "download.failed": "Download failed: {{filename}}",
   "channelSearch.downloadUnavailable": "No download URL available",
   "channelSearch.emptyHint": "Enter a keyword or use filters to search chat history",
+  "channelSearch.fileContentHit": "In content",
   "channelSearch.fileMore": "File actions",
   "channelSearch.filter.clear": "Clear",
   "channelSearch.filter.apply": "Apply",

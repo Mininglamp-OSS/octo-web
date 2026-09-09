@@ -40,7 +40,7 @@ export function getOriginChannelType(channel: { channelType: number; channelID: 
  * 用于 origin_channel_type 与 sources[].source_type。
  *
  * 与 getOriginChannelType 是同一套数值语义,但入口不同:getOriginChannelType 吃
- * IM 的 numeric channelType(ChatSummaryNewModal 的 channel prop 有),而
+ * IM 的 numeric channelType,而
  * SummaryCreatePage 只有 selectedChats 的字符串 chat_type,没有 numeric
  * channelType —— 这个 helper 专门收字符串侧,避免两处各写一份内联 map。
  * @throws Error 当 chat_type 不认识时抛出,而非静默发错值。

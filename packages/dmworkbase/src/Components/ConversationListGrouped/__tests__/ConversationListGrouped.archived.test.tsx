@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { ThreadStatus } from "../../../Service/Thread"
 
 let ConversationListGrouped: typeof import("../index").default
+let ActualConversationWrap: typeof import("../../../Service/Model").ConversationWrap
 let container: HTMLDivElement
 let lastDndProps: any
 let lastCategoryProps: any
@@ -17,6 +18,7 @@ beforeAll(async () => {
     vi.doMock("wukongimjssdk", () => ({
         default: {
             shared: () => ({
+                config: { uid: "me" },
                 channelManager: {
                     getChannelInfo: () => undefined,
                 },
@@ -35,15 +37,30 @@ beforeAll(async () => {
         Conversation: class {},
         WKSDK: {
             shared: () => ({
+                config: { uid: "me" },
                 channelManager: {
                     getChannelInfo: () => undefined,
                 },
             }),
         },
+        ReminderType: { ReminderTypeMentionMe: 1 },
     }))
 
-    vi.doMock("../../../Service/Const", () => ({
-        ChannelTypeCommunityTopic,
+    vi.doMock("../../../Service/Const", async () => {
+        const actual = await vi.importActual<typeof import("../../../Service/Const")>("../../../Service/Const")
+        return { ...actual, ChannelTypeCommunityTopic }
+    })
+
+    vi.doMock("../../../App", () => ({
+        default: {
+            loginInfo: { uid: "me" },
+            shared: {
+                currentSpaceId: "",
+                avatarChannel: () => "avatar",
+                getChannelAvatarTag: () => "tag",
+            },
+            dataSource: { commonDataSource: { getImageURL: (url: string) => url } },
+        },
     }))
 
     vi.doMock("../../../Service/Thread", () => ({
@@ -58,6 +75,22 @@ beforeAll(async () => {
     vi.doMock("../../../Service/FollowService", () => ({ default: {} }))
 
     vi.doMock("../../../Service/SidebarService", () => ({ default: {} }))
+
+    vi.doMock("../../../Service/EmojiService", () => ({
+        DefaultEmojiService: { shared: { emojiRegExp: () => /(?!)/ } },
+    }))
+
+    vi.doMock("../../../Service/TypingManager", () => ({
+        TypingManager: { shared: { getFakeTypingMessage: () => undefined } },
+    }))
+
+    vi.doMock("../../../Service/SpaceService", () => ({
+        getSpaceFilteredLastMessage: (conversation: any) => conversation.lastMessage,
+        SYSTEM_BOTS: new Set(),
+    }))
+
+    const actualModel = await vi.importActual<typeof import("../../../Service/Model")>("../../../Service/Model")
+    ActualConversationWrap = actualModel.ConversationWrap
 
     vi.doMock("../../../Service/Model", () => ({
         ConversationWrap: class {
@@ -154,14 +187,28 @@ afterEach(() => {
     container.remove()
 })
 
-function groupConv(groupNo: string) {
+function groupConv(groupNo: string, options: { unread?: number; isMentionMe?: boolean } = {}) {
     return {
         channel: { channelID: groupNo, channelType: ChannelTypeGroup },
         channelInfo: { orgData: {} },
         timestamp: 100,
-        unread: 0,
-        isMentionMe: false,
+        unread: options.unread ?? 0,
+        isMentionMe: options.isMentionMe ?? false,
     }
+}
+
+function readMentionGroupConv(groupNo: string) {
+    const raw = groupConv(groupNo, { unread: 0 })
+    return new ActualConversationWrap({
+        ...raw,
+        reminders: [],
+        simpleReminders: [],
+        remoteExtra: {},
+        lastMessage: {
+            channel: raw.channel,
+            content: { mention: { uids: ["me"] } },
+        },
+    } as any)
 }
 
 function threadConv(channelID: string, parentGroupNo: string, status?: number) {
@@ -262,6 +309,28 @@ describe("ConversationListGrouped — 归档子区过滤 (issue #345)", () => {
         })
 
         expect(container.textContent || "").toContain("grpA____tUnknown")
+    })
+
+    it("does not combine an acknowledged mention from one group with another group's unread (#1625)", () => {
+        const twoGroupCategories = [{
+            ...categories[0],
+            groups: [{ group_no: "grpA" }, { group_no: "grpB" }],
+        }]
+        const conversations = [
+            // 使用真实 ConversationWrap：grpA 的最后一条消息仍 @我，但已读且 reminder 为空。
+            readMentionGroupConv("grpA"),
+            // 同分类另一个群只有普通未读。
+            groupConv("grpB", { unread: 1, isMentionMe: false }),
+        ]
+
+        renderGrouped({
+            conversations: conversations as any,
+            categories: twoGroupCategories as any,
+        })
+
+        const category = lastCategoryProps.categories.find((item: any) => item.id === "cat-a")
+        expect(category.unreadCount).toBe(1)
+        expect(category.hasMention).toBe(false)
     })
 
     it("renders loading/error/empty fallbacks and accepts drag lifecycle events", () => {

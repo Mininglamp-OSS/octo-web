@@ -1,0 +1,114 @@
+{
+  "fixtureId": "octo-client-feature-bootstrap-v1",
+  "valid": [
+    {
+      "featureId": "communication",
+      "value": {
+        "bridgeVersion": 1,
+        "featureId": "communication",
+        "session": {
+          "uid": "user-1",
+          "token": "token-1",
+          "name": "Octo User",
+          "email": "user@example.com",
+          "provider": "octo",
+          "apiOrigin": "https://im.deepminer.com.cn"
+        },
+        "space": { "id": "space-1", "name": "Space One" },
+        "appearance": { "theme": "light", "locale": "zh-CN" },
+        "initialPage": "chat",
+        "initialPresentation": "workspace"
+      }
+    },
+    {
+      "featureId": "summary",
+      "value": {
+        "bridgeVersion": 1,
+        "featureId": "summary",
+        "session": {
+          "uid": "user-1",
+          "token": "token-1",
+          "name": "Octo User",
+          "provider": "octo",
+          "apiOrigin": "https://im.deepminer.com.cn"
+        },
+        "space": { "id": "space-1", "name": "Space One" },
+        "appearance": { "theme": "dark", "locale": "en-US" },
+        "initialRoute": { "view": "list" }
+      }
+    },
+    {
+      "featureId": "apps",
+      "value": {
+        "bridgeVersion": 1,
+        "featureId": "apps",
+        "session": {
+          "uid": "user-1",
+          "token": "token-1",
+          "name": "Octo User",
+          "provider": "octo",
+          "apiOrigin": "https://im.deepminer.com.cn"
+        },
+        "space": { "id": "space-1", "name": "Space One" },
+        "appearance": { "theme": "light", "locale": "zh-CN" }
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "bridge version",
+      "featureId": "summary",
+      "value": {
+        "bridgeVersion": 2,
+        "featureId": "summary",
+        "session": { "uid": "user-1", "token": "token-1", "name": "Octo User", "provider": "octo", "apiOrigin": "https://im.deepminer.com.cn" },
+        "space": { "id": "space-1", "name": "Space One" },
+        "appearance": { "theme": "light", "locale": "zh-CN" }
+      }
+    },
+    {
+      "name": "feature identity",
+      "featureId": "apps",
+      "value": {
+        "bridgeVersion": 1,
+        "featureId": "summary",
+        "session": { "uid": "user-1", "token": "token-1", "name": "Octo User", "provider": "octo", "apiOrigin": "https://im.deepminer.com.cn" },
+        "space": { "id": "space-1", "name": "Space One" },
+        "appearance": { "theme": "light", "locale": "zh-CN" }
+      }
+    },
+    {
+      "name": "missing token",
+      "featureId": "communication",
+      "value": {
+        "bridgeVersion": 1,
+        "featureId": "communication",
+        "session": { "uid": "user-1", "token": "", "name": "Octo User", "provider": "octo", "apiOrigin": "https://im.deepminer.com.cn" },
+        "space": { "id": "space-1", "name": "Space One" },
+        "appearance": { "theme": "light", "locale": "zh-CN" }
+      }
+    },
+    {
+      "name": "api origin",
+      "featureId": "summary",
+      "value": {
+        "bridgeVersion": 1,
+        "featureId": "summary",
+        "session": { "uid": "user-1", "token": "token-1", "name": "Octo User", "provider": "octo", "apiOrigin": "file:///tmp/api" },
+        "space": { "id": "space-1", "name": "Space One" },
+        "appearance": { "theme": "light", "locale": "zh-CN" }
+      }
+    },
+    {
+      "name": "appearance",
+      "featureId": "apps",
+      "value": {
+        "bridgeVersion": 1,
+        "featureId": "apps",
+        "session": { "uid": "user-1", "token": "token-1", "name": "Octo User", "provider": "octo", "apiOrigin": "https://im.deepminer.com.cn" },
+        "space": { "id": "space-1", "name": "Space One" },
+        "appearance": { "theme": "system", "locale": "zh" }
+      }
+    }
+  ]
+}

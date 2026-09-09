@@ -68,6 +68,10 @@
 }
 
 .summary-workbench-ref-side-close {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    font: inherit;
     cursor: pointer;
     color: var(--semi-color-text-2);
     font-size: 18px;
@@ -80,6 +84,11 @@
 .summary-workbench-ref-side-close:hover {
     background: var(--semi-color-fill-1);
     color: var(--semi-color-text-0);
+}
+
+.summary-workbench-ref-side-close:focus-visible {
+    outline: 2px solid var(--wk-border-glow);
+    outline-offset: 2px;
 }
 
 .summary-workbench-ref-side-hint {

@@ -4,6 +4,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ChatSelectorModal from '../ChatSelectorModal';
 import WKApp from '@octo/base/src/App';
 import type { ChatCandidate } from '../../types/summary';
+import type { SummaryMessagingPort } from '../../host';
+import { Channel } from 'wukongimjssdk';
 
 const mockGetChatCandidates = vi.fn();
 const mockSidebarSync = vi.fn();
@@ -488,5 +490,95 @@ describe('ChatSelectorModal — members-mode candidate source (issue #200)', () 
 
         expect(mockGetRoster).not.toHaveBeenCalled();
         expect(utils.getByText('李四')).toBeInTheDocument();
+    });
+
+    it('受控成员加载失败时阻止确认并允许重试', async () => {
+        const onRetryMembers = vi.fn();
+        let utils: ReturnType<typeof rtlRender>;
+        await act(async () => {
+            utils = rtlRender(
+                <ChatSelectorModal
+                    {...baseProps}
+                    mode="members"
+                    memberCandidates={[]}
+                    memberLoadError
+                    onRetryMembers={onRetryMembers}
+                    selectedMembers={[]}
+                    visible={false}
+                />,
+                { legacyRoot: true },
+            );
+        });
+        await act(async () => {
+            utils!.rerender(
+                <ChatSelectorModal
+                    {...baseProps}
+                    mode="members"
+                    memberCandidates={[]}
+                    memberLoadError
+                    onRetryMembers={onRetryMembers}
+                    selectedMembers={[]}
+                    visible
+                />,
+            );
+        });
+
+        expect(utils!.getByTestId('summary-member-selector-confirm-btn')).toBeDisabled();
+        fireEvent.click(utils!.getByRole('button', { name: '重试' }));
+        expect(onRetryMembers).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('ChatSelectorModal — group-only selection', () => {
+    it('hides direct chats and threads when participants are already selected', async () => {
+        setupSidebar([], []);
+        mockGetChatCandidates.mockResolvedValue([GROUP_A, DIRECT_X, ACTIVE_THREAD]);
+        let utils: ReturnType<typeof rtlRender>;
+        await act(async () => {
+            utils = rtlRender(
+                <ChatSelectorModal {...baseProps} groupOnly visible={false} />,
+                { legacyRoot: true },
+            );
+        });
+        await act(async () => {
+            utils!.rerender(<ChatSelectorModal {...baseProps} groupOnly visible />);
+            await flushPromises();
+        });
+
+        expect(utils!.getByText('Group A')).toBeInTheDocument();
+        expect(utils!.queryByText('Direct X')).not.toBeInTheDocument();
+        expect(utils!.queryByText('Active Thread')).not.toBeInTheDocument();
+        expect(utils!.queryByRole('button', { name: '全部私聊' })).not.toBeInTheDocument();
+    });
+});
+
+describe('ChatSelectorModal messaging host', () => {
+    it('loads conversation members through the host and filters self and bots', async () => {
+        const loadConversationMembers = vi.fn().mockResolvedValue([
+            { uid: 'u1', name: 'Alice', role: 2 },
+            { uid: 'test-uid', name: 'Me', role: 1 },
+            { uid: 'bot1', name: 'Bot', isBot: true },
+        ]);
+        const messaging: SummaryMessagingPort = {
+            getCurrentUser: () => ({ uid: 'test-uid', displayName: 'Me' }),
+            loadConversationMembers,
+            openConversation: vi.fn(async () => {}),
+            notifySummaryCompleted: vi.fn(async () => {}),
+            requestForward: vi.fn(),
+            subscribeInvalidation: () => () => {},
+        };
+        const props = {
+            ...baseProps, messaging, mode: 'members' as const,
+            channel: new Channel('group-1', 2), selectedMembers: [],
+        };
+        const utils = rtlRender(<ChatSelectorModal {...props} visible={false} />, { legacyRoot: true });
+        await act(async () => {
+            utils.rerender(<ChatSelectorModal {...props} visible />);
+            await flushPromises();
+        });
+        expect(loadConversationMembers).toHaveBeenCalledWith({ channelId: 'group-1', channelType: 2 });
+        expect(utils.getByText('Alice')).toBeInTheDocument();
+        expect(utils.queryByText('Me')).not.toBeInTheDocument();
+        expect(utils.queryByText('Bot')).not.toBeInTheDocument();
     });
 });

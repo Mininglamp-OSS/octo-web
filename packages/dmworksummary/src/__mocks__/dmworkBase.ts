@@ -1,5 +1,9 @@
 import React from 'react';
 import zhCN from '../i18n/zh-CN.json';
+export { subscriberDisplayName } from '../../../dmworkbase/src/Utils/displayName';
+// Keep the test helper independent of IncomingWebhook's APIClient singleton.
+export const isFlagOn = (value: unknown): boolean =>
+  value === 1 || value === true || value === "1" || value === "true";
 
 type MessageNode = string | { [key: string]: MessageNode };
 

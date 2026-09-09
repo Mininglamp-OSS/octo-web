@@ -16,10 +16,16 @@ import {
 } from "vitest";
 
 let ConversationList: typeof import("../index").default;
+let ActualConversationWrap: typeof import(
+  "../../../Service/Model"
+).ConversationWrap;
 let container: HTMLDivElement;
 const apiPut = vi.fn();
 const toastError = vi.fn();
 const notifyConversationListeners = vi.fn();
+const reminderDone = vi.fn(() => Promise.resolve());
+const mittEmit = vi.fn();
+const browserUnreadPublish = vi.fn();
 const topChannelSetting = vi.fn(() => Promise.resolve());
 
 class MockChannel {
@@ -47,6 +53,7 @@ beforeAll(async () => {
   vi.doMock("wukongimjssdk", () => {
     const sdk = {
       shared: () => ({
+        config: { uid: "u1" },
         channelManager: {
           addListener: vi.fn(),
           removeListener: vi.fn(),
@@ -55,6 +62,9 @@ beforeAll(async () => {
         },
         conversationManager: {
           notifyConversationListeners,
+        },
+        reminderManager: {
+          done: reminderDone,
         },
       }),
     };
@@ -125,13 +135,25 @@ beforeAll(async () => {
       },
       apiClient: { put: apiPut },
       conversationProvider: { deleteConversation: vi.fn() },
+      mittBus: { emit: mittEmit },
     },
   }));
 
-  vi.doMock("../../../Service/Const", () => ({
-    ChannelTypeCommunityTopic: 3,
-    EndpointID: {},
+  vi.doMock("../../../features/documentTitle", () => ({
+    getBrowserUnreadConversationSync: () => ({
+      publish: browserUnreadPublish,
+    }),
   }));
+
+  vi.doMock("../../../Service/Const", async () => {
+    const actual = await vi.importActual<
+      typeof import("../../../Service/Const")
+    >("../../../Service/Const");
+    return {
+      ...actual,
+      ChannelTypeCommunityTopic: 3,
+    };
+  });
 
   vi.doMock("../../../Service/Thread", async () => {
     const actual = await vi.importActual<typeof import("../../../Service/Thread")>(
@@ -166,6 +188,23 @@ beforeAll(async () => {
     muteChannelSetting: vi.fn(() => Promise.resolve()),
     topChannelSetting,
   }));
+
+  vi.doMock("../../../Service/EmojiService", () => ({
+    DefaultEmojiService: {
+      shared: { emojiRegExp: () => /(?!)/ },
+    },
+  }));
+
+  vi.doMock("../../../Service/SpaceService", () => ({
+    getSpaceFilteredLastMessage: (conversation: any) =>
+      conversation.lastMessage,
+    SYSTEM_BOTS: new Set(),
+  }));
+
+  const actualModel = await vi.importActual<
+    typeof import("../../../Service/Model")
+  >("../../../Service/Model");
+  ActualConversationWrap = actualModel.ConversationWrap;
 
   vi.doMock("../../../Service/Model", () => ({
     MessageWrap: class {},
@@ -239,8 +278,13 @@ function makeConversation(options: {
   unread: number;
   mention?: boolean;
   mute?: boolean;
+  channelType?: number;
+  channelID?: string;
 }) {
-  const channel = makeChannel("alice");
+  const channel = makeChannel(
+    options.channelID ?? "alice",
+    options.channelType ?? 1
+  );
   return {
     channel,
     channelInfo: {
@@ -250,7 +294,7 @@ function makeConversation(options: {
       lastOffline: 0,
       top: false,
       orgData: {
-        displayName: "Alice",
+        displayName: options.channelID ?? "Alice",
       },
     },
     unread: options.unread,
@@ -265,7 +309,8 @@ function makeConversation(options: {
 function makeCompactConversation(
   channelID: string,
   channelType: number,
-  parentGroupNo?: string
+  parentGroupNo?: string,
+  options: { isMentionMe?: boolean; unread?: number } = {}
 ) {
   const channel = makeChannel(channelID, channelType);
   return {
@@ -279,13 +324,25 @@ function makeCompactConversation(
         parentGroupNo,
       },
     },
-    unread: 0,
-    isMentionMe: false,
+    unread: options.unread ?? 0,
+    isMentionMe: !!options.isMentionMe,
     simpleReminders: [],
     remoteExtra: {},
     timestamp: 1,
     lastMessage: undefined,
   };
+}
+
+function makeReadMentionConversation(channelID: string) {
+  const raw = makeCompactConversation(channelID, 2, undefined, { unread: 0 });
+  return new ActualConversationWrap({
+    ...raw,
+    reminders: [],
+    lastMessage: {
+      channel: raw.channel,
+      content: { mention: { uids: ["u1"] } },
+    },
+  } as any);
 }
 
 function openContextMenu(selector: string) {
@@ -359,7 +416,7 @@ describe("ConversationList unread indicators", () => {
     ).toBe("14");
   });
 
-  it("renders mention and muted unread count together", () => {
+  it("keeps the mention marker in a muted conversation alongside the muted unread count", () => {
     act(() => {
       ReactDOM.render(
         <ConversationList
@@ -375,12 +432,67 @@ describe("ConversationList unread indicators", () => {
       ".wk-conversationlist-item-indicators"
     );
 
+    // WS-213 review 反馈 P1-2：mute 语义反转需要产品拍板，暂保持既有行为——
+    // 免打扰群里的直接 @我 仍然点亮 marker（与 v1 shipped 行为一致）。
     expect(indicators?.querySelector(".wk-mention")?.textContent).toBe(
       "base.conversationList.mentionMarker"
     );
     expect(
       indicators?.querySelector(".wk-conv-unread-num--muted")?.textContent
     ).toBe("5");
+  });
+
+  it("renders an authoritative mention signal independently of the row unread count", () => {
+    // 这里只验证渲染层契约：上游已经判定 isMentionMe=true 时，不再由行级 unread
+    // 二次屏蔽。读到底后该信号是否仍为 true，由 ConversationWrap 的 reminder/
+    // read-watermark 规则决定并在 Model.test.ts 中覆盖。
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={
+            [makeConversation({ unread: 0, mention: true })] as any
+          }
+        />,
+        container
+      );
+    });
+
+    const indicators = container.querySelector(
+      ".wk-conversationlist-item-indicators"
+    );
+
+    expect(indicators?.querySelector(".wk-mention")?.textContent).toBe(
+      "base.conversationList.mentionMarker"
+    );
+  });
+
+  it("renders an authoritative mention signal on a group row with zero unread", () => {
+    // 群聊是 WS-213 的主要目标；本用例只验证行组件消费已解析 mention 信号的行为。
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={
+            [
+              makeConversation({
+                unread: 0,
+                mention: true,
+                channelType: 2,
+                channelID: "team-room",
+              }),
+            ] as any
+          }
+        />,
+        container
+      );
+    });
+
+    const indicators = container.querySelector(
+      ".wk-conversationlist-item-indicators"
+    );
+
+    expect(indicators?.querySelector(".wk-mention")?.textContent).toBe(
+      "base.conversationList.mentionMarker"
+    );
   });
 
   it("renders the 1v1 unread-priority marker for an unread DM without mention", () => {
@@ -523,6 +635,133 @@ describe("ConversationList unread indicators", () => {
       )
     ).toBeNull();
   });
+
+  it("bubbles @我 from a collapsed thread onto the parent group row (WS-213 rev 3, P2-2)", () => {
+    // 折叠态：thread 行不显示，父群行应通过 collapsedThreadHasMention 冒泡出 @我 marker。
+    // 覆盖 renderItem → conversationItem → CompactGroupItem 的整条 wiring，
+    // 而不只是 unread.ts 里的 helper 单测。
+    const parent = makeCompactConversation("group-a", 2);
+    const thread = makeCompactConversation("thread-a", 3, "group-a", {
+      isMentionMe: true,
+    });
+
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={[parent, thread] as any}
+          compact
+          disablePinSplit
+        />,
+        container
+      );
+    });
+
+    // 强制进入 collapsed：如果当前是 expanded，点一下 toggle 收起。
+    const toggle = container.querySelector(
+      ".wk-conv-compact-thread-tag"
+    ) as HTMLElement;
+    expect(toggle).not.toBeNull();
+    if (toggle.querySelector(".lucide-chevron-down")) {
+      act(() => {
+        toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+    }
+
+    expect(
+      container.querySelectorAll(".wk-conv-compact-item--thread")
+    ).toHaveLength(0);
+
+    const parentRow = container.querySelector(
+      ".wk-conv-compact-item--has-threads"
+    );
+    expect(parentRow).not.toBeNull();
+    expect(parentRow?.querySelector(".wk-conv-compact-mention")).not.toBeNull();
+  });
+
+  it("does not revive an acknowledged parent mention from ordinary collapsed thread unread (#1625)", () => {
+    // 父群最后一条消息仍然 @我，但 unread 已清零且 reminder 重载后为空。
+    // 这里使用真实 ConversationWrap getter，确保子区普通未读不能重新暴露历史 mention。
+    const parent = makeReadMentionConversation("group-read");
+    const thread = makeCompactConversation("thread-plain", 3, "group-read", {
+      isMentionMe: false,
+      unread: 1,
+    });
+
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={[parent, thread] as any}
+          compact
+          disablePinSplit
+        />,
+        container
+      );
+    });
+
+    const toggle = container.querySelector(
+      ".wk-conv-compact-thread-tag"
+    ) as HTMLElement;
+    expect(toggle).not.toBeNull();
+    if (toggle.querySelector(".lucide-chevron-down")) {
+      act(() => {
+        toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+    }
+
+    expect(
+      container.querySelectorAll(".wk-conv-compact-item--thread")
+    ).toHaveLength(0);
+    const parentRow = container.querySelector(
+      ".wk-conv-compact-item--has-threads"
+    );
+    expect(parentRow).not.toBeNull();
+    expect(parentRow?.querySelector(".wk-conv-compact-mention")).toBeNull();
+    expect(parentRow?.querySelector(".wk-conv-compact-badge")?.textContent).toBe(
+      "1"
+    );
+  });
+
+  it("does not double-light @我 when the thread is expanded (WS-213 rev 3, P2-2)", () => {
+    // 展开态：thread 行自己亮 @我，父群行不应再冒泡（否则同一 mention 亮两次）。
+    const parent = makeCompactConversation("group-a", 2);
+    const thread = makeCompactConversation("thread-a", 3, "group-a", {
+      isMentionMe: true,
+    });
+
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={[parent, thread] as any}
+          compact
+          disablePinSplit
+        />,
+        container
+      );
+    });
+
+    // 强制进入 expanded：如果当前 collapsed，点一下 toggle 展开。
+    const toggle = container.querySelector(
+      ".wk-conv-compact-thread-tag"
+    ) as HTMLElement;
+    expect(toggle).not.toBeNull();
+    if (toggle.querySelector(".lucide-chevron-right")) {
+      act(() => {
+        toggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+    }
+
+    expect(
+      container.querySelectorAll(".wk-conv-compact-item--thread")
+    ).toHaveLength(1);
+
+    const parentRow = container.querySelector(
+      ".wk-conv-compact-item--has-threads"
+    );
+    expect(parentRow?.querySelector(".wk-conv-compact-mention")).toBeNull();
+
+    const threadRow = container.querySelector(".wk-conv-compact-item--thread");
+    expect(threadRow?.querySelector(".wk-conv-compact-mention")).not.toBeNull();
+  });
 });
 
 describe("ConversationList context-menu matrix", () => {
@@ -637,9 +876,13 @@ describe("ConversationList context-menu matrix", () => {
   });
 
   it("keeps unread state and reports an error when clear-unread fails", async () => {
+    const reminders = [
+      { reminderID: 7, messageSeq: 10, reminderType: 1, done: false },
+    ];
     const conversation = {
       ...makeConversation({ unread: 5 }),
-      conversation: { unread: 5, extra: {} },
+      reminders,
+      conversation: { unread: 5, extra: {}, reminders },
     };
     const error = new Error("clear failed");
     apiPut.mockRejectedValueOnce(error);
@@ -666,6 +909,40 @@ describe("ConversationList context-menu matrix", () => {
       unread: 0,
     });
     expect(conversation.conversation.unread).toBe(5);
+    expect(reminderDone).not.toHaveBeenCalled();
     expect(toastError).toHaveBeenCalledWith("base.conversationList.error.clearUnreadFailed");
+  });
+
+  it("marks unresolved mention reminders done when marking a conversation as read", async () => {
+    const reminders = [
+      { reminderID: 7, messageSeq: 10, reminderType: 1, done: false },
+      { reminderID: 8, messageSeq: 9, reminderType: 1, done: true },
+      { reminderID: 9, messageSeq: 8, reminderType: 2, done: false },
+    ];
+    const conversation = {
+      ...makeConversation({ unread: 5, mention: true }),
+      reminders,
+      conversation: { unread: 5, extra: {}, reminders },
+    };
+    apiPut.mockResolvedValueOnce({});
+
+    act(() => {
+      ReactDOM.render(
+        <ConversationList conversations={[conversation] as any} />,
+        container
+      );
+    });
+    openContextMenu(".wk-conversationlist-item");
+
+    await act(async () => {
+      (container.querySelector(
+        '[data-menu-title="base.conversationList.context.markAsRead"]'
+      ) as HTMLElement).click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(conversation.conversation.unread).toBe(0);
+    expect(reminderDone).toHaveBeenCalledWith([7]);
   });
 });

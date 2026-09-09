@@ -26,6 +26,10 @@ export const expertMarketErrorHandlers = [
     if (!enabled()) return undefined;
     return unavailable();
   }),
+  http.get(`*${API_BASE}/plugin_tags`, () => {
+    if (!enabled()) return undefined;
+    return unavailable();
+  }),
   http.get(`*${API_BASE}/plugin_categories`, () => {
     if (!enabled()) return undefined;
     return unavailable();

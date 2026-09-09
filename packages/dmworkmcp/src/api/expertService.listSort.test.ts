@@ -56,7 +56,7 @@ vi.mock("@octo/base", () => ({
   DEFAULT_REQUEST_TIMEOUT_MS: 20000,
 }));
 
-import { listExperts, listSquads } from "./expertService";
+import { listExperts, listSquads, listMyExperts, listMySquads, listExpertTags } from "./expertService";
 import type { ExpertCatalogSort } from "./expertService";
 import { WKApp } from "@octo/base";
 
@@ -136,6 +136,39 @@ describe("expertService catalog sort wire contract", () => {
   it("omits sort entirely when the caller does not set one", async () => {
     await listExperts();
     expect(lastListCall().params).not.toHaveProperty("sort");
+  });
+
+  it.each([
+    ["experts", listExperts, "expert", false],
+    ["squads", listSquads, "expert_team", false],
+    ["my experts", listMyExperts, "expert", true],
+    ["my squads", listMySquads, "expert_team", true],
+  ] as const)("forwards search, tags and pagination for %s", async (_name, list, pluginType, mine) => {
+    mock.instance.get.mockResolvedValue({ data: { data: [], pagination: { total: 112 } } });
+    const result = await list({ keyword: "  report  ", tags: ["analysis", "finance"], page: 2, pageSize: 100 });
+    expect(lastListCall()).toEqual({
+      url: "/market/api/v1/plugins",
+      params: {
+        plugin_type: pluginType, scene_code: "default", q: "report",
+        tag: ["analysis", "finance"], page: 2, page_size: 100,
+        ...(mine ? { mode: "mine" } : {}),
+      },
+    });
+    expect(result.total).toBe(112);
+  });
+
+  it("gets tag choices from the scoped catalog, including personal publications", async () => {
+    mock.instance.get.mockResolvedValue({ data: { data: [{ name: "rare", count: 1 }] } });
+    expect(await listExpertTags("agent")).toEqual(["rare"]);
+    expect(lastListCall()).toEqual({
+      url: "/market/api/v1/plugin_tags",
+      params: { plugin_type: "expert", scene_code: "default" },
+    });
+    await listExpertTags("squad", { mine: true, keyword: " rare " });
+    expect(lastListCall()).toEqual({
+      url: "/market/api/v1/plugin_tags",
+      params: { plugin_type: "expert_team", scene_code: "default", mode: "mine", q: "rare" },
+    });
   });
 });
 

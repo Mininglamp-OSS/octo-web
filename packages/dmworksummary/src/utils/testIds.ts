@@ -23,12 +23,22 @@ export const summaryTestIds = {
     createSelectMembers: "summary-create-select-members",
     createSubmit: "summary-create-submit",
 
+    // ── Unified workbench ──
+    workbenchFeature: "summary-workbench-feature",
+
     // ── Chat selector modal ──
     chatSelectorModal: "summary-chat-selector-modal",
     chatSelectorAllGroupsTab: "summary-chat-selector-all-groups-tab",
     chatSelectorConfirmBtn: "summary-chat-selector-confirm-btn",
     chatSelectorSearchInput: "summary-chat-selector-search-input",
     memberSelectorConfirmBtn: "summary-member-selector-confirm-btn",
+
+    // ── Add-member modal (summary detail, messaging panel mode) ──
+    addMemberModal: "summary-add-member-modal",
+    addMemberSearchInput: "summary-add-member-search-input",
+    addMemberRetryBtn: "summary-add-member-retry-btn",
+    addMemberConfirmBtn: "summary-add-member-confirm-btn",
+    addMemberMemberRow: (userId: string) => `summary-add-member-row-${userId}`,
 
     // ── Detail page ──
     detail: (taskId: number) => `summary-detail-${taskId}`,

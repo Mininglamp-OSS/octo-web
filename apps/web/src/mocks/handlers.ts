@@ -56,6 +56,22 @@ const reviewRequestsBadgeFallback = http.get(
   },
 );
 
+// Existing E2E scenarios exercise the Legacy summary UI unless a case-specific
+// handler explicitly enables the unified workbench capability.
+const summaryWorkbenchCapabilityHandler = http.get(
+  "*/summary/api/v1/summary-workbench/capabilities",
+  () =>
+    HttpResponse.json({
+      code: 0,
+      message: "ok",
+      data: {
+        enabled: false,
+        contract_version: "2",
+        max_time_range_days: 31,
+      },
+    }),
+);
+
 export const handlers = [
   mswProbeHandler,
   ...getEnterpriseMockHandlers(),
@@ -75,6 +91,7 @@ export const handlers = [
   ...skillMarketErrorHandlers,
   ...expertMarketErrorHandlers,
   ...chatBaselineHandlers,
+  summaryWorkbenchCapabilityHandler,
   quickMuteStateHandler,
   reviewRequestsBadgeFallback,
 ];
