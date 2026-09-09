@@ -2700,14 +2700,18 @@
 .wk-mine-table {
   display: flex;
   flex-direction: column;
+  /* Keep all rows in the page scroller, including column-flex list parents. */
+  flex-shrink: 0;
   border: 1px solid var(--wk-border-subtle);
   border-radius: var(--wk-r-lg);
   background: var(--wk-bg-surface);
-  overflow: hidden;
+  overflow-x: auto;
 }
 .wk-mine-table__head,
 .wk-mine-table__row {
   display: grid;
+  /* Let the whole row, including its border/background, span every column. */
+  min-width: min-content;
   grid-template-columns:
     minmax(240px, 2.4fr) minmax(96px, 1fr) 96px 118px 76px 76px 152px;
   align-items: center;
