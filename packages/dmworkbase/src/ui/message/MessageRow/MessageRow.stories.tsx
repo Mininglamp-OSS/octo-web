@@ -194,10 +194,10 @@ export const HeaderLayoutRegression: Story = {
           isSelected={false}
           showAvatar={false}
           avatarUrl=""
-          senderName="这是一个足够长但在宽容器中应该完整显示的发送者名称"
+          senderName="宽容器中可完整显示的发送者名称"
           timestamp="10:30"
           isExternal
-          sourceSpaceName="这是一个足够长但在宽容器中应该完整显示的来源空间名称"
+          sourceSpaceName="宽容器中可完整显示的来源空间名称"
         >
           <Bubble position="single" isSend={false}>
             宽容器布局回归检查
