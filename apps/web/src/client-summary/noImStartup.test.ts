@@ -36,6 +36,8 @@ describe("Summary real artifact entry", () => {
     vi.unstubAllEnvs();
   });
 
+  // Cold imports of the real base/datasource/summary graph can exceed Vitest's
+  // default 5 s on CI. Keep the render wait bounded independently by vi.waitFor.
   it("finishes bootstrap and real module initialization without connecting IM", async () => {
     const boot = await prepareFeatureEntryBoot("summary");
     try {
@@ -55,5 +57,5 @@ describe("Summary real artifact entry", () => {
       disposeSummaryAttentionRuntime();
       boot.cleanup();
     }
-  });
+  }, 15_000);
 });
