@@ -34,11 +34,14 @@ export async function buildClientFeature({
   sourceEntry,
   outputDirectory,
   contractRevision = 1,
+  documentForwardVersion,
   includeImMock = false,
 }) {
   const scriptDir = path.dirname(fileURLToPath(scriptUrl));
   const appDir = path.resolve(scriptDir, "..");
-  const outputDir = path.join(appDir, outputDirectory);
+  const outputDir = process.env.OCTO_CLIENT_ARTIFACT_OUT_DIR
+    ? path.resolve(process.env.OCTO_CLIENT_ARTIFACT_OUT_DIR)
+    : path.join(appDir, outputDirectory);
   const viteEnv = loadEnv("production", appDir, "VITE_");
   const buildEnv = resolveClientFeatureBuildEnv(process.env, viteEnv);
   if (!buildEnv.apiURL) {
@@ -71,7 +74,7 @@ export async function buildClientFeature({
     "bin",
     "vite.js"
   );
-  await run(process.execPath, [viteBin, "build", "--config", configFile], {
+  await run(process.execPath, [viteBin, "build", "--config", configFile, "--outDir", outputDir], {
     cwd: appDir,
     env: {
       ...process.env,
@@ -119,6 +122,7 @@ export async function buildClientFeature({
     entry: "index.html",
     hostBridgeMajor: 1,
     contractRevision,
+    ...(documentForwardVersion === undefined ? {} : { documentForwardVersion }),
     sourceDirty,
     e2eMock: buildEnv.e2eMock || (includeImMock && buildEnv.e2eMockIm),
     mockFlags: {

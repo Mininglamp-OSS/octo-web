@@ -26,6 +26,7 @@ import { enableClientFeatureMocks } from "../client-feature/e2eMocks";
 import { CommunicationShell } from "./CommunicationShell";
 import { requireHostBridge } from "./hostBridge";
 import { reportStartupFailure } from "./startupFailure";
+import { installHostDocumentPreview } from "./documentPreview";
 
 async function main() {
   const host = requireHostBridge();
@@ -52,6 +53,7 @@ async function main() {
   });
   WKApp.shared.currentSpaceId = bootstrap.space.id;
   document.documentElement.dataset.spaceId = bootstrap.space.id;
+  installHostDocumentPreview(host, bootstrap.space.id);
 
   i18n.registerNamespace("app", {
     "zh-CN": appZhCN,
@@ -96,6 +98,7 @@ async function main() {
             page,
             spaceId,
             rendererVersion: WKApp.config.appVersion,
+            documentForwardVersion: 1,
           })}
         />
       </I18nProvider>

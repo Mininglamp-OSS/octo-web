@@ -33,6 +33,7 @@ import {
 import { createReadyReporter } from "./readyReporter";
 import { Toast } from "@douyinfe/semi-ui";
 import { installSummaryNavigation } from "./summaryNavigation";
+import { installDocumentForward } from "./documentForward";
 import "./index.css";
 
 function bindLeftRoute(context: WKViewQueueContext) {
@@ -137,6 +138,10 @@ export function CommunicationShell({
   useEffect(() => installSummaryNavigation(bridge, (error) => {
     console.error("[client-communication] failed to open summary", error);
     Toast.error(t("summary.common.operationFailed"));
+  }), [bridge]);
+  useEffect(() => installDocumentForward(bridge, {
+    getSpaceId: () => spaceIdRef.current,
+    getContext: () => WKApp.shared.baseContext,
   }), [bridge]);
 
   const reportReadyWhenPrepared = useCallback(() => {

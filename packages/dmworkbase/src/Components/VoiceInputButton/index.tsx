@@ -31,7 +31,7 @@ const voiceHost = {
 };
 
 export interface VoiceInputButtonProps {
-  inputRef: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
+  inputRef?: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null> | null;
   onTranscribed: (text: string, replaceMode: ReplaceMode, savedSelectionRange?: SelectionRange) => void;
   getCurrentText?: () => string;
   showModeMenu?: boolean;
@@ -40,6 +40,8 @@ export interface VoiceInputButtonProps {
   className?: string;
   /** Called right before recording starts (useful for cancelling pending blur commits) */
   onRecordingStart?: () => void;
+  /** Callback to check if keyboard shortcut is allowed (ref-less mode). If absent, shortcuts never capture globally. */
+  isHotkeyActive?: () => boolean;
 }
 
 export default function VoiceInputButton({
@@ -51,6 +53,7 @@ export default function VoiceInputButton({
   getChatContext,
   className,
   onRecordingStart,
+  isHotkeyActive,
 }: VoiceInputButtonProps) {
   const { t } = useI18n();
   const [showMenu, setShowMenu] = useState(false);
@@ -67,7 +70,7 @@ export default function VoiceInputButton({
     isVoiceEnabled,
     localAvailable,
   } = useTextareaVoice({
-    inputRef,
+    inputRef: inputRef ?? null,
     onTranscribed,
     getCurrentText,
     enableEditMode: showModeMenu,
@@ -92,7 +95,7 @@ export default function VoiceInputButton({
   }, []);
 
   const canRecord = isOnline || localAvailable;
-  const isDisabled = !inputRef.current || !canRecord;
+  const isDisabled = (inputRef ? !inputRef.current : false) || !canRecord;
 
   // Floating indicator position
   const [floatingPosition, setFloatingPosition] = useState<{
@@ -179,6 +182,8 @@ export default function VoiceInputButton({
   isRecordingRef.current = isRecording;
   const isTranscribingRef = useRef(isTranscribing);
   isTranscribingRef.current = isTranscribing;
+  const isHotkeyActiveRef = useRef(isHotkeyActive);
+  isHotkeyActiveRef.current = isHotkeyActive;
 
   const clearShiftTimer = useCallback(() => {
     if (shiftTimerRef.current !== null) {
@@ -208,7 +213,13 @@ export default function VoiceInputButton({
       : !event.altKey && !event.ctrlKey && !event.metaKey;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!inputRef.current || document.activeElement !== inputRef.current || document.querySelector(".wk-settings-center-modal")) return;
+      // Ref-less mode: require explicit focus via isHotkeyActive callback;
+      // absent callback never captures globally.
+      if (!inputRef) {
+        if (!isHotkeyActiveRef.current || !isHotkeyActiveRef.current()) return;
+      }
+      if (inputRef && (!inputRef.current || document.activeElement !== inputRef.current)) return;
+      if (document.querySelector(".wk-settings-center-modal")) return;
 
       if (
         voiceShortcutMatches(e, configuredShortcut) &&
@@ -241,6 +252,9 @@ export default function VoiceInputButton({
           }, PREPARING_DELAY_MS);
           shiftTimerRef.current = setTimeout(() => {
             shiftTimerRef.current = null;
+            // Ref-less hold capture re-checks focus before starting so a host
+            // whose focus moved while the key stayed down does not begin.
+            if (!inputRef && (!isHotkeyActiveRef.current || !isHotkeyActiveRef.current())) return;
             if (!isOnlineRef.current && !localAvailableRef.current) {
               Toast.warning(t("base.voiceInput.error.networkUnavailable"));
               return;
@@ -274,10 +288,16 @@ export default function VoiceInputButton({
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (!inputRef.current) return;
-      const isInputFocused = document.activeElement === inputRef.current;
+      if (inputRef && !inputRef.current) return;
+      const ownsRecording = isRecordingRef.current || shiftRecordingRef.current || shiftTimerRef.current !== null;
+      const isInputFocused = inputRef
+        ? document.activeElement === inputRef.current
+        : (isHotkeyActiveRef.current?.() ?? false);
 
-      if (!isRecordingRef.current && !isInputFocused) return;
+      // Focus gating applies only to START. If this button already owns a
+      // pending hold timer or an active recording, release must still
+      // clear/stop even if the host lost focus.
+      if (!ownsRecording && !isInputFocused) return;
 
       if (voiceShortcutMatches(e, configuredShortcut) && shiftTimerRef.current !== null) {
         clearShiftTimer();
@@ -333,7 +353,7 @@ export default function VoiceInputButton({
       Toast.warning(t("base.voiceInput.error.networkUnavailable"));
       return;
     }
-    if (!inputRef.current) return;
+    if (inputRef && !inputRef.current) return;
     if (!voiceSettings.enabled) {
       Toast.warning(t("base.voiceInput.error.unavailable"));
       return;
@@ -348,7 +368,7 @@ export default function VoiceInputButton({
       Toast.warning(t("base.voiceInput.error.unavailable"));
       return;
     }
-    if (!canRecord || !inputRef.current) return;
+    if (!canRecord || (inputRef && !inputRef.current)) return;
     if (!voiceSettings.enabled) {
       Toast.warning(t("base.voiceInput.error.unavailable"));
       return;
@@ -457,7 +477,7 @@ export default function VoiceInputButton({
           trigger="hover"
           position="topRight"
           render={dropdownMenu}
-          visible={canRecord && !!inputRef.current ? showMenu : false}
+          visible={canRecord && (inputRef ? !!inputRef.current : true) ? showMenu : false}
           onVisibleChange={setShowMenu}
           spacing={4}
         >

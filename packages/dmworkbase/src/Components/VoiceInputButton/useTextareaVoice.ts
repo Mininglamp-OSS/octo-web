@@ -15,7 +15,7 @@ export interface SelectionRange {
 
 export interface UseTextareaVoiceOptions {
   voiceHost: ChatComposerVoiceHost;
-  inputRef: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
+  inputRef?: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null> | null;
   onTranscribed: (text: string, replaceMode: ReplaceMode, savedSelectionRange?: SelectionRange) => void;
   getCurrentText?: () => string;
   enableEditMode?: boolean;
@@ -80,15 +80,23 @@ export default function useTextareaVoice({
 
   const startRecording = useCallback(
     (mode?: VoiceMode) => {
-      if (!inputRef.current) return;
+      const el = inputRef ? inputRef.current : undefined;
+      // A supplied ref whose element has not mounted yet stays unavailable.
+      if (inputRef && !el) return;
 
-      const el = inputRef.current;
-      const selStart = el.selectionStart ?? 0;
-      const selEnd = el.selectionEnd ?? 0;
-      hadSelectionRef.current = selStart !== selEnd;
-      savedSelectionRangeRef.current = { from: selStart, to: selEnd };
-      const selectedText = (selStart !== selEnd) ? el.value.slice(selStart, selEnd) : undefined;
-      savedSelectedTextRef.current = selectedText;
+      if (el) {
+        const selStart = el.selectionStart ?? 0;
+        const selEnd = el.selectionEnd ?? 0;
+        hadSelectionRef.current = selStart !== selEnd;
+        savedSelectionRangeRef.current = { from: selStart, to: selEnd };
+        const selectedText = (selStart !== selEnd) ? el.value.slice(selStart, selEnd) : undefined;
+        savedSelectedTextRef.current = selectedText;
+      } else {
+        // Ref-less host: no DOM selection to capture; fall back to callback insertion.
+        hadSelectionRef.current = false;
+        savedSelectionRangeRef.current = { from: 0, to: 0 };
+        savedSelectedTextRef.current = undefined;
+      }
 
       const effectiveMode = mode ?? "append_only";
       recordingModeRef.current = effectiveMode;

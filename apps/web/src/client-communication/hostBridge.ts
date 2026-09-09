@@ -72,7 +72,29 @@ export interface SummaryCapabilityResponse {
   error?: string;
 }
 
+export interface DocumentForwardInput {
+  docId: string;
+  title: string;
+  link: string;
+  shareAsCard?: boolean;
+  spaceId?: string;
+  kind?: "doc" | "board" | "sheet" | "html";
+  ownerName?: string;
+  updatedAt?: string;
+  canGrant: boolean;
+  disabledReason?: string;
+  defaultRole?: "reader" | "commenter" | "writer";
+  modalTitle?: string;
+}
+
+export interface DocumentForwardRequest {
+  requestId: string;
+  spaceId: string;
+  input: DocumentForwardInput;
+}
+
 export interface OctoBuddyCommunicationBridge {
+  getDocumentPreview?: import("@octo/base/src/Service/DocumentPreviewService").DocumentPreviewTransport;
   openSummary(request: {
     route: import("@dmwork/summary").SummaryWorkspaceRoute;
     spaceId: string;
@@ -84,6 +106,7 @@ export interface OctoBuddyCommunicationBridge {
     page: CommunicationPage;
     spaceId: string;
     rendererVersion: string;
+    documentForwardVersion?: 1;
   }): Promise<void>;
   reportNavigation(state: NavigationReport): Promise<void>;
   reportUnread(count: number): void;
@@ -93,6 +116,15 @@ export interface OctoBuddyCommunicationBridge {
   onSummaryRequest?(
     callback: (request: SummaryCapabilityRequest) => void
   ): () => void;
+  onDocumentForward?(callback: (request: DocumentForwardRequest) => void): () => void;
+  onDocumentForwardCancel?(callback: (request: { requestId: string }) => void): () => void;
+  grantDocumentForward?(request: {
+    requestId: string;
+    uids: string[];
+    role: "reader" | "commenter" | "writer";
+  }): Promise<{ granted: number; failed: number; failures?: string[]; rejected?: string[] }>;
+  authorizeDocumentForward?(request: { requestId: string }): Promise<void>;
+  respondDocumentForward?(response: SummaryCapabilityResponse): void;
   onCommand(callback: (command: HostCommand) => void): () => void;
 }
 

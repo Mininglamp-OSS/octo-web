@@ -137,8 +137,8 @@ export interface DocForwardOpen {
   docId?: string
   /** The doc's space id (deep-link + preview both need it). */
   spaceId?: string
-  /** Resource kind — doc/board/sheet — drives the card icon + which preview endpoint the cell calls. */
-  kind?: "doc" | "board" | "sheet"
+  /** Resource kind — doc/board/sheet/html — drives the card icon + which preview endpoint the cell calls. */
+  kind?: "doc" | "board" | "sheet" | "html"
   /** Pre-resolved owner display name for the card eyebrow (optional). */
   ownerName?: string
   /** Pre-formatted "updated at" string for the card eyebrow (optional). */
@@ -151,6 +151,29 @@ export interface DocForwardOpen {
   defaultRole?: ForwardGrantRole
   /** docs-injected executor; host awaits it BEFORE sending (先授权后发). */
   grantAccess?(uids: string[], role: ForwardGrantRole): Promise<ForwardGrantResult>
+  /**
+   * Optional liveness check for the originating source. When present and returning false at
+   * any lifecycle checkpoint, the whole forward is aborted via `onError` without further
+   * side effects (no grant, no send, no onResult). The Client bridge uses this to reject
+   * a forward from a revoked document session, a changed principal, or an invalidated
+   * scoped picker. Ordinary Web callers omit it — behaviour is unchanged.
+   */
+  isActive?(): boolean
+  /**
+   * Called when the forward lifecycle is invalidated mid-flight — the source became inactive
+   * (`isActive` false), the cancellation handle was invoked after confirmation, the source
+   * space changed between selection and send, or `beforeSend` observes a revoked state.
+   * Unlike a grant failure (nonfatal — the message is still sent), invalidation stops the
+   * entire flow with no further side effects.
+   */
+  onError?(error: unknown): void
+  /**
+   * Optional per-target authorization gate. Awaited before EVERY actual SDK send through
+   * ForwardService, together with an `isActive` check before and after. The Client bridge
+   * uses it to run a host IPC authorization check per target; ordinary Web omits it.
+   * Null/undefined return means the target is cleared to send.
+   */
+  beforeSend?(): Promise<void>
   /** Optional outcome callback (host already toasts; docs may use this for extra UI). */
   onResult?(result: {
     sent: number

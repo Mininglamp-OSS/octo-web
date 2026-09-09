@@ -233,7 +233,7 @@ export default defineConfig(({ mode }) => {
     ],
     resolve: {
       extensions: [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"],
-      dedupe: ["react", "react-dom"],
+      dedupe: ["react", "react-dom", "@octo/base"],
     },
     build: {
       outDir: "build",
