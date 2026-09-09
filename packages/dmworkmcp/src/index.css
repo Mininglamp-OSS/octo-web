@@ -2673,8 +2673,13 @@
   box-shadow: inset 0 0 0 1px var(--wk-bg-surface);
 }
 
-.wk-mcp-expert-truncated {
-  margin: 0 0 var(--wk-sp-4);
+.wk-mcp-expert-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wk-sp-3);
+  margin-top: var(--wk-sp-4);
   color: var(--wk-text-tertiary);
   font-size: var(--wk-text-size-sm);
 }
