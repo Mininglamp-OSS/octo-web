@@ -1,4 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import DOMPurify from "dompurify";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -69,6 +76,343 @@ const KNOWN_DELIVERY_REASONS = new Set([
   "recipient_suppressed",
   "delivery_failed",
 ]);
+
+const EMAIL_HTML_CSP = [
+  "default-src 'none'",
+  "img-src data: blob:",
+  "style-src 'unsafe-inline'",
+  "font-src data:",
+].join("; ");
+
+const EMAIL_HTML_MIN_HEIGHT = 80;
+const EMAIL_HTML_MAX_HEIGHT = 20_000;
+const XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
+const EMAIL_SVG_PAINT_SELECTOR =
+  "circle, ellipse, line, path, polygon, polyline, rect, text";
+
+interface SanitizedEmailHtml {
+  bodyAttributes: Array<[string, string]>;
+  bodyHtml: string;
+  headHtml: string;
+  htmlAttributes: Array<[string, string]>;
+}
+
+function sanitizeEmailHtml(html: string) {
+  const sanitized = DOMPurify.sanitize(html, {
+    WHOLE_DOCUMENT: true,
+    FORBID_TAGS: [
+      "area",
+      "base",
+      "button",
+      "embed",
+      "form",
+      "iframe",
+      "input",
+      "link",
+      "map",
+      "meta",
+      "object",
+      "script",
+      "select",
+      "textarea",
+    ],
+  });
+  const sanitizedDocument = new DOMParser().parseFromString(
+    sanitized,
+    "text/html"
+  );
+  const visibilityBody = sanitizedDocument.body.cloneNode(true) as HTMLElement;
+  visibilityBody.querySelectorAll("style").forEach((style) => style.remove());
+  const hasRenderableImage = Array.from(
+    visibilityBody.querySelectorAll<HTMLImageElement>("img[src]")
+  ).some((image) =>
+    /^(data|blob):/i.test((image.getAttribute("src") || "").trim())
+  );
+  const hasPotentiallyVisibleContent =
+    Boolean(visibilityBody.textContent?.trim()) ||
+    hasRenderableImage ||
+    Boolean(visibilityBody.querySelector(EMAIL_SVG_PAINT_SELECTOR));
+  if (!hasPotentiallyVisibleContent) return null;
+
+  sanitizedDocument.querySelectorAll("a").forEach((anchor) => {
+    const href = anchor.getAttribute("href");
+    const xlinkHref = anchor.getAttributeNS(XLINK_NAMESPACE, "href");
+    if (href === null && xlinkHref === null) return;
+    if (xlinkHref !== null) {
+      anchor.removeAttributeNS(XLINK_NAMESPACE, "href");
+      if (href === null) anchor.setAttribute("href", xlinkHref);
+    }
+    anchor.setAttribute("target", "_blank");
+    anchor.setAttribute("rel", "noopener noreferrer");
+  });
+  return {
+    bodyAttributes: Array.from(
+      sanitizedDocument.body.attributes,
+      (attribute) => [attribute.name, attribute.value]
+    ),
+    bodyHtml: sanitizedDocument.body.innerHTML,
+    headHtml: sanitizedDocument.head.innerHTML,
+    htmlAttributes: ["dir", "lang"].flatMap((name) => {
+      const value = sanitizedDocument.documentElement.getAttribute(name);
+      return value === null ? [] : [[name, value]];
+    }),
+  } satisfies SanitizedEmailHtml;
+}
+
+function hasZeroOpacity(style: CSSStyleDeclaration) {
+  const opacity = Number.parseFloat(style.opacity);
+  return Number.isFinite(opacity) && opacity === 0;
+}
+
+function hasTransparentColor(style: CSSStyleDeclaration) {
+  const color = style.color.trim().toLowerCase();
+  return (
+    color === "transparent" ||
+    /rgba\([^)]*,\s*0(?:\.0+)?\s*\)$/.test(color) ||
+    /\/\s*0(?:\.0+)?\s*\)$/.test(color)
+  );
+}
+
+function isClippedToNothing(element: Element, style: CSSStyleDeclaration) {
+  const clipsOverflow = [style.overflow, style.overflowX, style.overflowY].some(
+    (value) => value === "hidden" || value === "clip"
+  );
+  if (!clipsOverflow) return false;
+  const rect = element.getBoundingClientRect();
+  return rect.width <= 0 || rect.height <= 0;
+}
+
+function hasVisibleAncestors(element: Element) {
+  const view = element.ownerDocument.defaultView;
+  for (
+    let current: Element | null = element;
+    current;
+    current = current.parentElement
+  ) {
+    const style = view?.getComputedStyle(current);
+    if (!style) continue;
+    if (
+      style.display === "none" ||
+      hasZeroOpacity(style) ||
+      isClippedToNothing(current, style)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isRenderedElement(element: Element) {
+  const view = element.ownerDocument.defaultView;
+  const style = view?.getComputedStyle(element);
+  if (
+    !style ||
+    style.visibility === "hidden" ||
+    style.visibility === "collapse" ||
+    !hasVisibleAncestors(element)
+  ) {
+    return false;
+  }
+  const rect = element.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0;
+}
+
+function isRenderedTextNode(node: Text) {
+  const parent = node.parentElement;
+  const view = node.ownerDocument.defaultView;
+  const style = parent && view?.getComputedStyle(parent);
+  if (
+    !node.textContent?.trim() ||
+    !parent ||
+    !style ||
+    style.visibility === "hidden" ||
+    style.visibility === "collapse" ||
+    Number.parseFloat(style.fontSize) === 0 ||
+    hasTransparentColor(style) ||
+    !hasVisibleAncestors(parent)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function hasRenderedText(body: HTMLElement) {
+  const showText = body.ownerDocument.defaultView?.NodeFilter.SHOW_TEXT ?? 4;
+  const walker = body.ownerDocument.createTreeWalker(body, showText);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (isRenderedTextNode(node as Text)) return true;
+  }
+  return false;
+}
+
+function hasRenderedEmailContent(frameDocument: Document) {
+  const body = frameDocument.body;
+  if (!body) return false;
+  if (hasRenderedText(body)) return true;
+
+  const hasLoadedImage = Array.from(
+    body.querySelectorAll<HTMLImageElement>("img[src]")
+  ).some(
+    (image) =>
+      image.complete &&
+      image.naturalWidth > 0 &&
+      image.naturalHeight > 0 &&
+      isRenderedElement(image)
+  );
+  if (hasLoadedImage) return true;
+
+  return Array.from(body.querySelectorAll(EMAIL_SVG_PAINT_SELECTOR)).some(
+    isRenderedElement
+  );
+}
+
+function buildEmailFrameSource(html: SanitizedEmailHtml) {
+  const frameDocument = new DOMParser().parseFromString(
+    "<!doctype html><html><head></head><body></body></html>",
+    "text/html"
+  );
+  html.htmlAttributes.forEach(([name, value]) =>
+    frameDocument.documentElement.setAttribute(name, value)
+  );
+  html.bodyAttributes.forEach(([name, value]) =>
+    frameDocument.body.setAttribute(name, value)
+  );
+  frameDocument.body.setAttribute("data-octo-mail-body", "");
+  frameDocument.body.innerHTML = html.bodyHtml;
+
+  const base = frameDocument.createElement("base");
+  base.href = "about:blank";
+  base.target = "_blank";
+  const charset = frameDocument.createElement("meta");
+  charset.setAttribute("charset", "utf-8");
+  const csp = frameDocument.createElement("meta");
+  csp.httpEquiv = "Content-Security-Policy";
+  csp.content = EMAIL_HTML_CSP;
+  const defaults = frameDocument.createElement("style");
+  defaults.textContent =
+    'html{color-scheme:only light;background:Canvas}html,body{margin:0;padding:0}body{color:CanvasText;background:Canvas;font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow-wrap:anywhere}img,table{max-width:100%}img{height:auto}';
+  frameDocument.head.append(base, charset, csp, defaults);
+  frameDocument.head.insertAdjacentHTML("beforeend", html.headHtml);
+  return `<!doctype html>${frameDocument.documentElement.outerHTML}`;
+}
+
+function EmailMessageBody({
+  html,
+  title,
+  onEmpty,
+}: {
+  html: SanitizedEmailHtml;
+  title: string;
+  onEmpty: () => void;
+}) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const source = useMemo(() => buildEmailFrameSource(html), [html]);
+
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return undefined;
+    let active = true;
+    let widthObserver: ResizeObserver | undefined;
+    const mediaCleanups: Array<() => void> = [];
+    const resize = () => {
+      const frameDocument = iframe.contentDocument;
+      if (!frameDocument) return;
+      iframe.style.height = `${EMAIL_HTML_MIN_HEIGHT}px`;
+      const measured = Math.max(
+        EMAIL_HTML_MIN_HEIGHT,
+        frameDocument.documentElement.scrollHeight,
+        frameDocument.body.scrollHeight
+      );
+      iframe.style.height = `${Math.min(measured, EMAIL_HTML_MAX_HEIGHT)}px`;
+    };
+    const refresh = () => {
+      const frameDocument = iframe.contentDocument;
+      if (!frameDocument?.body.hasAttribute("data-octo-mail-body")) {
+        return false;
+      }
+      if (iframe.clientWidth <= 0) return true;
+      if (!hasRenderedEmailContent(frameDocument)) {
+        onEmpty();
+        return false;
+      }
+      resize();
+      return true;
+    };
+    const loaded = () => {
+      widthObserver?.disconnect();
+      while (mediaCleanups.length > 0) mediaCleanups.pop()?.();
+      const frameDocument = iframe.contentDocument;
+      if (!frameDocument?.body.hasAttribute("data-octo-mail-body")) return;
+      if (!refresh()) return;
+
+      frameDocument.querySelectorAll("img").forEach((image) => {
+        const handleImageSettled = () => {
+          if (active) refresh();
+        };
+        image.addEventListener("load", handleImageSettled);
+        image.addEventListener("error", handleImageSettled);
+        mediaCleanups.push(() => {
+          image.removeEventListener("load", handleImageSettled);
+          image.removeEventListener("error", handleImageSettled);
+        });
+      });
+      void frameDocument.fonts?.ready.then(() => {
+        if (active) refresh();
+      });
+
+      if (typeof ResizeObserver !== "undefined") {
+        let width = iframe.clientWidth;
+        widthObserver = new ResizeObserver((entries) => {
+          const nextWidth = entries[0]?.contentRect.width ?? iframe.clientWidth;
+          if (nextWidth === width) return;
+          width = nextWidth;
+          refresh();
+        });
+        widthObserver.observe(iframe);
+      }
+    };
+    iframe.addEventListener("load", loaded);
+    if (iframe.contentDocument?.readyState === "complete") loaded();
+    return () => {
+      active = false;
+      iframe.removeEventListener("load", loaded);
+      widthObserver?.disconnect();
+      while (mediaCleanups.length > 0) mediaCleanups.pop()?.();
+    };
+  }, [onEmpty, source]);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      className="octo-mail-thread-card__html-body"
+      srcDoc={source}
+      // Keep scripts disabled. allow-same-origin is required only for auto-sizing.
+      sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+      referrerPolicy="no-referrer"
+      title={title}
+    />
+  );
+}
+
+function EmailMessageContent({
+  html,
+  text,
+  title,
+}: {
+  html?: string;
+  text: string;
+  title: string;
+}) {
+  const sanitized = useMemo(() => sanitizeEmailHtml(html || ""), [html]);
+  const [emptyHtml, setEmptyHtml] = useState<SanitizedEmailHtml | null>(null);
+  const useTextFallback = !sanitized || emptyHtml === sanitized;
+  const handleEmpty = useCallback(() => setEmptyHtml(sanitized), [sanitized]);
+  return !useTextFallback ? (
+    <EmailMessageBody html={sanitized} title={title} onEmpty={handleEmpty} />
+  ) : (
+    <p className="octo-mail-thread-card__body">{text}</p>
+  );
+}
 
 function deliveryIcon(status: DeliveryStatus, size = 16) {
   if (status === "delivered") return <CheckCircle2 size={size} />;
@@ -775,9 +1119,26 @@ export default function MessageDetailFeature({
                     </>
                   ) : null}
                 </div>
-                <p className="octo-mail-thread-card__body">
-                  {memoizedMessageText(message)}
-                </p>
+                {message.bodyTruncated ? (
+                  <div className="octo-mail-body-truncated" role="status">
+                    <AlertTriangle size={16} />
+                    <span>{t("mail.reader.bodyTruncated")}</span>
+                    <button
+                      className="octo-mail-action octo-mail-action--bordered"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void downloadRaw()}
+                    >
+                      <Download size={15} />
+                      <span>{t("mail.actions.downloadRaw")}</span>
+                    </button>
+                  </div>
+                ) : null}
+                <EmailMessageContent
+                  html={message.bodyHtml}
+                  text={memoizedMessageText(message)}
+                  title={t("mail.reader.htmlBody")}
+                />
                 {message.attachments?.length ? (
                   <section
                     className="octo-mail-thread-card__attachments"
