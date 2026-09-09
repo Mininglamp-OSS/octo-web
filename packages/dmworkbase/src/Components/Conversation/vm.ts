@@ -950,8 +950,6 @@ export default class ConversationVM extends ProviderListener {
                         // 确保 SDK 缓存的 Conversation 对象与本地已读状态保持一致
                         conversation.unread = 0
                     }
-                    // 用户已读到底，同步清 SDK 的 isMentionMe，防止新消息到来时角标误显示
-                    conversation.isMentionMe = false
                 }
                 this.unreadCount = conversation.unread
             }
