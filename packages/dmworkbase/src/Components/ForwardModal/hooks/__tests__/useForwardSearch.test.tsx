@@ -25,6 +25,7 @@ vi.mock("wukongimjssdk", () => {
 
 vi.mock("../../../../App", () => ({
   default: {
+    mittBus: { on: vi.fn(), off: vi.fn() },
     get shared() {
       return {
         get currentSpaceId() {
@@ -206,5 +207,32 @@ describe("useForwardSearch", () => {
     expect(spy.mock.calls[0][1].channelType).toBe(2)
     expect(spy.mock.calls[1][1].channelType).toBe(1)
     expect(latest!.searchGroupItems.map((i) => i.channelID)).toEqual(["g1", "d1"])
+  })
+
+  it.each(["clear keyword", "switch Space", "unmount"])("ignores a pending response after %s", async (transition) => {
+    let resolve!: (candidates: any[]) => void
+    hoisted.searchChatCandidates = vi.fn(() => new Promise<any[]>((done) => { resolve = done }))
+    const onCandidate = vi.fn()
+    let latest: ReturnType<typeof useForwardSearch> | undefined
+    const render = (keyword: string) => ReactDOM.render(
+      <Probe keyword={keyword} onCandidate={onCandidate} onValue={(value) => { latest = value }} />,
+      container,
+    )
+    await act(async () => { render("team"); await flushMicrotasks() })
+
+    await act(async () => {
+      if (transition === "clear keyword") render("")
+      else if (transition === "switch Space") {
+        hoisted.currentSpaceId = "new-space"
+        // Invalidate even before React receives the Space event.
+      } else ReactDOM.unmountComponentAtNode(container)
+      await flushMicrotasks()
+    })
+    await act(async () => {
+      resolve([{ chat_id: "old", chat_type: "group", name: "Old" }])
+      await flushMicrotasks()
+    })
+    expect(onCandidate).not.toHaveBeenCalled()
+    expect(latest!.searchGroupItems).toEqual([])
   })
 })

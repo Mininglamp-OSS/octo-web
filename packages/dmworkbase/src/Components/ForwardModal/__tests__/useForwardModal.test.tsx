@@ -32,8 +32,8 @@ const hoisted = vi.hoisted(() => {
         addListener: vi.fn(),
         removeListener: vi.fn(),
         fetchChannelInfo: vi.fn(),
-        groupSaveList: vi.fn(async () => []),
-        searchFriends: vi.fn(async () => []),
+        groupSaveList: vi.fn(async (): Promise<unknown[]> => []),
+        searchFriends: vi.fn(async (): Promise<unknown[]> => []),
         mittOn: vi.fn((event: string, handler: () => void) => {
             if (event === "conversation-list-refreshed") hoisted.refreshHandlers.push(handler)
         }),
@@ -52,7 +52,7 @@ const hoisted = vi.hoisted(() => {
         // 关注/最近 Tab 用例按需赋非空值 + 配 sidebarSync 桩。
         deviceId: "" as string,
         // SidebarService.sync 桩：默认返回空集合。关注/最近 Tab 用例按需覆写。
-        sidebarSync: vi.fn(async (_req: any) => ({ items: [], version: 0, follow_version: 0 })),
+        sidebarSync: vi.fn(async (_req: any): Promise<{ items: unknown[]; version: number; follow_version: number }> => ({ items: [], version: 0, follow_version: 0 })),
     }
 })
 
@@ -197,9 +197,7 @@ function Probe({ onValue }: { onValue: (value: ReturnType<typeof useForwardModal
 }
 
 async function flushMicrotasks() {
-    await Promise.resolve()
-    await Promise.resolve()
-    await Promise.resolve()
+    for (let i = 0; i < 20; i++) await Promise.resolve()
 }
 
 // 用例隔离：重置所有 hoisted 共享状态（mock 返回值 + Space/缓存/监听器集合），
@@ -1052,6 +1050,111 @@ describe("useForwardModal — four-Tab selector (issue #661)", () => {
         expect(channels).toHaveLength(1)
         expect(grant).toEqual({ role: "reader" })
 
+        view.unmount()
+    })
+})
+
+function deferred<T>() {
+    let resolve!: (value: T) => void
+    let reject!: (error: Error) => void
+    const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
+    return { promise, resolve, reject }
+}
+
+describe("forward picker progressive loading (#1653)", () => {
+    beforeEach(resetHoisted)
+
+    it("loads groups and people concurrently and exposes scoped recent rows before either completes", async () => {
+        const groups = deferred<unknown[]>()
+        const people = deferred<unknown[]>()
+        const follow = deferred<{ items: unknown[]; version: number; follow_version: number }>()
+        hoisted.deviceId = "device"
+        hoisted.conversations = [makeConv("g-local", 2, "Local group")]
+        hoisted.groupSaveList.mockReturnValue(groups.promise)
+        hoisted.searchFriends.mockReturnValue(people.promise)
+        hoisted.sidebarSync.mockImplementation((req) => req.tab === "follow" ? follow.promise : Promise.resolve({
+            items: [{ target_type: 2, target_id: "g-local", timestamp: 100 }], version: 0, follow_version: 0,
+        }))
+        const view = await renderForward()
+        expect(hoisted.groupSaveList).toHaveBeenCalledOnce()
+        expect(hoisted.searchFriends).toHaveBeenCalledOnce()
+        expect(view.current.items.map((item) => item.channelID)).toEqual(["g-local"])
+        act(() => view.current.toggleSelect(view.current.items[0]))
+
+        await act(async () => { groups.resolve([makeGroupInfo("g-extra", "Extra group")]); await flushMicrotasks() })
+        act(() => view.current.setActiveTab("group"))
+        expect(view.current.loading).toBe(false)
+        expect(view.current.items.map((item) => item.channelID)).toContain("g-extra")
+        expect(view.current.selectedIDs).toEqual(["g-local"])
+        expect(view.current.selectedChannels.map((channel) => channel.channelID)).toEqual(["g-local"])
+
+        await act(async () => { people.resolve([]); follow.resolve({ items: [], version: 0, follow_version: 0 }); await flushMicrotasks() })
+        view.unmount()
+    })
+
+    it("does not present unresolved recent/followed scopes as empty success", async () => {
+        const recent = deferred<{ items: unknown[]; version: number; follow_version: number }>()
+        hoisted.deviceId = "device"
+        hoisted.conversations = [makeConv("g-local", 2, "Local group")]
+        hoisted.sidebarSync.mockImplementation((req) => req.tab === "recent" ? recent.promise : Promise.resolve({ items: [], version: 0, follow_version: 0 }))
+        const view = await renderForward()
+        expect(view.current.items).toEqual([])
+        expect(view.current.loading).toBe(true)
+        act(() => view.current.setActiveTab("followed"))
+        expect(view.current.loading).toBe(false)
+        await act(async () => { recent.resolve({ items: [], version: 0, follow_version: 0 }); await flushMicrotasks() })
+        act(() => view.current.setActiveTab("recent"))
+        expect(view.current.loading).toBe(false)
+        view.unmount()
+    })
+
+    it("isolates a rejected group request from people and retries only the failed source", async () => {
+        hoisted.groupSaveList.mockRejectedValueOnce(new Error("offline"))
+        hoisted.searchFriends.mockResolvedValue([{ channel: { channelID: "person", channelType: 1 }, orgData: { displayName: "Person" } }])
+        const view = await renderForward()
+        act(() => view.current.setActiveTab("direct"))
+        expect(view.current.items.map((item) => item.channelID)).toEqual(["person"])
+        expect(view.current.loadError).toBe(false)
+        act(() => view.current.setActiveTab("group"))
+        expect(view.current.loadError).toBe(true)
+        hoisted.groupSaveList.mockResolvedValueOnce([makeGroupInfo("recovered", "Recovered")])
+        await act(async () => { view.current.retry(); await flushMicrotasks() })
+        expect(view.current.loadError).toBe(false)
+        expect(view.current.items.map((item) => item.channelID)).toEqual(["recovered"])
+        expect(hoisted.groupSaveList).toHaveBeenCalledTimes(2)
+        expect(hoisted.searchFriends).toHaveBeenCalledOnce()
+        view.unmount()
+    })
+
+    it("rebuilds refreshed local conversations without refetching lists or losing selection", async () => {
+        hoisted.conversations = [makeConv("selected", 2, "Selected")]
+        const view = await renderForward()
+        act(() => view.current.setActiveTab("group"))
+        act(() => view.current.toggleSelect(view.current.items[0]))
+        hoisted.conversations.push(makeConv("new-local", 2, "New local"))
+        await act(async () => { for (const refresh of hoisted.refreshHandlers) refresh(); await flushMicrotasks() })
+        expect(view.current.items.map((item) => item.channelID)).toContain("new-local")
+        expect(view.current.loading).toBe(false)
+        expect(view.current.selectedIDs).toEqual(["selected"])
+        expect(hoisted.groupSaveList).toHaveBeenCalledOnce()
+        expect(hoisted.searchFriends).toHaveBeenCalledOnce()
+        view.unmount()
+    })
+
+    it("drops old-space people and selection before the next space resolves", async () => {
+        hoisted.currentSpaceId = "space-a"
+        hoisted.searchFriends.mockResolvedValueOnce([{ channel: { channelID: "old-person", channelType: 1 }, orgData: { displayName: "Old person" } }])
+        const view = await renderForward()
+        act(() => view.current.setActiveTab("direct"))
+        act(() => view.current.toggleSelect(view.current.items[0]))
+        const people = deferred<unknown[]>()
+        hoisted.searchFriends.mockReturnValueOnce(people.promise)
+        hoisted.currentSpaceId = "space-b"
+        await act(async () => { for (const refresh of hoisted.refreshHandlers) refresh(); await flushMicrotasks() })
+        expect(view.current.items).toEqual([])
+        expect(view.current.selectedIDs).toEqual([])
+        expect(view.current.selectedChannels).toEqual([])
+        await act(async () => { people.resolve([]); await flushMicrotasks() })
         view.unmount()
     })
 })

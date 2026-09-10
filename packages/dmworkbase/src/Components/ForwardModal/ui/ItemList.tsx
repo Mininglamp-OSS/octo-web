@@ -5,7 +5,7 @@ import type { ForwardItem } from "../ForwardModal"
 import { ItemRow, type ForwardBotPreview } from "./ItemRow"
 
 /**
- * 可选列表。loading / 空态 / 正常渲染三态，正常渲染时逐项包 VisibilityTrigger 触发懒加载。
+ * 可选列表。已有候选持续展示，加载与失败状态独立显示；逐项包 VisibilityTrigger 触发懒加载。
  *
  * `flat` 控制平铺/树形样式（最近 Tab 为平铺）。`onItemVisible` 为空时不裹 VisibilityTrigger，
  * 走静态列表分支（供不需要 channelInfo 懒加载的场景使用，如 Storybook）。
@@ -14,6 +14,8 @@ export interface ItemListProps {
   items: ForwardItem[]
   selectedSet: ReadonlySet<string>
   loading: boolean
+  loadError?: boolean
+  onRetry?: () => void
   flat: boolean
   showMeta: boolean
   onToggleSelect: (item: ForwardItem) => void
@@ -26,6 +28,8 @@ export function ItemList({
   items,
   selectedSet,
   loading,
+  loadError = false,
+  onRetry,
   flat,
   showMeta,
   onToggleSelect,
@@ -34,10 +38,8 @@ export function ItemList({
 }: ItemListProps) {
   const { t } = useI18n()
   return (
-    <div className="wk-fm-list">
-      {loading ? (
-        <div className="wk-fm-empty">{t("base.forwardModal.loading")}</div>
-      ) : items.length === 0 ? (
+    <div className="wk-fm-list" aria-busy={loading}>
+      {!loading && !loadError && items.length === 0 ? (
         <div className="wk-fm-empty">{t("base.forwardModal.noContacts")}</div>
       ) : (
         items.map((item) => {
@@ -63,6 +65,15 @@ export function ItemList({
           }
           return <React.Fragment key={item.channelID}>{row}</React.Fragment>
         })
+      )}
+      {loading && <div className="wk-fm-empty" role="status">{t("base.forwardModal.loading")}</div>}
+      {loadError && (
+        <div className="wk-fm-load-error" role="alert">
+          <span>{t("base.forwardModal.loadError")}</span>
+          {onRetry && <button type="button" className="wk-fm-btn wk-fm-btn--cancel" onClick={onRetry}>
+            {t("base.forwardModal.retry")}
+          </button>}
+        </div>
       )}
     </div>
   )

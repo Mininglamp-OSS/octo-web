@@ -166,14 +166,14 @@ async function renderCandidates() {
   }
 }
 
-describe("useForwardCandidates — loadGen concurrency guard", () => {
+describe("useForwardCandidates — scope concurrency guard", () => {
   beforeEach(() => {
     resetHoisted()
   })
 
   it("drops results from a stale load() when a new load() supersedes it (extraGroups + friends)", async () => {
-    // 第一次 load()：groupSaveList 挂起，load 卡在这里不会走到 searchFriends。
-    // 这里只需要一个能"永不 resolve"的 groupSaveList 就能让老 load 的 gen 一直 pending。
+    hoisted.currentSpaceId = "space-old"
+    // The old group request stays pending while the new Space loads independently.
     let resolveOldGroups: (v: any) => void = () => {}
     hoisted.groupSaveList.mockReturnValueOnce(
       new Promise((res) => { resolveOldGroups = res }) as any,
@@ -181,7 +181,8 @@ describe("useForwardCandidates — loadGen concurrency guard", () => {
 
     const view = await renderCandidates()
 
-    // 第二次 load()：另一个 refresh 触发。用非挂起数据快速完成。
+    hoisted.currentSpaceId = "space-new"
+    // A scope change must start fresh requests and invalidate old responses.
     hoisted.groupSaveList.mockResolvedValueOnce([
       {
         channel: { channelID: "g-new", channelType: CT_GROUP },

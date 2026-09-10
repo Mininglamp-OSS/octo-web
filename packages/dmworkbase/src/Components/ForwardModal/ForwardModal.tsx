@@ -34,6 +34,8 @@ export interface ForwardModalProps {
   selectedIDs: string[]
   inputValue: string
   loading?: boolean
+  loadError?: boolean
+  onRetry?: () => void
   onInputChange: (val: string) => void
   onToggleSelect: (item: ForwardItem) => void
   onConfirm: () => void
@@ -69,6 +71,8 @@ export function ForwardModal({
   selectedIDs,
   inputValue,
   loading = false,
+  loadError = false,
+  onRetry,
   onInputChange,
   onToggleSelect,
   onConfirm,
@@ -103,6 +107,8 @@ export function ForwardModal({
             items={items}
             selectedSet={selectedSet}
             loading={loading}
+            loadError={loadError}
+            onRetry={onRetry}
             flat={recentFlatList}
             showMeta={recentFlatList}
             onToggleSelect={onToggleSelect}

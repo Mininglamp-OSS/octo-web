@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react"
+import { useMemo } from "react"
 import WKApp from "../../../App"
-import SidebarService from "../../../Service/SidebarService"
+import SidebarService, { type SidebarSyncResp } from "../../../Service/SidebarService"
 import type { RecentSortMeta } from "../logic"
+import { createForwardSource, type ForwardSource } from "./createForwardSource"
+import { useForwardScope } from "./useForwardScope"
 
 /**
  * 「关注 / 最近」Tab 的作用域集合同步。
@@ -17,52 +19,39 @@ export interface UseSidebarScopesResult {
   followedKeys: Set<string>
   recentKeys: Set<string>
   recentSortMeta: Map<string, RecentSortMeta>
+  follow: ForwardSource<SidebarSyncResp>
+  recent: ForwardSource<SidebarSyncResp>
 }
 
-export function useSidebarScopes(): UseSidebarScopesResult {
-  const [followedKeys, setFollowedKeys] = useState<Set<string>>(new Set())
-  const [recentKeys, setRecentKeys] = useState<Set<string>>(new Set())
-  const [recentSortMeta, setRecentSortMeta] = useState<Map<string, RecentSortMeta>>(new Map())
+const useFollow = createForwardSource<SidebarSyncResp>()
+const useRecent = createForwardSource<SidebarSyncResp>()
+function sync(tab: "follow" | "recent"): Promise<SidebarSyncResp> {
+  const device_uuid = WKApp.shared.deviceId || ""
+  return device_uuid
+    ? SidebarService.sync({ tab, device_uuid })
+    : Promise.resolve({ items: [], version: 0, follow_version: 0 })
+}
+const loadFollow = () => sync("follow")
+const loadRecent = () => sync("recent")
 
-  useEffect(() => {
-    const deviceUuid = WKApp.shared.deviceId || ""
-    if (deviceUuid === "") {
-      setFollowedKeys(new Set())
-      setRecentKeys(new Set())
-      setRecentSortMeta(new Map())
-      return
+/** Publish each tab independently; an unfinished scope is never treated as a confirmed empty list. */
+export function useSidebarScopes(providedScope?: string): UseSidebarScopesResult {
+  const scope = useForwardScope(providedScope)
+  const follow = useFollow(scope, loadFollow)
+  const recent = useRecent(scope, loadRecent)
+  const followedKeys = useMemo(() => new Set(
+    (follow.data?.items ?? []).filter((item) => item.is_followed)
+      .map((item) => `${item.target_type}::${item.target_id}`),
+  ), [follow.data])
+  const { recentKeys, recentSortMeta } = useMemo(() => {
+    const recentKeys = new Set<string>()
+    const recentSortMeta = new Map<string, RecentSortMeta>()
+    for (const item of recent.data?.items ?? []) {
+      const key = `${item.target_type}::${item.target_id}`
+      recentKeys.add(key)
+      recentSortMeta.set(key, { timestamp: item.timestamp ?? 0, isPinned: item.is_pinned === true })
     }
-    let cancelled = false
-    Promise.all([
-      SidebarService.sync({ tab: "follow", device_uuid: deviceUuid }).catch(() => null),
-      SidebarService.sync({ tab: "recent", device_uuid: deviceUuid }).catch(() => null),
-    ])
-      .then(([followResp, recentResp]) => {
-        if (cancelled) return
-        const followed = new Set<string>()
-        for (const item of followResp?.items ?? []) {
-          if (item.is_followed) followed.add(`${item.target_type}::${item.target_id}`)
-        }
-
-        const recent = new Set<string>()
-        const sortMeta = new Map<string, RecentSortMeta>()
-        for (const item of recentResp?.items ?? []) {
-          const key = `${item.target_type}::${item.target_id}`
-          recent.add(key)
-          sortMeta.set(key, {
-            timestamp: item.timestamp ?? 0,
-            isPinned: item.is_pinned === true,
-          })
-        }
-
-        setFollowedKeys(followed)
-        setRecentKeys(recent)
-        setRecentSortMeta(sortMeta)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  return { followedKeys, recentKeys, recentSortMeta }
+    return { recentKeys, recentSortMeta }
+  }, [recent.data])
+  return { followedKeys, recentKeys, recentSortMeta, follow, recent }
 }
