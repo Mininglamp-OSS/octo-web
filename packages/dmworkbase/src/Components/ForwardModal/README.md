@@ -34,3 +34,11 @@ progressive states in Storybook; check both locales and themes.
 For a real server comparison, record the two `sidebar/sync` requests, `group/my`, Space members,
 and `friend/sync`, together with the first visible candidate on first open and same-Space reopen.
 Controlled response tests verify ordering, not production latency.
+
+## Screenshots
+
+Storybook fixtures: available conversations remain selectable during loading, and partial failures expose retry.
+
+![Available candidates remain selectable during loading](./screenshots/loading-with-candidates.png)
+
+![A failed source offers retry alongside available candidates](./screenshots/partial-load-failure.png)
