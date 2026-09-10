@@ -1,7 +1,11 @@
 // @caseId GH1651
 // @spec apps/web/e2e-kit/case-specs/chat/GH1651-url-punctuation.md
 import { test, expect } from "../../fixtures-authed";
-import { installMockImRuntime } from "../../_kit/mock-im-runtime";
+import {
+  installMockImRuntime,
+  type MockMessageSeed,
+} from "../../_kit/mock-im-runtime";
+import { registerGh1651MessageHistory } from "../../msw-handlers/gh1651-url-message-history";
 
 test("@GH1651 @chat sent URLs keep prose punctuation outside their destinations", async ({
   authedPage: page,
@@ -157,6 +161,14 @@ test("@GH1651 @chat copy, edit punctuation and resend keeps automatic URLs as te
   const groupName = "GH1651 copy test";
   const url = "https://github.com/Ranwanglc/octo-web";
   const source = `欧克，现在从${url}的main拉去分支，然后开发一下，先不推pr,干好了告诉我。`;
+  const sourceMessage: MockMessageSeed = {
+    channelId: groupId,
+    channelType: 2,
+    messageSeq: 1,
+    fromUid: "e2e-user-2",
+    content: { type: 1, text: source },
+  };
+  await registerGh1651MessageHistory(page, sourceMessage);
   await installMockImRuntime(page, {
     currentUid: "e2e-user-1",
     spaceId: "e2e-space-001",
@@ -173,16 +185,17 @@ test("@GH1651 @chat copy, edit punctuation and resend keeps automatic URLs as te
         timestamp: Math.floor(Date.now() / 1000),
       },
     ],
-    messages: [],
+    // Seed the source message so the only send is the edited clipboard text.
+    // The mock transport does not ACK sends; this avoids a mid-test reload
+    // and its unload-time requests after MSW stops intercepting them.
+    messages: [sourceMessage],
     subscribers: [],
   });
   await page.getByRole("button", { name: "会话" }).click();
   await page.getByRole("button", { name: "最近", exact: true }).click();
   await page.getByText(groupName, { exact: true }).click();
   const editor = page.locator('[contenteditable="true"]');
-  await editor.click();
-  await page.keyboard.insertText(source);
-  await editor.press("Enter");
+  await expect(editor).toBeVisible();
   const sourceParagraph = page
     .locator('[data-locate-message-row="true"] .wk-markdown p')
     .filter({ hasText: source });
@@ -203,13 +216,6 @@ test("@GH1651 @chat copy, edit punctuation and resend keeps automatic URLs as te
   });
   expect(clipboardHtml).toContain('data-octo-autolink="true"');
 
-  // The mock transport does not ACK sends. Start a fresh composer for the
-  // resend; the browser clipboard retains the actual copied HTML across reload.
-  await page.reload();
-  await page.waitForFunction(() => (window as any).__MSW_READY__ === true);
-  await page.getByRole("button", { name: "会话" }).click();
-  await page.getByRole("button", { name: "最近", exact: true }).click();
-  await page.getByText(groupName, { exact: true }).click();
   await editor.click();
   await editor.press("Control+v");
   await expect(editor).toHaveText(source);

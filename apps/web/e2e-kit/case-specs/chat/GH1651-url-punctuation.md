@@ -56,12 +56,14 @@ or resending to change their destinations.
 6. Check final message anchors and the complete visible text, then click the
    GitHub link. Fulfill the destination locally, verify the popup URL
    is exactly `https://github.com/Ranwanglc/octo-web`, and save a screenshot.
-7. In a separate conversation, send, select and copy a plain-text message
-   using the browser clipboard, paste into the real composer, insert a comma
-   after the URL, and send. Verify the pasted editor has no Link mark and the
-   final anchor text/href exclude the comma and Chinese prose.
-   The mock transport does not ACK sends, so this test reloads the composer
-   between copying and resending; it retains the real browser clipboard.
+7. In a separate conversation, seed a plain-text source message in both the SDK
+   runtime and the HTTP history mock, select and copy its rendered content using
+   the browser clipboard, paste into the real composer,
+   insert a comma after the URL, and send. Verify the pasted editor has no Link
+   mark and the final anchor text/href exclude the comma and Chinese prose.
+   The only send is the edited clipboard text. This avoids waiting for a send
+   acknowledgement from the mock transport or reloading an open conversation,
+   which can leak unload-time requests after MSW stops intercepting them.
 
 Verified copy/edit/send result (only the URL remains linked):
 
@@ -72,12 +74,21 @@ Verified copy/edit/send result (only the URL remains linked):
 ```bash
 pnpm --filter @octo/base exec vitest run src/Messages/Text/__tests__ src/Utils/__tests__/linkify.test.ts src/Utils/__tests__/security.test.ts src/ui/message/ReplyBlock/__tests__ src/ui/message/MixedContent/__tests__ src/features/chat-composer/clipboard/__tests__ src/features/chat-composer/ui/__tests__/clipboardIntegration.test.tsx src/features/chat-composer/adapters/tiptap/__tests__/mentionSendParse.test.ts --maxWorkers=2
 pnpm --filter @octo/web build:e2e
-PW_PREVIEW_PORT=51651 pnpm --filter @octo/web exec playwright test --config=e2e-kit/playwright.ci.config.ts --grep @GH1651 --repeat-each=3 --workers=1
+E2E_TARGET=local PW_PREVIEW_PORT=51651 pnpm --filter @octo/web exec playwright test --config=e2e-kit/playwright.ci.config.ts --grep @GH1651 --workers=1
+E2E_TARGET=local PW_PREVIEW_PORT=51651 pnpm --filter @octo/web exec playwright test --config=e2e-kit/playwright.ci.config.ts
 pnpm --filter @octo/web build
 ```
 
-Follow-up validation on 2026-09-10: 481 unit/component tests passed; both browser
-scenarios passed three consecutive runs (six passes); mock and production builds passed.
+Application validation: 481 unit/component tests passed; mock and production
+builds passed. The seeded copy/edit/send scenario passed its focused browser run.
+The full local branch suite passed all 169 tests, including both GH1651 scenarios,
+with zero skipped tests and zero proxy errors. The `Run full e2e suite` command
+and gate from `.github/workflows/e2e.yml` also exited successfully. GitHub tests
+the merge with upstream main, which contributes additional test cases.
+
+Passing Playwright assertions alone is insufficient: full-suite validation must
+also apply the workflow's proxy-error gate. The former reload-based case passed
+its assertions while leaking unload-time requests, which this fixture avoids.
 The full Web TypeScript check has existing errors. Comparing compiler diagnostics
 against `90da878b` with the same configuration and dependencies found no new errors
 (including comparison by file/code/message/count to account for shifted line numbers).
