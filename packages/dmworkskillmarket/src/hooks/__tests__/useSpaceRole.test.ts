@@ -38,6 +38,7 @@ describe("isSpaceReviewerRole", () => {
     expect(isSpaceReviewerRole(undefined)).toBe(false);
     expect(isSpaceReviewerRole(-1)).toBe(false);
     expect(isSpaceReviewerRole(3)).toBe(false);
+    expect(isSpaceReviewerRole(1.5)).toBe(false);
   });
 
 });
@@ -109,6 +110,7 @@ describe("useSpaceRole", () => {
     await waitFor(() => expect(result.current.isReviewer).toBe(true));
 
     act(() => {
+      WKApp.shared.currentSpaceId = "space-999";
       WKApp.mittBus.emit("space-changed", space(0, "space-999"));
     });
 
@@ -132,6 +134,41 @@ describe("useSpaceRole", () => {
 
     await waitFor(() => expect(result.current.isReviewer).toBe(true));
     expect(probe).toHaveBeenCalledTimes(2);
+  });
+
+  it("never adopts a role from a payload belonging to another Space", async () => {
+    let resolve!: (spaces: Space[]) => void;
+    const probe = vi.spyOn(SpaceService.shared, "getMySpaces")
+      .mockResolvedValueOnce([space(2)])
+      .mockReturnValueOnce(new Promise<Space[]>((done) => { resolve = done; }));
+    const { result } = renderHook(() => useSpaceRole());
+    await waitFor(() => expect(result.current.isReviewer).toBe(true));
+
+    act(() => {
+      WKApp.shared.currentSpaceId = "space-999";
+      WKApp.mittBus.emit("space-changed", space(2, "space-123"));
+    });
+    expect(result.current.role).toBeUndefined();
+    expect(result.current.isReviewer).toBe(false);
+    expect(probe).toHaveBeenCalledTimes(2);
+    await act(async () => resolve([space(2), space(0, "space-999")]));
+    expect(result.current.role).toBe(0);
+    expect(result.current.loading).toBe(false);
+  });
+
+  it("clears the previous role while a payload-less Space switch is resolving", async () => {
+    vi.spyOn(SpaceService.shared, "getMySpaces")
+      .mockResolvedValueOnce([space(2)])
+      .mockReturnValueOnce(new Promise<Space[]>(() => {}));
+    const { result } = renderHook(() => useSpaceRole());
+    await waitFor(() => expect(result.current.isReviewer).toBe(true));
+    act(() => {
+      WKApp.shared.currentSpaceId = "space-999";
+      WKApp.mittBus.emit("space-changed");
+    });
+    expect(result.current.role).toBeUndefined();
+    expect(result.current.isReviewer).toBe(false);
+    expect(result.current.loading).toBe(true);
   });
 
   it("does not let the pre-switch probe overwrite the role from a space-changed payload", async () => {

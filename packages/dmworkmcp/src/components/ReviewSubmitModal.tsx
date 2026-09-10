@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { TextArea } from "@douyinfe/semi-ui";
 import { versionErrorKey } from "@dmwork/skillmarket";
-import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
+import { t, useI18n, WKApp, WKButton, WKInput, WKModal } from "@octo/base";
 import {
   submitPluginReview,
   type PluginReviewRelation,
@@ -123,12 +123,29 @@ export default function ReviewSubmitModal({
   >(undefined);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [resolving, setResolving] = useState(false);
-  // Drops any async completion that belongs to a previous target. Without it, if
-  // the modal switches from expert A to expert B while A's /plugins/detail is in
-  // flight and A resolves AFTER B, A's child graph (and content) would land in
-  // B's modal and be frozen onto B on approve — the exact corruption P1-4/🔴-1
-  // guard against. Mirrors useSpaceRole's generationRef.
+  // Both reads and writes belong to one target/Space session, even when the
+  // same target object is reopened after leaving it. Invalidate on every scope
+  // change so stale success, failure and finally handlers cannot touch it.
   const generationRef = useRef(0);
+  const submittingRef = useRef(false);
+
+  useEffect(() => {
+    const handleSpaceChanged = () => {
+      generationRef.current++;
+      submittingRef.current = false;
+      setSubmitting(false);
+      setError(null);
+      setRelations(undefined);
+      setContent(undefined);
+      setResolveError(null);
+      setResolving(false);
+    };
+    WKApp.mittBus.on("space-changed", handleSpaceChanged);
+    return () => {
+      generationRef.current++;
+      WKApp.mittBus.off("space-changed", handleSpaceChanged);
+    };
+  }, []);
 
   const needsRelations = Boolean(target?.needs?.relations);
   const needsContent = Boolean(target?.needs?.content);
@@ -174,20 +191,27 @@ export default function ReviewSubmitModal({
 
   // Reseed on every open / target switch so a previous session's version label,
   // changelog or error never leaks into the next one.
-  useEffect(() => {
+  useLayoutEffect(() => {
+    submittingRef.current = false;
+    setSubmitting(false);
+    setError(null);
     if (!target) {
       generationRef.current++;
       setRelations(undefined);
       setContent(undefined);
       setResolveError(null);
       setResolving(false);
-      return;
+    } else {
+      setVersion(bumpPatch(target.version));
+      setChangelog(target.initialChangelog ?? "");
+      resolveTarget(target);
     }
-    setVersion(bumpPatch(target.version));
-    setChangelog(target.initialChangelog ?? "");
-    setError(null);
-    setSubmitting(false);
-    resolveTarget(target);
+    // Layout cleanup also covers replacement/unmount before passive effects
+    // run, including a replacement triggered synchronously by onSubmitted.
+    return () => {
+      generationRef.current++;
+      submittingRef.current = false;
+    };
   }, [target, resolveTarget]);
 
   // An upgrade must exceed the version currently listed, which is exactly what
@@ -201,7 +225,9 @@ export default function ReviewSubmitModal({
     (needsContent && content === undefined);
 
   async function submit() {
-    if (!target) return;
+    if (!target || submittingRef.current) return;
+    const generation = generationRef.current;
+    const isCurrentSession = () => generation === generationRef.current;
     if (!version.trim() || !changelog.trim()) {
       setError(t("skillMarket.review.versionAndChangelogRequired"));
       return;
@@ -213,6 +239,7 @@ export default function ReviewSubmitModal({
       setError(resolveError ?? t("mcp.review.relationsFailed"));
       return;
     }
+    submittingRef.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -230,21 +257,38 @@ export default function ReviewSubmitModal({
         // "inherit", which is correct for a leaf.
         ...(needsRelations ? { relations } : {}),
       });
+      if (!isCurrentSession()) return;
       onSubmitted(t("skillMarket.review.submittedToast"));
+      if (!isCurrentSession()) return;
       onClose();
     } catch (err) {
+      if (!isCurrentSession()) return;
       setError(
         err instanceof Error ? err.message : t("skillMarket.review.submitFailed")
       );
     } finally {
-      setSubmitting(false);
+      if (isCurrentSession()) {
+        submittingRef.current = false;
+        setSubmitting(false);
+      }
     }
+  }
+
+  function cancel() {
+    if (submittingRef.current) return;
+    generationRef.current++;
+    onClose();
   }
 
   return (
     <WKModal
       visible={Boolean(target)}
-      onCancel={onClose}
+      onCancel={cancel}
+      options={{
+        closable: !submitting,
+        maskClosable: !submitting,
+        closeOnEsc: !submitting,
+      }}
       title={
         target?.isUpgrade
           ? t("skillMarket.plugin.actionUpgrade")
@@ -252,7 +296,7 @@ export default function ReviewSubmitModal({
       }
       footer={
         <>
-          <WKButton variant="secondary" onClick={onClose} disabled={submitting}>
+          <WKButton variant="secondary" onClick={cancel} disabled={submitting}>
             {t("mcp.review.cancel")}
           </WKButton>
           <WKButton

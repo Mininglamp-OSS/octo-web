@@ -418,7 +418,7 @@ export class SpaceService {
     }
 
     async removeMembers(spaceId: string, uids: string[]): Promise<void> {
-        const result = await WKApp.apiClient.delete(`space/${spaceId}/members`, { data: { uids } })
+        const result = await WKApp.apiClient.post(`space/${spaceId}/members/remove`, { uids })
         // 写后失效：否则 TTL 窗口内会读回自己刚移除的成员。
         rosterCache.invalidate(spaceId)
         return result

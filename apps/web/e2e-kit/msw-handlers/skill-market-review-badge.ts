@@ -86,6 +86,26 @@ function pageOf(items: PendingRequest[], url: URL) {
 }
 
 export const skillMarketReviewBadgeHandlers = [
+  http.get(`*${API_BASE}/plugins/review_requests/:id`, ({ params }) => {
+    if (!enabled()) return undefined;
+    resetIfFreshLoad();
+    const target = [...pending, ...approvedAt].find((item) => item.review_id === params.id);
+    return target
+      ? HttpResponse.json({ data: target })
+      : HttpResponse.json({ error: { code: "NOT_FOUND" } }, { status: 404 });
+  }),
+  http.post(`*${API_BASE}/plugins/review_requests/:id/reject`, async () => {
+    if (!enabled()) return undefined;
+    if (sessionStorage.getItem("__e2e_rb1_hold_reject") === "1") {
+      const controls = globalThis as typeof globalThis & { __e2eRb1ReleaseReject?: () => void };
+      await new Promise<void>((resolve) => { controls.__e2eRb1ReleaseReject = resolve; });
+      delete controls.__e2eRb1ReleaseReject;
+    }
+    return HttpResponse.json(
+      { error: { code: "CONFLICT", message: "This review was already decided." } },
+      { status: 409 },
+    );
+  }),
   http.get(`*${API_BASE}/plugin_review_policies`, () => {
     if (!enabled()) return undefined;
     return HttpResponse.json({ data: { is_auto_approve_enabled: true } });

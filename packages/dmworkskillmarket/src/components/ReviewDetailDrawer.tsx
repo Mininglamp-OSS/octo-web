@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { AlertCircle, RefreshCw, X } from "lucide-react";
-import { t, useI18n, WKButton, WKModal } from "@octo/base";
+import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
 import type { ReviewRequest } from "../types/skill";
 import { approveReview, getReviewRequest, rejectReview } from "../api/skillApi";
 import { formatFullDateTime } from "../utils/format";
@@ -36,54 +36,102 @@ export default function ReviewDetailDrawer({
   const [rejectOpen, setRejectOpen] = useState(false);
   const [iconError, setIconError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const reviewIdRef = useRef(reviewId);
-  reviewIdRef.current = reviewId;
+  const generationRef = useRef(0);
+  const spaceGenerationRef = useRef(0);
+  const mountedRef = useRef(false);
+  const actingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   const retry = useCallback(() => setReloadKey((key) => key + 1), []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    const handleSpaceChanged = () => {
+      spaceGenerationRef.current += 1;
+      generationRef.current += 1;
+      actingRef.current = false;
+      setReview(null);
+      setError(null);
+      setRejectOpen(false);
+      setActing(false);
+      setLoading(false);
+      onCloseRef.current();
+    };
+    WKApp.mittBus.on("space-changed", handleSpaceChanged);
+    return () => {
+      mountedRef.current = false;
+      spaceGenerationRef.current += 1;
+      generationRef.current += 1;
+      WKApp.mittBus.off("space-changed", handleSpaceChanged);
+    };
+  }, []);
+
+  useLayoutEffect(() => {
     // This component remains mounted while reviewId changes. Reset every action
     // state before loading the next record so a reject dialog or in-flight
     // action from the previous review cannot attach itself to the new one.
+    const generation = ++generationRef.current;
+    actingRef.current = false;
     setReview(null);
     setError(null);
     setIconError(false);
     setRejectOpen(false);
     setActing(false);
     setLoading(Boolean(reviewId));
-    if (!reviewId) return;
-    let alive = true;
-    getReviewRequest(reviewId)
+    if (reviewId) getReviewRequest(reviewId)
       .then((item) => {
-        if (alive) setReview(item);
+        if (generation === generationRef.current) setReview(item);
       })
       .catch((err) => {
-        if (!alive) return;
+        if (generation !== generationRef.current) return;
         setError(err instanceof Error ? err.message : t("skillMarket.common.loadFailed"));
       })
       .finally(() => {
-        if (alive) setLoading(false);
+        if (generation === generationRef.current) setLoading(false);
       });
     return () => {
-      alive = false;
+      generationRef.current += 1;
     };
   }, [reviewId, reloadKey]);
 
-  async function handleApprove() {
-    if (!review) return;
+  function handleClose() {
+    if (actingRef.current) return;
+    onClose();
+  }
+
+  async function decide(action: "approve" | "reject", reason?: string) {
+    if (!review || review.id !== reviewId || !canReview || review.status !== "pending" || actingRef.current) return;
     const actionReviewId = review.id;
+    const generation = generationRef.current;
+    const spaceGeneration = spaceGenerationRef.current;
+    const spaceId = WKApp.shared?.currentSpaceId;
+    const isCurrentSpace = () => mountedRef.current && spaceGeneration === spaceGenerationRef.current && spaceId === WKApp.shared?.currentSpaceId;
+    const isCurrent = () => isCurrentSpace() && generation === generationRef.current;
+    actingRef.current = true;
     setActing(true);
     setError(null);
     try {
-      await approveReview(actionReviewId);
-      if (reviewIdRef.current !== actionReviewId) return;
+      if (action === "approve") await approveReview(actionReviewId);
+      else await rejectReview(actionReviewId, reason ?? "");
+      if (!isCurrentSpace()) return;
+      // A completed decision still changes this Space's queue if the host has
+      // switched drawers. Refresh it without touching the new drawer session.
       onDecided();
+      if (!isCurrent()) return;
+      setRejectOpen(false);
       onClose();
     } catch (err) {
-      if (reviewIdRef.current !== actionReviewId) return;
-      setError(err instanceof Error ? err.message : t("skillMarket.review.approveFailed"));
+      if (!isCurrent()) return;
+      setError(err instanceof Error ? err.message : t(action === "approve" ? "skillMarket.review.approveFailed" : "skillMarket.review.actionFailed"));
+      // Keep the reason modal mounted so its inline failure and user input
+      // survive. Reconciliation is an explicit retry after the error is read.
+      if (action === "reject") throw err;
     } finally {
-      if (reviewIdRef.current === actionReviewId) setActing(false);
+      if (isCurrent()) {
+        actingRef.current = false;
+        setActing(false);
+      }
     }
   }
 
@@ -95,7 +143,8 @@ export default function ReviewDetailDrawer({
     <>
       <WKModal
         visible={Boolean(reviewId)}
-        onCancel={onClose}
+        onCancel={handleClose}
+        options={{ closable: !acting, maskClosable: !acting, closeOnEsc: !acting }}
         title={null}
         size="lg"
         header={
@@ -133,7 +182,8 @@ export default function ReviewDetailDrawer({
                       type="button"
                       title={t("skillMarket.review.close")}
                       aria-label={t("skillMarket.review.close")}
-                      onClick={onClose}
+                      onClick={handleClose}
+                      disabled={acting}
                       className="skill-market-review-close"
                     >
                       <X size={18} />
@@ -148,7 +198,7 @@ export default function ReviewDetailDrawer({
         footer={
           canAct && review ? (
             <>
-              <WKButton variant="secondary" onClick={onClose} disabled={acting}>
+              <WKButton variant="secondary" onClick={handleClose} disabled={acting}>
                 {t("skillMarket.common.cancel")}
               </WKButton>
               <WKButton variant="danger" onClick={() => setRejectOpen(true)} disabled={acting}>
@@ -156,7 +206,7 @@ export default function ReviewDetailDrawer({
               </WKButton>
               <WKButton
                 variant="primary"
-                onClick={() => void handleApprove()}
+                onClick={() => void decide("approve")}
                 loading={acting}
                 disabled={acting}
               >
@@ -178,6 +228,7 @@ export default function ReviewDetailDrawer({
               size="small"
               icon={<RefreshCw size={14} />}
               onClick={retry}
+              disabled={acting}
             >
               {t("skillMarket.list.retry")}
             </WKButton>
@@ -284,27 +335,10 @@ export default function ReviewDetailDrawer({
         <RejectReasonModal
           visible={rejectOpen}
           pluginName={review.pluginName}
-          onClose={() => setRejectOpen(false)}
-          onConfirm={async (reason) => {
-            const actionReviewId = review.id;
-            // Defect 2 fix: wrap with try/catch so CONFLICT surfaces as an
-            // inline error instead of leaving the drawer open with no feedback.
-            // On success, propagate to parent (which refreshes queues).
-            try {
-              await rejectReview(actionReviewId, reason);
-            } catch (err) {
-              if (reviewIdRef.current !== actionReviewId) return;
-              setError(err instanceof Error ? err.message : t("skillMarket.review.actionFailed"));
-              setRejectOpen(false);
-              // Reload to reconcile any concurrent-decision state.
-              retry();
-              throw err;
-            }
-            if (reviewIdRef.current !== actionReviewId) return;
-            setRejectOpen(false);
-            onDecided();
-            onClose();
+          onClose={() => {
+            if (!actingRef.current) setRejectOpen(false);
           }}
+          onConfirm={(reason) => decide("reject", reason)}
         />
       )}
     </>

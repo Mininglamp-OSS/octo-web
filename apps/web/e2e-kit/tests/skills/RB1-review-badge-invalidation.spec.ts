@@ -39,3 +39,30 @@ test("@RB1 @p1 @skills @market 组织发布管理 徽标在审核决策后立即
   // …and so does the badge, without a reload. Before the fix this stayed at 1.
   await expect(reviewEntry.locator(".wk-mcp-sidebar__badge")).toHaveCount(0);
 });
+
+test("@RB1 @p1 @skills @market drawer rejection keeps failure feedback and guards dismissal", async ({ authedPage: page }, testInfo) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem("__e2e_scenario", "skill-market-review-badge");
+    sessionStorage.removeItem("__e2e_rb1_loaded");
+    sessionStorage.setItem("__e2e_rb1_hold_reject", "1");
+  });
+  await page.goto("/mcp-market/review?sid=e2etest");
+  await page.getByRole("button", { name: "发布风险雷达", exact: true }).click();
+  const drawer = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "发布风险雷达", exact: true }) });
+  await drawer.getByRole("button", { name: "拒绝", exact: true }).click();
+  const reasonDialog = page.getByRole("dialog").filter({ has: page.getByRole("textbox", { name: "拒绝原因" }) });
+  await reasonDialog.getByRole("textbox").fill("Please clarify the requested change.");
+  await reasonDialog.getByRole("button", { name: "确认拒绝", exact: true }).click();
+  await page.waitForFunction(() => typeof (globalThis as typeof globalThis & { __e2eRb1ReleaseReject?: () => void }).__e2eRb1ReleaseReject === "function");
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeVisible();
+  await expect(reasonDialog).toBeVisible();
+  await expect(drawer.getByRole("button", { name: "取消", exact: true })).toBeDisabled();
+  await page.evaluate(() => (globalThis as typeof globalThis & { __e2eRb1ReleaseReject?: () => void }).__e2eRb1ReleaseReject?.());
+  await expect(reasonDialog.getByText("This review was already decided.", { exact: true })).toBeVisible();
+  await expect(reasonDialog.getByRole("textbox")).toHaveValue("Please clarify the requested change.");
+  await page.screenshot({ path: testInfo.outputPath("drawer-reject-conflict.png") });
+  await reasonDialog.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(reasonDialog).toHaveCount(0);
+  await expect(drawer.getByText("This review was already decided.", { exact: true })).toBeVisible();
+});

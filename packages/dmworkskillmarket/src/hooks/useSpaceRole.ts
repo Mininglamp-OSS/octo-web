@@ -10,11 +10,7 @@ const SPACE_ROLE_ADMIN = 1;
 const SPACE_ROLE_OWNER = 2;
 
 export function isSpaceReviewerRole(role: number | undefined): boolean {
-  return (
-    typeof role === "number" &&
-    role >= SPACE_ROLE_ADMIN &&
-    role <= SPACE_ROLE_OWNER
-  );
+  return role === SPACE_ROLE_ADMIN || role === SPACE_ROLE_OWNER;
 }
 
 export interface UseSpaceRoleResult {
@@ -61,11 +57,12 @@ export function useSpaceRole(): UseSpaceRoleResult {
         setLoading(false);
         return;
       }
+      setRole(undefined);
       setLoading(true);
       SpaceService.shared
         .getMySpaces()
         .then((spaces: Space[]) => {
-          if (attempt !== generationRef.current) return;
+          if (attempt !== generationRef.current || spaceId !== WKApp.shared?.currentSpaceId) return;
           setRole(spaces.find((space) => space.space_id === spaceId)?.role);
         })
         .catch(() => {
@@ -84,7 +81,7 @@ export function useSpaceRole(): UseSpaceRoleResult {
 
     const handleSpaceChanged = (payload?: unknown) => {
       const space = payload as Space | undefined;
-      if (space && typeof space.role === "number") {
+      if (space?.space_id === WKApp.shared?.currentSpaceId && typeof space?.role === "number") {
         // Claim a generation so the in-flight probe for the OLD Space can no
         // longer land on top of this value.
         generationRef.current += 1;

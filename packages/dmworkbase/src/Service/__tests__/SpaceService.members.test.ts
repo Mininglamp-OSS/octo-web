@@ -214,13 +214,15 @@ describe("SpaceService.getRoster", () => {
 
   it("refetches after removeMembers invalidates the roster", async () => {
     api.get.mockResolvedValue([member("u1")]);
-    api.delete.mockResolvedValue(undefined);
+    api.post.mockResolvedValue(undefined);
 
     await SpaceService.shared.getRoster("space-1");
     await SpaceService.shared.removeMembers("space-1", ["u1"]);
     await SpaceService.shared.getRoster("space-1");
 
     expect(api.get).toHaveBeenCalledTimes(2);
+    expect(api.post).toHaveBeenCalledWith("space/space-1/members/remove", { uids: ["u1"] });
+    expect(api.delete).not.toHaveBeenCalled();
   });
 
   it("refetches after updateMemberRole invalidates the roster", async () => {
