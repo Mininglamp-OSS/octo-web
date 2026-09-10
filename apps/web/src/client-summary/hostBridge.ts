@@ -9,6 +9,11 @@ import type { SummaryWorkspaceRoute } from "@dmwork/summary";
 export interface SummaryBootstrap {
   bridgeVersion: 1;
   featureId: "summary";
+  /** 宿主可选能力。Client 主进程传 true 时启用对应适配器。 */
+  capabilities?: {
+    /** docs 转换能力；为 true 时注册 docs.convertMarkdown 与 docs.openDocument 端口。 */
+    docsConversion?: boolean;
+  };
   session: {
     uid: string;
     token: string;
@@ -54,6 +59,13 @@ export interface OctoBuddySummaryBridge {
     spaceId: string
   ): Promise<SummaryConversationMember[]>;
   notifySummaryCompleted(input: SummaryCompletionNotice, spaceId: string): Promise<void>;
+  /** 宿主侧 markdown 转文档。仅在 capabilities.docsConversion 为 true 时存在。 */
+  convertMarkdown?(input: { title: string; markdown: string }, spaceId: string): Promise<
+    { ok: true; value: { docId: string; url: string } }
+    | { ok: false; error: { message: string; status?: number; code?: string; document?: { docId: string; url: string } } }
+  >;
+  /** 宿主侧打开已创建的文档。仅在 capabilities.docsConversion 为 true 时存在。 */
+  openDocument?(input: { docId: string }, spaceId: string): Promise<void>;
   requestForward(input: {
     content: string;
     title: string;

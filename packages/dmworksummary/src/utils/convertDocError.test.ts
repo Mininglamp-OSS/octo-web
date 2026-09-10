@@ -3,6 +3,7 @@ import {
     convertDocErrorMessage,
     extractConvertDocErrorCode,
     resolveConvertDocErrorKey,
+    convertDocErrorDocument,
 } from './convertDocError';
 
 /**
@@ -124,5 +125,46 @@ describe('convertDocErrorMessage', () => {
     it('falls back to the generic convertFailed only when nothing is classifiable', () => {
         expect(convertDocErrorMessage(new Error('boom'), t))
             .toBe('summary.detail.convertFailed');
+    });
+});
+
+describe('convertDocErrorDocument', () => {
+    const origin = 'https://example.com';
+    it('resolves a canonical relative document against the trusted origin', () => {
+        const err = { document: { docId: 'doc-42', url: '/d/doc-42' } };
+        expect(convertDocErrorDocument(err, origin)).toEqual({ docId: 'doc-42', url: `${origin}/d/doc-42` });
+    });
+
+    it('returns undefined when error.document is missing', () => {
+        expect(convertDocErrorDocument({}, origin)).toBeUndefined();
+        expect(convertDocErrorDocument(new Error('boom'), origin)).toBeUndefined();
+        expect(convertDocErrorDocument(null, origin)).toBeUndefined();
+        expect(convertDocErrorDocument(undefined, origin)).toBeUndefined();
+    });
+
+    it('returns undefined when error.document has wrong shape', () => {
+        expect(convertDocErrorDocument({ document: { docId: 'doc-42' } }, origin)).toBeUndefined();
+        expect(convertDocErrorDocument({ document: { url: '/d/doc-42' } }, origin)).toBeUndefined();
+        expect(convertDocErrorDocument({ document: 'not an object' }, origin)).toBeUndefined();
+    });
+
+    it.each([
+        'javascript:alert(1)', 'data:text/html,unsafe', 'https://evil.example/d/doc-42',
+        '//example.com/d/doc-42', `${origin}/d/doc-42?token=secret`,
+        `${origin}/d/other`, '/d/../d/doc-42',
+    ])('rejects untrusted document URL %s', (url) => {
+        expect(convertDocErrorDocument({ document: { docId: 'doc-42', url } }, origin)).toBeUndefined();
+    });
+
+    it('never derives trust from the error itself', () => {
+        const document = { docId: 'doc-42', url: `${origin}/d/doc-42` };
+        expect(convertDocErrorDocument({ document, apiOrigin: origin }, '')).toBeUndefined();
+        expect(convertDocErrorDocument({ document }, origin)).toEqual(document);
+    });
+
+    it('rejects an invalid document id even on the trusted origin', () => {
+        expect(convertDocErrorDocument({
+            document: { docId: '../doc-42', url: `${origin}/d/../doc-42` },
+        }, origin)).toBeUndefined();
     });
 });

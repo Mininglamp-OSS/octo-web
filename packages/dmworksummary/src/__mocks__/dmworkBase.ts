@@ -151,6 +151,9 @@ export const extractErrorMsg = (err: unknown): string => {
 export const buildDocLink = ({ docId }: { docId: string }): string =>
   `${typeof window !== 'undefined' && window.location?.origin ? window.location.origin : ''}/d/${encodeURIComponent(docId)}`;
 
+export const webOrigin = (): string => window.location.origin;
+export { validateDocsDocumentLink } from "../../../dmworkbase/src/bridge/docs/documentLink";
+
 /** Utils/clipboard.copyToClipboard 的测试替身，默认成功；单测可 vi.spyOn 覆写。 */
 export const copyToClipboard = async (_text: string): Promise<boolean> => true;
 
@@ -186,4 +189,9 @@ export const isDocsConvertAvailable = (): boolean => __docsOn && !!__docsConvert
 export const convertMarkdownToDoc = async (params: { title: string; markdown: string }) => {
   if (!isDocsConvertAvailable()) throw new DocsCapabilityUnavailableError();
   return __docsConvertHandler!(params);
+};
+
+/** 测试替身：默认返回 undefined（未注册），单测可 vi.spyOn 模拟返回值。 */
+export const getDocsDocumentOpener = (): ((result: { docId: string; url: string }) => Promise<void>) | undefined => {
+  return undefined;
 };
