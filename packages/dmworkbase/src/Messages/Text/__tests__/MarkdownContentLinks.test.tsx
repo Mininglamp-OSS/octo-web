@@ -51,6 +51,9 @@ describe.each(modes)("MarkdownContent links — $name", ({ props }) => {
     );
     expect(hrefs(root)).toEqual([screenshotUrl]);
     expect(root.querySelector("a")?.textContent).toBe(screenshotUrl);
+    expect(root.querySelector("a")?.getAttribute("data-octo-autolink")).toBe(
+      "true"
+    );
     expect(root.textContent).toBe(screenshotContent);
   });
 
@@ -170,6 +173,7 @@ describe.each(modes.slice(0, 3))(
         "https://example.com/c,",
         "https://example.com/d;",
       ]);
+      expect(root.querySelector("[data-octo-autolink]")).toBeNull();
     });
 
     it("leaves code literal and still fixes automatic links in lists and tables", () => {
@@ -230,6 +234,12 @@ describe("shared message link consumers", () => {
     );
     expect(hrefs(richText)).toEqual([screenshotUrl]);
     expect(hrefs(reply)).toEqual([screenshotUrl]);
+    expect(
+      richText.querySelector("a")?.getAttribute("data-octo-autolink")
+    ).toBe("true");
+    expect(reply.querySelector("a")?.getAttribute("data-octo-autolink")).toBe(
+      "true"
+    );
     expect(richText.textContent).toBe(screenshotContent);
     expect(reply.querySelector(".wk-reply-block__digest")?.textContent).toBe(
       screenshotContent

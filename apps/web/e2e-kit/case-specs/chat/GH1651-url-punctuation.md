@@ -19,6 +19,10 @@ Related issue: https://github.com/Mininglamp-OSS/octo-web/issues/1651
   URL, an explicit Markdown destination can express that intent.
 - The same boundary policy applies to ordinary chat Markdown, rich-text blocks
   and reply previews. Markdown retains GFM's `http` scheme for www links.
+- Copying a rendered automatic link back into the composer restores plain text,
+  so edits to punctuation or surrounding prose are linkified again on render.
+  Explicit Markdown links and external HTML links retain their destinations.
+  Previously sent explicit links are not reinterpreted as bare URLs.
 
 ## Baseline and scope
 
@@ -32,6 +36,18 @@ original example is retained as a regression case; reproducing the exact reporte
 production failure still requires its raw message and deployed version. No stored
 messages or explicit destinations are rewritten by this change.
 
+The follow-up 14:27 screenshots had a different wire format from the 11:47
+message: the first was plain text; the later messages contained a serialized
+`[https&#58;//...](https://...%E7%9A%84...)` link whose destination still included
+the original Chinese prose, even after a comma was inserted into its label.
+The 3001 rebuild included both boundary fixes (`6f070d1e`, patch-equivalent to
+`90da878b`). The remaining symptom was a copied HTML link being saved with a
+fixed destination, not a distinction between ASCII and Chinese punctuation.
+The renderer now marks automatic anchors with `data-octo-autolink="true"`;
+the composer's HTML paste transform unwraps only those anchors before Tiptap
+creates Link marks. Existing stored explicit messages need plain-text editing
+or resending to change their destinations.
+
 ## Browser scenario
 
 1. Use the local mock IM runtime and open the seeded test group.
@@ -44,18 +60,24 @@ messages or explicit destinations are rewritten by this change.
 6. Check final message anchors and the complete visible text, then click the
    screenshot's GitHub link. Fulfill the destination locally, verify the popup URL
    is exactly `https://github.com/Ranwanglc/octo-web`, and save a screenshot.
+7. In a separate conversation, send, select and copy a plain-text message
+   using the browser clipboard, paste into the real composer, insert a comma
+   after the URL, and send. Verify the pasted editor has no Link mark and the
+   final anchor text/href exclude the comma and Chinese prose.
+   The mock transport does not ACK sends, so this test reloads the composer
+   between copying and resending; it retains the real browser clipboard.
 
 ## Verification
 
 ```bash
-pnpm --filter @octo/base exec vitest run src/Messages/Text/__tests__ src/Utils/__tests__/linkify.test.ts src/Utils/__tests__/security.test.ts src/ui/message/ReplyBlock/__tests__ src/ui/message/MixedContent/__tests__ --maxWorkers=2
+pnpm --filter @octo/base exec vitest run src/Messages/Text/__tests__ src/Utils/__tests__/linkify.test.ts src/Utils/__tests__/security.test.ts src/ui/message/ReplyBlock/__tests__ src/ui/message/MixedContent/__tests__ src/features/chat-composer/clipboard/__tests__ src/features/chat-composer/ui/__tests__/clipboardIntegration.test.tsx src/features/chat-composer/adapters/tiptap/__tests__/mentionSendParse.test.ts --maxWorkers=2
 pnpm --filter @octo/web build:e2e
 PW_PREVIEW_PORT=51651 pnpm --filter @octo/web exec playwright test --config=e2e-kit/playwright.ci.config.ts --grep @GH1651 --repeat-each=3 --workers=1
 pnpm --filter @octo/web build
 ```
 
-Follow-up validation on 2026-09-10: 393 unit/component tests passed; the browser
-scenario passed three consecutive runs; mock and production builds passed.
+Follow-up validation on 2026-09-10: 481 unit/component tests passed; both browser
+scenarios passed three consecutive runs (six passes); mock and production builds passed.
 The full Web TypeScript check has existing errors. Comparing compiler diagnostics
-against `6fb28df5` with the same configuration and dependencies found no new errors
-and no diagnostics in the changed files.
+against `90da878b` with the same configuration and dependencies found no new errors
+(including comparison by file/code/message/count to account for shifted line numbers).

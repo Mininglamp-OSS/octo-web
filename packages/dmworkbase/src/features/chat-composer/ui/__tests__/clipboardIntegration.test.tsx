@@ -1,9 +1,11 @@
 import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createChatSendOutcome } from "../../domain";
 import { encodeOctoRichTextClipboardPayload } from "../../../../Utils/richTextClipboard";
 import ChatComposer, { type MessageInputContext } from "../ChatComposer";
 import { createTestViewHost } from "./testViewHost";
+import MarkdownContent from "../../../../Messages/Text/MarkdownContent";
 
 vi.mock("../../../../App", () => ({
   default: {
@@ -41,6 +43,66 @@ function paste(
 }
 
 describe("MessageInput clipboard integration", () => {
+  it("keeps a copied automatic URL editable as plain text through send", async () => {
+    let inputContext: MessageInputContext | undefined;
+    const onSend = vi.fn(() =>
+      createChatSendOutcome({ editorConsumed: true }),
+    );
+    const view = render(
+      <ChatComposer
+        host={createTestViewHost()}
+        onContext={(context) => {
+          inputContext = context;
+        }}
+        onSend={onSend}
+      />
+    );
+    await waitFor(() => expect(inputContext).toBeDefined());
+    const editor = view.container.querySelector(".ProseMirror")!;
+    const content =
+      "欧克，现在从https://github.com/Ranwanglc/octo-web，的main拉去分支。";
+    paste(editor, {
+      plain: content,
+      html: renderToStaticMarkup(<MarkdownContent content={content} />),
+    });
+    await waitFor(() => expect(inputContext?.text()).toBe(content));
+    expect(editor.querySelector("a")).toBeNull();
+    await act(async () => {
+      await inputContext?.send();
+    });
+    expect(onSend).toHaveBeenCalledWith(
+      expect.objectContaining({ text: content }),
+    );
+    act(() => inputContext?.clear());
+  });
+
+  it("retains an explicit URL-looking link when copied from a message", async () => {
+    let inputContext: MessageInputContext | undefined;
+    const view = render(
+      <ChatComposer
+        host={createTestViewHost()}
+        onContext={(context) => {
+          inputContext = context;
+        }}
+      />
+    );
+    await waitFor(() => expect(inputContext).toBeDefined());
+    const editor = view.container.querySelector(".ProseMirror")!;
+    const url = "https://example.com/中文,";
+    paste(editor, {
+      plain: url,
+      html: renderToStaticMarkup(
+        <MarkdownContent content={`[${url}](${url})`} />,
+      ),
+    });
+    await waitFor(() =>
+      expect(inputContext?.text()).toBe(
+        `[https&#58;//example.com/中文,](${encodeURI(url)})`,
+      ),
+    );
+    act(() => inputContext?.clear());
+  });
+
   it("routes a file-only paste through the pending attachment port", async () => {
     let inputContext: MessageInputContext | undefined;
     const onAddPendingAttachments = vi.fn().mockResolvedValue(true);

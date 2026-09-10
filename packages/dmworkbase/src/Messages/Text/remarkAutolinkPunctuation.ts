@@ -6,9 +6,20 @@ interface MarkdownNode {
   value?: string;
   url?: string;
   children?: MarkdownNode[];
+  data?: { hProperties?: Record<string, unknown>; [key: string]: unknown };
   position?: {
     start: { offset?: number };
     end: { offset?: number };
+  };
+}
+
+function markAutolink(node: MarkdownNode): MarkdownNode {
+  return {
+    ...node,
+    data: {
+      ...node.data,
+      hProperties: { ...node.data?.hProperties, dataOctoAutolink: "true" },
+    },
   };
 }
 
@@ -40,23 +51,26 @@ function splitAutolink(node: MarkdownNode, source: string) {
   // GFM can consume several URLs and intervening Chinese prose as one link.
   // Segment the entire candidate so links after a prose boundary survive too.
   const segments = linkifySafeUrls(raw);
-  if (segments.length === 1 && segments[0].type === "link") return;
+  if (segments.length === 1 && segments[0].type === "link")
+    return [markAutolink(node)];
   return segments.map((segment) => {
     if (segment.type === "text")
       return { type: "text", value: segment.content };
-    return {
+    return markAutolink({
       ...node,
       // Retain GFM's existing www scheme (plain-text consumers use https).
       url: /^www\./i.test(segment.text)
         ? `http://${segment.text}`
         : segment.href,
       children: [{ ...label, value: segment.text }],
-    };
+    });
   });
 }
 
 /** Apply chat punctuation boundaries after Markdown/math parsing has finished. */
-export default function remarkAutolinkPunctuation() {
+export default function remarkAutolinkPunctuation(
+  options: { generatedLinks?: boolean } = {}
+) {
   return (
     tree: MarkdownNode,
     file: { value?: unknown; data?: { mathScanSource?: unknown } }
@@ -77,6 +91,10 @@ export default function remarkAutolinkPunctuation() {
       )
         return;
       node.children = node.children.flatMap((child) => {
+        // Plain-text mode has already escaped the source and generated every
+        // link through linkifySafeUrls. Preserve that provenance for copying.
+        if (options.generatedLinks && child.type === "link")
+          return [markAutolink(child)];
         const split = splitAutolink(child, source);
         if (split) return split;
         visit(child);

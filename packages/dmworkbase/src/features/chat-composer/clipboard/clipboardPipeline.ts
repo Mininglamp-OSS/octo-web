@@ -23,6 +23,24 @@ export interface ClipboardDataLike {
   }> | null;
 }
 
+/**
+ * A rendered bare URL is presentation, not an author-specified Link mark.
+ * Keep its copied text editable so inserting punctuation/prose cannot retain
+ * a stale href on send. Only the renderer's marker opts in; external and
+ * explicit links retain their destinations, even when their labels look like URLs.
+ */
+export function unwrapCopiedAutolinks(html: string): string {
+  if (
+    !html.includes("data-octo-autolink") ||
+    typeof DOMParser === "undefined"
+  ) return html;
+  const document = new DOMParser().parseFromString(html, "text/html");
+  const links = document.querySelectorAll('a[data-octo-autolink="true"]');
+  if (!links.length) return html;
+  links.forEach((link) => link.replaceWith(...Array.from(link.childNodes)));
+  return document.body.innerHTML;
+}
+
 export function snapshotComposerClipboard(
   clipboardData: ClipboardDataLike,
 ): ComposerClipboardSnapshot {

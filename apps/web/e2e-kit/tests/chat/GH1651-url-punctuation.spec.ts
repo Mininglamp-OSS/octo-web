@@ -44,6 +44,15 @@ test("@GH1651 @chat sent URLs keep prose punctuation outside their destinations"
       urls: ["https://example.com/a", "https://example.com/b"],
     },
     {
+      marker: "GH1651 punctuation with prose",
+      literal: true,
+      body: "https://github.com/Ranwanglc/octo-web,的main拉去分支。\nhttps://github.com/Ranwanglc/octo-web，的main拉去分支。",
+      urls: [
+        "https://github.com/Ranwanglc/octo-web",
+        "https://github.com/Ranwanglc/octo-web",
+      ],
+    },
+    {
       marker: "GH1651 original",
       literal: true,
       body: "https://example.com/repo-a/-/merge_requests/111,\nhttps://example.com/repo-b/-/merge_requests/222,\nhttps://example.com/repo-c/pull/333",
@@ -139,4 +148,100 @@ test("@GH1651 @chat sent URLs keep prose punctuation outside their destinations"
     .screenshot({
       path: test.info().outputPath("chinese-url-boundary.png"),
     });
+});
+
+test("@GH1651 @chat copy, edit punctuation and resend keeps automatic URLs as text", async ({
+  authedPage: page,
+}) => {
+  const groupId = "e2e-url-copy";
+  const groupName = "GH1651 copy test";
+  const url = "https://github.com/Ranwanglc/octo-web";
+  const source = `欧克，现在从${url}的main拉去分支，然后开发一下，先不推pr,干好了告诉我。`;
+  await installMockImRuntime(page, {
+    currentUid: "e2e-user-1",
+    spaceId: "e2e-space-001",
+    users: [
+      { uid: "e2e-user-1", name: "E2E Tester", robot: 0 },
+      { uid: "e2e-user-2", name: "E2E Sender", robot: 0 },
+    ],
+    groups: [{ group_no: groupId, name: groupName }],
+    conversations: [
+      {
+        channelId: groupId,
+        channelType: 2,
+        unread: 0,
+        timestamp: Math.floor(Date.now() / 1000),
+      },
+    ],
+    messages: [],
+    subscribers: [],
+  });
+  await page.getByRole("button", { name: "会话" }).click();
+  await page.getByRole("button", { name: "最近", exact: true }).click();
+  await page.getByText(groupName, { exact: true }).click();
+  const editor = page.locator('[contenteditable="true"]');
+  await editor.click();
+  await page.keyboard.insertText(source);
+  await editor.press("Enter");
+  const sourceParagraph = page
+    .locator('[data-locate-message-row="true"] .wk-markdown p')
+    .filter({ hasText: source });
+  await expect(sourceParagraph).toBeVisible();
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await sourceParagraph.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  await page.keyboard.press("Control+c");
+  const clipboardHtml = await page.evaluate(async () => {
+    const items = await navigator.clipboard.read();
+    const item = items.find((item) => item.types.includes("text/html"));
+    return item ? (await item.getType("text/html")).text() : "";
+  });
+  expect(clipboardHtml).toContain('data-octo-autolink="true"');
+
+  // The mock transport does not ACK sends. Start a fresh composer for the
+  // resend; the browser clipboard retains the actual copied HTML across reload.
+  await page.reload();
+  await page.waitForFunction(() => (window as any).__MSW_READY__ === true);
+  await page.getByRole("button", { name: "会话" }).click();
+  await page.getByRole("button", { name: "最近", exact: true }).click();
+  await page.getByText(groupName, { exact: true }).click();
+  await editor.click();
+  await editor.press("Control+v");
+  await expect(editor).toHaveText(source);
+  await expect(editor.locator("a")).toHaveCount(0);
+  // Edit the pasted URL's boundary, exactly where the screenshot added a comma.
+  await editor.evaluate((element, url) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const index = node.textContent?.indexOf(url) ?? -1;
+      if (index < 0) continue;
+      const range = document.createRange();
+      range.setStart(node, index + url.length);
+      range.collapse(true);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return;
+    }
+    throw new Error("Copied URL missing from editor");
+  }, url);
+  await page.keyboard.insertText("，");
+  const edited = source.replace(url, `${url}，`);
+  await expect(editor).toHaveText(edited);
+  await editor.press("Enter");
+  const sent = page
+    .locator('[data-locate-message-row="true"] .wk-markdown p')
+    .filter({ hasText: edited });
+  await expect(sent).toHaveText(edited);
+  await expect(sent.getByRole("link")).toHaveCount(1);
+  await expect(sent.getByRole("link")).toHaveText(url);
+  await expect(sent.getByRole("link")).toHaveAttribute("href", url);
+  await sent.screenshot({
+    path: test.info().outputPath("copied-url-after-edit.png"),
+  });
 });
