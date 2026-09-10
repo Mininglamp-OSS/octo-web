@@ -40,4 +40,31 @@ describe("linkifySafeUrls", () => {
       { type: "text", content: "。" },
     ]);
   });
+
+  it.each([
+    "https://example.com/wiki/Foo_(bar)",
+    "https://example.com/a_(b_(c))",
+    "https://example.com/a[b]",
+    "https://example.com/a{b}",
+    "https://example.com/a（b）",
+    "https://example.com/a【b】",
+    "https://example.com/a『b』",
+    "http://[::1]",
+    "https://example.com/a)b(c)",
+    "https://example.com/a?ids=1,2&next=/x:y#part",
+    "https://example.com/a%2C",
+  ])("preserves URL contents and matched brackets in %s", (url) => {
+    const content = `(${url})，。`;
+    const segments = linkifySafeUrls(content);
+    expect(segments.filter((segment) => segment.type === "link")).toEqual([
+      { type: "link", text: url, href: url },
+    ]);
+    expect(
+      segments
+        .map((segment) =>
+          segment.type === "link" ? segment.text : segment.content
+        )
+        .join("")
+    ).toBe(content);
+  });
 });

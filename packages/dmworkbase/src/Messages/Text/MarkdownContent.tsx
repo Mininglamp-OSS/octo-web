@@ -20,6 +20,7 @@ import { t } from "../../i18n";
 import { ImagePreviewLightbox } from "../Image/ImagePreview";
 import { getMentionRenderState } from "./mentionRenderState";
 import { isForwardDocCard, type ParagraphChildKind } from "./forwardClamp";
+import remarkAutolinkPunctuation from "./remarkAutolinkPunctuation";
 
 export interface MentionInfo {
   name: string; // "@张三"（含@符号）
@@ -289,6 +290,7 @@ const baseRemarkPlugins: any[] = [
   rawHtmlAsTextPlugin,
   [remarkGfm, remarkGfmOptions],
   remarkBreaks,
+  remarkAutolinkPunctuation,
 ];
 
 /**
@@ -309,6 +311,7 @@ const mathRemarkPlugins: any[] = [
   mathScanPlugin,
   remarkBreaks,
   restoreSentinelPlugin,
+  remarkAutolinkPunctuation,
 ];
 
 /** 文档 / 编辑器场景：放宽正文启发式，但仍统一执行公式数量、长度和渲染产物上限。 */
@@ -318,6 +321,7 @@ const mathRemarkPluginsSingleDollar: any[] = [
   remarkMath,
   guardRemarkMathPlugin,
   remarkBreaks,
+  remarkAutolinkPunctuation,
 ];
 
 /** math-ish 内部字符：与 iOS WKLaTeXPreprocessor.hasMathChar 完全一致。 */
