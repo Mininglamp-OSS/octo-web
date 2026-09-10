@@ -29,20 +29,16 @@ Related issue: https://github.com/Mininglamp-OSS/octo-web/issues/1651
 At fork main `8d066a842068efb61a9a20580a0309256a1edd60`, the issue's
 literal ASCII-comma example already passes isolated rendering tests. Reproduced
 failures are Chinese punctuation entering ordinary-message hrefs and matched
-right brackets being removed in rich-text/reply links. Follow-up testing at
-`6fb28df5` also reproduced the user's screenshot: Chinese prose directly after
-`https://github.com/Ranwanglc/octo-web` was included in the destination. The
+right brackets being removed in rich-text/reply links. Chinese prose directly
+after a bare URL can also be included in the destination without a separator. The
 original example is retained as a regression case; reproducing the exact reported
 production failure still requires its raw message and deployed version. No stored
 messages or explicit destinations are rewritten by this change.
 
-The follow-up 14:27 screenshots had a different wire format from the 11:47
-message: the first was plain text; the later messages contained a serialized
-`[https&#58;//...](https://...%E7%9A%84...)` link whose destination still included
-the original Chinese prose, even after a comma was inserted into its label.
-The 3001 rebuild included both boundary fixes (`6f070d1e`, patch-equivalent to
-`90da878b`). The remaining symptom was a copied HTML link being saved with a
-fixed destination, not a distinction between ASCII and Chinese punctuation.
+Copying a rendered automatic link can create a serialized
+`[https&#58;//...](https://...%E7%9A%84...)` link. Editing its visible label can
+then leave the original destination intact, including any incorrectly detected
+prose. This copy/edit/send path needs to retain the original plain-text intent.
 The renderer now marks automatic anchors with `data-octo-autolink="true"`;
 the composer's HTML paste transform unwraps only those anchors before Tiptap
 creates Link marks. Existing stored explicit messages need plain-text editing
@@ -54,11 +50,11 @@ or resending to change their destinations.
 2. Enter the original three-line example through the real composer.
 3. Add a paragraph with Chinese punctuation and a URL with paired parentheses.
 4. Add explicit Markdown and angle-bracket links ending in punctuation.
-5. Add the user's screenshot sentence and two URLs separated by Chinese prose
+5. Add a URL immediately followed by Chinese prose and two URLs separated by prose
    without whitespace, plus an escaped math formula followed by a URL ending in
    Chinese punctuation. Send all paragraphs together.
 6. Check final message anchors and the complete visible text, then click the
-   screenshot's GitHub link. Fulfill the destination locally, verify the popup URL
+   GitHub link. Fulfill the destination locally, verify the popup URL
    is exactly `https://github.com/Ranwanglc/octo-web`, and save a screenshot.
 7. In a separate conversation, send, select and copy a plain-text message
    using the browser clipboard, paste into the real composer, insert a comma
@@ -66,6 +62,10 @@ or resending to change their destinations.
    final anchor text/href exclude the comma and Chinese prose.
    The mock transport does not ACK sends, so this test reloads the composer
    between copying and resending; it retains the real browser clipboard.
+
+Verified copy/edit/send result (only the URL remains linked):
+
+![Copied URL after inserting a comma and resending](GH1651-copied-url-after-edit.png)
 
 ## Verification
 
