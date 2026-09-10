@@ -156,58 +156,61 @@ When excluding a source file from hardcoded Chinese checks, record the reason in
 
 English expansions break narrow UI. Budget the copy against the container, not only against the Chinese source.
 
+**Unit:** all character budgets below count **Unicode characters** (not UTF-8 bytes, not display width). CJK glyphs are typically ~2× wider than Latin at the same font-size, so a CJK label of N chars often needs more pixel width than N Latin chars.
+
 ### Expansion-ratio reference
 
-| Pattern | Example (zh-CN → en-US) | Approx. expansion |
-| --- | --- | --- |
-| Short relative date | `前天` → `The day before yesterday` | ~12× |
-| Compact status | `已完成` → `Completed` | ~1.5–2× |
-| Nav / rail label | `AI 总结` → `AI Summary` | ~1.5× |
-| Primary button verb | `创建` → `Create` | ~1× |
-| Error / toast sentence | short CN clause → full EN sentence | 2–3× |
+Ratios are **character-count** (`len(en-US) / len(zh-CN)`), using pairs that exist in this repo today.
 
-W3C / IBM localization guidance commonly budgets **30–50% expansion** for UI strings; treat the table above as the floor for short constrained labels.
+| Pattern | Example (zh-CN → en-US) | Char expansion |
+| --- | --- | --- |
+| Short relative date | `前天` → `The day before yesterday` (`base.time.dayBeforeYesterday`) | 2 → 24 ≈ **12×** |
+| Compact status | `已完成` → `Completed` | 3 → 9 ≈ **3×** |
+| Nav / rail label | `智能总结` → `AI Summary` (`nav.summary`) | 4 → 10 ≈ **2.5×** |
+| Primary button verb | `创建` → `Create` | 2 → 6 ≈ **3×** |
+
+Short source strings expand **more** than long ones. The W3C article that publishes IBM’s length guidance budgets **200–300%** (i.e. 2–3×) for messages ≤10 characters, and warns that the shorter the source, the larger the possible translation. Do not assume `~1×` for two-character Chinese verbs.
 
 ### Constrained container inventory (starter)
 
-Keep this table alive. When you discover a new narrow container, add a row.
+Keep this table alive. When you discover a new narrow container, add a row and cite the component/CSS that sets the limit.
 
-| Container | Typical budget | Notes |
+| Container | Budget (Latin chars) | How the limit was measured |
 | --- | --- | --- |
-| NavRail collapsed label | ~8–12 Latin chars | Truncation shows `Sum...` if over budget |
-| Chat list date column | ~12–16 Latin chars | `The day before yesterday` blows the column |
-| Tab titles | ~12–20 Latin chars | Prefer short keys |
-| Primary / compact buttons | ~12 Latin chars | Prefer verbs, not full sentences |
-| Fixed-width table headers | measure cell width | Prefer short nouns; avoid clauses |
+| NavRail collapsed label | **≤8** | Item `width: 56px`, padding `4px 2px`, label padding-inline `4px`, font-size 10px (`--wk-text-size-tiny`) → ~44px text box ≈ 8 chars at 5–6px/char. `AI Summary` (10) already ellipsizes to `Sum...`. |
+| Chat list date column | **≤16** | Worst-case en-US `12/26/2026 21:34` / zh-CN `2026/12/26 21:34`; cell is `white-space: nowrap; flex-shrink: 0`. `The day before yesterday` + time overflows. |
+| Tab titles | measure the tab strip | Prefer short nouns |
+| Primary / compact buttons | measure the button | Prefer verbs, not full sentences |
+| Fixed-width table headers | measure the cell | Prefer short nouns; avoid clauses |
 
 ### Design layers (preference order)
 
 1. **Reserve layout space** — size the container for the longest required locale.
-2. **`.short` variant keys** — ship a dedicated short key for the constrained surface (e.g. `date.short.dayBeforeYesterday`).
-3. **Locale-sensitive `format.*`** — use `format.relativeTime` / `format.dateTime` instead of hand-translated date phrases.
-4. **Truncation + tooltip** — last resort only; document the container in the inventory table.
+2. **`.short` variant keys** — for **non-date** constrained labels (nav, tabs, buttons). Use the owning namespace prefix (see Key Naming). Example shape: `base.nav.summaryShort` — add to **both** `zh-CN` and `en-US` in the same change (`pnpm i18n:check` fails on missing locale keys). Do **not** invent a `date.*` namespace; date/time copy belongs in layer 3.
+3. **Locale-sensitive `format.*`** — for dates/times/numbers use `format.relativeTime` / `format.dateTime` instead of hand-translated phrases. Example: `Intl.RelativeTimeFormat` gives `前天` in zh-CN and `2 days ago` (~10 chars) in en-US, instead of the 24-char hand-written phrase.
+4. **Truncation + tooltip** — last resort only. Provide both an accessible name (`aria-label`) and a hover `title` when they differ from the visible clipped text; document the container in the inventory table.
 
 ### Anti-patterns
 
-- Translating a compact Chinese date phrase into a full English sentence without a `.short` key.
 - Shipping only `zh-CN` length realism, then discovering overflow in `en-US` review.
+- Adding a `.short` key in only one locale (leaks Chinese into en-US, or raw keys into zh-CN).
+- Treating a two-character Chinese verb as “same length” in English for budget math.
 - Clipping the start and end of a centered single-line note instead of wrapping.
 - Growing a fixed-width column without re-checking both locales.
 
 ### PR verification checklist (constrained layouts)
 
 - [ ] Budget checked for both `zh-CN` and `en-US` on every touched constrained surface.
-- [ ] New narrow containers added to the inventory table above.
-- [ ] `.short` key or `format.*` used where expansion exceeds the budget.
+- [ ] New narrow containers added to the inventory table above with a CSS/component citation.
+- [ ] Date/time uses `format.*` (layer 3); `.short` keys reserved for non-date labels (layer 2).
+- [ ] New keys exist in **both** locale files; `pnpm i18n:check` passes.
 - [ ] Screenshots or notes for both locales when truncation or overflow is possible.
 
 ### References
 
-- [W3C Internationalization — Strings on the Web](https://www.w3.org/International/questions/qa-translate-able.en)
-- [IBM Localization quality](https://www.ibm.com/docs/en/ibm-style-guide)
-- [Material Design 3 — Content](https://m3.material.io/foundations/content/overview)
+- [W3C — Text size in translation](https://www.w3.org/International/articles/article-text-size.en) (includes IBM length-expansion table)
 - [Apple HIG — Layout](https://developer.apple.com/design/human-interface-guidelines/layout)
-- SimpleLocalize / common L10n expansion guidance
+- [Material Design 3 — Typography](https://m3.material.io/styles/typography/overview)
 
 ## Adding New Copy
 
