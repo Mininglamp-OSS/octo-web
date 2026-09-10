@@ -187,3 +187,8 @@ export const convertMarkdownToDoc = async (params: { title: string; markdown: st
   if (!isDocsConvertAvailable()) throw new DocsCapabilityUnavailableError();
   return __docsConvertHandler!(params);
 };
+
+/** 测试替身：默认返回 undefined（未注册），单测可 vi.spyOn 模拟返回值。 */
+export const getDocsDocumentOpener = (): ((result: { docId: string; url: string }) => Promise<void>) | undefined => {
+  return undefined;
+};

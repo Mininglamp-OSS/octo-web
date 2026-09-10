@@ -23,6 +23,7 @@ import {
   // `@octo/base/src/Service/APIClient` 一并吃进 mock 文件里导致解析失败，
   // 静默打断本包 4 个测试套件的 collection。
   copyToClipboard,
+  getDocsDocumentOpener,
 } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -31,7 +32,7 @@ import RouteContext, { RouteContextConfig } from "@octo/base/src/Service/Context
 import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
 import RoutePage from "@octo/base/src/Components/RoutePage";
 import { Channel as WkChannel } from "wukongimjssdk";
-import { convertDocErrorMessage } from "../utils/convertDocError";
+import { convertDocErrorMessage, convertDocErrorDocument } from "../utils/convertDocError";
 import { applyRegenerateVoiceInput } from "../utils/regenerateInput";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
@@ -2929,48 +2930,75 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const text = content?.trim();
         if (!text) return;
         // 同步重入闸：semi-ui@2.93 的 Button `loading` 纯装饰、不禁点（round-4 P1-b(i)），
-        // 双开两个总结各点一下会并发两次转文档请求、创建两份文档。已有请求在飞时直接忽略，
-        // 不用 convertingKey（它是渲染态，异步 setState 拦不住同一事件循环里的第二次点击）。
+        // 双开两个总结各点一下会并发两次转文档请求、创建两份文档。已有请求在飞时直接忽略。
         if (this.convertInFlight) return;
         this.convertInFlight = true;
-        // 同步预开标签页，保留用户激活状态，避免浏览器拦截 popup。
-        // 对齐 Pages/Chat/index.tsx 的写法：先开 about:blank 拿到真实的“被拦/成功”信号
-        // （带 noopener 的 window.open 成功时也返回 null，没法 null-check），再手动置空 opener。
-        const opened = window.open("about:blank", "_blank");
-        if (opened) {
-            try {
-                opened.opener = null;
-            } catch {
-                // 个别沙箱会冻结 opener setter；about:blank 同源，残留风险可控，继续。
+
+        const hostOpener = getDocsDocumentOpener();
+        // Client 模式不预开 about:blank；Web 模式保持原有 popup 行为。
+        let opened: Window | null = null;
+        if (!hostOpener) {
+            opened = window.open("about:blank", "_blank");
+            if (opened) {
+                try {
+                    opened.opener = null;
+                } catch {
+                    // Some sandboxes freeze the opener setter.
+                }
             }
         }
         this.setState({ convertingKey: key });
         try {
             const docTitle = title || this.context.t("summary.detail.defaultTitle");
-            // 转文档时去掉引用序号标记（`[1]` / 团队 `[P1]`）——它们是总结正文
-            // 的引用锚,落到文档正文里是噪声。实现见 citationStrip.ts：与渲染侧权威正则
-            // 对齐，护住 markdown 链接 / 代码块 / 引用定义（round-4 P1-a）。
             const cleaned = stripCitationMarkers(content);
-            const { url } = await api.convertSummaryToDoc(docTitle, cleaned);
+            const result = await api.convertSummaryToDoc(docTitle, cleaned);
             if (this.unmounted) {
                 if (opened && !opened.closed) opened.close();
                 return;
             }
-            if (opened && !opened.closed) {
-                // 预开的标签页还在 → 导航它。
-                opened.location.href = url;
+            if (hostOpener) {
+                // Client 模式：宿主侧导航；失败时不展示"创建失败"，创建已成功。
+                try {
+                    await hostOpener(result);
+                } catch {
+                    if (this.unmounted) return;
+                    Toast.warning({
+                        duration: 8,
+                        content: (
+                            <span>
+                                {this.context.t("summary.detail.convertOpenFailed")}{" "}
+                                <a
+                                    href={result.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="summary-detail-doc-popup-link"
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        void hostOpener(result).catch(() => {
+                                            Toast.warning(this.context.t("summary.detail.convertOpenFailed"));
+                                        });
+                                    }}
+                                >
+                                    {this.context.t("summary.detail.convertDocLink")}
+                                </a>
+                            </span>
+                        ),
+                    });
+                    return;
+                }
+                if (!this.unmounted) Toast.success(this.context.t("summary.detail.convertSuccess"));
+            } else if (opened && !opened.closed) {
+                opened.location.href = result.url;
                 Toast.success(this.context.t("summary.detail.convertSuccess"));
             } else {
-                // popup 被拦（opened=null）或预开标签已被用户关掉（opened.closed）：
-                // 文档**已经创建成功**，不再喊“允许弹出后重试”——照做只会再造一份孤儿文档
-                // （round-4 P1-b(iii)）。给出文档直达链接，链接可点、文档不丢。
+                // Web popup 被拦或已关：文档已创建成功，只给链接不触发第二次创建。
                 Toast.warning({
                     duration: 8,
                     content: (
                         <span>
                             {this.context.t("summary.detail.convertPopupBlocked")}{" "}
                             <a
-                                href={url}
+                                href={result.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="summary-detail-doc-popup-link"
@@ -2984,15 +3012,39 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         } catch (err) {
             if (opened && !opened.closed) opened.close();
             if (this.unmounted) return;
-            // 刻意不走 extractErrorMsg：host 的 normalizeApiError 只识别 401/403/404/429/5xx,
-            // docs-backend 的 422/413/412/409 全部被归一化成「未知错误」——一个**非空**字符串,
-            // 于是 `extractErrorMsg(err) || convertFailed` 里 `||` 右边永远不执行,更具体的原因
-            // 全被吞掉。convertDocErrorMessage 直接读 err.response.data.error（docs 模块的
-            // toApiErrorEnvelope 保证它在),认不出时才回落 convertFailed。
-            Toast.error(convertDocErrorMessage(err, this.context.t));
+            // 错误文案走 convertDocErrorMessage（直读 err.response.data.error），
+            // 认不出时回落 convertFailed。部分失败保留文档时展示直达链接。
+            const partialDoc = convertDocErrorDocument(err);
+            if (partialDoc) {
+                Toast.error({
+                    duration: 8,
+                    content: (
+                        <span>
+                            {convertDocErrorMessage(err, this.context.t)}{" "}
+                            {this.context.t("summary.detail.convertDocumentRetained")}{" "}
+                            <a
+                                href={partialDoc.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="summary-detail-doc-popup-link"
+                                onClick={(e) => {
+                                    if (hostOpener) {
+                                        e.preventDefault();
+                                        void hostOpener(partialDoc).catch(() => {
+                                            Toast.warning(this.context.t("summary.detail.convertOpenFailed"));
+                                        });
+                                    }
+                                }}
+                            >
+                                {this.context.t("summary.detail.convertDocLink")}
+                            </a>
+                        </span>
+                    ),
+                });
+            } else {
+                Toast.error(convertDocErrorMessage(err, this.context.t));
+            }
         } finally {
-            // 只在 key 仍是自己时清：万一将来有并发路径覆写了 key，别把别人的
-            // loading 态顺手掐掉（round-4 P1-b(ii)）。
             if (!this.unmounted && this.state.convertingKey === key) {
                 this.setState({ convertingKey: null });
             }

@@ -12,6 +12,9 @@ export  class  EndpointID {
   // docs 能力端口：markdown 转在线文档。由已闭源的 docs 模块在自己的 init() 里注册实现，
   // OSS 侧只通过 bridge/docs/docsPort 调用，不直连 docs-backend REST。
   static docsConvertMarkdown = "docs.convertMarkdown"
+  /** docs 能力端口：在宿主侧打开已创建的文档。由 Client docs 适配器注册，
+   *  普通 Web 不注册此端口，handleConvertToDoc 维持现有 popup 行为。 */
+  static docsOpenDocument = "docs.openDocument"
 }
 
 export class EndpointCategory {

@@ -23,6 +23,7 @@ import { resolveApiURL } from "../apiURL";
 import appEnUS from "../i18n/en-US.json";
 import appZhCN from "../i18n/zh-CN.json";
 import { installFeatureAuthExpiryHandler } from "../client-feature/authLifecycle";
+import { installDocsAdapter } from "./docsAdapter";
 import { assertClientFeatureBootstrap } from "../client-feature/bootstrapContract";
 import { enableClientFeatureMocks } from "../client-feature/e2eMocks";
 import { SummaryShell } from "./SummaryShell";
@@ -77,6 +78,7 @@ async function main() {
     logPrefix: "[client-summary]",
   });
   WKApp.remoteConfig.startRequestConfig();
+  installDocsAdapter(host, bootstrap);
   Dap.shared.init();
   initializeSummaryAttentionRuntime({ observeIm: false });
   WKApp.mittBus.emit("space-ready");

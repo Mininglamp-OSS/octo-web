@@ -57,6 +57,23 @@ export class DocsCapabilityUnavailableError extends Error {
 }
 
 /**
+ * 在宿主侧打开已创建的文档（不新建标签页）。
+ * 由 Client docs 适配器注册，普通 Web 不注册此端口。
+ * 返回 undefined 时 handleConvertToDoc 维持现有的 popup 行为。
+ */
+export interface OpenDocumentParams {
+  /** 已创建的文档 id。 */
+  docId: string;
+  /** 可直接跳转的文档链接（fallback / 展示用）。 */
+  url: string;
+}
+
+export type OpenDocumentHandler = (
+  params: OpenDocumentParams,
+  spaceId: string,
+) => Promise<void>;
+
+/**
  * docs「markdown 转在线文档」能力当前是否可用。
  *
  * 两个条件都要满足，缺一不可：
@@ -92,4 +109,40 @@ export async function convertMarkdownToDoc(
     throw new DocsCapabilityUnavailableError();
   }
   return (await endpoint.handler(params)) as ConvertMarkdownToDocResult;
+}
+
+/**
+ * 获取宿主侧文档打开器（可选）。
+ *
+ * 返回的 handler 捕获当前 scope（spaceId/uid/token），调用时如果 scope 已变
+ * 则拒绝（抛出含 docId/url 的错误，不导航也不发起新转换）。普通 Web 无端口注册
+ * 时返回 undefined，保持现有 popup 行为。
+ */
+export function getDocsDocumentOpener():
+  | ((result: ConvertMarkdownToDocResult) => Promise<void>)
+  | undefined {
+  const endpoint = WKApp.endpointManager.get(EndpointID.docsOpenDocument);
+  if (!endpoint?.handler) return undefined;
+  const handler = endpoint.handler as (
+    params: OpenDocumentParams,
+    spaceId?: string,
+  ) => Promise<void>;
+  // 捕获当前 scope，拒绝过期调用导航旧结果。
+  const spaceId = WKApp.shared.currentSpaceId;
+  const uid = WKApp.loginInfo.uid ?? "";
+  const token = WKApp.loginInfo.token;
+  return async (result: ConvertMarkdownToDocResult) => {
+    if (
+      WKApp.shared.currentSpaceId !== spaceId ||
+      (WKApp.loginInfo.uid ?? "") !== uid ||
+      WKApp.loginInfo.token !== token
+    ) {
+      const err = new Error("document opener scope expired") as Error & {
+        document?: { docId: string; url: string };
+      };
+      err.document = { docId: result.docId, url: result.url };
+      throw err;
+    }
+    await handler({ docId: result.docId, url: result.url }, spaceId);
+  };
 }

@@ -3,6 +3,7 @@ import {
     convertDocErrorMessage,
     extractConvertDocErrorCode,
     resolveConvertDocErrorKey,
+    convertDocErrorDocument,
 } from './convertDocError';
 
 /**
@@ -124,5 +125,25 @@ describe('convertDocErrorMessage', () => {
     it('falls back to the generic convertFailed only when nothing is classifiable', () => {
         expect(convertDocErrorMessage(new Error('boom'), t))
             .toBe('summary.detail.convertFailed');
+    });
+});
+
+describe('convertDocErrorDocument', () => {
+    it('extracts document from error.document when present', () => {
+        const err = { document: { docId: 'doc-42', url: '/d/doc-42' } };
+        expect(convertDocErrorDocument(err)).toEqual({ docId: 'doc-42', url: '/d/doc-42' });
+    });
+
+    it('returns undefined when error.document is missing', () => {
+        expect(convertDocErrorDocument({})).toBeUndefined();
+        expect(convertDocErrorDocument(new Error('boom'))).toBeUndefined();
+        expect(convertDocErrorDocument(null)).toBeUndefined();
+        expect(convertDocErrorDocument(undefined)).toBeUndefined();
+    });
+
+    it('returns undefined when error.document has wrong shape', () => {
+        expect(convertDocErrorDocument({ document: { docId: 'doc-42' } })).toBeUndefined();
+        expect(convertDocErrorDocument({ document: { url: '/d/doc-42' } })).toBeUndefined();
+        expect(convertDocErrorDocument({ document: 'not an object' })).toBeUndefined();
     });
 });
