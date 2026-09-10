@@ -24,6 +24,7 @@ import {
   type UseMyReviewStateResult,
 } from "../hooks/useMyReviewState";
 import { isImageIcon } from "../utils/icon";
+import { CATEGORY_KEY_ALL } from "../utils/constants";
 import { getMcpAvatarColor, getMcpAvatarText } from "../utils/mcpAvatar";
 import "../index.css";
 import { parseMcpListQuery, serializeMcpListQuery } from "./mcpListQuery";
@@ -389,9 +390,11 @@ export default class McpMarketListPage extends Component<
         offset: 0,
       });
       if (requestVersion !== this.requestVersion) return;
-      const selectedCategoryMissing = this.state.categoriesSelected.some(
-        (key) => key !== "all" && !resp.categories.some((cat) => cat.key === key)
-      );
+      const selectedCategoryMissing =
+        resp.categories.length > 1 &&
+        this.state.categoriesSelected.some(
+          (key) => key !== CATEGORY_KEY_ALL && !resp.categories.some((cat) => cat.key === key)
+        );
       if (selectedCategoryMissing) {
         this.setState(
           {
@@ -400,7 +403,7 @@ export default class McpMarketListPage extends Component<
             categoriesSelected: [],
             total: 0,
             offset: 0,
-            loading: false,
+            loading: true,
           },
           () => this.loadData()
         );

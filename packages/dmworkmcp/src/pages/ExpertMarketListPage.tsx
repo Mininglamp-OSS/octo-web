@@ -252,12 +252,19 @@ export default function ExpertMarketListPage({
   }, [categories]);
   useEffect(() => {
     if (
+      activeCatalog.categoriesLoading ||
+      activeCatalog.categoriesErrorKey ||
+      categories.length === 0
+    ) {
+      return;
+    }
+    if (
       category !== ALL_CATEGORY &&
       !categories.some((item) => item.count > 0 && item.name === category)
     ) {
       setCategory(ALL_CATEGORY);
     }
-  }, [categories, category]);
+  }, [activeCatalog.categoriesLoading, activeCatalog.categoriesErrorKey, categories, category]);
 
   // The scoped tag endpoint includes tags on records beyond the loaded page.
   const allTags = useMemo(() => {
