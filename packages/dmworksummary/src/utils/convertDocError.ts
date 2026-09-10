@@ -29,6 +29,8 @@
  * 时至少还能说对大类），最后才回到 `convertFailed` 通用文案。
  */
 
+import { validateDocsDocumentLink } from "@octo/base";
+
 /** docs-backend 导入/写入路径会返回的错误码 → i18n key（相对 `summary.detail.`）。 */
 const ERROR_CODE_MESSAGE_KEYS: Record<string, string> = {
     create_unconfirmed: "summary.detail.convertErrCreateUnconfirmed",
@@ -130,16 +132,13 @@ export function convertDocErrorMessage(err: unknown, t: (key: string) => string)
  * 从错误对象里提取「已创建但导入失败的文档」链接。
  *
  * 有些失败场景中，docs 模块或 host bridge 在返回错误时仍保留了已创建的文档，
- * 用户不应因为导入失败就完全丢失这个链接。此处只验证形状；URL 的来源和规范路径
- * 由注册端口的实现方校验（Client 为 docsAdapter）。
+ * 用户不应因为导入失败就完全丢失这个链接。展示层仍需独立校验来源和路径，
+ * trustedOrigin 必须由调用方在发起转换前从可信配置中捕获，不能取自错误对象。
  *
  * 错误形状：`err.document = { docId: string; url: string }`。
  * 不存在或不是 Record 时返回 undefined。
  */
-export function convertDocErrorDocument(err: unknown): { docId: string; url: string } | undefined {
+export function convertDocErrorDocument(err: unknown, trustedOrigin: string): { docId: string; url: string } | undefined {
     if (!isRecord(err)) return undefined;
-    const doc = err.document;
-    if (!isRecord(doc)) return undefined;
-    if (typeof doc.docId !== "string" || typeof doc.url !== "string") return undefined;
-    return { docId: doc.docId, url: doc.url };
+    return validateDocsDocumentLink(err.document, trustedOrigin, true);
 }

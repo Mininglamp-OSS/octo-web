@@ -637,7 +637,7 @@
     "convertSuccess": "已创建文档，正在跳转...",
     "convertFailed": "转换失败，请重试",
     "convertPopupBlocked": "浏览器拦截了新标签页，文档已创建。",
-    "convertOpenFailed": "文档已保留，但未能在当前窗口打开。请检查原账号和组织后打开，不要重复转换。",
+    "convertOpenFailed": "文档已保留，但未能在当前窗口打开。可复制下方链接，在原账号和组织中检查，请勿重复转换。",
     "convertDocumentRetained": "文档已保留，请先检查内容，不要重复转换。",
     "convertErrCreateUnconfirmed": "文档创建结果尚未确认，请先检查原组织的资料库，避免重复创建。",
     "convertDocLink": "打开文档",

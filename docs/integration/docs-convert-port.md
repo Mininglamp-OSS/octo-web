@@ -35,7 +35,7 @@
 
 ## docs 侧需要做的
 
-在 docs 模块的 `init()` 里注册一个 handler，大约 15 行：
+在 docs 模块的 `init()` 里注册一个 handler：
 
 ```ts
 import WKApp from "@octo/base/src/App";
@@ -52,8 +52,19 @@ WKApp.endpointManager.setMethod(
     } catch (err) {
       // 回滚：只在**确定性的 HTTP 拒绝**时删除孤儿空文档。
       // 超时 / 网络错误不要删 —— 服务端可能已经原子应用了导入，删掉会丢用户内容。
-      if ((err as { response?: unknown })?.response) {
-        await deleteDoc(docId).catch(() => {});
+      // isConfirmedImportRejection 由实现方按后端原子性语义提供；
+      // 不能只检查是否有 response（例如 5xx 仍可能无法确认写入结果）。
+      let retained = true;
+      if (isConfirmedImportRejection(err)) {
+        try {
+          await deleteDoc(docId);
+          retained = false;
+        } catch {
+          // 删除失败时仍保留可检查的链接。
+        }
+      }
+      if (retained && err instanceof Error) {
+        Object.assign(err, { document: { docId, url: buildDocLink({ docId }) } });
       }
       throw err;
     }
@@ -94,8 +105,10 @@ interface ConvertMarkdownToDocResult {
 | 情况 | 期望行为 |
 |---|---|
 | 创建文档失败 | 直接抛出，OSS 侧按下面的「错误形状」映射文案 |
-| 导入失败（确定性 HTTP 错误，有 `err.response`） | 删除已创建的空文档，再抛出 |
-| 导入失败（超时 / 网络错误，无 `err.response`） | **不要删**，直接抛出 |
+| 创建结果无法确认 | 抛出 `response.data.error = "create_unconfirmed"`，不要自动重复创建 |
+| 导入失败（已确认未写入的确定性 HTTP 拒绝） | 删除已创建的空文档，再抛出；删除失败时附带 `error.document` |
+| 导入失败（超时 / 网络错误 / 写入结果未知） | **不要删或自动重试**，保留文档，附带经过校验的 `error.document` |
+| 返回结果或作用域无法确认，但创建可能已经完成 | 使用 `create_unconfirmed` 文案；不可暴露未经校验或旧作用域的链接 |
 | 端口未注册 | OSS 侧抛 `DocsCapabilityUnavailableError`；正常路径不会走到（UI 已 gate） |
 
 回滚判据放在实现方，是因为只有它知道自己的超时配置和后端的原子性语义。
@@ -124,6 +137,29 @@ OSS 侧读这个字段的地方是 `packages/dmworksummary/src/utils/convertDocE
 它把错误码映射成具体文案；认不出错误码时退回 HTTP 状态码；再认不出才用通用文案。
 所以形状不符**不会报错**，只会退化成通用文案——这是「有则更好」，不是硬依赖。
 
+#### 可选的保留文档字段
+
+当文档已创建且未被确认删除时，实现方可以在错误上附带：
+
+```ts
+{
+  response: { data: { error: "import_failed" } },
+  document: { docId: "doc-42", url: "https://example.com/d/doc-42" }
+}
+```
+
+- `docId` 必须匹配 `[A-Za-z0-9_-]{1,128}`；`url` 必须来自 `buildDocLink({ docId })`，
+  与独立可信配置的 HTTP(S) origin 同源，路径严格为 `/d/<docId>`，不得带凭据、query 或 hash。
+- 普通 Web 端允许精确的根相对 `/d/<docId>`，展示层按**发起转换前**捕获的 `webOrigin()`
+  转为绝对链接。Client bridge 必须返回规范的绝对链接，其 origin 来自 bootstrap。
+- OSS 展示层使用 `validateDocsDocumentLink` 再次校验；Client adapter 对 resolved
+  `{ok: false}` 和 rejected promise 两条路径做同样校验。不可从 `error.document.url`
+  本身推导可信 origin；不可信字段被丢弃，原始错误 message 不作为用户文案。
+- `create_unconfirmed` 表示“创建结果无法确认，请先检查文档库”，不得提示直接重试。
+  它不代表一个确定的 HTTP 状态，不应编造 status。
+- 展示保留链接不触发第二次创建、删除或身份切换。宿主打开器过期时保持原 scope，
+  提供已校验 URL 的可选择文本供用户在原账号和组织中检查。
+
 注意这是一处**刻意的、有记录的耦合**：`docsPort.ts` 本身不认识 docs-backend，
 这张表是唯一把后端错误码写进契约的地方。新增错误码时两边一起改。
 
@@ -151,6 +187,8 @@ OSS 侧：
 cd packages/dmworkbase && npx vitest run src/__tests__/docsPort.test.ts
 cd packages/dmworksummary && npx vitest run src/components/__tests__/SummaryResultActions.test.tsx
 cd packages/dmworksummary && npx vitest run src/api/__tests__/summaryApi.test.ts
+pnpm --filter @octo/base exec vitest run src/bridge/docs/documentLink.test.ts
+pnpm --filter @dmwork/summary exec vitest run src/utils/convertDocError.test.ts src/pages/__tests__/SummaryDetailPage.convert.test.tsx
 ```
 
 docs 侧接好后，端到端验证路径：总结详情页 → 结果下方「转为在线文档」→

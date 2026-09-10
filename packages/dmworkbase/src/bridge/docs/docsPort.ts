@@ -17,6 +17,8 @@
 import WKApp from "../../App";
 import { EndpointID } from "../../Service/Const";
 
+export { normalizeDocsOrigin, validateDocsDocumentLink } from "./documentLink";
+
 /** 调用方传给 docs 模块的入参。 */
 export interface ConvertMarkdownToDocParams {
   /** 文档标题；实现方可自行清洗/截断，空串时由实现方决定缺省标题。 */

@@ -7,56 +7,36 @@
  * 校验来源、作用域和 payload；这里不发起 Docs REST，也不 import 私有 Docs 源码。
  */
 
-import { WKApp, EndpointID } from "@octo/base";
+import { WKApp, EndpointID, normalizeDocsOrigin, validateDocsDocumentLink } from "@octo/base";
 import type {
   ConvertMarkdownToDocResult,
-  OpenDocumentParams,
 } from "@octo/base";
 import type { OctoBuddySummaryBridge } from "./hostBridge";
 
-/** 校验 docId/url 为可信 apiOrigin 下规范的 `/d/:docId`，无 query/hash/userinfo。 */
-function isValidDocUrl(
-  docId: string,
-  url: string,
-  apiOrigin: string,
-): boolean {
-  if (typeof docId !== "string" || typeof url !== "string") return false;
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return false;
-  }
-  if (parsed.origin !== apiOrigin) return false;
-  if (parsed.username || parsed.password) return false;
-  if (parsed.search || parsed.hash) return false;
-  return /^[A-Za-z0-9_-]{1,128}$/.test(docId) && parsed.pathname === `/d/${docId}`;
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }
 
-/** 把 host 返回的 ok:false 错误重构成 convertDocErrorMessage 认识的形状。 */
-function toPortError(
-  error: {
-    message: string;
-    status?: number;
-    code?: string;
-    document?: { docId: string; url: string };
-  },
-  apiOrigin: string,
-): Error {
-  const wrapped = new Error(error.message) as Error & {
+/** Both rejected promises and resolved failures pass the same boundary. */
+function toPortError(value: unknown, apiOrigin: string): Error {
+  const error = asRecord(value);
+  const response = asRecord(error.response);
+  const status = typeof error.status === "number" ? error.status : response.status;
+  const code = typeof error.code === "string" ? error.code : asRecord(response.data).error;
+  const wrapped = new Error(typeof error.message === "string" ? error.message : "document conversion failed") as Error & {
     response?: { status?: number; data: { error?: string } };
     document?: { docId: string; url: string };
   };
-  if (typeof error.status === "number" || typeof error.code === "string") {
-    wrapped.response = { status: error.status, data: { error: error.code } };
+  if (typeof status === "number" || typeof code === "string") {
+    wrapped.response = {
+      status: typeof status === "number" ? status : undefined,
+      data: { error: typeof code === "string" ? code : undefined },
+    };
   }
-  // 只保留通过安全校验的 document 链接；恶意 URL 不放行。
-  if (error.document?.docId && error.document.url) {
-    const { docId, url } = error.document;
-    if (isValidDocUrl(docId, url, apiOrigin)) {
-      wrapped.document = { docId, url };
-    }
-  }
+  const document = validateDocsDocumentLink(error.document, apiOrigin);
+  if (document) wrapped.document = document;
   return wrapped;
 }
 
@@ -68,18 +48,25 @@ export function installDocsAdapter(
     session?: { apiOrigin?: string };
   },
 ): void {
-  if (bootstrap.capabilities?.docsConversion !== true) return;
-  if (typeof bridge.convertMarkdown !== "function") return;
-  if (typeof bridge.openDocument !== "function") return;
-
-  const apiOrigin = bootstrap.session?.apiOrigin;
-  if (typeof apiOrigin !== "string" || !apiOrigin) return;
-  try {
-    const origin = new URL(apiOrigin);
-    if (!["https:", "http:"].includes(origin.protocol) || origin.origin !== apiOrigin) return;
-  } catch {
+  const capability = bootstrap.capabilities?.docsConversion;
+  if (capability !== true) {
+    if (capability !== undefined && capability !== false) {
+      console.warn("[client-summary] docs adapter not installed: invalid capability flag");
+    }
     return;
   }
+  if (typeof bridge.convertMarkdown !== "function" || typeof bridge.openDocument !== "function") {
+    console.warn("[client-summary] docs adapter not installed: missing bridge methods");
+    return;
+  }
+
+  const apiOrigin = normalizeDocsOrigin(bootstrap.session?.apiOrigin);
+  if (!apiOrigin) {
+    console.warn("[client-summary] docs adapter not installed: invalid API origin");
+    return;
+  }
+  // applySession runs once per renderer. Account/token changes must recreate it;
+  // do not silently adopt a refreshed identity for an already captured opener.
   const identity = { uid: WKApp.loginInfo.uid ?? "", token: WKApp.loginInfo.token };
   const assertIdentity = () => {
     if ((WKApp.loginInfo.uid ?? "") !== identity.uid || WKApp.loginInfo.token !== identity.token) {
@@ -87,50 +74,66 @@ export function installDocsAdapter(
     }
   };
 
-  WKApp.endpointManager.setMethod(EndpointID.docsConvertMarkdown, async ({
-    title,
-    markdown,
-  }: {
-    title: string;
-    markdown: string;
-  }): Promise<ConvertMarkdownToDocResult> => {
+  WKApp.endpointManager.setMethod(EndpointID.docsConvertMarkdown, async (
+    value: unknown,
+  ): Promise<ConvertMarkdownToDocResult> => {
     assertIdentity();
+    const { title, markdown } = asRecord(value);
+    if (typeof title !== "string" || typeof markdown !== "string") {
+      throw new Error("invalid document conversion input");
+    }
     const spaceId = WKApp.shared.currentSpaceId;
     const uid = WKApp.loginInfo.uid ?? "";
     const token = WKApp.loginInfo.token;
+    const assertCurrent = () => {
+      if (
+        WKApp.shared.currentSpaceId !== spaceId ||
+        (WKApp.loginInfo.uid ?? "") !== uid ||
+        WKApp.loginInfo.token !== token
+      ) {
+        throw toPortError({
+          message: "summary scope changed during docs conversion",
+          code: "create_unconfirmed",
+        }, apiOrigin);
+      }
+    };
+    let response: unknown;
+    try {
+      response = await bridge.convertMarkdown!({ title, markdown }, spaceId);
+    } catch (error) {
+      assertCurrent();
+      throw toPortError(error, apiOrigin);
+    }
+    assertCurrent();
 
-    const response = await bridge.convertMarkdown!({ title, markdown }, spaceId);
-
-    if (
-      WKApp.shared.currentSpaceId !== spaceId ||
-      (WKApp.loginInfo.uid ?? "") !== uid ||
-      WKApp.loginInfo.token !== token
-    ) {
-      throw new Error("summary scope changed during docs conversion");
+    const envelope = asRecord(response);
+    if (envelope.ok === false) {
+      throw toPortError(envelope.error, apiOrigin);
     }
 
-    if (!response.ok) {
-      throw toPortError(response.error, apiOrigin);
+    const document = validateDocsDocumentLink(envelope.value, apiOrigin);
+    if (envelope.ok !== true || !document) {
+      throw toPortError({
+        message: "invalid document link from host",
+        code: "create_unconfirmed",
+      }, apiOrigin);
     }
 
-    if (!isValidDocUrl(response.value.docId, response.value.url, apiOrigin)) {
-      throw new Error("invalid document link from host");
-    }
-
-    return response.value;
+    return document;
   });
 
   WKApp.endpointManager.setMethod(EndpointID.docsOpenDocument, async (
-    params: OpenDocumentParams,
+    params: unknown,
     spaceId?: string,
   ): Promise<void> => {
     assertIdentity();
     if (!spaceId || spaceId !== WKApp.shared.currentSpaceId) {
       throw new Error("document opener scope expired");
     }
-    if (!isValidDocUrl(params.docId, params.url, apiOrigin)) {
+    const document = validateDocsDocumentLink(params, apiOrigin);
+    if (!document) {
       throw new Error("invalid document link from host");
     }
-    await bridge.openDocument!({ docId: params.docId }, spaceId);
+    await bridge.openDocument!({ docId: document.docId }, spaceId);
   });
 }

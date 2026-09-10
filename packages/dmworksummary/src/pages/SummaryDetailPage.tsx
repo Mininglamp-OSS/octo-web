@@ -24,6 +24,8 @@ import {
   // 静默打断本包 4 个测试套件的 collection。
   copyToClipboard,
   getDocsDocumentOpener,
+  validateDocsDocumentLink,
+  webOrigin,
 } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -32,7 +34,7 @@ import RouteContext, { RouteContextConfig } from "@octo/base/src/Service/Context
 import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
 import RoutePage from "@octo/base/src/Components/RoutePage";
 import { Channel as WkChannel } from "wukongimjssdk";
-import { convertDocErrorMessage, convertDocErrorDocument } from "../utils/convertDocError";
+import { convertDocErrorMessage, convertDocErrorDocument, resolveConvertDocErrorKey } from "../utils/convertDocError";
 import { applyRegenerateVoiceInput } from "../utils/regenerateInput";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
@@ -2934,29 +2936,39 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (this.convertInFlight) return;
         this.convertInFlight = true;
 
-        const hostOpener = getDocsDocumentOpener();
-        // Client 模式不预开 about:blank；Web 模式保持原有 popup 行为。
+        let hostOpener: ReturnType<typeof getDocsDocumentOpener> = undefined;
+        let documentOrigin = "";
         let opened: Window | null = null;
-        if (!hostOpener) {
-            opened = window.open("about:blank", "_blank");
-            if (opened) {
-                try {
-                    opened.opener = null;
-                } catch {
-                    // Some sandboxes freeze the opener setter.
+        try {
+            documentOrigin = webOrigin();
+            hostOpener = getDocsDocumentOpener();
+            // Client 模式不预开 about:blank；Web 模式保持原有 popup 行为。
+            if (!hostOpener) {
+                opened = window.open("about:blank", "_blank");
+                if (opened) {
+                    try {
+                        opened.opener = null;
+                    } catch {
+                        // Some sandboxes freeze the opener setter.
+                    }
                 }
             }
-        }
-        this.setState({ convertingKey: key });
-        try {
+            this.setState({ convertingKey: key });
             const docTitle = title || this.context.t("summary.detail.defaultTitle");
             const cleaned = stripCitationMarkers(content);
-            const result = await api.convertSummaryToDoc(docTitle, cleaned);
+            const value = await api.convertSummaryToDoc(docTitle, cleaned);
             if (this.unmounted) {
                 if (opened && !opened.closed) opened.close();
                 return;
             }
+            const result = validateDocsDocumentLink(value, documentOrigin, true);
+            if (!result) {
+                throw Object.assign(new Error("invalid document link"), {
+                    response: { data: { error: "create_unconfirmed" } },
+                });
+            }
             if (hostOpener) {
+                const openDocument = hostOpener;
                 // Client 模式：宿主侧导航；失败时不展示"创建失败"，创建已成功。
                 try {
                     await hostOpener(result);
@@ -2974,13 +2986,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     className="summary-detail-doc-popup-link"
                                     onClick={(e) => {
                                         e.preventDefault();
-                                        void hostOpener(result).catch(() => {
+                                        void openDocument(result).catch(() => {
                                             Toast.warning(this.context.t("summary.detail.convertOpenFailed"));
                                         });
                                     }}
                                 >
                                     {this.context.t("summary.detail.convertDocLink")}
                                 </a>
+                                <span className="summary-detail-doc-retained-url">{result.url}</span>
                             </span>
                         ),
                     });
@@ -3014,13 +3027,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             if (this.unmounted) return;
             // 错误文案走 convertDocErrorMessage（直读 err.response.data.error），
             // 认不出时回落 convertFailed。部分失败保留文档时展示直达链接。
-            const partialDoc = convertDocErrorDocument(err);
+            const partialDoc = convertDocErrorDocument(err, documentOrigin);
             if (partialDoc) {
+                const openDocument = hostOpener;
+                const errorKey = resolveConvertDocErrorKey(err);
                 Toast.error({
                     duration: 8,
                     content: (
                         <span>
-                            {convertDocErrorMessage(err, this.context.t)}{" "}
+                            {errorKey ? this.context.t(errorKey) + " " : null}
                             {this.context.t("summary.detail.convertDocumentRetained")}{" "}
                             <a
                                 href={partialDoc.url}
@@ -3028,9 +3043,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 rel="noopener noreferrer"
                                 className="summary-detail-doc-popup-link"
                                 onClick={(e) => {
-                                    if (hostOpener) {
+                                    if (openDocument) {
                                         e.preventDefault();
-                                        void hostOpener(partialDoc).catch(() => {
+                                        void openDocument(partialDoc).catch(() => {
                                             Toast.warning(this.context.t("summary.detail.convertOpenFailed"));
                                         });
                                     }
@@ -3038,6 +3053,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             >
                                 {this.context.t("summary.detail.convertDocLink")}
                             </a>
+                            <span className="summary-detail-doc-retained-url">{partialDoc.url}</span>
                         </span>
                     ),
                 });

@@ -40,8 +40,9 @@ vi.mock("../../api/summaryApi");
 import * as api from "../../api/summaryApi";
 
 // Mock getDocsDocumentOpener so each test can control return value
-const { mockGetDocsDocumentOpener } = vi.hoisted(() => ({
+const { mockGetDocsDocumentOpener, mockWebOrigin } = vi.hoisted(() => ({
     mockGetDocsDocumentOpener: vi.fn(),
+    mockWebOrigin: vi.fn(),
 }));
 
 vi.mock("@octo/base", async () => {
@@ -49,6 +50,7 @@ vi.mock("@octo/base", async () => {
     return {
         ...actual,
         getDocsDocumentOpener: mockGetDocsDocumentOpener,
+        webOrigin: mockWebOrigin,
     };
 });
 
@@ -78,16 +80,8 @@ function makePage(props: Record<string, unknown> = {}) {
     return page;
 }
 
-/** Simulate calling handleConvertToDoc and collect toast/location calls. */
-async function convert(
-    page: any,
-    content = "Summary text with [1] citation.",
-    title = "Test Doc",
-    key = "team-result",
-) {
-    const { Toast } = await import("@douyinfe/semi-ui");
-    return { Toast, page, result: await page.handleConvertToDoc(content, title, key) };
-}
+const origin = "https://example.com";
+const document = { docId: "doc-1", url: `${origin}/d/doc-1` };
 
 describe("SummaryDetailPage convert flow", () => {
     let windowOpenSpy: any;
@@ -96,6 +90,7 @@ describe("SummaryDetailPage convert flow", () => {
         vi.clearAllMocks();
         vi.mocked(api.convertSummaryToDoc).mockResolvedValue({ docId: "doc-1", url: "/d/doc-1" });
         mockGetDocsDocumentOpener.mockReturnValue(undefined);
+        mockWebOrigin.mockReturnValue(origin);
         windowOpenSpy = vi.spyOn(window, "open").mockReturnValue(null);
     });
 
@@ -114,7 +109,7 @@ describe("SummaryDetailPage convert flow", () => {
 
             expect(windowOpenSpy).toHaveBeenCalledWith("about:blank", "_blank");
             expect(api.convertSummaryToDoc).toHaveBeenCalledWith("Title", "content");
-            expect(mockWindow.location.href).toBe("/d/doc-1");
+            expect(mockWindow.location.href).toBe(document.url);
         });
 
         it("shows blocked-popup link when window.open returns null", async () => {
@@ -155,7 +150,7 @@ describe("SummaryDetailPage convert flow", () => {
             await page.handleConvertToDoc("content", "Title", "k");
 
             expect(windowOpenSpy).not.toHaveBeenCalled();
-            expect(hostOpener).toHaveBeenCalledWith({ docId: "doc-1", url: "/d/doc-1" });
+            expect(hostOpener).toHaveBeenCalledWith(document);
         });
 
         it("preserves created doc link when hostOpener throws after create success", async () => {
@@ -176,7 +171,7 @@ describe("SummaryDetailPage convert flow", () => {
         });
 
         it.each(["navigation", "import"])("retained %s error link keeps the original scoped opener", async (failure) => {
-            const result = { docId: "doc-1", url: "/d/doc-1" };
+            const result = document;
             const originalOpener = vi.fn().mockRejectedValue(new Error("old scope"));
             const newIdentityOpener = vi.fn();
             mockGetDocsDocumentOpener.mockReturnValue(originalOpener);
@@ -190,6 +185,9 @@ describe("SummaryDetailPage convert flow", () => {
             const link = React.Children.toArray(content.content.props.children)
                 .find((child) => React.isValidElement(child) && child.type === "a") as React.ReactElement<any>;
             expect(link.props.href).toBe(result.url);
+            const retainedUrl = React.Children.toArray(content.content.props.children)
+                .find((child) => React.isValidElement(child) && child.props.className === "summary-detail-doc-retained-url") as React.ReactElement<any>;
+            expect(retainedUrl.props.children).toBe(result.url);
             mockGetDocsDocumentOpener.mockReturnValue(newIdentityOpener);
             const preventDefault = vi.fn();
             link.props.onClick({ preventDefault });
@@ -201,35 +199,6 @@ describe("SummaryDetailPage convert flow", () => {
             expect(api.convertSummaryToDoc).toHaveBeenCalledOnce();
         });
 
-        it("shows created doc link when hostOpener rejects scope", async () => {
-            const scopeErr = new Error("scope expired") as any;
-            scopeErr.document = { docId: "doc-1", url: "/d/doc-1" };
-            const hostOpener = vi.fn(async () => { throw scopeErr; });
-            mockGetDocsDocumentOpener.mockReturnValue(hostOpener);
-            const { Toast } = await import("@douyinfe/semi-ui");
-            const page = makePage();
-            page.convertInFlight = false;
-
-            await page.handleConvertToDoc("content", "Title", "k");
-
-            // Must show success + link, NOT generic error.
-            expect(Toast.warning).toHaveBeenCalled();
-            expect(Toast.error).not.toHaveBeenCalled();
-        });
-
-        it("shows created doc link when convert succeeds but identity changed before open", async () => {
-            const hostOpener = vi.fn(async () => { throw new Error("scope expired"); });
-            mockGetDocsDocumentOpener.mockReturnValue(hostOpener);
-            const { Toast } = await import("@douyinfe/semi-ui");
-            const page = makePage();
-            page.convertInFlight = false;
-
-            await page.handleConvertToDoc("content", "Title", "k");
-
-            expect(Toast.warning).toHaveBeenCalled();
-            expect(Toast.error).not.toHaveBeenCalled();
-        });
-
         it("does not navigate a stale result after unmount", async () => {
             const hostOpener = vi.fn(async () => {});
             mockGetDocsDocumentOpener.mockReturnValue(hostOpener);
@@ -239,18 +208,92 @@ describe("SummaryDetailPage convert flow", () => {
 
             await page.handleConvertToDoc("content", "Title", "k");
 
-            // Conversion was not started (unmounted guard is after conversion, but
-            // the in-flight guard and unmounted guard are separate - let's trace:
-            // convertInFlight check passes, hostOpener is set (no popup), state.set
-            // proceeds, API call is made, result returns, unmounted=true -> returns.
-            // The important check: hostOpener should NOT be invoked on unmounted.
-            // Actually the unmounted check in the try block returns before hostOpener.
-            // Let's check: after conversion succeeds, it checks unmounted and returns.
             expect(hostOpener).not.toHaveBeenCalled();
         });
     });
 
+    describe.each(["Web", "Client"])("%s document boundary", (mode) => {
+        beforeEach(() => {
+            if (mode === "Client") mockGetDocsDocumentOpener.mockReturnValue(vi.fn());
+        });
+
+        it.each([
+            "javascript:alert(1)", "data:text/html,unsafe", "https://evil.example/d/doc-1",
+            `${origin}/d/doc-1?token=secret`, `${origin}/d/other`, "//example.com/d/doc-1",
+        ])("does not render a retained link for %s", async (url) => {
+            vi.mocked(api.convertSummaryToDoc).mockRejectedValue({
+                document: { docId: "doc-1", url },
+            });
+            const { Toast } = await import("@douyinfe/semi-ui");
+            await makePage().handleConvertToDoc("content", "Title", "k");
+            expect(Toast.error).toHaveBeenCalledExactlyOnceWith("summary.detail.convertFailed");
+            expect(Toast.warning).not.toHaveBeenCalled();
+        });
+
+        it("rejects an unsafe success URL without inviting another create", async () => {
+            const popup = { closed: false, close: vi.fn(), location: { href: "" }, opener: null };
+            windowOpenSpy.mockReturnValue(popup);
+            vi.mocked(api.convertSummaryToDoc).mockResolvedValue({
+                docId: "doc-1", url: "https://evil.example/d/doc-1",
+            });
+            const { Toast } = await import("@douyinfe/semi-ui");
+            await makePage().handleConvertToDoc("content", "Title", "k");
+            expect(popup.location.href).toBe("");
+            expect(Toast.error).toHaveBeenCalledExactlyOnceWith("summary.detail.convertErrCreateUnconfirmed");
+            if (mode === "Client") expect(mockGetDocsDocumentOpener.mock.results[0].value).not.toHaveBeenCalled();
+            else expect(popup.close).toHaveBeenCalledOnce();
+        });
+
+        it.each([undefined, "import_failed"])("keeps retained-document guidance retry-safe for code %s", async (code) => {
+            vi.mocked(api.convertSummaryToDoc).mockRejectedValue({
+                document,
+                response: { status: undefined, data: { error: code } },
+            });
+            const { Toast } = await import("@douyinfe/semi-ui");
+            await makePage().handleConvertToDoc("content", "Title", "k");
+            const content = vi.mocked(Toast.error).mock.calls[0][0] as any;
+            const children = React.Children.toArray(content.content.props.children);
+            const text = children.filter(child => typeof child === "string").join("");
+            expect(text).toContain("summary.detail.convertDocumentRetained");
+            expect(text).not.toContain("summary.detail.convertFailed");
+            if (code) expect(text).toContain("summary.detail.convertErrParse");
+        });
+
+        it.each(["success", "failure"])("keeps the trusted origin captured before an awaited %s", async (outcome) => {
+            vi.mocked(api.convertSummaryToDoc).mockImplementationOnce(async () => {
+                mockWebOrigin.mockReturnValue("https://other.example");
+                if (outcome === "failure") throw { document };
+                return document;
+            });
+            const { Toast } = await import("@douyinfe/semi-ui");
+            await makePage().handleConvertToDoc("content", "Title", "k");
+            expect(mockWebOrigin).toHaveBeenCalledOnce();
+            if (outcome === "success" && mode === "Client") {
+                expect(mockGetDocsDocumentOpener.mock.results[0].value).toHaveBeenCalledWith(document);
+            } else {
+                const toast = outcome === "failure" ? Toast.error : Toast.warning;
+                const content = vi.mocked(toast).mock.calls[0][0] as any;
+                const link = React.Children.toArray(content.content.props.children)
+                    .find((child) => React.isValidElement(child) && child.type === "a") as React.ReactElement<any>;
+                expect(link.props.href).toBe(document.url);
+            }
+        });
+    });
+
     describe("edge cases", () => {
+        it.each(["origin", "opener", "popup"])("releases the lock if %s capture throws", async (stage) => {
+            const fail = () => { throw new Error("unavailable"); };
+            if (stage === "origin") mockWebOrigin.mockImplementationOnce(fail);
+            if (stage === "opener") mockGetDocsDocumentOpener.mockImplementationOnce(fail);
+            if (stage === "popup") windowOpenSpy.mockImplementationOnce(fail);
+            const page = makePage();
+            await page.handleConvertToDoc("content", "Title", "k");
+            expect(api.convertSummaryToDoc).not.toHaveBeenCalled();
+            expect(page.convertInFlight).toBe(false);
+            await page.handleConvertToDoc("content", "Title", "k");
+            expect(api.convertSummaryToDoc).toHaveBeenCalledOnce();
+        });
+
         it("skips conversion when content is empty", async () => {
             const page = makePage();
             page.convertInFlight = false;

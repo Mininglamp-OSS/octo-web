@@ -112,6 +112,24 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Build client Summary artifact
+        env:
+          VITE_API_URL: https://api.example.com
+          VITE_E2E_MOCK: "0"
+          VITE_E2E_MOCK_IM: "0"
+          OCTO_CLIENT_ARTIFACT_OUT_DIR: ${{ runner.temp }}/client-summary
+        run: |
+          pnpm --filter @octo/web run build:client-summary
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const dir = process.env.OCTO_CLIENT_ARTIFACT_OUT_DIR;
+          const manifest = JSON.parse(fs.readFileSync(path.join(dir, "renderer-manifest.json"), "utf8"));
+          if (manifest.featureId !== "summary" || manifest.sourceDirty !== false || manifest.e2eMock !== false) {
+            throw new Error("client-summary artifact must use clean, non-mock source");
+          }
+          if (!fs.statSync(path.join(dir, manifest.entry)).size) throw new Error("missing Summary entry");
+          NODE
       - name: Agent Mail tests
         run: pnpm --filter @octo/mail test
       - name: Agent Mail typecheck

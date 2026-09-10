@@ -1512,6 +1512,13 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     text-decoration: underline;
 }
 
+.summary-detail-doc-retained-url {
+    display: block;
+    overflow-wrap: anywhere;
+    user-select: text;
+    cursor: text;
+}
+
 .summary-detail-personal h3,
 .summary-detail-team h3,
 .summary-detail-members h3 {
