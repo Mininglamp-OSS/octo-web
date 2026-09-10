@@ -48,6 +48,7 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [moreError, setMoreError] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Skill | null>(null);
   // Opaque cursor for the next page, null when the list is exhausted. The 全部
@@ -60,14 +61,19 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
   // The IntersectionObserver callback captures these once at observe time, so
   // the live cursor / in-flight flag are read through refs instead.
   const cursorRef = useRef<string | null>(null);
-  const loadingMoreRef = useRef(false);
+  // Records which request generation owns the current pagination request. A
+  // stale request must not clear the in-flight guard for a newer Space/load.
+  const loadingMoreVersionRef = useRef<number | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   cursorRef.current = cursor;
 
   const load = useCallback(async () => {
     const version = ++requestRef.current;
+    loadingMoreVersionRef.current = null;
     setLoading(true);
+    setLoadingMore(false);
     setError(null);
+    setMoreError(false);
     try {
       const page = await getMySkills({ limit: PAGE_SIZE }, { pluginType: "all" });
       if (version !== requestRef.current) return;
@@ -84,13 +90,14 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
   // Append the next page. Deliberately does NOT bump requestRef — a load-more is
   // a continuation of the current base read, not a new one — but it is voided by
   // any base read or Space switch that bumps the version out from under it. A
-  // failed page is swallowed: the sentinel stays and a later scroll retries it.
+  // failed page leaves the existing rows in place and exposes an explicit retry.
   const loadMore = useCallback(async () => {
     const next = cursorRef.current;
-    if (!next || loadingMoreRef.current) return;
-    loadingMoreRef.current = true;
     const version = requestRef.current;
+    if (!next || loadingMoreVersionRef.current === version) return;
+    loadingMoreVersionRef.current = version;
     setLoadingMore(true);
+    setMoreError(false);
     try {
       const page = await getMySkills(
         { limit: PAGE_SIZE, cursor: next },
@@ -100,9 +107,11 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
       setItems((prev) => [...prev, ...page.items]);
       setCursor(page.nextCursor);
     } catch {
-      // Swallow — retried on the next intersection; the base read owns errors.
+      if (version !== requestRef.current) return;
+      setMoreError(true);
     } finally {
-      loadingMoreRef.current = false;
+      if (loadingMoreVersionRef.current !== version) return;
+      loadingMoreVersionRef.current = null;
       if (version === requestRef.current) setLoadingMore(false);
     }
   }, []);
@@ -111,13 +120,22 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
     void load();
   }, [load]);
 
+  useEffect(
+    () => () => {
+      requestRef.current += 1;
+      loadingMoreVersionRef.current = null;
+    },
+    []
+  );
+
   // Auto-load the next page when the sentinel nears the viewport, so the 全部
   // tab scrolls like the 技能 / 连接器 catalogs instead of stopping at page one.
   // The sentinel only renders once rows exist, so this re-runs as `loading`
   // settles to pick up the node; guarded for jsdom, which has no IO.
   useEffect(() => {
     const node = sentinelRef.current;
-    if (!node || typeof IntersectionObserver === "undefined") return undefined;
+    if (!node || moreError || typeof IntersectionObserver === "undefined")
+      return undefined;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) void loadMore();
@@ -126,7 +144,7 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [loadMore, loading, error, items.length]);
+  }, [loadMore, loading, error, moreError, items.length, cursor]);
 
   // Re-read on a Space switch. Every per-type tab (SkillListPage,
   // McpMarketListPage) subscribes; the 全部 tab — which is the default view and
@@ -143,6 +161,7 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
       setItems([]);
       setCursor(null);
       setError(null);
+      setMoreError(false);
       setBusyId(null);
       setDeleting(null);
       void load();
@@ -291,14 +310,23 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
   return (
     <div className="wk-mcp-mine__all">
       <MineTable rows={rows} ariaLabel={t("mcp.mine.allAriaLabel")} />
-      <div ref={sentinelRef} className="wk-mcp-mine__all-sentinel">
-        {loadingMore && (
-          <span className="skill-market-review-list--loading">
-            <RefreshCw size={14} className="skill-market-spin" />
-            {t("skillMarket.common.loading")}
-          </span>
-        )}
-      </div>
+      {(cursor || loadingMore || moreError) && (
+        <div ref={sentinelRef} className="wk-mcp-mine__all-sentinel">
+          {loadingMore ? (
+            <span className="skill-market-review-list--loading">
+              <RefreshCw size={14} className="skill-market-spin" />
+              {t("skillMarket.common.loading")}
+            </span>
+          ) : moreError ? (
+            <>
+              <span role="alert">{t("skillMarket.common.loadFailed")}</span>
+              <WKButton variant="secondary" onClick={() => void loadMore()}>
+                {t("skillMarket.list.retry")}
+              </WKButton>
+            </>
+          ) : null}
+        </div>
+      )}
       <WKModal
         visible={Boolean(deleting)}
         onCancel={() => {

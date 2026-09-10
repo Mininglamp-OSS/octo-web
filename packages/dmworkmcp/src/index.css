@@ -2736,7 +2736,7 @@
    it starts the next page before the user reaches the true bottom. */
 .wk-mcp-expert-sentinel {
   width: 100%;
-  height: 1px;
+  height: var(--wk-sp-0-5);
 }
 
 .wk-mcp-expert-pagination__loading {

@@ -2922,13 +2922,13 @@
      single-line look, vertical padding + line-height let a two-line transition
      wrap inside the background instead of overflowing it. The version tokens
      hold no spaces, so wrapping only ever happens around the arrow. */
-  min-height: 20px;
-  padding: 2px var(--wk-sp-2);
+  min-height: var(--wk-sp-5);
+  padding: var(--wk-sp-0-5) var(--wk-sp-2);
   border-radius: var(--wk-r-sm);
   background: var(--wk-bg-elevated);
   color: var(--wk-text-secondary);
   font-variant-numeric: tabular-nums;
-  line-height: 16px;
+  line-height: var(--wk-sp-4);
   text-align: center;
   vertical-align: middle;
   white-space: normal;
@@ -3604,8 +3604,6 @@
 .skill-market-spin {
   animation: skill-market-spin 900ms linear infinite;
 }
-
-
 /* Inline confirmation that replaces a dialog's footer rather than stacking a
    second dialog over it. It occupies the footer slot, so it inherits the modal's
    footer padding and border; only the layout and the warning tone are set here. */
