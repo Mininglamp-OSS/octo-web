@@ -18,6 +18,41 @@ import { getMcpAvatarColor, getMcpAvatarText } from "../utils/mcpAvatar";
 
 const PAGE_SIZE = 50;
 
+/** Keep one observer alive while pagination is available. The callback ref
+ * exposes the latest guards/cursor without rebuilding the observer after each
+ * appended page. */
+function LoadMoreSentinel({
+  onLoadMore,
+  children,
+}: {
+  onLoadMore: () => void;
+  children?: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const callbackRef = useRef(onLoadMore);
+  callbackRef.current = onLoadMore;
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof IntersectionObserver === "undefined") return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting))
+          callbackRef.current();
+      },
+      { rootMargin: "160px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} className="wk-mcp-mine__all-sentinel">
+      {children}
+    </div>
+  );
+}
+
 /** Wire plugin type -> MineTable's local row type. */
 const ROW_TYPE: Record<string, MineAssetType> = {
   skill: "skill",
@@ -59,17 +94,20 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
   // Guards against an out-of-order response overwriting a newer one.
   const requestRef = useRef(0);
   // The IntersectionObserver callback captures these once at observe time, so
-  // the live cursor / in-flight flag are read through refs instead.
+  // live request state is read through refs instead.
   const cursorRef = useRef<string | null>(null);
+  const loadingRef = useRef(true);
+  const moreErrorRef = useRef(false);
   // Records which request generation owns the current pagination request. A
   // stale request must not clear the in-flight guard for a newer Space/load.
   const loadingMoreVersionRef = useRef<number | null>(null);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
   cursorRef.current = cursor;
 
   const load = useCallback(async () => {
     const version = ++requestRef.current;
     loadingMoreVersionRef.current = null;
+    loadingRef.current = true;
+    moreErrorRef.current = false;
     setLoading(true);
     setLoadingMore(false);
     setError(null);
@@ -83,7 +121,10 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
       if (version !== requestRef.current) return;
       setError(err instanceof Error ? err.message : t("skillMarket.common.loadFailed"));
     } finally {
-      if (version === requestRef.current) setLoading(false);
+      if (version === requestRef.current) {
+        loadingRef.current = false;
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -94,8 +135,14 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
   const loadMore = useCallback(async () => {
     const next = cursorRef.current;
     const version = requestRef.current;
-    if (!next || loadingMoreVersionRef.current === version) return;
+    if (
+      !next ||
+      loadingRef.current ||
+      loadingMoreVersionRef.current === version
+    )
+      return;
     loadingMoreVersionRef.current = version;
+    moreErrorRef.current = false;
     setLoadingMore(true);
     setMoreError(false);
     try {
@@ -108,6 +155,7 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
       setCursor(page.nextCursor);
     } catch {
       if (version !== requestRef.current) return;
+      moreErrorRef.current = true;
       setMoreError(true);
     } finally {
       if (loadingMoreVersionRef.current !== version) return;
@@ -128,24 +176,6 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
     []
   );
 
-  // Auto-load the next page when the sentinel nears the viewport, so the 全部
-  // tab scrolls like the 技能 / 连接器 catalogs instead of stopping at page one.
-  // The sentinel only renders once rows exist, so this re-runs as `loading`
-  // settles to pick up the node; guarded for jsdom, which has no IO.
-  useEffect(() => {
-    const node = sentinelRef.current;
-    if (!node || moreError || typeof IntersectionObserver === "undefined")
-      return undefined;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) void loadMore();
-      },
-      { rootMargin: "160px" }
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [loadMore, loading, error, moreError, items.length, cursor]);
-
   // Re-read on a Space switch. Every per-type tab (SkillListPage,
   // McpMarketListPage) subscribes; the 全部 tab — which is the default view and
   // aggregates all four types — otherwise keeps rendering the previous Space's
@@ -161,6 +191,7 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
       setItems([]);
       setCursor(null);
       setError(null);
+      moreErrorRef.current = false;
       setMoreError(false);
       setBusyId(null);
       setDeleting(null);
@@ -311,7 +342,13 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
     <div className="wk-mcp-mine__all">
       <MineTable rows={rows} ariaLabel={t("mcp.mine.allAriaLabel")} />
       {(cursor || loadingMore || moreError) && (
-        <div ref={sentinelRef} className="wk-mcp-mine__all-sentinel">
+        <LoadMoreSentinel
+          onLoadMore={() => {
+            // Keep a failed page on explicit retry; repeated observer callbacks
+            // must not turn a backend error into an automatic retry loop.
+            if (!moreErrorRef.current) void loadMore();
+          }}
+        >
           {loadingMore ? (
             <span className="skill-market-review-list--loading">
               <RefreshCw size={14} className="skill-market-spin" />
@@ -325,7 +362,7 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
               </WKButton>
             </>
           ) : null}
-        </div>
+        </LoadMoreSentinel>
       )}
       <WKModal
         visible={Boolean(deleting)}

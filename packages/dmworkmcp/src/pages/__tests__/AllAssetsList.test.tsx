@@ -208,6 +208,7 @@ describe("AllAssetsList pagination", () => {
         container
       );
     });
+    const initialObserver = observers[0];
     scrollLoadMore();
     scrollLoadMore();
 
@@ -217,9 +218,43 @@ describe("AllAssetsList pagination", () => {
       { pluginType: "all" }
     );
 
-    await act(async () => nextPage.resolve(page([asset("b", "Second page")])));
+    await act(async () =>
+      nextPage.resolve(page([asset("b", "Second page")], "third"))
+    );
     expect(container.textContent).toContain("First page");
     expect(container.textContent).toContain("Second page");
+    expect(observers).toHaveLength(1);
+    expect(observers[0]).toBe(initialObserver);
+  });
+
+  it("does not page with the old cursor during a row-action reload", async () => {
+    const reload = deferred<ReturnType<typeof page>>();
+    h.getMySkills
+      .mockResolvedValueOnce(page([asset("a", "Published asset")], "old-next"))
+      .mockReturnValueOnce(reload.promise);
+    h.publishPlugin.mockResolvedValueOnce({ displayStatus: "published" });
+
+    await act(async () => {
+      ReactDOM.render(
+        React.createElement(AllAssetsList, { onOpenType: vi.fn() }),
+        container
+      );
+    });
+    const publish = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "publish-Published asset"
+    );
+    await act(async () => publish?.click());
+
+    scrollLoadMore();
+    expect(h.getMySkills).toHaveBeenCalledTimes(2);
+    expect(h.getMySkills).not.toHaveBeenCalledWith(
+      { limit: 50, cursor: "old-next" },
+      { pluginType: "all" }
+    );
+
+    await act(async () =>
+      reload.resolve(page([asset("a", "Published asset")]))
+    );
   });
 
   it("keeps loaded rows and exposes retry when the next page fails", async () => {
@@ -241,6 +276,8 @@ describe("AllAssetsList pagination", () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toBe(
       "skillMarket.common.loadFailed"
     );
+    scrollLoadMore();
+    expect(h.getMySkills).toHaveBeenCalledTimes(2);
 
     const retry = Array.from(container.querySelectorAll("button")).find(
       (button) => button.textContent === "skillMarket.list.retry"

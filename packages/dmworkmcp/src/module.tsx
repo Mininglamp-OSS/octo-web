@@ -128,12 +128,13 @@ export class McpMarketModule implements IModule {
           const page = WKApp.route.get("/mcp-market/skills");
           if (page && React.isValidElement(page)) {
             WKApp.routeRight.replaceToRoot(page);
+            // Sync URL so refresh/copy-link/back button land on the same tab.
+            // Main/index.tsx#onMenuClick already syncPath's to the menu's
+            // `/mcp-market` before firing onPress, but the mounted pane is the
+            // more specific Skills landing route — reflect that only after the
+            // pane resolves successfully.
+            WKApp.route.syncPath("/mcp-market/skills");
           }
-          // Sync URL so refresh/copy-link/back button land on the same tab.
-          // Main/index.tsx#onMenuClick already syncPath's to the menu's
-          // `/mcp-market` before firing onPress, but the mounted pane is the
-          // more specific Skills landing route — reflect that.
-          WKApp.route.syncPath("/mcp-market/skills");
         };
         return m;
       },

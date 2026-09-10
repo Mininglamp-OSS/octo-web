@@ -85,4 +85,17 @@ describe("McpMarketModule market entry", () => {
     )?.[1] as () => React.ReactElement;
     expect(connectorFactory().type).toBe(McpMarketListPage);
   });
+
+  it("does not sync the Skills URL when the route cannot resolve", () => {
+    new McpMarketModule().init();
+    h.routeGet.mockReturnValue(undefined);
+
+    const menuFactory = h.registerMenu.mock.calls.find(
+      ([id]) => id === "mcp-market"
+    )?.[1] as () => { onPress?: (reentry?: boolean) => void };
+    menuFactory().onPress?.(false);
+
+    expect(h.replaceToRoot).not.toHaveBeenCalled();
+    expect(h.syncPath).not.toHaveBeenCalled();
+  });
 });
