@@ -1,5 +1,4 @@
-import { splitTrailingUrlPunctuation } from "../../Utils/linkify";
-import { isSafeUrl } from "../../Utils/security";
+import { linkifySafeUrls } from "../../Utils/linkify";
 
 // Only the mdast fields used here; no additional parser dependency is needed.
 interface MarkdownNode {
@@ -38,15 +37,22 @@ function splitAutolink(node: MarkdownNode, source: string) {
   )
     return;
 
-  const { linkText, trailingText } = splitTrailingUrlPunctuation(raw);
-  if (!trailingText) return;
-  const url = node.url.slice(0, -trailingText.length);
-  if (!isSafeUrl(url)) return;
-
-  return [
-    { ...node, url, children: [{ ...label, value: linkText }] },
-    { type: "text", value: trailingText },
-  ];
+  // GFM can consume several URLs and intervening Chinese prose as one link.
+  // Segment the entire candidate so links after a prose boundary survive too.
+  const segments = linkifySafeUrls(raw);
+  if (segments.length === 1 && segments[0].type === "link") return;
+  return segments.map((segment) => {
+    if (segment.type === "text")
+      return { type: "text", value: segment.content };
+    return {
+      ...node,
+      // Retain GFM's existing www scheme (plain-text consumers use https).
+      url: /^www\./i.test(segment.text)
+        ? `http://${segment.text}`
+        : segment.href,
+      children: [{ ...label, value: segment.text }],
+    };
+  });
 }
 
 /** Apply chat punctuation boundaries after Markdown/math parsing has finished. */

@@ -31,6 +31,9 @@ const urls = [
   "https://example.com/repo-c/pull/333",
 ];
 
+const screenshotUrl = "https://github.com/Ranwanglc/octo-web";
+const screenshotContent = `欧克，现在从${screenshotUrl}的main拉去分支，然后开发一下，先不推pr,好了告诉我。`;
+
 const modes = [
   { name: "chat Markdown", props: {} },
   { name: "Markdown without math", props: { enableMath: false } },
@@ -42,6 +45,46 @@ const modes = [
 ];
 
 describe.each(modes)("MarkdownContent links — $name", ({ props }) => {
+  it("keeps the screenshot's adjacent Chinese sentence outside the URL", () => {
+    const root = render(
+      <MarkdownContent content={screenshotContent} {...props} />
+    );
+    expect(hrefs(root)).toEqual([screenshotUrl]);
+    expect(root.querySelector("a")?.textContent).toBe(screenshotUrl);
+    expect(root.textContent).toBe(screenshotContent);
+  });
+
+  it.each([
+    "先看https://example.com/a的说明，再看https://example.com/b然后结束",
+    "先看https://example.com/a，then：https://example.com/b。",
+  ])("finds each URL across prose boundaries in %s", (content) => {
+    const root = render(<MarkdownContent content={content} {...props} />);
+    expect(hrefs(root)).toEqual([
+      "https://example.com/a",
+      "https://example.com/b",
+    ]);
+    expect(root.textContent).toBe(content);
+  });
+
+  it("ends a bare domain before adjacent Chinese", () => {
+    const content = "https://example.com请打开";
+    const root = render(<MarkdownContent content={content} {...props} />);
+    expect(hrefs(root)).toEqual(["https://example.com"]);
+    expect(root.textContent).toBe(content);
+  });
+
+  it("preserves brackets and www schemes beside Chinese prose", () => {
+    const content =
+      "(https://example.com/Foo_(bar))请看www.example.com/docs然后结束";
+    const root = render(<MarkdownContent content={content} {...props} />);
+    const scheme = "enableMarkdown" in props ? "https" : "http";
+    expect(hrefs(root)).toEqual([
+      "https://example.com/Foo_(bar)",
+      `${scheme}://www.example.com/docs`,
+    ]);
+    expect(root.textContent).toBe(content);
+  });
+
   it.each([",", ";", ":", "!", "?", ".", "，", "。", "；", "：", "！", "？"])(
     "keeps line-final %s outside every automatic URL (#1651)",
     (punctuation) => {
@@ -90,6 +133,27 @@ describe.each(modes)("MarkdownContent links — $name", ({ props }) => {
 describe.each(modes.slice(0, 3))(
   "Markdown link intent — $name",
   ({ props }) => {
+    it("preserves Chinese in explicit URLs and percent-encoded bare URLs", () => {
+      const url = "https://example.com/中文?q=测试";
+      const content = `[文档](${url})\n<${url}>\n${encodeURI(url)}请看`;
+      const root = render(<MarkdownContent content={content} {...props} />);
+      expect(hrefs(root)).toEqual([
+        encodeURI(url),
+        encodeURI(url),
+        encodeURI(url),
+      ]);
+    });
+
+    it("preserves explicit international domain names and Chinese code literals", () => {
+      const url = "https://例子.测试/文档";
+      const content = `[文档](${url})\n<${url}>\n\n\`https://example.com/中文\``;
+      const root = render(<MarkdownContent content={content} {...props} />);
+      expect(hrefs(root)).toEqual([encodeURI(url), encodeURI(url)]);
+      expect(root.querySelector("code")?.textContent).toBe(
+        "https://example.com/中文"
+      );
+    });
+
     it("preserves explicit, angle-bracket and reference link destinations", () => {
       const content = [
         "[label](https://example.com/a,)",
@@ -155,6 +219,23 @@ describe.each(modes.slice(0, 3))(
 );
 
 describe("shared message link consumers", () => {
+  it("uses the screenshot's boundaries in rich text and reply previews", () => {
+    const richText = render(
+      <MixedContent
+        blocks={[{ id: "text", type: "text", content: screenshotContent }]}
+      />
+    );
+    const reply = render(
+      <ReplyBlock fromName="Alice" digest={screenshotContent} />
+    );
+    expect(hrefs(richText)).toEqual([screenshotUrl]);
+    expect(hrefs(reply)).toEqual([screenshotUrl]);
+    expect(richText.textContent).toBe(screenshotContent);
+    expect(reply.querySelector(".wk-reply-block__digest")?.textContent).toBe(
+      screenshotContent
+    );
+  });
+
   it("trims links correctly after the math escape-mask pass", () => {
     const root = render(
       <MarkdownContent

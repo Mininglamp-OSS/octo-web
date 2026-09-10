@@ -32,6 +32,18 @@ test("@GH1651 @chat sent URLs keep prose punctuation outside their destinations"
   await expect(editor).toBeVisible();
   const cases = [
     {
+      marker: "GH1651 screenshot",
+      literal: true,
+      body: "欧克，现在从https://github.com/Ranwanglc/octo-web的main拉去分支，然后开发一下，先不推pr,好了告诉我。",
+      urls: ["https://github.com/Ranwanglc/octo-web"],
+    },
+    {
+      marker: "GH1651 adjacent links",
+      literal: true,
+      body: "先看https://example.com/a的说明，再看https://example.com/b然后结束",
+      urls: ["https://example.com/a", "https://example.com/b"],
+    },
+    {
       marker: "GH1651 original",
       literal: true,
       body: "https://example.com/repo-a/-/merge_requests/111,\nhttps://example.com/repo-b/-/merge_requests/222,\nhttps://example.com/repo-c/pull/333",
@@ -94,8 +106,15 @@ test("@GH1651 @chat sent URLs keep prose punctuation outside their destinations"
   }
 
   // Fulfill locally: verify the browser's actual navigation without contacting
-  // example.com or sending messages to a live IM service.
+  // external sites or sending messages to a live IM service.
   await page.context().route("https://example.com/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: "URL navigation OK",
+    })
+  );
+  await page.context().route("https://github.com/Ranwanglc/**", (route) =>
     route.fulfill({
       status: 200,
       contentType: "text/html",
@@ -104,11 +123,20 @@ test("@GH1651 @chat sent URLs keep prose punctuation outside their destinations"
   );
   const popupPromise = page.waitForEvent("popup");
   await page
-    .locator('[data-locate-message-row="true"]')
-    .filter({ hasText: "GH1651 boundaries" })
-    .getByRole("link", { name: "https://example.com/a", exact: true })
+    .locator('[data-locate-message-row="true"] p')
+    .filter({ hasText: "GH1651 screenshot" })
+    .getByRole("link", {
+      name: "https://github.com/Ranwanglc/octo-web",
+      exact: true,
+    })
     .click();
   const popup = await popupPromise;
-  await expect(popup).toHaveURL("https://example.com/a");
+  await expect(popup).toHaveURL("https://github.com/Ranwanglc/octo-web");
   await popup.close();
+  await message
+    .locator("p")
+    .filter({ hasText: "GH1651 screenshot" })
+    .screenshot({
+      path: test.info().outputPath("chinese-url-boundary.png"),
+    });
 });

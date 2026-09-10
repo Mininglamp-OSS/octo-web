@@ -4,7 +4,12 @@ export type SafeUrlTextSegment =
   | { type: "text"; content: string }
   | { type: "link"; text: string; href: string };
 
-const safeUrlPattern = /((?:https?:\/\/|www\.)[^\s<>"']+)/gi;
+// Bare URLs have no delimiter separating a path from adjacent Chinese prose.
+// Treat Han text and Chinese sentence punctuation as boundaries. Chinese URL
+// contents can be expressed unambiguously with percent encoding or explicit
+// Markdown links; those destinations do not pass through this heuristic.
+const safeUrlPattern =
+  /(?:https?:\/\/|www\.)[^\s<>"'\p{Script=Han}，。！？；：、…“”‘’]+/giu;
 const trailingUrlPunctuation = new Set([
   ".",
   ",",
