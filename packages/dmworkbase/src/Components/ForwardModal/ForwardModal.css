@@ -330,6 +330,17 @@
   height: 100%;
 }
 
+.wk-fm-load-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-3);
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+  text-align: center;
+}
+
 /* ── 头像公用 ── */
 .wk-fm-avatar-wrap {
   position: relative;

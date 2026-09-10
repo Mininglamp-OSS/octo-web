@@ -132,7 +132,7 @@ function Interactive(props: Partial<ForwardModalProps> & { initialItems?: Forwar
   }
 
   return (
-    <div style={{ width: 400, border: "1px solid #eee", borderRadius: 8, overflow: "hidden" }}>
+    <div style={{ width: "max-content", overflow: "hidden" }}>
       <ForwardModal
         {...props}
         items={items}
@@ -251,6 +251,27 @@ export const Loading: Story = {
   play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
     const canvas = within(canvasElement)
     await expect(canvas.getByText("加载中…")).toBeInTheDocument()
+  },
+}
+
+/** Rows remain interactive while another source is being completed. */
+export const LoadingWithCandidates: Story = {
+  render: () => <Interactive loading />,
+  play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.getByRole("status")).toBeInTheDocument()
+    await userEvent.click(canvas.getByText("Alice"))
+    await expect(canvas.getAllByText("Alice")).toHaveLength(2)
+  },
+}
+
+/** A failed source does not remove the successfully loaded candidates. */
+export const PartialLoadFailure: Story = {
+  render: () => <Interactive loadError onRetry={() => {}} />,
+  play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.getByRole("alert")).toBeInTheDocument()
+    await expect(canvas.getByText("Alice")).toBeInTheDocument()
   },
 }
 

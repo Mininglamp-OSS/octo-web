@@ -15,6 +15,7 @@ const hoisted = vi.hoisted(() => ({
 
 vi.mock("../../../../App", () => ({
   default: {
+    mittBus: { on: vi.fn(), off: vi.fn() },
     get shared() {
       return {
         get deviceId() {
@@ -156,5 +157,23 @@ describe("useSidebarScopes", () => {
 
     expect(errorSpy).not.toHaveBeenCalled()
     errorSpy.mockRestore()
+  })
+
+  it.each(["follow", "recent"] as const)("publishes %s before the other tab responds", async (first) => {
+    hoisted.deviceId = "device"
+    let release!: () => void
+    hoisted.sidebarSync.mockImplementation(async (req) => {
+      if (req.tab !== first) await new Promise<void>((resolve) => { release = resolve })
+      return { items: [{ target_type: 2, target_id: "g1", is_followed: true }], version: 0, follow_version: 0 }
+    })
+    let latest!: ReturnType<typeof useSidebarScopes>
+    await act(async () => {
+      ReactDOM.render(<Probe onValue={(value) => { latest = value }} />, container)
+      for (let i = 0; i < 20; i++) await Promise.resolve()
+    })
+    expect(first === "follow" ? latest.followedKeys.has("2::g1") : latest.recentKeys.has("2::g1")).toBe(true)
+    expect(latest[first].loading).toBe(false)
+    expect(latest[first === "follow" ? "recent" : "follow"].loading).toBe(true)
+    await act(async () => { release(); await flushMicrotasks() })
   })
 })

@@ -893,6 +893,8 @@
   "forwardModal.kindGroup": "群",
   "forwardModal.kindThread": "子区",
   "forwardModal.loading": "加载中…",
+  "forwardModal.loadError": "部分会话加载失败",
+  "forwardModal.retry": "重试",
   "forwardModal.noContacts": "暂无联系人",
   "forwardModal.noneSelected": "未选择",
   "forwardModal.remove": "移除",

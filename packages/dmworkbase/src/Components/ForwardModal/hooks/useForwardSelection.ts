@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { Channel } from "wukongimjssdk"
 import type { ForwardItem } from "../ForwardModal"
 
@@ -22,18 +22,23 @@ export interface UseForwardSelectionResult {
 
 export function useForwardSelection(
   channelMapRef: React.MutableRefObject<Map<string, Channel>>,
+  scope = "",
 ): UseForwardSelectionResult {
-  const [selectedIDs, setSelectedIDs] = useState<string[]>([])
+  const [selection, setSelection] = useState<{ scope: string; ids: string[] }>({ scope, ids: [] })
+  const selectedIDs = selection.scope === scope ? selection.ids : []
+  useEffect(() => {
+    setSelection((previous) => previous.scope === scope ? previous : { scope, ids: [] })
+  }, [scope])
   const selectedIDsRef = useRef<string[]>(selectedIDs)
   selectedIDsRef.current = selectedIDs
 
   const toggleSelect = useCallback((item: ForwardItem) => {
-    setSelectedIDs((prev: string[]) =>
-      prev.includes(item.channelID)
-        ? prev.filter((id: string) => id !== item.channelID)
-        : [...prev, item.channelID]
-    )
-  }, [])
+    setSelection((previous) => {
+      const ids = previous.scope === scope ? previous.ids : []
+      return { scope, ids: ids.includes(item.channelID)
+        ? ids.filter((id) => id !== item.channelID) : [...ids, item.channelID] }
+    })
+  }, [scope])
 
   const selectedChannels = selectedIDs
     .map((id: string) => channelMapRef.current.get(id))
@@ -46,8 +51,8 @@ export function useForwardSelection(
   }, [channelMapRef])
 
   const reset = useCallback(() => {
-    setSelectedIDs([])
-  }, [])
+    setSelection({ scope, ids: [] })
+  }, [scope])
 
   return {
     selectedIDs,

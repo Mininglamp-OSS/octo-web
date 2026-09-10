@@ -37,6 +37,8 @@ export interface UseForwardModalResult {
   /** 触发 debounce 过滤的 keyword */
   keyword: string
   loading: boolean
+  loadError: boolean
+  retry: () => void
   /** 当前 Tab（关注 / 最近 / 全部群聊 / 全部私聊）。 */
   activeTab: ChatSelectorTab
   /** 切换 Tab。 */
@@ -83,22 +85,31 @@ export function useForwardModal(
   // 输入框防抖：inputValue 即时更新驱动 UI，keyword 静默 300ms 才生效驱动过滤 + 搜索。
   const { inputValue, keyword, setInputValue, reset: resetKeyword } = useDebouncedKeyword()
 
-  // 关注/最近集合作用域：来自 SidebarService follow/recent 同步；deviceId 空时退化空集。
-  const { followedKeys, recentKeys, recentSortMeta } = useSidebarScopes()
-
   // 候选装配：最近会话 + group/my 兜底群 + 好友；持有 channelMapRef 供搜索/选择共享。
   const {
     conversationItems,
     friendItems,
-    loading,
+    scope,
+    groups,
+    friends,
     channelMapRef,
     requestChannelInfoIfNeeded,
   } = useForwardCandidates()
+  const { followedKeys, recentKeys, recentSortMeta, follow, recent } = useSidebarScopes(scope)
+
+  const sources = activeTab === "group" ? [groups]
+    : activeTab === "direct" ? [friends]
+      : [activeTab === "followed" ? follow : recent, groups, friends]
+  const loading = sources.some((source) => source.loading)
+  const loadError = sources.some((source) => source.error)
+  const retry = () => {
+    for (const source of sources) if (source.error) source.retry()
+  }
 
   // 后端搜索：keyword 驱动，命中候选把 Channel 登记到 channelMapRef。
   const { searchGroupItems } = useForwardSearch(keyword, (channelID, channel) => {
     channelMapRef.current.set(channelID, channel)
-  })
+  }, scope)
 
   // 选择态：selectedIDs / toggle / selectedChannels（从 channelMapRef 派生）。
   const {
@@ -107,7 +118,7 @@ export function useForwardModal(
     toggleSelect,
     readSelectedChannels,
     reset: resetSelection,
-  } = useForwardSelection(channelMapRef)
+  } = useForwardSelection(channelMapRef, scope)
 
   // 授权区：默认关闭，仅在 grantOptions 存在时激活；confirm 时读快照透传给 onFinished。
   const {
@@ -167,6 +178,8 @@ export function useForwardModal(
     inputValue,
     keyword,
     loading,
+    loadError,
+    retry,
     activeTab,
     setActiveTab,
     setInputValue,

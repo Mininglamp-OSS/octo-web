@@ -46,6 +46,8 @@ export default function ConversationSelect({
     selectedChannels,
     inputValue,
     loading,
+    loadError,
+    retry,
     activeTab,
     setActiveTab,
     setInputValue,
@@ -128,6 +130,8 @@ export default function ConversationSelect({
       selectedIDs={selectedIDs}
       inputValue={inputValue}
       loading={loading}
+      loadError={loadError}
+      onRetry={retry}
       onInputChange={setInputValue}
       onToggleSelect={toggleSelect}
       onConfirm={confirm}

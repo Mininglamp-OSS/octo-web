@@ -21,6 +21,8 @@ import {
 } from "../../../im-runtime/currentChannelRuntime"
 import { getCurrentImConversationsDirectly } from "../../../im-runtime/currentConversationRuntime"
 import type { ForwardItem } from "../ForwardModal"
+import { createForwardSource, type ForwardSource } from "./createForwardSource"
+import { readForwardScope, useForwardScope } from "./useForwardScope"
 import {
   channelInfoToForwardItem,
   deriveForwardItemBase,
@@ -31,7 +33,7 @@ import {
  * 转发候选装配 hook：本地会话 + group/my 兜底群 + 好友。
  *
  * 隐藏在 rebuildConvItems 里的复杂度（Space 权威回种、子区归位、孤儿兜底、
- * 归档子区过滤、双写竞态守卫）都收敛在这里。上层组合 hook 只关心三件事：
+ * 归档子区过滤）都收敛在这里。上层组合 hook 只关心三件事：
  *   - `conversationItems` / `friendItems`：给 mergeForwardSources 用
  *   - `channelMapRef`：给 confirm() 按 channelID 取 Channel 引用
  *   - `requestChannelInfoIfNeeded`：ItemRow 进入视口时按需拉 channelInfo
@@ -43,6 +45,9 @@ export interface UseForwardCandidatesResult {
   conversationItems: ForwardItem[]
   friendItems: ForwardItem[]
   loading: boolean
+  scope: string
+  groups: ForwardSource<ChannelInfo[]>
+  friends: ForwardSource<ChannelInfo[]>
   channelMapRef: React.MutableRefObject<Map<string, Channel>>
   requestChannelInfoIfNeeded: (item: ForwardItem) => void
 }
@@ -65,30 +70,21 @@ function conversationWrapToForwardItem(
   }
 }
 
+const useGroups = createForwardSource<ChannelInfo[]>()
+const useFriends = createForwardSource<ChannelInfo[]>()
+const loadGroups = () => WKApp.dataSource.channelDataSource.groupSaveList()
+const loadFriends = async () => (await WKApp.dataSource.commonDataSource.searchFriends("")) ?? []
+
 export function useForwardCandidates(): UseForwardCandidatesResult {
-  const [conversationItems, setConversationItems] = useState<ForwardItem[]>([])
-  const [friendItems, setFriendItems] = useState<ForwardItem[]>([])
-  const [loading, setLoading] = useState(true)
-
-  // 存一份 channel 引用，用于 confirm 时返回
+  const scope = useForwardScope()
+  const groups = useGroups(scope, loadGroups)
+  const friends = useFriends(scope, loadFriends)
+  const [conversations, setConversations] = useState<{ scope: string; items: ForwardItem[] }>({ scope, items: [] })
+  const [people, setPeople] = useState<{ scope: string; items: ForwardItem[] }>({ scope, items: [] })
   const channelMapRef = useRef<Map<string, Channel>>(new Map())
-
-  // 保存原始 wraps 引用，供 channelInfoListener 触发后重新构建
+  const channelScopeRef = useRef(scope)
   const wrapsRef = useRef<ConversationWrap[]>([])
-
-  // group/my 兜底群（recents 里缺席的群只在旁路返回，SDK 不建 conversation）。
-  // 由 load() 在 gen 守卫通过后写入，rebuildConvItems 每次执行都消费它并与
-  // recents 群合并，从而成为 conversationItems 的唯一写入路径，避免懒加载
-  // channelInfo 到达后 rebuild 全量覆盖把兜底群冲掉的双写竞态。
-  const extraGroupsRef = useRef<ChannelInfo[]>([])
-
-  // 懒加载：记录已发起 fetchChannelInfo 的 channelID，避免重复请求
   const fetchedRef = useRef<Set<string>>(new Set())
-
-  // load() 可能并发(mount 自动触发 + conversation-list-refreshed 又触发一次)。
-  // 用一个单调递增的 generation,await 边界处比对,过期就丢弃 setState,
-  // 避免两次 setConversationItems(prev => [...prev, ...]) 重复 append 同一批群。
-  const loadGenRef = useRef(0)
 
   /**
    * 懒加载入口：列表项进入视口时调用。仅当本地 channelInfo 缺失且该 channel
@@ -106,6 +102,7 @@ export function useForwardCandidates(): UseForwardCandidatesResult {
   }, [])
 
   const rebuildConvItems = useCallback(() => {
+    if (readForwardScope() !== scope) return
     // 分离：群聊（非子区）和子区
     const groupWraps: ConversationWrap[] = []
     const threadWraps: ConversationWrap[] = []
@@ -125,7 +122,7 @@ export function useForwardCandidates(): UseForwardCandidatesResult {
       if (wrap.channel.channelType === ChannelTypeCommunityTopic) {
         threadWraps.push(wrap)
       } else {
-        // recents 群：load() 入口的 shouldSkipChannelForSpace 已做权威 Space
+        // recents 群：rebuildLocal 入口的 shouldSkipChannelForSpace 已做权威 Space
         // 把关（channelSpaceMap → channelInfo → fail-closed），此处不再二次过滤。
         groupWraps.push(wrap)
         if (wrap.channel.channelType === ChannelTypeGroup) {
@@ -136,7 +133,7 @@ export function useForwardCandidates(): UseForwardCandidatesResult {
 
     // group/my 兜底群：用群条目自带的权威 space_id（来自 group/my 行）按来源分流。
     const extraGroupItems: ForwardItem[] = []
-    for (const groupInfo of extraGroupsRef.current) {
+    for (const groupInfo of groups.data ?? []) {
       const channelID = groupInfo.channel.channelID
       // 去重：仅当不在已并入的 recents 群集合时才并入（避免 React duplicate key）。
       if (seenGroupIDs.has(channelID)) continue
@@ -223,59 +220,26 @@ export function useForwardCandidates(): UseForwardCandidatesResult {
       items.push(conversationWrapToForwardItem(ow, parentGroupNoSet))
     }
 
-    setConversationItems(items)
-  }, [])
+    setConversations({ scope, items })
+  }, [scope, groups.data])
 
   useEffect(() => {
-    async function load() {
-      const gen = ++loadGenRef.current
-      // 重入/切 Space 时先清空上一轮兜底群，避免第一帧 rebuild 用旧 Space 的
-      // group/my 兜底群产出（空串/字段缺失分支会 fail-open 让旧 Space 群闪现）。
-      // 代价仅冷启动第一帧不显示兜底群（本就冷状态，无损）。
-      extraGroupsRef.current = []
-      setLoading(true)
-      try {
-        // 最近会话：仅构造 wrap，不再对每个 conv 主动 fetchChannelInfo。
-        // channelInfo 由 ForwardModal 中每个 ItemRow 的 VisibilityTrigger 在
-        // 进入视口时按需拉取（去重 + debounce 合批 forceUpdate）。
-        const conversations = getCurrentImConversationsDirectly<ConversationWrap["conversation"]>()
-        const wraps: ConversationWrap[] = []
-        for (const conv of conversations) {
-          if (shouldSkipChannelForSpace(conv.channel)) continue
-          if (shouldSkipPersonConversationForSpace(conv)) continue
-          wraps.push(new ConversationWrap(conv))
-        }
-        wrapsRef.current = sortConversations(wraps)
-        rebuildConvItems()
-
-        // 补全：获取用户加入的全部群聊（已支持 space_id 过滤）。
-        // 不再直接 setConversationItems 第二次写入，而是存入 extraGroupsRef 并
-        // 触发一次 rebuildConvItems，让其与 recents 群合并产出，杜绝双写竞态。
-        const allGroups = await WKApp.dataSource.channelDataSource.groupSaveList()
-        if (gen !== loadGenRef.current) return // 有更新的 load 在跑,丢弃本次结果
-        extraGroupsRef.current = allGroups
-        rebuildConvItems()
-
-        // 好友
-        const friends = (await WKApp.dataSource.commonDataSource.searchFriends("")) ?? []
-        if (gen !== loadGenRef.current) return
-        // 按 channelID 去重：Space 模式下后端 space/{id}/members 可能返回同一
-        // uid 的多条记录（多角色等），不去重会触发 React duplicate key 警告。
-        const seen = new Set<string>()
-        const fItems: ForwardItem[] = []
-        for (const info of friends) {
-          const cid = info.channel.channelID
-          if (seen.has(cid)) continue
-          seen.add(cid)
-          channelMapRef.current.set(cid, info.channel)
-          fItems.push(channelInfoToForwardItem(info))
-        }
-        setFriendItems(fItems)
-      } finally {
-        // 仅最新 generation 收尾 loading,避免老 load 的 setLoading(false)
-        // 把更新的 load 标记成"已完成"。
-        if (gen === loadGenRef.current) setLoading(false)
+    const rebuildLocal = () => {
+      if (readForwardScope() !== scope) return
+      if (channelScopeRef.current !== scope) {
+        channelScopeRef.current = scope
+        channelMapRef.current.clear()
+        fetchedRef.current.clear()
       }
+      const conversations = getCurrentImConversationsDirectly<ConversationWrap["conversation"]>()
+      const wraps: ConversationWrap[] = []
+      for (const conv of conversations) {
+        if (shouldSkipChannelForSpace(conv.channel)) continue
+        if (shouldSkipPersonConversationForSpace(conv)) continue
+        wraps.push(new ConversationWrap(conv))
+      }
+      wrapsRef.current = sortConversations(wraps)
+      rebuildConvItems()
     }
 
     // 订阅 channelInfo 更新，触发列表重渲（头像/名称补全）。
@@ -286,27 +250,39 @@ export function useForwardCandidates(): UseForwardCandidatesResult {
     }
     const unsubscribeChannelListener = addCurrentImChannelInfoListener(channelListener)
 
-    // 切 Space 后 conversationManager.conversations 会被先清空再回填,
-    // 如果 modal 在回填前打开,初次 load() 会读到空 cache（缺最近会话/子区）。
-    // 监听 ChatVM 的回填广播,触发后重新 load 一次,保证最终能拿到完整数据。
-    const onConversationListRefreshed = () => {
-      load()
-    }
-    WKApp.mittBus.on('conversation-list-refreshed', onConversationListRefreshed)
-
-    load()
+    // A same-scope SDK refresh only rebuilds local candidates. It must not restart
+    // remote lists or hide rows that are already available. useForwardScope handles scope changes.
+    WKApp.mittBus.on("conversation-list-refreshed", rebuildLocal)
+    rebuildLocal()
 
     return () => {
       unsubscribeChannelListener()
-      WKApp.mittBus.off('conversation-list-refreshed', onConversationListRefreshed)
+      WKApp.mittBus.off("conversation-list-refreshed", rebuildLocal)
       rebuildDebounced.cancel()
     }
-  }, [rebuildConvItems])
+  }, [scope, rebuildConvItems])
+
+  useEffect(() => {
+    if (readForwardScope() !== scope) return
+    const seen = new Set<string>()
+    const items: ForwardItem[] = []
+    for (const info of friends.data ?? []) {
+      const cid = info.channel.channelID
+      if (seen.has(cid)) continue
+      seen.add(cid)
+      channelMapRef.current.set(cid, info.channel)
+      items.push(channelInfoToForwardItem(info))
+    }
+    setPeople({ scope, items })
+  }, [scope, friends.data])
 
   return {
-    conversationItems,
-    friendItems,
-    loading,
+    conversationItems: conversations.scope === scope ? conversations.items : [],
+    friendItems: people.scope === scope ? people.items : [],
+    loading: groups.loading || friends.loading,
+    scope,
+    groups,
+    friends,
     channelMapRef,
     requestChannelInfoIfNeeded,
   }

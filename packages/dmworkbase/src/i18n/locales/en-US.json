@@ -893,6 +893,8 @@
   "forwardModal.kindGroup": "Grp",
   "forwardModal.kindThread": "Thread",
   "forwardModal.loading": "Loading…",
+  "forwardModal.loadError": "Some conversations could not be loaded.",
+  "forwardModal.retry": "Retry",
   "forwardModal.noContacts": "No contacts",
   "forwardModal.noneSelected": "None selected",
   "forwardModal.remove": "Remove",

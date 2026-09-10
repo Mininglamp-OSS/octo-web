@@ -25,11 +25,13 @@ import {
 function Probe({
   channelMapRef,
   onValue,
+  scope,
 }: {
   channelMapRef: React.MutableRefObject<Map<string, Channel>>
   onValue: (value: UseForwardSelectionResult) => void
+  scope?: string
 }) {
-  const value = useForwardSelection(channelMapRef)
+  const value = useForwardSelection(channelMapRef, scope)
   onValue(value)
   return null
 }
@@ -65,10 +67,10 @@ describe("useForwardSelection", () => {
     container.remove()
   })
 
-  function render() {
+  function render(scope?: string) {
     act(() => {
       ReactDOM.render(
-        <Probe channelMapRef={channelMapRef} onValue={(v) => (latest = v)} />,
+        <Probe scope={scope} channelMapRef={channelMapRef} onValue={(v) => (latest = v)} />,
         container,
       )
     })
@@ -115,5 +117,17 @@ describe("useForwardSelection", () => {
 
     expect(latest.selectedIDs).toEqual([])
     expect(latest.readSelectedChannels()).toEqual([])
+  })
+
+  it("clears selection when switching scope and does not restore it on return", () => {
+    render("space-a")
+    act(() => latest.toggleSelect(item("g1")))
+    const read = latest.readSelectedChannels
+    render("space-b")
+    expect(latest.selectedIDs).toEqual([])
+    expect(read()).toEqual([])
+    render("space-a")
+    expect(latest.selectedIDs).toEqual([])
+    expect(read()).toEqual([])
   })
 })

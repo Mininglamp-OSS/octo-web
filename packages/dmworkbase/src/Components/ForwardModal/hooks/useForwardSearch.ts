@@ -7,6 +7,7 @@ import {
   type SearchChatCandidate,
 } from "../candidateToForwardItem"
 import { chatTypeToChannelType } from "../chatTypeToChannelType"
+import { readForwardScope, useForwardScope } from "./useForwardScope"
 
 /**
  * 后端 `WKApp.searchChatCandidates` 搜索群/子区/后端全库联系人。keyword < 2 或
@@ -26,23 +27,25 @@ export interface UseForwardSearchResult {
 export function useForwardSearch(
   keyword: string,
   onCandidateChannel: (channelID: string, channel: Channel) => void,
+  providedScope?: string,
 ): UseForwardSearchResult {
-  const [searchGroupItems, setSearchGroupItems] = useState<ForwardItem[]>([])
+  const scope = useForwardScope(providedScope)
+  const [result, setResult] = useState<{ scope: string; items: ForwardItem[] }>({ scope, items: [] })
   const requestRef = useRef(0)
   // 把 callback 收敛到 ref，避免上层每次 render 传入新引用触发 effect 重跑。
   const onCandidateChannelRef = useRef(onCandidateChannel)
   onCandidateChannelRef.current = onCandidateChannel
 
   useEffect(() => {
+    const reqId = ++requestRef.current
+    const setSearchGroupItems = (items: ForwardItem[]) => setResult({ scope, items })
+    setSearchGroupItems([])
     if (keyword.length < 2) {
-      setSearchGroupItems([])
       return
     }
     if (!WKApp.searchChatCandidates) {
-      setSearchGroupItems([])
       return
     }
-    const reqId = ++requestRef.current
     const searchParams: Record<string, string> = { keyword }
     const currentSpaceId = WKApp.shared.currentSpaceId
     if (currentSpaceId) {
@@ -50,7 +53,7 @@ export function useForwardSearch(
     }
     WKApp.searchChatCandidates(searchParams)
       .then((candidates: unknown) => {
-        if (reqId !== requestRef.current) return
+        if (reqId !== requestRef.current || readForwardScope() !== scope) return
         const arr: SearchChatCandidate[] = Array.isArray(candidates)
           ? (candidates as SearchChatCandidate[])
           : []
@@ -62,9 +65,10 @@ export function useForwardSearch(
         setSearchGroupItems(groups)
       })
       .catch(() => {
-        if (reqId === requestRef.current) setSearchGroupItems([])
+        if (reqId === requestRef.current && readForwardScope() === scope) setSearchGroupItems([])
       })
-  }, [keyword])
+    return () => { requestRef.current++ }
+  }, [keyword, scope])
 
-  return { searchGroupItems }
+  return { searchGroupItems: result.scope === scope ? result.items : [] }
 }
