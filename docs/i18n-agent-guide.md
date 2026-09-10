@@ -152,6 +152,63 @@ Do not translate:
 
 When excluding a source file from hardcoded Chinese checks, record the reason in `.i18n/scan-config.json`. Do not add broad ignores without a concrete non-UI reason.
 
+## Copy Length Budgets & Constrained Layouts
+
+English expansions break narrow UI. Budget the copy against the container, not only against the Chinese source.
+
+### Expansion-ratio reference
+
+| Pattern | Example (zh-CN → en-US) | Approx. expansion |
+| --- | --- | --- |
+| Short relative date | `前天` → `The day before yesterday` | ~12× |
+| Compact status | `已完成` → `Completed` | ~1.5–2× |
+| Nav / rail label | `AI 总结` → `AI Summary` | ~1.5× |
+| Primary button verb | `创建` → `Create` | ~1× |
+| Error / toast sentence | short CN clause → full EN sentence | 2–3× |
+
+W3C / IBM localization guidance commonly budgets **30–50% expansion** for UI strings; treat the table above as the floor for short constrained labels.
+
+### Constrained container inventory (starter)
+
+Keep this table alive. When you discover a new narrow container, add a row.
+
+| Container | Typical budget | Notes |
+| --- | --- | --- |
+| NavRail collapsed label | ~8–12 Latin chars | Truncation shows `Sum...` if over budget |
+| Chat list date column | ~12–16 Latin chars | `The day before yesterday` blows the column |
+| Tab titles | ~12–20 Latin chars | Prefer short keys |
+| Primary / compact buttons | ~12 Latin chars | Prefer verbs, not full sentences |
+| Fixed-width table headers | measure cell width | Prefer short nouns; avoid clauses |
+
+### Design layers (preference order)
+
+1. **Reserve layout space** — size the container for the longest required locale.
+2. **`.short` variant keys** — ship a dedicated short key for the constrained surface (e.g. `date.short.dayBeforeYesterday`).
+3. **Locale-sensitive `format.*`** — use `format.relativeTime` / `format.dateTime` instead of hand-translated date phrases.
+4. **Truncation + tooltip** — last resort only; document the container in the inventory table.
+
+### Anti-patterns
+
+- Translating a compact Chinese date phrase into a full English sentence without a `.short` key.
+- Shipping only `zh-CN` length realism, then discovering overflow in `en-US` review.
+- Clipping the start and end of a centered single-line note instead of wrapping.
+- Growing a fixed-width column without re-checking both locales.
+
+### PR verification checklist (constrained layouts)
+
+- [ ] Budget checked for both `zh-CN` and `en-US` on every touched constrained surface.
+- [ ] New narrow containers added to the inventory table above.
+- [ ] `.short` key or `format.*` used where expansion exceeds the budget.
+- [ ] Screenshots or notes for both locales when truncation or overflow is possible.
+
+### References
+
+- [W3C Internationalization — Strings on the Web](https://www.w3.org/International/questions/qa-translate-able.en)
+- [IBM Localization quality](https://www.ibm.com/docs/en/ibm-style-guide)
+- [Material Design 3 — Content](https://m3.material.io/foundations/content/overview)
+- [Apple HIG — Layout](https://developer.apple.com/design/human-interface-guidelines/layout)
+- SimpleLocalize / common L10n expansion guidance
+
 ## Adding New Copy
 
 For new user-visible copy:
