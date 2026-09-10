@@ -389,6 +389,23 @@ export default class McpMarketListPage extends Component<
         offset: 0,
       });
       if (requestVersion !== this.requestVersion) return;
+      const selectedCategoryMissing = this.state.categoriesSelected.some(
+        (key) => key !== "all" && !resp.categories.some((cat) => cat.key === key)
+      );
+      if (selectedCategoryMissing) {
+        this.setState(
+          {
+            items: [],
+            categories: resp.categories,
+            categoriesSelected: [],
+            total: 0,
+            offset: 0,
+            loading: false,
+          },
+          () => this.loadData()
+        );
+        return;
+      }
       this.setState({
         items: resp.items,
         categories: resp.categories,

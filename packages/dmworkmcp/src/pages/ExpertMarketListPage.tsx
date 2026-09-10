@@ -241,12 +241,23 @@ export default function ExpertMarketListPage({
     };
   }, [tagFilterOpen]);
 
-  // Category chips: 全部 sentinel first, then the fetched category set (or the
-  // static fallback, which already includes 全部).
+  // Category chips: 全部 sentinel first, then the backend category set. Empty
+  // categories are filtered here too so tests/mocks cannot reintroduce zero-count
+  // chips.
   const categoryChips = useMemo(() => {
-    if (categories.length) return [ALL_CATEGORY, ...categories.map((c) => c.name)];
-    return EXPERT_CATEGORIES;
+    return [
+      ALL_CATEGORY,
+      ...categories.filter((c) => c.count > 0).map((c) => c.name),
+    ];
   }, [categories]);
+  useEffect(() => {
+    if (
+      category !== ALL_CATEGORY &&
+      !categories.some((item) => item.count > 0 && item.name === category)
+    ) {
+      setCategory(ALL_CATEGORY);
+    }
+  }, [categories, category]);
 
   // The scoped tag endpoint includes tags on records beyond the loaded page.
   const allTags = useMemo(() => {

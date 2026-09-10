@@ -131,6 +131,7 @@ beforeEach(() => {
   api.listExpertCategories.mockResolvedValue([
     { name: "Reports", count: 1 },
     { name: "General", count: 111 },
+    { name: "Empty", count: 0 },
   ]);
   api.listExpertTags.mockResolvedValue(["common", "rare", "analysis"]);
   root = document.createElement("div");
@@ -346,6 +347,7 @@ describe("expert catalog server search and pagination", () => {
 
   it("filters a category and tags found only beyond page 1, and forwards sort", async () => {
     await render();
+    expect(root.textContent).not.toContain("Empty0");
     click(
       Array.from(root.querySelectorAll(".wk-mcp-expert-category")).find(
         (el) => el.textContent === "Reports1"

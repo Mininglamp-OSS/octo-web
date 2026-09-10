@@ -298,8 +298,6 @@ describe("SkillListPage", () => {
 
     expect(api.getCategories).toHaveBeenCalledWith(
       expect.objectContaining({
-        q: "ci",
-        tags: [],
         signal: expect.any(AbortSignal),
       })
     );
@@ -336,8 +334,6 @@ describe("SkillListPage", () => {
     await waitFor(() => {
       expect(api.getCategories).toHaveBeenCalledWith(
         expect.objectContaining({
-          q: "",
-          tags: ["纪要"],
           signal: expect.any(AbortSignal),
         })
       );
@@ -357,8 +353,6 @@ describe("SkillListPage", () => {
       );
       expect(api.getCategories).toHaveBeenCalledWith(
         expect.objectContaining({
-          q: "",
-          tags: [],
           signal: expect.any(AbortSignal),
         })
       );

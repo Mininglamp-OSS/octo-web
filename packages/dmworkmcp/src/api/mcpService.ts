@@ -114,10 +114,9 @@ function assertSafeUploadURL(raw: string): void {
 
 // ─── Mock implementations ──────────────────────────────────────────────────
 
-/** Category pill counts over an arbitrary MCP set. Callers pass the same
- *  filtered slice they showed as items, so pill numbers stay coherent with
- *  the visible list — matches the real backend's `/mcp_categories` which
- *  respects `created_by_type` (issue #894 follow-up). */
+/** Category pill counts over the visible catalog scope. Keyword/category/tag
+ *  filters are deliberately excluded so the filter bar does not disappear
+ *  when the current result set is empty. */
 function buildCategories(source: McpListItem[] = MOCK_MCP_LIST): McpCategory[] {
   const counts = new Map<string, number>();
   for (const item of source) {
@@ -127,7 +126,7 @@ function buildCategories(source: McpListItem[] = MOCK_MCP_LIST): McpCategory[] {
     key,
     label: MCP_CATEGORY_LABELS[key] ?? key,
     count: key === "all" ? source.length : counts.get(key) ?? 0,
-  }));
+  })).filter((category) => category.key === "all" || category.count > 0);
 }
 
 async function fetchMcpListMock(
@@ -179,7 +178,7 @@ async function fetchMcpListMockFiltered(
   return delay({
     items,
     total: filtered.length,
-    categories: buildCategories(filtered),
+    categories: buildCategories(source),
   });
 }
 
@@ -768,6 +767,7 @@ async function fetchMcpListPath(
   const categories: McpCategory[] = [
     { key: CATEGORY_KEY_ALL, label: categoryLabel(CATEGORY_KEY_ALL), count: allCount },
     ...[...categoryWire]
+      .filter((c) => (c.plugin_count ?? 0) > 0)
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
       .map((c) => ({ key: c.name, label: c.name, count: c.plugin_count ?? 0 })),
   ];

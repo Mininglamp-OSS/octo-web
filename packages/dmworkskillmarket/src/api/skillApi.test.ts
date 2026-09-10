@@ -38,6 +38,13 @@ describe("skillApi mock contract", () => {
     ).toBeGreaterThan(5);
   });
 
+  it("keeps category counts independent from search and tag filters", async () => {
+    const all = await getCategories();
+    const filtered = await getCategories({ q: "missing", tags: ["none"] });
+
+    expect(filtered).toEqual(all);
+  });
+
   it("pages skills and returns a cursor for the next batch", async () => {
     const firstPage = await getSkills({ limit: 20 });
     const secondPage = await getSkills({
