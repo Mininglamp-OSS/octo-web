@@ -11,7 +11,9 @@ The mock `/market/api/v1/plugins` filters by `q` before applying `page` and
 scoped catalog metadata.
 
 Run the case in Chinese and English. Initially show 100 of 112 records with a
-load-more button. Loading page 2 shows all 112 and removes the button. Searching
+tail scroll sentinel. Scrolling the sentinel into view auto-loads page 2, shows
+all 112 and removes the sentinel (no load-more button — parity with the 技能 /
+连接器 catalogs). Searching
 for `数据分析报告` must return both `数据分析报告专家` and `数据分析报告师`.
 Clear the search, then search again from the first 100 records to verify that
 finding the second match does not depend on previously loading page 2.

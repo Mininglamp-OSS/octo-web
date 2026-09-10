@@ -46,11 +46,23 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
   useI18n();
   const [items, setItems] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Skill | null>(null);
+  // Opaque cursor for the next page, null when the list is exhausted. The 全部
+  // tab used to fetch a single page and stop, so any owner with more than
+  // PAGE_SIZE assets could never see the rest; it now pages like the per-type
+  // tabs (SkillListPage / McpMarketListPage), just cursor-driven here.
+  const [cursor, setCursor] = useState<string | null>(null);
   // Guards against an out-of-order response overwriting a newer one.
   const requestRef = useRef(0);
+  // The IntersectionObserver callback captures these once at observe time, so
+  // the live cursor / in-flight flag are read through refs instead.
+  const cursorRef = useRef<string | null>(null);
+  const loadingMoreRef = useRef(false);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  cursorRef.current = cursor;
 
   const load = useCallback(async () => {
     const version = ++requestRef.current;
@@ -60,6 +72,7 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
       const page = await getMySkills({ limit: PAGE_SIZE }, { pluginType: "all" });
       if (version !== requestRef.current) return;
       setItems(page.items);
+      setCursor(page.nextCursor);
     } catch (err) {
       if (version !== requestRef.current) return;
       setError(err instanceof Error ? err.message : t("skillMarket.common.loadFailed"));
@@ -68,9 +81,52 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
     }
   }, []);
 
+  // Append the next page. Deliberately does NOT bump requestRef — a load-more is
+  // a continuation of the current base read, not a new one — but it is voided by
+  // any base read or Space switch that bumps the version out from under it. A
+  // failed page is swallowed: the sentinel stays and a later scroll retries it.
+  const loadMore = useCallback(async () => {
+    const next = cursorRef.current;
+    if (!next || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    const version = requestRef.current;
+    setLoadingMore(true);
+    try {
+      const page = await getMySkills(
+        { limit: PAGE_SIZE, cursor: next },
+        { pluginType: "all" }
+      );
+      if (version !== requestRef.current) return;
+      setItems((prev) => [...prev, ...page.items]);
+      setCursor(page.nextCursor);
+    } catch {
+      // Swallow — retried on the next intersection; the base read owns errors.
+    } finally {
+      loadingMoreRef.current = false;
+      if (version === requestRef.current) setLoadingMore(false);
+    }
+  }, []);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Auto-load the next page when the sentinel nears the viewport, so the 全部
+  // tab scrolls like the 技能 / 连接器 catalogs instead of stopping at page one.
+  // The sentinel only renders once rows exist, so this re-runs as `loading`
+  // settles to pick up the node; guarded for jsdom, which has no IO.
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void loadMore();
+      },
+      { rootMargin: "160px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [loadMore, loading, error, items.length]);
 
   // Re-read on a Space switch. Every per-type tab (SkillListPage,
   // McpMarketListPage) subscribes; the 全部 tab — which is the default view and
@@ -85,6 +141,7 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
       // synchronously instead of leaving it live under the new request header.
       requestRef.current += 1;
       setItems([]);
+      setCursor(null);
       setError(null);
       setBusyId(null);
       setDeleting(null);
@@ -234,6 +291,14 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
   return (
     <div className="wk-mcp-mine__all">
       <MineTable rows={rows} ariaLabel={t("mcp.mine.allAriaLabel")} />
+      <div ref={sentinelRef} className="wk-mcp-mine__all-sentinel">
+        {loadingMore && (
+          <span className="skill-market-review-list--loading">
+            <RefreshCw size={14} className="skill-market-spin" />
+            {t("skillMarket.common.loading")}
+          </span>
+        )}
+      </div>
       <WKModal
         visible={Boolean(deleting)}
         onCancel={() => {

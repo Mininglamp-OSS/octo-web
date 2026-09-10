@@ -13,14 +13,16 @@ for (const locale of ["zh-CN", "en-US"]) {
 
     const cards = authedPage.locator(".wk-mcp-expert-grid .wk-mcp-card");
     const pagination = authedPage.locator(".wk-mcp-expert-pagination");
-    const more = authedPage.getByRole("button", { name: en ? "Load more" : "加载更多", exact: true });
+    const sentinel = authedPage.locator(".wk-mcp-expert-sentinel");
     await expect(cards).toHaveCount(100);
     await expect(pagination).toContainText(en ? "Showing 100 of 112" : "已显示 100 / 112 项");
-    await more.scrollIntoViewIfNeeded();
+    await sentinel.scrollIntoViewIfNeeded();
     await authedPage.screenshot({ path: testInfo.outputPath(`pagination-${locale}.png`) });
-    await more.click();
+    // Scrolling the sentinel into view auto-loads the rest — no click needed,
+    // matching the 技能 / 连接器 catalogs.
     await expect(cards).toHaveCount(112);
-    await expect(more).toHaveCount(0);
+    await expect(pagination).toContainText(en ? "Showing 112 of 112" : "已显示 112 / 112 项");
+    await expect(sentinel).toHaveCount(0);
 
     const search = authedPage.getByRole("searchbox", { name: en ? "Search experts" : "搜索专家", exact: true });
     await search.fill("数据分析报告");

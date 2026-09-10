@@ -113,7 +113,9 @@ export class McpMarketModule implements IModule {
           <McpMarketIcon />,
           <McpMarketIcon active />
         );
-        // Point the right pane at the MCP market on click.
+        // Point the right pane at the 技能 (Skills) market on click — the
+        // default landing tab, matching MARKET_ITEMS[0] / the sidebar's seeded
+        // activeId so the highlighted row and the mounted pane agree.
         // onPress (apps/web/src/App/index.tsx:154) — Main/index.tsx's default
         // click handler is bypassed when onPress is defined, so we own both
         // the left popToRoot and the right replaceToRoot here.
@@ -123,15 +125,15 @@ export class McpMarketModule implements IModule {
             Dap.shared.track("market_module_entered", {});
           }
           WKApp.routeLeft.popToRoot();
-          const page = WKApp.route.get("/mcp-market/mcp");
+          const page = WKApp.route.get("/mcp-market/skills");
           if (page && React.isValidElement(page)) {
             WKApp.routeRight.replaceToRoot(page);
           }
           // Sync URL so refresh/copy-link/back button land on the same tab.
           // Main/index.tsx#onMenuClick already syncPath's to the menu's
           // `/mcp-market` before firing onPress, but the mounted pane is the
-          // more specific MCP landing route — reflect that.
-          WKApp.route.syncPath("/mcp-market/mcp");
+          // more specific Skills landing route — reflect that.
+          WKApp.route.syncPath("/mcp-market/skills");
         };
         return m;
       },
