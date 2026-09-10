@@ -1,0 +1,8 @@
+*
+!apps/
+!apps/web/
+!apps/web/build-formal-mirror/
+!apps/web/build-formal-mirror/**
+!tests/
+!tests/content-execution-mirror/
+!tests/content-execution-mirror/nginx.conf

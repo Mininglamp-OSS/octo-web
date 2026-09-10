@@ -9,6 +9,7 @@ import {
   type SummaryFormalContent,
   type SummaryFormalVersion,
   type SummaryFormalVersionPage,
+  type SummaryGenerationConfiguration,
 } from "../../Service/SummaryContentContract";
 
 function invalid(): never {
@@ -73,12 +74,56 @@ function capabilities(value: unknown): SummaryContentCapabilities {
   };
 }
 
-function configuration(value: unknown): SummaryContentConfiguration {
+export function configuration(value: unknown): SummaryContentConfiguration {
   const v = record(value);
   if (v.state !== "complete" && v.state !== "incomplete" && v.state !== "unavailable") return invalid();
   return {
     state: v.state, revision: count(v.revision), missing_fields: array(v.missing_fields).map(text),
     unavailable_reason: v.unavailable_reason === null ? null : text(v.unavailable_reason),
+  };
+}
+
+export function decodeGenerationConfiguration(value: unknown): SummaryGenerationConfiguration {
+  const v = body(value), s = record(v.spec), time = record(s.time_selector);
+  if (s.schema_version !== 1 || s.collaboration !== "single" ||
+      !["absolute", "relative", "natural_period", "incremental"].includes(text(time.mode))) return invalid();
+  const mode = time.mode;
+  if (mode !== "absolute" && mode !== "relative" && mode !== "natural_period" && mode !== "incremental") return invalid();
+  const retrieval = record(s.retrieval), citationRules = record(s.citation_rules);
+  const fields: Record<string, string> = {};
+  for (const [key, value] of Object.entries(record(s.field_sources ?? {}))) fields[key] = text(value);
+  const template = s.template == null ? null : record(s.template);
+  const schedule = v.schedule == null ? null : record(v.schedule);
+  return {
+    ...configuration(v),
+    spec: {
+      schema_version: 1, summary_mode: count(s.summary_mode, 1), collaboration: "single",
+      participants: array(s.participants).map(text),
+      sources: array(s.sources).map((value) => {
+        const source = record(value);
+        return { source_id: text(source.source_id), source_type: count(source.source_type, 1), confirmation: text(source.confirmation) };
+      }),
+      time_selector: {
+        mode, timezone: text(time.timezone),
+        ...(time.start === undefined ? {} : { start: text(time.start) }),
+        ...(time.end === undefined ? {} : { end: text(time.end) }),
+        ...(time.days === undefined ? {} : { days: count(time.days, 1) }),
+        ...(time.unit === undefined ? {} : { unit: text(time.unit) }),
+        ...(time.offset === undefined ? {} : { offset: -count(-Number(time.offset), 1) }),
+        ...(time.initial_start === undefined ? {} : { initial_start: text(time.initial_start) }),
+      },
+      requirement: s.requirement === null ? null : text(s.requirement),
+      template: template ? { id: text(template.id), version: text(template.version), content: text(template.content) } : null,
+      retrieval: { author_ids: array(retrieval.author_ids ?? []).map(text), keywords: array(retrieval.keywords ?? []).map(text) },
+      citation_rules: { policy: text(citationRules.policy) }, field_sources: fields,
+    },
+    schedule: schedule ? {
+      enabled: flag(schedule.enabled), interval_days: count(schedule.interval_days),
+      interval_months: count(schedule.interval_months), run_time: text(schedule.run_time),
+      day_of_week: count(schedule.day_of_week), day_of_month: count(schedule.day_of_month),
+      ...(schedule.cron_expr ? { cron_expr: text(schedule.cron_expr) } : {}),
+    } : null,
+    next_run_at: v.next_run_at == null ? null : text(v.next_run_at),
   };
 }
 
@@ -199,6 +244,7 @@ function content(value: unknown, summaryId: number): SummaryFormalContent {
     content_revision: revision, current_version: current,
     capabilities: capabilities(c.capabilities), generation_config: configuration(c.generation_config),
     active_generation: active, integrity: c.integrity,
+    latest_generation: c.latest_generation == null ? null : decodeContentGeneration(c.latest_generation, { summaryId, contentId: id }),
   };
 }
 

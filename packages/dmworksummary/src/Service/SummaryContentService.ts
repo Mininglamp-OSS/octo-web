@@ -4,6 +4,7 @@ import {
   decodeContentGeneration,
   decodeFormalVersion,
   decodeFormalVersionPage,
+  decodeGenerationConfiguration,
 } from "../bridge/summaryWorkbench/formalContent";
 import type {
   SummaryContentCatalog,
@@ -12,6 +13,10 @@ import type {
   SummaryContentRefineRequest,
   SummaryFormalVersion,
   SummaryFormalVersionPage,
+  SummaryGenerationConfiguration,
+  SummaryRegenerateRequest,
+  SummarySaveConfigurationRequest,
+  SummarySavedConfiguration,
 } from "./SummaryContentContract";
 import { SummaryContentProtocolError } from "./SummaryContentContract";
 
@@ -199,6 +204,54 @@ export class SummaryContentService {
     const result = await this.command(`${generationPath(summaryId, baseline.content_id, generationId, options)}/apply`, options, checkedBaseline(baseline));
     return decodeChangedCurrent(result, baseline);
   }
+
+  async loadConfiguration(summaryId: number, contentId: string, options: SummaryContentReadOptions): Promise<SummaryGenerationConfiguration> {
+    return decodeGenerationConfiguration(await this.transport.read(`${contentPath(summaryId, contentId, options)}/configuration`, options));
+  }
+
+  async regenerateCurrent(summaryId: number, request: SummaryRegenerateRequest, options: SummaryContentReadOptions): Promise<SummaryContentGeneration> {
+    const result = await this.command(`${contentPath(summaryId, request.content_id, options)}/generations/regenerate`, options, {
+      ...checkedRegeneration(request),
+    });
+    return decodeContentGeneration(result, { summaryId, contentId: request.content_id, spaceId: options.spaceId });
+  }
+
+  async saveConfiguration(summaryId: number, contentId: string, request: SummarySaveConfigurationRequest, options: SummaryContentReadOptions): Promise<SummarySavedConfiguration> {
+    checkedConfigRevision(request.expected_config_revision);
+    if (request.generate && request.generate.content_id !== contentId) {
+      throw new SummaryContentProtocolError("Configuration generation target does not match");
+    }
+    const result = await this.command(`${contentPath(summaryId, contentId, options)}/configuration`, options, {
+      expected_config_revision: request.expected_config_revision, spec: request.spec,
+      ...(request.schedule ? { schedule: request.schedule } : {}),
+      ...(request.generate ? { generate: checkedRegeneration(request.generate) } : {}),
+    });
+    if (!result || typeof result !== "object") throw new SummaryContentProtocolError("Configuration response is invalid");
+    const envelope = Object.fromEntries(Object.entries(result));
+    const payload: unknown = "code" in envelope ? (envelope.code === 0 ? envelope.data : null) : envelope;
+    if (!payload || typeof payload !== "object") throw new SummaryContentProtocolError("Configuration response is invalid");
+    const data = Object.fromEntries(Object.entries(payload));
+    return {
+      configuration: decodeGenerationConfiguration(data.configuration),
+      generation: data.generation == null ? null : decodeContentGeneration(data.generation, { summaryId, contentId, spaceId: options.spaceId }),
+    };
+  }
+}
+
+function checkedConfigRevision(revision: number): void {
+  if (!Number.isSafeInteger(revision) || revision < 0) throw new SummaryContentProtocolError("Configuration revision is required");
+}
+
+function checkedRegeneration(request: SummaryRegenerateRequest): Record<string, unknown> {
+  checkedConfigRevision(request.expected_config_revision);
+  if (!request.idempotency_key.trim() || new TextEncoder().encode(request.idempotency_key).length > 128) {
+    throw new SummaryContentProtocolError("A stable idempotency key is required");
+  }
+  const override = request.requirement_override?.trim();
+  return {
+    ...checkedBaseline(request), expected_config_revision: request.expected_config_revision, idempotency_key: request.idempotency_key,
+    ...(override ? { requirement_override: override } : {}),
+  };
 }
 
 export const summaryContentService = new SummaryContentService();

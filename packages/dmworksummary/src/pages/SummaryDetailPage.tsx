@@ -1,4 +1,10 @@
 import React, { Component } from "react";
+import { NativeFormalContentBinding, type NativeFormalBinding } from "../features/summaryWorkbench/NativeFormalContentBinding";
+import { SummaryDetailActionGate, type SummaryDetailAction } from "../bridge/summaryWorkbench/detailAction";
+import { requestContinueRefine } from "../bridge/continueRefine";
+import NativeFormalVersionPanel from "../ui/SummaryWorkbench/NativeFormalVersionPanel";
+import { formalContentBaseline } from "../bridge/summaryWorkbench/formalContent";
+import type { SummaryFormalVersion, SummaryContentBaseline } from "../Service/SummaryContentContract";
 import {
     Button,
     Spin,
@@ -61,7 +67,6 @@ import {
     scheduleToParams,
     formatScheduleSummary,
     shouldReactivateOnSave,
-    isReferenceable,
 } from "../utils/summaryHelpers";
 import { summaryTestIds } from "../utils/testIds";
 import CitationText from "../components/CitationText";
@@ -75,6 +80,8 @@ import SummaryVersionPanel from "../components/SummaryVersionPanel";
 import { legacySummaryMessagingPort, SummaryForwardContextExpiredError } from "../host";
 import type { SummaryConversationTarget, SummaryMessagingPort } from "../host";
 
+const NativeFormalConfiguration = React.lazy(() => import("../features/summaryWorkbench/NativeFormalConfiguration"));
+
 interface SummaryDetailPageProps {
     taskId?: number | string;
     /** Called after delete/leave in embedded mode so the panel can switch back to list. */
@@ -84,7 +91,9 @@ interface SummaryDetailPageProps {
      *  list selection state. */
     emitSelection?: boolean;
     /** Controlled workspace navigation for the continue-refine action. */
+    /** @deprecated Refinement is now an in-place content action. */
     onContinueRefine?: (task: SummaryReferenceTask) => void;
+    requestedAction?: SummaryDetailAction;
     /** Controlled workspace navigation for legacy task confirmation. */
     onViewConfirm?: (taskId: number) => void;
     messaging?: SummaryMessagingPort;
@@ -94,6 +103,8 @@ type RegenerateMode = "refine" | "full";
 type RefineLoadingTarget = "personal" | "team" | "summary";
 
 interface SummaryDetailPageState {
+    formalBinding: NativeFormalBinding | null;
+    formalPreview: SummaryFormalVersion | null;
     detail: SummaryDetail | null;
     loading: boolean;
     error: string | null;
@@ -206,6 +217,88 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
     private readonly titleContextOwner = Symbol("summary-title-context");
+    private nativeBindingEnabled = false;
+    private detailActionGate = new SummaryDetailActionGate();
+    private consumeRequestedAction = () => {
+        if (!this.props.requestedAction) return;
+        const controller = this.formal;
+        const legacyReady = this.state.formalBinding?.status === "legacy" &&
+            this.state.formalBinding.taskId === this.taskId &&
+            !this.state.personalLoading && !this.state.membersLoading &&
+            (!["refine", "edit"].includes(this.props.requestedAction?.action ?? "") || this.hasRegenerateRefineBaseResult());
+        const action = this.detailActionGate.take(this.props.requestedAction, {
+            taskId: this.taskId, spaceId: String(WKApp.shared.currentSpaceId ?? "").trim(),
+            ready: !this.state.loading && this.state.detail?.task_id === this.taskId &&
+                (this.formalRequired ? Boolean(controller && !controller.pending) : legacyReady),
+            contentId: controller?.content.content_id,
+        });
+        switch (action) {
+            case "refine": this.handleContinueRefine(); break;
+            case "edit":
+                if (this.formalRequired) {
+                    this.handleStartEdit();
+                } else if (this.state.detail?.status === TaskStatus.COMPLETED) {
+                    // A list intent is not write permission. Resolve the visible
+                    // target again before opening a legacy editor.
+                    const permissions = this.state.detail.permissions;
+                    if (this.shouldOperateOnTeamSummary()) {
+                        if (permissions?.can_edit_team) this.handleStartEditTeam();
+                    } else if (this.state.detail.summary_mode === SummaryMode.BY_PERSON) {
+                        if (permissions?.can_edit_personal) this.handleStartEdit();
+                    } else if (permissions?.can_edit_team) {
+                        this.handleStartEdit();
+                    }
+                }
+                break;
+            case "configure": this.openScheduleModal(); break;
+            case "regenerate":
+                // 重新生成 opens the two-mode modal (按意见调整 / 全部重新生成).
+                // Configuration + scheduling live behind the separate 定时更新 entry
+                // ("configure"). Never generate on route mount.
+                this.handleRegenerate(); break;
+            case "cancel": void this.handleCancel(); break;
+            case "retry": void this.handleRetry(); break;
+        }
+    };
+    private formalEditBaseline: SummaryContentBaseline | null = null;
+    private get formal() {
+        const binding = this.state.formalBinding;
+        return binding?.taskId === this.taskId && binding.status === "ready" ? binding.controller : undefined;
+    }
+    private get formalRequired(): boolean {
+        if (this.state.detail?.content_protocol_version) return true;
+        const binding = this.state.formalBinding;
+        return this.nativeBindingEnabled
+            ? binding?.taskId !== this.taskId || binding?.status !== "legacy"
+            : Boolean(binding && binding.status !== "legacy");
+    }
+    private onFormalBinding = (formalBinding: NativeFormalBinding) => {
+        if (formalBinding.taskId !== this.taskId) return;
+        const revisionChanged = this.state.formalBinding?.controller?.content.content_revision !== formalBinding.controller?.content.content_revision;
+        this.setState((previous) => ({
+            formalBinding,
+            formalPreview: revisionChanged ? null : previous.formalPreview,
+            ...(formalBinding.status === "loading" ? { isEditing: false, showScheduleConfig: false, versionPanelOpen: false } : {}),
+        }));
+        if (revisionChanged && this.state.versionPanelOpen && formalBinding.controller && !formalBinding.controller.pending) {
+            void formalBinding.controller.loadVersions();
+        }
+    };
+    private openFormalVersions = () => {
+        if (!this.formal?.content.capabilities.can_view_versions) return;
+        this.setState({ versionPanelOpen: true, formalPreview: null });
+        void this.formal.loadVersions();
+    };
+    private saveFormalEdit = async (body: string): Promise<boolean> => {
+        const controller = this.formal, baseline = this.formalEditBaseline;
+        if (!controller || !baseline || controller.pending || !controller.content.capabilities.can_edit) return false;
+        return new Promise((resolve) => Modal.confirm({
+            title: t("summary.common.save"),
+            content: t("summary.formal.overwriteWarning"),
+            onCancel: () => resolve(false),
+            onOk: async () => { resolve(await controller.edit(body, baseline)); },
+        }));
+    };
 
     private regenerateTopicRef = React.createRef<HTMLTextAreaElement>();
     private contentScrollRef = React.createRef<HTMLDivElement>();
@@ -248,6 +341,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     state: SummaryDetailPageState = {
+        formalBinding: null,
+        formalPreview: null,
         detail: null,
         loading: false,
         error: null,
@@ -372,6 +467,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     componentDidMount() {
+        this.nativeBindingEnabled = true;
         this.unmounted = false;
         window.addEventListener("summary-status-change", this.handleStatusChangeEvent);
         window.addEventListener("summary-batch-heartbeat", this.handleBatchHeartbeat);
@@ -412,6 +508,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     componentDidUpdate(prevProps: any, prevState?: SummaryDetailPageState) {
+        this.consumeRequestedAction();
         if (
             this.props.emitSelection &&
             this.state.detail &&
@@ -762,7 +859,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
             // Blocking 5（跨 task 串台）：scheduleItem 必须始终对应当前 detail。
             // 同步部分：从「有定时」总结导航到「无定时」总结时，若不显式清空，旧 scheduleItem
-            // 会残留 → renderScheduleButton 误判有定时、保存可能把旧定时重绑到新 task。
+            // 会残留 → 定时按钮(showSchedule/renderScheduleSummary)误判有定时、保存可能把旧定时重绑到新 task。
             // 异步部分：loadSchedule 带上 seq，响应迟到时对比 seq/taskId 才 setState（见 loadSchedule）。
             if (detail.schedule_id && detail.schedule_id > 0) {
                 this.loadSchedule(detail.schedule_id, seq);
@@ -1054,6 +1151,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     handleDeleteTask = async () => {
+        if (this.formalRequired && !this.formal?.content.capabilities.can_delete) return;
         if (this.taskId == null) return;
         const requestTaskId = this.taskId;
         try {
@@ -1431,6 +1529,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     handleRegenerate = () => {
+        if (this.formalRequired && (!this.formal || this.formal.pending || !this.formal.content.capabilities.can_refine)) return;
         const { detail } = this.state;
         if (this.taskId == null) return;
         this.regenerateVoiceMode = null;
@@ -1443,6 +1542,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     private hasRegenerateRefineBaseResult = () => {
+        if (this.formalRequired) return Boolean(this.formal?.content.current_version && this.formal.content.capabilities.can_refine);
         const { detail, personalResult } = this.state;
         return detail?.summary_mode === SummaryMode.BY_PERSON && !this.shouldOperateOnTeamSummary()
             ? Boolean(personalResult?.id)
@@ -1453,7 +1553,18 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         this.setState({ regenerateMode });
     };
 
+    // From the greyed 全部重新生成 option: leave the regenerate modal and open 定时更新
+    // so the user can 补齐配置 (chat range + time window) before running a full generation.
+    private handleGoConfigureFromRegenerate = () => {
+        this.setState({ showRegenerateModal: false });
+        this.openScheduleModal();
+    };
+
     handleRetry = async () => {
+        if (this.formalRequired) {
+            if (this.formal?.content.capabilities.can_regenerate_direct) await this.formal.regenerate();
+            return;
+        }
         const { detail } = this.state;
         if (!detail || this.taskId == null) return;
         try {
@@ -1502,6 +1613,32 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     handleRegenerateConfirm = async () => {
+        if (this.formalRequired) {
+            const controller = this.formal;
+            if (!controller || controller.pending) return;
+            const caps = controller.content.capabilities;
+            if (this.state.regenerateMode === "full") {
+                // 全部重新生成: re-read chat + full workflow run. The prompt field is a
+                // one-shot topic override for this run only; empty = saved requirement.
+                if (!caps.can_regenerate_direct) return;
+                const override = this.state.regenerateTopic.trim() || undefined;
+                if (await controller.regenerate(override)) {
+                    this.setState({ showRegenerateModal: false });
+                    Toast.success(t("summary.detail.regenerateStarted"));
+                    if (this.taskId != null) this.resetSummaryStreamForNewRun(this.taskId);
+                }
+                return;
+            }
+            if (!caps.can_refine || !this.state.refineFeedback.trim()) return;
+            // 按意见调整 now streams over the same worker→SSE channel as 全部重新生成:
+            // close the modal, toast, and subscribe to the live preview for this run.
+            if (await controller.refine(this.state.refineFeedback.trim())) {
+                this.setState({ showRegenerateModal: false });
+                Toast.success(t("summary.detail.regenerateStarted"));
+                if (this.taskId != null) this.resetSummaryStreamForNewRun(this.taskId);
+            }
+            return;
+        }
         if (this.taskId == null || this.state.regenerateSubmitting) return;
         const requestTaskId = this.taskId;
         const { detail, regenerateMode } = this.state;
@@ -1762,6 +1899,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     handleRestoreVersion = async (version: SummaryVersionItem): Promise<boolean> => {
+        if (this.formalRequired) return false;
         const { isEditing, editingTeamSummary, editingMyDraft, editingPersonalReport } = this.state;
         if (
             this.taskId == null ||
@@ -1805,6 +1943,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
 
     handleRestorePersonalVersion = async (version: SummaryVersionItem): Promise<boolean> => {
+        if (this.formalRequired) return false;
         const { isEditing, editingTeamSummary, editingMyDraft, editingPersonalReport } = this.state;
         if (
             this.taskId == null ||
@@ -1927,7 +2066,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      * not required to unblock the close action.
      */
     handleCloseVersionPanel = () => {
-        this.setState({ versionPanelOpen: false, showVersionDetailModal: false, versionDetail: null, versionDetailLoading: false });
+        this.setState({ versionPanelOpen: false, formalPreview: null, showVersionDetailModal: false, versionDetail: null, versionDetailLoading: false });
     };
 
     handleRegenerateCancel = () => {
@@ -1936,6 +2075,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     handleCancel = async () => {
+        if (this.formalRequired) {
+            if (this.formal?.content.active_generation) await this.formal.cancel();
+            return;
+        }
         if (this.taskId == null) return;
         try {
             await api.cancelSummary(this.taskId);
@@ -1946,7 +2089,26 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
     };
 
+    // 定时更新 modal saved. 保存并立即生成一次 (generated) closes the modal and streams
+    // the new run on the detail; 保存配置与计划 just confirms the save and closes.
+    private handleScheduleConfigSaved = (generated: boolean) => {
+        const { t } = this.context;
+        this.setState({ showScheduleConfig: false });
+        if (generated) {
+            Toast.success(t("summary.detail.regenerateStarted"));
+            if (this.taskId != null) this.resetSummaryStreamForNewRun(this.taskId);
+        } else {
+            Toast.success(t("summary.formal.saved"));
+        }
+    };
+
     openScheduleModal = () => {
+        if (this.formalRequired) {
+            if (!this.formal?.content.capabilities.can_configure_schedule) return;
+            this.setState({ showScheduleConfig: true });
+            void this.formal.loadConfiguration();
+            return;
+        }
         // 埋点 308:打开定时总结配置弹窗（隐私 props 恒空）。
         Dap.shared.track("smart_summary_timer_dialog_opened", {});
         const { scheduleItem } = this.state;
@@ -2057,6 +2219,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     handleScheduleSave = async (config: ScheduleConfig) => {
+        if (this.formalRequired) return;
         // 续修5：入口捕获发起时的 requestTaskId。用户保存定时后、网络往返期间
         // 切到别的 task，不能把 A 的 schedule 回显到 B（loadSchedule 只能守「调用后才切」，
         // 守不住「调用前已切」）。await 后、调 loadSchedule / 动新 task UI 前均校验。
@@ -2288,6 +2451,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     // ⚠若未来放开定时共享（一个定时绑多个总结），需改为 task-scoped disable，
     // 否则会误停其他总结的定时。
     handleScheduleDisable = async () => {
+        if (this.formalRequired) return;
         // 续修6：入口捕获 requestTaskId。await toggleSchedule 期间切 task，不得把 A 的
         // schedule 回显到 B 的 scheduleItem。迟到则放弃回显，但必须复位 scheduleDisabling
         //（当前无 finally，在 return 前安全复位），别让 loading 卡住。
@@ -2316,54 +2480,49 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
     };
 
-    /**
-     * 当前后端是否支持「继续优化」：兼容 referenceable 字段缺失的 legacy 路径。
-     * 抽取自原内联表达式（handleContinueRefine + render 按钮），统一调用点。
-     */
+    /** Reference permission never authorizes changing the referenced content. */
     private canRefineCurrentDetail = (): boolean => {
+        if (this.formalRequired) return Boolean(this.formal?.content.capabilities.can_refine);
         const { detail } = this.state;
         if (!detail) return false;
-        return isReferenceable(detail);
+        const canWrite = this.shouldOperateOnTeamSummary()
+            ? detail.permissions?.can_edit_team
+            : detail.summary_mode === SummaryMode.BY_PERSON
+                ? detail.permissions?.can_edit_personal
+                : detail.permissions?.can_edit_team;
+        return detail.status === TaskStatus.COMPLETED && Boolean(canWrite) && this.hasRegenerateRefineBaseResult();
     };
 
     /**
-     * 「继续优化」按钮 — 打开一个新的智能总结 chat session,预置引用当前总结。
-     * 见 CHAT-REFERENCE-BASED-DESIGN-v1: 详情页入口和顶栏「新总结」入口的语义
-     * 完全等价 — 都是新起一次 chat 生产工作台,唯一差别是这里预填了引用。
+     * 继续优化：引用当前总结另起一段 agent 会话，产出一条**全新**总结（挂
+     * referenced_task_ids）；由 agent 自动判定轻量 refine 还是完整工具链 + 重新检索。
      *
-     * 实现:通过 window 事件解耦(避免 SummaryCreatePage↔SummaryDetailPage 循环导入)。
-     * module.tsx 里注册顶栏「新总结」入口的 handler 监听此事件,收到后打开
-     * 一个新的 SummaryCreatePage 实例,并把 derivedFromTask 作为 prop 塞入。
-     *
-     * 用户在新 chat 里聊完保存后:①出现的是全新总结(和当前总结平级) ②当前
-     * 总结不变 ③新总结的 SummaryTask.referenced_task_ids 记录来源。
+     * 所有入口一个行为：能自己路由的宿主（统一工作区 SummaryWorkspace、聊天侧栏
+     * ChatSummaryPanel）走 onContinueRefine；独立详情页入口没有宿主回调，派发
+     * summary-open-chat-with-reference，由 legacyNavigation push 同一个 agent 创建页。
+     * 旧的「同总结就地改写」（handleRegenerate 弹窗）已废弃，不再作为兜底——那条路
+     * 会在「继续优化」的名义下改掉原总结，与合并后的语义相反。同总结产新版本只从
+     * 「重新生成 / 配置与定时更新」进。
      */
     handleContinueRefine = () => {
+        if (!this.canRefineCurrentDetail()) return;
         const { detail } = this.state;
         if (!detail) return;
-        if (!this.canRefineCurrentDetail()) return;
-        const referenceTask = {
+        const reference: SummaryReferenceTask = {
             task_id: detail.task_id,
-            title: detail.title,
-            trigger_type: detail.trigger_type,
-            status: detail.status,
-            creator_id: detail.creator_id,
+            title: detail.title ?? detail.topic ?? "",
+            task_no: detail.task_no,
+            topic: detail.topic,
             summary_mode: detail.summary_mode,
-            time_range_start: detail.time_range_start,
-            time_range_end: detail.time_range_end,
-            sources: detail.sources || [],
-            total_msg_count: 0,
-            created_at: "",
-            updated_at: "",
-        } satisfies SummaryReferenceTask;
+            status: detail.status,
+            trigger_type: detail.trigger_type,
+            creator_id: detail.creator_id,
+        };
         if (this.props.onContinueRefine) {
-            this.props.onContinueRefine(referenceTask);
+            this.props.onContinueRefine(reference);
             return;
         }
-        const event = new CustomEvent("summary-open-chat-with-reference", {
-            detail: referenceTask,
-        });
-        window.dispatchEvent(event);
+        requestContinueRefine(reference);
     };
 
     private handleViewConfirm = () => {
@@ -2383,7 +2542,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // 但 detail.personal_result 有 content(前端渲染正文也是走这个 fallback)。
         // 传统 workflow 优先走 detail.result;agent workflow 走 personalResult。
         // 两者的 content 语义都是"给用户看的最终交付文本",转发到聊天的姿势一致。
-        const sourceContent = detail?.result?.content ?? personalResult?.content ?? '';
+        const sourceContent = this.formalRequired
+            ? this.formal?.content.current_version?.content ?? ""
+            : detail?.result?.content ?? personalResult?.content ?? '';
         if (!sourceContent.trim()) return;
         // 埋点 310:打开「转发到聊天」的会话选择面板（有正文可转发时才算打开）。
         Dap.shared.track("smart_summary_forward_panel_opened", {});
@@ -2553,6 +2714,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     renderStreamingContent() {
+        // Formal tasks render their streaming draft inside renderPersonalSummary
+        // (which also hides the stale current version); avoid a second copy here.
+        if (this.formalRequired) return null;
         const content = this.state.streamingContent.trim();
         if (!this.state.streaming || !content) return null;
         return (
@@ -2786,6 +2950,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      * suppress the TOC via shouldShowToc with no way for the user to
      * recover. */
     private isVersionPanelActuallyOpen(): boolean {
+        if (this.formalRequired) return Boolean(this.formal?.content.capabilities.can_view_versions && this.state.versionPanelOpen);
         return this.state.versionPanelOpen && this.getActiveVersionContext() != null;
     }
 
@@ -2825,6 +2990,22 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     renderVersionPanel() {
+        if (this.formalRequired) {
+            const controller = this.formal;
+            if (!controller || !this.state.versionPanelOpen || !controller.content.capabilities.can_view_versions) return null;
+            const finish = async (action: Promise<boolean>) => {
+                const saved = await action;
+                if (saved) { this.setState({ formalPreview: null }); void controller.loadVersions(); }
+                return saved;
+            };
+            return <NativeFormalVersionPanel content={controller.content} versions={controller.versions}
+                selected={this.state.formalPreview} pending={controller.pending} hasMore={Boolean(controller.cursor)}
+                actions={{ onClose: this.handleCloseVersionPanel,
+                    onSelect: (version) => this.setState({ formalPreview: version.is_current ? null : version }),
+                    onMore: () => void controller.loadVersions(true),
+                    onRestore: (id) => finish(controller.restore(id)),
+                    onApply: (id) => finish(controller.apply(id)) }} />;
+        }
         const ctx = this.getActiveVersionContext();
         if (!ctx) return null;
         return (
@@ -3125,7 +3306,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private renderMySummaryHeader(canEdit: boolean) {
         const { detail, personalExpanded } = this.state;
         const { t } = this.context;
-        const isAgent = detail?.trigger_type === TriggerType.AGENT;
         return (
             <div className="summary-detail-section-header summary-detail-my-summary-header">
                 <button
@@ -3136,12 +3316,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 >
                     <ChevronDown size={14} className={`summary-detail-chevron${personalExpanded ? " summary-detail-chevron--expanded" : ""}`} />
                     <span>{t("summary.detail.mySummary")}</span>
-                    {isAgent && (
-                        <span className="summary-detail-agent-tag">
-                            <Bot size={12} aria-hidden />
-                            {t("summary.summaryCard.agentType")}
-                        </span>
-                    )}
                 </button>
                 {canEdit && (
                     <Button
@@ -3159,11 +3333,17 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     renderPersonalSummary() {
-        const { personalResult, personalLoading, detail, personalExpanded } = this.state;
+        const { personalLoading, detail, personalExpanded } = this.state;
+        const formal = this.formal, current = formal?.content.current_version;
+        const personalResult = current ? {
+            ...this.state.personalResult, content: current.content, citations: current.citations,
+            version: current.version, abstract: undefined,
+        } : this.state.personalResult;
         const { t } = this.context;
         // Failed 状态由 renderFailed() 统一处理，不在这里渲染
         if (detail && detail.status === TaskStatus.FAILED) return null;
-        if (personalLoading) {
+        if (this.formalRequired && !formal) return null;
+        if (personalLoading && !current) {
             return (
                 <div className="summary-detail-personal">
                     {this.renderMySummaryHeader(false)}
@@ -3175,7 +3355,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (personalResult.content?.trim() && !this.canRevealPersonalContent()) return null;
         const { isEditing, detail: stateDetail } = this.state;
         const isProcessing = stateDetail && (stateDetail.status === TaskStatus.PENDING || stateDetail.status === TaskStatus.PROCESSING) && !personalResult?.content;
-        const canEdit = !!detail
+        // A formal regenerate/refine does not flip the legacy status, so drive the
+        // streaming surface off the live SSE subscription instead. While it runs we
+        // suppress the stale current-version body and show the incoming draft here
+        // (the standalone renderStreamingContent stays legacy-only).
+        const formalStreaming = this.formalRequired && this.state.streaming;
+        const canEdit = this.formalRequired
+            ? Boolean(formal?.content.capabilities.can_edit && !formal.pending && !isEditing && !this.state.formalPreview)
+            : !!detail
             && detail.status === TaskStatus.COMPLETED
             && !!detail.permissions?.can_edit
             && detail.trigger_type !== TriggerType.AGENT
@@ -3203,12 +3390,40 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     </div>
                 )}
                 <hr className="summary-detail-meta-divider" />
-                {isProcessing ? (
+                {formalStreaming ? (
+                    <div className="summary-detail-content-box summary-detail-streaming">
+                        {this.state.streamingContent.trim() ? (
+                            <CitationText content={this.state.streamingContent} citations={[]} />
+                        ) : (
+                            <div className="summary-detail-processing">
+                                <div className="summary-progress-header">
+                                    <span className="summary-progress-header-text">{t("summary.detail.aiThinking")}</span>
+                                </div>
+                                {this.renderWorkflowProgress()}
+                            </div>
+                        )}
+                    </div>
+                ) : isProcessing ? (
                     <div className="summary-detail-processing">
                         <div className="summary-progress-header">
                             <span className="summary-progress-header-text">{t("summary.detail.aiThinking")}</span>
                         </div>
                         {this.renderWorkflowProgress()}
+                    </div>
+                ) : this.state.formalPreview ? (
+                    <div className="summary-detail-content-box summary-version-preview">
+                        <div className="summary-version-preview-banner">
+                            <IconHistory />
+                            <div className="summary-version-preview-banner-copy">
+                                <div className="summary-version-preview-banner-title">{t("summary.detail.versionPreviewTitle", { values: { version: this.state.formalPreview.version } })}</div>
+                                <div className="summary-version-preview-banner-desc">{t("summary.detail.versionPreviewDesc")}</div>
+                            </div>
+                            <Button theme="borderless" size="small" onClick={() => this.setState({ formalPreview: null })}>{t("summary.detail.versionPreviewBack")}</Button>
+                        </div>
+                        <CitationText content={this.state.formalPreview.content} citations={this.state.formalPreview.citations}
+                            teamCitations={this.state.formalPreview.team_citations}
+                            hidePlainCitations={this.state.formalPreview.citation_visibility === "permission_hidden"}
+                            disableTeamMemberPreview={this.state.formalPreview.team_citation_visibility === "historical_identity_only"} />
                     </div>
                 ) : this.state.showVersionDetailModal ? (
                     this.renderVersionPreview(false)
@@ -3227,6 +3442,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     taskId={this.state.detail?.task_id || 0}
                                     baseResultId={this.state.detail?.result_id || 0}
                                     initialContent={personalResult.content || ""}
+                                    persistence={this.formalRequired ? {
+                                        disabled: !formal?.content.capabilities.can_edit || Boolean(formal.pending),
+                                        warning: t("summary.formal.overwriteWarning"), save: this.saveFormalEdit,
+                                    } : undefined}
                                     onSave={this.handleEditSave}
                                     exposeSave={(fn) => { this.editorSaveFn = fn; }}
                                 />
@@ -3237,7 +3456,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     abstract={personalResult.abstract}
                                     title={t("summary.detail.abstractTitle")}
                                 />
-                                <CitationText content={personalResult.content} citations={personalResult.citations || []} />
+                                <CitationText content={personalResult.content} citations={personalResult.citations || []}
+                                    teamCitations={current?.team_citations}
+                                    hidePlainCitations={current?.citation_visibility === "permission_hidden"}
+                                    disableTeamMemberPreview={current?.team_citation_visibility === "historical_identity_only"} />
                             </div>
                         )}
                         {!isEditing && (
@@ -3823,6 +4045,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     handleStartEdit = () => {
+        if (this.formalRequired) {
+            const controller = this.formal;
+            if (!controller || controller.pending || !controller.content.capabilities.can_edit) return;
+            this.formalEditBaseline = formalContentBaseline(controller.content);
+        }
         // Mutually-exclusive with the other editors; entering ensures the
         // personal section is expanded so the editor mounts (otherwise the
         // save bar appears without the editor and saves can hit a stale
@@ -3840,6 +4067,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             editingMyDraft: false,
             personalExpanded: true,
             versionPanelOpen: false,
+            formalPreview: null,
             showVersionDetailModal: false,
             versionDetail: null,
             versionDetailLoading: false,
@@ -3870,6 +4098,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     // Enter/exit inline edit for "my personal report" (multi-collab). Save
     // goes through personal-edit, which recomputes the team result server-side.
     handleStartEditPersonalReport = () => {
+        if (this.formalRequired) return;
         // Mutually-exclusive with the other three editors. Clear stale
         // version panel/preview state (including the loading flag; see the
         // handleStartEdit note above). Refuse while a restore is in flight.
@@ -3898,6 +4127,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     // Enter/exit inline edit for the team result (creator only). Save uses
     // the existing PUT /summaries/:id/edit endpoint.
     handleStartEditTeam = () => {
+        if (this.formalRequired) return;
         // Mutually-exclusive with the other three editors. Clear stale
         // version panel/preview state (including the loading flag).
         // Refuse while a restore is in flight.
@@ -3924,6 +4154,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     // Pre-submit edit of "my own" personal-report draft. Symmetrical with
     // handleStartEditPersonalReport (Enter / Save / Cancel).
     handleStartEditMyDraft = () => {
+        if (this.formalRequired) return;
         // Mutually-exclusive with the other three editors. Clear stale
         // version panel/preview state (including the loading flag).
         // Refuse while a restore is in flight.
@@ -4024,37 +4255,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             />
         );
     };
-
-    renderScheduleButton() {
-        const { detail, scheduleItem, scheduleLoading, isEditing, editingTeamSummary, editingPersonalReport, editingMyDraft } = this.state;
-        const { t } = this.context;
-        // OCT-21 / GPT-S1：草稿编辑态也隐藏 schedule 按钮，与其它编辑态保持一致约束。
-        if (!detail?.permissions?.can_schedule || isEditing || editingTeamSummary || editingPersonalReport || editingMyDraft) return null;
-        // Agent 总结不支持定时更新：schedule 到点会 trigger 传统 map-reduce pipeline，
-        // 但 agent 总结产出是 chat 交互生成，无 replayable sources/participants。
-        if (detail?.trigger_type === TriggerType.AGENT) return null;
-
-        // 任务3：hasSchedule 仅在存在且 is_active 时为 true。
-        // 停用后文案回到「设置定时更新」。
-        const hasActiveSchedule = !!scheduleItem && scheduleItem.is_active !== false;
-        const hasSchedule =
-            hasActiveSchedule ||
-            (!scheduleItem && !!(detail.schedule_id && detail.schedule_id > 0));
-
-        return (
-            <Button
-                size="small"
-                theme="borderless"
-                type="tertiary"
-                icon={<IconClock />}
-                onClick={this.openScheduleModal}
-                disabled={scheduleLoading}
-                loading={scheduleLoading}
-            >
-                {t(hasSchedule ? "summary.detail.editSchedule" : "summary.detail.setSchedule")}
-            </Button>
-        );
-    }
 
     /**
      * V5/§4.2：本任务是否为 V5 schedule 级 CONFIRM 任务。
@@ -4167,7 +4367,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { detail, scheduleItem } = this.state;
         const { t } = this.context;
         // need2：定时**信息**只读展示对所有参与者可见（can_view_schedule），不再限 creator。
-        // 位置不变（header）。定时**设置**按钮仍仅 creator（renderScheduleButton, need5），两者拆开。
+        // 位置不变（header）。定时**设置**按钮仍仅 creator（showSchedule/can_schedule, need5），两者拆开。
         if (!detail?.permissions?.can_view_schedule) return null;
         if (!scheduleItem) return null;
 
@@ -4225,15 +4425,18 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // gated here.
         const isAgent = detail?.trigger_type === TriggerType.AGENT;
         const agentContentReady = !!this.state.personalResult?.content?.trim();
-        const waitingForFallback = !!detail && isAgent && !detail.result?.content?.trim() && !agentContentReady;
+        const waitingForFallback = this.formalRequired ? !this.formal?.content.current_version?.content.trim()
+            : !!detail && isAgent && !detail.result?.content?.trim() && !agentContentReady;
 
         const showForwardToChat = !!detail && detail.status === TaskStatus.COMPLETED;
-        const showRegenerate = !!detail && canRegenerate(detail.status) && !isAgent;
+        const formal = this.formal;
+        const showRegenerate = !this.formalRequired && !!detail && canRegenerate(detail.status) && !this.canRefineCurrentDetail();
         const showRetry = !!detail && detail.status === TaskStatus.FAILED;
         const showCancel = !!detail && canCancel(detail.status);
-        const showDelete = !!detail && isCreator;
+        const showDelete = !!detail && isCreator && (!this.formalRequired || Boolean(formal?.content.capabilities.can_delete));
         const showLeave = !!detail && isParticipant && !isCreator;
-        const canSchedule = !!detail?.permissions?.can_schedule && detail?.trigger_type !== TriggerType.AGENT && !this.state.isEditing && !this.state.editingTeamSummary;
+        const canSchedule = (this.formalRequired ? Boolean(formal?.content.capabilities.can_configure_schedule)
+            : !!detail?.permissions?.can_schedule && detail?.trigger_type !== TriggerType.AGENT) && !this.state.isEditing && !this.state.editingTeamSummary;
         const scheduleItem = this.state.scheduleItem;
         const hasActiveSchedule = !!scheduleItem && scheduleItem.is_active !== false;
         const showSchedule = canSchedule;
@@ -4269,11 +4472,22 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             theme="solid"
                             type="primary"
                             onClick={this.handleContinueRefine}
+                            disabled={Boolean(formal?.pending)}
                         >
                             {t("summary.detail.continueRefine")}
                         </Button>
                     )}
                     {(() => {
+                        if (this.formalRequired) {
+                            if (!formal?.content.capabilities.can_view_versions) return null;
+                            return <Button data-testid={summaryTestIds.detailVersionTrigger}
+                                className={`summary-version-trigger${this.state.versionPanelOpen ? " is-active" : ""}`}
+                                theme="borderless" type="tertiary" icon={<IconHistory />}
+                                aria-expanded={this.state.versionPanelOpen}
+                                onClick={this.state.versionPanelOpen ? this.handleCloseVersionPanel : this.openFormalVersions}>
+                                {t("summary.detail.versionRecords")}
+                            </Button>;
+                        }
                         const vctx = this.getActiveVersionContext();
                         if (!vctx) return null;
                         const versionPanelActive = this.state.versionPanelOpen;
@@ -4417,12 +4631,18 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     render() {
+        return this.renderLegacyDetail();
+    }
+
+    renderLegacyDetail() {
         const { detail, loading, error, showScheduleConfig, scheduleConfig } = this.state;
         const { t } = this.context;
         const hasToc = this.shouldShowToc();
 
         return (
             <div data-testid={summaryTestIds.detailPage} className="summary-detail-page">
+                {detail && <NativeFormalContentBinding taskId={detail.task_id}
+                    managed={Boolean(detail.content_protocol_version)} onChange={this.onFormalBinding} />}
                 <div
                     ref={this.layoutRef}
                     className={`summary-detail-layout${this.isVersionPanelActuallyOpen() ? " has-version-panel" : ""}${hasToc ? " has-toc" : ""}`}
@@ -4431,6 +4651,26 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     {detail && !loading && this.renderHeader()}
                     <div className="summary-detail-content-scroll" ref={this.contentScrollRef}>
                         <div className="summary-detail-content-inner">
+                        {this.formalRequired && !loading && (
+                            <div className="summary-detail-formal-status">
+                                {!this.formal && <p role={this.state.formalBinding?.status === "error" ? "alert" : "status"}>
+                                    {t(this.state.formalBinding?.status === "error"
+                                        ? this.state.formalBinding.errorKey || "summary.formal.errors.unavailable"
+                                        : "summary.formal.loading")}
+                                    {this.state.formalBinding?.status === "error" && <Button onClick={this.state.formalBinding.retry}>{t("summary.common.retry")}</Button>}
+                                </p>}
+                                {this.formal?.errorKey && <p role="alert">{t(this.formal.errorKey)} <Button onClick={() => void this.formal?.reload()}>{t("summary.common.retry")}</Button></p>}
+                                {this.formal?.content.current_version && <p>{t("summary.formal.versionRevision", { values: {
+                                    version: this.formal.content.current_version.version, revision: this.formal.content.content_revision,
+                                } })}</p>}
+                                {this.formal?.noticeKey && <p role="status">{t(this.formal.noticeKey)}</p>}
+                                {(this.formal?.content.active_generation || this.formal?.content.latest_generation) && <p role="status">
+                                    {t(`summary.formal.run.${(this.formal.content.active_generation || this.formal.content.latest_generation)!.status}`)}
+                                    {this.formal.content.active_generation && <Button disabled={this.formal.pending} onClick={this.handleCancel}>{t("summary.formal.cancelRun")}</Button>}
+                                    {this.formal.content.latest_generation?.status === "conflict" && <Button onClick={this.openFormalVersions}>{t("summary.formal.previewCandidate")}</Button>}
+                                </p>}
+                            </div>
+                        )}
                         {loading && (
                             <div className="summary-detail-loading">
                                 <Spin size="large" />
@@ -4636,7 +4876,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     </div>
                 )}
 
-                <ScheduleConfigModal
+                {showScheduleConfig && this.formal && <React.Suspense fallback={<Spin />}>
+                    <NativeFormalConfiguration controller={this.formal}
+                    sourceNames={Object.fromEntries((detail?.sources || []).map((source) => [source.source_id, source.source_name || source.source_id]))}
+                    onSaved={this.handleScheduleConfigSaved}
+                    onClose={() => this.setState({ showScheduleConfig: false })} />
+                </React.Suspense>}
+                {!this.formalRequired && <ScheduleConfigModal
                     visible={showScheduleConfig}
                     value={scheduleConfig || { unit: "week", every: 1, time: "09:00" }}
                     onConfirm={this.handleScheduleSave}
@@ -4644,7 +4890,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     hasExisting={!!this.state.scheduleItem && this.state.scheduleItem.is_active !== false}
                     onDisable={this.handleScheduleDisable}
                     disabling={this.state.scheduleDisabling}
-                />
+                />}
                 <SummaryAddMemberModal
                     visible={this.state.showAddMemberModal}
                     taskId={this.taskId!}
@@ -4690,6 +4936,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <div className="summary-regenerate-content">
                         <div className="summary-regenerate-mode-list" role="radiogroup">
                             {(["refine", "full"] as const).map((mode) => {
+                                // 全部重新生成 always shows, but an agent summary whose
+                                // generation config is still incomplete can't run it — grey
+                                // it and point to 定时更新 to 补齐配置 (can_regenerate_direct).
+                                const fullDisabled = mode === "full" && this.formalRequired && !this.formal?.content.capabilities.can_regenerate_direct;
                                 const selected = this.state.regenerateMode === mode;
                                 const titleKey = mode === "refine"
                                     ? "summary.detail.refineModeTitle"
@@ -4700,13 +4950,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 return (
                                     <label
                                         key={mode}
-                                        className={`summary-regenerate-mode${selected ? " summary-regenerate-mode--selected" : ""}`}
+                                        className={`summary-regenerate-mode${selected ? " summary-regenerate-mode--selected" : ""}${fullDisabled ? " summary-regenerate-mode--disabled" : ""}`}
                                     >
                                         <input
                                             type="radio"
                                             name="summary-regenerate-mode"
                                             value={mode}
                                             checked={selected}
+                                            disabled={fullDisabled}
                                             onChange={() => this.handleRegenerateModeChange(mode)}
                                             className="summary-regenerate-mode__input"
                                         />
@@ -4714,6 +4965,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                         <span>
                                             <span className="summary-regenerate-mode__title">{t(titleKey)}</span>
                                             <span className="summary-regenerate-mode__desc">{t(descKey)}</span>
+                                            {fullDisabled && (
+                                                <span className="summary-regenerate-mode__hint">
+                                                    {t("summary.detail.fullRegenerateNeedsConfig")}
+                                                    <button type="button" className="summary-regenerate-mode__hint-link" onClick={this.handleGoConfigureFromRegenerate}>
+                                                        {t("summary.detail.fullRegenerateGoConfigure")}
+                                                    </button>
+                                                </span>
+                                            )}
                                         </span>
                                     </label>
                                 );
@@ -4768,9 +5027,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             type="button"
                             data-testid={summaryTestIds.regenerateSubmitBtn}
                             className="summary-confirm-btn summary-confirm-btn--dark"
-                            disabled={this.state.regenerateSubmitting || (this.state.regenerateMode === "refine" && !this.hasRegenerateRefineBaseResult()) || !(this.state.regenerateMode === "refine"
-                                ? this.state.refineFeedback.trim()
-                                : this.state.regenerateTopic.trim())}
+                            disabled={Boolean(this.formal?.pending) || this.state.regenerateSubmitting || (
+                                this.state.regenerateMode === "refine"
+                                    ? (!this.hasRegenerateRefineBaseResult() || !this.state.refineFeedback.trim())
+                                    : this.formalRequired
+                                        // 全部重新生成 on a formal summary: the prompt is a one-shot
+                                        // override and may be left empty; only config completeness gates it.
+                                        ? !this.formal?.content.capabilities.can_regenerate_direct
+                                        : !this.state.regenerateTopic.trim())}
                             onClick={this.handleRegenerateConfirm}
                         >
                             {this.state.regenerateSubmitting

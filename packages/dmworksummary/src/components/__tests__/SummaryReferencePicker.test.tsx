@@ -98,6 +98,7 @@ describe('SummaryReferencePicker', () => {
     afterEach(() => {
         cleanup();
         vi.clearAllMocks();
+        mockListSummaries.mockReset();
     });
 
     describe('isReferenceable filter (compat bridge)', () => {
@@ -114,11 +115,12 @@ describe('SummaryReferencePicker', () => {
             expect(screen.queryByText('测试总结')).not.toBeInTheDocument();
         });
 
-        it('falls back to trigger_type === AGENT when referenceable is undefined', async () => {
+        it('does not infer reference permission from either creating engine', async () => {
             const agentItem = makeItem({ referenceable: undefined, trigger_type: TriggerType.AGENT });
             const manualItem = makeItem({ task_id: 2, title: '手动总结', referenceable: undefined, trigger_type: TriggerType.MANUAL });
             renderPicker({ items: [agentItem, manualItem] });
-            await waitFor(() => expect(screen.getByText('测试总结')).toBeInTheDocument());
+            await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+            expect(screen.queryByText('测试总结')).not.toBeInTheDocument();
             expect(screen.queryByText('手动总结')).not.toBeInTheDocument();
         });
 
@@ -130,19 +132,19 @@ describe('SummaryReferencePicker', () => {
     });
 
     describe('getTypeLabel', () => {
-        it('renders Agent type label for trigger_type AGENT', async () => {
+        it('renders the shared summary label for historical Agent', async () => {
             const item = makeItem({ referenceable: true, trigger_type: TriggerType.AGENT });
             renderPicker({ item });
-            await waitFor(() => expect(screen.getByText('Agent 总结')).toBeInTheDocument());
+            await waitFor(() => expect(screen.getByText('总结')).toBeInTheDocument());
         });
 
-        it('renders Scheduled type label for trigger_type SCHEDULED', async () => {
+        it('does not infer a current schedule from a historical trigger', async () => {
             const item = makeItem({ referenceable: true, trigger_type: TriggerType.SCHEDULED });
             renderPicker({ item });
-            await waitFor(() => expect(screen.getByText('定时总结')).toBeInTheDocument());
+            await waitFor(() => expect(screen.getByText('总结')).toBeInTheDocument());
         });
 
-        it('renders Multi-person label when participants > 1 for MANUAL type', async () => {
+        it('does not infer confirmed collaboration from a transient participant count', async () => {
             const item = makeItem({
                 referenceable: true,
                 trigger_type: TriggerType.MANUAL,
@@ -152,17 +154,17 @@ describe('SummaryReferencePicker', () => {
                 ],
             });
             renderPicker({ item });
-            await waitFor(() => expect(screen.getByText('多人总结')).toBeInTheDocument());
+            await waitFor(() => expect(screen.getByText('总结')).toBeInTheDocument());
         });
 
-        it('renders Quick label when participants <= 1 for MANUAL type', async () => {
+        it('renders the same summary label for historical Workflow', async () => {
             const item = makeItem({
                 referenceable: true,
                 trigger_type: TriggerType.MANUAL,
                 participants: [{ user_id: 'u1', user_name: 'User1', status: 1 }],
             });
             renderPicker({ item });
-            await waitFor(() => expect(screen.getByText('快速总结')).toBeInTheDocument());
+            await waitFor(() => expect(screen.getByText('总结')).toBeInTheDocument());
         });
 
         // R4 yj P2-4: renamed — unknown trigger_type falls back to the quick
@@ -173,7 +175,7 @@ describe('SummaryReferencePicker', () => {
             renderPicker({ item });
             // Item should still appear, with the quick fallback badge
             await waitFor(() => expect(screen.getByText('测试总结')).toBeInTheDocument());
-            expect(screen.getByText('快速总结')).toBeInTheDocument();
+            expect(screen.getByText('总结')).toBeInTheDocument();
             // The task_no should still render
             expect(screen.getByText('TASK-001')).toBeInTheDocument();
         });
@@ -201,19 +203,15 @@ describe('SummaryReferencePicker', () => {
                 schedule_id: 0,
             });
             renderPicker({ item });
-            await waitFor(() => expect(screen.getByText('快速总结')).toBeInTheDocument());
+            await waitFor(() => expect(screen.getByText('总结')).toBeInTheDocument());
             expect(screen.queryByText('定时总结')).not.toBeInTheDocument();
         });
     });
 
     describe('legacy mode (referenceable field missing)', () => {
-        it('first request omits trigger_type; second request sends AGENT after detecting missing referenceable', async () => {
+        it('missing eligibility fails closed without an engine-filtered retry', async () => {
             const agentItem = makeItem({ referenceable: undefined, trigger_type: TriggerType.AGENT });
-            // First call returns items without referenceable → triggers legacy flip + re-fetch.
-            // Second call (re-fetch) returns the same items with trigger_type=AGENT in the request.
-            mockListSummaries
-                .mockResolvedValueOnce({ items: [agentItem], total: 1 })
-                .mockResolvedValueOnce({ items: [agentItem], total: 1 });
+            mockListSummaries.mockResolvedValueOnce({ items: [agentItem], total: 1 });
             const { rerender } = render(<SummaryReferencePicker visible={false} onCancel={() => {}} onSelect={() => {}} />);
             rerender(<SummaryReferencePicker visible={true} onCancel={() => {}} onSelect={() => {}} />);
 
@@ -224,15 +222,9 @@ describe('SummaryReferencePicker', () => {
                 expect(firstCallArg.trigger_type).toBeUndefined();
             });
 
-            // Second request (re-fetch after legacy flip): legacyMode=true, trigger_type should be AGENT
-            await waitFor(() => {
-                expect(mockListSummaries).toHaveBeenCalledTimes(2);
-                const secondCallArg = mockListSummaries.mock.calls[1][0];
-                expect(secondCallArg.trigger_type).toBe(TriggerType.AGENT);
-            }, { timeout: 2000 });
-
-            // Item should still be visible after re-fetch
-            await waitFor(() => expect(screen.getByText('测试总结')).toBeInTheDocument());
+            await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+            expect(mockListSummaries).toHaveBeenCalledTimes(1);
+            expect(screen.queryByText('测试总结')).not.toBeInTheDocument();
         });
 
         it('does not enter legacy mode when response is empty (no items to infer from)', async () => {
@@ -248,7 +240,7 @@ describe('SummaryReferencePicker', () => {
             // Only one call — no re-fetch triggered because legacy mode is NOT flipped
             // for empty responses.
             expect(mockListSummaries).toHaveBeenCalledTimes(1);
-            expect(screen.getByTestId('empty')).toBeInTheDocument();
+            await waitFor(() => expect(screen.getByTestId('empty')).toBeInTheDocument());
         });
 
         it('does not send trigger_type when referenceable field is present', async () => {

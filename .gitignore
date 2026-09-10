@@ -19,6 +19,8 @@ build-e2e
 apps/web/build-client-communication/
 apps/web/build-client-summary/
 apps/web/build-client-apps/
+apps/web/build-formal-mirror/
+apps/web/build-unified-mirror/
 *.tsbuildinfo
 
 # misc

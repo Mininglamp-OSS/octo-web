@@ -3,7 +3,7 @@ import { Modal, Input, List, Empty, Spin, Toast } from '@douyinfe/semi-ui';
 import { IconClose, IconLink } from '@douyinfe/semi-icons';
 import { listSummaries } from '../api/summaryApi';
 import type { SummaryListItem } from '../types/summary';
-import { TriggerType, TaskStatus } from '../types/summary';
+import { TaskStatus } from '../types/summary';
 import { I18nContext, type I18nCtx, Dap } from '@octo/base';
 import { summaryTestIds } from '../utils/testIds';
 import { getSummaryTypeLabel, isReferenceable as isItemReferenceable } from '../utils/summaryHelpers';
@@ -34,8 +34,6 @@ interface SummaryReferencePickerState {
     keyword: string;
     items: SummaryListItem[];
     error: string;
-    /** 后端未部署 referenceable 字段时为 true，请求带 trigger_type=AGENT 收窄 */
-    legacyMode: boolean;
 }
 
 /**
@@ -64,7 +62,6 @@ export default class SummaryReferencePicker extends Component<
             keyword: '',
             items: [],
             error: '',
-            legacyMode: false,
         };
     }
 
@@ -87,23 +84,8 @@ export default class SummaryReferencePicker extends Component<
         const seq = ++this.fetchSeq;
         this.setState({ loading: true, error: '' });
         try {
-            // 列出当前 space 可引用的总结。
-            //
-            // 兼容策略（与 isReferenceable 保持一致）：
-            // - 后端已部署 referenceable 字段时，不再传 trigger_type，由后端返回所有类型，
-            //   前端按 status + referenceable 客户端复核。
-            // - 后端未部署 referenceable 时（字段缺失），仍传 trigger_type=AGENT 保持
-            //   与改动前等价的服务端收窄。
-            //
-            // 无论哪种模式，都传 status=COMPLETED 让服务端过滤未完成项，避免浪费配额。
-            //
-            // 翻页收集（R4 yj P1-1 / ms P1 / jx 🟡）：后端 ListSummaries 没有
-            // referenceable 服务端过滤，非 legacy 模式下不可引用项会占满首页，
-            // 把可引用项挤出 50 行窗口——繁忙 space 里原本可引用的总结从选择器
-            // 消失，严格差于改动前。因此翻页拉取直到收集满 PICKER_TARGET_COUNT
-            // 个可引用项、或遇到短页（最后一页）、或达到 PICKER_MAX_PAGES 硬上限。
-            // legacy 模式下服务端已按 AGENT 收窄，通常第一页即停，行为与改动前等价。
-            const useLegacyNarrowing = this.state.legacyMode;
+            // Read eligibility comes from the server, never the creating engine.
+            // Keep bounded paging so ineligible first-page rows cannot hide later matches.
             const collected: SummaryListItem[] = [];
             const seenIds = new Set<number>();
 
@@ -113,29 +95,14 @@ export default class SummaryReferencePicker extends Component<
                     page,
                     page_size: PICKER_PAGE_SIZE,
                     status: TaskStatus.COMPLETED,
-                    trigger_type: useLegacyNarrowing ? TriggerType.AGENT : undefined,
                     keyword: keyword.trim() || undefined,
                 });
                 if (seq !== this.fetchSeq) return; // 过期响应，丢弃
                 const sampled = resp?.items || [];
 
-                // 检测后端是否已部署 referenceable 字段：如果首页非空响应中没有任何项
-                // 带 referenceable 字段，则进入 legacy 模式（后续请求继续带 trigger_type）。
-                // P1-2: 只从非空响应推断 legacy —— 空列表无法说明后端是否支持该字段。
-                if (page === 1 && sampled.length > 0) {
-                    const hasReferenceable = sampled.some(t => t.referenceable !== undefined);
-                    if (!hasReferenceable && !this.state.legacyMode) {
-                        // P1-3: 翻转 legacy 并 re-fetch，让用户立刻看到 Agent 总结
-                        // 而不是空列表。re-fetch 会拿到新 seq，本页循环自动作废。
-                        this.setState({ legacyMode: true }, () => this.fetchList(keyword));
-                        return;
-                    }
-                    if (hasReferenceable && this.state.legacyMode) {
-                        // 后端已部署 referenceable 且之前在 legacy 模式：退出 legacy 并
-                        // re-fetch（R4 yj P2-7：与 true 分支对称，不再静默保留收窄窗口的旧数据）。
-                        this.setState({ legacyMode: false }, () => this.fetchList(keyword));
-                        return;
-                    }
+                if (sampled.length > 0 && !sampled.some(item => typeof item.referenceable === "boolean")) {
+                    this.setState({ loading: false, items: [], error: this.context.t("summary.formal.errors.unavailable") });
+                    return;
                 }
 
                 // 收集本页中已完成且可引用的项（含 legacy 兼容），按 task_id 去重
@@ -220,7 +187,7 @@ export default class SummaryReferencePicker extends Component<
                 <div className="summary-reference-picker-list">
                     {loading && <Spin />}
                     {!loading && error && (
-                        <div className="summary-reference-picker-error">
+                        <div className="summary-reference-picker-error" role="alert">
                             {t('summary.common.loadingFailed')}: {error}
                         </div>
                     )}

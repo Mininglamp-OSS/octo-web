@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render as rtlRender, screen } from '@testing-librar
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import SummaryCard from './SummaryCard';
 import { ParticipantStatus, TaskStatus, TriggerType } from '../types/summary';
+import { listContentActionsFixture } from '../__tests__/formalContentFixtures';
 
 vi.mock('@octo/base', async () => {
     const actual = await vi.importActual<Record<string, unknown>>('../__mocks__/dmworkBase');
@@ -51,8 +52,8 @@ vi.mock('@douyinfe/semi-ui', () => ({
         );
     }, {
         Menu: ({ children }: any) => <>{children}</>,
-        Item: ({ children, onClick }: any) => (
-            <button onClick={onClick as any}>{children}</button>
+        Item: ({ children, onClick, disabled }: any) => (
+            <button onClick={onClick as any} disabled={disabled}>{children}</button>
         ),
     }),
 }));
@@ -107,6 +108,37 @@ function makeItem(overrides: Record<string, unknown> = {}) {
 const noop = () => {};
 
 afterEach(cleanup);
+
+describe('SummaryCard formal actions do not depend on the historical engine', () => {
+    it.each([TriggerType.AGENT, TriggerType.MANUAL])('opens original refinement when reference access is false (source %s)', (trigger_type) => {
+        const onContinueOptimize = vi.fn();
+        render(<SummaryCard
+            task={makeItem({ trigger_type, referenceable: false, content_actions: listContentActionsFixture() }) as any}
+            onClick={noop} onDelete={noop} onContinueOptimize={onContinueOptimize} onEdit={noop} onConfigure={noop}
+        />);
+        expect(screen.getByRole('img', { name: '总结' })).toBeInTheDocument();
+        openCardMenu();
+        fireEvent.click(screen.getByRole('button', { name: '继续优化' }));
+        expect(onContinueOptimize).toHaveBeenCalledExactlyOnceWith(1);
+    });
+
+    it.each([TriggerType.AGENT, TriggerType.MANUAL])('offers cancel but no overwrite while a generation is active (source %s)', (trigger_type) => {
+        const projection = listContentActionsFixture();
+        projection.active_generation = { generation_id: 'run', status: 'running', can_cancel: true };
+        projection.capabilities.can_edit = false;
+        projection.capabilities.can_refine = false;
+        const onCancel = vi.fn();
+        render(<SummaryCard
+            task={makeItem({ trigger_type, content_actions: projection }) as any}
+            onClick={noop} onDelete={noop} onCancel={onCancel} onContinueOptimize={noop} onEdit={noop}
+        />);
+        openCardMenu();
+        expect(screen.queryByRole('button', { name: '继续优化' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: '编辑' })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: '取消任务' }));
+        expect(onCancel).toHaveBeenCalledExactlyOnceWith(1);
+    });
+});
 
 describe('SummaryCard bot-created marker', () => {
     it('bot 创建时显示 Bot 小标与「由 <bot> 创建」', () => {
@@ -404,7 +436,7 @@ describe('SummaryCard relative time fallback (issue #1440)', () => {
 });
 
 describe('SummaryCard AI Generated Badge', () => {
-    it('trigger_type === 3 (AGENT) 时显示 Agent 总结图标', () => {
+    it('historical Agent uses the same summary icon and accessible name', () => {
         render(
             <SummaryCard
                 task={makeItem({ title: '对话生成总结', trigger_type: 3 }) as any}
@@ -413,7 +445,8 @@ describe('SummaryCard AI Generated Badge', () => {
             />,
         );
 
-        expect(screen.getByRole('img', { name: 'Agent 总结' })).toBeInTheDocument();
+        expect(screen.getByRole('img', { name: '总结' })).toBeInTheDocument();
+        expect(screen.queryByRole('img', { name: 'Agent 总结' })).not.toBeInTheDocument();
     });
 
     it('trigger_type === 1 (MANUAL) 时不显示对话生成徽标', () => {
@@ -465,7 +498,9 @@ describe('SummaryCard completed actions', () => {
         expect(onContinueOptimize).toHaveBeenCalledWith(1);
     });
 
-    it('Legacy Agent summary keeps regenerate and edit actions', () => {
+    // 「继续优化」只由 onContinueOptimize 提供（派生一条全新总结）。缺该回调时不再退回
+    // onRegenerate —— 那会在同一个标签下就地改写原总结。
+    it('never renders continue-optimize as a disguised in-place regenerate', () => {
         render(
             <SummaryCard
                 task={makeItem({ status: TaskStatus.COMPLETED, trigger_type: TriggerType.AGENT }) as any}
@@ -477,12 +512,12 @@ describe('SummaryCard completed actions', () => {
         );
 
         openCardMenu();
-        expect(screen.getByText('重新生成')).toBeInTheDocument();
-        expect(screen.getByText('编辑')).toBeInTheDocument();
         expect(screen.queryByText('继续优化')).not.toBeInTheDocument();
+        expect(screen.getByText('编辑')).toBeInTheDocument();
+        expect(screen.queryByText('重新生成')).not.toBeInTheDocument();
     });
 
-    it('hides continue refining when an Agent summary is not referenceable', () => {
+    it('referenceability is not used to select edit/refine menu actions', () => {
         const onRegenerate = vi.fn();
         render(
             <SummaryCard
@@ -497,13 +532,13 @@ describe('SummaryCard completed actions', () => {
         );
 
         openCardMenu();
-        expect(screen.queryByText('继续优化')).not.toBeInTheDocument();
-        expect(screen.getByText('重新生成')).toBeInTheDocument();
-        expect(screen.queryByText('编辑')).not.toBeInTheDocument();
+        expect(screen.getByText('继续优化')).toBeInTheDocument();
+        expect(screen.queryByText('重新生成')).not.toBeInTheDocument();
+        expect(screen.getByText('编辑')).toBeInTheDocument();
         expect(screen.getByText('删除')).toBeInTheDocument();
 
-        fireEvent.click(screen.getByText('重新生成'));
-        expect(onRegenerate).toHaveBeenCalledWith(1);
+        fireEvent.click(screen.getByText('继续优化'));
+        expect(onRegenerate).not.toHaveBeenCalled();
     });
 
     it('hides action items whose handlers are not provided', () => {
@@ -521,21 +556,22 @@ describe('SummaryCard completed actions', () => {
         expect(screen.getByText('删除')).toBeInTheDocument();
     });
 
-    it('Workflow summary keeps regenerate, edit, and delete', () => {
+    it('Workflow exposes the same optimize, edit, and delete actions', () => {
         render(
             <SummaryCard
                 task={makeItem({ status: TaskStatus.COMPLETED, trigger_type: TriggerType.MANUAL }) as any}
                 onClick={noop}
                 onDelete={noop}
+                onContinueOptimize={noop}
                 onRegenerate={noop}
                 onEdit={noop}
             />,
         );
 
         openCardMenu();
-        expect(screen.getByText('重新生成')).toBeInTheDocument();
+        expect(screen.getByText('继续优化')).toBeInTheDocument();
         expect(screen.getByText('编辑')).toBeInTheDocument();
         expect(screen.getByText('删除')).toBeInTheDocument();
-        expect(screen.queryByText('继续优化')).not.toBeInTheDocument();
+        expect(screen.queryByText('重新生成')).not.toBeInTheDocument();
     });
 });

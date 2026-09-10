@@ -1,0 +1,29 @@
+html, body, #root { margin: 0; height: 100%; background: var(--wk-bg-surface); }
+body { font: var(--wk-text-body); }
+
+/* Fixture chrome: a mount switcher, so one build covers both hosts of the
+   summary frontend (the unified workspace and the chat sidebar). */
+.mirror-shell { display: flex; flex-direction: column; height: 100%; }
+.mirror-shell__tabs {
+  display: flex; gap: 8px; padding: 6px 12px; flex: none;
+  border-bottom: 1px solid var(--wk-border-default); background: var(--wk-bg-surface);
+}
+.mirror-shell__tabs button {
+  border: 1px solid var(--wk-border-default); background: transparent;
+  color: var(--wk-text-primary); border-radius: 6px; padding: 4px 12px; cursor: pointer;
+}
+.mirror-shell__tabs button.is-active {
+  background: var(--wk-bg-brand-subtle, rgba(64, 128, 255, 0.12));
+  border-color: var(--wk-border-brand, #4080ff);
+}
+.mirror-shell__mount { flex: 1; min-height: 0; position: relative; }
+
+/* Faked chat page around the real sidebar. */
+.mirror-chat { display: flex; flex-direction: column; height: 100%; min-width: 0; }
+.mirror-chat__header {
+  display: flex; align-items: center; justify-content: space-between; flex: none;
+  height: 52px; padding: 0 16px; border-bottom: 1px solid var(--wk-border-default);
+}
+.mirror-chat__title { font-weight: 600; color: var(--wk-text-primary); }
+.mirror-chat__actions { display: flex; align-items: center; gap: 12px; color: var(--wk-text-primary); }
+.mirror-chat__body { flex: 1; padding: 24px; color: var(--wk-text-secondary); line-height: 1.7; }

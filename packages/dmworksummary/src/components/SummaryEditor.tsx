@@ -13,6 +13,12 @@ interface SummaryEditorProps {
     onSave: () => void;
     mode?: "team" | "personal" | "personal_draft";
     exposeSave?: (fn: (() => void) | null) => void;
+    /** Formal writes are owned by the feature bridge, never the legacy API. */
+    persistence?: {
+        disabled: boolean;
+        warning: string;
+        save: (content: string) => Promise<boolean>;
+    };
 }
 
 interface SummaryEditorState {
@@ -76,10 +82,16 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
     private handleSave = async () => {
         const { taskId, baseResultId, onSave, mode } = this.props;
         const { content } = this.state;
+        if (this.state.saving || this.props.persistence?.disabled) return;
 
         this.setState({ saving: true });
         try {
-            if (mode === "personal_draft") {
+            if (this.props.persistence) {
+                if (!await this.props.persistence.save(content)) {
+                    this.setState({ saving: false });
+                    return;
+                }
+            } else if (mode === "personal_draft") {
                 // OCT-21：提交前编辑自己的草稿（只能改自己），不触发团队重算、不写 edited_at。
                 await api.personalDraftSummary(taskId, content);
             } else if (mode === "personal") {
@@ -114,6 +126,7 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
 
         return (
             <div className="summary-editor">
+                {this.props.persistence && <p role="note">{this.props.persistence.warning}</p>}
                 <div style={{ position: "relative" }}>
                     <textarea
                         ref={this.textareaRef}
@@ -121,7 +134,7 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
                         className="summary-editor-textarea"
                         value={content}
                         onChange={this.handleChange}
-                        disabled={saving}
+                        disabled={saving || this.props.persistence?.disabled}
                         placeholder={translate("summary.editor.placeholder")}
                     />
                     {!saving && (

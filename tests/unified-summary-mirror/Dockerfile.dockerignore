@@ -1,0 +1,8 @@
+*
+!apps/
+!apps/web/
+!apps/web/build-unified-mirror/
+!apps/web/build-unified-mirror/**
+!tests/
+!tests/unified-summary-mirror/
+!tests/unified-summary-mirror/nginx.conf

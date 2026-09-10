@@ -10,8 +10,9 @@ import { X, ChevronLeft } from 'lucide-react';
 import SummaryListPage from '../pages/SummaryListPage';
 import SummaryWorkbenchCreateEntry from '../features/summaryWorkbench/SummaryWorkbenchCreateEntry';
 import SummaryDetailPage from '../pages/SummaryDetailPage';
-import type { SummaryListItem } from '../types/summary';
+import type { SummaryReferenceTask } from '../types/summary';
 import { summaryTestIds } from '../utils/testIds';
+import { type SummaryDetailAction } from '../bridge/summaryWorkbench/detailAction';
 
 interface ChatSummaryPanelProps {
     visible: boolean;
@@ -23,7 +24,9 @@ interface ChatSummaryPanelProps {
 interface ChatSummaryPanelState {
     view: 'list' | 'detail' | 'create';
     selectedTaskId: number | null;
-    refineTask: SummaryListItem | null;
+    detailAction?: SummaryDetailAction;
+    /** 继续优化引用的原总结：非空 = create 视图在派生一条新总结。 */
+    refineTask: SummaryReferenceTask | null;
     isDragging: boolean;
     /** 仅供 Capability fail-closed 后的 Legacy 创建页恢复原选择。 */
     legacyCreateMode: 'normal' | 'agent';
@@ -134,14 +137,20 @@ export default class ChatSummaryPanel extends Component<
         });
     };
 
-    private handleViewDetail = (taskId: number) => {
-        this.setState({ view: 'detail', selectedTaskId: taskId, refineTask: null });
+    private handleViewDetail = (taskId: number, detailAction?: SummaryDetailAction) => {
+        this.setState({ view: 'detail', selectedTaskId: taskId, refineTask: null, detailAction });
     };
 
-    private handleContinueOptimize = (task: SummaryListItem) => {
+    /**
+     * 继续优化：和统一工作区一致——引用当前总结进入 agent 会话，产出一条**全新**
+     * 总结（挂 referenced_task_ids），不在原总结上就地改写。列表卡片菜单里的「继续
+     * 优化」也落到这里：它带 refine 意图打开详情，详情消费该意图后回调本方法。
+     */
+    private handleContinueRefine = (task: SummaryReferenceTask) => {
         this.setState({
             view: 'create',
             selectedTaskId: null,
+            detailAction: undefined,
             refineTask: task,
             legacyCreateMode: 'agent',
         });
@@ -194,7 +203,6 @@ export default class ChatSummaryPanel extends Component<
                         onClose={onClose}
                         onCreateNew={this.handleCreateNew}
                         onViewDetail={this.handleViewDetail}
-                        onContinueOptimize={this.handleContinueOptimize}
                     />
                 </div>
 
@@ -214,14 +222,14 @@ export default class ChatSummaryPanel extends Component<
                         </div>
                         <div className="wk-summary-panel-detail-body" style={{ overflow: 'auto', flex: 1 }}>
                             <SummaryWorkbenchCreateEntry
-                                key={`${channel.channelType}:${channel.channelID}`}
+                                key={`${channel.channelType}:${channel.channelID}:${refineTask?.task_id ?? 'new'}`}
                                 channel={channel}
                                 derivedFromTask={refineTask ?? undefined}
                                 embedded={true}
                                 onClose={this.handleBackToList}
                                 onSubmit={this.handleCreateSubmit}
                                 onOpenTask={this.handleViewDetail}
-                                source="chat_aside"
+                                source={refineTask ? 'continue_refine' : 'chat_aside'}
                                 legacyInitialMode={this.state.legacyCreateMode}
                             />
                         </div>
@@ -243,7 +251,12 @@ export default class ChatSummaryPanel extends Component<
                             </button>
                         </div>
                         <div className="wk-summary-panel-detail-body">
-                            <SummaryDetailPage taskId={selectedTaskId} onAfterMutate={() => this.setState({ view: 'list', selectedTaskId: null })} />
+                            <SummaryDetailPage
+                                taskId={selectedTaskId}
+                                requestedAction={this.state.detailAction}
+                                onContinueRefine={this.handleContinueRefine}
+                                onAfterMutate={() => this.setState({ view: 'list', selectedTaskId: null })}
+                            />
                         </div>
                     </div>
                 )}

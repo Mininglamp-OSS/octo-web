@@ -10,6 +10,7 @@ vi.mock('@octo/base', async () => {
     return {
         ...actual,
         WKApp: {
+            shared: { currentSpaceId: "space-123" },
             mittBus: { emit: (...args: any[]) => mockEmit(...args) },
         },
     };
@@ -31,7 +32,6 @@ vi.mock('../../pages/SummaryListPage', () => ({
             <div data-testid="summary-list" data-channel-id={props.channelId}>
                 <button onClick={() => props.onViewDetail(42)}>open-detail</button>
                 <button onClick={() => props.onCreateNew()}>create-new</button>
-                <button onClick={() => props.onContinueOptimize?.({ task_id: 42, title: 'Agent summary' })}>continue-optimize</button>
                 {props.onClose && (
                     <button data-testid="list-close" onClick={props.onClose}>
                         close
@@ -67,7 +67,13 @@ vi.mock('../../features/summaryWorkbench/SummaryWorkbenchCreateEntry', () => ({
 // SummaryDetailPage mock
 vi.mock('../../pages/SummaryDetailPage', () => ({
     default: (props: any) => (
-        <div data-testid="summary-detail" data-task-id={String(props.taskId)} />
+        <div data-testid="summary-detail" data-task-id={String(props.taskId)} data-action={props.requestedAction?.action}>
+            <button
+                onClick={() => props.onContinueRefine?.({ task_id: props.taskId, title: 'Agent summary' })}
+            >
+                continue-refine
+            </button>
+        </div>
     ),
 }));
 
@@ -209,15 +215,28 @@ describe('ChatSummaryPanel', () => {
         expect(screen.queryByTestId('summary-create-entry')).not.toBeInTheDocument();
     });
 
-    it('opens continue optimization inside the panel with the selected summary reference', () => {
+    // 侧栏和主工作区必须一致：继续优化 = 引用原总结派生一条**全新**总结（agent 流程），
+    // 不是留在原总结详情里就地改写。
+    it('continue-refine derives a new summary through the agent flow, like the workspace', () => {
         render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
-        fireEvent.click(screen.getByText('continue-optimize'));
+        fireEvent.click(screen.getByText('open-detail'));
+        fireEvent.click(screen.getByText('continue-refine'));
 
-        expect(screen.getByTestId('summary-create-entry')).toHaveAttribute(
-            'data-derived-task-id',
-            '42',
-        );
-        expect(screen.queryByTestId('summary-list')).not.toBeVisible();
+        const entry = screen.getByTestId('summary-create-entry');
+        expect(entry.dataset.derivedTaskId).toBe('42');
+        expect(entry.dataset.legacyInitialMode).toBe('agent');
+        expect(entry.dataset.source).toBe('continue_refine');
+        // 原总结的详情让位给创建流程，没有被就地改写。
+        expect(screen.queryByTestId('summary-detail')).not.toBeInTheDocument();
+    });
+
+    it('a plain create keeps the chat-aside source and no reference', () => {
+        render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
+        fireEvent.click(screen.getByText('create-new'));
+
+        const entry = screen.getByTestId('summary-create-entry');
+        expect(entry.dataset.derivedTaskId).toBe('');
+        expect(entry.dataset.source).toBe('chat_aside');
     });
 
     describe('resizable splitter', () => {

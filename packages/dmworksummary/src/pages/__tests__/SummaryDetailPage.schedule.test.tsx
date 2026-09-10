@@ -1466,15 +1466,15 @@ describe('SummaryDetailPage — finding 2: scheduleLoading 期间 WAITING_CONFIR
 //   `(summary_mode !== BY_PERSON || !personalResult || personalLoading) && renderScheduleButton()`
 // → 多人任务一旦 personalResult 已加载，header 的定时按钮被隐藏；
 // personalResult 未生成时又被塞进 personal 区（依赖 personalResult）→ 两处都不出。
-// 修复：renderScheduleButton() 仅依赖 permissions.can_edit / isEditing（其内部门控），
+// 修复：定时按钮（header actions 的 showSchedule）仅依赖 permissions.can_schedule / isEditing，
 // 与 personalResult / summary_mode 解耦；header 无条件渲染；personal 区不再重复渲染。
 describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP 一致可见', () => {
     beforeEach(() => vi.clearAllMocks());
 
     // fail-before / pass-after 核心：BY_PERSON 且 personalResult 未生成时，
-    // renderScheduleButton() 仍须返回非 null（以前 header 门控会把它藏掉）。
+    // 定时按钮仍须出现在 header（以前 header 门控会把它藏掉）。
     // B1（第二轮）：定时按钮改判 permissions.can_schedule（任务级配置，creator 单/多人都可设）。
-    it('renderScheduleButton stays non-null for BY_PERSON even when personalResult is absent', () => {
+    it('schedule button stays present for BY_PERSON even when personalResult is absent', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
@@ -1484,13 +1484,13 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
             scheduleItem: null,
             isEditing: false,
         };
-        // 定时按钮与 personalResult 解耦，依然渲染。
-        expect((page as any).renderScheduleButton()).not.toBeNull();
+        // 定时按钮与 personalResult 解耦，依然渲染（现由 header actions 的 showSchedule 门控）。
+        expect(JSON.stringify((page as any).renderHeader())).toContain('summary.detail.setSchedule');
     });
 
     // B1：定时按钮门控由 can_edit 改为 can_schedule。creator 多人任务后端给 can_schedule=true，
     // 即便（极端）can_edit=false 也应能设定时；非 creator can_schedule=false → 不渲染。
-    it('renderScheduleButton gated by can_schedule (renders when can_schedule=true even if can_edit=false)', () => {
+    it('schedule button gated by can_schedule (renders when can_schedule=true even if can_edit=false)', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
@@ -1498,10 +1498,10 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
             personalResult: null,
             isEditing: false,
         };
-        expect((page as any).renderScheduleButton()).not.toBeNull();
+        expect(JSON.stringify((page as any).renderHeader())).toContain('summary.detail.setSchedule');
     });
 
-    it('renderScheduleButton returns null without can_schedule (non-creator)', () => {
+    it('schedule button absent without can_schedule (non-creator)', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
@@ -1509,10 +1509,10 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
             personalResult: null,
             isEditing: false,
         };
-        expect((page as any).renderScheduleButton()).toBeNull();
+        expect(JSON.stringify((page as any).renderHeader())).not.toContain('summary.detail.setSchedule');
     });
 
-    it('renderScheduleButton still gated by isEditing (returns null while editing)', () => {
+    it('schedule button still gated by isEditing (absent while editing)', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
@@ -1520,7 +1520,7 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
             personalResult: null,
             isEditing: true,
         };
-        expect((page as any).renderScheduleButton()).toBeNull();
+        expect(JSON.stringify((page as any).renderHeader())).not.toContain('summary.detail.setSchedule');
     });
 
     // v2 对齐：定时按钮集中到 header actions，从团队框/个人区移除。
@@ -1700,14 +1700,14 @@ describe('批次B 需求2：定时信息 gate=can_view_schedule（全员）, 设
         expect((page as any).renderScheduleSummary()).toBeNull();
     });
 
-    it('renderScheduleButton (设置) still gated by can_schedule (creator only)', () => {
+    it('schedule button (设置) still gated by can_schedule (creator only)', () => {
         const creator = makePage(1);
         creator.state = { ...(creator.state as any), detail: multiCollabDetail({ can_schedule: true }), isEditing: false };
-        expect((creator as any).renderScheduleButton()).not.toBeNull();
+        expect(JSON.stringify((creator as any).renderHeader())).toContain('summary.detail.setSchedule');
 
         const viewer = makePage(1);
         viewer.state = { ...(viewer.state as any), detail: multiCollabDetail({ can_schedule: false, can_view_schedule: true }), isEditing: false };
-        expect((viewer as any).renderScheduleButton()).toBeNull();
+        expect(JSON.stringify((viewer as any).renderHeader())).not.toContain('summary.detail.setSchedule');
     });
 });
 

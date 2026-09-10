@@ -567,7 +567,6 @@ export default function SummaryWorkbenchFeature({
   ) => {
     const previousInputValue = workbench.viewState.inputValue;
     const previousHasSubmitted = hasSubmitted;
-    const previousTemplateGalleryOpen = templateGalleryOpen;
     const previousTemplateFilledComposer = templateFilledComposer.current;
     const responsePromise = request();
 
@@ -581,7 +580,7 @@ export default function SummaryWorkbenchFeature({
       workbench.restoreComposerValue(previousInputValue);
       templateFilledComposer.current = previousTemplateFilledComposer;
       setHasSubmitted(previousHasSubmitted);
-      setTemplateGalleryOpen(previousTemplateGalleryOpen);
+      // Keep the conversation/error visible. Templates can be reopened explicitly.
     }
     return response;
   };

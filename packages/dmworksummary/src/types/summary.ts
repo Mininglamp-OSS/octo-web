@@ -173,6 +173,8 @@ export interface MemberStatus {
 
 /** 列表项 */
 export interface SummaryListItem {
+    content_protocol_version?: number;
+    content_actions?: import("../Service/SummaryContentContract").SummaryListContentActions;
     task_id: number;
     task_no: string;
     title: string;
@@ -238,6 +240,7 @@ export interface SummaryReferenceTask {
 
 /** 详情 */
 export interface SummaryDetail {
+    content_protocol_version?: number;
     task_id: number;
     task_no: string;
     title: string;

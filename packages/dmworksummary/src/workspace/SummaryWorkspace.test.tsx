@@ -36,8 +36,9 @@ vi.mock("../pages/SummaryDetailPage", () => ({
     onAfterMutate,
     onContinueRefine,
     onViewConfirm,
+    requestedAction,
   }: any) => (
-    <div data-testid="workspace-detail">
+    <div data-testid="workspace-detail" data-action={requestedAction?.action}>
       <span>{taskId}</span>
       <button
         onClick={() =>
@@ -153,18 +154,23 @@ describe("SummaryWorkspace", () => {
     expect(screen.getByTestId("workspace-list")).toBeInTheDocument();
     expect(screen.getByTestId("workspace-detail")).toHaveTextContent("17");
 
+    // 继续优化 = 派生一条全新总结：路由到 create/agent，携带 derivedFromTask（引用当前总结），
+    // 而非停留在当前详情页做同总结 refine（旧行为，已废弃）。
     fireEvent.click(screen.getByText("continue-refine"));
     expect(onRouteChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
         view: "create",
         mode: "agent",
-        source: "detail_optimize",
+        source: "continue_refine",
         derivedFromTask: expect.objectContaining({ task_id: 17 }),
       })
     );
-    expect(screen.getByTestId("workspace-create")).toHaveTextContent("agent");
-    expect(screen.getByTestId("workspace-create")).toHaveTextContent("17");
+    expect(screen.queryByTestId("workspace-detail")).not.toBeInTheDocument();
+    const created = screen.getByTestId("workspace-create");
+    expect(created).toHaveTextContent("agent");
+    expect(created).toHaveTextContent("17");
 
+    fireEvent.click(screen.getByText("create-unified"));
     fireEvent.click(screen.getByText("submit-create"));
     expect(onRouteChange).toHaveBeenLastCalledWith({
       view: "detail",

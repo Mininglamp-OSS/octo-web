@@ -22,6 +22,8 @@ import SummaryWorkbenchEntry from "../features/summaryWorkbench/Entry";
 import SummaryWorkbenchCreateEntry from "../features/summaryWorkbench/SummaryWorkbenchCreateEntry";
 import SummaryCreatePage from "./SummaryCreatePage";
 import SummaryDetailPage from "./SummaryDetailPage";
+import { summaryListActions, type SummaryListAction } from "../bridge/summaryWorkbench/listActions";
+import { createSummaryDetailAction, type SummaryDetailAction } from "../bridge/summaryWorkbench/detailAction";
 
 type SummaryCreateEntryMode = "pending" | "unified" | "legacy";
 
@@ -36,9 +38,7 @@ interface SummaryListPageProps {
     /** Called when the user clicks "new summary" in panel mode. */
     onCreateNew?: (mode?: "normal" | "agent" | "unified") => void;
     /** Called when a card is clicked in panel mode (instead of routeRight.push). */
-    onViewDetail?: (taskId: number) => void;
-    /** Opens continue-optimization inside the host panel when provided. */
-    onContinueOptimize?: (task: SummaryListItem) => void;
+    onViewDetail?: (taskId: number, action?: SummaryDetailAction) => void;
 }
 
 interface SummaryListPageState {
@@ -619,14 +619,15 @@ export default class SummaryListPage extends Component<
         }
     };
 
-    handleCardClick = (taskId: number) => {
+    handleCardClick = (taskId: number, action?: SummaryDetailAction) => {
         this.setState({ activeTaskId: taskId });
         if (this.props.onViewDetail) {
-            this.props.onViewDetail(taskId);
+            if (action) this.props.onViewDetail(taskId, action);
+            else this.props.onViewDetail(taskId);
         } else {
             WKApp.routeRight.popToRoot();
       WKApp.routeRight.push(
-        <SummaryDetailPage taskId={taskId} emitSelection />
+        <SummaryDetailPage taskId={taskId} requestedAction={action} emitSelection />
       );
         }
     };
@@ -656,58 +657,22 @@ export default class SummaryListPage extends Component<
         }
     };
 
-    handleRetry = async (taskId: number) => {
-        try {
-      const task = this.state.items.find((i) => i.task_id === taskId);
-            await api.regenerateSummary(taskId, { topic: task?.title || "" });
-            Toast.success(t("summary.list.retrySuccess"));
-            this.loadData();
-        } catch (err: any) {
-            Toast.error(err.message || t("summary.common.operationFailed"));
-        }
-    };
-
-    handleCancel = async (taskId: number) => {
-        try {
-            await api.cancelSummary(taskId);
-            Toast.success(t("summary.list.cancelSuccess"));
-            this.loadData();
-        } catch (err: any) {
-            Toast.error(err.message || t("summary.common.operationFailed"));
-        }
-    };
-
-    handleRegenerate = (taskId: number) => {
-        this.handleCardClick(taskId);
-        setTimeout(() => {
-      window.dispatchEvent(
-        new CustomEvent("summary-detail-regenerate", { detail: { taskId } })
-      );
-        }, 300);
-    };
-
-    handleContinueOptimize = (taskId: number) => {
-        const task = this.state.items.find(item => item.task_id === taskId);
+    private openContentAction = (taskId: number, action: SummaryListAction) => {
+        const task = this.state.items.find((item) => item.task_id === taskId);
         if (!task) return;
-        if (this.props.onContinueOptimize) {
-            this.props.onContinueOptimize(task);
-            return;
-        }
-        window.dispatchEvent(
-            new CustomEvent("summary-open-chat-with-reference", { detail: task })
-        );
+        const actions = summaryListActions(task);
+        if (!actions[action]) return;
+        this.handleCardClick(taskId, createSummaryDetailAction(
+            taskId, String(WKApp.shared.currentSpaceId ?? "").trim(), action, actions.contentId,
+        ));
     };
 
-    handleEdit = (taskId: number) => {
-        this.handleCardClick(taskId);
-        // 300ms delay allows detail page to mount and register event listener
-        // before dispatching the edit action event
-        setTimeout(() => {
-      window.dispatchEvent(
-        new CustomEvent("summary-detail-edit", { detail: { taskId } })
-      );
-        }, 300);
-    };
+    handleRetry = (taskId: number) => this.openContentAction(taskId, "retry");
+    handleCancel = (taskId: number) => this.openContentAction(taskId, "cancel");
+    handleRegenerate = (taskId: number) => this.openContentAction(taskId, "regenerate");
+    handleContinueOptimize = (taskId: number) => this.openContentAction(taskId, "refine");
+    handleEdit = (taskId: number) => this.openContentAction(taskId, "edit");
+    handleConfigure = (taskId: number) => this.openContentAction(taskId, "configure");
 
     handleCreate = (mode: "normal" | "agent" = "normal") => {
         // 「新建总结」意图:三处 create 控件都走这里(原先误用 GET /summary-templates 页面加载推断)。
@@ -788,49 +753,16 @@ export default class SummaryListPage extends Component<
               : translate("summary.list.title")}
                     </h2>
                     <div className="summary-list-header-actions">
-                        {createEntryMode === "legacy" ? (
-                            /* Legacy 保留原模式下拉；定时更新统一在总结详情页配置。 */
-                            <Dropdown
-                                trigger="click"
-                                position="bottomRight"
-                                render={(
-                                    <Dropdown.Menu>
-                                        <Dropdown.Item
-                                            data-testid={summaryTestIds.listNormalTab}
-                                            onClick={() => this.handleCreate("normal")}
-                                        >
-                                            {translate("summary.create.start")}
-                                        </Dropdown.Item>
-                                        <Dropdown.Item
-                                            data-testid={summaryTestIds.listAgentTab}
-                                            onClick={() => this.handleCreate("agent")}
-                                        >
-                                            {translate("summary.create.agentStart")}
-                                        </Dropdown.Item>
-                                    </Dropdown.Menu>
-                                )}
-                            >
-                                <Button
-                                    data-testid={summaryTestIds.listModeSwitch}
-                                    className="summary-list-create-icon-btn"
-                                    icon={<IconPlus />}
-                                    theme="borderless"
-                                    aria-label={translate("summary.list.createTooltip")}
-                                    title={translate("summary.list.createTooltip")}
-                                />
-                            </Dropdown>
-                        ) : (
                             <Button
                                 data-testid={summaryTestIds.listModeSwitch}
                                 className="summary-list-create-icon-btn"
                                 icon={<IconPlus />}
                                 theme="borderless"
                                 disabled={createEntryMode === "pending"}
-                                onClick={createEntryMode === "unified" ? this.handleUnifiedCreate : undefined}
+                                onClick={createEntryMode === "pending" ? undefined : this.handleUnifiedCreate}
                                 aria-label={translate("summary.list.createTooltip")}
                                 title={translate("summary.list.createTooltip")}
                             />
-                        )}
                         {isPanel && onClose && (
                             <Button
                                 icon={<X size={18} />}
@@ -973,7 +905,7 @@ export default class SummaryListPage extends Component<
                                 onContinueOptimize={this.handleContinueOptimize}
                                 onEdit={this.handleEdit}
                                 onCancel={this.handleCancel}
-                                unifiedAgentActions={createEntryMode === "unified"}
+                                onConfigure={this.handleConfigure}
                             />
                         ))}
                         {loadingMore && (

@@ -24,6 +24,18 @@ export interface SummaryContentConfiguration {
   unavailable_reason: string | null;
 }
 
+/** Lightweight list projection, never a command authorization or CAS baseline. */
+export interface SummaryListContentActions {
+  contract_version: 1;
+  mode: "formal" | "legacy" | "unavailable";
+  content_id?: string;
+  business_scope: "single" | "team" | "group" | "unknown";
+  capabilities: SummaryContentCapabilities;
+  generation_config: SummaryContentConfiguration;
+  active_generation: { generation_id: string; status: string; can_cancel: boolean } | null;
+  unavailable_reason?: string;
+}
+
 export interface SummaryFormalVersion {
   content_id: string;
   version_id: string;
@@ -59,6 +71,7 @@ export interface SummaryFormalContent {
   capabilities: SummaryContentCapabilities;
   generation_config: SummaryContentConfiguration;
   active_generation: SummaryContentGeneration | null;
+  latest_generation?: SummaryContentGeneration | null;
   integrity: "consistent" | "provisional" | "normalization_required" | "repair_required";
 }
 
@@ -108,6 +121,63 @@ export interface SummaryContentGeneration {
 export interface SummaryContentRefineRequest extends SummaryContentBaseline {
   feedback: string;
   idempotency_key: string;
+}
+
+export interface SummaryGenerationSpec {
+  schema_version: 1;
+  sources: { source_id: string; source_type: number; confirmation: string }[];
+  summary_mode: number;
+  collaboration: "single";
+  participants: string[];
+  time_selector: {
+    mode: "absolute" | "relative" | "natural_period" | "incremental";
+    timezone: string;
+    start?: string; end?: string; days?: number;
+    unit?: string; offset?: number; initial_start?: string;
+  };
+  requirement: string | null;
+  template: { id: string; version: string; content: string } | null;
+  retrieval: { author_ids: string[]; keywords: string[] };
+  citation_rules: { policy: string };
+  field_sources: Record<string, string>;
+}
+
+export interface SummaryGenerationSchedule {
+  enabled: boolean;
+  interval_days: number;
+  interval_months: number;
+  run_time: string;
+  day_of_week: number;
+  day_of_month: number;
+  /** Existing cron rules can be retained or paused, not authored here. */
+  cron_expr?: string;
+}
+
+export interface SummaryGenerationConfiguration extends SummaryContentConfiguration {
+  spec: SummaryGenerationSpec;
+  schedule: SummaryGenerationSchedule | null;
+  next_run_at: string | null;
+}
+
+export interface SummaryRegenerateRequest extends SummaryContentBaseline {
+  expected_config_revision: number;
+  idempotency_key: string;
+  // A one-shot topic that replaces the generation requirement for this run only.
+  // It never rewrites the saved configuration (spec/revision) and is excluded
+  // from the scheduled series' incremental watermark on the backend.
+  requirement_override?: string;
+}
+
+export interface SummarySaveConfigurationRequest {
+  expected_config_revision: number;
+  spec: SummaryGenerationSpec;
+  schedule?: SummaryGenerationSchedule;
+  generate?: SummaryRegenerateRequest;
+}
+
+export interface SummarySavedConfiguration {
+  configuration: SummaryGenerationConfiguration;
+  generation: SummaryContentGeneration | null;
 }
 
 export class SummaryContentProtocolError extends Error {

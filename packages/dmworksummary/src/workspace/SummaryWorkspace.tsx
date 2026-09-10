@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft } from "lucide-react";
-import { useI18n } from "@octo/base";
+import { useI18n, WKApp } from "@octo/base";
 import ScheduleListPage from "../pages/ScheduleListPage";
 import SummaryConfirmPage from "../pages/SummaryConfirmPage";
 import SummaryWorkbenchCreateEntry from "../features/summaryWorkbench/SummaryWorkbenchCreateEntry";
@@ -12,6 +12,7 @@ import {
   subscribeSummaryAttentionBadge,
 } from "../utils/summaryAttentionBadge";
 import type { SummaryReferenceTask } from "../types/summary";
+import { type SummaryDetailAction } from "../bridge/summaryWorkbench/detailAction";
 import {
   legacySummaryMessagingPort,
   SummaryMessagingProvider,
@@ -28,6 +29,7 @@ export default function SummaryWorkspace({
 }: SummaryWorkspaceProps) {
   const { t } = useI18n();
   const [listRefreshKey, setListRefreshKey] = useState(0);
+  const [detailAction, setDetailAction] = useState<SummaryDetailAction>();
   const messagingPort = useMemo(() => {
     const base = messaging ?? legacySummaryMessagingPort;
     if (!onOpenConversation) return base;
@@ -67,17 +69,22 @@ export default function SummaryWorkspace({
   const showList = () => onRouteChange({ view: "list" });
   const showCreate = (mode: "normal" | "agent" | "unified" = "normal") =>
     onRouteChange({ view: "create", mode: mode === "unified" ? "normal" : mode, source: "summary_list" });
-  const showDetail = (taskId: number) =>
+  const showDetail = (taskId: number, action?: SummaryDetailAction) => {
+    setDetailAction(action);
     onRouteChange({ view: "detail", taskId });
+  };
   const refreshListAndShow = () => {
     refreshList();
     showList();
   };
+  // 继续优化：引用当前总结、进入 agent 会话，产出一条**全新**总结（挂 referenced_task_ids，
+  // 由 agent 自动判定轻量 refine 还是完整工具链 + 重新检索）。因此路由到 create/derived，
+  // 而不是停留在当前详情页做同总结改写（后者是旧的 same-summary refine 行为，已废弃）。
   const continueRefine = (task: SummaryReferenceTask) =>
     onRouteChange({
       view: "create",
       mode: "agent",
-      source: "detail_optimize",
+      source: "continue_refine",
       derivedFromTask: task,
     });
 
@@ -105,6 +112,7 @@ export default function SummaryWorkspace({
         return (
           <SummaryDetailPage
             taskId={currentRoute.taskId}
+            requestedAction={detailAction}
             originChannel={currentRoute.originConversation}
             emitSelection
             onAfterMutate={refreshListAndShow}

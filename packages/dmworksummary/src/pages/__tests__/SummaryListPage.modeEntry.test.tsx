@@ -47,6 +47,8 @@ import { WKApp } from '@octo/base';
 import SummaryWorkbenchEntry from '../../features/summaryWorkbench/Entry';
 import SummaryWorkbenchCreateEntry from '../../features/summaryWorkbench/SummaryWorkbenchCreateEntry';
 import SummaryListPage from '../SummaryListPage';
+import SummaryDetailPage from '../SummaryDetailPage';
+import { listContentActionsFixture } from '../../__tests__/formalContentFixtures';
 
 /** 递归遍历 React 元素树，收集满足条件的节点（不依赖 @testing-library）。 */
 function findInTree(node: unknown, predicate: (n: any) => boolean, out: any[] = []): any[] {
@@ -212,33 +214,40 @@ describe('SummaryListPage mode entry navigation', () => {
         expect(onCreateNew).toHaveBeenCalledWith('unified');
     });
 
-    it('opens Agent continue optimization with the selected summary as reference', () => {
+    it.each([1, 3])('opens original task detail for engine %s without reference-based creation', (trigger_type) => {
         const page = makePage();
-        const task = { task_id: 42, title: 'Agent summary' };
+        const task = { task_id: 42, title: 'Summary', trigger_type, status: 3, content_actions: listContentActionsFixture() };
         (page as any).state = { ...(page as any).state, items: [task] };
         const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+        const pushSpy = vi.spyOn(WKApp.routeRight, 'push');
 
         (page as any).handleContinueOptimize(42);
 
-        const event = dispatchSpy.mock.calls[0][0] as CustomEvent;
-        expect(event.type).toBe('summary-open-chat-with-reference');
-        expect(event.detail).toBe(task);
+        expect(dispatchSpy).not.toHaveBeenCalled();
+        const detail = pushSpy.mock.calls[0][0] as React.ReactElement;
+        expect(detail.type).toBe(SummaryDetailPage);
+        expect(detail.props.taskId).toBe(42);
+        expect(detail.props.requestedAction).toEqual(expect.objectContaining({
+            taskId: 42, action: "refine", contentId: "sc1_personal", spaceId: "space-123",
+        }));
     });
 
-    it('delegates Agent continue optimization to the panel host when provided', () => {
-        const onContinueOptimize = vi.fn();
-        const page = makePage({ onContinueOptimize });
-        const task = { task_id: 42, title: 'Agent summary' };
+    // 列表只表达意图（refine），派生新总结由详情页交给宿主完成——列表自己既不派发
+    // window 事件，也不直接开创建页，所以侧栏和主工作区共用同一条路径。
+    it('passes the refine intent to the host detail and nothing else', () => {
+        const onViewDetail = vi.fn();
+        const page = makePage({ onViewDetail });
+        const task = { task_id: 42, status: 3, content_actions: listContentActionsFixture() };
         (page as any).state = { ...(page as any).state, items: [task] };
         const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
 
         (page as any).handleContinueOptimize(42);
 
-        expect(onContinueOptimize).toHaveBeenCalledWith(task);
+        expect(onViewDetail).toHaveBeenCalledWith(42, expect.objectContaining({ action: "refine", contentId: "sc1_personal" }));
         expect(dispatchSpy).not.toHaveBeenCalled();
     });
 
-    it('fail-closed Legacy entry keeps normal and Agent choices in the original dropdown', () => {
+    it('unsupported Workbench still has one capability-gated creation entry, not engine choices', () => {
         const page = makePage();
         (page as any).context = { locale: 'zh-CN', t: (k: string) => k };
         const pushSpy = vi.spyOn(WKApp.routeRight, 'push');
@@ -250,7 +259,7 @@ describe('SummaryListPage mode entry navigation', () => {
             tree,
             (n) => n?.props?.['data-testid'] === 'summary-list-mode-switch',
         );
-        expect(trigger.props.onClick).toBeUndefined();
+        expect(trigger.props.onClick).toBe(page.handleUnifiedCreate);
         expect(pushSpy).not.toHaveBeenCalled();
 
         // 下拉菜单项才是模式入口：普通项与 Agent 项分别调 handleCreate 对应模式。
@@ -262,17 +271,14 @@ describe('SummaryListPage mode entry navigation', () => {
         const items = dropdowns.flatMap((dropdown) => findInTree(dropdown.props.render, (n) => n?.props?.onClick));
         const byTestId = (id: string) =>
             items.find((n) => n.props?.['data-testid'] === id) ?? null;
-        expect(byTestId('summary-list-normal-tab')).not.toBeNull();
-        expect(byTestId('summary-list-agent-tab')).not.toBeNull();
+        expect(byTestId('summary-list-normal-tab')).toBeNull();
+        expect(byTestId('summary-list-agent-tab')).toBeNull();
 
-        byTestId('summary-list-agent-tab').props.onClick();
+        trigger.props.onClick();
         expect(pushSpy).toHaveBeenCalledTimes(1);
         const el = pushSpy.mock.calls[0][0] as React.ReactElement;
-        expect(el.props.initialMode).toBe('agent');
-
-        byTestId('summary-list-normal-tab').props.onClick();
-        expect(pushSpy).toHaveBeenCalledTimes(2);
-        expect((pushSpy.mock.calls[1][0] as React.ReactElement).props.initialMode).toBe('normal');
+        expect(el.type).toBe(SummaryWorkbenchCreateEntry);
+        expect(el.props.initialMode).toBeUndefined();
     });
 
     it('keeps create controls disabled while capability availability is pending', () => {

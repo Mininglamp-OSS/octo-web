@@ -7,6 +7,7 @@ import { ParticipantStatus, TaskStatus, TriggerType, type SummaryListItem } from
 import { formatDateOnly, getStatusLabel, getSummaryTypeKind, getSummaryTypeLabel } from "../utils/summaryHelpers";
 import { deriveSummaryDisplayContent } from "../utils/templateResolver";
 import { summaryTestIds } from "../utils/testIds";
+import { summaryListActions } from "../bridge/summaryWorkbench/listActions";
 
 interface SummaryCardProps {
     task: SummaryListItem;
@@ -20,7 +21,8 @@ interface SummaryCardProps {
     onContinueOptimize?: (taskId: number) => void;
     onEdit?: (taskId: number) => void;
     onCancel?: (taskId: number) => void;
-    /** Capability 开启后启用统一入口下的 Agent 专属菜单；Legacy 保持原菜单。 */
+    onConfigure?: (taskId: number) => void;
+    /** @deprecated Actions now use per-task capabilities, not a global engine flag. */
     unifiedAgentActions?: boolean;
 }
 
@@ -70,7 +72,7 @@ function getStatusColor(status: number): string | null {
     }
 }
 
-const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDelete, onRespond, onLeave, onRetry, onRegenerate, onContinueOptimize, onEdit, onCancel, unifiedAgentActions = false }) => {
+const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDelete, onRespond, onLeave, onRetry, onRegenerate, onContinueOptimize, onEdit, onCancel, onConfigure }) => {
     const { t } = useI18n();
     const [confirmType, setConfirmType] = useState<'delete' | 'leave' | null>(null);
     const [menuVisible, setMenuVisible] = useState(false);
@@ -99,6 +101,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
     // 类型分类 — 单一 classifier 派生 label + icon + CSS class（R4 yj P2-2）。
     const typeKind = getSummaryTypeKind(task);
     const typeLabel = getSummaryTypeLabel(t, task);
+    const actions = summaryListActions(task);
     const sourceInfo = getSourceInfo(task, t);
     const relativeTime = formatRelativeTime(task.created_at, t);
     const isCreator = task.creator_id != null && task.creator_id === currentUid;
@@ -179,8 +182,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                             aria-label={typeLabel}
                             tabIndex={0}
                         >
-                            {typeKind === 'agent' ? <Bot size={14} />
-                                : typeKind === 'scheduled' ? <Clock size={14} />
+                            {typeKind === 'scheduled' ? <Clock size={14} />
                                 : typeKind === 'multi' ? <UsersRound size={14} />
                                 : <FileText size={14} />}
                         </span>
@@ -212,59 +214,41 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                             <Dropdown.Menu className="summary-card-menu">
                                 {isCreator && (
                                     <>
-                                        {/* Generating / Waiting: 取消任务 */}
-                                        {isGenerating && onCancel && (
+                                        {actions.cancel && onCancel && (
                                             <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onCancel?.(task.task_id); }}>
                                                 {t("summary.summaryCard.cancelTask")}
                                             </Dropdown.Item>
                                         )}
-                                        {displayStatus === TaskStatus.WAITING_CONFIRM && onCancel && (
-                                            <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onCancel?.(task.task_id); }}>
-                                                {t("summary.summaryCard.cancelTask")}
+                                        {actions.retry && onRetry && (
+                                            <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onRetry(task.task_id); }}>
+                                                {t("summary.summaryCard.retry")}
                                             </Dropdown.Item>
                                         )}
-                                        {/* Failed Agent summaries cannot enter the workflow editor. */}
-                                        {task.status === TaskStatus.FAILED && (
-                                            <>
-                                                {onRetry && (
-                                                    <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onRetry(task.task_id); }}>
-                                                        {t("summary.summaryCard.retry")}
-                                                    </Dropdown.Item>
-                                                )}
-                                                {onEdit && (!unifiedAgentActions || typeKind !== "agent") && (
-                                                    <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onEdit?.(task.task_id); }}>
-                                                        {t("summary.summaryCard.edit")}
-                                                    </Dropdown.Item>
-                                                )}
-                                            </>
+                                        {actions.edit && onEdit && (
+                                            <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onEdit?.(task.task_id); }}>
+                                                {t("summary.summaryCard.edit")}
+                                            </Dropdown.Item>
                                         )}
-                                        {/* Completed Agent summaries refine in the unified assistant;
-                                            Workflow summaries keep regenerate + edit. */}
-                                        {task.status === TaskStatus.COMPLETED && (
-                                            unifiedAgentActions && typeKind === "agent" ? (
-                                                task.referenceable !== false && onContinueOptimize ? (
-                                                    <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onContinueOptimize(task.task_id); }}>
-                                                        {t("summary.detail.continueRefine")}
-                                                    </Dropdown.Item>
-                                                ) : onRegenerate ? (
-                                                    <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onRegenerate(task.task_id); }}>
-                                                        {t("summary.summaryCard.regenerate")}
-                                                    </Dropdown.Item>
-                                                ) : null
-                                            ) : (
-                                                <>
-                                                    {onRegenerate && (
-                                                        <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onRegenerate(task.task_id); }}>
-                                                            {t("summary.summaryCard.regenerate")}
-                                                        </Dropdown.Item>
-                                                    )}
-                                                    {onEdit && (
-                                                        <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onEdit(task.task_id); }}>
-                                                            {t("summary.summaryCard.edit")}
-                                                        </Dropdown.Item>
-                                                    )}
-                                                </>
-                                            )
+                                        {/* 继续优化只走 onContinueOptimize：它派生一条全新总结。
+                                            过去缺该回调时会退回 onRegenerate，等于在「继续优化」
+                                            的名义下就地改写原总结，与合并后的语义相反。 */}
+                                        {actions.refine && onContinueOptimize && (
+                                            <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onContinueOptimize(task.task_id); }}>
+                                                {t("summary.detail.continueRefine")}
+                                            </Dropdown.Item>
+                                        )}
+                                        {actions.regenerate && onRegenerate && (
+                                            <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onRegenerate(task.task_id); }}>
+                                                {t("summary.summaryCard.regenerate")}
+                                            </Dropdown.Item>
+                                        )}
+                                        {actions.configure && onConfigure && (
+                                            <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onConfigure(task.task_id); }}>
+                                                {t("summary.formal.configure")}
+                                            </Dropdown.Item>
+                                        )}
+                                        {actions.mode === "unavailable" && (
+                                            <Dropdown.Item disabled>{t("summary.formal.errors.unavailable")}</Dropdown.Item>
                                         )}
                                         {/* 删除（红色，所有状态都有） */}
                                         <Dropdown.Item

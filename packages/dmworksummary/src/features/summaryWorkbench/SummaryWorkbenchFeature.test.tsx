@@ -982,49 +982,62 @@ describe("SummaryWorkbenchFeature", () => {
     );
   });
 
-  it("keeps the composer and templates when the request is not accepted", async () => {
-    const pendingResponse = deferred<undefined>();
-    const current = controller({
-      viewState: {
-        layout: "full",
-        messages: [],
-        contextItems: [],
-        inputValue: "Keep this request",
-        placeholderKey: "summary.workbench.placeholder.initial",
-        isSending: false,
-        canSend: true,
-      },
-      send: vi.fn(() => pendingResponse.promise),
-    });
-    current.setComposerValue = vi.fn((value: string) => {
-      current.viewState.inputValue = value;
-    });
-    current.restoreComposerValue = vi.fn((value: string) => {
-      current.viewState.inputValue = value;
-    });
-    mocks.useSummaryWorkbench.mockReturnValue(current);
+  it.each([undefined, { resultType: "error" as const }])(
+    "restores failed input without reopening templates (%j)",
+    async (response) => {
+      const pendingResponse = deferred<typeof response>();
+      const current = controller({
+        viewState: {
+          layout: "full",
+          messages: [],
+          contextItems: [],
+          inputValue: "Keep this request",
+          placeholderKey: "summary.workbench.placeholder.initial",
+          isSending: false,
+          canSend: true,
+        },
+        send: vi.fn(() => pendingResponse.promise),
+      });
+      current.setComposerValue = vi.fn((value: string) => {
+        current.viewState.inputValue = value;
+      });
+      current.restoreComposerValue = vi.fn((value: string) => {
+        current.viewState.inputValue = value;
+      });
+      mocks.useSummaryWorkbench.mockReturnValue(current);
 
-    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
-      legacyRoot: true,
-    });
-    fireEvent.click(screen.getByRole("button", { name: "send" }));
+      render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+        legacyRoot: true,
+      });
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
 
-    expect(current.restoreComposerValue).toHaveBeenCalledWith("");
-    expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
+      expect(current.restoreComposerValue).toHaveBeenCalledWith("");
+      expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
 
-    pendingResponse.resolve(undefined);
-    await waitFor(() =>
-      expect(current.restoreComposerValue).toHaveBeenCalledWith(
-        "Keep this request"
-      )
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId("template-selector")).toBeInTheDocument()
-    );
-    expect(
-      screen.queryByRole("button", { name: "open-template" })
-    ).not.toBeInTheDocument();
-  });
+      pendingResponse.resolve(response);
+      await waitFor(() =>
+        expect(current.restoreComposerValue).toHaveBeenCalledWith(
+          "Keep this request"
+        )
+      );
+      expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "open-template" })
+      ).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "open-template" }));
+      expect(screen.getByTestId("template-selector")).toBeInTheDocument();
+
+      current.send = vi.fn().mockResolvedValue({
+        resultType: "agent_preview",
+        preview: { content: "Draft after retry" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+      await waitFor(() => expect(current.send).toHaveBeenCalledTimes(1));
+      expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
+      expect(current.viewState.inputValue).toBe("");
+    }
+  );
 
   it("restores the template gallery when starting a new session", async () => {
     const current = controller({
@@ -1560,7 +1573,9 @@ describe("SummaryWorkbenchFeature", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
     fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
-    await waitFor(() => expect(savePreview).toHaveBeenCalledWith("# Draft"));
+    // 默认标题取自预览正文的第一行，Markdown 记号会被剥掉：标题是 "Draft"，
+    // 不是 "# Draft"。
+    await waitFor(() => expect(savePreview).toHaveBeenCalledWith("Draft"));
     expect(mocks.toastSuccess).toHaveBeenCalledWith(
       "summary.create.agentSummaryCreated"
     );
@@ -1604,7 +1619,7 @@ describe("SummaryWorkbenchFeature", () => {
       fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
       fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
 
-      await waitFor(() => expect(savePreview).toHaveBeenCalledWith("# Draft"));
+      await waitFor(() => expect(savePreview).toHaveBeenCalledWith("Draft"));
       expect(mocks.toastWarning).toHaveBeenCalledWith(
         "quality-warning:引用完整性校验失败"
       );
@@ -1645,7 +1660,7 @@ describe("SummaryWorkbenchFeature", () => {
     fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
     fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
 
-    await waitFor(() => expect(savePreview).toHaveBeenCalledWith("# Draft"));
+    await waitFor(() => expect(savePreview).toHaveBeenCalledWith("Draft"));
     // The generic quality-gate warning key falls through t() to the key
     // itself in this mock — the assertion is that the user does NOT get
     // the success toast and DOES get a warning.
@@ -1679,7 +1694,7 @@ describe("SummaryWorkbenchFeature", () => {
     fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
     fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
 
-    await waitFor(() => expect(savePreview).toHaveBeenCalledWith("# Draft"));
+    await waitFor(() => expect(savePreview).toHaveBeenCalledWith("Draft"));
     expect(mocks.toastSuccess).toHaveBeenCalledWith(
       "summary.create.agentSummaryCreated"
     );

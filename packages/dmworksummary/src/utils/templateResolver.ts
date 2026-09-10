@@ -30,7 +30,18 @@ export function deriveSummaryTitle(topic: string): string {
     const contentLine = lines.find((line) => /^(内容重点|总结内容|Content focus|Summary content)\s*[:：]/i.test(line));
     const source = contentLine || lines[0] || trimmed;
     const match = source.match(/^(内容重点|总结内容|总结主题|主题|Content focus|Summary content|Summary topic|Topic)\s*[:：]\s*(.+)$/i);
-    return (match?.[2] || source).trim();
+    return stripMarkdownTitleMarkers((match?.[2] || source).trim());
+}
+
+/**
+ * 标题里不该出现 Markdown 记号。这个函数也用于从**预览正文**派生保存标题
+ * （agent 保存对话的默认标题），而预览正文的第一行通常就是 `## 标题`——不剥掉
+ * 记号，新总结就会以 `## Alpha 项目周报` 这样的标题落库。
+ */
+function stripMarkdownTitleMarkers(line: string): string {
+    const withoutHeading = line.replace(/^#{1,6}\s+/, '').trim();
+    const unwrapped = withoutHeading.replace(/^(\*\*|__)(.+)\1$/, '$2');
+    return unwrapped.trim();
 }
 
 export function deriveSummaryDisplayContent(topic: string): string {

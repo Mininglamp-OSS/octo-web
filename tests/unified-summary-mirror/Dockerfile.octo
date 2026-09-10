@@ -1,0 +1,24 @@
+# The mirror's web half: the WHOLE Octo web app, not a summary-only host.
+#
+# Same final image layout as the repo's production `Dockerfile` (entrypoint +
+# nginx.conf.template + apps/web/build), with two deliberate differences:
+#
+#   * the app is built on the host (`pnpm turbo run build --filter=@octo/web`)
+#     and copied in, instead of being built in a node builder stage — this
+#     machine cannot reach the registry for a fresh base image, and the builder
+#     stage would only reproduce what the host build already produced;
+#   * `nginx:1.27-alpine` is pinned because that is the tag cached locally
+#     (`nginx:alpine` needs a registry round trip).
+#
+# Everything the browser then loads — app shell, nav rail, chat page, the
+# summary module — is the production bundle, and the routing rules are the
+# production template, so SUMMARY_API_URL/API_URL behave exactly as in a
+# deployed stack.
+FROM nginx:1.27-alpine
+COPY docker-entrypoint.sh /docker-entrypoint2.sh
+RUN sed -i 's/\r$//' /docker-entrypoint2.sh
+COPY nginx.conf.template /
+COPY apps/web/build /usr/share/nginx/html
+RUN chmod -R a+r /usr/share/nginx/html
+ENTRYPOINT ["sh", "/docker-entrypoint2.sh"]
+CMD ["nginx", "-g", "daemon off;"]

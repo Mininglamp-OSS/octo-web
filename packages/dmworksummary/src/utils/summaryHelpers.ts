@@ -233,13 +233,10 @@ export function getModeLabel(mode: SummaryModeType): string {
 /**
  * 总结是否可被 Agent 引用 — SummaryReferencePicker 与 SummaryDetailPage 共享。
  *
- * 当后端已部署 referenceable 字段时，以后端值为准。
- * 字段缺失时（后端未部署或 mock 未提供），回退到 legacy 行为：
- * 仅 trigger_type === AGENT 的总结可被引用。
+ * 仅服务端明确允许的总结可被引用；创建引擎不代表访问权限。
  */
 export function isReferenceable(item: { referenceable?: boolean; trigger_type: number }): boolean {
-    if (item.referenceable !== undefined) return item.referenceable === true;
-    return item.trigger_type === TriggerType.AGENT;
+    return item.referenceable === true;
 }
 
 /**
@@ -248,24 +245,14 @@ export function isReferenceable(item: { referenceable?: boolean; trigger_type: n
  * icon、CSS class 和 label 全部由这个 kind 派生，消除「四路 label 配两路
  * icon」的分裂（此前定时总结会渲染快速总结的 icon，aria-label 与视觉不符）。
  *
- * - agent: trigger_type === AGENT
- * - scheduled: trigger_type === SCHEDULED 或 schedule_id > 0（0 表示无 schedule）
- * - multi: trigger_type === MANUAL 且 participants.length > 1
- * - quick: trigger_type === MANUAL 且 participants.length <= 1，以及未知类型兜底
+ * 只展示已绑定计划和服务端确认的协作范围，不按引擎分类。
  */
-export type SummaryTypeKind = 'agent' | 'scheduled' | 'multi' | 'quick';
+export type SummaryTypeKind = 'summary' | 'scheduled' | 'multi';
 
 export function getSummaryTypeKind(item: SummaryListItem): SummaryTypeKind {
-    const isScheduled = item.trigger_type === TriggerType.SCHEDULED || (item.schedule_id != null && item.schedule_id > 0);
+    const isScheduled = item.schedule_id != null && item.schedule_id > 0;
     if (isScheduled) return 'scheduled';
-    switch (item.trigger_type) {
-        case TriggerType.AGENT:
-            return 'agent';
-        case TriggerType.MANUAL:
-            return (item.participants?.length ?? 0) > 1 ? 'multi' : 'quick';
-        default:
-            return 'quick';
-    }
+    return item.content_actions?.business_scope === "team" ? "multi" : "summary";
 }
 
 /**
@@ -282,13 +269,10 @@ export function getSummaryTypeLabel(
     switch (getSummaryTypeKind(item)) {
         case 'scheduled':
             return t("summary.summaryCard.scheduledType");
-        case 'agent':
-            return t("summary.summaryCard.agentType");
         case 'multi':
             return t("summary.summaryCard.multiPersonType");
-        case 'quick':
         default:
-            return t("summary.summaryCard.quickType");
+            return t("summary.summaryCard.summaryType");
     }
 }
 

@@ -1,0 +1,7 @@
+*
+!docker-entrypoint.sh
+!nginx.conf.template
+!apps/
+!apps/web/
+!apps/web/build/
+!apps/web/build/**

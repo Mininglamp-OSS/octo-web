@@ -7,7 +7,7 @@ vi.mock("@octo/base", async () => ({
     // `WKApp.loginInfo.uid` read; @octo/base exports the WKApp singleton
     // as default, so the mock has to as well or the render throws
     // "No 'default' export is defined on the '@octo/base' mock".
-    default: { loginInfo: {} },
+    default: { loginInfo: {}, shared: { currentSpaceId: "space-a" } },
     I18nContext: React.createContext({ t: (key: string) => key }),
     t: (key: string) => key,
     ForwardService: {},
@@ -15,7 +15,7 @@ vi.mock("@octo/base", async () => ({
     I18nContext: React.createContext({ t: (key: string) => key }),
 }));
 vi.mock("@octo/base/src/App", () => ({
-    default: { loginInfo: {} },
+    default: { loginInfo: {}, shared: { currentSpaceId: "space-a" } },
     I18nContext: React.createContext({ t: (key: string) => key }),
 }));
 vi.mock("@octo/base/src/Components/VoiceInputButton", () => ({
@@ -74,13 +74,20 @@ vi.mock("@douyinfe/semi-ui", () => {
 
 vi.mock("@douyinfe/semi-icons", () => ({
     IconChevronDown: () => null,
+    IconHistory: () => null,
+    IconClock: () => null,
+    IconMore: () => null,
     default: () => null,
 }));
 vi.mock("../../api/summaryApi");
 
 import * as api from "../../api/summaryApi";
 import SummaryDetailPage from "../SummaryDetailPage";
-import { SummaryMode } from "../../types/summary";
+import { SummaryMode, TaskStatus, TriggerType } from "../../types/summary";
+import { formalContentFixture } from "../../__tests__/formalContentFixtures";
+import type { FormalController } from "../../features/summaryWorkbench/NativeFormalContentBinding";
+import { createSummaryDetailAction } from "../../bridge/summaryWorkbench/detailAction";
+import { SUMMARY_OPEN_CHAT_WITH_REFERENCE } from "../../bridge/continueRefine";
 
 function makePage(props: Record<string, unknown> = {}) {
   const page = new SummaryDetailPage({ taskId: 1, ...props });
@@ -108,6 +115,163 @@ function makePage(props: Record<string, unknown> = {}) {
 describe("SummaryDetailPage regenerate dialog", () => {
     beforeEach(() => vi.clearAllMocks());
 
+    const bindFormal = (page: SummaryDetailPage) => {
+        const controller: FormalController = {
+            content: formalContentFixture(), configuration: null, versions: [], cursor: null,
+            pending: false, errorKey: "", noticeKey: "", accessLost: false,
+            reload: vi.fn().mockResolvedValue(true), loadConfiguration: vi.fn().mockResolvedValue(true),
+            saveConfiguration: vi.fn().mockResolvedValue(true), refine: vi.fn().mockResolvedValue(true),
+            regenerate: vi.fn().mockResolvedValue(true), edit: vi.fn().mockResolvedValue(true),
+            restore: vi.fn().mockResolvedValue(true), loadVersions: vi.fn().mockResolvedValue(true),
+            cancel: vi.fn().mockResolvedValue(true), apply: vi.fn().mockResolvedValue(true),
+        };
+        page.state = { ...page.state, formalBinding: { taskId: 1, status: "ready", controller, retry: vi.fn() } };
+        return controller;
+    };
+
+    it("keeps the original detail DOM entry for managed summaries", () => {
+        const page = makePage();
+        bindFormal(page);
+        const tree = page.render();
+        expect(tree.type).toBe("div");
+        expect(tree.props.className).toBe("summary-detail-page");
+    });
+
+    it("continue-refine routes to a new derived summary instead of mutating the current one", () => {
+        const onContinueRefine = vi.fn();
+        const page = makePage({ onContinueRefine });
+        const controller = bindFormal(page);
+        page.handleContinueRefine();
+        // 继续优化 = 交给宿主派生一条全新总结（挂 referenced_task_ids），不再就地改写当前总结。
+        expect(onContinueRefine).toHaveBeenCalledTimes(1);
+        expect(onContinueRefine).toHaveBeenCalledWith(
+            expect.objectContaining({ task_id: 1 }),
+        );
+        expect(page.state.showRegenerateModal).toBe(false);
+        expect(controller.refine).not.toHaveBeenCalled();
+        expect(api.streamRefineSummary).not.toHaveBeenCalled();
+        expect(api.regenerateSummary).not.toHaveBeenCalled();
+    });
+
+    // 没有宿主回调的独立详情页入口（legacy 路由、创建后 push 的详情）也必须派生新总结：
+    // 派发 summary-open-chat-with-reference，由 legacyNavigation push agent 创建页。
+    // 旧的「就地改写」兜底已删除。
+    it("continue-refine without a host routes to the agent flow instead of rewriting in place", () => {
+        const page = makePage();
+        const controller = bindFormal(page);
+        const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+        page.handleContinueRefine();
+
+        const event = dispatchSpy.mock.calls
+            .map(([candidate]) => candidate as CustomEvent)
+            .find((candidate) => candidate.type === SUMMARY_OPEN_CHAT_WITH_REFERENCE);
+        expect(event).toBeDefined();
+        expect(event!.detail).toEqual(expect.objectContaining({ task_id: 1 }));
+        expect(page.state.showRegenerateModal).toBe(false);
+        expect(controller.refine).not.toHaveBeenCalled();
+        expect(api.streamRefineSummary).not.toHaveBeenCalled();
+        expect(api.regenerateSummary).not.toHaveBeenCalled();
+    });
+
+    it("loads configuration through the original scheduling action without submitting a run", () => {
+        const page = makePage();
+        const controller = bindFormal(page);
+        page.openScheduleModal();
+        expect(controller.loadConfiguration).toHaveBeenCalledOnce();
+        expect(page.state.showScheduleConfig).toBe(true);
+        expect(controller.regenerate).not.toHaveBeenCalled();
+    });
+
+    it.each([TriggerType.AGENT, TriggerType.MANUAL])("waits for the original formal target then routes continue-refine exactly once (source %s)", (trigger_type) => {
+        const onContinueRefine = vi.fn();
+        const page = makePage({
+            onContinueRefine,
+            requestedAction: createSummaryDetailAction(1, "space-a", "refine", "sc1_personal"),
+        });
+        page.state = { ...page.state, loading: false, detail: { ...page.state.detail!, trigger_type } };
+        const controller = bindFormal(page);
+        // 门控：formal target 仍 pending 时不触发。
+        controller.pending = true;
+        (page as any).consumeRequestedAction();
+        expect(onContinueRefine).not.toHaveBeenCalled();
+        // target ready → 触发一次，路由到派生 create（继续优化），不开就地 refine 弹窗。
+        controller.pending = false;
+        (page as any).consumeRequestedAction();
+        expect(onContinueRefine).toHaveBeenCalledTimes(1);
+        expect(page.state.showRegenerateModal).toBe(false);
+        expect(controller.refine).not.toHaveBeenCalled();
+        expect(api.streamRefineSummary).not.toHaveBeenCalled();
+        expect(api.regenerateSummary).not.toHaveBeenCalled();
+        // 一次性 gate：再次 consume 不重复触发。
+        (page as any).consumeRequestedAction();
+        expect(onContinueRefine).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects a stale target and never falls back to a legacy editor", () => {
+        const page = makePage({
+            requestedAction: createSummaryDetailAction(1, "space-a", "edit", "different-content"),
+        });
+        page.state = { ...page.state, loading: false };
+        bindFormal(page);
+        (page as any).consumeRequestedAction();
+        expect(page.state.isEditing).toBe(false);
+    });
+
+    it("a list edit intent cannot bypass detail ownership permissions", () => {
+        const page = makePage({
+            requestedAction: createSummaryDetailAction(1, "space-a", "edit"),
+        });
+        page.state = {
+            ...page.state, loading: false, personalLoading: false, membersLoading: false,
+            detail: { ...page.state.detail!, status: TaskStatus.COMPLETED, permissions: { can_edit: true, can_edit_team: false } },
+            formalBinding: { taskId: 1, status: "legacy", retry: vi.fn() },
+        } as any;
+        (page as any).consumeRequestedAction();
+        expect(page.state.isEditing).toBe(false);
+    });
+
+    it("regenerate intent opens the two-mode modal without executing on navigation", () => {
+        const page = makePage({
+            requestedAction: createSummaryDetailAction(1, "space-a", "regenerate", "sc1_personal"),
+        });
+        page.state = { ...page.state, loading: false };
+        const controller = bindFormal(page);
+        (page as any).consumeRequestedAction();
+        // 重新生成 now opens the two-mode modal (按意见调整 / 全部重新生成); scheduling
+        // lives behind the separate 定时更新 (configure) intent. Nothing runs on nav.
+        expect(page.state.showRegenerateModal).toBe(true);
+        expect(page.state.showScheduleConfig).toBe(false);
+        expect(controller.regenerate).not.toHaveBeenCalled();
+    });
+
+    it("configure intent opens scheduling configuration without executing on navigation", () => {
+        const page = makePage({
+            requestedAction: createSummaryDetailAction(1, "space-a", "configure", "sc1_personal"),
+        });
+        page.state = { ...page.state, loading: false };
+        const controller = bindFormal(page);
+        (page as any).consumeRequestedAction();
+        expect(page.state.showScheduleConfig).toBe(true);
+        expect(controller.loadConfiguration).toHaveBeenCalledOnce();
+        expect(controller.regenerate).not.toHaveBeenCalled();
+    });
+
+    it("blocks every legacy mutation entry while managed content is unavailable", async () => {
+        const page = makePage();
+        page.state = { ...page.state, formalBinding: { taskId: 1, status: "error", retry: vi.fn() } };
+        page.handleStartEdit();
+        page.handleContinueRefine();
+        page.openScheduleModal();
+        await page.handleRegenerateConfirm();
+        await page.handleCancel();
+        expect(page.state.isEditing).toBe(false);
+        expect(page.state.showRegenerateModal).toBe(false);
+        expect(page.state.showScheduleConfig).toBe(false);
+        expect(api.regenerateSummary).not.toHaveBeenCalled();
+        expect(api.cancelSummary).not.toHaveBeenCalled();
+    });
+
     it("prefills a full regeneration with the summary topic", () => {
         const page = makePage();
 
@@ -116,7 +280,7 @@ describe("SummaryDetailPage regenerate dialog", () => {
         expect(page.state.regenerateTopic).toBe("Preferred topic");
     });
 
-  it("delegates continue-refine and confirmation navigation when controlled", () => {
+  it("does not confuse reference permission with optimize permission", () => {
     const onContinueRefine = vi.fn();
     const onViewConfirm = vi.fn();
     const page = makePage({ onContinueRefine, onViewConfirm });
@@ -128,9 +292,8 @@ describe("SummaryDetailPage regenerate dialog", () => {
     page.handleContinueRefine();
     (page as any).handleViewConfirm();
 
-    expect(onContinueRefine).toHaveBeenCalledWith(
-      expect.objectContaining({ task_id: 1, title: "Legacy title" })
-    );
+    expect(onContinueRefine).not.toHaveBeenCalled();
+    expect(page.state.showRegenerateModal).toBe(false);
     expect(onViewConfirm).toHaveBeenCalledWith(1);
   });
 
@@ -157,7 +320,7 @@ describe("SummaryDetailPage regenerate dialog", () => {
       detail: { ...page.state.detail, result_id: undefined } as any,
     };
     const refineModal = findElement(
-      page.render(),
+      page.renderLegacyDetail(),
       (element) =>
         element.type?.name === "Modal" &&
         element.props.className === "summary-confirm"
@@ -178,7 +341,7 @@ describe("SummaryDetailPage regenerate dialog", () => {
       regenerateTopic: "New topic",
     };
     const fullModal = findElement(
-      page.render(),
+      page.renderLegacyDetail(),
       (element) =>
         element.type?.name === "Modal" &&
         element.props.className === "summary-confirm"

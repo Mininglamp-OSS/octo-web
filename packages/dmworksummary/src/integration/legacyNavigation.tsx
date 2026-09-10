@@ -2,6 +2,7 @@ import React from "react";
 import { Dap, Menus, t as translate, WKApp } from "@octo/base";
 import { SMALL_SCREEN_WIDTH } from "@octo/base/src/Components/WKLayout/layoutWidth";
 import { getSummaryShare } from "../api/summaryApi";
+import { SUMMARY_OPEN_CHAT_WITH_REFERENCE } from "../bridge/continueRefine";
 import SummarySharePreviewFeature from "../features/summaryShare/SummarySharePreviewFeature";
 import {
   getOriginalSummaryTaskId,
@@ -126,6 +127,9 @@ export function registerSummaryLegacyNavigation(): void {
     <SummaryWorkbenchCreateEntry source="summary_home" legacyInitialMode="normal" />
   ));
 
+  // 独立详情页（没有宿主 onContinueRefine 的入口）点「继续优化」派发的信号：
+  // 和统一工作区、聊天侧栏一样进入 agent 创建流程，产出一条挂 referenced_task_ids
+  // 的全新总结，而不是就地改写原总结。
   openChatWithReferenceHandler = ((event: CustomEvent) => {
     const task = event.detail;
     if (!task || !task.task_id) return;
@@ -134,7 +138,7 @@ export function registerSummaryLegacyNavigation(): void {
     );
   }) as EventListener;
   window.addEventListener(
-    "summary-open-chat-with-reference",
+    SUMMARY_OPEN_CHAT_WITH_REFERENCE,
     openChatWithReferenceHandler
   );
 
@@ -184,7 +188,7 @@ export function registerSummaryLegacyNavigation(): void {
 export function disposeSummaryLegacyNavigation(): void {
   if (openChatWithReferenceHandler && typeof window !== "undefined") {
     window.removeEventListener(
-      "summary-open-chat-with-reference",
+      SUMMARY_OPEN_CHAT_WITH_REFERENCE,
       openChatWithReferenceHandler
     );
   }

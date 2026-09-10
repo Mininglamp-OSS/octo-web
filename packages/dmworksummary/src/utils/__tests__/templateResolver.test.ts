@@ -107,6 +107,14 @@ describe('deriveSummaryTitle', () => {
     it('returns an empty string for empty input', () => {
         expect(deriveSummaryTitle('   ')).toBe('');
     });
+
+    // 保存 agent 预览时默认标题来自预览正文，而预览正文的第一行是 Markdown 标题，
+    // 记号必须剥掉——否则新总结会以 `## Alpha 项目周报` 落库。
+    it('strips markdown heading and emphasis markers from the derived title', () => {
+        expect(deriveSummaryTitle('## Alpha 项目周报\n\n### 本周进展\n- 一件事')).toBe('Alpha 项目周报');
+        expect(deriveSummaryTitle('**Alpha 项目周报**')).toBe('Alpha 项目周报');
+        expect(deriveSummaryTitle('内容重点：# 周报')).toBe('周报');
+    });
 });
 
 describe('deriveSummaryDisplayContent', () => {

@@ -1,0 +1,6 @@
+.summary-native-configuration-body {
+  /* Keep the original modal header visible; long forms scroll inside it. */
+  max-height: calc(100dvh - 264px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
