@@ -73,6 +73,12 @@ export function useSpaceRole(): UseSpaceRoleResult {
         })
         .finally(() => {
           if (attempt !== generationRef.current) return;
+          // Some hosts change the ID before (or without) a mitt event. A stale
+          // probe must hand off to the current Space instead of settling empty.
+          if (spaceId !== WKApp.shared?.currentSpaceId) {
+            resolveFromServer();
+            return;
+          }
           setLoading(false);
         });
     };

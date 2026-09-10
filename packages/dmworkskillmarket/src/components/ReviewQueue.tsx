@@ -1,12 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, Clock, RefreshCw, XCircle } from "lucide-react";
-import { t, useI18n, WKApp } from "@octo/base";
+import { t, useI18n, WKApp, WKButton } from "@octo/base";
 import type { ReviewListMode, ReviewRequest, ReviewStatus } from "../types/skill";
 import {
   approveReview,
   cancelReview,
   delistPlugin,
-  listReviewRequests,
   rejectReview,
 } from "../api/skillApi";
 import { formatFullDateTime, formatRelativeTime } from "../utils/format";
@@ -16,6 +15,7 @@ import MineTable, { type MineAssetType, type MineRow } from "./MineTable";
 import DelistReasonModal from "./DelistReasonModal";
 import RejectReasonModal from "./RejectReasonModal";
 import ReviewDetailDrawer from "./ReviewDetailDrawer";
+import { HANDLED_STATUSES, useReviewQueuePages } from "../hooks/useReviewQueuePages";
 
 type QueueTab = "pending" | "handled";
 
@@ -73,39 +73,6 @@ interface ReviewQueueProps {
   mode: ReviewListMode;
 }
 
-const PAGE_SIZE = 20;
-/** The three terminal statuses, fetched explicitly for the 已处理 view so we
- *  never stream pages full of pending rows that get filtered out client-side
- *  (defect 4 in the source branch). Parallel first-page + independent cursors
- *  is simpler than a merged-cursor state machine and avoids the empty-page
- *  cascade. */
-type HandledStatus = Exclude<ReviewStatus, "pending">;
-const TERMINAL_STATUSES: HandledStatus[] = ["approved", "rejected", "canceled"];
-
-interface HandledPage {
-  items: ReviewRequest[];
-  nextCursor: string | null;
-  total: number;
-  loading: boolean;
-  error: string | null;
-}
-
-const emptyHandledPage = (): HandledPage => ({
-  items: [],
-  nextCursor: null,
-  total: 0,
-  loading: false,
-  error: null,
-});
-
-type HandledState = Record<HandledStatus, HandledPage>;
-
-const initialHandled = (): HandledState => ({
-  approved: emptyHandledPage(),
-  rejected: emptyHandledPage(),
-  canceled: emptyHandledPage(),
-});
-
 export default function ReviewQueue({ mode }: ReviewQueueProps) {
   useI18n();
   const [activeTab, setActiveTab] = useState<QueueTab>("pending");
@@ -117,314 +84,160 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
   const [iconErrors, setIconErrors] = useState<Record<string, true>>({});
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  // Pending tab: one fetch, cursor-based pagination.
-  const [pendingItems, setPendingItems] = useState<ReviewRequest[]>([]);
-  const [pendingCursor, setPendingCursor] = useState<string | null>(null);
-  const [pendingTotal, setPendingTotal] = useState(0);
-  const [pendingLoading, setPendingLoading] = useState(true);
-  const [pendingLoadingMore, setPendingLoadingMore] = useState(false);
-  const [pendingError, setPendingError] = useState<string | null>(null);
-  const pendingAbortRef = useRef<AbortController | null>(null);
-  // Incremented synchronously on every Space switch. Abort normally stops an
-  // older fetch, while this generation also protects against transports/mocks
-  // that resolve after abort and against stale action continuations.
+  const { pages, refresh, loadMore, retry, reset } = useReviewQueuePages(mode);
   const spaceGenerationRef = useRef(0);
-
-  // Handled tab: three independent per-status lists (defect 4).
-  type AbortRefMap = { [K in HandledStatus]: AbortController | null };
-  const [handled, setHandled] = useState<HandledState>(initialHandled());
-  const handledAbortRefs = useRef<AbortRefMap>({
-    approved: null,
-    rejected: null,
-    canceled: null,
-  });
-  const [handledLoading, setHandledLoading] = useState(false);
-  const [handledLoadingMore, setHandledLoadingMore] = useState(false);
-
+  const mountedRef = useRef(false);
+  const actionRef = useRef<{ id: string; generation: number; promise: Promise<void> } | null>(null);
+  const loadedSpaceRef = useRef(WKApp.shared?.currentSpaceId);
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
   const currentUid = (WKApp.loginInfo as { uid?: string } | undefined)?.uid;
 
-  // Reset tab on mode change.
-  useEffect(() => {
-    setActiveTab("pending");
-    setError(null);
-  }, [mode]);
+  // Reconciliation never clears a mutation error or closes an open drawer.
+  // A drawer callback from an earlier render refreshes the currently active tab.
+  const refreshAllAsync = useCallback(() => refresh(
+    activeTabRef.current === "handled" ? ["pending", ...HANDLED_STATUSES] : ["pending"]
+  ), [refresh]);
+  const refreshAllRef = useRef(refreshAllAsync);
+  refreshAllRef.current = refreshAllAsync;
 
-  // ── Pending fetch ────────────────────────────────────────────────────
-  const fetchPending = useCallback(
-    async (nextCursor?: string | null) => {
-      if (pendingAbortRef.current) pendingAbortRef.current.abort();
-      const controller = new AbortController();
-      pendingAbortRef.current = controller;
-      const spaceGeneration = spaceGenerationRef.current;
-      const isMore = Boolean(nextCursor);
-      if (isMore) setPendingLoadingMore(true);
-      else setPendingLoading(true);
-      setPendingError(null);
-      try {
-        const page = Number.parseInt(nextCursor ?? "", 10);
-        const result = await listReviewRequests(mode, {
-          status: "pending",
-          page: Number.isFinite(page) && page > 0 ? page : 1,
-          pageSize: PAGE_SIZE,
-          signal: controller.signal,
-        });
-        if (controller.signal.aborted || spaceGeneration !== spaceGenerationRef.current) return;
-        setPendingItems((cur) => (isMore ? [...cur, ...result.items] : result.items));
-        setPendingTotal(result.total);
-        setPendingCursor(result.nextCursor);
-      } catch (err) {
-        if (controller.signal.aborted || spaceGeneration !== spaceGenerationRef.current) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setPendingError(err instanceof Error ? err.message : t("skillMarket.common.loadFailed"));
-      } finally {
-        if (!controller.signal.aborted && spaceGeneration === spaceGenerationRef.current) {
-          setPendingLoading(false);
-          setPendingLoadingMore(false);
-        }
-      }
-    },
-    [mode],
-  );
-
-  const refreshPending = useCallback(() => {
-    void fetchPending(null);
-  }, [fetchPending]);
-
-  const loadMorePending = useCallback(() => {
-    if (!pendingCursor || pendingLoading || pendingLoadingMore) return;
-    void fetchPending(pendingCursor);
-  }, [fetchPending, pendingCursor, pendingLoading, pendingLoadingMore]);
-
-  // ── Handled fetch (three parallel per-status lists) ──────────────────
-  const fetchHandledPage = useCallback(
-    async (status: HandledStatus, nextCursor?: string | null, isMore = false) => {
-      const prev = handledAbortRefs.current[status];
-      if (prev) prev.abort();
-      const controller = new AbortController();
-      handledAbortRefs.current[status] = controller;
-      const spaceGeneration = spaceGenerationRef.current;
-      setHandled((cur) => ({
-        ...cur,
-        [status]: { ...cur[status], loading: true, error: null },
-      }));
-      try {
-        const page = Number.parseInt(nextCursor ?? "", 10);
-        const result = await listReviewRequests(mode, {
-          status,
-          page: Number.isFinite(page) && page > 0 ? page : 1,
-          pageSize: PAGE_SIZE,
-          signal: controller.signal,
-        });
-        if (controller.signal.aborted || spaceGeneration !== spaceGenerationRef.current) return;
-        setHandled((cur) => {
-          const existing = cur[status];
-          return {
-            ...cur,
-            [status]: {
-              items: isMore ? [...existing.items, ...result.items] : result.items,
-              nextCursor: result.nextCursor,
-              total: result.total,
-              loading: false,
-              error: null,
-            },
-          };
-        });
-      } catch (err) {
-        if (controller.signal.aborted || spaceGeneration !== spaceGenerationRef.current) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setHandled((cur) => ({
-          ...cur,
-          [status]: {
-            ...cur[status],
-            loading: false,
-            error: err instanceof Error ? err.message : t("skillMarket.common.loadFailed"),
-          },
-        }));
-      }
-    },
-    [mode],
-  );
-
-  const refreshHandled = useCallback(() => {
-    setHandled({
-      approved: emptyHandledPage(),
-      rejected: emptyHandledPage(),
-      canceled: emptyHandledPage(),
-    });
-    setHandledLoading(true);
-    const spaceGeneration = spaceGenerationRef.current;
-    void Promise.all(TERMINAL_STATUSES.map((s) => fetchHandledPage(s, null, false))).finally(() => {
-      if (spaceGeneration === spaceGenerationRef.current) setHandledLoading(false);
-    });
-  }, [fetchHandledPage]);
-
-  const loadMoreHandled = useCallback(() => {
-    const anyHasMore = TERMINAL_STATUSES.some((s) => handled[s].nextCursor);
-    if (!anyHasMore || handledLoading || handledLoadingMore) return;
-    setHandledLoadingMore(true);
-    const spaceGeneration = spaceGenerationRef.current;
-    const tasks = TERMINAL_STATUSES
-      .filter((s) => handled[s].nextCursor)
-      .map((s) => fetchHandledPage(s, handled[s].nextCursor, true));
-    void Promise.all(tasks).finally(() => {
-      if (spaceGeneration === spaceGenerationRef.current) setHandledLoadingMore(false);
-    });
-  }, [fetchHandledPage, handled, handledLoading, handledLoadingMore]);
-
-  // Initial + tab-switch fetches.
-  useEffect(() => {
-    void fetchPending(null);
-    return () => {
-      if (pendingAbortRef.current) pendingAbortRef.current.abort();
-    };
-  }, [fetchPending]);
-
-  useEffect(() => {
-    if (activeTab === "handled") {
-      refreshHandled();
-    }
-    return () => {
-      TERMINAL_STATUSES.forEach((s) => handledAbortRefs.current[s]?.abort());
-    };
-  }, [activeTab, refreshHandled]);
-
-  // Re-read on a Space switch. MarketSidebar's replaceToRoot renders the review
-  // page back into the SAME queue slot with the same component type and no key,
-  // so React keeps this instance mounted — the fetch effects above key off
-  // `mode`/`activeTab`, neither of which changes on a Space switch, so nothing
-  // refetches on its own and the queue would keep showing (and acting on) the
-  // previous Space's requests. Also drop any open drawer/modal and in-flight
-  // acting id, since each names a request id from the Space we are leaving.
-  // Subscribe explicitly, exactly as AllAssetsList does for the same reason.
-  const refreshAll = useCallback(() => {
+  const resetScope = useCallback(() => {
+    spaceGenerationRef.current += 1;
+    loadedSpaceRef.current = WKApp.shared?.currentSpaceId;
+    actionRef.current = null;
+    setActingId(null);
     setError(null);
     setDetailId(null);
     setRejectTarget(null);
     setDelistTarget(null);
-    setActingId(null);
-    refreshPending();
-    if (activeTab === "handled") refreshHandled();
-  }, [activeTab, refreshHandled, refreshPending]);
-
-  const handleSpaceChanged = useCallback(() => {
-    // Invalidate first, then abort and synchronously remove every identifier and
-    // row belonging to the Space being left. The new fetch captures the new
-    // generation, so even an abort-insensitive old promise cannot repopulate it.
-    spaceGenerationRef.current += 1;
-    pendingAbortRef.current?.abort();
-    TERMINAL_STATUSES.forEach((status) => handledAbortRefs.current[status]?.abort());
-    setPendingItems([]);
-    setPendingCursor(null);
-    setPendingTotal(0);
-    setPendingError(null);
-    setPendingLoadingMore(false);
-    setHandled(initialHandled());
-    setHandledLoading(false);
-    setHandledLoadingMore(false);
     setIconErrors({});
-    refreshAll();
-  }, [refreshAll]);
+    reset();
+    void refreshAllAsync();
+  }, [reset, refreshAllAsync]);
+
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      spaceGenerationRef.current += 1;
+      actionRef.current = null;
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    activeTabRef.current = "pending";
+    setActiveTab("pending");
+    resetScope();
+  }, [resetScope]);
+
+  useLayoutEffect(() => {
+    WKApp.mittBus.on("space-changed", resetScope);
+    return () => WKApp.mittBus.off("space-changed", resetScope);
+  }, [resetScope]);
 
   useEffect(() => {
-    WKApp.mittBus.on("space-changed", handleSpaceChanged);
-    return () => WKApp.mittBus.off("space-changed", handleSpaceChanged);
-  }, [handleSpaceChanged]);
+    if (activeTab === "handled" && activeTabRef.current === "handled") void refresh(HANDLED_STATUSES);
+  }, [activeTab, refresh]);
 
   const rows: ReviewRequest[] = useMemo(() => {
-    if (activeTab === "pending") return pendingItems;
+    if (activeTab === "pending") return pages.pending.items;
     const merged: ReviewRequest[] = [];
-    for (const s of TERMINAL_STATUSES) merged.push(...handled[s].items);
+    for (const status of HANDLED_STATUSES) merged.push(...pages[status].items);
     // Newest-first across all three buckets (server already orders each bucket
     // by submitted_at desc, but cross-bucket order is interleaved).
     merged.sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
     return merged;
-  }, [activeTab, pendingItems, handled]);
+  }, [activeTab, pages]);
 
-  const listLoading = activeTab === "pending" ? pendingLoading : handledLoading;
-  const listLoadingMore = activeTab === "pending" ? pendingLoadingMore : handledLoadingMore;
-  const listError = activeTab === "pending" ? pendingError : (
-    TERMINAL_STATUSES.map((s) => handled[s].error).find(Boolean) ?? null
-  );
-  const hasMore = activeTab === "pending"
-    ? Boolean(pendingCursor)
-    : TERMINAL_STATUSES.some((s) => handled[s].nextCursor);
+  const visibleStatuses: readonly ReviewStatus[] = activeTab === "pending" ? ["pending"] : HANDLED_STATUSES;
+  const listLoading = visibleStatuses.some((status) => pages[status].loading === "initial");
+  const listLoadingMore = visibleStatuses.some((status) => pages[status].loading === "more");
+  const listError = visibleStatuses.map((status) => pages[status].error).find(Boolean) ?? null;
+  const hasMore = visibleStatuses.some((status) => pages[status].nextCursor);
 
-  const loadMoreRows = useCallback(() => {
-    if (activeTab === "pending") loadMorePending();
-    else loadMoreHandled();
-  }, [activeTab, loadMoreHandled, loadMorePending]);
-
-  // Infinite scroll
+  // A failed page stays paused until explicit retry; never re-observe an
+  // intersecting sentinel as a side effect of a rejection or reconciliation.
   useEffect(() => {
     const node = sentinelRef.current;
-    if (!node) return undefined;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting) && hasMore) {
-          loadMoreRows();
-        }
-      },
-      { rootMargin: "160px" },
-    );
+    if (!node || !hasMore || listError || listLoading || listLoadingMore) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        loadMore(activeTab === "pending" ? ["pending"] : HANDLED_STATUSES);
+      }
+    }, { rootMargin: "160px" });
     observer.observe(node);
     return () => observer.disconnect();
-  }, [loadMoreRows, hasMore]);
+  }, [activeTab, hasMore, listError, listLoading, listLoadingMore, loadMore]);
 
-  // ── Actions ──────────────────────────────────────────────────────────
-  // Defect 3 fix: keep actingId set until AFTER refresh() settles, so the
-  // row stays disabled and a second click cannot race against the in-flight
-  // reconcile.
-  async function handleApprove(item: ReviewRequest) {
-    const spaceGeneration = spaceGenerationRef.current;
+  // One synchronous owner covers every row and reason modal through the write
+  // AND its reconciliation. Another row cannot replace the first row's lock.
+  function runAction(
+    item: ReviewRequest,
+    operation: () => Promise<unknown>,
+    failureKey: string,
+    onSuccess?: () => void,
+    rethrow = false,
+  ): Promise<void> {
+    if (!mountedRef.current) return Promise.resolve();
+    if (actionRef.current) return rethrow && actionRef.current.id === item.id
+      ? actionRef.current.promise : Promise.resolve();
+    const spaceId = loadedSpaceRef.current;
+    if (spaceId !== WKApp.shared?.currentSpaceId) {
+      const changed = new Error(t("skillMarket.review.spaceChanged"));
+      setError(changed.message);
+      return rethrow ? Promise.reject(changed) : Promise.resolve();
+    }
+    const owner = { id: item.id, generation: spaceGenerationRef.current, promise: Promise.resolve() };
+    const ownsSlot = () => mountedRef.current && actionRef.current === owner;
+    const isSession = () => ownsSlot() && owner.generation === spaceGenerationRef.current;
+    const isCurrent = () => isSession() && spaceId === WKApp.shared?.currentSpaceId;
+    const mayContinue = () => {
+      if (isCurrent()) return true;
+      const changed = new Error(t("skillMarket.review.spaceChanged"));
+      if (isSession()) setError(changed.message);
+      // A retained reason must never interpret an abandoned action as success.
+      if (rethrow) throw changed;
+      return false;
+    };
+    actionRef.current = owner;
     setActingId(item.id);
     setError(null);
-    try {
-      await approveReview(item.id);
-      if (spaceGeneration !== spaceGenerationRef.current) return;
-      await refreshAllAsync();
-    } catch (err) {
-      if (spaceGeneration !== spaceGenerationRef.current) return;
-      setError(err instanceof Error ? err.message : t("skillMarket.review.actionFailed"));
-      await refreshAllAsync();
-    } finally {
-      if (spaceGeneration !== spaceGenerationRef.current) return;
-      // Clear only if this action still owns the slot: a second row starting
-      // mid-flight moves actingId to its own id, and an unconditional clear here
-      // would re-enable that row while its POST is still in flight.
-      setActingId((cur) => (cur === item.id ? null : cur));
-    }
+    owner.promise = (async () => {
+      try {
+        await operation();
+        if (!mayContinue()) return;
+        await refreshAllAsync();
+        if (mayContinue()) onSuccess?.();
+      } catch (err) {
+        const failure = isSession() && !isCurrent()
+          ? new Error(t("skillMarket.review.spaceChanged")) : err;
+        if (isSession()) {
+          setError(failure instanceof Error ? failure.message : t(failureKey));
+          if (isCurrent()) await refreshAllAsync();
+        }
+        if (isSession() && !isCurrent()) {
+          const changed = new Error(t("skillMarket.review.spaceChanged"));
+          setError(changed.message);
+          if (rethrow) throw changed;
+        } else if (rethrow) throw failure;
+      } finally {
+        // Silent Space changes suppress outcomes, but the operation still owns
+        // its lock and must release it. A newer owner can never be unlocked here.
+        if (ownsSlot()) {
+          actionRef.current = null;
+          setActingId(null);
+        }
+      }
+    })();
+    return owner.promise;
   }
 
-  async function handleCancel(item: ReviewRequest) {
-    const spaceGeneration = spaceGenerationRef.current;
-    setActingId(item.id);
-    setError(null);
-    try {
-      await cancelReview(item.id);
-      if (spaceGeneration !== spaceGenerationRef.current) return;
-      await refreshAllAsync();
-    } catch (err) {
-      if (spaceGeneration !== spaceGenerationRef.current) return;
-      setError(err instanceof Error ? err.message : t("skillMarket.review.cancelFailed"));
-      await refreshAllAsync();
-    } finally {
-      if (spaceGeneration !== spaceGenerationRef.current) return;
-      setActingId((cur) => (cur === item.id ? null : cur));
-    }
+  function handleApprove(item: ReviewRequest) {
+    return runAction(item, () => approveReview(item.id), "skillMarket.review.actionFailed");
   }
 
-  // refreshAll but returns a promise so callers can await settle. Individual
-  // errors are already captured in state by fetchPending/fetchHandledPage, so
-  // we don't need Promise.allSettled (the package's TS lib target doesn't ship
-  // it); wrap each promise to swallow rejections so Promise.all waits for all.
-  function refreshAllAsync(): Promise<void> {
-    setError(null);
-    const pendingP = fetchPending(null).catch(() => undefined);
-    const handledP = activeTab === "handled"
-      ? Promise.all(TERMINAL_STATUSES.map((s) => fetchHandledPage(s, null, false).catch(() => undefined)))
-          .then(() => undefined)
-      : Promise.resolve(undefined);
-    return Promise.all([pendingP, handledP]).then(() => undefined);
+  function handleCancel(item: ReviewRequest) {
+    return runAction(item, () => cancelReview(item.id), "skillMarket.review.cancelFailed");
   }
 
   function handleIconError(id: string) {
@@ -434,7 +247,7 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
   return (
     <div className="skill-market-review-queue">
       {error && (
-        <div className="skill-market-form__error skill-market-review-queue__error">
+        <div role="alert" className="skill-market-form__error skill-market-review-queue__error">
           <AlertCircle size={15} />
           <span>{error}</span>
         </div>
@@ -449,8 +262,8 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
           onClick={() => setActiveTab("pending")}
         >
           {t("skillMarket.review.queuePending")}
-          {pendingTotal > 0 && activeTab !== "pending" && (
-            <span className="skill-market-review-badge">{pendingTotal}</span>
+          {pages.pending.total > 0 && activeTab !== "pending" && (
+            <span className="skill-market-review-badge">{pages.pending.total}</span>
           )}
         </button>
         <button
@@ -471,11 +284,14 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
         </div>
       )}
 
-      {!listLoading && listError && rows.length === 0 && (
-        <div className="skill-market-state is-error">
+      {listError && (
+        <div role="alert" className="skill-market-state is-error">
           <AlertCircle size={28} />
           <strong>{t("skillMarket.common.loadFailed")}</strong>
           <span>{listError}</span>
+          <WKButton variant="secondary" disabled={listLoading || listLoadingMore} onClick={() => retry(visibleStatuses)}>
+            {t("skillMarket.list.retry")}
+          </WKButton>
         </div>
       )}
 
@@ -508,7 +324,7 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
             const showReviewerActions = isPending && mode === "space";
             const showCancel = isPending && mode === "mine" && isApplicant;
             const iconErrored = iconErrors[item.id];
-            const acting = actingId === item.id;
+            const acting = Boolean(actingId);
             // 下架 is offered on a request whose plugin is still listed. The
             // backend refuses a delist of anything else with 409 not_published,
             // so this only removes a dead affordance — it is not the gate.
@@ -560,14 +376,18 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
               ),
               ariaLabel: item.pluginName,
               busy: acting,
-              onOpen: () => setDetailId(item.id),
+              onOpen: () => {
+                if (actionRef.current) return;
+                if (loadedSpaceRef.current !== WKApp.shared?.currentSpaceId) setError(t("skillMarket.review.spaceChanged"));
+                else setDetailId(item.id);
+              },
               onApprove: showReviewerActions ? () => void handleApprove(item) : undefined,
               approveAria: t("skillMarket.plugin.ariaApprove", { values: { name: item.pluginName } }),
-              onReject: showReviewerActions ? () => setRejectTarget(item) : undefined,
+              onReject: showReviewerActions ? () => { if (!actionRef.current) setRejectTarget(item); } : undefined,
               rejectAria: t("skillMarket.plugin.ariaReject", { values: { name: item.pluginName } }),
               onCancelReview: showCancel ? () => void handleCancel(item) : undefined,
               cancelReviewAria: t("skillMarket.plugin.ariaCancelReview", { values: { name: item.pluginName } }),
-              onDelist: showDelist ? () => setDelistTarget(item) : undefined,
+              onDelist: showDelist ? () => { if (!actionRef.current) setDelistTarget(item); } : undefined,
               delistAria: t("skillMarket.plugin.ariaDelist", { values: { name: item.pluginName } }),
             } satisfies MineRow;
           })}
@@ -588,76 +408,38 @@ export default function ReviewQueue({ mode }: ReviewQueueProps) {
         canReview={mode === "space"}
         onClose={() => setDetailId(null)}
         onDecided={() => {
-          void refreshAllAsync();
+          void refreshAllRef.current();
         }}
       />
       <DelistReasonModal
+        key={`delist-${spaceGenerationRef.current}`}
         visible={Boolean(delistTarget)}
         pluginName={delistTarget?.pluginName}
         onClose={() => {
-          if (actingId) return;
-          setDelistTarget(null);
+          if (!actionRef.current) setDelistTarget(null);
         }}
-        onConfirm={async (reason) => {
-          if (!delistTarget) return;
-          const spaceGeneration = spaceGenerationRef.current;
-          const id = delistTarget.id;
-          setActingId(id);
-          setError(null);
-          try {
-            await delistPlugin({ pluginId: delistTarget.pluginId, reason });
-          } catch (err) {
-            if (spaceGeneration !== spaceGenerationRef.current) return;
-            // Same shape as reject: a 409 here means somebody already took it
-            // down, or the author republished under us. Surface it on the queue
-            // banner AND inside the modal, then reconcile.
-            setError(err instanceof Error ? err.message : t("skillMarket.review.delistFailed"));
-            await refreshAllAsync();
-            if (spaceGeneration !== spaceGenerationRef.current) return;
-            setActingId((cur) => (cur === id ? null : cur));
-            throw err;
-          }
-          if (spaceGeneration !== spaceGenerationRef.current) return;
-          await refreshAllAsync();
-          if (spaceGeneration !== spaceGenerationRef.current) return;
-          setActingId((cur) => (cur === id ? null : cur));
-          setDelistTarget(null);
-        }}
+        onConfirm={(reason) => delistTarget ? runAction(
+          delistTarget,
+          () => delistPlugin({ pluginId: delistTarget.pluginId, reason }),
+          "skillMarket.review.delistFailed",
+          () => setDelistTarget(null),
+          true,
+        ) : undefined}
       />
       <RejectReasonModal
+        key={`reject-${spaceGenerationRef.current}`}
         visible={Boolean(rejectTarget)}
         pluginName={rejectTarget?.pluginName}
         onClose={() => {
-          if (actingId) return;
-          setRejectTarget(null);
+          if (!actionRef.current) setRejectTarget(null);
         }}
-        onConfirm={async (reason) => {
-          if (!rejectTarget) return;
-          const spaceGeneration = spaceGenerationRef.current;
-          const id = rejectTarget.id;
-          setActingId(id);
-          setError(null);
-          try {
-            await rejectReview(id, reason);
-          } catch (err) {
-            if (spaceGeneration !== spaceGenerationRef.current) return;
-            // Defect 2 fix: surface wire errors (e.g. 409 another admin
-            // already decided) — queue-level banner + modal inline error
-            // (the modal's own catch sets its error state when we throw).
-            setError(err instanceof Error ? err.message : t("skillMarket.review.actionFailed"));
-            await refreshAllAsync();
-            if (spaceGeneration !== spaceGenerationRef.current) return;
-            setActingId((cur) => (cur === id ? null : cur));
-            throw err; // let RejectReasonModal display its own inline error
-          }
-          if (spaceGeneration !== spaceGenerationRef.current) return;
-          // Success path: keep actingId set until refresh settles so the
-          // row stays disabled (defect 3).
-          await refreshAllAsync();
-          if (spaceGeneration !== spaceGenerationRef.current) return;
-          setActingId((cur) => (cur === id ? null : cur));
-          setRejectTarget(null);
-        }}
+        onConfirm={(reason) => rejectTarget ? runAction(
+          rejectTarget,
+          () => rejectReview(rejectTarget.id, reason),
+          "skillMarket.review.actionFailed",
+          () => setRejectTarget(null),
+          true,
+        ) : undefined}
       />
     </div>
   );

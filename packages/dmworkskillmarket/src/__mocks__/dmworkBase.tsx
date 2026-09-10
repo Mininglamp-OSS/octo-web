@@ -47,18 +47,26 @@ interface WKModalMockProps {
   className?: string;
   size?: string;
   bodyStyle?: React.CSSProperties;
+  options?: { closable?: boolean; maskClosable?: boolean; closeOnEsc?: boolean };
 }
 
-export function WKModal({ visible, title, header, footer, children, onCancel }: WKModalMockProps) {
+export function WKModal({ visible, title, header, footer, children, onCancel, options }: WKModalMockProps) {
   if (!visible) return null;
   return (
-    <section role="dialog" aria-label={typeof title === "string" ? title : "modal"}>
-      <button type="button" aria-label="关闭" onClick={onCancel} />
-      {header}
-      {title ? <h2>{title}</h2> : null}
-      {children}
-      {footer}
-    </section>
+    <div onMouseDown={(event) => {
+      if (event.target === event.currentTarget && options?.maskClosable !== false) onCancel?.();
+    }}>
+      <section role="dialog" aria-label={typeof title === "string" ? title : "modal"}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && options?.closeOnEsc !== false) onCancel?.();
+        }}>
+        {options?.closable !== false && <button type="button" aria-label="关闭" onClick={onCancel} />}
+        {header}
+        {title ? <h2>{title}</h2> : null}
+        {children}
+        {footer}
+      </section>
+    </div>
   );
 }
 

@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor, act } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, act, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WKApp } from "@octo/base";
 import ReviewQueue from "../ReviewQueue";
@@ -144,14 +144,9 @@ describe("ReviewQueue", () => {
 
     // The wire error surfaces as the queue-level error banner AND the modal's
     // own inline error; a refresh has been kicked off so the row reconciles.
-    expect(await screen.findByText("CONFLICT: already decided")).toBeInTheDocument();
-    await waitFor(() => {
-      // listReviewRequests is called again to refresh after the failure.
-      expect(api.listReviewRequests).toHaveBeenCalledWith(
-        "space",
-        expect.objectContaining({ status: "pending" }),
-      );
-    });
+    expect(await within(await screen.findByRole("alert")).findByText("CONFLICT: already decided")).toBeInTheDocument();
+    expect(await within(screen.getByRole("dialog")).findByText("CONFLICT: already decided")).toBeInTheDocument();
+    expect(api.listReviewRequests).toHaveBeenCalledTimes(2);
   });
 
   it("keeps the row disabled until the post-approve refresh settles (defect 3)", async () => {

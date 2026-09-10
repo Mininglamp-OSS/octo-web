@@ -267,7 +267,8 @@
     "delistModalHint": "下架后组织内成员将无法再看到该插件，作者可以修改后重新发布。进行中的审核申请会被一并取消。",
     "delistReasonLabel": "下架原因",
     "delistReasonPlaceholder": "可选，将记录在审核日志中并通知作者",
-    "delistFailed": "下架失败"
+    "delistFailed": "下架失败",
+    "spaceChanged": "组织已切换。请关闭此窗口，在相应组织中查看审核结果。"
   },
   "plugin": {
     "typeSkill": "技能",

@@ -267,7 +267,8 @@
     "delistModalHint": "Members of your organization will no longer see this plugin. Its author can edit it and publish again. Any open review request is canceled.",
     "delistReasonLabel": "Reason",
     "delistReasonPlaceholder": "Optional; recorded in the audit log and shown to the author",
-    "delistFailed": "Could not delist"
+    "delistFailed": "Could not delist",
+    "spaceChanged": "The organization has changed. Close this window and check the review result in its organization."
   },
   "plugin": {
     "typeSkill": "Skill",

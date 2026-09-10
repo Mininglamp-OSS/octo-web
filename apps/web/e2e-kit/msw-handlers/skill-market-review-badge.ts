@@ -85,6 +85,24 @@ function pageOf(items: PendingRequest[], url: URL) {
   };
 }
 
+// Decisions can be held while the real UI is exercised. The silent switch
+// models host navigation that updates the global ID without a mitt event.
+async function waitForDecision(action: "approve" | "reject") {
+  if (sessionStorage.getItem(`__e2e_rb1_hold_${action}`) !== "1") return;
+  const controls = globalThis as typeof globalThis & {
+    __e2eRb1ReleaseApprove?: () => void;
+    __e2eRb1ReleaseReject?: () => void;
+  };
+  const key = action === "approve" ? "__e2eRb1ReleaseApprove" : "__e2eRb1ReleaseReject";
+  await new Promise<void>((resolve) => { controls[key] = resolve; });
+  delete controls[key];
+  const nextSpace = sessionStorage.getItem("__e2e_rb1_silent_space");
+  if (nextSpace) {
+    const { WKApp } = await import("@octo/base");
+    WKApp.shared.currentSpaceId = nextSpace;
+  }
+}
+
 export const skillMarketReviewBadgeHandlers = [
   http.get(`*${API_BASE}/plugins/review_requests/:id`, ({ params }) => {
     if (!enabled()) return undefined;
@@ -96,11 +114,7 @@ export const skillMarketReviewBadgeHandlers = [
   }),
   http.post(`*${API_BASE}/plugins/review_requests/:id/reject`, async () => {
     if (!enabled()) return undefined;
-    if (sessionStorage.getItem("__e2e_rb1_hold_reject") === "1") {
-      const controls = globalThis as typeof globalThis & { __e2eRb1ReleaseReject?: () => void };
-      await new Promise<void>((resolve) => { controls.__e2eRb1ReleaseReject = resolve; });
-      delete controls.__e2eRb1ReleaseReject;
-    }
+    await waitForDecision("reject");
     return HttpResponse.json(
       { error: { code: "CONFLICT", message: "This review was already decided." } },
       { status: 409 },
@@ -117,8 +131,15 @@ export const skillMarketReviewBadgeHandlers = [
       data: { is_auto_approve_enabled: body.is_auto_approve_enabled === true },
     });
   }),
-  http.post(`*${API_BASE}/plugins/review_requests/:id/approve`, ({ params }) => {
+  http.post(`*${API_BASE}/plugins/review_requests/:id/approve`, async ({ params }) => {
     if (!enabled()) return undefined;
+    await waitForDecision("approve");
+    if (sessionStorage.getItem("__e2e_rb1_approve_error") === "1") {
+      return HttpResponse.json(
+        { error: { code: "CONFLICT", message: "This review was already decided." } },
+        { status: 409 },
+      );
+    }
     const id = String(params.id);
     const target = pending.find((item) => item.review_id === id);
     if (!target) {

@@ -15,6 +15,19 @@ This directory contains development guides and implementation notes for Octo Web
 - [`chat-composer-architecture.md`](./chat-composer-architecture.md) — current architecture and developer guide for the
   chat composer, send transaction, recovery lifecycle, UI boundaries, and extensible editor/message rendering.
 
+## Marketplace Review Checks
+
+Run the skill-market and connector/expert package tests from the repository root
+when checking the shared plugin review workflow:
+
+```sh
+pnpm --filter @dmwork/skillmarket test
+pnpm --filter @dmwork/mcp test
+```
+
+These local tests complement manual verification of applicant and reviewer flows
+against the configured backend.
+
 ## Assets
 
 - [`assets/`](./assets/) — images used by repository documentation.

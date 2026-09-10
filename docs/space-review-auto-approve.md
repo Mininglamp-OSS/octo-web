@@ -9,6 +9,9 @@
 - Space profile editing and invitations are available to admins and owners; disbanding and role assignment remain owner-only.
 - Member removal follows the server hierarchy: admins remove ordinary members, owners remove admins or ordinary members, and nobody removes themselves or an owner here. Success is shown only after the authoritative roster confirms removal.
 - A pending review submission or decision cannot close another target's dialog or overwrite state after a Space switch. Failed rejection keeps the reason and error visible.
+- Queue action errors survive reconciliation; failed later pages retain loaded rows, stop automatic pagination, and expose explicit retry.
+- Member removal requires a named danger confirmation and revalidates the Space, target and permissions before writing.
+- A decision owns its pending lock independently of mutable global Space state; silent Space changes cannot strand the drawer or let an old operation unlock a new one.
 
 ## File Map
 
@@ -25,8 +28,9 @@
 
 ## PR Scope
 
-This PR builds on the review workflow in #1614 (resubmitted unchanged as #1649).
-Its own scope includes policy API/UI, shared Space role encoding and permission gates,
+#1624 is the sole landing PR for the complete review workflow originally proposed
+in #1614 and resubmitted as #1649/#1650; those duplicate PRs are closed unmerged.
+The consolidated scope includes that workflow, policy API/UI, shared Space role encoding and permission gates,
 contacts role badges, and Space/target isolation across review and authoring dialogs.
 The shared profile panel admits both admins and owners, matching the existing server
 contract; destructive owner-only operations retain that restriction. Authorization
@@ -40,12 +44,16 @@ the directly related role-payload and scope-documentation corrections.
 - Member role matrix, server no-op, readback failure, and stale-Space completion tests.
 - Submission/decision success and failure after target switches, repeated IDs, Space switches, and unmount.
 - Failed-reject feedback and cancellation guards; queue refresh after a completed same-Space decision.
+- Emit-less Space changes before/during detail reads and decisions; stale finalizers after reopening with a new in-flight action.
+- Queue approve/cancel errors through reconciliation, driven-observer pagination failures and manual recovery, and multi-row duplicate actions.
+- Member-confirmation cancel/accept, permission/session changes while confirming, and initial roster retry.
 - Affected package suites, focused browser regressions, production build, and `pnpm i18n:check`.
 
 ## Follow-up review observations
 
-Non-blocking observations from reviews 5155809098 and 5156030754 remain separate
-from this focused correction:
+Non-blocking observations from the #1614/#1624 review rounds are tracked in
+[follow-up issue #1652](https://github.com/Mininglamp-OSS/octo-web/issues/1652).
+The remaining groups are separate from this focused correction:
 
 - Skill upload cancellation/session isolation, unsaved-change coverage, and save-success/publish-failure reconciliation inherited from the base review workflow.
 - Page-level mutation toasts and synchronous duplicate-action guards.

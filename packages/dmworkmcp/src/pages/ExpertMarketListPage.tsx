@@ -394,6 +394,7 @@ export default function ExpertMarketListPage({
   };
 
   const handleCancelReview = async (reviewId: string) => {
+    if (!reviewId.trim()) return;
     try {
       await cancelPluginReview(reviewId);
       showToast(t("skillMarket.review.canceledToast"));
@@ -461,6 +462,7 @@ export default function ExpertMarketListPage({
       item.displayStatus,
       myReviews.stateByPlugin.get(item.id)
     );
+    const reviewId = item.reviewId?.trim() || review.pending?.id.trim();
     return {
       id: item.id,
       type,
@@ -497,8 +499,8 @@ export default function ExpertMarketListPage({
       publishAria: t("skillMarket.plugin.ariaPublish", { values: { name: item.name } }),
       onUpgrade: review.canUpgrade ? () => openReviewSubmit(item) : undefined,
       upgradeAria: t("skillMarket.plugin.ariaUpgrade", { values: { name: item.name } }),
-      onCancelReview: review.canCancelReview
-        ? () => void handleCancelReview(item.reviewId ?? review.pending?.id ?? "")
+      onCancelReview: review.canCancelReview && reviewId
+        ? () => void handleCancelReview(reviewId)
         : undefined,
       cancelReviewAria: t("skillMarket.plugin.ariaCancelReview", {
         values: { name: item.name },

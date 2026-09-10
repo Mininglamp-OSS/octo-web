@@ -21,6 +21,8 @@ const api = vi.hoisted(() => ({
   getExpert: vi.fn(),
   getSquad: vi.fn(),
 }));
+const pluginReview = vi.hoisted(() => ({ cancelPluginReview: vi.fn(), publishPluginListing: vi.fn() }));
+vi.mock("../api/pluginReview", () => pluginReview);
 const bus = vi.hoisted(() => ({ on: vi.fn(), off: vi.fn() }));
 const reviews = vi.hoisted(() => ({ useReviewRequests: vi.fn(), refresh: vi.fn() }));
 vi.mock("../api/expertService", () => api);
@@ -504,6 +506,7 @@ describe("expert catalog server search and pagination", () => {
             kind: mineType,
             visibility: "space",
             listingState: item.id === "expert-102" ? "published" : "unlisted",
+            reviewId: item.id === "expert-101" ? "review-101" : undefined,
             displayStatus: item.id === "expert-101" ? "pending_review" : item.id === "expert-102" ? "published" : "draft",
           })),
         };
@@ -544,5 +547,48 @@ describe("expert catalog server search and pagination", () => {
     await tick(250);
     expect(api.listExperts).toHaveBeenCalledTimes(1);
     expect(bus.off).toHaveBeenCalledWith("space-changed", expect.any(Function));
+  });
+});
+
+
+describe.each(["agent", "squad"] as const)("personal %s review cancellation", (mineType) => {
+  function pendingList(reviewId?: string) {
+    const list = mineType === "agent" ? api.listMyExperts : api.listMySquads;
+    list.mockResolvedValue({
+      items: [{ ...records[0], kind: mineType, visibility: "space", displayStatus: "pending_review", reviewId }],
+      total: 1,
+    });
+  }
+
+  it.each([undefined, "", "   "])("withholds cancellation when the review ID is %j", async (reviewId) => {
+    pendingList(reviewId);
+    await render({ variant: "mine", mineType });
+    const row = root.querySelector('[data-item="expert-1"]')!;
+    expect(row.getAttribute("data-status")).toBe("pending_review");
+    expect(row.querySelector("button")).toBeNull();
+    expect(pluginReview.cancelPluginReview).not.toHaveBeenCalled();
+  });
+
+  it("cancels with the review ID returned by the plugin row", async () => {
+    pendingList("row-review-1");
+    await render({ variant: "mine", mineType });
+    click(button("cancel"));
+    await tick();
+    expect(pluginReview.cancelPluginReview).toHaveBeenCalledExactlyOnceWith("row-review-1");
+  });
+
+  it.each([undefined, "", "   "])("waits for the pending review lookup when the row ID is %j", async (reviewId) => {
+    pendingList(reviewId);
+    await render({ variant: "mine", mineType });
+    expect(root.querySelector('[data-item="expert-1"] button')).toBeNull();
+
+    reviews.useReviewRequests.mockReturnValue({
+      items: [{ id: "lookup-review-1", pluginId: "expert-1", status: "pending" }],
+      refresh: reviews.refresh,
+    });
+    await render({ variant: "mine", mineType });
+    click(button("cancel"));
+    await tick();
+    expect(pluginReview.cancelPluginReview).toHaveBeenCalledExactlyOnceWith("lookup-review-1");
   });
 });

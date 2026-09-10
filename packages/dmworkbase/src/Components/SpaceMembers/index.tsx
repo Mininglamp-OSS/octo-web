@@ -11,6 +11,8 @@ import {
 } from "../../Service/SpaceService";
 import WKApp from "../../App";
 import { I18nContext } from "../../i18n";
+import { wkConfirm } from "../WKModal";
+import WKButton from "../WKButton";
 import "./index.css";
 
 export interface SpaceMembersProps {
@@ -22,6 +24,13 @@ interface SpaceMembersState {
     members: SpaceMember[];
     loading: boolean;
     changing: boolean;
+    confirming: boolean;
+    loadError: boolean;
+}
+
+interface RemovalConfirmation {
+    accepted: boolean;
+    dialog?: ReturnType<typeof wkConfirm>;
 }
 
 const RoleColors: Record<number, string> = {
@@ -36,6 +45,7 @@ export default class SpaceMembers extends Component<SpaceMembersProps, SpaceMemb
     private mounted = false;
     private requestId = 0;
     private changing = false;
+    private removalConfirmation?: RemovalConfirmation;
 
     constructor(props: SpaceMembersProps) {
         super(props);
@@ -43,6 +53,8 @@ export default class SpaceMembers extends Component<SpaceMembersProps, SpaceMemb
             members: [],
             loading: false,
             changing: false,
+            confirming: false,
+            loadError: false,
         };
     }
 
@@ -54,12 +66,15 @@ export default class SpaceMembers extends Component<SpaceMembersProps, SpaceMemb
     componentDidUpdate(previousProps: SpaceMembersProps) {
         if (previousProps.space.space_id !== this.props.space.space_id) {
             this.loadMembers();
+        } else if (previousProps.space.role !== this.props.space.role) {
+            this.dismissRemovalConfirmation();
         }
     }
 
     componentWillUnmount() {
         this.mounted = false;
         this.requestId++;
+        this.dismissRemovalConfirmation();
     }
 
     private isCurrentRequest(spaceId: string, requestId: number) {
@@ -67,10 +82,11 @@ export default class SpaceMembers extends Component<SpaceMembersProps, SpaceMemb
     }
 
     loadMembers = async () => {
+        this.dismissRemovalConfirmation();
         const spaceId = this.props.space.space_id;
         const requestId = ++this.requestId;
         this.changing = false;
-        this.setState({ members: [], loading: true, changing: false });
+        this.setState({ members: [], loading: true, changing: false, loadError: false });
         try {
             const members = await SpaceService.shared.getRoster(spaceId, { maxAgeMs: 0 });
             if (this.isCurrentRequest(spaceId, requestId)) {
@@ -78,7 +94,7 @@ export default class SpaceMembers extends Component<SpaceMembersProps, SpaceMemb
             }
         } catch {
             if (this.isCurrentRequest(spaceId, requestId)) {
-                this.setState({ loading: false });
+                this.setState({ loading: false, loadError: true });
             }
         }
     };
@@ -94,12 +110,72 @@ export default class SpaceMembers extends Component<SpaceMembersProps, SpaceMemb
         }
     };
 
-    handleRemove = async (uid: string) => {
-        await this.changeMember(uid);
+    private finishRemovalConfirmation(confirmation: RemovalConfirmation) {
+        if (this.removalConfirmation !== confirmation) return;
+        this.removalConfirmation = undefined;
+        if (this.mounted) this.setState({ confirming: false });
+    }
+
+    private dismissRemovalConfirmation() {
+        const confirmation = this.removalConfirmation;
+        if (!confirmation) return;
+        this.finishRemovalConfirmation(confirmation);
+        confirmation.dialog?.destroy();
+    }
+
+    handleClose = () => {
+        if (this.changing) return;
+        this.requestId++;
+        this.dismissRemovalConfirmation();
+        this.props.onClose();
+    };
+
+    handleRemove = (uid: string) => {
+        const target = this.state.members.find((member) => member.uid === uid);
+        if (!this.mounted || this.state.loading || this.changing || this.removalConfirmation || !target || !this.canRemoveMember(target)) return;
+        const { space_id: spaceId, role: operatorRole } = this.props.space;
+        const requestId = this.requestId;
+        const activeSpaceId = WKApp.shared.currentSpaceId;
+        if (activeSpaceId && activeSpaceId !== spaceId) return;
+        const session = WKApp.loginInfo;
+        const operatorUid = session.uid;
+        const sessionToken = session.token;
+        const targetRole = target.role;
+        const confirmation: RemovalConfirmation = { accepted: false };
+        this.removalConfirmation = confirmation;
+        this.setState({ confirming: true });
+        const { t } = this.context;
+        confirmation.dialog = wkConfirm({
+            title: t("base.spaceMembers.removeTitle"),
+            content: t("base.spaceMembers.removeContent", { values: { name: target.name || uid } }),
+            okType: "danger",
+            okText: t("base.spaceMembers.remove"),
+            cancelText: t("base.common.cancel"),
+            maskClosable: false,
+            closeOnEsc: false,
+            onCancel: () => {
+                if (!confirmation.accepted) this.finishRemovalConfirmation(confirmation);
+            },
+            onOk: async () => {
+                if (this.removalConfirmation !== confirmation || confirmation.accepted) return;
+                confirmation.accepted = true;
+                try {
+                    const currentTarget = this.state.members.find((member) => member.uid === uid);
+                    if (!this.isCurrentRequest(spaceId, requestId)
+                        || WKApp.shared.currentSpaceId !== activeSpaceId
+                        || WKApp.loginInfo !== session || session.uid !== operatorUid || session.token !== sessionToken
+                        || this.props.space.role !== operatorRole
+                        || !currentTarget || currentTarget.role !== targetRole || !this.canRemoveMember(currentTarget)) return;
+                    await this.changeMember(uid);
+                } finally {
+                    this.finishRemovalConfirmation(confirmation);
+                }
+            },
+        });
     };
 
     handleRoleChange = async (uid: string, role: number) => {
-        if (!this.canManageRoles() || (role !== SPACE_ROLE_MEMBER && role !== SPACE_ROLE_ADMIN)) return;
+        if (this.removalConfirmation || !this.canManageRoles() || (role !== SPACE_ROLE_MEMBER && role !== SPACE_ROLE_ADMIN)) return;
         await this.changeMember(uid, role);
     };
 
@@ -158,8 +234,9 @@ export default class SpaceMembers extends Component<SpaceMembersProps, SpaceMemb
     }
 
     render() {
-        const { space, onClose } = this.props;
-        const { members, loading, changing } = this.state;
+        const { space } = this.props;
+        const { members, loading, changing, confirming, loadError } = this.state;
+        const busy = changing || confirming;
         const canManageRoles = this.canManageRoles();
         const { t } = this.context;
 
@@ -167,14 +244,14 @@ export default class SpaceMembers extends Component<SpaceMembersProps, SpaceMemb
             <div className="wk-spacemembers">
                 <div className="wk-spacemembers-header">
                     <div className="wk-spacemembers-header-left">
-                        <div className="wk-spacemembers-back" onClick={onClose}>
+                        <div className="wk-spacemembers-back" aria-disabled={changing} onClick={this.handleClose}>
                             ←
                         </div>
                         <span className="wk-spacemembers-title">
                             {t("base.spaceMembers.title", { values: { name: space.name } })}
                         </span>
                     </div>
-                    <button className="wk-spacemembers-invite-btn" onClick={this.handleInvite}>
+                    <button className="wk-spacemembers-invite-btn" disabled={busy} onClick={this.handleInvite}>
                         {t("base.spaceMembers.invite")}
                     </button>
                 </div>
@@ -182,6 +259,11 @@ export default class SpaceMembers extends Component<SpaceMembersProps, SpaceMemb
                     {loading ? (
                         <div className="wk-spacemembers-loading">
                             {t("base.spaceMembers.loading")}
+                        </div>
+                    ) : loadError ? (
+                        <div className="wk-spacemembers-loading" role="alert">
+                            <p>{t("base.spaceMembers.loadFailed")}</p>
+                            <WKButton onClick={this.loadMembers}>{t("base.spaceMembers.retry")}</WKButton>
                         </div>
                     ) : (
                         members.map((member) => (
@@ -207,7 +289,7 @@ export default class SpaceMembers extends Component<SpaceMembersProps, SpaceMemb
                                         {canManageRoles && member.role === SPACE_ROLE_MEMBER && (
                                             <button
                                                 className="wk-spacemembers-action-btn"
-                                                disabled={changing}
+                                                disabled={busy}
                                                 onClick={() => this.handleRoleChange(member.uid, SPACE_ROLE_ADMIN)}
                                             >
                                                 {t("base.spaceMembers.setAdmin")}
@@ -216,7 +298,7 @@ export default class SpaceMembers extends Component<SpaceMembersProps, SpaceMemb
                                         {canManageRoles && member.role === SPACE_ROLE_ADMIN && (
                                             <button
                                                 className="wk-spacemembers-action-btn"
-                                                disabled={changing}
+                                                disabled={busy}
                                                 onClick={() => this.handleRoleChange(member.uid, SPACE_ROLE_MEMBER)}
                                             >
                                                 {t("base.spaceMembers.cancelAdmin")}
@@ -224,7 +306,7 @@ export default class SpaceMembers extends Component<SpaceMembersProps, SpaceMemb
                                         )}
                                         <button
                                             className="wk-spacemembers-action-btn wk-spacemembers-action-danger"
-                                            disabled={changing}
+                                            disabled={busy}
                                             onClick={() => this.handleRemove(member.uid)}
                                         >
                                             {t("base.spaceMembers.remove")}

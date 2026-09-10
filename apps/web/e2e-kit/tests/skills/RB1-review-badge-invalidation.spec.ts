@@ -66,3 +66,51 @@ test("@RB1 @p1 @skills @market drawer rejection keeps failure feedback and guard
   await expect(reasonDialog).toHaveCount(0);
   await expect(drawer.getByText("This review was already decided.", { exact: true })).toBeVisible();
 });
+
+for (const action of ["approve", "reject"] as const) {
+  test(`@RB1 @p1 @skills @market ${action} unlocks after a Space change with no event`, async ({ authedPage: page }, testInfo) => {
+    await page.addInitScript((decision) => {
+      sessionStorage.setItem("__e2e_scenario", "skill-market-review-badge");
+      sessionStorage.removeItem("__e2e_rb1_loaded");
+      sessionStorage.setItem(`__e2e_rb1_hold_${decision}`, "1");
+      sessionStorage.setItem("__e2e_rb1_silent_space", "e2e-space-002");
+    }, action);
+    await page.goto("/mcp-market/review?sid=e2etest");
+    await page.getByRole("button", { name: "发布风险雷达", exact: true }).click();
+    const drawer = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "发布风险雷达", exact: true }) });
+    if (action === "reject") {
+      await drawer.getByRole("button", { name: "拒绝", exact: true }).click();
+      await page.getByRole("textbox", { name: "拒绝原因" }).fill("Retain this reason after a Space switch.");
+      await page.getByRole("button", { name: "确认拒绝", exact: true }).click();
+    } else await drawer.getByRole("button", { name: "通过并上架", exact: true }).click();
+    const releaseKey = action === "approve" ? "__e2eRb1ReleaseApprove" : "__e2eRb1ReleaseReject";
+    await page.waitForFunction((key) => typeof (globalThis as unknown as Record<string, unknown>)[key] === "function", releaseKey);
+    await expect(drawer.getByRole("button", { name: "取消", exact: true })).toBeDisabled();
+    await page.evaluate((key) => (globalThis as unknown as Record<string, () => void>)[key](), releaseKey);
+    if (action === "reject") {
+      const reasonDialog = page.getByRole("dialog").filter({ has: page.getByRole("textbox", { name: "拒绝原因" }) });
+      await expect(reasonDialog.getByText(/组织已切换/)).toBeVisible();
+      await expect(reasonDialog.getByRole("textbox")).toHaveValue("Retain this reason after a Space switch.");
+      await reasonDialog.getByRole("button", { name: "取消", exact: true }).click();
+    }
+    await expect(drawer.getByText(/组织已切换/)).toBeVisible();
+    await expect(drawer.getByRole("button", { name: "通过并上架", exact: true })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath(`drawer-${action}-silent-space.png`) });
+    await page.keyboard.press("Escape");
+    await expect(drawer).toHaveCount(0);
+  });
+}
+
+test("@RB1 @p1 @skills @market queue approval failure remains visible after reconciliation", async ({ authedPage: page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem("__e2e_scenario", "skill-market-review-badge");
+    sessionStorage.removeItem("__e2e_rb1_loaded");
+    sessionStorage.setItem("__e2e_rb1_approve_error", "1");
+  });
+  await page.goto("/mcp-market/review?sid=e2etest");
+  const approve = page.getByRole("button", { name: "通过「发布风险雷达」的上架申请" });
+  await approve.click();
+  await expect(page.locator(".skill-market-review-queue__error")).toContainText("This review was already decided.");
+  await expect(approve).toBeEnabled();
+  await expect(page.locator(".skill-market-review-queue__error")).toBeVisible();
+});

@@ -63,3 +63,9 @@
 - `packages/dmworkskillmarket/src/api/reviewSignal.ts`: 审核写操作失效信号，以及为什么它挂在接口而不是调用点上。
 - `packages/dmworkskillmarket/src/api/skillApi.ts`: 被 `withReviewInvalidation` 包裹的写接口清单。
 - `packages/dmworkskillmarket/src/hooks/useReviewRequests.ts`: 订阅失效信号后重新读取。
+
+## Silent Space change and failed queue approval
+
+- Hold either drawer decision, change the current Space ID without an event, then settle the request.
+- Verify the drawer unlocks, displays the Space-change hint and remains dismissible by Escape; rejection retains its typed reason.
+- Reject a queue approval with 409, allow reconciliation to finish and verify its queue-level error remains visible.

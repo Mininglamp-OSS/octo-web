@@ -153,9 +153,12 @@ export default class McpMarketListPage extends Component<
 
   private searchTimer: ReturnType<typeof setTimeout> | null = null;
   private requestVersion = 0;
+  private detailRequestVersion = 0;
+  private mounted = false;
   private bodyRef = React.createRef<HTMLDivElement>();
 
   componentDidMount() {
+    this.mounted = true;
     const parsed = parseMcpListQuery(window.location.search);
     this.setState(
       { ...parsed, mode: this.props.variant === "mine" ? "mine" : "all" },
@@ -204,6 +207,8 @@ export default class McpMarketListPage extends Component<
   }
 
   componentWillUnmount() {
+    this.mounted = false;
+    this.detailRequestVersion += 1;
     WKApp.mittBus.off("wk:nav-menu-activated", this.handleNavMenuActivated_);
     WKApp.mittBus.off("space-changed", this.handleSpaceChanged_);
     this.cancelTagFetch_();
@@ -515,18 +520,35 @@ export default class McpMarketListPage extends Component<
     });
   };
 
+  /** Both async editor entries share one session, so a late response cannot
+   * replace a newer target or write into a different Space / unmounted page. */
+  private beginDetailRequest_ = () => {
+    const requestVersion = this.requestVersion;
+    const detailRequestVersion = ++this.detailRequestVersion;
+    const spaceId = WKApp.shared.currentSpaceId;
+    return () =>
+      this.mounted &&
+      requestVersion === this.requestVersion &&
+      detailRequestVersion === this.detailRequestVersion &&
+      spaceId === WKApp.shared.currentSpaceId;
+  };
+
   /** Edit from a card. The list carries `McpListItem` (no quickStart/tools),
    *  but the shared create/edit modal is prefilled from `McpDetail`, so
    *  fetch the full row first. Toast on failure — do NOT silently open a
    *  half-empty modal. */
   private handleEditFromCard = async (item: McpListItem) => {
-    const requestVersion = this.requestVersion;
+    const isCurrent = this.beginDetailRequest_();
     try {
       const detail = await fetchMcpDetail(item.id);
-      if (requestVersion !== this.requestVersion) return;
-      this.setState({ editingDetail: detail, createVisible: true });
+      if (!isCurrent()) return;
+      this.setState({
+        editingDetail: detail,
+        reviewEditingDetail: null,
+        createVisible: true,
+      });
     } catch (err) {
-      if (requestVersion !== this.requestVersion) return;
+      if (!isCurrent()) return;
       Toast.error(err instanceof Error ? err.message : t("mcp.edit.failed"));
     }
   };
@@ -572,13 +594,17 @@ export default class McpMarketListPage extends Component<
    *  authored in McpCreateModal's review mode and travels WITH the review
    *  request; the org keeps seeing the current version until approval. */
   private openPublishVersion = async (item: McpListItem) => {
-    const requestVersion = this.requestVersion;
+    const isCurrent = this.beginDetailRequest_();
     try {
       const detail = await fetchMcpDetail(item.id);
-      if (requestVersion !== this.requestVersion) return;
-      this.setState({ reviewEditingDetail: detail, createVisible: true });
+      if (!isCurrent()) return;
+      this.setState({
+        editingDetail: null,
+        reviewEditingDetail: detail,
+        createVisible: true,
+      });
     } catch (err) {
-      if (requestVersion !== this.requestVersion) return;
+      if (!isCurrent()) return;
       Toast.error(err instanceof Error ? err.message : t("mcp.edit.failed"));
     }
   };

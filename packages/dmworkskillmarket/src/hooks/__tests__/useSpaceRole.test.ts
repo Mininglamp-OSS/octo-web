@@ -207,4 +207,25 @@ describe("useSpaceRole", () => {
     expect(result.current.isReviewer).toBe(false);
     expect(result.current.loading).toBe(false);
   });
+  it.each(["success", "failure"])("re-probes the current Space after an emit-less switch during a probe (%s)", async (outcome) => {
+    let resolve!: (spaces: Space[]) => void;
+    let reject!: (error: Error) => void;
+    let resolveCurrent!: (spaces: Space[]) => void;
+    const probe = vi.spyOn(SpaceService.shared, "getMySpaces")
+      .mockReturnValueOnce(new Promise<Space[]>((done, fail) => { resolve = done; reject = fail; }))
+      .mockReturnValueOnce(new Promise<Space[]>((done) => { resolveCurrent = done; }));
+    const { result } = renderHook(() => useSpaceRole());
+    await act(async () => {
+      WKApp.shared.currentSpaceId = "space-999";
+      if (outcome === "success") resolve([space(2)]);
+      else reject(new Error("Old lookup failed"));
+    });
+    expect(probe).toHaveBeenCalledTimes(2);
+    expect(result.current.loading).toBe(true);
+    expect(result.current.role).toBeUndefined();
+    await act(async () => resolveCurrent([space(1, "space-999")]));
+    expect(result.current.role).toBe(1);
+    expect(result.current.loading).toBe(false);
+  });
+
 });

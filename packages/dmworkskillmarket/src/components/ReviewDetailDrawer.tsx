@@ -39,7 +39,8 @@ export default function ReviewDetailDrawer({
   const generationRef = useRef(0);
   const spaceGenerationRef = useRef(0);
   const mountedRef = useRef(false);
-  const actingRef = useRef(false);
+  const actingRef = useRef<symbol | null>(null);
+  const loadedSpaceRef = useRef<string | undefined>(undefined);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -50,7 +51,7 @@ export default function ReviewDetailDrawer({
     const handleSpaceChanged = () => {
       spaceGenerationRef.current += 1;
       generationRef.current += 1;
-      actingRef.current = false;
+      actingRef.current = null;
       setReview(null);
       setError(null);
       setRejectOpen(false);
@@ -72,7 +73,9 @@ export default function ReviewDetailDrawer({
     // state before loading the next record so a reject dialog or in-flight
     // action from the previous review cannot attach itself to the new one.
     const generation = ++generationRef.current;
-    actingRef.current = false;
+    const spaceId = WKApp.shared?.currentSpaceId;
+    loadedSpaceRef.current = spaceId;
+    actingRef.current = null;
     setReview(null);
     setError(null);
     setIconError(false);
@@ -81,11 +84,18 @@ export default function ReviewDetailDrawer({
     setLoading(Boolean(reviewId));
     if (reviewId) getReviewRequest(reviewId)
       .then((item) => {
-        if (generation === generationRef.current) setReview(item);
+        if (generation !== generationRef.current) return;
+        if (spaceId !== WKApp.shared?.currentSpaceId) {
+          setError(t("skillMarket.review.spaceChanged"));
+          return;
+        }
+        setReview(item);
       })
       .catch((err) => {
         if (generation !== generationRef.current) return;
-        setError(err instanceof Error ? err.message : t("skillMarket.common.loadFailed"));
+        setError(spaceId !== WKApp.shared?.currentSpaceId
+          ? t("skillMarket.review.spaceChanged")
+          : err instanceof Error ? err.message : t("skillMarket.common.loadFailed"));
       })
       .finally(() => {
         if (generation === generationRef.current) setLoading(false);
@@ -102,34 +112,53 @@ export default function ReviewDetailDrawer({
 
   async function decide(action: "approve" | "reject", reason?: string) {
     if (!review || review.id !== reviewId || !canReview || review.status !== "pending" || actingRef.current) return;
+    const spaceId = loadedSpaceRef.current;
+    if (spaceId !== WKApp.shared?.currentSpaceId) {
+      const changed = new Error(t("skillMarket.review.spaceChanged"));
+      setError(changed.message);
+      if (action === "reject") throw changed;
+      return;
+    }
     const actionReviewId = review.id;
     const generation = generationRef.current;
     const spaceGeneration = spaceGenerationRef.current;
-    const spaceId = WKApp.shared?.currentSpaceId;
+    const isSession = () => mountedRef.current && generation === generationRef.current;
     const isCurrentSpace = () => mountedRef.current && spaceGeneration === spaceGenerationRef.current && spaceId === WKApp.shared?.currentSpaceId;
-    const isCurrent = () => isCurrentSpace() && generation === generationRef.current;
-    actingRef.current = true;
+    const token = Symbol("review-decision");
+    actingRef.current = token;
     setActing(true);
     setError(null);
     try {
       if (action === "approve") await approveReview(actionReviewId);
       else await rejectReview(actionReviewId, reason ?? "");
-      if (!isCurrentSpace()) return;
+      if (!isCurrentSpace()) {
+        // Do not report an old-Space outcome in this Space. A still-open
+        // reason dialog must not interpret this dropped continuation as success.
+        const changed = new Error(t("skillMarket.review.spaceChanged"));
+        if (isSession()) setError(changed.message);
+        if (action === "reject") throw changed;
+        return;
+      }
       // A completed decision still changes this Space's queue if the host has
       // switched drawers. Refresh it without touching the new drawer session.
       onDecided();
-      if (!isCurrent()) return;
+      if (!isSession() || !isCurrentSpace()) return;
       setRejectOpen(false);
       onClose();
     } catch (err) {
-      if (!isCurrent()) return;
-      setError(err instanceof Error ? err.message : t(action === "approve" ? "skillMarket.review.approveFailed" : "skillMarket.review.actionFailed"));
-      // Keep the reason modal mounted so its inline failure and user input
-      // survive. Reconciliation is an explicit retry after the error is read.
-      if (action === "reject") throw err;
+      const failure = isSession() && !isCurrentSpace()
+        ? new Error(t("skillMarket.review.spaceChanged")) : err;
+      if (isSession()) {
+        setError(failure instanceof Error ? failure.message : t(action === "approve" ? "skillMarket.review.approveFailed" : "skillMarket.review.actionFailed"));
+      }
+      // The keyed reason modal belongs to this session. Rethrow even if it
+      // became stale so a retained reason is never cleared as a fake success.
+      if (action === "reject") throw failure;
     } finally {
-      if (isCurrent()) {
-        actingRef.current = false;
+      // Only this operation may release its slot. A silent global Space change
+      // cannot strand the lock, and an old operation cannot unlock a new one.
+      if (mountedRef.current && actingRef.current === token) {
+        actingRef.current = null;
         setActing(false);
       }
     }
@@ -137,7 +166,8 @@ export default function ReviewDetailDrawer({
 
   const displayName = review?.pluginName ?? "";
   const typeLabel = review ? pluginTypeLabel(review.pluginType) : "";
-  const canAct = canReview && review?.status === "pending";
+  const spaceChanged = loadedSpaceRef.current !== WKApp.shared?.currentSpaceId;
+  const canAct = canReview && review?.status === "pending" && !spaceChanged;
 
   return (
     <>
@@ -223,15 +253,17 @@ export default function ReviewDetailDrawer({
           <div className="skill-market-modal-state is-error">
             <AlertCircle size={20} />
             <span>{error}</span>
-            <WKButton
-              variant="secondary"
-              size="small"
-              icon={<RefreshCw size={14} />}
-              onClick={retry}
-              disabled={acting}
-            >
-              {t("skillMarket.list.retry")}
-            </WKButton>
+            {!spaceChanged && (
+              <WKButton
+                variant="secondary"
+                size="small"
+                icon={<RefreshCw size={14} />}
+                onClick={retry}
+                disabled={acting}
+              >
+                {t("skillMarket.list.retry")}
+              </WKButton>
+            )}
           </div>
         )}
         {review && !loading && (
@@ -333,6 +365,7 @@ export default function ReviewDetailDrawer({
       </WKModal>
       {review && (
         <RejectReasonModal
+          key={generationRef.current}
           visible={rejectOpen}
           pluginName={review.pluginName}
           onClose={() => {
