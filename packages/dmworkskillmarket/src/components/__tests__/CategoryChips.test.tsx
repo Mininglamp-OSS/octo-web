@@ -21,6 +21,7 @@ describe("CategoryChips", () => {
     const buttons = within(list).getAllByRole("button");
     expect(buttons[0]).toHaveTextContent("全部");
     expect(within(list).getByRole("button", { name: /洞察研究/ })).toBeInTheDocument();
+    expect(within(list).queryByRole("button", { name: /空分类/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /代码质检/ })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: /更多/ })).toBeInTheDocument();
   });
@@ -45,6 +46,7 @@ describe("CategoryChips", () => {
     expect(within(menu).getByRole("menuitem", { name: /办公协作/ })).toBeInTheDocument();
     expect(within(menu).getByRole("menuitem", { name: /洞察研究/ })).toBeInTheDocument();
     expect(within(menu).getByRole("menuitem", { name: /代码质检/ })).toBeInTheDocument();
+    expect(within(menu).queryByRole("menuitem", { name: /空分类/ })).not.toBeInTheDocument();
   });
 
   it("still renders the mobile more menu when desktop has no overflow", () => {

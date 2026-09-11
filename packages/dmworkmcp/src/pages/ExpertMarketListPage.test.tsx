@@ -4,7 +4,7 @@ import ReactDOM from "react-dom";
 import { act, Simulate } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExpertItem } from "../mock/expertMock";
-import type { ExpertListResult, ListExpertParams } from "../api/expertService";
+import type { ExpertCategoryCount, ExpertListResult, ListExpertParams } from "../api/expertService";
 import type { MineRow } from "@dmwork/skillmarket";
 
 const api = vi.hoisted(() => ({
@@ -131,6 +131,7 @@ beforeEach(() => {
   api.listExpertCategories.mockResolvedValue([
     { name: "Reports", count: 1 },
     { name: "General", count: 111 },
+    { name: "Empty", count: 0 },
   ]);
   api.listExpertTags.mockResolvedValue(["common", "rare", "analysis"]);
   root = document.createElement("div");
@@ -162,6 +163,13 @@ function button(label: string, parent: ParentNode = root) {
     (el) => el.textContent === label
   );
   if (!found) throw new Error(`Missing button: ${label}`);
+  return found;
+}
+function categoryButton(label: string) {
+  const found = Array.from(
+    root.querySelectorAll<HTMLButtonElement>(".wk-mcp-expert-category")
+  ).find((el) => el.textContent?.startsWith(label));
+  if (!found) throw new Error(`Missing category: ${label}`);
   return found;
 }
 function click(el: Element) {
@@ -346,11 +354,8 @@ describe("expert catalog server search and pagination", () => {
 
   it("filters a category and tags found only beyond page 1, and forwards sort", async () => {
     await render();
-    click(
-      Array.from(root.querySelectorAll(".wk-mcp-expert-category")).find(
-        (el) => el.textContent === "Reports1"
-      )!
-    );
+    expect(root.textContent).not.toContain("Empty0");
+    click(categoryButton("Reports"));
     await tick();
     expect(api.listExperts).toHaveBeenLastCalledWith(
       expect.objectContaining({ category: "Reports", page: 1 })
@@ -370,6 +375,36 @@ describe("expert catalog server search and pagination", () => {
     expect(api.listExperts).toHaveBeenLastCalledWith(
       expect.objectContaining({ sort: "installs", page: 1 })
     );
+  });
+
+  it("preserves an active category while retry refetches category metadata", async () => {
+    await render();
+    api.listExperts.mockRejectedValueOnce(new Error("offline"));
+    click(categoryButton("Reports"));
+    await tick();
+    expect(api.listExperts).toHaveBeenLastCalledWith(
+      expect.objectContaining({ category: "Reports", page: 1 })
+    );
+    expect(button("mcp.list.retry")).toBeTruthy();
+
+    const categoryReload = deferred<ExpertCategoryCount[]>();
+    api.listExpertCategories.mockReturnValueOnce(categoryReload.promise);
+    click(button("mcp.list.retry"));
+    await tick();
+
+    expect(api.listExperts).toHaveBeenLastCalledWith(
+      expect.objectContaining({ category: "Reports", page: 1 })
+    );
+    expect(categoryButton("Reports").getAttribute("aria-pressed")).toBe("true");
+
+    await act(async () => {
+      categoryReload.resolve([
+        { name: "Reports", count: 1 },
+        { name: "General", count: 111 },
+      ]);
+    });
+    await tick();
+    expect(categoryButton("Reports").getAttribute("aria-pressed")).toBe("true");
   });
 
   it("keeps previous rows on a later-page failure and retries the same page", async () => {

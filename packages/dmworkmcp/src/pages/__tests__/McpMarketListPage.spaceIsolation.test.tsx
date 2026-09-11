@@ -61,7 +61,13 @@ import McpMarketListPage from "../McpMarketListPage";
 
 type PageInternals = {
   state: Record<string, unknown>;
-  setState: (patch: Record<string, unknown>, callback?: () => void) => void;
+  setState: (
+    patch:
+      | Record<string, unknown>
+      | ((prev: Record<string, unknown>) => Record<string, unknown>),
+    callback?: () => void
+  ) => void;
+  loadData: () => Promise<void>;
   handleEditFromCard: (item: { id: string }) => Promise<void>;
   openPublishVersion: (item: { id: string }) => Promise<void>;
   handleSpaceChanged_: () => void;
@@ -81,10 +87,22 @@ function deferred<T>() {
 
 function createPage(): PageInternals {
   const page = new McpMarketListPage({}) as unknown as PageInternals;
-  page.setState = (patch) => {
-    page.state = { ...page.state, ...patch };
+  page.setState = (patch, callback) => {
+    const next = typeof patch === "function" ? patch(page.state) : patch;
+    page.state = { ...page.state, ...next };
+    callback?.();
   };
   page.componentDidMount();
+  return page;
+}
+
+function createUnmountedPage(): PageInternals {
+  const page = new McpMarketListPage({}) as unknown as PageInternals;
+  page.setState = (patch, callback) => {
+    const next = typeof patch === "function" ? patch(page.state) : patch;
+    page.state = { ...page.state, ...next };
+    callback?.();
+  };
   return page;
 }
 
@@ -94,6 +112,82 @@ const detail = { id: item.id, name: "Space A connector" };
 beforeEach(() => {
   vi.resetAllMocks();
   h.app.currentSpaceId = "space-a";
+  const emptyList = {
+    items: [],
+    categories: [{ key: "all", label: "全部", count: 0 }],
+    total: 0,
+  };
+  h.fetchMcpList.mockResolvedValue(emptyList);
+  h.fetchMcpMine.mockResolvedValue(emptyList);
+  h.fetchMcpTags.mockResolvedValue([]);
+});
+
+describe("McpMarketListPage category reset contract", () => {
+  it("keeps the selected category when taxonomy degrades to the All pill only", async () => {
+    const page = createUnmountedPage();
+    page.state = {
+      ...page.state,
+      mode: "all",
+      categoriesSelected: ["dev"],
+    };
+    h.fetchMcpList.mockResolvedValueOnce({
+      items: [],
+      categories: [{ key: "all", label: "全部", count: 0 }],
+      total: 0,
+    });
+
+    await page.loadData();
+
+    expect(h.fetchMcpList).toHaveBeenCalledOnce();
+    expect(page.state.categoriesSelected).toEqual(["dev"]);
+    expect(page.state.loading).toBe(false);
+  });
+
+  it("resets a selected category only after a resolved taxonomy omits it", async () => {
+    const page = createUnmountedPage();
+    page.state = {
+      ...page.state,
+      mode: "all",
+      categoriesSelected: ["dev"],
+    };
+    const secondLoad = deferred<{
+      items: unknown[];
+      categories: Array<{ key: string; label: string; count: number }>;
+      total: number;
+    }>();
+    h.fetchMcpList
+      .mockResolvedValueOnce({
+        items: [],
+        categories: [
+          { key: "all", label: "全部", count: 1 },
+          { key: "data", label: "Data", count: 1 },
+        ],
+        total: 0,
+      })
+      .mockReturnValueOnce(secondLoad.promise);
+
+    await page.loadData();
+
+    expect(h.fetchMcpList).toHaveBeenCalledTimes(2);
+    expect(h.fetchMcpList.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({ categories: [] })
+    );
+    expect(page.state.categoriesSelected).toEqual([]);
+    expect(page.state.loading).toBe(true);
+
+    secondLoad.resolve({
+      items: [{ id: "data-plugin" }],
+      categories: [
+        { key: "all", label: "全部", count: 1 },
+        { key: "data", label: "Data", count: 1 },
+      ],
+      total: 1,
+    });
+    await Promise.resolve();
+
+    expect(page.state.loading).toBe(false);
+    expect(page.state.items).toEqual([{ id: "data-plugin" }]);
+  });
 });
 
 describe("McpMarketListPage detail continuation Space isolation", () => {

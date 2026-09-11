@@ -58,7 +58,7 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
       try {
         const signal = controller.signal;
         const [categoryItems, page] = await Promise.all([
-          getCategories({ q: debouncedQuery, tags: selectedTags, signal }),
+          getCategories({ signal }),
           options.mine
             ? getMySkills(
                 {
@@ -103,9 +103,12 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
           },
           ...categoryItems.filter((category) => category.id !== "all"),
         ];
+        const selectableCategories = normalizedCategories.filter(
+          (category) => category.id === "all" || category.skillCount > 0
+        );
         if (
           categoryId !== "all" &&
-          !normalizedCategories.some((category) => category.id === categoryId)
+          !selectableCategories.some((category) => category.id === categoryId)
         ) {
           setCategoryIdState("all");
         }
