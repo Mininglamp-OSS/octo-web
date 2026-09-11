@@ -8,7 +8,13 @@ export {
   default as MineTable,
   type MineRow,
   type MineAssetType,
+  type MineActionRequest,
 } from "./components/MineTable";
+export { default as SearchBar } from "./components/SearchBar";
+export { default as EditSkillModal } from "./components/EditSkillModal";
+export { default as NewSkillModal } from "./components/NewSkillModal";
+export { default as SkillDetailModal } from "./components/SkillDetailModal";
+export { default as DeleteConfirmModal } from "./components/DeleteConfirmModal";
 // "组织审核" — the Space reviewer queue, mounted by dmworkmcp at
 // /mcp-market/review as the sidebar's fifth entry.
 export { default as SpaceReviewPage } from "./pages/SpaceReviewPage";
@@ -57,7 +63,7 @@ export {
 // The 全部 tab of 我的发布 lists every plugin type through the one endpoint that
 // can return them together (`mode=mine` with plugin_type omitted), so dmworkmcp
 // needs the reader and the row type.
-export { getMySkills, deleteSkill } from "./api/skillApi";
+export { getCategories, getMySkills, getSkill, deleteSkill } from "./api/skillApi";
 // Version rules, mirrored from the backend so a form objects before a round trip.
 export {
   isValidVersion,
@@ -69,7 +75,7 @@ export {
 // The 全部 tab renders skills beside connectors and experts, so it needs the
 // skill avatar helpers to draw a skill row the same way the 技能 tab does.
 export { getSkillAvatarColor, getSkillAvatarText } from "./utils/skillAvatar";
-export type { Skill } from "./types/skill";
+export type { Category, Skill } from "./types/skill";
 export type {
   ReviewRequest,
   ReviewStatus,

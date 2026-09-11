@@ -34,7 +34,7 @@ vi.mock("@octo/base", () => ({
   DEFAULT_REQUEST_TIMEOUT_MS: 20000,
 }));
 
-import { createMcp, updateMcp, fetchMcpList } from "./mcpService";
+import { createMcp, updateMcp, fetchMcpList, trackMcpView } from "./mcpService";
 import { WKApp } from "@octo/base";
 import type { CreateMcpParams } from "../types/mcp";
 
@@ -88,11 +88,53 @@ function detailPlugin(overrides: Record<string, unknown> = {}) {
 let spaceCounter = 0;
 
 beforeEach(() => {
+  mock.logout.mockReset();
   mock.instance.get.mockReset();
   mock.instance.post.mockReset();
   mock.instance.delete.mockReset();
   // Bust the per-Space category cache between tests by rotating the Space id.
   WKApp.shared.currentSpaceId = `sp-${spaceCounter++}`;
+});
+
+describe("trackMcpView", () => {
+  it("records a plugin view and remains best-effort on failure", async () => {
+    mock.instance.post.mockResolvedValueOnce({ data: { data: {} } });
+
+    await expect(trackMcpView("connector-1")).resolves.toBeUndefined();
+    expect(mock.instance.post).toHaveBeenCalledWith(
+      "/market/api/v1/metrics/track",
+      {
+        resource_type: "plugin",
+        resource_id: "connector-1",
+        event_type: "view",
+      }
+    );
+
+    mock.instance.post.mockRejectedValueOnce(new Error("metrics unavailable"));
+    await expect(trackMcpView("connector-1")).resolves.toBeUndefined();
+  });
+
+  it("does not log out when only the best-effort metric returns 401", async () => {
+    const rejectResponse = mock.instance.interceptors.response.use.mock.calls[0]?.[1] as (
+      error: unknown
+    ) => Promise<never>;
+
+    await expect(
+      rejectResponse({
+        response: { status: 401 },
+        config: { url: "/market/api/v1/metrics/track" },
+      })
+    ).rejects.toBeDefined();
+    expect(mock.logout).not.toHaveBeenCalled();
+
+    await expect(
+      rejectResponse({
+        response: { status: 401 },
+        config: { url: "/market/api/v1/plugins" },
+      })
+    ).rejects.toBeDefined();
+    expect(mock.logout).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("fetchMcpListPath — category resolution fails closed (P1-2)", () => {
