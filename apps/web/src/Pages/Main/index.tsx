@@ -312,6 +312,13 @@ export class MainPage extends Component<{}, MainPageState> {
                                                     if (menus.id === "appbot" && !isReentry) {
                                                         Dap.shared.track("apps_module_entered", {});
                                                     }
+                                                    // Octo-Q head 258e876e P1:document_module_entered 是 Class N
+                                                    // 导航事件,不能挂 GET /docs/recent/creators(该端点被 122 ?creator=
+                                                    // 筛选共用、任何重拉都重发)。与 contacts_/apps_module_entered 同款,
+                                                    // 在真正切到文档(menus.id==='docs',非 reentry)时命令式计一次。
+                                                    if (menus.id === "docs" && !isReentry) {
+                                                        Dap.shared.track("document_module_entered", {});
+                                                    }
                                                     vm.currentMenus = menus;
                                                     WKApp.currentMenuId = menus.id;
                                                     WKApp.route.syncPath(menus.routePath);

@@ -32,6 +32,12 @@ export class TabLowScreen extends Component<TabLowScreenProps> {
                                 if (menus.id === "appbot" && !isReentry) {
                                     Dap.shared.track("apps_module_entered", {})
                                 }
+                                // Octo-Q head 258e876e P1:document_module_entered 低屏路径与桌面 NavRail 对称,
+                                // 进文档模块(menus.id==='docs',非 reentry)时计一次(原挂 GET /docs/recent/creators
+                                // 被筛选共用会无界放大,见 Main/index.tsx)。
+                                if (menus.id === "docs" && !isReentry) {
+                                    Dap.shared.track("document_module_entered", {})
+                                }
                                 if (menus.onPress) {
                                     // Sync the URL before firing the custom
                                     // onPress. Some menu items only swap the

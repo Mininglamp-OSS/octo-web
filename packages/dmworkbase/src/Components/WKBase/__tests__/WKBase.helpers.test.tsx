@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 const runtime = vi.hoisted(() => ({
   subscribers: new Map<string, Array<{ uid?: string; orgData?: { robot?: unknown } }>>(),
   disbandedChannelIDs: new Set<string>(),
@@ -19,6 +19,8 @@ vi.mock("../../../Utils/groupDisband", () => ({
 }))
 import WKBase, { createDefaultExternalViewerGate } from "../index"
 import { Channel } from "wukongimjssdk"
+import { Dap } from "../../../Service/Dap"
+import { ForwardService } from "../../../Service/ForwardService"
 
 describe("WKBase context methods", () => {
   beforeEach(() => {
@@ -146,5 +148,67 @@ describe("WKBase context methods", () => {
     )
 
     expect(grantAccess).toHaveBeenCalledWith(["legacy_member"], "reader")
+  })
+})
+
+// document_forwarded emission wiring (Octo-Q head 75e7215c 🔴). These assertions live in the LIVE
+// WKBase harness (this file runs 7/7 in CI) — not the predicate layer — so they pin the
+// predicate↔emission wiring at the call site: reverting the call to the old ungated
+// `state.kind !== "all-failed"`, or deleting the `Dap.shared.track("document_forwarded", {})` line,
+// must turn one of these RED. runDocForward is shared by doc-card share (shareAsCard:true → count)
+// and the html-doc "让 AI 处理" AI-instruction forward (shareAsCard:false → do NOT count).
+describe("WKBase.runDocForward — document_forwarded emission wiring (🔴)", () => {
+  let trackSpy: ReturnType<typeof vi.spyOn>
+
+  const makeBase = () => {
+    const base: any = new WKBase({ children: null })
+    base.context = { t: (key: string) => key }
+    base.setState = (update: any) => {
+      const next = typeof update === "function" ? update(base.state, base.props) : update
+      if (next) base.state = { ...base.state, ...next }
+    }
+    return base
+  }
+  const docForwardedCalls = () =>
+    trackSpy.mock.calls.filter((c) => c[0] === "document_forwarded")
+
+  beforeEach(() => {
+    runtime.subscribers = new Map()
+    runtime.disbandedChannelIDs = new Set()
+    // default: single target, all delivered (success)
+    ;(ForwardService.send as any)
+      .mockReset()
+      .mockResolvedValue({ targets: 1, failedTargets: 0, messageAttempts: 1, failedMessages: 0, disbanded: 0, failures: [] })
+    trackSpy = vi.spyOn(Dap.shared, "track").mockImplementation(() => undefined)
+  })
+  afterEach(() => {
+    trackSpy.mockRestore()
+  })
+
+  it("share form (shareAsCard:true) delivered success → exactly one document_forwarded with {} props", async () => {
+    const base = makeBase()
+    await base.runDocForward([new Channel("peer", 1)], undefined, {
+      messageTitle: "Doc", link: "https://docs.test/d1", shareAsCard: true,
+    })
+    const calls = docForwardedCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0][1]).toEqual({})
+  })
+
+  it("instruction form (shareAsCard:false) delivered success → zero document_forwarded", async () => {
+    const base = makeBase()
+    await base.runDocForward([new Channel("peer", 1)], undefined, {
+      messageTitle: "Doc", link: "https://docs.test/d1", shareAsCard: false,
+    })
+    expect(docForwardedCalls()).toHaveLength(0)
+  })
+
+  it("share form all-failed → zero document_forwarded", async () => {
+    ;(ForwardService.send as any).mockResolvedValueOnce({ targets: 1, failedTargets: 1, messageAttempts: 1, failedMessages: 1, disbanded: 0, failures: [{ channelID: "peer" }] })
+    const base = makeBase()
+    await base.runDocForward([new Channel("peer", 1)], undefined, {
+      messageTitle: "Doc", link: "https://docs.test/d1", shareAsCard: true,
+    })
+    expect(docForwardedCalls()).toHaveLength(0)
   })
 })

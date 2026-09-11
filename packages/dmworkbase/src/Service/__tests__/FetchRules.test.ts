@@ -10,15 +10,15 @@ import { FETCH_RULES, FETCH_IGNORE, buildFetchIndex, matchFetchEvent, rawPathnam
 
 describe('FetchRules — matchFetchEvent 语义', () => {
     const rules: FetchRule[] = [
-        { method: 'GET', path: '/fleet/api/v1/issues/search', event: 'task_board_filtered' },
+        { method: 'GET', path: '/fleet/api/v1/issues/search', event: FETCH_IGNORE },
         { method: 'GET', path: '/fleet/api/v1/issues/:id', event: 'task_opened' },
         { method: 'POST', path: '/fleet/api/v1/issues/:id/comments', event: 'task_commented' },
         { method: 'DELETE', path: '/fleet/api/v1/issues/:id', event: 'task_deleted' },
     ]
     const idx = buildFetchIndex(rules)
 
-    it('字面段精确命中', () => {
-        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/issues/search')).toBe('task_board_filtered')
+    it('字面段命中抑制哨兵 → 主动不上报(undefined)', () => {
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/issues/search')).toBeUndefined()
     })
 
     it('通配段匹配任意单段', () => {
@@ -26,9 +26,9 @@ describe('FetchRules — matchFetchEvent 语义', () => {
         expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/issues/abc/comments')).toBe('task_commented')
     })
 
-    it('most-specific-wins:字面规则压过通配规则(/issues/search 不落到 :id)', () => {
-        // search 同时能匹配 /issues/search 与 /issues/:id,取通配更少者。
-        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/issues/search')).toBe('task_board_filtered')
+    it('most-specific-wins:字面 FETCH_IGNORE 压过通配 :id(/issues/search 不落到 task_opened)', () => {
+        // search 同时能匹配 /issues/search 与 /issues/:id,取通配更少者:字面 FETCH_IGNORE 胜 → undefined。
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/issues/search')).toBeUndefined()
     })
 
     it('method 分桶:同 path 不同 verb 命中不同事件', () => {
@@ -190,6 +190,19 @@ describe('FETCH_RULES — 「请求成功 ≠ 用户动作」的语义边界(负
             'group_avatar_edited',                 // POST /groups/:id/avatar 建群上传也命中 → ChannelAvatar 编辑分支命令式
             'settings_secrets_opened',             // GET /manager/secrets 列表加载(删除/保存/重试重拉)→ 面板挂载命令式
             'settings_voice_toggled',              // settings center voice toggle/consent handlers
+            // ↓ dap350 R6:六个 fleet *_opened 从 fetch 通道移出 —— GET /:id 分不清「用户点开」与
+            //   「列表预取/详情轮询/深链预热」,Dap.track 无去重会双计(评审 R6 P1-2)。改由 loop 侧
+            //   各页 openDetail 命令式发射(contact_opened 同款处理),故永不得再回 FETCH_RULES。
+            'task_opened',                         // dmloop IssuePage.openDetail
+            'project_opened',                      // dmloop ProjectPage.openDetail
+            'automation_opened',                   // dmloop AutomationPage.openDetail
+            'expert_opened',                       // dmloop AgentPage.openDetail
+            'expert_team_opened',                  // dmloop SquadPage.openDetail
+            'skill_opened',                        // dmloop SkillPage.openDetail
+            // ↓ Octo-Q head 258e876e P1:document_module_entered 从 fetch 通道移出 —— Class N 导航事件,
+            //   原挂 GET /docs/recent/creators(被 122 ?creator= 筛选共用会无界放大)。改由 host 导航手势
+            //   命令式发射(apps/web Main/index.tsx + tab_low_screen.tsx,menus.id==='docs' 非 reentry),永不得回 fetch。
+            'document_module_entered',
         ])
         const leaked = FETCH_RULES.filter((r) => uiOnly.has(r.event)).map((r) => `${r.method} ${r.path} → ${r.event}`)
         expect(leaked, leaked.join('\n')).toEqual([])
@@ -362,5 +375,108 @@ describe('FETCH_RULES — 十二审 🔴 五类「2xx ≠ 用户动作(且成功
         expect(matchFetchEvent(idx, 'PUT', '/api/v1/manager/secrets/s1')).toBe('settings_secrets_configured')
         // 群成员昵称编辑(与 conversation_cleared 注释相邻)不受影响。
         expect(matchFetchEvent(idx, 'PUT', '/api/v1/groups/g1/members/u1')).toBe('group_nickname_edited')
+    })
+
+    // DAP-110 Stage 2:删除密钥走 path 通道。
+    it('DELETE /manager/secrets/:id → settings_secrets_deleted(删除是干净的 2xx=动作成功 path 语义)', () => {
+        expect(matchFetchEvent(idx, 'DELETE', '/api/v1/manager/secrets/s1')).toBe('settings_secrets_deleted')
+        // 与同前缀的配置/列表口径互不串味:DELETE 独占删除事件,POST/PUT 仍是 configured,GET 不命中(命令式打开)。
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/manager/secrets')).toBe('settings_secrets_configured')
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/manager/secrets')).toBeUndefined()
+    })
+})
+
+describe('FETCH_RULES — fleet(Loop)path 通道(T1 同窗内嵌,/fleet/api/v1/*)', () => {
+    const idx = buildFetchIndex(FETCH_RULES)
+
+    it('任务板列表 GET (issues / grouped / search) 与详情 GET /issues/:id 均不再映射(改 loop 命令式)', () => {
+        // task_board_viewed / task_board_filtered / task_opened 全部移出 path 通道(评审 R6 P1):
+        //   reload GET 表达不了浏览/筛选意图,GET /issues/:id 分不清「点开」与「列表预取/轮询」;
+        //   三者改由 loop 侧命令式发射(见 dmloop openTab / IssuePage.openDetail)。task_opened 移除后
+        //   /grouped、/search 不再有 :id 通配需压制,原 FETCH_IGNORE 一并删除 → 三端点自然无映射。
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/issues')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/issues/grouped')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/issues/search')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/issues/i123')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/issues/i123/comments')).toBe('task_commented')
+        expect(matchFetchEvent(idx, 'DELETE', '/fleet/api/v1/issues/i123')).toBe('task_deleted')
+    })
+
+    it('项目 / 自动化 CRUD + trigger vs triggers 字面消歧(*_opened 已移出 → 仅 create/delete)', () => {
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/projects')).toBe('project_created')
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/projects/p1')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'DELETE', '/fleet/api/v1/projects/p1')).toBe('project_deleted')
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/autopilots')).toBe('automation_created')
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/autopilots/a1')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'DELETE', '/fleet/api/v1/autopilots/a1')).toBe('automation_deleted')
+        // 手动运行(trigger,单数)vs 新增触发器(triggers,复数):字面段区分。
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/autopilots/a1/trigger')).toBe('automation_run_manually')
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/autopilots/a1/triggers')).toBe('automation_trigger_added')
+        expect(matchFetchEvent(idx, 'DELETE', '/fleet/api/v1/autopilots/a1/triggers/t1')).toBe('automation_trigger_deleted')
+    })
+
+    it('专家 / 专家团 / 工作区设置 / skill(*_opened 已移出 → 详情 GET 不映射)', () => {
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/agents')).toBe('expert_created')
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/agents/ag1')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/agents/ag1/restore')).toBe('expert_unarchived')
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/squads')).toBe('expert_team_created')
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/squads/s1')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'DELETE', '/fleet/api/v1/squads/s1/members')).toBe('expert_team_member_removed')
+        expect(matchFetchEvent(idx, 'PATCH', '/fleet/api/v1/workspaces/w1')).toBe('workspace_general_saved')
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/workspaces/w1/octo-members')).toBe('workspace_member_added')
+        expect(matchFetchEvent(idx, 'PATCH', '/fleet/api/v1/workspaces/w1/members/m1')).toBe('workspace_member_role_changed')
+        expect(matchFetchEvent(idx, 'DELETE', '/fleet/api/v1/workspaces/w1/members/m1')).toBe('workspace_member_removed')
+        // Octo-Q head 258e876e P2:runtime_machine_renamed 从 fetch 泛 PATCH 迁到 BODY_RULES({name} 判别),
+        //   fetch 通道不再映射 —— 非改名的 runtime PATCH 不再被误计为改名。
+        expect(matchFetchEvent(idx, 'PATCH', '/fleet/api/v1/runtimes/r1')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/runtimes/r1/local-skills')).toBe('skill_runtime_skills_pulled')
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/skills/sk1')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'PUT', '/fleet/api/v1/skills/sk1')).toBe('skill_saved')
+        expect(matchFetchEvent(idx, 'DELETE', '/fleet/api/v1/skills/sk1')).toBe('skill_deleted')
+        // 281 local/web 两端点同一事件。
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/skills')).toBe('skill_created')
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/skills/import')).toBe('skill_created')
+    })
+
+    it('轮询/列表类不产出:GET /skills(列表)、GET local-skills/:id(900ms 轮询)不映射', () => {
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/skills')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/runtimes/r1/local-skills/x1')).toBeUndefined()
+        // 159 workspace_switched 无专属端点,不在本表(退各仓 UI)。
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/workspaces')).toBeUndefined()
+    })
+})
+
+describe('FETCH_RULES — doc path 通道(T1 同窗内嵌,/api/v1/docs/*)', () => {
+    const idx = buildFetchIndex(FETCH_RULES)
+
+    it('进入不再映射(document_module_entered 移出 fetch → host 导航命令式);creators/搜索/筛选均不产出', () => {
+        // Octo-Q head 258e876e P1:document_module_entered 是 Class N 导航,不能挂 GET /docs/recent/creators
+        //   (被 122 ?creator= 筛选共用、任何重拉都重发)。改由 host 导航手势命令式(见 uiOnly pin)。
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/docs/recent/creators')).toBeUndefined()
+        // 121 搜索 / 122 筛选带 ?q=/?creator= 打到 /docs、/docs/recent,pathname 与进入相同 → 不映射(退 UI)。
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/docs')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/docs/recent')).toBeUndefined()
+    })
+
+    it('创建 / 打开 / 评论 / 导出 / 删除;转发不再挂 grant 端点(移到 WKBase 发送成功命令式)', () => {
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/docs')).toBe('document_created')
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/docs/d1/view')).toBe('document_opened')
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/docs/d1/comments')).toBe('document_commented')
+        // Octo-Q head 258e876e P1:document_forwarded 从授权 batch 端点移到 WKBase.runDocForward 发送成功
+        //   命令式(默认转发路径开关关不打 batch → 原漏计)。两个 forward-grant 端点均不再映射。
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/docs/d1/forward-grant/batch')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/docs/d1/forward-grant')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/docs/d1/export/file')).toBe('document_exported')
+        expect(matchFetchEvent(idx, 'DELETE', '/api/v1/docs/d1')).toBe('document_deleted')
+    })
+
+    it('成员管理 PUT/DELETE 归一 document_share_managed;GET(打开面板)与 creators 均不计', () => {
+        // R13 B4:GET /docs/:id/members 是面板打开的成员列表加载(读,非「管理」动作,且真实写后的
+        // 回读会双计)→ 已移出本表,钉死为 undefined;只保留 PUT(改角色)/ DELETE(移除)两个写端点。
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/docs/d1/members')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'PUT', '/api/v1/docs/d1/members')).toBe('document_share_managed')
+        expect(matchFetchEvent(idx, 'DELETE', '/api/v1/docs/d1/members/u1')).toBe('document_share_managed')
+        // /docs/recent/creators 段数同 /docs/:id/members,但既不落 module_entered(已移出)也不落 share_managed。
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/docs/recent/creators')).toBeUndefined()
     })
 })

@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest"
 import type { ForwardResult } from "../ForwardService"
-import { interpretForwardResult } from "../forwardResultToast"
+import { interpretForwardResult, shouldEmitDocForwarded } from "../forwardResultToast"
 
 function makeResult(overrides: Partial<ForwardResult>): ForwardResult {
     return {
@@ -104,5 +104,30 @@ describe("interpretForwardResult — edge cases", () => {
             "targets",
         )
         expect(state.kind).toBe("all-failed")
+    })
+})
+
+// shouldEmitDocForwarded 决定 document_forwarded(DAP)是否发射。这是 Octo-Q 🔴 的**predicate 层** pin:
+// runDocForward 被文档卡片分享(shareAsCard===true,应计)与 html-doc「让 AI 处理」AI 指令转发
+// (shareAsCard 未设,不应计)共用,ungated 发射会把指令转发折进 document_forwarded → 漏斗分子虚高。
+// 注:**predicate↔emission 的 wiring**(call site 真的用了这个门、且真的发 document_forwarded)由
+// WKBase.helpers.test.tsx 的 "emission wiring" 用例钉死(那个 harness 在跑);此处只钉纯函数真值表。
+describe("shouldEmitDocForwarded — 仅分享流(shareAsCard===true)且送达成功才发", () => {
+    it("正向:分享流(shareAsCard=true)送达成功(≥1)→ 发射一次", () => {
+        expect(shouldEmitDocForwarded(true, "success")).toBe(true)
+        // partial(部分送达)仍算至少一个成功 → 发。
+        expect(shouldEmitDocForwarded(true, "partial")).toBe(true)
+    })
+
+    it("负向:分享流全部失败(all-failed)→ 不发", () => {
+        expect(shouldEmitDocForwarded(true, "all-failed")).toBe(false)
+    })
+
+    it("负向:AI 指令转发形态(shareAsCard 未设/false)送达成功也不发(不计入文档转发漏斗)", () => {
+        expect(shouldEmitDocForwarded(false, "success")).toBe(false)
+        expect(shouldEmitDocForwarded(undefined, "success")).toBe(false)
+        expect(shouldEmitDocForwarded(false, "partial")).toBe(false)
+        // 指令转发即便全失败也本就不发,双重保证。
+        expect(shouldEmitDocForwarded(undefined, "all-failed")).toBe(false)
     })
 })

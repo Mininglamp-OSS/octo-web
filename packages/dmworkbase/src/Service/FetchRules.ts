@@ -225,8 +225,34 @@ export const FETCH_RULES: FetchRule[] = [
     //   (NewFriend/vm.tsx friendSure → datasource friendSure)。2xx 即达成,覆盖真人↔真人 / 真人↔AI 接受侧。
     //   与 contact_add_friend_clicked(申请起点)配对,供 DAP 达成率。bot 侧 BotFather 命令处理另计 bot_friend_request_handled。
     { method: 'POST', path: '/api/v1/friend/sure', event: 'contact_add_friend_succeeded' },
-    // 注意:/api/v1/docs/* 全套(document_*)已移除 —— issue #1406 明确「24 个 octo-docs 模块事件(独立仓库/嵌入编辑器)
-    //       不在本次范围」,且这些请求由**独立的 octo-docs 编辑器**发出,octo-web 运行时根本不发 → 抓不到(死规则)。
+    // ---- doc(协作文档,docs module[octo-docs-module] 同窗内嵌,WKApp.apiClient bare-relative → /api/v1/docs/*)
+    //   T1 复核(2026-08-18):docs 模块 source-direct 编译进同一 octo-web bundle、共享全局 XHR,
+    //   Dap.installHttpWrap 能抓到。逐条对 octo-docs-module src/**/api.ts 真实端点核实(见 dap350 §4.3)。
+    //   119 document_module_entered 不在此通道(Octo-Q head 258e876e P1)—— 它是 Class N 导航事件,
+    //     原挂 GET /docs/recent/creators 违反本 PR 自己在 DAP_EVENTS.md 写下的「Class N 表内无残留」不变量;
+    //     且该端点同时是 122 `?creator=` 筛选的后端(FetchRules 只按 pathname 匹配、不读 query,无法区分进入
+    //     与筛选/重拉),任何筛选打开/重试/刷新都会重发、漏斗顶端被无界放大 —— 复刻 apps_module_entered
+    //     R12 🔴 P1-3 移出 fetch 通道的同一失败模式。改由 host 导航手势命令式发射(apps/web Main/index.tsx +
+    //     tab_low_screen.tsx,menus.id==='docs' 且非 reentry 时计一次,与 contacts_/apps_module_entered 同款),
+    //     故永不得再回 FETCH_RULES(见 FetchRules.test.ts uiOnly pin)。122 ?creator= 筛选事件不受影响(本就退各仓 UI)。
+    { method: 'POST', path: '/api/v1/docs', event: 'document_created' },
+    { method: 'POST', path: '/api/v1/docs/:id/view', event: 'document_opened' },
+    // 128 document_commented:ROOT 与 REPLY 都 POST /docs/:id/comments(comments/api.ts),path 层不分,
+    //   回复会一并计入「评论」(整合表语义为评论行为,可接受近似)。
+    { method: 'POST', path: '/api/v1/docs/:id/comments', event: 'document_commented' },
+    // 130 document_forwarded 不在此通道(Octo-Q head 258e876e P1)—— 原挂 POST /docs/:id/forward-grant/batch,
+    //   但该授权批处理仅在用户显式打开「先授权后发」开关(默认关闭:useForwardGrant.ts:35,80 契约 +
+    //   WKBase/index.tsx:391 门控)时才调用;默认转发路径(开关关)照发文档卡片却不打该端点 → 漏斗分子
+    //   结构性缺失(document_forward_panel_opened 全进分母、仅授权转发进分子)。改由转发发送成功路径命令式
+    //   发射(WKBase.runDocForward 在 ForwardService.send 后、至少一个目标成功时计一次,与 message_forwarded
+    //   同款),覆盖默认转发路径、不受授权开关影响,故永不得再回 FETCH_RULES(见 FetchRules.test.ts 负向 pin)。
+    // 131 document_share_managed:MemberPanel 的 PUT(改角色)/ DELETE(移除)两个写端点归一。
+    //   GET /docs/:id/members(打开面板拉成员列表)不在本表 —— 是「读」非「管理」动作,且真实写(PUT/DELETE)
+    //   成功后面板回读同一 GET 会二次命中 → 双计。只保留写端点,读端点按 FetchRules.ts:123 收益门剔除(R13 B4)。
+    { method: 'PUT', path: '/api/v1/docs/:id/members', event: 'document_share_managed' },
+    { method: 'DELETE', path: '/api/v1/docs/:id/members/:seg', event: 'document_share_managed' },
+    { method: 'GET', path: '/api/v1/docs/:id/export/file', event: 'document_exported' },
+    { method: 'DELETE', path: '/api/v1/docs/:id', event: 'document_deleted' },
     // apps_module_entered 不在此通道(十二审 🔴 P1-3)—— GET /app_bot/available 由 useAppBots 在**每次切换空间**
     //   时经 mittBus "space-changed" 监听重拉(loadData),而 Apps 页首次访问后就常驻 DOM(MainContentLeft 只切
     //   display 不卸载),所以用户打开过一次 Apps 后,在 Chat/Contacts 任意处切空间都会误发 apps_module_entered;
@@ -247,10 +273,67 @@ export const FETCH_RULES: FetchRule[] = [
     //   同款,见 VoiceSettingsPanel)。POST/PUT manager/secrets(真实写=配置)仍保留在下方。
     { method: 'POST', path: '/api/v1/manager/secrets', event: 'settings_secrets_configured' },
     { method: 'PUT', path: '/api/v1/manager/secrets/:id', event: 'settings_secrets_configured' },
+    // DAP-110 Stage 2:删除密钥 = DELETE /manager/secrets/:id 成功。删除是「动作已发生且成功」
+    //   两问皆 yes 的干净 path 语义(无信封、无 2xx≠业务成功问题),与上面 configured 的 POST/PUT
+    //   写侧对称,故走本通道而非命令式。事件名 settings_secrets_deleted 已在 octo-dap 采集器注册
+    //   (frontend_tracker / submitted)。列表加载 GET /manager/secrets 已在上面判为 settings_secrets_opened
+    //   的命令式挂载点(非本通道),删除后回读刷新不会误命中本规则(方法不同)。
+    { method: 'DELETE', path: '/api/v1/manager/secrets/:id', event: 'settings_secrets_deleted' },
     { method: 'POST', path: '/v1/auth/oidc/:seg/logout', event: 'user_logout' },
-    // ---- fleet(task/project/expert/skill/workspace/automation)全套已移除 ----
-    //   issue #1406 明确「133 个 octo-fleet 事件(独立 SPA)不在本次范围」;且这些 /fleet/api/v1/* 请求
-    //   由**独立的 octo-fleet SPA** 发出,octo-web 运行时(Dap 所在)根本不发这些请求 → 抓不到(死规则)。
+    // ---- fleet(Loop:task/project/automation/expert/squad/workspace/skill,Loop module[octo-loop-module] 同窗内嵌)
+    //   T1 复核(2026-08-18):loop 模块 source-direct 编译进同一 octo-web bundle,axios baseURL
+    //   LOOP_API_BASE='/fleet/api/v1' 底层走全局 XHR → Dap.installHttpWrap 能抓到(浏览器观测前缀
+    //   /fleet/api/v1/*,/v1 剥前缀是 nginx→后端、浏览器不可见)。逐条对 octo-loop-module
+    //   packages/dmloop/src/api/*.ts 真实端点核实(见 dap350 §7.3)。
+    //   159 workspace_switched 不在本表 —— switchWorkspace 仅设 context + 重挂 tab(useLoopWorkspace.tsx:371),
+    //     无专属端点,切工作区后续的 GET /issues 等仅是列表 reload(见下,不再映射事件),退各仓 UI(选工作区 onClick 命令式)。
+    // A1 工作区
+    { method: 'POST', path: '/fleet/api/v1/workspaces', event: 'workspace_created' },
+    // A2/A3 任务板:进板浏览(task_board_viewed)、筛选(task_board_filtered)、开单详情(task_opened)三者
+    //   都无法在 path 通道正确表达 —— GET /issues、/issues/grouped、/issues/search 都是列表加载/reload 端点
+    //   (进板即拉、切 scope/view 每次重拉、增删改后刷新),而 GET /issues/:id 无法区分「用户点开」与「列表预取/轮询」;
+    //   Dap.track 无去重,挂 path 会双发并被 reload 流量淹没(评审 R6 P1)。三者统一改由 loop 侧命令式发射
+    //   (task_board_viewed 见 dmloop openTab 的 !reentry 门、task_opened 见 IssuePage.openDetail;
+    //   task_board_filtered 为 B-loop 先例),与本文件既有先例(settings_secrets_opened、apps_module_entered
+    //   均移出 fetch)一致。故 /issues 全系不再挂 path 规则 —— task_opened 移除后 /issues/grouped、/issues/search
+    //   不再有 :id 通配需要压制,原 FETCH_IGNORE 一并删除。
+    { method: 'POST', path: '/fleet/api/v1/issues/:id/comments', event: 'task_commented' },
+    { method: 'DELETE', path: '/fleet/api/v1/issues/:id', event: 'task_deleted' },
+    // B 项目
+    { method: 'POST', path: '/fleet/api/v1/projects', event: 'project_created' },
+    { method: 'DELETE', path: '/fleet/api/v1/projects/:id', event: 'project_deleted' },
+    // C 自动化
+    { method: 'POST', path: '/fleet/api/v1/autopilots', event: 'automation_created' },
+    { method: 'DELETE', path: '/fleet/api/v1/autopilots/:id', event: 'automation_deleted' },
+    { method: 'POST', path: '/fleet/api/v1/autopilots/:id/trigger', event: 'automation_run_manually' },
+    { method: 'POST', path: '/fleet/api/v1/autopilots/:id/triggers', event: 'automation_trigger_added' },
+    { method: 'DELETE', path: '/fleet/api/v1/autopilots/:id/triggers/:id', event: 'automation_trigger_deleted' },
+    // D 专家
+    { method: 'POST', path: '/fleet/api/v1/agents', event: 'expert_created' },
+    { method: 'POST', path: '/fleet/api/v1/agents/:id/restore', event: 'expert_unarchived' },
+    // E 专家团
+    { method: 'POST', path: '/fleet/api/v1/squads', event: 'expert_team_created' },
+    { method: 'DELETE', path: '/fleet/api/v1/squads/:id/members', event: 'expert_team_member_removed' },
+    // F 工作区设置
+    { method: 'PATCH', path: '/fleet/api/v1/workspaces/:id', event: 'workspace_general_saved' },
+    { method: 'POST', path: '/fleet/api/v1/workspaces/:id/octo-members', event: 'workspace_member_added' },
+    { method: 'PATCH', path: '/fleet/api/v1/workspaces/:id/members/:id', event: 'workspace_member_role_changed' },
+    { method: 'DELETE', path: '/fleet/api/v1/workspaces/:id/members/:id', event: 'workspace_member_removed' },
+    // M10 运行时 / Skills
+    // 282 runtime_machine_renamed 不在此通道(Octo-Q head 258e876e P2)—— PATCH /fleet/api/v1/runtimes/:id 是
+    //   泛化的部分更新端点,任何非改名的 runtime PATCH 成功也会被误计为改名。改到 BODY_RULES 按 { hasKeys:['name'] }
+    //   无 fallback 判别(与 automation_renamed 同款),仅带 name 键的 PATCH 才计。见 BodyRules.ts。
+    // 280 skill_runtime_skills_pulled:只挂 POST。⚠️ 该端点是「受理≠成功」(POST /runtimes/:id/local-skills
+    //   仅受理拉取请求,真成功要 GET /local-skills/:id 轮询到 completed);本事件按**请求已受理**口径采集,
+    //   非完成率(DAP_EVENTS.md 行已注明);GET /local-skills/:id 900ms 轮询、pending 亦 2xx,勿计。
+    { method: 'POST', path: '/fleet/api/v1/runtimes/:id/local-skills', event: 'skill_runtime_skills_pulled' },
+    { method: 'PUT', path: '/fleet/api/v1/skills/:id', event: 'skill_saved' },
+    { method: 'DELETE', path: '/fleet/api/v1/skills/:id', event: 'skill_deleted' },
+    // 281 skill_created:local(POST /skills)/web(POST /skills/import)是干净同步 path-rule;
+    //   runtime 子路径(POST /runtimes/:id/local-skills/import)仅"受理",真成功要轮询到 status==='completed',
+    //   走各仓 imperative(§9.3),不在本表。
+    { method: 'POST', path: '/fleet/api/v1/skills', event: 'skill_created' },
+    { method: 'POST', path: '/fleet/api/v1/skills/import', event: 'skill_created' },
     // ---- summary
     // 本模块**整体不在 path 通道**。两类原因:
     //  (1) GET 只证明「拉取」不证明「意图/结果」,改由 UI 采集:

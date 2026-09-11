@@ -9,7 +9,8 @@ import { buildForwardMessageText } from "../ForwardModal/forwardMessageText";
 import { DocumentShareCardContent } from "../../Messages/DocumentShareCard/DocumentShareCardContent";
 import { isConversationDisbanded } from "../../Utils/groupDisband";
 import { ForwardService, type ForwardResult, type ForwardSender } from "../../Service/ForwardService";
-import { interpretForwardResult } from "../../Service/forwardResultToast";
+import { interpretForwardResult, shouldEmitDocForwarded } from "../../Service/forwardResultToast";
+import { Dap } from "../../Service/Dap";
 import UserInfo from "../UserInfo";
 import BotDetailModal from "../BotDetailModal";
 import WKApp from "../../App";
@@ -496,6 +497,17 @@ export default class WKBase
     // 3) partial-failure Toast (reuse the dmworksummary范式). 分母维度用 targets，
     // 保留旧的用户可见语义（原代码 total=channels.length，即 result.targets）。
     const state = interpretForwardResult(result, "targets");
+    // Octo-Q head 258e876e P1 / head 86c932a5 🔴: document_forwarded fires here on the real
+    // forward-send success path (>=1 target sent), NOT on the opt-in grant batch endpoint
+    // (default-off switch → default forward produced zero events). Gated on shareAsCard===true:
+    // runDocForward is shared by (1) doc-card share (shareAsCard true → count) and (2) the
+    // html-doc "让 AI 处理" AI-instruction forward (shareAsCard unset → do NOT count; it is an
+    // AI-workflow gesture, not the doc-forward-btn that emits document_forward_panel_opened).
+    // Contract: ForwardModal/grant.ts DocForwardOpen.shareAsCard (only share sets it true) and
+    // the contentFactory branch three lines above. Once per share-forward gesture; {} props.
+    if (shouldEmitDocForwarded(forward.shareAsCard, state.kind)) {
+        Dap.shared.track("document_forwarded", {});
+    }
     if (state.kind === "all-failed") {
       Toast.error(t("base.forwardModal.grant.sendFailed"));
     } else if (state.kind === "partial") {

@@ -1246,7 +1246,10 @@ export async function restorePersonalSummaryVersion(
     version_id: number;
     version: number;
 }> {
-    return post(`/summaries/${taskId}/personal-versions/${versionId}/restore`);
+    // DAP-110 Stage 2:恢复版本成功(code===0)发 smart_summary_version_restored。个人(by-person)与团队
+    //   (restoreSummaryVersion,by-group)是同一「恢复版本」动作的两个作用域,两处同发一个事件——与
+    //   smart_summary_regenerated 的 by-group/by-person 收口同款,避免漏斗在其一侧断裂。
+    return post(`/summaries/${taskId}/personal-versions/${versionId}/restore`, undefined, 'smart_summary_version_restored');
 }
 
 export async function getPersonalSummaryVersion(taskId: number, versionId: number): Promise<SummaryVersionDetail> {
@@ -1264,7 +1267,9 @@ export async function restoreSummaryVersion(
     taskId: number,
     resultId: number,
 ): Promise<{ task_id: number; result_id: number; version: number }> {
-    return post(`/summaries/${taskId}/versions/${resultId}/restore`);
+    // DAP-110 Stage 2:团队(by-group)恢复版本成功(code===0)发 smart_summary_version_restored
+    //   (与 restorePersonalSummaryVersion 同事件,见其注释)。
+    return post(`/summaries/${taskId}/versions/${resultId}/restore`, undefined, 'smart_summary_version_restored');
 }
 
 export async function getSummaryVersion(taskId: number, resultId: number): Promise<SummaryVersionDetail> {
@@ -1334,7 +1339,10 @@ export async function personalDraftSummary(taskId: number, content: string): Pro
 // 为准，见 octo-smart-summary/internal/api/handler/personal.go AddMembers）。
 // 新成员以「待确认」(Pending) 进入成员状态列表，等其自己 Accept 才生成个人+并入团队。
 export async function addMembers(taskId: number, userIds: string[]): Promise<void> {
-    return post(`/summaries/${taskId}/members`, { user_ids: userIds });
+    // DAP-110 Stage 2:新增成员成功(envelope code===0)命令式发 smart_summary_member_added。
+    //   与 smart_summary_deleted/_regenerated 同款,唯一收口在 api 层的 code gate(见 trackOnEnvelopeSuccess);
+    //   props 留空(注册契约无自定义属性,避免越界)。source/quality 由采集器按注册默认填(frontend_tracker/submitted)。
+    return post(`/summaries/${taskId}/members`, { user_ids: userIds }, 'smart_summary_member_added');
 }
 
 // 退出多人协作（参与者，非 creator）。后端物理删除调用者的
@@ -1346,7 +1354,9 @@ export async function leaveSummary(taskId: number): Promise<void> {
 // creator 移除某成员。后端物理删除该成员的 participant + personal_result
 // 行，并重算团队总结。creator 不可被移除。
 export async function removeMember(taskId: number, uid: string): Promise<void> {
-    return del(`/summaries/${taskId}/members?uid=${encodeURIComponent(uid)}`);
+    // DAP-110 Stage 2:creator 移除成员成功(code===0)命令式发 smart_summary_member_removed。
+    //   仅覆盖 creator 主动「移除」手势;参与者自行「退出」(leaveSummary)是语义不同的动作、无对应注册事件,故不计。
+    return del(`/summaries/${taskId}/members?uid=${encodeURIComponent(uid)}`, 'smart_summary_member_removed');
 }
 
 // refineAgentSummary 已移除 — 反馈修改改为在智能总结 chat 里引用总结迭代
@@ -1362,7 +1372,8 @@ export async function batchStatus(taskIds: number[]): Promise<BatchStatusItem[]>
 }
 
 export async function cancelSummary(taskId: number): Promise<void> {
-    return post(`/summaries/${taskId}/cancel`);
+    // DAP-110 Stage 2:取消任务成功(code===0)命令式发 smart_summary_task_cancelled;props 留空。
+    return post(`/summaries/${taskId}/cancel`, undefined, 'smart_summary_task_cancelled');
 }
 
 export async function confirmParticipation(taskId: number, sources: SourceItem[]): Promise<void> {

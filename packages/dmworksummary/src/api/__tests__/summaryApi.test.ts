@@ -935,4 +935,60 @@ describe('summaryApi', () => {
             spy.mockRestore();
         });
     });
+
+    // DAP-110 Stage 2:4 个「动作完成」类事件的 api 层 envelope gate。与 smart_summary_started 同款——
+    // 唯一收口在 api 层,仅 code===0 才命令式 track 一次,props 留空(注册契约无自定义属性);
+    // code!==0 / 缺 code(逻辑失败 / 网关信封)一律不发。source/quality 由采集器按注册默认填。
+    describe('DAP-110 Stage 2 envelope gate — member/cancel/version_restored', () => {
+        const cases: Array<{
+            name: string;
+            event: string;
+            mock: 'post' | 'del';
+            run: (api: typeof import('../summaryApi')) => Promise<unknown>;
+        }> = [
+            { name: 'addMembers', event: 'smart_summary_member_added', mock: 'post', run: (api) => api.addMembers(1, ['u1']) },
+            { name: 'removeMember', event: 'smart_summary_member_removed', mock: 'del', run: (api) => api.removeMember(1, 'u1') },
+            { name: 'cancelSummary', event: 'smart_summary_task_cancelled', mock: 'post', run: (api) => api.cancelSummary(1) },
+            { name: 'restoreSummaryVersion (team)', event: 'smart_summary_version_restored', mock: 'post', run: (api) => api.restoreSummaryVersion(1, 2) },
+            { name: 'restorePersonalSummaryVersion (personal)', event: 'smart_summary_version_restored', mock: 'post', run: (api) => api.restorePersonalSummaryVersion(1, 2) },
+        ];
+
+        for (const c of cases) {
+            it(`${c.name}: emits ${c.event} once with empty props when envelope code===0`, async () => {
+                const { Dap } = await import('@octo/base');
+                const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+                const api = await import('../summaryApi');
+                const mockFn = c.mock === 'post' ? mockPost : mockDelete;
+                mockFn.mockResolvedValueOnce({ data: { code: 0, data: {} } });
+                await c.run(api);
+                const hits = track.mock.calls.filter((call) => call[0] === c.event);
+                expect(hits).toHaveLength(1);
+                // props 留空(注册契约无自定义属性,避免越界被 validator 拒)。
+                expect(hits[0][1]).toEqual({});
+                track.mockRestore();
+            });
+
+            it(`${c.name}: does NOT emit ${c.event} when envelope code!==0 (逻辑失败)`, async () => {
+                const { Dap } = await import('@octo/base');
+                const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+                const api = await import('../summaryApi');
+                const mockFn = c.mock === 'post' ? mockPost : mockDelete;
+                mockFn.mockResolvedValueOnce({ data: { code: 1, message: 'fail', data: null } });
+                await c.run(api);
+                expect(track.mock.calls.some((call) => call[0] === c.event)).toBe(false);
+                track.mockRestore();
+            });
+
+            it(`${c.name}: does NOT emit ${c.event} when code 缺省(网关信封)`, async () => {
+                const { Dap } = await import('@octo/base');
+                const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+                const api = await import('../summaryApi');
+                const mockFn = c.mock === 'post' ? mockPost : mockDelete;
+                mockFn.mockResolvedValueOnce({ data: { data: null } });
+                await c.run(api);
+                expect(track.mock.calls.some((call) => call[0] === c.event)).toBe(false);
+                track.mockRestore();
+            });
+        }
+    });
 });

@@ -151,6 +151,12 @@ const ROUTE_WORDS = new Set<string>([
     'thread', 'threads', 'toggle', 'track', 'transcribe', 'transfer', 'upload', 'user',
     'users', 'v0', 'v1', 'v2', 'v3', 'verify', 'versions', 'voice', 'webapi', 'webhooks',
     'worksheets',
+    // fleet(Loop)/ personal 一方静态路由词(dap350 / Octo-Q P2):Loop/personal 模块用自有 axios
+    //   (LOOP_API_BASE='/fleet/api/v1')绕过 apiPath 模板,normalizePath 退回本白名单归一;不补则
+    //   /fleet/api/v1/issues/123 塌成 /:seg/api/v1/:seg/:id,新纳入的 fleet 面无法按端点切片(量/错/延迟)。
+    //   仅静态路由段,绝无变量值(隐私上等价于其它路由词)。
+    'fleet', 'issues', 'projects', 'autopilots', 'trigger', 'triggers', 'agents', 'squads',
+    'runtimes', 'workspaces', 'local-skills', 'octo-members', 'webhook-subscriptions', 'import',
 ])
 
 /**

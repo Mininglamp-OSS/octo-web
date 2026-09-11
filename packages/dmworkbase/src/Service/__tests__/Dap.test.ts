@@ -293,6 +293,12 @@ describe('Dap.normalizePath / isFirstParty (P0-3 helpers)', () => {
         expect(normalizePath('/users/alice')).toBe('/users/:seg')
         // 未登记的新路由词只会塌成 :seg(丢粒度),不泄露
         expect(normalizePath('/workflows/abc/runs')).toBe('/:seg/:seg/:seg')
+        // dap350 / Octo-Q head 258e876e P2:fleet 静态路由词补齐后,/fleet/api/v1/* 可按端点切片(不再塌成 :seg)。
+        expect(normalizePath('/fleet/api/v1/issues/123')).toBe('/fleet/api/v1/issues/:id')
+        expect(normalizePath('/fleet/api/v1/autopilots/123/triggers/456')).toBe('/fleet/api/v1/autopilots/:id/triggers/:id')
+        expect(normalizePath('/fleet/api/v1/runtimes/999/local-skills')).toBe('/fleet/api/v1/runtimes/:id/local-skills')
+        expect(normalizePath('/fleet/api/v1/workspaces/12/octo-members')).toBe('/fleet/api/v1/workspaces/:id/octo-members')
+        expect(normalizePath('/fleet/api/v1/skills/import')).toBe('/fleet/api/v1/skills/import')
     })
 
     it('treats relative and same-origin as first-party, foreign origins as not', async () => {
