@@ -95,6 +95,7 @@ describe("McpMarketModule market entry", () => {
     )?.[1] as () => { onPress?: (reentry?: boolean) => void };
     menuFactory().onPress?.(false);
 
+    expect(h.popToRoot).not.toHaveBeenCalled();
     expect(h.replaceToRoot).not.toHaveBeenCalled();
     expect(h.syncPath).not.toHaveBeenCalled();
   });

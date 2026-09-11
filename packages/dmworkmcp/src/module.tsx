@@ -124,9 +124,9 @@ export class McpMarketModule implements IModule {
           if (!reentry) {
             Dap.shared.track("market_module_entered", {});
           }
-          WKApp.routeLeft.popToRoot();
           const page = WKApp.route.get("/mcp-market/skills");
           if (page && React.isValidElement(page)) {
+            WKApp.routeLeft.popToRoot();
             WKApp.routeRight.replaceToRoot(page);
             // Sync URL so refresh/copy-link/back button land on the same tab.
             // Main/index.tsx#onMenuClick already syncPath's to the menu's

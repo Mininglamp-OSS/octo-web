@@ -18,33 +18,31 @@ import { getMcpAvatarColor, getMcpAvatarText } from "../utils/mcpAvatar";
 
 const PAGE_SIZE = 50;
 
-/** Keep one observer alive while pagination is available. The callback ref
- * exposes the latest guards/cursor without rebuilding the observer after each
- * appended page. */
+/** Observe the tail until the current cursor loads, then re-arm for the next
+ * cursor so a short appended page that remains in view still advances. */
 function LoadMoreSentinel({
   onLoadMore,
+  rearmKey,
   children,
 }: {
   onLoadMore: () => void;
+  rearmKey: string;
   children?: React.ReactNode;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const callbackRef = useRef(onLoadMore);
-  callbackRef.current = onLoadMore;
 
   useEffect(() => {
     const node = ref.current;
     if (!node || typeof IntersectionObserver === "undefined") return undefined;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting))
-          callbackRef.current();
+        if (entries.some((entry) => entry.isIntersecting)) onLoadMore();
       },
       { rootMargin: "160px" }
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [onLoadMore, rearmKey]);
 
   return (
     <div ref={ref} className="wk-mcp-mine__all-sentinel">
@@ -101,8 +99,6 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
   // Records which request generation owns the current pagination request. A
   // stale request must not clear the in-flight guard for a newer Space/load.
   const loadingMoreVersionRef = useRef<number | null>(null);
-  cursorRef.current = cursor;
-
   const load = useCallback(async () => {
     const version = ++requestRef.current;
     loadingMoreVersionRef.current = null;
@@ -116,9 +112,13 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
       const page = await getMySkills({ limit: PAGE_SIZE }, { pluginType: "all" });
       if (version !== requestRef.current) return;
       setItems(page.items);
-      setCursor(page.nextCursor);
+      const nextCursor = page.items.length > 0 ? page.nextCursor : null;
+      cursorRef.current = nextCursor;
+      setCursor(nextCursor);
     } catch (err) {
       if (version !== requestRef.current) return;
+      cursorRef.current = null;
+      setCursor(null);
       setError(err instanceof Error ? err.message : t("skillMarket.common.loadFailed"));
     } finally {
       if (version === requestRef.current) {
@@ -151,8 +151,24 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
         { pluginType: "all" }
       );
       if (version !== requestRef.current) return;
-      setItems((prev) => [...prev, ...page.items]);
-      setCursor(page.nextCursor);
+      setItems((prev) => {
+        // The API cursor wraps offset pagination, whose pages can overlap when
+        // another actor mutates the listing between requests. Keep each asset
+        // id once so MineTable never receives duplicate React keys/rows.
+        const seen = new Set(prev.map((item) => item.id));
+        const added = page.items.filter((item) => {
+          if (seen.has(item.id)) return false;
+          seen.add(item.id);
+          return true;
+        });
+        return [...prev, ...added];
+      });
+      const nextCursor =
+        page.items.length > 0 && page.nextCursor !== next
+          ? page.nextCursor
+          : null;
+      cursorRef.current = nextCursor;
+      setCursor(nextCursor);
     } catch {
       if (version !== requestRef.current) return;
       moreErrorRef.current = true;
@@ -163,6 +179,12 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
       if (version === requestRef.current) setLoadingMore(false);
     }
   }, []);
+
+  const handleLoadMoreIntersection = useCallback(() => {
+    // Keep a failed page on explicit retry; repeated observer callbacks must
+    // not turn a backend error into an automatic retry loop.
+    if (!moreErrorRef.current) void loadMore();
+  }, [loadMore]);
 
   useEffect(() => {
     void load();
@@ -189,6 +211,7 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
       // synchronously instead of leaving it live under the new request header.
       requestRef.current += 1;
       setItems([]);
+      cursorRef.current = null;
       setCursor(null);
       setError(null);
       moreErrorRef.current = false;
@@ -343,11 +366,8 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
       <MineTable rows={rows} ariaLabel={t("mcp.mine.allAriaLabel")} />
       {(cursor || loadingMore || moreError) && (
         <LoadMoreSentinel
-          onLoadMore={() => {
-            // Keep a failed page on explicit retry; repeated observer callbacks
-            // must not turn a backend error into an automatic retry loop.
-            if (!moreErrorRef.current) void loadMore();
-          }}
+          onLoadMore={handleLoadMoreIntersection}
+          rearmKey={cursor ?? ""}
         >
           {loadingMore ? (
             <span className="skill-market-review-list--loading">

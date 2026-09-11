@@ -196,11 +196,12 @@ afterEach(() => {
 });
 
 describe("AllAssetsList pagination", () => {
-  it("appends the next page once when the tail intersects", async () => {
+  it("re-arms after each page and stops when an empty page has a cursor", async () => {
     const nextPage = deferred<ReturnType<typeof page>>();
     h.getMySkills
       .mockResolvedValueOnce(page([asset("a", "First page")], "next"))
-      .mockReturnValueOnce(nextPage.promise);
+      .mockReturnValueOnce(nextPage.promise)
+      .mockResolvedValueOnce(page([], "fourth"));
 
     await act(async () => {
       ReactDOM.render(
@@ -224,7 +225,45 @@ describe("AllAssetsList pagination", () => {
     expect(container.textContent).toContain("First page");
     expect(container.textContent).toContain("Second page");
     expect(observers).toHaveLength(1);
-    expect(observers[0]).toBe(initialObserver);
+    expect(observers[0]).not.toBe(initialObserver);
+
+    scrollLoadMore();
+    await act(async () => undefined);
+    expect(h.getMySkills).toHaveBeenCalledTimes(3);
+    expect(h.getMySkills).toHaveBeenLastCalledWith(
+      { limit: 50, cursor: "third" },
+      { pluginType: "all" }
+    );
+    expect(observers).toHaveLength(0);
+  });
+
+  it("deduplicates overlapping offset pages by asset id", async () => {
+    h.getMySkills
+      .mockResolvedValueOnce(
+        page(
+          [asset("a", "First asset"), asset("shared", "Shared asset")],
+          "next"
+        )
+      )
+      .mockResolvedValueOnce(
+        page([asset("shared", "Shared asset"), asset("b", "Second asset")])
+      );
+
+    await act(async () => {
+      ReactDOM.render(
+        React.createElement(AllAssetsList, { onOpenType: vi.fn() }),
+        container
+      );
+    });
+    scrollLoadMore();
+    await act(async () => undefined);
+
+    const sharedRows = Array.from(container.querySelectorAll("span")).filter(
+      (element) => element.textContent === "Shared asset"
+    );
+    expect(sharedRows).toHaveLength(1);
+    expect(container.textContent).toContain("First asset");
+    expect(container.textContent).toContain("Second asset");
   });
 
   it("does not page with the old cursor during a row-action reload", async () => {

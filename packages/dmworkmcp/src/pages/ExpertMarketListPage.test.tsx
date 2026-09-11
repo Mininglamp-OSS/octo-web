@@ -146,8 +146,6 @@ class MockIntersectionObserver {
     return [];
   }
 }
-(globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver =
-  MockIntersectionObserver;
 
 /** Fire "scrolled into view" for sentinels within `parent`, triggering
  *  loadMore. Scoped so a stacked mine view can page one section at a time. */
@@ -168,6 +166,7 @@ function scrollLoadMore(parent: ParentNode = root) {
 
 beforeEach(() => {
   observers.length = 0;
+  vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
   vi.useFakeTimers();
   vi.resetAllMocks();
   reviews.useReviewRequests.mockReturnValue({ items: [], refresh: reviews.refresh });
@@ -192,6 +191,7 @@ afterEach(() => {
     ReactDOM.unmountComponentAtNode(root);
   });
   root.remove();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
@@ -391,6 +391,29 @@ describe("expert catalog server search and pagination", () => {
     expect(api.listExperts).toHaveBeenLastCalledWith(
       expect.objectContaining({ page: 1 })
     );
+  });
+
+  it("re-arms after a short page so a remaining page can load", async () => {
+    api.listExperts
+      .mockResolvedValueOnce({ items: records.slice(0, 100), total: 250 })
+      .mockResolvedValueOnce({ items: records.slice(100), total: 250 })
+      .mockResolvedValueOnce({ items: [], total: 250 });
+
+    await render();
+    const initialObserver = observers[0];
+    scrollLoadMore();
+    await tick();
+
+    expect(itemCount()).toBe(112);
+    expect(observers).toHaveLength(1);
+    expect(observers[0]).not.toBe(initialObserver);
+
+    scrollLoadMore();
+    await tick();
+    expect(api.listExperts).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 3 })
+    );
+    expect(observers).toHaveLength(0);
   });
 
   it("filters a category and tags found only beyond page 1, and forwards sort", async () => {

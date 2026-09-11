@@ -57,13 +57,23 @@ const SORT_OPTIONS: Array<{ value: ExpertCatalogSort; labelKey: string; descendi
  * safe. jsdom has no IntersectionObserver; there it degrades to an inert node
  * and tests drive `loadMore` through a mocked observer.
  */
-function LoadMoreSentinel({ onLoadMore }: { onLoadMore: () => void }) {
+function LoadMoreSentinel({
+  onLoadMore,
+  rearmKey,
+}: {
+  onLoadMore: () => void;
+  rearmKey: number;
+}) {
   const ref = useRef<HTMLDivElement | null>(null);
   const cbRef = useRef(onLoadMore);
-  cbRef.current = onLoadMore;
+  useEffect(() => {
+    cbRef.current = onLoadMore;
+  }, [onLoadMore]);
   useEffect(() => {
     const node = ref.current;
     if (!node || typeof IntersectionObserver === "undefined") return undefined;
+    // Recreating on each committed page re-delivers the current intersection,
+    // so a short page that leaves the sentinel visible can continue loading.
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) cbRef.current();
@@ -72,7 +82,7 @@ function LoadMoreSentinel({ onLoadMore }: { onLoadMore: () => void }) {
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [rearmKey]);
   return <div ref={ref} className="wk-mcp-expert-sentinel" aria-hidden="true" />;
 }
 
@@ -329,7 +339,10 @@ export default function ExpertMarketListPage({
             {t("mcp.list.retry")}
           </WKButton>
         ) : (
-          <LoadMoreSentinel onLoadMore={() => catalog.loadMore()} />
+          <LoadMoreSentinel
+            onLoadMore={() => catalog.loadMore()}
+            rearmKey={catalog.page}
+          />
         ))}
     </div>
   );
