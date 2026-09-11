@@ -413,7 +413,7 @@ describe('SummaryCard AI Generated Badge', () => {
             />,
         );
 
-        expect(screen.getByRole('img', { name: 'Agent 总结' })).toBeInTheDocument();
+        expect(screen.getByRole('img', { name: '个人总结' })).toBeInTheDocument();
     });
 
     it('trigger_type === 1 (MANUAL) 时不显示对话生成徽标', () => {
@@ -443,6 +443,15 @@ describe('SummaryCard AI Generated Badge', () => {
 });
 
 describe('SummaryCard completed actions', () => {
+    it.each([TriggerType.AGENT, TriggerType.MANUAL])('offers all five personal actions for engine %s', (trigger_type) => {
+        render(<SummaryCard task={makeItem({ trigger_type }) as any}
+            onClick={noop} onDelete={noop} onEdit={noop} onContinueOptimize={noop}
+            onRegenerate={noop} onSchedule={noop} />);
+        openCardMenu();
+        for (const label of ['编辑', '继续优化', '重新生成', '定时更新', '删除']) {
+            expect(screen.getByText(label)).toBeInTheDocument();
+        }
+    });
     it('Agent summary only offers continue refining and delete', () => {
         const onContinueOptimize = vi.fn();
         render(
@@ -499,7 +508,7 @@ describe('SummaryCard completed actions', () => {
         openCardMenu();
         expect(screen.queryByText('继续优化')).not.toBeInTheDocument();
         expect(screen.getByText('重新生成')).toBeInTheDocument();
-        expect(screen.queryByText('编辑')).not.toBeInTheDocument();
+        expect(screen.getByText('编辑')).toBeInTheDocument();
         expect(screen.getByText('删除')).toBeInTheDocument();
 
         fireEvent.click(screen.getByText('重新生成'));

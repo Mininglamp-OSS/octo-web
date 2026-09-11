@@ -19,6 +19,7 @@ interface SummaryCardProps {
     onRegenerate?: (taskId: number) => void;
     onContinueOptimize?: (taskId: number) => void;
     onEdit?: (taskId: number) => void;
+    onSchedule?: (taskId: number) => void;
     onCancel?: (taskId: number) => void;
     /** Capability 开启后启用统一入口下的 Agent 专属菜单；Legacy 保持原菜单。 */
     unifiedAgentActions?: boolean;
@@ -70,7 +71,7 @@ function getStatusColor(status: number): string | null {
     }
 }
 
-const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDelete, onRespond, onLeave, onRetry, onRegenerate, onContinueOptimize, onEdit, onCancel, unifiedAgentActions = false }) => {
+const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDelete, onRespond, onLeave, onRetry, onRegenerate, onContinueOptimize, onEdit, onSchedule, onCancel }) => {
     const { t } = useI18n();
     const [confirmType, setConfirmType] = useState<'delete' | 'leave' | null>(null);
     const [menuVisible, setMenuVisible] = useState(false);
@@ -82,7 +83,8 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
         || (isMultiParticipant && task.has_pending_submission === true)
         || isPendingInvite;
 
-    const displayTitle = deriveSummaryDisplayContent(task.topic || task.title || task.task_no);
+    const displayTitle = deriveSummaryDisplayContent(task.trigger_type === TriggerType.AGENT
+        ? task.title || task.task_no : task.topic || task.title || task.task_no);
     // Keep the description truthy so an empty topic does not render a
     // 4px-tall empty `.summary-card-desc`, and do NOT gate on length —
     // `.summary-card-desc` already uses `-webkit-line-clamp: 2; overflow:
@@ -179,9 +181,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                             aria-label={typeLabel}
                             tabIndex={0}
                         >
-                            {typeKind === 'agent' ? <Bot size={14} />
-                                : typeKind === 'scheduled' ? <Clock size={14} />
-                                : typeKind === 'multi' ? <UsersRound size={14} />
+                            {typeKind === 'multi' ? <UsersRound size={14} />
                                 : <FileText size={14} />}
                         </span>
                     </Tooltip>
@@ -231,7 +231,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                                         {t("summary.summaryCard.retry")}
                                                     </Dropdown.Item>
                                                 )}
-                                                {onEdit && (!unifiedAgentActions || typeKind !== "agent") && (
+                                                {onEdit && (
                                                     <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onEdit?.(task.task_id); }}>
                                                         {t("summary.summaryCard.edit")}
                                                     </Dropdown.Item>
@@ -241,18 +241,12 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                         {/* Completed Agent summaries refine in the unified assistant;
                                             Workflow summaries keep regenerate + edit. */}
                                         {task.status === TaskStatus.COMPLETED && (
-                                            unifiedAgentActions && typeKind === "agent" ? (
-                                                task.referenceable !== false && onContinueOptimize ? (
+                                            <>
+                                                {task.referenceable !== false && onContinueOptimize && (
                                                     <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onContinueOptimize(task.task_id); }}>
                                                         {t("summary.detail.continueRefine")}
                                                     </Dropdown.Item>
-                                                ) : onRegenerate ? (
-                                                    <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onRegenerate(task.task_id); }}>
-                                                        {t("summary.summaryCard.regenerate")}
-                                                    </Dropdown.Item>
-                                                ) : null
-                                            ) : (
-                                                <>
+                                                )}
                                                     {onRegenerate && (
                                                         <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onRegenerate(task.task_id); }}>
                                                             {t("summary.summaryCard.regenerate")}
@@ -263,8 +257,12 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                                             {t("summary.summaryCard.edit")}
                                                         </Dropdown.Item>
                                                     )}
-                                                </>
-                                            )
+                                                    {!isMultiParticipant && onSchedule && (
+                                                        <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onSchedule(task.task_id); }}>
+                                                            {t("summary.generation.scheduleUpdate")}
+                                                        </Dropdown.Item>
+                                                    )}
+                                            </>
                                         )}
                                         {/* 删除（红色，所有状态都有） */}
                                         <Dropdown.Item

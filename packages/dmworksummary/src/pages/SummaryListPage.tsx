@@ -14,7 +14,7 @@ import type {
     ListSummariesParams,
     TaskStatusType,
 } from "../types/summary";
-import { TaskStatus } from "../types/summary";
+import { TaskStatus, TriggerType } from "../types/summary";
 import { getStatusLabel, isTerminalStatus } from "../utils/summaryHelpers";
 import { summaryTestIds } from "../utils/testIds";
 import SummaryCard from "../components/SummaryCard";
@@ -659,7 +659,11 @@ export default class SummaryListPage extends Component<
     handleRetry = async (taskId: number) => {
         try {
       const task = this.state.items.find((i) => i.task_id === taskId);
-            await api.regenerateSummary(taskId, { topic: task?.title || "" });
+            if (task?.trigger_type === TriggerType.AGENT) {
+                this.handleRegenerate(taskId);
+                return;
+            }
+            await api.regenerateSummary(taskId);
             Toast.success(t("summary.list.retrySuccess"));
             this.loadData();
         } catch (err: any) {
@@ -707,6 +711,13 @@ export default class SummaryListPage extends Component<
         new CustomEvent("summary-detail-edit", { detail: { taskId } })
       );
         }, 300);
+    };
+
+    handleSchedule = (taskId: number) => {
+        this.handleCardClick(taskId);
+        setTimeout(() => window.dispatchEvent(
+            new CustomEvent("summary-detail-schedule", { detail: { taskId } }),
+        ), 300);
     };
 
     handleCreate = (mode: "normal" | "agent" = "normal") => {
@@ -972,6 +983,7 @@ export default class SummaryListPage extends Component<
                                 onRegenerate={this.handleRegenerate}
                                 onContinueOptimize={this.handleContinueOptimize}
                                 onEdit={this.handleEdit}
+                                onSchedule={this.handleSchedule}
                                 onCancel={this.handleCancel}
                                 unifiedAgentActions={createEntryMode === "unified"}
                             />

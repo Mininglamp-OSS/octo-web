@@ -1107,8 +1107,18 @@ export async function deleteSummary(taskId: number): Promise<void> {
     return del(`/summaries/${taskId}`, 'smart_summary_deleted');
 }
 
-export async function regenerateSummary(taskId: number, body?: { topic?: string }): Promise<{ task_id: number }> {
+export interface RegenerateSummaryParams {
+    topic?: string;
+    sources?: SourceItem[];
+    time_range?: { start: string; end: string };
+}
+
+export async function regenerateSummary(taskId: number, body?: RegenerateSummaryParams): Promise<{ task_id: number }> {
     return post(`/summaries/${taskId}/regenerate`, body, 'smart_summary_regenerated');
+}
+
+export async function saveGenerationConfig(taskId: number, body: RegenerateSummaryParams): Promise<{ task_id: number }> {
+    return put(`/summaries/${taskId}/generation-config`, body);
 }
 
 export async function streamRefineSummary(

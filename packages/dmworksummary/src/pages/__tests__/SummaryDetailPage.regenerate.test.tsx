@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("../../components/ChatSelectorModal", () => ({ default: () => null }));
+vi.mock("../../components/TimeRangePicker", () => ({ default: () => null }));
 
 vi.mock("@octo/base", async () => ({
     // Provide a `default` export for SummaryDetailPage.renderHeader's
@@ -12,10 +14,6 @@ vi.mock("@octo/base", async () => ({
     t: (key: string) => key,
     ForwardService: {},
     interpretForwardResult: vi.fn(),
-    I18nContext: React.createContext({ t: (key: string) => key }),
-}));
-vi.mock("@octo/base/src/App", () => ({
-    default: { loginInfo: {} },
     I18nContext: React.createContext({ t: (key: string) => key }),
 }));
 vi.mock("@octo/base/src/Components/VoiceInputButton", () => ({
@@ -80,7 +78,7 @@ vi.mock("../../api/summaryApi");
 
 import * as api from "../../api/summaryApi";
 import SummaryDetailPage from "../SummaryDetailPage";
-import { SummaryMode } from "../../types/summary";
+import { SummaryMode, TriggerType } from "../../types/summary";
 
 function makePage(props: Record<string, unknown> = {}) {
   const page = new SummaryDetailPage({ taskId: 1, ...props });
@@ -114,6 +112,54 @@ describe("SummaryDetailPage regenerate dialog", () => {
         page.handleRegenerate();
 
         expect(page.state.regenerateTopic).toBe("Preferred topic");
+    });
+
+    it("prefills an Agent's actual saved requirement without using its display title", () => {
+        const page = makePage();
+        page.state.detail = { ...page.state.detail!, trigger_type: TriggerType.AGENT,
+            generation_requirement: "Original Agent request", sources: [] };
+        page.handleRegenerate();
+        expect(page.state.regenerateTopic).toBe("Original Agent request");
+        page.state.detail.generation_requirement = undefined;
+        page.handleRegenerate();
+        expect(page.state.regenerateTopic).toBe("");
+    });
+
+    it("saves missing Agent scope through the existing full Workflow endpoint and restarts streaming", async () => {
+        vi.mocked(api.regenerateSummary).mockResolvedValue({ task_id: 1 });
+        const page = makePage();
+        page.state.detail = { ...page.state.detail!, trigger_type: TriggerType.AGENT,
+            summary_mode: SummaryMode.BY_PERSON, sources: [], participants: [] };
+        page.state.regenerateMode = "full";
+        page.state.regenerateTopic = "Original Agent request";
+        page.state.regenerateSources = [{ source_type: 1, source_id: "chat-1", source_name: "Team chat" }];
+        page.state.regenerateRange = { start: new Date("2026-09-01T00:00:00Z"), end: new Date("2026-09-07T00:00:00Z") };
+        const stream = vi.fn();
+        (page as any).resetSummaryStreamForNewRun = stream;
+        (page as any).loadDetail = vi.fn();
+        await page.handleRegenerateConfirm();
+        expect(api.regenerateSummary).toHaveBeenCalledWith(1, {
+            topic: "Original Agent request", sources: page.state.regenerateSources,
+            time_range: { start: "2026-09-01T00:00:00.000Z", end: "2026-09-07T00:00:00.000Z" },
+        });
+        expect(stream).toHaveBeenCalledWith(1);
+        expect(api.createSchedule).not.toHaveBeenCalled();
+        expect(page.state.showRegenerateModal).toBe(false);
+    });
+
+    it("allows Agent feedback refinement without requiring full Workflow scope", async () => {
+        const page = makePage();
+        page.state.detail = { ...page.state.detail!, trigger_type: TriggerType.AGENT,
+            summary_mode: SummaryMode.BY_PERSON, sources: [], participants: [] };
+        page.state.personalResult = { id: 20, version: 1, content: "Original body", citations: [] } as any;
+        page.state.regenerateMode = "refine";
+        page.state.refineFeedback = "Make it shorter";
+        await page.handleRegenerateConfirm();
+        expect(api.streamRefinePersonalSummary).toHaveBeenCalledWith(1, {
+            feedback: "Make it shorter", base_result_id: 20, base_version: 1,
+        }, expect.any(Object));
+        expect(api.regenerateSummary).not.toHaveBeenCalled();
+        expect(api.saveGenerationConfig).not.toHaveBeenCalled();
     });
 
   it("delegates continue-refine and confirmation navigation when controlled", () => {

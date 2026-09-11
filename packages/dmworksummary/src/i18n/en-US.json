@@ -197,7 +197,7 @@
     "titleRequired": "Title is required",
     "saving": "Saving...",
     "noOutputToSave": "No summary content to save yet. Please chat with AI first to generate content.",
-    "agentSummaryCreated": "AI summary saved",
+    "agentSummaryCreated": "Summary saved",
     "savedReferenceLostRetry": "Save failed: please re-select the referenced summary, or start a new session",
     "savedNoOriginRetry": "Save failed: the referenced summary has no source channel, and this session hasn't read any channel either. Pick a referenced summary with a source, or start a new session and let the AI read a channel first"
   },
@@ -653,7 +653,18 @@
     "convertErrEncoding": "The content encoding is invalid and cannot be converted",
     "convertErrDocType": "This document type does not support body import"
   },
+  "generation": {
+    "sources": "Summary sources",
+    "selectSources": "Select chats",
+    "timeRange": "Time range",
+    "savedByDefault": "These settings will be saved for future use.",
+    "scheduleUpdate": "Scheduled updates",
+    "continueSchedule": "Save and configure scheduled updates",
+    "completeConfig": "Complete summary settings"
+  },
   "summaryCard": {
+    "personalType": "Personal summary",
+    "teamType": "Team summary",
     "agentType": "Agent summary",
     "quickType": "Quick summary",
     "createdBy": "Created by {{name}}",

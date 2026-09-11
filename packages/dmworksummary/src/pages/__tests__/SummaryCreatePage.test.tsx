@@ -848,7 +848,7 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         expect(events).toHaveLength(1);
         expect(events[0][1]).toMatchObject({ task_id: 1, finish_status: 'unreported', gap_count: 0 });
         expect(events[0][1]).not.toHaveProperty('first_gap_kind');
-        expect(Toast.success).toHaveBeenCalledWith('AI 总结已保存');
+        expect(Toast.success).toHaveBeenCalledWith('总结保存成功');
         expect(Toast.warning).not.toHaveBeenCalled();
         expect(isAgentSummaryNotificationEligible(1)).toBe(true);
     });
@@ -868,7 +868,7 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
 
         await act(async () => { await instance.handleSaveAsSummary('t'); });
 
-        expect(Toast.success).toHaveBeenCalledWith('AI 总结已保存');
+        expect(Toast.success).toHaveBeenCalledWith('总结保存成功');
         expect(Toast.warning).not.toHaveBeenCalled();
         expect(trackSpy).toHaveBeenCalledWith(
             'smart_summary_quality_gate',

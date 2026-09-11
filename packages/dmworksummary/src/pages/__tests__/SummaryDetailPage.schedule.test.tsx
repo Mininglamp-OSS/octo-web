@@ -1,4 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+vi.mock("../../components/ChatSelectorModal", () => ({ default: () => null }));
+vi.mock("../../components/TimeRangePicker", () => ({ default: () => null }));
 
 // SummaryDetailPage import wukongimjssdk，测试环境会拉起无关依赖导致解析失败，mock 掉。
 vi.mock('wukongimjssdk', () => ({
@@ -70,8 +72,9 @@ vi.mock('../../api/summaryApi');
 function makePage(taskId: number | string) {
     const page = new SummaryDetailPage({ taskId } as any);
     (page as any).context = { t: (k: string) => k };
-    (page as any).setState = function (this: any, patch: any) {
+    (page as any).setState = function (this: any, patch: any, callback?: () => void) {
         this.state = { ...this.state, ...(typeof patch === 'function' ? patch(this.state) : patch) };
+        callback?.();
     };
     return page;
 }
@@ -218,6 +221,33 @@ const baseDetail = (over: any = {}) => ({
 
 describe('SummaryDetailPage — Blocking 5: scheduleItem must track current detail', () => {
     beforeEach(() => vi.clearAllMocks());
+
+    it('saves missing Agent configuration before opening scheduling, without generating or enabling a schedule', async () => {
+        const page = makePage(1);
+        page.state.detail = baseDetail({
+            status: 3, trigger_type: 3, summary_mode: 2, generation_requirement: '',
+        }) as any;
+        page.openScheduleModal();
+        expect(page.state.configuringForSchedule).toBe(true);
+        expect(page.state.showScheduleConfig).toBe(false);
+        page.state.regenerateTopic = 'Summarize progress and risks';
+        page.state.regenerateSources = [{ source_type: 1, source_id: 'group-1', source_name: 'Project' }];
+        page.state.regenerateRange = { start: new Date('2026-09-01T00:00:00Z'), end: new Date('2026-09-07T00:00:00Z') };
+        vi.mocked(api.getSummaryDetail).mockResolvedValue({
+            ...page.state.detail!, generation_requirement: page.state.regenerateTopic,
+            sources: page.state.regenerateSources,
+            time_range_start: '2026-09-01T00:00:00Z', time_range_end: '2026-09-07T00:00:00Z',
+        });
+        await page.handleRegenerateConfirm();
+        expect(api.saveGenerationConfig).toHaveBeenCalledWith(1, {
+            topic: 'Summarize progress and risks', sources: page.state.regenerateSources,
+            time_range: { start: '2026-09-01T00:00:00.000Z', end: '2026-09-07T00:00:00.000Z' },
+        });
+        expect(page.state.showScheduleConfig).toBe(true);
+        expect(page.state.scheduleConfig.generationInstruction).toBe('Summarize progress and risks');
+        expect(api.regenerateSummary).not.toHaveBeenCalled();
+        expect(api.createSchedule).not.toHaveBeenCalled();
+    });
 
     it('clears stale scheduleItem when navigating to a detail with no schedule', async () => {
         // 模拟从「有定时」总结切到「无定时」总结：先有残留 scheduleItem。

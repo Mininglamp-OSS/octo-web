@@ -512,6 +512,45 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     color: var(--wk-color-accent);
     background: var(--wk-bg-selected);
 }
+
+.summary-regenerate-config {
+    display: flex;
+    flex-direction: column;
+    gap: var(--wk-sp-4);
+    margin-block: var(--wk-sp-4);
+}
+
+.summary-regenerate-config-hint {
+    margin: 0;
+    color: var(--wk-text-secondary);
+    font-size: var(--wk-text-size-sm);
+}
+
+.summary-regenerate-config > div {
+    display: flex;
+    flex-direction: column;
+    gap: var(--wk-sp-1);
+}
+
+.summary-regenerate-config > div > button {
+    justify-content: flex-start;
+    width: 100%;
+    height: auto;
+    min-height: var(--wk-sp-8);
+    white-space: normal;
+    text-align: left;
+}
+
+.summary-confirm:has(.summary-regenerate-content) .summary-confirm-btn--dark {
+    background: var(--wk-text-primary);
+    color: var(--wk-bg-surface);
+}
+
+.summary-confirm:has(.summary-regenerate-content) .summary-confirm-btn:disabled {
+    background: var(--wk-bg-hover);
+    color: var(--wk-text-tertiary);
+    cursor: not-allowed;
+}
 .summary-card-type-icon--quick {
     color: var(--wk-color-info);
     background: var(--wk-color-info-bg);
