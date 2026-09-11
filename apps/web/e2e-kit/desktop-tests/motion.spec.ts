@@ -58,13 +58,15 @@ test("finite panel motion keeps Windows controls clear until the animation finis
   const header = page.locator(".wk-file-preview-header");
   await expect(header).toHaveAttribute("data-desktop-header");
   const samples = await page.evaluate(async () => {
+    const root = document.getElementById("root")!;
     const panel = document.querySelector<HTMLElement>(".wk-file-preview-panel")!;
     const header = panel.querySelector<HTMLElement>(".wk-file-preview-header")!;
     panel.setAttribute("data-desktop-overlay", "");
     const style = document.createElement("style");
     style.textContent = "@keyframes fixture-enter { from { transform: translateX(80px); } to { transform: translateX(0); } }";
     document.head.append(style);
-    const started = new Promise(resolve => panel.addEventListener("animationstart", resolve, { once: true }));
+    // Queue sampling after the adapter's earlier root listener schedules its frame.
+    const started = new Promise(resolve => root.addEventListener("animationstart", resolve, { once: true }));
     panel.style.animation = "fixture-enter 400ms linear forwards";
     await started;
     const samples: { expected: number; actual: number; suspended: string | undefined }[] = [];
@@ -74,7 +76,7 @@ test("finite panel motion keeps Windows controls clear until the animation finis
       samples.push({
         expected: header.getBoundingClientRect().right - (innerWidth - 138),
         actual: parseFloat(header.style.getPropertyValue("--desktop-safe-right")),
-        suspended: document.getElementById("root")!.dataset.desktopDragSuspended,
+        suspended: root.dataset.desktopDragSuspended,
       });
     }
     return samples;
