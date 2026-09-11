@@ -66,9 +66,9 @@ interface MarketItem {
 }
 
 // Order below controls the sidebar tab order: 技能 → 连接器 → 专家 → 我的发布
-// → 组织发布管理. The NavRail menu's onPress still boots the right pane into
-// /mcp-market/mcp (see module.tsx), independent of this order; this array only
-// drives the sidebar's visual order + the path-miss fallback.
+// → 组织发布管理. The NavRail menu's onPress boots the right pane into
+// /mcp-market/skills (see module.tsx), which matches this order's first item;
+// this array drives the sidebar's visual order + the path-miss fallback.
 //
 // The array stays a module-level, side-effect-free constant: per-user
 // visibility is expressed as the `visible` / `routable` predicates above and
@@ -321,9 +321,9 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
   private handleNavMenuActivated = ({ menuId }: { menuId: string }) => {
     if (menuId !== "mcp-market") return;
     // Main first activates the top-level `/mcp-market` route, then the menu's
-    // onPress redirects the right pane to MCP. Do not reuse a stale Skills
-    // state during that short interval: the top-level entry always defaults
-    // to MCP, while explicit deep links keep their matching item.
+    // onPress redirects the right pane to Skills. Do not reuse a stale state
+    // during that short interval: the top-level entry always defaults to
+    // Skills, while explicit deep links keep their matching item.
     const { gate } = this.state;
     const item =
       findMarketItemByRoutePath(WKApp.route.currentPath, gate) ??

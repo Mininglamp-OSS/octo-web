@@ -18,6 +18,39 @@ import { getMcpAvatarColor, getMcpAvatarText } from "../utils/mcpAvatar";
 
 const PAGE_SIZE = 50;
 
+/** Observe the tail until the current cursor loads, then re-arm for the next
+ * cursor so a short appended page that remains in view still advances. */
+function LoadMoreSentinel({
+  onLoadMore,
+  rearmKey,
+  children,
+}: {
+  onLoadMore: () => void;
+  rearmKey: string;
+  children?: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof IntersectionObserver === "undefined") return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) onLoadMore();
+      },
+      { rootMargin: "160px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [onLoadMore, rearmKey]);
+
+  return (
+    <div ref={ref} className="wk-mcp-mine__all-sentinel">
+      {children}
+    </div>
+  );
+}
+
 /** Wire plugin type -> MineTable's local row type. */
 const ROW_TYPE: Record<string, MineAssetType> = {
   skill: "skill",
@@ -46,31 +79,124 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
   useI18n();
   const [items, setItems] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [moreError, setMoreError] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Skill | null>(null);
+  // Opaque cursor for the next page, null when the list is exhausted. The 全部
+  // tab used to fetch a single page and stop, so any owner with more than
+  // PAGE_SIZE assets could never see the rest; it now pages like the per-type
+  // tabs (SkillListPage / McpMarketListPage), just cursor-driven here.
+  const [cursor, setCursor] = useState<string | null>(null);
   // Guards against an out-of-order response overwriting a newer one.
   const requestRef = useRef(0);
-
+  // The IntersectionObserver callback captures these once at observe time, so
+  // live request state is read through refs instead.
+  const cursorRef = useRef<string | null>(null);
+  const loadingRef = useRef(true);
+  const moreErrorRef = useRef(false);
+  // Records which request generation owns the current pagination request. A
+  // stale request must not clear the in-flight guard for a newer Space/load.
+  const loadingMoreVersionRef = useRef<number | null>(null);
   const load = useCallback(async () => {
     const version = ++requestRef.current;
+    loadingMoreVersionRef.current = null;
+    loadingRef.current = true;
+    moreErrorRef.current = false;
     setLoading(true);
+    setLoadingMore(false);
     setError(null);
+    setMoreError(false);
     try {
       const page = await getMySkills({ limit: PAGE_SIZE }, { pluginType: "all" });
       if (version !== requestRef.current) return;
       setItems(page.items);
+      const nextCursor = page.items.length > 0 ? page.nextCursor : null;
+      cursorRef.current = nextCursor;
+      setCursor(nextCursor);
     } catch (err) {
       if (version !== requestRef.current) return;
+      cursorRef.current = null;
+      setCursor(null);
       setError(err instanceof Error ? err.message : t("skillMarket.common.loadFailed"));
     } finally {
-      if (version === requestRef.current) setLoading(false);
+      if (version === requestRef.current) {
+        loadingRef.current = false;
+        setLoading(false);
+      }
     }
   }, []);
+
+  // Append the next page. Deliberately does NOT bump requestRef — a load-more is
+  // a continuation of the current base read, not a new one — but it is voided by
+  // any base read or Space switch that bumps the version out from under it. A
+  // failed page leaves the existing rows in place and exposes an explicit retry.
+  const loadMore = useCallback(async () => {
+    const next = cursorRef.current;
+    const version = requestRef.current;
+    if (
+      !next ||
+      loadingRef.current ||
+      loadingMoreVersionRef.current === version
+    )
+      return;
+    loadingMoreVersionRef.current = version;
+    moreErrorRef.current = false;
+    setLoadingMore(true);
+    setMoreError(false);
+    try {
+      const page = await getMySkills(
+        { limit: PAGE_SIZE, cursor: next },
+        { pluginType: "all" }
+      );
+      if (version !== requestRef.current) return;
+      setItems((prev) => {
+        // The API cursor wraps offset pagination, whose pages can overlap when
+        // another actor mutates the listing between requests. Keep each asset
+        // id once so MineTable never receives duplicate React keys/rows.
+        const seen = new Set(prev.map((item) => item.id));
+        const added = page.items.filter((item) => {
+          if (seen.has(item.id)) return false;
+          seen.add(item.id);
+          return true;
+        });
+        return [...prev, ...added];
+      });
+      const nextCursor =
+        page.items.length > 0 && page.nextCursor !== next
+          ? page.nextCursor
+          : null;
+      cursorRef.current = nextCursor;
+      setCursor(nextCursor);
+    } catch {
+      if (version !== requestRef.current) return;
+      moreErrorRef.current = true;
+      setMoreError(true);
+    } finally {
+      if (loadingMoreVersionRef.current !== version) return;
+      loadingMoreVersionRef.current = null;
+      if (version === requestRef.current) setLoadingMore(false);
+    }
+  }, []);
+
+  const handleLoadMoreIntersection = useCallback(() => {
+    // Keep a failed page on explicit retry; repeated observer callbacks must
+    // not turn a backend error into an automatic retry loop.
+    if (!moreErrorRef.current) void loadMore();
+  }, [loadMore]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(
+    () => () => {
+      requestRef.current += 1;
+      loadingMoreVersionRef.current = null;
+    },
+    []
+  );
 
   // Re-read on a Space switch. Every per-type tab (SkillListPage,
   // McpMarketListPage) subscribes; the 全部 tab — which is the default view and
@@ -85,7 +211,11 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
       // synchronously instead of leaving it live under the new request header.
       requestRef.current += 1;
       setItems([]);
+      cursorRef.current = null;
+      setCursor(null);
       setError(null);
+      moreErrorRef.current = false;
+      setMoreError(false);
       setBusyId(null);
       setDeleting(null);
       void load();
@@ -234,6 +364,26 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
   return (
     <div className="wk-mcp-mine__all">
       <MineTable rows={rows} ariaLabel={t("mcp.mine.allAriaLabel")} />
+      {(cursor || loadingMore || moreError) && (
+        <LoadMoreSentinel
+          onLoadMore={handleLoadMoreIntersection}
+          rearmKey={cursor ?? ""}
+        >
+          {loadingMore ? (
+            <span className="skill-market-review-list--loading">
+              <RefreshCw size={14} className="skill-market-spin" />
+              {t("skillMarket.common.loading")}
+            </span>
+          ) : moreError ? (
+            <>
+              <span role="alert">{t("skillMarket.common.loadFailed")}</span>
+              <WKButton variant="secondary" onClick={() => void loadMore()}>
+                {t("skillMarket.list.retry")}
+              </WKButton>
+            </>
+          ) : null}
+        </LoadMoreSentinel>
+      )}
       <WKModal
         visible={Boolean(deleting)}
         onCancel={() => {
