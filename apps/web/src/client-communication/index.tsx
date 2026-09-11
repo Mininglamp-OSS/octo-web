@@ -27,7 +27,7 @@ import { CommunicationShell } from "./CommunicationShell";
 import { requireHostBridge } from "./hostBridge";
 import { reportStartupFailure } from "./startupFailure";
 import { installHostDocumentPreview } from "./documentPreview";
-import { installDesktopPresentation } from "./desktopPresentation";
+import { installDesktopPresentationLifecycle } from "./desktopPresentationLifecycle";
 import "./desktop-presentation.css";
 
 async function main() {
@@ -88,8 +88,11 @@ async function main() {
   Dap.shared.init();
 
   const root = document.getElementById("root")!;
-  const disposeDesktopPresentation = await installDesktopPresentation(host, root);
-  if (disposeDesktopPresentation) window.addEventListener("beforeunload", disposeDesktopPresentation, { once: true });
+  const presentation = installDesktopPresentationLifecycle(window, host, root, () => ({
+    page: WKApp.currentMenuId === "contacts" ? "contacts" : "chat",
+    spaceId: WKApp.shared.currentSpaceId,
+  }));
+  await presentation.available;
   createRoot(root).render(
     <React.StrictMode>
       <I18nProvider>
@@ -98,13 +101,12 @@ async function main() {
           initialPage={bootstrap.initialPage}
           initialSpaceId={bootstrap.space.id}
           initialPresentation={bootstrap.initialPresentation}
-          onReady={({ page, spaceId }) => host.reportReady({
+          onReady={({ page, spaceId }) => presentation.reportReady({
             bridgeVersion: 1,
             page,
             spaceId,
             rendererVersion: WKApp.config.appVersion,
             documentForwardVersion: 1,
-            ...(disposeDesktopPresentation ? { desktopPresentationVersion: 1 as const } : {}),
           })}
         />
       </I18nProvider>

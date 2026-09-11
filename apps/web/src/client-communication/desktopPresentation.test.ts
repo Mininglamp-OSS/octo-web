@@ -105,6 +105,21 @@ describe("optional embedded adapter", () => {
     expect(host.off).toHaveBeenCalledOnce();
   });
 
+  it("cleans every local resource even when the host unsubscribe throws", async () => {
+    const root = document.getElementById("root")!;
+    const header = root.firstElementChild as HTMLElement;
+    vi.spyOn(header, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 300, 48));
+    const host = setup();
+    const dispose = await installDesktopPresentation(host.bridge, root);
+    await vi.advanceTimersByTimeAsync(32);
+    expect(header.hasAttribute("data-desktop-header")).toBe(true);
+    host.off.mockImplementation(() => { throw new Error("host unsubscribe failed"); });
+    expect(() => dispose?.()).not.toThrow();
+    expect(root.dataset.desktopPlatform).toBeUndefined();
+    expect(header.hasAttribute("data-desktop-header")).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("bounds optional negotiation and never blocks the messaging startup indefinitely", async () => {
     const host = setup();
     host.bridge.getDesktopPresentation = () => new Promise(() => undefined);
@@ -112,6 +127,18 @@ describe("optional embedded adapter", () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(await pending).toBeNull();
     expect(host.off).toHaveBeenCalledOnce();
+  });
+
+  it("returns null and still cleans up locally when initial state rejects and host off throws", async () => {
+    const root = document.getElementById("root")!;
+    const before = root.outerHTML;
+    const host = setup();
+    host.bridge.getDesktopPresentation = vi.fn().mockRejectedValue(new Error("unavailable"));
+    host.off.mockImplementation(() => { throw new Error("host unsubscribe failed"); });
+    expect(await installDesktopPresentation(host.bridge, root)).toBeNull();
+    expect(host.off).toHaveBeenCalledOnce();
+    expect(root.outerHTML).toBe(before);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("keeps messaging usable when optional subscription or initial state fails", async () => {

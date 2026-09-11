@@ -181,8 +181,9 @@ export async function installDesktopPresentation(
   let off = () => {};
   let releaseDragGuard = () => {};
   const dispose = () => {
+    if (disposed) return;
     disposed = true;
-    off();
+    try { off(); } catch { /* host unsubscribe must not skip local cleanup */ }
     releaseDragGuard();
     cancelAnimationFrame(frame);
     resize.disconnect();

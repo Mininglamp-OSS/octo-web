@@ -137,6 +137,31 @@
   flex-shrink: 0;
 }
 
+#root[data-desktop-platform] .wk-file-preview-header[data-desktop-header] {
+  height: auto;
+  flex-wrap: wrap;
+  align-content: center;
+  gap: var(--wk-sp-1) var(--wk-sp-2);
+}
+
+#root[data-desktop-platform] [data-desktop-header] .wk-file-preview-header__left {
+  flex: 1 1 calc(var(--wk-sp-12) + var(--wk-sp-4));
+  max-width: none;
+}
+
+#root[data-desktop-platform] [data-desktop-header] .wk-file-preview-header__dropdown {
+  min-width: 0;
+}
+
+#root[data-desktop-platform] [data-desktop-header] .wk-file-preview-header__dropdown-btn {
+  max-width: 100%;
+}
+
+#root[data-desktop-platform] [data-desktop-header] .wk-file-preview-header__actions {
+  gap: var(--wk-sp-1);
+  margin-left: auto;
+}
+
 #root[data-desktop-platform] [data-desktop-header] .wk-route-header-title-box {
   min-width: 0;
   overflow: hidden;
