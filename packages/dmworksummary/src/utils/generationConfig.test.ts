@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { savedGenerationRequirement, hasGenerationTimeRange } from "./generationConfig";
+import { savedGenerationRequirement, hasGenerationTimeRange, supportsGenerationConfig, canCompleteGenerationConfig } from "./generationConfig";
 import { getSummaryTypeKind } from "./summaryHelpers";
 import { SummaryMode, TaskStatus, TriggerType, type SummaryDetail } from "../types/summary";
 
@@ -18,6 +18,23 @@ describe("saved generation configuration", () => {
     });
     it("preserves the existing Workflow prompt", () => {
         expect(savedGenerationRequirement({ ...detail, trigger_type: TriggerType.MANUAL })).toBe("Workflow requirement");
+        for (const generation_requirement of ["", "   ", undefined]) {
+            expect(savedGenerationRequirement({ ...detail, trigger_type: TriggerType.MANUAL, generation_requirement })).toBe("Workflow requirement");
+            expect(savedGenerationRequirement({ ...detail, generation_requirement })).toBe("");
+        }
+    });
+    it("only exposes configuration when the backend advertises the matching contract", () => {
+        expect(supportsGenerationConfig(detail)).toBe(false);
+        expect(supportsGenerationConfig({ ...detail, generation_requirement: "" })).toBe(true);
+        expect(canCompleteGenerationConfig(detail)).toBe(false);
+    });
+    it("does not collect scope on collaboration branches that do not accept it", () => {
+        const configured = { ...detail, generation_requirement: "" };
+        expect(canCompleteGenerationConfig(configured)).toBe(true);
+        expect(canCompleteGenerationConfig({ ...configured, summary_mode: SummaryMode.BY_GROUP })).toBe(false);
+        const multi = { ...configured, participants: [{ user_id: "a" }, { user_id: "b" }] } as SummaryDetail;
+        expect(canCompleteGenerationConfig(multi)).toBe(false);
+        expect(canCompleteGenerationConfig(multi, true)).toBe(true);
     });
     it("recognizes the legacy now/now placeholder as missing, not a selected range", () => {
         expect(hasGenerationTimeRange(detail)).toBe(false);

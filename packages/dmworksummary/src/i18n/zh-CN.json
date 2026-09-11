@@ -660,13 +660,12 @@
     "savedByDefault": "补充的配置将保存，后续无需重复填写。",
     "scheduleUpdate": "定时更新",
     "continueSchedule": "保存并设置定时更新",
-    "completeConfig": "补充总结配置"
+    "completeConfig": "补充总结配置",
+    "serviceUpgradeRequired": "请先更新总结服务，再使用此功能。"
   },
   "summaryCard": {
     "personalType": "个人总结",
     "teamType": "团队总结",
-    "agentType": "Agent 总结",
-    "quickType": "快速总结",
     "createdBy": "{{name}} 发起",
     "deleteTitle": "确认删除",
     "deleteContent": "确定要删除「{{title}}」吗？删除后历史版本也将一并清除。",
@@ -693,9 +692,7 @@
     "confirmDeleteTitle": "确认删除？",
     "confirmDeleteDesc": "删除后无法恢复",
     "confirmLeaveTitle": "确认退出？",
-    "confirmLeaveDesc": "退出后将不再参与该总结",
-    "scheduledType": "定时总结",
-    "multiPersonType": "多人总结"
+    "confirmLeaveDesc": "退出后将不再参与该总结"
   },
   "editor": {
     "saveSuccess": "保存成功",

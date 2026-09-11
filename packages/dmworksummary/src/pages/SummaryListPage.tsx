@@ -4,6 +4,7 @@ import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
 import { I18nContext, t, WKApp, Dap } from "@octo/base";
 import * as api from "../api/summaryApi";
+import { requestSummaryScheduleOpen } from "../utils/summaryScheduleIntent";
 import {
   abandonSummaryAttentionRead,
   beginSummaryAttentionRead,
@@ -714,10 +715,8 @@ export default class SummaryListPage extends Component<
     };
 
     handleSchedule = (taskId: number) => {
+        requestSummaryScheduleOpen(taskId, WKApp.shared?.currentSpaceId || "");
         this.handleCardClick(taskId);
-        setTimeout(() => window.dispatchEvent(
-            new CustomEvent("summary-detail-schedule", { detail: { taskId } }),
-        ), 300);
     };
 
     handleCreate = (mode: "normal" | "agent" = "normal") => {
@@ -985,7 +984,6 @@ export default class SummaryListPage extends Component<
                                 onEdit={this.handleEdit}
                                 onSchedule={this.handleSchedule}
                                 onCancel={this.handleCancel}
-                                unifiedAgentActions={createEntryMode === "unified"}
                             />
                         ))}
                         {loadingMore && (

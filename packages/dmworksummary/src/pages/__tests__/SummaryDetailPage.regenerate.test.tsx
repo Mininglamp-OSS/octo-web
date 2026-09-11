@@ -125,11 +125,49 @@ describe("SummaryDetailPage regenerate dialog", () => {
         expect(page.state.regenerateTopic).toBe("");
     });
 
+    it("preserves a saved Agent requirement longer than the Workflow input limit", () => {
+        const page = makePage();
+        const requirement = "需🙂".repeat(4096);
+        page.state.detail = { ...page.state.detail!, trigger_type: TriggerType.AGENT, generation_requirement: requirement, sources: [] };
+        page.handleRegenerate();
+        page.state.regenerateMode = "full";
+        expect(page.state.regenerateTopic).toBe(requirement);
+        expect((page as any).regenerateInputLimit()).toBe(8192);
+        (page as any).handleRegenerateInputVoice(requirement, "all");
+        expect(page.state.regenerateTopic).toBe(requirement);
+    });
+
+    it.each([false, true])("does not collect or require shared scope on collaboration branch (team=%s)", async (team) => {
+        const page = makePage();
+        page.state = { ...page.state, showRegenerateModal: true, regenerateMode: "full", regenerateTopic: "instruction",
+            detail: { ...page.state.detail!, trigger_type: TriggerType.AGENT, generation_requirement: "",
+                summary_mode: SummaryMode.BY_PERSON, sources: [], participants: [{ user_id: "a" }, { user_id: "b" }] } as any };
+        (page as any).shouldOperateOnTeamSummary = () => team;
+        (page as any).loadDetail = vi.fn();
+        (page as any).loadPersonalResult = vi.fn();
+        (page as any).loadMembers = vi.fn();
+        (page as any).resetSummaryStreamForNewRun = vi.fn();
+        (page as any).resetTeamSummaryStreamForNewRun = vi.fn();
+        const elements: any[] = [];
+        const walk = (node: any) => {
+            if (!node || typeof node !== "object") return;
+            elements.push(node);
+            React.Children.toArray(node.props?.children).forEach(walk);
+        };
+        walk(page.render());
+        expect(elements.some(node => node.props?.className === "summary-regenerate-config")).toBe(false);
+        const submit = elements.find(node => node.type === "button" && node.props.children === "summary.detail.regenerate");
+        expect(submit?.props.disabled).toBe(false);
+        await page.handleRegenerateConfirm();
+        expect(team ? api.regenerateSummary : api.regeneratePersonalSummary).toHaveBeenCalledWith(1, { topic: "instruction" });
+        expect(api.saveGenerationConfig).not.toHaveBeenCalled();
+    });
+
     it("saves missing Agent scope through the existing full Workflow endpoint and restarts streaming", async () => {
         vi.mocked(api.regenerateSummary).mockResolvedValue({ task_id: 1 });
         const page = makePage();
         page.state.detail = { ...page.state.detail!, trigger_type: TriggerType.AGENT,
-            summary_mode: SummaryMode.BY_PERSON, sources: [], participants: [] };
+            summary_mode: SummaryMode.BY_PERSON, generation_requirement: "", sources: [], participants: [] };
         page.state.regenerateMode = "full";
         page.state.regenerateTopic = "Original Agent request";
         page.state.regenerateSources = [{ source_type: 1, source_id: "chat-1", source_name: "Team chat" }];

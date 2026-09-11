@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Dropdown, Modal, Tooltip } from "@douyinfe/semi-ui";
-import { MoreHorizontal, AlertTriangle, Bot, Clock, FileText, UsersRound, X } from "lucide-react";
+import { MoreHorizontal, AlertTriangle, Bot, FileText, UsersRound, X } from "lucide-react";
 import { useI18n, Dap } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import { ParticipantStatus, TaskStatus, TriggerType, type SummaryListItem } from "../types/summary";
@@ -21,8 +21,6 @@ interface SummaryCardProps {
     onEdit?: (taskId: number) => void;
     onSchedule?: (taskId: number) => void;
     onCancel?: (taskId: number) => void;
-    /** Capability 开启后启用统一入口下的 Agent 专属菜单；Legacy 保持原菜单。 */
-    unifiedAgentActions?: boolean;
 }
 
 
@@ -223,7 +221,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                                 {t("summary.summaryCard.cancelTask")}
                                             </Dropdown.Item>
                                         )}
-                                        {/* Failed Agent summaries cannot enter the workflow editor. */}
+                                        {/* Failed summaries retain retry and personal editing actions. */}
                                         {task.status === TaskStatus.FAILED && (
                                             <>
                                                 {onRetry && (
@@ -238,8 +236,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                                 )}
                                             </>
                                         )}
-                                        {/* Completed Agent summaries refine in the unified assistant;
-                                            Workflow summaries keep regenerate + edit. */}
+                                        {/* Both engines share the personal action set. */}
                                         {task.status === TaskStatus.COMPLETED && (
                                             <>
                                                 {task.referenceable !== false && onContinueOptimize && (

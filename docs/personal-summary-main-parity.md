@@ -24,3 +24,21 @@ Impact stays in the existing summary module. The paired backend change adds save
 - Run production build, i18n checks and diff checks.
 - Browser: existing modal/Workflow stages/stream/sidebar; Agent edit/continue/schedule; zh-CN/en-US, light/dark, keyboard and constrained viewport.
 - Before rollout, back up test data and verify compatibility with the backend `generation_requirement` migration; never reset user test data.
+
+## CR follow-up
+
+- Scheduling uses a single task/Space-scoped navigation intent, consumed after the
+  target detail and any existing schedule load. There is no fixed-delay event;
+  task switches clear old detail/dialog state and writes check task identity.
+- The presence of the backend's always-emitted `generation_requirement` string
+  advertises the paired configuration contract. Older backends omit it: new Agent
+  full regeneration/scheduling is guarded with upgrade feedback, while existing
+  feedback refinement stays available. Deploying the backend first is still preferred.
+- Only single-person full regeneration and schedule configuration collect missing
+  shared scope. Collaboration/team regeneration retains its existing scope and
+  never requests inputs its endpoint would discard. Workflow prefill falls back
+  to topic/title when the saved requirement is empty.
+- Saved Agent requests retain the chat's 8192-rune limit, including emoji, rather
+  than being cut down to the ordinary Workflow input limit. Dead engine-specific
+  props/styles/locale keys were removed and the Agent-save E2E now expects the
+  unified success message and engine-neutral detail.

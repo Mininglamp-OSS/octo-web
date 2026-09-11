@@ -130,19 +130,19 @@ describe('SummaryReferencePicker', () => {
     });
 
     describe('getTypeLabel', () => {
-        it('renders Agent type label for trigger_type AGENT', async () => {
+        it('renders the personal label for trigger_type AGENT', async () => {
             const item = makeItem({ referenceable: true, trigger_type: TriggerType.AGENT });
             renderPicker({ item });
             await waitFor(() => expect(screen.getByText('个人总结')).toBeInTheDocument());
         });
 
-        it('renders Scheduled type label for trigger_type SCHEDULED', async () => {
+        it('renders the personal label for trigger_type SCHEDULED', async () => {
             const item = makeItem({ referenceable: true, trigger_type: TriggerType.SCHEDULED });
             renderPicker({ item });
             await waitFor(() => expect(screen.getByText('个人总结')).toBeInTheDocument());
         });
 
-        it('renders Multi-person label when participants > 1 for MANUAL type', async () => {
+        it('renders the team label when participants > 1 for MANUAL type', async () => {
             const item = makeItem({
                 referenceable: true,
                 trigger_type: TriggerType.MANUAL,
@@ -155,7 +155,7 @@ describe('SummaryReferencePicker', () => {
             await waitFor(() => expect(screen.getByText('团队总结')).toBeInTheDocument());
         });
 
-        it('renders Quick label when participants <= 1 for MANUAL type', async () => {
+        it('renders the personal label when participants <= 1 for MANUAL type', async () => {
             const item = makeItem({
                 referenceable: true,
                 trigger_type: TriggerType.MANUAL,
@@ -178,7 +178,7 @@ describe('SummaryReferencePicker', () => {
             expect(screen.getByText('TASK-001')).toBeInTheDocument();
         });
 
-        it('renders Scheduled label when schedule_id is present even if trigger_type is not SCHEDULED', async () => {
+        it('keeps the personal label when schedule_id is present', async () => {
             const item = makeItem({
                 referenceable: true,
                 trigger_type: TriggerType.MANUAL,
@@ -194,7 +194,7 @@ describe('SummaryReferencePicker', () => {
         // reverting summaryHelpers to the round-3 bug
         // (`item.schedule_id != null`) leaves the suite green — verified by
         // reviewer mutation testing.
-        it('renders Quick label when schedule_id is 0 (no-schedule sentinel)', async () => {
+        it('keeps the personal label when schedule_id is 0', async () => {
             const item = makeItem({
                 referenceable: true,
                 trigger_type: TriggerType.MANUAL,

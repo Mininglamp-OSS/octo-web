@@ -452,7 +452,7 @@ describe('SummaryCard completed actions', () => {
             expect(screen.getByText(label)).toBeInTheDocument();
         }
     });
-    it('Agent summary only offers continue refining and delete', () => {
+    it('offers only the actions supplied by the host for an Agent summary', () => {
         const onContinueOptimize = vi.fn();
         render(
             <SummaryCard
@@ -460,7 +460,6 @@ describe('SummaryCard completed actions', () => {
                 onClick={noop}
                 onDelete={noop}
                 onContinueOptimize={onContinueOptimize}
-                unifiedAgentActions
             />,
         );
 
@@ -501,7 +500,6 @@ describe('SummaryCard completed actions', () => {
                 onContinueOptimize={noop}
                 onRegenerate={onRegenerate}
                 onEdit={noop}
-                unifiedAgentActions
             />,
         );
 
