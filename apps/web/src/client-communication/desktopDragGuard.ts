@@ -1,3 +1,5 @@
+import { DESKTOP_MOTION_EVENTS, desktopMotionKey, getDesktopMotion, isDesktopMotionActive } from "./desktopMotion";
+
 const OVERLAYS = [
   "[data-desktop-overlay]",
   '[role="dialog"]',
@@ -8,11 +10,6 @@ const OVERLAYS = [
   "dialog[open]",
   "[popover]",
 ].join(",");
-
-const MOTION_EVENTS = [
-  "transitionrun", "transitionend", "transitioncancel",
-  "animationstart", "animationend", "animationcancel",
-];
 
 function isPresented(element: Element, view: Window): boolean {
   if (!element.isConnected || element.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
@@ -39,9 +36,8 @@ export function installDesktopDragGuard(root: HTMLElement): () => void {
   const view = document.defaultView!;
   const previous = root.getAttribute("data-desktop-drag-suspended");
   const watched = new Set<Element>();
-  const motions = new Map<Element, Set<string>>();
+  const motions = new Map<Element, Map<string, Animation>>();
   let disposed = false;
-  let frame = 0;
 
   const refresh = () => {
     if (disposed) return;
@@ -59,8 +55,11 @@ export function installDesktopDragGuard(root: HTMLElement): () => void {
       }
     }
     const presented = [...overlays].filter(element => isPresented(element, view));
-    for (const element of motions.keys()) {
-      if (!isPresented(element, view) ||
+    for (const [element, active] of motions) {
+      for (const [key, animation] of active) {
+        if (!isDesktopMotionActive(animation)) active.delete(key);
+      }
+      if (!active.size || !isPresented(element, view) ||
         !presented.some(overlay => overlay.contains(element) || element.contains(overlay))) {
         motions.delete(element);
       }
@@ -69,27 +68,24 @@ export function installDesktopDragGuard(root: HTMLElement): () => void {
     const value = String(suspended);
     if (root.dataset.desktopDragSuspended !== value) root.dataset.desktopDragSuspended = value;
   };
-  const tick = () => {
-    frame = 0;
-    refresh();
-    if (motions.size && !disposed) frame = view.requestAnimationFrame(tick);
-  };
   const onMotion = (event: Event) => {
     const element = event.target;
     if (!(element instanceof Element)) return;
-    const motion = event as TransitionEvent & AnimationEvent;
-    const key = event.type.startsWith("transition") ? `t:${motion.propertyName}` : `a:${motion.animationName}`;
+    const key = desktopMotionKey(event);
     if (event.type === "transitionrun" || event.type === "animationstart") {
       if (!element.closest(OVERLAYS) && !element.querySelector(OVERLAYS)) return;
-      const active = motions.get(element) ?? new Set<string>();
-      active.add(key);
-      motions.set(element, active);
-      if (!frame) frame = view.requestAnimationFrame(tick);
+      const animation = getDesktopMotion(element, event);
+      if (animation) {
+        const active = motions.get(element) ?? new Map<string, Animation>();
+        active.set(key, animation);
+        motions.set(element, active);
+      }
     } else {
       const active = motions.get(element);
-      active?.delete(key);
-      if (!active?.size) motions.delete(element);
+      if (!active?.delete(key)) return;
+      if (!active.size) motions.delete(element);
     }
+    // Motion holds the guard until completion; intermediate geometry cannot change it.
     refresh();
   };
   const resize = new ResizeObserver(refresh);
@@ -99,19 +95,18 @@ export function installDesktopDragGuard(root: HTMLElement): () => void {
     subtree: true, childList: true, attributes: true,
     attributeFilter: ["data-desktop-overlay", "role", "open", "popover", "hidden", "inert", "aria-hidden", "class", "style"],
   });
-  for (const name of MOTION_EVENTS) document.addEventListener(name, onMotion, true);
+  for (const name of DESKTOP_MOTION_EVENTS) document.addEventListener(name, onMotion, true);
   document.addEventListener("toggle", refresh, true);
   view.addEventListener("resize", refresh);
   refresh();
 
   return () => {
     disposed = true;
-    view.cancelAnimationFrame(frame);
     resize.disconnect();
     mutations.disconnect();
     motions.clear();
     watched.clear();
-    for (const name of MOTION_EVENTS) document.removeEventListener(name, onMotion, true);
+    for (const name of DESKTOP_MOTION_EVENTS) document.removeEventListener(name, onMotion, true);
     document.removeEventListener("toggle", refresh, true);
     view.removeEventListener("resize", refresh);
     if (previous === null) root.removeAttribute("data-desktop-drag-suspended");

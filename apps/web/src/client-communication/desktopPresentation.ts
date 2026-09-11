@@ -1,5 +1,6 @@
 import type { OctoBuddyCommunicationBridge } from "./hostBridge";
 import { installDesktopDragGuard } from "./desktopDragGuard";
+import { DESKTOP_MOTION_EVENTS, desktopMotionKey, getDesktopMotion, isDesktopMotionActive, isDesktopMotionRunning } from "./desktopMotion";
 
 export interface DesktopRect {
   x: number;
@@ -97,7 +98,7 @@ export async function installDesktopPresentation(
   let disposed = false;
   let frame = 0;
   const observed = new Set<HTMLElement>();
-  const motions = new Map<Element, Set<string>>();
+  const motions = new Map<Element, Map<string, Animation>>();
   const setProperty = (element: HTMLElement, name: string, value: string) => {
     if (element.style.getPropertyValue(name) !== value) element.style.setProperty(name, value);
   };
@@ -146,28 +147,34 @@ export async function installDesktopPresentation(
         header.style.removeProperty("--desktop-safe-right");
       }
     }
-    for (const element of motions.keys()) {
-      if (!root.contains(element)) motions.delete(element);
+    let moving = false;
+    for (const [element, active] of motions) {
+      for (const [key, animation] of active) {
+        if (!isDesktopMotionActive(animation)) active.delete(key);
+      }
+      if (!active.size || !root.contains(element)) motions.delete(element);
+      else if ([...active.values()].some(isDesktopMotionRunning)) moving = true;
     }
-    if (motions.size) schedule();
+    if (moving) schedule();
   };
   const schedule = () => { if (!frame && !disposed) frame = requestAnimationFrame(update); };
-  // ResizeObserver does not report translated side panels. Follow their motion until it settles.
-  const motionEvents = ["transitionrun", "transitionend", "transitioncancel", "animationstart", "animationend", "animationcancel"];
+  // ResizeObserver misses translations. Follow finite, running header motion only.
   const onMotion = (event: Event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
-    const motion = event as TransitionEvent & AnimationEvent;
-    const key = event.type.startsWith("transition") ? `t:${motion.propertyName}` : `a:${motion.animationName}`;
+    const key = desktopMotionKey(event);
     if (event.type === "transitionrun" || event.type === "animationstart") {
       if (![...root.querySelectorAll(HEADERS)].some(header => target.contains(header))) return;
-      const active = motions.get(target) ?? new Set<string>();
-      active.add(key);
-      motions.set(target, active);
+      const animation = getDesktopMotion(target, event);
+      if (animation) {
+        const active = motions.get(target) ?? new Map<string, Animation>();
+        active.set(key, animation);
+        motions.set(target, active);
+      }
     } else {
       const active = motions.get(target);
-      active?.delete(key);
-      if (!active?.size) motions.delete(target);
+      if (!active?.delete(key)) return;
+      if (!active.size) motions.delete(target);
     }
     schedule();
   };
@@ -189,7 +196,7 @@ export async function installDesktopPresentation(
     resize.disconnect();
     mutations.disconnect();
     motions.clear();
-    for (const event of motionEvents) root.removeEventListener(event, onMotion);
+    for (const event of DESKTOP_MOTION_EVENTS) root.removeEventListener(event, onMotion);
     window.removeEventListener("resize", refresh);
     delete root.dataset.desktopPlatform;
     delete root.dataset.desktopFocused;
@@ -225,7 +232,7 @@ export async function installDesktopPresentation(
       // Classes can move a registered route without an animation (for example reduced motion).
       attributeFilter: ["data-desktop-chrome", "class", "style", "hidden", "inert", "aria-hidden"],
     });
-    for (const event of motionEvents) root.addEventListener(event, onMotion);
+    for (const event of DESKTOP_MOTION_EVENTS) root.addEventListener(event, onMotion);
     window.addEventListener("resize", refresh);
     return dispose;
   } catch {

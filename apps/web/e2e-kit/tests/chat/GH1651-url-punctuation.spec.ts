@@ -208,7 +208,7 @@ test("@GH1651 @chat copy, edit punctuation and resend keeps automatic URLs as te
     selection.removeAllRanges();
     selection.addRange(range);
   });
-  await page.keyboard.press("Control+c");
+  await page.keyboard.press("ControlOrMeta+c");
   const clipboardHtml = await page.evaluate(async () => {
     const items = await navigator.clipboard.read();
     const item = items.find((item) => item.types.includes("text/html"));
@@ -217,7 +217,7 @@ test("@GH1651 @chat copy, edit punctuation and resend keeps automatic URLs as te
   expect(clipboardHtml).toContain('data-octo-autolink="true"');
 
   await editor.click();
-  await editor.press("Control+v");
+  await editor.press("ControlOrMeta+v");
   await expect(editor).toHaveText(source);
   await expect(editor.locator("a")).toHaveCount(0);
   // Edit the pasted URL's boundary, exactly where the screenshot added a comma.

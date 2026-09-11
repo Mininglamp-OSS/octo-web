@@ -39,6 +39,23 @@ describe("embedded desktop drag guard", () => {
     await vi.advanceTimersByTimeAsync(32);
   }
 
+  function motion(element: Element, type: string, endTime = 300, pseudoElement = "") {
+    const transition = type.startsWith("transition");
+    const name = transition ? "propertyName" : "animationName";
+    Object.assign(element, {
+      getAnimations: () => [{
+        [transition ? "transitionProperty" : "animationName"]: "fixture",
+        playState: "running",
+        playbackRate: 1,
+        effect: { pseudoElement, getComputedTiming: () => ({ endTime }) },
+      }],
+    });
+    const event = new Event(type, { bubbles: true });
+    Object.defineProperty(event, name, { value: "fixture" });
+    Object.defineProperty(event, "pseudoElement", { value: pseudoElement });
+    element.dispatchEvent(event);
+  }
+
   it("has no business side effects and restores the previous root state on cleanup", async () => {
     root.dataset.desktopDragSuspended = "previous";
     const panel = overlay();
@@ -125,16 +142,12 @@ describe("embedded desktop drag guard", () => {
   it("holds the guard through outgoing motion and releases after cancellation", async () => {
     const panel = overlay();
     dispose = installDesktopDragGuard(root);
-    const motion = (type: string) => {
-      const event = new Event(type, { bubbles: true });
-      Object.defineProperty(event, "propertyName", { value: "transform" });
-      panel.dispatchEvent(event);
-    };
-    motion("transitionrun");
+    motion(panel, "transitionrun");
     vi.mocked(panel.getBoundingClientRect).mockReturnValue(new DOMRect(2000, 0, 200, 300));
     await flush();
     expect(root.dataset.desktopDragSuspended).toBe("true");
-    motion("transitioncancel");
+    expect(vi.getTimerCount()).toBe(0);
+    motion(panel, "transitioncancel");
     await flush();
     expect(root.dataset.desktopDragSuspended).toBe("false");
     expect(vi.getTimerCount()).toBe(0);
@@ -143,9 +156,7 @@ describe("embedded desktop drag guard", () => {
   it("does not leak a motion blocker when a portal is removed mid-animation", async () => {
     const panel = overlay({ role: "menu" }, document.body);
     dispose = installDesktopDragGuard(root);
-    const event = new Event("animationstart", { bubbles: true });
-    Object.defineProperty(event, "animationName", { value: "fade" });
-    panel.dispatchEvent(event);
+    motion(panel, "animationstart");
     panel.remove();
     await flush();
     expect(root.dataset.desktopDragSuspended).toBe("false");
@@ -158,9 +169,7 @@ describe("embedded desktop drag guard", () => {
   it("releases animated descendants when an overlay is hidden without unmounting", async () => {
     const panel = overlay({ role: "dialog" });
     dispose = installDesktopDragGuard(root);
-    const event = new Event("animationstart", { bubbles: true });
-    Object.defineProperty(event, "animationName", { value: "loading" });
-    panel.firstElementChild!.dispatchEvent(event);
+    motion(panel.firstElementChild!, "animationstart");
     panel.setAttribute("aria-hidden", "true");
     await flush();
     expect(root.dataset.desktopDragSuspended).toBe("false");
@@ -176,13 +185,53 @@ describe("embedded desktop drag guard", () => {
     document.body.append(wrapper);
     const panel = overlay({ role: "menu" }, wrapper);
     dispose = installDesktopDragGuard(root);
-    const event = new Event("animationstart", { bubbles: true });
-    Object.defineProperty(event, "animationName", { value: "portal-enter" });
-    wrapper.dispatchEvent(event);
+    motion(wrapper, "animationstart");
     panel.remove();
     await flush();
     expect(root.dataset.desktopDragSuspended).toBe("false");
     expect(vi.getTimerCount()).toBe(0);
     expect(wrapper.isConnected).toBe(true);
+  });
+
+  it("does not poll a visible overlay with an infinite descendant animation", async () => {
+    const panel = overlay({ role: "dialog" }, document.body);
+    dispose = installDesktopDragGuard(root);
+    motion(panel.firstElementChild!, "animationstart", Infinity);
+    await flush();
+    const scan = vi.spyOn(document, "querySelectorAll");
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(scan).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(root.dataset.desktopDragSuspended).toBe("true");
+    expect(panel.isConnected).toBe(true);
+    vi.mocked(panel.getBoundingClientRect).mockReturnValue(new DOMRect(2000, 0, 200, 300));
+    window.dispatchEvent(new Event("resize"));
+    expect(root.dataset.desktopDragSuspended).toBe("false");
+  });
+
+  it("ignores unrelated motion completion instead of rescanning the document", async () => {
+    const decoration = document.createElement("div");
+    root.append(decoration);
+    dispose = installDesktopDragGuard(root);
+    await flush();
+    const scan = vi.spyOn(document, "querySelectorAll");
+    motion(decoration, "animationend");
+    motion(decoration, "transitioncancel");
+    await flush();
+    expect(scan).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps same-named animations on the element and its pseudo-element independent", () => {
+    const panel = overlay();
+    dispose = installDesktopDragGuard(root);
+    motion(panel, "animationstart");
+    motion(panel, "animationstart", 300, "::before");
+    vi.mocked(panel.getBoundingClientRect).mockReturnValue(new DOMRect(2000, 0, 200, 300));
+    motion(panel, "animationend");
+    expect(root.dataset.desktopDragSuspended).toBe("true");
+    motion(panel, "animationend", 300, "::before");
+    expect(root.dataset.desktopDragSuspended).toBe("false");
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

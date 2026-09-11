@@ -212,6 +212,12 @@ describe("optional embedded adapter", () => {
     await vi.advanceTimersByTimeAsync(32);
     expect(header.hasAttribute("data-desktop-header")).toBe(false);
     const transition = (type: string) => {
+      Object.assign(panel, {
+        getAnimations: () => [{
+          transitionProperty: "transform", playState: "running", playbackRate: 1,
+          effect: { getComputedTiming: () => ({ endTime: 300 }) },
+        }],
+      });
       const event = new Event(type, { bubbles: true });
       Object.defineProperty(event, "propertyName", { value: "transform" });
       panel.dispatchEvent(event);
@@ -227,6 +233,88 @@ describe("optional embedded adapter", () => {
     await vi.advanceTimersByTimeAsync(64);
     dispose?.();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(["infinite", "paused", "finished", "zero playback rate"])(
+    "stops geometry polling for a header ancestor animation that is %s",
+    async mode => {
+      const root = document.getElementById("root")!;
+      const header = root.firstElementChild as HTMLElement;
+      vi.spyOn(header, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 300, 52));
+      const animation = {
+        animationName: "fixture", playState: "running", playbackRate: 1,
+        effect: { getComputedTiming: () => ({ endTime: mode === "infinite" ? Infinity : 300 }) },
+      };
+      Object.assign(root, { getAnimations: () => [animation] });
+      const host = setup();
+      const dispose = await installDesktopPresentation(host.bridge, root);
+      try {
+        await vi.advanceTimersByTimeAsync(32);
+        const event = new Event("animationstart", { bubbles: true });
+        Object.defineProperty(event, "animationName", { value: "fixture" });
+        root.dispatchEvent(event);
+        await vi.advanceTimersByTimeAsync(32);
+        if (mode === "paused" || mode === "finished") animation.playState = mode;
+        if (mode === "zero playback rate") animation.playbackRate = 0;
+        await vi.advanceTimersByTimeAsync(32);
+        const scan = vi.spyOn(root, "querySelectorAll");
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(scan).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(0);
+        expect(header.hasAttribute("data-desktop-header")).toBe(true);
+      } finally {
+        dispose?.();
+      }
+    },
+  );
+
+  it("resumes finite geometry tracking after an observed style change unpauses it", async () => {
+    const root = document.getElementById("root")!;
+    const header = root.firstElementChild as HTMLElement;
+    let x = 0;
+    vi.spyOn(header, "getBoundingClientRect").mockImplementation(() => new DOMRect(x, 0, 300, 52));
+    const animation = {
+      animationName: "fixture", playState: "running", playbackRate: 1,
+      effect: { getComputedTiming: () => ({ endTime: 300 }) },
+    };
+    Object.assign(root, { getAnimations: () => [animation] });
+    const dispose = await installDesktopPresentation(setup().bridge, root);
+    try {
+      await vi.advanceTimersByTimeAsync(32);
+      const event = new Event("animationstart", { bubbles: true });
+      Object.defineProperty(event, "animationName", { value: "fixture" });
+      root.dispatchEvent(event);
+      animation.playState = "paused";
+      await vi.advanceTimersByTimeAsync(64);
+      expect(vi.getTimerCount()).toBe(0);
+      animation.playState = "running";
+      root.style.animationPlayState = "running";
+      x = 10;
+      await vi.advanceTimersByTimeAsync(32);
+      expect(header.style.getPropertyValue("--desktop-safe-left")).toBe("22px");
+      x = 20;
+      await vi.advanceTimersByTimeAsync(32);
+      expect(header.style.getPropertyValue("--desktop-safe-left")).toBe("12px");
+    } finally {
+      dispose?.();
+    }
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("ignores completion events for motions that never moved a registered header", async () => {
+    const root = document.getElementById("root")!;
+    const host = setup();
+    const dispose = await installDesktopPresentation(host.bridge, root);
+    try {
+      await vi.advanceTimersByTimeAsync(64);
+      const scan = vi.spyOn(root, "querySelectorAll");
+      root.querySelector("button")!.dispatchEvent(new Event("animationend", { bubbles: true }));
+      await vi.advanceTimersByTimeAsync(64);
+      expect(scan).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      dispose?.();
+    }
   });
 
   it("sets desktopIntegrated for integrated top band and clears on disposal", async () => {
