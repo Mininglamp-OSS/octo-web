@@ -3,6 +3,7 @@ import WKApp from '../../App'
 import { MessageWrap } from '../../Service/Model'
 import { getMessageRow } from './useMessageRow'
 import type { ImageItem } from '../../ui/message/ImageContent/MultiImage'
+import { getImageMessageImages } from './imageMessageImages'
 
 /**
  * getImageMessageUI - 纯函数版本
@@ -22,10 +23,10 @@ export function getImageMessageUI(message: MessageWrap) {
 
   // 多图：content.images 数组
   if (Array.isArray(content.images) && content.images.length > 0) {
-    const images: ImageItem[] = content.images.map((img: any) => ({
-      src: getImageSrc(img.url || img.remoteUrl || '', img.width || 0, img.height || 0),
-      width: img.width || 0,
-      height: img.height || 0,
+    const images: ImageItem[] = getImageMessageImages(content).map((img) => ({
+      src: getImageSrc(img.url, img.width, img.height),
+      width: img.width,
+      height: img.height,
     }))
     return {
       row: rowProps,

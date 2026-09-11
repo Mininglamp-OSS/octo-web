@@ -1,6 +1,14 @@
 import { MediaMessageContent } from "wukongimjssdk";
 import { MessageContentTypeConst } from "../../Service/Const";
 import { t } from "../../i18n";
+import { getImageMessageImages } from "../../bridge/message/imageMessageImages";
+
+export interface ImageAttachment {
+  url: string;
+  width: number;
+  height: number;
+  name?: string;
+}
 
 export class ImageContent extends MediaMessageContent {
   width!: number;
@@ -10,6 +18,7 @@ export class ImageContent extends MediaMessageContent {
   caption?: string;
   mentionUids?: string[];
   name?: string;
+  images?: ImageAttachment[];
 
   constructor(
     file?: File,
@@ -37,6 +46,12 @@ export class ImageContent extends MediaMessageContent {
     this.mentionUids = content["mention_uids"] || [];
     this.name = content["name"] || undefined;
     this.remoteUrl = this.url;
+    this.images = Array.isArray(content.images) && content.images.length > 0
+      ? getImageMessageImages(content).map((image) => ({
+          url: image.url, width: image.width, height: image.height,
+          ...(image.filename ? { name: image.filename } : {}),
+        }))
+      : undefined;
   }
 
   encodeJSON() {
@@ -50,6 +65,7 @@ export class ImageContent extends MediaMessageContent {
       json["mention_uids"] = this.mentionUids;
     }
     if (this.name) json["name"] = this.name;
+    if (this.images?.length) json["images"] = this.images;
     return json;
   }
 

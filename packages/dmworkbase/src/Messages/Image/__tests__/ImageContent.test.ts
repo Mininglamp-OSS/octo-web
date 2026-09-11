@@ -8,7 +8,8 @@ const mocks = vi.hoisted(() => ({
   copyImageToClipboard: vi.fn(),
   toastSuccess: vi.fn(),
   toastWarning: vi.fn(),
-  currentSlide: { src: 'https://cdn.example.com/photo.png' },
+  downloadFile: vi.fn(),
+  currentSlide: { src: 'https://cdn.example.com/photo.png', filename: undefined as string | undefined },
   lightboxProps: undefined as any,
 }))
 
@@ -40,18 +41,20 @@ vi.mock('yet-another-react-lightbox/plugins/zoom', () => ({ default: {} }))
 vi.mock('yet-another-react-lightbox/styles.css', () => ({}))
 vi.mock('@douyinfe/semi-ui', () => ({ Toast: { success: mocks.toastSuccess, warning: mocks.toastWarning } }))
 vi.mock('../../../App', () => ({ default: { dataSource: { commonDataSource: { getImageURL: (url: string) => url } } } }))
-vi.mock('../../../i18n', () => ({
-  t: (key: string) => ({
+vi.mock('../../../i18n', () => {
+  const t = (key: string) => ({
     'base.filePreview.pdf.zoomOut': 'Zoom out',
     'base.filePreview.pdf.actualSize': 'Actual size',
     'base.filePreview.pdf.zoomIn': 'Zoom in',
     'base.message.imagePreview.rotate': 'Rotate',
     'base.module.contextMenus.copyImage': 'Copy image',
     'base.module.contextMenus.copyImageSuccess': 'Image copied',
-  } as Record<string, string>)[key] || key,
-}))
+  } as Record<string, string>)[key] || key
+  return { t, useI18n: () => ({ t }) }
+})
 vi.mock('../../../Service/Const', () => ({ MessageContentTypeConst: { image: 3 } }))
 vi.mock('../../../Utils/clipboard', () => ({ copyImageToClipboard: mocks.copyImageToClipboard }))
+vi.mock('../../../Utils/download', () => ({ downloadFile: mocks.downloadFile }))
 vi.mock('../../../bridge/message/useImageMessageUI', () => ({
   getImageMessageUI: () => ({
     isMulti: false,
@@ -68,6 +71,22 @@ import { ImageCell, ImageContent, ImagePreviewLightbox, ImagePreviewToolbar, get
 import { MessageStatus, TaskStatus } from 'wukongimjssdk'
 
 describe('ImagePreviewToolbar', () => {
+  it('downloads the currently visible slide with its own filename', () => {
+    mocks.currentSlide.filename = 'visible-photo.jpg'
+    const view = render(React.createElement(ImagePreviewToolbar, {
+      zoom: { zoom: 1, minZoom: 0.25, maxZoom: 4 } as any,
+      filename: 'opened-photo.png', onReset: vi.fn(), onRotate: vi.fn(),
+    }))
+    fireEvent.click(screen.getByRole('button', { name: 'base.filePreview.download' }))
+    expect(mocks.downloadFile).toHaveBeenLastCalledWith(mocks.currentSlide.src, 'visible-photo.jpg')
+    mocks.currentSlide.filename = undefined
+    view.rerender(React.createElement(ImagePreviewToolbar, {
+      zoom: { zoom: 1, minZoom: 0.25, maxZoom: 4 } as any,
+      filename: 'standalone.png', onReset: vi.fn(), onRotate: vi.fn(),
+    }))
+    fireEvent.click(screen.getByRole('button', { name: 'base.filePreview.download' }))
+    expect(mocks.downloadFile).toHaveBeenLastCalledWith(mocks.currentSlide.src, 'standalone.png')
+  })
   it('provides the v2 preview actions and copies the visible image', async () => {
     const zoomOut = vi.fn()
     const zoomIn = vi.fn()
@@ -111,6 +130,25 @@ describe('ImagePreviewToolbar', () => {
 })
 
 describe('ImagePreviewLightbox', () => {
+  it('uses slide count for navigation and resets rotation while reporting a changed image', () => {
+    const onView = vi.fn()
+    const view = render(React.createElement(ImagePreviewLightbox, {
+      open: true, close: vi.fn(), isMulti: false, onView,
+      slides: [{ src: 'a.png' }, { src: 'b.png' }],
+    }))
+    expect(mocks.lightboxProps.render.buttonPrev).toBeUndefined()
+    expect(mocks.lightboxProps.render.buttonNext).toBeUndefined()
+    expect(mocks.lightboxProps.carousel.finite).toBe(true)
+    act(() => mocks.lightboxProps.render.buttonZoom({}).props.onRotate())
+    act(() => mocks.lightboxProps.on.view({ index: 1 }))
+    expect(onView).toHaveBeenCalledWith(1)
+    expect(mocks.lightboxProps.carousel.imageProps.style.maxWidth).toBe('100%')
+    view.rerender(React.createElement(ImagePreviewLightbox, {
+      open: true, close: vi.fn(), isMulti: true, slides: [{ src: 'a.png' }],
+    }))
+    expect(mocks.lightboxProps.render.buttonPrev()).toBeNull()
+    expect(mocks.lightboxProps.render.buttonNext()).toBeNull()
+  })
   it('swaps image fit bounds for quarter-turn rotations', () => {
     render(React.createElement(ImagePreviewLightbox, {
       open: true,
@@ -140,6 +178,19 @@ describe('ImagePreviewLightbox', () => {
 })
 
 describe('ImageContent name field', () => {
+  it('preserves group image URLs, ordering, dimensions, and names across decode/encode', () => {
+    const content = new ImageContent()
+    const images = [
+      { url: 'one.png', width: 640, height: 480, name: 'one.png' },
+      { url: 'two.jpg', width: 320, height: 240, name: 'two.jpg' },
+    ]
+    content.decodeJSON({ images })
+    expect(content.images).toEqual(images)
+    expect(content.encodeJSON().images).toEqual(images)
+    content.decodeJSON({ url: 'single.png' })
+    expect(content.images).toBeUndefined()
+    expect(content.encodeJSON()).not.toHaveProperty('images')
+  })
   it('sets name from file.name in constructor', () => {
     const file = new File([new ArrayBuffer(8)], 'screenshot.png', { type: 'image/png' })
     const content = new ImageContent(file, undefined, 100, 100)
@@ -276,6 +327,29 @@ describe('getImageTransferState', () => {
 })
 
 describe('ImageCell geometry', () => {
+  it('delegates a click to the enclosing gallery and does not mount a second preview', () => {
+    const message: any = {
+      clientMsgNo: 'image-1', messageID: 'server-1', status: MessageStatus.Normal,
+      fromUID: 'u1', message: {}, content: { url: 'photo.png' },
+    }
+    const context: any = { editOn: () => false, isContextMenuOpen: () => false }
+    const cell: any = new ImageCell({ message, context })
+    cell.props = { message, context }
+    const openImage = vi.fn(() => true)
+    cell.context = { openImage }
+    const tree: any = cell.render()
+    tree.props.children[0].props.children.props.onClick()
+    expect(openImage).toHaveBeenCalledWith(JSON.stringify(['image-1', 0]))
+    expect(tree.props.children[1]).toBe(false)
+    expect(cell.state.showPreview).toBe(false)
+
+    cell.props.context.editOn = () => true
+    expect(cell.render().props.children[0].props.children.props.onClick).toBeUndefined()
+    cell.props.context.editOn = () => false
+    cell.state.uploadStatus = TaskStatus.fail
+    expect(cell.render().props.children[0].props.children.props.onClick).toBeUndefined()
+  })
+
   it('scales landscape, portrait and square images only when over bounds', () => {
     const cell: any = new ImageCell({})
     expect(cell.imageScale(100, 50)).toEqual({ width: 100, height: 50 })

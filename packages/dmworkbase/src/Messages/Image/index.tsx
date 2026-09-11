@@ -13,6 +13,9 @@ import { isMessageSelectable } from "../../Service/messageSelection"
 import { t } from "../../i18n"
 import { ImagePreviewLightbox } from "./ImagePreview"
 import { ImageContent } from "./ImageContent"
+import { getImageMessageImages } from "../../bridge/message/imageMessageImages"
+import { ImageGalleryContext } from "../../features/conversation-image-gallery/ImageGalleryContext"
+import { imageGalleryKey } from "../../features/conversation-image-gallery/imageGallery"
 
 export { ImagePreviewLightbox, ImagePreviewToolbar } from "./ImagePreview"
 export { ImageContent } from "./ImageContent"
@@ -84,6 +87,8 @@ interface RestartableTask extends Task {
 }
 
 export class ImageCell extends MessageCell<any, ImageCellState> {
+    static contextType = ImageGalleryContext
+    declare context: React.ContextType<typeof ImageGalleryContext>
     private _task?: RestartableTask
 
     private _taskListener = (task: Task) => {
@@ -165,6 +170,14 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
         this._task.restart()
     }
 
+    private openImage = (imageIndex: number) => {
+        if (this.context) {
+            this.context.openImage(imageGalleryKey(this.props.message, imageIndex))
+            return
+        }
+        this.setState({ showPreview: true, previewIndex: imageIndex })
+    }
+
     render() {
         const { message, context } = this.props
         const { showPreview, previewIndex, uploadProgress, uploadStatus } = this.state
@@ -174,8 +187,9 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
         const useNewUI = true
         if (useNewUI) {
             const uiProps = getImageMessageUI(message)
+            const imageItems = getImageMessageImages(content)
             const hasRemoteUrl = uiProps.isMulti
-                ? uiProps.images.some(image => !!image.src)
+                ? imageItems.some(image => !!image.url)
                 : !!(content.url || (content as any).remoteUrl)
             const fileSize = (content as any).file?.size ?? 0
             const transferState = getImageTransferState({
@@ -210,8 +224,8 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
                                 images={uiProps.images}
                                 transferState={transferState}
                                 onImageClick={canOpenPreview ? (index) => {
-                                    if (uiProps.images[index]?.src) {
-                                        this.setState({ showPreview: true, previewIndex: index })
+                                    if (imageItems[index]?.url) {
+                                        this.openImage(index)
                                     }
                                 } : undefined}
                               />
@@ -219,22 +233,22 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
                                 ? <SingleImage
                                     {...uiProps.singleImage}
                                     transferState={transferState}
-                                    onClick={canOpenPreview ? () => this.setState({ showPreview: true }) : undefined}
+                                    onClick={canOpenPreview ? () => this.openImage(0) : undefined}
                                   />
                                 : null
                         }
                     </MessageRow>
-                    <ImagePreviewLightbox
+                    {!this.context && <ImagePreviewLightbox
                         open={showPreview}
                         close={() => this.setState({ showPreview: false })}
                         index={previewIndex}
                         slides={uiProps.isMulti
-                            ? uiProps.images.map(img => ({ src: img.src, alt: '' }))
+                            ? uiProps.images.map((img, index) => ({ src: img.src, alt: '', filename: imageItems[index]?.filename }))
                             : [{ src: uiProps.singleImage?.src || '', alt: '' }]
                         }
                         filename={content.name}
                         isMulti={uiProps.isMulti}
-                    />
+                    />}
                 </>
             )
         }

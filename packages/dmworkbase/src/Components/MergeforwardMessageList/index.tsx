@@ -10,7 +10,7 @@ import {
 import React from "react";
 import { Component, ReactNode } from "react";
 import { Toast } from "@douyinfe/semi-ui";
-import { ImageContent } from "../../Messages/Image";
+import type { ImageContent } from "../../Messages/Image/ImageContent";
 import { FileContent } from "../../Messages/File/FileContent";
 import { MessageContentTypeConst } from "../../Service/Const";
 import MergeforwardContent from "../../Messages/Mergeforward";
@@ -27,9 +27,10 @@ import { buildTextMessageMentions } from "../../bridge/message/textMessageMentio
 import { PartType } from "../../Service/Model";
 import TextContent from "../../ui/message/TextContent";
 import MixedContent from "../../ui/message/MixedContent";
-import Lightbox from "yet-another-react-lightbox";
-import Download from "yet-another-react-lightbox/plugins/download";
-import "yet-another-react-lightbox/styles.css";
+import { ImageGalleryProvider } from "../../features/conversation-image-gallery/ImageGalleryProvider";
+import { ImageGalleryContext } from "../../features/conversation-image-gallery/ImageGalleryContext";
+import { collectGalleryImages, imageGalleryKey } from "../../features/conversation-image-gallery/imageGallery";
+import { getImageMessageImages } from "../../bridge/message/imageMessageImages";
 import { I18nContext } from "../../i18n";
 
 import MergeforwardCard from "../../ui/message/MergeforwardCard";
@@ -59,8 +60,7 @@ export interface MergeforwardMessageListProps {
 }
 
 interface MergeforwardMessageListState {
-  previewImgSrc: string | null;
-  previewImageContent: ImageContent | null;
+  galleryGeneration: number;
   /** 导航栈：点击嵌套合并转发时 push，点返回时 pop */
   contentStack: MergeforwardContent[];
 }
@@ -75,8 +75,7 @@ export default class MergeforwardMessageList extends Component<
   constructor(props: MergeforwardMessageListProps) {
     super(props);
     this.state = {
-      previewImgSrc: null,
-      previewImageContent: null,
+      galleryGeneration: 0,
       contentStack: [],
     };
   }
@@ -96,9 +95,7 @@ export default class MergeforwardMessageList extends Component<
       prevProps.mergeforwardContent !== this.props.mergeforwardContent ||
       (prevProps.visible && !this.props.visible);
     if (shouldReset) {
-      if (this.state.contentStack.length > 0 || this.state.previewImgSrc) {
-        this.setState({ contentStack: [], previewImgSrc: null, previewImageContent: null });
-      }
+      this.setState((state) => ({ contentStack: [], galleryGeneration: state.galleryGeneration + 1 }));
     }
   }
 
@@ -200,17 +197,6 @@ export default class MergeforwardMessageList extends Component<
     }
     return actSize;
   }
-  getImageSrc(content: ImageContent) {
-    if (content.url && content.url !== "") {
-      // 等待发送的消息
-      return WKApp.dataSource.commonDataSource.getImageURL(content.url, {
-        width: content.width,
-        height: content.height,
-      });
-    }
-    return content.imgData;
-  }
-
   getFileURL(content: FileContent): string {
     if (content.url && content.url !== "") {
       const fileUrl = WKApp.dataSource.commonDataSource.getFileURL(content.url);
@@ -264,7 +250,7 @@ export default class MergeforwardMessageList extends Component<
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
   }
 
-  getMsgContent(msg: Message) {
+  getMsgContent(msg: Message, position: number = 0) {
     if (msg.contentType === MessageContentType.text) {
       const text = getTextMessageText(msg.content as MessageText);
       const mentions = buildTextMessageMentions({
@@ -282,25 +268,27 @@ export default class MergeforwardMessageList extends Component<
     }
     if (msg.contentType === MessageContentType.image) {
       const imageContent = msg.content as ImageContent;
-      const size = this.imageScale(imageContent.width, imageContent.height);
-      const src = this.getImageSrc(imageContent) || "";
-
       return (
-        <img
-          style={{
-            width: `${size.width}px`,
-            height: `${size.height}px`,
-            borderRadius: "var(--wk-r-xs, 4px)",
-            cursor: "pointer",
-          }}
-          src={src}
-          onClick={() =>
-            this.setState({
-              previewImgSrc: src,
-              previewImageContent: imageContent,
-            })
-          }
-        />
+        <ImageGalleryContext.Consumer>
+          {(gallery) => getImageMessageImages(imageContent).map((image) => {
+            const size = this.imageScale(image.width, image.height);
+            const src = image.url
+              ? WKApp.dataSource.commonDataSource.getImageURL(image.url)
+              : imageContent.imgData || "";
+            const key = imageGalleryKey(msg, image.imageIndex, position);
+            return <img
+              key={key}
+              alt=""
+              style={{
+                width: `${size.width}px`, height: `${size.height}px`,
+                borderRadius: "var(--wk-r-xs, 4px)",
+                cursor: image.url ? "pointer" : undefined,
+              }}
+              src={src}
+              onClick={image.url ? () => gallery?.openImage(key) : undefined}
+            />;
+          })}
+        </ImageGalleryContext.Consumer>
       );
     }
     if (msg.contentType === MessageContentTypeConst.richText) {
@@ -415,7 +403,7 @@ export default class MergeforwardMessageList extends Component<
 
   render(): ReactNode {
     const { mergeforwardContent } = this.props;
-    const { previewImgSrc, previewImageContent, contentStack } = this.state;
+    const { contentStack, galleryGeneration } = this.state;
 
     // 当前显示的内容：栈顶 > props 传入的根内容
     const currentContent = contentStack.length > 0
@@ -436,7 +424,14 @@ export default class MergeforwardMessageList extends Component<
       }
     });
     return (
-      <>
+      <ImageGalleryProvider
+        key={`${galleryGeneration}:${contentStack.length}`}
+        scopeKey={`forward:${galleryGeneration}:${contentStack.length}`}
+        images={this.props.visible === false ? [] : collectGalleryImages(currentContent.msgs, {
+          resolveUrl: (url) => WKApp.dataSource.commonDataSource.getImageURL(url),
+          forwarded: true,
+        })}
+      >
         <div className="wk-mergeforwardmessagelist">
           {/* Content：消息列表，key 随栈深度变化强制重建 DOM 避免跨层复用 */}
           <div className="wk-mergeforwardmessagelist-content" key={`stack-${contentStack.length}`}>
@@ -497,7 +492,7 @@ export default class MergeforwardMessageList extends Component<
 
                     {/* 消息内容 */}
                     <div className="wk-mergeforwardmessagelist-content-msg-info-second-msgcontent">
-                      {this.getMsgContent(m)}
+                      {this.getMsgContent(m, i)}
                     </div>
                   </div>
                 </div>
@@ -505,29 +500,7 @@ export default class MergeforwardMessageList extends Component<
             })}
           </div>
         </div>
-        <Lightbox
-          open={!!previewImgSrc}
-          close={() =>
-            this.setState({ previewImgSrc: null, previewImageContent: null })
-          }
-          slides={previewImgSrc ? [{ src: previewImgSrc, alt: "" }] : []}
-          plugins={[Download]}
-          download={{
-            download: ({ slide }) => {
-              if (slide?.src) {
-                const name = previewImageContent?.name || "image.png";
-                downloadFile(slide.src, name);
-              }
-            },
-          }}
-          carousel={{ finite: true }}
-          controller={{ closeOnBackdropClick: true }}
-          render={{
-            buttonPrev: () => null,
-            buttonNext: () => null,
-          }}
-        />
-      </>
+      </ImageGalleryProvider>
     );
   }
 }
