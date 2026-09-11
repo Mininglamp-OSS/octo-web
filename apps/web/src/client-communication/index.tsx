@@ -27,6 +27,8 @@ import { CommunicationShell } from "./CommunicationShell";
 import { requireHostBridge } from "./hostBridge";
 import { reportStartupFailure } from "./startupFailure";
 import { installHostDocumentPreview } from "./documentPreview";
+import { installDesktopPresentation } from "./desktopPresentation";
+import "./desktop-presentation.css";
 
 async function main() {
   const host = requireHostBridge();
@@ -85,7 +87,10 @@ async function main() {
   document.documentElement.dataset.theme = bootstrap.appearance.theme;
   Dap.shared.init();
 
-  createRoot(document.getElementById("root")!).render(
+  const root = document.getElementById("root")!;
+  const disposeDesktopPresentation = await installDesktopPresentation(host, root);
+  if (disposeDesktopPresentation) window.addEventListener("beforeunload", disposeDesktopPresentation, { once: true });
+  createRoot(root).render(
     <React.StrictMode>
       <I18nProvider>
         <CommunicationShell
@@ -99,6 +104,7 @@ async function main() {
             spaceId,
             rendererVersion: WKApp.config.appVersion,
             documentForwardVersion: 1,
+            ...(disposeDesktopPresentation ? { desktopPresentationVersion: 1 as const } : {}),
           })}
         />
       </I18nProvider>

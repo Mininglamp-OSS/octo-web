@@ -1277,7 +1277,7 @@ export default class ThreadPanel extends Component<
     // 与 filePreview 同样在 renderHeader 内分支（filePreview 已先 return，故此处必非预览态）。
     if (this.state.showWebhookPanel) {
       return (
-        <div className="wk-thread-panel-header">
+        <div className="wk-thread-panel-header" data-desktop-chrome="header">
           <div
             className="wk-thread-panel-header-btn"
             onClick={this.handleCloseThreadWebhook}
@@ -1306,7 +1306,7 @@ export default class ThreadPanel extends Component<
 
     // 子区模式的 header
     return (
-      <div className="wk-thread-panel-header">
+      <div className="wk-thread-panel-header" data-desktop-chrome="header">
         {/* detail 视图：左侧返回按钮 */}
         {view === "detail" ? (
           <div
@@ -2108,7 +2108,7 @@ export default class ThreadPanel extends Component<
         };
 
     return (
-      <div className="wk-thread-panel" ref={this.panelRef} style={panelStyle}>
+      <div className="wk-thread-panel" data-desktop-overlay="" ref={this.panelRef} style={panelStyle}>
         {/* Left-edge splitter for resizing — hidden on small screens */}
         {!isSmallScreen && (
           <div

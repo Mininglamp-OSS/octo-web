@@ -303,7 +303,7 @@ const FilePreviewHeader: React.FC<FilePreviewHeaderProps> = ({
   const showHoverDropdown = !isFilePanelOpen && hoverDropdownOpen && hasFiles;
 
   return (
-    <div className="wk-file-preview-header">
+    <div className="wk-file-preview-header" data-desktop-chrome="header">
       {/* 左侧：文件选择器 */}
       <div className="wk-file-preview-header__left">
         {/* 返回按钮（从子区进入文件预览时显示） */}

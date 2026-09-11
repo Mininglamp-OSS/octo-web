@@ -94,6 +94,8 @@ export interface DocumentForwardRequest {
 }
 
 export interface OctoBuddyCommunicationBridge {
+  getDesktopPresentation?(): Promise<import("./desktopPresentation").DesktopPresentation | null>;
+  onDesktopPresentation?(callback: (state: import("./desktopPresentation").DesktopPresentation) => void): () => void;
   getDocumentPreview?: import("@octo/base/src/Service/DocumentPreviewService").DocumentPreviewTransport;
   openSummary(request: {
     route: import("@dmwork/summary").SummaryWorkspaceRoute;
@@ -107,6 +109,7 @@ export interface OctoBuddyCommunicationBridge {
     spaceId: string;
     rendererVersion: string;
     documentForwardVersion?: 1;
+    desktopPresentationVersion?: 1;
   }): Promise<void>;
   reportNavigation(state: NavigationReport): Promise<void>;
   reportUnread(count: number): void;
