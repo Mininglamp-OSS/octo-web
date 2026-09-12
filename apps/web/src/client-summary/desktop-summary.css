@@ -69,6 +69,10 @@
 }
 
 /* The unified workbench and legacy create entry coexist behind server flags. */
+#root[data-desktop-platform] .wk-summary-workbench__header {
+  anchor-name: --desktop-summary-workbench-header;
+}
+
 #root[data-desktop-integrated="true"] .wk-summary-workbench__header {
   height: auto;
   min-height: var(--desktop-header-height);
@@ -339,6 +343,7 @@
 #root[data-desktop-platform] .wk-summary-workbench-feature {
   container-type: inline-size;
   container-name: desktop-summary-workbench;
+  anchor-scope: --desktop-summary-workbench-header;
 }
 
 @container desktop-summary-workbench (max-width: 720px) {
@@ -346,11 +351,13 @@
     position: absolute;
     z-index: 30;
     inset: var(--desktop-header-height) 0 0 auto;
+    position-anchor: --desktop-summary-workbench-header;
+    top: anchor(bottom, var(--desktop-header-height));
     width: min(100%, calc(var(--wk-sidebar-w) + var(--wk-sp-12) * 3));
     box-shadow: var(--wk-shadow-md);
   }
 
-  /* A wrapping header can extend behind the floating reference panel. */
+  /* Floating content must never inherit the underlying titlebar's drag region. */
   #root[data-desktop-integrated="true"] .summary-workbench-ref-side,
   #root[data-desktop-integrated="true"] .summary-workbench-ref-side * {
     -webkit-app-region: no-drag;
