@@ -1,0 +1,15 @@
+{
+  "action.retry": "[Ŕéţŕý··]",
+  "error.connectFailed": "[Úñáβĺé ţö çöññéçţ ţö ţĥíš áρρ. Ρĺéášé ţŕý áĝáíñ ĺáţéŕ.······················]",
+  "list.defaultDescription": "[Äρρ Ɓöţ···]",
+  "menu.title": "[Äρρš··]",
+  "page.searchPlaceholder": "[Šéáŕçĥ···]",
+  "page.title": "[Äρρš··]",
+  "section.platform": "[Ρĺáţƒöŕɱ áρρš······]",
+  "section.space": "[Öŕĝáñížáţíöñ áρρš·······]",
+  "section.spaceWithName": "[Öŕĝáñížáţíöñ áρρš · {{name}}········]",
+  "state.empty": "[Ñö áρρš áνáíĺáβĺé·······]",
+  "state.loadFailed": "[Ƒáíĺéδ ţö ĺöáδ······]",
+  "state.loading": "[Ĺöáδíñĝ...····]",
+  "state.noMatches": "[Ñö ɱáţçĥíñĝ áρρš ƒöúñδ·········]"
+}

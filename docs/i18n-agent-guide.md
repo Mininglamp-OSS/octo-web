@@ -8,15 +8,17 @@ Before changing user-visible copy, read these files:
 
 1. `docs/i18n-agent-guide.md`
 2. `.i18n/scan-config.json`
+3. `.i18n/length-budgets.json`
 
 After changing user-visible copy, run:
 
 ```bash
 pnpm i18n:check
+pnpm i18n:pseudo         # regenerate en-XA.json for any touched en-US.json
 git diff --check
 ```
 
-If layout may be affected by English copy length, also verify the touched screens in both `zh-CN` and `en-US`.
+If layout may be affected by English copy length, also verify the touched screens in `zh-CN`, `en-US`, and the pseudo-locale `en-XA`.
 
 ## Architecture Rules
 
@@ -152,6 +154,16 @@ Do not translate:
 
 When excluding a source file from hardcoded Chinese checks, record the reason in `.i18n/scan-config.json`. Do not add broad ignores without a concrete non-UI reason.
 
+## Length Budgets & Pseudo-localization — Tools
+
+The full container inventory, per-container char budgets, W3C expansion table, and `.short` variant recipe are owned by the separate *Copy Length Budgets & Constrained Layouts* spec section (WS-217). This subsection only documents the tooling this repository ships:
+
+- `.i18n/length-budgets.json` — data-only file consumed by `pnpm i18n:check`. Each budget declares a `container`, a `maxChars` cap, and one or more `keyPatterns` (glob-lite: `*` matches one dot-separated segment, `**` matches one or more). Matching is **first-match-wins** in file order, so specific rules must precede wide catch-alls. Malformed entries and malformed roots log a `.i18n/length-budgets.json: ...` warning and are skipped; scan the CI log if a rule you added seems ignored. The check also prints the loaded rule count, so a fully-empty file is visible in CI output rather than silently green.
+- `pnpm i18n:pseudo` — regenerates `en-XA.json` alongside every `en-US.json`. `en-XA` is the industry pseudo-locale (W3C, Chrome, Android). The transform accents ASCII letters, pads visible text by 40 % of code-point length, wraps with brackets, and preserves interpolation placeholders (`{{name}}`) and URL-shaped substrings so runtime substitution and copyable links stay intact.
+- `pnpm i18n:pseudo:check` — runs in CI to fail when `en-XA.json` drifts from `en-US.json`. Regenerate before committing English copy changes.
+
+Runtime toggling to `en-XA` for browser preview is out of scope — load the file into `I18nService` locally when you need to eyeball a screen.
+
 ## Adding New Copy
 
 For new user-visible copy:
@@ -160,7 +172,8 @@ For new user-visible copy:
 2. Add the key to both `zh-CN.json` and `en-US.json`.
 3. Use `useI18n()` or `t()` at the callsite.
 4. Run `pnpm i18n:check`.
-5. If the text is visible in a constrained layout, verify both languages in the browser.
+5. Run `pnpm i18n:pseudo` if you touched `en-US.json`, and commit the regenerated `en-XA.json`.
+6. If the text is visible in a constrained layout, verify all three locales in the browser and confirm the budget entry in `.i18n/length-budgets.json` (add a `.short` variant if the copy overflows — the CLI prints the key to add).
 
 ## Migrating Existing Copy
 
@@ -195,5 +208,6 @@ For large i18n work, prefer a small number of meaningful commits grouped by runt
 Every PR that changes UI copy should include:
 
 - `pnpm i18n:check` result.
+- `pnpm i18n:pseudo` regenerated `en-XA.json` (committed) when `en-US.json` changed.
 - Focused test result for touched packages.
-- Browser notes for both `zh-CN` and `en-US` when layout may change.
+- Browser notes for `zh-CN`, `en-US`, and — when a narrow container is in play — `en-XA` for the pseudo-locale layout check.
