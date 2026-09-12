@@ -102,7 +102,7 @@ export default function SummaryShareDetailPage({
 
   return (
     <div className="summary-share-detail">
-        <header className="summary-share-detail__header">
+        <header className="summary-share-detail__header" data-desktop-chrome="header">
         {originChannel ? (
           <Button
                 className="summary-share-detail__back"

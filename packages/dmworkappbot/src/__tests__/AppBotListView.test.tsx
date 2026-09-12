@@ -86,3 +86,10 @@ describe("AppBotListView", () => {
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
 })
+
+  it("marks the page header for desktop chrome presentation", () => {
+    renderView(baseProps())
+    expect(
+      container.querySelector(".appbot-page-title")
+    ).toHaveAttribute("data-desktop-chrome", "header")
+  })

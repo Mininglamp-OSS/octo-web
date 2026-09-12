@@ -11,7 +11,7 @@ const AppBotChatHeader: React.FC<AppBotChatHeaderProps> = ({
   displayName,
 }) => {
   return (
-    <div className="appbot-chat-header">
+    <div className="appbot-chat-header" data-desktop-chrome="header">
       <div className="appbot-chat-header-avatar">{avatar}</div>
       <div className="appbot-chat-header-name">{displayName}</div>
     </div>

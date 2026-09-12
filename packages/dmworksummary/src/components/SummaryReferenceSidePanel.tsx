@@ -117,7 +117,7 @@ class SummaryReferenceSidePanel extends Component<
 
         return (
             <div id={id} data-testid={summaryTestIds.agentRefSidePanel} className="summary-workbench-ref-side">
-                <div className="summary-workbench-ref-side-header">
+                <div className="summary-workbench-ref-side-header" data-desktop-chrome="header">
                     <span data-testid={summaryTestIds.agentRefSideTitle} className="summary-workbench-ref-side-title" title={title}>
                         {title}
                     </span>

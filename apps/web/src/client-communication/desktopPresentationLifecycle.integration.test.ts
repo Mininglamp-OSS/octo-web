@@ -78,6 +78,7 @@ describe("desktop lifecycle ready capability integration", () => {
     // Restore reads fresh context and includes capability
     expect(f.reportReady).toHaveBeenLastCalledWith(expect.objectContaining({
       page: "chat", spaceId: "space-a", desktopPresentationVersion: 1,
+      desktopPresentationPages: ["chat", "contacts"],
     }));
     f.lifecycle.dispose();
   });
@@ -99,6 +100,7 @@ describe("desktop lifecycle ready capability integration", () => {
     expect(f.reportReady).toHaveBeenLastCalledWith(
       expect.not.objectContaining({ desktopPresentationVersion: expect.any(Number) }),
     );
+    expect(f.reportReady.mock.calls.at(-1)?.[0]).not.toHaveProperty("desktopPresentationPages");
     f.lifecycle.dispose();
   });
 
@@ -115,6 +117,7 @@ describe("desktop lifecycle ready capability integration", () => {
     // Restore reads getContext, not the stale readyBase page/space.
     expect(f.reportReady).toHaveBeenLastCalledWith(expect.objectContaining({
       page: "contacts", spaceId: "space-b", desktopPresentationVersion: 1,
+      desktopPresentationPages: ["chat", "contacts"],
     }));
     f.lifecycle.dispose();
     await vi.advanceTimersByTimeAsync(6000);

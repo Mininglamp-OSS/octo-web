@@ -178,7 +178,7 @@ export default class ScheduleListPage extends Component<
 
         return (
             <div className="summary-schedule-page">
-                <div className="summary-schedule-header">
+                <div className="summary-schedule-header" data-desktop-chrome="header">
           <Button
             icon={<IconArrowLeft />}
             theme="borderless"

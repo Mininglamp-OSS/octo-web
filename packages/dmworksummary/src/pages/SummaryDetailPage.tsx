@@ -4308,7 +4308,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
         return (
             <>
-            <div className="summary-detail-title-row">
+            <div className="summary-detail-title-row" data-desktop-chrome="header">
                 <div className="summary-detail-header-title-wrap">
                     <OverflowTooltip as="h2" data-testid={summaryTestIds.detailTitle} className="summary-detail-title" title={displayTitle}>
                         {displayTitle}

@@ -87,11 +87,13 @@ describe("AppsShell", () => {
   });
 
   it("synchronizes space and appearance commands with the workspace host", () => {
+    const onPresentationContext = vi.fn();
     render(
       <AppsShell
         bridge={mocks.bridge as any}
         initialSpace={{ id: "space-a", name: "Space A" }}
         onReady={vi.fn(async () => {})}
+        onPresentationContext={onPresentationContext}
       />
     );
     const onSpaceChanged = vi.fn();
@@ -121,6 +123,8 @@ describe("AppsShell", () => {
     expect(document.documentElement.dataset.hostVisibility).toBe("hidden");
     expect(i18n.setLocale).toHaveBeenCalledWith("en-US", { persist: false });
     expect(onSpaceChanged).toHaveBeenCalledTimes(1);
+    expect(onPresentationContext).toHaveBeenLastCalledWith({ spaceId: "space-b" });
+    expect(mocks.workspaceMounts).toBe(1);
   });
 
   it("delegates conversations and reloads the workspace on host command", async () => {

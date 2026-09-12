@@ -1,0 +1,365 @@
+/* ---- Right/main content pages ---- */
+#root[data-desktop-platform] .summary-detail-page,
+#root[data-desktop-platform] .summary-create-page,
+#root[data-desktop-platform] .summary-confirm-page,
+#root[data-desktop-platform] .summary-schedule-page,
+#root[data-desktop-platform] .summary-share-detail,
+#root[data-desktop-platform] .summary-share-preview {
+  background: var(--desktop-chrome-background, var(--wk-bg-surface));
+}
+
+/* ---- Workspace left sidebar ---- */
+#root[data-desktop-platform] .summary-workspace__list {
+  --desktop-header-background: var(--desktop-sidebar-background, var(--wk-bg-base));
+  background: var(--desktop-sidebar-background, var(--wk-bg-base));
+  border-right: 0;
+}
+
+#root[data-desktop-platform] .summary-workspace:not(.summary-workspace--list) {
+  grid-template-columns: minmax(var(--wk-sidebar-w), calc(var(--wk-sidebar-w) + var(--wk-sp-5))) minmax(0, 1fr);
+}
+
+#root[data-desktop-platform] .summary-workspace__list .summary-list-page {
+  background: transparent;
+}
+
+#root[data-desktop-integrated="true"] .summary-list-page,
+#root[data-desktop-integrated="true"] .summary-detail-page {
+  padding: 0;
+}
+
+#root[data-desktop-integrated="true"] .summary-list-toolbar,
+#root[data-desktop-integrated="true"] .summary-list-content {
+  margin-left: var(--wk-sp-3);
+  margin-right: var(--wk-sp-3);
+}
+
+/* ---- Workspace right pane ---- */
+#root[data-desktop-platform] .summary-workspace__content {
+  --desktop-header-background: var(--desktop-chrome-background, var(--wk-bg-surface));
+}
+
+/* ---- Sidebar list header: compact title + search ---- */
+#root[data-desktop-platform] .summary-list-header[data-desktop-chrome="header"] {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 0;
+}
+
+#root[data-desktop-integrated="true"] .summary-list-header[data-desktop-chrome="header"] {
+  height: var(--desktop-header-height);
+  min-height: var(--desktop-header-height);
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+#root[data-desktop-platform] .summary-list-header .summary-list-title {
+  min-width: 0;
+  font-size: var(--wk-text-size-base);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#root[data-desktop-platform] .summary-list-header-actions {
+  flex-shrink: 0;
+}
+
+/* The unified workbench and legacy create entry coexist behind server flags. */
+#root[data-desktop-platform] .wk-summary-workbench__header {
+  anchor-name: --desktop-summary-workbench-header;
+}
+
+#root[data-desktop-integrated="true"] .wk-summary-workbench__header {
+  height: auto;
+  min-height: var(--desktop-header-height);
+  padding-top: var(--wk-sp-1);
+  padding-bottom: var(--wk-sp-1);
+}
+
+#root[data-desktop-platform] .wk-summary-workbench__heading {
+  width: 100%;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: var(--wk-sp-3);
+}
+
+#root[data-desktop-platform] .wk-summary-workbench__heading > div:first-child {
+  min-width: 0;
+}
+
+#root[data-desktop-platform] .wk-summary-workbench__header-actions {
+  min-width: 0;
+  max-width: 100%;
+  flex-shrink: 1;
+}
+
+#root[data-desktop-platform] .wk-summary-workbench__reference-context {
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 auto;
+}
+
+#root[data-desktop-platform] .wk-summary-workbench-context__item--reference {
+  min-width: 0;
+  max-width: 100%;
+}
+
+#root[data-desktop-platform] .wk-summary-workbench__header-actions > .wk-btn {
+  flex-shrink: 0;
+}
+
+#root[data-desktop-platform] .wk-summary-workbench__header h1 {
+  font-size: var(--wk-text-size-base);
+  overflow-wrap: anywhere;
+}
+
+#root[data-desktop-platform] .wk-summary-workbench__header p {
+  font-size: var(--wk-text-size-xs);
+  margin: 0;
+}
+
+#root[data-desktop-integrated="true"] .summary-workbench {
+  padding: 0;
+}
+
+#root[data-desktop-integrated="true"] .summary-workbench > .summary-workbench-header {
+  max-width: none;
+}
+
+/* Toolbar stays below the header in the sidebar (fits above the scrollable list) */
+#root[data-desktop-platform] .summary-list-toolbar {
+  flex-shrink: 0;
+}
+
+/* ---- Create page header ---- */
+#root[data-desktop-platform] .summary-workbench-header[data-desktop-chrome="header"] {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  margin: 0;
+}
+
+#root[data-desktop-integrated="true"] .summary-workbench-header[data-desktop-chrome="header"] {
+  height: var(--desktop-header-height);
+  min-height: var(--desktop-header-height);
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+#root[data-desktop-platform] .summary-workbench-header .summary-workbench-title {
+  font-size: var(--wk-text-size-base);
+}
+
+/* ---- Detail page: title row uses existing [data-desktop-header] rules ---- */
+#root[data-desktop-platform] .summary-detail-page .summary-detail-title-row {
+  background: var(--desktop-chrome-background, var(--wk-bg-surface));
+}
+
+/* Long titles and role-dependent actions may need a second row. Never clip them. */
+#root[data-desktop-integrated="true"] .summary-detail-title-row {
+  height: auto;
+  min-height: var(--desktop-header-height);
+  align-items: center;
+  padding-top: var(--wk-sp-2);
+  padding-bottom: var(--wk-sp-2);
+}
+
+#root[data-desktop-platform] .summary-detail-title {
+  font-size: var(--wk-text-size-base);
+}
+
+/* Detail scroll fills remaining height without stacking header in the scroll */
+#root[data-desktop-platform] .summary-detail-content-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---- Confirm page ---- */
+#root[data-desktop-platform] .summary-confirm-header[data-desktop-chrome="header"] {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  margin: 0;
+}
+
+#root[data-desktop-integrated="true"] .summary-confirm-page,
+#root[data-desktop-integrated="true"] .summary-schedule-page {
+  padding: 0 var(--wk-sp-3) var(--wk-sp-3);
+}
+
+#root[data-desktop-integrated="true"] :is(.summary-confirm-header, .summary-schedule-header) {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin-left: calc(var(--wk-sp-3) * -1);
+  margin-right: calc(var(--wk-sp-3) * -1);
+}
+
+#root[data-desktop-platform] :is(.summary-confirm-header, .summary-schedule-header) h2 {
+  min-width: 0;
+  font-size: var(--wk-text-size-base);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#root[data-desktop-integrated="true"] .summary-confirm-header[data-desktop-chrome="header"] {
+  height: var(--desktop-header-height);
+  min-height: var(--desktop-header-height);
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* ---- Schedule page ---- */
+#root[data-desktop-platform] .summary-schedule-header[data-desktop-chrome="header"] {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  margin: 0;
+}
+
+#root[data-desktop-integrated="true"] .summary-schedule-header[data-desktop-chrome="header"] {
+  height: var(--desktop-header-height);
+  min-height: var(--desktop-header-height);
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* ---- Share detail page ---- */
+#root[data-desktop-platform] .summary-share-detail__header[data-desktop-chrome="header"] {
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+#root[data-desktop-integrated="true"] .summary-share-detail__header[data-desktop-chrome="header"] {
+  height: var(--desktop-header-height);
+  min-height: var(--desktop-header-height);
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+#root[data-desktop-platform] .summary-share-detail__header h1 {
+  font-size: var(--wk-text-size-base);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Share preview overlay ---- */
+#root[data-desktop-platform] .summary-share-preview {
+  background: var(--wk-bg-surface);
+}
+
+#root[data-desktop-integrated="true"] .summary-share-preview__header {
+  height: auto;
+  min-height: var(--desktop-header-height);
+  padding-top: var(--wk-sp-1);
+  padding-bottom: var(--wk-sp-1);
+}
+
+#root[data-desktop-platform] .summary-share-preview__header h2 {
+  font-size: var(--wk-text-size-base);
+}
+
+/* Keep the existing return action alongside the page header, including narrow panes. */
+#root[data-desktop-integrated="true"] .summary-workspace__content {
+  position: relative;
+}
+
+#root[data-desktop-integrated="true"] .summary-workspace__mobile-back {
+  display: none;
+  justify-content: center;
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: calc(var(--desktop-safe-left, 0px) + var(--wk-sp-1));
+  width: var(--wk-sp-8);
+  height: var(--desktop-header-height);
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  -webkit-app-region: no-drag;
+}
+
+#root[data-desktop-integrated="true"] :is(.summary-workspace--create, .summary-workspace--detail, .summary-workspace--share) .summary-workspace__mobile-back {
+  display: flex;
+}
+
+#root[data-desktop-integrated="true"] .summary-workspace__mobile-back span {
+  display: none;
+}
+
+#root[data-desktop-integrated="true"] .summary-workspace__mobile-back:hover {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-hover);
+}
+
+#root[data-desktop-integrated="true"] .summary-workspace__content :is(.wk-summary-workbench__header, .summary-workbench-header, .summary-detail-title-row, .summary-share-detail__header, .summary-share-preview__header)[data-desktop-header] {
+  padding-left: calc(var(--desktop-safe-left, 0px) + var(--wk-sp-8) + var(--wk-sp-3));
+}
+
+/* Independent panes own their own system-control exclusion rectangles. */
+#root[data-desktop-platform] .summary-workbench-ref-side {
+  border: 0;
+  border-radius: 0;
+  background: var(--desktop-sidebar-background, var(--wk-bg-base));
+  --desktop-header-background: var(--desktop-sidebar-background, var(--wk-bg-base));
+}
+
+#root[data-desktop-platform] .summary-workbench-ref-side-title {
+  min-width: 0;
+  font-size: var(--wk-text-size-base);
+}
+
+#root[data-desktop-platform] .summary-workbench-ref-side-close {
+  flex-shrink: 0;
+}
+
+#root[data-desktop-integrated="true"] .version-panel__header[data-desktop-header] {
+  height: auto;
+  min-height: var(--desktop-header-height);
+  padding-top: var(--wk-sp-1);
+  padding-bottom: var(--wk-sp-1);
+  gap: var(--wk-sp-1);
+}
+
+#root[data-desktop-platform] .version-panel__icon {
+  display: none;
+}
+
+#root[data-desktop-platform] .version-panel__heading h2 {
+  font-size: var(--wk-text-size-base);
+  overflow-wrap: anywhere;
+}
+
+#root[data-desktop-platform] .wk-summary-workbench-feature {
+  container-type: inline-size;
+  container-name: desktop-summary-workbench;
+  anchor-scope: --desktop-summary-workbench-header;
+}
+
+@container desktop-summary-workbench (max-width: 720px) {
+  #root[data-desktop-integrated="true"] .summary-workbench-ref-side {
+    position: absolute;
+    z-index: 30;
+    inset: var(--desktop-header-height) 0 0 auto;
+    position-anchor: --desktop-summary-workbench-header;
+    top: anchor(bottom, var(--desktop-header-height));
+    width: min(100%, calc(var(--wk-sidebar-w) + var(--wk-sp-12) * 3));
+    box-shadow: var(--wk-shadow-md);
+  }
+
+  /* Floating content must never inherit the underlying titlebar's drag region. */
+  #root[data-desktop-integrated="true"] .summary-workbench-ref-side,
+  #root[data-desktop-integrated="true"] .summary-workbench-ref-side * {
+    -webkit-app-region: no-drag;
+  }
+}
