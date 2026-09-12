@@ -2823,8 +2823,8 @@
   color: var(--wk-text-tertiary);
   font-size: 12px;
 }
-/* name cell — an activatable open-button wrapping avatar (+ type marker) +
-   name/description stack. The button is the flex container so the whole name
+/* name cell — an activatable open-button wrapping avatar + name/description
+   stack. The button is the flex container so the whole name
    area is one keyboard-focusable target. */
 .wk-mine-table__col--name {
   display: flex;
@@ -2873,31 +2873,6 @@
   font-weight: var(--wk-font-semibold);
   font-size: 14px;
   overflow: hidden;
-}
-.wk-mine-table__type {
-  position: absolute;
-  right: -4px;
-  bottom: -4px;
-  width: 18px;
-  height: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  border: 2px solid var(--wk-bg-surface);
-  color: var(--wk-bg-surface);
-}
-.wk-mine-table__type--skill {
-  background: var(--wk-color-warning);
-}
-.wk-mine-table__type--connector {
-  background: var(--wk-color-info);
-}
-.wk-mine-table__type--expert {
-  background: var(--wk-color-primary);
-}
-.wk-mine-table__type--squad {
-  background: var(--wk-color-success);
 }
 .wk-mine-table__namecol {
   display: flex;

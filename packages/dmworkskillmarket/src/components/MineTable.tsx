@@ -7,12 +7,8 @@ import {
   Globe,
   Lock,
   Pencil,
-  Plug,
-  Sparkles,
   Trash2,
   Upload,
-  UserRound,
-  Users,
   X,
   XCircle,
 } from "lucide-react";
@@ -29,6 +25,14 @@ import { formatCount } from "../utils/format";
 /** The four personal-asset kinds. `squad` is this table's local name for the
  *  `expert_team` wire type. */
 export type MineAssetType = "skill" | "connector" | "expert" | "squad";
+
+/** A one-shot request from the mixed “全部” list to its modal action host. */
+export interface MineActionRequest {
+  requestId: number;
+  pluginId: string;
+  type: MineAssetType;
+  action: "view" | "edit" | "upgrade";
+}
 
 const WIRE_TYPE: Record<MineAssetType, string> = {
   skill: "skill",
@@ -51,8 +55,7 @@ const WIRE_TYPE: Record<MineAssetType, string> = {
 export interface MineRow {
   id: string;
   type: MineAssetType;
-  /** Avatar node (image or color tile) rendered on the left; MineTable overlays
-   *  the type marker on top of it. */
+  /** Avatar node (image or color tile) rendered on the left. */
   icon: React.ReactNode;
   name: string;
   description?: string;
@@ -125,13 +128,6 @@ interface MineTableProps {
   ariaLabel?: string;
 }
 
-const TYPE_MARKERS: Record<MineAssetType, React.ReactElement> = {
-  skill: <Sparkles size={11} aria-hidden="true" />,
-  connector: <Plug size={11} aria-hidden="true" />,
-  expert: <UserRound size={11} aria-hidden="true" />,
-  squad: <Users size={11} aria-hidden="true" />,
-};
-
 /** system/public -> 全平台 globe, private -> lock, space -> org building. */
 function visibilityIcon(key: string): { cls: string; icon: React.ReactElement } {
   const v = key === "public" ? "system" : key;
@@ -196,12 +192,6 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
               >
                 <span className="wk-mine-table__avatar">
                   {r.icon}
-                  <span
-                    className={`wk-mine-table__type wk-mine-table__type--${r.type}`}
-                    aria-hidden="true"
-                  >
-                    {TYPE_MARKERS[r.type]}
-                  </span>
                 </span>
                 <span className="wk-mine-table__namecol">
                   <span className="wk-mine-table__namerow" title={r.name}>

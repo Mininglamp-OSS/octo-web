@@ -129,14 +129,40 @@ vi.mock("@dmwork/skillmarket", () => ({
           { key: `${row.id}-name` },
           String(row.name)
         ),
+        React.createElement(
+          "span",
+          { key: `${row.id}-metric`, "data-testid": `metric-${row.id}` },
+          String(row.downloads)
+        ),
         row.onPublish
           ? React.createElement(
               "button",
               {
                 key: `${row.id}-publish`,
+                disabled: Boolean(row.busy),
                 onClick: row.onPublish as () => void,
               },
               `publish-${row.name}`
+            )
+          : null,
+        row.onUpgrade
+          ? React.createElement(
+              "button",
+              {
+                key: `${row.id}-upgrade`,
+                onClick: row.onUpgrade as () => void,
+              },
+              `upgrade-${row.name}`
+            )
+          : null,
+        row.onEdit
+          ? React.createElement(
+              "button",
+              {
+                key: `${row.id}-edit`,
+                onClick: row.onEdit as () => void,
+              },
+              `edit-${row.name}`
             )
           : null,
         React.createElement(
@@ -161,7 +187,7 @@ vi.mock("../../utils/mcpAvatar", () => ({
 
 import AllAssetsList from "../AllAssetsList";
 
-const asset = (id: string, name: string) => ({
+const asset = (id: string, name: string, patch: Record<string, unknown> = {}) => ({
   id,
   name,
   displayName: name,
@@ -170,9 +196,11 @@ const asset = (id: string, name: string) => ({
   visibility: "private",
   version: "1.0.0",
   viewCount: 0,
+  installCount: 0,
   downloadCount: 0,
   listingState: "draft",
   displayStatus: "draft",
+  ...patch,
 });
 const page = (items: unknown[], nextCursor: string | null = null) => ({
   items,
@@ -193,6 +221,160 @@ afterEach(() => {
   ReactDOM.unmountComponentAtNode(container);
   container.remove();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+
+describe("AllAssetsList parity with type tabs", () => {
+  it("debounces a unified search and sends it to the all-types list", async () => {
+    vi.useFakeTimers();
+    h.getMySkills.mockResolvedValue(page([]));
+
+    await act(async () => {
+      ReactDOM.render(
+        React.createElement(AllAssetsList, {
+          query: "",
+          onOpenType: vi.fn(),
+        }),
+        container
+      );
+    });
+    await act(async () => {
+      ReactDOM.render(
+        React.createElement(AllAssetsList, {
+          query: "report",
+          onOpenType: vi.fn(),
+        }),
+        container
+      );
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+
+    expect(h.getMySkills).toHaveBeenLastCalledWith(
+      { limit: 50, q: "report" },
+      { pluginType: "all" }
+    );
+  });
+
+  it("requests edit and upgrade from the page-level modal host", async () => {
+    const onRequestAction = vi.fn();
+    h.getMySkills.mockResolvedValue(
+      page([
+        asset("draft-skill", "Draft skill"),
+        asset("listed-expert", "Listed expert", {
+          pluginType: "expert",
+          visibility: "space",
+          listingState: "published",
+          displayStatus: "published",
+        }),
+      ])
+    );
+
+    await act(async () => {
+      ReactDOM.render(
+        React.createElement(AllAssetsList, {
+          onOpenType: vi.fn(),
+          onRequestAction,
+        }),
+        container
+      );
+    });
+    act(() => {
+      (
+        Array.from(container.querySelectorAll("button")).find(
+          (button) => button.textContent === "edit-Draft skill"
+        ) as HTMLButtonElement
+      ).click();
+      (
+        Array.from(container.querySelectorAll("button")).find(
+          (button) => button.textContent === "upgrade-Listed expert"
+        ) as HTMLButtonElement
+      ).click();
+    });
+
+    expect(onRequestAction).toHaveBeenNthCalledWith(1, {
+      pluginId: "draft-skill",
+      type: "skill",
+      action: "edit",
+    });
+    expect(onRequestAction).toHaveBeenNthCalledWith(2, {
+      pluginId: "listed-expert",
+      type: "expert",
+      action: "upgrade",
+    });
+  });
+
+  it("uses downloads for skills and installs for the other asset types", async () => {
+    h.getMySkills.mockResolvedValue(
+      page([
+        asset("skill", "Skill", { downloadCount: 12, installCount: 1 }),
+        asset("connector", "Connector", {
+          pluginType: "connector",
+          downloadCount: 2,
+          installCount: 34,
+        }),
+      ])
+    );
+
+    await act(async () => {
+      ReactDOM.render(
+        React.createElement(AllAssetsList, { onOpenType: vi.fn() }),
+        container
+      );
+    });
+
+    expect(container.querySelector('[data-testid="metric-skill"]')?.textContent).toBe("12");
+    expect(container.querySelector('[data-testid="metric-connector"]')?.textContent).toBe("34");
+  });
+
+  it("releases a row action lock when a search reload supersedes it", async () => {
+    vi.useFakeTimers();
+    const publish = deferred<{ displayStatus: string }>();
+    h.getMySkills.mockResolvedValue(page([asset("a", "Searchable asset")]));
+    h.publishPlugin.mockReturnValueOnce(publish.promise);
+
+    await act(async () => {
+      ReactDOM.render(
+        React.createElement(AllAssetsList, {
+          query: "",
+          onOpenType: vi.fn(),
+        }),
+        container
+      );
+    });
+    const publishButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "publish-Searchable asset"
+    ) as HTMLButtonElement;
+
+    act(() => publishButton.click());
+    expect(publishButton.disabled).toBe(true);
+
+    await act(async () => {
+      ReactDOM.render(
+        React.createElement(AllAssetsList, {
+          query: "searchable",
+          onOpenType: vi.fn(),
+        }),
+        container
+      );
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(h.getMySkills).toHaveBeenLastCalledWith(
+      { limit: 50, q: "searchable" },
+      { pluginType: "all" }
+    );
+    expect(publishButton.disabled).toBe(true);
+
+    await act(async () => publish.resolve({ displayStatus: "published" }));
+
+    const refreshedButton = Array.from(
+      container.querySelectorAll("button")
+    ).find(
+      (button) => button.textContent === "publish-Searchable asset"
+    ) as HTMLButtonElement;
+    expect(refreshedButton.disabled).toBe(false);
+  });
 });
 
 describe("AllAssetsList pagination", () => {

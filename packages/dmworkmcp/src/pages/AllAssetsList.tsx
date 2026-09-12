@@ -11,6 +11,7 @@ import {
   getSkillAvatarText,
   publishPlugin,
   type MineAssetType,
+  type MineActionRequest,
   type MineRow,
   type Skill,
 } from "@dmwork/skillmarket";
@@ -68,15 +69,23 @@ const ROW_TYPE: Record<string, MineAssetType> = {
  * The backend made this expressible by allowing `plugin_type` to be omitted on
  * the `mode=mine` listing.
  *
- * The actions it offers are exactly the TYPE-AGNOSTIC ones — 发布, 取消审核 and
- * 删除 each go through an endpoint that takes a plugin id and nothing else. 编辑
- * and 升级版本 are absent because they need the owning market's authoring surface
- * (a connector edits through a wizard, an expert through a bot flow), and
- * reproducing that dispatch here would guarantee this tab drifts from the four
- * that own those flows. Clicking a row opens the tab that can do them.
+ * Type-agnostic actions run here. 详情、编辑 and 升级版本 hand the plugin id to
+ * the page-level action host, which opens the owning type's existing modal over
+ * this tab; this keeps the mixed table aligned without duplicating authoring UI.
  */
-export default function AllAssetsList({ onOpenType }: { onOpenType: (type: string) => void }) {
+export default function AllAssetsList({
+  query = "",
+  refreshKey = 0,
+  onOpenType,
+  onRequestAction,
+}: {
+  query?: string;
+  refreshKey?: number;
+  onOpenType: (type: string) => void;
+  onRequestAction?: (request: Omit<MineActionRequest, "requestId">) => void;
+}) {
   useI18n();
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [items, setItems] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -109,7 +118,12 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
     setError(null);
     setMoreError(false);
     try {
-      const page = await getMySkills({ limit: PAGE_SIZE }, { pluginType: "all" });
+      const page = await getMySkills(
+        debouncedQuery
+          ? { limit: PAGE_SIZE, q: debouncedQuery }
+          : { limit: PAGE_SIZE },
+        { pluginType: "all" }
+      );
       if (version !== requestRef.current) return;
       setItems(page.items);
       const nextCursor = page.items.length > 0 ? page.nextCursor : null;
@@ -126,7 +140,7 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
         setLoading(false);
       }
     }
-  }, []);
+  }, [debouncedQuery, refreshKey]);
 
   // Append the next page. Deliberately does NOT bump requestRef — a load-more is
   // a continuation of the current base read, not a new one — but it is voided by
@@ -147,7 +161,9 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
     setMoreError(false);
     try {
       const page = await getMySkills(
-        { limit: PAGE_SIZE, cursor: next },
+        debouncedQuery
+          ? { limit: PAGE_SIZE, cursor: next, q: debouncedQuery }
+          : { limit: PAGE_SIZE, cursor: next },
         { pluginType: "all" }
       );
       if (version !== requestRef.current) return;
@@ -178,7 +194,7 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
       loadingMoreVersionRef.current = null;
       if (version === requestRef.current) setLoadingMore(false);
     }
-  }, []);
+  }, [debouncedQuery]);
 
   const handleLoadMoreIntersection = useCallback(() => {
     // Keep a failed page on explicit retry; repeated observer callbacks must
@@ -189,6 +205,11 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [query]);
 
   useEffect(
     () => () => {
@@ -224,9 +245,9 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
     return () => WKApp.mittBus.off("space-changed", handleSpaceChanged);
   }, [load]);
 
-  /** Runs one row action and reloads either way — on a conflict the server
-   *  already knows a state this page does not. The row stays disabled until the
-   *  reload settles so a second click cannot race it. */
+  /** Runs one row action and reloads when its base read is still current. The
+   *  row stays disabled while the mutation is in flight, but a newer list read
+   *  must never retain that action's lock. */
   const run = useCallback(
     async (id: string, action: () => Promise<void>, failKey: string) => {
       const version = requestRef.current;
@@ -237,13 +258,13 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
         if (version !== requestRef.current) return;
         Toast.error(err instanceof Error ? err.message : t(failKey));
       } finally {
+        // The row lock belongs to this action, not to the list request
+        // generation. A search/refresh can supersede the base read while the
+        // mutation is still in flight, but it must not leave the row disabled.
+        setBusyId((current) => (current === id ? null : current));
         if (version !== requestRef.current) return;
         const reload = load();
-        const reloadVersion = requestRef.current;
         await reload;
-        // `load` increments the request version; only clear this action's state
-        // when no Space switch or newer load superseded that reload.
-        if (reloadVersion === requestRef.current) setBusyId(null);
       }
     },
     [load]
@@ -285,11 +306,13 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
 
   const rows: MineRow[] = items.map((item) => {
     const wireType = item.pluginType ?? "skill";
+    const rowType = ROW_TYPE[wireType] ?? "skill";
     const status = item.displayStatus ?? "draft";
     const pending = status === "pending_review";
+    const listedToOrg = item.listingState === "published" && item.visibility === "space";
     return {
       id: item.id,
-      type: ROW_TYPE[wireType] ?? "skill",
+      type: rowType,
       trackItemType: wireType,
       // Each type draws its avatar the way its OWN tab draws it — skills key the
       // tile off the name, the other markets off the id — so the same row does
@@ -316,11 +339,21 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
       version: item.version,
       visibility: item.visibility,
       views: item.viewCount,
-      downloads: item.downloadCount,
+      // Skills are downloaded as packages and do not report a successful local
+      // install. The other plugin types use the backend's install metric, just
+      // like their owning tabs do.
+      downloads: rowType === "skill" ? item.downloadCount : item.installCount,
       status,
       ariaLabel: item.name,
       busy: busyId === item.id,
-      onOpen: () => onOpenType(wireType),
+      onOpen: onRequestAction
+        ? () => onRequestAction({ pluginId: item.id, type: rowType, action: "view" })
+        : () => onOpenType(wireType),
+      onEdit:
+        onRequestAction && !listedToOrg && !pending
+          ? () => onRequestAction({ pluginId: item.id, type: rowType, action: "edit" })
+          : undefined,
+      editAria: t("skillMarket.plugin.ariaEdit", { values: { name: item.name } }),
       onPublish:
         item.listingState !== "published" && !pending
           ? () =>
@@ -343,6 +376,11 @@ export default function AllAssetsList({ onOpenType }: { onOpenType: (type: strin
               )
           : undefined,
       publishAria: t("skillMarket.plugin.ariaPublish", { values: { name: item.name } }),
+      onUpgrade:
+        onRequestAction && listedToOrg && !pending
+          ? () => onRequestAction({ pluginId: item.id, type: rowType, action: "upgrade" })
+          : undefined,
+      upgradeAria: t("skillMarket.plugin.ariaUpgrade", { values: { name: item.name } }),
       onCancelReview:
         pending && item.reviewId
           ? () =>

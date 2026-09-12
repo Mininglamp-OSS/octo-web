@@ -12,6 +12,7 @@ const fetchMcpDetail = vi.fn();
 vi.mock("../../api/mcpService", () => ({
   deleteMcp: vi.fn(),
   fetchMcpDetail: (...args: unknown[]) => fetchMcpDetail(...args),
+  trackMcpView: vi.fn(),
 }));
 vi.mock("../../api/quickStartTemplates", () => ({
   buildQuickStartTabs: () => [],

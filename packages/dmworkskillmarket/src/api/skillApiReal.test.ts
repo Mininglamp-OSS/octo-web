@@ -223,6 +223,7 @@ describe("skillApiReal", () => {
     expect(result.items[0].iconUrl).toBe("https://cdn.example.com/icons/ci.png");
     expect(result.items[0].version).toBe("1.0.2");
     expect(result.items[0].viewCount).toBe(7);
+    expect(result.items[0].installCount).toBe(0);
     expect(result.items[0].downloadCount).toBe(3);
     // 1 * 10 < 42 → the synthesized cursor is the next page number.
     expect(result.nextCursor).toBe("2");

@@ -286,7 +286,7 @@
     "actionEdit": "编辑",
     "actionDelete": "删除",
     "actionUpgrade": "升级版本",
-    "actionCancelReview": "取消审核",
+    "actionCancelReview": "撤销审核",
     "actionDelist": "下架",
     "actionPublish": "发布",
     "actionSaveDraft": "保存草稿",

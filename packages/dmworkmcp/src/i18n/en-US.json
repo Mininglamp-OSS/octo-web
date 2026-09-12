@@ -18,6 +18,7 @@
     "pageTitle": "My publications",
     "navAriaLabel": "My asset type",
     "tabAll": "All",
+    "searchPlaceholder": "Search name or description...",
     "emptyAll": "You have not published anything yet",
     "allAriaLabel": "All my publications",
     "deleteTitle": "Delete plugin",

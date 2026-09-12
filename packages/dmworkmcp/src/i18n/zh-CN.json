@@ -18,6 +18,7 @@
     "pageTitle": "我的发布",
     "navAriaLabel": "我的资产类型",
     "tabAll": "全部",
+    "searchPlaceholder": "搜索名称、描述...",
     "emptyAll": "还没有发布任何内容",
     "allAriaLabel": "我的全部发布",
     "deleteTitle": "删除插件",
