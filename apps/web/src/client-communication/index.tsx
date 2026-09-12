@@ -28,7 +28,9 @@ import { requireHostBridge } from "./hostBridge";
 import { reportStartupFailure } from "./startupFailure";
 import { installHostDocumentPreview } from "./documentPreview";
 import { installDesktopPresentationLifecycle } from "./desktopPresentationLifecycle";
+import "../client-feature/desktop/presentation.css";
 import "./desktop-presentation.css";
+import "./desktop-contacts.css";
 
 async function main() {
   const host = requireHostBridge();

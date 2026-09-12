@@ -110,6 +110,8 @@ export interface OctoBuddyCommunicationBridge {
     rendererVersion: string;
     documentForwardVersion?: 1;
     desktopPresentationVersion?: 1;
+    /** Complete page allowlist; older v1 renderers without this field support chat only. */
+    desktopPresentationPages?: readonly CommunicationPage[];
   }): Promise<void>;
   reportNavigation(state: NavigationReport): Promise<void>;
   reportUnread(count: number): void;

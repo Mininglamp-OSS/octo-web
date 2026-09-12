@@ -1,0 +1,64 @@
+#root[data-desktop-platform] .communication-contacts {
+  --desktop-header-background: var(--desktop-sidebar-background, var(--wk-bg-base));
+}
+
+#root[data-desktop-integrated="true"] .communication-contacts-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: var(--desktop-header-height);
+  min-height: var(--desktop-header-height);
+}
+
+#root[data-desktop-platform] .communication-contacts-header .wk-navheader__title {
+  font-size: var(--wk-text-size-base);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#root[data-desktop-platform] .communication-contacts-body .wk-contacts {
+  border-right: 0;
+  background: var(--desktop-sidebar-background, var(--wk-bg-base));
+}
+
+#root[data-desktop-platform] .communication-contacts .wk-contacts-content {
+  padding-top: 0;
+}
+
+#root[data-desktop-platform] .communication-contacts .wk-contacts-botfather-banner {
+  background: var(--wk-bg-surface);
+  border-radius: var(--wk-r-sm);
+}
+
+#root[data-desktop-platform] .communication-contacts .wk-contacts-botfather-name {
+  color: var(--wk-text-primary);
+}
+
+#root[data-desktop-platform] .communication-contacts :is(.wk-contacts-botfather-desc, .wk-contacts-botfather-banner > svg) {
+  color: var(--wk-text-secondary);
+}
+
+#root[data-desktop-platform] .communication-contacts :is(.wk-contacts-search-input, .wk-contacts-chip) {
+  border-radius: var(--wk-r-sm);
+}
+
+#root[data-desktop-platform] .communication-contacts .wk-contacts-accordion--expanded {
+  flex: 1;
+  overflow: hidden;
+}
+
+#root[data-desktop-platform] .communication-contacts :is(.wk-contacts-accordion-header, .wk-contacts-filters) {
+  flex-shrink: 0;
+}
+
+#root[data-desktop-platform] .communication-contacts :is(.wk-contacts-accordion-body, .wk-contacts-all-list) {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  max-height: none;
+}
+
+#root[data-desktop-platform] .communication-contacts :is(.wk-contacts-letter-header, .wk-contacts-accordion-label) {
+  letter-spacing: 0;
+}

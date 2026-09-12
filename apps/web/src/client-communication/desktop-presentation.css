@@ -1,41 +1,6 @@
-#root[data-desktop-platform] {
-  color: var(--wk-text-primary);
-  letter-spacing: 0;
-  --desktop-drag-region: drag;
-  -webkit-app-region: no-drag;
-}
-
-#root[data-desktop-drag-suspended="true"],
-#root[data-desktop-fullscreen="true"] {
-  --desktop-drag-region: no-drag;
-}
-
-#root[data-desktop-platform="darwin"] {
-  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-}
-
-#root[data-desktop-platform="win32"] {
-  font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", sans-serif;
-}
-
 #root[data-desktop-platform] .wk-chat-space-name {
   font-size: var(--wk-text-size-base);
   letter-spacing: 0;
-}
-
-#root[data-desktop-platform] [data-desktop-header] {
-  box-sizing: border-box;
-  height: var(--desktop-header-height);
-  min-height: var(--desktop-header-height);
-  padding-left: calc(var(--desktop-safe-left) + var(--wk-sp-3));
-  padding-right: calc(var(--desktop-safe-right) + var(--wk-sp-3));
-  padding-top: 0;
-  padding-bottom: 0;
-  user-select: none;
-  -webkit-app-region: var(--desktop-drag-region, no-drag);
-  background: var(--desktop-header-background, var(--desktop-chrome-background, var(--wk-bg-surface)));
-  color: var(--desktop-chrome-foreground, var(--wk-text-primary));
-  border-bottom: 0;
 }
 
 #root[data-desktop-platform] .wk-chat-content-left,
@@ -78,16 +43,6 @@
   --wk-height-route-header: var(--desktop-header-height);
 }
 
-/* Business subtrees are interactive by default, including legacy div controls. */
-#root[data-desktop-platform] [data-desktop-header] * {
-  -webkit-app-region: no-drag;
-}
-
-/* Only explicitly declared layout backgrounds contribute draggable gaps. */
-#root[data-desktop-platform] [data-desktop-header] [data-desktop-chrome="layout"] {
-  -webkit-app-region: var(--desktop-drag-region, no-drag);
-}
-
 #root[data-desktop-platform] .wk-chat-conversation-header-content {
   min-width: 0;
   gap: var(--wk-sp-3);
@@ -128,7 +83,6 @@
   right: calc(var(--desktop-safe-right) + var(--wk-sp-3));
 }
 
-#root[data-desktop-focused="false"] [data-desktop-header],
 #root[data-desktop-focused="false"] .wk-chat-space-name {
   color: var(--wk-text-secondary);
 }

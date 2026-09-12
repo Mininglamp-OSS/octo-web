@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { act, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
@@ -61,7 +61,10 @@ vi.mock("../App/electronUnreadCount", () => ({
 }));
 
 vi.mock("@octo/contacts", () => ({
-  ContactsList: () => <div>contacts</div>,
+  ContactsList: () => {
+    const [filter, setFilter] = React.useState("");
+    return <input aria-label="contacts" value={filter} onChange={(event) => setFilter(event.target.value)} />;
+  },
 }));
 
 vi.mock("@dmwork/appbot/conversation", () => ({
@@ -142,6 +145,7 @@ vi.mock("@octo/base", () => {
       return <>{contentLeft}{contentRight}</>;
     },
     i18n: { setLocale: vi.fn() },
+    useI18n: () => ({ t: (key: string) => key }),
   };
 });
 
@@ -157,6 +161,30 @@ describe("CommunicationShell", () => {
     mocks.command.listener = undefined;
     mocks.summaryRequest.listener = undefined;
     mocks.getCurrentImChannelInfo.mockReturnValue(undefined);
+  });
+
+  it("keeps one embedded Contacts header and preserves child state while switching visible pages", async () => {
+    const { container } = render(
+      <CommunicationShell bridge={mocks.bridge as any}
+        initialPage="contacts" initialSpaceId="space-a"
+        initialPresentation="workspace" onReady={async () => {}} />,
+    );
+    const header = container.querySelector(".communication-contacts-header");
+    const body = container.querySelector(".communication-contacts-body");
+    const contactsPage = body?.closest<HTMLElement>(".communication-page");
+    const input = body?.querySelector("input")!;
+    expect(header?.textContent).toBe("contacts.page.title");
+    expect(container.querySelectorAll(".communication-contacts-header")).toHaveLength(1);
+    expect(contactsPage?.style.display).toBe("block");
+    fireEvent.change(input, { target: { value: "preserved search" } });
+    act(() => mocks.command.listener?.({ type: "navigate", page: "chat" }));
+    expect(contactsPage?.style.display).toBe("none");
+    act(() => mocks.command.listener?.({ type: "navigate", page: "contacts" }));
+    expect(contactsPage?.style.display).toBe("block");
+    expect(container.querySelector(".communication-contacts-header")).toBe(header);
+    expect(container.querySelector(".communication-contacts-body")).toBe(body);
+    expect(body?.querySelector("input")).toBe(input);
+    expect(input.value).toBe("preserved search");
   });
 
   it("reports ready once during the React StrictMode effect cycle", async () => {
