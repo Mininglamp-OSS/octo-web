@@ -24,6 +24,9 @@ import { enableClientFeatureMocks } from "../client-feature/e2eMocks";
 import { AppsShell } from "./AppsShell";
 import { requireAppsHostBridge } from "./hostBridge";
 import { reportAppsStartupFailure } from "./startupFailure";
+import { installFeaturePresentation } from "../client-feature/desktop/featurePresentation";
+import "../client-feature/desktop/presentation.css";
+import "./desktop-apps.css";
 
 async function main() {
   const host = requireAppsHostBridge();
@@ -75,15 +78,22 @@ async function main() {
   WKApp.remoteConfig.startRequestConfig();
   Dap.shared.init();
 
-  createRoot(document.getElementById("root")!).render(
+  const root = document.getElementById("root")!;
+  let context = { spaceId: bootstrap.space.id };
+  const presentation = installFeaturePresentation(host, {
+    root, pages: ["apps"] as const, getContext: () => context,
+  });
+  await presentation.available;
+  createRoot(root).render(
     <React.StrictMode>
       <I18nProvider>
         <WKBase onContext={(context) => (WKApp.shared.baseContext = context)}>
           <AppsShell
             bridge={host}
             initialSpace={bootstrap.space}
+            onPresentationContext={(next) => { context = next; }}
             onReady={({ spaceId }) =>
-              host.reportReady({
+              presentation.reportReady({
                 bridgeVersion: 1,
                 spaceId,
                 rendererVersion: WKApp.config.appVersion,

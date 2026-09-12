@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Dap, SpaceService, ThemeMode, WKApp, i18n } from "@octo/base";
 import { AppsWorkspace, type AppBotHostCapabilities } from "@dmwork/appbot";
 import type { AppsHostCommand, OctoBuddyAppsBridge } from "./hostBridge";
@@ -9,10 +9,12 @@ export function AppsShell({
   bridge,
   initialSpace,
   onReady,
+  onPresentationContext,
 }: {
   bridge: OctoBuddyAppsBridge;
   initialSpace: { id: string; name: string };
   onReady: (state: { spaceId: string }) => Promise<void>;
+  onPresentationContext?: (state: { spaceId: string }) => void;
 }) {
   const [space, setSpace] = useState(initialSpace);
   const [reloadKey, setReloadKey] = useState(0);
@@ -20,6 +22,10 @@ export function AppsShell({
   const listeners = useRef(new Set<() => void>());
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+
+  useLayoutEffect(() => {
+    onPresentationContext?.({ spaceId: space.id });
+  }, [space.id, onPresentationContext]);
 
   const host = useMemo<AppBotHostCapabilities>(
     () => ({
