@@ -1241,7 +1241,7 @@ export default class SummaryCreatePage extends Component<
         }`}
       >
                 {/* Header */}
-                <div className="summary-workbench-header">
+                <div className="summary-workbench-header" data-desktop-chrome="header">
                     <span className="summary-workbench-header-emoji">🚀</span>
           <span className="summary-workbench-title">
             {translate("summary.create.title")}

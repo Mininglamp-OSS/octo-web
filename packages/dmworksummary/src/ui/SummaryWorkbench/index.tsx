@@ -414,8 +414,8 @@ const SummaryWorkbench = ({
       data-testid="summary-workbench"
       data-screen-label="smart-summary-workbench"
     >
-      <header className="wk-summary-workbench__header">
-        <div className="wk-summary-workbench__heading">
+      <header className="wk-summary-workbench__header" data-desktop-chrome="header">
+        <div className="wk-summary-workbench__heading" data-desktop-chrome="layout">
           <div>
             <h1>{t("summary.workbench.title")}</h1>
             {state.messages.length === 0 && (

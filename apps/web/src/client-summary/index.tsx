@@ -29,6 +29,9 @@ import { enableClientFeatureMocks } from "../client-feature/e2eMocks";
 import { SummaryShell } from "./SummaryShell";
 import { requireSummaryHostBridge } from "./hostBridge";
 import { reportSummaryStartupFailure } from "./startupFailure";
+import { installFeaturePresentation } from "../client-feature/desktop/featurePresentation";
+import "../client-feature/desktop/presentation.css";
+import "./desktop-summary.css";
 
 async function main() {
   const host = requireSummaryHostBridge();
@@ -84,7 +87,15 @@ async function main() {
   WKApp.mittBus.emit("space-ready");
   startSummaryAttentionPolling();
 
-  createRoot(document.getElementById("root")!).render(
+  const root = document.getElementById("root")!;
+  let context = { route: bootstrap.initialRoute, spaceId: bootstrap.space.id };
+  const presentation = installFeaturePresentation(host, {
+    root,
+    pages: ["list", "create", "detail", "share", "confirm", "schedules"] as const,
+    getContext: () => context,
+  });
+  await presentation.available;
+  createRoot(root).render(
     <React.StrictMode>
       <I18nProvider>
         <WKBase onContext={(context) => (WKApp.shared.baseContext = context)}>
@@ -92,8 +103,9 @@ async function main() {
             bridge={host}
             initialRoute={bootstrap.initialRoute}
             initialSpaceId={bootstrap.space.id}
+            onPresentationContext={(next) => { context = next; }}
             onReady={({ route, spaceId }) =>
-              host.reportReady({
+              presentation.reportReady({
                 bridgeVersion: 1,
                 route,
                 spaceId,
