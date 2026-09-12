@@ -31,7 +31,7 @@ jobs:
       # using 'every' here would drop mixed PRs (e.g. apps/web/** + README.md).
       e2e: ${{ github.event_name == 'pull_request' && steps.filter.outputs.e2e || 'true' }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         if: github.event_name == 'pull_request'
         with:
           persist-credentials: false
@@ -55,7 +55,7 @@ jobs:
     if: needs.changes.outputs.e2e == 'true'
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -82,7 +82,7 @@ jobs:
       E2E_TARGET: local
       PW_PREVIEW_PORT: "5173"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v4
         with:
           name: build-e2e

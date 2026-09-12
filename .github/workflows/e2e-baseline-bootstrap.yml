@@ -29,7 +29,7 @@ jobs:
       PW_PREVIEW_PORT: "5175"
       BASELINE_BRANCH: ${{ inputs.branch_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Trust workspace for git
