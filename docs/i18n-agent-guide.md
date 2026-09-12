@@ -166,7 +166,7 @@ Ratios are **character-count** (`len(en-US) / len(zh-CN)`), using pairs that exi
 | --- | --- | --- |
 | Short relative date | `前天` → `The day before yesterday` (`base.time.dayBeforeYesterday`) | 2 → 24 ≈ **12×** |
 | Compact status | `已完成` → `Completed` | 3 → 9 ≈ **3×** |
-| Nav / rail label | `智能总结` → `AI Summary` (`nav.summary`) | 4 → 10 ≈ **2.5×** |
+| Nav / rail label | `智能总结` → `AI Summary` (`summary.menu.title`) | 4 → 10 ≈ **2.5×** |
 | Primary button verb | `创建` → `Create` | 2 → 6 ≈ **3×** |
 
 Short source strings expand **more** than long ones. The W3C article that publishes IBM’s length guidance budgets **200–300%** (i.e. 2–3×) for messages ≤10 characters, and warns that the shorter the source, the larger the possible translation. Do not assume `~1×` for two-character Chinese verbs.
@@ -186,7 +186,7 @@ Keep this table alive. When you discover a new narrow container, add a row and c
 ### Design layers (preference order)
 
 1. **Reserve layout space** — size the container for the longest required locale.
-2. **`.short` variant keys** — for **non-date** constrained labels (nav, tabs, buttons). Use the owning namespace prefix (see Key Naming). Example shape: `base.nav.summaryShort` — add to **both** `zh-CN` and `en-US` in the same change (`pnpm i18n:check` fails on missing locale keys). Do **not** invent a `date.*` namespace; date/time copy belongs in layer 3.
+2. **`.short` variant keys** — for **non-date** constrained labels (nav, tabs, buttons). Use the owning namespace prefix (see Key Naming). Example shape: `summary.menu.titleShort` (same owning namespace as the rendered key `summary.menu.title`) — add to **both** `zh-CN` and `en-US` in the same change (`pnpm i18n:check` fails on missing locale keys). Do **not** invent a `date.*` namespace; date/time copy belongs in layer 3.
 3. **Locale-sensitive `format.*`** — for dates/times/numbers use `format.relativeTime` / `format.dateTime` instead of hand-translated phrases. Example: `Intl.RelativeTimeFormat` gives `前天` in zh-CN and `2 days ago` (~10 chars) in en-US, instead of the 24-char hand-written phrase.
 4. **Truncation + tooltip** — last resort only. Provide both an accessible name (`aria-label`) and a hover `title` when they differ from the visible clipped text; document the container in the inventory table.
 
