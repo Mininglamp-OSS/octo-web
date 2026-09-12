@@ -931,13 +931,23 @@ export default class ConversationList extends Component<
                     </svg>
                   </span>
                 )}
+                {/* 会话列表 date 列的短格式:compact=true 让 -2d 桶走 `2d ago`
+                    (en-US)/`前天` (zh-CN),不改其它 3 个共享 caller 的英文原语;
+                    weekday 桶是全局短版本 (`Wed`/`周三`),细节见 time.ts JSDoc。
+                    label 用两个位置命名,避免匿名 bool 参对堆叠时被误读。
+                    title 兜底:112px cap 触发 ellipsis 时把完整时间字符串挂回
+                    span,鼠标悬浮能恢复被截字符 (round 3 reviewer P2)。 */}
                 <div className="wk-conversationlist-item-time">
-                  <span>
-                    {getTimeStringAutoShort2(
+                  {(() => {
+                    const includeTime = true;
+                    const compactLabel = true;
+                    const dateLabel = getTimeStringAutoShort2(
                       conversationWrap.timestamp * 1000,
-                      true
-                    )}
-                  </span>
+                      includeTime,
+                      compactLabel,
+                    );
+                    return <span title={dateLabel}>{dateLabel}</span>;
+                  })()}
                 </div>
               </div>
             </div>

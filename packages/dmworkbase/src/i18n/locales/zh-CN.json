@@ -874,6 +874,7 @@
   "threadPanel.webhook": "消息推送",
   "threadPanel.webhookTitle": "「{{name}}」的消息推送",
   "time.dayBeforeYesterday": "前天",
+  "time.dayBeforeYesterdayShort": "前天",
   "time.justNow": "刚刚",
   "time.yesterday": "昨天",
   "time.yesterdayWithTime": "昨天 {{time}}",
