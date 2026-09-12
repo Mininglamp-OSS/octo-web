@@ -1,4 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+vi.mock("../../components/ChatSelectorModal", () => ({ default: () => null }));
+vi.mock("../../components/TimeRangePicker", () => ({ default: () => null }));
 
 // SummaryDetailPage import wukongimjssdk，测试环境会拉起无关依赖导致解析失败，mock 掉。
 vi.mock('wukongimjssdk', () => ({
@@ -60,6 +62,7 @@ import * as api from '../../api/summaryApi';
 import { WKApp, Dap } from '@octo/base';
 import SummaryDetailPage from '../SummaryDetailPage';
 import { refreshSummaryAttentionBadge } from '../../utils/summaryAttentionBadge';
+import { requestSummaryScheduleOpen, consumeSummaryScheduleOpen } from '../../utils/summaryScheduleIntent';
 import { summaryTestIds } from '../../utils/testIds';
 import { SummaryForwardContextExpiredError } from '../../host/forwardErrors';
 import type { SummaryForwardRequest, SummaryMessagingPort } from '../../host/types';
@@ -70,8 +73,9 @@ vi.mock('../../api/summaryApi');
 function makePage(taskId: number | string) {
     const page = new SummaryDetailPage({ taskId } as any);
     (page as any).context = { t: (k: string) => k };
-    (page as any).setState = function (this: any, patch: any) {
+    (page as any).setState = function (this: any, patch: any, callback?: () => void) {
         this.state = { ...this.state, ...(typeof patch === 'function' ? patch(this.state) : patch) };
+        callback?.();
     };
     return page;
 }
@@ -216,8 +220,114 @@ const baseDetail = (over: any = {}) => ({
     ...over,
 });
 
+describe('schedule intent waits for the matching loaded task', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        consumeSummaryScheduleOpen(1, WKApp.shared?.currentSpaceId || '');
+        consumeSummaryScheduleOpen(2, WKApp.shared?.currentSpaceId || '');
+    });
+
+    it('does not open the outgoing page synchronously and consumes on a same-task update', () => {
+        const page = makePage(1);
+        page.state = { ...page.state, detail: baseDetail({ topic: 'same task' }) as any, loading: false };
+        requestSummaryScheduleOpen(1, WKApp.shared?.currentSpaceId || '');
+        expect(page.state.showScheduleConfig).toBe(false);
+        page.componentDidUpdate({ taskId: 1 }, page.state);
+        expect(page.state.showScheduleConfig).toBe(true);
+        page.componentWillUnmount();
+    });
+
+    it('keeps a click while detail is loading instead of dropping it after 300ms', async () => {
+        let resolve!: (value: any) => void;
+        vi.mocked(api.getSummaryDetail).mockReturnValue(new Promise(res => { resolve = res; }));
+        const page = makePage(1);
+        requestSummaryScheduleOpen(1, WKApp.shared?.currentSpaceId || '');
+        const loading = page.loadDetail();
+        expect(page.state.showScheduleConfig).toBe(false);
+        resolve(baseDetail({ topic: 'target instruction' }));
+        await loading;
+        expect(page.state.showScheduleConfig).toBe(true);
+        expect(page.state.scheduleConfig.generationInstruction).toBe('target instruction');
+        page.componentWillUnmount();
+    });
+
+    it('clears old detail and refuses schedule writes before the new detail arrives', async () => {
+        let resolve!: (value: any) => void;
+        vi.mocked(api.getSummaryDetail).mockReturnValue(new Promise(res => { resolve = res; }));
+        const page = makePage(2);
+        page.state = { ...page.state, detail: baseDetail({ task_id: 1, topic: 'old private instruction' }) as any, showScheduleConfig: true };
+        requestSummaryScheduleOpen(2, WKApp.shared?.currentSpaceId || '');
+        page.openScheduleModal();
+        await page.handleScheduleSave({ unit: 'week', every: 1, time: '09:00', generationInstruction: 'old private instruction' });
+        expect(api.createSchedule).not.toHaveBeenCalled();
+        const loading = page.loadDetail();
+        expect(page.state.detail).toBeNull();
+        expect(page.state.showScheduleConfig).toBe(false);
+        resolve(baseDetail({ task_id: 2, topic: 'new instruction' }));
+        await loading;
+        expect(page.state.showScheduleConfig).toBe(true);
+        expect(page.state.scheduleConfig.generationInstruction).toBe('new instruction');
+        page.componentWillUnmount();
+    });
+
+    it('waits for the existing schedule instead of opening a default create form', async () => {
+        let resolve!: (value: any) => void;
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(baseDetail({ schedule_id: 77 }) as any);
+        vi.mocked(api.getSchedule).mockReturnValue(new Promise(res => { resolve = res; }));
+        const page = makePage(1);
+        requestSummaryScheduleOpen(1, WKApp.shared?.currentSpaceId || '');
+        await page.loadDetail();
+        expect(page.state.showScheduleConfig).toBe(false);
+        resolve({ schedule_id: 77, generation_instruction: 'scheduled instruction', cron_expr: '0 9 * * 1', is_active: true });
+        await Promise.resolve();
+        expect(page.state.showScheduleConfig).toBe(true);
+        expect(page.state.scheduleConfig.generationInstruction).toBe('scheduled instruction');
+        page.componentWillUnmount();
+    });
+
+    it('does not invoke missing config APIs on an older backend', async () => {
+        const page = makePage(1);
+        page.state.detail = baseDetail({ trigger_type: 3, summary_mode: 2 }) as any;
+        page.openScheduleModal();
+        expect(page.state.showScheduleConfig).toBe(false);
+        expect(page.state.showRegenerateModal).toBe(false);
+        page.state.regenerateMode = 'full';
+        page.state.regenerateTopic = 'instruction';
+        await page.handleRegenerateConfirm();
+        expect(api.saveGenerationConfig).not.toHaveBeenCalled();
+        expect(api.regenerateSummary).not.toHaveBeenCalled();
+    });
+});
+
 describe('SummaryDetailPage — Blocking 5: scheduleItem must track current detail', () => {
     beforeEach(() => vi.clearAllMocks());
+
+    it('saves missing Agent configuration before opening scheduling, without generating or enabling a schedule', async () => {
+        const page = makePage(1);
+        page.state.detail = baseDetail({
+            status: 3, trigger_type: 3, summary_mode: 2, generation_requirement: '',
+        }) as any;
+        page.openScheduleModal();
+        expect(page.state.configuringForSchedule).toBe(true);
+        expect(page.state.showScheduleConfig).toBe(false);
+        page.state.regenerateTopic = 'Summarize progress and risks';
+        page.state.regenerateSources = [{ source_type: 1, source_id: 'group-1', source_name: 'Project' }];
+        page.state.regenerateRange = { start: new Date('2026-09-01T00:00:00Z'), end: new Date('2026-09-07T00:00:00Z') };
+        vi.mocked(api.getSummaryDetail).mockResolvedValue({
+            ...page.state.detail!, generation_requirement: page.state.regenerateTopic,
+            sources: page.state.regenerateSources,
+            time_range_start: '2026-09-01T00:00:00Z', time_range_end: '2026-09-07T00:00:00Z',
+        });
+        await page.handleRegenerateConfirm();
+        expect(api.saveGenerationConfig).toHaveBeenCalledWith(1, {
+            topic: 'Summarize progress and risks', sources: page.state.regenerateSources,
+            time_range: { start: '2026-09-01T00:00:00.000Z', end: '2026-09-07T00:00:00.000Z' },
+        });
+        expect(page.state.showScheduleConfig).toBe(true);
+        expect(page.state.scheduleConfig.generationInstruction).toBe('Summarize progress and risks');
+        expect(api.regenerateSummary).not.toHaveBeenCalled();
+        expect(api.createSchedule).not.toHaveBeenCalled();
+    });
 
     it('clears stale scheduleItem when navigating to a detail with no schedule', async () => {
         // 模拟从「有定时」总结切到「无定时」总结：先有残留 scheduleItem。

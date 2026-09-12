@@ -197,7 +197,7 @@
     "titleRequired": "标题不能为空",
     "saving": "保存中...",
     "noOutputToSave": "当前对话还没有可保存的总结，请先与 AI 对话产出内容",
-    "agentSummaryCreated": "AI 总结已保存",
+    "agentSummaryCreated": "总结保存成功",
     "savedReferenceLostRetry": "保存失败：请重新选择引用总结，或点「新会话」重来",
     "savedNoOriginRetry": "保存失败：该引用总结缺少来源频道，本次会话也未读取过频道。请更换有来源的引用总结，或开始新会话让 AI 先读取频道"
   },
@@ -653,9 +653,19 @@
     "convertErrEncoding": "内容编码异常，无法转换",
     "convertErrDocType": "该文档类型不支持导入正文"
   },
+  "generation": {
+    "sources": "总结来源",
+    "selectSources": "选择聊天",
+    "timeRange": "时间范围",
+    "savedByDefault": "补充的配置将保存，后续无需重复填写。",
+    "scheduleUpdate": "定时更新",
+    "continueSchedule": "保存并设置定时更新",
+    "completeConfig": "补充总结配置",
+    "serviceUpgradeRequired": "请先更新总结服务，再使用此功能。"
+  },
   "summaryCard": {
-    "agentType": "Agent 总结",
-    "quickType": "快速总结",
+    "personalType": "个人总结",
+    "teamType": "团队总结",
     "createdBy": "{{name}} 发起",
     "deleteTitle": "确认删除",
     "deleteContent": "确定要删除「{{title}}」吗？删除后历史版本也将一并清除。",
@@ -682,9 +692,7 @@
     "confirmDeleteTitle": "确认删除？",
     "confirmDeleteDesc": "删除后无法恢复",
     "confirmLeaveTitle": "确认退出？",
-    "confirmLeaveDesc": "退出后将不再参与该总结",
-    "scheduledType": "定时总结",
-    "multiPersonType": "多人总结"
+    "confirmLeaveDesc": "退出后将不再参与该总结"
   },
   "editor": {
     "saveSuccess": "保存成功",

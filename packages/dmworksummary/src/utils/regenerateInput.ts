@@ -6,8 +6,11 @@ export function applyRegenerateVoiceInput(
     mode: ReplaceMode,
     savedRange: SelectionRange | undefined,
     maxLength: number,
+    countRunes = false,
 ): string {
-    if (mode === "all") return text.slice(0, maxLength);
+    const length = (value: string) => countRunes ? Array.from(value).length : value.length;
+    const truncate = (value: string, limit: number) => countRunes ? Array.from(value).slice(0, limit).join("") : value.slice(0, limit);
+    if (mode === "all") return truncate(text, maxLength);
 
     const start = mode === "selection" && savedRange
         ? savedRange.from
@@ -15,6 +18,6 @@ export function applyRegenerateVoiceInput(
     const end = mode === "selection" && savedRange ? savedRange.to : start;
     const before = current.slice(0, start);
     const after = current.slice(end);
-    const budget = Math.max(0, maxLength - before.length - after.length);
-    return before + text.slice(0, budget) + after;
+    const budget = Math.max(0, maxLength - length(before) - length(after));
+    return before + truncate(text, budget) + after;
 }

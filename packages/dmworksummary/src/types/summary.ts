@@ -242,6 +242,8 @@ export interface SummaryDetail {
     task_no: string;
     title: string;
     topic?: string;
+    /** Actual saved generation instruction; an Agent title is not a prompt. */
+    generation_requirement?: string;
     summary_mode: SummaryModeType;
     status: TaskStatusType;
     trigger_type: number;

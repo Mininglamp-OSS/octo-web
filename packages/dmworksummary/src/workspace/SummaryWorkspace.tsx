@@ -151,6 +151,7 @@ export default function SummaryWorkspace({
             refreshKey={listRefreshKey}
             onCreateNew={showCreate}
             onViewDetail={showDetail}
+            onContinueOptimize={continueRefine}
           />
         </aside>
         {route.view !== "list" ? (

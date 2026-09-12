@@ -25,7 +25,7 @@ vi.mock('../../api/summaryApi', () => ({
 vi.mock('../../utils/summaryHelpers', () => ({
     formatDateOnly: (value: string) => value.slice(0, 10),
     getSummaryTypeKind: () => 'quick',
-    getSummaryTypeLabel: (t: (key: string) => string) => t('summary.summaryCard.quickType'),
+    getSummaryTypeLabel: (t: (key: string) => string) => t('summary.summaryCard.personalType'),
     getStatusLabel: (status: number) => {
         const labels: Record<number, string> = { 0: '待处理', 1: '待确认', 2: '进行中', 3: '已完成', 4: '失败', 5: '已取消' };
         return labels[status] ?? '未知';
