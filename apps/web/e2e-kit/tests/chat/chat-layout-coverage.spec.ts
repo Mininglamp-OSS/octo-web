@@ -281,17 +281,19 @@ test(
       )
       .toBe(true);
 
-    const scrollButtonBox = await scrollButton.boundingBox();
-    if (!scrollButtonBox) throw new Error("滚动到底部按钮没有可验证的布局位置");
-    const panelCoversScrollButton = await panel.evaluate(
-      (element, point) =>
-        element.contains(document.elementFromPoint(point.x, point.y)),
-      {
-        x: scrollButtonBox.x + scrollButtonBox.width / 2,
-        y: scrollButtonBox.y + scrollButtonBox.height / 2,
-      },
-    );
-    expect(panelCoversScrollButton).toBe(true);
+    // Visible drawers can still be sliding in; wait for the actual hit region.
+    await expect.poll(async () => {
+      const scrollButtonBox = await scrollButton.boundingBox();
+      if (!scrollButtonBox) return false;
+      return panel.evaluate(
+        (element, point) =>
+          element.contains(document.elementFromPoint(point.x, point.y)),
+        {
+          x: scrollButtonBox.x + scrollButtonBox.width / 2,
+          y: scrollButtonBox.y + scrollButtonBox.height / 2,
+        },
+      );
+    }).toBe(true);
 
     const member = panel
       .locator(".wk-subscribers-item")

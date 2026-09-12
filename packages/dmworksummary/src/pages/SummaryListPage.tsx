@@ -781,7 +781,7 @@ export default class SummaryListPage extends Component<
           isPanel ? " summary-list-page--panel" : ""
         }`}
       >
-                <div className="summary-list-header">
+                <div className="summary-list-header" data-desktop-chrome="header">
                     <h2 className="summary-list-title">
             {isPanel
               ? translate("summary.chatSummary.panelTitle")

@@ -147,6 +147,9 @@ vi.mock("@octo/base", () => {
 
 import { CommunicationShell } from "./CommunicationShell";
 import { WKApp, i18n } from "@octo/base";
+import { installDesktopPresentationLifecycle } from "./desktopPresentationLifecycle";
+import type { DesktopPresentation } from "./desktopPresentation";
+import type { OctoBuddyCommunicationBridge } from "./hostBridge";
 
 describe("CommunicationShell", () => {
   beforeEach(() => {
@@ -200,6 +203,68 @@ describe("CommunicationShell", () => {
       page: "contacts",
       spaceId: "space-b",
     }));
+  });
+
+  it("restores desktop readiness using live Shell navigation and Space on every retry", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+    const state: DesktopPresentation = {
+      version: 1, revision: 1, platform: "win32", canFuse: true,
+      headerHeight: 48, fallbackHeight: 48,
+      topArea: { x: 0, y: 0, width: 1000, height: 48 }, controls: [],
+      focused: true, maximized: false, fullScreen: false,
+    };
+    const bridge: OctoBuddyCommunicationBridge = {
+      ...mocks.bridge,
+      getDesktopPresentation: async () => state,
+      onDesktopPresentation: () => () => {},
+    };
+    WKApp.shared.currentSpaceId = "space-a";
+    const lifecycle = installDesktopPresentationLifecycle(window, bridge, document.body, () => ({
+      page: WKApp.currentMenuId === "contacts" ? "contacts" : "chat",
+      spaceId: WKApp.shared.currentSpaceId,
+    }));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(await lifecycle.available).toBe(true);
+    const onReady = vi.fn((context: { page: "chat" | "contacts"; spaceId: string }) =>
+      lifecycle.reportReady({ ...context, bridgeVersion: 1, rendererVersion: "test" }));
+    const shell = render(<CommunicationShell bridge={bridge} initialPage="chat"
+      initialSpaceId="space-a" initialPresentation="workspace" onReady={onReady} />);
+    try {
+      await act(async () => { await vi.advanceTimersByTimeAsync(50); });
+      expect(onReady).toHaveBeenCalledTimes(1);
+      expect(mocks.bridge.reportReady).toHaveBeenLastCalledWith(expect.objectContaining({
+        page: "chat", spaceId: "space-a", desktopPresentationVersion: 1,
+      }));
+      act(() => {
+        WKApp.switchToMenuById?.("contacts");
+        mocks.command.listener?.({ type: "spaceChanged", space: { id: "space-b", name: "B" } });
+      });
+      mocks.bridge.reportReady.mockRejectedValueOnce(new Error("IPC temporarily unavailable"));
+      window.dispatchEvent(new Event("pagehide"));
+      const restored = new Event("pageshow");
+      Object.defineProperty(restored, "persisted", { value: true });
+      window.dispatchEvent(restored);
+      await act(async () => { await vi.advanceTimersByTimeAsync(50); });
+      expect(mocks.bridge.reportReady).toHaveBeenLastCalledWith(expect.objectContaining({
+        page: "contacts", spaceId: "space-b", desktopPresentationVersion: 1,
+      }));
+      act(() => {
+        mocks.command.listener?.({ type: "navigate", page: "chat" });
+        mocks.command.listener?.({ type: "spaceChanged", space: { id: "space-c", name: "C" } });
+      });
+      await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+      expect(mocks.bridge.reportReady).toHaveBeenCalledTimes(3);
+      expect(mocks.bridge.reportReady).toHaveBeenLastCalledWith(expect.objectContaining({
+        page: "chat", spaceId: "space-c", desktopPresentationVersion: 1,
+      }));
+      expect(onReady).toHaveBeenCalledTimes(1);
+    } finally {
+      lifecycle.dispose();
+      shell.unmount();
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
   });
 
   it("isolates synchronous and asynchronous navigation reporting failures", async () => {

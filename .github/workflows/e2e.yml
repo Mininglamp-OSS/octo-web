@@ -181,6 +181,21 @@ jobs:
             echo "✅ all pass"
             exit 0
           fi
+      - name: Run desktop presentation e2e suite
+        if: ${{ !cancelled() }}
+        working-directory: apps/web
+        shell: bash
+        run: |
+          pnpm test:e2e:desktop
+          node <<'NODE'
+          const fs = require("node:fs");
+          const { stats } = JSON.parse(fs.readFileSync("e2e-kit/playwright-report/desktop.json", "utf8"));
+          if (!stats || !Number.isInteger(stats.expected) || stats.expected < 21 ||
+              stats.skipped !== 0 || stats.unexpected !== 0 || stats.flaky !== 0) {
+            throw new Error(`Desktop suite must execute at least 21 passing tests without skips or retries: ${JSON.stringify(stats)}`);
+          }
+          console.log(`Desktop presentation: ${stats.expected} passed, no skipped or flaky tests`);
+          NODE
       - name: Upload playwright report
         if: always()
         uses: actions/upload-artifact@v4

@@ -142,7 +142,7 @@ export default class RoutePage extends Component<RoutePageProps, RoutePageState>
             routeConfig = routeConfigs[routeConfigs.length - 1]
         }
         return <div className={classNames("wk-route", className)}>
-            <div className="wk-route-header">
+            <div className="wk-route-header" data-desktop-chrome="header">
                 <div className={classNames("wk-route-header-close", pushViewCount > 0 ? "wk-route-header-close-back" : undefined)} onClick={() => {
                     if (pushViewCount > 0) {
                         this.pop()

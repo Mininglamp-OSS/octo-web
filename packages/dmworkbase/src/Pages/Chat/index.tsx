@@ -1445,7 +1445,7 @@ export class ChatContentPage extends Component<
         </div>
 
         {showChannelSearch && (
-          <div className="wk-chat-channel-search-panel">
+          <div className="wk-chat-channel-search-panel" data-desktop-overlay="">
             <ErrorBoundary moduleName={t("base.chatPage.searchModuleName")}>
               <div
                 className={classNames(
@@ -1562,7 +1562,7 @@ export class ChatContentPage extends Component<
           )}
 
         {showSummaryPanel && (
-          <div className="wk-summary-panel">
+          <div className="wk-summary-panel" data-desktop-overlay="">
             {WKApp.endpoints.chatSummaryPanel(
               channel,
               () => this.setState({ showSummaryPanel: false }),
@@ -1721,7 +1721,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                 )}
               >
                 <div className="wk-chat-content-left">
-                  <div className="wk-chat-search">
+                  <div className="wk-chat-search" data-desktop-chrome="header">
                     {/* Space 名称（原下拉筛选位置） */}
                     <div className="wk-chat-space-name">
                       {this.state.currentSpaceName}

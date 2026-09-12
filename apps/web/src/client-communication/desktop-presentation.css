@@ -1,0 +1,194 @@
+#root[data-desktop-platform] {
+  color: var(--wk-text-primary);
+  letter-spacing: 0;
+  --desktop-drag-region: drag;
+  -webkit-app-region: no-drag;
+}
+
+#root[data-desktop-drag-suspended="true"],
+#root[data-desktop-fullscreen="true"] {
+  --desktop-drag-region: no-drag;
+}
+
+#root[data-desktop-platform="darwin"] {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+#root[data-desktop-platform="win32"] {
+  font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+}
+
+#root[data-desktop-platform] .wk-chat-space-name {
+  font-size: var(--wk-text-size-base);
+  letter-spacing: 0;
+}
+
+#root[data-desktop-platform] [data-desktop-header] {
+  box-sizing: border-box;
+  height: var(--desktop-header-height);
+  min-height: var(--desktop-header-height);
+  padding-left: calc(var(--desktop-safe-left) + var(--wk-sp-3));
+  padding-right: calc(var(--desktop-safe-right) + var(--wk-sp-3));
+  padding-top: 0;
+  padding-bottom: 0;
+  user-select: none;
+  -webkit-app-region: var(--desktop-drag-region, no-drag);
+  background: var(--desktop-header-background, var(--desktop-chrome-background, var(--wk-bg-surface)));
+  color: var(--desktop-chrome-foreground, var(--wk-text-primary));
+  border-bottom: 0;
+}
+
+#root[data-desktop-platform] .wk-chat-content-left,
+#root[data-desktop-platform] .wk-layout-content-left {
+  --desktop-header-background: var(--desktop-sidebar-background, var(--wk-bg-base));
+  background: var(--desktop-header-background);
+}
+
+/* Overlays own their surface even when mounted inside the conversation list. */
+#root[data-desktop-platform] :is(.wk-route, .wk-viewqueue, .wk-chat-content-chat) {
+  --desktop-header-background: var(--desktop-chrome-background, var(--wk-bg-surface));
+}
+
+#root[data-desktop-platform] :is(.wk-chat-content-chat, .wk-chat-content, .communication-empty-state) {
+  background: var(--desktop-chrome-background, var(--wk-bg-surface));
+}
+
+#root[data-desktop-integrated="true"] .wk-layout-content-left {
+  border-right-color: transparent;
+}
+
+#root[data-desktop-integrated="true"] .wk-layout-splitter {
+  top: var(--desktop-header-height);
+  -webkit-app-region: no-drag;
+}
+
+#root[data-desktop-integrated="true"] .wk-layout-splitter::before {
+  display: none;
+}
+
+#root[data-desktop-platform] .wk-chat-content-chat:has(> [data-desktop-header]) {
+  --wk-height-chat-conversation-header: var(--desktop-header-height);
+}
+
+#root[data-desktop-platform] :has(> .wk-viewqueueheader[data-desktop-header]) {
+  --wk-height-viewqueueheader: var(--desktop-header-height);
+}
+
+#root[data-desktop-platform] .wk-route:has(> .wk-route-header[data-desktop-header]) {
+  --wk-height-route-header: var(--desktop-header-height);
+}
+
+/* Business subtrees are interactive by default, including legacy div controls. */
+#root[data-desktop-platform] [data-desktop-header] * {
+  -webkit-app-region: no-drag;
+}
+
+/* Only explicitly declared layout backgrounds contribute draggable gaps. */
+#root[data-desktop-platform] [data-desktop-header] [data-desktop-chrome="layout"] {
+  -webkit-app-region: var(--desktop-drag-region, no-drag);
+}
+
+#root[data-desktop-platform] .wk-chat-conversation-header-content {
+  min-width: 0;
+  gap: var(--wk-sp-3);
+}
+
+#root[data-desktop-platform] .wk-chat-conversation-header-left {
+  overflow: hidden;
+}
+
+#root[data-desktop-platform] .wk-chat-conversation-header-channel-info-name {
+  color: inherit;
+  font-size: var(--wk-text-size-base);
+}
+
+#root[data-desktop-platform] .wk-chat-header-btn {
+  width: calc(var(--wk-sp-6) + var(--wk-sp-1));
+  height: calc(var(--wk-sp-6) + var(--wk-sp-1));
+  border-radius: var(--wk-r-sm);
+}
+
+#root[data-desktop-platform] .wk-chat-header-btn:hover {
+  background: var(--wk-bg-hover);
+}
+
+#root[data-desktop-platform] .wk-chat-header-actions {
+  gap: var(--wk-sp-1);
+}
+
+#root[data-desktop-platform] .wk-navheader[data-desktop-header] .wk-navheader__content {
+  padding: 0;
+}
+
+#root[data-desktop-platform] .wk-viewqueueheader[data-desktop-header] .wk-viewqueueheader-back {
+  left: var(--desktop-safe-left);
+}
+
+#root[data-desktop-platform] .wk-viewqueueheader[data-desktop-header] .wk-viewqueueheader-content-action {
+  right: calc(var(--desktop-safe-right) + var(--wk-sp-3));
+}
+
+#root[data-desktop-focused="false"] [data-desktop-header],
+#root[data-desktop-focused="false"] .wk-chat-space-name {
+  color: var(--wk-text-secondary);
+}
+
+#root[data-desktop-platform] [data-desktop-header] .wk-route-header-close {
+  flex-shrink: 0;
+}
+
+#root[data-desktop-platform] .wk-file-preview-header[data-desktop-header] {
+  height: auto;
+  flex-wrap: wrap;
+  align-content: center;
+  gap: var(--wk-sp-1) var(--wk-sp-2);
+}
+
+#root[data-desktop-platform] [data-desktop-header] .wk-file-preview-header__left {
+  flex: 1 1 calc(var(--wk-sp-12) + var(--wk-sp-4));
+  max-width: none;
+}
+
+#root[data-desktop-platform] [data-desktop-header] .wk-file-preview-header__dropdown {
+  min-width: 0;
+}
+
+#root[data-desktop-platform] [data-desktop-header] .wk-file-preview-header__dropdown-btn {
+  max-width: 100%;
+}
+
+#root[data-desktop-platform] [data-desktop-header] .wk-file-preview-header__actions {
+  gap: var(--wk-sp-1);
+  margin-left: auto;
+}
+
+#root[data-desktop-platform] [data-desktop-header] .wk-route-header-title-box {
+  min-width: 0;
+  overflow: hidden;
+}
+
+#root[data-desktop-platform] [data-desktop-header] :is(.wk-route-header-title, .wk-route-header-title-next) {
+  font-size: var(--wk-text-size-md);
+  margin-left: var(--wk-sp-3);
+  max-width: calc(100% - var(--wk-sp-3));
+  color: var(--wk-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#root[data-desktop-platform] .communication-empty-state {
+  position: relative;
+  background: var(--wk-bg-surface);
+}
+
+#root[data-desktop-integrated="true"] .communication-empty-state::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  box-sizing: border-box;
+  height: var(--desktop-header-height);
+  background: var(--desktop-chrome-background, var(--wk-bg-surface));
+  border-bottom: 0;
+  -webkit-app-region: var(--desktop-drag-region, no-drag);
+}
