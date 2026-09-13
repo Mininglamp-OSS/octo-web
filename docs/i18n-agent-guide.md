@@ -177,7 +177,7 @@ Keep this table alive. When you discover a new narrow container, add a row and c
 
 | Container | Budget (Latin chars) | How the limit was measured |
 | --- | --- | --- |
-| NavRail collapsed label | **≤8** | Item `width: 56px`, padding `4px 2px`, label padding-inline `4px`, font-size 10px (`--wk-text-size-tiny`) → ~44px text box ≈ 8 chars at 5–6px/char. `AI Summary` (10) already ellipsizes to `Sum...`. |
+| NavRail collapsed label | **≤8** | Item `width: 56px`, padding `4px 2px`, label padding-inline `4px`, font-size 10px (`--wk-text-size-tiny`) → ~44px text box ≈ 8 chars at 5–6px/char. `AI Summary` (10) overflows and is clipped by CSS end-edge ellipsis (`text-overflow: ellipsis`); centered labels may also clip the start with no ellipsis. Known exception: `Reminders on` (12, `navRail.settingsCenter.value.remindersOn`, rendered in `QuickMuteSidebar`) ships over budget. |
 | Chat list date column | **≤16** | Worst-case en-US `12/26/2026 21:34` / zh-CN `2026/12/26 21:34`; cell is `white-space: nowrap; flex-shrink: 0`. `The day before yesterday` + time overflows. |
 | Tab titles | measure the tab strip | Prefer short nouns |
 | Primary / compact buttons | measure the button | Prefer verbs, not full sentences |
