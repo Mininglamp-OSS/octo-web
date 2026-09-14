@@ -1128,7 +1128,7 @@
   "message.imagePreview.rotate": "Rotate",
   "message.imagePreview.previous": "Previous image",
   "message.imagePreview.next": "Next image",
-  "message.imagePreview.position": "Image {current} of {total} loaded images",
+  "message.imagePreview.position": "Image {{current}} of {{total}} loaded images",
   "message.interactiveCard.copyTable": "Copy",
   "message.interactiveCard.fallbackFinalized": "⚠️ Completed (no terminal update received)",
   "message.interactiveCard.fallbackTag": "Client fallback",

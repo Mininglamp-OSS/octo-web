@@ -142,3 +142,34 @@ an [illustrative screenshot](../images/conversation-image-gallery/gallery.png)
 captured from the real chat page with synthetic data; it is not a visual baseline.
 After rebasing, reran the same 426 unit/component tests, 21 browser runs, production
 and E2E builds, i18n check, viewer CSS Stylelint and diff check; all passed.
+
+## Review repair round 1
+
+The first reviews identified two blockers that the earlier local checks missed:
+
+- The gallery E2E fixture did not register `conversation/clearUnread`. Its five
+  cases passed, but unhandled requests reached the Vite proxy and correctly failed
+  the CI log gate. Register the existing shared clear-unread handler before opening
+  the conversation and verify with the full `playwright.ci.config.ts` suite.
+- The counter's accessible name used single-brace placeholders, while the i18n
+  runtime interpolates double braces. Fix both locales and assert exact resolved
+  accessible names when opening/navigating in Chinese and English. Both new locale
+  tests failed before the fix and passed afterward. Browser navigation now asserts
+  the exact resolved accessible name as well as the visible count.
+
+The repair changes locale templates and test coverage/fixtures. Upload, send,
+gallery eligibility and history collection behavior are unchanged.
+
+Validation of this repair:
+
+- Focused gallery/image/decoder regression: 5 files, 59 tests passed, including
+  exact accessible names in both locales using the real i18n runtime and lightbox.
+- Full browser suite with `playwright.ci.config.ts`: 181 passed; JUnit failures,
+  errors and skipped cases all zero; the full log contains zero proxy errors.
+- The five C1661 cases repeated three times under the same CI config: 15 passed,
+  with zero skipped cases or proxy errors.
+- Production and E2E builds, `pnpm i18n:check` and `git diff --check` passed.
+
+The earlier isolated browser runs did not check the fail-closed proxy-error gate;
+they were insufficient evidence of CI success. The full-suite result above now
+verifies that gate as well as the actual UI behavior.

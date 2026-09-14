@@ -2,12 +2,14 @@
 // @spec apps/web/e2e-kit/case-specs/chat/C1661-image-gallery.md
 import { test, expect } from "../../fixtures-authed";
 import { installMockImRuntime } from "../../_kit/mock-im-runtime";
+import { registerCh6ChatClearUnread } from "../../msw-handlers/ch6-chat-clear-unread";
 import type { Page } from "@playwright/test";
 
 const GROUP_ID = "gallery-1661";
 const GROUP_NAME = "Image gallery test";
 
 async function openGalleryConversation(page: Page) {
+  await registerCh6ChatClearUnread(page);
   const origin = new URL(page.url()).origin;
   await page.evaluate(
     ({ origin, groupId }) => {
@@ -106,6 +108,8 @@ const counter = (page: Page) =>
   page.getByRole("status", { name: /已加载图片/ });
 async function expectImage(page: Page, position: string, url: string) {
   await expect(counter(page)).toHaveText(position);
+  const [current, total] = position.split(" / ");
+  await expect(counter(page)).toHaveAccessibleName(`已加载图片，第 ${current} 张，共 ${total} 张`);
   const slide = page
     .getByRole("region", { name: "Photo gallery", exact: true })
     .getByRole("group", { name: position.replace(" / ", " of "), exact: true });

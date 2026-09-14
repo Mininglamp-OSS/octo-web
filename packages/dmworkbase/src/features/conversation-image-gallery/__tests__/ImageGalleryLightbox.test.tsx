@@ -1,6 +1,7 @@
 import React, { useContext } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { i18n } from "../../../i18n";
 import { ImageGalleryProvider } from "../ImageGalleryProvider";
 import { ImageGalleryContext } from "../ImageGalleryContext";
 import type { GalleryImage } from "../imageGallery";
@@ -20,6 +21,8 @@ beforeAll(() => {
   );
 });
 afterAll(() => vi.unstubAllGlobals());
+const originalLocale = i18n.getLocale();
+afterEach(() => i18n.setLocale(originalLocale));
 
 const images: GalleryImage[] = ["a", "b", "c"].map((key) => ({
   key,
@@ -45,6 +48,25 @@ function Example({
 }
 
 describe("gallery with the real lightbox state machine", () => {
+  it.each([
+    ["zh-CN", "已加载图片，第 2 张，共 3 张", "已加载图片，第 3 张，共 3 张", "下一张"],
+    ["en-US", "Image 2 of 3 loaded images", "Image 3 of 3 loaded images", "Next image"],
+  ] as const)(
+    "announces the resolved position when opening and navigating in %s",
+    async (locale, opened, next, nextButton) => {
+      i18n.setLocale(locale);
+      render(<Example />);
+      fireEvent.click(screen.getByText("open b"));
+      await waitFor(() =>
+        expect(screen.getByRole("status", { name: opened, exact: true })).toHaveTextContent("2 / 3")
+      );
+      fireEvent.click(screen.getByRole("button", { name: nextButton, exact: true }));
+      await waitFor(() =>
+        expect(screen.getByRole("status", { name: next, exact: true })).toHaveTextContent("3 / 3")
+      );
+    }
+  );
+
   it("anchors the visible image through list changes and closes when that image is removed", async () => {
     const view = render(<Example />);
     fireEvent.click(screen.getByText("open b"));
