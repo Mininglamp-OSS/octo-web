@@ -1,7 +1,7 @@
 # Conversation image gallery (#1661)
 
-Branch: `feat/1661-conversation-image-gallery`, based on upstream `main` at `9c14b738`.
-Delivery: push to `Ranwanglc/octo-web` for user testing; do not open a PR yet.
+Branch: `feat/1661-conversation-image-gallery`, rebased onto upstream `main` at `8678766f` for submission.
+Delivery: `Ranwanglc/octo-web` fork branch targeting public `Mininglamp-OSS/octo-web:main`.
 
 ## Behavior list
 
@@ -26,7 +26,7 @@ Delivery: push to `Ranwanglc/octo-web` for user testing; do not open a PR yet.
 
 ## Change scope
 
-One frontend feature; no new backend endpoints, dependencies, global gallery, routes, or menu entries. Shared viewer changes also affect standalone/Markdown callers, which retain their existing image scope. No PR until user testing is complete.
+One frontend feature; no new backend endpoints, dependencies, global gallery, routes, or menu entries. Shared viewer changes also affect standalone/Markdown callers, which retain their existing image scope.
 
 ## Verification plan
 
@@ -84,8 +84,6 @@ Use the repository's normal local development setup and backend configuration.
 5. Open a merge-forward message and a nested forward. Each level has its own gallery; Escape closes only the image viewer. Close and reopen the forwarding modal to check reset behavior.
 6. Check a side thread and a folded image entry; verify that each conversation retains its own scope. Switch channel/Space to ensure stale previews disappear.
 
-No PR has been opened. The fork branch is for user testing before deciding on a PR.
-
 ## Follow-up: upload and display regression investigation
 
 Scope: verify new photo uploads, local thumbnails, upload failures/retry, ACK failures,
@@ -136,3 +134,11 @@ Verification:
 These checks do not contact a live storage/IM service. The browser tests verify
 successful image decoding using natural dimensions, not just an image URL or
 `complete` (which can also be true for a failed request).
+
+## Public PR submission
+
+Rebased onto public upstream `main` at `8678766f` without conflicts. The PR includes
+an [illustrative screenshot](../images/conversation-image-gallery/gallery.png)
+captured from the real chat page with synthetic data; it is not a visual baseline.
+After rebasing, reran the same 426 unit/component tests, 21 browser runs, production
+and E2E builds, i18n check, viewer CSS Stylelint and diff check; all passed.
