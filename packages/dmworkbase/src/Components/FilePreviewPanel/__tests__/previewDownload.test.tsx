@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -56,6 +56,29 @@ describe("file preview downloads", () => {
     mocks.downloadFile.mockResolvedValue(undefined);
   });
 
+  it("keeps explicit HTML action overrides authoritative", () => {
+    const onDownload = vi.fn();
+    const onOpenExternal = vi.fn();
+    render(
+      <FilePreviewHeader
+        file={{
+          url: "https://files.test/chat/a",
+          name: "a.html",
+          extension: "html",
+        }}
+        onClose={vi.fn()}
+        showOpenExternal
+        onDownload={onDownload}
+        onOpenExternal={onOpenExternal}
+      />
+    );
+    fireEvent.click(screen.getByTitle("base.filePreview.download"));
+    fireEvent.click(screen.getByTitle("base.filePreview.openInNewTab"));
+    expect(onDownload).toHaveBeenCalledTimes(1);
+    expect(onOpenExternal).toHaveBeenCalledTimes(1);
+    expect(mocks.downloadFile).not.toHaveBeenCalled();
+  });
+
   it("preserves the original filename from the conversation preview header", () => {
     render(<FilePreviewHeader file={pptxFile} onClose={vi.fn()} />);
 
@@ -97,7 +120,7 @@ describe("file preview downloads", () => {
     );
   });
 
-  it("preserves the original XLSX filename for oversized spreadsheets", () => {
+  it("preserves the original XLSX filename for oversized spreadsheets", async () => {
     render(
       <FileTooLarge
         fileName={xlsxFile.name}
@@ -110,13 +133,15 @@ describe("file preview downloads", () => {
       screen.getByRole("button", { name: "base.filePreview.downloadFile" })
     );
 
-    expect(mocks.downloadFile).toHaveBeenCalledWith(
-      xlsxFile.url,
-      xlsxFile.name
+    await waitFor(() =>
+      expect(mocks.downloadFile).toHaveBeenCalledWith(
+        xlsxFile.url,
+        xlsxFile.name
+      )
     );
   });
 
-  it("preserves the filename when downloading an oversized code file", () => {
+  it("preserves the filename when downloading an oversized code file", async () => {
     render(
       <CodeRendererBase
         file={{
@@ -139,9 +164,11 @@ describe("file preview downloads", () => {
       screen.getByRole("button", { name: "base.filePreview.downloadFile" })
     );
 
-    expect(mocks.downloadFile).toHaveBeenCalledWith(
-      "https://files.example.com/code-object-key",
-      "large-source.ts"
+    await waitFor(() =>
+      expect(mocks.downloadFile).toHaveBeenCalledWith(
+        "https://files.example.com/code-object-key",
+        "large-source.ts"
+      )
     );
   });
 });

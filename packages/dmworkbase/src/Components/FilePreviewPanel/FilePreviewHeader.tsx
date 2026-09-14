@@ -1,3 +1,4 @@
+import { useHtmlAttachmentActions } from "../../bridge/html-attachment/useHtmlAttachmentActions";
 import React, { useState, useRef, useEffect, useCallback, memo } from "react";
 import { ArrowLeft, List } from "lucide-react";
 import {
@@ -26,6 +27,8 @@ export interface ConversationFile {
   extension: string;
   /** 文件 URL */
   url: string;
+  sourceUrl?: string;
+  downloadUrl?: string;
   /** 文件大小 */
   size?: number;
   /** 是否 AI 生成 */
@@ -196,6 +199,7 @@ const FilePreviewHeader: React.FC<FilePreviewHeaderProps> = ({
   const dropdownListRef = useRef<HTMLDivElement>(null);
   const hoverTimeoutRef = useRef<number | null>(null);
   const { t } = useI18n();
+  const htmlActions = useHtmlAttachmentActions(file);
 
   const fileList = conversationFiles;
   const hasFiles = fileList.length > 0;
@@ -286,6 +290,8 @@ const FilePreviewHeader: React.FC<FilePreviewHeaderProps> = ({
   const handleDownload = () => {
     if (onDownload) {
       onDownload();
+    } else if (htmlActions.enabled) {
+      void htmlActions.download();
     } else {
       void downloadFile(file.url, file.name || "file");
     }
@@ -294,6 +300,8 @@ const FilePreviewHeader: React.FC<FilePreviewHeaderProps> = ({
   const handleOpenExternal = () => {
     if (onOpenExternal) {
       onOpenExternal();
+    } else if (htmlActions.enabled) {
+      htmlActions.open();
     } else {
       window.open(file.url, "_blank");
     }
@@ -462,7 +470,10 @@ const FilePreviewHeader: React.FC<FilePreviewHeaderProps> = ({
         <button
           className="wk-file-preview-header__btn"
           onClick={handleDownload}
-          title={t("base.filePreview.download")}
+          disabled={!onDownload && htmlActions.pending}
+          title={t(htmlActions.pending
+            ? "base.htmlAttachment.preparing"
+            : "base.filePreview.download")}
         >
           <IconDownload />
         </button>

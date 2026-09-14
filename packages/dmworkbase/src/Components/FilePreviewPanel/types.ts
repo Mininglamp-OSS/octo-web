@@ -3,6 +3,9 @@ import { ComponentType } from "react";
 /** 文件预览信息 */
 export interface FilePreviewInfo {
   url: string;
+  sourceUrl?: string;
+  downloadUrl?: string;
+  previewBaseUrl?: string;
   name: string;
   extension: string;
   size?: number;

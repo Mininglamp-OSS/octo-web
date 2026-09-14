@@ -1,3 +1,10 @@
+import {
+  attachmentIdentity,
+  isBrowserHtmlAttachment,
+} from "../../../features/html-attachment/types";
+import { useHtmlAttachment } from "../../../bridge/html-attachment/useHtmlAttachment";
+import { useHtmlAttachmentActions } from "../../../bridge/html-attachment/useHtmlAttachmentActions";
+import { HTML_BYTE_LIMIT } from "../../../bridge/html-attachment/readAttachment";
 import React, {
   useState,
   useRef,
@@ -12,7 +19,6 @@ import { isFileTooLarge, getRenderMode, formatFileSize } from "../config";
 import { useFileContent } from "../hooks/useFileContent";
 import { RendererState } from "./RendererState";
 import FileTooLarge from "./FileTooLarge";
-import { downloadFile } from "../../../Utils/download";
 import { useI18n } from "../../../i18n";
 import "./HtmlRenderer.css";
 import "./code-highlight.css";
@@ -66,7 +72,7 @@ function injectCspMonitor(html: string): string {
  * 3. 错误自动切源码：iframe 渲染出错时自动切换到源码并显示红色提示条
  * 4. CSP 防护策略：注入脚本检测 iframe 内部 CSP 错误，命中后停止预览并显示提示页
  */
-const HtmlRenderer: React.FC<HtmlRendererProps> = ({
+const HtmlRendererContent: React.FC<HtmlRendererProps> = ({
   file,
   onError,
   viewMode: externalViewMode,
@@ -89,15 +95,16 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
   // 是否因 CSP 降级（用于显示提示）
   const [cspFallback, setCspFallback] = useState(false);
 
-  // 加载 HTML 内容
+  const isWebHtml = isBrowserHtmlAttachment(file);
+  const bounded = useHtmlAttachment(file, isWebHtml);
+  const legacy = useFileContent({ url: file.url, enabled: !isWebHtml });
   const {
     content,
     loading: contentLoading,
     error,
     reload,
-  } = useFileContent({
-    url: file.url,
-  });
+  } = isWebHtml ? bounded : legacy;
+  const htmlActions = useHtmlAttachmentActions(file, bounded.bytes);
 
   // 切换视图模式
   const handleViewModeChange = useCallback(
@@ -144,8 +151,14 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
   }, [handleViewModeChange, onError, t]);
 
   const handleDownload = useCallback(() => {
-    void downloadFile(file.url, file.name || "file.html");
-  }, [file.name, file.url]);
+    if (htmlActions.enabled) {
+      void htmlActions.download();
+      return;
+    }
+    void import("../../../Utils/download").then(({ downloadFile }) =>
+      downloadFile(file.url, file.name || "file.html")
+    );
+  }, [file.name, file.url, htmlActions]);
 
   // 监听来自 iframe 的 postMessage
   // - html-csp-violation: iframe 内部 CSP 违规，降级为无脚本模式
@@ -193,14 +206,26 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
   // 向 srcdoc 注入 CSP 监听脚本。命中 CSP 后不再渲染 iframe，直接显示禁用预览页。
   const srcdocContent = useMemo(() => {
     if (!content) return "";
-    return injectCspMonitor(content);
-  }, [content]);
+    let html = content;
+    if (file.previewBaseUrl && !/<base\b/i.test(html)) {
+      const escaped = file.previewBaseUrl
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;");
+      const base = `<base href="${escaped}">`;
+      html = /<head[^>]*>/i.test(html)
+        ? html.replace(/<head[^>]*>/i, (match) => match + base)
+        : base + html;
+    }
+    return injectCspMonitor(html);
+  }, [content, file.previewBaseUrl]);
 
   // 计算内容大小（用于源码模式的分级渲染）
   const contentSize = useMemo(() => {
+    if (isWebHtml && bounded.bytes) return bounded.bytes.byteLength;
     if (file.size) return file.size;
     return content ? new Blob([content]).size : 0;
-  }, [file.size, content]);
+  }, [file.size, content, isWebHtml, bounded.bytes]);
 
   // 源码模式的渲染模式（highlight / plain / too-large）
   const sourceRenderMode = useMemo(
@@ -216,12 +241,21 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
   }, [error, onError]);
 
   // 文件大小检查（超过 20MB 不渲染）- 移到 hooks 之后
-  if (file.size && isFileTooLarge(file.size)) {
+  if (
+    !bounded.expired &&
+    (bounded.tooLarge || (file.size && isFileTooLarge(file.size)))
+  ) {
     return (
       <FileTooLarge
         fileName={file.name}
-        fileSize={file.size}
+        fileSize={
+          bounded.tooLarge
+            ? Math.max(file.size || 0, HTML_BYTE_LIMIT + 1)
+            : file.size || 0
+        }
         fileUrl={file.url}
+        onDownload={isWebHtml ? handleDownload : undefined}
+        isDownloading={htmlActions.pending}
       />
     );
   }
@@ -233,7 +267,20 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
 
   // 内容加载错误
   if (error) {
-    return <RendererState type="error" message={error} onRetry={reload} />;
+    return (
+      <>
+        <RendererState type="error" message={error} onRetry={reload} />
+        {isWebHtml && !bounded.expired && (
+          <button
+            className="wk-file-preview-html-renderer__disabled-action"
+            onClick={handleDownload}
+            disabled={htmlActions.pending}
+          >
+            {t("base.filePreview.downloadFile")}
+          </button>
+        )}
+      </>
+    );
   }
 
   // 无内容
@@ -250,6 +297,8 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
           fileName={file.name}
           fileSize={contentSize}
           fileUrl={file.url}
+          onDownload={isWebHtml ? handleDownload : undefined}
+          isDownloading={htmlActions.pending}
         />
       );
     }
@@ -334,6 +383,7 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
             <button
               className="wk-file-preview-html-renderer__disabled-action wk-file-preview-html-renderer__disabled-action--primary"
               onClick={handleDownload}
+              disabled={htmlActions.pending}
             >
               <Download size={16} />
               <span>{t("base.filePreview.downloadFile")}</span>
@@ -368,6 +418,11 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
     </div>
   );
 };
+
+// Remount renderer-local CSP/source/error state when the selected attachment changes.
+const HtmlRenderer: React.FC<HtmlRendererProps> = (props) => (
+  <HtmlRendererContent key={attachmentIdentity(props.file)} {...props} />
+);
 
 export default HtmlRenderer;
 export { HtmlRenderer };

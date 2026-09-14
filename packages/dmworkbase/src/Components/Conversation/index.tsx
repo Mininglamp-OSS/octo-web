@@ -2305,6 +2305,7 @@ export class Conversation
             if (!fileUrl) return;
             WKApp.mittBus.emit("wk:file-preview", {
               url: fileUrl,
+              sourceUrl: content.url || content.remoteUrl,
               name: content.name || t("base.messageFile.unknownFile"),
               extension: getExtension(content.extension, content.name),
               size: content.size,

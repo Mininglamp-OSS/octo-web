@@ -1768,5 +1768,13 @@
   "globalSearch.drive.popupBlocked": "浏览器拦截了新标签页，请允许本站弹窗后重新点击该文件。",
   "globalSearch.drive.unavailable": "该结果暂不可预览",
   "globalSearch.drive.truncated": "结果可能不完整，请缩小关键词",
-  "globalSearch.drive.allLoaded": "已显示全部 {{count}} 条"
+  "globalSearch.drive.allLoaded": "已显示全部 {{count}} 条",
+  "htmlAttachment.title": "HTML 预览",
+  "htmlAttachment.returnToChat": "返回聊天",
+  "htmlAttachment.preparing": "正在准备下载…",
+  "htmlAttachment.loadFailed": "无法读取文件，请重试或下载。",
+  "htmlAttachment.tooLarge": "文件超过预览大小上限，请下载查看。",
+  "htmlAttachment.downloadFailed": "无法准备下载，请重试。",
+  "htmlAttachment.expired": "预览已失效，请从聊天重新打开附件。",
+  "htmlAttachment.popupBlocked": "无法打开预览标签页，请允许弹出窗口后重试。"
 }

@@ -36,7 +36,7 @@ describe("docs_on appconfig web integration", () => {
   });
 
   it("keeps the host-side docsOn contract for enterprise modules", () => {
-    const source = readRepoFile("apps/web/src/index.tsx");
+    const source = readRepoFile("apps/web/src/chatBootstrap.tsx");
 
     expect(source).toContain("registerEnterpriseModules");
     expect(source).not.toContain("DocsModule");

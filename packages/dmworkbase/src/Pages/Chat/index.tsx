@@ -531,6 +531,8 @@ export class ChatContentPage extends Component<
       // 设置 pending 状态，让子区频道页面处理
       WKApp.shared.pendingFilePreview = {
         url: file.url,
+        sourceUrl: file.sourceUrl,
+        downloadUrl: file.downloadUrl,
         name: file.name,
         extension: file.extension,
         size: file.size,
@@ -607,6 +609,7 @@ export class ChatContentPage extends Component<
     this.setState({
       channelSearchPreviewFile: {
         url,
+        downloadUrl: file.downloadUrl,
         name,
         extension: getExtension(file.extension || "", name),
         size: file.size,
@@ -811,6 +814,8 @@ export class ChatContentPage extends Component<
         openChatRightPanel("filePreview", {
           previewFile: {
             url: pending.url,
+            sourceUrl: pending.sourceUrl,
+            downloadUrl: pending.downloadUrl,
             name: pending.name,
             extension: pending.extension,
             size: pending.size,
@@ -963,6 +968,8 @@ export class ChatContentPage extends Component<
           openChatRightPanel("filePreview", {
             previewFile: {
               url: pending.url,
+              sourceUrl: pending.sourceUrl,
+              downloadUrl: pending.downloadUrl,
               name: pending.name,
               extension: pending.extension,
               size: pending.size,
