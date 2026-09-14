@@ -215,7 +215,7 @@ const baseDetail = (over: any = {}) => ({
     trigger_type: 0,
     time_range_start: '',
     time_range_end: '',
-    sources: [],
+    sources: [{ source_type: 1, source_id: 'group-1', source_name: 'Project' }],
     participants: [],
     result: null,
     error_message: null,
@@ -424,6 +424,7 @@ describe('SummaryDetailPage — Blocking 5: scheduleItem must track current deta
         const page = makePage(1);
         page.state.detail = baseDetail({
             status: 3, trigger_type: 3, summary_mode: 2, generation_requirement: '',
+            sources: [{ source_type: 1, source_id: 'group-1', source_name: 'Project' }],
         }) as any;
         page.openScheduleModal();
         expect(page.state.configuringForSchedule).toBe(true);
@@ -438,13 +439,32 @@ describe('SummaryDetailPage — Blocking 5: scheduleItem must track current deta
         });
         await page.handleRegenerateConfirm();
         expect(api.saveGenerationConfig).toHaveBeenCalledWith(1, {
-            topic: 'Summarize progress and risks', sources: page.state.regenerateSources,
+            topic: 'Summarize progress and risks',
             time_range: { start: '2026-09-01T00:00:00.000Z', end: '2026-09-07T00:00:00.000Z' },
         });
         expect(page.state.showScheduleConfig).toBe(true);
         expect(page.state.scheduleConfig.generationInstruction).toBe('Summarize progress and risks');
         expect(api.regenerateSummary).not.toHaveBeenCalled();
         expect(api.createSchedule).not.toHaveBeenCalled();
+    });
+
+    it('does not offer a chat picker to configure a source-less summary for scheduling', () => {
+        const page = makePage(1);
+        page.state.detail = baseDetail({ trigger_type: TriggerType.AGENT, generation_requirement: '', sources: [] }) as any;
+        page.openScheduleModal();
+        expect(page.state.showScheduleConfig).toBe(false);
+        expect(page.state.showRegenerateModal).toBe(false);
+        expect(Toast.warning).toHaveBeenCalledWith(t('summary.generation.scheduleSourceFixed'));
+        expect(api.saveGenerationConfig).not.toHaveBeenCalled();
+    });
+
+    it('opens bound schedule settings without calling the generic configuration endpoint', () => {
+        const page = makePage(1);
+        page.state.detail = baseDetail({ trigger_type: TriggerType.AGENT, generation_requirement: '', schedule_id: 9 }) as any;
+        page.openScheduleModal();
+        expect(page.state.showScheduleConfig).toBe(true);
+        expect(page.state.configuringForSchedule).toBe(false);
+        expect(api.saveGenerationConfig).not.toHaveBeenCalled();
     });
 
     it('clears stale scheduleItem when navigating to a detail with no schedule', async () => {

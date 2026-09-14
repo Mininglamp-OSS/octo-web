@@ -662,7 +662,9 @@
     "scheduleUpdate": "Scheduled updates",
     "continueSchedule": "Save and configure scheduled updates",
     "completeConfig": "Complete summary settings",
-    "serviceUpgradeRequired": "Update the summary service to use this feature."
+    "serviceUpgradeRequired": "Update the summary service to use this feature.",
+    "scheduleSourceFixed": "Scheduled updates use this summary's existing chats. Chats cannot be added or replaced. Create a summary with the required sources first.",
+    "scheduleDetailOnly": "Configure scheduled updates on the corresponding summary's detail page. Updates use that summary's existing chats; chat sources cannot be replaced."
   },
   "summaryCard": {
     "personalType": "Personal summary",

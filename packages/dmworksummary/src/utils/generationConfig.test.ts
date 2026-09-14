@@ -40,6 +40,11 @@ describe("saved generation configuration", () => {
         expect(hasGenerationTimeRange(detail)).toBe(false);
         expect(hasGenerationTimeRange({ ...detail, time_range_end: "2026-09-07T00:00:00Z" })).toBe(true);
     });
+    it("does not expose generic configuration for a bound schedule, including paused bindings", () => {
+        const bound = { ...detail, schedule_id: 42, generation_requirement: "" };
+        expect(canCompleteGenerationConfig(bound)).toBe(false);
+        expect(canCompleteGenerationConfig(bound, true)).toBe(false);
+    });
     it.each([TriggerType.AGENT, TriggerType.MANUAL, TriggerType.SCHEDULED])("classifies engine %s only by personal/team ownership", (trigger_type) => {
         const item: SummaryListItem = { ...detail, trigger_type, schedule_id: 1, total_msg_count: 0, completed_at: null };
         expect(getSummaryTypeKind(item)).toBe("quick");

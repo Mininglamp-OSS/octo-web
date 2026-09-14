@@ -17,3 +17,8 @@ those variants. Reloading does not reset fixture data; restart Vite to reset it.
 Check prompt prefill, missing-configuration fields, edit/history, full-generation
 progress and streamed body. Scheduling and continue-optimize can be inspected
 visually, but this fixture does not implement their backend execution.
+
+Use `?view=schedules` to inspect the read-only legacy schedule list (also with
+`&lang=en-US`). It must offer no create/edit/chat-selection/toggle/delete form.
+Task 1's detail still opens the scheduling dialog without source controls;
+task 2 must refuse scheduling rather than offering a chat picker.

@@ -19,6 +19,6 @@ export function supportsGenerationConfig(detail: SummaryDetail | null): boolean 
 }
 
 export function canCompleteGenerationConfig(detail: SummaryDetail | null, forSchedule = false): boolean {
-    return !!detail && detail.trigger_type === TriggerType.AGENT && supportsGenerationConfig(detail) &&
+    return !!detail && !detail.schedule_id && detail.trigger_type === TriggerType.AGENT && supportsGenerationConfig(detail) &&
         (forSchedule || (detail.summary_mode === SummaryMode.BY_PERSON && (detail.participants?.length ?? 0) <= 1));
 }

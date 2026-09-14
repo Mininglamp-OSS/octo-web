@@ -68,6 +68,12 @@ export function parityFixture() {
                 if (path === "/summaries/attention") return send({ attention_count: 0, pending_count: 0, unread_count: 0 });
                 if (path.includes("capabilities")) return send({ enabled: false });
                 if (path === "/summary-chat-candidates") return send([{ chat_id: "chat-1", chat_type: "group", name: "项目讨论群", member_count: 5 }]);
+                if (path === "/summary-schedules" && req.method === "GET") return send([{
+                    schedule_id: 1, title: "项目进展定时更新 / Weekly project update", summary_mode: 2,
+                    cron_expr: "", interval_days: 7, interval_months: 0, day_of_week: 1, day_of_month: 0,
+                    run_time: "09:00", time_range_type: 2, sources: tasks[0].sources, participants: [],
+                    is_active: true, next_run_at: null, created_at: now, updated_at: now,
+                }]);
                 const match = path.match(/^\/summaries\/(\d+)(.*)$/);
                 if (!match) return send([]);
                 const id = Number(match[1]), action = match[2], task = tasks.find(t => t.task_id === id), pr = personal.get(id);

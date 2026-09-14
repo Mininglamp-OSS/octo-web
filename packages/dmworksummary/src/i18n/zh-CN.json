@@ -662,7 +662,9 @@
     "scheduleUpdate": "定时更新",
     "continueSchedule": "保存并设置定时更新",
     "completeConfig": "补充总结配置",
-    "serviceUpgradeRequired": "请先更新总结服务，再使用此功能。"
+    "serviceUpgradeRequired": "请先更新总结服务，再使用此功能。",
+    "scheduleSourceFixed": "定时更新沿用当前总结的聊天来源，不能新增或更换群聊。请先创建包含所需来源的总结。",
+    "scheduleDetailOnly": "请在对应总结的详情页设置定时更新；定时更新沿用该总结的聊天来源，不能更换群聊。"
   },
   "summaryCard": {
     "personalType": "个人总结",

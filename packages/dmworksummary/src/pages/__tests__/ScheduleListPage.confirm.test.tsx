@@ -1,138 +1,66 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-
-// 与 SummaryDetailPage 测试一致：mock 掉会拉起无关重依赖的模块，只测纯逻辑。
-vi.mock("wukongimjssdk", () => ({
-    Channel: class {},
-    ChannelTypeGroup: 2,
-    ChannelTypePerson: 1,
-    MessageText: class {},
-    WKSDK: { shared: () => ({ chatManager: { send: vi.fn() } }) },
-}));
-vi.mock("@douyinfe/semi-ui", () => {
-    const Passthrough = ({ children }: any) => children ?? null;
-    return {
-        Button: Passthrough,
-        Spin: Passthrough,
-        Modal: Passthrough,
-        Switch: Passthrough,
-        Popconfirm: Passthrough,
-        Tag: Passthrough,
-        Banner: Passthrough,
-        Toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
-    };
-});
-vi.mock("@douyinfe/semi-icons", () => ({
-    IconArrowLeft: () => null,
-    IconPlus: () => null,
-    IconDelete: () => null,
-    IconEdit: () => null,
-}));
-// ScheduleForm 拉表单重依赖，对本逻辑无关，mock 成空组件。
-vi.mock("../../components/ScheduleForm", () => ({ default: () => null }));
-
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../../api/summaryApi";
 import ScheduleListPage from "../ScheduleListPage";
 import WKApp from "@octo/base/src/App";
 
 vi.mock("../../api/summaryApi");
+vi.mock("@douyinfe/semi-ui", () => ({
+    Spin: () => null,
+    Tag: () => null,
+    Banner: () => null,
+}));
+vi.mock("@octo/base", async (importOriginal) => {
+    const actual = await importOriginal<any>();
+    return { ...actual, WKButton: () => null,
+        default: { ...actual.default, routeLeft: { popToRoot: vi.fn() } } };
+});
 
-function makePage() {
-    const page = new ScheduleListPage({} as any);
-    (page as any).context = { t: (k: string) => k };
-    (page as any).setState = function (this: any, patch: any) {
-    this.state = {
-      ...this.state,
-      ...(typeof patch === "function" ? patch(this.state) : patch),
-    };
+function makePage(onBack?: () => void) {
+    const page = new ScheduleListPage({ onBack });
+    (page as any).context = { t: (key: string) => key };
+    (page as any).setState = function (patch: any) {
+        this.state = { ...this.state, ...patch };
     };
     return page;
 }
 
-// handleUpdate(params) 取 this.state.editingSchedule 作为「多人」判定数据源
-// （editingSchedule.participants 是后端透出的参与人名单）。
-const baseParams = () => ({
-  title: "t",
-    summary_mode: 1,
-  cron_expr: "",
-    interval_days: 1,
-    interval_months: 0,
-    day_of_week: 0,
-    day_of_month: 0,
-  run_time: "09:00",
-    time_range_type: 2,
-    sources: [],
-});
+function elements(node: any): any[] {
+    if (!node || typeof node !== "object") return [];
+    if (Array.isArray(node)) return node.flatMap(elements);
+    return [node, ...elements(node.props?.children)];
+}
 
-describe("ScheduleListPage.handleUpdate — V5 confirm_policy passthrough", () => {
+describe("legacy schedule list is read-only", () => {
     beforeEach(() => vi.clearAllMocks());
 
-  it("multi-person schedule with existing confirm_policy → preserves/passes it through", async () => {
-        vi.mocked(api.updateSchedule).mockResolvedValue({} as any);
+    it("loads schedules without exposing create, edit, source, toggle, or delete controls", async () => {
+        vi.mocked(api.listSchedules).mockResolvedValue([{
+            schedule_id: 1, title: "Weekly", summary_mode: 2, is_active: true,
+            interval_days: 7, cron_expr: "", run_time: "09:00", time_range_type: 2,
+            sources: [{ source_type: 1, source_id: "group-a" }],
+        }] as any);
         const page = makePage();
-        page.state = {
-            ...(page.state as any),
-            editingSchedule: {
-                schedule_id: 5,
-        participants: [{ user_id: "a" }, { user_id: "b" }], // 多人
-                confirm_policy: 1,
-            } as any,
-        };
-
-        await page.handleUpdate(baseParams() as any);
-
-        expect(api.updateSchedule).toHaveBeenCalledWith(
-            5,
-      expect.objectContaining({ confirm_policy: 1 })
-        );
+        await page.loadData();
+        const rendered = elements(page.render());
+        expect(page.state.schedules).toHaveLength(1);
+        expect(rendered.some(node => node.props?.description === "summary.generation.scheduleDetailOnly")).toBe(true);
+        expect(rendered.filter(node => node.props?.onClick)).toHaveLength(1);
+        expect(rendered.some(node => node.props?.onSubmit || node.props?.onChange || node.props?.onConfirm)).toBe(false);
+        expect(api.createSchedule).not.toHaveBeenCalled();
+        expect(api.updateSchedule).not.toHaveBeenCalled();
+        expect(api.toggleSchedule).not.toHaveBeenCalled();
+        expect(api.deleteSchedule).not.toHaveBeenCalled();
     });
 
-  it("multi-person schedule missing confirm_policy → defaults to 1", async () => {
-        vi.mocked(api.updateSchedule).mockResolvedValue({} as any);
-        const page = makePage();
-        page.state = {
-            ...(page.state as any),
-            editingSchedule: {
-                schedule_id: 6,
-        participants: [{ user_id: "a" }, { user_id: "b" }],
-                // confirm_policy 缺省
-            } as any,
-        };
-
-        await page.handleUpdate(baseParams() as any);
-
-        expect(api.updateSchedule).toHaveBeenCalledWith(
-            6,
-      expect.objectContaining({ confirm_policy: 1 })
-        );
+    it("returns to the embedded summary list", () => {
+        const onBack = vi.fn();
+        makePage(onBack).handleBack();
+        expect(onBack).toHaveBeenCalledOnce();
     });
 
-  it("single-person schedule → omits confirm_policy (backend fallback)", async () => {
-        vi.mocked(api.updateSchedule).mockResolvedValue({} as any);
-        const page = makePage();
-        page.state = {
-            ...(page.state as any),
-            editingSchedule: {
-                schedule_id: 7,
-        participants: [{ user_id: "a" }], // 单人
-            } as any,
-        };
-
-        await page.handleUpdate(baseParams() as any);
-
-        const arg = vi.mocked(api.updateSchedule).mock.calls[0][1] as any;
-    expect("confirm_policy" in arg).toBe(false);
-  });
-});
-
-describe("ScheduleListPage controlled navigation", () => {
-  it("delegates back navigation when a host callback is supplied", () => {
-    const onBack = vi.fn();
-    (WKApp as any).routeLeft = { popToRoot: vi.fn() };
-    const page = new ScheduleListPage({ onBack });
-
-    page.handleBack();
-
-    expect(onBack).toHaveBeenCalledTimes(1);
-    expect((WKApp as any).routeLeft.popToRoot).not.toHaveBeenCalled();
+    it("preserves legacy back navigation", () => {
+        const back = vi.spyOn(WKApp.routeLeft, "popToRoot");
+        makePage().handleBack();
+        expect(back).toHaveBeenCalledOnce();
     });
 });

@@ -23,7 +23,9 @@ i18n.setLocale(params.get("lang") === "en-US" ? "en-US" : "zh-CN");
 if (params.get("theme") === "dark") document.body.setAttribute("theme-mode", "dark");
 
 function Fixture() {
-    const [route, setRoute] = useState<SummaryWorkspaceRoute>({ view: "detail", taskId: Number(params.get("task") || 1) });
+    const [route, setRoute] = useState<SummaryWorkspaceRoute>(params.get("view") === "schedules"
+        ? { view: "schedules" }
+        : { view: "detail", taskId: Number(params.get("task") || 1) });
     return <SummaryWorkspace route={route} onRouteChange={setRoute} />;
 }
 createRoot(document.getElementById("root")!).render(<I18nProvider><Fixture /></I18nProvider>);

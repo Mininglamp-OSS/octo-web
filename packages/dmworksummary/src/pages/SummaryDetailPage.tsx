@@ -1582,6 +1582,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         let currentRefineController: AbortController | null = null;
         try {
             if (this.state.configuringForSchedule) {
+                if (detail.schedule_id || !detail.sources.length) {
+                    Toast.warning(t("summary.generation.scheduleSourceFixed"));
+                    return;
+                }
                 await api.saveGenerationConfig(requestTaskId, this.generationConfigPayload(trimmed));
                 const refreshed = await api.getSummaryDetail(requestTaskId);
                 if (this.taskId !== requestTaskId) return;
@@ -2030,11 +2034,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { detail } = this.state;
         if (!detail || detail.task_id !== this.taskId) return;
         if (!detail?.permissions?.can_schedule) return;
+        if (!detail.sources.length && !detail.schedule_id) {
+            Toast.warning(t("summary.generation.scheduleSourceFixed"));
+            return;
+        }
         if (detail.trigger_type === TriggerType.AGENT && !supportsGenerationConfig(detail)) {
             Toast.warning(t("summary.generation.serviceUpgradeRequired"));
             return;
         }
-        if (detail.trigger_type === TriggerType.AGENT &&
+        if (!detail.schedule_id && detail.trigger_type === TriggerType.AGENT &&
             (!detail.sources.length || !savedGenerationRequirement(detail) || !hasGenerationTimeRange(detail))) {
             this.handleRegenerate();
             this.setState({ configuringForSchedule: true, regenerateMode: "full" });
