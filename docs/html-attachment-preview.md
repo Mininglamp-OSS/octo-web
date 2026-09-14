@@ -37,6 +37,13 @@ closure, source mode, session invalidation, popup blocking, size/network failure
 file switching, explicit callbacks and non-HTML/desktop behavior. Build the Web host,
 run i18n validation and inspect the new Story in light/dark and both languages.
 
+The browser spec lives in `apps/web/e2e-kit/standalone/html-attachment`, outside
+the production-preview suite's `tests` directory: its source-tab fixture requires
+Vite's development transform and is not emitted into `build-e2e`. The PR e2e job
+runs `playwright.html-preview.config.ts` in a separate mandatory step and requires
+at least six passes with no skipped or flaky cases. JSON results and traces are
+included in the existing Playwright report artifact.
+
 The standalone bootstrap deliberately does not register chat modules or call
 WKApp.startup, connect IM, sync contacts, or start summary polling. Session scope is
 handed off in the destination sessionStorage, never in the URL. The descriptor has
@@ -55,6 +62,10 @@ copied session after logout. Attachment scripts remain in `sandbox=allow-scripts
 - `pnpm --dir apps/web exec playwright test --config e2e-kit/playwright.html-preview.config.ts`:
   all 6 Chromium scenarios passed. Responses are synthetic, including an actual
   cross-origin HTTP redirect and attachment disposition headers.
+- The production-preview CI suite (`playwright.ci.config.ts`) passed all 176
+  cases against `build-e2e`; the workflow's full-suite gate reported zero failures,
+  skipped cases and proxy errors. The separate HTML CI step passed its six-case,
+  no-skip/no-flake guard. Workflow actionlint 1.7.12 also passed.
 - `pnpm --dir apps/web exec vitest run --config vitest.storybook.config.ts ../../packages/dmworkbase/src/ui/HtmlAttachmentPreviewPage/HtmlAttachmentPreviewPage.stories.tsx`:
   5 Stories passed; English/light and Chinese/dark browser captures were inspected.
 - Local production smoke: served the built assets through the existing nginx

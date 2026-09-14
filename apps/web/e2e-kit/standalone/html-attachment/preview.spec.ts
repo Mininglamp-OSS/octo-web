@@ -150,7 +150,7 @@ test("oversized HTML skips body loading and uses the signed filename", async ({
     expect(url.searchParams.get("disposition")).toBe("attachment");
     expect(route.request().headers()["x-space-id"]).toBe("space-a");
     return route.fulfill({
-      json: { url: "http://127.0.0.1:18765/signed/chat/uuid" },
+      json: { url: new URL("/signed/chat/uuid", page.url()).href },
     });
   });
   await context.route("**/signed/chat/uuid", (route) =>

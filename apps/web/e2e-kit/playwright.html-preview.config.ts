@@ -4,10 +4,17 @@ import path from "node:path";
 // Source-tab fixture uses the actual shared Header + HtmlRenderer. New tabs load
 // the normal Web /file-preview entry. All attachment/API responses are local.
 export default defineConfig({
-  testDir: "./tests/html-attachment",
+  // The fixture requires Vite's source transform and is not in build-e2e.
+  // Keep it outside the production-preview suite's ./tests discovery root.
+  testDir: "./standalone/html-attachment",
+  forbidOnly: Boolean(process.env.CI),
+  outputDir: "./test-results/html-preview",
   workers: 1,
   retries: 0,
-  reporter: "list",
+  reporter: [
+    ["list"],
+    ["json", { outputFile: path.resolve(__dirname, "playwright-report", "html-preview.json") }],
+  ],
   use: { baseURL: "http://localhost:18765", trace: "retain-on-failure" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
