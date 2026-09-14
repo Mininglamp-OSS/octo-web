@@ -11,6 +11,8 @@
 export const RANGE_THRESHOLD = 3;
 
 const alternateCitationPattern = /(?:【\s*([0-9０-９]{1,5})\s*】|［\s*([0-9０-９]{1,5})\s*］)(?!\()/g;
+const compoundCitationPattern = /\[([ \t]*[0-9][0-9 \t,，;；\-–—]*)\](?!\()/g;
+const MAX_CITATION_GROUP_SIZE = 128; // Matches backend citationtext.MaxGroupSize.
 
 function normalizeDigits(value: string): string {
     return Array.from(value, char => {
@@ -28,9 +30,28 @@ function normalizeDigits(value: string): string {
  */
 export function normalizeCitationMarkersForDisplay(content: string, validIndices: number[]): string {
     const valid = new Set(validIndices);
-    return content.replace(alternateCitationPattern, (match, cjkDigits: string, fullwidthDigits: string) => {
+    const normalized = content.replace(alternateCitationPattern, (match, cjkDigits: string, fullwidthDigits: string) => {
         const index = Number(normalizeDigits(cjkDigits || fullwidthDigits));
         return valid.has(index) ? `[${index}]` : match;
+    });
+    return normalized.replace(compoundCitationPattern, (match, body: string) => {
+        if (!/[ \t,，;；\-–—]/.test(body)) return match;
+        const indices: number[] = [];
+        for (const part of body.replaceAll('，', ',').split(',')) {
+            const item = /^([0-9]+)(?:[ \t]*[-–—][ \t]*([0-9]+))?$/.exec(part.trim());
+            if (!item) return match;
+            const first = Number(item[1]);
+            const last = item[2] ? Number(item[2]) : first;
+            if (first < 1 || last < first || last > 99999 ||
+                last - first + 1 > MAX_CITATION_GROUP_SIZE - indices.length) return match;
+            for (let n = first; n <= last; n++) {
+                // No partial expansion: missing historical data must not turn
+                // a group into a misleading, partially clickable citation.
+                if (!valid.has(n)) return match;
+                indices.push(n);
+            }
+        }
+        return [...new Set(indices)].map(n => `[${n}]`).join('');
     });
 }
 
@@ -105,8 +126,9 @@ export function formatGroupLabel(indices: number[]): string {
  * The `[n](url)` markdown-link form and `[Pn]` team-citation form are both
  * excluded, matching remarkCitation's regex.
  */
-export function buildDisplayIndexMap(textSegments: string[]): Map<number, number> {
+export function buildDisplayIndexMap(textSegments: string[], validIndices?: number[]): Map<number, number> {
     const map = new Map<number, number>();
+    const valid = validIndices ? new Set(validIndices) : undefined;
     let next = 1;
     for (const seg of textSegments) {
         // Match [n] but NOT [n](url) — same rule as remarkCitation. [Pn] tokens
@@ -116,6 +138,7 @@ export function buildDisplayIndexMap(textSegments: string[]): Map<number, number
         let m: RegExpExecArray | null;
         while ((m = regex.exec(seg)) !== null) {
             const raw = parseInt(m[1], 10);
+            if (valid && !valid.has(raw)) continue;
             if (!map.has(raw)) map.set(raw, next++);
         }
     }

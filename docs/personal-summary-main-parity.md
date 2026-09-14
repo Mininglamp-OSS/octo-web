@@ -75,3 +75,16 @@ Impact stays in the existing summary module. The paired backend change adds save
 The paired backend still deploys first. If its environment uses an external
 `AGENT_PROMPT_DIR/summary_workspace.md`, update/remove that override with the
 backend release. This change does not deploy either service or update a mirror.
+
+## Citation consistency follow-up
+
+- Saved detail and historical-version rendering reuse `CitationText`. Verified
+  numeric lists/ranges are normalized to the existing adjacent-marker form;
+  every member must have citation metadata and groups are bounded at128 entries.
+- Display indices follow first appearance: raw `[9,73]`, then `[88]`, then `[9]`
+  render as `[1,2]`, `[3]`, `[1]`. Clicking retains the original message identity.
+- Missing sources do not create fake buttons or consume display indices. Code,
+  link labels and destinations are not treated as citation-bearing prose.
+- No conversation-preview contract/UI change, historical data rewrite or
+  deployment is included. Existing incomplete rows remain incomplete until a
+  separately authorized data repair.
