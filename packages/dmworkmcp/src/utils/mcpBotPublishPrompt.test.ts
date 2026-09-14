@@ -52,6 +52,10 @@ describe("getMcpBotPublishPrompt — shell-safe interpolation", () => {
     expect(p).toContain(`--profile space-${goodId}`);
     expect(p).toContain(`--space ${goodId}`);
     expect(p).toContain("https://example.com");
+    expect(p).toContain("确认当前版本 `>= 0.15.0`");
+    expect(p).toContain("版本低于 `0.15.0`");
+    expect(p).toContain("先询问用户是否更新/安装 `octo-cli`");
+    expect(p).toContain("用户未确认时停止");
   });
 
   it("embeds a compact 32-hex spaceId verbatim into the login example", () => {

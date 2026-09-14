@@ -31,6 +31,10 @@ describe("getExpertBotPublishPrompt — command surface", () => {
     const p = getExpertBotPublishPrompt({ kind: "agent", spaceId: SLUG, apiBaseUrl: API });
     expect(p).toContain("octo-cli skills octo-marketplace --profile <profile>");
     expect(p).toContain("`expert.md`");
+    expect(p).toContain("确认当前版本 `>= 0.15.0`");
+    expect(p).toContain("版本低于 `0.15.0`");
+    expect(p).toContain("先询问用户是否更新/安装 `octo-cli`");
+    expect(p).toContain("用户未确认时停止");
   });
 
   it.each(["agent", "squad"] as const)(

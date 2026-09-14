@@ -58,8 +58,10 @@ export function getMcpBotPublishPrompt(values: McpBotPublishPromptValues = {}): 
 
 不要解释正在读取内容、复述本 Prompt 或逐步播报检查过程。用户提供前不要搜索磁盘或猜测路径。
 
-1. 运行 \`octo-cli version\`。如果未安装，运行
-   \`npm install -g @mininglamp-oss/octo-cli@latest\`。
+1. 运行 \`octo-cli version\`，确认当前版本 \`>= 0.15.0\` 且包含 \`octo-marketplace\` Skill。
+   如果未安装、版本低于 \`0.15.0\` 或不包含该 Skill，先询问用户是否更新/安装 \`octo-cli\`。
+   用户确认后再运行 \`npm install -g @mininglamp-oss/octo-cli@latest\`；用户未确认时停止，
+   并说明本流程需要 \`octo-cli >= 0.15.0\`。
 
 2. 运行 \`octo-cli auth list\`，选择 \`space_id\` 等于 \`${spaceId}\` 的唯一 Profile。
    如果不存在或无法唯一确定，从当前 Octo Channel 的安全环境或配置读取 Bot Token，
