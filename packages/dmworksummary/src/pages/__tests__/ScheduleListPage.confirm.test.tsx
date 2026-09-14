@@ -2,12 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../../api/summaryApi";
 import ScheduleListPage from "../ScheduleListPage";
 import WKApp from "@octo/base/src/App";
+import { Popconfirm, Toast } from "@douyinfe/semi-ui";
 
 vi.mock("../../api/summaryApi");
 vi.mock("@douyinfe/semi-ui", () => ({
     Spin: () => null,
     Tag: () => null,
     Banner: () => null,
+    Popconfirm: () => null,
+    Toast: { success: vi.fn(), error: vi.fn() },
 }));
 vi.mock("@octo/base", async (importOriginal) => {
     const actual = await importOriginal<any>();
@@ -19,7 +22,7 @@ function makePage(onBack?: () => void) {
     const page = new ScheduleListPage({ onBack });
     (page as any).context = { t: (key: string) => key };
     (page as any).setState = function (patch: any) {
-        this.state = { ...this.state, ...patch };
+        this.state = { ...this.state, ...(typeof patch === "function" ? patch(this.state) : patch) };
     };
     return page;
 }
@@ -30,10 +33,10 @@ function elements(node: any): any[] {
     return [node, ...elements(node.props?.children)];
 }
 
-describe("legacy schedule list is read-only", () => {
+describe("legacy schedule recovery controls", () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it("loads schedules without exposing create, edit, source, toggle, or delete controls", async () => {
+    it("offers pause and confirmed delete but no creation, editing, or source controls", async () => {
         vi.mocked(api.listSchedules).mockResolvedValue([{
             schedule_id: 1, title: "Weekly", summary_mode: 2, is_active: true,
             interval_days: 7, cron_expr: "", run_time: "09:00", time_range_type: 2,
@@ -44,12 +47,75 @@ describe("legacy schedule list is read-only", () => {
         const rendered = elements(page.render());
         expect(page.state.schedules).toHaveLength(1);
         expect(rendered.some(node => node.props?.description === "summary.generation.scheduleDetailOnly")).toBe(true);
-        expect(rendered.filter(node => node.props?.onClick)).toHaveLength(1);
-        expect(rendered.some(node => node.props?.onSubmit || node.props?.onChange || node.props?.onConfirm)).toBe(false);
+        expect(rendered.filter(node => node.props?.onClick)).toHaveLength(2);
+        expect(rendered.some(node => node.props?.onSubmit || node.props?.onChange)).toBe(false);
+        expect(rendered.filter(node => node.props?.onConfirm)).toHaveLength(1);
         expect(api.createSchedule).not.toHaveBeenCalled();
         expect(api.updateSchedule).not.toHaveBeenCalled();
         expect(api.toggleSchedule).not.toHaveBeenCalled();
         expect(api.deleteSchedule).not.toHaveBeenCalled();
+    });
+
+    function pageWithSchedule(active = true) {
+        const page = makePage();
+        page.state.schedules = [{
+            schedule_id: 1, is_active: active, title: "Legacy",
+            summary_mode: 2, cron_expr: "", interval_days: 7, run_time: "09:00", time_range_type: 2,
+        }] as any;
+        return page;
+    }
+
+    it("pauses an active legacy schedule through the existing API and removes the pause action", async () => {
+        vi.mocked(api.toggleSchedule).mockResolvedValue({ is_active: false } as any);
+        const page = pageWithSchedule();
+        const pause = elements(page.render()).find(node => node.props?.["aria-label"] === "summary.schedule.pause");
+        await pause.props.onClick();
+        expect(api.toggleSchedule).toHaveBeenCalledWith(1, false);
+        expect(page.state.schedules[0].is_active).toBe(false);
+        expect(elements(page.render()).some(node => node.props?.["aria-label"] === "summary.schedule.pause")).toBe(false);
+        await page.handleScheduleAction(1, "pause");
+        expect(api.toggleSchedule).toHaveBeenCalledTimes(1);
+    });
+
+    it("deletes only after confirmation, without requiring a bound summary", async () => {
+        vi.mocked(api.deleteSchedule).mockResolvedValue();
+        const page = pageWithSchedule(false);
+        const confirm = elements(page.render()).find(node => node.type === Popconfirm);
+        expect(api.deleteSchedule).not.toHaveBeenCalled();
+        await confirm.props.onConfirm();
+        expect(api.deleteSchedule).toHaveBeenCalledWith(1);
+        expect(page.state.schedules).toEqual([]);
+        expect(api.toggleSchedule).not.toHaveBeenCalled();
+    });
+
+    it.each(["pause", "delete"] as const)("preserves the row and releases busy state when %s fails", async action => {
+        const error = new Error("Permission denied");
+        vi.mocked(api.toggleSchedule).mockRejectedValue(error);
+        vi.mocked(api.deleteSchedule).mockRejectedValue(error);
+        const page = pageWithSchedule();
+        await page.handleScheduleAction(1, action);
+        expect(page.state.schedules).toEqual([expect.objectContaining({ schedule_id: 1, is_active: true, title: "Legacy" })]);
+        expect(page.state.actionPending).toBe(false);
+        expect(Toast.error).toHaveBeenCalledWith("Permission denied");
+    });
+
+    it("blocks duplicate and competing actions while a request is pending", async () => {
+        let finish!: (value: any) => void;
+        vi.mocked(api.toggleSchedule).mockReturnValue(new Promise(resolve => { finish = resolve; }));
+        const page = pageWithSchedule();
+        const pending = page.handleScheduleAction(1, "pause");
+        await page.handleScheduleAction(1, "pause");
+        await page.handleScheduleAction(1, "delete");
+        expect(api.toggleSchedule).toHaveBeenCalledTimes(1);
+        expect(api.deleteSchedule).not.toHaveBeenCalled();
+        expect(page.state.actionPending).toBe(true);
+        const buttons = elements(page.render()).filter(node =>
+            ["summary.schedule.pause", "summary.common.delete"].includes(node.props?.["aria-label"]));
+        expect(buttons).toHaveLength(2);
+        expect(buttons.every(node => node.props.disabled)).toBe(true);
+        finish({ is_active: false });
+        await pending;
+        expect(page.state.actionPending).toBe(false);
     });
 
     it("returns to the embedded summary list", () => {

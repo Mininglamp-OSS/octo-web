@@ -38,7 +38,7 @@ import { convertDocErrorMessage, convertDocErrorDocument, resolveConvertDocError
 import { applyRegenerateVoiceInput } from "../utils/regenerateInput";
 import { savedGenerationRequirement, hasGenerationTimeRange, supportsGenerationConfig, canCompleteGenerationConfig } from "../utils/generationConfig";
 import { consumeSummaryScheduleOpen, consumeSummaryDetailAction } from "../utils/summaryDetailIntent";
-import { chatTypeToOriginChannelType, originChannelTypeToChatType } from "../utils/channelType";
+import { chatTypeToOriginChannelType, tryOriginChannelTypeToChatType } from "../utils/channelType";
 import ChatSelectorModal from "../components/ChatSelectorModal";
 import TimeRangePicker from "../components/TimeRangePicker";
 import SummaryConfirmPage from "./SummaryConfirmPage";
@@ -4969,11 +4969,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 </Modal>
                 <ChatSelectorModal
                     visible={this.state.showRegenerateSources}
-                    selected={this.state.regenerateSources.map((source): ChatCandidate => ({
-                        chat_id: source.source_id, name: source.source_name || source.source_id,
-                        chat_type: originChannelTypeToChatType(source.source_type),
-                        member_count: null,
-                    }))}
+                    selected={this.state.showRegenerateSources ? this.state.regenerateSources.flatMap((source): ChatCandidate[] => {
+                        const chatType = tryOriginChannelTypeToChatType(source.source_type);
+                        return chatType === null ? [] : [{
+                            chat_id: source.source_id, name: source.source_name || source.source_id,
+                            chat_type: chatType, member_count: null,
+                        }];
+                    }) : []}
                     onCancel={() => this.setState({ showRegenerateSources: false })}
                     onConfirm={(chats) => this.setState({
                         showRegenerateSources: false,

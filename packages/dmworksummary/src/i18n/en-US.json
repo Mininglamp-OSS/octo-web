@@ -412,7 +412,7 @@
     "createFirst": "Create first scheduled task",
     "fallbackTitle": "Scheduled task #{{id}}",
     "deleteTitle": "Confirm deletion",
-    "deleteContent": "Delete this scheduled summary?",
+    "deleteContent": "Delete this schedule?",
     "createModalTitle": "New scheduled summary",
     "editModalTitle": "Edit scheduled summary",
     "createSuccess": "Scheduled summary created",
@@ -420,6 +420,7 @@
     "deleted": "Deleted",
     "enabled": "Enabled",
     "paused": "Paused",
+    "pause": "Pause scheduled updates",
     "form": {
       "title": "Title",
       "titlePlaceholder": "Scheduled summary title",

@@ -78,6 +78,7 @@ vi.mock("../../api/summaryApi");
 
 import * as api from "../../api/summaryApi";
 import SummaryDetailPage from "../SummaryDetailPage";
+import ChatSelectorModal from "../../components/ChatSelectorModal";
 import { SummaryMode, TriggerType } from "../../types/summary";
 
 function makePage(props: Record<string, unknown> = {}) {
@@ -105,6 +106,35 @@ function makePage(props: Record<string, unknown> = {}) {
 
 describe("SummaryDetailPage regenerate dialog", () => {
     beforeEach(() => vi.clearAllMocks());
+
+    it.each([false, true])("keeps unknown source types safe with picker visible=%s", visible => {
+        const page = makePage();
+        const sources = [
+            { source_type: 0, source_id: "legacy" },
+            { source_type: 4, source_id: "future" },
+            { source_type: 1, source_id: "group-1", source_name: "Group" },
+            { source_type: 2, source_id: "thread-1" },
+            { source_type: 3, source_id: "direct-1" },
+        ];
+        page.state.detail = { ...page.state.detail!, sources };
+        page.handleRegenerate();
+        page.state.showRegenerateSources = visible;
+        const nodes = (node: any): any[] => {
+            if (Array.isArray(node)) return node.flatMap(nodes);
+            if (!node || typeof node !== "object") return [];
+            return [node, ...nodes(node.props?.children)];
+        };
+        let tree: any;
+        expect(() => { tree = page.render(); }).not.toThrow();
+        const picker = nodes(tree).find(node => node.type === ChatSelectorModal);
+        expect(picker.props.selected).toEqual(visible ? [
+            { chat_id: "group-1", name: "Group", chat_type: "group", member_count: null },
+            { chat_id: "thread-1", name: "thread-1", chat_type: "thread", member_count: null },
+            { chat_id: "direct-1", name: "direct-1", chat_type: "direct", member_count: null },
+        ] : []);
+        expect(page.state.detail.sources).toEqual(sources);
+        expect(page.state.regenerateSources).toEqual(sources);
+    });
 
     it("prefills a full regeneration with the summary topic", () => {
         const page = makePage();

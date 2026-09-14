@@ -1,6 +1,7 @@
 import React, { Component } from "react";
-import { Spin, Tag, Banner } from "@douyinfe/semi-ui";
+import { Spin, Tag, Banner, Popconfirm, Toast } from "@douyinfe/semi-ui";
 import { IconArrowLeft } from "@douyinfe/semi-icons";
+import { Pause, Trash2 } from "lucide-react";
 import { I18nContext, t, WKButton } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import * as api from "../api/summaryApi";
@@ -15,19 +16,49 @@ interface ScheduleListPageState {
     schedules: ScheduleItem[];
     loading: boolean;
     error: string | null;
+    actionPending: boolean;
 }
 
 interface ScheduleListPageProps {
     onBack?: () => void;
 }
 
-// Legacy routes remain readable, but configuration has one owner: the summary
-// detail page. Do not reintroduce standalone create/edit/source-selection forms.
+// Legacy schedules may have no detail page. Keep pause/delete recovery here,
+// but configuration stays in the detail page: no standalone create/edit forms.
 export default class ScheduleListPage extends Component<ScheduleListPageProps, ScheduleListPageState> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
 
-    state: ScheduleListPageState = { schedules: [], loading: false, error: null };
+    state: ScheduleListPageState = { schedules: [], loading: false, error: null, actionPending: false };
+    private actionPending = false;
+
+    handleScheduleAction = async (scheduleId: number, action: "pause" | "delete") => {
+        const item = this.state.schedules.find(schedule => schedule.schedule_id === scheduleId);
+        if (this.actionPending || !item || (action === "pause" && !item.is_active)) return;
+        this.actionPending = true;
+        this.setState({ actionPending: true });
+        try {
+            if (action === "pause") {
+                await api.toggleSchedule(scheduleId, false);
+                this.setState(state => ({
+                    schedules: state.schedules.map(schedule => schedule.schedule_id === scheduleId
+                        ? { ...schedule, is_active: false } : schedule),
+                }));
+                Toast.success(t("summary.schedule.paused"));
+            } else {
+                await api.deleteSchedule(scheduleId);
+                this.setState(state => ({
+                    schedules: state.schedules.filter(schedule => schedule.schedule_id !== scheduleId),
+                }));
+                Toast.success(t("summary.schedule.deleted"));
+            }
+        } catch (err: any) {
+            Toast.error(err.message || t("summary.common.operationFailed"));
+        } finally {
+            this.actionPending = false;
+            this.setState({ actionPending: false });
+        }
+    };
 
     componentDidMount() {
         this.loadData();
@@ -52,7 +83,7 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
     };
 
     render() {
-        const { schedules, loading, error } = this.state;
+        const { schedules, loading, error, actionPending } = this.state;
         const { t: translate } = this.context;
         return (
             <div className="summary-schedule-page">
@@ -83,6 +114,18 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
                                 <div className="summary-schedule-card-sources">
                                     {translate("summary.source.label")}
                                     {(item.sources ?? []).map(s => s.source_name || s.source_id).join("、") || "-"}
+                                </div>
+                                <div className="summary-schedule-card-actions">
+                                    {item.is_active && <WKButton icon={<Pause size={16} />} iconOnly size="sm" variant="ghost"
+                                        title={translate("summary.schedule.pause")} aria-label={translate("summary.schedule.pause")}
+                                        disabled={actionPending} onClick={() => this.handleScheduleAction(item.schedule_id, "pause")} />}
+                                    <Popconfirm title={translate("summary.schedule.deleteTitle")}
+                                        content={translate("summary.schedule.deleteContent")}
+                                        onConfirm={() => this.handleScheduleAction(item.schedule_id, "delete")}>
+                                        <WKButton icon={<Trash2 size={16} />} iconOnly size="sm" variant="danger"
+                                            title={translate("summary.common.delete")} aria-label={translate("summary.common.delete")}
+                                            disabled={actionPending} />
+                                    </Popconfirm>
                                 </div>
                             </div>
                         ))}
