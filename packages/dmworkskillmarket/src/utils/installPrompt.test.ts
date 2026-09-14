@@ -43,6 +43,7 @@ describe("buildInstallPrompt", () => {
     expect(prompt).toContain("先询问用户是否更新/安装 `octo-cli`");
     expect(prompt).toContain("重新运行");
     expect(prompt).toContain("给出可复制的安装命令");
+    expect(prompt).not.toContain("@mininglamp-oss/octo-cli@latest");
     expect(prompt).toContain("用户未确认时停止");
     expect(prompt).toContain("octo-cli auth list");
     expect(prompt).toContain(

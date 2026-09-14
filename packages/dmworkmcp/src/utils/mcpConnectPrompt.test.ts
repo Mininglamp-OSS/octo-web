@@ -19,6 +19,7 @@ describe("buildMcpConnectPrompt — shell-safe interpolation", () => {
     expect(p).toContain("按 major/minor/patch 分段数字比较");
     expect(p).toContain("版本低于 `0.15.0`");
     expect(p).toContain("npm install -g @mininglamp-oss/octo-cli@^0.15.0");
+    expect(p).not.toContain("@mininglamp-oss/octo-cli@latest");
     expect(p).toContain("先询问用户是否更新/安装 `octo-cli`");
     expect(p).toContain("重新运行");
     expect(p).toContain("给出可复制的安装命令");
