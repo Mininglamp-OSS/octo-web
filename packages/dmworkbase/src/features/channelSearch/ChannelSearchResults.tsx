@@ -656,13 +656,18 @@ const FileResultItem = React.memo(function FileResultItem({
     item.file?.extension
   );
 
-  const htmlActions = useHtmlAttachmentActions({
-    url: item.file?.previewUrl || item.file?.url || item.file?.downloadUrl || "",
-    downloadUrl: item.file?.downloadUrl,
-    name: fileName,
-    extension: item.file?.extension || "",
-    size: item.file?.size,
-  });
+  const htmlUrl = item.file?.previewUrl || item.file?.url || item.file?.downloadUrl;
+  const htmlActions = useHtmlAttachmentActions(
+    htmlUrl
+      ? {
+          url: htmlUrl,
+          downloadUrl: item.file?.downloadUrl,
+          name: fileName,
+          extension: item.file?.extension || "",
+          size: item.file?.size,
+        }
+      : null
+  );
 
   const handleDownload = async () => {
     if (htmlActions.enabled) {
