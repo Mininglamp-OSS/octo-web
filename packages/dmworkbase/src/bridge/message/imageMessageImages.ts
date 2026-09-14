@@ -13,8 +13,11 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function dimension(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? value
+  // Payloads can serialize dimensions as strings. Preserve their size
+  // instead of turning an otherwise valid thumbnail into a zero-size image.
+  const parsed = typeof value === "string" ? Number(value) : value;
+  return typeof parsed === "number" && Number.isFinite(parsed) && parsed > 0
+    ? parsed
     : 0;
 }
 

@@ -85,3 +85,54 @@ Use the repository's normal local development setup and backend configuration.
 6. Check a side thread and a folded image entry; verify that each conversation retains its own scope. Switch channel/Space to ensure stale previews disappear.
 
 No PR has been opened. The fork branch is for user testing before deciding on a PR.
+
+## Follow-up: upload and display regression investigation
+
+Scope: verify new photo uploads, local thumbnails, upload failures/retry, ACK failures,
+and newly sent images entering the gallery. Verify numeric-string dimensions through
+the real image decoder and UI bridge. No changes to upload/send business logic are planned.
+
+File map / validation: add decoder-to-thumbnail regression tests in `bridge/message`,
+extend C1661 browser coverage with mocked upload/ACK boundaries, and enable the real
+media upload task in the E2E fake provider (production initialization skips it in E2E).
+Run sender, upload task, conversation and gallery suites, then repeated browser tests
+and review the complete follow-up diff before pushing the existing fork branch.
+
+Findings and fix:
+
+- Reproduced a display compatibility bug with a multi-image payload containing
+  `width: "320", height: "200"`: the new parser converted both values to zero,
+  producing a `0×0` thumbnail. The regression test failed on `width="0"` before
+  the fix and passes with a visible `320×200` thumbnail afterward. Parse finite,
+  positive numeric strings; continue rejecting invalid dimensions. This does not
+  establish that any particular live server currently sends string dimensions.
+- Single-image construction/serialization, upload credentials, direct upload,
+  enqueue/ACK handling and retry code are unchanged. No upload or send regression
+  was reproduced. The real decoder/bridge tests verify local previews, preservation
+  of the local file and single-image wire compatibility.
+- The E2E fake provider previously skipped the media upload task callback. Restored
+  the real task in that test fixture, with storage HTTP and ACKs simulated, so the
+  new browser cases actually exercise file reading, measurement, uploading and
+  thumbnail/gallery updates. Existing attachment cases are included in regression.
+
+Two further self-review passes checked the upload-to-ACK notification ordering,
+gallery eligibility, parser compatibility and test boundaries. During test selector
+cleanup, pending messages were found to have no server sequence attribute; the
+test now locates their busy image container instead. No production selector or
+upload/send behavior was changed.
+
+Verification:
+
+- Base package: **30 files / 409 tests passed**, covering sender adapters, upload
+  precheck, conversation, image decoder/bridge, gallery, forwarding and Markdown.
+- Datasource media upload task: **17 tests passed** (426 tests across both runs).
+- Final browser regression: **7 cases × 3 consecutive runs = 21 passed**, retries
+  disabled. Includes five gallery/history/upload/ACK/retry cases and the existing
+  CH38/CH43 attachment success/precheck-failure cases.
+- Production and mock E2E builds passed; i18n and diff checks passed.
+- Type diagnostic comparison for the modified production parser: **0 before /
+  0 after**. The repository-wide typing limitations recorded above still apply.
+
+These checks do not contact a live storage/IM service. The browser tests verify
+successful image decoding using natural dimensions, not just an image URL or
+`complete` (which can also be true for a failed request).
