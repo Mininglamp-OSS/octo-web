@@ -541,7 +541,10 @@ function listPlugins(
       items,
       // Synthesize the legacy opaque cursor from offset pagination: the next
       // cursor is simply the next page number while more rows remain.
-      nextCursor: page * pageSize < total ? String(page + 1) : null,
+      nextCursor:
+        items.length > 0 && page * pageSize < total
+          ? String(page + 1)
+          : null,
       total,
     };
   });

@@ -40,6 +40,7 @@ import type { CreateMcpParams } from "../types/mcp";
 
 const CATEGORIES = [
   { category_id: "c-dev", name: "dev", plugin_count: 2, sort_order: 0 },
+  { category_id: "c-empty", name: "empty", plugin_count: 0, sort_order: 1 },
 ];
 
 /** `/plugin_categories` reads flow through get<T>() → resp.data.data. */
@@ -112,6 +113,7 @@ describe("fetchMcpListPath — category resolution fails closed (P1-2)", () => {
     expect(listCalls).toHaveLength(0);
     // Pills are still returned so the user can switch away.
     expect(res.categories.some((c) => c.key === "dev")).toBe(true);
+    expect(res.categories.some((c) => c.key === "empty")).toBe(false);
   });
 
   it("sends the resolved category_id for a known category", async () => {

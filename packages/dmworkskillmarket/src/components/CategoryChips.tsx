@@ -36,13 +36,13 @@ export default function CategoryChips({ categories, activeId, onChange }: Catego
     };
   }, [moreOpen]);
   const ordered = useMemo(() => {
-    return [...categories].sort((a, b) => {
-      if (a.id === "all") return -1;
-      if (b.id === "all") return 1;
-      if (a.skillCount > 0 && b.skillCount === 0) return -1;
-      if (a.skillCount === 0 && b.skillCount > 0) return 1;
-      return a.sortOrder - b.sortOrder;
-    });
+    return categories
+      .filter((category) => category.id === "all" || category.skillCount > 0)
+      .sort((a, b) => {
+        if (a.id === "all") return -1;
+        if (b.id === "all") return 1;
+        return a.sortOrder - b.sortOrder;
+      });
   }, [categories]);
 
   const mediumBase = ordered.slice(0, MEDIUM_VISIBLE_LIMIT);

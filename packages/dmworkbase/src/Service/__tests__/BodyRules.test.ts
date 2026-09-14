@@ -67,6 +67,19 @@ describe('BodyRules — 群资料/设置真实规则命中', () => {
         // remark 是「编辑」语义、无关闭态,保持 presence-only,任何值都记一次编辑。
         expect(g({ remark: '' })).toBe('conversation_remark_edited')
     })
+
+    it('hasKeys 空值加固对既有规则同样生效(P2-7 契约:全局非空存在)', () => {
+        // Octo-Q head 258e876e P2:discriminatorHits 的 null/undefined 加固是全局的,既有规则同受影响。
+        // 无 fallback 规则:{notice:null}(清空公告)不再命中 group_announcement_edited → undefined。
+        expect(put('/api/v1/groups/g1', JSON.stringify({ notice: null }))).toBeUndefined()
+        // 非空值仍命中(空字符串是真实值,presence 语义)。
+        expect(put('/api/v1/groups/g1', JSON.stringify({ notice: '' }))).toBe('group_announcement_edited')
+        expect(put('/api/v1/groups/g1', JSON.stringify({ name: 'x' }))).toBe('group_name_edited')
+        // 有 fallback 规则:{status:null} 从 webhook_enabled_toggled 改落 fallback webhook_edited。
+        expect(put('/api/v1/groups/g1/incoming-webhooks/w1', JSON.stringify({ status: null }))).toBe('webhook_edited')
+        // {status:1} 仍命中启停(非空)。
+        expect(put('/api/v1/groups/g1/incoming-webhooks/w1', JSON.stringify({ status: 1 }))).toBe('webhook_enabled_toggled')
+    })
 })
 
 describe('BodyRules — 隐私 / 边界', () => {
@@ -157,5 +170,98 @@ describe('BODY_RULES — 规则表不变量', () => {
         expect(computeBodyEvent(i, 'PUT', '/api/v1/x/lit', JSON.stringify({ k: 1 }))).toBe('literal_hit')
         // 通配规则仍对其它 id 生效。
         expect(computeBodyEvent(i, 'PUT', '/api/v1/x/other', JSON.stringify({ anything: 1 }))).toBe('wild_fallback')
+    })
+})
+
+describe('BODY_RULES — fleet(Loop)body 键通道真实命中', () => {
+    const idx = buildBodyIndex(BODY_RULES)
+    const j = JSON.stringify
+
+    it('POST issues:带 parent_issue_id=子任务,否则兜底=新建任务', () => {
+        expect(computeBodyEvent(idx, 'POST', '/fleet/api/v1/issues', j({ parent_issue_id: 'i1', title: 'x' }))).toBe('task_subtask_created')
+        expect(computeBodyEvent(idx, 'POST', '/fleet/api/v1/issues', j({ title: 'x' }))).toBe('task_created')
+        // undefined 键被 JSON.stringify 省略,presence 判别不误命中。
+        expect(computeBodyEvent(idx, 'POST', '/fleet/api/v1/issues', j({ title: 'x', parent_issue_id: undefined }))).toBe('task_created')
+        // 显式 null 值(前端以 { parent_issue_id: null } 表示「无父」)按「键不存在」处理(P2#1 加固):
+        //   JSON.stringify 保留该键,若只看 presence 会误命中 task_subtask_created;加固后落兜底 task_created。
+        expect(computeBodyEvent(idx, 'POST', '/fleet/api/v1/issues', j({ title: 'x', parent_issue_id: null }))).toBe('task_created')
+    })
+
+    it('hasKeys 空值加固:显式 null/undefined 顶层键按「不存在」处理(P2#1)', () => {
+        // 通用回归:任一 hasKeys 判别子,键存在但值为 null/undefined 时不命中;有兜底则落兜底,无兜底则 undefined。
+        const rules: BodyRule[] = [
+            { method: 'PUT', path: '/api/v1/x/:id', discriminators: [{ event: 'e_has', hasKeys: ['k'] }], fallbackEvent: 'e_fallback' },
+            { method: 'PUT', path: '/api/v1/y/:id', discriminators: [{ event: 'e_nofallback', hasKeys: ['k'] }] },
+        ]
+        const i = buildBodyIndex(rules)
+        // 有兜底:null/undefined 键落兜底,非空值命中。
+        expect(computeBodyEvent(i, 'PUT', '/api/v1/x/1', j({ k: null }))).toBe('e_fallback')
+        expect(computeBodyEvent(i, 'PUT', '/api/v1/x/1', j({ k: undefined }))).toBe('e_fallback')
+        expect(computeBodyEvent(i, 'PUT', '/api/v1/x/1', j({ k: 'v' }))).toBe('e_has')
+        // 无兜底:null 键 → undefined(不误命中)。
+        expect(computeBodyEvent(i, 'PUT', '/api/v1/y/1', j({ k: null }))).toBeUndefined()
+        // 空字符串 / 0 / false 是真实值,不算「不存在」,仍命中(presence 语义,不看值)。
+        expect(computeBodyEvent(i, 'PUT', '/api/v1/x/1', j({ k: '' }))).toBe('e_has')
+        expect(computeBodyEvent(i, 'PUT', '/api/v1/x/1', j({ k: 0 }))).toBe('e_has')
+        expect(computeBodyEvent(i, 'PUT', '/api/v1/x/1', j({ k: false }))).toBe('e_has')
+    })
+
+    it('PUT issues/:id:单键 inline patch 各归属,其余兜底=详情编辑', () => {
+        expect(computeBodyEvent(idx, 'PUT', '/fleet/api/v1/issues/i1', j({ status: 'done' }))).toBe('task_status_changed')
+        expect(computeBodyEvent(idx, 'PUT', '/fleet/api/v1/issues/i1', j({ priority: 2 }))).toBe('task_priority_changed')
+        expect(computeBodyEvent(idx, 'PUT', '/fleet/api/v1/issues/i1', j({ assignee_id: 'u1', assignee_type: 'user' }))).toBe('task_assignee_changed')
+        expect(computeBodyEvent(idx, 'PUT', '/fleet/api/v1/issues/i1', j({ project_id: 'p1' }))).toBe('task_project_changed')
+        expect(computeBodyEvent(idx, 'PUT', '/fleet/api/v1/issues/i1', j({ title: 'new', description: 'd' }))).toBe('task_detail_edited')
+        // 改父任务无独立事件,落兜底。
+        expect(computeBodyEvent(idx, 'PUT', '/fleet/api/v1/issues/i1', j({ parent_issue_id: 'i0' }))).toBe('task_detail_edited')
+    })
+
+    it('PATCH autopilots/:id:status 枚举=启停,其余单键各归属,无兜底', () => {
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/autopilots/a1', j({ status: 'paused' }))).toBe('automation_enabled_toggled')
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/autopilots/a1', j({ status: 'active' }))).toBe('automation_enabled_toggled')
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/autopilots/a1', j({ description: 'x' }))).toBe('automation_instruction_saved')
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/autopilots/a1', j({ title: 'x' }))).toBe('automation_renamed')
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/autopilots/a1', j({ assignee_type: 'expert', assignee_id: 'e1' }))).toBe('automation_executor_changed')
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/autopilots/a1', j({ project_id: 'p1' }))).toBe('automation_target_project_changed')
+        // status 非枚举值(如非启停语义)不误命中启停,无兜底 → undefined。
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/autopilots/a1', j({ status: 'archived' }))).toBeUndefined()
+    })
+
+    it('PATCH autopilots/:id/triggers/:id(段数 7,与 autopilots/:id 互斥):编辑 vs 启停', () => {
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/autopilots/a1/triggers/t1', j({ cron_expression: '0 9 * * *', timezone: 'UTC' }))).toBe('automation_trigger_edited')
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/autopilots/a1/triggers/t1', j({ enabled: false }))).toBe('automation_trigger_toggled')
+    })
+
+    it('POST squads/:id/members:expert_team_member_added 已 hold,body 通道不命中(P2:待 dmloop 命令式)', () => {
+        // Octo-Q head 258e876e P2:add=N-fan-out 无关联信号、与 collection-level DELETE 的 remove 单位不一致 →
+        //   hold body 规则,改由 dmloop squad-detail 加成员成功回调命令式(带 squad/batch,与 remove 同「每手势」单位)。
+        expect(computeBodyEvent(idx, 'POST', '/fleet/api/v1/squads/s1/members', j({ member_id: 'm1', member_type: 'user', role: 'x' }))).toBeUndefined()
+    })
+
+    it('PATCH runtimes/:id:带 name=改名;非 name 键 / 显式 null 均不误命中(P2:从 fetch 泛端点迁入,无 fallback)', () => {
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/runtimes/r1', j({ name: 'box-1' }))).toBe('runtime_machine_renamed')
+        // 非改名的 runtime PATCH(改配置)不命中(无 fallback)——修掉「任何 runtime PATCH 都算改名」。
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/runtimes/r1', j({ cpu: 2, memory: 4096 }))).toBeUndefined()
+        // 显式 null name 经空值加固按「不存在」→ 不命中。
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/runtimes/r1', j({ name: null }))).toBeUndefined()
+    })
+
+    it('PUT issues/:id 多键 payload:判别子首中即返序 status>priority>assignee>project>detail(P2:显式优先级)', () => {
+        // 跨项目拖卡带 {status,project_id} → 归 status(status 判别子在前),不被 project 抢。
+        expect(computeBodyEvent(idx, 'PUT', '/fleet/api/v1/issues/i1', j({ status: 'done', project_id: 'p1' }))).toBe('task_status_changed')
+        // 整对象 PUT(恒带 status)→ 归 status,不落 fallback task_detail_edited。
+        expect(computeBodyEvent(idx, 'PUT', '/fleet/api/v1/issues/i1', j({ status: 'todo', priority: 2, assignee_id: 'u1', assignee_type: 'user', project_id: 'p1', title: 't', description: 'd' }))).toBe('task_status_changed')
+        // 无 status 但 priority+project_id 并存 → 归 priority(次序在 project 前)。
+        expect(computeBodyEvent(idx, 'PUT', '/fleet/api/v1/issues/i1', j({ priority: 3, project_id: 'p1' }))).toBe('task_priority_changed')
+    })
+
+    it('POST webhook-subscriptions:带 project_id=项目 webhook,否则兜底=工作区 webhook', () => {
+        expect(computeBodyEvent(idx, 'POST', '/fleet/api/v1/webhook-subscriptions', j({ project_id: 'p1', url: 'u' }))).toBe('project_webhook_added')
+        expect(computeBodyEvent(idx, 'POST', '/fleet/api/v1/webhook-subscriptions', j({ url: 'u' }))).toBe('workspace_webhook_added')
+    })
+
+    it('白名单门:未登记端点不读 body,返回 undefined', () => {
+        expect(computeBodyEvent(idx, 'POST', '/fleet/api/v1/projects', j({ name: 'x' }))).toBeUndefined()
+        expect(computeBodyEvent(idx, 'PUT', '/fleet/api/v1/skills/sk1', j({ name: 'x' }))).toBeUndefined()
     })
 })

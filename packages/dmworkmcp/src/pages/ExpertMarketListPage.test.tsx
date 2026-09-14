@@ -4,7 +4,7 @@ import ReactDOM from "react-dom";
 import { act, Simulate } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExpertItem } from "../mock/expertMock";
-import type { ExpertListResult, ListExpertParams } from "../api/expertService";
+import type { ExpertCategoryCount, ExpertListResult, ListExpertParams } from "../api/expertService";
 import type { MineRow } from "@dmwork/skillmarket";
 
 const api = vi.hoisted(() => ({
@@ -116,7 +116,57 @@ function serverList(params: ListExpertParams = {}): Promise<ExpertListResult> {
 }
 
 let root: HTMLDivElement;
+
+// Controllable IntersectionObserver: the pagination sentinel auto-loads on
+// intersection now (no 加载更多 button), so tests drive that by firing the
+// observed callbacks through `scrollLoadMore()` instead of clicking.
+interface FakeObserver {
+  cb: IntersectionObserverCallback;
+  elements: Set<Element>;
+}
+const observers: FakeObserver[] = [];
+class MockIntersectionObserver {
+  private entry: FakeObserver;
+  constructor(cb: IntersectionObserverCallback) {
+    this.entry = { cb, elements: new Set() };
+    observers.push(this.entry);
+  }
+  observe(el: Element) {
+    this.entry.elements.add(el);
+  }
+  unobserve(el: Element) {
+    this.entry.elements.delete(el);
+  }
+  disconnect() {
+    this.entry.elements.clear();
+    const i = observers.indexOf(this.entry);
+    if (i >= 0) observers.splice(i, 1);
+  }
+  takeRecords() {
+    return [];
+  }
+}
+
+/** Fire "scrolled into view" for sentinels within `parent`, triggering
+ *  loadMore. Scoped so a stacked mine view can page one section at a time. */
+function scrollLoadMore(parent: ParentNode = root) {
+  act(() => {
+    for (const obs of [...observers]) {
+      const targets = Array.from(obs.elements).filter((el) => parent.contains(el));
+      if (targets.length === 0) continue;
+      obs.cb(
+        targets.map(
+          (target) => ({ isIntersecting: true, target } as IntersectionObserverEntry)
+        ),
+        obs as unknown as IntersectionObserver
+      );
+    }
+  });
+}
+
 beforeEach(() => {
+  observers.length = 0;
+  vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
   vi.useFakeTimers();
   vi.resetAllMocks();
   reviews.useReviewRequests.mockReturnValue({ items: [], refresh: reviews.refresh });
@@ -131,6 +181,7 @@ beforeEach(() => {
   api.listExpertCategories.mockResolvedValue([
     { name: "Reports", count: 1 },
     { name: "General", count: 111 },
+    { name: "Empty", count: 0 },
   ]);
   api.listExpertTags.mockResolvedValue(["common", "rare", "analysis"]);
   root = document.createElement("div");
@@ -141,6 +192,7 @@ afterEach(() => {
     ReactDOM.unmountComponentAtNode(root);
   });
   root.remove();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
@@ -162,6 +214,13 @@ function button(label: string, parent: ParentNode = root) {
     (el) => el.textContent === label
   );
   if (!found) throw new Error(`Missing button: ${label}`);
+  return found;
+}
+function categoryButton(label: string) {
+  const found = Array.from(
+    root.querySelectorAll<HTMLButtonElement>(".wk-mcp-expert-category")
+  ).find((el) => el.textContent?.startsWith(label));
+  if (!found) throw new Error(`Missing category: ${label}`);
   return found;
 }
 function click(el: Element) {
@@ -321,11 +380,9 @@ describe("expert catalog server search and pagination", () => {
 
   it("loads the remaining records once, then resets paging for search and clear", async () => {
     await render();
-    const more = button("mcp.expert.loadMore");
-    act(() => {
-      Simulate.click(more);
-      Simulate.click(more);
-    });
+    // Two intersections in a row must still fetch page 2 only once.
+    scrollLoadMore();
+    scrollLoadMore();
     await tick();
     expect(api.listExperts).toHaveBeenCalledTimes(2);
     expect(api.listExperts).toHaveBeenLastCalledWith(
@@ -344,13 +401,33 @@ describe("expert catalog server search and pagination", () => {
     );
   });
 
+  it("re-arms after a short page so a remaining page can load", async () => {
+    api.listExperts
+      .mockResolvedValueOnce({ items: records.slice(0, 100), total: 250 })
+      .mockResolvedValueOnce({ items: records.slice(100), total: 250 })
+      .mockResolvedValueOnce({ items: [], total: 250 });
+
+    await render();
+    const initialObserver = observers[0];
+    scrollLoadMore();
+    await tick();
+
+    expect(itemCount()).toBe(112);
+    expect(observers).toHaveLength(1);
+    expect(observers[0]).not.toBe(initialObserver);
+
+    scrollLoadMore();
+    await tick();
+    expect(api.listExperts).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 3 })
+    );
+    expect(observers).toHaveLength(0);
+  });
+
   it("filters a category and tags found only beyond page 1, and forwards sort", async () => {
     await render();
-    click(
-      Array.from(root.querySelectorAll(".wk-mcp-expert-category")).find(
-        (el) => el.textContent === "Reports1"
-      )!
-    );
+    expect(root.textContent).not.toContain("Empty0");
+    click(categoryButton("Reports"));
     await tick();
     expect(api.listExperts).toHaveBeenLastCalledWith(
       expect.objectContaining({ category: "Reports", page: 1 })
@@ -372,10 +449,40 @@ describe("expert catalog server search and pagination", () => {
     );
   });
 
+  it("preserves an active category while retry refetches category metadata", async () => {
+    await render();
+    api.listExperts.mockRejectedValueOnce(new Error("offline"));
+    click(categoryButton("Reports"));
+    await tick();
+    expect(api.listExperts).toHaveBeenLastCalledWith(
+      expect.objectContaining({ category: "Reports", page: 1 })
+    );
+    expect(button("mcp.list.retry")).toBeTruthy();
+
+    const categoryReload = deferred<ExpertCategoryCount[]>();
+    api.listExpertCategories.mockReturnValueOnce(categoryReload.promise);
+    click(button("mcp.list.retry"));
+    await tick();
+
+    expect(api.listExperts).toHaveBeenLastCalledWith(
+      expect.objectContaining({ category: "Reports", page: 1 })
+    );
+    expect(categoryButton("Reports").getAttribute("aria-pressed")).toBe("true");
+
+    await act(async () => {
+      categoryReload.resolve([
+        { name: "Reports", count: 1 },
+        { name: "General", count: 111 },
+      ]);
+    });
+    await tick();
+    expect(categoryButton("Reports").getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("keeps previous rows on a later-page failure and retries the same page", async () => {
     await render();
     api.listExperts.mockRejectedValueOnce(new Error("offline"));
-    click(button("mcp.expert.loadMore"));
+    scrollLoadMore();
     await tick();
     expect(itemCount()).toBe(100);
     expect(root.querySelector('[role="alert"]')).not.toBeNull();
@@ -405,7 +512,7 @@ describe("expert catalog server search and pagination", () => {
     await render();
     const old = deferred<ExpertListResult>();
     api.listExperts.mockReturnValueOnce(old.promise);
-    click(button("mcp.expert.loadMore"));
+    scrollLoadMore();
     search("数据分析报告");
     await tick(250);
     await act(async () => {
@@ -436,7 +543,7 @@ describe("expert catalog server search and pagination", () => {
     await render();
     const old = deferred<ExpertListResult>();
     api.listExperts.mockReturnValueOnce(old.promise);
-    click(button("mcp.expert.loadMore"));
+    scrollLoadMore();
     api.listExperts.mockResolvedValueOnce({ items: [], total: 0 });
     const spaceChanged = bus.on.mock.calls.find(
       ([event]) => event === "space-changed"
@@ -461,11 +568,11 @@ describe("expert catalog server search and pagination", () => {
       items: records.slice(99),
       total: 250,
     });
-    click(button("mcp.expert.loadMore"));
+    scrollLoadMore();
     await tick();
     expect(itemCount()).toBe(112);
     api.listExperts.mockResolvedValueOnce({ items: [], total: 250 });
-    click(button("mcp.expert.loadMore"));
+    scrollLoadMore();
     await tick();
     expect(root.textContent).not.toContain("mcp.expert.loadMore");
   });
@@ -478,7 +585,7 @@ describe("expert catalog server search and pagination", () => {
     expect(api.listExpertTags).toHaveBeenCalledWith("agent", { mine: true });
     expect(api.listExpertTags).toHaveBeenCalledWith("squad", { mine: true });
     const sections = root.querySelectorAll(".wk-mcp-expert-mine-section");
-    click(button("mcp.expert.loadMore", sections[0]));
+    scrollLoadMore(sections[0]);
     await tick();
     expect(sections[0].querySelectorAll("[data-item]")).toHaveLength(112);
     expect(sections[1].querySelectorAll("[data-item]")).toHaveLength(100);
@@ -513,7 +620,7 @@ describe("expert catalog server search and pagination", () => {
       });
       await render({ variant: "mine", mineType });
       expect(reviews.useReviewRequests).toHaveBeenLastCalledWith({ mode: "mine", pageSize: 100, enabled: true });
-      click(button("mcp.expert.loadMore"));
+      scrollLoadMore();
       await tick();
       const pending = root.querySelector('[data-item="expert-101"]')!;
       expect(pending.getAttribute("data-status")).toBe("pending_review");

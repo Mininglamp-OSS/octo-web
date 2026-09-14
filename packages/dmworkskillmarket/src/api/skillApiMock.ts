@@ -113,12 +113,14 @@ function pageSkills(items: Skill[], query: SkillListQuery): PagedResult<Skill> {
   };
 }
 
-export function getCategories(opts?: {
+export function getCategories(_opts?: {
   signal?: AbortSignal;
   q?: string;
   tags?: string[];
 }): Promise<Category[]> {
-  const filtered = applySkillQuery({ q: opts?.q, tags: opts?.tags });
+  // Match the real unified taxonomy endpoint: category visibility/counts are
+  // scoped to the visible catalog, not to the current keyword/tag result set.
+  const filtered = applySkillQuery({});
   const counted = CATEGORY_SEEDS.map((category) => ({
     ...category,
     skillCount:

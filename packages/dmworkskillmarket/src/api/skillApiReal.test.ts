@@ -287,6 +287,16 @@ describe("skillApiReal", () => {
     expect(url).toContain("sort=downloads");
   });
 
+  it("stops offset pagination when a page is empty despite a larger total", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse([], 200, { total: 100, page: 2, page_size: 20 })
+    );
+
+    const result = await getMySkills({ cursor: "2", limit: 20 });
+
+    expect(result).toEqual({ items: [], nextCursor: null, total: 100 });
+  });
+
   it("getSkill maps the plugin detail with package artifacts", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse({

@@ -1590,6 +1590,17 @@
   padding: var(--wk-sp-4) var(--wk-sp-6);
 }
 
+/* Infinite-scroll trigger at the tail of the 全部 list. Kept a little tall so it
+   enters the observer's rootMargin before the user hits the hard bottom, and to
+   give the load-more spinner somewhere to sit. */
+.wk-mcp-mine__all-sentinel {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: var(--wk-sp-6);
+  padding: var(--wk-sp-3) 0;
+}
+
 /* 我的发布's own chrome — the 我的发布 title and the 全部/技能/连接器/专家/专家团 tab
    strip — is not responsive: it stays inset by var(--wk-sp-6) at every width, and
    the panel below it has to keep that left edge or the table visibly steps out
@@ -2719,6 +2730,17 @@
   margin-top: var(--wk-sp-4);
   color: var(--wk-text-tertiary);
   font-size: var(--wk-text-size-sm);
+}
+
+/* Zero-height scroll trigger — invisible, but given the observer's rootMargin
+   it starts the next page before the user reaches the true bottom. */
+.wk-mcp-expert-sentinel {
+  width: 100%;
+  height: var(--wk-sp-0-5);
+}
+
+.wk-mcp-expert-pagination__loading {
+  color: var(--wk-text-tertiary);
 }
 
 .wk-mcp-expert-sort button {

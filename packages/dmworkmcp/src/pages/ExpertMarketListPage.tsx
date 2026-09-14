@@ -49,6 +49,44 @@ const SORT_OPTIONS: Array<{ value: ExpertCatalogSort; labelKey: string; descendi
 ];
 
 /**
+ * Tail sentinel that fires `onLoadMore` when it scrolls near the viewport, so
+ * 专家 / 专家团 page in on scroll like the 技能 / 连接器 catalogs instead of
+ * forcing a click on 加载更多. Renders nothing visible — the pagination row
+ * shows the count + a spinner. `loadMore` is self-guarded (a page already in
+ * flight, exhausted, or errored is a no-op), so repeated intersections are
+ * safe. jsdom has no IntersectionObserver; there it degrades to an inert node
+ * and tests drive `loadMore` through a mocked observer.
+ */
+function LoadMoreSentinel({
+  onLoadMore,
+  rearmKey,
+}: {
+  onLoadMore: () => void;
+  rearmKey: number;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const cbRef = useRef(onLoadMore);
+  useEffect(() => {
+    cbRef.current = onLoadMore;
+  }, [onLoadMore]);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof IntersectionObserver === "undefined") return undefined;
+    // Recreating on each committed page re-delivers the current intersection,
+    // so a short page that leaves the sentinel visible can continue loading.
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) cbRef.current();
+      },
+      { rootMargin: "160px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [rearmKey]);
+  return <div ref={ref} className="wk-mcp-expert-sentinel" aria-hidden="true" />;
+}
+
+/**
  * Rendering variant. "market" (default) = discovery catalog (专家/专家团 tabs).
  * "mine" = personal assets mounted inside MyAssetsPage — forces the mine view,
  * hides the in-page tab strip + hero title. `mineType` narrows the mine view to
@@ -241,12 +279,30 @@ export default function ExpertMarketListPage({
     };
   }, [tagFilterOpen]);
 
-  // Category chips: 全部 sentinel first, then the fetched category set (or the
-  // static fallback, which already includes 全部).
+  // Category chips: 全部 sentinel first, then the backend category set. Empty
+  // categories are filtered here too so tests/mocks cannot reintroduce zero-count
+  // chips.
   const categoryChips = useMemo(() => {
-    if (categories.length) return [ALL_CATEGORY, ...categories.map((c) => c.name)];
-    return EXPERT_CATEGORIES;
+    return [
+      ALL_CATEGORY,
+      ...categories.filter((c) => c.count > 0).map((c) => c.name),
+    ];
   }, [categories]);
+  useEffect(() => {
+    if (
+      activeCatalog.categoriesLoading ||
+      activeCatalog.categoriesErrorKey ||
+      categories.length === 0
+    ) {
+      return;
+    }
+    if (
+      category !== ALL_CATEGORY &&
+      !categories.some((item) => item.count > 0 && item.name === category)
+    ) {
+      setCategory(ALL_CATEGORY);
+    }
+  }, [activeCatalog.categoriesLoading, activeCatalog.categoriesErrorKey, categories, category]);
 
   // The scoped tag endpoint includes tags on records beyond the loaded page.
   const allTags = useMemo(() => {
@@ -283,16 +339,29 @@ export default function ExpertMarketListPage({
           values: { count: catalog.items.length, total: catalog.total },
         })}
       </span>
-      {catalog.moreErrorKey && <span role="alert">{t(catalog.moreErrorKey)}</span>}
-      {catalog.hasMore && (
-        <WKButton
-          variant="secondary"
-          disabled={catalog.loadingMore}
-          onClick={() => catalog.loadMore()}
-        >
-          {t(catalog.loadingMore ? "mcp.expert.loading" : catalog.moreErrorKey ? "mcp.list.retry" : "mcp.expert.loadMore")}
-        </WKButton>
+      {catalog.loadingMore && (
+        <span className="wk-mcp-expert-pagination__loading" role="status">
+          {t("mcp.expert.loading")}
+        </span>
       )}
+      {catalog.moreErrorKey && <span role="alert">{t(catalog.moreErrorKey)}</span>}
+      {catalog.hasMore &&
+        (catalog.moreErrorKey ? (
+          // A failed page stops the scroll auto-retry loop; the user re-triggers
+          // it explicitly rather than have every intersection re-hit a 5xx.
+          <WKButton
+            variant="secondary"
+            disabled={catalog.loadingMore}
+            onClick={() => catalog.loadMore()}
+          >
+            {t("mcp.list.retry")}
+          </WKButton>
+        ) : (
+          <LoadMoreSentinel
+            onLoadMore={() => catalog.loadMore()}
+            rearmKey={catalog.page}
+          />
+        ))}
     </div>
   );
 

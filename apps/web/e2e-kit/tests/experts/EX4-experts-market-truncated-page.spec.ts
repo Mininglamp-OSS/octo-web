@@ -13,14 +13,19 @@ for (const locale of ["zh-CN", "en-US"]) {
 
     const cards = authedPage.locator(".wk-mcp-expert-grid .wk-mcp-card");
     const pagination = authedPage.locator(".wk-mcp-expert-pagination");
-    const more = authedPage.getByRole("button", { name: en ? "Load more" : "加载更多", exact: true });
+    const sentinel = authedPage.locator(".wk-mcp-expert-sentinel");
     await expect(cards).toHaveCount(100);
-    await expect(pagination).toContainText(en ? "Showing 100 of 112" : "已显示 100 / 112 项");
-    await more.scrollIntoViewIfNeeded();
+    await expect(pagination).toContainText(en ? "Showing 100 of 212" : "已显示 100 / 212 项");
+    await sentinel.scrollIntoViewIfNeeded();
     await authedPage.screenshot({ path: testInfo.outputPath(`pagination-${locale}.png`) });
-    await more.click();
-    await expect(cards).toHaveCount(112);
-    await expect(more).toHaveCount(0);
+    // Scrolling the sentinel into view auto-loads the rest — no click needed,
+    // matching the 技能 / 连接器 catalogs.
+    await expect(cards).toHaveCount(200);
+    await expect(pagination).toContainText(en ? "Showing 200 of 212" : "已显示 200 / 212 项");
+    await sentinel.scrollIntoViewIfNeeded();
+    await expect(cards).toHaveCount(212);
+    await expect(pagination).toContainText(en ? "Showing 212 of 212" : "已显示 212 / 212 项");
+    await expect(sentinel).toHaveCount(0);
 
     const search = authedPage.getByRole("searchbox", { name: en ? "Search experts" : "搜索专家", exact: true });
     await search.fill("数据分析报告");

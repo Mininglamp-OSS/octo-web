@@ -39,6 +39,14 @@ interface CatalogState {
   moreErrorKey: string | null;
 }
 
+interface CatalogMetadataState {
+  key: string;
+  scopeKey: string;
+  categories: ExpertCategoryCount[];
+  loading: boolean;
+  errorKey: string | null;
+}
+
 function emptyState(key: string, loading: boolean): CatalogState {
   return {
     key,
@@ -53,12 +61,13 @@ function emptyState(key: string, loading: boolean): CatalogState {
   };
 }
 
-function emptyMetadata(key: string, loading: boolean) {
+function emptyMetadata(key: string, scopeKey: string, loading: boolean): CatalogMetadataState {
   return {
     key,
+    scopeKey,
     loading,
-    categories: [] as ExpertCategoryCount[],
-    errorKey: null as string | null,
+    categories: [],
+    errorKey: null,
   };
 }
 
@@ -88,6 +97,12 @@ export function useExpertCatalog(options: CatalogOptions) {
     options.scopeRevision,
     revision,
   ]);
+  const metadataScopeKey = JSON.stringify([
+    kind,
+    mine,
+    enabled,
+    options.scopeRevision,
+  ]);
   const tags = useExpertTags({
     kind,
     mine,
@@ -99,7 +114,7 @@ export function useExpertCatalog(options: CatalogOptions) {
     emptyState(key, enabled)
   );
   const [metadata, setMetadata] = useState(() =>
-    emptyMetadata(metadataKey, enabled)
+    emptyMetadata(metadataKey, metadataScopeKey, enabled)
   );
   const generation = useRef(0);
   const paging = useRef(false);
@@ -115,13 +130,18 @@ export function useExpertCatalog(options: CatalogOptions) {
   // or paging so category chips and tag choices do not jump to a partial list.
   useEffect(() => {
     let cancelled = false;
-    setMetadata(emptyMetadata(metadataKey, enabled));
+    setMetadata((previous) =>
+      previous.scopeKey === metadataScopeKey
+        ? { ...previous, key: metadataKey, loading: enabled, errorKey: null }
+        : emptyMetadata(metadataKey, metadataScopeKey, enabled)
+    );
     if (enabled) {
       (mine ? Promise.resolve([]) : listExpertCategories(kind))
         .then((categories) => {
           if (!cancelled)
             setMetadata({
               key: metadataKey,
+              scopeKey: metadataScopeKey,
               categories,
               loading: false,
               errorKey: null,
@@ -129,16 +149,21 @@ export function useExpertCatalog(options: CatalogOptions) {
         })
         .catch((err) => {
           if (!cancelled)
-            setMetadata({
-              ...emptyMetadata(metadataKey, false),
+            setMetadata((previous) => ({
+              ...(previous.scopeKey === metadataScopeKey
+                ? previous
+                : emptyMetadata(metadataKey, metadataScopeKey, false)),
+              key: metadataKey,
+              scopeKey: metadataScopeKey,
+              loading: false,
               errorKey: expertListErrorI18nKey(err),
-            });
+            }));
         });
     }
     return () => {
       cancelled = true;
     };
-  }, [metadataKey, enabled, mine, kind]);
+  }, [metadataKey, metadataScopeKey, enabled, mine, kind]);
 
   useEffect(() => {
     const version = ++generation.current;
@@ -236,12 +261,14 @@ export function useExpertCatalog(options: CatalogOptions) {
   // Never render rows from an earlier Space/filter while the effect is pending.
   const current = state.key === key ? state : emptyState(key, enabled);
   const facets =
-    metadata.key === metadataKey
-      ? metadata
-      : emptyMetadata(metadataKey, enabled);
+    metadata.scopeKey === metadataScopeKey
+      ? { ...metadata, key: metadataKey, loading: metadata.key === metadataKey ? metadata.loading : enabled }
+      : emptyMetadata(metadataKey, metadataScopeKey, enabled);
   return {
     ...current,
     categories: facets.categories,
+    categoriesLoading: facets.loading,
+    categoriesErrorKey: facets.errorKey,
     tags: tags.items,
     tagsLoading: tags.loading,
     tagsErrorKey: tags.errorKey,

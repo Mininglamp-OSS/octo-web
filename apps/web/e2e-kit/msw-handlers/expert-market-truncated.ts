@@ -37,7 +37,7 @@ const firstPlugin = {
 };
 
 // Production regression: matching names at positions 66 and 112.
-const plugins = Array.from({ length: 112 }, (_, index) => ({
+const plugins = Array.from({ length: 212 }, (_, index) => ({
   ...firstPlugin,
   plugin_id: `catalog-expert-${index + 1}`,
   plugin_name: index === 65 ? "数据分析报告专家" : index === 111 ? "数据分析报告师" : `目录专家${index + 1}`,
@@ -68,7 +68,7 @@ export const expertMarketTruncatedHandlers = [
     if (!enabled()) return undefined;
     return HttpResponse.json({
       data: [
-        { category_id: "dev-tools", name: "研发工具", sort_order: 0, plugin_count: 112 },
+        { category_id: "dev-tools", name: "研发工具", sort_order: 0, plugin_count: 212 },
       ],
     });
   }),

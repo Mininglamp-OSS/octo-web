@@ -2914,14 +2914,25 @@
   white-space: nowrap;
 }
 .wk-mine-table__version {
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding: 0 var(--wk-sp-2);
+  display: inline-block;
+  /* An upgrade renders `v1.0.0 → v1.0.1`, which does not fit the fixed version
+     track and used to wrap out of a height-locked pill, splitting the box. The
+     head and body are separate grids, so the track cannot be content-sized
+     without misaligning — instead the pill grows: min-height keeps the 20px
+     single-line look, vertical padding + line-height let a two-line transition
+     wrap inside the background instead of overflowing it. The version tokens
+     hold no spaces, so wrapping only ever happens around the arrow. */
+  min-height: var(--wk-sp-5);
+  padding: var(--wk-sp-0-5) var(--wk-sp-2);
   border-radius: var(--wk-r-sm);
   background: var(--wk-bg-elevated);
   color: var(--wk-text-secondary);
   font-variant-numeric: tabular-nums;
+  line-height: var(--wk-sp-4);
+  text-align: center;
+  vertical-align: middle;
+  white-space: normal;
+  max-width: 100%;
 }
 .wk-mine-table__vis {
   display: inline-flex;
@@ -3593,8 +3604,6 @@
 .skill-market-spin {
   animation: skill-market-spin 900ms linear infinite;
 }
-
-
 /* Inline confirmation that replaces a dialog's footer rather than stacking a
    second dialog over it. It occupies the footer slot, so it inherits the modal's
    footer padding and border; only the layout and the warning tone are set here. */

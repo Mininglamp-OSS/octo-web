@@ -33,3 +33,19 @@ describe('TRACK_RULES — A_rule summary batch', () => {
         expect(idx.loose.every((r) => !expected.some((e) => e.event === r.event))).toBe(true)
     })
 })
+
+describe('TRACK_RULES — *_searched keeps the on:\'click\' activation gate (R13 B3 pin)', () => {
+    // 剥掉 on:'click' 的突变在本套件曾全绿存活(Service 751/751)——keydown/submit 一旦放行,
+    // 每次键入都会被计成「搜索」,事件从「激活」漂移成「逐字符」。此钉让 strip 突变立即变红:
+    // 两条 *_searched 规则必须钉死在「点击激活」语义(DAP_EVENTS.md 对应行已写明该行为)。
+    const cases = [
+        { event: 'project_searched', testid: 'project-search-input' },
+        { event: 'expert_searched', testid: 'loop-agent-search-input' },
+    ]
+    it.each(cases)('$event keeps the on:click activation gate', ({ event, testid }) => {
+        const rule = TRACK_RULES.find((r) => r.event === event)
+        expect(rule, `missing rule for ${event}`).toBeTruthy()
+        expect(rule?.testid).toBe(testid)
+        expect(rule?.on, `${event} must stay on:'click' (box activation, never per-keystroke)`).toBe('click')
+    })
+})

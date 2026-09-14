@@ -697,7 +697,9 @@ async function listExpertCategoriesReal(
   kind: ExpertKindParam
 ): Promise<ExpertCategoryCount[]> {
   const data = await fetchExpertCategoriesWire(pluginTypeOf(kind));
-  return data.map((c) => ({ name: c.name, count: c.plugin_count ?? 0 }));
+  return data
+    .filter((c) => (c.plugin_count ?? 0) > 0)
+    .map((c) => ({ name: c.name, count: c.plugin_count ?? 0 }));
 }
 
 // ─── Mock implementations (session-local CRUD over module arrays) ───────────
@@ -823,7 +825,7 @@ function listExpertCategoriesMock(
   const categories = EXPERT_CATEGORIES.filter((c) => c !== ALL_CATEGORY).map(
     (name) => ({ name, count: counts.get(name) ?? 0 })
   );
-  return delay(categories);
+  return delay(categories.filter((category) => category.count > 0));
 }
 
 // ─── Public API (the only surface the UI imports) ──────────────────────────

@@ -56,7 +56,7 @@ vi.mock("@octo/base", () => ({
   DEFAULT_REQUEST_TIMEOUT_MS: 20000,
 }));
 
-import { listExperts, listSquads, listMyExperts, listMySquads, listExpertTags } from "./expertService";
+import { listExperts, listSquads, listMyExperts, listMySquads, listExpertTags, listExpertCategories } from "./expertService";
 import type { ExpertCatalogSort } from "./expertService";
 import { WKApp } from "@octo/base";
 
@@ -169,6 +169,21 @@ describe("expertService catalog sort wire contract", () => {
       url: "/market/api/v1/plugin_tags",
       params: { plugin_type: "expert_team", scene_code: "default", mode: "mine", q: "rare" },
     });
+  });
+
+  it("omits zero-count expert categories from the filter taxonomy", async () => {
+    mock.instance.get.mockResolvedValue({
+      data: {
+        data: [
+          { name: "Reports", plugin_count: 2 },
+          { name: "Empty", plugin_count: 0 },
+        ],
+      },
+    });
+
+    expect(await listExpertCategories("agent")).toEqual([
+      { name: "Reports", count: 2 },
+    ]);
   });
 });
 
