@@ -1,7 +1,7 @@
 import { Channel, WKSDK, Message } from "wukongimjssdk";
 import WKApp from "./App";
 import React, { Component, ReactNode } from "react";
-import { ChatContentPage } from "./Pages/Chat";
+import { ChatContentPage, type ChatContentPageProps } from "./Pages/Chat";
 import { EndpointCategory, EndpointID } from "./Service/Const";
 import { EndpointManager } from "./Service/Module";
 import ConversationContext from "./Components/Conversation/context";
@@ -33,6 +33,7 @@ export class ShowConversationOptions {
    * 会话；不切的话用户在 follow tab 上打开未关注会话会"消失"。
    */
   fromSidebarList?: boolean;
+  workspaceEmbedding?: ChatContentPageProps["workspaceEmbedding"];
 }
 
 /**
@@ -179,6 +180,7 @@ export class EndpointCommon {
             initialShowChannelSearch={
               !!opts.openChannelSearch && isChannelSearchEnabled(channel)
             }
+            {...(opts.workspaceEmbedding ? { workspaceEmbedding: opts.workspaceEmbedding } : {})}
           ></ChatContentPage>
         );
       },

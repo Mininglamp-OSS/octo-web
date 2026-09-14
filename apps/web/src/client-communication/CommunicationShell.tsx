@@ -17,6 +17,7 @@ import {
 } from "@octo/base";
 import WKNavHeader from "@octo/base/src/Components/WKNavHeader";
 import type { WKViewQueueContext } from "@octo/base/src/Components/WKViewQueue";
+import type { ChatContentPageProps } from "@octo/base/src/Pages/Chat";
 import { ContactsList } from "@octo/contacts";
 import { renderAppBotConversation } from "@dmwork/appbot/conversation";
 import { Channel, ChannelInfo } from "wukongimjssdk";
@@ -69,7 +70,7 @@ function reportUnread(bridge: OctoBuddyCommunicationBridge, count: number) {
   }
 }
 
-function openTarget(target: ConversationTarget) {
+function openTarget(target: ConversationTarget, workspaceEmbedding?: ChatContentPageProps["workspaceEmbedding"]) {
   const channel = new Channel(target.channelId, target.channelType);
   if (target.displayName || target.avatar || target.metadata) {
     const info = getCurrentImChannelInfo<Channel, ChannelInfo>(channel) || new ChannelInfo();
@@ -101,6 +102,7 @@ function openTarget(target: ConversationTarget) {
   WKApp.endpoints.showConversation(channel, {
     initLocateMessageSeq: target.messageSeq,
     openChannelSearch: target.openChannelSearch,
+    ...(workspaceEmbedding ? { workspaceEmbedding } : {}),
   });
 }
 
@@ -131,14 +133,35 @@ export function CommunicationShell({
   const commandListenerReadyRef = useRef(false);
   const pendingTargetRef = useRef<ConversationTarget | undefined>();
   const appTargetRef = useRef<ConversationTarget | undefined>();
+  const workspaceTargetRef = useRef<ConversationTarget | undefined>();
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
   const readyReporterRef = useRef<ReturnType<typeof createReadyReporter>>();
 
   const openPreparedTarget = useCallback((target: ConversationTarget) => {
+    const previous = workspaceTargetRef.current;
+    const channel = WKApp.shared.openChannel;
+    if (target.variant === "workspace-group" && previous?.channelId === target.channelId &&
+        previous.channelType === target.channelType && previous.messageSeq === target.messageSeq &&
+        channel?.channelID === target.channelId && channel.channelType === target.channelType) return;
     appTargetRef.current = target.variant === "app-bot" ? target : undefined;
-    openTarget(target);
-  }, []);
+    workspaceTargetRef.current = target.variant === "workspace-group" ? target : undefined;
+    const spaceId = spaceIdRef.current;
+    openTarget(target, target.variant === "workspace-group" ? {
+      openConversation: (channel) => {
+        if (workspaceTargetRef.current !== target || spaceIdRef.current !== spaceId) return;
+        reportNavigation(bridge, {
+          page: "chat",
+          source: "workspace-conversation",
+          channel: { id: channel.channelID, type: channel.channelType },
+        });
+      },
+      onSidePanelUnavailable: () => {
+        if (workspaceTargetRef.current !== target || spaceIdRef.current !== spaceId) return;
+        Toast.info(t("app.workspaceConversation.openInMessages"));
+      },
+    } : undefined);
+  }, [bridge]);
 
   useEffect(() => installSummaryNavigation(bridge, (error) => {
     console.error("[client-communication] failed to open summary", error);
@@ -214,13 +237,16 @@ export function CommunicationShell({
           WKApp.routeLeft.popToRoot();
           if (command.page === "contacts") WKApp.routeRight.popToRoot();
         }
-        // Leaving Apps restores the regular chat header, even without a new target.
-        const previousTarget = pendingTargetRef.current || appTargetRef.current;
+        // Leaving a specialized conversation restores the normal Messages behavior.
+        const previousTarget = pendingTargetRef.current || appTargetRef.current || workspaceTargetRef.current;
         const target = command.target || (command.page === "chat" && previousTarget ? {
           ...previousTarget,
           variant: undefined,
         } : undefined);
-        if (command.page !== "chat") appTargetRef.current = undefined;
+        if (command.page !== "chat") {
+          appTargetRef.current = undefined;
+          workspaceTargetRef.current = undefined;
+        }
         pendingTargetRef.current = target;
         activatePage(command.page, "host", () => {
           if (pendingTargetRef.current && routeReadyRef.current.right) {
@@ -235,6 +261,8 @@ export function CommunicationShell({
       if (command.type === "spaceChanged") {
         pendingTargetRef.current = undefined;
         appTargetRef.current = undefined;
+        if (workspaceTargetRef.current) WKApp.routeRight.popToRoot();
+        workspaceTargetRef.current = undefined;
         if (spaceIdRef.current !== command.space.id) summaryScopeRevision.current++;
         spaceIdRef.current = command.space.id;
         document.documentElement.dataset.spaceId = command.space.id;
@@ -310,7 +338,10 @@ export function CommunicationShell({
       previousChannel = key;
       reportNavigation(bridge, {
         page: "chat",
-        source: "internal",
+        source: workspaceTargetRef.current &&
+          (workspaceTargetRef.current.channelId !== channel.channelID ||
+           workspaceTargetRef.current.channelType !== channel.channelType)
+          ? "workspace-conversation" : "internal",
         channel: { id: channel.channelID, type: channel.channelType },
       });
     };

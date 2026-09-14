@@ -356,6 +356,16 @@ export interface ChatContentPageProps {
   initLocateMessageSeq?: number; // 打开时定位到某条消息
   /** 打开会话后默认展开右侧聊天记录搜索面板 */
   initialShowChannelSearch?: boolean;
+  /**
+   * 工作空间内嵌模式：显式传入时不展开任何真实侧边面板（文件预览、webhook、
+   * 智能总结、频道内搜索、子区/设置面板等）。子区会话入口改为通过
+   * openConversation 导航到完整消息页的对应子区，其余侧边打开尝试通过
+   * onSidePanelUnavailable 提示用户去完整消息页。未传时保持现有 Web 行为。
+   */
+  workspaceEmbedding?: {
+    openConversation: (channel: Channel) => void;
+    onSidePanelUnavailable: () => void;
+  };
 }
 
 export interface ChatContentPageState {
@@ -495,6 +505,7 @@ export class ChatContentPage extends Component<
       summaryPanelView: "new",
       showChannelSearch:
         !!props.initialShowChannelSearch &&
+        !props.workspaceEmbedding &&
         isChannelSearchEnabled(props.channel),
       channelSearchPreviewFile: null,
       previewReturnChannelSearch: false,
@@ -503,6 +514,10 @@ export class ChatContentPage extends Component<
   }
 
   private _openWebhookPreview = (target: WebhookIssuePreviewTarget) => {
+    if (this.props.workspaceEmbedding) {
+      this.props.workspaceEmbedding.onSidePanelUnavailable();
+      return;
+    }
     this._clearChannelSearchState();
     this.setState(
       openChatRightPanel("webhookPreview", {
@@ -515,6 +530,10 @@ export class ChatContentPage extends Component<
     file: FilePreviewInfo,
     options?: { returnToChannelSearch?: boolean }
   ) => {
+    if (this.props.workspaceEmbedding) {
+      this.props.workspaceEmbedding.onSidePanelUnavailable();
+      return;
+    }
     const { channel } = this.props;
     const { showThreadPanel, activeThread } = this.state;
 
@@ -667,6 +686,10 @@ export class ChatContentPage extends Component<
   };
 
   private _openChannelSearchPanel = () => {
+    if (this.props.workspaceEmbedding) {
+      this.props.workspaceEmbedding.onSidePanelUnavailable();
+      return;
+    }
     if (!isChannelSearchEnabled(this.props.channel)) return;
     this._clearChannelSearchState();
     this.setState(openChatRightPanel("channelSearch"));
@@ -748,6 +771,18 @@ export class ChatContentPage extends Component<
       thread: Thread | null;
     }) => {
       if (detail?.groupNo === this.props.channel.channelID) {
+        const workspaceEmbedding = this.props.workspaceEmbedding;
+        if (workspaceEmbedding) {
+          // 有明确 thread 时导航到对应子区完整页
+          if (detail?.thread?.channel_id) {
+            workspaceEmbedding.openConversation(
+              new Channel(detail.thread.channel_id, ChannelTypeCommunityTopic)
+            );
+          } else {
+            workspaceEmbedding.onSidePanelUnavailable();
+          }
+          return;
+        }
         this.setState(
           openChatRightPanel("thread", {
             activeThread: detail.thread || null,
@@ -771,6 +806,10 @@ export class ChatContentPage extends Component<
         data.channelType !== channel.channelType
       )
         return;
+      if (this.props.workspaceEmbedding) {
+        this.props.workspaceEmbedding.onSidePanelUnavailable();
+        return;
+      }
       this.setState((prevState) => {
         // forceOpen：始终打开（用于聊天内创建总结后展示），不做 toggle 关闭
         const opening = data.forceOpen ? true : !prevState.showSummaryPanel;
@@ -793,37 +832,47 @@ export class ChatContentPage extends Component<
         data.channelType !== channel.channelType
       )
         return;
+      if (this.props.workspaceEmbedding) {
+        this.props.workspaceEmbedding.onSidePanelUnavailable();
+        return;
+      }
       this._openChannelSearchPanel();
     };
     WKApp.mittBus.on("wk:open-channel-search", this._onOpenChannelSearch);
 
-    // 检查是否需要自动打开子区面板（查看全部子区）
+    // 检查是否需要自动打开子区面板（查看全部子区）。
+    // 内嵌模式只消费 pending 标记。
     if (WKApp.shared.pendingThreadPanel === channel.channelID) {
-      this.setState(openChatRightPanel("thread"));
       WKApp.shared.pendingThreadPanel = undefined;
+      if (!this.props.workspaceEmbedding) {
+        this.setState(openChatRightPanel("thread"));
+      }
     }
 
-    // 检查是否有待打开的文件预览（从子区面板切换过来）
+    // 检查是否有待打开的文件预览（从子区面板切换过来）。
+    // 内嵌模式仅消费 pending 标记。
     if (WKApp.shared.pendingFilePreview) {
       const pending = WKApp.shared.pendingFilePreview;
       WKApp.shared.pendingFilePreview = undefined;
-      this.setState(
-        openChatRightPanel("filePreview", {
-          previewFile: {
-            url: pending.url,
-            name: pending.name,
-            extension: pending.extension,
-            size: pending.size,
-            messageId: pending.messageId,
-            sourceChannelId: pending.sourceChannelId,
-            sourceChannelType: pending.sourceChannelType,
-            messageSeq: pending.messageSeq,
-            fromUID: pending.fromUID,
-            conversationDigest: pending.conversationDigest,
-          },
-          activePreviewMessageId: pending.messageId || null,
-        })
-      );
+      if (!this.props.workspaceEmbedding) {
+        this.setState(
+          openChatRightPanel("filePreview", {
+            previewFile: {
+              url: pending.url,
+              name: pending.name,
+              extension: pending.extension,
+              size: pending.size,
+              messageId: pending.messageId,
+              sourceChannelId: pending.sourceChannelId,
+              sourceChannelType: pending.sourceChannelType,
+              messageSeq: pending.messageSeq,
+              fromUID: pending.fromUID,
+              conversationDigest: pending.conversationDigest,
+            },
+            activePreviewMessageId: pending.messageId || null,
+          })
+        );
+      }
     }
 
     // 子区：预先获取父群组信息
@@ -898,6 +947,11 @@ export class ChatContentPage extends Component<
       this.channelSettingReturnFocusElement = undefined;
     }
 
+    // embed↔full 切换时清理侧栏状态。
+    if (!!this.props.workspaceEmbedding !== !!prevProps.workspaceEmbedding) {
+      this.setState(closeChatRightPanels());
+    }
+
     // 子区打开(入口二:页内子区选择)——本页 channel 为父群、activeThread 身份(channel_id)变化即一次
     // subchannel_opened,覆盖 onOpenThreadPanel / onThreadSelect 这类不 remount 只改 state 的页内入口。
     // 与挂载入口(入口一)的去重由 subchannelOpenFromMount 的 sentinel 负责:本支照发,若用户随后把该
@@ -946,19 +1000,20 @@ export class ChatContentPage extends Component<
       });
     }
 
-    // 切换频道时消费 pendingThreadPanel 和 pendingFilePreview。
     if (channelChanged) {
-      // 打开全部子区列表
+      // 打开全部子区列表；内嵌模式只消费标记。
       if (WKApp.shared.pendingThreadPanel === channel.channelID) {
         WKApp.shared.pendingThreadPanel = undefined;
+        if (this.props.workspaceEmbedding) return;
         this.setState(openChatRightPanel("thread"));
         return;
       }
 
-      // 检查是否有待打开的文件预览（从子区面板切换过来）
+      // 打开文件预览；内嵌模式只消费标记。
       if (WKApp.shared.pendingFilePreview) {
         const pending = WKApp.shared.pendingFilePreview;
         WKApp.shared.pendingFilePreview = undefined;
+        if (this.props.workspaceEmbedding) return;
         this.setState(
           openChatRightPanel("filePreview", {
             previewFile: {
@@ -1194,7 +1249,8 @@ export class ChatContentPage extends Component<
   private renderConversationHeaderActions(
     channel: Channel,
     isThreadChannel: boolean,
-    showChannelSetting: boolean
+    showChannelSetting: boolean,
+    workspaceEmbedding: boolean
   ): ReactNode {
     return (
       <>
@@ -1209,7 +1265,8 @@ export class ChatContentPage extends Component<
               {item}
             </div>
           ))}
-        {!isThreadChannel &&
+        {!workspaceEmbedding &&
+          !isThreadChannel &&
           channel.channelType === ChannelTypeGroup &&
           WKApp.remoteConfig.threadOn && (
             <div
@@ -1239,6 +1296,7 @@ export class ChatContentPage extends Component<
               <ThreadIcon size={20} color="currentColor" />
             </div>
           )}
+        {!workspaceEmbedding && (
         <div
           data-testid="chat-channel-setting-entry"
           className="wk-chat-conversation-header-right-item"
@@ -1279,6 +1337,7 @@ export class ChatContentPage extends Component<
           </svg>
           <div className="wk-conversation-header-mask" />
         </div>
+        )}
       </>
     );
   }
@@ -1310,15 +1369,16 @@ export class ChatContentPage extends Component<
         parseThreadChannelId(channel.channelID)?.groupNo
       : undefined;
     const threadStatus = this.getThreadStatus(channelInfo);
+    const workspaceEmbedding = !!this.props.workspaceEmbedding;
     return (
       <div
         className={classNames(
           "wk-chat-content-right",
-          showChannelSetting ? "wk-chat-channelsetting-open" : "",
-          showChannelSearch ? "wk-chat-channel-search-open" : "",
-          showThreadPanel || previewFile ? "wk-chat-threadpanel-open" : "",
-          showSummaryPanel ? "wk-chat-summary-panel-open" : "",
-          webhookIssuePreviewTarget ? "wk-chat-webhook-preview-open" : ""
+          !workspaceEmbedding && showChannelSetting && "wk-chat-channelsetting-open",
+          !workspaceEmbedding && showChannelSearch && "wk-chat-channel-search-open",
+          !workspaceEmbedding && (showThreadPanel || previewFile) && "wk-chat-threadpanel-open",
+          !workspaceEmbedding && showSummaryPanel && "wk-chat-summary-panel-open",
+          !workspaceEmbedding && webhookIssuePreviewTarget && "wk-chat-webhook-preview-open"
         )}
       >
         <ConversationWindow
@@ -1327,7 +1387,7 @@ export class ChatContentPage extends Component<
           errorModuleName={t("base.chatPage.chatModuleName")}
           bindConversationContext={this.chatRuntime.bindConversationContext}
           surfaceRef={this.chatContentRef}
-          inactive={showChannelSetting}
+          inactive={!workspaceEmbedding && showChannelSetting}
           header={{
             avatar: this.renderConversationHeaderAvatar(
               channel,
@@ -1343,13 +1403,16 @@ export class ChatContentPage extends Component<
                 threadParentGroupNo &&
                 "wk-chat-conversation-header-channel-info-name--thread"
             ),
-            onBack: () => {
-              WKApp.routeRight.pop();
-            },
+            onBack: workspaceEmbedding
+              ? undefined
+              : () => {
+                  WKApp.routeRight.pop();
+                },
             actions: this.renderConversationHeaderActions(
               channel,
               isThreadChannel,
-              showChannelSetting
+              showChannelSetting,
+              workspaceEmbedding
             ),
           }}
           selection={
@@ -1385,6 +1448,14 @@ export class ChatContentPage extends Component<
               });
             },
             onOpenThreadPanel: (threadChannelId, threadName) => {
+              const workspaceEmbedding = this.props.workspaceEmbedding;
+              if (workspaceEmbedding && threadChannelId) {
+                // 子区入口：导航到完整消息页对应子区。
+                workspaceEmbedding.openConversation(
+                  new Channel(threadChannelId, ChannelTypeCommunityTopic)
+                );
+                return;
+              }
               const threadInfo = parseThreadChannelId(threadChannelId);
               if (threadInfo) {
                 this.setState(
@@ -1413,7 +1484,7 @@ export class ChatContentPage extends Component<
           }}
         />
 
-        {showChannelSetting && (
+        {!workspaceEmbedding && showChannelSetting && (
           <div
             className="wk-chat-channelsetting-mask"
             data-testid="chat-channel-setting-mask"
@@ -1421,6 +1492,7 @@ export class ChatContentPage extends Component<
           />
         )}
 
+        {!workspaceEmbedding && (
         <div
           id="chat-channel-setting-panel"
           ref={this.channelSettingPanelRef}
@@ -1443,8 +1515,9 @@ export class ChatContentPage extends Component<
             ></ChannelSetting>
           </ErrorBoundary>
         </div>
+        )}
 
-        {showChannelSearch && (
+        {!workspaceEmbedding && showChannelSearch && (
           <div className="wk-chat-channel-search-panel" data-desktop-overlay="">
             <ErrorBoundary moduleName={t("base.chatPage.searchModuleName")}>
               <div
@@ -1490,7 +1563,8 @@ export class ChatContentPage extends Component<
         )}
 
         {/* 统一侧边面板：子区 + 文件预览共用一个壳子（仅群聊） */}
-        {!isThreadChannel &&
+        {!workspaceEmbedding &&
+          !isThreadChannel &&
           channel.channelType === ChannelTypeGroup &&
           WKApp.remoteConfig.threadOn &&
           (showThreadPanel || previewFile) && (
@@ -1541,7 +1615,8 @@ export class ChatContentPage extends Component<
           )}
 
         {/* 子区频道或私聊的文件预览（使用 ThreadPanel 壳子，获得拖拽功能） */}
-        {(isThreadChannel || channel.channelType === ChannelTypePerson) &&
+        {!workspaceEmbedding &&
+          (isThreadChannel || channel.channelType === ChannelTypePerson) &&
           previewFile && (
             <ThreadPanel
               onClose={() => this._closePreview(true)}
@@ -1561,7 +1636,7 @@ export class ChatContentPage extends Component<
             />
           )}
 
-        {showSummaryPanel && (
+        {!workspaceEmbedding && showSummaryPanel && (
           <div className="wk-summary-panel" data-desktop-overlay="">
             {WKApp.endpoints.chatSummaryPanel(
               channel,
@@ -1571,7 +1646,7 @@ export class ChatContentPage extends Component<
           </div>
         )}
 
-        {webhookIssuePreviewTarget && (
+        {!workspaceEmbedding && webhookIssuePreviewTarget && (
           <ErrorBoundary moduleName={t("base.message.webhookPreview.title")}>
             <WebhookIssuePreviewPanel
               target={webhookIssuePreviewTarget}

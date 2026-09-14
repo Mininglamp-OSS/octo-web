@@ -153,6 +153,7 @@ vi.mock("@octo/base", () => {
       return <>{contentLeft}{contentRight}</>;
     },
     i18n: { setLocale: vi.fn() },
+    t: (key: string) => key,
     useI18n: () => ({ t: (key: string) => key }),
   };
 });
@@ -174,6 +175,70 @@ describe("CommunicationShell", () => {
       listener(0);
       return vi.fn();
     });
+    WKApp.shared.openChannel = undefined;
+  });
+
+  it("opts into workspace embedding and sends subgroup clicks to full Messages without opening a panel", async () => {
+    render(<CommunicationShell bridge={mocks.bridge as any}
+      initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat", presentation: "conversation",
+      target: { channelId: "group-a", channelType: 2, variant: "workspace-group" },
+    }));
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1));
+    const [channel, options] = vi.mocked(WKApp.endpoints.showConversation).mock.calls[0];
+    expect(channel).toMatchObject({ channelID: "group-a", channelType: 2 });
+    expect(options?.workspaceEmbedding).toBeDefined();
+    options!.workspaceEmbedding!.openConversation({ channelID: "group-a____topic", channelType: 6 } as any);
+    await waitFor(() => expect(mocks.bridge.reportNavigation).toHaveBeenCalledWith({
+      page: "chat", source: "workspace-conversation",
+      channel: { id: "group-a____topic", type: 6 },
+    }));
+    expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the same workspace conversation across hide/show and restores default behavior on leaving", async () => {
+    render(<CommunicationShell bridge={mocks.bridge as any}
+      initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+    const command = {
+      type: "navigate", page: "chat", presentation: "conversation",
+      target: { channelId: "group-a", channelType: 2, variant: "workspace-group" },
+    };
+    act(() => mocks.command.listener?.(command));
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1));
+    WKApp.shared.openChannel = vi.mocked(WKApp.endpoints.showConversation).mock.calls[0][0];
+    act(() => {
+      mocks.command.listener?.({ type: "suspend" });
+      mocks.command.listener?.({ type: "resume" });
+      mocks.command.listener?.(command);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
+    act(() => mocks.command.listener?.({ type: "navigate", page: "chat", presentation: "workspace" }));
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(WKApp.endpoints.showConversation).mock.calls[1][1]?.workspaceEmbedding).toBeUndefined();
+  });
+
+  it("invalidates old workspace callbacks after another group or Space is selected", async () => {
+    render(<CommunicationShell bridge={mocks.bridge as any}
+      initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat", presentation: "conversation",
+      target: { channelId: "group-a", channelType: 2, variant: "workspace-group" },
+    }));
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1));
+    const open = vi.mocked(WKApp.endpoints.showConversation).mock.calls[0][1]!.workspaceEmbedding!.openConversation;
+    act(() => mocks.command.listener?.({
+      type: "spaceChanged", space: { id: "space-b", name: "B" },
+    }));
+    mocks.bridge.reportNavigation.mockClear();
+    open({ channelID: "old-topic", channelType: 6 } as any);
+    await Promise.resolve();
+    expect(mocks.bridge.reportNavigation).not.toHaveBeenCalled();
+    expect(WKApp.routeRight.popToRoot).toHaveBeenCalled();
   });
 
   it("keeps one embedded Contacts header and preserves child state while switching visible pages", async () => {

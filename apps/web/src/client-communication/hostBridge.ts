@@ -9,7 +9,7 @@ export interface ConversationTarget {
   displayName?: string;
   avatar?: string;
   metadata?: Record<string, unknown>;
-  variant?: "app-bot";
+  variant?: "app-bot" | "workspace-group";
 }
 
 export interface CommunicationBootstrap {
@@ -52,7 +52,7 @@ export type HostCommand =
 
 export interface NavigationReport {
   page: CommunicationPage;
-  source: "host" | "contact-card" | "group-card" | "notification" | "internal";
+  source: "host" | "contact-card" | "group-card" | "notification" | "internal" | "workspace-conversation";
   channel?: { id: string; type: number };
 }
 

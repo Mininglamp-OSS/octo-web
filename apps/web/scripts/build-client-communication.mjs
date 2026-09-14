@@ -11,6 +11,7 @@ void buildClientFeature({
   documentForwardVersion: 1,
   backgroundRuntimeVersion: 1,
   summaryAttentionProviderVersion: 1,
+  workspaceConversationVersion: 1,
   includeImMock: true,
 }).catch((error) => {
   console.error(`[build-client-communication] failed: ${error.message}`);

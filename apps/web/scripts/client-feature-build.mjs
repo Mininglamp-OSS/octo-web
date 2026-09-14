@@ -38,6 +38,7 @@ export async function buildClientFeature({
   backgroundRuntimeVersion,
   summaryAttentionProviderVersion,
   externalSummaryAttentionVersion,
+  workspaceConversationVersion,
   includeImMock = false,
 }) {
   const scriptDir = path.dirname(fileURLToPath(scriptUrl));
@@ -129,6 +130,7 @@ export async function buildClientFeature({
     ...(backgroundRuntimeVersion === undefined ? {} : { backgroundRuntimeVersion }),
     ...(summaryAttentionProviderVersion === undefined ? {} : { summaryAttentionProviderVersion }),
     ...(externalSummaryAttentionVersion === undefined ? {} : { externalSummaryAttentionVersion }),
+    ...(workspaceConversationVersion === undefined ? {} : { workspaceConversationVersion }),
     sourceDirty,
     e2eMock: buildEnv.e2eMock || (includeImMock && buildEnv.e2eMockIm),
     mockFlags: {
