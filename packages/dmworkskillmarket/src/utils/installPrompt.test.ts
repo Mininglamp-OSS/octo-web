@@ -31,8 +31,10 @@ describe("buildInstallPrompt", () => {
     expect(prompt).toContain("octo-cli skills octo-marketplace");
     expect(prompt).toContain("npm install -g @mininglamp-oss/octo-cli@latest");
     expect(prompt).toContain("确认当前版本 `>= 0.15.0`");
+    expect(prompt).toContain("按 major/minor/patch 分段数字比较");
     expect(prompt).toContain("版本低于 `0.15.0`");
     expect(prompt).toContain("先询问用户是否更新/安装 `octo-cli`");
+    expect(prompt).toContain("重新运行");
     expect(prompt).toContain("用户未确认时停止");
     expect(prompt).toContain("octo-cli auth list");
     expect(prompt).toContain("不要解释正在读取 Skill、复述本 Prompt 或逐步播报检查过程");

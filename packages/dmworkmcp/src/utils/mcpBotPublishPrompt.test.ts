@@ -53,9 +53,26 @@ describe("getMcpBotPublishPrompt — shell-safe interpolation", () => {
     expect(p).toContain(`--space ${goodId}`);
     expect(p).toContain("https://example.com");
     expect(p).toContain("确认当前版本 `>= 0.15.0`");
+    expect(p).toContain("按 major/minor/patch 分段数字比较");
     expect(p).toContain("版本低于 `0.15.0`");
     expect(p).toContain("先询问用户是否更新/安装 `octo-cli`");
+    expect(p).toContain("重新运行");
     expect(p).toContain("用户未确认时停止");
+  });
+
+  it("uses the unified plugin write surface and keeps only the retained MCP probe", () => {
+    const p = getMcpBotPublishPrompt({ spaceId: goodId, apiBaseUrl: "https://example.com" });
+    expect(p).toContain(
+      "octo-cli marketplace plugin-category list --scene-code default --plugin-type connector"
+    );
+    expect(p).toContain("plugin_type: \"connector\"");
+    expect(p).toContain("octo-cli marketplace mcp probe --data @connection.json");
+    expect(p).toContain("octo-cli marketplace plugin get --plugin-id <plugin-id>");
+    expect(p).not.toContain("marketplace mcp-category");
+    expect(p).not.toContain("marketplace mcp create");
+    expect(p).not.toContain("marketplace mcp get");
+    expect(p).not.toContain("env_user_supplied");
+    expect(p).not.toContain("headers_user_supplied");
   });
 
   it("embeds a compact 32-hex spaceId verbatim into the login example", () => {

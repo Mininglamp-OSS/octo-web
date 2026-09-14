@@ -35,12 +35,11 @@ export function resolveMcpAPIBaseURL(apiURL: string, origin: string): string {
 
 /** Build the prompt handed to a bot to publish an MCP server listing.
  *
- *  Command surface is verified against octo-cli's embedded `octo-marketplace`
- *  Skill (`skills/octo-marketplace/mcp.md`). Unlike Skill publishing there is
- *  no dedicated bot endpoint — the bot uses the same `marketplace mcp create`
- *  command as any owner, so this prompt directs it to that Skill's Create
- *  workflow instead of a "Publish as a Bot" section that doesn't exist for
- *  MCP. */
+ *  Keep the write command surface delegated to octo-cli's embedded
+ *  `octo-marketplace` Skill (`skills/octo-marketplace/mcp.md`). The CLI moved
+ *  marketplace writes to the unified plugin surface in 0.15.0, so this prompt
+ *  should pass authoritative inputs and safety rules rather than duplicate the
+ *  full command contract. */
 export function getMcpBotPublishPrompt(values: McpBotPublishPromptValues = {}): string {
   const spaceId = sanitizeShellSpaceId(values.spaceId);
   const apiBaseUrl = values.apiBaseUrl?.trim() || "<api-base-url>";
@@ -58,9 +57,11 @@ export function getMcpBotPublishPrompt(values: McpBotPublishPromptValues = {}): 
 
 不要解释正在读取内容、复述本 Prompt 或逐步播报检查过程。用户提供前不要搜索磁盘或猜测路径。
 
-1. 运行 \`octo-cli version\`，确认当前版本 \`>= 0.15.0\` 且包含 \`octo-marketplace\` Skill。
-   如果未安装、版本低于 \`0.15.0\` 或不包含该 Skill，先询问用户是否更新/安装 \`octo-cli\`。
-   用户确认后再运行 \`npm install -g @mininglamp-oss/octo-cli@latest\`；用户未确认时停止，
+1. 运行 \`octo-cli version\`，读取输出中的 \`version\`，按 major/minor/patch 分段数字比较，
+   确认当前版本 \`>= 0.15.0\`（例如 \`0.9.0 < 0.15.0\`）。
+   如果未安装或版本低于 \`0.15.0\`，先询问用户是否更新/安装 \`octo-cli\`。
+   用户确认后运行 \`npm install -g @mininglamp-oss/octo-cli@latest\`，并重新运行
+   \`octo-cli version\` 复核；仍不满足时停止。用户未确认时停止，
    并说明本流程需要 \`octo-cli >= 0.15.0\`。
 
 2. 运行 \`octo-cli auth list\`，选择 \`space_id\` 等于 \`${spaceId}\` 的唯一 Profile。
@@ -79,19 +80,22 @@ export function getMcpBotPublishPrompt(values: McpBotPublishPromptValues = {}): 
    octo-cli skills octo-marketplace --profile <profile>
    \`\`\`
 
-4. 按 \`mcp.md\` 的 Create 流程完成上架：
+4. 按 \`mcp.md\` 的 Create / Publish 流程完成上架：
 
-   - 运行 \`octo-cli marketplace mcp-category list --mode all --profile <profile>\`
-     拿到合法的 \`category\` key（不要用 \`all\` 或空串作分类）。
+   - 使用 \`octo-cli marketplace plugin-category list --scene-code default --plugin-type connector --profile <profile>\`
+     获取合法 \`category_id\`。
    - \`streamable-http\` / \`sse\` 传输：先把 \`transport\` / \`url\` / 可选 \`headers\` / \`env\`
-     写入 \`connection.json\`，运行
+     写入 \`connection.json\`，按 \`mcp.md\` 运行
      \`octo-cli marketplace mcp probe --data @connection.json --profile <profile>\`，
      确认 \`is_ok=true\` 再继续。\`stdio\` 传输不要调用 probe。
-   - 编写 \`mcp.json\`：目录字段（\`name\` / \`slogan\` / \`category\` / \`tags\` / \`icon\` 等）
-     + \`transport\` + 对应连接字段。消费者需自行填入的密钥放进
-     \`env_user_supplied\` / \`headers_user_supplied\`，对应值提交空字符串。
-   - 运行 \`octo-cli marketplace mcp create --data @mcp.json --profile <profile>\` 完成上架，
-     用返回的 \`mcp_id\` 通过 \`marketplace mcp get <mcp-id>\` 复核。
+   - 按 \`mcp.md\` 编写 \`plugin.json\`，使用 \`plugin_type: "connector"\`，
+     提交完整的 \`manifest_json\` 和 \`plugin_json\`（包含根目录 \`mcp.json\`）。
+     消费者需自行填入的密钥一律写成 \`\${VAR}\` 占位，不要提交真实密钥。
+   - 向我展示发布预览，并在这里暂停，明确等待我回复“确认上架”；未收到这四个字，
+     不得创建、发布或提交审核。可先用 \`--dry-run\` 打印将要发送的请求核对。
+   - 确认后只使用 \`mcp.md\` 记录的统一 \`octo-cli marketplace plugin ...\` 命令完成保存、
+     发布或提交审核，并用 \`octo-cli marketplace plugin get --plugin-id <plugin-id> --profile <profile>\`
+     回读核验。不要使用旧的 MCP 专用 create / get / category 命令。
 
 以上 Space ID、API 地址和可见范围是本次操作的权威输入。`;
 }

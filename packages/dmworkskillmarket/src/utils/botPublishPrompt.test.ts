@@ -19,8 +19,10 @@ describe("getBotPublishPrompt", () => {
     expect(prompt).not.toContain("<skill-zip-path>");
     expect(prompt).toContain("Space ID：`space-1`");
     expect(prompt).toContain("确认当前版本 `>= 0.15.0`");
+    expect(prompt).toContain("按 major/minor/patch 分段数字比较");
     expect(prompt).toContain("版本低于 `0.15.0`");
     expect(prompt).toContain("先询问用户是否更新/安装 `octo-cli`");
+    expect(prompt).toContain("重新运行");
     expect(prompt).toContain("用户未确认时停止");
     expect(prompt).toContain('`skills.md` 中“Publish as a Bot”流程');
     expect(prompt).toContain("使用用户提供的附件、Skill 包路径或");

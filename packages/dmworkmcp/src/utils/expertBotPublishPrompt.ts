@@ -5,10 +5,9 @@ import { isValidMcpSpaceId, resolveMcpAPIBaseURL } from "./mcpBotPublishPrompt";
  * the MCP bot-publish prompt (getMcpBotPublishPrompt): it does NOT inline the
  * full command surface, but points the bot at octo-cli's embedded
  * `octo-marketplace` Skill (`expert.md`) as the authoritative source, then
- * embeds the real Space ID + API base URL for the auth/login step. Command and
- * body facts here track `skills/octo-marketplace/expert.md` (category is a
- * NAME on write, members are inline, skills are whole packages, no versioning,
- * `created_by_type` is inferred from the bot identity — never sent).
+ * embeds the real Space ID + API base URL for the auth/login step. The CLI
+ * moved expert and squad writes to the unified plugin surface in 0.15.0, so the
+ * prompt intentionally avoids duplicating the full command contract.
  */
 export interface ExpertBotPublishPromptValues {
   /** Which catalog the prompt publishes: a single expert or an expert squad. */
@@ -44,14 +43,13 @@ export function getExpertBotPublishPrompt(
   const isUpdate = values.mode === "update";
 
   const entity = isSquad ? "专家团" : "专家";
-  const kindFlag = isSquad ? "squad" : "agent";
-  const cmd = isSquad ? "squad" : "expert";
-  const jsonFile = isSquad ? "squad.json" : "expert.json";
   const idName = isSquad ? "<squad-id>" : "<expert-id>";
-  const idField = isSquad ? "squad_id" : "expert_id";
-  // The id is interpolated into `${cmd} update ${id}` / `${cmd} get ${id}`
-  // shell examples — gate it with the same whitelist as the space id so a
-  // poisoned value falls back to the placeholder instead of reaching a shell.
+  const pluginType = isSquad ? "expert_team" : "expert";
+  const pluginJsonFile = isSquad ? "team-plugin.json" : "expert-plugin.json";
+  // The id is interpolated into prompt text that may become a `plugin_id`.
+  // Gate it with the same whitelist as the space id so a poisoned value falls
+  // back to the placeholder instead of reaching a shell command in follow-up
+  // steps authored by the receiving agent.
   const targetId = isUpdate
     ? isValidMcpSpaceId(values.id)
       ? (values.id as string).trim()
@@ -65,16 +63,6 @@ export function getExpertBotPublishPrompt(
     ? "请提供要更新的专家团字段（名称、简介、分类、成员 / 角色 / Leader、调度规则、依赖、权限中的任意项；成员为整组替换），或提供 Agent 当前运行环境可访问的 squad.json / squad.yaml 路径。"
     : "请提供要更新的专家字段（名称、简介、分类、instruction、mcp_config、skills 包中的任意项），或提供 Agent 当前运行环境可访问的 expert.json / expert.yaml 路径。";
 
-  const payloadSteps = isSquad
-    ? [
-        "   - 编写 `squad.json`：name / summary / category（分类**名称**）/ tags / leader / strategies / dependencies / permission，以及 members（至少 1 位，每位内联为 {member_key, name, role, is_leader, instruction, mcp_config, skills}，且恰好一位 is_leader=true）。更新已有专家团时 members 为整组替换，务必提交完整成员列表。",
-        "   - 成员的 skills 同样是整包 .zip/.skill，上传流程见 `expert.md`。",
-      ]
-    : [
-        "   - 编写 `expert.json`：name / summary 必填，category（分类**名称**）/ tags / instruction（system prompt），可选 mcp_config（mcpServers 的 JSON 字符串；密钥类 env / headers 值请用 `${KEY}` 占位、切勿写入真实凭证——mcp_config 会在专家详情页对所有查看者展示，安装时才本地填充）。",
-        "   - 如需附带 skills 包：先运行 `octo-cli marketplace expert-skill-upload create --file-name <名称.zip> --file-size <字节> --profile <profile>` 取得预签名，按返回的 method / headers 把原始包 PUT 到 presigned_url（不要打印 URL / headers），再在 skills[] 里用 {name, upload_object_key, file_name, file_size} 引用；只有名称时写 {name}。",
-      ];
-
   const intro = isUpdate
     ? `使用 octo-cli 内置的 \`octo-marketplace\` Skill，更新 OCTO Marketplace 上已上架的${entity}。`
     : `使用 octo-cli 内置的 \`octo-marketplace\` Skill，将指定${entity}上架到 OCTO Marketplace。`;
@@ -82,19 +70,11 @@ export function getExpertBotPublishPrompt(
   const idLine = isUpdate ? `\n- ${entity} ID：\`${targetId}\`` : "";
 
   const step4Title = isUpdate
-    ? `4. 按 \`expert.md\` 的 Update 流程完成更新（只改传入字段，未提供的保持不变）：`
-    : `4. 按 \`expert.md\` 的 Create 流程完成上架：`;
+    ? `4. 按 \`expert.md\` 的 Update / Review Request 流程完成更新：`
+    : `4. 按 \`expert.md\` 的 Create / Publish 流程完成上架：`;
 
-  const submitStep = isUpdate
-    ? `   - 向我展示改动预览，并在这里暂停，明确等待我回复“确认更新”；未收到这四个字，不得修改市场数据。可先用 \`--dry-run\` 打印将要发送的请求核对。
-   - 确认后运行 \`octo-cli marketplace ${cmd} update ${targetId} --data @${jsonFile} --profile <profile>\`。用 Bot Profile 执行。`
-    : `   - 向我展示发布预览，并在这里暂停，明确等待我回复“确认上架”；未收到这四个字，不得创建或修改市场数据。可先用 \`--dry-run\` 打印将要发送的请求核对。
-   - 确认后运行 \`octo-cli marketplace ${cmd} create --data @${jsonFile} --profile <profile>\`。用 Bot Profile 执行，后端会据调用身份记为 bot 上架，不需要也不要传 created_by_type。`;
-
-  const readBackId = isUpdate ? targetId : idName;
-  const readBack = isUpdate
-    ? `   - 运行 \`octo-cli marketplace ${cmd} get ${readBackId} --profile <profile>\` 回读核验改动。更新失败时不要伪造成功，保留本地 ${jsonFile} 并返回可重试的命令和错误摘要。`
-    : `   - 用返回的 ${idField} 运行 \`octo-cli marketplace ${cmd} get ${readBackId} --profile <profile>\` 回读核验。创建失败时不要伪造成功，保留本地 ${jsonFile} 并返回可重试的命令和错误摘要。`;
+  const confirmation = isUpdate ? "确认更新" : "确认上架";
+  const actionWord = isUpdate ? "更新" : "发布";
 
   return `${intro}
 
@@ -107,9 +87,11 @@ export function getExpertBotPublishPrompt(
 
 不要解释正在读取内容、复述本 Prompt 或逐步播报检查过程。用户提供前不要搜索磁盘或猜测路径。
 
-1. 运行 \`octo-cli version\`，确认当前版本 \`>= 0.15.0\` 且包含 \`octo-marketplace\` Skill。
-   如果未安装、版本低于 \`0.15.0\` 或不包含该 Skill，先询问用户是否更新/安装 \`octo-cli\`。
-   用户确认后再运行 \`npm install -g @mininglamp-oss/octo-cli@latest\`；用户未确认时停止，
+1. 运行 \`octo-cli version\`，读取输出中的 \`version\`，按 major/minor/patch 分段数字比较，
+   确认当前版本 \`>= 0.15.0\`（例如 \`0.9.0 < 0.15.0\`）。
+   如果未安装或版本低于 \`0.15.0\`，先询问用户是否更新/安装 \`octo-cli\`。
+   用户确认后运行 \`npm install -g @mininglamp-oss/octo-cli@latest\`，并重新运行
+   \`octo-cli version\` 复核；仍不满足时停止。用户未确认时停止，
    并说明本流程需要 \`octo-cli >= 0.15.0\`。
 
 2. 运行 \`octo-cli auth list\`，选择 \`space_id\` 等于 \`${spaceId}\` 的唯一 Profile。
@@ -130,10 +112,18 @@ export function getExpertBotPublishPrompt(
 
 ${step4Title}
 
-   - 运行 \`octo-cli marketplace expert-category list --kind ${kindFlag} --profile <profile>\` 获取合法分类；body 里的 \`category\` 填分类**名称**，不是 id。专家市场没有版本概念，不要填写 version。
-${payloadSteps.join("\n")}
-${submitStep}
-${readBack}
+   - 使用 \`octo-cli marketplace plugin-category list --scene-code default --plugin-type ${pluginType} --profile <profile>\`
+     获取合法 \`category_id\`；body 里填 \`category_id\`，不是分类名称。
+   - 按 \`expert.md\` 编写 \`${pluginJsonFile}\`，使用 \`plugin_type: "${pluginType}"\`，
+     提交完整的 \`manifest_json\`、\`plugin_json\` 和完整 \`relations\`。如需附带技能包，
+     按 \`expert.md\` / \`skills.md\` 的统一 skill upload / parse / import 流程处理。
+     密钥类 env / headers 值请用 \`\${KEY}\` 占位，切勿写入真实凭证。
+   - ${isUpdate ? `如果目标是已发布的 Space ${entity}，按 \`expert.md\` 使用 \`plugin review-request create --data @submission.json\` 提交冻结后的更新；如果只是未发布草稿，按 \`expert.md\` 使用 \`plugin upsert\` 并设置 \`plugin.plugin_id = "${targetId}"\`。` : `按 \`expert.md\` 使用 \`plugin upsert --data @${pluginJsonFile}\` 保存草稿，再按 \`plugin publish --plugin-id <plugin-id> --version <x.y.z>\` 或 \`plugin review-request create --data @submission.json\` 的发布 / 审核流程继续。`}
+   - 向我展示${actionWord}预览，并在这里暂停，明确等待我回复“${confirmation}”；未收到这四个字，
+     不得创建、更新、发布或提交审核。可先用 \`--dry-run\` 打印将要发送的请求核对。
+   - 确认后只使用 \`expert.md\` 记录的统一 \`octo-cli marketplace plugin ...\` 命令完成${actionWord}，
+     并用 \`octo-cli marketplace plugin get --plugin-id ${isUpdate ? targetId : "<plugin-id>"} --include-relations --profile <profile>\`
+     回读核验。不要使用旧的专家 / 专家团专用 create / update / get、分类或技能上传命令。
 
 以上 Space ID 和 API 地址是本次操作的权威输入。`;
 }

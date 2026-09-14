@@ -5,26 +5,27 @@ const SLUG = "minglue_default";
 const API = "https://example.com";
 
 describe("getExpertBotPublishPrompt — command surface", () => {
-  it("agent prompt targets the expert verbs and taxonomy", () => {
+  it("agent prompt targets the unified expert plugin workflow", () => {
     const p = getExpertBotPublishPrompt({ kind: "agent", spaceId: SLUG, apiBaseUrl: API });
     expect(p).toContain("将指定专家上架");
-    expect(p).toContain("octo-cli marketplace expert-category list --kind agent");
-    expect(p).toContain("octo-cli marketplace expert create --data @expert.json");
-    expect(p).toContain("octo-cli marketplace expert get <expert-id>");
-    // Whole-package skill upload flow is spelled out for a single expert.
-    expect(p).toContain("octo-cli marketplace expert-skill-upload create");
-    expect(p).toContain("upload_object_key");
+    expect(p).toContain(
+      "octo-cli marketplace plugin-category list --scene-code default --plugin-type expert"
+    );
+    expect(p).toContain("plugin_type: \"expert\"");
+    expect(p).toContain("plugin upsert --data @expert-plugin.json");
+    expect(p).toContain("plugin review-request create --data @submission.json");
+    expect(p).toContain("octo-cli marketplace plugin get --plugin-id <plugin-id>");
   });
 
-  it("squad prompt targets the squad verbs and inline members", () => {
+  it("squad prompt targets the unified expert_team plugin workflow", () => {
     const p = getExpertBotPublishPrompt({ kind: "squad", spaceId: SLUG, apiBaseUrl: API });
     expect(p).toContain("将指定专家团上架");
-    expect(p).toContain("octo-cli marketplace expert-category list --kind squad");
-    expect(p).toContain("octo-cli marketplace squad create --data @squad.json");
-    expect(p).toContain("octo-cli marketplace squad get <squad-id>");
-    // Members are inline in the body, not template references.
-    expect(p).toContain("member_key");
-    expect(p).toContain("is_leader=true");
+    expect(p).toContain(
+      "octo-cli marketplace plugin-category list --scene-code default --plugin-type expert_team"
+    );
+    expect(p).toContain("plugin_type: \"expert_team\"");
+    expect(p).toContain("plugin upsert --data @team-plugin.json");
+    expect(p).toContain("提交完整的 `manifest_json`、`plugin_json` 和完整 `relations`");
   });
 
   it("defers to the embedded octo-marketplace Skill's expert.md", () => {
@@ -32,8 +33,10 @@ describe("getExpertBotPublishPrompt — command surface", () => {
     expect(p).toContain("octo-cli skills octo-marketplace --profile <profile>");
     expect(p).toContain("`expert.md`");
     expect(p).toContain("确认当前版本 `>= 0.15.0`");
+    expect(p).toContain("按 major/minor/patch 分段数字比较");
     expect(p).toContain("版本低于 `0.15.0`");
     expect(p).toContain("先询问用户是否更新/安装 `octo-cli`");
+    expect(p).toContain("重新运行");
     expect(p).toContain("用户未确认时停止");
   });
 
@@ -41,7 +44,6 @@ describe("getExpertBotPublishPrompt — command surface", () => {
     "%s prompt drops the stale prototype commands (regression guard)",
     (kind) => {
       const p = getExpertBotPublishPrompt({ kind, spaceId: SLUG, apiBaseUrl: API });
-      expect(p).not.toContain("--version");
       // The prompt mentions created_by_type only to say "don't send it"; guard
       // against the nonexistent flag form the prototype prompt used.
       expect(p).not.toContain("--created-by-type");
@@ -49,6 +51,15 @@ describe("getExpertBotPublishPrompt — command surface", () => {
       expect(p).not.toContain("expert search");
       expect(p).not.toContain("squad-category");
       expect(p).not.toContain("expertTemplateId");
+      expect(p).not.toContain("octo-cli marketplace expert-category");
+      expect(p).not.toContain("octo-cli marketplace expert create");
+      expect(p).not.toContain("octo-cli marketplace expert update");
+      expect(p).not.toContain("octo-cli marketplace expert get");
+      expect(p).not.toContain("octo-cli marketplace squad create");
+      expect(p).not.toContain("octo-cli marketplace squad update");
+      expect(p).not.toContain("octo-cli marketplace squad get");
+      expect(p).not.toContain("octo-cli marketplace expert-skill-upload");
+      expect(p).not.toContain("upload_object_key");
     }
   );
 });
@@ -113,10 +124,12 @@ describe("getExpertBotPublishPrompt — update mode", () => {
     });
     expect(p).toContain("更新 OCTO Marketplace 上已上架的专家");
     expect(p).toContain(`专家 ID：\`${ID}\``);
-    expect(p).toContain(`octo-cli marketplace expert update ${ID} --data @expert.json`);
-    expect(p).toContain(`octo-cli marketplace expert get ${ID}`);
+    expect(p).toContain(`plugin.plugin_id = "${ID}"`);
+    expect(p).toContain(`octo-cli marketplace plugin get --plugin-id ${ID}`);
+    expect(p).toContain("plugin review-request create --data @submission.json");
     expect(p).toContain("确认更新");
-    // Must NOT fall back to the create verb.
+    // Must NOT fall back to retired per-type verbs.
+    expect(p).not.toContain("expert update");
     expect(p).not.toContain("expert create --data");
     expect(p).not.toContain("确认上架");
   });
@@ -131,7 +144,8 @@ describe("getExpertBotPublishPrompt — update mode", () => {
     });
     expect(p).toContain("更新 OCTO Marketplace 上已上架的专家团");
     expect(p).toContain(`专家团 ID：\`${ID}\``);
-    expect(p).toContain(`octo-cli marketplace squad update ${ID} --data @squad.json`);
+    expect(p).toContain(`plugin.plugin_id = "${ID}"`);
+    expect(p).toContain(`octo-cli marketplace plugin get --plugin-id ${ID}`);
     expect(p).not.toContain("squad create --data");
   });
 
@@ -144,13 +158,15 @@ describe("getExpertBotPublishPrompt — update mode", () => {
       apiBaseUrl: API,
     });
     expect(p).not.toContain("; rm -rf /");
-    expect(p).toContain("expert update <expert-id> --data @expert.json");
+    expect(p).toContain('plugin.plugin_id = "<expert-id>"');
+    expect(p).toContain("plugin get --plugin-id <expert-id>");
   });
 
   it("create mode (default) is unchanged", () => {
     const p = getExpertBotPublishPrompt({ kind: "agent", spaceId: SLUG, apiBaseUrl: API });
     expect(p).toContain("将指定专家上架");
-    expect(p).toContain("octo-cli marketplace expert create --data @expert.json");
-    expect(p).not.toContain("update");
+    expect(p).toContain("plugin upsert --data @expert-plugin.json");
+    expect(p).not.toContain("octo-cli marketplace expert update");
+    expect(p).not.toContain("确认更新");
   });
 });
