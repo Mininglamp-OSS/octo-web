@@ -37,6 +37,7 @@ export function extractErrorMsg(err: unknown): string {
 
 export class APIClientConfig {
     private _apiURL: string =""
+    private _originRevision = 0
     private _token:string = ""
     tokenCallback?:()=>string|undefined
     /**
@@ -50,11 +51,15 @@ export class APIClientConfig {
 
 
     set apiURL(apiURL:string) {
+        if (apiURL !== this._apiURL) this._originRevision++
         this._apiURL = apiURL;
         axios.defaults.baseURL = apiURL;
     }
     get apiURL():string {
         return this._apiURL
+    }
+    get originRevision(): number {
+        return this._originRevision
     }
 }
 

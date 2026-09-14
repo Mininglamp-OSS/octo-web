@@ -1,213 +1,65 @@
-import { getSessionSid, WKApp } from "@octo/base";
-import WKSDK, { ConnectStatus } from "wukongimjssdk";
-import { summaryWorkbenchAvailability } from "../features/summaryWorkbench/availability";
-import {
-  acceptRemoteAttentionCount,
-  getSummaryAttentionBadge,
-  readSummaryAttentionCount,
-  refreshSummaryAttentionBadge,
-  setSummaryAttentionBadge,
-  setSummaryAttentionPublisher,
-} from "../utils/summaryAttentionBadge";
-import {
-  createAttentionLeader,
-  type AttentionLeader,
-} from "../utils/summaryAttentionLeader";
-import {
-  createAttentionPoll,
-  type AttentionPoll,
-} from "../utils/summaryAttentionPoll";
-import {
-  createAttentionSync,
-  shouldRefreshForMessage,
-  type AttentionSync,
-} from "../utils/summaryAttentionSync";
+import { createBrowserAttentionRuntimeHost } from "./browserHost";
+import { createSummaryAttentionRuntime } from "./attentionRuntime";
+import { isSummaryAttentionExternal } from "../utils/summaryAttentionBadge";
+import type { SummaryAttentionRuntimeController } from "./attentionHost";
 
-let runtimeInitialized = false;
-let spaceChangedHandler: (() => void) | null = null;
-let spaceReadyHandler: (() => void) | null = null;
-let authStateChangedHandler: (() => void) | null = null;
-let attentionSync: AttentionSync | null = null;
-let visibilityHandler: (() => void) | null = null;
-let focusHandler: (() => void) | null = null;
-let attentionPoll: AttentionPoll | null = null;
-let attentionLeader: AttentionLeader | null = null;
-let attentionStarted = false;
-let menuActivatedHandler: (() => void) | null = null;
-let imMessageHandler: ((message: unknown) => void) | null = null;
-let imConnectHandler: ((status: unknown) => void) | null = null;
-let hostVisible = true;
-
-const isDocumentVisible = () =>
-  typeof document === "undefined" || document.visibilityState === "visible";
-const isRuntimeVisible = () => hostVisible && isDocumentVisible();
+let controller: SummaryAttentionRuntimeController | null = null;
+// Pre-init state captured before a controller exists, applied via the factory.
+let pendingVisible: boolean | undefined;
+let pollingPending = false;
 
 export function initializeSummaryAttentionRuntime(
   options: { observeIm?: boolean } = {}
 ): void {
-  if (runtimeInitialized) return;
-  runtimeInitialized = true;
-
-  let initialSpaceReady = false;
-  spaceChangedHandler = () => {
-    summaryWorkbenchAvailability.invalidate();
-    WKApp.mittBus.emit("summary-space-changed");
-    if (!initialSpaceReady) return;
-    setSummaryAttentionBadge(0);
-    attentionPoll?.notifyActivity();
-    refreshSummaryAttentionBadge();
-  };
-  spaceReadyHandler = () => {
-    initialSpaceReady = true;
-    attentionPoll?.notifyActivity();
-    refreshSummaryAttentionBadge();
-  };
-  authStateChangedHandler = () => {
-    attentionPoll?.notifyActivity();
-    refreshSummaryAttentionBadge();
-  };
-  WKApp.mittBus.on("space-changed", spaceChangedHandler);
-  WKApp.mittBus.on("space-ready", spaceReadyHandler);
-  WKApp.mittBus.on("wk:auth-state-changed", authStateChangedHandler);
-
-  attentionSync = createAttentionSync({
-    refresh: refreshSummaryAttentionBadge,
-  });
-  attentionPoll = createAttentionPoll({
-    fetchCount: async () => {
-      const sample = await readSummaryAttentionCount();
-      return sample?.count ?? getSummaryAttentionBadge();
+  if (controller) return;
+  // external mode: 本地 runtime 一律让位（计数由外部 controller 接管）。
+  if (isSummaryAttentionExternal()) return;
+  // Apply pre-init visibility/polling through the factory options so a
+  // hidden/started state is in effect before init side effects begin.
+  const next = createSummaryAttentionRuntime(
+    createBrowserAttentionRuntimeHost(),
+    {
+      observeIm: options.observeIm,
+      initialVisible: pendingVisible,
+      initialPolling: pollingPending,
     },
-    isVisible: isRuntimeVisible,
-  });
-
-  attentionLeader = createAttentionLeader({
-    scopeId: getSessionSid(),
-    getUserId: () => WKApp.loginInfo.uid ?? "",
-    onBecomeLeader: () => {
-      attentionPoll?.start();
-      if (attentionStarted) attentionPoll?.notifyActivity();
-    },
-    onResignLeader: () => attentionPoll?.stop(),
-    isVisible: isRuntimeVisible,
-    onRemoteCount: (count, spaceId, sampleAt) => {
-      if (!spaceId || spaceId !== WKApp.shared.currentSpaceId) return;
-      acceptRemoteAttentionCount(count, sampleAt);
-    },
-  });
-  setSummaryAttentionPublisher((count, sampleAt) => {
-    attentionLeader?.publish(
-      count,
-      WKApp.shared.currentSpaceId ?? "",
-      sampleAt
-    );
-  });
-  attentionLeader.start();
-
-  visibilityHandler = () => {
-    const visible = isRuntimeVisible();
-    attentionPoll?.setVisible(visible);
-    attentionLeader?.setVisible(visible);
-    if (visible) attentionSync?.trigger();
-  };
-  focusHandler = () => {
-    if (!isRuntimeVisible()) return;
-    attentionSync?.trigger();
-    attentionPoll?.notifyActivity();
-  };
-  if (typeof document !== "undefined") {
-    document.addEventListener("visibilitychange", visibilityHandler);
-  }
-  if (typeof window !== "undefined") {
-    window.addEventListener("focus", focusHandler);
-  }
-
-  menuActivatedHandler = () => attentionPoll?.notifyActivity();
-  WKApp.mittBus.on("wk:active-menu-changed", menuActivatedHandler);
-
-  if (options.observeIm !== false) {
-    try {
-      const sdk = WKSDK.shared();
-      imMessageHandler = (message: unknown) => {
-        if (!isRuntimeVisible()) return;
-        if (shouldRefreshForMessage(message)) attentionSync?.trigger();
-      };
-      sdk.chatManager.addMessageListener(imMessageHandler as any);
-      imConnectHandler = (status: unknown) => {
-        if (!isRuntimeVisible()) return;
-        if (status === ConnectStatus.Connected) attentionSync?.trigger();
-      };
-      sdk.connectManager.addConnectStatusListener(imConnectHandler as any);
-    } catch {
-      // Attention refresh remains available through focus and visibility events.
-    }
-  }
+  );
+  next.init();
+  controller = next;
+  pendingVisible = undefined;
+  pollingPending = false;
 }
 
 export function startSummaryAttentionPolling(): void {
-  if (attentionStarted) return;
-  attentionStarted = true;
-  if (isRuntimeVisible()) attentionPoll?.notifyActivity();
+  // external mode: 不创建本地 leader/轮询。
+  if (isSummaryAttentionExternal()) return;
+  if (controller) { controller.startPolling(); return; }
+  pollingPending = true;
 }
 
 export function setSummaryAttentionRuntimeVisible(visible: boolean): void {
-  hostVisible = visible;
-  const effectiveVisible = isRuntimeVisible();
-  attentionPoll?.setVisible(effectiveVisible);
-  attentionLeader?.setVisible(effectiveVisible);
-  if (effectiveVisible) {
-    attentionSync?.trigger();
-    if (attentionStarted) attentionPoll?.notifyActivity();
-  }
+  // external mode: 可见性由宿主外部控制，本地 runtime 不参与。
+  if (isSummaryAttentionExternal()) return;
+  if (controller) { controller.setVisible(visible); return; }
+  pendingVisible = visible;
 }
 
 export function disposeSummaryAttentionRuntime(): void {
-  if (spaceChangedHandler) {
-    WKApp.mittBus.off("space-changed", spaceChangedHandler);
-    spaceChangedHandler = null;
-  }
-  if (spaceReadyHandler) {
-    WKApp.mittBus.off("space-ready", spaceReadyHandler);
-    spaceReadyHandler = null;
-  }
-  if (authStateChangedHandler) {
-    WKApp.mittBus.off("wk:auth-state-changed", authStateChangedHandler);
-    authStateChangedHandler = null;
-  }
-  if (visibilityHandler && typeof document !== "undefined") {
-    document.removeEventListener("visibilitychange", visibilityHandler);
-  }
-  visibilityHandler = null;
-  if (focusHandler && typeof window !== "undefined") {
-    window.removeEventListener("focus", focusHandler);
-  }
-  focusHandler = null;
-
-  try {
-    const sdk = WKSDK.shared();
-    if (imMessageHandler)
-      sdk.chatManager.removeMessageListener(imMessageHandler as any);
-    if (imConnectHandler)
-      sdk.connectManager.removeConnectStatusListener(imConnectHandler as any);
-  } catch {
-    // Registration also tolerates an unavailable SDK.
-  }
-  imMessageHandler = null;
-  imConnectHandler = null;
-
-  attentionSync?.cancel();
-  attentionSync = null;
-  setSummaryAttentionPublisher(null);
-  attentionLeader?.stop();
-  attentionLeader = null;
-  attentionPoll?.stop();
-  attentionPoll = null;
-  attentionStarted = false;
-  hostVisible = true;
-
-  if (menuActivatedHandler) {
-    WKApp.mittBus.off("wk:active-menu-changed", menuActivatedHandler);
-    menuActivatedHandler = null;
-  }
-  runtimeInitialized = false;
+  // external mode: 无本地 runtime；清理由外部 controller 的 dispose() 完成。
+  if (isSummaryAttentionExternal()) return;
+  controller?.dispose();
+  controller = null;
+  pendingVisible = undefined;
+  pollingPending = false;
+}
+/**
+ * 如果存在活跃的浏览器 runtime controller（leader/poll 正在运行），
+ * 将其彻底拆除。external mode 安装时先调用此函数，确保没有残留的定时器或
+ * BroadcastChannel 连接。
+ */
+export function teardownBrowserAttentionRuntime(): void {
+  controller?.dispose();
+  controller = null;
+  pendingVisible = undefined;
+  pollingPending = false;
 }

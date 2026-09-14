@@ -43,7 +43,10 @@ export interface SummaryMessagingPort {
     target: SummaryConversationTarget
   ): Promise<SummaryConversationMember[]>;
   openConversation(target: SummaryConversationTarget): Promise<void>;
-  notifySummaryCompleted(input: SummaryCompletionNotice): Promise<void>;
+  notifySummaryCompleted(
+    input: SummaryCompletionNotice,
+    options?: { isActive?: () => boolean },
+  ): Promise<void>;
   requestForward(input: SummaryForwardRequest): void;
   subscribeInvalidation(listener: () => void): () => void;
 }

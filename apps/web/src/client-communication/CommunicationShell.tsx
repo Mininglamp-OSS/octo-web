@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChatPage,
+  applyImSpaceContext,
   createCurrentEmptyImConversation,
   findCurrentImConversation,
   getCurrentImChannelInfo,
+  getCurrentImUnreadObserver,
   setCurrentImChannelInfoCache,
   ThemeMode,
   WKApp,
@@ -17,12 +19,7 @@ import WKNavHeader from "@octo/base/src/Components/WKNavHeader";
 import type { WKViewQueueContext } from "@octo/base/src/Components/WKViewQueue";
 import { ContactsList } from "@octo/contacts";
 import { renderAppBotConversation } from "@dmwork/appbot/conversation";
-import type {
-  SummaryCompletionNotice,
-  SummaryConversationTarget,
-} from "@dmwork/summary/messaging";
-import { Channel, ChannelInfo, WKSDK } from "wukongimjssdk";
-import { getElectronUnreadMessageCount } from "../App/electronUnreadCount";
+import { Channel, ChannelInfo } from "wukongimjssdk";
 import {
   type CommunicationPage,
   type CommunicationPresentation,
@@ -30,12 +27,13 @@ import {
   type HostCommand,
   type NavigationReport,
   type OctoBuddyCommunicationBridge,
-  type SummaryCapabilityRequest,
+  type DocumentForwardRequest,
 } from "./hostBridge";
 import { createReadyReporter } from "./readyReporter";
 import { Toast } from "@douyinfe/semi-ui";
 import { installSummaryNavigation } from "./summaryNavigation";
 import { installDocumentForward } from "./documentForward";
+import { installSummaryRequests } from "./summaryRequests";
 import "./index.css";
 
 function bindLeftRoute(context: WKViewQueueContext) {
@@ -112,12 +110,16 @@ export function CommunicationShell({
   initialSpaceId,
   initialPresentation,
   onReady,
+  runtimeOwned = false,
+  isDocumentForwardCurrent,
 }: {
   bridge: OctoBuddyCommunicationBridge;
   initialPage: CommunicationPage;
   initialSpaceId: string;
   initialPresentation: CommunicationPresentation;
   onReady: (state: { page: CommunicationPage; spaceId: string }) => Promise<void>;
+  runtimeOwned?: boolean;
+  isDocumentForwardCurrent?: (request: DocumentForwardRequest) => boolean;
 }) {
   const [activePage, setActivePage] = useState<CommunicationPage>(initialPage);
   const contactsTitle = useI18n().t("contacts.page.title");
@@ -145,7 +147,8 @@ export function CommunicationShell({
   useEffect(() => installDocumentForward(bridge, {
     getSpaceId: () => spaceIdRef.current,
     getContext: () => WKApp.shared.baseContext,
-  }), [bridge]);
+    isRequestCurrent: isDocumentForwardCurrent,
+  }), [bridge, isDocumentForwardCurrent]);
 
   const reportReadyWhenPrepared = useCallback(() => {
     if (
@@ -234,12 +237,13 @@ export function CommunicationShell({
         appTargetRef.current = undefined;
         if (spaceIdRef.current !== command.space.id) summaryScopeRevision.current++;
         spaceIdRef.current = command.space.id;
-        WKApp.shared.currentSpaceId = command.space.id;
         document.documentElement.dataset.spaceId = command.space.id;
-        WKApp.mittBus.emit("space-changed", {
-          space_id: command.space.id,
-          name: command.space.name,
-        });
+        if (!runtimeOwned) {
+          applyImSpaceContext({
+            space_id: command.space.id,
+            name: command.space.name,
+          });
+        }
         WKApp.shared.notifyListener();
         return;
       }
@@ -279,76 +283,22 @@ export function CommunicationShell({
       dispose();
       WKApp.switchToMenuById = undefined;
     };
-  }, [activatePage, initialPage, openPreparedTarget, reportReadyWhenPrepared]);
+  }, [activatePage, initialPage, openPreparedTarget, reportReadyWhenPrepared, runtimeOwned]);
 
   useEffect(() => {
-    const syncUnread = () => reportUnread(bridge, getElectronUnreadMessageCount());
-    const conversationManager = WKSDK.shared().conversationManager;
-    conversationManager.addConversationListener(syncUnread);
-    WKApp.mittBus.on("conversation-list-refreshed", syncUnread);
-    syncUnread();
-    return () => {
-      conversationManager.removeConversationListener(syncUnread);
-      WKApp.mittBus.off("conversation-list-refreshed", syncUnread);
-    };
-  }, [bridge]);
+    if (runtimeOwned) return;
+    return getCurrentImUnreadObserver().subscribe((count) => reportUnread(bridge, count));
+  }, [bridge, runtimeOwned]);
 
   useEffect(() => {
-    if (!bridge.onSummaryRequest || !bridge.respondSummaryRequest) return;
-    return bridge.onSummaryRequest((request: SummaryCapabilityRequest) => {
-      const revision = summaryScopeRevision.current;
-      const isActive = () => revision === summaryScopeRevision.current && request.spaceId === spaceIdRef.current;
-      const respond = (response: { ok: boolean; result?: unknown; error?: string }) => {
-        bridge.respondSummaryRequest?.({
-          requestId: request.requestId,
-          ...(isActive() ? response : { ok: false, error: "Summary request context expired" }),
-        });
-      };
-      const run = async () => {
-        if (!isActive()) throw new Error("Summary request context expired");
-        const { legacySummaryMessagingPort } = await import(
-          "@dmwork/summary/messaging"
-        );
-        if (!isActive()) throw new Error("Summary request context expired");
-        if (request.operation === "loadConversationMembers") {
-          const result = await legacySummaryMessagingPort.loadConversationMembers(
-            request.payload as SummaryConversationTarget
-          );
-          respond({ ok: true, result });
-          return;
-        }
-        if (request.operation === "notifySummaryCompleted") {
-          await legacySummaryMessagingPort.notifySummaryCompleted(
-            request.payload as SummaryCompletionNotice
-          );
-          respond({ ok: true });
-          return;
-        }
-        if (request.operation === "requestForward") {
-          const input = request.payload as { content?: unknown; title?: unknown };
-          const content = typeof input?.content === "string" ? input.content : "";
-          const title = typeof input?.title === "string" ? input.title : "";
-          legacySummaryMessagingPort.requestForward({
-            isActive,
-            content,
-            title,
-            onComplete: (result) => respond({ ok: true, result }),
-            onError: (error) => respond({
-              ok: false,
-              error: error instanceof Error ? error.message : String(error),
-            }),
-            onCancel: () => respond({ ok: true, result: null }),
-          });
-          return;
-        }
-        throw new Error(`Unsupported summary capability: ${request.operation}`);
-      };
-      void run().catch((error) => respond({
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      }));
+    if (runtimeOwned) return;
+    return installSummaryRequests(bridge, {
+      capture: (request) => {
+        const revision = summaryScopeRevision.current;
+        return () => revision === summaryScopeRevision.current && request.spaceId === spaceIdRef.current;
+      },
     });
-  }, [bridge]);
+  }, [bridge, runtimeOwned]);
 
   useEffect(() => {
     let previousChannel = "";

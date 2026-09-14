@@ -228,6 +228,16 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
     const getUserId = deps.getUserId ?? (() => '');
     const isVisibleFn = deps.isVisible ?? (() => true);
 
+    /**
+     * 本标签页当前是否可见。初值从注入的判定读一次；之后由 setVisible 更新，
+     * 并且每一拍心跳都会重新校准（见 beat）——所以它是缓存，不是唯一真相。
+     *
+     * 不可见的标签页【没有当 leader 的资格】：它自己的轮询已经停表，再占着租约
+     * 就是把整个浏览器的兜底轮询扣死。见 AttentionLeaderDeps.isVisible 的注释。
+     * 宿主读取可能抛错，必须先于广播通道等资源的创建，避免构造失败时无法清理。
+     */
+    let visible = isVisibleFn();
+
     const rawStorage = deps.storage !== undefined
         ? deps.storage
         : defaultLocalStorage();
@@ -267,15 +277,6 @@ export function createAttentionLeader(deps: AttentionLeaderDeps): AttentionLeade
     // pagehide 后即使宿主仍短暂派发定时器，也不能重新抢回租约；bfcache 恢复由
     // pageshow 显式重新开启。beforeunload 可能被用户取消，不能把页面标成失活。
     let pageActive = true;
-    /**
-     * 本标签页当前是否可见。初值从注入的判定读一次；之后由 setVisible 更新，
-     * 并且每一拍心跳都会重新校准（见 beat）——所以它是缓存，不是唯一真相。
-     *
-     * 不可见的标签页【没有当 leader 的资格】：它自己的轮询已经停表，再占着租约
-     * 就是把整个浏览器的兜底轮询扣死。见 AttentionLeaderDeps.isVisible 的注释。
-     */
-    let visible = isVisibleFn();
-
     const resign = () => {
         if (!leader) return;
         leader = false;

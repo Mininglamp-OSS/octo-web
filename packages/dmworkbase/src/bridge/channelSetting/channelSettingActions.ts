@@ -34,7 +34,10 @@ import {
   setCurrentImChannelSubscribersCache,
   syncCurrentImChannelSubscribers,
 } from "../../im-runtime/currentChannelRuntime";
-import { patchImChannelInfoOrgData } from "../../im-runtime/channelRuntime";
+import {
+  isChannelInfoFetchResultCurrent,
+  patchImChannelInfoOrgData,
+} from "../../im-runtime/channelRuntime";
 import { Dap } from "../../Service/Dap";
 import { stripSpacePrefix } from "../../Service/SpacePrefix";
 import PinnedService from "../../Service/PinnedService";
@@ -273,7 +276,9 @@ function syncThreadMuteCacheAfterSave(
       .catch(() => undefined)
       .then(() => {
         if (threadMuteCacheSyncVersions.get(channelKey) !== version) return;
-        patchThreadMuteCache(runtime, channel, mute);
+        if (isChannelInfoFetchResultCurrent(pendingFetch)) {
+          patchThreadMuteCache(runtime, channel, mute);
+        }
         remainingFetches -= 1;
         if (remainingFetches === 0) {
           threadMuteCacheSyncVersions.delete(channelKey);

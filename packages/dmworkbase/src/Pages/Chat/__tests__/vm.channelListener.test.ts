@@ -11,11 +11,13 @@ const hoisted = vi.hoisted(() => ({
     parseThreadChannelId: vi.fn(() => undefined as { groupNo: string } | undefined),
 }))
 
-vi.mock("wukongimjssdk", () => ({
-    default: {
-        shared: () => ({
+vi.mock("wukongimjssdk", () => {
+    const sdk = {
+            config: { provider: { syncConversationsCallback: () => Promise.resolve([]) } },
+            reminderManager: { sync: vi.fn() },
             conversationManager: {
                 conversations: [],
+                maxExtraVersion: 0,
                 notifyConversationListeners: vi.fn(),
                 addConversationListener: (listener: (conversation: any, action: string) => void) => {
                     hoisted.conversationListener = listener
@@ -38,8 +40,9 @@ vi.mock("wukongimjssdk", () => ({
                 },
                 removeListener: hoisted.removeChannelListener,
             },
-        }),
-    },
+        }
+    return {
+    default: { shared: () => sdk },
     Channel: class {
         channelID: string
         channelType: number
@@ -65,7 +68,8 @@ vi.mock("wukongimjssdk", () => ({
     Message: class {},
     MessageContent: class {},
     MessageContentType: { text: 1 },
-}))
+    }
+})
 
 vi.mock("react-scroll", () => ({
     animateScroll: { scrollTo: () => {} },
@@ -74,7 +78,7 @@ vi.mock("react-scroll", () => ({
 
 vi.mock("../../../App", () => ({
     default: {
-        loginInfo: { uid: "me" },
+        loginInfo: { uid: "me", token: "test-token" },
         shared: {
             currentSpaceId: "",
             channelSpaceMap: new Map(),
@@ -100,7 +104,7 @@ vi.mock("../../../App", () => ({
         routeRight: { popToRoot: hoisted.popToRoot },
         endpointManager: { invoke: () => {} },
         conversationProvider: { clearConversationMessages: () => Promise.resolve() },
-        apiClient: { get: () => Promise.resolve({}) },
+        apiClient: { get: () => Promise.resolve({}), config: { apiURL: "" } },
         endpoints: { showConversation: () => {} },
     },
 }))
@@ -159,6 +163,7 @@ import { ChatVM, applyPinnedThreadSnapshot } from "../vm"
 import WKApp from "../../../App"
 import { ConversationWrap } from "../../../Service/Model"
 import { chatPageTitleController } from "../chatPageTitleController"
+import { getCurrentImConversationStore } from "../../../im-runtime/currentConversationStore"
 
 // 真实 Const 值：子区频道 channelType = 5
 const ChannelTypeCommunityTopic = 5
@@ -175,6 +180,7 @@ function emitActiveMenuChanged(menuId?: string): void {
 }
 
 afterEach(() => {
+    getCurrentImConversationStore().dispose()
     vi.restoreAllMocks()
     hoisted.parseThreadChannelId.mockReset()
     hoisted.parseThreadChannelId.mockReturnValue(undefined)
@@ -296,6 +302,7 @@ describe("ChatVM.spaceChangedHandler", () => {
         ;(WKApp as any).currentMenuId = "mcp-market"
         hoisted.popToRoot.mockClear()
 
+        WKApp.shared.currentSpaceId = "space-next-background"
         hoisted.spaceChangedHandler!({ space_id: "space-next" })
 
         expect(hoisted.popToRoot).not.toHaveBeenCalled()
@@ -306,6 +313,7 @@ describe("ChatVM.spaceChangedHandler", () => {
         ;(WKApp as any).currentMenuId = "chat"
         hoisted.popToRoot.mockClear()
 
+        WKApp.shared.currentSpaceId = "space-next-active"
         hoisted.spaceChangedHandler!({ space_id: "space-next" })
 
         expect(hoisted.popToRoot).toHaveBeenCalledTimes(1)

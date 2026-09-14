@@ -35,6 +35,9 @@ export async function buildClientFeature({
   outputDirectory,
   contractRevision = 1,
   documentForwardVersion,
+  backgroundRuntimeVersion,
+  summaryAttentionProviderVersion,
+  externalSummaryAttentionVersion,
   includeImMock = false,
 }) {
   const scriptDir = path.dirname(fileURLToPath(scriptUrl));
@@ -123,6 +126,9 @@ export async function buildClientFeature({
     hostBridgeMajor: 1,
     contractRevision,
     ...(documentForwardVersion === undefined ? {} : { documentForwardVersion }),
+    ...(backgroundRuntimeVersion === undefined ? {} : { backgroundRuntimeVersion }),
+    ...(summaryAttentionProviderVersion === undefined ? {} : { summaryAttentionProviderVersion }),
+    ...(externalSummaryAttentionVersion === undefined ? {} : { externalSummaryAttentionVersion }),
     sourceDirty,
     e2eMock: buildEnv.e2eMock || (includeImMock && buildEnv.e2eMockIm),
     mockFlags: {

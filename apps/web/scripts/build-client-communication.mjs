@@ -9,6 +9,8 @@ void buildClientFeature({
   outputDirectory: "build-client-communication",
   contractRevision: 3,
   documentForwardVersion: 1,
+  backgroundRuntimeVersion: 1,
+  summaryAttentionProviderVersion: 1,
   includeImMock: true,
 }).catch((error) => {
   console.error(`[build-client-communication] failed: ${error.message}`);

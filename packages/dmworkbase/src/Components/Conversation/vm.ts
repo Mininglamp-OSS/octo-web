@@ -60,6 +60,10 @@ import {
 } from "../../Messages/InteractiveCard/agentProgressFallback";
 import { getBrowserUnreadConversationSync } from "../../features/documentTitle";
 import { isOwnedConversationSingleton } from "../../features/notifications/messageAttention";
+import {
+    isImReadAttentionAllowed,
+    subscribeImReadAttention,
+} from "../../im-runtime/readAttentionHost";
 import { isSummaryTipContent } from "../../Messages/SummaryNotify/protocol";
 
 export interface FoldSessionParticipant {
@@ -206,6 +210,8 @@ export default class ConversationVM extends ProviderListener {
     private reactionSyncController: ReturnType<typeof createMessageReactionSyncController>
     private readonly registerAsOpenConversation: boolean
     private readonly openConversationOwner = Symbol("openConversationOwner")
+    private gateAllowed: boolean = isImReadAttentionAllowed()
+    private unsubscribeReadAttention?: () => void
     private ownedOpenConversation?: Conversation
 
     fileDragEnter?: boolean // 文件拖拽上传（拖进来了）
@@ -911,7 +917,7 @@ export default class ConversationVM extends ProviderListener {
     }
 
     private claimOpenConversation(conversation: Conversation): void {
-        if (!this.registerAsOpenConversation) {
+        if (!this.registerAsOpenConversation || !this.gateAllowed) {
             return
         }
         WKSDK.shared().conversationManager.openConversation = conversation
@@ -935,7 +941,43 @@ export default class ConversationVM extends ProviderListener {
         this.ownedOpenConversation = undefined
     }
 
+    private releaseOpenConversationIfDenied(): void {
+        if (this.gateAllowed) {
+            return
+        }
+        this.releaseOpenConversationOwnership()
+    }
+
+    private reclaimOpenConversationIfAllowed(): void {
+        if (!this.gateAllowed || !this.registerAsOpenConversation) {
+            return
+        }
+        if (!WKApp.shared.openChannel?.isEqual(this.channel)) {
+            return
+        }
+        if (!ConversationVM.openConversationOwner && this.currentConversation) {
+            this.claimOpenConversation(this.currentConversation)
+        }
+    }
+
+    private handleReadAttentionGateChange(allowed: boolean): void {
+        const previous = this.gateAllowed
+        this.gateAllowed = allowed
+        if (previous === allowed) {
+            return
+        }
+        if (allowed) {
+            this.reclaimOpenConversationIfAllowed()
+        } else {
+            this.releaseOpenConversationIfDenied()
+        }
+    }
+
     didMount(): void {
+        this.gateAllowed = isImReadAttentionAllowed()
+        this.unsubscribeReadAttention = subscribeImReadAttention(
+            (allowed) => this.handleReadAttentionGateChange(allowed),
+        )
 
         this.conversationListener = (conversation: Conversation, action: ConversationAction) => {
             if (!conversation.channel.isEqual(this.channel)) {
@@ -944,7 +986,11 @@ export default class ConversationVM extends ProviderListener {
             if (action == ConversationAction.update) {
                 // 如果本地已读位置比服务端更新（browseToMessageSeq >= lastMessage.messageSeq），
                 // 说明用户已读完消息，不应该被服务端的旧未读数覆盖
-                if (this.lastMessage && this.browseToMessageSeq >= this.lastMessage.messageSeq) {
+                if (
+                    this.gateAllowed &&
+                    this.lastMessage &&
+                    this.browseToMessageSeq >= this.lastMessage.messageSeq
+                ) {
                     if (conversation.unread > 0) {
                         // 有意直接修改 conversation.unread（side effect），
                         // 确保 SDK 缓存的 Conversation 对象与本地已读状态保持一致
@@ -1210,6 +1256,8 @@ export default class ConversationVM extends ProviderListener {
     }
 
     didUnMount(): void {
+        this.unsubscribeReadAttention?.()
+        this.unsubscribeReadAttention = undefined
         this.releaseOpenConversationOwnership()
         WKSDK.shared().chatManager.removeMessageListener(this.messageListener)
         WKSDK.shared().chatManager.removeMessageStatusListener(this.messageStatusListener)

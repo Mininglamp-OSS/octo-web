@@ -89,6 +89,8 @@ export type ForwardSender = (
 ) => Promise<Message>;
 
 export interface ForwardOptions {
+    /** Optional captured-scope guard. Expiration aborts remaining sends and completion side effects. */
+    isActive?: () => boolean;
     /** channel 之间：'parallel'（默认，Promise.all）| 'serial'（for-of + await）。 */
     channelMode?: "parallel" | "serial";
     /** 同 channel 内多条 content 的顺序（buildContent 返回数组时才生效）：默认 'serial'。 */
@@ -158,12 +160,17 @@ export class ForwardService {
      * @param opts         行为选项，见 ForwardOptions。
      * @returns            结构化结果（含目标维度 + 消息任务维度双计数）。
      * @throws             `buildContent` 抛出的任何异常（Phase 1 abort，Phase 2 不执行）。
+     *                     An expired optional scope also aborts; already dispatched sends cannot be recalled.
      */
     static async send(
         channels: Channel[],
         buildContent: BuildContentFn,
         opts: ForwardOptions = {},
     ): Promise<ForwardResult> {
+        const assertActive = () => {
+            if (opts.isActive && !opts.isActive()) throw new Error("Forward context expired");
+        };
+        assertActive();
         const targets = channels.length;
         const result: ForwardResult = {
             targets,
@@ -184,6 +191,7 @@ export class ForwardService {
         // ——见 header Phase 1 契约。
         const plans: ChannelPlan[] = [];
         for (const channel of channels) {
+            assertActive();
             const built = buildContent(channel);
             const contents = toContentArray(built);
             const disbanded = isConversationDisbanded(channel);
@@ -235,12 +243,14 @@ export class ForwardService {
         };
 
         const sendOneChannel = async (plan: ChannelPlan): Promise<void> => {
+            assertActive();
             const { channel, contents } = plan;
             const injectSpaceId = spaceId && channel.channelType === ChannelTypePerson ? spaceId : null;
             let setting: Setting;
             try {
                 setting = buildSetting(channel);
             } catch (error) {
+                assertActive();
                 // channel 级预处理失败 → 整个 channel 全部 content 计入 send-error，
                 // 不影响其他 channel（对齐 header "每任务隔离" 的承诺）。
                 recordChannelFailure(channel, contents, error);
@@ -249,6 +259,7 @@ export class ForwardService {
             let channelFailed = false;
 
             const sendOne = async (content: MessageContent, index: number): Promise<boolean> => {
+                assertActive();
                 let message: Message;
                 try {
                     const mention = readMention(content);
@@ -257,8 +268,10 @@ export class ForwardService {
                         mentionHumans: mention.humans,
                         mentionAis: mention.ais,
                     });
+                    assertActive();
                     message = await sender(wrapped, channel, setting);
                 } catch (error) {
+                    assertActive();
                     result.failures.push({
                         channelID: channel.channelID,
                         messageIndex: contents.length > 1 ? index : undefined,
@@ -272,7 +285,9 @@ export class ForwardService {
                 // 消息已被 SDK 接受 —— 以下收尾都算"发送成功"，异常不能倒过来记 send-error。
                 // apply 幂等：若自定义 sender（如 vm.sendMessage wrapper）内部已调过，这里重复调无副作用。
                 // onSent 只做 UI/queue 副作用（如塞 sendQueue）。
+                assertActive();
                 applyMsgLevelExternalFieldsWithFallback(message, undefined);
+                assertActive();
                 opts.onSent?.(message, channel, contents.length > 1 ? index : undefined);
                 return true;
             };
@@ -294,6 +309,7 @@ export class ForwardService {
                         break;
                     }
                     if (interDelay > 0 && i < contents.length - 1) {
+                        assertActive();
                         await wait(interDelay);
                     }
                 }

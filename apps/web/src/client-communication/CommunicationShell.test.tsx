@@ -13,6 +13,10 @@ const mocks = vi.hoisted(() => {
     command,
     summaryRequest,
     getCurrentImChannelInfo: vi.fn(),
+    subscribeUnread: vi.fn((listener: (count: number) => void) => {
+      listener(0);
+      return vi.fn();
+    }),
     setCurrentImChannelInfoCache: vi.fn(),
     findCurrentImConversation: vi.fn(),
     createCurrentEmptyImConversation: vi.fn(),
@@ -54,10 +58,6 @@ vi.mock("@dmwork/summary/messaging", () => ({
     notifySummaryCompleted: vi.fn(async () => {}),
     requestForward: mocks.requestForward,
   },
-}));
-
-vi.mock("../App/electronUnreadCount", () => ({
-  getElectronUnreadMessageCount: () => 0,
 }));
 
 vi.mock("@octo/contacts", () => ({
@@ -104,9 +104,22 @@ vi.mock("@octo/base", () => {
     on: vi.fn(),
     off: vi.fn(),
   };
+  const shared = {
+    openChannel: null,
+    currentSpaceId: "space-a",
+    addListener: vi.fn(() => () => {}),
+    notifyListener: vi.fn(),
+  };
   return {
     ChatPage: () => <div>chat</div>,
+    applyImSpaceContext: (space?: { space_id: string; name: string }) => {
+      if (shared.currentSpaceId === (space?.space_id || "")) return false;
+      shared.currentSpaceId = space?.space_id || "";
+      mittBus.emit("space-changed", space);
+      return true;
+    },
     getCurrentImChannelInfo: mocks.getCurrentImChannelInfo,
+    getCurrentImUnreadObserver: () => ({ subscribe: mocks.subscribeUnread }),
     setCurrentImChannelInfoCache: mocks.setCurrentImChannelInfoCache,
     findCurrentImConversation: mocks.findCurrentImConversation,
     createCurrentEmptyImConversation: mocks.createCurrentEmptyImConversation,
@@ -120,12 +133,7 @@ vi.mock("@octo/base", () => {
       loginInfo: { logout: vi.fn() },
       endpoints: { showConversation: vi.fn() },
       mittBus,
-      shared: {
-        openChannel: null,
-        currentSpaceId: "space-a",
-        addListener: vi.fn(() => () => {}),
-        notifyListener: vi.fn(),
-      },
+      shared,
     },
     WKBase: ({ children, onContext }: any) => {
       useEffect(() => onContext?.({}), [onContext]);
@@ -154,6 +162,7 @@ import { WKApp, i18n } from "@octo/base";
 import { installDesktopPresentationLifecycle } from "./desktopPresentationLifecycle";
 import type { DesktopPresentation } from "./desktopPresentation";
 import type { OctoBuddyCommunicationBridge } from "./hostBridge";
+import { createUnreadCountObserver } from "@octo/base/src/im-runtime/unreadObserver";
 
 describe("CommunicationShell", () => {
   beforeEach(() => {
@@ -161,6 +170,10 @@ describe("CommunicationShell", () => {
     mocks.command.listener = undefined;
     mocks.summaryRequest.listener = undefined;
     mocks.getCurrentImChannelInfo.mockReturnValue(undefined);
+    mocks.subscribeUnread.mockImplementation((listener) => {
+      listener(0);
+      return vi.fn();
+    });
   });
 
   it("keeps one embedded Contacts header and preserves child state while switching visible pages", async () => {
@@ -350,6 +363,69 @@ describe("CommunicationShell", () => {
       error,
     );
     consoleSpy.mockRestore();
+  });
+
+  it("does not install page-owned unread or summary handlers in runtime mode", () => {
+    render(
+      <React.StrictMode>
+        <CommunicationShell
+          bridge={mocks.bridge as any}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="workspace"
+          runtimeOwned
+          onReady={vi.fn(async () => {})}
+        />
+      </React.StrictMode>,
+    );
+    expect(mocks.subscribeUnread).not.toHaveBeenCalled();
+    expect(mocks.bridge.reportUnread).not.toHaveBeenCalled();
+    expect(mocks.bridge.onSummaryRequest).not.toHaveBeenCalled();
+  });
+
+  it("forwards shared snapshots across StrictMode and bridge replacement without leaking subscriptions", () => {
+    let count = 7;
+    const changes = new Set<() => void>();
+    const disposeUpstream = vi.fn();
+    const subscribeChanges = vi.fn((listener: () => void) => {
+      changes.add(listener);
+      return () => { changes.delete(listener); disposeUpstream(); };
+    });
+    const observer = createUnreadCountObserver({
+      readCount: () => count,
+      subscribeChanges,
+      onError: (error) => { throw error; },
+    });
+    mocks.subscribeUnread.mockImplementation(observer.subscribe);
+    const nextBridge: OctoBuddyCommunicationBridge = { ...mocks.bridge, reportUnread: vi.fn() };
+    const onReady = vi.fn(async () => {});
+    const content = (bridge: OctoBuddyCommunicationBridge) => (
+      <React.StrictMode>
+        <CommunicationShell bridge={bridge} initialPage="chat" initialSpaceId="space-a"
+          initialPresentation="workspace" onReady={onReady} />
+      </React.StrictMode>
+    );
+    const shell = render(content(mocks.bridge));
+    try {
+      expect(changes.size).toBe(1);
+      expect(mocks.bridge.reportUnread).toHaveBeenLastCalledWith(7);
+      count = 3;
+      act(() => changes.forEach((changed) => changed()));
+      expect(mocks.bridge.reportUnread).toHaveBeenLastCalledWith(3);
+
+      shell.rerender(content(nextBridge));
+      expect(changes.size).toBe(1);
+      expect(nextBridge.reportUnread).toHaveBeenLastCalledWith(3);
+      mocks.bridge.reportUnread.mockClear();
+      count = 0;
+      act(() => changes.forEach((changed) => changed()));
+      expect(nextBridge.reportUnread).toHaveBeenLastCalledWith(0);
+      expect(mocks.bridge.reportUnread).not.toHaveBeenCalled();
+    } finally {
+      shell.unmount();
+    }
+    expect(changes.size).toBe(0);
+    expect(disposeUpstream).toHaveBeenCalledTimes(subscribeChanges.mock.calls.length);
   });
 
   it("updates the document language when the host appearance changes", async () => {
