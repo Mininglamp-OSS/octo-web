@@ -154,7 +154,7 @@ describe("SkillListPage", () => {
     expect(container.querySelector(".skill-market-card__action-button")).not.toBeInTheDocument();
     unmount();
 
-    render(<SkillListPage variant="mine" />);
+    const { container: mineContainer } = render(<SkillListPage variant="mine" />);
 
     expect(screen.queryByLabelText(categoryAriaLabel)).not.toBeInTheDocument();
     expect(
@@ -171,6 +171,7 @@ describe("SkillListPage", () => {
     expect(
       screen.getByRole("button", { name: deleteSkillName })
     ).toBeInTheDocument();
+    expect(mineContainer.querySelector(".wk-mine-table__type")).not.toBeInTheDocument();
   });
 
   // 编辑 gating is two-axis now. `visibility` is only the declared intent and

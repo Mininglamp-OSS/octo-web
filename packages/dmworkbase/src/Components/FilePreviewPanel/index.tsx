@@ -35,9 +35,9 @@ const FilePreviewPanel: React.FC<FilePreviewPanelProps> = ({
   };
 
   return (
-    <div className="wk-file-preview-panel">
+    <div className="wk-file-preview-panel" data-desktop-overlay="">
       {/* Header */}
-      <div className="wk-file-preview-header">
+      <div className="wk-file-preview-header" data-desktop-chrome="header">
         <div className="wk-file-preview-title" title={file.name}>
           {file.name}
         </div>

@@ -328,12 +328,12 @@ test.describe('OIDC bind page', () => {
     // name/role/is_work/sex — login_provider is NOT in that whitelist, so it
     // lives in sessionStorage only). See StorageService.tsx:1-31.
     //
-    // Why we stub window.location.replace: finalizeBindSuccess schedules a
+    // Why we pause the clock: finalizeBindSuccess schedules a
     // location.replace(returnTo) ~200ms after save(). The outer beforeEach
     // installs addInitScript clearing session+localStorage on every navigation,
     // including that post-bind reload — so a naive read after waitForURL gets
-    // null. Stubbing replace lets save() persist while keeping us on /oidc/bind
-    // so the cleared-on-next-init storage stays intact.
+    // null. Location.replace is browser-protected and cannot be reliably stubbed.
+    // Pausing its timer keeps the storage assertion on the successful bind page.
     async function readLoginProviderFromSession(
       page: import('@playwright/test').Page,
     ): Promise<string | null> {
@@ -346,29 +346,15 @@ test.describe('OIDC bind page', () => {
       })
     }
 
-    async function stubLocationReplace(page: import('@playwright/test').Page): Promise<void> {
-      await page.evaluate(() => {
-        // Replace the method, not the whole location object (the latter is a
-        // browser-protected accessor and can't be reassigned in Chromium).
-        const noop = (): void => {
-          /* swallow navigation so storage observations stay on /oidc/bind */
-        }
-        try {
-          Object.defineProperty(window.location, 'replace', {
-            configurable: true,
-            value: noop,
-          })
-        } catch {
-          /* fallback: best-effort overwrite */
-          ;(window.location as unknown as { replace: () => void }).replace = noop
-        }
-      })
+    async function pausePostBindNavigation(page: import('@playwright/test').Page): Promise<void> {
+      await page.clock.pauseAt(Date.now() + 1000)
     }
 
     test('loginProvider persists URL ?provider= on confirm (not synthetic "oidc-bind")', async ({ page }) => {
       await mockBindServer(page, 'happy_password')
+      await page.clock.install()
       await gotoBindPage(page, { token: TOKEN, returnTo: '/', provider: 'xming' })
-      await stubLocationReplace(page)
+      await pausePostBindNavigation(page)
 
       await page.getByRole('button', { name: '使用 Octo 密码验证' }).click()
       await page.getByLabel(/Octo 账号/).fill('alice')
@@ -391,6 +377,7 @@ test.describe('OIDC bind page', () => {
 
     test('loginProvider falls back to FALLBACK_PROVIDER_ID when URL omits ?provider=', async ({ page }) => {
       await mockBindServer(page, 'happy_password')
+      await page.clock.install()
       // Inline-build URL to omit provider (gotoBindPage defaults to 'aegis').
       const qs = new URLSearchParams({
         token: TOKEN,
@@ -398,7 +385,7 @@ test.describe('OIDC bind page', () => {
         return_to: '/',
       })
       await page.goto(`/oidc/bind?${qs.toString()}`)
-      await stubLocationReplace(page)
+      await pausePostBindNavigation(page)
 
       await page.getByRole('button', { name: '使用 Octo 密码验证' }).click()
       await page.getByLabel(/Octo 账号/).fill('alice')
@@ -461,8 +448,9 @@ test.describe('OIDC bind page', () => {
 
     test('loginProvider persists URL ?provider= on create (not synthetic "oidc-bind-create")', async ({ page }) => {
       await mockBindServer(page, 'happy_create')
+      await page.clock.install()
       await gotoBindPage(page, { token: TOKEN, returnTo: '/', provider: 'xming' })
-      await stubLocationReplace(page)
+      await pausePostBindNavigation(page)
 
       await page.getByRole('button', { name: '使用 SSO 身份创建 Octo 账号' }).click()
       await expect(page.getByText('绑定成功，正在跳转…')).toBeVisible()

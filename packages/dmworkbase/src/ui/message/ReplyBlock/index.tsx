@@ -26,6 +26,7 @@ function renderDigest(digest: string) {
         key={`${index}-${segment.text}`}
         className="wk-reply-block__digest-link"
         href={segment.href}
+        data-octo-autolink="true"
         target="_blank"
         rel="noopener noreferrer"
         onClick={(event) => event.stopPropagation()}

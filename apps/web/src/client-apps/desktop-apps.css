@@ -1,0 +1,63 @@
+#root[data-desktop-platform] .appbot-list-view {
+  --desktop-header-background: var(--desktop-sidebar-background, var(--wk-bg-base));
+  background: var(--desktop-sidebar-background, var(--wk-bg-base));
+}
+
+/* Compact title in the header bar */
+#root[data-desktop-platform] .appbot-page-header .appbot-page-title {
+  font-size: var(--wk-text-size-base);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#root[data-desktop-platform] .appbot-page-header {
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+#root[data-desktop-integrated="true"] .appbot-page-header {
+  padding: 0;
+  border: 0;
+}
+
+#root[data-desktop-integrated="true"] .appbot-page-title {
+  display: flex;
+  align-items: center;
+  height: var(--desktop-header-height);
+  min-height: var(--desktop-header-height);
+  margin: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* Search field fills width inside the compact header */
+#root[data-desktop-platform] .appbot-search-input {
+  border-radius: var(--wk-r-sm);
+}
+
+#root[data-desktop-platform] .appbot-list-view .appbot-list-item-active {
+  background: var(--wk-bg-hover);
+}
+
+#root[data-desktop-integrated="true"] .appbot-search-input {
+  width: calc(100% - var(--wk-sp-3) * 2);
+  margin: 0 var(--wk-sp-3) var(--wk-sp-2);
+}
+
+/* The list body fills remaining height */
+#root[data-desktop-platform] .appbot-page-list {
+  height: auto;
+  max-height: none;
+}
+
+/* Conversation chrome header uses the host background */
+#root[data-desktop-platform] .appbot-chat-header {
+  background: var(--desktop-chrome-background, var(--wk-bg-surface));
+}
+
+/* Chat wrap fills the right pane */
+#root[data-desktop-platform] .appbot-chat-wrap {
+  background: var(--desktop-chrome-background, var(--wk-bg-surface));
+}

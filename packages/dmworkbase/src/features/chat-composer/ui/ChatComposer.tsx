@@ -91,6 +91,7 @@ import {
 import {
   decideComposerPaste,
   snapshotComposerClipboard,
+  unwrapCopiedAutolinks,
   type ComposerPasteDecision,
 } from "../clipboard/clipboardPipeline";
 import { createComposerStarterKit } from "../adapters/tiptap/editorKit";
@@ -727,6 +728,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     ],
     content: "",
     editorProps: {
+      transformPastedHTML: unwrapCopiedAutolinks,
       // ProseMirror 级别的键盘处理，在所有 keymap 之前执行
       handleKeyDown: (_view, event) => {
         return editorHandleKeyDownRef.current?.(_view, event) ?? false;

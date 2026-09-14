@@ -60,6 +60,7 @@ import { McpListError, classifyMcpListError, executeMcpListRequest } from "./mcp
 //   fetchMcpList(params)   → list + categories
 //   fetchMcpMine(params)   → list restricted to caller-owned records
 //   fetchMcpDetail(id)     → full detail
+//   trackMcpView(id)       → best-effort view metric
 //   probeMcpTools(req)     → "try connect / fetch tool list" (see LSC-70)
 //   createMcp(params)      → create a new MCP entry
 //   updateMcp(id, params)  → PATCH — owner-only partial update
@@ -188,6 +189,13 @@ async function fetchMcpDetailMock(id: string): Promise<McpDetail> {
     throw new Error(`MCP not found: ${id}`);
   }
   return delay(detail);
+}
+
+async function trackMcpViewMock(id: string): Promise<void> {
+  const detail = MOCK_MCP_DETAILS.find((item) => item.id === id);
+  if (detail) detail.viewCount = (detail.viewCount ?? 0) + 1;
+  const item = MOCK_MCP_LIST.find((entry) => entry.id === id);
+  if (item) item.viewCount = (item.viewCount ?? 0) + 1;
 }
 
 async function probeMcpToolsMock(
@@ -434,7 +442,14 @@ mcpAxios.interceptors.request.use((config) => {
 mcpAxios.interceptors.response.use(
   (resp) => resp,
   (err) => {
-    if (err?.response?.status === 401) {
+    const url = (err?.config?.url as string | undefined) ?? "";
+    if (
+      err?.response?.status === 401 &&
+      // View tracking is fire-and-forget. Its authorization failure must not
+      // tear down an otherwise healthy session; ordinary marketplace reads
+      // remain the authoritative authentication probe.
+      url !== `${BASE}/metrics/track`
+    ) {
       WKApp.shared.logout();
     }
     return Promise.reject(err);
@@ -803,6 +818,20 @@ async function fetchMcpDetailReal(id: string): Promise<McpDetail> {
   return mapDetail(detail.plugin, maps.idToKey);
 }
 
+/** Record one connector detail view. Metrics are deliberately best-effort:
+ * opening the detail must still work when the metrics service is unavailable. */
+async function trackMcpViewReal(id: string): Promise<void> {
+  try {
+    await mcpAxios.post(`${BASE}/metrics/track`, {
+      resource_type: "plugin",
+      resource_id: id,
+      event_type: "view",
+    });
+  } catch {
+    // A lost metric is non-actionable and must not affect the detail UI.
+  }
+}
+
 async function probeMcpToolsReal(
   req: McpProbeRequest
 ): Promise<McpProbeResult> {
@@ -1107,6 +1136,10 @@ export function listConnectorCategories(): Promise<string[]> {
 
 export function fetchMcpDetail(id: string): Promise<McpDetail> {
   return USE_MOCK ? fetchMcpDetailMock(id) : fetchMcpDetailReal(id);
+}
+
+export function trackMcpView(id: string): Promise<void> {
+  return USE_MOCK ? trackMcpViewMock(id) : trackMcpViewReal(id);
 }
 
 /** One tag suggestion in the tag-filter popover (mcp-v1.md §4.8). */

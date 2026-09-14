@@ -11,7 +11,9 @@ import {
   WKLayout,
   i18n,
   t,
+  useI18n,
 } from "@octo/base";
+import WKNavHeader from "@octo/base/src/Components/WKNavHeader";
 import type { WKViewQueueContext } from "@octo/base/src/Components/WKViewQueue";
 import { ContactsList } from "@octo/contacts";
 import { renderAppBotConversation } from "@dmwork/appbot/conversation";
@@ -118,6 +120,7 @@ export function CommunicationShell({
   onReady: (state: { page: CommunicationPage; spaceId: string }) => Promise<void>;
 }) {
   const [activePage, setActivePage] = useState<CommunicationPage>(initialPage);
+  const contactsTitle = useI18n().t("contacts.page.title");
   const [presentation, setPresentation] = useState<CommunicationPresentation>(initialPresentation);
   const activePageRef = useRef(activePage);
   const spaceIdRef = useRef(initialSpaceId);
@@ -372,10 +375,13 @@ export function CommunicationShell({
         <ChatPage />
       </div>
       <div className="communication-page" style={{ display: activePage === "contacts" ? "block" : "none" }}>
-        <ContactsList />
+        <div className="communication-contacts">
+          <WKNavHeader className="communication-contacts-header" title={contactsTitle} />
+          <div className="communication-contacts-body"><ContactsList /></div>
+        </div>
       </div>
     </div>
-  ), [activePage]);
+  ), [activePage, contactsTitle]);
 
   return (
     <WKBase onContext={(context) => {

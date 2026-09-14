@@ -135,7 +135,7 @@ export default class SummaryConfirmPage extends Component<
 
         return (
             <div className="summary-confirm-page">
-                <div className="summary-confirm-header">
+                <div className="summary-confirm-header" data-desktop-chrome="header">
           <Button
             icon={<IconArrowLeft />}
             theme="borderless"

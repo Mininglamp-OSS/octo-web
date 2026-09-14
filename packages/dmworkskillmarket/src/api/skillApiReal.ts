@@ -389,6 +389,7 @@ function mapSkill(raw: PluginListItemWire): Skill {
     fileSize: 0,
     fileSha256: undefined,
     viewCount: raw.view_count ?? 0,
+    installCount: raw.install_count ?? 0,
     downloadCount: raw.download_count ?? 0,
     // Rendered, never derived. The server folds the listing state together with
     // the review entity into `display_status`; recomputing it here from

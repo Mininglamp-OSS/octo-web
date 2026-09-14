@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -29,6 +30,7 @@ export function SummaryShell({
   initialRoute,
   initialSpaceId,
   onReady,
+  onPresentationContext,
 }: {
   bridge: OctoBuddySummaryBridge;
   initialRoute: SummaryWorkspaceRoute;
@@ -37,6 +39,7 @@ export function SummaryShell({
     route: SummaryWorkspaceRoute;
     spaceId: string;
   }) => Promise<void>;
+  onPresentationContext?: (state: { route: SummaryWorkspaceRoute; spaceId: string }) => void;
 }) {
   const [route, setRoute] = useState(initialRoute);
   const routeRef = useRef(route);
@@ -46,6 +49,10 @@ export function SummaryShell({
   const invalidationListeners = useRef(new Set<() => void>());
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+
+  useLayoutEffect(() => {
+    onPresentationContext?.({ route, spaceId: spaceIdRef.current });
+  }, [route, workspaceRevision, onPresentationContext]);
 
   const setControlledRoute = useCallback(
     (next: SummaryWorkspaceRoute, report = true) => {

@@ -29,7 +29,7 @@ export default function SummarySharePreviewFeature({ shareId, onClose, onOpenDet
 
     return (
         <div className="summary-share-preview">
-            <header className="summary-share-preview__header">
+            <header className="summary-share-preview__header" data-desktop-chrome="header">
                 <div>
                     <h2>{t("summary.share.fullTitle")}</h2>
                     {snapshot ? <p>{snapshot.title || t("summary.share.defaultTitle")}</p> : null}

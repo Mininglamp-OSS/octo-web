@@ -178,6 +178,7 @@ const ResizableRightPanel: React.FC<ResizableRightPanelProps> = ({
   return (
     <aside
       ref={panelRef}
+      data-desktop-overlay=""
       className={classNames(
         "wk-resizable-right-panel",
         isDragging && "wk-resizable-right-panel--dragging",
@@ -196,7 +197,7 @@ const ResizableRightPanel: React.FC<ResizableRightPanelProps> = ({
           <div className="wk-resizable-right-panel__splitter-line" />
         </div>
       )}
-      <header className="wk-resizable-right-panel__header">
+      <header className="wk-resizable-right-panel__header" data-desktop-chrome="header">
         <div className="wk-resizable-right-panel__title">{title}</div>
         <button
           type="button"

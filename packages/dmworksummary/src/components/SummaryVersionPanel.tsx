@@ -88,7 +88,7 @@ const SummaryVersionPanel: React.FC<SummaryVersionPanelProps> = ({
 
     return (
         <aside data-testid={summaryTestIds.versionPanel} className="version-panel" aria-label={t("summary.detail.versionRecords")}>
-                <header className="version-panel__header">
+                <header className="version-panel__header" data-desktop-chrome="header">
                     <span className="version-panel__icon" aria-hidden>
                         <IconHistory />
                     </span>

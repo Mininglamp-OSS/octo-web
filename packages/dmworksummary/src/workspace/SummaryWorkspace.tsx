@@ -155,7 +155,7 @@ export default function SummaryWorkspace({
           />
         </aside>
         {route.view !== "list" ? (
-          <main className="summary-workspace__content">
+          <main className="summary-workspace__content" data-desktop-chrome="surface">
             <button
               type="button"
               className="summary-workspace__mobile-back"

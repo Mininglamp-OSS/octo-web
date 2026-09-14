@@ -93,12 +93,14 @@ describe("SummaryShell", () => {
   });
 
   it("accepts host navigation without echoing it and reports UI navigation", async () => {
+    const onPresentationContext = vi.fn();
     render(
       <SummaryShell
         bridge={mocks.bridge as any}
         initialRoute={{ view: "list" }}
         initialSpaceId="space-a"
         onReady={vi.fn(async () => {})}
+        onPresentationContext={onPresentationContext}
       />
     );
 
@@ -110,6 +112,9 @@ describe("SummaryShell", () => {
     });
     expect(mocks.workspaceProps.route).toEqual({ view: "detail", taskId: 42 });
     expect(mocks.bridge.reportRoute).not.toHaveBeenCalled();
+    expect(onPresentationContext).toHaveBeenLastCalledWith({
+      route: { view: "detail", taskId: 42 }, spaceId: "space-a",
+    });
 
     act(() => {
       mocks.workspaceProps.onRouteChange({ view: "schedules" });
@@ -119,6 +124,9 @@ describe("SummaryShell", () => {
         route: { view: "schedules" }, spaceId: "space-a",
       })
     );
+    expect(onPresentationContext).toHaveBeenLastCalledWith({
+      route: { view: "schedules" }, spaceId: "space-a",
+    });
   });
 
   it("synchronizes space and appearance commands and invalidates data", () => {

@@ -161,6 +161,7 @@ export default class EmojiToolbar extends Component<EmojiToolbarProps, EmojiTool
         const { icon, conversationContext } = this.props
         const overlay = <>
             <div
+                data-desktop-overlay=""
                 style={panelPos ? { left: panelPos.left, top: panelPos.top } : undefined}
                 className={classNames("wk-emojitoolbar-emojipanel", show ? "wk-emojitoolbar-emojipanel-show" : undefined)}
             >
@@ -178,7 +179,7 @@ export default class EmojiToolbar extends Component<EmojiToolbarProps, EmojiTool
                 }}></EmojiPanel>
             </div>
             {
-                show ? <div className="wk-emojitoolbar-mask" onClick={this.close}></div> : undefined
+                show ? <div className="wk-emojitoolbar-mask" data-desktop-overlay="" onClick={this.close}></div> : undefined
             }
         </>
         return <div className="wk-emojitoolbar" ref={this.triggerRef}>

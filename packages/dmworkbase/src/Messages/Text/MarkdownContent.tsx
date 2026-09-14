@@ -20,6 +20,7 @@ import { t } from "../../i18n";
 import { ImagePreviewLightbox } from "../Image/ImagePreview";
 import { getMentionRenderState } from "./mentionRenderState";
 import { isForwardDocCard, type ParagraphChildKind } from "./forwardClamp";
+import remarkAutolinkPunctuation from "./remarkAutolinkPunctuation";
 
 export interface MentionInfo {
   name: string; // "@张三"（含@符号）
@@ -77,6 +78,8 @@ const sanitizeSchema = {
   ...defaultSchema,
   attributes: {
     ...defaultSchema.attributes,
+    // Copied automatic links must return to plain text in the composer.
+    a: [...(defaultSchema.attributes?.a ?? []), "dataOctoAutolink"],
     // 放行代码块的 language-* class（highlight.js 加的）
     code: [
       ...(defaultSchema.attributes?.code ?? []),
@@ -289,6 +292,7 @@ const baseRemarkPlugins: any[] = [
   rawHtmlAsTextPlugin,
   [remarkGfm, remarkGfmOptions],
   remarkBreaks,
+  remarkAutolinkPunctuation,
 ];
 
 /**
@@ -309,6 +313,7 @@ const mathRemarkPlugins: any[] = [
   mathScanPlugin,
   remarkBreaks,
   restoreSentinelPlugin,
+  remarkAutolinkPunctuation,
 ];
 
 /** 文档 / 编辑器场景：放宽正文启发式，但仍统一执行公式数量、长度和渲染产物上限。 */
@@ -318,6 +323,7 @@ const mathRemarkPluginsSingleDollar: any[] = [
   remarkMath,
   guardRemarkMathPlugin,
   remarkBreaks,
+  remarkAutolinkPunctuation,
 ];
 
 /** math-ish 内部字符：与 iOS WKLaTeXPreprocessor.hasMathChar 完全一致。 */
@@ -1301,11 +1307,14 @@ function rawHtmlAsTextPlugin() {
 
 /**
  * 纯文本模式（enableMarkdown=false）插件：
- *   - remark 只保留 remarkBreaks（换行转 <br>），不启用 gfm，避免 markdown 语法解析；
+ *   - remark 保留换行并标记生成的自动链接，不启用 gfm，避免 markdown 语法解析；
  *   - rehype 只保留 sanitize 兜底清洗。
  * 配合 escapeMarkdown 转义，最终按纯文本渲染（与移动端「不渲 markdown」对齐）。
  */
-const plainRemarkPlugins: any[] = [remarkBreaks];
+const plainRemarkPlugins: any[] = [
+  remarkBreaks,
+  [remarkAutolinkPunctuation, { generatedLinks: true }],
+];
 const plainRehypePlugins: any[] = [[rehypeSanitize, sanitizeSchema]];
 
 /**

@@ -39,7 +39,7 @@ export function SearchWorkspace({
 }: SearchWorkspaceProps) {
   return (
     <div className="wk-search-workspace">
-      <header className="wk-search-workspace__header">
+      <header className="wk-search-workspace__header" data-desktop-chrome="header">
         <div className="wk-search-workspace__input-wrap">
           <span className="wk-search-workspace__leading" aria-hidden="true">
             {search.leading ?? <Search size={18} />}

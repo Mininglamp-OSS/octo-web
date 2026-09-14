@@ -3,7 +3,7 @@ import { WKModal, WKButton, t, Dap } from "@octo/base";
 import { Toast, Spin } from "@douyinfe/semi-ui";
 import { IconWrenchStroked } from "@douyinfe/semi-icons";
 import { Bot, ShieldCheck, UserRound } from "lucide-react";
-import { deleteMcp, fetchMcpDetail } from "../api/mcpService";
+import { deleteMcp, fetchMcpDetail, trackMcpView } from "../api/mcpService";
 import { buildQuickStartTabs, TOKEN_PLACEHOLDER_RE } from "../api/quickStartTemplates";
 import type { McpDetail, McpQuickStart } from "../types/mcp";
 import { IconGlyph } from "../utils/icon";
@@ -140,6 +140,7 @@ const McpDetailModal: React.FC<McpDetailModalProps> = ({
     setDeleting(false);
     let cancelled = false;
     setLoading(true);
+    void trackMcpView(mcpId);
     fetchMcpDetail(mcpId)
       .then((d) => {
         if (!cancelled) setDetail(d);

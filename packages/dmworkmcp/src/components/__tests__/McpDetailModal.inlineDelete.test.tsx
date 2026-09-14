@@ -7,10 +7,12 @@ import { afterEach, describe, it, expect, vi } from "vitest";
 // ── Mocks ──────────────────────────────────────────────────────────────────
 const deleteMcp = vi.fn();
 const fetchMcpDetail = vi.fn();
+const trackMcpView = vi.fn();
 
 vi.mock("../../api/mcpService", () => ({
   deleteMcp: (...a: unknown[]) => deleteMcp(...a),
   fetchMcpDetail: (...a: unknown[]) => fetchMcpDetail(...a),
+  trackMcpView: (...a: unknown[]) => trackMcpView(...a),
 }));
 vi.mock("../../api/quickStartTemplates", () => ({
   buildQuickStartTabs: () => [
@@ -132,6 +134,8 @@ describe("McpDetailModal 就地内联删除确认（方案A）", () => {
     );
     expect(initialBtns).toContain("mcp.detail.delete");
     expect(initialBtns).toContain("mcp.detail.edit");
+    expect(trackMcpView).toHaveBeenCalledTimes(1);
+    expect(trackMcpView).toHaveBeenCalledWith("m1");
 
     // 点「删除」——footer 就地切成确认态；应出现确认提示文案 + 确认删除按钮，
     // 且没有第二个 WKModal（不叠遮罩）。wkConfirm 抛错的 stub 也未触发。

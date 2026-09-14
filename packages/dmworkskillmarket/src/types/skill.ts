@@ -68,6 +68,8 @@ export interface Skill {
   fileSize: number;
   fileSha256?: string;
   viewCount?: number;
+  /** Successful installs for non-skill rows returned by the unified plugin API. */
+  installCount?: number;
   downloadCount?: number;
   /** Listing lifecycle and the single status to render. Both are supplied by the
    *  server on the owner (`mode=mine`) listing and on the detail read; they are

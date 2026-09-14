@@ -56,7 +56,7 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
         const { t: translate } = this.context;
         return (
             <div className="summary-schedule-page">
-                <div className="summary-schedule-header">
+                <div className="summary-schedule-header" data-desktop-chrome="header">
                     <WKButton icon={<IconArrowLeft />} variant="ghost" onClick={this.handleBack}
                         aria-label={translate("summary.chatSummary.back")} />
                     <h2>{translate("summary.schedule.pageTitle")}</h2>

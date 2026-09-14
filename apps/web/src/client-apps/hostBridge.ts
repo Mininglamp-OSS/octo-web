@@ -1,4 +1,5 @@
 import type { AppBotConversationTarget } from "@dmwork/appbot";
+import type { DesktopPresentationBridge, DesktopReadyCapability } from "../client-feature/desktop/presentation";
 
 export interface AppsBootstrap {
   bridgeVersion: 1;
@@ -28,13 +29,13 @@ export type AppsHostCommand =
   | { type: "hostVisibilityChanged"; visible: boolean }
   | { type: "sessionRevoked" };
 
-export interface OctoBuddyAppsBridge {
+export interface OctoBuddyAppsBridge extends DesktopPresentationBridge {
   getBootstrap(): Promise<AppsBootstrap>;
   reportReady(state: {
     bridgeVersion: 1;
     spaceId: string;
     rendererVersion: string;
-  }): Promise<void>;
+  } & DesktopReadyCapability<"apps">): Promise<void>;
   reportAuthExpired(reason: string): void;
   reportFatalError(error: { message: string; stack?: string }): void;
   openConversation(target: AppBotConversationTarget): Promise<void>;

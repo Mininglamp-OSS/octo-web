@@ -206,8 +206,9 @@ export function ConversationWindow({
           "wk-chat-conversation-header",
           selectionActive && "wk-chat-conversation-header-selection"
         )}
+        data-desktop-chrome="header"
       >
-        <div className="wk-chat-conversation-header-content">
+        <div className="wk-chat-conversation-header-content" data-desktop-chrome="layout">
           <div className="wk-chat-conversation-header-left">
             {selectionActive && selection ? (
               <div className="wk-chat-conversation-selection-header">

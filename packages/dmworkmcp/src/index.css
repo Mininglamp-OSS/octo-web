@@ -1493,6 +1493,15 @@
   border-bottom: 1px solid var(--wk-border-strong);
 }
 
+.wk-mcp-mine__hero-actions {
+  position: absolute;
+  z-index: 2;
+  top: var(--wk-sp-4);
+  right: var(--wk-sp-6);
+  display: flex;
+  align-items: center;
+}
+
 .wk-mcp-mine__hero-title h1 {
   margin: 0;
   color: var(--wk-text-strong);

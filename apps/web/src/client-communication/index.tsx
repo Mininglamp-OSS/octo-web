@@ -27,6 +27,10 @@ import { CommunicationShell } from "./CommunicationShell";
 import { requireHostBridge } from "./hostBridge";
 import { reportStartupFailure } from "./startupFailure";
 import { installHostDocumentPreview } from "./documentPreview";
+import { installDesktopPresentationLifecycle } from "./desktopPresentationLifecycle";
+import "../client-feature/desktop/presentation.css";
+import "./desktop-presentation.css";
+import "./desktop-contacts.css";
 
 async function main() {
   const host = requireHostBridge();
@@ -85,7 +89,13 @@ async function main() {
   document.documentElement.dataset.theme = bootstrap.appearance.theme;
   Dap.shared.init();
 
-  createRoot(document.getElementById("root")!).render(
+  const root = document.getElementById("root")!;
+  const presentation = installDesktopPresentationLifecycle(window, host, root, () => ({
+    page: WKApp.currentMenuId === "contacts" ? "contacts" : "chat",
+    spaceId: WKApp.shared.currentSpaceId,
+  }));
+  await presentation.available;
+  createRoot(root).render(
     <React.StrictMode>
       <I18nProvider>
         <CommunicationShell
@@ -93,7 +103,7 @@ async function main() {
           initialPage={bootstrap.initialPage}
           initialSpaceId={bootstrap.space.id}
           initialPresentation={bootstrap.initialPresentation}
-          onReady={({ page, spaceId }) => host.reportReady({
+          onReady={({ page, spaceId }) => presentation.reportReady({
             bridgeVersion: 1,
             page,
             spaceId,
