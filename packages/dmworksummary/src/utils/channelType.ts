@@ -57,3 +57,13 @@ export function chatTypeToOriginChannelType(chatType: 'group' | 'thread' | 'dire
             throw new Error(`不支持的 chat_type: ${chatType}`);
     }
 }
+
+/** Reverse the source mapping without treating unknown values as private chats. */
+export function originChannelTypeToChatType(sourceType: number): 'group' | 'thread' | 'direct' {
+    switch (sourceType) {
+        case SourceType.GROUP_CHAT: return 'group';
+        case SourceType.THREAD: return 'thread';
+        case SourceType.DIRECT_MESSAGE: return 'direct';
+        default: throw new Error(`不支持的 source_type: ${sourceType}`);
+    }
+}

@@ -403,8 +403,8 @@ describe('SummaryCard relative time fallback (issue #1440)', () => {
     });
 });
 
-describe('SummaryCard AI Generated Badge', () => {
-    it('trigger_type === 3 (AGENT) 时显示 Agent 总结图标', () => {
+describe('SummaryCard engine-neutral personal classification', () => {
+    it('Agent 来源与其他单人总结使用相同的个人总结图标', () => {
         render(
             <SummaryCard
                 task={makeItem({ title: '对话生成总结', trigger_type: 3 }) as any}

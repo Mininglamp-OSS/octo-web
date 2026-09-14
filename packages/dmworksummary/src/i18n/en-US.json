@@ -520,6 +520,7 @@
     "botCreatedByFor": "Created by {{bot}} on behalf of {{owner}}",
     "contentTitle": "📝 Summary content",
     "edited": "Edited",
+    "editUnavailable": "Editing is unavailable. Check that the summary has content, you have permission, and generation is not in progress.",
     "generatedAt": "Generated {{time}}",
     "lastEditedAt": "Last edited {{time}}",
     "mySummary": "My summary",

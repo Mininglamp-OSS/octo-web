@@ -190,6 +190,7 @@ scope: octo-docs, octo-fleet.
 | `smart_summary_theme_input` | imperative | Topic textarea `onChange` after 600ms debounce, only when non-empty; content never collected; PLUS workbench composer `onInputChange` after 600ms debounce (SummaryWorkbenchFeature, timer cleared on unmount) | Empty topic; fire after unmount (debounce timer cleared on unmount); fire after submit (timer cleared in `handleSubmit` — user已进入生成,八审 P2) | Debounce timer reset per keystroke, cleared on unmount and on submit | — |
 | `smart_summary_timer_configured` | helper | `createSummarySchedule` (POST `/summary-schedules`) and `updateSummarySchedule` (PUT `/summary-schedules/:id`) when the response envelope `code===0`; both create+edit of a scheduled summary funnel here | `code!==0` / missing code (logical failure) | Api-layer sink; `code===0` gate | — |
 | `smart_summary_timer_dialog_opened` | imperative | `openScheduleModal` — opening the scheduled-summary config dialog; props empty | — | — | — |
+| `smart_summary_generation_config_saved` | helper | `saveGenerationConfig` (PUT `/summaries/:id/generation-config`) after envelope `code===0`; props empty | Failed/missing-code envelope or transport error; never counted as timer configuration or generation | Api-layer success gate | summaryApi.test.ts |
 | `thread_expanded` | imperative | Fold-session toggle `onClick` when `wasExpanded===false` (expanding); props empty | Collapsing (wasExpanded true) | Expand-edge only | — |
 
 

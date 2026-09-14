@@ -520,6 +520,7 @@
     "botCreatedByFor": "由 {{bot}} 代 {{owner}} 创建",
     "contentTitle": "📝 总结内容",
     "edited": "已编辑",
+    "editUnavailable": "暂时无法编辑，请确认总结已有正文、你有编辑权限且任务未在生成中。",
     "generatedAt": "生成于 {{time}}",
     "lastEditedAt": "最后编辑 {{time}}",
     "mySummary": "我的总结",

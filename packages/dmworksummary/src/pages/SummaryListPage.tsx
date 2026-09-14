@@ -4,7 +4,7 @@ import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
 import { I18nContext, t, WKApp, Dap } from "@octo/base";
 import * as api from "../api/summaryApi";
-import { requestSummaryScheduleOpen } from "../utils/summaryScheduleIntent";
+import { requestSummaryScheduleOpen, requestSummaryDetailAction } from "../utils/summaryDetailIntent";
 import {
   abandonSummaryAttentionRead,
   beginSummaryAttentionRead,
@@ -661,7 +661,8 @@ export default class SummaryListPage extends Component<
         try {
       const task = this.state.items.find((i) => i.task_id === taskId);
             if (task?.trigger_type === TriggerType.AGENT) {
-                this.handleRegenerate(taskId);
+                requestSummaryDetailAction(taskId, WKApp.shared?.currentSpaceId || "", "retry");
+                this.handleCardClick(taskId);
                 return;
             }
             await api.regenerateSummary(taskId);
@@ -683,12 +684,8 @@ export default class SummaryListPage extends Component<
     };
 
     handleRegenerate = (taskId: number) => {
+        requestSummaryDetailAction(taskId, WKApp.shared?.currentSpaceId || "", "regenerate");
         this.handleCardClick(taskId);
-        setTimeout(() => {
-      window.dispatchEvent(
-        new CustomEvent("summary-detail-regenerate", { detail: { taskId } })
-      );
-        }, 300);
     };
 
     handleContinueOptimize = (taskId: number) => {
@@ -704,14 +701,8 @@ export default class SummaryListPage extends Component<
     };
 
     handleEdit = (taskId: number) => {
+        requestSummaryDetailAction(taskId, WKApp.shared?.currentSpaceId || "", "edit");
         this.handleCardClick(taskId);
-        // 300ms delay allows detail page to mount and register event listener
-        // before dispatching the edit action event
-        setTimeout(() => {
-      window.dispatchEvent(
-        new CustomEvent("summary-detail-edit", { detail: { taskId } })
-      );
-        }, 300);
     };
 
     handleSchedule = (taskId: number) => {

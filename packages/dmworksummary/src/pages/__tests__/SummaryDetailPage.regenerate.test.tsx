@@ -137,6 +137,34 @@ describe("SummaryDetailPage regenerate dialog", () => {
         expect(page.state.regenerateTopic).toBe(requirement);
     });
 
+    it.each([
+        ["refine", TriggerType.AGENT, 2000, false],
+        ["full", TriggerType.MANUAL, 2000, false],
+        ["full", TriggerType.AGENT, 8192, true],
+    ] as const)("keeps textarea, counter and voice units aligned for %s/%s", (mode, trigger, limit, runes) => {
+        const page = makePage();
+        page.state = { ...page.state, showRegenerateModal: true, regenerateMode: mode,
+            detail: { ...page.state.detail!, trigger_type: trigger, generation_requirement: "prompt", sources: [] },
+            refineFeedback: "🙂", regenerateTopic: "🙂" };
+        const elements: any[] = [];
+        const walk = (node: any) => {
+            if (!node || typeof node !== "object") return;
+            elements.push(node);
+            React.Children.toArray(node.props?.children).forEach(walk);
+        };
+        walk(page.render());
+        const input = elements.find(node => node.props?.id === "summary-regenerate-input");
+        const counter = elements.find(node => node.props?.className === "summary-regenerate-char-count");
+        expect(input.props.maxLength).toBe(runes ? undefined : limit);
+        expect(counter.props.children.join("")).toBe(`${runes ? 1 : 2}/${limit}`);
+        const oversized = "🙂".repeat(limit);
+        input.props.onChange({ target: { value: oversized } });
+        const value = mode === "refine" ? page.state.refineFeedback : page.state.regenerateTopic;
+        expect(runes ? Array.from(value).length : value.length).toBe(limit);
+        (page as any).handleRegenerateInputVoice(oversized, "all");
+        expect(mode === "refine" ? page.state.refineFeedback : page.state.regenerateTopic).toBe(value);
+    });
+
     it.each([false, true])("does not collect or require shared scope on collaboration branch (team=%s)", async (team) => {
         const page = makePage();
         page.state = { ...page.state, showRegenerateModal: true, regenerateMode: "full", regenerateTopic: "instruction",
@@ -161,6 +189,8 @@ describe("SummaryDetailPage regenerate dialog", () => {
         await page.handleRegenerateConfirm();
         expect(team ? api.regenerateSummary : api.regeneratePersonalSummary).toHaveBeenCalledWith(1, { topic: "instruction" });
         expect(api.saveGenerationConfig).not.toHaveBeenCalled();
+        expect(page.state.detail?.title).toBe("Legacy title");
+        if (!team) expect(page.state.detail?.topic).toBe("Preferred topic");
     });
 
     it("saves missing Agent scope through the existing full Workflow endpoint and restarts streaming", async () => {

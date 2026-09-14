@@ -1457,21 +1457,6 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     margin-bottom: 0;
 }
 
-.summary-detail-agent-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--wk-sp-1);
-    flex: none;
-    padding: 0 var(--wk-sp-2);
-    border-radius: var(--wk-r-full);
-    background: var(--wk-ai-surface);
-    color: var(--wk-color-accent);
-    box-shadow: inset 0 0 0 1px var(--wk-ai-border);
-    font-size: var(--wk-text-size-xs);
-    font-weight: var(--wk-font-medium);
-    line-height: 20px;
-}
-
 .summary-detail-inline-edit.semi-button {
     flex: none;
 }

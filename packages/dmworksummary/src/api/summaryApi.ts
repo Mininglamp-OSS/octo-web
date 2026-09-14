@@ -1118,7 +1118,7 @@ export async function regenerateSummary(taskId: number, body?: RegenerateSummary
 }
 
 export async function saveGenerationConfig(taskId: number, body: RegenerateSummaryParams): Promise<{ task_id: number }> {
-    return put(`/summaries/${taskId}/generation-config`, body);
+    return put(`/summaries/${taskId}/generation-config`, body, 'smart_summary_generation_config_saved');
 }
 
 export async function streamRefineSummary(

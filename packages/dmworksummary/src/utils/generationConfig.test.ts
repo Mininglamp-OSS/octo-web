@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { savedGenerationRequirement, hasGenerationTimeRange, supportsGenerationConfig, canCompleteGenerationConfig } from "./generationConfig";
 import { getSummaryTypeKind } from "./summaryHelpers";
-import { SummaryMode, TaskStatus, TriggerType, type SummaryDetail } from "../types/summary";
+import { SummaryMode, TaskStatus, TriggerType, type SummaryDetail, type SummaryListItem } from "../types/summary";
 
 const detail: SummaryDetail = {
     task_id: 1, task_no: "test", title: "Display title", topic: "Workflow requirement",
@@ -41,7 +41,10 @@ describe("saved generation configuration", () => {
         expect(hasGenerationTimeRange({ ...detail, time_range_end: "2026-09-07T00:00:00Z" })).toBe(true);
     });
     it.each([TriggerType.AGENT, TriggerType.MANUAL, TriggerType.SCHEDULED])("classifies engine %s only by personal/team ownership", (trigger_type) => {
-        expect(getSummaryTypeKind({ ...detail, trigger_type, schedule_id: 1 })).toBe("quick");
-        expect(getSummaryTypeKind({ ...detail, trigger_type, participants: [{ user_id: "a" }, { user_id: "b" }] })).toBe("multi");
+        const item: SummaryListItem = { ...detail, trigger_type, schedule_id: 1, total_msg_count: 0, completed_at: null };
+        expect(getSummaryTypeKind(item)).toBe("quick");
+        expect(getSummaryTypeKind({ ...item, participants: [
+            { user_id: "a", user_name: "A", status: 2 }, { user_id: "b", user_name: "B", status: 2 },
+        ] })).toBe("multi");
     });
 });

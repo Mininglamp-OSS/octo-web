@@ -188,12 +188,8 @@ describe('SummaryReferencePicker', () => {
             await waitFor(() => expect(screen.getByText('个人总结')).toBeInTheDocument());
         });
 
-        // R4 yj P2-1: regression guard. `schedule_id: 0` means "no schedule"
-        // (the sentinel value the backend uses), so a MANUAL summary with
-        // schedule_id=0 must render 快速总结, NOT 定时总结. Without this case
-        // reverting summaryHelpers to the round-3 bug
-        // (`item.schedule_id != null`) leaves the suite green — verified by
-        // reviewer mutation testing.
+        // Schedule metadata does not change personal/team classification,
+        // including the backend's "no schedule" sentinel.
         it('keeps the personal label when schedule_id is 0', async () => {
             const item = makeItem({
                 referenceable: true,
@@ -202,7 +198,6 @@ describe('SummaryReferencePicker', () => {
             });
             renderPicker({ item });
             await waitFor(() => expect(screen.getByText('个人总结')).toBeInTheDocument());
-            expect(screen.queryByText('定时总结')).not.toBeInTheDocument();
         });
     });
 

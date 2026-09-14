@@ -59,10 +59,11 @@ vi.mock('../../utils/summaryAttentionBadge', () => ({
 }));
 
 import * as api from '../../api/summaryApi';
-import { WKApp, Dap } from '@octo/base';
+import { WKApp, Dap, t } from '@octo/base';
 import SummaryDetailPage from '../SummaryDetailPage';
 import { refreshSummaryAttentionBadge } from '../../utils/summaryAttentionBadge';
-import { requestSummaryScheduleOpen, consumeSummaryScheduleOpen } from '../../utils/summaryScheduleIntent';
+import { requestSummaryScheduleOpen, consumeSummaryScheduleOpen, requestSummaryDetailAction, consumeSummaryDetailAction } from '../../utils/summaryDetailIntent';
+import { SummaryMode, TaskStatus, TriggerType } from '../../types/summary';
 import { summaryTestIds } from '../../utils/testIds';
 import { SummaryForwardContextExpiredError } from '../../host/forwardErrors';
 import type { SummaryForwardRequest, SummaryMessagingPort } from '../../host/types';
@@ -78,6 +79,10 @@ function makePage(taskId: number | string) {
         callback?.();
     };
     return page;
+}
+
+function findScheduleAction(page: SummaryDetailPage) {
+    return collectElements(page.renderHeader()).find(element => element.props?.onClick === page.openScheduleModal);
 }
 
 describe('SummaryDetailPage forwarding feedback', () => {
@@ -218,6 +223,119 @@ const baseDetail = (over: any = {}) => ({
     updated_at: '',
     permissions: { can_edit: true, can_schedule: true },
     ...over,
+});
+
+describe('shared detail actions after navigation', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        consumeSummaryDetailAction(1, WKApp.shared.currentSpaceId);
+    });
+
+    it('waits for slow detail and personal loading before prefilling regeneration', async () => {
+        let resolveDetail!: (value: any) => void;
+        let resolvePersonal!: (value: any) => void;
+        vi.mocked(api.getSummaryDetail).mockReturnValue(new Promise(resolve => { resolveDetail = resolve; }));
+        vi.mocked(api.getPersonalResult).mockReturnValue(new Promise(resolve => { resolvePersonal = resolve; }));
+        vi.mocked(api.getMembers).mockResolvedValue([]);
+        const page = makePage(1);
+        requestSummaryDetailAction(1, WKApp.shared.currentSpaceId, 'regenerate');
+        const loading = page.loadDetail();
+        expect(page.state.showRegenerateModal).toBe(false);
+        resolveDetail(baseDetail({ summary_mode: SummaryMode.BY_PERSON, status: TaskStatus.COMPLETED,
+            trigger_type: TriggerType.AGENT, generation_requirement: 'Saved original instruction' }));
+        await loading;
+        expect(page.state.showRegenerateModal).toBe(false);
+        resolvePersonal({ id: 7, content: 'old body', worker_status: 2 });
+        await vi.waitFor(() => expect(page.state.showRegenerateModal).toBe(true));
+        expect(page.state.regenerateTopic).toBe('Saved original instruction');
+        expect(consumeSummaryDetailAction(1, WKApp.shared.currentSpaceId)).toBeNull();
+    });
+
+    it('list retry and detail retry both open full regeneration, even with no personal result', async () => {
+        const detail = baseDetail({ summary_mode: SummaryMode.BY_PERSON, status: TaskStatus.FAILED,
+            trigger_type: TriggerType.AGENT, generation_requirement: 'Saved original instruction' });
+        const fromList = makePage(1);
+        fromList.state = { ...fromList.state, loading: false, personalLoading: true, detail } as any;
+        requestSummaryDetailAction(1, WKApp.shared.currentSpaceId, 'retry');
+        fromList.componentDidUpdate(fromList.props);
+        const fromDetail = makePage(1);
+        fromDetail.state = { ...fromDetail.state, loading: false, detail } as any;
+        await fromDetail.handleRetry();
+        for (const page of [fromList, fromDetail]) {
+            expect(page.state.showRegenerateModal).toBe(true);
+            expect(page.state.regenerateMode).toBe('full');
+            expect(page.state.regenerateTopic).toBe('Saved original instruction');
+        }
+    });
+
+    it('reports an older backend instead of opening a disabled retry dialog', async () => {
+        const page = makePage(1);
+        page.state = { ...page.state, loading: false,
+            detail: baseDetail({ trigger_type: TriggerType.AGENT, status: TaskStatus.FAILED }) } as any;
+        await page.handleRetry();
+        expect(page.state.showRegenerateModal).toBe(false);
+        expect(Toast.error).toHaveBeenCalledWith(t('summary.generation.serviceUpgradeRequired'));
+        expect(api.regenerateSummary).not.toHaveBeenCalled();
+    });
+
+    it.each([TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED])('allows both edit entries for terminal status %s with retained content', (status) => {
+        const page = makePage(1);
+        page.state = { ...page.state, loading: false, personalLoading: false,
+            detail: baseDetail({ summary_mode: SummaryMode.BY_PERSON, status,
+                permissions: { can_edit: status === TaskStatus.COMPLETED, can_edit_personal: true } }),
+            personalResult: { content: 'previous summary', worker_status: 3 } } as any;
+        expect(collectElements(page.renderPersonalSummary()).some(element =>
+            element.props?.onClick === page.handleStartEdit)).toBe(true);
+        requestSummaryDetailAction(1, WKApp.shared.currentSpaceId, 'edit');
+        page.componentDidUpdate(page.props);
+        expect(page.state.isEditing).toBe(true);
+    });
+
+    it.each(['empty', 'permission', 'running'] as const)('refuses card editing for %s', (reason) => {
+        const page = makePage(1);
+        page.state = { ...page.state, loading: false, personalLoading: false,
+            detail: baseDetail({ summary_mode: SummaryMode.BY_PERSON, status: reason === 'running' ? TaskStatus.PROCESSING : TaskStatus.FAILED,
+                permissions: { can_edit: reason !== 'permission' } }),
+            personalResult: { content: reason === 'empty' ? '' : 'body', worker_status: 3 } } as any;
+        requestSummaryDetailAction(1, WKApp.shared.currentSpaceId, 'edit');
+        page.componentDidUpdate(page.props);
+        expect(page.state.isEditing).toBe(false);
+        expect(Toast.error).toHaveBeenCalledWith(t('summary.detail.editUnavailable'));
+    });
+
+    it('honors an explicit personal-edit denial rather than falling back to can_edit', () => {
+        const page = makePage(1);
+        page.state = { ...page.state, loading: false, personalLoading: false,
+            detail: baseDetail({ summary_mode: SummaryMode.BY_PERSON, status: TaskStatus.COMPLETED,
+                permissions: { can_edit: true, can_edit_personal: false } }),
+            personalResult: { content: 'body', worker_status: 2 } } as any;
+        page.handleStartEdit();
+        expect(page.state.isEditing).toBe(false);
+    });
+
+    it('renders failed metadata once alongside the retained personal body', () => {
+        const page = makePage(1);
+        page.state = { ...page.state, loading: false, personalExpanded: true,
+            detail: baseDetail({ summary_mode: SummaryMode.BY_PERSON, status: TaskStatus.FAILED,
+                sources: [{ source_type: 1, source_id: 'group', source_name: 'Group' }] }),
+            personalResult: { content: 'retained body', worker_status: 3 } } as any;
+        const tree = page.render();
+        expect(collectByClass(tree, 'summary-detail-meta-time')).toHaveLength(1);
+        expect(collectByClass(tree, 'summary-detail-source-chips')).toHaveLength(1);
+        expect(collectByClass(tree, 'summary-detail-failed')).toHaveLength(1);
+    });
+
+    it('keeps team regeneration creator-only without changing collaboration rights', () => {
+        const page = makePage(1);
+        page.state = { ...page.state, loading: false,
+            detail: baseDetail({ summary_mode: SummaryMode.BY_GROUP, status: TaskStatus.COMPLETED,
+                creator_id: 'another-user', participants: [{ user_id: WKApp.loginInfo.uid }] }) } as any;
+        expect(collectElements(page.renderHeader()).some(element =>
+            element.props?.['data-testid'] === summaryTestIds.detailRegenerateBtn)).toBe(false);
+        page.state.detail!.creator_id = WKApp.loginInfo.uid;
+        expect(collectElements(page.renderHeader()).some(element =>
+            element.props?.['data-testid'] === summaryTestIds.detailRegenerateBtn)).toBe(true);
+    });
 });
 
 describe('schedule intent waits for the matching loaded task', () => {
@@ -1572,19 +1690,12 @@ describe('SummaryDetailPage — finding 2: scheduleLoading 期间 WAITING_CONFIR
 
 // ─── 需求1（本轮）：多人详情页定时入口可见性对齐普通任务 ───
 //
-// 背景：多人（BY_PERSON）详情页定时按钮之前被门控成
-//   `(summary_mode !== BY_PERSON || !personalResult || personalLoading) && renderScheduleButton()`
-// → 多人任务一旦 personalResult 已加载，header 的定时按钮被隐藏；
-// personalResult 未生成时又被塞进 personal 区（依赖 personalResult）→ 两处都不出。
-// 修复：renderScheduleButton() 仅依赖 permissions.can_edit / isEditing（其内部门控），
-// 与 personalResult / summary_mode 解耦；header 无条件渲染；personal 区不再重复渲染。
+// Exercise the live header dropdown, independent of personal-result loading.
+// An unused standalone button cannot prove the production entry is available.
 describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP 一致可见', () => {
     beforeEach(() => vi.clearAllMocks());
 
-    // fail-before / pass-after 核心：BY_PERSON 且 personalResult 未生成时，
-    // renderScheduleButton() 仍须返回非 null（以前 header 门控会把它藏掉）。
-    // B1（第二轮）：定时按钮改判 permissions.can_schedule（任务级配置，creator 单/多人都可设）。
-    it('renderScheduleButton stays non-null for BY_PERSON even when personalResult is absent', () => {
+    it('header schedule action is available for BY_PERSON without a personal result', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
@@ -1595,12 +1706,12 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
             isEditing: false,
         };
         // 定时按钮与 personalResult 解耦，依然渲染。
-        expect((page as any).renderScheduleButton()).not.toBeNull();
+        expect(findScheduleAction(page)).toBeDefined();
     });
 
     // B1：定时按钮门控由 can_edit 改为 can_schedule。creator 多人任务后端给 can_schedule=true，
     // 即便（极端）can_edit=false 也应能设定时；非 creator can_schedule=false → 不渲染。
-    it('renderScheduleButton gated by can_schedule (renders when can_schedule=true even if can_edit=false)', () => {
+    it('header schedule action uses can_schedule independently of can_edit', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
@@ -1608,10 +1719,10 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
             personalResult: null,
             isEditing: false,
         };
-        expect((page as any).renderScheduleButton()).not.toBeNull();
+        expect(findScheduleAction(page)).toBeDefined();
     });
 
-    it('renderScheduleButton returns null without can_schedule (non-creator)', () => {
+    it('header hides schedule action without can_schedule', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
@@ -1619,10 +1730,10 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
             personalResult: null,
             isEditing: false,
         };
-        expect((page as any).renderScheduleButton()).toBeNull();
+        expect(findScheduleAction(page)).toBeUndefined();
     });
 
-    it('renderScheduleButton still gated by isEditing (returns null while editing)', () => {
+    it('header hides schedule action while editing', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
@@ -1630,7 +1741,7 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
             personalResult: null,
             isEditing: true,
         };
-        expect((page as any).renderScheduleButton()).toBeNull();
+        expect(findScheduleAction(page)).toBeUndefined();
     });
 
     // v2 对齐：定时按钮集中到 header actions，从团队框/个人区移除。
@@ -1810,14 +1921,14 @@ describe('批次B 需求2：定时信息 gate=can_view_schedule（全员）, 设
         expect((page as any).renderScheduleSummary()).toBeNull();
     });
 
-    it('renderScheduleButton (设置) still gated by can_schedule (creator only)', () => {
+    it('live header schedule action remains creator-authorized', () => {
         const creator = makePage(1);
         creator.state = { ...(creator.state as any), detail: multiCollabDetail({ can_schedule: true }), isEditing: false };
-        expect((creator as any).renderScheduleButton()).not.toBeNull();
+        expect(findScheduleAction(creator)).toBeDefined();
 
         const viewer = makePage(1);
         viewer.state = { ...(viewer.state as any), detail: multiCollabDetail({ can_schedule: false, can_view_schedule: true }), isEditing: false };
-        expect((viewer as any).renderScheduleButton()).toBeNull();
+        expect(findScheduleAction(viewer)).toBeUndefined();
     });
 });
 
@@ -2320,7 +2431,10 @@ describe('批次B 回炉 F1：编辑态互斥 / 切 task 复位 / 编辑分支�
 
     it('进单人编辑态后团队/个人编辑态被关闭（互斥）', () => {
         const page = makePage(1);
-        page.state = { ...(page.state as any), editingTeamSummary: true, editingPersonalReport: true, isEditing: false };
+        page.state = { ...(page.state as any), editingTeamSummary: true, editingPersonalReport: true, isEditing: false,
+            loading: false, detail: baseDetail({ summary_mode: SummaryMode.BY_PERSON, status: TaskStatus.COMPLETED,
+                permissions: { can_edit: true }, participants: [] }),
+            personalResult: { content: 'body', worker_status: 2 } };
         (page as any).handleStartEdit();
         expect((page.state as any).isEditing).toBe(true);
         expect((page.state as any).editingTeamSummary).toBe(false);

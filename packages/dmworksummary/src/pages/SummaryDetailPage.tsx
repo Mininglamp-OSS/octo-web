@@ -37,8 +37,8 @@ import { Channel as WkChannel } from "wukongimjssdk";
 import { convertDocErrorMessage, convertDocErrorDocument, resolveConvertDocErrorKey } from "../utils/convertDocError";
 import { applyRegenerateVoiceInput } from "../utils/regenerateInput";
 import { savedGenerationRequirement, hasGenerationTimeRange, supportsGenerationConfig, canCompleteGenerationConfig } from "../utils/generationConfig";
-import { consumeSummaryScheduleOpen } from "../utils/summaryScheduleIntent";
-import { chatTypeToOriginChannelType } from "../utils/channelType";
+import { consumeSummaryScheduleOpen, consumeSummaryDetailAction } from "../utils/summaryDetailIntent";
+import { chatTypeToOriginChannelType, originChannelTypeToChatType } from "../utils/channelType";
 import ChatSelectorModal from "../components/ChatSelectorModal";
 import TimeRangePicker from "../components/TimeRangePicker";
 import SummaryConfirmPage from "./SummaryConfirmPage";
@@ -256,7 +256,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     mode,
                     savedRange,
                     this.regenerateInputLimit(regenerateMode),
-                    this.regenerateInputLimit(regenerateMode) === AGENT_GENERATION_INPUT_MAX_LENGTH,
+                    this.regenerateInputCountsRunes(regenerateMode),
                 ),
             } as Pick<SummaryDetailPageState, typeof field>;
         });
@@ -395,8 +395,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         window.addEventListener("summary-status-change", this.handleStatusChangeEvent);
         window.addEventListener("summary-batch-heartbeat", this.handleBatchHeartbeat);
         window.addEventListener("summary-list-unmount", this.handleListPageUnmount);
-        window.addEventListener("summary-detail-regenerate", this.handleRegenerateFromList);
-        window.addEventListener("summary-detail-edit", this.handleEditFromList);
         // Observe the SummaryDetailPage layout container's width so the
         // TOC (`.has-toc` shift + the <aside> mount + the CSS visibility
         // rule) can be gated on real layout room rather than viewport
@@ -442,7 +440,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const currentTaskId = this.detailLookupId;
         if (prevTaskId !== currentTaskId && currentTaskId != null) {
             if (typeof prevTaskId === "number") {
-                consumeSummaryScheduleOpen(prevTaskId, WKApp.shared?.currentSpaceId || "");
+                consumeSummaryDetailAction(prevTaskId, WKApp.shared?.currentSpaceId || "");
             }
             if (this.props.emitSelection) {
                 titleContextStore.clear("summary", this.titleContextOwner);
@@ -491,28 +489,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // 正文渲染后（或内容变化后）重建本文目录。rebuildToc 内部按签名去重，
         // 不会因自身 setState 造成循环。
         this.rebuildToc();
-        this.openPendingSchedule();
+        this.openPendingDetailAction();
     }
 
-    private handleRegenerateFromList = (e: Event) => {
-        const detail = e as CustomEvent;
-        if (detail.detail?.taskId === this.taskId) {
-            this.handleRegenerate();
-        }
-    };
-
-    private handleEditFromList = (e: Event) => {
-        const detail = e as CustomEvent;
-        if (detail.detail?.taskId === this.taskId) {
-            this.handleStartEdit();
-        }
-    };
-
-    private openPendingSchedule = () => {
-        const { detail, loading, scheduleLoading } = this.state;
-        if (!detail || detail.task_id !== this.taskId || loading || scheduleLoading) return;
-        if (consumeSummaryScheduleOpen(detail.task_id, WKApp.shared?.currentSpaceId || "")) {
-            this.openScheduleModal();
+    private openPendingDetailAction = () => {
+        const { detail, loading, scheduleLoading, personalLoading } = this.state;
+        if (!detail || detail.task_id !== this.taskId || loading) return;
+        const action = consumeSummaryDetailAction(detail.task_id, WKApp.shared?.currentSpaceId || "",
+            action => action === "schedule" ? !scheduleLoading
+                : action === "retry" || detail.summary_mode !== SummaryMode.BY_PERSON || !personalLoading);
+        switch (action) {
+            case "schedule": this.openScheduleModal(); break;
+            case "regenerate": this.handleRegenerate(); break;
+            case "retry": void this.handleRetry(); break;
+            case "edit": this.handleStartEdit(); break;
         }
     };
 
@@ -529,8 +519,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         window.removeEventListener("summary-status-change", this.handleStatusChangeEvent);
         window.removeEventListener("summary-batch-heartbeat", this.handleBatchHeartbeat);
         window.removeEventListener("summary-list-unmount", this.handleListPageUnmount);
-        window.removeEventListener("summary-detail-regenerate", this.handleRegenerateFromList);
-        window.removeEventListener("summary-detail-edit", this.handleEditFromList);
         this.setVersionDetailScrollLock(false);
         this.clearAllTimers();
         if (this.props.emitSelection) {
@@ -744,9 +732,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 detail,
                 loading: false,
                 scheduleLoading: !!detail.schedule_id,
+                personalLoading: detail.summary_mode === SummaryMode.BY_PERSON,
                 lastKnownStatus: detail.status,
                 workflowGateContent: false,
-            }, this.openPendingSchedule);
+            }, this.openPendingDetailAction);
             // 八审 🔴2:loadDetail 也是 lastKnownStatus 的写入者(regenerate 走 handleRegenerateConfirm →
             // 就地置 PENDING → this.loadDetail(),不经 summary-status-change 订阅)。此前它是唯一不维护
             // completedTrackedTaskId 去重锚的写入者 → 离开 COMPLETED 时锚不清 → 同一 taskId 的下一次完成
@@ -799,7 +788,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
             // Blocking 5（跨 task 串台）：scheduleItem 必须始终对应当前 detail。
             // 同步部分：从「有定时」总结导航到「无定时」总结时，若不显式清空，旧 scheduleItem
-            // 会残留 → renderScheduleButton 误判有定时、保存可能把旧定时重绑到新 task。
+            // 会残留 → header 误判有定时、保存可能把旧定时重绑到新 task。
             // 异步部分：loadSchedule 带上 seq，响应迟到时对比 seq/taskId 才 setState（见 loadSchedule）。
             if (detail.schedule_id && detail.schedule_id > 0) {
                 this.loadSchedule(detail.schedule_id, seq);
@@ -840,13 +829,18 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             // 会把错误/loading 状态写到已切换的新 task 上。
             if (this.scheduleLoadSeq !== seq || this.detailLookupId !== requestTaskId) return;
             this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
+            if (typeof requestTaskId === "number") {
+                consumeSummaryDetailAction(requestTaskId, WKApp.shared?.currentSpaceId || "");
+            }
         }
     }
 
     private publishDetailTitle(detail: SummaryDetail): void {
         if (!this.props.emitSelection) return;
         this.publishedTitleLocale = this.context?.locale;
-        const primaryTitle = deriveSummaryDisplayContent(detail.topic || detail.title || "");
+        const primaryTitle = deriveSummaryDisplayContent(
+            detail.trigger_type === TriggerType.AGENT ? detail.title : detail.topic || detail.title || "",
+        );
         if (!primaryTitle) {
             titleContextStore.clear("summary", this.titleContextOwner);
             return;
@@ -875,7 +869,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             const item = await api.getSchedule(scheduleId);
             // 旧请求（期间又发了一轮加载 / 切了 task）迟到 resolve：丢弃，不污染新 task。
             if (this.scheduleLoadSeq !== reqSeq || this.taskId !== requestTaskId) return;
-            this.setState({ scheduleItem: item, scheduleLoading: false }, this.openPendingSchedule);
+            this.setState({ scheduleItem: item, scheduleLoading: false }, this.openPendingDetailAction);
         } catch {
             // 同样：只有仍是最新请求才允许清空，避免旧请求的失败反而抹掉新 task 的定时。
             if (this.scheduleLoadSeq !== reqSeq || this.taskId !== requestTaskId) return;
@@ -912,7 +906,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     personalResult: result,
                     personalLoading: false,
                     workflowGateContent: true,
-                }, () => this.syncWorkflowProgress(result));
+                }, () => {
+                    this.syncWorkflowProgress(result);
+                    this.openPendingDetailAction();
+                });
             } else {
                 this.setState({
                     personalResult: result,
@@ -920,7 +917,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     workflowGateContent: false,
                     workflowRevealDone: true,
                     workflowDisplayIndex: this.workflowStageIndex(result.workflow_stage),
-                });
+                }, this.openPendingDetailAction);
             }
             this.startPersonalPoll(result.worker_status);
             if (result.current_version_id && result.content?.trim()) {
@@ -948,6 +945,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             }
         } catch {
             if (this.scheduleLoadSeq !== reqSeq || (this.taskId != null && this.taskId !== requestTaskId)) return;
+            const action = consumeSummaryDetailAction(requestTaskId, WKApp.shared?.currentSpaceId || "", action => action !== "schedule");
+            if (action) Toast.error(t("summary.common.loadingFailed"));
             this.setState({ personalLoading: false });
         }
     }
@@ -1503,10 +1502,18 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             ? AGENT_GENERATION_INPUT_MAX_LENGTH : SUMMARY_INPUT_MAX_LENGTH;
     }
 
+    private regenerateInputCountsRunes(mode = this.state.regenerateMode) {
+        return mode === "full" && this.state.detail?.trigger_type === TriggerType.AGENT && supportsGenerationConfig(this.state.detail);
+    }
+
     handleRetry = async () => {
         const { detail } = this.state;
         if (!detail || this.taskId == null) return;
         if (detail.trigger_type === TriggerType.AGENT) {
+            if (!supportsGenerationConfig(detail)) {
+                Toast.error(t("summary.generation.serviceUpgradeRequired"));
+                return;
+            }
             this.handleRegenerate();
             this.setState({ regenerateMode: "full" });
             return;
@@ -1760,7 +1767,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         showRegenerateModal: false,
                         detail: {
                             ...prev.detail,
-                            title: trimmed || prev.detail.title,
+                            title: prev.detail.trigger_type === TriggerType.AGENT ? prev.detail.title : trimmed || prev.detail.title,
                             topic: trimmed || prev.detail.topic,
                             status: TaskStatus.PENDING,
                         },
@@ -1771,14 +1778,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     if (this.taskId !== requestTaskId) return;
                     Toast.success(t("summary.detail.regenerateStarted"));
                     this.resetSummaryStreamForNewRun(requestTaskId);
-                    this.resetLocalScheduleInstruction(trimmed);
                     this.setState((prev) => ({
                         showRegenerateModal: false,
-                        detail: prev.detail ? {
-                            ...prev.detail,
-                            title: trimmed || prev.detail.title,
-                            topic: trimmed || prev.detail.topic,
-                        } : prev.detail,
                         personalResult: prev.personalResult ? {
                             ...prev.personalResult,
                             worker_status: 0,
@@ -2674,13 +2675,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         );
     }
 
-    renderFailed() {
+    renderFailed(showMetadata = true) {
         const { detail } = this.state;
         const { t } = this.context;
         if (!detail) return null;
         return (
             <div className="summary-detail-personal">
-                <div className="summary-detail-meta">
+                {showMetadata && <><div className="summary-detail-meta">
                     <div className="summary-detail-meta-time">
                         {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                     </div>
@@ -2694,7 +2695,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         </div>
                     )}
                 </div>
-                <hr className="summary-detail-meta-divider" />
+                <hr className="summary-detail-meta-divider" /></>}
                 <div className="summary-detail-failed">
                     <div className="summary-detail-failed-icon">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F54A45" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -3312,8 +3313,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     renderPersonalSummary() {
         const { personalResult, personalLoading, detail, personalExpanded } = this.state;
         const { t } = this.context;
-        // Failed 状态由 renderFailed() 统一处理，不在这里渲染
-        if (detail?.status === TaskStatus.FAILED && !personalResult?.content) return null;
+        // Preserve the previous body after failure; renderFailed adds only the
+        // error card when this section already supplies the metadata.
+        if (detail?.status === TaskStatus.FAILED && !personalResult?.content?.trim()) return null;
         if (personalLoading) {
             return (
                 <div className="summary-detail-personal">
@@ -3326,9 +3328,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (personalResult.content?.trim() && !this.canRevealPersonalContent()) return null;
         const { isEditing, detail: stateDetail } = this.state;
         const isProcessing = stateDetail && (stateDetail.status === TaskStatus.PENDING || stateDetail.status === TaskStatus.PROCESSING) && !personalResult?.content;
-        const canEdit = !!detail
-            && detail.status === TaskStatus.COMPLETED
-            && !!detail.permissions?.can_edit
+        const canEdit = this.canStartMainEdit()
             && !isEditing
             && !this.state.showVersionDetailModal;
         return (
@@ -3973,6 +3973,21 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return this.state.restoringVersionId != null || this.state.restoringPersonalVersionId != null;
     }
 
+    private canStartMainEdit(): boolean {
+        const { detail, personalResult, personalLoading, loading } = this.state;
+        if (!detail || detail.task_id !== this.taskId || loading) return false;
+        if (![TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED].some(status => status === detail.status)) return false;
+        if (detail.summary_mode === SummaryMode.BY_PERSON) {
+            // can_edit is the legacy completed-task permission. Personal-edit
+            // has its own participant-scoped permission, including retained
+            // reports on Failed/Cancelled tasks. Only older servers omit it.
+            const canEditPersonal = detail.permissions?.can_edit_personal ?? detail.permissions?.can_edit;
+            return !!canEditPersonal && !this.isMultiCollab() && !personalLoading && !!personalResult?.content?.trim()
+                && personalResult.worker_status !== 0 && personalResult.worker_status !== 1;
+        }
+        return !!detail.permissions?.can_edit && detail.status === TaskStatus.COMPLETED && !!detail.result?.content?.trim();
+    }
+
     handleStartEdit = () => {
         // Mutually-exclusive with the other editors; entering ensures the
         // personal section is expanded so the editor mounts (otherwise the
@@ -3984,6 +3999,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // does not strand the flag and silently disable future previews.
         // Refuse while a version restore is in flight — see isRestoreInFlight.
         if (this.isRestoreInFlight()) return;
+        if (!this.canStartMainEdit()) {
+            Toast.error(t("summary.detail.editUnavailable"));
+            return;
+        }
         this.setState({
             isEditing: true,
             editingTeamSummary: false,
@@ -4176,34 +4195,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         );
     };
 
-    renderScheduleButton() {
-        const { detail, scheduleItem, scheduleLoading, isEditing, editingTeamSummary, editingPersonalReport, editingMyDraft } = this.state;
-        const { t } = this.context;
-        // OCT-21 / GPT-S1：草稿编辑态也隐藏 schedule 按钮，与其它编辑态保持一致约束。
-        if (!detail?.permissions?.can_schedule || isEditing || editingTeamSummary || editingPersonalReport || editingMyDraft) return null;
-
-        // 任务3：hasSchedule 仅在存在且 is_active 时为 true。
-        // 停用后文案回到「设置定时更新」。
-        const hasActiveSchedule = !!scheduleItem && scheduleItem.is_active !== false;
-        const hasSchedule =
-            hasActiveSchedule ||
-            (!scheduleItem && !!(detail.schedule_id && detail.schedule_id > 0));
-
-        return (
-            <Button
-                size="small"
-                theme="borderless"
-                type="tertiary"
-                icon={<IconClock />}
-                onClick={this.openScheduleModal}
-                disabled={scheduleLoading}
-                loading={scheduleLoading}
-            >
-                {t(hasSchedule ? "summary.detail.editSchedule" : "summary.detail.setSchedule")}
-            </Button>
-        );
-    }
-
     /**
      * V5/§4.2：本任务是否为 V5 schedule 级 CONFIRM 任务。
      * 以 scheduleItem.confirm_policy===1 区分两条确认路：
@@ -4315,7 +4306,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { detail, scheduleItem } = this.state;
         const { t } = this.context;
         // need2：定时**信息**只读展示对所有参与者可见（can_view_schedule），不再限 creator。
-        // 位置不变（header）。定时**设置**按钮仍仅 creator（renderScheduleButton, need5），两者拆开。
+        // 位置不变（header）。定时设置菜单仍仅 creator，与定时信息展示分开。
         if (!detail?.permissions?.can_view_schedule) return null;
         if (!scheduleItem) return null;
 
@@ -4385,7 +4376,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const showLeave = !!detail && isParticipant && !isCreator;
         const canSchedule = !!detail?.permissions?.can_schedule &&
             (detail?.trigger_type !== TriggerType.AGENT || supportsGenerationConfig(detail)) &&
-            !this.state.isEditing && !this.state.editingTeamSummary;
+            !this.state.isEditing && !this.state.editingTeamSummary &&
+            !this.state.editingPersonalReport && !this.state.editingMyDraft;
         const scheduleItem = this.state.scheduleItem;
         const hasActiveSchedule = !!scheduleItem && scheduleItem.is_active !== false;
         const showSchedule = canSchedule;
@@ -4669,7 +4661,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 }
                                 {detail.summary_mode !== SummaryMode.BY_PERSON && this.renderStreamingContent()}
 
-                                {detail.status === TaskStatus.FAILED && this.renderFailed()}
+                                {detail.status === TaskStatus.FAILED && this.renderFailed(!(
+                                    detail.summary_mode === SummaryMode.BY_PERSON && !this.isMultiCollab()
+                                    && !!this.state.personalResult?.content?.trim()
+                                    && this.state.personalExpanded && !this.state.personalLoading
+                                    && this.canRevealPersonalContent()
+                                ))}
 
                                 {detail.status === TaskStatus.CANCELLED && (
                                     <div className="summary-detail-cancelled">
@@ -4908,7 +4905,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 ref={this.regenerateTopicRef}
                                 className="summary-regenerate-textarea"
                                 rows={3}
-                                maxLength={this.regenerateInputLimit() === AGENT_GENERATION_INPUT_MAX_LENGTH ? undefined : this.regenerateInputLimit()}
+                                maxLength={this.regenerateInputCountsRunes() ? undefined : this.regenerateInputLimit()}
                                 placeholder={t(this.state.regenerateMode === "refine"
                                     ? "summary.detail.refineFeedbackPlaceholder"
                                     : "summary.detail.regenerateTopicPlaceholder")}
@@ -4917,7 +4914,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     : this.state.regenerateTopic}
                                 onChange={(e) => this.setState(this.state.regenerateMode === "refine"
                                     ? { refineFeedback: e.target.value.slice(0, this.regenerateInputLimit()) }
-                                    : { regenerateTopic: Array.from(e.target.value).slice(0, this.regenerateInputLimit()).join("") })}
+                                    : { regenerateTopic: this.regenerateInputCountsRunes()
+                                        ? Array.from(e.target.value).slice(0, this.regenerateInputLimit()).join("")
+                                        : e.target.value.slice(0, this.regenerateInputLimit()) })}
                             />
                             <VoiceInputButton
                                 inputRef={this.regenerateTopicRef}
@@ -4931,9 +4930,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 className="wk-vib--textarea-corner"
                             />
                             <span className="summary-regenerate-char-count">
-                                {Array.from(this.state.regenerateMode === "refine"
-                                    ? this.state.refineFeedback
-                                    : this.state.regenerateTopic).length}/{this.regenerateInputLimit()}
+                                {(this.regenerateInputCountsRunes()
+                                    ? Array.from(this.state.regenerateTopic).length
+                                    : (this.state.regenerateMode === "refine" ? this.state.refineFeedback : this.state.regenerateTopic).length)}/{this.regenerateInputLimit()}
                             </span>
                         </div>
                     </div>
@@ -4964,7 +4963,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     visible={this.state.showRegenerateSources}
                     selected={this.state.regenerateSources.map((source): ChatCandidate => ({
                         chat_id: source.source_id, name: source.source_name || source.source_id,
-                        chat_type: source.source_type === 1 ? "group" : source.source_type === 2 ? "thread" : "direct",
+                        chat_type: originChannelTypeToChatType(source.source_type),
                         member_count: null,
                     }))}
                     onCancel={() => this.setState({ showRegenerateSources: false })}

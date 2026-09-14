@@ -42,3 +42,36 @@ Impact stays in the existing summary module. The paired backend change adds save
   than being cut down to the ordinary Workflow input limit. Dead engine-specific
   props/styles/locale keys were removed and the Agent-save E2E now expects the
   unified success message and engine-neutral detail.
+
+## CR follow-up — 2026-09-14
+
+- Edit, regeneration and failure retry reuse the schedule navigation-intent
+  mechanism. An intent is recorded before navigation and consumed once for the
+  matching task/Space after its required data loads. Retry needs only detail,
+  not an existing personal result, and both entries select full regeneration.
+  Old backends show upgrade feedback instead of opening an unusable retry dialog.
+- Personal collaboration regeneration no longer fabricates shared title/topic or
+  schedule-instruction changes that its endpoint does not persist. Agent titles,
+  including the breadcrumb, stay separate from generation instructions.
+- Failed personal summaries retain their previous body and show metadata once.
+  Inline and list edit paths share content/permission/terminal-state checks;
+  personal editing honors `can_edit_personal` (including retained failed or
+  cancelled reports), falling back to `can_edit` only if older servers omit it.
+  An explicit personal permission denial is never overridden.
+  absent content, missing permission and in-flight generation cannot mount an
+  invisible editor. The real header schedule menu is covered by tests; the unused
+  standalone schedule renderer was removed.
+- Full Agent input retains the 8192-code-point limit; ordinary/refine input keeps
+  its existing UTF-16 limit, with matching counters and voice/text truncation.
+  Source-type conversion is shared and rejects unsupported types.
+- Configuration persistence records `smart_summary_generation_config_saved`
+  only after an accepted envelope. No prompt/source contents are included, and
+  it is not counted as timer creation or regeneration.
+- Team full regeneration remains creator-only, matching backend authorization.
+  Participant-specific collaboration actions and continue-optimize are unchanged.
+  Shared schedule configuration remains creator-authorized for multi-person
+  tasks; regeneration itself does not collect unsupported shared scope.
+
+The paired backend still deploys first. If its environment uses an external
+`AGENT_PROMPT_DIR/summary_workspace.md`, update/remove that override with the
+backend release. This change does not deploy either service or update a mirror.
