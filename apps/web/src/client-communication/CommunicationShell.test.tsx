@@ -190,10 +190,10 @@ describe("CommunicationShell", () => {
     const [channel, options] = vi.mocked(WKApp.endpoints.showConversation).mock.calls[0];
     expect(channel).toMatchObject({ channelID: "group-a", channelType: 2 });
     expect(options?.workspaceEmbedding).toBeDefined();
-    options!.workspaceEmbedding!.openConversation({ channelID: "group-a____topic", channelType: 6 } as any);
+    options!.workspaceEmbedding!.openConversation({ channelID: "group-a____topic", channelType: 5 } as any);
     await waitFor(() => expect(mocks.bridge.reportNavigation).toHaveBeenCalledWith({
       page: "chat", source: "workspace-conversation",
-      channel: { id: "group-a____topic", type: 6 },
+      channel: { id: "group-a____topic", type: 5 },
     }));
     expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
   });
@@ -219,6 +219,10 @@ describe("CommunicationShell", () => {
     act(() => mocks.command.listener?.({ type: "navigate", page: "chat", presentation: "workspace" }));
     await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(2));
     expect(vi.mocked(WKApp.endpoints.showConversation).mock.calls[1][1]?.workspaceEmbedding).toBeUndefined();
+    expect(vi.mocked(WKApp.endpoints.showConversation).mock.calls[1][1]?.preserveCurrentConversation).toBe(true);
+    act(() => mocks.command.listener?.(command));
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(3));
+    expect(vi.mocked(WKApp.endpoints.showConversation).mock.calls[2][1]?.preserveCurrentConversation).toBe(true);
   });
 
   it("invalidates old workspace callbacks after another group or Space is selected", async () => {

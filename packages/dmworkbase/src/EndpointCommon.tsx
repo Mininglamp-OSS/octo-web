@@ -34,6 +34,8 @@ export class ShowConversationOptions {
    */
   fromSidebarList?: boolean;
   workspaceEmbedding?: ChatContentPageProps["workspaceEmbedding"];
+  /** Host presentation changes for the same conversation must not remount its composer. */
+  preserveCurrentConversation?: boolean;
 }
 
 /**
@@ -130,6 +132,7 @@ export class EndpointCommon {
   }
 
   private registerShowConversation() {
+    let currentRender: { channelKey: string; spaceId: string; key: string; locateSeq: number } | undefined;
     EndpointManager.shared.setMethod(
       EndpointID.showConversation,
       (param: any) => {
@@ -171,6 +174,16 @@ export class EndpointCommon {
         if (initLocateMessageSeq > 0) {
           key = `${key}-${initLocateMessageSeq}`
         }
+
+        const channelKey = channel.getChannelKey();
+        const spaceId = WKApp.shared.currentSpaceId;
+        if (opts.preserveCurrentConversation && !opts.initLocateMessageSeq &&
+            !opts.openChannelSearch && currentRender?.channelKey === channelKey &&
+            currentRender.spaceId === spaceId) {
+          key = currentRender.key;
+          initLocateMessageSeq = currentRender.locateSeq;
+        }
+        currentRender = { channelKey, spaceId, key, locateSeq: initLocateMessageSeq };
 
         WKApp.routeRight.replaceToRoot(
           <ChatContentPage

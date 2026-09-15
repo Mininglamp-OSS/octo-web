@@ -70,7 +70,11 @@ function reportUnread(bridge: OctoBuddyCommunicationBridge, count: number) {
   }
 }
 
-function openTarget(target: ConversationTarget, workspaceEmbedding?: ChatContentPageProps["workspaceEmbedding"]) {
+function openTarget(
+  target: ConversationTarget,
+  workspaceEmbedding?: ChatContentPageProps["workspaceEmbedding"],
+  preserveCurrentConversation = false,
+) {
   const channel = new Channel(target.channelId, target.channelType);
   if (target.displayName || target.avatar || target.metadata) {
     const info = getCurrentImChannelInfo<Channel, ChannelInfo>(channel) || new ChannelInfo();
@@ -103,6 +107,7 @@ function openTarget(target: ConversationTarget, workspaceEmbedding?: ChatContent
     initLocateMessageSeq: target.messageSeq,
     openChannelSearch: target.openChannelSearch,
     ...(workspaceEmbedding ? { workspaceEmbedding } : {}),
+    ...(preserveCurrentConversation ? { preserveCurrentConversation: true } : {}),
   });
 }
 
@@ -144,6 +149,11 @@ export function CommunicationShell({
     if (target.variant === "workspace-group" && previous?.channelId === target.channelId &&
         previous.channelType === target.channelType && previous.messageSeq === target.messageSeq &&
         channel?.channelID === target.channelId && channel.channelType === target.channelType) return;
+    const preserveCurrentConversation = Boolean(
+      !appTargetRef.current && (previous || target.variant === "workspace-group") &&
+      channel?.channelID === target.channelId && channel.channelType === target.channelType &&
+      !target.messageSeq && !target.openChannelSearch
+    );
     appTargetRef.current = target.variant === "app-bot" ? target : undefined;
     workspaceTargetRef.current = target.variant === "workspace-group" ? target : undefined;
     const spaceId = spaceIdRef.current;
@@ -160,7 +170,7 @@ export function CommunicationShell({
         if (workspaceTargetRef.current !== target || spaceIdRef.current !== spaceId) return;
         Toast.info(t("app.workspaceConversation.openInMessages"));
       },
-    } : undefined);
+    } : undefined, preserveCurrentConversation);
   }, [bridge]);
 
   useEffect(() => installSummaryNavigation(bridge, (error) => {
