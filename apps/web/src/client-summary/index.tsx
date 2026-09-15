@@ -31,6 +31,7 @@ import { requireSummaryHostBridge } from "./hostBridge";
 import { installSummaryExternalRuntime } from "./externalRuntime";
 import { reportSummaryStartupFailure } from "./startupFailure";
 import { installFeaturePresentation } from "../client-feature/desktop/featurePresentation";
+import { hasNavigationCommitBridge } from "../client-feature/navigationCommit";
 import "../client-feature/desktop/presentation.css";
 import "./desktop-summary.css";
 
@@ -119,6 +120,7 @@ async function main() {
                   externalSummaryAttentionVersion: 1 as const,
                   runtime: externalRuntime.getScope(),
                 } : {}),
+                ...(hasNavigationCommitBridge(host) ? { navigationCommitVersion: 1 as const } : {}),
               })
             }
           />

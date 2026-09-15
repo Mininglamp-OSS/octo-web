@@ -12,7 +12,12 @@ const mocks = vi.hoisted(() => ({
   setRuntimeVisible: vi.fn(),
   resetScope: vi.fn(),
   bridge: {
+    getBootstrap: vi.fn(),
+    reportReady: vi.fn(async () => {}),
+    reportAuthExpired: vi.fn(),
+    reportFatalError: vi.fn(),
     reportRoute: vi.fn(),
+    reportNavigationCommitted: vi.fn(async () => {}),
     reportBadge: vi.fn(),
     openConversation: vi.fn(async () => {}),
     loadConversationMembers: vi.fn(async () => []),
@@ -289,4 +294,160 @@ describe("SummaryShell", () => {
     act(() => mocks.command.listener?.({ type: "someRandomEvent" as any }));
     expect(document.documentElement.dataset.hostVisibility).toBe("visible");
   });
+
+  describe("navigation commit", () => {
+    it("reports navigation commit after host navigate with id", async () => {
+      render(
+        <SummaryShell
+          bridge={mocks.bridge}
+          initialRoute={{ view: "list" }}
+          initialSpaceId="space-a"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+
+      act(() => {
+        mocks.command.listener?.({
+          type: "navigate",
+          route: { view: "detail", taskId: 42 },
+          navigationId: 1,
+        });
+      });
+
+      await waitFor(() =>
+        expect(mocks.bridge.reportNavigationCommitted).toHaveBeenCalledWith({ navigationId: 1 })
+      );
+    });
+
+    it("does not commit for legacy navigate commands without navigationId", async () => {
+      render(
+        <SummaryShell
+          bridge={mocks.bridge}
+          initialRoute={{ view: "list" }}
+          initialSpaceId="space-a"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+
+      act(() => {
+        mocks.command.listener?.({
+          type: "navigate",
+          route: { view: "detail", taskId: 42 },
+        });
+      });
+
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+      });
+    });
+
+    it("only commits the latest navigation id", async () => {
+      render(
+        <SummaryShell
+          bridge={mocks.bridge}
+          initialRoute={{ view: "list" }}
+          initialSpaceId="space-a"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+
+      act(() => {
+        mocks.command.listener?.({
+          type: "navigate",
+          route: { view: "detail", taskId: 42 },
+          navigationId: 1,
+        });
+      });
+
+      act(() => {
+        mocks.command.listener?.({
+          type: "navigate",
+          route: { view: "schedules" },
+          navigationId: 2,
+        });
+      });
+
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalledWith({ navigationId: 1 });
+        expect(mocks.bridge.reportNavigationCommitted).toHaveBeenCalledWith({ navigationId: 2 });
+      });
+    });
+
+    it("cancels navigation commit on space change", async () => {
+      render(
+        <SummaryShell
+          bridge={mocks.bridge}
+          initialRoute={{ view: "list" }}
+          initialSpaceId="space-a"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+
+      act(() => {
+        mocks.command.listener?.({
+          type: "navigate",
+          route: { view: "detail", taskId: 42 },
+          navigationId: 1,
+        });
+        mocks.command.listener?.({
+          type: "spaceChanged",
+          space: { id: "space-b", name: "B" },
+        });
+      });
+
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+      });
+    });
+
+    it("cancels navigation commit on suspend", async () => {
+      render(
+        <SummaryShell
+          bridge={mocks.bridge}
+          initialRoute={{ view: "list" }}
+          initialSpaceId="space-a"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+
+      act(() => {
+        mocks.command.listener?.({
+          type: "navigate",
+          route: { view: "detail", taskId: 42 },
+          navigationId: 1,
+        });
+        mocks.command.listener?.({ type: "suspend" });
+      });
+
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+      });
+    });
+
+    it("cancels navigation commit on session revoked", async () => {
+      const logout = vi.fn();
+      WKApp.loginInfo.logout = logout;
+
+      render(
+        <SummaryShell
+          bridge={mocks.bridge}
+          initialRoute={{ view: "list" }}
+          initialSpaceId="space-a"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+
+      act(() => {
+        mocks.command.listener?.({
+          type: "navigate",
+          route: { view: "detail", taskId: 42 },
+          navigationId: 1,
+        });
+        mocks.command.listener?.({ type: "sessionRevoked" });
+      });
+
+      expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+    });
+  });
+
 });
