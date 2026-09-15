@@ -71,11 +71,24 @@ function reportUnread(bridge: OctoBuddyCommunicationBridge, count: number) {
   }
 }
 
+function hasCompatibleTargetVariant(target: ConversationTarget): boolean {
+  if (target.variant === "app-bot") return target.channelType === 1;
+  if (target.variant === "workspace-group") return target.channelType === 2;
+  return true;
+}
+
+function assertCompatibleTargetVariant(target: ConversationTarget): void {
+  if (!hasCompatibleTargetVariant(target)) {
+    throw new Error(`Incompatible ${target.variant} channelType: ${target.channelType}`);
+  }
+}
+
 function openTarget(
   target: ConversationTarget,
   workspaceEmbedding?: ChatContentPageProps["workspaceEmbedding"],
   preserveCurrentConversation = false,
 ) {
+  assertCompatibleTargetVariant(target);
   const channel = new Channel(target.channelId, target.channelType);
   if (target.displayName || target.avatar || target.metadata) {
     const info = getCurrentImChannelInfo<Channel, ChannelInfo>(channel) || new ChannelInfo();
@@ -285,6 +298,10 @@ export function CommunicationShell({
 
     const dispose = bridge.onCommand((command: HostCommand) => {
       if (command.type === "navigate") {
+        if (command.target && !hasCompatibleTargetVariant(command.target)) {
+          console.error("[client-communication] rejected incompatible conversation target", command.target);
+          return;
+        }
         workspaceNavigationGuard.cancel();
         if (command.presentation) setPresentation(command.presentation);
         if (command.page !== activePageRef.current) {

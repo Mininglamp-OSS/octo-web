@@ -326,6 +326,29 @@ describe("CommunicationShell", () => {
     expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    { channelId: "person-a", channelType: 1, variant: "workspace-group" },
+    { channelId: "group-a", channelType: 2, variant: "app-bot" },
+  ])("rejects incompatible legacy conversation target $variant/$channelType", async (target) => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<CommunicationShell bridge={mocks.bridge as any}
+      initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat", presentation: "workspace", target,
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(WKApp.endpoints.showConversation).not.toHaveBeenCalled();
+    expect(mocks.bridge.reportNavigation).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalledWith(
+      "[client-communication] rejected incompatible conversation target",
+      target,
+    );
+    consoleError.mockRestore();
+  });
+
   it("preserves the same workspace conversation across hide/show and restores default behavior on leaving", async () => {
     render(<CommunicationShell bridge={mocks.bridge as any}
       initialPage="chat" initialSpaceId="space-a"

@@ -68,11 +68,9 @@ describe("runtime contract", () => {
 
   it("rejects workspace-group with non-group channelType in variant validation", () => {
     const scope = { ownerId: "owner", contextId: "context", epoch: 1 };
-    // The variant field itself has no channelType restriction for workspace-group
-    // (only app-bot requires channelType 1). This should pass parse:
     const target = { channelId: "person-u", channelType: 1, variant: "workspace-group" };
     const cmd = { version: 1, ...scope, type: "navigate", page: "chat", presentation: "workspace", target };
-    expect(parseRuntimeCommand(cmd)).toMatchObject({ target: { channelId: "person-u", channelType: 1, variant: "workspace-group" } });
+    expect(() => parseRuntimeCommand(cmd)).toThrow("Workspace-group variant requires channelType 2");
   });
 
   it("keeps bootstrap legacy compatibility and rejects wrong feature runtime", () => {

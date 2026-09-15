@@ -221,6 +221,9 @@ function parseConversationTarget(value: unknown): ConversationTarget {
   }
   if (input.variant !== undefined) {
     if (input.variant === "app-bot" && target.channelType !== 1) throw new Error("App-bot variant requires channelType 1");
+    if (input.variant === "workspace-group" && target.channelType !== 2) {
+      throw new Error("Workspace-group variant requires channelType 2");
+    }
     if (input.variant !== "app-bot" && input.variant !== "workspace-group") throw new Error("Invalid target variant");
     target.variant = input.variant;
   }
