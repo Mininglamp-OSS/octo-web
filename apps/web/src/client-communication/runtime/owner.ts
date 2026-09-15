@@ -142,6 +142,7 @@ export function createCommunicationOwner(ports: OwnerRuntimePorts) {
     if (command.type === "timerFired") { ports.fireTimer(command); return; }
     ports.dispatchUi({
       type: "navigate", page: command.page, presentation: command.presentation, target: command.target,
+      navigationId: command.navigationId,
     });
     run(ports.startUi);
   }

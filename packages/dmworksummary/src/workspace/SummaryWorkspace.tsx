@@ -104,6 +104,7 @@ export default function SummaryWorkspace({
       case "detail":
         return (
           <SummaryDetailPage
+            key={currentRoute.taskId}
             taskId={currentRoute.taskId}
             originChannel={currentRoute.originConversation}
             emitSelection
@@ -127,6 +128,7 @@ export default function SummaryWorkspace({
       case "confirm":
         return (
           <SummaryConfirmPage
+            key={currentRoute.taskId}
             taskId={currentRoute.taskId}
             onBack={() => showDetail(currentRoute.taskId)}
             onDeclined={refreshListAndShow}

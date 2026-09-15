@@ -67,4 +67,35 @@ describe("lazy communication UI", () => {
     await cancelled;
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it("suspend discards queued navigation while forwarding the command", async () => {
+    const ui = createLazyCommunicationUi(async () => ({ mount: async () => () => {} }));
+    const listener = vi.fn();
+    ui.subscribe(listener);
+    ui.dispatch({ type: "navigate", page: "chat", target: { channelId: "later", channelType: 1 } });
+    ui.dispatch({ type: "suspend" });
+    await Promise.resolve();
+    // The suspend command should have been forwarded but the queued navigation dropped.
+    expect(listener.mock.calls.map(([c]) => c.type)).toEqual(["suspend"]);
+    // After suspend, pendingNavigation is cleared: subscribe the listener should not replay a stale nav.
+    const later = vi.fn();
+    ui.subscribe(later);
+    await Promise.resolve();
+    expect(later).not.toHaveBeenCalled();
+    ui.dispose();
+  });
+  it("resume after spaceChanged replays only the latest pending navigation", async () => {
+    const ui = createLazyCommunicationUi(async () => ({ mount: async () => () => {} }));
+    ui.dispatch({ type: "navigate", page: "chat", target: { channelId: "one", channelType: 1 } });
+    ui.dispatch({ type: "suspend" });
+    ui.dispatch({ type: "spaceChanged", space: { id: "b", name: "" } });
+    ui.dispatch({ type: "navigate", page: "contacts" });
+    const listener = vi.fn();
+    ui.subscribe(listener);
+    await Promise.resolve();
+    expect(listener.mock.calls.map(([c]) => c.type)).toEqual(["spaceChanged", "navigate"]);
+    expect(listener.mock.calls[0][0]).toMatchObject({ type: "spaceChanged", space: { id: "b" } });
+    expect(listener.mock.calls[1][0]).toMatchObject({ type: "navigate", page: "contacts" });
+    ui.dispose();
+  });
 });
