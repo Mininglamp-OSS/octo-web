@@ -4,8 +4,6 @@ import { AttachmentError, type AttachmentSession } from "./types";
 let getSession: () => AttachmentSession | null = () => null;
 let subscribe: (listener: () => void) => () => void = () => () => undefined;
 let configured = false;
-let expiredToken = "";
-const listeners = new Set<() => void>();
 
 export function configureHtmlAttachmentRuntime(
   session: () => AttachmentSession | null,
@@ -14,20 +12,13 @@ export function configureHtmlAttachmentRuntime(
   getSession = session;
   subscribe = subscribeAuth || (() => () => undefined);
   configured = true;
-  expiredToken = "";
 }
 
 export function currentAttachmentSession(): AttachmentSession | null {
-  const session = getSession();
-  return session?.token === expiredToken ? null : session;
+  return getSession();
 }
 
 export const requiresAttachmentSession = () => configured;
-
-export function invalidateAttachmentSession(session: AttachmentSession) {
-  expiredToken = session.token;
-  listeners.forEach((listener) => listener());
-}
 
 export function assertAttachmentSession(expected: AttachmentSession) {
   const current = currentAttachmentSession();
@@ -44,7 +35,6 @@ export function assertAttachmentSession(expected: AttachmentSession) {
 
 export function subscribeAttachmentSession(listener: () => void): () => void {
   const unsubscribe = subscribe(listener);
-  listeners.add(listener);
   const foreground = () => {
     if (!document.hidden) listener();
   };
@@ -54,7 +44,6 @@ export function subscribeAttachmentSession(listener: () => void): () => void {
   document.addEventListener("visibilitychange", foreground);
   return () => {
     unsubscribe();
-    listeners.delete(listener);
     window.removeEventListener("storage", listener);
     window.removeEventListener("focus", listener);
     window.removeEventListener("pageshow", listener);
@@ -73,11 +62,15 @@ export function storedAttachmentSession(
     if (sessionStorage.getItem("octo.session.sid") !== sessionId) return null;
     const uid = localStorage.getItem(`uid${sessionId}`);
     const token = localStorage.getItem(`token${sessionId}`);
+    const copiedUid = sessionStorage.getItem(`uid${sessionId}`);
+    const copiedToken = sessionStorage.getItem(`token${sessionId}`);
+    // Fresh chat tabs restore credentials from localStorage without copying
+    // them into sessionStorage. Only a present, mismatched copy is stale.
     if (
       !uid ||
       !token ||
-      sessionStorage.getItem(`uid${sessionId}`) !== uid ||
-      sessionStorage.getItem(`token${sessionId}`) !== token
+      (copiedUid !== null && copiedUid !== uid) ||
+      (copiedToken !== null && copiedToken !== token)
     )
       return null;
     return { uid, token, sessionId, spaceId, apiURL };

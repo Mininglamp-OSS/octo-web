@@ -11,7 +11,6 @@ import {
 } from "../../features/html-attachment/references";
 import {
   assertAttachmentSession,
-  invalidateAttachmentSession,
   requiresAttachmentSession,
 } from "../../features/html-attachment/runtime";
 
@@ -34,9 +33,11 @@ export async function signedAttachmentLink(
     assertAttachmentSession(session);
     return url;
   } catch (error) {
+    // A signing endpoint rejection does not establish a tab-wide logout.
+    // Re-check real session ownership, then leave this operation retryable.
+    assertAttachmentSession(session);
     if ((error as { status?: number })?.status === 401) {
-      invalidateAttachmentSession(session);
-      throw new AttachmentError("expired");
+      throw new AttachmentError("downloadFailed");
     }
     throw error;
   }

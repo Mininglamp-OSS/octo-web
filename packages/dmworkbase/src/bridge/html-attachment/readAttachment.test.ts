@@ -4,7 +4,11 @@ import {
   loadHtmlAttachment,
   readBoundedHtml,
 } from "./readAttachment";
-import { configureHtmlAttachmentRuntime } from "../../features/html-attachment/runtime";
+import {
+  configureHtmlAttachmentRuntime,
+  currentAttachmentSession,
+} from "../../features/html-attachment/runtime";
+import { downloadHtmlAttachment } from "./downloadAttachment";
 
 const signer = vi.hoisted(() => vi.fn());
 vi.mock("../../Service/AttachmentFileService", () => ({
@@ -28,7 +32,80 @@ describe("bounded original HTML bytes", () => {
     configureHtmlAttachmentRuntime(() => session);
     signer.mockReset();
   });
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+  it("allows a fresh preview attempt after a signing 401 without resetting the runtime", async () => {
+    const proxyFile = { ...file, url: "/file/chat/id" };
+    signer.mockRejectedValueOnce({ status: 401 });
+    const fetch = vi.fn().mockResolvedValue(new Response("<p>recovered</p>"));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(
+      loadHtmlAttachment(proxyFile, session, new AbortController().signal)
+    ).rejects.toMatchObject({ code: "downloadFailed" });
+    expect(signer).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(currentAttachmentSession()).toEqual(session);
+
+    signer.mockResolvedValueOnce("https://store.test/chat/id?fresh=1");
+    const bytes = await loadHtmlAttachment(
+      proxyFile,
+      session,
+      new AbortController().signal
+    );
+    expect(Array.from(bytes)).toEqual(
+      Array.from(new TextEncoder().encode("<p>recovered</p>"))
+    );
+    expect(signer).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it.each([undefined, HTML_BYTE_LIMIT + 1])(
+    "fails only the current download on 401 and preserves filename on retry (size %s)",
+    async (size) => {
+      const proxyFile = { ...file, url: "/file/chat/id", size };
+      signer.mockRejectedValueOnce({ status: 401 });
+      const click = vi
+        .spyOn(HTMLAnchorElement.prototype, "click")
+        .mockImplementation(() => {});
+      const fetch = vi.fn().mockRejectedValue(new Error("unreadable storage"));
+      vi.stubGlobal("fetch", fetch);
+
+      await expect(
+        downloadHtmlAttachment(proxyFile, new AbortController().signal)
+      ).rejects.toMatchObject({ code: "downloadFailed" });
+      expect(signer).toHaveBeenCalledTimes(1);
+      expect(click).not.toHaveBeenCalled();
+      expect(currentAttachmentSession()).toEqual(session);
+
+      signer.mockResolvedValue("https://store.test/chat/id?download=1");
+      await downloadHtmlAttachment(proxyFile, new AbortController().signal);
+      expect(click).toHaveBeenCalledTimes(1);
+      const anchor = click.mock.instances[0] as HTMLAnchorElement;
+      expect(anchor.download).toBe(file.name);
+      expect(anchor.href).toBe("https://store.test/chat/id?download=1");
+    }
+  );
+  it.each([null, { ...session, token: "new-token" }])(
+    "still rejects a captured session changed during a signing failure: %j",
+    async (nextSession) => {
+      let live: typeof session | null = session;
+      configureHtmlAttachmentRuntime(() => live);
+      signer.mockImplementationOnce(async () => {
+        live = nextSession;
+        throw { status: 401 };
+      });
+      await expect(
+        loadHtmlAttachment(
+          { ...file, url: "/file/chat/id" },
+          session,
+          new AbortController().signal
+        )
+      ).rejects.toMatchObject({ code: "expired" });
+      expect(signer).toHaveBeenCalledTimes(1);
+    }
+  );
   it("retains BOM, CRLF and invalid UTF-8 bytes verbatim", async () => {
     const source = new Uint8Array([239, 187, 191, 60, 112, 62, 13, 10, 255]);
     const fetch = vi.fn().mockResolvedValue(new Response(source));
@@ -80,13 +157,11 @@ describe("bounded original HTML bytes", () => {
     const cancel = vi.fn();
     vi.stubGlobal(
       "fetch",
-      vi
-        .fn()
-        .mockResolvedValue(
-          new Response(new ReadableStream({ cancel }), {
-            headers: { "Content-Length": String(HTML_BYTE_LIMIT + 1) },
-          })
-        )
+      vi.fn().mockResolvedValue(
+        new Response(new ReadableStream({ cancel }), {
+          headers: { "Content-Length": String(HTML_BYTE_LIMIT + 1) },
+        })
+      )
     );
     await expect(
       readBoundedHtml(file.url, new AbortController().signal)

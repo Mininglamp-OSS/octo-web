@@ -74,6 +74,169 @@ test("real new tab preview, exact bytes and original filename survive refresh an
   expect(apiRequests).toEqual([]); // no IM/contacts/space/bootstrap calls
 });
 
+test("localStorage-only login restores preview, download and new-tab handoff", async ({
+  page,
+  context,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("uidfixture", "fixture-user");
+    localStorage.setItem("tokenfixture", "fixture-token");
+  });
+  await context.route("**/attachment-objects/chat/**", (route) =>
+    route.fulfill({ body: original })
+  );
+  await page.goto("/e2e-kit/fixtures/html-attachment.html?restore=1");
+  await expect(page.frameLocator("iframe").getByRole("heading")).toHaveText(
+    "Original attachment"
+  );
+  expect(
+    await page.evaluate(() => ({
+      sid: sessionStorage.getItem("octo.session.sid"),
+      uid: sessionStorage.getItem("uidfixture"),
+      token: sessionStorage.getItem("tokenfixture"),
+    }))
+  ).toEqual({ sid: "fixture", uid: null, token: null });
+  const downloadEvent = page.waitForEvent("download");
+  await page.getByTitle("Download", { exact: true }).click();
+  const download = await downloadEvent;
+  expect(download.suggestedFilename()).toBe("季度报告 Q3.html");
+  expect(await readFile((await download.path())!)).toEqual(original);
+  const popup = context.waitForEvent("page");
+  await page.getByTitle("Open in new tab").click();
+  const preview = await popup;
+  await expect(preview.frameLocator("iframe").getByRole("heading")).toHaveText(
+    "Original attachment"
+  );
+  await page.close();
+  await preview.reload();
+  await expect(preview.frameLocator("iframe").getByRole("heading")).toHaveText(
+    "Original attachment"
+  );
+});
+
+test("signing 401 allows preview retry, new tabs and reload without losing the descriptor", async ({
+  page,
+  context,
+}) => {
+  let healthy = false;
+  let signingRequests = 0;
+  await context.route("**/api/v1/file/download/url?**", (route) => {
+    signingRequests++;
+    expect(route.request().headers().token).toBe("fixture-token");
+    const key = new URL(route.request().url()).searchParams
+      .get("path")
+      ?.endsWith("second")
+      ? "second"
+      : "uuid";
+    return route.fulfill(
+      healthy
+        ? { json: { url: new URL(`/signed/chat/${key}`, page.url()).href } }
+        : { status: 401, json: { msg: "unauthorized" } }
+    );
+  });
+  await context.route("**/signed/chat/**", (route) =>
+    route.fulfill({
+      body: route.request().url().endsWith("second")
+        ? Buffer.from("<h1>Second attachment</h1>")
+        : original,
+    })
+  );
+  await page.goto("/e2e-kit/fixtures/html-attachment.html?proxy=1");
+  await expect(
+    page.getByText("Unable to prepare the download. Please retry.")
+  ).toBeVisible();
+  expect(signingRequests).toBe(1);
+  const popup = context.waitForEvent("page");
+  await page.getByTitle("Open in new tab").click();
+  const preview = await popup;
+  await expect(
+    preview.getByText("Unable to prepare the download. Please retry.")
+  ).toBeVisible();
+  expect(
+    await preview.evaluate(() =>
+      sessionStorage.getItem(`octo.html-preview.${location.hash.slice(1)}`)
+    )
+  ).not.toBeNull();
+  await expect(
+    preview.getByText("Preview expired.", { exact: false })
+  ).toHaveCount(0);
+  healthy = true;
+  await preview.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(preview.frameLocator("iframe").getByRole("heading")).toHaveText(
+    "Original attachment"
+  );
+  await page.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(page.frameLocator("iframe").getByRole("heading")).toHaveText(
+    "Original attachment"
+  );
+
+  // Another 401 must not destroy the standalone tab's reload context either.
+  healthy = false;
+  await preview.reload();
+  await expect(
+    preview.getByText("Unable to prepare the download. Please retry.")
+  ).toBeVisible();
+  healthy = true;
+  await preview.reload();
+  await expect(preview.frameLocator("iframe").getByRole("heading")).toHaveText(
+    "Original attachment"
+  );
+  await page.getByRole("button", { name: "Select second attachment" }).click();
+  await expect(page.frameLocator("iframe").getByRole("heading")).toHaveText(
+    "Second attachment"
+  );
+});
+
+test("signing 401 fails one download and a new click retries with the same login", async ({
+  page,
+  context,
+}) => {
+  let signingRequests = 0;
+  let downloads = 0;
+  page.on("download", () => downloads++);
+  // Browser-managed downloads may bypass Playwright routing. Serve the signed
+  // response over real HTTP so the saved-byte assertion checks the response.
+  const storage = createServer((_request, response) => {
+    response.writeHead(200, {
+      "Content-Type": "application/octet-stream",
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(
+        "季度报告 Q3.html"
+      )}`,
+    });
+    response.end(original);
+  });
+  await new Promise<void>((resolve) => storage.listen(0, "127.0.0.1", resolve));
+  const storageURL = `http://127.0.0.1:${
+    (storage.address() as AddressInfo).port
+  }/chat/uuid`;
+  try {
+    await context.route("**/api/v1/file/download/url?**", (route) => {
+      signingRequests++;
+      return route.fulfill(
+        signingRequests === 1
+          ? { status: 401, json: { msg: "unauthorized" } }
+          : { json: { url: storageURL } }
+      );
+    });
+    await page.goto("/e2e-kit/fixtures/html-attachment.html?large=1");
+    await page.getByTitle("Download", { exact: true }).click();
+    await expect(
+      page.getByText("Unable to prepare the download. Please retry.")
+    ).toBeVisible();
+    expect(signingRequests).toBe(1);
+    expect(downloads).toBe(0);
+    const downloadEvent = page.waitForEvent("download");
+    await page.getByTitle("Download", { exact: true }).click();
+    const download = await downloadEvent;
+    expect(signingRequests).toBe(2);
+    expect(download.suggestedFilename()).toBe("季度报告 Q3.html");
+    expect(await readFile((await download.path())!)).toEqual(original);
+  } finally {
+    storage.closeAllConnections();
+    await new Promise<void>((resolve) => storage.close(() => resolve()));
+  }
+});
+
 test("logout clears copied preview context and bare preview links are expired", async ({
   page,
   context,

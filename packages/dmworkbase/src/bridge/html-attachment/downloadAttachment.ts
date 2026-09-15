@@ -107,7 +107,12 @@ async function downloadCurrentAttachment(
       bytes = await loadHtmlAttachment(file, session, signal);
     } catch (error) {
       check();
-      if (error instanceof AttachmentError && error.code === "expired")
+      // A rejected signing request must not be retried by the fallback in the
+      // same click. A new user attempt can sign again with the live session.
+      if (
+        error instanceof AttachmentError &&
+        ["expired", "downloadFailed"].includes(error.code)
+      )
         throw error;
     }
   }

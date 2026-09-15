@@ -5,31 +5,36 @@ import FilePreviewHeader from "@octo/base/src/Components/FilePreviewPanel/FilePr
 import HtmlRenderer from "@octo/base/src/Components/FilePreviewPanel/renderers/HtmlRenderer";
 import {
   configureHtmlAttachmentRuntime,
+  currentAttachmentSession,
   storedAttachmentSession,
 } from "@octo/base/src/features/html-attachment/runtime";
 import APIClient from "@octo/base/src/Service/APIClient";
+import { getSessionSid } from "@octo/base/src/Service/SessionScope";
 import "@octo/base/src/theme/tokens.css";
 
-sessionStorage.setItem("octo.session.sid", "fixture");
-sessionStorage.setItem("uidfixture", "fixture-user");
-sessionStorage.setItem("tokenfixture", "fixture-token");
-localStorage.setItem("uidfixture", "fixture-user");
-localStorage.setItem("tokenfixture", "fixture-token");
+const options = new URLSearchParams(location.search);
+if (!options.has("restore")) {
+  sessionStorage.setItem("octo.session.sid", "fixture");
+  sessionStorage.setItem("uidfixture", "fixture-user");
+  sessionStorage.setItem("tokenfixture", "fixture-token");
+  localStorage.setItem("uidfixture", "fixture-user");
+  localStorage.setItem("tokenfixture", "fixture-token");
+}
 configureHtmlAttachmentRuntime(() =>
-  storedAttachmentSession("fixture", "space-a", "/api/v1/")
+  storedAttachmentSession(getSessionSid(), "space-a", "/api/v1/")
 );
 APIClient.shared.config.apiURL = "/api/v1/";
-APIClient.shared.config.tokenCallback = () => "fixture-token";
+APIClient.shared.config.tokenCallback = () => currentAttachmentSession()?.token;
 i18n.setLocale("en-US");
 function Fixture() {
   const [second, setSecond] = useState(false);
   const file = {
-    url: `${location.origin}/attachment-objects/chat/${
-      second ? "second" : "uuid"
-    }`,
+    url: `${location.origin}/${
+      options.has("proxy") ? "file" : "attachment-objects"
+    }/chat/${second ? "second" : "uuid"}`,
     name: second ? "Second.html" : "季度报告 Q3.html",
     extension: "html",
-    size: location.search.includes("large=1") ? 21 * 1024 * 1024 : undefined,
+    size: options.has("large") ? 21 * 1024 * 1024 : undefined,
   };
   return (
     <>

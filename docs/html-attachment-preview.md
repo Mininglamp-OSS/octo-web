@@ -7,10 +7,19 @@ same-origin sandbox preview. Refresh and closing the source tab remain supported
 The URL is not a share link. Missing or expired session context shows a terminal
 message. No new navigation/menu entry is added. Desktop keeps its existing paths.
 
-Downloads preserve the original bytes and filename. Read at most 20 MiB (including
+Downloads through these Web HTML actions preserve the original bytes and filename.
+Read at most 20 MiB (including
 unknown or incorrect size metadata); larger/unreadable attachments use the existing
 signed download endpoint with an explicit filename. Signing errors are visible and
 never fall back to a raw object URL.
+
+Chat tabs restored from localStorage can preview, open and download attachments
+without sessionStorage credential copies. The active session ID must still match;
+present but mismatched copies and localStorage revocation reject access.
+An endpoint-specific signing 401 fails only that operation with a retry message.
+The next user attempt checks the live session again. It does not invalidate other
+attachments or delete the standalone descriptor, so retry and reload can recover.
+Actual logout or changed session ownership still clears access and cancels work.
 
 ## File map
 
@@ -41,7 +50,7 @@ The browser spec lives in `apps/web/e2e-kit/standalone/html-attachment`, outside
 the production-preview suite's `tests` directory: its source-tab fixture requires
 Vite's development transform and is not emitted into `build-e2e`. The PR e2e job
 runs `playwright.html-preview.config.ts` in a separate mandatory step and requires
-at least six passes with no skipped or flaky cases. JSON results and traces are
+at least nine passes with no skipped or flaky cases. JSON results and traces are
 included in the existing Playwright report artifact.
 
 The standalone bootstrap deliberately does not register chat modules or call
@@ -60,8 +69,9 @@ copied session after logout. Attachment scripts remain in `sandbox=allow-scripts
 - Focused base Service/bridge/preview/message/search regressions: 17 files,
   101 tests passed. Existing host module-wiring checks: 3 files, 23 tests passed.
 - `pnpm --dir apps/web exec playwright test --config e2e-kit/playwright.html-preview.config.ts`:
-  all 6 Chromium scenarios passed. Responses are synthetic, including an actual
-  cross-origin HTTP redirect and attachment disposition headers.
+  all 9 Chromium scenarios passed. Responses are synthetic, including an actual
+  cross-origin HTTP redirect, attachment disposition headers, localStorage-only
+  login restoration, and signing-401 retry/reload with an unchanged login token.
 - The production-preview CI suite (`playwright.ci.config.ts`) passed all 176
   cases against `build-e2e`; the workflow's full-suite gate reported zero failures,
   skipped cases and proxy errors. The separate HTML CI step passed its six-case,
