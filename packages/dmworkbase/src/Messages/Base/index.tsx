@@ -1,5 +1,10 @@
 import WKSDK from "wukongimjssdk";
-import { SEND_OUTCOME_UNKNOWN } from "../../im-runtime/sendRecovery";
+import {
+  SEND_CANCELED,
+  SEND_LOCAL_UNAVAILABLE,
+  SEND_OUTCOME_UNKNOWN,
+  SEND_QUEUE_BUSY,
+} from "../../im-runtime/sendRecovery";
 import { ChannelInfoListener } from "wukongimjssdk";
 import {
   Channel,
@@ -289,6 +294,12 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     switch (message.reasonCode) {
       case SEND_OUTCOME_UNKNOWN:
         return this.context.t("base.messageBase.error.outcomeUnknown");
+      case SEND_LOCAL_UNAVAILABLE:
+        return this.context.t("base.messageBase.error.temporarilyUnavailable");
+      case SEND_QUEUE_BUSY:
+        return this.context.t("base.messageBase.error.queueBusy");
+      case SEND_CANCELED:
+        return this.context.t("base.messageBase.error.canceled");
       case MessageReasonCode.reasonSubscriberNotExist:
         return this.context.t("base.messageBase.error.removedFromGroup");
       case MessageReasonCode.reasonNotAllowSend:

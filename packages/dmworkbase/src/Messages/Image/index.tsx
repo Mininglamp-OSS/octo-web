@@ -13,6 +13,7 @@ import { isMessageSelectable } from "../../Service/messageSelection"
 import { t } from "../../i18n"
 import { ImagePreviewLightbox } from "./ImagePreview"
 import { ImageContent } from "./ImageContent"
+import { SEND_OUTCOME_UNKNOWN } from "../../im-runtime/sendRecovery"
 
 export { ImagePreviewLightbox, ImagePreviewToolbar } from "./ImagePreview"
 export { ImageContent } from "./ImageContent"
@@ -31,6 +32,7 @@ export interface ImageTransferInput {
     hasRemoteUrl: boolean
     fileSize: number
     messageStatus: MessageStatus
+    reasonCode?: number
     uploadStatus: TaskStatus | null
     uploadProgress: number
     onUploadRetry?: () => void
@@ -50,6 +52,7 @@ export function getImageTransferState({
     hasRemoteUrl,
     fileSize,
     messageStatus,
+    reasonCode,
     uploadStatus,
     uploadProgress,
     onUploadRetry,
@@ -68,6 +71,12 @@ export function getImageTransferState({
     }
 
     if (messageStatus === MessageStatus.Fail) {
+        if (reasonCode === SEND_OUTCOME_UNKNOWN) {
+            return {
+                status: "failed",
+                labelKey: "base.messageBase.error.outcomeUnknown",
+            }
+        }
         return { status: "failed", onRetry: onMessageRetry }
     }
 
@@ -183,6 +192,7 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
                 hasRemoteUrl,
                 fileSize,
                 messageStatus: message.status,
+                reasonCode: message.reasonCode,
                 uploadStatus,
                 uploadProgress,
                 onUploadRetry: this.handleRetry,

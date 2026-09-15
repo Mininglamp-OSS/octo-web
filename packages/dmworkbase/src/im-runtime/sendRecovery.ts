@@ -3,6 +3,9 @@ import WKSDK, { Packet, SendPacket, SendackPacket } from "wukongimjssdk";
 
 // Local-only reason; never encoded on the wire or interpreted as server rejection.
 export const SEND_OUTCOME_UNKNOWN = 256;
+export const SEND_LOCAL_UNAVAILABLE = 257;
+export const SEND_QUEUE_BUSY = 258;
+export const SEND_CANCELED = 259;
 const TRANSIENT_REASONS = new Set([10, 18, 22]); // forward failure, stale node, rate limit
 const installations = new WeakMap<WKSDK, SendRecovery>();
 
@@ -18,8 +21,25 @@ type PendingSend = {
 
 export interface SendRecovery {
   reset(): void;
+  cancel(): void;
   syncAccount(): void;
   dispose(): void;
+}
+
+export function connectWithSendRecovery(
+  sdk: WKSDK,
+  enabled: boolean,
+  connect: () => void
+): SendRecovery | undefined {
+  const recovery = enabled ? installSendRecovery(sdk) : undefined;
+  try {
+    connect();
+    recovery?.syncAccount();
+    return recovery;
+  } catch (error) {
+    recovery?.dispose();
+    throw error;
+  }
 }
 
 /** Install once, before connecting. SDK batching/reconnect flush cannot own a
@@ -42,6 +62,7 @@ export function installSendRecovery(sdk: WKSDK): SendRecovery {
   };
   const pending = new Map<number, PendingSend>();
   const attempts = new Map<number, PendingSend>();
+  const canceledPackets = new WeakSet<SendPacket>();
   const firstManagedSeq = chat.clientSeq + 1;
   let highWaterSeq = chat.clientSeq;
   let account = `${sdk.config.uid}\0${sdk.config.token}`;
@@ -49,6 +70,7 @@ export function installSendRecovery(sdk: WKSDK): SendRecovery {
   let disposed = false;
   let pendingBytes = 0;
   let epoch = 0;
+  let lastPumpAt = Date.now();
 
   function remove(state: PendingSend) {
     if (pending.get(state.originalSeq) === state)
@@ -76,20 +98,26 @@ export function installSendRecovery(sdk: WKSDK): SendRecovery {
   function checkAccount() {
     const current = `${sdk.config.uid}\0${sdk.config.token}`;
     if (current !== account) {
-      reset();
+      reset(true);
       account = current;
     }
   }
 
-  function reset() {
+  function reset(notifyPending = false) {
     epoch++;
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
+    if (notifyPending) {
+      for (const state of [...pending.values()]) notify(state, SEND_CANCELED);
+    }
     pending.clear();
     pendingBytes = 0;
     attempts.clear();
     // Includes uploads still waiting for their task callback; a stale upload
     // completion must not send the previous account's packet after login.
+    for (const packet of chat.sendingQueues.values()) {
+      canceledPackets.add(packet);
+    }
     chat.sendingQueues.clear();
     chat.sendPacketQueue.length = 0;
   }
@@ -103,21 +131,36 @@ export function installSendRecovery(sdk: WKSDK): SendRecovery {
     timer = undefined;
     checkAccount();
     const now = Date.now();
+    const elapsed = Math.max(0, now - lastPumpAt);
+    lastPumpAt = now;
+    if (!connection.connected()) {
+      for (const state of pending.values()) {
+        if (state.expiresAt) state.expiresAt += elapsed;
+      }
+      arm();
+      return;
+    }
     let sent = 0;
     for (const state of pending.values()) {
       if (
-        now >= state.expiresAt ||
+        (state.expiresAt !== 0 && now >= state.expiresAt) ||
         (state.attempts >= 6 && now >= state.nextAt)
       ) {
-        notify(state, state.attempts ? SEND_OUTCOME_UNKNOWN : 18);
+        notify(
+          state,
+          state.attempts ? SEND_OUTCOME_UNKNOWN : SEND_LOCAL_UNAVAILABLE
+        );
         continue;
       }
-      if (!connection.connected() || now < state.nextAt || sent >= 20) continue;
+      if (now < state.nextAt || sent >= 20) continue;
       const replayable = !state.packet.noPersist && !!state.packet.clientMsgNo;
       if (state.attempts && !replayable) continue;
       const seq = state.attempts ? chat.getClientSeq() : state.originalSeq;
       if (seq > 0x7fffffff) {
-        notify(state, state.attempts ? SEND_OUTCOME_UNKNOWN : 18);
+        notify(
+          state,
+          state.attempts ? SEND_OUTCOME_UNKNOWN : SEND_LOCAL_UNAVAILABLE
+        );
         continue;
       }
       const wire = Object.assign(new SendPacket(), state.packet, {
@@ -129,6 +172,7 @@ export function installSendRecovery(sdk: WKSDK): SendRecovery {
       attempts.set(seq, state);
       highWaterSeq = Math.max(highWaterSeq, seq);
       state.attempts++;
+      if (!state.expiresAt) state.expiresAt = now + 45000;
       state.nextAt = now + Math.min(2000 * 2 ** (state.attempts - 1), 8000);
       sent++;
       try {
@@ -151,7 +195,7 @@ export function installSendRecovery(sdk: WKSDK): SendRecovery {
       attempts: 0,
       latestSeq: packet.clientSeq,
       sequences: [],
-      expiresAt: Date.now() + 45000,
+      expiresAt: 0,
       nextAt: Date.now(),
     };
     if (
@@ -161,7 +205,8 @@ export function installSendRecovery(sdk: WKSDK): SendRecovery {
       // Notify after sendWithOptions has published its local echo.
       const expectedEpoch = epoch;
       queueMicrotask(() => {
-        if (!disposed && epoch === expectedEpoch) notify(state, 22);
+        if (!disposed && epoch === expectedEpoch)
+          notify(state, SEND_QUEUE_BUSY);
       });
       return;
     }
@@ -182,6 +227,8 @@ export function installSendRecovery(sdk: WKSDK): SendRecovery {
     if (packet instanceof SendPacket) {
       // Includes completed media tasks. Pending uploads never reach this method.
       if (chat.sendingQueues.has(packet.clientSeq)) schedule(packet);
+      else if (canceledPackets.has(packet)) return;
+      else original.wire.call(connection, packet);
       return;
     }
     original.wire.call(connection, packet);
@@ -239,15 +286,16 @@ export function installSendRecovery(sdk: WKSDK): SendRecovery {
     original.remove.call(chat, seq);
   };
   connection.disconnect = () => {
-    reset();
+    reset(true);
     original.disconnect.call(connection);
   };
 
   const control: SendRecovery = {
-    reset,
+    reset: () => reset(true),
+    cancel: () => reset(true),
     syncAccount: checkAccount,
     dispose() {
-      reset();
+      reset(true);
       disposed = true;
       chat.sendSendPacket = original.send;
       connection.sendPacket = original.wire;

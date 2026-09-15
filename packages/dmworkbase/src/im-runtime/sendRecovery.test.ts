@@ -8,7 +8,10 @@ import WKSDK, {
   Setting,
 } from "wukongimjssdk";
 import {
+  connectWithSendRecovery,
   installSendRecovery,
+  SEND_CANCELED,
+  SEND_QUEUE_BUSY,
   SEND_OUTCOME_UNKNOWN,
   type SendRecovery,
 } from "./sendRecovery";
@@ -179,13 +182,15 @@ describe("bounded SDK send recovery", () => {
     sdk.config.uid = "other-account";
     await vi.advanceTimersByTimeAsync(100);
     expect(sdk.chatManager.sendingQueues.has(upload.clientSeq)).toBe(false);
+    expect(status).toHaveBeenCalledTimes(1);
+    expect(status.mock.calls[0][0].reasonCode).toBe(SEND_CANCELED);
     await ack(first.clientSeq, 1);
-    expect(status).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledTimes(1);
     const next = packet();
     sdk.chatManager.sendSendPacket(next);
     await vi.advanceTimersByTimeAsync(100);
     await ack(next.clientSeq, 1);
-    expect(status).toHaveBeenCalledTimes(1);
+    expect(status).toHaveBeenCalledTimes(2);
   });
 
   it("clears ready sends and unfinished uploads on explicit disconnect", async () => {
@@ -200,8 +205,60 @@ describe("bounded SDK send recovery", () => {
     await ack(ready.clientSeq, 1);
     await vi.advanceTimersByTimeAsync(60000);
     expect(wire).toHaveBeenCalledTimes(1);
-    expect(status).not.toHaveBeenCalled();
+    expect(status).toHaveBeenCalledTimes(1);
+    expect(status.mock.calls[0][0].reasonCode).toBe(SEND_CANCELED);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("reports cancellation when an owner resets pending sends", async () => {
+    const ready = packet();
+    sdk.chatManager.sendSendPacket(ready);
+    await vi.advanceTimersByTimeAsync(100);
+
+    control.reset();
+
+    expect(status).toHaveBeenCalledTimes(1);
+    expect(status.mock.calls[0][0]).toMatchObject({
+      clientSeq: ready.clientSeq,
+      reasonCode: SEND_CANCELED,
+    });
+    expect(sdk.chatManager.sendingQueues.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("does not consume the send lifetime while disconnected", async () => {
+    connected.mockReturnValue(false);
+    const p = packet();
+    sdk.chatManager.sendSendPacket(p);
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(wire).not.toHaveBeenCalled();
+    expect(status).not.toHaveBeenCalled();
+    connected.mockReturnValue(true);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(wire).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves direct SDK sends that are outside the managed queue", () => {
+    const p = packet();
+    sdk.chatManager.sendingQueues.delete(p.clientSeq);
+    sdk.connectManager.sendPacket(p);
+    expect(wire).toHaveBeenCalledWith(p);
+  });
+
+  it("installs before connect and re-baselines the account afterward", () => {
+    control.dispose();
+    const order: string[] = [];
+    const send = sdk.chatManager.sendSendPacket;
+    control = connectWithSendRecovery(sdk, true, () => {
+      order.push("connect");
+      expect(sdk.chatManager.sendSendPacket).not.toBe(send);
+      sdk.config.uid = "connected-account";
+    })!;
+    order.push("done");
+    expect(order).toEqual(["connect", "done"]);
+    const p = packet();
+    sdk.chatManager.sendSendPacket(p);
+    expect(sdk.chatManager.sendingQueues.has(p.clientSeq)).toBe(true);
   });
 
   it("fences old upload completion before starting a new account upload", async () => {
@@ -242,7 +299,7 @@ describe("bounded SDK send recovery", () => {
     sdk.chatManager.sendSendPacket(p);
     await vi.advanceTimersByTimeAsync(0);
     expect(wire).not.toHaveBeenCalled();
-    expect(status.mock.calls[0][0].reasonCode).toBe(22);
+    expect(status.mock.calls[0][0].reasonCode).toBe(SEND_QUEUE_BUSY);
     expect(sdk.chatManager.sendingQueues.size).toBe(0);
   });
 });

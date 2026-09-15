@@ -65,6 +65,7 @@ vi.mock('../../MessageCell', () => ({
 }))
 
 import { ImageCell, ImageContent, ImagePreviewLightbox, ImagePreviewToolbar, getImageTransferState } from '../index'
+import { SEND_OUTCOME_UNKNOWN } from '../../../im-runtime/sendRecovery'
 import { MessageStatus, TaskStatus } from 'wukongimjssdk'
 
 describe('ImagePreviewToolbar', () => {
@@ -228,6 +229,23 @@ describe('getImageTransferState', () => {
       uploadProgress: 100,
       onMessageRetry,
     })).toEqual({ status: 'failed', onRetry: onMessageRetry })
+  })
+
+  it('does not offer blind resend when delivery outcome is unknown', () => {
+    const onMessageRetry = vi.fn()
+    expect(getImageTransferState({
+      hasLocalFile: false,
+      hasRemoteUrl: true,
+      fileSize: 0,
+      messageStatus: MessageStatus.Fail,
+      reasonCode: SEND_OUTCOME_UNKNOWN,
+      uploadStatus: TaskStatus.success,
+      uploadProgress: 100,
+      onMessageRetry,
+    })).toEqual({
+      status: 'failed',
+      labelKey: 'base.messageBase.error.outcomeUnknown',
+    })
   })
 
   it('lets an active upload retry override a stale failed message status', () => {

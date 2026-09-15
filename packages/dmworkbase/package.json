@@ -68,7 +68,7 @@
     "sensitive-word-tool": "^1.1.9",
     "tippy.js": "^6.3.7",
     "unist-util-visit": "^5.1.0",
-    "wukongimjssdk": "^1.2.11",
+    "wukongimjssdk": "^1.3.5",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "yet-another-react-lightbox": "^3.30.0"
   },
