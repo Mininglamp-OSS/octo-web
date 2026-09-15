@@ -35,6 +35,7 @@ import { Toast } from "@douyinfe/semi-ui";
 import { installSummaryNavigation } from "./summaryNavigation";
 import { installDocumentForward } from "./documentForward";
 import { installSummaryRequests } from "./summaryRequests";
+import { createWorkspaceNavigationGuard } from "./workspaceNavigationGuard";
 import "./index.css";
 
 function bindLeftRoute(context: WKViewQueueContext) {
@@ -139,31 +140,40 @@ export function CommunicationShell({
   const pendingTargetRef = useRef<ConversationTarget | undefined>();
   const appTargetRef = useRef<ConversationTarget | undefined>();
   const workspaceTargetRef = useRef<ConversationTarget | undefined>();
+  const workspaceReturnTargetRef = useRef<Channel | undefined>();
+  const workspaceNavigationGuard = useMemo(() => createWorkspaceNavigationGuard(), []);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
   const readyReporterRef = useRef<ReturnType<typeof createReadyReporter>>();
 
-  const openPreparedTarget = useCallback((target: ConversationTarget) => {
+  const commitPreparedTarget = useCallback((target: ConversationTarget) => {
     const previous = workspaceTargetRef.current;
     const channel = WKApp.shared.openChannel;
     if (target.variant === "workspace-group" && previous?.channelId === target.channelId &&
         previous.channelType === target.channelType && previous.messageSeq === target.messageSeq &&
+        previous.openChannelSearch === target.openChannelSearch &&
         channel?.channelID === target.channelId && channel.channelType === target.channelType) return;
     const preserveCurrentConversation = Boolean(
-      !appTargetRef.current && (previous || target.variant === "workspace-group") &&
+      !appTargetRef.current && (previous || target.variant === "workspace-group" ||
+        (workspaceReturnTargetRef.current?.channelID === target.channelId &&
+         workspaceReturnTargetRef.current.channelType === target.channelType)) &&
       channel?.channelID === target.channelId && channel.channelType === target.channelType &&
       !target.messageSeq && !target.openChannelSearch
     );
+    workspaceReturnTargetRef.current = undefined;
     appTargetRef.current = target.variant === "app-bot" ? target : undefined;
     workspaceTargetRef.current = target.variant === "workspace-group" ? target : undefined;
     const spaceId = spaceIdRef.current;
     openTarget(target, target.variant === "workspace-group" ? {
       openConversation: (channel) => {
         if (workspaceTargetRef.current !== target || spaceIdRef.current !== spaceId) return;
-        reportNavigation(bridge, {
-          page: "chat",
-          source: "workspace-conversation",
-          channel: { id: channel.channelID, type: channel.channelType },
+        workspaceNavigationGuard.run(() => {
+          if (workspaceTargetRef.current !== target || spaceIdRef.current !== spaceId) return;
+          reportNavigation(bridge, {
+            page: "chat",
+            source: "workspace-conversation",
+            channel: { id: channel.channelID, type: channel.channelType },
+          });
         });
       },
       onSidePanelUnavailable: () => {
@@ -171,7 +181,36 @@ export function CommunicationShell({
         Toast.info(t("app.workspaceConversation.openInMessages"));
       },
     } : undefined, preserveCurrentConversation);
-  }, [bridge]);
+  }, [bridge, workspaceNavigationGuard]);
+
+  const openPreparedTarget = useCallback((target: ConversationTarget) => {
+    const current = WKApp.shared.openChannel;
+    const previousWorkspace = workspaceTargetRef.current;
+    const spaceId = spaceIdRef.current;
+    const replacingConversation = current && (
+      current.channelID !== target.channelId || current.channelType !== target.channelType ||
+      Boolean(target.messageSeq || target.openChannelSearch)
+    );
+    if (target.variant !== "workspace-group" || !replacingConversation) {
+      commitPreparedTarget(target);
+      return;
+    }
+    workspaceNavigationGuard.run(() => commitPreparedTarget(target), () => {
+      if (spaceIdRef.current !== spaceId) return;
+      // Returning to the original full-page conversation is presentation-only.
+      if (!previousWorkspace) workspaceReturnTargetRef.current = current;
+      reportNavigation(bridge, {
+        page: "chat",
+        source: previousWorkspace ? "workspace-selection-cancelled" : "workspace-conversation",
+        channel: { id: current.channelID, type: current.channelType },
+        ...(previousWorkspace ? {
+          cancelledTarget: { id: target.channelId, type: target.channelType },
+        } : {}),
+      });
+    });
+  }, [bridge, commitPreparedTarget, workspaceNavigationGuard]);
+
+  useEffect(() => () => workspaceNavigationGuard.cancel(), [workspaceNavigationGuard]);
 
   useEffect(() => installSummaryNavigation(bridge, (error) => {
     console.error("[client-communication] failed to open summary", error);
@@ -242,6 +281,7 @@ export function CommunicationShell({
 
     const dispose = bridge.onCommand((command: HostCommand) => {
       if (command.type === "navigate") {
+        workspaceNavigationGuard.cancel();
         if (command.presentation) setPresentation(command.presentation);
         if (command.page !== activePageRef.current) {
           WKApp.routeLeft.popToRoot();
@@ -269,8 +309,10 @@ export function CommunicationShell({
       }
 
       if (command.type === "spaceChanged") {
+        workspaceNavigationGuard.cancel();
         pendingTargetRef.current = undefined;
         appTargetRef.current = undefined;
+        workspaceReturnTargetRef.current = undefined;
         if (workspaceTargetRef.current) WKApp.routeRight.popToRoot();
         workspaceTargetRef.current = undefined;
         if (spaceIdRef.current !== command.space.id) summaryScopeRevision.current++;
@@ -297,6 +339,7 @@ export function CommunicationShell({
       }
 
       if (command.type === "sessionRevoked") {
+        workspaceNavigationGuard.cancel();
         WKApp.loginInfo.logout();
         window.location.reload();
         return;
@@ -309,6 +352,10 @@ export function CommunicationShell({
       }
 
       if (command.type === "suspend" || command.type === "resume") {
+        if (command.type === "suspend") {
+          workspaceNavigationGuard.cancel();
+          if (pendingTargetRef.current?.variant === "workspace-group") pendingTargetRef.current = undefined;
+        }
         document.documentElement.dataset.hostVisibility = command.type === "suspend" ? "hidden" : "visible";
         window.dispatchEvent(new CustomEvent(`octobuddy:${command.type}`));
       }
@@ -321,7 +368,7 @@ export function CommunicationShell({
       dispose();
       WKApp.switchToMenuById = undefined;
     };
-  }, [activatePage, initialPage, openPreparedTarget, reportReadyWhenPrepared, runtimeOwned]);
+  }, [activatePage, initialPage, openPreparedTarget, reportReadyWhenPrepared, runtimeOwned, workspaceNavigationGuard]);
 
   useEffect(() => {
     if (runtimeOwned) return;

@@ -52,8 +52,9 @@ export type HostCommand =
 
 export interface NavigationReport {
   page: CommunicationPage;
-  source: "host" | "contact-card" | "group-card" | "notification" | "internal" | "workspace-conversation";
+  source: "host" | "contact-card" | "group-card" | "notification" | "internal" | "workspace-conversation" | "workspace-selection-cancelled";
   channel?: { id: string; type: number };
+  cancelledTarget?: { id: string; type: number };
 }
 
 export type SummaryCapabilityRequest = {

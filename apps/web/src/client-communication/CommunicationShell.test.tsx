@@ -22,6 +22,9 @@ const mocks = vi.hoisted(() => {
     createCurrentEmptyImConversation: vi.fn(),
     loadConversationMembers: vi.fn(async () => [{ uid: "user-1", name: "User 1" }]),
     requestForward: vi.fn(),
+    confirm: vi.fn((_props: { onOk: () => void; onCancel: () => void }) => ({
+      destroy: vi.fn(),
+    })),
     bridge: {
       getBootstrap: vi.fn(),
       reportReady: vi.fn(async () => {}),
@@ -66,6 +69,8 @@ vi.mock("@octo/contacts", () => ({
     return <input aria-label="contacts" value={filter} onChange={(event) => setFilter(event.target.value)} />;
   },
 }));
+
+vi.mock("@octo/base/src/Components/WKModal", () => ({ wkConfirm: mocks.confirm }));
 
 vi.mock("@dmwork/appbot/conversation", () => ({
   renderAppBotConversation: (target: { displayName: string }, channel: unknown) =>
@@ -176,6 +181,131 @@ describe("CommunicationShell", () => {
       return vi.fn();
     });
     WKApp.shared.openChannel = undefined;
+    WKApp.shared.pendingAttachmentGuard = undefined;
+  });
+
+  async function openWorkspaceGroup() {
+    const shell = render(<CommunicationShell bridge={mocks.bridge}
+      initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat", presentation: "conversation",
+      target: { channelId: "group-a", channelType: 2, variant: "workspace-group" },
+    }));
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1));
+    WKApp.shared.openChannel = vi.mocked(WKApp.endpoints.showConversation).mock.calls[0][0];
+    WKApp.shared.pendingAttachmentGuard = () => false;
+    return shell;
+  }
+
+  const switchWorkspaceGroup = () => mocks.command.listener?.({
+    type: "navigate", page: "chat", presentation: "conversation",
+    target: { channelId: "group-b", channelType: 2, variant: "workspace-group" },
+  });
+
+  it("restores the original workspace selection when an attachment warning is cancelled", async () => {
+    await openWorkspaceGroup();
+    act(switchWorkspaceGroup);
+    await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(1));
+    expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
+    act(() => mocks.confirm.mock.calls[0][0].onCancel());
+    await waitFor(() => expect(mocks.bridge.reportNavigation).toHaveBeenCalledWith({
+      page: "chat", source: "workspace-selection-cancelled",
+      channel: { id: "group-a", type: 2 },
+      cancelledTarget: { id: "group-b", type: 2 },
+    }));
+    expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
+    act(switchWorkspaceGroup);
+    await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(2));
+    act(() => mocks.confirm.mock.calls[1][0].onOk());
+    expect(WKApp.endpoints.showConversation).toHaveBeenLastCalledWith(
+      expect.objectContaining({ channelID: "group-b" }), expect.any(Object),
+    );
+  });
+
+  it("guards subgroup navigation without changing the current workspace conversation on cancel", async () => {
+    await openWorkspaceGroup();
+    const open = vi.mocked(WKApp.endpoints.showConversation).mock.calls[0][1]!.workspaceEmbedding!.openConversation;
+    const channel = { channelID: "group-a____topic", channelType: 5 } as Parameters<typeof open>[0];
+    act(() => open(channel));
+    expect(mocks.confirm).toHaveBeenCalledTimes(1);
+    mocks.bridge.reportNavigation.mockClear();
+    act(() => mocks.confirm.mock.calls[0][0].onCancel());
+    await Promise.resolve();
+    expect(mocks.bridge.reportNavigation).not.toHaveBeenCalled();
+    act(() => open(channel));
+    act(() => mocks.confirm.mock.calls[1][0].onOk());
+    await waitFor(() => expect(mocks.bridge.reportNavigation).toHaveBeenCalledWith({
+      page: "chat", source: "workspace-conversation",
+      channel: { id: "group-a____topic", type: 5 },
+    }));
+    expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["suspend", "spaceChanged", "navigate", "unmount"])(
+    "invalidates an attachment confirmation on %s",
+    async (action) => {
+      const shell = await openWorkspaceGroup();
+      act(switchWorkspaceGroup);
+      await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(1));
+      const dialog = mocks.confirm.mock.calls[0][0];
+      act(() => {
+        if (action === "unmount") shell.unmount();
+        else if (action === "spaceChanged") mocks.command.listener?.({
+          type: "spaceChanged", space: { id: "space-b", name: "B" },
+        });
+        else if (action === "navigate") mocks.command.listener?.({ type: "navigate", page: "contacts" });
+        else mocks.command.listener?.({ type: action });
+      });
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+      mocks.bridge.reportNavigation.mockClear();
+      act(() => { dialog.onOk(); dialog.onCancel(); });
+      await Promise.resolve();
+      expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
+      expect(mocks.bridge.reportNavigation).not.toHaveBeenCalled();
+      expect(mocks.confirm.mock.results[0].value.destroy).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("returns to full Messages when entry from a regular conversation is cancelled", async () => {
+    render(<CommunicationShell bridge={mocks.bridge}
+      initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="workspace" onReady={async () => {}} />);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat", target: { channelId: "regular-group", channelType: 2 },
+    }));
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1));
+    WKApp.shared.openChannel = vi.mocked(WKApp.endpoints.showConversation).mock.calls[0][0];
+    WKApp.shared.pendingAttachmentGuard = () => false;
+    act(switchWorkspaceGroup);
+    await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(1));
+    act(() => mocks.confirm.mock.calls[0][0].onCancel());
+    await waitFor(() => expect(mocks.bridge.reportNavigation).toHaveBeenCalledWith({
+      page: "chat", source: "workspace-conversation", channel: { id: "regular-group", type: 2 },
+    }));
+    expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat", presentation: "workspace",
+      target: { channelId: "regular-group", channelType: 2 },
+    }));
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(WKApp.endpoints.showConversation).mock.lastCall?.[1]).toMatchObject({
+      preserveCurrentConversation: true,
+    });
+    expect(mocks.confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not apply the workspace attachment guard to ordinary Messages navigation", async () => {
+    WKApp.shared.pendingAttachmentGuard = () => false;
+    render(<CommunicationShell bridge={mocks.bridge}
+      initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="workspace" onReady={async () => {}} />);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat", target: { channelId: "regular-group", channelType: 2 },
+    }));
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1));
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(vi.mocked(WKApp.endpoints.showConversation).mock.lastCall?.[1]?.preserveCurrentConversation).toBeUndefined();
   });
 
   it("opts into workspace embedding and sends subgroup clicks to full Messages without opening a panel", async () => {
