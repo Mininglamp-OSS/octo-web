@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { useI18n } from "@octo/base";
 import WKApp from "@octo/base/src/App";
@@ -83,7 +83,12 @@ export default function SummaryWorkspace({
     refreshList();
     showList();
   };
-  const markNextHomeCreate = useCallback(() => {
+  // 六审 P1-1：「回首页新建」标记只应由**本工作台创建流产出的任务**的完成来 arm。
+  // 详情视图还会以列表点击 / 深链 / 刷新等方式展示任意任务，那些完成与创建流无关，
+  // 不得清掉用户保存的默认草稿。onSubmit 携带创建流刚产出的 taskId，以此为准。
+  const createdTaskIdsRef = useRef<Set<number>>(new Set());
+  const markNextHomeCreate = useCallback((taskId?: number) => {
+    if (typeof taskId === "number" && !createdTaskIdsRef.current.has(taskId)) return;
     markSummaryWorkbenchNextCreate({
       userId: messagingPort.getCurrentUser().uid,
       spaceId: WKApp.shared.currentSpaceId,
@@ -112,6 +117,7 @@ export default function SummaryWorkspace({
             onCreated={refreshList}
             messaging={messagingPort}
             onSubmit={(taskId) => {
+              createdTaskIdsRef.current.add(taskId);
               refreshList();
               showDetail(taskId);
             }}

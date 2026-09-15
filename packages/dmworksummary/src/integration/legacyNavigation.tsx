@@ -14,6 +14,10 @@ import SummaryDetailPage from "../pages/SummaryDetailPage";
 import SummaryListPage from "../pages/SummaryListPage";
 import SummaryShareDetailPage from "../pages/SummaryShareDetailPage";
 import { getSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
+import {
+  clearDefaultSummaryWorkbenchSession,
+  consumeSummaryWorkbenchNextCreate,
+} from "../features/summaryWorkbench/sessionStorage";
 
 const openingSummaryShares = new Set<string>();
 let summaryHomeEntrySeq = 0;
@@ -42,6 +46,15 @@ function SummaryMenuIcon(_props: { active?: boolean }) {
       </g>
     </svg>
   );
+}
+
+function resetSummaryHomeIfMarked() {
+  const scope = {
+    userId: WKApp.loginInfo.uid,
+    spaceId: WKApp.shared.currentSpaceId,
+  };
+  if (!consumeSummaryWorkbenchNextCreate(scope)) return;
+  clearDefaultSummaryWorkbenchSession(scope);
 }
 
 export function registerSummaryLegacyNavigation(): void {
@@ -122,9 +135,12 @@ export function registerSummaryLegacyNavigation(): void {
   };
 
   WKApp.route.register("/summary", () => <SummaryListPage />);
-  WKApp.route.register("/summary/create", () => (
-    <SummaryWorkbenchCreateEntry source="summary_home" legacyInitialMode="normal" />
-  ));
+  WKApp.route.register("/summary/create", () => {
+    resetSummaryHomeIfMarked();
+    return (
+      <SummaryWorkbenchCreateEntry source="summary_home" legacyInitialMode="normal" />
+    );
+  });
 
   openChatWithReferenceHandler = ((event: CustomEvent) => {
     const task = event.detail;
@@ -162,6 +178,7 @@ export function registerSummaryLegacyNavigation(): void {
       menu.badge = getSummaryAttentionBadge();
       menu.onPress = (reentry?: boolean) => {
         if (!reentry) Dap.shared.track("smart_summary_module_entered", {});
+        resetSummaryHomeIfMarked();
         WKApp.routeLeft.popToRoot();
         if (window.innerWidth <= SMALL_SCREEN_WIDTH) {
           WKApp.routeRight.popToRoot();

@@ -1,7 +1,7 @@
 import React, { Component } from "react";
 import { Spin, Tag, Banner, Popconfirm, Toast } from "@douyinfe/semi-ui";
 import { IconArrowLeft } from "@douyinfe/semi-icons";
-import { Pause, Trash2 } from "lucide-react";
+import { Pause, Play, Trash2 } from "lucide-react";
 import { I18nContext, t, WKButton } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import * as api from "../api/summaryApi";
@@ -32,19 +32,22 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
     state: ScheduleListPageState = { schedules: [], loading: false, error: null, actionPending: false };
     private actionPending = false;
 
-    handleScheduleAction = async (scheduleId: number, action: "pause" | "delete") => {
+    handleScheduleAction = async (scheduleId: number, action: "pause" | "resume" | "delete") => {
         const item = this.state.schedules.find(schedule => schedule.schedule_id === scheduleId);
-        if (this.actionPending || !item || (action === "pause" && !item.is_active)) return;
+        if (this.actionPending || !item ||
+            (action === "pause" && !item.is_active) ||
+            (action === "resume" && item.is_active)) return;
         this.actionPending = true;
         this.setState({ actionPending: true });
         try {
-            if (action === "pause") {
-                await api.toggleSchedule(scheduleId, false);
+            if (action === "pause" || action === "resume") {
+                const nextActive = action === "resume";
+                await api.toggleSchedule(scheduleId, nextActive);
                 this.setState(state => ({
                     schedules: state.schedules.map(schedule => schedule.schedule_id === scheduleId
-                        ? { ...schedule, is_active: false } : schedule),
+                        ? { ...schedule, is_active: nextActive } : schedule),
                 }));
-                Toast.success(t("summary.schedule.paused"));
+                Toast.success(t(nextActive ? "summary.schedule.resumed" : "summary.schedule.paused"));
             } else {
                 await api.deleteSchedule(scheduleId);
                 this.setState(state => ({
@@ -116,9 +119,13 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
                                     {(item.sources ?? []).map(s => s.source_name || s.source_id).join("、") || "-"}
                                 </div>
                                 <div className="summary-schedule-card-actions">
-                                    {item.is_active && <WKButton icon={<Pause size={16} />} iconOnly size="sm" variant="ghost"
-                                        title={translate("summary.schedule.pause")} aria-label={translate("summary.schedule.pause")}
-                                        disabled={actionPending} onClick={() => this.handleScheduleAction(item.schedule_id, "pause")} />}
+                                    {item.is_active
+                                        ? <WKButton icon={<Pause size={16} />} iconOnly size="sm" variant="ghost"
+                                            title={translate("summary.schedule.pause")} aria-label={translate("summary.schedule.pause")}
+                                            disabled={actionPending} onClick={() => this.handleScheduleAction(item.schedule_id, "pause")} />
+                                        : <WKButton icon={<Play size={16} />} iconOnly size="sm" variant="ghost"
+                                            title={translate("summary.schedule.resume")} aria-label={translate("summary.schedule.resume")}
+                                            disabled={actionPending} onClick={() => this.handleScheduleAction(item.schedule_id, "resume")} />}
                                     <Popconfirm title={translate("summary.schedule.deleteTitle")}
                                         content={translate("summary.schedule.deleteContent")}
                                         onConfirm={() => this.handleScheduleAction(item.schedule_id, "delete")}>

@@ -421,6 +421,8 @@
     "enabled": "Enabled",
     "paused": "Paused",
     "pause": "Pause scheduled updates",
+    "resumed": "Resumed",
+    "resume": "Resume scheduled updates",
     "form": {
       "title": "Title",
       "titlePlaceholder": "Scheduled summary title",

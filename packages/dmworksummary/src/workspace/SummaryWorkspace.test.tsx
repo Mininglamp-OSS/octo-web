@@ -221,7 +221,7 @@ describe("SummaryWorkspace", () => {
     });
   });
 
-  it("marks the next summary home entry as fresh when a detail task completes", () => {
+  it("marks the next summary home entry as fresh when a task created through the create flow completes", () => {
     const messaging = {
       getCurrentUser: () => ({ uid: "user-a", displayName: "User A" }),
       loadConversationMembers: vi.fn(async () => []),
@@ -231,6 +231,31 @@ describe("SummaryWorkspace", () => {
       subscribeInvalidation: vi.fn(() => vi.fn()),
     } satisfies SummaryMessagingPort;
 
+    render(<Harness initialRoute={{ view: "list" }} messaging={messaging} />);
+
+    // 创建流：进入 create → 提交产出 task 23 → 详情页展示它 → 完成。
+    fireEvent.click(screen.getByText("create-agent"));
+    fireEvent.click(screen.getByText("submit-create"));
+    expect(screen.getByTestId("workspace-detail")).toHaveTextContent("23");
+    fireEvent.click(screen.getByText("complete-task"));
+
+    expect(storageMocks.markNextCreate).toHaveBeenCalledWith({
+      userId: "user-a",
+      spaceId: "space-a",
+    });
+  });
+
+  it("does not arm the next-home-create marker for completions of tasks the create flow did not produce (六审 P1-1)", () => {
+    const messaging = {
+      getCurrentUser: () => ({ uid: "user-a", displayName: "User A" }),
+      loadConversationMembers: vi.fn(async () => []),
+      openConversation: vi.fn(async () => {}),
+      notifySummaryCompleted: vi.fn(async () => {}),
+      requestForward: vi.fn(),
+      subscribeInvalidation: vi.fn(() => vi.fn()),
+    } satisfies SummaryMessagingPort;
+
+    // 直接以 detail 视图进入（列表点击 / 深链 / 刷新）——该任务的完成与创建流无关。
     render(
       <Harness
         initialRoute={{ view: "detail", taskId: 17 }}
@@ -240,10 +265,7 @@ describe("SummaryWorkspace", () => {
 
     fireEvent.click(screen.getByText("complete-task"));
 
-    expect(storageMocks.markNextCreate).toHaveBeenCalledWith({
-      userId: "user-a",
-      spaceId: "space-a",
-    });
+    expect(storageMocks.markNextCreate).not.toHaveBeenCalled();
   });
 
   it("delegates return-to-chat to the host", async () => {

@@ -41,6 +41,7 @@ import { consumeSummaryScheduleOpen, consumeSummaryDetailAction } from "../utils
 import { chatTypeToOriginChannelType, tryOriginChannelTypeToChatType } from "../utils/channelType";
 import ChatSelectorModal from "../components/ChatSelectorModal";
 import TimeRangePicker from "../components/TimeRangePicker";
+import { startOfLocalDay, endOfLocalDay } from "../components/TimeRangeSelector";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
 import { SUMMARY_INPUT_MAX_LENGTH, AGENT_GENERATION_INPUT_MAX_LENGTH } from "../constants/limits";
@@ -350,6 +351,27 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     // COMPLETED，双双越过边界守卫各发一次。以「已发 completed 的 taskId」为锚，先发者写锚，
     // 后到者 id 相等即跳过——按 task 维度精确一次。task 切换后 id 不同，自然重新计一次。
     private completedTrackedTaskId: number | null = null;
+    // 六审 P1-1：「下一次回首页新建」标记只应由本页**亲历的运行→完成沿**触发，而非任何
+    // 一次「观察到终态」。深链/刷新/从列表点开一条**已完成**的总结时，本页挂载后第一手就
+    // 是 COMPLETED（从未见过非终态），此时 smart_summary_completed 漏斗照常计一次，但绝不
+    // 能 arm 标记——否则用户只是「看」了一条旧总结，下次进首页却被清掉正在编辑的默认草稿。
+    // 以「本 taskId 是否曾被观察到处于非终态」为闸：只有见过活动态后再见 COMPLETED，才是
+    // 一次本页亲历的真实完成，才 arm onCompleted。创建流挂载时任务还在 PENDING（loadDetail
+    // 写入 lastKnownStatus）→ 随后完成，正是要放行的工作台路径。跨 task 切换下标量会串台，
+    // 故按 taskId 记入集合（页面实例生命周期内有限增长）。
+    private observedActiveTaskIds = new Set<number>();
+
+    /** 在每次 lastKnownStatus 写入点登记「观察到非终态」；完成沿判定依据此集合。 */
+    private noteObservedActiveStatus(taskId: number, status: TaskStatus) {
+        if (
+            status !== TaskStatus.COMPLETED &&
+            status !== TaskStatus.FAILED &&
+            status !== TaskStatus.CANCELLED
+        ) {
+            this.observedActiveTaskIds.add(taskId);
+        }
+    }
+
     // Blocking 5（跨 task 串台 / async race）：单调递增的「调度加载序列号」。
     // 每次发起一轮 detail+schedule 加载（loadDetail / 状态切换补拉 / 重新加载）都 bump，
     // loadSchedule 在 setState 前用「发起时捕获的 seq」与最新 seq 比对：不一致说明期间
@@ -386,12 +408,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             if (this.completedTrackedTaskId !== taskId) {
                 this.completedTrackedTaskId = taskId;
                 Dap.shared.track("smart_summary_completed", { result });
-                if (status === TaskStatus.COMPLETED) {
+                // arm「回首页新建」标记只在本页亲历过非终态后再见 COMPLETED（真实的
+                // 运行→完成沿）时；挂载即终态（深链/刷新/点开旧总结）不 arm。见字段注释。
+                if (status === TaskStatus.COMPLETED && this.observedActiveTaskIds.has(taskId)) {
                     this.props.onCompleted?.(taskId);
                 }
             }
-        } else if (this.completedTrackedTaskId === taskId) {
-            this.completedTrackedTaskId = null;
+        } else {
+            // 非终态：记下「本 task 见过活动态」，使随后的 COMPLETED 可被判为真实完成沿；
+            // 同时离开终态时清完成锚（如 regenerate 就地推回 PENDING），使同一 taskId 的
+            // 下一次完成能再计一次漏斗。
+            this.observedActiveTaskIds.add(taskId);
+            if (this.completedTrackedTaskId === taskId) {
+                this.completedTrackedTaskId = null;
+            }
         }
     }
 
@@ -741,6 +771,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 lastKnownStatus: detail.status,
                 workflowGateContent: false,
             }, this.openPendingDetailAction);
+            // 挂载在非终态（创建流挂载时任务尚在 PENDING/PROCESSING）也要登记活动态：
+            // 之后 SSE/轮询观察到的完成沿据此判定为「本页亲历」，才 arm onCompleted（六审 P1-1）。
+            if (typeof detail.task_id === "number") {
+                this.noteObservedActiveStatus(detail.task_id, detail.status);
+            }
             // 八审 🔴2:loadDetail 也是 lastKnownStatus 的写入者(regenerate 走 handleRegenerateConfirm →
             // 就地置 PENDING → this.loadDetail(),不经 summary-status-change 订阅)。此前它是唯一不维护
             // completedTrackedTaskId 去重锚的写入者 → 离开 COMPLETED 时锚不清 → 同一 taskId 的下一次完成
@@ -1153,6 +1188,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             const newStatus = detail.status;
             this.notifyGroupsOnCompletion(previousStatus, detail);
             this.setState({ detail, lastKnownStatus: newStatus });
+            this.noteObservedActiveStatus(requestTaskId, newStatus);
 
             if (previousStatus !== undefined && previousStatus !== newStatus) {
                 // 仅在「运行→完成」状态沿采集一次;原先误用 GET /summaries/:id,失败/进行中/导航等
@@ -1232,6 +1268,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     if (this.taskId !== requestTaskId) return;
                     this.notifyGroupsOnCompletion(prevStatus, detail);
                     this.setState({ detail, lastKnownStatus: detail.status });
+                    this.noteObservedActiveStatus(requestTaskId, detail.status);
                     // 与主状态订阅路径(:handleStatusChangeEvent)同一「运行→完成」沿采集一次。SSE 不可用时
                     // 由本 fallback 轮询检出完成,若此处不发则 completed 漏计;单发/复位统一走
                     // trackSummaryCompletedOnce(两路共用 completedTrackedTaskId 去重,见三审 R3、六审 P1b)。
@@ -2017,9 +2054,22 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const needsConfig = canCompleteGenerationConfig(detail, this.state.configuringForSchedule);
         return {
             topic,
-            ...(needsConfig && !detail?.sources.length ? { sources: regenerateSources } : {}),
+            // TimeRangePicker is date-only, so regenerateSources carry client-side
+            // source_name (unnamed sources degrade to raw group_no/thread ids) and
+            // regenerateRange holds local-midnight Dates. This payload also persists
+            // via PUT /generation-config and seeds every later regeneration and the
+            // schedule built from it, so mirror the create/schedule-save paths:
+            // strip source_name (let the backend re-resolve the authoritative group
+            // name by source_id) and normalize the range to full local-day bounds so
+            // `end` is the end of the selected day, not its midnight (PR#1674 review).
+            ...(needsConfig && !detail?.sources.length ? {
+                sources: regenerateSources.map(({ source_type, source_id }) => ({ source_type, source_id })),
+            } : {}),
             ...(needsConfig && !hasGenerationTimeRange(detail) && regenerateRange.start && regenerateRange.end ? {
-                time_range: { start: regenerateRange.start.toISOString(), end: regenerateRange.end.toISOString() },
+                time_range: {
+                    start: startOfLocalDay(regenerateRange.start).toISOString(),
+                    end: endOfLocalDay(regenerateRange.end).toISOString(),
+                },
             } : {}),
         };
     }

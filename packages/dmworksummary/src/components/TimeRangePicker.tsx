@@ -2,6 +2,7 @@ import React, { useCallback } from "react";
 import { DatePicker, Typography } from "@douyinfe/semi-ui";
 import { useI18n } from "@octo/base";
 import { validateTimeRange } from "../utils/summaryHelpers";
+import { startOfLocalDay, endOfLocalDay } from "./TimeRangeSelector";
 
 const { Text } = Typography;
 
@@ -22,7 +23,13 @@ const TimeRangePicker: React.FC<TimeRangePickerProps> = ({
     const handleChange = useCallback(
         (dates: [Date, Date] | Date | string | undefined) => {
             if (!dates || !Array.isArray(dates) || dates.length < 2) return;
-            const [start, end] = dates;
+            // Semi's date-only dateRange yields two local midnights, so a same-day
+            // pick gives start === end and validateTimeRange (end <= start) would
+            // reject a legitimate one-day range. Normalize to full local-day bounds
+            // first — that both admits the single-day case and hands downstream a
+            // range whose `end` is the end of the selected day (PR#1674 review).
+            const start = startOfLocalDay(dates[0]);
+            const end = endOfLocalDay(dates[1]);
             const errMsg = validateTimeRange(start, end, maxDays);
             setError(errMsg);
             if (!errMsg) {

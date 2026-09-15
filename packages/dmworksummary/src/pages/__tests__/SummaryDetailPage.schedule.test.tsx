@@ -64,6 +64,7 @@ import SummaryDetailPage from '../SummaryDetailPage';
 import { refreshSummaryAttentionBadge } from '../../utils/summaryAttentionBadge';
 import { requestSummaryScheduleOpen, consumeSummaryScheduleOpen, requestSummaryDetailAction, consumeSummaryDetailAction } from '../../utils/summaryDetailIntent';
 import { SummaryMode, TaskStatus, TriggerType } from '../../types/summary';
+import { startOfLocalDay, endOfLocalDay } from '../../components/TimeRangeSelector';
 import { summaryTestIds } from '../../utils/testIds';
 import { SummaryForwardContextExpiredError } from '../../host/forwardErrors';
 import type { SummaryForwardRequest, SummaryMessagingPort } from '../../host/types';
@@ -431,7 +432,12 @@ describe('SummaryDetailPage — Blocking 5: scheduleItem must track current deta
         expect(page.state.showScheduleConfig).toBe(false);
         page.state.regenerateTopic = 'Summarize progress and risks';
         page.state.regenerateSources = [{ source_type: 1, source_id: 'group-1', source_name: 'Project' }];
-        page.state.regenerateRange = { start: new Date('2026-09-01T00:00:00Z'), end: new Date('2026-09-07T00:00:00Z') };
+        // Drive from local-midnight Dates exactly as TimeRangePicker's date-only
+        // onChange now emits, so the local→UTC full-day-boundary normalization
+        // production performs is actually exercised (PR#1674 review P1-3).
+        const rangeStart = new Date(2026, 8, 1);
+        const rangeEnd = new Date(2026, 8, 7);
+        page.state.regenerateRange = { start: rangeStart, end: rangeEnd };
         vi.mocked(api.getSummaryDetail).mockResolvedValue({
             ...page.state.detail!, generation_requirement: page.state.regenerateTopic,
             sources: page.state.regenerateSources,
@@ -440,7 +446,12 @@ describe('SummaryDetailPage — Blocking 5: scheduleItem must track current deta
         await page.handleRegenerateConfirm();
         expect(api.saveGenerationConfig).toHaveBeenCalledWith(1, {
             topic: 'Summarize progress and risks',
-            time_range: { start: '2026-09-01T00:00:00.000Z', end: '2026-09-07T00:00:00.000Z' },
+            // start is the START of the first day, end is the END of the last day —
+            // not the midnights a date-only picker yields.
+            time_range: {
+                start: startOfLocalDay(rangeStart).toISOString(),
+                end: endOfLocalDay(rangeEnd).toISOString(),
+            },
         });
         expect(page.state.showScheduleConfig).toBe(true);
         expect(page.state.scheduleConfig.generationInstruction).toBe('Summarize progress and risks');
@@ -986,7 +997,11 @@ describe('SummaryDetailPage — R3: smart_summary_completed exactly-once under s
         const onCompleted = vi.fn();
         try {
             const page = makePage(1, { onCompleted });
+            // lastKnownStatus 在真实流程里由 loadDetail 写入，后者同时登记「见过活动态」
+            // （observedActiveTaskIds，六审 P1-1 的 arm 闸）。测试手工种状态时要补上同一步，
+            // 才与生产时序一致：见过 PROCESSING → 再见 COMPLETED 才 arm onCompleted。
             page.state = { ...(page.state as any), lastKnownStatus: 2 /* PROCESSING */ };
+            (page as any).noteObservedActiveStatus(1, 2);
 
             // 两路并发启动,但 detail 尚未兑现 → 都停在 await getSummaryDetail。
             const p1 = (page as any).handleStatusChangeEvent(
@@ -1146,6 +1161,60 @@ describe('SummaryDetailPage — R3: smart_summary_completed exactly-once under s
         } finally {
             track.mockRestore();
         }
+    });
+
+    // ─── 六审 P1-1：onCompleted（工作台「回首页新建」标记）只由本页亲历的运行→完成沿触发 ───
+    // 正向：创建流挂载时任务尚在 PENDING（loadDetail 写 lastKnownStatus 并登记活动态），
+    // 随后状态订阅观察到 PENDING→COMPLETED → 必须 arm。这是工作台 normal-mode 创建流
+    // 依赖完成时 arming 的唯一路径，不能被「挂载即终态」守卫误杀。
+    it('arms onCompleted for a completion the page witnessed from a non-terminal mount (create-flow shape, 六审 P1-1)', async () => {
+        const onCompleted = vi.fn();
+        const page = makePage(1, { onCompleted });
+        (page as any).startFallbackPoll = () => {};
+        (page as any).stopFallbackPoll = () => {};
+        (page as any).stopSummaryStream = () => {};
+        (page as any).stopTeamSummaryStream = () => {};
+        (page as any).publishDetailTitle = () => {};
+        (page as any).loadSchedule = () => {};
+        (page as any).loadVersions = () => {};
+
+        // 挂载：首屏拉到 PROCESSING（非终态）。
+        vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 2 }) as any);
+        await (page as any).loadDetail();
+        expect(onCompleted).not.toHaveBeenCalled();
+
+        // 完成：状态订阅入口观察到 PROCESSING → COMPLETED。
+        vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 }) as any);
+        await (page as any).handleStatusChangeEvent(
+            new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+        );
+
+        expect(onCompleted).toHaveBeenCalledTimes(1);
+        expect(onCompleted).toHaveBeenCalledWith(1);
+    });
+
+    // 反向：深链/刷新/列表点开一条已完成的总结 → 挂载即终态，从未见过非终态 →
+    // 即使后续有状态事件也不得 arm（否则用户只是「看」旧总结，下次进首页被清掉默认草稿）。
+    it('does NOT arm onCompleted when the page mounts directly onto a COMPLETED summary (deep-link shape, 六审 P1-1)', async () => {
+        const onCompleted = vi.fn();
+        const page = makePage(1, { onCompleted });
+        (page as any).startFallbackPoll = () => {};
+        (page as any).stopFallbackPoll = () => {};
+        (page as any).stopSummaryStream = () => {};
+        (page as any).stopTeamSummaryStream = () => {};
+        (page as any).publishDetailTitle = () => {};
+        (page as any).loadSchedule = () => {};
+        (page as any).loadVersions = () => {};
+
+        vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 }) as any);
+        await (page as any).loadDetail();
+        // 同一 task 再来一次终态事件（如迟到重放）也不得 arm。
+        vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 }) as any);
+        await (page as any).handleStatusChangeEvent(
+            new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+        );
+
+        expect(onCompleted).not.toHaveBeenCalled();
     });
 });
 
