@@ -5,13 +5,33 @@ import Lightbox, {
   isImageSlide,
   useLightboxState,
 } from "yet-another-react-lightbox";
-import type { Slide, ZoomRef } from "yet-another-react-lightbox";
+import type { Slide, SlideImage, ZoomRef } from "yet-another-react-lightbox";
 import Zoom from "yet-another-react-lightbox/plugins/zoom";
 import "yet-another-react-lightbox/styles.css";
-import { t } from "../../i18n";
+import { useI18n } from "../../i18n";
 import { copyImageToClipboard } from "../../Utils/clipboard";
 import { downloadFile } from "../../Utils/download";
 import "./index.css";
+
+export interface ImagePreviewSlide extends SlideImage {
+  filename?: string;
+}
+
+function ImagePreviewCounter() {
+  const { currentIndex, slides } = useLightboxState();
+  const { t } = useI18n();
+  return (
+    <span
+      className="wk-image-preview-counter"
+      role="status"
+      aria-label={t("base.message.imagePreview.position", {
+        values: { current: currentIndex + 1, total: slides.length },
+      })}
+    >
+      {currentIndex + 1} / {slides.length}
+    </span>
+  );
+}
 
 interface ImagePreviewToolbarProps {
   zoom: ZoomRef;
@@ -26,10 +46,15 @@ export function ImagePreviewToolbar({
   onReset,
   onRotate,
 }: ImagePreviewToolbarProps) {
+  const { t } = useI18n();
   const { currentSlide } = useLightboxState();
   const [copying, setCopying] = React.useState(false);
   const src =
     currentSlide && isImageSlide(currentSlide) ? currentSlide.src : "";
+  const currentFilename =
+    (currentSlide as ImagePreviewSlide | undefined)?.filename ||
+    filename ||
+    "image.png";
 
   const handleCopy = async () => {
     if (!src) return;
@@ -108,7 +133,7 @@ export function ImagePreviewToolbar({
         aria-label={t("base.filePreview.download")}
         title={t("base.filePreview.download")}
         disabled={!src}
-        onClick={() => src && downloadFile(src, filename || "image.png")}
+        onClick={() => src && downloadFile(src, currentFilename)}
       >
         <Download size={19} />
       </button>
@@ -122,7 +147,10 @@ interface ImagePreviewLightboxProps {
   slides: readonly Slide[];
   index?: number;
   filename?: string;
+  /** @deprecated Navigation is determined by slides.length. */
   isMulti?: boolean;
+  showCounter?: boolean;
+  onView?: (index: number) => void;
 }
 
 export function ImagePreviewLightbox({
@@ -131,8 +159,10 @@ export function ImagePreviewLightbox({
   slides,
   index,
   filename,
-  isMulti,
+  showCounter = false,
+  onView,
 }: ImagePreviewLightboxProps) {
+  const { t } = useI18n();
   const [rotation, setRotation] = React.useState(0);
   const resetRotation = () => setRotation(0);
 
@@ -149,10 +179,18 @@ export function ImagePreviewLightbox({
       plugins={[Zoom]}
       labels={{
         Close: t("base.common.close"),
+        Previous: t("base.message.imagePreview.previous"),
+        Next: t("base.message.imagePreview.next"),
         "Zoom in": t("base.filePreview.pdf.zoomIn"),
         "Zoom out": t("base.filePreview.pdf.zoomOut"),
       }}
-      toolbar={{ buttons: ["zoom", "close"] }}
+      toolbar={{
+        buttons: [
+          ...(showCounter ? [<ImagePreviewCounter key="counter" />] : []),
+          "zoom",
+          "close",
+        ],
+      }}
       zoom={{
         minZoom: 0.25,
         maxZoomPixelRatio: 4,
@@ -169,13 +207,22 @@ export function ImagePreviewLightbox({
         },
       }}
       controller={{ closeOnBackdropClick: true }}
-      on={{ entering: resetRotation, view: resetRotation }}
+      // Let the viewer handle keys first, then keep them out of the chat editor
+      // and the parent modal's document-level Escape listener.
+      portal={{ container: { onKeyDown: (event) => event.stopPropagation() } }}
+      on={{
+        entering: resetRotation,
+        view: ({ index: currentIndex }) => {
+          resetRotation();
+          onView?.(currentIndex);
+        },
+      }}
       styles={{
         root: { "--yarl__image_preview_rotation": `${rotation}deg` },
       }}
       render={{
-        buttonPrev: isMulti ? undefined : () => null,
-        buttonNext: isMulti ? undefined : () => null,
+        buttonPrev: slides.length > 1 ? undefined : () => null,
+        buttonNext: slides.length > 1 ? undefined : () => null,
         buttonZoom: (zoom) => (
           <ImagePreviewToolbar
             zoom={zoom}

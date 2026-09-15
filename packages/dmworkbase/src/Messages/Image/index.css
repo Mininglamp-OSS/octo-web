@@ -99,3 +99,15 @@
   margin: 0 var(--wk-sp-1);
   background: color-mix(in srgb, var(--wk-color-white) 25%, transparent);
 }
+
+.wk-image-preview-counter {
+  position: absolute;
+  top: var(--wk-sp-4);
+  left: var(--wk-sp-4);
+  padding: var(--wk-sp-1) var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-brand-primary);
+  color: var(--wk-color-white);
+  font: var(--wk-text-body-medium);
+  font-variant-numeric: tabular-nums;
+}

@@ -1,12 +1,22 @@
 // @vitest-environment jsdom
 
 import React from "react";
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ChannelTypeGroup, MessageContentType } from "wukongimjssdk";
 import { MessageContentTypeConst } from "../../../Service/Const";
 import { I18nContext } from "../../../i18n";
 import MergeforwardMessageList from "../index";
+import WKApp from "../../../App";
+
+vi.mock("../../../Messages/Image/ImagePreview", () => ({
+  ImagePreviewLightbox: ({ open, slides, index, close, onView }: any) => open ? <div data-testid="image-preview">
+    <span data-testid="image-position">{index + 1}/{slides.length}</span>
+    <span data-testid="image-filename">{slides[index]?.filename}</span>
+    <button onClick={close}>close image</button>
+    <button onClick={() => onView(index + 1)}>next image</button>
+  </div> : null,
+}));
 
 vi.mock("react-virtuoso", () => ({
   Virtuoso: () => null,
@@ -82,6 +92,33 @@ function renderList(
 }
 
 describe("MergeforwardMessageList mention rendering", () => {
+  it("opens grouped forwarded images at the clicked attachment and resets on hide or root replacement", () => {
+    vi.mocked(WKApp.dataSource.commonDataSource.getImageURL).mockImplementation((url) => url);
+    const content: any = {
+      channelType: ChannelTypeGroup, users: [], msgs: [
+        { contentType: MessageContentType.image, content: { url: "a.png", width: 20, height: 10, name: "a.png" }, messageID: "a", fromUID: "sender", timestamp: 1 },
+        { contentType: MessageContentType.image, content: { images: [
+          { url: "b.png", width: 20, height: 10, name: "b.png" },
+          { url: "c.png", width: 20, height: 10, name: "c.png" },
+        ] }, messageID: "group", fromUID: "sender", timestamp: 2 },
+      ],
+    };
+    const tree = (visible = true, source = content) => <I18nContext.Provider value={i18nValue as any}>
+      <MergeforwardMessageList mergeforwardContent={source} visible={visible} />
+    </I18nContext.Provider>;
+    const view = render(tree());
+    fireEvent.click(view.container.querySelector('img[src="b.png"]')!);
+    expect(screen.getByTestId("image-position").textContent).toBe("2/3");
+    fireEvent.click(screen.getByText("next image"));
+    expect(screen.getByTestId("image-filename").textContent).toBe("c.png");
+    view.rerender(tree(false));
+    expect(screen.queryByTestId("image-preview")).toBeNull();
+    view.rerender(tree());
+    expect(screen.queryByTestId("image-preview")).toBeNull();
+    fireEvent.click(view.container.querySelector('img[src="a.png"]')!);
+    view.rerender(tree(true, { ...content }));
+    expect(screen.queryByTestId("image-preview")).toBeNull();
+  });
   it("restores member mention styling from forwarded text mention entities", () => {
     const { container, onMentionClick } = renderList({
       mention: { all: false },

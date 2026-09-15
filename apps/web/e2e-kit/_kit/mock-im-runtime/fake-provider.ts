@@ -2,7 +2,8 @@
  * mock-im-runtime — fake WKSDK provider。
  *
  * 覆盖 WKSDK.shared().config.provider 的全部 *Callback,数据完全从 seed 派发。
- * 不发任何真实 HTTP,不连 WebSocket。install 后 IMProvider 视为已 Connected。
+ * 历史和频道数据不发真实 HTTP，不连 WebSocket。媒体上传沿用真实任务，
+ * 由场景的 MSW handlers 接管 HTTP。install 后 IMProvider 视为已 Connected。
  *
  * 与真实 provider (`src/features/base/providers/im-callbacks.ts`) 的关系:
  *   - 真实 provider 走 HTTP + SDK 内部推送
@@ -37,6 +38,7 @@ import WKSDK, {
   Subscriber,
 } from "wukongimjssdk";
 import { WKApp } from "@octo/base";
+import { MediaMessageUploadTask } from "../../../../../packages/dmworkdatasource/src/task";
 import type {
   MockConversationSeed,
   MockGroupSeed,
@@ -155,6 +157,11 @@ export function installFakeProvider(seed: MockSeed): void {
 
   // 3. 覆盖 provider 全部 callback
   const provider = sdk.config.provider;
+
+  // E2E skips DataSourceModule's callback registration. Keep the actual media
+  // task so upload cases exercise serialization and status updates; HTTP is
+  // intercepted by each case's MSW handlers, while IM stays disconnected.
+  provider.messageUploadTaskCallback = (message) => new MediaMessageUploadTask(message);
 
   provider.syncConversationsCallback = async () =>
     seed.conversations.map((conversation) => toConversation(conversation, seed.messages ?? []));
