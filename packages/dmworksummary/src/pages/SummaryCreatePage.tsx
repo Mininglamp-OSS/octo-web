@@ -1126,7 +1126,6 @@ export default class SummaryCreatePage extends Component<
                 trigger_mode: 'agent',
             });
             Toast.success(t('summary.create.agentSummaryCreated'));
-
             // 保存成功 → 销毁 chat session 工作台:
             //   1. 清 localStorage 里的 session_id(不然下次进 agent 会误恢复空 session)
             //   2. 重置组件内 state(messages/sessionId/referencedTask)

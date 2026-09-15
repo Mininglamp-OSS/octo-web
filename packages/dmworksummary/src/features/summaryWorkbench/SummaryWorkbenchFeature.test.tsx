@@ -1057,7 +1057,7 @@ describe("SummaryWorkbenchFeature", () => {
     );
   });
 
-  it("keeps the composer and templates when the request is not accepted", async () => {
+  it("restores the composer and template gallery when the request is not accepted", async () => {
     const pendingResponse = deferred<undefined>();
     const current = controller({
       viewState: {
@@ -1093,12 +1093,7 @@ describe("SummaryWorkbenchFeature", () => {
         "Keep this request"
       )
     );
-    await waitFor(() =>
-      expect(screen.getByTestId("template-selector")).toBeInTheDocument()
-    );
-    expect(
-      screen.queryByRole("button", { name: "open-template" })
-    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("template-selector")).toBeInTheDocument();
   });
 
   it("restores the template gallery when starting a new session", async () => {

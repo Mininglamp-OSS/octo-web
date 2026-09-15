@@ -11,6 +11,8 @@
  * 或切 Space 才自愈。
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+vi.mock("../../components/ChatSelectorModal", () => ({ default: () => null }));
+vi.mock("../../components/TimeRangePicker", () => ({ default: () => null }));
 
 vi.mock('wukongimjssdk', () => ({
     Channel: class {

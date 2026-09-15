@@ -197,7 +197,7 @@
     "titleRequired": "Title is required",
     "saving": "Saving...",
     "noOutputToSave": "No summary content to save yet. Please chat with AI first to generate content.",
-    "agentSummaryCreated": "AI summary saved",
+    "agentSummaryCreated": "Summary saved",
     "savedReferenceLostRetry": "Save failed: please re-select the referenced summary, or start a new session",
     "savedNoOriginRetry": "Save failed: the referenced summary has no source channel, and this session hasn't read any channel either. Pick a referenced summary with a source, or start a new session and let the AI read a channel first"
   },
@@ -407,12 +407,10 @@
   },
   "schedule": {
     "pageTitle": "Scheduled summaries",
-    "new": "New",
     "empty": "No scheduled summaries",
-    "createFirst": "Create first scheduled task",
     "fallbackTitle": "Scheduled task #{{id}}",
     "deleteTitle": "Confirm deletion",
-    "deleteContent": "Delete this scheduled summary?",
+    "deleteContent": "Delete this schedule?",
     "createModalTitle": "New scheduled summary",
     "editModalTitle": "Edit scheduled summary",
     "createSuccess": "Scheduled summary created",
@@ -420,6 +418,9 @@
     "deleted": "Deleted",
     "enabled": "Enabled",
     "paused": "Paused",
+    "pause": "Pause scheduled updates",
+    "resumed": "Resumed",
+    "resume": "Resume scheduled updates",
     "form": {
       "title": "Title",
       "titlePlaceholder": "Scheduled summary title",
@@ -520,6 +521,7 @@
     "botCreatedByFor": "Created by {{bot}} on behalf of {{owner}}",
     "contentTitle": "📝 Summary content",
     "edited": "Edited",
+    "editUnavailable": "Editing is unavailable. Check that the summary has content, you have permission, and generation is not in progress.",
     "generatedAt": "Generated {{time}}",
     "lastEditedAt": "Last edited {{time}}",
     "mySummary": "My summary",
@@ -653,9 +655,22 @@
     "convertErrEncoding": "The content encoding is invalid and cannot be converted",
     "convertErrDocType": "This document type does not support body import"
   },
+  "generation": {
+    "sources": "Summary sources",
+    "selectSources": "Select chats",
+    "timeRange": "Time range",
+    "savedByDefault": "These settings will be saved for future use.",
+    "scheduleUpdate": "Scheduled updates",
+    "continueSchedule": "Save and configure scheduled updates",
+    "completeConfig": "Complete summary settings",
+    "serviceUpgradeRequired": "Update the summary service to use this feature.",
+    "schedulePermissionDenied": "You do not have permission to schedule updates for this summary.",
+    "scheduleSourceFixed": "Scheduled updates use this summary's existing chats. Chats cannot be added or replaced. Create a summary with the required sources first.",
+    "scheduleDetailOnly": "Create scheduled updates from the corresponding summary detail page. Existing schedules can still be edited here."
+  },
   "summaryCard": {
-    "agentType": "Agent summary",
-    "quickType": "Quick summary",
+    "personalType": "Personal summary",
+    "teamType": "Team summary",
     "createdBy": "Created by {{name}}",
     "deleteTitle": "Confirm deletion",
     "deleteContent": "Delete \"{{title}}\"? Historical versions will also be removed.",
@@ -682,9 +697,7 @@
     "confirmDeleteTitle": "Delete?",
     "confirmDeleteDesc": "This cannot be undone.",
     "confirmLeaveTitle": "Leave?",
-    "confirmLeaveDesc": "You will no longer participate in this summary.",
-    "scheduledType": "Scheduled summary",
-    "multiPersonType": "Multi-person summary"
+    "confirmLeaveDesc": "You will no longer participate in this summary."
   },
   "editor": {
     "saveSuccess": "Saved",

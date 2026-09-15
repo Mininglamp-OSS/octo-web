@@ -52,7 +52,7 @@ events by the negative `channelUniqueness` / FetchRules guards asserting they mu
 appear in the path channel. Genuinely unpinned positive fires are the honest gap this
 table surfaces for follow-up.
 
-Total rows in this table: **264** (`grep -c '^| \`'` — includes the 4 infra rows; removed-rule
+Total rows in this table: **265** (`grep -c '^| \`'` — includes the 4 infra rows; removed-rule
 tombstones kept as ~~struck~~ history sit outside this grep and are not counted). §1–§5 cover the im/base + summary +
 market events; §6 covers the fleet (Loop) + doc central-mapping events wired by dap350
 (PR #1443), which the T1 re-review confirmed are captured by the shared octo-web bundle and
@@ -201,6 +201,7 @@ B-docs and are not restated here.
 | `smart_summary_theme_input` | imperative | Topic textarea `onChange` after 600ms debounce, only when non-empty; content never collected; PLUS workbench composer `onInputChange` after 600ms debounce (SummaryWorkbenchFeature, timer cleared on unmount) | Empty topic; fire after unmount (debounce timer cleared on unmount); fire after submit (timer cleared in `handleSubmit` — user已进入生成,八审 P2) | Debounce timer reset per keystroke, cleared on unmount and on submit | — |
 | `smart_summary_timer_configured` | helper | `createSummarySchedule` (POST `/summary-schedules`) and `updateSummarySchedule` (PUT `/summary-schedules/:id`) when the response envelope `code===0`; both create+edit of a scheduled summary funnel here | `code!==0` / missing code (logical failure) | Api-layer sink; `code===0` gate | — |
 | `smart_summary_timer_dialog_opened` | imperative | `openScheduleModal` — opening the scheduled-summary config dialog; props empty | — | — | — |
+| `smart_summary_generation_config_saved` | helper | `saveGenerationConfig` (PUT `/summaries/:id/generation-config`) after envelope `code===0`; props empty | Failed/missing-code envelope or transport error; never counted as timer configuration or generation | Api-layer success gate | summaryApi.test.ts |
 | `smart_summary_version_restored` | helper | `restoreSummaryVersion` (POST `/summaries/:taskId/versions/:resultId/restore`, by-group) **and** `restorePersonalSummaryVersion` (POST `/summaries/:taskId/personal-versions/:versionId/restore`, by-person) when the response envelope `code===0` — both scopes of the same restore action feed one event (mirrors `smart_summary_regenerated` by-group/by-person) | `code!==0` / missing code (logical failure) | Api-layer sink; `code===0` gate | summaryApi.test.ts — DAP-110 Stage 2 gate (both team + personal) |
 | `thread_expanded` | imperative | Fold-session toggle `onClick` when `wasExpanded===false` (expanding); props empty | Collapsing (wasExpanded true) | Expand-edge only | — |
 

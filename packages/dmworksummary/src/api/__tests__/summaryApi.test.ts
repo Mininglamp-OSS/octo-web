@@ -72,6 +72,20 @@ describe('summaryApi interceptors', () => {
   });
 });
 
+describe('generation configuration analytics', () => {
+    it.each([0, 1, null, undefined])('records only an accepted config save (code=%s)', async (code) => {
+        const { Dap } = await import('@octo/base');
+        const { saveGenerationConfig } = await import('../summaryApi');
+        const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+        try {
+            mockPut.mockResolvedValueOnce({ data: { code, data: { task_id: 9 } } });
+            await saveGenerationConfig(9, { topic: 'private user instruction' });
+            expect(track.mock.calls.filter(call => call[0] === 'smart_summary_generation_config_saved')).toHaveLength(code === 0 ? 1 : 0);
+            expect(track.mock.calls.some(call => ['smart_summary_timer_configured', 'smart_summary_regenerated'].includes(call[0]))).toBe(false);
+            expect(JSON.stringify(track.mock.calls)).not.toContain('private user instruction');
+        } finally { track.mockRestore(); }
+    });
+});
 // The summary service lives at <origin>/summary/api/v1. On Web, apiClient.apiURL
 // is relative ("/api/v1/") so same-origin requests work with an empty baseURL.
 // In the extension/Electron the page origin is chrome-extension:// / app://, so
