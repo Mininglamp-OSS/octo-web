@@ -219,7 +219,7 @@ describe("waitForMockInterception", () => {
     );
     // 路径一旦挪到 /api、/summary/api/v1 之类前缀下，没拦到的那一发就会经由 vite
     // proxy 出去，在 e2e 的 proxy-error 计数上留一笔——探针制造出它本要消除的东西。
-    for (const proxied of ["/api/", "/mail-api/", "/summary/api/v1", "/market/api/v1", "/fleet/api/v1"]) {
+    for (const proxied of ["/api/", "/mail-api/", "/summary/api/v1", "/market/api/v1", "/fleet/api/v1", "/agentworker/api/"]) {
       expect(MSW_PROBE_PATH.startsWith(proxied)).toBe(false);
     }
   });

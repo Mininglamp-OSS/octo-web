@@ -98,6 +98,12 @@ export MAIL_API_URL
 AGENT_MAIL_API_URL="${AGENT_MAIL_API_URL%/}"
 export AGENT_MAIL_API_URL
 
+# codeworker gateway origin for browser runtime management. The complete
+# /agentworker/api/ request path is preserved. Blank yields a JSON 503.
+: "${CODEWORKER_URL:=}"
+CODEWORKER_URL="${CODEWORKER_URL%/}"
+export CODEWORKER_URL
+
 : "${MAIL_CLIENT_MAX_BODY_SIZE:=50m}"
 case "$MAIL_CLIENT_MAX_BODY_SIZE" in
     *[kKmMgG]) mail_size_number=${MAIL_CLIENT_MAX_BODY_SIZE%?} ;;
@@ -124,7 +130,7 @@ case "$NGINX_RESOLVER" in
 esac
 export NGINX_RESOLVER
 
-envsubst '${API_URL} ${SUMMARY_API_URL} ${MARKET_API_URL} ${DRIVE_API_URL} ${FLEET_API_URL} ${TRACK_API_URL} ${MAIL_API_URL} ${AGENT_MAIL_API_URL} ${MAIL_CLIENT_MAX_BODY_SIZE} ${NGINX_RESOLVER} ${DOCS_ASSET_CSP_ORIGIN} ${DOC_APP_URL} ${DOCS_BACKEND_URL}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
+envsubst '${API_URL} ${SUMMARY_API_URL} ${MARKET_API_URL} ${DRIVE_API_URL} ${FLEET_API_URL} ${TRACK_API_URL} ${MAIL_API_URL} ${AGENT_MAIL_API_URL} ${CODEWORKER_URL} ${MAIL_CLIENT_MAX_BODY_SIZE} ${NGINX_RESOLVER} ${DOCS_ASSET_CSP_ORIGIN} ${DOC_APP_URL} ${DOCS_BACKEND_URL}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
 
 
 exec "$@"

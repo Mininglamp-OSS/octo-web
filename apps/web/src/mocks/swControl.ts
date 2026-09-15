@@ -71,7 +71,7 @@ export async function waitForServiceWorkerControl(
 /**
  * 探针路径。刻意选一个【不在任何 vite proxy 前缀下】的路径
  * （proxy 配的是 /mail-api/、/api/v1/docs、/summary/api/v1、/market/api/v1、
- * /fleet/api/v1），这样探针自己万一没被拦到，也只会落到 SPA fallback 上，
+ * /fleet/api/v1、/agentworker/api/），这样探针自己万一没被拦到，也只会落到 SPA fallback 上，
  * 绝不会在 e2e 的 "http proxy error" 计数里留一笔——探针不该制造它要消除的东西。
  */
 export const MSW_PROBE_PATH = "/__msw_probe__";

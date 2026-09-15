@@ -45,7 +45,9 @@ function normalizeOptionalElectronUpdaterUrl(value: string): string {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_");
+  const codeworkerEnv = loadEnv(mode, process.cwd(), "CODEWORKER_");
   const apiUrl = env.VITE_API_URL;
+  const codeworkerUrl = codeworkerEnv.CODEWORKER_URL || "http://localhost:8091";
   const mailApiUrl = env.VITE_MAIL_API_URL || apiUrl || "http://127.0.0.1:8080";
   const agentMailApiUrl =
     env.VITE_AGENT_MAIL_API_URL || "http://127.0.0.1:8090";
@@ -325,6 +327,14 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
           rewrite: (path: string) => path.replace(/^\/market/, ""),
+        },
+        // Browser management uses the local gateway's complete
+        // /agentworker/api/v1/* path, including WebSocket upgrades.
+        "/agentworker/api/": {
+          target: codeworkerUrl,
+          changeOrigin: true,
+          secure: false,
+          ws: true,
         },
         // Loop (fleet) service API — 真实 multica-server/fleet 联调。
         // dev fleet 在 127.0.0.1:8091 直接提供完整 /fleet/api/v1/... 路径（不 strip）。

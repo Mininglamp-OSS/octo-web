@@ -37,11 +37,30 @@ describe('nginx envsubst allowlist covers every template placeholder (P1-1)', ()
 
     it('template references at least the known upstream vars (sanity)', () => {
         // 防止正则写崩后"空集 ⊆ 空集"假绿:模板里这些占位符必须真的被采到。
-        expect(tplVars).toEqual(expect.arrayContaining(['API_URL', 'TRACK_API_URL']));
+        expect(tplVars).toEqual(expect.arrayContaining(['API_URL', 'TRACK_API_URL', 'CODEWORKER_URL']));
     });
 
     it('every ${VAR} in nginx.conf.template is in the envsubst allowlist', () => {
         const missing = tplVars.filter((v) => !allowVars.includes(v));
         expect(missing).toEqual([]);
+    });
+
+    it('keeps the agentworker facade path and both auth modes intact', () => {
+        const tpl = fs.readFileSync(path.resolve(__dirname, '../../../../nginx.conf.template'), 'utf-8');
+        expect(tpl).toContain('location /agentworker/api/');
+        expect(tpl).toContain('proxy_pass $codeworker_url$request_uri;');
+        expect(tpl).not.toContain('rewrite ^/agentworker/');
+        expect(tpl).toContain('proxy_set_header token $http_token;');
+        expect(tpl).toContain('proxy_set_header X-Space-ID $http_x_space_id;');
+        expect(tpl).toContain('proxy_set_header Authorization $http_authorization;');
+        expect(tpl).toContain('proxy_set_header Upgrade $http_upgrade;');
+    });
+
+    it('keeps the Vite agentworker path intact when proxying through the local gateway', () => {
+        const viteConfig = fs.readFileSync(path.resolve(__dirname, '../../vite.config.ts'), 'utf-8');
+        const agentworkerProxy = viteConfig.match(/"\/agentworker\/api\/":\s*\{([\s\S]*?)\n\s*\},/);
+        expect(viteConfig).toContain('CODEWORKER_URL || "http://localhost:8091"');
+        expect(agentworkerProxy?.[1]).toContain('target: codeworkerUrl');
+        expect(agentworkerProxy?.[1]).not.toContain('rewrite:');
     });
 });

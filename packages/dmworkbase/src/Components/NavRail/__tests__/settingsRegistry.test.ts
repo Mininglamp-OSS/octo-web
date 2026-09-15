@@ -21,6 +21,7 @@ describe("settings registry", () => {
       "voice",
       "shortcuts",
       "devices",
+      "runtimes",
       "about",
     ]);
   });
@@ -40,6 +41,7 @@ describe("settings registry", () => {
       "trusted-domains",
       "shortcuts",
       "devices",
+      "runtimes",
       "about",
     ]);
   });

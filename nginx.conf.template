@@ -13,6 +13,11 @@ map $http_authorization $agent_mail_authorization {
         ~*^Bearer\ omb_     $http_authorization;
 }
 
+map $http_upgrade $codeworker_connection_upgrade {
+        default upgrade;
+        ''      close;
+}
+
 server {
         listen       80;
         server_name  localhost;
@@ -25,6 +30,9 @@ server {
         set $market_api_url "${MARKET_API_URL}";
         set $mail_api_url "${MAIL_API_URL}";
         set $agent_mail_api_url "${AGENT_MAIL_API_URL}";
+        # codeworker serves the user-visible runtime registry and the
+        # device enrollment/daemon WebSocket surface behind one stable prefix.
+        set $codeworker_url "${CODEWORKER_URL}";
         # octo-fleet (FLEET_API_URL) upstream for the browser-originated
         # /fleet/api/v1/* calls (Loop workspace/runtime pickers in the expert
         # market). Runtime variable for the same reason as the others: blank /
@@ -270,6 +278,34 @@ server {
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             client_max_body_size 100m;
+        }
+
+        # octo-harness runtime enrollment, registry, and daemon transport.
+        # The browser sends the existing human Token + X-Space-ID headers;
+        # octo-harness later uses Authorization for device enrollment and WSS.
+        location /agentworker/api/ {
+            default_type application/json;
+            if ($codeworker_url = "") {
+                return 503 '{"status":503,"msg":"codeworker is not configured"}';
+            }
+            resolver ${NGINX_RESOLVER} ipv6=off valid=30s;
+            # The gateway owns the complete /agentworker/api/v1/* route.
+            proxy_pass $codeworker_url$request_uri;
+            proxy_http_version 1.1;
+            proxy_buffering off;
+            proxy_cache off;
+            proxy_read_timeout 3600s;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $codeworker_connection_upgrade;
+            proxy_set_header token $http_token;
+            proxy_set_header X-Space-ID $http_x_space_id;
+            proxy_set_header Authorization $http_authorization;
+            proxy_set_header Cookie "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            client_max_body_size 10m;
         }
 
         # octo-fleet service API — the expert market's Loop pickers call
