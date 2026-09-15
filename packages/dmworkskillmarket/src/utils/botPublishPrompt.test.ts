@@ -22,8 +22,9 @@ describe("getBotPublishPrompt", () => {
     expect(prompt).toContain("按 major/minor/patch 分段数字比较");
     expect(prompt).toContain("版本低于 `0.15.0`");
     expect(prompt).toContain(
-      "npm install -g @mininglamp-oss/octo-cli@'>=0.15.0'"
+      'npm install -g "@mininglamp-oss/octo-cli@>=0.15.0"'
     );
+    expect(prompt).not.toContain("@mininglamp-oss/octo-cli@'>=0.15.0'");
     expect(prompt).not.toContain("@mininglamp-oss/octo-cli@^0.15.0");
     expect(prompt).not.toContain("@mininglamp-oss/octo-cli@latest");
     expect(prompt).toContain("先询问用户是否更新/安装 `octo-cli`");
