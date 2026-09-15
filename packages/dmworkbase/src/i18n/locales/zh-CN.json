@@ -1079,6 +1079,7 @@
   "messageBase.error.addBotFriendFirst": "请先添加好友后再与该机器人对话",
   "messageBase.error.muted": "你已被禁言或全员禁言",
   "messageBase.error.removedFromGroup": "您已被踢出群聊。",
+  "messageBase.error.outcomeUnknown": "发送结果暂未确认，请查看最新消息记录后再决定是否重发。",
   "messageBase.error.system": "系统错误",
   "messageBase.resendConfirm.cancel": "否",
   "messageBase.resendConfirm.ok": "是",

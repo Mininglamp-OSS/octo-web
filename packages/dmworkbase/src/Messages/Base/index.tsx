@@ -1,4 +1,5 @@
 import WKSDK from "wukongimjssdk";
+import { SEND_OUTCOME_UNKNOWN } from "../../im-runtime/sendRecovery";
 import { ChannelInfoListener } from "wukongimjssdk";
 import {
   Channel,
@@ -286,6 +287,8 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
   getMessageErrorReason() {
     const { message } = this.props;
     switch (message.reasonCode) {
+      case SEND_OUTCOME_UNKNOWN:
+        return this.context.t("base.messageBase.error.outcomeUnknown");
       case MessageReasonCode.reasonSubscriberNotExist:
         return this.context.t("base.messageBase.error.removedFromGroup");
       case MessageReasonCode.reasonNotAllowSend:
@@ -490,7 +493,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
             className={"wk-message-base-box"}
             style={{ pointerEvents: selectionMode ? "none" : undefined }}
           >
-            {message.send && message.status === MessageStatus.Fail ? (
+            {message.send && message.status === MessageStatus.Fail && message.reasonCode !== SEND_OUTCOME_UNKNOWN ? (
               <Popconfirm
                 title={this.context.t("base.messageBase.resendConfirm.title")}
                 okText={this.context.t("base.messageBase.resendConfirm.ok")}

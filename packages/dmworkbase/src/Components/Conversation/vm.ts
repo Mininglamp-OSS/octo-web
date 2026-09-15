@@ -1490,6 +1490,11 @@ export default class ConversationVM extends ProviderListener {
     updateMessageStatusBySendAck(ackPacket: SendackPacket) {
         const message = this.findMessageWithClientSeq(ackPacket.clientSeq)
         if (message) {
+            // A history sync may confirm a stored message before its lost ACK
+            // times out. A negative/unknown attempt cannot undo that evidence.
+            if (ackPacket.reasonCode !== 1 && message.status === MessageStatus.Normal && message.message.messageSeq > 0) {
+                return
+            }
             const ackOrder = ackPacket.messageSeq * OrderFactor
             this.forEachLocalMessageWithClientSeq(ackPacket.clientSeq, (localMessage) => {
                 localMessage.message.messageID = ackPacket.messageID.toString()

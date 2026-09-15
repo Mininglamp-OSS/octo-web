@@ -173,6 +173,7 @@ import {
 } from "./im-runtime/connectAddress";
 import { connectImClient } from "./im-runtime/connectClient";
 import { registerImConnectStatusListener } from "./im-runtime/connectStatus";
+import { installSendRecovery } from "./im-runtime/sendRecovery";
 import {
   clearAuthStorage,
   consumeOidcPostLogoutCleanup,
@@ -1289,10 +1290,13 @@ export default class WKApp extends ProviderListener {
     if (import.meta.env.VITE_E2E_MOCK_IM === "1") {
       return;
     }
+    const sendRecovery = import.meta.env.VITE_IM_SEND_RETRY_ENABLED === "1"
+      ? installSendRecovery(WKSDK.shared()) : undefined;
     connectImClient({
       sdk: WKSDK.shared(),
       loginInfo: WKApp.loginInfo,
     });
+    sendRecovery?.syncAccount();
   }
 
   registerModule(module: IModule) {

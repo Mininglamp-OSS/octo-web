@@ -133,6 +133,7 @@ describe("MessageBase display helpers", () => {
     const reasons = [
       [MessageReasonCode.reasonSubscriberNotExist, "removedFromGroup"],
       [MessageReasonCode.reasonSystemError, "system"],
+      [256, "outcomeUnknown"],
     ] as const
     for (const [reason, key] of reasons) {
       const msg = { ...createMessage(), reasonCode: reason } as any
