@@ -36,7 +36,7 @@ describe("drive_on appconfig web integration", () => {
   });
 
   it("keeps Drive registration delegated to enterprise modules", () => {
-    const source = readRepoFile("apps/web/src/index.tsx");
+    const source = readRepoFile("apps/web/src/chatBootstrap.tsx");
 
     // The open-source host only exposes the appconfig bridge. The Drive NavRail
     // entry itself is supplied by the enterprise module slot.

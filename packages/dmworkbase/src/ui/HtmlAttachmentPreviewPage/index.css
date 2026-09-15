@@ -1,0 +1,70 @@
+body.wk-html-preview-host {
+  margin: 0;
+}
+
+.wk-html-attachment-page {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 0;
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  font-family: system-ui, sans-serif;
+}
+
+/* An attachment has its own document colors. Give transparent documents the
+   browser's light canvas without changing authored styles or source bytes. */
+.wk-html-attachment-page
+  .wk-file-preview-html-renderer
+  .wk-file-preview-html-renderer__iframe {
+  color-scheme: light;
+  background: Canvas;
+}
+.wk-html-attachment-page__header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-3) var(--wk-sp-4);
+  border-bottom: 1px solid var(--wk-border-default);
+}
+.wk-html-attachment-page__header h1 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--wk-text-size-lg);
+}
+.wk-html-attachment-page__actions {
+  display: flex;
+  gap: var(--wk-sp-2);
+}
+.wk-html-attachment-page__header button {
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  cursor: pointer;
+  font: inherit;
+}
+.wk-html-attachment-page__header button[aria-pressed="true"] {
+  color: var(--wk-brand-primary);
+  border-color: var(--wk-brand-primary);
+}
+.wk-html-attachment-page__header button:disabled {
+  cursor: wait;
+}
+.wk-html-attachment-page__error {
+  padding: var(--wk-sp-3) var(--wk-sp-4);
+  margin: 0;
+  color: var(--wk-text-primary);
+}
+.wk-html-attachment-page__content {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}

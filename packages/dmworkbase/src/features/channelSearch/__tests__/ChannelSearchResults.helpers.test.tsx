@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import React from "react";
-import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { Toast } from "@douyinfe/semi-ui";
 vi.mock("react-virtuoso", () => ({
   TableVirtuoso: () => null,
   Virtuoso: () => null,
@@ -10,6 +11,15 @@ vi.mock("react-virtuoso", () => ({
 vi.mock("../../../Utils/download", () => ({
   downloadFile: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock("../../../bridge/html-attachment/downloadAttachment", () => ({
+  downloadHtmlAttachment: vi.fn().mockResolvedValue(undefined),
+}));
+import { downloadFile } from "../../../Utils/download";
+import { downloadHtmlAttachment } from "../../../bridge/html-attachment/downloadAttachment";
+import type {
+  ChannelSearchFileInfo,
+  ChannelSearchItem,
+} from "../../../Service/SearchTypes";
 import {
   ChannelSearchEmpty,
   FileResultItem,
@@ -18,6 +28,73 @@ import {
 } from "../ChannelSearchResults";
 
 describe("ChannelSearchResults leaf renderers", () => {
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(() => vi.restoreAllMocks());
+
+  function renderHtmlFile(urls: Partial<ChannelSearchFileInfo>) {
+    const sender = { uid: "u1", name: "Alice", avatarUrl: "avatar" };
+    const item: ChannelSearchItem = {
+      id: "html-file",
+      kind: "file",
+      timestamp: 1,
+      messageId: "m1",
+      messageSeq: 1,
+      senderUid: sender.uid,
+      sender,
+      file: { name: "report.html", extension: "html", size: 128, ...urls },
+    };
+    return render(
+      <FileResultItem
+        item={item}
+        keyword=""
+        getSender={() => sender}
+        menuOpen
+        onMenuOpenChange={vi.fn()}
+        onLocate={vi.fn()}
+      />
+    );
+  }
+
+  it.each([
+    {},
+    { previewUrl: null },
+    { previewUrl: "", url: "", downloadUrl: "" },
+  ])(
+    "warns without starting an HTML download when file URLs are missing: %j",
+    (urls) => {
+      const warning = vi.spyOn(Toast, "warning").mockReturnValue("warning");
+      renderHtmlFile(urls);
+
+      fireEvent.click(screen.getByRole("button", { name: "下载文件" }));
+
+      expect(warning).toHaveBeenCalledWith("暂无可下载地址");
+      expect(downloadHtmlAttachment).not.toHaveBeenCalled();
+      expect(downloadFile).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(["previewUrl", "url", "downloadUrl"] as const)(
+    "downloads HTML when only %s is available",
+    async (field) => {
+      const warning = vi.spyOn(Toast, "warning").mockReturnValue("warning");
+      const url = "https://cdn.example.com/report.html";
+      renderHtmlFile({ [field]: url });
+
+      fireEvent.click(screen.getByRole("button", { name: "下载文件" }));
+
+      await waitFor(() =>
+        expect(downloadHtmlAttachment).toHaveBeenCalledTimes(1)
+      );
+      expect(downloadHtmlAttachment).toHaveBeenCalledWith(
+        expect.objectContaining({ url, name: "report.html" }),
+        expect.any(AbortSignal),
+        undefined
+      );
+      expect(warning).not.toHaveBeenCalled();
+      expect(downloadFile).not.toHaveBeenCalled();
+    }
+  );
+
   it("renders empty states and file result menu actions", () => {
     render(<ChannelSearchEmpty queryStarted={false} emptyHint="empty" />);
     expect(screen.getByText("empty")).toBeTruthy();

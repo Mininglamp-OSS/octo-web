@@ -5,6 +5,7 @@ import { fireEvent, render, screen } from "@testing-library/react"
 const htmlState: any = { content: null, loading: false, error: null, reload: vi.fn() }
 const i18nMock = vi.hoisted(() => ({ t: (key: string) => key }))
 vi.mock("../../hooks/useFileContent", () => ({ useFileContent: () => htmlState }))
+vi.mock("../../../../bridge/html-attachment/useHtmlAttachment", () => ({ useHtmlAttachment: () => htmlState, attachmentErrorMessage: () => "error" }))
 vi.mock("../../../../i18n", () => ({ useI18n: () => i18nMock, I18nContext: React.createContext({}) }))
 vi.mock("react-syntax-highlighter", () => ({ default: ({ children }: any) => <pre>{children}</pre> }))
 vi.mock("../../../../Utils/download", () => ({ downloadFile: vi.fn() }))

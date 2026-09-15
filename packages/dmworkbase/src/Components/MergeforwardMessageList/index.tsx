@@ -374,6 +374,7 @@ export default class MergeforwardMessageList extends Component<
             // 预览面板的"回复"能力在这里不适用是预期行为。
             const previewData = {
               url,
+              sourceUrl: fileContent.url || fileContent.remoteUrl,
               name: fileName,
               extension: getExtension(fileContent.extension, fileContent.name),
               size: fileContent.size,
