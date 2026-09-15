@@ -9,5 +9,11 @@ export { resetSummaryAttentionScope } from "./utils/summaryAttentionBadge";
 export { SummaryCommunicationModule } from "./integration/communicationModule";
 export { default as SummaryDetailPage } from "./pages/SummaryDetailPage";
 export { default as SummaryShareDetailPage } from "./pages/SummaryShareDetailPage";
+export {
+  clearDefaultSummaryWorkbenchSession,
+  clearSummaryWorkbenchNextCreate,
+  consumeSummaryWorkbenchNextCreate,
+  markSummaryWorkbenchNextCreate,
+} from "./features/summaryWorkbench/sessionStorage";
 export * from "./workspace";
 export * from "./host";

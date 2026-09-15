@@ -71,8 +71,8 @@ import { Toast } from '@douyinfe/semi-ui';
 
 vi.mock('../../api/summaryApi');
 
-function makePage(taskId: number | string) {
-    const page = new SummaryDetailPage({ taskId } as any);
+function makePage(taskId: number | string, props: Record<string, unknown> = {}) {
+    const page = new SummaryDetailPage({ taskId, ...props } as any);
     (page as any).context = { t: (k: string) => k };
     (page as any).setState = function (this: any, patch: any, callback?: () => void) {
         this.state = { ...this.state, ...(typeof patch === 'function' ? patch(this.state) : patch) };
@@ -983,8 +983,9 @@ describe('SummaryDetailPage — R3: smart_summary_completed exactly-once under s
         vi.mocked(api.batchStatus).mockResolvedValue([{ id: 1, status: 3 }] as any);
 
         const track = vi.spyOn(Dap.shared, 'track');
+        const onCompleted = vi.fn();
         try {
-            const page = makePage(1);
+            const page = makePage(1, { onCompleted });
             page.state = { ...(page.state as any), lastKnownStatus: 2 /* PROCESSING */ };
 
             // 两路并发启动,但 detail 尚未兑现 → 都停在 await getSummaryDetail。
@@ -1004,6 +1005,8 @@ describe('SummaryDetailPage — R3: smart_summary_completed exactly-once under s
             expect(completed).toHaveLength(1);
             // 不只钉事件名:终态漏斗以 result 区分 completed/failed/cancelled,必须钉住 payload。
             expect(completed[0][1]).toEqual({ result: 'completed' });
+            expect(onCompleted).toHaveBeenCalledTimes(1);
+            expect(onCompleted).toHaveBeenCalledWith(1);
         } finally {
             track.mockRestore();
         }

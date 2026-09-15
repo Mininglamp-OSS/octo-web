@@ -57,6 +57,8 @@ import {
 import { summaryTestIds } from "../../utils/testIds";
 import {
   clearSummaryWorkbenchSession,
+  clearSummaryWorkbenchNextCreate,
+  markSummaryWorkbenchNextCreate,
   readSummaryWorkbenchSession,
   writeSummaryWorkbenchSession,
   type SummaryWorkbenchSessionScope,
@@ -498,14 +500,30 @@ export default function SummaryWorkbenchFeature({
     onCreated?.();
   };
 
+  const markNextHomeCreate = () => {
+    markSummaryWorkbenchNextCreate({
+      userId: currentUserId,
+      spaceId,
+    });
+  };
+
   const observeWorkflow = (response?: SummaryWorkbenchResponse) => {
     if (
       response?.resultType === "workflow_started" ||
       response?.resultType === "workflow_completed"
     ) {
       notifyCreated(response.workflow.taskId, "normal");
+      if (response.resultType === "workflow_completed") {
+        markNextHomeCreate();
+      }
     }
   };
+
+  useEffect(() => {
+    if (workbench.viewState.card?.kind === "workflow_completed") {
+      markNextHomeCreate();
+    }
+  }, [workbench.viewState.card?.kind]);
 
   const composerHasText = workbench.viewState.inputValue.trim().length > 0;
   const composerHasCustomText = Boolean(
@@ -604,7 +622,6 @@ export default function SummaryWorkbenchFeature({
   ) => {
     const previousInputValue = workbench.viewState.inputValue;
     const previousHasSubmitted = hasSubmitted;
-    const previousTemplateGalleryOpen = templateGalleryOpen;
     const previousTemplateFilledComposer = templateFilledComposer.current;
     const responsePromise = request();
 
@@ -618,7 +635,6 @@ export default function SummaryWorkbenchFeature({
       workbench.restoreComposerValue(previousInputValue);
       templateFilledComposer.current = previousTemplateFilledComposer;
       setHasSubmitted(previousHasSubmitted);
-      setTemplateGalleryOpen(previousTemplateGalleryOpen);
     }
     return response;
   };
@@ -802,6 +818,7 @@ export default function SummaryWorkbenchFeature({
       themeTrackTimer.current = null;
     }
     clearSummaryWorkbenchSession(storageScope);
+    clearSummaryWorkbenchNextCreate({ userId: currentUserId, spaceId });
     setReferencedTask(derivedFromTask ?? null);
     setReferencePreviewOpen(false);
     setOpenSelector(null);
@@ -835,6 +852,7 @@ export default function SummaryWorkbenchFeature({
     });
     Toast.success(t("summary.create.agentSummaryCreated"));
     notifyCreated(result.task_id, "agent");
+    markNextHomeCreate();
     openTask(result.task_id);
   };
 

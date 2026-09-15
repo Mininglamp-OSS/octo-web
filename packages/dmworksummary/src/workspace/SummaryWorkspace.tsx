@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { useI18n } from "@octo/base";
+import WKApp from "@octo/base/src/App";
 import ScheduleListPage from "../pages/ScheduleListPage";
 import SummaryConfirmPage from "../pages/SummaryConfirmPage";
 import SummaryWorkbenchCreateEntry from "../features/summaryWorkbench/SummaryWorkbenchCreateEntry";
@@ -17,6 +18,10 @@ import {
   SummaryMessagingProvider,
 } from "../host";
 import type { SummaryWorkspaceProps, SummaryWorkspaceRoute } from "./types";
+import {
+  clearSummaryWorkbenchNextCreate,
+  markSummaryWorkbenchNextCreate,
+} from "../features/summaryWorkbench/sessionStorage";
 import "./index.css";
 
 export default function SummaryWorkspace({
@@ -65,14 +70,25 @@ export default function SummaryWorkspace({
   );
 
   const showList = () => onRouteChange({ view: "list" });
-  const showCreate = (mode: "normal" | "agent" | "unified" = "normal") =>
+  const showCreate = (mode: "normal" | "agent" | "unified" = "normal") => {
+    clearSummaryWorkbenchNextCreate({
+      userId: messagingPort.getCurrentUser().uid,
+      spaceId: WKApp.shared.currentSpaceId,
+    });
     onRouteChange({ view: "create", mode: mode === "unified" ? "normal" : mode, source: "summary_list" });
+  };
   const showDetail = (taskId: number) =>
     onRouteChange({ view: "detail", taskId });
   const refreshListAndShow = () => {
     refreshList();
     showList();
   };
+  const markNextHomeCreate = useCallback(() => {
+    markSummaryWorkbenchNextCreate({
+      userId: messagingPort.getCurrentUser().uid,
+      spaceId: WKApp.shared.currentSpaceId,
+    });
+  }, [messagingPort]);
   const continueRefine = (task: SummaryReferenceTask) =>
     onRouteChange({
       view: "create",
@@ -109,6 +125,7 @@ export default function SummaryWorkspace({
             emitSelection
             onAfterMutate={refreshListAndShow}
             onContinueRefine={continueRefine}
+            onCompleted={markNextHomeCreate}
             messaging={messagingPort}
             onViewConfirm={(taskId) =>
               onRouteChange({ view: "confirm", taskId })

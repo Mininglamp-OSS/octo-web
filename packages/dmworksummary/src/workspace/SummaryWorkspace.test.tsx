@@ -5,6 +5,38 @@ import { setSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
 import type { SummaryWorkspaceRoute } from "./types";
 import type { SummaryMessagingPort } from "../host";
 
+const storageMocks = vi.hoisted(() => ({
+  markNextCreate: vi.fn(),
+  clearNextCreate: vi.fn(),
+}));
+
+const wkAppMock = vi.hoisted(() => ({
+  shared: { currentSpaceId: "space-a" },
+  loginInfo: {
+    uid: "user-a",
+    selfDisplayName: vi.fn(() => "User A"),
+    name: "User A",
+  },
+  menus: {
+    refresh: vi.fn(),
+  },
+  mittBus: {
+    on: vi.fn(),
+    off: vi.fn(),
+  },
+}));
+
+vi.mock("@octo/base/src/App", () => ({
+  default: wkAppMock,
+  WKApp: wkAppMock,
+  useI18n: () => ({ t: (key: string) => key }),
+}));
+
+vi.mock("../features/summaryWorkbench/sessionStorage", () => ({
+  clearSummaryWorkbenchNextCreate: storageMocks.clearNextCreate,
+  markSummaryWorkbenchNextCreate: storageMocks.markNextCreate,
+}));
+
 vi.mock("../api/summaryApi", () => ({
   getSummaryShare: vi.fn(async () => ({ source_accessible: false })),
 }));
@@ -36,6 +68,7 @@ vi.mock("../pages/SummaryDetailPage", () => ({
     onAfterMutate,
     onContinueRefine,
     onViewConfirm,
+    onCompleted,
   }: any) => (
     <div data-testid="workspace-detail">
       <span>{taskId}</span>
@@ -62,6 +95,7 @@ vi.mock("../pages/SummaryDetailPage", () => ({
         continue-refine
       </button>
       <button onClick={() => onViewConfirm(taskId)}>open-confirm</button>
+      <button onClick={() => onCompleted(taskId)}>complete-task</button>
       <button onClick={onAfterMutate}>after-mutate</button>
     </div>
   ),
@@ -135,6 +169,8 @@ describe("SummaryWorkspace", () => {
 
   beforeEach(() => {
     setSummaryAttentionBadge(0);
+    storageMocks.markNextCreate.mockClear();
+    storageMocks.clearNextCreate.mockClear();
   });
 
   afterEach(() => {
@@ -182,6 +218,31 @@ describe("SummaryWorkspace", () => {
     expect(onRouteChange).toHaveBeenLastCalledWith({
       view: "detail",
       taskId: 23,
+    });
+  });
+
+  it("marks the next summary home entry as fresh when a detail task completes", () => {
+    const messaging = {
+      getCurrentUser: () => ({ uid: "user-a", displayName: "User A" }),
+      loadConversationMembers: vi.fn(async () => []),
+      openConversation: vi.fn(async () => {}),
+      notifySummaryCompleted: vi.fn(async () => {}),
+      requestForward: vi.fn(),
+      subscribeInvalidation: vi.fn(() => vi.fn()),
+    } satisfies SummaryMessagingPort;
+
+    render(
+      <Harness
+        initialRoute={{ view: "detail", taskId: 17 }}
+        messaging={messaging}
+      />
+    );
+
+    fireEvent.click(screen.getByText("complete-task"));
+
+    expect(storageMocks.markNextCreate).toHaveBeenCalledWith({
+      userId: "user-a",
+      spaceId: "space-a",
     });
   });
 

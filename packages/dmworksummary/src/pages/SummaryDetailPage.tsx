@@ -97,6 +97,8 @@ interface SummaryDetailPageProps {
     onContinueRefine?: (task: SummaryReferenceTask) => void;
     /** Controlled workspace navigation for legacy task confirmation. */
     onViewConfirm?: (taskId: number) => void;
+    /** Called once when the currently observed task transitions to completed. */
+    onCompleted?: (taskId: number) => void;
     messaging?: SummaryMessagingPort;
 }
 
@@ -384,6 +386,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             if (this.completedTrackedTaskId !== taskId) {
                 this.completedTrackedTaskId = taskId;
                 Dap.shared.track("smart_summary_completed", { result });
+                if (status === TaskStatus.COMPLETED) {
+                    this.props.onCompleted?.(taskId);
+                }
             }
         } else if (this.completedTrackedTaskId === taskId) {
             this.completedTrackedTaskId = null;
