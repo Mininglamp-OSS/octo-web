@@ -9,6 +9,7 @@ export interface HarnessRuntimeListItem {
   deviceLabel: string
   runtimeVersion?: string
   lastHeartbeatLabel: string
+  providers: Array<{ type: string; version?: string }>
 }
 
 export interface HarnessEnrollmentView {
@@ -28,6 +29,7 @@ export interface HarnessRuntimeSettingsLabels {
   loadFailed: string
   retry: string
   runtimeVersion: string
+  providerVersionUnknown: string
   lastHeartbeat: string
   addTitle: string
   cancel: string

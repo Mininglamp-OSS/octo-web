@@ -1,8 +1,10 @@
 import React from 'react'
-import { Copy, Plus, RefreshCw, Server, TriangleAlert } from 'lucide-react'
+import { Copy, Plus, RefreshCw, Server, Terminal, TriangleAlert } from 'lucide-react'
+import { Tooltip } from '@douyinfe/semi-ui'
 import WKButton from '../../Components/WKButton'
 import WKModal from '../../Components/WKModal'
 import type { HarnessRuntimeListItem, HarnessRuntimeSettingsProps } from './types'
+import { runtimeProviderIcons } from './providerIcons'
 import './index.css'
 
 function RuntimeRow({ runtime, labels }: {
@@ -16,6 +18,29 @@ function RuntimeRow({ runtime, labels }: {
         <strong>{runtime.name}</strong>
         <span>{runtime.deviceLabel}</span>
         <code title={runtime.id}>{runtime.id}</code>
+        {runtime.providers.length > 0 && (
+          <span className="wk-harness-runtime-settings__providers">
+            {runtime.providers.map((provider, index) => {
+              const icon = runtimeProviderIcons.get(provider.type)
+              const tooltip = `${icon?.name || provider.type} · ${provider.version || labels.providerVersionUnknown}`
+              return (
+                <Tooltip key={`${provider.type}-${index}`} content={tooltip} position="top">
+                  <span className="wk-harness-runtime-settings__provider" role="img" aria-label={tooltip} tabIndex={0}>
+                    {!icon ? <Terminal size={20} aria-hidden="true" /> : icon.monochrome ? (
+                      <span className="wk-harness-runtime-settings__provider-glyph" aria-hidden="true"
+                        style={{ maskImage: `url("${icon.url}")`, WebkitMaskImage: `url("${icon.url}")` }} />
+                    ) : (
+                      <>
+                        <img className={icon.darkURL ? 'wk-harness-runtime-settings__provider-light' : undefined} src={icon.url} alt="" aria-hidden="true" />
+                        {icon.darkURL && <img className="wk-harness-runtime-settings__provider-dark" src={icon.darkURL} alt="" aria-hidden="true" />}
+                      </>
+                    )}
+                  </span>
+                </Tooltip>
+              )
+            })}
+          </span>
+        )}
       </span>
       <span className="wk-harness-runtime-settings__runtime-meta">
         <span className={`wk-harness-runtime-settings__status is-${runtime.status}`}>{labels.status[runtime.status]}</span>

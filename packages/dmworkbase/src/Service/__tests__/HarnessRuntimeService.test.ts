@@ -7,6 +7,7 @@ vi.mock('../APIClient', () => ({
 }))
 
 import {
+  availableRuntimeAdapters,
   buildHarnessProfile,
   buildHarnessLoginCommand,
   createHarnessDeviceEnrollment,
@@ -20,6 +21,23 @@ describe('HarnessRuntimeService', () => {
     post.mockReset()
   })
 
+  it('only accepts explicitly available adapters with a provider type', () => {
+    const available = { available: true, provider_type: 'codex', provider_version: '0.149.1' }
+    expect(availableRuntimeAdapters({ adapters: [available,
+      { available: false, provider_type: 'kiro' },
+      { available: 'true', provider_type: 'claude-code' },
+      { provider_type: 'opencode' },
+      { available: true, provider_type: '' },
+      { available: true, provider_type: ' ' }, null, 'codex',
+    ] })).toEqual([available])
+  })
+
+  it.each([undefined, null, {}, 'codex', { adapters: null }, { adapters: ['codex', 'claude-code'] }])(
+    'tolerates missing or legacy capability reports: %j', (capabilities) => {
+      expect(availableRuntimeAdapters(capabilities)).toEqual([])
+    },
+  )
+
   it('lists the current user runtimes through the agentworker facade', async () => {
     const items = [{ id: 'runtime-1' }]
     get.mockResolvedValue({ items })
@@ -28,12 +46,21 @@ describe('HarnessRuntimeService', () => {
     expect(get).toHaveBeenCalledWith('http://localhost:3000/agentworker/api/v1/runtimes', { signal: undefined })
   })
 
-  it('creates an enrollment without sending profile or runtime metadata', async () => {
-    const enrollment = { enrollment_token: 'octo_enroll_secret', octo_space_id: 'space-1', owner_user_id: 'user-1', expires_at: '2026-09-14T10:00:00Z' }
+  it('creates a local user-owned enrollment without sending profile or device name', async () => {
+    const enrollment = { enrollment_token: 'octo_enroll_secret', octo_space_id: 'space-1', owner_ref: 'uid:user-1', kind: 'local', expires_at: '2026-09-15T18:23:02.391175Z' }
     post.mockResolvedValue(enrollment)
 
     await expect(createHarnessDeviceEnrollment('http://localhost:3000/agentworker/')).resolves.toBe(enrollment)
-    expect(post).toHaveBeenCalledWith('http://localhost:3000/agentworker/api/v1/device_enrollments', {})
+    expect(post).toHaveBeenCalledWith('http://localhost:3000/agentworker/api/v1/runtime_enrollments', {
+      kind: 'local',
+      owner: { type: 'user' },
+    })
+  })
+
+  it.each([undefined, null, 'org:engineering', 'uid:', 'uid: '])('rejects invalid personal enrollment ownership: %j', async (ownerRef) => {
+    post.mockResolvedValue({ enrollment_token: 'octo_enroll_secret', octo_space_id: 'space-1',
+      owner_ref: ownerRef, kind: 'local', expires_at: '2026-09-15T18:23:02.391175Z' })
+    await expect(createHarnessDeviceEnrollment('http://localhost:3000/agentworker')).rejects.toThrow('Invalid device enrollment response')
   })
 
   it('rejects an SPA fallback instead of presenting it as an empty list', async () => {

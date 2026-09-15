@@ -16,12 +16,11 @@ export interface HarnessRuntimeDevice {
 
 export interface HarnessRuntime {
   id: string
-  device_id: string
+  machine_id: string
   octo_space_id: string
-  owner_user_id: string
+  owner_ref: string
   kind: 'local' | 'cloud' | 'team'
   name: string
-  fingerprint: string
   device: HarnessRuntimeDevice
   status: HarnessRuntimeStatus
   runtime_version?: string
@@ -33,10 +32,25 @@ export interface HarnessRuntime {
   deregistered_at?: string
 }
 
+export interface HarnessRuntimeAdapter {
+  available: boolean
+  provider_type: string
+  provider_version?: string | null
+}
+
+export function availableRuntimeAdapters(capabilities: unknown): HarnessRuntimeAdapter[] {
+  if (!capabilities || typeof capabilities !== 'object' || !('adapters' in capabilities)) return []
+  if (!Array.isArray(capabilities.adapters)) return []
+  return capabilities.adapters.filter((adapter): adapter is HarnessRuntimeAdapter =>
+    adapter !== null && typeof adapter === 'object' && adapter.available === true
+    && typeof adapter.provider_type === 'string' && adapter.provider_type.trim().length > 0)
+}
+
 export interface DeviceEnrollment {
   enrollment_token: string
   octo_space_id: string
-  owner_user_id: string
+  owner_ref: string
+  kind: 'local' | 'cloud'
   expires_at: string
 }
 
@@ -51,8 +65,13 @@ export async function listHarnessRuntimes(agentWorkerURL: string, signal?: Abort
 }
 
 export async function createHarnessDeviceEnrollment(agentWorkerURL: string): Promise<DeviceEnrollment> {
-  const response = await APIClient.shared.post(agentWorkerEndpoint(agentWorkerURL, 'device_enrollments'), {}) as DeviceEnrollment
-  if (!response?.enrollment_token || !response?.octo_space_id || !response?.owner_user_id || !response?.expires_at) {
+  const response = await APIClient.shared.post(agentWorkerEndpoint(agentWorkerURL, 'runtime_enrollments'), {
+    kind: 'local',
+    owner: { type: 'user' },
+  }) as DeviceEnrollment
+  if (!response?.enrollment_token || !response?.octo_space_id || !response?.expires_at
+    || typeof response.owner_ref !== 'string' || !response.owner_ref.startsWith('uid:')
+    || !response.owner_ref.slice(4).trim()) {
     throw new Error('Invalid device enrollment response')
   }
   return response

@@ -18,6 +18,15 @@
 .wk-harness-runtime-settings__runtime-main strong { overflow-wrap: anywhere; font-size: var(--wk-text-size-md); font-weight: var(--wk-font-medium); }
 .wk-harness-runtime-settings__runtime-main span, .wk-harness-runtime-settings__runtime-meta span { color: var(--wk-text-secondary); font-size: var(--wk-text-size-sm); line-height: var(--wk-leading-normal); }
 .wk-harness-runtime-settings__runtime-main code { overflow: hidden; color: var(--wk-text-tertiary); font-family: var(--wk-font-mono); font-size: var(--wk-text-size-xs); text-overflow: ellipsis; white-space: nowrap; }
+.wk-harness-runtime-settings__providers { display: flex; flex-wrap: wrap; gap: var(--wk-sp-2); margin-top: var(--wk-sp-2); }
+.wk-harness-runtime-settings__providers .wk-harness-runtime-settings__provider { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 var(--wk-sp-8); width: var(--wk-sp-8); height: var(--wk-sp-8); color: var(--wk-text-primary); border-radius: var(--wk-r-sm); }
+.wk-harness-runtime-settings__provider:hover, .wk-harness-runtime-settings__provider:focus-visible { background: var(--wk-bg-elevated); }
+.wk-harness-runtime-settings__provider:focus-visible { outline: 2px solid var(--wk-brand-primary); outline-offset: 2px; }
+.wk-harness-runtime-settings__provider img, .wk-harness-runtime-settings__provider-glyph { display: block; width: var(--wk-sp-5); height: var(--wk-sp-5); object-fit: contain; }
+.wk-harness-runtime-settings__provider .wk-harness-runtime-settings__provider-glyph { color: inherit; background: currentColor; mask-size: contain; mask-position: center; mask-repeat: no-repeat; -webkit-mask-size: contain; -webkit-mask-position: center; -webkit-mask-repeat: no-repeat; }
+.wk-harness-runtime-settings__provider img.wk-harness-runtime-settings__provider-dark { display: none; }
+body[theme-mode=dark] .wk-harness-runtime-settings__provider img.wk-harness-runtime-settings__provider-light { display: none; }
+body[theme-mode=dark] .wk-harness-runtime-settings__provider img.wk-harness-runtime-settings__provider-dark { display: block; }
 .wk-harness-runtime-settings__runtime-meta { align-items: flex-end; text-align: right; }
 .wk-harness-runtime-settings__runtime-meta .wk-harness-runtime-settings__status { width: fit-content; padding: 0 var(--wk-sp-2); border-radius: var(--wk-r-sm); background: var(--wk-bg-elevated); color: var(--wk-text-secondary); }
 .wk-harness-runtime-settings__runtime-meta .wk-harness-runtime-settings__status.is-online { color: var(--wk-color-success); }

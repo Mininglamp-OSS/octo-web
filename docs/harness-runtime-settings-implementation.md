@@ -5,6 +5,7 @@
 - Add an always-visible `Devices and runtimes` entry under the Settings `Tools` group.
 - Keep the existing device download/resource page intact and rename its entry to `Tools and resources`.
 - List runtimes owned by the signed-in user in the current workspace, including status, device, version, and last heartbeat.
+- Use `machine_id` for device identity and show an official provider-icon row from `capabilities.adapters`, strictly limited to `available === true`. Hover displays the provider name and version, with a localized fallback for missing versions. Do not surface installation paths. Missing or legacy capability reports render no icons.
 - Create a short-lived device enrollment token immediately when the user selects Add device; there is no second generate step.
 - Build a copyable `octo-harness login` command locally and present it as a code block. The profile is derived from the enrollment's Space ID and user ID, and the server URL comes from the current web origin. The command does not override the harness agent-worker URL.
 - Let `octo-harness` use the target device hostname as the initial Runtime name; naming is not part of enrollment.
@@ -23,7 +24,16 @@
 ## API contract
 
 - `GET /agentworker/api/v1/runtimes`
-- `POST /agentworker/api/v1/device_enrollments`
+- `POST /agentworker/api/v1/runtime_enrollments`
+
+Personal device enrollments send `{ "kind": "local", "owner": { "type": "user" } }`.
+The authenticated user and workspace are resolved from request headers; no
+explicit user ID, profile, or device name is sent in the payload.
+
+The response contains `enrollment_token`, `expires_at`, `kind`, `octo_space_id`,
+and `owner_ref` (for personal devices, `uid:{user ID}`). The UI extracts the user
+ID from `owner_ref` when building the profile; it does not require the obsolete
+`owner_user_id` response field.
 
 Both browser calls rely on the existing `APIClient` human-auth headers (`token` and `X-Space-ID`). Runtime device enrollment and daemon registration remain the responsibility of `octo-harness`.
 

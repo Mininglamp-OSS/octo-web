@@ -1705,6 +1705,7 @@
   "navRail.settingsCenter.runtime.loadFailed": "Unable to load runtimes",
   "navRail.settingsCenter.runtime.retry": "Retry",
   "navRail.settingsCenter.runtime.runtimeVersion": "Version",
+  "navRail.settingsCenter.runtime.providerVersionUnknown": "Version unknown",
   "navRail.settingsCenter.runtime.lastHeartbeat": "Last heartbeat",
   "navRail.settingsCenter.runtime.addTitle": "Add device",
   "navRail.settingsCenter.runtime.cancel": "Cancel",

@@ -1705,6 +1705,7 @@
   "navRail.settingsCenter.runtime.loadFailed": "无法加载运行时",
   "navRail.settingsCenter.runtime.retry": "重试",
   "navRail.settingsCenter.runtime.runtimeVersion": "版本",
+  "navRail.settingsCenter.runtime.providerVersionUnknown": "版本未知",
   "navRail.settingsCenter.runtime.lastHeartbeat": "最近心跳",
   "navRail.settingsCenter.runtime.addTitle": "添加设备",
   "navRail.settingsCenter.runtime.cancel": "取消",

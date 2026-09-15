@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { extractErrorMsg } from '../../Service/APIClient'
 import {
+  availableRuntimeAdapters,
   buildHarnessLoginCommand,
   buildHarnessProfile,
   createHarnessDeviceEnrollment,
@@ -33,8 +34,12 @@ function mapRuntime(runtime: HarnessRuntime, options: HarnessRuntimeSettingsBrid
     id: runtime.id,
     name: runtime.name,
     status: runtime.status,
-    deviceLabel: device || runtime.device_id,
+    deviceLabel: device || runtime.machine_id,
     runtimeVersion: runtime.runtime_version,
+    providers: availableRuntimeAdapters(runtime.capabilities).map((adapter) => ({
+      type: adapter.provider_type,
+      version: typeof adapter.provider_version === 'string' ? adapter.provider_version.trim() || undefined : undefined,
+    })),
     lastHeartbeatLabel: formatHeartbeat(runtime.last_heartbeat_at, options.locale, options.labels.never, options.labels.justNow),
   }
 }
@@ -100,7 +105,7 @@ export function useHarnessRuntimeSettings(options: HarnessRuntimeSettingsBridgeO
 
   const enrollmentView = useMemo<HarnessEnrollmentView | undefined>(() => {
     if (!enrollment) return undefined
-    const profile = buildHarnessProfile(enrollment.octo_space_id, enrollment.owner_user_id)
+    const profile = buildHarnessProfile(enrollment.octo_space_id, enrollment.owner_ref.slice(4))
     return {
       expiresAtLabel: new Intl.DateTimeFormat(options.locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(enrollment.expires_at)),
       command: buildHarnessLoginCommand({ profile, origin: options.origin, enrollmentToken: enrollment.enrollment_token, shell: 'posix' }),
