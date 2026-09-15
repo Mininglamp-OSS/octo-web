@@ -37,7 +37,7 @@ describe("getExpertBotPublishPrompt — command surface", () => {
     expect(p).toContain('plugin_type: "expert_team"');
     expect(p).toContain("plugin upsert --data @team-plugin.json");
     expect(p).toContain(
-      "提交完整的 `manifest_json`、`plugin_json` 和完整 `relations`"
+      "准备完整的 `manifest_json`、`plugin_json` 和完整 `relations`"
     );
   });
 
@@ -52,7 +52,8 @@ describe("getExpertBotPublishPrompt — command surface", () => {
     expect(p).toContain("确认当前版本 `>= 0.15.0`");
     expect(p).toContain("按 major/minor/patch 分段数字比较");
     expect(p).toContain("版本低于 `0.15.0`");
-    expect(p).toContain("npm install -g @mininglamp-oss/octo-cli@^0.15.0");
+    expect(p).toContain('npm install -g @mininglamp-oss/octo-cli@">=0.15.0"');
+    expect(p).not.toContain("@mininglamp-oss/octo-cli@^0.15.0");
     expect(p).not.toContain("@mininglamp-oss/octo-cli@latest");
     expect(p).toContain("先询问用户是否更新/安装 `octo-cli`");
     expect(p).toContain("重新运行");
@@ -181,15 +182,16 @@ describe("getExpertBotPublishPrompt — update mode", () => {
     expect(p).toContain(
       `octo-cli marketplace plugin get --plugin-id ${ID} --include-relations`
     );
-    expect(p).toContain("`plugin upsert` 是全量替换");
+    expect(p).toContain("全量替换语义");
     expect(p).toContain(
       "`plugin_name` / `publisher` / `icon` / `tags` / `visibility` / `category_id`"
     );
     expect(p).toContain("`relation_id` 和 `data`");
-    expect(p).toContain("Space 可见记录");
+    expect(p).toContain("未上架的 Space 可见记录");
     expect(p).toContain("409 `listed_requires_review`");
     expect(p).toContain("plugin review-request create");
     expect(p).toContain("不要引用未在本流程中实际生成的文件");
+    expect(p).toContain("不要把展示用的 `icon_url` 写回");
     expect(p).toContain("不要伪造成功");
     expect(p).toContain("可重试命令和错误摘要");
     expect(p).toContain("确认更新");
@@ -197,6 +199,51 @@ describe("getExpertBotPublishPrompt — update mode", () => {
     expect(p).not.toContain("expert update");
     expect(p).not.toContain("expert create --data");
     expect(p).not.toContain("确认上架");
+  });
+
+  it("places the expert write commands after the explicit confirmation gate", () => {
+    const createPrompt = getExpertBotPublishPrompt({
+      kind: "agent",
+      spaceId: SLUG,
+      apiBaseUrl: API,
+    });
+    const updatePrompt = getExpertBotPublishPrompt({
+      kind: "agent",
+      mode: "update",
+      id: ID,
+      spaceId: SLUG,
+      apiBaseUrl: API,
+    });
+
+    expect(createPrompt.indexOf("明确等待我回复“确认上架”")).toBeLessThan(
+      createPrompt.indexOf("plugin upsert --data @expert-plugin.json")
+    );
+    expect(createPrompt.indexOf("明确等待我回复“确认上架”")).toBeLessThan(
+      createPrompt.indexOf("plugin publish")
+    );
+    expect(createPrompt.indexOf("明确等待我回复“确认上架”")).toBeLessThan(
+      createPrompt.indexOf("plugin review-request create")
+    );
+    expect(updatePrompt.indexOf("明确等待我回复“确认更新”")).toBeLessThan(
+      updatePrompt.indexOf("plugin upsert")
+    );
+    expect(updatePrompt.indexOf("明确等待我回复“确认更新”")).toBeLessThan(
+      updatePrompt.indexOf("plugin review-request create")
+    );
+  });
+
+  it("documents normalized secret placeholders and presigned upload secrecy", () => {
+    const p = getExpertBotPublishPrompt({
+      kind: "agent",
+      spaceId: SLUG,
+      apiBaseUrl: API,
+    });
+    expect(p).toContain("非字母数字字符替换为 `_`");
+    expect(p).toContain("header `Authorization`");
+    expect(p).toContain("${AUTHORIZATION}");
+    expect(p).toContain("`X-Api-Secret` 写 `${X_API_SECRET}`");
+    expect(p).toContain("不得输出 `presigned_url` / `method` / `headers`");
+    expect(p).toContain("不得写入 payload 文件");
   });
 
   it("squad update targets the squad update verb with the id", () => {
@@ -213,7 +260,7 @@ describe("getExpertBotPublishPrompt — update mode", () => {
     expect(p).toContain(
       `octo-cli marketplace plugin get --plugin-id ${ID} --include-relations`
     );
-    expect(p).toContain("缺失成员会被软删");
+    expect(p).toContain("缺失关系会被软删");
     expect(p).not.toContain("squad create --data");
   });
 
@@ -238,6 +285,9 @@ describe("getExpertBotPublishPrompt — update mode", () => {
     });
     expect(p).toContain("将指定专家上架");
     expect(p).toContain("plugin upsert --data @expert-plugin.json");
+    expect(p).toContain(
+      "只有在 `expert.md` 要求且版本来源明确时才传 `--version`"
+    );
     expect(p).not.toContain("octo-cli marketplace expert update");
     expect(p).not.toContain("确认更新");
   });

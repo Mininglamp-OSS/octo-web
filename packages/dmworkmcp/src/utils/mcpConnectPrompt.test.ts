@@ -18,7 +18,8 @@ describe("buildMcpConnectPrompt — shell-safe interpolation", () => {
     expect(p).toContain("确认当前版本 `>= 0.15.0`");
     expect(p).toContain("按 major/minor/patch 分段数字比较");
     expect(p).toContain("版本低于 `0.15.0`");
-    expect(p).toContain("npm install -g @mininglamp-oss/octo-cli@^0.15.0");
+    expect(p).toContain('npm install -g @mininglamp-oss/octo-cli@">=0.15.0"');
+    expect(p).not.toContain("@mininglamp-oss/octo-cli@^0.15.0");
     expect(p).not.toContain("@mininglamp-oss/octo-cli@latest");
     expect(p).toContain("先询问用户是否更新/安装 `octo-cli`");
     expect(p).toContain("重新运行");
@@ -33,8 +34,11 @@ describe("buildMcpConnectPrompt — shell-safe interpolation", () => {
       apiBaseUrl: "https://example.com",
     });
     expect(p).toContain("`env` / `headers`");
-    expect(p).toContain("`${KEY}` 占位");
-    expect(p).toContain("`Authorization` / `*_token` / `*_key`");
+    expect(p).toContain("`${KEY}`");
+    expect(p).toContain("非字母数字字符替换为 `_`");
+    expect(p).toContain("`Authorization`");
+    expect(p).toContain("token / key / secret / password");
+    expect(p).toContain("connection_string");
     expect(p).not.toContain("env_user_supplied");
     expect(p).not.toContain("headers_user_supplied");
   });

@@ -61,9 +61,9 @@ export function getMcpBotPublishPrompt(
 1. 运行 \`octo-cli version\`，读取输出中的 \`version\`，按 major/minor/patch 分段数字比较，
    确认当前版本 \`>= 0.15.0\`（例如 \`0.9.0 < 0.15.0\`）。
    如果未安装或版本低于 \`0.15.0\`，先询问用户是否更新/安装 \`octo-cli\`。
-   用户确认后运行 \`npm install -g @mininglamp-oss/octo-cli@^0.15.0\`，并重新运行
+   用户确认后运行 \`npm install -g @mininglamp-oss/octo-cli@">=0.15.0"\`，并重新运行
    \`octo-cli version\` 复核；仍不满足时停止，并给出可复制的安装命令
-   \`npm install -g @mininglamp-oss/octo-cli@^0.15.0\`。用户未确认时停止，
+   \`npm install -g @mininglamp-oss/octo-cli@">=0.15.0"\`。用户未确认时停止，
    并说明本流程需要 \`octo-cli >= 0.15.0\`。
 
 2. 运行 \`octo-cli auth list\`，选择 \`space_id\` 等于 \`${spaceId}\` 的唯一 Profile。
@@ -91,9 +91,11 @@ export function getMcpBotPublishPrompt(
      \`octo-cli marketplace mcp probe --data @connection.json --profile <profile>\`，
      确认 \`is_ok=true\` 再继续。\`stdio\` 传输不要调用 probe。
    - 按 \`mcp.md\` 编写 \`plugin.json\`，使用 \`plugin_type: "connector"\`，
-     提交完整的 \`manifest_json\` 和 \`plugin_json\`（包含根目录 \`mcp.json\`）。
-     消费者需自行填入的密钥值必须写成与键名一致的占位，例如 \`GITHUB_TOKEN\` 写 \`\${GITHUB_TOKEN}\`、
-     \`API_KEY\` 写 \`\${API_KEY}\`，不要写泛化的 \`\${VAR}\`，也不要提交真实密钥。
+     准备完整的 \`manifest_json\` 和 \`plugin_json\`（包含根目录 \`mcp.json\`）。
+     消费者需自行填入的密钥值必须写成规范化键名占位：先去掉首尾空白，把非字母数字字符替换为
+     \`_\`，再转大写。例如 header \`Authorization\` 写 \`\${AUTHORIZATION}\`、\`X-Api-Secret\`
+     写 \`\${X_API_SECRET}\`、\`GITHUB_TOKEN\` 写 \`\${GITHUB_TOKEN}\`，不要写泛化的
+     \`\${VAR}\`，也不要提交真实密钥。
    - 向我展示发布预览，并在这里暂停，明确等待我回复“确认上架”；未收到这四个字，
      不得创建、发布或提交审核。可先用 \`--dry-run\` 打印将要发送的请求核对。
    - 确认后只使用 \`mcp.md\` 记录的统一 \`octo-cli marketplace plugin ...\` 命令完成保存、

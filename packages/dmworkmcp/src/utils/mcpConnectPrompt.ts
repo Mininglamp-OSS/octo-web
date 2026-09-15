@@ -34,9 +34,9 @@ export function buildMcpConnectPrompt(values: McpConnectPromptValues): string {
 1. 运行 \`octo-cli version\`，读取输出中的 \`version\`，按 major/minor/patch 分段数字比较，
    确认当前版本 \`>= 0.15.0\`（例如 \`0.9.0 < 0.15.0\`）。
    如果未安装或版本低于 \`0.15.0\`，先询问用户是否更新/安装 \`octo-cli\`。
-   用户确认后运行 \`npm install -g @mininglamp-oss/octo-cli@^0.15.0\`，并重新运行
+   用户确认后运行 \`npm install -g @mininglamp-oss/octo-cli@">=0.15.0"\`，并重新运行
    \`octo-cli version\` 复核；仍不满足时停止，并给出可复制的安装命令
-   \`npm install -g @mininglamp-oss/octo-cli@^0.15.0\`。用户未确认时停止，
+   \`npm install -g @mininglamp-oss/octo-cli@">=0.15.0"\`。用户未确认时停止，
    并说明本流程需要 \`octo-cli >= 0.15.0\`。
 
 2. 运行 \`octo-cli auth list\`，选择 \`space_id\` 等于 \`${spaceId}\` 的唯一 Profile。
@@ -56,9 +56,11 @@ export function buildMcpConnectPrompt(values: McpConnectPromptValues): string {
    \`\`\`
 
 4. 按 \`mcp.md\` 的 Install/Connect 流程，用上面的 MCP ID 拉取该服务器的目录与连接
-   配置，并接入当前 Agent runtime。若 \`env\` / \`headers\` 的值是与键名一致的
-   \`\${KEY}\` 占位，或键名形如 \`Authorization\` / \`*_token\` / \`*_key\`，
-   提示用户在本地补齐对应密钥值，不要伪造或猜测。
+   配置，并接入当前 Agent runtime。若 \`env\` / \`headers\` 的值是规范化键名占位
+   \`\${KEY}\`（键名先去掉首尾空白，把非字母数字字符替换为 \`_\`，再转大写），
+   或键名形如 \`Authorization\`、token / key / secret / password / pwd / passphrase /
+   pat / cookie / credential / auth / bearer / session / jwt / dsn / connection_string /
+   access 等密钥形态（含 \`-\` / \`_\` 变体），提示用户在本地补齐对应密钥值，不要伪造或猜测。
 
 以上 MCP ID、Space ID 和 API 地址是本次操作的权威输入。不要自行改写 ID。`;
 }

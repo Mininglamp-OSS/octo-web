@@ -64,7 +64,8 @@ describe("getMcpBotPublishPrompt — shell-safe interpolation", () => {
     expect(p).toContain("确认当前版本 `>= 0.15.0`");
     expect(p).toContain("按 major/minor/patch 分段数字比较");
     expect(p).toContain("版本低于 `0.15.0`");
-    expect(p).toContain("npm install -g @mininglamp-oss/octo-cli@^0.15.0");
+    expect(p).toContain('npm install -g @mininglamp-oss/octo-cli@">=0.15.0"');
+    expect(p).not.toContain("@mininglamp-oss/octo-cli@^0.15.0");
     expect(p).not.toContain("@mininglamp-oss/octo-cli@latest");
     expect(p).toContain("先询问用户是否更新/安装 `octo-cli`");
     expect(p).toContain("重新运行");
@@ -87,8 +88,13 @@ describe("getMcpBotPublishPrompt — shell-safe interpolation", () => {
     expect(p).toContain(
       "octo-cli marketplace plugin get --plugin-id <plugin-id>"
     );
+    expect(p).toContain("非字母数字字符替换为");
+    expect(p).toContain("header `Authorization` 写 `${AUTHORIZATION}`");
+    expect(p).toContain("`X-Api-Secret`");
+    expect(p).toContain("${X_API_SECRET}");
     expect(p).toContain("`GITHUB_TOKEN` 写 `${GITHUB_TOKEN}`");
-    expect(p).toContain("不要写泛化的 `${VAR}`");
+    expect(p).toContain("不要写泛化的");
+    expect(p).toContain("${VAR}");
     expect(p).not.toContain("marketplace mcp-category");
     expect(p).not.toContain("marketplace mcp create");
     expect(p).not.toContain("marketplace mcp get");

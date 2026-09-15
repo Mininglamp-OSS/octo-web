@@ -90,9 +90,9 @@ export function getExpertBotPublishPrompt(
 1. 运行 \`octo-cli version\`，读取输出中的 \`version\`，按 major/minor/patch 分段数字比较，
    确认当前版本 \`>= 0.15.0\`（例如 \`0.9.0 < 0.15.0\`）。
    如果未安装或版本低于 \`0.15.0\`，先询问用户是否更新/安装 \`octo-cli\`。
-   用户确认后运行 \`npm install -g @mininglamp-oss/octo-cli@^0.15.0\`，并重新运行
+   用户确认后运行 \`npm install -g @mininglamp-oss/octo-cli@">=0.15.0"\`，并重新运行
    \`octo-cli version\` 复核；仍不满足时停止，并给出可复制的安装命令
-   \`npm install -g @mininglamp-oss/octo-cli@^0.15.0\`。用户未确认时停止，
+   \`npm install -g @mininglamp-oss/octo-cli@">=0.15.0"\`。用户未确认时停止，
    并说明本流程需要 \`octo-cli >= 0.15.0\`。
 
 2. 运行 \`octo-cli auth list\`，选择 \`space_id\` 等于 \`${spaceId}\` 的唯一 Profile。
@@ -120,22 +120,26 @@ ${step4Title}
        ? `先用 \`octo-cli marketplace plugin get --plugin-id ${targetId} --include-relations --profile <profile>\` 读回现有记录，并把返回值作为 \`${pluginJsonFile}\` 的基线。`
        : `按 \`expert.md\` 编写 \`${pluginJsonFile}\`。`
    }
-     使用 \`plugin_type: "${pluginType}"\`，提交完整的 \`manifest_json\`、\`plugin_json\` 和完整 \`relations\`。
+     使用 \`plugin_type: "${pluginType}"\`，准备完整的 \`manifest_json\`、\`plugin_json\` 和完整 \`relations\`。
      ${
        isUpdate
-         ? `\`plugin upsert\` 是全量替换：body 缺失字段会写成零值，\`relations\` 缺失成员会被软删。未修改的 \`plugin_name\` / \`publisher\` / \`icon\` / \`tags\` / \`visibility\` / \`category_id\` 必须原样回填；每条未删除的 relation 也必须原样保留 \`relation_id\` 和 \`data\`，只覆盖用户本次明确要求修改的字段或关系。`
+         ? `更新 payload 必须按全量替换语义准备：body 缺失字段会写成零值，\`relations\` 缺失关系会被软删。未修改的 \`plugin_name\` / \`publisher\` / \`icon\` / \`tags\` / \`visibility\` / \`category_id\` 必须原样回填；每条未删除的 relation 也必须原样保留 \`relation_id\` 和 \`data\`，只覆盖用户本次明确要求修改的字段或关系。回填图标时使用写入字段 \`icon\` 本身，不要把展示用的 \`icon_url\` 写回。`
          : `如需附带技能包，按 \`expert.md\` / \`skills.md\` 的统一 skill upload / parse / import 流程处理。`
      }
-     密钥类 env / headers 值不要写真实凭证；消费者需填写时，值必须写成与键名一致的占位，
-     例如 \`GITHUB_TOKEN\` 写 \`\${GITHUB_TOKEN}\`、\`API_KEY\` 写 \`\${API_KEY}\`，不要写泛化的 \`\${VAR}\`。
-   - ${
-     isUpdate
-       ? `按 \`expert.md\` 优先使用 \`plugin upsert\` 更新可编辑草稿或 Space 可见记录，并设置 \`plugin.plugin_id = "${targetId}"\`，提交上一步完整回填后的 payload。只有目标已上架到 org、已有待审核请求，或 \`plugin upsert\` 返回 409 \`listed_requires_review\` 时，才按 \`expert.md\` 的 \`plugin review-request create\` 流程提交审核；审核 payload 的文件名与结构以 \`expert.md\` 为准，不要引用未在本流程中实际生成的文件。`
-       : `按 \`expert.md\` 使用 \`plugin upsert --data @${pluginJsonFile}\` 保存草稿，再按 \`plugin publish --plugin-id <plugin-id> --version <x.y.z>\` 或 \`plugin review-request create\` 的发布 / 审核流程继续；审核 payload 的文件名与结构以 \`expert.md\` 为准。`
-   }
+     如需附带或更新技能包，按 \`expert.md\` / \`skills.md\` 的统一 skill upload / parse / import 流程处理；
+     取得预签名后不得输出 \`presigned_url\` / \`method\` / \`headers\`，也不得写入 payload 文件。
+     密钥类 env / headers 值不要写真实凭证；消费者需填写时，占位符必须使用规范化键名：
+     先去掉首尾空白，把非字母数字字符替换为 \`_\`，再转大写。例如 header \`Authorization\`
+     写 \`\${AUTHORIZATION}\`、\`X-Api-Secret\` 写 \`\${X_API_SECRET}\`、\`GITHUB_TOKEN\`
+     写 \`\${GITHUB_TOKEN}\`，不要写泛化的 \`\${VAR}\`。
    - 向我展示${actionWord}预览，并在这里暂停，明确等待我回复“${confirmation}”；未收到这四个字，
      不得创建、更新、发布或提交审核。可先用 \`--dry-run\` 打印将要发送的请求核对。
-   - 确认后只使用 \`expert.md\` 记录的统一 \`octo-cli marketplace plugin ...\` 命令完成${actionWord}，
+   - 在收到“${confirmation}”后，只使用 \`expert.md\` 记录的统一 \`octo-cli marketplace plugin ...\` 命令完成${actionWord}：
+     ${
+       isUpdate
+         ? `优先使用 \`plugin upsert\` 更新可编辑草稿或未上架的 Space 可见记录，并设置 \`plugin.plugin_id = "${targetId}"\`，提交上一步完整回填后的 payload。只有目标已上架到 org，或 \`plugin upsert\` 返回 409 \`listed_requires_review\` 时，才按 \`expert.md\` 的 \`plugin review-request create\` 流程提交审核；如果已有待审核请求，先按 \`expert.md\` 检查 / 取消或复用该请求，不要重复提交。审核 payload 的文件名与结构以 \`expert.md\` 为准，不要引用未在本流程中实际生成的文件。`
+         : `使用 \`plugin upsert --data @${pluginJsonFile}\` 保存草稿，再按 \`expert.md\` 的 \`plugin publish\` 或 \`plugin review-request create\` 发布 / 审核流程继续；只有在 \`expert.md\` 要求且版本来源明确时才传 \`--version\`。审核 payload 的文件名与结构以 \`expert.md\` 为准。`
+     }
      并用 \`octo-cli marketplace plugin get --plugin-id ${
        isUpdate ? targetId : "<plugin-id>"
      } --include-relations --profile <profile>\`
