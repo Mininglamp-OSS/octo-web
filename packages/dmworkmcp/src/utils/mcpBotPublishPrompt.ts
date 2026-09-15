@@ -61,9 +61,9 @@ export function getMcpBotPublishPrompt(
 1. 运行 \`octo-cli version\`，读取输出中的 \`version\`，按 major/minor/patch 分段数字比较，
    确认当前版本 \`>= 0.15.0\`（例如 \`0.9.0 < 0.15.0\`）。
    如果未安装或版本低于 \`0.15.0\`，先询问用户是否更新/安装 \`octo-cli\`。
-   用户确认后运行 \`npm install -g @mininglamp-oss/octo-cli@">=0.15.0"\`，并重新运行
+   用户确认后运行 \`npm install -g @mininglamp-oss/octo-cli@'>=0.15.0'\`，并重新运行
    \`octo-cli version\` 复核；仍不满足时停止，并给出可复制的安装命令
-   \`npm install -g @mininglamp-oss/octo-cli@">=0.15.0"\`。用户未确认时停止，
+   \`npm install -g @mininglamp-oss/octo-cli@'>=0.15.0'\`。用户未确认时停止，
    并说明本流程需要 \`octo-cli >= 0.15.0\`。
 
 2. 运行 \`octo-cli auth list\`，选择 \`space_id\` 等于 \`${spaceId}\` 的唯一 Profile。
@@ -95,11 +95,13 @@ export function getMcpBotPublishPrompt(
      消费者需自行填入的密钥值必须写成规范化键名占位：先去掉首尾空白，把非字母数字字符替换为
      \`_\`，再转大写。例如 header \`Authorization\` 写 \`\${AUTHORIZATION}\`、\`X-Api-Secret\`
      写 \`\${X_API_SECRET}\`、\`GITHUB_TOKEN\` 写 \`\${GITHUB_TOKEN}\`，不要写泛化的
-     \`\${VAR}\`，也不要提交真实密钥。
+     \`\${VAR}\`，也不要提交真实密钥。即使 \`mcp.md\` 示例使用了与键名不一致的占位符
+     （例如键 \`TOKEN\` 配 \`\${GITHUB_TOKEN}\`），也必须改为规范化键名占位 \`\${TOKEN}\`。
    - 向我展示发布预览，并在这里暂停，明确等待我回复“确认上架”；未收到这四个字，
      不得创建、发布或提交审核。可先用 \`--dry-run\` 打印将要发送的请求核对。
    - 确认后只使用 \`mcp.md\` 记录的统一 \`octo-cli marketplace plugin ...\` 命令完成保存、
-     发布或提交审核，并用 \`octo-cli marketplace plugin get --plugin-id <plugin-id> --profile <profile>\`
+     发布或提交审核；如需上传图标，取得预签名后不得输出 \`presigned_url\` / \`method\` / \`headers\`，
+     也不得写入 payload 文件。最后用 \`octo-cli marketplace plugin get --plugin-id <plugin-id> --profile <profile>\`
      回读核验。不要使用旧的 MCP 专用 create / get / category 命令。
 
 以上 Space ID、API 地址和可见范围是本次操作的权威输入。`;

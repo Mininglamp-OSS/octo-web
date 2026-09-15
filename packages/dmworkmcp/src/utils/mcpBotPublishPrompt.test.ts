@@ -64,7 +64,7 @@ describe("getMcpBotPublishPrompt — shell-safe interpolation", () => {
     expect(p).toContain("确认当前版本 `>= 0.15.0`");
     expect(p).toContain("按 major/minor/patch 分段数字比较");
     expect(p).toContain("版本低于 `0.15.0`");
-    expect(p).toContain('npm install -g @mininglamp-oss/octo-cli@">=0.15.0"');
+    expect(p).toContain("npm install -g @mininglamp-oss/octo-cli@'>=0.15.0'");
     expect(p).not.toContain("@mininglamp-oss/octo-cli@^0.15.0");
     expect(p).not.toContain("@mininglamp-oss/octo-cli@latest");
     expect(p).toContain("先询问用户是否更新/安装 `octo-cli`");
@@ -95,6 +95,10 @@ describe("getMcpBotPublishPrompt — shell-safe interpolation", () => {
     expect(p).toContain("`GITHUB_TOKEN` 写 `${GITHUB_TOKEN}`");
     expect(p).toContain("不要写泛化的");
     expect(p).toContain("${VAR}");
+    expect(p).toContain("键 `TOKEN` 配 `${GITHUB_TOKEN}`");
+    expect(p).toContain("规范化键名占位 `${TOKEN}`");
+    expect(p).toContain("不得输出 `presigned_url` / `method` / `headers`");
+    expect(p).toContain("不得写入 payload 文件");
     expect(p).not.toContain("marketplace mcp-category");
     expect(p).not.toContain("marketplace mcp create");
     expect(p).not.toContain("marketplace mcp get");
@@ -154,6 +158,14 @@ describe("getMcpBotPublishPrompt — shell-safe interpolation", () => {
     // would then execute shell commands with the token in argv.
     const p = getMcpBotPublishPrompt({ spaceId: goodId });
     expect(p).toContain("不得输出 Token");
+  });
+
+  it("places the write phase after the explicit confirmation gate", () => {
+    const p = getMcpBotPublishPrompt({ spaceId: goodId });
+    const gateIndex = p.indexOf("明确等待我回复“确认上架”");
+    const writePhaseIndex = p.indexOf("确认后只使用 `mcp.md`");
+    expect(gateIndex).toBeGreaterThan(-1);
+    expect(writePhaseIndex).toBeGreaterThan(gateIndex);
   });
 
   it("uses the placeholder when apiBaseUrl is empty", () => {

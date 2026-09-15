@@ -37,7 +37,7 @@ describe("buildInstallPrompt", () => {
     expect(prompt).toContain("- API 地址：`https://octo.example.com`");
     expect(prompt).toContain("octo-cli skills octo-marketplace");
     expect(prompt).toContain(
-      'npm install -g @mininglamp-oss/octo-cli@">=0.15.0"'
+      "npm install -g @mininglamp-oss/octo-cli@'>=0.15.0'"
     );
     expect(prompt).not.toContain("@mininglamp-oss/octo-cli@^0.15.0");
     expect(prompt).toContain("确认当前版本 `>= 0.15.0`");

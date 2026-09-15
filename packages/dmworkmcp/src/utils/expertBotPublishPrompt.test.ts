@@ -52,7 +52,7 @@ describe("getExpertBotPublishPrompt — command surface", () => {
     expect(p).toContain("确认当前版本 `>= 0.15.0`");
     expect(p).toContain("按 major/minor/patch 分段数字比较");
     expect(p).toContain("版本低于 `0.15.0`");
-    expect(p).toContain('npm install -g @mininglamp-oss/octo-cli@">=0.15.0"');
+    expect(p).toContain("npm install -g @mininglamp-oss/octo-cli@'>=0.15.0'");
     expect(p).not.toContain("@mininglamp-oss/octo-cli@^0.15.0");
     expect(p).not.toContain("@mininglamp-oss/octo-cli@latest");
     expect(p).toContain("先询问用户是否更新/安装 `octo-cli`");
@@ -188,7 +188,8 @@ describe("getExpertBotPublishPrompt — update mode", () => {
     );
     expect(p).toContain("`relation_id` 和 `data`");
     expect(p).toContain("未上架的 Space 可见记录");
-    expect(p).toContain("409 `listed_requires_review`");
+    expect(p).toContain("任何 409");
+    expect(p).toContain("`listed_requires_review` / `review_pending`");
     expect(p).toContain("plugin review-request create");
     expect(p).toContain("不要引用未在本流程中实际生成的文件");
     expect(p).toContain("不要把展示用的 `icon_url` 写回");
@@ -201,36 +202,42 @@ describe("getExpertBotPublishPrompt — update mode", () => {
     expect(p).not.toContain("确认上架");
   });
 
-  it("places the expert write commands after the explicit confirmation gate", () => {
-    const createPrompt = getExpertBotPublishPrompt({
-      kind: "agent",
-      spaceId: SLUG,
-      apiBaseUrl: API,
-    });
-    const updatePrompt = getExpertBotPublishPrompt({
-      kind: "agent",
-      mode: "update",
-      id: ID,
-      spaceId: SLUG,
-      apiBaseUrl: API,
-    });
+  it.each([
+    ["agent", "create", "确认上架"],
+    ["agent", "update", "确认更新"],
+    ["squad", "create", "确认上架"],
+    ["squad", "update", "确认更新"],
+  ] as const)(
+    "places every %s %s write command after the explicit confirmation gate",
+    (kind, mode, confirmation) => {
+      const p = getExpertBotPublishPrompt({
+        kind,
+        mode,
+        id: ID,
+        spaceId: SLUG,
+        apiBaseUrl: API,
+      });
+      const gateIndex = p.indexOf(`明确等待我回复“${confirmation}”`);
+      expect(gateIndex).toBeGreaterThan(-1);
+      expect(p).toContain("将要新建或覆盖的每个 skill plugin");
+      expect(p.match(/plugin import/g)).toHaveLength(1);
 
-    expect(createPrompt.indexOf("明确等待我回复“确认上架”")).toBeLessThan(
-      createPrompt.indexOf("plugin upsert --data @expert-plugin.json")
-    );
-    expect(createPrompt.indexOf("明确等待我回复“确认上架”")).toBeLessThan(
-      createPrompt.indexOf("plugin publish")
-    );
-    expect(createPrompt.indexOf("明确等待我回复“确认上架”")).toBeLessThan(
-      createPrompt.indexOf("plugin review-request create")
-    );
-    expect(updatePrompt.indexOf("明确等待我回复“确认更新”")).toBeLessThan(
-      updatePrompt.indexOf("plugin upsert")
-    );
-    expect(updatePrompt.indexOf("明确等待我回复“确认更新”")).toBeLessThan(
-      updatePrompt.indexOf("plugin review-request create")
-    );
-  });
+      const mutatingCommands = [
+        "plugin import",
+        "plugin upsert",
+        "plugin publish",
+        "plugin review-request create",
+        "plugin review-request cancel",
+        "plugin delete",
+      ];
+      for (const command of mutatingCommands) {
+        const commandIndex = p.indexOf(command);
+        if (commandIndex !== -1) {
+          expect(commandIndex).toBeGreaterThan(gateIndex);
+        }
+      }
+    }
+  );
 
   it("documents normalized secret placeholders and presigned upload secrecy", () => {
     const p = getExpertBotPublishPrompt({
@@ -244,6 +251,8 @@ describe("getExpertBotPublishPrompt — update mode", () => {
     expect(p).toContain("`X-Api-Secret` 写 `${X_API_SECRET}`");
     expect(p).toContain("不得输出 `presigned_url` / `method` / `headers`");
     expect(p).toContain("不得写入 payload 文件");
+    expect(p).toContain("键 `TOKEN` 配 `${GITHUB_TOKEN}`");
+    expect(p).toContain("规范化键名占位 `${TOKEN}`");
   });
 
   it("squad update targets the squad update verb with the id", () => {
@@ -290,5 +299,17 @@ describe("getExpertBotPublishPrompt — update mode", () => {
     );
     expect(p).not.toContain("octo-cli marketplace expert update");
     expect(p).not.toContain("确认更新");
+  });
+
+  it("keeps update version omitted and uses a copyable upsert command", () => {
+    const p = getExpertBotPublishPrompt({
+      kind: "agent",
+      mode: "update",
+      id: ID,
+      spaceId: SLUG,
+      apiBaseUrl: API,
+    });
+    expect(p).toContain("`version` 保持省略");
+    expect(p).toContain("plugin upsert --data @expert-plugin.json");
   });
 });
