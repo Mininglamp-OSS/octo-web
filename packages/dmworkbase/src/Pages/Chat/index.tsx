@@ -369,6 +369,7 @@ export interface ChatContentPageProps {
 }
 
 export interface ChatContentPageState {
+  workspaceEmbedding?: ChatContentPageProps["workspaceEmbedding"];
   showChannelSetting: boolean;
   selectionMode: boolean;
   selectedCount: number;
@@ -493,6 +494,7 @@ export class ChatContentPage extends Component<
   constructor(props: any) {
     super(props);
     this.state = {
+      workspaceEmbedding: props.workspaceEmbedding,
       showChannelSetting: false,
       selectionMode: false,
       selectedCount: 0,
@@ -513,9 +515,19 @@ export class ChatContentPage extends Component<
     };
   }
 
+  updateWorkspaceEmbedding(
+    workspaceEmbedding?: ChatContentPageProps["workspaceEmbedding"]
+  ) {
+    if (this.state.workspaceEmbedding === workspaceEmbedding) return;
+    this.setState({
+      ...closeChatRightPanels(),
+      workspaceEmbedding,
+    });
+  }
+
   private _openWebhookPreview = (target: WebhookIssuePreviewTarget) => {
-    if (this.props.workspaceEmbedding) {
-      this.props.workspaceEmbedding.onSidePanelUnavailable();
+    if (this.state.workspaceEmbedding) {
+      this.state.workspaceEmbedding.onSidePanelUnavailable();
       return;
     }
     this._clearChannelSearchState();
@@ -530,8 +542,8 @@ export class ChatContentPage extends Component<
     file: FilePreviewInfo,
     options?: { returnToChannelSearch?: boolean }
   ) => {
-    if (this.props.workspaceEmbedding) {
-      this.props.workspaceEmbedding.onSidePanelUnavailable();
+    if (this.state.workspaceEmbedding) {
+      this.state.workspaceEmbedding.onSidePanelUnavailable();
       return;
     }
     const { channel } = this.props;
@@ -686,8 +698,8 @@ export class ChatContentPage extends Component<
   };
 
   private _openChannelSearchPanel = () => {
-    if (this.props.workspaceEmbedding) {
-      this.props.workspaceEmbedding.onSidePanelUnavailable();
+    if (this.state.workspaceEmbedding) {
+      this.state.workspaceEmbedding.onSidePanelUnavailable();
       return;
     }
     if (!isChannelSearchEnabled(this.props.channel)) return;
@@ -771,7 +783,7 @@ export class ChatContentPage extends Component<
       thread: Thread | null;
     }) => {
       if (detail?.groupNo === this.props.channel.channelID) {
-        const workspaceEmbedding = this.props.workspaceEmbedding;
+        const workspaceEmbedding = this.state.workspaceEmbedding;
         if (workspaceEmbedding) {
           // 有明确 thread 时导航到对应子区完整页
           if (detail?.thread?.channel_id) {
@@ -806,8 +818,8 @@ export class ChatContentPage extends Component<
         data.channelType !== channel.channelType
       )
         return;
-      if (this.props.workspaceEmbedding) {
-        this.props.workspaceEmbedding.onSidePanelUnavailable();
+      if (this.state.workspaceEmbedding) {
+        this.state.workspaceEmbedding.onSidePanelUnavailable();
         return;
       }
       this.setState((prevState) => {
@@ -832,8 +844,8 @@ export class ChatContentPage extends Component<
         data.channelType !== channel.channelType
       )
         return;
-      if (this.props.workspaceEmbedding) {
-        this.props.workspaceEmbedding.onSidePanelUnavailable();
+      if (this.state.workspaceEmbedding) {
+        this.state.workspaceEmbedding.onSidePanelUnavailable();
         return;
       }
       this._openChannelSearchPanel();
@@ -844,7 +856,7 @@ export class ChatContentPage extends Component<
     // 内嵌模式只消费 pending 标记。
     if (WKApp.shared.pendingThreadPanel === channel.channelID) {
       WKApp.shared.pendingThreadPanel = undefined;
-      if (!this.props.workspaceEmbedding) {
+      if (!this.state.workspaceEmbedding) {
         this.setState(openChatRightPanel("thread"));
       }
     }
@@ -854,7 +866,7 @@ export class ChatContentPage extends Component<
     if (WKApp.shared.pendingFilePreview) {
       const pending = WKApp.shared.pendingFilePreview;
       WKApp.shared.pendingFilePreview = undefined;
-      if (!this.props.workspaceEmbedding) {
+      if (!this.state.workspaceEmbedding) {
         this.setState(
           openChatRightPanel("filePreview", {
             previewFile: {
@@ -948,8 +960,8 @@ export class ChatContentPage extends Component<
     }
 
     // embed↔full 切换时清理侧栏状态。
-    if (!!this.props.workspaceEmbedding !== !!prevProps.workspaceEmbedding) {
-      this.setState(closeChatRightPanels());
+    if (this.props.workspaceEmbedding !== prevProps.workspaceEmbedding) {
+      this.updateWorkspaceEmbedding(this.props.workspaceEmbedding);
     }
 
     // 子区打开(入口二:页内子区选择)——本页 channel 为父群、activeThread 身份(channel_id)变化即一次
@@ -1004,7 +1016,7 @@ export class ChatContentPage extends Component<
       // 打开全部子区列表；内嵌模式只消费标记。
       if (WKApp.shared.pendingThreadPanel === channel.channelID) {
         WKApp.shared.pendingThreadPanel = undefined;
-        if (this.props.workspaceEmbedding) return;
+        if (this.state.workspaceEmbedding) return;
         this.setState(openChatRightPanel("thread"));
         return;
       }
@@ -1013,7 +1025,7 @@ export class ChatContentPage extends Component<
       if (WKApp.shared.pendingFilePreview) {
         const pending = WKApp.shared.pendingFilePreview;
         WKApp.shared.pendingFilePreview = undefined;
-        if (this.props.workspaceEmbedding) return;
+        if (this.state.workspaceEmbedding) return;
         this.setState(
           openChatRightPanel("filePreview", {
             previewFile: {
@@ -1369,7 +1381,7 @@ export class ChatContentPage extends Component<
         parseThreadChannelId(channel.channelID)?.groupNo
       : undefined;
     const threadStatus = this.getThreadStatus(channelInfo);
-    const workspaceEmbedding = !!this.props.workspaceEmbedding;
+    const workspaceEmbedding = !!this.state.workspaceEmbedding;
     return (
       <div
         className={classNames(
@@ -1451,7 +1463,7 @@ export class ChatContentPage extends Component<
               });
             },
             onOpenThreadPanel: (threadChannelId, threadName) => {
-              const workspaceEmbedding = this.props.workspaceEmbedding;
+              const workspaceEmbedding = this.state.workspaceEmbedding;
               if (workspaceEmbedding && threadChannelId) {
                 // 子区入口：导航到完整消息页对应子区。
                 workspaceEmbedding.openConversation(

@@ -253,6 +253,18 @@ describe("ChatContentPage workspaceEmbedding", () => {
       expect(page.state.showThreadPanel).toBe(false);
     });
 
+    it("updates embedding presentation in place without replacing the page", () => {
+      const page = createPage(new Channel("g", 2), EMPTY_EMBEDDING);
+      page.setState({ showChannelSetting: true, showThreadPanel: true });
+
+      page.updateWorkspaceEmbedding(undefined);
+
+      expect(page.state.workspaceEmbedding).toBeUndefined();
+      expect(page.state.showChannelSetting).toBe(false);
+      expect(page.state.showThreadPanel).toBe(false);
+      expect(requireConv(page).headerMode).toBeUndefined();
+    });
+
     it("constructor does not set showChannelSearch when embedding", () => {
       const page = new ChatContentPage({
         channel: new Channel("g", 2),

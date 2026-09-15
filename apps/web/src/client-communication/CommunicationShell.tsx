@@ -140,6 +140,7 @@ export function CommunicationShell({
   const pendingTargetRef = useRef<ConversationTarget | undefined>();
   const appTargetRef = useRef<ConversationTarget | undefined>();
   const workspaceTargetRef = useRef<ConversationTarget | undefined>();
+  const currentTargetRef = useRef<ConversationTarget | undefined>();
   const workspaceReturnTargetRef = useRef<Channel | undefined>();
   const workspaceNavigationGuard = useMemo(() => createWorkspaceNavigationGuard(), []);
   const onReadyRef = useRef(onReady);
@@ -148,10 +149,12 @@ export function CommunicationShell({
 
   const commitPreparedTarget = useCallback((target: ConversationTarget) => {
     const previous = workspaceTargetRef.current;
+    const currentTarget = currentTargetRef.current;
     const channel = WKApp.shared.openChannel;
-    if (target.variant === "workspace-group" && previous?.channelId === target.channelId &&
-        previous.channelType === target.channelType && previous.messageSeq === target.messageSeq &&
-        previous.openChannelSearch === target.openChannelSearch &&
+    if (target.variant !== "app-bot" && currentTarget?.channelId === target.channelId &&
+        currentTarget.channelType === target.channelType && currentTarget.variant === target.variant &&
+        currentTarget.messageSeq === target.messageSeq &&
+        currentTarget.openChannelSearch === target.openChannelSearch &&
         channel?.channelID === target.channelId && channel.channelType === target.channelType) return;
     const preserveCurrentConversation = Boolean(
       !appTargetRef.current && (previous || target.variant === "workspace-group" ||
@@ -161,6 +164,7 @@ export function CommunicationShell({
       !target.messageSeq && !target.openChannelSearch
     );
     workspaceReturnTargetRef.current = undefined;
+    currentTargetRef.current = target;
     appTargetRef.current = target.variant === "app-bot" ? target : undefined;
     workspaceTargetRef.current = target.variant === "workspace-group" ? target : undefined;
     const spaceId = spaceIdRef.current;
@@ -294,6 +298,7 @@ export function CommunicationShell({
           variant: undefined,
         } : undefined);
         if (command.page !== "chat") {
+          currentTargetRef.current = undefined;
           appTargetRef.current = undefined;
           workspaceTargetRef.current = undefined;
         }
@@ -311,6 +316,7 @@ export function CommunicationShell({
       if (command.type === "spaceChanged") {
         workspaceNavigationGuard.cancel();
         pendingTargetRef.current = undefined;
+        currentTargetRef.current = undefined;
         appTargetRef.current = undefined;
         workspaceReturnTargetRef.current = undefined;
         if (workspaceTargetRef.current) WKApp.routeRight.popToRoot();

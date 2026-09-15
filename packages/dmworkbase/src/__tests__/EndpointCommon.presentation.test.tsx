@@ -60,6 +60,24 @@ describe("host conversation presentation identity", () => {
     expect(full.props.workspaceEmbedding).toBeUndefined();
   });
 
+  it("updates a mounted conversation in place for a presentation-only transition", () => {
+    const open = setup();
+    const embedded = open("group", {
+      workspaceEmbedding: {
+        openConversation: vi.fn(),
+        onSidePanelUnavailable: vi.fn(),
+      },
+    });
+    const page = { updateWorkspaceEmbedding: vi.fn() };
+    (embedded as any).ref(page);
+    state.unread = 0;
+
+    open("group", { preserveCurrentConversation: true });
+
+    expect(page.updateWorkspaceEmbedding).toHaveBeenCalledWith(undefined);
+    expect(state.render).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps ordinary Web unread-location behavior unchanged", () => {
     const open = setup();
     expect(open("group").key).toBe("group-2-9");

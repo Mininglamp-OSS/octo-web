@@ -288,10 +288,8 @@ describe("CommunicationShell", () => {
       type: "navigate", page: "chat", presentation: "workspace",
       target: { channelId: "regular-group", channelType: 2 },
     }));
-    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(2));
-    expect(vi.mocked(WKApp.endpoints.showConversation).mock.lastCall?.[1]).toMatchObject({
-      preserveCurrentConversation: true,
-    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
     expect(mocks.confirm).toHaveBeenCalledTimes(1);
   });
 
@@ -350,6 +348,9 @@ describe("CommunicationShell", () => {
     await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(2));
     expect(vi.mocked(WKApp.endpoints.showConversation).mock.calls[1][1]?.workspaceEmbedding).toBeUndefined();
     expect(vi.mocked(WKApp.endpoints.showConversation).mock.calls[1][1]?.preserveCurrentConversation).toBe(true);
+    act(() => mocks.command.listener?.({ type: "navigate", page: "chat", presentation: "workspace" }));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(2);
     act(() => mocks.command.listener?.(command));
     await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(3));
     expect(vi.mocked(WKApp.endpoints.showConversation).mock.calls[2][1]?.preserveCurrentConversation).toBe(true);

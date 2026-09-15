@@ -132,7 +132,13 @@ export class EndpointCommon {
   }
 
   private registerShowConversation() {
-    let currentRender: { channelKey: string; spaceId: string; key: string; locateSeq: number } | undefined;
+    let currentRender: {
+      channelKey: string;
+      spaceId: string;
+      key: string;
+      locateSeq: number;
+      page?: ChatContentPage;
+    } | undefined;
     EndpointManager.shared.setMethod(
       EndpointID.showConversation,
       (param: any) => {
@@ -180,14 +186,22 @@ export class EndpointCommon {
         if (opts.preserveCurrentConversation && !opts.initLocateMessageSeq &&
             !opts.openChannelSearch && currentRender?.channelKey === channelKey &&
             currentRender.spaceId === spaceId) {
+          if (currentRender.page) {
+            currentRender.page.updateWorkspaceEmbedding(opts.workspaceEmbedding);
+            return;
+          }
           key = currentRender.key;
           initLocateMessageSeq = currentRender.locateSeq;
         }
-        currentRender = { channelKey, spaceId, key, locateSeq: initLocateMessageSeq };
+        const renderState = { channelKey, spaceId, key, locateSeq: initLocateMessageSeq };
+        currentRender = renderState;
 
         WKApp.routeRight.replaceToRoot(
           <ChatContentPage
             key={key}
+            ref={(page) => {
+              if (currentRender === renderState) currentRender.page = page || undefined;
+            }}
             channel={channel}
             initLocateMessageSeq={initLocateMessageSeq}
             initialShowChannelSearch={
