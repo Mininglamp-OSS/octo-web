@@ -13,8 +13,6 @@ const state = vi.hoisted(() => ({
     },
   },
   app: {} as Record<string, unknown>,
-  clearDefaultSession: vi.fn(),
-  consumeNextCreate: vi.fn(() => false),
 }));
 
 vi.mock("@octo/base", () => ({
@@ -112,10 +110,6 @@ vi.mock("../utils/channelType", () => ({
 vi.mock("../utils/summaryAttentionSync", () => ({
   createAttentionSync: () => ({ trigger: vi.fn(), cancel: vi.fn() }),
   shouldRefreshForMessage: () => false,
-}));
-vi.mock("../features/summaryWorkbench/sessionStorage", () => ({
-  clearDefaultSummaryWorkbenchSession: state.clearDefaultSession,
-  consumeSummaryWorkbenchNextCreate: state.consumeNextCreate,
 }));
 vi.mock("../utils/summaryAttentionPoll", () => ({
   createAttentionPoll: () => ({
@@ -390,22 +384,6 @@ describe("SummaryModule guarded menu switching", () => {
     expect(scheduleEntry.type).toBe(ScheduleListPage);
   });
 
-  it("consumes completed home sessions before rendering the /summary/create route", () => {
-    state.consumeNextCreate.mockReturnValueOnce(true);
-
-    const createEntry = registeredRoute("/summary/create")();
-
-    expect(createEntry.type).toBe(SummaryWorkbenchCreateEntry);
-    expect(state.consumeNextCreate).toHaveBeenCalledWith({
-      userId: "user-a",
-      spaceId: "space-a",
-    });
-    expect(state.clearDefaultSession).toHaveBeenCalledWith({
-      userId: "user-a",
-      spaceId: "space-a",
-    });
-  });
-
   it("opens detail optimization in the unified entry with the referenced task", () => {
     const task = { task_id: 42, title: "Weekly summary" };
     const handler = windowEventHandlers.get("summary-open-chat-with-reference");
@@ -450,23 +428,6 @@ describe("SummaryModule guarded menu switching", () => {
     expect(state.replaceToRoot).toHaveBeenCalledTimes(2);
     const second = state.replaceToRoot.mock.calls[1][0] as React.ReactElement;
     expect(second.key).not.toBe(pushed.key);
-  });
-
-  it("NavRail summary onPress clears a completed home workbench session before opening create", () => {
-    state.consumeNextCreate.mockReturnValueOnce(true);
-    const menu = summaryMenuFactory()();
-
-    menu.onPress?.(false);
-
-    expect(state.consumeNextCreate).toHaveBeenCalledWith({
-      userId: "user-a",
-      spaceId: "space-a",
-    });
-    expect(state.clearDefaultSession).toHaveBeenCalledWith({
-      userId: "user-a",
-      spaceId: "space-a",
-    });
-    expect(state.replaceToRoot).toHaveBeenCalledTimes(1);
   });
 
   it("small screens (≤640px) keep landing on the list: no create page pushed into the overlay right pane", () => {

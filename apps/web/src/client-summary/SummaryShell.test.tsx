@@ -11,8 +11,6 @@ const mocks = vi.hoisted(() => ({
   workspaceProps: undefined as any,
   setRuntimeVisible: vi.fn(),
   resetScope: vi.fn(),
-  clearDefaultSession: vi.fn(),
-  consumeNextCreate: vi.fn(() => false),
   bridge: {
     reportRoute: vi.fn(),
     reportBadge: vi.fn(),
@@ -34,8 +32,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@dmwork/summary", () => ({
   setSummaryAttentionRuntimeVisible: mocks.setRuntimeVisible,
   resetSummaryAttentionScope: mocks.resetScope,
-  clearDefaultSummaryWorkbenchSession: mocks.clearDefaultSession,
-  consumeSummaryWorkbenchNextCreate: mocks.consumeNextCreate,
   SummaryWorkspace: (props: any) => {
     mocks.workspaceProps = props;
     return <div data-testid="summary-workspace" />;
@@ -73,7 +69,6 @@ describe("SummaryShell", () => {
     vi.clearAllMocks();
     mocks.command.listener = undefined;
     mocks.workspaceProps = undefined;
-    mocks.consumeNextCreate.mockReturnValue(false);
     WKApp.shared.currentSpaceId = "space-a";
     document.documentElement.removeAttribute("data-space-id");
     document.documentElement.removeAttribute("data-theme");
@@ -224,73 +219,6 @@ describe("SummaryShell", () => {
 
     act(() => mocks.command.listener?.({ type: "hostVisibilityChanged", visible: true }));
     expect(mocks.setRuntimeVisible).toHaveBeenLastCalledWith(true);
-  });
-
-  it("opens a fresh create page when a completed summary marker is consumed on re-entry", async () => {
-    mocks.consumeNextCreate
-      .mockReturnValueOnce(false)
-      .mockReturnValueOnce(true);
-    render(
-      <SummaryShell
-        bridge={mocks.bridge as any}
-        initialRoute={{ view: "detail", taskId: 42 }}
-        initialSpaceId="space-a"
-        onReady={vi.fn(async () => {})}
-      />
-    );
-
-    act(() =>
-      mocks.command.listener?.({ type: "hostVisibilityChanged", visible: true })
-    );
-
-    expect(mocks.clearDefaultSession).toHaveBeenCalledWith({
-      userId: "user-a",
-      spaceId: "space-a",
-    });
-    expect(mocks.workspaceProps.route).toEqual({
-      view: "create",
-      mode: "normal",
-      source: "summary_home",
-    });
-    await waitFor(() =>
-      expect(mocks.bridge.reportRoute).toHaveBeenCalledWith({
-        route: {
-          view: "create",
-          mode: "normal",
-          source: "summary_home",
-        },
-        spaceId: "space-a",
-      })
-    );
-  });
-
-  it("consumes the completed summary marker when the summary menu is activated", () => {
-    let menuHandler!: (input: { menuId: string }) => void;
-    vi.mocked(WKApp.mittBus.on).mockImplementation((event, handler) => {
-      if (event === "wk:nav-menu-activated") {
-        menuHandler = handler as typeof menuHandler;
-      }
-    });
-    mocks.consumeNextCreate
-      .mockReturnValueOnce(false)
-      .mockReturnValueOnce(true);
-
-    render(
-      <SummaryShell
-        bridge={mocks.bridge as any}
-        initialRoute={{ view: "detail", taskId: 42 }}
-        initialSpaceId="space-a"
-        onReady={vi.fn(async () => {})}
-      />
-    );
-
-    act(() => menuHandler({ menuId: "summary" }));
-
-    expect(mocks.workspaceProps.route).toEqual({
-      view: "create",
-      mode: "normal",
-      source: "summary_home",
-    });
   });
 
   it("isolates route and badge reporting failures", async () => {

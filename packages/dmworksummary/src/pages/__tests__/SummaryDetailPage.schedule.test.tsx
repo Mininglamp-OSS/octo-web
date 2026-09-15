@@ -279,6 +279,20 @@ describe('shared detail actions after navigation', () => {
         expect(api.regenerateSummary).not.toHaveBeenCalled();
     });
 
+    it('retries a failed Workflow summary without replacing its saved instruction', async () => {
+        vi.mocked(api.regenerateSummary).mockResolvedValue({ task_id: 1 });
+        const page = makePage(1);
+        page.state = { ...page.state, loading: false,
+            detail: baseDetail({ trigger_type: TriggerType.MANUAL, status: TaskStatus.FAILED,
+                generation_requirement: '', topic: '', title: 'Display title only' }) } as any;
+        (page as any).loadDetail = vi.fn();
+
+        await page.handleRetry();
+
+        expect(api.regenerateSummary).toHaveBeenCalledWith(1);
+        expect(api.regenerateSummary).not.toHaveBeenCalledWith(1, expect.anything());
+    });
+
     it.each([TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED])('allows both edit entries for terminal status %s with retained content', (status) => {
         const page = makePage(1);
         page.state = { ...page.state, loading: false, personalLoading: false,
@@ -467,6 +481,16 @@ describe('SummaryDetailPage — Blocking 5: scheduleItem must track current deta
         expect(page.state.showRegenerateModal).toBe(false);
         expect(Toast.warning).toHaveBeenCalledWith(t('summary.generation.scheduleSourceFixed'));
         expect(api.saveGenerationConfig).not.toHaveBeenCalled();
+    });
+
+    it('explains why a consumed list-card schedule action cannot open', () => {
+        const page = makePage(1);
+        page.state.detail = baseDetail({ permissions: { can_edit: true, can_schedule: false } }) as any;
+
+        page.openScheduleModal();
+
+        expect(page.state.showScheduleConfig).toBe(false);
+        expect(Toast.warning).toHaveBeenCalledWith(t('summary.generation.schedulePermissionDenied'));
     });
 
     it('opens bound schedule settings without calling the generic configuration endpoint', () => {
@@ -994,14 +1018,9 @@ describe('SummaryDetailPage — R3: smart_summary_completed exactly-once under s
         vi.mocked(api.batchStatus).mockResolvedValue([{ id: 1, status: 3 }] as any);
 
         const track = vi.spyOn(Dap.shared, 'track');
-        const onCompleted = vi.fn();
         try {
-            const page = makePage(1, { onCompleted });
-            // lastKnownStatus 在真实流程里由 loadDetail 写入，后者同时登记「见过活动态」
-            // （observedActiveTaskIds，六审 P1-1 的 arm 闸）。测试手工种状态时要补上同一步，
-            // 才与生产时序一致：见过 PROCESSING → 再见 COMPLETED 才 arm onCompleted。
+            const page = makePage(1);
             page.state = { ...(page.state as any), lastKnownStatus: 2 /* PROCESSING */ };
-            (page as any).noteObservedActiveStatus(1, 2);
 
             // 两路并发启动,但 detail 尚未兑现 → 都停在 await getSummaryDetail。
             const p1 = (page as any).handleStatusChangeEvent(
@@ -1020,8 +1039,6 @@ describe('SummaryDetailPage — R3: smart_summary_completed exactly-once under s
             expect(completed).toHaveLength(1);
             // 不只钉事件名:终态漏斗以 result 区分 completed/failed/cancelled,必须钉住 payload。
             expect(completed[0][1]).toEqual({ result: 'completed' });
-            expect(onCompleted).toHaveBeenCalledTimes(1);
-            expect(onCompleted).toHaveBeenCalledWith(1);
         } finally {
             track.mockRestore();
         }
@@ -1163,59 +1180,6 @@ describe('SummaryDetailPage — R3: smart_summary_completed exactly-once under s
         }
     });
 
-    // ─── 六审 P1-1：onCompleted（工作台「回首页新建」标记）只由本页亲历的运行→完成沿触发 ───
-    // 正向：创建流挂载时任务尚在 PENDING（loadDetail 写 lastKnownStatus 并登记活动态），
-    // 随后状态订阅观察到 PENDING→COMPLETED → 必须 arm。这是工作台 normal-mode 创建流
-    // 依赖完成时 arming 的唯一路径，不能被「挂载即终态」守卫误杀。
-    it('arms onCompleted for a completion the page witnessed from a non-terminal mount (create-flow shape, 六审 P1-1)', async () => {
-        const onCompleted = vi.fn();
-        const page = makePage(1, { onCompleted });
-        (page as any).startFallbackPoll = () => {};
-        (page as any).stopFallbackPoll = () => {};
-        (page as any).stopSummaryStream = () => {};
-        (page as any).stopTeamSummaryStream = () => {};
-        (page as any).publishDetailTitle = () => {};
-        (page as any).loadSchedule = () => {};
-        (page as any).loadVersions = () => {};
-
-        // 挂载：首屏拉到 PROCESSING（非终态）。
-        vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 2 }) as any);
-        await (page as any).loadDetail();
-        expect(onCompleted).not.toHaveBeenCalled();
-
-        // 完成：状态订阅入口观察到 PROCESSING → COMPLETED。
-        vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 }) as any);
-        await (page as any).handleStatusChangeEvent(
-            new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
-        );
-
-        expect(onCompleted).toHaveBeenCalledTimes(1);
-        expect(onCompleted).toHaveBeenCalledWith(1);
-    });
-
-    // 反向：深链/刷新/列表点开一条已完成的总结 → 挂载即终态，从未见过非终态 →
-    // 即使后续有状态事件也不得 arm（否则用户只是「看」旧总结，下次进首页被清掉默认草稿）。
-    it('does NOT arm onCompleted when the page mounts directly onto a COMPLETED summary (deep-link shape, 六审 P1-1)', async () => {
-        const onCompleted = vi.fn();
-        const page = makePage(1, { onCompleted });
-        (page as any).startFallbackPoll = () => {};
-        (page as any).stopFallbackPoll = () => {};
-        (page as any).stopSummaryStream = () => {};
-        (page as any).stopTeamSummaryStream = () => {};
-        (page as any).publishDetailTitle = () => {};
-        (page as any).loadSchedule = () => {};
-        (page as any).loadVersions = () => {};
-
-        vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 }) as any);
-        await (page as any).loadDetail();
-        // 同一 task 再来一次终态事件（如迟到重放）也不得 arm。
-        vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 }) as any);
-        await (page as any).handleStatusChangeEvent(
-            new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
-        );
-
-        expect(onCompleted).not.toHaveBeenCalled();
-    });
 });
 
 // ─── 续修5/6/7（blocking）：schedule 用户操作路径切 task 迟到丢弃 ───

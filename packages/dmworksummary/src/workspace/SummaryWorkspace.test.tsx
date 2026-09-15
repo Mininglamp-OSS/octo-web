@@ -5,11 +5,6 @@ import { setSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
 import type { SummaryWorkspaceRoute } from "./types";
 import type { SummaryMessagingPort } from "../host";
 
-const storageMocks = vi.hoisted(() => ({
-  markNextCreate: vi.fn(),
-  clearNextCreate: vi.fn(),
-}));
-
 const wkAppMock = vi.hoisted(() => ({
   shared: { currentSpaceId: "space-a" },
   loginInfo: {
@@ -30,11 +25,6 @@ vi.mock("@octo/base/src/App", () => ({
   default: wkAppMock,
   WKApp: wkAppMock,
   useI18n: () => ({ t: (key: string) => key }),
-}));
-
-vi.mock("../features/summaryWorkbench/sessionStorage", () => ({
-  clearSummaryWorkbenchNextCreate: storageMocks.clearNextCreate,
-  markSummaryWorkbenchNextCreate: storageMocks.markNextCreate,
 }));
 
 vi.mock("../api/summaryApi", () => ({
@@ -68,7 +58,6 @@ vi.mock("../pages/SummaryDetailPage", () => ({
     onAfterMutate,
     onContinueRefine,
     onViewConfirm,
-    onCompleted,
   }: any) => (
     <div data-testid="workspace-detail">
       <span>{taskId}</span>
@@ -95,7 +84,6 @@ vi.mock("../pages/SummaryDetailPage", () => ({
         continue-refine
       </button>
       <button onClick={() => onViewConfirm(taskId)}>open-confirm</button>
-      <button onClick={() => onCompleted(taskId)}>complete-task</button>
       <button onClick={onAfterMutate}>after-mutate</button>
     </div>
   ),
@@ -169,8 +157,6 @@ describe("SummaryWorkspace", () => {
 
   beforeEach(() => {
     setSummaryAttentionBadge(0);
-    storageMocks.markNextCreate.mockClear();
-    storageMocks.clearNextCreate.mockClear();
   });
 
   afterEach(() => {
@@ -219,53 +205,6 @@ describe("SummaryWorkspace", () => {
       view: "detail",
       taskId: 23,
     });
-  });
-
-  it("marks the next summary home entry as fresh when a task created through the create flow completes", () => {
-    const messaging = {
-      getCurrentUser: () => ({ uid: "user-a", displayName: "User A" }),
-      loadConversationMembers: vi.fn(async () => []),
-      openConversation: vi.fn(async () => {}),
-      notifySummaryCompleted: vi.fn(async () => {}),
-      requestForward: vi.fn(),
-      subscribeInvalidation: vi.fn(() => vi.fn()),
-    } satisfies SummaryMessagingPort;
-
-    render(<Harness initialRoute={{ view: "list" }} messaging={messaging} />);
-
-    // 创建流：进入 create → 提交产出 task 23 → 详情页展示它 → 完成。
-    fireEvent.click(screen.getByText("create-agent"));
-    fireEvent.click(screen.getByText("submit-create"));
-    expect(screen.getByTestId("workspace-detail")).toHaveTextContent("23");
-    fireEvent.click(screen.getByText("complete-task"));
-
-    expect(storageMocks.markNextCreate).toHaveBeenCalledWith({
-      userId: "user-a",
-      spaceId: "space-a",
-    });
-  });
-
-  it("does not arm the next-home-create marker for completions of tasks the create flow did not produce (六审 P1-1)", () => {
-    const messaging = {
-      getCurrentUser: () => ({ uid: "user-a", displayName: "User A" }),
-      loadConversationMembers: vi.fn(async () => []),
-      openConversation: vi.fn(async () => {}),
-      notifySummaryCompleted: vi.fn(async () => {}),
-      requestForward: vi.fn(),
-      subscribeInvalidation: vi.fn(() => vi.fn()),
-    } satisfies SummaryMessagingPort;
-
-    // 直接以 detail 视图进入（列表点击 / 深链 / 刷新）——该任务的完成与创建流无关。
-    render(
-      <Harness
-        initialRoute={{ view: "detail", taskId: 17 }}
-        messaging={messaging}
-      />
-    );
-
-    fireEvent.click(screen.getByText("complete-task"));
-
-    expect(storageMocks.markNextCreate).not.toHaveBeenCalled();
   });
 
   it("delegates return-to-chat to the host", async () => {

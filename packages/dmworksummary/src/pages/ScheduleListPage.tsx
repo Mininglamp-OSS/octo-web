@@ -1,35 +1,48 @@
 import React, { Component } from "react";
-import { Spin, Tag, Banner, Popconfirm, Toast } from "@douyinfe/semi-ui";
+import { Spin, Tag, Banner, Modal, Popconfirm, Toast } from "@douyinfe/semi-ui";
 import { IconArrowLeft } from "@douyinfe/semi-icons";
-import { Pause, Play, Trash2 } from "lucide-react";
+import { Pause, Pencil, Play, Trash2 } from "lucide-react";
 import { I18nContext, t, WKButton } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import * as api from "../api/summaryApi";
-import type { ScheduleItem } from "../types/summary";
+import type { CreateScheduleParams, ScheduleItem, UpdateScheduleParams } from "../types/summary";
 import {
     getModeLabel,
     describeSchedule,
     getTimeRangeTypeLabel,
+    scheduleItemToConfig,
 } from "../utils/summaryHelpers";
+import ScheduleForm from "../components/ScheduleForm";
 
 interface ScheduleListPageState {
     schedules: ScheduleItem[];
     loading: boolean;
     error: string | null;
     actionPending: boolean;
+    editingSchedule: ScheduleItem | null;
+    formLoading: boolean;
 }
 
 interface ScheduleListPageProps {
     onBack?: () => void;
 }
 
-// Legacy schedules may have no detail page. Keep pause/delete recovery here,
-// but configuration stays in the detail page: no standalone create/edit forms.
+// Legacy schedules may have no detail page, so the list retains an edit-only
+// recovery path. New schedules are still created from a summary detail page.
 export default class ScheduleListPage extends Component<ScheduleListPageProps, ScheduleListPageState> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
 
-    state: ScheduleListPageState = { schedules: [], loading: false, error: null, actionPending: false };
+    state: ScheduleListPageState = {
+        schedules: [],
+        loading: false,
+        error: null,
+        actionPending: false,
+        editingSchedule: null,
+        formLoading: false,
+    };
+    // React state drives disabled controls; this synchronous flag closes the
+    // gap before setState is committed and prevents duplicate API requests.
     private actionPending = false;
 
     handleScheduleAction = async (scheduleId: number, action: "pause" | "resume" | "delete") => {
@@ -77,6 +90,45 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
         }
     }
 
+    handleUpdate = async (params: CreateScheduleParams) => {
+        const { editingSchedule } = this.state;
+        if (!editingSchedule || this.actionPending) return;
+        this.actionPending = true;
+        this.setState({ actionPending: true, formLoading: true });
+        try {
+            const isMultiPerson = (editingSchedule.participants?.length ?? 0) > 1;
+            const updateParams: UpdateScheduleParams = {
+                title: params.title,
+                summary_mode: params.summary_mode,
+                cron_expr: params.cron_expr,
+                interval_days: params.interval_days ?? 0,
+                interval_months: params.interval_months ?? 0,
+                day_of_week: params.day_of_week ?? 0,
+                day_of_month: params.day_of_month ?? 0,
+                run_time: params.run_time ?? "",
+                time_range_type: params.time_range_type,
+                sources: params.sources,
+                ...(isMultiPerson
+                    ? { confirm_policy: editingSchedule.confirm_policy ?? 1 }
+                    : {}),
+            };
+            await api.updateSchedule(editingSchedule.schedule_id, updateParams);
+            this.setState(state => ({
+                schedules: state.schedules.map(schedule =>
+                    schedule.schedule_id === editingSchedule.schedule_id
+                        ? { ...schedule, ...updateParams }
+                        : schedule),
+                editingSchedule: null,
+            }));
+            Toast.success(t("summary.schedule.updateSuccess"));
+        } catch (err: any) {
+            Toast.error(err.message || t("summary.common.updateFailed"));
+        } finally {
+            this.actionPending = false;
+            this.setState({ actionPending: false, formLoading: false });
+        }
+    };
+
     handleBack = () => {
         if (this.props.onBack) {
             this.props.onBack();
@@ -86,7 +138,7 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
     };
 
     render() {
-        const { schedules, loading, error, actionPending } = this.state;
+        const { schedules, loading, error, actionPending, editingSchedule, formLoading } = this.state;
         const { t: translate } = this.context;
         return (
             <div className="summary-schedule-page">
@@ -97,7 +149,13 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
                 </div>
                 <Banner type="info" closeIcon={null} description={translate("summary.generation.scheduleDetailOnly")} />
                 {loading && <Spin />}
-                {error && <Banner type="danger" closeIcon={null} description={error} />}
+                {error && (
+                    <Banner type="danger" closeIcon={null} description={error}>
+                        <WKButton size="sm" variant="ghost" onClick={() => this.loadData()}>
+                            {translate("summary.common.retry")}
+                        </WKButton>
+                    </Banner>
+                )}
                 {!loading && !error && (
                     <div className="summary-schedule-list">
                         {schedules.map(item => (
@@ -119,6 +177,11 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
                                     {(item.sources ?? []).map(s => s.source_name || s.source_id).join("、") || "-"}
                                 </div>
                                 <div className="summary-schedule-card-actions">
+                                    <WKButton icon={<Pencil size={16} />} iconOnly size="sm" variant="ghost"
+                                        title={translate("summary.schedule.editModalTitle")}
+                                        aria-label={translate("summary.schedule.editModalTitle")}
+                                        disabled={actionPending}
+                                        onClick={() => this.setState({ editingSchedule: item })} />
                                     {item.is_active
                                         ? <WKButton icon={<Pause size={16} />} iconOnly size="sm" variant="ghost"
                                             title={translate("summary.schedule.pause")} aria-label={translate("summary.schedule.pause")}
@@ -138,6 +201,42 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
                         ))}
                     </div>
                 )}
+                <Modal
+                    title={translate("summary.schedule.editModalTitle")}
+                    visible={editingSchedule !== null}
+                    onCancel={() => this.setState({ editingSchedule: null })}
+                    footer={null}
+                    width={520}
+                >
+                    {editingSchedule && (
+                        <>
+                            {scheduleItemToConfig(editingSchedule).legacyCron && (
+                                <Banner
+                                    type="warning"
+                                    closeIcon={null}
+                                    description={translate("summary.schedule.config.legacyCronWarning")}
+                                />
+                            )}
+                            <ScheduleForm
+                                initialValues={{
+                                    title: editingSchedule.title,
+                                    summary_mode: editingSchedule.summary_mode,
+                                    cron_expr: editingSchedule.cron_expr,
+                                    interval_days: editingSchedule.interval_days ?? 0,
+                                    interval_months: editingSchedule.interval_months ?? 0,
+                                    day_of_week: editingSchedule.day_of_week ?? 0,
+                                    day_of_month: editingSchedule.day_of_month ?? 0,
+                                    run_time: editingSchedule.run_time ?? "",
+                                    time_range_type: editingSchedule.time_range_type,
+                                    sources: editingSchedule.sources ?? [],
+                                }}
+                                onSubmit={this.handleUpdate}
+                                onCancel={() => this.setState({ editingSchedule: null })}
+                                loading={formLoading}
+                            />
+                        </>
+                    )}
+                </Modal>
             </div>
         );
     }

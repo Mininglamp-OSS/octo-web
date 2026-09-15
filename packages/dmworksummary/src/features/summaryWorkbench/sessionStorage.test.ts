@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     clearSummaryWorkbenchSession,
-    clearDefaultSummaryWorkbenchSession,
-    consumeSummaryWorkbenchNextCreate,
-    markSummaryWorkbenchNextCreate,
     readSummaryWorkbenchSession,
     writeSummaryWorkbenchSession,
 } from "./sessionStorage";
@@ -115,29 +112,6 @@ describe("summary workbench session storage", () => {
 
         expect(readSummaryWorkbenchSession(first)).toBe("session-a");
         expect(readSummaryWorkbenchSession(second)).toBe("session-b");
-    });
-
-    it("marks next-create by user and Space and consumes it once", () => {
-        const scope = { userId: "user-a", spaceId: "space-a" };
-        const otherSpace = { userId: "user-a", spaceId: "space-b" };
-
-        markSummaryWorkbenchNextCreate(scope);
-
-        expect(consumeSummaryWorkbenchNextCreate(otherSpace)).toBe(false);
-        expect(consumeSummaryWorkbenchNextCreate(scope)).toBe(true);
-        expect(consumeSummaryWorkbenchNextCreate(scope)).toBe(false);
-    });
-
-    it("clears the default workbench session without touching channel sessions", () => {
-        const base = { userId: "user-a", spaceId: "space-a" };
-        const channel = { ...base, channelId: "channel-1", channelType: "group" };
-
-        writeSummaryWorkbenchSession(base, "default-session");
-        writeSummaryWorkbenchSession(channel, "channel-session");
-        clearDefaultSummaryWorkbenchSession(base);
-
-        expect(readSummaryWorkbenchSession(base)).toBe("");
-        expect(readSummaryWorkbenchSession(channel)).toBe("channel-session");
     });
 
     it("fails safely when browser storage is unavailable", () => {

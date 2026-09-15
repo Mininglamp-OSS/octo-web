@@ -9,9 +9,11 @@ vi.mock("@douyinfe/semi-ui", () => ({
     Spin: () => null,
     Tag: () => null,
     Banner: () => null,
+    Modal: () => null,
     Popconfirm: () => null,
     Toast: { success: vi.fn(), error: vi.fn() },
 }));
+vi.mock("../../components/ScheduleForm", () => ({ default: () => null }));
 vi.mock("@octo/base", async (importOriginal) => {
     const actual = await importOriginal<any>();
     return { ...actual, WKButton: () => null,
@@ -36,7 +38,7 @@ function elements(node: any): any[] {
 describe("legacy schedule recovery controls", () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it("offers pause and confirmed delete but no creation, editing, or source controls", async () => {
+    it("offers edit, pause, and confirmed delete without standalone creation", async () => {
         vi.mocked(api.listSchedules).mockResolvedValue([{
             schedule_id: 1, title: "Weekly", summary_mode: 2, is_active: true,
             interval_days: 7, cron_expr: "", run_time: "09:00", time_range_type: 2,
@@ -47,8 +49,7 @@ describe("legacy schedule recovery controls", () => {
         const rendered = elements(page.render());
         expect(page.state.schedules).toHaveLength(1);
         expect(rendered.some(node => node.props?.description === "summary.generation.scheduleDetailOnly")).toBe(true);
-        expect(rendered.filter(node => node.props?.onClick)).toHaveLength(2);
-        expect(rendered.some(node => node.props?.onSubmit || node.props?.onChange)).toBe(false);
+        expect(rendered.some(node => node.props?.["aria-label"] === "summary.schedule.editModalTitle")).toBe(true);
         expect(rendered.filter(node => node.props?.onConfirm)).toHaveLength(1);
         expect(api.createSchedule).not.toHaveBeenCalled();
         expect(api.updateSchedule).not.toHaveBeenCalled();
@@ -77,6 +78,47 @@ describe("legacy schedule recovery controls", () => {
         expect(api.toggleSchedule).toHaveBeenCalledTimes(1);
     });
 
+    it("resumes a paused legacy schedule and replaces the resume action with pause", async () => {
+        vi.mocked(api.toggleSchedule).mockResolvedValue({ is_active: true } as any);
+        const page = pageWithSchedule(false);
+        const resume = elements(page.render()).find(node => node.props?.["aria-label"] === "summary.schedule.resume");
+
+        await resume.props.onClick();
+
+        expect(api.toggleSchedule).toHaveBeenCalledWith(1, true);
+        expect(page.state.schedules[0].is_active).toBe(true);
+        expect(elements(page.render()).some(node => node.props?.["aria-label"] === "summary.schedule.resume")).toBe(false);
+        expect(elements(page.render()).some(node => node.props?.["aria-label"] === "summary.schedule.pause")).toBe(true);
+    });
+
+    it("updates an existing schedule without invoking standalone creation", async () => {
+        vi.mocked(api.updateSchedule).mockResolvedValue({ schedule_id: 1 } as any);
+        const page = pageWithSchedule(false);
+        page.state.editingSchedule = page.state.schedules[0];
+
+        await page.handleUpdate({
+            title: "Updated",
+            summary_mode: 2,
+            cron_expr: "",
+            interval_days: 14,
+            interval_months: 0,
+            day_of_week: 0,
+            day_of_month: 0,
+            run_time: "10:00",
+            time_range_type: 2,
+            sources: [{ source_type: 1, source_id: "group-b" }],
+        });
+
+        expect(api.updateSchedule).toHaveBeenCalledWith(1, expect.objectContaining({
+            title: "Updated",
+            interval_days: 14,
+            run_time: "10:00",
+        }));
+        expect(api.createSchedule).not.toHaveBeenCalled();
+        expect(page.state.editingSchedule).toBeNull();
+        expect(page.state.schedules[0]).toEqual(expect.objectContaining({ title: "Updated", interval_days: 14 }));
+    });
+
     it("deletes only after confirmation, without requiring a bound summary", async () => {
         vi.mocked(api.deleteSchedule).mockResolvedValue();
         const page = pageWithSchedule(false);
@@ -88,13 +130,17 @@ describe("legacy schedule recovery controls", () => {
         expect(api.toggleSchedule).not.toHaveBeenCalled();
     });
 
-    it.each(["pause", "delete"] as const)("preserves the row and releases busy state when %s fails", async action => {
+    it.each(["pause", "resume", "delete"] as const)("preserves the row and releases busy state when %s fails", async action => {
         const error = new Error("Permission denied");
         vi.mocked(api.toggleSchedule).mockRejectedValue(error);
         vi.mocked(api.deleteSchedule).mockRejectedValue(error);
-        const page = pageWithSchedule();
+        const page = pageWithSchedule(action !== "resume");
         await page.handleScheduleAction(1, action);
-        expect(page.state.schedules).toEqual([expect.objectContaining({ schedule_id: 1, is_active: true, title: "Legacy" })]);
+        expect(page.state.schedules).toEqual([expect.objectContaining({
+            schedule_id: 1,
+            is_active: action !== "resume",
+            title: "Legacy",
+        })]);
         expect(page.state.actionPending).toBe(false);
         expect(Toast.error).toHaveBeenCalledWith("Permission denied");
     });

@@ -12,8 +12,6 @@ import {
   setSummaryAttentionRuntimeVisible,
   resetSummaryAttentionScope,
   SummaryWorkspace,
-  clearDefaultSummaryWorkbenchSession,
-  consumeSummaryWorkbenchNextCreate,
   type SummaryMessagingPort,
   type SummaryWorkspaceRoute,
 } from "@dmwork/summary";
@@ -70,27 +68,6 @@ export function SummaryShell({
     },
     [bridge]
   );
-
-  const openFreshCreateIfMarked = useCallback(
-    (report = true) => {
-      const scope = {
-        userId: WKApp.loginInfo.uid ?? "",
-        spaceId: spaceIdRef.current,
-      };
-      if (!consumeSummaryWorkbenchNextCreate(scope)) return false;
-      clearDefaultSummaryWorkbenchSession(scope);
-      setControlledRoute(
-        { view: "create", mode: "normal", source: "summary_home" },
-        report
-      );
-      return true;
-    },
-    [setControlledRoute]
-  );
-
-  useEffect(() => {
-    openFreshCreateIfMarked(false);
-  }, [openFreshCreateIfMarked]);
 
   const messaging = useMemo<SummaryMessagingPort>(
     () => ({
@@ -193,7 +170,6 @@ export function SummaryShell({
           ? "visible"
           : "hidden";
         setSummaryAttentionRuntimeVisible(command.visible);
-        if (command.visible) openFreshCreateIfMarked();
         return;
       }
       if (command.type === "suspend") {
@@ -202,24 +178,13 @@ export function SummaryShell({
       }
       if (command.type === "resume") {
         document.documentElement.dataset.hostVisibility = "visible";
-        openFreshCreateIfMarked();
         return;
       }
       // Unknown commands must not change visibility
       return;
     });
     return dispose;
-  }, [bridge, setControlledRoute, openFreshCreateIfMarked]);
-
-  useEffect(() => {
-    const handleMenuActivated = ({ menuId }: { menuId: string }) => {
-      if (menuId === "summary") openFreshCreateIfMarked();
-    };
-    WKApp.mittBus.on("wk:nav-menu-activated", handleMenuActivated);
-    return () => {
-      WKApp.mittBus.off("wk:nav-menu-activated", handleMenuActivated);
-    };
-  }, [openFreshCreateIfMarked]);
+  }, [bridge, setControlledRoute]);
 
   useEffect(() => {
     const reporter = createReadyReporter(
