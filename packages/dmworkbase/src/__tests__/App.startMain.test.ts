@@ -145,6 +145,21 @@ describe("[api] WKApp.startMain device record fetch", () => {
 });
 
 describe("LoginInfo and WKConfig persistence boundaries", () => {
+  it("cancels pending IM recovery before clearing logout credentials", async () => {
+    const calls: string[] = [];
+    const app = WKApp.shared as any;
+    app._sendRecovery = { cancel: () => calls.push("cancel") };
+    const logout = vi.spyOn(WKApp.loginInfo, "logout").mockImplementation(() => {
+      calls.push("credentials");
+    });
+
+    await app.clearLocalLoginState();
+
+    expect(calls.slice(0, 2)).toEqual(["cancel", "credentials"]);
+    logout.mockRestore();
+    app._sendRecovery = undefined;
+  });
+
   it("applies a host session without writing renderer storage by default", () => {
     const info = new LoginInfo();
     const save = vi.spyOn(info, "save");

@@ -174,6 +174,10 @@ import {
 import { connectImClient } from "./im-runtime/connectClient";
 import { registerImConnectStatusListener } from "./im-runtime/connectStatus";
 import {
+  connectWithSendRecovery,
+  type SendRecovery,
+} from "./im-runtime/sendRecovery";
+import {
   clearAuthStorage,
   consumeOidcPostLogoutCleanup,
   markOidcPostLogoutCleanup,
@@ -1036,6 +1040,7 @@ export default class WKApp extends ProviderListener {
   // 会被连发多次，且导航是异步的、飞行中的请求继续 reject 继续 logout，
   // 造成"登录页反复跳转 / 控制台疯狂刷 401"的死循环。首次进入即置位，后续重入直接返回。
   private _loggingOut: boolean = false;
+  private _sendRecovery?: SendRecovery;
   // Startup and connectIM can both observe the legacy desktop session during
   // boot.  The migration is intentionally one-shot per app instance; after
   // the first logout there must not be a second logout/navigation race.
@@ -1289,10 +1294,12 @@ export default class WKApp extends ProviderListener {
     if (import.meta.env.VITE_E2E_MOCK_IM === "1") {
       return;
     }
-    connectImClient({
-      sdk: WKSDK.shared(),
-      loginInfo: WKApp.loginInfo,
-    });
+    const sdk = WKSDK.shared();
+    this._sendRecovery = connectWithSendRecovery(
+      sdk,
+      import.meta.env.VITE_IM_SEND_RETRY_ENABLED === "1",
+      () => connectImClient({ sdk, loginInfo: WKApp.loginInfo }),
+    );
   }
 
   registerModule(module: IModule) {
@@ -1309,6 +1316,7 @@ export default class WKApp extends ProviderListener {
     return WKApp.loginInfo.isLogined();
   }
   private async clearLocalLoginState() {
+    this._sendRecovery?.cancel();
     WKApp.loginInfo.logout();
     clearAuthStorage();
     setSessionSid("");

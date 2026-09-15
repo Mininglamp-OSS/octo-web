@@ -6,6 +6,7 @@ export interface ImageTransferState {
   status: 'sending' | 'uploading' | 'failed'
   progress?: number
   onRetry?: () => void
+  labelKey?: string
 }
 
 export interface SingleImageProps {
@@ -92,7 +93,7 @@ export default function SingleImage({
       : null
     const showProgress = transferState.status === 'uploading' && pct !== null
     const label = transferState.status === 'failed'
-      ? t('base.message.uploadFailedRetry')
+      ? t(transferState.labelKey || 'base.message.uploadFailedRetry')
       : transferState.status === 'uploading'
         ? t('base.message.uploading')
         : t('base.message.sending')

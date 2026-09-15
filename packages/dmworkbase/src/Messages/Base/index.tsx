@@ -1,4 +1,10 @@
 import WKSDK from "wukongimjssdk";
+import {
+  SEND_CANCELED,
+  SEND_LOCAL_UNAVAILABLE,
+  SEND_OUTCOME_UNKNOWN,
+  SEND_QUEUE_BUSY,
+} from "../../im-runtime/sendRecovery";
 import { ChannelInfoListener } from "wukongimjssdk";
 import {
   Channel,
@@ -286,6 +292,14 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
   getMessageErrorReason() {
     const { message } = this.props;
     switch (message.reasonCode) {
+      case SEND_OUTCOME_UNKNOWN:
+        return this.context.t("base.messageBase.error.outcomeUnknown");
+      case SEND_LOCAL_UNAVAILABLE:
+        return this.context.t("base.messageBase.error.temporarilyUnavailable");
+      case SEND_QUEUE_BUSY:
+        return this.context.t("base.messageBase.error.queueBusy");
+      case SEND_CANCELED:
+        return this.context.t("base.messageBase.error.canceled");
       case MessageReasonCode.reasonSubscriberNotExist:
         return this.context.t("base.messageBase.error.removedFromGroup");
       case MessageReasonCode.reasonNotAllowSend:
@@ -490,7 +504,7 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
             className={"wk-message-base-box"}
             style={{ pointerEvents: selectionMode ? "none" : undefined }}
           >
-            {message.send && message.status === MessageStatus.Fail ? (
+            {message.send && message.status === MessageStatus.Fail && message.reasonCode !== SEND_OUTCOME_UNKNOWN ? (
               <Popconfirm
                 title={this.context.t("base.messageBase.resendConfirm.title")}
                 okText={this.context.t("base.messageBase.resendConfirm.ok")}

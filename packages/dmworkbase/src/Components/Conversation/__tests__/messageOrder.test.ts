@@ -398,6 +398,7 @@ describe("ConversationVM message ordering", () => {
         vm.messagesOfOrigin = [reply]
         vm.messages = [reply]
         const refresh = vi.spyOn(vm, "refreshMessages").mockImplementation(() => {})
+        reply.status = MessageStatus.Wait
         vm.updateMessageStatusBySendAck({ clientSeq: 7, messageID: "failed", messageSeq: 2, reasonCode: 2 } as any)
         expect(reply.status).toBe(MessageStatus.Fail)
         expect(refresh).not.toHaveBeenCalled()
@@ -405,6 +406,19 @@ describe("ConversationVM message ordering", () => {
         vm.browseToMessageSeq = 0
         await vm.refreshNewMsgCount()
         expect(vm.unreadCount).toBe(4)
+    })
+
+    it("does not downgrade history-confirmed messages on a delayed negative or unknown ACK", () => {
+        const vm: any = new ConversationVM(channel)
+        const confirmed = wrap({ clientSeq: 77, clientMsgNo: "confirmed", messageID: "durable", messageSeq: 42, status: MessageStatus.Normal })
+        vm.messages = [confirmed]
+        vm.messagesOfOrigin = [confirmed]
+        for (const reasonCode of [18, 256]) {
+            vm.updateMessageStatusBySendAck({ clientSeq: 77, messageID: "0", messageSeq: 0, reasonCode } as any)
+            expect(confirmed.status).toBe(MessageStatus.Normal)
+            expect(confirmed.message.messageID).toBe("durable")
+            expect(confirmed.message.messageSeq).toBe(42)
+        }
     })
 
     it("covers first-page locate state derivation and scroll helpers", async () => {

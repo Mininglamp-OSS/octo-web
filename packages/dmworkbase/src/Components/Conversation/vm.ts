@@ -1492,6 +1492,11 @@ export default class ConversationVM extends ProviderListener {
         if (message) {
             const ackOrder = ackPacket.messageSeq * OrderFactor
             this.forEachLocalMessageWithClientSeq(ackPacket.clientSeq, (localMessage) => {
+                // A history sync can confirm only one of several local views.
+                // Evaluate each instance before a late negative ACK mutates it.
+                if (ackPacket.reasonCode !== 1 && localMessage.status === MessageStatus.Normal && localMessage.message.messageSeq > 0) {
+                    return
+                }
                 localMessage.message.messageID = ackPacket.messageID.toString()
                 localMessage.message.messageSeq = ackPacket.messageSeq
                 localMessage.reasonCode = ackPacket.reasonCode

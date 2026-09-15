@@ -605,7 +605,7 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0
       wukongimjssdk:
-        specifier: ^1.2.11
+        specifier: ^1.3.5
         version: 1.3.5
       xlsx:
         specifier: https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
