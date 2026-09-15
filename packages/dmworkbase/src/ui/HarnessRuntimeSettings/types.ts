@@ -5,6 +5,7 @@ export type HarnessCommandShell = 'posix' | 'powershell'
 export interface HarnessRuntimeListItem {
   id: string
   name: string
+  profile?: string
   status: HarnessRuntimeStatus
   deviceLabel: string
   runtimeVersion?: string
@@ -29,6 +30,7 @@ export interface HarnessRuntimeSettingsLabels {
   loadFailed: string
   retry: string
   runtimeVersion: string
+  profile: string
   providerVersionUnknown: string
   lastHeartbeat: string
   addTitle: string

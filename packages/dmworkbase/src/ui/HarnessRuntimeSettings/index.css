@@ -18,6 +18,9 @@
 .wk-harness-runtime-settings__runtime-main strong { overflow-wrap: anywhere; font-size: var(--wk-text-size-md); font-weight: var(--wk-font-medium); }
 .wk-harness-runtime-settings__runtime-main span, .wk-harness-runtime-settings__runtime-meta span { color: var(--wk-text-secondary); font-size: var(--wk-text-size-sm); line-height: var(--wk-leading-normal); }
 .wk-harness-runtime-settings__runtime-main code { overflow: hidden; color: var(--wk-text-tertiary); font-family: var(--wk-font-mono); font-size: var(--wk-text-size-xs); text-overflow: ellipsis; white-space: nowrap; }
+.wk-harness-runtime-settings__profile { display: flex; align-items: baseline; gap: var(--wk-sp-2); min-width: 0; }
+.wk-harness-runtime-settings__profile > span { flex-shrink: 0; }
+.wk-harness-runtime-settings__profile code { min-width: 0; overflow: visible; color: var(--wk-text-primary); font-size: var(--wk-text-size-sm); white-space: normal; overflow-wrap: anywhere; }
 .wk-harness-runtime-settings__providers { display: flex; flex-wrap: wrap; gap: var(--wk-sp-2); margin-top: var(--wk-sp-2); }
 .wk-harness-runtime-settings__providers .wk-harness-runtime-settings__provider { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 var(--wk-sp-8); width: var(--wk-sp-8); height: var(--wk-sp-8); color: var(--wk-text-primary); border-radius: var(--wk-r-sm); }
 .wk-harness-runtime-settings__provider:hover, .wk-harness-runtime-settings__provider:focus-visible { background: var(--wk-bg-elevated); }

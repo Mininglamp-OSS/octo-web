@@ -5,6 +5,7 @@
 - Add an always-visible `Devices and runtimes` entry under the Settings `Tools` group.
 - Keep the existing device download/resource page intact and rename its entry to `Tools and resources`.
 - List runtimes owned by the signed-in user in the current workspace, including status, device, version, and last heartbeat.
+- Show the optional `/runtimes` `profile` below device information and above the Runtime ID to distinguish profiles on the same device. Allow long names to wrap and hide this line for reports without a profile. Runtime ID remains the list identity.
 - Use `machine_id` for device identity and show an official provider-icon row from `capabilities.adapters`, strictly limited to `available === true`. Hover displays the provider name and version, with a localized fallback for missing versions. Do not surface installation paths. Missing or legacy capability reports render no icons.
 - Create a short-lived device enrollment token immediately when the user selects Add device; there is no second generate step.
 - Build a copyable `octo-harness login` command locally and present it as a code block. The profile is derived from the enrollment's Space ID and user ID, and the server URL comes from the current web origin. The command does not override the harness agent-worker URL.

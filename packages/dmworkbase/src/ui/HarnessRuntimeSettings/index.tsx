@@ -17,6 +17,7 @@ function RuntimeRow({ runtime, labels }: {
       <span className="wk-harness-runtime-settings__runtime-main">
         <strong>{runtime.name}</strong>
         <span>{runtime.deviceLabel}</span>
+        {runtime.profile && <span className="wk-harness-runtime-settings__profile"><span>{labels.profile}</span><code title={runtime.profile}>{runtime.profile}</code></span>}
         <code title={runtime.id}>{runtime.id}</code>
         {runtime.providers.length > 0 && (
           <span className="wk-harness-runtime-settings__providers">

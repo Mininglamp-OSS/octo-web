@@ -21,6 +21,7 @@ export interface HarnessRuntime {
   owner_ref: string
   kind: 'local' | 'cloud' | 'team'
   name: string
+  profile?: string
   device: HarnessRuntimeDevice
   status: HarnessRuntimeStatus
   runtime_version?: string

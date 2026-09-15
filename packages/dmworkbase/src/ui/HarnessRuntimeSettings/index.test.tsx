@@ -3,12 +3,27 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import HarnessRuntimeSettings from './index'
-import { English, Populated } from './HarnessRuntimeSettings.stories'
+import { English, Populated, SameDeviceProfiles } from './HarnessRuntimeSettings.stories'
 import type { HarnessRuntimeSettingsProps } from './types'
 
 vi.mock('../../Components/WKModal', () => ({ default: () => null }))
 
-describe('HarnessRuntimeSettings provider icons', () => {
+describe('HarnessRuntimeSettings runtime details', () => {
+  it('shows different profiles for the same device and retains runtime IDs', () => {
+    const props = SameDeviceProfiles.args as HarnessRuntimeSettingsProps
+    render(<HarnessRuntimeSettings {...props} />)
+    for (const runtime of props.runtimes) {
+      expect(screen.getByText(runtime.profile!).getAttribute('title')).toBe(runtime.profile)
+      expect(screen.getByText(runtime.id)).toBeTruthy()
+    }
+  })
+
+  it('does not render a profile label for reports without a profile', () => {
+    const props = Populated.args as HarnessRuntimeSettingsProps
+    const { container } = render(<HarnessRuntimeSettings {...props} runtimes={[props.runtimes[1]]} />)
+    expect(container.querySelector('.wk-harness-runtime-settings__profile')).toBeNull()
+  })
+
   it('shows icons with version tooltips and hides the row for runtimes without providers', async () => {
     const { container } = render(<HarnessRuntimeSettings {...Populated.args as HarnessRuntimeSettingsProps} />)
     expect(container.querySelectorAll('.wk-harness-runtime-settings__providers')).toHaveLength(1)

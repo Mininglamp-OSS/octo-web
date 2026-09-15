@@ -33,6 +33,7 @@ function mapRuntime(runtime: HarnessRuntime, options: HarnessRuntimeSettingsBrid
   return {
     id: runtime.id,
     name: runtime.name,
+    profile: typeof runtime.profile === 'string' ? runtime.profile.trim() || undefined : undefined,
     status: runtime.status,
     deviceLabel: device || runtime.machine_id,
     runtimeVersion: runtime.runtime_version,

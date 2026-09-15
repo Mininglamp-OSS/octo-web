@@ -16,6 +16,7 @@ const labels: HarnessRuntimeSettingsProps['labels'] = {
   loadFailed: '无法加载运行时',
   retry: '重试',
   runtimeVersion: '版本',
+  profile: 'Profile',
   providerVersionUnknown: '版本未知',
   lastHeartbeat: '最近心跳',
   addTitle: '添加设备',
@@ -36,7 +37,7 @@ const labels: HarnessRuntimeSettingsProps['labels'] = {
 const baseArgs: HarnessRuntimeSettingsProps = {
   labels,
   runtimes: [
-    { id: 'rt_01K4M7F9TD5X4R', name: '北京开发 VPS', status: 'online', deviceLabel: 'dev-vps-01 · Linux x64', runtimeVersion: '0.4.0', lastHeartbeatLabel: '刚刚', providers: [
+    { id: 'rt_01K4M7F9TD5X4R', name: '北京开发 VPS', profile: 'minglue_default_cec02bd6ad8f4d29bf84e7a7e8e35b54', status: 'online', deviceLabel: 'dev-vps-01 · Linux x64', runtimeVersion: '0.4.0', lastHeartbeatLabel: '刚刚', providers: [
       { type: 'codex', version: '0.149.1' }, { type: 'claude-code', version: '2.1.272' },
       { type: 'codebuddy', version: '2.150.0' }, { type: 'hermes' },
       { type: 'kimi-code', version: '0.42.0' }, { type: 'opencode', version: '1.18.30' },
@@ -70,6 +71,10 @@ export default meta
 type Story = StoryObj<typeof HarnessRuntimeSettings>
 
 export const Populated: Story = { args: baseArgs }
+export const SameDeviceProfiles: Story = { args: {
+  ...baseArgs,
+  runtimes: [baseArgs.runtimes[0], { ...baseArgs.runtimes[0], id: 'rt_01K4M7K6WA2P9B', profile: 'personal_workspace_cec02bd6ad8f4d29bf84e7a7e8e35b54' }],
+} }
 const englishLabels: HarnessRuntimeSettingsProps['labels'] = { ...labels, status: { ...labels.status } }
 for (const key of Object.keys(labels) as Array<keyof typeof labels>) {
   if (key === 'status') {

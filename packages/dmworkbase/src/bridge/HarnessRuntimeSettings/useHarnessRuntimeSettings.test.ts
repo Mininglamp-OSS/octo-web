@@ -72,13 +72,14 @@ describe('useHarnessRuntimeSettings', () => {
 
   it('maps machine identity and available provider versions from the new runtime report', async () => {
     service.listHarnessRuntimes.mockResolvedValue([{
-      id: 'runtime-1', machine_id: 'machine-1', owner_ref: 'uid:user-1', name: 'VPS', status: 'offline', device: {},
+      id: 'runtime-1', machine_id: 'machine-1', owner_ref: 'uid:user-1', name: 'VPS', profile: ' space-1_user-1 ', status: 'offline', device: {},
       capabilities: { adapters: [
         { available: true, provider_type: 'codex', provider_version: '0.149.1', provider_path: '/private/codex' },
         { available: true, provider_type: 'hermes', provider_version: null },
         { available: false, provider_type: 'kiro', provider_version: null },
       ] },
-    }])
+    }, { id: 'runtime-2', machine_id: 'machine-1', name: 'VPS', status: 'offline', device: {}, capabilities: {} },
+    { id: 'runtime-3', machine_id: 'machine-1', name: 'VPS', profile: ' ', status: 'offline', device: {}, capabilities: {} }])
     let current!: HarnessRuntimeSettingsProps
     function HookHarness() {
       current = useHarnessRuntimeSettings({ agentWorkerURL: 'https://im-test.deepminer.com.cn/agentworker',
@@ -88,6 +89,9 @@ describe('useHarnessRuntimeSettings', () => {
     render(React.createElement(HookHarness))
     await waitFor(() => expect(current.loading).toBe(false))
     expect(current.runtimes[0].deviceLabel).toBe('machine-1')
+    expect(current.runtimes[0].profile).toBe('space-1_user-1')
+    expect(current.runtimes[1].profile).toBeUndefined()
+    expect(current.runtimes[2].profile).toBeUndefined()
     expect(current.runtimes[0].providers).toEqual([
       { type: 'codex', version: '0.149.1' }, { type: 'hermes', version: undefined },
     ])
