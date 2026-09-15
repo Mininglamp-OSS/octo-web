@@ -3,8 +3,20 @@ html, body, #root {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  font-family: var(--wk-font-family);
+  font-family: var(--wk-font-sans);
   letter-spacing: 0;
+}
+
+.wk-forward-surface-container *,
+.wk-forward-surface-container *::before,
+.wk-forward-surface-container *::after {
+  box-sizing: border-box;
+}
+
+.wk-forward-surface-container button,
+.wk-forward-surface-container input,
+.wk-forward-surface-container select {
+  font-family: inherit;
 }
 
 .wk-forward-surface-host {
@@ -71,6 +83,26 @@ html, body, #root {
 
 .wk-forward-surface-container .wk-fm-search {
   background: var(--wk-bg-hover);
+}
+
+.wk-forward-surface-container .wk-fm-btn--cancel,
+.wk-forward-surface-container .wk-fm-grant-role {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  border-color: var(--wk-border-default);
+}
+
+.wk-forward-surface-container .wk-fm-btn--cancel:hover {
+  background: var(--wk-bg-hover);
+}
+
+.wk-forward-surface-container .wk-fm-btn--confirm {
+  color: var(--wk-bg-surface);
+  background: var(--wk-text-primary);
+}
+
+.wk-forward-surface-container .wk-fm-grant {
+  border-color: var(--wk-border-default);
 }
 
 .wk-forward-surface-container .wk-fm-header,
