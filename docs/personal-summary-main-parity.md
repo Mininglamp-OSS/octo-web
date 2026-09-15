@@ -80,7 +80,7 @@ backend release. This change does not deploy either service or update a mirror.
 
 - Saved detail and historical-version rendering reuse `CitationText`. Verified
   numeric lists/ranges are normalized to the existing adjacent-marker form;
-  every member must have citation metadata and groups are bounded at128 entries.
+  every member must have citation metadata and groups are bounded at 128 entries.
 - Display indices follow first appearance: raw `[9,73]`, then `[88]`, then `[9]`
   render as `[1,2]`, `[3]`, `[1]`. Clicking retains the original message identity.
 - Missing sources do not create fake buttons or consume display indices. Code,

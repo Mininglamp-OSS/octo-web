@@ -2190,12 +2190,6 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     flex: 1;
 }
 
-.summary-schedule-loading {
-    display: flex;
-    justify-content: center;
-    padding: 60px 0;
-}
-
 .summary-schedule-empty {
     text-align: center;
     padding: 60px 20px;

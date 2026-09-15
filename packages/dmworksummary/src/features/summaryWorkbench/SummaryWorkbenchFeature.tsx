@@ -605,6 +605,7 @@ export default function SummaryWorkbenchFeature({
     const previousInputValue = workbench.viewState.inputValue;
     const previousHasSubmitted = hasSubmitted;
     const previousTemplateFilledComposer = templateFilledComposer.current;
+    const previousTemplateGalleryOpen = templateGalleryOpen;
     const responsePromise = request();
 
     templateFilledComposer.current = null;
@@ -617,6 +618,7 @@ export default function SummaryWorkbenchFeature({
       workbench.restoreComposerValue(previousInputValue);
       templateFilledComposer.current = previousTemplateFilledComposer;
       setHasSubmitted(previousHasSubmitted);
+      setTemplateGalleryOpen(previousTemplateGalleryOpen);
     }
     return response;
   };

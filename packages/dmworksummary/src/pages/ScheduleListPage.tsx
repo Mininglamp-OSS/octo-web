@@ -113,13 +113,11 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
                     : {}),
             };
             await api.updateSchedule(editingSchedule.schedule_id, updateParams);
-            this.setState(state => ({
-                schedules: state.schedules.map(schedule =>
-                    schedule.schedule_id === editingSchedule.schedule_id
-                        ? { ...schedule, ...updateParams }
-                        : schedule),
-                editingSchedule: null,
-            }));
+            this.setState({ editingSchedule: null });
+            // The update payload intentionally omits source_name. Refetch so
+            // cards and the next edit use the authoritative labels resolved by
+            // the service instead of falling back to raw source IDs.
+            await this.loadData();
             Toast.success(t("summary.schedule.updateSuccess"));
         } catch (err: any) {
             Toast.error(err.message || t("summary.common.updateFailed"));
@@ -156,7 +154,12 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
                         </WKButton>
                     </Banner>
                 )}
-                {!loading && !error && (
+                {!loading && !error && schedules.length === 0 && (
+                    <div className="summary-schedule-empty">
+                        {translate("summary.schedule.empty")}
+                    </div>
+                )}
+                {!loading && !error && schedules.length > 0 && (
                     <div className="summary-schedule-list">
                         {schedules.map(item => (
                             <div key={item.schedule_id} className="summary-schedule-card">

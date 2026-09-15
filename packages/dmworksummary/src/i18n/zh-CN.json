@@ -407,9 +407,7 @@
   },
   "schedule": {
     "pageTitle": "定时总结配置",
-    "new": "新建",
     "empty": "暂无定时配置",
-    "createFirst": "创建第一个定时任务",
     "fallbackTitle": "定时任务 #{{id}}",
     "deleteTitle": "确认删除",
     "deleteContent": "确定要删除此定时配置吗？",

@@ -407,9 +407,7 @@
   },
   "schedule": {
     "pageTitle": "Scheduled summaries",
-    "new": "New",
     "empty": "No scheduled summaries",
-    "createFirst": "Create first scheduled task",
     "fallbackTitle": "Scheduled task #{{id}}",
     "deleteTitle": "Confirm deletion",
     "deleteContent": "Delete this schedule?",

@@ -91,8 +91,13 @@ describe("legacy schedule recovery controls", () => {
         expect(elements(page.render()).some(node => node.props?.["aria-label"] === "summary.schedule.pause")).toBe(true);
     });
 
-    it("updates an existing schedule without invoking standalone creation", async () => {
+    it("refetches authoritative source labels after updating an existing schedule", async () => {
         vi.mocked(api.updateSchedule).mockResolvedValue({ schedule_id: 1 } as any);
+        vi.mocked(api.listSchedules).mockResolvedValue([{
+            schedule_id: 1, is_active: false, title: "Updated",
+            summary_mode: 2, cron_expr: "", interval_days: 14, run_time: "10:00", time_range_type: 2,
+            sources: [{ source_type: 1, source_id: "group-b", source_name: "Project group" }],
+        }] as any);
         const page = pageWithSchedule(false);
         page.state.editingSchedule = page.state.schedules[0];
 
@@ -115,8 +120,21 @@ describe("legacy schedule recovery controls", () => {
             run_time: "10:00",
         }));
         expect(api.createSchedule).not.toHaveBeenCalled();
+        expect(api.listSchedules).toHaveBeenCalledOnce();
         expect(page.state.editingSchedule).toBeNull();
         expect(page.state.schedules[0]).toEqual(expect.objectContaining({ title: "Updated", interval_days: 14 }));
+        expect(elements(page.render()).some(node =>
+            node.props?.className === "summary-schedule-card-sources" &&
+            node.props.children.includes("Project group"))).toBe(true);
+    });
+
+    it("renders an explanatory empty state without a standalone create action", () => {
+        const page = makePage();
+        const rendered = elements(page.render());
+
+        expect(rendered.some(node => node.props?.className === "summary-schedule-empty")).toBe(true);
+        expect(rendered.some(node => node.props?.children === "summary.schedule.empty")).toBe(true);
+        expect(api.createSchedule).not.toHaveBeenCalled();
     });
 
     it("deletes only after confirmation, without requiring a bound summary", async () => {
