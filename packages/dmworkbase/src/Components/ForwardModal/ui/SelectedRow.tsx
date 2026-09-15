@@ -1,7 +1,6 @@
 import React from "react"
-import { Channel, ChannelTypePerson } from "wukongimjssdk"
 import { X } from "lucide-react"
-import WKAvatar from "../../WKAvatar"
+import { ForwardAvatar } from "./avatar"
 import Checkbox from "../../Checkbox"
 import AiBadge from "../../AiBadge"
 import { useI18n } from "../../../i18n"
@@ -30,7 +29,6 @@ export interface SelectedRowProps {
 
 export function SelectedRow({ item, onRemove, bots }: SelectedRowProps) {
   const { t } = useI18n()
-  const channel = new Channel(item.channelID, item.channelType)
   const nested = bots?.bots ?? []
   return (
     <div className="wk-fm-selected-item-wrap">
@@ -38,7 +36,7 @@ export function SelectedRow({ item, onRemove, bots }: SelectedRowProps) {
         <div className="wk-fm-avatar-wrap">
           {/* 右列已选列表项数量少且都在视口内，不启用 lazy 避免占位 SVG → 真实
               图的视觉闪烁 */}
-          <WKAvatar channel={channel} />
+          <ForwardAvatar item={item} />
         </div>
         <span className="wk-fm-item-name">{item.displayName}</span>
         <button
@@ -80,7 +78,7 @@ export function SelectedRow({ item, onRemove, bots }: SelectedRowProps) {
 
 /** True when a forward target is a plain person peer (its Bots may nest under it in the right panel). */
 export function isPersonTarget(item: ForwardItem): boolean {
-  return item.channelType === ChannelTypePerson && !item.isThread
+  return item.channelType === 1 && !item.isThread
 }
 
 /** Read one person's Bot group out of the authoritative snapshot (empty when none / not a person). */

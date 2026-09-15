@@ -98,6 +98,8 @@ export interface DocumentForwardRequest {
 }
 
 export interface OctoBuddyCommunicationBridge {
+  publishForwardSurface?(update: import("@octo/base/src/features/forwarding/surfaceContract").ForwardSurfaceUpdate): Promise<void>;
+  onForwardSurfaceAction?(listener: (command: import("@octo/base/src/features/forwarding/surfaceContract").ForwardSurfaceCommand) => void): () => void;
   reportRuntimeReady?(state: RuntimeReady): Promise<void>;
   reportRuntimeSnapshot?(snapshot: RuntimeSnapshot): void;
   reportRuntimeCommandResult?(result: RuntimeCommandResult): void;

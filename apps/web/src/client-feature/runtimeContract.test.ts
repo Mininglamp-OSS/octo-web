@@ -49,6 +49,32 @@ describe("runtime contract", () => {
     expect(() => parseRuntimeCommand({ ...base, type: "navigate", page: "contacts", target: { channelId: "one", channelType: 1 } })).toThrow();
     expect(() => parseRuntimeCommand({ ...base, type: "navigate", page: "chat", target: { channelId: "one", channelType: 1, script: "x" } })).toThrow();
   });
+  it("accepts workspace-group variant and requires workspace presentation", () => {
+    const scope = { ownerId: "owner", contextId: "context", epoch: 1 };
+    const target = { channelId: "group-a", channelType: 2, variant: "workspace-group" };
+    const cmd = { version: 1, ...scope, type: "navigate", page: "chat", presentation: "workspace", target };
+    expect(parseRuntimeCommand(cmd)).toMatchObject({
+      page: "chat", presentation: "workspace", target: { channelId: "group-a", channelType: 2, variant: "workspace-group" },
+    });
+  });
+
+  it("rejects workspace-group without workspace presentation", () => {
+    const scope = { ownerId: "owner", contextId: "context", epoch: 1 };
+    expect(() => parseRuntimeCommand({
+      version: 1, ...scope, type: "navigate", page: "chat", presentation: "conversation",
+      target: { channelId: "group-a", channelType: 2, variant: "workspace-group" },
+    })).toThrow();
+  });
+
+  it("rejects workspace-group with non-group channelType in variant validation", () => {
+    const scope = { ownerId: "owner", contextId: "context", epoch: 1 };
+    // The variant field itself has no channelType restriction for workspace-group
+    // (only app-bot requires channelType 1). This should pass parse:
+    const target = { channelId: "person-u", channelType: 1, variant: "workspace-group" };
+    const cmd = { version: 1, ...scope, type: "navigate", page: "chat", presentation: "workspace", target };
+    expect(parseRuntimeCommand(cmd)).toMatchObject({ target: { channelId: "person-u", channelType: 1, variant: "workspace-group" } });
+  });
+
   it("keeps bootstrap legacy compatibility and rejects wrong feature runtime", () => {
     const bootstrap = {
       bridgeVersion: 1, featureId: "communication",

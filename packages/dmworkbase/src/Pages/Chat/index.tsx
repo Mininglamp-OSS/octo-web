@@ -1388,6 +1388,9 @@ export class ChatContentPage extends Component<
           bindConversationContext={this.chatRuntime.bindConversationContext}
           surfaceRef={this.chatContentRef}
           inactive={!workspaceEmbedding && showChannelSetting}
+          headerMode={
+            workspaceEmbedding ? "selection-only" : undefined
+          }
           header={{
             avatar: this.renderConversationHeaderAvatar(
               channel,

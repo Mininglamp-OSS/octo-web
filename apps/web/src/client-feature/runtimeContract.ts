@@ -169,6 +169,7 @@ export function parseRuntimeCommand(value: unknown): RuntimeCommand {
     const target = input.target === undefined ? undefined : parseConversationTarget(input.target);
     if (target && input.page !== "chat") throw new Error("Conversation target requires chat");
     if (target?.variant === "app-bot" && input.presentation !== "conversation") throw new Error("App conversation requires conversation presentation");
+    if (target?.variant === "workspace-group" && input.presentation !== "workspace") throw new Error("Workspace-group requires workspace presentation");
     return { ...common, type: "navigate", page: input.page, presentation: input.presentation as CommunicationPresentation | undefined, target };
   }
   if (input.type === "activity") {
@@ -219,7 +220,8 @@ function parseConversationTarget(value: unknown): ConversationTarget {
     target.metadata = metadata;
   }
   if (input.variant !== undefined) {
-    if (input.variant !== "app-bot" || target.channelType !== 1) throw new Error("Invalid target variant");
+    if (input.variant === "app-bot" && target.channelType !== 1) throw new Error("App-bot variant requires channelType 1");
+    if (input.variant !== "app-bot" && input.variant !== "workspace-group") throw new Error("Invalid target variant");
     target.variant = input.variant;
   }
   return target;

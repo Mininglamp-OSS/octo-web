@@ -23,6 +23,8 @@ import { enableClientFeatureMocks } from "../client-feature/e2eMocks";
 import { requireHostBridge } from "./hostBridge";
 import { reportStartupFailure } from "./startupFailure";
 import { installHostDocumentPreview } from "./documentPreview";
+import { installHostForwardSurface } from "./forwardSurface";
+import { resolveForwardSurfaceAvatar } from "./forwardSurfaceAvatar";
 import { assertBackgroundRuntimeHost, startCommunicationRuntime } from "./runtime/start";
 import "../client-feature/desktop/presentation.css";
 import "./desktop-presentation.css";
@@ -33,6 +35,8 @@ async function main() {
   const bootstrap = await host.getBootstrap();
   assertClientFeatureBootstrap(bootstrap, "communication");
   assertBackgroundRuntimeHost(host, bootstrap);
+  const disposeForwardSurface = installHostForwardSurface(host, resolveForwardSurfaceAvatar);
+  window.addEventListener("pagehide", disposeForwardSurface, { once: true });
 
   WKApp.apiClient.config.apiURL = resolveApiURL({
     isDesktop: true,

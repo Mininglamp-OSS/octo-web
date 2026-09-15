@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import React from "react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
-import { render } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { act, render, waitFor } from "@testing-library/react"
+import type { ForwardSurfaceCommand } from "../../../features/forwarding/surfaceContract"
 
 const hoisted = vi.hoisted(() => ({
   modalProps: [] as any[],
@@ -14,10 +15,10 @@ vi.mock("../../ForwardModal/ForwardModal", () => ({
 }))
 vi.mock("../../ForwardModal/useForwardModal", () => ({
   useForwardModal: () => ({
-    items: [], allItems: [{ channelID: "g1", displayName: "Group" }], selectedIDs: ["g1"],
+    items: [], allItems: [{ channelID: "g1", channelType: 2, displayName: "Group" }], selectedIDs: ["g1"],
     selectedChannels: [{ channelID: "g1", channelType: 2 }],
-    inputValue: "", loading: false, activeTab: "all", setActiveTab: vi.fn(), setInputValue: vi.fn(),
-    toggleSelect: vi.fn(), confirm: hoisted.confirm, requestChannelInfoIfNeeded: vi.fn(), grantEnabled: true, grantRole: "viewer",
+    inputValue: "", loading: false, activeTab: "recent", setActiveTab: vi.fn(), setInputValue: vi.fn(),
+    toggleSelect: vi.fn(), confirm: hoisted.confirm, requestChannelInfoIfNeeded: vi.fn(), grantEnabled: true, grantRole: "reader",
     setGrantEnabled: vi.fn(), setGrantRole: vi.fn(), setGrantPrincipalsByTarget: hoisted.setGrantPrincipalsByTarget, setGrantBotUids: vi.fn(),
   }),
 }))
@@ -34,6 +35,7 @@ vi.mock("../../ForwardModal/hooks", () => ({
 import ConversationSelect from "../index"
 
 describe("ConversationSelect render wiring", () => {
+  afterEach(() => vi.unstubAllGlobals())
   beforeEach(() => {
     hoisted.modalProps.length = 0
     hoisted.confirm.mockClear()
@@ -56,7 +58,7 @@ describe("ConversationSelect render wiring", () => {
     const finished = vi.fn()
     render(<ConversationSelect grant={{ canGrant: true, defaultRole: "writer", disabledReason: "no access", spaceId: "s1" }} onFinished={finished} />)
     const props = hoisted.modalProps[hoisted.modalProps.length - 1]
-    expect(props.grant).toMatchObject({ canGrant: true, enabled: true, role: "viewer", targetMemberCount: 3 })
+    expect(props.grant).toMatchObject({ canGrant: true, enabled: true, role: "reader", targetMemberCount: 3 })
     props.grant.onEnabledChange(false)
     props.grant.onRoleChange("writer")
     props.onConfirm()
@@ -76,5 +78,31 @@ describe("ConversationSelect render wiring", () => {
 
     expect(hoisted.setGrantPrincipalsByTarget).not.toHaveBeenCalled()
     expect(hoisted.confirm).not.toHaveBeenCalled()
+  })
+
+  it("uses the same selection and grant confirmation through the desktop port without a second modal", async () => {
+    vi.stubGlobal("crypto", { randomUUID: () => "picker-test" })
+    const publish = vi.fn().mockResolvedValue(undefined)
+    const unsubscribe = vi.fn()
+    let command!: (value: ForwardSurfaceCommand) => void
+    const { unmount, queryByTestId } = render(<ConversationSelect
+      grant={{ canGrant: true, spaceId: "s1" }}
+      surfacePort={{ publish, subscribe: (listener) => { command = listener; return unsubscribe } }}
+    />)
+    await waitFor(() => expect(publish).toHaveBeenCalledOnce())
+    expect(queryByTestId("forward-modal")).toBeNull()
+    expect(hoisted.modalProps).toHaveLength(0)
+    expect(publish.mock.calls[0][0]).toMatchObject({
+      id: "picker-test", revision: 1,
+      model: { selectedIDs: ["g1"], grant: { role: "reader", enabled: true, bots: { ready: true } } },
+    })
+    act(() => command({ id: "picker-test", revision: 1, action: { type: "confirm" } }))
+    expect(hoisted.confirm).toHaveBeenCalledOnce()
+    expect(hoisted.setGrantPrincipalsByTarget).toHaveBeenCalledWith([
+      { channelID: "g1", channelType: 2, uids: ["u1", "u2", "u3", "b1"] },
+    ])
+    unmount()
+    await waitFor(() => expect(publish.mock.calls.at(-1)?.[0].model).toBeNull())
+    expect(unsubscribe).toHaveBeenCalledOnce()
   })
 })

@@ -207,6 +207,24 @@ describe("ChatContentPage workspaceEmbedding", () => {
       expect(divs.length).toBe(0);
     });
 
+    it("default header mode is full (no workspaceEmbedding)", () => {
+      const page = createPage(new Channel("g", 2));
+      const convProps = requireConv(page);
+      expect(convProps.headerMode).toBeUndefined();
+    });
+
+    it("sets headerMode selection-only when workspaceEmbedding is provided", () => {
+      const page = createPage(new Channel("g", 2), EMPTY_EMBEDDING);
+      const convProps = requireConv(page);
+      expect(convProps.headerMode).toBe("selection-only");
+    });
+
+    it("does not set headerMode selection-only without workspaceEmbedding", () => {
+      const page = createPage(new Channel("g", 2));
+      const convProps = requireConv(page);
+      expect(convProps.headerMode).not.toBe("selection-only");
+    });
+
     it("ConversationWindow inactive is false in embedding mode even with showChannelSetting", () => {
       const page = createPage(new Channel("g", 2), EMPTY_EMBEDDING);
       page.setState({ showChannelSetting: true });
