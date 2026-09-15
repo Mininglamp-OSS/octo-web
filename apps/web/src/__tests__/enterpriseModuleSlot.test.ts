@@ -3,7 +3,7 @@ import path from "node:path";
 
 describe("enterprise module slot wiring", () => {
   it("does not statically import removed enterprise feature packages", () => {
-    const entry = fs.readFileSync(path.join(__dirname, "../index.tsx"), "utf-8");
+    const entry = fs.readFileSync(path.join(__dirname, "../chatBootstrap.tsx"), "utf-8");
 
     expect(entry).toContain("registerEnterpriseModules");
     expect(entry).not.toMatch(/@octo\/(?:docs|loop|personal|drive)/);

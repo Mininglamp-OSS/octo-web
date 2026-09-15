@@ -1,3 +1,4 @@
+import { useHtmlAttachmentActions } from "../../bridge/html-attachment/useHtmlAttachmentActions";
 import React from "react";
 import { X, Download, ExternalLink } from "lucide-react";
 import { fileRendererRegistry } from "./registry";
@@ -16,6 +17,7 @@ const FilePreviewPanel: React.FC<FilePreviewPanelProps> = ({
   showOpenExternal = true,
 }) => {
   const { t } = useI18n();
+  const htmlActions = useHtmlAttachmentActions(file);
 
   if (!file) return null;
 
@@ -23,10 +25,18 @@ const FilePreviewPanel: React.FC<FilePreviewPanelProps> = ({
   const { renderer: Renderer } = fileRendererRegistry.getRenderer(ext);
 
   const handleDownload = () => {
+    if (htmlActions.enabled) {
+      void htmlActions.download();
+      return;
+    }
     void downloadFile(file.url, file.name || "file");
   };
 
   const handleOpenExternal = () => {
+    if (htmlActions.enabled) {
+      htmlActions.open();
+      return;
+    }
     window.open(file.url, "_blank");
   };
 
@@ -53,7 +63,10 @@ const FilePreviewPanel: React.FC<FilePreviewPanelProps> = ({
           )}
           <button
             className="wk-file-preview-action"
-            title={t("base.filePreview.download")}
+            title={t(htmlActions.pending
+              ? "base.htmlAttachment.preparing"
+              : "base.filePreview.download")}
+            disabled={htmlActions.pending}
             onClick={handleDownload}
           >
             <Download size={18} />

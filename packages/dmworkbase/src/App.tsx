@@ -51,6 +51,8 @@ export type MittEvents = {
   "wk:switch-sidebar-tab": string;
   "wk:file-preview": {
     url: string;
+    sourceUrl?: string;
+    downloadUrl?: string;
     name: string;
     extension: string;
     size?: number;
@@ -996,6 +998,8 @@ export default class WKApp extends ProviderListener {
   /** 待打开的文件预览，切换频道后由新页面消费 */
   pendingFilePreview?: {
     url: string;
+    sourceUrl?: string;
+    downloadUrl?: string;
     name: string;
     extension: string;
     size?: number;

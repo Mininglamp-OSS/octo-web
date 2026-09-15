@@ -1,3 +1,4 @@
+import { useHtmlAttachmentActions } from "../../bridge/html-attachment/useHtmlAttachmentActions";
 import React, { useCallback, useMemo, useRef } from "react";
 import { Toast, Tooltip } from "@douyinfe/semi-ui";
 import { Download, MoreHorizontal, Play } from "lucide-react";
@@ -655,7 +656,24 @@ const FileResultItem = React.memo(function FileResultItem({
     item.file?.extension
   );
 
+  const htmlUrl = item.file?.previewUrl || item.file?.url || item.file?.downloadUrl;
+  const htmlActions = useHtmlAttachmentActions(
+    htmlUrl
+      ? {
+          url: htmlUrl,
+          downloadUrl: item.file?.downloadUrl,
+          name: fileName,
+          extension: item.file?.extension || "",
+          size: item.file?.size,
+        }
+      : null
+  );
+
   const handleDownload = async () => {
+    if (htmlActions.enabled) {
+      await htmlActions.download();
+      return;
+    }
     const url = item.file?.downloadUrl || item.file?.url;
     if (!url) {
       Toast.warning(t("base.channelSearch.downloadUnavailable"));
@@ -748,6 +766,7 @@ const FileResultItem = React.memo(function FileResultItem({
             )}
             <button
               type="button"
+              disabled={htmlActions.pending}
               onClick={() => {
                 onMenuOpenChange(item.id, false);
                 void handleDownload();

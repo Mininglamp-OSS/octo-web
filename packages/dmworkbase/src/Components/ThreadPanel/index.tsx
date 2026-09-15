@@ -1,3 +1,4 @@
+import { isBrowserHtmlAttachment } from "../../features/html-attachment/types";
 import React, { Component, useState } from "react";
 import {
   Channel,
@@ -501,7 +502,10 @@ export default class ThreadPanel extends Component<
       messageSeq: f.message_seq,
       name: f.name,
       extension: f.name.includes(".") ? f.name.split(".").pop() || "" : "",
-      url: f.url,
+      sourceUrl: f.url,
+      url: isBrowserHtmlAttachment({ name: f.name, extension: "" })
+        ? WKApp.dataSource.commonDataSource.getFileURL(f.url)
+        : f.url,
       size: f.size,
       isAiGenerated: false, // TODO: 后端暂无此字段
       senderUid: f.from_uid,
@@ -1158,6 +1162,8 @@ export default class ThreadPanel extends Component<
     // 构造 FilePreviewInfo 并调用回调
     const newPreview: FilePreviewInfo = {
       url: file.url,
+      sourceUrl: file.sourceUrl,
+      downloadUrl: file.downloadUrl,
       name: file.name,
       extension: file.extension,
       size: file.size,

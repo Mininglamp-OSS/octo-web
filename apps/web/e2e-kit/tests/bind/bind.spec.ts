@@ -346,13 +346,19 @@ test.describe('OIDC bind page', () => {
       })
     }
 
+    // Anchor install and pause to the same virtual timeline. The Node runner's
+    // Date.now() can lag the browser clock in CI and produce a past pause target.
+    // The pause point is beyond this suite's 30s test timeout, before any bind
+    // action schedules the redirect whose persisted state we need to inspect.
+    const bindClockStart = new Date('2026-01-01T00:00:00Z')
+    const bindClockPause = new Date('2026-01-01T00:01:00Z')
     async function pausePostBindNavigation(page: import('@playwright/test').Page): Promise<void> {
-      await page.clock.pauseAt(Date.now() + 1000)
+      await page.clock.pauseAt(bindClockPause)
     }
 
     test('loginProvider persists URL ?provider= on confirm (not synthetic "oidc-bind")', async ({ page }) => {
       await mockBindServer(page, 'happy_password')
-      await page.clock.install()
+      await page.clock.install({ time: bindClockStart })
       await gotoBindPage(page, { token: TOKEN, returnTo: '/', provider: 'xming' })
       await pausePostBindNavigation(page)
 
@@ -377,7 +383,7 @@ test.describe('OIDC bind page', () => {
 
     test('loginProvider falls back to FALLBACK_PROVIDER_ID when URL omits ?provider=', async ({ page }) => {
       await mockBindServer(page, 'happy_password')
-      await page.clock.install()
+      await page.clock.install({ time: bindClockStart })
       // Inline-build URL to omit provider (gotoBindPage defaults to 'aegis').
       const qs = new URLSearchParams({
         token: TOKEN,
@@ -448,7 +454,7 @@ test.describe('OIDC bind page', () => {
 
     test('loginProvider persists URL ?provider= on create (not synthetic "oidc-bind-create")', async ({ page }) => {
       await mockBindServer(page, 'happy_create')
-      await page.clock.install()
+      await page.clock.install({ time: bindClockStart })
       await gotoBindPage(page, { token: TOKEN, returnTo: '/', provider: 'xming' })
       await pausePostBindNavigation(page)
 

@@ -1,7 +1,6 @@
 import React from "react";
 import { Download, FileWarning } from "lucide-react";
 import { formatFileSize } from "../config";
-import { downloadFile } from "../../../Utils/download";
 import { useI18n } from "../../../i18n";
 import "./FileTooLarge.css";
 
@@ -12,6 +11,8 @@ export interface FileTooLargeProps {
   fileSize: number;
   /** 文件下载 URL */
   fileUrl: string;
+  onDownload?: () => void;
+  isDownloading?: boolean;
 }
 
 /**
@@ -24,11 +25,19 @@ const FileTooLarge: React.FC<FileTooLargeProps> = ({
   fileName,
   fileSize,
   fileUrl,
+  onDownload,
+  isDownloading = false,
 }) => {
   const { t } = useI18n();
 
   const handleDownload = () => {
-    void downloadFile(fileUrl, fileName || "file");
+    if (onDownload) {
+      onDownload();
+      return;
+    }
+    void import("../../../Utils/download").then(({ downloadFile }) =>
+      downloadFile(fileUrl, fileName || "file")
+    );
   };
 
   return (
@@ -50,6 +59,7 @@ const FileTooLarge: React.FC<FileTooLargeProps> = ({
         type="button"
         className="wk-file-too-large__download-btn"
         onClick={handleDownload}
+        disabled={isDownloading}
       >
         <Download size={16} />
         <span>{t("base.filePreview.downloadFile")}</span>

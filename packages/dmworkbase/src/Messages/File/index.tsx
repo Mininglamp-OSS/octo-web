@@ -1,3 +1,6 @@
+import { isBrowserHtmlAttachment } from "../../features/html-attachment/types";
+import { downloadHtmlAttachment } from "../../bridge/html-attachment/downloadAttachment";
+import { attachmentErrorMessage } from "../../bridge/html-attachment/useHtmlAttachment";
 import React from "react";
 import "./index.css";
 import { MessageCell } from "../MessageCell";
@@ -347,6 +350,7 @@ interface RestartableTask extends Task {
 }
 
 interface FileCellState {
+  htmlDownloadPending?: boolean;
   uploadProgress: number; // 0~100 整数百分比
   uploadStatus: TaskStatus | null;
   textPreviewVisible: boolean;
@@ -361,6 +365,8 @@ export class FileCell extends MessageCell<any, FileCellState> {
   static contextType = I18nContext;
   declare context: React.ContextType<typeof I18nContext>;
 
+  private _htmlDownload?: AbortController;
+  private _htmlDownloadIdentity?: string;
   private _task?: RestartableTask;
   private _mounted = false;
   private _unsubscribeConfig?: () => void;
@@ -527,6 +533,16 @@ export class FileCell extends MessageCell<any, FileCellState> {
   }
 
   componentDidUpdate() {
+    const selected = this.props.message.content as FileContent;
+    const identity = JSON.stringify([
+      selected.url, selected.remoteUrl, selected.name, selected.size,
+    ]);
+    if (this._htmlDownload && this._htmlDownloadIdentity !== identity) {
+      this._htmlDownload.abort();
+      this._htmlDownload = undefined;
+      this._htmlDownloadIdentity = undefined;
+      this.setState({ htmlDownloadPending: false });
+    }
     // 处理两种"迟到"场景（reviewer 抓的 P1-2 + spec req 3）：
     //   a) 自己刚发的文件 mount 时 messageID 为空，跳过了查询；ack 落地后需要补一次
     //   b) drive_on 是异步 appconfig 拉下来的，mount 时 remoteConfig?.driveOn=false
@@ -603,6 +619,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
   componentWillUnmount() {
     super.componentWillUnmount();
     this._mounted = false;
+    this._htmlDownload?.abort();
     WKSDK.shared().taskManager.removeListener(this._taskListener);
     if (this._unsubscribeConfig) {
       this._unsubscribeConfig();
@@ -633,6 +650,34 @@ export class FileCell extends MessageCell<any, FileCellState> {
     const url = this.getFileURL(content);
     if (!url || !isSafeUrl(url)) return;
 
+    const file = {
+      url,
+      sourceUrl: content.url || content.remoteUrl,
+      name: content.name,
+      extension: getExtension(content.extension, content.name),
+      size: content.size,
+    };
+    if (isBrowserHtmlAttachment(file)) {
+      if (this._htmlDownload) return;
+      const controller = new AbortController();
+      this._htmlDownload = controller;
+      this._htmlDownloadIdentity = JSON.stringify([
+        content.url, content.remoteUrl, content.name, content.size,
+      ]);
+      this.setState({ htmlDownloadPending: true });
+      try {
+        await downloadHtmlAttachment(file, controller.signal);
+      } catch (error) {
+        if (!controller.signal.aborted) Toast.error(attachmentErrorMessage(error));
+      } finally {
+        if (this._htmlDownload === controller) {
+          this._htmlDownload = undefined;
+          this._htmlDownloadIdentity = undefined;
+          if (this._mounted) this.setState({ htmlDownloadPending: false });
+        }
+      }
+      return;
+    }
     await downloadFile(url, content.name || "file");
   };
 
@@ -701,6 +746,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
     // 所有文件都发送预览事件，由面板决定如何渲染（支持的显示内容，不支持的显示提示）
     const previewData = {
       url,
+      sourceUrl: content.url || content.remoteUrl,
       name: content.name || this.context.t("base.messageFile.unknownFile"),
       extension: ext,
       size: content.size,
@@ -987,7 +1033,10 @@ export class FileCell extends MessageCell<any, FileCellState> {
                     <Tooltip content={t("base.conversation.file.download")} position="top">
                       <div
                         className="wk-message-file-action"
-                        aria-label={t("base.conversation.file.download")}
+                        aria-label={t(this.state.htmlDownloadPending
+                          ? "base.htmlAttachment.preparing"
+                          : "base.conversation.file.download")}
+                        aria-busy={this.state.htmlDownloadPending}
                         onClick={(e) => {
                           e.stopPropagation(); // 阻止冒泡，避免触发预览
                           this.handleDownload();

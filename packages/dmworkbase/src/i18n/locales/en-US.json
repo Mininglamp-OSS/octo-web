@@ -1768,5 +1768,13 @@
   "globalSearch.drive.popupBlocked": "Your browser blocked the new tab. Allow pop-ups for this site, then click the file again.",
   "globalSearch.drive.unavailable": "This result can't be previewed",
   "globalSearch.drive.truncated": "Results may be incomplete. Try a more specific keyword.",
-  "globalSearch.drive.allLoaded": "All {{count}} results shown"
+  "globalSearch.drive.allLoaded": "All {{count}} results shown",
+  "htmlAttachment.title": "HTML preview",
+  "htmlAttachment.returnToChat": "Back to chat",
+  "htmlAttachment.preparing": "Preparing download…",
+  "htmlAttachment.loadFailed": "Unable to read the file. Retry or download it.",
+  "htmlAttachment.tooLarge": "This file is too large to preview. Download it to view.",
+  "htmlAttachment.downloadFailed": "Unable to prepare the download. Please retry.",
+  "htmlAttachment.expired": "Preview expired. Reopen this attachment from chat.",
+  "htmlAttachment.popupBlocked": "Unable to open the preview tab. Allow popups and retry."
 }
