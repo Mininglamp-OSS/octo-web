@@ -13,7 +13,10 @@ export default defineConfig(async (environment) => {
       outDir: "build-client-communication",
       emptyOutDir: true,
       rollupOptions: {
-        input: resolve(__dirname, "client-communication.html"),
+        input: {
+          communication: resolve(__dirname, "client-communication.html"),
+          forwardSurface: resolve(__dirname, "client-forward-surface.html"),
+        },
       },
     },
   });

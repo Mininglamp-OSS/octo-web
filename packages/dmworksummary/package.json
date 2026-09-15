@@ -6,6 +6,7 @@
     ".": "./src/index.tsx",
     "./communication": "./src/communication.ts",
     "./messaging": "./src/host/index.ts",
+    "./runtime": "./src/runtime/index.ts",
     "./workspace": "./src/workspace.ts",
     "./package.json": "./package.json",
     "./src/*": "./src/*"
@@ -14,6 +15,7 @@
     "*": {
       "communication": ["src/communication.ts"],
       "messaging": ["src/host/index.ts"],
+      "runtime": ["src/runtime/index.ts"],
       "workspace": ["src/workspace.ts"],
       "*": ["*"]
     }

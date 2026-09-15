@@ -26,6 +26,9 @@ import * as api from "../api/summaryApi";
  * 已接线 setRefresh → forceUpdate），NavRail 即重绘。
  */
 let summaryAttentionBadge = 0;
+// ═══ 外部注意力计数控制（见 externalAttention.ts）═══
+let externalAttentionActive = false;
+let hostRefreshAttention: ((reason: 'mutation' | 'manual-refresh') => Promise<void>) | null = null;
 let attentionScopeRevision = 0;
 const summaryAttentionListeners = new Set<(count: number) => void>();
 // 计数读取的单调取号。写入按【请求发出时刻】排序，而不是按响应到达顺序：
@@ -113,6 +116,8 @@ export function resetSummaryAttentionScope(): void {
     inFlightSamples.clear();
     abandonedTickets.clear();
     lastCommittedSampleAt = 0;
+    // 外部模式不受 workspace 重置影响（宿主跨 Space 保持外部关联）。
+    if (!externalAttentionActive) { hostRefreshAttention = null; }
     setSummaryAttentionBadge(0);
 }
 
@@ -174,11 +179,70 @@ export function setSummaryAttentionPublisher(
     attentionPublisher = publisher;
 }
 
+// ═══ 外部注意力控制安装/卸载（由 externalAttention.ts 调用）═══
+
+/** 当前是否处于外部注意力计数模式。 */
+export function isSummaryAttentionExternal(): boolean {
+    return externalAttentionActive;
+}
+
+/**
+ * 安装外部注意力刷新回调（由 installExternalSummaryAttention 在
+ * runtime 启动前调用）。同时作废所有在飞本地读取，防止迟到响应
+ * 覆盖外部计数或后续本地写入。
+ */
+export function setSummaryAttentionExternal(
+    requestRefresh: ((reason: 'mutation' | 'manual-refresh') => Promise<void>) | null
+): void {
+    externalAttentionActive = true;
+    hostRefreshAttention = requestRefresh;
+    // 将本地镜像重置为 0：getCount() 不暴露安装前的陈旧值；宿主会在首次 apply 时
+    // 注入真实计数。若安装前的本地值恰好是 0（常见情形），此写入跳过（next===current）。
+    summaryAttentionBadge = 0;
+    // 作废所有在飞旧号：external 安装后的迟到本地响应不能落盘、不能 publish。
+    // 同时推进 attentionScopeRevision，让在飞的 readSummaryAttentionCount 走
+    // 既有的跨 Space 早退分支（该分支会弃号并跳过 publish）。
+    attentionScopeRevision++;
+    issueSeq++;
+    inFlightSamples.clear();
+    abandonedTickets.clear();
+}
+
+/**
+ * 卸载外部模式（由 disposeSummaryAttentionRuntime 在清理时调用）。
+ * 幂等——已不在 external mode 时无操作。同样作废在飞旧号。
+ */
+export function clearSummaryAttentionExternal(): void {
+    if (!externalAttentionActive) return;
+    externalAttentionActive = false;
+    hostRefreshAttention = null;
+    // 作废在飞旧号，使任何迟到响应都不能回写、不能 publish；同样推进 revision。
+    attentionScopeRevision++;
+    issueSeq++;
+    inFlightSamples.clear();
+    abandonedTickets.clear();
+}
+
+/**
+ * 将宿主注入的计数写入本地只读镜像并通知订阅者。
+ * 不触发 menus.refresh（宿主独立负责菜单栏重绘），不 publish 广播
+ * （external mode 下无本地 leader）。null→归一化为 0。
+ */
+export function applyExternalSummaryAttentionBadge(count: number | null): void {
+    const next = Number.isFinite(count) ? Math.max(0, Math.trunc(count as number)) : 0;
+    if (next === summaryAttentionBadge) return;
+    summaryAttentionBadge = next;
+    notifySummaryAttentionListeners(next);
+}
+
+
 /** 测试用：重置模块级的广播排序状态（模块级状态跨用例会串）。 */
 export function resetSummaryAttentionOrdering(): void {
     inFlightSamples.clear();
     abandonedTickets.clear();
     lastCommittedSampleAt = 0;
+    externalAttentionActive = false;
+    hostRefreshAttention = null;
     attentionPublisher = null;
 }
 
@@ -217,6 +281,8 @@ export function commitSummaryAttentionBadge(
     // 走到这里说明本次是号段的最新一号且真的要参与落盘：比它更早的在飞读取从此
     // 全是陈旧快照，那些还挂在集合里的旧号再也不会参与折叠，清掉以免无界增长。
     abandonedTickets.clear();
+    // external mode: 本地读取不写入 badge（由宿主控制），仅清理票号状态。
+    if (externalAttentionActive) return;
     // sampleAt 缺省时按“现在”记。生产上【所有】写者现在都显式传（读取路径传折算后
     // 的发出时刻，列表页传未折算的发出时刻），缺省只留给测试与将来的新调用方——
     // 而且它是在 await 之后求值的【到达】时刻，与其它写者的发出时刻不同尺，
@@ -261,6 +327,7 @@ export function acceptRemoteAttentionCount(
   count: number,
   sampleAt: number
 ): boolean {
+    if (externalAttentionActive) return false;
     if (!Number.isFinite(count) || !Number.isFinite(sampleAt)) return false;
     // 落在未来的样本时刻一律丢弃。只校验「是有限数」不够：lastCommittedSampleAt 是
     // 单调不减的水位，一旦被推到未来，【之后每一次】本地落盘（严格 <）和每一条广播
@@ -340,6 +407,12 @@ export function abandonSummaryAttentionRead(ticket: number): void {
 export function setSummaryAttentionBadge(count: number): void {
     const next = Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;
     if (next === summaryAttentionBadge) return;
+    // external mode: 本地写入不得覆盖宿主注入的计数；值变化由 applyExternalSummaryAttentionBadge 控制。
+    // 但仍需要触发 refresh 让屐主知道 scope 已经变化。
+    // external mode: 本地全部写入路径必须完全静默——不改写 badge、不触发 menus.refresh
+    // （宿主独立负责菜单栏重绘与计数注入）。applyExternalSummaryAttentionBadge 是
+    // 外部模式下唯一合法的写入入口，它跳过本函数直接操作 summaryAttentionBadge。
+    if (externalAttentionActive) return;
     summaryAttentionBadge = next;
     WKApp.menus.refresh();
   notifySummaryAttentionListeners(next);
@@ -385,6 +458,15 @@ function e2eMockReady(): boolean {
  * 还显示着数字。省一个轻量 GET 不值这个代价。
  */
 export async function refreshSummaryAttentionBadge(): Promise<void> {
+    // external mode: 不调本地 API，改为请求宿主作废其内部缓存/读取。
+    if (externalAttentionActive) {
+        try {
+            await hostRefreshAttention?.('mutation');
+        } catch {
+            // 静默失败，保持当前值（与 API 错误分支一致）。
+        }
+        return;
+    }
     try {
         // 用户动作触发的刷新：带 fresh=1 绕过服务端 5s 缓存。用户刚做完一件事，
         // 看到的数字必须是他那次动作之后的。
@@ -416,6 +498,8 @@ export async function refreshSummaryAttentionBadge(): Promise<void> {
 export async function readSummaryAttentionCount(options?: {
   fresh?: boolean;
 }): Promise<{ count: number; sampleAt: number } | null> {
+    // external mode: 本地不发起任何 API 读取，计数由宿主通过 apply 注入。
+    if (externalAttentionActive) return null;
     const spaceId = WKApp.shared.currentSpaceId;
     const scopeRevision = attentionScopeRevision;
   if (!WKApp.loginInfo.isLogined() || !WKApp.loginInfo.uid || !spaceId)

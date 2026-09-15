@@ -37,6 +37,7 @@ vi.mock("../../../App", () => ({
 import WKBase from "../index";
 import ConversationSelect from "../../ConversationSelect";
 import WKModal from "../../WKModal";
+import { ForwardPickerPresentation } from "../../../features/forwarding/ForwardPickerPresentation";
 
 const documentInput: DocForwardOpen = {
   messageTitle: "Quarterly plan",
@@ -88,8 +89,10 @@ function findElement(node: React.ReactNode, type: unknown, className?: string): 
 // Exercise production render callbacks and ForwardService; only the SDK transport is replaced.
 function picker(base: WKBase) {
   const tree = base.render();
-  const select = findElement(tree, ConversationSelect);
-  const modal = findElement(tree, WKModal, "wk-base-modal wk-base-modal-forward");
+  const presentation = findElement(tree, ForwardPickerPresentation);
+  const pickerTree = ForwardPickerPresentation(presentation.props);
+  const select = findElement(pickerTree, ConversationSelect);
+  const modal = findElement(pickerTree, WKModal, "wk-base-modal wk-base-modal-forward");
   return {
     confirm: select.props.onFinished as (channels: Channel[], grant?: ForwardGrant) => void,
     cancel: select.props.onCancel as () => void,

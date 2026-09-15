@@ -16,6 +16,8 @@ import {
   useForwardBotPreview,
 } from "../ForwardModal/hooks"
 import type { ForwardFinished, ForwardGrantConfig, ForwardGrantRole } from "../ForwardModal/grant"
+import type { ForwardSurfaceAdapter } from "../../features/forwarding/surfaceRegistry"
+import { RemoteForwardSurface } from "../../features/forwarding/RemoteForwardSurface"
 
 export interface ConversationSelectGrant {
   canGrant: boolean
@@ -25,12 +27,13 @@ export interface ConversationSelectGrant {
   spaceId?: string
 }
 
-interface ConversationSelectProps {
+export interface ConversationSelectProps {
   onFinished?: ForwardFinished
   onCancel?: () => void
   title?: string
   /** 授权区 opt-in 配置（feature #511）。不传则不渲染授权区。 */
   grant?: ConversationSelectGrant
+  surfacePort?: ForwardSurfaceAdapter
 }
 
 export default function ConversationSelect({
@@ -38,6 +41,7 @@ export default function ConversationSelect({
   onCancel,
   title,
   grant,
+  surfacePort,
 }: ConversationSelectProps) {
   const {
     items,
@@ -122,8 +126,10 @@ export default function ConversationSelect({
       }
     : undefined
 
+  const Presentation = surfacePort ? RemoteForwardSurface : ForwardModal
   return (
-    <ForwardModal
+    <Presentation
+      port={surfacePort!}
       title={title}
       items={items}
       allItems={allItems}

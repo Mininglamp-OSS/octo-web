@@ -19,7 +19,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-function fixture() {
+function fixture(capture?: () => () => boolean) {
   let onCommand: (command: HostCommand) => void = () => {};
   const bridge = {
     getDocumentPreview: vi.fn(async (): Promise<DocumentPreviewResponse> => ({
@@ -31,7 +31,7 @@ function fixture() {
       return vi.fn();
     }),
   };
-  dispose = installHostDocumentPreview(bridge as unknown as OctoBuddyCommunicationBridge, "space-a");
+  dispose = installHostDocumentPreview(bridge as unknown as OctoBuddyCommunicationBridge, "space-a", capture);
   return { bridge, command: (command: HostCommand) => onCommand(command) };
 }
 
@@ -87,4 +87,43 @@ describe("communication document preview adapter", () => {
       expect(resetDocPreviewCache).toHaveBeenCalledTimes(2);
     },
   );
+
+  it.each(["success", "401", "rejection"] as const)(
+    "drops an owner preview %s after A-B-A without a legacy command", async (outcome) => {
+      let epoch = 1;
+      const f = fixture(() => {
+        const captured = epoch;
+        return () => epoch === captured;
+      });
+      let finish!: () => void;
+      f.bridge.getDocumentPreview.mockImplementationOnce(() => new Promise((resolve, reject) => {
+        finish = () => outcome === "rejection" ? reject({ status: 401 })
+          : resolve(outcome === "401" ? { ok: false, status: 401 } : { ok: true, body: { old: true } });
+      }));
+      const pending = getDocumentPreviewBody({ docId: "d", kind: "doc" }, "");
+      const assertion = expect(pending).rejects.toMatchObject({ status: undefined });
+      epoch = 2;
+      epoch = 3;
+      finish();
+      await assertion;
+      expect(f.bridge.reportAuthExpired).not.toHaveBeenCalled();
+      expect(f.bridge.onCommand).not.toHaveBeenCalled();
+      await expect(getDocumentPreviewBody({ docId: "current", kind: "doc" }, ""))
+        .resolves.toEqual({ preview: {} });
+    },
+  );
+
+  it("does not issue an owner request after captured scope revocation", async () => {
+    const f = fixture(() => () => false);
+    await expect(getDocumentPreviewBody({ docId: "d", kind: "doc" }, "")).rejects.toThrow();
+    expect(f.bridge.getDocumentPreview).not.toHaveBeenCalled();
+  });
+
+  it("unsubscribes and clears cache only once on repeated legacy disposal", () => {
+    const f = fixture();
+    dispose!();
+    dispose!();
+    expect(f.bridge.onCommand.mock.results[0].value).toHaveBeenCalledOnce();
+    expect(resetDocPreviewCache).toHaveBeenCalledTimes(2);
+  });
 });

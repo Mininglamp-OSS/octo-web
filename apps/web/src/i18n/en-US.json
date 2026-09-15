@@ -1,4 +1,5 @@
 {
+  "workspaceConversation.openInMessages": "Choose Open in Messages to use this feature in the full conversation.",
   "common.back": "Back",
   "connection.duration.hoursMinutes": "{{hours}}h {{minutes}}m",
   "connection.duration.minutes": "{{count}} min",

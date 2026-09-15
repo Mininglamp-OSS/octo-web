@@ -310,4 +310,27 @@ describe("groupSummaryNotify", () => {
     expect(sendToChannel).toHaveBeenCalledTimes(1);
     expect(sendToChannel.mock.calls[0][0].channelID).toBe("group-b");
   });
+
+  it("does not consume eligibility or claim a group for an expired scope", async () => {
+    markAgentSummaryNotificationEligible(42);
+    const sendToChannel = vi.fn();
+    await sendGroupSummaryCompletionTips(undefined, detail(), "creator", COMPLETED, 2, {
+      sendToChannel, isDisbanded: () => false, isActive: () => false,
+    });
+    expect(sendToChannel).not.toHaveBeenCalled();
+    expect(isAgentSummaryNotificationEligible(42)).toBe(true);
+    expect(readNotifiedGroups(42).size).toBe(0);
+  });
+
+  it("rechecks scope after the disband callback before claiming or sending", async () => {
+    let active = true;
+    const sendToChannel = vi.fn();
+    await sendGroupSummaryCompletionTips(2, detail(), "creator", COMPLETED, 2, {
+      sendToChannel,
+      isActive: () => active,
+      isDisbanded: () => { active = false; return false; },
+    });
+    expect(sendToChannel).not.toHaveBeenCalled();
+    expect(readNotifiedGroups(42).size).toBe(0);
+  });
 });

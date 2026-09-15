@@ -19,6 +19,7 @@ interface AgentEligibleTask {
 }
 
 export interface GroupSummaryNotifyDeps {
+  isActive?: () => boolean;
   sendToChannel: (channel: Channel, currentUserId: string) => Promise<void>;
   isDisbanded: (channel: Channel) => boolean;
   warn?: (
@@ -201,6 +202,8 @@ export async function sendGroupSummaryCompletionTips(
   channelTypeGroup: number,
   deps: GroupSummaryNotifyDeps
 ): Promise<void> {
+  const isActive = () => deps.isActive?.() ?? true;
+  if (!isActive()) return;
   const allowInitialCompletion =
     previousStatus === undefined &&
     detail.status === completedStatus &&
@@ -223,12 +226,14 @@ export async function sendGroupSummaryCompletionTips(
   if (!currentUserId) return;
 
   for (const channelId of collectGroupSourceIds(detail)) {
+    if (!isActive()) return;
     const dedupKey = `${detail.task_id}:${channelId}`;
     if (inFlight.has(dedupKey) || sentThisSession.has(dedupKey)) continue;
     if (readNotifiedGroups(detail.task_id).has(channelId)) continue;
 
     const channel = new Channel(channelId, channelTypeGroup);
     if (deps.isDisbanded(channel)) continue;
+    if (!isActive()) return;
 
     inFlight.add(dedupKey);
     // Claim before the async send so another tab in this browser profile sees
@@ -236,10 +241,15 @@ export async function sendGroupSummaryCompletionTips(
     // prefers a rare miss over duplicate tips in the source group.
     markNotified(detail.task_id, channelId);
     try {
+      if (!isActive()) return;
       await deps.sendToChannel(channel, currentUserId);
+      if (!isActive()) return;
       sentThisSession.add(dedupKey);
     } catch (error) {
+      // A retired scope cannot roll back a claim now visible to a new owner.
+      if (!isActive()) return;
       unmarkNotified(detail.task_id, channelId);
+      if (!isActive()) return;
       deps.warn?.("[summaryNotify] send failed", {
         taskId: detail.task_id,
         channelId,

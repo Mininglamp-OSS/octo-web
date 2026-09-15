@@ -3,6 +3,7 @@ import { ChannelInfo, Conversation } from "wukongimjssdk"
 export interface SyncConversationsCallbackDeps {
     postConversationSync: (path: string, body: Record<string, any>) => Promise<any>
     getCurrentSpaceId: () => string
+    captureContext: () => () => boolean
     setChannelSpace: (key: string, spaceId: string) => void
     setChannelMySourceSpace: (key: string, sourceSpaceId: string) => void
     toConversation: (conversationMap: any) => Conversation
@@ -12,7 +13,10 @@ export interface SyncConversationsCallbackDeps {
 }
 
 export function createSyncConversationsCallback(deps: SyncConversationsCallbackDeps) {
-    return async function syncConversationsCallback(_filter?: any): Promise<Array<Conversation>> {
+    let latestRequest = 0
+    return async function syncConversationsCallback(filter?: { canCommit?: () => boolean }): Promise<Array<Conversation>> {
+        const request = ++latestRequest
+        const contextIsCurrent = deps.captureContext()
         let resp: any
         const conversations = new Array<Conversation>()
         const spaceId = deps.getCurrentSpaceId() || ""
@@ -24,9 +28,16 @@ export function createSyncConversationsCallback(deps: SyncConversationsCallbackD
             "msg_count": 1,
             "recent_filter": true,
         })
+        if (
+            request !== latestRequest ||
+            !contextIsCurrent() ||
+            (filter?.canCommit && !filter.canCommit()) ||
+            (deps.getCurrentSpaceId() || "") !== spaceId
+        ) {
+            // Returning [] would let SDK.sync() erase a newer conversation cache.
+            throw new Error("Conversation sync superseded")
+        }
         if (resp) {
-            // 防止快速切换 Space 时旧响应覆盖新缓存
-            if (spaceId && deps.getCurrentSpaceId() !== spaceId) return conversations
             // 只更新本次 sync 响应中包含的频道缓存，保留其他 Space 的缓存
             // （避免 clear() 导致切换 Space 后其他 Space 群聊缓存丢失）
             resp.conversations.forEach((conversationMap: any) => {

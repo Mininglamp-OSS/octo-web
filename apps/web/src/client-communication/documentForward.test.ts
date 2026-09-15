@@ -4,7 +4,7 @@ import type { OctoBuddyCommunicationBridge, DocumentForwardRequest } from "./hos
 import type { WKBaseContext } from "@octo/base/src/Components/WKBase";
 import type { DocForwardOpen } from "@octo/base/src/Components/ForwardModal/grant";
 
-function fixture() {
+function fixture(isRequestCurrent?: (request: DocumentForwardRequest) => boolean) {
   const listeners = new Map<string, Function>();
   const subscribe = (key: string) => (fn: Function) => { listeners.set(key, fn); return () => { listeners.delete(key); }; };
   const closed = vi.fn();
@@ -19,7 +19,7 @@ function fixture() {
     respondDocumentForward: vi.fn(),
   } as unknown as OctoBuddyCommunicationBridge;
   const state = { space: "sender-space" };
-  const dispose = installDocumentForward(bridge, { getSpaceId: () => state.space, getContext: () => context });
+  const dispose = installDocumentForward(bridge, { getSpaceId: () => state.space, getContext: () => context, isRequestCurrent });
   const request: DocumentForwardRequest = {
     requestId: "main-request", spaceId: state.space,
     input: { docId: "doc-a", title: "Title", link: "https://docs.test/d/doc-a#instruction",
@@ -83,6 +83,17 @@ describe("Docs communication artifact adapter", () => {
     expect(f.forward.isActive!()).toBe(true);
     expect(f.closed).not.toHaveBeenCalled();
     expect(f.bridge.respondDocumentForward).not.toHaveBeenCalled();
+    f.dispose();
+  });
+  it("binds owner pickers to scope even if the organization id is unchanged", async () => {
+    let current = true;
+    const f = fixture(() => current);
+    f.open();
+    current = false;
+    expect(f.forward.isActive!()).toBe(false);
+    await expect(f.forward.beforeSend!()).rejects.toThrow();
+    f.listeners.get("command")!({ type: "spaceChanged", space: { id: f.state.space } });
+    expect(f.closed).toHaveBeenCalledOnce();
     f.dispose();
   });
   it.each(["sessionRevoked", "spaceChanged"])("cancels on %s and removes listeners on cleanup", (type) => {
