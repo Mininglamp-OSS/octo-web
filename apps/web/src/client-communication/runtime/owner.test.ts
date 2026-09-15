@@ -141,4 +141,14 @@ describe("communication data owner", () => {
     expect(f.ports.disposeData).toHaveBeenCalledOnce();
     expect(f.ports.startUi).not.toHaveBeenCalled();
   });
+  it("preserves navigationId through dispatchUi", async () => {
+    const f = fixture();
+    await f.owner.start();
+    f.send({ type: "navigate", page: "chat", navigationId: 42 });
+    expect(f.ports.dispatchUi).toHaveBeenCalledWith({
+      type: "navigate", page: "chat", presentation: undefined, target: undefined,
+      navigationId: 42,
+    });
+    f.owner.dispose();
+  });
 });

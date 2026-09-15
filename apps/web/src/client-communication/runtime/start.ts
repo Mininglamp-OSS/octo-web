@@ -126,6 +126,9 @@ export async function startCommunicationRuntime(host: OctoBuddyCommunicationBrid
         document.documentElement.dataset.theme = command.theme;
         document.documentElement.lang = command.locale;
         WKApp.shared.notifyListener();
+      } else if (command.type === "suspend" || command.type === "resume") {
+        // Trusted host visibility: forward to the UI so queued target callbacks are cancelled on hide.
+        ui.dispatch(command);
       }
       // Legacy navigation/Space/visibility messages are not owner-scoped.
     }));

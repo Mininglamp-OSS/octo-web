@@ -36,8 +36,11 @@ export async function mountCommunicationUi(
           runtimeOwned={options.runtimeOwned}
           isDocumentForwardCurrent={options.isDocumentForwardCurrent}
           onReady={async ({ page, spaceId }) => {
+            const navigationCommit = typeof host.reportNavigationCommitted === "function"
+              ? { navigationCommitVersion: 1 as const } : undefined;
             await presentation.reportReady({
               bridgeVersion: 1, page, spaceId,
+              ...navigationCommit,
               rendererVersion: WKApp.config.appVersion, documentForwardVersion: 1,
             });
             options.onReady?.();

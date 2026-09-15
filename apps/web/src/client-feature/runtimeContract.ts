@@ -58,7 +58,7 @@ export type RuntimeCommand = RuntimeScope & { version: 1 } & (
   | { type: "invalidateSummary"; requestId: string; reason: "mutation" | "manual-refresh" }
   | { type: "dispose" }
   | { type: "timerFired"; task: RuntimeTimer["task"]; timerId: number }
-  | { type: "navigate"; page: CommunicationPage; presentation?: CommunicationPresentation; target?: ConversationTarget }
+  | { type: "navigate"; page: CommunicationPage; presentation?: CommunicationPresentation; target?: ConversationTarget; navigationId?: number }
   | { type: "spaceChanged"; next: {
       contextId: string;
       epoch: number;
@@ -161,16 +161,25 @@ export function parseRuntimeCommand(value: unknown): RuntimeCommand {
     return { ...common, type: "timerFired", task: input.task, timerId: integer(input.timerId) };
   }
   if (input.type === "navigate") {
-    keys(input, [...baseKeys, "page", "presentation", "target"]);
+    keys(input, [...baseKeys, "page", "presentation", "target", "navigationId"]);
     if (input.page !== "chat" && input.page !== "contacts") throw new Error("Invalid runtime page");
     if (input.presentation !== undefined && input.presentation !== "workspace" && input.presentation !== "conversation") {
       throw new Error("Invalid runtime presentation");
     }
     const target = input.target === undefined ? undefined : parseConversationTarget(input.target);
+    const navigationId = input.navigationId === undefined ? undefined : (() => {
+      const n = integer(input.navigationId);
+      if (n < 1) throw new Error("Navigation ID must be a positive safe integer");
+      return n;
+    })();
     if (target && input.page !== "chat") throw new Error("Conversation target requires chat");
     if (target?.variant === "app-bot" && input.presentation !== "conversation") throw new Error("App conversation requires conversation presentation");
     if (target?.variant === "workspace-group" && input.presentation !== "workspace") throw new Error("Workspace-group requires workspace presentation");
-    return { ...common, type: "navigate", page: input.page, presentation: input.presentation as CommunicationPresentation | undefined, target };
+    return {
+      ...common, type: "navigate",
+      page: input.page, presentation: input.presentation as CommunicationPresentation | undefined,
+      target, navigationId,
+    };
   }
   if (input.type === "activity") {
     keys(input, [...baseKeys, "activity"]);

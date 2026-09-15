@@ -31,7 +31,7 @@ export interface SummaryBootstrap {
 }
 
 export type SummaryHostCommand =
-  | { type: "navigate"; route: SummaryWorkspaceRoute }
+  | { type: "navigate"; route: SummaryWorkspaceRoute; navigationId?: number }
   | { type: "spaceChanged"; space: { id: string; name: string }; runtime?: SummaryRuntimeBootstrap }
   | {
       type: "appearanceChanged";
@@ -56,8 +56,11 @@ export interface OctoBuddySummaryBridge extends DesktopPresentationBridge {
     rendererVersion: string;
     externalSummaryAttentionVersion?: 1;
     runtime?: SummaryRuntimeBootstrap;
+    navigationCommitVersion?: 1;
   } & DesktopReadyCapability<SummaryWorkspaceRoute["view"]>): Promise<void>;
   reportRoute(report: { route: SummaryWorkspaceRoute; spaceId: string }): void;
+  /** Optional; when present the renderer advertises navigationCommitVersion: 1 and acknowledges navigate commits. */
+  reportNavigationCommitted?(params: { navigationId: number }): Promise<void>;
   reportBadge(report: { count: number; spaceId: string }): void;
   reportAuthExpired(reason: string): void;
   reportFatalError(error: { message: string; stack?: string }): void;

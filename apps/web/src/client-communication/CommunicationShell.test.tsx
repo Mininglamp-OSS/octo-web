@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => {
   return {
     command,
     summaryRequest,
+    routeQueue: { held: false, commits: [] as Array<() => void> },
     getCurrentImChannelInfo: vi.fn(),
     subscribeUnread: vi.fn((listener: (count: number) => void) => {
       listener(0);
@@ -26,9 +27,11 @@ const mocks = vi.hoisted(() => {
       destroy: vi.fn(),
     })),
     bridge: {
+      openSummary: vi.fn(async () => {}),
       getBootstrap: vi.fn(),
       reportReady: vi.fn(async () => {}),
       reportNavigation: vi.fn(async () => {}),
+      reportNavigationCommitted: vi.fn(async () => {}),
       reportUnread: vi.fn(),
       reportAuthExpired: vi.fn(),
       reportFatalError: vi.fn(),
@@ -101,8 +104,10 @@ vi.mock("@octo/base", () => {
     setReplaceToRoot: vi.fn(),
     setPop: vi.fn(),
     setPopToRoot: vi.fn(),
-    popToRoot: vi.fn(),
-    replaceToRoot: vi.fn(),
+    popToRoot() { this.setPopToRoot(); },
+    replaceToRoot(view) { this.setReplaceToRoot(view); },
+    pop() { this.setPop(); },
+    push(view) { this.setPush(view); },
   };
   const mittBus = {
     emit: vi.fn(),
@@ -114,6 +119,25 @@ vi.mock("@octo/base", () => {
     currentSpaceId: "space-a",
     addListener: vi.fn(() => () => {}),
     notifyListener: vi.fn(),
+  };
+  const wkApp = {
+    routeLeft: { ...route },
+    routeRight: { ...route },
+    currentMenuId: "chat",
+    switchToMenuById: undefined,
+    config: {},
+    loginInfo: { logout: vi.fn() },
+    endpoints: {
+      showConversation: vi.fn((channel) => {
+        // EndpointCommon dispatches synchronously while chat is active:
+        // replace the current right route with a chat-content view.
+        wkApp.routeRight.replaceToRoot(
+          <div data-testid="chat-content-page" data-channel={channel.channelID} />,
+        );
+      }),
+    },
+    mittBus,
+    shared,
   };
   return {
     ChatPage: () => <div>chat</div>,
@@ -129,40 +153,33 @@ vi.mock("@octo/base", () => {
     findCurrentImConversation: mocks.findCurrentImConversation,
     createCurrentEmptyImConversation: mocks.createCurrentEmptyImConversation,
     ThemeMode: { light: "light", dark: "dark" },
-    WKApp: {
-      routeLeft: { ...route },
-      routeRight: { ...route },
-      currentMenuId: "chat",
-      switchToMenuById: undefined,
-      config: {},
-      loginInfo: { logout: vi.fn() },
-      endpoints: { showConversation: vi.fn() },
-      mittBus,
-      shared,
-    },
-    WKBase: ({ children, onContext }: any) => {
+    WKApp: wkApp,
+    WKBase: ({ children, onContext }) => {
       useEffect(() => onContext?.({}), [onContext]);
       return children;
     },
-    WKLayout: ({ contentLeft, contentRight, onLeftContext, onRightContext }: any) => {
-      useEffect(() => {
+    WKLayout: ({ contentLeft, contentRight, onLeftContext, onRightContext }) => {
+      const [rightView, setRightView] = React.useState(null);
+      React.useLayoutEffect(() => {
         const context = {
           push: vi.fn(),
-          replaceToRoot: vi.fn(),
+          replaceToRoot: (view) => {
+            if (mocks.routeQueue.held) mocks.routeQueue.commits.push(() => setRightView(view));
+            else setRightView(view);
+          },
           pop: vi.fn(),
-          popToRoot: vi.fn(),
+          popToRoot: () => setRightView(null),
         };
         onLeftContext?.(context);
         onRightContext?.(context);
       }, [onLeftContext, onRightContext]);
-      return <>{contentLeft}{contentRight}</>;
+      return <>{contentLeft}{rightView ?? contentRight}</>;
     },
     i18n: { setLocale: vi.fn() },
     t: (key: string) => key,
     useI18n: () => ({ t: (key: string) => key }),
   };
 });
-
 import { CommunicationShell } from "./CommunicationShell";
 import { WKApp, i18n } from "@octo/base";
 import { installDesktopPresentationLifecycle } from "./desktopPresentationLifecycle";
@@ -173,9 +190,12 @@ import { createUnreadCountObserver } from "@octo/base/src/im-runtime/unreadObser
 describe("CommunicationShell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.bridge.reportNavigationCommitted = vi.fn(async () => {});
     mocks.command.listener = undefined;
     mocks.summaryRequest.listener = undefined;
     mocks.getCurrentImChannelInfo.mockReturnValue(undefined);
+    mocks.routeQueue.held = false;
+    mocks.routeQueue.commits = [];
     mocks.subscribeUnread.mockImplementation((listener) => {
       listener(0);
       return vi.fn();
@@ -396,7 +416,7 @@ describe("CommunicationShell", () => {
     open({ channelID: "old-topic", channelType: 6 } as any);
     await Promise.resolve();
     expect(mocks.bridge.reportNavigation).not.toHaveBeenCalled();
-    expect(WKApp.routeRight.popToRoot).toHaveBeenCalled();
+    expect(screen.queryByTestId("chat-content-page")).toBeNull();
   });
 
   it("keeps one embedded Contacts header and preserves child state while switching visible pages", async () => {
@@ -758,7 +778,7 @@ describe("CommunicationShell", () => {
   });
 
   it("uses the Web app conversation view only for explicit app targets and restores regular chat", async () => {
-    render(
+    const { container } = render(
       <CommunicationShell
         bridge={mocks.bridge as any}
         initialPage="chat"
@@ -773,16 +793,18 @@ describe("CommunicationShell", () => {
       presentation: "conversation",
       target: { channelId: "bot-1", channelType: 1, displayName: "Docs Bot", variant: "app-bot" },
     }));
-    await waitFor(() => expect(WKApp.routeRight.replaceToRoot).toHaveBeenCalled());
-    const view = vi.mocked(WKApp.routeRight.replaceToRoot).mock.calls[0][0] as React.ReactElement;
-    expect(view.props.className).toBe("appbot-chat-wrap");
-    expect(view.props.children).toBe("Docs Bot");
+    // The app-bot view should be rendered directly in the right route.
+    await waitFor(() => {
+      expect(container.querySelector(".appbot-chat-wrap")).toBeTruthy();
+    });
+    expect(container.querySelector(".appbot-chat-wrap")?.textContent).toBe("Docs Bot");
     expect(WKApp.endpoints.showConversation).not.toHaveBeenCalled();
 
     act(() => {
       mocks.command.listener?.({ type: "navigate", page: "chat", presentation: "workspace" });
       mocks.command.listener?.({ type: "navigate", page: "chat", presentation: "workspace" });
     });
+    // Restoring regular chat invokes showConversation for the previous app-bot target.
     await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalledWith(
       expect.objectContaining({ channelID: "bot-1" }),
       expect.any(Object),
@@ -790,7 +812,7 @@ describe("CommunicationShell", () => {
   });
 
   it("does not reopen an app conversation when switching to contacts", async () => {
-    render(
+    const { container } = render(
       <CommunicationShell
         bridge={mocks.bridge as any}
         initialPage="chat"
@@ -803,11 +825,12 @@ describe("CommunicationShell", () => {
       type: "navigate", page: "chat",
       target: { channelId: "bot-1", channelType: 1, displayName: "Docs Bot", variant: "app-bot" },
     }));
-    await waitFor(() => expect(WKApp.routeRight.replaceToRoot).toHaveBeenCalled());
-    vi.mocked(WKApp.routeRight.replaceToRoot).mockClear();
+    await waitFor(() => expect(container.querySelector(".appbot-chat-wrap")).toBeTruthy());
     act(() => mocks.command.listener?.({ type: "navigate", page: "contacts", presentation: "workspace" }));
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
-    expect(WKApp.routeRight.replaceToRoot).not.toHaveBeenCalled();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    // After switching to contacts, the app-bot view should be unmounted and
+    // no regular conversation should have been opened.
+    expect(container.querySelector(".appbot-chat-wrap")).toBeFalsy();
     expect(WKApp.endpoints.showConversation).not.toHaveBeenCalled();
   });
 
@@ -938,5 +961,324 @@ describe("CommunicationShell", () => {
       error: "Summary request context expired",
     }));
     expect(mocks.loadConversationMembers).not.toHaveBeenCalled();
+  });
+
+  describe("navigation commit", () => {
+    it("reports navigation commit after same-page navigation with target", async () => {
+      render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="workspace"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      act(() => {
+        mocks.command.listener?.({
+          type: "navigate",
+          page: "chat",
+          navigationId: 42,
+          target: { channelId: "c-1", channelType: 2, displayName: "Target" },
+        });
+      });
+
+      await waitFor(() =>
+        expect(mocks.bridge.reportNavigationCommitted).toHaveBeenCalledWith({ navigationId: 42 })
+      );
+    });
+
+    it("does not commit when navigationId is absent (legacy)", async () => {
+      render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="workspace"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      act(() => {
+        mocks.command.listener?.({
+          type: "navigate",
+          page: "chat",
+          target: { channelId: "c-1", channelType: 2 },
+        });
+      });
+
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+      });
+    });
+
+    it("only commits the latest navigation id and cancels stale one", async () => {
+      render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="workspace"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      act(() => {
+        mocks.command.listener?.({
+          type: "navigate",
+          page: "chat",
+          navigationId: 42,
+          target: { channelId: "c-1", channelType: 2 },
+        });
+        mocks.command.listener?.({
+          type: "navigate",
+          page: "chat",
+          navigationId: 99,
+          target: { channelId: "c-2", channelType: 2 },
+        });
+      });
+
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalledWith({ navigationId: 42 });
+        expect(mocks.bridge.reportNavigationCommitted).toHaveBeenCalledWith({ navigationId: 99 });
+      });
+    });
+
+    it("cancels navigation commit on space change", async () => {
+      render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="workspace"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      act(() => {
+        mocks.command.listener?.({
+          type: "navigate",
+          page: "chat",
+          navigationId: 42,
+        });
+        mocks.command.listener?.({
+          type: "spaceChanged",
+          space: { id: "space-b", name: "Space B" },
+        });
+      });
+
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+      });
+    });
+
+    it("cancels navigation commit on suspend", async () => {
+      render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="workspace"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      act(() => {
+        mocks.command.listener?.({
+          type: "navigate",
+          page: "chat",
+          navigationId: 42,
+        });
+        mocks.command.listener?.({ type: "suspend" });
+      });
+
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+      });
+    });
+
+    it("cancels navigation commit on session revoked", async () => {
+      const logout = vi.fn();
+      WKApp.loginInfo.logout = logout;
+
+      render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="workspace"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      act(() => {
+        mocks.command.listener?.({
+          type: "navigate",
+          page: "chat",
+          navigationId: 42,
+        });
+        mocks.command.listener?.({ type: "sessionRevoked" });
+      });
+
+      expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+    });
+  });
+
+
+  describe("navigation commit DOM routing", () => {
+    it("waits for a held route queue commit and rejects the superseded subtree", async () => {
+      const { container } = render(
+        <CommunicationShell bridge={mocks.bridge} initialPage="chat" initialSpaceId="space-a"
+          initialPresentation="workspace" onReady={async () => {}} />,
+      );
+      mocks.routeQueue.held = true;
+      await act(async () => {
+        mocks.command.listener?.({
+          type: "navigate", page: "chat", navigationId: 41,
+          target: { channelId: "old", channelType: 2 },
+        });
+      });
+      expect(mocks.routeQueue.commits).toHaveLength(1);
+      expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+      expect(container.querySelector('[data-channel="old"]')).toBeNull();
+      await act(async () => {
+        mocks.command.listener?.({
+          type: "navigate", page: "chat", navigationId: 42,
+          target: { channelId: "new", channelType: 2 },
+        });
+      });
+      expect(mocks.routeQueue.commits).toHaveLength(2);
+      await act(async () => { mocks.routeQueue.commits[0](); });
+      expect(container.querySelector('[data-channel="old"]')).not.toBeNull();
+      expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+      await act(async () => { mocks.routeQueue.commits[1](); });
+      expect(container.querySelector('[data-channel="new"]')).not.toBeNull();
+      expect(mocks.bridge.reportNavigationCommitted).toHaveBeenCalledExactlyOnceWith({ navigationId: 42 });
+    });
+
+    it("does not acknowledge before the routed conversation view has committed", async () => {
+      const { container } = render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="workspace"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+      act(() => {
+        mocks.command.listener({
+          type: "navigate",
+          page: "chat",
+          navigationId: 42,
+          target: { channelId: "c-1", channelType: 2, displayName: "Target" },
+        });
+      });
+      await waitFor(() => {
+        expect(container.querySelector('[data-testid="chat-content-page"]')).toBeTruthy();
+      });
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).toHaveBeenCalledWith({ navigationId: 42 });
+      });
+    });
+
+    it("does not acknowledge a stale navigation after a newer one supersedes it", async () => {
+      const { container } = render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="workspace"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      act(() => {
+        mocks.command.listener({
+          type: "navigate",
+          page: "chat",
+          navigationId: 42,
+          target: { channelId: "c-1", channelType: 2, displayName: "Old" },
+        });
+        mocks.command.listener({
+          type: "navigate",
+          page: "chat",
+          navigationId: 99,
+          target: { channelId: "c-2", channelType: 2, displayName: "New" },
+        });
+      });
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalledWith({ navigationId: 42 });
+      });
+      await waitFor(() => {
+        expect(container.querySelector('[data-testid="chat-content-page"]')).toBeTruthy();
+      });
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).toHaveBeenCalledWith({ navigationId: 99 });
+      });
+    });
+
+    it("drops pending target and does not acknowledge when suspend arrives before the routed commit", async () => {
+      const { container } = render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="conversation"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      act(() => {
+        mocks.command.listener({
+          type: "navigate",
+          page: "chat",
+          navigationId: 42,
+          target: { channelId: "c-1", channelType: 2, displayName: "Target" },
+        });
+        mocks.command.listener({ type: "suspend" });
+      });
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+      });
+      expect(container.querySelector('[data-testid="chat-content-page"]')).toBeFalsy();
+      expect(WKApp.endpoints.showConversation).not.toHaveBeenCalled();
+    });
+
+    it("app-bot view renders and acknowledges after the routed subtree commits", async () => {
+      const { container } = render(
+        <CommunicationShell
+          bridge={mocks.bridge}
+          initialPage="chat"
+          initialSpaceId="space-a"
+          initialPresentation="conversation"
+          onReady={vi.fn(async () => {})}
+        />,
+      );
+      await waitFor(() => expect(mocks.command.listener).toBeTypeOf("function"));
+      act(() => {
+        mocks.command.listener({
+          type: "navigate",
+          page: "chat",
+          navigationId: 42,
+          target: { channelId: "bot-1", channelType: 1, displayName: "Docs Bot", variant: "app-bot" },
+        });
+      });
+      await waitFor(() => {
+        expect(container.querySelector(".appbot-chat-wrap")).toBeTruthy();
+      });
+      await waitFor(() => {
+        expect(mocks.bridge.reportNavigationCommitted).toHaveBeenCalledWith({ navigationId: 42 });
+      });
+    });
   });
 });

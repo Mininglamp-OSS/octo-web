@@ -16,6 +16,7 @@ import {
   type SummaryWorkspaceRoute,
 } from "@dmwork/summary";
 import type { OctoBuddySummaryBridge, SummaryHostCommand } from "./hostBridge";
+import { NavigationCommitController, hasNavigationCommitBridge } from "../client-feature/navigationCommit";
 import { createReadyReporter } from "../client-feature/readyReporter";
 import "./index.css";
 
@@ -51,10 +52,21 @@ export function SummaryShell({
   const invalidationListeners = useRef(new Set<() => void>());
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  const [navigationToken, setNavigationToken] = useState<number>();
+  const navCommitRef = useRef<NavigationCommitController | undefined>(
+    hasNavigationCommitBridge(bridge) ? new NavigationCommitController(
+      (navigationId) => bridge.reportNavigationCommitted!({ navigationId }),
+    ) : undefined,
+  );
 
   useLayoutEffect(() => {
     onPresentationContext?.({ route, spaceId: spaceIdRef.current });
   }, [route, workspaceRevision, onPresentationContext]);
+
+  // Release the page barrier once the host-navigate route has committed to the DOM.
+  useLayoutEffect(() => {
+    if (navigationToken !== undefined) navCommitRef.current?.pageCommitted(navigationToken);
+  }, [route, navigationToken]);
 
   const setControlledRoute = useCallback(
     (next: SummaryWorkspaceRoute, report = true) => {
@@ -129,10 +141,16 @@ export function SummaryShell({
   useEffect(() => {
     const dispose = bridge.onCommand((command: SummaryHostCommand) => {
       if (command.type === "navigate") {
+        const token = navCommitRef.current?.start({
+          navigationId: command.navigationId,
+          hasConversation: false,
+        });
+        setNavigationToken(token);
         setControlledRoute(command.route, false);
         return;
       }
       if (command.type === "spaceChanged") {
+        navCommitRef.current?.cancel();
         if (externalRuntime) {
           if (!externalRuntime.acceptSpace(command.runtime)) return;
         } else if (spaceIdRef.current === command.space.id) return;
@@ -166,6 +184,7 @@ export function SummaryShell({
       }
       if (command.type === "sessionRevoked") {
         externalRuntime?.dispose();
+        navCommitRef.current?.cancel();
         WKApp.loginInfo.logout();
         window.location.reload();
         return;
@@ -178,6 +197,7 @@ export function SummaryShell({
         return;
       }
       if (command.type === "suspend") {
+        navCommitRef.current?.cancel();
         document.documentElement.dataset.hostVisibility = "hidden";
         return;
       }
@@ -188,7 +208,10 @@ export function SummaryShell({
       // Unknown commands must not change visibility
       return;
     });
-    return dispose;
+    return () => {
+      dispose();
+      navCommitRef.current?.dispose();
+    };
   }, [bridge, setControlledRoute, externalRuntime]);
 
   useEffect(() => {

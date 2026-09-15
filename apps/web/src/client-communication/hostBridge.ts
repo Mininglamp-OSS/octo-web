@@ -42,6 +42,8 @@ export type HostCommand =
       page: CommunicationPage;
       presentation?: CommunicationPresentation;
       target?: ConversationTarget;
+      /** Optional positive safe-integer provided by the Client to acknowledge this navigation commit. */
+      navigationId?: number;
     }
   | { type: "spaceChanged"; space: { id: string; name: string } }
   | { type: "appearanceChanged"; theme: "light" | "dark"; locale: "zh-CN" | "en-US" }
@@ -121,11 +123,14 @@ export interface OctoBuddyCommunicationBridge {
     spaceId: string;
     rendererVersion: string;
     documentForwardVersion?: 1;
+    navigationCommitVersion?: 1;
     desktopPresentationVersion?: 1;
     /** Complete page allowlist; older v1 renderers without this field support chat only. */
     desktopPresentationPages?: readonly CommunicationPage[];
   }): Promise<void>;
   reportNavigation(state: NavigationReport): Promise<void>;
+  /** Optional; when present the renderer advertises navigationCommitVersion: 1 and acknowledges navigate commits. */
+  reportNavigationCommitted?(params: { navigationId: number }): Promise<void>;
   reportUnread(count: number): void;
   reportAuthExpired(reason: string): void;
   reportFatalError(error: { message: string; stack?: string }): void;

@@ -75,6 +75,10 @@ export function createLazyCommunicationUi(load: () => Promise<CommunicationUiMou
         }
       } else if (command.type === "navigate") {
         pendingNavigation = command;
+      } else if (command.type === "suspend") {
+        // Hiding the host cancels any queued navigation before the UI sees the command.
+        pendingNavigation = undefined;
+        emit(command);
       } else {
         emit(command);
       }

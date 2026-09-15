@@ -49,6 +49,16 @@ describe("runtime contract", () => {
     expect(() => parseRuntimeCommand({ ...base, type: "navigate", page: "contacts", target: { channelId: "one", channelType: 1 } })).toThrow();
     expect(() => parseRuntimeCommand({ ...base, type: "navigate", page: "chat", target: { channelId: "one", channelType: 1, script: "x" } })).toThrow();
   });
+  it("preserves valid navigationId and rejects malformed ones", () => {
+    const base = { version: 1, ...scope, type: "navigate", page: "chat" };
+    for (const id of [1, 42, Number.MAX_SAFE_INTEGER]) {
+      expect(parseRuntimeCommand({ ...base, navigationId: id }).navigationId).toBe(id);
+    }
+    expect(parseRuntimeCommand(base).navigationId).toBeUndefined();
+    for (const id of [0, -1, 1.5, Infinity, NaN, "1", null]) {
+      expect(() => parseRuntimeCommand({ ...base, navigationId: id })).toThrow();
+    }
+  });
   it("accepts workspace-group variant and requires workspace presentation", () => {
     const scope = { ownerId: "owner", contextId: "context", epoch: 1 };
     const target = { channelId: "group-a", channelType: 2, variant: "workspace-group" };
