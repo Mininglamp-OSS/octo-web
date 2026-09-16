@@ -530,3 +530,52 @@ describe('createAttentionPoll —— onCount 回调', () => {
         expect(onCount).toHaveBeenLastCalledWith(3);
     });
 });
+
+describe('createAttentionPoll —— 可选 intervalPolicy 自适应策略', () => {
+    it('注入 policy 时用 current() 作为每次排期间隔，值变化走 onChanged', async () => {
+        const h = createHarness();
+        let policyInterval = 60_000;
+        const onChanged = vi.fn();
+        const onUnchanged = vi.fn();
+        const poll = createAttentionPoll({
+            ...h.deps,
+            fetchCount: vi.fn().mockResolvedValue(0),
+            intervalPolicy: {
+                current: () => policyInterval,
+                onChanged,
+                onUnchanged,
+            },
+        });
+
+        poll.start();
+        expect(h.lastDelay()).toBe(60_000);
+        await h.fire();
+        // 值未变化（第一次也算 changed？第一次 lastCount 从 undefined 变 0 => changed）
+        expect(onChanged).toHaveBeenCalledTimes(1);
+        // 第二次值相同 => unchanged
+        policyInterval = 300_000;
+        await h.fire();
+        expect(onUnchanged).toHaveBeenCalledTimes(1);
+        expect(h.lastDelay()).toBe(300_000);
+        poll.stop();
+    });
+
+    it('注入 policy 时内部不自适应退避，由策略方持档位', async () => {
+        const h = createHarness();
+        const onChanged = vi.fn();
+        const onUnchanged = vi.fn();
+        const poll = createAttentionPoll({
+            ...h.deps,
+            fetchCount: vi.fn().mockResolvedValue(0),
+            intervalPolicy: { current: () => 60_000, onChanged, onUnchanged },
+        });
+        poll.start();
+        // 3 次未变化：若走内部退避会升档到 120s；走策略则该保持 60s
+        await h.fire();
+        await h.fire();
+        await h.fire();
+        expect(poll.getCurrentIntervalMs()).toBe(60_000);
+        expect(onUnchanged).toHaveBeenCalledTimes(2); // 第 1 次 changed，后 2 次 unchanged
+        poll.stop();
+    });
+});

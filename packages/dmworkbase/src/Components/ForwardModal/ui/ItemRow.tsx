@@ -1,11 +1,9 @@
-import React, { useMemo, useState } from "react"
-import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk"
+import React, { useState } from "react"
 import { Tag } from "@douyinfe/semi-ui"
 import Checkbox from "../../Checkbox"
 import AiBadge from "../../AiBadge"
-import WKAvatar from "../../WKAvatar"
+import { ForwardAvatar } from "./avatar"
 import { useI18n } from "../../../i18n"
-import { ChannelTypeCommunityTopic } from "../../../Service/Const"
 import type { ForwardItem } from "../ForwardModal"
 import type { ForwardBotPreviewItem } from "../hooks"
 
@@ -19,6 +17,10 @@ import type { ForwardBotPreviewItem } from "../hooks"
 export interface ForwardBotPreview {
   botsFor: (creatorUid: string) => ForwardBotPreviewItem[]
 }
+
+const ChannelTypePerson = 1
+const ChannelTypeGroup = 2
+const ChannelTypeCommunityTopic = 5
 
 /**
  * 左列列表项。三种视图模式：
@@ -49,15 +51,16 @@ function getKindLabel(item: ForwardItem, t: ReturnType<typeof useI18n>["t"]): st
   return t("base.forwardModal.kindGroup")
 }
 
-function ItemRowInner({ item, selected, flat, showMeta, onToggle, botPreview }: ItemRowProps) {
+function ItemRowInner({
+  item,
+  selected,
+  flat,
+  showMeta,
+  onToggle,
+  botPreview,
+}: ItemRowProps) {
   const { t } = useI18n()
   const [expanded, setExpanded] = useState(false)
-  // 只依赖 channelID / channelType 的 Channel 引用；同一 item 复用同一实例,
-  // 避免每次渲染都 new Channel(...) 让 WKAvatar 判断 prop 变化重渲。
-  const channel = useMemo(
-    () => new Channel(item.channelID, item.channelType),
-    [item.channelID, item.channelType],
-  )
   const kindLabel = showMeta ? getKindLabel(item, t) : ""
   const isExternalGroup = item.channelType === ChannelTypeGroup && item.isExternal
   // Bot preview is a PERSON-only affordance: whole-space Bots surface under their creator, never
@@ -75,7 +78,7 @@ function ItemRowInner({ item, selected, flat, showMeta, onToggle, botPreview }: 
         onCheck={() => {}}
       />
       <div className="wk-fm-avatar-wrap">
-        <WKAvatar channel={channel} lazy />
+        <ForwardAvatar item={item} lazy />
       </div>
       <div className="wk-fm-item-main">
         <div className="wk-fm-item-title-row">

@@ -150,6 +150,8 @@ vi.mock("../utils/summaryAttentionBadge", () => ({
   setSummaryAttentionBadge: vi.fn(),
   acceptRemoteAttentionCount: vi.fn(),
   setSummaryAttentionPublisher: vi.fn(),
+  // external-mode guard referenced by attention.ts
+  isSummaryAttentionExternal: () => false,
 }));
 vi.mock("../utils/summaryAttentionPoll", () => ({
   createAttentionPoll: (deps: unknown) => {

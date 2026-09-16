@@ -1,5 +1,5 @@
 import type { WKBaseContext } from "@octo/base/src/Components/WKBase";
-import type { OctoBuddyCommunicationBridge } from "./hostBridge";
+import type { DocumentForwardRequest, OctoBuddyCommunicationBridge } from "./hostBridge";
 
 export function supportsDocumentForward(bridge: OctoBuddyCommunicationBridge): boolean {
   return [
@@ -11,7 +11,7 @@ export function supportsDocumentForward(bridge: OctoBuddyCommunicationBridge): b
 /** No Docs dependency or API routes: the originating artifact owns document grants. */
 export function installDocumentForward(
   bridge: OctoBuddyCommunicationBridge,
-  host: { getSpaceId(): string; getContext(): WKBaseContext },
+  host: { getSpaceId(): string; getContext(): WKBaseContext; isRequestCurrent?(request: DocumentForwardRequest): boolean },
 ): () => void {
   if (!supportsDocumentForward(bridge)) return () => {};
   let disposed = false;
@@ -19,7 +19,8 @@ export function installDocumentForward(
   const offRequest = bridge.onDocumentForward!((request) => {
     let active = true;
     let closePicker: (() => void) | void;
-    const isActive = () => !disposed && active && request.spaceId === host.getSpaceId();
+    const isActive = () => !disposed && active && request.spaceId === host.getSpaceId() &&
+      (!host.isRequestCurrent || host.isRequestCurrent(request));
     const respond = (response: { ok: boolean; result?: unknown; error?: string }) => {
       if (!active) return;
       active = false;
@@ -77,7 +78,7 @@ export function installDocumentForward(
     // Host layout changes may hide and restore the same view. The originating Docs
     // runtime owns cancellation; visibility alone must not dismiss its picker.
     if (command.type === "sessionRevoked" ||
-        (command.type === "spaceChanged" && command.space.id !== host.getSpaceId())) cancelAll();
+        (command.type === "spaceChanged" && (host.isRequestCurrent || command.space.id !== host.getSpaceId()))) cancelAll();
   });
   return () => {
     disposed = true;

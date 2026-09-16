@@ -35,13 +35,13 @@ export function resolveMcpAPIBaseURL(apiURL: string, origin: string): string {
 
 /** Build the prompt handed to a bot to publish an MCP server listing.
  *
- *  Command surface is verified against octo-cli's embedded `octo-marketplace`
- *  Skill (`skills/octo-marketplace/mcp.md`). Unlike Skill publishing there is
- *  no dedicated bot endpoint — the bot uses the same `marketplace mcp create`
- *  command as any owner, so this prompt directs it to that Skill's Create
- *  workflow instead of a "Publish as a Bot" section that doesn't exist for
- *  MCP. */
-export function getMcpBotPublishPrompt(values: McpBotPublishPromptValues = {}): string {
+ *  Keep the write command surface delegated to octo-cli's embedded
+ *  `octo-marketplace` Skill (`skills/octo-marketplace/mcp.md`). The CLI moved
+ *  marketplace writes to the unified plugin surface in 0.15.0, so this prompt
+ *  only inlines command snippets that anchor safety-critical steps. */
+export function getMcpBotPublishPrompt(
+  values: McpBotPublishPromptValues = {}
+): string {
   const spaceId = sanitizeShellSpaceId(values.spaceId);
   const apiBaseUrl = values.apiBaseUrl?.trim() || "<api-base-url>";
 
@@ -58,8 +58,13 @@ export function getMcpBotPublishPrompt(values: McpBotPublishPromptValues = {}): 
 
 不要解释正在读取内容、复述本 Prompt 或逐步播报检查过程。用户提供前不要搜索磁盘或猜测路径。
 
-1. 运行 \`octo-cli version\`。如果未安装，运行
-   \`npm install -g @mininglamp-oss/octo-cli@latest\`。
+1. 运行 \`octo-cli version\`，读取输出中的 \`version\`，按 major/minor/patch 分段数字比较，
+   确认当前版本 \`>= 0.15.0\`（例如 \`0.9.0 < 0.15.0\`）。
+   如果未安装或版本低于 \`0.15.0\`，先询问用户是否更新/安装 \`octo-cli\`。
+   用户确认后运行 \`npm install -g "@mininglamp-oss/octo-cli@>=0.15.0"\`，并重新运行
+   \`octo-cli version\` 复核；仍不满足时停止，并给出可复制的安装命令
+   \`npm install -g "@mininglamp-oss/octo-cli@>=0.15.0"\`。用户未确认时停止，
+   并说明本流程需要 \`octo-cli >= 0.15.0\`。
 
 2. 运行 \`octo-cli auth list\`，选择 \`space_id\` 等于 \`${spaceId}\` 的唯一 Profile。
    如果不存在或无法唯一确定，从当前 Octo Channel 的安全环境或配置读取 Bot Token，
@@ -77,19 +82,27 @@ export function getMcpBotPublishPrompt(values: McpBotPublishPromptValues = {}): 
    octo-cli skills octo-marketplace --profile <profile>
    \`\`\`
 
-4. 按 \`mcp.md\` 的 Create 流程完成上架：
+4. 按 \`mcp.md\` 的 Create / Publish 流程完成上架：
 
-   - 运行 \`octo-cli marketplace mcp-category list --mode all --profile <profile>\`
-     拿到合法的 \`category\` key（不要用 \`all\` 或空串作分类）。
+   - 使用 \`octo-cli marketplace plugin-category list --scene-code default --plugin-type connector --profile <profile>\`
+     获取合法 \`category_id\`。
    - \`streamable-http\` / \`sse\` 传输：先把 \`transport\` / \`url\` / 可选 \`headers\` / \`env\`
-     写入 \`connection.json\`，运行
+     写入 \`connection.json\`，按 \`mcp.md\` 运行
      \`octo-cli marketplace mcp probe --data @connection.json --profile <profile>\`，
      确认 \`is_ok=true\` 再继续。\`stdio\` 传输不要调用 probe。
-   - 编写 \`mcp.json\`：目录字段（\`name\` / \`slogan\` / \`category\` / \`tags\` / \`icon\` 等）
-     + \`transport\` + 对应连接字段。消费者需自行填入的密钥放进
-     \`env_user_supplied\` / \`headers_user_supplied\`，对应值提交空字符串。
-   - 运行 \`octo-cli marketplace mcp create --data @mcp.json --profile <profile>\` 完成上架，
-     用返回的 \`mcp_id\` 通过 \`marketplace mcp get <mcp-id>\` 复核。
+   - 按 \`mcp.md\` 编写 \`plugin.json\`，使用 \`plugin_type: "connector"\`，
+     准备完整的 \`manifest_json\` 和 \`plugin_json\`（包含根目录 \`mcp.json\`）。
+     消费者需自行填入的密钥值必须写成规范化键名占位：先去掉首尾空白，把非字母数字字符替换为
+     \`_\`，再转大写。例如 header \`Authorization\` 写 \`\${AUTHORIZATION}\`、\`X-Api-Secret\`
+     写 \`\${X_API_SECRET}\`、\`GITHUB_TOKEN\` 写 \`\${GITHUB_TOKEN}\`，不要写泛化的
+     \`\${VAR}\`，也不要提交真实密钥。即使 \`mcp.md\` 示例使用了与键名不一致的占位符
+     （例如键 \`TOKEN\` 配 \`\${GITHUB_TOKEN}\`），也必须改为规范化键名占位 \`\${TOKEN}\`。
+   - 向我展示发布预览，并在这里暂停，明确等待我回复“确认上架”；未收到这四个字，
+     不得创建、发布或提交审核。可先用 \`--dry-run\` 打印将要发送的请求核对。
+   - 确认后只使用 \`mcp.md\` 记录的统一 \`octo-cli marketplace plugin ...\` 命令完成保存、
+     发布或提交审核；如需上传图标，取得预签名后不得输出 \`presigned_url\` / \`method\` / \`headers\`，
+     也不得写入 payload 文件。最后用 \`octo-cli marketplace plugin get --plugin-id <plugin-id> --profile <profile>\`
+     回读核验。不要使用旧的 MCP 专用 create / get / category 命令。
 
 以上 Space ID、API 地址和可见范围是本次操作的权威输入。`;
 }

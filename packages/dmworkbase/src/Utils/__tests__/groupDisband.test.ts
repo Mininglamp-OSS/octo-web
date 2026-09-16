@@ -140,10 +140,11 @@ describe("groupDisband helpers", () => {
 
   describe("syncGroupDisbandState", () => {
     it("group with live cache: writes status=Disband locally + notifies, no fetch (dodges dedup race)", () => {
-      const info = infoWithStatus(GroupStatusNormal);
+      const channel = new Channel("g1", ChannelTypeGroup);
+      const info = { ...infoWithStatus(GroupStatusNormal), channel };
       channelManager.getChannelInfo.mockReturnValue(info);
 
-      syncGroupDisbandState(new Channel("g1", ChannelTypeGroup));
+      syncGroupDisbandState(channel);
 
       expect(info.orgData.status).toBe(GroupStatusDisband);
       expect(channelManager.setChannleInfoForCache).toHaveBeenCalledWith(info);

@@ -18,6 +18,7 @@ import {
   parseThreadChannelId,
   shouldSkipChannelForSpace,
   shouldSkipPersonConversationForSpace,
+  getCurrentImConversationStore,
   titleContextStore,
   type UnreadConversationCandidate,
 } from "@octo/base";
@@ -158,14 +159,10 @@ export function createOctoDocumentTitleController(): DocumentTitleController {
       if (!WKApp.loginInfo.isLogined()) return;
       const pathname = window.location.pathname;
       const menuId = resolveTitleMenuId(pathname, WKApp.currentMenuId);
-      // ChatPage owns the normal conversation hydration. Other full-page modules
-      // still need the same account-level unread snapshot for their title prefix.
+      // All full-page modules use the same data owner as Chat. The title must
+      // not supersede its pending sync/pin hydration or publish a second snapshot.
       if (menuId === "chat" || (!menuId && pathname === "/")) return;
-      await WKSDK.shared().conversationManager.sync({});
-      // sync() replaces the SDK conversation cache without notifying its
-      // conversation listeners. Broadcast the same event used by Chat so
-      // consumers such as the Electron tray receive the restored snapshot.
-      WKApp.mittBus.emit("conversation-list-refreshed");
+      await getCurrentImConversationStore().ensureSnapshot();
     },
   });
 }

@@ -102,6 +102,8 @@ vi.mock("../utils/summaryAttentionBadge", () => ({
   // 但 mock 缺一个导出就会让整个 init 抛错。
   acceptRemoteAttentionCount: vi.fn(),
   setSummaryAttentionPublisher: vi.fn(),
+  // external-mode guard referenced by attention.ts
+  isSummaryAttentionExternal: () => false,
 }));
 vi.mock("../utils/channelType", () => ({
   isSupportedChannelType: () => true,

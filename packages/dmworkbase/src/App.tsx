@@ -613,10 +613,22 @@ export type MessageDeleteListener = (
 
 export class LoginInfo {
   private _ephemeralSession = false;
+  private _sessionRevision = 0;
+  private _token?: string;
+  private _uid?: string;
   appID!: string;
   shortNo!: string; // 短号
-  token?: string;
-  uid?: string;
+  get sessionRevision() { return this._sessionRevision; }
+  get token() { return this._token; }
+  set token(value: string | undefined) {
+    if (value !== this._token) this._sessionRevision++;
+    this._token = value;
+  }
+  get uid() { return this._uid; }
+  set uid(value: string | undefined) {
+    if (value !== this._uid) this._sessionRevision++;
+    this._uid = value;
+  }
   name: string | undefined;
   role!: string;
   isWork!: boolean;
@@ -1020,7 +1032,15 @@ export default class WKApp extends ProviderListener {
 
   isPC = false; // 是否是PC端
   deviceId: string = ""; // 设备ID
-  currentSpaceId: string = ""; // 当前选中的 Space ID
+  private _currentSpaceId = "";
+  private _spaceRevision = 0;
+  get spaceRevision() { return this._spaceRevision; }
+  get currentSpaceId() { return this._currentSpaceId; }
+  set currentSpaceId(value: string) {
+    // Invalidate before publishing the new value, including A -> B -> A.
+    if (value !== this._currentSpaceId) this._spaceRevision++;
+    this._currentSpaceId = value;
+  }
   channelSpaceMap: Map<string, string> = new Map(); // channelID_channelType → spaceID 缓存
   // channelID_channelType → my source_space_id 缓存（仅在我作为外部成员加入该群时有值）
   // 由 conversation sync 响应（octo-server PR#154 起携带 my_source_space_id）预填，

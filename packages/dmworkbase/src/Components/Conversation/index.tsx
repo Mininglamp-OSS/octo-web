@@ -126,6 +126,9 @@ import { ImageGalleryProvider } from "../../features/conversation-image-gallery/
 import { ImageGalleryContext } from "../../features/conversation-image-gallery/ImageGalleryContext";
 import { collectGalleryImages, imageGalleryKey } from "../../features/conversation-image-gallery/imageGallery";
 import { getImageMessageImages } from "../../bridge/message/imageMessageImages";
+import { isImReadAttentionAllowed } from "../../im-runtime/readAttentionHost";
+import Lightbox from "yet-another-react-lightbox";
+import Download from "yet-another-react-lightbox/plugins/download";
 import { buildChatContext, ChatContextChannelInfo } from "./chatContext";
 import { buildGroupedMessageContextMenus } from "../../features/messageContextMenu/menuModel";
 import {
@@ -2766,6 +2769,7 @@ export class Conversation
 
   // 更新已预览的位置
   private canRecordReadAttention(viewport: HTMLElement | null): boolean {
+    if (!isImReadAttentionAllowed()) return false
     const viewportVisible = isConversationViewportVisible(viewport, document);
     return shouldMarkConversationRead({
       chatModuleActive: WKApp.currentMenuId === "chat",

@@ -28,6 +28,8 @@ export interface AttentionSyncDeps {
     refresh: () => void;
     now?: () => number;
     debounceMs?: number;
+    setTimeoutFn?: (handler: () => void, timeout: number) => unknown;
+    clearTimeoutFn?: (handle: unknown) => void;
 }
 
 /** 群内总结完成提示。`Const.summaryNotify`，见 dmworkbase/src/Service/Const.ts。 */
@@ -63,7 +65,9 @@ export function shouldRefreshForMessage(message: unknown): boolean {
 export function createAttentionSync(deps: AttentionSyncDeps) {
     const debounceMs = deps.debounceMs ?? 800;
     const now = deps.now ?? Date.now;
-    let timer: ReturnType<typeof setTimeout> | null = null;
+    const setTimeoutFn = deps.setTimeoutFn ?? ((h, t) => setTimeout(h, t));
+    const clearTimeoutFn = deps.clearTimeoutFn ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
+    let timer: unknown = null;
     let lastRunAt = 0;
 
     const run = () => {
@@ -75,19 +79,19 @@ export function createAttentionSync(deps: AttentionSyncDeps) {
     return {
         trigger(): void {
             if (timer !== null) return;
-            timer = setTimeout(run, debounceMs);
+            timer = setTimeoutFn(run, debounceMs);
         },
         /** 立即刷新并重置窗口。用于必须尽快反映的场景。 */
         triggerNow(): void {
             if (timer !== null) {
-                clearTimeout(timer);
+                clearTimeoutFn(timer);
                 timer = null;
             }
             run();
         },
         cancel(): void {
             if (timer !== null) {
-                clearTimeout(timer);
+                clearTimeoutFn(timer);
                 timer = null;
             }
         },

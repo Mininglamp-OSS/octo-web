@@ -27,6 +27,7 @@ vi.mock('@octo/base', () => ({
   WKApp: mockWKApp,
   hasSpacePrefix: vi.fn(() => false),
   parseThreadChannelId: vi.fn(() => null),
+  captureCurrentImConversationSyncContext: () => () => true,
 }))
 
 vi.mock('wukongimjssdk', () => ({

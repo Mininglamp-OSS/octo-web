@@ -1,5 +1,9 @@
 /**
- * `apiPath` —— 携带**路由模板**的请求路径构造器(埋点 http_request path 归一的治本方案)。
+ * `apiPath` —— 携带**路由模板**的请求路径构造器(埋点 path 归一的治本方案)。
+ *
+ * 注:http_request 原始事件已按 Option A 停发,apiPath 产出的模板当前无 http_request 消费者;
+ * 但本构造器仍保留 —— 它是「静态段 / 插值段分离」这一隐私安全能力的落点,供 registry 与未来
+ * 可能的 path 归一复用(registry 实删另开 follow-up)。
  *
  * 背景:埋点采集在全局 fetch / XHR 拦截层(见 Dap.ts installHttpWrap),那里只拿得到**具体 URL**
  * (`/api/v1/spaces/8f3a/categories/12`),模板信息在调用处 `` `/spaces/${id}/categories/${cid}` ``

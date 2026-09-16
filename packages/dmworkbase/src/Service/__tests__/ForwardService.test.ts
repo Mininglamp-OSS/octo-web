@@ -396,6 +396,81 @@ describe("ForwardService.send — interMessageDelayMs", () => {
     })
 })
 
+describe("ForwardService.send scope guard", () => {
+    it("rejects before any send when inactive", async () => {
+        const onSent = vi.fn()
+        await expect(ForwardService.send([new Channel("g1", CT_GROUP)], () => makeContent(), {
+            isActive: () => false, onSent,
+        })).rejects.toThrow("Forward context expired")
+        expect(sdkState.send).not.toHaveBeenCalled()
+        expect(convertState.apply).not.toHaveBeenCalled()
+        expect(onSent).not.toHaveBeenCalled()
+    })
+
+    it.each(["resolve", "reject"] as const)("stops serial chunks and targets on a stale %s", async (outcome) => {
+        let epoch = 1
+        let finish!: () => void
+        sdkState.send.mockImplementationOnce(() => new Promise((resolve, reject) => {
+            finish = () => outcome === "resolve" ? resolve({ messageID: "m" }) : reject(new Error("late"))
+        }))
+        const onSent = vi.fn()
+        const pending = ForwardService.send(
+            [new Channel("g1", CT_GROUP), new Channel("g2", CT_GROUP)],
+            () => [makeContent(), makeContent()],
+            { channelMode: "serial", isActive: () => epoch === 1, onSent },
+        )
+        const assertion = expect(pending).rejects.toThrow("Forward context expired")
+        epoch = 3
+        finish()
+        await assertion
+        expect(sdkState.send).toHaveBeenCalledOnce()
+        expect(convertState.apply).not.toHaveBeenCalled()
+        expect(onSent).not.toHaveBeenCalled()
+    })
+
+    it("rechecks after the inter-message timer fires", async () => {
+        vi.useFakeTimers()
+        try {
+            let active = true
+            sdkState.send.mockResolvedValue({ messageID: "m" })
+            const pending = ForwardService.send(
+                [new Channel("g1", CT_GROUP)],
+                () => [makeContent(), makeContent()],
+                { isActive: () => active, interMessageDelayMs: 200 },
+            )
+            const settled = pending.then(result => ({ result }), error => ({ error }))
+            await vi.advanceTimersByTimeAsync(0)
+            expect(sdkState.send).toHaveBeenCalledOnce()
+            active = false
+            await vi.advanceTimersByTimeAsync(200)
+            expect(await settled).toMatchObject({ error: { message: "Forward context expired" } })
+            expect(sdkState.send).toHaveBeenCalledOnce()
+            expect(vi.getTimerCount()).toBe(0)
+        } finally { vi.useRealTimers() }
+    })
+
+    it("rechecks between content wrapping and SDK send", async () => {
+        let active = true
+        proxyState.wrap.mockImplementationOnce(content => { active = false; return content })
+        await expect(ForwardService.send([new Channel("g1", CT_GROUP)], () => makeContent(), {
+            isActive: () => active,
+        })).rejects.toThrow("Forward context expired")
+        expect(sdkState.send).not.toHaveBeenCalled()
+    })
+
+    it("rechecks between message field application and the onSent callback", async () => {
+        let active = true
+        sdkState.send.mockResolvedValue({ messageID: "m" })
+        convertState.apply.mockImplementationOnce(() => { active = false })
+        const onSent = vi.fn()
+        await expect(ForwardService.send([new Channel("g1", CT_GROUP)], () => makeContent(), {
+            isActive: () => active, onSent,
+        })).rejects.toThrow("Forward context expired")
+        expect(convertState.apply).toHaveBeenCalledOnce()
+        expect(onSent).not.toHaveBeenCalled()
+    })
+})
+
 // forwardPlainText is the seam an external feature package uses when it cannot import wukongimjssdk itself.
 // It is a thin wrapper, so what actually needs locking down is that the caller's text
 // really becomes the MessageText handed to send() — the docs-side tests can only see a mock of this

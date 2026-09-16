@@ -121,9 +121,10 @@ describe('中央映射通道 —— 命令式 / data-track 站点也与规则表
     const files = collectSourceFiles(root)
 
     // 命令式:任意 `.track('literal'|"literal", ...)` —— 既含 Dap.shared.track(页面站点),也含
-    // Dap 内部 this.track('app_launched'|'http_request')。四审只钉 Dap.shared.前缀,漏了 this.track,
-    // 于是 app_launched 这类内部命令式事件不进互斥集合、无法防回归(六审 P4)。放宽到 `.track(` 后
-    // 仍要求首参为字面量,只多抓 this.track / 别名调用,不会误纳无关调用(需带引号事件名)。
+    // Dap 内部 this.track('app_launched')(http_request 原始事件已按 Option A 停发,不再由 this.track 产出)。
+    // 四审只钉 Dap.shared.前缀,漏了 this.track,于是 app_launched 这类内部命令式事件不进互斥集合、
+    // 无法防回归(六审 P4)。放宽到 `.track(` 后仍要求首参为字面量,只多抓 this.track / 别名调用,
+    // 不会误纳无关调用(需带引号事件名)。
     const IMPERATIVE_RE = /\.track\(\s*['"]([a-zA-Z0-9_]+)['"]/g
     // DOM:data-track="literal" 或 JSX data-track={ cond ? "literal" : undefined }。
     // 放宽以容忍可选的 `{` 包裹与「点号标识符 ? 」三元前缀(前缀本身不含引号,不会误吞比较字面量);

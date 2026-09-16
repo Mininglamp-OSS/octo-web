@@ -263,6 +263,112 @@ describe("ConversationWindow", () => {
     expect(conversationContext.setEditOn).toHaveBeenCalledWith(false);
   });
 
+  it("renders the normal header by default (full header mode)", () => {
+    const { client } = createClient();
+
+    const view = render(
+      <ConversationWindow
+        client={client}
+        channel={channel}
+        errorModuleName="chat"
+        header={{ title: "Direct chat" }}
+      />
+    );
+
+    expect(view.getByText("Direct chat")).toBeTruthy();
+    expect(
+      view.getByText("Direct chat").closest(".wk-chat-conversation-header")
+    ).toBeTruthy();
+    expect(view.getByTestId("legacy-conversation")).toBeTruthy();
+  });
+
+  it("hides the normal header in selection-only mode but keeps the conversation", () => {
+    const { client } = createClient();
+
+    const view = render(
+      <ConversationWindow
+        client={client}
+        channel={channel}
+        errorModuleName="chat"
+        headerMode="selection-only"
+        header={{ title: "Direct chat" }}
+      />
+    );
+
+    expect(view.queryByText("Direct chat")).toBeNull();
+    expect(
+      view.container.querySelector(".wk-chat-conversation-header")
+    ).toBeNull();
+    expect(view.getByTestId("legacy-conversation")).toBeTruthy();
+  });
+
+  it("retains the selection header count/cancel in selection-only mode", () => {
+    const { client } = createClient();
+    const cancel = vi.fn();
+
+    const view = render(
+      <ConversationWindow
+        client={client}
+        channel={channel}
+        errorModuleName="chat"
+        headerMode="selection-only"
+        header={{ title: "Direct chat" }}
+        selection={{
+          active: true,
+          count: 5,
+          label: "Selected 5",
+          cancelLabel: "Cancel",
+          onCancel: cancel,
+        }}
+      />
+    );
+
+    expect(view.getByText("Selected 5")).toBeTruthy();
+    fireEvent.click(view.getByText("Cancel"));
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(view.getByTestId("legacy-conversation")).toBeTruthy();
+  });
+
+  it("keeps the conversation surface stable across header/selection transitions", () => {
+    const { client, opened } = createClient();
+
+    const props = {
+      client,
+      channel,
+      errorModuleName: "chat",
+      header: { title: "Direct chat" },
+    };
+
+    const view = render(
+      <ConversationWindow {...props} headerMode="full" />
+    );
+
+    expect(view.getByText("Direct chat")).toBeTruthy();
+    const conversationBefore = view.getByTestId("legacy-conversation");
+
+    // Switch into selection-only with an active selection: the normal header
+    // disappears and the selection header appears, but the conversation node
+    // must not remount.
+    view.rerender(
+      <ConversationWindow
+        {...props}
+        headerMode="selection-only"
+        selection={{
+          active: true,
+          count: 3,
+          label: "Selected 3",
+          cancelLabel: "Cancel",
+          onCancel: vi.fn(),
+        }}
+      />
+    );
+
+    expect(view.queryByText("Direct chat")).toBeNull();
+    expect(view.getByText("Selected 3")).toBeTruthy();
+    expect(view.getByTestId("legacy-conversation")).toBe(conversationBefore);
+    expect(opened).toEqual([{ channelId: "person-1", channelType: 1 }]);
+  });
+
   it("does not acquire the primary conversation lease in auxiliary mode", async () => {
     const { client, opened } = createClient();
 

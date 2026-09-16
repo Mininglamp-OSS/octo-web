@@ -1,4 +1,4 @@
-import { addImChannelInfoListener, ChatPage, EndpointCategory, WKApp, Menus, t, isElectronPowered, sendElectronConversationUnreadCount } from '@octo/base';
+import { ChatPage, EndpointCategory, WKApp, Menus, t, isElectronPowered, sendElectronConversationUnreadCount, getCurrentImUnreadObserver } from '@octo/base';
 import { ContactsList } from '@octo/contacts';
 import React, { useEffect } from 'react';
 // lucide icons replaced with filled SVGs per Figma
@@ -10,7 +10,7 @@ import { ContactsIcon } from '../Components/Icons/ContactsIcon';
 import { Toast } from '@douyinfe/semi-ui';
 import { clearDeprecatedFriendApplyReddotOnce } from './friendApplyReddotCleanup';
 import { createOctoDocumentTitleController } from '../features/documentTitle/octoDocumentTitle';
-import { getElectronUnreadMessageCount } from './electronUnreadCount';
+import { startBrowserConversationRuntime } from './browserConversationRuntime';
 
 /**
  * 全局 ?verified=1 处理：CAS 实名认证完成后 verify-service 会 302 回
@@ -43,9 +43,11 @@ function useRealnameVerifiedLandingHandler() {
 }
 
 function App() {
+  useEffect(startBrowserConversationRuntime, [])
   useRealnameVerifiedLandingHandler()
   useDeprecatedFriendApplyReddotCleanup()
   useOctoDocumentTitle()
+  useDesktopUnreadCount()
   registerMenus()
   return (
     <AppLayout />
@@ -88,10 +90,11 @@ function useDeprecatedFriendApplyReddotCleanup() {
   }, [isLogined, uid])
 }
 
-function syncElectronUnreadMessageCount() {
-  if (isElectronPowered()) {
-    sendElectronConversationUnreadCount(getElectronUnreadMessageCount())
-  }
+function useDesktopUnreadCount() {
+  useEffect(() => {
+    if (!isElectronPowered()) return
+    return getCurrentImUnreadObserver().subscribe(sendElectronConversationUnreadCount)
+  }, [])
 }
 
 let _menusRegistered = false
@@ -101,14 +104,7 @@ async function registerMenus() {
 
   WKSDK.shared().conversationManager.addConversationListener(() => {
     WKApp.menus.refresh()
-    syncElectronUnreadMessageCount()
   })
-  addImChannelInfoListener(WKSDK.shared(), syncElectronUnreadMessageCount)
-  WKApp.mittBus.on("conversation-list-refreshed", syncElectronUnreadMessageCount)
-
-  // The conversation list can be restored after registration; the listener
-  // above will send the subsequent snapshot in that case.
-  syncElectronUnreadMessageCount()
 
   WKApp.endpointManager.setMethod("menus.friendapply.change", () => {
     WKApp.menus.refresh()
