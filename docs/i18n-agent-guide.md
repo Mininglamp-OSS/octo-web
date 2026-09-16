@@ -169,7 +169,7 @@ Ratios are **character-count** (`len(en-US) / len(zh-CN)`), using pairs that exi
 | Nav / rail label | `智能总结` → `AI Summary` (`summary.menu.title`) | 4 → 10 ≈ **2.5×** |
 | Primary button verb | `创建` → `Create` | 2 → 6 ≈ **3×** |
 
-Short source strings expand **more** than long ones. The W3C article that publishes IBM’s length guidance budgets **200–300%** (i.e. 2–3×) for messages ≤10 characters, and warns that the shorter the source, the larger the possible translation. Do not assume `~1×` for two-character Chinese verbs.
+Short source strings expand **more** than long ones. The W3C table that publishes IBM’s length guidance budgets **200–300%** for English → European languages at ≤10 source characters. Treat that as a **floor, not a cap** — for zh-CN → en-US this repo measures **≥3×** on short verbs and up to **~12×** on 2-character sources (see table above). Do not assume `~1×` for two-character Chinese verbs.
 
 ### Constrained container inventory (starter)
 
@@ -177,8 +177,8 @@ Keep this table alive. When you discover a new narrow container, add a row and c
 
 | Container | Budget (Latin chars) | How the limit was measured |
 | --- | --- | --- |
-| NavRail collapsed label | **≤8** | Item `width: 56px`, padding `4px 2px`, label padding-inline `4px`, font-size 10px (`--wk-text-size-tiny`) → ~44px text box ≈ 8 chars at 5–6px/char. `AI Summary` (10) overflows and is clipped by CSS end-edge ellipsis (`text-overflow: ellipsis`); centered labels may also clip the start with no ellipsis. Known exception: `Reminders on` (12, `navRail.settingsCenter.value.remindersOn`, rendered in `QuickMuteSidebar`) ships over budget. |
-| Chat list date column | **≤16** | Worst-case en-US `12/26/2026 21:34` / zh-CN `2026/12/26 21:34`; cell is `white-space: nowrap; flex-shrink: 0`. `The day before yesterday` + time overflows. |
+| NavRail collapsed label | **≤8** | Item `width: 56px`, padding `4px 2px`, label padding-inline `4px`, font-size 10px (`--wk-text-size-tiny`) → ~44px text box ≈ 8 chars at 5–6px/char. `AI Summary` (10) overflows and is clipped by CSS end-edge ellipsis (`text-overflow: ellipsis`); centered labels may also clip the start with no ellipsis. Known exceptions: `Reminders on` (12, `navRail.settingsCenter.value.remindersOn`, rendered in `QuickMuteSidebar`) ships over budget; the org name via `NavSpaceSwitcher` is server data (not translated) and is not covered by the collapsed `display:none` rule — layer 1 cannot fully solve that container. |
+| Chat list date column | **~30** (longest rendered) | Not a CSS cap — `.wk-conversationlist-item-time` is `nowrap; flex-shrink: 0` with no `overflow`/`text-overflow`, so it never ellipsises. `getTimeStringAutoShort2(ts, true)` can emit `The day before yesterday 21:34` (~30 chars). That squeezes the sibling name (`flex: 1; min-width: 0`, ellipsised) toward zero before the row's `overflow: hidden` clips. Budget the *name* against remaining width; do not treat ≤16 as a hard date-cell limit. |
 | Tab titles | measure the tab strip | Prefer short nouns |
 | Primary / compact buttons | measure the button | Prefer verbs, not full sentences |
 | Fixed-width table headers | measure the cell | Prefer short nouns; avoid clauses |
