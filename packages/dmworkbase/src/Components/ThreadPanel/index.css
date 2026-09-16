@@ -692,3 +692,84 @@ body[theme-mode="dark"] .wk-thread-panel {
   z-index: 9999;
   cursor: col-resize;
 }
+
+/* 稳定双区布局：子区会话 + 文件预览并排，始终挂载、用 inert/hidden 切换可见性，
+   避免预览/缩放时卸载或 reparent 子区会话导致状态丢失 */
+.wk-thread-panel-split-layout {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+}
+
+.wk-thread-panel-split-layout--split > .wk-thread-panel-context {
+  flex: 1 1 50%;
+  min-width: 0;
+  border-right: 1px solid var(--wk-border-default);
+}
+
+.wk-thread-panel-split-layout--split > .wk-thread-panel-preview {
+  flex: 1 1 50%;
+  min-width: 0;
+}
+
+.wk-thread-panel-context {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wk-thread-panel-context--hidden {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.wk-thread-panel-context--inert {
+  user-select: none;
+}
+
+.wk-thread-panel-preview {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.wk-thread-panel-preview--full {
+  width: 100%;
+}
+
+.wk-thread-panel-pages {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+.wk-thread-panel-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wk-thread-panel-page--hidden {
+  display: none;
+}
+
+/* :has selector — when context side is hidden, preview occupies full width */
+.wk-thread-panel-split-layout:has(.wk-thread-panel-context--hidden) > .wk-thread-panel-preview {
+  width: 100%;
+}

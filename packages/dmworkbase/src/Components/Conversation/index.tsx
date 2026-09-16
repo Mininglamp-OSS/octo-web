@@ -2314,6 +2314,7 @@ export class Conversation
               sourceChannelType: message.channel.channelType,
               messageId: message.messageID,
               messageSeq: message.messageSeq,
+              attachmentIndex: 0,
               fromUID: message.fromUID,
               conversationDigest: content.conversationDigest,
             });

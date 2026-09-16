@@ -759,6 +759,8 @@ export class FileCell extends MessageCell<any, FileCellState> {
       messageSeq: message.messageSeq,
       fromUID: message.fromUID,
       conversationDigest: message.content.conversationDigest,
+      // 常规文件消息附件索引始终为 0
+      attachmentIndex: 0,
     };
     WKApp.mittBus.emit("wk:file-preview", previewData);
   };

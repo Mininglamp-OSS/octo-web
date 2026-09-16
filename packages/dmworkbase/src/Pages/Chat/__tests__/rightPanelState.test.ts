@@ -9,6 +9,7 @@ const closedState: ChatRightPanelStatePatch = {
   showChannelSetting: false,
   showThreadPanel: false,
   activeThread: null,
+  threadFromDirectory: false,
   previewFile: null,
   activePreviewMessageId: null,
   previewHadThreadShell: false,

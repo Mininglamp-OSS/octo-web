@@ -119,6 +119,8 @@ export async function startCommunicationRuntime(host: OctoBuddyCommunicationBrid
       if (command.type === "sessionRevoked") {
         owner.dispose();
         WKApp.loginInfo.logout();
+      } else if (command.type === "filePreviewClosed" || command.type === "filePreviewState") {
+        ui.dispatch(command);
       } else if (command.type === "appearanceChanged") {
         WKApp.config.themeMode = command.theme === "dark" ? ThemeMode.dark : ThemeMode.light;
         WKApp.config.locale = command.locale;

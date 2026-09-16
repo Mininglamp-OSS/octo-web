@@ -22,7 +22,6 @@ import { assertClientFeatureBootstrap } from "../client-feature/bootstrapContrac
 import { enableClientFeatureMocks } from "../client-feature/e2eMocks";
 import { requireHostBridge } from "./hostBridge";
 import { reportStartupFailure } from "./startupFailure";
-import { installHostDocumentPreview } from "./documentPreview";
 import { installHostForwardSurface } from "./forwardSurface";
 import { resolveForwardSurfaceAvatar } from "./forwardSurfaceAvatar";
 import { assertBackgroundRuntimeHost, startCommunicationRuntime } from "./runtime/start";
@@ -58,7 +57,6 @@ async function main() {
   });
   WKApp.shared.currentSpaceId = bootstrap.space.id;
   document.documentElement.dataset.spaceId = bootstrap.space.id;
-  if (!bootstrap.runtime) installHostDocumentPreview(host, bootstrap.space.id);
 
   i18n.registerNamespace("app", {
     "zh-CN": appZhCN,

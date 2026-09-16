@@ -18,6 +18,7 @@ import {
 import WKNavHeader from "@octo/base/src/Components/WKNavHeader";
 import type { WKViewQueueContext } from "@octo/base/src/Components/WKViewQueue";
 import type { ChatContentPageProps } from "@octo/base/src/Pages/Chat";
+import { CHAT_CONTENT_MIN_WIDTH } from "@octo/base/src/Pages/Chat/responsiveLayout";
 import { ContactsList } from "@octo/contacts";
 import { renderAppBotConversation } from "@dmwork/appbot/conversation";
 import { Channel, ChannelInfo } from "wukongimjssdk";
@@ -529,6 +530,7 @@ export function CommunicationShell({
       <div className={`communication-shell communication-shell--${presentation}`}>
         <WKLayout
           embedded
+          contentMinWidth={activePage === "chat" && presentation !== "conversation" ? CHAT_CONTENT_MIN_WIDTH : undefined}
           contentLeft={leftContent}
           contentRight={<div className="communication-empty-state" />}
           onLeftContext={(context) => {

@@ -5,6 +5,7 @@ import { fileRendererRegistry } from "./registry";
 import { downloadFile } from "../../Utils/download";
 import { FilePreviewInfo, FilePreviewPanelProps, getExtension } from "./types";
 import { useI18n } from "../../i18n";
+import { HostFilePreviewSlot } from "../../features/filePreview/HostFilePreviewSlot";
 import "./index.css";
 
 /**
@@ -17,9 +18,16 @@ const FilePreviewPanel: React.FC<FilePreviewPanelProps> = ({
   showOpenExternal = true,
 }) => {
   const { t } = useI18n();
-  const htmlActions = useHtmlAttachmentActions(file);
+  const htmlActions = useHtmlAttachmentActions(file?.hostPreview ? null : file);
 
   if (!file) return null;
+  if (file.hostPreview) {
+    return (
+      <div className="wk-file-preview-panel" data-desktop-overlay="">
+        <HostFilePreviewSlot {...file.hostPreview} onClose={onClose} />
+      </div>
+    );
+  }
 
   const ext = getExtension(file.extension, file.name);
   const { renderer: Renderer } = fileRendererRegistry.getRenderer(ext);

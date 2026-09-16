@@ -28,6 +28,8 @@ export interface WKViewQueueContext {
 export interface WKViewQueueProps {
     children: ReactNode;
     onContext?: (context: WKViewQueueContext) => void
+    /** Animate entering a detail from an empty single-page layout, not replacements. */
+    animateFirstRoute?: boolean
 }
 
 
@@ -107,11 +109,13 @@ export default class WKViewQueue extends Component<WKViewQueueProps, WKViewQueue
     }
 
     replaceToRoot(view: JSX.Element): void {
-        this.setState({
+        this.setState((previous) => ({
             queues: [view],
             viewCount: 1,
-            status: WKViewQueueStatus.Normal,
-        },()=>{
+            status: this.props.animateFirstRoute && previous.queues.length === 0
+                ? WKViewQueueStatus.Push
+                : WKViewQueueStatus.Normal,
+        }),()=>{
             this.notifyRouteChange()
         })
     }
@@ -204,8 +208,8 @@ export default class WKViewQueue extends Component<WKViewQueueProps, WKViewQueue
                 {
                     queues.map((view, i) => {
                         const last = i === queues.length - 1 
-                        return <div key={i} onAnimationEnd={() => {
-                            if(last) {
+                        return <div key={i} onAnimationEnd={(event) => {
+                            if(last && event.target === event.currentTarget) {
                                 this.animationEnd()
                             }
                         }} id={last ? "wk-viewqueue-view-last" : undefined} className={classNames("wk-viewqueue-view",last?this.statusClass():undefined)} >

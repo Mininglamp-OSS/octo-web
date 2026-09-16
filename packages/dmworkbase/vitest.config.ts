@@ -49,7 +49,7 @@ export default defineConfig({
     },
     server: {
       deps: {
-        inline: [/@tiptap\/react/, /@douyinfe\/semi-icons/, /@douyinfe\/semi-ui/],
+        inline: [/@tiptap\/react/, /@douyinfe\/semi-icons/, /@douyinfe\/semi-ui/, /react-virtuoso/],
       },
     },
   },

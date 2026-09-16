@@ -34,6 +34,8 @@ export interface WKLayoutProps {
     onRightContext?:(context:WKViewQueueContext)=>void
     /** Embedded hosts already provide their own primary navigation rail. */
     embedded?: boolean
+    /** Use one content-sized page when the list and detail cannot fit together. */
+    contentMinWidth?: number
 }
 
 interface WKLayoutState {
@@ -56,6 +58,15 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
     private activeDraggingTarget?: "nav" | "content"
     private cachedContainerWidth = 1200  // updated in mount + resize
     private cachedLayoutWidth = 1200
+    private containerObserver?: ResizeObserver
+    private resizeFrame = 0
+    private scheduleContainerResize = () => {
+        if (this.resizeFrame || this.activeDraggingTarget) return
+        this.resizeFrame = requestAnimationFrame(() => {
+            this.resizeFrame = 0
+            if (this.updateContainerWidth()) this.setState({})
+        })
+    }
     private preferredWidthListener = (event: Event) => {
         const requested = (event as CustomEvent<{ width?: number | null }>).detail?.width
         if (typeof requested === "number" && Number.isFinite(requested)) {
@@ -90,6 +101,13 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
         window.addEventListener("resize", this.gResize)
         window.addEventListener("wk:layout-left-width", this.preferredWidthListener)
         this.updateContainerWidth()
+        this.setState({})
+        if (typeof ResizeObserver !== "undefined" && this.layoutRef.current) {
+            this.containerObserver = new ResizeObserver(this.scheduleContainerResize)
+            this.containerObserver.observe(this.layoutRef.current)
+            const content = this.layoutRef.current.querySelector(".wk-layout-content")
+            if (content) this.containerObserver.observe(content)
+        }
 
         this.routeLister = ()=>{
             this.setState({})
@@ -101,6 +119,8 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
         window.removeEventListener("resize", this.gResize)
         window.removeEventListener("wk:layout-left-width", this.preferredWidthListener)
         this.rightContext.removeRouteListener(this.routeLister)
+        this.containerObserver?.disconnect()
+        cancelAnimationFrame(this.resizeFrame)
         document.removeEventListener('mousemove', this.onDragMove)
         document.removeEventListener('mouseup', this.onDragEnd)
         document.removeEventListener('mouseout', this.onDocumentMouseOut)
@@ -114,12 +134,16 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
     }, 100)
 
     private updateContainerWidth() {
-        if (!this.layoutRef.current) return
+        if (!this.layoutRef.current) return false
+        const previousLayoutWidth = this.cachedLayoutWidth
+        const previousContainerWidth = this.cachedContainerWidth
         this.cachedLayoutWidth = this.layoutRef.current.clientWidth || this.cachedLayoutWidth
         const contentEl = this.layoutRef.current.querySelector('.wk-layout-content') as HTMLElement
         if (contentEl) {
-            this.cachedContainerWidth = contentEl.clientWidth
+            this.cachedContainerWidth = contentEl.clientWidth || this.cachedContainerWidth
         }
+        return previousLayoutWidth !== this.cachedLayoutWidth ||
+            previousContainerWidth !== this.cachedContainerWidth
     }
 
     private onContentDoubleClick = () => {
@@ -232,7 +256,7 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
     }
 
     render() {
-        const { onRenderTab, contentLeft,contentRight,onLeftContext,onRightContext, embedded = false } = this.props
+        const { onRenderTab, contentLeft,contentRight,onLeftContext,onRightContext, embedded = false, contentMinWidth } = this.props
         const isExtension = (window as any).__POWERED_EXTENSION__
         const isSmallScreen = window.innerWidth <= SMALL_SCREEN_WIDTH
         const { leftWidth, navRailWidth, isDragging, draggingTarget } = this.state
@@ -252,6 +276,11 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
 
         // Clamp against cached container width so window resize doesn't break layout
         const clampedWidth = clampWidth(leftWidth, this.cachedContainerWidth)
+        const adaptive = typeof contentMinWidth === "number" && contentMinWidth > 0
+        const singlePage = adaptive && this.cachedContainerWidth < clampedWidth + contentMinWidth
+        const detailOpen = (this.rightContext?.viewCount() || 0) > 0
+        const leftInactive = singlePage && detailOpen
+        const inertLeftProps = leftInactive ? ({ inert: "" } as Record<string, string>) : {}
 
         const widthPx = `${clampedWidth}px`
 
@@ -263,18 +292,18 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
             '--wk-width-layout-tab': navRailWidthPx,
         } as React.CSSProperties
 
-        const leftStyle = isSmallScreen ? undefined : {
-            width: widthPx,
-        }
+        const leftStyle = singlePage ? { width: "100%" } : isSmallScreen ? undefined : { width: widthPx }
 
         const contentElement = <div
             className={classNames(
                 "wk-layout-content",
-                this.rightContext?.viewCount() > 0 ? "wk-layout-open" : undefined,
+                detailOpen ? "wk-layout-open" : undefined,
             )}
             style={contentStyle}
+            data-layout-mode={adaptive ? (singlePage ? "single" : "split") : undefined}
         >
-            <div className="wk-layout-content-left" style={leftStyle}>
+            <div className="wk-layout-content-left" style={leftStyle}
+                aria-hidden={leftInactive || undefined} {...inertLeftProps}>
                 <WKViewQueue onContext={(context) => {
                     if(onLeftContext) {
                         onLeftContext(context)
@@ -284,7 +313,7 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
                 </WKViewQueue>
             </div>
             <div className="wk-layout-content-right">
-                <WKViewQueue onContext={(context) => {
+                <WKViewQueue animateFirstRoute={singlePage} onContext={(context) => {
                     this.rightContext = context
                     if(onRightContext) {
                         onRightContext(context)

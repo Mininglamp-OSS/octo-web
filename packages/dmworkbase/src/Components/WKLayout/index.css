@@ -12,6 +12,67 @@
     position: relative;
 }
 
+/* The list is the backing page; only the route view animates above it. */
+.wk-layout-content[data-layout-mode="single"] > .wk-layout-content-left {
+    position: absolute;
+    inset: 0;
+    border-right: 0;
+}
+
+.wk-layout-content[data-layout-mode] > .wk-layout-content-right {
+    transform: none;
+    transition: none;
+}
+
+.wk-layout-content[data-layout-mode="single"] > .wk-layout-content-right {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    z-index: 20;
+}
+
+.wk-layout-content[data-layout-mode="single"]:not(.wk-layout-open) > .wk-layout-content-right {
+    transform: none;
+    pointer-events: none;
+}
+
+.wk-layout-content[data-layout-mode="single"] > .wk-layout-content-right > .wk-viewqueue > .wk-viewqueue-route > .wk-viewqueue-view:first-child {
+    visibility: hidden;
+}
+
+.wk-layout-content[data-layout-mode="single"] > .wk-layout-splitter {
+    display: none;
+}
+
+.wk-layout-content[data-layout-mode] > .wk-layout-content-right > .wk-viewqueue > .wk-viewqueue-route > .wk-viewqueue-view {
+    transition: none;
+}
+
+.wk-layout-content[data-layout-mode] > .wk-layout-content-right > .wk-viewqueue > .wk-viewqueue-route > .wk-viewqueue-view-in {
+    animation: layoutPageIn var(--wk-dur-fast) var(--wk-ease) both;
+}
+
+.wk-layout-content[data-layout-mode] > .wk-layout-content-right > .wk-viewqueue > .wk-viewqueue-route > .wk-viewqueue-view-out {
+    animation: layoutPageOut var(--wk-dur-fast) var(--wk-ease) both;
+}
+
+@keyframes layoutPageIn {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+}
+
+@keyframes layoutPageOut {
+    from { transform: translateX(0); }
+    to { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .wk-layout-content[data-layout-mode] > .wk-layout-content-right > .wk-viewqueue > .wk-viewqueue-route > .wk-viewqueue-view-in,
+    .wk-layout-content[data-layout-mode] > .wk-layout-content-right > .wk-viewqueue > .wk-viewqueue-route > .wk-viewqueue-view-out {
+        animation-duration: 1ms;
+    }
+}
+
 .wk-layout-tab {
     width: var(--wk-width-layout-tab);
     height: 100%;

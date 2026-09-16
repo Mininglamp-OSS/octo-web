@@ -23,6 +23,7 @@ import {
 import { requestGuardedMenuChange, requestProgrammaticMenuChange } from "./menuChange";
 import { buildSpaceAdminUrl } from "./spaceAdminUrl";
 import { requestMailWorkspaceSwitch } from "@octo/mail";
+import { CHAT_CONTENT_MIN_WIDTH } from "@octo/base/src/Pages/Chat/responsiveLayout";
 
 // ─── MainContentLeft：纯路由渲染区（Sidebar + 内容） ───────────────────────
 
@@ -286,6 +287,7 @@ export class MainPage extends Component<{}, MainPageState> {
                             {...(showOnboardingGate ? { inert: "" } : {})}
                         >
                             <WKLayout
+                                contentMinWidth={vm.currentMenus?.id === "chat" ? CHAT_CONTENT_MIN_WIDTH : undefined}
                                 onRenderTab={() => (
                                     <NavRail
                                         // Space

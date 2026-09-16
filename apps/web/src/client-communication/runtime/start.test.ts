@@ -86,6 +86,24 @@ describe("communication runtime composition", () => {
     expect(f.sdk.disconnect).toHaveBeenCalledOnce();
     expect(f.gate.dispose).toHaveBeenCalledOnce();
   });
+  it("forwards native file preview lifecycle state to the runtime-owned UI", async () => {
+    const h = hostFixture();
+    const owner = await startCommunicationRuntime(h.host, bootstrap);
+    try {
+      h.send({ type: "navigate", page: "chat" });
+      await vi.waitFor(() => expect(f.mount).toHaveBeenCalledOnce());
+      const mountedHost = f.mount.mock.calls[0][0] as OctoBuddyCommunicationBridge;
+      const received: unknown[] = [];
+      const off = mountedHost.onCommand((command) => received.push(command));
+      h.legacy({ type: "filePreviewState", requestId: "r1", phase: "error", error: "Denied" });
+      h.legacy({ type: "filePreviewClosed", requestId: "r1" });
+      expect(received).toEqual([
+        { type: "filePreviewState", requestId: "r1", phase: "error", error: "Denied" },
+        { type: "filePreviewClosed", requestId: "r1" },
+      ]);
+      off();
+    } finally { owner.dispose(); }
+  });
   it("releases runtime on authentication expiry and restores the auth callback", async () => {
     const previous = vi.fn();
     f.app.apiClient.logoutCallback = previous;

@@ -55,6 +55,7 @@ import { MarkdownRenderer } from "../FilePreviewPanel/renderers/MarkdownRenderer
 import { HtmlRenderer } from "../FilePreviewPanel/renderers/HtmlRenderer";
 import { ImageRenderer } from "../FilePreviewPanel/renderers/ImageRenderer";
 import { VideoRenderer } from "../FilePreviewPanel/renderers/VideoRenderer";
+import { HostFilePreviewSlot } from "../../features/filePreview/HostFilePreviewSlot";
 import { isChannelSearchEnabled } from "../ChannelSearch/feature";
 import { I18nContext, t } from "../../i18n";
 import { wkConfirm } from "../WKModal";
@@ -66,13 +67,14 @@ import {
   shouldShowArchiveButton,
 } from "./archiveActions";
 import {
-  SMALL_SCREEN_WIDTH,
   THREAD_DEFAULT_WIDTH,
   SPLITTER_DEFAULT_WIDTH,
   clampThreadWidth,
   restoreThreadWidth,
   persistThreadWidth,
+  THREAD_MIN_WIDTH,
 } from "../WKLayout/layoutWidth";
+import type ConversationContext from "../Conversation/context";
 import {
   deleteImChannelInfo,
   fetchImChannelInfo,
@@ -178,6 +180,18 @@ export interface ThreadPanelProps {
    * 状态判断, 不传 / false 隐藏箭头。
    */
   showBackButton?: boolean;
+
+  /** 面板布局模式（子区 + 预览同屏时）。 */
+  layout?: "split" | "overlay";
+
+  /** 与文件预览并排时是否使用紧凑宽度。 */
+  compact?: boolean;
+
+  /** 预览是否在子区会话上下文中触发（需保留子区会话并排展示）。 */
+  previewInThreadContext?: boolean;
+
+  /** 子区详情头部返回回调：存在时优先于内部 handleBackToList。 */
+  onBackFromThread?: () => void;
 }
 
 interface ThreadPanelComponentState {
@@ -242,6 +256,16 @@ export default class ThreadPanel extends Component<
   private _unsubscribeRemoteConfig?: () => void;
   private readonly chatRuntime = getLegacyChatRuntime();
 
+  /** child ConversationContext ref for reply routing in previewInThreadContext. */
+  private _childConversation: ConversationContext | null = null;
+
+  /** ResizeObserver for container width responsiveness. */
+  private _containerObserver: ResizeObserver | null = null;
+  private _resizeFrame = 0;
+
+  /** Measured available container width (px). */
+  private _containerWidth = 0;
+
   constructor(props: ThreadPanelProps) {
     super(props);
     const leftPanelWidth = this.getLeftPanelWidth();
@@ -286,6 +310,7 @@ export default class ThreadPanel extends Component<
   }
 
   componentDidMount() {
+    this.isUnmounted = false;
     // 纯文件预览模式时跳过子区相关逻辑
     if (this.props.groupNo) {
       this.loadThreads();
@@ -299,6 +324,32 @@ export default class ThreadPanel extends Component<
     }
     // Set CSS variable on mount so chat area calc has the correct width
     this.syncCssVariable(this.state.panelWidth);
+
+    // Provide a stable container-bound width (not window.innerWidth) so split
+    // mode stays correct during resize / preview toggling.
+    const parentEl = this.panelRef.current?.parentElement;
+    if (parentEl) {
+      this._containerWidth = parentEl.getBoundingClientRect().width;
+      this.clampPanelWidthToContainer();
+    }
+    if (parentEl && typeof ResizeObserver !== "undefined") {
+      this._containerObserver = new ResizeObserver((entries) => {
+        if (this.isUnmounted) return;
+        for (const entry of entries) {
+          const w = entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect?.width;
+          if (w > 0) {
+            this._containerWidth = w;
+            if (!this._resizeFrame) {
+              this._resizeFrame = requestAnimationFrame(() => {
+                this._resizeFrame = 0;
+                if (!this.isUnmounted) this.clampPanelWidthToContainer();
+              });
+            }
+          }
+        }
+      });
+      this._containerObserver.observe(parentEl);
+    }
     this._unsubscribeRemoteConfig = WKApp.remoteConfig.addConfigChangeListener(
       () => {
         if (!this.isUnmounted) this.forceUpdate();
@@ -308,6 +359,11 @@ export default class ThreadPanel extends Component<
 
   componentWillUnmount() {
     this.isUnmounted = true;
+    cancelAnimationFrame(this._resizeFrame);
+    this._resizeFrame = 0;
+    this._containerObserver?.disconnect();
+    this._containerObserver = null;
+
     this._unsubscribeRemoteConfig?.();
     this._unsubscribeRemoteConfig = undefined;
     document.removeEventListener("mousemove", this.onPanelDragMove);
@@ -345,15 +401,34 @@ export default class ThreadPanel extends Component<
     return SPLITTER_DEFAULT_WIDTH;
   }
 
+
+  private clampPanelWidthToContainer() {
+    if (this._containerWidth <= 0) return;
+    const rendered = Math.max(THREAD_MIN_WIDTH, Math.min(this.lastPanelWidth, this._containerWidth - THREAD_MIN_WIDTH));
+    if (rendered !== this.state.panelWidth) this.setState({ panelWidth: rendered });
+    else this.forceUpdate();
+    this.syncCssVariable(rendered);
+  }
+
+  /**
+   * Capture child ConversationContext for reply routing in previewInThreadContext mode.
+   * Returns cleanup callback for ConversationSurface to call on unmount.
+   */
+  private handleChildContext = (ctx: ConversationContext) => {
+    this._childConversation = ctx;
+    return () => {
+      if (this._childConversation === ctx) this._childConversation = null;
+    };
+  };
+
   // ── Splitter drag for thread panel width ──
 
   private onPanelDragStart = (e: React.MouseEvent) => {
     e.preventDefault();
     this.dragStartX = e.clientX;
     this.dragStartWidth = this.lastPanelWidth;
-    // Cache window width and left panel width for max calculation
-    this.cachedWindowWidth = window.innerWidth;
-    this.cachedLeftPanelWidth = this.getLeftPanelWidth();
+    this.cachedWindowWidth = this._containerWidth || window.innerWidth;
+    this.cachedLeftPanelWidth = this._containerWidth ? 0 : this.getLeftPanelWidth();
     this.setState({ isDragging: true });
     document.addEventListener("mousemove", this.onPanelDragMove);
     document.addEventListener("mouseup", this.onPanelDragEnd);
@@ -1138,7 +1213,28 @@ export default class ThreadPanel extends Component<
     }
   };
 
-  /** 文件选择回调：切换预览的文件（从 ConversationFile 构造 FilePreviewInfo） */
+  private fileReplyAction = () => {
+    const { filePreview, onReplyFile, previewInThreadContext } = this.props;
+    if (!filePreview?.messageId || filePreview.messageSeq === undefined || !filePreview.fromUID ||
+      !filePreview.sourceChannelId || filePreview.sourceChannelType === undefined ||
+      (!onReplyFile && !(previewInThreadContext && this._childConversation?.replyToFileMessage))) return undefined;
+    const reply = {
+      messageId: filePreview.messageId,
+      messageSeq: filePreview.messageSeq,
+      fromUID: filePreview.fromUID,
+      conversationDigest: filePreview.conversationDigest || "",
+      channelId: filePreview.sourceChannelId,
+      channelType: filePreview.sourceChannelType,
+    };
+    return () => {
+      if (previewInThreadContext && this._childConversation?.replyToFileMessage) {
+        this._childConversation.replyToFileMessage(reply);
+      } else if (onReplyFile) {
+        onReplyFile(reply);
+      }
+    };
+  };
+
   private handleFileSelect = (file: ConversationFile) => {
     const { filePreview, onFilePreviewChange } = this.props;
     if (!onFilePreviewChange) {
@@ -1179,105 +1275,11 @@ export default class ThreadPanel extends Component<
   };
 
   private renderHeader() {
-    const { onClose, filePreview, onFilePreviewClose } = this.props;
-    const { view, vmState, showMoreMenu, fileViewMode, isTocOpen } = this.state;
+    const { onClose, onBackFromThread } = this.props;
+    const { view, vmState, showMoreMenu } = this.state;
     const thread = vmState.thread;
     const threadSearchChannel = this.getThreadSearchChannel(thread);
     const canOpenChannelSearch = isChannelSearchEnabled(threadSearchChannel);
-
-    // 文件预览模式：使用 FilePreviewHeader 组件
-    if (filePreview) {
-      // 判断是否有子区可返回: 需要 groupNo (群聊上下文) 且调用方显式传
-      // showBackButton=true (预览开始前确实有子区面板)。仅 groupNo 不够,
-      // 否则任何群聊里的消息附件预览都会冒出 ← 把用户带到子区列表 — 没
-      // 来过子区的人会被 ← 误导。
-      const canReturnToThread =
-        !!this.props.groupNo && this.props.showBackButton === true;
-
-      // 判断是否需要显示视图切换（代码/HTML 等类型）
-      const ext = getExtension(filePreview.extension, filePreview.name);
-      const showViewToggle = [
-        "html",
-        "htm",
-        "md",
-        "markdown",
-        "js",
-        "jsx",
-        "ts",
-        "tsx",
-        "css",
-        "scss",
-        "less",
-        "json",
-        "xml",
-        "yaml",
-        "yml",
-      ].includes(ext);
-
-      // 判断是否为 Markdown 文件
-      const isMarkdown = ["md", "markdown"].includes(ext);
-
-      // 判断是否为 HTML 文件（仅 HTML 文件显示"在新标签页打开"按钮）
-      const isHtml = ["html", "htm"].includes(ext);
-
-      // 判断是否显示 TOC 按钮（仅 Markdown 预览模式且 h2 ≥ 3）
-      const showTocButton =
-        isMarkdown && fileViewMode === "preview" && this.state.isTocAvailable;
-
-      // 回复回调：仅当有必要字段和 onReplyFile 时才启用（conversationDigest 可为空）
-      const handleReply =
-        filePreview.messageId &&
-        filePreview.messageSeq !== undefined &&
-        filePreview.fromUID &&
-        filePreview.sourceChannelId &&
-        filePreview.sourceChannelType !== undefined &&
-        this.props.onReplyFile
-          ? () =>
-              this.props.onReplyFile!({
-                messageId: filePreview.messageId!,
-                messageSeq: filePreview.messageSeq!,
-                fromUID: filePreview.fromUID!,
-                conversationDigest: filePreview.conversationDigest || "",
-                channelId: filePreview.sourceChannelId!,
-                channelType: filePreview.sourceChannelType!,
-              })
-          : undefined;
-
-      // 视图模式变更：切换到源码模式时关闭 TOC
-      const handleViewModeChange = (mode: "preview" | "source") => {
-        this.setState({ fileViewMode: mode });
-        if (mode === "source" && isTocOpen) {
-          this.setState({ isTocOpen: false });
-        }
-      };
-
-      return (
-        <FilePreviewHeader
-          file={filePreview}
-          conversationFiles={this.state.conversationFiles}
-          onFileSelect={this.handleFileSelect}
-          isFilePanelOpen={this.state.isFilePanelOpen}
-          onFilePanelToggle={() =>
-            this.setState({ isFilePanelOpen: !this.state.isFilePanelOpen })
-          }
-          showBackButton={canReturnToThread}
-          onBack={onFilePreviewClose}
-          onClose={onClose}
-          showViewToggle={showViewToggle}
-          viewMode={fileViewMode}
-          onViewModeChange={handleViewModeChange}
-          onReply={handleReply}
-          showTocButton={showTocButton}
-          isTocOpen={isTocOpen}
-          onTocToggle={() => this.setState({ isTocOpen: !isTocOpen })}
-          showOpenExternal={isHtml}
-          hasMoreFiles={this.state.conversationFilesHasMore}
-          loadingMoreFiles={this.state.conversationFilesLoadingMore}
-          onLoadMoreFiles={this.loadMoreConversationFiles}
-          currentFilesPage={this.state.conversationFilesPage}
-        />
-      );
-    }
 
     // 子区 Webhook 管理子视图的 header（#451）：← 回子区详情，× 关闭面板。
     // 与 filePreview 同样在 renderHeader 内分支（filePreview 已先 return，故此处必非预览态）。
@@ -1317,8 +1319,8 @@ export default class ThreadPanel extends Component<
         {view === "detail" ? (
           <div
             className="wk-thread-panel-header-btn"
-            onClick={this.handleBackToList}
-            title={t("base.threadPanel.backToAll")}
+            onClick={onBackFromThread || this.handleBackToList}
+            title={t(onBackFromThread ? "base.common.back" : "base.threadPanel.backToAll")}
           >
             <ArrowLeft size={16} />
           </div>
@@ -1971,6 +1973,7 @@ export default class ThreadPanel extends Component<
           channel={threadChannel}
           mode="auxiliary"
           errorModuleName={t("base.threadPanel.messagesModuleName")}
+          bindConversationContext={this.handleChildContext}
           conversationProps={{
             inputNotice:
               thread.status === ThreadStatus.Archived
@@ -1991,9 +1994,21 @@ export default class ThreadPanel extends Component<
   };
 
   private renderFilePreviewContent() {
-    const { filePreview } = this.props;
+    const { filePreview, onFilePreviewClose, onClose } = this.props;
     const { fileViewMode, isTocOpen } = this.state;
     if (!filePreview) return null;
+
+    // Host native preview: render HostFilePreviewSlot, skip web renderers entirely
+    if (filePreview.hostPreview) {
+      return (
+        <div className="wk-thread-panel-file-preview">
+          <HostFilePreviewSlot
+            {...filePreview.hostPreview}
+            onClose={onFilePreviewClose ?? onClose}
+          />
+        </div>
+      );
+    }
 
     const ext = getExtension(filePreview.extension, filePreview.name);
     const isImage = filePreview.category === "image";
@@ -2063,6 +2078,59 @@ export default class ThreadPanel extends Component<
     );
   }
 
+  /** Render FilePreviewHeader in the preview pane. */
+  private renderFilePreviewHeader() {
+    const { filePreview, onFilePreviewClose, onClose } = this.props;
+    if (!filePreview || filePreview.hostPreview) return null;
+    const { fileViewMode, isTocOpen } = this.state;
+
+    // 判断是否有子区可返回
+    const canReturnToThread = this.props.layout === "overlay" ||
+      (!!this.props.groupNo && this.props.showBackButton === true);
+
+    const ext = getExtension(filePreview.extension, filePreview.name);
+    const isMarkdown = ["md", "markdown"].includes(ext);
+    const isHtml = ["html", "htm"].includes(ext);
+    const showViewToggle = [
+      "html", "htm", "md", "markdown", "js", "jsx", "ts", "tsx",
+      "css", "scss", "less", "json", "xml", "yaml", "yml",
+    ].includes(ext);
+    const showTocButton =
+      isMarkdown && fileViewMode === "preview" && this.state.isTocAvailable;
+
+    const handleViewModeChange = (mode: "preview" | "source") => {
+      this.setState({ fileViewMode: mode });
+      if (mode === "source" && isTocOpen) this.setState({ isTocOpen: false });
+    };
+
+    return (
+      <FilePreviewHeader
+        file={filePreview}
+        conversationFiles={this.state.conversationFiles}
+        onFileSelect={this.handleFileSelect}
+        isFilePanelOpen={this.state.isFilePanelOpen}
+        onFilePanelToggle={() =>
+          this.setState({ isFilePanelOpen: !this.state.isFilePanelOpen })
+        }
+        showBackButton={canReturnToThread}
+        onBack={onFilePreviewClose ?? onClose}
+        onClose={onFilePreviewClose ?? onClose}
+        showViewToggle={showViewToggle}
+        viewMode={fileViewMode}
+        onViewModeChange={handleViewModeChange}
+        onReply={this.fileReplyAction()}
+        showTocButton={showTocButton}
+        isTocOpen={isTocOpen}
+        onTocToggle={() => this.setState({ isTocOpen: !isTocOpen })}
+        showOpenExternal={isHtml}
+        hasMoreFiles={this.state.conversationFilesHasMore}
+        loadingMoreFiles={this.state.conversationFilesLoadingMore}
+        onLoadMoreFiles={this.loadMoreConversationFiles}
+        currentFilesPage={this.state.conversationFilesPage}
+      />
+    );
+  }
+
   // 父群 channel 按 groupNo 记忆化：renderWebhookContent 每次 render 都会被调用，若每次都
   // new Channel，传给 ChannelWebhookPanel 的 channel prop 引用就会变 → 其 load useCallback
   // （deps 含 channel）每次 render 重建 → useEffect 每次 render 重新拉取列表（#451 review）。
@@ -2095,28 +2163,54 @@ export default class ThreadPanel extends Component<
   }
 
   render() {
-    const { filePreview } = this.props;
+    const { filePreview, layout, groupNo, compact, previewInThreadContext } = this.props;
     const {
       view,
       panelWidth,
       isDragging,
-      isFilePanelOpen,
       conversationFiles,
-      vmState,
       showWebhookPanel,
     } = this.state;
-    const isSmallScreen = window.innerWidth <= SMALL_SCREEN_WIDTH;
 
-    const panelStyle = isSmallScreen
-      ? undefined
-      : {
-          width: `${panelWidth}px`,
-        };
+    // Determine overlay vs split mode from parent-provided layout or container width
+    const isOverlay = layout === "overlay" ||
+      (layout === undefined && this._containerWidth > 0 && this._containerWidth < THREAD_MIN_WIDTH * 2);
+    const inPreviewContext = !!(previewInThreadContext && filePreview);
+    const panel100 = isOverlay || inPreviewContext;
+
+    const panelStyle: React.CSSProperties = {
+      width: panel100 ? "100%" : compact ? "var(--wk-width-local-panel, 360px)" : `${panelWidth}px`,
+    };
+
+    const showSplitter = !isOverlay && !previewInThreadContext && !compact;
+
+    // Stable split-layout wrapper — both context and preview are always mounted.
+    const isSplit = inPreviewContext && layout === "split";
+    const contextHidden = (filePreview != null) && !isSplit;
+    const contextInert = contextHidden;
+    const previewFull = !isSplit;
+
+    const directoryHidden = showWebhookPanel || view !== "list";
+    const contextContent = (
+      <div className="wk-thread-panel-pages">
+        <div
+          className={classNames("wk-thread-panel-page", directoryHidden && "wk-thread-panel-page--hidden")}
+          aria-hidden={directoryHidden || undefined}
+          {...(directoryHidden ? { inert: "" } : {})}
+        >
+          {this.renderListView()}
+        </div>
+        {directoryHidden && (
+          <div className="wk-thread-panel-page">
+            {showWebhookPanel ? this.renderWebhookContent() : this.renderDetailView()}
+          </div>
+        )}
+      </div>
+    );
 
     return (
       <div className="wk-thread-panel" data-desktop-overlay="" ref={this.panelRef} style={panelStyle}>
-        {/* Left-edge splitter for resizing — hidden on small screens */}
-        {!isSmallScreen && (
+        {showSplitter && (
           <div
             className={classNames(
               "wk-thread-panel-splitter",
@@ -2129,39 +2223,50 @@ export default class ThreadPanel extends Component<
           </div>
         )}
         <div className="wk-thread-panel-main">
-          {this.renderHeader()}
-          {/* 根据 filePreview 决定渲染文件预览还是子区内容 */}
-          {filePreview ? (
-            <div
-              className={classNames(
-                "wk-thread-panel-file-content",
-                isFilePanelOpen && "wk-thread-panel-file-content--with-list"
-              )}
-            >
-              {/* 侧边文件列表面板 */}
-              {isFilePanelOpen && (
-                <FileListPanel
-                  files={conversationFiles}
-                  currentFileUrl={filePreview.url}
-                  onFileSelect={this.handleFileSelect}
-                  onClose={() => this.setState({ isFilePanelOpen: false })}
-                  hasMore={this.state.conversationFilesHasMore}
-                  loadingMore={this.state.conversationFilesLoadingMore}
-                  onLoadMore={this.loadMoreConversationFiles}
-                  currentPage={this.state.conversationFilesPage}
-                  initialLoading={this.state.conversationFilesLoading}
-                />
-              )}
-              {/* 文件预览内容 */}
-              {this.renderFilePreviewContent()}
-            </div>
-          ) : showWebhookPanel ? (
-            this.renderWebhookContent()
-          ) : view === "list" ? (
-            this.renderListView()
-          ) : (
-            this.renderDetailView()
-          )}
+          <div className={classNames("wk-thread-panel-split-layout", isSplit && "wk-thread-panel-split-layout--split")}>
+            {groupNo && (
+              <div
+                key="context"
+                className={classNames(
+                  "wk-thread-panel-context",
+                  contextHidden && "wk-thread-panel-context--hidden wk-thread-panel-context--inert"
+                )}
+                {...(contextInert ? { inert: "" } : {})}
+                aria-hidden={contextHidden || undefined}
+              >
+                {this.renderHeader()}
+                {contextContent}
+              </div>
+            )}
+            {filePreview && (
+              <div
+                key="preview"
+                className={classNames(
+                  "wk-thread-panel-preview",
+                  previewFull && "wk-thread-panel-preview--full"
+                )}
+              >
+                {this.renderFilePreviewHeader()}
+                <div className={classNames("wk-thread-panel-file-content",
+                  !filePreview.hostPreview && this.state.isFilePanelOpen && "wk-thread-panel-file-content--with-list")}>
+                  {!filePreview.hostPreview && this.state.isFilePanelOpen && (
+                    <FileListPanel
+                      files={conversationFiles}
+                      currentFileUrl={filePreview.url}
+                      onFileSelect={this.handleFileSelect}
+                      onClose={() => this.setState({ isFilePanelOpen: false })}
+                      hasMore={this.state.conversationFilesHasMore}
+                      loadingMore={this.state.conversationFilesLoadingMore}
+                      onLoadMore={this.loadMoreConversationFiles}
+                      currentPage={this.state.conversationFilesPage}
+                      initialLoading={this.state.conversationFilesLoading}
+                    />
+                  )}
+                  {this.renderFilePreviewContent()}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
         {isDragging && <div className="wk-thread-panel-drag-overlay" />}
       </div>

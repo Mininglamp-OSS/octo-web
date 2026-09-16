@@ -10,7 +10,7 @@
 }
 
 .wk-chat-content-left {
-  width: var(--wk-wdith-conversation-list);
+  width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -236,6 +236,7 @@
 
 .wk-chat-content-right {
   width: 100%;
+  min-width: 0;
   height: 100%;
   display: flex;
   position: relative;
@@ -590,7 +591,6 @@ body[theme-mode="dark"] .wk-chat-channelsetting {
   pointer-events: auto;
   width: var(--wk-width-chat-search-panel);
   height: 100%;
-  transition: margin-right 150ms ease-in-out 0s;
   position: absolute;
   z-index: 100;
   top: 0;
@@ -651,6 +651,102 @@ body[theme-mode="dark"] .wk-chat-channelsetting {
 /* 子区/文件预览打开时，消息区宽度减去右侧面板宽度 */
 .wk-chat-content-right.wk-chat-threadpanel-open .wk-chat-content-chat {
   width: calc(100% - var(--wk-width-thread-panel));
+}
+
+.wk-layout-content[data-chat-navigation="collapsed"]:not([data-layout-mode="single"]) > .wk-layout-content-left {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.wk-layout-content[data-chat-navigation="collapsed"] > .wk-layout-splitter {
+  display: none;
+}
+
+.wk-layout-content[data-chat-navigation="collapsed"] .wk-chat-conversation-header-back {
+  display: flex;
+}
+
+.wk-layout-content[data-layout-mode] .wk-chat-content-right {
+  position: relative;
+  inset: auto;
+  transform: none;
+  transition: none;
+}
+
+.wk-layout-content[data-layout-mode] .wk-chat-conversation-header-back {
+  flex-shrink: 0;
+}
+
+.wk-layout-content[data-layout-mode] .wk-chat-conversation-header-channel-info-name:not(.wk-chat-conversation-header-channel-info-name--thread) {
+  display: block;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.wk-chat-content-right[data-chat-parent-hidden="true"] > .wk-chat-content-chat {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.wk-chat-content-right[data-chat-thread-hidden="true"] > .wk-thread-panel {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.wk-chat-content-right[data-chat-thread-hidden="true"] > .wk-chat-content-chat {
+  width: 100%;
+}
+
+.wk-chat-content-right[data-chat-panel-layout="split"] {
+  --wk-width-local-panel: clamp(320px, calc(100% - 432px), 360px);
+}
+
+.wk-chat-channel-search-open[data-chat-panel-layout="split"] {
+  --wk-width-chat-search-panel: var(--wk-width-local-panel);
+}
+
+.wk-chat-threadpanel-compact[data-chat-panel-layout="split"] > .wk-chat-content-chat {
+  width: calc(100% - var(--wk-width-local-panel));
+}
+
+.wk-chat-content-right.wk-chat-threadpanel-compact > .wk-thread-panel {
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.wk-chat-channel-search-open > .wk-chat-channel-search-panel,
+.wk-chat-threadpanel-open > .wk-thread-panel {
+  animation: chatSearchIn var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-chat-threadpanel-open > .wk-thread-panel {
+  transition: none;
+}
+
+.wk-chat-threadpanel-open[data-chat-panel-layout="overlay"] > .wk-thread-panel {
+  border-left: 0;
+  box-shadow: none;
+}
+
+@keyframes chatSearchIn {
+  from { opacity: 0; transform: translateX(var(--wk-sp-3)); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wk-chat-channel-search-open > .wk-chat-channel-search-panel,
+  .wk-chat-threadpanel-open > .wk-thread-panel {
+    animation: none;
+  }
+}
+
+.wk-chat-content-right[data-chat-panel-layout="overlay"] > .wk-chat-channel-search-panel {
+  width: 100%;
+  border-left: 0;
 }
 
 .wk-chat-content-right.wk-chat-webhook-preview-open .wk-chat-content-chat {
@@ -727,6 +823,25 @@ body[theme-mode="dark"] .wk-chat-popover {
   justify-content: center;
   color: var(--wk-icon-default);
   cursor: pointer;
+}
+
+button.wk-chat-conversation-header-right-item {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+button.wk-chat-conversation-header-right-item:hover {
+  background: var(--wk-brand-tint-06);
+}
+
+button.wk-chat-conversation-header-right-item:focus-visible {
+  outline: 2px solid var(--wk-border-glow);
+  outline-offset: 2px;
 }
 
 .wk-chat-conversation-header-right-item svg,

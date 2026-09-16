@@ -14,6 +14,7 @@ export interface ChatRightPanelStatePatch {
   showChannelSetting: boolean;
   showThreadPanel: boolean;
   activeThread: Thread | null;
+  threadFromDirectory: boolean;
   previewFile: FilePreviewInfo | null;
   activePreviewMessageId: string | null;
   previewHadThreadShell: boolean;
@@ -28,6 +29,7 @@ const CLOSED_RIGHT_PANEL_STATE: ChatRightPanelStatePatch = {
   showChannelSetting: false,
   showThreadPanel: false,
   activeThread: null,
+  threadFromDirectory: false,
   previewFile: null,
   activePreviewMessageId: null,
   previewHadThreadShell: false,

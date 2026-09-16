@@ -64,6 +64,8 @@ export type MittEvents = {
     messageId?: string;
     /** 消息序号（用于回复） */
     messageSeq?: number;
+    /** Original attachment position; absent legacy entries stay in Web preview. */
+    attachmentIndex?: number;
     /** 发送者 UID（用于回复时 @提及） */
     fromUID?: string;
     /** 消息摘要（用于回复时显示） */

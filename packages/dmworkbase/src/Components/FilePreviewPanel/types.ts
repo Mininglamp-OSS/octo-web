@@ -27,6 +27,14 @@ export interface FilePreviewInfo {
   duration?: number;
   /** 消息序号（用于回复功能） */
   messageSeq?: number;
+  /** Original attachment position in the authoritative message payload. */
+  attachmentIndex?: number;
+  /** Native in-place preview state owned by the host layout. */
+  hostPreview?: {
+    requestId: string;
+    failed?: boolean;
+    onRetry?: () => void;
+  };
   /** 发送者 UID（用于回复功能） */
   fromUID?: string;
   /** 消息摘要（用于回复功能显示） */

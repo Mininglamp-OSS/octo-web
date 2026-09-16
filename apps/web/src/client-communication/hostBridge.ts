@@ -1,3 +1,6 @@
+import type { AttachmentPreviewHost } from "@octo/base/src/features/filePreview/attachmentHost";
+import type { LayoutAttachmentHost } from "@octo/base/src/features/filePreview/hostPreviewLayout";
+
 export type CommunicationPage = "chat" | "contacts";
 export type CommunicationPresentation = "workspace" | "conversation";
 
@@ -50,6 +53,8 @@ export type HostCommand =
   | { type: "suspend" }
   | { type: "resume" }
   | { type: "hostVisibilityChanged"; visible: boolean }
+  | { type: "filePreviewClosed"; requestId: string }
+  | { type: "filePreviewState"; requestId: string; phase: "loading" | "ready" | "error"; error?: string }
   | { type: "sessionRevoked" };
 
 export interface NavigationReport {
@@ -148,6 +153,11 @@ export interface OctoBuddyCommunicationBridge {
   authorizeDocumentForward?(request: { requestId: string }): Promise<void>;
   respondDocumentForward?(response: SummaryCapabilityResponse): void;
   onCommand(callback: (command: HostCommand) => void): () => void;
+  /** Optional host port for message-attachment file preview. */
+  openFilePreview?: AttachmentPreviewHost["openFilePreview"];
+  cancelFilePreview?: AttachmentPreviewHost["cancelFilePreview"];
+  openFilePreviewInPlace?: LayoutAttachmentHost["openFilePreviewInPlace"];
+  setFilePreviewLayout?: LayoutAttachmentHost["setFilePreviewLayout"];
 }
 
 declare global {

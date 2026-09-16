@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { I18nProvider, WKApp } from "@octo/base";
 import { CommunicationShell } from "./CommunicationShell";
 import { installDesktopPresentationLifecycle } from "./desktopPresentationLifecycle";
+import { installHostDocumentPreview } from "./documentPreview";
+import { installHostFilePreview } from "./filePreview";
 import type { CommunicationBootstrap, DocumentForwardRequest, OctoBuddyCommunicationBridge } from "./hostBridge";
 
 export async function mountCommunicationUi(
@@ -24,6 +26,10 @@ export async function mountCommunicationUi(
     presentation.dispose();
     return () => {};
   }
+  const disposeDocumentPreview = options.runtimeOwned
+    ? () => {}
+    : installHostDocumentPreview(host, WKApp.shared.currentSpaceId);
+  const disposeFilePreview = installHostFilePreview(host, WKApp.shared.currentSpaceId);
   const reactRoot = createRoot(root);
   reactRoot.render(
     <React.StrictMode>
@@ -51,6 +57,8 @@ export async function mountCommunicationUi(
   );
   return () => {
     reactRoot.unmount();
+    disposeFilePreview();
+    disposeDocumentPreview();
     presentation.dispose();
   };
 }
