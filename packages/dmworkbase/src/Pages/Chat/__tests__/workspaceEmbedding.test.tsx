@@ -265,6 +265,39 @@ describe("ChatContentPage workspaceEmbedding", () => {
       expect(requireConv(page).headerMode).toBeUndefined();
     });
 
+    it("reconciles queued presentation updates before acknowledging the latest one", () => {
+      const page = createPage(new Channel("g", 2));
+      const queue: Array<() => void> = [];
+      page.setState = (update: any, callback?: () => void) => {
+        queue.push(() => {
+          const next = typeof update === "function" ? update(page.state, page.props) : update;
+          if (next) page.state = { ...page.state, ...next };
+          callback?.();
+        });
+      };
+      const snapshots: unknown[] = [];
+      page.updateWorkspaceEmbedding(EMPTY_EMBEDDING, () => snapshots.push(page.state.workspaceEmbedding));
+      page.updateWorkspaceEmbedding(undefined, () => snapshots.push(page.state.workspaceEmbedding));
+      expect(snapshots).toEqual([]);
+      expect(queue).toHaveLength(2);
+      queue.forEach((commit) => commit());
+      expect(snapshots).toEqual([EMPTY_EMBEDDING, undefined]);
+      expect(page.state.workspaceEmbedding).toBeUndefined();
+    });
+
+    it("reports completion for an unchanged presentation without clearing panels", () => {
+      const page = createPage(new Channel("g", 2));
+      page.setState({ showChannelSetting: true });
+      const onCommitted = vi.fn();
+      page.setState = (update: any, callback?: () => void) => {
+        expect(update(page.state, page.props)).toBeNull();
+        callback?.();
+      };
+      page.updateWorkspaceEmbedding(undefined, onCommitted);
+      expect(onCommitted).toHaveBeenCalledTimes(1);
+      expect(page.state.showChannelSetting).toBe(true);
+    });
+
     it("constructor does not set showChannelSearch when embedding", () => {
       const page = new ChatContentPage({
         channel: new Channel("g", 2),

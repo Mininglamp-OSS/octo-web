@@ -16,7 +16,8 @@ import {
   type SummaryWorkspaceRoute,
 } from "@dmwork/summary";
 import type { OctoBuddySummaryBridge, SummaryHostCommand } from "./hostBridge";
-import { NavigationCommitController, hasNavigationCommitBridge } from "../client-feature/navigationCommit";
+import type { NavigationCommitController } from "../client-feature/navigationCommit";
+import { useNavigationCommit } from "../client-feature/useNavigationCommit";
 import { createReadyReporter } from "../client-feature/readyReporter";
 import "./index.css";
 
@@ -52,12 +53,11 @@ export function SummaryShell({
   const invalidationListeners = useRef(new Set<() => void>());
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
-  const [navigationToken, setNavigationToken] = useState<number>();
-  const navCommitRef = useRef<NavigationCommitController | undefined>(
-    hasNavigationCommitBridge(bridge) ? new NavigationCommitController(
-      (navigationId) => bridge.reportNavigationCommitted!({ navigationId }),
-    ) : undefined,
-  );
+  const navCommit = useNavigationCommit(bridge);
+  const [navigation, setNavigation] = useState<{
+    token?: number;
+    controller?: NavigationCommitController;
+  }>();
 
   useLayoutEffect(() => {
     onPresentationContext?.({ route, spaceId: spaceIdRef.current });
@@ -65,8 +65,10 @@ export function SummaryShell({
 
   // Release the page barrier once the host-navigate route has committed to the DOM.
   useLayoutEffect(() => {
-    if (navigationToken !== undefined) navCommitRef.current?.pageCommitted(navigationToken);
-  }, [route, navigationToken]);
+    if (navigation?.token !== undefined && navigation.controller === navCommit) {
+      navigation.controller?.pageCommitted(navigation.token);
+    }
+  }, [route, navigation, navCommit]);
 
   const setControlledRoute = useCallback(
     (next: SummaryWorkspaceRoute, report = true) => {
@@ -141,16 +143,16 @@ export function SummaryShell({
   useEffect(() => {
     const dispose = bridge.onCommand((command: SummaryHostCommand) => {
       if (command.type === "navigate") {
-        const token = navCommitRef.current?.start({
+        const token = navCommit?.start({
           navigationId: command.navigationId,
           hasConversation: false,
         });
-        setNavigationToken(token);
+        setNavigation({ token, controller: navCommit });
         setControlledRoute(command.route, false);
         return;
       }
       if (command.type === "spaceChanged") {
-        navCommitRef.current?.cancel();
+        navCommit?.cancel();
         if (externalRuntime) {
           if (!externalRuntime.acceptSpace(command.runtime)) return;
         } else if (spaceIdRef.current === command.space.id) return;
@@ -184,7 +186,7 @@ export function SummaryShell({
       }
       if (command.type === "sessionRevoked") {
         externalRuntime?.dispose();
-        navCommitRef.current?.cancel();
+        navCommit?.cancel();
         WKApp.loginInfo.logout();
         window.location.reload();
         return;
@@ -197,7 +199,7 @@ export function SummaryShell({
         return;
       }
       if (command.type === "suspend") {
-        navCommitRef.current?.cancel();
+        navCommit?.cancel();
         document.documentElement.dataset.hostVisibility = "hidden";
         return;
       }
@@ -210,9 +212,9 @@ export function SummaryShell({
     });
     return () => {
       dispose();
-      navCommitRef.current?.dispose();
+      navCommit?.dispose();
     };
-  }, [bridge, setControlledRoute, externalRuntime]);
+  }, [bridge, setControlledRoute, externalRuntime, navCommit]);
 
   useEffect(() => {
     const reporter = createReadyReporter(

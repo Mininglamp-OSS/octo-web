@@ -36,6 +36,8 @@ export class ShowConversationOptions {
   workspaceEmbedding?: ChatContentPageProps["workspaceEmbedding"];
   /** Host presentation changes for the same conversation must not remount its composer. */
   preserveCurrentConversation?: boolean;
+  /** Runs after the requested conversation has mounted or updated in place. */
+  onCommitted?: () => void;
 }
 
 /**
@@ -187,7 +189,13 @@ export class EndpointCommon {
             !opts.openChannelSearch && currentRender?.channelKey === channelKey &&
             currentRender.spaceId === spaceId) {
           if (currentRender.page) {
-            currentRender.page.updateWorkspaceEmbedding(opts.workspaceEmbedding);
+            const renderState = currentRender;
+            const page = currentRender.page;
+            const onCommitted = opts.onCommitted && (() => {
+              if (currentRender === renderState && renderState.page === page &&
+                  WKApp.shared.currentSpaceId === spaceId) opts.onCommitted?.();
+            });
+            page.updateWorkspaceEmbedding(opts.workspaceEmbedding, onCommitted);
             return;
           }
           key = currentRender.key;
@@ -200,7 +208,9 @@ export class EndpointCommon {
           <ChatContentPage
             key={key}
             ref={(page) => {
-              if (currentRender === renderState) currentRender.page = page || undefined;
+              if (currentRender !== renderState) return;
+              currentRender.page = page || undefined;
+              if (page && WKApp.shared.currentSpaceId === spaceId) opts.onCommitted?.();
             }}
             channel={channel}
             initLocateMessageSeq={initLocateMessageSeq}

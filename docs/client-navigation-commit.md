@@ -12,6 +12,9 @@
   completion is not required.
 - Same-route summary resumes preserve unsaved drafts and list state. A different
   detail/confirmation task resets only that task page before acknowledgement.
+- Same-conversation communication resumes preserve the mounted composer, draft,
+  attachments, and scroll state, including a conversation opened from the sidebar
+  or by a legacy command before the host requests an acknowledgement.
 - Old Client bridges remain supported. Ordinary browser Web has no new host
   protocol; it shares the task-identity reset described below.
 - Workspace-group transitions keep their attachment-confirmation and
@@ -30,6 +33,8 @@
   integration, capability advertisement, and regression tests.
 - `packages/dmworksummary/src/workspace/SummaryWorkspace.tsx`: key detail and
   confirmation pages by task ID. This shared change also applies to browser Web.
+- `packages/dmworkbase/src/EndpointCommon.tsx` and `Pages/Chat/index.tsx`: optional
+  real-commit callback for new conversations and in-place presentation updates.
 - Ordinary browser entry points and server APIs are outside this change.
 
 ## PR Scope
@@ -40,15 +45,25 @@
 - Add optional `reportNavigationCommitted({ navigationId }): Promise<void>`.
 - Keep route reporting separate from commit acknowledgement.
 - Do not change dependency versions, browser routing, data ownership, or UI
-  controls. The shared task-identity reset is the only browser-facing change.
+  controls. Shared changes are the task-identity reset and the optional
+  conversation commit callback; ordinary Web callers need not provide it.
 
 ## Commit Boundaries
 
 - Communication page/presentation changes acknowledge from a layout effect.
-  Conversation targets additionally wait for `NavigationCommitBoundary` on the
-  actual routed subtree inserted by `EndpointCommon` or the app-bot renderer.
-  Dispatching a command, scheduling a timeout, or rendering an obsolete subtree
-  does not release this barrier.
+  Normal conversation targets additionally wait for `EndpointCommon`'s optional
+  `onCommitted`: a live page ref after mounting or the `setState` completion
+  callback after updating workspace embedding in place. No conditional wrapper
+  is inserted around the normal chat page. App-bot host routes consistently use
+  `NavigationCommitBoundary`, with or without a navigation ID.
+- A cached target is reusable only after a genuine commit. Every right-route
+  operation and non-noop host target dispatch invalidates that cache. Generation,
+  space, and route revision checks reject obsolete completions. `openChannel`
+  alone is never commit evidence. Preservation additionally requires a root-only
+  route and a matching live conversation instance in `EndpointCommon`.
+- Workspace embedding updates compare against queued state in a functional
+  updater. A newer presentation cannot incorrectly skip its update because an
+  older one is still waiting to commit.
 - Summary acknowledgement tokens do not remount the workspace. Its identity
   changes only with the space revision, retaining same-route drafts and list
   state during host hide/resume. Detail and confirmation pages use task ID keys
@@ -59,10 +74,40 @@
   and the ordinary Web entry remain unchanged. Navigation identity/reporting is
   extracted into `client-feature`; existing large shell files retain only local
   route wiring.
+- Both shells scope the controller to the bridge instance and dispose it on
+  replacement/unmount. Callbacks carry their controller as well as its numeric
+  token, preventing a stale callback from releasing a replacement controller.
+- Once both DOM barriers release, acknowledgement delivery uses the existing
+  ready reporter: at most three attempts, each with a 750 ms timeout and 100 ms
+  between attempts. The nominal retry budget is 2.45 seconds from DOM commit,
+  not from the host's request. Cancellation and supersession stop further
+  attempts. A resolved bridge call is not proof of host receipt, and exhausted
+  retries never authorize revealing stale content. The paired Client's
+  five-second reveal timeout still fails closed and offers retry.
 
 ## Verification
 
-Local verification on 2026-09-15:
+Review-fix verification on 2026-09-16, after rebasing onto `ce670e8f`:
+
+- 363 tests in 37 files passed for the three embedded entry/support directories.
+  The new real `EndpointCommon` + `WKViewQueue` suite covers sidebar/legacy
+  preservation, repeated IDs, queued presentation updates, held A-B-A routes,
+  internal detail routes, bridge replacement, and cancellation.
+- 37 shared EndpointCommon/workspace-embedding tests and all six existing shared
+  summary workspace tests passed.
+- The ordinary Web production build and both mock embedded artifact builds
+  passed. No dependency or release-pin changes were made.
+- All 12 targeted paired-Client Electron cases passed across the full run and
+  focused reruns. These include real sidebar-to-host same-conversation navigation
+  with draft/attachment preservation in both runtime modes, summary state, and
+  five workspace cases. Some attempts timed out while waiting for Electron's
+  first window, before business assertions; the startup deadline was not changed.
+- A TypeScript semantic comparison of the five changed production files against
+  the rebased HEAD found no introduced diagnostics (155 baseline, 154 current).
+  Existing shared React typing diagnostics remain; this is not a clean Web
+  typecheck claim.
+
+Historical verification on 2026-09-15:
 
 - After rebasing onto `43692a07`, 337 tests in 35 files passed for the three
   embedded entry/support directories, including the runtime paths.
@@ -96,6 +141,9 @@ pnpm --dir apps/web exec vitest run src/client-communication \
   src/client-summary src/client-feature --maxWorkers=1
 pnpm --dir packages/dmworksummary exec vitest run \
   src/workspace/SummaryWorkspace.test.tsx --maxWorkers=2
+pnpm --dir packages/dmworkbase exec vitest run \
+  src/__tests__/EndpointCommon.presentation.test.tsx \
+  src/Pages/Chat/__tests__/workspaceEmbedding.test.tsx --maxWorkers=1
 pnpm --dir apps/web run build
 ```
 
@@ -117,8 +165,9 @@ env OCTO_ALLOW_DIRTY_CLIENT_ARTIFACT=1 OCTO_ALLOW_MOCK_CLIENT_ARTIFACT=1 \
 ## Integration Baseline
 
 Initial verification used a separately patched `f05fb47d` runtime baseline while
-OSS main was `4a1eb043`. Submission is rebased onto `43692a07`, which contains the
-runtime and workspace integration. The runtime parser, owner forwarding, lazy UI
+OSS main was `4a1eb043`. Initial submission was rebased onto `43692a07`;
+the review-fix worktree is rebased onto `ce670e8f`. Both contain the runtime and
+workspace integration. The runtime parser, owner forwarding, lazy UI
 cancellation, and mount-time capability advertisement now belong to this PR.
 Existing scope changes, external summary attention, workspace attachment guards,
 and the forwarding surface are preserved.

@@ -31,8 +31,9 @@ import {
   type DocumentForwardRequest,
 } from "./hostBridge";
 import { createReadyReporter } from "./readyReporter";
-import { NavigationCommitController, hasNavigationCommitBridge } from "../client-feature/navigationCommit";
+import type { NavigationCommitController } from "../client-feature/navigationCommit";
 import { NavigationCommitBoundary } from "../client-feature/NavigationCommitBoundary";
+import { useNavigationCommit } from "../client-feature/useNavigationCommit";
 import { Toast } from "@douyinfe/semi-ui";
 import { installSummaryNavigation } from "./summaryNavigation";
 import { installDocumentForward } from "./documentForward";
@@ -40,7 +41,13 @@ import { installSummaryRequests } from "./summaryRequests";
 import { createWorkspaceNavigationGuard } from "./workspaceNavigationGuard";
 import "./index.css";
 
-type PendingNavigation = { generation: number; token?: number; page: CommunicationPage };
+type PendingNavigation = {
+  generation: number;
+  token?: number;
+  page: CommunicationPage;
+  controller?: NavigationCommitController;
+  routeRevision?: number;
+};
 
 function bindLeftRoute(context: WKViewQueueContext) {
   WKApp.routeLeft.setPush = (view) => context.push(view);
@@ -49,11 +56,11 @@ function bindLeftRoute(context: WKViewQueueContext) {
   WKApp.routeLeft.setPopToRoot = () => context.popToRoot();
 }
 
-function bindRightRoute(context: WKViewQueueContext, prepare: (view: JSX.Element) => JSX.Element) {
-  WKApp.routeRight.setPush = (view) => context.push(view);
-  WKApp.routeRight.setReplaceToRoot = (view) => context.replaceToRoot(prepare(view));
-  WKApp.routeRight.setPop = () => context.pop();
-  WKApp.routeRight.setPopToRoot = () => context.popToRoot();
+function bindRightRoute(context: WKViewQueueContext, invalidate: (rootOnly: boolean) => void) {
+  WKApp.routeRight.setPush = (view) => { invalidate(false); context.push(view); };
+  WKApp.routeRight.setReplaceToRoot = (view) => { invalidate(true); context.replaceToRoot(view); };
+  WKApp.routeRight.setPop = () => { invalidate(false); context.pop(); };
+  WKApp.routeRight.setPopToRoot = () => { invalidate(false); context.popToRoot(); };
 }
 
 function reportNavigation(
@@ -91,6 +98,7 @@ function openTarget(
   target: ConversationTarget,
   workspaceEmbedding?: ChatContentPageProps["workspaceEmbedding"],
   preserveCurrentConversation = false,
+  onCommitted?: () => void,
 ) {
   assertCompatibleTargetVariant(target);
   const channel = new Channel(target.channelId, target.channelType);
@@ -114,10 +122,14 @@ function openTarget(
   }
   if (target.variant === "app-bot") {
     WKApp.shared.openChannel = channel;
-    WKApp.routeRight.replaceToRoot(renderAppBotConversation({
-      channelId: target.channelId,
-      displayName: target.displayName || target.channelId,
-    }, channel));
+    WKApp.routeRight.replaceToRoot(
+      <NavigationCommitBoundary onCommit={() => onCommitted?.()}>
+        {renderAppBotConversation({
+          channelId: target.channelId,
+          displayName: target.displayName || target.channelId,
+        }, channel)}
+      </NavigationCommitBoundary>,
+    );
     WKApp.shared.notifyListener();
     return;
   }
@@ -126,6 +138,7 @@ function openTarget(
     openChannelSearch: target.openChannelSearch,
     ...(workspaceEmbedding ? { workspaceEmbedding } : {}),
     ...(preserveCurrentConversation ? { preserveCurrentConversation: true } : {}),
+    onCommitted,
   });
 }
 
@@ -164,46 +177,54 @@ export function CommunicationShell({
   onReadyRef.current = onReady;
   const readyReporterRef = useRef<ReturnType<typeof createReadyReporter>>();
   const navigationGeneration = useRef(0);
+  const rightRouteRevision = useRef(0);
+  const rightRootOnly = useRef(false);
   const openingTarget = useRef<PendingNavigation>();
   const pendingNavigation = useRef<PendingNavigation>();
   const [navigationRevision, setNavigationRevision] = useState(0);
-  const navCommitRef = useRef<NavigationCommitController | undefined>(
-    hasNavigationCommitBridge(bridge) ? new NavigationCommitController(
-      (navigationId) => bridge.reportNavigationCommitted!({ navigationId }),
-    ) : undefined,
-  );
+  const navCommit = useNavigationCommit(bridge);
 
   const cancelNavigation = useCallback(() => {
     workspaceNavigationGuard.cancel();
     navigationGeneration.current++;
     pendingNavigation.current = undefined;
     pendingTargetRef.current = undefined;
-    navCommitRef.current?.cancel();
-  }, [workspaceNavigationGuard]);
+    navCommit?.cancel();
+  }, [navCommit, workspaceNavigationGuard]);
 
   const commitPreparedTarget = useCallback((target: ConversationTarget, request: PendingNavigation) => {
     if (request.generation !== navigationGeneration.current) return;
     const previous = workspaceTargetRef.current;
     const currentTarget = currentTargetRef.current;
     const channel = WKApp.shared.openChannel;
-    if (request.token === undefined && target.variant !== "app-bot" && currentTarget?.channelId === target.channelId &&
+    const spaceId = spaceIdRef.current;
+    const routeRevision = rightRouteRevision.current;
+    const onCommitted = () => {
+      if (request.generation !== navigationGeneration.current || spaceIdRef.current !== spaceId ||
+          (request.routeRevision ?? routeRevision) !== rightRouteRevision.current) return;
+      currentTargetRef.current = target;
+      if (request.token !== undefined) request.controller?.conversationCommitted(request.token);
+    };
+    if (target.variant !== "app-bot" && currentTarget?.channelId === target.channelId &&
         currentTarget.channelType === target.channelType && currentTarget.variant === target.variant &&
         currentTarget.messageSeq === target.messageSeq &&
         currentTarget.openChannelSearch === target.openChannelSearch &&
-        channel?.channelID === target.channelId && channel.channelType === target.channelType) return;
+        channel?.channelID === target.channelId && channel.channelType === target.channelType) {
+      onCommitted();
+      return;
+    }
     const preserveCurrentConversation = Boolean(
-      request.token === undefined && !appTargetRef.current && (previous || target.variant === "workspace-group" ||
+      rightRootOnly.current && !appTargetRef.current &&
+      (request.token !== undefined || previous || target.variant === "workspace-group" ||
         (workspaceReturnTargetRef.current?.channelID === target.channelId &&
          workspaceReturnTargetRef.current.channelType === target.channelType)) &&
       channel?.channelID === target.channelId && channel.channelType === target.channelType &&
       !target.messageSeq && !target.openChannelSearch
     );
     workspaceReturnTargetRef.current = undefined;
-    currentTargetRef.current = target;
+    currentTargetRef.current = undefined;
     appTargetRef.current = target.variant === "app-bot" ? target : undefined;
     workspaceTargetRef.current = target.variant === "workspace-group" ? target : undefined;
-    const spaceId = spaceIdRef.current;
-    // Only the routed subtree from this dispatch may acknowledge the target.
     openingTarget.current = request;
     try { openTarget(target, target.variant === "workspace-group" ? {
       openConversation: (channel) => {
@@ -221,7 +242,7 @@ export function CommunicationShell({
         if (workspaceTargetRef.current !== target || spaceIdRef.current !== spaceId) return;
         Toast.info(t("app.workspaceConversation.openInMessages"));
       },
-    } : undefined, preserveCurrentConversation); } finally { openingTarget.current = undefined; }
+    } : undefined, preserveCurrentConversation, onCommitted); } finally { openingTarget.current = undefined; }
   }, [bridge, workspaceNavigationGuard]);
 
   const openGuardedTarget = useCallback((target: ConversationTarget, request: PendingNavigation) => {
@@ -265,14 +286,12 @@ export function CommunicationShell({
     });
   }, [openGuardedTarget]);
 
-  const prepareRightView = useCallback((view: JSX.Element) => {
-    const request = openingTarget.current;
-    if (!request || request.token === undefined) return view;
-    return <NavigationCommitBoundary onCommit={() => {
-      if (request.generation === navigationGeneration.current) {
-        navCommitRef.current?.conversationCommitted(request.token);
-      }
-    }}>{view}</NavigationCommitBoundary>;
+  const invalidateCommittedTarget = useCallback((rootOnly: boolean) => {
+    // Includes renderer-internal routes, whose openChannel changes precede DOM commits.
+    currentTargetRef.current = undefined;
+    rightRootOnly.current = rootOnly;
+    rightRouteRevision.current++;
+    if (openingTarget.current) openingTarget.current.routeRevision = rightRouteRevision.current;
   }, []);
 
   useEffect(() => installSummaryNavigation(bridge, (error) => {
@@ -320,7 +339,7 @@ export function CommunicationShell({
   useLayoutEffect(() => {
     const request = pendingNavigation.current;
     if (!request || request.generation !== navigationRevision || request.page !== activePage) return;
-    if (request.token !== undefined) navCommitRef.current?.pageCommitted(request.token);
+    if (request.token !== undefined) request.controller?.pageCommitted(request.token);
     openPreparedTarget();
   }, [activePage, presentation, navigationRevision, openPreparedTarget]);
 
@@ -368,11 +387,13 @@ export function CommunicationShell({
           ...previousTarget, variant: undefined,
         } : undefined) : undefined;
         if (command.presentation) setPresentation(command.presentation);
-        const token = navCommitRef.current?.start({
+        const token = navCommit?.start({
           navigationId: command.navigationId,
           hasConversation: Boolean(target),
         });
-        pendingNavigation.current = { generation: navigationGeneration.current, token, page: command.page };
+        pendingNavigation.current = {
+          generation: navigationGeneration.current, token, page: command.page, controller: navCommit,
+        };
         setNavigationRevision(navigationGeneration.current);
         if (command.page !== activePageRef.current) {
           WKApp.routeLeft.popToRoot();
@@ -448,7 +469,7 @@ export function CommunicationShell({
       WKApp.switchToMenuById = undefined;
       cancelNavigation();
     };
-  }, [activatePage, bridge, initialPage, cancelNavigation, reportReadyWhenPrepared, runtimeOwned]);
+  }, [activatePage, bridge, initialPage, cancelNavigation, navCommit, reportReadyWhenPrepared, runtimeOwned]);
 
   useEffect(() => {
     if (runtimeOwned) return;
@@ -515,7 +536,7 @@ export function CommunicationShell({
             markRouteReady("left");
           }}
           onRightContext={(context) => {
-            bindRightRoute(context, prepareRightView);
+            bindRightRoute(context, invalidateCommittedTarget);
             markRouteReady("right");
             openPreparedTarget();
           }}

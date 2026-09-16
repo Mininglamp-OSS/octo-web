@@ -296,6 +296,20 @@ describe("SummaryShell", () => {
   });
 
   describe("navigation commit", () => {
+    it("reports to the replacement bridge even when the route and numeric token are reused", async () => {
+      const route = { view: "list" as const };
+      const shell = render(<SummaryShell bridge={mocks.bridge} initialRoute={route}
+        initialSpaceId="space-a" onReady={async () => {}} />);
+      await act(async () => mocks.command.listener?.({ type: "navigate", route, navigationId: 1 }));
+      await waitFor(() => expect(mocks.bridge.reportNavigationCommitted).toHaveBeenCalledWith({ navigationId: 1 }));
+      const next = { ...mocks.bridge, reportNavigationCommitted: vi.fn(async () => {}) };
+      shell.rerender(<SummaryShell bridge={next} initialRoute={route}
+        initialSpaceId="space-a" onReady={async () => {}} />);
+      await act(async () => mocks.command.listener?.({ type: "navigate", route, navigationId: 2 }));
+      await waitFor(() => expect(next.reportNavigationCommitted).toHaveBeenCalledExactlyOnceWith({ navigationId: 2 }));
+      expect(mocks.bridge.reportNavigationCommitted).toHaveBeenCalledTimes(1);
+    });
+
     it("reports navigation commit after host navigate with id", async () => {
       render(
         <SummaryShell

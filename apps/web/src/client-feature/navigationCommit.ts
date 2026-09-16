@@ -1,3 +1,5 @@
+import { createReadyReporter, type ReadyReporter } from "./readyReporter";
+
 interface PendingNavigation {
   /** Monotonically increasing identity token returned by start(). */
   id: number;
@@ -29,6 +31,7 @@ interface PendingNavigation {
 export class NavigationCommitController {
   private pending: PendingNavigation | undefined;
   private gen = 0;
+  private reporter: ReadyReporter | undefined;
 
   constructor(
     private readonly report: (navigationId: number) => Promise<void>,
@@ -65,7 +68,7 @@ export class NavigationCommitController {
    * stale layout-effect callback cannot release the latest pending
    * navigation's barrier.
    */
-  pageCommitted(token?: number): void {
+  pageCommitted(token: number): void {
     const pending = this.matching(token);
     if (!pending) return;
     pending.pagePending = false;
@@ -76,7 +79,7 @@ export class NavigationCommitController {
    * Release the conversation barrier. Pass the token returned by `start()`
    * so a stale callback after supersede/cancel cannot falsely commit.
    */
-  conversationCommitted(token?: number): void {
+  conversationCommitted(token: number): void {
     const pending = this.matching(token);
     if (!pending) return;
     pending.conversationPending = false;
@@ -87,12 +90,15 @@ export class NavigationCommitController {
   cancel(): void {
     this.gen++;
     this.pending = undefined;
+    this.reporter?.dispose();
+    this.reporter = undefined;
   }
 
   dispose(): void {
     this.cancel();
   }
 
+  /** Whether the DOM barriers are pending, independent of acknowledgement delivery. */
   get isPending(): boolean {
     return this.pending !== undefined;
   }
@@ -101,11 +107,9 @@ export class NavigationCommitController {
     return this.pending?.navigationId;
   }
 
-  /** Return the pending navigation only when it matches the optional token. */
-  private matching(token?: number): PendingNavigation | undefined {
+  private matching(token: number): PendingNavigation | undefined {
     const pending = this.pending;
     if (!pending) return undefined;
-    if (token === undefined) return pending;
     return pending.id === token ? pending : undefined;
   }
 
@@ -116,14 +120,21 @@ export class NavigationCommitController {
     const capturedGen = this.gen;
     const id = pending.navigationId;
     this.pending = undefined;
-    void Promise.resolve()
-      .then(() => {
-        if (this.gen !== capturedGen) return;
-        return this.report(id);
-      })
-      .catch((error: unknown) => {
-        console.error("[NavigationCommit] failed to report commit", error);
-      });
+    this.reporter = createReadyReporter(
+      () => this.gen === capturedGen ? this.report(id) : Promise.resolve(),
+      {
+        // Keep retries below the host's five-second budget; its reveal deadline still wins.
+        maxAttempts: 3,
+        attemptTimeoutMs: 750,
+        retryDelayMs: 100,
+        onExhausted: (error) => {
+          if (this.gen === capturedGen) {
+            console.error("[NavigationCommit] failed to report commit", error);
+          }
+        },
+      },
+    );
+    this.reporter.request();
   }
 }
 

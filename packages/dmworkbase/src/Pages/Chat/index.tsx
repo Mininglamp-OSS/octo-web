@@ -516,13 +516,14 @@ export class ChatContentPage extends Component<
   }
 
   updateWorkspaceEmbedding(
-    workspaceEmbedding?: ChatContentPageProps["workspaceEmbedding"]
+    workspaceEmbedding?: ChatContentPageProps["workspaceEmbedding"],
+    onCommitted?: () => void
   ) {
-    if (this.state.workspaceEmbedding === workspaceEmbedding) return;
-    this.setState({
+    // Evaluate against queued state so a newer presentation supersedes an uncommitted one.
+    this.setState((state) => state.workspaceEmbedding === workspaceEmbedding ? null : {
       ...closeChatRightPanels(),
       workspaceEmbedding,
-    });
+    }, onCommitted);
   }
 
   private _openWebhookPreview = (target: WebhookIssuePreviewTarget) => {

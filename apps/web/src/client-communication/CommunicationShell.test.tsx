@@ -128,11 +128,12 @@ vi.mock("@octo/base", () => {
     config: {},
     loginInfo: { logout: vi.fn() },
     endpoints: {
-      showConversation: vi.fn((channel) => {
+      showConversation: vi.fn((channel, opts) => {
         // EndpointCommon dispatches synchronously while chat is active:
         // replace the current right route with a chat-content view.
         wkApp.routeRight.replaceToRoot(
-          <div data-testid="chat-content-page" data-channel={channel.channelID} />,
+          <div data-testid="chat-content-page" data-channel={channel.channelID}
+            ref={(node) => { if (node) opts?.onCommitted?.(); }} />,
         );
       }),
     },

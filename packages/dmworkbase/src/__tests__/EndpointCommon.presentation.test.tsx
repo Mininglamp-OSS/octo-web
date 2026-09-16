@@ -74,7 +74,7 @@ describe("host conversation presentation identity", () => {
 
     open("group", { preserveCurrentConversation: true });
 
-    expect(page.updateWorkspaceEmbedding).toHaveBeenCalledWith(undefined);
+    expect(page.updateWorkspaceEmbedding).toHaveBeenCalledWith(undefined, undefined);
     expect(state.render).toHaveBeenCalledTimes(1);
   });
 
@@ -105,5 +105,53 @@ describe("host conversation presentation identity", () => {
     const search = open("group", { preserveCurrentConversation: true, openChannelSearch: true });
     expect(search.key).toBe("group-2");
     expect(search.props.initialShowChannelSearch).toBe(true);
+  });
+
+  it("acknowledges only the latest rendered conversation, never its dispatch", () => {
+    const open = setup();
+    const oldCommit = vi.fn();
+    const nextCommit = vi.fn();
+    const old = open("group", { onCommitted: oldCommit });
+    const next = open("other", { onCommitted: nextCommit });
+    expect(oldCommit).not.toHaveBeenCalled();
+    expect(nextCommit).not.toHaveBeenCalled();
+    (old as any).ref({ updateWorkspaceEmbedding: vi.fn() });
+    expect(oldCommit).not.toHaveBeenCalled();
+    (next as any).ref({ updateWorkspaceEmbedding: vi.fn() });
+    expect(nextCommit).toHaveBeenCalledTimes(1);
+    (next as any).ref(null);
+    expect(nextCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["route", "unmount", "space"])("rejects a delayed in-place acknowledgement after %s changes", (change) => {
+    const open = setup();
+    const first = open("group");
+    let finish!: () => void;
+    (first as any).ref({
+      updateWorkspaceEmbedding: (_: unknown, callback: () => void) => { finish = callback; },
+    });
+    const onCommitted = vi.fn();
+    open("group", { preserveCurrentConversation: true, onCommitted });
+    expect(onCommitted).not.toHaveBeenCalled();
+    if (change === "route") open("other");
+    else if (change === "unmount") (first as any).ref(null);
+    else state.spaceId = "space-b";
+    finish();
+    expect(onCommitted).not.toHaveBeenCalled();
+  });
+
+  it("acknowledges an in-place update only from its completion callback", () => {
+    const open = setup();
+    const first = open("group");
+    let finish!: () => void;
+    (first as any).ref({
+      updateWorkspaceEmbedding: (_: unknown, callback: () => void) => { finish = callback; },
+    });
+    const onCommitted = vi.fn();
+    open("group", { preserveCurrentConversation: true, onCommitted });
+    expect(onCommitted).not.toHaveBeenCalled();
+    expect(state.render).toHaveBeenCalledTimes(1);
+    finish();
+    expect(onCommitted).toHaveBeenCalledTimes(1);
   });
 });
