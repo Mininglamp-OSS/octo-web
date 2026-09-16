@@ -78,9 +78,10 @@ vi.mock('../SummaryDetailPage', () => ({ default: () => null }));
 vi.mock('../../components/ChatSelectorModal', () => ({ default: () => null }));
 vi.mock('../../components/MemberSelectorModal', () => ({ default: () => null }));
 vi.mock('../../features/documentSource/DocumentSelectorModal', () => ({
-    default: ({ visible, onConfirm }: any) => visible ? (
+    default: ({ visible, onConfirm, maxSelect }: any) => visible ? (
         <button
             data-testid="document-picker-confirm-fixture"
+            data-max-select={maxSelect}
             onClick={() => onConfirm([{
                 docId: 'doc-1',
                 title: '项目复盘',
@@ -94,6 +95,12 @@ vi.mock('../../features/documentSource/DocumentSelectorModal', () => ({
 }));
 
 import { getTopicTemplatesConfig } from '../../api/summaryApi';
+import {
+    __fireConfigChangeListeners,
+    __resetDocsPort,
+    __setDocsOn,
+    __setDocsSearchOn,
+} from '../../__mocks__/dmworkBase';
 
 function render(ui: React.ReactElement, options?: any) {
     return rtlRender(ui, { legacyRoot: true, ...options });
@@ -271,6 +278,9 @@ describe('SummaryCreatePage templates', () => {
 describe('SummaryCreatePage document sources', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        __resetDocsPort();
+        __setDocsOn(true);
+        __setDocsSearchOn(true);
     });
 
     it('creates a single-user manual summary with document source_type=4', async () => {
@@ -301,6 +311,61 @@ describe('SummaryCreatePage document sources', () => {
         );
         const request = vi.mocked(api.createSummary).mock.calls[0][0];
         expect(request.participants).toBeUndefined();
+    });
+
+    it('uses the fixed page limit of 10 documents', async () => {
+        await act(async () => {
+            render(<SummaryCreatePage />);
+            await flushPromises();
+        });
+
+        fireEvent.click(screen.getByTestId(summaryTestIds.createSelectDocument));
+        expect(screen.getByTestId('document-picker-confirm-fixture')).toHaveAttribute(
+            'data-max-select',
+            '10',
+        );
+    });
+
+    it('follows docs capability changes and closes an open picker when disabled', async () => {
+        __setDocsOn(false);
+        __setDocsSearchOn(false);
+        await act(async () => {
+            render(<SummaryCreatePage />);
+            await flushPromises();
+        });
+        expect(screen.queryByTestId(summaryTestIds.createSelectDocument)).not.toBeInTheDocument();
+
+        act(() => {
+            __setDocsOn(true);
+            __setDocsSearchOn(true);
+            __fireConfigChangeListeners();
+        });
+        fireEvent.click(screen.getByTestId(summaryTestIds.createSelectDocument));
+        expect(screen.getByTestId('document-picker-confirm-fixture')).toBeInTheDocument();
+
+        act(() => {
+            __setDocsSearchOn(false);
+            __fireConfigChangeListeners();
+        });
+        expect(screen.queryByTestId(summaryTestIds.createSelectDocument)).not.toBeInTheDocument();
+        expect(screen.queryByTestId('document-picker-confirm-fixture')).not.toBeInTheDocument();
+    });
+
+    it('hides the continue-adding entry when document search is disabled at runtime', async () => {
+        await act(async () => {
+            render(<SummaryCreatePage />);
+            await flushPromises();
+        });
+        fireEvent.click(screen.getByTestId(summaryTestIds.createSelectDocument));
+        fireEvent.click(screen.getByTestId('document-picker-confirm-fixture'));
+        expect(screen.getByText('项目复盘')).toBeInTheDocument();
+        expect(screen.getByText('选择文档')).toBeInTheDocument();
+
+        act(() => {
+            __setDocsOn(false);
+            __fireConfigChangeListeners();
+        });
+        expect(screen.queryByText('选择文档')).not.toBeInTheDocument();
     });
 });
 

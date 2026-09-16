@@ -1846,6 +1846,57 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
     });
 });
 
+describe('SummaryDetailPage — document summaries never enter the schedule pipeline', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it('does not render the schedule button for a document source', () => {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: baseDetail({
+                permissions: { can_edit: true, can_schedule: true },
+                sources: [{ source_type: 4, source_id: 'doc-1' }],
+            }),
+        };
+
+        expect((page as any).renderScheduleButton()).toBeNull();
+    });
+
+    it('defensively skips createSchedule when save is invoked directly', async () => {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: baseDetail({
+                sources: [{ source_type: 4, source_id: 'doc-1' }],
+            }),
+            scheduleItem: null,
+        };
+
+        await page.handleScheduleSave({ unit: 'week', every: 1, time: '09:00' } as any);
+
+        expect(api.createSchedule).not.toHaveBeenCalled();
+    });
+});
+
+describe('SummaryDetailPage — document source snapshot version', () => {
+    it('includes source_version in the document source label', () => {
+        const page = makePage(1);
+        (page as any).context = {
+            t: (key: string, options?: { values?: { version?: number } }) =>
+                key === 'summary.source.version'
+                    ? `版本 ${options?.values?.version}`
+                    : key,
+        };
+
+        expect((page as any).sourceLabel({
+            source_type: 4,
+            source_id: 'doc-1',
+            source_name: '项目复盘',
+            source_version: 7,
+        })).toBe('项目复盘 · 版本 7');
+    });
+});
+
 // ─── m1（隐私收口，第二轮）：他人个人报告折叠态也不得露 [n] 角标 ───
 //
 // 背景：renderParticipantReports 折叠预览旧实现直接 content.slice(0,100)，

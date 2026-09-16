@@ -18,6 +18,8 @@ const DocumentSelectorModal: React.FC<DocumentSelectorModalProps> = (props) => {
     maxSelect: props.maxSelect,
   });
 
+  if (!props.visible) return null;
+
   return (
     <DocumentSelector
       visible={props.visible}

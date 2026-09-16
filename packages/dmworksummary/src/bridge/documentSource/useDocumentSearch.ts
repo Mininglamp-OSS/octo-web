@@ -22,17 +22,28 @@ export function useDocumentSearch({
   const [retryKey, setRetryKey] = useState(0);
   const requestSequence = useRef(0);
   const wasVisible = useRef(false);
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
 
   useEffect(() => {
+    if (!visible) {
+      requestSequence.current += 1;
+      wasVisible.current = false;
+      setKeyword("");
+      setItems([]);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
     if (visible && !wasVisible.current) {
       setKeyword("");
       setItems([]);
-      setLocalSelected(selected);
+      setLocalSelected(selectedRef.current);
       setError(null);
       setIsLoading(false);
     }
     wasVisible.current = visible;
-  }, [selected, visible]);
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) {

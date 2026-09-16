@@ -88,6 +88,8 @@ export const WKApp = {
   // remoteConfig 的最小测试替身：与真实 App.tsx 的 addConfigChangeListener(cb) => () => void 同形；
   // __fireConfigChangeListeners() 模拟 appconfig 到位 / docs_on 翻转时的广播（round-4 P2-a）。
   remoteConfig: {
+    get docsOn() { return __docsOn; },
+    get docsSearchOn() { return __docsSearchOn; },
     addConfigChangeListener: (cb: () => void): (() => void) => {
       __configChangeListeners.add(cb);
       return () => { __configChangeListeners.delete(cb); };
@@ -166,12 +168,15 @@ export const copyToClipboard = async (_text: string): Promise<boolean> => true;
 // __setDocsConvertHandler / __setDocsOn 控制端口是否可用。
 let __docsConvertHandler: ((p: { title: string; markdown: string }) => Promise<{ docId: string; url: string }>) | null = null;
 let __docsOn = false;
+let __docsSearchOn = false;
 
 export const __setDocsConvertHandler = (h: typeof __docsConvertHandler) => { __docsConvertHandler = h; };
 export const __setDocsOn = (v: boolean) => { __docsOn = v; };
+export const __setDocsSearchOn = (v: boolean) => { __docsSearchOn = v; };
 export const __resetDocsPort = () => {
   __docsConvertHandler = null;
   __docsOn = false;
+  __docsSearchOn = false;
   __configChangeListeners.clear();
 };
 

@@ -2204,6 +2204,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const requestTaskId = this.taskId;
         const { detail, scheduleItem } = this.state;
         if (!detail || detail.task_id !== requestTaskId) return;
+        // 第一期文档总结只支持手动创建。保存入口也做防御性拦截，避免绕过
+        // 详情头入口后把 source_type=DOCUMENT 写入传统定时 pipeline。
+        if (this.isDocumentSummaryDetail(detail)) return;
 
         // 竞态修复（第3轮）finding 1：多人判定只能退回 members 兜底且 members 尚未
         // 加载完成时，不能保存——否则 isMultiPerson() 会把「members 加载中」误判为

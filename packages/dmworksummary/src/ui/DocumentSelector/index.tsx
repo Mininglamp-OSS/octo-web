@@ -115,7 +115,6 @@ const DocumentSelector: React.FC<DocumentSelectorProps> = ({
           <Button
             data-testid={summaryTestIds.documentSelectorConfirmBtn}
             theme="solid"
-            disabled={state.selected.length === 0}
             onClick={actions.onConfirm}
           >
             {t("summary.common.confirm")}

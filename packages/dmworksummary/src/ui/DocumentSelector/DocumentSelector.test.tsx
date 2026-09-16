@@ -25,7 +25,7 @@ const item = {
 };
 
 describe("DocumentSelector", () => {
-  it("toggles a document and confirms the selection", () => {
+  it("toggles a document and allows confirming an empty selection", () => {
     const onToggle = vi.fn();
     const onConfirm = vi.fn();
     render(
@@ -51,6 +51,9 @@ describe("DocumentSelector", () => {
 
     fireEvent.click(screen.getByText("项目复盘"));
     expect(onToggle).toHaveBeenCalledWith(item);
-    expect(screen.getByTestId("summary-document-selector-confirm-btn")).toBeDisabled();
+    const confirm = screen.getByTestId("summary-document-selector-confirm-btn");
+    expect(confirm).not.toBeDisabled();
+    fireEvent.click(confirm);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 });
