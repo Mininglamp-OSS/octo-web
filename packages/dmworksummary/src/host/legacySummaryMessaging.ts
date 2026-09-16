@@ -47,7 +47,10 @@ export const legacySummaryMessagingPort: SummaryMessagingPort = {
     );
   },
 
-  async notifySummaryCompleted({ previousStatus, detail }) {
+  async notifySummaryCompleted({ previousStatus, detail }, { isActive } = {}) {
+    const spaceId = WKApp.shared.currentSpaceId;
+    const active = () => WKApp.shared.currentSpaceId === spaceId && (isActive?.() ?? true);
+    if (!active()) return;
     const uid = WKApp.loginInfo.uid ?? "";
     const displayName =
       WKApp.loginInfo.selfDisplayName?.() || WKApp.loginInfo.name || uid;
@@ -58,11 +61,14 @@ export const legacySummaryMessagingPort: SummaryMessagingPort = {
       TaskStatus.COMPLETED,
       ChannelTypeGroup,
       {
+        isActive: active,
         sendToChannel: async (channel, currentUserId) => {
+          if (!active()) return;
           const content = new SummaryTipContent().setSender(
             currentUserId,
             displayName || currentUserId
           );
+          if (!active()) return;
           await WKSDK.shared().chatManager.send(content, channel);
         },
         isDisbanded: isConversationDisbanded,
@@ -90,6 +96,7 @@ export const legacySummaryMessagingPort: SummaryMessagingPort = {
               messageMode: "serial",
               interMessageDelayMs: INTER_MESSAGE_DELAY_MS,
               spaceId,
+              isActive: active,
             }
           );
           if (!active()) { onError?.(new SummaryForwardContextExpiredError()); return; }

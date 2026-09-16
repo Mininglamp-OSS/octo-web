@@ -35,6 +35,12 @@ export async function buildClientFeature({
   outputDirectory,
   contractRevision = 1,
   documentForwardVersion,
+  backgroundRuntimeVersion,
+  summaryAttentionProviderVersion,
+  externalSummaryAttentionVersion,
+  workspaceConversationVersion,
+  forwardSurfaceVersion,
+  forwardSurfaceEntry,
   includeImMock = false,
 }) {
   const scriptDir = path.dirname(fileURLToPath(scriptUrl));
@@ -90,6 +96,10 @@ export async function buildClientFeature({
     throw new Error(`[build-${featureId}] missing generated HTML entry`);
   }
   fs.renameSync(generatedEntry, entry);
+  if (forwardSurfaceVersion !== undefined &&
+      (!forwardSurfaceEntry || !fs.existsSync(path.join(outputDir, forwardSurfaceEntry)))) {
+    throw new Error(`[build-${featureId}] missing forward surface HTML entry`);
+  }
 
   if (!buildEnv.e2eMock) {
     fs.rmSync(path.join(outputDir, "mockServiceWorker.js"), { force: true });
@@ -123,6 +133,11 @@ export async function buildClientFeature({
     hostBridgeMajor: 1,
     contractRevision,
     ...(documentForwardVersion === undefined ? {} : { documentForwardVersion }),
+    ...(backgroundRuntimeVersion === undefined ? {} : { backgroundRuntimeVersion }),
+    ...(summaryAttentionProviderVersion === undefined ? {} : { summaryAttentionProviderVersion }),
+    ...(externalSummaryAttentionVersion === undefined ? {} : { externalSummaryAttentionVersion }),
+    ...(workspaceConversationVersion === undefined ? {} : { workspaceConversationVersion }),
+    ...(forwardSurfaceVersion === undefined ? {} : { forwardSurfaceVersion, forwardSurfaceEntry }),
     sourceDirty,
     e2eMock: buildEnv.e2eMock || (includeImMock && buildEnv.e2eMockIm),
     mockFlags: {

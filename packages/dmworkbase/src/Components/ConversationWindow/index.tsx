@@ -22,6 +22,8 @@ import "./index.css";
 
 export type ConversationWindowMode = "primary" | "auxiliary";
 
+export type ConversationWindowHeaderMode = "full" | "selection-only";
+
 export interface ConversationWindowHeaderModel {
   avatar?: ReactNode;
   title: ReactNode;
@@ -42,6 +44,7 @@ export interface ConversationWindowProps {
   client: ChatClient;
   channel: Channel;
   header: ConversationWindowHeaderModel;
+  headerMode?: ConversationWindowHeaderMode;
   selection?: ConversationWindowSelectionModel;
   hostCapabilities?: ChatHostCapabilities;
   mode?: ConversationWindowMode;
@@ -173,6 +176,7 @@ export function ConversationWindow({
   client,
   channel,
   header,
+  headerMode = "full",
   selection,
   hostCapabilities,
   mode = "primary",
@@ -186,6 +190,8 @@ export function ConversationWindow({
 }: ConversationWindowProps): JSX.Element {
   const { t } = useI18n();
   const selectionActive = selection?.active === true;
+  const headerHidden =
+    headerMode === "selection-only" && !selectionActive;
   const inertProps = inactive ? ({ inert: "" } as Record<string, string>) : {};
 
   return (
@@ -195,80 +201,85 @@ export function ConversationWindow({
         "wk-chat-content-chat",
         "wk-chat-capability-window",
         selectionActive && "wk-chat-content-chat-selection",
+        headerMode === "selection-only" &&
+          "wk-chat-content-chat-selection-only",
+        headerHidden && "wk-chat-conversation-header-hidden",
         className
       )}
       style={style}
       aria-hidden={inactive || undefined}
       {...inertProps}
     >
-      <div
-        className={classNames(
-          "wk-chat-conversation-header",
-          selectionActive && "wk-chat-conversation-header-selection"
-        )}
-        data-desktop-chrome="header"
-      >
-        <div className="wk-chat-conversation-header-content" data-desktop-chrome="layout">
-          <div className="wk-chat-conversation-header-left">
-            {selectionActive && selection ? (
-              <div className="wk-chat-conversation-selection-header">
-                <div className="wk-chat-conversation-selection-title">
-                  {selection.label}
-                </div>
-              </div>
-            ) : (
-              <>
-                {header.onBack && (
-                  <button
-                    type="button"
-                    className="wk-chat-conversation-header-back"
-                    aria-label={t("common.back")}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      header.onBack?.();
-                    }}
-                  >
-                    <span className="wk-chat-conversation-header-back-icon" />
-                  </button>
-                )}
-                <div className="wk-chat-conversation-header-channel">
-                  {header.avatar && (
-                    <div className="wk-chat-conversation-header-channel-avatar">
-                      {header.avatar}
-                    </div>
-                  )}
-                  <div className="wk-chat-conversation-header-channel-info">
-                    <div
-                      className={classNames(
-                        "wk-chat-conversation-header-channel-info-name",
-                        header.titleClassName
-                      )}
-                    >
-                      {header.title}
-                    </div>
+      {(headerMode === "full" || selectionActive) && (
+        <div
+          className={classNames(
+            "wk-chat-conversation-header",
+            selectionActive && "wk-chat-conversation-header-selection"
+          )}
+          data-desktop-chrome="header"
+        >
+          <div className="wk-chat-conversation-header-content" data-desktop-chrome="layout">
+            <div className="wk-chat-conversation-header-left">
+              {selectionActive && selection ? (
+                <div className="wk-chat-conversation-selection-header">
+                  <div className="wk-chat-conversation-selection-title">
+                    {selection.label}
                   </div>
                 </div>
-              </>
-            )}
-          </div>
-          <div className="wk-chat-conversation-header-right">
-            {selectionActive && selection ? (
-              <button
-                type="button"
-                className="wk-chat-conversation-selection-cancel"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  selection.onCancel();
-                }}
-              >
-                {selection.cancelLabel}
-              </button>
-            ) : (
-              header.actions
-            )}
+              ) : (
+                <>
+                  {header.onBack && (
+                    <button
+                      type="button"
+                      className="wk-chat-conversation-header-back"
+                      aria-label={t("common.back")}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        header.onBack?.();
+                      }}
+                    >
+                      <span className="wk-chat-conversation-header-back-icon" />
+                    </button>
+                  )}
+                  <div className="wk-chat-conversation-header-channel">
+                    {header.avatar && (
+                      <div className="wk-chat-conversation-header-channel-avatar">
+                        {header.avatar}
+                      </div>
+                    )}
+                    <div className="wk-chat-conversation-header-channel-info">
+                      <div
+                        className={classNames(
+                          "wk-chat-conversation-header-channel-info-name",
+                          header.titleClassName
+                        )}
+                      >
+                        {header.title}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="wk-chat-conversation-header-right">
+              {selectionActive && selection ? (
+                <button
+                  type="button"
+                  className="wk-chat-conversation-selection-cancel"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    selection.onCancel();
+                  }}
+                >
+                  {selection.cancelLabel}
+                </button>
+              ) : (
+                header.actions
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
       <div className="wk-chat-conversation">
         <ConversationSurface
           client={client}

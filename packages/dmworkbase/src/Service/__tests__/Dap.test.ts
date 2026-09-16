@@ -158,7 +158,7 @@ describe('Dap — kill switch cancels in-flight retries (P0-2)', () => {
     })
 })
 
-describe('Dap — HTTP wrapper is first-party only and self-excludes (P0-3)', () => {
+describe('Dap — HTTP wrapper no longer emits raw http_request (Option A, P0-3)', () => {
     let fetchMock: FetchMock
     beforeEach(() => {
         localStorage.clear()
@@ -167,56 +167,54 @@ describe('Dap — HTTP wrapper is first-party only and self-excludes (P0-3)', ()
         globalThis.fetch = fetchMock
     })
 
-    it('captures same-origin requests (path redacted) but skips cross-origin, and never re-tracks its own batch', async () => {
+    /** 取本次上报的全部事件(遍历所有 /v1/e/b 批次,不只首批——否则队列/flush 整体坏掉仍可能假绿）。 */
+    function batchEvents(): Array<{ event_name: string; props?: Record<string, unknown> }> {
+        const out: Array<{ event_name: string; props?: Record<string, unknown> }> = []
+        for (const c of fetchMock.mock.calls) {
+            if (c[0] !== BATCH_PATH) continue
+            const body = JSON.parse((c[1] as RequestInit).body as string)
+            for (const e of body.events as Array<{ event_name: string; props?: Record<string, unknown> }>) out.push(e)
+        }
+        return out
+    }
+
+    it('same-origin / cross-origin 请求都不再产出 http_request 原始事件(Option A)', async () => {
         const { Dap } = await freshTracker()
         Dap.shared.setEnabled(true)
         Dap.shared.init() // 首次 setEnabled(true) 已装采集机制;init 幂等,只补定时器/卸载兜底
 
         const origin = location.origin
-        await globalThis.fetch(`${origin}/api/users/alice/files/report-2024.pdf`) // 同源 → 采
-        await globalThis.fetch('https://cdn.example.com/bucket/secret.pdf') // 跨域 → 不采
+        // 显式产一条业务事件保证有上报批次(http_request 已停发,否则这些请求不再排任何事件)
+        Dap.shared.track('evt', {})
+        await globalThis.fetch(`${origin}/api/users/alice/files/report-2024.pdf`) // 同源
+        await globalThis.fetch('https://cdn.example.com/bucket/secret.pdf') // 跨域
         Dap.shared.flush()
         await Promise.resolve()
 
-        // 找到上报批次(自身通道),解析其中的事件
-        const batchCall = fetchMock.mock.calls.find((c) => c[0] === BATCH_PATH)
-        expect(batchCall).toBeTruthy()
-        const body = JSON.parse((batchCall![1] as RequestInit).body as string)
-        const httpEvents = (body.events as Array<{ event_name: string; props?: Record<string, unknown> }>).filter(
-            (e) => e.event_name === 'http_request',
-        )
-        // 只应有 1 条 http_request(同源那条),跨域被跳过
-        expect(httpEvents).toHaveLength(1)
-        // 路由骨架保留(api/users/files),但用户名与文件名段被脱敏,绝不出现原始值
-        expect(httpEvents[0].props?.path).toBe('/api/users/:seg/files/:seg')
-        // 自身上报通道(BATCH_PATH /v1/e/b)不被再次 track:上面只发了 1 个同源业务请求 +
-        // N 个自身批次,httpEvents 恰为 1 已证明批次未被自采;这里再显式钉死其归一路径不出现。
-        expect(httpEvents.some((e) => String(e.props?.path) === '/v1/:seg/:seg')).toBe(false)
+        // Option A:前端不再上报原始 http_request(同源、跨域一律不产)
+        const names = batchEvents().map((e) => e.event_name)
+        expect(names).toContain('evt') // 正控在场:批次机制确实工作(负断言非「压根没批次」的假绿)
+        expect(names).not.toContain('http_request')
     })
 
-    it('never derives object_id from a URL path, and masks credential-shaped segments (P1)', async () => {
+    it('URL 里的一次性凭证不会外泄进 telemetry(http_request 路径字段已随事件一并移除)', async () => {
         const { Dap } = await freshTracker()
         Dap.shared.setEnabled(true)
         Dap.shared.init()
 
         const origin = location.origin
-        // 一次性登录码拼在 path 里:既不能进 path,也不能被当成 object_id 取出
+        Dap.shared.track('evt', {}) // 保证有批次
+        // 一次性登录码拼在 path 里:http_request 已停发 → 既无 path 字段承载它,也不会被当 object_id 取出
         await globalThis.fetch(`${origin}/user/login_authcode/k3mq7z1x9v2p`)
         Dap.shared.flush()
         await Promise.resolve()
 
+        const names = batchEvents().map((e) => e.event_name)
+        expect(names).toContain('evt') // 正控在场:非空批次
+        expect(names).not.toContain('http_request')
+        // 兜底:整个上报批次里任何位置都不得出现原始凭证
         const batchCall = fetchMock.mock.calls.find((c) => c[0] === BATCH_PATH)
-        const body = JSON.parse((batchCall![1] as RequestInit).body as string)
-        const httpEvents = (
-            body.events as Array<{ event_name: string; object_id?: string; props?: Record<string, unknown> }>
-        ).filter((e) => e.event_name === 'http_request')
-        expect(httpEvents).toHaveLength(1)
-        // 路由词保留、凭证段脱敏
-        expect(httpEvents[0].props?.path).toBe('/user/login_authcode/:seg')
-        // http_request 不再单列 object_id —— 凭证不可能借这个字段外泄
-        expect('object_id' in httpEvents[0]).toBe(false)
-        // 兜底:整条事件里任何位置都不得出现原始凭证
-        expect(JSON.stringify(httpEvents[0]).includes('k3mq7z1x9v2p')).toBe(false)
+        expect(JSON.stringify(batchCall![1]).includes('k3mq7z1x9v2p')).toBe(false)
     })
 })
 
@@ -376,7 +374,7 @@ describe('Dap — 中央映射·path 通道(①):成功请求补发映射事件'
         return (body.events as Array<{ event_name: string }>).map((e) => e.event_name)
     }
 
-    it('2xx 的第一方请求既发 http_request 又补发映射事件(POST /api/v1/user/login → user_login)', async () => {
+    it('2xx 的第一方请求补发映射事件、不再发 http_request(POST /api/v1/user/login → user_login)', async () => {
         const { Dap } = await freshTracker()
         Dap.shared.setEnabled(true)
         Dap.shared.init()
@@ -387,11 +385,11 @@ describe('Dap — 中央映射·path 通道(①):成功请求补发映射事件'
         await Promise.resolve()
 
         const names = eventNamesFromBatch()
-        expect(names).toContain('http_request')
+        expect(names).not.toContain('http_request')
         expect(names).toContain('user_login')
     })
 
-    it('4xx 不补发映射事件(动作未发生),但仍记 http_request', async () => {
+    it('4xx 不补发映射事件(动作未发生),且同样不发 http_request', async () => {
         const { Dap } = await freshTracker()
         // 业务请求 404、自身上报批次 200:必须在 init 包裹前替换,否则包裹到的是旧 mock。
         fetchMock = vi.fn((url: string) =>
@@ -407,20 +405,25 @@ describe('Dap — 中央映射·path 通道(①):成功请求补发映射事件'
         await Promise.resolve()
 
         const names = eventNamesFromBatch()
-        expect(names).toContain('http_request')
+        expect(names).not.toContain('http_request')
         expect(names).not.toContain('message_revoked')
     })
 
-    it('跨域请求即使 2xx 也不映射(与 http_request 同源边界一致)', async () => {
+    it('跨域请求即使 2xx 命中 mapped 规则也不映射(isFirstParty 门守护;与第一方同源边界一致)', async () => {
         const { Dap } = await freshTracker()
         Dap.shared.setEnabled(true)
         Dap.shared.init()
 
-        await globalThis.fetch('https://other.example.com/api/v1/message/revoke', { method: 'POST' })
+        // 控制事件保证有批次;端点改指 mapped 规则(POST /api/v1/user/login → user_login),
+        // 使「删 isFirstParty 门」变异可被证伪:门在场 → 跨域不映射;删门 → user_login 出现,断言变红。
+        Dap.shared.track('_probe', {})
+        await globalThis.fetch('https://other.example.com/api/v1/user/login', { method: 'POST' })
         Dap.shared.flush()
         await Promise.resolve()
 
-        expect(eventNamesFromBatch()).not.toContain('message_revoked')
+        const names = eventNamesFromBatch()
+        expect(names).toContain('_probe') // 正控在场(非空批次)
+        expect(names).not.toContain('user_login') // 删 emit 的 isFirstParty 门这里变红
     })
 })
 
@@ -453,7 +456,7 @@ describe('Dap — 中央映射·body 键通道(②):按请求体顶层键补发�
         await Promise.resolve()
 
         const names = eventNamesFromBatch()
-        expect(names).toContain('http_request')
+        expect(names).not.toContain('http_request')
         expect(names).toContain('conversation_saved_to_contacts')
         // 体里的任何值都不得出现在上报里
         const batchCall = fetchMock.mock.calls.find((c) => c[0] === BATCH_PATH)

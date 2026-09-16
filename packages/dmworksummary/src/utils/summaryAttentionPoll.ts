@@ -66,6 +66,21 @@ export interface AttentionPollDeps {
     random?: () => number;
     /** 每次成功取到计数后的回调（leader 用它广播给其它标签页）。 */
     onCount?: (count: number) => void;
+    /**
+     * 可选的自适应间隔策略。
+     *
+     * 缺省为浏览器退避规则（15→30→60s + 值变回弹）。注入该策略时，
+     * 每次排期/fetch 前现问 current() 拿基础间隔，值变化不再内部回弹退避，
+     * 由策略方自己维持档位。策略方负责节流/可见性门控。注入后本 poll 仍是
+     * 唯一 pending timer 的所有者（桌面宿主要求一次最多一个挂起定时器）。
+     */
+    intervalPolicy?: {
+        current(): number;
+        onChanged?(count: number): void;
+        onUnchanged?(count: number): void;
+        /** 取数失败时由宿主策略调整退避间隔。 */
+        onFailed?(): void;
+    };
 }
 
 export interface AttentionPoll {
@@ -91,6 +106,7 @@ export function createAttentionPoll(deps: AttentionPollDeps): AttentionPoll {
     const setTimeoutFn = deps.setTimeoutFn ?? ((h, t) => setTimeout(h, t));
     const clearTimeoutFn = deps.clearTimeoutFn ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
     const random = deps.random ?? Math.random;
+    const intervalPolicy = deps.intervalPolicy;
 
     let started = false;
     let timer: unknown = null;
@@ -129,13 +145,19 @@ export function createAttentionPoll(deps: AttentionPollDeps): AttentionPoll {
         return Math.max(0, Math.round(base * factor));
     };
 
+    const baseIntervalMs = () => intervalPolicy?.current() ?? intervalMs;
+
     const schedule = () => {
         clearTimer();
         if (!started || !isVisible()) return;
-        timer = setTimeoutFn(tick, withJitter(intervalMs));
+        timer = setTimeoutFn(tick, withJitter(baseIntervalMs()));
     };
 
     const onUnchanged = () => {
+        if (intervalPolicy) {
+            intervalPolicy.onUnchanged?.(lastCount ?? -1);
+            return;
+        }
         unchangedRuns += 1;
         if (unchangedRuns >= POLL_UNCHANGED_THRESHOLD && intervalMs < POLL_MAX_INTERVAL_MS) {
             intervalMs = Math.min(intervalMs * 2, POLL_MAX_INTERVAL_MS);
@@ -145,6 +167,10 @@ export function createAttentionPoll(deps: AttentionPollDeps): AttentionPoll {
     };
 
     const onChanged = () => {
+        if (intervalPolicy) {
+            intervalPolicy.onChanged?.(lastCount ?? -1);
+            return;
+        }
         unchangedRuns = 0;
         intervalMs = POLL_BASE_INTERVAL_MS;
     };
@@ -182,6 +208,7 @@ export function createAttentionPoll(deps: AttentionPollDeps): AttentionPoll {
              * 没变；若不同，才该回到基础档。
              */
             intervalMs = Math.min(intervalMs * 2, POLL_MAX_INTERVAL_MS);
+            intervalPolicy?.onFailed?.();
         } finally {
             fetching = false;
         }
@@ -221,7 +248,7 @@ export function createAttentionPoll(deps: AttentionPollDeps): AttentionPoll {
             this.notifyActivity();
         },
         getCurrentIntervalMs(): number {
-            return intervalMs;
+            return baseIntervalMs();
         },
         isFetching(): boolean {
             return fetching;

@@ -1,7 +1,7 @@
 import { Channel, WKSDK, Message } from "wukongimjssdk";
 import WKApp from "./App";
 import React, { Component, ReactNode } from "react";
-import { ChatContentPage } from "./Pages/Chat";
+import { ChatContentPage, type ChatContentPageProps } from "./Pages/Chat";
 import { EndpointCategory, EndpointID } from "./Service/Const";
 import { EndpointManager } from "./Service/Module";
 import ConversationContext from "./Components/Conversation/context";
@@ -33,6 +33,9 @@ export class ShowConversationOptions {
    * 会话；不切的话用户在 follow tab 上打开未关注会话会"消失"。
    */
   fromSidebarList?: boolean;
+  workspaceEmbedding?: ChatContentPageProps["workspaceEmbedding"];
+  /** Host presentation changes for the same conversation must not remount its composer. */
+  preserveCurrentConversation?: boolean;
 }
 
 /**
@@ -129,6 +132,13 @@ export class EndpointCommon {
   }
 
   private registerShowConversation() {
+    let currentRender: {
+      channelKey: string;
+      spaceId: string;
+      key: string;
+      locateSeq: number;
+      page?: ChatContentPage;
+    } | undefined;
     EndpointManager.shared.setMethod(
       EndpointID.showConversation,
       (param: any) => {
@@ -171,14 +181,33 @@ export class EndpointCommon {
           key = `${key}-${initLocateMessageSeq}`
         }
 
+        const channelKey = channel.getChannelKey();
+        const spaceId = WKApp.shared.currentSpaceId;
+        if (opts.preserveCurrentConversation && !opts.initLocateMessageSeq &&
+            !opts.openChannelSearch && currentRender?.channelKey === channelKey &&
+            currentRender.spaceId === spaceId) {
+          if (currentRender.page) {
+            currentRender.page.updateWorkspaceEmbedding(opts.workspaceEmbedding);
+            return;
+          }
+          key = currentRender.key;
+          initLocateMessageSeq = currentRender.locateSeq;
+        }
+        const renderState = { channelKey, spaceId, key, locateSeq: initLocateMessageSeq };
+        currentRender = renderState;
+
         WKApp.routeRight.replaceToRoot(
           <ChatContentPage
             key={key}
+            ref={(page) => {
+              if (currentRender === renderState) currentRender.page = page || undefined;
+            }}
             channel={channel}
             initLocateMessageSeq={initLocateMessageSeq}
             initialShowChannelSearch={
               !!opts.openChannelSearch && isChannelSearchEnabled(channel)
             }
+            {...(opts.workspaceEmbedding ? { workspaceEmbedding: opts.workspaceEmbedding } : {})}
           ></ChatContentPage>
         );
       },

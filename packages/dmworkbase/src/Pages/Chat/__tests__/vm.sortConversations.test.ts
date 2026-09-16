@@ -5,30 +5,38 @@ const hoisted = vi.hoisted(() => ({
     pinnedList: vi.fn(() => Promise.resolve([])),
     sync: vi.fn(() => Promise.resolve([])),
     clearMessages: vi.fn(() => Promise.resolve()),
+    skipChannel: vi.fn(() => false),
+    skipPerson: vi.fn(() => false),
+    filterText: vi.fn((text: string) => text),
 }))
 
-vi.mock("wukongimjssdk", () => ({
+vi.mock("wukongimjssdk", () => {
+    const sdk = {
+        config: { provider: { syncConversationsCallback: hoisted.sync } },
+        reminderManager: { sync: vi.fn() },
+        conversationManager: {
+            conversations: [],
+            maxExtraVersion: 0,
+            addConversationListener: () => {},
+            removeConversationListener: () => {},
+            sync: vi.fn(() => { throw new Error("Use guarded core sync") }),
+            notifyConversationListeners: vi.fn(),
+        },
+        connectManager: {
+            status: 0,
+            addConnectStatusListener: () => {},
+            removeConnectStatusListener: () => {},
+        },
+        channelManager: {
+            getChannelInfo: () => undefined,
+            fetchChannelInfo: () => {},
+            addListener: () => {},
+            removeListener: () => {},
+        },
+    }
+    return {
     default: {
-        shared: () => ({
-            conversationManager: {
-                conversations: [],
-                addConversationListener: () => {},
-                removeConversationListener: () => {},
-                sync: hoisted.sync,
-                notifyConversationListeners: vi.fn(),
-            },
-            connectManager: {
-                status: 0,
-                addConnectStatusListener: () => {},
-                removeConnectStatusListener: () => {},
-            },
-            channelManager: {
-                getChannelInfo: () => undefined,
-                fetchChannelInfo: () => {},
-                addListener: () => {},
-                removeListener: () => {},
-            },
-        }),
+        shared: () => sdk,
     },
     Channel: class {
         channelID: string
@@ -55,7 +63,8 @@ vi.mock("wukongimjssdk", () => ({
     Message: class {},
     MessageContent: class {},
     MessageContentType: { text: 1 },
-}))
+    }
+})
 
 vi.mock("react-scroll", () => ({
     animateScroll: { scrollTo: () => {} },
@@ -80,7 +89,7 @@ vi.mock("../../../App", () => ({
         routeRight: { popToRoot: () => {} },
         endpointManager: { invoke: () => {} },
         conversationProvider: { clearConversationMessages: hoisted.clearMessages },
-        apiClient: { get: () => Promise.resolve({}) },
+        apiClient: { get: () => Promise.resolve({}), config: { apiURL: "" } },
         endpoints: { showConversation: () => {} },
     },
 }))
@@ -109,7 +118,7 @@ vi.mock("../../../Service/Model", () => ({
 }))
 
 vi.mock("../../../Service/ProhibitwordsService", () => ({
-    ProhibitwordsService: { shared: { filter: (text: string) => text } },
+    ProhibitwordsService: { shared: { filter: hoisted.filterText } },
 }))
 
 vi.mock("../../../Service/PinnedService", () => ({
@@ -118,8 +127,8 @@ vi.mock("../../../Service/PinnedService", () => ({
 
 vi.mock("../../../Service/SpaceService", () => ({
     SpaceService: { shared: { getMembers: () => Promise.resolve([]) } },
-    shouldSkipChannelForSpace: () => false,
-    shouldSkipPersonConversationForSpace: () => false,
+    shouldSkipChannelForSpace: hoisted.skipChannel,
+    shouldSkipPersonConversationForSpace: hoisted.skipPerson,
     hasSpacePrefix: () => false,
 }))
 
@@ -142,13 +151,21 @@ vi.mock("../../../Utils/download", () => ({
 import { applyPinnedThreadSnapshot, ChatVM } from "../vm"
 import { ConversationWrap } from "../../../Service/Model"
 import WKApp from "../../../App"
-import { Channel } from "wukongimjssdk"
+import WKSDK, { Channel } from "wukongimjssdk"
+import { getCurrentImConversationStore } from "../../../im-runtime/currentConversationStore"
 
 beforeEach(() => {
+    getCurrentImConversationStore().dispose()
     vi.clearAllMocks()
     hoisted.sync.mockResolvedValue([])
     hoisted.pinnedList.mockResolvedValue([])
+    hoisted.skipChannel.mockReset().mockReturnValue(false)
+    hoisted.skipPerson.mockReset().mockReturnValue(false)
+    hoisted.filterText.mockReset().mockImplementation((text) => text)
     ;(WKApp.shared as any).currentSpaceId = ""
+    WKApp.shared.channelSpaceMap.clear()
+    WKApp.shared.channelMySourceSpaceMap.clear()
+    WKSDK.shared().conversationManager.conversations = []
 })
 
 function makeConversation(id: string, timestamp: number, top = 0): ConversationWrap {
@@ -166,10 +183,12 @@ function makeConversation(id: string, timestamp: number, top = 0): ConversationW
 
 function deferred<T>() {
     let resolve!: (value: T) => void
-    const promise = new Promise<T>((resolvePromise) => {
+    let reject!: (reason: unknown) => void
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
         resolve = resolvePromise
+        reject = rejectPromise
     })
-    return { promise, resolve }
+    return { promise, resolve, reject }
 }
 
 describe("ChatVM.sortConversations", () => {
@@ -298,11 +317,58 @@ describe("ChatVM.reloadRequestConversationList", () => {
         expect(vm.conversations.map((item) => item.channel.channelID)).toEqual(["space-b"])
 
         spaceASync.resolve([spaceAConversation.conversation])
-        await Promise.resolve()
-        await Promise.resolve()
+        await spaceARequest
 
         expect(spaceARequestSettled).toBe(true)
         expect(vm.conversations.map((item) => item.channel.channelID)).toEqual(["space-b"])
+    })
+
+    it("does not let an older same-Space failure end a newer request's loading state", async () => {
+        const vm = new ChatVM()
+        const oldSync = deferred<any[]>()
+        const newSync = deferred<any[]>()
+        hoisted.sync.mockReturnValueOnce(oldSync.promise).mockReturnValueOnce(newSync.promise)
+        const oldRequest = vm.reloadRequestConversationList()
+        const newRequest = vm.requestConversationList()
+
+        oldSync.reject(new Error("late failure"))
+        await expect(oldRequest).resolves.toBeUndefined()
+        expect(vm.loading).toBe(true)
+        newSync.resolve([makeConversation("new", 20).conversation])
+        await newRequest
+        expect(vm.loading).toBe(false)
+        expect(vm.conversations[0].channel.channelID).toBe("new")
+    })
+
+    it("does not let an older same-Space pin response replace a newer snapshot", async () => {
+        const vm = new ChatVM()
+        WKApp.shared.currentSpaceId = "space-a"
+        const oldPins = deferred<any[]>()
+        hoisted.sync.mockResolvedValueOnce([makeConversation("old", 10).conversation])
+        hoisted.pinnedList.mockReturnValueOnce(oldPins.promise)
+        const oldRequest = vm.reloadRequestConversationList()
+        await Promise.resolve()
+        await Promise.resolve()
+        hoisted.sync.mockResolvedValueOnce([makeConversation("new", 20).conversation])
+        await vm.requestConversationList()
+
+        oldPins.resolve([])
+        await oldRequest
+        expect(vm.conversations[0].channel.channelID).toBe("new")
+        expect(WKSDK.shared().conversationManager.conversations[0].channel.channelID).toBe("new")
+    })
+
+    it("does not publish a page snapshot after unmount", async () => {
+        const vm = new ChatVM()
+        const response = deferred<any[]>()
+        hoisted.sync.mockReturnValueOnce(response.promise)
+        const request = vm.reloadRequestConversationList()
+        vm.didUnMount()
+        hoisted.emit.mockClear()
+        response.resolve([makeConversation("late", 20).conversation])
+        await request
+        expect(vm.conversations).toEqual([])
+        expect(hoisted.emit).not.toHaveBeenCalledWith("conversation-list-refreshed")
     })
 
     it("does not let a stale Space pinned snapshot overwrite the active Space", async () => {
@@ -333,6 +399,76 @@ describe("ChatVM.reloadRequestConversationList", () => {
 })
 
 describe("ChatVM.requestConversationList", () => {
+    it("prefills Space mappings before filtering and wraps only accepted conversations", async () => {
+        const vm = new ChatVM()
+        const group = makeConversation("group", 20).conversation
+        group.channel = new Channel("group", 2)
+        group.extra.spaceId = "space-1"
+        group.extra.mySourceSpaceId = "source-1"
+        const person = makeConversation("person", 10).conversation
+        hoisted.sync.mockResolvedValueOnce([group, person])
+        hoisted.skipChannel.mockImplementation(() => {
+            expect(WKApp.shared.channelSpaceMap.get("group_2")).toBe("space-1")
+            expect(WKApp.shared.channelMySourceSpaceMap.get("group_2")).toBe("source-1")
+            return false
+        })
+        hoisted.skipPerson.mockReturnValueOnce(false).mockReturnValueOnce(true)
+
+        await vm.requestConversationList()
+
+        expect(vm.conversations.map((item) => item.channel.channelID)).toEqual(["group"])
+    })
+
+    it("preserves cached Space mappings when an older sync has no Space fields", async () => {
+        const vm = new ChatVM()
+        const group = makeConversation("group", 20).conversation
+        group.channel = new Channel("group", 2)
+        WKApp.shared.channelSpaceMap.set("group_2", "cached-space")
+        WKApp.shared.channelMySourceSpaceMap.set("group_2", "cached-source")
+        hoisted.sync.mockResolvedValueOnce([group])
+
+        await vm.requestConversationList()
+
+        expect(WKApp.shared.channelSpaceMap.get("group_2")).toBe("cached-space")
+        expect(WKApp.shared.channelMySourceSpaceMap.get("group_2")).toBe("cached-source")
+        expect(vm.conversations[0].conversation).toBe(group)
+    })
+
+    it("keeps the thread pin when the pinned endpoint fails", async () => {
+        const vm = new ChatVM()
+        const thread = makeConversation("group____thread", 10, 1).conversation
+        thread.channel = new Channel("group____thread", 5)
+        WKApp.shared.currentSpaceId = "space-1"
+        hoisted.sync.mockResolvedValueOnce([thread])
+        const error = new Error("pins unavailable")
+        hoisted.pinnedList.mockRejectedValueOnce(error)
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+        try {
+            await vm.requestConversationList()
+            expect(thread.extra.top).toBe(1)
+            expect(warn).toHaveBeenCalledWith("[im-conversations] failed to load pinned channels", error)
+        } finally {
+            warn.mockRestore()
+        }
+    })
+
+    it("preserves the legacy text filtering difference between sync and reload", async () => {
+        const vm = new ChatVM()
+        const conversation = makeConversation("person", 10).conversation
+        conversation.lastMessage = { contentType: 1, content: { text: "message" } }
+        hoisted.sync.mockResolvedValue([conversation])
+        hoisted.filterText.mockImplementation((text) => `filtered:${text}`)
+
+        await vm.requestConversationList()
+        expect(conversation.lastMessage.content.text).toBe("message")
+        expect(hoisted.filterText).not.toHaveBeenCalled()
+
+        await vm.reloadRequestConversationList()
+        expect(conversation.lastMessage.content.text).toBe("filtered:message")
+        expect(hoisted.filterText).toHaveBeenCalledTimes(1)
+    })
+
     it("leaves loading and handles an active Space sync failure", async () => {
         const vm = new ChatVM()
         const notifyListener = vi.spyOn(vm, "notifyListener")
@@ -412,6 +548,23 @@ describe("ChatVM.requestConversationList", () => {
 })
 
 describe("ChatVM state and collection helpers", () => {
+    it("does not publish an old Space clear result into the new Space", async () => {
+        const vm = new ChatVM()
+        const item = makeConversation("peer", 10).conversation
+        item.unread = 4
+        const clearing = deferred<void>()
+        vm.conversations = [new ConversationWrap(item)]
+        hoisted.clearMessages.mockReturnValueOnce(clearing.promise)
+        const request = vm.clearMessages(item.channel)
+        WKApp.shared.currentSpaceId = "another-space"
+        const notify = vi.spyOn(WKSDK.shared().conversationManager, "notifyConversationListeners")
+        notify.mockClear()
+        clearing.resolve()
+        await request
+        expect(item.unread).toBe(4)
+        expect(notify).not.toHaveBeenCalled()
+    })
+
     it("updates view state through setters and finds/removes conversations", () => {
         const vm = new ChatVM()
         const notify = vi.spyOn(vm, "notifyListener")

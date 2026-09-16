@@ -60,4 +60,10 @@ export function assertClientFeatureBootstrap(
   if (appearance.locale !== "zh-CN" && appearance.locale !== "en-US") {
     throw new Error("feature appearance locale is invalid");
   }
+  if (bootstrap.runtime !== undefined) {
+    if (expectedFeatureId === "communication") parseOwnerRuntimeBootstrap(bootstrap.runtime);
+    else if (expectedFeatureId === "summary") parseSummaryRuntimeBootstrap(bootstrap.runtime);
+    else throw new Error("This feature does not support a background runtime");
+  }
 }
+import { parseOwnerRuntimeBootstrap, parseSummaryRuntimeBootstrap } from "./runtimeContract";

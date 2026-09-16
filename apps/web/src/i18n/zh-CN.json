@@ -1,4 +1,5 @@
 {
+  "workspaceConversation.openInMessages": "请点击「在消息中打开」，在完整消息页使用此功能。",
   "common.back": "返回",
   "connection.duration.hoursMinutes": "{{hours}}小时{{minutes}}分",
   "connection.duration.minutes": "{{count}}分钟",

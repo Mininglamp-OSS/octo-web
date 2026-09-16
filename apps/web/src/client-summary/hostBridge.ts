@@ -6,6 +6,7 @@ import type {
 } from "@dmwork/summary";
 import type { SummaryWorkspaceRoute } from "@dmwork/summary";
 import type { DesktopPresentationBridge, DesktopReadyCapability } from "../client-feature/desktop/presentation";
+import type { SummaryRuntimeBootstrap } from "../client-feature/runtimeContract";
 
 export interface SummaryBootstrap {
   bridgeVersion: 1;
@@ -26,11 +27,12 @@ export interface SummaryBootstrap {
   space: { id: string; name: string };
   appearance: { theme: "light" | "dark"; locale: "zh-CN" | "en-US" };
   initialRoute: SummaryWorkspaceRoute;
+  runtime?: SummaryRuntimeBootstrap;
 }
 
 export type SummaryHostCommand =
   | { type: "navigate"; route: SummaryWorkspaceRoute }
-  | { type: "spaceChanged"; space: { id: string; name: string } }
+  | { type: "spaceChanged"; space: { id: string; name: string }; runtime?: SummaryRuntimeBootstrap }
   | {
       type: "appearanceChanged";
       theme: "light" | "dark";
@@ -43,12 +45,17 @@ export type SummaryHostCommand =
   | { type: "sessionRevoked" };
 
 export interface OctoBuddySummaryBridge extends DesktopPresentationBridge {
+  getRuntimeSnapshot?(): Promise<unknown>;
+  onRuntimeSnapshot?(callback: (snapshot: unknown) => void): () => void;
+  invalidateSummaryRuntime?(scope: SummaryRuntimeBootstrap & { reason: "mutation" | "manual-refresh" }): Promise<void>;
   getBootstrap(): Promise<SummaryBootstrap>;
   reportReady(state: {
     bridgeVersion: 1;
     route: SummaryWorkspaceRoute;
     spaceId: string;
     rendererVersion: string;
+    externalSummaryAttentionVersion?: 1;
+    runtime?: SummaryRuntimeBootstrap;
   } & DesktopReadyCapability<SummaryWorkspaceRoute["view"]>): Promise<void>;
   reportRoute(report: { route: SummaryWorkspaceRoute; spaceId: string }): void;
   reportBadge(report: { count: number; spaceId: string }): void;

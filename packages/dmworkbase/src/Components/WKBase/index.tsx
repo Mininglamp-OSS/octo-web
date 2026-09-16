@@ -2,7 +2,7 @@ import { Modal, Toast } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import { Channel, ChannelTypePerson, MessageText, WKSDK } from "wukongimjssdk";
 import React, { Component, HTMLProps, ReactNode } from "react";
-import ConversationSelect from "../ConversationSelect";
+import { ForwardPickerPresentation } from "../../features/forwarding/ForwardPickerPresentation";
 import type { ConversationSelectGrant } from "../ConversationSelect";
 import type { DocForwardOpen, ForwardGrant } from "../ForwardModal/grant";
 import { buildForwardMessageText } from "../ForwardModal/forwardMessageText";
@@ -676,17 +676,9 @@ export default class WKBase
           }}
         />
 
-        <WKModal
-          className="wk-base-modal wk-base-modal-forward"
+        <ForwardPickerPresentation
           visible={showConversationSelect}
-          width={625}
-          options={{ mask: false }}
-          onCancel={() => {
-            if (renderForwardOp) this.cancelForward(renderForwardOp);
-          }}
-        >
-          <ConversationSelect
-            key={conversationSelectKey}
+            pickerKey={conversationSelectKey}
             grant={conversationSelectGrant}
             onFinished={(channels: Channel[], grant) => {
               if (!renderForwardOp || renderForwardOp !== this.currentForwardOp ||
@@ -712,8 +704,7 @@ export default class WKBase
               if (renderForwardOp) this.cancelForward(renderForwardOp);
             }}
             title={conversationSelectTitle}
-          ></ConversationSelect>
-        </WKModal>
+          />
 
         <WKModal
           title={alertTitle}

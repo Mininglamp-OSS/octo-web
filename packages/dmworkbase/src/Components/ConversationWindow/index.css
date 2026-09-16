@@ -283,3 +283,9 @@
 .wk-chat-conversation-header-channel-info-name--thread {
   gap: var(--wk-sp-1-5);
 }
+
+/* Selection-only mode: hidden header. Header node is removed from DOM and the
+   conversation area fills the full window height (no 48px header offset). */
+.wk-chat-conversation-header-hidden .wk-chat-conversation {
+  height: 100%;
+}

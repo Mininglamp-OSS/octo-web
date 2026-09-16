@@ -232,15 +232,6 @@ function isSupportedRuntime(): boolean {
     }
 }
 
-/** 状态码分桶:不报精确 code,只报量级(2xx/4xx/5xx/err)。 */
-function statusBucket(status: number): string {
-    if (status <= 0) return 'err'
-    if (status >= 500) return '5xx'
-    if (status >= 400) return '4xx'
-    if (status >= 300) return '3xx'
-    return '2xx'
-}
-
 /** fetch reject 是否为「被取消」而非真实失败:AbortController.abort() 抛 name==='AbortError' 的 DOMException。 */
 function isAbortError(err: unknown): boolean {
     return !!err && typeof err === 'object' && (err as { name?: string }).name === 'AbortError'
@@ -376,19 +367,22 @@ class DapImpl {
             // 首次启用:惰性装采集机制(dark 态从未装过),再补扫当前 DOM。
             this.installCollectors()
             this.rescanCurrent()
-            // app_launched **不在此发**(六审 P2):首次 setEnabled(true) 由 appconfig 回调驱动
-            //   (App.tsx:502-503),而 appconfig 在**登录页(未登录、无 token)**就会拉,此处发会
-            //   逼 envelope()→deviceId() 给匿名访客写持久 localStorage 标识 + 发一条无 token 上报,
-            //   破坏 Dap.ts:255-258 的「惰性创建」保证。改由 maybeTrackLaunch() 在**登录后拿到 token、
-            //   首个真正产出的事件到来时**补发一次(整生命周期仍仅一次,launchTracked 哨兵保证)。
+            // app_launched 双触发之一(setEnabled 首启)+ emit()。此处 maybeTrackLaunch() 在采集开启
+            //   瞬间即锚定:token 门保证匿名(登录页无 token,appconfig 由 App.tsx 回调在未登录态就拉)
+            //   时为纯 no-op —— 不写 device_id、不发无 token 上报,惰性创建保证不破;登录态冷启动
+            //   (setEnabled 时 token 已就绪)则立即锚定一次,不依赖任何后续第一方请求 / 点击 / page_view
+            //   (覆盖独立 bounce 页在 wrapper 安装前即完成其请求、此后无事件的会话)。若 token 晚于
+            //   setEnabled 到达则此处 no-op,由 emit() 接手补发。launchTracked 哨兵保证整生命周期仅一次。
+            this.maybeTrackLaunch()
         }
     }
 
     /**
      * app_launched 惰性补发(六审 P2 / owner 决策 b):登录(currentToken 有值)后、采集开启、
-     * 且首个真正 track 到来时发一次「应用启动」。放在 track() 顶部——匿名登录页无 token 时不发,
-     * 从而不写 device_id、不产生无 token 上报;登录后首个鉴权事件(通常是 http_request / page 进入)
-     * 触发它,并排在该事件之前。launchTracked 哨兵保证整生命周期仅一次(停采→再启用亦不重复)。
+     * 且首个补发触发点到来时发一次「应用启动」。三个调用点共用本方法:setEnabled(true) 首启、
+     * emit()(任意已完成的第一方请求)、track()/pageView() 顶部——匿名登录页无 token 时不发,
+     * 从而不写 device_id、不产生无 token 上报;登录后首个命中的触发点补发一次,并排在其事件之前。
+     * launchTracked 哨兵保证整生命周期仅一次(停采→再启用亦不重复)。
      */
     private maybeTrackLaunch(): void {
         if (this.launchTracked) return
@@ -993,22 +987,17 @@ class DapImpl {
         const fetchIndex: FetchRuleIndex = buildFetchIndex(FETCH_RULES)
         const bodyIndex: BodyRuleIndex = buildBodyIndex(BODY_RULES)
         // bodyEvent 在包裹处(能拿到请求体时)算好传入:body 键通道优先于 path 通道,避免重复计事件。
-        const emit = (rawUrl: string, method: string, status: number, durationMs: number, bodyEvent?: string) => {
+        const emit = (rawUrl: string, method: string, status: number, bodyEvent?: string) => {
             this.safe(() => {
                 if (!rawUrl) return
                 // 只采第一方(同源)API telemetry:跨域(预签名对象存储/第三方)路径含对象键/文件名,一律不采
                 if (!isFirstParty(rawUrl)) return
+                // app_launched 双触发之二(emit)。任意已完成的第一方请求(含 token 晚于 setEnabled 到达
+                //   的会话:此前 A 因无 token 是 no-op,此处接手)也锚定 app_launched。无视 status —— 非 abort
+                //   的失败(见下 .catch / onLoadEnd 以 status 0 / 4xx-5xx 进 emit)同样锚定;token 门保证匿名
+                //   仍不发。abort 不进 emit,故不锚定。launchTracked 哨兵保证与 A / track / pageView 合计仅一次。
+                this.maybeTrackLaunch()
                 const m = (method || 'GET').toUpperCase()
-                // 量/错误率/延迟,不带 query、不带正文;路径按白名单收窄脱敏。
-                // **不从 URL 路径提取 object_id**:路径末段可能是一次性登录码 / 邀请 token / 对象键
-                // (见 PR #1320 review),原样取出即等于把凭证放进 telemetry。http_request 只保留
-                // 已脱敏的 path 维度,不再单列 object_id(path 已覆盖其可分析的信息)。
-                this.track('http_request', {
-                    method: m,
-                    path: normalizePath(rawUrl),
-                    status_bucket: statusBucket(status),
-                    duration_ms: Math.round(durationMs),
-                })
                 // 中央映射(①path / ②body):仅在 **2xx**(动作确已发生)时补发一条映射事件。
                 // body 键通道优先(更具体);其次 path 通道。映射事件不带任何来自请求的值
                 // (无 object_id / query / 正文),故凭证 / 文件名不可能借此外泄。
@@ -1024,7 +1013,6 @@ class DapImpl {
         if (typeof g.fetch === 'function') {
             const orig = g.fetch.bind(globalThis)
             g.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-                const start = Date.now()
                 const url =
                     typeof input === 'string'
                         ? input
@@ -1048,14 +1036,14 @@ class DapImpl {
                         : undefined
                 return orig(input as RequestInfo, init)
                     .then((resp) => {
-                        emit(url, method || 'GET', resp.status, Date.now() - start, bodyEvent)
+                        emit(url, method || 'GET', resp.status, bodyEvent)
                         return resp
                     })
                     .catch((err) => {
                         // 被取消的请求不是失败:搜索每次按键都会 abort 在途请求(APIClient 的
-                        // AbortSignal 即为此),记成 status 0→'err' 会把 http_request 错误率打爆
-                        // (见 PR review P1-2)。仅真实网络失败才记 err。
-                        if (!isAbortError(err)) emit(url, method || 'GET', 0, Date.now() - start)
+                        // AbortSignal 即为此)。取消不入 emit;非 abort 的真实网络失败仍进 emit ——
+                        // 现由 emit 内的 maybeTrackLaunch() 锚定 app_launched(不再产 http_request)。
+                        if (!isAbortError(err)) emit(url, method || 'GET', 0)
                         throw err
                     })
             }
@@ -1075,7 +1063,6 @@ class DapImpl {
                 return origOpen.call(this, method, url, ...rest)
             }
             proto.send = function (this: Tracked, ...args: unknown[]) {
-                const start = Date.now()
                 const url = this.__trackUrl || ''
                 const method = this.__trackMethod || 'GET'
                 if (url && url.indexOf(BATCH_PATH) === -1) {
@@ -1093,24 +1080,24 @@ class DapImpl {
                                   ),
                               )
                             : undefined
-                    // 在闭包里定住 url/method/start(不在 loadend 时读实例字段,避免复用/
+                    // 在闭包里定住 url/method(不在 loadend 时读实例字段,避免复用/
                     // 重 open 后读到串味的路径);once:true 保证复用实例多次 send 不累积监听
-                    // (否则一个 loadend 会补发历史请求的 http_request,见 review P2)。
+                    // (否则一个 loadend 会补发历史请求的映射事件,见 review P2)。
                     // abort 与 loadend 都会在取消时触发,且 abort 先于 loadend;命中 abort 就
-                    // 标记跳过,不把用户主动取消记成 status 0→'err'(见 PR review P1-2)。
+                    // 标记跳过,不把用户主动取消交给 emit(见 PR review P1-2)。
                     // 正常完成(无 abort)时在 loadend 里主动摘掉 abort 监听:once 的 abort 监听
                     // 若一直不触发就不会自动摘,复用实例多次正常完成会累积一串死监听(见 review P2)。
                     let aborted = false
                     const onAbort = () => { aborted = true }
                     const onLoadEnd = () => {
                         this.removeEventListener('abort', onAbort)
-                        if (!aborted) emit(url, method, this.status, Date.now() - start, bodyEvent)
+                        if (!aborted) emit(url, method, this.status, bodyEvent)
                     }
                     this.addEventListener('abort', onAbort, { once: true })
                     this.addEventListener('loadend', onLoadEnd, { once: true })
                     // P2-5:监听器在 native send() 之前挂上;若 send() 同步抛(如对已 open 的实例重复
                     // send() 触发 InvalidStateError),这两个监听器会残留,等首个请求 loadend 时连带
-                    // 补发一次历史请求的 http_request。故 send 抛错时先摘掉两个监听器再重抛。
+                    // 补发一次历史请求的映射事件。故 send 抛错时先摘掉两个监听器再重抛。
                     try {
                         // @ts-expect-error 透传原始参数
                         return origSend.apply(this, args)

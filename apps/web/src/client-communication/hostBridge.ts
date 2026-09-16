@@ -9,7 +9,7 @@ export interface ConversationTarget {
   displayName?: string;
   avatar?: string;
   metadata?: Record<string, unknown>;
-  variant?: "app-bot";
+  variant?: "app-bot" | "workspace-group";
 }
 
 export interface CommunicationBootstrap {
@@ -33,6 +33,7 @@ export interface CommunicationBootstrap {
   };
   initialPage: CommunicationPage;
   initialPresentation: CommunicationPresentation;
+  runtime?: OwnerRuntimeBootstrap;
 }
 
 export type HostCommand =
@@ -51,8 +52,9 @@ export type HostCommand =
 
 export interface NavigationReport {
   page: CommunicationPage;
-  source: "host" | "contact-card" | "group-card" | "notification" | "internal";
+  source: "host" | "contact-card" | "group-card" | "notification" | "internal" | "workspace-conversation" | "workspace-selection-cancelled";
   channel?: { id: string; type: number };
+  cancelledTarget?: { id: string; type: number };
 }
 
 export type SummaryCapabilityRequest = {
@@ -63,6 +65,7 @@ export type SummaryCapabilityRequest = {
     | "notifySummaryCompleted"
     | "requestForward";
   payload: unknown;
+  runtimeScope?: RuntimeScope;
 };
 
 export interface SummaryCapabilityResponse {
@@ -91,9 +94,18 @@ export interface DocumentForwardRequest {
   requestId: string;
   spaceId: string;
   input: DocumentForwardInput;
+  runtimeScope?: RuntimeScope;
 }
 
 export interface OctoBuddyCommunicationBridge {
+  publishForwardSurface?(update: import("@octo/base/src/features/forwarding/surfaceContract").ForwardSurfaceUpdate): Promise<void>;
+  onForwardSurfaceAction?(listener: (command: import("@octo/base/src/features/forwarding/surfaceContract").ForwardSurfaceCommand) => void): () => void;
+  reportRuntimeReady?(state: RuntimeReady): Promise<void>;
+  reportRuntimeSnapshot?(snapshot: RuntimeSnapshot): void;
+  reportRuntimeCommandResult?(result: RuntimeCommandResult): void;
+  onRuntimeCommand?(callback: (command: unknown) => void): () => void;
+  scheduleRuntimeTask?(timer: RuntimeTimer & { delayMs: number }): void;
+  cancelRuntimeTask?(timer: RuntimeTimer): void;
   getDesktopPresentation?(): Promise<import("./desktopPresentation").DesktopPresentation | null>;
   onDesktopPresentation?(callback: (state: import("./desktopPresentation").DesktopPresentation) => void): () => void;
   getDocumentPreview?: import("@octo/base/src/Service/DocumentPreviewService").DocumentPreviewTransport;
@@ -144,3 +156,4 @@ export function requireHostBridge(): OctoBuddyCommunicationBridge {
   if (!bridge) throw new Error("octoBuddy communication bridge is unavailable");
   return bridge;
 }
+import type { OwnerRuntimeBootstrap, RuntimeCommandResult, RuntimeReady, RuntimeScope, RuntimeSnapshot, RuntimeTimer } from "../client-feature/runtimeContract";

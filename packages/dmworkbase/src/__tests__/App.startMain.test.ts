@@ -64,6 +64,7 @@ vi.mock("wukongimjssdk", () => {
 import WKApp, { ChatMenus, FriendApply, LoginInfo, WKConfig, WKRemoteConfig } from "../App";
 import { ProhibitwordsService } from "../Service/ProhibitwordsService";
 import { Channel, WKSDK } from "wukongimjssdk";
+import { captureCurrentImConversationSyncContext } from "../im-runtime/conversationSyncContext";
 
 // Resolve only after pending microtasks + a macrotask, so the GET promise's
 // .then/.catch handlers have fully run.
@@ -145,6 +146,50 @@ describe("[api] WKApp.startMain device record fetch", () => {
 });
 
 describe("LoginInfo and WKConfig persistence boundaries", () => {
+  it.each(["space", "uid", "token", "origin"] as const)(
+    "invalidates conversation requests on %s A -> B -> A, but not identical writes",
+    (field) => {
+      const write = {
+        space: (value: string) => { WKApp.shared.currentSpaceId = value; },
+        uid: (value: string) => { WKApp.loginInfo.uid = value; },
+        token: (value: string) => { WKApp.loginInfo.token = value; },
+        origin: (value: string) => { WKApp.apiClient.config.apiURL = value; },
+      }[field];
+      const original = {
+        space: WKApp.shared.currentSpaceId,
+        uid: WKApp.loginInfo.uid || "",
+        token: WKApp.loginInfo.token || "",
+        origin: WKApp.apiClient.config.apiURL,
+      }[field];
+      try {
+        write("a");
+        const isCurrent = captureCurrentImConversationSyncContext();
+        write("a");
+        expect(isCurrent()).toBe(true);
+        write("b");
+        write("a");
+        expect(isCurrent()).toBe(false);
+        expect(captureCurrentImConversationSyncContext()()).toBe(true);
+      } finally {
+        write(original);
+      }
+    },
+  );
+
+  it("revokes a request across logout and reapplication of the same session", () => {
+    const login = WKApp.loginInfo;
+    try {
+      WKApp.loginInfo = new LoginInfo();
+      WKApp.loginInfo.applySession({ uid: "user", token: "token" });
+      const isCurrent = captureCurrentImConversationSyncContext();
+      WKApp.loginInfo.logout();
+      WKApp.loginInfo.applySession({ uid: "user", token: "token" });
+      expect(isCurrent()).toBe(false);
+    } finally {
+      WKApp.loginInfo = login;
+    }
+  });
+
   it("applies a host session without writing renderer storage by default", () => {
     const info = new LoginInfo();
     const save = vi.spyOn(info, "save");

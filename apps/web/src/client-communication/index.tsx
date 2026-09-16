@@ -1,11 +1,8 @@
-import React from "react";
-import { createRoot } from "react-dom/client";
 import "@octo/base/src/theme/tokens.css";
 import "../index.css";
 import {
   BaseModule,
   Dap,
-  I18nProvider,
   IM_DEVICE_FLAG_PC,
   ThemeMode,
   WKApp,
@@ -23,11 +20,12 @@ import appZhCN from "../i18n/zh-CN.json";
 import { installCommunicationAuthExpiryHandler } from "./authLifecycle";
 import { assertClientFeatureBootstrap } from "../client-feature/bootstrapContract";
 import { enableClientFeatureMocks } from "../client-feature/e2eMocks";
-import { CommunicationShell } from "./CommunicationShell";
 import { requireHostBridge } from "./hostBridge";
 import { reportStartupFailure } from "./startupFailure";
 import { installHostDocumentPreview } from "./documentPreview";
-import { installDesktopPresentationLifecycle } from "./desktopPresentationLifecycle";
+import { installHostForwardSurface } from "./forwardSurface";
+import { resolveForwardSurfaceAvatar } from "./forwardSurfaceAvatar";
+import { assertBackgroundRuntimeHost, startCommunicationRuntime } from "./runtime/start";
 import "../client-feature/desktop/presentation.css";
 import "./desktop-presentation.css";
 import "./desktop-contacts.css";
@@ -36,6 +34,9 @@ async function main() {
   const host = requireHostBridge();
   const bootstrap = await host.getBootstrap();
   assertClientFeatureBootstrap(bootstrap, "communication");
+  assertBackgroundRuntimeHost(host, bootstrap);
+  const disposeForwardSurface = installHostForwardSurface(host, resolveForwardSurfaceAvatar);
+  window.addEventListener("pagehide", disposeForwardSurface, { once: true });
 
   WKApp.apiClient.config.apiURL = resolveApiURL({
     isDesktop: true,
@@ -57,7 +58,7 @@ async function main() {
   });
   WKApp.shared.currentSpaceId = bootstrap.space.id;
   document.documentElement.dataset.spaceId = bootstrap.space.id;
-  installHostDocumentPreview(host, bootstrap.space.id);
+  if (!bootstrap.runtime) installHostDocumentPreview(host, bootstrap.space.id);
 
   i18n.registerNamespace("app", {
     "zh-CN": appZhCN,
@@ -89,31 +90,12 @@ async function main() {
   document.documentElement.dataset.theme = bootstrap.appearance.theme;
   Dap.shared.init();
 
-  const root = document.getElementById("root")!;
-  const presentation = installDesktopPresentationLifecycle(window, host, root, () => ({
-    page: WKApp.currentMenuId === "contacts" ? "contacts" : "chat",
-    spaceId: WKApp.shared.currentSpaceId,
-  }));
-  await presentation.available;
-  createRoot(root).render(
-    <React.StrictMode>
-      <I18nProvider>
-        <CommunicationShell
-          bridge={host}
-          initialPage={bootstrap.initialPage}
-          initialSpaceId={bootstrap.space.id}
-          initialPresentation={bootstrap.initialPresentation}
-          onReady={({ page, spaceId }) => presentation.reportReady({
-            bridgeVersion: 1,
-            page,
-            spaceId,
-            rendererVersion: WKApp.config.appVersion,
-            documentForwardVersion: 1,
-          })}
-        />
-      </I18nProvider>
-    </React.StrictMode>,
-  );
+  if (bootstrap.runtime) {
+    await startCommunicationRuntime(host, bootstrap);
+  } else {
+    const { mountCommunicationUi } = await import("./mountUi");
+    await mountCommunicationUi(host, bootstrap);
+  }
 }
 
 async function enableMockImIfE2E(): Promise<void> {

@@ -18,11 +18,28 @@ describe("getBotPublishPrompt", () => {
     expect(prompt).not.toContain("<skill-package-path>");
     expect(prompt).not.toContain("<skill-zip-path>");
     expect(prompt).toContain("Space ID：`space-1`");
-    expect(prompt).toContain('`skills.md` 中“Publish as a Bot”流程');
+    expect(prompt).toContain("确认当前版本 `>= 0.15.0`");
+    expect(prompt).toContain("按 major/minor/patch 分段数字比较");
+    expect(prompt).toContain("版本低于 `0.15.0`");
+    expect(prompt).toContain(
+      'npm install -g "@mininglamp-oss/octo-cli@>=0.15.0"'
+    );
+    expect(prompt).not.toContain("@mininglamp-oss/octo-cli@'>=0.15.0'");
+    expect(prompt).not.toContain("@mininglamp-oss/octo-cli@^0.15.0");
+    expect(prompt).not.toContain("@mininglamp-oss/octo-cli@latest");
+    expect(prompt).toContain("先询问用户是否更新/安装 `octo-cli`");
+    expect(prompt).toContain("重新运行");
+    expect(prompt).toContain("给出可复制的安装命令");
+    expect(prompt).toContain("用户未确认时停止");
+    expect(prompt).toContain("`skills.md` 中“Publish as a Bot”流程");
     expect(prompt).toContain("使用用户提供的附件、Skill 包路径或");
-    expect(prompt).toContain("以上 Space ID、API 地址和可见范围是本次操作的权威输入");
+    expect(prompt).toContain(
+      "以上 Space ID、API 地址和可见范围是本次操作的权威输入"
+    );
     expect(prompt).not.toContain("在上传或覆盖现有 Skill 前，向用户展示");
-    expect(prompt).not.toContain("go install github.com/Mininglamp-OSS/octo-cli");
+    expect(prompt).not.toContain(
+      "go install github.com/Mininglamp-OSS/octo-cli"
+    );
   });
 
   it("renders a shell-metacharacter space id as the inert placeholder", () => {

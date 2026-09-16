@@ -28,6 +28,29 @@ const pendingChannelInfoFetches = new WeakMap<
   object,
   Map<string, Set<Promise<ImChannelInfoFetchResult<ImChannelInfoLike>>>>
 >();
+const channelInfoFetchResultGuards = new WeakMap<Promise<unknown>, () => boolean>();
+
+// Tracks write generations per (channelManager, channelKey) so stale async
+// fetches can detect data writes and notifications that happened while they
+// were in-flight, including in-place mutations that reuse the same object.
+const channelInfoWriteRevisions = new WeakMap<object, Map<string, number>>();
+
+function bumpChannelInfoRevision(manager: object, key: string): void {
+  let revisions = channelInfoWriteRevisions.get(manager);
+  if (!revisions) {
+    revisions = new Map();
+    channelInfoWriteRevisions.set(manager, revisions);
+  }
+  revisions.set(key, (revisions.get(key) ?? 0) + 1);
+}
+
+export function getImChannelInfoRevision(
+  sdk: { channelManager: object },
+  channel: ImChannelLike,
+): number {
+  const manager = sdk.channelManager as object;
+  return channelInfoWriteRevisions.get(manager)?.get(channelKey(channel)) ?? 0;
+}
 
 export interface ImChannelManagerRuntime<
   TChannel extends ImChannelLike = ImChannelLike,
@@ -153,9 +176,20 @@ export function fetchImChannelInfo<
     return channelInfo || sdk.channelManager.getChannelInfo(channel);
   });
 
-  // Keep pending fetches observable without changing any caller's return timing,
-  // so successful writes can repair late stale reads after all current fetches settle.
-  const manager = sdk.channelManager as object;
+  return trackChannelInfoFetchPromise(sdk.channelManager as object, channel, promise);
+}
+
+// Keep pending fetches observable without changing any caller's return timing,
+// so successful writes can repair late stale reads after all current fetches settle.
+export function trackChannelInfoFetchPromise<
+  TResult extends ImChannelInfoFetchResult<ImChannelInfoLike>
+>(
+  manager: object,
+  channel: ImChannelLike,
+  promise: Promise<TResult>,
+  canApplyResult?: () => boolean,
+): Promise<TResult> {
+  if (canApplyResult) channelInfoFetchResultGuards.set(promise, canApplyResult);
   let pendingByChannel = pendingChannelInfoFetches.get(manager);
   if (!pendingByChannel) {
     pendingByChannel = new Map();
@@ -182,6 +216,11 @@ export function fetchImChannelInfo<
     .catch(() => undefined);
 
   return promise;
+}
+
+/** Deferred cache repairs must honor the originating request's ownership too. */
+export function isChannelInfoFetchResultCurrent(promise: Promise<unknown>): boolean {
+  return channelInfoFetchResultGuards.get(promise)?.() ?? true;
 }
 
 export function getPendingImChannelInfoFetch<
@@ -215,6 +254,8 @@ export function setImChannelInfoCache<
   TChannel extends ImChannelLike,
   TChannelInfo extends ImChannelInfoLike
 >(sdk: ImChannelRuntimeSdk<TChannel, TChannelInfo>, channelInfo: TChannelInfo) {
+  const manager = sdk.channelManager as object;
+  bumpChannelInfoRevision(manager, channelKey(channelInfo.channel));
   sdk.channelManager.setChannleInfoForCache(channelInfo);
 }
 
@@ -222,6 +263,7 @@ export function notifyImChannelInfoListeners<
   TChannel extends ImChannelLike,
   TChannelInfo extends ImChannelInfoLike
 >(sdk: ImChannelRuntimeSdk<TChannel, TChannelInfo>, channelInfo: TChannelInfo) {
+  bumpChannelInfoRevision(sdk.channelManager, channelKey(channelInfo.channel));
   sdk.channelManager.notifyListeners(channelInfo);
 }
 
@@ -242,6 +284,8 @@ export function deleteImChannelInfo<TChannel extends ImChannelLike>(
   sdk: ImChannelCacheRuntimeSdk<TChannel>,
   channel: TChannel
 ) {
+  const manager = sdk.channelManager as object;
+  bumpChannelInfoRevision(manager, channelKey(channel));
   sdk.channelManager.deleteChannelInfo(channel);
 }
 

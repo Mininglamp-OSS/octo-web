@@ -31,6 +31,7 @@ export function SummaryShell({
   initialSpaceId,
   onReady,
   onPresentationContext,
+  externalRuntime,
 }: {
   bridge: OctoBuddySummaryBridge;
   initialRoute: SummaryWorkspaceRoute;
@@ -40,6 +41,7 @@ export function SummaryShell({
     spaceId: string;
   }) => Promise<void>;
   onPresentationContext?: (state: { route: SummaryWorkspaceRoute; spaceId: string }) => void;
+  externalRuntime?: ReturnType<typeof import("./externalRuntime").installSummaryExternalRuntime>;
 }) {
   const [route, setRoute] = useState(initialRoute);
   const routeRef = useRef(route);
@@ -131,7 +133,9 @@ export function SummaryShell({
         return;
       }
       if (command.type === "spaceChanged") {
-        if (spaceIdRef.current === command.space.id) return;
+        if (externalRuntime) {
+          if (!externalRuntime.acceptSpace(command.runtime)) return;
+        } else if (spaceIdRef.current === command.space.id) return;
         scopeRevision.current++;
         invalidationListeners.current.clear();
         spaceIdRef.current = command.space.id;
@@ -161,6 +165,7 @@ export function SummaryShell({
         return;
       }
       if (command.type === "sessionRevoked") {
+        externalRuntime?.dispose();
         WKApp.loginInfo.logout();
         window.location.reload();
         return;
@@ -184,7 +189,7 @@ export function SummaryShell({
       return;
     });
     return dispose;
-  }, [bridge, setControlledRoute]);
+  }, [bridge, setControlledRoute, externalRuntime]);
 
   useEffect(() => {
     const reporter = createReadyReporter(
@@ -208,7 +213,7 @@ export function SummaryShell({
       key={workspaceRevision}
       route={route}
       onRouteChange={onWorkspaceRouteChange}
-      onBadgeChange={onBadgeChange}
+      onBadgeChange={externalRuntime ? undefined : onBadgeChange}
       messaging={messaging}
     />
   );
