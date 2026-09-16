@@ -33,13 +33,13 @@ export interface TimeRangeSelectorProps {
   now?: Date;
 }
 
-function startOfLocalDay(value: Date): Date {
+export function startOfLocalDay(value: Date): Date {
   const next = new Date(value);
   next.setHours(0, 0, 0, 0);
   return next;
 }
 
-function endOfLocalDay(value: Date): Date {
+export function endOfLocalDay(value: Date): Date {
   const next = new Date(value);
   next.setHours(23, 59, 59, 999);
   return next;

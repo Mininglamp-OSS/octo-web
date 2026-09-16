@@ -7,6 +7,28 @@ import {
 } from '../citationFormat';
 
 describe('normalizeCitationMarkersForDisplay', () => {
+    it('expands verified lists and bounded complete ranges without changing source indices', () => {
+        expect(normalizeCitationMarkersForDisplay('Budget [9,73], range [93–95], ROI [88]', [9, 73, 88, 93, 94, 95]))
+            .toBe('Budget [9][73], range [93][94][95], ROI [88]');
+        expect(normalizeCitationMarkersForDisplay('[ 9,73 ] [ 88 ]', [9, 73, 88]))
+            .toBe('[9][73] [88]');
+    });
+
+    it('does not invent missing historical citations or partially expand a group', () => {
+        expect(normalizeCitationMarkersForDisplay('[9,73] [93–95]', [9, 93, 95]))
+            .toBe('[9,73] [93–95]');
+    });
+
+    it('keeps malformed, reversed, oversized groups and links intact', () => {
+        const text = '[9,] [9;73] [95–93] [1–99999] [9,73](url)';
+        expect(normalizeCitationMarkersForDisplay(text, [9, 73, 93, 95])).toBe(text);
+    });
+
+    it('numbers only resolved citations when an evidence set is supplied', () => {
+        expect([...buildDisplayIndexMap(['Year [2026], first [9][73], second [88], repeat [9]'], [9, 73, 88])])
+            .toEqual([[9, 1], [73, 2], [88, 3]]);
+    });
+
     it('canonicalizes Chinese and full-width markers backed by citations', () => {
         expect(normalizeCitationMarkersForDisplay('依据【1】和［２］', [1, 2])).toBe('依据[1]和[2]');
     });

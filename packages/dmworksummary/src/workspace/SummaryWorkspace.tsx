@@ -65,8 +65,9 @@ export default function SummaryWorkspace({
   );
 
   const showList = () => onRouteChange({ view: "list" });
-  const showCreate = (mode: "normal" | "agent" | "unified" = "normal") =>
+  const showCreate = (mode: "normal" | "agent" | "unified" = "normal") => {
     onRouteChange({ view: "create", mode: mode === "unified" ? "normal" : mode, source: "summary_list" });
+  };
   const showDetail = (taskId: number) =>
     onRouteChange({ view: "detail", taskId });
   const refreshListAndShow = () => {
@@ -153,6 +154,7 @@ export default function SummaryWorkspace({
             refreshKey={listRefreshKey}
             onCreateNew={showCreate}
             onViewDetail={showDetail}
+            onContinueOptimize={continueRefine}
           />
         </aside>
         {route.view !== "list" ? (

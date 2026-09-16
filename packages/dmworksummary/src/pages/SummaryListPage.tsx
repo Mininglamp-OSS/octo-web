@@ -4,6 +4,7 @@ import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
 import { I18nContext, t, WKApp, Dap } from "@octo/base";
 import * as api from "../api/summaryApi";
+import { requestSummaryScheduleOpen, requestSummaryDetailAction } from "../utils/summaryDetailIntent";
 import {
   abandonSummaryAttentionRead,
   beginSummaryAttentionRead,
@@ -14,7 +15,7 @@ import type {
     ListSummariesParams,
     TaskStatusType,
 } from "../types/summary";
-import { TaskStatus } from "../types/summary";
+import { TaskStatus, TriggerType } from "../types/summary";
 import { getStatusLabel, isTerminalStatus } from "../utils/summaryHelpers";
 import { summaryTestIds } from "../utils/testIds";
 import SummaryCard from "../components/SummaryCard";
@@ -659,7 +660,12 @@ export default class SummaryListPage extends Component<
     handleRetry = async (taskId: number) => {
         try {
       const task = this.state.items.find((i) => i.task_id === taskId);
-            await api.regenerateSummary(taskId, { topic: task?.title || "" });
+            if (task?.trigger_type === TriggerType.AGENT) {
+                requestSummaryDetailAction(taskId, WKApp.shared?.currentSpaceId || "", "retry");
+                this.handleCardClick(taskId);
+                return;
+            }
+            await api.regenerateSummary(taskId);
             Toast.success(t("summary.list.retrySuccess"));
             this.loadData();
         } catch (err: any) {
@@ -678,12 +684,8 @@ export default class SummaryListPage extends Component<
     };
 
     handleRegenerate = (taskId: number) => {
+        requestSummaryDetailAction(taskId, WKApp.shared?.currentSpaceId || "", "regenerate");
         this.handleCardClick(taskId);
-        setTimeout(() => {
-      window.dispatchEvent(
-        new CustomEvent("summary-detail-regenerate", { detail: { taskId } })
-      );
-        }, 300);
     };
 
     handleContinueOptimize = (taskId: number) => {
@@ -699,14 +701,13 @@ export default class SummaryListPage extends Component<
     };
 
     handleEdit = (taskId: number) => {
+        requestSummaryDetailAction(taskId, WKApp.shared?.currentSpaceId || "", "edit");
         this.handleCardClick(taskId);
-        // 300ms delay allows detail page to mount and register event listener
-        // before dispatching the edit action event
-        setTimeout(() => {
-      window.dispatchEvent(
-        new CustomEvent("summary-detail-edit", { detail: { taskId } })
-      );
-        }, 300);
+    };
+
+    handleSchedule = (taskId: number) => {
+        requestSummaryScheduleOpen(taskId, WKApp.shared?.currentSpaceId || "");
+        this.handleCardClick(taskId);
     };
 
     handleCreate = (mode: "normal" | "agent" = "normal") => {
@@ -972,8 +973,8 @@ export default class SummaryListPage extends Component<
                                 onRegenerate={this.handleRegenerate}
                                 onContinueOptimize={this.handleContinueOptimize}
                                 onEdit={this.handleEdit}
+                                onSchedule={this.handleSchedule}
                                 onCancel={this.handleCancel}
-                                unifiedAgentActions={createEntryMode === "unified"}
                             />
                         ))}
                         {loadingMore && (

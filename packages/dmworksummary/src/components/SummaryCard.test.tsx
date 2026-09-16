@@ -403,8 +403,8 @@ describe('SummaryCard relative time fallback (issue #1440)', () => {
     });
 });
 
-describe('SummaryCard AI Generated Badge', () => {
-    it('trigger_type === 3 (AGENT) 时显示 Agent 总结图标', () => {
+describe('SummaryCard engine-neutral personal classification', () => {
+    it('Agent 来源与其他单人总结使用相同的个人总结图标', () => {
         render(
             <SummaryCard
                 task={makeItem({ title: '对话生成总结', trigger_type: 3 }) as any}
@@ -413,7 +413,7 @@ describe('SummaryCard AI Generated Badge', () => {
             />,
         );
 
-        expect(screen.getByRole('img', { name: 'Agent 总结' })).toBeInTheDocument();
+        expect(screen.getByRole('img', { name: '个人总结' })).toBeInTheDocument();
     });
 
     it('trigger_type === 1 (MANUAL) 时不显示对话生成徽标', () => {
@@ -443,7 +443,36 @@ describe('SummaryCard AI Generated Badge', () => {
 });
 
 describe('SummaryCard completed actions', () => {
-    it('Agent summary only offers continue refining and delete', () => {
+    it.each([TriggerType.AGENT, TriggerType.MANUAL])('offers all five personal actions for engine %s', (trigger_type) => {
+        render(<SummaryCard task={makeItem({ trigger_type, referenceable: true }) as any}
+            onClick={noop} onDelete={noop} onEdit={noop} onContinueOptimize={noop}
+            onRegenerate={noop} onSchedule={noop} />);
+        openCardMenu();
+        for (const label of ['编辑', '继续优化', '重新生成', '定时更新', '删除']) {
+            expect(screen.getByText(label)).toBeInTheDocument();
+        }
+    });
+
+    it.each([
+        [TriggerType.MANUAL, false],
+        [TriggerType.AGENT, true],
+    ])('uses the legacy referenceable fallback for engine %s', (trigger_type, expected) => {
+        render(
+            <SummaryCard
+                task={makeItem({ trigger_type, referenceable: undefined }) as any}
+                onClick={noop}
+                onDelete={noop}
+                onContinueOptimize={noop}
+            />,
+        );
+
+        openCardMenu();
+        const continueOptimize = screen.queryByText('继续优化');
+        if (expected) expect(continueOptimize).toBeInTheDocument();
+        else expect(continueOptimize).not.toBeInTheDocument();
+    });
+
+    it('offers only the actions supplied by the host for an Agent summary', () => {
         const onContinueOptimize = vi.fn();
         render(
             <SummaryCard
@@ -451,7 +480,6 @@ describe('SummaryCard completed actions', () => {
                 onClick={noop}
                 onDelete={noop}
                 onContinueOptimize={onContinueOptimize}
-                unifiedAgentActions
             />,
         );
 
@@ -492,14 +520,13 @@ describe('SummaryCard completed actions', () => {
                 onContinueOptimize={noop}
                 onRegenerate={onRegenerate}
                 onEdit={noop}
-                unifiedAgentActions
             />,
         );
 
         openCardMenu();
         expect(screen.queryByText('继续优化')).not.toBeInTheDocument();
         expect(screen.getByText('重新生成')).toBeInTheDocument();
-        expect(screen.queryByText('编辑')).not.toBeInTheDocument();
+        expect(screen.getByText('编辑')).toBeInTheDocument();
         expect(screen.getByText('删除')).toBeInTheDocument();
 
         fireEvent.click(screen.getByText('重新生成'));

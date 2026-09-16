@@ -2,6 +2,8 @@ import React from 'react';
 import { render as rtlRender } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { titleContextStore } from '@octo/base';
+vi.mock("../../components/ChatSelectorModal", () => ({ default: () => null }));
+vi.mock("../../components/TimeRangePicker", () => ({ default: () => null }));
 
 // OCT-16 / upstream #495 regression: renderParticipantReports() rendering verdict
 // for declined / pending / submitted combinations.

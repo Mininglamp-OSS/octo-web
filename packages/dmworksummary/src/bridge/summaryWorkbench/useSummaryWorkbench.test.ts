@@ -5,7 +5,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SummaryWorkbenchStreamCallbacks } from "../../Service/SummaryWorkbenchService";
 import type { CreateAgentSummaryResult } from "../../types/summary";
-import { contextItemsFromScope } from "./adapter";
+import { contextItemsFromScope, decodeSummaryWorkspaceStreamError } from "./adapter";
 import { canSaveCurrentPreview, type SummaryWorkbenchResponse } from "./model";
 import {
   SummaryWorkspaceApiError,
@@ -505,6 +505,26 @@ describe("useSummaryWorkbench", () => {
       status: "failed",
       steps: [{ phase: "retrieve", count: 12 }],
     });
+    unmount();
+  });
+
+  it("does not replay the entire run after a non-transient model parameter rejection", async () => {
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({ initialSessionId: "session-1", initialScope, autoHydrate: false, service })
+    );
+    let request!: Promise<SummaryWorkbenchResponse | undefined>;
+    act(() => {
+      request = result.current.send("summarize");
+      streamCallbacks.onProgress?.({
+        phase: "retrieve", step: 1, ofSteps: 2, elapsed_ms: 100, count: 12,
+      });
+      streamCallbacks.onError?.(decodeSummaryWorkspaceStreamError({
+        code: 50003, message: "Model request failed", transient: false,
+      }));
+    });
+    await request;
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(result.current.model.messages[0]?.process?.status).toBe("failed");
     unmount();
   });
 

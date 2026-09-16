@@ -51,6 +51,7 @@ vi.mock("@octo/base", () => ({
       return state.switchToMenuById;
     },
     shared: state.shared,
+    loginInfo: { uid: "user-a" },
     routeLeft: { popToRoot: state.popToRoot },
     routeRight: {
       replaceToRoot: state.replaceToRoot,

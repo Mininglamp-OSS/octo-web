@@ -5,6 +5,28 @@ import { setSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
 import type { SummaryWorkspaceRoute } from "./types";
 import type { SummaryMessagingPort } from "../host";
 
+const wkAppMock = vi.hoisted(() => ({
+  shared: { currentSpaceId: "space-a" },
+  loginInfo: {
+    uid: "user-a",
+    selfDisplayName: vi.fn(() => "User A"),
+    name: "User A",
+  },
+  menus: {
+    refresh: vi.fn(),
+  },
+  mittBus: {
+    on: vi.fn(),
+    off: vi.fn(),
+  },
+}));
+
+vi.mock("@octo/base/src/App", () => ({
+  default: wkAppMock,
+  WKApp: wkAppMock,
+  useI18n: () => ({ t: (key: string) => key }),
+}));
+
 vi.mock("../api/summaryApi", () => ({
   getSummaryShare: vi.fn(async () => ({ source_accessible: false })),
 }));

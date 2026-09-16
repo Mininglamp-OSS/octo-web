@@ -58,6 +58,16 @@ const citationSchema = {
 
 function remarkCitation(validIndices: number[]) {
     return (tree: any) => {
+        const valid = new Set(validIndices);
+        const proseNodes: any[] = [];
+        // Do not enter link labels: converting their text creates nested
+        // interactive controls. Code and HTML are not prose text either.
+        const collect = (node: any) => {
+            if (['link', 'linkReference', 'image', 'imageReference', 'code', 'inlineCode', 'html'].includes(node.type)) return;
+            if (node.type === 'text') proseNodes.push(node);
+            else node.children?.forEach(collect);
+        };
+        collect(tree);
         // Normalize only parsed prose text. remark does not expose fenced or
         // inline code as `text` nodes, so display compatibility cannot mutate
         // code samples or accidentally create Markdown link syntax.
@@ -65,21 +75,23 @@ function remarkCitation(validIndices: number[]) {
         // (visit 'text' never enters code / inlineCode), in document order — so
         // numbering matches exactly what renders as a badge below (#1003 P1).
         const textSegments: string[] = [];
-        visit(tree, 'text', (node: any) => {
+        proseNodes.forEach((node: any) => {
             node.value = normalizeCitationMarkersForDisplay(node.value, validIndices);
             textSegments.push(node.value);
         });
-        const displayIndexMap = buildDisplayIndexMap(textSegments);
+        const displayIndexMap = buildDisplayIndexMap(textSegments, validIndices);
+        const proseSet = new Set(proseNodes);
         const resolveDisplay = (raw: number) => displayIndexMap.get(raw) ?? raw;
 
         let occurrence = 0;
         visit(tree, 'text', (node: any, index: number | undefined, parent: any) => {
-            if (!parent || index === undefined) return;
+            if (!parent || index === undefined || !proseSet.has(node)) return;
             const regex = /\[(\d+)\](?!\()/g;
 
             const matches: { start: number; end: number; citationIndex: number }[] = [];
             let match: RegExpExecArray | null;
             while ((match = regex.exec(node.value)) !== null) {
+                if (!valid.has(parseInt(match[1], 10))) continue;
                 matches.push({
                     start: match.index,
                     end: match.index + match[0].length,

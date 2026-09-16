@@ -3,8 +3,8 @@
 import type { Page } from "@playwright/test";
 
 /** S15: Summary 详情编辑取消 / 保存. */
-export async function registerS15SummaryDetailEditSave(page: Page): Promise<void> {
-  await page.evaluate(() => {
+export async function registerS15SummaryDetailEditSave(page: Page, detailDelayMs = 0, failedPersonal = false): Promise<void> {
+  await page.evaluate(({ detailDelayMs, failedPersonal }) => {
     type MSW = {
       worker: { use: (...h: unknown[]) => void };
       http: {
@@ -27,9 +27,9 @@ export async function registerS15SummaryDetailEditSave(page: Page): Promise<void
       task_no: "S15-TASK-15015",
       title: "S15 可编辑总结",
       topic: "S15 可编辑总结",
-      summary_mode: 1,
-      status: 3,
-      trigger_type: 1,
+      summary_mode: failedPersonal ? 2 : 1,
+      status: failedPersonal ? 4 : 3,
+      trigger_type: failedPersonal ? 3 : 1,
       schedule_id: null,
       creator_id: "e2e-user-1",
       time_range_start: "2026-08-05T00:00:00Z",
@@ -52,16 +52,17 @@ export async function registerS15SummaryDetailEditSave(page: Page): Promise<void
     };
     const makeDetail = (savedContent: string | null) => ({
       ...listItem,
+      generation_requirement: failedPersonal ? "S15 原始生成要求" : undefined,
       result_id: resultId,
       updated_at: savedContent ? "2026-08-06T15:18:30Z" : "2026-08-06T15:12:30Z",
       error_message: null,
       result_edited_at: savedContent ? "2026-08-06T15:18:00Z" : null,
       result_is_edited: Boolean(savedContent),
       permissions: {
-        can_edit: true,
+        can_edit: !failedPersonal,
         can_schedule: true,
         can_edit_team: true,
-        can_edit_personal: false,
+        can_edit_personal: failedPersonal,
         can_view_schedule: true,
         can_add_member: true,
         can_remove_member: true,
@@ -93,7 +94,8 @@ export async function registerS15SummaryDetailEditSave(page: Page): Promise<void
       http.get("*/summary/api/v1/summaries", () =>
         env({ items: [listItem], total: 1, attention_count: 0, unread_count: 1, pending_invitation_count: 0 })
       ),
-      http.get("*/summary/api/v1/summaries/15015", () => {
+      http.get("*/summary/api/v1/summaries/15015", async () => {
+        if (detailDelayMs) await new Promise(resolve => setTimeout(resolve, detailDelayMs));
         const state = (window as unknown as { __s15State__: { savedContent: string | null } }).__s15State__;
         return env(makeDetail(state.savedContent));
       }),
@@ -103,6 +105,22 @@ export async function registerS15SummaryDetailEditSave(page: Page): Promise<void
       http.get("*/summary/api/v1/summaries/15015/versions", () =>
         env({ versions: [], keep_limit: 3 })
       ),
+      http.get("*/summary/api/v1/summaries/15015/personal-versions", () =>
+        env({ versions: [], keep_limit: 5 })
+      ),
+      http.get("*/summary/api/v1/summaries/15015/members", () => env({ members: [] })),
+      http.get("*/summary/api/v1/summaries/15015/personal", () => {
+        const state = (window as unknown as { __s15State__: { savedContent: string | null } }).__s15State__;
+        return env({ id: 150152, worker_status: 3, content: makeDetail(state.savedContent).result.content,
+          citations: [], submitted_at: null, generated_at: now, current_version: 1 });
+      }),
+      http.put("*/summary/api/v1/summaries/15015/personal-edit", async ({ request }: any) => {
+        const state = (window as unknown as { __s15State__: { savedContent: string | null; editCalls: number } }).__s15State__;
+        const body = await request.json();
+        state.savedContent = String(body.content || "");
+        state.editCalls += 1;
+        return env({ edited_at: "2026-08-06T15:18:00Z" });
+      }),
       http.put("*/summary/api/v1/summaries/15015/edit", async ({ request }: any) => {
         const state = (window as unknown as { __s15State__: { savedContent: string | null; editCalls: number } }).__s15State__;
         state.editCalls += 1;
@@ -116,5 +134,5 @@ export async function registerS15SummaryDetailEditSave(page: Page): Promise<void
         env({ templates: [], custom_template_limit: 30 })
       )
     );
-  });
+  }, { detailDelayMs, failedPersonal });
 }

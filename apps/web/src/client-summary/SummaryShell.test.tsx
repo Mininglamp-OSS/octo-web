@@ -46,8 +46,12 @@ vi.mock("@dmwork/summary", () => ({
 vi.mock("@octo/base", () => ({
   ThemeMode: { light: "light", dark: "dark" },
   WKApp: {
-    mittBus: { emit: vi.fn() },
     config: {},
+    mittBus: {
+      emit: vi.fn(),
+      on: vi.fn(),
+      off: vi.fn(),
+    },
     loginInfo: {
       uid: "user-a",
       name: "User A",
