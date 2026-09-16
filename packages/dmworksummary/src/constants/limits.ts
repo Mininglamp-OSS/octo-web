@@ -12,3 +12,6 @@ export const TEMPLATE_CONTENT_MAX_LENGTH = 2000;
 
 /** Max number of characters users can enter as summary instructions. */
 export const SUMMARY_INPUT_MAX_LENGTH = 2000;
+
+/** Agent chat accepts up to 8192 runes; saved requests must remain editable. */
+export const AGENT_GENERATION_INPUT_MAX_LENGTH = 8192;

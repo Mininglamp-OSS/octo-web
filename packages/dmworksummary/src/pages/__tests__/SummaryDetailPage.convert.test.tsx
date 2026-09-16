@@ -2,6 +2,8 @@
 
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("../../components/ChatSelectorModal", () => ({ default: () => null }));
+vi.mock("../../components/TimeRangePicker", () => ({ default: () => null }));
 
 // Minimal Semi UI mocks that Toast/window/open can coexist
 vi.mock("@douyinfe/semi-ui", () => {

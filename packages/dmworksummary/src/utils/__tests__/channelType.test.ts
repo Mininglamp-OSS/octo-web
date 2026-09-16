@@ -18,9 +18,19 @@ vi.mock('wukongimjssdk', () => ({
     ChannelTypePerson: 1,
 }));
 
-import { isSupportedChannelType, getSourceType } from '../channelType';
+import { isSupportedChannelType, getSourceType, originChannelTypeToChatType, tryOriginChannelTypeToChatType, chatTypeToOriginChannelType } from '../channelType';
 
 describe('channelType utils', () => {
+    it.each([0, 4, 99, NaN])('does not invent a chat type for unsupported source %s', sourceType => {
+        expect(tryOriginChannelTypeToChatType(sourceType)).toBeNull();
+    });
+    it('round-trips supported source types and rejects unknown values', () => {
+        for (const sourceType of [1, 2, 3]) {
+            expect(chatTypeToOriginChannelType(originChannelTypeToChatType(sourceType))).toBe(sourceType);
+            expect(tryOriginChannelTypeToChatType(sourceType)).toBe(originChannelTypeToChatType(sourceType));
+        }
+        expect(() => originChannelTypeToChatType(99)).toThrow();
+    });
     describe('isSupportedChannelType', () => {
         it('returns true for channelType 1 (Person)', () => {
             expect(isSupportedChannelType({ channelType: 1 })).toBe(true);

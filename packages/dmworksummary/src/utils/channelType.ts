@@ -57,3 +57,20 @@ export function chatTypeToOriginChannelType(chatType: 'group' | 'thread' | 'dire
             throw new Error(`不支持的 chat_type: ${chatType}`);
     }
 }
+
+/** Reverse the source mapping without treating unknown values as private chats. */
+export function originChannelTypeToChatType(sourceType: number): 'group' | 'thread' | 'direct' {
+    const chatType = tryOriginChannelTypeToChatType(sourceType);
+    if (chatType === null) throw new Error(`不支持的 source_type: ${sourceType}`);
+    return chatType;
+}
+
+/** Server data may contain legacy or future source types that the picker cannot represent. */
+export function tryOriginChannelTypeToChatType(sourceType: number): 'group' | 'thread' | 'direct' | null {
+    switch (sourceType) {
+        case SourceType.GROUP_CHAT: return 'group';
+        case SourceType.THREAD: return 'thread';
+        case SourceType.DIRECT_MESSAGE: return 'direct';
+        default: return null;
+    }
+}

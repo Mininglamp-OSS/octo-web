@@ -74,6 +74,48 @@ function badgeByText(text: string) {
 }
 
 describe('CitationText — [n] vs [Pn] parsing', () => {
+    it('renders snapshot compound citations in first-appearance order with clickable real sources', () => {
+        const content = '预算 [9,73]。ROI [88]。再次引用 [9]。';
+        const citations = [
+            makeCitation({ index: 9, message_seq: 109, content: '预算来源 A' }),
+            makeCitation({ index: 73, message_seq: 173, content: '预算来源 B' }),
+            makeCitation({ index: 88, message_seq: 188, content: 'ROI 来源' }),
+        ];
+        const original = JSON.stringify(citations);
+        render(<CitationText content={content} citations={citations} disableTeamMemberPreview />);
+        expect(activeBadges().map(b => b.textContent)).toEqual(['[1,2]', '[3]', '[1]']);
+        fireEvent.click(badgeByText('[1,2]')!);
+        expect(screen.getByTestId('popover-content').textContent).toContain('预算来源 A');
+        expect(screen.getByTestId('popover-content').textContent).toContain('预算来源 B');
+        fireEvent.click(badgeByText('[3]')!);
+        expect(screen.getByTestId('popover-content').textContent).toContain('ROI 来源');
+        expect(JSON.stringify(citations)).toBe(original);
+    });
+
+    it('does not give absent historical sources fake buttons or consume display numbers', () => {
+        render(<CitationText content="缺失 [9,73]，年份 [2026]，有效 [88]" citations={[makeCitation({ index: 88 })]} />);
+        expect(activeBadges().map(b => b.textContent)).toEqual(['[1]']);
+        expect(document.body.textContent).toContain('[9,73]');
+        expect(document.body.textContent).toContain('[2026]');
+    });
+
+    it('expands a complete range into the existing group popover', () => {
+        render(<CitationText content="依据 [93–95]" citations={[93, 94, 95].map(index =>
+            makeCitation({ index, message_seq: index, content: `Source ${index}` }))} />);
+        fireEvent.click(badgeByText('[1,2,3]')!);
+        for (const index of [93, 94, 95]) {
+            expect(screen.getByTestId('popover-content').textContent).toContain(`Source ${index}`);
+        }
+    });
+
+    it('excludes Markdown code and link labels from normalization and reading-order labels', () => {
+        render(<CitationText
+            content={'`[9,73]`\n\n~~~\n[9,73]\n~~~\n\n[see [9,73]](https://example.test)\n\n实际 [88]'}
+            citations={[9, 73, 88].map(index => makeCitation({ index }))} />);
+        expect(activeBadges().map(b => b.textContent)).toEqual(['[1]']);
+        expect(screen.getByRole('link').textContent).toBe('see [9,73]');
+    });
+
     it('delegates citation navigation to the messaging host', () => {
         const openConversation = vi.fn(async () => {});
         const messaging = {

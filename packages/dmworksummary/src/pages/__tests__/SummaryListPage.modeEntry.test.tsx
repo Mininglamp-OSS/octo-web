@@ -47,6 +47,8 @@ import { WKApp } from '@octo/base';
 import SummaryWorkbenchEntry from '../../features/summaryWorkbench/Entry';
 import SummaryWorkbenchCreateEntry from '../../features/summaryWorkbench/SummaryWorkbenchCreateEntry';
 import SummaryListPage from '../SummaryListPage';
+import { consumeSummaryDetailAction } from '../../utils/summaryDetailIntent';
+import { TriggerType } from '../../types/summary';
 
 /** 递归遍历 React 元素树，收集满足条件的节点（不依赖 @testing-library）。 */
 function findInTree(node: unknown, predicate: (n: any) => boolean, out: any[] = []): any[] {
@@ -83,6 +85,19 @@ describe('SummaryListPage mode entry navigation', () => {
         (page as any).isMounted_ = true;
         return page;
     }
+
+    it.each(['edit', 'regenerate', 'retry', 'schedule'] as const)('records %s before navigating without a timer', async (action) => {
+        const page = makePage();
+        page.state.items = [{ task_id: 1, trigger_type: TriggerType.AGENT }] as any;
+        const navigate = vi.spyOn(page, 'handleCardClick').mockImplementation(taskId => {
+            expect(consumeSummaryDetailAction(taskId, WKApp.shared.currentSpaceId)).toBe(action);
+        });
+        if (action === 'edit') page.handleEdit(1);
+        if (action === 'regenerate') page.handleRegenerate(1);
+        if (action === 'retry') await page.handleRetry(1);
+        if (action === 'schedule') page.handleSchedule(1);
+        expect(navigate).toHaveBeenCalledOnce();
+    });
 
     function renderEntryBranch(
         page: SummaryListPage,

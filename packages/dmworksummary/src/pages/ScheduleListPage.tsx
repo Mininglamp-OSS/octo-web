@@ -1,65 +1,63 @@
 import React, { Component } from "react";
-import {
-    Button,
-    Spin,
-    Toast,
-    Modal,
-    Switch,
-    Popconfirm,
-    Tag,
-    Banner,
-} from "@douyinfe/semi-ui";
-import {
-    IconArrowLeft,
-    IconPlus,
-    IconDelete,
-    IconEdit,
-} from "@douyinfe/semi-icons";
-import { I18nContext, t } from "@octo/base";
+import { Spin, Tag, Banner, Popconfirm, Toast } from "@douyinfe/semi-ui";
+import { IconArrowLeft } from "@douyinfe/semi-icons";
+import { Pause, Trash2 } from "lucide-react";
+import { I18nContext, t, WKButton } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import * as api from "../api/summaryApi";
-import type {
-    ScheduleItem,
-    CreateScheduleParams,
-    UpdateScheduleParams,
-} from "../types/summary";
+import type { ScheduleItem } from "../types/summary";
 import {
     getModeLabel,
     describeSchedule,
     getTimeRangeTypeLabel,
-    scheduleItemToConfig,
 } from "../utils/summaryHelpers";
-import ScheduleForm from "../components/ScheduleForm";
 
 interface ScheduleListPageState {
     schedules: ScheduleItem[];
     loading: boolean;
     error: string | null;
-    showCreateModal: boolean;
-    showEditModal: boolean;
-    editingSchedule: ScheduleItem | null;
-    formLoading: boolean;
+    actionPending: boolean;
 }
 
 interface ScheduleListPageProps {
-  onBack?: () => void;
+    onBack?: () => void;
 }
 
-export default class ScheduleListPage extends Component<
-  ScheduleListPageProps,
-  ScheduleListPageState
-> {
+// Legacy schedules may have no detail page. Keep pause/delete recovery here,
+// but configuration stays in the detail page: no standalone create/edit forms.
+export default class ScheduleListPage extends Component<ScheduleListPageProps, ScheduleListPageState> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
 
-    state: ScheduleListPageState = {
-        schedules: [],
-        loading: false,
-        error: null,
-        showCreateModal: false,
-        showEditModal: false,
-        editingSchedule: null,
-        formLoading: false,
+    state: ScheduleListPageState = { schedules: [], loading: false, error: null, actionPending: false };
+    private actionPending = false;
+
+    handleScheduleAction = async (scheduleId: number, action: "pause" | "delete") => {
+        const item = this.state.schedules.find(schedule => schedule.schedule_id === scheduleId);
+        if (this.actionPending || !item || (action === "pause" && !item.is_active)) return;
+        this.actionPending = true;
+        this.setState({ actionPending: true });
+        try {
+            if (action === "pause") {
+                await api.toggleSchedule(scheduleId, false);
+                this.setState(state => ({
+                    schedules: state.schedules.map(schedule => schedule.schedule_id === scheduleId
+                        ? { ...schedule, is_active: false } : schedule),
+                }));
+                Toast.success(t("summary.schedule.paused"));
+            } else {
+                await api.deleteSchedule(scheduleId);
+                this.setState(state => ({
+                    schedules: state.schedules.filter(schedule => schedule.schedule_id !== scheduleId),
+                }));
+                Toast.success(t("summary.schedule.deleted"));
+            }
+        } catch (err: any) {
+            Toast.error(err.message || t("summary.common.operationFailed"));
+        } finally {
+            this.actionPending = false;
+            this.setState({ actionPending: false });
+        }
     };
 
     componentDidMount() {
@@ -72,304 +70,67 @@ export default class ScheduleListPage extends Component<
             const schedules = await api.listSchedules();
             this.setState({ schedules, loading: false });
         } catch (err: any) {
-      this.setState({
-        error: err.message || t("summary.common.loadingFailed"),
-        loading: false,
-      });
+            this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
         }
     }
 
     handleBack = () => {
-    if (this.props.onBack) {
-      this.props.onBack();
-      return;
-    }
+        if (this.props.onBack) {
+            this.props.onBack();
+            return;
+        }
         WKApp.routeLeft.popToRoot();
     };
 
-    handleCreate = async (params: CreateScheduleParams) => {
-        this.setState({ formLoading: true });
-        try {
-            await api.createSchedule(params);
-            Toast.success(t("summary.schedule.createSuccess"));
-            this.setState({ showCreateModal: false, formLoading: false });
-            this.loadData();
-        } catch (err: any) {
-            Toast.error(err.message || t("summary.common.createFailed"));
-            this.setState({ formLoading: false });
-        }
-    };
-
-    handleUpdate = async (params: CreateScheduleParams) => {
-        const { editingSchedule } = this.state;
-        if (!editingSchedule) return;
-        this.setState({ formLoading: true });
-        try {
-            // V5/§4.2/§6.1：编辑已有 schedule 时透传 confirm_policy，对齐后端。
-            // 判定「多人」的数据源：editingSchedule.participants（ScheduleItem 上
-            // 后端透出的参与人名单）。多人定时时：若该 schedule 已是多人定时
-            // （已有 confirm_policy）则保留/透传其原值；缺省按多人=1。单人不传，走后端兜底。
-            const isMultiPerson = (editingSchedule.participants?.length ?? 0) > 1;
-            const confirmPolicy = isMultiPerson
-        ? editingSchedule.confirm_policy ?? 1
-                : undefined;
-            const updateParams: UpdateScheduleParams = {
-                title: params.title,
-                summary_mode: params.summary_mode,
-                cron_expr: params.cron_expr,
-                interval_days: params.interval_days ?? 0,
-                interval_months: params.interval_months ?? 0,
-                day_of_week: params.day_of_week ?? 0,
-                day_of_month: params.day_of_month ?? 0,
-                run_time: params.run_time ?? "",
-                time_range_type: params.time_range_type,
-                sources: params.sources,
-        ...(confirmPolicy !== undefined
-          ? { confirm_policy: confirmPolicy }
-          : {}),
-            };
-            await api.updateSchedule(editingSchedule.schedule_id, updateParams);
-            Toast.success(t("summary.schedule.updateSuccess"));
-      this.setState({
-        showEditModal: false,
-        editingSchedule: null,
-        formLoading: false,
-      });
-            this.loadData();
-        } catch (err: any) {
-            Toast.error(err.message || t("summary.common.updateFailed"));
-            this.setState({ formLoading: false });
-        }
-    };
-
-    handleDelete = async (id: number) => {
-        try {
-            await api.deleteSchedule(id);
-            Toast.success(t("summary.schedule.deleted"));
-            this.loadData();
-        } catch (err: any) {
-            Toast.error(err.message || t("summary.common.deleteFailed"));
-        }
-    };
-
-    handleToggle = async (id: number, isActive: boolean) => {
-        try {
-            await api.toggleSchedule(id, isActive);
-      Toast.success(
-        isActive ? t("summary.schedule.enabled") : t("summary.schedule.paused")
-      );
-            this.loadData();
-        } catch (err: any) {
-            Toast.error(err.message || t("summary.common.operationFailed"));
-        }
-    };
-
     render() {
-    const {
-      schedules,
-      loading,
-      error,
-      showCreateModal,
-      showEditModal,
-      editingSchedule,
-      formLoading,
-    } = this.state;
+        const { schedules, loading, error, actionPending } = this.state;
         const { t: translate } = this.context;
-
         return (
             <div className="summary-schedule-page">
                 <div className="summary-schedule-header" data-desktop-chrome="header">
-          <Button
-            icon={<IconArrowLeft />}
-            theme="borderless"
-            onClick={this.handleBack}
-          />
+                    <WKButton icon={<IconArrowLeft />} variant="ghost" onClick={this.handleBack}
+                        aria-label={translate("summary.chatSummary.back")} />
                     <h2>{translate("summary.schedule.pageTitle")}</h2>
-                    <Button
-                        icon={<IconPlus />}
-                        theme="solid"
-                        onClick={() => this.setState({ showCreateModal: true })}
-                    >
-                        {translate("summary.schedule.new")}
-                    </Button>
                 </div>
-
-                {error && (
-                    <Banner
-                        type="warning"
-                        description={error}
-                        closeIcon={null}
-                        style={{ marginBottom: 16 }}
-                        fullMode={false}
-                    >
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span>{translate("summary.common.loadingFailed")}</span>
-              <Button size="small" onClick={() => this.loadData()}>
-                {translate("summary.common.retry")}
-              </Button>
-                        </div>
-                    </Banner>
-                )}
-
-                {loading && (
-                    <div className="summary-schedule-loading">
-                        <Spin size="large" />
-                    </div>
-                )}
-
-                {!loading && schedules.length === 0 && !error && (
-                    <div className="summary-schedule-empty">
-                        <p>{translate("summary.schedule.empty")}</p>
-            <Button
-              theme="solid"
-              onClick={() => this.setState({ showCreateModal: true })}
-            >
-                            {translate("summary.schedule.createFirst")}
-                        </Button>
-                    </div>
-                )}
-
-                {!loading && schedules.length > 0 && (
+                <Banner type="info" closeIcon={null} description={translate("summary.generation.scheduleDetailOnly")} />
+                {loading && <Spin />}
+                {error && <Banner type="danger" closeIcon={null} description={error} />}
+                {!loading && !error && (
                     <div className="summary-schedule-list">
-                        {schedules.map((item) => (
+                        {schedules.map(item => (
                             <div key={item.schedule_id} className="summary-schedule-card">
                                 <div className="summary-schedule-card-header">
                                     <span className="summary-schedule-card-title">
-                    {item.title ||
-                      translate("summary.schedule.fallbackTitle", {
-                        values: { id: item.schedule_id },
-                      })}
+                                        {item.title || translate("summary.schedule.fallbackTitle", { values: { id: item.schedule_id } })}
                                     </span>
-                                    <Switch
-                                        checked={item.is_active}
-                    onChange={(checked) =>
-                      this.handleToggle(item.schedule_id, checked)
-                    }
-                                        size="small"
-                                    />
+                                    <Tag>{translate(item.is_active ? "summary.schedule.enabled" : "summary.schedule.paused")}</Tag>
                                 </div>
                                 <div className="summary-schedule-card-meta">
-                  <Tag size="small" color="blue">
-                    {getModeLabel(item.summary_mode)}
-                  </Tag>
-                  <span style={{ marginLeft: 8 }}>
-                    {describeSchedule(
-                      item.cron_expr,
-                      item.interval_days,
-                      item.interval_months,
-                      item.run_time,
-                      item.day_of_week,
-                      item.day_of_month
-                    )}
-                  </span>
-                  <span
-                    style={{ marginLeft: 8, color: "var(--semi-color-text-2)" }}
-                  >
-                                        {getTimeRangeTypeLabel(item.time_range_type)}
-                                    </span>
+                                    <Tag size="small" color="blue">{getModeLabel(item.summary_mode)}</Tag>
+                                    <span>{describeSchedule(item.cron_expr, item.interval_days, item.interval_months,
+                                        item.run_time, item.day_of_week, item.day_of_month)}</span>
+                                    <span>{getTimeRangeTypeLabel(item.time_range_type)}</span>
                                 </div>
                                 <div className="summary-schedule-card-sources">
-                  {translate("summary.source.label")}
-                  {(item.sources ?? [])
-                    .map((s) => s.source_name || s.source_id)
-                    .join("、") || "-"}
+                                    {translate("summary.source.label")}
+                                    {(item.sources ?? []).map(s => s.source_name || s.source_id).join("、") || "-"}
                                 </div>
                                 <div className="summary-schedule-card-actions">
-                                    <Button
-                                        icon={<IconEdit />}
-                                        size="small"
-                                        theme="borderless"
-                    onClick={() =>
-                      this.setState({
-                                            showEditModal: true,
-                                            editingSchedule: item,
-                      })
-                    }
-                                    />
-                                    <Popconfirm
-                                        title={translate("summary.schedule.deleteTitle")}
+                                    {item.is_active && <WKButton icon={<Pause size={16} />} iconOnly size="sm" variant="ghost"
+                                        title={translate("summary.schedule.pause")} aria-label={translate("summary.schedule.pause")}
+                                        disabled={actionPending} onClick={() => this.handleScheduleAction(item.schedule_id, "pause")} />}
+                                    <Popconfirm title={translate("summary.schedule.deleteTitle")}
                                         content={translate("summary.schedule.deleteContent")}
-                                        onConfirm={() => this.handleDelete(item.schedule_id)}
-                                    >
-                                        <Button
-                                            icon={<IconDelete />}
-                                            size="small"
-                                            theme="borderless"
-                                            type="danger"
-                                        />
+                                        onConfirm={() => this.handleScheduleAction(item.schedule_id, "delete")}>
+                                        <WKButton icon={<Trash2 size={16} />} iconOnly size="sm" variant="danger"
+                                            title={translate("summary.common.delete")} aria-label={translate("summary.common.delete")}
+                                            disabled={actionPending} />
                                     </Popconfirm>
                                 </div>
                             </div>
                         ))}
                     </div>
                 )}
-
-                <Modal
-                    title={translate("summary.schedule.createModalTitle")}
-                    visible={showCreateModal}
-                    onCancel={() => this.setState({ showCreateModal: false })}
-                    footer={null}
-                    width={520}
-                >
-                    <ScheduleForm
-                        onSubmit={this.handleCreate}
-                        onCancel={() => this.setState({ showCreateModal: false })}
-                        loading={formLoading}
-                    />
-                </Modal>
-
-                <Modal
-                    title={translate("summary.schedule.editModalTitle")}
-                    visible={showEditModal}
-          onCancel={() =>
-            this.setState({ showEditModal: false, editingSchedule: null })
-          }
-                    footer={null}
-                    width={520}
-                >
-                    {editingSchedule && (
-                        <>
-                            {/* Blocking 3：列表页编辑 legacy cron 定时时补与详情页一致的警告。
-                                ScheduleForm 总是 scheduleToParams 清空 cron_expr，若不提示，打开
-                                旧的每周/每月 cron 定时不改频率直接保存，会被静默改成每天（数据丢失）。 */}
-                            {scheduleItemToConfig({
-                                cron_expr: editingSchedule.cron_expr,
-                                interval_days: editingSchedule.interval_days,
-                                interval_months: editingSchedule.interval_months,
-                                run_time: editingSchedule.run_time,
-                            }).legacyCron && (
-                                <Banner
-                                    type="warning"
-                                    closeIcon={null}
-                  description={translate(
-                    "summary.schedule.config.legacyCronWarning"
-                  )}
-                                    style={{ marginBottom: 16 }}
-                                    fullMode={false}
-                                />
-                            )}
-                            <ScheduleForm
-                                initialValues={{
-                                    title: editingSchedule.title,
-                                    summary_mode: editingSchedule.summary_mode,
-                                    cron_expr: editingSchedule.cron_expr,
-                                    interval_days: editingSchedule.interval_days ?? 0,
-                                    interval_months: editingSchedule.interval_months ?? 0,
-                                    day_of_week: editingSchedule.day_of_week ?? 0,
-                                    day_of_month: editingSchedule.day_of_month ?? 0,
-                                    run_time: editingSchedule.run_time ?? "",
-                                    time_range_type: editingSchedule.time_range_type,
-                                    sources: editingSchedule.sources ?? [],
-                                }}
-                                onSubmit={this.handleUpdate}
-                onCancel={() =>
-                  this.setState({ showEditModal: false, editingSchedule: null })
-                }
-                                loading={formLoading}
-                            />
-                        </>
-                    )}
-                </Modal>
             </div>
         );
     }
