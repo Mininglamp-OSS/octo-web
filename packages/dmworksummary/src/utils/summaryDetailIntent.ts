@@ -1,8 +1,12 @@
 export type SummaryDetailAction = "schedule" | "regenerate" | "retry" | "edit";
-let pending: { taskId: number; spaceId: string; action: SummaryDetailAction; expiresAt: number } | null = null;
+const pendingByTask = new Map<string, { action: SummaryDetailAction; expiresAt: number }>();
 
-// One shared action slot, recorded before navigation. The detail consumes after mounting/updating and
-// loading; do not synchronously open the outgoing page before a remount.
+function pendingKey(taskId: number, spaceId: string): string {
+    return `${spaceId}:${taskId}`;
+}
+
+// Record one pending action per task before navigation. The detail consumes it
+// after mounting/updating and loading; do not open the outgoing page synchronously.
 export function requestSummaryScheduleOpen(taskId: number, spaceId: string) {
     requestSummaryDetailAction(taskId, spaceId, "schedule");
 }
@@ -12,15 +16,21 @@ export function consumeSummaryScheduleOpen(taskId: number, spaceId: string): boo
 }
 
 export function requestSummaryDetailAction(taskId: number, spaceId: string, action: SummaryDetailAction) {
-    pending = { taskId, spaceId, action, expiresAt: Date.now() + 120_000 };
+    pendingByTask.set(pendingKey(taskId, spaceId), { action, expiresAt: Date.now() + 120_000 });
 }
 
 export function consumeSummaryDetailAction(
     taskId: number, spaceId: string, ready: (action: SummaryDetailAction) => boolean = () => true,
 ): SummaryDetailAction | null {
-    if (pending && pending.expiresAt <= Date.now()) pending = null;
-    if (pending?.taskId !== taskId || pending.spaceId !== spaceId || !ready(pending.action)) return null;
+    const key = pendingKey(taskId, spaceId);
+    const pending = pendingByTask.get(key);
+    if (!pending) return null;
+    if (pending.expiresAt <= Date.now()) {
+        pendingByTask.delete(key);
+        return null;
+    }
+    if (!ready(pending.action)) return null;
     const action = pending.action;
-    pending = null;
+    pendingByTask.delete(key);
     return action;
 }

@@ -64,6 +64,7 @@ import SummaryDetailPage from '../SummaryDetailPage';
 import { refreshSummaryAttentionBadge } from '../../utils/summaryAttentionBadge';
 import { requestSummaryScheduleOpen, consumeSummaryScheduleOpen, requestSummaryDetailAction, consumeSummaryDetailAction } from '../../utils/summaryDetailIntent';
 import { SummaryMode, TaskStatus, TriggerType } from '../../types/summary';
+import { startOfLocalDay, endOfLocalDay } from '../../components/TimeRangeSelector';
 import { summaryTestIds } from '../../utils/testIds';
 import { SummaryForwardContextExpiredError } from '../../host/forwardErrors';
 import type { SummaryForwardRequest, SummaryMessagingPort } from '../../host/types';
@@ -71,8 +72,8 @@ import { Toast } from '@douyinfe/semi-ui';
 
 vi.mock('../../api/summaryApi');
 
-function makePage(taskId: number | string) {
-    const page = new SummaryDetailPage({ taskId } as any);
+function makePage(taskId: number | string, props: Record<string, unknown> = {}) {
+    const page = new SummaryDetailPage({ taskId, ...props } as any);
     (page as any).context = { t: (k: string) => k };
     (page as any).setState = function (this: any, patch: any, callback?: () => void) {
         this.state = { ...this.state, ...(typeof patch === 'function' ? patch(this.state) : patch) };
@@ -278,6 +279,20 @@ describe('shared detail actions after navigation', () => {
         expect(api.regenerateSummary).not.toHaveBeenCalled();
     });
 
+    it('retries a failed Workflow summary without replacing its saved instruction', async () => {
+        vi.mocked(api.regenerateSummary).mockResolvedValue({ task_id: 1 });
+        const page = makePage(1);
+        page.state = { ...page.state, loading: false,
+            detail: baseDetail({ trigger_type: TriggerType.MANUAL, status: TaskStatus.FAILED,
+                generation_requirement: '', topic: '', title: 'Display title only' }) } as any;
+        (page as any).loadDetail = vi.fn();
+
+        await page.handleRetry();
+
+        expect(api.regenerateSummary).toHaveBeenCalledWith(1);
+        expect(api.regenerateSummary).not.toHaveBeenCalledWith(1, expect.anything());
+    });
+
     it.each([TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED])('allows both edit entries for terminal status %s with retained content', (status) => {
         const page = makePage(1);
         page.state = { ...page.state, loading: false, personalLoading: false,
@@ -431,7 +446,12 @@ describe('SummaryDetailPage — Blocking 5: scheduleItem must track current deta
         expect(page.state.showScheduleConfig).toBe(false);
         page.state.regenerateTopic = 'Summarize progress and risks';
         page.state.regenerateSources = [{ source_type: 1, source_id: 'group-1', source_name: 'Project' }];
-        page.state.regenerateRange = { start: new Date('2026-09-01T00:00:00Z'), end: new Date('2026-09-07T00:00:00Z') };
+        // Drive from local-midnight Dates exactly as TimeRangePicker's date-only
+        // onChange now emits, so the local→UTC full-day-boundary normalization
+        // production performs is actually exercised (PR#1674 review P1-3).
+        const rangeStart = new Date(2026, 8, 1);
+        const rangeEnd = new Date(2026, 8, 7);
+        page.state.regenerateRange = { start: rangeStart, end: rangeEnd };
         vi.mocked(api.getSummaryDetail).mockResolvedValue({
             ...page.state.detail!, generation_requirement: page.state.regenerateTopic,
             sources: page.state.regenerateSources,
@@ -440,7 +460,12 @@ describe('SummaryDetailPage — Blocking 5: scheduleItem must track current deta
         await page.handleRegenerateConfirm();
         expect(api.saveGenerationConfig).toHaveBeenCalledWith(1, {
             topic: 'Summarize progress and risks',
-            time_range: { start: '2026-09-01T00:00:00.000Z', end: '2026-09-07T00:00:00.000Z' },
+            // start is the START of the first day, end is the END of the last day —
+            // not the midnights a date-only picker yields.
+            time_range: {
+                start: startOfLocalDay(rangeStart).toISOString(),
+                end: endOfLocalDay(rangeEnd).toISOString(),
+            },
         });
         expect(page.state.showScheduleConfig).toBe(true);
         expect(page.state.scheduleConfig.generationInstruction).toBe('Summarize progress and risks');
@@ -456,6 +481,16 @@ describe('SummaryDetailPage — Blocking 5: scheduleItem must track current deta
         expect(page.state.showRegenerateModal).toBe(false);
         expect(Toast.warning).toHaveBeenCalledWith(t('summary.generation.scheduleSourceFixed'));
         expect(api.saveGenerationConfig).not.toHaveBeenCalled();
+    });
+
+    it('explains why a consumed list-card schedule action cannot open', () => {
+        const page = makePage(1);
+        page.state.detail = baseDetail({ permissions: { can_edit: true, can_schedule: false } }) as any;
+
+        page.openScheduleModal();
+
+        expect(page.state.showScheduleConfig).toBe(false);
+        expect(Toast.warning).toHaveBeenCalledWith(t('summary.generation.schedulePermissionDenied'));
     });
 
     it('opens bound schedule settings without calling the generic configuration endpoint', () => {
@@ -1144,6 +1179,7 @@ describe('SummaryDetailPage — R3: smart_summary_completed exactly-once under s
             track.mockRestore();
         }
     });
+
 });
 
 // ─── 续修5/6/7（blocking）：schedule 用户操作路径切 task 迟到丢弃 ───

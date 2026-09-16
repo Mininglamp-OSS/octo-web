@@ -407,9 +407,7 @@
   },
   "schedule": {
     "pageTitle": "Scheduled summaries",
-    "new": "New",
     "empty": "No scheduled summaries",
-    "createFirst": "Create first scheduled task",
     "fallbackTitle": "Scheduled task #{{id}}",
     "deleteTitle": "Confirm deletion",
     "deleteContent": "Delete this schedule?",
@@ -421,6 +419,8 @@
     "enabled": "Enabled",
     "paused": "Paused",
     "pause": "Pause scheduled updates",
+    "resumed": "Resumed",
+    "resume": "Resume scheduled updates",
     "form": {
       "title": "Title",
       "titlePlaceholder": "Scheduled summary title",
@@ -664,8 +664,9 @@
     "continueSchedule": "Save and configure scheduled updates",
     "completeConfig": "Complete summary settings",
     "serviceUpgradeRequired": "Update the summary service to use this feature.",
+    "schedulePermissionDenied": "You do not have permission to schedule updates for this summary.",
     "scheduleSourceFixed": "Scheduled updates use this summary's existing chats. Chats cannot be added or replaced. Create a summary with the required sources first.",
-    "scheduleDetailOnly": "Configure scheduled updates on the corresponding summary's detail page. Updates use that summary's existing chats; chat sources cannot be replaced."
+    "scheduleDetailOnly": "Create scheduled updates from the corresponding summary detail page. Existing schedules can still be edited here."
   },
   "summaryCard": {
     "personalType": "Personal summary",

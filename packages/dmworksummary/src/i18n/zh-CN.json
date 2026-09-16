@@ -407,9 +407,7 @@
   },
   "schedule": {
     "pageTitle": "定时总结配置",
-    "new": "新建",
     "empty": "暂无定时配置",
-    "createFirst": "创建第一个定时任务",
     "fallbackTitle": "定时任务 #{{id}}",
     "deleteTitle": "确认删除",
     "deleteContent": "确定要删除此定时配置吗？",
@@ -421,6 +419,8 @@
     "enabled": "已启用",
     "paused": "已暂停",
     "pause": "暂停定时更新",
+    "resumed": "已恢复",
+    "resume": "恢复定时更新",
     "form": {
       "title": "标题",
       "titlePlaceholder": "定时总结标题",
@@ -664,8 +664,9 @@
     "continueSchedule": "保存并设置定时更新",
     "completeConfig": "补充总结配置",
     "serviceUpgradeRequired": "请先更新总结服务，再使用此功能。",
+    "schedulePermissionDenied": "你没有权限设置此总结的定时更新。",
     "scheduleSourceFixed": "定时更新沿用当前总结的聊天来源，不能新增或更换群聊。请先创建包含所需来源的总结。",
-    "scheduleDetailOnly": "请在对应总结的详情页设置定时更新；定时更新沿用该总结的聊天来源，不能更换群聊。"
+    "scheduleDetailOnly": "请在对应总结的详情页新建定时更新；旧定时任务仍可在此编辑。"
   },
   "summaryCard": {
     "personalType": "个人总结",

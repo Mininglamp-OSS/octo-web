@@ -444,7 +444,7 @@ describe('SummaryCard engine-neutral personal classification', () => {
 
 describe('SummaryCard completed actions', () => {
     it.each([TriggerType.AGENT, TriggerType.MANUAL])('offers all five personal actions for engine %s', (trigger_type) => {
-        render(<SummaryCard task={makeItem({ trigger_type }) as any}
+        render(<SummaryCard task={makeItem({ trigger_type, referenceable: true }) as any}
             onClick={noop} onDelete={noop} onEdit={noop} onContinueOptimize={noop}
             onRegenerate={noop} onSchedule={noop} />);
         openCardMenu();
@@ -452,6 +452,26 @@ describe('SummaryCard completed actions', () => {
             expect(screen.getByText(label)).toBeInTheDocument();
         }
     });
+
+    it.each([
+        [TriggerType.MANUAL, false],
+        [TriggerType.AGENT, true],
+    ])('uses the legacy referenceable fallback for engine %s', (trigger_type, expected) => {
+        render(
+            <SummaryCard
+                task={makeItem({ trigger_type, referenceable: undefined }) as any}
+                onClick={noop}
+                onDelete={noop}
+                onContinueOptimize={noop}
+            />,
+        );
+
+        openCardMenu();
+        const continueOptimize = screen.queryByText('继续优化');
+        if (expected) expect(continueOptimize).toBeInTheDocument();
+        else expect(continueOptimize).not.toBeInTheDocument();
+    });
+
     it('offers only the actions supplied by the host for an Agent summary', () => {
         const onContinueOptimize = vi.fn();
         render(

@@ -4,7 +4,7 @@ import { MoreHorizontal, AlertTriangle, Bot, FileText, UsersRound, X } from "luc
 import { useI18n, Dap } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import { ParticipantStatus, TaskStatus, TriggerType, type SummaryListItem } from "../types/summary";
-import { formatDateOnly, getStatusLabel, getSummaryTypeKind, getSummaryTypeLabel } from "../utils/summaryHelpers";
+import { formatDateOnly, getStatusLabel, getSummaryTypeKind, getSummaryTypeLabel, isReferenceable } from "../utils/summaryHelpers";
 import { deriveSummaryDisplayContent } from "../utils/templateResolver";
 import { summaryTestIds } from "../utils/testIds";
 
@@ -239,7 +239,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                         {/* Both engines share the personal action set. */}
                                         {task.status === TaskStatus.COMPLETED && (
                                             <>
-                                                {task.referenceable !== false && onContinueOptimize && (
+                                                {isReferenceable(task) && onContinueOptimize && (
                                                     <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onContinueOptimize(task.task_id); }}>
                                                         {t("summary.detail.continueRefine")}
                                                     </Dropdown.Item>

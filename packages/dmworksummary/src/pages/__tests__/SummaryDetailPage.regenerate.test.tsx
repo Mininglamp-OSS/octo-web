@@ -80,6 +80,7 @@ import * as api from "../../api/summaryApi";
 import SummaryDetailPage from "../SummaryDetailPage";
 import ChatSelectorModal from "../../components/ChatSelectorModal";
 import { SummaryMode, TriggerType } from "../../types/summary";
+import { startOfLocalDay, endOfLocalDay } from "../../components/TimeRangeSelector";
 
 function makePage(props: Record<string, unknown> = {}) {
   const page = new SummaryDetailPage({ taskId: 1, ...props });
@@ -231,14 +232,26 @@ describe("SummaryDetailPage regenerate dialog", () => {
         page.state.regenerateMode = "full";
         page.state.regenerateTopic = "Original Agent request";
         page.state.regenerateSources = [{ source_type: 1, source_id: "chat-1", source_name: "Team chat" }];
-        page.state.regenerateRange = { start: new Date("2026-09-01T00:00:00Z"), end: new Date("2026-09-07T00:00:00Z") };
+        // Drive from local-midnight Dates exactly as TimeRangePicker's date-only
+        // onChange would, so the local→UTC day-boundary normalization production
+        // performs is actually exercised (PR#1674 review). An ISO-UTC input would
+        // hide it.
+        const rangeStart = new Date(2026, 8, 1);
+        const rangeEnd = new Date(2026, 8, 7);
+        page.state.regenerateRange = { start: rangeStart, end: rangeEnd };
         const stream = vi.fn();
         (page as any).resetSummaryStreamForNewRun = stream;
         (page as any).loadDetail = vi.fn();
         await page.handleRegenerateConfirm();
         expect(api.regenerateSummary).toHaveBeenCalledWith(1, {
-            topic: "Original Agent request", sources: page.state.regenerateSources,
-            time_range: { start: "2026-09-01T00:00:00.000Z", end: "2026-09-07T00:00:00.000Z" },
+            topic: "Original Agent request",
+            // source_name is stripped so the backend re-resolves the group name.
+            sources: [{ source_type: 1, source_id: "chat-1" }],
+            // end is the END of the selected day, not its midnight.
+            time_range: {
+                start: startOfLocalDay(rangeStart).toISOString(),
+                end: endOfLocalDay(rangeEnd).toISOString(),
+            },
         });
         expect(stream).toHaveBeenCalledWith(1);
         expect(api.createSchedule).not.toHaveBeenCalled();

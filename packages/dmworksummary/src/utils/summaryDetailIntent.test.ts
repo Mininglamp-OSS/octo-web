@@ -13,10 +13,11 @@ describe("summary detail navigation intent", () => {
         expect(consumeSummaryScheduleOpen(1, "other-space")).toBe(false);
         expect(consumeSummaryScheduleOpen(1, "space")).toBe(true);
     });
-    it("a newer click supersedes the previous request", () => {
+    it("keeps pending actions isolated by task", () => {
         requestSummaryScheduleOpen(1, "space");
-        requestSummaryScheduleOpen(2, "space");
-        expect(consumeSummaryScheduleOpen(2, "space")).toBe(true);
+        requestSummaryDetailAction(2, "space", "edit");
+        expect(consumeSummaryScheduleOpen(1, "space")).toBe(true);
+        expect(consumeSummaryDetailAction(2, "space")).toBe("edit");
     });
     it.each(["regenerate", "retry", "edit"] as const)("waits for readiness before consuming %s", (action) => {
         requestSummaryDetailAction(1, "space", action);

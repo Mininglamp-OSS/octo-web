@@ -41,6 +41,7 @@ import { consumeSummaryScheduleOpen, consumeSummaryDetailAction } from "../utils
 import { chatTypeToOriginChannelType, tryOriginChannelTypeToChatType } from "../utils/channelType";
 import ChatSelectorModal from "../components/ChatSelectorModal";
 import TimeRangePicker from "../components/TimeRangePicker";
+import { startOfLocalDay, endOfLocalDay } from "../components/TimeRangeSelector";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
 import { SUMMARY_INPUT_MAX_LENGTH, AGENT_GENERATION_INPUT_MAX_LENGTH } from "../constants/limits";
@@ -1520,7 +1521,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
         try {
             this.setState({ regenerateSubmitting: true });
-            await api.regenerateSummary(this.taskId, { topic: savedGenerationRequirement(detail) });
+            await api.regenerateSummary(this.taskId);
             this.setState({ regenerateSubmitting: false });
             this.loadDetail();
         } catch (err: any) {
@@ -2012,9 +2013,22 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const needsConfig = canCompleteGenerationConfig(detail, this.state.configuringForSchedule);
         return {
             topic,
-            ...(needsConfig && !detail?.sources.length ? { sources: regenerateSources } : {}),
+            // TimeRangePicker is date-only, so regenerateSources carry client-side
+            // source_name (unnamed sources degrade to raw group_no/thread ids) and
+            // regenerateRange holds local-midnight Dates. This payload also persists
+            // via PUT /generation-config and seeds every later regeneration and the
+            // schedule built from it, so mirror the create/schedule-save paths:
+            // strip source_name (let the backend re-resolve the authoritative group
+            // name by source_id) and normalize the range to full local-day bounds so
+            // `end` is the end of the selected day, not its midnight (PR#1674 review).
+            ...(needsConfig && !detail?.sources.length ? {
+                sources: regenerateSources.map(({ source_type, source_id }) => ({ source_type, source_id })),
+            } : {}),
             ...(needsConfig && !hasGenerationTimeRange(detail) && regenerateRange.start && regenerateRange.end ? {
-                time_range: { start: regenerateRange.start.toISOString(), end: regenerateRange.end.toISOString() },
+                time_range: {
+                    start: startOfLocalDay(regenerateRange.start).toISOString(),
+                    end: endOfLocalDay(regenerateRange.end).toISOString(),
+                },
             } : {}),
         };
     }
@@ -2033,7 +2047,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     openScheduleModal = () => {
         const { detail } = this.state;
         if (!detail || detail.task_id !== this.taskId) return;
-        if (!detail?.permissions?.can_schedule) return;
+        if (!detail?.permissions?.can_schedule) {
+            Toast.warning(t("summary.generation.schedulePermissionDenied"));
+            return;
+        }
         if (!detail.sources.length && !detail.schedule_id) {
             Toast.warning(t("summary.generation.scheduleSourceFixed"));
             return;
