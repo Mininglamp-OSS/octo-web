@@ -63,7 +63,7 @@ import type {
     SourceItem,
     ChatCandidate,
 } from "../types/summary";
-import { TaskStatus, SummaryMode, ParticipantStatus, TriggerType } from "../types/summary";
+import { TaskStatus, SummaryMode, ParticipantStatus, SourceType, TriggerType } from "../types/summary";
 import {
     formatDate,
     canCancel,
@@ -220,6 +220,16 @@ function AbstractCallout({ abstract, title }: { abstract?: string; title: string
 export default class SummaryDetailPage extends Component<SummaryDetailPageProps, SummaryDetailPageState> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
+
+    private sourceLabel = (source: SourceItem): string => {
+        const name = source.source_name || source.source_id;
+        if (source.source_type !== SourceType.DOCUMENT || source.source_version == null) {
+            return name;
+        }
+        return `${name} · ${this.context.t("summary.source.version", {
+            values: { version: source.source_version },
+        })}`;
+    };
     private readonly titleContextOwner = Symbol("summary-title-context");
 
     private regenerateTopicRef = React.createRef<HTMLTextAreaElement>();
@@ -2744,7 +2754,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <div className="summary-detail-source-chips">
                             {detail.sources.map((src, i) => (
                                 <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
-                                    {src.source_name || src.source_id}
+                                    {this.sourceLabel(src)}
                                 </span>
                             ))}
                         </div>
@@ -3260,7 +3270,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             <div className="summary-detail-source-chips">
                                 {detail.sources.map((src, i) => (
                                     <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
-                                        {src.source_name || src.source_id}
+                                        {this.sourceLabel(src)}
                                     </span>
                                 ))}
                             </div>
@@ -3420,7 +3430,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             <div className="summary-detail-source-chips">
                                 {detail.sources.map((src, i) => (
                                     <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
-                                        {src.source_name || src.source_id}
+                                        {this.sourceLabel(src)}
                                     </span>
                                 ))}
                             </div>
@@ -3595,7 +3605,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             <div className="summary-detail-source-chips">
                                 {detail.sources.map((src, i) => (
                                     <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
-                                        {src.source_name || src.source_id}
+                                        {this.sourceLabel(src)}
                                     </span>
                                 ))}
                             </div>
@@ -3625,7 +3635,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <div className="summary-detail-source-chips">
                             {detail.sources.map((src, i) => (
                                 <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
-                                    {src.source_name || src.source_id}
+                                    {this.sourceLabel(src)}
                                 </span>
                             ))}
                         </div>

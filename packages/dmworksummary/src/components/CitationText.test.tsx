@@ -152,6 +152,38 @@ describe('CitationText — [n] vs [Pn] parsing', () => {
         });
     });
 
+    it('opens a document citation at /d/:docId with snapshot coordinates visible', () => {
+        const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+        render(
+            <CitationText
+                content="文档引用 [1]"
+                citations={[
+                    makeCitation({
+                        channel_id: undefined,
+                        channel_type: undefined,
+                        message_seq: undefined,
+                        document_id: 'doc-42',
+                        document_version: 'v7',
+                        document_chunk: 3,
+                        source: '项目复盘',
+                    }),
+                ]}
+            />,
+        );
+
+        fireEvent.click(badgeByText('[1]')!);
+        expect(screen.getByText('版本 v7 · 分片 3')).toBeInTheDocument();
+        fireEvent.click(screen.getByText('打开文档 →'));
+
+        expect(open).toHaveBeenCalledWith(
+            `${window.location.origin}/d/doc-42`,
+            '_blank',
+            'noopener,noreferrer',
+        );
+        open.mockRestore();
+    });
+
     it('keeps same-sequence citations from different channels as distinct messages', () => {
         render(
             <CitationText

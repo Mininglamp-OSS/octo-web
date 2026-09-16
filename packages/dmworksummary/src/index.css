@@ -2586,6 +2586,12 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     color: var(--wk-color-accent);
 }
 
+.summary-workbench-source-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--wk-sp-4);
+}
+
 /* Chat chips - selected chats display */
 .summary-workbench-chat-row {
     display: flex;
@@ -3067,6 +3073,13 @@ body[theme-mode="dark"] .summary-template-create-btn:hover {
     text-overflow: ellipsis;
     white-space: nowrap;
     font-weight: 400;
+}
+
+.selected-sources-item-version {
+    flex-shrink: 0;
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-sm);
+    line-height: 18px;
 }
 
 .selected-sources-empty {

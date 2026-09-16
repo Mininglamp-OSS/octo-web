@@ -20,6 +20,7 @@ export const T = {
     create: "summary-create",
     createTopic: "summary-create-topic",
     createSelectChat: "summary-create-select-chat",
+    createSelectDocument: "summary-create-select-document",
     createSelectMembers: "summary-create-select-members",
     createSubmit: "summary-create-submit",
     workbenchFeature: "summary-workbench-feature",
@@ -34,6 +35,10 @@ export const T = {
     chatSelectorConfirmBtn: "summary-chat-selector-confirm-btn",
     chatSelectorSearchInput: "summary-chat-selector-search-input",
     memberSelectorConfirmBtn: "summary-member-selector-confirm-btn",
+    documentSelectorModal: "summary-document-selector-modal",
+    documentSelectorSearchInput: "summary-document-selector-search-input",
+    documentSelectorConfirmBtn: "summary-document-selector-confirm-btn",
+    documentSelectorRetryBtn: "summary-document-selector-retry-btn",
 
     // Add-member modal
     addMemberModal: "summary-add-member-modal",

@@ -74,6 +74,8 @@
     "groupChat": "群聊",
     "thread": "子区",
     "directMessage": "私聊",
+    "document": "文档",
+    "version": "版本 {{version}}",
     "label": "来源：",
     "selectedHeader": "已选择的信息来源",
     "empty": "暂无来源",
@@ -175,7 +177,10 @@
     "templatesTitle": "试试下列模版",
     "submitting": "总结中...",
     "success": "总结任务已创建",
+    "selectSource": "选择来源",
     "selectChat": "选择聊天",
+    "selectDocument": "选择文档",
+    "documentOnlyHint": "文档总结仅支持单人、手动创建",
     "selectMembers": "选择参与者",
     "selectedMembers": "已选 {{count}} 位参与者",
     "start": "快速总结",
@@ -200,6 +205,15 @@
     "agentSummaryCreated": "总结保存成功",
     "savedReferenceLostRetry": "保存失败：请重新选择引用总结，或点「新会话」重来",
     "savedNoOriginRetry": "保存失败：该引用总结缺少来源频道，本次会话也未读取过频道。请更换有来源的引用总结，或开始新会话让 AI 先读取频道"
+  },
+  "documentPicker": {
+    "title": "选择文档",
+    "searchPlaceholder": "搜索文档标题或内容",
+    "selectedCount": "已选择 {{count}} / {{max}} 篇",
+    "loading": "正在搜索文档…",
+    "emptyHint": "输入关键词搜索当前空间内的文档",
+    "noResults": "没有找到相关文档",
+    "searchFailed": "文档搜索失败，请重试"
   },
   "workbench": {
     "title": "总结助手",
@@ -719,6 +733,8 @@
     "source": "来源：{{source}}",
     "sourceDefault": "未知来源",
     "multipleSources": "多个来源",
+    "openDocument": "打开文档 →",
+    "documentLocation": "版本 {{version}} · 分片 {{chunk}}",
     "referenceTag": "引用 [{{index}}]",
     "member": "成员：{{name}}"
   },

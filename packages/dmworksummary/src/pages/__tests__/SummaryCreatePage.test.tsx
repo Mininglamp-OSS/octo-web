@@ -77,6 +77,21 @@ vi.mock('../../api/summaryApi', () => ({
 vi.mock('../SummaryDetailPage', () => ({ default: () => null }));
 vi.mock('../../components/ChatSelectorModal', () => ({ default: () => null }));
 vi.mock('../../components/MemberSelectorModal', () => ({ default: () => null }));
+vi.mock('../../features/documentSource/DocumentSelectorModal', () => ({
+    default: ({ visible, onConfirm }: any) => visible ? (
+        <button
+            data-testid="document-picker-confirm-fixture"
+            onClick={() => onConfirm([{
+                docId: 'doc-1',
+                title: '项目复盘',
+                docType: 'doc',
+                updatedAt: 1,
+            }])}
+        >
+            choose document
+        </button>
+    ) : null,
+}));
 
 import { getTopicTemplatesConfig } from '../../api/summaryApi';
 
@@ -251,6 +266,42 @@ describe('SummaryCreatePage templates', () => {
         }), expect.any(Object));
     });
 
+});
+
+describe('SummaryCreatePage document sources', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('creates a single-user manual summary with document source_type=4', async () => {
+        await act(async () => {
+            render(<SummaryCreatePage embedded onSubmit={vi.fn()} />);
+            await flushPromises();
+        });
+
+        const textarea = document.querySelector('.summary-workbench-textarea') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: '总结项目文档' } });
+        fireEvent.click(screen.getByTestId(summaryTestIds.createSelectDocument));
+        fireEvent.click(screen.getByTestId('document-picker-confirm-fixture'));
+
+        expect(screen.getByText('项目复盘')).toBeInTheDocument();
+        expect(screen.queryByTestId(summaryTestIds.createSelectMembers)).not.toBeInTheDocument();
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId(summaryTestIds.createSubmit));
+            await flushPromises();
+        });
+
+        expect(api.createSummary).toHaveBeenCalledWith(
+            expect.objectContaining({
+                summary_mode: 2,
+                sources: [{ source_type: 4, source_id: 'doc-1' }],
+            }),
+            expect.any(Object),
+        );
+        const request = vi.mocked(api.createSummary).mock.calls[0][0];
+        expect(request.participants).toBeUndefined();
+    });
 });
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

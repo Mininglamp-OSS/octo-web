@@ -278,6 +278,7 @@ export function getSourceTypeLabel(type: SourceTypeValue): string {
         case SourceType.GROUP_CHAT: return t("summary.source.groupChat");
         case SourceType.THREAD: return t("summary.source.thread");
         case SourceType.DIRECT_MESSAGE: return t("summary.source.directMessage");
+        case SourceType.DOCUMENT: return t("summary.source.document");
         default: return t("summary.common.unknown");
     }
 }

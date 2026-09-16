@@ -135,3 +135,16 @@
 .citation-jumplink-btn:hover {
     text-decoration: underline;
 }
+.citation-jump-link {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--wk-color-accent);
+    cursor: pointer;
+    font: inherit;
+    font-size: var(--wk-text-size-sm);
+}
+
+.citation-jump-link:hover {
+    text-decoration: underline;
+}

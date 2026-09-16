@@ -5,6 +5,10 @@ export { subscriberDisplayName } from '../../../dmworkbase/src/Utils/displayName
 export const isFlagOn = (value: unknown): boolean =>
   value === 1 || value === true || value === "1" || value === "true";
 
+export const SearchService = {
+  searchDocs: async () => ({ total: 0, items: [] }),
+};
+
 type MessageNode = string | { [key: string]: MessageNode };
 
 function flattenMessages(messages: Record<string, MessageNode>, prefix = ''): Record<string, string> {

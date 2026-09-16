@@ -1,4 +1,4 @@
-import { Sparkles, X, Plus } from "lucide-react";
+import { FileText, Sparkles, X, Plus } from "lucide-react";
 import React, { Component, createRef } from "react";
 import {
     Button,
@@ -9,6 +9,7 @@ import {
     Modal,
 } from "@douyinfe/semi-ui";
 import { I18nContext, t, Dap } from "@octo/base";
+import type { DocSearchItem } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -26,6 +27,7 @@ import { markAgentSummaryNotificationEligible } from "../utils/groupSummaryNotif
 import { channelToChatCandidate } from "../utils/channelConvert";
 import SummaryDetailPage from "./SummaryDetailPage";
 import ChatSelectorModal from "../components/ChatSelectorModal";
+import DocumentSelectorModal from "../features/documentSource/DocumentSelectorModal";
 import TemplateCard from "../components/TemplateCard";
 import AgentChatPanel from "../components/AgentChatPanel";
 import RouteContext, {
@@ -39,6 +41,7 @@ import SummaryReferenceSidePanel from "../components/SummaryReferenceSidePanel";
 import { TOPIC_TEMPLATES } from "../constants/templates";
 import {
   MAX_CHAT_SELECT,
+  MAX_DOCUMENT_SELECT,
   SUMMARY_INPUT_MAX_LENGTH,
   TEMPLATE_CONTENT_MAX_LENGTH,
   TEMPLATE_NAME_MAX_LENGTH,
@@ -125,8 +128,10 @@ interface SummaryCreatePageState {
     templates: ResolvableTemplate[];
     templatePlaceholderRange: [number, number] | null;
     selectedChats: ChatCandidate[];
+    selectedDocuments: DocSearchItem[];
     selectedMembers: MemberCandidate[];
     showChatSelector: boolean;
+    showDocumentSelector: boolean;
     showMemberSelector: boolean;
     memberSelectorChannel: Channel | null;
     memberSelectorExcluded: string[];
@@ -194,8 +199,10 @@ export default class SummaryCreatePage extends Component<
             if (!ch) return [];
             return [channelToChatCandidate(ch)];
         })(),
+        selectedDocuments: [],
         selectedMembers: [],
         showChatSelector: false,
+        showDocumentSelector: false,
         showMemberSelector: false,
         memberSelectorChannel: null,
         memberSelectorExcluded: [],
@@ -394,6 +401,7 @@ export default class SummaryCreatePage extends Component<
         // 需要重算 select-chat 宽度与芯片溢出，避免残留上一次计算的宽度。
     if (
       prevState.selectedChats !== this.state.selectedChats ||
+      prevState.selectedDocuments !== this.state.selectedDocuments ||
       prevState.mode !== this.state.mode
     ) {
             this.updateSelectChatWidth();
@@ -736,7 +744,7 @@ export default class SummaryCreatePage extends Component<
     };
 
     handleSubmit = async () => {
-        const { topic, selectedChats, selectedMembers } = this.state;
+        const { topic, selectedChats, selectedDocuments, selectedMembers } = this.state;
         if (!this.canSubmit()) return;
         // 八审 P2:提交即取消未触发的主题输入去抖 —— 用户已从「填主题」进到「生成」,
         // 600ms 后再补发 smart_summary_theme_input 会把一次已转化的输入多计一次。
@@ -778,14 +786,19 @@ export default class SummaryCreatePage extends Component<
             };
 
             // 面板模式下传入 origin_channel_id，后端据此关联来源聊天
-            if (this.props.channel) {
+            if (this.props.channel && selectedDocuments.length === 0) {
                 const ch = this.props.channel;
                 params.origin_channel_id = ch.channelID;
                 // origin_channel_type 与 SourceType 一致: 1=群聊, 2=子区, 3=私聊
                 params.origin_channel_type = getOriginChannelType(ch);
             }
 
-            if (selectedChats.length > 0) {
+            if (selectedDocuments.length > 0) {
+                params.sources = selectedDocuments.map((document) => ({
+                    source_type: SourceType.DOCUMENT,
+                    source_id: document.docId,
+                }));
+            } else if (selectedChats.length > 0) {
                 // 不传 source_name：让后端按 source_id 现查 IM 库最新群名（带类型后缀）。
                 // 避免把创建那一刻的群名冻结进定时配置，从而群改名后定时仍显示旧名。
                 params.sources = selectedChats.map((c) => ({
@@ -794,7 +807,7 @@ export default class SummaryCreatePage extends Component<
                 }));
             }
 
-            if (selectedMembers.length > 0) {
+            if (selectedDocuments.length === 0 && selectedMembers.length > 0) {
         params.participants = selectedMembers.map((m) => ({
           user_id: m.user_id,
         }));
@@ -1275,8 +1288,8 @@ export default class SummaryCreatePage extends Component<
             customTemplateLimit,
             mode,
             templates,
-            selectedChats, selectedMembers,
-            showChatSelector, showMemberSelector,
+            selectedChats, selectedDocuments, selectedMembers,
+            showChatSelector, showDocumentSelector, showMemberSelector,
             memberSelectorChannel, memberSelectorExcluded, memberSelectorOnSelect,
             submitting, agentSubmitting, error, editingTemplate, creatingCustomTemplate,
             editingTemplateLabel, editingTemplateDescription, savingTemplate,
@@ -1294,6 +1307,7 @@ export default class SummaryCreatePage extends Component<
     const isCustomEditor =
       creatingCustomTemplate || !!editingTemplate?.is_custom;
         const templateEditorVisible = creatingCustomTemplate || !!editingTemplate;
+        const documentMode = selectedDocuments.length > 0;
 
         return (
       <div
@@ -1550,14 +1564,16 @@ export default class SummaryCreatePage extends Component<
             >
                             <div className="summary-workbench-select-chat-header">
                                 <span className="summary-workbench-select-chat-title">
-                                    {translate("summary.create.selectChat")}
+                                    {translate("summary.create.selectSource")}
                                     <i className="summary-workbench-required-asterisk">*</i>
                                 </span>
                                 <span className="summary-workbench-select-chat-hint">
-                                    （{translate("summary.create.archivedNotice")}）
+                                    （{translate(documentMode
+                                      ? "summary.create.documentOnlyHint"
+                                      : "summary.create.archivedNotice")}）
                                 </span>
                             </div>
-                            {selectedChats.length > 0 ? (
+                            {selectedChats.length > 0 || selectedDocuments.length > 0 ? (
                                 <div className="summary-workbench-chat-row">
                   <div
                     className="summary-workbench-chat-chips"
@@ -1603,14 +1619,43 @@ export default class SummaryCreatePage extends Component<
                                                 </button>
                                             </div>
                                         ))}
-                                        {selectedChats.length > this.state.visibleChipCount && (
+                                        {selectedDocuments.map((document, idx) => (
+                                            <div
+                                                key={document.docId}
+                                                className={`summary-workbench-chat-chip${
+                                                  idx >= this.state.visibleChipCount
+                                                    ? " summary-workbench-chat-chip--hidden"
+                                                    : ""
+                                                }`}
+                                            >
+                                                <FileText size={16} />
+                                                <span className="summary-workbench-chat-chip-name">
+                                                  {document.title || document.docId}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    className="summary-workbench-chat-chip-close"
+                                                    onClick={() => this.setState({
+                                                      selectedDocuments: selectedDocuments.filter(
+                                                        (item) => item.docId !== document.docId
+                                                      ),
+                                                    })}
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                        {(selectedChats.length + selectedDocuments.length) > this.state.visibleChipCount && (
                                             <Tooltip
-                                                content={selectedChats.map((c) => c.name).join("、")}
+                                                content={[
+                                                  ...selectedChats.map((c) => c.name),
+                                                  ...selectedDocuments.map((document) => document.title || document.docId),
+                                                ].join("、")}
                                                 position="top"
                                             >
                                                 <span className="summary-workbench-chat-chip-overflow">
                           ...+
-                          {selectedChats.length - this.state.visibleChipCount}
+                          {selectedChats.length + selectedDocuments.length - this.state.visibleChipCount}
                                                 </span>
                                             </Tooltip>
                                         )}
@@ -1618,13 +1663,18 @@ export default class SummaryCreatePage extends Component<
                                     <button
                                         type="button"
                                         className="summary-workbench-add-chat"
-                                        onClick={() => this.setState({ showChatSelector: true })}
+                                        onClick={() => this.setState(documentMode
+                                          ? { showDocumentSelector: true }
+                                          : { showChatSelector: true })}
                                     >
                                         <Plus size={16} />
-                                        <span>{translate("summary.create.selectChat")}</span>
+                                        <span>{translate(documentMode
+                                          ? "summary.create.selectDocument"
+                                          : "summary.create.selectChat")}</span>
                                     </button>
                                 </div>
                             ) : (
+                              <div className="summary-workbench-source-actions">
                                 <button
                                     data-testid={summaryTestIds.createSelectChat}
                                     type="button"
@@ -1634,9 +1684,21 @@ export default class SummaryCreatePage extends Component<
                                     <Plus size={16} />
                                     <span>{translate("summary.create.selectChat")}</span>
                                 </button>
+                                {!this.props.channel && mode !== "agent" && (
+                                  <button
+                                    data-testid={summaryTestIds.createSelectDocument}
+                                    type="button"
+                                    className="summary-workbench-add-chat"
+                                    onClick={() => this.setState({ showDocumentSelector: true })}
+                                  >
+                                    <Plus size={16} />
+                                    <span>{translate("summary.create.selectDocument")}</span>
+                                  </button>
+                                )}
+                              </div>
                             )}
                             {/* 选择参与者（仅普通模式；Agent 模式不提供多人协作入口） */}
-              {mode !== "agent" && (
+              {mode !== "agent" && !documentMode && (
                             <div className="summary-workbench-chat-row">
                                 {selectedMembers.length > 0 && (
                     <div
@@ -1738,9 +1800,25 @@ export default class SummaryCreatePage extends Component<
                     selected={selectedChats}
                     maxSelect={MAX_CHAT_SELECT}
           onConfirm={(chats) =>
-            this.setState({ selectedChats: chats, showChatSelector: false })
+            this.setState({
+              selectedChats: chats,
+              selectedDocuments: [],
+              showChatSelector: false,
+            })
           }
                     onCancel={() => this.setState({ showChatSelector: false })}
+                />
+                <DocumentSelectorModal
+                  visible={showDocumentSelector}
+                  selected={selectedDocuments}
+                  maxSelect={MAX_DOCUMENT_SELECT}
+                  onConfirm={(documents) => this.setState({
+                    selectedDocuments: documents,
+                    selectedChats: [],
+                    selectedMembers: [],
+                    showDocumentSelector: false,
+                  })}
+                  onCancel={() => this.setState({ showDocumentSelector: false })}
                 />
                 <ChatSelectorModal
                     messaging={this.props.messaging}

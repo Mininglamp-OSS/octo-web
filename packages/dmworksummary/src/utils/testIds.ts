@@ -20,6 +20,7 @@ export const summaryTestIds = {
     create: "summary-create",
     createTopic: "summary-create-topic",
     createSelectChat: "summary-create-select-chat",
+    createSelectDocument: "summary-create-select-document",
     createSelectMembers: "summary-create-select-members",
     createSubmit: "summary-create-submit",
 
@@ -32,6 +33,12 @@ export const summaryTestIds = {
     chatSelectorConfirmBtn: "summary-chat-selector-confirm-btn",
     chatSelectorSearchInput: "summary-chat-selector-search-input",
     memberSelectorConfirmBtn: "summary-member-selector-confirm-btn",
+
+    // ── Document selector modal ──
+    documentSelectorModal: "summary-document-selector-modal",
+    documentSelectorSearchInput: "summary-document-selector-search-input",
+    documentSelectorConfirmBtn: "summary-document-selector-confirm-btn",
+    documentSelectorRetryBtn: "summary-document-selector-retry-btn",
 
     // ── Add-member modal (summary detail, messaging panel mode) ──
     addMemberModal: "summary-add-member-modal",

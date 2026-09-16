@@ -1,6 +1,6 @@
 import React from "react";
 import { useI18n } from "@octo/base";
-import { MessageSquareText, UsersRound } from "lucide-react";
+import { FileText, MessageSquareText, UsersRound } from "lucide-react";
 import type { SourceItem } from "../types/summary";
 import { SourceType, type SourceTypeValue } from "../types/summary";
 
@@ -14,6 +14,9 @@ const SelectedSourcesPanel: React.FC<SelectedSourcesPanelProps> = ({ sources = [
     const sourceIcon = (sourceType: SourceTypeValue) => {
         if (sourceType === SourceType.GROUP_CHAT) {
             return <UsersRound size={14} />;
+        }
+        if (sourceType === SourceType.DOCUMENT) {
+            return <FileText size={14} />;
         }
         return <MessageSquareText size={14} />;
     };
@@ -37,6 +40,11 @@ const SelectedSourcesPanel: React.FC<SelectedSourcesPanelProps> = ({ sources = [
                             <span className="selected-sources-item-name">
                                 {source.source_name || source.source_id}
                             </span>
+                            {source.source_type === SourceType.DOCUMENT && source.source_version != null && (
+                                <span className="selected-sources-item-version">
+                                    {t("summary.source.version", { values: { version: source.source_version } })}
+                                </span>
+                            )}
                         </div>
                     ))}
                 </div>

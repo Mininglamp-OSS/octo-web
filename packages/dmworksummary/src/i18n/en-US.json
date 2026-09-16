@@ -74,6 +74,8 @@
     "groupChat": "Group chat",
     "thread": "Thread",
     "directMessage": "Direct message",
+    "document": "Document",
+    "version": "Version {{version}}",
     "label": "Source: ",
     "selectedHeader": "Selected sources",
     "empty": "No sources",
@@ -175,7 +177,10 @@
     "templatesTitle": "Try these templates",
     "submitting": "Summarizing...",
     "success": "Summary task created",
+    "selectSource": "Select source",
     "selectChat": "Select chats",
+    "selectDocument": "Select documents",
+    "documentOnlyHint": "Document summaries are single-user and manual only",
     "selectMembers": "Select participants",
     "selectedMembers": "{{count}} participants selected",
     "start": "Quick summary",
@@ -200,6 +205,15 @@
     "agentSummaryCreated": "Summary saved",
     "savedReferenceLostRetry": "Save failed: please re-select the referenced summary, or start a new session",
     "savedNoOriginRetry": "Save failed: the referenced summary has no source channel, and this session hasn't read any channel either. Pick a referenced summary with a source, or start a new session and let the AI read a channel first"
+  },
+  "documentPicker": {
+    "title": "Select documents",
+    "searchPlaceholder": "Search document titles or content",
+    "selectedCount": "{{count}} / {{max}} selected",
+    "loading": "Searching documents…",
+    "emptyHint": "Enter keywords to search documents in the current space",
+    "noResults": "No matching documents",
+    "searchFailed": "Document search failed. Please retry."
   },
   "workbench": {
     "title": "Summary assistant",
@@ -719,6 +733,8 @@
     "source": "Source: {{source}}",
     "sourceDefault": "Unknown source",
     "multipleSources": "Multiple sources",
+    "openDocument": "Open document →",
+    "documentLocation": "Version {{version}} · chunk {{chunk}}",
     "referenceTag": "Citation [{{index}}]",
     "member": "Member: {{name}}"
   },
