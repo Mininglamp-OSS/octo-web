@@ -97,6 +97,9 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
         this.setState({ actionPending: true, formLoading: true });
         try {
             const isMultiPerson = (editingSchedule.participants?.length ?? 0) > 1;
+            // V5/§4.2/§6.1：编辑已有 schedule 时透传 confirm_policy，对齐后端。
+            // 「多人」数据源是 editingSchedule.participants（后端透出的参与人名单）：
+            // 多人则保留/透传已有值、缺省按 1；单人不传，走后端兜底。
             const updateParams: UpdateScheduleParams = {
                 title: params.title,
                 summary_mode: params.summary_mode,
@@ -195,9 +198,13 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
                                     <Popconfirm title={translate("summary.schedule.deleteTitle")}
                                         content={translate("summary.schedule.deleteContent")}
                                         onConfirm={() => this.handleScheduleAction(item.schedule_id, "delete")}>
-                                        <WKButton icon={<Trash2 size={16} />} iconOnly size="sm" variant="danger"
-                                            title={translate("summary.common.delete")} aria-label={translate("summary.common.delete")}
-                                            disabled={actionPending} />
+                                        {/* WKButton 不持有 ref，Semi Popconfirm 依赖 trigger child 的 ref
+                                            定位弹层；包一层真实 DOM 防止确认框失去锚点。 */}
+                                        <span style={{ display: "inline-block" }}>
+                                            <WKButton icon={<Trash2 size={16} />} iconOnly size="sm" variant="danger"
+                                                title={translate("summary.common.delete")} aria-label={translate("summary.common.delete")}
+                                                disabled={actionPending} />
+                                        </span>
                                     </Popconfirm>
                                 </div>
                             </div>
@@ -216,6 +223,7 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
                             {scheduleItemToConfig(editingSchedule).legacyCron && (
                                 <Banner
                                     type="warning"
+                                    fullMode={false}
                                     closeIcon={null}
                                     description={translate("summary.schedule.config.legacyCronWarning")}
                                 />

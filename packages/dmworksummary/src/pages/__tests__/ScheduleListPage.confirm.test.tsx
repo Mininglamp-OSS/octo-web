@@ -35,6 +35,76 @@ function elements(node: any): any[] {
     return [node, ...elements(node.props?.children)];
 }
 
+describe("ScheduleListPage.handleUpdate — V5 confirm_policy passthrough", () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it("multi-person schedule with existing confirm_policy → preserves/passes it through", async () => {
+        vi.mocked(api.updateSchedule).mockResolvedValue({ schedule_id: 5 } as any);
+        const page = makePage();
+        page.state.editingSchedule = {
+            schedule_id: 5,
+            title: "Legacy",
+            summary_mode: 2,
+            participants: [{ user_id: "a" }, { user_id: "b" }], // 多人
+            confirm_policy: 1,
+        } as any;
+
+        await page.handleUpdate({
+            title: "Legacy", summary_mode: 2, cron_expr: "", interval_days: 7,
+            interval_months: 0, day_of_week: 0, day_of_month: 0,
+            run_time: "09:00", time_range_type: 2, sources: [],
+        } as any);
+
+        expect(api.updateSchedule).toHaveBeenCalledWith(
+            5,
+            expect.objectContaining({ confirm_policy: 1 })
+        );
+    });
+
+    it("multi-person schedule missing confirm_policy → defaults to 1", async () => {
+        vi.mocked(api.updateSchedule).mockResolvedValue({ schedule_id: 6 } as any);
+        const page = makePage();
+        page.state.editingSchedule = {
+            schedule_id: 6,
+            title: "Legacy",
+            summary_mode: 2,
+            participants: [{ user_id: "a" }, { user_id: "b" }],
+            // confirm_policy 缺省
+        } as any;
+
+        await page.handleUpdate({
+            title: "Legacy", summary_mode: 2, cron_expr: "", interval_days: 7,
+            interval_months: 0, day_of_week: 0, day_of_month: 0,
+            run_time: "09:00", time_range_type: 2, sources: [],
+        } as any);
+
+        expect(api.updateSchedule).toHaveBeenCalledWith(
+            6,
+            expect.objectContaining({ confirm_policy: 1 })
+        );
+    });
+
+    it("single-person schedule → omits confirm_policy (backend fallback)", async () => {
+        vi.mocked(api.updateSchedule).mockResolvedValue({ schedule_id: 7 } as any);
+        const page = makePage();
+        page.state.editingSchedule = {
+            schedule_id: 7,
+            title: "Legacy",
+            summary_mode: 2,
+            participants: [{ user_id: "a" }], // 单人
+        } as any;
+
+        await page.handleUpdate({
+            title: "Legacy", summary_mode: 2, cron_expr: "", interval_days: 7,
+            interval_months: 0, day_of_week: 0, day_of_month: 0,
+            run_time: "09:00", time_range_type: 2, sources: [],
+        } as any);
+
+        const arg = vi.mocked(api.updateSchedule).mock.calls[0][1] as any;
+        expect("confirm_policy" in arg).toBe(false);
+    });
+});
+
 describe("legacy schedule recovery controls", () => {
     beforeEach(() => vi.clearAllMocks());
 
