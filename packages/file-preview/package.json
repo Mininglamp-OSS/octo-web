@@ -1,0 +1,14 @@
+{
+  "name": "@octo/file-preview",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/core/attachment-contract.ts",
+  "types": "src/core/attachment-contract.ts",
+  "exports": {
+    ".": "./src/core/attachment-contract.ts",
+    "./attachment-contract": "./src/core/attachment-contract.ts"
+  },
+  "dependencies": {},
+  "peerDependencies": {},
+  "devDependencies": {}
+}

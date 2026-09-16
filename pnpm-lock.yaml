@@ -454,6 +454,9 @@ importers:
       '@octo/chat-react':
         specifier: workspace:*
         version: link:../chat-react
+      '@octo/file-preview':
+        specifier: workspace:*
+        version: link:../file-preview
       '@react-pdf-viewer/bookmark':
         specifier: ^3.12.0
         version: 3.12.0(pdfjs-dist@3.11.174(encoding@0.1.13))(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
@@ -898,6 +901,8 @@ importers:
       eslint-plugin-react:
         specifier: 7.28.0
         version: 7.28.0(eslint@7.32.0)
+
+  packages/file-preview: {}
 
   packages/mail:
     dependencies:
