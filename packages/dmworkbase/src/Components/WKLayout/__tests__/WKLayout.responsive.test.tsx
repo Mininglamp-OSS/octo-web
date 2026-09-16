@@ -3,7 +3,7 @@
 import React from "react"
 import ReactDOM from "react-dom"
 import { act } from "react-dom/test-utils"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { WKLayout, WKLayoutProps } from "../index"
 import { WKViewQueueContext } from "../../WKViewQueue"
 
@@ -139,6 +139,22 @@ const openDetail = () => {
 }
 
 describe("WKLayout adaptive single-page behavior", () => {
+    it.each([
+        { contentMinWidth: undefined, width: 1200, renders: 1 },
+        { contentMinWidth: 400, width: 1200, renders: 1 },
+        { contentMinWidth: undefined, width: 500, renders: 2 },
+        { contentMinWidth: 400, width: 500, renders: 2 },
+    ])("renders only when mount measurement changes: $contentMinWidth/$width", ({ contentMinWidth, width, renders }) => {
+        fakeClientWidth = width
+        const render = vi.spyOn(WKLayout.prototype, "render")
+        try {
+            mount({ contentMinWidth })
+            expect(render).toHaveBeenCalledTimes(renders)
+        } finally {
+            render.mockRestore()
+        }
+    })
+
     it("treats contentMinWidth as optional and preserves legacy layout when omitted", () => {
         fakeClientWidth = 500
         mount()

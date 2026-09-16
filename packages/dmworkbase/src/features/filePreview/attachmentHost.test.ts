@@ -125,6 +125,21 @@ describe("attachment takeover lifetime", () => {
     await expect(tryHostTakeover(fileInfo())).resolves.toBe("error");
   });
 
+  it.each(["transport", "response-validation"])("logs only the failure stage for %s errors", async (stage) => {
+    const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
+    try {
+      if (stage === "transport") {
+        vi.mocked(host.openFilePreview).mockRejectedValue(new Error("secret-token-must-not-be-logged"));
+      } else {
+        vi.mocked(host.openFilePreview).mockResolvedValue({
+          status: "unsupported", token: "secret-token-must-not-be-logged",
+        } as AttachmentPreviewResult);
+      }
+      await expect(tryHostTakeover(fileInfo())).resolves.toBe("error");
+      expect(debug).toHaveBeenCalledExactlyOnceWith("[file-preview] Native takeover failed", { stage });
+    } finally { debug.mockRestore(); }
+  });
+
   it.each(["accepted", "unsupported", "cancelled"] as const)("settles cancellation immediately and ignores late %s", async (status) => {
     let finish!: (result: AttachmentPreviewResult) => void;
     vi.mocked(host.openFilePreview).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
@@ -167,14 +182,19 @@ describe("attachment takeover lifetime", () => {
     const first = tryHostTakeover(fileInfo());
     await Promise.resolve();
     await expect(tryHostTakeover(fileInfo({ messageSeq: 43 }))).resolves.toBe("taken");
+    const newerRequest = vi.mocked(host.openFilePreview).mock.calls[1][0];
     await expect(first).resolves.toBe("cancelled");
     rejectOld(new Error("Late failure"));
-    await Promise.resolve();
-    await Promise.resolve();
+    // Drain the rejection's complete promise chain before inspecting the new request.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     expect(host.cancelFilePreview).toHaveBeenCalledTimes(1);
     cancelHostAttachmentRequests();
-    await Promise.resolve();
-    expect(host.cancelFilePreview).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => {
+      expect(host.cancelFilePreview).toHaveBeenCalledTimes(2);
+      expect(host.cancelFilePreview).toHaveBeenLastCalledWith({
+        version: 1, requestId: newerRequest.requestId,
+      });
+    });
   });
 
   describe("inline host negotiation", () => {

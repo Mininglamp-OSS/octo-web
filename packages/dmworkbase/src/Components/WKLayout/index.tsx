@@ -100,8 +100,9 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
     componentDidMount() {
         window.addEventListener("resize", this.gResize)
         window.addEventListener("wk:layout-left-width", this.preferredWidthListener)
-        this.updateContainerWidth()
-        this.setState({})
+        if (this.updateContainerWidth()) {
+            this.setState({})
+        }
         if (typeof ResizeObserver !== "undefined" && this.layoutRef.current) {
             this.containerObserver = new ResizeObserver(this.scheduleContainerResize)
             this.containerObserver.observe(this.layoutRef.current)

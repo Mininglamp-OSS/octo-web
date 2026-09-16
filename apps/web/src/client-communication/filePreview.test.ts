@@ -3,6 +3,9 @@ import {
   cancelHostAttachmentRequests,
   getWebAttachmentHost,
   setWebAttachmentHost,
+  subscribeHostAttachmentClosed,
+  subscribeHostAttachmentState,
+  tryHostTakeover,
 } from "@octo/base/src/features/filePreview/attachmentHost";
 import { installHostFilePreview } from "./filePreview";
 import type { HostCommand, OctoBuddyCommunicationBridge } from "./hostBridge";
@@ -23,7 +26,7 @@ afterEach(() => {
 
 function fixture() {
   let onCommand: (command: HostCommand) => void = () => {};
-  const openFilePreview = vi.fn(async (): Promise<AttachmentPreviewResult> => ({ status: "accepted" }));
+  const openFilePreview = vi.fn(async (_request: AttachmentPreviewRequest): Promise<AttachmentPreviewResult> => ({ status: "accepted" }));
   const cancelFilePreview = vi.fn(async () => {});
   const bridge = {
     openFilePreview, cancelFilePreview,
@@ -33,7 +36,7 @@ function fixture() {
     }),
   };
   dispose = installHostFilePreview(bridge as unknown as OctoBuddyCommunicationBridge, "space-a");
-  return { bridge, openFilePreview, cancelFilePreview, command: (command: HostCommand) => onCommand(command) };
+  return { bridge, openFilePreview, cancelFilePreview, command: (command: unknown) => onCommand(command as HostCommand) };
 }
 
 const request: AttachmentPreviewRequest = {
@@ -49,7 +52,49 @@ const request: AttachmentPreviewRequest = {
   },
 };
 
+const previewInfo = {
+  url: "https://example.com/file.txt", name: "file.txt", extension: "txt",
+  sourceChannelId: request.locator.channelId, sourceChannelType: request.locator.channelType,
+  messageId: request.locator.messageId, messageSeq: request.locator.messageSeq, attachmentIndex: 0,
+};
+
 describe("communication file preview adapter", () => {
+  it("rejects malformed lifecycle commands without publishing state or closing the active source", async () => {
+    const f = fixture();
+    await expect(tryHostTakeover(previewInfo)).resolves.toBe("taken");
+    const requestId = f.openFilePreview.mock.calls[0][0].requestId;
+    const state = vi.fn();
+    const closed = vi.fn();
+    const offState = subscribeHostAttachmentState(state);
+    const offClosed = subscribeHostAttachmentClosed(closed);
+    try {
+      for (const command of [
+        null, 42,
+        { type: "filePreviewState", requestId, phase: "error", error: { evil: "object" } },
+        { type: "filePreviewState", requestId, phase: "error", error: "x".repeat(1001) },
+        { type: "filePreviewState", requestId, phase: "unknown" },
+        { type: "filePreviewState", requestId, phase: "ready", extra: true },
+        Object.create({ type: "filePreviewState", requestId, phase: "ready" }),
+        { type: "filePreviewClosed", requestId, extra: true },
+        { type: "filePreviewClosed", requestId: {} },
+        Object.create({ type: "filePreviewClosed", requestId }),
+      ]) {
+        expect(() => f.command(command)).not.toThrow();
+        expect(state).not.toHaveBeenCalled();
+        expect(closed).not.toHaveBeenCalled();
+      }
+      expect(f.cancelFilePreview).not.toHaveBeenCalled();
+      f.command({ type: "filePreviewState", requestId, phase: "error", error: "Denied" });
+      expect(state).toHaveBeenCalledExactlyOnceWith({ requestId, phase: "error", error: "Denied" });
+      f.command({ type: "filePreviewClosed", requestId });
+      expect(closed).toHaveBeenCalledExactlyOnceWith(requestId);
+      await vi.waitFor(() => expect(f.cancelFilePreview).toHaveBeenCalledExactlyOnceWith({ version: 1, requestId }));
+    } finally {
+      offState();
+      offClosed();
+    }
+  });
+
   it("installs inline ports only as a pair and disables them after session revocation", async () => {
     let command!: (value: HostCommand) => void;
     const bridge = {

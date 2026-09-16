@@ -49,7 +49,8 @@ export function HostFilePreviewSlot({
   const [status, setStatus] = useState<HostAttachmentState>();
   const error = failed ? t("base.messageFile.previewFailed") :
     status?.requestId === requestId && status.phase === "error"
-      ? status.error || t("base.messageFile.previewFailed") : undefined;
+      ? (typeof status.error === "string" && status.error.length <= 1000 && status.error) ||
+        t("base.messageFile.previewFailed") : undefined;
   useLayoutEffect(() => subscribeHostAttachmentState((next) => {
     if (next.requestId === requestId) setStatus(next);
   }), [requestId]);
@@ -128,9 +129,13 @@ export function HostFilePreviewSlot({
   }}>
     <Button theme="borderless" type="tertiary" icon={<IconClose />}
       title={t("base.filePreview.close")} aria-label={t("base.filePreview.close")}
-      onClick={onClose} style={{ position: "absolute", top: 8, right: 8, width: 32, height: 32 }} />
+      onClick={onClose} style={{
+        position: "absolute", top: "var(--wk-sp-2)", right: "var(--wk-sp-2)",
+        width: "var(--wk-sp-8)", height: "var(--wk-sp-8)",
+      }} />
     <div role={error ? "alert" : "status"} style={{
-      height: "100%", display: "grid", placeContent: "center", gap: 12, padding: 24,
+      height: "100%", display: "grid", placeContent: "center",
+      gap: "var(--wk-sp-3)", padding: "var(--wk-sp-6)",
       textAlign: "center", overflowWrap: "anywhere", color: "var(--semi-color-text-1)",
     }}>
       {error ? <><span>{error}</span>{onRetry && <Button theme="borderless" type="tertiary"

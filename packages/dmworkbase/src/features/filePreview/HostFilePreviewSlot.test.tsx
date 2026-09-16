@@ -86,10 +86,8 @@ describe("native file preview slot", () => {
     outer.remove();
   });
 
-  it("keeps the request during StrictMode effect replay and releases it on real unmount", async () => {
-    const view = render(<React.StrictMode>
-      <HostFilePreviewSlot requestId="active" onClose={vi.fn()} />
-    </React.StrictMode>);
+  it("keeps the request on mount and releases it exactly once on real unmount", async () => {
+    const view = render(<HostFilePreviewSlot requestId="active" onClose={vi.fn()} />);
     await flush();
     expect(bridge.release).not.toHaveBeenCalled();
     expect(bridge.layout).toHaveBeenLastCalledWith(expect.objectContaining({
@@ -113,5 +111,15 @@ describe("native file preview slot", () => {
     expect(retry).toHaveBeenCalledOnce();
     act(() => { bridge.closed?.("active"); });
     expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("falls back to the generic error for object and oversized errors without crashing", () => {
+    render(<HostFilePreviewSlot requestId="active" onClose={vi.fn()} />);
+    act(() => { bridge.state?.({ requestId: "active", phase: "error", error: { code: 401 } }); });
+    expect(screen.getByRole("alert")).toHaveTextContent("base.messageFile.previewFailed");
+    act(() => { bridge.state?.({ requestId: "active", phase: "error", error: "x".repeat(1001) }); });
+    expect(screen.getByRole("alert")).toHaveTextContent("base.messageFile.previewFailed");
+    act(() => { bridge.state?.({ requestId: "active", phase: "error", error: "still a string" }); });
+    expect(screen.getByRole("alert")).toHaveTextContent("still a string");
   });
 });

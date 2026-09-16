@@ -2,10 +2,19 @@ import {
   parseMessageAttachmentLocator,
   parseAttachmentPreviewResult,
   type AttachmentPreviewRequest,
+  type AttachmentPreviewState,
   type MessageAttachmentLocator,
 } from "@octo/file-preview";
 import type { FilePreviewInfo } from "../../Components/FilePreviewPanel/types";
 import type { HostFilePreviewLayout, LayoutAttachmentHost } from "./hostPreviewLayout";
+export {
+  parseAttachmentPreviewCancel,
+  parseAttachmentPreviewClosed,
+  parseAttachmentPreviewRequest,
+  parseAttachmentPreviewResult,
+  parseAttachmentPreviewState,
+  parseMessageAttachmentLocator,
+} from "@octo/file-preview";
 export type {
   AttachmentPreviewHost,
   AttachmentPreviewRequest,
@@ -24,11 +33,7 @@ let active: {
 } | undefined;
 const previewListeners = new Set<(source: MessageAttachmentLocator | null) => void>();
 const closeListeners = new Set<(requestId: string) => void>();
-export interface HostAttachmentState {
-  requestId: string;
-  phase: "loading" | "ready" | "error";
-  error?: string;
-}
+export type HostAttachmentState = AttachmentPreviewState;
 let previewState: HostAttachmentState | undefined;
 const stateListeners = new Set<(state: HostAttachmentState) => void>();
 export function subscribeHostAttachmentState(listener: (state: HostAttachmentState) => void): () => void {
@@ -134,12 +139,16 @@ export function tryHostTakeover(
     };
     active = operation;
     if (inline) onInlineOpen!({ ...file, hostPreview: { requestId: request.requestId } });
+    let failureStage = "transport";
     void Promise.resolve().then(async () => {
       if (cancelled) return;
-      const result = parseAttachmentPreviewResult(await (inline
+      const response = await (inline
         ? currentHost.openFilePreviewInPlace!(request)
-        : currentHost.openFilePreview(request)));
+        : currentHost.openFilePreview(request));
+      failureStage = "response-validation";
+      const result = parseAttachmentPreviewResult(response);
       if (cancelled || active !== operation) return;
+      failureStage = "lifecycle";
       if (result.status === "accepted") {
         operation.accepted = true;
         publishPreviewSource();
@@ -153,6 +162,8 @@ export function tryHostTakeover(
       }
     }).catch(() => {
       if (cancelled || active !== operation) return;
+      // Never log the response or transport error: either can contain credentials.
+      console.debug("[file-preview] Native takeover failed", { stage: failureStage });
       resolve("error");
       operation.cancel();
       active = undefined;

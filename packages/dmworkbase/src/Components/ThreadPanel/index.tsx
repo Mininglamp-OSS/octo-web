@@ -415,9 +415,15 @@ export default class ThreadPanel extends Component<
    * Returns cleanup callback for ConversationSurface to call on unmount.
    */
   private handleChildContext = (ctx: ConversationContext) => {
-    this._childConversation = ctx;
+    if (this._childConversation !== ctx) {
+      this._childConversation = ctx;
+      if (!this.isUnmounted) this.forceUpdate();
+    }
     return () => {
-      if (this._childConversation === ctx) this._childConversation = null;
+      if (this._childConversation === ctx) {
+        this._childConversation = null;
+        if (!this.isUnmounted) this.forceUpdate();
+      }
     };
   };
 
@@ -1216,8 +1222,7 @@ export default class ThreadPanel extends Component<
   private fileReplyAction = () => {
     const { filePreview, onReplyFile, previewInThreadContext } = this.props;
     if (!filePreview?.messageId || filePreview.messageSeq === undefined || !filePreview.fromUID ||
-      !filePreview.sourceChannelId || filePreview.sourceChannelType === undefined ||
-      (!onReplyFile && !(previewInThreadContext && this._childConversation?.replyToFileMessage))) return undefined;
+      !filePreview.sourceChannelId || filePreview.sourceChannelType === undefined) return undefined;
     const reply = {
       messageId: filePreview.messageId,
       messageSeq: filePreview.messageSeq,
@@ -1226,12 +1231,19 @@ export default class ThreadPanel extends Component<
       channelId: filePreview.sourceChannelId,
       channelType: filePreview.sourceChannelType,
     };
+
+    // A thread reply must never fall back to the parent or a replacement child.
+    if (previewInThreadContext) {
+      const child = this._childConversation;
+      if (!child?.replyToFileMessage) return undefined;
+      return () => {
+        if (this._childConversation === child) child.replyToFileMessage?.(reply);
+      };
+    }
+
+    if (!onReplyFile) return undefined;
     return () => {
-      if (previewInThreadContext && this._childConversation?.replyToFileMessage) {
-        this._childConversation.replyToFileMessage(reply);
-      } else if (onReplyFile) {
-        onReplyFile(reply);
-      }
+      onReplyFile(reply);
     };
   };
 
@@ -1270,6 +1282,7 @@ export default class ThreadPanel extends Component<
       fromUID: file.senderUid,
       conversationDigest: digest,
       category: file.category,
+      attachmentIndex: 0, // single-attachment file record
     };
     onFilePreviewChange(newPreview);
   };

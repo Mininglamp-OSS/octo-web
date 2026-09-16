@@ -49,10 +49,6 @@ body,
 
 .communication-contacts-header { display: none; }
 .communication-contacts-body { flex: 1; min-height: 0; }
-.communication-shell .wk-chat-content-right {
-  container: communication-chat / inline-size;
-}
-
 .communication-app-preview,
 .communication-app-preview__conversation {
   width: 100%;

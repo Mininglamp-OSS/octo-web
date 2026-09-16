@@ -4,6 +4,8 @@ import {
   setWebAttachmentHost,
   notifyHostAttachmentClosed,
   notifyHostAttachmentState,
+  parseAttachmentPreviewClosed,
+  parseAttachmentPreviewState,
 } from "@octo/base/src/features/filePreview/attachmentHost";
 import type { LayoutAttachmentHost } from "@octo/base/src/features/filePreview/hostPreviewLayout";
 import type { OctoBuddyCommunicationBridge } from "./hostBridge";
@@ -42,12 +44,26 @@ export function installHostFilePreview(
   setWebAttachmentHost(host);
 
   const offCommand = bridge.onCommand((command) => {
+    if (!command || typeof command !== "object") return;
     if (command.type === "filePreviewState" && getWebAttachmentHost() === host) {
-      notifyHostAttachmentState(command);
+      let state;
+      try {
+        state = parseAttachmentPreviewState(command);
+      } catch {
+        // Malformed host events must not reach the active React surface.
+        return;
+      }
+      notifyHostAttachmentState(state);
       return;
     }
     if (command.type === "filePreviewClosed" && getWebAttachmentHost() === host) {
-      notifyHostAttachmentClosed(command.requestId);
+      let closed;
+      try {
+        closed = parseAttachmentPreviewClosed(command);
+      } catch {
+        return;
+      }
+      notifyHostAttachmentClosed(closed.requestId);
       return;
     }
     if (command.type === "spaceChanged") {

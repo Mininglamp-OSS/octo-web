@@ -92,7 +92,10 @@ import {
 import WebhookIssuePreviewPanel from "../../features/webhookMessagePreview/WebhookIssuePreviewPanel";
 import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPreview";
 import { apiUrlOrigin } from "../../bridge/message/webhookPreview";
-import { closeChatRightPanels, openChatRightPanel } from "./rightPanelState";
+import {
+  closeChatRightPanels, openChatRightPanel,
+  type ChatRightPanelKind, type ChatRightPanelStatePatch,
+} from "./rightPanelState";
 import { observeChatLayout, type ChatLayout } from "./responsiveLayout";
 import { chatPageTitleController } from "./chatPageTitleController";
 import {
@@ -533,6 +536,7 @@ export class ChatContentPage extends Component<
     onCommitted?: () => void
   ) {
     // Evaluate against queued state so a newer presentation supersedes an uncommitted one.
+    if (this.state.workspaceEmbedding !== workspaceEmbedding) this._invalidateFilePreviewTakeover();
     this.setState((state) => state.workspaceEmbedding === workspaceEmbedding ? null : {
       ...closeChatRightPanels(),
       workspaceEmbedding,
@@ -545,11 +549,9 @@ export class ChatContentPage extends Component<
       return;
     }
     this._clearChannelSearchState();
-    this.setState(
-      openChatRightPanel("webhookPreview", {
-        webhookIssuePreviewTarget: target,
-      })
-    );
+    this._openRightPanel("webhookPreview", {
+      webhookIssuePreviewTarget: target,
+    });
   };
 
   private _onFilePreview = (
@@ -723,6 +725,20 @@ export class ChatContentPage extends Component<
     this.channelSearchPanelState = undefined;
   };
 
+  /** Also cancels accepted native previews when their owning panel is superseded. */
+  private _invalidateFilePreviewTakeover = () => {
+    this._filePreviewTakeoverSeq++;
+    cancelHostAttachmentRequests();
+  };
+
+  private _openRightPanel = (
+    kind: Exclude<ChatRightPanelKind, "filePreview">,
+    overrides?: Partial<ChatRightPanelStatePatch>
+  ) => {
+    this._invalidateFilePreviewTakeover();
+    this.setState(openChatRightPanel(kind, overrides));
+  };
+
   private _openChannelSearchPanel = () => {
     if (this.state.workspaceEmbedding) {
       this.state.workspaceEmbedding.onSidePanelUnavailable();
@@ -730,7 +746,7 @@ export class ChatContentPage extends Component<
     }
     if (!isChannelSearchEnabled(this.props.channel)) return;
     this._clearChannelSearchState();
-    this.setState(openChatRightPanel("channelSearch"));
+    this._openRightPanel("channelSearch");
   };
 
   private _closeChannelSearchPanel = () => {
@@ -750,6 +766,7 @@ export class ChatContentPage extends Component<
       this._closePreview();
       return;
     }
+    this._invalidateFilePreviewTakeover();
     this.setState({
       showThreadPanel: false,
       activeThread: null,
@@ -836,6 +853,7 @@ export class ChatContentPage extends Component<
             this.state.previewReturnChannelSearch)
         ) {
           this._clearChannelSearchState();
+          this._invalidateFilePreviewTakeover();
           this.setState({
             showChannelSearch: false,
             channelSearchPreviewFile: null,
@@ -865,17 +883,14 @@ export class ChatContentPage extends Component<
           }
           return;
         }
-        this.setState(
-          openChatRightPanel("thread", {
-            activeThread: detail.thread || null,
-          })
-        );
+        this._openRightPanel("thread", { activeThread: detail.thread || null });
       }
     };
     WKApp.mittBus.on("wk:pending-thread", this._onPendingThread);
 
     // 注册关闭子区面板事件监听
     this._onCloseThreadPanel = () => {
+      this._invalidateFilePreviewTakeover();
       if (this.state.showThreadPanel) {
         this.setState({ showThreadPanel: false, activeThread: null });
       }
@@ -892,6 +907,7 @@ export class ChatContentPage extends Component<
         this.state.workspaceEmbedding.onSidePanelUnavailable();
         return;
       }
+      this._invalidateFilePreviewTakeover();
       this.setState((prevState) => {
         // forceOpen：始终打开（用于聊天内创建总结后展示），不做 toggle 关闭
         const opening = data.forceOpen ? true : !prevState.showSummaryPanel;
@@ -928,7 +944,7 @@ export class ChatContentPage extends Component<
     if (WKApp.shared.pendingThreadPanel === channel.channelID) {
       WKApp.shared.pendingThreadPanel = undefined;
       if (!this.state.workspaceEmbedding) {
-        this.setState(openChatRightPanel("thread"));
+        this._openRightPanel("thread");
       }
     }
 
@@ -1090,6 +1106,7 @@ export class ChatContentPage extends Component<
 
     if (!isChannelSearchEnabled(channel) && this.state.showChannelSearch) {
       this._clearChannelSearchState();
+      this._invalidateFilePreviewTakeover();
       this.setState({
         showChannelSearch: false,
         channelSearchPreviewFile: null,
@@ -1102,7 +1119,7 @@ export class ChatContentPage extends Component<
       if (WKApp.shared.pendingThreadPanel === channel.channelID) {
         WKApp.shared.pendingThreadPanel = undefined;
         if (this.state.workspaceEmbedding) return;
-        this.setState(openChatRightPanel("thread"));
+        this._openRightPanel("thread");
         return;
       }
 
@@ -1388,7 +1405,7 @@ export class ChatContentPage extends Component<
                   !this.state.activeThread;
                 if (!isThreadListVisibleNow) {
                   Dap.shared.track("channel_subchannel_panel_opened", {});
-                  this.setState(openChatRightPanel("thread"));
+                  this._openRightPanel("thread");
                 } else {
                   this._closeThreadPanel();
                 }
@@ -1417,7 +1434,7 @@ export class ChatContentPage extends Component<
             if (channel.channelType === ChannelTypeGroup) {
               Dap.shared.track("group_info_panel_opened", {});
             }
-            this.setState(openChatRightPanel("channelSetting"));
+            this._openRightPanel("channelSetting");
           }}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
@@ -1585,16 +1602,14 @@ export class ChatContentPage extends Component<
               }
               const threadInfo = parseThreadChannelId(threadChannelId);
               if (threadInfo) {
-                this.setState(
-                  openChatRightPanel("thread", {
-                    activeThread: buildThreadStub(
-                      threadInfo.shortId,
-                      threadInfo.groupNo,
-                      threadChannelId,
-                      threadName
-                    ),
-                  })
-                );
+                this._openRightPanel("thread", {
+                  activeThread: buildThreadStub(
+                    threadInfo.shortId,
+                    threadInfo.groupNo,
+                    threadChannelId,
+                    threadName
+                  ),
+                });
               }
             },
             onOpenWebhookPreview: this._openWebhookPreview,

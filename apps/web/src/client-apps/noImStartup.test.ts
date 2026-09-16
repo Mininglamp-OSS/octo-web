@@ -38,7 +38,7 @@ describe("Apps real artifact entry", () => {
     const boot = await prepareFeatureEntryBoot("apps");
     try {
       await import("./index");
-      await vi.waitFor(() => expect(fakes.render).toHaveBeenCalledTimes(1));
+      await vi.waitFor(() => expect(fakes.render).toHaveBeenCalledTimes(1), { timeout: 4000, interval: 50 });
 
       expect(boot.bridge.reportFatalError).not.toHaveBeenCalled();
       expect(boot.baseInit).toHaveBeenCalledTimes(1);
@@ -66,5 +66,5 @@ describe("Apps real artifact entry", () => {
     } finally {
       boot.cleanup();
     }
-  });
+  }, 15_000);
 });

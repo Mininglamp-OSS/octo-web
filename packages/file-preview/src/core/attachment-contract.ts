@@ -25,15 +25,35 @@ export type AttachmentPreviewResult = {
   status: "accepted" | "unsupported" | "cancelled";
 };
 
+export interface AttachmentPreviewState {
+  requestId: string;
+  phase: "loading" | "ready" | "error";
+  error?: string;
+}
+
+export interface AttachmentPreviewClosed {
+  requestId: string;
+}
+
 export interface AttachmentPreviewHost {
   openFilePreview(request: AttachmentPreviewRequest): Promise<AttachmentPreviewResult>;
+  /** Idempotent, including cancellation echoed after a host close notification. */
   cancelFilePreview(request: AttachmentPreviewCancel): Promise<void>;
 }
 
-function record(value: unknown, keys: string[]): Record<string, unknown> {
+function record(value: unknown, keys: string[], optional: string[] = []): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid attachment request");
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== null && prototype !== Object.prototype) throw new Error("Invalid attachment record");
   const data = value as Record<string, unknown>;
-  if (Object.keys(data).some((key) => !keys.includes(key))) throw new Error("Unexpected attachment field");
+  if (keys.some((key) => !Object.prototype.hasOwnProperty.call(data, key))) {
+    throw new Error("Missing attachment field");
+  }
+  if (Reflect.ownKeys(data).some((key) =>
+    typeof key !== "string" || (!keys.includes(key) && !optional.includes(key)) ||
+    !Object.prototype.hasOwnProperty.call(Object.getOwnPropertyDescriptor(data, key), "value"))) {
+    throw new Error("Unexpected attachment field");
+  }
   return data;
 }
 
@@ -41,6 +61,12 @@ function text(value: unknown, max: number): string {
   if (typeof value !== "string" || !value || value.trim() !== value ||
       value.length > max || /[\u0000-\u001f\u007f]/.test(value)) throw new Error("Invalid attachment identifier");
   return value;
+}
+
+function requestId(value: unknown): string {
+  const id = text(value, 128);
+  if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error("Invalid attachment request ID");
+  return id;
 }
 
 function integer(value: unknown, min: number, max: number): number {
@@ -71,11 +97,10 @@ export function parseMessageAttachmentLocator(value: unknown): MessageAttachment
 
 export function parseAttachmentPreviewCancel(value: unknown): AttachmentPreviewCancel {
   const data = record(value, ["version", "requestId"]);
-  const requestId = text(data.requestId, 128);
-  if (data.version !== FILE_PREVIEW_ATTACHMENT_VERSION || !/^[a-zA-Z0-9_-]+$/.test(requestId)) {
+  if (data.version !== FILE_PREVIEW_ATTACHMENT_VERSION) {
     throw new Error("Incompatible attachment request");
   }
-  return { version: FILE_PREVIEW_ATTACHMENT_VERSION, requestId };
+  return { version: FILE_PREVIEW_ATTACHMENT_VERSION, requestId: requestId(data.requestId) };
 }
 
 export function parseAttachmentPreviewRequest(value: unknown): AttachmentPreviewRequest {
@@ -92,4 +117,24 @@ export function parseAttachmentPreviewResult(value: unknown): AttachmentPreviewR
     throw new Error("Invalid attachment response");
   }
   return { status: data.status };
+}
+
+/** Validate the complete inbound command before returning canonical state. */
+export function parseAttachmentPreviewState(value: unknown): AttachmentPreviewState {
+  const data = record(value, ["type", "requestId", "phase"], ["error"]);
+  if (data.type !== "filePreviewState" ||
+      (data.phase !== "loading" && data.phase !== "ready" && data.phase !== "error")) {
+    throw new Error("Invalid attachment preview state");
+  }
+  return {
+    requestId: requestId(data.requestId),
+    phase: data.phase,
+    ...(data.error === undefined ? {} : { error: text(data.error, 1000) }),
+  };
+}
+
+export function parseAttachmentPreviewClosed(value: unknown): AttachmentPreviewClosed {
+  const data = record(value, ["type", "requestId"]);
+  if (data.type !== "filePreviewClosed") throw new Error("Invalid attachment close notification");
+  return { requestId: requestId(data.requestId) };
 }
