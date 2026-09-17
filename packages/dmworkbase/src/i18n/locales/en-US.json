@@ -874,6 +874,7 @@
   "threadPanel.webhook": "Message push",
   "threadPanel.webhookTitle": "Message push for “{{name}}”",
   "time.dayBeforeYesterday": "The day before yesterday",
+  "time.dayBeforeYesterdayShort": "2d ago",
   "time.justNow": "Just now",
   "time.yesterday": "Yesterday",
   "time.yesterdayWithTime": "Yesterday {{time}}",
