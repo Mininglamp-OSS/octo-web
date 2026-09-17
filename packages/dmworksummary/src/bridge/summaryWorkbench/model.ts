@@ -149,13 +149,14 @@ export type SummaryWorkbenchResponse =
   | TeamConfirmationSummaryResponse
   | WorkflowSummaryResponse;
 
-type SummaryWorkbenchModelResponse = SummaryWorkbenchResponse extends infer Response
-  ? Response extends SummaryWorkbenchResponse
-    ? Omit<Response, "authoritativeState"> & {
-        authoritativeState?: SummaryWorkbenchAuthoritativeState;
-      }
-    : never
-  : never;
+type SummaryWorkbenchModelResponse =
+  SummaryWorkbenchResponse extends infer Response
+    ? Response extends SummaryWorkbenchResponse
+      ? Omit<Response, "authoritativeState"> & {
+          authoritativeState?: SummaryWorkbenchAuthoritativeState;
+        }
+      : never
+    : never;
 
 export interface SummaryWorkbenchScopeUpdate {
   contextItems: SummaryWorkbenchContextItem[];
@@ -612,11 +613,15 @@ function derivePlaceholderKey(model: SummaryWorkbenchModel): string {
     (item) => item.kind === "participant"
   );
   const hasChat = model.contextItems.some((item) => item.kind === "chat");
+  const hasDocument = model.contextItems.some(
+    (item) => item.kind === "document"
+  );
   const hasTemplate = model.contextItems.some(
     (item) => item.kind === "template"
   );
   if (hasParticipants)
     return "summary.workbench.placeholder.participantsSelected";
+  if (hasDocument) return "summary.workbench.placeholder.documentSelected";
   if (hasChat && hasTemplate)
     return "summary.workbench.placeholder.structuredReady";
   if (hasChat) return "summary.workbench.placeholder.chatSelected";

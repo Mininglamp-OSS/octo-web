@@ -208,12 +208,19 @@
   },
   "documentPicker": {
     "title": "Select documents",
-    "searchPlaceholder": "Search document titles or content",
+    "searchPlaceholder": "Search document titles",
     "selectedCount": "{{count}} / {{max}} selected",
-    "loading": "Searching documents…",
-    "emptyHint": "Enter keywords to search documents in the current space",
+    "loading": "Loading documents…",
+    "source": {
+      "recent": "Recent",
+      "mine": "My documents"
+    },
+    "empty": {
+      "recent": "No recent documents available",
+      "mine": "No owned documents available"
+    },
     "noResults": "No matching documents",
-    "searchFailed": "Document search failed. Please retry."
+    "searchFailed": "Document loading failed. Please retry."
   },
   "workbench": {
     "title": "Summary assistant",
@@ -221,6 +228,7 @@
     "empty": "Tell me what you want to summarize, and I'll work with the context you've selected",
     "context": {
       "chat": "Select chats",
+      "document": "Select documents",
       "participant": "Select participants",
       "template": "Template",
       "timeRange": "Time range",
@@ -305,6 +313,7 @@
     "placeholder": {
       "initial": "Describe what you want summarized and how",
       "chatSelected": "Describe how to summarize the selected chats, and I'll create a preview you can refine",
+      "documentSelected": "Send now to summarize the selected documents, or add instructions",
       "participantsSelected": "Describe or refine the team summary request, and I'll prepare the task",
       "structuredReady": "Send now to generate the final summary, or add more instructions",
       "teamConfirmation": "Add more instructions, or confirm and start the collaboration",

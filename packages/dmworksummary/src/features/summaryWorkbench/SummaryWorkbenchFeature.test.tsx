@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   modalConfirm: vi.fn(),
   loadParticipantCandidates: vi.fn(),
+  docsOn: false,
+  docsSearchOn: false,
 }));
 
 vi.mock("@octo/base", () => ({
@@ -49,6 +51,15 @@ vi.mock("@octo/base", () => ({
       push: mocks.routePush,
     },
     mittBus: { emit: mocks.busEmit },
+    remoteConfig: {
+      get docsOn() {
+        return mocks.docsOn;
+      },
+      get docsSearchOn() {
+        return mocks.docsSearchOn;
+      },
+      addConfigChangeListener: vi.fn(() => vi.fn()),
+    },
   },
 }));
 
@@ -84,6 +95,15 @@ vi.mock("@octo/base/src/App", () => ({
       push: mocks.routePush,
     },
     mittBus: { emit: mocks.busEmit },
+    remoteConfig: {
+      get docsOn() {
+        return mocks.docsOn;
+      },
+      get docsSearchOn() {
+        return mocks.docsSearchOn;
+      },
+      addConfigChangeListener: vi.fn(() => vi.fn()),
+    },
   },
 }));
 
@@ -146,6 +166,7 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
       data-template-locked={String(state.templateLocked)}
       data-reference-preview-open={String(state.referencePreviewOpen)}
       data-reference-preview-id={state.referencePreviewId ?? ""}
+      data-available-contexts={(state.availableContextKinds ?? []).join(",")}
     >
       <span data-testid="reference-label">
         {state.contextItems.find((item: any) => item.kind === "reference")
@@ -198,6 +219,9 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
       >
         open-participant
       </button>
+      <button type="button" onClick={() => actions.onOpenContext("document")}>
+        open-document
+      </button>
       <button type="button" onClick={() => actions.onOpenContext("time_range")}>
         open-time-range
       </button>
@@ -212,6 +236,28 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
       {contextPanel}
     </div>
   ),
+}));
+vi.mock("../documentSource/DocumentSelectorModal", () => ({
+  default: ({ visible, selected, onConfirm }: any) =>
+    visible ? (
+      <div data-testid="document-selector" data-selected={selected.length}>
+        <button
+          type="button"
+          onClick={() =>
+            onConfirm([
+              {
+                docId: "doc-a",
+                title: "Doc A",
+                docType: "doc",
+                updatedAt: null,
+              },
+            ])
+          }
+        >
+          choose-document
+        </button>
+      </div>
+    ) : null,
 }));
 
 vi.mock("../../components/ChatSelectorModal", () => ({
@@ -276,6 +322,7 @@ function scope(
 ): SummaryWorkbenchScope {
   return {
     selectedChannels: [],
+    documents: [],
     participants: [],
     template: null,
     timeRange: null,
@@ -383,6 +430,8 @@ function deferred<T>() {
 describe("SummaryWorkbenchFeature", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.docsOn = false;
+    mocks.docsSearchOn = false;
     localStorage.clear();
     mocks.loadParticipantCandidates.mockResolvedValue({
       members: [{ uid: "user-a", name: "Alex" }],
@@ -535,103 +584,116 @@ describe("SummaryWorkbenchFeature", () => {
     expect(current.updateScope).not.toHaveBeenCalled();
   });
 
-  it.each(["agent_preview", "clarification"])("clears the composer and locks templates after an accepted %s turn", async (resultType) => {
-    const pendingResponse = deferred<any>();
-    const current = controller({
-      scope: scope({
-        template: {
-          templateId: "weekly",
-          label: "Weekly",
-          requirement: "Summarize progress and risks",
+  it.each(["agent_preview", "clarification"])(
+    "clears the composer and locks templates after an accepted %s turn",
+    async (resultType) => {
+      const pendingResponse = deferred<any>();
+      const current = controller({
+        scope: scope({
+          template: {
+            templateId: "weekly",
+            label: "Weekly",
+            requirement: "Summarize progress and risks",
+          },
+        }),
+        viewState: {
+          layout: "full",
+          messages: [],
+          contextItems: [{ id: "weekly", kind: "template", label: "Weekly" }],
+          inputValue: "Summarize the launch risks",
+          placeholderKey: "summary.workbench.placeholder.initial",
+          isSending: false,
+          canSend: true,
         },
-      }),
-      viewState: {
-        layout: "full",
-        messages: [],
-        contextItems: [{ id: "weekly", kind: "template", label: "Weekly" }],
-        inputValue: "Summarize the launch risks",
-        placeholderKey: "summary.workbench.placeholder.initial",
-        isSending: false,
-        canSend: true,
-      },
-      send: vi.fn(() => pendingResponse.promise),
-    });
-    current.setComposerValue = vi.fn((value: string) => {
-      current.viewState.inputValue = value;
-    });
-    current.restoreComposerValue = vi.fn((value: string) => {
-      current.viewState.inputValue = value;
-    });
-    mocks.useSummaryWorkbench.mockReturnValue(current);
+        send: vi.fn(() => pendingResponse.promise),
+      });
+      current.setComposerValue = vi.fn((value: string) => {
+        current.viewState.inputValue = value;
+      });
+      current.restoreComposerValue = vi.fn((value: string) => {
+        current.viewState.inputValue = value;
+      });
+      mocks.useSummaryWorkbench.mockReturnValue(current);
 
-    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
-      legacyRoot: true,
-    });
-    fireEvent.click(screen.getByRole("button", { name: "send" }));
+      render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+        legacyRoot: true,
+      });
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
 
-    expect(current.restoreComposerValue).toHaveBeenCalledWith("");
-    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
-      "data-can-send",
-      "false"
-    );
-    expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
+      expect(current.restoreComposerValue).toHaveBeenCalledWith("");
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-can-send",
+        "false"
+      );
+      expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
 
-    pendingResponse.resolve({
-      resultType,
-      ...(resultType === "agent_preview" ? { preview: { content: "Draft" } } : {}),
-    });
-    await waitFor(() => expect(current.send).toHaveBeenCalled());
-    expect(
-      screen.queryByRole("button", { name: "open-template" })
-    ).not.toBeInTheDocument();
-    expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
-    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
-      "data-template-locked",
-      "true"
-    );
+      pendingResponse.resolve({
+        resultType,
+        ...(resultType === "agent_preview"
+          ? { preview: { content: "Draft" } }
+          : {}),
+      });
+      await waitFor(() => expect(current.send).toHaveBeenCalled());
+      expect(
+        screen.queryByRole("button", { name: "open-template" })
+      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-template-locked",
+        "true"
+      );
 
-    fireEvent.click(screen.getByRole("button", { name: "remove-template" }));
-    expect(current.updateScope).not.toHaveBeenCalled();
-  });
+      fireEvent.click(screen.getByRole("button", { name: "remove-template" }));
+      expect(current.updateScope).not.toHaveBeenCalled();
+    }
+  );
 
   it.each([
     ["agent_preview", "agent_preview"],
     ["clarification", "clarification"],
     ["assistant turn without a result type", undefined],
-  ] as const)("keeps templates locked after restoring an accepted %s", async (_caseName, resultType) => {
-    localStorage.setItem(
-      "summary-workbench-session:v2:test-uid:space-a:global",
-      "restored-session"
-    );
-    const current = controller({ isHydrating: true });
-    mocks.useSummaryWorkbench.mockImplementation(() => current);
+  ] as const)(
+    "keeps templates locked after restoring an accepted %s",
+    async (_caseName, resultType) => {
+      localStorage.setItem(
+        "summary-workbench-session:v2:test-uid:space-a:global",
+        "restored-session"
+      );
+      const current = controller({ isHydrating: true });
+      mocks.useSummaryWorkbench.mockImplementation(() => current);
 
-    const view = render(<SummaryWorkbenchFeature spaceId="space-a" />, {
-      legacyRoot: true,
-    });
-    expect(screen.getByTestId("template-selector")).toBeInTheDocument();
+      const view = render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+        legacyRoot: true,
+      });
+      expect(screen.getByTestId("template-selector")).toBeInTheDocument();
 
-    current.isHydrating = false;
-    current.viewState.messages = [
-      {
-        id: "message-a",
-        role: "assistant",
-        content: "Restored response",
-        ...(resultType === undefined ? {} : { resultType }),
-      },
-    ];
-    view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
+      current.isHydrating = false;
+      current.viewState.messages = [
+        {
+          id: "message-a",
+          role: "assistant",
+          content: "Restored response",
+          ...(resultType === undefined ? {} : { resultType }),
+        },
+      ];
+      view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
 
-    await waitFor(() =>
-      expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument()
-    );
-    expect(
-      screen.queryByRole("button", { name: "open-template" })
-    ).not.toBeInTheDocument();
-  });
+      await waitFor(() =>
+        expect(
+          screen.queryByTestId("template-selector")
+        ).not.toBeInTheDocument()
+      );
+      expect(
+        screen.queryByRole("button", { name: "open-template" })
+      ).not.toBeInTheDocument();
+    }
+  );
 
   it.each([
-    ["a lone user message", { id: "message-a", role: "user", content: "Draft request" }],
+    [
+      "a lone user message",
+      { id: "message-a", role: "user", content: "Draft request" },
+    ],
     [
       "an error-only assistant response",
       {
@@ -641,30 +703,33 @@ describe("SummaryWorkbenchFeature", () => {
         resultType: "error",
       },
     ],
-  ])("keeps templates available after restoring %s", async (_caseName, message) => {
-    localStorage.setItem(
-      "summary-workbench-session:v2:test-uid:space-a:global",
-      "restored-session"
-    );
-    const current = controller({ isHydrating: true });
-    mocks.useSummaryWorkbench.mockImplementation(() => current);
+  ])(
+    "keeps templates available after restoring %s",
+    async (_caseName, message) => {
+      localStorage.setItem(
+        "summary-workbench-session:v2:test-uid:space-a:global",
+        "restored-session"
+      );
+      const current = controller({ isHydrating: true });
+      mocks.useSummaryWorkbench.mockImplementation(() => current);
 
-    const view = render(<SummaryWorkbenchFeature spaceId="space-a" />, {
-      legacyRoot: true,
-    });
+      const view = render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+        legacyRoot: true,
+      });
 
-    current.isHydrating = false;
-    current.viewState.messages = [message];
-    view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
+      current.isHydrating = false;
+      current.viewState.messages = [message];
+      view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
 
-    await waitFor(() =>
-      expect(screen.getByTestId("template-selector")).toBeInTheDocument()
-    );
-    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
-      "data-template-locked",
-      "false"
-    );
-  });
+      await waitFor(() =>
+        expect(screen.getByTestId("template-selector")).toBeInTheDocument()
+      );
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-template-locked",
+        "false"
+      );
+    }
+  );
 
   it("does not allow reopening templates after the first turn", async () => {
     const current = controller({
@@ -874,10 +939,9 @@ describe("SummaryWorkbenchFeature", () => {
     });
     mocks.useSummaryWorkbench.mockImplementation(() => current);
 
-    const { rerender } = render(
-      <SummaryWorkbenchFeature spaceId="space-a" />,
-      { legacyRoot: true }
-    );
+    const { rerender } = render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
     expect(mocks.loadParticipantCandidates).not.toHaveBeenCalled();
 
     current.scope = scope({
@@ -928,7 +992,10 @@ describe("SummaryWorkbenchFeature", () => {
         "summary.workbench.notice.participantCandidatesLoadFailed"
       )
     );
-    expect(screen.getByTestId("workbench-ui")).toHaveAttribute("data-can-send", "false");
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "false"
+    );
   });
 
   it("explains why participants cannot be used with the selected chats", () => {
@@ -993,10 +1060,9 @@ describe("SummaryWorkbenchFeature", () => {
     });
     mocks.useSummaryWorkbench.mockImplementation(() => current);
 
-    const { rerender } = render(
-      <SummaryWorkbenchFeature spaceId="space-a" />,
-      { legacyRoot: true }
-    );
+    const { rerender } = render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
     fireEvent.click(screen.getByRole("button", { name: "open-participant" }));
     await waitFor(() =>
       expect(mocks.loadParticipantCandidates).toHaveBeenCalledTimes(1)
@@ -1016,6 +1082,43 @@ describe("SummaryWorkbenchFeature", () => {
     expect(mocks.loadParticipantCandidates).toHaveBeenCalledTimes(1);
   });
 
+  it("selects documents into document-only scope when docs capability is enabled", () => {
+    mocks.docsOn = true;
+    mocks.docsSearchOn = true;
+    const current = controller({
+      scope: scope({
+        selectedChannels: [{ chatId: "chat-a", chatType: "group", name: "A" }],
+        participants: [{ userId: "user-a", userName: "Alex" }],
+        timeRange: {
+          start: "2026-09-01T00:00:00Z",
+          end: "2026-09-02T00:00:00Z",
+          label: "昨天",
+        },
+      }),
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-available-contexts",
+      "chat,document,participant,time_range"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "open-document" }));
+    fireEvent.click(screen.getByRole("button", { name: "choose-document" }));
+
+    expect(current.updateScope).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selectedChannels: [],
+        documents: [{ documentId: "doc-a", title: "Doc A" }],
+        participants: [],
+        timeRange: null,
+      })
+    );
+  });
+
   it("defers participant pruning until an in-flight save settles", async () => {
     const candidateLoad = deferred<{
       members: WorkbenchMemberCandidate[];
@@ -1032,10 +1135,9 @@ describe("SummaryWorkbenchFeature", () => {
     });
     mocks.useSummaryWorkbench.mockImplementation(() => current);
 
-    const { rerender } = render(
-      <SummaryWorkbenchFeature spaceId="space-a" />,
-      { legacyRoot: true }
-    );
+    const { rerender } = render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
     await waitFor(() =>
       expect(mocks.loadParticipantCandidates).toHaveBeenCalledTimes(1)
     );
@@ -1174,7 +1276,9 @@ describe("SummaryWorkbenchFeature", () => {
       { legacyRoot: true }
     );
     fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
-    expect(screen.getByRole("button", { name: "modal-ok" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "modal-ok" })
+    ).toBeInTheDocument();
 
     current.viewState.messages = [
       { id: "message-a", role: "assistant", content: "Restored response" },
@@ -1872,7 +1976,11 @@ describe("SummaryWorkbenchFeature", () => {
       })
     );
     render(
-      <SummaryWorkbenchFeature spaceId="space-a" embedded onOpenTask={onOpenTask} />,
+      <SummaryWorkbenchFeature
+        spaceId="space-a"
+        embedded
+        onOpenTask={onOpenTask}
+      />,
       { legacyRoot: true }
     );
     fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
@@ -1888,8 +1996,12 @@ describe("SummaryWorkbenchFeature", () => {
       gap_count: 1,
       first_gap_kind: "citation",
     });
-    expect(JSON.stringify(events[0][1])).not.toContain("private diagnostic detail");
-    expect(mocks.toastSuccess).toHaveBeenCalledWith("summary.create.agentSummaryCreated");
+    expect(JSON.stringify(events[0][1])).not.toContain(
+      "private diagnostic detail"
+    );
+    expect(mocks.toastSuccess).toHaveBeenCalledWith(
+      "summary.create.agentSummaryCreated"
+    );
     expect(mocks.toastWarning).not.toHaveBeenCalled();
     expect(mocks.markNotificationEligible).toHaveBeenCalledWith(308);
   });
@@ -2087,31 +2199,34 @@ describe("SummaryWorkbenchFeature", () => {
     ).not.toBeInTheDocument();
   });
 
-  it.each([true, false])("opens a completed Workflow task through the host callback (embedded=%s)", (embedded) => {
-    const onOpenTask = vi.fn();
-    mocks.useSummaryWorkbench.mockReturnValue(
-      controller({
-        model: {
-          currentPreview: null,
-          pendingProposal: null,
-          workflow: { taskId: 404 },
-        },
-      })
-    );
+  it.each([true, false])(
+    "opens a completed Workflow task through the host callback (embedded=%s)",
+    (embedded) => {
+      const onOpenTask = vi.fn();
+      mocks.useSummaryWorkbench.mockReturnValue(
+        controller({
+          model: {
+            currentPreview: null,
+            pendingProposal: null,
+            workflow: { taskId: 404 },
+          },
+        })
+      );
 
-    render(
-      <SummaryWorkbenchFeature
-        spaceId="space-a"
-        embedded={embedded}
-        onOpenTask={onOpenTask}
-      />,
-      { legacyRoot: true }
-    );
-    fireEvent.click(screen.getByRole("button", { name: "view-summary" }));
+      render(
+        <SummaryWorkbenchFeature
+          spaceId="space-a"
+          embedded={embedded}
+          onOpenTask={onOpenTask}
+        />,
+        { legacyRoot: true }
+      );
+      fireEvent.click(screen.getByRole("button", { name: "view-summary" }));
 
-    expect(onOpenTask).toHaveBeenCalledWith(404);
-    expect(mocks.routePush).not.toHaveBeenCalled();
-  });
+      expect(onOpenTask).toHaveBeenCalledWith(404);
+      expect(mocks.routePush).not.toHaveBeenCalled();
+    }
+  );
 
   it("restores the scoped session and updates references", () => {
     localStorage.setItem(
@@ -2267,7 +2382,9 @@ describe("SummaryWorkbenchFeature", () => {
     render(<SummaryWorkbenchFeature spaceId="space-a" />, {
       legacyRoot: true,
     });
-    await waitFor(() => expect(mocks.getSummaryDetail).toHaveBeenCalledWith(42));
+    await waitFor(() =>
+      expect(mocks.getSummaryDetail).toHaveBeenCalledWith(42)
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "open-reference" }));
 
@@ -2301,7 +2418,9 @@ describe("SummaryWorkbenchFeature", () => {
       </>,
       { legacyRoot: true }
     );
-    await waitFor(() => expect(mocks.getSummaryDetail).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(mocks.getSummaryDetail).toHaveBeenCalledTimes(2)
+    );
 
     screen
       .getAllByRole("button", { name: "open-reference" })

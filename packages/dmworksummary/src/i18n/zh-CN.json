@@ -208,12 +208,19 @@
   },
   "documentPicker": {
     "title": "选择文档",
-    "searchPlaceholder": "搜索文档标题或内容",
+    "searchPlaceholder": "搜索文档标题",
     "selectedCount": "已选择 {{count}} / {{max}} 篇",
-    "loading": "正在搜索文档…",
-    "emptyHint": "输入关键词搜索当前空间内的文档",
+    "loading": "正在加载文档…",
+    "source": {
+      "recent": "最近查看",
+      "mine": "我的文档"
+    },
+    "empty": {
+      "recent": "暂无最近查看的可总结文档",
+      "mine": "暂无我的可总结文档"
+    },
     "noResults": "没有找到相关文档",
-    "searchFailed": "文档搜索失败，请重试"
+    "searchFailed": "文档加载失败，请重试"
   },
   "workbench": {
     "title": "总结助手",
@@ -221,6 +228,7 @@
     "empty": "告诉我你想总结什么，我会根据已选内容为你处理",
     "context": {
       "chat": "选择聊天",
+      "document": "选择文档",
       "participant": "选择参与者",
       "template": "模板",
       "timeRange": "时间范围",
@@ -305,6 +313,7 @@
     "placeholder": {
       "initial": "描述你想总结的内容和要求",
       "chatSelected": "描述你希望如何总结已选聊天，我会先生成预览供你调整",
+      "documentSelected": "可直接发送生成文档总结，也可以补充总结要求",
       "participantsSelected": "描述或补充多人总结要求，我会据此准备任务",
       "structuredReady": "可直接发送生成正式总结，也可以继续补充要求",
       "teamConfirmation": "可继续补充要求，或确认并发起协作",

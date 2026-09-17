@@ -42,6 +42,23 @@ const DocumentSelector: React.FC<DocumentSelectorProps> = ({
           autoFocus
         />
 
+        <div className="summary-document-picker__tabs" role="tablist">
+          {(["recent", "mine"] as const).map((source) => (
+            <button
+              key={source}
+              type="button"
+              role="tab"
+              aria-selected={state.source === source}
+              className={`summary-document-picker__tab${
+                state.source === source ? " summary-document-picker__tab--active" : ""
+              }`}
+              onClick={() => actions.onSourceChange(source)}
+            >
+              {t(`summary.documentPicker.source.${source}`)}
+            </button>
+          ))}
+        </div>
+
         <div className="summary-document-picker__count">
           {t("summary.documentPicker.selectedCount", {
             values: { count: state.selected.length, max: state.maxSelect },
@@ -70,7 +87,7 @@ const DocumentSelector: React.FC<DocumentSelectorProps> = ({
             <div className="summary-document-picker__state">
               {state.keyword.trim()
                 ? t("summary.documentPicker.noResults")
-                : t("summary.documentPicker.emptyHint")}
+                : t(`summary.documentPicker.empty.${state.source}`)}
             </div>
           ) : (
             state.items.map((item) => {

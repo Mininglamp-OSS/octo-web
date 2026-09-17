@@ -1,6 +1,9 @@
 import type { DocSearchItem } from "@octo/base";
 
+export type DocumentSelectorSource = "recent" | "mine";
+
 export interface DocumentSelectorState {
+  source: DocumentSelectorSource;
   keyword: string;
   items: DocSearchItem[];
   selected: DocSearchItem[];
@@ -10,6 +13,7 @@ export interface DocumentSelectorState {
 }
 
 export interface DocumentSelectorActions {
+  onSourceChange: (source: DocumentSelectorSource) => void;
   onKeywordChange: (keyword: string) => void;
   onToggle: (item: DocSearchItem) => void;
   onRetry: () => void;

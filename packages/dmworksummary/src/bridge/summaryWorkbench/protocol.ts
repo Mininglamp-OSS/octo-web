@@ -19,7 +19,8 @@ export const SUMMARY_WORKSPACE_RESULT_TYPES = [
   "agent_revision",
   "error",
 ] as const;
-export type SummaryWorkspaceResultType = (typeof SUMMARY_WORKSPACE_RESULT_TYPES)[number];
+export type SummaryWorkspaceResultType =
+  (typeof SUMMARY_WORKSPACE_RESULT_TYPES)[number];
 
 export const SUMMARY_WORKSPACE_ACTIONS = [
   "confirm_workflow",
@@ -40,6 +41,11 @@ export interface SummaryWorkbenchChannelScope {
 export interface SummaryWorkbenchParticipantScope {
   userId: string;
   userName?: string;
+}
+
+export interface SummaryWorkbenchDocumentScope {
+  documentId: string;
+  title: string;
 }
 
 export interface SummaryWorkbenchTemplateScope {
@@ -64,6 +70,7 @@ export interface SummaryWorkbenchTimeRangeScope {
 
 export interface SummaryWorkbenchScope {
   selectedChannels: SummaryWorkbenchChannelScope[];
+  documents?: SummaryWorkbenchDocumentScope[];
   participants: SummaryWorkbenchParticipantScope[];
   template: SummaryWorkbenchTemplateScope | null;
   timeRange: SummaryWorkbenchTimeRangeScope | null;
@@ -82,6 +89,11 @@ export interface SummaryWorkspaceParticipantDTO {
   user_name?: string;
 }
 
+export interface SummaryWorkspaceDocumentDTO {
+  document_id: string;
+  title?: string;
+}
+
 export interface SummaryWorkspaceTemplateDTO {
   template_id: string;
   label: string;
@@ -98,6 +110,7 @@ export interface SummaryWorkspaceTimeRangeDTO {
 
 export interface SummaryWorkspaceContextDTO {
   selected_channels: SummaryWorkspaceChannelDTO[];
+  documents: SummaryWorkspaceDocumentDTO[];
   participants: SummaryWorkspaceParticipantDTO[];
   template: SummaryWorkspaceTemplateDTO | null;
   time_range: SummaryWorkspaceTimeRangeDTO | null;
@@ -221,7 +234,11 @@ export interface SummaryWorkspaceStreamHandlers {
   onError?: (event: unknown) => void;
 }
 
-export type SummaryWorkspaceErrorKind = "business" | "transport" | "protocol" | "abort";
+export type SummaryWorkspaceErrorKind =
+  | "business"
+  | "transport"
+  | "protocol"
+  | "abort";
 
 export class SummaryWorkspaceApiError extends Error {
   readonly kind: SummaryWorkspaceErrorKind;
@@ -262,7 +279,13 @@ export function serializeSummaryWorkbenchScope(
       chat_id: channel.chatId,
       chat_type: channel.chatType,
       name: channel.name,
-      ...(channel.isArchived === undefined ? {} : { is_archived: channel.isArchived }),
+      ...(channel.isArchived === undefined
+        ? {}
+        : { is_archived: channel.isArchived }),
+    })),
+    documents: (scope.documents ?? []).map((document) => ({
+      document_id: document.documentId,
+      title: document.title,
     })),
     participants: scope.participants.map((participant) => ({
       user_id: participant.userId,
@@ -273,7 +296,9 @@ export function serializeSummaryWorkbenchScope(
           template_id: scope.template.templateId,
           label: scope.template.label,
           requirement: scope.template.requirement,
-          ...(scope.template.version === undefined ? {} : { version: scope.template.version }),
+          ...(scope.template.version === undefined
+            ? {}
+            : { version: scope.template.version }),
         }
       : null,
     time_range: scope.timeRange

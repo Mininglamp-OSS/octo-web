@@ -147,6 +147,7 @@ interface HydrationFlight {
 
 const EMPTY_SCOPE: SummaryWorkbenchScope = {
   selectedChannels: [],
+  documents: [],
   participants: [],
   template: null,
   timeRange: null,
@@ -1215,6 +1216,7 @@ function cloneScope(scope: SummaryWorkbenchScope): SummaryWorkbenchScope {
     selectedChannels: scope.selectedChannels.map((channel) => ({
       ...channel,
     })),
+    documents: (scope.documents ?? []).map((document) => ({ ...document })),
     participants: scope.participants.map((participant) => ({
       ...participant,
     })),
@@ -1237,6 +1239,9 @@ function scopeFingerprint(scope: SummaryWorkbenchScope): string {
     `${left.chat_type}\u0000${left.chat_id}`.localeCompare(
       `${right.chat_type}\u0000${right.chat_id}`
     )
+  );
+  context.documents.sort((left, right) =>
+    left.document_id.localeCompare(right.document_id)
   );
   context.participants.sort((left, right) =>
     left.user_id.localeCompare(right.user_id)

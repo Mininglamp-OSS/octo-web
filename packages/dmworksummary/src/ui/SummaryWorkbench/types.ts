@@ -9,6 +9,7 @@ export type SummaryWorkbenchAction = SummaryWorkspaceAction;
 
 export type SummaryWorkbenchContextKind =
   | "chat"
+  | "document"
   | "participant"
   | "template"
   | "time_range"
@@ -114,6 +115,7 @@ export interface SummaryWorkbenchViewState {
   templateLocked?: boolean;
   referencePreviewOpen?: boolean;
   referencePreviewId?: string;
+  availableContextKinds?: SummaryWorkbenchContextKind[];
 }
 
 export interface SummaryWorkbenchActions {
