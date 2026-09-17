@@ -567,6 +567,42 @@
     text-align: center;
 }
 
+/*
+ * 双 span 变体（NavItem 提供 shortLabel 时渲染）:collapsed rail 只显示 --short,
+ * expanded rail 只显示 --full。DOM 里两个都在,视觉切换纯靠 CSS,组件层保持 dumb,
+ * 也不需要拿到当前布局宽度。见 #1635。
+ *
+ * 关键:override 用 `.wk-layout-tab-expanded .wk-navrail__item-label.wk-navrail__item-label--full`
+ * 这种复合选择器 (specificity 0,3,0),压过下面共享的
+ * `.wk-layout-tab-expanded .wk-navrail__item-label` (0,2,0) —— 否则 source order
+ * 决定,共享规则会把 --short 也拉成 inline-flex,expanded rail 同时显示两个 span
+ * ("AI Summary Summary")。round 2 曾在此处翻车,靠 collapsedLayout.test 里的
+ * specificity/顺序断言把关。
+ *
+ * 盒模型:.wk-navrail__item = 56px width + `padding: 4px 2px` (border-box) → label
+ * border box (`clientWidth`) 52px;label 自己再吃 `padding-inline: 4px` → 可用文
+ * 字盒只有 44px。#1635 原本按 52px 预算 `Summary`,但 DejaVu Sans (Linux 常见
+ * fallback) 下 `Summary` 测得 48.33px,仍会在 44px 盒里被截成 `Summar…`。
+ * `--short` 变体单独把 padding-inline 归零把文字盒还原到 52px,DejaVu 也能装下,
+ * 关掉最后一档没闭环的字体路径 (round 3 reviewer 实测)。`Summary` 居中且短于
+ * 52px 盒,去掉两侧 4px 无视觉代价。
+ */
+.wk-navrail__item-label--full {
+    display: none;
+}
+
+.wk-navrail__item-label--short {
+    padding-inline: 0;
+}
+
+.wk-layout-tab-expanded .wk-navrail__item-label.wk-navrail__item-label--full {
+    display: inline-flex;
+}
+
+.wk-layout-tab-expanded .wk-navrail__item-label.wk-navrail__item-label--short {
+    display: none;
+}
+
 .wk-layout-tab-expanded .wk-navrail__item-label {
     display: inline-flex;
     width: auto;
