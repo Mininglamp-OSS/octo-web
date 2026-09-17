@@ -57,9 +57,9 @@ async function main() {
     deviceFlag: IM_DEVICE_FLAG_PC,
   });
   WKApp.shared.currentSpaceId = bootstrap.space.id;
-  // Install Client mute-scope adapter after the login session is bound so the
-  // account-scoped quick-mute store is ready. Dispose on pagehide; pending
-  // provider results then fail closed instead of producing sound/popups.
+  // The login session is bound; BaseModule initializes the account-scoped
+  // quick-mute store during startup below. Disposal rejects pending host
+  // decisions instead of restoring Web notification defaults.
   const disposeNotificationPolicy = installHostNotificationPolicyAdapter(host);
   const disposePauseOnSessionRevoked = host.onCommand((command) => {
     if (command.type === "sessionRevoked") disposeNotificationPolicy();

@@ -15,26 +15,22 @@ export function installHostNotificationPolicyAdapter(
     return () => {};
   }
 
-  const cleanupProvider = installNotificationProvider({
-    getPreferences: async () => {
-      if (!host.getNotificationPreferences) {
-        throw new Error("Host notification preferences unavailable");
-      }
-      return host.getNotificationPreferences();
-    },
-  });
+  // Pause pushes are independently supported by the legacy quick-mute store.
+  const cleanupProvider = host.getNotificationPreferences
+    ? installNotificationProvider({ getPreferences: host.getNotificationPreferences.bind(host) })
+    : undefined;
 
   let disposed = false;
   const unsubscribePause = host.onNotificationPauseChanged?.((value) => {
     if (disposed) return;
-    if (quickMuteStore.applyRemoteCMD(value)) return;
-    void quickMuteStore.refresh().catch(() => undefined);
+    // The store owns validation, revision ordering and any reconciliation fetch.
+    quickMuteStore.applyRemoteCMD(value);
   });
 
   return () => {
     if (disposed) return;
     disposed = true;
-    cleanupProvider();
+    cleanupProvider?.();
     unsubscribePause?.();
   };
 }

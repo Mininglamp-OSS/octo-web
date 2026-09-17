@@ -35,10 +35,21 @@ describe("host policy lifetime and validation", () => {
     expect((await policy.resolveNotificationPolicy())!.isCurrent()).toBe(true);
   });
 
+  it("accepts additive v1 fields without forwarding them or overriding the lease", async () => {
+    policy.installNotificationProvider({
+      getPreferences: async () => ({ ...preferences, unrelated: "field", isCurrent: false }),
+    });
+    const resolved = await policy.resolveNotificationPolicy();
+    expect(resolved).toEqual({ ...preferences, isCurrent: expect.any(Function) });
+    expect(resolved!.isCurrent()).toBe(true);
+    expect(await policy.getHostNotificationDecision(async () => ({ active: false, scope: "sound-and-popup" })))
+      .toMatchObject({ playSound: true, showPopup: true });
+  });
+
   for (const invalid of [
     null, [], {}, { ...preferences, version: 2 }, { ...preferences, desktopNotifications: 1 },
     { ...preferences, soundNotifications: "yes" }, { ...preferences, quickMuteScope: "sound" },
-    { ...preferences, unrelated: "field" },
+    { version: 1, unrelated: "field" }, { ...preferences, soundNotifications: undefined, unrelated: "field" },
   ]) {
     it(`rejects malformed preference payload ${JSON.stringify(invalid)}`, async () => {
       policy.installNotificationProvider({ getPreferences: async () => invalid });

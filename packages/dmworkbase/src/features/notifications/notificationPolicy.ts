@@ -1,6 +1,7 @@
 import type { QuickMuteState } from "../../Components/NavRail/QuickMuteStore";
 
 export interface NotificationPreferencesData {
+  /** Additive v1 fields are ignored; changes to required fields or semantics need a new version. */
   version: 1;
   desktopNotifications: boolean;
   soundNotifications: boolean;
@@ -39,8 +40,7 @@ export function hasNotificationProvider(): boolean {
 function isValidPreferences(value: unknown): value is NotificationPreferencesData {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const prefs = value as Record<string, unknown>;
-  return Object.keys(prefs).length === 4 &&
-    prefs.version === 1 &&
+  return prefs.version === 1 &&
     typeof prefs.desktopNotifications === "boolean" &&
     typeof prefs.soundNotifications === "boolean" &&
     (prefs.quickMuteScope === "popup" || prefs.quickMuteScope === "all");
@@ -56,7 +56,13 @@ export async function resolveNotificationPolicy(): Promise<
   const value = await context.provider.getPreferences();
   if (!isCurrent()) throw new Error("Notification provider disposed");
   if (!isValidPreferences(value)) throw new Error("Invalid host notification preferences");
-  return { ...value, isCurrent };
+  return {
+    version: value.version,
+    desktopNotifications: value.desktopNotifications,
+    soundNotifications: value.soundNotifications,
+    quickMuteScope: value.quickMuteScope,
+    isCurrent,
+  };
 }
 
 export async function getHostNotificationDecision(
