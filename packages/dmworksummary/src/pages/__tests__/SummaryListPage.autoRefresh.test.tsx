@@ -63,6 +63,33 @@ function makePage(items: Array<Record<string, unknown>>) {
 describe('SummaryListPage auto-refresh on completion (#290)', () => {
     beforeEach(() => vi.clearAllMocks());
 
+    it('reloads the real list with the current filters when refreshKey changes', async () => {
+        vi.mocked(api.listSummaries).mockResolvedValue({
+            items: [{ task_id: 9, status: TaskStatus.COMPLETED, topic: 'filtered' }],
+            total: 1,
+        } as any);
+        const { page } = makePage([]);
+        (page as any).props = { refreshKey: 1 };
+        (page as any).state = {
+            ...(page.state as any),
+            statusFilter: TaskStatus.COMPLETED,
+            keyword: 'weekly',
+            pageSize: 20,
+        };
+
+        page.componentDidUpdate({ refreshKey: 0 } as any);
+        await Promise.resolve();
+
+        expect(api.listSummaries).toHaveBeenCalledWith({
+            page: 1,
+            page_size: 20,
+            status: TaskStatus.COMPLETED,
+            keyword: 'weekly',
+            origin_channel_id: undefined,
+        });
+        expect((page.state as any).items[0]).toMatchObject({ topic: 'filtered' });
+    });
+
     it('triggers a full reload via loadData when a task reaches a terminal status (round-9: no local patch)', async () => {
         vi.mocked(api.batchStatus).mockResolvedValue([
             { id: 1, status: TaskStatus.COMPLETED },

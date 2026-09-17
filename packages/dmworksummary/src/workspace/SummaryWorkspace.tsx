@@ -136,7 +136,7 @@ export default function SummaryWorkspace({
           />
         );
       case "schedules":
-        return <ScheduleListPage onBack={showList} />;
+        return <ScheduleListPage onBack={showList} refreshKey={listRefreshKey} />;
       case "list":
         return null;
     }

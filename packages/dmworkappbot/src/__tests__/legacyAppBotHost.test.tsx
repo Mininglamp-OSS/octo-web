@@ -12,6 +12,7 @@ const state = vi.hoisted(() => ({
   popToRoot: vi.fn(),
   track: vi.fn(),
   getMySpaces: vi.fn(),
+  subscribePageActivation: vi.fn(),
 }));
 
 vi.mock("@octo/base", () => ({
@@ -40,6 +41,10 @@ vi.mock("@octo/base", () => ({
     remoteConfig: { octoAssistantUids: ["assistant_1"] },
   },
   Dap: { shared: { track: state.track } },
+}));
+
+vi.mock("@octo/base/src/Utils/pageActivation", () => ({
+  subscribePageActivation: state.subscribePageActivation,
 }));
 
 vi.mock("wukongimjssdk", () => {
@@ -148,5 +153,14 @@ describe("legacyAppBotHost", () => {
     expect(legacyAppBotHost.isOctoAssistant("assistant_1")).toBe(true);
     expect(legacyAppBotHost.isOctoAssistant("robot_1")).toBe(false);
     expect(state.track).toHaveBeenCalledWith("apps_searched", {});
+  });
+
+  it("bridges Web menu activation to app list invalidation", () => {
+    const listener = vi.fn();
+    const unsubscribe = vi.fn();
+    state.subscribePageActivation.mockReturnValueOnce(unsubscribe);
+
+    expect(legacyAppBotHost.subscribeInvalidation?.(listener)).toBe(unsubscribe);
+    expect(state.subscribePageActivation).toHaveBeenCalledWith("appbot", listener);
   });
 });

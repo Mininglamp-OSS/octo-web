@@ -1,8 +1,12 @@
-import React, { useState, type ReactNode } from "react";
+import React, { useEffect, useState, type ReactNode } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SummaryWorkspaceRoute } from "../../../../packages/dmworksummary/src/workspace/types";
 import type { OctoBuddySummaryBridge, SummaryHostCommand } from "./hostBridge";
+
+const summaryMockList = vi.hoisted(() => ({
+  items: [] as Array<{ id: number; title: string }>,
+}));
 
 vi.mock("@octo/base", () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -19,9 +23,32 @@ vi.mock("../../../../packages/dmworksummary/src/utils/summaryAttentionBadge", ()
   subscribeSummaryAttentionBadge: () => () => {},
 }));
 vi.mock("../../../../packages/dmworksummary/src/pages/SummaryListPage", () => ({
-  default: ({ onCreateNew }: { onCreateNew(mode: "normal"): void }) => (
-    <input aria-label="list-filter" onDoubleClick={() => onCreateNew("normal")} />
-  ),
+  default: ({ onCreateNew, refreshKey = 0 }: {
+    onCreateNew(mode: "normal"): void;
+    refreshKey?: number;
+  }) => {
+    const [loadCount, setLoadCount] = useState(0);
+    const [visibleItems, setVisibleItems] = useState<typeof summaryMockList.items>([]);
+    const [filter, setFilter] = useState("");
+    useEffect(() => {
+      setVisibleItems(summaryMockList.items.slice());
+      setLoadCount((count) => count + 1);
+    }, [refreshKey]);
+    return (
+      <div>
+        <input
+          aria-label="list-filter"
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          onDoubleClick={() => onCreateNew("normal")}
+        />
+        <span data-testid="list-load-count">{loadCount}</span>
+        <ul>
+          {visibleItems.map((item) => <li key={item.id}>{item.title}</li>)}
+        </ul>
+      </div>
+    );
+  },
 }));
 vi.mock("../../../../packages/dmworksummary/src/features/summaryWorkbench/SummaryWorkbenchCreateEntry", () => ({
   default: () => <input aria-label="draft" />,
@@ -85,6 +112,10 @@ function setup(initialRoute: SummaryWorkspaceRoute) {
 }
 
 describe("SummaryShell with the real workspace", () => {
+  beforeEach(() => {
+    summaryMockList.items.length = 0;
+  });
+
   it("preserves an internally opened creation draft across hide/resume and new acknowledgement IDs", async () => {
     const f = setup({ view: "list" });
     const list = screen.getByLabelText("list-filter");
@@ -98,13 +129,37 @@ describe("SummaryShell with the real workspace", () => {
 
     await f.send({ type: "suspend" });
     await f.send({ type: "resume" }, { type: "navigate", route, navigationId: 1 });
+    expect(screen.getByTestId("list-load-count")).toHaveTextContent("2");
     await f.send({ type: "navigate", route, navigationId: 2 });
+    expect(screen.getByTestId("list-load-count")).toHaveTextContent("2");
 
     expect(screen.getByLabelText("draft")).toBe(draft);
     expect(draft).toHaveValue("unsaved creation");
     expect(screen.getByLabelText("list-filter")).toBe(list);
     expect(list).toHaveValue("retained filter");
     expect(f.committed.map(({ navigationId }) => navigationId)).toEqual([1, 2]);
+  });
+
+  it("refreshes the cached list from the source on resume without remounting the workspace", async () => {
+    summaryMockList.items.push({ id: 1, title: "old session summary" });
+    const f = setup({ view: "list" });
+    const list = screen.getByLabelText("list-filter");
+    fireEvent.change(list, { target: { value: "kept filter" } });
+    expect(screen.getByTestId("list-load-count")).toHaveTextContent("1");
+    expect(screen.getByText("old session summary")).toBeInTheDocument();
+
+    await f.send({ type: "suspend" });
+    summaryMockList.items.push({ id: 2, title: "new session summary" });
+    expect(screen.queryByText("new session summary")).not.toBeInTheDocument();
+
+    await f.send({ type: "resume" }, { type: "navigate", route: { view: "list" }, navigationId: 10 });
+
+    expect(screen.getByText("new session summary")).toBeInTheDocument();
+    expect(screen.getByText("old session summary")).toBeInTheDocument();
+    expect(screen.getByTestId("list-load-count")).toHaveTextContent("2");
+    expect(screen.getByLabelText("list-filter")).toBe(list);
+    expect(list).toHaveValue("kept filter");
+    expect(f.committed.map(({ navigationId }) => navigationId)).toEqual([10]);
   });
 
   it.each(["detail", "confirm"] as const)(

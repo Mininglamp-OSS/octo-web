@@ -19,6 +19,7 @@ export interface AppBotHostCapabilities {
   getCurrentSpace(): AppBotSpace;
   resolveSpaceName(spaceId: string): Promise<string>;
   subscribeSpaceChanged(listener: () => void): () => void;
+  subscribeInvalidation?(listener: () => void): () => void;
   openConversation(target: AppBotConversationTarget): Promise<void>;
   clearConversation(): void;
   isOctoAssistant(uid: string): boolean;

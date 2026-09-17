@@ -138,6 +138,7 @@ beforeAll(async () => {
       channelManager.getChannelInfo(channel),
   }));
 
+  vi.doMock("@octo/base/src/App", async () => ({ default: (await import("@octo/base")).WKApp }));
   vi.doMock("@octo/base/src/Messages/Card", () => ({ Card: class {} }));
   vi.doMock("@octo/base/src/Components/WKAvatar", () => ({
     default: ({ channel }: any) => <div className="wk-avatar" data-cid={channel.channelID} />,

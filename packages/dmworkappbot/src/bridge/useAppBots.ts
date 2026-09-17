@@ -18,6 +18,7 @@ export function useAppBots({ onSpaceChanged }: UseAppBotsOptions = {}) {
   const [keyword, setKeyword] = useState("");
   const [reloadTick, setReloadTick] = useState(0);
   const requestIdRef = useRef(0);
+  const silentRequestIdRef = useRef(0);
   const spaceNameRequestIdRef = useRef(0);
 
   const reload = useCallback(() => {
@@ -27,17 +28,24 @@ export function useAppBots({ onSpaceChanged }: UseAppBotsOptions = {}) {
   useEffect(() => {
     let stale = false;
 
-    const loadData = async (spaceId: string) => {
-      const thisRequest = ++requestIdRef.current;
-      setState("loading");
+    const loadData = async (spaceId: string, silent = false) => {
+      const thisRequest = silent ? requestIdRef.current : ++requestIdRef.current;
+      const thisSilentRequest = silent ? ++silentRequestIdRef.current : 0;
+      const isCurrent = () => !stale &&
+        thisRequest === requestIdRef.current &&
+        (!silent || thisSilentRequest === silentRequestIdRef.current) &&
+        host.getCurrentSpace().id === spaceId;
+      if (!silent) setState("loading");
       try {
         const items = await AppBotService.getAvailableBots(spaceId);
-        if (stale || thisRequest !== requestIdRef.current) return;
+        if (!isCurrent()) return;
+        if (silent) requestIdRef.current++;
         setBots(items.map(toAppBotViewItem));
         setState("ready");
       } catch (err) {
+        if (!isCurrent()) return;
         console.warn("[AppBotPage] Failed to load bots:", err);
-        if (stale || thisRequest !== requestIdRef.current) return;
+        if (silent) return;
         setBots([]);
         setState("error");
       }
@@ -91,9 +99,13 @@ export function useAppBots({ onSpaceChanged }: UseAppBotsOptions = {}) {
       refresh();
     };
     const unsubscribe = host.subscribeSpaceChanged(handler);
+    const unsubscribeInvalidation = host.subscribeInvalidation?.(() => {
+      void loadData(host.getCurrentSpace().id, true);
+    });
     return () => {
       stale = true;
       unsubscribe();
+      unsubscribeInvalidation?.();
     };
   }, [host, onSpaceChanged, reloadTick]);
 

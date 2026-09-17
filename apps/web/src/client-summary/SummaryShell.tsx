@@ -192,10 +192,15 @@ export function SummaryShell({
         return;
       }
       if (command.type === "hostVisibilityChanged") {
+        const wasHidden =
+          document.documentElement.dataset.hostVisibility === "hidden";
         document.documentElement.dataset.hostVisibility = command.visible
           ? "visible"
           : "hidden";
         setSummaryAttentionRuntimeVisible(command.visible);
+        if (command.visible && wasHidden) {
+          invalidationListeners.current.forEach((listener) => listener());
+        }
         return;
       }
       if (command.type === "suspend") {
@@ -205,6 +210,8 @@ export function SummaryShell({
       }
       if (command.type === "resume") {
         document.documentElement.dataset.hostVisibility = "visible";
+        // Other renderers can create summaries while this workspace is detached.
+        invalidationListeners.current.forEach((listener) => listener());
         return;
       }
       // Unknown commands must not change visibility

@@ -25,6 +25,7 @@ interface ScheduleListPageState {
 
 interface ScheduleListPageProps {
     onBack?: () => void;
+    refreshKey?: number;
 }
 
 // Legacy schedules may have no detail page, so the list retains an edit-only
@@ -44,6 +45,17 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
     // React state drives disabled controls; this synchronous flag closes the
     // gap before setState is committed and prevents duplicate API requests.
     private actionPending = false;
+    private loadRevision = 0;
+    private silentLoadRevision = 0;
+    private disposed = false;
+    private refreshPending = false;
+
+    private refreshAfterAction() {
+        if (this.refreshPending && !this.disposed) {
+            this.refreshPending = false;
+            void this.loadData(true);
+        }
+    }
 
     handleScheduleAction = async (scheduleId: number, action: "pause" | "resume" | "delete") => {
         const item = this.state.schedules.find(schedule => schedule.schedule_id === scheduleId);
@@ -51,11 +63,13 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
             (action === "pause" && !item.is_active) ||
             (action === "resume" && item.is_active)) return;
         this.actionPending = true;
+        this.loadRevision++;
         this.setState({ actionPending: true });
         try {
             if (action === "pause" || action === "resume") {
                 const nextActive = action === "resume";
                 await api.toggleSchedule(scheduleId, nextActive);
+                if (this.disposed) return;
                 this.setState(state => ({
                     schedules: state.schedules.map(schedule => schedule.schedule_id === scheduleId
                         ? { ...schedule, is_active: nextActive } : schedule),
@@ -63,30 +77,57 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
                 Toast.success(t(nextActive ? "summary.schedule.resumed" : "summary.schedule.paused"));
             } else {
                 await api.deleteSchedule(scheduleId);
+                if (this.disposed) return;
                 this.setState(state => ({
                     schedules: state.schedules.filter(schedule => schedule.schedule_id !== scheduleId),
                 }));
                 Toast.success(t("summary.schedule.deleted"));
             }
         } catch (err: any) {
-            Toast.error(err.message || t("summary.common.operationFailed"));
+            if (!this.disposed) Toast.error(err.message || t("summary.common.operationFailed"));
         } finally {
             this.actionPending = false;
-            this.setState({ actionPending: false });
+            if (!this.disposed) this.setState({ actionPending: false, loading: false });
+            this.refreshAfterAction();
         }
     };
 
     componentDidMount() {
+        this.disposed = false;
         this.loadData();
     }
 
-    async loadData() {
-        this.setState({ loading: true, error: null });
+    componentDidUpdate(previous: ScheduleListPageProps) {
+        if (previous.refreshKey !== this.props.refreshKey) void this.loadData(true);
+    }
+
+    componentWillUnmount() {
+        this.disposed = true;
+        this.loadRevision++;
+    }
+
+    async loadData(silent = false) {
+        if (this.disposed) return;
+        if (silent && this.actionPending) {
+            this.refreshPending = true;
+            return;
+        }
+        const revision = silent ? this.loadRevision : ++this.loadRevision;
+        const silentRevision = silent ? ++this.silentLoadRevision : 0;
+        const isCurrent = () => !this.disposed && revision === this.loadRevision;
+        if (!silent) this.setState({ loading: true, error: null });
         try {
             const schedules = await api.listSchedules();
-            this.setState({ schedules, loading: false });
+            if (silent && silentRevision !== this.silentLoadRevision) return;
+            if (!isCurrent()) return;
+            if (silent) this.loadRevision++;
+            this.setState({ schedules, loading: false, error: null });
         } catch (err: any) {
-            this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
+            if (silent) return;
+            if (isCurrent()) this.setState({
+                error: err.message || t("summary.common.loadingFailed"),
+                loading: false,
+            });
         }
     }
 
@@ -94,6 +135,7 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
         const { editingSchedule } = this.state;
         if (!editingSchedule || this.actionPending) return;
         this.actionPending = true;
+        this.loadRevision++;
         this.setState({ actionPending: true, formLoading: true });
         try {
             const isMultiPerson = (editingSchedule.participants?.length ?? 0) > 1;
@@ -116,17 +158,19 @@ export default class ScheduleListPage extends Component<ScheduleListPageProps, S
                     : {}),
             };
             await api.updateSchedule(editingSchedule.schedule_id, updateParams, uiHint);
+            if (this.disposed) return;
             this.setState({ editingSchedule: null });
             // The update payload intentionally omits source_name. Refetch so
             // cards and the next edit use the authoritative labels resolved by
             // the service instead of falling back to raw source IDs.
             await this.loadData();
-            Toast.success(t("summary.schedule.updateSuccess"));
+            if (!this.disposed) Toast.success(t("summary.schedule.updateSuccess"));
         } catch (err: any) {
-            Toast.error(err.message || t("summary.common.updateFailed"));
+            if (!this.disposed) Toast.error(err.message || t("summary.common.updateFailed"));
         } finally {
             this.actionPending = false;
-            this.setState({ actionPending: false, formLoading: false });
+            if (!this.disposed) this.setState({ actionPending: false, formLoading: false });
+            this.refreshAfterAction();
         }
     };
 

@@ -400,6 +400,42 @@ describe("CommunicationShell", () => {
     expect(vi.mocked(WKApp.endpoints.showConversation).mock.calls[2][1]?.preserveCurrentConversation).toBe(true);
   });
 
+  it("publishes return events without remounting the retained contacts page", async () => {
+    const resumed = vi.fn();
+    window.addEventListener("octobuddy:resume", resumed);
+    const shell = render(<CommunicationShell bridge={mocks.bridge as any}
+      initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+    try {
+      act(() => mocks.command.listener?.({ type: "navigate", page: "contacts" }));
+      expect(WKApp.mittBus.emit).toHaveBeenLastCalledWith("wk:active-menu-changed", { menuId: "contacts" });
+      const input = screen.getByLabelText("contacts");
+      fireEvent.change(input, { target: { value: "retained search" } });
+      act(() => {
+        mocks.command.listener?.({ type: "suspend" });
+        mocks.command.listener?.({ type: "resume" });
+      });
+      expect(resumed).toHaveBeenCalledTimes(1);
+      expect(WKApp.currentMenuId).toBe("contacts");
+      expect(document.documentElement.dataset.hostVisibility).toBe("visible");
+      act(() => {
+        mocks.command.listener?.({ type: "suspend" });
+        mocks.command.listener?.({ type: "hostVisibilityChanged", visible: true });
+      });
+      expect(resumed).toHaveBeenCalledTimes(2);
+      act(() => mocks.command.listener?.({ type: "hostVisibilityChanged", visible: true }));
+      expect(resumed).toHaveBeenCalledTimes(2);
+      act(() => WKApp.switchToMenuById?.("chat"));
+      act(() => WKApp.switchToMenuById?.("contacts"));
+      expect(WKApp.mittBus.emit).toHaveBeenLastCalledWith("wk:active-menu-changed", { menuId: "contacts" });
+      expect(screen.getByLabelText("contacts")).toBe(input);
+      expect(input).toHaveValue("retained search");
+    } finally {
+      shell.unmount();
+      window.removeEventListener("octobuddy:resume", resumed);
+    }
+  });
+
   it("invalidates old workspace callbacks after another group or Space is selected", async () => {
     render(<CommunicationShell bridge={mocks.bridge as any}
       initialPage="chat" initialSpaceId="space-a"

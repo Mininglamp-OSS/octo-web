@@ -154,11 +154,29 @@ describe("AppsShell", () => {
       />
     );
 
+    const invalidate = vi.fn();
+    const spaceChanged = vi.fn();
+    const off = mocks.workspaceProps.host.subscribeInvalidation(invalidate);
+    mocks.workspaceProps.host.subscribeSpaceChanged(spaceChanged);
     act(() => mocks.command.listener?.({ type: "suspend" }));
     expect(document.documentElement.dataset.hostVisibility).toBe("hidden");
+    expect(invalidate).not.toHaveBeenCalled();
 
+    act(() => mocks.command.listener?.({ type: "hostVisibilityChanged", visible: true }));
+    expect(document.documentElement.dataset.hostVisibility).toBe("visible");
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    act(() => mocks.command.listener?.({ type: "hostVisibilityChanged", visible: true }));
+    expect(invalidate).toHaveBeenCalledTimes(1);
+
+    act(() => mocks.command.listener?.({ type: "suspend" }));
     act(() => mocks.command.listener?.({ type: "resume" }));
     expect(document.documentElement.dataset.hostVisibility).toBe("visible");
+    expect(invalidate).toHaveBeenCalledTimes(2);
+    expect(spaceChanged).not.toHaveBeenCalled();
+    expect(mocks.workspaceMounts).toBe(1);
+    off();
+    act(() => mocks.command.listener?.({ type: "resume" }));
+    expect(invalidate).toHaveBeenCalledTimes(2);
   });
 
   it("ignores unknown commands without changing visibility", () => {

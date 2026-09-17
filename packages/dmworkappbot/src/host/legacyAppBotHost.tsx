@@ -7,6 +7,7 @@ import {
   findCurrentImConversation,
   setCurrentImChannelInfoCache,
 } from "@octo/base";
+import { subscribePageActivation } from "@octo/base/src/Utils/pageActivation";
 import { renderAppBotConversation } from "../features/AppBotConversationView";
 import type { AppBotHostCapabilities } from "./types";
 
@@ -27,6 +28,10 @@ export const legacyAppBotHost: AppBotHostCapabilities = {
   subscribeSpaceChanged(listener) {
     WKApp.mittBus.on("space-changed", listener);
     return () => WKApp.mittBus.off("space-changed", listener);
+  },
+
+  subscribeInvalidation(listener) {
+    return subscribePageActivation("appbot", listener);
   },
 
   async openConversation(target) {

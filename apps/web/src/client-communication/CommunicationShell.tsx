@@ -447,9 +447,14 @@ export function CommunicationShell({
         return;
       }
       if (command.type === "hostVisibilityChanged") {
+        const wasHidden =
+          document.documentElement.dataset.hostVisibility === "hidden";
         document.documentElement.dataset.hostVisibility = command.visible
           ? "visible"
           : "hidden";
+        if (command.visible && wasHidden) {
+          window.dispatchEvent(new CustomEvent("octobuddy:resume"));
+        }
         return;
       }
 

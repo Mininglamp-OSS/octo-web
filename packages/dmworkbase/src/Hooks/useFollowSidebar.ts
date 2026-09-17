@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 import WKSDK, { ConversationAction, type Conversation, type ConversationListener } from "wukongimjssdk"
 import WKApp from "../App"
 import { t } from "../i18n"
@@ -6,6 +6,7 @@ import { ChannelTypeCommunityTopic } from "../Service/Const"
 import FollowService from "../Service/FollowService"
 import SidebarService, { SidebarItem } from "../Service/SidebarService"
 import { buildThreadChannelId, parseThreadChannelId } from "../Service/Thread"
+import { subscribePageActivation } from "../Utils/pageActivation"
 
 export interface UseFollowSidebarResult {
     /** 已关注的 sidebar items（target_type 全集，is_followed=true 由后端保证） */
@@ -85,6 +86,9 @@ export function useFollowSidebar(): UseFollowSidebarResult {
     const [error, setError] = useState<string | null>(null)
 
     const spaceId = WKApp.shared.currentSpaceId
+    const scope = useMemo(() => ({ active: false }), [spaceId])
+    const request = useRef(0)
+    const silentRequest = useRef(0)
 
     // 与 followVersion state 同步的 ref：消费者通过 ref 读到的永远是最新值，
     // 不受 React 渲染节奏 / useCallback 闭包过期影响。
@@ -95,8 +99,13 @@ export function useFollowSidebar(): UseFollowSidebarResult {
     const threadReloadTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
 
     const load = useCallback(async (options: LoadOptions = {}) => {
-        if (!spaceId) return
+        if (!scope.active || !spaceId || WKApp.shared.currentSpaceId !== spaceId) return
         const silent = options.silent === true
+        const revision = silent ? request.current : ++request.current
+        const silentRevision = silent ? ++silentRequest.current : 0
+        const isCurrent = () => scope.active && revision === request.current &&
+            (!silent || silentRevision === silentRequest.current) &&
+            WKApp.shared.currentSpaceId === spaceId
         if (!silent) {
             setIsLoading(true)
             setError(null)
@@ -106,24 +115,42 @@ export function useFollowSidebar(): UseFollowSidebarResult {
                 tab: "follow",
                 device_uuid: WKApp.shared.deviceId,
             })
+            if (!isCurrent()) return
+            if (silent) {
+                setIsLoading(false)
+                request.current++
+            }
             setItems(resp.items || [])
+            setError(null)
             const v = resp.follow_version ?? 0
             setFollowVersion(v)
             versionRef.current = v
         } catch (e: any) {
-            if (!silent) {
+            if (isCurrent() && !silent) {
                 setError(e?.message || t("base.followSidebar.loadFailed"))
             }
         } finally {
-            if (!silent) {
+            if (isCurrent() && !silent) {
                 setIsLoading(false)
             }
         }
-    }, [spaceId])
+    }, [spaceId, scope])
 
     useEffect(() => {
-        load()
-    }, [load])
+        scope.active = true
+        setItems([])
+        setFollowVersion(0)
+        versionRef.current = 0
+        setError(null)
+        setIsLoading(false)
+        void load()
+        return () => {
+            scope.active = false
+            request.current++
+        }
+    }, [load, scope])
+
+    useEffect(() => subscribePageActivation("chat", () => { void load({ silent: true }) }), [load])
 
     // 外部触发重载（如 ThreadPanel 关注子区后、会话未读数变化后 #203）
     // 使用 silent 模式：不翻转 isLoading，避免关注 tab 列表 remount 闪烁 / 丢失滚动位置

@@ -18,6 +18,7 @@ import AppBotService from "../Service/AppBotService";
 const state = {
   currentSpace: { id: "space-a", name: "Alpha" } as AppBotSpace,
   spaceChangedListener: undefined as (() => void) | undefined,
+  invalidationListener: undefined as (() => void) | undefined,
 };
 
 const host: AppBotHostCapabilities = {
@@ -32,6 +33,10 @@ const host: AppBotHostCapabilities = {
         state.spaceChangedListener = undefined;
       }
     };
+  }),
+  subscribeInvalidation: vi.fn((listener) => {
+    state.invalidationListener = listener;
+    return () => { if (state.invalidationListener === listener) state.invalidationListener = undefined; };
   }),
   openConversation: vi.fn(async () => {}),
   clearConversation: vi.fn(),
@@ -60,11 +65,22 @@ async function flushEffects() {
   await Promise.resolve();
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((ok, fail) => {
+    resolve = ok;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("useAppBots host behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     state.currentSpace = { id: "space-a", name: "Alpha" };
     state.spaceChangedListener = undefined;
+    state.invalidationListener = undefined;
     latest = undefined;
     vi.mocked(AppBotService.getAvailableBots).mockResolvedValue([]);
     container = document.createElement("div");
@@ -112,6 +128,73 @@ describe("useAppBots host behavior", () => {
     act(() => ReactDOM.unmountComponentAtNode(container));
 
     expect(state.spaceChangedListener).toBeUndefined();
+    expect(state.invalidationListener).toBeUndefined();
+  });
+
+  it("silently refreshes the list without resetting search or invoking Space selection reset", async () => {
+    const onSpaceChanged = vi.fn();
+    const bot = { id: "1", uid: "bot-1", display_name: "Search old", scope: "space" as const };
+    vi.mocked(AppBotService.getAvailableBots).mockResolvedValue([bot]);
+    await act(async () => {
+      ReactDOM.render(<Harness onSpaceChanged={onSpaceChanged} />, container);
+      await flushEffects();
+    });
+    act(() => latest?.setKeyword("Search"));
+    let finish!: (bots: typeof bot[]) => void;
+    vi.mocked(AppBotService.getAvailableBots).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    act(() => state.invalidationListener?.());
+    expect(latest?.state).toBe("ready");
+    expect(latest?.filteredBots[0].displayName).toBe("Search old");
+    await act(async () => { finish([bot, { ...bot, id: "2", uid: "bot-2", display_name: "Search new" }]); });
+    expect(latest?.filteredBots).toHaveLength(2);
+    expect(latest?.keyword).toBe("Search");
+    expect(onSpaceChanged).not.toHaveBeenCalled();
+  });
+
+  it("keeps a foreground bot load alive when a silent invalidation fails", async () => {
+    const bot = { id: "1", uid: "bot-1", display_name: "Initial", scope: "space" as const };
+    const initial = deferred<typeof bot[]>();
+    vi.mocked(AppBotService.getAvailableBots)
+      .mockReturnValueOnce(initial.promise)
+      .mockRejectedValueOnce(new Error("offline"));
+    await act(async () => {
+      ReactDOM.render(<Harness onSpaceChanged={vi.fn()} />, container);
+      await Promise.resolve();
+    });
+    expect(latest?.state).toBe("loading");
+    await act(async () => {
+      state.invalidationListener?.();
+      await flushEffects();
+    });
+    expect(latest?.state).toBe("loading");
+    await act(async () => {
+      initial.resolve([bot]);
+      await flushEffects();
+    });
+    expect(latest?.state).toBe("ready");
+    expect(latest?.filteredBots[0].displayName).toBe("Initial");
+  });
+
+  it("discards stale refreshes after later invalidation and Space changes", async () => {
+    const bot = { id: "1", uid: "bot-1", display_name: "Old", scope: "space" as const };
+    await act(async () => {
+      ReactDOM.render(<Harness onSpaceChanged={vi.fn()} />, container);
+      await flushEffects();
+    });
+    let finish!: (bots: typeof bot[]) => void;
+    vi.mocked(AppBotService.getAvailableBots).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    act(() => state.invalidationListener?.());
+    vi.mocked(AppBotService.getAvailableBots).mockResolvedValue([{ ...bot, display_name: "Latest" }]);
+    await act(async () => { state.invalidationListener?.(); });
+    await act(async () => { finish([bot]); });
+    expect(latest?.filteredBots[0].displayName).toBe("Latest");
+    vi.mocked(AppBotService.getAvailableBots).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    act(() => state.invalidationListener?.());
+    state.currentSpace = { id: "space-b", name: "Beta" };
+    vi.mocked(AppBotService.getAvailableBots).mockResolvedValue([]);
+    await act(async () => { state.spaceChangedListener?.(); });
+    await act(async () => { finish([bot]); });
+    expect(latest?.filteredBots).toEqual([]);
   });
 
   it("ignores a stale Space name response after switching away and back", async () => {

@@ -68,6 +68,7 @@ const channelManager = {
 
 let ContactsList: typeof import("../index").default;
 let container: HTMLDivElement;
+const appListeners = new Map<string, Set<(event: any) => void>>();
 
 beforeAll(async () => {
   vi.doMock("wukongimjssdk", () => {
@@ -94,7 +95,15 @@ beforeAll(async () => {
     ContextMenus: () => null,
     ContextMenusContext: class {},
     WKApp: {
-      mittBus: { on: vi.fn(), off: vi.fn() },
+      currentMenuId: "contacts",
+      mittBus: {
+        on: (name: string, fn: (event: any) => void) => {
+          if (!appListeners.has(name)) appListeners.set(name, new Set());
+          appListeners.get(name)!.add(fn);
+        },
+        off: (name: string, fn: (event: any) => void) => appListeners.get(name)?.delete(fn),
+        emit: (name: string, event: any) => appListeners.get(name)?.forEach(fn => fn(event)),
+      },
       shared: { currentSpaceId: undefined, openChannel: undefined },
       loginInfo: { uid: "me" },
       apiClient: { get: vi.fn(() => Promise.resolve([])) },
@@ -108,6 +117,7 @@ beforeAll(async () => {
     t: (k: string) => k,
     toSimplized: (s: string) => s,
     getPinyin: () => "#",
+    Dap: { shared: { track: vi.fn() } },
     addCurrentImChannelInfoListener: (listener: any) => {
       channelManager.addListener(listener);
       return () => channelManager.removeListener(listener);
@@ -118,6 +128,7 @@ beforeAll(async () => {
       channelManager.getChannelInfo(channel),
   }));
 
+  vi.doMock("@octo/base/src/App", async () => ({ default: (await import("@octo/base")).WKApp }));
   vi.doMock("@octo/base/src/Messages/Card", () => ({ Card: class {} }));
   vi.doMock("@octo/base/src/Components/WKAvatar", () => ({
     default: ({ channel }: any) => <div className="wk-avatar" data-cid={channel.channelID} />,
@@ -151,10 +162,19 @@ beforeAll(async () => {
   ContactsList = (await import("../index")).default;
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   sdkState.listeners = [];
   sdkState.cache = new Map();
   sdkState.server = new Map();
+  appListeners.clear();
+  const { WKApp } = await import("@octo/base");
+  const { SpaceService } = await import("@octo/base/src/Service/SpaceService");
+  WKApp.currentMenuId = "contacts";
+  WKApp.shared.currentSpaceId = "";
+  vi.mocked(WKApp.apiClient.get).mockReset().mockResolvedValue([]);
+  vi.mocked(SpaceService.shared.getMySpaces).mockReset().mockResolvedValue([]);
+  vi.mocked(SpaceService.shared.getMembers).mockReset().mockResolvedValue([]);
+  delete document.documentElement.dataset.hostVisibility;
   Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -173,6 +193,13 @@ const flush = async () => {
     await Promise.resolve();
   });
 };
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((ok, fail) => { resolve = ok; reject = fail; });
+  return { promise, resolve, reject };
+}
 
 describe("Contacts online badge self-heal on tab focus", () => {
   it("shows the AI green dot after visibilitychange when the server went online without a CMD", async () => {
@@ -206,5 +233,123 @@ describe("Contacts online badge self-heal on tab focus", () => {
 
     // 绿点应自愈补出，无需整页刷新
     expect(container.querySelectorAll('[data-testid="online-badge"]').length).toBe(1);
+  });
+});
+
+describe("Contacts roster revalidation", () => {
+  async function mountRoster() {
+    const { WKApp } = await import("@octo/base");
+    const { SpaceService } = await import("@octo/base/src/Service/SpaceService");
+    WKApp.shared.currentSpaceId = "space-a";
+    vi.mocked(SpaceService.shared.getMySpaces).mockResolvedValue([{ space_id: "space-a", name: "Alpha" }] as any);
+    vi.mocked(SpaceService.shared.getMembers).mockResolvedValue([{ uid: "old", name: "Old contact" }] as any);
+    const ref = React.createRef<any>();
+    await act(async () => { ReactDOM.render(<ContactsList ref={ref} />, container); });
+    await flush();
+    return { ref, WKApp, SpaceService };
+  }
+
+  it("refreshes all directories and search on resume while retaining filter, section and scroll", async () => {
+    const { ref, WKApp, SpaceService } = await mountRoster();
+    await act(async () => {
+      ref.current.setState({ keyword: "New", filterMode: "humans", expandedSection: "groups" });
+      ref.current.filterScrollTops.humans = 220;
+    });
+    vi.mocked(SpaceService.shared.getMembers).mockResolvedValue([{ uid: "new", name: "New contact" }] as any);
+    vi.mocked(WKApp.apiClient.get).mockImplementation(async (path) => {
+      if (path === "/robot/my_bots") return [{ uid: "my-new", name: "My new bot" }];
+      if (path === "/robot/space_bots") return [{ uid: "space-new", name: "Space new bot" }];
+      return [{ group_no: "new-group", name: "New group" }];
+    });
+    await act(async () => { window.dispatchEvent(new Event("octobuddy:resume")); });
+    await flush();
+    expect(ref.current.state.spaceMembers[0].uid).toBe("new");
+    expect(ref.current.state.myBots[0].uid).toBe("my-new");
+    expect(ref.current.state.spaceBots[0].uid).toBe("space-new");
+    expect(ref.current.state.myGroups[0].group_no).toBe("new-group");
+    expect(ref.current.state.searchContacts.some((item: any) => item.uid === "new")).toBe(true);
+    expect(ref.current.state.keyword).toBe("New");
+    expect(ref.current.state.filterMode).toBe("humans");
+    expect(ref.current.state.expandedSection).toBe("groups");
+    expect(ref.current.filterScrollTops.humans).toBe(220);
+    expect(ref.current.state.loading).toBe(false);
+  });
+
+  it("refreshes on chat-to-contacts activation without requiring a resume command", async () => {
+    const { ref, WKApp, SpaceService } = await mountRoster();
+    await act(async () => {
+      WKApp.currentMenuId = "chat";
+      WKApp.mittBus.emit("wk:active-menu-changed", { menuId: "chat" });
+    });
+    vi.mocked(SpaceService.shared.getMembers).mockResolvedValue([{ uid: "returned", name: "Returned" }] as any);
+    await act(async () => {
+      WKApp.currentMenuId = "contacts";
+      WKApp.mittBus.emit("wk:active-menu-changed", { menuId: "contacts" });
+    });
+    await flush();
+    expect(ref.current.state.spaceMembers[0].uid).toBe("returned");
+    act(() => ReactDOM.unmountComponentAtNode(container));
+    expect(appListeners.get("wk:active-menu-changed")?.size).toBe(0);
+    const count = vi.mocked(SpaceService.shared.getMembers).mock.calls.length;
+    window.dispatchEvent(new Event("octobuddy:resume"));
+    await flush();
+    expect(SpaceService.shared.getMembers).toHaveBeenCalledTimes(count);
+  });
+
+  it("does not invalidate unfinished initial Space setup on early resume", async () => {
+    const { WKApp } = await import("@octo/base");
+    const { SpaceService } = await import("@octo/base/src/Service/SpaceService");
+    WKApp.shared.currentSpaceId = "space-a";
+    let finish!: (spaces: any[]) => void;
+    vi.mocked(SpaceService.shared.getMySpaces).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    vi.mocked(SpaceService.shared.getMembers).mockResolvedValue([{ uid: "ready", name: "Ready" }] as any);
+    const ref = React.createRef<any>();
+    await act(async () => { ReactDOM.render(<ContactsList ref={ref} />, container); });
+    await act(async () => { window.dispatchEvent(new Event("octobuddy:resume")); });
+    await act(async () => { finish([{ space_id: "space-a", name: "Alpha" }]); });
+    await flush();
+    expect(ref.current.state.currentSpace.space_id).toBe("space-a");
+    expect(ref.current.state.spaceMembers[0].uid).toBe("ready");
+    expect(ref.current.state.loading).toBe(false);
+  });
+
+  it("keeps the foreground roster load alive when a silent activation refresh fails", async () => {
+    const { WKApp } = await import("@octo/base");
+    const { SpaceService } = await import("@octo/base/src/Service/SpaceService");
+    WKApp.shared.currentSpaceId = "space-a";
+    vi.mocked(SpaceService.shared.getMySpaces).mockResolvedValue([{ space_id: "space-a", name: "Alpha" }] as any);
+    const initialMembers = deferred<any[]>();
+    vi.mocked(SpaceService.shared.getMembers)
+      .mockReturnValueOnce(initialMembers.promise)
+      .mockRejectedValueOnce(new Error("offline"));
+    const ref = React.createRef<any>();
+    await act(async () => { ReactDOM.render(<ContactsList ref={ref} />, container); });
+    await flush();
+    expect(ref.current.state.currentSpace.space_id).toBe("space-a");
+    expect(ref.current.state.loading).toBe(true);
+    await act(async () => { window.dispatchEvent(new Event("octobuddy:resume")); });
+    await flush();
+    expect(ref.current.state.loading).toBe(true);
+    expect(ref.current.state.spaceMembers).toEqual([]);
+    await act(async () => { initialMembers.resolve([{ uid: "ready", name: "Ready" }]); });
+    await flush();
+    expect(ref.current.state.loading).toBe(false);
+    expect(ref.current.state.spaceMembers[0].uid).toBe("ready");
+  });
+
+  it("ignores a late roster response after switching Space", async () => {
+    const { ref, WKApp, SpaceService } = await mountRoster();
+    let finish!: (members: any[]) => void;
+    vi.mocked(SpaceService.shared.getMembers).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    await act(async () => { window.dispatchEvent(new Event("octobuddy:resume")); });
+    vi.mocked(SpaceService.shared.getMembers).mockResolvedValue([{ uid: "beta", name: "Beta member" }] as any);
+    await act(async () => {
+      WKApp.shared.currentSpaceId = "space-b";
+      WKApp.mittBus.emit("space-changed", { space_id: "space-b", name: "Beta" } as any);
+    });
+    await flush();
+    await act(async () => { finish([{ uid: "stale", name: "Old space" }]); });
+    await flush();
+    expect(ref.current.state.spaceMembers[0].uid).toBe("beta");
   });
 });

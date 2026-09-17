@@ -281,6 +281,66 @@ describe("SummaryShell", () => {
     expect(document.documentElement.dataset.hostVisibility).toBe("visible");
   });
 
+  it("invalidates the retained workspace on resume without resetting its route", () => {
+    const route = { view: "detail" as const, taskId: 42 };
+    const shell = render(
+      <SummaryShell
+        bridge={mocks.bridge}
+        initialRoute={route}
+        initialSpaceId="space-a"
+        onReady={vi.fn(async () => {})}
+      />
+    );
+    const messaging = mocks.workspaceProps.messaging;
+    const invalidate = vi.fn();
+    const unsubscribe = messaging.subscribeInvalidation(invalidate);
+
+    act(() => {
+      mocks.command.listener?.({ type: "suspend" });
+      mocks.command.listener?.({ type: "hostVisibilityChanged", visible: true });
+      mocks.command.listener?.({ type: "navigate", route });
+    });
+    expect(invalidate).toHaveBeenCalledTimes(1);
+
+    act(() => mocks.command.listener?.({ type: "resume" }));
+    expect(invalidate).toHaveBeenCalledTimes(2);
+    expect(mocks.workspaceProps.route).toEqual(route);
+    expect(mocks.workspaceProps.messaging).toBe(messaging);
+    expect(mocks.setRuntimeVisible).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+    act(() => mocks.command.listener?.({ type: "resume" }));
+    expect(invalidate).toHaveBeenCalledTimes(2);
+    shell.unmount();
+    expect(mocks.command.listener).toBeUndefined();
+  });
+
+  it("only invalidates current-space subscribers when resuming after a space change", () => {
+    render(
+      <SummaryShell
+        bridge={mocks.bridge}
+        initialRoute={{ view: "list" }}
+        initialSpaceId="space-a"
+        onReady={vi.fn(async () => {})}
+      />
+    );
+    const oldInvalidation = vi.fn();
+    mocks.workspaceProps.messaging.subscribeInvalidation(oldInvalidation);
+    act(() => {
+      mocks.command.listener?.({ type: "suspend" });
+      mocks.command.listener?.({
+        type: "spaceChanged",
+        space: { id: "space-b", name: "B" },
+      });
+    });
+    const currentInvalidation = vi.fn();
+    mocks.workspaceProps.messaging.subscribeInvalidation(currentInvalidation);
+
+    act(() => mocks.command.listener?.({ type: "resume" }));
+    expect(oldInvalidation).not.toHaveBeenCalled();
+    expect(currentInvalidation).toHaveBeenCalledTimes(1);
+  });
+
   it("ignores unknown commands without changing visibility", () => {
     render(
       <SummaryShell

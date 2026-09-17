@@ -18,6 +18,7 @@ import GroupCard from "@octo/base/src/Components/GroupCard";
 import { Space, SpaceMember, SpaceService, hasSpacePrefix } from "@octo/base/src/Service/SpaceService";
 import { channelOpenedTrackPayload } from "@octo/base/src/Service/channelOpenedTracking";
 import { debounce } from "@octo/base/src/Utils/rateLimit";
+import { subscribePageActivation } from "@octo/base/src/Utils/pageActivation";
 import { OnlineStatusBadge, needShowOnlineStatus, getOnlineTip } from "@octo/base/src/Components/ConversationList";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { shouldShowOnlineStatus, selectOnlineStatusUids } from "./onlineStatusGate";
@@ -223,12 +224,13 @@ export default class ContactsList extends Component<any, ContactsState> {
     // 已预取过 channelInfo（含在线态）的 uid 集合，跨 filter/滚动去重，避免重复请求
     private prefetchedUids = new Set<string>()
     private unsubscribeChannelInfoListener?: () => void
-    private visibilityHandler!: () => void
+    private unsubscribePageActivation?: () => void
     // 组件是否仍挂载：refreshTrackedOnlineStatus 是异步的，回包后 setState 前需确认未卸载
     private mounted = false
     // Every initial load and Space switch claims a generation. Responses from a
     // previous Space must never overwrite the active Space's roster or badges.
     private spaceLoadGeneration = 0
+    private activationLoadGeneration = 0
 
     constructor(props: any) {
         super(props)
@@ -284,17 +286,14 @@ export default class ContactsList extends Component<any, ContactsState> {
         WKApp.mittBus.on('space-changed', this.spaceChangedHandler)
         this.unsubscribeChannelInfoListener = addCurrentImChannelInfoListener(this.channelInfoListener)
 
-        // 页面重新可见时对已追踪的 AI 在线态做一次自愈重拉：正常情况下在线态靠
-        // WKSDK 的 onlineStatus WS 回调实时重渲，但推送若因断连/节流被延迟或丢失，
-        // 用户切回本页时不必整页刷新，也能补回最新在线绿点。
-        this.visibilityHandler = () => {
-            if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-                this.refreshTrackedOnlineStatus()
-            }
-        }
-        if (typeof document !== 'undefined') {
-            document.addEventListener('visibilitychange', this.visibilityHandler)
-        }
+        // Revalidate roster and tracked online badges together when this retained page returns.
+        this.unsubscribePageActivation = subscribePageActivation('contacts', () => {
+            const spaceId = WKApp.shared.currentSpaceId
+            void this.refreshTrackedOnlineStatus()
+            // The initial getMySpaces lookup still owns setup until currentSpace is resolved.
+            if (!spaceId || this.state.currentSpace?.space_id !== spaceId) return
+            void this.loadAllData(spaceId, this.spaceLoadGeneration, true, ++this.activationLoadGeneration)
+        })
 
         ContactsListManager.shared.setRefreshList = () => {
             this.setState({})
@@ -325,13 +324,12 @@ export default class ContactsList extends Component<any, ContactsState> {
     componentWillUnmount() {
         this.mounted = false
         this.spaceLoadGeneration += 1
+        this.activationLoadGeneration += 1
         ContactsListManager.shared.setRefreshList = undefined
         this.unsubscribeChannelInfoListener?.()
         this.unsubscribeChannelInfoListener = undefined
+        this.unsubscribePageActivation?.()
         WKApp.mittBus.off('space-changed', this.spaceChangedHandler)
-        if (typeof document !== 'undefined' && this.visibilityHandler) {
-            document.removeEventListener('visibilitychange', this.visibilityHandler)
-        }
         this.debouncedSearch.cancel()
         this.prefetchedUids.clear()
     }
@@ -372,21 +370,23 @@ export default class ContactsList extends Component<any, ContactsState> {
         return all
     }
 
-    private isCurrentSpaceLoad(spaceId: string, generation: number): boolean {
+    private isCurrentSpaceLoad(spaceId: string, generation: number, activationGeneration?: number): boolean {
         return this.mounted &&
             generation === this.spaceLoadGeneration &&
+            (activationGeneration == null || activationGeneration === this.activationLoadGeneration) &&
             WKApp.shared.currentSpaceId === spaceId
     }
 
-    private async loadAllData(spaceId: string, generation: number) {
+    private async loadAllData(spaceId: string, generation: number, silent = false, activationGeneration?: number) {
         try {
             const [members, myBots, spaceBots, myGroups] = await Promise.all([
                 this.fetchAllSpaceMembers(spaceId),
-                WKApp.apiClient.get("/robot/my_bots", { param: { space_id: spaceId } }).catch(() => []),
-                WKApp.apiClient.get("/robot/space_bots", { param: { space_id: spaceId } }).catch(() => []),
-                WKApp.apiClient.get(`/group/my?space_id=${spaceId}`).catch(() => []),
+                WKApp.apiClient.get("/robot/my_bots", { param: { space_id: spaceId } }).catch(() => silent ? this.state.myBots : []),
+                WKApp.apiClient.get("/robot/space_bots", { param: { space_id: spaceId } }).catch(() => silent ? this.state.spaceBots : []),
+                WKApp.apiClient.get(`/group/my?space_id=${spaceId}`).catch(() => silent ? this.state.myGroups : []),
             ])
-            if (!this.isCurrentSpaceLoad(spaceId, generation)) return
+            if (!this.isCurrentSpaceLoad(spaceId, generation, activationGeneration)) return
+            if (silent) this.spaceLoadGeneration += 1
             this.setState({
                 spaceMembers: members || [],
                 myBots: myBots || [],
@@ -397,11 +397,15 @@ export default class ContactsList extends Component<any, ContactsState> {
                 this.rebuildContactsSearchIndex()
                 this.clearIndexCache()
                 this.rebuildIndex()
+                if (this.state.keyword?.trim()) {
+                    const { contacts, groups } = searchContacts(this.state.keyword, this.contactsSearchIndex)
+                    this.setState({ isSearching: true, searchContacts: contacts, searchGroups: groups })
+                }
                 // 「已添加AI」列表数量有界，数据就绪时整批预取一次在线态。
                 this.prefetchOnlineStatus((myBots || []).map((b: any) => b.uid))
             })
         } catch {
-            if (this.isCurrentSpaceLoad(spaceId, generation)) this.setState({ loading: false })
+            if (!silent && this.isCurrentSpaceLoad(spaceId, generation)) this.setState({ loading: false })
         }
     }
 

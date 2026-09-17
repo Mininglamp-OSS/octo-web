@@ -20,6 +20,7 @@ export function AppsShell({
   const [reloadKey, setReloadKey] = useState(0);
   const spaceRef = useRef(space);
   const listeners = useRef(new Set<() => void>());
+  const invalidationListeners = useRef(new Set<() => void>());
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
 
@@ -38,6 +39,10 @@ export function AppsShell({
       subscribeSpaceChanged(listener) {
         listeners.current.add(listener);
         return () => listeners.current.delete(listener);
+      },
+      subscribeInvalidation(listener) {
+        invalidationListeners.current.add(listener);
+        return () => invalidationListeners.current.delete(listener);
       },
       openConversation: (target) => bridge.openConversation(target),
       clearConversation: () => undefined,
@@ -79,9 +84,14 @@ export function AppsShell({
         return;
       }
       if (command.type === "hostVisibilityChanged") {
+        const wasHidden =
+          document.documentElement.dataset.hostVisibility === "hidden";
         document.documentElement.dataset.hostVisibility = command.visible
           ? "visible"
           : "hidden";
+        if (command.visible && wasHidden) {
+          invalidationListeners.current.forEach((listener) => listener());
+        }
         return;
       }
       if (command.type === "suspend") {
@@ -90,6 +100,7 @@ export function AppsShell({
       }
       if (command.type === "resume") {
         document.documentElement.dataset.hostVisibility = "visible";
+        invalidationListeners.current.forEach((listener) => listener());
         return;
       }
       // Unknown commands must not change visibility

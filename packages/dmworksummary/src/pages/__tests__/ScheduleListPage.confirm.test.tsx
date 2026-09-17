@@ -35,6 +35,13 @@ function elements(node: any): any[] {
     return [node, ...elements(node.props?.children)];
 }
 
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<T>((ok, fail) => { resolve = ok; reject = fail; });
+    return { promise, resolve, reject };
+}
+
 describe("ScheduleListPage.handleUpdate — V5 confirm_policy passthrough", () => {
     beforeEach(() => vi.clearAllMocks());
 
@@ -137,6 +144,67 @@ describe("legacy schedule recovery controls", () => {
         }] as any;
         return page;
     }
+
+    it("refreshes retained schedules when the workspace invalidates without replacing the edit snapshot", async () => {
+        const page = pageWithSchedule();
+        const editing = page.state.schedules[0];
+        page.state.editingSchedule = editing;
+        vi.mocked(api.listSchedules).mockResolvedValue([{ ...editing, title: "Remote rename" }]);
+        page.componentDidUpdate({ refreshKey: -1 });
+        await Promise.resolve();
+        expect(page.state.schedules[0].title).toBe("Remote rename");
+        expect(page.state.editingSchedule).toBe(editing);
+        expect(page.state.editingSchedule.title).toBe("Legacy");
+        expect(page.state.loading).toBe(false);
+    });
+
+    it("keeps a foreground schedule load alive when a silent refresh fails", async () => {
+        const page = makePage();
+        const initial = deferred<any[]>();
+        vi.mocked(api.listSchedules)
+            .mockReturnValueOnce(initial.promise)
+            .mockRejectedValueOnce(new Error("offline"));
+        const foreground = page.loadData();
+        page.componentDidUpdate({ refreshKey: -1 });
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(page.state.loading).toBe(true);
+        expect(page.state.error).toBeNull();
+        initial.resolve([{
+            schedule_id: 1, title: "Initial", summary_mode: 2, is_active: true,
+            interval_days: 7, cron_expr: "", run_time: "09:00", time_range_type: 2,
+        }]);
+        await foreground;
+        expect(page.state.loading).toBe(false);
+        expect(page.state.error).toBeNull();
+        expect(page.state.schedules[0].title).toBe("Initial");
+    });
+
+    it("ignores late snapshots after newer refreshes, mutations and unmount", async () => {
+        const page = pageWithSchedule();
+        const stale = [...page.state.schedules];
+        let finish!: (items: typeof stale) => void;
+        vi.mocked(api.listSchedules).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+        const slow = page.loadData(true);
+        vi.mocked(api.listSchedules).mockResolvedValue([{ ...stale[0], title: "Latest" }]);
+        await page.loadData(true);
+        finish(stale);
+        await slow;
+        expect(page.state.schedules[0].title).toBe("Latest");
+        vi.mocked(api.listSchedules).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+        const beforeDelete = page.loadData(true);
+        vi.mocked(api.deleteSchedule).mockResolvedValue();
+        await page.handleScheduleAction(1, "delete");
+        finish(stale);
+        await beforeDelete;
+        expect(page.state.schedules).toEqual([]);
+        vi.mocked(api.listSchedules).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+        const beforeUnmount = page.loadData(true);
+        page.componentWillUnmount();
+        finish(stale);
+        await beforeUnmount;
+        expect(page.state.schedules).toEqual([]);
+    });
 
     it("pauses an active legacy schedule through the existing API and removes the pause action", async () => {
         vi.mocked(api.toggleSchedule).mockResolvedValue({ is_active: false } as any);
