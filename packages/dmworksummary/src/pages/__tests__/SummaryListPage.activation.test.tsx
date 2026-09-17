@@ -1,0 +1,330 @@
+import React from "react";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { WKApp } from "@octo/base";
+import * as api from "../../api/summaryApi";
+import SummaryListPage from "../SummaryListPage";
+import { TaskStatus, type ListSummariesResponse, type SummaryListItem } from "../../types/summary";
+import { summaryTestIds } from "../../utils/testIds";
+
+vi.mock("@douyinfe/semi-ui", () => {
+    const Dropdown = Object.assign(({ children }: any) => <>{children}</>, {
+        Menu: () => null,
+        Item: () => null,
+    });
+    return {
+        Dropdown,
+        Button: () => null,
+        Spin: () => <div data-testid="spinner" />,
+        Banner: ({ description }: any) => <div role="alert">{description}</div>,
+        Toast: { success: vi.fn(), error: vi.fn() },
+    };
+});
+vi.mock("../../components/SummaryCard", () => ({
+    default: ({ task }: { task: SummaryListItem }) => (
+        <div data-testid={`task-${task.task_id}`} data-unread={task.is_unread}>
+            {task.topic}
+        </div>
+    ),
+}));
+vi.mock("../../features/summaryWorkbench/Entry", () => ({
+    default: ({ renderNew }: any) => renderNew(),
+}));
+vi.mock("../../features/summaryWorkbench/SummaryWorkbenchCreateEntry", () => ({ default: () => null }));
+vi.mock("../SummaryCreatePage", () => ({ default: () => null }));
+vi.mock("../SummaryDetailPage", () => ({ default: () => null }));
+vi.mock("../../api/summaryApi");
+
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason: Error) => void;
+    const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+    return { promise, resolve, reject };
+}
+
+function rows(start: number, count = 20, prefix = "old"): SummaryListItem[] {
+    return Array.from({ length: count }, (_, index) => ({
+        task_id: start + index,
+        topic: `${prefix}-${start + index}`,
+        status: TaskStatus.COMPLETED,
+        is_unread: true,
+        needs_attention: true,
+    } as SummaryListItem));
+}
+
+function response(items: SummaryListItem[], total = 80): ListSummariesResponse {
+    return { items, total, attention_count: 0, unread_count: 0, pending_invitation_count: 0 };
+}
+
+async function mountList(initial = response(rows(1))) {
+    vi.mocked(api.listSummaries).mockResolvedValueOnce(initial);
+    const ref = React.createRef<SummaryListPage>();
+    const view = render(<SummaryListPage ref={ref} embedded backgroundRefreshKey={0} />);
+    await act(async () => {});
+    return {
+        ref,
+        view,
+        activate: async (key = 1) => {
+            await act(async () => {
+                view.rerender(<SummaryListPage ref={ref} embedded backgroundRefreshKey={key} />);
+            });
+        },
+        loadMore: async (items = rows(21)) => {
+            vi.mocked(api.listSummaries).mockResolvedValueOnce(response(items));
+            await act(async () => { await ref.current!.loadMore(); });
+        },
+    };
+}
+
+describe("SummaryListPage retained activation refresh", () => {
+    beforeEach(() => {
+        vi.resetAllMocks();
+        WKApp.shared.currentSpaceId = "space-123";
+    });
+    afterEach(cleanup);
+
+    it("keeps the scroll container mounted and refreshes every loaded page before committing", async () => {
+        const { ref, activate, loadMore } = await mountList();
+        await loadMore();
+        const content = screen.getByTestId(summaryTestIds.listContent);
+        content.scrollTop = 450;
+        const first = deferred<ListSummariesResponse>();
+        const second = deferred<ListSummariesResponse>();
+        vi.mocked(api.listSummaries)
+            .mockReturnValueOnce(first.promise)
+            .mockReturnValueOnce(second.promise);
+
+        await activate();
+        expect(api.listSummaries).toHaveBeenCalledTimes(3);
+        expect(screen.queryByTestId("spinner")).not.toBeInTheDocument();
+        expect(screen.getByTestId(summaryTestIds.listContent)).toBe(content);
+        await act(async () => { first.resolve(response(rows(1, 20, "fresh"))); });
+        expect(api.listSummaries).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, page_size: 20 }));
+        expect(screen.getByTestId("task-1")).toHaveTextContent("old-1");
+        await act(async () => { second.resolve(response(rows(21, 20, "fresh"))); });
+
+        expect(screen.getByTestId(summaryTestIds.listContent)).toBe(content);
+        expect(content.scrollTop).toBe(450);
+        expect(screen.getByTestId("task-1")).toHaveTextContent("fresh-1");
+        expect(screen.getByTestId("task-40")).toHaveTextContent("fresh-40");
+        expect(ref.current!.state.page).toBe(2);
+        await loadMore(rows(41));
+        expect(api.listSummaries).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3, page_size: 20 }));
+    });
+
+    it("keeps the complete cached range and cursor if any refreshed page fails", async () => {
+        const { ref, activate, loadMore } = await mountList();
+        await loadMore();
+        const cached = ref.current!.state.items;
+        vi.mocked(api.listSummaries)
+            .mockResolvedValueOnce(response(rows(1, 20, "partial")))
+            .mockRejectedValueOnce(new Error("offline"));
+        await activate();
+        expect(api.listSummaries).toHaveBeenCalledTimes(4);
+        expect(ref.current!.state.items).toBe(cached);
+        expect(ref.current!.state).toMatchObject({ page: 2, loading: false, hasMore: true, error: null });
+        await loadMore(rows(41));
+        expect(api.listSummaries).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3 }));
+    });
+
+    it("shrinks the retained prefix when the server now has fewer pages", async () => {
+        const { ref, activate, loadMore } = await mountList();
+        await loadMore();
+        vi.mocked(api.listSummaries).mockResolvedValueOnce(response(rows(5, 6, "remaining"), 6));
+        await activate();
+        expect(ref.current!.state).toMatchObject({ page: 1, total: 6, hasMore: false });
+        expect(ref.current!.state.items).toHaveLength(6);
+        expect(screen.queryByTestId("task-1")).not.toBeInTheDocument();
+        expect(api.listSummaries).toHaveBeenCalledTimes(3);
+    });
+
+    it("waits for the initial foreground load and preserves it if the queued activation fails", async () => {
+        const initial = deferred<ListSummariesResponse>();
+        vi.mocked(api.listSummaries)
+            .mockReturnValueOnce(initial.promise)
+            .mockRejectedValueOnce(new Error("offline"));
+        const ref = React.createRef<SummaryListPage>();
+        const view = render(<SummaryListPage ref={ref} embedded backgroundRefreshKey={0} />);
+        view.rerender(<SummaryListPage ref={ref} embedded backgroundRefreshKey={1} />);
+        expect(api.listSummaries).toHaveBeenCalledTimes(1);
+        await act(async () => { initial.resolve(response(rows(1))); });
+        expect(api.listSummaries).toHaveBeenCalledTimes(2);
+        expect(screen.getByTestId("task-1")).toHaveTextContent("old-1");
+        expect(ref.current!.state).toMatchObject({ loading: false, error: null });
+    });
+
+    it("waits for an in-flight loadMore and refreshes the resulting depth", async () => {
+        const { ref, activate } = await mountList();
+        const next = deferred<ListSummariesResponse>();
+        vi.mocked(api.listSummaries)
+            .mockReturnValueOnce(next.promise)
+            .mockResolvedValueOnce(response(rows(1, 20, "fresh")))
+            .mockResolvedValueOnce(response(rows(21, 20, "fresh")));
+        act(() => { void ref.current!.loadMore(); });
+        await activate();
+        expect(api.listSummaries).toHaveBeenCalledTimes(2);
+        await act(async () => { next.resolve(response(rows(21))); });
+        expect(api.listSummaries).toHaveBeenCalledTimes(4);
+        expect(ref.current!.state).toMatchObject({ page: 2, loadingMore: false });
+        expect(screen.getByTestId("task-40")).toHaveTextContent("fresh-40");
+    });
+
+    it("retains read updates while accepting fresh titles from an older activation snapshot", async () => {
+        const { activate } = await mountList();
+        const refresh = deferred<ListSummariesResponse>();
+        vi.mocked(api.listSummaries).mockReturnValueOnce(refresh.promise);
+        await activate();
+        expect(api.listSummaries).toHaveBeenCalledTimes(2);
+        act(() => {
+            window.dispatchEvent(new CustomEvent("summary-read", {
+                detail: { taskId: 1, isUnread: false, needsAttention: false },
+            }));
+        });
+        await act(async () => { refresh.resolve(response(rows(1, 20, "fresh"))); });
+        expect(screen.getByTestId("task-1")).toHaveAttribute("data-unread", "false");
+        expect(screen.getByTestId("task-1")).toHaveTextContent("fresh-1");
+        expect(screen.getByTestId("task-2")).toHaveAttribute("data-unread", "true");
+    });
+
+    it("keeps explicit workspace refreshes as foreground page-one loads", async () => {
+        const { ref, view, loadMore } = await mountList();
+        await loadMore();
+        const refresh = deferred<ListSummariesResponse>();
+        vi.mocked(api.listSummaries).mockReturnValueOnce(refresh.promise);
+        view.rerender(<SummaryListPage ref={ref} embedded backgroundRefreshKey={0} refreshKey={1} />);
+        expect(screen.getByTestId("spinner")).toBeInTheDocument();
+        await act(async () => { refresh.resolve(response(rows(100))); });
+        expect(ref.current!.state.page).toBe(1);
+        expect(ref.current!.state.items).toHaveLength(20);
+    });
+
+    it("does not commit an activation response after a filter change", async () => {
+        const { ref, activate } = await mountList();
+        const stale = deferred<ListSummariesResponse>();
+        vi.mocked(api.listSummaries)
+            .mockReturnValueOnce(stale.promise)
+            .mockResolvedValueOnce(response(rows(50, 1, "filtered"), 1));
+        await activate();
+        expect(api.listSummaries).toHaveBeenCalledTimes(2);
+        await act(async () => { ref.current!.handleStatusChange(TaskStatus.FAILED); });
+        await act(async () => { stale.resolve(response(rows(1, 20, "stale"))); });
+        expect(ref.current!.state.items[0].topic).toBe("filtered-50");
+        expect(ref.current!.state.loading).toBe(false);
+    });
+
+    it("coalesces activations during a request and keeps its successful snapshot if the trailing refresh fails", async () => {
+        const { ref, activate } = await mountList();
+        const first = deferred<ListSummariesResponse>();
+        vi.mocked(api.listSummaries)
+            .mockReturnValueOnce(first.promise)
+            .mockRejectedValueOnce(new Error("offline"));
+        await activate();
+        await activate(2);
+        await activate(3);
+        expect(api.listSummaries).toHaveBeenCalledTimes(2);
+        await act(async () => { first.resolve(response(rows(1, 20, "fresh"))); });
+        expect(api.listSummaries).toHaveBeenCalledTimes(3);
+        expect(screen.getByTestId("task-1")).toHaveTextContent("fresh-1");
+        expect(ref.current!.state).toMatchObject({ loading: false, error: null });
+    });
+
+    it("does not discard the queued activation when the initial load fails", async () => {
+        const initial = deferred<ListSummariesResponse>();
+        vi.mocked(api.listSummaries)
+            .mockReturnValueOnce(initial.promise)
+            .mockResolvedValueOnce(response(rows(1)));
+        const ref = React.createRef<SummaryListPage>();
+        const view = render(<SummaryListPage ref={ref} embedded backgroundRefreshKey={0} />);
+        view.rerender(<SummaryListPage ref={ref} embedded backgroundRefreshKey={1} />);
+        await act(async () => { initial.reject(new Error("offline")); });
+        expect(api.listSummaries).toHaveBeenCalledTimes(2);
+        expect(screen.getByTestId("task-1")).toBeInTheDocument();
+        expect(ref.current!.state).toMatchObject({ loading: false, error: null });
+    });
+
+    it("does not allow scroll to issue a loadMore request during a retained refresh", async () => {
+        const { ref, activate } = await mountList();
+        const refresh = deferred<ListSummariesResponse>();
+        vi.mocked(api.listSummaries).mockReturnValueOnce(refresh.promise);
+        await activate();
+        await act(async () => { await ref.current!.loadMore(); });
+        expect(api.listSummaries).toHaveBeenCalledTimes(2);
+        expect(screen.queryByTestId("spinner")).not.toBeInTheDocument();
+        await act(async () => { refresh.resolve(response(rows(1))); });
+    });
+
+    it("deduplicates refreshed page boundaries without making the next-page cursor depend on row count", async () => {
+        const { ref, activate, loadMore } = await mountList();
+        await loadMore();
+        vi.mocked(api.listSummaries)
+            .mockResolvedValueOnce(response(rows(1), 60))
+            .mockResolvedValueOnce(response(rows(20), 60));
+        await activate();
+        expect(ref.current!.state.items).toHaveLength(39);
+        expect(ref.current!.state).toMatchObject({ page: 2, hasMore: true });
+        vi.mocked(api.listSummaries).mockResolvedValueOnce(response(rows(41), 60));
+        await act(async () => { await ref.current!.loadMore(); });
+        expect(api.listSummaries).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3 }));
+        expect(ref.current!.state.hasMore).toBe(false);
+    });
+
+    it.each(["space", "channel", "keyword"] as const)(
+        "abandons a retained snapshot when its %s changes while a later page is pending",
+        async (scope) => {
+            const { ref, view, activate, loadMore } = await mountList();
+            await loadMore();
+            const second = deferred<ListSummariesResponse>();
+            vi.mocked(api.listSummaries)
+                .mockResolvedValueOnce(response(rows(1, 20, "stale")))
+                .mockReturnValueOnce(second.promise);
+            await activate();
+            expect(api.listSummaries).toHaveBeenCalledTimes(4);
+            const cached = ref.current!.state.items;
+            if (scope === "space") {
+                WKApp.shared.currentSpaceId = "space-b";
+            } else if (scope === "channel") {
+                vi.mocked(api.listSummaries).mockResolvedValueOnce(response(rows(80, 1, "channel"), 1));
+                await act(async () => {
+                    view.rerender(<SummaryListPage ref={ref} embedded backgroundRefreshKey={1} channelId="channel-b" />);
+                });
+            } else {
+                await act(async () => { ref.current!.setState({ keyword: "new query" }); });
+            }
+            await act(async () => { second.resolve(response(rows(21, 20, "stale"))); });
+            if (scope === "channel") {
+                expect(ref.current!.state.items[0].topic).toBe("channel-80");
+            } else {
+                expect(ref.current!.state.items).toBe(cached);
+            }
+            expect(ref.current!.state.loading).toBe(false);
+        },
+    );
+
+    it("drops both the current snapshot and queued activations when unmounted", async () => {
+        const { view, activate } = await mountList();
+        const refresh = deferred<ListSummariesResponse>();
+        vi.mocked(api.listSummaries).mockReturnValueOnce(refresh.promise);
+        await activate();
+        await activate(2);
+        view.unmount();
+        await act(async () => { refresh.resolve(response(rows(1))); });
+        expect(api.listSummaries).toHaveBeenCalledTimes(2);
+        expect(screen.queryByTestId(summaryTestIds.list)).not.toBeInTheDocument();
+    });
+
+    it.each(["handleDelete", "handleLeave", "handleCancel"] as const)(
+        "lets %s supersede an activation snapshot",
+        async (method) => {
+            const { ref, activate } = await mountList();
+            const stale = deferred<ListSummariesResponse>();
+            vi.mocked(api.listSummaries)
+                .mockReturnValueOnce(stale.promise)
+                .mockResolvedValueOnce(response(rows(50, 1, "after-action"), 1));
+            await activate();
+            await act(async () => { await ref.current![method](1); });
+            await act(async () => { stale.resolve(response(rows(1))); });
+            expect(ref.current!.state.items[0].topic).toBe("after-action-50");
+            expect(ref.current!.state.loading).toBe(false);
+        },
+    );
+});

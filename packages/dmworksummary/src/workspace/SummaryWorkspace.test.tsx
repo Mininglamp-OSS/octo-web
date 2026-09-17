@@ -31,9 +31,10 @@ vi.mock("../api/summaryApi", () => ({
   getSummaryShare: vi.fn(async () => ({ source_accessible: false })),
 }));
 vi.mock("../pages/SummaryListPage", () => ({
-  default: ({ onCreateNew, onViewDetail, refreshKey }: any) => (
+  default: ({ onCreateNew, onViewDetail, refreshKey, backgroundRefreshKey }: any) => (
     <div data-testid="workspace-list">
       <span data-testid="workspace-list-refresh">{refreshKey}</span>
+      <span data-testid="workspace-list-background-refresh">{backgroundRefreshKey}</span>
       <button onClick={() => onCreateNew("agent")}>create-agent</button>
       <button onClick={() => onCreateNew("unified")}>create-unified</button>
       <button onClick={() => onViewDetail(17)}>open-detail</button>
@@ -198,6 +199,7 @@ describe("SummaryWorkspace", () => {
       taskId: 23,
     });
     expect(screen.getByTestId("workspace-list-refresh")).toHaveTextContent("1");
+    expect(screen.getByTestId("workspace-list-background-refresh")).toHaveTextContent("0");
 
     fireEvent.click(screen.getByText("open-confirm"));
     expect(onRouteChange).toHaveBeenLastCalledWith({
@@ -279,7 +281,8 @@ describe("SummaryWorkspace", () => {
 
     expect(screen.getByTestId("workspace-list-refresh")).toHaveTextContent("0");
     act(() => invalidate());
-    expect(screen.getByTestId("workspace-list-refresh")).toHaveTextContent("1");
+    expect(screen.getByTestId("workspace-list-refresh")).toHaveTextContent("0");
+    expect(screen.getByTestId("workspace-list-background-refresh")).toHaveTextContent("1");
 
     view.unmount();
     expect(unsubscribe).toHaveBeenCalledTimes(1);
@@ -302,7 +305,7 @@ describe("SummaryWorkspace", () => {
 
     expect(screen.getByTestId("schedule-refresh")).toHaveTextContent("0");
     act(() => invalidate());
-    expect(screen.getByTestId("workspace-list-refresh")).toHaveTextContent("1");
+    expect(screen.getByTestId("workspace-list-background-refresh")).toHaveTextContent("1");
     expect(screen.getByTestId("schedule-refresh")).toHaveTextContent("1");
   });
 });

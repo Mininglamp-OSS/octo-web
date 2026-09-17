@@ -28,6 +28,7 @@ export default function SummaryWorkspace({
 }: SummaryWorkspaceProps) {
   const { t } = useI18n();
   const [listRefreshKey, setListRefreshKey] = useState(0);
+  const [backgroundRefreshKey, setBackgroundRefreshKey] = useState(0);
   const messagingPort = useMemo(() => {
     const base = messaging ?? legacySummaryMessagingPort;
     if (!onOpenConversation) return base;
@@ -58,10 +59,14 @@ export default function SummaryWorkspace({
     () => setListRefreshKey((value) => value + 1),
     []
   );
+  const refreshRetainedList = useCallback(
+    () => setBackgroundRefreshKey((value) => value + 1),
+    []
+  );
 
   useEffect(
-    () => messagingPort.subscribeInvalidation(refreshList),
-    [messagingPort, refreshList]
+    () => messagingPort.subscribeInvalidation(refreshRetainedList),
+    [messagingPort, refreshRetainedList]
   );
 
   const showList = () => onRouteChange({ view: "list" });
@@ -136,7 +141,7 @@ export default function SummaryWorkspace({
           />
         );
       case "schedules":
-        return <ScheduleListPage onBack={showList} refreshKey={listRefreshKey} />;
+        return <ScheduleListPage onBack={showList} refreshKey={listRefreshKey + backgroundRefreshKey} />;
       case "list":
         return null;
     }
@@ -152,6 +157,7 @@ export default function SummaryWorkspace({
           <SummaryListPage
             embedded
             refreshKey={listRefreshKey}
+            backgroundRefreshKey={backgroundRefreshKey}
             onCreateNew={showCreate}
             onViewDetail={showDetail}
             onContinueOptimize={continueRefine}

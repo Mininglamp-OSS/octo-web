@@ -23,9 +23,10 @@ vi.mock("../../../../packages/dmworksummary/src/utils/summaryAttentionBadge", ()
   subscribeSummaryAttentionBadge: () => () => {},
 }));
 vi.mock("../../../../packages/dmworksummary/src/pages/SummaryListPage", () => ({
-  default: ({ onCreateNew, refreshKey = 0 }: {
+  default: ({ onCreateNew, refreshKey = 0, backgroundRefreshKey = 0 }: {
     onCreateNew(mode: "normal"): void;
     refreshKey?: number;
+    backgroundRefreshKey?: number;
   }) => {
     const [loadCount, setLoadCount] = useState(0);
     const [visibleItems, setVisibleItems] = useState<typeof summaryMockList.items>([]);
@@ -33,7 +34,7 @@ vi.mock("../../../../packages/dmworksummary/src/pages/SummaryListPage", () => ({
     useEffect(() => {
       setVisibleItems(summaryMockList.items.slice());
       setLoadCount((count) => count + 1);
-    }, [refreshKey]);
+    }, [refreshKey, backgroundRefreshKey]);
     return (
       <div>
         <input

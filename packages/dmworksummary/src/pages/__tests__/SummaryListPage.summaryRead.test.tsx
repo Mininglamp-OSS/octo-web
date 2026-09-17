@@ -28,6 +28,7 @@ vi.mock('../SummaryDetailPage', () => ({ default: () => null }));
 vi.mock('../../api/summaryApi');
 
 import SummaryListPage from '../SummaryListPage';
+import * as api from '../../api/summaryApi';
 
 function makePage(items: Record<string, unknown>[]) {
     const page = new SummaryListPage({});
@@ -35,6 +36,7 @@ function makePage(items: Record<string, unknown>[]) {
         ...(page.state as any),
         items,
     };
+    (page as any).isMounted_ = true;
     (page as any).setState = function (this: any, patch: any) {
         this.state = { ...this.state, ...(typeof patch === 'function' ? patch(this.state) : patch) };
     };
@@ -180,4 +182,36 @@ describe('SummaryListPage summary-read synchronization', () => {
 
         expect((page.state as any).items[0]).toMatchObject({ is_unread: true, needs_attention: true });
     });
+
+    it.each(['loadData', 'loadMore'] as const)(
+        'preserves a read event arriving during %s without dropping the response or stranding loading',
+        async (method) => {
+            const page = makePage([]);
+            let resolve!: (value: any) => void;
+            vi.mocked(api.listSummaries).mockReturnValueOnce(new Promise((res) => { resolve = res; }));
+            const pending = page[method]();
+            (page as any).handleSummaryRead_(new CustomEvent('summary-read', {
+                detail: { taskId: 1, isUnread: false, needsAttention: false, hasPendingSubmission: false },
+            }));
+            resolve({
+                items: [{ task_id: 1, topic: 'fresh', is_unread: true, needs_attention: true, has_pending_submission: true }],
+                total: 1,
+            });
+            await pending;
+            expect(page.state.items[0]).toMatchObject({
+                topic: 'fresh', is_unread: false, needs_attention: false, has_pending_submission: false,
+            });
+            expect(page.state.loading).toBe(false);
+            expect(page.state.loadingMore).toBe(false);
+            expect((page as any).isLoadingData).toBe(false);
+
+            vi.mocked(api.listSummaries).mockResolvedValueOnce({
+                items: [{ task_id: 1, is_unread: true, needs_attention: true }],
+                total: 1,
+            } as any);
+            await page.loadData();
+            // A request issued after the event may carry a genuinely newer unread version.
+            expect(page.state.items[0].is_unread).toBe(true);
+        },
+    );
 });
