@@ -60,8 +60,8 @@ interface McpMarketListPageState {
    *  resolves. */
   tagSuggestions: McpTagSuggestion[];
   mode: ListMode;
-  /** Discovery sort (market variant only). Default 最新 (newest), matching the
-   *  skill/expert markets. */
+  /** Discovery sort (market variant only). MCP and expert default to 最新
+   *  (newest); the skill market defaults to 综合 (comprehensive). */
   sort: McpSort;
   offset: number;
   total: number;
