@@ -45,7 +45,12 @@ function toDocSearchItem(item: DocsListItem): DocSearchItem | null {
   };
 }
 
-async function listDocuments(source: DocumentSelectorSource, keyword: string) {
+interface ListDocumentsResult {
+  items: DocSearchItem[];
+  total: number;
+}
+
+async function listDocuments(source: DocumentSelectorSource, keyword: string): Promise<ListDocumentsResult> {
   const query = keyword.trim();
   const param =
     source === "recent"
@@ -61,7 +66,10 @@ async function listDocuments(source: DocumentSelectorSource, keyword: string) {
     source === "recent" ? "docs/recent" : "docs",
     { param }
   );
-  return (response?.items ?? []).map(toDocSearchItem).filter(Boolean) as DocSearchItem[];
+  return {
+    items: (response?.items ?? []).map(toDocSearchItem).filter(Boolean) as DocSearchItem[],
+    total: response?.total ?? 0,
+  };
 }
 
 export function useDocumentSearch({
@@ -73,6 +81,7 @@ export function useDocumentSearch({
   const [source, setSource] = useState<DocumentSelectorSource>("recent");
   const [keyword, setKeyword] = useState("");
   const [items, setItems] = useState<DocSearchItem[]>([]);
+  const [total, setTotal] = useState(0);
   const [localSelected, setLocalSelected] = useState<DocSearchItem[]>(selected);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +97,7 @@ export function useDocumentSearch({
       wasVisible.current = false;
       setKeyword("");
       setItems([]);
+      setTotal(0);
       setError(null);
       setIsLoading(false);
       return;
@@ -96,6 +106,7 @@ export function useDocumentSearch({
       setSource("recent");
       setKeyword("");
       setItems([]);
+      setTotal(0);
       setLocalSelected(selectedRef.current);
       setError(null);
       setIsLoading(false);
@@ -109,24 +120,41 @@ export function useDocumentSearch({
       return;
     }
     const sequence = ++requestSequence.current;
+    setError(null);
     const timer = window.setTimeout(async () => {
       setIsLoading(true);
-      setError(null);
       try {
-        const docs = await listDocuments(source, keyword);
+        const result = await listDocuments(source, keyword);
         if (sequence !== requestSequence.current) return;
-        setItems(docs);
+        setItems(result.items);
+        setTotal(result.total);
       } catch {
         if (sequence !== requestSequence.current) return;
         setItems([]);
+        setTotal(0);
         setError(t("summary.documentPicker.searchFailed"));
       } finally {
         if (sequence === requestSequence.current) setIsLoading(false);
       }
     }, 250);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      requestSequence.current += 1;
+      window.clearTimeout(timer);
+    };
   }, [keyword, retryKey, source, t, visible]);
+
+  const onSourceChange = useCallback((nextSource: DocumentSelectorSource) => {
+    setSource(nextSource);
+    setError(null);
+    setIsLoading(true);
+  }, []);
+
+  const onKeywordChange = useCallback((nextKeyword: string) => {
+    setKeyword(nextKeyword);
+    setError(null);
+    setIsLoading(true);
+  }, []);
 
   const onToggle = useCallback(
     (item: DocSearchItem) => {
@@ -151,10 +179,11 @@ export function useDocumentSearch({
       isLoading,
       error,
       maxSelect,
+      hasMore: total > items.length,
     },
     actions: {
-      onSourceChange: setSource,
-      onKeywordChange: setKeyword,
+      onSourceChange,
+      onKeywordChange,
       onToggle,
       onRetry: () => setRetryKey((value) => value + 1),
     },

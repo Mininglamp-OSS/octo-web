@@ -5,9 +5,17 @@
 }
 
 .summary-document-picker__count {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-2);
   color: var(--wk-text-tertiary);
   font-size: var(--wk-text-size-sm);
   line-height: 20px;
+}
+
+.summary-document-picker__count-hint {
+  color: var(--wk-text-tertiary);
 }
 
 .summary-document-picker__tabs {

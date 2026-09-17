@@ -1838,7 +1838,6 @@ export default class SummaryCreatePage extends Component<
                   onConfirm={(documents) => this.setState({
                     selectedDocuments: documents,
                     selectedChats: [],
-                    selectedMembers: [],
                     showDocumentSelector: false,
                   })}
                   onCancel={() => this.setState({ showDocumentSelector: false })}

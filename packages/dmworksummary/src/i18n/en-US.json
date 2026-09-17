@@ -220,6 +220,7 @@
       "mine": "No owned documents available"
     },
     "noResults": "No matching documents",
+    "firstPageHint": "Showing the first 50 only. Search to narrow results.",
     "searchFailed": "Document loading failed. Please retry."
   },
   "workbench": {
@@ -616,6 +617,7 @@
     "scheduleBindFailedOrphan": "Binding the schedule failed and the automatic rollback did not succeed; an unbound schedule may remain. Please check and clean it up in the schedule list.",
     "setSchedule": "Set schedule",
     "editSchedule": "Edit schedule",
+    "documentScheduleUnsupported": "Document summaries do not support scheduled updates yet.",
     "disableSchedule": "Turn off schedule",
     "scheduleDisabled": "Schedule turned off",
     "scheduleDisabledHint": "Schedule is off",

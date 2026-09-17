@@ -220,6 +220,7 @@
       "mine": "暂无我的可总结文档"
     },
     "noResults": "没有找到相关文档",
+    "firstPageHint": "仅展示前 50 条，请搜索缩小范围",
     "searchFailed": "文档加载失败，请重试"
   },
   "workbench": {
@@ -616,6 +617,7 @@
     "scheduleBindFailedOrphan": "定时绑定失败且自动撤销未成功，可能残留未绑定的定时，请到定时列表检查清理",
     "setSchedule": "设置定时更新",
     "editSchedule": "修改定时更新",
+    "documentScheduleUnsupported": "文档总结暂不支持设置定时更新",
     "disableSchedule": "关闭定时",
     "scheduleDisabled": "定时已关闭",
     "scheduleDisabledHint": "定时已关闭",

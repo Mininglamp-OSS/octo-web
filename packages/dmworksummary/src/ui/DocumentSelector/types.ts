@@ -10,6 +10,7 @@ export interface DocumentSelectorState {
   isLoading: boolean;
   error: string | null;
   maxSelect: number;
+  hasMore?: boolean;
 }
 
 export interface DocumentSelectorActions {

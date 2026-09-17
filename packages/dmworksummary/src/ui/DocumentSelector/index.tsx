@@ -63,6 +63,11 @@ const DocumentSelector: React.FC<DocumentSelectorProps> = ({
           {t("summary.documentPicker.selectedCount", {
             values: { count: state.selected.length, max: state.maxSelect },
           })}
+          {state.hasMore && (
+            <span className="summary-document-picker__count-hint">
+              {t("summary.documentPicker.firstPageHint")}
+            </span>
+          )}
         </div>
 
         <div className="summary-document-picker__results">

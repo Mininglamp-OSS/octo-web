@@ -230,6 +230,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             values: { version: source.source_version },
         })}`;
     };
+
+    private isDocumentSummaryDetail(detail: SummaryDetail | null = this.state.detail): boolean {
+        return !!detail?.sources?.some((source) => source.source_type === SourceType.DOCUMENT);
+    }
+
     private readonly titleContextOwner = Symbol("summary-title-context");
 
     private regenerateTopicRef = React.createRef<HTMLTextAreaElement>();
@@ -2069,6 +2074,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     openScheduleModal = () => {
         const { detail } = this.state;
         if (!detail || detail.task_id !== this.taskId) return;
+        if (this.isDocumentSummaryDetail(detail)) {
+            Toast.warning(t("summary.detail.documentScheduleUnsupported"));
+            return;
+        }
         if (!detail?.permissions?.can_schedule) {
             Toast.warning(t("summary.generation.schedulePermissionDenied"));
             return;
@@ -2206,7 +2215,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (!detail || detail.task_id !== requestTaskId) return;
         // 第一期文档总结只支持手动创建。保存入口也做防御性拦截，避免绕过
         // 详情头入口后把 source_type=DOCUMENT 写入传统定时 pipeline。
-        if (this.isDocumentSummaryDetail(detail)) return;
+        if (this.isDocumentSummaryDetail(detail)) {
+            Toast.warning(t("summary.detail.documentScheduleUnsupported"));
+            return;
+        }
 
         // 竞态修复（第3轮）finding 1：多人判定只能退回 members 兜底且 members 尚未
         // 加载完成时，不能保存——否则 isMultiPerson() 会把「members 加载中」误判为
@@ -4465,6 +4477,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const showLeave = !!detail && isParticipant && !isCreator;
         const canSchedule = !!detail?.permissions?.can_schedule &&
             (detail?.trigger_type !== TriggerType.AGENT || supportsGenerationConfig(detail)) &&
+            !this.isDocumentSummaryDetail(detail) &&
             !this.state.isEditing && !this.state.editingTeamSummary &&
             !this.state.editingPersonalReport && !this.state.editingMyDraft;
         const scheduleItem = this.state.scheduleItem;
