@@ -143,6 +143,7 @@ describe("SkillListPage", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("shows exposed owner actions only in the mine variant", async () => {
@@ -307,7 +308,7 @@ describe("SkillListPage", () => {
         q: "ci",
         categoryId: "all",
         tags: [],
-        sort: "latest",
+        sort: "comprehensive",
         cursor: undefined,
         limit: 20,
       },
@@ -378,6 +379,230 @@ describe("SkillListPage", () => {
     });
   });
 
+  it("renders 综合/最新/最热 in order with 综合 selected by default", async () => {
+    render(<SkillListPage />);
+    await screen.findByRole("button", { name: "meeting-note-cleaner 我" });
+
+    const options = screen.getAllByTestId("skill-sort-option");
+    expect(options.map((el) => el.textContent)).toEqual(["综合", "最新", "最热"]);
+
+    // 综合 is the sole active option on first paint; the others are inert.
+    const comprehensive = screen.getByRole("button", { name: "综合" });
+    expect(comprehensive).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "最新" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "最热" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("loads with sort=comprehensive as the default on first mount", async () => {
+    render(<SkillListPage />);
+    await screen.findByRole("button", { name: "meeting-note-cleaner 我" });
+
+    expect(api.getSkills).toHaveBeenCalledWith(
+      expect.objectContaining({ sort: "comprehensive", cursor: undefined }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+  });
+
+  it("keeps the hidden mine sort on latest", async () => {
+    render(<SkillListPage variant="mine" />);
+    await screen.findByRole("row", { name: "meeting-note-cleaner" });
+
+    expect(api.getMySkills).toHaveBeenCalledWith(
+      expect.objectContaining({ sort: "latest", cursor: undefined }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+  });
+
+  it.each([
+    { label: "综合", sort: "comprehensive" },
+    { label: "最新", sort: "latest" },
+    { label: "最热", sort: "downloads" },
+  ])("passes sort=$sort through to the list when $label is chosen", async ({ label, sort }) => {
+    render(<SkillListPage />);
+    await screen.findByRole("button", { name: "meeting-note-cleaner 我" });
+    // Start from a DIFFERENT option so clicking `label` is a real change —
+    // handleSortChange no-ops when the value is unchanged, and 综合 is already
+    // the default.
+    const other = label === "最新" ? "最热" : "最新";
+    fireEvent.click(screen.getByRole("button", { name: other }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: other })).toHaveAttribute("aria-pressed", "true")
+    );
+    vi.mocked(api.getSkills).mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: label }));
+
+    await waitFor(() => {
+      expect(api.getSkills).toHaveBeenCalledWith(
+        expect.objectContaining({ sort }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
+    });
+    expect(screen.getByRole("button", { name: label })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("keeps the default 综合 sort across a debounced search", async () => {
+    vi.useFakeTimers();
+    render(<SkillListPage />);
+    await act(async () => {
+      await vi.runOnlyPendingTimersAsync();
+    });
+
+    vi.mocked(api.getSkills).mockClear();
+    fireEvent.change(screen.getByPlaceholderText(searchPlaceholder), {
+      target: { value: "note" },
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+      await vi.runOnlyPendingTimersAsync();
+    });
+
+    expect(api.getSkills).toHaveBeenLastCalledWith(
+      expect.objectContaining({ q: "note", sort: "comprehensive" }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+  });
+
+  it("keeps a manually chosen sort across category and tag changes", async () => {
+    render(<SkillListPage />);
+    await screen.findByRole("button", { name: "meeting-note-cleaner 我" });
+
+    fireEvent.click(screen.getByRole("button", { name: "最热" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "最热" })).toHaveAttribute(
+        "aria-pressed",
+        "true"
+      )
+    );
+
+    // Category switch — the reload keeps the user's explicit sort.
+    vi.mocked(api.getSkills).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: /办公协作/ }));
+    await waitFor(() =>
+      expect(api.getSkills).toHaveBeenLastCalledWith(
+        expect.objectContaining({ categoryId: "office", sort: "downloads" }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      )
+    );
+
+    // Tag filter — still hottest (and still within the office category).
+    vi.mocked(api.getSkills).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: tagFilterName }));
+    fireEvent.click(await screen.findByRole("option", { name: "纪要" }));
+    await waitFor(() =>
+      expect(api.getSkills).toHaveBeenLastCalledWith(
+        expect.objectContaining({ tags: ["纪要"], sort: "downloads" }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      )
+    );
+  });
+
+  it("keeps a manually chosen sort (最热) across a later search change", async () => {
+    vi.useFakeTimers();
+    render(<SkillListPage />);
+    await act(async () => {
+      await vi.runOnlyPendingTimersAsync();
+    });
+
+    // User switches to 最热, then edits the search — the sort must not snap back
+    // to the 综合 default; the request keeps whatever is currently selected.
+    fireEvent.click(screen.getByRole("button", { name: "最热" }));
+    await act(async () => {
+      await vi.runOnlyPendingTimersAsync();
+    });
+    vi.mocked(api.getSkills).mockClear();
+
+    fireEvent.change(screen.getByPlaceholderText(searchPlaceholder), {
+      target: { value: "cleaner" },
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+      await vi.runOnlyPendingTimersAsync();
+    });
+
+    expect(api.getSkills).toHaveBeenLastCalledWith(
+      expect.objectContaining({ q: "cleaner", sort: "downloads" }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+  });
+
+  it("carries the current sort into the paginated loadMore request", async () => {
+    // Drive the sentinel manually so pagination starts only after the user
+    // changes the sort.
+    class DrivingObserver implements IntersectionObserver {
+      readonly root: Element | Document | null = null;
+      readonly rootMargin = "160px";
+      readonly thresholds: readonly number[] = [0];
+      private target: Element | null = null;
+
+      constructor(private readonly callback: IntersectionObserverCallback) {
+        drivingObserver = this;
+      }
+
+      observe(target: Element) {
+        this.target = target;
+      }
+
+      trigger() {
+        if (!this.target) throw new Error("Pagination sentinel was not observed");
+        const rect = this.target.getBoundingClientRect();
+        const entry: IntersectionObserverEntry = {
+          boundingClientRect: rect,
+          intersectionRatio: 1,
+          intersectionRect: rect,
+          isIntersecting: true,
+          rootBounds: null,
+          target: this.target,
+          time: performance.now(),
+        };
+        this.callback([entry], this);
+      }
+
+      takeRecords(): IntersectionObserverEntry[] {
+        return [];
+      }
+
+      disconnect() {
+        this.target = null;
+      }
+
+      unobserve(target: Element) {
+        if (this.target === target) this.target = null;
+      }
+    }
+    let drivingObserver: DrivingObserver | undefined;
+    vi.stubGlobal("IntersectionObserver", DrivingObserver);
+
+    vi.mocked(api.getSkills).mockImplementation(async (params) =>
+      params?.cursor
+        ? { items: [{ ...skill, id: "page-2" }], nextCursor: null, total: 2 }
+        : { items: [skill], nextCursor: "cursor-1", total: 2 }
+    );
+
+    render(<SkillListPage />);
+    await screen.findByRole("button", { name: "meeting-note-cleaner 我" });
+
+    fireEvent.click(screen.getByRole("button", { name: "最热" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "最热" })).toHaveAttribute(
+        "aria-pressed",
+        "true"
+      )
+    );
+    vi.mocked(api.getSkills).mockClear();
+
+    const observer = drivingObserver;
+    if (!observer) throw new Error("IntersectionObserver was not created");
+    act(() => observer.trigger());
+
+    await waitFor(() => {
+      expect(api.getSkills).toHaveBeenCalledWith(
+        expect.objectContaining({ cursor: "cursor-1", sort: "downloads" }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
+    });
+  });
+
   it("refreshes the list when the active Space changes", async () => {
     render(<SkillListPage />);
     expect(
@@ -399,7 +624,7 @@ describe("SkillListPage", () => {
           q: "",
           categoryId: "all",
           tags: [],
-          sort: "latest",
+          sort: "comprehensive",
           cursor: undefined,
           limit: 20,
         },
