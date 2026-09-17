@@ -70,10 +70,16 @@ async function mountList(initial = response(rows(1))) {
             });
         },
         loadMore: async (items = rows(21)) => {
-            vi.mocked(api.listSummaries).mockResolvedValueOnce(response(items));
+            vi.mocked(api.listSummaries).mockResolvedValueOnce(response(items, initial.total));
             await act(async () => { await ref.current!.loadMore(); });
         },
     };
+}
+
+async function mountDeepList() {
+    const list = await mountList(response(rows(1), 240));
+    for (let start = 21; start <= 101; start += 20) await list.loadMore(rows(start));
+    return list;
 }
 
 describe("SummaryListPage retained activation refresh", () => {
@@ -83,25 +89,21 @@ describe("SummaryListPage retained activation refresh", () => {
     });
     afterEach(cleanup);
 
-    it("keeps the scroll container mounted and refreshes every loaded page before committing", async () => {
+    it("keeps the scroll container mounted and refreshes the loaded prefix in one request", async () => {
         const { ref, activate, loadMore } = await mountList();
         await loadMore();
         const content = screen.getByTestId(summaryTestIds.listContent);
         content.scrollTop = 450;
-        const first = deferred<ListSummariesResponse>();
-        const second = deferred<ListSummariesResponse>();
-        vi.mocked(api.listSummaries)
-            .mockReturnValueOnce(first.promise)
-            .mockReturnValueOnce(second.promise);
+        const refresh = deferred<ListSummariesResponse>();
+        vi.mocked(api.listSummaries).mockReturnValueOnce(refresh.promise);
 
         await activate();
         expect(api.listSummaries).toHaveBeenCalledTimes(3);
         expect(screen.queryByTestId("spinner")).not.toBeInTheDocument();
         expect(screen.getByTestId(summaryTestIds.listContent)).toBe(content);
-        await act(async () => { first.resolve(response(rows(1, 20, "fresh"))); });
-        expect(api.listSummaries).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, page_size: 20 }));
+        expect(api.listSummaries).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, page_size: 40 }));
         expect(screen.getByTestId("task-1")).toHaveTextContent("old-1");
-        await act(async () => { second.resolve(response(rows(21, 20, "fresh"))); });
+        await act(async () => { refresh.resolve(response(rows(1, 40, "fresh"))); });
 
         expect(screen.getByTestId(summaryTestIds.listContent)).toBe(content);
         expect(content.scrollTop).toBe(450);
@@ -113,18 +115,17 @@ describe("SummaryListPage retained activation refresh", () => {
     });
 
     it("keeps the complete cached range and cursor if any refreshed page fails", async () => {
-        const { ref, activate, loadMore } = await mountList();
-        await loadMore();
+        const { ref, activate, loadMore } = await mountDeepList();
         const cached = ref.current!.state.items;
         vi.mocked(api.listSummaries)
-            .mockResolvedValueOnce(response(rows(1, 20, "partial")))
+            .mockResolvedValueOnce(response(rows(1, 100, "partial"), 240))
             .mockRejectedValueOnce(new Error("offline"));
         await activate();
-        expect(api.listSummaries).toHaveBeenCalledTimes(4);
+        expect(api.listSummaries).toHaveBeenCalledTimes(8);
         expect(ref.current!.state.items).toBe(cached);
-        expect(ref.current!.state).toMatchObject({ page: 2, loading: false, hasMore: true, error: null });
-        await loadMore(rows(41));
-        expect(api.listSummaries).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3 }));
+        expect(ref.current!.state).toMatchObject({ page: 6, loading: false, hasMore: true, error: null });
+        await loadMore(rows(121));
+        expect(api.listSummaries).toHaveBeenLastCalledWith(expect.objectContaining({ page: 7 }));
     });
 
     it("shrinks the retained prefix when the server now has fewer pages", async () => {
@@ -158,13 +159,12 @@ describe("SummaryListPage retained activation refresh", () => {
         const next = deferred<ListSummariesResponse>();
         vi.mocked(api.listSummaries)
             .mockReturnValueOnce(next.promise)
-            .mockResolvedValueOnce(response(rows(1, 20, "fresh")))
-            .mockResolvedValueOnce(response(rows(21, 20, "fresh")));
+            .mockResolvedValueOnce(response(rows(1, 40, "fresh")));
         act(() => { void ref.current!.loadMore(); });
         await activate();
         expect(api.listSummaries).toHaveBeenCalledTimes(2);
         await act(async () => { next.resolve(response(rows(21))); });
-        expect(api.listSummaries).toHaveBeenCalledTimes(4);
+        expect(api.listSummaries).toHaveBeenCalledTimes(3);
         expect(ref.current!.state).toMatchObject({ page: 2, loadingMore: false });
         expect(screen.getByTestId("task-40")).toHaveTextContent("fresh-40");
     });
@@ -253,32 +253,191 @@ describe("SummaryListPage retained activation refresh", () => {
         await act(async () => { refresh.resolve(response(rows(1))); });
     });
 
-    it("deduplicates refreshed page boundaries without making the next-page cursor depend on row count", async () => {
+    it("retains every row through activation and the final loadMore", async () => {
         const { ref, activate, loadMore } = await mountList();
         await loadMore();
-        vi.mocked(api.listSummaries)
-            .mockResolvedValueOnce(response(rows(1), 60))
-            .mockResolvedValueOnce(response(rows(20), 60));
+        vi.mocked(api.listSummaries).mockResolvedValueOnce(response(rows(1, 40), 60));
         await activate();
-        expect(ref.current!.state.items).toHaveLength(39);
+        expect(ref.current!.state.items).toHaveLength(40);
         expect(ref.current!.state).toMatchObject({ page: 2, hasMore: true });
         vi.mocked(api.listSummaries).mockResolvedValueOnce(response(rows(41), 60));
         await act(async () => { await ref.current!.loadMore(); });
         expect(api.listSummaries).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3 }));
+        expect(ref.current!.state.items.map((item) => item.task_id)).toEqual(rows(1, 60).map((item) => item.task_id));
+        expect(screen.getByTestId("task-40")).toBeInTheDocument();
         expect(ref.current!.state.hasMore).toBe(false);
     });
+
+    it("repairs an overlapping next page before advancing and reaches all 60 rows", async () => {
+        const { ref } = await mountList(response(rows(1), 60));
+        const content = screen.getByTestId(summaryTestIds.listContent);
+        content.scrollTop = 250;
+        vi.mocked(api.listSummaries)
+            .mockResolvedValueOnce(response(rows(20), 60))
+            .mockResolvedValueOnce(response(rows(1, 40, "fresh"), 60));
+        await act(async () => { await ref.current!.loadMore(); });
+        expect(api.listSummaries).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, page_size: 40 }));
+        expect(ref.current!.state).toMatchObject({ page: 2, total: 60, hasMore: true, loadingMore: false });
+        expect(ref.current!.state.items.map((item) => item.task_id)).toEqual(rows(1, 40).map((item) => item.task_id));
+        expect(screen.getAllByTestId("task-20")).toHaveLength(1);
+        expect(screen.getByTestId(summaryTestIds.listContent)).toBe(content);
+        expect(content.scrollTop).toBe(250);
+
+        vi.mocked(api.listSummaries).mockResolvedValueOnce(response(rows(41), 60));
+        await act(async () => { await ref.current!.loadMore(); });
+        expect(ref.current!.state.items.map((item) => item.task_id)).toEqual(rows(1, 60).map((item) => item.task_id));
+        expect(ref.current!.state.hasMore).toBe(false);
+    });
+
+    it("repairs drift beyond 100 rows and keeps every remaining row reachable", async () => {
+        const { ref, activate } = await mountDeepList();
+        const server = rows(1, 160, "fresh");
+        vi.mocked(api.listSummaries)
+            .mockResolvedValueOnce(response(rows(1, 100), 160))
+            .mockResolvedValueOnce(response(rows(100, 60), 160))
+            .mockImplementation(async ({ page = 1, page_size = 20 }) =>
+                response(server.slice((page - 1) * page_size, page * page_size), server.length));
+        await activate();
+        expect(ref.current!.state.items).toHaveLength(120);
+        expect(ref.current!.state).toMatchObject({ page: 6, total: 160, hasMore: true });
+        await act(async () => { await ref.current!.loadMore(); });
+        await act(async () => { await ref.current!.loadMore(); });
+        expect(ref.current!.state.items.map((item) => item.task_id)).toEqual(server.map((item) => item.task_id));
+        expect(ref.current!.state).toMatchObject({ page: 8, hasMore: false });
+        expect(screen.getByTestId("task-101")).toHaveTextContent("fresh-101");
+    });
+
+    it.each(["insert", "delete"] as const)(
+        "rebuilds the loaded prefix after a server-side %s without losing boundary rows",
+        async (change) => {
+            const { ref } = await mountList(response(rows(1), 60));
+            const server = change === "insert" ? rows(0, 61) : rows(2, 59);
+            vi.mocked(api.listSummaries).mockImplementation(async ({ page = 1, page_size = 20 }) =>
+                response(server.slice((page - 1) * page_size, page * page_size), server.length));
+            for (let attempt = 0; attempt < 4 && ref.current!.state.hasMore; attempt += 1) {
+                await act(async () => { await ref.current!.loadMore(); });
+            }
+            expect(ref.current!.state.items.map((item) => item.task_id)).toEqual(server.map((item) => item.task_id));
+            expect(ref.current!.state).toMatchObject({ total: server.length, hasMore: false, loadingMore: false });
+        },
+    );
+
+    it("keeps the old cursor after persistent drift and can retry the same next page", async () => {
+        const { ref } = await mountList(response(rows(1), 60));
+        const cached = ref.current!.state.items;
+        vi.mocked(api.listSummaries)
+            .mockResolvedValueOnce(response(rows(20), 60))
+            .mockResolvedValue(response([...rows(1, 39), ...rows(20, 1)], 60));
+        await act(async () => { await ref.current!.loadMore(); });
+        expect(api.listSummaries).toHaveBeenCalledTimes(5);
+        expect(ref.current!.state.items).toBe(cached);
+        expect(ref.current!.state).toMatchObject({ page: 1, total: 60, hasMore: true, loadingMore: false });
+        expect((ref.current as any).pendingReadPatches.size).toBe(0);
+        vi.mocked(api.listSummaries).mockResolvedValueOnce(response(rows(21), 60));
+        await act(async () => { await ref.current!.loadMore(); });
+        expect(api.listSummaries).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, page_size: 20 }));
+        expect(ref.current!.state.items).toHaveLength(40);
+    });
+
+    it("does not commit a short activation prefix or advance past its missing row", async () => {
+        const { ref, activate, loadMore } = await mountList();
+        await loadMore();
+        const cached = ref.current!.state.items;
+        vi.mocked(api.listSummaries).mockResolvedValue(response(rows(1, 39), 80));
+        await activate();
+        expect(api.listSummaries).toHaveBeenCalledTimes(5);
+        expect(ref.current!.state.items).toBe(cached);
+        expect(ref.current!.state).toMatchObject({ page: 2, total: 80, hasMore: true, loading: false });
+    });
+
+    it("repairs an empty offset response instead of falsely ending a nonempty list", async () => {
+        const { ref } = await mountList(response(rows(1), 60));
+        vi.mocked(api.listSummaries)
+            .mockResolvedValueOnce(response([], 60))
+            .mockResolvedValueOnce(response(rows(1, 40), 60));
+        await act(async () => { await ref.current!.loadMore(); });
+        expect(ref.current!.state.items).toHaveLength(40);
+        expect(ref.current!.state).toMatchObject({ page: 2, hasMore: true });
+    });
+
+    it("reconciles a now-empty server without leaving hasMore stuck true", async () => {
+        const { ref } = await mountList(response(rows(1), 60));
+        vi.mocked(api.listSummaries).mockResolvedValue(response([], 0));
+        await act(async () => { await ref.current!.loadMore(); });
+        expect(ref.current!.state).toMatchObject({ items: [], page: 1, total: 0, hasMore: false });
+    });
+
+    it("replays read events onto the replacement prefix during loadMore repair", async () => {
+        const { ref } = await mountList(response(rows(1), 60));
+        const repair = deferred<ListSummariesResponse>();
+        vi.mocked(api.listSummaries)
+            .mockResolvedValueOnce(response(rows(20), 60))
+            .mockReturnValueOnce(repair.promise);
+        let pending!: Promise<void>;
+        await act(async () => { pending = ref.current!.loadMore(); });
+        act(() => {
+            window.dispatchEvent(new CustomEvent("summary-read", {
+                detail: { taskId: 1, isUnread: false, needsAttention: false },
+            }));
+        });
+        await act(async () => {
+            repair.resolve(response(rows(1, 40, "fresh"), 60));
+            await pending;
+        });
+        expect(screen.getByTestId("task-1")).toHaveAttribute("data-unread", "false");
+        expect(screen.getByTestId("task-1")).toHaveTextContent("fresh-1");
+        expect(ref.current!.state).toMatchObject({ page: 2, loadingMore: false });
+        expect((ref.current as any).pendingReadPatches.size).toBe(0);
+    });
+
+    it.each(["space", "channel", "keyword", "unmount"] as const)(
+        "abandons loadMore repair when its %s changes",
+        async (scope) => {
+            const { ref, view } = await mountList(response(rows(1), 60));
+            const instance = ref.current!;
+            const cached = instance.state.items;
+            const repair = deferred<ListSummariesResponse>();
+            vi.mocked(api.listSummaries)
+                .mockResolvedValueOnce(response(rows(20), 60))
+                .mockReturnValueOnce(repair.promise);
+            let pending!: Promise<void>;
+            await act(async () => { pending = instance.loadMore(); });
+            if (scope === "space") {
+                WKApp.shared.currentSpaceId = "other-space";
+            } else if (scope === "channel") {
+                vi.mocked(api.listSummaries).mockResolvedValueOnce(response(rows(80, 1, "channel"), 1));
+                await act(async () => {
+                    view.rerender(<SummaryListPage ref={ref} embedded channelId="other-channel" />);
+                });
+            } else if (scope === "keyword") {
+                await act(async () => { instance.setState({ keyword: "changed" }); });
+            } else {
+                view.unmount();
+            }
+            await act(async () => {
+                repair.resolve(response(rows(1, 40, "stale"), 60));
+                await pending;
+            });
+            if (scope === "channel") {
+                expect(instance.state.items[0].topic).toBe("channel-80");
+            } else {
+                expect(instance.state.items).toBe(cached);
+            }
+            expect((instance as any).pendingReadPatches.size).toBe(0);
+            expect((instance as any).isLoadingMore).toBe(false);
+        },
+    );
 
     it.each(["space", "channel", "keyword"] as const)(
         "abandons a retained snapshot when its %s changes while a later page is pending",
         async (scope) => {
-            const { ref, view, activate, loadMore } = await mountList();
-            await loadMore();
+            const { ref, view, activate } = await mountDeepList();
             const second = deferred<ListSummariesResponse>();
             vi.mocked(api.listSummaries)
-                .mockResolvedValueOnce(response(rows(1, 20, "stale")))
+                .mockResolvedValueOnce(response(rows(1, 100, "stale"), 240))
                 .mockReturnValueOnce(second.promise);
             await activate();
-            expect(api.listSummaries).toHaveBeenCalledTimes(4);
+            expect(api.listSummaries).toHaveBeenCalledTimes(8);
             const cached = ref.current!.state.items;
             if (scope === "space") {
                 WKApp.shared.currentSpaceId = "space-b";
@@ -290,7 +449,7 @@ describe("SummaryListPage retained activation refresh", () => {
             } else {
                 await act(async () => { ref.current!.setState({ keyword: "new query" }); });
             }
-            await act(async () => { second.resolve(response(rows(21, 20, "stale"))); });
+            await act(async () => { second.resolve(response(rows(101, 100, "stale"), 240)); });
             if (scope === "channel") {
                 expect(ref.current!.state.items[0].topic).toBe("channel-80");
             } else {

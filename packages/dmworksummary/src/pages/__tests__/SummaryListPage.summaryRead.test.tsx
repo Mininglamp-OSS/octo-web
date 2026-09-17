@@ -186,7 +186,10 @@ describe('SummaryListPage summary-read synchronization', () => {
     it.each(['loadData', 'loadMore'] as const)(
         'preserves a read event arriving during %s without dropping the response or stranding loading',
         async (method) => {
-            const page = makePage([]);
+            const page = makePage(method === 'loadMore'
+                ? Array.from({ length: 20 }, (_, index) => ({ task_id: index + 2 }))
+                : []);
+            if (method === 'loadMore') page.state = { ...page.state, total: 21 };
             let resolve!: (value: any) => void;
             vi.mocked(api.listSummaries).mockReturnValueOnce(new Promise((res) => { resolve = res; }));
             const pending = page[method]();
@@ -195,10 +198,10 @@ describe('SummaryListPage summary-read synchronization', () => {
             }));
             resolve({
                 items: [{ task_id: 1, topic: 'fresh', is_unread: true, needs_attention: true, has_pending_submission: true }],
-                total: 1,
+                total: method === 'loadMore' ? 21 : 1,
             });
             await pending;
-            expect(page.state.items[0]).toMatchObject({
+            expect(page.state.items.find((item) => item.task_id === 1)).toMatchObject({
                 topic: 'fresh', is_unread: false, needs_attention: false, has_pending_submission: false,
             });
             expect(page.state.loading).toBe(false);

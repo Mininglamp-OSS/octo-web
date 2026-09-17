@@ -4,6 +4,7 @@ import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
 import { I18nContext, t, WKApp, Dap } from "@octo/base";
 import * as api from "../api/summaryApi";
+import { fetchSummaryListPrefix } from "../api/summaryListPagination";
 import { requestSummaryScheduleOpen, requestSummaryDetailAction } from "../utils/summaryDetailIntent";
 import {
   abandonSummaryAttentionRead,
@@ -340,21 +341,13 @@ export default class SummaryListPage extends Component<
                 keyword: keyword || undefined,
                 origin_channel_id: channelId || undefined,
             };
-            let resp = await api.listSummaries(params);
-            if (!isCurrent()) return;
-            let page = 1;
-            // Revalidate the whole loaded prefix with the original page size.
-            // Never combine a fresh first page with stale offset-based pages.
-            while (page < pagesToReload && page * pageSize < resp.total) {
-                const next = await api.listSummaries({ ...params, page: page + 1 });
-                if (!isCurrent()) return;
-                page += 1;
-                resp = { ...next, items: [...resp.items, ...next.items] };
-            }
-            if (opts.retainView) {
-                const byId = new Map(resp.items.map((item) => [item.task_id, item]));
-                resp = { ...resp, items: Array.from(byId.values()) };
-            }
+            const resp = opts.retainView
+                ? await fetchSummaryListPrefix(params, pagesToReload * pageSize, isCurrent)
+                : await api.listSummaries(params);
+            if (!resp || !isCurrent()) return;
+            const page = opts.retainView
+                ? Math.max(1, Math.min(pagesToReload, Math.ceil(resp.total / pageSize)))
+                : 1;
             // #1359 只有全局列表拥有写 NavRail badge 的职责。后端 count 虽然是
             // Space 级，但聊天侧栏是嵌入式 channel 实例，不应改写全局导航状态。
             // 用发请求前领的 ticket 提交：期间若有更新的读取发出，本次就是陈旧
@@ -392,7 +385,7 @@ export default class SummaryListPage extends Component<
                 // failed user-driven load leaves a non-dismissable banner
                 // that sits above a perfectly fresh list.
                 error: null,
-                hasMore: opts.retainView ? page * pageSize < resp.total : resp.items.length < resp.total,
+                hasMore: resp.items.length < resp.total,
         }),
         () => {
                 if (this.isMounted_) this.maybeStartBatchPoll();
@@ -465,40 +458,61 @@ export default class SummaryListPage extends Component<
         // The pair (isLoadingData at entry + seq at commit) closes both
         // orderings — loadData-first, loadMore-first — deterministically.
         const seq = this.loadDataSeq;
+        const requestSpaceId = WKApp.shared.currentSpaceId;
+        const { page, pageSize, statusFilter, keyword, total, items } = this.state;
+        const channelId = this.props.channelId;
+        const isCurrent = () => seq === this.loadDataSeq && this.isMounted_ &&
+            WKApp.shared.currentSpaceId === requestSpaceId && this.props.channelId === channelId &&
+            this.state.statusFilter === statusFilter && this.state.keyword === keyword;
         const readPatches: SummaryReadPatch[] = [];
         this.pendingReadPatches.add(readPatches);
         this.isLoadingMore = true;
         this.setState({ loadingMore: true });
         try {
-            const nextPage = this.state.page + 1;
-            const { pageSize, statusFilter, keyword } = this.state;
+            const nextPage = page + 1;
             const params: ListSummariesParams = {
                 page: nextPage,
                 page_size: pageSize,
                 status: statusFilter,
                 keyword: keyword || undefined,
-                origin_channel_id: this.props.channelId || undefined,
+                origin_channel_id: channelId || undefined,
             };
-            const resp = await api.listSummaries(params);
-            if (!this.isMounted_) return;
-            if (seq !== this.loadDataSeq) {
-                this.setState({ loadingMore: false });
-                return;
+            let resp = await api.listSummaries(params);
+            if (!isCurrent()) return;
+            const combined = [...items, ...resp.items];
+            const uniqueCount = new Set(combined.map((item) => item.task_id)).size;
+            const repairPrefix = resp.total !== total || uniqueCount !== combined.length ||
+                items.length !== page * pageSize ||
+                resp.items.length !== Math.min(pageSize, Math.max(0, resp.total - page * pageSize));
+            if (repairPrefix) {
+                // Counts and server offsets are different things after drift.
+                // Repair the entire prefix instead of advancing past missing rows.
+                const repaired = await fetchSummaryListPrefix(params, nextPage * pageSize, isCurrent);
+                if (!repaired || !isCurrent()) return;
+                resp = repaired;
             }
       this.setState(
-        (prev) => ({
-                items: [...prev.items, ...readPatches.reduce((items, patch) => patch(items), resp.items)],
-                page: nextPage,
+        (prev) => {
+            const fresh = readPatches.reduce((rows, patch) => patch(rows), resp.items);
+            const byId = new Map((repairPrefix ? fresh : [...prev.items, ...fresh])
+                .map((item) => [item.task_id, item]));
+            const nextItems = Array.from(byId.values());
+            return {
+                items: nextItems,
+                total: resp.total,
+                page: Math.max(1, Math.min(nextPage, Math.ceil(resp.total / pageSize))),
                 loadingMore: false,
-                hasMore: nextPage * pageSize < resp.total,
-        }),
-        () => this.maybeStartBatchPoll()
+                hasMore: nextItems.length < resp.total,
+            };
+        },
+        () => { if (this.isMounted_) this.maybeStartBatchPoll(); }
       );
         } catch {
             if (this.isMounted_) this.setState({ loadingMore: false });
         } finally {
             this.pendingReadPatches.delete(readPatches);
             this.isLoadingMore = false;
+            if (this.isMounted_) this.setState({ loadingMore: false });
             this.flushActivationAfterCommit();
         }
     }
