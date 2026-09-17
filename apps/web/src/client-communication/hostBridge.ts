@@ -158,6 +158,15 @@ export interface OctoBuddyCommunicationBridge {
   cancelFilePreview?: AttachmentPreviewHost["cancelFilePreview"];
   openFilePreviewInPlace?: LayoutAttachmentHost["openFilePreviewInPlace"];
   setFilePreviewLayout?: LayoutAttachmentHost["setFilePreviewLayout"];
+  /** Optional Client-pause integration: host preference query. */
+  getNotificationPreferences?(): Promise<{
+    version: 1;
+    desktopNotifications: boolean;
+    soundNotifications: boolean;
+    quickMuteScope: "popup" | "all";
+  }>;
+  /** Optional Client-pause integration: subscribe to pause CMD updates. */
+  onNotificationPauseChanged?(callback: (value: unknown) => void): () => void;
 }
 
 declare global {

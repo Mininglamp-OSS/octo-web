@@ -5,6 +5,7 @@ import { t } from "../i18n";
 import { getImChannelInfo } from "../im-runtime/channelRuntime";
 import { ChannelTypeCommunityTopic } from "../Service/Const";
 import { isEffectivelyMuted, parseThreadChannelId } from "../Service/Thread";
+import { hasNotificationProvider } from "../features/notifications/notificationPolicy";
 import {
   getElectronNotificationBridge,
   getElectronWindowBridge,
@@ -245,6 +246,9 @@ export class NotificationUtil {
         );
       }
     }
+    // A Client rejection must not escape its policy through browser fallback.
+    if (hasNotificationProvider()) return null;
+
     // Fallback to Web Notification API only when it is actually available.
     if (!window.Notification || window.Notification.permission === "denied") {
       return null;

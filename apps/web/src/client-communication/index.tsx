@@ -23,6 +23,7 @@ import { enableClientFeatureMocks } from "../client-feature/e2eMocks";
 import { requireHostBridge } from "./hostBridge";
 import { reportStartupFailure } from "./startupFailure";
 import { installHostForwardSurface } from "./forwardSurface";
+import { installHostNotificationPolicyAdapter } from "./notificationPolicyAdapter";
 import { resolveForwardSurfaceAvatar } from "./forwardSurfaceAvatar";
 import { assertBackgroundRuntimeHost, startCommunicationRuntime } from "./runtime/start";
 import "../client-feature/desktop/presentation.css";
@@ -56,6 +57,17 @@ async function main() {
     deviceFlag: IM_DEVICE_FLAG_PC,
   });
   WKApp.shared.currentSpaceId = bootstrap.space.id;
+  // Install Client mute-scope adapter after the login session is bound so the
+  // account-scoped quick-mute store is ready. Dispose on pagehide; pending
+  // provider results then fail closed instead of producing sound/popups.
+  const disposeNotificationPolicy = installHostNotificationPolicyAdapter(host);
+  const disposePauseOnSessionRevoked = host.onCommand((command) => {
+    if (command.type === "sessionRevoked") disposeNotificationPolicy();
+  });
+  window.addEventListener("pagehide", () => {
+    disposePauseOnSessionRevoked();
+    disposeNotificationPolicy();
+  }, { once: true });
   document.documentElement.dataset.spaceId = bootstrap.space.id;
 
   i18n.registerNamespace("app", {

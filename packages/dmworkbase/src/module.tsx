@@ -143,6 +143,9 @@ import {
   isMessageElementVisible,
   isSameMessageAttentionSession,
   shouldSuppressImmediateAlert,
+  getHostNotificationDecision,
+  hasNotificationProvider,
+  type NotificationDecision,
   type MessageAttentionSessionContext,
 } from "./features/notifications";
 
@@ -550,12 +553,16 @@ export default class BaseModule implements IModule {
         WKApp.shared.addFriendApply(friendApply);
         // 文档专注场景不播提示音（红点/未读仍会更新）；IM 场景不受影响。
         if (!isDocumentFocusScene()) {
-          void quickMuteStore.getState().then((quickMuteState) => {
-            if (!quickMuteState.active || quickMuteState.scope === "sound") {
-              return this.tipsAudio({ allowDuringQuickMute: true });
-            }
-            return undefined;
-          }).catch(() => this.tipsAudio({ allowDuringQuickMute: true }));
+          if (hasNotificationProvider()) {
+            void this.tipsAudio({ allowDuringQuickMute: true });
+          } else {
+            void quickMuteStore.getState().then((quickMuteState) => {
+              if (!quickMuteState.active || quickMuteState.scope === "sound") {
+                return this.tipsAudio({ allowDuringQuickMute: true });
+              }
+              return undefined;
+            }).catch(() => this.tipsAudio({ allowDuringQuickMute: true }));
+          }
         }
       } else if (cmdContent.cmd === "friendAccept") {
         // 接受好友申请
@@ -742,8 +749,13 @@ export default class BaseModule implements IModule {
   }
 
   async tipsAudio(options: { allowDuringQuickMute?: boolean } = {}) {
-    const quickMuteState = await quickMuteStore.getState().catch(() => undefined);
-    if (quickMuteState?.active && !options.allowDuringQuickMute) return;
+    const hostDecision = await getHostNotificationDecision(() => quickMuteStore.getState());
+    if (hostDecision) {
+      if (!hostDecision.playSound || hostDecision.isCurrent?.() === false) return;
+    } else {
+      const quickMuteState = await quickMuteStore.getState().catch(() => undefined);
+      if (quickMuteState?.active && !options.allowDuringQuickMute) return;
+    }
     Howler.autoUnlock = false;
     if (!this.messageTone) {
       this.messageTone = new Howl({
@@ -842,11 +854,12 @@ export default class BaseModule implements IModule {
       isStillEligible: async () => {
         if (!this.isAttentionContextCurrent(context)) return false;
         const decision = await this.getNotifyDecision(message);
-        return decision.showPopup || decision.playSound;
+        return decision.isCurrent?.() !== false && (decision.showPopup || decision.playSound);
       },
       alert: async () => {
         if (!this.isAttentionContextCurrent(context)) return;
         const decision = await this.getNotifyDecision(message);
+        if (decision.isCurrent?.() === false || !this.isAttentionContextCurrent(context)) return;
         if (decision.showPopup) {
           await this.sendNotification(
             message,
@@ -863,12 +876,12 @@ export default class BaseModule implements IModule {
    * attention. Visibility and single-alert coordination remain separate
    * concerns; this only combines account/device policy with channel policy.
    */
-  private async getNotifyDecision(message: Message): Promise<{ playSound: boolean; showPopup: boolean }> {
+  private async getNotifyDecision(message: Message): Promise<NotificationDecision> {
     if (!this.allowNotify(message)) return { playSound: false, showPopup: false };
+    const hostDecision = await getHostNotificationDecision(() => quickMuteStore.getState());
+    if (hostDecision) return hostDecision;
     const quickMuteState = await quickMuteStore.getState().catch(() => undefined);
     if (quickMuteState?.active) {
-      // "sound" = keep sounds only (suppress the popup); the other scope
-      // mutes both sounds and popups.
       return quickMuteState.scope === "sound"
         ? { playSound: true, showPopup: false }
         : { playSound: false, showPopup: false };
