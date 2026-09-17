@@ -765,6 +765,10 @@ export default class SummaryCreatePage extends Component<
     handleSubmit = async () => {
         const { topic, selectedChats, selectedDocuments, selectedMembers } = this.state;
         if (!this.canSubmit()) return;
+        if (selectedDocuments.length > 0 && !this.state.canSelectDocuments) {
+            Toast.warning(t("summary.create.documentSourceUnavailable"));
+            return;
+        }
         // 八审 P2:提交即取消未触发的主题输入去抖 —— 用户已从「填主题」进到「生成」,
         // 600ms 后再补发 smart_summary_theme_input 会把一次已转化的输入多计一次。
         if (this.themeTrackTimer) {

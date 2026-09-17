@@ -1,81 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { WKApp, useI18n } from "@octo/base";
-import type { DocSearchDocType, DocSearchItem } from "@octo/base";
+import { useI18n } from "@octo/base";
+import type { DocSearchItem } from "@octo/base";
+import documentSourceService, {
+  type DocumentSourceService,
+} from "../../Service/DocumentSourceService";
 import type { DocumentSelectorSource } from "../../ui/DocumentSelector/types";
 
 interface UseDocumentSearchOptions {
   visible: boolean;
   selected: DocSearchItem[];
   maxSelect: number;
-}
-
-interface DocsListItem {
-  docId?: string;
-  title?: string;
-  docType?: string;
-  updatedAt?: string | number | null;
-  spaceId?: string;
-}
-
-interface DocsListResponse {
-  total?: number;
-  items?: DocsListItem[];
-}
-
-const PAGE_SIZE = 50;
-const SUPPORTED_DOC_TYPES = new Set<DocSearchDocType>(["doc", "html"]);
-
-function toUpdatedAtMillis(updatedAt: DocsListItem["updatedAt"]): number | null {
-  if (typeof updatedAt === "number") return Number.isFinite(updatedAt) ? updatedAt : null;
-  if (typeof updatedAt !== "string" || !updatedAt.trim()) return null;
-  const parsed = Date.parse(updatedAt);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function toDocSearchItem(item: DocsListItem): DocSearchItem | null {
-  if (!item.docId) return null;
-  const docType = item.docType || "doc";
-  if (!SUPPORTED_DOC_TYPES.has(docType as DocSearchDocType)) return null;
-  return {
-    docId: item.docId,
-    title: item.title || item.docId,
-    docType: docType as DocSearchDocType,
-    updatedAt: toUpdatedAtMillis(item.updatedAt),
-    spaceId: item.spaceId,
-  };
-}
-
-interface ListDocumentsResult {
-  items: DocSearchItem[];
-  total: number;
-}
-
-async function listDocuments(source: DocumentSelectorSource, keyword: string): Promise<ListDocumentsResult> {
-  const query = keyword.trim();
-  const param =
-    source === "recent"
-      ? { pageSize: PAGE_SIZE, ...(query ? { q: query } : {}) }
-      : {
-          owner: "me",
-          page: 1,
-          pageSize: PAGE_SIZE,
-          sort: "updatedAt:desc",
-          ...(query ? { q: query } : {}),
-        };
-  const response = await WKApp.apiClient.get<DocsListResponse>(
-    source === "recent" ? "docs/recent" : "docs",
-    { param }
-  );
-  return {
-    items: (response?.items ?? []).map(toDocSearchItem).filter(Boolean) as DocSearchItem[],
-    total: response?.total ?? 0,
-  };
+  service?: Pick<DocumentSourceService, "listDocuments">;
 }
 
 export function useDocumentSearch({
   visible,
   selected,
   maxSelect,
+  service = documentSourceService,
 }: UseDocumentSearchOptions) {
   const { t } = useI18n();
   const [source, setSource] = useState<DocumentSelectorSource>("recent");
@@ -124,7 +66,7 @@ export function useDocumentSearch({
     const timer = window.setTimeout(async () => {
       setIsLoading(true);
       try {
-        const result = await listDocuments(source, keyword);
+        const result = await service.listDocuments(source, keyword);
         if (sequence !== requestSequence.current) return;
         setItems(result.items);
         setTotal(result.total);
@@ -142,7 +84,7 @@ export function useDocumentSearch({
       requestSequence.current += 1;
       window.clearTimeout(timer);
     };
-  }, [keyword, retryKey, source, t, visible]);
+  }, [keyword, retryKey, service, source, t, visible]);
 
   const onSourceChange = useCallback((nextSource: DocumentSelectorSource) => {
     setSource(nextSource);

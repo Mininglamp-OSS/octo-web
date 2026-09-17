@@ -182,6 +182,7 @@ describe("SummaryWorkbench", () => {
     );
     const contexts = [
       ["Select chats", "chat"],
+      ["summary.workbench.context.document", "document"],
       ["Select participants", "participant"],
       ["Time range", "time_range"],
     ] as const;
@@ -192,7 +193,7 @@ describe("SummaryWorkbench", () => {
     expect(composer).toContainElement(screen.getByText("Alex"));
     if (!composerContexts)
       throw new Error("Composer contexts were not rendered");
-    expect(within(composerContexts).getAllByRole("button")).toHaveLength(3);
+    expect(within(composerContexts).getAllByRole("button")).toHaveLength(4);
     expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
     expect(screen.getByText("What should I summarize?")).toBeInTheDocument();
 
@@ -246,7 +247,7 @@ describe("SummaryWorkbench", () => {
     contexts.forEach(([, kind], index) => {
       expect(actions.onOpenContext).toHaveBeenNthCalledWith(index + 1, kind);
     });
-    expect(actions.onOpenContext).toHaveBeenNthCalledWith(4, "reference");
+    expect(actions.onOpenContext).toHaveBeenNthCalledWith(5, "reference");
     expect(actions.onRemoveContext).toHaveBeenCalledWith(
       "reference",
       "summary-1"

@@ -181,6 +181,7 @@
     "selectChat": "Select chats",
     "selectDocument": "Select documents",
     "documentOnlyHint": "Document summaries are single-user and manual only",
+    "documentSourceUnavailable": "Document summaries are currently disabled. Remove documents and try again.",
     "selectMembers": "Select participants",
     "selectedMembers": "{{count}} participants selected",
     "start": "Quick summary",

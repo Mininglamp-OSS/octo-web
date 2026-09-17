@@ -32,14 +32,17 @@ describe("DocumentSelector", () => {
       <DocumentSelector
         visible
         state={{
+          source: "recent",
           keyword: "项目",
           items: [item],
           selected: [],
           isLoading: false,
           error: null,
           maxSelect: 10,
+          hasMore: true,
         }}
         actions={{
+          onSourceChange: vi.fn(),
           onKeywordChange: vi.fn(),
           onToggle,
           onRetry: vi.fn(),
@@ -55,5 +58,6 @@ describe("DocumentSelector", () => {
     expect(confirm).not.toBeDisabled();
     fireEvent.click(confirm);
     expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("仅展示前 50 条，请搜索缩小范围")).toBeInTheDocument();
   });
 });

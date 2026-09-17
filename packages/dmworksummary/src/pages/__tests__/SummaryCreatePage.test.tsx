@@ -367,6 +367,31 @@ describe('SummaryCreatePage document sources', () => {
         });
         expect(screen.queryByText('选择文档')).not.toBeInTheDocument();
     });
+
+    it('blocks submit when documents were selected before capability is revoked', async () => {
+        const { Toast } = await import('@douyinfe/semi-ui');
+        await act(async () => {
+            render(<SummaryCreatePage embedded onSubmit={vi.fn()} />);
+            await flushPromises();
+        });
+        const textarea = document.querySelector('.summary-workbench-textarea') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: '总结项目文档' } });
+        fireEvent.click(screen.getByTestId(summaryTestIds.createSelectDocument));
+        fireEvent.click(screen.getByTestId('document-picker-confirm-fixture'));
+        expect(screen.getByText('项目复盘')).toBeInTheDocument();
+
+        act(() => {
+            __setDocsSearchOn(false);
+            __fireConfigChangeListeners();
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId(summaryTestIds.createSubmit));
+            await flushPromises();
+        });
+
+        expect(api.createSummary).not.toHaveBeenCalled();
+        expect(Toast.warning).toHaveBeenCalledWith('文档总结入口已关闭，请移除文档后重试');
+    });
 });
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -181,6 +181,7 @@
     "selectChat": "选择聊天",
     "selectDocument": "选择文档",
     "documentOnlyHint": "文档总结仅支持单人、手动创建",
+    "documentSourceUnavailable": "文档总结入口已关闭，请移除文档后重试",
     "selectMembers": "选择参与者",
     "selectedMembers": "已选 {{count}} 位参与者",
     "start": "快速总结",

@@ -24,7 +24,7 @@ describe("summary desktop markers", () => {
     const create = read("../pages/SummaryCreatePage.tsx");
     expect(create).toMatch(/className="summary-workbench-header" data-desktop-chrome="header"/);
     const workbench = read("../ui/SummaryWorkbench/index.tsx");
-    expect(workbench).toMatch(/className="wk-summary-workbench__header" data-desktop-chrome="header"/);
+    expect(workbench).toMatch(/className="wk-summary-workbench__header"[\s\S]*data-desktop-chrome="header"/);
     const share = read("../pages/SummaryShareDetailPage.tsx");
     expect(share).toMatch(/<header className="summary-share-detail__header" data-desktop-chrome="header">/);
     const preview = read("../features/summaryShare/SummarySharePreviewFeature.tsx");

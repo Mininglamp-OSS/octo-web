@@ -35,7 +35,7 @@ describe("useDocumentSearch", () => {
 
     await act(async () => vi.advanceTimersByTime(1));
     expect(apiGet).toHaveBeenCalledWith("docs/recent", {
-      param: { pageSize: 50 },
+      param: { pageSize: 50, type: ["doc", "html"] },
     });
   });
 
@@ -52,7 +52,7 @@ describe("useDocumentSearch", () => {
 
     await act(async () => vi.advanceTimersByTime(1));
     expect(apiGet).toHaveBeenCalledWith("docs/recent", {
-      param: { pageSize: 50, q: "项目" },
+      param: { pageSize: 50, type: ["doc", "html"], q: "项目" },
     });
   });
 
@@ -73,6 +73,7 @@ describe("useDocumentSearch", () => {
         page: 1,
         pageSize: 50,
         sort: "updatedAt:desc",
+        type: ["doc", "html"],
       },
     });
   });
@@ -114,6 +115,39 @@ describe("useDocumentSearch", () => {
     expect(result.current.state.items).toEqual([documentItem("retry")]);
   });
 
+  it("clears stale errors and enters loading synchronously on keyword change", async () => {
+    apiGet.mockRejectedValueOnce(new Error("network"));
+    const { result } = renderHook(() =>
+      useDocumentSearch({ visible: true, selected: [], maxSelect: 10 })
+    );
+
+    await act(async () => vi.advanceTimersByTime(250));
+    expect(result.current.state.error).toBeTruthy();
+    expect(result.current.state.isLoading).toBe(false);
+
+    act(() => result.current.actions.onKeywordChange("新关键词"));
+    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.isLoading).toBe(true);
+    expect(apiGet).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores an in-flight response after close", async () => {
+    let resolve!: (value: any) => void;
+    apiGet.mockReturnValueOnce(new Promise((next) => { resolve = next; }));
+    const { result, rerender } = renderHook(
+      ({ visible }) => useDocumentSearch({ visible, selected: [], maxSelect: 10 }),
+      { initialProps: { visible: true } }
+    );
+
+    await act(async () => vi.advanceTimersByTime(250));
+    expect(result.current.state.isLoading).toBe(true);
+    rerender({ visible: false });
+    await act(async () => resolve({ total: 1, items: [documentItem("late")] }));
+
+    expect(result.current.state.items).toEqual([]);
+    expect(result.current.state.isLoading).toBe(false);
+  });
+
   it("clears loading, results, and keyword across close and reopen", async () => {
     apiGet.mockResolvedValueOnce({
       total: 1,
@@ -137,6 +171,21 @@ describe("useDocumentSearch", () => {
     expect(result.current.state.keyword).toBe("");
     expect(result.current.state.source).toBe("recent");
     expect(result.current.state.isLoading).toBe(false);
+  });
+
+  it("exposes hasMore when the docs API reports more than the current page", async () => {
+    apiGet.mockResolvedValueOnce({
+      total: 51,
+      items: [documentItem("doc-1")],
+    });
+    const { result } = renderHook(() =>
+      useDocumentSearch({ visible: true, selected: [], maxSelect: 10 })
+    );
+
+    await act(async () => vi.advanceTimersByTime(250));
+
+    expect(result.current.state.items).toHaveLength(1);
+    expect(result.current.state.hasMore).toBe(true);
   });
 
   it("filters unsupported document kinds from list results", async () => {
