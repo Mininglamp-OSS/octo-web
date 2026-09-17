@@ -31,7 +31,7 @@ export const legacyAppBotHost: AppBotHostCapabilities = {
   },
 
   subscribeInvalidation(listener) {
-    return subscribePageActivation("appbot", listener);
+    return subscribePageActivation("appbot", listener, WKApp);
   },
 
   async openConversation(target) {

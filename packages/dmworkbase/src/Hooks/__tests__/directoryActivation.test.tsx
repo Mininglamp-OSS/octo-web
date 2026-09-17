@@ -4,12 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { CategoryItem } from "../../Service/CategoryService"
 import type { SidebarSyncResp } from "../../Service/SidebarService"
 
-const { app, listeners, list, sync } = vi.hoisted(() => {
+const { app, listeners, list, sync, update, memoEpoch } = vi.hoisted(() => {
     const listeners = new Map<string, Set<(event: any) => void>>()
     return {
         listeners,
         list: vi.fn(),
         sync: vi.fn(),
+        update: vi.fn(),
+        memoEpoch: { value: 0 },
         app: {
             currentMenuId: "chat",
             shared: { currentSpaceId: "space-a", deviceId: "device-a" },
@@ -23,8 +25,18 @@ const { app, listeners, list, sync } = vi.hoisted(() => {
         },
     }
 })
+vi.mock("react", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("react")>()
+    return {
+        ...actual,
+        useCallback: <T extends (...args: never[]) => unknown>(callback: T, deps: React.DependencyList) =>
+            actual.useCallback(callback, [...deps, memoEpoch.value]),
+        useMemo: <T,>(factory: () => T, deps?: React.DependencyList) =>
+            actual.useMemo(factory, [...(deps || []), memoEpoch.value]),
+    }
+})
 vi.mock("../../App", () => ({ default: app }))
-vi.mock("../../Service/CategoryService", () => ({ default: { list } }))
+vi.mock("../../Service/CategoryService", () => ({ default: { list, update } }))
 vi.mock("../../Service/SidebarService", () => ({ default: { sync } }))
 vi.mock("../../Service/FollowService", () => ({ default: {} }))
 vi.mock("../../i18n", () => ({ t: (key: string) => key }))
@@ -242,5 +254,58 @@ describe("communication directory activation", () => {
             initialSidebar.resolve(sidebar("discarded", 10))
         })
         expect(result.current.sidebar.versionRef.current).toBe(1)
+    })
+})
+
+describe("same-space and A-B-A mutation identity guards", () => {
+    beforeEach(() => {
+        app.currentMenuId = "chat"
+        app.shared.currentSpaceId = "space-a"
+        delete document.documentElement.dataset.hostVisibility
+        vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible")
+        list.mockReset().mockResolvedValue(categories("original"))
+        sync.mockReset().mockResolvedValue(sidebar("original"))
+    })
+    afterEach(() => {
+        cleanup()
+        vi.restoreAllMocks()
+    })
+
+    it("does not destructively reset data on a same-space re-render with regenerated load callback", async () => {
+        const { result, rerender } = renderHook(useDirectories)
+        await waitFor(() => expect(result.current.categories.categories[0]?.name).toBe("original"))
+        const previous = result.current.categories.categories
+        const reload = result.current.categories.reload
+        // Simulate React discarding both callback and memo caches without changing Space.
+        memoEpoch.value += 1
+        rerender()
+        expect(result.current.categories.reload).not.toBe(reload)
+        expect(result.current.categories.categories).toBe(previous)
+        expect(result.current.categories.isLoading).toBe(false)
+        expect(list).toHaveBeenCalledTimes(1)
+        expect(sync).toHaveBeenCalledTimes(1)
+        list.mockResolvedValue(categories("resumed"))
+        sync.mockResolvedValue(sidebar("resumed"))
+        await resume()
+        expect(result.current.categories.categories[0].name).toBe("resumed")
+        expect(result.current.sidebar.items[0].target_id).toBe("resumed")
+    })
+
+    it("prevents old A-B-A mutation (rename) from applying after space returns", async () => {
+        const { result, rerender } = renderHook(useDirectories)
+        await waitFor(() => expect(result.current.categories.categories[0]?.name).toBe("original"))
+        const pending = deferred<void>()
+        update.mockReturnValueOnce(pending.promise)
+        const renamePromise = result.current.categories.renameCategory("original", "new-name")
+        app.shared.currentSpaceId = "space-b"
+        list.mockResolvedValue(categories("space-b"))
+        rerender()
+        await waitFor(() => expect(result.current.categories.categories[0]?.name).toBe("space-b"))
+        app.shared.currentSpaceId = "space-a"
+        list.mockResolvedValue([{ ...categories("original")[0], name: "fresh-a" }])
+        rerender()
+        await waitFor(() => expect(result.current.categories.categories[0]?.name).toBe("fresh-a"))
+        await act(async () => { pending.resolve(); await renamePromise })
+        expect(result.current.categories.categories[0]).toMatchObject({ category_id: "original", name: "fresh-a" })
     })
 })

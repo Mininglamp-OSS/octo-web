@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import WKApp from "../App"
 import CategoryService, { CategoryItem } from "../Service/CategoryService"
 import { t } from "../i18n"
@@ -22,15 +22,18 @@ export function useCategoryList(): UseCategoryListResult {
     const [error, setError] = useState<string | null>(null)
 
     const spaceId = WKApp.shared.currentSpaceId
-    const scope = useMemo(() => ({ active: false }), [spaceId])
+    const activeRef = useRef(false)
+    const scopeGenRef = useRef(0)
     const request = useRef(0)
     const silentRequest = useRef(0)
 
     const load = useCallback(async (silent = false) => {
-        if (!scope.active || !spaceId || WKApp.shared.currentSpaceId !== spaceId) return
+        const gen = scopeGenRef.current
+        if (!activeRef.current || !spaceId || WKApp.shared.currentSpaceId !== spaceId) return
         const revision = silent ? request.current : ++request.current
         const silentRevision = silent ? ++silentRequest.current : 0
-        const isCurrent = () => scope.active && revision === request.current &&
+        const isCurrent = () => activeRef.current && gen === scopeGenRef.current &&
+            revision === request.current &&
             (!silent || silentRevision === silentRequest.current) &&
             WKApp.shared.currentSpaceId === spaceId
         if (!silent) {
@@ -53,26 +56,30 @@ export function useCategoryList(): UseCategoryListResult {
         } finally {
             if (isCurrent() && !silent) setIsLoading(false)
         }
-    }, [spaceId, scope])
+    }, [spaceId])
+
+    const loadRef = useRef(load)
+    loadRef.current = load
 
     useEffect(() => {
-        scope.active = true
+        scopeGenRef.current += 1
+        activeRef.current = true
         setCategories([])
         setError(null)
         setIsLoading(false)
-        void load()
+        void loadRef.current()
         return () => {
-            scope.active = false
-            request.current++
+            activeRef.current = false
         }
-    }, [load, scope])
+    }, [spaceId])
 
-    useEffect(() => subscribePageActivation("chat", () => { void load(true) }), [load])
+    useEffect(() => subscribePageActivation("chat", () => { void loadRef.current(true) }, WKApp), [])
+
     const reload = useCallback(() => load(), [load])
 
-    const canApplyMutation = () => {
-        if (!scope.active || WKApp.shared.currentSpaceId !== spaceId) return false
-        // A snapshot started before the mutation cannot revert its optimistic result.
+    const canApplyMutation = (generation: number) => {
+        if (!activeRef.current || generation !== scopeGenRef.current || WKApp.shared.currentSpaceId !== spaceId) return false
+        // Reads started before a mutation cannot revert its optimistic result.
         request.current++
         setIsLoading(false)
         return true
@@ -87,8 +94,9 @@ export function useCategoryList(): UseCategoryListResult {
 
     const renameCategory = async (categoryId: string, name: string) => {
         if (!spaceId) throw new Error(t("base.categoryList.noSpaceSelected"))
+        const gen = scopeGenRef.current
         await CategoryService.update(spaceId, categoryId, { name })
-        if (!canApplyMutation()) return
+        if (!canApplyMutation(gen)) return
         setCategories(prev =>
             prev.map(c => c.category_id === categoryId ? { ...c, name } : c)
         )
@@ -96,15 +104,17 @@ export function useCategoryList(): UseCategoryListResult {
 
     const deleteCategory = async (categoryId: string) => {
         if (!spaceId) throw new Error(t("base.categoryList.noSpaceSelected"))
+        const gen = scopeGenRef.current
         await CategoryService.delete(spaceId, categoryId)
-        if (!canApplyMutation()) return
+        if (!canApplyMutation(gen)) return
         setCategories(prev => prev.filter(c => c.category_id !== categoryId))
     }
 
     const sortCategories = async (categoryIds: string[]) => {
         if (!spaceId) throw new Error(t("base.categoryList.noSpaceSelected"))
+        const gen = scopeGenRef.current
         await CategoryService.sort(spaceId, { category_ids: categoryIds })
-        if (!canApplyMutation()) return
+        if (!canApplyMutation(gen)) return
         // 按新顺序重排本地数据
         setCategories(prev => {
             const map = new Map(prev.map(c => [c.category_id, c]))

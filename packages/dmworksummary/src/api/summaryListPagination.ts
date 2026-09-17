@@ -5,6 +5,13 @@ import type { ListSummariesParams, ListSummariesResponse, SummaryListItem } from
 const MAX_PAGE_SIZE = 100;
 const MAX_PREFIX_ATTEMPTS = 3;
 
+export class SummaryPaginationDriftError extends Error {
+    constructor() {
+        super("Summary pagination changed during refresh");
+        this.name = "SummaryPaginationDriftError";
+    }
+}
+
 export async function fetchSummaryListPrefix(
     params: ListSummariesParams,
     limit: number,
@@ -53,5 +60,5 @@ export async function fetchSummaryListPrefix(
         // two consecutive matching ID sequences, including same-total reorders.
         previous = snapshot;
     }
-    throw new Error("Summary pagination changed during refresh");
+    throw new SummaryPaginationDriftError();
 }

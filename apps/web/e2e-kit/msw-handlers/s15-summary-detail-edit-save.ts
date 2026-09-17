@@ -3,8 +3,8 @@
 import type { Page } from "@playwright/test";
 
 /** S15: Summary 详情编辑取消 / 保存. */
-export async function registerS15SummaryDetailEditSave(page: Page, detailDelayMs = 0, failedPersonal = false): Promise<void> {
-  await page.evaluate(({ detailDelayMs, failedPersonal }) => {
+export async function registerS15SummaryDetailEditSave(page: Page, detailDelayMs = 0, failedPersonal = false, saveDelayMs = 0): Promise<void> {
+  await page.evaluate(({ detailDelayMs, failedPersonal, saveDelayMs }) => {
     type MSW = {
       worker: { use: (...h: unknown[]) => void };
       http: {
@@ -117,6 +117,7 @@ export async function registerS15SummaryDetailEditSave(page: Page, detailDelayMs
       http.put("*/summary/api/v1/summaries/15015/personal-edit", async ({ request }: any) => {
         const state = (window as unknown as { __s15State__: { savedContent: string | null; editCalls: number } }).__s15State__;
         const body = await request.json();
+        if (saveDelayMs) await new Promise(resolve => setTimeout(resolve, saveDelayMs));
         state.savedContent = String(body.content || "");
         state.editCalls += 1;
         return env({ edited_at: "2026-08-06T15:18:00Z" });
@@ -134,5 +135,5 @@ export async function registerS15SummaryDetailEditSave(page: Page, detailDelayMs
         env({ templates: [], custom_template_limit: 30 })
       )
     );
-  }, { detailDelayMs, failedPersonal });
+  }, { detailDelayMs, failedPersonal, saveDelayMs });
 }

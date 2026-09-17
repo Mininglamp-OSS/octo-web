@@ -1,4 +1,5 @@
 import React from "react";
+import { WKApp } from "@octo/base";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
@@ -161,6 +162,6 @@ describe("legacyAppBotHost", () => {
     state.subscribePageActivation.mockReturnValueOnce(unsubscribe);
 
     expect(legacyAppBotHost.subscribeInvalidation?.(listener)).toBe(unsubscribe);
-    expect(state.subscribePageActivation).toHaveBeenCalledWith("appbot", listener);
+    expect(state.subscribePageActivation).toHaveBeenCalledWith("appbot", listener, WKApp);
   });
 });

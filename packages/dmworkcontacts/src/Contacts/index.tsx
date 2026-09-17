@@ -54,6 +54,8 @@ function OverflowTooltip({ text, children }: { text: string; children: React.Rea
 
 const ITEM_HEIGHT = 44
 const LETTER_HEADER_HEIGHT = 28
+const ACTIVATION_REFRESH_TTL_MS = 1000
+const ONLINE_REFRESH_CONCURRENCY = 6
 
 // 在线态 uid 归一化：Space 场景下列表持有的是带前缀 uid（s<spaceId>_<uid>），而
 // channelInfo 回包、onlineStatus WS 推送、channelInfoListener 回调用的都是去前缀 uid
@@ -231,6 +233,10 @@ export default class ContactsList extends Component<any, ContactsState> {
     // previous Space must never overwrite the active Space's roster or badges.
     private spaceLoadGeneration = 0
     private activationLoadGeneration = 0
+    private activationRefresh?: Promise<void>
+    private activationRefreshAt?: number
+    private onlineRefresh?: Promise<void>
+    private onlineRefreshAt?: number
 
     constructor(props: any) {
         super(props)
@@ -273,6 +279,7 @@ export default class ContactsList extends Component<any, ContactsState> {
             this.contactsSearchIndex = createEmptyContactsSearchIndex()
             this.resetFilterScrollTops()
             this.prefetchedUids.clear()
+            this.resetActivationRefreshes()
             if (sp) {
                 this.debouncedSearch.cancel()
                 this.setState({ currentSpace: sp, spaceMembers: [], myGroups: [], myBots: [], spaceBots: [], keyword: '', isSearching: false, searchContacts: [], searchGroups: [], filterMode: 'all', loading: true }, () => {
@@ -288,12 +295,9 @@ export default class ContactsList extends Component<any, ContactsState> {
 
         // Revalidate roster and tracked online badges together when this retained page returns.
         this.unsubscribePageActivation = subscribePageActivation('contacts', () => {
-            const spaceId = WKApp.shared.currentSpaceId
             void this.refreshTrackedOnlineStatus()
-            // The initial getMySpaces lookup still owns setup until currentSpace is resolved.
-            if (!spaceId || this.state.currentSpace?.space_id !== spaceId) return
-            void this.loadAllData(spaceId, this.spaceLoadGeneration, true, ++this.activationLoadGeneration)
-        })
+            void this.refreshRosterOnActivation()
+        }, WKApp)
 
         ContactsListManager.shared.setRefreshList = () => {
             this.setState({})
@@ -332,25 +336,68 @@ export default class ContactsList extends Component<any, ContactsState> {
         WKApp.mittBus.off('space-changed', this.spaceChangedHandler)
         this.debouncedSearch.cancel()
         this.prefetchedUids.clear()
+        this.resetActivationRefreshes()
     }
 
-    // 对当前已追踪（已预取过在线态、即可能展示绿点）的 AI uid 重新拉取 channelInfo。
-    // prefetchedUids 已归一化为去前缀 uid，重拉、缓存写回、listener 命中与渲染读取都用同一 key，
-    // 三条路径（初次 prefetch / 实时 WS 推送 / visibilitychange）因此一致。这里等所有重拉落库后
-    // 再统一强制 setState 一次：即便推送因断连/节流被延迟或丢失，切回本页也能补回最新在线绿点，
-    // 无需整页刷新（force re-render 亦作为 listener 未触发时的兜底）。
-    private refreshTrackedOnlineStatus = async () => {
+    private resetActivationRefreshes() {
+        this.activationRefresh = undefined
+        this.activationRefreshAt = undefined
+        this.onlineRefresh = undefined
+        this.onlineRefreshAt = undefined
+    }
+
+    private refreshRosterOnActivation = () => {
+        const spaceId = WKApp.shared.currentSpaceId
+        // The initial getMySpaces lookup owns setup until currentSpace is resolved.
+        if (!this.mounted || !spaceId || this.state.currentSpace?.space_id !== spaceId) return
+        if (this.activationRefresh) return this.activationRefresh
+        if (this.activationRefreshAt !== undefined &&
+            Date.now() - this.activationRefreshAt < ACTIVATION_REFRESH_TTL_MS) return
+        const pending = this.loadAllData(spaceId, this.spaceLoadGeneration, true, ++this.activationLoadGeneration)
+            .then(committed => {
+                if (committed && this.activationRefresh === pending) this.activationRefreshAt = Date.now()
+            })
+            .finally(() => {
+                if (this.activationRefresh === pending) this.activationRefresh = undefined
+            })
+        this.activationRefresh = pending
+        return pending
+    }
+
+    // Coalesce cross-task resume/visibility events and bound the tracked-UID fan-out.
+    private refreshTrackedOnlineStatus = () => {
+        if (!this.mounted) return
+        if (this.onlineRefresh) return this.onlineRefresh
+        if (this.onlineRefreshAt !== undefined &&
+            Date.now() - this.onlineRefreshAt < ACTIVATION_REFRESH_TTL_MS) return
         const uids = Array.from(this.prefetchedUids).filter(Boolean)
         if (uids.length === 0) return
-        await Promise.all(
-            uids.map((uid) =>
-                fetchCurrentImChannelInfo(new Channel(uid, ChannelTypePerson))
-                    .catch(() => undefined)
-            )
-        )
-        if (this.mounted) {
+        const spaceId = WKApp.shared.currentSpaceId
+        const isCurrent = () => this.mounted && this.onlineRefresh === pending &&
+            WKApp.shared.currentSpaceId === spaceId
+        const pending: Promise<void> = Promise.resolve().then(async () => {
+            let next = 0
+            let failed = false
+            const worker = async () => {
+                while (isCurrent() && next < uids.length) {
+                    const uid = uids[next++]
+                    if (!this.prefetchedUids.has(uid)) continue
+                    try {
+                        await fetchCurrentImChannelInfo(new Channel(uid, ChannelTypePerson))
+                    } catch {
+                        failed = true
+                    }
+                }
+            }
+            await Promise.all(Array.from({ length: Math.min(ONLINE_REFRESH_CONCURRENCY, uids.length) }, worker))
+            if (!isCurrent()) return
+            if (!failed) this.onlineRefreshAt = Date.now()
             this.setState({})
-        }
+        }).finally(() => {
+            if (this.onlineRefresh === pending) this.onlineRefresh = undefined
+        })
+        this.onlineRefresh = pending
+        return pending
     }
 
     // 翻页拉取空间全部成员。宿主 getMembers 单次 limit 上限 10000，超大空间若只请求一页会把
@@ -384,12 +431,19 @@ export default class ContactsList extends Component<any, ContactsState> {
             return []
         }
         try {
-            const [members, myBots, spaceBots, myGroups] = await Promise.all([
+            const requests = [
                 this.fetchAllSpaceMembers(spaceId),
                 WKApp.apiClient.get("/robot/my_bots", { param: { space_id: spaceId } }).catch(handleDirectoryFailure),
                 WKApp.apiClient.get("/robot/space_bots", { param: { space_id: spaceId } }).catch(handleDirectoryFailure),
                 WKApp.apiClient.get(`/group/my?space_id=${spaceId}`).catch(handleDirectoryFailure),
-            ])
+            ]
+            // A failed branch must not release the activation guard while its siblings still run.
+            const [members, myBots, spaceBots, myGroups] = silent
+                ? await Promise.allSettled(requests).then(results => results.map(result => {
+                    if (result.status === "rejected") throw result.reason
+                    return result.value
+                }))
+                : await Promise.all(requests)
             if (!this.isCurrentSpaceLoad(spaceId, generation, activationGeneration)) return
             if (silent) this.spaceLoadGeneration += 1
             this.setState({
@@ -399,6 +453,14 @@ export default class ContactsList extends Component<any, ContactsState> {
                 myGroups: myGroups || [],
                 loading: false,
             }, () => {
+                const rosterUids = new Set([
+                    ...(members || []).filter((member: any) => member.robot === 1),
+                    ...(myBots || []),
+                    ...(spaceBots || []),
+                ].map((item: any) => normalizeOnlineUid(item.uid || "")))
+                for (const uid of this.prefetchedUids) {
+                    if (!rosterUids.has(uid)) this.prefetchedUids.delete(uid)
+                }
                 this.rebuildContactsSearchIndex()
                 this.clearIndexCache()
                 this.rebuildIndex()
@@ -409,6 +471,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                 // 「已添加AI」列表数量有界，数据就绪时整批预取一次在线态。
                 this.prefetchOnlineStatus((myBots || []).map((b: any) => b.uid))
             })
+            return true
         } catch {
             if (!silent && this.isCurrentSpaceLoad(spaceId, generation)) this.setState({ loading: false })
         }

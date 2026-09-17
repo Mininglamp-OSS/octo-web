@@ -17,7 +17,7 @@ const sanityConfig = {
 
 test.describe("@S15 @p1 @summary @detail @summary-detail @summary-edit S15 — Summary 详情编辑保存", () => {
   test("失败的 Agent 总结用本人报告权限编辑，元信息不重复", async ({ authedPage }) => {
-    await registerS15SummaryDetailEditSave(authedPage, 0, true);
+    await registerS15SummaryDetailEditSave(authedPage, 0, true, 500);
     const ctx = startRequestMonitor(authedPage, sanityConfig);
     await authedPage.getByRole("button", { name: "智能总结" }).click();
     await expect(authedPage.getByTestId(T.card(15015))).toBeVisible();
@@ -26,8 +26,16 @@ test.describe("@S15 @p1 @summary @detail @summary-detail @summary-edit S15 — S
     await expect(authedPage.locator(".summary-detail-personal .summary-detail-meta-time")).toHaveCount(1);
     await authedPage.locator(".summary-detail-personal").getByRole("button", { name: /编辑$/ }).click();
     await authedPage.getByTestId(T.editorTextarea).fill("S15 失败后编辑成功");
+    const saveResponse = authedPage.waitForResponse(response =>
+      response.request().method() === "PUT" &&
+      new URL(response.url()).pathname === "/summary/api/v1/summaries/15015/personal-edit"
+    );
     await authedPage.getByTestId(T.editorSaveBtn).click();
-    await expect(authedPage.getByText("S15 失败后编辑成功", { exact: true })).toBeVisible();
+    expect((await saveResponse).status()).toBe(200);
+    await expect(authedPage.getByTestId(T.editorTextarea)).toHaveCount(0);
+    const personalDetail = authedPage.locator(".summary-detail-personal");
+    await expect(personalDetail.getByText("S15 失败后编辑成功", { exact: true })).toBeVisible();
+    await expect(personalDetail.getByText("保存后的正文已重新加载", { exact: true })).toBeVisible();
     expect(await authedPage.evaluate(() =>
       (window as unknown as { __s15State__: { editCalls: number } }).__s15State__.editCalls
     )).toBe(1);

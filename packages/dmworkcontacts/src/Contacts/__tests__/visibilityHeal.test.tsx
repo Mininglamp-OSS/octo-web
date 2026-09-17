@@ -185,6 +185,7 @@ afterEach(() => {
     ReactDOM.unmountComponentAtNode(container);
   });
   container.remove();
+  vi.restoreAllMocks();
 });
 
 const flush = async () => {
@@ -202,6 +203,69 @@ function deferred<T>() {
 }
 
 describe("Contacts online badge self-heal on tab focus", () => {
+  it("coalesces tracked online refreshes, bounds concurrency and expires successful results", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(10000);
+    const ref = React.createRef<any>();
+    await act(async () => { ReactDOM.render(<ContactsList ref={ref} />, container); });
+    ref.current.prefetchedUids = new Set(Array.from({ length: 10 }, (_, i) => `bot-${i}`));
+    const requests: ReturnType<typeof deferred<void>>[] = [];
+    const fetch = vi.spyOn(channelManager, "fetchChannelInfo").mockImplementation(() => {
+      const request = deferred<void>();
+      requests.push(request);
+      return request.promise;
+    });
+    act(() => { void ref.current.refreshTrackedOnlineStatus(); });
+    await flush();
+    expect(fetch).toHaveBeenCalledTimes(6);
+    act(() => { void ref.current.refreshTrackedOnlineStatus(); });
+    await flush();
+    expect(fetch).toHaveBeenCalledTimes(6);
+    await act(async () => { requests.slice(0, 6).forEach(request => request.resolve()); });
+    await flush();
+    expect(fetch).toHaveBeenCalledTimes(10);
+    await act(async () => { requests.slice(6).forEach(request => request.resolve()); });
+    await flush();
+    await act(async () => { await ref.current.refreshTrackedOnlineStatus(); });
+    expect(fetch).toHaveBeenCalledTimes(10);
+    clock.mockReturnValue(11000);
+    fetch.mockResolvedValue(undefined);
+    await act(async () => { await ref.current.refreshTrackedOnlineStatus(); });
+    expect(fetch).toHaveBeenCalledTimes(20);
+  });
+
+  it("allows an immediate retry after online refresh failure", async () => {
+    const ref = React.createRef<any>();
+    await act(async () => { ReactDOM.render(<ContactsList ref={ref} />, container); });
+    ref.current.prefetchedUids.add("bot");
+    const fetch = vi.spyOn(channelManager, "fetchChannelInfo").mockRejectedValueOnce(new Error("offline"));
+    await act(async () => { await ref.current.refreshTrackedOnlineStatus(); });
+    fetch.mockResolvedValue(undefined);
+    await act(async () => { await ref.current.refreshTrackedOnlineStatus(); });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["space", "unmount"])("stops queued online work after %s", async (change) => {
+    const { WKApp } = await import("@octo/base");
+    const ref = React.createRef<any>();
+    await act(async () => { ReactDOM.render(<ContactsList ref={ref} />, container); });
+    ref.current.prefetchedUids = new Set(Array.from({ length: 10 }, (_, i) => `bot-${i}`));
+    const pending = deferred<void>();
+    const fetch = vi.spyOn(channelManager, "fetchChannelInfo").mockReturnValue(pending.promise);
+    act(() => { void ref.current.refreshTrackedOnlineStatus(); });
+    await flush();
+    expect(fetch).toHaveBeenCalledTimes(6);
+    act(() => {
+      if (change === "unmount") ReactDOM.unmountComponentAtNode(container);
+      else {
+        WKApp.shared.currentSpaceId = "space-b";
+        WKApp.mittBus.emit("space-changed", { space_id: "space-b" } as any);
+      }
+    });
+    await act(async () => { pending.resolve(); });
+    await flush();
+    expect(fetch).toHaveBeenCalledTimes(6);
+  });
+
   it("shows the AI green dot after visibilitychange when the server went online without a CMD", async () => {
     const ref = React.createRef<any>();
 
@@ -278,6 +342,71 @@ describe("Contacts roster revalidation", () => {
       },
     };
   }
+
+  it("coalesces cross-task activation events and expires only successful roster refreshes", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(10000);
+    const { SpaceService } = await mountRoster();
+    await act(async () => { window.dispatchEvent(new Event("octobuddy:resume")); });
+    await flush();
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+    await flush();
+    expect(SpaceService.shared.getMembers).toHaveBeenCalledTimes(2);
+    clock.mockReturnValue(11000);
+    vi.mocked(SpaceService.shared.getMembers).mockRejectedValueOnce(new Error("offline"));
+    await act(async () => { window.dispatchEvent(new Event("octobuddy:resume")); });
+    await flush();
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+    await flush();
+    expect(SpaceService.shared.getMembers).toHaveBeenCalledTimes(4);
+  });
+
+  it("shares an in-flight activation roster request across separate events", async () => {
+    const { ref, SpaceService } = await mountRoster();
+    const pending = deferred<any[]>();
+    vi.mocked(SpaceService.shared.getMembers).mockReturnValueOnce(pending.promise);
+    await act(async () => { window.dispatchEvent(new Event("octobuddy:resume")); });
+    await flush();
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+    await flush();
+    expect(SpaceService.shared.getMembers).toHaveBeenCalledTimes(2);
+    await act(async () => { pending.resolve([{ uid: "updated", name: "Updated" }]); });
+    await flush();
+    expect(ref.current.state.spaceMembers[0].uid).toBe("updated");
+  });
+
+  it("holds the activation guard until all requests settle after a partial failure", async () => {
+    const { ref, WKApp, SpaceService } = await mountRoster();
+    const pending = deferred<any[]>();
+    vi.mocked(SpaceService.shared.getMembers).mockReturnValueOnce(pending.promise);
+    vi.mocked(WKApp.apiClient.get).mockRejectedValueOnce(new Error("offline"));
+    await act(async () => { window.dispatchEvent(new Event("octobuddy:resume")); });
+    await flush();
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+    await flush();
+    expect(SpaceService.shared.getMembers).toHaveBeenCalledTimes(2);
+    await act(async () => { pending.resolve([{ uid: "partial", name: "Partial" }]); });
+    await flush();
+    expect(ref.current.state.spaceMembers[0].uid).toBe("old");
+    await act(async () => { window.dispatchEvent(new Event("octobuddy:resume")); });
+    await flush();
+    expect(SpaceService.shared.getMembers).toHaveBeenCalledTimes(3);
+  });
+
+  it("clears activation TTL on a Space switch and releases departed online UIDs", async () => {
+    const { ref, WKApp, SpaceService } = await mountRoster();
+    ref.current.prefetchedUids.add("departed");
+    await act(async () => { window.dispatchEvent(new Event("octobuddy:resume")); });
+    await flush();
+    expect(ref.current.prefetchedUids.has("departed")).toBe(false);
+    await act(async () => {
+      WKApp.shared.currentSpaceId = "space-b";
+      WKApp.mittBus.emit("space-changed", { space_id: "space-b" } as any);
+    });
+    await flush();
+    await act(async () => { window.dispatchEvent(new Event("octobuddy:resume")); });
+    await flush();
+    expect(SpaceService.shared.getMembers).toHaveBeenCalledTimes(4);
+  });
 
   it("refreshes all directories and search on resume while retaining filter, section and scroll", async () => {
     const { ref, WKApp, SpaceService } = await mountRoster();

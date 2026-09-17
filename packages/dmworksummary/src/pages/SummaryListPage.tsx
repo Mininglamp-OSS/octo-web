@@ -4,7 +4,7 @@ import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
 import { I18nContext, t, WKApp, Dap } from "@octo/base";
 import * as api from "../api/summaryApi";
-import { fetchSummaryListPrefix } from "../api/summaryListPagination";
+import { fetchSummaryListPrefix, SummaryPaginationDriftError } from "../api/summaryListPagination";
 import { requestSummaryScheduleOpen, requestSummaryDetailAction } from "../utils/summaryDetailIntent";
 import {
   abandonSummaryAttentionRead,
@@ -27,6 +27,9 @@ import SummaryDetailPage from "./SummaryDetailPage";
 
 type SummaryCreateEntryMode = "pending" | "unified" | "legacy";
 type SummaryReadPatch = (items: SummaryListItem[]) => SummaryListItem[];
+
+const MAX_ACTIVATION_REFRESH_ROWS = 100;
+const LOAD_MORE_RETRY_COOLDOWN_MS = 3000;
 
 interface SummaryListPageProps {
     channelId?: string;
@@ -116,6 +119,8 @@ export default class SummaryListPage extends Component<
     private isLoadingData = false;
     private isLoadingMore = false;
     private activationRefreshPending = false;
+    private loadMoreRetryAt = 0;
+    private paginationErrorVisible = false;
     // Replay only reads received during each request, then release its patches.
     private pendingReadPatches = new Set<SummaryReadPatch[]>();
     // Cleared by componentWillUnmount so any in-flight refresh's setState
@@ -289,7 +294,10 @@ export default class SummaryListPage extends Component<
         const requestSpaceId = WKApp.shared.currentSpaceId;
         const { pageSize, statusFilter, keyword } = this.state;
         const channelId = this.props.channelId;
-        const pagesToReload = opts.retainView ? this.state.page : 1;
+        // Bound automatic refresh cost; deeper pages are fetched lazily again.
+        const pagesToReload = opts.retainView
+            ? Math.min(this.state.page, Math.max(1, Math.floor(MAX_ACTIVATION_REFRESH_ROWS / pageSize)))
+            : 1;
         const isCurrent = () => seq === this.loadDataSeq &&
             this.isMounted_ && WKApp.shared.currentSpaceId === requestSpaceId &&
             (!opts.retainView || (
@@ -299,7 +307,10 @@ export default class SummaryListPage extends Component<
             ));
         const readPatches: SummaryReadPatch[] = [];
         this.pendingReadPatches.add(readPatches);
-        if (!opts.retainView) this.activationRefreshPending = false;
+        if (!opts.retainView) {
+            this.activationRefreshPending = false;
+            this.loadMoreRetryAt = 0;
+        }
         // 领一个待关注计数的读取号，必须在 await 之前：号码代表“这份数据是
         // 什么时候向服务端要的”。列表与 page_size=1 探测是两个并行写者，按发出
         // 时刻排序；否则一个先发后到、快照更旧的列表响应会盖掉用户刚触发的
@@ -329,6 +340,7 @@ export default class SummaryListPage extends Component<
         // yujiawei P2-2): a user-visible error the user already saw must
         // not be erased by an automatic background refresh.
         if (!opts.retainView) {
+            if (!opts.silent) this.paginationErrorVisible = false;
             this.setState(
                 opts.silent ? { loading: true } : { loading: true, error: null }
             );
@@ -345,6 +357,8 @@ export default class SummaryListPage extends Component<
                 ? await fetchSummaryListPrefix(params, pagesToReload * pageSize, isCurrent)
                 : await api.listSummaries(params);
             if (!resp || !isCurrent()) return;
+            this.loadMoreRetryAt = 0;
+            this.paginationErrorVisible = false;
             const page = opts.retainView
                 ? Math.max(1, Math.min(pagesToReload, Math.ceil(resp.total / pageSize)))
                 : 1;
@@ -397,15 +411,17 @@ export default class SummaryListPage extends Component<
         } catch (err: any) {
             if (!isCurrent()) return;
             // Background refresh (silent=true) must not surface a network
-            // banner to an idle user — just clear loading and leave the last
-            // good list visible. A user-triggered loadData still shows the
-            // banner + Retry so they can act on the failure.
-            if (opts.silent) {
+            // banner to an idle user. Exhausted pagination repairs still
+            // expose Retry so a persistently inconsistent list is actionable.
+            if (opts.silent && !(err instanceof SummaryPaginationDriftError)) {
                 this.setState({ loading: false });
                 return undefined;
             }
+            this.paginationErrorVisible = false;
       this.setState({
-        error: err.message || t("summary.common.loadingFailed"),
+        error: err instanceof SummaryPaginationDriftError
+            ? t("summary.common.loadingFailed")
+            : err.message || t("summary.common.loadingFailed"),
         loading: false,
       });
       return undefined;
@@ -449,7 +465,8 @@ export default class SummaryListPage extends Component<
       this.isLoadingMore ||
       !this.state.hasMore ||
       this.state.loading ||
-      this.isLoadingData
+      this.isLoadingData ||
+      Date.now() < this.loadMoreRetryAt
     )
       return;
         // Also capture loadDataSeq: if any loadData starts and bumps it
@@ -491,6 +508,9 @@ export default class SummaryListPage extends Component<
                 if (!repaired || !isCurrent()) return;
                 resp = repaired;
             }
+            this.loadMoreRetryAt = 0;
+            const clearPaginationError = this.paginationErrorVisible;
+            this.paginationErrorVisible = false;
       this.setState(
         (prev) => {
             const fresh = readPatches.reduce((rows, patch) => patch(rows), resp.items);
@@ -502,13 +522,25 @@ export default class SummaryListPage extends Component<
                 total: resp.total,
                 page: Math.max(1, Math.min(nextPage, Math.ceil(resp.total / pageSize))),
                 loadingMore: false,
+                ...(clearPaginationError ? { error: null } : {}),
                 hasMore: nextItems.length < resp.total,
             };
         },
         () => { if (this.isMounted_) this.maybeStartBatchPoll(); }
       );
-        } catch {
-            if (this.isMounted_) this.setState({ loadingMore: false });
+        } catch (err) {
+            if (isCurrent()) {
+                this.loadMoreRetryAt = Date.now() + LOAD_MORE_RETRY_COOLDOWN_MS;
+                const showPaginationError = err instanceof SummaryPaginationDriftError &&
+                    (!this.state.error || this.paginationErrorVisible);
+                if (showPaginationError) this.paginationErrorVisible = true;
+                this.setState({
+                    loadingMore: false,
+                    ...(showPaginationError
+                        ? { error: t("summary.common.loadingFailed") }
+                        : {}),
+                });
+            }
         } finally {
             this.pendingReadPatches.delete(readPatches);
             this.isLoadingMore = false;

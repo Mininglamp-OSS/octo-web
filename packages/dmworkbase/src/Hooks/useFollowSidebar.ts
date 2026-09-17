@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import WKSDK, { ConversationAction, type Conversation, type ConversationListener } from "wukongimjssdk"
 import WKApp from "../App"
 import { t } from "../i18n"
@@ -86,7 +86,9 @@ export function useFollowSidebar(): UseFollowSidebarResult {
     const [error, setError] = useState<string | null>(null)
 
     const spaceId = WKApp.shared.currentSpaceId
-    const scope = useMemo(() => ({ active: false }), [spaceId])
+    // Space re-entry must invalidate requests even when the ID returns to its old value.
+    const activeRef = useRef(false)
+    const scopeGenRef = useRef(0)
     const request = useRef(0)
     const silentRequest = useRef(0)
 
@@ -99,11 +101,13 @@ export function useFollowSidebar(): UseFollowSidebarResult {
     const threadReloadTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
 
     const load = useCallback(async (options: LoadOptions = {}) => {
-        if (!scope.active || !spaceId || WKApp.shared.currentSpaceId !== spaceId) return
+        const gen = scopeGenRef.current
+        if (!activeRef.current || !spaceId || WKApp.shared.currentSpaceId !== spaceId) return
         const silent = options.silent === true
         const revision = silent ? request.current : ++request.current
         const silentRevision = silent ? ++silentRequest.current : 0
-        const isCurrent = () => scope.active && revision === request.current &&
+        const isCurrent = () => activeRef.current && gen === scopeGenRef.current &&
+            revision === request.current &&
             (!silent || silentRevision === silentRequest.current) &&
             WKApp.shared.currentSpaceId === spaceId
         if (!silent) {
@@ -134,31 +138,37 @@ export function useFollowSidebar(): UseFollowSidebarResult {
                 setIsLoading(false)
             }
         }
-    }, [spaceId, scope])
+    }, [spaceId])
+
+    // Reset only for a Space change, even if React discards a memoized callback.
+    const loadRef = useRef(load)
+    loadRef.current = load
 
     useEffect(() => {
-        scope.active = true
+        scopeGenRef.current += 1
+        activeRef.current = true
+        // Entering a Space (or a fresh mount) starts from an empty snapshot so
+        // retained data from a previous Space can never show through.
         setItems([])
         setFollowVersion(0)
         versionRef.current = 0
         setError(null)
         setIsLoading(false)
-        void load()
+        void loadRef.current()
         return () => {
-            scope.active = false
-            request.current++
+            activeRef.current = false
         }
-    }, [load, scope])
+    }, [spaceId])
 
-    useEffect(() => subscribePageActivation("chat", () => { void load({ silent: true }) }), [load])
+    useEffect(() => subscribePageActivation("chat", () => { void loadRef.current({ silent: true }) }, WKApp), [])
 
     // 外部触发重载（如 ThreadPanel 关注子区后、会话未读数变化后 #203）
     // 使用 silent 模式：不翻转 isLoading，避免关注 tab 列表 remount 闪烁 / 丢失滚动位置
     useEffect(() => {
-        const handler = () => load({ silent: true })
+        const handler = () => loadRef.current({ silent: true })
         WKApp.mittBus.on("sidebar-reload" as any, handler)
         return () => { WKApp.mittBus.off("sidebar-reload" as any, handler) }
-    }, [load])
+    }, [])
 
     // 写接口成功后先乐观更新关注侧栏，再由 sidebar-reload 用服务端快照校准。
     // 否则静默重载期间仍会短暂显示旧未读（例如 5），用户会看到清除动作延迟生效。
@@ -204,7 +214,7 @@ export function useFollowSidebar(): UseFollowSidebarResult {
                     return
                 }
 
-                void load({ silent: true }).finally(() => {
+                void loadRef.current({ silent: true }).finally(() => {
                     if (index === THREAD_SIDEBAR_RELOAD_DELAYS_MS.length - 1) {
                         requestedThreadReloadsRef.current.delete(threadChannelId)
                     }
@@ -212,7 +222,7 @@ export function useFollowSidebar(): UseFollowSidebarResult {
             }, delay)
             threadReloadTimersRef.current.add(timer)
         })
-    }, [load])
+    }, [])
 
     useEffect(() => {
         const conversationManager = WKSDK.shared().conversationManager
@@ -264,7 +274,7 @@ export function useFollowSidebar(): UseFollowSidebarResult {
                 const threadKey = `${ChannelTypeCommunityTopic}::${threadChannelId}`
                 if (!followedKeysRef.current.has(threadKey)) {
                     FollowService.followThread({ thread_channel_id: threadChannelId })
-                        .then(() => load({ silent: true }))
+                        .then(() => loadRef.current({ silent: true }))
                         .catch((err) => console.warn("[useFollowSidebar] auto-follow thread failed (non-fatal)", err))
                 }
             }
@@ -283,12 +293,12 @@ export function useFollowSidebar(): UseFollowSidebarResult {
     }, [scheduleThreadReload])
 
     useEffect(() => {
-        const listener = () => load({ silent: true })
+        const listener = () => loadRef.current({ silent: true })
         WKApp.mittBus.on("wk:thread-deleted", listener)
         return () => {
             WKApp.mittBus.off("wk:thread-deleted", listener)
         }
-    }, [load])
+    }, [])
     // sort 成功后调，乐观自增 ref，避免连续拖拽用旧版本号触发 CAS conflict
     const bumpVersion = useCallback(() => {
         versionRef.current = versionRef.current + 1

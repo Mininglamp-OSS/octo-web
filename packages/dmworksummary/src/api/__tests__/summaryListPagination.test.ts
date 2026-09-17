@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { listSummaries } from "../summaryApi";
-import { fetchSummaryListPrefix } from "../summaryListPagination";
+import { fetchSummaryListPrefix, SummaryPaginationDriftError } from "../summaryListPagination";
 import type { ListSummariesResponse, SummaryListItem } from "../../types/summary";
 
 vi.mock("../summaryApi", () => ({ listSummaries: vi.fn() }));
@@ -75,7 +75,7 @@ describe("fetchSummaryListPrefix", () => {
 
     it("bounds retries when every response has duplicate IDs", async () => {
         vi.mocked(listSummaries).mockResolvedValue(response([...rows(1, 19), ...rows(1, 1)], 60));
-        await expect(fetchSummaryListPrefix({}, 20, () => true)).rejects.toThrow("pagination changed");
+        await expect(fetchSummaryListPrefix({}, 20, () => true)).rejects.toBeInstanceOf(SummaryPaginationDriftError);
         expect(listSummaries).toHaveBeenCalledTimes(3);
     });
 
