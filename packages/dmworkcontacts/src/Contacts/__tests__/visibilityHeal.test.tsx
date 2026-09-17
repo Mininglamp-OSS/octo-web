@@ -249,6 +249,36 @@ describe("Contacts roster revalidation", () => {
     return { ref, WKApp, SpaceService };
   }
 
+  async function mountPendingRoster() {
+    const { WKApp } = await import("@octo/base");
+    const { SpaceService } = await import("@octo/base/src/Service/SpaceService");
+    const initialMembers = deferred<any[]>();
+    const initialRoster = {
+      spaceMembers: [{ uid: "initial-member", name: "Initial member" }],
+      myBots: [{ uid: "initial-bot", name: "Initial bot" }],
+      spaceBots: [{ uid: "initial-space-bot", name: "Initial Space bot" }],
+      myGroups: [{ group_no: "initial-group", name: "Initial group" }],
+    };
+    WKApp.shared.currentSpaceId = "space-a";
+    vi.mocked(SpaceService.shared.getMySpaces).mockResolvedValue([{ space_id: "space-a", name: "Alpha" }] as any);
+    vi.mocked(SpaceService.shared.getMembers).mockReturnValueOnce(initialMembers.promise);
+    vi.mocked(WKApp.apiClient.get).mockImplementation(async (path) => {
+      if (path === "/robot/my_bots") return initialRoster.myBots;
+      if (path === "/robot/space_bots") return initialRoster.spaceBots;
+      return initialRoster.myGroups;
+    });
+    const ref = React.createRef<any>();
+    await act(async () => { ReactDOM.render(<ContactsList ref={ref} />, container); });
+    await flush();
+    return {
+      ref, WKApp, SpaceService, initialRoster,
+      finishInitial: async () => {
+        await act(async () => { initialMembers.resolve(initialRoster.spaceMembers); });
+        await flush();
+      },
+    };
+  }
+
   it("refreshes all directories and search on resume while retaining filter, section and scroll", async () => {
     const { ref, WKApp, SpaceService } = await mountRoster();
     await act(async () => {
@@ -335,6 +365,72 @@ describe("Contacts roster revalidation", () => {
     await flush();
     expect(ref.current.state.loading).toBe(false);
     expect(ref.current.state.spaceMembers[0].uid).toBe("ready");
+  });
+
+  it.each(["/robot/my_bots", "/robot/space_bots", "/group/my?space_id=space-a"])(
+    "keeps the complete foreground roster when silent %s fails",
+    async (failedPath) => {
+      const { ref, WKApp, SpaceService, initialRoster, finishInitial } = await mountPendingRoster();
+      expect(ref.current.state.loading).toBe(true);
+      vi.mocked(SpaceService.shared.getMembers).mockResolvedValue([{ uid: "silent-member", name: "Silent member" }] as any);
+      vi.mocked(WKApp.apiClient.get).mockImplementation(async (path) => {
+        if (path === failedPath) throw new Error("offline");
+        return [];
+      });
+      await act(async () => { window.dispatchEvent(new Event("octobuddy:resume")); });
+      await flush();
+      const afterSilent = ref.current.state;
+      await finishInitial();
+      expect(ref.current.state).toMatchObject({ ...initialRoster, loading: false });
+      expect(afterSilent).toMatchObject({
+        spaceMembers: [], myBots: [], spaceBots: [], myGroups: [], loading: true,
+      });
+    },
+  );
+
+  it("preserves the cached roster when a silent directory request fails", async () => {
+    const { ref, WKApp, SpaceService } = await mountRoster();
+    const cachedRoster = ref.current.state;
+    vi.mocked(SpaceService.shared.getMembers).mockResolvedValue([{ uid: "partial", name: "Partial snapshot" }] as any);
+    vi.mocked(WKApp.apiClient.get).mockRejectedValueOnce(new Error("offline"));
+    await act(async () => { window.dispatchEvent(new Event("octobuddy:resume")); });
+    await flush();
+    expect(ref.current.state.spaceMembers).toEqual(cachedRoster.spaceMembers);
+    expect(ref.current.state.myBots).toEqual(cachedRoster.myBots);
+    expect(ref.current.state.spaceBots).toEqual(cachedRoster.spaceBots);
+    expect(ref.current.state.myGroups).toEqual(cachedRoster.myGroups);
+    expect(ref.current.state.loading).toBe(false);
+  });
+
+  it.each(["/robot/my_bots", "/robot/space_bots", "/group/my?space_id=space-a"])(
+    "preserves the foreground empty-directory fallback when %s fails",
+    async (failedPath) => {
+      const { WKApp } = await import("@octo/base");
+      vi.mocked(WKApp.apiClient.get).mockImplementation(async (path) => {
+        if (path === failedPath) throw new Error("offline");
+        return [];
+      });
+      const { ref } = await mountRoster();
+      expect(ref.current.state).toMatchObject({
+        spaceMembers: [{ uid: "old", name: "Old contact" }],
+        myBots: [], spaceBots: [], myGroups: [], loading: false,
+      });
+    },
+  );
+
+  it("keeps a complete silent snapshot after the older foreground roster resolves", async () => {
+    const { ref, WKApp, SpaceService, finishInitial } = await mountPendingRoster();
+    const latestRoster = {
+      spaceMembers: [{ uid: "latest-member", name: "Latest member" }],
+      myBots: [], spaceBots: [], myGroups: [], loading: false,
+    };
+    vi.mocked(SpaceService.shared.getMembers).mockResolvedValue(latestRoster.spaceMembers as any);
+    vi.mocked(WKApp.apiClient.get).mockResolvedValue([]);
+    await act(async () => { window.dispatchEvent(new Event("octobuddy:resume")); });
+    await flush();
+    expect(ref.current.state).toMatchObject(latestRoster);
+    await finishInitial();
+    expect(ref.current.state).toMatchObject(latestRoster);
   });
 
   it("ignores a late roster response after switching Space", async () => {

@@ -175,6 +175,31 @@ describe("useAppBots host behavior", () => {
     expect(latest?.filteredBots[0].displayName).toBe("Initial");
   });
 
+  it("keeps a successful silent snapshot after the older foreground bot load resolves", async () => {
+    const bot = { id: "1", uid: "bot-1", display_name: "Initial", scope: "space" as const };
+    const initial = deferred<typeof bot[]>();
+    vi.mocked(AppBotService.getAvailableBots)
+      .mockReturnValueOnce(initial.promise)
+      .mockResolvedValueOnce([{ ...bot, display_name: "Latest" }]);
+    await act(async () => {
+      ReactDOM.render(<Harness onSpaceChanged={vi.fn()} />, container);
+      await flushEffects();
+    });
+    expect(latest?.state).toBe("loading");
+    await act(async () => {
+      state.invalidationListener?.();
+      await flushEffects();
+    });
+    expect(latest?.state).toBe("ready");
+    expect(latest?.filteredBots[0].displayName).toBe("Latest");
+    await act(async () => {
+      initial.resolve([bot]);
+      await flushEffects();
+    });
+    expect(latest?.state).toBe("ready");
+    expect(latest?.filteredBots[0].displayName).toBe("Latest");
+  });
+
   it("discards stale refreshes after later invalidation and Space changes", async () => {
     const bot = { id: "1", uid: "bot-1", display_name: "Old", scope: "space" as const };
     await act(async () => {

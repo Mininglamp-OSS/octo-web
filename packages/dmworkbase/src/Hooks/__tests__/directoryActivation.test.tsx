@@ -137,6 +137,30 @@ describe("communication directory activation", () => {
         expect(result.current.sidebar.versionRef.current).toBe(4)
     })
 
+    it("keeps successful silent snapshots after older foreground directory loads resolve", async () => {
+        const initialCategories = deferred<CategoryItem[]>()
+        const initialSidebar = deferred<SidebarSyncResp>()
+        list.mockReturnValueOnce(initialCategories.promise)
+        sync.mockReturnValueOnce(initialSidebar.promise)
+        const { result } = renderHook(useDirectories)
+        list.mockResolvedValue(categories("latest"))
+        sync.mockResolvedValue(sidebar("latest", 4))
+        await resume()
+        expect(result.current.categories.categories[0].name).toBe("latest")
+        expect(result.current.sidebar.items[0].target_id).toBe("latest")
+        expect(result.current.categories.isLoading).toBe(false)
+        expect(result.current.sidebar.isLoading).toBe(false)
+        await act(async () => {
+            initialCategories.resolve(categories("stale"))
+            initialSidebar.resolve(sidebar("stale", 1))
+        })
+        expect(result.current.categories.categories[0].name).toBe("latest")
+        expect(result.current.sidebar.items[0].target_id).toBe("latest")
+        expect(result.current.sidebar.versionRef.current).toBe(4)
+        expect(result.current.categories.isLoading).toBe(false)
+        expect(result.current.sidebar.isLoading).toBe(false)
+    })
+
     it("refreshes on contacts-to-chat return, without reloading for each conversation", async () => {
         renderHook(useDirectories)
         await waitFor(() => expect(list).toHaveBeenCalledTimes(1))

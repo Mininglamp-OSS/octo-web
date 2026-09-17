@@ -180,6 +180,26 @@ describe("legacy schedule recovery controls", () => {
         expect(page.state.schedules[0].title).toBe("Initial");
     });
 
+    it("keeps a successful silent snapshot after the older foreground schedule load resolves", async () => {
+        const page = makePage();
+        const schedule = pageWithSchedule().state.schedules[0];
+        const initial = deferred<typeof schedule[]>();
+        vi.mocked(api.listSchedules)
+            .mockReturnValueOnce(initial.promise)
+            .mockResolvedValueOnce([{ ...schedule, title: "Latest" }]);
+        const foreground = page.loadData();
+        page.componentDidUpdate({ refreshKey: -1 });
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(page.state.loading).toBe(false);
+        expect(page.state.schedules[0].title).toBe("Latest");
+        initial.resolve([{ ...schedule, title: "Initial" }]);
+        await foreground;
+        expect(page.state.loading).toBe(false);
+        expect(page.state.error).toBeNull();
+        expect(page.state.schedules[0].title).toBe("Latest");
+    });
+
     it("ignores late snapshots after newer refreshes, mutations and unmount", async () => {
         const page = pageWithSchedule();
         const stale = [...page.state.schedules];

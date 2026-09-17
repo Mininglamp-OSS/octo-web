@@ -378,12 +378,17 @@ export default class ContactsList extends Component<any, ContactsState> {
     }
 
     private async loadAllData(spaceId: string, generation: number, silent = false, activationGeneration?: number) {
+        const handleDirectoryFailure = (error: unknown) => {
+            // Only a complete silent snapshot may supersede an in-flight foreground load.
+            if (silent) throw error
+            return []
+        }
         try {
             const [members, myBots, spaceBots, myGroups] = await Promise.all([
                 this.fetchAllSpaceMembers(spaceId),
-                WKApp.apiClient.get("/robot/my_bots", { param: { space_id: spaceId } }).catch(() => silent ? this.state.myBots : []),
-                WKApp.apiClient.get("/robot/space_bots", { param: { space_id: spaceId } }).catch(() => silent ? this.state.spaceBots : []),
-                WKApp.apiClient.get(`/group/my?space_id=${spaceId}`).catch(() => silent ? this.state.myGroups : []),
+                WKApp.apiClient.get("/robot/my_bots", { param: { space_id: spaceId } }).catch(handleDirectoryFailure),
+                WKApp.apiClient.get("/robot/space_bots", { param: { space_id: spaceId } }).catch(handleDirectoryFailure),
+                WKApp.apiClient.get(`/group/my?space_id=${spaceId}`).catch(handleDirectoryFailure),
             ])
             if (!this.isCurrentSpaceLoad(spaceId, generation, activationGeneration)) return
             if (silent) this.spaceLoadGeneration += 1
