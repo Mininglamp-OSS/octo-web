@@ -144,10 +144,14 @@ export class TextCell extends MessageCell {
 
         // content.text 是 SDK MessageText 实例的 text 属性（decodeJSON 里赋值）
         // fallback 到 parts 拼接（发送方消息 text 已由构造函数设置，一般不走这里）
+        // 防御：当消息 payload 的 content 字段为 JSON Object（结构化消息）时，
+        // SDK MessageText.decodeJSON 会把 Object 直接赋给 this.text，
+        // 若不加保护，MarkdownContent 里 raw.split() 会抛 "n.split is not a function"。
         const rawContent = (message.message?.remoteExtra?.isEdit && message.message?.remoteExtra?.contentEdit)
             ? message.message.remoteExtra.contentEdit as any
             : message.content as any
-        const plainText = rawContent?.text
+        const rawText = rawContent?.text
+        const plainText = (typeof rawText === 'string' ? rawText : '')
             || parts?.map((p: Part) => p.text).join("")
             || ""
 
