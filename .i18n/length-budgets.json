@@ -1,0 +1,4 @@
+{
+  "$comment": "Character budgets for constrained UI containers. Consumed by pnpm i18n:check via scripts/i18n-scan.mjs. Each rule declares a max character count for one or more key patterns; every locale's translation of a matched key must fit the budget, or the same key must ship a `.short` variant that fits. Populated by WS-217 (docs/i18n-agent-guide.md § Copy Length Budgets & Constrained Layouts). Keep this list empty until WS-217 lands the container inventory.",
+  "budgets": []
+}
