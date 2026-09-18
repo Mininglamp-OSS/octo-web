@@ -96,8 +96,10 @@ function createPage(): PageInternals {
   return page;
 }
 
-function createUnmountedPage(): PageInternals {
-  const page = new McpMarketListPage({}) as unknown as PageInternals;
+function createUnmountedPage(
+  props: React.ComponentProps<typeof McpMarketListPage> = {}
+): PageInternals {
+  const page = new McpMarketListPage(props) as unknown as PageInternals;
   page.setState = (patch, callback) => {
     const next = typeof patch === "function" ? patch(page.state) : patch;
     page.state = { ...page.state, ...next };
@@ -120,6 +122,31 @@ beforeEach(() => {
   h.fetchMcpList.mockResolvedValue(emptyList);
   h.fetchMcpMine.mockResolvedValue(emptyList);
   h.fetchMcpTags.mockResolvedValue([]);
+});
+
+describe("McpMarketListPage discovery sort defaults", () => {
+  it("loads the public connector market with comprehensive sort", async () => {
+    const page = createUnmountedPage();
+
+    await page.loadData();
+
+    expect(page.state.sort).toBe("comprehensive");
+    expect(h.fetchMcpList).toHaveBeenCalledWith(
+      expect.objectContaining({ sort: "comprehensive" })
+    );
+  });
+
+  it("keeps the hidden mine sort on latest", async () => {
+    const page = createUnmountedPage({ variant: "mine" });
+    page.state = { ...page.state, mode: "mine" };
+
+    await page.loadData();
+
+    expect(page.state.sort).toBe("latest");
+    expect(h.fetchMcpMine).toHaveBeenCalledWith(
+      expect.objectContaining({ sort: "latest" })
+    );
+  });
 });
 
 describe("McpMarketListPage category reset contract", () => {

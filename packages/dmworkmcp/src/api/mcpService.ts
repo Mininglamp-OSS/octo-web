@@ -748,11 +748,16 @@ async function fetchMcpListPath(
   const keyword = params.keyword?.trim();
   if (keyword) query.q = keyword;
   // Discovery sort maps onto the unified plugin list (see
-  // internal/repository/plugin/read.go): "latest" → newest, "hottest" →
-  // installs (install-count popularity). Default newest for callers that omit
-  // sort, preserving the historical browse order.
+  // internal/repository/plugin/read.go): "comprehensive" passes through,
+  // "latest" → newest, and "hottest" → installs (install-count popularity).
+  // Default newest for callers that omit sort, preserving the historical
+  // behavior of callers that do not opt into a discovery sort.
   query.sort =
-    params.sort === "hottest" ? "installs" : params.sort === "latest" ? "newest" : "newest";
+    params.sort === "comprehensive"
+      ? "comprehensive"
+      : params.sort === "hottest"
+        ? "installs"
+        : "newest";
   // Multi-tag filter is AND; REPEATED params (`tag=a&tag=b`) so a tag value
   // containing a comma still round-trips intact.
   if (params.tags?.length) {

@@ -60,8 +60,8 @@ interface McpMarketListPageState {
    *  resolves. */
   tagSuggestions: McpTagSuggestion[];
   mode: ListMode;
-  /** Discovery sort (market variant only). MCP and expert default to 最新
-   *  (newest); the skill market defaults to 综合 (comprehensive). */
+  /** Discovery sort (market variant only). Public markets default to 综合
+   *  (comprehensive); the mine variant keeps its hidden latest-first order. */
   sort: McpSort;
   offset: number;
   total: number;
@@ -131,7 +131,7 @@ export default class McpMarketListPage extends Component<
     tagQuery: "",
     tagSuggestions: [],
     mode: "all",
-    sort: "latest",
+    sort: this.props.variant === "mine" ? "latest" : "comprehensive",
     offset: 0,
     total: 0,
     detailId: null,
@@ -1071,6 +1071,7 @@ export default class McpMarketListPage extends Component<
             <div className="wk-mcp-expert-sort" aria-label={t("mcp.list.sortAriaLabel")}>
               <div className="wk-mcp-expert-sort__options">
                 {([
+                  ["comprehensive", "mcp.list.sortComprehensive"],
                   ["latest", "mcp.list.sortLatest"],
                   ["hottest", "mcp.list.sortHottest"],
                 ] as Array<[McpSort, string]>).map(([value, labelKey]) => (

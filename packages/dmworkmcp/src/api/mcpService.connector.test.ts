@@ -138,6 +138,29 @@ describe("trackMcpView", () => {
 });
 
 describe("fetchMcpListPath — category resolution fails closed (P1-2)", () => {
+  it.each([
+    ["comprehensive", "comprehensive"],
+    ["latest", "newest"],
+    ["hottest", "installs"],
+  ] as const)("maps the %s discovery sort to backend sort=%s", async (sort, wireSort) => {
+    mock.instance.get.mockImplementation((url: string) => {
+      if (url.includes("/plugin_categories")) return Promise.resolve(categoriesOk());
+      if (url.endsWith("/plugins")) {
+        return Promise.resolve({
+          data: { data: [], pagination: { total: 0, page: 1, page_size: 20 } },
+        });
+      }
+      throw new Error(`unexpected GET ${url}`);
+    });
+
+    await fetchMcpList({ sort });
+
+    const listCall = mock.instance.get.mock.calls.find((call) =>
+      (call[0] as string).endsWith("/plugins")
+    ) as [string, { params: Record<string, unknown> }];
+    expect(listCall[1].params.sort).toBe(wireSort);
+  });
+
   it("returns an explicit empty result (never widens) when the category filter is unresolved", async () => {
     mock.instance.get.mockImplementation((url: string) => {
       if (url.includes("/plugin_categories")) return Promise.resolve(categoriesOk());

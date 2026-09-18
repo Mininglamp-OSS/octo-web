@@ -44,6 +44,7 @@ const MAX_SELECTED_TAGS = 20;
 const ALL_CATEGORY = EXPERT_CATEGORIES[0];
 // Ordering and filtering both apply on the server before pagination.
 const SORT_OPTIONS: Array<{ value: ExpertCatalogSort; labelKey: string; descending?: boolean }> = [
+  { value: "comprehensive", labelKey: "mcp.expert.sortComprehensive" },
   { value: "latest", labelKey: "mcp.expert.sortLatest" },
   { value: "installs", labelKey: "mcp.expert.sortHottest" },
 ];
@@ -131,7 +132,11 @@ export default function ExpertMarketListPage({
   );
   const [category, setCategory] = useState<string>(ALL_CATEGORY);
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<ExpertCatalogSort>("latest");
+  // Public discovery uses the backend's blended ranking. The mine variant has
+  // no visible sort control, so keep its existing latest-first order.
+  const [sort, setSort] = useState<ExpertCatalogSort>(
+    variant === "mine" ? "latest" : "comprehensive"
+  );
   const [selected, setSelected] = useState<ExpertItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   /** Bot-authored create/update flow (the previous version): create opens the
