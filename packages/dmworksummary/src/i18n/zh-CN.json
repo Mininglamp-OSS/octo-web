@@ -76,6 +76,7 @@
     "directMessage": "私聊",
     "document": "文档",
     "version": "版本 {{version}}",
+    "generationSnapshot": "生成时快照",
     "label": "来源：",
     "selectedHeader": "已选择的信息来源",
     "empty": "暂无来源",

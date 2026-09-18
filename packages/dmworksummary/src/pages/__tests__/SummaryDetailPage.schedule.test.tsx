@@ -1904,21 +1904,34 @@ describe('SummaryDetailPage — document summaries never enter the schedule pipe
 });
 
 describe('SummaryDetailPage — document source snapshot version', () => {
-    it('includes source_version in the document source label', () => {
+    it('labels the source type, document name and generation snapshot without exposing source_version', () => {
         const page = makePage(1);
         (page as any).context = {
-            t: (key: string, options?: { values?: { version?: number } }) =>
-                key === 'summary.source.version'
-                    ? `版本 ${options?.values?.version}`
-                    : key,
+            t: (key: string) => ({
+                'summary.source.document': '文档',
+                'summary.source.generationSnapshot': '生成时快照',
+            }[key] || key),
         };
 
         expect((page as any).sourceLabel({
             source_type: 4,
             source_id: 'doc-1',
             source_name: '项目复盘',
-            source_version: 7,
-        })).toBe('项目复盘 · 版本 7');
+            source_version: 'A6v+hvAJgQjBluHbCaAQq7eowQTFBQ==',
+        })).toBe('文档 · 项目复盘 · 生成时快照');
+    });
+
+    it('labels chat sources by type without a document snapshot badge', () => {
+        const page = makePage(1);
+        (page as any).context = {
+            t: (key: string) => key === 'summary.source.groupChat' ? '群聊' : key,
+        };
+
+        expect((page as any).sourceLabel({
+            source_type: 1,
+            source_id: 'group-1',
+            source_name: '需求讨论群',
+        })).toBe('群聊 · 需求讨论群');
     });
 });
 

@@ -76,6 +76,7 @@
     "directMessage": "Direct message",
     "document": "Document",
     "version": "Version {{version}}",
+    "generationSnapshot": "Snapshot at generation",
     "label": "Source: ",
     "selectedHeader": "Selected sources",
     "empty": "No sources",

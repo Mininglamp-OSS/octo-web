@@ -11,7 +11,7 @@ import {
     Dropdown,
 } from "@douyinfe/semi-ui";
 import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconRefresh, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
-import { ChevronDown, Check, X } from "lucide-react";
+import { ChevronDown, Check, FileText, MessageSquareText, UsersRound, X } from "lucide-react";
 import {
   I18nContext,
   t,
@@ -222,13 +222,67 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     declare context: React.ContextType<typeof I18nContext>;
 
     private sourceLabel = (source: SourceItem): string => {
+        const type = this.sourceTypeLabel(source);
         const name = source.source_name || source.source_id;
         if (source.source_type !== SourceType.DOCUMENT || source.source_version == null) {
-            return name;
+            return `${type} · ${name}`;
         }
-        return `${name} · ${this.context.t("summary.source.version", {
-            values: { version: source.source_version },
-        })}`;
+        return `${type} · ${name} · ${this.context.t("summary.source.generationSnapshot")}`;
+    };
+
+    private sourceTypeLabel = (source: SourceItem): string => {
+        switch (source.source_type) {
+            case SourceType.GROUP_CHAT:
+                return this.context.t("summary.source.groupChat");
+            case SourceType.THREAD:
+                return this.context.t("summary.source.thread");
+            case SourceType.DIRECT_MESSAGE:
+                return this.context.t("summary.source.directMessage");
+            case SourceType.DOCUMENT:
+                return this.context.t("summary.source.document");
+        }
+    };
+
+    private sourceIcon = (source: SourceItem) => {
+        if (source.source_type === SourceType.GROUP_CHAT) {
+            return <UsersRound size={14} aria-hidden />;
+        }
+        if (source.source_type === SourceType.DOCUMENT) {
+            return <FileText size={14} aria-hidden />;
+        }
+        return <MessageSquareText size={14} aria-hidden />;
+    };
+
+    private renderSourceMetadata = (sources: SourceItem[]) => {
+        if (!sources.length) return null;
+        const { t } = this.context;
+        return (
+            <div className="summary-detail-source-row">
+                <span className="summary-detail-source-label">{t("summary.source.label")}</span>
+                <div className="summary-detail-source-chips">
+                    {sources.map((source, index) => {
+                        const isSnapshot = source.source_type === SourceType.DOCUMENT && source.source_version != null;
+                        return (
+                            <span
+                                key={`${source.source_type}-${source.source_id}-${index}`}
+                                className="summary-detail-source-chip"
+                                aria-label={this.sourceLabel(source)}
+                            >
+                                <span className="summary-detail-source-icon">{this.sourceIcon(source)}</span>
+                                <span className="summary-detail-source-type">{this.sourceTypeLabel(source)}</span>
+                                <span className="summary-detail-source-separator" aria-hidden>·</span>
+                                <span className="summary-detail-source-name">{source.source_name || source.source_id}</span>
+                                {isSnapshot && (
+                                    <span className="summary-detail-source-snapshot">
+                                        {t("summary.source.generationSnapshot")}
+                                    </span>
+                                )}
+                            </span>
+                        );
+                    })}
+                </div>
+            </div>
+        );
     };
 
     private isDocumentSummaryDetail(detail: SummaryDetail | null = this.state.detail): boolean {
@@ -2780,15 +2834,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <div className="summary-detail-meta-time">
                         {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                     </div>
-                    {detail.sources && detail.sources.length > 0 && (
-                        <div className="summary-detail-source-chips">
-                            {detail.sources.map((src, i) => (
-                                <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
-                                    {this.sourceLabel(src)}
-                                </span>
-                            ))}
-                        </div>
-                    )}
+                    {this.renderSourceMetadata(detail.sources || [])}
                 </div>
                 <hr className="summary-detail-meta-divider" /></>}
                 <div className="summary-detail-failed">
@@ -3296,15 +3342,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <div className="summary-detail-meta-time">
                             {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                         </div>
-                        {detail.sources && detail.sources.length > 0 && (
-                            <div className="summary-detail-source-chips">
-                                {detail.sources.map((src, i) => (
-                                    <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
-                                        {this.sourceLabel(src)}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
+                        {this.renderSourceMetadata(detail.sources || [])}
                     </div>
                     <hr className="summary-detail-meta-divider" />
                     <div className="summary-detail-result-header">
@@ -3456,15 +3494,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <div className="summary-detail-meta-time">
                             {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                         </div>
-                        {detail.sources && detail.sources.length > 0 && (
-                            <div className="summary-detail-source-chips">
-                                {detail.sources.map((src, i) => (
-                                    <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
-                                        {this.sourceLabel(src)}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
+                        {this.renderSourceMetadata(detail.sources || [])}
                     </div>
                 )}
                 <hr className="summary-detail-meta-divider" />
@@ -3631,15 +3661,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <div className="summary-detail-meta-time">
                             {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                         </div>
-                        {detail.sources && detail.sources.length > 0 && (
-                            <div className="summary-detail-source-chips">
-                                {detail.sources.map((src, i) => (
-                                    <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
-                                        {this.sourceLabel(src)}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
+                        {this.renderSourceMetadata(detail.sources || [])}
                     </div>
                     <hr className="summary-detail-meta-divider" />
                     <div className="summary-detail-content-box">
@@ -3661,15 +3683,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <div className="summary-detail-meta-time">
                         {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                     </div>
-                    {detail.sources && detail.sources.length > 0 && (
-                        <div className="summary-detail-source-chips">
-                            {detail.sources.map((src, i) => (
-                                <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
-                                    {this.sourceLabel(src)}
-                                </span>
-                            ))}
-                        </div>
-                    )}
+                    {this.renderSourceMetadata(detail.sources || [])}
                 </div>
                 <hr className="summary-detail-meta-divider" />
                 <div className="summary-detail-section-header">

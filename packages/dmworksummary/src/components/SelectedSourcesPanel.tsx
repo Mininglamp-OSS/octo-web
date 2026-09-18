@@ -42,7 +42,7 @@ const SelectedSourcesPanel: React.FC<SelectedSourcesPanelProps> = ({ sources = [
                             </span>
                             {source.source_type === SourceType.DOCUMENT && source.source_version != null && (
                                 <span className="selected-sources-item-version">
-                                    {t("summary.source.version", { values: { version: source.source_version } })}
+                                    {t("summary.source.generationSnapshot")}
                                 </span>
                             )}
                         </div>
