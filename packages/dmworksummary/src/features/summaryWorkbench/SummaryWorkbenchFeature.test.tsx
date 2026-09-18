@@ -1119,6 +1119,37 @@ describe("SummaryWorkbenchFeature", () => {
     );
   });
 
+  it("blocks a persisted document scope when the docs capability is unavailable", () => {
+    const send = vi.fn();
+    mocks.useSummaryWorkbench.mockReturnValue(
+      controller({
+        scope: scope({
+          documents: [{ documentId: "doc-a", title: "Doc A" }],
+          template: {
+            templateId: "doc",
+            label: "Document summary",
+            requirement: "Summarize the document",
+          },
+        }),
+        send,
+      })
+    );
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "false"
+    );
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    expect(send).not.toHaveBeenCalled();
+    expect(mocks.toastWarning).toHaveBeenCalledWith(
+      "summary.create.documentSourceUnavailable"
+    );
+  });
+
   it("defers participant pruning until an in-flight save settles", async () => {
     const candidateLoad = deferred<{
       members: WorkbenchMemberCandidate[];

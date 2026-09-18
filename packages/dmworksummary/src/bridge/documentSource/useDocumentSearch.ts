@@ -63,8 +63,8 @@ export function useDocumentSearch({
     }
     const sequence = ++requestSequence.current;
     setError(null);
+    setIsLoading(true);
     const timer = window.setTimeout(async () => {
-      setIsLoading(true);
       try {
         const result = await service.listDocuments(source, keyword);
         if (sequence !== requestSequence.current) return;
@@ -86,11 +86,15 @@ export function useDocumentSearch({
     };
   }, [keyword, retryKey, service, source, t, visible]);
 
-  const onSourceChange = useCallback((nextSource: DocumentSelectorSource) => {
-    setSource(nextSource);
-    setError(null);
-    setIsLoading(true);
-  }, []);
+  const onSourceChange = useCallback(
+    (nextSource: DocumentSelectorSource) => {
+      if (nextSource === source) return;
+      setSource(nextSource);
+      setError(null);
+      setIsLoading(true);
+    },
+    [source]
+  );
 
   const onKeywordChange = useCallback((nextKeyword: string) => {
     setKeyword(nextKeyword);

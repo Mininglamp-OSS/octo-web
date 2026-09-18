@@ -97,6 +97,8 @@ export const WKApp = {
   },
 };
 
+export const APIClient = { shared: WKApp.apiClient };
+
 export default WKApp;
 
 /** Dap 采集单例的测试替身:方法全 no-op,单测可 vi.spyOn(Dap.shared, 'track') 断言埋点调用。 */
@@ -158,6 +160,8 @@ export const buildDocLink = ({ docId }: { docId: string }): string =>
   `${typeof window !== 'undefined' && window.location?.origin ? window.location.origin : ''}/d/${encodeURIComponent(docId)}`;
 
 export const webOrigin = (): string => window.location.origin;
+export const resolveDocLinkForExternalOpen = (link: string): string => link;
+export const getElectronLinksBridge = (): undefined => undefined;
 export { validateDocsDocumentLink } from "../../../dmworkbase/src/bridge/docs/documentLink";
 
 /** Utils/clipboard.copyToClipboard 的测试替身，默认成功；单测可 vi.spyOn 覆写。 */

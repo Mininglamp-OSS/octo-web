@@ -1,6 +1,15 @@
 import React, { useContext, useMemo, useRef, useState, useCallback, useEffect } from 'react';
-import { Popover } from "@douyinfe/semi-ui";
-import { buildDocLink, i18n, useI18n, Dap } from "@octo/base";
+import { Popover, Toast } from "@douyinfe/semi-ui";
+import {
+    buildDocLink,
+    Dap,
+    getDocsDocumentOpener,
+    getElectronLinksBridge,
+    i18n,
+    resolveDocLinkForExternalOpen,
+    useI18n,
+    webOrigin,
+} from "@octo/base";
 import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import { ChannelTypeCommunityTopic } from "@octo/base/src/Service/Const";
@@ -244,11 +253,38 @@ function JumpLink({ citation, badgeKey, closeKey }: { citation: CitationItem; ba
                 onClick={(event) => {
                     event.stopPropagation();
                     closeKey(badgeKey);
-                    window.open(
-                        buildDocLink({ docId: citation.document_id! }),
-                        "_blank",
-                        "noopener,noreferrer"
-                    );
+                    const docId = citation.document_id!;
+                    const url = buildDocLink({ docId });
+                    const hostOpener = getDocsDocumentOpener();
+                    if (hostOpener) {
+                        void hostOpener({ docId, url }).catch(() => {
+                            Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                        });
+                        return;
+                    }
+                    const linksBridge = getElectronLinksBridge();
+                    if (linksBridge) {
+                        void linksBridge
+                            .openExternal(resolveDocLinkForExternalOpen(url, webOrigin()))
+                            .then((result) => {
+                                if (!result.ok) Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                            })
+                            .catch(() => {
+                                Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                            });
+                        return;
+                    }
+                    const opened = window.open("about:blank", "_blank");
+                    if (!opened) {
+                        Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                        return;
+                    }
+                    try {
+                        opened.opener = null;
+                    } catch {
+                        // Some browser sandboxes freeze the opener setter.
+                    }
+                    opened.location.href = url;
                 }}
             >
                 {t("summary.citation.openDocument")}

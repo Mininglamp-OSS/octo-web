@@ -1,4 +1,4 @@
-import { WKApp } from "@octo/base";
+import { APIClient } from "@octo/base";
 import type { DocSearchDocType, DocSearchItem } from "@octo/base";
 import type { DocumentSelectorSource } from "../ui/DocumentSelector/types";
 
@@ -33,7 +33,7 @@ const SUPPORTED_DOC_TYPE_SET = new Set<DocSearchDocType>(SUPPORTED_DOC_TYPES);
 
 const defaultTransport: DocumentSourceTransport = {
   list(source, param) {
-    return WKApp.apiClient.get<DocsListResponse>(
+    return APIClient.shared.get<DocsListResponse>(
       source === "recent" ? "docs/recent" : "docs",
       { param }
     );

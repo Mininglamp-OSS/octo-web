@@ -559,6 +559,9 @@ export default function SummaryWorkbenchFeature({
     workbench.scope,
     composerHasCustomText
   );
+  const documentScopeUnavailable =
+    (workbench.scope.documents ?? []).length > 0 &&
+    !documentSelectorAvailable;
   const participantScopeReady =
     workbench.scope.participants.length === 0 ||
     (Boolean(participantScopeKey) &&
@@ -597,6 +600,7 @@ export default function SummaryWorkbenchFeature({
     isSending: busy,
     canSend:
       !busy &&
+      !documentScopeUnavailable &&
       participantScopeReady &&
       (composerHasCustomText ||
         (!templateLocked && structuredGenerate) ||
@@ -677,6 +681,10 @@ export default function SummaryWorkbenchFeature({
   };
 
   const send = async () => {
+    if (documentScopeUnavailable) {
+      Toast.warning(t("summary.create.documentSourceUnavailable"));
+      return;
+    }
     if (!viewState.canSend) return;
     if (themeTrackTimer.current) {
       clearTimeout(themeTrackTimer.current);

@@ -78,6 +78,19 @@ describe("useDocumentSearch", () => {
     });
   });
 
+  it("does not enter loading or refetch when the active source is clicked", async () => {
+    const { result } = renderHook(() =>
+      useDocumentSearch({ visible: true, selected: [], maxSelect: 10 })
+    );
+    await act(async () => vi.advanceTimersByTime(250));
+    apiGet.mockClear();
+
+    act(() => result.current.actions.onSourceChange("recent"));
+    expect(result.current.state.isLoading).toBe(false);
+    await act(async () => vi.advanceTimersByTime(250));
+    expect(apiGet).not.toHaveBeenCalled();
+  });
+
   it("does not let an older response overwrite a newer query", async () => {
     let resolveOld!: (value: any) => void;
     let resolveNew!: (value: any) => void;
@@ -170,7 +183,7 @@ describe("useDocumentSearch", () => {
     rerender({ visible: true });
     expect(result.current.state.keyword).toBe("");
     expect(result.current.state.source).toBe("recent");
-    expect(result.current.state.isLoading).toBe(false);
+    expect(result.current.state.isLoading).toBe(true);
   });
 
   it("exposes hasMore when the docs API reports more than the current page", async () => {

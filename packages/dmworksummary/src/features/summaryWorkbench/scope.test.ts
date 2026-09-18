@@ -282,4 +282,13 @@ describe("summary workbench scope helpers", () => {
     const result = removeScopeContext(scope, "reference", "10");
     expect(result.scope.referencedTaskIds).toEqual([20]);
   });
+
+  it("treats a missing optional documents field as an empty selection", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      documents: undefined,
+    };
+    const result = removeScopeContext(scope, "document", "doc-a");
+    expect(result.scope.documents).toEqual([]);
+  });
 });

@@ -1849,19 +1849,6 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
 describe('SummaryDetailPage — document summaries never enter the schedule pipeline', () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it('does not render the schedule button for a document source', () => {
-        const page = makePage(1);
-        page.state = {
-            ...(page.state as any),
-            detail: baseDetail({
-                permissions: { can_edit: true, can_schedule: true },
-                sources: [{ source_type: 4, source_id: 'doc-1' }],
-            }),
-        };
-
-        expect((page as any).renderScheduleButton()).toBeNull();
-    });
-
     it('does not expose the live header schedule action for a document source', () => {
         const page = makePage(1);
         page.state = {

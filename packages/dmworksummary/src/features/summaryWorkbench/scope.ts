@@ -178,7 +178,7 @@ export function removeScopeContext(
       return {
         scope: {
           ...scope,
-          documents: scope.documents.filter(
+          documents: (scope.documents ?? []).filter(
             (document) => document.documentId !== id
           ),
         },

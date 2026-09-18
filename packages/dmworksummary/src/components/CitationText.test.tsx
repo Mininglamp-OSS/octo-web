@@ -1,6 +1,7 @@
 import React from 'react';
-import { render as rtlRender, screen, fireEvent } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
+import * as octoBase from '@octo/base';
 import CitationText from './CitationText';
 import type { CitationItem, TeamCitationItem, MemberStatus } from '../types/summary';
 import { SummaryMessagingProvider } from '../host';
@@ -23,6 +24,7 @@ vi.mock('@douyinfe/semi-ui', () => ({
             )}
         </span>
     ),
+    Toast: { warning: vi.fn() },
 }));
 
 // wukongimjssdk is pulled in transitively by CitationBadge for the normal [n]
@@ -153,7 +155,8 @@ describe('CitationText — [n] vs [Pn] parsing', () => {
     });
 
     it('opens a document citation at /d/:docId with snapshot coordinates visible', () => {
-        const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+        const opened = { opener: window, location: { href: '' }, closed: false } as unknown as Window;
+        const open = vi.spyOn(window, 'open').mockReturnValue(opened);
 
         render(
             <CitationText
@@ -176,11 +179,38 @@ describe('CitationText — [n] vs [Pn] parsing', () => {
         expect(screen.getByText('版本 v7 · 分片 3')).toBeInTheDocument();
         fireEvent.click(screen.getByText('打开文档 →'));
 
-        expect(open).toHaveBeenCalledWith(
-            `${window.location.origin}/d/doc-42`,
-            '_blank',
-            'noopener,noreferrer',
+        expect(open).toHaveBeenCalledWith('about:blank', '_blank');
+        expect(opened.opener).toBeNull();
+        expect(opened.location.href).toBe(`${window.location.origin}/d/doc-42`);
+        open.mockRestore();
+    });
+
+    it('uses the registered docs opener before browser fallback', async () => {
+        const opener = vi.fn(async () => {});
+        const openerSpy = vi.spyOn(octoBase, 'getDocsDocumentOpener').mockReturnValue(opener);
+        const open = vi.spyOn(window, 'open');
+
+        render(
+            <CitationText
+                content="文档引用 [1]"
+                citations={[makeCitation({
+                    channel_id: undefined,
+                    channel_type: undefined,
+                    message_seq: undefined,
+                    document_id: 'doc-42',
+                })]}
+            />,
         );
+
+        fireEvent.click(badgeByText('[1]')!);
+        fireEvent.click(screen.getByText('打开文档 →'));
+
+        await waitFor(() => expect(opener).toHaveBeenCalledWith({
+            docId: 'doc-42',
+            url: `${window.location.origin}/d/doc-42`,
+        }));
+        expect(open).not.toHaveBeenCalled();
+        openerSpy.mockRestore();
         open.mockRestore();
     });
 
