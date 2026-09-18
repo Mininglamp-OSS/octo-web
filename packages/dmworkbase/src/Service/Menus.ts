@@ -57,6 +57,10 @@ export default class MenusManager {
 export class Menus {
   id!: string;
   title!: string;
+  /** 窄容器 (collapsed NavRail: 56×54, label 内容盒 ~52px) 下渲染的短版本。
+   *  不提供时,NavItem 只渲染 title;提供时,NavItem 同时渲染两个 span,由 CSS
+   *  按 `.wk-layout-tab-expanded` 祖先类挑一个显示。见 #1635。 */
+  shortTitle?: string;
   icon!: JSX.Element;
   selectedIcon!: JSX.Element
   routePath!: string;

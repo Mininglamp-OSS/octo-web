@@ -159,6 +159,14 @@ export function registerSummaryLegacyNavigation(): void {
         <SummaryMenuIcon />,
         <SummaryMenuIcon active />
       );
+      // NavRail collapsed 状态 label 文字盒只有 ~52px，英文 `AI Summary`
+      // (63px) 会被 CSS ellipsis 截成 `Sum...`（#1635）。走 titleShort 变体，
+      // 窄容器 label 渲染 `Summary`，expanded rail 由 CSS 切回 `AI Summary`。
+      //
+      // zh-CN 的 titleShort 与 title 同为 `智能总结` —— i18n:check 强制两个
+      // locale 的 key 对称，产品也不需要 zh-CN 短形式。NavItem 里
+      // `shortLabel === label` 会塌回单 span，视觉与旧行为一致。
+      menu.shortTitle = translate("summary.menu.titleShort");
       menu.badge = getSummaryAttentionBadge();
       menu.onPress = (reentry?: boolean) => {
         if (!reentry) Dap.shared.track("smart_summary_module_entered", {});

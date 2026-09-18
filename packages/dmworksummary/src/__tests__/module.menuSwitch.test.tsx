@@ -404,6 +404,19 @@ describe("SummaryModule guarded menu switching", () => {
     expect(entry.props.legacyInitialMode).toBe("agent");
   });
 
+  it("assigns menu.shortTitle from summary.menu.titleShort for the NavRail collapsed short form (#1635)", () => {
+    // `Menus` is stubbed above as `class {}` so constructor args (title/icon)
+    // are dropped, but post-construction assignments (shortTitle, badge,
+    // onPress) still land on the returned instance. That is enough to pin the
+    // contract this change owns: the summary menu factory MUST assign
+    // shortTitle from translate("summary.menu.titleShort") so NavRail can
+    // render the short variant in the collapsed rail. The mocked translate
+    // returns the key verbatim (`(k) => k`); the concrete strings
+    // (`Summary` / `智能总结`) are locked by the i18n locale parity check.
+    const menu = summaryMenuFactory()() as { shortTitle?: string };
+    expect(menu.shortTitle).toBe("summary.menu.titleShort");
+  });
+
   it("NavRail summary onPress opens the create page by default without pushing a duplicate list page", () => {
     // #1461 回归：菜单激活后主区 SummaryListPage 已由 MainContentLeft 按
     // currentMenus.routePath(/summary) 渲染唯一实例，onPress 若再 replaceToRoot
