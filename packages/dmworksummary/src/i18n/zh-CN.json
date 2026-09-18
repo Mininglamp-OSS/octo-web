@@ -221,7 +221,9 @@
       "mine": "暂无我的可总结文档"
     },
     "noResults": "没有找到相关文档",
-    "firstPageHint": "仅展示前 50 条，请搜索缩小范围",
+    "loadMore": "加载更多",
+    "loadMoreFailed": "加载更多失败，请重试",
+    "supportedTypesHint": "仅支持文档和 HTML，不含表格及白板",
     "searchFailed": "文档加载失败，请重试"
   },
   "workbench": {
@@ -619,6 +621,7 @@
     "setSchedule": "设置定时更新",
     "editSchedule": "修改定时更新",
     "documentScheduleUnsupported": "文档总结暂不支持设置定时更新",
+    "legacyDocumentSchedule": "文档总结不支持定时更新，已有定时仅可关闭",
     "disableSchedule": "关闭定时",
     "scheduleDisabled": "定时已关闭",
     "scheduleDisabledHint": "定时已关闭",

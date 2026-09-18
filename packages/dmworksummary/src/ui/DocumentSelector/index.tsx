@@ -50,7 +50,9 @@ const DocumentSelector: React.FC<DocumentSelectorProps> = ({
               role="tab"
               aria-selected={state.source === source}
               className={`summary-document-picker__tab${
-                state.source === source ? " summary-document-picker__tab--active" : ""
+                state.source === source
+                  ? " summary-document-picker__tab--active"
+                  : ""
               }`}
               onClick={() => actions.onSourceChange(source)}
             >
@@ -63,14 +65,15 @@ const DocumentSelector: React.FC<DocumentSelectorProps> = ({
           {t("summary.documentPicker.selectedCount", {
             values: { count: state.selected.length, max: state.maxSelect },
           })}
-          {state.hasMore && (
-            <span className="summary-document-picker__count-hint">
-              {t("summary.documentPicker.firstPageHint")}
-            </span>
-          )}
+          <span className="summary-document-picker__count-hint">
+            {t("summary.documentPicker.supportedTypesHint")}
+          </span>
         </div>
 
-        <div className="summary-document-picker__results">
+        <div
+          className="summary-document-picker__results"
+          key={`${state.source}:${state.keyword}`}
+        >
           {state.isLoading ? (
             <div className="summary-document-picker__state" role="status">
               <Spin />
@@ -97,7 +100,8 @@ const DocumentSelector: React.FC<DocumentSelectorProps> = ({
           ) : (
             state.items.map((item) => {
               const checked = selectedIds.has(item.docId);
-              const disabled = !checked && state.selected.length >= state.maxSelect;
+              const disabled =
+                !checked && state.selected.length >= state.maxSelect;
               return (
                 <div
                   key={item.docId}
@@ -109,13 +113,20 @@ const DocumentSelector: React.FC<DocumentSelectorProps> = ({
                   aria-disabled={disabled}
                   onClick={() => !disabled && actions.onToggle(item)}
                   onKeyDown={(event) => {
-                    if (disabled || (event.key !== "Enter" && event.key !== " ")) return;
+                    if (
+                      disabled ||
+                      (event.key !== "Enter" && event.key !== " ")
+                    )
+                      return;
                     event.preventDefault();
                     actions.onToggle(item);
                   }}
                 >
                   <Checkbox checked={checked} disabled={disabled} />
-                  <span className="summary-document-picker__icon" aria-hidden="true">
+                  <span
+                    className="summary-document-picker__icon"
+                    aria-hidden="true"
+                  >
                     <FileText size={18} />
                   </span>
                   <span className="summary-document-picker__meta">
@@ -132,8 +143,31 @@ const DocumentSelector: React.FC<DocumentSelectorProps> = ({
           )}
         </div>
 
+        {!state.isLoading && !state.error && state.hasMore && (
+          <div className="summary-document-picker__pagination">
+            {state.loadMoreError && (
+              <span role="alert">{state.loadMoreError}</span>
+            )}
+            <button
+              type="button"
+              className="summary-document-picker__load-more"
+              disabled={state.isLoadingMore}
+              aria-busy={state.isLoadingMore}
+              onClick={actions.onLoadMore}
+            >
+              {state.isLoadingMore
+                ? t("summary.documentPicker.loading")
+                : state.loadMoreError
+                ? t("summary.common.retry")
+                : t("summary.documentPicker.loadMore")}
+            </button>
+          </div>
+        )}
+
         <div className="summary-document-picker__footer">
-          <Button onClick={actions.onCancel}>{t("summary.common.cancel")}</Button>
+          <Button onClick={actions.onCancel}>
+            {t("summary.common.cancel")}
+          </Button>
           <Button
             data-testid={summaryTestIds.documentSelectorConfirmBtn}
             theme="solid"

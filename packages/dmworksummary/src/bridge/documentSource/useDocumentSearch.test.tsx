@@ -95,8 +95,16 @@ describe("useDocumentSearch", () => {
     let resolveOld!: (value: any) => void;
     let resolveNew!: (value: any) => void;
     apiGet
-      .mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }))
-      .mockReturnValueOnce(new Promise((resolve) => { resolveNew = resolve; }));
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        })
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveNew = resolve;
+        })
+      );
     const { result } = renderHook(() =>
       useDocumentSearch({ visible: true, selected: [], maxSelect: 10 })
     );
@@ -104,10 +112,14 @@ describe("useDocumentSearch", () => {
     await act(async () => vi.advanceTimersByTime(250));
     act(() => result.current.actions.onKeywordChange("新"));
     await act(async () => vi.advanceTimersByTime(250));
-    await act(async () => resolveNew({ total: 1, items: [documentItem("new")] }));
+    await act(async () =>
+      resolveNew({ total: 1, items: [documentItem("new")] })
+    );
     expect(result.current.state.items).toEqual([documentItem("new")]);
 
-    await act(async () => resolveOld({ total: 1, items: [documentItem("old")] }));
+    await act(async () =>
+      resolveOld({ total: 1, items: [documentItem("old")] })
+    );
     expect(result.current.state.items).toEqual([documentItem("new")]);
   });
 
@@ -146,9 +158,14 @@ describe("useDocumentSearch", () => {
 
   it("ignores an in-flight response after close", async () => {
     let resolve!: (value: any) => void;
-    apiGet.mockReturnValueOnce(new Promise((next) => { resolve = next; }));
+    apiGet.mockReturnValueOnce(
+      new Promise((next) => {
+        resolve = next;
+      })
+    );
     const { result, rerender } = renderHook(
-      ({ visible }) => useDocumentSearch({ visible, selected: [], maxSelect: 10 }),
+      ({ visible }) =>
+        useDocumentSearch({ visible, selected: [], maxSelect: 10 }),
       { initialProps: { visible: true } }
     );
 
@@ -167,7 +184,8 @@ describe("useDocumentSearch", () => {
       items: [documentItem("doc-1")],
     });
     const { result, rerender } = renderHook(
-      ({ visible }) => useDocumentSearch({ visible, selected: [], maxSelect: 10 }),
+      ({ visible }) =>
+        useDocumentSearch({ visible, selected: [], maxSelect: 10 }),
       { initialProps: { visible: true } }
     );
     act(() => result.current.actions.onKeywordChange("项目"));
@@ -186,9 +204,9 @@ describe("useDocumentSearch", () => {
     expect(result.current.state.isLoading).toBe(true);
   });
 
-  it("exposes hasMore when the docs API reports more than the current page", async () => {
+  it("exposes hasMore from the recent cursor, not total", async () => {
     apiGet.mockResolvedValueOnce({
-      total: 51,
+      nextCursor: "next",
       items: [documentItem("doc-1")],
     });
     const { result } = renderHook(() =>
@@ -199,6 +217,136 @@ describe("useDocumentSearch", () => {
 
     expect(result.current.state.items).toHaveLength(1);
     expect(result.current.state.hasMore).toBe(true);
+  });
+
+  it("loads the next recent page once, deduplicates rows and keeps selection", async () => {
+    apiGet
+      .mockResolvedValueOnce({
+        items: [documentItem("a")],
+        nextCursor: "page-2",
+      })
+      .mockResolvedValueOnce({
+        items: [documentItem("a"), documentItem("b")],
+        nextCursor: null,
+      });
+    const { result } = renderHook(() =>
+      useDocumentSearch({ visible: true, selected: [], maxSelect: 10 })
+    );
+    await act(async () => vi.advanceTimersByTime(250));
+    act(() => result.current.actions.onToggle(documentItem("a")));
+    await act(async () => {
+      void result.current.actions.onLoadMore();
+      void result.current.actions.onLoadMore();
+    });
+    expect(apiGet).toHaveBeenCalledTimes(2);
+    expect(apiGet).toHaveBeenLastCalledWith("docs/recent", {
+      param: { pageSize: 50, type: ["doc", "html"], cursor: "page-2" },
+    });
+    expect(result.current.state.items.map((item) => item.docId)).toEqual([
+      "a",
+      "b",
+    ]);
+    expect(result.current.state.selected).toEqual([documentItem("a")]);
+    expect(result.current.state.hasMore).toBe(false);
+    await act(async () => result.current.actions.onLoadMore());
+    expect(apiGet).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries the same failed page without losing items or selection", async () => {
+    apiGet
+      .mockResolvedValueOnce({
+        items: [documentItem("a")],
+        nextCursor: "page-2",
+      })
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValueOnce({ items: [documentItem("b")], nextCursor: null });
+    const { result } = renderHook(() =>
+      useDocumentSearch({
+        visible: true,
+        selected: [documentItem("a")],
+        maxSelect: 10,
+      })
+    );
+    await act(async () => vi.advanceTimersByTime(250));
+    await act(async () => result.current.actions.onLoadMore());
+    expect(result.current.state.items).toEqual([documentItem("a")]);
+    expect(result.current.state.selected).toEqual([documentItem("a")]);
+    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.loadMoreError).toBeTruthy();
+    expect(result.current.state.isLoadingMore).toBe(false);
+    await act(async () => result.current.actions.onLoadMore());
+    expect(apiGet.mock.calls[1]).toEqual(apiGet.mock.calls[2]);
+    expect(result.current.state.items).toHaveLength(2);
+    expect(result.current.state.loadMoreError).toBeNull();
+  });
+
+  it.each(["keyword", "tab", "close"] as const)(
+    "ignores pending pagination after %s changes",
+    async (change) => {
+      let resolvePage!: (value: unknown) => void;
+      apiGet
+        .mockResolvedValueOnce({
+          items: [documentItem("a")],
+          nextCursor: "page-2",
+        })
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolvePage = resolve;
+          })
+        )
+        .mockResolvedValue({
+          items: [documentItem("new")],
+          total: 1,
+          nextCursor: null,
+        });
+      const { result, rerender } = renderHook(
+        ({ visible }) =>
+          useDocumentSearch({ visible, selected: [], maxSelect: 10 }),
+        { initialProps: { visible: true } }
+      );
+      await act(async () => vi.advanceTimersByTime(250));
+      act(() => {
+        void result.current.actions.onLoadMore();
+      });
+      expect(result.current.state.isLoadingMore).toBe(true);
+      act(() => {
+        if (change === "keyword") result.current.actions.onKeywordChange("new");
+        if (change === "tab") result.current.actions.onSourceChange("mine");
+        if (change === "close") rerender({ visible: false });
+      });
+      // Resolve during the next search's debounce, before its request starts.
+      await act(async () =>
+        resolvePage({ items: [documentItem("late")], nextCursor: "bad" })
+      );
+      expect(result.current.state.items).not.toContainEqual(
+        documentItem("late")
+      );
+      expect(result.current.state.isLoadingMore).toBe(false);
+      expect(result.current.state.hasMore).toBe(false);
+      await act(async () => vi.advanceTimersByTime(250));
+      if (change !== "close")
+        expect(result.current.state.items).toEqual([documentItem("new")]);
+      else expect(result.current.state.items).toEqual([]);
+    }
+  );
+
+  it("increments mine pages and resets to page one on a new keyword", async () => {
+    apiGet.mockResolvedValue({ items: [documentItem("a")], total: 51 });
+    const { result } = renderHook(() =>
+      useDocumentSearch({ visible: true, selected: [], maxSelect: 10 })
+    );
+    act(() => result.current.actions.onSourceChange("mine"));
+    await act(async () => vi.advanceTimersByTime(250));
+    await act(async () => result.current.actions.onLoadMore());
+    expect(apiGet.mock.lastCall?.[1].param.page).toBe(2);
+    expect(result.current.state.hasMore).toBe(false);
+    act(() => result.current.actions.onKeywordChange("new"));
+    await act(async () => vi.advanceTimersByTime(250));
+    expect(apiGet.mock.lastCall?.[1].param).toMatchObject({
+      page: 1,
+      q: "new",
+    });
+    expect(result.current.state.items).toHaveLength(1);
   });
 
   it("filters unsupported document kinds from list results", async () => {

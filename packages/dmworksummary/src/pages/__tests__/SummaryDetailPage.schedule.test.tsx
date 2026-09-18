@@ -1922,6 +1922,111 @@ describe('SummaryDetailPage — document source snapshot version', () => {
     });
 });
 
+describe('SummaryDetailPage — legacy document schedules are disable-only', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    function legacyPage(active = true, canSchedule = true) {
+        const page = makePage(1);
+        page.state = {
+            ...page.state,
+            detail: baseDetail({
+                schedule_id: 9,
+                permissions: { can_schedule: canSchedule, can_view_schedule: true },
+                sources: [{ source_type: 4, source_id: 'doc-1' }],
+            }),
+            scheduleItem: {
+                schedule_id: 9, is_active: active, confirm_policy: 1,
+                participant_config: [WKApp.loginInfo.uid],
+            } as any,
+            scheduleLoading: false,
+        };
+        return page;
+    }
+
+    function disableAction(page: SummaryDetailPage) {
+        return collectElements(page.renderHeader())
+            .find(element => element.props?.onClick === page.handleScheduleDisable);
+    }
+
+    it('exposes only disable in the real header for an active legacy document schedule', () => {
+        const page = legacyPage();
+        expect(disableAction(page)).toBeDefined();
+        expect(findScheduleAction(page)).toBeUndefined();
+        expect(JSON.stringify(page.renderScheduleSummary())).toContain('summary.detail.legacyDocumentSchedule');
+        expect(page.needsScheduleConfirm()).toBe(false);
+        expect(page.renderScheduleConfirm()).toBeNull();
+    });
+
+    it('stops the existing schedule and then displays only its inactive status', async () => {
+        const page = legacyPage();
+        vi.mocked(api.toggleSchedule).mockResolvedValue({ schedule_id: 9, is_active: false } as any);
+        await disableAction(page)!.props.onClick();
+        expect(api.toggleSchedule).toHaveBeenCalledExactlyOnceWith(9, false, 1);
+        expect(page.state.scheduleItem?.is_active).toBe(false);
+        expect(disableAction(page)).toBeUndefined();
+        expect(findScheduleAction(page)).toBeUndefined();
+        expect(JSON.stringify(page.renderScheduleSummary())).toContain('summary.detail.scheduleDisabledHint');
+    });
+
+    it('leaves an active schedule visible and retryable when disabling fails', async () => {
+        const page = legacyPage();
+        vi.mocked(api.toggleSchedule).mockRejectedValueOnce(new Error('network'));
+        await page.handleScheduleDisable();
+        expect(page.state.scheduleItem?.is_active).toBe(true);
+        expect(page.state.scheduleDisabling).toBe(false);
+        expect(disableAction(page)).toBeDefined();
+        expect(Toast.error).toHaveBeenCalledWith('network');
+    });
+
+    it.each(['noPermission', 'inactive', 'wrongSchedule', 'wrongTask', 'loading', 'editing'] as const)(
+        'blocks the UI and direct disable handler for %s',
+        async (condition) => {
+            const page = legacyPage(condition !== 'inactive', condition !== 'noPermission');
+            if (condition === 'wrongSchedule') page.state.scheduleItem!.schedule_id = 99;
+            if (condition === 'wrongTask') page.state.detail!.task_id = 2;
+            if (condition === 'loading') page.state.scheduleLoading = true;
+            if (condition === 'editing') page.state.isEditing = true;
+            expect(disableAction(page)).toBeUndefined();
+            await page.handleScheduleDisable();
+            expect(api.toggleSchedule).not.toHaveBeenCalled();
+        }
+    );
+
+    it('does not display a schedule to viewers lacking both permissions', () => {
+        const page = legacyPage(true, false);
+        page.state.detail!.permissions!.can_view_schedule = false;
+        expect(page.renderScheduleSummary()).toBeNull();
+    });
+
+    it('prevents duplicate disable requests while one is pending', async () => {
+        const page = legacyPage();
+        let resolve!: (value: any) => void;
+        vi.mocked(api.toggleSchedule).mockReturnValueOnce(new Promise(next => { resolve = next; }));
+        const pending = page.handleScheduleDisable();
+        expect(disableAction(page)!.props.disabled).toBe(true);
+        await page.handleScheduleDisable();
+        expect(api.toggleSchedule).toHaveBeenCalledTimes(1);
+        resolve({ is_active: false });
+        await pending;
+    });
+
+    it.each([true, false])('never creates, updates, enables or confirms a legacy schedule (active=%s)', async (active) => {
+        const onViewConfirm = vi.fn();
+        const page = legacyPage(active);
+        (page as any).props = { ...page.props, onViewConfirm };
+        page.openScheduleModal();
+        await page.handleScheduleSave({ unit: 'week', every: 1, time: '09:00' } as any);
+        await page.handleConfirmSchedule();
+        (page as any).handleViewConfirm();
+        expect(page.state.showScheduleConfig).toBe(false);
+        expect(api.createSchedule).not.toHaveBeenCalled();
+        expect(api.updateSchedule).not.toHaveBeenCalled();
+        expect(api.toggleSchedule).not.toHaveBeenCalled();
+        expect(api.confirmSchedule).not.toHaveBeenCalled();
+        expect(onViewConfirm).not.toHaveBeenCalled();
+    });
+});
+
 // ─── m1（隐私收口，第二轮）：他人个人报告折叠态也不得露 [n] 角标 ───
 //
 // 背景：renderParticipantReports 折叠预览旧实现直接 content.slice(0,100)，

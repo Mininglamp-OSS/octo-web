@@ -1108,6 +1108,32 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     margin-top: 4px;
 }
 
+.summary-detail-legacy-document-schedule {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--wk-sp-2);
+    margin-top: var(--wk-sp-1);
+    color: var(--wk-text-secondary);
+    font-size: var(--wk-text-size-sm);
+}
+
+.summary-detail-legacy-document-schedule__disable {
+    flex-shrink: 0;
+    padding: var(--wk-sp-1) var(--wk-sp-2);
+    border: 1px solid var(--wk-border-subtle);
+    border-radius: var(--wk-r-sm);
+    background: var(--wk-bg-surface);
+    color: var(--wk-text-primary);
+    font: inherit;
+    cursor: pointer;
+}
+
+.summary-detail-legacy-document-schedule__disable:disabled {
+    color: var(--wk-text-tertiary);
+    cursor: wait;
+}
+
 .summary-detail-header-inner {
     margin: 0;
     padding: 12px 24px;

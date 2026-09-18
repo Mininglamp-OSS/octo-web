@@ -13,11 +13,18 @@ interface DocsListItem {
 interface DocsListResponse {
   total?: number;
   items?: DocsListItem[];
+  nextCursor?: string | null;
+}
+
+export interface DocumentListPage {
+  cursor?: string;
+  page?: number;
 }
 
 export interface ListDocumentsResult {
   items: DocSearchItem[];
-  total: number;
+  total: number | null;
+  nextPage: DocumentListPage | null;
 }
 
 export interface DocumentSourceTransport {
@@ -40,7 +47,9 @@ const defaultTransport: DocumentSourceTransport = {
   },
 };
 
-function toUpdatedAtMillis(updatedAt: DocsListItem["updatedAt"]): number | null {
+function toUpdatedAtMillis(
+  updatedAt: DocsListItem["updatedAt"]
+): number | null {
   if (typeof updatedAt === "number") {
     return Number.isFinite(updatedAt) ? updatedAt : null;
   }
@@ -69,30 +78,65 @@ export class DocumentSourceService {
 
   async listDocuments(
     source: DocumentSelectorSource,
-    keyword: string
+    keyword: string,
+    pagination: DocumentListPage = {}
   ): Promise<ListDocumentsResult> {
     const query = keyword.trim();
+    const requestedPage = pagination.page;
+    const page =
+      typeof requestedPage === "number" &&
+      Number.isSafeInteger(requestedPage) &&
+      requestedPage > 0
+        ? requestedPage
+        : 1;
     const param =
       source === "recent"
         ? {
             pageSize: PAGE_SIZE,
             type: SUPPORTED_DOC_TYPES,
+            ...(pagination.cursor ? { cursor: pagination.cursor } : {}),
             ...(query ? { q: query } : {}),
           }
         : {
             owner: "me",
-            page: 1,
+            page,
             pageSize: PAGE_SIZE,
             sort: "updatedAt:desc",
             type: SUPPORTED_DOC_TYPES,
             ...(query ? { q: query } : {}),
           };
     const response = await this.transport.list(source, param);
+    const rawItems = response?.items ?? [];
+    const total =
+      typeof response?.total === "number" &&
+      Number.isSafeInteger(response.total) &&
+      response.total >= 0
+        ? response.total
+        : null;
+    // Recent is keyset-paginated: total is never a continuation signal.
+    // Mine is offset-paginated: advance by the server page size, NOT the
+    // post-filter/deduplicated visible count. Unknown totals allow one more
+    // request after a full raw page; an empty terminal page stops that fallback.
+    const nextPage: DocumentListPage | null =
+      source === "recent"
+        ? typeof response?.nextCursor === "string" &&
+          response.nextCursor.length > 0 &&
+          response.nextCursor !== pagination.cursor
+          ? { cursor: response.nextCursor }
+          : null
+        : (
+            total !== null
+              ? page * PAGE_SIZE < total
+              : rawItems.length >= PAGE_SIZE
+          )
+        ? { page: page + 1 }
+        : null;
     return {
-      items: (response?.items ?? [])
+      items: rawItems
         .map(toDocSearchItem)
-        .filter(Boolean) as DocSearchItem[],
-      total: response?.total ?? 0,
+        .filter((item): item is DocSearchItem => item !== null),
+      total,
+      nextPage,
     };
   }
 }

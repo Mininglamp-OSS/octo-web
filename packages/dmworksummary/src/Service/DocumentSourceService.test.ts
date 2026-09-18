@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import axios from "axios";
+import { APIClient } from "@octo/base";
 import { DocumentSourceService } from "./DocumentSourceService";
 
 describe("DocumentSourceService", () => {
@@ -25,6 +27,7 @@ describe("DocumentSourceService", () => {
 
     await expect(service.listDocuments("recent", " 项目 ")).resolves.toEqual({
       total: 2,
+      nextPage: null,
       items: [
         {
           docId: "doc-1",
@@ -47,7 +50,8 @@ describe("DocumentSourceService", () => {
     const service = new DocumentSourceService({ list });
 
     await expect(service.listDocuments("mine", "")).resolves.toEqual({
-      total: 0,
+      total: null,
+      nextPage: null,
       items: [],
     });
     expect(list).toHaveBeenCalledWith("mine", {
@@ -57,5 +61,141 @@ describe("DocumentSourceService", () => {
       sort: "updatedAt:desc",
       type: ["doc", "html"],
     });
+  });
+
+  it("uses the recent cursor even without a total and passes it unchanged", async () => {
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce({ items: [], nextCursor: "opaque+/=" })
+      .mockResolvedValueOnce({ items: [], nextCursor: null, total: 100 });
+    const service = new DocumentSourceService({ list });
+    const first = await service.listDocuments("recent", "");
+    expect(first.nextPage).toEqual({ cursor: "opaque+/=" });
+    const last = await service.listDocuments("recent", "", first.nextPage!);
+    expect(list).toHaveBeenLastCalledWith("recent", {
+      pageSize: 50,
+      type: ["doc", "html"],
+      cursor: "opaque+/=",
+    });
+    expect(last.nextPage).toBeNull();
+  });
+
+  it("does not invent a recent page from total or loop on a repeated cursor", async () => {
+    const list = vi.fn().mockResolvedValue({ items: [], total: 200 });
+    const service = new DocumentSourceService({ list });
+    expect((await service.listDocuments("recent", "")).nextPage).toBeNull();
+    list.mockResolvedValue({ items: [], nextCursor: "same" });
+    expect(
+      (await service.listDocuments("recent", "", { cursor: "same" })).nextPage
+    ).toBeNull();
+  });
+
+  it.each([49, 50, 51, 100, 101])(
+    "uses page boundaries for mine with total %i",
+    async (total) => {
+      const list = vi
+        .fn()
+        .mockResolvedValue({ total, items: [{ docId: "d", docType: "doc" }] });
+      const service = new DocumentSourceService({ list });
+      expect((await service.listDocuments("mine", "")).nextPage).toEqual(
+        total > 50 ? { page: 2 } : null
+      );
+      expect(
+        (await service.listDocuments("mine", " title ", { page: 2 })).nextPage
+      ).toEqual(total > 100 ? { page: 3 } : null);
+      expect(list).toHaveBeenLastCalledWith("mine", {
+        owner: "me",
+        page: 2,
+        pageSize: 50,
+        sort: "updatedAt:desc",
+        type: ["doc", "html"],
+        q: "title",
+      });
+    }
+  );
+
+  it.each([undefined, -1, NaN, Infinity])(
+    "falls back to full raw pages for invalid/missing total %s",
+    async (total) => {
+      const list = vi.fn().mockResolvedValue({
+        total,
+        items: Array.from({ length: 50 }, (_, i) => ({
+          docId: `d-${i}`,
+          docType: "doc",
+        })),
+      });
+      const service = new DocumentSourceService({ list });
+      expect((await service.listDocuments("mine", "")).nextPage).toEqual({
+        page: 2,
+      });
+      list.mockResolvedValue({ items: [] });
+      expect(
+        (await service.listDocuments("mine", "", { page: 2 })).nextPage
+      ).toBeNull();
+    }
+  );
+
+  it("does not compare total with client-filtered rows or stop a full filtered page early", async () => {
+    const list = vi.fn().mockResolvedValue({
+      total: 2,
+      items: [
+        { docId: "doc", docType: "doc" },
+        { docId: "sheet", docType: "sheet" },
+      ],
+    });
+    const service = new DocumentSourceService({ list });
+    expect((await service.listDocuments("mine", "")).nextPage).toBeNull();
+    list.mockResolvedValue({
+      items: Array.from({ length: 50 }, (_, i) => ({
+        docId: `sheet-${i}`,
+        docType: "sheet",
+      })),
+    });
+    const page = await service.listDocuments("mine", "");
+    expect(page.items).toEqual([]);
+    expect(page.nextPage).toEqual({ page: 2 });
+  });
+
+  it("pins the production transport parameters through the installed axios URL serializer", async () => {
+    const originalGet = Object.getOwnPropertyDescriptor(
+      APIClient.shared,
+      "get"
+    );
+    const get = vi.fn().mockResolvedValue({ items: [], total: 0 });
+    Object.defineProperty(APIClient.shared, "get", {
+      value: get,
+      configurable: true,
+      writable: true,
+    });
+    try {
+      await new DocumentSourceService().listDocuments("mine", "项目 & plan", {
+        page: 2,
+      });
+      expect(get).toHaveBeenCalledWith("docs", {
+        param: {
+          owner: "me",
+          page: 2,
+          pageSize: 50,
+          sort: "updatedAt:desc",
+          type: ["doc", "html"],
+          q: "项目 & plan",
+        },
+      });
+      const uri = axios.getUri({
+        url: "https://example.invalid/docs",
+        params: get.mock.calls[0][1]!.param,
+      });
+      const query = new URL(uri).searchParams;
+      // Express 4's extended query parser accepts axios 0.25's bracket arrays.
+      // This pins the actual wire encoding, not just a hand-written query object.
+      expect(query.getAll("type[]")).toEqual(["doc", "html"]);
+      expect(query.get("owner")).toBe("me");
+      expect(query.get("page")).toBe("2");
+      expect(query.get("q")).toBe("项目 & plan");
+    } finally {
+      if (originalGet)
+        Object.defineProperty(APIClient.shared, "get", originalGet);
+      else Reflect.deleteProperty(APIClient.shared, "get");
+    }
   });
 });

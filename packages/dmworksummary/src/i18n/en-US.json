@@ -221,7 +221,9 @@
       "mine": "No owned documents available"
     },
     "noResults": "No matching documents",
-    "firstPageHint": "Showing the first 50 only. Search to narrow results.",
+    "loadMore": "Load more",
+    "loadMoreFailed": "Couldn't load more documents. Please retry.",
+    "supportedTypesHint": "Documents and HTML only; spreadsheets and whiteboards aren't supported",
     "searchFailed": "Document loading failed. Please retry."
   },
   "workbench": {
@@ -619,6 +621,7 @@
     "setSchedule": "Set schedule",
     "editSchedule": "Edit schedule",
     "documentScheduleUnsupported": "Document summaries do not support scheduled updates yet.",
+    "legacyDocumentSchedule": "Document summaries cannot run on a schedule. Existing schedules can only be turned off.",
     "disableSchedule": "Turn off schedule",
     "scheduleDisabled": "Schedule turned off",
     "scheduleDisabledHint": "Schedule is off",

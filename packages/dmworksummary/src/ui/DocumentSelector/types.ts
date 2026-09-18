@@ -11,6 +11,8 @@ export interface DocumentSelectorState {
   error: string | null;
   maxSelect: number;
   hasMore?: boolean;
+  isLoadingMore?: boolean;
+  loadMoreError?: string | null;
 }
 
 export interface DocumentSelectorActions {
@@ -18,6 +20,7 @@ export interface DocumentSelectorActions {
   onKeywordChange: (keyword: string) => void;
   onToggle: (item: DocSearchItem) => void;
   onRetry: () => void;
+  onLoadMore: () => void;
   onConfirm: () => void;
   onCancel: () => void;
 }

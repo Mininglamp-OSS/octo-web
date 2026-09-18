@@ -235,6 +235,18 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return !!detail?.sources?.some((source) => source.source_type === SourceType.DOCUMENT);
     }
 
+    private canDisableLegacyDocumentSchedule(): boolean {
+        const { detail, scheduleItem, scheduleLoading } = this.state;
+        return this.isDocumentSummaryDetail(detail) &&
+            !!detail?.permissions?.can_schedule &&
+            detail.task_id === this.taskId &&
+            !!detail.schedule_id && detail.schedule_id > 0 &&
+            scheduleItem?.schedule_id === detail.schedule_id &&
+            scheduleItem.is_active === true && !scheduleLoading &&
+            !this.state.isEditing && !this.state.editingTeamSummary &&
+            !this.state.editingPersonalReport && !this.state.editingMyDraft;
+    }
+
     private readonly titleContextOwner = Symbol("summary-title-context");
 
     private regenerateTopicRef = React.createRef<HTMLTextAreaElement>();
@@ -2452,6 +2464,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const requestTaskId = this.taskId;
         const { scheduleItem } = this.state;
         if (!scheduleItem) return;
+        if (this.isDocumentSummaryDetail() &&
+            (!this.canDisableLegacyDocumentSchedule() || this.state.scheduleDisabling)) return;
         this.setState({ scheduleDisabling: true });
         try {
             // DAP-271 finding 6：把入口快照 requestTaskId 作为 summary_id 透传给 timer_disabled 事件。
@@ -2529,6 +2543,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     private handleViewConfirm = () => {
+        if (this.isDocumentSummaryDetail()) return;
         if (this.taskId == null) return;
         if (this.props.onViewConfirm) {
             this.props.onViewConfirm(this.taskId);
@@ -4333,6 +4348,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      * 兼容：participant_config 为旧纯数组时无 confirmed 态，视为需确认。
      */
     needsScheduleConfirm(): boolean {
+        if (this.isDocumentSummaryDetail()) return false;
         const { scheduleItem } = this.state;
         if (!scheduleItem) return false;
         if (scheduleItem.is_active === false) return false;
@@ -4350,6 +4366,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     handleConfirmSchedule = async () => {
+        // Legacy document schedules may be stopped, never confirmed/reactivated.
+        if (this.isDocumentSummaryDetail()) return;
         // 续修7：入口捕获 requestTaskId。await confirmSchedule 期间切 task，不得把 A 的
         // schedule 回显到 B（finally 的 confirmingSchedule 复位保留）。
         const requestTaskId = this.taskId;
@@ -4406,6 +4424,34 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     renderScheduleSummary() {
         const { detail, scheduleItem } = this.state;
         const { t } = this.context;
+        // Phase 1: legacy/migrated document summaries can retain schedule_id > 0.
+        // Keep their status visible but expose ONLY disable, with the same guard
+        // at the handler boundary. Create/update/enable/participation stay closed;
+        // the backend document-source rejection remains a separate backstop.
+        if (this.isDocumentSummaryDetail(detail)) {
+            if (!detail?.schedule_id || !scheduleItem ||
+                detail.task_id !== this.taskId || scheduleItem.schedule_id !== detail.schedule_id) return null;
+            const canDisable = this.canDisableLegacyDocumentSchedule();
+            if (!detail.permissions?.can_view_schedule && !canDisable) return null;
+            return (
+                <div className="summary-detail-legacy-document-schedule">
+                    <span>{scheduleItem.is_active === false
+                        ? t("summary.detail.scheduleDisabledHint")
+                        : t("summary.detail.legacyDocumentSchedule")}</span>
+                    {canDisable && (
+                        <button
+                            type="button"
+                            className="summary-detail-legacy-document-schedule__disable"
+                            disabled={this.state.scheduleDisabling}
+                            aria-busy={this.state.scheduleDisabling}
+                            onClick={this.handleScheduleDisable}
+                        >
+                            {t("summary.detail.disableSchedule")}
+                        </button>
+                    )}
+                </div>
+            );
+        }
         // need2：定时**信息**只读展示对所有参与者可见（can_view_schedule），不再限 creator。
         // 位置不变（header）。定时设置菜单仍仅 creator，与定时信息展示分开。
         if (!detail?.permissions?.can_view_schedule) return null;
@@ -4787,7 +4833,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 )}
 
                                 {/* 单人时不显示"等待参与者确认"，因为creator自动接受 */}
-                                {detail.status === TaskStatus.WAITING_CONFIRM && this.state.members.length > 1 && (() => {
+                                {detail.status === TaskStatus.WAITING_CONFIRM && this.isDocumentSummaryDetail(detail) && (
+                                    <Banner type="info" closeIcon={null} description={t("summary.detail.documentScheduleUnsupported")} />
+                                )}
+                                {detail.status === TaskStatus.WAITING_CONFIRM && !this.isDocumentSummaryDetail(detail) && this.state.members.length > 1 && (() => {
                                     const mode = this.waitingConfirmMode();
                                     return mode === 'loading' ? (
                                         // 竞态修复（第3轮）finding 2：scheduleItem 由 loadDetail 之后的二次
@@ -4826,7 +4875,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     );
                                 })()}
                                 {/* 单人 WaitingConfirm 状态显示生成中（个人总结已出则不再显示 loading） */}
-                                {detail.status === TaskStatus.WAITING_CONFIRM && this.state.members.length <= 1 && !this.personalReady && (
+                                {detail.status === TaskStatus.WAITING_CONFIRM && !this.isDocumentSummaryDetail(detail) && this.state.members.length <= 1 && !this.personalReady && (
                                     this.renderProcessing()
                                 )}
 
