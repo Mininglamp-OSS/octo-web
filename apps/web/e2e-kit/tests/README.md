@@ -24,6 +24,18 @@ test('@C7 my feature', async ({ authedPage }) => {
 })
 ```
 
+## 多语言和启动请求
+
+需要英文首屏时，在 `test.describe` 内使用 `test.use({ authedLocale: "en-US" })`。
+默认语言仍为 `zh-CN`。fixture 会在首次导航前设置语言；不要为了语言再次
+`authedPage.goto`，否则旧页面待处理的请求可能在 MSW client 卸载后被转发到代理。
+
+纯 mock 成功路径可开启 `test.use({ mockApiGuard: true })`。该自动 fixture 在页面
+初始化前监听 BrowserContext，并在 teardown 校验：不允许真实后端请求、Service Worker
+发出的 API passthrough、API 网络错误/401/5xx，以及 Summary API 的 4xx。
+正常页面导航取消和 baseline 的设备未注册 400 不属于上述错误。刻意模拟接口失败的
+用例保持默认关闭；CI 的全量 proxy-error 门禁不变。
+
 ## 稳定性 gate
 
 新 case 或改过的 case 必须 3x 全绿才能 commit (见 `global/rules.md`):
