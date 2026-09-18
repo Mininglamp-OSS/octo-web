@@ -452,7 +452,9 @@ function mapSkillTag(raw: RawSkillTag): SkillTag {
 function mapSkillSort(sort?: SkillSort): string | undefined {
   if (!sort) return undefined;
   if (sort === "latest") return "newest";
-  return sort; // comprehensive / views / downloads match 1:1
+  // The marketplace /plugins contract validates these values and implements
+  // comprehensive ranking server-side; the client must preserve them 1:1.
+  return sort; // comprehensive / views / downloads
 }
 
 /** The unified list paginates by page number; the cursor the UI threads

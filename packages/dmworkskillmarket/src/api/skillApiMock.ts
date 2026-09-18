@@ -81,9 +81,23 @@ function matchesQuery(skill: Skill, q: string): boolean {
     .includes(q);
 }
 
+function compareNewestFirst(a: Skill, b: Skill): number {
+  return b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id);
+}
+
+function comprehensiveScore(skill: Skill, nowMs: number): number {
+  const ageDays = Math.max(0, nowMs - Date.parse(skill.createdAt)) / 86_400_000;
+  return (
+    (skill.installCount ?? 0) * 5 +
+    (skill.viewCount ?? 0) +
+    20 / Math.pow(ageDays + 2, 1.2)
+  );
+}
+
 function applySkillQuery(query: SkillListQuery): Skill[] {
   const q = normalizeQuery(query.q);
   const selectedTags = query.tags?.filter(Boolean) ?? [];
+  const nowMs = Date.now();
   return skills
     .filter((skill) => !query.mine || skill.ownerId === CURRENT_USER_ID)
     .filter(
@@ -95,9 +109,25 @@ function applySkillQuery(query: SkillListQuery): Skill[] {
     .filter((skill) => selectedTags.every((tag) => skill.tags.includes(tag)))
     .filter((skill) => matchesQuery(skill, q))
     .sort((a, b) => {
-      if (query.sort === "latest")
-        return b.createdAt.localeCompare(a.createdAt);
-      return b.updatedAt.localeCompare(a.updatedAt);
+      switch (query.sort ?? "latest") {
+        case "comprehensive":
+          return (
+            comprehensiveScore(b, nowMs) - comprehensiveScore(a, nowMs) ||
+            compareNewestFirst(a, b)
+          );
+        case "downloads":
+          return (
+            (b.downloadCount ?? 0) - (a.downloadCount ?? 0) ||
+            compareNewestFirst(a, b)
+          );
+        case "views":
+          return (
+            (b.viewCount ?? 0) - (a.viewCount ?? 0) ||
+            compareNewestFirst(a, b)
+          );
+        case "latest":
+          return compareNewestFirst(a, b);
+      }
     });
 }
 

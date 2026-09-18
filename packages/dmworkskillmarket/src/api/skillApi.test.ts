@@ -9,6 +9,7 @@ import {
   getSkills,
   updateSkill,
 } from "./skillApiMock";
+import type { Skill } from "../types/skill";
 
 describe("skillApi mock contract", () => {
   it("exposes 16 PRD categories with skill counts", async () => {
@@ -56,6 +57,31 @@ describe("skillApi mock contract", () => {
     expect(firstPage.nextCursor).toBe("20");
     expect(secondPage.items).toHaveLength(20);
     expect(secondPage.items[0].id).not.toBe(firstPage.items[0].id);
+  });
+
+  it("models comprehensive and metric sort modes in the mock catalog", async () => {
+    const [comprehensive, latest, downloads, views] = await Promise.all([
+      getSkills({ sort: "comprehensive", limit: 100 }),
+      getSkills({ sort: "latest", limit: 100 }),
+      getSkills({ sort: "downloads", limit: 100 }),
+      getSkills({ sort: "views", limit: 100 }),
+    ]);
+
+    const ids = (items: Skill[]) => items.map((skill) => skill.id);
+    expect(ids(comprehensive.items)).not.toEqual(ids(latest.items));
+    expect(ids(downloads.items)).not.toEqual(ids(latest.items));
+    expect(ids(views.items)).not.toEqual(ids(latest.items));
+
+    expect(downloads.items.map((skill) => skill.downloadCount ?? 0)).toEqual(
+      [...downloads.items]
+        .sort((a, b) => (b.downloadCount ?? 0) - (a.downloadCount ?? 0))
+        .map((skill) => skill.downloadCount ?? 0)
+    );
+    expect(views.items.map((skill) => skill.viewCount ?? 0)).toEqual(
+      [...views.items]
+        .sort((a, b) => (b.viewCount ?? 0) - (a.viewCount ?? 0))
+        .map((skill) => skill.viewCount ?? 0)
+    );
   });
 
   it("filters by search text, category, and current user ownership", async () => {

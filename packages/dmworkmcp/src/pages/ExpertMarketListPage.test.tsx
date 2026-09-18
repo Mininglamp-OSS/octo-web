@@ -249,6 +249,39 @@ function deferred<T>() {
 }
 
 describe("expert catalog server search and pagination", () => {
+  it("renders 综合/最新/最热 in order and defaults public discovery to comprehensive", async () => {
+    await render();
+
+    const options = Array.from(
+      root.querySelectorAll<HTMLButtonElement>(".wk-mcp-expert-sort__options button")
+    );
+    expect(options.map((option) => option.textContent)).toEqual([
+      "mcp.expert.sortComprehensive",
+      "mcp.expert.sortLatest",
+      "mcp.expert.sortHottest",
+    ]);
+    expect(options.map((option) => option.getAttribute("aria-pressed"))).toEqual([
+      "true",
+      "false",
+      "false",
+    ]);
+    expect(api.listExperts).toHaveBeenCalledWith(
+      expect.objectContaining({ sort: "comprehensive", page: 1 })
+    );
+  });
+
+  it("keeps the hidden mine expert and expert-team sort on latest", async () => {
+    await render({ variant: "mine" });
+
+    expect(api.listMyExperts).toHaveBeenCalledWith(
+      expect.objectContaining({ sort: "latest", page: 1 })
+    );
+    expect(api.listMySquads).toHaveBeenCalledWith(
+      expect.objectContaining({ sort: "latest", page: 1 })
+    );
+    expect(root.querySelector(".wk-mcp-expert-sort")).toBeNull();
+  });
+
   it("searches tags beyond the suggestion limit without reloading rows and retains selected tags", async () => {
     const tags = [...Array.from({ length: 50 }, (_, i) => `tag-${i}`), "rare"];
     api.listExpertTags.mockImplementation((_kind, options) =>

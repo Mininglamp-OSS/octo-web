@@ -240,6 +240,17 @@ describe("skillApiReal", () => {
     expect(url).toContain("page_size=10");
   });
 
+  it("passes comprehensive sort through to the unified list", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse([], 200, { total: 0, page: 1, page_size: 20 })
+    );
+
+    await getSkills({ sort: "comprehensive" });
+
+    const [url] = mockFetch.mock.calls[0] ?? [];
+    expect(String(url)).toContain("sort=comprehensive");
+  });
+
   it("getSkillTags aggregates suggestions from the unified tag endpoint", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse([{ name: "ui-case", count: 4 }])

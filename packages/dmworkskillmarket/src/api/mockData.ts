@@ -167,6 +167,11 @@ export function createInitialSkills(): Skill[] {
       fileUrl: `mock://skills/${seed.id}.zip`,
       fileSize: 1024 * (96 + index * 17),
       iconUrl: "",
+      // Deterministic engagement data keeps mock-mode sort options visibly
+      // distinct while exercising the same fields as the marketplace service.
+      viewCount: (index * 17 + 7) % 101,
+      installCount: (index * 5 + 3) % 19,
+      downloadCount: (index * 11 + 2) % 47,
       createdAt: `2026-06-${createdDay}T08:00:00.000Z`,
       updatedAt: `2026-07-${updatedDay}T10:00:00.000Z`,
     };

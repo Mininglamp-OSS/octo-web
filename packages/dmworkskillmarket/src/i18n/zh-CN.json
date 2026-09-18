@@ -54,6 +54,7 @@
   },
   "sort": {
     "ariaLabel": "技能排序",
+    "comprehensive": "综合",
     "latest": "最新",
     "downloads": "下载",
     "hottest": "最热"

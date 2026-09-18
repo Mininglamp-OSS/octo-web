@@ -56,6 +56,7 @@
     "loadedCount": "已显示 {{count}} / {{total}} 项",
     "loadMore": "加载更多",
     "sortAriaLabel": "排序方式",
+    "sortComprehensive": "综合",
     "sortLatest": "最新",
     "empty": "没有找到匹配内容",
     "emptyHint": "换一个关键词或清除分类筛选后再试。",
@@ -167,6 +168,7 @@
     "reachedEnd": "已经到底了",
     "navLabel": "连接器市场导航",
     "sortAriaLabel": "连接器排序",
+    "sortComprehensive": "综合",
     "sortLatest": "最新",
     "sortHottest": "最热"
   },
