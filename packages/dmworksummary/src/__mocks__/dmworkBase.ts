@@ -5,6 +5,10 @@ export { subscriberDisplayName } from '../../../dmworkbase/src/Utils/displayName
 export const isFlagOn = (value: unknown): boolean =>
   value === 1 || value === true || value === "1" || value === "true";
 
+export const SearchService = {
+  searchDocs: async () => ({ total: 0, items: [] }),
+};
+
 type MessageNode = string | { [key: string]: MessageNode };
 
 function flattenMessages(messages: Record<string, MessageNode>, prefix = ''): Record<string, string> {
@@ -84,12 +88,16 @@ export const WKApp = {
   // remoteConfig 的最小测试替身：与真实 App.tsx 的 addConfigChangeListener(cb) => () => void 同形；
   // __fireConfigChangeListeners() 模拟 appconfig 到位 / docs_on 翻转时的广播（round-4 P2-a）。
   remoteConfig: {
+    get docsOn() { return __docsOn; },
+    get docsSearchOn() { return __docsSearchOn; },
     addConfigChangeListener: (cb: () => void): (() => void) => {
       __configChangeListeners.add(cb);
       return () => { __configChangeListeners.delete(cb); };
     },
   },
 };
+
+export const APIClient = { shared: WKApp.apiClient };
 
 export default WKApp;
 
@@ -152,6 +160,8 @@ export const buildDocLink = ({ docId }: { docId: string }): string =>
   `${typeof window !== 'undefined' && window.location?.origin ? window.location.origin : ''}/d/${encodeURIComponent(docId)}`;
 
 export const webOrigin = (): string => window.location.origin;
+export const resolveDocLinkForExternalOpen = (link: string): string => link;
+export const getElectronLinksBridge = (): undefined => undefined;
 export { validateDocsDocumentLink } from "../../../dmworkbase/src/bridge/docs/documentLink";
 
 /** Utils/clipboard.copyToClipboard 的测试替身，默认成功；单测可 vi.spyOn 覆写。 */
@@ -162,12 +172,15 @@ export const copyToClipboard = async (_text: string): Promise<boolean> => true;
 // __setDocsConvertHandler / __setDocsOn 控制端口是否可用。
 let __docsConvertHandler: ((p: { title: string; markdown: string }) => Promise<{ docId: string; url: string }>) | null = null;
 let __docsOn = false;
+let __docsSearchOn = false;
 
 export const __setDocsConvertHandler = (h: typeof __docsConvertHandler) => { __docsConvertHandler = h; };
 export const __setDocsOn = (v: boolean) => { __docsOn = v; };
+export const __setDocsSearchOn = (v: boolean) => { __docsSearchOn = v; };
 export const __resetDocsPort = () => {
   __docsConvertHandler = null;
   __docsOn = false;
+  __docsSearchOn = false;
   __configChangeListeners.clear();
 };
 

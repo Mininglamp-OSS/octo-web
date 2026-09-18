@@ -74,6 +74,8 @@
     "groupChat": "Group chat",
     "thread": "Thread",
     "directMessage": "Direct message",
+    "document": "Document",
+    "generationSnapshot": "Snapshot at generation",
     "label": "Source: ",
     "selectedHeader": "Selected sources",
     "empty": "No sources",
@@ -175,7 +177,11 @@
     "templatesTitle": "Try these templates",
     "submitting": "Summarizing...",
     "success": "Summary task created",
+    "selectSource": "Select source",
     "selectChat": "Select chats",
+    "selectDocument": "Select documents",
+    "documentOnlyHint": "Document summaries are single-user and manual only",
+    "documentSourceUnavailable": "Document summaries are currently disabled. Remove documents and try again.",
     "selectMembers": "Select participants",
     "selectedMembers": "{{count}} participants selected",
     "start": "Quick summary",
@@ -201,12 +207,32 @@
     "savedReferenceLostRetry": "Save failed: please re-select the referenced summary, or start a new session",
     "savedNoOriginRetry": "Save failed: the referenced summary has no source channel, and this session hasn't read any channel either. Pick a referenced summary with a source, or start a new session and let the AI read a channel first"
   },
+  "documentPicker": {
+    "title": "Select documents",
+    "searchPlaceholder": "Search document titles",
+    "selectedCount": "{{count}} / {{max}} selected",
+    "loading": "Loading documents…",
+    "source": {
+      "recent": "Recent",
+      "mine": "My documents"
+    },
+    "empty": {
+      "recent": "No recent documents available",
+      "mine": "No owned documents available"
+    },
+    "noResults": "No matching documents",
+    "loadMore": "Load more",
+    "loadMoreFailed": "Couldn't load more documents. Please retry.",
+    "supportedTypesHint": "Documents and HTML only; spreadsheets and whiteboards aren't supported",
+    "searchFailed": "Document loading failed. Please retry."
+  },
   "workbench": {
     "title": "Summary assistant",
     "subtitle": "Select chats, participants, or a template, or describe what you need summarized",
     "empty": "Tell me what you want to summarize, and I'll work with the context you've selected",
     "context": {
       "chat": "Select chats",
+      "document": "Select documents",
       "participant": "Select participants",
       "template": "Template",
       "timeRange": "Time range",
@@ -291,6 +317,7 @@
     "placeholder": {
       "initial": "Describe what you want summarized and how",
       "chatSelected": "Describe how to summarize the selected chats, and I'll create a preview you can refine",
+      "documentSelected": "Send now to summarize the selected documents, or add instructions",
       "participantsSelected": "Describe or refine the team summary request, and I'll prepare the task",
       "structuredReady": "Send now to generate the final summary, or add more instructions",
       "teamConfirmation": "Add more instructions, or confirm and start the collaboration",
@@ -593,6 +620,8 @@
     "scheduleBindFailedOrphan": "Binding the schedule failed and the automatic rollback did not succeed; an unbound schedule may remain. Please check and clean it up in the schedule list.",
     "setSchedule": "Set schedule",
     "editSchedule": "Edit schedule",
+    "documentScheduleUnsupported": "Document summaries do not support scheduled updates yet.",
+    "legacyDocumentSchedule": "Document summaries cannot run on a schedule. Existing schedules can only be turned off.",
     "disableSchedule": "Turn off schedule",
     "scheduleDisabled": "Schedule turned off",
     "scheduleDisabledHint": "Schedule is off",
@@ -719,6 +748,8 @@
     "source": "Source: {{source}}",
     "sourceDefault": "Unknown source",
     "multipleSources": "Multiple sources",
+    "openDocument": "Open document →",
+    "documentLocation": "Version {{version}} · chunk {{chunk}}",
     "referenceTag": "Citation [{{index}}]",
     "member": "Member: {{name}}"
   },

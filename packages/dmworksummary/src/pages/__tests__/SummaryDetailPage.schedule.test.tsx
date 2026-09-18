@@ -1846,6 +1846,258 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
     });
 });
 
+describe('SummaryDetailPage — document summaries never enter the schedule pipeline', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it('does not expose the live header schedule action for a document source', () => {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: baseDetail({
+                permissions: { can_edit: true, can_schedule: true },
+                sources: [{ source_type: 4, source_id: 'doc-1' }],
+            }),
+            scheduleItem: null,
+            isEditing: false,
+            editingTeamSummary: false,
+        };
+
+        const json = JSON.stringify((page as any).renderHeader());
+        expect(json).not.toContain('summary.detail.setSchedule');
+        expect(json).not.toContain('summary.detail.editSchedule');
+    });
+
+    it('openScheduleModal warns and does not open for a document source', () => {
+        const track = vi.spyOn(Dap.shared, 'track');
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: baseDetail({
+                permissions: { can_edit: true, can_schedule: true },
+                sources: [{ source_type: 4, source_id: 'doc-1' }],
+            }),
+            showScheduleConfig: false,
+        };
+
+        page.openScheduleModal();
+
+        expect(Toast.warning).toHaveBeenCalledWith('文档总结暂不支持设置定时更新');
+        expect((page.state as any).showScheduleConfig).toBe(false);
+        expect(track).not.toHaveBeenCalledWith('smart_summary_timer_dialog_opened', {});
+        track.mockRestore();
+    });
+
+    it('defensively skips createSchedule when save is invoked directly', async () => {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: baseDetail({
+                sources: [{ source_type: 4, source_id: 'doc-1' }],
+            }),
+            scheduleItem: null,
+        };
+
+        await page.handleScheduleSave({ unit: 'week', every: 1, time: '09:00' } as any);
+
+        expect(api.createSchedule).not.toHaveBeenCalled();
+    });
+});
+
+describe('SummaryDetailPage — document source snapshot version', () => {
+    it('labels the source type, document name and generation snapshot without exposing source_version', () => {
+        const page = makePage(1);
+        (page as any).context = {
+            t: (key: string) => ({
+                'summary.source.document': '文档',
+                'summary.source.generationSnapshot': '生成时快照',
+            }[key] || key),
+        };
+
+        expect((page as any).sourceLabel({
+            source_type: 4,
+            source_id: 'doc-1',
+            source_name: '项目复盘',
+            source_version: 'A6v+hvAJgQjBluHbCaAQq7eowQTFBQ==',
+        })).toBe('文档 · 项目复盘 · 生成时快照');
+    });
+
+    it('labels chat sources by type without a document snapshot badge', () => {
+        const page = makePage(1);
+        (page as any).context = {
+            t: (key: string) => key === 'summary.source.groupChat' ? '群聊' : key,
+        };
+
+        expect((page as any).sourceLabel({
+            source_type: 1,
+            source_id: 'group-1',
+            source_name: '需求讨论群',
+        })).toBe('群聊 · 需求讨论群');
+    });
+});
+
+describe('SummaryDetailPage — document generation rendering', () => {
+    it.each([undefined, 0, -1, 9])('shows exactly one progress card while generating (schedule=%s)', (scheduleId) => {
+        const page = makePage(1);
+        page.state = {
+            ...page.state,
+            loading: false,
+            detail: baseDetail({
+                summary_mode: SummaryMode.BY_PERSON,
+                status: TaskStatus.WAITING_CONFIRM,
+                schedule_id: scheduleId,
+                sources: [{ source_type: 4, source_id: 'doc-1' }],
+            }),
+            members: [],
+            personalResult: null,
+        };
+        const elements = collectElements(page.render());
+        expect(elements.filter(el => el.props.className === 'summary-detail-processing')).toHaveLength(1);
+        expect(elements.some(el => el.props.description === 'summary.detail.documentScheduleUnsupported')).toBe(false);
+        expect(elements.some(el => el.props.description === 'summary.detail.legacyDocumentSchedule')).toBe((scheduleId ?? 0) > 0);
+        expect(elements.some(el => el.props.onClick === page.handleViewConfirm)).toBe(false);
+        expect(page.needsScheduleConfirm()).toBe(false);
+    });
+
+    it.each([1, 4])('stops generating feedback when personal content is ready (source=%s)', (sourceType) => {
+        const page = makePage(1);
+        page.state = {
+            ...page.state,
+            loading: false,
+            detail: baseDetail({
+                summary_mode: SummaryMode.BY_PERSON, status: TaskStatus.WAITING_CONFIRM,
+                sources: [{ source_type: sourceType, source_id: 'source-1' }],
+            }),
+            personalResult: { content: 'Ready summary', worker_status: 2 } as any,
+            workflowGateContent: false,
+        };
+        expect(collectElements(page.render()).filter(el => el.props.className === 'summary-detail-processing')).toHaveLength(0);
+    });
+
+    it('preserves the single-person chat generating state', () => {
+        const page = makePage(1);
+        page.state = {
+            ...page.state, loading: false,
+            detail: baseDetail({ summary_mode: SummaryMode.BY_PERSON, status: TaskStatus.WAITING_CONFIRM }),
+        };
+        const elements = collectElements(page.render());
+        expect(elements.filter(el => el.props.className === 'summary-detail-processing')).toHaveLength(1);
+        expect(elements.some(el => el.props.description === 'summary.detail.legacyDocumentSchedule')).toBe(false);
+    });
+
+    it.each(['Unknown', '未知'])('uses the current locale fallback for unknown source types (%s)', (unknownLabel) => {
+        const page = makePage(1);
+        (page as any).context = { t: (key: string) => key === 'summary.common.unknown' ? unknownLabel : key };
+        const tree = (page as any).renderSourceMetadata([{ source_type: 99, source_id: 'future-source' }]);
+        expect(collectElements(tree).some(el => el.props['aria-label'] === `${unknownLabel} · future-source`)).toBe(true);
+        expect(JSON.stringify(tree)).not.toContain('undefined');
+    });
+});
+
+describe('SummaryDetailPage — legacy document schedules are disable-only', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    function legacyPage(active = true, canSchedule = true) {
+        const page = makePage(1);
+        page.state = {
+            ...page.state,
+            detail: baseDetail({
+                schedule_id: 9,
+                permissions: { can_schedule: canSchedule, can_view_schedule: true },
+                sources: [{ source_type: 4, source_id: 'doc-1' }],
+            }),
+            scheduleItem: {
+                schedule_id: 9, is_active: active, confirm_policy: 1,
+                participant_config: [WKApp.loginInfo.uid],
+            } as any,
+            scheduleLoading: false,
+        };
+        return page;
+    }
+
+    function disableAction(page: SummaryDetailPage) {
+        return collectElements(page.renderHeader())
+            .find(element => element.props?.onClick === page.handleScheduleDisable);
+    }
+
+    it('exposes only disable in the real header for an active legacy document schedule', () => {
+        const page = legacyPage();
+        expect(disableAction(page)).toBeDefined();
+        expect(findScheduleAction(page)).toBeUndefined();
+        expect(JSON.stringify(page.renderScheduleSummary())).toContain('summary.detail.legacyDocumentSchedule');
+        expect(page.needsScheduleConfirm()).toBe(false);
+        expect(page.renderScheduleConfirm()).toBeNull();
+    });
+
+    it('stops the existing schedule and then displays only its inactive status', async () => {
+        const page = legacyPage();
+        vi.mocked(api.toggleSchedule).mockResolvedValue({ schedule_id: 9, is_active: false } as any);
+        await disableAction(page)!.props.onClick();
+        expect(api.toggleSchedule).toHaveBeenCalledExactlyOnceWith(9, false, 1);
+        expect(page.state.scheduleItem?.is_active).toBe(false);
+        expect(disableAction(page)).toBeUndefined();
+        expect(findScheduleAction(page)).toBeUndefined();
+        expect(JSON.stringify(page.renderScheduleSummary())).toContain('summary.detail.scheduleDisabledHint');
+    });
+
+    it('leaves an active schedule visible and retryable when disabling fails', async () => {
+        const page = legacyPage();
+        vi.mocked(api.toggleSchedule).mockRejectedValueOnce(new Error('network'));
+        await page.handleScheduleDisable();
+        expect(page.state.scheduleItem?.is_active).toBe(true);
+        expect(page.state.scheduleDisabling).toBe(false);
+        expect(disableAction(page)).toBeDefined();
+        expect(Toast.error).toHaveBeenCalledWith('network');
+    });
+
+    it.each(['noPermission', 'inactive', 'wrongSchedule', 'wrongTask', 'loading', 'editing'] as const)(
+        'blocks the UI and direct disable handler for %s',
+        async (condition) => {
+            const page = legacyPage(condition !== 'inactive', condition !== 'noPermission');
+            if (condition === 'wrongSchedule') page.state.scheduleItem!.schedule_id = 99;
+            if (condition === 'wrongTask') page.state.detail!.task_id = 2;
+            if (condition === 'loading') page.state.scheduleLoading = true;
+            if (condition === 'editing') page.state.isEditing = true;
+            expect(disableAction(page)).toBeUndefined();
+            await page.handleScheduleDisable();
+            expect(api.toggleSchedule).not.toHaveBeenCalled();
+        }
+    );
+
+    it('does not display a schedule to viewers lacking both permissions', () => {
+        const page = legacyPage(true, false);
+        page.state.detail!.permissions!.can_view_schedule = false;
+        expect(page.renderScheduleSummary()).toBeNull();
+    });
+
+    it('prevents duplicate disable requests while one is pending', async () => {
+        const page = legacyPage();
+        let resolve!: (value: any) => void;
+        vi.mocked(api.toggleSchedule).mockReturnValueOnce(new Promise(next => { resolve = next; }));
+        const pending = page.handleScheduleDisable();
+        expect(disableAction(page)!.props.disabled).toBe(true);
+        await page.handleScheduleDisable();
+        expect(api.toggleSchedule).toHaveBeenCalledTimes(1);
+        resolve({ is_active: false });
+        await pending;
+    });
+
+    it.each([true, false])('never creates, updates, enables or confirms a legacy schedule (active=%s)', async (active) => {
+        const onViewConfirm = vi.fn();
+        const page = legacyPage(active);
+        (page as any).props = { ...page.props, onViewConfirm };
+        page.openScheduleModal();
+        await page.handleScheduleSave({ unit: 'week', every: 1, time: '09:00' } as any);
+        await page.handleConfirmSchedule();
+        (page as any).handleViewConfirm();
+        expect(page.state.showScheduleConfig).toBe(false);
+        expect(api.createSchedule).not.toHaveBeenCalled();
+        expect(api.updateSchedule).not.toHaveBeenCalled();
+        expect(api.toggleSchedule).not.toHaveBeenCalled();
+        expect(api.confirmSchedule).not.toHaveBeenCalled();
+        expect(onViewConfirm).not.toHaveBeenCalled();
+    });
+});
+
 // ─── m1（隐私收口，第二轮）：他人个人报告折叠态也不得露 [n] 角标 ───
 //
 // 背景：renderParticipantReports 折叠预览旧实现直接 content.slice(0,100)，

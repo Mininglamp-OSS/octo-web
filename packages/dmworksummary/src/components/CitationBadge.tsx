@@ -1,6 +1,15 @@
 import React, { useContext, useMemo, useRef, useState, useCallback, useEffect } from 'react';
-import { Popover } from "@douyinfe/semi-ui";
-import { i18n, useI18n, Dap } from "@octo/base";
+import { Popover, Toast } from "@douyinfe/semi-ui";
+import {
+    buildDocLink,
+    Dap,
+    getDocsDocumentOpener,
+    getElectronLinksBridge,
+    i18n,
+    resolveDocLinkForExternalOpen,
+    useI18n,
+    webOrigin,
+} from "@octo/base";
 import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import { ChannelTypeCommunityTopic } from "@octo/base/src/Service/Const";
@@ -236,6 +245,52 @@ function ContextMessages({ messages }: { messages?: CitationContextMessage[] }) 
 function JumpLink({ citation, badgeKey, closeKey }: { citation: CitationItem; badgeKey: string; closeKey: (key: string) => void }) {
     const { t } = useI18n();
     const messaging = useSummaryMessaging();
+    if (citation.document_id) {
+        return (
+            <button
+                type="button"
+                className="citation-jump-link"
+                onClick={(event) => {
+                    event.stopPropagation();
+                    closeKey(badgeKey);
+                    const docId = citation.document_id!;
+                    const url = buildDocLink({ docId });
+                    const hostOpener = getDocsDocumentOpener();
+                    if (hostOpener) {
+                        void hostOpener({ docId, url }).catch(() => {
+                            Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                        });
+                        return;
+                    }
+                    const linksBridge = getElectronLinksBridge();
+                    if (linksBridge) {
+                        void linksBridge
+                            .openExternal(resolveDocLinkForExternalOpen(url, webOrigin()))
+                            .then((result) => {
+                                if (!result.ok) Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                            })
+                            .catch(() => {
+                                Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                            });
+                        return;
+                    }
+                    const opened = window.open("about:blank", "_blank");
+                    if (!opened) {
+                        Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                        return;
+                    }
+                    try {
+                        opened.opener = null;
+                    } catch {
+                        // Some browser sandboxes freeze the opener setter.
+                    }
+                    opened.location.href = url;
+                }}
+            >
+                {t("summary.citation.openDocument")}
+            </button>
+        );
+    }
     if (!citation.channel_id || !citation.message_seq || citation.channel_type == null) return null;
     return (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
@@ -351,6 +406,16 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, displayIndex, cita
                         {t("summary.citation.source", { values: { source: citation.source } })}
                     </div>
                 )}
+                {citation.document_id && (
+                    <div className="citation-msg-source">
+                        {t("summary.citation.documentLocation", {
+                            values: {
+                                version: citation.document_version ?? "-",
+                                chunk: citation.document_chunk ?? "-",
+                            },
+                        })}
+                    </div>
+                )}
                 <div className="citation-msg-body">{citation.content}</div>
             </div>
         </div>
@@ -364,6 +429,16 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, displayIndex, cita
                     {formatTime(citation.sent_at)}
                 </span>
             </div>
+            {citation.document_id && (
+                <div className="citation-msg-source">
+                    {t("summary.citation.documentLocation", {
+                        values: {
+                            version: citation.document_version ?? "-",
+                            chunk: citation.document_chunk ?? "-",
+                        },
+                    })}
+                </div>
+            )}
             <div style={{ height: 1, background: 'rgba(28, 28, 35, 0.15)' }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <ContextMessages messages={citation.context_before} />
@@ -473,6 +548,16 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
                     {c.source && (
                         <div className="citation-msg-source">
                             {t("summary.citation.source", { values: { source: c.source } })}
+                        </div>
+                    )}
+                    {c.document_id && (
+                        <div className="citation-msg-source">
+                            {t("summary.citation.documentLocation", {
+                                values: {
+                                    version: c.document_version ?? "-",
+                                    chunk: c.document_chunk ?? "-",
+                                },
+                            })}
                         </div>
                     )}
                     <div className="citation-msg-body">{c.content}</div>

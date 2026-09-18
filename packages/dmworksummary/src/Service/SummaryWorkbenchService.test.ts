@@ -26,6 +26,7 @@ function state(scopeVersion = 1) {
       selected_channels: [
         { chat_id: "chat-1", chat_type: "group", name: "产品研发群" },
       ],
+      documents: [],
       participants: [],
       template: null,
       time_range: null,
@@ -109,6 +110,7 @@ describe("SummaryWorkbenchService", () => {
               name: "产品研发群",
             },
           ],
+          documents: [],
           participants: [],
           template: null,
           time_range: null,
@@ -506,6 +508,7 @@ describe("SummaryWorkbenchService", () => {
         scope_version: 1,
         summary_context: {
           selected_channels: [],
+          documents: [],
           participants: [],
           template: null,
           time_range: null,

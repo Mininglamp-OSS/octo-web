@@ -7,6 +7,7 @@ export * from './Service/Thread'
 export * from './Service/Module'
 export * from './Service/Menus'
 export * from './Service/APIClient'
+export { default as APIClient } from './Service/APIClient'
 export * from './Service/Dap'
 export * from './Service/apiLanguage'
 export * from './Service/apiFetch'
@@ -157,6 +158,13 @@ export { default as SpaceSettings } from "./Components/SpaceSettings"
 export * from "./Service/SpaceService"
 export { default as UserService } from "./Service/UserService"
 export type { UserProfile, UserProfileRequestOptions } from "./Service/UserService"
+export { default as SearchService } from "./Service/SearchService"
+export type {
+  DocSearchDocType,
+  DocSearchItem,
+  DocSearchQuery,
+  DocSearchResponse,
+} from "./Service/SearchTypes"
 
 export type { JoinApprovalStatus } from "./EndpointCommon"
 export { toJoinApprovalStatus } from "./EndpointCommon"

@@ -14,6 +14,7 @@ import "./index.css";
 
 const COMPOSER_CONTEXT_KINDS: SummaryWorkbenchContextKind[] = [
   "chat",
+  "document",
   "participant",
   "time_range",
 ];
@@ -22,6 +23,7 @@ const REFERENCE_CONTEXT_KIND: SummaryWorkbenchContextKind = "reference";
 
 const CONTEXT_LABEL_KEYS: Record<SummaryWorkbenchContextKind, string> = {
   chat: "summary.workbench.context.chat",
+  document: "summary.workbench.context.document",
   participant: "summary.workbench.context.participant",
   template: "summary.workbench.context.template",
   time_range: "summary.workbench.context.timeRange",
@@ -66,9 +68,11 @@ const SummaryWorkbench = ({
   const referenceContextItems = state.contextItems.filter(
     (item) => item.kind === REFERENCE_CONTEXT_KIND
   );
+  const baseContextKinds =
+    state.availableContextKinds ?? COMPOSER_CONTEXT_KINDS;
   const composerContextKinds = state.showTemplateTrigger
-    ? [...COMPOSER_CONTEXT_KINDS, "template" as const]
-    : COMPOSER_CONTEXT_KINDS;
+    ? [...baseContextKinds, "template" as const]
+    : baseContextKinds;
   const progressSteps = state.progressSteps?.length
     ? state.progressSteps
     : state.isSending
@@ -414,8 +418,14 @@ const SummaryWorkbench = ({
       data-testid="summary-workbench"
       data-screen-label="smart-summary-workbench"
     >
-      <header className="wk-summary-workbench__header" data-desktop-chrome="header">
-        <div className="wk-summary-workbench__heading" data-desktop-chrome="layout">
+      <header
+        className="wk-summary-workbench__header"
+        data-desktop-chrome="header"
+      >
+        <div
+          className="wk-summary-workbench__heading"
+          data-desktop-chrome="layout"
+        >
           <div>
             <h1>{t("summary.workbench.title")}</h1>
             {state.messages.length === 0 && (

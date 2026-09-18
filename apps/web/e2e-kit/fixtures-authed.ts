@@ -3,6 +3,7 @@
 import { test as base, expect, type Page, type Request } from "@playwright/test";
 import { MOCK_IM_SEED_STORAGE_KEY } from "./_kit/mock-im-runtime";
 import { waitForMswReady } from "./_lib/e2eReady";
+import { monitorMockNetwork } from "./mock-network-monitor";
 
 /**
  * octo-web authedPage fixture.
@@ -126,6 +127,11 @@ async function installGlobalMockFallbackRoutes(page: Page): Promise<void> {
 }
 
 type Fixtures = {
+  /** Set before the fixture's first navigation; avoids reloading just for locale. */
+  authedLocale: "zh-CN" | "en-US";
+  /** Opt in for happy-path mock tests; intentional API failure tests keep this off. */
+  mockApiGuard: boolean;
+  _mockApiGuard: void;
   authedPage: Page;
   /**
    * pagePlain — vanilla page: 不预置 auth, 不 goto, 不 wait __MSW_READY__.
@@ -138,7 +144,22 @@ type Fixtures = {
 };
 
 export const test = base.extend<Fixtures>({
-  authedPage: async ({ page }, use) => {
+  authedLocale: [MOCK_LOCALE, { option: true }],
+  mockApiGuard: [false, { option: true }],
+  _mockApiGuard: [async ({ context, mockApiGuard }, use) => {
+    if (!mockApiGuard) {
+      await use();
+      return;
+    }
+    const monitor = monitorMockNetwork(context);
+    try {
+      await use();
+    } finally {
+      monitor.stop();
+      expect(monitor.issues, "Mock API requests must not escape or fail, including during page setup/teardown").toEqual([]);
+    }
+  }, { auto: true }],
+  authedPage: async ({ page, authedLocale }, use) => {
     const target = process.env.E2E_TARGET ?? "local";
     if (target !== "local" && target !== "test") {
       throw new Error(`[e2e-kit] E2E_TARGET 必须是 'local' 或 'test', 当前 = '${target}'`);
@@ -148,7 +169,7 @@ export const test = base.extend<Fixtures>({
       ({ key, value }: { key: string; value: string }) => {
         (globalThis as unknown as { localStorage: Storage }).localStorage.setItem(key, value);
       },
-      { key: LOCALE_STORAGE_KEY, value: MOCK_LOCALE },
+      { key: LOCALE_STORAGE_KEY, value: authedLocale },
     );
 
     // 预置 onboarding=seen 跳过首屏 intro 动画 (WebGL <Strands> headless chrome 会 crash).

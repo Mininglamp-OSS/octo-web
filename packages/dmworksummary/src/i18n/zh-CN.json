@@ -74,6 +74,8 @@
     "groupChat": "群聊",
     "thread": "子区",
     "directMessage": "私聊",
+    "document": "文档",
+    "generationSnapshot": "生成时快照",
     "label": "来源：",
     "selectedHeader": "已选择的信息来源",
     "empty": "暂无来源",
@@ -175,7 +177,11 @@
     "templatesTitle": "试试下列模版",
     "submitting": "总结中...",
     "success": "总结任务已创建",
+    "selectSource": "选择来源",
     "selectChat": "选择聊天",
+    "selectDocument": "选择文档",
+    "documentOnlyHint": "文档总结仅支持单人、手动创建",
+    "documentSourceUnavailable": "文档总结入口已关闭，请移除文档后重试",
     "selectMembers": "选择参与者",
     "selectedMembers": "已选 {{count}} 位参与者",
     "start": "快速总结",
@@ -201,12 +207,32 @@
     "savedReferenceLostRetry": "保存失败：请重新选择引用总结，或点「新会话」重来",
     "savedNoOriginRetry": "保存失败：该引用总结缺少来源频道，本次会话也未读取过频道。请更换有来源的引用总结，或开始新会话让 AI 先读取频道"
   },
+  "documentPicker": {
+    "title": "选择文档",
+    "searchPlaceholder": "搜索文档标题",
+    "selectedCount": "已选择 {{count}} / {{max}} 篇",
+    "loading": "正在加载文档…",
+    "source": {
+      "recent": "最近查看",
+      "mine": "我的文档"
+    },
+    "empty": {
+      "recent": "暂无最近查看的可总结文档",
+      "mine": "暂无我的可总结文档"
+    },
+    "noResults": "没有找到相关文档",
+    "loadMore": "加载更多",
+    "loadMoreFailed": "加载更多失败，请重试",
+    "supportedTypesHint": "仅支持文档和 HTML，不含表格及白板",
+    "searchFailed": "文档加载失败，请重试"
+  },
   "workbench": {
     "title": "总结助手",
     "subtitle": "选择聊天、参与者或模板，也可以直接描述你的总结需求",
     "empty": "告诉我你想总结什么，我会根据已选内容为你处理",
     "context": {
       "chat": "选择聊天",
+      "document": "选择文档",
       "participant": "选择参与者",
       "template": "模板",
       "timeRange": "时间范围",
@@ -291,6 +317,7 @@
     "placeholder": {
       "initial": "描述你想总结的内容和要求",
       "chatSelected": "描述你希望如何总结已选聊天，我会先生成预览供你调整",
+      "documentSelected": "可直接发送生成文档总结，也可以补充总结要求",
       "participantsSelected": "描述或补充多人总结要求，我会据此准备任务",
       "structuredReady": "可直接发送生成正式总结，也可以继续补充要求",
       "teamConfirmation": "可继续补充要求，或确认并发起协作",
@@ -593,6 +620,8 @@
     "scheduleBindFailedOrphan": "定时绑定失败且自动撤销未成功，可能残留未绑定的定时，请到定时列表检查清理",
     "setSchedule": "设置定时更新",
     "editSchedule": "修改定时更新",
+    "documentScheduleUnsupported": "文档总结暂不支持设置定时更新",
+    "legacyDocumentSchedule": "文档总结不支持定时更新，已有定时仅可关闭",
     "disableSchedule": "关闭定时",
     "scheduleDisabled": "定时已关闭",
     "scheduleDisabledHint": "定时已关闭",
@@ -719,6 +748,8 @@
     "source": "来源：{{source}}",
     "sourceDefault": "未知来源",
     "multipleSources": "多个来源",
+    "openDocument": "打开文档 →",
+    "documentLocation": "版本 {{version}} · 分片 {{chunk}}",
     "referenceTag": "引用 [{{index}}]",
     "member": "成员：{{name}}"
   },

@@ -7,6 +7,8 @@ import { dirname, join } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (rel: string) =>
   readFileSync(join(here, rel), "utf8");
+// Permit formatting whitespace, but never cross into another JSX element.
+const workbenchHeaderMarker = /className="wk-summary-workbench__header"[^<>]{0,200}data-desktop-chrome="header"/;
 
 describe("summary desktop markers", () => {
   it("marks a header on every detail route workspace", () => {
@@ -24,12 +26,18 @@ describe("summary desktop markers", () => {
     const create = read("../pages/SummaryCreatePage.tsx");
     expect(create).toMatch(/className="summary-workbench-header" data-desktop-chrome="header"/);
     const workbench = read("../ui/SummaryWorkbench/index.tsx");
-    expect(workbench).toMatch(/className="wk-summary-workbench__header" data-desktop-chrome="header"/);
+    expect(workbench).toMatch(workbenchHeaderMarker);
     const share = read("../pages/SummaryShareDetailPage.tsx");
     expect(share).toMatch(/<header className="summary-share-detail__header" data-desktop-chrome="header">/);
     const preview = read("../features/summaryShare/SummarySharePreviewFeature.tsx");
     expect(preview).toMatch(/<header className="summary-share-preview__header" data-desktop-chrome="header">/);
     expect(preview).not.toMatch(/data-desktop-overlay/);
+  });
+
+  it("rejects a header marker moved to a different element", () => {
+    const misplaced = '<div className="wk-summary-workbench__header"><span data-desktop-chrome="header" /></div>';
+    expect(misplaced).not.toMatch(workbenchHeaderMarker);
+    expect('<div className="wk-summary-workbench__header"\n data-desktop-chrome="header">').toMatch(workbenchHeaderMarker);
   });
 
   it("marks independently positioned side pane headers", () => {

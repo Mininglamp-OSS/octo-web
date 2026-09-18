@@ -11,7 +11,7 @@ import {
     Dropdown,
 } from "@douyinfe/semi-ui";
 import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconRefresh, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
-import { ChevronDown, Check, X } from "lucide-react";
+import { ChevronDown, Check, FileText, MessageSquareText, UsersRound, X } from "lucide-react";
 import {
   I18nContext,
   t,
@@ -63,7 +63,7 @@ import type {
     SourceItem,
     ChatCandidate,
 } from "../types/summary";
-import { TaskStatus, SummaryMode, ParticipantStatus, TriggerType } from "../types/summary";
+import { TaskStatus, SummaryMode, ParticipantStatus, SourceType, TriggerType } from "../types/summary";
 import {
     formatDate,
     canCancel,
@@ -73,6 +73,7 @@ import {
     formatScheduleSummary,
     shouldReactivateOnSave,
     isReferenceable,
+    getSourceTypeLabel,
 } from "../utils/summaryHelpers";
 import { summaryTestIds } from "../utils/testIds";
 import CitationText from "../components/CitationText";
@@ -220,6 +221,78 @@ function AbstractCallout({ abstract, title }: { abstract?: string; title: string
 export default class SummaryDetailPage extends Component<SummaryDetailPageProps, SummaryDetailPageState> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
+
+    private sourceLabel = (source: SourceItem): string => {
+        const type = this.sourceTypeLabel(source);
+        const name = source.source_name || source.source_id;
+        if (source.source_type !== SourceType.DOCUMENT || source.source_version == null) {
+            return `${type} · ${name}`;
+        }
+        return `${type} · ${name} · ${this.context.t("summary.source.generationSnapshot")}`;
+    };
+
+    private sourceTypeLabel = (source: SourceItem): string => {
+        return getSourceTypeLabel(source.source_type, this.context.t);
+    };
+
+    private sourceIcon = (source: SourceItem) => {
+        if (source.source_type === SourceType.GROUP_CHAT) {
+            return <UsersRound size={14} aria-hidden />;
+        }
+        if (source.source_type === SourceType.DOCUMENT) {
+            return <FileText size={14} aria-hidden />;
+        }
+        return <MessageSquareText size={14} aria-hidden />;
+    };
+
+    private renderSourceMetadata = (sources: SourceItem[]) => {
+        if (!sources.length) return null;
+        const { t } = this.context;
+        return (
+            <div className="summary-detail-source-row">
+                <span className="summary-detail-source-label">{t("summary.source.label")}</span>
+                <div className="summary-detail-source-chips">
+                    {sources.map((source, index) => {
+                        const isSnapshot = source.source_type === SourceType.DOCUMENT && source.source_version != null;
+                        return (
+                            <span
+                                key={`${source.source_type}-${source.source_id}-${index}`}
+                                className="summary-detail-source-chip"
+                                aria-label={this.sourceLabel(source)}
+                            >
+                                <span className="summary-detail-source-icon">{this.sourceIcon(source)}</span>
+                                <span className="summary-detail-source-type">{this.sourceTypeLabel(source)}</span>
+                                <span className="summary-detail-source-separator" aria-hidden>·</span>
+                                <span className="summary-detail-source-name">{source.source_name || source.source_id}</span>
+                                {isSnapshot && (
+                                    <span className="summary-detail-source-snapshot">
+                                        {t("summary.source.generationSnapshot")}
+                                    </span>
+                                )}
+                            </span>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    };
+
+    private isDocumentSummaryDetail(detail: SummaryDetail | null = this.state.detail): boolean {
+        return !!detail?.sources?.some((source) => source.source_type === SourceType.DOCUMENT);
+    }
+
+    private canDisableLegacyDocumentSchedule(): boolean {
+        const { detail, scheduleItem, scheduleLoading } = this.state;
+        return this.isDocumentSummaryDetail(detail) &&
+            !!detail?.permissions?.can_schedule &&
+            detail.task_id === this.taskId &&
+            !!detail.schedule_id && detail.schedule_id > 0 &&
+            scheduleItem?.schedule_id === detail.schedule_id &&
+            scheduleItem.is_active === true && !scheduleLoading &&
+            !this.state.isEditing && !this.state.editingTeamSummary &&
+            !this.state.editingPersonalReport && !this.state.editingMyDraft;
+    }
+
     private readonly titleContextOwner = Symbol("summary-title-context");
 
     private regenerateTopicRef = React.createRef<HTMLTextAreaElement>();
@@ -2059,6 +2132,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     openScheduleModal = () => {
         const { detail } = this.state;
         if (!detail || detail.task_id !== this.taskId) return;
+        if (this.isDocumentSummaryDetail(detail)) {
+            Toast.warning(t("summary.detail.documentScheduleUnsupported"));
+            return;
+        }
         if (!detail?.permissions?.can_schedule) {
             Toast.warning(t("summary.generation.schedulePermissionDenied"));
             return;
@@ -2194,6 +2271,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const requestTaskId = this.taskId;
         const { detail, scheduleItem } = this.state;
         if (!detail || detail.task_id !== requestTaskId) return;
+        // 第一期文档总结只支持手动创建。保存入口也做防御性拦截，避免绕过
+        // 详情头入口后把 source_type=DOCUMENT 写入传统定时 pipeline。
+        if (this.isDocumentSummaryDetail(detail)) {
+            Toast.warning(t("summary.detail.documentScheduleUnsupported"));
+            return;
+        }
 
         // 竞态修复（第3轮）finding 1：多人判定只能退回 members 兜底且 members 尚未
         // 加载完成时，不能保存——否则 isMultiPerson() 会把「members 加载中」误判为
@@ -2427,6 +2510,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const requestTaskId = this.taskId;
         const { scheduleItem } = this.state;
         if (!scheduleItem) return;
+        if (this.isDocumentSummaryDetail() &&
+            (!this.canDisableLegacyDocumentSchedule() || this.state.scheduleDisabling)) return;
         this.setState({ scheduleDisabling: true });
         try {
             // DAP-271 finding 6：把入口快照 requestTaskId 作为 summary_id 透传给 timer_disabled 事件。
@@ -2504,6 +2589,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     private handleViewConfirm = () => {
+        if (this.isDocumentSummaryDetail()) return;
         if (this.taskId == null) return;
         if (this.props.onViewConfirm) {
             this.props.onViewConfirm(this.taskId);
@@ -2740,15 +2826,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <div className="summary-detail-meta-time">
                         {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                     </div>
-                    {detail.sources && detail.sources.length > 0 && (
-                        <div className="summary-detail-source-chips">
-                            {detail.sources.map((src, i) => (
-                                <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
-                                    {src.source_name || src.source_id}
-                                </span>
-                            ))}
-                        </div>
-                    )}
+                    {this.renderSourceMetadata(detail.sources || [])}
                 </div>
                 <hr className="summary-detail-meta-divider" /></>}
                 <div className="summary-detail-failed">
@@ -3256,15 +3334,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <div className="summary-detail-meta-time">
                             {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                         </div>
-                        {detail.sources && detail.sources.length > 0 && (
-                            <div className="summary-detail-source-chips">
-                                {detail.sources.map((src, i) => (
-                                    <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
-                                        {src.source_name || src.source_id}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
+                        {this.renderSourceMetadata(detail.sources || [])}
                     </div>
                     <hr className="summary-detail-meta-divider" />
                     <div className="summary-detail-result-header">
@@ -3416,15 +3486,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <div className="summary-detail-meta-time">
                             {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                         </div>
-                        {detail.sources && detail.sources.length > 0 && (
-                            <div className="summary-detail-source-chips">
-                                {detail.sources.map((src, i) => (
-                                    <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
-                                        {src.source_name || src.source_id}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
+                        {this.renderSourceMetadata(detail.sources || [])}
                     </div>
                 )}
                 <hr className="summary-detail-meta-divider" />
@@ -3591,15 +3653,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <div className="summary-detail-meta-time">
                             {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                         </div>
-                        {detail.sources && detail.sources.length > 0 && (
-                            <div className="summary-detail-source-chips">
-                                {detail.sources.map((src, i) => (
-                                    <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
-                                        {src.source_name || src.source_id}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
+                        {this.renderSourceMetadata(detail.sources || [])}
                     </div>
                     <hr className="summary-detail-meta-divider" />
                     <div className="summary-detail-content-box">
@@ -3621,15 +3675,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <div className="summary-detail-meta-time">
                         {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                     </div>
-                    {detail.sources && detail.sources.length > 0 && (
-                        <div className="summary-detail-source-chips">
-                            {detail.sources.map((src, i) => (
-                                <span key={`${src.source_id}-${i}`} className="summary-detail-source-chip">
-                                    {src.source_name || src.source_id}
-                                </span>
-                            ))}
-                        </div>
-                    )}
+                    {this.renderSourceMetadata(detail.sources || [])}
                 </div>
                 <hr className="summary-detail-meta-divider" />
                 <div className="summary-detail-section-header">
@@ -4308,6 +4354,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      * 兼容：participant_config 为旧纯数组时无 confirmed 态，视为需确认。
      */
     needsScheduleConfirm(): boolean {
+        if (this.isDocumentSummaryDetail()) return false;
         const { scheduleItem } = this.state;
         if (!scheduleItem) return false;
         if (scheduleItem.is_active === false) return false;
@@ -4325,6 +4372,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     handleConfirmSchedule = async () => {
+        // Legacy document schedules may be stopped, never confirmed/reactivated.
+        if (this.isDocumentSummaryDetail()) return;
         // 续修7：入口捕获 requestTaskId。await confirmSchedule 期间切 task，不得把 A 的
         // schedule 回显到 B（finally 的 confirmingSchedule 复位保留）。
         const requestTaskId = this.taskId;
@@ -4381,6 +4430,34 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     renderScheduleSummary() {
         const { detail, scheduleItem } = this.state;
         const { t } = this.context;
+        // Phase 1: legacy/migrated document summaries can retain schedule_id > 0.
+        // Keep their status visible but expose ONLY disable, with the same guard
+        // at the handler boundary. Create/update/enable/participation stay closed;
+        // the backend document-source rejection remains a separate backstop.
+        if (this.isDocumentSummaryDetail(detail)) {
+            if (!detail?.schedule_id || !scheduleItem ||
+                detail.task_id !== this.taskId || scheduleItem.schedule_id !== detail.schedule_id) return null;
+            const canDisable = this.canDisableLegacyDocumentSchedule();
+            if (!detail.permissions?.can_view_schedule && !canDisable) return null;
+            return (
+                <div className="summary-detail-legacy-document-schedule">
+                    <span>{scheduleItem.is_active === false
+                        ? t("summary.detail.scheduleDisabledHint")
+                        : t("summary.detail.legacyDocumentSchedule")}</span>
+                    {canDisable && (
+                        <button
+                            type="button"
+                            className="summary-detail-legacy-document-schedule__disable"
+                            disabled={this.state.scheduleDisabling}
+                            aria-busy={this.state.scheduleDisabling}
+                            onClick={this.handleScheduleDisable}
+                        >
+                            {t("summary.detail.disableSchedule")}
+                        </button>
+                    )}
+                </div>
+            );
+        }
         // need2：定时**信息**只读展示对所有参与者可见（can_view_schedule），不再限 creator。
         // 位置不变（header）。定时设置菜单仍仅 creator，与定时信息展示分开。
         if (!detail?.permissions?.can_view_schedule) return null;
@@ -4452,6 +4529,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const showLeave = !!detail && isParticipant && !isCreator;
         const canSchedule = !!detail?.permissions?.can_schedule &&
             (detail?.trigger_type !== TriggerType.AGENT || supportsGenerationConfig(detail)) &&
+            !this.isDocumentSummaryDetail(detail) &&
             !this.state.isEditing && !this.state.editingTeamSummary &&
             !this.state.editingPersonalReport && !this.state.editingMyDraft;
         const scheduleItem = this.state.scheduleItem;
@@ -4761,7 +4839,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 )}
 
                                 {/* 单人时不显示"等待参与者确认"，因为creator自动接受 */}
-                                {detail.status === TaskStatus.WAITING_CONFIRM && this.state.members.length > 1 && (() => {
+                                {detail.status === TaskStatus.WAITING_CONFIRM && this.isDocumentSummaryDetail(detail) && (detail.schedule_id ?? 0) > 0 && (
+                                    <Banner type="info" closeIcon={null} description={t("summary.detail.legacyDocumentSchedule")} />
+                                )}
+                                {detail.status === TaskStatus.WAITING_CONFIRM && !this.isDocumentSummaryDetail(detail) && this.state.members.length > 1 && (() => {
                                     const mode = this.waitingConfirmMode();
                                     return mode === 'loading' ? (
                                         // 竞态修复（第3轮）finding 2：scheduleItem 由 loadDetail 之后的二次

@@ -3,14 +3,56 @@ import {
   canSelectParticipants,
   canGenerateFromScope,
   chatCandidatesToScope,
+  documentsToScope,
   emptySummaryWorkbenchScope,
   participantSourceChannels,
+  participantSourceKey,
   removeScopeContext,
   replaceSelectedChannels,
+  replaceSelectedDocuments,
   retainValidParticipants,
 } from "./scope";
 
 describe("summary workbench scope helpers", () => {
+  it("never offers a participant source for documents, even with no channels", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      documents: [{ documentId: "doc-a", title: "A" }],
+      participants: [{ userId: "u1" }],
+    };
+    expect(canSelectParticipants(scope)).toBe(false);
+    expect(participantSourceKey(scope)).toBeUndefined();
+    expect(participantSourceKey(emptySummaryWorkbenchScope())).toBe("space");
+  });
+
+  it("keeps document scope intact on an empty chat confirmation", () => {
+    const scope = { ...emptySummaryWorkbenchScope(), documents: [{ documentId: "doc-a", title: "A" }] };
+    const result = replaceSelectedChannels(scope, []);
+    expect(result.scope).toBe(scope);
+    expect(result.participantsCleared).toBe(false);
+  });
+
+  it("keeps chats, participants and time range on an empty document confirmation", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      selectedChannels: [{ chatId: "group-a", chatType: "group" as const, name: "A" }],
+      participants: [{ userId: "u1" }],
+      timeRange: { start: "2026-09-01", end: "2026-09-02", label: "Range" },
+    };
+    expect(replaceSelectedDocuments(scope, [])).toEqual({ scope, participantsCleared: false });
+    expect(replaceSelectedDocuments(scope, []).scope).toBe(scope);
+  });
+
+  it("still clears all selections of the current source type", () => {
+    const scope = emptySummaryWorkbenchScope();
+    expect(replaceSelectedChannels({
+      ...scope, selectedChannels: [{ chatId: "a", chatType: "group", name: "A" }],
+    }, []).scope.selectedChannels).toEqual([]);
+    expect(replaceSelectedDocuments({
+      ...scope, documents: [{ documentId: "a", title: "A" }],
+    }, []).scope.documents).toEqual([]);
+  });
+
   it("maps chat candidates without losing archived state", () => {
     expect(
       chatCandidatesToScope([
@@ -173,6 +215,12 @@ describe("summary workbench scope helpers", () => {
     expect(
       canGenerateFromScope({
         ...scope,
+        documents: [{ documentId: "doc-a", title: "Doc A" }],
+      })
+    ).toBe(true);
+    expect(
+      canGenerateFromScope({
+        ...scope,
         participants: [{ userId: "user-a", userName: "Alex" }],
       })
     ).toBe(false);
@@ -198,9 +246,7 @@ describe("summary workbench scope helpers", () => {
     expect(
       canGenerateFromScope({
         ...scope,
-        selectedChannels: [
-          { chatId: "chat-a", chatType: "group", name: "A" },
-        ],
+        selectedChannels: [{ chatId: "chat-a", chatType: "group", name: "A" }],
         template: {
           templateId: "weekly",
           label: "Weekly",
@@ -211,9 +257,7 @@ describe("summary workbench scope helpers", () => {
     expect(
       canGenerateFromScope({
         ...scope,
-        selectedChannels: [
-          { chatId: "chat-a", chatType: "group", name: "A" },
-        ],
+        selectedChannels: [{ chatId: "chat-a", chatType: "group", name: "A" }],
         participants: [{ userId: "user-a", userName: "Alex" }],
       })
     ).toBe(false);
@@ -231,9 +275,7 @@ describe("summary workbench scope helpers", () => {
     expect(
       canGenerateFromScope({
         ...scope,
-        selectedChannels: [
-          { chatId: "chat-a", chatType: "group", name: "A" },
-        ],
+        selectedChannels: [{ chatId: "chat-a", chatType: "group", name: "A" }],
         participants: [{ userId: "user-a", userName: "Alex" }],
         template: {
           templateId: "weekly",
@@ -244,6 +286,34 @@ describe("summary workbench scope helpers", () => {
     ).toBe(true);
   });
 
+  it("uses document selection as document-only scope", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      selectedChannels: [
+        { chatId: "group-a", chatType: "group" as const, name: "A" },
+      ],
+      participants: [{ userId: "user-a", userName: "Alex" }],
+      timeRange: {
+        start: "2026-09-01T00:00:00Z",
+        end: "2026-09-02T00:00:00Z",
+        label: "昨天",
+      },
+    };
+    const documents = documentsToScope([
+      { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+    ]);
+    const result = replaceSelectedDocuments(scope, documents);
+
+    expect(result.participantsCleared).toBe(true);
+    expect(result.scope).toMatchObject({
+      selectedChannels: [],
+      documents,
+      participants: [],
+      timeRange: null,
+    });
+    expect(canSelectParticipants(result.scope)).toBe(false);
+  });
+
   it("removes a reference without changing other scope fields", () => {
     const scope = {
       ...emptySummaryWorkbenchScope(),
@@ -251,5 +321,14 @@ describe("summary workbench scope helpers", () => {
     };
     const result = removeScopeContext(scope, "reference", "10");
     expect(result.scope.referencedTaskIds).toEqual([20]);
+  });
+
+  it("treats a missing optional documents field as an empty selection", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      documents: undefined,
+    };
+    const result = removeScopeContext(scope, "document", "doc-a");
+    expect(result.scope.documents).toEqual([]);
   });
 });

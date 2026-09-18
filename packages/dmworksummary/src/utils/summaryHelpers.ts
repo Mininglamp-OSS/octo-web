@@ -273,12 +273,13 @@ export function getSummaryTypeLabel(
 }
 
 /** 信息来源类型 → 显示文本 */
-export function getSourceTypeLabel(type: SourceTypeValue): string {
+export function getSourceTypeLabel(type: SourceTypeValue, translate: (key: string) => string = t): string {
     switch (type) {
-        case SourceType.GROUP_CHAT: return t("summary.source.groupChat");
-        case SourceType.THREAD: return t("summary.source.thread");
-        case SourceType.DIRECT_MESSAGE: return t("summary.source.directMessage");
-        default: return t("summary.common.unknown");
+        case SourceType.GROUP_CHAT: return translate("summary.source.groupChat");
+        case SourceType.THREAD: return translate("summary.source.thread");
+        case SourceType.DIRECT_MESSAGE: return translate("summary.source.directMessage");
+        case SourceType.DOCUMENT: return translate("summary.source.document");
+        default: return translate("summary.common.unknown");
     }
 }
 

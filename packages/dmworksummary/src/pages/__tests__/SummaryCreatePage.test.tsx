@@ -75,10 +75,39 @@ vi.mock('../../api/summaryApi', () => ({
 }));
 
 vi.mock('../SummaryDetailPage', () => ({ default: () => null }));
-vi.mock('../../components/ChatSelectorModal', () => ({ default: () => null }));
+vi.mock('../../components/ChatSelectorModal', () => ({
+    default: ({ visible, mode, onConfirm }: any) => visible && mode !== 'members' ? (
+        <button data-testid="chat-picker-empty-fixture" onClick={() => onConfirm([])}>empty chat</button>
+    ) : null,
+}));
 vi.mock('../../components/MemberSelectorModal', () => ({ default: () => null }));
+vi.mock('../../features/documentSource/DocumentSelectorModal', () => ({
+    default: ({ visible, onConfirm, maxSelect }: any) => visible ? (
+        <div>
+        <button
+            data-testid="document-picker-confirm-fixture"
+            data-max-select={maxSelect}
+            onClick={() => onConfirm([{
+                docId: 'doc-1',
+                title: '项目复盘',
+                docType: 'doc',
+                updatedAt: 1,
+            }])}
+        >
+            choose document
+        </button>
+        <button data-testid="document-picker-empty-fixture" onClick={() => onConfirm([])}>empty document</button>
+        </div>
+    ) : null,
+}));
 
 import { getTopicTemplatesConfig } from '../../api/summaryApi';
+import {
+    __fireConfigChangeListeners,
+    __resetDocsPort,
+    __setDocsOn,
+    __setDocsSearchOn,
+} from '../../__mocks__/dmworkBase';
 
 function render(ui: React.ReactElement, options?: any) {
     return rtlRender(ui, { legacyRoot: true, ...options });
@@ -251,6 +280,176 @@ describe('SummaryCreatePage templates', () => {
         }), expect.any(Object));
     });
 
+});
+
+describe('SummaryCreatePage document sources', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        __resetDocsPort();
+        __setDocsOn(true);
+        __setDocsSearchOn(true);
+    });
+
+    it.each(['chat', 'document'] as const)('empty %s confirmation does not erase the other source', async (picker) => {
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+        const selectedChats = picker === 'document' ? [{ chat_id: 'group-1', chat_type: 'group' as const, name: 'Group', member_count: 1 }] : [];
+        const selectedDocuments = picker === 'chat' ? [{ docId: 'doc-1', title: 'Doc', docType: 'doc' as const, updatedAt: null }] : [];
+        const selectedMembers = picker === 'document' ? [{ uid: 'u1', name: 'Alice' }] : [];
+        act(() => ref.current!.setState({
+            selectedChats, selectedDocuments, selectedMembers,
+            showChatSelector: picker === 'chat', showDocumentSelector: picker === 'document',
+        }));
+        fireEvent.click(screen.getByTestId(`${picker}-picker-empty-fixture`));
+        expect(ref.current!.state).toMatchObject({
+            selectedChats, selectedDocuments, selectedMembers,
+            showChatSelector: false, showDocumentSelector: false,
+        });
+    });
+
+    it.each(['chat', 'document'] as const)('empty %s confirmation clears the current selection', async (picker) => {
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+        act(() => ref.current!.setState({
+            selectedChats: picker === 'chat' ? [{ chat_id: 'group-1', chat_type: 'group', name: 'Group', member_count: 1 }] : [],
+            selectedDocuments: picker === 'document' ? [{ docId: 'doc-1', title: 'Doc', docType: 'doc', updatedAt: null }] : [],
+            showChatSelector: picker === 'chat', showDocumentSelector: picker === 'document',
+        }));
+        fireEvent.click(screen.getByTestId(`${picker}-picker-empty-fixture`));
+        expect(ref.current!.state.selectedChats).toEqual([]);
+        expect(ref.current!.state.selectedDocuments).toEqual([]);
+    });
+
+    it('clears residual members when selecting documents and does not restore them after deselecting', async () => {
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+        act(() => ref.current!.setState({ selectedMembers: [{ uid: 'u1', name: 'Alice' }], showDocumentSelector: true }));
+        fireEvent.click(screen.getByTestId('document-picker-confirm-fixture'));
+        expect(ref.current!.state.selectedMembers).toEqual([]);
+        act(() => ref.current!.setState({ showDocumentSelector: true }));
+        fireEvent.click(screen.getByTestId('document-picker-empty-fixture'));
+        expect(ref.current!.state.selectedMembers).toEqual([]);
+        expect(ref.current!.state.selectedDocuments).toEqual([]);
+    });
+
+    it('creates a single-user manual summary with document source_type=4', async () => {
+        await act(async () => {
+            render(<SummaryCreatePage embedded onSubmit={vi.fn()} />);
+            await flushPromises();
+        });
+
+        const textarea = document.querySelector('.summary-workbench-textarea') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: '总结项目文档' } });
+        fireEvent.click(screen.getByTestId(summaryTestIds.createSelectDocument));
+        fireEvent.click(screen.getByTestId('document-picker-confirm-fixture'));
+
+        expect(screen.getByText('项目复盘')).toBeInTheDocument();
+        expect(screen.queryByTestId(summaryTestIds.createSelectMembers)).not.toBeInTheDocument();
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId(summaryTestIds.createSubmit));
+            await flushPromises();
+        });
+
+        expect(api.createSummary).toHaveBeenCalledWith(
+            expect.objectContaining({
+                summary_mode: 2,
+                sources: [{ source_type: 4, source_id: 'doc-1' }],
+            }),
+            expect.any(Object),
+        );
+        const request = vi.mocked(api.createSummary).mock.calls[0][0];
+        expect(request.participants).toBeUndefined();
+    });
+
+    it('uses the fixed page limit of 10 documents', async () => {
+        await act(async () => {
+            render(<SummaryCreatePage />);
+            await flushPromises();
+        });
+
+        fireEvent.click(screen.getByTestId(summaryTestIds.createSelectDocument));
+        expect(screen.getByTestId('document-picker-confirm-fixture')).toHaveAttribute(
+            'data-max-select',
+            '10',
+        );
+    });
+
+    it('follows docs capability changes and closes an open picker when disabled', async () => {
+        __setDocsOn(false);
+        __setDocsSearchOn(false);
+        await act(async () => {
+            render(<SummaryCreatePage />);
+            await flushPromises();
+        });
+        expect(screen.queryByTestId(summaryTestIds.createSelectDocument)).not.toBeInTheDocument();
+
+        act(() => {
+            __setDocsOn(true);
+            __setDocsSearchOn(true);
+            __fireConfigChangeListeners();
+        });
+        fireEvent.click(screen.getByTestId(summaryTestIds.createSelectDocument));
+        expect(screen.getByTestId('document-picker-confirm-fixture')).toBeInTheDocument();
+
+        act(() => {
+            __setDocsSearchOn(false);
+            __fireConfigChangeListeners();
+        });
+        expect(screen.queryByTestId(summaryTestIds.createSelectDocument)).not.toBeInTheDocument();
+        expect(screen.queryByTestId('document-picker-confirm-fixture')).not.toBeInTheDocument();
+    });
+
+    it('hides the continue-adding entry when document search is disabled at runtime', async () => {
+        await act(async () => {
+            render(<SummaryCreatePage />);
+            await flushPromises();
+        });
+        fireEvent.click(screen.getByTestId(summaryTestIds.createSelectDocument));
+        fireEvent.click(screen.getByTestId('document-picker-confirm-fixture'));
+        expect(screen.getByText('项目复盘')).toBeInTheDocument();
+        expect(screen.getByText('选择文档')).toBeInTheDocument();
+
+        act(() => {
+            __setDocsOn(false);
+            __fireConfigChangeListeners();
+        });
+        expect(screen.queryByText('选择文档')).not.toBeInTheDocument();
+    });
+
+    it('blocks submit when documents were selected before capability is revoked', async () => {
+        const { Toast } = await import('@douyinfe/semi-ui');
+        await act(async () => {
+            render(<SummaryCreatePage embedded onSubmit={vi.fn()} />);
+            await flushPromises();
+        });
+        const textarea = document.querySelector('.summary-workbench-textarea') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: '总结项目文档' } });
+        fireEvent.click(screen.getByTestId(summaryTestIds.createSelectDocument));
+        fireEvent.click(screen.getByTestId('document-picker-confirm-fixture'));
+        expect(screen.getByText('项目复盘')).toBeInTheDocument();
+
+        act(() => {
+            __setDocsSearchOn(false);
+            __fireConfigChangeListeners();
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId(summaryTestIds.createSubmit));
+            await flushPromises();
+        });
+
+        expect(api.createSummary).not.toHaveBeenCalled();
+        expect(Toast.warning).toHaveBeenCalledWith('文档总结入口已关闭，请移除文档后重试');
+    });
 });
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -938,4 +1137,3 @@ describe('SummaryCreatePage — smart_summary_started 收口 (二审 P1:api 层�
         trackSpy.mockRestore();
     });
 });
-

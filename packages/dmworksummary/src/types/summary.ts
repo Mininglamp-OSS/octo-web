@@ -30,6 +30,7 @@ export const SourceType = {
     GROUP_CHAT: 1,
     THREAD: 2,
     DIRECT_MESSAGE: 3,
+    DOCUMENT: 4,
 } as const;
 export type SourceTypeValue = (typeof SourceType)[keyof typeof SourceType];
 
@@ -45,6 +46,7 @@ export interface SourceItem {
     source_type: SourceTypeValue;
     source_id: string;
     source_name?: string;
+    source_version?: string;
 }
 
 /** 参与者 */
@@ -81,6 +83,9 @@ export interface CitationItem {
     channel_id?: string;
     message_seq?: number;
     channel_type?: number;
+    document_id?: string;
+    document_version?: string;
+    document_chunk?: number;
     context_before?: CitationContextMessage[];
     context_after?: CitationContextMessage[];
 }

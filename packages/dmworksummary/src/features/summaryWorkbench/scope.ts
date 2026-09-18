@@ -1,10 +1,13 @@
 import type {
   SummaryWorkbenchChannelScope,
+  SummaryWorkbenchDocumentScope,
   SummaryWorkbenchScope,
 } from "../../bridge/summaryWorkbench/protocol";
 import { MAX_CHAT_SELECT } from "../../constants/limits";
 import type { SummaryWorkbenchContextKind } from "../../ui/SummaryWorkbench";
 import type { ChatCandidate } from "../../types/summary";
+import type { DocSearchItem } from "@octo/base";
+import { shouldApplySourceSelection } from "../documentSource/selection";
 
 export interface WorkbenchMemberCandidate {
   uid: string;
@@ -16,11 +19,32 @@ export interface WorkbenchMemberCandidate {
 export function emptySummaryWorkbenchScope(): SummaryWorkbenchScope {
   return {
     selectedChannels: [],
+    documents: [],
     participants: [],
     template: null,
     timeRange: null,
     referencedTaskIds: [],
   };
+}
+
+export function documentsToScope(
+  documents: DocSearchItem[]
+): SummaryWorkbenchDocumentScope[] {
+  return documents.map((document) => ({
+    documentId: document.docId,
+    title: document.title || document.docId,
+  }));
+}
+
+export function scopeDocumentsToItems(
+  documents: SummaryWorkbenchDocumentScope[]
+): DocSearchItem[] {
+  return documents.map((document) => ({
+    docId: document.documentId,
+    title: document.title || document.documentId,
+    docType: "doc",
+    updatedAt: null,
+  }));
 }
 
 export function chatCandidatesToScope(
@@ -67,6 +91,7 @@ export function scopeParticipantsToCandidates(
 }
 
 export function canSelectParticipants(scope: SummaryWorkbenchScope): boolean {
+  if ((scope.documents ?? []).length > 0) return false;
   if (scope.selectedChannels.length === 0) return true;
   return (
     scope.selectedChannels.length <= MAX_CHAT_SELECT &&
@@ -84,8 +109,8 @@ export function participantSourceChannels(
 export function participantSourceKey(
   scope: SummaryWorkbenchScope
 ): string | undefined {
-  if (scope.selectedChannels.length === 0) return "space";
   if (!canSelectParticipants(scope)) return undefined;
+  if (scope.selectedChannels.length === 0) return "space";
   return scope.selectedChannels
     .map((channel) => `group:${channel.chatId}`)
     .sort()
@@ -96,7 +121,10 @@ export function replaceSelectedChannels(
   scope: SummaryWorkbenchScope,
   channels: SummaryWorkbenchChannelScope[]
 ): { scope: SummaryWorkbenchScope; participantsCleared: boolean } {
-  const nextScope = { ...scope, selectedChannels: channels };
+  if (!shouldApplySourceSelection(scope.selectedChannels, channels)) {
+    return { scope, participantsCleared: false };
+  }
+  const nextScope = { ...scope, selectedChannels: channels, documents: [] };
   const nextMemberSource = participantSourceKey(nextScope);
   const participantsCleared =
     scope.participants.length > 0 && !nextMemberSource;
@@ -106,6 +134,25 @@ export function replaceSelectedChannels(
       participants: participantsCleared ? [] : scope.participants,
     },
     participantsCleared,
+  };
+}
+
+export function replaceSelectedDocuments(
+  scope: SummaryWorkbenchScope,
+  documents: SummaryWorkbenchDocumentScope[]
+): { scope: SummaryWorkbenchScope; participantsCleared: boolean } {
+  if (!shouldApplySourceSelection(scope.documents ?? [], documents)) {
+    return { scope, participantsCleared: false };
+  }
+  return {
+    scope: {
+      ...scope,
+      selectedChannels: [],
+      documents,
+      participants: [],
+      timeRange: null,
+    },
+    participantsCleared: scope.participants.length > 0,
   };
 }
 
@@ -134,6 +181,16 @@ export function removeScopeContext(
         scope,
         scope.selectedChannels.filter((channel) => channel.chatId !== id)
       );
+    case "document":
+      return {
+        scope: {
+          ...scope,
+          documents: (scope.documents ?? []).filter(
+            (document) => document.documentId !== id
+          ),
+        },
+        participantsCleared: false,
+      };
     case "participant":
       return {
         scope: {
@@ -175,6 +232,9 @@ export function canGenerateFromScope(
     return Boolean(scope.template) || hasUserInput;
   }
   return (
-    scope.selectedChannels.length > 0 || Boolean(scope.template) || hasUserInput
+    scope.selectedChannels.length > 0 ||
+    (scope.documents ?? []).length > 0 ||
+    Boolean(scope.template) ||
+    hasUserInput
   );
 }

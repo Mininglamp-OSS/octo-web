@@ -19,6 +19,7 @@ const initialScope: SummaryWorkbenchScope = {
   selectedChannels: [
     { chatId: "chat-1", chatType: "group", name: "产品研发群" },
   ],
+  documents: [],
   participants: [],
   template: null,
   timeRange: null,

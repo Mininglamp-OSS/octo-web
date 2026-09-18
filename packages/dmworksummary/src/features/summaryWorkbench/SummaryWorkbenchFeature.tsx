@@ -6,7 +6,7 @@ import React, {
   useState,
 } from "react";
 import { Input, Modal, Spin, Toast } from "@douyinfe/semi-ui";
-import { Dap, useI18n } from "@octo/base";
+import { Dap, useI18n, type DocSearchItem } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import type { SummaryMessagingPort } from "../../host";
 import { themeLenBucket } from "../../utils/summaryHelpers";
@@ -14,6 +14,7 @@ import SummaryDetailPage from "../../pages/SummaryDetailPage";
 import ChatSelectorModal from "../../components/ChatSelectorModal";
 import SummaryReferencePicker from "../../components/SummaryReferencePicker";
 import SummaryReferenceSidePanel from "../../components/SummaryReferenceSidePanel";
+import DocumentSelectorModal from "../documentSource/DocumentSelectorModal";
 import TemplateSelectorModal, {
   type TemplateSelectorLabels,
 } from "../../components/TemplateSelectorModal";
@@ -22,6 +23,7 @@ import TimeRangeSelector, {
 } from "../../components/TimeRangeSelector";
 import {
   MAX_CHAT_SELECT,
+  MAX_DOCUMENT_SELECT,
   MAX_PARTICIPANT_SELECT,
 } from "../../constants/limits";
 import { TOPIC_TEMPLATES } from "../../constants/templates";
@@ -70,14 +72,17 @@ import {
   canSelectParticipants,
   canGenerateFromScope,
   chatCandidatesToScope,
+  documentsToScope,
   emptySummaryWorkbenchScope,
   memberCandidatesToScope,
   participantSourceChannels,
   participantSourceKey,
   removeScopeContext,
   replaceSelectedChannels,
+  replaceSelectedDocuments,
   retainValidParticipants,
   scopeChannelsToCandidates,
+  scopeDocumentsToItems,
   scopeParticipantsToCandidates,
   type WorkbenchMemberCandidate,
 } from "./scope";
@@ -161,8 +166,7 @@ function hasAcceptedHydratedTurn(
     card ||
       messages.some(
         (message) =>
-          message.role === "assistant" &&
-          message.resultType !== "error"
+          message.role === "assistant" && message.resultType !== "error"
       )
   );
 }
@@ -181,7 +185,8 @@ export default function SummaryWorkbenchFeature({
 }: SummaryWorkbenchFeatureProps) {
   const { t, format } = useI18n();
   const [referencePreviewId] = useState(createReferencePreviewId);
-  const currentUserId = messaging?.getCurrentUser().uid ?? WKApp.loginInfo.uid ?? "";
+  const currentUserId =
+    messaging?.getCurrentUser().uid ?? WKApp.loginInfo.uid ?? "";
   const initialScope = useMemo(
     () => initialScopeFor(channel, derivedFromTask),
     [channel?.channelID, channel?.channelType, derivedFromTask?.task_id]
@@ -216,6 +221,10 @@ export default function SummaryWorkbenchFeature({
   const [referencePreviewOpen, setReferencePreviewOpen] = useState(false);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveTitle, setSaveTitle] = useState("");
+  const [documentSelectorAvailable, setDocumentSelectorAvailable] = useState(
+    () =>
+      Boolean(WKApp.remoteConfig?.docsOn && WKApp.remoteConfig?.docsSearchOn)
+  );
   const [composerFocusKey, setComposerFocusKey] = useState(0);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [templateGalleryOpen, setTemplateGalleryOpen] = useState(true);
@@ -381,9 +390,7 @@ export default function SummaryWorkbenchFeature({
   const participantsPresent = workbench.scope.participants.length > 0;
   useEffect(() => {
     participantLoadSeq.current += 1;
-    if (
-      pendingParticipantPruneRef.current?.sourceKey !== participantScopeKey
-    ) {
+    if (pendingParticipantPruneRef.current?.sourceKey !== participantScopeKey) {
       pendingParticipantPruneRef.current = null;
     }
     setParticipantCandidateState((current) =>
@@ -414,6 +421,21 @@ export default function SummaryWorkbenchFeature({
   useEffect(() => {
     return () => {
       if (themeTrackTimer.current) clearTimeout(themeTrackTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const syncDocumentCapability = () => {
+      setDocumentSelectorAvailable(
+        Boolean(WKApp.remoteConfig?.docsOn && WKApp.remoteConfig?.docsSearchOn)
+      );
+    };
+    syncDocumentCapability();
+    const unsubscribe =
+      WKApp.remoteConfig?.addConfigChangeListener?.(syncDocumentCapability) ??
+      null;
+    return () => {
+      unsubscribe?.();
     };
   }, []);
 
@@ -537,6 +559,9 @@ export default function SummaryWorkbenchFeature({
     workbench.scope,
     composerHasCustomText
   );
+  const documentScopeUnavailable =
+    (workbench.scope.documents ?? []).length > 0 &&
+    !documentSelectorAvailable;
   const participantScopeReady =
     workbench.scope.participants.length === 0 ||
     (Boolean(participantScopeKey) &&
@@ -559,6 +584,15 @@ export default function SummaryWorkbenchFeature({
       ? { ...item, label: referencedTask.title || item.label }
       : item
   );
+  const availableContextKinds: SummaryWorkbenchContextKind[] =
+    (workbench.scope.documents ?? []).length > 0
+      ? ["chat", ...(documentSelectorAvailable ? (["document"] as const) : [])]
+      : [
+          "chat",
+          ...(documentSelectorAvailable ? (["document"] as const) : []),
+          "participant",
+          "time_range",
+        ];
   const viewState = {
     ...workbench.viewState,
     contextItems,
@@ -566,6 +600,7 @@ export default function SummaryWorkbenchFeature({
     isSending: busy,
     canSend:
       !busy &&
+      !documentScopeUnavailable &&
       participantScopeReady &&
       (composerHasCustomText ||
         (!templateLocked && structuredGenerate) ||
@@ -583,6 +618,7 @@ export default function SummaryWorkbenchFeature({
       : workbench.viewState.errorMessage || participantScopeErrorMessage,
     referencePreviewOpen,
     referencePreviewId,
+    availableContextKinds,
   };
 
   const updateScopeWithPreviewGuard = (
@@ -645,6 +681,10 @@ export default function SummaryWorkbenchFeature({
   };
 
   const send = async () => {
+    if (documentScopeUnavailable) {
+      Toast.warning(t("summary.create.documentSourceUnavailable"));
+      return;
+    }
     if (!viewState.canSend) return;
     if (themeTrackTimer.current) {
       clearTimeout(themeTrackTimer.current);
@@ -727,6 +767,7 @@ export default function SummaryWorkbenchFeature({
       setTemplateGalleryOpen(true);
       return;
     }
+    if (kind === "document" && !documentSelectorAvailable) return;
     if (kind === "participant" && !canSelectParticipants(workbench.scope)) {
       Toast.info(t("summary.workbench.notice.selectSingleChatForParticipants"));
       return;
@@ -761,48 +802,51 @@ export default function SummaryWorkbenchFeature({
     });
   };
 
-  const templateLabels = useMemo<TemplateSelectorLabels>(() => ({
-    title: t("summary.workbench.selector.templateTitle"),
-    builtInTitle: t("summary.create.templatesTitle"),
-    customTitle: (count, limit) =>
-      t("summary.templates.custom.myTemplatesTitleWithCount", {
-        values: { count, limit },
-      }),
-    customSectionTitle: t("summary.templates.custom.myTemplatesTitle"),
-    customCountLabel: (count, limit) => `${count}/${limit}`,
-    create: t("summary.templates.custom.new"),
-    edit: t("summary.templates.custom.edit"),
-    delete: t("summary.templates.custom.delete"),
-    reset: t("summary.templates.custom.reset"),
-    cancel: t("summary.common.cancel"),
-    save: t("summary.common.save"),
-    clear: t("summary.workbench.selector.clearTemplate"),
-    loading: t("summary.common.loading"),
-    empty: t("summary.templates.custom.emptyTitle"),
-    loadFailed: t("summary.common.loadingFailed"),
-    retry: t("summary.common.retry"),
-    limitReached: t("summary.templates.custom.limitReached"),
-    createTitle: t("summary.templates.custom.createTitle"),
-    editTitle: t("summary.templates.custom.editTitle"),
-    nameLabel: t("summary.templates.custom.nameLabel"),
-    descriptionLabel: t("summary.templates.custom.descriptionLabel"),
-    namePlaceholder: t("summary.templates.custom.namePlaceholder"),
-    descriptionPlaceholder: t(
-      "summary.templates.custom.descriptionPlaceholder"
-    ),
-    customPromptTopic: t("summary.templates.custom.promptTopic"),
-    customPromptContext: t("summary.templates.custom.promptContext"),
-    editHint: t("summary.templates.custom.editHint"),
-    deleteConfirmTitle: t("summary.templates.custom.deleteConfirmTitle"),
-    deleteConfirmContent: (name) =>
-      t("summary.templates.custom.deleteConfirmContent", {
-        values: { name },
-      }),
-    createFailed: t("summary.templates.custom.createFailed"),
-    updateFailed: t("summary.templates.custom.saveFailed"),
-    resetFailed: t("summary.templates.custom.resetFailed"),
-    deleteFailed: t("summary.templates.custom.deleteFailed"),
-  }), [t]);
+  const templateLabels = useMemo<TemplateSelectorLabels>(
+    () => ({
+      title: t("summary.workbench.selector.templateTitle"),
+      builtInTitle: t("summary.create.templatesTitle"),
+      customTitle: (count, limit) =>
+        t("summary.templates.custom.myTemplatesTitleWithCount", {
+          values: { count, limit },
+        }),
+      customSectionTitle: t("summary.templates.custom.myTemplatesTitle"),
+      customCountLabel: (count, limit) => `${count}/${limit}`,
+      create: t("summary.templates.custom.new"),
+      edit: t("summary.templates.custom.edit"),
+      delete: t("summary.templates.custom.delete"),
+      reset: t("summary.templates.custom.reset"),
+      cancel: t("summary.common.cancel"),
+      save: t("summary.common.save"),
+      clear: t("summary.workbench.selector.clearTemplate"),
+      loading: t("summary.common.loading"),
+      empty: t("summary.templates.custom.emptyTitle"),
+      loadFailed: t("summary.common.loadingFailed"),
+      retry: t("summary.common.retry"),
+      limitReached: t("summary.templates.custom.limitReached"),
+      createTitle: t("summary.templates.custom.createTitle"),
+      editTitle: t("summary.templates.custom.editTitle"),
+      nameLabel: t("summary.templates.custom.nameLabel"),
+      descriptionLabel: t("summary.templates.custom.descriptionLabel"),
+      namePlaceholder: t("summary.templates.custom.namePlaceholder"),
+      descriptionPlaceholder: t(
+        "summary.templates.custom.descriptionPlaceholder"
+      ),
+      customPromptTopic: t("summary.templates.custom.promptTopic"),
+      customPromptContext: t("summary.templates.custom.promptContext"),
+      editHint: t("summary.templates.custom.editHint"),
+      deleteConfirmTitle: t("summary.templates.custom.deleteConfirmTitle"),
+      deleteConfirmContent: (name) =>
+        t("summary.templates.custom.deleteConfirmContent", {
+          values: { name },
+        }),
+      createFailed: t("summary.templates.custom.createFailed"),
+      updateFailed: t("summary.templates.custom.saveFailed"),
+      resetFailed: t("summary.templates.custom.resetFailed"),
+      deleteFailed: t("summary.templates.custom.deleteFailed"),
+    }),
+    [t]
+  );
 
   const timeRangeLabels: TimeRangeSelectorLabels = {
     last7Days: t("summary.timeRange.last7d"),
@@ -1006,6 +1050,34 @@ export default function SummaryWorkbenchFeature({
             workbench.scope,
             chatCandidatesToScope(chats)
           );
+          if (result.scope === workbench.scope) {
+            setOpenSelector(null);
+            return;
+          }
+          updateScopeWithPreviewGuard(result.scope, () => {
+            setOpenSelector(null);
+            if (result.participantsCleared) {
+              Toast.info(t("summary.workbench.notice.participantsCleared"));
+            }
+          });
+        }}
+        onCancel={() => setOpenSelector(null)}
+      />
+
+      <DocumentSelectorModal
+        visible={openSelector === "document" && documentSelectorAvailable}
+        selected={scopeDocumentsToItems(workbench.scope.documents ?? [])}
+        maxSelect={MAX_DOCUMENT_SELECT}
+        onConfirm={(documents: DocSearchItem[]) => {
+          if (busy) return;
+          const result = replaceSelectedDocuments(
+            workbench.scope,
+            documentsToScope(documents)
+          );
+          if (result.scope === workbench.scope) {
+            setOpenSelector(null);
+            return;
+          }
           updateScopeWithPreviewGuard(result.scope, () => {
             setOpenSelector(null);
             if (result.participantsCleared) {
