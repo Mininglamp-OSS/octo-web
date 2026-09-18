@@ -1050,6 +1050,10 @@ export default function SummaryWorkbenchFeature({
             workbench.scope,
             chatCandidatesToScope(chats)
           );
+          if (result.scope === workbench.scope) {
+            setOpenSelector(null);
+            return;
+          }
           updateScopeWithPreviewGuard(result.scope, () => {
             setOpenSelector(null);
             if (result.participantsCleared) {
@@ -1070,6 +1074,10 @@ export default function SummaryWorkbenchFeature({
             workbench.scope,
             documentsToScope(documents)
           );
+          if (result.scope === workbench.scope) {
+            setOpenSelector(null);
+            return;
+          }
           updateScopeWithPreviewGuard(result.scope, () => {
             setOpenSelector(null);
             if (result.participantsCleared) {

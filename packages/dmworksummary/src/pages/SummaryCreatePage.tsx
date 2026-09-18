@@ -28,6 +28,7 @@ import { channelToChatCandidate } from "../utils/channelConvert";
 import SummaryDetailPage from "./SummaryDetailPage";
 import ChatSelectorModal from "../components/ChatSelectorModal";
 import DocumentSelectorModal from "../features/documentSource/DocumentSelectorModal";
+import { shouldApplySourceSelection } from "../features/documentSource/selection";
 import TemplateCard from "../components/TemplateCard";
 import AgentChatPanel from "../components/AgentChatPanel";
 import RouteContext, {
@@ -1826,23 +1827,30 @@ export default class SummaryCreatePage extends Component<
                     visible={showChatSelector}
                     selected={selectedChats}
                     maxSelect={MAX_CHAT_SELECT}
-          onConfirm={(chats) =>
-            this.setState({
-              selectedChats: chats,
-              selectedDocuments: [],
-              showChatSelector: false,
-            })
-          }
+          onConfirm={(chats) => {
+            this.setState((state) => {
+              const applySelection = shouldApplySourceSelection(state.selectedChats, chats);
+              return {
+                selectedChats: applySelection ? chats : state.selectedChats,
+                selectedDocuments: applySelection ? [] : state.selectedDocuments,
+                showChatSelector: false,
+              };
+            });
+          }}
                     onCancel={() => this.setState({ showChatSelector: false })}
                 />
                 <DocumentSelectorModal
                   visible={showDocumentSelector && canSelectDocuments}
                   selected={selectedDocuments}
                   maxSelect={MAX_DOCUMENT_SELECT}
-                  onConfirm={(documents) => this.setState({
-                    selectedDocuments: documents,
-                    selectedChats: [],
-                    showDocumentSelector: false,
+                  onConfirm={(documents) => this.setState((state) => {
+                    const applySelection = shouldApplySourceSelection(state.selectedDocuments, documents);
+                    return {
+                      selectedDocuments: applySelection ? documents : state.selectedDocuments,
+                      selectedChats: applySelection ? [] : state.selectedChats,
+                      selectedMembers: applySelection ? [] : state.selectedMembers,
+                      showDocumentSelector: false,
+                    };
                   })}
                   onCancel={() => this.setState({ showDocumentSelector: false })}
                 />

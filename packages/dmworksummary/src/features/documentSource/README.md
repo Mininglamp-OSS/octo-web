@@ -31,6 +31,26 @@ There is no editing, reactivation, new scheduling, or participation confirmation
 path for document summaries. Backend rejection of document-source scheduling is
 an independent safeguard, not a replacement for the frontend guards.
 
+## Generation and source replacement
+
+- A single-person document summary in `WAITING_CONFIRM` still displays generation
+  progress until its personal content is ready. The legacy schedule explanation
+  is reserved for tasks with `schedule_id > 0`; it never replaces progress.
+- On hydration, documents exclude channels, participants and time ranges, while
+  preserving template/reference scope. Lossy normalization advances scope_version
+  once, so old previews/proposals become stale and the next send has a new scope
+  version. Valid document-only and chat-only round trips do not advance it.
+- Empty confirmation in an unused source picker only closes that picker; it does
+  not erase the other source, participant selection or an existing preview.
+  Clearing the currently selected source type still works. A nonempty document
+  selection clears chat/member selection in both entry points, and time range in
+  Workbench; removing the document later cannot resurrect old members.
+- Docs list rows are untrusted: malformed IDs/rows are skipped and invalid titles
+  fall back to the ID. A malformed page envelope is an error, not an empty list.
+  Raw page length still drives pagination after row filtering. ISO dates and
+  plausible epoch-millis are accepted; seconds and numeric strings are not
+  guessed and render without a date.
+
 ## Verification
 
 ```bash

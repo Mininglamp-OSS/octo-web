@@ -7,7 +7,7 @@ const documentItem = (docId: string) => ({
   docId,
   title: docId,
   docType: "doc" as const,
-  updatedAt: 1,
+  updatedAt: 1770000000000,
 });
 
 describe("useDocumentSearch", () => {
@@ -376,7 +376,7 @@ describe("useDocumentSearch", () => {
         docId: "html-1",
         title: "html-1",
         docType: "html",
-        updatedAt: 1,
+        updatedAt: 1770000000000,
         spaceId: undefined,
       },
     ]);

@@ -797,14 +797,17 @@ function toAuthoritativeState(
   turn?: { messageId: number; actions: SummaryWorkbenchAction[] }
 ): SummaryWorkbenchAuthoritativeState {
   const scope = toWorkbenchScope(state.summary_context);
-  // Dropping unsupported extra references is a real scope mutation. Advance
+  // Dropping conflicting document scope or extra references mutates scope. Advance
   // the version so the next request cannot reuse the server's old version
   // with a different scope hash and fail with a 409 scope conflict. Backend
   // main accepts a higher client scope_version, persists its scope_json/hash,
   // and clears folded artifacts; see docs/summary-apps-artifact-review-fixes.md.
   const scopeWasNormalized =
     state.summary_context.referenced_task_ids.length !==
-    scope.referencedTaskIds.length;
+    scope.referencedTaskIds.length ||
+    state.summary_context.selected_channels.length !== scope.selectedChannels.length ||
+    state.summary_context.participants.length !== scope.participants.length ||
+    (state.summary_context.time_range !== null && scope.timeRange === null);
   const scopeVersion = state.scope_version + (scopeWasNormalized ? 1 : 0);
   const constrainCurrentActions = (
     messageId: number,
@@ -874,8 +877,11 @@ function toAuthoritativeState(
 function toWorkbenchScope(
   context: SummaryWorkspaceContextDTO
 ): SummaryWorkbenchScope {
+  // Match document-selection semantics on hydration too: server snapshots must
+  // not reintroduce chat/participant/time scope that the UI cannot edit together.
+  const hasDocuments = context.documents.length > 0;
   return {
-    selectedChannels: context.selected_channels.map((channel) => ({
+    selectedChannels: hasDocuments ? [] : context.selected_channels.map((channel) => ({
       chatId: channel.chat_id,
       chatType: channel.chat_type,
       name: channel.name,
@@ -887,7 +893,7 @@ function toWorkbenchScope(
       documentId: document.document_id,
       title: document.title ?? document.document_id,
     })),
-    participants: context.participants.map((participant) => ({
+    participants: hasDocuments ? [] : context.participants.map((participant) => ({
       userId: participant.user_id,
       ...(participant.user_name ? { userName: participant.user_name } : {}),
     })),
@@ -901,7 +907,7 @@ function toWorkbenchScope(
             : { version: context.template.version }),
         }
       : null,
-    timeRange: context.time_range
+    timeRange: !hasDocuments && context.time_range
       ? {
           start: context.time_range.start,
           end: context.time_range.end,

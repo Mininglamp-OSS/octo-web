@@ -73,6 +73,7 @@ import {
     formatScheduleSummary,
     shouldReactivateOnSave,
     isReferenceable,
+    getSourceTypeLabel,
 } from "../utils/summaryHelpers";
 import { summaryTestIds } from "../utils/testIds";
 import CitationText from "../components/CitationText";
@@ -231,16 +232,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     private sourceTypeLabel = (source: SourceItem): string => {
-        switch (source.source_type) {
-            case SourceType.GROUP_CHAT:
-                return this.context.t("summary.source.groupChat");
-            case SourceType.THREAD:
-                return this.context.t("summary.source.thread");
-            case SourceType.DIRECT_MESSAGE:
-                return this.context.t("summary.source.directMessage");
-            case SourceType.DOCUMENT:
-                return this.context.t("summary.source.document");
-        }
+        return getSourceTypeLabel(source.source_type, this.context.t);
     };
 
     private sourceIcon = (source: SourceItem) => {
@@ -4847,8 +4839,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 )}
 
                                 {/* 单人时不显示"等待参与者确认"，因为creator自动接受 */}
-                                {detail.status === TaskStatus.WAITING_CONFIRM && this.isDocumentSummaryDetail(detail) && (
-                                    <Banner type="info" closeIcon={null} description={t("summary.detail.documentScheduleUnsupported")} />
+                                {detail.status === TaskStatus.WAITING_CONFIRM && this.isDocumentSummaryDetail(detail) && (detail.schedule_id ?? 0) > 0 && (
+                                    <Banner type="info" closeIcon={null} description={t("summary.detail.legacyDocumentSchedule")} />
                                 )}
                                 {detail.status === TaskStatus.WAITING_CONFIRM && !this.isDocumentSummaryDetail(detail) && this.state.members.length > 1 && (() => {
                                     const mode = this.waitingConfirmMode();
@@ -4889,7 +4881,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     );
                                 })()}
                                 {/* 单人 WaitingConfirm 状态显示生成中（个人总结已出则不再显示 loading） */}
-                                {detail.status === TaskStatus.WAITING_CONFIRM && !this.isDocumentSummaryDetail(detail) && this.state.members.length <= 1 && !this.personalReady && (
+                                {detail.status === TaskStatus.WAITING_CONFIRM && this.state.members.length <= 1 && !this.personalReady && (
                                     this.renderProcessing()
                                 )}
 

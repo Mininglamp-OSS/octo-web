@@ -75,10 +75,15 @@ vi.mock('../../api/summaryApi', () => ({
 }));
 
 vi.mock('../SummaryDetailPage', () => ({ default: () => null }));
-vi.mock('../../components/ChatSelectorModal', () => ({ default: () => null }));
+vi.mock('../../components/ChatSelectorModal', () => ({
+    default: ({ visible, mode, onConfirm }: any) => visible && mode !== 'members' ? (
+        <button data-testid="chat-picker-empty-fixture" onClick={() => onConfirm([])}>empty chat</button>
+    ) : null,
+}));
 vi.mock('../../components/MemberSelectorModal', () => ({ default: () => null }));
 vi.mock('../../features/documentSource/DocumentSelectorModal', () => ({
     default: ({ visible, onConfirm, maxSelect }: any) => visible ? (
+        <div>
         <button
             data-testid="document-picker-confirm-fixture"
             data-max-select={maxSelect}
@@ -91,6 +96,8 @@ vi.mock('../../features/documentSource/DocumentSelectorModal', () => ({
         >
             choose document
         </button>
+        <button data-testid="document-picker-empty-fixture" onClick={() => onConfirm([])}>empty document</button>
+        </div>
     ) : null,
 }));
 
@@ -281,6 +288,57 @@ describe('SummaryCreatePage document sources', () => {
         __resetDocsPort();
         __setDocsOn(true);
         __setDocsSearchOn(true);
+    });
+
+    it.each(['chat', 'document'] as const)('empty %s confirmation does not erase the other source', async (picker) => {
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+        const selectedChats = picker === 'document' ? [{ chat_id: 'group-1', chat_type: 'group' as const, name: 'Group', member_count: 1 }] : [];
+        const selectedDocuments = picker === 'chat' ? [{ docId: 'doc-1', title: 'Doc', docType: 'doc' as const, updatedAt: null }] : [];
+        const selectedMembers = picker === 'document' ? [{ uid: 'u1', name: 'Alice' }] : [];
+        act(() => ref.current!.setState({
+            selectedChats, selectedDocuments, selectedMembers,
+            showChatSelector: picker === 'chat', showDocumentSelector: picker === 'document',
+        }));
+        fireEvent.click(screen.getByTestId(`${picker}-picker-empty-fixture`));
+        expect(ref.current!.state).toMatchObject({
+            selectedChats, selectedDocuments, selectedMembers,
+            showChatSelector: false, showDocumentSelector: false,
+        });
+    });
+
+    it.each(['chat', 'document'] as const)('empty %s confirmation clears the current selection', async (picker) => {
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+        act(() => ref.current!.setState({
+            selectedChats: picker === 'chat' ? [{ chat_id: 'group-1', chat_type: 'group', name: 'Group', member_count: 1 }] : [],
+            selectedDocuments: picker === 'document' ? [{ docId: 'doc-1', title: 'Doc', docType: 'doc', updatedAt: null }] : [],
+            showChatSelector: picker === 'chat', showDocumentSelector: picker === 'document',
+        }));
+        fireEvent.click(screen.getByTestId(`${picker}-picker-empty-fixture`));
+        expect(ref.current!.state.selectedChats).toEqual([]);
+        expect(ref.current!.state.selectedDocuments).toEqual([]);
+    });
+
+    it('clears residual members when selecting documents and does not restore them after deselecting', async () => {
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+        act(() => ref.current!.setState({ selectedMembers: [{ uid: 'u1', name: 'Alice' }], showDocumentSelector: true }));
+        fireEvent.click(screen.getByTestId('document-picker-confirm-fixture'));
+        expect(ref.current!.state.selectedMembers).toEqual([]);
+        act(() => ref.current!.setState({ showDocumentSelector: true }));
+        fireEvent.click(screen.getByTestId('document-picker-empty-fixture'));
+        expect(ref.current!.state.selectedMembers).toEqual([]);
+        expect(ref.current!.state.selectedDocuments).toEqual([]);
     });
 
     it('creates a single-user manual summary with document source_type=4', async () => {
@@ -1079,4 +1137,3 @@ describe('SummaryCreatePage — smart_summary_started 收口 (二审 P1:api 层�
         trackSpy.mockRestore();
     });
 });
-

@@ -6,6 +6,7 @@ import {
   documentsToScope,
   emptySummaryWorkbenchScope,
   participantSourceChannels,
+  participantSourceKey,
   removeScopeContext,
   replaceSelectedChannels,
   replaceSelectedDocuments,
@@ -13,6 +14,45 @@ import {
 } from "./scope";
 
 describe("summary workbench scope helpers", () => {
+  it("never offers a participant source for documents, even with no channels", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      documents: [{ documentId: "doc-a", title: "A" }],
+      participants: [{ userId: "u1" }],
+    };
+    expect(canSelectParticipants(scope)).toBe(false);
+    expect(participantSourceKey(scope)).toBeUndefined();
+    expect(participantSourceKey(emptySummaryWorkbenchScope())).toBe("space");
+  });
+
+  it("keeps document scope intact on an empty chat confirmation", () => {
+    const scope = { ...emptySummaryWorkbenchScope(), documents: [{ documentId: "doc-a", title: "A" }] };
+    const result = replaceSelectedChannels(scope, []);
+    expect(result.scope).toBe(scope);
+    expect(result.participantsCleared).toBe(false);
+  });
+
+  it("keeps chats, participants and time range on an empty document confirmation", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      selectedChannels: [{ chatId: "group-a", chatType: "group" as const, name: "A" }],
+      participants: [{ userId: "u1" }],
+      timeRange: { start: "2026-09-01", end: "2026-09-02", label: "Range" },
+    };
+    expect(replaceSelectedDocuments(scope, [])).toEqual({ scope, participantsCleared: false });
+    expect(replaceSelectedDocuments(scope, []).scope).toBe(scope);
+  });
+
+  it("still clears all selections of the current source type", () => {
+    const scope = emptySummaryWorkbenchScope();
+    expect(replaceSelectedChannels({
+      ...scope, selectedChannels: [{ chatId: "a", chatType: "group", name: "A" }],
+    }, []).scope.selectedChannels).toEqual([]);
+    expect(replaceSelectedDocuments({
+      ...scope, documents: [{ documentId: "a", title: "A" }],
+    }, []).scope.documents).toEqual([]);
+  });
+
   it("maps chat candidates without losing archived state", () => {
     expect(
       chatCandidatesToScope([

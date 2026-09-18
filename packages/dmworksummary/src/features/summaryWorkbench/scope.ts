@@ -7,6 +7,7 @@ import { MAX_CHAT_SELECT } from "../../constants/limits";
 import type { SummaryWorkbenchContextKind } from "../../ui/SummaryWorkbench";
 import type { ChatCandidate } from "../../types/summary";
 import type { DocSearchItem } from "@octo/base";
+import { shouldApplySourceSelection } from "../documentSource/selection";
 
 export interface WorkbenchMemberCandidate {
   uid: string;
@@ -108,8 +109,8 @@ export function participantSourceChannels(
 export function participantSourceKey(
   scope: SummaryWorkbenchScope
 ): string | undefined {
-  if (scope.selectedChannels.length === 0) return "space";
   if (!canSelectParticipants(scope)) return undefined;
+  if (scope.selectedChannels.length === 0) return "space";
   return scope.selectedChannels
     .map((channel) => `group:${channel.chatId}`)
     .sort()
@@ -120,6 +121,9 @@ export function replaceSelectedChannels(
   scope: SummaryWorkbenchScope,
   channels: SummaryWorkbenchChannelScope[]
 ): { scope: SummaryWorkbenchScope; participantsCleared: boolean } {
+  if (!shouldApplySourceSelection(scope.selectedChannels, channels)) {
+    return { scope, participantsCleared: false };
+  }
   const nextScope = { ...scope, selectedChannels: channels, documents: [] };
   const nextMemberSource = participantSourceKey(nextScope);
   const participantsCleared =
@@ -137,6 +141,9 @@ export function replaceSelectedDocuments(
   scope: SummaryWorkbenchScope,
   documents: SummaryWorkbenchDocumentScope[]
 ): { scope: SummaryWorkbenchScope; participantsCleared: boolean } {
+  if (!shouldApplySourceSelection(scope.documents ?? [], documents)) {
+    return { scope, participantsCleared: false };
+  }
   return {
     scope: {
       ...scope,

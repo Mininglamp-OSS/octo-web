@@ -4,6 +4,58 @@ import { APIClient } from "@octo/base";
 import { DocumentSourceService } from "./DocumentSourceService";
 
 describe("DocumentSourceService", () => {
+  it("skips malformed rows and normalizes display fields without losing valid documents", async () => {
+    const list = vi.fn().mockResolvedValue({
+      items: [
+        null, 123, "bad", [], {}, { docId: 123 }, { docId: "  " },
+        { docId: "bad-type", docType: {} },
+        { docId: "doc-1", title: {}, spaceId: 42 },
+        { docId: "html-1", title: "HTML", docType: "html", spaceId: "space-1" },
+      ],
+      nextCursor: "next-page",
+    });
+    const result = await new DocumentSourceService({ list }).listDocuments("recent", "");
+    expect(result.items).toEqual([
+      { docId: "doc-1", title: "doc-1", docType: "doc", updatedAt: null, spaceId: undefined },
+      { docId: "html-1", title: "HTML", docType: "html", updatedAt: null, spaceId: "space-1" },
+    ]);
+    expect(result.nextPage).toEqual({ cursor: "next-page" });
+  });
+
+  it("retains raw page length for continuation even when every row is invalid", async () => {
+    const list = vi.fn().mockResolvedValue({ items: Array(50).fill(null) });
+    expect(await new DocumentSourceService({ list }).listDocuments("mine", "")).toEqual({
+      items: [], total: null, nextPage: { page: 2 },
+    });
+  });
+
+  it.each([null, undefined, [], "invalid", {}, { total: 0 }, { items: {} }, { items: "invalid" }, { items: null }])(
+    "rejects a malformed page instead of returning false empty success (%j)",
+    async (response) => {
+      const list = vi.fn().mockResolvedValue(response);
+      await expect(new DocumentSourceService({ list }).listDocuments("recent", "")).rejects.toThrow("Invalid document list response");
+    }
+  );
+
+  it.each([
+    ["2026-09-17T01:02:03.000Z", Date.parse("2026-09-17T01:02:03.000Z")],
+    [1770000000000, 1770000000000],
+    [1770000000, null],
+    ["1770000000000", null],
+    ["123", null],
+    [NaN, null],
+    [Infinity, null],
+    [-1, null],
+    [1e14, null],
+    ["not-a-date", null],
+    [null, null],
+    [{}, null],
+  ])("normalizes date %j to %j without guessing timestamp units", async (updatedAt, expected) => {
+    const list = vi.fn().mockResolvedValue({ items: [{ docId: "doc-1", updatedAt }] });
+    const result = await new DocumentSourceService({ list }).listDocuments("recent", "");
+    expect(result.items[0].updatedAt).toBe(expected);
+  });
+
   it("lists recent documents with doc/html filters at the service boundary", async () => {
     const list = vi.fn().mockResolvedValue({
       total: 2,

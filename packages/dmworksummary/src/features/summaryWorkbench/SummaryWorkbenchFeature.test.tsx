@@ -222,6 +222,9 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
       <button type="button" onClick={() => actions.onOpenContext("document")}>
         open-document
       </button>
+      <button type="button" onClick={() => actions.onOpenContext("chat")}>
+        open-chat
+      </button>
       <button type="button" onClick={() => actions.onOpenContext("time_range")}>
         open-time-range
       </button>
@@ -256,18 +259,22 @@ vi.mock("../documentSource/DocumentSelectorModal", () => ({
         >
           choose-document
         </button>
+        <button type="button" onClick={() => onConfirm([])}>empty-document</button>
       </div>
     ) : null,
 }));
 
 vi.mock("../../components/ChatSelectorModal", () => ({
-  default: ({ visible, mode, channel }: any) =>
+  default: ({ visible, mode, channel, onConfirm }: any) =>
     visible ? (
       <div
         data-testid="chat-selector"
         data-mode={mode ?? "chat"}
         data-channel-id={channel?.channelID ?? ""}
-      />
+      >
+        <button type="button" onClick={() => onConfirm([])}>empty-chat</button>
+        <button type="button" onClick={() => onConfirm([{ chat_id: "chat-a", chat_type: "group", name: "A", member_count: null }])}>choose-chat</button>
+      </div>
     ) : null,
 }));
 vi.mock("../../components/TemplateSelectorModal", () => ({
@@ -1117,6 +1124,61 @@ describe("SummaryWorkbenchFeature", () => {
         timeRange: null,
       })
     );
+  });
+
+  it.each(["chat", "document"] as const)("empty %s confirmation preserves the other source and preview without prompting", (picker) => {
+    mocks.docsOn = true;
+    mocks.docsSearchOn = true;
+    const current = controller({
+      scope: scope(picker === "chat"
+        ? { documents: [{ documentId: "doc-a", title: "A" }] }
+        : { selectedChannels: [{ chatId: "chat-a", chatType: "group", name: "A" }] }),
+      model: {
+        currentPreview: { content: "Keep this preview" },
+        messages: [{ id: "preview-message", role: "assistant", resultType: "agent_preview", content: "Preview" }],
+      },
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, { legacyRoot: true });
+    fireEvent.click(screen.getByRole("button", { name: `open-${picker}` }));
+    fireEvent.click(screen.getByRole("button", { name: `empty-${picker}` }));
+    expect(current.updateScope).not.toHaveBeenCalled();
+    expect(mocks.modalConfirm).not.toHaveBeenCalled();
+    expect(screen.queryByTestId(`${picker}-selector`)).not.toBeInTheDocument();
+  });
+
+  it.each(["chat", "document"] as const)("empty %s confirmation still clears the same source", (picker) => {
+    mocks.docsOn = true;
+    mocks.docsSearchOn = true;
+    const current = controller({
+      scope: scope(picker === "document"
+        ? { documents: [{ documentId: "doc-a", title: "A" }] }
+        : { selectedChannels: [{ chatId: "chat-a", chatType: "group", name: "A" }] }),
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, { legacyRoot: true });
+    fireEvent.click(screen.getByRole("button", { name: `open-${picker}` }));
+    fireEvent.click(screen.getByRole("button", { name: `empty-${picker}` }));
+    expect(current.updateScope).toHaveBeenCalledWith(expect.objectContaining({ selectedChannels: [], documents: [] }));
+    expect(screen.queryByTestId(`${picker}-selector`)).not.toBeInTheDocument();
+  });
+
+  it("still prompts before a real source replacement invalidates a preview", () => {
+    mocks.docsOn = true;
+    mocks.docsSearchOn = true;
+    const current = controller({
+      scope: scope({ documents: [{ documentId: "doc-a", title: "A" }] }),
+      model: {
+        currentPreview: { content: "Existing preview" },
+        messages: [{ id: "preview-message", role: "assistant", resultType: "agent_preview", content: "Preview" }],
+      },
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, { legacyRoot: true });
+    fireEvent.click(screen.getByRole("button", { name: "open-chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "choose-chat" }));
+    expect(mocks.modalConfirm).toHaveBeenCalledOnce();
+    expect(current.updateScope).not.toHaveBeenCalled();
   });
 
   it("blocks a persisted document scope when the docs capability is unavailable", () => {

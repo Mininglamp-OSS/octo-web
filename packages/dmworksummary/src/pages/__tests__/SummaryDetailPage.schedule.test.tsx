@@ -1935,6 +1935,64 @@ describe('SummaryDetailPage — document source snapshot version', () => {
     });
 });
 
+describe('SummaryDetailPage — document generation rendering', () => {
+    it.each([undefined, 0, -1, 9])('shows exactly one progress card while generating (schedule=%s)', (scheduleId) => {
+        const page = makePage(1);
+        page.state = {
+            ...page.state,
+            loading: false,
+            detail: baseDetail({
+                summary_mode: SummaryMode.BY_PERSON,
+                status: TaskStatus.WAITING_CONFIRM,
+                schedule_id: scheduleId,
+                sources: [{ source_type: 4, source_id: 'doc-1' }],
+            }),
+            members: [],
+            personalResult: null,
+        };
+        const elements = collectElements(page.render());
+        expect(elements.filter(el => el.props.className === 'summary-detail-processing')).toHaveLength(1);
+        expect(elements.some(el => el.props.description === 'summary.detail.documentScheduleUnsupported')).toBe(false);
+        expect(elements.some(el => el.props.description === 'summary.detail.legacyDocumentSchedule')).toBe((scheduleId ?? 0) > 0);
+        expect(elements.some(el => el.props.onClick === page.handleViewConfirm)).toBe(false);
+        expect(page.needsScheduleConfirm()).toBe(false);
+    });
+
+    it.each([1, 4])('stops generating feedback when personal content is ready (source=%s)', (sourceType) => {
+        const page = makePage(1);
+        page.state = {
+            ...page.state,
+            loading: false,
+            detail: baseDetail({
+                summary_mode: SummaryMode.BY_PERSON, status: TaskStatus.WAITING_CONFIRM,
+                sources: [{ source_type: sourceType, source_id: 'source-1' }],
+            }),
+            personalResult: { content: 'Ready summary', worker_status: 2 } as any,
+            workflowGateContent: false,
+        };
+        expect(collectElements(page.render()).filter(el => el.props.className === 'summary-detail-processing')).toHaveLength(0);
+    });
+
+    it('preserves the single-person chat generating state', () => {
+        const page = makePage(1);
+        page.state = {
+            ...page.state, loading: false,
+            detail: baseDetail({ summary_mode: SummaryMode.BY_PERSON, status: TaskStatus.WAITING_CONFIRM }),
+        };
+        const elements = collectElements(page.render());
+        expect(elements.filter(el => el.props.className === 'summary-detail-processing')).toHaveLength(1);
+        expect(elements.some(el => el.props.description === 'summary.detail.legacyDocumentSchedule')).toBe(false);
+    });
+
+    it.each(['Unknown', '未知'])('uses the current locale fallback for unknown source types (%s)', (unknownLabel) => {
+        const page = makePage(1);
+        (page as any).context = { t: (key: string) => key === 'summary.common.unknown' ? unknownLabel : key };
+        const tree = (page as any).renderSourceMetadata([{ source_type: 99, source_id: 'future-source' }]);
+        expect(collectElements(tree).some(el => el.props['aria-label'] === `${unknownLabel} · future-source`)).toBe(true);
+        expect(JSON.stringify(tree)).not.toContain('undefined');
+    });
+});
+
 describe('SummaryDetailPage — legacy document schedules are disable-only', () => {
     beforeEach(() => vi.clearAllMocks());
 

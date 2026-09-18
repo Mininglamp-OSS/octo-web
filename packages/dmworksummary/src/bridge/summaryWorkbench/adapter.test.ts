@@ -50,6 +50,78 @@ function emptyState(scopeVersion = 1) {
 }
 
 describe("summary workspace adapter", () => {
+  it.each(["channels", "participants", "timeRange", "all"] as const)(
+    "normalizes mixed document hydration (%s), advances scope version and cannot resend the conflict",
+    (conflict) => {
+      const hydration = adaptSummaryWorkspaceHistory({
+        contract_version: "2",
+        session_id: "mixed-documents",
+        messages: [],
+        state: {
+          ...emptyState(4),
+          summary_context: {
+            ...summaryContext,
+            documents: [{ document_id: "doc-1", title: "Document" }],
+            selected_channels: conflict === "channels" || conflict === "all" ? summaryContext.selected_channels : [],
+            participants: conflict === "participants" || conflict === "all" ? [{ user_id: "u1" }] : [],
+            time_range: conflict === "timeRange" || conflict === "all" ? summaryContext.time_range : null,
+            template: { template_id: "weekly", label: "Weekly", requirement: "Summarize" },
+            referenced_task_ids: [7],
+          },
+        },
+      });
+      expect(hydration.modelOptions.scopeVersion).toBe(5);
+      expect(hydration.scope).toMatchObject({
+        documents: [{ documentId: "doc-1", title: "Document" }],
+        selectedChannels: [], participants: [], timeRange: null,
+        template: { templateId: "weekly" }, referencedTaskIds: [7],
+      });
+      expect(contextItemsFromScope(hydration.scope).map(item => item.kind)).toEqual(["document", "template", "reference"]);
+      const wire = serializeSummaryWorkbenchScope(hydration.scope);
+      expect(wire).toMatchObject({
+        documents: [{ document_id: "doc-1", title: "Document" }],
+        selected_channels: [], participants: [], time_range: null,
+      });
+      const roundTrip = adaptSummaryWorkspaceHistory({
+        contract_version: "2", session_id: "mixed-documents", messages: [],
+        state: { ...emptyState(5), summary_context: wire },
+      });
+      expect(roundTrip.modelOptions.scopeVersion).toBe(5);
+      expect(roundTrip.scope).toEqual(hydration.scope);
+    }
+  );
+
+  it("invalidates a preview when a turn normalizes mixed document scope", () => {
+    const response = adaptSummaryWorkspaceTurn({
+      contract_version: "2", session_id: "doc-turn", message_id: 18,
+      result_type: "agent_preview", reply: "Preview",
+      scope_version: 4, artifact_version: 3, available_actions: ["save_preview"],
+      state: {
+        ...emptyState(4),
+        summary_context: { ...summaryContext, documents: [{ document_id: "doc-1" }] },
+        current_preview: {
+          message_id: 18, result_type: "agent_preview", scope_version: 4,
+          artifact_version: 3, snapshot_version: 1, content: "Old mixed preview",
+          assumptions: [], available_actions: ["save_preview"],
+        },
+      },
+    });
+    const model = applySummaryResponse(createInitialSummaryWorkbenchModel(), response);
+    expect(model.scopeVersion).toBe(5);
+    expect(canSaveCurrentPreview(model)).toBe(false);
+    expect(deriveSummaryWorkbenchView(model).card).toMatchObject({ isStale: true });
+  });
+
+  it("leaves valid chat hydration and its version unchanged", () => {
+    const hydration = adaptSummaryWorkspaceHistory({
+      contract_version: "2", session_id: "chat", messages: [],
+      state: emptyState(4),
+    });
+    expect(hydration.modelOptions.scopeVersion).toBe(4);
+    expect(hydration.scope.selectedChannels).toHaveLength(1);
+    expect(hydration.scope.timeRange).toEqual({ ...summaryContext.time_range, source: "picker" });
+  });
+
   it("maps a trusted preview and filters unknown actions", () => {
     const response = adaptSummaryWorkspaceTurn({
       contract_version: "2",
