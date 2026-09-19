@@ -16,6 +16,7 @@ const labels: HarnessRuntimeSettingsProps['labels'] = {
   loadFailed: '无法加载运行时',
   retry: '重试',
   runtimeVersion: '版本',
+  runtimeId: '运行时 ID',
   profile: 'Profile',
   providerVersionUnknown: '版本未知',
   lastHeartbeat: '最近心跳',

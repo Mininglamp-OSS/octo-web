@@ -9,19 +9,13 @@ import type { HarnessRuntimeSettingsProps } from './types'
 vi.mock('../../Components/WKModal', () => ({ default: () => null }))
 
 describe('HarnessRuntimeSettings runtime details', () => {
-  it('shows different profiles for the same device and retains runtime IDs', () => {
+  it('hides profile data from cards and retains runtime IDs', () => {
     const props = SameDeviceProfiles.args as HarnessRuntimeSettingsProps
     render(<HarnessRuntimeSettings {...props} />)
     for (const runtime of props.runtimes) {
-      expect(screen.getByText(runtime.profile!).getAttribute('title')).toBe(runtime.profile)
+      expect(screen.queryByText(runtime.profile!)).toBeNull()
       expect(screen.getByText(runtime.id)).toBeTruthy()
     }
-  })
-
-  it('does not render a profile label for reports without a profile', () => {
-    const props = Populated.args as HarnessRuntimeSettingsProps
-    const { container } = render(<HarnessRuntimeSettings {...props} runtimes={[props.runtimes[1]]} />)
-    expect(container.querySelector('.wk-harness-runtime-settings__profile')).toBeNull()
   })
 
   it('shows icons with version tooltips and hides the row for runtimes without providers', async () => {

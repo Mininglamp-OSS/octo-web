@@ -11,7 +11,7 @@ function getLabels(): HarnessRuntimeSettingsLabels {
   return {
     title: key('title'), description: key('description'), addRuntime: key('addRuntime'), refresh: key('refresh'),
     runtimeList: key('runtimeList'), loading: key('loading'), emptyTitle: key('emptyTitle'), emptyDescription: key('emptyDescription'),
-    loadFailed: key('loadFailed'), retry: key('retry'), runtimeVersion: key('runtimeVersion'), lastHeartbeat: key('lastHeartbeat'),
+    loadFailed: key('loadFailed'), retry: key('retry'), runtimeVersion: key('runtimeVersion'), runtimeId: key('runtimeId'), lastHeartbeat: key('lastHeartbeat'),
     providerVersionUnknown: key('providerVersionUnknown'),
     profile: key('profile'),
     addTitle: key('addTitle'), cancel: key('cancel'), creatingEnrollment: key('creatingEnrollment'),

@@ -30,6 +30,7 @@ export interface HarnessRuntimeSettingsLabels {
   loadFailed: string
   retry: string
   runtimeVersion: string
+  runtimeId: string
   profile: string
   providerVersionUnknown: string
   lastHeartbeat: string

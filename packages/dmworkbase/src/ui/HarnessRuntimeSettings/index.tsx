@@ -1,5 +1,5 @@
 import React from 'react'
-import { Copy, Plus, RefreshCw, Server, Terminal, TriangleAlert } from 'lucide-react'
+import { Clock3, Copy, Plus, RefreshCw, Server, Terminal, TriangleAlert } from 'lucide-react'
 import { Tooltip } from '@douyinfe/semi-ui'
 import WKButton from '../../Components/WKButton'
 import WKModal from '../../Components/WKModal'
@@ -13,12 +13,35 @@ function RuntimeRow({ runtime, labels }: {
 }) {
   return (
     <li className="wk-harness-runtime-settings__runtime">
-      <span className={`wk-harness-runtime-settings__status-dot is-${runtime.status}`} aria-hidden="true" />
-      <span className="wk-harness-runtime-settings__runtime-main">
-        <strong>{runtime.name}</strong>
-        <span>{runtime.deviceLabel}</span>
-        {runtime.profile && <span className="wk-harness-runtime-settings__profile"><span>{labels.profile}</span><code title={runtime.profile}>{runtime.profile}</code></span>}
-        <code title={runtime.id}>{runtime.id}</code>
+      <div className="wk-harness-runtime-settings__runtime-summary">
+        <div className="wk-harness-runtime-settings__runtime-header">
+          <div className="wk-harness-runtime-settings__runtime-title">
+            <span className={`wk-harness-runtime-settings__status-dot is-${runtime.status}`} aria-hidden="true" />
+            <strong>{runtime.name}</strong>
+            <span className="wk-harness-runtime-settings__device">{runtime.deviceLabel}</span>
+          </div>
+          <div className="wk-harness-runtime-settings__runtime-badges">
+            {runtime.runtimeVersion && <code>{runtime.runtimeVersion}</code>}
+            <span className={`wk-harness-runtime-settings__status is-${runtime.status}`}>
+              <span className={`wk-harness-runtime-settings__status-dot is-${runtime.status}`} aria-hidden="true" />
+              {labels.status[runtime.status]}
+            </span>
+          </div>
+        </div>
+
+        <div className="wk-harness-runtime-settings__runtime-details">
+          <span className="wk-harness-runtime-settings__runtime-id">
+            <span>{labels.runtimeId}</span>
+            <code title={runtime.id}>{runtime.id}</code>
+          </span>
+          <span className="wk-harness-runtime-settings__heartbeat">
+            <Clock3 size={14} aria-hidden="true" />
+            <span>{labels.lastHeartbeat}: {runtime.lastHeartbeatLabel}</span>
+          </span>
+        </div>
+      </div>
+
+      <div className="wk-harness-runtime-settings__runtime-footer">
         {runtime.providers.length > 0 && (
           <span className="wk-harness-runtime-settings__providers">
             {runtime.providers.map((provider, index) => {
@@ -42,12 +65,7 @@ function RuntimeRow({ runtime, labels }: {
             })}
           </span>
         )}
-      </span>
-      <span className="wk-harness-runtime-settings__runtime-meta">
-        <span className={`wk-harness-runtime-settings__status is-${runtime.status}`}>{labels.status[runtime.status]}</span>
-        {runtime.runtimeVersion && <span>{labels.runtimeVersion}: {runtime.runtimeVersion}</span>}
-        <span>{labels.lastHeartbeat}: {runtime.lastHeartbeatLabel}</span>
-      </span>
+      </div>
     </li>
   )
 }
