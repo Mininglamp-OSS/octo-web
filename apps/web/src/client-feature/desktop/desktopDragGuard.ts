@@ -10,6 +10,7 @@ const OVERLAYS = [
   "dialog[open]",
   "[popover]",
 ].join(",");
+const OVERLAY_CANDIDATES = `${OVERLAYS},[role="alert"]`;
 
 function isPresented(element: Element, view: Window): boolean {
   if (!element.isConnected || element.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
@@ -41,7 +42,9 @@ export function installDesktopDragGuard(root: HTMLElement): () => void {
 
   const refresh = () => {
     if (disposed) return;
-    const overlays = new Set(document.querySelectorAll(OVERLAYS));
+    // Toast/notification alerts are portals; inline validation alerts are not overlays.
+    const overlays = new Set([...document.querySelectorAll(OVERLAY_CANDIDATES)]
+      .filter(element => !root.contains(element) || element.matches(OVERLAYS)));
     for (const element of watched) {
       if (!overlays.has(element)) {
         resize.unobserve(element);
@@ -73,7 +76,7 @@ export function installDesktopDragGuard(root: HTMLElement): () => void {
     if (!(element instanceof Element)) return;
     const key = desktopMotionKey(event);
     if (event.type === "transitionrun" || event.type === "animationstart") {
-      if (!element.closest(OVERLAYS) && !element.querySelector(OVERLAYS)) return;
+      if (!element.closest(OVERLAY_CANDIDATES) && !element.querySelector(OVERLAY_CANDIDATES)) return;
       const animation = getDesktopMotion(element, event);
       if (animation) {
         const active = motions.get(element) ?? new Map<string, Animation>();

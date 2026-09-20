@@ -63,8 +63,16 @@ declared header/layout backgrounds, and disabled in fullscreen.
 
 One drag guard observes the embedded document, including body portals. It
 recognizes declared overlays, semantic dialogs, menus, listboxes, tooltips, native
-dialogs, and popovers. Hidden or fully offscreen surfaces are excluded; a
-zero-sized portal wrapper can still contain visible children.
+dialogs, popovers, and `role="alert"` body portals. Hidden or fully offscreen
+surfaces are excluded; a zero-sized portal wrapper can still contain visible
+children.
+
+Semi `Toast` and `Notification` render `role="alert"` elements in body portals,
+outside the React root. These alerts pause dragging. Plain inline alerts inside
+the React root remain page content unless explicitly marked
+`data-desktop-overlay` or matched by another overlay selector. Stacked alert
+portals hold the guard until the last one closes; hiding or removing a portal
+also releases its motion blocker.
 
 The deliberate tradeoff is conservative: while any recognized overlay is
 visible, **all embedded header dragging is paused**, including for nonmodal

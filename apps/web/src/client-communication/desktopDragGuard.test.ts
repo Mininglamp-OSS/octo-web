@@ -87,7 +87,7 @@ describe("embedded desktop drag guard", () => {
     expect(root.dataset.desktopDragSuspended).toBe("false");
   });
 
-  it.each(["dialog", "alertdialog", "menu", "listbox", "tooltip"])(
+  it.each(["dialog", "alertdialog", "menu", "listbox", "tooltip", "alert"])(
     "recognizes a body portal with role=%s without a business class selector",
     async role => {
       dispose = installDesktopDragGuard(root);
@@ -99,6 +99,69 @@ describe("embedded desktop drag guard", () => {
       expect(root.dataset.desktopDragSuspended).toBe("false");
     },
   );
+
+  it("keeps dragging paused while stacked alert portals remain and resumes after the last closes", async () => {
+    dispose = installDesktopDragGuard(root);
+    expect(root.dataset.desktopDragSuspended).toBe("false");
+    const first = overlay({ role: "alert" }, document.body);
+    const second = overlay({ role: "alert" }, document.body);
+    await flush();
+    expect(root.dataset.desktopDragSuspended).toBe("true");
+    first.remove();
+    await flush();
+    expect(root.dataset.desktopDragSuspended).toBe("true");
+    second.remove();
+    await flush();
+    expect(root.dataset.desktopDragSuspended).toBe("false");
+  });
+
+  it("does not treat an inline role=alert inside the React root as an overlay", async () => {
+    dispose = installDesktopDragGuard(root);
+    const panel = overlay({ role: "alert" }, root);
+    await flush();
+    expect(root.dataset.desktopDragSuspended).toBe("false");
+    motion(panel, "animationstart");
+    await flush();
+    expect(root.dataset.desktopDragSuspended).toBe("false");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("treats an inline role=alert with an explicit overlay marker as an overlay", async () => {
+    dispose = installDesktopDragGuard(root);
+    const panel = overlay({ role: "alert" }, root);
+    panel.setAttribute("data-desktop-overlay", "");
+    await flush();
+    expect(root.dataset.desktopDragSuspended).toBe("true");
+    panel.setAttribute("hidden", "");
+    await flush();
+    expect(root.dataset.desktopDragSuspended).toBe("false");
+  });
+
+  it("releases the alert animation blocker when the portal is hidden without unmounting", async () => {
+    const panel = overlay({ role: "alert" }, document.body);
+    dispose = installDesktopDragGuard(root);
+    motion(panel, "animationstart");
+    await flush();
+    expect(root.dataset.desktopDragSuspended).toBe("true");
+    panel.setAttribute("hidden", "");
+    await flush();
+    expect(root.dataset.desktopDragSuspended).toBe("false");
+    expect(vi.getTimerCount()).toBe(0);
+    expect(panel.isConnected).toBe(true);
+    panel.removeAttribute("hidden");
+    await flush();
+    expect(root.dataset.desktopDragSuspended).toBe("true");
+  });
+
+  it("does not leak an alert animation blocker when the portal is removed mid-animation", async () => {
+    const panel = overlay({ role: "alert" }, document.body);
+    dispose = installDesktopDragGuard(root);
+    motion(panel, "animationstart");
+    panel.remove();
+    await flush();
+    expect(root.dataset.desktopDragSuspended).toBe("false");
+    expect(vi.getTimerCount()).toBe(0);
+  });
 
   it.each(["hidden", "inert", "aria-hidden"])("ignores %s on an ancestor and resumes when shown", async attribute => {
     const parent = document.createElement("div");
