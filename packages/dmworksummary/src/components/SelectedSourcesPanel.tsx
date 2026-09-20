@@ -10,6 +10,9 @@ interface SelectedSourcesPanelProps {
 
 const SelectedSourcesPanel: React.FC<SelectedSourcesPanelProps> = ({ sources = [] }) => {
     const { t } = useI18n();
+    const snapshotDocumentCount = sources.filter(
+        (source) => source.source_type === SourceType.DOCUMENT && source.source_version != null
+    ).length;
 
     const sourceIcon = (sourceType: SourceTypeValue) => {
         if (sourceType === SourceType.GROUP_CHAT) {
@@ -40,13 +43,15 @@ const SelectedSourcesPanel: React.FC<SelectedSourcesPanelProps> = ({ sources = [
                             <span className="selected-sources-item-name">
                                 {source.source_name || source.source_id}
                             </span>
-                            {source.source_type === SourceType.DOCUMENT && source.source_version != null && (
-                                <span className="selected-sources-item-version">
-                                    {t("summary.source.generationSnapshot")}
-                                </span>
-                            )}
                         </div>
                     ))}
+                    {snapshotDocumentCount > 0 && (
+                        <div className="selected-sources-note" role="note">
+                            {t("summary.source.documentSnapshotNoticeWithoutTime", {
+                                values: { count: snapshotDocumentCount },
+                            })}
+                        </div>
+                    )}
                 </div>
             ) : (
                 <div className="selected-sources-empty">

@@ -1390,6 +1390,13 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     min-width: 0;
 }
 
+.summary-detail-source-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
 .summary-detail-source-label {
     flex-shrink: 0;
     font-size: 14px;
@@ -1442,13 +1449,10 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     max-width: 240px;
 }
 
-.summary-detail-source-snapshot {
-    flex-shrink: 0;
-    margin-left: 4px;
-    padding: 2px 6px;
-    border-radius: 4px;
-    background: var(--wk-summary-chip-bg);
-    color: var(--wk-text-secondary);
+.summary-detail-source-note {
+    color: var(--wk-text-tertiary);
+    font-size: 12px;
+    line-height: 18px;
 }
 
 /* Divider between meta and content */
@@ -3155,8 +3159,9 @@ body[theme-mode="dark"] .summary-template-create-btn:hover {
     font-weight: 400;
 }
 
-.selected-sources-item-version {
-    flex-shrink: 0;
+.selected-sources-note {
+    padding: 8px 14px;
+    border-top: 1px solid var(--semi-color-border);
     color: var(--wk-text-tertiary);
     font-size: var(--wk-text-size-sm);
     line-height: 18px;

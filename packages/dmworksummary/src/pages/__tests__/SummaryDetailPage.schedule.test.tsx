@@ -1904,12 +1904,11 @@ describe('SummaryDetailPage — document summaries never enter the schedule pipe
 });
 
 describe('SummaryDetailPage — document source snapshot version', () => {
-    it('labels the source type, document name and generation snapshot without exposing source_version', () => {
+    it('keeps the accessible source label concise without exposing source_version', () => {
         const page = makePage(1);
         (page as any).context = {
             t: (key: string) => ({
                 'summary.source.document': '文档',
-                'summary.source.generationSnapshot': '生成时快照',
             }[key] || key),
         };
 
@@ -1918,7 +1917,30 @@ describe('SummaryDetailPage — document source snapshot version', () => {
             source_id: 'doc-1',
             source_name: '项目复盘',
             source_version: 'A6v+hvAJgQjBluHbCaAQq7eowQTFBQ==',
-        })).toBe('文档 · 项目复盘 · 生成时快照');
+        })).toBe('文档 · 项目复盘');
+    });
+
+    it('shows one aggregate snapshot explanation for all document sources', () => {
+        const page = makePage(1);
+        (page as any).context = {
+            t: (key: string, options?: { values?: Record<string, unknown> }) =>
+                key === 'summary.source.documentSnapshotNotice'
+                    ? `基于以上 ${options?.values?.count} 份文档在 ${options?.values?.time} 的内容生成，后续修改不会影响本总结。`
+                    : key === 'summary.source.document'
+                        ? '文档'
+                        : key,
+        };
+
+        const tree = (page as any).renderSourceMetadata([
+            { source_type: 4, source_id: 'doc-1', source_name: '项目复盘', source_version: 'v1' },
+            { source_type: 4, source_id: 'doc-2', source_name: '方案说明', source_version: 'v2' },
+        ], '2026-09-20T03:40:00Z');
+        const notes = collectElements(tree).filter(el => el.props.className === 'summary-detail-source-note');
+
+        expect(notes).toHaveLength(1);
+        expect(JSON.stringify(notes[0])).toContain('基于以上 2 份文档在');
+        expect(JSON.stringify(tree)).not.toContain('v1');
+        expect(JSON.stringify(tree)).not.toContain('v2');
     });
 
     it('labels chat sources by type without a document snapshot badge', () => {

@@ -225,10 +225,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private sourceLabel = (source: SourceItem): string => {
         const type = this.sourceTypeLabel(source);
         const name = source.source_name || source.source_id;
-        if (source.source_type !== SourceType.DOCUMENT || source.source_version == null) {
-            return `${type} · ${name}`;
-        }
-        return `${type} · ${name} · ${this.context.t("summary.source.generationSnapshot")}`;
+        return `${type} · ${name}`;
     };
 
     private sourceTypeLabel = (source: SourceItem): string => {
@@ -245,16 +242,19 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return <MessageSquareText size={14} aria-hidden />;
     };
 
-    private renderSourceMetadata = (sources: SourceItem[]) => {
+    private renderSourceMetadata = (sources: SourceItem[], snapshotAt?: string) => {
         if (!sources.length) return null;
         const { t } = this.context;
+        const snapshotDocumentCount = sources.filter(
+            (source) => source.source_type === SourceType.DOCUMENT && source.source_version != null
+        ).length;
+        const snapshotTime = formatDate(snapshotAt);
         return (
             <div className="summary-detail-source-row">
                 <span className="summary-detail-source-label">{t("summary.source.label")}</span>
-                <div className="summary-detail-source-chips">
-                    {sources.map((source, index) => {
-                        const isSnapshot = source.source_type === SourceType.DOCUMENT && source.source_version != null;
-                        return (
+                <div className="summary-detail-source-content">
+                    <div className="summary-detail-source-chips">
+                        {sources.map((source, index) => (
                             <span
                                 key={`${source.source_type}-${source.source_id}-${index}`}
                                 className="summary-detail-source-chip"
@@ -264,14 +264,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 <span className="summary-detail-source-type">{this.sourceTypeLabel(source)}</span>
                                 <span className="summary-detail-source-separator" aria-hidden>·</span>
                                 <span className="summary-detail-source-name">{source.source_name || source.source_id}</span>
-                                {isSnapshot && (
-                                    <span className="summary-detail-source-snapshot">
-                                        {t("summary.source.generationSnapshot")}
-                                    </span>
-                                )}
                             </span>
-                        );
-                    })}
+                        ))}
+                    </div>
+                    {snapshotDocumentCount > 0 && (
+                        <div className="summary-detail-source-note" role="note">
+                            {snapshotTime === "-"
+                                ? t("summary.source.documentSnapshotNoticeWithoutTime", {
+                                    values: { count: snapshotDocumentCount },
+                                })
+                                : t("summary.source.documentSnapshotNotice", {
+                                    values: { count: snapshotDocumentCount, time: snapshotTime },
+                                })}
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -2826,7 +2832,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <div className="summary-detail-meta-time">
                         {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                     </div>
-                    {this.renderSourceMetadata(detail.sources || [])}
+                    {this.renderSourceMetadata(detail.sources || [], detail.created_at)}
                 </div>
                 <hr className="summary-detail-meta-divider" /></>}
                 <div className="summary-detail-failed">
@@ -3334,7 +3340,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <div className="summary-detail-meta-time">
                             {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                         </div>
-                        {this.renderSourceMetadata(detail.sources || [])}
+                        {this.renderSourceMetadata(detail.sources || [], detail.created_at)}
                     </div>
                     <hr className="summary-detail-meta-divider" />
                     <div className="summary-detail-result-header">
@@ -3486,7 +3492,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <div className="summary-detail-meta-time">
                             {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                         </div>
-                        {this.renderSourceMetadata(detail.sources || [])}
+                        {this.renderSourceMetadata(detail.sources || [], detail.created_at)}
                     </div>
                 )}
                 <hr className="summary-detail-meta-divider" />
@@ -3653,7 +3659,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <div className="summary-detail-meta-time">
                             {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                         </div>
-                        {this.renderSourceMetadata(detail.sources || [])}
+                        {this.renderSourceMetadata(detail.sources || [], detail.created_at)}
                     </div>
                     <hr className="summary-detail-meta-divider" />
                     <div className="summary-detail-content-box">
@@ -3675,7 +3681,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <div className="summary-detail-meta-time">
                         {t("summary.detail.createdAt", { values: { time: formatDate(detail.created_at) } })}
                     </div>
-                    {this.renderSourceMetadata(detail.sources || [])}
+                    {this.renderSourceMetadata(detail.sources || [], detail.created_at)}
                 </div>
                 <hr className="summary-detail-meta-divider" />
                 <div className="summary-detail-section-header">
