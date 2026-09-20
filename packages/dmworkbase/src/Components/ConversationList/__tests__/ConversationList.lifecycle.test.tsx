@@ -81,8 +81,7 @@ describe("ConversationList helpers and interaction state", () => {
     expect(kept.items).toHaveLength(1)
     expect(vm.buildThreadsByParent(threads).get("parent")).toHaveLength(3)
     vm.onTop(parent)
-    vm.onMute(parent.channelInfo)
-    vm.onMuteWithValue(true, parent.channelInfo)
+    vm.onMuteWithValue(true, parent.channelInfo, parent.channel)
     vm.onHideConversation(parent.channel)
     await vm.onClearMessages(parent.channel)
 

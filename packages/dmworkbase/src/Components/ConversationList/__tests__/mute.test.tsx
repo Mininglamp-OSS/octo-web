@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WKSDK, { Channel, ChannelInfo, ChannelTypeGroup, ChannelTypePerson, Conversation } from "wukongimjssdk";
 import { Toast } from "@douyinfe/semi-ui";
 import { isValidElement, type ReactNode } from "react";
+import axios, { type AxiosRequestConfig } from "axios";
 
 vi.mock("react-virtuoso", () => ({
   TableVirtuoso: () => null, Virtuoso: () => null, VirtuosoGrid: () => null,
@@ -19,12 +20,13 @@ import WKApp from "../../../App";
 import APIClient from "../../../Service/APIClient";
 import { ConversationWrap } from "../../../Service/Model";
 import type { ContextMenusData } from "../../ContextMenus";
-import { t } from "../../../i18n";
-import { fetchImChannelInfo } from "../../../im-runtime/channelRuntime";
+import { i18n, t } from "../../../i18n";
+import { fetchImChannelInfo, getPendingImChannelInfoFetch } from "../../../im-runtime/channelRuntime";
 import { captureCurrentImConversationSyncContext } from "../../../im-runtime/conversationSyncContext";
 import { createChannelInfoCallback } from "../../../../../dmworkdatasource/src/im-callbacks/channelInfo";
 
 const sdk = WKSDK.shared();
+const originalAdapter = axios.defaults.adapter;
 const flush = async () => {
   for (let i = 0; i < 40; i++) await Promise.resolve();
 };
@@ -76,6 +78,7 @@ function endpoint(channel: Channel) {
 }
 
 beforeEach(() => {
+  i18n.setLocale("zh-CN", { notify: false, persist: false });
   sdk.channelManager.channelInfocacheMap = {};
   sdk.conversationManager.conversations = [];
   WKApp.shared.currentSpaceId = "mute-space";
@@ -85,8 +88,79 @@ beforeEach(() => {
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
 });
 afterEach(() => {
+  axios.defaults.adapter = originalAdapter;
+  i18n.setLocale("zh-CN", { notify: false, persist: false });
   vi.useRealTimers();
   vi.restoreAllMocks();
+});
+
+describe.each(["zh-CN", "en-US"] as const)("mute errors in %s", locale => {
+  it.each([
+    [401, "ERR_BAD_REQUEST", "base.api.error.sessionExpired"],
+    [403, "ERR_BAD_REQUEST", "base.api.error.forbidden"],
+    [404, "ERR_BAD_REQUEST", "base.api.error.unknown"],
+    [429, "ERR_BAD_REQUEST", "base.api.error.rateLimited"],
+    [500, "ERR_BAD_RESPONSE", "base.api.error.unknown"],
+    [503, "ERR_BAD_RESPONSE", "base.api.error.unknown"],
+    [undefined, "ERR_NETWORK", "base.api.error.network"],
+    [undefined, "ECONNABORTED", "base.api.error.timeout"],
+  ] as const)("uses the real interceptor message for %s / %s", async (status, code, key) => {
+    i18n.setLocale(locale, { notify: false, persist: false });
+    const channel = new Channel("mute-http-error", ChannelTypePerson);
+    const info = seed(channel);
+    const get = vi.fn();
+    install(get);
+    const rawMessage = status ? `Request failed with status code ${status}` : code;
+    const adapter = vi.fn(async (config: AxiosRequestConfig) => {
+      throw Object.assign(new Error(rawMessage), {
+        code, config,
+        response: status === undefined ? undefined : {
+          status,
+          data: {
+            error: {
+              http_status: status,
+              ...(status >= 500 ? { code: "err.shared.internal", message: "internal details" } : {}),
+            },
+          },
+        },
+      });
+    });
+    axios.defaults.adapter = adapter;
+    const vm = list();
+    await vm.onMuteWithValue(true, info);
+
+    expect(adapter).toHaveBeenCalledTimes(1);
+    expect(Toast.error).toHaveBeenCalledExactlyOnceWith(t(key));
+    expect(Toast.error).not.toHaveBeenCalledWith(rawMessage);
+    expect(info.mute).toBe(false);
+    expect(get).not.toHaveBeenCalled();
+    expect(vm.setState).not.toHaveBeenCalled();
+  });
+});
+
+it("uses a localized fallback for a save error without an interceptor message", async () => {
+  const channel = new Channel("mute-unknown-error", ChannelTypePerson);
+  const info = seed(channel);
+  vi.spyOn(APIClient.shared, "put").mockRejectedValue(new Error("internal details"));
+
+  await list().onMuteWithValue(true, info);
+
+  expect(Toast.error).toHaveBeenCalledExactlyOnceWith(t("base.channelSetting.toggleFailed"));
+  expect(info.mute).toBe(false);
+});
+
+it("handles a fire-and-forget rejection through the real SDK and datasource", async () => {
+  const channel = new Channel("metadata-unavailable", ChannelTypePerson);
+  const get = vi.fn().mockRejectedValue({ status: 403 });
+  install(get);
+
+  void fetchImChannelInfo(sdk, channel);
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  expect(get).toHaveBeenCalledTimes(1);
+  expect(getPendingImChannelInfoFetch(sdk, channel)).toBeUndefined();
+  expect(sdk.channelManager.getChannelInfo(channel)).toBeUndefined();
+  expect(Toast.error).not.toHaveBeenCalled();
 });
 
 it("keeps the scoped conversation muted when its metadata contains a bare peer alias", async () => {
@@ -114,6 +188,40 @@ it("keeps the scoped conversation muted when its metadata contains a bare peer a
 });
 
 describe.each([ChannelTypePerson, ChannelTypeGroup])("mute actions for channel type %s", type => {
+  it("orders rapid saves and preserves the latest value after an older metadata refresh", async () => {
+    const channel = new Channel("mute-rapid", type);
+    const info = seed(channel);
+    const firstSave = deferred();
+    const secondSave = deferred();
+    const refresh = deferred<ReturnType<typeof payload>>();
+    const get = vi.fn(() => refresh.promise);
+    install(get);
+    const put = vi.spyOn(APIClient.shared, "put")
+      .mockReturnValueOnce(firstSave.promise)
+      .mockReturnValueOnce(secondSave.promise);
+    const vm = list();
+    const first = vm.onMuteWithValue(true, info);
+    const second = vm.onMuteWithValue(false, info);
+    const savesStartedTogether = put.mock.calls.length;
+    firstSave.resolve();
+    await flush();
+    const savesAfterFirstResponse = put.mock.calls.length;
+    const refreshesBeforeSecondResponse = get.mock.calls.length;
+    secondSave.resolve();
+    await flush();
+    const muteAfterSecondSave = sdk.channelManager.getChannelInfo(channel)?.mute;
+    refresh.resolve(payload(channel, "Known name", 1));
+    await Promise.all([first, second]);
+    await flush();
+
+    expect(savesStartedTogether).toBe(1);
+    expect(savesAfterFirstResponse).toBe(2);
+    expect(refreshesBeforeSecondResponse).toBe(1);
+    expect(muteAfterSecondSave).toBe(false);
+    expect(sdk.channelManager.getChannelInfo(channel)?.mute).toBe(false);
+    expect(Toast.error).not.toHaveBeenCalled();
+  });
+
   it("keeps the mute and pin menus usable for a valid nameless channel", async () => {
     const channel = new Channel("nameless", type);
     let mute = 0;

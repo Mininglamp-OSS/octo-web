@@ -63,7 +63,7 @@ import {
   getImChannelInfo,
 } from "../../im-runtime/channelRuntime";
 import { captureCurrentImConversationSyncContext } from "../../im-runtime/conversationSyncContext";
-import { normalizeApiError } from "../../Service/apiError";
+import { extractErrorMsg } from "../../Service/APIClient";
 import {
   muteChannelSetting,
   topChannelSetting,
@@ -1036,10 +1036,6 @@ export default class ConversationList extends Component<
       });
   }
 
-  onMute(channelInfo: ChannelInfo) {
-    this.onMuteWithValue(!channelInfo.mute, channelInfo)
-  }
-
   async onMuteWithValue(value: boolean, channelInfo: ChannelInfo, channel = channelInfo.channel) {
     const sdk = WKSDK.shared();
     const contextIsCurrent = captureCurrentImConversationSyncContext();
@@ -1050,7 +1046,7 @@ export default class ConversationList extends Component<
         mute: value,
       });
     } catch (err) {
-      if (isCurrent()) Toast.error(normalizeApiError({ data: err }).message);
+      if (isCurrent()) Toast.error(extractErrorMsg(err) || t("base.channelSetting.toggleFailed"));
       return;
     }
 

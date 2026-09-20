@@ -1,4 +1,4 @@
-import { Channel, ChannelInfo, ChannelTypeGroup } from "wukongimjssdk";
+import { Channel, ChannelInfo, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 
 import WKApp from "../../App";
 import {
@@ -234,6 +234,10 @@ function defaultRuntime(): ChannelSettingActionRuntime {
 }
 
 const muteCacheSyncVersions = new Map<string, number>();
+const pendingMuteSaves = new Map<string, {
+  promise: Promise<void>;
+  isCurrent: () => boolean;
+}>();
 
 function patchMuteCache(
   runtime: ChannelSettingActionRuntime,
@@ -519,18 +523,34 @@ export async function muteChannelSetting(params: {
 }) {
   const runtime = runtimeOrDefault(params.runtime);
   const isCurrent = runtime.captureContext?.() ?? (() => true);
-  await runtime.muteChannel(params.channel, params.mute);
-  // A successful save is authoritative even if the following metadata refresh fails.
-  if (isCurrent() && channelSettingRequestIssued(params.channel)) {
-    syncMuteCacheAfterSave(runtime, params.channel, params.mute, isCurrent);
-  }
-  // conversation_muted 收口点:所有静音入口(会话列表右键、设置面板、子区设置)都经此,
-  // await 成功后单发,携带方向 action(mute/unmute)。此前挂在 BodyRules body 通道会双计,
-  // 已删除 body 规则;改到这里统一命令式单通道(见 M3)。
-  // 门控:仅在 updateChannelSetting 确会发出请求时才计点。畸形子区 channelID(解析失败)或
-  // 未知频道类型走静默 no-op,不该计一次 mute(见 #1452 review P2)。
-  if (channelSettingRequestIssued(params.channel)) {
-    Dap.shared.track("conversation_muted", { action: params.mute ? "mute" : "unmute", channel_id: stripSpacePrefix(params.channel.channelID) });
+  const key = params.channel.channelType === ChannelTypePerson
+    ? new Channel(stripSpacePrefix(params.channel.channelID), ChannelTypePerson).getChannelKey()
+    : params.channel.getChannelKey();
+  const previous = pendingMuteSaves.get(key);
+  const promise = (async () => {
+    // Serialize writes, not metadata reads, so the server sees the user's intent in order.
+    if (previous?.isCurrent()) await previous.promise.catch(() => undefined);
+    if (!isCurrent()) return;
+    await runtime.muteChannel(params.channel, params.mute);
+    // A successful save is authoritative even if the following metadata refresh fails.
+    if (isCurrent() && channelSettingRequestIssued(params.channel)) {
+      syncMuteCacheAfterSave(runtime, params.channel, params.mute, isCurrent);
+    }
+    // conversation_muted 收口点:所有静音入口(会话列表右键、设置面板、子区设置)都经此,
+    // await 成功后单发,携带方向 action(mute/unmute)。此前挂在 BodyRules body 通道会双计,
+    // 已删除 body 规则;改到这里统一命令式单通道(见 M3)。
+    // 门控:仅在 updateChannelSetting 确会发出请求时才计点。畸形子区 channelID(解析失败)或
+    // 未知频道类型走静默 no-op,不该计一次 mute(见 #1452 review P2)。
+    if (channelSettingRequestIssued(params.channel)) {
+      Dap.shared.track("conversation_muted", { action: params.mute ? "mute" : "unmute", channel_id: stripSpacePrefix(params.channel.channelID) });
+    }
+  })();
+  const pending = { promise, isCurrent };
+  pendingMuteSaves.set(key, pending);
+  try {
+    await promise;
+  } finally {
+    if (pendingMuteSaves.get(key) === pending) pendingMuteSaves.delete(key);
   }
 }
 

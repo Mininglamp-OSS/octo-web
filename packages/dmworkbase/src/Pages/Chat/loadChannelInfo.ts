@@ -24,7 +24,7 @@ export function loadChatChannelInfo(channel: Channel, onLoading: (loading: boole
     })().catch(() => {
       // The title displays an unavailable state. Do not expose backend error text.
     }).finally(() => {
-      if (isCurrent()) onLoading(false);
+      if (!disposed) onLoading(false);
     });
   }
   return () => { disposed = true; };

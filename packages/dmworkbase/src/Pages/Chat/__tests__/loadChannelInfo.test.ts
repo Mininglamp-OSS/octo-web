@@ -169,6 +169,26 @@ describe("chat channel info lifecycle", () => {
     expect(onLoading).toHaveBeenLastCalledWith(false);
   });
 
+  it.each(["space", "session", "origin"])(
+    "clears loading while waiting on a pending SDK fetch without a new owned request after %s context change",
+    async (transition) => {
+      let resolve!: (info: ChannelInfo) => void;
+      callback.mockImplementation(() => new Promise(done => { resolve = done; }));
+      const pending = fetchImChannelInfo(sdk, channel);
+      const loading = start();
+      await flush();
+      expect(callback).toHaveBeenCalledTimes(1);
+      if (transition === "space") app.shared.spaceRevision++;
+      if (transition === "session") app.loginInfo.sessionRevision++;
+      if (transition === "origin") app.apiClient.config.originRevision++;
+      resolve(freshInfo());
+      await pending;
+      await flush();
+      expect(callback).toHaveBeenCalledTimes(1);
+      expect(loading.mock.calls).toEqual([[true], [false]]);
+    },
+  );
+
   it("stops loading on failure and can recover when the conversation is reopened", async () => {
     callback.mockRejectedValueOnce({ status: 403 });
     const first = start();
@@ -182,18 +202,71 @@ describe("chat channel info lifecycle", () => {
     expect(getImChannelDisplayName(sdk.channelManager.getChannelInfo(channel))).toBe("Known contact");
   });
 
-  it.each(["unmount", "space", "session", "origin"])("drops late results after %s", async (transition) => {
+  it.each(["space", "session", "origin"])(
+    "clears loading on a late success without caching after %s context change",
+    async (transition) => {
+      let resolve!: (info: ChannelInfo) => void;
+      callback.mockImplementation(() => new Promise(done => { resolve = done; }));
+      const loading = start();
+      await flush();
+      if (transition === "space") app.shared.spaceRevision++;
+      if (transition === "session") app.loginInfo.sessionRevision++;
+      if (transition === "origin") app.apiClient.config.originRevision++;
+      resolve(freshInfo());
+      await flush();
+      expect(sdk.channelManager.getChannelInfo(channel)).toBeUndefined();
+      expect(loading.mock.calls).toEqual([[true], [false]]);
+    },
+  );
+
+  it.each(["space", "session", "origin"])(
+    "clears loading on a late failure without caching after %s context change",
+    async (transition) => {
+      let rejectFn!: (error: unknown) => void;
+      callback.mockImplementation(() => new Promise((_, reject) => { rejectFn = reject; }));
+      const loading = start();
+      await flush();
+      if (transition === "space") app.shared.spaceRevision++;
+      if (transition === "session") app.loginInfo.sessionRevision++;
+      if (transition === "origin") app.apiClient.config.originRevision++;
+      rejectFn({ status: 403 });
+      await flush();
+      expect(sdk.channelManager.getChannelInfo(channel)).toBeUndefined();
+      expect(loading.mock.calls).toEqual([[true], [false]]);
+    },
+  );
+
+  it("does not update loading after unmount", async () => {
     let resolve!: (info: ChannelInfo) => void;
     callback.mockImplementation(() => new Promise(done => { resolve = done; }));
     const loading = start();
     await flush();
-    if (transition === "unmount") cleanups[0]();
-    if (transition === "space") app.shared.spaceRevision++;
-    if (transition === "session") app.loginInfo.sessionRevision++;
-    if (transition === "origin") app.apiClient.config.originRevision++;
+    cleanups[0]();
     resolve(freshInfo());
     await flush();
     expect(sdk.channelManager.getChannelInfo(channel)).toBeUndefined();
     expect(loading.mock.calls).toEqual([[true]]);
+  });
+
+  it("old activation dispose does not clear the new activation's loading", async () => {
+    const resolvers: Array<(info: ChannelInfo) => void> = [];
+    callback.mockImplementation(() => new Promise(done => { resolvers.push(done); }));
+    const loadingA = start();
+    await flush();
+    const loadingB = start();
+    await flush();
+    expect(callback).toHaveBeenCalledTimes(1);
+
+    cleanups[0]();
+    resolvers[0](freshInfo());
+    await flush();
+    expect(loadingA.mock.calls).toEqual([[true]]);
+    expect(loadingB.mock.calls).toEqual([[true]]);
+    expect(resolvers).toHaveLength(2);
+
+    resolvers[1](freshInfo());
+    await flush();
+    expect(loadingB.mock.calls).toEqual([[true], [false]]);
+    expect(getImChannelDisplayName(sdk.channelManager.getChannelInfo(channel))).toBe("Known contact");
   });
 });
