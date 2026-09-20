@@ -108,6 +108,7 @@ export class ChatVM extends ProviderListener {
             chatPageTitleController.clear();
             WKApp.shared.openChannel = undefined;
             this._showChannelSetting = false;
+            this._showGlobalSearch = false;
             this.selectedConversation = undefined;
         };
         WKApp.mittBus.on("wk:active-menu-changed", this.activeMenuChangedHandler);

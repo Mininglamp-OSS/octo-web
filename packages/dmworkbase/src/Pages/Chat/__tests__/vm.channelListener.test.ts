@@ -343,27 +343,54 @@ describe("ChatVM active menu lifecycle", () => {
         expect(clearTitleSpy).toHaveBeenCalledTimes(1)
     })
 
+    it("closes global search before notifying the retained page and keeps it closed on return", () => {
+        const vm = mountVM()
+        vm.showGlobalSearch = true
+        const observedVisibility: boolean[] = []
+        const unsubscribe = vm.addListener(() => observedVisibility.push(vm.showGlobalSearch))
+
+        emitActiveMenuChanged("contacts")
+
+        expect(vm.showGlobalSearch).toBe(false)
+        expect(observedVisibility).toEqual([false])
+
+        emitActiveMenuChanged("chat")
+
+        expect(vm.showGlobalSearch).toBe(false)
+        expect(observedVisibility).toEqual([false])
+
+        vm.showGlobalSearch = true
+        expect(vm.showGlobalSearch).toBe(true)
+        expect(observedVisibility).toEqual([false, true])
+        unsubscribe()
+        vm.didUnMount()
+    })
+
     it("keeps the current conversation when Chat remains active", () => {
         const vm = mountVM()
         const selected = selectConversation(vm)
+        vm.showGlobalSearch = true
         const clearTitleSpy = vi.spyOn(chatPageTitleController, "clear")
 
         emitActiveMenuChanged("chat")
 
         expect(vm.selectedConversation).toBe(selected)
         expect(WKApp.shared.openChannel).toBe(selected.channel)
+        expect(vm.showGlobalSearch).toBe(true)
         expect(clearTitleSpy).not.toHaveBeenCalled()
     })
 
     it("stops reacting to active-menu changes after unmount", () => {
         const vm = mountVM()
         const selected = selectConversation(vm)
+        vm.showGlobalSearch = true
         vm.didUnMount()
 
         emitActiveMenuChanged("contacts")
 
         expect(vm.selectedConversation).toBe(selected)
         expect(WKApp.shared.openChannel).toBe(selected.channel)
+        expect(vm.showGlobalSearch).toBe(true)
     })
 })
 
