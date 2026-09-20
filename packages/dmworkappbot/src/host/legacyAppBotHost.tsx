@@ -5,9 +5,12 @@ import {
   WKApp,
   createCurrentEmptyImConversation,
   findCurrentImConversation,
+  getCurrentImChannelInfo,
   setCurrentImChannelInfoCache,
+  t,
 } from "@octo/base";
 import { subscribePageActivation } from "@octo/base/src/Utils/pageActivation";
+import { getImChannelDisplayName, seedImChannelDisplayName } from "@octo/base/src/im-runtime/channelDisplayName";
 import { renderAppBotConversation } from "../features/AppBotConversationView";
 import type { AppBotHostCapabilities } from "./types";
 
@@ -36,18 +39,20 @@ export const legacyAppBotHost: AppBotHostCapabilities = {
 
   async openConversation(target) {
     const channel = new Channel(target.channelId, target.channelType);
-    const info = new ChannelInfo();
+    const info = getCurrentImChannelInfo<Channel, ChannelInfo>(channel) || new ChannelInfo();
     info.channel = channel;
-    info.title = target.displayName;
-    info.logo = target.avatar;
-    info.orgData = target.metadata;
+    if (target.avatar) info.logo = target.avatar;
+    seedImChannelDisplayName(info, target.displayName, target.metadata);
     setCurrentImChannelInfoCache(info);
 
     if (!findCurrentImConversation(channel)) {
       createCurrentEmptyImConversation(channel);
     }
 
-    WKApp.routeRight.replaceToRoot(renderAppBotConversation(target, channel));
+    WKApp.routeRight.replaceToRoot(renderAppBotConversation({
+      ...target,
+      displayName: getImChannelDisplayName(info) || t("base.chatPage.nameUnavailable"),
+    }, channel));
   },
 
   clearConversation() {

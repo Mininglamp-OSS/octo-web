@@ -83,6 +83,31 @@ describe("channelRuntime", () => {
     expect(sdk.channelManager.getChannelInfo).toHaveBeenCalledWith(channel);
   });
 
+  it("preserves rejection for callers while settling pending observers without cache writes", async () => {
+    const sdk = createSdk();
+    const channel = { channelID: "g1", channelType: 2 };
+    const error = new Error("unavailable");
+    sdk.channelManager.fetchChannelInfo.mockRejectedValue(error);
+
+    const fetch = fetchImChannelInfo(sdk, channel);
+    const pending = getPendingImChannelInfoFetch(sdk, channel);
+    await expect(fetch).rejects.toBe(error);
+    await expect(pending).resolves.toBeUndefined();
+    expect(getPendingImChannelInfoFetch(sdk, channel)).toBeUndefined();
+    expect(sdk.channelManager.setChannleInfoForCache).not.toHaveBeenCalled();
+    expect(sdk.channelManager.notifyListeners).not.toHaveBeenCalled();
+  });
+
+  it("handles a fire-and-forget fetch rejection without an unhandled promise", async () => {
+    const sdk = createSdk();
+    const channel = { channelID: "g1", channelType: 2 };
+    sdk.channelManager.fetchChannelInfo.mockRejectedValue(new Error("offline"));
+
+    void fetchImChannelInfo(sdk, channel);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(getPendingImChannelInfoFetch(sdk, channel)).toBeUndefined();
+  });
+
   it("keeps SDK-deduped in-flight channel fetches visible until the original request settles", async () => {
     const sdk = createSdk();
     const channel = { channelID: "g1", channelType: 2 };

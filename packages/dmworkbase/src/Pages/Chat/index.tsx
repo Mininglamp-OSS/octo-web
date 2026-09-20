@@ -99,6 +99,8 @@ import {
 } from "./rightPanelState";
 import { observeChatLayout, type ChatLayout } from "./responsiveLayout";
 import { chatPageTitleController } from "./chatPageTitleController";
+import { getImChannelDisplayName } from "../../im-runtime/channelDisplayName";
+import { loadChatChannelInfo } from "./loadChannelInfo";
 import {
   shouldHideFollowUnreadBadge,
   shouldHideRecentUnreadBadge,
@@ -380,6 +382,7 @@ export interface ChatContentPageProps {
 }
 
 export interface ChatContentPageState {
+  channelInfoLoading: boolean;
   contentLayout?: ChatLayout;
   hostPreviewSource?: { channelId: string; channelType: number } | null;
   workspaceEmbedding?: ChatContentPageProps["workspaceEmbedding"];
@@ -428,6 +431,7 @@ export class ChatContentPage extends Component<
   private channelSearchDataSource?: ChannelSearchDataSource;
   private channelSearchPanelState?: ChannelSearchPanelState;
   private _unsubscribeChannelInfoListener?: () => void;
+  private stopChannelInfoLoad?: () => void;
   private _unsubscribeChannelSearchConfig?: () => void;
   private readonly titlePageOwner = Symbol("chat-content-page");
   private readonly chatRuntime = getLegacyChatRuntime();
@@ -511,6 +515,7 @@ export class ChatContentPage extends Component<
   constructor(props: any) {
     super(props);
     this.state = {
+      channelInfoLoading: true,
       workspaceEmbedding: props.workspaceEmbedding,
       showChannelSetting: false,
       selectionMode: false,
@@ -835,7 +840,7 @@ export class ChatContentPage extends Component<
       // 监听当前频道或父群组的变化
       if (
         titleContextChanged ||
-        channelInfo.channel.isEqual(channel) ||
+        channelInfo.channel.isEqual(this.props.channel) ||
         (this.parentGroupChannel &&
           channelInfo.channel.isEqual(this.parentGroupChannel))
       ) {
@@ -846,6 +851,7 @@ export class ChatContentPage extends Component<
       WKSDK.shared(),
       this.channelInfoListener
     );
+    this.loadChannelInfo();
     this._unsubscribeChannelSearchConfig =
       WKApp.remoteConfig.addConfigChangeListener(() => {
         if (
@@ -1083,6 +1089,7 @@ export class ChatContentPage extends Component<
       channel.channelType !== prevProps.channel.channelType;
 
     if (channelChanged) {
+      this.loadChannelInfo();
       cancelHostAttachmentRequests();
       this._filePreviewTakeoverSeq++;
       chatPageTitleController.activate(channel, this.titlePageOwner);
@@ -1190,6 +1197,7 @@ export class ChatContentPage extends Component<
   private _filePreviewTakeoverSeq = 0;
 
   componentWillUnmount() {
+    this.stopChannelInfoLoad?.();
     this.unsubscribeHostPreview?.();
     this.layoutObserver?.dispose();
     document.removeEventListener(
@@ -1217,6 +1225,13 @@ export class ChatContentPage extends Component<
     this._unsubscribeChannelSearchConfig = undefined;
     this._unsubscribeChannelInfoListener?.();
     this._unsubscribeChannelInfoListener = undefined;
+  }
+
+  private loadChannelInfo() {
+    this.stopChannelInfoLoad?.();
+    this.stopChannelInfoLoad = loadChatChannelInfo(this.props.channel, (channelInfoLoading) => {
+      this.setState({ channelInfoLoading });
+    });
   }
 
   private getThreadStatus(channelInfo?: ChannelInfo | null) {
@@ -1336,11 +1351,14 @@ export class ChatContentPage extends Component<
     channelInfo: ChannelInfo | undefined,
     threadParentGroupNo: string | undefined
   ): ReactNode {
+    const name = getImChannelDisplayName(channelInfo) || t(
+      this.state.channelInfoLoading ? "base.chatPage.loadingName" : "base.chatPage.nameUnavailable"
+    );
     if (
       channel.channelType !== ChannelTypeCommunityTopic ||
       !threadParentGroupNo
     ) {
-      return channelInfo?.orgData?.displayName;
+      return name;
     }
 
     return (
@@ -1364,7 +1382,7 @@ export class ChatContentPage extends Component<
           <ChevronRight aria-hidden="true" size={14} />
         </span>
         <span className="wk-chat-conversation-header-thread-name">
-          {channelInfo?.orgData?.displayName}
+          {name}
         </span>
       </>
     );
@@ -1485,9 +1503,6 @@ export class ChatContentPage extends Component<
     // 子区页面不显示讨论串按钮
     const isThreadChannel = channel.channelType === ChannelTypeCommunityTopic;
     const channelInfo = getImChannelInfo(WKSDK.shared(), channel);
-    if (!channelInfo) {
-      void fetchImChannelInfo(WKSDK.shared(), channel);
-    }
     const threadParentGroupNo = isThreadChannel
       ? (channelInfo?.orgData?.parentGroupNo as string | undefined) ||
         this.parentGroupChannel?.channelID ||

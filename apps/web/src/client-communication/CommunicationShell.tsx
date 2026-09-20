@@ -40,6 +40,7 @@ import { installSummaryNavigation } from "./summaryNavigation";
 import { installDocumentForward } from "./documentForward";
 import { installSummaryRequests } from "./summaryRequests";
 import { createWorkspaceNavigationGuard } from "./workspaceNavigationGuard";
+import { getImChannelDisplayName, seedImChannelDisplayName } from "@octo/base/src/im-runtime/channelDisplayName";
 import "./index.css";
 
 type PendingNavigation = {
@@ -106,16 +107,8 @@ function openTarget(
   if (target.displayName || target.avatar || target.metadata) {
     const info = getCurrentImChannelInfo<Channel, ChannelInfo>(channel) || new ChannelInfo();
     info.channel = channel;
-    if (target.displayName) info.title = target.displayName;
-    else if (!info.title) info.title = target.channelId;
     if (target.avatar) info.logo = target.avatar;
-    const existingMetadata = info.orgData && typeof info.orgData === "object"
-      ? info.orgData
-      : {};
-    info.orgData = {
-      ...existingMetadata,
-      ...(target.metadata || {}),
-    };
+    seedImChannelDisplayName(info, target.displayName, target.metadata);
     setCurrentImChannelInfoCache(info);
     if (!findCurrentImConversation(channel)) {
       createCurrentEmptyImConversation(channel);
@@ -127,7 +120,8 @@ function openTarget(
       <NavigationCommitBoundary onCommit={() => onCommitted?.()}>
         {renderAppBotConversation({
           channelId: target.channelId,
-          displayName: target.displayName || target.channelId,
+          displayName: getImChannelDisplayName(getCurrentImChannelInfo(channel)) ||
+            target.displayName?.trim() || t("base.chatPage.nameUnavailable"),
         }, channel)}
       </NavigationCommitBoundary>,
     );

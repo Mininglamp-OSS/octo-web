@@ -768,6 +768,60 @@ describe("CommunicationShell", () => {
     }));
   });
 
+  it.each([
+    { displayName: "Host contact" },
+    { metadata: { displayName: "Host contact", robot: 1 } },
+  ])("normalizes a host-supplied name for the chat header: %o", async (hint) => {
+    render(<CommunicationShell bridge={mocks.bridge} initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat",
+      target: { channelId: "peer", channelType: 1, ...hint },
+    }));
+    await waitFor(() => expect(mocks.setCurrentImChannelInfoCache).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Host contact", orgData: expect.objectContaining({ displayName: "Host contact" }) }),
+    ));
+  });
+
+  it("preserves remarks when host metadata supplies another name", async () => {
+    const cached = { channel: undefined, title: "Old", orgData: { remark: "My remark", online: 1 } };
+    mocks.getCurrentImChannelInfo.mockReturnValue(cached);
+    render(<CommunicationShell bridge={mocks.bridge} initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat",
+      target: { channelId: "peer", channelType: 1, displayName: "New", metadata: { displayName: "New", remark: "" } },
+    }));
+    await waitFor(() => expect(cached).toMatchObject({
+      title: "New", orgData: { remark: "My remark", displayName: "My remark", online: 1 },
+    }));
+  });
+
+  it("does not seed a UID as a name when the host only supplies an avatar", async () => {
+    render(<CommunicationShell bridge={mocks.bridge} initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat",
+      target: { channelId: "peer", channelType: 1, avatar: "avatar.png" },
+    }));
+    await waitFor(() => expect(mocks.setCurrentImChannelInfoCache).toHaveBeenCalled());
+    const info = mocks.setCurrentImChannelInfoCache.mock.calls[0][0];
+    expect(info.title).toBe("");
+    expect(info.orgData.displayName).toBeUndefined();
+    expect(mocks.createCurrentEmptyImConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not create an empty recent conversation for a bare navigation target", async () => {
+    render(<CommunicationShell bridge={mocks.bridge} initialPage="chat" initialSpaceId="space-a"
+      initialPresentation="conversation" onReady={async () => {}} />);
+    act(() => mocks.command.listener?.({
+      type: "navigate", page: "chat", target: { channelId: "peer", channelType: 1 },
+    }));
+    await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalled());
+    expect(mocks.createCurrentEmptyImConversation).not.toHaveBeenCalled();
+    expect(mocks.setCurrentImChannelInfoCache).not.toHaveBeenCalled();
+  });
+
   it("merges app metadata into an existing bot channel without dropping server fields", async () => {
     const cached = {
       channel: undefined,

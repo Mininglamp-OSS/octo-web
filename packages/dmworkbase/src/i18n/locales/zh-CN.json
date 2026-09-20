@@ -1,4 +1,6 @@
 {
+  "chatPage.loadingName": "名称加载中...",
+  "chatPage.nameUnavailable": "名称暂不可用",
   "promptForward.selectBot": "选择 Bot",
   "promptForward.botLoading": "正在加载 Bot 列表…",
   "promptForward.botError": "Bot 列表加载失败",

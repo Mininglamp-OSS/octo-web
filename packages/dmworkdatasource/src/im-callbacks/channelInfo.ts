@@ -6,19 +6,21 @@ import {
     ChannelTypePerson,
     Subscriber,
 } from "wukongimjssdk"
+import { createChannelInfoRequest, InvalidChannelInfoError } from "./channelInfoRequest"
 
 export interface ChannelInfoCallbackDeps {
     getChannel: (path: string) => Promise<any>
     threadGet: (groupNo: string, shortId: string) => Promise<any>
     extractUID: (channelID: string) => string
     getSubscribeCacheMap: () => Map<string, Subscriber[]>
+    captureContext?: () => () => boolean
     warn?: (message?: any, ...optionalParams: any[]) => void
 }
 
 export function createChannelInfoCallback(deps: ChannelInfoCallbackDeps) {
     const warn = deps.warn || console.warn
 
-    return async function channelInfoCallback(channel: Channel): Promise<ChannelInfo> {
+    return createChannelInfoRequest(async function channelInfoCallback(channel: Channel): Promise<ChannelInfo> {
         const channelInfo = new ChannelInfo()
 
         // 子区频道特殊处理
@@ -59,26 +61,16 @@ export function createChannelInfoCallback(deps: ChannelInfoCallbackDeps) {
         }
 
         const realUID = deps.extractUID(channel.channelID)
-        let resp: any
-        try {
-            resp = await deps.getChannel(`channels/${realUID}/${channel.channelType}`)
-        } catch (err) {
-            // channel 不存在（400/404）或无权限访问：返回空 ChannelInfo，不重试。
-            // title 不能用 channel.channelID（32 位 hex uid）兜底，否则渲染层会把
-            // uid 当名字展示给用户；而上游 SDK 一旦缓存成功就不会再 fetch，导致
-            // "一直显示 uid 直到刷新" 的 bug。群消息场景渲染层会优先从群成员列表
-            // 取名字，这里留空不影响正常展示。
-            warn(`channel info not found: ${channel.channelID}/${channel.channelType}`)
-            channelInfo.channel = channel
-            channelInfo.title = ""
-            channelInfo.orgData = {}
-            return channelInfo
+        // Rejections leave the SDK cache untouched, including any known name.
+        const data = await deps.getChannel(`channels/${realUID}/${channel.channelType}`)
+        const name = typeof data?.name === "string" ? data.name.trim() : ""
+        const remark = typeof data?.remark === "string" ? data.remark.trim() : ""
+        if (!data?.channel?.channel_id || data.channel.channel_type !== channel.channelType || (!name && !remark)) {
+            throw new InvalidChannelInfoError("Channel info response has no channel or name")
         }
 
-        const data = resp
-
         channelInfo.channel = new Channel(data.channel.channel_id, data.channel.channel_type)
-        channelInfo.title = data.name
+        channelInfo.title = name || remark
         channelInfo.mute = data.mute === 1
         channelInfo.top = data.stick === 1
         channelInfo.online = data.online === 1
@@ -94,9 +86,8 @@ export function createChannelInfoCallback(deps: ChannelInfoCallbackDeps) {
 
         channelInfo.orgData = data.extra || {}
         channelInfo.orgData.online = data.online
-        channelInfo.orgData.remark = data.remark ?? ""
-        channelInfo.orgData.displayName =
-            data.remark && data.remark !== "" ? data.remark : channelInfo.title
+        channelInfo.orgData.remark = remark
+        channelInfo.orgData.displayName = remark || channelInfo.title
 
         channelInfo.orgData.receipt = data.receipt
         // channels 接口可能不返回 robot 字段，从群成员缓存兜底
@@ -154,5 +145,5 @@ export function createChannelInfoCallback(deps: ChannelInfoCallbackDeps) {
         // Note: robot/bot identities use <AiBadge /> component, not identityIcon
 
         return channelInfo
-    }
+    }, deps.captureContext ?? (() => () => true))
 }

@@ -127,17 +127,42 @@ describe('createChannelInfoCallback', () => {
     expect(info.orgData.can_manage_bot_admin).toBe(true)
   })
 
-  it('returns an empty title when channel info fetch fails', async () => {
+  it('rejects unavailable channel info instead of returning a cacheable empty name', async () => {
     const deps = createDeps()
-    deps.getChannel.mockRejectedValue(new Error('not found'))
+    const error = { status: 404 }
+    deps.getChannel.mockRejectedValue(error)
 
     const callback = createChannelInfoCallback(deps)
-    const info = await callback(new Channel('missing', ChannelTypePerson))
+    await expect(callback(new Channel('missing', ChannelTypePerson))).rejects.toBe(error)
+    expect(deps.getChannel).toHaveBeenCalledTimes(1)
+  })
 
-    expect(info.channel.channelID).toBe('missing')
-    expect(info.title).toBe('')
-    expect(info.orgData).toEqual({})
-    expect(deps.warn).toHaveBeenCalledWith('channel info not found: missing/1')
+  it.each([
+    undefined,
+    {},
+    { channel: {}, name: 'Name' },
+    { channel: { channel_id: 'u1', channel_type: 2 }, name: 'Name' },
+    { channel: { channel_id: 'u1', channel_type: 1 }, name: '   ' },
+  ])(
+    'rejects incomplete successful responses without caching them',
+    async (response) => {
+      const deps = createDeps()
+      deps.getChannel.mockResolvedValue(response)
+      await expect(createChannelInfoCallback(deps)(new Channel('u1', 1)))
+        .rejects.toThrow('Channel info response has no channel or name')
+      expect(deps.getChannel).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it('accepts a nonempty remark even when the name is missing', async () => {
+    const deps = createDeps()
+    deps.getChannel.mockResolvedValue({
+      channel: { channel_id: 'u1', channel_type: 1 }, name: ' ', remark: 'My contact',
+    })
+    const info = await createChannelInfoCallback(deps)(new Channel('u1', 1))
+    expect(info.title).toBe('My contact')
+    expect(info.orgData.displayName).toBe('My contact')
+    expect(info.orgData.remark).toBe('My contact')
   })
 
   it('maps thread channel info through threadGet', async () => {

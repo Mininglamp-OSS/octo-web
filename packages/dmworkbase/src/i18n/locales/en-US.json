@@ -1,4 +1,6 @@
 {
+  "chatPage.loadingName": "Loading name...",
+  "chatPage.nameUnavailable": "Name unavailable",
   "promptForward.selectBot": "Select a Bot",
   "promptForward.botLoading": "Loading your Bots…",
   "promptForward.botError": "Failed to load Bots",

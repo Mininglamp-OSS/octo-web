@@ -59,6 +59,7 @@ export default class DataSourceModule implements IModule {
                 WKApp.dataSource.channelDataSource.threadGet(groupNo, shortId),
             extractUID: DataSourceModule.extractUID,
             getSubscribeCacheMap: () => getImSubscribeCacheMap(WKSDK.shared()),
+            captureContext: captureCurrentImConversationSyncContext,
         })
     }
 

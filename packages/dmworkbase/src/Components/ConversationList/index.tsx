@@ -1042,7 +1042,7 @@ export default class ConversationList extends Component<
     })
       .then(() => {
         // 直接重拉（不删缓存），新数据覆盖旧缓存，避免删除期间出现 loading 骨架
-        fetchImChannelInfo(WKSDK.shared(), channelInfo.channel)
+        return fetchImChannelInfo(WKSDK.shared(), channelInfo.channel)
           .then(() => this.setState({}))
       })
       .catch((err) => {

@@ -1,4 +1,5 @@
 import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { WKApp } from "@octo/base";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,6 +8,7 @@ const state = vi.hoisted(() => ({
   currentSpaceId: "space-a",
   listeners: new Set<() => void>(),
   findConversation: vi.fn(),
+  getChannelInfo: vi.fn(),
   createEmptyConversation: vi.fn(() => state.calls.push("create")),
   setChannelInfo: vi.fn(() => state.calls.push("cache")),
   replaceToRoot: vi.fn(() => state.calls.push("route")),
@@ -21,7 +23,9 @@ vi.mock("@octo/base", () => ({
     React.createElement("div", { "data-channel": channel.channelID }),
   createCurrentEmptyImConversation: state.createEmptyConversation,
   findCurrentImConversation: state.findConversation,
+  getCurrentImChannelInfo: state.getChannelInfo,
   setCurrentImChannelInfoCache: state.setChannelInfo,
+  t: (key: string) => key,
   SpaceService: { shared: { getMySpaces: state.getMySpaces } },
   WKApp: {
     shared: {
@@ -103,6 +107,7 @@ describe("legacyAppBotHost", () => {
     state.listeners.clear();
     state.currentSpaceId = "space-a";
     state.findConversation.mockReturnValue(undefined);
+    state.getChannelInfo.mockReturnValue(undefined);
     state.getMySpaces.mockResolvedValue([
       { space_id: "space-a", name: "Alpha" },
     ]);
@@ -144,6 +149,34 @@ describe("legacyAppBotHost", () => {
 
     expect(state.createEmptyConversation).not.toHaveBeenCalled();
     expect(state.replaceToRoot).toHaveBeenCalledTimes(1);
+  });
+
+  it("retains cached remarks, avatar and other metadata when opening from an app", async () => {
+    const cached = {
+      channel: { channelID: "robot_1", channelType: 1 },
+      title: "Old", logo: "avatar.png",
+      orgData: { remark: "My assistant", displayName: "My assistant", online: 1, bot_commands: ["help"] },
+    };
+    state.getChannelInfo.mockReturnValue(cached);
+    state.findConversation.mockReturnValue({ existing: true });
+    await legacyAppBotHost.openConversation({ ...target, avatar: "" });
+    expect(state.setChannelInfo).toHaveBeenCalledWith(cached);
+    expect(cached).toMatchObject({
+      title: "Docs Bot", logo: "avatar.png",
+      orgData: { remark: "My assistant", displayName: "My assistant", online: 1, bot_commands: ["help"], robot: 1 },
+    });
+    expect(renderToStaticMarkup(state.replaceToRoot.mock.calls[0][0])).toContain("<header>My assistant</header>");
+    expect(state.createEmptyConversation).not.toHaveBeenCalled();
+  });
+
+  it("shows an unavailable label for a nameless target without exposing the UID", async () => {
+    await legacyAppBotHost.openConversation({
+      ...target, displayName: "", metadata: { ...target.metadata, displayName: "" },
+    });
+    const info = state.setChannelInfo.mock.calls[0][0];
+    expect(info.title).toBe("");
+    expect(renderToStaticMarkup(state.replaceToRoot.mock.calls[0][0]))
+      .toContain("<header>base.chatPage.nameUnavailable</header>");
   });
 
   it("keeps Web clear, assistant classification, and analytics adapters", () => {
