@@ -107,6 +107,7 @@ import {
   unreadContribution,
 } from "./sidebarUnreadBadge";
 import { getLegacyChatRuntime } from "../../features/chat-capability/legacyChatClient";
+import { WorkspaceGroupTitle } from "../../features/workspaceGroup/WorkspaceGroupTitle";
 import {
   cancelHostAttachmentRequests,
   canForwardToHost,
@@ -1358,7 +1359,11 @@ export class ChatContentPage extends Component<
       channel.channelType !== ChannelTypeCommunityTopic ||
       !threadParentGroupNo
     ) {
-      return name;
+      return channel.channelType === ChannelTypeGroup ? (
+        <WorkspaceGroupTitle channelId={channel.channelID} channelType={channel.channelType}>
+          {name}
+        </WorkspaceGroupTitle>
+      ) : name;
     }
 
     return (

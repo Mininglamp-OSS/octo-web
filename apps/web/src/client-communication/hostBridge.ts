@@ -1,5 +1,6 @@
 import type { AttachmentPreviewHost } from "@octo/base/src/features/filePreview/attachmentHost";
 import type { LayoutAttachmentHost } from "@octo/base/src/features/filePreview/hostPreviewLayout";
+import type { WorkspaceGroupAction, WorkspaceGroupContext, WorkspaceGroupTarget } from "@octo/base/src/features/workspaceGroup/contract";
 
 export type CommunicationPage = "chat" | "contacts";
 export type CommunicationPresentation = "workspace" | "conversation";
@@ -105,6 +106,11 @@ export interface DocumentForwardRequest {
 }
 
 export interface OctoBuddyCommunicationBridge {
+  /** Client-only workspace navigation. Absent in older hosts and standalone Web. */
+  getWorkspaceGroupContext?(target: WorkspaceGroupTarget): Promise<WorkspaceGroupContext | null>;
+  openGroupWorkspace?(target: WorkspaceGroupAction): Promise<void>;
+  manageWorkspaceGroup?(target: WorkspaceGroupAction): Promise<void>;
+  onWorkspaceGroupChanged?(listener: (target: WorkspaceGroupTarget) => void): () => void;
   publishForwardSurface?(update: import("@octo/base/src/features/forwarding/surfaceContract").ForwardSurfaceUpdate): Promise<void>;
   onForwardSurfaceAction?(listener: (command: import("@octo/base/src/features/forwarding/surfaceContract").ForwardSurfaceCommand) => void): () => void;
   reportRuntimeReady?(state: RuntimeReady): Promise<void>;
