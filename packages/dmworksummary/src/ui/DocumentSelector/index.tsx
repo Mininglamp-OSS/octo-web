@@ -13,6 +13,9 @@ const DocumentSelector: React.FC<DocumentSelectorProps> = ({
 }) => {
   const { t, locale } = useI18n();
   const selectedIds = new Set(state.selected.map((item) => item.docId));
+  const pickerId = React.useId();
+  const resultsId = `${pickerId}-results`;
+  const activeTabId = `${pickerId}-tab-${state.source}`;
 
   const formatUpdatedAt = (updatedAt: number | null) => {
     if (!updatedAt) return "";
@@ -46,9 +49,11 @@ const DocumentSelector: React.FC<DocumentSelectorProps> = ({
           {(["recent", "mine"] as const).map((source) => (
             <button
               key={source}
+              id={`${pickerId}-tab-${source}`}
               type="button"
               role="tab"
               aria-selected={state.source === source}
+              aria-controls={resultsId}
               className={`summary-document-picker__tab${
                 state.source === source
                   ? " summary-document-picker__tab--active"
@@ -71,8 +76,11 @@ const DocumentSelector: React.FC<DocumentSelectorProps> = ({
         </div>
 
         <div
+          id={resultsId}
           className="summary-document-picker__results"
           key={`${state.source}:${state.keyword}`}
+          role="tabpanel"
+          aria-labelledby={activeTabId}
         >
           {state.isLoading ? (
             <div className="summary-document-picker__state" role="status">

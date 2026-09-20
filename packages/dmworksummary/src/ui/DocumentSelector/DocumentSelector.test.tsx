@@ -72,6 +72,10 @@ describe("DocumentSelector", () => {
     expect(
       screen.getByText("仅支持文档和 HTML，不含表格及白板")
     ).toBeInTheDocument();
+    const recentTab = screen.getByRole("tab", { name: "最近查看" });
+    const results = screen.getByRole("tabpanel");
+    expect(recentTab).toHaveAttribute("aria-controls", results.id);
+    expect(results).toHaveAttribute("aria-labelledby", recentTab.id);
   });
 
   it("retains rows during loading and provides a retry for the failed next page", () => {
