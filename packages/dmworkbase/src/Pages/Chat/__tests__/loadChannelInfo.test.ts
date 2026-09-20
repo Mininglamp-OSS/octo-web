@@ -117,6 +117,36 @@ describe("chat channel info lifecycle", () => {
     expect(sdk.conversationManager.conversations).toEqual([]);
   });
 
+  it("caches valid nameless metadata and retries the name on the next activation", async () => {
+    const getChannel = vi.fn().mockResolvedValue({
+      channel: { channel_id: "peer", channel_type: 1 },
+      name: "", remark: "", mute: 1, stick: 1, robot: 1,
+    });
+    installDataSource(getChannel);
+    const loading = start();
+    await flush();
+
+    expect(getChannel).toHaveBeenCalledTimes(1);
+    expect(loading).toHaveBeenLastCalledWith(false);
+    expect(sdk.channelManager.getChannelInfo(channel)).toMatchObject({
+      title: "", mute: true, top: true, orgData: { robot: 1 },
+    });
+    expect(getImChannelDisplayName(sdk.channelManager.getChannelInfo(channel))).toBe("");
+
+    cleanups.splice(0).forEach(dispose => dispose());
+    getChannel.mockResolvedValue({
+      channel: { channel_id: "peer", channel_type: 1 },
+      name: "Recovered name", mute: 1, stick: 1, robot: 1,
+    });
+    const nextLoading = start();
+    await flush();
+
+    expect(getChannel).toHaveBeenCalledTimes(2);
+    expect(nextLoading).toHaveBeenLastCalledWith(false);
+    expect(getImChannelDisplayName(sdk.channelManager.getChannelInfo(channel))).toBe("Recovered name");
+    expect(sdk.conversationManager.conversations).toEqual([]);
+  });
+
   it("does not fetch when a title-only host seed already supplies a name", async () => {
     sdk.channelManager.setChannleInfoForCache(Object.assign(freshInfo(), { orgData: {} }));
     const onLoading = start();

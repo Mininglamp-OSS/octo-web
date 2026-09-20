@@ -38,6 +38,7 @@ import {
   isChannelInfoFetchResultCurrent,
   patchImChannelInfoOrgData,
 } from "../../im-runtime/channelRuntime";
+import { captureCurrentImConversationSyncContext } from "../../im-runtime/conversationSyncContext";
 import { Dap } from "../../Service/Dap";
 import { stripSpacePrefix } from "../../Service/SpacePrefix";
 import PinnedService from "../../Service/PinnedService";
@@ -47,6 +48,7 @@ import {
 } from "../../im-runtime/currentConversationRuntime";
 
 export interface ChannelSettingActionRuntime {
+  captureContext?: () => () => boolean;
   addSubscribers(channel: Channel, uids: string[]): Promise<void>;
   clearConversationMessages(conversation: any): Promise<void>;
   createChannel(uids: string[]): Promise<{ group_no?: string } | undefined>;
@@ -114,6 +116,7 @@ interface ChannelSettingSubscriber {
 
 function defaultRuntime(): ChannelSettingActionRuntime {
   return {
+    captureContext: captureCurrentImConversationSyncContext,
     addSubscribers(channel, uids) {
       return addChannelSubscribersApi(channel, uids);
     },
@@ -230,9 +233,9 @@ function defaultRuntime(): ChannelSettingActionRuntime {
   };
 }
 
-const threadMuteCacheSyncVersions = new Map<string, number>();
+const muteCacheSyncVersions = new Map<string, number>();
 
-function patchThreadMuteCache(
+function patchMuteCache(
   runtime: ChannelSettingActionRuntime,
   channel: Channel,
   mute: boolean
@@ -240,32 +243,37 @@ function patchThreadMuteCache(
   const channelInfo = runtime.getCurrentChannelInfo(channel);
   if (!channelInfo) return;
 
+  // SDK fetches can cache a bare peer alias under a Space-prefixed request key.
+  channelInfo.channel = channel;
   channelInfo.mute = mute;
-  patchImChannelInfoOrgData(channelInfo, {
-    thread: {
-      ...(channelInfo.orgData?.thread || {}),
-      mute: mute ? 1 : 0,
-    },
-  });
+  if (channel.channelType === ChannelTypeCommunityTopic) {
+    patchImChannelInfoOrgData(channelInfo, {
+      thread: {
+        ...(channelInfo.orgData?.thread || {}),
+        mute: mute ? 1 : 0,
+      },
+    });
+  }
   runtime.setCurrentChannelInfo(channelInfo);
   runtime.notifyCurrentChannelInfo(channelInfo);
 }
 
-function syncThreadMuteCacheAfterSave(
+function syncMuteCacheAfterSave(
   runtime: ChannelSettingActionRuntime,
   channel: Channel,
-  mute: boolean
+  mute: boolean,
+  isCurrent: () => boolean
 ) {
   const channelKey = channel.getChannelKey();
-  const version = (threadMuteCacheSyncVersions.get(channelKey) || 0) + 1;
-  threadMuteCacheSyncVersions.set(channelKey, version);
+  const version = (muteCacheSyncVersions.get(channelKey) || 0) + 1;
+  muteCacheSyncVersions.set(channelKey, version);
 
   const pendingFetches = runtime.getPendingChannelInfoFetches(channel);
-  patchThreadMuteCache(runtime, channel, mute);
+  patchMuteCache(runtime, channel, mute);
 
   if (!pendingFetches || pendingFetches.length === 0) {
-    if (threadMuteCacheSyncVersions.get(channelKey) === version) {
-      threadMuteCacheSyncVersions.delete(channelKey);
+    if (muteCacheSyncVersions.get(channelKey) === version) {
+      muteCacheSyncVersions.delete(channelKey);
     }
     return;
   }
@@ -275,13 +283,13 @@ function syncThreadMuteCacheAfterSave(
     void pendingFetch
       .catch(() => undefined)
       .then(() => {
-        if (threadMuteCacheSyncVersions.get(channelKey) !== version) return;
-        if (isChannelInfoFetchResultCurrent(pendingFetch)) {
-          patchThreadMuteCache(runtime, channel, mute);
+        if (muteCacheSyncVersions.get(channelKey) !== version) return;
+        if (isCurrent() && isChannelInfoFetchResultCurrent(pendingFetch)) {
+          patchMuteCache(runtime, channel, mute);
         }
         remainingFetches -= 1;
         if (remainingFetches === 0) {
-          threadMuteCacheSyncVersions.delete(channelKey);
+          muteCacheSyncVersions.delete(channelKey);
         }
       });
   });
@@ -510,9 +518,11 @@ export async function muteChannelSetting(params: {
   runtime?: ChannelSettingActionRuntime;
 }) {
   const runtime = runtimeOrDefault(params.runtime);
+  const isCurrent = runtime.captureContext?.() ?? (() => true);
   await runtime.muteChannel(params.channel, params.mute);
-  if (params.channel.channelType === ChannelTypeCommunityTopic) {
-    syncThreadMuteCacheAfterSave(runtime, params.channel, params.mute);
+  // A successful save is authoritative even if the following metadata refresh fails.
+  if (isCurrent() && channelSettingRequestIssued(params.channel)) {
+    syncMuteCacheAfterSave(runtime, params.channel, params.mute, isCurrent);
   }
   // conversation_muted 收口点:所有静音入口(会话列表右键、设置面板、子区设置)都经此,
   // await 成功后单发,携带方向 action(mute/unmute)。此前挂在 BodyRules body 通道会双计,

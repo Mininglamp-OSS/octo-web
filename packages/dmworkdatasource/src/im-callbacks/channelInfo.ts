@@ -65,8 +65,8 @@ export function createChannelInfoCallback(deps: ChannelInfoCallbackDeps) {
         const data = await deps.getChannel(`channels/${realUID}/${channel.channelType}`)
         const name = typeof data?.name === "string" ? data.name.trim() : ""
         const remark = typeof data?.remark === "string" ? data.remark.trim() : ""
-        if (!data?.channel?.channel_id || data.channel.channel_type !== channel.channelType || (!name && !remark)) {
-            throw new InvalidChannelInfoError("Channel info response has no channel or name")
+        if (!data?.channel?.channel_id || data.channel.channel_type !== channel.channelType) {
+            throw new InvalidChannelInfoError("Channel info response has no valid channel")
         }
 
         channelInfo.channel = new Channel(data.channel.channel_id, data.channel.channel_type)

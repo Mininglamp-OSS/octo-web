@@ -62,6 +62,8 @@ import {
   fetchImChannelInfo,
   getImChannelInfo,
 } from "../../im-runtime/channelRuntime";
+import { captureCurrentImConversationSyncContext } from "../../im-runtime/conversationSyncContext";
+import { normalizeApiError } from "../../Service/apiError";
 import {
   muteChannelSetting,
   topChannelSetting,
@@ -397,6 +399,7 @@ export default class ConversationList extends Component<
   contextMenusContext!: ContextMenusContext;
   typingListener!: TypingListener;
   private unsubscribeChannelInfoListener?: () => void;
+  private unmounted = false;
   private listRef = React.createRef<HTMLDivElement>();
   private itemRefs = new Map<string, HTMLDivElement>();
   private lastRenderableItems: ConversationWrap[] = [];
@@ -428,6 +431,7 @@ export default class ConversationList extends Component<
   }
 
   componentDidMount() {
+    this.unmounted = false;
     this.channelListener = (channelInfo: ChannelInfo) => {
       this.setState({});
     };
@@ -452,6 +456,7 @@ export default class ConversationList extends Component<
   }
 
   componentWillUnmount() {
+    this.unmounted = true;
     if (
       this.scrollFrame !== null &&
       typeof window !== "undefined" &&
@@ -1035,19 +1040,29 @@ export default class ConversationList extends Component<
     this.onMuteWithValue(!channelInfo.mute, channelInfo)
   }
 
-  onMuteWithValue(value: boolean, channelInfo: ChannelInfo) {
-    muteChannelSetting({
-      channel: channelInfo.channel,
-      mute: value,
-    })
-      .then(() => {
-        // 直接重拉（不删缓存），新数据覆盖旧缓存，避免删除期间出现 loading 骨架
-        return fetchImChannelInfo(WKSDK.shared(), channelInfo.channel)
-          .then(() => this.setState({}))
-      })
-      .catch((err) => {
-        Toast.error(err?.msg);
+  async onMuteWithValue(value: boolean, channelInfo: ChannelInfo, channel = channelInfo.channel) {
+    const sdk = WKSDK.shared();
+    const contextIsCurrent = captureCurrentImConversationSyncContext();
+    const isCurrent = () => !this.unmounted && contextIsCurrent() && WKSDK.shared() === sdk;
+    try {
+      await muteChannelSetting({
+        channel,
+        mute: value,
       });
+    } catch (err) {
+      if (isCurrent()) Toast.error(normalizeApiError({ data: err }).message);
+      return;
+    }
+
+    if (!isCurrent()) return;
+    this.setState({});
+    try {
+      // The save already updated the mute cache; refresh errors must not report save failure.
+      await fetchImChannelInfo(sdk, channel);
+    } catch (err) {
+      console.warn("[ConversationList] channel info refresh failed after mute", err);
+    }
+    if (isCurrent()) this.setState({});
   }
 
   onHideConversation(channel: Channel) {
@@ -1558,7 +1573,7 @@ export default class ConversationList extends Component<
                 : t("base.conversationList.context.mute"),
               icon: menuEffectiveMute ? BellOff : Bell,
               onClick: () => {
-                if (channelInfo) this.onMuteWithValue(!menuEffectiveMute, channelInfo);
+                if (channelInfo) this.onMuteWithValue(!menuEffectiveMute, channelInfo, channel);
               },
             });
 

@@ -142,14 +142,13 @@ describe('createChannelInfoCallback', () => {
     {},
     { channel: {}, name: 'Name' },
     { channel: { channel_id: 'u1', channel_type: 2 }, name: 'Name' },
-    { channel: { channel_id: 'u1', channel_type: 1 }, name: '   ' },
   ])(
     'rejects incomplete successful responses without caching them',
     async (response) => {
       const deps = createDeps()
       deps.getChannel.mockResolvedValue(response)
       await expect(createChannelInfoCallback(deps)(new Channel('u1', 1)))
-        .rejects.toThrow('Channel info response has no channel or name')
+        .rejects.toThrow('Channel info response has no valid channel')
       expect(deps.getChannel).toHaveBeenCalledTimes(1)
     },
   )
@@ -163,6 +162,60 @@ describe('createChannelInfoCallback', () => {
     expect(info.title).toBe('My contact')
     expect(info.orgData.displayName).toBe('My contact')
     expect(info.orgData.remark).toBe('My contact')
+  })
+
+  it('accepts a person response with blank name and remark, preserving metadata', async () => {
+    const deps = createDeps()
+    deps.getChannel.mockResolvedValue({
+      channel: { channel_id: 'u1', channel_type: ChannelTypePerson },
+      name: '   ',
+      remark: ' ',
+      mute: 1,
+      stick: 1,
+      online: 1,
+      status: 2,
+      robot: 1,
+      logo: '',
+      extra: { short_no: '1001' },
+    })
+    const info = await createChannelInfoCallback(deps)(new Channel('u1', ChannelTypePerson))
+    expect(info.channel.channelID).toBe('u1')
+    expect(info.channel.channelType).toBe(ChannelTypePerson)
+    expect(info.title).toBe('')
+    expect(info.mute).toBe(true)
+    expect(info.top).toBe(true)
+    expect(info.online).toBe(true)
+    expect(info.logo).toBe('users/u1/avatar')
+    expect(info.orgData.status).toBe(2)
+    expect(info.orgData.robot).toBe(1)
+    expect(info.orgData.shortNo).toBe('1001')
+  })
+
+  it('accepts a group response with blank name, preserving metadata', async () => {
+    const deps = createDeps()
+    deps.getChannel.mockResolvedValue({
+      channel: { channel_id: 'g1', channel_type: ChannelTypeGroup },
+      name: ' ',
+      remark: ' ',
+      mute: 1,
+      stick: 1,
+      logo: 'groups/g1/avatar',
+      status: 3,
+      extra: { forbidden_add_friend: 1 },
+      forbidden: 0,
+      invite: 1,
+      save: 1,
+    })
+    const info = await createChannelInfoCallback(deps)(new Channel('g1', ChannelTypeGroup))
+    expect(info.channel.channelID).toBe('g1')
+    expect(info.channel.channelType).toBe(ChannelTypeGroup)
+    expect(info.title).toBe('')
+    expect(info.mute).toBe(true)
+    expect(info.top).toBe(true)
+    expect(info.logo).toBe('groups/g1/avatar')
+    expect(info.orgData.status).toBe(3)
+    expect(info.orgData.forbiddenAddFriend).toBe(1)
+    expect(info.orgData.save).toBe(1)
   })
 
   it('maps thread channel info through threadGet', async () => {
