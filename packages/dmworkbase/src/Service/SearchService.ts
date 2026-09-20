@@ -505,7 +505,13 @@ const SearchService = {
     };
     // Keyset cursor: omit on the first page so the backend starts from the top.
     if (query.cursor) body.cursor = query.cursor;
-    const resp = await APIClient.shared.post("docs/search", body);
+    const apiURL = APIClient.shared.config?.apiURL;
+    // Desktop's IM base is /v1/, but Docs uses /api/v1/ on the same origin.
+    // Keep Web's relative path unchanged so its dev/reverse proxy still applies.
+    const url = apiURL && /^https?:\/\//i.test(apiURL)
+      ? new URL("/api/v1/docs/search", apiURL).href
+      : "docs/search";
+    const resp = await APIClient.shared.post(url, body);
     const items = Array.isArray(resp?.items) ? resp.items : [];
     // Per-item validation at the service boundary: the backend contract says
     // docId/title are always present, but a malformed item would otherwise flow
