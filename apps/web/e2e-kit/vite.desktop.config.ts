@@ -8,7 +8,7 @@ export default defineConfig(env => {
     cacheDir: "node_modules/.vite-desktop",
     optimizeDeps: {
       ...config.optimizeDeps,
-      entries: ["e2e-kit/fixtures/desktop-header.tsx"],
+      entries: ["e2e-kit/fixtures/desktop-header.tsx", "e2e-kit/fixtures/desktop-viewqueue.tsx"],
     },
     server: {
       ...config.server,

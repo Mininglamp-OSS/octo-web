@@ -33,6 +33,8 @@ body[theme-mode=dark] .wk-viewqueueheader-content-title {
 }
 
 .wk-viewqueueheader-back {
+    left: 0;
+    top: 0;
     position: absolute;
     height: 100%;
     display: flex;

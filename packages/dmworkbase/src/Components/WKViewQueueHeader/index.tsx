@@ -56,16 +56,17 @@ export default class WKViewQueueHeader extends Component<WKViewQueueHeaderProps,
         const { title,onBack,hideBack,showFinishButton,onFinished,action } = this.props
         const { loading,disable } = this.state
         return <div className="wk-viewqueueheader" data-desktop-chrome="header">
-           {
-               hideBack?undefined: <div className="wk-viewqueueheader-back" onClick={()=>{
-                if(onBack) {
-                    onBack()
-                }
-            }}>
-                <img src={isDark ? new URL("./assets/nav_back_dark.png", import.meta.url).href : new URL("./assets/nav_back.png", import.meta.url).href}></img>
-            </div>
-           }
             <div className="wk-viewqueueheader-content" data-desktop-chrome="layout">
+                    {/* Keep the no-drag back control inside the draggable layout. */}
+                    {
+                        hideBack?undefined: <div className="wk-viewqueueheader-back" onClick={()=>{
+                            if(onBack) {
+                                onBack()
+                            }
+                        }}>
+                            <img src={isDark ? new URL("./assets/nav_back_dark.png", import.meta.url).href : new URL("./assets/nav_back.png", import.meta.url).href}></img>
+                        </div>
+                    }
                     <div className="wk-viewqueueheader-content-title">
                             {title}
                     </div>
