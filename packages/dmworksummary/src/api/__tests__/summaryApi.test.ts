@@ -499,7 +499,7 @@ describe('summaryApi', () => {
                         code: 0,
                         data: {
                             enabled: true,
-                            contract_version: '3',
+                            contract_version: '2',
                             max_time_range_days: 90,
                             direct_team_workflow: false,
                             document_sources: true,

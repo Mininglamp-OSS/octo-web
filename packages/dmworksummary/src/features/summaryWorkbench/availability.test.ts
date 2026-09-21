@@ -7,7 +7,7 @@ import {
 
 function capability(
     enabled = true,
-    contractVersion = "3",
+    contractVersion = "2",
     maxTimeRangeDays = 90,
     directTeamWorkflow = false,
     documentSources = true
@@ -92,11 +92,11 @@ describe("SummaryWorkbenchAvailability", () => {
 
     it.each([
         [capability(false), "server_disabled"],
-        [capability(true, "4"), "unsupported_contract"],
+        [capability(true, "3"), "unsupported_contract"],
         [
             {
                 enabled: "yes",
-                contract_version: "3",
+                contract_version: "2",
                 max_time_range_days: 90,
             },
             "invalid_response",
@@ -125,19 +125,20 @@ describe("SummaryWorkbenchAvailability", () => {
         });
     });
 
-    it("preserves an explicit document capability across an unsupported Workbench contract", async () => {
+    it("fails document capability closed across an unsupported Workbench contract", async () => {
         const availability = new SummaryWorkbenchAvailability({
-            getCapabilities: vi.fn().mockResolvedValue(capability(true, "4")),
+            getCapabilities: vi.fn().mockResolvedValue(capability(true, "3")),
         });
 
-        await expect(availability.resolve("space-a")).resolves.toMatchObject({
+        const decision = await availability.resolve("space-a");
+        expect(decision).toMatchObject({
             status: "disabled",
             reason: "unsupported_contract",
-            documentSources: true,
         });
+        expect(decision).not.toHaveProperty("documentSources");
     });
 
-    it("fails an older capability contract closed without treating it as transient", async () => {
+    it("keeps an explicit false document capability cacheable", async () => {
         const source = {
             getCapabilities: vi.fn().mockResolvedValue({
                 enabled: true,
@@ -153,8 +154,8 @@ describe("SummaryWorkbenchAvailability", () => {
 
         const decision = await availability.resolve("space-a");
         expect(decision).toMatchObject({
-            status: "disabled",
-            reason: "unsupported_contract",
+            status: "enabled",
+            reason: "supported",
             documentSources: false,
         });
         await availability.resolve("space-a");
@@ -251,7 +252,7 @@ describe("SummaryWorkbenchAvailability", () => {
 
     it.each([
         [capability(false), "server_disabled"],
-        [capability(true, "4"), "unsupported_contract"],
+        [capability(true, "3"), "unsupported_contract"],
     ])("does not retry permanent capability decision %#", async (payload, reason) => {
         const source: SummaryWorkbenchCapabilitySource = {
             getCapabilities: vi.fn().mockResolvedValue(payload),

@@ -26,7 +26,7 @@ export async function registerS2SummaryEmptyCreateEntry(
       http.get("*/summary/api/v1/summary-workbench/capabilities", () =>
         env({
           enabled: workbenchEnabled,
-          contract_version: "3",
+          contract_version: "2",
           max_time_range_days: 90,
           direct_team_workflow: false,
           document_sources: documentSourcesAvailable,

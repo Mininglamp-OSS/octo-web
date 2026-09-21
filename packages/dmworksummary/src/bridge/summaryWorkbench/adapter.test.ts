@@ -824,14 +824,14 @@ describe("summary workspace adapter", () => {
     expect(
       decodeSummaryWorkspaceCapabilities({
         enabled: true,
-        contract_version: "3",
+        contract_version: "2",
         max_time_range_days: 90,
         direct_team_workflow: true,
         document_sources: true,
       })
     ).toEqual({
       enabled: true,
-      contract_version: "3",
+      contract_version: "2",
       max_time_range_days: 90,
       direct_team_workflow: true,
       document_sources: true,
@@ -849,12 +849,6 @@ describe("summary workspace adapter", () => {
       document_sources: false,
     });
 
-    expect(() =>
-      decodeSummaryWorkspaceCapabilities({
-        enabled: true,
-        contract_version: "3",
-      })
-    ).toThrow("capabilities.document_sources must be a boolean");
   });
 
   it("preserves unsupported contract versions for the availability gate", () => {

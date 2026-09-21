@@ -1,7 +1,6 @@
 import type { AgentProgressEvent } from "../../types/summary";
 
 export const SUMMARY_WORKSPACE_CONTRACT_VERSION = "2";
-export const SUMMARY_WORKSPACE_CAPABILITIES_CONTRACT_VERSION = "3";
 export const SUMMARY_WORKSPACE_PROFILE = "summary_workspace";
 export const SUMMARY_WORKSPACE_SNAPSHOT_VERSION = 1 as const;
 export const DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS = 31;

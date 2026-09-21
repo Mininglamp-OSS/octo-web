@@ -18,7 +18,6 @@ import type {
 import {
   DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS,
   SUMMARY_WORKSPACE_ACTIONS,
-  SUMMARY_WORKSPACE_CAPABILITIES_CONTRACT_VERSION,
   SUMMARY_WORKSPACE_CONTRACT_VERSION,
   SUMMARY_WORKSPACE_RESULT_TYPES,
   SUMMARY_WORKSPACE_SNAPSHOT_VERSION,
@@ -331,8 +330,7 @@ export function decodeSummaryWorkspaceCapabilities(
             "capabilities.direct_team_workflow"
           ),
     document_sources:
-      record.document_sources === undefined &&
-      contractVersion !== SUMMARY_WORKSPACE_CAPABILITIES_CONTRACT_VERSION
+      record.document_sources === undefined
         ? false
         : requireBoolean(
             record.document_sources,

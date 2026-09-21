@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import summaryWorkbenchService from "../../Service/SummaryWorkbenchService";
 import {
-  SUMMARY_WORKSPACE_CAPABILITIES_CONTRACT_VERSION,
+  SUMMARY_WORKSPACE_CONTRACT_VERSION,
   SummaryWorkspaceApiError,
   type SummaryWorkspaceCapabilitiesDTO,
 } from "../../bridge/summaryWorkbench/protocol";
@@ -26,7 +26,7 @@ export interface SummaryWorkbenchEnabledAvailability {
   enabled: true;
   spaceId: string;
   reason: "supported";
-  contractVersion: typeof SUMMARY_WORKSPACE_CAPABILITIES_CONTRACT_VERSION;
+  contractVersion: typeof SUMMARY_WORKSPACE_CONTRACT_VERSION;
   maxTimeRangeDays: number;
   directTeamWorkflow: boolean;
   documentSources: boolean;
@@ -303,12 +303,11 @@ export class SummaryWorkbenchAvailability {
     if (!isCapabilities(value)) {
       return this.disabledDecision(spaceId, "invalid_response");
     }
-    if (value.contract_version !== SUMMARY_WORKSPACE_CAPABILITIES_CONTRACT_VERSION) {
+    if (value.contract_version !== SUMMARY_WORKSPACE_CONTRACT_VERSION) {
       return this.disabledDecision(
         spaceId,
         "unsupported_contract",
-        value.contract_version,
-        value.document_sources
+        value.contract_version
       );
     }
     if (value.enabled !== true) {
@@ -324,7 +323,7 @@ export class SummaryWorkbenchAvailability {
       enabled: true,
       spaceId,
       reason: "supported",
-      contractVersion: SUMMARY_WORKSPACE_CAPABILITIES_CONTRACT_VERSION,
+      contractVersion: SUMMARY_WORKSPACE_CONTRACT_VERSION,
       maxTimeRangeDays: value.max_time_range_days,
       directTeamWorkflow: value.direct_team_workflow,
       documentSources: value.document_sources,
