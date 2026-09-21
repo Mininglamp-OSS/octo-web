@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { buildHarnessLoginCommand } from '../../Service/HarnessRuntimeService'
+import { buildHarnessLoginCommand, buildHarnessOpenClawSetupCommand } from '../../Service/HarnessRuntimeService'
 import HarnessRuntimeSettings from './index'
 import type { HarnessRuntimeSettingsProps } from './types'
 import enUS from '../../i18n/locales/en-US.json'
@@ -26,6 +26,7 @@ const labels: HarnessRuntimeSettingsProps['labels'] = {
   expiresAt: '有效期至',
   command: '设备登录命令',
   commandDescription: '在需要添加的设备上运行此命令。',
+  openClawSetup: 'OpenClaw 适配（可选）',
   copyCommand: '复制命令',
   copied: '已复制',
   done: '完成',
@@ -53,6 +54,7 @@ const baseArgs: HarnessRuntimeSettingsProps = {
   onCloseAdd: () => undefined,
   onRetryEnrollment: () => undefined,
   onCopyCommand: () => undefined,
+  onCopyOpenClawCommand: () => undefined,
 }
 
 const loginCommand = buildHarnessLoginCommand({
@@ -101,6 +103,7 @@ export const EnrollmentReady: Story = {
     enrollment: {
       expiresAtLabel: '2026-09-14 18:30',
       command: loginCommand,
+      openClawCommand: buildHarnessOpenClawSetupCommand('space_01_user_01'),
     },
   },
 }

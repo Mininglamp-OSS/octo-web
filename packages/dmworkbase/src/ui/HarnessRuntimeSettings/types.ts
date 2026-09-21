@@ -16,6 +16,7 @@ export interface HarnessRuntimeListItem {
 export interface HarnessEnrollmentView {
   expiresAtLabel: string
   command: string
+  openClawCommand: string
 }
 
 export interface HarnessRuntimeSettingsLabels {
@@ -40,6 +41,7 @@ export interface HarnessRuntimeSettingsLabels {
   expiresAt: string
   command: string
   commandDescription: string
+  openClawSetup: string
   copyCommand: string
   copied: string
   done: string
@@ -61,9 +63,11 @@ export interface HarnessRuntimeSettingsProps {
   enrollmentLoading?: boolean
   enrollmentError?: string
   commandCopied?: boolean
+  openClawCommandCopied?: boolean
   onRefresh: () => void
   onOpenAdd: () => void
   onCloseAdd: () => void
   onRetryEnrollment: () => void
   onCopyCommand: () => void
+  onCopyOpenClawCommand: () => void
 }

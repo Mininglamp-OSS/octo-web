@@ -29,20 +29,29 @@ describe('useHarnessRuntimeSettings', () => {
       .mockResolvedValueOnce({
         enrollment_token: 'octo_enroll_first',
         octo_space_id: 'space-1',
-        owner_ref: 'uid:user-1',
+        created_by_octo_uid: 'user-1',
+        owner_subject_type: 'user',
+        owner_subject_id: 'user-1',
         kind: 'local',
         expires_at: '2026-09-15T12:00:00Z',
       })
       .mockResolvedValueOnce({
         enrollment_token: 'octo_enroll_second',
         octo_space_id: 'space-1',
-        owner_ref: 'uid:user-1',
+        created_by_octo_uid: 'user-1',
+        owner_subject_type: 'user',
+        owner_subject_id: 'user-1',
         kind: 'local',
         expires_at: '2026-09-15T12:05:00Z',
       })
   })
 
   it('creates a fresh enrollment every time Add device is opened', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
     let current!: HarnessRuntimeSettingsProps
     function HookHarness() {
       current = useHarnessRuntimeSettings({
@@ -61,7 +70,20 @@ describe('useHarnessRuntimeSettings', () => {
     act(() => current.onOpenAdd())
     await waitFor(() => expect(current.enrollment?.command).toContain('octo_enroll_first'))
     expect(current.enrollment?.command).toContain("--profile 'space-1_user-1'")
+    expect(current.enrollment?.openClawCommand).toContain("--profile 'space-1_user-1' adapter setup openclaw")
+    expect(current.enrollment?.openClawCommand).toContain('--token-stdin')
+    expect(current.enrollment?.openClawCommand).not.toContain('octo_enroll_first')
     expect(current.enrollmentError).toBeUndefined()
+
+    act(() => current.onCopyOpenClawCommand())
+    await waitFor(() => expect(current.openClawCommandCopied).toBe(true))
+    expect(current.commandCopied).toBe(false)
+    expect(writeText).toHaveBeenLastCalledWith(current.enrollment?.openClawCommand)
+
+    act(() => current.onCopyCommand())
+    await waitFor(() => expect(current.commandCopied).toBe(true))
+    expect(current.openClawCommandCopied).toBe(false)
+    expect(writeText).toHaveBeenLastCalledWith(current.enrollment?.command)
 
     act(() => current.onCloseAdd())
     act(() => current.onOpenAdd())

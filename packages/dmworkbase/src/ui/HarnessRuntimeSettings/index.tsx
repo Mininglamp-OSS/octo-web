@@ -81,9 +81,9 @@ function CopyButton({ label, onClick }: { label: string; onClick: () => void }) 
 const HarnessRuntimeSettings: React.FC<HarnessRuntimeSettingsProps> = (props) => {
   const {
     className, labels, runtimes, loading, refreshing, loadError, addOpen,
-    enrollment, enrollmentLoading, enrollmentError, commandCopied, onRefresh, onOpenAdd,
+    enrollment, enrollmentLoading, enrollmentError, commandCopied, openClawCommandCopied, onRefresh, onOpenAdd,
     onCloseAdd, onRetryEnrollment,
-    onCopyCommand,
+    onCopyCommand, onCopyOpenClawCommand,
   } = props
 
   return (
@@ -126,6 +126,7 @@ const HarnessRuntimeSettings: React.FC<HarnessRuntimeSettingsProps> = (props) =>
         ) : (
           <div className="wk-harness-runtime-settings__enrollment">
             <section><header><span><strong>{labels.command}</strong><small>{labels.commandDescription}</small></span><CopyButton label={commandCopied ? labels.copied : labels.copyCommand} onClick={onCopyCommand} /></header><pre><code>{enrollment.command}</code></pre><small>{labels.expiresAt}: {enrollment.expiresAtLabel}</small></section>
+            <section><header><strong>{labels.openClawSetup}</strong><CopyButton label={openClawCommandCopied ? labels.copied : labels.copyCommand} onClick={onCopyOpenClawCommand} /></header><pre><code>{enrollment.openClawCommand}</code></pre></section>
           </div>
         )}
       </WKModal>

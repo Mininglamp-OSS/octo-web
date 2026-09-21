@@ -16,6 +16,7 @@ function getLabels(): HarnessRuntimeSettingsLabels {
     profile: key('profile'),
     addTitle: key('addTitle'), cancel: key('cancel'), creatingEnrollment: key('creatingEnrollment'),
     expiresAt: key('expiresAt'), command: key('command'), commandDescription: key('commandDescription'),
+    openClawSetup: key('openClawSetup'),
     copyCommand: key('copyCommand'), copied: key('copied'), done: key('done'),
     requestFailed: key('requestFailed'),
     never: key('never'), justNow: key('justNow'),

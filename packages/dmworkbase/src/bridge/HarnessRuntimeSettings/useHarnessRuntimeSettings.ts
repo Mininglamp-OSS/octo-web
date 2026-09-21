@@ -3,6 +3,7 @@ import { extractErrorMsg } from '../../Service/APIClient'
 import {
   availableRuntimeAdapters,
   buildHarnessLoginCommand,
+  buildHarnessOpenClawSetupCommand,
   buildHarnessProfile,
   createHarnessDeviceEnrollment,
   listHarnessRuntimes,
@@ -54,7 +55,7 @@ export function useHarnessRuntimeSettings(options: HarnessRuntimeSettingsBridgeO
   const [enrollment, setEnrollment] = useState<DeviceEnrollment>()
   const [enrollmentLoading, setEnrollmentLoading] = useState(false)
   const [enrollmentError, setEnrollmentError] = useState('')
-  const [commandCopied, setCommandCopied] = useState(false)
+  const [copiedCommand, setCopiedCommand] = useState<'login' | 'openclaw'>()
   const copyTimer = useRef<number>()
 
   const load = useCallback(async (initial = false, signal?: AbortSignal) => {
@@ -88,7 +89,7 @@ export function useHarnessRuntimeSettings(options: HarnessRuntimeSettingsBridgeO
     setAddOpen(false)
     setEnrollment(undefined)
     setEnrollmentError('')
-    setCommandCopied(false)
+    setCopiedCommand(undefined)
     void load()
   }, [load])
 
@@ -106,10 +107,11 @@ export function useHarnessRuntimeSettings(options: HarnessRuntimeSettingsBridgeO
 
   const enrollmentView = useMemo<HarnessEnrollmentView | undefined>(() => {
     if (!enrollment) return undefined
-    const profile = buildHarnessProfile(enrollment.octo_space_id, enrollment.owner_ref.slice(4))
+    const profile = buildHarnessProfile(enrollment.octo_space_id, enrollment.owner_subject_id)
     return {
       expiresAtLabel: new Intl.DateTimeFormat(options.locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(enrollment.expires_at)),
       command: buildHarnessLoginCommand({ profile, origin: options.origin, enrollmentToken: enrollment.enrollment_token, shell: 'posix' }),
+      openClawCommand: buildHarnessOpenClawSetupCommand(profile),
     }
   }, [enrollment, options.locale, options.origin])
 
@@ -117,16 +119,16 @@ export function useHarnessRuntimeSettings(options: HarnessRuntimeSettingsBridgeO
     setAddOpen(true)
     setEnrollment(undefined)
     setEnrollmentError('')
-    setCommandCopied(false)
+    setCopiedCommand(undefined)
     void createEnrollment()
   }, [createEnrollment])
 
-  const copyCommand = useCallback((value: string | undefined) => {
+  const copyCommand = useCallback((value: string | undefined, target: 'login' | 'openclaw') => {
     if (!value || !navigator.clipboard?.writeText) return
     void navigator.clipboard.writeText(value).then(() => {
-      setCommandCopied(true)
+      setCopiedCommand(target)
       if (copyTimer.current !== undefined) window.clearTimeout(copyTimer.current)
-      copyTimer.current = window.setTimeout(() => setCommandCopied(false), 1600)
+      copyTimer.current = window.setTimeout(() => setCopiedCommand(undefined), 1600)
     }).catch(() => undefined)
   }, [])
 
@@ -140,11 +142,13 @@ export function useHarnessRuntimeSettings(options: HarnessRuntimeSettingsBridgeO
     enrollment: enrollmentView,
     enrollmentLoading,
     enrollmentError: enrollmentError || undefined,
-    commandCopied,
+    commandCopied: copiedCommand === 'login',
+    openClawCommandCopied: copiedCommand === 'openclaw',
     onRefresh: () => { void load() },
     onOpenAdd: openAdd,
     onCloseAdd: closeAdd,
     onRetryEnrollment: () => { void createEnrollment() },
-    onCopyCommand: () => copyCommand(enrollmentView?.command),
+    onCopyCommand: () => copyCommand(enrollmentView?.command, 'login'),
+    onCopyOpenClawCommand: () => copyCommand(enrollmentView?.openClawCommand, 'openclaw'),
   }
 }

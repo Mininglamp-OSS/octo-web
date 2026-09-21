@@ -11,6 +11,7 @@
 - Build a copyable `octo-harness login` command locally and present it as a code block. The profile is derived from the enrollment's Space ID and user ID, and the server URL comes from the current web origin. The command does not override the harness agent-worker URL.
 - Let `octo-harness` use the target device hostname as the initial Runtime name; naming is not part of enrollment.
 - Embed the short-lived, one-time enrollment token in the temporary POSIX command and feed it through `--enroll-token-stdin`.
+- Show a separate optional OpenClaw adapter command below device login. It uses the exact same generated profile, securely prompts for the OpenClaw Gateway token, and pipes that value to `adapter setup openclaw --token-stdin` without embedding the token in the command.
 - Support loading, empty, error/retry, refresh, token expiry, and copy feedback states.
 
 ## File map

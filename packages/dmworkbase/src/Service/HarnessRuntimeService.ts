@@ -50,7 +50,9 @@ export function availableRuntimeAdapters(capabilities: unknown): HarnessRuntimeA
 export interface DeviceEnrollment {
   enrollment_token: string
   octo_space_id: string
-  owner_ref: string
+  created_by_octo_uid: string
+  owner_subject_type: 'user' | 'organization'
+  owner_subject_id: string
   kind: 'local' | 'cloud'
   expires_at: string
 }
@@ -68,11 +70,9 @@ export async function listHarnessRuntimes(agentWorkerURL: string, signal?: Abort
 export async function createHarnessDeviceEnrollment(agentWorkerURL: string): Promise<DeviceEnrollment> {
   const response = await APIClient.shared.post(agentWorkerEndpoint(agentWorkerURL, 'runtime_enrollments'), {
     kind: 'local',
-    owner: { type: 'user' },
   }) as DeviceEnrollment
   if (!response?.enrollment_token || !response?.octo_space_id || !response?.expires_at
-    || typeof response.owner_ref !== 'string' || !response.owner_ref.startsWith('uid:')
-    || !response.owner_ref.slice(4).trim()) {
+    || typeof response.owner_subject_id !== 'string' || !response.owner_subject_id.trim()) {
     throw new Error('Invalid device enrollment response')
   }
   return response
@@ -135,4 +135,17 @@ export function buildHarnessLoginCommand(input: {
 
   const setup = setupParts.join(` ${continuation}\n  `)
   return `${setup} <<< ${quote(input.enrollmentToken)}`
+}
+
+export function buildHarnessOpenClawSetupCommand(profile: string): string {
+  return [
+    "printf 'OpenClaw Gateway token: ' &&",
+    'IFS= read -rs OCTO_OPENCLAW_GATEWAY_TOKEN &&',
+    "printf '\\n' &&",
+    `printf '%s\\n' "$OCTO_OPENCLAW_GATEWAY_TOKEN" |`,
+    `  octo-harness --profile ${quotePosix(profile)} adapter setup openclaw \\`,
+    "  --gateway-url 'ws://127.0.0.1:18789' \\",
+    '  --token-stdin',
+    'unset OCTO_OPENCLAW_GATEWAY_TOKEN',
+  ].join('\n')
 }

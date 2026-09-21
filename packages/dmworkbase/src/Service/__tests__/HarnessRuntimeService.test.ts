@@ -10,6 +10,7 @@ import {
   availableRuntimeAdapters,
   buildHarnessProfile,
   buildHarnessLoginCommand,
+  buildHarnessOpenClawSetupCommand,
   createHarnessDeviceEnrollment,
   isValidHarnessProfile,
   listHarnessRuntimes,
@@ -47,19 +48,18 @@ describe('HarnessRuntimeService', () => {
   })
 
   it('creates a local user-owned enrollment without sending profile or device name', async () => {
-    const enrollment = { enrollment_token: 'octo_enroll_secret', octo_space_id: 'space-1', owner_ref: 'uid:user-1', kind: 'local', expires_at: '2026-09-15T18:23:02.391175Z' }
+    const enrollment = { enrollment_token: 'octo_enroll_secret', octo_space_id: 'space-1', created_by_octo_uid: 'user-1', owner_subject_type: 'user', owner_subject_id: 'user-1', kind: 'local', expires_at: '2026-09-15T18:23:02.391175Z' }
     post.mockResolvedValue(enrollment)
 
     await expect(createHarnessDeviceEnrollment('http://localhost:3000/agentworker/')).resolves.toBe(enrollment)
     expect(post).toHaveBeenCalledWith('http://localhost:3000/agentworker/api/v1/runtime_enrollments', {
       kind: 'local',
-      owner: { type: 'user' },
     })
   })
 
-  it.each([undefined, null, 'org:engineering', 'uid:', 'uid: '])('rejects invalid personal enrollment ownership: %j', async (ownerRef) => {
+  it.each([undefined, null, '', '   '])('rejects invalid personal enrollment ownership: %j', async (ownerSubjectId) => {
     post.mockResolvedValue({ enrollment_token: 'octo_enroll_secret', octo_space_id: 'space-1',
-      owner_ref: ownerRef, kind: 'local', expires_at: '2026-09-15T18:23:02.391175Z' })
+      owner_subject_id: ownerSubjectId, kind: 'local', expires_at: '2026-09-15T18:23:02.391175Z' })
     await expect(createHarnessDeviceEnrollment('http://localhost:3000/agentworker')).rejects.toThrow('Invalid device enrollment response')
   })
 
@@ -113,5 +113,20 @@ describe('HarnessRuntimeService', () => {
 
     expect(command).toContain(' `\n  --server-url')
     expect(command).toContain("'octo_enroll_''quoted''' | octo-harness")
+  })
+
+  it('builds an OpenClaw setup script that prompts for a Gateway token', () => {
+    const command = buildHarnessOpenClawSetupCommand('space_01_user_02')
+    expect(command).toBe([
+      "printf 'OpenClaw Gateway token: ' &&",
+      'IFS= read -rs OCTO_OPENCLAW_GATEWAY_TOKEN &&',
+      "printf '\\n' &&",
+      'printf \'%s\\n\' "$OCTO_OPENCLAW_GATEWAY_TOKEN" |',
+      "  octo-harness --profile 'space_01_user_02' adapter setup openclaw \\",
+      "  --gateway-url 'ws://127.0.0.1:18789' \\",
+      '  --token-stdin',
+      'unset OCTO_OPENCLAW_GATEWAY_TOKEN',
+    ].join('\n'))
+    expect(command).not.toContain('octo_enroll_')
   })
 })

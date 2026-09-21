@@ -1715,6 +1715,7 @@
   "navRail.settingsCenter.runtime.expiresAt": "Expires",
   "navRail.settingsCenter.runtime.command": "Device login command",
   "navRail.settingsCenter.runtime.commandDescription": "Run this command on the device you want to add.",
+  "navRail.settingsCenter.runtime.openClawSetup": "OpenClaw adapter (optional)",
   "navRail.settingsCenter.runtime.copyCommand": "Copy command",
   "navRail.settingsCenter.runtime.copied": "Copied",
   "navRail.settingsCenter.runtime.done": "Done",

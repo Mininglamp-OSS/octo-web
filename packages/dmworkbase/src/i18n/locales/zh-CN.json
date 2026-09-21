@@ -1715,6 +1715,7 @@
   "navRail.settingsCenter.runtime.expiresAt": "有效期至",
   "navRail.settingsCenter.runtime.command": "设备登录命令",
   "navRail.settingsCenter.runtime.commandDescription": "在需要添加的设备上运行此命令。",
+  "navRail.settingsCenter.runtime.openClawSetup": "OpenClaw 适配（可选）",
   "navRail.settingsCenter.runtime.copyCommand": "复制命令",
   "navRail.settingsCenter.runtime.copied": "已复制",
   "navRail.settingsCenter.runtime.done": "完成",
