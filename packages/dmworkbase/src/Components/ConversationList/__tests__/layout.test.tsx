@@ -839,6 +839,12 @@ describe("ConversationList context-menu matrix", () => {
         container
       );
     });
+
+    expect(
+      container
+        .querySelector(".wk-conversationlist-item")
+        ?.classList.contains("wk-conversationlist-item-top")
+    ).toBe(false);
     openContextMenu(".wk-conversationlist-item");
 
     expect(currentMenuOrder()[0]).toBe("base.conversationList.context.pin");
@@ -853,6 +859,11 @@ describe("ConversationList context-menu matrix", () => {
       channel: thread.channel,
       top: true,
     });
+    expect(
+      container
+        .querySelector(".wk-conversationlist-item")
+        ?.classList.contains("wk-conversationlist-item-top")
+    ).toBe(true);
     expect(thread.conversation.extra.top).toBe(1);
     expect(notifyConversationListeners).toHaveBeenCalledWith(
       thread.conversation,
@@ -871,6 +882,11 @@ describe("ConversationList context-menu matrix", () => {
       channel: thread.channel,
       top: false,
     });
+    expect(
+      container
+        .querySelector(".wk-conversationlist-item")
+        ?.classList.contains("wk-conversationlist-item-top")
+    ).toBe(false);
     expect(thread.conversation.extra.top).toBe(0);
     expect(currentMenuOrder()[0]).toBe("base.conversationList.context.pin");
   });
@@ -944,5 +960,103 @@ describe("ConversationList context-menu matrix", () => {
 
     expect(conversation.conversation.unread).toBe(0);
     expect(reminderDone).toHaveBeenCalledWith([7]);
+  });
+});
+
+describe("ConversationList pinned-row CSS class", () => {
+  it("adds wk-conversationlist-item-top for a pinned person (channelInfo.top)", () => {
+    const conv = makeConversation({ unread: 1 });
+    conv.channelInfo.top = true;
+    act(() => {
+      ReactDOM.render(
+        <ConversationList conversations={[conv] as any} />,
+        container
+      );
+    });
+    const row = container.querySelector(".wk-conversationlist-item");
+    expect(row?.classList.contains("wk-conversationlist-item-top")).toBe(true);
+  });
+
+  it("adds wk-conversationlist-item-top for a pinned group (channelInfo.top)", () => {
+    const conv = makeConversation({
+      unread: 1,
+      channelType: 2,
+      channelID: "group-room",
+    });
+    conv.channelInfo.top = true;
+    act(() => {
+      ReactDOM.render(
+        <ConversationList conversations={[conv] as any} />,
+        container
+      );
+    });
+    const row = container.querySelector(".wk-conversationlist-item");
+    expect(row?.classList.contains("wk-conversationlist-item-top")).toBe(true);
+  });
+
+  it("adds wk-conversationlist-item-top for a pinned child thread (extra.top)", () => {
+    const conv = makeCompactConversation(
+      "group-a____thread-a",
+      3,
+      "group-a"
+    ) as any;
+    conv.conversation = { channel: conv.channel, extra: { top: 1 } };
+    conv.extra = conv.conversation.extra;
+    act(() => {
+      ReactDOM.render(
+        <ConversationList conversations={[conv] as any} />,
+        container
+      );
+    });
+    const row = container.querySelector(".wk-conversationlist-item");
+    expect(row?.classList.contains("wk-conversationlist-item-top")).toBe(true);
+  });
+
+  it("omits wk-conversationlist-item-top for an unpinned row", () => {
+    act(() => {
+      ReactDOM.render(
+        <ConversationList conversations={[makeConversation({ unread: 1 })] as any} />,
+        container
+      );
+    });
+    const row = container.querySelector(".wk-conversationlist-item");
+    expect(row?.classList.contains("wk-conversationlist-item-top")).toBe(false);
+  });
+
+  it("keeps both selected and top classes on a selected pinned row", () => {
+    const conv = makeConversation({ unread: 1 });
+    conv.channelInfo.top = true;
+    const select = conv.channel;
+    act(() => {
+      ReactDOM.render(
+        <ConversationList conversations={[conv] as any} select={select} />,
+        container
+      );
+    });
+    const row = container.querySelector(".wk-conversationlist-item");
+    expect(row?.classList.contains("wk-conversationlist-item-selected")).toBe(true);
+    expect(row?.classList.contains("wk-conversationlist-item-top")).toBe(true);
+  });
+
+  it("keeps compact follow mode free of wk-conversationlist-item-top", () => {
+    const conv = makeCompactConversation("group-a", 2);
+    conv.channelInfo.top = true;
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={[conv] as any}
+          compact
+          disablePinSplit
+        />,
+        container
+      );
+    });
+    const compactRow = container.querySelector(".wk-conv-compact-item");
+    expect(compactRow?.classList.contains("wk-conversationlist-item-top")).toBe(
+      false
+    );
+    expect(
+      container.querySelectorAll(".wk-conversationlist-item-top").length
+    ).toBe(0);
   });
 });

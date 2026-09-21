@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Recent Conversation States</title>
+    <style>
+      body { margin: 0; background: var(--wk-bg-surface); }
+      .fixture-sidebar { width: 280px; max-width: 100%; height: 100vh; }
+      .wk-conversationlist { box-sizing: border-box; }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <aside class="fixture-sidebar wk-chat-content-left">
+        <div class="wk-conversationlist">
+          <div class="wk-conversationlist-item wk-conversationlist-item-top" data-testid="pinned">
+            <div class="wk-conversationlist-item-name"><h3>Pinned conversation</h3></div>
+            <div class="wk-conversationlist-item-lastmsg">Project discussion</div>
+          </div>
+          <div class="wk-conversationlist-item wk-conversationlist-item-top wk-conversationlist-item-selected" data-testid="pinned-selected">
+            <div class="wk-conversationlist-item-name"><h3>Selected pinned conversation</h3></div>
+            <div class="wk-conversationlist-item-lastmsg">Release checklist</div>
+          </div>
+          <div class="wk-conversationlist-item" data-testid="regular">
+            <div class="wk-conversationlist-item-name"><h3>Recent conversation</h3></div>
+            <div class="wk-conversationlist-item-lastmsg">Meeting notes</div>
+          </div>
+          <div class="wk-conversationlist-item wk-conversationlist-item-selected" data-testid="selected">
+            <div class="wk-conversationlist-item-name"><h3>Selected conversation</h3></div>
+            <div class="wk-conversationlist-item-lastmsg">Weekly update</div>
+          </div>
+          <div class="wk-conv-compact-item" data-testid="follow">
+            <span class="wk-conv-compact-name">Followed conversation</span>
+          </div>
+        </div>
+      </aside>
+    </div>
+    <script type="module">
+      import "../../../../packages/dmworkbase/src/theme/index.css";
+      import "../../../../packages/dmworkbase/src/Components/ConversationList/index.css";
+      import "../../src/client-feature/desktop/presentation.css";
+      import "../../src/client-communication/desktop-presentation.css";
+
+      if (!import.meta.env.DEV) throw new Error("Test fixture requires a development server");
+      const params = new URLSearchParams(location.search);
+      document.body.setAttribute("theme-mode", params.get("theme") === "dark" ? "dark" : "light");
+      if (params.get("platform") !== "web") {
+        document.getElementById("root").dataset.desktopPlatform = params.get("platform") ?? "darwin";
+      }
+    </script>
+  </body>
+</html>

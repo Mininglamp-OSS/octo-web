@@ -69,12 +69,12 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   transition: background var(--wk-dur) var(--wk-ease);
 }
 
-.wk-conversationlist-item:hover {
-  background: var(--wk-bg-item-hover);
+.wk-conversationlist-item-top {
+  background: var(--wk-brand-tint-03);
 }
 
-.wk-conversationlist .wk-conversationlist-item-top {
-  /* 置顶 item 不做特殊背景处理 */
+.wk-conversationlist-item:hover {
+  background: var(--wk-bg-item-hover);
 }
 
 .wk-conversationlist-item-content {
