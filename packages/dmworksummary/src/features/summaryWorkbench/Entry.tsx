@@ -1,4 +1,5 @@
-import React, { useRef, type ReactNode } from "react";
+import React, { useEffect, useRef, useState, type ReactNode } from "react";
+import { WKApp } from "@octo/base";
 import {
     normalizeSummaryWorkbenchSpaceId,
     summaryWorkbenchAvailability,
@@ -44,9 +45,11 @@ export function SummaryWorkbenchEntry({
     availability = summaryWorkbenchAvailability,
 }: SummaryWorkbenchEntryProps): React.ReactElement | null {
     const normalizedSpaceId = normalizeSummaryWorkbenchSpaceId(spaceId);
+    const [refreshToken, setRefreshToken] = useState(0);
     const state = useSummaryWorkbenchAvailability(
         normalizedSpaceId,
-        availability
+        availability,
+        refreshToken
     );
     const stickyRef = useRef<StickyDecision>({
         availability,
@@ -62,6 +65,29 @@ export function SummaryWorkbenchEntry({
     if (!stickyRef.current.decision && state.status !== "loading") {
         stickyRef.current.decision = state;
     }
+    if (
+        stickyRef.current.decision &&
+        state.status !== "loading" &&
+        state.documentSources !== undefined &&
+        stickyRef.current.decision.documentSources !== state.documentSources
+    ) {
+        stickyRef.current.decision = {
+            ...stickyRef.current.decision,
+            documentSources: state.documentSources,
+        };
+    }
+
+    useEffect(() => {
+        const revalidate = () => setRefreshToken((token: number) => token + 1);
+        WKApp.mittBus.on("space-ready", revalidate);
+        WKApp.mittBus.on("space-changed", revalidate);
+        WKApp.mittBus.on("wk:app-foreground", revalidate);
+        return () => {
+            WKApp.mittBus.off("space-ready", revalidate);
+            WKApp.mittBus.off("space-changed", revalidate);
+            WKApp.mittBus.off("wk:app-foreground", revalidate);
+        };
+    }, []);
 
     const decision = stickyRef.current.decision;
     if (decision?.status === "enabled") {

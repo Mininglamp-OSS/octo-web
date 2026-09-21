@@ -5,9 +5,9 @@ import type { Page } from "@playwright/test";
 /** S2: Summary 空态 → 创建页入口. */
 export async function registerS2SummaryEmptyCreateEntry(
   page: Page,
-  options: { workbenchEnabled?: boolean } = {}
+  options: { workbenchEnabled?: boolean; documentSourcesAvailable?: boolean } = {}
 ): Promise<void> {
-  await page.evaluate(({ workbenchEnabled }) => {
+  await page.evaluate(({ workbenchEnabled, documentSourcesAvailable }) => {
     type MSW = {
       worker: { use: (...h: unknown[]) => void };
       http: { get: (path: string, resolver: (info: any) => unknown) => unknown };
@@ -26,8 +26,10 @@ export async function registerS2SummaryEmptyCreateEntry(
       http.get("*/summary/api/v1/summary-workbench/capabilities", () =>
         env({
           enabled: workbenchEnabled,
-          contract_version: "2",
+          contract_version: "3",
           max_time_range_days: 90,
+          direct_team_workflow: false,
+          document_sources: documentSourcesAvailable,
         })
       ),
       http.get("*/summary/api/v1/summaries", () => {
@@ -39,5 +41,8 @@ export async function registerS2SummaryEmptyCreateEntry(
         env({ templates: [], custom_template_limit: 30 })
       )
     );
-  }, { workbenchEnabled: options.workbenchEnabled ?? false });
+  }, {
+    workbenchEnabled: options.workbenchEnabled ?? false,
+    documentSourcesAvailable: options.documentSourcesAvailable ?? true,
+  });
 }

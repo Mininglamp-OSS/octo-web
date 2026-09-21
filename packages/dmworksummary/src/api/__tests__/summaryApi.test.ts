@@ -495,7 +495,16 @@ describe('summaryApi', () => {
             const { getSummaryWorkspaceCapabilities, getSummaryWorkspaceHistory } = await import('../summaryApi');
             mockGet
                 .mockResolvedValueOnce({
-                    data: { code: 0, data: { enabled: true, contract_version: '2' } },
+                    data: {
+                        code: 0,
+                        data: {
+                            enabled: true,
+                            contract_version: '3',
+                            max_time_range_days: 90,
+                            direct_team_workflow: false,
+                            document_sources: true,
+                        },
+                    },
                 })
                 .mockResolvedValueOnce({
                     data: { code: 0, data: { session_id: 'session/1' } },

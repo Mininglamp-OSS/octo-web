@@ -1,6 +1,7 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { WKApp } from "@octo/base";
 import {
     SummaryWorkbenchAvailability,
     type SummaryWorkbenchCapabilitySource,
@@ -25,9 +26,19 @@ function entry(
             availability={availability}
             spaceId={spaceId}
             renderPending={() => <div data-testid={`pending${suffix}`} />}
-            renderNew={() => <div data-testid={`new${suffix}`} />}
+            renderNew={(decision) => (
+                <div
+                    data-testid={`new${suffix}`}
+                    data-documents={String(decision.documentSources)}
+                />
+            )}
             renderLegacy={(decision) => (
-                <div data-testid={`legacy${suffix}`}>{decision.reason}</div>
+                <div
+                    data-testid={`legacy${suffix}`}
+                    data-documents={String(decision.documentSources)}
+                >
+                    {decision.reason}
+                </div>
             )}
         />
     );
@@ -46,7 +57,7 @@ describe("SummaryWorkbenchEntry", () => {
 
         response.resolve({
             enabled: true,
-            contract_version: "2",
+            contract_version: "3",
             max_time_range_days: 90,
             direct_team_workflow: true,
             document_sources: true,
@@ -58,7 +69,7 @@ describe("SummaryWorkbenchEntry", () => {
         const availability = new SummaryWorkbenchAvailability({
             getCapabilities: vi.fn().mockResolvedValue({
                 enabled: true,
-                contract_version: "3",
+                contract_version: "4",
                 max_time_range_days: 90,
                 direct_team_workflow: false,
                 document_sources: false,
@@ -77,14 +88,14 @@ describe("SummaryWorkbenchEntry", () => {
                 .fn()
                 .mockResolvedValueOnce({
                     enabled: true,
-                    contract_version: "2",
+                    contract_version: "3",
                     max_time_range_days: 90,
                     direct_team_workflow: true,
                     document_sources: true,
                 })
                 .mockResolvedValueOnce({
                     enabled: false,
-                    contract_version: "2",
+                    contract_version: "3",
                     max_time_range_days: 90,
                     direct_team_workflow: false,
                     document_sources: false,
@@ -115,14 +126,14 @@ describe("SummaryWorkbenchEntry", () => {
                 .fn()
                 .mockResolvedValueOnce({
                     enabled: true,
-                    contract_version: "2",
+                    contract_version: "3",
                     max_time_range_days: 90,
                     direct_team_workflow: true,
                     document_sources: true,
                 })
                 .mockResolvedValueOnce({
                     enabled: false,
-                    contract_version: "2",
+                    contract_version: "3",
                     max_time_range_days: 90,
                     direct_team_workflow: false,
                     document_sources: false,
@@ -138,6 +149,53 @@ describe("SummaryWorkbenchEntry", () => {
                 "server_disabled"
             );
         });
+    });
+
+    it("keeps the selected entry mode but refreshes document capability on foreground", async () => {
+        let now = 1_000;
+        const source: SummaryWorkbenchCapabilitySource = {
+            getCapabilities: vi
+                .fn()
+                .mockResolvedValueOnce({
+                    enabled: true,
+                    contract_version: "3",
+                    max_time_range_days: 90,
+                    direct_team_workflow: true,
+                    document_sources: true,
+                })
+                .mockResolvedValueOnce({
+                    enabled: true,
+                    contract_version: "3",
+                    max_time_range_days: 90,
+                    direct_team_workflow: true,
+                    document_sources: false,
+                }),
+        };
+        const availability = new SummaryWorkbenchAvailability(source, {
+            cacheTtlMs: 30_000,
+            now: () => now,
+        });
+
+        render(entry(availability, "space-a"));
+        expect(await screen.findByTestId("new")).toHaveAttribute(
+            "data-documents",
+            "true"
+        );
+
+        act(() => WKApp.mittBus.emit("wk:app-foreground"));
+        await Promise.resolve();
+        expect(source.getCapabilities).toHaveBeenCalledOnce();
+
+        now += 30_000;
+        act(() => WKApp.mittBus.emit("wk:app-foreground"));
+
+        await waitFor(() =>
+            expect(screen.getByTestId("new")).toHaveAttribute(
+                "data-documents",
+                "false"
+            )
+        );
+        expect(source.getCapabilities).toHaveBeenCalledTimes(2);
     });
 
     it("uses Legacy immediately when there is no current Space", () => {

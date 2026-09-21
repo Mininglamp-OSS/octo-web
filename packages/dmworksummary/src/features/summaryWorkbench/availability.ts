@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import summaryWorkbenchService from "../../Service/SummaryWorkbenchService";
 import {
-  SUMMARY_WORKSPACE_CONTRACT_VERSION,
+  SUMMARY_WORKSPACE_CAPABILITIES_CONTRACT_VERSION,
   SummaryWorkspaceApiError,
   type SummaryWorkspaceCapabilitiesDTO,
 } from "../../bridge/summaryWorkbench/protocol";
 
 export const DEFAULT_SUMMARY_WORKBENCH_CAPABILITY_TIMEOUT_MS = 5_000;
 export const DEFAULT_SUMMARY_WORKBENCH_CAPABILITY_CACHE_TTL_MS = 30_000;
+export const DEFAULT_SUMMARY_WORKBENCH_NEGATIVE_CACHE_TTL_MS = 5_000;
 
 export type SummaryWorkbenchAvailabilityReason =
   | "supported"
@@ -25,10 +26,10 @@ export interface SummaryWorkbenchEnabledAvailability {
   enabled: true;
   spaceId: string;
   reason: "supported";
-  contractVersion: typeof SUMMARY_WORKSPACE_CONTRACT_VERSION;
+  contractVersion: typeof SUMMARY_WORKSPACE_CAPABILITIES_CONTRACT_VERSION;
   maxTimeRangeDays: number;
   directTeamWorkflow: boolean;
-  documentSources?: boolean;
+  documentSources: boolean;
   checkedAt: number;
 }
 
@@ -63,6 +64,7 @@ export interface SummaryWorkbenchCapabilitySource {
 export interface SummaryWorkbenchAvailabilityOptions {
   timeoutMs?: number;
   cacheTtlMs?: number;
+  negativeCacheTtlMs?: number;
   now?: () => number;
 }
 
@@ -76,16 +78,22 @@ interface PendingAvailability {
   consumers: number;
 }
 
+interface CachedAvailability {
+  decision: SummaryWorkbenchAvailabilityDecision;
+  expiresAt: number;
+}
+
 const TIMEOUT = Symbol("summary-workbench-capability-timeout");
 const CANCELLED = Symbol("summary-workbench-capability-cancelled");
 
 export class SummaryWorkbenchAvailability {
-  private readonly cache = new Map<string, SummaryWorkbenchAvailabilityDecision>();
+  private readonly cache = new Map<string, CachedAvailability>();
 
   private readonly pending = new Map<string, PendingAvailability>();
 
   private readonly timeoutMs: number;
   private readonly cacheTtlMs: number;
+  private readonly negativeCacheTtlMs: number;
 
   private readonly now: () => number;
 
@@ -101,6 +109,10 @@ export class SummaryWorkbenchAvailability {
       0,
       options.cacheTtlMs ?? DEFAULT_SUMMARY_WORKBENCH_CAPABILITY_CACHE_TTL_MS
     );
+    this.negativeCacheTtlMs = Math.max(
+      0,
+      options.negativeCacheTtlMs ?? DEFAULT_SUMMARY_WORKBENCH_NEGATIVE_CACHE_TTL_MS
+    );
     this.now = options.now ?? Date.now;
   }
 
@@ -109,11 +121,11 @@ export class SummaryWorkbenchAvailability {
     if (!normalizedSpaceId) return this.missingSpaceDecision();
     const cached = this.cache.get(normalizedSpaceId);
     if (!cached) return undefined;
-    if (this.now() - cached.checkedAt >= this.cacheTtlMs) {
+    if (this.now() >= cached.expiresAt) {
       this.cache.delete(normalizedSpaceId);
       return undefined;
     }
-    return cached;
+    return cached.decision;
   }
 
   resolve(
@@ -137,6 +149,18 @@ export class SummaryWorkbenchAvailability {
       this.pending.set(normalizedSpaceId, pending);
     }
     return this.subscribe(pending, normalizedSpaceId, options.signal);
+  }
+
+  refresh(
+    spaceId: string | null | undefined,
+    options: ResolveSummaryWorkbenchAvailabilityOptions = {}
+  ): Promise<SummaryWorkbenchAvailabilityDecision> {
+    const normalizedSpaceId = normalizeSummaryWorkbenchSpaceId(spaceId);
+    if (!normalizedSpaceId) {
+      return Promise.resolve(this.missingSpaceDecision());
+    }
+    this.cache.delete(normalizedSpaceId);
+    return this.resolve(normalizedSpaceId, options);
   }
 
   invalidate(spaceId?: string | null): void {
@@ -212,11 +236,14 @@ export class SummaryWorkbenchAvailability {
       return first;
     })()
       .then((decision) => {
-        if (
-          this.pending.get(spaceId) === pending &&
-          shouldCacheCapabilityDecision(decision)
-        ) {
-          this.cache.set(spaceId, decision);
+        if (this.pending.get(spaceId) === pending) {
+          const ttlMs = this.cacheTtlFor(decision);
+          if (ttlMs !== null) {
+            this.cache.set(spaceId, {
+              decision,
+              expiresAt: this.now() + ttlMs,
+            });
+          }
         }
         return decision;
       })
@@ -276,7 +303,7 @@ export class SummaryWorkbenchAvailability {
     if (!isCapabilities(value)) {
       return this.disabledDecision(spaceId, "invalid_response");
     }
-    if (value.contract_version !== SUMMARY_WORKSPACE_CONTRACT_VERSION) {
+    if (value.contract_version !== SUMMARY_WORKSPACE_CAPABILITIES_CONTRACT_VERSION) {
       return this.disabledDecision(
         spaceId,
         "unsupported_contract",
@@ -297,14 +324,32 @@ export class SummaryWorkbenchAvailability {
       enabled: true,
       spaceId,
       reason: "supported",
-      contractVersion: SUMMARY_WORKSPACE_CONTRACT_VERSION,
+      contractVersion: SUMMARY_WORKSPACE_CAPABILITIES_CONTRACT_VERSION,
       maxTimeRangeDays: value.max_time_range_days,
       directTeamWorkflow: value.direct_team_workflow,
-      ...(value.document_sources === undefined
-        ? {}
-        : { documentSources: value.document_sources }),
+      documentSources: value.document_sources,
       checkedAt: this.now(),
     };
+  }
+
+  private cacheTtlFor(
+    decision: SummaryWorkbenchAvailabilityDecision
+  ): number | null {
+    if (
+      decision.status === "disabled" &&
+      (decision.reason === "aborted" || decision.reason === "missing_space")
+    ) {
+      return null;
+    }
+    if (
+      decision.status === "disabled" &&
+      (decision.reason === "timeout" ||
+        decision.reason === "unavailable" ||
+        decision.reason === "invalid_response")
+    ) {
+      return this.negativeCacheTtlMs;
+    }
+    return this.cacheTtlMs;
   }
 
   private fromFailure(spaceId: string, error: unknown): SummaryWorkbenchDisabledAvailability {
@@ -350,7 +395,8 @@ export const summaryWorkbenchAvailability = new SummaryWorkbenchAvailability();
 
 export function useSummaryWorkbenchAvailability(
   spaceId: string | null | undefined,
-  availability: SummaryWorkbenchAvailability = summaryWorkbenchAvailability
+  availability: SummaryWorkbenchAvailability = summaryWorkbenchAvailability,
+  refreshToken = 0
 ): SummaryWorkbenchAvailabilityState {
   const normalizedSpaceId = normalizeSummaryWorkbenchSpaceId(spaceId);
   const [snapshot, setSnapshot] = useState<{
@@ -387,7 +433,7 @@ export function useSummaryWorkbenchAvailability(
       active = false;
       controller.abort();
     };
-  }, [availability, normalizedSpaceId]);
+  }, [availability, normalizedSpaceId, refreshToken]);
 
   return visibleState;
 }
@@ -406,18 +452,7 @@ function shouldRetryCapabilityDecision(
   return (
     decision.status === "disabled" &&
     (decision.reason === "timeout" ||
-      decision.reason === "unavailable" ||
-      decision.reason === "invalid_response")
-  );
-}
-
-function shouldCacheCapabilityDecision(
-  decision: SummaryWorkbenchAvailabilityDecision
-): boolean {
-  return (
-    decision.status === "enabled" ||
-    decision.reason === "server_disabled" ||
-    decision.reason === "unsupported_contract"
+      decision.reason === "unavailable")
   );
 }
 
@@ -433,7 +468,6 @@ function isCapabilities(value: unknown): value is SummaryWorkspaceCapabilitiesDT
     Number.isInteger(record.max_time_range_days) &&
     record.max_time_range_days > 0 &&
     typeof record.direct_team_workflow === "boolean" &&
-    (record.document_sources === undefined ||
-      typeof record.document_sources === "boolean")
+    typeof record.document_sources === "boolean"
   );
 }

@@ -18,6 +18,7 @@ import type {
 import {
   DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS,
   SUMMARY_WORKSPACE_ACTIONS,
+  SUMMARY_WORKSPACE_CAPABILITIES_CONTRACT_VERSION,
   SUMMARY_WORKSPACE_CONTRACT_VERSION,
   SUMMARY_WORKSPACE_RESULT_TYPES,
   SUMMARY_WORKSPACE_SNAPSHOT_VERSION,
@@ -308,12 +309,13 @@ export function decodeSummaryWorkspaceCapabilities(
   value: unknown
 ): SummaryWorkspaceCapabilitiesDTO {
   const record = requireRecord(value, "capabilities");
+  const contractVersion = requireString(
+    record.contract_version,
+    "capabilities.contract_version"
+  );
   return {
     enabled: requireBoolean(record.enabled, "capabilities.enabled"),
-    contract_version: requireString(
-      record.contract_version,
-      "capabilities.contract_version"
-    ),
+    contract_version: contractVersion,
     max_time_range_days:
       record.max_time_range_days === undefined
         ? DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS
@@ -328,14 +330,14 @@ export function decodeSummaryWorkspaceCapabilities(
             record.direct_team_workflow,
             "capabilities.direct_team_workflow"
           ),
-    ...(record.document_sources === undefined
-      ? {}
-      : {
-          document_sources: requireBoolean(
+    document_sources:
+      record.document_sources === undefined &&
+      contractVersion !== SUMMARY_WORKSPACE_CAPABILITIES_CONTRACT_VERSION
+        ? false
+        : requireBoolean(
             record.document_sources,
             "capabilities.document_sources"
           ),
-        }),
   };
 }
 

@@ -414,6 +414,12 @@ export default function SummaryWorkbenchFeature({
     applyParticipantPrune(pending.sourceKey, pending.members);
   }, [applyParticipantPrune, busy]);
 
+  useEffect(() => {
+    if (!documentSourcesAvailable && openSelector === "document") {
+      setOpenSelector(null);
+    }
+  }, [documentSourcesAvailable, openSelector]);
+
   // Unmount: clear the theme-input debounce so a pending track cannot fire
   // after the user has left (same rationale as the legacy page's cleanup).
   useEffect(() => {

@@ -66,8 +66,10 @@ const summaryWorkbenchCapabilityHandler = http.get(
       message: "ok",
       data: {
         enabled: false,
-        contract_version: "2",
+        contract_version: "3",
         max_time_range_days: 31,
+        direct_team_workflow: false,
+        document_sources: true,
       },
     }),
 );

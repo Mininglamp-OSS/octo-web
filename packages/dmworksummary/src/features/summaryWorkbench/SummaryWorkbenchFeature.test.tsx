@@ -1102,6 +1102,26 @@ describe("SummaryWorkbenchFeature", () => {
     );
   });
 
+  it("closes the document selector when the Summary capability is revoked", () => {
+    const current = controller();
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+    const { rerender } = render(
+      <SummaryWorkbenchFeature spaceId="space-a" documentSourcesAvailable />,
+      { legacyRoot: true }
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "open-document" }));
+    expect(screen.getByTestId("document-selector")).toBeInTheDocument();
+
+    rerender(
+      <SummaryWorkbenchFeature
+        spaceId="space-a"
+        documentSourcesAvailable={false}
+      />
+    );
+    expect(screen.queryByTestId("document-selector")).not.toBeInTheDocument();
+  });
+
   it.each(["chat", "document"] as const)("empty %s confirmation preserves the other source and preview without prompting", (picker) => {
     const current = controller({
       scope: scope(picker === "chat"

@@ -3,6 +3,18 @@
 The existing Workbench and create-page selector share the Service → bridge → UI path.
 Only `doc` and `html` sources are supported; the selector explicitly explains this.
 
+## Availability contract
+
+- `GET summary-workbench/capabilities` contract v3 must return the boolean
+  `document_sources`. This capability is owned by Summary and does not read the
+  host-level `docs_on` or `docs_search_on` AppConfig flags.
+- Older capability contracts fail closed without polling forever. Timeout and
+  transport failures receive one immediate retry plus two delayed retries; a
+  successful response with an invalid v3 shape is not retried continuously.
+- Capability decisions are cached per Space. Foreground and Space lifecycle
+  events revalidate after the cache expires, and an explicit `false` closes the
+  picker and blocks sending a stale document scope.
+
 ## Pagination contract
 
 - `GET docs/recent` is keyset-paginated. Pass the opaque `nextCursor` unchanged;

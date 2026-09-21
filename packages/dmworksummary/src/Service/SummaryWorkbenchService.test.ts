@@ -468,7 +468,7 @@ describe("SummaryWorkbenchService", () => {
   it("loads capabilities through the strict decoder", async () => {
     getCapabilities.mockResolvedValue({
       enabled: true,
-      contract_version: "2",
+      contract_version: "3",
       max_time_range_days: 90,
       direct_team_workflow: true,
       document_sources: true,
@@ -477,7 +477,7 @@ describe("SummaryWorkbenchService", () => {
       service.getCapabilities({ spaceId: "space-a" })
     ).resolves.toEqual({
       enabled: true,
-      contract_version: "2",
+      contract_version: "3",
       max_time_range_days: 90,
       direct_team_workflow: true,
       document_sources: true,

@@ -10,13 +10,13 @@ import { summaryTestIds } from '../../utils/testIds';
 import * as summaryHelpers from '../../utils/summaryHelpers';
 const capabilityMocks = vi.hoisted(() => ({
     resolve: vi.fn().mockResolvedValue({ documentSources: false }),
-    invalidate: vi.fn(),
+    refresh: vi.fn().mockResolvedValue({ documentSources: false }),
 }));
 
 vi.mock('../../features/summaryWorkbench/availability', () => ({
     summaryWorkbenchAvailability: {
         resolve: capabilityMocks.resolve,
-        invalidate: capabilityMocks.invalidate,
+        refresh: capabilityMocks.refresh,
     },
 }));
 
@@ -295,6 +295,7 @@ describe('SummaryCreatePage document sources', () => {
         __resetDocsPort();
         WKApp.shared.currentSpaceId = 'space-123';
         capabilityMocks.resolve.mockResolvedValue({ documentSources: true });
+        capabilityMocks.refresh.mockResolvedValue({ documentSources: true });
     });
 
     afterEach(() => {
@@ -326,8 +327,8 @@ describe('SummaryCreatePage document sources', () => {
     it('retries an unknown capability decision and restores the document entry', async () => {
         vi.useFakeTimers();
         capabilityMocks.resolve
-            .mockResolvedValueOnce({ reason: 'timeout' })
-            .mockResolvedValueOnce({ documentSources: true });
+            .mockResolvedValueOnce({ status: 'disabled', reason: 'timeout' });
+        capabilityMocks.refresh.mockResolvedValueOnce({ documentSources: true });
 
         await act(async () => {
             render(<SummaryCreatePage />);
@@ -339,8 +340,30 @@ describe('SummaryCreatePage document sources', () => {
             await vi.advanceTimersByTimeAsync(5_000);
         });
 
-        expect(capabilityMocks.invalidate).toHaveBeenCalledWith('space-123');
+        expect(capabilityMocks.refresh).toHaveBeenCalledWith(
+            'space-123',
+            expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        );
         expect(screen.getByTestId(summaryTestIds.createSelectDocument)).toBeInTheDocument();
+    });
+
+    it('stops retrying document capability after the bounded backoff', async () => {
+        vi.useFakeTimers();
+        capabilityMocks.resolve.mockResolvedValueOnce({ status: 'disabled', reason: 'timeout' });
+        capabilityMocks.refresh.mockResolvedValue({ status: 'disabled', reason: 'unavailable' });
+
+        await act(async () => {
+            render(<SummaryCreatePage />);
+            await Promise.resolve();
+        });
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(5_000);
+            await vi.advanceTimersByTimeAsync(15_000);
+            await vi.advanceTimersByTimeAsync(60_000);
+        });
+
+        expect(capabilityMocks.resolve).toHaveBeenCalledOnce();
+        expect(capabilityMocks.refresh).toHaveBeenCalledTimes(2);
     });
 
     it.each(['chat', 'document'] as const)('empty %s confirmation does not erase the other source', async (picker) => {
@@ -452,7 +475,7 @@ describe('SummaryCreatePage document sources', () => {
 
         capabilityMocks.resolve.mockResolvedValueOnce({ documentSources: false });
         await act(async () => {
-            window.dispatchEvent(new Event('focus'));
+            WKApp.mittBus.emit('wk:app-foreground');
             await flushPromises();
         });
 
