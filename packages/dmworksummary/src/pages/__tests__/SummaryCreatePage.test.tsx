@@ -8,6 +8,16 @@ import { isAgentSummaryNotificationEligible } from '../../utils/groupSummaryNoti
 import { summaryTestIds } from '../../utils/testIds';
 
 import * as summaryHelpers from '../../utils/summaryHelpers';
+const capabilityMocks = vi.hoisted(() => ({
+    resolve: vi.fn().mockResolvedValue({ documentSources: false }),
+}));
+
+vi.mock('../../features/summaryWorkbench/availability', () => ({
+    summaryWorkbenchAvailability: {
+        resolve: capabilityMocks.resolve,
+    },
+}));
+
 vi.mock('@douyinfe/semi-ui', () => ({
     Button: ({ children, onClick, disabled, loading, theme, icon, ...rest }: any) => (
         <button onClick={onClick} disabled={disabled} data-loading={loading} data-theme={theme} {...rest}>
@@ -102,11 +112,7 @@ vi.mock('../../features/documentSource/DocumentSelectorModal', () => ({
 }));
 
 import { getTopicTemplatesConfig } from '../../api/summaryApi';
-import {
-    __resetDocsPort,
-    __setDocsOn,
-    __setDocsSearchOn,
-} from '../../__mocks__/dmworkBase';
+import { __resetDocsPort } from '../../__mocks__/dmworkBase';
 
 function render(ui: React.ReactElement, options?: any) {
     return rtlRender(ui, { legacyRoot: true, ...options });
@@ -285,8 +291,7 @@ describe('SummaryCreatePage document sources', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         __resetDocsPort();
-        __setDocsOn(false);
-        __setDocsSearchOn(false);
+        capabilityMocks.resolve.mockResolvedValue({ documentSources: true });
     });
 
     it.each(['chat', 'document'] as const)('empty %s confirmation does not erase the other source', async (picker) => {
@@ -381,6 +386,28 @@ describe('SummaryCreatePage document sources', () => {
             'data-max-select',
             '10',
         );
+    });
+
+    it('hides document entry and blocks a stale selection when Summary capability is off', async () => {
+        const { Toast } = await import('@douyinfe/semi-ui');
+        capabilityMocks.resolve.mockResolvedValueOnce({ documentSources: false });
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} embedded onSubmit={vi.fn()} />);
+            await flushPromises();
+        });
+
+        expect(screen.queryByTestId(summaryTestIds.createSelectDocument)).not.toBeInTheDocument();
+        act(() => ref.current!.setState({
+            topic: '总结项目文档',
+            selectedDocuments: [{ docId: 'doc-1', title: '项目复盘', docType: 'doc', updatedAt: null }],
+        }));
+        await act(async () => {
+            await ref.current!.handleSubmit();
+        });
+
+        expect(api.createSummary).not.toHaveBeenCalled();
+        expect(Toast.warning).toHaveBeenCalledWith('文档总结入口已关闭，请移除文档后重试');
     });
 
 });

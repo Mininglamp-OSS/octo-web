@@ -49,6 +49,7 @@ describe("SummaryWorkbenchEntry", () => {
             contract_version: "2",
             max_time_range_days: 90,
             direct_team_workflow: true,
+            document_sources: true,
         });
         expect(await screen.findByTestId("new")).toBeInTheDocument();
     });
@@ -60,6 +61,7 @@ describe("SummaryWorkbenchEntry", () => {
                 contract_version: "3",
                 max_time_range_days: 90,
                 direct_team_workflow: false,
+                document_sources: false,
             }),
         });
 
@@ -78,12 +80,14 @@ describe("SummaryWorkbenchEntry", () => {
                     contract_version: "2",
                     max_time_range_days: 90,
                     direct_team_workflow: true,
+                    document_sources: true,
                 })
                 .mockResolvedValueOnce({
                     enabled: false,
                     contract_version: "2",
                     max_time_range_days: 90,
                     direct_team_workflow: false,
+                    document_sources: false,
                 }),
         };
         const availability = new SummaryWorkbenchAvailability(source);
@@ -114,12 +118,14 @@ describe("SummaryWorkbenchEntry", () => {
                     contract_version: "2",
                     max_time_range_days: 90,
                     direct_team_workflow: true,
+                    document_sources: true,
                 })
                 .mockResolvedValueOnce({
                     enabled: false,
                     contract_version: "2",
                     max_time_range_days: 90,
                     direct_team_workflow: false,
+                    document_sources: false,
                 }),
         };
         const availability = new SummaryWorkbenchAvailability(source);

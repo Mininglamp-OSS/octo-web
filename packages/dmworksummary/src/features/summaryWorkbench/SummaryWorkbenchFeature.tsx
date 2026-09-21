@@ -98,6 +98,7 @@ export interface SummaryWorkbenchFeatureProps {
   onOpenTask?: (taskId: number) => void;
   maxTimeRangeDays?: number;
   directTeamWorkflow?: boolean;
+  documentSourcesAvailable?: boolean;
   messaging?: SummaryMessagingPort;
 }
 
@@ -181,6 +182,7 @@ export default function SummaryWorkbenchFeature({
   onOpenTask,
   maxTimeRangeDays = DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS,
   directTeamWorkflow = false,
+  documentSourcesAvailable = false,
   messaging,
 }: SummaryWorkbenchFeatureProps) {
   const { t, format } = useI18n();
@@ -540,6 +542,9 @@ export default function SummaryWorkbenchFeature({
     workbench.scope,
     composerHasCustomText
   );
+  const documentScopeUnavailable =
+    (workbench.scope.documents ?? []).length > 0 &&
+    !documentSourcesAvailable;
   const participantScopeReady =
     workbench.scope.participants.length === 0 ||
     (Boolean(participantScopeKey) &&
@@ -564,10 +569,10 @@ export default function SummaryWorkbenchFeature({
   );
   const availableContextKinds: SummaryWorkbenchContextKind[] =
     (workbench.scope.documents ?? []).length > 0
-      ? ["chat", "document"]
+      ? ["chat", ...(documentSourcesAvailable ? (["document"] as const) : [])]
       : [
           "chat",
-          "document",
+          ...(documentSourcesAvailable ? (["document"] as const) : []),
           "participant",
           "time_range",
         ];
@@ -578,6 +583,7 @@ export default function SummaryWorkbenchFeature({
     isSending: busy,
     canSend:
       !busy &&
+      !documentScopeUnavailable &&
       participantScopeReady &&
       (composerHasCustomText ||
         (!templateLocked && structuredGenerate) ||
@@ -658,6 +664,10 @@ export default function SummaryWorkbenchFeature({
   };
 
   const send = async () => {
+    if (documentScopeUnavailable) {
+      Toast.warning(t("summary.create.documentSourceUnavailable"));
+      return;
+    }
     if (!viewState.canSend) return;
     if (themeTrackTimer.current) {
       clearTimeout(themeTrackTimer.current);
@@ -740,6 +750,7 @@ export default function SummaryWorkbenchFeature({
       setTemplateGalleryOpen(true);
       return;
     }
+    if (kind === "document" && !documentSourcesAvailable) return;
     if (kind === "participant" && !canSelectParticipants(workbench.scope)) {
       Toast.info(t("summary.workbench.notice.selectSingleChatForParticipants"));
       return;
@@ -1037,7 +1048,7 @@ export default function SummaryWorkbenchFeature({
       />
 
       <DocumentSelectorModal
-        visible={openSelector === "document"}
+        visible={openSelector === "document" && documentSourcesAvailable}
         selected={scopeDocumentsToItems(workbench.scope.documents ?? [])}
         maxSelect={MAX_DOCUMENT_SELECT}
         onConfirm={(documents: DocSearchItem[]) => {

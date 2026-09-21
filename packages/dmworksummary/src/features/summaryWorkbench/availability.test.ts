@@ -9,13 +9,15 @@ function capability(
     enabled = true,
     contractVersion = "2",
     maxTimeRangeDays = 90,
-    directTeamWorkflow = false
+    directTeamWorkflow = false,
+    documentSources = true
 ) {
     return {
         enabled,
         contract_version: contractVersion,
         max_time_range_days: maxTimeRangeDays,
         direct_team_workflow: directTeamWorkflow,
+        document_sources: documentSources,
     };
 }
 
@@ -51,6 +53,7 @@ describe("SummaryWorkbenchAvailability", () => {
             reason: "supported",
             maxTimeRangeDays: 90,
             directTeamWorkflow: false,
+            documentSources: true,
         });
         await expect(second).resolves.toMatchObject({ status: "enabled" });
         await availability.resolve("space-a");
@@ -89,7 +92,7 @@ describe("SummaryWorkbenchAvailability", () => {
 
     it.each([
         [capability(false), "server_disabled"],
-    [capability(true, "3"), "unsupported_contract"],
+        [capability(true, "3"), "unsupported_contract"],
         [
             {
                 enabled: "yes",
@@ -107,6 +110,18 @@ describe("SummaryWorkbenchAvailability", () => {
             status: "disabled",
             enabled: false,
             reason,
+        });
+    });
+
+    it("preserves document source availability when only the Workbench entry is disabled", async () => {
+        const availability = new SummaryWorkbenchAvailability({
+            getCapabilities: vi.fn().mockResolvedValue(capability(false)),
+        });
+
+        await expect(availability.resolve("space-a")).resolves.toMatchObject({
+            status: "disabled",
+            reason: "server_disabled",
+            documentSources: true,
         });
     });
 

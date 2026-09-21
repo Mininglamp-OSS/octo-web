@@ -54,10 +54,11 @@ export default function SummaryWorkbenchCreateEntry(
             onOpenTask={props.onOpenTask}
             maxTimeRangeDays={availability.maxTimeRangeDays}
             directTeamWorkflow={availability.directTeamWorkflow}
+            documentSourcesAvailable={availability.documentSources}
             messaging={props.messaging}
           />
         )}
-        renderLegacy={() => (
+        renderLegacy={(availability) => (
           <LegacySummaryCreatePage
             onCreated={props.onCreated}
             derivedFromTask={props.derivedFromTask}
@@ -67,6 +68,7 @@ export default function SummaryWorkbenchCreateEntry(
             onSubmit={props.onSubmit}
             source={props.source}
             initialMode={props.legacyInitialMode}
+            documentSourcesAvailable={availability.documentSources}
             messaging={props.messaging}
           />
         )}

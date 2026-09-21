@@ -471,6 +471,7 @@ describe("SummaryWorkbenchService", () => {
       contract_version: "2",
       max_time_range_days: 90,
       direct_team_workflow: true,
+      document_sources: true,
     });
     await expect(
       service.getCapabilities({ spaceId: "space-a" })
@@ -479,6 +480,7 @@ describe("SummaryWorkbenchService", () => {
       contract_version: "2",
       max_time_range_days: 90,
       direct_team_workflow: true,
+      document_sources: true,
     });
     expect(getCapabilities).toHaveBeenCalledWith({ spaceId: "space-a" });
   });

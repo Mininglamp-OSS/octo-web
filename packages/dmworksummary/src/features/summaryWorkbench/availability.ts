@@ -28,6 +28,7 @@ export interface SummaryWorkbenchEnabledAvailability {
   contractVersion: typeof SUMMARY_WORKSPACE_CONTRACT_VERSION;
   maxTimeRangeDays: number;
   directTeamWorkflow: boolean;
+  documentSources: boolean;
   checkedAt: number;
 }
 
@@ -37,6 +38,7 @@ export interface SummaryWorkbenchDisabledAvailability {
   spaceId: string;
   reason: Exclude<SummaryWorkbenchAvailabilityReason, "supported">;
   contractVersion?: string;
+  documentSources: boolean;
   checkedAt: number;
 }
 
@@ -275,7 +277,12 @@ export class SummaryWorkbenchAvailability {
       return this.disabledDecision(spaceId, "unsupported_contract", value.contract_version);
     }
     if (value.enabled !== true) {
-      return this.disabledDecision(spaceId, "server_disabled", value.contract_version);
+      return this.disabledDecision(
+        spaceId,
+        "server_disabled",
+        value.contract_version,
+        value.document_sources
+      );
     }
     return {
       status: "enabled",
@@ -285,6 +292,7 @@ export class SummaryWorkbenchAvailability {
       contractVersion: SUMMARY_WORKSPACE_CONTRACT_VERSION,
       maxTimeRangeDays: value.max_time_range_days,
       directTeamWorkflow: value.direct_team_workflow,
+      documentSources: value.document_sources,
       checkedAt: this.now(),
     };
   }
@@ -313,7 +321,8 @@ export class SummaryWorkbenchAvailability {
   private disabledDecision(
     spaceId: string,
     reason: SummaryWorkbenchDisabledAvailability["reason"],
-    contractVersion?: string
+    contractVersion?: string,
+    documentSources = false
   ): SummaryWorkbenchDisabledAvailability {
     return {
       status: "disabled",
@@ -321,6 +330,7 @@ export class SummaryWorkbenchAvailability {
       spaceId,
       reason,
       ...(contractVersion ? { contractVersion } : {}),
+      documentSources,
       checkedAt: this.now(),
     };
   }
@@ -402,6 +412,7 @@ function isCapabilities(value: unknown): value is SummaryWorkspaceCapabilitiesDT
     typeof record.max_time_range_days === "number" &&
     Number.isInteger(record.max_time_range_days) &&
     record.max_time_range_days > 0 &&
-    typeof record.direct_team_workflow === "boolean"
+    typeof record.direct_team_workflow === "boolean" &&
+    typeof record.document_sources === "boolean"
   );
 }

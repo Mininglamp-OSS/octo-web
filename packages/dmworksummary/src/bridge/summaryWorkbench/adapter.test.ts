@@ -827,12 +827,14 @@ describe("summary workspace adapter", () => {
         contract_version: "2",
         max_time_range_days: 90,
         direct_team_workflow: true,
+        document_sources: true,
       })
     ).toEqual({
       enabled: true,
       contract_version: "2",
       max_time_range_days: 90,
       direct_team_workflow: true,
+      document_sources: true,
     });
     expect(
       decodeSummaryWorkspaceCapabilities({
@@ -844,6 +846,7 @@ describe("summary workspace adapter", () => {
       contract_version: "2",
       max_time_range_days: 31,
       direct_team_workflow: false,
+      document_sources: false,
     });
   });
 

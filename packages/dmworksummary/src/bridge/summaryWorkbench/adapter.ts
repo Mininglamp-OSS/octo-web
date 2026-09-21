@@ -328,6 +328,13 @@ export function decodeSummaryWorkspaceCapabilities(
             record.direct_team_workflow,
             "capabilities.direct_team_workflow"
           ),
+    document_sources:
+      record.document_sources === undefined
+        ? false
+        : requireBoolean(
+            record.document_sources,
+            "capabilities.document_sources"
+          ),
   };
 }
 

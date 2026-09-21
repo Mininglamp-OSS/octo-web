@@ -19,8 +19,6 @@ const mocks = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   modalConfirm: vi.fn(),
   loadParticipantCandidates: vi.fn(),
-  docsOn: false,
-  docsSearchOn: false,
 }));
 
 vi.mock("@octo/base", () => ({
@@ -51,15 +49,6 @@ vi.mock("@octo/base", () => ({
       push: mocks.routePush,
     },
     mittBus: { emit: mocks.busEmit },
-    remoteConfig: {
-      get docsOn() {
-        return mocks.docsOn;
-      },
-      get docsSearchOn() {
-        return mocks.docsSearchOn;
-      },
-      addConfigChangeListener: vi.fn(() => vi.fn()),
-    },
   },
 }));
 
@@ -95,15 +84,6 @@ vi.mock("@octo/base/src/App", () => ({
       push: mocks.routePush,
     },
     mittBus: { emit: mocks.busEmit },
-    remoteConfig: {
-      get docsOn() {
-        return mocks.docsOn;
-      },
-      get docsSearchOn() {
-        return mocks.docsSearchOn;
-      },
-      addConfigChangeListener: vi.fn(() => vi.fn()),
-    },
   },
 }));
 
@@ -437,8 +417,6 @@ function deferred<T>() {
 describe("SummaryWorkbenchFeature", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.docsOn = false;
-    mocks.docsSearchOn = false;
     localStorage.clear();
     mocks.loadParticipantCandidates.mockResolvedValue({
       members: [{ uid: "user-a", name: "Alex" }],
@@ -1089,7 +1067,7 @@ describe("SummaryWorkbenchFeature", () => {
     expect(mocks.loadParticipantCandidates).toHaveBeenCalledTimes(1);
   });
 
-  it("selects documents without relying on docs appconfig flags", () => {
+  it("selects documents when the Summary capability is enabled", () => {
     const current = controller({
       scope: scope({
         selectedChannels: [{ chatId: "chat-a", chatType: "group", name: "A" }],
@@ -1103,7 +1081,7 @@ describe("SummaryWorkbenchFeature", () => {
     });
     mocks.useSummaryWorkbench.mockReturnValue(current);
 
-    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+    render(<SummaryWorkbenchFeature spaceId="space-a" documentSourcesAvailable />, {
       legacyRoot: true,
     });
     expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
@@ -1135,7 +1113,7 @@ describe("SummaryWorkbenchFeature", () => {
       },
     });
     mocks.useSummaryWorkbench.mockReturnValue(current);
-    render(<SummaryWorkbenchFeature spaceId="space-a" />, { legacyRoot: true });
+    render(<SummaryWorkbenchFeature spaceId="space-a" documentSourcesAvailable />, { legacyRoot: true });
     fireEvent.click(screen.getByRole("button", { name: `open-${picker}` }));
     fireEvent.click(screen.getByRole("button", { name: `empty-${picker}` }));
     expect(current.updateScope).not.toHaveBeenCalled();
@@ -1150,7 +1128,7 @@ describe("SummaryWorkbenchFeature", () => {
         : { selectedChannels: [{ chatId: "chat-a", chatType: "group", name: "A" }] }),
     });
     mocks.useSummaryWorkbench.mockReturnValue(current);
-    render(<SummaryWorkbenchFeature spaceId="space-a" />, { legacyRoot: true });
+    render(<SummaryWorkbenchFeature spaceId="space-a" documentSourcesAvailable />, { legacyRoot: true });
     fireEvent.click(screen.getByRole("button", { name: `open-${picker}` }));
     fireEvent.click(screen.getByRole("button", { name: `empty-${picker}` }));
     expect(current.updateScope).toHaveBeenCalledWith(expect.objectContaining({ selectedChannels: [], documents: [] }));
@@ -1166,18 +1144,15 @@ describe("SummaryWorkbenchFeature", () => {
       },
     });
     mocks.useSummaryWorkbench.mockReturnValue(current);
-    render(<SummaryWorkbenchFeature spaceId="space-a" />, { legacyRoot: true });
+    render(<SummaryWorkbenchFeature spaceId="space-a" documentSourcesAvailable />, { legacyRoot: true });
     fireEvent.click(screen.getByRole("button", { name: "open-chat" }));
     fireEvent.click(screen.getByRole("button", { name: "choose-chat" }));
     expect(mocks.modalConfirm).toHaveBeenCalledOnce();
     expect(current.updateScope).not.toHaveBeenCalled();
   });
 
-  it("allows a persisted document scope without docs appconfig flags", () => {
-    const send = vi.fn().mockResolvedValue({
-      resultType: "agent_preview",
-      preview: { content: "Draft" },
-    });
+  it("blocks a persisted document scope when Summary capability is unavailable", () => {
+    const send = vi.fn();
     mocks.useSummaryWorkbench.mockReturnValue(
       controller({
         scope: scope({
@@ -1198,10 +1173,13 @@ describe("SummaryWorkbenchFeature", () => {
 
     expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
       "data-can-send",
-      "true"
+      "false"
     );
     fireEvent.click(screen.getByRole("button", { name: "send" }));
-    expect(send).toHaveBeenCalledOnce();
+    expect(send).not.toHaveBeenCalled();
+    expect(mocks.toastWarning).toHaveBeenCalledWith(
+      "summary.create.documentSourceUnavailable"
+    );
   });
 
   it("defers participant pruning until an in-flight save settles", async () => {
