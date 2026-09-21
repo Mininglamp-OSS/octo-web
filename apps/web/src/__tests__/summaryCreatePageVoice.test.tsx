@@ -54,10 +54,18 @@ vi.mock("@octo/base/src/Service/VoiceSettingsStore", () => ({
   },
 }));
 
-vi.mock("@dmwork/summary/src/api/summaryApi", () => ({
+vi.mock("@dmwork/summary/src/api/summaryApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@dmwork/summary/src/api/summaryApi")>()),
   getTemplates: vi.fn().mockResolvedValue([]),
   createSummary: vi.fn().mockResolvedValue({ task_id: 1 }),
   createSchedule: vi.fn().mockResolvedValue({}),
+  getSummaryWorkspaceCapabilities: vi.fn().mockResolvedValue({
+    enabled: false,
+    contract_version: "2",
+    max_time_range_days: 90,
+    direct_team_workflow: false,
+    document_sources: false,
+  }),
 }));
 
 vi.mock("@dmwork/summary/src/pages/SummaryDetailPage", () => ({
