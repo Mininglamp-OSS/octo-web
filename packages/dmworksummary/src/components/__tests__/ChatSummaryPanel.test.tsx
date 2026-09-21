@@ -380,5 +380,89 @@ describe('ChatSummaryPanel', () => {
             fireEvent.mouseUp(document);
             expect(localStorage.getItem('wk-summary-panel-width')).toBe('700');
         });
+
+        it('retains the saved preference across consecutive no-op outward drags', () => {
+            localStorage.setItem('wk-summary-panel-width', '700');
+            const { container } = render(
+                <div className="wk-chat-content-right" data-chat-panel-layout="split">
+                    <div className="wk-summary-panel">
+                        <ChatSummaryPanel visible channel={channel} onClose={onClose} />
+                    </div>
+                </div>,
+            );
+            const panel = container.querySelector<HTMLElement>('.wk-summary-panel')!;
+            const right = container.querySelector<HTMLElement>('.wk-chat-content-right')!;
+            panel.getBoundingClientRect = () => new DOMRect(0, 0, 568, 600);
+            right.getBoundingClientRect = () => new DOMRect(0, 0, 1000, 600);
+            const splitter = container.querySelector('.wk-thread-panel-splitter')!;
+            for (let gesture = 0; gesture < 2; gesture++) {
+                fireEvent.mouseDown(splitter, { clientX: 600 });
+                fireEvent.mouseMove(document, { clientX: 590 });
+                fireEvent.mouseMove(document, { clientX: 580 });
+                fireEvent.mouseMove(document, { clientX: 570 });
+                fireEvent.mouseUp(document);
+                expect(localStorage.getItem('wk-summary-panel-width')).toBe('700');
+            }
+            fireEvent.mouseDown(splitter, { clientX: 600 });
+            fireEvent.mouseUp(document);
+            expect(localStorage.getItem('wk-summary-panel-width')).toBe('700');
+            expect(panel.style.getPropertyValue('--wk-width-summary-panel')).toBe('700px');
+            expect(right.style.getPropertyValue('--wk-width-summary-panel')).toBe('700px');
+        });
+
+        it('still allows an effective inward drag after a no-op outward drag', () => {
+            localStorage.setItem('wk-summary-panel-width', '700');
+            const { container } = render(
+                <div className="wk-chat-content-right" data-chat-panel-layout="split">
+                    <div className="wk-summary-panel">
+                        <ChatSummaryPanel visible channel={channel} onClose={onClose} />
+                    </div>
+                </div>,
+            );
+            const splitter = container.querySelector<HTMLElement>('.wk-thread-panel-splitter')!;
+            const panel = container.querySelector<HTMLElement>('.wk-summary-panel')!;
+            const right = container.querySelector<HTMLElement>('.wk-chat-content-right')!;
+            panel.getBoundingClientRect = () => new DOMRect(0, 0, 568, 600);
+            right.getBoundingClientRect = () => new DOMRect(0, 0, 1000, 600);
+
+            fireEvent.mouseDown(splitter, { clientX: 600 });
+            fireEvent.mouseMove(document, { clientX: 580 });
+            fireEvent.mouseUp(document);
+            expect(localStorage.getItem('wk-summary-panel-width')).toBe('700');
+
+            fireEvent.mouseDown(splitter, { clientX: 600 });
+            fireEvent.mouseMove(document, { clientX: 610 });
+            fireEvent.mouseUp(document);
+            expect(localStorage.getItem('wk-summary-panel-width')).toBe('558');
+            expect(panel.style.getPropertyValue('--wk-width-summary-panel')).toBe('558px');
+            expect(right.style.getPropertyValue('--wk-width-summary-panel')).toBe('558px');
+        });
+
+        it('within one gesture shrinks inward then expands outward back to the CSS cap', () => {
+            localStorage.setItem('wk-summary-panel-width', '700');
+            const { container } = render(
+                <div className="wk-chat-content-right" data-chat-panel-layout="split">
+                    <div className="wk-summary-panel">
+                        <ChatSummaryPanel visible channel={channel} onClose={onClose} />
+                    </div>
+                </div>,
+            );
+            const splitter = container.querySelector<HTMLElement>('.wk-thread-panel-splitter')!;
+            const panel = container.querySelector<HTMLElement>('.wk-summary-panel')!;
+            const right = container.querySelector<HTMLElement>('.wk-chat-content-right')!;
+            panel.getBoundingClientRect = () => new DOMRect(0, 0,
+                Math.min(568, parseFloat(panel.style.getPropertyValue('--wk-width-summary-panel'))), 600);
+            right.getBoundingClientRect = () => new DOMRect(0, 0, 1000, 600);
+
+            fireEvent.mouseDown(splitter, { clientX: 600 });
+            fireEvent.mouseMove(document, { clientX: 610 });
+            expect(panel.style.getPropertyValue('--wk-width-summary-panel')).toBe('558px');
+            fireEvent.mouseMove(document, { clientX: 570 });
+            fireEvent.mouseUp(document);
+
+            expect(localStorage.getItem('wk-summary-panel-width')).toBe('568');
+            expect(panel.style.getPropertyValue('--wk-width-summary-panel')).toBe('568px');
+            expect(right.style.getPropertyValue('--wk-width-summary-panel')).toBe('568px');
+        });
     });
 });

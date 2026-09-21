@@ -121,6 +121,27 @@ test("splitter continues from the visible width after resizing", async ({ page }
   expect(await page.evaluate(() => localStorage.getItem("wk-summary-panel-width"))).toBe("558");
 });
 
+test("outward dragging at the container cap keeps the wider saved preference", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 800 });
+  await openSummaryFixture(page, `${fixture}?platform=web&width=700`);
+  await expectReadableWorkbench(page);
+  const panel = page.locator(".wk-summary-panel");
+  await expect(panel).toHaveCSS("width", "568px");
+  const splitter = await page.locator(".wk-thread-panel-splitter").boundingBox();
+  expect(splitter).not.toBeNull();
+  const x = splitter!.x + splitter!.width / 2;
+  const y = splitter!.y + 100;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x - 10, y);
+  await page.mouse.move(x - 40, y);
+  await page.mouse.up();
+  await expect(panel).toHaveCSS("width", "568px");
+  expect(await page.evaluate(() => localStorage.getItem("wk-summary-panel-width"))).toBe("700");
+  await page.setViewportSize({ width: 1440, height: 800 });
+  await expect(panel).toHaveCSS("width", "700px");
+});
+
 for (const platform of ["darwin", "win32", "web"]) {
   test(`${platform}: legacy templates and reference preview fit a narrow sidebar`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 800 });

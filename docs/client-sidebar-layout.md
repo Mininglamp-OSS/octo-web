@@ -7,7 +7,15 @@ flows. Summary uses the same split/overlay decision as other compact chat tools:
 the conversation keeps at least 432 CSS pixels, and the panel gets at least 320.
 Narrower content surfaces show the panel over the conversation without unmounting
 either during resizing. Preferred summary width remains independent of thread
-width and is not overwritten by window resizing.
+width and is not overwritten by window resizing or outward splitter drags that
+cannot change the rendered width because the container is already at its limit.
+Effective inward drags and later direction changes still update the preference.
+
+If a non-inline native attachment preview takes over while Summary is already
+open, Summary is hidden without unmounting it. Closing the preview restores the
+same draft in the current split/overlay layout. The visible Summary class and its
+layout attribute share the same visibility condition. Inline previews and Web
+fallback previews retain the existing panel-replacement behavior.
 
 Workbench headers, composer controls and template grids respond to their own
 container width, including ordinary Web and standalone Summary. Narrow reference
@@ -80,8 +88,11 @@ pnpm --dir apps/web exec playwright test --config=e2e-kit/playwright.desktop.con
 
 The DEV-only fixture is `e2e-kit/fixtures/desktop-summary-sidebar.html`.
 Query parameters cover `platform=darwin|win32|web`, `width`, `zoom`, `theme`,
-`locale`, `history`, `legacy`, `standalone`, `fallback`, and `media`.
-Only fixture data transport is stubbed; no backend or native Client is required.
+`locale`, `history`, `legacy`, `standalone`, `fallback`, `media`, and `host-preview`.
+The host-preview mode uses the real ChatContentPage lifecycle, event handlers,
+layout observer and rendered panel tree. It substitutes the conversation message
+renderer and native bridge, while keeping the production Summary component.
+Other modes stub data transport only. No backend or native Client is required.
 
 ## CI Startup
 
@@ -119,6 +130,26 @@ accepted source and preserves the rendered split/overlay attributes, including
 late acceptance after cancellation.
 Ordinary Web, Client communication and Client Summary production builds also
 passed; local Client builds used the dirty-artifact override for validation only.
+
+The next review correctly identified the reverse ordering: Summary open first,
+then a non-inline native preview is accepted. Two new transition cases and two
+browser cases failed on `28b8882e` before the visibility fix. The browser fixture
+now drives the real ChatContentPage events and verifies the panel is hidden,
+the conversation occupies its full width, and the exact textarea node and draft
+return after closing the preview, including a resize into overlay layout.
+Inline and unsupported-fallback replacement paths remain covered.
+
+The capped outward-drag regression also checks both the saved preference and
+CSS variables, then widens the window to verify the 700-pixel preference returns.
+Unit cases additionally cover consecutive gestures, an effective inward drag
+after a no-op, and reversing direction within a single gesture.
+
+This follow-up passed 1720 Summary unit tests, 170 targeted chat/preview/search
+tests, all 111 desktop browser tests with a fresh Vite cache and zero retries,
+and all three Web/communication/Summary production builds. The desktop discovery
+floor is now 111. The modified Chat stylesheet has no Stylelint errors and eight
+existing warnings; i18n and diff checks pass. Native authenticated acceptance
+remains outside this verification.
 
 ## Visual Evidence
 

@@ -1010,6 +1010,11 @@ button.wk-chat-conversation-header-right-item:focus-visible {
   container-name: wk-summary;
 }
 
+/* Keep the draft mounted while a native preview owns the auxiliary surface. */
+.wk-summary-panel[hidden] {
+  display: none;
+}
+
 .wk-chat-summary-panel-open[data-chat-panel-layout="split"] {
   --wk-summary-panel-width: min(var(--wk-width-summary-panel), calc(100% - 432px));
 }

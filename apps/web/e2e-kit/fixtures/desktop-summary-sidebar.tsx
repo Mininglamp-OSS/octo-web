@@ -35,7 +35,8 @@ const task: SummaryListItem = {
 };
 
 // Install before importing business modules, so their axios instances inherit it.
-// Only data transport is replaced; rendering, navigation and layout are production code.
+// Summary rendering, navigation and layout are production code. The optional
+// host-preview fixture also substitutes its message renderer and native bridge.
 axios.defaults.adapter = async config => {
   const path = new URL(config.url!, location.origin).pathname;
   let data: unknown;
@@ -68,6 +69,8 @@ async function bootstrap() {
   const { default: ChatSummaryPanel } = await import("../../../../packages/dmworksummary/src/components/ChatSummaryPanel");
   const { default: SummaryWorkbenchCreateEntry } = await import("../../../../packages/dmworksummary/src/features/summaryWorkbench/SummaryWorkbenchCreateEntry");
   const { MediaResultGrid } = await import("../../../../packages/dmworkbase/src/features/channelSearch/ChannelSearchResults");
+  const HostPreviewFixture = params.has("host-preview")
+    ? (await import("./desktop-summary-host-preview")).default : null;
   WKApp.shared.currentSpaceId = "sidebar-fixture";
   WKApp.loginInfo.uid = "fixture-user";
   WKApp.apiClient.config.apiURL = location.origin;
@@ -134,6 +137,8 @@ async function bootstrap() {
           <div className="wk-channel-search-content" style={{ width, maxWidth: "100%" }}>
             <MediaResultGrid items={media} onLocate={() => undefined} />
           </div>
+        ) : HostPreviewFixture ? (
+          <HostPreviewFixture width={width} />
         ) : params.has("standalone") ? (
           <main style={{ width, maxWidth: "100%", height: "100%" }}>
             <SummaryWorkbenchCreateEntry channel={{ channelID: "fixture-channel", channelType: 2 }} />

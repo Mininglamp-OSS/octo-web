@@ -118,6 +118,10 @@ export default class ChatSummaryPanel extends Component<
                 SUMMARY_MAX_WIDTH, contentWidth - CHAT_CONTENT_MIN_WIDTH, this.dragStartWidth + delta,
             ))
             : clampSummaryWidth(this.dragStartWidth + delta, window.innerWidth);
+        const panel = this.rootRef.current?.closest<HTMLElement>('.wk-summary-panel');
+        const renderedWidth = panel?.getBoundingClientRect().width;
+        // A drag blocked by the container must not replace a wider preference.
+        if (renderedWidth !== undefined && Math.abs(newWidth - renderedWidth) <= 0.5) return;
         this.lastPanelWidth = newWidth;
         // 直接改 style / CSS 变量，不走 setState，避免拖动卡顿
         this.applyWidth(newWidth);
