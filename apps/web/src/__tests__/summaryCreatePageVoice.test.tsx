@@ -39,6 +39,10 @@ vi.mock("react-virtuoso", () => ({
 
 vi.mock("@octo/base/src/App", () => ({
   default: {
+    mittBus: {
+      on: vi.fn(),
+      off: vi.fn(),
+    },
     routeRight: {
       popToRoot: vi.fn(),
       push: vi.fn(),

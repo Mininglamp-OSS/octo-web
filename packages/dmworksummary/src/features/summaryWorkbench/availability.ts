@@ -28,7 +28,7 @@ export interface SummaryWorkbenchEnabledAvailability {
   contractVersion: typeof SUMMARY_WORKSPACE_CONTRACT_VERSION;
   maxTimeRangeDays: number;
   directTeamWorkflow: boolean;
-  documentSources: boolean;
+  documentSources?: boolean;
   checkedAt: number;
 }
 
@@ -38,7 +38,7 @@ export interface SummaryWorkbenchDisabledAvailability {
   spaceId: string;
   reason: Exclude<SummaryWorkbenchAvailabilityReason, "supported">;
   contractVersion?: string;
-  documentSources: boolean;
+  documentSources?: boolean;
   checkedAt: number;
 }
 
@@ -212,7 +212,10 @@ export class SummaryWorkbenchAvailability {
       return first;
     })()
       .then((decision) => {
-        if (this.pending.get(spaceId) === pending) {
+        if (
+          this.pending.get(spaceId) === pending &&
+          shouldCacheCapabilityDecision(decision)
+        ) {
           this.cache.set(spaceId, decision);
         }
         return decision;
@@ -274,7 +277,12 @@ export class SummaryWorkbenchAvailability {
       return this.disabledDecision(spaceId, "invalid_response");
     }
     if (value.contract_version !== SUMMARY_WORKSPACE_CONTRACT_VERSION) {
-      return this.disabledDecision(spaceId, "unsupported_contract", value.contract_version);
+      return this.disabledDecision(
+        spaceId,
+        "unsupported_contract",
+        value.contract_version,
+        value.document_sources
+      );
     }
     if (value.enabled !== true) {
       return this.disabledDecision(
@@ -292,7 +300,9 @@ export class SummaryWorkbenchAvailability {
       contractVersion: SUMMARY_WORKSPACE_CONTRACT_VERSION,
       maxTimeRangeDays: value.max_time_range_days,
       directTeamWorkflow: value.direct_team_workflow,
-      documentSources: value.document_sources,
+      ...(value.document_sources === undefined
+        ? {}
+        : { documentSources: value.document_sources }),
       checkedAt: this.now(),
     };
   }
@@ -322,7 +332,7 @@ export class SummaryWorkbenchAvailability {
     spaceId: string,
     reason: SummaryWorkbenchDisabledAvailability["reason"],
     contractVersion?: string,
-    documentSources = false
+    documentSources?: boolean
   ): SummaryWorkbenchDisabledAvailability {
     return {
       status: "disabled",
@@ -330,7 +340,7 @@ export class SummaryWorkbenchAvailability {
       spaceId,
       reason,
       ...(contractVersion ? { contractVersion } : {}),
-      documentSources,
+      ...(documentSources === undefined ? {} : { documentSources }),
       checkedAt: this.now(),
     };
   }
@@ -401,6 +411,16 @@ function shouldRetryCapabilityDecision(
   );
 }
 
+function shouldCacheCapabilityDecision(
+  decision: SummaryWorkbenchAvailabilityDecision
+): boolean {
+  return (
+    decision.status === "enabled" ||
+    decision.reason === "server_disabled" ||
+    decision.reason === "unsupported_contract"
+  );
+}
+
 function isCapabilities(value: unknown): value is SummaryWorkspaceCapabilitiesDTO {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
@@ -413,6 +433,7 @@ function isCapabilities(value: unknown): value is SummaryWorkspaceCapabilitiesDT
     Number.isInteger(record.max_time_range_days) &&
     record.max_time_range_days > 0 &&
     typeof record.direct_team_workflow === "boolean" &&
-    typeof record.document_sources === "boolean"
+    (record.document_sources === undefined ||
+      typeof record.document_sources === "boolean")
   );
 }

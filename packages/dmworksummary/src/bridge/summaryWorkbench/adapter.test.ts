@@ -846,17 +846,20 @@ describe("summary workspace adapter", () => {
       contract_version: "2",
       max_time_range_days: 31,
       direct_team_workflow: false,
-      document_sources: false,
     });
   });
 
-  it("rejects unsupported contract versions", () => {
-    expect(() =>
+  it("preserves unsupported contract versions for the availability gate", () => {
+    expect(
       decodeSummaryWorkspaceCapabilities({
         enabled: true,
         contract_version: "3",
+        document_sources: true,
       })
-    ).toThrow("capabilities.contract_version must be 2");
+    ).toMatchObject({
+      contract_version: "3",
+      document_sources: true,
+    });
 
     expect(() =>
       adaptSummaryWorkspaceTurn({
@@ -879,6 +882,14 @@ describe("summary workspace adapter", () => {
         state: emptyState(),
       })
     ).toThrow("history.contract_version must be 2");
+
+    expect(() =>
+      decodeSummaryWorkspaceCapabilities({
+        enabled: true,
+        contract_version: "2",
+        document_sources: "yes",
+      })
+    ).toThrow("capabilities.document_sources must be a boolean");
   });
 
   it("decodes the existing agent-save task response", () => {

@@ -125,6 +125,32 @@ describe("SummaryWorkbenchAvailability", () => {
         });
     });
 
+    it("preserves an explicit document capability across an unsupported Workbench contract", async () => {
+        const availability = new SummaryWorkbenchAvailability({
+            getCapabilities: vi.fn().mockResolvedValue(capability(true, "3")),
+        });
+
+        await expect(availability.resolve("space-a")).resolves.toMatchObject({
+            status: "disabled",
+            reason: "unsupported_contract",
+            documentSources: true,
+        });
+    });
+
+    it("keeps an omitted document capability unknown for older servers", async () => {
+        const availability = new SummaryWorkbenchAvailability({
+            getCapabilities: vi.fn().mockResolvedValue({
+                enabled: true,
+                contract_version: "2",
+                max_time_range_days: 90,
+                direct_team_workflow: false,
+            }),
+        });
+
+        const decision = await availability.resolve("space-a");
+        expect(decision).not.toHaveProperty("documentSources");
+    });
+
     it("fails closed for 404 and protocol errors", async () => {
         const notFound = new SummaryWorkbenchAvailability({
             getCapabilities: vi.fn().mockRejectedValue(
@@ -144,17 +170,22 @@ describe("SummaryWorkbenchAvailability", () => {
             ),
         });
 
-        await expect(notFound.resolve("space-a")).resolves.toMatchObject({
+        const notFoundDecision = await notFound.resolve("space-a");
+        expect(notFoundDecision).toMatchObject({
             status: "disabled",
             reason: "not_found",
         });
-        await expect(invalid.resolve("space-a")).resolves.toMatchObject({
+        expect(notFoundDecision).not.toHaveProperty("documentSources");
+
+        const invalidDecision = await invalid.resolve("space-a");
+        expect(invalidDecision).toMatchObject({
             status: "disabled",
             reason: "invalid_response",
         });
+        expect(invalidDecision).not.toHaveProperty("documentSources");
     });
 
-    it("retries one timeout, aborts both transport signals, and caches the fail-closed decision", async () => {
+    it("retries one timeout, aborts both transport signals, and does not cache the transient decision", async () => {
         vi.useFakeTimers();
         const transportSignals: AbortSignal[] = [];
         const source: SummaryWorkbenchCapabilitySource = {
@@ -178,8 +209,12 @@ describe("SummaryWorkbenchAvailability", () => {
         });
         expect(transportSignals).toHaveLength(2);
         expect(transportSignals.every((signal) => signal.aborted)).toBe(true);
-        await availability.resolve("space-a");
-        expect(source.getCapabilities).toHaveBeenCalledTimes(2);
+        const retry = availability.resolve("space-a");
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(50);
+        await vi.advanceTimersByTimeAsync(50);
+        await expect(retry).resolves.toMatchObject({ reason: "timeout" });
+        expect(source.getCapabilities).toHaveBeenCalledTimes(4);
     });
 
     it("recovers when the single retry succeeds after a transient failure", async () => {

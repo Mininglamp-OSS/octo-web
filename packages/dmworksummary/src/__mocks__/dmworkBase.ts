@@ -81,7 +81,22 @@ export const WKApp = {
   loginInfo: { token: 'test-token-abc', uid: 'test-uid', isLogined: () => true },
   shared: { currentSpaceId: 'space-123', deviceId: 'test-device-uuid', logout: () => {}, avatarUser: () => '' },
   routeRight: { push: () => {}, replaceToRoot: () => {}, popToRoot: () => {} },
-  mittBus: { on: () => {}, off: () => {}, emit: () => {} },
+  mittBus: {
+    on: (event: string, listener: () => void) => {
+      let listeners = __mittListeners.get(event);
+      if (!listeners) {
+        listeners = new Set();
+        __mittListeners.set(event, listeners);
+      }
+      listeners.add(listener);
+    },
+    off: (event: string, listener: () => void) => {
+      __mittListeners.get(event)?.delete(listener);
+    },
+    emit: (event: string) => {
+      for (const listener of [...(__mittListeners.get(event) ?? [])]) listener();
+    },
+  },
   apiClient: {},
   endpoints: { showConversation: () => {} },
   menus: { menusList: () => [], refresh: () => {} },
@@ -173,6 +188,7 @@ export const copyToClipboard = async (_text: string): Promise<boolean> => true;
 let __docsConvertHandler: ((p: { title: string; markdown: string }) => Promise<{ docId: string; url: string }>) | null = null;
 let __docsOn = false;
 let __docsSearchOn = false;
+const __mittListeners = new Map<string, Set<() => void>>();
 
 export const __setDocsConvertHandler = (h: typeof __docsConvertHandler) => { __docsConvertHandler = h; };
 export const __setDocsOn = (v: boolean) => { __docsOn = v; };
@@ -182,6 +198,7 @@ export const __resetDocsPort = () => {
   __docsOn = false;
   __docsSearchOn = false;
   __configChangeListeners.clear();
+  __mittListeners.clear();
 };
 
 const __configChangeListeners = new Set<() => void>();

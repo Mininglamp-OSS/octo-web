@@ -310,7 +310,7 @@ export function decodeSummaryWorkspaceCapabilities(
   const record = requireRecord(value, "capabilities");
   return {
     enabled: requireBoolean(record.enabled, "capabilities.enabled"),
-    contract_version: requireContractVersion(
+    contract_version: requireString(
       record.contract_version,
       "capabilities.contract_version"
     ),
@@ -328,13 +328,14 @@ export function decodeSummaryWorkspaceCapabilities(
             record.direct_team_workflow,
             "capabilities.direct_team_workflow"
           ),
-    document_sources:
-      record.document_sources === undefined
-        ? false
-        : requireBoolean(
+    ...(record.document_sources === undefined
+      ? {}
+      : {
+          document_sources: requireBoolean(
             record.document_sources,
             "capabilities.document_sources"
           ),
+        }),
   };
 }
 

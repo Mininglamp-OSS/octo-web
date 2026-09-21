@@ -1,20 +1,22 @@
 import React from 'react';
 import { render as rtlRender, screen, fireEvent, act } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import SummaryCreatePage from '../SummaryCreatePage';
 import * as api from '../../api/summaryApi';
-import { Dap } from '@octo/base';
+import { Dap, WKApp } from '@octo/base';
 import { isAgentSummaryNotificationEligible } from '../../utils/groupSummaryNotify';
 import { summaryTestIds } from '../../utils/testIds';
 
 import * as summaryHelpers from '../../utils/summaryHelpers';
 const capabilityMocks = vi.hoisted(() => ({
     resolve: vi.fn().mockResolvedValue({ documentSources: false }),
+    invalidate: vi.fn(),
 }));
 
 vi.mock('../../features/summaryWorkbench/availability', () => ({
     summaryWorkbenchAvailability: {
         resolve: capabilityMocks.resolve,
+        invalidate: capabilityMocks.invalidate,
     },
 }));
 
@@ -291,7 +293,54 @@ describe('SummaryCreatePage document sources', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         __resetDocsPort();
+        WKApp.shared.currentSpaceId = 'space-123';
         capabilityMocks.resolve.mockResolvedValue({ documentSources: true });
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('recovers document capability when the current Space becomes ready', async () => {
+        WKApp.shared.currentSpaceId = '';
+        await act(async () => {
+            render(<SummaryCreatePage />);
+            await flushPromises();
+        });
+        expect(capabilityMocks.resolve).not.toHaveBeenCalled();
+        expect(screen.queryByTestId(summaryTestIds.createSelectDocument)).not.toBeInTheDocument();
+
+        WKApp.shared.currentSpaceId = 'space-ready';
+        await act(async () => {
+            WKApp.mittBus.emit('space-ready');
+            await flushPromises();
+        });
+
+        expect(capabilityMocks.resolve).toHaveBeenCalledWith(
+            'space-ready',
+            expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        );
+        expect(screen.getByTestId(summaryTestIds.createSelectDocument)).toBeInTheDocument();
+    });
+
+    it('retries an unknown capability decision and restores the document entry', async () => {
+        vi.useFakeTimers();
+        capabilityMocks.resolve
+            .mockResolvedValueOnce({ reason: 'timeout' })
+            .mockResolvedValueOnce({ documentSources: true });
+
+        await act(async () => {
+            render(<SummaryCreatePage />);
+            await Promise.resolve();
+        });
+        expect(screen.queryByTestId(summaryTestIds.createSelectDocument)).not.toBeInTheDocument();
+
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(5_000);
+        });
+
+        expect(capabilityMocks.invalidate).toHaveBeenCalledWith('space-123');
+        expect(screen.getByTestId(summaryTestIds.createSelectDocument)).toBeInTheDocument();
     });
 
     it.each(['chat', 'document'] as const)('empty %s confirmation does not erase the other source', async (picker) => {
@@ -388,24 +437,27 @@ describe('SummaryCreatePage document sources', () => {
         );
     });
 
-    it('hides document entry and blocks a stale selection when Summary capability is off', async () => {
+    it('closes the picker and blocks selected documents when Summary capability is revoked', async () => {
         const { Toast } = await import('@douyinfe/semi-ui');
-        capabilityMocks.resolve.mockResolvedValueOnce({ documentSources: false });
-        const ref = React.createRef<SummaryCreatePage>();
         await act(async () => {
-            render(<SummaryCreatePage ref={ref} embedded onSubmit={vi.fn()} />);
+            render(<SummaryCreatePage embedded onSubmit={vi.fn()} />);
+            await flushPromises();
+        });
+
+        const textarea = document.querySelector('.summary-workbench-textarea') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: '总结项目文档' } });
+        fireEvent.click(screen.getByTestId(summaryTestIds.createSelectDocument));
+        fireEvent.click(screen.getByTestId('document-picker-confirm-fixture'));
+        expect(screen.getByText('项目复盘')).toBeInTheDocument();
+
+        capabilityMocks.resolve.mockResolvedValueOnce({ documentSources: false });
+        await act(async () => {
+            window.dispatchEvent(new Event('focus'));
             await flushPromises();
         });
 
         expect(screen.queryByTestId(summaryTestIds.createSelectDocument)).not.toBeInTheDocument();
-        act(() => ref.current!.setState({
-            topic: '总结项目文档',
-            selectedDocuments: [{ docId: 'doc-1', title: '项目复盘', docType: 'doc', updatedAt: null }],
-        }));
-        await act(async () => {
-            await ref.current!.handleSubmit();
-        });
-
+        fireEvent.click(screen.getByTestId(summaryTestIds.createSubmit));
         expect(api.createSummary).not.toHaveBeenCalled();
         expect(Toast.warning).toHaveBeenCalledWith('文档总结入口已关闭，请移除文档后重试');
     });

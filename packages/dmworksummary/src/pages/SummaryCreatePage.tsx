@@ -88,6 +88,7 @@ import type { SummaryMessagingPort } from "../host";
 import { summaryWorkbenchAvailability } from "../features/summaryWorkbench/availability";
 
 const { Text } = Typography;
+const DOCUMENT_CAPABILITY_RETRY_MS = 5_000;
 
 interface SummaryCreatePageProps {
     onCreated?: () => void;
@@ -237,18 +238,61 @@ export default class SummaryCreatePage extends Component<
     // 同步实例锁：防快速双击/回车的竞态（React state 未刷新时仍能拦住第二次）。
     private agentSendInFlight = false;
     private documentCapabilityAbortController: AbortController | null = null;
+    private documentCapabilityRetryTimer: ReturnType<typeof setTimeout> | null = null;
+    private documentCapabilitySpaceId = "";
 
-    private loadDocumentSourceCapability = () => {
+    private clearDocumentCapabilityRetry = () => {
+        if (this.documentCapabilityRetryTimer !== null) {
+            clearTimeout(this.documentCapabilityRetryTimer);
+            this.documentCapabilityRetryTimer = null;
+        }
+    };
+
+    private scheduleDocumentCapabilityRetry = () => {
+        this.clearDocumentCapabilityRetry();
+        this.documentCapabilityRetryTimer = setTimeout(() => {
+            this.documentCapabilityRetryTimer = null;
+            this.loadDocumentSourceCapability(true);
+        }, DOCUMENT_CAPABILITY_RETRY_MS);
+    };
+
+    private loadDocumentSourceCapability = (invalidate = false) => {
         if (this.props.documentSourcesAvailable !== undefined) return;
+        this.clearDocumentCapabilityRetry();
+        this.documentCapabilityAbortController?.abort();
+        const spaceId = String(WKApp.shared?.currentSpaceId ?? "").trim();
+        this.documentCapabilitySpaceId = spaceId;
+        if (!spaceId) return;
+        if (invalidate) summaryWorkbenchAvailability.invalidate(spaceId);
         const controller = new AbortController();
         this.documentCapabilityAbortController = controller;
         void summaryWorkbenchAvailability.resolve(
-          WKApp.shared?.currentSpaceId || "",
+          spaceId,
           { signal: controller.signal }
         ).then((decision) => {
           if (controller.signal.aborted) return;
-          this.setState({ canSelectDocuments: decision.documentSources });
+          this.documentCapabilityAbortController = null;
+          if (decision.documentSources === undefined) {
+              this.scheduleDocumentCapabilityRetry();
+              return;
+          }
+          this.setState({
+              canSelectDocuments: decision.documentSources,
+              ...(decision.documentSources ? {} : { showDocumentSelector: false }),
+          });
         });
+    };
+
+    private handleDocumentCapabilityContextChange = () => {
+        if (this.props.documentSourcesAvailable !== undefined) return;
+        const nextSpaceId = String(WKApp.shared?.currentSpaceId ?? "").trim();
+        if (nextSpaceId !== this.documentCapabilitySpaceId) {
+            this.setState({
+                canSelectDocuments: false,
+                showDocumentSelector: false,
+            });
+        }
+        this.loadDocumentSourceCapability(true);
     };
 
     // 完整创建页无频道上下文：session_id 落到统一兜底 key（见 summaryHelpers）。
@@ -359,6 +403,11 @@ export default class SummaryCreatePage extends Component<
 
     componentDidMount() {
         void this.loadTemplates();
+        if (this.props.documentSourcesAvailable === undefined) {
+            WKApp.mittBus.on("space-changed", this.handleDocumentCapabilityContextChange);
+            WKApp.mittBus.on("space-ready", this.handleDocumentCapabilityContextChange);
+            window.addEventListener("focus", this.handleDocumentCapabilityContextChange);
+        }
         this.loadDocumentSourceCapability();
         // select-chat 宽度计算 + 芯片溢出检测
         this.updateSelectChatWidth();
@@ -408,6 +457,10 @@ export default class SummaryCreatePage extends Component<
     componentWillUnmount() {
         this.documentCapabilityAbortController?.abort();
         this.documentCapabilityAbortController = null;
+        this.clearDocumentCapabilityRetry();
+        WKApp.mittBus.off("space-changed", this.handleDocumentCapabilityContextChange);
+        WKApp.mittBus.off("space-ready", this.handleDocumentCapabilityContextChange);
+        window.removeEventListener("focus", this.handleDocumentCapabilityContextChange);
         this.chipResizeObserver?.disconnect();
         // 防抖计时器若不清，卸载后仍可能补发 smart_summary_theme_input（用户已离开页面）。
         if (this.themeTrackTimer) {
