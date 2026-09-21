@@ -297,11 +297,12 @@ export default class SummaryCreatePage extends Component<
     private handleDocumentCapabilityContextChange = () => {
         if (this.props.documentSourcesAvailable !== undefined) return;
         const nextSpaceId = String(WKApp.shared?.currentSpaceId ?? "").trim();
+        this.documentCapabilityRetryAttempt = 0;
         if (nextSpaceId !== this.documentCapabilitySpaceId) {
-            this.documentCapabilityRetryAttempt = 0;
             this.setState({
                 canSelectDocuments: false,
                 showDocumentSelector: false,
+                selectedDocuments: [],
             });
         }
         this.loadDocumentSourceCapability();
@@ -485,6 +486,21 @@ export default class SummaryCreatePage extends Component<
     prevProps: SummaryCreatePageProps,
     prevState: SummaryCreatePageState
   ) {
+        if (
+            prevProps.documentSourcesAvailable !==
+            this.props.documentSourcesAvailable &&
+            this.props.documentSourcesAvailable !== undefined
+        ) {
+            this.documentCapabilityAbortController?.abort();
+            this.documentCapabilityAbortController = null;
+            this.clearDocumentCapabilityRetry();
+            this.documentCapabilityRetryAttempt = 0;
+            const canSelectDocuments = this.props.documentSourcesAvailable;
+            this.setState({
+                canSelectDocuments,
+                ...(canSelectDocuments ? {} : { showDocumentSelector: false }),
+            });
+        }
         // selectedChats 或 mode 变化都会改变 start-group 宽度（mode=agent 时主按钮隐藏），
         // 需要重算 select-chat 宽度与芯片溢出，避免残留上一次计算的宽度。
     if (

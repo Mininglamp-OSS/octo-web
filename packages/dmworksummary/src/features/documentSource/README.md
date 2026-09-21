@@ -10,6 +10,11 @@ Only `doc` and `html` sources are supported; the selector explicitly explains th
   read the host-level `docs_on` or `docs_search_on` AppConfig flags. Older
   servers that omit the field are treated as `false` without disabling the
   Workbench entry.
+- To preserve the document entry continuously during rollout, deploy the
+  Summary backend that emits `document_sources` before this Web client. The
+  client intentionally does not fall back to host-level Docs AppConfig flags,
+  because those flags no longer describe Summary's closed-source document
+  integration.
 - Timeout and transport failures receive one immediate retry plus two delayed
   retries; a successful response with an invalid shape is not retried
   continuously.

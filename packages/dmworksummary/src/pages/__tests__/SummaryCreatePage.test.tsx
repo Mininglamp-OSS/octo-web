@@ -366,6 +366,53 @@ describe('SummaryCreatePage document sources', () => {
         expect(capabilityMocks.refresh).toHaveBeenCalledTimes(2);
     });
 
+    it('starts a fresh bounded retry episode on an app foreground event', async () => {
+        vi.useFakeTimers();
+        capabilityMocks.resolve
+            .mockResolvedValueOnce({ status: 'disabled', reason: 'timeout' })
+            .mockResolvedValueOnce({ status: 'disabled', reason: 'timeout' });
+        capabilityMocks.refresh.mockResolvedValue({ status: 'disabled', reason: 'unavailable' });
+
+        await act(async () => {
+            render(<SummaryCreatePage />);
+            await Promise.resolve();
+        });
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(5_000);
+            await vi.advanceTimersByTimeAsync(15_000);
+        });
+        expect(capabilityMocks.refresh).toHaveBeenCalledTimes(2);
+
+        await act(async () => {
+            WKApp.mittBus.emit('wk:app-foreground');
+            await Promise.resolve();
+            await vi.advanceTimersByTimeAsync(5_000);
+        });
+
+        expect(capabilityMocks.resolve).toHaveBeenCalledTimes(2);
+        expect(capabilityMocks.refresh).toHaveBeenCalledTimes(3);
+    });
+
+    it('clears selected documents when the current Space changes', async () => {
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+        act(() => ref.current!.setState({
+            selectedDocuments: [{ docId: 'doc-1', title: '项目复盘', docType: 'doc', updatedAt: null }],
+        }));
+
+        WKApp.shared.currentSpaceId = 'space-456';
+        await act(async () => {
+            WKApp.mittBus.emit('space-changed');
+            await flushPromises();
+        });
+
+        expect(ref.current!.state.selectedDocuments).toEqual([]);
+        expect(screen.queryByText('项目复盘')).not.toBeInTheDocument();
+    });
+
     it.each(['chat', 'document'] as const)('empty %s confirmation does not erase the other source', async (picker) => {
         const ref = React.createRef<SummaryCreatePage>();
         await act(async () => {
@@ -479,10 +526,53 @@ describe('SummaryCreatePage document sources', () => {
             await flushPromises();
         });
 
-        expect(screen.queryByTestId(summaryTestIds.createSelectDocument)).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: '选择文档' })).not.toBeInTheDocument();
         fireEvent.click(screen.getByTestId(summaryTestIds.createSubmit));
         expect(api.createSummary).not.toHaveBeenCalled();
         expect(Toast.warning).toHaveBeenCalledWith('文档总结入口已关闭，请移除文档后重试');
+    });
+
+    it('follows document capability prop changes without remounting the Legacy page', async () => {
+        const { Toast } = await import('@douyinfe/semi-ui');
+        const onSubmit = vi.fn();
+        const { rerender } = render(
+            <SummaryCreatePage embedded onSubmit={onSubmit} documentSourcesAvailable />,
+        );
+
+        const textarea = document.querySelector('.summary-workbench-textarea') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: '总结项目文档' } });
+        fireEvent.click(screen.getByTestId(summaryTestIds.createSelectDocument));
+        fireEvent.click(screen.getByTestId('document-picker-confirm-fixture'));
+        expect(screen.getByText('项目复盘')).toBeInTheDocument();
+
+        await act(async () => {
+            rerender(
+                <SummaryCreatePage
+                    embedded
+                    onSubmit={onSubmit}
+                    documentSourcesAvailable={false}
+                />,
+            );
+        });
+
+        expect(screen.queryByRole('button', { name: '选择文档' })).not.toBeInTheDocument();
+        expect(screen.queryByTestId('document-picker-confirm-fixture')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByTestId(summaryTestIds.createSubmit));
+        expect(onSubmit).not.toHaveBeenCalled();
+        expect(Toast.warning).toHaveBeenCalledWith('文档总结入口已关闭，请移除文档后重试');
+    });
+
+    it('shows the document entry when the capability prop becomes available', async () => {
+        const { rerender } = render(
+            <SummaryCreatePage documentSourcesAvailable={false} />,
+        );
+        expect(screen.queryByRole('button', { name: '选择文档' })).not.toBeInTheDocument();
+
+        await act(async () => {
+            rerender(<SummaryCreatePage documentSourcesAvailable />);
+        });
+
+        expect(screen.getByRole('button', { name: '选择文档' })).toBeInTheDocument();
     });
 
 });
