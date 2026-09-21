@@ -89,6 +89,9 @@ async function bootstrap() {
     const [open, setOpen] = useState(true);
     const [layout, setLayout] = useState<ChatLayout>({ panelLayout: "split", navigationCollapsed: false });
     useEffect(() => {
+      root.dataset.fixtureState = "ready";
+    }, []);
+    useEffect(() => {
       if (!content.current) return;
       const observer = observeChatLayout(content.current, setLayout);
       observer.update(open ? "summary" : false);
@@ -164,4 +167,7 @@ async function bootstrap() {
   createRoot(root).render(<Fixture />);
 }
 
-void bootstrap();
+void bootstrap().catch(error => {
+  root.dataset.fixtureState = "error";
+  root.dataset.fixtureError = error instanceof Error ? error.message : String(error);
+});

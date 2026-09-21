@@ -2,6 +2,19 @@ import { expect, test, type Page } from "@playwright/test";
 
 const fixture = "/e2e-kit/fixtures/desktop-summary-sidebar.html";
 
+async function openSummaryFixture(page: Page, url: string) {
+  await page.goto(url);
+  await page.waitForFunction(() => {
+    const state = document.querySelector<HTMLElement>("#root")?.dataset.fixtureState;
+    return state === "ready" || state === "error";
+  }, undefined, { timeout: 20_000 });
+  const fixtureState = await page.evaluate(() => {
+    const root = document.querySelector<HTMLElement>("#root");
+    return { state: root?.dataset.fixtureState, error: root?.dataset.fixtureError };
+  });
+  expect(fixtureState.state, fixtureState.error || "Summary fixture did not finish bootstrapping").toBe("ready");
+}
+
 async function expectReadableWorkbench(page: Page) {
   await expect(page.locator(".chat-summary-template-card-select").first()).toBeVisible();
   await expect.poll(() => page.evaluate(() => {
@@ -23,7 +36,7 @@ for (const platform of ["darwin", "win32", "web"]) {
   for (const width of [320, 360, 480, 600, 720]) {
     test(`${platform}: real summary sidebar fits ${width}px in a wide viewport`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width: 1440, height: 800 });
-      await page.goto(`${fixture}?platform=${platform}&width=${width}`);
+      await openSummaryFixture(page, `${fixture}?platform=${platform}&width=${width}`);
       await expectReadableWorkbench(page);
       const back = page.locator(".wk-summary-panel-detail-back");
       if (platform !== "web") {
@@ -52,7 +65,7 @@ for (const query of [
 ]) {
   test(`resizing and reference preview preserve the draft: ${query}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 800 });
-    await page.goto(`${fixture}?${query}&locale=en-US`);
+    await openSummaryFixture(page, `${fixture}?${query}&locale=en-US`);
     await expectReadableWorkbench(page);
     const composer = page.locator(".wk-summary-workbench textarea");
     await composer.fill("Keep this draft while changing panel layout");
@@ -90,7 +103,7 @@ for (const query of [
 
 test("history detail keeps its own return bar outside native caption controls", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 800 });
-  await page.goto(`${fixture}?platform=win32&width=320&history`);
+  await openSummaryFixture(page, `${fixture}?platform=win32&width=320&history`);
   await page.getByTestId("summary-card-91").click();
   await expect(page.getByTestId("summary-detail-page")).toBeVisible();
   const back = page.locator(".wk-summary-panel-detail-back");
@@ -106,7 +119,7 @@ test("history detail keeps its own return bar outside native caption controls", 
 
 test("splitter continues from the visible width after resizing", async ({ page }) => {
   await page.setViewportSize({ width: 1000, height: 800 });
-  await page.goto(`${fixture}?platform=web&width=700`);
+  await openSummaryFixture(page, `${fixture}?platform=web&width=700`);
   await expectReadableWorkbench(page);
   const panel = page.locator(".wk-summary-panel");
   await expect(panel).toHaveCSS("width", "568px");
@@ -125,7 +138,7 @@ test("splitter continues from the visible width after resizing", async ({ page }
 for (const platform of ["darwin", "win32", "web"]) {
   test(`${platform}: legacy templates and reference preview fit a narrow sidebar`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 800 });
-    await page.goto(`${fixture}?platform=${platform}&width=320&legacy&locale=en-US`);
+    await openSummaryFixture(page, `${fixture}?platform=${platform}&width=320&legacy&locale=en-US`);
     await expect(page.locator(".chat-summary-template-card-select").first()).toBeVisible();
     expect(await page.locator(".summary-workbench-templates").first().evaluate(element =>
       getComputedStyle(element).gridTemplateColumns.split(" ").length)).toBe(1);
@@ -153,7 +166,7 @@ for (const platform of ["darwin", "win32", "web"]) {
 for (const platform of ["darwin", "win32", "web"]) {
   test(`${platform}: standalone reference changes between split and overlay without losing draft`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 800 });
-    await page.goto(`${fixture}?platform=${platform}&width=1200&standalone&locale=en-US`);
+    await openSummaryFixture(page, `${fixture}?platform=${platform}&width=1200&standalone&locale=en-US`);
     const input = page.locator(".wk-summary-workbench textarea");
     await input.fill("Standalone draft");
     await page.getByRole("button", { name: "Reference summary", exact: true }).click();
@@ -173,7 +186,7 @@ for (const platform of ["darwin", "win32", "web"]) {
 
 for (const [width, columns] of [[320, 2], [360, 3], [480, 4], [720, 4]]) {
   test(`search media fits ${width}px with ${columns} fixed-size columns`, async ({ page }) => {
-    await page.goto(`${fixture}?media&platform=web&width=${width}`);
+    await openSummaryFixture(page, `${fixture}?media&platform=web&width=${width}`);
     const grid = page.locator(".wk-channel-search-media-grid");
     await expect(grid).toBeVisible();
     expect(await grid.evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" "))).toEqual(
@@ -182,3 +195,26 @@ for (const [width, columns] of [[320, 2], [360, 3], [480, 4], [720, 4]]) {
     expect(await grid.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
   });
 }
+
+test("fixture gates rendering until ChatSummaryPanel loads", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 800 });
+  let resolveIntercepted!: () => void;
+  const intercepted = new Promise<void>(resolve => { resolveIntercepted = resolve; });
+  let releaseRoute!: () => void;
+  const released = new Promise<void>(resolve => { releaseRoute = resolve; });
+  await page.route("**/ChatSummaryPanel.tsx*", async route => {
+    resolveIntercepted();
+    await released;
+    await route.continue();
+  });
+  const opener = openSummaryFixture(page, `${fixture}?platform=web&width=700`);
+  try {
+    await Promise.race([intercepted, opener]);
+    await expect(page.locator("#root")).toHaveAttribute("data-fixture-state", "loading");
+    expect(await page.locator(".wk-summary-panel").count()).toBe(0);
+  } finally {
+    releaseRoute();
+    await opener;
+  }
+  await expectReadableWorkbench(page);
+});

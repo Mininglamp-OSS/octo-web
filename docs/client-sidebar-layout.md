@@ -71,6 +71,24 @@ Query parameters cover `platform=darwin|win32|web`, `width`, `zoom`, `theme`,
 `locale`, `history`, `legacy`, `standalone`, `fallback`, and `media`.
 Only fixture data transport is stubbed; no backend or native Client is required.
 
+## CI Startup
+
+PR run `35575474231` passed the business and HTML-preview steps but failed
+the first two Summary sidebar cases before rendering. The traces show a cold
+dynamic module graph and a subsequent Vite dependency-optimization reload;
+the five-second layout assertion expired before fixture bootstrap completed.
+
+The desktop Vite configuration now discovers every desktop HTML fixture and
+warms the Summary entry. Sidebar tests separately await a bounded fixture-ready
+signal emitted after its first React commit, with bootstrap errors surfaced to
+the test. Layout assertion timeouts, zero retries and the CI gate are unchanged.
+
+After rebasing onto upstream base `e10cf94d`, all 342 targeted unit tests and
+101 desktop browser tests passed locally on macOS. The full desktop run used
+a new Vite cache, one worker and zero retries. It includes a regression that
+holds the Summary module request, verifies the loading state, then releases it
+and checks the rendered workbench. This does not replace the Ubuntu PR gate.
+
 ## Visual Evidence
 
 The 360-pixel sidebar below uses production components and the macOS desktop
