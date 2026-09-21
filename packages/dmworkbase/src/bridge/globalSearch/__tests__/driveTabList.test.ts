@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the App singleton so we can flip remoteConfig flags; the VM only reads
 // WKApp.remoteConfig in the tabList getter under test.
@@ -27,6 +27,11 @@ beforeEach(() => {
   mockState.remoteConfig.docsSearchOn = false;
   mockState.remoteConfig.driveOn = false;
   mockState.remoteConfig.driveSearchOn = false;
+  vi.stubGlobal("__POWERED_ELECTRON__", false);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe("GlobalSearchVM tabList — drive tab gating", () => {
@@ -67,5 +72,68 @@ describe("GlobalSearchVM tabList — drive tab gating", () => {
     const list = keys(new GlobalSearchVM());
     expect(list).toContain("docs");
     expect(list).toContain("drive");
+  });
+
+  it("exposes docs/drive tabs in browser when every flag is on", () => {
+    mockState.remoteConfig.docsOn = true;
+    mockState.remoteConfig.docsSearchOn = true;
+    mockState.remoteConfig.driveOn = true;
+    mockState.remoteConfig.driveSearchOn = true;
+    const vm = new GlobalSearchVM();
+    expect(vm.docsSearchEnabled).toBe(true);
+    expect(vm.driveSearchEnabled).toBe(true);
+    const list = keys(vm);
+    expect(list).toContain("docs");
+    expect(list).toContain("drive");
+  });
+
+  it("hides docs/drive tabs in Electron even when every flag is on", () => {
+    vi.stubGlobal("__POWERED_ELECTRON__", true);
+    mockState.remoteConfig.docsOn = true;
+    mockState.remoteConfig.docsSearchOn = true;
+    mockState.remoteConfig.driveOn = true;
+    mockState.remoteConfig.driveSearchOn = true;
+    const vm = new GlobalSearchVM();
+    expect(vm.docsSearchEnabled).toBe(false);
+    expect(vm.driveSearchEnabled).toBe(false);
+    const list = keys(vm);
+    expect(list).not.toContain("docs");
+    expect(list).not.toContain("drive");
+    expect(list).toEqual(["contacts", "groups", "messages", "files"]);
+  });
+
+  it("keeps individual flags preserved in browser", () => {
+    mockState.remoteConfig.docsOn = true;
+    mockState.remoteConfig.docsSearchOn = true;
+    const vm = new GlobalSearchVM();
+    expect(vm.docsSearchEnabled).toBe(true);
+    expect(vm.driveSearchEnabled).toBe(false);
+    expect(keys(vm)).toContain("docs");
+    expect(keys(vm)).not.toContain("drive");
+  });
+
+  it("keeps the first four tab order unchanged", () => {
+    mockState.remoteConfig.docsOn = true;
+    mockState.remoteConfig.docsSearchOn = true;
+    mockState.remoteConfig.driveOn = true;
+    mockState.remoteConfig.driveSearchOn = true;
+    const list = keys(new GlobalSearchVM());
+    expect(list.slice(0, 4)).toEqual([
+      "contacts",
+      "groups",
+      "messages",
+      "files",
+    ]);
+  });
+
+  it("uses only all/files tabs while searching inside a channel", () => {
+    mockState.remoteConfig.docsOn = true;
+    mockState.remoteConfig.docsSearchOn = true;
+    mockState.remoteConfig.driveOn = true;
+    mockState.remoteConfig.driveSearchOn = true;
+    const vm = new GlobalSearchVM();
+    vm.channel = {} as any;
+    expect(vm.searchInChannel).toBe(true);
+    expect(keys(vm)).toEqual(["all", "files"]);
   });
 });

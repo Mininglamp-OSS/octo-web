@@ -331,40 +331,24 @@ export default class GlobalSearch extends Component<
             />
           )}
         </div>
-        <div className="wk-search-tabs__panel" style={panelStyle("docs")}>
-          <DocSearchPanel
-            keyword={vm.keyword}
-            dataSource={this.globalDataSource}
-            // Gate the panel on docsOn && docsSearchOn as well as the selected
-            // tab: the tab LIST is gated in GlobalSearchVM, but selectedTabKey
-            // can stay "docs" if either flag is revoked mid-session (remote-config
-            // refresh). Without this the tab button disappears while the panel
-            // keeps querying a now-disabled feature. remoteConfig is an
-            // always-fresh singleton and the config listener force-updates
-            // this component, so the panel deactivates on the same refresh.
-            isActive={
-              currentKey === "docs" &&
-              WKApp.remoteConfig.docsOn &&
-              WKApp.remoteConfig.docsSearchOn
-            }
-            onOpenDoc={this.handleOpenDoc}
-          />
-        </div>
-        {/* Drive tab. Conditionally mounted so a deployment without both flags
-            never renders the panel at all (the tab LIST is gated in
-            GlobalSearchVM on driveOn && driveSearchOn; this mirror-gates the
-            panel). isActive gates the actual search so a hidden-but-mounted
-            panel stays idle. */}
-        {WKApp.remoteConfig.driveOn && WKApp.remoteConfig.driveSearchOn && (
+        {/* Use the tab-list gates for mounting too, so disabled cloud search
+            cannot run even when a previously selected tab key remains. */}
+        {vm.docsSearchEnabled && (
+          <div className="wk-search-tabs__panel" style={panelStyle("docs")}>
+            <DocSearchPanel
+              keyword={vm.keyword}
+              dataSource={this.globalDataSource}
+              isActive={currentKey === "docs"}
+              onOpenDoc={this.handleOpenDoc}
+            />
+          </div>
+        )}
+        {vm.driveSearchEnabled && (
           <div className="wk-search-tabs__panel" style={panelStyle("drive")}>
             <DriveSearchPanel
               keyword={vm.keyword}
               dataSource={this.globalDataSource}
-              isActive={
-                currentKey === "drive" &&
-                !!WKApp.remoteConfig.driveOn &&
-                !!WKApp.remoteConfig.driveSearchOn
-              }
+              isActive={currentKey === "drive"}
               onOpenDriveHit={this.handleOpenDriveHit}
             />
           </div>

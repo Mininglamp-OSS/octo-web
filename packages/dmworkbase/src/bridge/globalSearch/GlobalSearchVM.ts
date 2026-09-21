@@ -11,6 +11,7 @@ import SearchService from "../../Service/SearchService";
 import { MessageContentTypeConst } from "../../Service/Const";
 import { ProviderListener } from "../../Service/Provider";
 import { debounce } from "../../Utils/rateLimit";
+import { isElectronPowered } from "../../electron/desktopBridge";
 import { t } from "../../i18n";
 import { addCurrentImChannelInfoListener, getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 import { buildSelfContactEntry, shouldInjectSelf } from "./selfInject";
@@ -55,7 +56,7 @@ export default class GlobalSearchVM extends ProviderListener {
     // deployment without search would otherwise show a tab whose every query 404s
     // into a permanent "search failed". docsSearchOn defaults false, so the tab stays
     // hidden until ops flips docs_search_on on once search is actually ready.
-    if (WKApp.remoteConfig.docsOn && WKApp.remoteConfig.docsSearchOn) {
+    if (this.docsSearchEnabled) {
       tabs.push({ tab: t("base.globalSearch.tab.docs"), itemKey: "docs" });
     }
     // Drive search hits the octo-drive backend (POST drive/search). Gate on TWO
@@ -66,7 +67,7 @@ export default class GlobalSearchVM extends ProviderListener {
     // hits lose ref_id (silently skipped) and blob hits 404. driveSearchOn
     // defaults false, so the tab stays hidden until ops flips drive_search_on on
     // once the search backend is actually ready.
-    if (WKApp.remoteConfig.driveOn && WKApp.remoteConfig.driveSearchOn) {
+    if (this.driveSearchEnabled) {
       tabs.push({ tab: t("base.globalSearch.tab.drive"), itemKey: "drive" });
     }
     return tabs;
@@ -79,6 +80,21 @@ export default class GlobalSearchVM extends ProviderListener {
   public set selectedTabKey(value: string) {
     this._selectedTabKey = value;
     this.notifyListener();
+  }
+
+  // Client global search excludes cloud modules, regardless of remote flags.
+  public get docsSearchEnabled(): boolean {
+    return (
+      !isElectronPowered() &&
+      !!(WKApp.remoteConfig.docsOn && WKApp.remoteConfig.docsSearchOn)
+    );
+  }
+
+  public get driveSearchEnabled(): boolean {
+    return (
+      !isElectronPowered() &&
+      !!(WKApp.remoteConfig.driveOn && WKApp.remoteConfig.driveSearchOn)
+    );
   }
 
   // 是否在频道内搜索
