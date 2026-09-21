@@ -27,6 +27,7 @@ import { installHostNotificationPolicyAdapter } from "./notificationPolicyAdapte
 import { resolveForwardSurfaceAvatar } from "./forwardSurfaceAvatar";
 import { assertBackgroundRuntimeHost, startCommunicationRuntime } from "./runtime/start";
 import "../client-feature/desktop/presentation.css";
+import "../client-feature/desktop/summary.css";
 import "./desktop-presentation.css";
 import "./desktop-contacts.css";
 

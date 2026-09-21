@@ -29,6 +29,8 @@
 }
 
 .wk-template-selector__body {
+    container-type: inline-size;
+    container-name: wk-summary-templates;
     gap: var(--wk-sp-8);
     max-height: calc(var(--wk-sp-12) * 8);
     overflow-y: auto;
@@ -326,21 +328,14 @@
     font: var(--wk-text-body);
 }
 
-@media (max-width: 600px) {
-    .wk-template-selector--inline,
-    .wk-template-selector--inline .wk-template-selector__body {
-        flex: none;
-        max-height: none;
-        overflow: visible;
-    }
-
+@container wk-summary-templates (max-width: 479px) {
     .wk-template-selector__grid,
     .wk-template-selector--inline .wk-template-selector__grid {
         grid-template-columns: minmax(0, 1fr);
     }
 }
 
-@media (min-width: 601px) and (max-width: 1023px) {
+@container wk-summary-templates (min-width: 480px) and (max-width: 799px) {
     .wk-template-selector__grid,
     .wk-template-selector--inline .wk-template-selector__grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));

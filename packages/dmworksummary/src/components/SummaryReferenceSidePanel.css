@@ -1,6 +1,12 @@
 /* 右侧引用总结对照面板 (CHAT-REFERENCE-PREVIEW-AND-RANGE-SAVE-v1 需求 1) */
 
 /* 打开 SidePanel 时,agent chat 布局变成 flex 左右分栏 */
+.summary-workbench-agent-chat {
+    container-type: inline-size;
+    container-name: summary-legacy-agent;
+    position: relative;
+}
+
 .summary-workbench-agent-chat--with-side {
     display: flex;
     flex-direction: row;
@@ -45,6 +51,16 @@
     border: 1px solid var(--semi-color-border);
     border-radius: 8px;
     overflow: hidden;
+}
+
+@container summary-legacy-agent (max-width: 720px) {
+    .summary-workbench-ref-side {
+        position: absolute;
+        z-index: 30;
+        inset: 0 0 0 auto;
+        width: min(100%, 400px);
+        box-shadow: var(--wk-shadow-md);
+    }
 }
 
 .summary-workbench-ref-side-header {

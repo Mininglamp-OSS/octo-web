@@ -993,6 +993,7 @@ button.wk-chat-conversation-header-right-item:focus-visible {
 .wk-summary-panel {
   pointer-events: auto;
   width: var(--wk-width-summary-panel);
+  max-width: 100%;
   height: 100%;
   position: absolute;
   z-index: 100;
@@ -1009,6 +1010,24 @@ button.wk-chat-conversation-header-right-item:focus-visible {
   container-name: wk-summary;
 }
 
-.wk-chat-content-right.wk-chat-summary-panel-open .wk-chat-content-chat {
-  width: calc(100% - var(--wk-width-summary-panel));
+.wk-chat-summary-panel-open[data-chat-panel-layout="split"] {
+  --wk-summary-panel-width: min(var(--wk-width-summary-panel), calc(100% - 432px));
+}
+
+.wk-chat-summary-panel-open[data-chat-panel-layout="split"] > .wk-summary-panel {
+  width: var(--wk-summary-panel-width);
+}
+
+.wk-chat-content-right.wk-chat-summary-panel-open[data-chat-panel-layout="split"] > .wk-chat-content-chat {
+  width: calc(100% - var(--wk-summary-panel-width));
+}
+
+.wk-chat-summary-panel-open[data-chat-panel-layout="overlay"] > .wk-summary-panel {
+  width: 100%;
+  border-left: 0;
+  box-shadow: none;
+}
+
+.wk-chat-summary-panel-open[data-chat-panel-layout="overlay"] .wk-thread-panel-splitter {
+  display: none;
 }

@@ -40,6 +40,7 @@ export default defineConfig({
       { find: /^@octo\/base\/src\/Service\/SpaceService$/, replacement: path.resolve(root, 'packages/dmworkbase/src/Service/SpaceService.tsx') },
       { find: /^@octo\/base\/src\/App$/, replacement: path.resolve(__dirname, 'src/__mocks__/dmworkBase.ts') },
       { find: /^@octo\/base\/src\/Components\/WKLayout\/layoutWidth$/, replacement: path.resolve(root, 'packages/dmworkbase/src/Components/WKLayout/layoutWidth.ts') },
+      { find: /^@octo\/base\/src\/Pages\/Chat\/responsiveLayout$/, replacement: path.resolve(root, 'packages/dmworkbase/src/Pages/Chat/responsiveLayout.ts') },
       { find: /^@octo\/base\/src\/Components\/Subscribers\/list$/, replacement: path.resolve(__dirname, 'src/__mocks__/SubscriberList.tsx') },
       { find: /^@octo\/base\/src\/Components\/RoutePage$/, replacement: path.resolve(__dirname, 'src/__mocks__/RoutePage.tsx') },
       { find: '@octo/base', replacement: path.resolve(__dirname, 'src/__mocks__/dmworkBase.ts') },

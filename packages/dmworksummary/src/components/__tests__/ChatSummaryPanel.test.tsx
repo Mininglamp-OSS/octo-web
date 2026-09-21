@@ -152,6 +152,13 @@ describe('ChatSummaryPanel', () => {
         expect(screen.getByTestId('summary-list')).toBeInTheDocument();
     });
 
+    it.each(['create-new', 'open-detail'])('marks the panel back bar as desktop chrome for %s', (entry) => {
+        render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
+        fireEvent.click(screen.getByText(entry));
+        expect(screen.getByTestId('back-icon').closest('.wk-summary-panel-detail-back'))
+            .toHaveAttribute('data-desktop-chrome', 'header');
+    });
+
     it('resets to initial view when channel changes', () => {
         const { rerender } = render(
             <ChatSummaryPanel visible channel={channel} onClose={onClose} />,
@@ -290,6 +297,88 @@ describe('ChatSummaryPanel', () => {
 
             fireEvent.doubleClick(splitter);
             expect(localStorage.getItem('wk-summary-panel-width')).toBe('360');
+        });
+
+        it('retains the preferred width without overriding responsive panel CSS', () => {
+            localStorage.setItem('wk-summary-panel-width', '700');
+            const { container } = render(
+                <div className="wk-chat-content-right">
+                    <div className="wk-summary-panel">
+                        <ChatSummaryPanel visible channel={channel} onClose={onClose} />
+                    </div>
+                </div>,
+            );
+            const panel = container.querySelector<HTMLElement>('.wk-summary-panel')!;
+            expect(panel.style.width).toBe('');
+            expect(panel.style.getPropertyValue('--wk-width-summary-panel')).toBe('700px');
+            expect(panel.parentElement!.style.getPropertyValue('--wk-width-summary-panel')).toBe('700px');
+        });
+
+        it('does not resize an overlay panel or change its saved width', () => {
+            const { container } = render(
+                <div className="wk-chat-content-right" data-chat-panel-layout="overlay">
+                    <div className="wk-summary-panel">
+                        <ChatSummaryPanel visible channel={channel} onClose={onClose} />
+                    </div>
+                </div>,
+            );
+            fireEvent.mouseDown(container.querySelector('.wk-thread-panel-splitter')!, { clientX: 600 });
+            fireEvent.mouseMove(document, { clientX: 500 });
+            fireEvent.mouseUp(document);
+            expect(localStorage.getItem('wk-summary-panel-width')).toBeNull();
+            expect(container.querySelector('.wk-thread-panel-drag-overlay')).toBeNull();
+        });
+
+        it('starts dragging from the rendered width after the container narrows', () => {
+            localStorage.setItem('wk-summary-panel-width', '700');
+            const { container } = render(
+                <div className="wk-chat-content-right">
+                    <div className="wk-summary-panel">
+                        <ChatSummaryPanel visible channel={channel} onClose={onClose} />
+                    </div>
+                </div>,
+            );
+            const panel = container.querySelector<HTMLElement>('.wk-summary-panel')!;
+            panel.getBoundingClientRect = () => ({ width: 360 } as DOMRect);
+            panel.parentElement!.getBoundingClientRect = () => ({ width: 1000 } as DOMRect);
+            fireEvent.mouseDown(container.querySelector('.wk-thread-panel-splitter')!, { clientX: 600 });
+            fireEvent.mouseMove(document, { clientX: 560 });
+            fireEvent.mouseUp(document);
+            expect(localStorage.getItem('wk-summary-panel-width')).toBe('400');
+        });
+
+        it('uses the same minimum-chat budget as CSS while dragging a clipped preference', () => {
+            localStorage.setItem('wk-summary-panel-width', '700');
+            const { container } = render(
+                <div className="wk-chat-content-right" data-chat-panel-layout="split">
+                    <div className="wk-summary-panel">
+                        <ChatSummaryPanel visible channel={channel} onClose={onClose} />
+                    </div>
+                </div>,
+            );
+            const panel = container.querySelector<HTMLElement>('.wk-summary-panel')!;
+            panel.getBoundingClientRect = () => ({ width: 568 } as DOMRect);
+            panel.parentElement!.getBoundingClientRect = () => ({ width: 1000 } as DOMRect);
+            fireEvent.mouseDown(container.querySelector('.wk-thread-panel-splitter')!, { clientX: 600 });
+            fireEvent.mouseMove(document, { clientX: 610 });
+            fireEvent.mouseUp(document);
+            expect(localStorage.getItem('wk-summary-panel-width')).toBe('558');
+        });
+
+        it('does not replace the preference when a drag crosses into overlay layout', () => {
+            localStorage.setItem('wk-summary-panel-width', '700');
+            const { container } = render(
+                <div className="wk-chat-content-right" data-chat-panel-layout="split">
+                    <div className="wk-summary-panel">
+                        <ChatSummaryPanel visible channel={channel} onClose={onClose} />
+                    </div>
+                </div>,
+            );
+            fireEvent.mouseDown(container.querySelector('.wk-thread-panel-splitter')!, { clientX: 600 });
+            container.querySelector<HTMLElement>('.wk-chat-content-right')!.dataset.chatPanelLayout = 'overlay';
+            fireEvent.mouseMove(document, { clientX: 590 });
+            fireEvent.mouseUp(document);
+            expect(localStorage.getItem('wk-summary-panel-width')).toBe('700');
         });
     });
 });

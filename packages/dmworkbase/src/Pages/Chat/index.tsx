@@ -813,6 +813,7 @@ export class ChatContentPage extends Component<
     this.layoutObserver?.update(
       hasAuxiliary
         ? this.state.showChannelSearch ? "search" :
+          this.state.showSummaryPanel ? "summary" :
           threadContext ? (this.state.previewFile ? "threadPreview" : "thread") : !!this.state.previewFile
         : false
     );
@@ -1529,7 +1530,7 @@ export class ChatContentPage extends Component<
       hostPreviewSource.channelId === channel.channelID &&
       hostPreviewSource.channelType === channel.channelType);
     const auxiliaryVisible = !workspaceEmbedding && !hostPreviewingParent &&
-      !!(showThreadPanel || previewFile || showChannelSearch);
+      !!(showThreadPanel || previewFile || showChannelSearch || showSummaryPanel);
     const parentHidden = auxiliaryVisible &&
       (panelLayout === "overlay" || previewInThreadContext);
     return (

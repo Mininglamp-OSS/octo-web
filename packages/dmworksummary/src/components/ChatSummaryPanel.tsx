@@ -2,10 +2,13 @@ import React, { Component } from 'react';
 import { WKApp, I18nContext } from '@octo/base';
 import {
     SUMMARY_DEFAULT_WIDTH,
+    SUMMARY_MIN_WIDTH,
+    SUMMARY_MAX_WIDTH,
     clampSummaryWidth,
     restoreSummaryWidth,
     persistSummaryWidth,
 } from '@octo/base/src/Components/WKLayout/layoutWidth';
+import { CHAT_CONTENT_MIN_WIDTH } from '@octo/base/src/Pages/Chat/responsiveLayout';
 import { X, ChevronLeft } from 'lucide-react';
 import SummaryListPage from '../pages/SummaryListPage';
 import SummaryWorkbenchCreateEntry from '../features/summaryWorkbench/SummaryWorkbenchCreateEntry';
@@ -39,7 +42,7 @@ export default class ChatSummaryPanel extends Component<
     private rootRef = React.createRef<HTMLDivElement>();
     private dragStartX = 0;
     private dragStartWidth = 0;
-    private lastPanelWidth = clampSummaryWidth(restoreSummaryWidth(), window.innerWidth);
+    private lastPanelWidth = restoreSummaryWidth();
 
     constructor(props: ChatSummaryPanelProps) {
         super(props);
@@ -48,7 +51,7 @@ export default class ChatSummaryPanel extends Component<
     }
 
     componentDidMount() {
-        // 还原持久化宽度：写容器 width + 祖先 CSS 变量（挤压聊天区）
+        // Keep the saved preference separate from the container's responsive width.
         this.applyWidth(this.lastPanelWidth);
     }
 
@@ -80,7 +83,7 @@ export default class ChatSummaryPanel extends Component<
         if (!root) return;
         const panel = root.closest('.wk-summary-panel') as HTMLElement | null;
         if (panel) {
-            panel.style.width = width + 'px';
+            panel.style.setProperty('--wk-width-summary-panel', width + 'px');
         }
         // CSS 变量要设在祖先 .wk-chat-content-right 上，兄弟节点
         // .wk-chat-content-chat 才能 var() 拿到，触发宽度挤压
@@ -91,9 +94,11 @@ export default class ChatSummaryPanel extends Component<
     }
 
     private onDragStart = (e: React.MouseEvent) => {
+        const panel = this.rootRef.current?.closest<HTMLElement>('.wk-summary-panel');
+        if (panel?.closest('[data-chat-panel-layout="overlay"]')) return;
         e.preventDefault();
         this.dragStartX = e.clientX;
-        this.dragStartWidth = this.lastPanelWidth;
+        this.dragStartWidth = panel?.getBoundingClientRect().width || this.lastPanelWidth;
         this.setState({ isDragging: true });
         document.addEventListener('mousemove', this.onDragMove);
         document.addEventListener('mouseup', this.onDragEnd);
@@ -104,7 +109,15 @@ export default class ChatSummaryPanel extends Component<
     private onDragMove = (e: MouseEvent) => {
         // 面板在右侧，左边缘拖动：向左拖（clientX 变小）应变宽
         const delta = this.dragStartX - e.clientX;
-        const newWidth = clampSummaryWidth(this.dragStartWidth + delta, window.innerWidth);
+        const content = this.rootRef.current?.closest<HTMLElement>('.wk-chat-content-right');
+        if (content?.dataset.chatPanelLayout === 'overlay') return;
+        const contentWidth = content?.getBoundingClientRect().width;
+        // Match the split layout's CSS budget, including its minimum chat width.
+        const newWidth = contentWidth
+            ? Math.max(SUMMARY_MIN_WIDTH, Math.min(
+                SUMMARY_MAX_WIDTH, contentWidth - CHAT_CONTENT_MIN_WIDTH, this.dragStartWidth + delta,
+            ))
+            : clampSummaryWidth(this.dragStartWidth + delta, window.innerWidth);
         this.lastPanelWidth = newWidth;
         // 直接改 style / CSS 变量，不走 setState，避免拖动卡顿
         this.applyWidth(newWidth);
@@ -201,7 +214,7 @@ export default class ChatSummaryPanel extends Component<
                 {/* 创建视图：Capability 开启时进入统一 Workbench，失败关闭时回退 Legacy。 */}
                 {isCreate && (
                     <div data-testid={summaryTestIds.chatPanelDetailInPanel} className="wk-summary-panel-detail">
-                        <div className="wk-summary-panel-detail-back">
+                        <div className="wk-summary-panel-detail-back" data-desktop-chrome="header">
                             <button
                                 type="button"
                                 data-testid={summaryTestIds.chatPanelBackBtn}
@@ -231,7 +244,7 @@ export default class ChatSummaryPanel extends Component<
                 {/* 详情视图：复用整页 SummaryDetailPage，外层加面板级返回栏 */}
                 {isDetail && (
                     <div data-testid={summaryTestIds.chatPanelDetailInPanel} className="wk-summary-panel-detail">
-                        <div className="wk-summary-panel-detail-back">
+                        <div className="wk-summary-panel-detail-back" data-desktop-chrome="header">
                             <button
                                 type="button"
                                 data-testid={summaryTestIds.chatPanelBackBtn}

@@ -271,7 +271,8 @@
 
 .wk-channel-search-media-grid {
   display: grid;
-  grid-template-columns: repeat(4, 104px);
+  grid-template-columns: repeat(auto-fill, 104px);
+  max-width: calc(416px + var(--wk-sp-2) * 3);
   gap: var(--wk-sp-2);
 }
 

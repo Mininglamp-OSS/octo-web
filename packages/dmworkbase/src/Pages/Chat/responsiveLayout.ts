@@ -4,7 +4,7 @@ export const CHAT_PANEL_SPLIT_MIN_WIDTH = CHAT_CONTENT_MIN_WIDTH * 2;
 export const SEARCH_PANEL_SPLIT_MIN_WIDTH =
   CHAT_CONTENT_MIN_WIDTH + SEARCH_CONTENT_MIN_WIDTH;
 
-export type Auxiliary = boolean | "search" | "thread" | "threadPreview";
+export type Auxiliary = boolean | "search" | "thread" | "threadPreview" | "summary";
 
 export interface ChatLayout {
   panelLayout: "split" | "overlay";
@@ -16,7 +16,7 @@ export function resolveChatLayout(
   navigationWidth: number,
   auxiliary: Auxiliary
 ): ChatLayout {
-  const compactPanel = auxiliary === "search" || auxiliary === "thread";
+  const compactPanel = auxiliary === "search" || auxiliary === "thread" || auxiliary === "summary";
   // Local tools keep ordinary chat navigation; their content adapts within it.
   const localPanel = compactPanel || auxiliary === "threadPreview";
   const navigationCollapsed = localPanel

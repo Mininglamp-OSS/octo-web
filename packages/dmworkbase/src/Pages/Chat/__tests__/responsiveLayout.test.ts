@@ -66,6 +66,20 @@ describe("message content layout", () => {
     });
   });
 
+  it.each([
+    [1052, 300, false, "split"],
+    [1051, 300, false, "overlay"],
+    [731, 300, true, "overlay"],
+    [752, 0, false, "split"],
+    [751, 0, false, "overlay"],
+    [390, 0, true, "overlay"],
+  ])("resolves %i px summary shell with %i px navigation", (width, nav, collapsed, panelLayout) => {
+    expect(resolveChatLayout(width, nav, "summary")).toEqual({
+      navigationCollapsed: collapsed,
+      panelLayout,
+    });
+  });
+
   it("splits thread in a standalone embedded content surface with visible navigation", () => {
     expect(resolveChatLayout(752, 0, "thread")).toEqual({
       navigationCollapsed: false,

@@ -1,0 +1,85 @@
+# Client Sidebar Layout
+
+## Behavior And Scope
+
+The existing chat summary entry keeps its list, create, detail and reference
+flows. Summary uses the same split/overlay decision as other compact chat tools:
+the conversation keeps at least 432 CSS pixels, and the panel gets at least 320.
+Narrower content surfaces show the panel over the conversation without unmounting
+either during resizing. Preferred summary width remains independent of thread
+width and is not overwritten by window resizing.
+
+Workbench headers, composer controls and template grids respond to their own
+container width, including ordinary Web and standalone Summary. Narrow reference
+previews overlay the workbench below its header instead of taking 400 pixels
+away from it. The existing close action returns to the unchanged draft.
+The capability-gated legacy creation form also adapts its template columns;
+its reference preview overlays the bounded agent area on narrow containers.
+
+The panel back bar owns the native top band. Both embedded renderer entries load
+the client-only Summary presentation styles. Browser bundles do not import them.
+Search media keeps 104-pixel thumbnails and at most four columns, wrapping to
+fewer columns when the actual content area is narrower.
+
+No new entry, API, permission, host protocol or Client artifact pin is introduced.
+This change does not build or publish an installer.
+
+## File Map
+
+- `packages/dmworkbase/src/Pages/Chat`: shared layout selection and panel bounds.
+- `packages/dmworkbase/src/features/channelSearch`: media grid sizing.
+- `packages/dmworksummary/src/components/ChatSummaryPanel.tsx`: back-bar marker and preferred width.
+- `packages/dmworksummary/src/ui/SummaryWorkbench`: container-responsive workbench.
+- `packages/dmworksummary/src/components/TemplateSelectorModal.css`: container-responsive templates.
+- `packages/dmworksummary/src/index.css` and `components/SummaryReferenceSidePanel.css`: legacy entry sizing.
+- `packages/dmworksummary/src/features/summaryWorkbench/SummaryWorkbenchFeature.css`: reference overlay.
+- `apps/web/src/client-feature/desktop/summary.css`: shared client-only presentation.
+- `apps/web/e2e-kit/fixtures/desktop-summary-sidebar.*`: real component fixture with isolated data.
+
+## Verification
+
+- Summary component tests cover navigation, desktop markers and width persistence.
+- Chat layout tests cover split boundaries and summary open/close integration.
+- Desktop browser regressions cover narrow/wide containers, ordinary Web,
+  macOS/Windows geometry, references, draft preservation and media columns.
+- Check both renderer builds and ordinary Web isolation before release.
+- Native window-control hit testing and signed installers remain Client acceptance.
+
+## Local Validation
+
+Validated on 2026-09-21 from upstream base `52a25f8e`:
+
+- 163 chat layout, file-preview, workspace-embedding and channel-search unit tests passed in the pre-PR rerun.
+- 179 Summary component, workbench and workspace unit tests passed in the pre-PR rerun.
+- 86 desktop browser regressions passed, including 31 new sidebar cases.
+- Communication, Summary and ordinary Web builds passed with
+  `VITE_API_URL=https://runtime-build.invalid`; client builds used
+  `OCTO_ALLOW_DIRTY_CLIENT_ARTIFACT=1` for local-only validation.
+- Ordinary Web output contains no desktop presentation selectors. The existing
+  file-dialog `no-drag` rule is unrelated and remains unchanged.
+- `pnpm i18n:check` and `git diff --check` passed. Scoped Stylelint reported
+  zero errors and 24 pre-existing color warnings in the two legacy stylesheets.
+
+Run the browser suite with:
+
+```sh
+pnpm --dir apps/web exec playwright test --config=e2e-kit/playwright.desktop.config.ts
+```
+
+The DEV-only fixture is `e2e-kit/fixtures/desktop-summary-sidebar.html`.
+Query parameters cover `platform=darwin|win32|web`, `width`, `zoom`, `theme`,
+`locale`, `history`, `legacy`, `standalone`, `fallback`, and `media`.
+Only fixture data transport is stubbed; no backend or native Client is required.
+
+## Visual Evidence
+
+The 360-pixel sidebar below uses production components and the macOS desktop
+presentation adapter with synthetic fixture data. It is a browser regression
+screenshot, not a native Client acceptance screenshot.
+
+![Summary sidebar at 360 pixels](images/client-summary-sidebar.png)
+
+An isolated native Client preview was also built with the local communication,
+Summary and apps artifacts and reached the Aegis login screen. Authenticated
+chat/sidebar behavior, native window-control hit testing and signed installers
+have not been verified. Preview-only Client pin changes are outside this Web PR.

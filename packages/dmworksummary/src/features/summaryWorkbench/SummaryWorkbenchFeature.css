@@ -1,10 +1,26 @@
 .wk-summary-workbench-feature {
+    container-type: inline-size;
+    container-name: summary-workbench-feature;
+    anchor-scope: --summary-workbench-header;
     position: relative;
     display: flex;
     width: 100%;
     height: 100%;
     min-height: 0;
     background: var(--wk-bg-surface);
+}
+
+/* Reference previews overlay a narrow workbench instead of consuming its width. */
+@container summary-workbench-feature (max-width: 720px) {
+    .summary-workbench-ref-side {
+        position: absolute;
+        z-index: 30;
+        inset: 0 0 0 auto;
+        position-anchor: --summary-workbench-header;
+        top: anchor(bottom, 0px);
+        width: min(100%, 400px);
+        box-shadow: var(--wk-shadow-md);
+    }
 }
 
 .wk-summary-workbench-entry-host {
