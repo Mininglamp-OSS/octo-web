@@ -221,10 +221,6 @@ export default function SummaryWorkbenchFeature({
   const [referencePreviewOpen, setReferencePreviewOpen] = useState(false);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveTitle, setSaveTitle] = useState("");
-  const [documentSelectorAvailable, setDocumentSelectorAvailable] = useState(
-    () =>
-      Boolean(WKApp.remoteConfig?.docsOn && WKApp.remoteConfig?.docsSearchOn)
-  );
   const [composerFocusKey, setComposerFocusKey] = useState(0);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [templateGalleryOpen, setTemplateGalleryOpen] = useState(true);
@@ -425,21 +421,6 @@ export default function SummaryWorkbenchFeature({
   }, []);
 
   useEffect(() => {
-    const syncDocumentCapability = () => {
-      setDocumentSelectorAvailable(
-        Boolean(WKApp.remoteConfig?.docsOn && WKApp.remoteConfig?.docsSearchOn)
-      );
-    };
-    syncDocumentCapability();
-    const unsubscribe =
-      WKApp.remoteConfig?.addConfigChangeListener?.(syncDocumentCapability) ??
-      null;
-    return () => {
-      unsubscribe?.();
-    };
-  }, []);
-
-  useEffect(() => {
     if (workbench.isHydrating) {
       hydrationObserved.current = true;
       return;
@@ -559,9 +540,6 @@ export default function SummaryWorkbenchFeature({
     workbench.scope,
     composerHasCustomText
   );
-  const documentScopeUnavailable =
-    (workbench.scope.documents ?? []).length > 0 &&
-    !documentSelectorAvailable;
   const participantScopeReady =
     workbench.scope.participants.length === 0 ||
     (Boolean(participantScopeKey) &&
@@ -586,10 +564,10 @@ export default function SummaryWorkbenchFeature({
   );
   const availableContextKinds: SummaryWorkbenchContextKind[] =
     (workbench.scope.documents ?? []).length > 0
-      ? ["chat", ...(documentSelectorAvailable ? (["document"] as const) : [])]
+      ? ["chat", "document"]
       : [
           "chat",
-          ...(documentSelectorAvailable ? (["document"] as const) : []),
+          "document",
           "participant",
           "time_range",
         ];
@@ -600,7 +578,6 @@ export default function SummaryWorkbenchFeature({
     isSending: busy,
     canSend:
       !busy &&
-      !documentScopeUnavailable &&
       participantScopeReady &&
       (composerHasCustomText ||
         (!templateLocked && structuredGenerate) ||
@@ -681,10 +658,6 @@ export default function SummaryWorkbenchFeature({
   };
 
   const send = async () => {
-    if (documentScopeUnavailable) {
-      Toast.warning(t("summary.create.documentSourceUnavailable"));
-      return;
-    }
     if (!viewState.canSend) return;
     if (themeTrackTimer.current) {
       clearTimeout(themeTrackTimer.current);
@@ -767,7 +740,6 @@ export default function SummaryWorkbenchFeature({
       setTemplateGalleryOpen(true);
       return;
     }
-    if (kind === "document" && !documentSelectorAvailable) return;
     if (kind === "participant" && !canSelectParticipants(workbench.scope)) {
       Toast.info(t("summary.workbench.notice.selectSingleChatForParticipants"));
       return;
@@ -1065,7 +1037,7 @@ export default function SummaryWorkbenchFeature({
       />
 
       <DocumentSelectorModal
-        visible={openSelector === "document" && documentSelectorAvailable}
+        visible={openSelector === "document"}
         selected={scopeDocumentsToItems(workbench.scope.documents ?? [])}
         maxSelect={MAX_DOCUMENT_SELECT}
         onConfirm={(documents: DocSearchItem[]) => {

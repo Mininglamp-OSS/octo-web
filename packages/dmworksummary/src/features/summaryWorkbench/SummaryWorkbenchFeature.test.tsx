@@ -1089,9 +1089,7 @@ describe("SummaryWorkbenchFeature", () => {
     expect(mocks.loadParticipantCandidates).toHaveBeenCalledTimes(1);
   });
 
-  it("selects documents into document-only scope when docs capability is enabled", () => {
-    mocks.docsOn = true;
-    mocks.docsSearchOn = true;
+  it("selects documents without relying on docs appconfig flags", () => {
     const current = controller({
       scope: scope({
         selectedChannels: [{ chatId: "chat-a", chatType: "group", name: "A" }],
@@ -1127,8 +1125,6 @@ describe("SummaryWorkbenchFeature", () => {
   });
 
   it.each(["chat", "document"] as const)("empty %s confirmation preserves the other source and preview without prompting", (picker) => {
-    mocks.docsOn = true;
-    mocks.docsSearchOn = true;
     const current = controller({
       scope: scope(picker === "chat"
         ? { documents: [{ documentId: "doc-a", title: "A" }] }
@@ -1148,8 +1144,6 @@ describe("SummaryWorkbenchFeature", () => {
   });
 
   it.each(["chat", "document"] as const)("empty %s confirmation still clears the same source", (picker) => {
-    mocks.docsOn = true;
-    mocks.docsSearchOn = true;
     const current = controller({
       scope: scope(picker === "document"
         ? { documents: [{ documentId: "doc-a", title: "A" }] }
@@ -1164,8 +1158,6 @@ describe("SummaryWorkbenchFeature", () => {
   });
 
   it("still prompts before a real source replacement invalidates a preview", () => {
-    mocks.docsOn = true;
-    mocks.docsSearchOn = true;
     const current = controller({
       scope: scope({ documents: [{ documentId: "doc-a", title: "A" }] }),
       model: {
@@ -1181,8 +1173,11 @@ describe("SummaryWorkbenchFeature", () => {
     expect(current.updateScope).not.toHaveBeenCalled();
   });
 
-  it("blocks a persisted document scope when the docs capability is unavailable", () => {
-    const send = vi.fn();
+  it("allows a persisted document scope without docs appconfig flags", () => {
+    const send = vi.fn().mockResolvedValue({
+      resultType: "agent_preview",
+      preview: { content: "Draft" },
+    });
     mocks.useSummaryWorkbench.mockReturnValue(
       controller({
         scope: scope({
@@ -1203,13 +1198,10 @@ describe("SummaryWorkbenchFeature", () => {
 
     expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
       "data-can-send",
-      "false"
+      "true"
     );
     fireEvent.click(screen.getByRole("button", { name: "send" }));
-    expect(send).not.toHaveBeenCalled();
-    expect(mocks.toastWarning).toHaveBeenCalledWith(
-      "summary.create.documentSourceUnavailable"
-    );
+    expect(send).toHaveBeenCalledOnce();
   });
 
   it("defers participant pruning until an in-flight save settles", async () => {

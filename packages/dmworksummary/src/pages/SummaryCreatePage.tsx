@@ -174,7 +174,6 @@ interface SummaryCreatePageState {
     savingTemplate: boolean;
     visibleChipCount: number;
     visibleMemberChipCount: number;
-    canSelectDocuments: boolean;
 }
 
 export default class SummaryCreatePage extends Component<
@@ -228,23 +227,10 @@ export default class SummaryCreatePage extends Component<
         savingTemplate: false,
         visibleChipCount: 999,
         visibleMemberChipCount: 999,
-        canSelectDocuments:
-          !!WKApp.remoteConfig?.docsOn && !!WKApp.remoteConfig?.docsSearchOn,
     };
 
     // 同步实例锁：防快速双击/回车的竞态（React state 未刷新时仍能拦住第二次）。
     private agentSendInFlight = false;
-    private unsubscribeRemoteConfig: (() => void) | null = null;
-
-    private syncDocumentCapability = () => {
-        const canSelectDocuments =
-          !!WKApp.remoteConfig?.docsOn && !!WKApp.remoteConfig?.docsSearchOn;
-        this.setState((current) => ({
-          canSelectDocuments,
-          showDocumentSelector:
-            canSelectDocuments ? current.showDocumentSelector : false,
-        }));
-    };
 
     // 完整创建页无频道上下文：session_id 落到统一兜底 key（见 summaryHelpers）。
     private agentChannelId(): string | undefined {
@@ -354,9 +340,6 @@ export default class SummaryCreatePage extends Component<
 
     componentDidMount() {
         void this.loadTemplates();
-        this.unsubscribeRemoteConfig =
-          WKApp.remoteConfig?.addConfigChangeListener?.(this.syncDocumentCapability) ?? null;
-        this.syncDocumentCapability();
         // select-chat 宽度计算 + 芯片溢出检测
         this.updateSelectChatWidth();
         this.updateVisibleChipCount();
@@ -403,8 +386,6 @@ export default class SummaryCreatePage extends Component<
     }
 
     componentWillUnmount() {
-        this.unsubscribeRemoteConfig?.();
-        this.unsubscribeRemoteConfig = null;
         this.chipResizeObserver?.disconnect();
         // 防抖计时器若不清，卸载后仍可能补发 smart_summary_theme_input（用户已离开页面）。
         if (this.themeTrackTimer) {
@@ -766,10 +747,6 @@ export default class SummaryCreatePage extends Component<
     handleSubmit = async () => {
         const { topic, selectedChats, selectedDocuments, selectedMembers } = this.state;
         if (!this.canSubmit()) return;
-        if (selectedDocuments.length > 0 && !this.state.canSelectDocuments) {
-            Toast.warning(t("summary.create.documentSourceUnavailable"));
-            return;
-        }
         // 八审 P2:提交即取消未触发的主题输入去抖 —— 用户已从「填主题」进到「生成」,
         // 600ms 后再补发 smart_summary_theme_input 会把一次已转化的输入多计一次。
         if (this.themeTrackTimer) {
@@ -1319,7 +1296,6 @@ export default class SummaryCreatePage extends Component<
             submitting, agentSubmitting, error, editingTemplate, creatingCustomTemplate,
             editingTemplateLabel, editingTemplateDescription, savingTemplate,
             messages,
-            canSelectDocuments,
         } = this.state;
         const { t: translate } = this.context;
         // 模板在 render() 用当前 locale 解析，切语言即时刷新（不在 state 烘焙）。
@@ -1686,20 +1662,18 @@ export default class SummaryCreatePage extends Component<
                                             </Tooltip>
                                         )}
                                     </div>
-                                    {(!documentMode || canSelectDocuments) && (
-                                      <button
-                                          type="button"
-                                          className="summary-workbench-add-chat"
-                                          onClick={() => this.setState(documentMode
-                                            ? { showDocumentSelector: true }
-                                            : { showChatSelector: true })}
-                                      >
-                                          <Plus size={16} />
-                                          <span>{translate(documentMode
-                                            ? "summary.create.selectDocument"
-                                            : "summary.create.selectChat")}</span>
-                                      </button>
-                                    )}
+                                    <button
+                                        type="button"
+                                        className="summary-workbench-add-chat"
+                                        onClick={() => this.setState(documentMode
+                                          ? { showDocumentSelector: true }
+                                          : { showChatSelector: true })}
+                                    >
+                                        <Plus size={16} />
+                                        <span>{translate(documentMode
+                                          ? "summary.create.selectDocument"
+                                          : "summary.create.selectChat")}</span>
+                                    </button>
                                 </div>
                             ) : (
                               <div className="summary-workbench-source-actions">
@@ -1712,7 +1686,7 @@ export default class SummaryCreatePage extends Component<
                                     <Plus size={16} />
                                     <span>{translate("summary.create.selectChat")}</span>
                                 </button>
-                                {!this.props.channel && mode !== "agent" && canSelectDocuments && (
+                                {!this.props.channel && mode !== "agent" && (
                                   <button
                                     data-testid={summaryTestIds.createSelectDocument}
                                     type="button"
@@ -1840,7 +1814,7 @@ export default class SummaryCreatePage extends Component<
                     onCancel={() => this.setState({ showChatSelector: false })}
                 />
                 <DocumentSelectorModal
-                  visible={showDocumentSelector && canSelectDocuments}
+                  visible={showDocumentSelector}
                   selected={selectedDocuments}
                   maxSelect={MAX_DOCUMENT_SELECT}
                   onConfirm={(documents) => this.setState((state) => {
