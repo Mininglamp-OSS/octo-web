@@ -44,7 +44,7 @@ describe('HarnessRuntimeService', () => {
     get.mockResolvedValue({ items })
 
     await expect(listHarnessRuntimes('http://localhost:3000/agentworker')).resolves.toBe(items)
-    expect(get).toHaveBeenCalledWith('http://localhost:3000/agentworker/api/v1/runtimes', { signal: undefined })
+    expect(get).toHaveBeenCalledWith('http://localhost:3000/agentworker/api/v1/runtimes?owner_subject_type=user', { signal: undefined })
   })
 
   it('creates a local user-owned enrollment without sending profile or device name', async () => {

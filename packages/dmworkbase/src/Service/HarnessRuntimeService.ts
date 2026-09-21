@@ -62,7 +62,7 @@ function agentWorkerEndpoint(agentWorkerURL: string, path: string): string {
 }
 
 export async function listHarnessRuntimes(agentWorkerURL: string, signal?: AbortSignal): Promise<HarnessRuntime[]> {
-  const response = await APIClient.shared.get<{ items?: HarnessRuntime[] }>(agentWorkerEndpoint(agentWorkerURL, 'runtimes'), { signal })
+  const response = await APIClient.shared.get<{ items?: HarnessRuntime[] }>(agentWorkerEndpoint(agentWorkerURL, 'runtimes?owner_subject_type=user'), { signal })
   if (!Array.isArray(response?.items)) throw new Error('Invalid runtime list response')
   return response.items
 }
