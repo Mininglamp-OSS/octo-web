@@ -7,6 +7,7 @@
   min-height: 0;
   box-sizing: border-box;
   overflow: hidden;
+  overflow-y: auto;
   container-type: inline-size;
   container-name: wk-summary-workbench;
   color: var(--wk-text-primary);
@@ -26,7 +27,6 @@
 }
 
 .wk-summary-workbench__header {
-  anchor-name: --summary-workbench-header;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -631,7 +631,8 @@
     var(--wk-summary-workbench-content-width)
   );
   min-width: 0;
-  min-height: 0;
+  /* Preserve a usable template viewport when header and composer fill a short window. */
+  min-height: calc(var(--wk-sp-12) * 3);
   margin: var(--wk-sp-4) auto var(--wk-sp-6);
   overflow: hidden;
 }

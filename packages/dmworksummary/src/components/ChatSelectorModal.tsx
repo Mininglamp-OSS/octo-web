@@ -1,4 +1,5 @@
 import React, { Component, createRef } from "react";
+import { createPortal } from "react-dom";
 import { Checkbox, Spin, Empty, Tag } from "@douyinfe/semi-ui";
 import { IconSearch } from "@douyinfe/semi-icons";
 import { X } from "lucide-react";
@@ -592,7 +593,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
 
         if (!visible) return null;
 
-        return (
+        return createPortal(
             <div data-testid={summaryTestIds.chatSelectorModal} className="chat-selector-overlay" onClick={onCancel}>
                 <div className="chat-selector-modal" onClick={(e) => e.stopPropagation()}>
                     {/* Header */}
@@ -735,7 +736,8 @@ export default class ChatSelectorModal extends Component<Props, State> {
                         </button>
                     </div>
                 </div>
-            </div>
+            </div>,
+            document.body
         );
     }
 }

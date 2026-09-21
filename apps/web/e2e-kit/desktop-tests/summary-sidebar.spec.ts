@@ -1,19 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-
-const fixture = "/e2e-kit/fixtures/desktop-summary-sidebar.html";
-
-async function openSummaryFixture(page: Page, url: string) {
-  await page.goto(url);
-  await page.waitForFunction(() => {
-    const state = document.querySelector<HTMLElement>("#root")?.dataset.fixtureState;
-    return state === "ready" || state === "error";
-  }, undefined, { timeout: 20_000 });
-  const fixtureState = await page.evaluate(() => {
-    const root = document.querySelector<HTMLElement>("#root");
-    return { state: root?.dataset.fixtureState, error: root?.dataset.fixtureError };
-  });
-  expect(fixtureState.state, fixtureState.error || "Summary fixture did not finish bootstrapping").toBe("ready");
-}
+import { openSummaryFixture, summaryFixture as fixture } from "./summary-fixture";
 
 async function expectReadableWorkbench(page: Page) {
   await expect(page.locator(".chat-summary-template-card-select").first()).toBeVisible();
@@ -218,3 +204,39 @@ test("fixture gates rendering until ChatSummaryPanel loads", async ({ page }) =>
   }
   await expectReadableWorkbench(page);
 });
+
+for (const legacy of [false, true]) {
+  test(`standalone web chat selector covers the viewport: legacy=${legacy}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 800 });
+    await openSummaryFixture(page, `${fixture}?platform=web&width=700&standalone&locale=en-US${legacy ? "&legacy" : ""}`);
+    await page.getByRole("button", { name: "Select chats", exact: true }).click();
+    const overlay = page.locator(".chat-selector-overlay");
+    await expect(overlay).toBeVisible();
+    expect(await overlay.evaluate(element => element.parentElement === document.body)).toBe(true);
+    expect(await overlay.evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    })).toEqual({ x: 0, y: 0, width: 1440, height: 800 });
+    await page.locator(".chat-selector-close").click();
+    await expect(overlay).toHaveCount(0);
+  });
+}
+
+for (const height of [480, 360]) {
+  test(`narrow web keeps templates and composer reachable at ${height}px height`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 390, height });
+    await openSummaryFixture(page, `${fixture}?platform=web&width=390&standalone&locale=en-US`);
+    const template = page.locator(".chat-summary-template-card-select").last();
+    await template.scrollIntoViewIfNeeded();
+    await expect(template).toBeInViewport();
+    await template.click();
+    const composer = page.locator(".wk-summary-workbench textarea");
+    await expect(composer).not.toHaveValue("");
+    await composer.scrollIntoViewIfNeeded();
+    await expect(composer).toBeInViewport();
+    const send = page.locator(".wk-summary-workbench__send");
+    await send.scrollIntoViewIfNeeded();
+    await expect(send).toBeInViewport({ ratio: 1 });
+    await page.screenshot({ path: testInfo.outputPath("short-workbench.png"), animations: "disabled" });
+  });
+}

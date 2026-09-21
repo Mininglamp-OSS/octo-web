@@ -16,6 +16,18 @@ away from it. The existing close action returns to the unchanged draft.
 The capability-gated legacy creation form also adapts its template columns;
 its reference preview overlays the bounded agent area on narrow containers.
 
+The unified reference overlay is at most 400 CSS pixels wide, bounded by the
+workbench. Its top follows the actual header height through a ResizeObserver,
+without requiring CSS anchor positioning. This replaces the former Client-only
+token-derived width. Chat and participant selector overlays portal to the body
+so containment does not confine them to a narrow workbench on older engines.
+
+At ordinary heights the conversation and template list keep their own scrolling.
+The workbench can also scroll vertically when the header and composer cannot fit
+alongside a usable template viewport, including short landscape-sized Web windows.
+Inline templates retain `max-height: none`; their grid responds to its container,
+so a 640-pixel dialog uses two columns even in a wide browser window.
+
 The panel back bar owns the native top band. Both embedded renderer entries load
 the client-only Summary presentation styles. Browser bundles do not import them.
 Search media keeps 104-pixel thumbnails and at most four columns, wrapping to
@@ -88,6 +100,25 @@ After rebasing onto upstream base `e10cf94d`, all 342 targeted unit tests and
 a new Vite cache, one worker and zero retries. It includes a regression that
 holds the Summary module request, verifies the loading state, then releases it
 and checks the rendered workbench. This does not replace the Ubuntu PR gate.
+
+## Review Follow-Up
+
+Review follow-up on 2026-09-21 reproduced the missing-anchor header overlap and
+the inaccessible template list at 390 by 360 pixels before fixing them. An
+isolated Electron 26.0.0 / Chromium 116.0.5845.82 process also reproduced the
+chat-selector scrim being confined to 700 pixels within a 1200-pixel viewport.
+After the fixes, its macOS/Windows/Web presentation fixtures passed reference
+resizing and draft checks, and the Web scrim covered the full viewport.
+This was an isolated compatibility harness, not installed-Client acceptance.
+
+The follow-up passed 1717 Summary unit tests, 166 targeted chat/preview/search
+unit tests and 108 desktop browser regressions with a fresh Vite cache and zero
+retries. The desktop CI discovery floor now requires at least 108 passing cases.
+New host-preview transition tests also assert that opening Summary clears the
+accepted source and preserves the rendered split/overlay attributes, including
+late acceptance after cancellation.
+Ordinary Web, Client communication and Client Summary production builds also
+passed; local Client builds used the dirty-artifact override for validation only.
 
 ## Visual Evidence
 

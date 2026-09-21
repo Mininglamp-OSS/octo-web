@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { adaptSummaryWorkspaceHistory } from "../../bridge/summaryWorkbench/adapter";
 import type { SummaryWorkbenchScope } from "../../bridge/summaryWorkbench/protocol";
@@ -168,6 +168,7 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
       data-reference-preview-id={state.referencePreviewId ?? ""}
       data-available-contexts={(state.availableContextKinds ?? []).join(",")}
     >
+      <header className="wk-summary-workbench__header" />
       <span data-testid="reference-label">
         {state.contextItems.find((item: any) => item.kind === "reference")
           ?.label ?? ""}
@@ -444,6 +445,40 @@ describe("SummaryWorkbenchFeature", () => {
       members: [{ uid: "user-a", name: "Alex" }],
       roles: new Map(),
     });
+  });
+
+  it("measures the header, follows wrapping changes and disconnects on unmount", () => {
+    mocks.useSummaryWorkbench.mockReturnValue(controller());
+    let height = 72;
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      return new DOMRect(0, 0, 700, this.classList.contains("wk-summary-workbench__header") ? height : 0);
+    });
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    let resize: (() => void) | undefined;
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: () => void) { resize = callback; }
+      observe = observe;
+      disconnect = disconnect;
+    });
+    let unmount: (() => void) | undefined;
+    try {
+      const view = render(<SummaryWorkbenchFeature spaceId="space-a" />);
+      unmount = view.unmount;
+      const feature = screen.getByTestId("summary-workbench-feature");
+      expect(feature.style.getPropertyValue("--wk-summary-workbench-header-height")).toBe("72px");
+      expect(observe).toHaveBeenCalledWith(feature.querySelector(".wk-summary-workbench__header"));
+      height = 119.5;
+      act(() => resize?.());
+      expect(feature.style.getPropertyValue("--wk-summary-workbench-header-height")).toBe("120px");
+      view.unmount();
+      unmount = undefined;
+      expect(disconnect).toHaveBeenCalledOnce();
+    } finally {
+      unmount?.();
+      rect.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 
   it("sends the standard personal intent for chat plus template", async () => {

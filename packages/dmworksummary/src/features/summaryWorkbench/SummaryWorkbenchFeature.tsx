@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -184,6 +185,21 @@ export default function SummaryWorkbenchFeature({
   messaging,
 }: SummaryWorkbenchFeatureProps) {
   const { t, format } = useI18n();
+  const featureRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const feature = featureRef.current;
+    const header = feature?.querySelector<HTMLElement>(".wk-summary-workbench__header");
+    if (!feature || !header) return;
+    // Measure the real wrapped header; older renderers do not support CSS anchors.
+    const updateHeaderHeight = () => feature.style.setProperty(
+      "--wk-summary-workbench-header-height",
+      `${Math.ceil(header.getBoundingClientRect().height)}px`
+    );
+    updateHeaderHeight();
+    const observer = new ResizeObserver(updateHeaderHeight);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
   const [referencePreviewId] = useState(createReferencePreviewId);
   const currentUserId =
     messaging?.getCurrentUser().uid ?? WKApp.loginInfo.uid ?? "";
@@ -966,6 +982,7 @@ export default function SummaryWorkbenchFeature({
 
   return (
     <div
+      ref={featureRef}
       className={`wk-summary-workbench-feature${
         referencePreviewOpen && referencedTask
           ? " wk-summary-workbench-feature--with-reference"

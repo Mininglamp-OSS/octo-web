@@ -76,7 +76,7 @@ function flushPromises() {
 }
 
 function getArchivedToggle(utils: ReturnType<typeof rtlRender>) {
-    return utils.container.querySelector('.chat-selector-archived-toggle input') as HTMLInputElement;
+    return utils.baseElement.querySelector('.chat-selector-archived-toggle input') as HTMLInputElement;
 }
 
 const TARGET_TYPE: Record<ChatCandidate['chat_type'], number> = {
@@ -350,7 +350,7 @@ describe('ChatSelectorModal — recent tab', () => {
         expect(utils.getByText('Group B')).toBeInTheDocument();
         expect(utils.getByText('Group C')).toBeInTheDocument();
 
-        const body = utils.container.querySelector('.chat-selector-modal')?.textContent ?? '';
+        const body = utils.baseElement.querySelector('.chat-selector-modal')?.textContent ?? '';
         const iB = body.indexOf('Group B');
         const iA = body.indexOf('Group A');
         const iC = body.indexOf('Group C');
@@ -405,6 +405,15 @@ describe('ChatSelectorModal — sidebar sync behavior', () => {
                 expect.objectContaining({ tab: 'recent', device_uuid: 'test-device-uuid' }),
             ]),
         );
+    });
+
+    it('keeps the overlay outside contained workbenches and removes it on unmount', async () => {
+        const utils = await open([GROUP_A]);
+        const overlay = utils.getByTestId('summary-chat-selector-modal');
+        expect(overlay.parentElement).toBe(document.body);
+        expect(utils.container).not.toContainElement(overlay);
+        utils.unmount();
+        expect(document.body).not.toContainElement(overlay);
     });
 
     it('falls back gracefully when sync rejects: modal renders, non-filtering tabs still show candidates', async () => {
