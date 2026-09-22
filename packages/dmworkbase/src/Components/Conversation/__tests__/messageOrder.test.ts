@@ -125,6 +125,7 @@ vi.mock("wukongimjssdk", () => {
 vi.mock("../../../App", () => ({
     default: {
         loginInfo: { uid: "me" },
+        apiClient: { config: { apiURL: "https://test.invalid/" } },
         config: { pageSizeOfMessage: 30 },
         dataSource: { channelDataSource: { subscribers: () => Promise.resolve([]) } },
         mittBus: { on: () => {}, off: () => {}, emit: sdkState.emit },
@@ -308,6 +309,7 @@ describe("ConversationVM message ordering", () => {
         sdkState.connectStatusListener = undefined
         sdkState.typingListener = undefined
         sdkState.clearChannelHandler = undefined
+        WKApp.shared.currentSpaceId = ""
         document.body.innerHTML = ""
     })
 
@@ -553,6 +555,199 @@ describe("ConversationVM message ordering", () => {
 
         expect(vm.unreadCount).toBe(1)
         expect(sdkState.conversation.unread).toBe(1)
+    })
+
+    it.each([
+        { messageSeq: 92, spaceUnread: 1 },
+        { messageSeq: 100, spaceUnread: 5 },
+    ])("reconciles a visible latest message with stale spaceUnread=$spaceUnread at seq=$messageSeq", async ({ messageSeq, spaceUnread }) => {
+        WKApp.shared.currentSpaceId = "space-a"
+        const vm = new ConversationVM(new Channel("u1", 1))
+        sdkState.conversation = {
+            channel: vm.channel,
+            unread: 0,
+            extra: { spaceUnread },
+            lastMessage: rawMessage(messageSeq),
+        }
+        vm.lastMessage = wrap({ messageSeq, fromUID: "u1" })
+        vm.browseToMessageSeq = messageSeq
+
+        // Initial browse positions alone are not evidence that a message was seen.
+        await vm.refreshNewMsgCount()
+        expect(sdkState.conversation.extra.spaceUnread).toBe(spaceUnread)
+        expect(sdkState.markConversationUnread).not.toHaveBeenCalled()
+
+        await vm.refreshNewMsgCount({ reconcileRead: true })
+        expect(vm.unreadCount).toBe(0)
+        expect(sdkState.conversation.extra.spaceUnread).toBe(0)
+        expect(sdkState.markConversationUnread).toHaveBeenCalledExactlyOnceWith(vm.channel, 0)
+        expect(sdkState.notifyConversationListeners).toHaveBeenCalledTimes(1)
+        expect(sdkState.emit).toHaveBeenCalledWith("sidebar-reload")
+
+        await vm.refreshNewMsgCount({ reconcileRead: true })
+        expect(sdkState.markConversationUnread).toHaveBeenCalledTimes(1)
+        expect(sdkState.notifyConversationListeners).toHaveBeenCalledTimes(1)
+    })
+
+    it("does not clear a newer SDK snapshot using the older loaded last message", async () => {
+        WKApp.shared.currentSpaceId = "space-a"
+        const vm = new ConversationVM(new Channel("u1", 1))
+        sdkState.conversation = {
+            channel: vm.channel, unread: 1, extra: { spaceUnread: 1 },
+            lastMessage: rawMessage(93),
+        }
+        vm.lastMessage = wrap({ messageSeq: 92, fromUID: "u1" })
+        vm.browseToMessageSeq = 92
+        vm.unreadCount = 1
+
+        await vm.refreshNewMsgCount({ reconcileRead: true })
+
+        expect(sdkState.conversation.unread).toBe(1)
+        expect(sdkState.conversation.extra.spaceUnread).toBe(1)
+        expect(sdkState.markConversationUnread).not.toHaveBeenCalled()
+    })
+
+    it("persists a clear even when the conversation listener already zeroed the raw count", async () => {
+        WKApp.shared.currentSpaceId = "space-a"
+        const vm = new ConversationVM(new Channel("u1", 1))
+        vi.spyOn(vm, "requestMessagesOfFirstPage").mockResolvedValue(undefined)
+        vm.didMount()
+        vm.lastMessage = wrap({ messageSeq: 92, fromUID: "u1" })
+        vm.browseToMessageSeq = 92
+        sdkState.conversation = {
+            channel: vm.channel, unread: 1, extra: { spaceUnread: 1 },
+            lastMessage: rawMessage(92),
+        }
+        sdkState.conversationListener(sdkState.conversation, "update")
+        expect(vm.unreadCount).toBe(0)
+        expect(sdkState.conversation.unread).toBe(0)
+        expect(sdkState.conversation.extra.spaceUnread).toBe(1)
+
+        await vm.refreshNewMsgCount({ reconcileRead: true })
+        expect(sdkState.conversation.extra.spaceUnread).toBe(0)
+        expect(sdkState.markConversationUnread).toHaveBeenCalledExactlyOnceWith(vm.channel, 0)
+        vm.didUnMount()
+    })
+
+    it("retries a failed clear on the next read check, without a new unread transition", async () => {
+        const vm = new ConversationVM(channel)
+        sdkState.conversation = { channel, unread: 1, lastMessage: rawMessage(92) }
+        vm.lastMessage = wrap({ messageSeq: 92, fromUID: "u1" })
+        vm.browseToMessageSeq = 92
+        vm.unreadCount = 1
+        sdkState.markConversationUnread.mockRejectedValueOnce(new Error("offline"))
+
+        await vm.refreshNewMsgCount({ reconcileRead: true })
+        expect(vm.unreadCount).toBe(0)
+        expect(sdkState.emit).not.toHaveBeenCalledWith("sidebar-reload")
+
+        await vm.refreshNewMsgCount({ reconcileRead: true })
+        expect(sdkState.markConversationUnread).toHaveBeenCalledTimes(2)
+        expect(sdkState.emit).toHaveBeenCalledWith("sidebar-reload")
+    })
+
+    it("coalesces repeated read checks and reloads the sidebar only after persistence", async () => {
+        const vm = new ConversationVM(channel)
+        sdkState.conversation = { channel, unread: 1, lastMessage: rawMessage(92) }
+        vm.lastMessage = wrap({ messageSeq: 92, fromUID: "u1" })
+        vm.browseToMessageSeq = 92
+        vm.unreadCount = 1
+        let finish!: () => void
+        sdkState.markConversationUnread.mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve }))
+
+        const first = vm.refreshNewMsgCount({ reconcileRead: true })
+        const second = vm.refreshNewMsgCount({ reconcileRead: true })
+        await Promise.resolve()
+        expect(sdkState.markConversationUnread).toHaveBeenCalledTimes(1)
+        expect(sdkState.conversation.unread).toBe(0)
+        expect(sdkState.emit).not.toHaveBeenCalledWith("sidebar-reload")
+        finish()
+        await Promise.all([first, second])
+        expect(sdkState.emit).toHaveBeenCalledExactlyOnceWith("sidebar-reload")
+    })
+
+    it("does not publish a late clear completion into a different Space", async () => {
+        WKApp.shared.currentSpaceId = "space-a"
+        const vm = new ConversationVM(channel)
+        sdkState.conversation = { channel, unread: 1, lastMessage: rawMessage(92) }
+        vm.lastMessage = wrap({ messageSeq: 92, fromUID: "u1" })
+        vm.browseToMessageSeq = 92
+        vm.unreadCount = 1
+        let finish!: () => void
+        sdkState.markConversationUnread.mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve }))
+
+        const pending = vm.refreshNewMsgCount({ reconcileRead: true })
+        await Promise.resolve()
+        WKApp.shared.currentSpaceId = "space-b"
+        sdkState.conversation = { channel, unread: 3, lastMessage: rawMessage(95) }
+        finish()
+        await pending
+
+        expect(sdkState.conversation.unread).toBe(3)
+        expect(sdkState.emit).not.toHaveBeenCalledWith("sidebar-reload")
+    })
+
+    it("drains a newer read position reached while the first clear is in flight", async () => {
+        const vm = new ConversationVM(channel)
+        sdkState.conversation = { channel, unread: 1, lastMessage: rawMessage(92) }
+        vm.lastMessage = wrap({ messageSeq: 92, fromUID: "u1" })
+        vm.browseToMessageSeq = 92
+        vm.unreadCount = 1
+        let finish!: () => void
+        sdkState.markConversationUnread.mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve }))
+        const first = vm.refreshNewMsgCount({ reconcileRead: true })
+        await Promise.resolve()
+
+        sdkState.conversation.lastMessage = rawMessage(93)
+        sdkState.conversation.unread = 1
+        vm.lastMessage = wrap({ messageSeq: 93, fromUID: "u1" })
+        vm.browseToMessageSeq = 93
+        vm.unreadCount = 1
+        const second = vm.refreshNewMsgCount({ reconcileRead: true })
+        expect(sdkState.markConversationUnread).toHaveBeenCalledTimes(1)
+        finish()
+        await Promise.all([first, second])
+
+        expect(sdkState.markConversationUnread).toHaveBeenCalledTimes(2)
+        expect(sdkState.conversation.unread).toBe(0)
+        expect(sdkState.emit).toHaveBeenCalledExactlyOnceWith("sidebar-reload")
+    })
+
+    it("leaves a newer unread message intact when an older clear finishes", async () => {
+        const vm = new ConversationVM(channel)
+        sdkState.conversation = { channel, unread: 1, lastMessage: rawMessage(92) }
+        vm.lastMessage = wrap({ messageSeq: 92, fromUID: "u1" })
+        vm.browseToMessageSeq = 92
+        vm.unreadCount = 1
+        let finish!: () => void
+        sdkState.markConversationUnread.mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve }))
+        const pending = vm.refreshNewMsgCount({ reconcileRead: true })
+        await Promise.resolve()
+
+        sdkState.conversation.lastMessage = rawMessage(93)
+        sdkState.conversation.unread = 1
+        vm.lastMessage = wrap({ messageSeq: 93, fromUID: "u1" })
+        vm.unreadCount = 1
+        finish()
+        await pending
+
+        expect(sdkState.conversation.unread).toBe(1)
+        expect(sdkState.markConversationUnread).toHaveBeenCalledTimes(1)
+        expect(sdkState.emit).not.toHaveBeenCalledWith("sidebar-reload")
+    })
+
+    it("cancels queued clear work on unmount before the request starts", async () => {
+        const vm = new ConversationVM(channel)
+        sdkState.conversation = { channel, unread: 1, lastMessage: rawMessage(92) }
+        vm.lastMessage = wrap({ messageSeq: 92, fromUID: "u1" })
+        vm.browseToMessageSeq = 92
+        vm.unreadCount = 1
+
+        const pending = vm.refreshNewMsgCount({ reconcileRead: true })
+        vm.didUnMount()
+        await pending
+        expect(sdkState.markConversationUnread).not.toHaveBeenCalled()
+        expect(sdkState.emit).not.toHaveBeenCalledWith("sidebar-reload")
     })
 
     it("does not let an auxiliary VM claim the SDK open conversation", () => {

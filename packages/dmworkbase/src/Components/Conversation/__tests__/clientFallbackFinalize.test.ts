@@ -38,6 +38,7 @@ vi.mock("../../../App", () => ({
             markConversationUnread: () => Promise.resolve(),
             syncMessages: () => Promise.resolve([]),
         },
+        apiClient: { config: { apiURL: "https://test.invalid/" } },
         shared: {
             currentSpaceId: "",
             notifyMessageDeleteListener: () => {},

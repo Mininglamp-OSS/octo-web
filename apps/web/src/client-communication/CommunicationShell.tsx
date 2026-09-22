@@ -452,6 +452,7 @@ export function CommunicationShell({
           : "hidden";
         if (command.visible && wasHidden) {
           window.dispatchEvent(new CustomEvent("octobuddy:resume"));
+          WKApp.mittBus.emit("wk:app-foreground");
         }
         return;
       }
@@ -462,6 +463,9 @@ export function CommunicationShell({
         }
         document.documentElement.dataset.hostVisibility = command.type === "suspend" ? "hidden" : "visible";
         window.dispatchEvent(new CustomEvent(`octobuddy:${command.type}`));
+        if (command.type === "resume") {
+          WKApp.mittBus.emit("wk:app-foreground");
+        }
       }
     });
     commandListenerReadyRef.current = true;

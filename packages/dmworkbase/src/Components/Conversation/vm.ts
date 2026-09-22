@@ -64,6 +64,7 @@ import {
     isImReadAttentionAllowed,
     subscribeImReadAttention,
 } from "../../im-runtime/readAttentionHost";
+import { captureCurrentImConversationSyncContext } from "../../im-runtime/conversationSyncContext";
 import { isSummaryTipContent } from "../../Messages/SummaryNotify/protocol";
 
 export interface FoldSessionParticipant {
@@ -194,6 +195,12 @@ export default class ConversationVM extends ProviderListener {
     private _editOn: boolean = false // 是否开启编辑模式
     orgUnreadCount: number = 0 // 原未读数量
     private _unreadCount: number = 0 // 当前未读消息数量
+    private unreadClearNeeded = false
+    private pendingUnreadClearSeq?: number
+    private unreadClearRequest?: Promise<void>
+    private readContextIsCurrent?: () => boolean
+    private readSyncDisposed = false
+    private readSyncRevision = 0
 
     pullupHasMore: boolean = false // 上拉是否有更多
     pulldownFinished: boolean = false // 下拉完成
@@ -986,19 +993,23 @@ export default class ConversationVM extends ProviderListener {
         }
         if (allowed) {
             this.reclaimOpenConversationIfAllowed()
+            this.notifyListener()
         } else {
             this.releaseOpenConversationIfDenied()
         }
     }
 
     didMount(): void {
+        this.readSyncRevision++
+        this.readSyncDisposed = false
+        this.readContextIsCurrent = captureCurrentImConversationSyncContext()
         this.gateAllowed = isImReadAttentionAllowed()
         this.unsubscribeReadAttention = subscribeImReadAttention(
             (allowed) => this.handleReadAttentionGateChange(allowed),
         )
 
         this.conversationListener = (conversation: Conversation, action: ConversationAction) => {
-            if (!conversation.channel.isEqual(this.channel)) {
+            if (!this.readContextIsCurrent?.() || !conversation.channel.isEqual(this.channel)) {
                 return
             }
             if (action == ConversationAction.update) {
@@ -1007,15 +1018,24 @@ export default class ConversationVM extends ProviderListener {
                 if (
                     this.gateAllowed &&
                     this.lastMessage &&
-                    this.browseToMessageSeq >= this.lastMessage.messageSeq
+                    this.browseToMessageSeq >= Math.max(
+                        this.lastMessage.messageSeq,
+                        conversation.lastMessage?.messageSeq || 0,
+                    )
                 ) {
                     if (conversation.unread > 0) {
                         // 有意直接修改 conversation.unread（side effect），
                         // 确保 SDK 缓存的 Conversation 对象与本地已读状态保持一致
+                        this.unreadClearNeeded = true
                         conversation.unread = 0
                     }
                 }
-                this.unreadCount = conversation.unread
+                if (this.unreadCount !== conversation.unread) {
+                    this.unreadCount = conversation.unread
+                } else {
+                    // A new snapshot can change spaceUnread without advancing the message seq.
+                    this.notifyListener()
+                }
             }
         }
         WKSDK.shared().conversationManager.addConversationListener(this.conversationListener)
@@ -1274,6 +1294,11 @@ export default class ConversationVM extends ProviderListener {
     }
 
     didUnMount(): void {
+        this.readSyncRevision++
+        this.readSyncDisposed = true
+        this.pendingUnreadClearSeq = undefined
+        this.unreadClearRequest = undefined
+        this.unreadClearNeeded = false
         this.unsubscribeReadAttention?.()
         this.unsubscribeReadAttention = undefined
         this.releaseOpenConversationOwnership()
@@ -1411,7 +1436,7 @@ export default class ConversationVM extends ProviderListener {
                 latestLoadedMessage?.messageSeq || 0
             )
             this.showScrollToBottomBtn = false
-            await this.refreshNewMsgCount()
+            await this.refreshNewMsgCount({ reconcileRead: true })
         } else {
             return this.requestMessagesOfFirstPage(0)
         }
@@ -1914,65 +1939,101 @@ export default class ConversationVM extends ProviderListener {
     }
 
     // 刷新新消息数量
-    async refreshNewMsgCount() {
-
+    async refreshNewMsgCount(options: { reconcileRead?: boolean } = {}) {
+        if (this.readSyncDisposed || (this.readContextIsCurrent && !this.readContextIsCurrent())) return
+        const conversation = WKSDK.shared().conversationManager.findConversation(this.channel)
         const oldUnreadCount = this.unreadCount
+        let unreadCount: number
         if (!this.lastMessage) { // 没有给定最新的消息 没办法算未读数量
-            this.unreadCount = 0
+            unreadCount = 0
         } else if (this.lastMessage.send) { // // 如果最后一条消息是自己发的 则新消息数量为0
-            this.browseToMessageSeq = this.lastMessage.messageSeq
-            this.unreadCount = 0
+            if (this.gateAllowed) this.browseToMessageSeq = Math.max(this.browseToMessageSeq, this.lastMessage.messageSeq)
+            unreadCount = 0
         } else if (this.lastMessage.messageSeq <= this.browseToMessageSeq) { // 如果最新消息的序号小于或等于预览到的 则最新消息为0
-            this.unreadCount = 0
+            unreadCount = 0
         } else {
-            if (this.lastMessage.messageSeq >= this.browseToMessageSeq) {
-                this.unreadCount = this.lastMessage.messageSeq - this.browseToMessageSeq
-            }
+            unreadCount = this.lastMessage.messageSeq - this.browseToMessageSeq
         }
-        if (oldUnreadCount != this.unreadCount) {
-            const conversation = WKSDK.shared().conversationManager.findConversation(this.channel)
-            if (conversation) {
-                conversation.unread = this.unreadCount
-                if (
-                    WKApp.shared.currentSpaceId &&
-                    conversation.channel.channelType === ChannelTypePerson &&
-                    conversation.extra?.spaceUnread !== undefined
-                ) {
-                    conversation.extra.spaceUnread = this.unreadCount
-                }
+
+        const latestSeq = Math.max(this.lastMessage?.messageSeq || 0, conversation?.lastMessage?.messageSeq || 0)
+        if (unreadCount === 0 && (!this.gateAllowed || latestSeq > this.browseToMessageSeq)) return
+        const spaceUnread =
+            WKApp.shared.currentSpaceId &&
+            conversation?.channel.channelType === ChannelTypePerson &&
+            conversation.extra?.spaceUnread !== undefined
+                ? conversation.extra.spaceUnread : undefined
+        const hasSpaceUnread = spaceUnread !== undefined
+        const changed = oldUnreadCount !== unreadCount
+        const shouldClear = unreadCount === 0 && latestSeq > 0 && (
+            oldUnreadCount > 0 ||
+            (options.reconcileRead && (
+                (conversation?.unread || 0) > 0 ||
+                (spaceUnread !== undefined && spaceUnread > 0) ||
+                this.unreadClearNeeded
+            ))
+        )
+        if (changed) this.unreadCount = unreadCount
+        if (!changed && !shouldClear) return
+        if (unreadCount === 0 && !shouldClear) return
+
+        if (shouldClear) {
+            this.unreadClearNeeded = true
+            this.pendingUnreadClearSeq = latestSeq
+        }
+        if (conversation) {
+            const snapshotChanged = conversation.unread !== unreadCount ||
+                (hasSpaceUnread && conversation.extra.spaceUnread !== unreadCount)
+            conversation.unread = unreadCount
+            if (hasSpaceUnread) conversation.extra.spaceUnread = unreadCount
+            if (changed || snapshotChanged) {
                 getBrowserUnreadConversationSync().publish({
                     accountId: WKApp.loginInfo.uid,
                     spaceId: WKApp.shared.currentSpaceId || "",
                     channelId: conversation.channel.channelID,
                     channelType: conversation.channel.channelType,
-                    unread: this.unreadCount,
+                    unread: unreadCount,
                 })
-            }
-            // 未读清零时：先持久化到服务端，成功后再通知监听者 + 刷新 sidebar 快照（#203）。
-            // markConversationUnread 是异步 HTTP PUT，必须 await 确保 /sidebar/sync 读到
-            // 的是已持久化的状态，而不是旧快照。
-            let shouldClear = this.unreadCount === 0 && oldUnreadCount > 0
-            // 先通知本地监听者：conversation.unread 已归零，让会话列表 UI 立即反映，
-            // 不等待网络请求。sidebar-reload 才需要等服务端确认后再触发（#203）。
-            if (conversation) {
                 WKSDK.shared().conversationManager.notifyConversationListeners(conversation, ConversationAction.update)
             }
-            if (shouldClear) {
+        }
+        if (shouldClear) await this.persistUnreadClear()
+    }
+
+    private persistUnreadClear(): Promise<void> {
+        if (this.unreadClearRequest) return this.unreadClearRequest
+        const revision = this.readSyncRevision
+        const contextIsCurrent = captureCurrentImConversationSyncContext()
+        const isCurrent = () => revision === this.readSyncRevision && !this.readSyncDisposed && contextIsCurrent() &&
+            (!this.readContextIsCurrent || this.readContextIsCurrent())
+        // Coalesce repeated viewport checks, but drain a newer read position reached in flight.
+        const request = Promise.resolve().then(async () => {
+            while (isCurrent() && this.gateAllowed && this.pendingUnreadClearSeq !== undefined) {
+                const seq = this.pendingUnreadClearSeq
+                const latest = WKSDK.shared().conversationManager.findConversation(this.channel)?.lastMessage?.messageSeq || 0
+                if (this.unreadCount !== 0 || latest > seq || (this.lastMessage?.messageSeq || 0) > seq) return
                 try {
                     await WKApp.conversationProvider.markConversationUnread(this.channel, 0)
                 } catch (_e) {
-                    // 清未读失败时跳过 sidebar 刷新——服务端还是旧状态，
-                    // sync 拉回来的快照仍是旧值，刷新没有意义。
-                    shouldClear = false
+                    // Keep the intent for the next valid viewport/foreground check.
+                    return
+                }
+                if (!isCurrent()) return
+                if (this.pendingUnreadClearSeq === seq) {
+                    this.pendingUnreadClearSeq = undefined
+                    this.unreadClearNeeded = false
+                }
+                const currentLatest = WKSDK.shared().conversationManager.findConversation(this.channel)?.lastMessage?.messageSeq || 0
+                if (this.pendingUnreadClearSeq === undefined && this.unreadCount === 0 &&
+                    Math.max(currentLatest, this.lastMessage?.messageSeq || 0) <= seq) {
+                    // Sidebar snapshots must only reload after the clear has been persisted.
+                    WKApp.mittBus.emit("sidebar-reload")
                 }
             }
-            // 仅未读清零且服务端确认后刷新 sidebar：按 schema sidebar/sync 拿到最新 follow 快照，
-            // 关注 tab 中 sidebar-only 项的角标才能归零。
-            if (shouldClear) {
-                WKApp.mittBus.emit("sidebar-reload" as any)
-            }
-        }
-
+        }).finally(() => {
+            if (this.unreadClearRequest === request) this.unreadClearRequest = undefined
+        })
+        this.unreadClearRequest = request
+        return request
     }
 
     //滚动到底部，如果需要远程pull数据就去pull

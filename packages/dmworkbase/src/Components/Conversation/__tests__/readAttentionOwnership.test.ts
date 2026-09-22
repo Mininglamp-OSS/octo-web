@@ -118,6 +118,7 @@ vi.mock("wukongimjssdk", () => {
 vi.mock("../../../App", () => ({
     default: {
         loginInfo: { uid: "me" },
+        apiClient: { config: { apiURL: "https://test.invalid/" } },
         config: { pageSizeOfMessage: 30 },
         dataSource: { channelDataSource: { subscribers: () => Promise.resolve([]) } },
         mittBus: { on: () => {}, off: () => {}, emit: sdkState.emit },
@@ -324,6 +325,35 @@ describe("ConversationVM read-attention gate", () => {
         sdkState.conversationListener(conversation, "update")
         expect(conversation.unread).toBe(0)
         expect(vm.unreadCount).toBe(0)
+        vm.didUnMount()
+    })
+
+    it("does not reconcile stale unread while the host denies attention", async () => {
+        gate.setInitial(false)
+        const vm = new ConversationVM(channel)
+        const conversation = { channel, unread: 1, lastMessage: { messageSeq: 5 }, channelInfo: {}, remoteExtra: {} }
+        sdkState.conversation = conversation
+        vm.didMount()
+        vm.browseToMessageSeq = 5
+
+        await vm.refreshNewMsgCount({ reconcileRead: true })
+
+        expect(conversation.unread).toBe(1)
+        expect(sdkState.markConversationUnread).not.toHaveBeenCalled()
+        vm.didUnMount()
+    })
+
+    it("does not suppress a newer snapshot using the previous loaded last message", () => {
+        const vm = new ConversationVM(channel)
+        sdkState.conversation = { channel, unread: 1, lastMessage: { messageSeq: 5 }, channelInfo: {}, remoteExtra: {} }
+        vm.didMount()
+        vm.browseToMessageSeq = 5
+        const incoming = { channel, unread: 1, lastMessage: { messageSeq: 6 } }
+
+        sdkState.conversationListener(incoming, "update")
+
+        expect(incoming.unread).toBe(1)
+        expect(vm.unreadCount).toBe(1)
         vm.didUnMount()
     })
 })

@@ -459,7 +459,8 @@ export class Conversation
   private _initialComposeMounted = false;
   private readonly _openChannelOwner = Symbol("openChannelOwner");
   private _ownedOpenChannel?: Channel;
-  private _lastAttentionCheckedMessageSeq = 0;
+  private _attentionMounted = false;
+  private _cancelAttentionRefresh?: () => void;
   private _unsubscribeVmAttentionListener?: () => void;
   private _unsubscribeComposeRecovery?: () => void;
   private readonly _composeRecoveryOwner = Symbol("composeRecoveryOwner");
@@ -522,14 +523,21 @@ export class Conversation
     },
   };
   private _attentionRefreshHandler = () => {
-    const run = () => this.updateBrowseToMessageSeqAndReminderDoneIfNeed();
-    if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
-    else window.setTimeout(run, 0);
+    if (!this._attentionMounted || this._cancelAttentionRefresh) return;
+    const run = () => {
+      this._cancelAttentionRefresh = undefined;
+      if (this._attentionMounted) this.updateBrowseToMessageSeqAndReminderDoneIfNeed();
+    };
+    if (typeof requestAnimationFrame === "function") {
+      const frame = requestAnimationFrame(run);
+      this._cancelAttentionRefresh = () => cancelAnimationFrame(frame);
+    } else {
+      const timer = window.setTimeout(run, 0);
+      this._cancelAttentionRefresh = () => window.clearTimeout(timer);
+    }
   };
   private _vmAttentionListener = () => {
-    const latestMessageSeq = this.vm.lastMessage?.messageSeq || 0;
-    if (latestMessageSeq <= this._lastAttentionCheckedMessageSeq) return;
-    this._lastAttentionCheckedMessageSeq = latestMessageSeq;
+    // Same-sequence snapshots can still change unread state.
     this._attentionRefreshHandler();
   };
   private onOpenThreadPanel?: (
@@ -1735,6 +1743,7 @@ export class Conversation
   }
 
   componentDidMount() {
+    this._attentionMounted = true;
     this._initialComposeMounted = true;
     this.subscribeComposeRecovery();
     const { channel, onContext } = this.props;
@@ -1865,6 +1874,9 @@ export class Conversation
   }
 
   componentWillUnmount() {
+    this._attentionMounted = false;
+    this._cancelAttentionRefresh?.();
+    this._cancelAttentionRefresh = undefined;
     this._initialComposeMounted = false;
     this._initialComposeGeneration += 1;
     if (this._exitMultipleModeHandler) {
@@ -2811,6 +2823,7 @@ export class Conversation
   // 更新已预览的位置
   private canRecordReadAttention(viewport: HTMLElement | null): boolean {
     if (!isImReadAttentionAllowed()) return false
+    if (document.documentElement.dataset.hostVisibility === "hidden") return false
     const viewportVisible = isConversationViewportVisible(viewport, document);
     return shouldMarkConversationRead({
       chatModuleActive: WKApp.currentMenuId === "chat",
@@ -2824,14 +2837,15 @@ export class Conversation
 
   updateBrowseToMessageSeq(viewport: HTMLElement | null) {
     const lastVisiableMessage = this.lastVisiableMessage(viewport); // 当前UI显示的最后一条可见的消息
-    if (
-      lastVisiableMessage &&
-      lastVisiableMessage.messageSeq > this.vm.browseToMessageSeq
-    ) {
-      // 如果当前UI显示的最后一条消息大于已预览到的最新消息，则更新未读数
-      this.vm.browseToMessageSeq = lastVisiableMessage.messageSeq;
-      this.vm.refreshNewMsgCount(); // 刷新最新消息数量
-    }
+    if (!lastVisiableMessage || lastVisiableMessage.messageSeq <= 0) return;
+    this.vm.browseToMessageSeq = Math.max(
+      this.vm.browseToMessageSeq,
+      lastVisiableMessage.messageSeq
+    );
+    // The foreground/viewport gate has passed, even if the read position did not move.
+    void this.vm.refreshNewMsgCount({
+      reconcileRead: lastVisiableMessage.messageSeq >= this.vm.browseToMessageSeq,
+    });
   }
 
   // 更新提醒项

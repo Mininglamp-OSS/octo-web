@@ -411,11 +411,18 @@ describe("CommunicationShell", () => {
       expect(WKApp.mittBus.emit).toHaveBeenLastCalledWith("wk:active-menu-changed", { menuId: "contacts" });
       const input = screen.getByLabelText("contacts");
       fireEvent.change(input, { target: { value: "retained search" } });
+      const foregroundCalls = () => vi.mocked(WKApp.mittBus.emit).mock.calls.filter(
+        ([event]) => event === "wk:app-foreground",
+      ).length;
+      const beforeResume = foregroundCalls();
       act(() => {
         mocks.command.listener?.({ type: "suspend" });
-        mocks.command.listener?.({ type: "resume" });
+        mocks.command.listener?.({ type: "hostVisibilityChanged", visible: false });
       });
+      expect(foregroundCalls()).toBe(beforeResume);
+      act(() => mocks.command.listener?.({ type: "resume" }));
       expect(resumed).toHaveBeenCalledTimes(1);
+      expect(foregroundCalls()).toBe(beforeResume + 1);
       expect(WKApp.currentMenuId).toBe("contacts");
       expect(document.documentElement.dataset.hostVisibility).toBe("visible");
       act(() => {
@@ -423,8 +430,10 @@ describe("CommunicationShell", () => {
         mocks.command.listener?.({ type: "hostVisibilityChanged", visible: true });
       });
       expect(resumed).toHaveBeenCalledTimes(2);
+      expect(foregroundCalls()).toBe(beforeResume + 2);
       act(() => mocks.command.listener?.({ type: "hostVisibilityChanged", visible: true }));
       expect(resumed).toHaveBeenCalledTimes(2);
+      expect(foregroundCalls()).toBe(beforeResume + 2);
       act(() => WKApp.switchToMenuById?.("chat"));
       act(() => WKApp.switchToMenuById?.("contacts"));
       expect(WKApp.mittBus.emit).toHaveBeenLastCalledWith("wk:active-menu-changed", { menuId: "contacts" });
