@@ -11,6 +11,15 @@ width and is not overwritten by window resizing or outward splitter drags that
 cannot change the rendered width because the container is already at its limit.
 Effective inward drags and later direction changes still update the preference.
 
+Client conversation presentation hides the Web conversation list because the
+native shell already supplies it. A retained WKLayout shell does not by itself
+reserve navigation width: the shared observer only deducts the saved list width
+when its direct list is displayed. It observes the list as well as the shell so
+presentation changes re-evaluate the layout. Temporary `visibility: hidden`
+navigation collapse still retains its normal budget to avoid layout oscillation.
+Summary, search and compact threads can split at 752 pixels of actual content;
+thread previews retain their 864-pixel threshold.
+
 If a non-inline native attachment preview takes over while Summary is already
 open, Summary is hidden without unmounting it. Closing the preview restores the
 same draft in the current split/overlay layout. The visible Summary class and its
@@ -88,11 +97,16 @@ pnpm --dir apps/web exec playwright test --config=e2e-kit/playwright.desktop.con
 
 The DEV-only fixture is `e2e-kit/fixtures/desktop-summary-sidebar.html`.
 Query parameters cover `platform=darwin|win32|web`, `width`, `zoom`, `theme`,
-`locale`, `history`, `legacy`, `standalone`, `fallback`, `media`, and `host-preview`.
+`locale`, `history`, `legacy`, `standalone`, `fallback`, `media`, `host-preview`,
+and `client-shell` (used with `host-preview`).
 The host-preview mode uses the real ChatContentPage lifecycle, event handlers,
 layout observer and rendered panel tree. It substitutes the conversation message
 renderer and native bridge, while keeping the production Summary component.
 Other modes stub data transport only. No backend or native Client is required.
+The Client shell variant also mounts real WKLayout and WKViewQueue routes with
+the shipped conversation-presentation CSS. It checks hidden versus visible list
+ownership, split boundaries and repeated resizing without duplicating the
+production layout attributes in the fixture.
 
 ## CI Startup
 
@@ -150,6 +164,35 @@ and all three Web/communication/Summary production builds. The desktop discovery
 floor is now 111. The modified Chat stylesheet has no Stylelint errors and eight
 existing warnings; i18n and diff checks pass. Native authenticated acceptance
 remains outside this verification.
+
+## Client Shell Follow-Up
+
+On 2026-09-22, a Client report exposed a gap in the fixture coverage: the
+communication conversation surface keeps WKLayout but hides its Web list.
+The previous observer still subtracted that list's saved 300-360-pixel width,
+so a 1000-pixel surface with a 360-pixel list preference selected overlay
+despite having enough room for both conversation and Summary.
+
+Three new browser cases failed on upstream base `af73104f` before the observer
+fix and passed afterward. They mount the real layout shell, keep the saved list
+width, resize the content from 390 through 1600 pixels, and switch between
+conversation and workspace presentation. They verify the 752-pixel boundary,
+the visible conversation width, Summary draft preservation and unchanged saved
+widths. This uses synthetic messages and a stubbed host bridge, not an
+authenticated installed Client.
+
+All 114 desktop browser tests passed with a fresh Vite cache, one worker and
+zero retries. The 73 layout observer/decision tests, 101 targeted
+chat/preview/WKLayout tests, 62 Client shell tests, ordinary Web build and both
+Client renderer builds also passed. The desktop CI discovery floor is now 114.
+Ordinary Web output still contains no desktop presentation selectors, and the
+i18n and diff checks pass.
+
+The 1600-pixel browser fixture below shows conversation space on the left and
+the 700-pixel Summary on the right. The conversation controls are test substitutes;
+the layout shell and Summary are production components.
+
+![Wide Client shell with split Summary](images/client-summary-shell-wide.png)
 
 ## Visual Evidence
 

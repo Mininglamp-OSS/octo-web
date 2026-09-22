@@ -138,7 +138,7 @@ async function bootstrap() {
             <MediaResultGrid items={media} onLocate={() => undefined} />
           </div>
         ) : HostPreviewFixture ? (
-          <HostPreviewFixture width={width} />
+          <HostPreviewFixture width={width} clientShell={params.has("client-shell")} />
         ) : params.has("standalone") ? (
           <main style={{ width, maxWidth: "100%", height: "100%" }}>
             <SummaryWorkbenchCreateEntry channel={{ channelID: "fixture-channel", channelType: 2 }} />

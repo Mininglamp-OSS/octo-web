@@ -36,6 +36,7 @@ export function observeChatLayout(
   onChange: (layout: ChatLayout) => void
 ) {
   const shell = element.closest<HTMLElement>(".wk-layout-content");
+  const navigation = shell?.querySelector<HTMLElement>(":scope > .wk-layout-content-left");
   let auxiliary: Auxiliary = false;
   let previous = "";
   let resizeFrame = 0;
@@ -44,7 +45,9 @@ export function observeChatLayout(
     if (disposed) return;
     const width = (shell || element).getBoundingClientRect().width;
     if (width <= 0) return;
-    const navigationWidth = shell
+    // Hosts can hide the Web list while keeping the layout shell and its saved width.
+    // visibility:hidden is our own temporary collapse and must retain its budget.
+    const navigationWidth = shell && navigation && getComputedStyle(navigation).display !== "none"
       ? parseFloat(getComputedStyle(shell).getPropertyValue("--wk-width-layout-content-left")) || 300
       : 0;
     const layout = resolveChatLayout(width, navigationWidth, auxiliary);
@@ -67,6 +70,7 @@ export function observeChatLayout(
   const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(scheduleUpdate);
   observer?.observe(shell || element);
   if (shell) observer?.observe(element);
+  if (navigation) observer?.observe(navigation);
   // The navigation splitter writes its preferred width as a shell style.
   const styles = shell && typeof MutationObserver !== "undefined"
     ? new MutationObserver(scheduleUpdate)

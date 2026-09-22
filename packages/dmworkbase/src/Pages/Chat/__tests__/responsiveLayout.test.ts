@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { observeChatLayout, resolveChatLayout } from "../responsiveLayout";
+import { observeChatLayout, resolveChatLayout, type Auxiliary } from "../responsiveLayout";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -149,7 +149,7 @@ describe("message content layout", () => {
       observe() {}
       disconnect = disconnect;
     });
-    document.body.innerHTML = '<div class="wk-layout-content" style="--wk-width-layout-content-left:300px"><div id="chat"></div></div>';
+    document.body.innerHTML = '<div class="wk-layout-content" style="--wk-width-layout-content-left:300px"><div class="wk-layout-content-left"></div><div class="wk-layout-content-right"><div id="chat"></div></div></div>';
     const shell = document.querySelector<HTMLElement>(".wk-layout-content")!;
     const element = document.getElementById("chat")!;
     let width = 1200;
@@ -196,7 +196,7 @@ describe("message content layout", () => {
       observe() {}
       disconnect = disconnect;
     });
-    document.body.innerHTML = '<div class="wk-layout-content" style="--wk-width-layout-content-left:300px"><div id="chat"></div></div>';
+    document.body.innerHTML = '<div class="wk-layout-content" style="--wk-width-layout-content-left:300px"><div class="wk-layout-content-left"></div><div class="wk-layout-content-right"><div id="chat"></div></div></div>';
     const shell = document.querySelector<HTMLElement>(".wk-layout-content")!;
     const element = document.getElementById("chat")!;
     let width = 1200;
@@ -216,6 +216,100 @@ describe("message content layout", () => {
     flushFrame();
     expect(shell.dataset.chatNavigation).toBe("visible");
     expect(changed).toHaveBeenLastCalledWith({ panelLayout: "overlay", navigationCollapsed: false });
+    observer.dispose();
+    expect(disconnect).toHaveBeenCalledOnce();
+    expect(shell.dataset.chatNavigation).toBeUndefined();
+  });
+});
+
+describe("layout observer navigation ownership", () => {
+  function mountShell(width: number, display: string) {
+    document.body.innerHTML = '<div class="wk-layout-content" style="--wk-width-layout-content-left:300px"><div class="wk-layout-content-left"></div><div class="wk-layout-content-right"><div id="chat"></div></div></div>';
+    const shell = document.querySelector<HTMLElement>(".wk-layout-content")!;
+    const navigation = shell.querySelector<HTMLElement>(".wk-layout-content-left")!;
+    const element = document.getElementById("chat")!;
+    navigation.style.display = display;
+    shell.getBoundingClientRect = () => ({ width } as DOMRect);
+    return { shell, navigation, element };
+  }
+
+  for (const auxiliary of ["summary", "search", "thread"] as const) {
+    it.each([
+      ["none", 751, "overlay"],
+      ["none", 752, "split"],
+      ["none", 900, "split"],
+      ["block", 1051, "overlay"],
+      ["block", 1052, "split"],
+    ] as const)(`${auxiliary}: display %s at %i px selects %s`, (display, width, panelLayout) => {
+      const { shell, element } = mountShell(width, display);
+      const changed = vi.fn();
+      const observer = observeChatLayout(element, changed);
+      observer.update(auxiliary);
+      expect(changed).toHaveBeenLastCalledWith({ panelLayout, navigationCollapsed: false });
+      expect(shell.style.getPropertyValue("--wk-width-layout-content-left")).toBe("300px");
+      observer.dispose();
+    });
+  }
+
+  it.each([
+    [true, 863, "overlay", true],
+    [true, 864, "split", false],
+    ["threadPreview", 863, "overlay", false],
+    ["threadPreview", 864, "split", false],
+  ] satisfies [Auxiliary, number, string, boolean][])("keeps the larger %s budget at %i px", (auxiliary, width, panelLayout, navigationCollapsed) => {
+    const { element } = mountShell(width, "none");
+    const changed = vi.fn();
+    const observer = observeChatLayout(element, changed);
+    observer.update(auxiliary);
+    expect(changed).toHaveBeenLastCalledWith({ panelLayout, navigationCollapsed });
+    observer.dispose();
+  });
+
+  it("observes hidden list changes without a shell resize and retains the collapse budget", () => {
+    let resize = () => {};
+    let frame: FrameRequestCallback | undefined;
+    vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => {
+      frame = callback;
+      return 1;
+    }));
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: () => void) { resize = callback; }
+      observe = observe;
+      disconnect = disconnect;
+    });
+    const flushResize = () => {
+      resize();
+      const callback = frame;
+      frame = undefined;
+      callback?.(0);
+    };
+    const { shell, navigation, element } = mountShell(1000, "none");
+    const changed = vi.fn();
+    const observer = observeChatLayout(element, changed);
+    observer.update("summary");
+    expect(observe).toHaveBeenCalledWith(navigation);
+    expect(changed).toHaveBeenLastCalledWith({ panelLayout: "split", navigationCollapsed: false });
+
+    navigation.style.display = "block";
+    flushResize();
+    expect(changed).toHaveBeenLastCalledWith({ panelLayout: "overlay", navigationCollapsed: false });
+    navigation.style.display = "none";
+    flushResize();
+    expect(changed).toHaveBeenLastCalledWith({ panelLayout: "split", navigationCollapsed: false });
+
+    navigation.style.display = "block";
+    observer.update(true);
+    expect(changed).toHaveBeenLastCalledWith({ panelLayout: "split", navigationCollapsed: true });
+    // Chat's own collapse hides the list without changing its display.
+    navigation.style.visibility = "hidden";
+    changed.mockClear();
+    flushResize();
+    flushResize();
+    expect(changed).not.toHaveBeenCalled();
+    expect(shell.dataset.chatNavigation).toBe("collapsed");
     observer.dispose();
     expect(disconnect).toHaveBeenCalledOnce();
     expect(shell.dataset.chatNavigation).toBeUndefined();

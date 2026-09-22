@@ -205,9 +205,9 @@ jobs:
           node <<'NODE'
           const fs = require("node:fs");
           const { stats } = JSON.parse(fs.readFileSync("e2e-kit/playwright-report/desktop.json", "utf8"));
-          if (!stats || !Number.isInteger(stats.expected) || stats.expected < 111 ||
+          if (!stats || !Number.isInteger(stats.expected) || stats.expected < 114 ||
               stats.skipped !== 0 || stats.unexpected !== 0 || stats.flaky !== 0) {
-            throw new Error(`Desktop suite must execute at least 111 passing tests without skips or retries: ${JSON.stringify(stats)}`);
+            throw new Error(`Desktop suite must execute at least 114 passing tests without skips or retries: ${JSON.stringify(stats)}`);
           }
           console.log(`Desktop presentation: ${stats.expected} passed, no skipped or flaky tests`);
           NODE
