@@ -207,6 +207,7 @@ export function getRichTextBlocksUI(
         acc.push({
           id,
           type: "image",
+          imageIndex: index,
           src: block.url,
           alt: block.name,
         });

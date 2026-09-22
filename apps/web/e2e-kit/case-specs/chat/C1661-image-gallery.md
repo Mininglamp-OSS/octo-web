@@ -12,6 +12,8 @@ Real chat page with mocked IM and HTTP boundaries. No messages are sent to a liv
 8. Select two PNG files and send them through the real composer and media upload task. Delay upload/ACK responses and verify local/remote thumbnails remain visible. Confirm each image, then navigate between them in the gallery.
 9. Return an upload failure; verify the local thumbnail and retry control remain visible. Retry, confirm delivery, and open its gallery entry.
 10. Reject the server ACK after a successful upload; verify the remote thumbnail and resend control. Resend, confirm, and open its gallery entry.
+11. Interleave a rich-text message containing two images and an empty image block with ordinary image messages. Navigate into it from an ordinary image and back, then click its second image directly. Verify the exact counter, one open viewer, and that image's download filename.
+12. Include rich-text images in both a merge-forward and its nested forward. Click and navigate between ordinary and rich-text images within each level; Escape retains the enclosing forwarding view.
 
 Upload tests retain the actual file reader, size measurement, SDK send queue and media upload task. MSW stores uploaded bytes and serves them back to the real image elements. ACK notifications are simulated at the SDK boundary. Browser assertions observe the UI; single-image serialization compatibility is covered by the decoder/bridge unit tests.
 

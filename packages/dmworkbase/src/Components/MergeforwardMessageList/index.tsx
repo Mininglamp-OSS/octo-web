@@ -294,15 +294,23 @@ export default class MergeforwardMessageList extends Component<
     if (msg.contentType === MessageContentTypeConst.richText) {
       const richTextContent = msg.content as RichTextContent;
       return (
-        <MixedContent
-          blocks={getRichTextBlocksUI(richTextContent.content || [])}
-          onMentionClick={this.props.onMentionClick}
-          onFileDownload={(block) => {
-            if (block.url) {
-              downloadFile(block.url, block.name);
-            }
-          }}
-        />
+        <ImageGalleryContext.Consumer>
+          {(gallery) => (
+            <MixedContent
+              blocks={getRichTextBlocksUI(richTextContent.content || [])}
+              onImagePreview={(block) =>
+                block.imageIndex !== undefined &&
+                !!gallery?.openImage(imageGalleryKey(msg, block.imageIndex, position))
+              }
+              onMentionClick={this.props.onMentionClick}
+              onFileDownload={(block) => {
+                if (block.url) {
+                  downloadFile(block.url, block.name);
+                }
+              }}
+            />
+          )}
+        </ImageGalleryContext.Consumer>
       );
     }
     if (msg.contentType === MessageContentTypeConst.mergeForward) {

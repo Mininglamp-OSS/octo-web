@@ -1597,9 +1597,15 @@ function renderParagraph(
  *  - 点击复用 ImageCell 的大图预览与底部工具栏；
  *  - src 经 datasource 处理，与其它图片渲染路径补全 base URL 保持一致。
  */
-const MarkdownImage: React.FC<{ src?: string; alt?: string }> = ({
+const MarkdownImage: React.FC<{
+  src?: string;
+  alt?: string;
+  /** Return true to delegate preview ownership to the caller. */
+  onPreview?: () => boolean;
+}> = ({
   src,
   alt,
+  onPreview,
 }) => {
   const [open, setOpen] = useState(false);
   if (!src) return null;
@@ -1621,7 +1627,9 @@ const MarkdownImage: React.FC<{ src?: string; alt?: string }> = ({
         src={resolved}
         alt={alt || ""}
         loading="lazy"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          if (!onPreview?.()) setOpen(true);
+        }}
       />
       <ImagePreviewLightbox
         open={open}

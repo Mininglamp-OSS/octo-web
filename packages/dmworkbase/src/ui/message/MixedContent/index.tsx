@@ -31,6 +31,8 @@ export type MixedContentBlock =
   | {
       type: "image";
       id: string;
+      /** Original source block position, before filtering non-rendered blocks. */
+      imageIndex?: number;
       src: string;
       alt?: string;
     }
@@ -49,6 +51,10 @@ export type MixedContentBlock =
 export interface MixedContentProps {
   blocks: MixedContentBlock[];
   onMentionClick?: (uid: string) => void;
+  /** Return true when the owning viewer handled the click. */
+  onImagePreview?: (
+    block: Extract<MixedContentBlock, { type: "image" }>
+  ) => boolean;
   onFileDownload?: (
     block: Extract<MixedContentBlock, { type: "file" }>
   ) => void;
@@ -57,6 +63,7 @@ export interface MixedContentProps {
 export default function MixedContent({
   blocks,
   onMentionClick,
+  onImagePreview,
   onFileDownload,
 }: MixedContentProps) {
   return (
@@ -65,7 +72,13 @@ export default function MixedContent({
         if (block.type === "image") {
           return (
             <div key={block.id} className="wk-msg-mixed-image">
-              <MarkdownImage src={block.src} alt={block.alt} />
+              <MarkdownImage
+                src={block.src}
+                alt={block.alt}
+                onPreview={
+                  onImagePreview ? () => onImagePreview(block) : undefined
+                }
+              />
             </div>
           );
         }
