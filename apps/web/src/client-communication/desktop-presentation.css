@@ -9,6 +9,11 @@
   background: var(--desktop-header-background);
 }
 
+/* Only content panes get a titlebar edge; the sidebar stays continuous. */
+#root[data-desktop-platform] :is(.wk-chat-search, .communication-contacts-header)[data-desktop-header] {
+  border-bottom: 0;
+}
+
 /* Overlays own their surface even when mounted inside the conversation list. */
 #root[data-desktop-platform] :is(.wk-route, .wk-viewqueue, .wk-chat-content-chat) {
   --desktop-header-background: var(--desktop-chrome-background, var(--wk-bg-surface));
@@ -142,7 +147,7 @@
   inset: 0 0 auto;
   box-sizing: border-box;
   height: var(--desktop-header-height);
-  background: var(--desktop-chrome-background, var(--wk-bg-surface));
-  border-bottom: 0;
+  background: var(--desktop-header-background);
+  border-bottom: 1px solid var(--desktop-header-separator);
   -webkit-app-region: var(--desktop-drag-region, no-drag);
 }

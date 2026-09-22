@@ -3,6 +3,10 @@
   background: var(--desktop-sidebar-background, var(--wk-bg-base));
 }
 
+#root[data-desktop-platform] .appbot-page-title[data-desktop-header] {
+  border-bottom: 0;
+}
+
 /* Compact title in the header bar */
 #root[data-desktop-platform] .appbot-page-header .appbot-page-title {
   font-size: var(--wk-text-size-base);
@@ -52,9 +56,9 @@
   max-height: none;
 }
 
-/* Conversation chrome header uses the host background */
+/* Conversation chrome matches the shared desktop titlebar surface. */
 #root[data-desktop-platform] .appbot-chat-header {
-  background: var(--desktop-chrome-background, var(--wk-bg-surface));
+  background: var(--desktop-header-background);
 }
 
 /* Chat wrap fills the right pane */

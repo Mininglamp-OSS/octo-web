@@ -39,6 +39,10 @@
   --desktop-header-background: var(--desktop-chrome-background, var(--wk-bg-surface));
 }
 
+#root[data-desktop-platform] .summary-list-header[data-desktop-header] {
+  border-bottom: 0;
+}
+
 /* ---- Sidebar list header: compact title + search ---- */
 #root[data-desktop-platform] .summary-list-header[data-desktop-chrome="header"] {
   box-sizing: border-box;
@@ -159,7 +163,7 @@
 
 /* ---- Detail page: title row uses existing [data-desktop-header] rules ---- */
 #root[data-desktop-platform] .summary-detail-page .summary-detail-title-row {
-  background: var(--desktop-chrome-background, var(--wk-bg-surface));
+  background: var(--desktop-header-background);
 }
 
 /* Long titles and role-dependent actions may need a second row. Never clip them. */

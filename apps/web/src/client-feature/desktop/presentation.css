@@ -2,6 +2,8 @@
   color: var(--wk-text-primary);
   letter-spacing: 0;
   --desktop-drag-region: drag;
+  --desktop-header-background: var(--desktop-chrome-background, var(--wk-bg-surface));
+  --desktop-header-separator: color-mix(in srgb, var(--desktop-chrome-separator, var(--wk-border-default)) 75%, transparent);
   -webkit-app-region: no-drag;
 }
 
@@ -30,7 +32,7 @@
   -webkit-app-region: var(--desktop-drag-region, no-drag);
   background: var(--desktop-header-background, var(--desktop-chrome-background, var(--wk-bg-surface)));
   color: var(--desktop-chrome-foreground, var(--wk-text-primary));
-  border-bottom: 0;
+  border-bottom: 1px solid var(--desktop-header-separator);
 }
 
 /* Business descendants, including legacy div controls, stay interactive. */
