@@ -2837,7 +2837,11 @@ export class Conversation
 
   updateBrowseToMessageSeq(viewport: HTMLElement | null) {
     const lastVisiableMessage = this.lastVisiableMessage(viewport); // 当前UI显示的最后一条可见的消息
-    if (!lastVisiableMessage || lastVisiableMessage.messageSeq <= 0) return;
+    if (
+      !lastVisiableMessage ||
+      !Number.isFinite(lastVisiableMessage.messageSeq) ||
+      lastVisiableMessage.messageSeq <= 0
+    ) return;
     this.vm.browseToMessageSeq = Math.max(
       this.vm.browseToMessageSeq,
       lastVisiableMessage.messageSeq

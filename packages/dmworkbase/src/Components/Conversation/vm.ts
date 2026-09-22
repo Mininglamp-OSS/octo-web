@@ -1941,6 +1941,10 @@ export default class ConversationVM extends ProviderListener {
     // 刷新新消息数量
     async refreshNewMsgCount(options: { reconcileRead?: boolean } = {}) {
         if (this.readSyncDisposed || (this.readContextIsCurrent && !this.readContextIsCurrent())) return
+        // Outgoing messages may not have a sequence until ACK; preserve read state meanwhile.
+        if (this.lastMessage && (
+            !Number.isFinite(this.lastMessage.messageSeq) || this.lastMessage.messageSeq <= 0
+        )) return
         const conversation = WKSDK.shared().conversationManager.findConversation(this.channel)
         const oldUnreadCount = this.unreadCount
         let unreadCount: number

@@ -1476,6 +1476,28 @@ describe("Conversation attachment and viewport helpers", () => {
     expect((conversation as any).vm.browseToMessageSeq).toBe(4)
   })
 
+  it.each([undefined, NaN, Infinity, 0, -1])(
+    "ignores an unconfirmed visible message sequence %s until ACK",
+    (messageSeq) => {
+      const conversation = new Conversation({ channel })
+      const refreshNewMsgCount = vi.fn()
+      const vm = { browseToMessageSeq: 8, refreshNewMsgCount }
+      const message = { messageSeq }
+      ;(conversation as any).vm = vm
+      ;(conversation as any).lastVisiableMessage = vi.fn(() => message)
+
+      conversation.updateBrowseToMessageSeq(null)
+      conversation.updateBrowseToMessageSeq(null)
+      expect(vm.browseToMessageSeq).toBe(8)
+      expect(refreshNewMsgCount).not.toHaveBeenCalled()
+
+      message.messageSeq = 9
+      conversation.updateBrowseToMessageSeq(null)
+      expect(vm.browseToMessageSeq).toBe(9)
+      expect(refreshNewMsgCount).toHaveBeenCalledExactlyOnceWith({ reconcileRead: true })
+    }
+  )
+
   it("renders message cells for revoke, flame, system, and ordinary messages", () => {
     const conversation = new Conversation({ channel })
     const revoke = { clientMsgNo: "r", contentType: 1, revoke: true, messageSeq: 1, locateRemind: false }

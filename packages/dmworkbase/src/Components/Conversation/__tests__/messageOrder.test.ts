@@ -557,6 +557,59 @@ describe("ConversationVM message ordering", () => {
         expect(sdkState.conversation.unread).toBe(1)
     })
 
+    it.each(
+        [undefined, NaN, Infinity, 0, -1].flatMap((messageSeq) =>
+            ["me", "u1"].map((fromUID) => ({ messageSeq, fromUID }))
+        )
+    )("preserves read state until a valid ACK for seq=$messageSeq from=$fromUID", async ({ messageSeq, fromUID }) => {
+        WKApp.shared.currentSpaceId = "space-a"
+        const vm = new ConversationVM(new Channel("u1", 1))
+        const pending = wrap({ fromUID, clientSeq: 7, status: MessageStatus.Wait })
+        // The helper defaults missing sequences to zero; retain the actual pre-ACK value.
+        pending.message.messageSeq = messageSeq
+        vm.lastMessage = pending
+        vm.browseToMessageSeq = 8
+        vm.unreadCount = 3
+        sdkState.conversation = {
+            channel: vm.channel,
+            unread: 3,
+            extra: { spaceUnread: 3 },
+            lastMessage: pending.message,
+        }
+        const notify = vi.spyOn(vm, "notifyListener")
+
+        await vm.refreshNewMsgCount({ reconcileRead: true })
+        await vm.refreshNewMsgCount({ reconcileRead: true })
+
+        expect(vm.browseToMessageSeq).toBe(8)
+        expect(vm.unreadCount).toBe(3)
+        expect(sdkState.conversation.unread).toBe(3)
+        expect(sdkState.conversation.extra.spaceUnread).toBe(3)
+        expect(notify).not.toHaveBeenCalled()
+        expect(sdkState.notifyConversationListeners).not.toHaveBeenCalled()
+        expect(sdkState.markConversationUnread).not.toHaveBeenCalled()
+        expect(sdkState.emit).not.toHaveBeenCalledWith("sidebar-reload")
+
+        pending.message.messageSeq = 9
+        pending.message.status = MessageStatus.Normal
+        if (fromUID !== "me") vm.browseToMessageSeq = 9
+        await vm.refreshNewMsgCount({ reconcileRead: true })
+
+        expect(vm.browseToMessageSeq).toBe(9)
+        expect(vm.unreadCount).toBe(0)
+        expect(sdkState.conversation.unread).toBe(0)
+        expect(sdkState.conversation.extra.spaceUnread).toBe(0)
+        expect(sdkState.markConversationUnread).toHaveBeenCalledExactlyOnceWith(vm.channel, 0)
+        expect(sdkState.emit).toHaveBeenCalledWith("sidebar-reload")
+
+        notify.mockClear()
+        sdkState.notifyConversationListeners.mockClear()
+        await vm.refreshNewMsgCount({ reconcileRead: true })
+        expect(notify).not.toHaveBeenCalled()
+        expect(sdkState.notifyConversationListeners).not.toHaveBeenCalled()
+        expect(sdkState.markConversationUnread).toHaveBeenCalledTimes(1)
+    })
+
     it.each([
         { messageSeq: 92, spaceUnread: 1 },
         { messageSeq: 100, spaceUnread: 5 },
