@@ -14,6 +14,21 @@
 
 ## 当前实现状态
 
+### 响应式宽度（2026-09-22）
+
+频道搜索的运行时组件位于 `features/channelSearch/`，以下规则适用于 Web 与 Client 内嵌会话：
+
+- 分栏时搜索宽度为 `clamp(320px, calc(100% - 432px), 420px)`；会话区至少保留 `432px`。
+- 可用会话内容区不足 `752px` 时沿用覆盖式面板，不修改已有布局切换阈值。
+- 以搜索组件自身容器宽度为准：不足 `400px` 时仅显示筛选图标和数量，文字保留在无障碍名称中；不足 `360px` 时缩小分类间距。
+- 长翻译允许分类换行，不以隐藏滚动条或裁切分类解决溢出。
+- 此宽度不应用于紧凑子区、Summary 或全局搜索。
+- 回归入口：`apps/web/e2e-kit/desktop-tests/channel-search-layout.spec.ts`。使用真实搜索组件、布局观察器及 Client 隐藏 Web 列表的外壳，数据由本地 fixture 提供，不等同于原生 Client 安装包验收。
+
+实际组件截图：左侧为中文 `420px` 面板，右侧为英文 `320px` 面板及筛选弹层。
+
+![响应式频道搜索](./assets/channel-search-ui/08-responsive-search.png)
+
 当前已先按 mock adapter 实现 UI 交互展示，核心代码在 `packages/dmworkbase/src/Components/ChannelSearch/`，入口接入在 `packages/dmworkbase/src/module.tsx` 和 `packages/dmworkbase/src/Pages/Chat/index.tsx`。视觉样式已用 Figma API 的节点数据重新校准；文档内截图只用于说明效果，不作为样式实现来源。
 
 已实现：

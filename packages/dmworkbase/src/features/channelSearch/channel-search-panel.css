@@ -1,5 +1,6 @@
 /* ChannelSearch feature surface; shared primitives live under ui/. */
 .wk-channel-search-panel {
+  container: channel-search / inline-size;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -8,6 +9,17 @@
   background: var(--wk-bg-surface);
   color: var(--wk-text-primary);
   font-family: var(--wk-font-sans);
+}
+
+/* Keep longer translations reachable without affecting global search tabs. */
+.wk-channel-search-panel .wk-search-workspace__nav {
+  align-items: flex-start;
+}
+
+.wk-channel-search-panel .wk-search-workspace__tabs {
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  overflow: visible;
 }
 
 .wk-channel-search-keyword-limit {
@@ -44,7 +56,7 @@
   stroke: currentColor;
 }
 
-.wk-channel-search-filter-trigger span {
+.wk-channel-search-filter-count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -53,6 +65,40 @@
   padding: 0 var(--wk-sp-1);
   color: var(--wk-text-accent);
   font: 500 12px/16px var(--wk-font-sans);
+}
+
+.wk-channel-search-filter-label {
+  white-space: nowrap;
+}
+
+@container channel-search (width < 400px) {
+  .wk-channel-search-filter-trigger {
+    gap: var(--wk-sp-1);
+  }
+
+  /* Preserve the accessible name when only the icon and count are visible. */
+  .wk-channel-search-filter-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+@container channel-search (width < 360px) {
+  .wk-channel-search-panel .wk-search-workspace__nav {
+    gap: var(--wk-sp-2);
+    padding-inline: var(--wk-sp-3);
+  }
+
+  .wk-channel-search-panel .wk-search-workspace__tabs {
+    gap: var(--wk-sp-0-5);
+  }
+
+  .wk-channel-search-panel .wk-search-workspace__tabs button {
+    padding-inline: var(--wk-sp-2);
+  }
 }
 
 .wk-channel-search-content {

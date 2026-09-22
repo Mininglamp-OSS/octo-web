@@ -706,7 +706,7 @@ body[theme-mode="dark"] .wk-chat-channelsetting {
 }
 
 .wk-chat-channel-search-open[data-chat-panel-layout="split"] {
-  --wk-width-chat-search-panel: var(--wk-width-local-panel);
+  --wk-width-chat-search-panel: clamp(320px, calc(100% - 432px), 420px);
 }
 
 .wk-chat-threadpanel-compact[data-chat-panel-layout="split"] > .wk-chat-content-chat {

@@ -57,3 +57,50 @@ describe("ChannelSearchPanel render states", () => {
     expect(screen.getByText("r1")).toBeInTheDocument()
   })
 })
+
+describe("ChannelSearchPanel filter trigger a11y and count", () => {
+  const getTrigger = (container: HTMLElement): HTMLElement => {
+    const el = container.querySelector(".wk-channel-search-filter-trigger");
+    if (!(el instanceof HTMLElement)) throw new Error("filter trigger not found");
+    return el;
+  };
+
+  it("wraps title and exposes accessible name without aria-label", () => {
+    const { container } = render(
+      <ChannelSearchPanel channel={channel} dataSource={dataSource} onClose={vi.fn()} />
+    );
+    const trigger = getTrigger(container);
+    const label = trigger.querySelector(".wk-channel-search-filter-label");
+    expect(label).toBeTruthy();
+    expect(label?.textContent).toBe("base.channelSearch.filter.title");
+    expect(trigger.getAttribute("aria-label")).toBeNull();
+    expect(trigger.getAttribute("title")).toBe("base.channelSearch.filter.title");
+    // Default filters: no active count, so accessible name is the title text.
+    const named = screen.getByRole("button", { name: "base.channelSearch.filter.title" });
+    expect(named).toBe(trigger);
+  });
+
+  it("toggles aria-expanded when the trigger is clicked", () => {
+    const { container } = render(
+      <ChannelSearchPanel channel={channel} dataSource={dataSource} onClose={vi.fn()} />
+    );
+    const trigger = getTrigger(container);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("renders count in wk-channel-search-filter-count with initial filters", () => {
+    const initialState: any = {
+      filters: { senderUids: ["u1"], sort: "time_asc", datePreset: "today" },
+    };
+    const { container } = render(
+      <ChannelSearchPanel channel={channel} dataSource={dataSource} onClose={vi.fn()} initialState={initialState} />
+    );
+    const trigger = getTrigger(container);
+    const count = trigger.querySelector(".wk-channel-search-filter-count");
+    expect(count).toBeTruthy();
+    expect(count?.textContent).toBe("3");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
+});
