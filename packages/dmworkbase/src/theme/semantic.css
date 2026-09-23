@@ -334,6 +334,7 @@
   ); /* Figma: #7F3BF5 AI链接/Thread（紫色点缀） */
   --wk-text-mention-entity: #6B3DD8; /* 已发布普通成员 mention 胶囊文字色 */
   --wk-text-inverse: var(--wk-neutral-0);
+  --wk-workspace-group-muted: color-mix(in srgb, var(--wk-text-primary) 72%, var(--wk-bg-surface));
 
   /* 边框 */
   --wk-border-subtle: var(--wk-black-alpha-05);
@@ -535,6 +536,7 @@ body[theme-mode="dark"] {
   --wk-text-accent: var(--wk-purple-400); /* 暗色下用浅紫 */
   --wk-text-mention-entity: var(--wk-purple-400);
   --wk-text-inverse: var(--wk-neutral-900);
+  --wk-workspace-group-muted: color-mix(in srgb, var(--wk-text-primary) 72%, var(--wk-bg-surface));
 
   /* 边框 */
   --wk-border-subtle: var(--wk-white-alpha-04);

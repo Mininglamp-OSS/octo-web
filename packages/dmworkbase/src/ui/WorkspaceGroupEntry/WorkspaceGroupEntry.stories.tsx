@@ -18,7 +18,6 @@ const meta = {
     workspace: {
       projectName: "Data Intelligence",
       linkedByName: "Evan",
-      source: "linked_existing",
       canOpen: true,
       canManage: true,
       isAllMemberGroup: false,
@@ -34,7 +33,15 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
 export const Details: Story = { args: { defaultOpen: true } };
+export const ShortName: Story = {
+  args: { workspace: { ...meta.args.workspace, projectName: "98", linkedByName: "will" }, defaultOpen: true },
+};
+export const UnknownActor: Story = {
+  args: { workspace: { ...meta.args.workspace, linkedByName: "" }, defaultOpen: true },
+};
 export const Empty: Story = { args: { workspace: null } };
+export const InitialLoading: Story = { args: { workspace: null, refreshing: true } };
+export const InitialFailure: Story = { args: { workspace: null, error: "Unable to update the relation. Please try again." } };
 export const Loading: Story = { args: { refreshing: true, defaultOpen: true } };
 export const Opening: Story = { args: { busy: "open" } };
 export const Error: Story = { args: { error: "Unable to open workspace. Please try again." } };

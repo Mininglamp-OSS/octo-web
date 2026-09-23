@@ -8,7 +8,7 @@ export function WorkspaceGroupTitle({
 }: { channelId: string; channelType: number; children: ReactNode }): JSX.Element {
   const group = useWorkspaceGroup(channelId, channelType);
   const { t } = useI18n();
-  if (!group.context) return <>{children}</>;
+  if (!group.context && !group.failure && !group.refreshing) return <>{children}</>;
   const errorKeys = {
     load: "base.workspaceGroup.loadFailed",
     open: "base.workspaceGroup.openFailed",
@@ -18,7 +18,7 @@ export function WorkspaceGroupTitle({
     <span className="wk-workspace-group-title-row">
       <span className="wk-workspace-group-title">{children}</span>
       <WorkspaceGroupEntry
-        key={`${channelType}:${channelId}:${group.context.projectId}`}
+        key={`${channelType}:${channelId}:${group.context?.projectId ?? ""}`}
         workspace={group.context}
         busy={group.busy}
         refreshing={group.refreshing}

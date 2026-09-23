@@ -88,7 +88,12 @@
 }
 
 .wk-workspace-group-entry__toggle[aria-expanded="true"] {
-  background: var(--wk-bg-hover);
+  background: var(--wk-bg-elevated);
+}
+
+.wk-btn.wk-workspace-group-entry__jump:hover:not(:disabled),
+.wk-btn.wk-workspace-group-entry__toggle:hover:not(:disabled) {
+  background: var(--wk-bg-elevated);
 }
 
 .wk-workspace-group-title {
@@ -102,7 +107,7 @@
 
 .wk-workspace-group-popover {
   width: min(calc(var(--wk-sp-12) * 6), calc(100vw - var(--wk-sp-8)));
-  padding: var(--wk-sp-3);
+  padding: var(--wk-sp-4);
   box-sizing: border-box;
   color: var(--wk-text-primary);
   background: var(--wk-bg-surface);
@@ -117,35 +122,102 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--wk-sp-2);
-  margin-bottom: var(--wk-sp-3);
+  min-height: 24px;
+  margin-bottom: var(--wk-sp-4);
 }
 
 .wk-workspace-group-popover__header h3 {
   margin: 0;
-  font-size: var(--wk-text-size-base);
+  color: var(--wk-workspace-group-muted);
+  font-size: var(--wk-text-size-sm);
   font-weight: var(--wk-font-medium);
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.wk-btn.wk-workspace-group-popover__close {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--wk-workspace-group-muted);
+}
+
+.wk-workspace-group-popover__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  min-width: 0;
+}
+
+.wk-workspace-group-popover__icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  color: var(--wk-workspace-group-muted);
+  background: var(--wk-bg-elevated);
+  border-radius: var(--wk-r-sm);
+}
+
+.wk-workspace-group-popover__workspace {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.wk-workspace-group-popover__workspace p {
+  margin: 0 0 var(--wk-sp-0-5, 2px);
+  color: var(--wk-workspace-group-muted);
+  font-size: var(--wk-text-size-xs);
+  line-height: 16px;
+}
+
+.wk-workspace-group-popover__workspace h4 {
+  margin: 0;
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-xl);
+  font-weight: var(--wk-font-semibold);
+  line-height: 22px;
 }
 
 .wk-workspace-group-popover__details {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
-  gap: var(--wk-sp-2);
-  margin: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: var(--wk-sp-3);
+  align-items: start;
+  margin: var(--wk-sp-4) 0 0;
   font-size: var(--wk-text-size-sm);
   line-height: 20px;
   overflow-wrap: anywhere;
 }
 
 .wk-workspace-group-popover__details dt {
-  color: var(--wk-text-secondary);
+  color: var(--wk-workspace-group-muted);
 }
 
 .wk-workspace-group-popover__details dd {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: var(--wk-sp-1-5);
+  min-width: 0;
   margin: 0;
 }
 
+.wk-workspace-group-popover__details dd svg {
+  flex: 0 0 14px;
+  margin-top: 3px;
+  color: var(--wk-workspace-group-muted);
+}
+
+.wk-workspace-group-popover__details dd span {
+  min-width: 0;
+}
+
 .wk-workspace-group-popover__empty {
-  color: var(--wk-text-secondary);
+  color: var(--wk-workspace-group-muted);
 }
 
 .wk-workspace-group-popover__notice {
@@ -153,7 +225,7 @@
   gap: var(--wk-sp-1);
   align-items: baseline;
   margin: var(--wk-sp-3) 0 0;
-  color: var(--wk-text-secondary);
+  color: var(--wk-workspace-group-muted);
   font-size: var(--wk-text-size-sm);
 }
 
@@ -173,6 +245,45 @@
 
 .wk-workspace-group-popover__footer {
   margin-top: var(--wk-sp-3);
-  padding-top: var(--wk-sp-2);
+  padding-top: var(--wk-sp-1-5);
   border-top: 1px solid var(--wk-border-default);
+}
+
+.wk-btn.wk-workspace-group-popover__manage {
+  width: calc(100% + var(--wk-sp-4));
+  min-height: 32px;
+  height: auto;
+  margin: 0 calc(-1 * var(--wk-sp-2)) calc(-1 * var(--wk-sp-1-5));
+  padding: var(--wk-sp-1-5) var(--wk-sp-2);
+  justify-content: flex-start;
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-medium);
+  line-height: 20px;
+  white-space: normal;
+  text-align: left;
+}
+
+.wk-workspace-group-popover__manage .wk-btn__label {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-2);
+}
+
+.wk-workspace-group-popover__manage .wk-btn__label span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.wk-workspace-group-popover__manage .wk-btn__label svg {
+  flex-shrink: 0;
+  color: var(--wk-workspace-group-muted);
+}
+
+.wk-btn.wk-workspace-group-popover__close:hover:not(:disabled),
+.wk-btn.wk-workspace-group-popover__manage:hover:not(:disabled) {
+  background: var(--wk-bg-elevated);
 }

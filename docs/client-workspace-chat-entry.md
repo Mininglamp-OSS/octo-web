@@ -2,8 +2,10 @@
 
 ## Behavior List
 
-- Show one split workspace entry beside a group conversation's title only when
-  the embedded Client bridge supplies all workspace group methods.
+- Show one split workspace entry beside a group conversation's title only in
+  the Client communication artifact when native open/manage actions are available.
+- Web queries display data directly through APIClient. The legacy Client
+  `getWorkspaceGroupContext` IPC is neither required nor called.
 - Standalone Web and older Clients remain unchanged. Direct chats, threads,
   and groups without a verified project relation have no entry.
 - The name opens the Client workspace. The adjacent disclosure shows relation
@@ -27,6 +29,8 @@
 Web:
 - `packages/dmworkbase/src/features/workspaceGroup/`: capability contract and
   scoped React provider/container, with no Client runtime dependency.
+- `packages/dmworkbase/src/Service/WorkspaceGroupService.ts`: direct Web reads
+  for the group, relation, workspace and optional linking-person profile.
 - `packages/dmworkbase/src/ui/WorkspaceGroupEntry/`: token-based presentation
   and Story coverage, written before conversation wiring.
 - `packages/dmworkbase/src/Pages/Chat/index.tsx`: title accessory integration
@@ -53,10 +57,14 @@ The bridge methods are optional and additive:
 
 ```ts
 type WorkspaceGroupTarget = { channelId: string; channelType: 2 };
-type WorkspaceGroupAction = WorkspaceGroupTarget & { projectId: string };
+type WorkspaceGroupAction = WorkspaceGroupTarget & {
+  projectId: string;
+  presentation?: { linkedBy: string; linkedByName: string };
+};
 type WorkspaceGroupContext = WorkspaceGroupAction & {
   projectName: string;
   groupName: string;
+  linkedBy?: string;
   linkedByName: string;
   linkedAt?: string;
   manageDisabledReason?: "workspace_membership" | "group_role" | "system_group" | "denied" | "unavailable";
@@ -66,8 +74,6 @@ type WorkspaceGroupContext = WorkspaceGroupAction & {
   isAllMemberGroup: boolean;
 };
 
-getWorkspaceGroupContext?(target: WorkspaceGroupTarget):
-  Promise<WorkspaceGroupContext | null>;
 openGroupWorkspace?(target: WorkspaceGroupAction): Promise<void>;
 manageWorkspaceGroup?(target: WorkspaceGroupAction): Promise<void>;
 onWorkspaceGroupChanged?(listener: (target: WorkspaceGroupTarget) => void):
@@ -77,8 +83,16 @@ onWorkspaceGroupChanged?(listener: (target: WorkspaceGroupTarget) => void):
 Management resolves when the Client accepts the request; it does not imply a
 mutation. The Client emits the changed event after management completes. Web
 also refreshes on host visibility/resume and focus for compatibility.
-The Client dialog shows the group, Workspace, linking person and recorded
-relation time. Missing relation time is not replaced with group creation time.
+Initial read failures have a visible retry control and bounded automatic
+retries. Confirmed unlinked groups remain hidden. The restricted server relation
+projection exposes `linked_by` as a UID; Web hydrates its name when permitted.
+Association method and time are not displayed or inferred.
+The Client dialog shows the group, Workspace and linking person. Management
+requests can carry Web's resolved actor UID/name as display-only presentation.
+The Client uses that name only after revalidating the relation and permissions,
+when the server's recorded actor UID matches and its name is absent. A name from
+the server takes precedence. Missing/invalid hints remain compatible with older
+callers. No renderer-supplied permission or session data is trusted.
 The existing Workspace-side unlink action shares the same main-process guard.
 Supported Clients keep the conversation visible behind a transparent native
 overlay while blocking background input. Older hosts retain the inline fallback.

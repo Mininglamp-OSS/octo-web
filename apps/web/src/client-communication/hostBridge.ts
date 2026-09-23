@@ -106,8 +106,9 @@ export interface DocumentForwardRequest {
 }
 
 export interface OctoBuddyCommunicationBridge {
-  /** Client-only workspace navigation. Absent in older hosts and standalone Web. */
+  /** Legacy host read, unused by Web; retained only for older bridge compatibility. */
   getWorkspaceGroupContext?(target: WorkspaceGroupTarget): Promise<WorkspaceGroupContext | null>;
+  /** Client-only native actions. Display data is queried directly by Web. */
   openGroupWorkspace?(target: WorkspaceGroupAction): Promise<void>;
   manageWorkspaceGroup?(target: WorkspaceGroupAction): Promise<void>;
   onWorkspaceGroupChanged?(listener: (target: WorkspaceGroupTarget) => void): () => void;

@@ -5,11 +5,14 @@ export interface WorkspaceGroupTarget {
 
 export interface WorkspaceGroupAction extends WorkspaceGroupTarget {
   projectId: string;
+  /** Display only; the host must verify the recorded actor before using this. */
+  presentation?: { linkedBy: string; linkedByName: string };
 }
 
 export interface WorkspaceGroupContext extends WorkspaceGroupAction {
   projectName: string;
   groupName: string;
+  linkedBy?: string;
   linkedByName: string;
   linkedAt?: string;
   manageDisabledReason?: "workspace_membership" | "group_role" | "system_group" | "denied" | "unavailable";
@@ -36,6 +39,8 @@ export function isWorkspaceGroupContext(
     && typeof context.projectId === "string" && Boolean(context.projectId.trim())
     && typeof context.projectName === "string" && Boolean(context.projectName.trim())
     && typeof context.groupName === "string"
+    && (context.linkedBy === undefined || (typeof context.linkedBy === "string"
+      && context.linkedBy.length <= 256 && !/[^\x21-\x7e]/.test(context.linkedBy)))
     && typeof context.linkedByName === "string"
     && (context.linkedAt === undefined || typeof context.linkedAt === "string")
     && (context.manageDisabledReason === undefined

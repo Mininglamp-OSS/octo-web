@@ -170,7 +170,12 @@ export function CommunicationShell({
   const currentTargetRef = useRef<ConversationTarget | undefined>();
   const workspaceReturnTargetRef = useRef<Channel | undefined>();
   const workspaceNavigationGuard = useMemo(() => createWorkspaceNavigationGuard(), []);
-  const workspaceGroups = useMemo(() => createWorkspaceGroupHost(bridge), [bridge]);
+  const workspaceGroups = useMemo(() => createWorkspaceGroupHost(bridge, () => ({
+    spaceId: spaceIdRef.current,
+    uid: WKApp.loginInfo.uid,
+    token: WKApp.loginInfo.token,
+    apiOrigin: WKApp.apiClient.config.apiURL,
+  })), [bridge]);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
   const readyReporterRef = useRef<ReturnType<typeof createReadyReporter>>();
@@ -373,7 +378,7 @@ export function CommunicationShell({
     };
 
     const dispose = bridge.onCommand((command: HostCommand) => {
-      workspaceGroups.handleCommand(command);
+      if (command.type !== "spaceChanged") workspaceGroups.handleCommand(command);
       if (command.type === "navigate") {
         if (command.target && !hasCompatibleTargetVariant(command.target)) {
           console.error("[client-communication] rejected incompatible conversation target", command.target);
@@ -424,6 +429,7 @@ export function CommunicationShell({
             name: command.space.name,
           });
         }
+        workspaceGroups.handleCommand(command);
         WKApp.shared.notifyListener();
         return;
       }

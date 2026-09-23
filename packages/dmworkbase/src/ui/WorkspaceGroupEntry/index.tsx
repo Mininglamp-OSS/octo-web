@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Popover, Tooltip } from "@douyinfe/semi-ui";
-import { ChevronDown, LayoutGrid, Link2, Lock, X } from "lucide-react";
+import { ChevronDown, ChevronRight, LayoutGrid, Link2, Lock, RotateCw, UserRound, X } from "lucide-react";
 import WKButton from "../../Components/WKButton";
 import { useI18n } from "../../i18n";
 import "./index.css";
@@ -11,7 +11,6 @@ export interface WorkspaceGroupEntryModel {
   projectName: string;
   linkedByName: string;
   manageDisabledReason?: "workspace_membership" | "group_role" | "system_group" | "denied" | "unavailable";
-  source: "created_in_project" | "linked_existing" | "unknown";
   canOpen: boolean;
   canManage: boolean;
   isAllMemberGroup: boolean;
@@ -49,9 +48,24 @@ export function WorkspaceGroupEntry({
     if (error) setOpen(true);
   }, [error]);
 
-  if (!workspace) return null;
+  if (!workspace) {
+    if (!error && !refreshing) return null;
+    const label = refreshing ? t("base.workspaceGroup.refreshing")
+      : `${error} ${t("base.workspaceGroup.retry")}`;
+    return (
+      <span className="wk-workspace-group-entry__disclosure" data-desktop-chrome="control"
+        onClick={(event) => event.stopPropagation()}>
+        <Tooltip content={label}>
+          <span>
+            <WKButton variant="ghost" size="sm" iconOnly className="wk-workspace-group-entry__toggle"
+              icon={<RotateCw size={14} aria-hidden="true" />} aria-label={label}
+              loading={refreshing} disabled={refreshing} onClick={onRetry} />
+          </span>
+        </Tooltip>
+      </span>
+    );
+  }
   const disabled = Boolean(busy || refreshing);
-  const source = workspace.isAllMemberGroup ? "allMembers" : workspace.source;
   const canManage = workspace.canManage && !workspace.isAllMemberGroup;
   const permissionNotice = workspace.isAllMemberGroup ? "systemManaged"
     : workspace.manageDisabledReason === "unavailable" ? "permissionUnavailable"
@@ -70,18 +84,21 @@ export function WorkspaceGroupEntry({
     >
       <div className="wk-workspace-group-popover__header">
         <h3 id={`${id}-title`}>{t("base.workspaceGroup.title")}</h3>
-        <WKButton variant="ghost" size="sm" iconOnly icon={<X size={14} />}
+        <WKButton variant="ghost" size="sm" iconOnly className="wk-workspace-group-popover__close" icon={<X size={14} />}
           aria-label={t("base.common.close")} onClick={close} />
       </div>
+      <div className="wk-workspace-group-popover__identity">
+        <span className="wk-workspace-group-popover__icon" aria-hidden="true"><LayoutGrid size={18} strokeWidth={1.7} /></span>
+        <div className="wk-workspace-group-popover__workspace">
+          <p>{t("base.workspaceGroup.workspace")}</p>
+          <h4>{workspace.projectName}</h4>
+        </div>
+      </div>
       <dl className="wk-workspace-group-popover__details">
-        <dt>{t("base.workspaceGroup.workspace")}</dt><dd>{workspace.projectName}</dd>
         <dt>{t("base.workspaceGroup.linkedBy")}</dt>
         <dd className={!workspace.linkedByName ? "wk-workspace-group-popover__empty" : undefined}>
-          {workspace.linkedByName || t("base.workspaceGroup.unknown")}
-        </dd>
-        <dt>{t("base.workspaceGroup.source")}</dt>
-        <dd className={source === "unknown" ? "wk-workspace-group-popover__empty" : undefined}>
-          {t(`base.workspaceGroup.source.${source}`)}
+          <UserRound size={14} aria-hidden="true" />
+          <span>{workspace.linkedByName || t("base.workspaceGroup.unknown")}</span>
         </dd>
       </dl>
       {!workspace.canOpen && (
@@ -103,12 +120,13 @@ export function WorkspaceGroupEntry({
       {refreshing && <p className="wk-workspace-group-popover__notice" role="status">{t("base.workspaceGroup.refreshing")}</p>}
       {canManage && (
         <div className="wk-workspace-group-popover__footer">
-          <WKButton size="sm" variant="ghost" icon={<Link2 size={14} />}
+          <WKButton size="sm" variant="ghost" className="wk-workspace-group-popover__manage" icon={<Link2 size={14} />}
             loading={busy === "manage"} disabled={disabled || Boolean(error)} onClick={() => {
               setOpen(false);
               onManage();
             }}>
-            {t("base.workspaceGroup.manage")}
+            <span>{t("base.workspaceGroup.manage")}</span>
+            <ChevronRight size={14} aria-hidden="true" />
           </WKButton>
         </div>
       )}
