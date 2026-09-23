@@ -123,7 +123,7 @@
 }
 
 /* 行 hover 时描边加深到实紫，给“可点选”的可觉提示（与选中色同源）。 */
-.wk-memberremoval-item:hover .wk-memberremoval-check:not(.wk-memberremoval-check-on):not(.wk-memberremoval-check-disabled) {
+.wk-memberremoval-item:hover .wk-memberremoval-check:not(.wk-memberremoval-check-on) {
     border-color: var(--wk-color-accent, var(--wk-purple-500, #7f3bf5));
 }
 
