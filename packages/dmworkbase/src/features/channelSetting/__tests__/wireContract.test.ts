@@ -38,6 +38,10 @@ const members: RawMember[] = [
   { uid: "human_c", role: 0, robot: 0, bot_owned_by_me: false },
   // 归我所有、但被提升为 Manager 的 bot：后端自助分支拒绝它，
   // 因此 bot_owned_by_me 下发 false（而不是靠前端自己再判一次角色）。
+  //
+  // 副作用：「移出成员」页按本字段分类，所以群主自己建的、已被提为管理员的 bot
+  // 会落进「其他成员」组而不是「我的 BOT」。这是已知且**被接受**的错分：
+  // 前端没有 creator_uid，自造推断只会和后端的授权口径漂移。该行仍可见、仍可移除。
   { uid: "bot_mgr_c", role: 2, robot: 1, bot_owned_by_me: false },
 ];
 

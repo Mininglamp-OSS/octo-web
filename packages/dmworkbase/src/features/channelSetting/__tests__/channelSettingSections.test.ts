@@ -178,7 +178,7 @@ describe("channel setting section builders", () => {
     expect(disbanded).toBeUndefined();
   });
 
-  it("opens v2-style member management instead of the old multi-select finish flow", () => {
+  it("opens the batch member-removal page wired to the route finish button", () => {
     const context = createContext({
       channelInfo: {
         orgData: {
@@ -202,15 +202,82 @@ describe("channel setting section builders", () => {
     expect(context.push).toHaveBeenCalledTimes(1);
     const [view, config] = context.push.mock.calls[0];
     expect(view.props.canSelect).toBeUndefined();
-    expect(view.props.removeAction).toBeTruthy();
+    // 移出页是独立组件，自己做过滤 + 分类，不再收 removeAction，
+    // 而是直接拿查看者身份（viewerUid / viewerRole）自行判定。
+    expect(view.props.removeAction).toBeUndefined();
+    expect(view.props.viewerUid).toBe("alice");
+    expect(view.props.viewerRole).toBe(1);
+    // 交互模型是**多选 + 批量提交**：组件只上报选择，不再持有逐行的 onRemove。
+    expect(view.props.onRemove).toBeUndefined();
+    expect(typeof view.props.onSelectionChange).toBe("function");
+    // 提交入口在路由表头的「确认」上（与「转让群主」同一套机制）。
     expect(config.title).toBeTruthy();
-    expect(config.showFinishButton).toBeUndefined();
+    expect(config.showFinishButton).toBe(true);
+    expect(typeof config.onFinish).toBe("function");
+    expect(typeof config.onFinishContext).toBe("function");
   });
 
-  it("exposes removeAction to the view-all path too", () => {
-    // octo-web#1511：普通成员没有「移除成员」图标，只能从「查看全部」进成员列表。
-    // 该路径以前不带 removeAction，等于自助移除入口对普通成员完全不可达。
-    // 逐行是否显示仍由 canRemove 决定，故对不拥有 bot 的成员无可见变化。
+  // 未选任何人时「确认」必须置灰；选中后才可点。
+  //
+  // 这条钉的是 onFinishContext → disable() 的实际联动，而不是“配置里有这个字段”。
+  // 只断言字段存在的话，把 syncFinishDisabled 整个删掉也不会变红。
+  it("keeps the finish button disabled until something is selected", () => {
+    const context = createContext({
+      channelInfo: { orgData: { member_count: 3 } },
+      subscriberOfMe: { uid: "alice", role: 1 },
+      subscribers: [
+        { uid: "alice", role: 1 },
+        { uid: "bob", role: 0 },
+      ],
+    });
+    const section = buildChannelMembersSection(context);
+    section?.rows?.[0].properties.onRemove();
+    const [view, config] = context.push.mock.calls[0];
+
+    const disable = vi.fn();
+    config.onFinishContext({ disable, loading: vi.fn() });
+    expect(disable).toHaveBeenLastCalledWith(true);
+
+    // 组件上报“选中了一个”→ 解锁
+    view.props.onSelectionChange([{ uid: "bob", name: "Bob" }]);
+    expect(disable).toHaveBeenLastCalledWith(false);
+
+    // 全部取消 → 重新置灰
+    view.props.onSelectionChange([]);
+    expect(disable).toHaveBeenLastCalledWith(true);
+  });
+
+  // 「移出成员」与「添加成员」必须完全解耦。
+  //
+  // 之前移除页复用了一个内嵌 organizationalTool（「添加成员」按钮）的 JSX title，
+  // 于是“-”页面的右上角永远挂着一个“+”，两个相反的操作挤在同一个 Route 里。
+  // 这条钉住 title 保持纯文案：一旦有人又把添加入口塞回标题，这里立刻红。
+  it("keeps the removal page title free of any add-member entry", () => {
+    const context = createContext({
+      channelInfo: { orgData: { member_count: 3 } },
+      subscriberOfMe: { uid: "alice", role: 1 },
+      subscribers: [
+        { uid: "alice", role: 1 },
+        { uid: "bob", role: 0 },
+      ],
+    });
+    const section = buildChannelMembersSection(context);
+
+    section?.rows?.[0].properties.onRemove();
+    const [, config] = context.push.mock.calls[0];
+
+    // 纯字符串标题，不是带按钮的 JSX。
+    expect(typeof config.title).toBe("string");
+    expect(config.title).toBe(t("base.subscribers.removeMemberTitle"));
+  });
+
+  // 「查看全部」是纯浏览路径，不得下发任何移除能力。
+  //
+  // 这条是原「exposes removeAction to the view-all path too」的**语义反转**。
+  // 当时透传 removeAction 的理由是「19 人以下小群普通成员没有别的入口」；
+  // 现在 vm.showRemove() 已为「拥有可移除 bot 的普通成员」点亮减号入口（含小群），
+  // 兜底不再需要，继续下发只会把管理语义混进浏览场景。
+  it("no longer leaks a removal capability into the browse-only section props", () => {
     const context = createContext({
       channelInfo: { orgData: { member_count: 3 } },
       subscriberOfMe: { uid: "bob", role: 0 },
@@ -221,10 +288,10 @@ describe("channel setting section builders", () => {
     });
     const section = buildChannelMembersSection(context);
 
-    const { removeAction } = section?.rows?.[0].properties ?? {};
-    expect(removeAction).toBeTruthy();
-    expect(typeof removeAction.canRemove).toBe("function");
-    expect(typeof removeAction.onRemove).toBe("function");
+    const properties = section?.rows?.[0].properties ?? {};
+    expect(properties.removeAction).toBeUndefined();
+    // 减号入口本身仍要在 —— 解耦不等于把移除入口拆掉。
+    expect(typeof properties.onRemove).toBe("function");
   });
 
   it("keeps member removal permissions scoped to the current manager role", () => {

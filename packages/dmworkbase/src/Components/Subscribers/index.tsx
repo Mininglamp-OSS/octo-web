@@ -8,7 +8,7 @@ import { SubscribersVM } from "./vm";
 import IndexTable, { IndexTableItem } from "../IndexTable";
 import WKBase, { WKBaseContext } from "../WKBase";
 import RouteContext, { RouteContextConfig } from "../../Service/Context";
-import { SubscriberList, SubscriberListProps } from "./list";
+import { SubscriberList } from "./list";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import { isRealnameVerified } from "../../Utils/displayName";
 import { GroupRole } from "../../Service/Const";
@@ -21,16 +21,13 @@ export interface SubscribersProps {
   context: RouteContext<any>;
   channel: any;
   onAdd?: () => void;
-  onRemove?: () => void;
   /**
-   * 透传给「查看全部」打开的成员列表（octo-web#1511）。
+   * 打开「移出成员」独立页（features/channelSetting/channelSettingMemberSection）。
    *
-   * 之前这条路径不带 removeAction，移除按钮只存在于群主/管理员专用的
-   * 「移除成员」图标路径里；普通成员即使拥有某个 bot 也没有任何入口。
-   * 逐行是否渲染仍由 removeAction.canRemove 决定，因此对不拥有 bot 的
-   * 普通成员没有任何可见变化。
+   * 本组件只负责减号图标的可见性（vm.showRemove()）与点击转发，不再关心移除的
+   * 行为本身 —— 移除页是一条独立路径，有自己的过滤、分类与权限判定。
    */
-  removeAction?: SubscriberListProps["removeAction"];
+  onRemove?: () => void;
 }
 
 export class Subscribers extends Component<SubscribersProps> {
@@ -97,7 +94,7 @@ export class Subscribers extends Component<SubscribersProps> {
   }
 
   render() {
-    const { context, onAdd, onRemove, channel, removeAction } = this.props;
+    const { context, onAdd, onRemove, channel } = this.props;
     return (
       <Provider
         create={() => {
@@ -165,10 +162,15 @@ export class Subscribers extends Component<SubscribersProps> {
                   <div
                     className="wk-subscribers-more"
                     onClick={() => {
+                      // 「查看全部」是**纯浏览**路径：不下发任何移除能力。
+                      //
+                      // 此前它透传 removeAction，理由是「19 人以下小群普通成员
+                      // 没有别的入口」。现在 vm.showRemove() 已经会为「拥有可移除
+                      // bot 的普通成员」点亮减号入口（含小群），兜底不再需要；
+                      // 继续下发只会把管理语义混进浏览场景。
                       context.push(
                         <SubscriberList
                           channel={channel}
-                          removeAction={removeAction}
                           localSearch={createChannelSettingMemberSearch(
                             vm.subscribers
                           )}
