@@ -1212,6 +1212,7 @@
   "clipboard.imageTooLarge": "Image exceeds 5 MB. Download it first.",
   "clipboard.imageUnsupported": "This browser does not support copying images. Long-press to save the image.",
   "subscribers.botAdmin": "Bot admin",
+  "subscribers.botAdminCannotRemove": "This bot is an admin. Revoke its admin role before removing it.",
   "subscribers.addMember": "Add member",
   "subscribers.confirmRemoveBotContent": "Remove the bot {{name}} from this group?",
   "subscribers.confirmRemoveBotTitle": "Remove bot",

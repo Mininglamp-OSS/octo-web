@@ -17,13 +17,20 @@ export class RouteContextConfig {
     title?: ReactNode
     showFinishButton?: boolean
     finishButtonTitle?: string
+    /**
+     * 「完成」按钮的附加类名（可选）。用于在**不影响其它路由表头**的前提下，
+     * 给特定页面的完成按钮做局部样式覆盖（如「移出成员」页要求紫色）。
+     * 缺省时按钮沿用全站默认（浅色主题下为深黑 primary）。
+     */
+    finishButtonClassName?: string
     onFinish?: () => void
     onFinishContext?:(finishButtonContext:FinishButtonContext) => void
 
-    constructor(v: { title?: ReactNode, showFinishButton?: boolean, finishButtonTitle?: string, onFinish?: () => void,onFinishContext?:(finishButtonContext:FinishButtonContext) => void }) {
+    constructor(v: { title?: ReactNode, showFinishButton?: boolean, finishButtonTitle?: string, finishButtonClassName?: string, onFinish?: () => void,onFinishContext?:(finishButtonContext:FinishButtonContext) => void }) {
          this.title = v.title
          this.showFinishButton = v.showFinishButton
          this.finishButtonTitle = v.finishButtonTitle
+         this.finishButtonClassName = v.finishButtonClassName
          this.onFinish = v.onFinish
          this.onFinishContext = v.onFinishContext
     }

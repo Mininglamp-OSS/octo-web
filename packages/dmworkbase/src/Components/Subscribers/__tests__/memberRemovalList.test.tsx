@@ -58,7 +58,11 @@ const sub = (uid: string, role: number, orgData: any = {}) =>
 /** 群主视角：两组都非空（我的 bot + 其他成员）。 */
 const roster = [
   sub("owner", GroupRole.owner), // 自己，canRemove 恒 false
-  sub("bot-mine", GroupRole.normal, { robot: 1, bot_owned_by_me: true }),
+  sub("bot-mine", GroupRole.normal, {
+    robot: 1,
+    bot_owned_by_me: true,
+    bot_created_by_me: true,
+  }),
   sub("human", GroupRole.normal),
 ];
 
@@ -69,10 +73,13 @@ const roster = [
  * （见 applySelection）。这是测试替身的常见做法：本组测的是选择逻辑与渲染
  * 映射，不是 React 的调度行为。
  */
-function render(component: MemberRemovalList) {
+function render(component: MemberRemovalList, rosterOverride?: Subscriber[]) {
   const tree = component.render() as AnyElement;
   const renderProp = tree.props?.render as (vm: unknown) => unknown;
-  return renderProp({ subscribers: roster, search: vi.fn() });
+  return renderProp({
+    subscribers: rosterOverride ?? roster,
+    search: vi.fn(),
+  });
 }
 
 function createComponent(onSelectionChange?: (items: Subscriber[]) => void) {
@@ -192,5 +199,97 @@ describe("MemberRemovalList · 多选交互", () => {
     expect(Array.from(toggled)).toEqual(["human"]);
     (component as any).toggleSelected(roster[2]);
     expect(Array.from(toggled)).toEqual([]);
+  });
+});
+
+describe("MemberRemovalList · 置灰行（我建的管理员 bot，需求1）", () => {
+  // 置灰只发生在查看者移不动该 bot 时。关键：**管理员**移不动另一个管理员 bot
+  // （后端 ErrGroupCannotRemoveAdmin），但它是他建的 → owned=false + created=true
+  // → 落进「我的 BOT」组但置灰。（群主反而能移管理员 bot，那是可选的。）
+  const rosterWithDisabled = [
+    sub("bot-admin-mine", GroupRole.manager, {
+      robot: 1,
+      bot_owned_by_me: false,
+      bot_created_by_me: true,
+    }),
+    sub("bot-mine", GroupRole.normal, {
+      robot: 1,
+      bot_owned_by_me: true,
+      bot_created_by_me: true,
+    }),
+  ];
+
+  // 查看者是**管理员**：对管理员 bot canRemove=false → 置灰。
+  function createManagerComponent(
+    onSelectionChange?: (items: Subscriber[]) => void
+  ) {
+    const component = new MemberRemovalList({
+      channel: { channelID: "g1" } as never,
+      viewerUid: "mgr",
+      viewerRole: GroupRole.manager,
+      onSelectionChange,
+    });
+    (component as unknown as { context: unknown }).context = {
+      t: (key: string) => key,
+    };
+    return component;
+  }
+
+  function expandBothGroups(component: MemberRemovalList) {
+    (component as any).state = {
+      ...(component as any).state,
+      manualExpanded: { myBots: true, others: true },
+    };
+  }
+
+  it("我建的管理员 bot 在「我的 BOT」里可见，但圆点置灰不可选", () => {
+    const component = createManagerComponent();
+    expandBothGroups(component);
+    const content = render(component, rosterWithDisabled as never);
+    const checks = collectByTestId(content, "member-removal-check");
+    const byLabel = Object.fromEntries(
+      checks.map((c) => [c.props?.["aria-label"], c])
+    );
+    // 两行都在（都是我的 bot）。
+    expect(Object.keys(byLabel).sort()).toEqual(["bot-admin-mine", "bot-mine"]);
+    // 管理员 bot 的圆点 aria-disabled；普通 bot 可选。
+    expect(byLabel["bot-admin-mine"].props?.["aria-disabled"]).toBe(true);
+    expect(byLabel["bot-mine"].props?.["aria-disabled"]).toBeUndefined();
+  });
+
+  it("置灰行点击不改变选中态，也不上报", () => {
+    const onSelectionChange = vi.fn();
+    const component = createManagerComponent(onSelectionChange);
+    expandBothGroups(component);
+    render(component, rosterWithDisabled as never);
+
+    const toggled = new Set<string>();
+    (component as any).setState = (updater: any, cb?: () => void) => {
+      const next = updater({ selectedUids: toggled });
+      toggled.clear();
+      for (const uid of next.selectedUids) toggled.add(uid);
+      cb?.();
+    };
+    // 点置灰的管理员 bot：应被拦下，选中集不变。
+    (component as any).toggleSelected(rosterWithDisabled[0]);
+    expect(Array.from(toggled)).toEqual([]);
+    // 点可选的普通 bot：正常选中。
+    (component as any).toggleSelected(rosterWithDisabled[1]);
+    expect(Array.from(toggled)).toEqual(["bot-mine"]);
+  });
+
+  it("reportSelection 不会把置灰行上报给父级", () => {
+    const onSelectionChange = vi.fn();
+    const component = createManagerComponent(onSelectionChange);
+    expandBothGroups(component);
+    render(component, rosterWithDisabled as never);
+    // 即使 selectedUids 里残留了置灰行的 uid（比如旧状态），也不该上报。
+    (component as any).state = {
+      ...(component as any).state,
+      selectedUids: new Set(["bot-admin-mine", "bot-mine"]),
+    };
+    (component as any).reportSelection();
+    const last = onSelectionChange.mock.calls.at(-1)?.[0] as Subscriber[];
+    expect(last.map((s) => s.uid)).toEqual(["bot-mine"]);
   });
 });

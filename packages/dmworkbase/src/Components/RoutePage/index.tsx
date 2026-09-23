@@ -165,7 +165,7 @@ export default class RoutePage extends Component<RoutePageProps, RoutePageState>
                 </div>
                 <div className={classNames("wk-route-header-right-view", pushViewCount > 0 ? "wk-route-header-right-view-open" : undefined)}>
                     {
-                        routeConfig?.showFinishButton ? <Button disabled={finishButtonDisable} loading={finishButtonLoading} theme='solid' type='primary' onClick={() => {
+                        routeConfig?.showFinishButton ? <Button className={routeConfig?.finishButtonClassName} disabled={finishButtonDisable} loading={finishButtonLoading} theme='solid' type='primary' onClick={() => {
                             if (routeConfig?.onFinish) {
                                 routeConfig?.onFinish()
                             }

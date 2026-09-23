@@ -90,6 +90,9 @@ export function buildChannelMembersSection(
                 title: t("base.subscribers.removeMemberTitle"),
                 showFinishButton: true,
                 finishButtonTitle: t("base.common.ok"),
+                // 「移出成员」页的完成按钮用 Octo 紫色（与选择圆圈同源），
+                // 局部覆盖而不改全站 primary（其它路由表头仍为默认深黑）。
+                finishButtonClassName: "wk-memberremoval-finish-btn",
                 onFinishContext: (value) => {
                   finishContext = value;
                   // 进页时未选任何人，「确认」必须是置灰的。

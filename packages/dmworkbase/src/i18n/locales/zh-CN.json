@@ -1212,6 +1212,7 @@
   "clipboard.imageTooLarge": "图片超过 5MB，请右键下载后使用",
   "clipboard.imageUnsupported": "当前浏览器不支持复制图片，请长按图片另存",
   "subscribers.botAdmin": "Bot 管理员",
+  "subscribers.botAdminCannotRemove": "该 BOT 已是管理员，需先取消其管理员身份才能移出",
   "subscribers.addMember": "添加成员",
   "subscribers.confirmRemoveBotContent": "确定将机器人 {{name}} 移出群聊吗？",
   "subscribers.confirmRemoveBotTitle": "移出机器人",

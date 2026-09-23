@@ -106,12 +106,15 @@
     width: var(--wk-sp-5);
     height: var(--wk-sp-5);
     flex: 0 0 auto;
-    border: 1.5px solid var(--wk-border-strong, var(--wk-border-subtle));
+    /* 未选中：用 Octo 紫色半透描边（而非淡灰），圆圈更明显、
+       且与选中后的紫色填充同源，视觉上是同一个控件的两个态。 */
+    border: 1.5px solid var(--wk-purple-alpha-25, rgba(127, 59, 245, 0.25));
     border-radius: 50%;
     background: transparent;
     color: var(--wk-text-on-primary, #fff);
     transition: background var(--wk-dur-fast) var(--wk-ease),
-        border-color var(--wk-dur-fast) var(--wk-ease);
+        border-color var(--wk-dur-fast) var(--wk-ease),
+        box-shadow var(--wk-dur-fast) var(--wk-ease);
 }
 
 .wk-memberremoval-check svg {
@@ -119,14 +122,55 @@
     height: var(--wk-sp-3);
 }
 
+/* 行 hover 时描边加深到实紫，给“可点选”的可觉提示（与选中色同源）。 */
+.wk-memberremoval-item:hover .wk-memberremoval-check:not(.wk-memberremoval-check-on):not(.wk-memberremoval-check-disabled) {
+    border-color: var(--wk-color-accent, var(--wk-purple-500, #7f3bf5));
+}
+
 .wk-memberremoval-check-on {
-    border-color: var(--wk-color-primary);
-    background: var(--wk-color-primary);
+    border-color: var(--wk-color-accent, var(--wk-purple-500, #7f3bf5));
+    background: var(--wk-color-accent, var(--wk-purple-500, #7f3bf5));
+    /* 选中时一圈极淡的紫晕，把对号从背景里“提”出来，白勾更显。 */
+    box-shadow: 0 0 0 3px var(--wk-purple-alpha-12, rgba(127, 59, 245, 0.12));
+}
+
+.wk-memberremoval-item:hover .wk-memberremoval-check-on {
+    /* 选中态 hover 略加深，与 Octo 的 primary-hover 行为一致。 */
+    border-color: var(--wk-color-accent-hover, var(--wk-purple-600, #6a2fd0));
+    background: var(--wk-color-accent-hover, var(--wk-purple-600, #6a2fd0));
 }
 
 /* 整行可点即切换选中，所以行给 pointer 手型（与浏览列表的“点开名片”区分开）。 */
 .wk-memberremoval-item {
     cursor: pointer;
+}
+
+/*
+ * 置灰行：我创建的、但已被提为管理员不可移除的 bot。
+ * 仍展示在「我的 BOT」组给用户完整清点感，但圆点置灰、不可选，
+ * 悬停由行级 title 展示原因。保留头像/名字/徒章的可读性，只降低整体对比。
+ */
+.wk-memberremoval-item-disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.wk-memberremoval-check-disabled {
+    border-color: var(--wk-border-subtle);
+    background: var(--wk-fill-tertiary, transparent);
+    cursor: not-allowed;
+}
+
+/*
+ * 「完成」按钮（路由表头右上角）紫色化，对齐 Octo accent 与选择圆圈。
+ * 仅作用于本页（通过 finishButtonClassName 局部下发），不影响其它路由的完成按钮。
+ * 做法：在本按钮作用域重定义 Semi 的 --semi-color-primary 系列 token，而不硬编码
+ * 颜色也不滥用 !important——Semi solid primary 按钮直接读这几个 token。
+ */
+.wk-memberremoval-finish-btn.semi-button {
+    --semi-color-primary: var(--wk-color-accent, var(--wk-purple-500, #7f3bf5));
+    --semi-color-primary-hover: var(--wk-color-accent-hover, var(--wk-purple-600, #6a2fd0));
+    --semi-color-primary-active: var(--wk-color-accent-hover, var(--wk-purple-600, #6a2fd0));
 }
 
 .wk-memberremoval-group-truncated {

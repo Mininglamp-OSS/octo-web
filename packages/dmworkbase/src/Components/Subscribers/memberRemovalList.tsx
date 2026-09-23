@@ -17,6 +17,7 @@ import {
   isGroupExpanded,
   MAX_OTHERS_GROUP_SIZE,
 } from "../../features/channelSetting/memberRemovalGrouping";
+import { isOwnedBotDisabledForRemoval } from "../../features/channelSetting/memberRemovalPermission";
 import { getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 import AiBadge from "../AiBadge";
 import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
@@ -172,6 +173,9 @@ export class MemberRemovalList extends Component<
    * 里，但不会误报给父级（拿不到它的名字，也不该在用户看不见时被提交）。
    */
   private toggleSelected = (subscriber: Subscriber) => {
+    // 置灰行（我建的、但已是管理员不可移除）不可选：点也不改变选中态，
+    // 避免下发一个点了必报错（ErrGroupCannotRemoveAdmin）的选项。
+    if (this.isRowDisabled(subscriber)) return;
     this.setState(
       (prev) => {
         const next = new Set(prev.selectedUids);
@@ -186,8 +190,8 @@ export class MemberRemovalList extends Component<
   private reportSelection() {
     const { onSelectionChange } = this.props;
     if (!onSelectionChange) return;
-    const selected = this.visibleSubscribers.filter((s) =>
-      this.state.selectedUids.has(s.uid)
+    const selected = this.visibleSubscribers.filter(
+      (s) => this.state.selectedUids.has(s.uid) && !this.isRowDisabled(s)
     );
     onSelectionChange(selected);
   }
@@ -299,6 +303,14 @@ export class MemberRemovalList extends Component<
     });
   }
 
+  private isRowDisabled(subscriber: Subscriber): boolean {
+    return isOwnedBotDisabledForRemoval({
+      viewerUid: this.props.viewerUid,
+      viewerRole: this.props.viewerRole,
+      subscriber,
+    });
+  }
+
   private renderSubscriberRow(
     subscriber: Subscriber,
     group: MemberRemovalGroup,
@@ -306,7 +318,8 @@ export class MemberRemovalList extends Component<
   ) {
     const itemIsBot = isBot(subscriber.uid);
     const isBotAdmin = subscriber.orgData?.bot_admin === 1;
-    const selected = this.isSelected(subscriber.uid);
+    const disabled = this.isRowDisabled(subscriber);
+    const selected = !disabled && this.isSelected(subscriber.uid);
     const { isExternal, sourceSpaceName } = resolveExternalForViewer({
       homeSpaceId: subscriber.orgData?.home_space_id,
       homeSpaceName: subscriber.orgData?.home_space_name,
@@ -315,9 +328,17 @@ export class MemberRemovalList extends Component<
     });
     return (
       <div
-        className="wk-subscrierlist-list-item wk-memberremoval-item"
+        className={`wk-subscrierlist-list-item wk-memberremoval-item${
+          disabled ? " wk-memberremoval-item-disabled" : ""
+        }`}
         key={subscriber.uid}
         data-testid="member-removal-row"
+        data-disabled={disabled ? "true" : undefined}
+        title={
+          disabled
+            ? this.context.t("base.subscribers.botAdminCannotRemove")
+            : undefined
+        }
         onClick={() => this.toggleSelected(subscriber)}
         ref={(node) => {
           // 只记录每组第一行，供点分类名时滚动定位。
@@ -334,10 +355,11 @@ export class MemberRemovalList extends Component<
         <span
           className={`wk-memberremoval-check${
             selected ? " wk-memberremoval-check-on" : ""
-          }`}
+          }${disabled ? " wk-memberremoval-check-disabled" : ""}`}
           data-testid="member-removal-check"
           role="checkbox"
           aria-checked={selected}
+          aria-disabled={disabled || undefined}
           aria-label={this.getShowName(subscriber)}
         >
           {selected && (
