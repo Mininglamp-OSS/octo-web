@@ -3,6 +3,18 @@ import WKApp from "../../App";
 import { ProviderListener } from "../../Service/Provider";
 import { getCurrentImChannelLocallyRemovedSubscriberUids } from "../../im-runtime/currentChannelRuntime";
 
+export interface SubscriberListVMOptions {
+  /**
+   * 「本页被 filter 砍空就自动翻下一页」这条补偿逻辑的**页数预算**。
+   *
+   * 不传 = 不限（既有行为，浏览/转让群主/摘要页都依赖它，不能改）。
+   * 传了 = 翻到该页仍未凑够一屏就停下并置 autoPageBudgetExhausted，
+   * 由调用方渲染「前 N 人中未找到，请用搜索」之类的明确出路 —— 这比无限翻页
+   * 扫完整个大群更可控，也比静默停住诚实。
+   */
+  maxAutoPages?: number;
+}
+
 export class SubscriberListVM extends ProviderListener {
   channel: Channel;
   subscribers: Subscriber[] = [];
@@ -12,6 +24,18 @@ export class SubscriberListVM extends ProviderListener {
   hasMore: boolean = true;
   keyword: string = "";
   filter?: (subscriber: Subscriber) => boolean;
+  /**
+   * 首次请求是否已经有结果（成功或失败都算）。
+   *
+   * 用来把「还没拉到」和「拉到了但确实是空的」分开：只看 subscribers.length===0
+   * 的话，首帧就会对用户断言「这里什么都没有」，而那时请求都还没发出去。
+   */
+  firstLoadSettled: boolean = false;
+  /** 最近一次请求是否失败。失败时调用方应给重试入口，而不是断言列表为空。 */
+  loadError: boolean = false;
+  /** 自动续翻是否用尽了 maxAutoPages 预算（仅在传了预算时可能为 true）。 */
+  autoPageBudgetExhausted: boolean = false;
+  private maxAutoPages?: number;
   private localSearch?: (keyword: string) => Subscriber[];
   /** 每次 subscribers 数据加载完成后调用，用于触发预取等副作用 */
   onSubscribersLoaded?: (subscribers: Subscriber[]) => void;
@@ -21,12 +45,14 @@ export class SubscriberListVM extends ProviderListener {
   constructor(
     channel: Channel,
     filter?: (subscriber: Subscriber) => boolean,
-    localSearch?: (keyword: string) => Subscriber[]
+    localSearch?: (keyword: string) => Subscriber[],
+    options?: SubscriberListVMOptions
   ) {
     super();
     this.channel = channel;
     this.filter = filter;
     this.localSearch = localSearch;
+    this.maxAutoPages = options?.maxAutoPages;
   }
 
   didMount(): void {
@@ -47,6 +73,9 @@ export class SubscriberListVM extends ProviderListener {
     this.currPage = 1;
     this.subscribers = [];
     this.keyword = keyword;
+    // 换了关键词就是一次全新的检索：预算重新开始算，旧的错误态也别留着。
+    this.autoPageBudgetExhausted = false;
+    this.loadError = false;
     if (this.localSearch && keyword.trim()) {
       const requestVersion = ++this._requestVersion;
       this.hasMore = false;
@@ -76,15 +105,30 @@ export class SubscriberListVM extends ProviderListener {
     requestVersion = ++this._requestVersion,
     initialSubscribers: Subscriber[] = []
   ) => {
-    const subscribers = await WKApp.dataSource.channelDataSource.subscribers(
-      this.channel,
-      {
-        page: this.currPage,
-        limit: this.limit,
-        keyword: this.keyword,
-      }
-    );
+    let subscribers: Subscriber[] | undefined;
+    try {
+      subscribers = await WKApp.dataSource.channelDataSource.subscribers(
+        this.channel,
+        {
+          page: this.currPage,
+          limit: this.limit,
+          keyword: this.keyword,
+        }
+      );
+    } catch (e) {
+      if (!this._isMounted || requestVersion !== this._requestVersion) return;
+      // 请求失败必须留痕：早先这里没有 catch，异常会静默逃逸，列表永远停在空，
+      // 而调用方只能看到「0 条」，于是对用户断言「这里没有任何成员」——
+      // 把一次网络失败说成了一个事实。
+      this.loadError = true;
+      this.firstLoadSettled = true;
+      this.loading = false;
+      this.notifyListener();
+      return;
+    }
     if (!this._isMounted || requestVersion !== this._requestVersion) return;
+    this.loadError = false;
+    this.firstLoadSettled = true;
     this.hasMore = subscribers && subscribers.length >= this.limit;
     if (subscribers) {
       const filtered = this.applySubscriberFilters(subscribers);
@@ -101,6 +145,16 @@ export class SubscriberListVM extends ProviderListener {
     // too short for the user to scroll and trigger the next page load.
     // Auto-fetch more pages until we have enough visible items or run out.
     if (this.filter && this.hasMore && this.subscribers.length < this.limit) {
+      // 有预算时到顶就停：稀疏过滤（例如普通成员在大群里只有 1 个自己的 bot）
+      // 会一路翻到群尾，页数预算把它兜住，调用方据此引导用户改用服务端搜索。
+      if (
+        this.maxAutoPages !== undefined &&
+        this.currPage >= this.maxAutoPages
+      ) {
+        this.autoPageBudgetExhausted = true;
+        this.notifyListener();
+        return;
+      }
       this.currPage++;
       await this.requestSubscribers(requestVersion);
     }

@@ -19,6 +19,7 @@ import { isGroupDisbanded } from "../../Utils/groupDisband";
 import { t } from "../../i18n";
 import { removeChannelSettingSubscribers } from "../../bridge/channelSetting/channelSettingActions";
 import { createChannelSettingMemberSearch } from "./channelSettingMemberSearch";
+import { resolveSubscriberShowName } from "../../Components/Subscribers/subscriberShowName";
 import WKApp from "../../App";
 
 // 判定逻辑住在零依赖的叶子模块里，好让 Components/Subscribers/vm.ts 也能复用
@@ -77,21 +78,17 @@ export function buildChannelMembersSection(
             context.push(
               <MemberRemovalList
                 channel={channel}
-                // 与减号入口（SubscribersVM.showRemove → subscriberAll）**同一份数据**。
-                // 之前页面自己走 SubscriberListVM 的 members?page=N&limit=50，与入口两套
-                // 数据源，导致「入口亮着但页面说没有可移出的成员」（人就在未拉取的页上）。
+                // 名册不走 props：本页由 routeContext.push 推入，WKViewQueue 会把该 JSX
+                // 存进它自己的 state，之后外部再怎么更新也不会给它新 props
+                // （octo-web#95 记录过同一个坑）。名册一旦从这里传入就是冻结快照：
+                // 成员变动收不到、加载态翻不了身、按 props 变化触发的清理永远不跑。
+                // 改由组件内部的 Provider + SubscriberListVM 自己拉数据（与「查看全部」同构）。
                 //
-                // 用 subscriberAll 而不是 subscribers（仅正常状态）是刻意的：入口判定读的
-                // 就是 subscriberAll，两边必须同源。若这里改用 subscribers，一个被拉黑的
-                // 自有 bot 会让入口亮着、页面却找不到它 —— 又退回同一类矛盾。
-                subscribers={data.subscriberAll ?? []}
-                // 名册还没回来时不能说「你没有可移出的成员」。
-                loading={!data.subscriberAll}
-                // 拼音/首字母/备注/真实姓名搜索，与「查看全部」、「转让群主」一致。
-                // 本页的截断提示又正好引导用户去搜索，没它那句提示就是空话。
-                localSearch={createChannelSettingMemberSearch(
-                  data.subscriberAll ?? []
-                )}
+                // 传工厂而不是建好的搜索函数：索引要基于 VM 当前名册重建，否则它会和
+                // props 一样被冻住，成员变动后搜到的还是旧名册。
+                createLocalSearch={(members) =>
+                  createChannelSettingMemberSearch(members)
+                }
                 viewerUid={viewerUid}
                 viewerRole={viewerRole}
                 onSelectionChange={(items) => {
@@ -133,8 +130,12 @@ export function buildChannelMembersSection(
                       {
                         values: {
                           count,
+                          // 与列表行用**同一个**解析器。早先这里只用
+                          // `item.remark || item.name`，而行优先用 1:1 频道的个人备注，
+                          // 于是「我给某人设过个人备注」时两边叫的名字不一样 ——
+                          // 一个破坏性操作的确认框跟你刚勾的行对不上号，很容易误删。
                           names: selected
-                            .map((item) => item.remark || item.name)
+                            .map((item) => resolveSubscriberShowName(item))
                             .join("\u3001"),
                         },
                       }
