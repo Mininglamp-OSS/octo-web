@@ -18,6 +18,7 @@ import { Row, Section } from "../../Service/Section";
 import { isGroupDisbanded } from "../../Utils/groupDisband";
 import { t } from "../../i18n";
 import { removeChannelSettingSubscribers } from "../../bridge/channelSetting/channelSettingActions";
+import { createChannelSettingMemberSearch } from "./channelSettingMemberSearch";
 import WKApp from "../../App";
 
 // 判定逻辑住在零依赖的叶子模块里，好让 Components/Subscribers/vm.ts 也能复用
@@ -76,6 +77,21 @@ export function buildChannelMembersSection(
             context.push(
               <MemberRemovalList
                 channel={channel}
+                // 与减号入口（SubscribersVM.showRemove → subscriberAll）**同一份数据**。
+                // 之前页面自己走 SubscriberListVM 的 members?page=N&limit=50，与入口两套
+                // 数据源，导致「入口亮着但页面说没有可移出的成员」（人就在未拉取的页上）。
+                //
+                // 用 subscriberAll 而不是 subscribers（仅正常状态）是刻意的：入口判定读的
+                // 就是 subscriberAll，两边必须同源。若这里改用 subscribers，一个被拉黑的
+                // 自有 bot 会让入口亮着、页面却找不到它 —— 又退回同一类矛盾。
+                subscribers={data.subscriberAll ?? []}
+                // 名册还没回来时不能说「你没有可移出的成员」。
+                loading={!data.subscriberAll}
+                // 拼音/首字母/备注/真实姓名搜索，与「查看全部」、「转让群主」一致。
+                // 本页的截断提示又正好引导用户去搜索，没它那句提示就是空话。
+                localSearch={createChannelSettingMemberSearch(
+                  data.subscriberAll ?? []
+                )}
                 viewerUid={viewerUid}
                 viewerRole={viewerRole}
                 onSelectionChange={(items) => {
@@ -109,9 +125,19 @@ export function buildChannelMembersSection(
                   const uids = selected.map((item) => item.uid);
                   wkConfirm({
                     title: t("base.subscribers.removeMemberTitle"),
+                    // 列出名字而不是只报个数：选中项是跨搜索存活的（刻意设计），所以
+                    // 点「确认」时部分选中项可能正被搜索滤在屏外。对一个破坏性批量操作，
+                    // “移出 3 人”不足以让人确认自己要踢的到底是哪 3 个。
                     content: t(
                       "base.subscribers.confirmRemoveBatchContent",
-                      { values: { count } }
+                      {
+                        values: {
+                          count,
+                          names: selected
+                            .map((item) => item.remark || item.name)
+                            .join("\u3001"),
+                        },
+                      }
                     ),
                     okText: t("base.subscribers.remove"),
                     okType: "danger",

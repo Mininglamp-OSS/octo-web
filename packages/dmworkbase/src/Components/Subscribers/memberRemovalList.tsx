@@ -3,10 +3,8 @@ import { IconSearchStroked } from "@douyinfe/semi-icons";
 import { Tag } from "@douyinfe/semi-ui";
 import { Channel, ChannelTypePerson, Subscriber } from "wukongimjssdk";
 
-import Provider from "../../Service/Provider";
 import { GroupRole } from "../../Service/Const";
 import { I18nContext } from "../../i18n";
-import { debounce, throttle } from "../../Utils/rateLimit";
 import { isRealnameVerified } from "../../Utils/displayName";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import {
@@ -17,11 +15,13 @@ import {
   isGroupExpanded,
   MAX_OTHERS_GROUP_SIZE,
 } from "../../features/channelSetting/memberRemovalGrouping";
-import { getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
-import AiBadge from "../AiBadge";
+import {
+  addCurrentImChannelInfoListener,
+  fetchCurrentImChannelInfo,
+  getCurrentImChannelInfo,
+} from "../../im-runtime/currentChannelRuntime";import AiBadge from "../AiBadge";
 import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
 import WKAvatar, { isBot } from "../WKAvatar";
-import { SubscriberListVM } from "./list_vm";
 import "./list.css";
 import "./memberRemovalList.css";
 
@@ -35,6 +35,27 @@ import "./memberRemovalList.css";
  * canSelect / filter / removeAction 已经有隐式互斥关系。
  *
  * 本组件只做一件事：**展示当前查看者可移除的成员，按归属分两类，支持多选**。
+ *
+ * ## 数据源：与减号入口同一份完整名册（不分页）
+ *
+ * 本页**不**用 SubscriberListVM。那条路是 `members?page=N&limit=50` 的服务端
+ * 分页，而本页的可见性判据（canRemove）只能在**加载之后**于客户端计算，两者
+ * 叠在一起会死锁：
+ *
+ *   普通成员唯一可移除的对象是自己的普通 bot。若它排在名册第 51 位之后，
+ *   第 1 页 50 条全被 canRemove 过滤掉 → 页面只剩搜索框 + 一行空态提示 →
+ *   内容撑不满容器 → **永远不会触发 scroll 事件** → 永远翻不到第 2 页。
+ *   而减号入口读的是完整名册（见下），所以入口亮着、页面却说「你没有可移出的
+ *   成员」—— 后者是假话，人就在没被拉取的页上。
+ *
+ * 所以改为直接消费 `ChannelSettingRouteData.subscriberAll`：它由 IM SDK 的频道
+ * 成员缓存填充（底层是 `groups/:id/membersync?limit=10000`），**和减号入口
+ * （Subscribers/vm.ts 的 showRemove）读的是同一份数据**。入口与页面同源之后，
+ * 「入口比页面宽」这个矛盾从结构上不可能再出现 —— 最坏情况是两者一致地看不到
+ * 超出 10000 的成员，而不是互相打脸。
+ *
+ * 代价是大群会一次性拿到全部名册，所以「其他成员」组保留
+ * MAX_OTHERS_GROUP_SIZE 截断 + 「请用搜索」提示（换数据源后这段逻辑才真正可达）。
  *
  * ## 交互模型：多选 + 批量提交（不是逐行减号）
  *
@@ -59,6 +80,20 @@ import "./memberRemovalList.css";
 
 export interface MemberRemovalListProps {
   channel: Channel;
+  /**
+   * 群完整成员名册（`ChannelSettingRouteData.subscriberAll`）。
+   *
+   * 由 channelSettingMemberSection 传入，与减号入口的判定读同一份，见类注释。
+   * 空数组有两种含义（名册还没加载好 / 群里真的没人），交给 `loading` 区分。
+   */
+  subscribers: Subscriber[];
+  /**
+   * 名册是否仍在加载。
+   *
+   * 必须与「过滤后为空」分开：早期版本对任何空结果都渲染「你在本群没有可移出的
+   * 成员」，于是首帧（名册还没到）就先给用户一句确定的假话。
+   */
+  loading?: boolean;
   /** 行级权限判据所需的查看者身份。由 channelSettingMemberSection 传入。 */
   viewerUid?: string;
   viewerRole?: number;
@@ -67,7 +102,12 @@ export interface MemberRemovalListProps {
    * 父级据此 enable/disable 路由表头的「确认」按钮。
    */
   onSelectionChange?: (selected: Subscriber[]) => void;
-  /** 可选的本地搜索实现（拼音等），与 SubscriberList 同契约。 */
+  /**
+   * 可选的本地搜索实现（拼音等），与 SubscriberList 同契约。
+   *
+   * 名册全在内存，所以本页搜索是**纯本地**的：没有 debounce + 服务端 keyword
+   * 请求那条路，输入即出结果。未注入时退化为对显示名做子串匹配。
+   */
   localSearch?: (keyword: string) => Subscriber[];
 }
 
@@ -106,6 +146,9 @@ export class MemberRemovalList extends Component<
   private groupFirstItemRefs = new Map<MemberRemovalGroupId, HTMLDivElement>();
   private pendingScrollGroupId?: MemberRemovalGroupId;
   private scrollRaf?: number;
+  /** 已发起过人频道信息预取的 uid，避免重复请求。 */
+  private prefetchedUids = new Set<string>();
+  private unsubscribeChannelInfoListener?: () => void;
 
   constructor(props: MemberRemovalListProps) {
     super(props);
@@ -116,24 +159,109 @@ export class MemberRemovalList extends Component<
     };
   }
 
+  componentDidMount() {
+    // 备注名：getShowName 优先用 1:1 频道的 orgData.remark，而那份缓存只会被
+    // fetchCurrentImChannelInfo 填充。兄弟组件（SubscriberList）接了预取 + 监听，
+    // 本页若不接，没聊过天的人就只显示原始昵称 —— 而这恰好是最需要认准
+    // 「我要踢的是谁」的页面。
+    this.prefetchShowNames(this.props.subscribers);
+    this.unsubscribeChannelInfoListener = addCurrentImChannelInfoListener(
+      (channelInfo) => {
+        const uid = channelInfo?.channel?.channelID;
+        if (uid && this.prefetchedUids.has(uid)) this.setState({});
+      }
+    );
+  }
+
+  componentDidUpdate(prevProps: MemberRemovalListProps) {
+    if (prevProps.subscribers !== this.props.subscribers) {
+      this.prefetchShowNames(this.props.subscribers);
+      this.pruneSelectionToRoster();
+    }
+  }
+
   componentWillUnmount() {
     if (this.scrollRaf !== undefined) {
       cancelAnimationFrame(this.scrollRaf);
       this.scrollRaf = undefined;
     }
+    this.unsubscribeChannelInfoListener?.();
+    this.unsubscribeChannelInfoListener = undefined;
     this.groupFirstItemRefs.clear();
+  }
+
+  /** 拉取显示名所需的人频道信息（只拉一次，已有缓存的跳过）。 */
+  private prefetchShowNames(subscribers: Subscriber[]) {
+    for (const subscriber of subscribers ?? []) {
+      if (!subscriber?.uid || this.prefetchedUids.has(subscriber.uid)) continue;
+      this.prefetchedUids.add(subscriber.uid);
+      const personChannel = new Channel(subscriber.uid, ChannelTypePerson);
+      if (!getCurrentImChannelInfo(personChannel)) {
+        void fetchCurrentImChannelInfo(personChannel);
+      }
+    }
+  }
+
+  /**
+   * 名册刷新后把已不在群里的人从选中里剔除。
+   *
+   * 选中项是跨搜索/刷新存活的（这是刻意设计），但「已经被别的管理员移走或自己
+   * 退群的人」不应该继续躺在批量里：整批提交是全成全败的，一个已离开的 uid
+   * 能把整次操作拖失败，而用户无法从报错里看出是哪一个。
+   */
+  private pruneSelectionToRoster() {
+    const alive = new Set(
+      (this.props.subscribers ?? []).map((subscriber) => subscriber.uid)
+    );
+    const stale = Array.from(this.state.selected.keys()).filter(
+      (uid) => !alive.has(uid)
+    );
+    if (stale.length === 0) return;
+    this.setState(
+      (prev) => {
+        const next = new Map(prev.selected);
+        for (const uid of stale) next.delete(uid);
+        return { selected: next };
+      },
+      () => this.reportSelection()
+    );
   }
 
   private get searching() {
     return this.state.keyword.trim().length > 0;
   }
 
-  private buildGroups(vm: SubscriberListVM): MemberRemovalGroup[] {
+  private buildGroups(): MemberRemovalGroup[] {
     return buildMemberRemovalGroups({
-      subscribers: vm.subscribers,
+      subscribers: this.visibleSubscribers(),
       viewerUid: this.props.viewerUid,
       viewerRole: this.props.viewerRole,
     });
+  }
+
+  /**
+   * 当前关键词下要参与分类的名册。
+   *
+   * 名册全在内存，所以搜索是**纯本地**的：既不防抖也不打请求，输入即出结果。
+   * 优先用注入的 localSearch（带拼音/首字母/备注/真实姓名索引，与「查看全部」、
+   * 「转让群主」一致）；未注入时退化为对显示名做大小写无关的子串匹配。
+   */
+  private visibleSubscribers(): Subscriber[] {
+    const keyword = this.state.keyword.trim();
+    const roster = this.props.subscribers ?? [];
+    if (!keyword) return roster;
+    const { localSearch } = this.props;
+    if (localSearch) {
+      try {
+        return localSearch(keyword);
+      } catch {
+        // 索引出错不应让整页变空，退回子串匹配。
+      }
+    }
+    const lowered = keyword.toLowerCase();
+    return roster.filter((subscriber) =>
+      this.getShowName(subscriber).toLowerCase().includes(lowered)
+    );
   }
 
   /**
@@ -146,16 +274,19 @@ export class MemberRemovalList extends Component<
     groupId: MemberRemovalGroupId,
     groups: MemberRemovalGroup[]
   ) {
-    const manual = this.state.manualExpanded[groupId];
     const fallback = deriveDefaultExpandedGroups(groups);
+    const resolve = (id: MemberRemovalGroupId) =>
+      this.state.manualExpanded[id] !== undefined
+        ? (this.state.manualExpanded[id] as boolean)
+        : fallback[id];
     return isGroupExpanded({
       groupId,
+      // 两个槽各自回退，不能把被问的那个组的表态写进 `myBots` 槽：
+      // isGroupExpanded 目前只读 `manualExpanded[groupId]`，所以键错位恰好看不出来，
+      // 但谁要是让该 helper 同时考虑两组就会踩坑。
       manualExpanded: {
-        myBots: manual !== undefined ? manual : fallback.myBots,
-        others:
-          this.state.manualExpanded.others !== undefined
-            ? this.state.manualExpanded.others
-            : fallback.others,
+        myBots: resolve("myBots"),
+        others: resolve("others"),
       },
       searching: this.searching,
       groupCount: groups.length,
@@ -256,53 +387,11 @@ export class MemberRemovalList extends Component<
     node.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 
-  private searchDebouncedMap = new WeakMap<
-    SubscriberListVM,
-    (keyword: string) => void
-  >();
-
-  /**
-   * 滚动到底时继续拉下一页，写法与 SubscriberList 一致（同一个 throttle 工具）。
-   *
-   * 按 VM 存一份：throttle 有内部时间戳状态，每次 render 新建会让节流失效。
-   */
-  private throttledScrollMap = new WeakMap<
-    SubscriberListVM,
-    (event: React.UIEvent<HTMLDivElement>) => void
-  >();
-
-  private getThrottledScroll(vm: SubscriberListVM) {
-    if (!this.throttledScrollMap.has(vm)) {
-      this.throttledScrollMap.set(
-        vm,
-        throttle((event: React.UIEvent<HTMLDivElement>) => {
-          const target = event.target as HTMLDivElement;
-          const offset = 200;
-          if (
-            target.scrollTop + target.clientHeight + offset >=
-            target.scrollHeight
-          ) {
-            vm.loadMoreSubscribersIfNeed();
-          }
-        }, 100)
-      );
-    }
-    return this.throttledScrollMap.get(vm)!;
-  }
-
-  private getDebouncedSearch(vm: SubscriberListVM) {
-    if (!this.searchDebouncedMap.has(vm)) {
-      this.searchDebouncedMap.set(
-        vm,
-        debounce((keyword: string) => vm.search(keyword), 300)
-      );
-    }
-    return this.searchDebouncedMap.get(vm)!;
-  }
-
-  private onSearchChange = (keyword: string, vm: SubscriberListVM) => {
+  private onSearchChange = (keyword: string) => {
+    // 纯本地过滤：名册已在内存，不防抖也不打请求。早期版本把 keyword 同步写 state
+    // 而实际结果要等 300ms 防抖后的服务端响应，于是那段窗口里分组已按搜索态展开、
+    // 行却还是搜索前的 —— 现在两者同一帧生效。
     this.setState({ keyword });
-    this.getDebouncedSearch(vm)(keyword);
   };
 
   private getShowName = (subscriber: Subscriber) => {
@@ -318,7 +407,9 @@ export class MemberRemovalList extends Component<
   };
 
   private groupTitle(group: MemberRemovalGroup) {
-    const count = group.subscribers.length;
+    // 用 total（截断前的真实人数）而不是渲染出的行数，否则 500 人的群会写成
+    // 「其他成员（200）」，把渲染上限冒充成人口普查。
+    const count = group.total;
     if (group.id === "myBots") {
       return this.context.t("base.subscribers.groupMyBotsWithCount", {
         values: { count },
@@ -370,16 +461,15 @@ export class MemberRemovalList extends Component<
       >
         {/*
           圆形多选控件。不用 Semi 的 Checkbox：那是方形的，而设计要求圆形；
-          与其覆盖它的内部样式，不如用原生语义元素自己画，顺带拿到正确的
-          role/aria-checked。整行可点，这里 tabIndex={-1} 避免焦点重复停留。
+          与其覆盖它的内部样式，不如自己画。无障碍语义已由**行容器**承担
+          （role=checkbox + aria-checked + tabIndex），所以这里只是个纯装饰元素，
+          标 aria-hidden 避免屏幕阅读器把同一个控件报两次。
         */}
         <span
           className={`wk-memberremoval-check${
             selected ? " wk-memberremoval-check-on" : ""
           }`}
           data-testid="member-removal-check"
-          // 无障碍语义已由行容器承担（role=checkbox + aria-checked + tabIndex），
-          // 这里只是视觉圆圈，标 aria-hidden 避免屏幕阅读器把同一个控件报两次。
           aria-hidden="true"
         >
           {selected && (
@@ -457,6 +547,10 @@ export class MemberRemovalList extends Component<
           onClick={() => this.onGroupLabelClick(group.id, groups)}
           onKeyDown={(event) => {
             if (event.key !== "Enter" && event.key !== " ") return;
+            // 不能拦下子元素（chevron 按钮）自己的键盘激活：早期版本在这里无条件
+            // preventDefault，把冗余上来的 Enter/Space 也吐掉了，于是 chevron 用键盘
+            // 根本折叠不了。
+            if (event.target !== event.currentTarget) return;
             event.preventDefault();
             this.onGroupLabelClick(group.id, groups);
           }}
@@ -519,62 +613,68 @@ export class MemberRemovalList extends Component<
   }
 
   render() {
+    const groups = this.buildGroups();
+    const rosterEmpty = (this.props.subscribers ?? []).length === 0;
     return (
-      <Provider
-        create={() => {
-          // 有意**不**把 canRemove 作为 filter 传给 VM。
-          //
-          // list_vm 有一条「filter 把本页结果砍光就自动翻下一页」的逻辑，普通成员
-          // 在 500 人群里只有 1 个 bot，那会连翻 10 页把全群扫一遍。过滤放在
-          // 渲染层做，VM 保持朴素分页。
-          return new SubscriberListVM(
-            this.props.channel,
-            undefined,
-            this.props.localSearch
-          );
-        }}
-        render={(vm: SubscriberListVM) => {
-          const groups = this.buildGroups(vm);
-          return (
-            <div
-              className="wk-subscrierlist wk-memberremoval"
-              // 分页：SubscriberListVM 每页只拉 50 人，其余靠滚到底时继续加载。
-              // 没有这一句的话列表永远停在第 50 人：大群里普通成员的 bot 若排在 50
-              // 名之后，减号入口亮着（showRemove 按全量本地名册判定）但页面渲染空态，
-              // 恰好是共享判据本想避免的那个「点得进去、里面没东西」死胡同。
-              onScroll={(event) => this.getThrottledScroll(vm)(event)}
-            >
-              <div className="wk-indextable-search-box">
-                <div className="wk-indextable-search-icon">
-                  <IconSearchStroked className="wk-subscrierlist-search-icon" />
-                </div>
-                <div className="wk-indextable-search-input">
-                  <input
-                    type="text"
-                    data-testid="member-removal-search"
-                    placeholder={this.context.t(
-                      "base.subscribers.searchPlaceholder"
-                    )}
-                    onChange={(event) =>
-                      this.onSearchChange(event.target.value, vm)
-                    }
-                  />
-                </div>
-              </div>
-              {groups.length === 0 ? (
-                <div
-                  className="wk-memberremoval-empty"
-                  data-testid="member-removal-empty"
-                >
-                  {this.context.t("base.subscribers.noRemovableMembers")}
-                </div>
-              ) : (
-                groups.map((group) => this.renderGroup(group, groups))
+      <div className="wk-subscrierlist wk-memberremoval">
+        <div className="wk-indextable-search-box">
+          <div className="wk-indextable-search-icon">
+            <IconSearchStroked className="wk-subscrierlist-search-icon" />
+          </div>
+          <div className="wk-indextable-search-input">
+            <input
+              type="text"
+              data-testid="member-removal-search"
+              placeholder={this.context.t(
+                "base.subscribers.searchPlaceholder"
               )}
-            </div>
-          );
-        }}
-      ></Provider>
+              onChange={(event) => this.onSearchChange(event.target.value)}
+            />
+          </div>
+        </div>
+        {this.renderBody(groups, rosterEmpty)}
+      </div>
+    );
+  }
+
+  /**
+   * 空结果拆三态，不能全部归为「你没有可移出的成员」。
+   *
+   * 早期版本只看 `groups.length === 0`，于是：名册还没加载完的首帧会先给用户一句
+   * 确定的假话；搜索无匹配时也说「本群没有可移出的成员」，而用户明明只是打错了
+   * 一个字。现在：加载中 / 搜索无匹配 / 真的没有，各说各话。
+   */
+  private renderBody(groups: MemberRemovalGroup[], rosterEmpty: boolean) {
+    if (groups.length > 0) {
+      return groups.map((group) => this.renderGroup(group, groups));
+    }
+    if (this.props.loading && rosterEmpty) {
+      return (
+        <div
+          className="wk-memberremoval-empty"
+          data-testid="member-removal-loading"
+        >
+          {this.context.t("base.subscribers.loadingMembers")}
+        </div>
+      );
+    }
+    if (this.searching) {
+      return (
+        <div
+          className="wk-memberremoval-empty"
+          data-testid="member-removal-no-match"
+        >
+          {this.context.t("base.subscribers.noRemovableMatches")}
+        </div>
+      );
+    }
+    return (
+      <div
+        className="wk-memberremoval-empty"
+        data-testid="member-removal-empty"
+      >
+        {this.context.t("base.subscribers.noRemovableMembers")}
+      </div>
     );
   }
 }

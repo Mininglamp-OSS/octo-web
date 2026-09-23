@@ -28,9 +28,13 @@ import {
  *
  * 曾考虑过让后端多下发一个纯归属字段 bot_created_by_me，用来覆盖一个盲区：
  * bot_owned_by_me 对**非普通角色**的 bot 恒为 false，所以若一个 bot 被提为群
- * 管理员角色，前端就认不出它是「我的」。但产品上 **bot 无法被设为群管理员
- * 角色**（无入口），该盲区在实际产品中不会出现，所以不引入新字段，也不在前端
- * 自造推断（前端没有 creator_uid，本地猜测会和后端授权口径漂移）。
+ * 管理员角色，前端就认不出它是「我的」。
+ *
+ * 但产品上**没有把 bot 设为群管理员的入口**；只有 managerAdd 接口不排除 robot，
+ * 所以理论上能用 API 构造出来（参见 memberRemovalPermission 的同题注释）。这种
+ * 只能由 API 构造的数据，退化后的表现与本改动前完全一致（该 bot 被归入「其他
+ * 成员」，群主仍能移除它），且服务端始终是授权权威，所以收益不足以引入新字段；
+ * 也不在前端自造推断（前端没有 creator_uid，本地猜测会和后端授权口径漂移）。
  */
 
 /** 分类 id。用字面量而不是 enum，方便测试里直接写断言。 */
@@ -39,6 +43,14 @@ export type MemberRemovalGroupId = "myBots" | "others";
 export interface MemberRemovalGroup {
   id: MemberRemovalGroupId;
   subscribers: Subscriber[];
+  /**
+   * 该组**过滤后的真实人数**，可能大于 `subscribers.length`。
+   *
+   * 标题里的计数必须用这个值而不是 `subscribers.length`：后者是被
+   * MAX_OTHERS_GROUP_SIZE 砍过的**渲染量**，用它会把 500 人的群写成
+   * 「其他成员（200）」—— 把一个渲染上限冒充成人口普查。
+   */
+  total: number;
   /**
    * 该组是否被 MAX_OTHERS_GROUP_SIZE 截断。
    * 截断时组底部要给出「仅显示前 N 人，请用搜索」的提示，而不是静默少人。
@@ -49,12 +61,13 @@ export interface MemberRemovalGroup {
 /**
  * 「其他成员」组的渲染上限。
  *
- * 本页是纯客户端过滤：服务端没有 scope=removable 这类参数，只能拿分页名册
- * （SubscriberListVM 每页 50 人，由组件滚动到底时继续加载）再在本地过滤。
- * 大群里管理员把名册翻完后仍可能剩几百人，一次性渲染几百行会卡。
+ * 本页是纯客户端过滤：服务端没有 scope=removable 这类参数，组件拿到的是整份
+ * 成员名册（ChannelSettingRouteData.subscriberAll，由 IM 成员缓存填充）再在本地过滤。
+ * 大群里群主/管理员过滤后仍可能剩几百人，一次性渲染几百行会卡。
  *
  * 所以这里设一个上限 + 明确提示，把「不完整」这件事显式告诉用户，而不是
- * 假装列表是全的。达到上限时引导用户用搜索缩小范围。
+ * 假装列表是全的。达到上限时引导用户用搜索缩小范围 —— 本页搜索是纯本地的、
+ * 覆盖整份名册，所以搜索确实能触及第 200 名之后的人（否则这条提示就是空话）。
  *
  * 「我的 BOT」组**不受此限制** —— 一个人在一个群里的 bot 通常 0-3 个，天然极小，
  * 截断它只会制造「我的 bot 不见了」的 bug。
@@ -94,12 +107,19 @@ export function buildMemberRemovalGroups(params: {
   const groups: MemberRemovalGroup[] = [];
   // 「我的 BOT」永不截断：数量天然极小，截断只会变成「我的 bot 不见了」。
   if (myBots.length > 0) {
-    groups.push({ id: "myBots", subscribers: myBots, truncated: false });
+    groups.push({
+      id: "myBots",
+      subscribers: myBots,
+      total: myBots.length,
+      truncated: false,
+    });
   }
   if (others.length > 0) {
     groups.push({
       id: "others",
       subscribers: others.slice(0, MAX_OTHERS_GROUP_SIZE),
+      // total 记截断**前**的人数，标题计数靠它，否则 500 人群会显示成（200）。
+      total: others.length,
       truncated: others.length > MAX_OTHERS_GROUP_SIZE,
     });
   }
