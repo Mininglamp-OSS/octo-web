@@ -92,7 +92,11 @@ describe("conversation header names", () => {
     );
     expect(await screen.findByRole("button", { name: "Open workspace: Workspace" })).toBeVisible();
     expect(screen.getByText("Recovered group")).toBeVisible();
-    expect(host.getContext).toHaveBeenCalledWith({ channelId: "group", channelType: 2 });
+    expect(host.getContext).toHaveBeenCalledWith(
+      { channelId: "group", channelType: 2 },
+      expect.any(AbortSignal),
+    );
+    expect(vi.mocked(host.getContext).mock.calls[0][1]?.aborted).toBe(false);
   });
 
   it("does not start network requests from render", () => {
