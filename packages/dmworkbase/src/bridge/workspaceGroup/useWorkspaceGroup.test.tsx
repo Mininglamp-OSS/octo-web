@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceGroup } from "./useWorkspaceGroup";
 import { WorkspaceGroupProvider } from "../../features/workspaceGroup/WorkspaceGroupProvider";
-import type { WorkspaceGroupContext, WorkspaceGroupHost, WorkspaceGroupTarget } from "../../features/workspaceGroup/contract";
+import { WorkspaceGroupReadUnavailable, type WorkspaceGroupContext, type WorkspaceGroupHost, type WorkspaceGroupTarget } from "../../features/workspaceGroup/contract";
 
 const context: WorkspaceGroupContext = {
   channelId: "group-a", channelType: 2, projectId: "project-a", projectName: "Workspace A",
@@ -155,7 +155,7 @@ describe("workspace group host data", () => {
     const view = render(element(host));
     await ready();
     view.rerender(element(host, "group-b"));
-    await waitFor(() => expect(host.getContext).toHaveBeenCalledWith({ channelId: "group-b", channelType: 2 }));
+    await waitFor(() => expect(host.getContext).toHaveBeenCalledWith({ channelId: "group-b", channelType: 2 }, expect.any(AbortSignal)));
     await waitFor(() => expect(screen.getByTestId("refreshing")).toHaveTextContent("false"));
     fireEvent.click(screen.getByRole("button", { name: "manage" }));
     expect(host.manage).toHaveBeenCalledExactlyOnceWith({
@@ -254,6 +254,86 @@ describe("workspace group host reliability", () => {
     expect(screen.getByTestId("failure")).toHaveTextContent("load");
   });
 
+  it("does not reset the retry budget when focus arrives during a failing request or backoff", async () => {
+    const { host } = createHost();
+    const second = deferred<WorkspaceGroupContext | null>();
+    vi.mocked(host.getContext)
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockImplementationOnce(() => second.promise.then(() => { throw new Error("offline"); }))
+      .mockRejectedValue(new Error("offline"));
+    render(element(host));
+    await flushPromises();
+    fireEvent(window, new Event("focus"));
+    expect(host.getContext).toHaveBeenCalledOnce();
+    await advance(1_000);
+    fireEvent(window, new Event("focus"));
+    fireEvent.click(screen.getByText("refresh"));
+    await act(async () => second.resolve(null));
+    await advance(1_000);
+    expect(host.getContext).toHaveBeenCalledTimes(2);
+    await advance(1_000);
+    expect(host.getContext).toHaveBeenCalledTimes(3);
+    await advance(4_000);
+    expect(host.getContext).toHaveBeenCalledTimes(4);
+    fireEvent(window, new Event("focus"));
+    await advance(30_000);
+    expect(host.getContext).toHaveBeenCalledTimes(4);
+    fireEvent.click(screen.getByText("refresh"));
+    await flushPromises();
+    expect(host.getContext).toHaveBeenCalledTimes(5);
+  });
+
+  it.each(["inactive", "session"] as const)("waits quietly for %s lifecycle readiness without retries", async (reason) => {
+    const { host, notify } = createHost();
+    vi.mocked(host.getContext).mockRejectedValueOnce(new WorkspaceGroupReadUnavailable(reason)).mockResolvedValue(context);
+    render(element(host));
+    await flushPromises();
+    expect(screen.getByTestId("context")).toBeEmptyDOMElement();
+    expect(screen.getByTestId("failure")).toBeEmptyDOMElement();
+    expect(screen.getByTestId("refreshing")).toHaveTextContent("false");
+    await advance(30_000);
+    expect(host.getContext).toHaveBeenCalledOnce();
+    notify(null);
+    await flushPromises();
+    expect(screen.getByTestId("context")).toHaveTextContent("Workspace A");
+  });
+
+  it("clears invalidated data and recovers a silent session change without focus", async () => {
+    const { host } = createHost();
+    vi.mocked(host.getContext)
+      .mockResolvedValueOnce(context)
+      .mockRejectedValueOnce(new WorkspaceGroupReadUnavailable("scope"))
+      .mockResolvedValueOnce({ ...context, projectName: "New session workspace" });
+    render(element(host));
+    await flushPromises();
+    fireEvent.click(screen.getByText("refresh"));
+    await flushPromises();
+    expect(screen.getByTestId("context")).toBeEmptyDOMElement();
+    expect(screen.getByTestId("failure")).toBeEmptyDOMElement();
+    fireEvent.click(screen.getByText("manage"));
+    expect(host.manage).not.toHaveBeenCalled();
+    await advance(1_000);
+    expect(screen.getByTestId("context")).toHaveTextContent("New session workspace");
+  });
+
+  it("exposes manual recovery when repeated scope changes exhaust the quiet retries", async () => {
+    const { host } = createHost();
+    vi.mocked(host.getContext).mockRejectedValue(new WorkspaceGroupReadUnavailable("scope"));
+    render(element(host));
+    await flushPromises();
+    await advance(60_000);
+    expect(host.getContext).toHaveBeenCalledTimes(4);
+    expect(screen.getByTestId("failure")).toHaveTextContent("load");
+    fireEvent(window, new Event("focus"));
+    await flushPromises();
+    expect(host.getContext).toHaveBeenCalledTimes(4);
+    vi.mocked(host.getContext).mockResolvedValue(context);
+    fireEvent.click(screen.getByText("refresh"));
+    await flushPromises();
+    expect(screen.getByTestId("context")).toHaveTextContent("Workspace A");
+    expect(screen.getByTestId("failure")).toBeEmptyDOMElement();
+  });
+
   it("retains prior same-scope context through a transient error", async () => {
     const { host } = createHost();
     vi.mocked(host.getContext).mockResolvedValueOnce(context).mockRejectedValueOnce(new Error("offline"));
@@ -313,10 +393,13 @@ describe("workspace group host reliability", () => {
 
     render(element(host));
     await flushPromises();
+    const signal = vi.mocked(host.getContext).mock.calls[0][1]!;
     await advance(19_999);
+    expect(signal.aborted).toBe(false);
     expect(screen.getByTestId("failure")).toBeEmptyDOMElement();
 
     await advance(1);
+    expect(signal.aborted).toBe(true);
     expect(screen.getByTestId("failure")).toHaveTextContent("load");
     expect(screen.getByTestId("context")).toBeEmptyDOMElement();
 
@@ -367,6 +450,7 @@ describe("workspace group host reliability", () => {
     await flushPromises();
     fireEvent(window, new Event("focus"));
     view.unmount();
+    expect(vi.mocked(host.getContext).mock.calls[0][1]?.aborted).toBe(true);
     expect(listeners.size).toBe(0);
     expect(vi.getTimerCount()).toBe(0);
 
@@ -387,6 +471,7 @@ describe("workspace group host reliability", () => {
     const view = render(element(host));
     await flushPromises();
     view.rerender(element(host, "group-b"));
+    expect(vi.mocked(host.getContext).mock.calls[0][1]?.aborted).toBe(true);
     await flushPromises();
     expect(screen.getByTestId("context")).toHaveTextContent("Workspace B");
 

@@ -172,10 +172,10 @@ export function CommunicationShell({
   const workspaceNavigationGuard = useMemo(() => createWorkspaceNavigationGuard(), []);
   const workspaceGroups = useMemo(() => createWorkspaceGroupHost(bridge, () => ({
     spaceId: spaceIdRef.current,
-    uid: WKApp.loginInfo.uid,
-    token: WKApp.loginInfo.token,
+    sessionRevision: WKApp.loginInfo.sessionRevision,
+    ready: Boolean(WKApp.loginInfo.uid && WKApp.loginInfo.token),
     apiOrigin: WKApp.apiClient.config.apiURL,
-  })), [bridge]);
+  }), (listener) => WKApp.shared.addListener(listener)), [bridge]);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
   const readyReporterRef = useRef<ReturnType<typeof createReadyReporter>>();
@@ -414,22 +414,25 @@ export function CommunicationShell({
       }
 
       if (command.type === "spaceChanged") {
-        cancelNavigation();
-        currentTargetRef.current = undefined;
-        appTargetRef.current = undefined;
-        workspaceReturnTargetRef.current = undefined;
-        if (workspaceTargetRef.current) WKApp.routeRight.popToRoot();
-        workspaceTargetRef.current = undefined;
         if (spaceIdRef.current !== command.space.id) summaryScopeRevision.current++;
         spaceIdRef.current = command.space.id;
-        document.documentElement.dataset.spaceId = command.space.id;
-        if (!runtimeOwned) {
-          applyImSpaceContext({
-            space_id: command.space.id,
-            name: command.space.name,
-          });
+        try {
+          cancelNavigation();
+          currentTargetRef.current = undefined;
+          appTargetRef.current = undefined;
+          workspaceReturnTargetRef.current = undefined;
+          if (workspaceTargetRef.current) WKApp.routeRight.popToRoot();
+          workspaceTargetRef.current = undefined;
+          document.documentElement.dataset.spaceId = command.space.id;
+          if (!runtimeOwned) {
+            applyImSpaceContext({
+              space_id: command.space.id,
+              name: command.space.name,
+            });
+          }
+        } finally {
+          workspaceGroups.handleCommand(command);
         }
-        workspaceGroups.handleCommand(command);
         WKApp.shared.notifyListener();
         return;
       }

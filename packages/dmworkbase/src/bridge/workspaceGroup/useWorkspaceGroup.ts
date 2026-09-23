@@ -1,12 +1,12 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
-  isWorkspaceGroupContext, type WorkspaceGroupContext, type WorkspaceGroupTarget,
+  isWorkspaceGroupContext, WorkspaceGroupReadUnavailable, type WorkspaceGroupContext, type WorkspaceGroupTarget,
 } from "../../features/workspaceGroup/contract";
 import { WorkspaceGroupHostContext } from "../../features/workspaceGroup/WorkspaceGroupProvider";
 
 type Action = "open" | "manage";
 type Failure = Action | "load";
-type RefreshMode = "external" | "relation" | "retry";
+type RefreshMode = "external" | "relation" | "retry" | "focus";
 interface State {
   owner: object;
   context: WorkspaceGroupContext | null;
@@ -15,6 +15,7 @@ interface State {
   failure: Failure | null;
 }
 interface PendingRequest {
+  controller: AbortController;
   generation: number;
   timedOut: boolean;
   timeout: ReturnType<typeof setTimeout> | null;
@@ -51,18 +52,20 @@ export function useWorkspaceGroup(channelId: string, channelType: number) {
     retryAttempt.current = 0;
     clearRetryTimer();
     if (pending.current?.timeout) clearTimeout(pending.current.timeout);
+    pending.current?.controller.abort();
     pending.current = null;
   }, [clearRetryTimer]);
 
   const refresh = useCallback(async (invalidate = false, mode: RefreshMode = "external") => {
     if (!host || channelType !== 2 || !channelId || alive.current !== owner) return;
-    if (mode !== "retry") {
-      retryAttempt.current = 0;
-      clearRetryTimer();
-    }
     if (!invalidate && pending.current) {
       if (mode === "relation") queuedRelationRefresh.current = true;
       return;
+    }
+    if (mode === "focus" && (retryTimer.current !== null || retryAttempt.current >= RETRY_DELAYS_MS.length)) return;
+    if (mode === "external" || mode === "relation") {
+      retryAttempt.current = 0;
+      clearRetryTimer();
     }
     if (invalidate) {
       action.current = null;
@@ -71,6 +74,7 @@ export function useWorkspaceGroup(channelId: string, channelType: number) {
 
     const generation = ++request.current;
     const pendingRequest: PendingRequest = {
+      controller: new AbortController(),
       generation,
       timedOut: false,
       timeout: null,
@@ -80,6 +84,7 @@ export function useWorkspaceGroup(channelId: string, channelType: number) {
         if (pending.current !== pendingRequest) return;
         pendingRequest.timedOut = true;
         reject(new Error("Workspace group context request timed out"));
+        pendingRequest.controller.abort();
       }, REQUEST_TIMEOUT_MS);
     });
     pending.current = pendingRequest;
@@ -98,7 +103,7 @@ export function useWorkspaceGroup(channelId: string, channelType: number) {
     const isCurrent = () => isLatest() && !pendingRequest.timedOut;
     try {
       const target: WorkspaceGroupTarget = { channelId, channelType: 2 };
-      const context = await Promise.race([host.getContext(target), timeoutPromise]);
+      const context = await Promise.race([host.getContext(target, pendingRequest.controller.signal), timeoutPromise]);
       if (!isCurrent()) return;
       if (context !== null && !isWorkspaceGroupContext(context, target)) throw new Error("Invalid workspace relation");
       if (pendingRequest.timeout) clearTimeout(pendingRequest.timeout);
@@ -108,17 +113,21 @@ export function useWorkspaceGroup(channelId: string, channelType: number) {
         owner, context, refreshing: false, failure: null,
         busy: previous?.owner === owner ? previous.busy : null,
       }));
-    } catch {
+    } catch (error) {
       if (!isLatest()) return;
       if (pendingRequest.timeout) clearTimeout(pendingRequest.timeout);
       pending.current = null;
+      const unavailable = !pendingRequest.timedOut && error instanceof WorkspaceGroupReadUnavailable ? error : null;
+      const scopeExhausted = unavailable?.reason === "scope" && retryAttempt.current >= RETRY_DELAYS_MS.length;
       setState((previous) => ({
         owner,
-        context: previous?.owner === owner ? previous.context : null,
-        busy: previous?.owner === owner ? previous.busy : null,
+        context: !unavailable && previous?.owner === owner ? previous.context : null,
+        busy: !unavailable && previous?.owner === owner ? previous.busy : null,
         refreshing: false,
-        failure: "load",
+        failure: unavailable && !scopeExhausted ? null : "load",
       }));
+      // Inactive/not-ready hosts resume through lifecycle notifications, without polling.
+      if (unavailable && unavailable.reason !== "scope") return;
       if (retryAttempt.current < RETRY_DELAYS_MS.length) {
         const delay = RETRY_DELAYS_MS[retryAttempt.current];
         retryAttempt.current += 1;
@@ -149,7 +158,7 @@ export function useWorkspaceGroup(channelId: string, channelType: number) {
         void refresh(!target, target ? "relation" : "external");
       }
     });
-    const onFocus = () => { void refresh(); };
+    const onFocus = () => { void refresh(false, "focus"); };
     window.addEventListener("focus", onFocus);
     return () => {
       if (alive.current === owner) alive.current = null;

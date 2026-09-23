@@ -83,16 +83,40 @@ onWorkspaceGroupChanged?(listener: (target: WorkspaceGroupTarget) => void):
 Management resolves when the Client accepts the request; it does not imply a
 mutation. The Client emits the changed event after management completes. Web
 also refreshes on host visibility/resume and focus for compatibility.
-Initial read failures have a visible retry control and bounded automatic
-retries. Confirmed unlinked groups remain hidden. The restricted server relation
+Initial loading/errors use a 400ms disclosure delay so fast unlinked reads do
+not flash a workspace control. Persistent read failures retain manual recovery
+and at most three automatic retries (1s/2s/4s). Focus neither resets an in-flight
+retry budget nor restarts an exhausted one; manual refresh and relation changes
+can start a new attempt. Confirmed unlinked groups remain hidden.
+
+Not-ready/inactive sessions wait quietly for app or host lifecycle notifications
+without polling. Invalidated reads are distinct from confirmed unlinked results;
+they clear stale data and retry in the new scope with the same bounded budget.
+Repeated invalidation that exhausts that budget exposes manual recovery instead
+of silently hiding the entry.
+Timeout, conversation changes and disposal abort the transport. Read and action
+guards compare `LoginInfo.sessionRevision`, Space and API origin without retaining
+a copy of the token.
+
+The restricted server relation
 projection exposes `linked_by` as a UID; Web hydrates its name when permitted.
 Association method and time are not displayed or inferred.
+Group detail's management role is numeric `role` (1 owner, 2 manager); project
+detail exposes numeric `my_role` (with legacy `role` projection compatibility).
+Project capability flags describe project actions, not permission to unlink a
+group. The native and server group-relation action checks remain authoritative.
+Web pins `X-Space-Id` on each read; it does not depend on the native transport's
+`X-Workspace-ID` header. Optional background reads suppress global forced logout
+on an auth error, while still failing and exhausting the bounded retry budget.
 The Client dialog shows the group, Workspace and linking person. Management
 requests can carry Web's resolved actor UID/name as display-only presentation.
 The Client uses that name only after revalidating the relation and permissions,
 when the server's recorded actor UID matches and its name is absent. A name from
 the server takes precedence. Missing/invalid hints remain compatible with older
-callers. No renderer-supplied permission or session data is trusted.
+callers. Hydrated names follow the shared verified-real-name, remark, nickname
+priority. Web removes C0/C1 and bidirectional controls and omits names over 256
+UTF-16 code units. Client independently rejects invalid presentation hints.
+No renderer-supplied permission or session data is trusted.
 The existing Workspace-side unlink action shares the same main-process guard.
 Supported Clients keep the conversation visible behind a transparent native
 overlay while blocking background input. Older hosts retain the inline fallback.

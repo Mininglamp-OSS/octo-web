@@ -1,3 +1,5 @@
+import { isWorkspaceGroupDisplayName } from "./presentation";
+
 export interface WorkspaceGroupTarget {
   channelId: string;
   channelType: 2;
@@ -23,11 +25,19 @@ export interface WorkspaceGroupContext extends WorkspaceGroupAction {
 }
 
 export interface WorkspaceGroupHost {
-  getContext(target: WorkspaceGroupTarget): Promise<WorkspaceGroupContext | null>;
+  getContext(target: WorkspaceGroupTarget, signal?: AbortSignal): Promise<WorkspaceGroupContext | null>;
   open(target: WorkspaceGroupAction): Promise<void>;
   manage(target: WorkspaceGroupAction): Promise<void>;
   /** A null target invalidates the whole authenticated host scope. */
   subscribe(listener: (target: WorkspaceGroupTarget | null) => void): () => void;
+}
+
+/** An unavailable read is not evidence that the group has no workspace. */
+export class WorkspaceGroupReadUnavailable extends Error {
+  constructor(readonly reason: "inactive" | "session" | "scope") {
+    super(`Workspace group read unavailable: ${reason}`);
+    this.name = "WorkspaceGroupReadUnavailable";
+  }
 }
 
 export function isWorkspaceGroupContext(
@@ -41,7 +51,7 @@ export function isWorkspaceGroupContext(
     && typeof context.groupName === "string"
     && (context.linkedBy === undefined || (typeof context.linkedBy === "string"
       && context.linkedBy.length <= 256 && !/[^\x21-\x7e]/.test(context.linkedBy)))
-    && typeof context.linkedByName === "string"
+    && isWorkspaceGroupDisplayName(context.linkedByName)
     && (context.linkedAt === undefined || typeof context.linkedAt === "string")
     && (context.manageDisabledReason === undefined
       || ["workspace_membership", "group_role", "system_group", "denied", "unavailable"].includes(String(context.manageDisabledReason)))

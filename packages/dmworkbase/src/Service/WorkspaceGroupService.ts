@@ -1,5 +1,8 @@
-import APIClient from "./APIClient";
+import APIClient, { type RequestConfig } from "./APIClient";
+import { apiPath } from "./apiPath";
+import { displayName, type DisplayNameUser } from "../Utils/displayName";
 import type { WorkspaceGroupContext, WorkspaceGroupTarget } from "../features/workspaceGroup/contract";
+import { normalizeWorkspaceGroupDisplayName } from "../features/workspaceGroup/presentation";
 
 export interface WorkspaceGroupReadScope {
   spaceId: string;
@@ -25,10 +28,13 @@ const inaccessible = (error: unknown): boolean => {
   const status = record(value.normalized).httpStatus ?? value.status;
   return status === 403 || status === 404;
 };
-const one = (value: unknown, keys: string[]): RecordValue => {
+const one = (value: unknown, keys: string[], markers: string[]): RecordValue => {
   let result = record(value);
   for (let depth = 0; depth < 4; depth++) {
-    const nested = first(result, [...keys, "item", "data"]);
+    if (markers.some(marker => result[marker] !== undefined)) return result;
+    const named = first(result, keys);
+    if (named && typeof named === "object" && !Array.isArray(named)) return record(named);
+    const nested = first(result, ["item", "data"]);
     if (!nested || typeof nested !== "object" || Array.isArray(nested)) break;
     result = record(nested);
   }
@@ -43,12 +49,13 @@ function managementPermission(
   if (isAllMemberGroup) return deny("system_group");
   if (!Object.keys(workspace).length) return deny("unavailable");
   const member = flag(workspace, "is_member", "isMember");
-  const role = first(workspace, ["my_role", "myRole", "role", "membership_role", "member_role"]);
+  // Project detail uses numeric my_role; role is the legacy Client projection.
+  const role = first(workspace, ["my_role", "role"]);
   const knownRole = (typeof role === "string" || typeof role === "number")
     && ["owner", "admin", "member", "0", "1", "2"].includes(String(role));
   if (rejected(member) || rejected(flag(workspace, "can_read", "canRead"))
     || (role !== undefined && !knownRole) || (!granted(member) && !knownRole)) return deny("workspace_membership");
-  const groupRole = first(group, ["role", "my_role", "myRole", "member_role", "memberRole", "group_role", "groupRole"]);
+  const groupRole = group.role;
   if (![1, 2, "1", "2"].includes(groupRole as number | string)) return deny("group_role");
   if (rejected(flag(group, "can_manage", "canManage"))
     || rejected(flag(relation, "can_manage", "canManage"))) return deny("denied");
@@ -56,14 +63,18 @@ function managementPermission(
 }
 
 async function read(
-  path: string, scope: WorkspaceGroupReadScope, workspaceId?: string, timeout = 5000,
+  path: string, scope: WorkspaceGroupReadScope, timeout = 5000,
+  param?: RequestConfig["param"],
 ): Promise<unknown> {
   scope.assertCurrent();
-  const result = await APIClient.shared.get(path, {
-    headers: { "X-Space-Id": scope.spaceId, ...(workspaceId ? { "X-Workspace-ID": workspaceId } : {}) },
+  const config: RequestConfig = {
+    headers: { "X-Space-Id": scope.spaceId },
+    suppressAuthExpiredLogout: true,
     signal: scope.signal,
     timeout,
-  });
+    ...(param !== undefined ? { param } : {}),
+  };
+  const result = await APIClient.shared.get(path, config);
   scope.assertCurrent();
   return result;
 }
@@ -71,14 +82,23 @@ async function read(
 async function linkingPerson(
   relation: RecordValue, groupNo: string, scope: WorkspaceGroupReadScope,
 ): Promise<string> {
-  const name = text(first(relation, ["linked_by_name", "linkedByName"]));
+  const name = normalizeWorkspaceGroupDisplayName(first(relation, ["linked_by_name", "linkedByName"]));
   const uid = text(first(relation, ["linked_by", "linkedBy"]));
   if (name || !uid || uid.length > 256) return name;
   try {
     const user = one(await read(
-      `users/${encodeURIComponent(uid)}?group_no=${encodeURIComponent(groupNo)}`, scope, undefined, 1500,
-    ), ["user"]);
-    return text(user.uid) === uid ? text(user.name) : "";
+      apiPath`users/${encodeURIComponent(uid)}`, scope, 1500, { group_no: groupNo },
+    ), ["user"], ["uid"]);
+    if (text(user.uid) !== uid) return "";
+    const displayNameUser: DisplayNameUser = {
+      name: normalizeWorkspaceGroupDisplayName(user.name),
+      real_name: normalizeWorkspaceGroupDisplayName(user.real_name),
+      remark: normalizeWorkspaceGroupDisplayName(user.remark),
+      realname_verified: typeof user.realname_verified === "boolean"
+        || typeof user.realname_verified === "number"
+        || typeof user.realname_verified === "string" ? user.realname_verified : null,
+    };
+    return normalizeWorkspaceGroupDisplayName(displayName(displayNameUser));
   } catch {
     // Optional profile hydration must not hide a valid workspace relation.
     scope.assertCurrent();
@@ -92,18 +112,21 @@ const WorkspaceGroupService = {
     if (target.channelType !== 2 || !id(target.channelId) || !id(scope.spaceId)) {
       throw new Error("Invalid workspace group scope");
     }
-    const groupPath = `groups/${encodeURIComponent(target.channelId)}`;
+    const groupPath = apiPath`groups/${encodeURIComponent(target.channelId)}`;
     let group: RecordValue;
     let relation: RecordValue;
     try {
-      group = one(await read(groupPath, scope), ["group"]);
+      group = one(await read(groupPath, scope), ["group"], ["group_no", "groupNo"]);
       const groupNo = text(first(group, ["group_no", "groupNo"]));
       if (!groupNo) throw new Error("Invalid workspace group response");
       if (groupNo !== target.channelId || rejected(flag(group, "is_member", "isMember"))
         || rejected(flag(group, "can_read", "canRead"))) return null;
       const groupSpace = text(first(group, ["space_id", "spaceId"]));
       if (groupSpace && groupSpace !== scope.spaceId) return null;
-      relation = one(await read(groupPath + "/project", scope, id(first(group, ["project_id", "projectId"])) || undefined), ["relation"]);
+      relation = one(await read(
+        apiPath`groups/${encodeURIComponent(target.channelId)}/project`,
+        scope,
+      ), ["relation"], ["group_no", "groupNo", "project_id", "projectId"]);
     } catch (error) {
       scope.assertCurrent();
       if (inaccessible(error)) return null;
@@ -121,7 +144,9 @@ const WorkspaceGroupService = {
     if (relationSpace && relationSpace !== scope.spaceId) return null;
     let workspace: RecordValue = {};
     try {
-      workspace = one(await read(`projects/${encodeURIComponent(projectId)}`, scope, projectId), ["project", "workspace"]);
+      workspace = one(await read(
+        apiPath`projects/${encodeURIComponent(projectId)}`, scope,
+      ), ["project", "workspace"], ["project_id", "projectId", "workspace_id", "workspaceId", "id"]);
     } catch (error) {
       scope.assertCurrent();
       if (!inaccessible(error)) throw error;
