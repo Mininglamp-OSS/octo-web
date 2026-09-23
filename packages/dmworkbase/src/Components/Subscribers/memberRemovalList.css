@@ -111,7 +111,7 @@
     border: 1.5px solid var(--wk-purple-alpha-25, rgba(127, 59, 245, 0.25));
     border-radius: 50%;
     background: transparent;
-    color: var(--wk-text-on-primary, #fff);
+    color: var(--wk-text-inverse, #fff);
     transition: background var(--wk-dur-fast) var(--wk-ease),
         border-color var(--wk-dur-fast) var(--wk-ease),
         box-shadow var(--wk-dur-fast) var(--wk-ease);
@@ -143,22 +143,6 @@
 /* 整行可点即切换选中，所以行给 pointer 手型（与浏览列表的“点开名片”区分开）。 */
 .wk-memberremoval-item {
     cursor: pointer;
-}
-
-/*
- * 置灰行：我创建的、但已被提为管理员不可移除的 bot。
- * 仍展示在「我的 BOT」组给用户完整清点感，但圆点置灰、不可选，
- * 悬停由行级 title 展示原因。保留头像/名字/徒章的可读性，只降低整体对比。
- */
-.wk-memberremoval-item-disabled {
-    cursor: not-allowed;
-    opacity: 0.55;
-}
-
-.wk-memberremoval-check-disabled {
-    border-color: var(--wk-border-subtle);
-    background: var(--wk-fill-tertiary, transparent);
-    cursor: not-allowed;
 }
 
 /*

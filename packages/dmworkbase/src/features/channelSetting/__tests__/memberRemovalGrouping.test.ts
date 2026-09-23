@@ -19,7 +19,6 @@ import {
 type RawOrgData = {
   robot?: number;
   bot_owned_by_me?: boolean;
-  bot_created_by_me?: boolean;
 };
 
 const sub = (
@@ -29,8 +28,8 @@ const sub = (
 ) => ({ uid, role, orgData } as unknown as Subscriber);
 
 describe("buildMemberRemovalGroups · §3.2 / §3.3 分类", () => {
-  // §3.2 的核心：普通成员名下只有自己创建的 bot 会进「我的 BOT」，others 恒空 →
-  // 页面自动退化成单组「我的 BOT」。分类依据是**归属**（bot_created_by_me）。
+  // §3.2 的核心：普通成员的 canRemove 只对「自己的 bot + 普通角色」为 true，
+  // 所以 others 恒空，页面自动退化成单组「我的 BOT」。这不需要任何角色分支。
   it("普通成员只拿到「我的 BOT」一组，群里其他人全部不可见", () => {
     const groups = buildMemberRemovalGroups({
       viewerUid: "me",
@@ -40,15 +39,10 @@ describe("buildMemberRemovalGroups · §3.2 / §3.3 分类", () => {
         sub("manager", GroupRole.manager),
         sub("me", GroupRole.normal),
         sub("other-human", GroupRole.normal),
-        sub("others-bot", GroupRole.normal, {
-          robot: 1,
-          bot_owned_by_me: false,
-          bot_created_by_me: false,
-        }),
+        sub("others-bot", GroupRole.normal, { robot: 1, bot_owned_by_me: false }),
         sub("my-bot", GroupRole.normal, {
           robot: 1,
           bot_owned_by_me: true,
-          bot_created_by_me: true,
         }),
       ],
     });
@@ -69,7 +63,6 @@ describe("buildMemberRemovalGroups · §3.2 / §3.3 分类", () => {
         sub("my-bot", GroupRole.normal, {
           robot: 1,
           bot_owned_by_me: true,
-          bot_created_by_me: true,
         }),
       ],
     });
@@ -78,62 +71,6 @@ describe("buildMemberRemovalGroups · §3.2 / §3.3 分类", () => {
     expect(groups[0].subscribers.map((s) => s.uid)).toEqual(["my-bot"]);
     // 群主可移除管理员与普通成员；自己不在列表里。
     expect(groups[1].subscribers.map((s) => s.uid)).toEqual(["manager", "human"]);
-  });
-
-  // 核心新契约（需求1）：我创建、但已被提为管理员的 bot —— owned=false（移不动），
-  // 但 created=true。它必须落进「我的 BOT」组（而不是「其他成员」，也不能消失），
-  // 由组件渲染为置灰不可选。这里只钉分组归属，置灰在组件测试里钉。
-  it("我创建但已是管理员的 bot 仍归「我的 BOT」（owned=false, created=true）", () => {
-    const groups = buildMemberRemovalGroups({
-      viewerUid: "owner",
-      viewerRole: GroupRole.owner,
-      subscribers: [
-        sub("owner", GroupRole.owner),
-        sub("human", GroupRole.normal),
-        sub("my-admin-bot", GroupRole.manager, {
-          robot: 1,
-          bot_owned_by_me: false,
-          bot_created_by_me: true,
-        }),
-        sub("my-normal-bot", GroupRole.normal, {
-          robot: 1,
-          bot_owned_by_me: true,
-          bot_created_by_me: true,
-        }),
-      ],
-    });
-
-    const myBots = groups.find((g) => g.id === "myBots")!;
-    // 两个都是我的 bot，不论能不能移除都在「我的 BOT」组。
-    expect(myBots.subscribers.map((s) => s.uid)).toEqual([
-      "my-admin-bot",
-      "my-normal-bot",
-    ]);
-    // 我的管理员 bot 不该漏进「其他成员」组。
-    const others = groups.find((g) => g.id === "others");
-    expect(others?.subscribers.map((s) => s.uid) ?? []).not.toContain(
-      "my-admin-bot"
-    );
-  });
-
-  // 反向守卫：他人的管理员 bot（created=false）不进「我的 BOT」，且因不可移除
-  // 也不进「其他成员」—— 直接不可见。防止把「已是管理员」误当成归属信号。
-  it("他人的管理员 bot 既不进「我的 BOT」也不可见", () => {
-    const groups = buildMemberRemovalGroups({
-      viewerUid: "owner",
-      viewerRole: GroupRole.manager,
-      subscribers: [
-        sub("others-admin-bot", GroupRole.manager, {
-          robot: 1,
-          bot_owned_by_me: false,
-          bot_created_by_me: false,
-        }),
-        sub("human", GroupRole.normal),
-      ],
-    });
-    // 管理员不能移管理员 bot，也不是他建的 → 完全不出现。剩下可移除的 human。
-    expect(groups.map((g) => g.id)).toEqual(["others"]);
-    expect(groups[0].subscribers.map((s) => s.uid)).toEqual(["human"]);
   });
 
   it("空组不渲染：没有自己的 bot 时只剩「其他成员」", () => {
@@ -159,11 +96,7 @@ describe("buildMemberRemovalGroups · §3.2 / §3.3 分类", () => {
       sub(`h${i}`, GroupRole.normal)
     );
     const myBots = Array.from({ length: 12 }, (_, i) =>
-      sub(`b${i}`, GroupRole.normal, {
-        robot: 1,
-        bot_owned_by_me: true,
-        bot_created_by_me: true,
-      })
+      sub(`b${i}`, GroupRole.normal, { robot: 1, bot_owned_by_me: true })
     );
     const groups = buildMemberRemovalGroups({
       viewerUid: "owner",

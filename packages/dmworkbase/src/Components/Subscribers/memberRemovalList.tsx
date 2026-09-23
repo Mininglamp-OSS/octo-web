@@ -6,7 +6,7 @@ import { Channel, ChannelTypePerson, Subscriber } from "wukongimjssdk";
 import Provider from "../../Service/Provider";
 import { GroupRole } from "../../Service/Const";
 import { I18nContext } from "../../i18n";
-import { debounce } from "../../Utils/rateLimit";
+import { debounce, throttle } from "../../Utils/rateLimit";
 import { isRealnameVerified } from "../../Utils/displayName";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import {
@@ -17,7 +17,6 @@ import {
   isGroupExpanded,
   MAX_OTHERS_GROUP_SIZE,
 } from "../../features/channelSetting/memberRemovalGrouping";
-import { isOwnedBotDisabledForRemoval } from "../../features/channelSetting/memberRemovalPermission";
 import { getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 import AiBadge from "../AiBadge";
 import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
@@ -74,10 +73,14 @@ export interface MemberRemovalListProps {
 
 interface MemberRemovalListState {
   /**
-   * 已勾选的 uid。用 Set 而不是数组：跨分组多选时按 uid 增删更直接，
-   * 也避免同一 uid 因为分页重复加载被选两次。
+   * 已勾选的成员，按 uid 索引到**完整 Subscriber**。
+   *
+   * 用 Map 而不是 Set<uid>：早期版本存 uid 集合，上报时再从「最近一次渲染出的
+   * 可见集合」反查对象。但可见集合会被搜索/分页整体替换，于是「先勾 Alice，
+   * 再搜 bob 并勾 Bob」会把 Alice 静默丢掉（行仍显示勾选，提交里却没它）。
+   * 勾选时 Subscriber 对象已在手上，直接存下来就不再依赖瞬时的渲染集合。
    */
-  selectedUids: Set<string>;
+  selected: Map<string, Subscriber>;
   /**
    * 用户**手动**折叠/展开过的分组。
    *
@@ -103,13 +106,11 @@ export class MemberRemovalList extends Component<
   private groupFirstItemRefs = new Map<MemberRemovalGroupId, HTMLDivElement>();
   private pendingScrollGroupId?: MemberRemovalGroupId;
   private scrollRaf?: number;
-  /** 最近一次渲染出的可见成员，供选中项反查完整 Subscriber。 */
-  private visibleSubscribers: Subscriber[] = [];
 
   constructor(props: MemberRemovalListProps) {
     super(props);
     this.state = {
-      selectedUids: new Set<string>(),
+      selected: new Map<string, Subscriber>(),
       manualExpanded: {},
       keyword: "",
     };
@@ -162,26 +163,23 @@ export class MemberRemovalList extends Component<
   }
 
   private isSelected(uid: string) {
-    return this.state.selectedUids.has(uid);
+    return this.state.selected.has(uid);
   }
 
   /**
    * 切换某一行的选中态，并把**完整 Subscriber 列表**上报给父级。
    *
-   * 上报的不是 uid 而是对象：父级要用名字拼二次确认文案。反查用的是最近一次
-   * 渲染出的可见集合 —— 已勾选但因搜索/分页暂时不可见的行仍留在 selectedUids
-   * 里，但不会误报给父级（拿不到它的名字，也不该在用户看不见时被提交）。
+   * 上报的不是 uid 而是对象：父级要用名字拼二次确认文案。选中项直接存 Map，
+   * 所以搜索/分页换掉当前结果集也不会丢选 —— 这是与早期版本（存 uid 集合、
+   * 上报时反查瞬时可见集合）的关键区别。
    */
   private toggleSelected = (subscriber: Subscriber) => {
-    // 置灰行（我建的、但已是管理员不可移除）不可选：点也不改变选中态，
-    // 避免下发一个点了必报错（ErrGroupCannotRemoveAdmin）的选项。
-    if (this.isRowDisabled(subscriber)) return;
     this.setState(
       (prev) => {
-        const next = new Set(prev.selectedUids);
+        const next = new Map(prev.selected);
         if (next.has(subscriber.uid)) next.delete(subscriber.uid);
-        else next.add(subscriber.uid);
-        return { selectedUids: next };
+        else next.set(subscriber.uid, subscriber);
+        return { selected: next };
       },
       () => this.reportSelection()
     );
@@ -190,10 +188,9 @@ export class MemberRemovalList extends Component<
   private reportSelection() {
     const { onSelectionChange } = this.props;
     if (!onSelectionChange) return;
-    const selected = this.visibleSubscribers.filter(
-      (s) => this.state.selectedUids.has(s.uid) && !this.isRowDisabled(s)
-    );
-    onSelectionChange(selected);
+    // 直接用 Map 里存的对象，不再依赖「本次渲染出的可见集合」：后者会被搜索
+    // 或分页整体替换，曾导致先勾选再搜索会静默丢弃之前的选择。
+    onSelectionChange(Array.from(this.state.selected.values()));
   }
 
   /**
@@ -264,6 +261,35 @@ export class MemberRemovalList extends Component<
     (keyword: string) => void
   >();
 
+  /**
+   * 滚动到底时继续拉下一页，写法与 SubscriberList 一致（同一个 throttle 工具）。
+   *
+   * 按 VM 存一份：throttle 有内部时间戳状态，每次 render 新建会让节流失效。
+   */
+  private throttledScrollMap = new WeakMap<
+    SubscriberListVM,
+    (event: React.UIEvent<HTMLDivElement>) => void
+  >();
+
+  private getThrottledScroll(vm: SubscriberListVM) {
+    if (!this.throttledScrollMap.has(vm)) {
+      this.throttledScrollMap.set(
+        vm,
+        throttle((event: React.UIEvent<HTMLDivElement>) => {
+          const target = event.target as HTMLDivElement;
+          const offset = 200;
+          if (
+            target.scrollTop + target.clientHeight + offset >=
+            target.scrollHeight
+          ) {
+            vm.loadMoreSubscribersIfNeed();
+          }
+        }, 100)
+      );
+    }
+    return this.throttledScrollMap.get(vm)!;
+  }
+
   private getDebouncedSearch(vm: SubscriberListVM) {
     if (!this.searchDebouncedMap.has(vm)) {
       this.searchDebouncedMap.set(
@@ -303,14 +329,6 @@ export class MemberRemovalList extends Component<
     });
   }
 
-  private isRowDisabled(subscriber: Subscriber): boolean {
-    return isOwnedBotDisabledForRemoval({
-      viewerUid: this.props.viewerUid,
-      viewerRole: this.props.viewerRole,
-      subscriber,
-    });
-  }
-
   private renderSubscriberRow(
     subscriber: Subscriber,
     group: MemberRemovalGroup,
@@ -318,8 +336,7 @@ export class MemberRemovalList extends Component<
   ) {
     const itemIsBot = isBot(subscriber.uid);
     const isBotAdmin = subscriber.orgData?.bot_admin === 1;
-    const disabled = this.isRowDisabled(subscriber);
-    const selected = !disabled && this.isSelected(subscriber.uid);
+    const selected = this.isSelected(subscriber.uid);
     const { isExternal, sourceSpaceName } = resolveExternalForViewer({
       homeSpaceId: subscriber.orgData?.home_space_id,
       homeSpaceName: subscriber.orgData?.home_space_name,
@@ -328,18 +345,22 @@ export class MemberRemovalList extends Component<
     });
     return (
       <div
-        className={`wk-subscrierlist-list-item wk-memberremoval-item${
-          disabled ? " wk-memberremoval-item-disabled" : ""
-        }`}
+        className="wk-subscrierlist-list-item wk-memberremoval-item"
         key={subscriber.uid}
         data-testid="member-removal-row"
-        data-disabled={disabled ? "true" : undefined}
-        title={
-          disabled
-            ? this.context.t("base.subscribers.botAdminCannotRemove")
-            : undefined
-        }
+        // 整行可点即切换选中，所以行本身就是那个 checkbox 控件：把 role/tabIndex/
+        // 键盘事件挂在这里，而不是里面那个纯装饰的圆圈 —— 否则键盘用户根本
+        // 选不了人（圆圈不可聚焦，行又没有键盘处理）。
+        role="checkbox"
+        aria-checked={selected}
+        aria-label={this.getShowName(subscriber)}
+        tabIndex={0}
         onClick={() => this.toggleSelected(subscriber)}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          this.toggleSelected(subscriber);
+        }}
         ref={(node) => {
           // 只记录每组第一行，供点分类名时滚动定位。
           if (indexInGroup !== 0) return;
@@ -355,12 +376,11 @@ export class MemberRemovalList extends Component<
         <span
           className={`wk-memberremoval-check${
             selected ? " wk-memberremoval-check-on" : ""
-          }${disabled ? " wk-memberremoval-check-disabled" : ""}`}
+          }`}
           data-testid="member-removal-check"
-          role="checkbox"
-          aria-checked={selected}
-          aria-disabled={disabled || undefined}
-          aria-label={this.getShowName(subscriber)}
+          // 无障碍语义已由行容器承担（role=checkbox + aria-checked + tabIndex），
+          // 这里只是视觉圆圈，标 aria-hidden 避免屏幕阅读器把同一个控件报两次。
+          aria-hidden="true"
         >
           {selected && (
             <svg aria-hidden="true" viewBox="0 0 16 16">
@@ -515,10 +535,15 @@ export class MemberRemovalList extends Component<
         }}
         render={(vm: SubscriberListVM) => {
           const groups = this.buildGroups(vm);
-          // 记下本次渲染的可见集合，供选中项反查完整 Subscriber。
-          this.visibleSubscribers = groups.flatMap((g) => g.subscribers);
           return (
-            <div className="wk-subscrierlist wk-memberremoval">
+            <div
+              className="wk-subscrierlist wk-memberremoval"
+              // 分页：SubscriberListVM 每页只拉 50 人，其余靠滚到底时继续加载。
+              // 没有这一句的话列表永远停在第 50 人：大群里普通成员的 bot 若排在 50
+              // 名之后，减号入口亮着（showRemove 按全量本地名册判定）但页面渲染空态，
+              // 恰好是共享判据本想避免的那个「点得进去、里面没东西」死胡同。
+              onScroll={(event) => this.getThrottledScroll(vm)(event)}
+            >
               <div className="wk-indextable-search-box">
                 <div className="wk-indextable-search-icon">
                   <IconSearchStroked className="wk-subscrierlist-search-icon" />

@@ -3,7 +3,6 @@ import { Subscriber } from "wukongimjssdk";
 import {
   canRemoveChannelSettingSubscriber,
   isBotOwnedByViewer,
-  isBotCreatedByViewer,
 } from "./memberRemovalPermission";
 
 /**
@@ -14,21 +13,24 @@ import {
  *
  * ## 为什么分类能同时满足 §3.2 / §3.3 / §3.4
  *
- * 分类用**归属**判据（isBotCreatedByViewer），行的可选性用**权限**判据（canRemove）：
+ * 整页只有一条可见性判据（canRemove）和一条归属判据（isBotOwnedByViewer），
+ * 三节规格都是它们的推论，不需要任何「如果是普通成员就……」的角色分支：
  *
- *   myBots = subscribers.filter(isBotCreatedByViewer)              ← 我创建的全部 bot（含不可移除的）
- *   others = subscribers.filter(!created && canRemove)             ← 可移除的非我 bot
+ *   visible = subscribers.filter(canRemove)       ← §3.2 只展示可移除的
+ *   myBots  = visible.filter(isBotOwnedByViewer)  ← §3.3/§3.4 「我的 BOT」
+ *   others  = visible.filter(!isBotOwnedByViewer) ← §3.3/§3.4 「其他成员」
  *
- * 「我的 BOT」按归属收全集，所以我建的、但已被提为管理员的 bot（owned=false）也会
- * 出现在这组里，由组件渲染为置灰不可选（见 isOwnedBotDisabledForRemoval）。普通成员没有
- * 创建任何 bot 时 myBots 为空；若他有自己的普通 bot，则可移除且归属于他。
+ * 普通成员的 canRemove 只在「自己的 bot + 普通角色」时为 true，所以 others
+ * **恒为空**，页面自动退化成单组 —— 这正是 §3.2 想要的效果。群主/管理员两组
+ * 都有，就是 §3.3 的布局。一条规则两种形态，没有分叉。
  *
- * ## 归属判据用 bot_created_by_me（octo-server feat/bot-created-by-me-field）
+ * ## 归属判据直接复用 isBotOwnedByViewer（不另造字段）
  *
- * 早期版本只有 bot_owned_by_me 一个字段兼职归属+可移除两件事，导致「我建的、已
- * 被提为管理员」的 bot（owned=false）无法落进「我的 BOT」组。后端拆出了纯归属
- * 字段 bot_created_by_me（只看 robot.creator_uid，不看角色），前端分类改用它，
- * bot_owned_by_me 继续负责可移除性（控制圆点的灰态）。
+ * 曾考虑过让后端多下发一个纯归属字段 bot_created_by_me，用来覆盖一个盲区：
+ * bot_owned_by_me 对**非普通角色**的 bot 恒为 false，所以若一个 bot 被提为群
+ * 管理员角色，前端就认不出它是「我的」。但产品上 **bot 无法被设为群管理员
+ * 角色**（无入口），该盲区在实际产品中不会出现，所以不引入新字段，也不在前端
+ * 自造推断（前端没有 creator_uid，本地猜测会和后端授权口径漂移）。
  */
 
 /** 分类 id。用字面量而不是 enum，方便测试里直接写断言。 */
@@ -47,12 +49,12 @@ export interface MemberRemovalGroup {
 /**
  * 「其他成员」组的渲染上限。
  *
- * 本页是纯客户端过滤：服务端没有 scope=removable 这类参数，所以大群里拿到的是
- * 全量名册，过滤后管理员仍可能剩几百人。一次性渲染几百行会卡，而真分页又和
- * 「点分类名滚到该组第一个成员」打架（滚动目标可能还没加载）。
+ * 本页是纯客户端过滤：服务端没有 scope=removable 这类参数，只能拿分页名册
+ * （SubscriberListVM 每页 50 人，由组件滚动到底时继续加载）再在本地过滤。
+ * 大群里管理员把名册翻完后仍可能剩几百人，一次性渲染几百行会卡。
  *
  * 所以这里设一个上限 + 明确提示，把「不完整」这件事显式告诉用户，而不是
- * 假装列表是全的。
+ * 假装列表是全的。达到上限时引导用户用搜索缩小范围。
  *
  * 「我的 BOT」组**不受此限制** —— 一个人在一个群里的 bot 通常 0-3 个，天然极小，
  * 截断它只会制造「我的 bot 不见了」的 bug。
@@ -77,23 +79,14 @@ export function buildMemberRemovalGroups(params: {
   const others: Subscriber[] = [];
 
   for (const subscriber of subscribers) {
-    const canRemove = canRemoveChannelSettingSubscriber({
-      viewerUid,
-      viewerRole,
-      subscriber,
-    });
-    // 「我的 BOT」组按**归属**收录（bot_created_by_me），而非按可移除性。
-    // 这样「我建的、已被提为管理员」的 bot（owned=false、canRemove=false）仍会
-    // 出现在此组里，只是由组件将它渲染为置灰不可选。给用户完整的清点感，
-    // 而不是让自己的 bot 无声消失。
-    if (isBotCreatedByViewer(subscriber)) {
-      myBots.push(subscriber);
+    // §3.2 的唯一可见性判据。复用行级判据，不另写一份 —— 页面过滤与行内按钮
+    // 各写一份的话，迟早漂移成「列表里有这一行，但它没有移除按钮」。
+    if (!canRemoveChannelSettingSubscriber({ viewerUid, viewerRole, subscriber })) {
       continue;
     }
-    // 「其他成员」组仍只收录**可移除**的（§3.2）：几百个不可移除的陌生成员
-    // 全塞进来置灰只会淹没真正能操作的项，纯噪音。这与「我的 BOT」量极小（
-    // 0-3 个）、展全集+灰态成本几乎为零不同，两组策略分开是合理的。
-    if (canRemove) {
+    if (isBotOwnedByViewer(subscriber)) {
+      myBots.push(subscriber);
+    } else {
       others.push(subscriber);
     }
   }
