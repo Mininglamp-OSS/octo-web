@@ -92,7 +92,7 @@ export function useWorkspaceGroup(channelId: string, channelType: number) {
       owner,
       context: !invalidate && previous?.owner === owner ? previous.context : null,
       busy: !invalidate && previous?.owner === owner ? previous.busy : null,
-      failure: null,
+      failure: mode === "retry" && previous?.owner === owner ? previous.failure : null,
       refreshing: true,
     }));
     const isLatest = () =>

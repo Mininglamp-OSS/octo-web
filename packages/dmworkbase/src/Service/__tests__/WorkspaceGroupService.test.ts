@@ -134,8 +134,8 @@ describe("WorkspaceGroupService Web reads", () => {
   it("preserves trimmed project and group names beyond the actor-name bound", async () => {
     const projectName = "p".repeat(257);
     const groupName = "g".repeat(257);
-    workspace.name = ` ${projectName} `;
-    group.name = ` ${groupName} `;
+    workspace.name = ` \u200E${projectName}\u202E `;
+    group.name = ` \u2066${groupName}\u2069 `;
     expect(await resolve()).toMatchObject({ projectName, groupName });
   });
 

@@ -1,4 +1,4 @@
-import { isWorkspaceGroupDisplayName } from "./presentation";
+import { isWorkspaceGroupDisplayName, isWorkspaceGroupDisplayText } from "./presentation";
 
 export interface WorkspaceGroupTarget {
   channelId: string;
@@ -47,8 +47,8 @@ export function isWorkspaceGroupContext(
   const context = value as Record<string, unknown>;
   return context.channelId === target.channelId && context.channelType === 2
     && typeof context.projectId === "string" && Boolean(context.projectId.trim())
-    && typeof context.projectName === "string" && Boolean(context.projectName.trim())
-    && typeof context.groupName === "string"
+    && isWorkspaceGroupDisplayText(context.projectName) && Boolean(context.projectName.trim())
+    && isWorkspaceGroupDisplayText(context.groupName)
     && (context.linkedBy === undefined || (typeof context.linkedBy === "string"
       && context.linkedBy.length <= 256 && !/[^\x21-\x7e]/.test(context.linkedBy)))
     && isWorkspaceGroupDisplayName(context.linkedByName)

@@ -349,6 +349,31 @@ describe("workspace group host reliability", () => {
     expect(screen.getByTestId("refreshing")).toHaveTextContent("false");
   });
 
+  it("keeps the load failure sticky while automatic retries are running", async () => {
+    const { host } = createHost();
+    const retry = deferred<WorkspaceGroupContext | null>();
+    vi.mocked(host.getContext)
+      .mockResolvedValueOnce(context)
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockReturnValueOnce(retry.promise);
+
+    render(element(host));
+    await flushPromises();
+    fireEvent(window, new Event("focus"));
+    await flushPromises();
+    expect(screen.getByTestId("failure")).toHaveTextContent("load");
+
+    await advance(1_000);
+    expect(host.getContext).toHaveBeenCalledTimes(3);
+    expect(screen.getByTestId("refreshing")).toHaveTextContent("true");
+    expect(screen.getByTestId("failure")).toHaveTextContent("load");
+
+    await act(async () => retry.resolve(context));
+    await flushPromises();
+    expect(screen.getByTestId("failure")).toBeEmptyDOMElement();
+    expect(screen.getByTestId("refreshing")).toHaveTextContent("false");
+  });
+
   it("does not retry an authoritative null relation", async () => {
     const { host } = createHost();
     vi.mocked(host.getContext).mockResolvedValue(null);

@@ -121,8 +121,10 @@ The Client uses that name only after revalidating the relation and permissions,
 when the server's recorded actor UID matches and its name is absent. A name from
 the server takes precedence. Missing/invalid hints remain compatible with older
 callers. Hydrated names follow the shared verified-real-name, remark, nickname
-priority. Web removes C0/C1 and bidirectional controls and omits names over 256
-UTF-16 code units. Client independently rejects invalid presentation hints.
+priority. Web removes C0/C1 and bidirectional controls from group, Workspace
+and actor display names. Actor names over 256 UTF-16 code units are omitted;
+group and Workspace names retain their existing length behavior. Client
+independently rejects invalid presentation hints.
 No renderer-supplied permission or session data is trusted.
 The existing Workspace-side unlink action shares the same main-process guard.
 Supported Clients keep the conversation visible behind a transparent native

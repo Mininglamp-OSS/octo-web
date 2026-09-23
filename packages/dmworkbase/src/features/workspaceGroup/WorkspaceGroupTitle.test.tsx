@@ -71,6 +71,37 @@ describe("WorkspaceGroupTitle", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Open workspace: Workspace A" })).toBeEnabled());
   });
 
+  it("does not reopen a user-closed load error during automatic retries", async () => {
+    vi.useFakeTimers();
+    const retry = new Promise<WorkspaceGroupContext>(() => {});
+    const host: WorkspaceGroupHost = {
+      getContext: vi.fn()
+        .mockResolvedValueOnce(context)
+        .mockRejectedValueOnce(new Error("offline"))
+        .mockReturnValueOnce(retry),
+      open: vi.fn(), manage: vi.fn(), subscribe: () => () => {},
+    };
+    render(<I18nProvider><WorkspaceGroupProvider value={host}>
+      <WorkspaceGroupTitle channelId="group-a" channelType={2}>Group A</WorkspaceGroupTitle>
+      <input aria-label="Message composer" />
+    </WorkspaceGroupProvider></I18nProvider>);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    fireEvent(window, new Event("focus"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(screen.getByRole("dialog", { name: "Workspace relation" })).toBeVisible();
+    const disclosure = screen.getByRole("button", { name: "View and manage workspace relation" });
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(disclosure).toHaveAttribute("aria-expanded", "false");
+
+    const composer = screen.getByRole("textbox", { name: "Message composer" });
+    composer.focus();
+    expect(composer).toHaveFocus();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(host.getContext).toHaveBeenCalledTimes(3);
+    expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    expect(composer).toHaveFocus();
+  });
+
   it.each(["en-US", "zh-CN"] as const)(
     "keeps a real inaccessible relation visible without automatic retries in %s", async locale => {
       vi.useFakeTimers();

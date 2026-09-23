@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  isWorkspaceGroupDisplayText,
   isWorkspaceGroupDisplayName,
   normalizeWorkspaceGroupDisplayName,
+  stripWorkspaceGroupDisplayControls,
 } from "./presentation";
 
 const forbiddenCodePoints = [
@@ -36,6 +38,14 @@ describe("workspace group display names", () => {
     expect(maxEmoji.length).toBe(256);
     expect(isWorkspaceGroupDisplayName(maxEmoji)).toBe(true);
     expect(isWorkspaceGroupDisplayName(`${maxEmoji}😀`)).toBe(false);
+  });
+
+  it("strips controls from unbounded project and group display text", () => {
+    const longName = "a".repeat(257);
+    expect(stripWorkspaceGroupDisplayControls(` \u200E${longName}\u202E `)).toBe(longName);
+    expect(isWorkspaceGroupDisplayText(longName)).toBe(true);
+    expect(isWorkspaceGroupDisplayText(`before\u2066after`)).toBe(false);
+    expect(stripWorkspaceGroupDisplayControls(null)).toBe("");
   });
 
   it.each(forbiddenCodePoints)("rejects and strips forbidden code point U+%s", codePoint => {

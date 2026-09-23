@@ -2,7 +2,10 @@ import APIClient, { type RequestConfig } from "./APIClient";
 import { apiPath } from "./apiPath";
 import { displayName, type DisplayNameUser } from "../Utils/displayName";
 import type { WorkspaceGroupContext, WorkspaceGroupTarget } from "../features/workspaceGroup/contract";
-import { normalizeWorkspaceGroupDisplayName } from "../features/workspaceGroup/presentation";
+import {
+  normalizeWorkspaceGroupDisplayName,
+  stripWorkspaceGroupDisplayControls,
+} from "../features/workspaceGroup/presentation";
 import { t } from "../i18n";
 
 export interface WorkspaceGroupReadScope {
@@ -157,7 +160,9 @@ const WorkspaceGroupService = {
       && (!workspaceSpace || workspaceSpace === scope.spaceId);
     const verifiedWorkspace = workspaceKnown ? workspace : {};
     // The restricted relation carries the group name, not a workspace name.
-    const projectName = workspaceKnown ? text(workspace.name) : t("base.workspaceGroup.workspaceUnavailable");
+    const projectName = stripWorkspaceGroupDisplayControls(
+      workspaceKnown ? workspace.name : t("base.workspaceGroup.workspaceUnavailable"),
+    );
     if (!projectName) throw new Error("Workspace name unavailable");
     const isAllMemberGroup = text(first(verifiedWorkspace, ["all_member_group_no", "allMemberGroupNo"])) === target.channelId
       || granted(flag(group, "is_all_member_group", "isAllMemberGroup"))
@@ -165,7 +170,7 @@ const WorkspaceGroupService = {
     const source = first(relation, ["source", "project_link_source", "projectLinkSource"]);
     return {
       ...target, projectId, projectName,
-      groupName: text(first(group, ["name", "group_name", "groupName"])),
+      groupName: stripWorkspaceGroupDisplayControls(first(group, ["name", "group_name", "groupName"])),
       linkedBy: id(first(relation, ["linked_by", "linkedBy"])) || undefined,
       linkedByName: await linkingPerson(relation, target.channelId, scope),
       linkedAt: text(first(relation, ["linked_at", "linkedAt"])),
