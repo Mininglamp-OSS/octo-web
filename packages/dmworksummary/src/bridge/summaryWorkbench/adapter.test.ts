@@ -51,8 +51,14 @@ function emptyState(scopeVersion = 1) {
 
 describe("summary workspace adapter", () => {
   it.each(["channels", "participants", "timeRange", "all"] as const)(
-    "normalizes mixed document hydration (%s), advances scope version and cannot resend the conflict",
+    "mixed document hydration keeps chats/time/participants (%s) without lossy normalization",
     (conflict) => {
+      // Mixed document+chat hydration is now LOSSLESS: chats, documents, the
+      // time range AND participants all restore together without a version
+      // bump. participants×documents is an unsupported combination the
+      // backend rejects at submit time (the frontend selection layer never
+      // produces it for new scopes), so the adapter keeps the stored context
+      // intact rather than silently dropping participants.
       const hydration = adaptSummaryWorkspaceHistory({
         contract_version: "2",
         session_id: "mixed-documents",
@@ -70,28 +76,47 @@ describe("summary workspace adapter", () => {
           },
         },
       });
-      expect(hydration.modelOptions.scopeVersion).toBe(5);
+      expect(hydration.modelOptions.scopeVersion).toBe(4);
       expect(hydration.scope).toMatchObject({
         documents: [{ documentId: "doc-1", title: "Document" }],
-        selectedChannels: [], participants: [], timeRange: null,
+        selectedChannels:
+          conflict === "channels" || conflict === "all"
+            ? summaryContext.selected_channels.map((c) => ({
+                chatId: c.chat_id, chatType: c.chat_type, name: c.name, isArchived: c.is_archived,
+              }))
+            : [],
+        participants:
+          conflict === "participants" || conflict === "all"
+            ? [{ userId: "u1" }]
+            : [],
+        timeRange:
+          conflict === "timeRange" || conflict === "all"
+            ? { ...summaryContext.time_range, source: "picker" }
+            : null,
         template: { templateId: "weekly" }, referencedTaskIds: [7],
       });
-      expect(contextItemsFromScope(hydration.scope).map(item => item.kind)).toEqual(["document", "template", "reference"]);
       const wire = serializeSummaryWorkbenchScope(hydration.scope);
       expect(wire).toMatchObject({
         documents: [{ document_id: "doc-1", title: "Document" }],
-        selected_channels: [], participants: [], time_range: null,
       });
+      if (conflict === "channels" || conflict === "all") {
+        expect(wire.selected_channels).toHaveLength(1);
+      }
+      if (conflict === "participants" || conflict === "all") {
+        expect(wire.participants).toHaveLength(1);
+      }
+      if (conflict === "timeRange" || conflict === "all") {
+        expect(wire.time_range).not.toBeNull();
+      }
       const roundTrip = adaptSummaryWorkspaceHistory({
         contract_version: "2", session_id: "mixed-documents", messages: [],
-        state: { ...emptyState(5), summary_context: wire },
+        state: { ...emptyState(4), summary_context: wire },
       });
-      expect(roundTrip.modelOptions.scopeVersion).toBe(5);
       expect(roundTrip.scope).toEqual(hydration.scope);
     }
   );
 
-  it("invalidates a preview when a turn normalizes mixed document scope", () => {
+  it("keeps a mixed chat+document preview valid (no stale bump)", () => {
     const response = adaptSummaryWorkspaceTurn({
       contract_version: "2", session_id: "doc-turn", message_id: 18,
       result_type: "agent_preview", reply: "Preview",
@@ -101,15 +126,15 @@ describe("summary workspace adapter", () => {
         summary_context: { ...summaryContext, documents: [{ document_id: "doc-1" }] },
         current_preview: {
           message_id: 18, result_type: "agent_preview", scope_version: 4,
-          artifact_version: 3, snapshot_version: 1, content: "Old mixed preview",
+          artifact_version: 3, snapshot_version: 1, content: "Mixed preview",
           assumptions: [], available_actions: ["save_preview"],
         },
       },
     });
     const model = applySummaryResponse(createInitialSummaryWorkbenchModel(), response);
-    expect(model.scopeVersion).toBe(5);
-    expect(canSaveCurrentPreview(model)).toBe(false);
-    expect(deriveSummaryWorkbenchView(model).card).toMatchObject({ isStale: true });
+    expect(model.scopeVersion).toBe(4);
+    expect(canSaveCurrentPreview(model)).toBe(true);
+    expect(deriveSummaryWorkbenchView(model).card).toMatchObject({ isStale: false });
   });
 
   it("leaves valid chat hydration and its version unchanged", () => {

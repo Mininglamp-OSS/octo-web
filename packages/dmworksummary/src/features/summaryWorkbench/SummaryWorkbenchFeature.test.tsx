@@ -1124,7 +1124,7 @@ describe("SummaryWorkbenchFeature", () => {
     expect(mocks.loadParticipantCandidates).toHaveBeenCalledTimes(1);
   });
 
-  it("selects documents into document-only scope when docs capability is enabled", () => {
+  it("selects documents into mixed scope (keeps chats and time range) when docs capability is enabled", () => {
     mocks.docsOn = true;
     mocks.docsSearchOn = true;
     const current = controller({
@@ -1151,12 +1151,18 @@ describe("SummaryWorkbenchFeature", () => {
     fireEvent.click(screen.getByRole("button", { name: "open-document" }));
     fireEvent.click(screen.getByRole("button", { name: "choose-document" }));
 
+    // Mixed document+chat: chats and the chat time range stay; participants
+    // stay mutually exclusive with documents (phase-1 personal-only).
     expect(current.updateScope).toHaveBeenCalledWith(
       expect.objectContaining({
-        selectedChannels: [],
+        selectedChannels: [{ chatId: "chat-a", chatType: "group", name: "A" }],
         documents: [{ documentId: "doc-a", title: "Doc A" }],
         participants: [],
-        timeRange: null,
+        timeRange: {
+          start: "2026-09-01T00:00:00Z",
+          end: "2026-09-02T00:00:00Z",
+          label: "昨天",
+        },
       })
     );
   });

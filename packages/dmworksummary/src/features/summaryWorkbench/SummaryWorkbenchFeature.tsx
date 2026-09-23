@@ -600,9 +600,13 @@ export default function SummaryWorkbenchFeature({
       ? { ...item, label: referencedTask.title || item.label }
       : item
   );
+  // Mixed document+chat: the time-range entry stays available alongside
+  // documents (it scopes the chat side only); the participant entry remains
+  // exclusive with documents (phase-1 personal-only).
+  const mixedDocumentsSelected = (workbench.scope.documents ?? []).length > 0;
   const availableContextKinds: SummaryWorkbenchContextKind[] =
-    (workbench.scope.documents ?? []).length > 0
-      ? ["chat", ...(documentSelectorAvailable ? (["document"] as const) : [])]
+    mixedDocumentsSelected
+      ? ["chat", ...(documentSelectorAvailable ? (["document", "time_range"] as const) : [])]
       : [
           "chat",
           ...(documentSelectorAvailable ? (["document"] as const) : []),
