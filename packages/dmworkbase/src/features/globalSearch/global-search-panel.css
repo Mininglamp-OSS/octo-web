@@ -28,6 +28,12 @@
   font: var(--wk-text-body);
 }
 
+.wk-global-search-modal .wk-item-contacts,
+.wk-global-search-modal .wk-item-group,
+.wk-global-search-modal .wk-item-file {
+  padding-inline: var(--wk-sp-6);
+}
+
 .wk-global-search-channel-title {
   width: 100%;
   margin-bottom: var(--wk-sp-2);

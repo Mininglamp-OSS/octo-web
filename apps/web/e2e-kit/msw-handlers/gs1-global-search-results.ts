@@ -11,7 +11,9 @@ export async function registerGS1GlobalSearchResults(page: Page): Promise<void> 
     };
     msw.worker.use(
       msw.http.post("*/search/global", async ({ request }) => msw.HttpResponse.json(await keywordMatches(request) ? {
-        friends: [{ channel_id: "gs1-contact", channel_type: 1, channel_name: "GS1 联系人" }], groups: [], messages: [{
+        friends: [{ channel_id: "gs1-contact", channel_type: 1, channel_name: "GS1 联系人" }],
+        groups: [{ channel_id: "gs1-group", channel_type: 2, channel_name: "GS1 群聊" }],
+        messages: [{
           message_id: "gs1-message", message_seq: 1, from_uid: "e2e-user-1",
           channel: { channel_id: "gs1-group", channel_type: 2, channel_name: "GS1 群聊" },
           payload: { type: 1, content: "E2E 全局搜索消息" },
