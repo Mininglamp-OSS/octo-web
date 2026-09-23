@@ -286,7 +286,7 @@ describe("summary workbench scope helpers", () => {
     ).toBe(true);
   });
 
-  it("uses document selection as document-only scope", () => {
+  it("keeps chats and time range when documents are selected (mixed)", () => {
     const scope = {
       ...emptySummaryWorkbenchScope(),
       selectedChannels: [
@@ -304,12 +304,14 @@ describe("summary workbench scope helpers", () => {
     ]);
     const result = replaceSelectedDocuments(scope, documents);
 
+    // Mixed document+chat: chats and the chat time range stay; participants
+    // stay mutually exclusive with documents (phase-1 personal-only).
     expect(result.participantsCleared).toBe(true);
     expect(result.scope).toMatchObject({
-      selectedChannels: [],
+      selectedChannels: scope.selectedChannels,
       documents,
       participants: [],
-      timeRange: null,
+      timeRange: scope.timeRange,
     });
     expect(canSelectParticipants(result.scope)).toBe(false);
   });

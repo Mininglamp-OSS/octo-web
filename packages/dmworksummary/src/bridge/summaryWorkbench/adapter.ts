@@ -797,17 +797,15 @@ function toAuthoritativeState(
   turn?: { messageId: number; actions: SummaryWorkbenchAction[] }
 ): SummaryWorkbenchAuthoritativeState {
   const scope = toWorkbenchScope(state.summary_context);
-  // Dropping conflicting document scope or extra references mutates scope. Advance
-  // the version so the next request cannot reuse the server's old version
-  // with a different scope hash and fail with a 409 scope conflict. Backend
-  // main accepts a higher client scope_version, persists its scope_json/hash,
-  // and clears folded artifacts; see docs/summary-apps-artifact-review-fixes.md.
+  // Mixed document+chat: chats, documents and the chat time range now hydrate
+  // losslessly (no longer dropped when documents are present), so they no
+  // longer trigger a scope-version bump. The only remaining decode-boundary
+  // normalization is the referenced-task cap (the product supports one
+  // referenced summary; extra ids are dropped and must advance the version so
+  // the next request cannot reuse the server's old hash and fail with a 409).
   const scopeWasNormalized =
     state.summary_context.referenced_task_ids.length !==
-    scope.referencedTaskIds.length ||
-    state.summary_context.selected_channels.length !== scope.selectedChannels.length ||
-    state.summary_context.participants.length !== scope.participants.length ||
-    (state.summary_context.time_range !== null && scope.timeRange === null);
+    scope.referencedTaskIds.length;
   const scopeVersion = state.scope_version + (scopeWasNormalized ? 1 : 0);
   const constrainCurrentActions = (
     messageId: number,
@@ -877,11 +875,13 @@ function toAuthoritativeState(
 function toWorkbenchScope(
   context: SummaryWorkspaceContextDTO
 ): SummaryWorkbenchScope {
-  // Match document-selection semantics on hydration too: server snapshots must
-  // not reintroduce chat/participant/time scope that the UI cannot edit together.
-  const hasDocuments = context.documents.length > 0;
+  // Mixed document+chat hydration: chats, documents and the chat time range
+  // restore TOGETHER (the time range scopes the chat side only). Only
+  // participants stay mutually exclusive with documents — a server snapshot
+  // carrying both means a pre-phase-1 mixed shape that the contract now
+  // rejects, so participants are dropped to keep the scope submittable.
   return {
-    selectedChannels: hasDocuments ? [] : context.selected_channels.map((channel) => ({
+    selectedChannels: context.selected_channels.map((channel) => ({
       chatId: channel.chat_id,
       chatType: channel.chat_type,
       name: channel.name,
@@ -893,7 +893,7 @@ function toWorkbenchScope(
       documentId: document.document_id,
       title: document.title ?? document.document_id,
     })),
-    participants: hasDocuments ? [] : context.participants.map((participant) => ({
+    participants: context.participants.map((participant) => ({
       userId: participant.user_id,
       ...(participant.user_name ? { userName: participant.user_name } : {}),
     })),
@@ -907,7 +907,7 @@ function toWorkbenchScope(
             : { version: context.template.version }),
         }
       : null,
-    timeRange: !hasDocuments && context.time_range
+    timeRange: context.time_range
       ? {
           start: context.time_range.start,
           end: context.time_range.end,

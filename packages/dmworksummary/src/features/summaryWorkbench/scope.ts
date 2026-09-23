@@ -124,7 +124,12 @@ export function replaceSelectedChannels(
   if (!shouldApplySourceSelection(scope.selectedChannels, channels)) {
     return { scope, participantsCleared: false };
   }
-  const nextScope = { ...scope, selectedChannels: channels, documents: [] };
+  // Mixed document+chat: selecting chats KEEPS documents (phase-1 mixed
+  // sources). Participants still can't coexist with documents — if the scope
+  // already has documents, the chat picker cannot be a team-workspace base
+  // (canSelectParticipants returns false with documents), so participant
+  // bookkeeping below only matters for the pure-chat flow.
+  const nextScope = { ...scope, selectedChannels: channels };
   const nextMemberSource = participantSourceKey(nextScope);
   const participantsCleared =
     scope.participants.length > 0 && !nextMemberSource;
@@ -144,13 +149,15 @@ export function replaceSelectedDocuments(
   if (!shouldApplySourceSelection(scope.documents ?? [], documents)) {
     return { scope, participantsCleared: false };
   }
+  // Mixed document+chat: selecting documents KEEPS chats and the chat time
+  // range (it scopes the chat side only). Participants stay mutually
+  // exclusive with documents (phase-1 personal-only) — selecting documents
+  // clears participants.
   return {
     scope: {
       ...scope,
-      selectedChannels: [],
       documents,
       participants: [],
-      timeRange: null,
     },
     participantsCleared: scope.participants.length > 0,
   };
