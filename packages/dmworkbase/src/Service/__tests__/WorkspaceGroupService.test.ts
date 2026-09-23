@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import APIClient from "../APIClient";
 import WorkspaceGroupService, { type WorkspaceGroupReadScope } from "../WorkspaceGroupService";
+import { i18n } from "../../i18n/instance";
 
 vi.mock("../APIClient", () => ({ default: { shared: { get: vi.fn() } } }));
 
@@ -12,22 +13,26 @@ let workspace: Record<string, unknown>;
 let user: Record<string, unknown>;
 let scope: WorkspaceGroupReadScope;
 const resolve = () => WorkspaceGroupService.getContext(target, scope);
+const restrictedRelation = (): Record<string, unknown> =>
+  ({ group_no: "group-1", name: "Group", project_id: "project-1", linked_by: "user-2" });
+const successfulGet = async (path: string): Promise<unknown> => {
+  if (path === "groups/group-1") return group;
+  if (path === "groups/group-1/project") return relation;
+  if (path === "projects/project-1") return workspace;
+  if (path === "users/user-2") return user;
+  throw new Error(`Unexpected request: ${path}`);
+};
 
 describe("WorkspaceGroupService Web reads", () => {
   beforeEach(() => {
+    i18n.setLocale("en-US", { persist: false });
     group = { group_no: "group-1", name: "Group", space_id: "space-1", project_id: "project-1", role: 1 };
     // This is the server's restricted GroupProjectRelation projection.
-    relation = { group_no: "group-1", name: "Group", project_id: "project-1", linked_by: "user-2" };
+    relation = restrictedRelation();
     workspace = { project_id: "project-1", space_id: "space-1", name: "Workspace", role: "member" };
     user = { uid: "user-2", name: "Linking actor" };
     scope = { spaceId: "space-1", signal: new AbortController().signal, assertCurrent: vi.fn() };
-    get.mockReset().mockImplementation(async path => {
-      if (path === "groups/group-1") return group;
-      if (path === "groups/group-1/project") return relation;
-      if (path === "projects/project-1") return workspace;
-      if (path === "users/user-2") return user;
-      throw new Error(`Unexpected request: ${path}`);
-    });
+    get.mockReset().mockImplementation(successfulGet);
   });
 
   it("queries relation, workspace and actor through Web APIClient with an explicit Space", async () => {
@@ -169,29 +174,42 @@ describe("WorkspaceGroupService Web reads", () => {
     },
   );
 
-  it.each(["", " \n "])("does not display an empty workspace name: %j", async name => {
+  it.each(["", " \n "])("keeps a successful project detail with a missing name retryable: %j", async name => {
     workspace.name = name;
     await expect(resolve()).rejects.toThrow("Workspace name unavailable");
   });
 
-  it("uses a verified relation name when workspace detail is inaccessible", async () => {
-    relation.project_name = "Recorded workspace";
+  it.each([
+    ["en-US", 403, "Workspace unavailable"],
+    ["en-US", 404, "Workspace unavailable"],
+    ["zh-CN", 403, "工作空间暂不可用"],
+    ["zh-CN", 404, "工作空间暂不可用"],
+  ] as const)("retains the verified relation for %s project detail with status %s", async (locale, status, projectName) => {
+    i18n.setLocale(locale, { persist: false });
+    relation = restrictedRelation();
     get.mockImplementation(async path => {
-      if (path === "groups/group-1") return group;
-      if (path === "groups/group-1/project") return relation;
-      throw { status: 403 };
+      if (path === "projects/project-1") throw { normalized: { httpStatus: status } };
+      return successfulGet(path);
     });
     expect(await resolve()).toMatchObject({
-      projectName: "Recorded workspace", linkedByName: "", canOpen: false, canManage: false,
-      manageDisabledReason: "unavailable",
+      ...target, projectId: "project-1", projectName, groupName: "Group",
+      canOpen: false, canManage: false, manageDisabledReason: "unavailable",
     });
+    expect(get.mock.calls.map(([path]) => path)).toContain("projects/project-1");
   });
 
-  it.each([{ project_id: "other" }, { space_id: "other" }])("never displays unrelated workspace metadata: %j", async identity => {
-    relation.project_name = "Recorded workspace";
+  it.each([
+    ["project ID", "en-US", { project_id: "other" }, "Workspace unavailable"],
+    ["Space", "en-US", { space_id: "other" }, "Workspace unavailable"],
+    ["project ID", "zh-CN", { project_id: "other" }, "工作空间暂不可用"],
+    ["Space", "zh-CN", { space_id: "other" }, "工作空间暂不可用"],
+  ] as const)("does not trust mismatched %s detail in %s", async (_identityName, locale, identity, projectName) => {
+    i18n.setLocale(locale, { persist: false });
+    relation = restrictedRelation();
     workspace = { ...workspace, ...identity, name: "Unrelated secret", all_member_group_no: "group-1" };
     expect(await resolve()).toMatchObject({
-      projectName: "Recorded workspace", canOpen: false, canManage: false, isAllMemberGroup: false,
+      ...target, projectId: "project-1", projectName, groupName: "Group",
+      canOpen: false, canManage: false, isAllMemberGroup: false, manageDisabledReason: "unavailable",
     });
   });
 
@@ -210,6 +228,56 @@ describe("WorkspaceGroupService Web reads", () => {
       get.mockRejectedValueOnce(error);
       await expect(resolve()).rejects.toBe(error);
     }
+  });
+
+  it.each([
+    ["network", new Error("network")],
+    ["5xx", { status: 500 }],
+    ["429", { status: 429 }],
+  ])("keeps transient project %s failures retryable and recovers", async (_label, error) => {
+    get.mockImplementation(async path => {
+      if (path === "projects/project-1") throw error;
+      return successfulGet(path);
+    });
+    await expect(resolve()).rejects.toBe(error);
+
+    get.mockImplementation(successfulGet);
+    expect(await resolve()).toMatchObject({
+      projectId: "project-1", projectName: "Workspace", canOpen: true, canManage: true,
+    });
+  });
+
+  it("rejects project 403 recovery when scope is invalidated in the catch", async () => {
+    let projectForbidden = false;
+    get.mockImplementation(async path => {
+      if (path === "projects/project-1") {
+        projectForbidden = true;
+        throw { normalized: { httpStatus: 403 } };
+      }
+      return successfulGet(path);
+    });
+    scope.assertCurrent = () => {
+      if (projectForbidden) throw new Error("Scope changed");
+    };
+    await expect(resolve()).rejects.toThrow("Scope changed");
+  });
+
+  it("recovers on a later read after project 403", async () => {
+    let projectForbidden = true;
+    get.mockImplementation(async path => {
+      if (path === "projects/project-1" && projectForbidden) {
+        projectForbidden = false;
+        throw { normalized: { httpStatus: 403 } };
+      }
+      return successfulGet(path);
+    });
+    expect(await resolve()).toMatchObject({
+      projectName: "Workspace unavailable", canOpen: false, canManage: false,
+      manageDisabledReason: "unavailable",
+    });
+    expect(await resolve()).toMatchObject({
+      projectName: "Workspace", canOpen: true, canManage: true,
+    });
   });
 
   it.each([

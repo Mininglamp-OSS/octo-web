@@ -3,6 +3,7 @@
   "chatPage.nameUnavailable": "Name unavailable",
   "base.workspaceGroup.title": "Workspace relation",
   "base.workspaceGroup.workspace": "Workspace",
+  "base.workspaceGroup.workspaceUnavailable": "Workspace unavailable",
   "base.workspaceGroup.linkedBy": "Linked by",
   "base.workspaceGroup.source": "Source",
   "base.workspaceGroup.source.created_in_project": "Created in workspace",

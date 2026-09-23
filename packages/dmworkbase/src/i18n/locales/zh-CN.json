@@ -3,6 +3,7 @@
   "chatPage.nameUnavailable": "名称暂不可用",
   "base.workspaceGroup.title": "工作空间关联",
   "base.workspaceGroup.workspace": "工作空间",
+  "base.workspaceGroup.workspaceUnavailable": "工作空间暂不可用",
   "base.workspaceGroup.linkedBy": "关联人",
   "base.workspaceGroup.source": "关联方式",
   "base.workspaceGroup.source.created_in_project": "在工作空间内创建",

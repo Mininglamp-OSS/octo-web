@@ -5,6 +5,10 @@ import { i18n, I18nProvider } from "../../i18n";
 import { WorkspaceGroupTitle } from "./WorkspaceGroupTitle";
 import { WorkspaceGroupProvider } from "./WorkspaceGroupProvider";
 import type { WorkspaceGroupContext, WorkspaceGroupHost } from "./contract";
+import APIClient from "../../Service/APIClient";
+import WorkspaceGroupService from "../../Service/WorkspaceGroupService";
+
+vi.mock("../../Service/APIClient", () => ({ default: { shared: { get: vi.fn() } } }));
 
 const context: WorkspaceGroupContext = {
   channelId: "group-a", channelType: 2, projectId: "project-a", projectName: "Workspace A",
@@ -66,4 +70,58 @@ describe("WorkspaceGroupTitle", () => {
     await act(async () => resolve(context));
     await waitFor(() => expect(screen.getByRole("button", { name: "Open workspace: Workspace A" })).toBeEnabled());
   });
+
+  it.each(["en-US", "zh-CN"] as const)(
+    "keeps a real inaccessible relation visible without automatic retries in %s", async locale => {
+      vi.useFakeTimers();
+      i18n.setLocale(locale, { persist: false });
+      let accessible = false;
+      vi.mocked(APIClient.shared.get).mockReset().mockImplementation(async path => {
+        if (path === "groups/group-a") return { group_no: "group-a", name: "Group A", role: 1 };
+        if (path === "groups/group-a/project") {
+          return { group_no: "group-a", name: "Group A", project_id: "project-a", linked_by: null };
+        }
+        if (path === "projects/project-a") {
+          if (!accessible) throw { status: 403 };
+          return { project_id: "project-a", name: "Workspace A", my_role: 0 };
+        }
+        throw new Error(`Unexpected request: ${path}`);
+      });
+      const host: WorkspaceGroupHost = {
+        getContext: vi.fn((target, signal) => WorkspaceGroupService.getContext(
+          target, { spaceId: "space-a", signal, assertCurrent: () => {} },
+        )),
+        open: vi.fn(), manage: vi.fn(), subscribe: () => () => {},
+      };
+      render(<I18nProvider><WorkspaceGroupProvider value={host}>
+        <WorkspaceGroupTitle channelId="group-a" channelType={2}>Group A</WorkspaceGroupTitle>
+      </WorkspaceGroupProvider></I18nProvider>);
+      await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+      const unavailable = i18n.t("base.workspaceGroup.workspaceUnavailable");
+      const jump = screen.getByRole("button", {
+        name: i18n.t("base.workspaceGroup.open", { values: { name: unavailable } }),
+      });
+      expect(jump).toBeDisabled();
+      expect(jump).toHaveTextContent(unavailable);
+      expect(screen.getByText("Group A")).toBeVisible();
+      expect(host.getContext).toHaveBeenCalledOnce();
+      fireEvent.click(jump);
+      expect(host.open).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: i18n.t("base.workspaceGroup.details") }));
+      await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+      expect(screen.getByRole("heading", { name: unavailable })).toBeVisible();
+      expect(screen.getByText(i18n.t("base.workspaceGroup.permissionUnavailable"))).toBeVisible();
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.queryByRole("button", { name: i18n.t("base.workspaceGroup.manage") })).toBeNull();
+
+      accessible = true;
+      fireEvent(window, new Event("focus"));
+      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+      expect(screen.getByRole("button", {
+        name: i18n.t("base.workspaceGroup.open", { values: { name: "Workspace A" } }),
+      })).toBeEnabled();
+      expect(host.getContext).toHaveBeenCalledTimes(2);
+    },
+  );
 });

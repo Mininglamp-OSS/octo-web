@@ -1,6 +1,7 @@
 import React from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { WorkspaceGroupEntry } from "./index";
+import { useI18n } from "../../i18n";
 
 const meta = {
   title: "UI/WorkspaceGroupEntry",
@@ -50,6 +51,17 @@ export const ReadOnly: Story = {
 };
 export const AccessDenied: Story = {
   args: { workspace: { ...meta.args.workspace, canOpen: false, canManage: false }, defaultOpen: true },
+};
+export const Unavailable: Story = {
+  args: { defaultOpen: true },
+  render: function UnavailableStory(args) {
+    const { t } = useI18n();
+    return <WorkspaceGroupEntry {...args} workspace={{
+      ...meta.args.workspace,
+      projectName: t("base.workspaceGroup.workspaceUnavailable"),
+      canOpen: false, canManage: false, manageDisabledReason: "unavailable",
+    }} />;
+  },
 };
 export const AllMembers: Story = {
   args: { workspace: { ...meta.args.workspace, isAllMemberGroup: true }, defaultOpen: true },

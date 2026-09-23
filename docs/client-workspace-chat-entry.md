@@ -98,8 +98,15 @@ Timeout, conversation changes and disposal abort the transport. Read and action
 guards compare `LoginInfo.sessionRevision`, Space and API origin without retaining
 a copy of the token.
 
-The restricted server relation
-projection exposes `linked_by` as a UID; Web hydrates its name when permitted.
+The restricted server relation projection contains only `group_no`, `name`
+(the group name), `project_id` and `linked_by`; it has no workspace name.
+Web hydrates the linking person's name from `linked_by` when permitted.
+Restricted or absent group/relation reads (403/404) hide the entry without
+retrying. If a verified relation's project detail is inaccessible (403/404)
+or its identity does not match, retain the relation with a localized
+"Workspace unavailable" placeholder and disable open/manage actions.
+Never use the group name or unverified project metadata as the workspace name.
+Network, 5xx and malformed verified-project-name failures remain retryable.
 Association method and time are not displayed or inferred.
 Group detail's management role is numeric `role` (1 owner, 2 manager); project
 detail exposes numeric `my_role` (with legacy `role` projection compatibility).
