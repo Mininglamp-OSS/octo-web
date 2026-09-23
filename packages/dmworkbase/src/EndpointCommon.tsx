@@ -158,6 +158,10 @@ export class EndpointCommon {
         // follow tab 里的项必然 followed），这里不做 React-tree-外的同步读。
         if (!opts.fromSidebarList) {
           WKApp.mittBus.emit("wk:switch-sidebar-tab", "recent");
+          // Make an external target a real IM conversation and promote it to
+          // the head of the normal formal list. The SDK updates an existing
+          // entry's timestamp (or creates one) and emits the usual list event.
+          WKSDK.shared().conversationManager.createEmptyConversation(channel);
         }
         let initLocateMessageSeq = 0;
         if (opts && opts.initLocateMessageSeq && opts.initLocateMessageSeq > 0) {

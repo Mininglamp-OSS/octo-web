@@ -958,7 +958,10 @@ export default class WKApp extends ProviderListener {
   static config: WKConfig = new WKConfig(); // app配置
   static remoteConfig: WKRemoteConfig = new WKRemoteConfig(); // 远程配置
   static loginInfo: LoginInfo = new LoginInfo(); // 登录信息
-  static endpoints: EndpointCommon = new EndpointCommon(); // 常用端点
+  // Constructed after the class declaration so EndpointCommon can safely
+  // reference WKApp during its own setup without hitting the ESM circular
+  // import's temporal-dead-zone.
+  static endpoints: EndpointCommon; // 常用端点
   static conversationProvider: IConversationProvider; // 最近会话相关数据源
   static messageManager: MessageManager = new MessageManager(); // 消息管理
   static emojiService: EmojiService = DefaultEmojiService.shared; // emoji
@@ -1803,3 +1806,8 @@ export class ChatMenus {
   sort?: number = 0;
   onClick?: () => void;
 }
+
+// EndpointCommon imports WKApp for its runtime callbacks. Initializing this
+// static field inside WKApp's class body invokes it before the WKApp binding is
+// initialized, which makes the circular import throw during application boot.
+WKApp.endpoints = new EndpointCommon();

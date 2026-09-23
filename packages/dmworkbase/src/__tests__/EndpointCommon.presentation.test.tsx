@@ -7,15 +7,45 @@ const state = vi.hoisted(() => ({
   register: vi.fn(),
   unread: 1,
   spaceId: "space-a",
+  hasConversation: true,
+  conversations: [] as Array<any>,
+  conversationEvents: [] as Array<{ action: "add" | "update"; conversation: any }>,
+  nextTimestamp: 0,
 }));
 
 vi.mock("wukongimjssdk", () => ({
   Channel: class {},
   Message: class {},
   WKSDK: { shared: () => ({
-    conversationManager: { findConversation: () => ({
-      unread: state.unread, lastMessage: { messageSeq: 10 },
-    }) },
+    conversationManager: {
+      findConversation: (channel: any) =>
+        state.conversations.find(
+          (conversation) =>
+            conversation.channel.getChannelKey() === channel.getChannelKey()
+        ) ||
+        (state.hasConversation
+          ? { unread: state.unread, lastMessage: { messageSeq: 10 } }
+          : undefined),
+      createEmptyConversation: (channel: any) => {
+        const existing = state.conversations.find(
+          (conversation) =>
+            conversation.channel.getChannelKey() === channel.getChannelKey()
+        ) ||
+          (state.hasConversation
+            ? { channel, unread: state.unread, lastMessage: { messageSeq: 10 } }
+            : undefined);
+        if (existing) {
+          existing.timestamp = ++state.nextTimestamp;
+          state.conversationEvents.push({ action: "update", conversation: existing });
+          return existing;
+        }
+
+        const conversation = { channel, unread: 0, timestamp: ++state.nextTimestamp };
+        state.conversations.unshift(conversation);
+        state.conversationEvents.push({ action: "add", conversation });
+        return conversation;
+      },
+    },
   }) },
 }));
 vi.mock("../App", () => ({
@@ -47,6 +77,10 @@ describe("host conversation presentation identity", () => {
     vi.clearAllMocks();
     state.unread = 1;
     state.spaceId = "space-a";
+    state.hasConversation = true;
+    state.conversations = [];
+    state.conversationEvents = [];
+    state.nextTimestamp = 0;
   });
 
   it("preserves the composer key and location when unread changes during a presentation-only transition", () => {
@@ -153,5 +187,36 @@ describe("host conversation presentation identity", () => {
     expect(state.render).toHaveBeenCalledTimes(1);
     finish();
     expect(onCommitted).toHaveBeenCalledTimes(1);
+  });
+
+  it("creates or promotes a formal SDK conversation for an external open", () => {
+    new EndpointCommon();
+    const callback = state.register.mock.calls.at(-1)![1];
+    const channel = { getChannelKey: () => "external-2" } as any;
+    const priorChannel = { getChannelKey: () => "prior-2" } as any;
+
+    state.hasConversation = false;
+    state.conversations = [{ channel: priorChannel, unread: 0, timestamp: 1 }];
+    callback({ channel, opts: {} });
+    expect(state.conversations[0]).toEqual(
+      expect.objectContaining({ channel, unread: 0 })
+    );
+    expect(state.conversations[1].channel).toBe(priorChannel);
+    expect(state.conversationEvents).toEqual([
+      expect.objectContaining({ action: "add" }),
+    ]);
+
+    const initialTimestamp = state.conversations[0].timestamp;
+    state.conversationEvents = [];
+    callback({ channel, opts: {} });
+    expect(state.conversations).toHaveLength(2);
+    expect(state.conversations[0].timestamp).toBeGreaterThan(initialTimestamp);
+    expect(state.conversationEvents).toEqual([
+      expect.objectContaining({ action: "update", conversation: state.conversations[0] }),
+    ]);
+
+    state.conversationEvents = [];
+    callback({ channel, opts: { fromSidebarList: true } });
+    expect(state.conversationEvents).toEqual([]);
   });
 });
