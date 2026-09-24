@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { canRemoveChannelSettingSubscriber } from "../memberRemovalPermission";
+import { canRemoveChannelSettingSubscriber, memberRemovalEligibility } from "../memberRemovalPermission";
 
 // 跨仓库契约校验（octo-web#1511 / octo-server#805）。
 //
@@ -99,5 +99,17 @@ describe("wire contract · 真实 server 报文 → 前端判据", () => {
       )
       .map((m) => m.uid);
     expect(removable).toEqual(["bot_mine_c"]);
+  });
+
+  it("单成员查询缺少归属字段时保持未知，不把已有选择误删", () => {
+    expect(memberRemovalEligibility({
+      viewerUid: "10000",
+      viewerRole: 0,
+      subscriber: toSubscriber({ uid: "bot_mine_c", role: 0, robot: 1 }),
+    })).toBe("unknown");
+    expect(memberRemovalEligibility({
+      viewerUid: "10000",
+      subscriber: toSubscriber({ uid: "bot_mine_c", role: 0, robot: 1, bot_owned_by_me: true }),
+    })).toBe("unknown");
   });
 });

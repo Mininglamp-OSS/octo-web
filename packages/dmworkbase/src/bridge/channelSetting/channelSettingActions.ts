@@ -42,7 +42,9 @@ import { captureCurrentImConversationSyncContext } from "../../im-runtime/conver
 import { Dap } from "../../Service/Dap";
 import { stripSpacePrefix } from "../../Service/SpacePrefix";
 import PinnedService from "../../Service/PinnedService";
-import { readSelectedMembers } from "./memberRemovalRead";
+import { MemberReadOptions, readSelectedMembers } from "./memberRemovalRead";
+import { extractErrorMsg } from "../../Service/APIClient";
+import { t } from "../../i18n";
 import {
   findCurrentImConversation,
   removeCurrentImConversation,
@@ -507,24 +509,47 @@ export async function removeChannelSettingSubscribers(params: {
 /**
  * Batch UI path: a failed DELETE may have committed some targets. Reconcile
  * before updating caches; never mark the entire submitted basket as removed.
- * Existing single-row callers keep their original contract above.
+ * The legacy helper above is retained for compatibility, not used by this UI.
  */
 export async function removeAndReconcileChannelSettingSubscribers(params: {
   channel: Channel;
   uids: string[];
   runtime?: ChannelSettingActionRuntime;
+  signal?: AbortSignal;
+  onProgress?: MemberReadOptions["onProgress"];
 }) {
   const runtime = runtimeOrDefault(params.runtime);
   const isCurrent = runtime.captureContext?.() ?? (() => true);
-  if (!isCurrent()) return undefined;
+  if (!isCurrent() || params.signal?.aborted) return undefined;
+  let requestError: string | undefined;
   try {
     await runtime.removeSubscribers(params.channel, params.uids);
-  } catch {
-    // The lookup below, not HTTP success/failure, establishes current membership.
+  } catch (error) {
+    // APIClient's msg is already localized and strips internal/5xx details.
+    requestError = extractErrorMsg(error) || t("base.subscribers.removeFailed");
   }
-  if (!isCurrent()) return undefined;
-  const evidence = await readSelectedMembers(params.channel, params.uids);
-  if (!isCurrent()) return undefined;
+  if (!isCurrent() || params.signal?.aborted) return undefined;
+  const evidence = await reconcileChannelSettingSubscribers({ ...params, runtime, isCurrent });
+  return evidence ? { ...evidence, requestError } : undefined;
+}
+
+/** Read-only retry: never replays the destructive request. */
+export async function reconcileChannelSettingSubscribers(params: {
+  channel: Channel;
+  uids: string[];
+  runtime?: ChannelSettingActionRuntime;
+  signal?: AbortSignal;
+  onProgress?: MemberReadOptions["onProgress"];
+  isCurrent?: () => boolean;
+}) {
+  const runtime = runtimeOrDefault(params.runtime);
+  const isCurrent = params.isCurrent ?? runtime.captureContext?.() ?? (() => true);
+  const current = () => isCurrent() && !params.signal?.aborted;
+  if (!current()) return undefined;
+  const evidence = await readSelectedMembers(params.channel, params.uids, params.signal, {
+    retryUnknown: true, isCurrent: current, onProgress: params.onProgress,
+  });
+  if (!current()) return undefined;
   if (evidence.absent.length) {
     await refreshChannelStateAfterMemberMutation(
       runtime, params.channel, "removeSubscribers", evidence.absent
@@ -532,7 +557,7 @@ export async function removeAndReconcileChannelSettingSubscribers(params: {
       console.warn("[removeSubscribers] confirmed-member cache refresh failed", error);
     });
   }
-  return evidence;
+  return current() ? evidence : undefined;
 }
 
 export async function updateChannelSettingField(params: {

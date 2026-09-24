@@ -145,7 +145,7 @@ describe("MemberRemovalList with real Provider and real SubscriberListVM", () =>
     fireEvent.click(view.getByRole("checkbox", { name: "alice" }));
     fireEvent.click(view.getByRole("checkbox", { name: "bob" }));
     act(() => mocks.changed?.(channel));
-    await advance();
+    await advance(200);
     expect(selection.mock.lastCall?.[0].map((row: Subscriber) => row.uid)).toEqual(["bob"]);
     expect(view.getByRole("checkbox", { name: "bob" }).getAttribute("aria-checked")).toBe("true");
   });

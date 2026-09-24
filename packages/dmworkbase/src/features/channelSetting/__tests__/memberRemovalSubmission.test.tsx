@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemberSelectionEvidence } from "../../../bridge/channelSetting/memberRemovalRead";
 
 const mocks = vi.hoisted(() => ({
-  submit: vi.fn(), confirm: vi.fn(),
+  submit: vi.fn(), recheck: vi.fn(), confirm: vi.fn(),
   success: vi.fn(), warning: vi.fn(),
 }));
 vi.mock("../../../Components/Subscribers", () => ({ Subscribers: () => null }));
@@ -14,6 +14,7 @@ vi.mock("../../../Components/Subscribers/subscriberShowName", () => ({
 }));
 vi.mock("../../../bridge/channelSetting/channelSettingActions", () => ({
   removeAndReconcileChannelSettingSubscribers: mocks.submit,
+  reconcileChannelSettingSubscribers: mocks.recheck,
 }));
 vi.mock("../../../App", () => ({ default: { loginInfo: { uid: "owner" } } }));
 vi.mock("@douyinfe/semi-ui", () => ({
@@ -41,6 +42,9 @@ function setup() {
     applySelectionEvidence: vi.fn(),
     refreshMembers: vi.fn(),
     setSubmissionPending: vi.fn(),
+    beginVerification: vi.fn(() => new AbortController().signal),
+    updateVerificationProgress: vi.fn(),
+    showVerificationResult: vi.fn(),
   };
   element.ref.current = page;
   const finish = { disable: vi.fn(), loading: vi.fn() };
@@ -64,7 +68,7 @@ describe("real onFinish/onOk batch orchestration", () => {
     await confirmation.onOk();
     await pending;
     expect(mocks.submit).toHaveBeenCalledOnce();
-    expect(mocks.submit).toHaveBeenCalledWith({ channel: state.channel, uids: ["alice", "bob"] });
+    expect(mocks.submit).toHaveBeenCalledWith(expect.objectContaining({ channel: state.channel, uids: ["alice", "bob"] }));
     expect(state.page.applySelectionEvidence).toHaveBeenCalled();
     expect(state.context.pop).toHaveBeenCalledOnce();
     expect(state.data.refresh).toHaveBeenCalledOnce();
@@ -83,7 +87,7 @@ describe("real onFinish/onOk batch orchestration", () => {
     expect(state.context.pop).not.toHaveBeenCalled();
     expect(state.page.refreshMembers).toHaveBeenCalled();
     expect(mocks.success).not.toHaveBeenCalled();
-    expect(mocks.warning).toHaveBeenCalledOnce();
+    expect(state.page.showVerificationResult).toHaveBeenCalledOnce();
     state.config.onFinish();
     expect(mocks.confirm).toHaveBeenCalledTimes(2);
   });

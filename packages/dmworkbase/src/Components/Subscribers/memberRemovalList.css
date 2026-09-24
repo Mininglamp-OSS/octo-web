@@ -177,3 +177,10 @@
     font-size: var(--wk-text-size-md);
     text-align: center;
 }
+.wk-memberremoval-verification {
+    padding: var(--wk-sp-3) var(--wk-sp-5);
+    color: var(--wk-text-secondary);
+    background: var(--wk-bg-base);
+    font-size: var(--wk-text-size-sm);
+    overflow-wrap: anywhere;
+}

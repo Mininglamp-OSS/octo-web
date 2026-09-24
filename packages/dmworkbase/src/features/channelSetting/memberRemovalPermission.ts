@@ -28,6 +28,21 @@ export function isBotOwnedByViewer(subscriber: Subscriber): boolean {
   return subscriber?.orgData?.bot_owned_by_me === true;
 }
 
+/** Selection liveness needs explicit evidence; an omitted permission is unknown. */
+export function memberRemovalEligibility(params: {
+  viewerUid?: string;
+  viewerRole?: number;
+  subscriber: Subscriber;
+}): "allowed" | "denied" | "unknown" {
+  const { subscriber, viewerRole, viewerUid } = params;
+  if (!subscriber?.uid || typeof subscriber.role !== "number" ||
+      typeof viewerRole !== "number") return "unknown";
+  if (subscriber.uid === viewerUid || subscriber.role === GroupRole.owner) return "denied";
+  if (viewerRole === GroupRole.normal && subscriber.role === GroupRole.normal &&
+      typeof subscriber.orgData?.bot_owned_by_me !== "boolean") return "unknown";
+  return canRemoveChannelSettingSubscriber(params) ? "allowed" : "denied";
+}
+
 export function canRemoveChannelSettingSubscriber(params: {
   viewerUid?: string;
   viewerRole?: number;

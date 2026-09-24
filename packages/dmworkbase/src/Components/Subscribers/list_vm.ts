@@ -49,6 +49,8 @@ export class SubscriberListVM extends ProviderListener {
   private _delayTimer?: ReturnType<typeof setTimeout>;
   private _requestVersion = 0;
   private query?: SubscriberQuery;
+  private pendingRefresh = false;
+  private pendingLoadMore = false;
 
   constructor(
     channel: Channel,
@@ -91,6 +93,8 @@ export class SubscriberListVM extends ProviderListener {
     this._requestVersion++;
     this.clearDelay();
     this.query = undefined;
+    this.pendingRefresh = false;
+    this.pendingLoadMore = false;
     this.status = "idle";
   }
 
@@ -119,6 +123,8 @@ export class SubscriberListVM extends ProviderListener {
   /** Invalidate immediately; only the network leg is debounced. */
   search(keyword: string, delayMs = 0) {
     this.clearDelay();
+    this.pendingRefresh = false;
+    this.pendingLoadMore = false;
     if (!this.keyword.trim()) {
       this.loadedRoster = this.mergeSubscribers(
         this.loadedRoster,
@@ -204,7 +210,7 @@ export class SubscriberListVM extends ProviderListener {
 
         // Keep the old rendered prefix while refreshing it. It is replaced only
         // once all requested pages have arrived, not mistaken for a full roster.
-        if (page < query.refreshThrough) continue;
+        if (page < query.refreshThrough && rows.length >= query.limit) continue;
         this.currPage = page;
         this.hasMore = rows.length >= query.limit;
         this.subscribers = this.applySubscriberFilters(query.rows);
@@ -227,7 +233,26 @@ export class SubscriberListVM extends ProviderListener {
     } catch {
       if (this.isCurrent(query)) this.status = "error";
     } finally {
-      if (this.isCurrent(query)) this.notifyListener();
+      if (this.isCurrent(query)) {
+        this.notifyListener();
+        // Publish this generation before servicing one coalesced follow-up.
+        // Errors retain their exact cursor and require an explicit retry.
+        if (!this.loadError) {
+          if (this.pendingLoadMore && this.hasMore) {
+            this.pendingLoadMore = false;
+            void this.loadMoreSubscribersIfNeed();
+          } else if (this.pendingRefresh) {
+            this.pendingRefresh = false;
+            this.pendingLoadMore = false;
+            void this.refreshCurrentSearch();
+          } else {
+            this.pendingLoadMore = false;
+          }
+        } else {
+          this.pendingRefresh = false;
+          this.pendingLoadMore = false;
+        }
+      }
     }
   }
 
@@ -262,7 +287,10 @@ export class SubscriberListVM extends ProviderListener {
   };
 
   loadMoreSubscribersIfNeed = async () => {
-    if (this.loading) return;
+    if (this.loading) {
+      if (this.status === "refreshing") this.pendingLoadMore = true;
+      return;
+    }
     if (this.loadError) return this.retry();
     if (!this.hasMore) return;
     await this.runQuery(this.newQuery(this.currPage + 1, 0, this.subscribers));
@@ -283,6 +311,10 @@ export class SubscriberListVM extends ProviderListener {
     // A subscriber event during debounce must not cancel the user's queued
     // query; that query will fetch fresh server data when its timer fires.
     if (this.status === "debouncing") return;
+    if (this.status === "refreshing") {
+      this.pendingRefresh = true;
+      return;
+    }
     this.clearDelay();
     const through = Math.max(1, this.currPage);
     const query = this.newQuery(1, through, this.localMatches(this.keyword));

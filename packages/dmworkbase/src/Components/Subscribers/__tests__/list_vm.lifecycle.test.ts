@@ -158,6 +158,37 @@ describe("SubscriberListVM production request lifecycle", () => {
     expect(vm.subscribers[0].uid).toBe("fresh");
   });
 
+  it("coalesces an event burst into one follow-up refresh without starving publication", async () => {
+    request.mockResolvedValueOnce([member("a")]);
+    const vm = mount();
+    await vi.advanceTimersByTimeAsync(250);
+    const first = deferred();
+    request.mockReturnValueOnce(first.promise).mockResolvedValueOnce([member("latest")]);
+    void vm.refreshCurrentSearch();
+    void vm.refreshCurrentSearch();
+    void vm.refreshCurrentSearch();
+    expect(request).toHaveBeenCalledTimes(2);
+    first.resolve([member("middle")]);
+    await settle();
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(vm.subscribers.map(row => row.uid)).toEqual(["latest"]);
+    expect(vm.status).toBe("ready");
+  });
+
+  it("services one queued load-more after a refresh finishes", async () => {
+    request.mockResolvedValueOnce([member("a"), member("b")]);
+    const vm = mount();
+    await vi.advanceTimersByTimeAsync(250);
+    const refresh = deferred();
+    request.mockReturnValueOnce(refresh.promise).mockResolvedValueOnce([member("c")]);
+    void vm.refreshCurrentSearch();
+    void vm.loadMoreSubscribersIfNeed();
+    refresh.resolve([member("a"), member("b")]);
+    await settle();
+    expect(request.mock.calls.map(call => call[1].page)).toEqual([1, 1, 2]);
+    expect(vm.subscribers.map(row => row.uid)).toEqual(["a", "b", "c"]);
+  });
+
   it("keeps a non-keyword roster across consecutive searches and refresh", async () => {
     request.mockResolvedValueOnce([member("alice"), member("bob")]);
     const search = vi.fn((keyword: string, roster: Subscriber[] = []) =>

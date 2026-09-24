@@ -13,8 +13,10 @@ import ConversationContext from "../Conversation/context";
 import { ChannelTypeCommunityTopic, ChannelTypeCustomerService } from "../../Service/Const";
 import { I18nContext } from "../../i18n";
 import { getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
+import { ChannelSettingActivityContext } from "../../features/channelSetting/channelSettingActivity";
 
 export interface ChannelSettingProps {
+    visible?: boolean
     onClose?: () => void
     channel: Channel
     conversationContext:ConversationContext
@@ -40,7 +42,7 @@ export default class ChannelSetting extends Component<ChannelSettingProps> {
     }
     render() {
         const { onClose, channel,conversationContext } = this.props
-        return <Provider create={() => {
+        return <ChannelSettingActivityContext.Provider value={this.props.visible ?? true}><Provider create={() => {
             this.vm = new ChannelSettingVM(channel)
             return this.vm
         }} render={(vm: ChannelSettingVM) => {
@@ -75,7 +77,7 @@ export default class ChannelSetting extends Component<ChannelSettingProps> {
                 </div>
             }} />
         }}>
-        </Provider>
+        </Provider></ChannelSettingActivityContext.Provider>
 
 
     }

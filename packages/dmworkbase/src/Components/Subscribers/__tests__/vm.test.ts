@@ -4,9 +4,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SubscriberStatus } from "../../../Service/Const";
 import { SubscribersVM } from "../vm";
 import { findRemovableGroupMember } from "../../../bridge/channelSetting/memberRemovalRead";
+import { ChannelMemberService } from "../../../Service/ChannelMemberService";
+import WKApp from "../../../App";
 
 vi.mock("../../../bridge/channelSetting/memberRemovalRead", () => ({
-  findRemovableGroupMember: vi.fn(async () => false),
+  findRemovableGroupMember: vi.fn(async () => "none"),
+  newMemberEntryCursor: () => ({ nextPage: 1, signatures: new Set() }),
+}));
+vi.mock("../../../Service/ChannelMemberService", () => ({
+  ChannelMemberService: { lookup: vi.fn(async () => undefined) },
 }));
 
 const { runtime } = vi.hoisted(() => ({
@@ -37,10 +43,12 @@ describe("SubscribersVM", () => {
   const channel = new Channel("group-1", ChannelTypeGroup);
 
   beforeEach(() => {
+    WKApp.loginInfo.uid = "owner";
     runtime.subscribers = [];
     runtime.subscriberChangeListeners = [];
     runtime.unsubscribe.mockReset();
-    vi.mocked(findRemovableGroupMember).mockReset().mockResolvedValue(false);
+    vi.mocked(findRemovableGroupMember).mockReset().mockResolvedValue("none");
+    vi.mocked(ChannelMemberService.lookup).mockReset().mockResolvedValue(undefined);
   });
 
   it("refreshes route data from the current subscriber cache after member changes", () => {
@@ -143,8 +151,10 @@ describe("SubscribersVM", () => {
   });
 
   describe("showRemove", () => {
-    const makeVM = (routeData: any) =>
-      new SubscribersVM({ routeData: vi.fn(() => routeData) } as any);
+    const makeVM = (routeData: any) => {
+      WKApp.loginInfo.uid = routeData.subscriberOfMe?.uid || "owner";
+      return new SubscribersVM({ routeData: vi.fn(() => routeData) } as any);
+    };
 
     it("shows the remove entry for owners and managers", () => {
       for (const role of [1, 2]) {
@@ -228,7 +238,7 @@ describe("SubscribersVM", () => {
     });
 
     it("shows an out-of-cache match only after the server scan, without scanning on render", async () => {
-      vi.mocked(findRemovableGroupMember).mockResolvedValue(true);
+      vi.mocked(findRemovableGroupMember).mockResolvedValue("found");
       const vm = makeVM({ channel, subscribers: [], subscriberAll: [], subscriberOfMe: { uid: "me", role: 0 } });
       vm.didMount();
       expect(vm.showRemove()).toBe(false);
@@ -239,27 +249,27 @@ describe("SubscribersVM", () => {
     });
 
     it("ignores a late result after unmount and exposes retry on a failed scan", async () => {
-      vi.mocked(findRemovableGroupMember).mockRejectedValueOnce(new Error("offline")).mockResolvedValue(true);
+      vi.mocked(findRemovableGroupMember).mockRejectedValueOnce(new Error("offline")).mockResolvedValue("found");
       const vm = makeVM({ channel, subscribers: [], subscriberAll: [], subscriberOfMe: { uid: "me", role: 0 } });
       vm.didMount();
       await vi.waitFor(() => expect(vm.removalEntryError).toBe(true));
       expect(vm.showRemove()).toBe(false);
       await vm.refreshRemovalEntry();
       expect(vm.showRemove()).toBe(true);
-      let resolve!: (value: boolean) => void;
+      let resolve!: (value: "found") => void;
       vi.mocked(findRemovableGroupMember).mockReturnValueOnce(new Promise((yes) => { resolve = yes; }));
       const pending = vm.refreshRemovalEntry();
       vm.didUnMount();
-      resolve(true);
+      resolve("found");
       await pending;
       expect(vm.showRemove()).toBe(false);
     });
 
-    it("invalidates a positive entry immediately and coalesces membership events", async () => {
+    it("invalidates a positive entry without restarting scans during an event burst", async () => {
       vi.useFakeTimers();
       const vm = makeVM({ channel, subscribers: [], subscriberAll: [], subscriberOfMe: { uid: "me", role: 0 } });
       try {
-        vi.mocked(findRemovableGroupMember).mockResolvedValueOnce(true).mockResolvedValue(false);
+        vi.mocked(findRemovableGroupMember).mockResolvedValueOnce("found").mockResolvedValue("none");
         vm.didMount();
         await Promise.resolve();
         expect(vm.showRemove()).toBe(true);
@@ -268,6 +278,9 @@ describe("SubscribersVM", () => {
         expect(vm.showRemove()).toBe(false);
         expect(findRemovableGroupMember).toHaveBeenCalledOnce();
         await vi.advanceTimersByTimeAsync(200);
+        expect(findRemovableGroupMember).toHaveBeenCalledOnce();
+        expect(vm.removalEntryStatus).toBe("partial");
+        await vm.refreshRemovalEntry();
         expect(findRemovableGroupMember).toHaveBeenCalledTimes(2);
         expect(vm.showRemove()).toBe(false);
       } finally {
@@ -277,15 +290,56 @@ describe("SubscribersVM", () => {
     });
 
     it("does not publish a scan result for a changed viewer scope", async () => {
-      let resolve!: (value: boolean) => void;
+      let resolve!: (value: "found") => void;
       vi.mocked(findRemovableGroupMember).mockReturnValueOnce(new Promise(yes => { resolve = yes; }));
       const data = { channel, subscribers: [], subscriberAll: [], subscriberOfMe: { uid: "me", role: 0 } };
       const vm = makeVM(data);
       vm.didMount();
       data.subscriberOfMe = { uid: "other-viewer", role: 0 };
-      resolve(true);
+      resolve("found");
       await Promise.resolve();
       expect(vm.showRemove()).toBe(false);
+      vm.didUnMount();
+    });
+    it("does not scan while hidden, checks once on opening, and aborts on closing", async () => {
+      const data = { channel, subscribers: [], subscriberAll: [], subscriberOfMe: { uid: "owner", role: 0 } };
+      const vm = new SubscribersVM({ routeData: () => data } as never, false);
+      vm.didMount();
+      await Promise.resolve();
+      expect(findRemovableGroupMember).not.toHaveBeenCalled();
+      vm.setRemovalEntryActive(true);
+      await Promise.resolve();
+      expect(findRemovableGroupMember).toHaveBeenCalledOnce();
+      vm.setRemovalEntryActive(true);
+      expect(findRemovableGroupMember).toHaveBeenCalledOnce();
+      vm.setRemovalEntryActive(false);
+      expect(vi.mocked(findRemovableGroupMember).mock.calls[0][3].aborted).toBe(true);
+      vm.didUnMount();
+    });
+    it("resumes an entry check that was interrupted by closing the panel", async () => {
+      let resolve!: (value: "partial") => void;
+      vi.mocked(findRemovableGroupMember)
+        .mockReturnValueOnce(new Promise(yes => { resolve = yes; }))
+        .mockResolvedValueOnce("none");
+      const data = { channel, subscribers: [], subscriberAll: [], subscriberOfMe: { uid: "owner", role: 0 } };
+      const vm = new SubscribersVM({ routeData: () => data } as never, false);
+      vm.didMount();
+      vm.setRemovalEntryActive(true);
+      await Promise.resolve();
+      vm.setRemovalEntryActive(false);
+      resolve("partial");
+      await Promise.resolve();
+      vm.setRemovalEntryActive(true);
+      await vi.waitFor(() => expect(findRemovableGroupMember).toHaveBeenCalledTimes(2));
+      vm.didUnMount();
+    });
+    it("resolves an unknown viewer role before deciding whether to scan", async () => {
+      vi.mocked(ChannelMemberService.lookup).mockResolvedValue({ uid: "owner", role: 1 } as Subscriber);
+      const vm = makeVM({ channel, subscribers: [], subscriberAll: [] });
+      vm.didMount();
+      await vi.waitFor(() => expect(vm.showRemove()).toBe(true));
+      expect(ChannelMemberService.lookup).toHaveBeenCalledOnce();
+      expect(findRemovableGroupMember).not.toHaveBeenCalled();
       vm.didUnMount();
     });
   });

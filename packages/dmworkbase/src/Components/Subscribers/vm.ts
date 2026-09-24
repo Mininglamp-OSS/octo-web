@@ -11,7 +11,8 @@ import {
 // 零依赖叶子模块：入口可见性与行可见性共用同一判据（octo-web#1511）。
 // 不从 features/channelSetting/channelSettingMemberSection 引 —— 那会成环。
 import { canRemoveChannelSettingSubscriber } from "../../features/channelSetting/memberRemovalPermission";
-import { findRemovableGroupMember } from "../../bridge/channelSetting/memberRemovalRead";
+import { findRemovableGroupMember, newMemberEntryCursor } from "../../bridge/channelSetting/memberRemovalRead";
+import { ChannelMemberService } from "../../Service/ChannelMemberService";
 
 
 export class SubscribersVM extends ProviderListener {
@@ -20,18 +21,20 @@ export class SubscribersVM extends ProviderListener {
     private _subscribers: Subscriber[] = []
     private unsubscribeSubscriberChangeListener?: () => void
     showNum:number = 20
-    removalEntryError = false
-    private removalEntryFound = false
+    removalEntryStatus: "idle" | "checking" | "found" | "none" | "partial" | "error" = "idle"
+    private removalCursor = newMemberEntryCursor()
     private removalEntryScope = ""
     private removalProbe?: AbortController
-    private removalRefreshTimer?: ReturnType<typeof setTimeout>
     private isMounted = false
+    private active: boolean
+    private entryDirty = false
 
 
-    constructor(context:RouteContext<any>) {
+    constructor(context:RouteContext<any>, active = true) {
         super()
         this.context = context
         this.routeData = context.routeData()
+        this.active = active
     }
 
     didMount(): void {
@@ -41,18 +44,18 @@ export class SubscribersVM extends ProviderListener {
         this.unsubscribeSubscriberChangeListener = addCurrentImSubscriberChangeListener(
             (changedChannel: Channel) => {
                 if (!changedChannel?.isEqual?.(channel)) return
-                this.scheduleRemovalEntryRefresh()
+                // Invalidate evidence, but never restart a whole scan per event.
+                this.invalidateRemovalEntry()
                 this.reloadSubscribersFromCache()
             }
         )
         this.reloadSubscribersFromCache()
-        void this.refreshRemovalEntry()
+        if (this.active) void this.refreshRemovalEntry()
     }
 
     didUnMount(): void {
         this.isMounted = false
         this.removalProbe?.abort()
-        clearTimeout(this.removalRefreshTimer)
         this.unsubscribeSubscriberChangeListener?.()
         this.unsubscribeSubscriberChangeListener = undefined
     }
@@ -116,8 +119,8 @@ export class SubscribersVM extends ProviderListener {
 
     showRemove() {
         const subscriberOfMe = this.routeData.subscriberOfMe
-        let role = GroupRole.normal
-        if(subscriberOfMe) {
+        let role: number | undefined
+        if(subscriberOfMe?.uid === WKApp.loginInfo.uid) {
             role = subscriberOfMe.role
         }
         if(role === GroupRole.owner || role === GroupRole.manager) {
@@ -125,51 +128,96 @@ export class SubscribersVM extends ProviderListener {
         }
         // Keep the same strict row predicate. A local positive is sufficient;
         // a cache miss is not a group-wide negative (super-groups cache a prefix).
-        return this.ownsAnyRemovableBotInGroup(role) ||
-            (this.removalEntryScope === this.entryScope() && this.removalEntryFound)
+        return (role !== undefined && this.ownsAnyRemovableBotInGroup(role)) ||
+            (this.removalEntryScope === this.entryScope() && this.removalEntryStatus === "found")
     }
 
     private entryScope() {
         return JSON.stringify([
             this.routeData.channel?.getChannelKey(),
             this.routeData.subscriberOfMe?.uid || WKApp.loginInfo.uid,
-            this.routeData.subscriberOfMe?.role ?? GroupRole.normal,
+            this.routeData.subscriberOfMe?.role,
             WKApp.loginInfo.uid,
             WKApp.shared?.currentSpaceId,
         ])
     }
 
-    private scheduleRemovalEntryRefresh() {
+    get removalEntryError() {
+        return this.removalEntryStatus === "error"
+    }
+
+    private invalidateRemovalEntry() {
         this.removalProbe?.abort()
-        this.removalEntryFound = false
-        this.removalEntryError = false
-        clearTimeout(this.removalRefreshTimer)
-        // Coalesce bursts of IM cache updates without scanning on render.
-        this.removalRefreshTimer = setTimeout(() => void this.refreshRemovalEntry(), 200)
+        this.removalCursor = newMemberEntryCursor()
+        this.removalEntryStatus = "partial"
+        this.entryDirty = true
+    }
+
+    setRemovalEntryActive = (active: boolean) => {
+        if (this.active === active) return
+        this.active = active
+        if (!active) {
+            this.removalProbe?.abort()
+            if (this.removalEntryStatus === "checking") {
+                this.removalEntryStatus = "partial"
+                this.entryDirty = true
+            }
+            return
+        }
+        // Resume an interrupted/invalidated check once on opening, not on render.
+        if (this.entryDirty || this.removalEntryStatus === "idle" ||
+            this.removalEntryScope !== this.entryScope()) {
+            void this.refreshRemovalEntry()
+        }
     }
 
     refreshRemovalEntry = async () => {
-        if (!this.isMounted) return
-        clearTimeout(this.removalRefreshTimer)
+        if (!this.isMounted || !this.active || this.removalEntryStatus === "checking") return
+        if (this.removalEntryScope !== this.entryScope()) this.removalCursor = newMemberEntryCursor()
         this.removalProbe?.abort()
         const controller = new AbortController()
         this.removalProbe = controller
         this.removalEntryScope = this.entryScope()
-        this.removalEntryFound = false
-        this.removalEntryError = false
-        const role = this.routeData.subscriberOfMe?.role ?? GroupRole.normal
-        const viewerUid = this.routeData.subscriberOfMe?.uid || WKApp.loginInfo.uid
+        this.entryDirty = false
+        const viewerUid = WKApp.loginInfo.uid
         const channel = this.routeData.channel
-        if (!channel || !viewerUid || role === GroupRole.owner ||
-            role === GroupRole.manager || this.ownsAnyRemovableBotInGroup(role)) return
-        const scope = this.removalEntryScope
-        const current = () => this.isMounted && !controller.signal.aborted && scope === this.entryScope()
+        if (!channel || !viewerUid) return
+        let scope = this.removalEntryScope
+        const current = () => this.isMounted && this.active && !controller.signal.aborted && scope === this.entryScope()
+        this.removalEntryStatus = "checking"
+        this.notifyListener()
         try {
-            const found = await findRemovableGroupMember(channel, viewerUid, role, controller.signal)
-            if (current()) this.removalEntryFound = found
+            let role = this.routeData.subscriberOfMe?.uid === viewerUid
+                ? this.routeData.subscriberOfMe.role : undefined
+            if (role === undefined) {
+                const me = await ChannelMemberService.lookup(channel, viewerUid, controller.signal)
+                if (!current()) return
+                if (!me) {
+                    this.removalEntryStatus = "none"
+                    return
+                }
+                this.routeData.subscriberOfMe = me
+                role = me.role
+                scope = this.entryScope()
+                this.removalEntryScope = scope
+            }
+            if (role === GroupRole.owner || role === GroupRole.manager ||
+                this.ownsAnyRemovableBotInGroup(role)) {
+                this.removalEntryStatus = "found"
+                return
+            }
+            const result = await findRemovableGroupMember(channel, viewerUid, role, controller.signal, this.removalCursor)
+            if (current()) this.removalEntryStatus = result
         } catch {
-            if (current()) this.removalEntryError = true
+            if (current()) this.removalEntryStatus = "error"
         } finally {
+            if (this.isMounted && this.removalProbe === controller &&
+                this.removalEntryStatus === "checking" && !current()) {
+                this.removalEntryStatus = "partial"
+                this.removalCursor = newMemberEntryCursor()
+                this.entryDirty = true
+                this.notifyListener()
+            }
             if (current()) this.notifyListener()
         }
     }
@@ -179,7 +227,7 @@ export class SubscribersVM extends ProviderListener {
         if(!subscribers || subscribers.length === 0) {
             return false
         }
-        const viewerUid = this.routeData.subscriberOfMe?.uid || WKApp.loginInfo.uid
+        const viewerUid = WKApp.loginInfo.uid
         return subscribers.some((subscriber) =>
             canRemoveChannelSettingSubscriber({ viewerUid, viewerRole, subscriber })
         )

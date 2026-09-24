@@ -17,7 +17,8 @@ import {
   isGroupExpanded,
   MAX_OTHERS_GROUP_SIZE,
 } from "../../features/channelSetting/memberRemovalGrouping";
-import { canRemoveChannelSettingSubscriber } from "../../features/channelSetting/memberRemovalPermission";
+import { canRemoveChannelSettingSubscriber, memberRemovalEligibility } from "../../features/channelSetting/memberRemovalPermission";
+import { ChannelSettingActivityBinding } from "../../features/channelSetting/channelSettingActivity";
 import {
   addCurrentImChannelInfoListener,
   addCurrentImSubscriberChangeListener,
@@ -121,6 +122,7 @@ export interface MemberRemovalListProps {
    * 父级据此 enable/disable 路由表头的「确认」按钮。
    */
   onSelectionChange?: (selected: Subscriber[]) => void;
+  onRetryVerification?: (uids: string[]) => Promise<void>;
   /**
    * 可选的本地搜索实现（拼音等），与 SubscriberList 同契约。
    *
@@ -159,6 +161,10 @@ interface MemberRemovalListState {
   manualExpanded: Partial<Record<MemberRemovalGroupId, boolean>>;
   keyword: string;
   submissionPending: boolean;
+  uncertainUids: Set<string>;
+  verificationMessage?: string;
+  verificationRetryUids: string[];
+  verificationProgress?: { checked: number; total: number };
 }
 
 export class MemberRemovalList extends Component<
@@ -182,6 +188,10 @@ export class MemberRemovalList extends Component<
   private rerenderRaf?: number;
   private selectionRead?: AbortController;
   private selectionRevision = 0;
+  private selectionTimer?: ReturnType<typeof setTimeout>;
+  private verificationRead?: AbortController;
+  private panelActive = true;
+  private mounted = false;
 
   constructor(props: MemberRemovalListProps) {
     super(props);
@@ -190,10 +200,13 @@ export class MemberRemovalList extends Component<
       manualExpanded: {},
       keyword: "",
       submissionPending: false,
+      uncertainUids: new Set(),
+      verificationRetryUids: [],
     };
   }
 
   componentDidMount() {
+    this.mounted = true;
     // 备注名：getShowName 优先用 1:1 频道的 orgData.remark，而那份缓存只会被
     // fetchCurrentImChannelInfo 填充。兄弟组件（SubscriberList）接了预取 + 监听，
     // 本页若不接，没聊过天的人就只显示原始昵称 —— 而这恰好是最需要认准
@@ -213,12 +226,20 @@ export class MemberRemovalList extends Component<
     this.unsubscribeSubscriberChangeListener =
       addCurrentImSubscriberChangeListener((channel: Channel) => {
         if (!channel?.isEqual?.(this.props.channel)) return;
+        if (!this.panelActive) return;
         this.currentVM?.refreshCurrentSearch();
-        void this.reconcileSelectedMembers();
+        this.selectionRead?.abort();
+        clearTimeout(this.selectionTimer);
+        this.selectionTimer = setTimeout(() => {
+          if (!this.state.submissionPending) void this.reconcileSelectedMembers();
+        }, 200);
       });
   }
 
   componentWillUnmount() {
+    this.mounted = false;
+    clearTimeout(this.selectionTimer);
+    this.verificationRead?.abort();
     this.selectionRead?.abort();
     if (this.scrollRaf !== undefined) {
       cancelAnimationFrame(this.scrollRaf);
@@ -270,12 +291,12 @@ export class MemberRemovalList extends Component<
   /** Called only for membership events, not for every page/search callback. */
   async reconcileSelectedMembers() {
     this.selectionRead?.abort();
-    if (!this.state.selected.size) return;
+    if (!this.panelActive || !this.state.selected.size) return;
     const controller = new AbortController();
     this.selectionRead = controller;
     const revision = this.selectionRevision;
     const evidence = await readSelectedMembers(
-      this.props.channel, [...this.state.selected.keys()], controller.signal
+      this.props.channel, [...this.state.selected.keys()], controller.signal, { retryUnknown: true }
     );
     if (controller.signal.aborted || revision !== this.selectionRevision) return;
     this.applySelectionEvidence(evidence);
@@ -284,23 +305,27 @@ export class MemberRemovalList extends Component<
   /** Unknown reads retain selection; only explicit server evidence may prune. */
   applySelectionEvidence(evidence: MemberSelectionEvidence) {
     const invalid = new Set(evidence.absent);
+    const uncertain = new Set(evidence.unknown);
     for (const subscriber of evidence.present) {
-      if (!canRemoveChannelSettingSubscriber({ ...this.props, subscriber })) {
-        invalid.add(subscriber.uid);
-      }
+      const eligibility = memberRemovalEligibility({
+        viewerUid: this.props.viewerUid, viewerRole: this.props.viewerRole, subscriber,
+      });
+      if (eligibility === "denied") invalid.add(subscriber.uid);
+      if (eligibility === "unknown") uncertain.add(subscriber.uid);
     }
     for (const uid of invalid) this.currentVM?.removeSubscriber(uid);
-    if (![...invalid].some((uid) => this.state.selected.has(uid)) &&
-        !evidence.present.some((row) => this.state.selected.has(row.uid))) return;
     this.selectionRevision++;
     this.setState(
       (prev) => {
         const next = new Map(prev.selected);
+        const pending = new Set(prev.uncertainUids);
         for (const uid of invalid) next.delete(uid);
+        for (const uid of [...evidence.absent, ...evidence.present.map(row => row.uid)]) pending.delete(uid);
+        for (const uid of uncertain) if (next.has(uid)) pending.add(uid);
         for (const row of evidence.present) {
-          if (next.has(row.uid)) next.set(row.uid, row);
+          if (next.has(row.uid) && !uncertain.has(row.uid)) next.set(row.uid, row);
         }
-        return { selected: next };
+        return { selected: next, uncertainUids: pending };
       },
       () => this.reportSelection()
     );
@@ -311,8 +336,52 @@ export class MemberRemovalList extends Component<
   }
 
   setSubmissionPending(pending: boolean) {
-    this.setState({ submissionPending: pending });
+    this.setState(prev => ({ submissionPending: pending,
+      verificationProgress: pending ? prev.verificationProgress : undefined }));
   }
+
+  beginVerification(total: number) {
+    this.selectionRead?.abort();
+    clearTimeout(this.selectionTimer);
+    this.verificationRead?.abort();
+    this.verificationRead = new AbortController();
+    if (!this.panelActive) this.verificationRead.abort();
+    this.setState({ submissionPending: true, verificationMessage: undefined,
+      verificationProgress: { checked: 0, total } });
+    return this.verificationRead.signal;
+  }
+
+  updateVerificationProgress = (checked: number, total: number) => {
+    if (this.mounted && !this.verificationRead?.signal.aborted) {
+      this.setState({ verificationProgress: { checked, total } });
+    }
+  };
+
+  showVerificationResult(message: string, retryUids: string[]) {
+    this.setState({ verificationMessage: message, verificationRetryUids: retryUids,
+      verificationProgress: undefined });
+  }
+
+  private setPanelActive = (active: boolean) => {
+    this.panelActive = active;
+    if (!active) {
+      this.selectionRead?.abort();
+      this.verificationRead?.abort();
+      clearTimeout(this.selectionTimer);
+      if (this.mounted && this.state.submissionPending) {
+        this.setState({ submissionPending: false, verificationProgress: undefined,
+          verificationMessage: this.context.t("base.subscribers.verificationPaused"),
+          verificationRetryUids: [...this.state.selected.keys()] });
+      }
+    }
+  };
+
+  private retryVerification = async () => {
+    if (this.state.submissionPending) return;
+    const uids = [...new Set([...this.state.verificationRetryUids, ...this.state.uncertainUids])];
+    if (this.props.onRetryVerification && uids.length) await this.props.onRetryVerification(uids);
+    else await this.reconcileSelectedMembers();
+  };
 
   private get searching() {
     return this.state.keyword.trim().length > 0;
@@ -415,7 +484,9 @@ export class MemberRemovalList extends Component<
         const next = new Map(prev.selected);
         if (next.has(subscriber.uid)) next.delete(subscriber.uid);
         else next.set(subscriber.uid, subscriber);
-        return { selected: next };
+        const uncertainUids = new Set(prev.uncertainUids);
+        if (!next.has(subscriber.uid)) uncertainUids.delete(subscriber.uid);
+        return { selected: next, uncertainUids };
       },
       () => this.reportSelection()
     );
@@ -537,6 +608,7 @@ export class MemberRemovalList extends Component<
         // 选不了人（圆圈不可聚焦，行又没有键盘处理）。
         role="checkbox"
         aria-checked={selected}
+        aria-disabled={this.state.submissionPending || undefined}
         aria-label={this.getShowName(subscriber)}
         tabIndex={0}
         onClick={() => this.toggleSelected(subscriber)}
@@ -685,7 +757,9 @@ export class MemberRemovalList extends Component<
                 className="wk-memberremoval-group-truncated"
                 data-testid="member-removal-truncated-hint"
               >
-                {this.context.t("base.subscribers.othersGroupTruncated", {
+                {this.context.t(this.searching
+                  ? "base.subscribers.searchResultsTruncated"
+                  : "base.subscribers.othersGroupTruncated", {
                   values: { count: MAX_OTHERS_GROUP_SIZE },
                 })}
               </div>
@@ -736,6 +810,8 @@ export class MemberRemovalList extends Component<
               // 凑满之后的翻页仍由用户滚动驱动。
               onScroll={(event) => this.getThrottledScroll(vm)(event)}
             >
+              <ChannelSettingActivityBinding onChange={this.setPanelActive} />
+              {this.renderVerification()}
               <div className="wk-indextable-search-box">
                 <div className="wk-indextable-search-icon">
                   <IconSearchStroked className="wk-subscrierlist-search-icon" />
@@ -762,6 +838,28 @@ export class MemberRemovalList extends Component<
   }
 
   /** Render one derived request state, including visible errors alongside rows. */
+  private renderVerification() {
+    const { verificationMessage, verificationProgress, uncertainUids, submissionPending } = this.state;
+    if (!verificationMessage && !verificationProgress && !uncertainUids.size) return null;
+    return <div className="wk-memberremoval-verification" role="status" data-testid="member-removal-verification">
+      {verificationProgress
+        ? this.context.t("base.subscribers.verificationProgress", { values: verificationProgress })
+        : verificationMessage}
+      {uncertainUids.size > 0 && <div>
+        {this.context.t("base.subscribers.verificationUnknownNames", {
+          values: { names: [...uncertainUids].map(uid => {
+            const row = this.state.selected.get(uid);
+            return row ? this.getShowName(row) : uid;
+          }).join("、") },
+        })}
+      </div>}
+      {!submissionPending && (this.state.verificationRetryUids.length > 0 || uncertainUids.size > 0) &&
+        <WKButton size="sm" variant="ghost" onClick={() => void this.retryVerification()}>
+          {this.context.t("base.subscribers.verificationRetry")}
+        </WKButton>}
+    </div>;
+  }
+
   private renderBody(groups: MemberRemovalGroup[], vm: SubscriberListVM) {
     return <>
       {groups.map((group) => this.renderGroup(group, groups))}

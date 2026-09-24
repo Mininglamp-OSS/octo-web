@@ -17,7 +17,8 @@ import RouteContext, {
 import { Row, Section } from "../../Service/Section";
 import { isGroupDisbanded } from "../../Utils/groupDisband";
 import { t } from "../../i18n";
-import { removeAndReconcileChannelSettingSubscribers } from "../../bridge/channelSetting/channelSettingActions";
+import { reconcileChannelSettingSubscribers, removeAndReconcileChannelSettingSubscribers } from "../../bridge/channelSetting/channelSettingActions";
+import { describeMemberRemovalOutcome } from "./memberRemovalOutcome";
 import { createChannelSettingMemberSearch } from "./channelSettingMemberSearch";
 import { resolveSubscriberShowName } from "../../Components/Subscribers/subscriberShowName";
 import WKApp from "../../App";
@@ -72,10 +73,54 @@ export function buildChannelMembersSection(
             let selected: Subscriber[] = [];
             let confirming = false;
             let submitting = false;
+            let requestError: string | undefined;
             const removalPage = React.createRef<MemberRemovalList>();
 
             const syncFinishDisabled = () => {
               finishContext?.disable(submitting || selected.length === 0);
+            };
+
+            const runOperation = async (uids: string[], remove: boolean) => {
+              const page = removalPage.current;
+              if (!page || submitting) return;
+              submitting = true;
+              syncFinishDisabled();
+              finishContext?.loading(true);
+              const signal = page.beginVerification(uids.length);
+              try {
+                const params = { channel, uids, signal, onProgress: page.updateVerificationProgress };
+                const evidence = remove
+                  ? await removeAndReconcileChannelSettingSubscribers(params)
+                  : await reconcileChannelSettingSubscribers(params);
+                if (!evidence || signal.aborted || removalPage.current !== page) return;
+                if (remove) requestError = "requestError" in evidence ? evidence.requestError as string | undefined : undefined;
+                page.applySelectionEvidence(evidence);
+                const outcome = describeMemberRemovalOutcome(evidence, uids.length, requestError);
+                if (outcome.complete) {
+                  Toast.success(outcome.message);
+                  context.pop();
+                  data.refresh?.();
+                } else {
+                  page.showVerificationResult(outcome.message, [
+                    ...evidence.unknown, ...evidence.present.map(row => row.uid),
+                  ]);
+                  page.refreshMembers();
+                }
+              } catch {
+                if (!signal.aborted && removalPage.current === page) {
+                  page.showVerificationResult(t("base.subscribers.removalPending", {
+                    values: { count: uids.length },
+                  }), uids);
+                }
+              } finally {
+                submitting = false;
+                confirming = false;
+                if (removalPage.current === page) {
+                  page.setSubmissionPending(false);
+                  finishContext?.loading(false);
+                  syncFinishDisabled();
+                }
+              }
             };
 
             context.push(
@@ -95,6 +140,7 @@ export function buildChannelMembersSection(
                 }
                 viewerUid={viewerUid}
                 viewerRole={viewerRole}
+                onRetryVerification={(uids) => runOperation(uids, false)}
                 onSelectionChange={(items) => {
                   selected = items;
                   syncFinishDisabled();
@@ -160,41 +206,7 @@ export function buildChannelMembersSection(
                         return;
                       }
                       attempted = true;
-                      submitting = true;
-                      syncFinishDisabled();
-                      finishContext?.loading(true);
-                      page?.setSubmissionPending(true);
-                      try {
-                        const evidence = await removeAndReconcileChannelSettingSubscribers({
-                          channel,
-                          uids,
-                        });
-                        if (!evidence || removalPage.current !== page) return;
-                        page?.applySelectionEvidence(evidence);
-                        if (evidence.absent.length === uids.length) {
-                          Toast.success(t("base.subscribers.removalVerified"));
-                          context.pop();
-                          data.refresh?.();
-                        } else {
-                          Toast.warning(t("base.subscribers.removalUncertain"));
-                          page?.refreshMembers();
-                        }
-                      } catch {
-                        if (removalPage.current === page) {
-                          Toast.warning(t("base.subscribers.removalUncertain"));
-                          page?.refreshMembers();
-                        }
-                      } finally {
-                        // Close this confirmation after an attempt. A retry must
-                        // confirm the reconciled selection, not the old uid snapshot.
-                        submitting = false;
-                        confirming = false;
-                        if (removalPage.current === page) {
-                          page?.setSubmissionPending(false);
-                          finishContext?.loading(false);
-                          syncFinishDisabled();
-                        }
-                      }
+                      await runOperation(uids, true);
                     },
                   });
                 },

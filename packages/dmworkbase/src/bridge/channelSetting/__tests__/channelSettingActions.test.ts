@@ -968,7 +968,7 @@ describe("channel setting actions", () => {
     vi.mocked(readSelectedMembers).mockResolvedValueOnce(evidence);
     expect(await removeAndReconcileChannelSettingSubscribers({
       channel, uids: ["gone", "uncertain"], runtime,
-    })).toBe(evidence);
+    })).toEqual({ ...evidence, requestError: expect.any(String) });
     expect(runtime.removeSubscribers).toHaveBeenCalledTimes(1);
     expect(runtime.markRemovedChannelSubscribers).toHaveBeenCalledWith(channel, ["gone"]);
   });

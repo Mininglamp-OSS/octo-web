@@ -1676,6 +1676,7 @@ export class ChatContentPage extends Component<
         >
           <ErrorBoundary moduleName={t("base.chatPage.channelSettings")}>
             <ChannelSetting
+              visible={showChannelSetting}
               conversationContext={this.conversationContext}
               key={channel.getChannelKey()}
               channel={channel}
