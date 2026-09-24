@@ -108,7 +108,7 @@
     border: 1.5px solid var(--wk-border-strong, var(--wk-border-subtle));
     border-radius: 50%;
     background: transparent;
-    color: var(--wk-color-white);
+    color: var(--wk-color-accent);
     transition: background var(--wk-dur-fast) var(--wk-ease),
         border-color var(--wk-dur-fast) var(--wk-ease);
 }
@@ -119,8 +119,8 @@
 }
 
 .wk-memberremoval-check-on {
-    border-color: var(--wk-color-primary);
-    background: var(--wk-color-primary);
+    border-color: var(--wk-color-accent);
+    background: var(--wk-bg-selected);
 }
 
 /* 整行可点即切换选中，所以行给 pointer 手型（与浏览列表的“点开名片”区分开）。 */
