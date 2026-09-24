@@ -49,6 +49,17 @@ export type MittEvents = {
   /** 主聊天框头部搜索入口点击：请求打开该频道的会话内搜索面板（与信息栏「查找聊天内容」同一效果）。 */
   "wk:open-channel-search": { channelId: string; channelType: number };
   "wk:switch-sidebar-tab": string;
+  /**
+   * An entry outside the conversation list opened a chat.  The Chat page owns
+   * the in-memory presentation state that temporarily places this conversation
+   * immediately below the real pinned conversations.
+   */
+  "wk:temporarily-pin-conversation": {
+    channel: import("wukongimjssdk").Channel;
+    fromSearch?: boolean;
+  };
+  /** A left-sidebar click opened a chat and must not create a temporary pin. */
+  "wk:sidebar-conversation-opened": import("wukongimjssdk").Channel;
   "wk:file-preview": {
     url: string;
     sourceUrl?: string;

@@ -45,6 +45,10 @@ describe("#989 search popup closes on bot 'send message' (source guard)", () => 
       /this\.props\.hideModal\?\.\(\)/.test(body),
       "onChat must call hideModal() so the outer search WKModal dismisses"
     ).toBe(true);
+    expect(
+      /WKApp\.endpoints\.showConversation\(channel,\s*\{\s*fromSearch:\s*true\s*\}\)/.test(body),
+      "bot search navigation must retain its search origin for temporary-row placement"
+    ).toBe(true);
   });
 
   it("GlobalSearchPanel forwards hideModal to TabContacts", () => {

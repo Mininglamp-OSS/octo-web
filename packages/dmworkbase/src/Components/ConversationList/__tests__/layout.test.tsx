@@ -27,6 +27,8 @@ const reminderDone = vi.fn(() => Promise.resolve());
 const mittEmit = vi.fn();
 const browserUnreadPublish = vi.fn();
 const topChannelSetting = vi.fn(() => Promise.resolve());
+const hideConversation = vi.fn(() => Promise.resolve());
+const contextMenuShow = vi.fn();
 
 class MockChannel {
   channelID: string;
@@ -90,7 +92,7 @@ beforeAll(async () => {
 
   vi.doMock("../../ContextMenus", () => ({
     default: ({ onContext, menus = [] }: any) => {
-      onContext({ show: vi.fn(), hide: vi.fn(), isShow: () => false });
+      onContext({ show: contextMenuShow, hide: vi.fn(), isShow: () => false });
       return (
         <ol data-testid="context-menu-model">
           {menus.map((menu: any, index: number) => {
@@ -188,6 +190,8 @@ beforeAll(async () => {
     muteChannelSetting: vi.fn(() => Promise.resolve()),
     topChannelSetting,
   }));
+
+  vi.doMock("../hideConversation", () => ({ hideConversation }));
 
   vi.doMock("../../../Service/EmojiService", () => ({
     DefaultEmojiService: {
@@ -362,6 +366,96 @@ function currentMenuOrder() {
       : item.getAttribute("data-menu-title")
   );
 }
+
+describe("ConversationList temporary rows", () => {
+  it("deduplicates an existing temporary row below pinned rows and restores its metadata on release", () => {
+    const pinned = makeConversation({ channelID: "pinned", unread: 0 });
+    pinned.channelInfo.top = true;
+    const existing = makeConversation({ channelID: "existing", unread: 5, mention: true });
+    existing.remoteExtra = { draft: "saved draft" };
+    const recent = makeConversation({ channelID: "recent", unread: 2 });
+    const conversations = [recent, existing, pinned];
+    const renderList = (temporary: boolean) => {
+      act(() => {
+        ReactDOM.render(
+          <ConversationList
+            conversations={conversations as any}
+            temporarilyPinnedConversations={temporary ? [existing] as any : []}
+          />, container
+        );
+      });
+    };
+
+    renderList(true);
+    expect(Array.from(container.querySelectorAll("[data-object-id]")).map(row => row.getAttribute("data-object-id")))
+      .toEqual(["pinned", "existing", "recent"]);
+    const temporary = container.querySelector('[data-object-id="existing"]')!;
+    expect(temporary.textContent).toContain("existing");
+    expect(temporary.querySelector(".wk-conversationlist-item-time")).toBeNull();
+    expect(temporary.querySelector(".wk-conversationlist-item-right-second-line")).toBeNull();
+    expect(temporary.classList.contains("wk-conversationlist-item-unread")).toBe(false);
+    expect(container.querySelector('[data-object-id="recent"] .wk-conversationlist-item-time')).not.toBeNull();
+    openContextMenu('[data-object-id="existing"]');
+    expect(contextMenuShow).toHaveBeenCalledOnce();
+    expect(currentMenuOrder()).toContain("base.conversationList.context.markAsRead");
+
+    renderList(false);
+    expect(container.querySelector('[data-object-id="existing"] .wk-conversationlist-item-time')).not.toBeNull();
+    expect(container.querySelector('[data-object-id="existing"]')?.textContent).toContain("saved draft");
+    expect(existing.unread).toBe(5);
+    expect(existing.timestamp).toBe(1);
+  });
+
+  it.each([true, false])("opens the context menu and hides virtual=%s through the correct path", async (virtual) => {
+    const conversation = makeConversation({ channelID: "temporary", unread: 0 });
+    const dismiss = vi.fn();
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={virtual ? [] : [conversation] as any}
+          temporarilyPinnedConversations={[conversation] as any}
+          temporaryVirtualChannelKeys={new Set(virtual ? [conversation.channel.getChannelKey()] : [])}
+          onDismissTemporaryConversation={dismiss}
+        />, container
+      );
+    });
+    openContextMenu('[data-object-id="temporary"]');
+    expect(contextMenuShow).toHaveBeenCalledOnce();
+    expect(currentMenuOrder()).toContain("base.conversationList.context.pin");
+    expect(currentMenuOrder()).toContain("base.conversationList.context.mute");
+    await act(async () => {
+      container.querySelector('[data-menu-title="base.conversationList.context.hideChat"]')!
+        .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(dismiss).toHaveBeenCalledExactlyOnceWith(conversation.channel);
+    expect(hideConversation).toHaveBeenCalledTimes(virtual ? 0 : 1);
+  });
+
+  it("allows pinning a message-free temporary row without losing it", async () => {
+    const conversation = makeConversation({ channelID: "temporary", unread: 0 });
+    const dismiss = vi.fn();
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={[]}
+          temporarilyPinnedConversations={[conversation] as any}
+          temporaryVirtualChannelKeys={new Set([conversation.channel.getChannelKey()])}
+          onDismissTemporaryConversation={dismiss}
+        />, container
+      );
+    });
+    openContextMenu('[data-object-id="temporary"]');
+    await act(async () => {
+      container.querySelector('[data-menu-title="base.conversationList.context.pin"]')!
+        .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(topChannelSetting).toHaveBeenCalledWith({ channel: conversation.channel, top: true });
+    expect(dismiss).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-object-id="temporary"]')).not.toBeNull();
+  });
+});
 
 describe("ConversationList unread indicators", () => {
   it("renders unread count under the time instead of on the avatar", () => {

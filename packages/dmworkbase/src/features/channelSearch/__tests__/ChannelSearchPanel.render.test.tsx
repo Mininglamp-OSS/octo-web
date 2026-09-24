@@ -19,6 +19,7 @@ vi.mock("../ChannelSearchResults", () => ({
 vi.mock("../../../i18n", () => ({ useI18n: () => ({ t: (key: string) => key }), I18nContext: React.createContext({ t: (key: string) => key }) }))
 
 import ChannelSearchPanel from "../ChannelSearchPanel"
+import WKApp from "../../../App"
 
 const channel: any = { channelID: "g1", channelType: 2 }
 const dataSource: any = { getSender: vi.fn(), searchMessages: vi.fn(async () => ({ items: [], hasMore: false })) }
@@ -55,6 +56,29 @@ describe("ChannelSearchPanel render states", () => {
     expect(preview).toHaveBeenCalled()
     fireEvent.click(screen.getByText("file"))
     expect(screen.getByText("r1")).toBeInTheDocument()
+  })
+
+  it("marks a cross-channel result as a search navigation", () => {
+    const showConversation = vi.fn()
+    const originalShowConversation = WKApp.endpoints.showConversation
+    WKApp.endpoints.showConversation = showConversation
+    state.queryStarted = true
+    state.response = {
+      items: [{ id: "cross-channel", kind: "message", channelId: "g2", channelType: 2, messageSeq: 9 }],
+      hasMore: false,
+    }
+    try {
+      render(<ChannelSearchPanel channel={channel} dataSource={dataSource} onClose={vi.fn()} />)
+      fireEvent.click(screen.getAllByText("mixed result").at(-1)!)
+      expect(showConversation).toHaveBeenCalledWith(
+        expect.objectContaining({ channelID: "g2", channelType: 2 }),
+        { initLocateMessageSeq: 9, fromSearch: true },
+      )
+    } finally {
+      WKApp.endpoints.showConversation = originalShowConversation
+      state.queryStarted = false
+      state.response = { items: [], hasMore: false }
+    }
   })
 })
 

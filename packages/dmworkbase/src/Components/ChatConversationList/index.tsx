@@ -23,6 +23,7 @@ import { ContextMenusData } from "../ContextMenus"
 import { useI18n } from "../../i18n"
 import { getImChannelInfo } from "../../im-runtime/channelRuntime"
 import { FolderPlus, Star, StarOff } from "lucide-react"
+import type { TemporaryConversationScrollRequest } from "../../features/temporaryConversation/presentation"
 
 export function isMutedForRecentConversation(conv: ConversationWrap): boolean {
     const isThread = conv.channel.channelType === ChannelTypeCommunityTopic
@@ -58,6 +59,16 @@ export interface ChatConversationListProps {
     onGroupCreated?: () => void
     /** 递增 token：变化时最近列表滚到第一条可导航未读 */
     scrollToUnreadToken?: number
+    /** 外部打开会话在 Recent 中的临时展示与搜索定位状态。 */
+    temporaryConversationPresentation?: TemporaryConversationPresentation
+}
+
+export interface TemporaryConversationPresentation {
+    conversations: ConversationWrap[]
+    scrollRequest?: TemporaryConversationScrollRequest
+    onScrolled?: (token: number) => void
+    virtualChannelKeys: ReadonlySet<string>
+    onDismiss?: (channel: Channel) => void
 }
 
 // 「+ 新建分组」入口在三个右键场景共用同一个 modal。建分类成功后,要把当时
@@ -83,6 +94,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
     onOpenCreateCategoryRef,
     onGroupCreated,
     scrollToUnreadToken,
+    temporaryConversationPresentation,
 }) => {
     const { t } = useI18n()
     const {
@@ -442,6 +454,11 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                     extraContextMenus={buildExtraMenus}
                     scrollToUnreadToken={scrollToUnreadToken}
                     shouldScrollToUnreadTarget={shouldScrollToRecentUnreadTarget}
+                    temporarilyPinnedConversations={temporaryConversationPresentation?.conversations}
+                    scrollToTemporaryConversation={temporaryConversationPresentation?.scrollRequest}
+                    onTemporaryConversationScrolled={temporaryConversationPresentation?.onScrolled}
+                    temporaryVirtualChannelKeys={temporaryConversationPresentation?.virtualChannelKeys}
+                    onDismissTemporaryConversation={temporaryConversationPresentation?.onDismiss}
                 />
             )}
 

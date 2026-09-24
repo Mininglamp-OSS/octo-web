@@ -73,6 +73,7 @@ import { hideConversation } from "./hideConversation";
 import { Dap } from "../../Service/Dap";
 import { channelOpenedTrackPayload, resolveAiPeer } from "../../Service/channelOpenedTracking";
 import { isMessageAuthorAi } from "../Conversation/replyAiIdentity";
+import type { TemporaryConversationScrollRequest } from "../../features/temporaryConversation/presentation";
 export type ConvFilter = "all" | "human" | "ai" | "group" | "dm";
 
 export function isConversationPinned(conversationWrap: ConversationWrap): boolean {
@@ -378,6 +379,16 @@ export interface ConversationListProps {
   scrollToUnreadToken?: number;
   /** 外部提供导航目标口径，避免列表层重复理解具体业务规则 */
   shouldScrollToUnreadTarget?: (conversation: ConversationWrap) => boolean;
+  /**
+   * 外部入口打开的临时展示行，插入真实置顶会话之后，并从原数据源去重。
+   */
+  temporarilyPinnedConversations?: ConversationWrap[];
+  /** 待处理的搜索跳转：重复搜索同一会话时也重新定位。 */
+  scrollToTemporaryConversation?: TemporaryConversationScrollRequest;
+  onTemporaryConversationScrolled?: (token: number) => void;
+  /** 无消息临时项：隐藏时只清除本地展示状态。 */
+  temporaryVirtualChannelKeys?: ReadonlySet<string>;
+  onDismissTemporaryConversation?: (channel: Channel) => void;
 }
 
 export interface ConversationListState {
@@ -444,6 +455,7 @@ export default class ConversationList extends Component<
       this.setState({});
     };
     TypingManager.shared.addTypingListener(this.typingListener);
+    this.scheduleScrollToTemporaryConversation();
   }
 
   componentDidUpdate(prevProps: ConversationListProps) {
@@ -452,6 +464,15 @@ export default class ConversationList extends Component<
       this.props.scrollToUnreadToken !== prevProps.scrollToUnreadToken
     ) {
       this.scheduleScrollToFirstUnreadTarget();
+    }
+    const temporaryKey = this.props.temporarilyPinnedConversations?.[0]?.channel.getChannelKey();
+    const previousTemporaryKey = prevProps.temporarilyPinnedConversations?.[0]?.channel.getChannelKey();
+    if (
+      this.props.scrollToTemporaryConversation?.token !== prevProps.scrollToTemporaryConversation?.token ||
+      temporaryKey !== previousTemporaryKey ||
+      this.props.conversations !== prevProps.conversations
+    ) {
+      this.scheduleScrollToTemporaryConversation();
     }
   }
 
@@ -491,11 +512,29 @@ export default class ConversationList extends Component<
   }
 
   private scheduleScrollToFirstUnreadTarget() {
+    this.scheduleScroll(() => this.scrollToFirstUnreadTarget());
+  }
+
+  private scrolledTemporaryConversationToken?: number;
+
+  private scheduleScrollToTemporaryConversation() {
+    const request = this.props.scrollToTemporaryConversation;
+    if (!request || request.token === this.scrolledTemporaryConversationToken) return;
+    this.scheduleScroll(() => {
+      if (this.props.scrollToTemporaryConversation?.token !== request.token) return;
+      if (this.scrollConversationToTop(request.channel, "auto")) {
+        this.scrolledTemporaryConversationToken = request.token;
+        this.props.onTemporaryConversationScrolled?.(request.token);
+      }
+    });
+  }
+
+  private scheduleScroll(scroll: () => void) {
     if (
       typeof window === "undefined" ||
       typeof window.requestAnimationFrame !== "function"
     ) {
-      this.scrollToFirstUnreadTarget();
+      scroll();
       return;
     }
 
@@ -504,20 +543,26 @@ export default class ConversationList extends Component<
     }
     this.scrollFrame = window.requestAnimationFrame(() => {
       this.scrollFrame = null;
-      this.scrollToFirstUnreadTarget();
+      scroll();
     });
   }
 
   private scrollToFirstUnreadTarget() {
-    const root = this.listRef.current;
     const shouldTarget = this.props.shouldScrollToUnreadTarget;
-    if (!root || !shouldTarget) return;
+    if (!shouldTarget) return;
 
     const target = this.lastRenderableItems.find((conv) => shouldTarget(conv));
     if (!target) return;
 
-    const node = this.itemRefs.get(target.channel.getChannelKey());
-    if (!node) return;
+    if (this.scrollConversationToTop(target.channel, "smooth")) {
+      this.nudgeUnreadBadge(target.channel.getChannelKey());
+    }
+  }
+
+  private scrollConversationToTop(channel: Channel, behavior: ScrollBehavior): boolean {
+    const root = this.listRef.current;
+    const node = this.itemRefs.get(channel.getChannelKey());
+    if (!root || !node) return false;
 
     const rootRect = root.getBoundingClientRect();
     const nodeRect = node.getBoundingClientRect();
@@ -526,13 +571,13 @@ export default class ConversationList extends Component<
     if (typeof root.scrollTo === "function") {
       root.scrollTo({
         top: targetTop,
-        behavior: "smooth",
+        behavior,
       });
     } else {
       root.scrollTop = targetTop;
     }
 
-    this.nudgeUnreadBadge(target.channel.getChannelKey());
+    return true;
   }
 
   private nudgeUnreadBadge(channelKey: string) {
@@ -722,7 +767,10 @@ export default class ConversationList extends Component<
     threadUnread = 0,
     threadHasMention = false
   ) {
-    let channelInfo = conversationWrap.channelInfo;
+    let channelInfo = conversationWrap.channelInfo || getImChannelInfo(
+      WKSDK.shared(),
+      conversationWrap.channel
+    );
     if (!channelInfo) {
       void fetchImChannelInfo(WKSDK.shared(), conversationWrap.channel);
     }
@@ -798,6 +846,9 @@ export default class ConversationList extends Component<
     }
 
     const { select, onClick } = this.props;
+    const isTemporary = this.props.temporarilyPinnedConversations?.some(
+      (item) => item.channel.isEqual(conversationWrap.channel)
+    ) || this.props.temporaryVirtualChannelKeys?.has(conversationWrap.channel.getChannelKey());
     const { locatingUnreadKey, locatingUnreadPulse } = this.state;
     const typing = TypingManager.shared.getTyping(conversationWrap.channel);
     const selected = select && select.isEqual(conversationWrap.channel);
@@ -805,8 +856,8 @@ export default class ConversationList extends Component<
     // parent item receives the collapsed unread count. Recent mode renders
     // threads as independent rows and must keep both parent unread and mention
     // state independent from their child threads.
-    const totalUnread = conversationWrap.unread + threadUnread;
-    const hasMention = conversationWrap.isMentionMe;
+    const totalUnread = isTemporary ? 0 : conversationWrap.unread + threadUnread;
+    const hasMention = isTemporary ? false : conversationWrap.isMentionMe;
     const visibleSimpleReminders = conversationWrap.simpleReminders?.filter(
       (r) => !r.done && r.reminderType !== ReminderType.ReminderTypeMentionMe
     );
@@ -897,7 +948,7 @@ export default class ConversationList extends Component<
                       className="wk-conv-channel-icon wk-conv-thread-icon"
                     />
                   )}
-                  {channelInfo?.orgData.displayName}
+                  {channelInfo?.orgData?.displayName || channelInfo?.title || t("base.chatPage.nameUnavailable")}
                 </h3>
                 {shouldShowExternalBadge(
                   conversationWrap.channel.channelType,
@@ -936,18 +987,21 @@ export default class ConversationList extends Component<
                     </svg>
                   </span>
                 )}
-                <div className="wk-conversationlist-item-time">
-                  <span>
-                    {getTimeStringAutoShort2(
-                      conversationWrap.timestamp * 1000,
-                      true
-                    )}
-                  </span>
-                </div>
+                {!isTemporary && (
+                  <div className="wk-conversationlist-item-time">
+                    <span>
+                      {getTimeStringAutoShort2(
+                        conversationWrap.timestamp * 1000,
+                        true
+                      )}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
-            <div className="wk-conversationlist-item-right-second-line">
-              <div className="wk-conversationlist-item-lastmsg">
+            {!isTemporary && (
+              <div className="wk-conversationlist-item-right-second-line">
+                <div className="wk-conversationlist-item-lastmsg">
                 {!typing ? (
                   <label
                     className="wk-reminder"
@@ -974,9 +1028,9 @@ export default class ConversationList extends Component<
                 {typing
                   ? this._getTypingUI(conversationWrap)
                   : this.lastContent(conversationWrap)}
-              </div>
-              {(hasMention || is1v1Priority || totalUnread > 0) && (
-                <span className="wk-conversationlist-item-indicators">
+                </div>
+                {(hasMention || is1v1Priority || totalUnread > 0) && (
+                  <span className="wk-conversationlist-item-indicators">
                   {hasMention && (
                     <span className="wk-mention" aria-hidden="true">
                       {t("base.conversationList.mentionMarker")}
@@ -998,9 +1052,10 @@ export default class ConversationList extends Component<
                       {totalUnread > 99 ? "99+" : totalUnread}
                     </span>
                   )}
-                </span>
-              )}
-            </div>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1008,7 +1063,9 @@ export default class ConversationList extends Component<
   }
 
   onTop(conversationWrap: ConversationWrap) {
-    const channelInfo = conversationWrap.channelInfo;
+    const channelInfo = conversationWrap.channelInfo || getImChannelInfo(
+      WKSDK.shared(), conversationWrap.channel
+    );
     const isThread =
       conversationWrap.channel.channelType === ChannelTypeCommunityTopic;
     if (!isThread && !channelInfo) return;
@@ -1062,6 +1119,10 @@ export default class ConversationList extends Component<
   }
 
   onHideConversation(channel: Channel) {
+    if (this.props.temporaryVirtualChannelKeys?.has(channel.getChannelKey())) {
+      this.props.onDismissTemporaryConversation?.(channel);
+      return;
+    }
     void hideConversation(channel, {
       // “不显示”同时结束旧未读；先清未读再删除，避免清未读写操作把已删除会话建回最近页。
       clearUnread: (target) =>
@@ -1092,6 +1153,7 @@ export default class ConversationList extends Component<
         WKApp.mittBus.emit("sidebar-reload" as any);
       },
     })
+      .then(() => this.props.onDismissTemporaryConversation?.(channel))
       .catch((err) => {
         Toast.error(err?.msg || t("base.conversationList.error.hideFailed"));
       });
@@ -1283,8 +1345,14 @@ export default class ConversationList extends Component<
     const { conversations, select, compact } = this.props;
     const { selectConversationWrap } = this.state;
 
+    const temporaryPinned = this.props.temporarilyPinnedConversations ?? [];
+    const temporaryKeys = new Set(
+      temporaryPinned.map((conversation) => conversation.channel.getChannelKey())
+    );
     const filtered =
-      conversations?.filter((c) => this.filterConversation(c)) ?? [];
+      conversations?.filter((c) =>
+        this.filterConversation(c) && !temporaryKeys.has(c.channel.getChannelKey())
+      ) ?? [];
 
     // compact（关注 tab）：把子区按父群嵌套；
     // 非 compact（最近 tab，design v3.1）：扁平按时间序，子区作为独立条目自带父频道面包屑。
@@ -1363,7 +1431,7 @@ export default class ConversationList extends Component<
 
     const { onThreadOverflowClick } = this.props;
     const { expandedGroupIds } = this.state;
-    this.lastRenderableItems = [...finalPinned, ...finalRecent].filter(
+    this.lastRenderableItems = [...finalPinned, ...temporaryPinned, ...finalRecent].filter(
       (item): item is ConversationWrap => !("type" in item)
     );
 
@@ -1449,6 +1517,9 @@ export default class ConversationList extends Component<
         onScroll={this._handleScroll}
       >
         {finalPinned.map(renderItem)}
+        {temporaryPinned.map((conversation) =>
+          this.conversationItem(conversation)
+        )}
         {finalRecent.map(renderItem)}
 
         <ContextMenus
@@ -1457,8 +1528,10 @@ export default class ConversationList extends Component<
           }}
           menus={(() => {
             const conv = selectConversationWrap;
-            const channelInfo = conv?.channelInfo;
             const channel = conv?.channel;
+            const channelInfo = conv?.channelInfo || (channel
+              ? getImChannelInfo(WKSDK.shared(), channel)
+              : undefined);
             const extraMenus = this.props.extraContextMenus
               ? this.props.extraContextMenus(conv)
               : [];
@@ -1470,7 +1543,11 @@ export default class ConversationList extends Component<
             const isPinned = conv ? isConversationPinned(conv) : false;
 
             // 1. 置顶 / 取消置顶（最近页个人、群聊和活跃子区）
-            if (!this.props.hidePin) {
+            // A new virtual row has no channel setting until its info arrives.
+            // Do not expose actions that would silently do nothing in that window.
+            const canChangeChannelSettings = !!channelInfo ||
+              channel?.channelType === ChannelTypeCommunityTopic;
+            if (!this.props.hidePin && canChangeChannelSettings) {
               menus.push({
                 title: isPinned
                   ? t("base.conversationList.context.unpin")
@@ -1563,15 +1640,17 @@ export default class ConversationList extends Component<
               channelInfo,
               parentChannelInfo: menuParentChannelInfo,
             })
-            menus.push({
-              title: menuEffectiveMute
-                ? t("base.conversationList.context.unmute")
-                : t("base.conversationList.context.mute"),
-              icon: menuEffectiveMute ? BellOff : Bell,
-              onClick: () => {
-                if (channelInfo) this.onMuteWithValue(!menuEffectiveMute, channelInfo, channel);
-              },
-            });
+            if (canChangeChannelSettings && channelInfo) {
+              menus.push({
+                title: menuEffectiveMute
+                  ? t("base.conversationList.context.unmute")
+                  : t("base.conversationList.context.mute"),
+                icon: menuEffectiveMute ? BellOff : Bell,
+                onClick: () => {
+                  this.onMuteWithValue(!menuEffectiveMute, channelInfo, channel);
+                },
+              });
+            }
 
             // 独立分组：关注页个人/群聊的“移动到分组”，以及最近页常驻的“不显示该会话”。
             if (trailingMenus.length > 0 || !this.props.hideCloseChat) {

@@ -237,6 +237,7 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
       if (!locateTarget.isCurrentChannel || !conversationContext) {
         WKApp.endpoints.showConversation(locateTarget.channel, {
           initLocateMessageSeq: locateTarget.messageSeq,
+          fromSearch: true,
         });
         return;
       }
