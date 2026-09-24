@@ -1,0 +1,169 @@
+/*
+ * 「移出成员」页专属样式（PRD §3.3 / §3.4）。
+ *
+ * 行样式仍复用 list.css 的 .wk-subscrierlist-list-item / -item-avatar /
+ * -item-name —— 那些是成员行的既有视觉契约，抄一份只会漂移。
+ * 这里只补分类头、圆形多选框、分组容器、空态、截断提示这些本页独有的部分。
+ */
+
+.wk-memberremoval {
+    padding-bottom: var(--wk-sp-4);
+}
+
+.wk-memberremoval-group + .wk-memberremoval-group {
+    margin-top: var(--wk-sp-2);
+}
+
+/*
+ * 分类头：标题文字在左、chevron 在右（对齐设计稿）。
+ *
+ * 整行是一个点击区（展开 + 滚动定位），chevron 是嵌在其中的独立按钮（纯折叠）。
+ * §3.4 要求两者职责分离，所以 chevron 必须 stopPropagation —— 否则点它会同时
+ * 触发外层的滚动定位，变成「收起的同时又滚动」。
+ */
+.wk-memberremoval-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--wk-sp-2);
+    padding: var(--wk-sp-2) var(--wk-sp-5);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--wk-bg-surface);
+    cursor: pointer;
+    user-select: none;
+}
+
+.wk-memberremoval-group-header:hover .wk-memberremoval-group-label {
+    color: var(--wk-text-primary);
+}
+
+.wk-memberremoval-group-header:focus-visible {
+    outline: 2px solid var(--wk-color-accent);
+    outline-offset: -2px;
+}
+
+.wk-memberremoval-group-label {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--wk-text-primary);
+    font-size: var(--wk-text-size-md);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wk-memberremoval-group-chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--wk-sp-5);
+    height: var(--wk-sp-5);
+    flex: 0 0 auto;
+    padding: 0;
+    border: 0;
+    border-radius: var(--wk-r-xs);
+    background: transparent;
+    color: var(--wk-text-tertiary);
+    cursor: pointer;
+}
+
+.wk-memberremoval-group-chevron:hover {
+    background: var(--wk-bg-hover);
+    color: var(--wk-text-secondary);
+}
+
+/*
+ * chevron 方向：收起态朝上、展开态朝下（设计稿的 ⌄ 是展开态）。
+ * 基础 svg 画的是朝下的 ⌄，所以收起态翻 180°、展开态归位。
+ *
+ * transform 与 transition 必须写在**同一个**规则里 —— 拆成两个同名选择器时
+ * 后一个会整块覆盖前一个的 transform/transition，翻转动画会默默消失。
+ */
+.wk-memberremoval-group-chevron svg {
+    width: var(--wk-sp-3);
+    height: var(--wk-sp-3);
+    transform: rotate(180deg);
+    transition: transform var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-memberremoval-group-chevron-expanded svg {
+    transform: rotate(0deg);
+}
+
+/*
+ * 圆形多选框。
+ *
+ * 不用 Semi 的 Checkbox：它是方形的，覆盖其内部样式做成圆形会依赖它的 DOM 结构，
+ * 升级即碎。语义和键盘焦点放在整行上，这里只负责视觉。
+ */
+.wk-memberremoval-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--wk-sp-5);
+    height: var(--wk-sp-5);
+    flex: 0 0 auto;
+    border: 1.5px solid var(--wk-border-strong, var(--wk-border-subtle));
+    border-radius: 50%;
+    background: transparent;
+    color: var(--wk-color-accent);
+    transition: background var(--wk-dur-fast) var(--wk-ease),
+        border-color var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-memberremoval-check svg {
+    width: var(--wk-sp-3);
+    height: var(--wk-sp-3);
+}
+
+.wk-memberremoval-check-on {
+    border-color: var(--wk-color-accent);
+    background: var(--wk-bg-selected);
+}
+
+/* 整行可点即切换选中，所以行给 pointer 手型（与浏览列表的“点开名片”区分开）。 */
+.wk-memberremoval-item {
+    cursor: pointer;
+}
+
+.wk-memberremoval-item:focus-visible {
+    outline: 2px solid var(--wk-color-accent);
+    outline-offset: -2px;
+}
+
+.wk-memberremoval-group-truncated {
+    padding: var(--wk-sp-2) var(--wk-sp-5);
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-sm);
+    line-height: var(--wk-sp-5);
+}
+
+.wk-memberremoval-empty {
+    padding: var(--wk-sp-8) var(--wk-sp-5);
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-md);
+    text-align: center;
+}
+
+.wk-memberremoval-load-more {
+    margin-top: var(--wk-sp-3);
+    padding: var(--wk-sp-2) var(--wk-sp-4);
+    border: 1px solid var(--wk-color-accent);
+    border-radius: var(--wk-r-sm);
+    background: transparent;
+    color: var(--wk-color-accent);
+    cursor: pointer;
+}
+
+.wk-memberremoval-continuation {
+    padding: var(--wk-sp-2) var(--wk-sp-5) var(--wk-sp-6);
+    text-align: center;
+}
+
+.wk-memberremoval-finish-btn.semi-button {
+    --semi-color-primary: var(--wk-color-accent);
+    --semi-color-primary-hover: var(--wk-color-accent-hover);
+    --semi-color-primary-active: var(--wk-color-accent-hover);
+}

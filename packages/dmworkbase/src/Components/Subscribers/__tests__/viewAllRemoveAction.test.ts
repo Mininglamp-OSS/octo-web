@@ -1,22 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
-// 这条测试专门钉住 Subscribers/index.tsx 里「查看全部」路径对 removeAction 的透传
-// （octo-web#1511）。
-//
-// 为什么单独立一个文件：评审做过变异测试——把 `removeAction={removeAction}` 从
-// 那一行删掉，既有的 65 个测试全绿。原来那条名为「exposes removeAction to the
-// view-all path too」的用例只断言了 section.rows[0].properties.removeAction 存在，
-// 距离真正消费它的那次 render 还差一跳。普通成员唯一能到达移除按钮的路径就是
-// 「查看全部」，所以这一跳断了，功能对他们就是不可达的。
-//
-// 实现上不走 DOM：Subscribers.render() 返回的是普通 React 元素对象，
-// 直接遍历树、取到「查看全部」节点的 onClick 调用即可，既不用挂载也不用
-// 处理组件里的 require(png) 资源。
+// 「查看全部」保留普通成员移除自己 Bot 的兜底能力，避免 Bot 不在本地缓存时
+// 减号入口不亮后完全无路可达。
 
 vi.mock("../../../App", () => ({
   default: {
     loginInfo: { uid: "me" },
-    endpoints: { organizationalTool: (_channel: unknown, node: unknown) => node },
+    endpoints: {
+      organizationalTool: (_channel: unknown, node: unknown) => node,
+    },
     shared: { baseContext: { showUserInfo: vi.fn() } },
   },
 }));
@@ -33,7 +25,10 @@ type AnyElement = {
 };
 
 /** 深度优先找到第一个 className 命中的元素。 */
-function findByClassName(node: unknown, className: string): AnyElement | undefined {
+function findByClassName(
+  node: unknown,
+  className: string
+): AnyElement | undefined {
   if (!node || typeof node !== "object") return undefined;
   if (Array.isArray(node)) {
     for (const child of node) {
@@ -61,12 +56,15 @@ describe("Subscribers · 查看全部路径", () => {
     memberCount: () => subscriberCount,
   });
 
-  const renderAndClickViewAll = (removeAction?: unknown) => {
+  const renderAndClickViewAll = () => {
     const context = { push: vi.fn(), routeData: () => ({}) };
     const props = {
       context: context as never,
       channel: { getChannelKey: () => "g1" } as never,
-      removeAction: removeAction as never,
+      removeAction: {
+        canRemove: vi.fn(() => true),
+        onRemove: vi.fn(async () => undefined),
+      },
     };
     const component = new Subscribers(props);
     // i18n 在 render 里通过 this.context 取，塞一个恒等 t 即可。
@@ -85,21 +83,21 @@ describe("Subscribers · 查看全部路径", () => {
     (viewAll?.props?.onClick as () => void)();
 
     expect(context.push).toHaveBeenCalledTimes(1);
-    return context.push.mock.calls[0][0] as AnyElement;
+    return {
+      pushed: context.push.mock.calls[0][0] as AnyElement,
+      removeAction: props.removeAction,
+    };
   };
 
-  it("把 removeAction 透传给「查看全部」打开的成员列表", () => {
-    // 这就是变异测试证明未被覆盖的那一行。
-    const removeAction = { canRemove: vi.fn(), onRemove: vi.fn() };
-    const pushed = renderAndClickViewAll(removeAction);
-    expect(
-      pushed.props?.removeAction,
-      "「查看全部」必须把 removeAction 带给 SubscriberList —— 这是普通成员唯一的移除入口"
-    ).toBe(removeAction);
+  it("把普通成员的自有 Bot 移除兜底带进查看全部列表", () => {
+    const { pushed, removeAction } = renderAndClickViewAll();
+    expect(pushed.props?.removeAction).toBe(removeAction);
   });
 
-  it("没有 removeAction 时保持原样，不会凭空造一个", () => {
-    const pushed = renderAndClickViewAll(undefined);
-    expect(pushed.props?.removeAction).toBeUndefined();
+  it("仍然正常打开成员列表并带上本地搜索", () => {
+    // 解耦不等于把这条路径弄坏：列表本身、以及它的拼音本地搜索都要照常工作。
+    const { pushed } = renderAndClickViewAll();
+    expect(pushed.props?.channel).toBeTruthy();
+    expect(typeof pushed.props?.localSearch).toBe("function");
   });
 });

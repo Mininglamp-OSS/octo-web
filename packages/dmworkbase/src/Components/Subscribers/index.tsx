@@ -21,15 +21,14 @@ export interface SubscribersProps {
   context: RouteContext<any>;
   channel: any;
   onAdd?: () => void;
-  onRemove?: () => void;
   /**
-   * 透传给「查看全部」打开的成员列表（octo-web#1511）。
+   * 打开「移出成员」独立页（features/channelSetting/channelSettingMemberSection）。
    *
-   * 之前这条路径不带 removeAction，移除按钮只存在于群主/管理员专用的
-   * 「移除成员」图标路径里；普通成员即使拥有某个 bot 也没有任何入口。
-   * 逐行是否渲染仍由 removeAction.canRemove 决定，因此对不拥有 bot 的
-   * 普通成员没有任何可见变化。
+   * 本组件只负责减号图标的可见性（vm.showRemove()）与点击转发，不再关心移除的
+   * 行为本身 —— 移除页是一条独立路径，有自己的过滤、分类与权限判定。
    */
+  onRemove?: () => void;
+  /** 普通成员在查看全部列表中移除自己 Bot 的兜底入口。 */
   removeAction?: SubscriberListProps["removeAction"];
 }
 
@@ -62,9 +61,7 @@ export class Subscribers extends Component<SubscribersProps> {
         }}
       >
         <div className="wk-subscribers-item-avatar-wrap">
-          <WKAvatar
-            channel={new Channel(subscriber.uid, ChannelTypePerson)}
-          />
+          <WKAvatar channel={new Channel(subscriber.uid, ChannelTypePerson)} />
           {subscriber.role === GroupRole.owner && (
             <span className="wk-subscribers-item-role-badge wk-subscribers-item-role-badge-owner">
               {this.context.t("base.subscribers.role.owner")}

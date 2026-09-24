@@ -330,4 +330,93 @@ describe("SubscriberListVM local search", () => {
       ])
     );
   });
+
+  it("bounds sparse auto-paging and exposes a continuation state", async () => {
+    subscribersRequest.mockImplementation(async (_channel, options) =>
+      Array.from({ length: 50 }, (_, index) => ({
+        uid: `page-${options.page}-${index}`,
+        name: "Not removable",
+      }))
+    );
+    const vm = new SubscriberListVM(channel, () => false, undefined, 5);
+    (vm as any)._isMounted = true;
+
+    await vm.requestSubscribers();
+
+    expect(subscribersRequest).toHaveBeenCalledTimes(5);
+    expect(vm.firstLoadSettled).toBe(true);
+    expect(vm.autoPaging).toBe(false);
+    expect(vm.autoPageLimitReached).toBe(true);
+    expect(vm.hasMore).toBe(true);
+  });
+
+  it("reports a bounded page failure instead of an empty result", async () => {
+    subscribersRequest.mockRejectedValue(new Error("network failed"));
+    const vm = new SubscriberListVM(channel, () => false, undefined, 5);
+    (vm as any)._isMounted = true;
+
+    await vm.requestSubscribers();
+
+    expect(vm.firstLoadSettled).toBe(true);
+    expect(vm.loadError).toBe(true);
+    expect(vm.subscribers).toEqual([]);
+  });
+
+  it("does not add a sparse auto-page tail to legacy refresh consumers", async () => {
+    subscribersRequest.mockResolvedValue(
+      Array.from({ length: 50 }, (_, index) => ({
+        uid: `member-${index}`,
+        name: `Member ${index}`,
+      })) as Subscriber[]
+    );
+    const vm = new SubscriberListVM(channel, () => false);
+    (vm as any)._isMounted = true;
+
+    await vm.refreshCurrentSearch();
+
+    expect(subscribersRequest).toHaveBeenCalledOnce();
+    expect(vm.currPage).toBe(1);
+    expect(vm.autoPaging).toBe(false);
+  });
+
+  it("ignores manual load-more while bounded auto-paging is active", async () => {
+    const vm = new SubscriberListVM(channel, () => false, undefined, 5);
+    (vm as any)._isMounted = true;
+    vm.autoPaging = true;
+    vm.hasMore = true;
+
+    await vm.loadMoreSubscribersIfNeed();
+
+    expect(subscribersRequest).not.toHaveBeenCalled();
+    expect(vm.currPage).toBe(1);
+  });
+
+  it("lets a legacy filtered consumer continue after an auto-page failure", async () => {
+    const firstPage = Array.from({ length: 50 }, (_, index) => ({
+      uid: index === 0 ? "match-1" : `page-1-${index}`,
+      name: `Page 1 ${index}`,
+    })) as Subscriber[];
+    subscribersRequest
+      .mockResolvedValueOnce(firstPage)
+      .mockRejectedValueOnce(new Error("page 2 failed"))
+      .mockResolvedValueOnce([
+        { uid: "match-3", name: "Match on page 3" },
+      ] as Subscriber[]);
+    const vm = new SubscriberListVM(channel, (subscriber) =>
+      subscriber.uid.startsWith("match-")
+    );
+    (vm as any)._isMounted = true;
+
+    await expect(vm.requestSubscribers()).rejects.toThrow("page 2 failed");
+    expect(vm.autoPaging).toBe(false);
+    expect(vm.autoPageLimitReached).toBe(false);
+
+    await vm.loadMoreSubscribersIfNeed();
+
+    expect(subscribersRequest).toHaveBeenCalledTimes(3);
+    expect(vm.subscribers.map((subscriber) => subscriber.uid)).toEqual([
+      "match-1",
+      "match-3",
+    ]);
+  });
 });

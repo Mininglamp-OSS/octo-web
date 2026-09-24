@@ -17,13 +17,15 @@ export class RouteContextConfig {
     title?: ReactNode
     showFinishButton?: boolean
     finishButtonTitle?: string
+    finishButtonClassName?: string
     onFinish?: () => void
     onFinishContext?:(finishButtonContext:FinishButtonContext) => void
 
-    constructor(v: { title?: ReactNode, showFinishButton?: boolean, finishButtonTitle?: string, onFinish?: () => void,onFinishContext?:(finishButtonContext:FinishButtonContext) => void }) {
+    constructor(v: { title?: ReactNode, showFinishButton?: boolean, finishButtonTitle?: string, finishButtonClassName?: string, onFinish?: () => void,onFinishContext?:(finishButtonContext:FinishButtonContext) => void }) {
          this.title = v.title
          this.showFinishButton = v.showFinishButton
          this.finishButtonTitle = v.finishButtonTitle
+         this.finishButtonClassName = v.finishButtonClassName
          this.onFinish = v.onFinish
          this.onFinishContext = v.onFinishContext
     }
