@@ -200,8 +200,9 @@ export class SubscriberListVM extends ProviderListener {
       !!this.filter && this.hasMore && this.subscribers.length < this.limit;
     const withinBudget =
       this.maxAutoPages === undefined || this.currPage < this.maxAutoPages;
-    this.autoPaging = needsMore && withinBudget;
-    this.autoPageLimitReached = needsMore && !withinBudget;
+    const boundedAutoPaging = this.maxAutoPages !== undefined;
+    this.autoPaging = boundedAutoPaging && needsMore && withinBudget;
+    this.autoPageLimitReached = boundedAutoPaging && needsMore && !withinBudget;
     this.notifyListener();
     this.onSubscribersLoaded?.(this.subscribers);
 
@@ -255,7 +256,7 @@ export class SubscriberListVM extends ProviderListener {
   };
 
   loadMoreSubscribersIfNeed = async () => {
-    if (this.loading || !this.hasMore) {
+    if (this.loading || this.autoPaging || !this.hasMore) {
       return;
     }
     this.loading = true;

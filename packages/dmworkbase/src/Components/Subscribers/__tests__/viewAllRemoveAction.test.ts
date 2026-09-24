@@ -83,19 +83,20 @@ describe("Subscribers · 查看全部路径", () => {
     (viewAll?.props?.onClick as () => void)();
 
     expect(context.push).toHaveBeenCalledTimes(1);
-    return context.push.mock.calls[0][0] as AnyElement;
+    return {
+      pushed: context.push.mock.calls[0][0] as AnyElement,
+      removeAction: props.removeAction,
+    };
   };
 
   it("把普通成员的自有 Bot 移除兜底带进查看全部列表", () => {
-    const pushed = renderAndClickViewAll();
-    expect(pushed.props?.removeAction).toBeTruthy();
-    expect(typeof pushed.props?.removeAction.canRemove).toBe("function");
-    expect(typeof pushed.props?.removeAction.onRemove).toBe("function");
+    const { pushed, removeAction } = renderAndClickViewAll();
+    expect(pushed.props?.removeAction).toBe(removeAction);
   });
 
   it("仍然正常打开成员列表并带上本地搜索", () => {
     // 解耦不等于把这条路径弄坏：列表本身、以及它的拼音本地搜索都要照常工作。
-    const pushed = renderAndClickViewAll();
+    const { pushed } = renderAndClickViewAll();
     expect(pushed.props?.channel).toBeTruthy();
     expect(typeof pushed.props?.localSearch).toBe("function");
   });

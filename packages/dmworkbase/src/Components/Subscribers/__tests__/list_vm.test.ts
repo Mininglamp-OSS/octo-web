@@ -361,4 +361,33 @@ describe("SubscriberListVM local search", () => {
     expect(vm.loadError).toBe(true);
     expect(vm.subscribers).toEqual([]);
   });
+
+  it("does not add a sparse auto-page tail to legacy refresh consumers", async () => {
+    subscribersRequest.mockResolvedValue(
+      Array.from({ length: 50 }, (_, index) => ({
+        uid: `member-${index}`,
+        name: `Member ${index}`,
+      })) as Subscriber[]
+    );
+    const vm = new SubscriberListVM(channel, () => false);
+    (vm as any)._isMounted = true;
+
+    await vm.refreshCurrentSearch();
+
+    expect(subscribersRequest).toHaveBeenCalledOnce();
+    expect(vm.currPage).toBe(1);
+    expect(vm.autoPaging).toBe(false);
+  });
+
+  it("ignores manual load-more while bounded auto-paging is active", async () => {
+    const vm = new SubscriberListVM(channel, () => false, undefined, 5);
+    (vm as any)._isMounted = true;
+    vm.autoPaging = true;
+    vm.hasMore = true;
+
+    await vm.loadMoreSubscribersIfNeed();
+
+    expect(subscribersRequest).not.toHaveBeenCalled();
+    expect(vm.currPage).toBe(1);
+  });
 });

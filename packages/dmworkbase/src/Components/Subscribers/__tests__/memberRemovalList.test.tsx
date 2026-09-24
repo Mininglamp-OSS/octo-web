@@ -199,6 +199,58 @@ describe("MemberRemovalList · 多选交互", () => {
     expect(retry).toHaveBeenCalledOnce();
   });
 
+  it("已有成员时加载失败也显示重试，并在恢复后重新显示继续加载", () => {
+    const retry = vi.fn();
+    const component = createComponent();
+    const failed = render(component, roster, {
+      firstLoadSettled: true,
+      loadError: true,
+      hasMore: true,
+      retry,
+    });
+
+    expect(collectByTestId(failed, "member-removal-row")).not.toHaveLength(0);
+    expect(collectByTestId(failed, "member-removal-error")).toHaveLength(1);
+    expect(collectByTestId(failed, "member-removal-load-more")).toHaveLength(0);
+    const [retryButton] = collectByTestId(failed, "member-removal-retry");
+    (retryButton.props?.onClick as () => void)();
+    expect(retry).toHaveBeenCalledOnce();
+
+    const healed = render(component, roster, {
+      firstLoadSettled: true,
+      loadError: false,
+      hasMore: true,
+    });
+    expect(collectByTestId(healed, "member-removal-error")).toHaveLength(0);
+    expect(collectByTestId(healed, "member-removal-load-more")).toHaveLength(1);
+  });
+
+  it("首个服务端结果到达后不再重新混入初始快照", () => {
+    const component = new MemberRemovalList({
+      channel: new Channel("g1", 2),
+      initialSubscribers: roster,
+      viewerUid: "owner",
+      viewerRole: GroupRole.owner,
+    });
+    (component as unknown as { context: unknown }).context = {
+      t: (key: string) => key,
+    };
+
+    const firstPaint = render(component, [], { firstLoadSettled: false });
+    expect(collectByTestId(firstPaint, "member-removal-row")).toHaveLength(1);
+
+    (component as any).onSubscribersLoaded([]);
+    const afterSearchClear = render(component, [], {
+      firstLoadSettled: false,
+    });
+    expect(
+      collectByTestId(afterSearchClear, "member-removal-row")
+    ).toHaveLength(0);
+    expect(
+      collectByTestId(afterSearchClear, "member-removal-loading")
+    ).toHaveLength(1);
+  });
+
   it("仅在加载完成且没有后续页时显示确定性空态", () => {
     const content = render(createComponent(), [], {
       firstLoadSettled: true,

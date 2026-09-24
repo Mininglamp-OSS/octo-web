@@ -108,6 +108,7 @@ export class MemberRemovalList extends Component<
   private currentVM?: SubscriberListVM;
   private unsubscribeSubscriberChangeListener?: () => void;
   private refreshBaselineUids?: Set<string>;
+  private initialSeedConsumed = false;
   constructor(props: MemberRemovalListProps) {
     super(props);
     this.state = {
@@ -155,7 +156,7 @@ export class MemberRemovalList extends Component<
     let subscribers = vm.subscribers;
     if (
       !this.searching &&
-      !vm.firstLoadSettled &&
+      !this.initialSeedConsumed &&
       this.props.initialSubscribers?.length
     ) {
       const merged = new Map(
@@ -231,6 +232,7 @@ export class MemberRemovalList extends Component<
   }
 
   private onSubscribersLoaded = (subscribers: Subscriber[]) => {
+    this.initialSeedConsumed = true;
     const baseline = this.refreshBaselineUids;
     if (!baseline) return;
     const refreshedUids = new Set(
@@ -560,22 +562,7 @@ export class MemberRemovalList extends Component<
 
   private renderEmptyState(vm: SubscriberListVM) {
     if (vm.loadError) {
-      return (
-        <div
-          className="wk-memberremoval-empty"
-          data-testid="member-removal-error"
-        >
-          <div>{this.context.t("base.subscribers.removalLoadFailed")}</div>
-          <button
-            type="button"
-            className="wk-memberremoval-load-more"
-            data-testid="member-removal-retry"
-            onClick={() => vm.retry()}
-          >
-            {this.context.t("base.subscribers.removalRetry")}
-          </button>
-        </div>
-      );
+      return this.renderLoadError(vm);
     }
     if (!vm.firstLoadSettled || vm.autoPaging) {
       return (
@@ -628,6 +615,25 @@ export class MemberRemovalList extends Component<
     );
   }
 
+  private renderLoadError(vm: SubscriberListVM) {
+    return (
+      <div
+        className="wk-memberremoval-empty"
+        data-testid="member-removal-error"
+      >
+        <div>{this.context.t("base.subscribers.removalLoadFailed")}</div>
+        <button
+          type="button"
+          className="wk-memberremoval-load-more"
+          data-testid="member-removal-retry"
+          onClick={() => vm.retry()}
+        >
+          {this.context.t("base.subscribers.removalRetry")}
+        </button>
+      </div>
+    );
+  }
+
   render() {
     return (
       <Provider
@@ -676,11 +682,13 @@ export class MemberRemovalList extends Component<
               ) : (
                 <>
                   {groups.map((group) => this.renderGroup(group, groups))}
-                  {vm.hasMore && !vm.autoPaging && !vm.loadError && (
+                  {vm.loadError ? (
+                    this.renderLoadError(vm)
+                  ) : vm.hasMore && !vm.autoPaging ? (
                     <div className="wk-memberremoval-continuation">
                       {this.renderLoadMore(vm)}
                     </div>
-                  )}
+                  ) : null}
                 </>
               )}
             </div>

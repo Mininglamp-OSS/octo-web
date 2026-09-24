@@ -48,6 +48,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
   TextArea: vi.fn(),
   Toast: {
     error: vi.fn(),
+    success: vi.fn(),
     warning: vi.fn(),
   },
 }));
@@ -306,6 +307,39 @@ describe("channel setting section builders", () => {
     expect(context.pop).not.toHaveBeenCalled();
     config.onFinish();
     expect(wkConfirm).toHaveBeenCalledTimes(2);
+  });
+
+  it("submits all selected members once, then refreshes and closes", async () => {
+    const context = createContext({
+      subscriberOfMe: { uid: "alice", role: GroupRole.owner },
+      subscribers: [
+        { uid: "alice", role: GroupRole.owner },
+        { uid: "bob", role: GroupRole.normal },
+        { uid: "carol", role: GroupRole.normal },
+      ],
+    });
+    const section = buildChannelMembersSection(context);
+    section?.rows?.[0].properties.onRemove();
+    const [view, config] = context.push.mock.calls[0];
+    view.props.onSelectionChange([
+      { uid: "bob", name: "Bob" },
+      { uid: "carol", name: "Carol" },
+    ]);
+
+    config.onFinish();
+    const confirmation = vi.mocked(wkConfirm).mock.calls[0][0];
+    await confirmation.onOk();
+
+    expect(removeChannelSettingSubscribers).toHaveBeenCalledOnce();
+    expect(removeChannelSettingSubscribers).toHaveBeenCalledWith({
+      channel: context.routeData().channel,
+      uids: ["bob", "carol"],
+    });
+    expect(Toast.success).toHaveBeenCalledWith(
+      t("base.subscribers.removeSuccess")
+    );
+    expect(context.routeData().refresh).toHaveBeenCalledOnce();
+    expect(context.pop).toHaveBeenCalledOnce();
   });
 
   // 「移出成员」与「添加成员」必须完全解耦。
