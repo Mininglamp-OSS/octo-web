@@ -101,7 +101,11 @@ export class SubscriberListVM extends ProviderListener {
       );
     } catch (error) {
       if (!this._isMounted || requestVersion !== this._requestVersion) return;
-      if (this.maxAutoPages === undefined) throw error;
+      if (this.maxAutoPages === undefined) {
+        this.autoPaging = false;
+        this.autoPageLimitReached = false;
+        throw error;
+      }
       this.firstLoadSettled = true;
       this.loadError = true;
       this.autoPaging = false;
@@ -163,7 +167,11 @@ export class SubscriberListVM extends ProviderListener {
       );
     } catch (error) {
       if (!this._isMounted || requestVersion !== this._requestVersion) return;
-      if (this.maxAutoPages === undefined) throw error;
+      if (this.maxAutoPages === undefined) {
+        this.autoPaging = false;
+        this.autoPageLimitReached = false;
+        throw error;
+      }
       this.firstLoadSettled = true;
       this.loadError = true;
       this.autoPaging = false;

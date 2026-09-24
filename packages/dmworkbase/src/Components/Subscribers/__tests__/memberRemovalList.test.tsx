@@ -226,11 +226,13 @@ describe("MemberRemovalList · 多选交互", () => {
   });
 
   it("首个服务端结果到达后不再重新混入初始快照", () => {
+    const onSelectionChange = vi.fn();
     const component = new MemberRemovalList({
       channel: new Channel("g1", 2),
       initialSubscribers: roster,
       viewerUid: "owner",
       viewerRole: GroupRole.owner,
+      onSelectionChange,
     });
     (component as unknown as { context: unknown }).context = {
       t: (key: string) => key,
@@ -239,6 +241,15 @@ describe("MemberRemovalList · 多选交互", () => {
     const firstPaint = render(component, [], { firstLoadSettled: false });
     expect(collectByTestId(firstPaint, "member-removal-row")).toHaveLength(1);
 
+    applySelection(component, ["human"]);
+    (component as any).setState = (update: any, callback?: () => void) => {
+      const next =
+        typeof update === "function"
+          ? update((component as any).state)
+          : update;
+      (component as any).state = { ...(component as any).state, ...next };
+      callback?.();
+    };
     (component as any).onSubscribersLoaded([]);
     const afterSearchClear = render(component, [], {
       firstLoadSettled: false,
@@ -249,6 +260,29 @@ describe("MemberRemovalList · 多选交互", () => {
     expect(
       collectByTestId(afterSearchClear, "member-removal-loading")
     ).toHaveLength(1);
+    expect(Array.from((component as any).state.selected.keys())).toEqual([]);
+    expect(onSelectionChange).toHaveBeenLastCalledWith([]);
+  });
+
+  it("首屏请求失败时不再渲染可选择的旧缓存成员", () => {
+    const component = new MemberRemovalList({
+      channel: new Channel("g1", 2),
+      initialSubscribers: roster,
+      viewerUid: "owner",
+      viewerRole: GroupRole.owner,
+    });
+    (component as unknown as { context: unknown }).context = {
+      t: (key: string) => key,
+    };
+
+    const content = render(component, [], {
+      firstLoadSettled: true,
+      loadError: true,
+      hasMore: true,
+    });
+
+    expect(collectByTestId(content, "member-removal-row")).toHaveLength(0);
+    expect(collectByTestId(content, "member-removal-error")).toHaveLength(1);
   });
 
   it("仅在加载完成且没有后续页时显示确定性空态", () => {

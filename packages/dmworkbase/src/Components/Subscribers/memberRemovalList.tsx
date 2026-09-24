@@ -109,6 +109,7 @@ export class MemberRemovalList extends Component<
   private unsubscribeSubscriberChangeListener?: () => void;
   private refreshBaselineUids?: Set<string>;
   private initialSeedConsumed = false;
+  private initialSeedSelectionReconciled = false;
   constructor(props: MemberRemovalListProps) {
     super(props);
     this.state = {
@@ -153,9 +154,11 @@ export class MemberRemovalList extends Component<
   }
 
   private buildGroups(vm: SubscriberListVM): MemberRemovalGroup[] {
+    if (vm.firstLoadSettled) this.initialSeedConsumed = true;
     let subscribers = vm.subscribers;
     if (
       !this.searching &&
+      !vm.firstLoadSettled &&
       !this.initialSeedConsumed &&
       this.props.initialSubscribers?.length
     ) {
@@ -233,14 +236,22 @@ export class MemberRemovalList extends Component<
 
   private onSubscribersLoaded = (subscribers: Subscriber[]) => {
     this.initialSeedConsumed = true;
+    const candidates = new Set<string>();
+    if (!this.initialSeedSelectionReconciled) {
+      this.initialSeedSelectionReconciled = true;
+      for (const subscriber of this.props.initialSubscribers || []) {
+        candidates.add(subscriber.uid);
+      }
+    }
     const baseline = this.refreshBaselineUids;
-    if (!baseline) return;
+    for (const uid of baseline || []) candidates.add(uid);
+    if (candidates.size === 0) return;
     const refreshedUids = new Set(
       subscribers.map((subscriber) => subscriber.uid)
     );
     const selected = new Map(this.state.selected);
     for (const uid of selected.keys()) {
-      if (baseline.has(uid) && !refreshedUids.has(uid)) {
+      if (candidates.has(uid) && !refreshedUids.has(uid)) {
         selected.delete(uid);
       }
     }

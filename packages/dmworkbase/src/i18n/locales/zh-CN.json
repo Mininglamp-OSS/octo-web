@@ -1216,7 +1216,7 @@
   "subscribers.confirmRemoveBotContent": "确定将机器人 {{name}} 移出群聊吗？",
   "subscribers.confirmRemoveBotTitle": "移出机器人",
   "subscribers.confirmRemoveContent": "确定移除 {{name}} 吗？",
-  "subscribers.confirmRemoveBatchContent": "确定将选中的 {{count}} 位成员移出群聊吗？",
+  "subscribers.confirmRemoveBatchContent": "确定将选中的 {{count}} 位成员移出群聊吗？成员：{{names}}",
   "subscribers.removeSelectAtLeastOne": "请先选择要移出的成员",
   "subscribers.confirmRemoveTitle": "移除成员",
   "subscribers.groupMembersWithCount": "群成员（{{count}}）",

@@ -1216,7 +1216,7 @@
   "subscribers.confirmRemoveBotContent": "Remove the bot {{name}} from this group?",
   "subscribers.confirmRemoveBotTitle": "Remove bot",
   "subscribers.confirmRemoveContent": "Remove {{name}} from this group?",
-  "subscribers.confirmRemoveBatchContent": "Remove the {{count}} selected members from this group?",
+  "subscribers.confirmRemoveBatchContent": "Remove the {{count}} selected members from this group? Members: {{names}}",
   "subscribers.removeSelectAtLeastOne": "Select at least one member to remove",
   "subscribers.confirmRemoveTitle": "Remove member",
   "subscribers.groupMembersWithCount": "Group members ({{count}})",

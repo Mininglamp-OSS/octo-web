@@ -328,6 +328,11 @@ describe("channel setting section builders", () => {
 
     config.onFinish();
     const confirmation = vi.mocked(wkConfirm).mock.calls[0][0];
+    expect(confirmation.content).toBe(
+      t("base.subscribers.confirmRemoveBatchContent", {
+        values: { count: 2, names: "Bob, Carol" },
+      })
+    );
     await confirmation.onOk();
 
     expect(removeChannelSettingSubscribers).toHaveBeenCalledOnce();

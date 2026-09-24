@@ -125,11 +125,17 @@ export function buildChannelMembersSection(
                   }
                   const count = selected.length;
                   const uids = selected.map((item) => item.uid);
+                  const previewNames = selected
+                    .slice(0, 5)
+                    .map((item) => item.remark || item.name || item.uid)
+                    .join(", ");
+                  const names =
+                    selected.length > 5 ? `${previewNames}, …` : previewNames;
                   confirming = true;
                   wkConfirm({
                     title: t("base.subscribers.removeMemberTitle"),
                     content: t("base.subscribers.confirmRemoveBatchContent", {
-                      values: { count },
+                      values: { count, names },
                     }),
                     okText: t("base.subscribers.remove"),
                     okType: "danger",
