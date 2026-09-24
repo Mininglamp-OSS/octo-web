@@ -1,12 +1,12 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { i18n, I18nProvider } from "../../i18n";
 import { WorkspaceGroupEntry, type WorkspaceGroupEntryProps } from "./index";
 
 const workspace = {
   projectName: "Data Intelligence", linkedByName: "Evan",
-  source: "linked_existing" as const, canOpen: true, canManage: true, isAllMemberGroup: false,
+  canOpen: true, canManage: true, isAllMemberGroup: false,
 };
 function setup(overrides: Partial<WorkspaceGroupEntryProps> = {}) {
   const props = { workspace, onOpen: vi.fn(), onManage: vi.fn(), onRetry: vi.fn(), ...overrides };
@@ -20,6 +20,20 @@ describe("WorkspaceGroupEntry", () => {
   it("renders nothing without a relation", () => {
     setup({ workspace: null });
     expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("keeps initial load failure distinguishable from an unlinked group and allows retry", () => {
+    const { props } = setup({ workspace: null, error: "Unable to update the relation." });
+    fireEvent.click(screen.getByRole("button", { name: "Unable to update the relation. Retry" }));
+    expect(props.onRetry).toHaveBeenCalledOnce();
+    expect(props.onOpen).not.toHaveBeenCalled();
+    expect(props.onManage).not.toHaveBeenCalled();
+  });
+
+  it("renders a disabled loading control before the first relation is available", () => {
+    setup({ workspace: null, refreshing: true });
+    expect(screen.getByRole("button", { name: "Updating relation…" })).toBeDisabled();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("uses the Client workspace icon without an extra navigation arrow", () => {
@@ -54,6 +68,21 @@ describe("WorkspaceGroupEntry", () => {
     expect(screen.getByText("Evan")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Manage relation" }));
     expect(props.onManage).toHaveBeenCalledOnce();
+  });
+
+  it.each(["en-US", "zh-CN"])("only presents workspace and actor metadata in %s", async (locale) => {
+    i18n.setLocale(locale as "en-US" | "zh-CN", { persist: false });
+    const legacyContext = { ...workspace, source: "linked_existing", linkedAt: "2026-08-15T02:20:00Z" };
+    setup({ workspace: legacyContext, defaultOpen: true });
+    const dialog = await screen.findByRole("dialog", {
+      name: locale === "zh-CN" ? "工作空间关联" : "Workspace relation",
+    });
+    expect(within(dialog).getByRole("heading", { name: workspace.projectName })).toBeVisible();
+    expect(within(dialog).getByText("Evan")).toBeVisible();
+    expect(dialog.querySelectorAll("dt")).toHaveLength(1);
+    expect(dialog.querySelector("time")).toBeNull();
+    expect(within(dialog).queryByText(/关联方式|关联时间|时间未记录|Link method|Linked at|Existing group linked/)).toBeNull();
+    expect(dialog).not.toHaveTextContent("2026-08-15");
   });
 
   it.each([

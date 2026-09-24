@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => {
   return {
     command,
     summaryRequest,
+    workspaceGroupCommand: vi.fn(),
     routeQueue: { held: false, commits: [] as Array<() => void> },
     getCurrentImChannelInfo: vi.fn(),
     subscribeUnread: vi.fn((listener: (count: number) => void) => {
@@ -54,6 +55,22 @@ const mocks = vi.hoisted(() => {
     conversationManager: {
       addConversationListener: vi.fn(),
       removeConversationListener: vi.fn(),
+    },
+  };
+});
+
+vi.mock("./workspaceGroupHost", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./workspaceGroupHost")>();
+  return {
+    createWorkspaceGroupHost: (...args: Parameters<typeof actual.createWorkspaceGroupHost>) => {
+      const adapter = actual.createWorkspaceGroupHost(...args);
+      return {
+        ...adapter,
+        handleCommand: (command) => {
+          mocks.workspaceGroupCommand(command, args[1]());
+          adapter.handleCommand(command);
+        },
+      };
     },
   };
 });
@@ -126,7 +143,8 @@ vi.mock("@octo/base", () => {
     currentMenuId: "chat",
     switchToMenuById: undefined,
     config: {},
-    loginInfo: { logout: vi.fn() },
+    loginInfo: { logout: vi.fn(), uid: "user-a", token: "token-a", sessionRevision: 1 },
+    apiClient: { config: { apiURL: "https://example.test" } },
     endpoints: {
       showConversation: vi.fn((channel, opts) => {
         // EndpointCommon dispatches synchronously while chat is active:
@@ -463,6 +481,23 @@ describe("CommunicationShell", () => {
     await Promise.resolve();
     expect(mocks.bridge.reportNavigation).not.toHaveBeenCalled();
     expect(screen.queryByTestId("chat-content-page")).toBeNull();
+  });
+
+  it("invalidates workspace reads in the new space even when route cleanup throws", async () => {
+    const shell = await openWorkspaceGroup();
+    const pop = vi.spyOn(WKApp.routeRight, "popToRoot").mockImplementationOnce(() => {
+      throw new Error("route cleanup failed");
+    });
+    const command = { type: "spaceChanged", space: { id: "space-b", name: "B" } };
+    try {
+      expect(() => act(() => mocks.command.listener?.(command))).toThrow("route cleanup failed");
+      expect(mocks.workspaceGroupCommand).toHaveBeenCalledWith(command, {
+        spaceId: "space-b", sessionRevision: 1, ready: true, apiOrigin: "https://example.test",
+      });
+    } finally {
+      pop.mockRestore();
+      shell.unmount();
+    }
   });
 
   it("keeps one embedded Contacts header and preserves child state while switching visible pages", async () => {
