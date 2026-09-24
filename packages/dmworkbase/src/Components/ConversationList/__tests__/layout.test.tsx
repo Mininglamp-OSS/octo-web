@@ -368,6 +368,38 @@ function currentMenuOrder() {
 }
 
 describe("ConversationList temporary rows", () => {
+  it.each([1, 2, 3])("preserves a pinned external target's order and metadata for channel type %s", (channelType) => {
+    const a = makeConversation({ channelID: "pin-a", unread: 1 });
+    const target = {
+      ...makeConversation({ channelID: "pin-target", channelType, unread: 5, mention: true }),
+      extra: channelType === 3 ? { top: 1 } : undefined,
+    };
+    const c = makeConversation({ channelID: "pin-c", unread: 1 });
+    const recent = makeConversation({ channelID: "recent", unread: 1 });
+    for (const item of [a, target, c]) item.channelInfo.top = true;
+    target.remoteExtra = { draft: "saved draft" };
+    const renderList = (temporary: boolean) => act(() => {
+      ReactDOM.render(
+        <ConversationList conversations={[a, target, c, recent] as any}
+          temporarilyPinnedConversations={temporary ? [target] as any : []} />,
+        container,
+      );
+    });
+    const order = () => Array.from(container.querySelectorAll("[data-object-id]"))
+      .map(row => row.getAttribute("data-object-id"));
+    renderList(false);
+    expect(order()).toEqual(["pin-a", "pin-target", "pin-c", "recent"]);
+    renderList(true);
+    expect(order()).toEqual(["pin-a", "pin-target", "pin-c", "recent"]);
+    const row = container.querySelector('[data-object-id="pin-target"]')!;
+    expect(row.querySelector(".wk-conv-unread-num")?.textContent).toBe("5");
+    expect(row.querySelector(".wk-mention")).not.toBeNull();
+    expect(row.querySelector(".wk-conversationlist-item-time")).not.toBeNull();
+    expect(row.textContent).toContain("saved draft");
+    expect(target.unread).toBe(5);
+    expect(target.timestamp).toBe(1);
+  });
+
   it("deduplicates an existing temporary row below pinned rows and restores its metadata on release", () => {
     const pinned = makeConversation({ channelID: "pinned", unread: 0 });
     pinned.channelInfo.top = true;

@@ -56,13 +56,13 @@ describe("temporary conversation presentation lifecycle", () => {
   it("returns an existing conversation to its normal position on list refresh", () => {
     const state = openTemporaryConversation({}, channel("old"), hasOnly("old"));
 
-    expect(refreshTemporaryConversation(state)).toEqual({});
+    expect(refreshTemporaryConversation(state, hasOnly("old"))).toEqual({});
   });
 
   it("keeps a virtual temporary item through a list refresh", () => {
     const state = openTemporaryConversation({}, channel("new"), hasOnly());
 
-    expect(refreshTemporaryConversation(state)).toBe(state);
+    expect(refreshTemporaryConversation(state, hasOnly())).toBe(state);
   });
 
   it("keeps one virtual item after leaving it and replaces it on the next virtual external open", () => {
@@ -76,7 +76,7 @@ describe("temporary conversation presentation lifecycle", () => {
       .toHaveLength(1);
   });
 
-  it("replaces a virtual row with its real conversation without a duplicate", () => {
+  it("leaves a resolved virtual row to the regular list before the refresh event", () => {
     const state = openTemporaryConversation({}, channel("new"), hasOnly());
     const real = realConversation("new");
     const presentation = buildTemporaryConversationPresentation(
@@ -84,8 +84,21 @@ describe("temporary conversation presentation lifecycle", () => {
       (target) => target.channelID === "new" ? real : undefined,
     );
 
-    expect(presentation.conversations).toEqual([real]);
+    expect(presentation.conversations).toEqual([]);
     expect(presentation.virtualChannelKeys.size).toBe(0);
+  });
+
+  it("releases a virtual entry on refresh once its conversation exists", () => {
+    const initial = openTemporaryConversation({}, channel("new"), hasOnly());
+    const left = leaveTemporaryConversation(initial, channel("other"), hasOnly());
+
+    expect(refreshTemporaryConversation(left, hasOnly("new"))).toEqual({});
+  });
+
+  it("releases a resolved virtual entry when the same channel is opened again", () => {
+    const initial = openTemporaryConversation({}, channel("new"), hasOnly());
+
+    expect(openTemporaryConversation(initial, channel("new"), hasOnly("new"))).toEqual({});
   });
 
   it.each([false, true])("releases temporary presentation after sending with existing=%s", (existing) => {

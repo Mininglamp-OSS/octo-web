@@ -761,6 +761,15 @@ export default class ConversationList extends Component<
     return needShowOnlineStatus(channelInfo);
   }
 
+  private isTemporaryConversation(conversation: ConversationWrap): boolean {
+    const matches = (item: ConversationWrap) => item.channel.isEqual(conversation.channel);
+    const temporary = this.props.temporarilyPinnedConversations?.some(matches) ||
+      this.props.temporaryVirtualChannelKeys?.has(conversation.channel.getChannelKey());
+    // Real pins retain their place and metadata. A pinned virtual row must
+    // stay visible until it actually joins the regular conversation list.
+    return !!temporary && !(isConversationPinned(conversation) && this.props.conversations?.some(matches));
+  }
+
   conversationItem(
     conversationWrap: ConversationWrap,
     hasThreads = false,
@@ -846,9 +855,7 @@ export default class ConversationList extends Component<
     }
 
     const { select, onClick } = this.props;
-    const isTemporary = this.props.temporarilyPinnedConversations?.some(
-      (item) => item.channel.isEqual(conversationWrap.channel)
-    ) || this.props.temporaryVirtualChannelKeys?.has(conversationWrap.channel.getChannelKey());
+    const isTemporary = this.isTemporaryConversation(conversationWrap);
     const { locatingUnreadKey, locatingUnreadPulse } = this.state;
     const typing = TypingManager.shared.getTyping(conversationWrap.channel);
     const selected = select && select.isEqual(conversationWrap.channel);
@@ -1345,7 +1352,8 @@ export default class ConversationList extends Component<
     const { conversations, select, compact } = this.props;
     const { selectConversationWrap } = this.state;
 
-    const temporaryPinned = this.props.temporarilyPinnedConversations ?? [];
+    const temporaryPinned = (this.props.temporarilyPinnedConversations ?? [])
+      .filter((conversation) => this.isTemporaryConversation(conversation));
     const temporaryKeys = new Set(
       temporaryPinned.map((conversation) => conversation.channel.getChannelKey())
     );

@@ -1944,7 +1944,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
 
     this._onConversationListRefreshed = () => {
       this.setState((state) => ({
-        temporaryConversation: refreshTemporaryConversation(state.temporaryConversation),
+        temporaryConversation: refreshTemporaryConversation(state.temporaryConversation, hasConversation),
       }));
     };
     WKApp.mittBus.on("conversation-list-refreshed", this._onConversationListRefreshed);
@@ -2060,6 +2060,9 @@ export default class ChatPage extends Component<any, ChatPageState> {
             (channel) => {
               const fromViewModel = vm.findConversation(channel);
               if (fromViewModel) return fromViewModel;
+              // Keep the placeholder until the real row can render in Recent.
+              // An SDK-only match during hydration is not in that list yet.
+              if (temporaryConversation.active?.origin === "virtual") return undefined;
               const fromSdk = WKSDK.shared().conversationManager.findConversation(channel);
               return fromSdk ? new ConversationWrap(fromSdk) : undefined;
             },

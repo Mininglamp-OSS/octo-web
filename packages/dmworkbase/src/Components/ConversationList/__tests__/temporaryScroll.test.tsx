@@ -64,6 +64,77 @@ function geometry(container: HTMLElement, targetId: string) {
 }
 
 describe("temporary conversation scroll positioning", () => {
+  it("restores incoming unread metadata after leaving a virtual row and releases it on refresh", () => {
+    const sdk = WKSDK.shared();
+    const previousConversations = sdk.conversationManager.conversations;
+    const target = conversation("incoming-target");
+    const other = conversation("incoming-other");
+    sdk.conversationManager.conversations = [other.conversation];
+    const page = new ChatPage({});
+    vi.spyOn(page, "setState").mockImplementation((next) => {
+      const update = typeof next === "function" ? next(page.state, page.props) : next;
+      page.state = { ...page.state, ...update };
+    });
+    page.componentDidMount();
+    let conversations = [other];
+    const list = () => {
+      const presentation = buildTemporaryConversationPresentation(
+        page.state.temporaryConversation,
+        channel => conversations.find(item => item.channel.isEqual(channel)),
+      );
+      return <ConversationList conversations={conversations}
+        temporarilyPinnedConversations={presentation.conversations}
+        temporaryVirtualChannelKeys={presentation.virtualChannelKeys} />;
+    };
+    try {
+      WKApp.mittBus.emit("wk:temporarily-pin-conversation", { channel: target.channel, fromSearch: true });
+      WKApp.mittBus.emit("wk:sidebar-conversation-opened", other.channel);
+      expect(page.state.temporaryConversation.active?.origin).toBe("virtual");
+      const { container, rerender } = render(list());
+      expect(container.querySelector('[data-object-id="incoming-target"] .wk-conversationlist-item-time')).toBeNull();
+
+      // An incoming message publishes a real row before the refresh notification.
+      target.conversation.unread = 4;
+      target.conversation.remoteExtra.draft = "saved draft";
+      conversations = [target, other];
+      sdk.conversationManager.conversations = conversations.map(item => item.conversation);
+      rerender(list());
+      const row = container.querySelector('[data-object-id="incoming-target"]')!;
+      expect(row.querySelector(".wk-conv-unread-num")?.textContent).toBe("4");
+      expect(row.querySelector(".wk-conversationlist-item-time")).not.toBeNull();
+      expect(row.querySelector(".wk-conversationlist-item-right-second-line")).not.toBeNull();
+      expect(row.textContent).toContain("saved draft");
+      expect(container.querySelectorAll('[data-object-id="incoming-target"]')).toHaveLength(1);
+
+      WKApp.mittBus.emit("conversation-list-refreshed");
+      expect(page.state.temporaryConversation).toEqual({});
+      rerender(list());
+      expect(container.querySelector('[data-object-id="incoming-target"] .wk-conv-unread-num')?.textContent).toBe("4");
+    } finally {
+      page.componentWillUnmount();
+      sdk.conversationManager.conversations = previousConversations;
+    }
+  });
+
+  it("scrolls repeated searches to an already pinned row without reordering it", () => {
+    const target = conversation("pinned-search-target", true);
+    const conversations = [conversation("pinned-search-a", true), target, conversation("pinned-search-c", true)];
+    const onTemporaryConversationScrolled = vi.fn();
+    const props = { conversations, temporarilyPinnedConversations: [target], onTemporaryConversationScrolled };
+    const { container, rerender } = render(<ConversationList {...props} scrollToTemporaryConversation={{ token: 1, channel: target.channel }} />);
+    const { scrollTo } = geometry(container, "pinned-search-target");
+    flushFrames();
+    expect(Array.from(container.querySelectorAll("[data-object-id]")).map(row => row.getAttribute("data-object-id")))
+      .toEqual(["pinned-search-a", "pinned-search-target", "pinned-search-c"]);
+    expect(scrollTo).toHaveBeenCalledOnce();
+    expect(onTemporaryConversationScrolled).toHaveBeenLastCalledWith(1);
+
+    rerender(<ConversationList {...props} scrollToTemporaryConversation={{ token: 2, channel: target.channel }} />);
+    flushFrames();
+    expect(scrollTo).toHaveBeenCalledTimes(2);
+    expect(onTemporaryConversationScrolled).toHaveBeenLastCalledWith(2);
+  });
+
   it("finishes a pending search jump after a refresh restores the target's normal row", () => {
     const sdk = WKSDK.shared();
     const previousConversations = sdk.conversationManager.conversations;

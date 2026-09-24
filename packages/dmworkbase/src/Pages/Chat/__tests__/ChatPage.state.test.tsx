@@ -228,7 +228,7 @@ describe("ChatPage local state transitions", () => {
     }
   })
 
-  it("renders an SDK-only existing temporary row while the ChatVM is hydrating", () => {
+  it.each([false, true])("keeps an SDK-only existing=%s target visible while the ChatVM is hydrating", (existing) => {
     const sdk = WKSDK.shared()
     const previousConversations = sdk.conversationManager.conversations
     const channel = new Channel("sdk-only-temporary", 1)
@@ -239,7 +239,7 @@ describe("ChatPage local state transitions", () => {
     page.state = {
       ...page.state,
       activeTab: "recent",
-      temporaryConversation: { active: { channel, origin: "existing" } },
+      temporaryConversation: openTemporaryConversation({}, channel, () => existing),
     }
     const vm: any = {
       selectedConversation: undefined,
@@ -260,6 +260,8 @@ describe("ChatPage local state transitions", () => {
       expect(list).toBeTruthy()
       expect(list.props.temporaryConversationPresentation.conversations).toHaveLength(1)
       expect(list.props.temporaryConversationPresentation.conversations[0].channel).toBe(channel)
+      expect(list.props.temporaryConversationPresentation.virtualChannelKeys.has(channel.getChannelKey()))
+        .toBe(!existing)
     } finally {
       sdk.conversationManager.conversations = previousConversations
     }

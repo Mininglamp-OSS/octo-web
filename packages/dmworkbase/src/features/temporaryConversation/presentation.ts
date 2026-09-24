@@ -35,7 +35,9 @@ export function openTemporaryConversation(
   channel: Channel,
   hasConversation: (channel: Channel) => boolean,
 ): TemporaryConversationState {
-  if (isSameChannel(state.active?.channel, channel)) return state;
+  if (isSameChannel(state.active?.channel, channel)) {
+    return state.active?.origin === "virtual" && hasConversation(channel) ? {} : state;
+  }
 
   return {
     active: hasConversation(channel)
@@ -65,8 +67,10 @@ export function leaveTemporaryConversation(
 /** A refreshed list is authoritative for the original position of real rows. */
 export function refreshTemporaryConversation(
   state: TemporaryConversationState,
+  hasConversation: (channel: Channel) => boolean,
 ): TemporaryConversationState {
-  return state.active?.origin === "existing" ? {} : state;
+  const active = state.active;
+  return active && (active.origin === "existing" || hasConversation(active.channel)) ? {} : state;
 }
 
 /** Dismiss only the matching item so a late menu action cannot clear a new one. */
@@ -98,8 +102,8 @@ function createVirtualConversation(channel: Channel): ConversationWrap {
 
 /**
  * Resolves temporary state into rows that ConversationList can insert after
- * its real pinned segment.  A real conversation replaces a virtual row as
- * soon as a message arrives, preventing duplicates.
+ * its real pinned segment. A resolved virtual entry belongs to the regular
+ * list immediately, even if the refresh event has not cleared its state yet.
  */
 export function buildTemporaryConversationPresentation(
   state: TemporaryConversationState,
@@ -112,7 +116,7 @@ export function buildTemporaryConversationPresentation(
   if (entry) {
     const current = findConversation(entry.channel);
     if (current) {
-      conversations.push(current);
+      if (entry.origin === "existing") conversations.push(current);
     } else if (entry.origin === "virtual") {
       // Menu actions update this object (notably thread extra.top). Keep it
       // for the entry's lifetime rather than discarding those writes on render.
