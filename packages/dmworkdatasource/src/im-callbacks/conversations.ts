@@ -1,5 +1,16 @@
 import { ChannelInfo, Conversation } from "wukongimjssdk"
 
+export interface SpaceMembershipSnapshot {
+    channel_id: string
+    space_id?: string
+    my_source_space_id?: string
+}
+
+export type SyncedConversations = Array<Conversation> & {
+    spaceUnreads?: Record<string, number>
+    spaceMemberships?: SpaceMembershipSnapshot[]
+}
+
 export interface SyncConversationsCallbackDeps {
     postConversationSync: (path: string, body: Record<string, any>) => Promise<any>
     getCurrentSpaceId: () => string
@@ -14,7 +25,7 @@ export interface SyncConversationsCallbackDeps {
 
 export function createSyncConversationsCallback(deps: SyncConversationsCallbackDeps) {
     let latestRequest = 0
-    return async function syncConversationsCallback(filter?: { canCommit?: () => boolean }): Promise<Array<Conversation>> {
+    return async function syncConversationsCallback(filter?: { canCommit?: () => boolean }): Promise<SyncedConversations> {
         const request = ++latestRequest
         const contextIsCurrent = deps.captureContext()
         let resp: any
@@ -24,9 +35,12 @@ export function createSyncConversationsCallback(deps: SyncConversationsCallbackD
             ? `conversation/sync?space_id=${encodeURIComponent(spaceId)}`
             : "conversation/sync"
 
+        // This flag only asks for optional sidebands. Older servers may omit
+        // them; their absence must not fail or invalidate conversation sync.
         resp = await deps.postConversationSync(syncUrl, {
             "msg_count": 1,
             "recent_filter": true,
+            "include_space_unreads": true,
         })
         if (
             request !== latestRequest ||
@@ -38,6 +52,16 @@ export function createSyncConversationsCallback(deps: SyncConversationsCallbackD
             throw new Error("Conversation sync superseded")
         }
         if (resp) {
+            if (Array.isArray(resp.space_memberships)) {
+                // This is a complete snapshot. An empty array intentionally
+                // clears feature-owned group attribution from the prior sync.
+                // Keep it feature-owned: writing the shared SpaceFilter maps
+                // would also change conversation, forwarding and notification filters.
+                Object.defineProperty(conversations, "spaceMemberships", {
+                    value: resp.space_memberships,
+                    enumerable: false,
+                })
+            }
             // 只更新本次 sync 响应中包含的频道缓存，保留其他 Space 的缓存
             // （避免 clear() 导致切换 Space 后其他 Space 群聊缓存丢失）
             resp.conversations.forEach((conversationMap: any) => {
@@ -68,6 +92,19 @@ export function createSyncConversationsCallback(deps: SyncConversationsCallbackD
                 for (const group of groups) {
                     deps.setChannelInfoForCache(deps.toGroupChannelInfo(group))
                 }
+            }
+            if (
+                Object.prototype.hasOwnProperty.call(resp, "space_unreads") &&
+                resp.space_unreads !== null &&
+                typeof resp.space_unreads === "object" &&
+                !Array.isArray(resp.space_unreads)
+            ) {
+                // Preserve the Array contract and stage this as a non-enumerable
+                // sideband. The guarded owner applies it after conversation commit.
+                Object.defineProperty(conversations, "spaceUnreads", {
+                    value: resp.space_unreads,
+                    enumerable: false,
+                })
             }
         }
         return conversations

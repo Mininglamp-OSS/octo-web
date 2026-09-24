@@ -155,6 +155,8 @@ function SpaceOpen() {
                 onSpaceSelect={(id) => console.log("space selected:", id)}
                 onJoinSpace={() => console.log("join space")}
                 onCreateSpace={() => console.log("create space")}
+                totalUnreadBySpace={{ s2: 30, s3: 8 }}
+                newUnreadBySpace={{ s2: 3 }}
             />
         </div>
     );

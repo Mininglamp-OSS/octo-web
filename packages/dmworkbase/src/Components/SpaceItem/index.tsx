@@ -19,6 +19,9 @@ export interface SpaceItemProps {
     avatarSize?: SpaceAvatarSize;
     /** hover 时右侧出现的操作 slot */
     actions?: ReactNode;
+    unreadCount?: number;
+    unreadTone?: "new" | "total";
+    unreadLabel?: string;
     onClick?: () => void;
     className?: string;
 }
@@ -30,6 +33,9 @@ export default function SpaceItem({
     selected = false,
     avatarSize = "md",
     actions,
+    unreadCount = 0,
+    unreadTone = "total",
+    unreadLabel,
     onClick,
     className,
 }: SpaceItemProps) {
@@ -63,6 +69,15 @@ export default function SpaceItem({
                 {/* 复制按钮：opacity 0，hover 时 opacity 1，位置固定不跳 */}
                 {actions && (
                     <div className="wk-space-item__actions">{actions}</div>
+                )}
+                {!selected && unreadCount > 0 && (
+                    <span
+                        className={`wk-space-item__unread wk-space-item__unread--${unreadTone}`}
+                        role="img"
+                        aria-label={unreadLabel}
+                    >
+                        {unreadCount > 99 ? "99+" : Math.floor(unreadCount)}
+                    </span>
                 )}
                 {/* 对勾：selected 时固定显示 */}
                 {selected && (

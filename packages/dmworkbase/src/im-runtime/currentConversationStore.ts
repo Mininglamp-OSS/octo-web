@@ -10,6 +10,7 @@ import { captureCurrentImConversationSyncContext } from "./conversationSyncConte
 import { prepareCurrentImConversationSnapshot } from "./conversationSnapshot";
 import { syncCurrentImConversations } from "./currentConversationSync";
 import { createConversationRealtimeHandlers } from "./conversationRealtime";
+import { spaceUnreadStore } from "../features/space-unread/store";
 
 export type ConversationStoreChange = "data" | "update" | "space" | "connection";
 export type ConversationFreshness = "loading" | "ready" | "stale" | "unavailable";
@@ -271,7 +272,11 @@ export class CurrentImConversationStore {
         for (let attempt = 0; attempt < 3; attempt++) {
           if (!isCurrent()) return;
           const realtimeRevision = this.realtimeRevision;
-          const canCommit = () => isCurrent() && realtimeRevision === this.realtimeRevision;
+          const spaceUnreadRevision = spaceUnreadStore.getAuthorityRevision();
+          const canCommit = () => (
+            isCurrent() &&
+            realtimeRevision === this.realtimeRevision
+          );
           const pins = WKApp.shared.currentSpaceId
             ? PinnedService.list().catch((error: unknown) => {
                 console.warn("[im-conversations] failed to load pinned channels", error);
@@ -288,6 +293,14 @@ export class CurrentImConversationStore {
             result.conversations, pinnedChannels, { filterTextPreview: reload },
           );
           if (!result.commit(accepted)) continue;
+          if (result.spaceMemberships !== undefined) {
+            spaceUnreadStore.replaceMemberships(result.spaceMemberships);
+          }
+          // Sidebands are optional during rolling deployment. A missing or
+          // raced badge snapshot never invalidates the committed conversation list.
+          if (result.spaceUnreads !== undefined) {
+            spaceUnreadStore.replaceTotals(result.spaceUnreads, spaceUnreadRevision);
+          }
           this.conversations = accepted.map((conversation) => new ConversationWrap(conversation));
           this.loading = false;
           this.freshness = "ready";

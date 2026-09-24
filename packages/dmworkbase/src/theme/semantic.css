@@ -305,6 +305,7 @@
   --wk-bg-base: var(--wk-neutral-50); /* Figma: #F5F6F7 */
   --wk-bg-surface: var(--wk-neutral-0); /* Figma: #FFFFFF 内容区 */
   --wk-bg-elevated: var(--wk-neutral-100); /* Figma: #F2F3F4 Tag/系统消息 */
+  --wk-bg-badge-neutral: var(--wk-neutral-125); /* Figma: 未读数字灰色胶囊 */
   --wk-bg-hover: var(--wk-neutral-150); /* Figma: #DFE0E2 */
   --wk-bg-active: var(--wk-neutral-200); /* Figma: #D9D9D9 */
   --wk-bg-selected: var(--wk-purple-alpha-06); /* 选中态背景 */
@@ -328,6 +329,7 @@
   --wk-text-primary: var(--wk-neutral-800); /* Figma: #1F2329 标题/组织名 */
   --wk-text-secondary: var(--wk-neutral-400); /* Figma: #555B61 */
   --wk-text-tertiary: var(--wk-neutral-300); /* Figma: #6B7075 */
+  --wk-text-badge-neutral: var(--wk-neutral-400);
   --wk-text-disabled: var(--wk-neutral-200); /* 禁用态文字 */
   --wk-text-accent: var(
     --wk-purple-500
@@ -481,6 +483,7 @@ body[theme-mode="dark"] {
   --wk-bg-base: var(--wk-neutral-850);
   --wk-bg-surface: var(--wk-neutral-800);
   --wk-bg-elevated: var(--wk-neutral-700);
+  --wk-bg-badge-neutral: var(--wk-bg-elevated);
   --wk-bg-hover: var(--wk-neutral-600);
   --wk-bg-active: var(--wk-neutral-500);
   --wk-bg-selected: var(--wk-purple-alpha-12); /* 选中态背景 */
@@ -532,6 +535,7 @@ body[theme-mode="dark"] {
   --wk-text-primary: #e4e6ed;
   --wk-text-secondary: var(--wk-neutral-300);
   --wk-text-tertiary: #7a7f96;
+  --wk-text-badge-neutral: var(--wk-neutral-150);
   --wk-text-disabled: var(--wk-neutral-500); /* 暗色禁用态文字 */
   --wk-text-accent: var(--wk-purple-400); /* 暗色下用浅紫 */
   --wk-text-mention-entity: var(--wk-purple-400);

@@ -27,6 +27,18 @@ export const Selected: Story = {
     args: { name: "Demo Space", meta: "12 成员", selected: true },
 };
 
+export const NewUnread: Story = {
+    args: { name: "产品团队", meta: "8 成员", unreadCount: 3, unreadTone: "new" },
+};
+
+export const TotalUnread: Story = {
+    args: { name: "研发中心", meta: "20 成员", unreadCount: 30, unreadTone: "total" },
+};
+
+export const UnreadOverflow: Story = {
+    args: { name: "客户成功", meta: "12 成员", unreadCount: 128, unreadTone: "new" },
+};
+
 export const WithActions: Story = {
     args: {
         name: "OctoSpace",

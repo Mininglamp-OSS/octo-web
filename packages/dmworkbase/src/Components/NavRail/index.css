@@ -337,6 +337,33 @@
     flex-shrink: 0;
 }
 
+.wk-navrail__space-unread-badge {
+    position: absolute;
+    top: var(--wk-sp-0-5);
+    right: var(--wk-sp-1);
+    min-width: var(--wk-sp-5);
+    height: var(--wk-sp-5);
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 var(--wk-sp-1);
+    border-radius: var(--wk-r-full);
+    background: var(--wk-color-danger);
+    color: var(--wk-color-white);
+    font-size: var(--wk-text-size-xs);
+    font-weight: var(--wk-font-semibold);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+}
+
+.wk-layout-tab-expanded .wk-navrail__space-unread-badge {
+    top: 50%;
+    right: var(--wk-sp-3);
+    transform: translateY(-50%);
+}
+
 /* SpaceAvatar 在 NavRail 里统一 34×34 */
 .wk-navrail__space-avatar {
     width: 34px !important;

@@ -3,6 +3,13 @@ import { captureCurrentImConversationSyncContext } from "./conversationSyncConte
 
 export interface ImConversationSyncResult {
   conversations: Conversation[];
+  /** Optional during Server/Web rolling deployment; absence is a valid response. */
+  spaceUnreads?: Record<string, number>;
+  spaceMemberships?: Array<{
+    channel_id: string;
+    space_id?: string;
+    my_source_space_id?: string;
+  }>;
   isCurrent: () => boolean;
   commit: (conversations?: Conversation[]) => boolean;
 }
@@ -38,10 +45,18 @@ export function syncCurrentImConversations(
 
   async function run(): Promise<ImConversationSyncResult | undefined> {
     let conversations: Conversation[];
+    let spaceUnreads: Record<string, number> | undefined;
+    let spaceMemberships: ImConversationSyncResult["spaceMemberships"];
     try {
       // SDK.sync() writes its cache in an unguarded .then before returning to callers.
       // Use the same provider and commit here only while this request still owns it.
       conversations = await callback.call(provider, { canCommit: isCurrent });
+      spaceUnreads = (conversations as Conversation[] & {
+        spaceUnreads?: Record<string, number>;
+      }).spaceUnreads;
+      spaceMemberships = (conversations as Conversation[] & {
+        spaceMemberships?: ImConversationSyncResult["spaceMemberships"];
+      }).spaceMemberships;
     } catch (error) {
       if (!isCurrent()) return;
       requests.delete(sdk);
@@ -72,6 +87,6 @@ export function syncCurrentImConversations(
       return true;
     };
     if (!options.deferCommit) commit();
-    return { conversations, isCurrent, commit };
+    return { conversations, spaceUnreads, spaceMemberships, isCurrent, commit };
   }
 }

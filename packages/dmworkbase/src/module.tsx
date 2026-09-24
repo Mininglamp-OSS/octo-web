@@ -189,6 +189,7 @@ import {
   buildThreadActionsSection,
   buildThreadOverviewSection,
 } from "./features/channelSetting/channelSettingThreadSections";
+import { recordIncomingSpaceUnread, spaceUnreadStore } from "./features/space-unread";
 
 /** execCommand 降级复制，用于 navigator.clipboard 不可用的场景 */
 function fallbackCopy(text: string) {
@@ -293,6 +294,7 @@ export default class BaseModule implements IModule {
     quickMuteStore.setUserId(WKApp.loginInfo.uid || "");
     WKApp.mittBus.on("wk:app-foreground", refreshQuickMute);
     WKApp.mittBus.on("wk:auth-state-changed", () => {
+      spaceUnreadStore.reset();
       quickMuteStore.reset();
       voiceSettingsStore.setUserId(WKApp.loginInfo.uid || "");
       quickMuteStore.setUserId(WKApp.loginInfo.uid || "");
@@ -654,6 +656,7 @@ export default class BaseModule implements IModule {
         spaceId: WKApp.shared.currentSpaceId || "",
         loginToken: WKApp.loginInfo.token,
       };
+      recordIncomingSpaceUnread(message);
       if (TypingManager.shared.hasTyping(message.channel)) {
         TypingManager.shared.removeTyping(message.channel);
       }

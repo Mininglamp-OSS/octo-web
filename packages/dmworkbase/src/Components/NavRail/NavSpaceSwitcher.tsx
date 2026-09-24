@@ -5,6 +5,8 @@ import ActionListItem from "../ActionListItem";
 import { I18nContext } from "../../i18n";
 import WKApp from "../../App";
 import NavFlyout from "./NavFlyout";
+import { spaceUnreadStore, type SpaceUnreadMap } from "../../features/space-unread/store";
+import { getCurrentImUnreadObserver } from "../../im-runtime/currentUnreadObserver";
 
 function IconBuilding() {
     return (
@@ -23,6 +25,10 @@ export interface NavSpaceSwitcherProps {
     onJoinSpace?: () => void;
     onCreateSpace?: () => void;
     onSpaceManagement?: () => void;
+    /** Story/test override. Production reads the shared in-memory store. */
+    totalUnreadBySpace?: SpaceUnreadMap;
+    /** Story/test override. Production reads the shared in-memory store. */
+    newUnreadBySpace?: SpaceUnreadMap;
 }
 
 interface NavSpaceSwitcherState {
@@ -36,6 +42,8 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
     private unsubscribeRemoteConfig?: () => void;
+    private unsubscribeSpaceUnread?: () => void;
+    private unsubscribeCurrentUnread?: () => void;
     private triggerRef = React.createRef<HTMLButtonElement>();
 
     constructor(props: NavSpaceSwitcherProps) {
@@ -47,26 +55,54 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
         this.unsubscribeRemoteConfig = WKApp.remoteConfig.addConfigChangeListener(() => {
             this.forceUpdate();
         });
+        this.unsubscribeSpaceUnread = spaceUnreadStore.subscribe(() => this.forceUpdate());
+        this.unsubscribeCurrentUnread = getCurrentImUnreadObserver().subscribe((count) => {
+            const currentSpaceId = WKApp.shared.currentSpaceId;
+            if (currentSpaceId) spaceUnreadStore.setTotal(currentSpaceId, count);
+        });
     }
 
     componentWillUnmount() {
         this.unsubscribeRemoteConfig?.();
+        this.unsubscribeSpaceUnread?.();
+        this.unsubscribeCurrentUnread?.();
+        // Unmounting an open switcher also exits the flyout, so it acknowledges
+        // the same session-scoped markers as every other close path.
+        if (this.state.open) spaceUnreadStore.clearNewUnreads();
     }
 
     private handleToggle = () => {
-        this.setState(prev => ({ open: !prev.open }));
+        this.setOpen(!this.state.open);
     };
 
     private handleClose = () => {
-        this.setState({ open: false });
+        this.setOpen(false);
+    };
+
+    private setOpen = (open: boolean) => {
+        if (open === this.state.open) return;
+        if (this.state.open && !open) spaceUnreadStore.clearNewUnreads();
+        this.setState({ open });
     };
 
     render() {
-        const { spaces, currentSpaceId, onSpaceSelect, onJoinSpace, onCreateSpace, onSpaceManagement } = this.props;
+        const {
+            spaces, currentSpaceId, onSpaceSelect, onJoinSpace, onCreateSpace,
+            onSpaceManagement, totalUnreadBySpace, newUnreadBySpace,
+        } = this.props;
         const { open } = this.state;
         const { t } = this.context;
         const current = spaces.find(s => s.space_id === currentSpaceId);
         const canCreateSpace = !!onCreateSpace && !WKApp.remoteConfig.disableUserCreateSpace;
+        const unreadSnapshot = spaceUnreadStore.getSnapshot();
+        const totals = totalUnreadBySpace ?? unreadSnapshot.totalBySpace;
+        const news = newUnreadBySpace ?? unreadSnapshot.newBySpace;
+        const entryUnread = spaces.reduce((sum, space) => (
+            space.space_id === currentSpaceId ? sum : sum + (news[space.space_id] || 0)
+        ), 0);
+        const switcherLabel = entryUnread > 0
+            ? t("base.navRail.spaceSwitcher.switchWithNewUnread", { values: { count: entryUnread } })
+            : t("base.navRail.spaceSwitcher.switch");
 
         return (
             <div className="wk-navrail__switcher">
@@ -75,7 +111,7 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
                     type="button"
                     className="wk-navrail__space-icon-btn"
                     title={current?.name ?? t("base.navRail.spaceSwitcher.switch")}
-                    aria-label={t("base.navRail.spaceSwitcher.switch")}
+                    aria-label={switcherLabel}
                     aria-haspopup="dialog"
                     aria-expanded={open}
                     onClick={this.handleToggle}
@@ -84,12 +120,17 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
                     <span className="wk-navrail__item-label">
                         {current?.name ?? t("base.navRail.spaceSwitcher.switch")}
                     </span>
+                    {entryUnread > 0 && (
+                        <span className="wk-navrail__space-unread-badge" aria-hidden="true">
+                            {entryUnread > 99 ? "99+" : entryUnread}
+                        </span>
+                    )}
                 </button>
 
                 <NavFlyout
                     open={open}
                     triggerRef={this.triggerRef}
-                    onOpenChange={(next) => this.setState({ open: next })}
+                    onOpenChange={this.setOpen}
                     size="lg"
                     role="dialog"
                     ariaLabel={t("base.navRail.spaceSwitcher.joinedSpaces")}
@@ -97,7 +138,11 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
                 >
                     <div className="wk-navrail__dropdown-title">{t("base.navRail.spaceSwitcher.joinedSpaces")}</div>
                     <div className="wk-navrail__dropdown-spaces">
-                        {spaces.map(space => (
+                        {spaces.map(space => {
+                            const selected = space.space_id === currentSpaceId;
+                            const newUnread = selected ? 0 : (news[space.space_id] || 0);
+                            const totalUnread = selected ? 0 : (totals[space.space_id] || 0);
+                            return (
                             <SpaceItem
                                 key={space.space_id}
                                 name={space.name}
@@ -110,13 +155,19 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
                                     : t("base.navRail.spaceSwitcher.memberCount", {
                                         values: { count: space.member_count },
                                     })}
-                                selected={space.space_id === currentSpaceId}
+                                selected={selected}
+                                unreadCount={newUnread > 0 ? newUnread : totalUnread}
+                                unreadTone={newUnread > 0 ? "new" : "total"}
+                                unreadLabel={newUnread > 0
+                                    ? t("base.navRail.spaceSwitcher.newUnread", { values: { count: newUnread } })
+                                    : t("base.navRail.spaceSwitcher.totalUnread", { values: { count: totalUnread } })}
                                 onClick={() => {
-                                    onSpaceSelect(space.space_id);
                                     this.handleClose();
+                                    onSpaceSelect(space.space_id);
                                 }}
                             />
-                        ))}
+                            );
+                        })}
                     </div>
                     {(onJoinSpace || onSpaceManagement || canCreateSpace) && (
                         <>

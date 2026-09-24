@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  extractSpaceIdFromPrefix,
   hasSpacePrefix,
   imDriveTransferSourceKey,
   isDriveTransferSupportedChannel,
@@ -23,6 +24,12 @@ describe("SpacePrefix helpers", () => {
     expect(stripSpacePrefix(prefixed)).toBe("alice");
     expect(stripSpacePrefix("alice")).toBe("alice");
     expect(stripSpacePrefix(`s${spaceId}_alice_extra`)).toBe("alice_extra");
+  });
+
+  it("extracts the Space ID encoded by a valid prefix", () => {
+    expect(extractSpaceIdFromPrefix(prefixed)).toBe(spaceId);
+    expect(extractSpaceIdFromPrefix("alice")).toBeUndefined();
+    expect(extractSpaceIdFromPrefix(`s${spaceId.slice(1)}_alice`)).toBeUndefined();
   });
 
   it("normalizes only Person channel IDs and preserves an empty remainder", () => {

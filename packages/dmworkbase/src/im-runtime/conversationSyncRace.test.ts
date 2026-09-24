@@ -39,6 +39,7 @@ vi.mock("../Service/ProhibitwordsService", () => ({
 vi.mock("../Service/Thread", () => ({ parseThreadChannelId: () => undefined }));
 
 import { getCurrentImConversationStore } from "./currentConversationStore";
+import { spaceUnreadStore } from "../features/space-unread/store";
 
 const sdk = WKSDK.shared();
 const query = vi.fn<() => Promise<Conversation[]>>();
@@ -56,6 +57,7 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
+  spaceUnreadStore.reset();
   state.app.shared.spaceRevision++;
   state.app.shared.channelSpaceMap.clear();
   state.pins.mockReset().mockResolvedValue([]);
@@ -74,6 +76,71 @@ afterEach(() => {
 });
 
 describe("conversation sync / realtime ordering", () => {
+  it("commits the Space unread sideband with the accepted conversation snapshot", async () => {
+    const synced = [conversation("seeded")] as Conversation[] & { spaceUnreads?: Record<string, number> };
+    synced.spaceUnreads = { "space-b": 7 };
+    query.mockResolvedValue(synced);
+    const store = getCurrentImConversationStore();
+    store.retain();
+
+    await store.refresh({ reload: true });
+
+    expect(spaceUnreadStore.getSnapshot().totalBySpace).toEqual({ "space-b": 7 });
+  });
+
+  it("commits conversations once while preserving a Space changed by realtime", async () => {
+    const response = deferred<Conversation[]>();
+    query.mockReturnValueOnce(response.promise);
+    const store = getCurrentImConversationStore();
+    store.retain();
+    const waiting = store.refresh({ reload: true });
+
+    spaceUnreadStore.recordIncoming("space-b", "live-message");
+    const synced = [conversation("accepted")] as Conversation[] & {
+      spaceUnreads?: Record<string, number>;
+    };
+    Object.defineProperty(synced, "spaceUnreads", {
+      value: { "space-b": 7 },
+      enumerable: false,
+    });
+    response.resolve(synced);
+    await waiting;
+
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(sdk.conversationManager.conversations).toEqual(synced);
+    expect(store.conversations.map(({ channel }) => channel.channelID)).toEqual(["accepted"]);
+    expect(store.loading).toBe(false);
+    expect(store.freshness).toBe("ready");
+    expect(spaceUnreadStore.getSnapshot().totalBySpace).toEqual({ "space-b": 7 });
+    expect(spaceUnreadStore.getSnapshot().newBySpace).toEqual({ "space-b": 1 });
+  });
+
+  it("applies other Space totals when current-Space calibration races the sync", async () => {
+    const response = deferred<Conversation[]>();
+    query.mockReturnValueOnce(response.promise);
+    const store = getCurrentImConversationStore();
+    store.retain();
+    const waiting = store.refresh({ reload: true });
+
+    spaceUnreadStore.setTotal("space-a", 4);
+    const synced = [conversation("accepted")] as Conversation[] & {
+      spaceUnreads?: Record<string, number>;
+    };
+    Object.defineProperty(synced, "spaceUnreads", {
+      value: { "space-a": 2, "space-b": 7 },
+      enumerable: false,
+    });
+    response.resolve(synced);
+    await waiting;
+
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(store.conversations.map(({ channel }) => channel.channelID)).toEqual(["accepted"]);
+    expect(spaceUnreadStore.getSnapshot().totalBySpace).toEqual({
+      "space-a": 4,
+      "space-b": 7,
+    });
+  });
+
   it("does not overwrite live additions, updates or deletions with an older HTTP snapshot", async () => {
     const response = deferred<Conversation[]>();
     const reconciled = deferred<Conversation[]>();

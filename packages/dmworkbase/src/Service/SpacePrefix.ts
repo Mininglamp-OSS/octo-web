@@ -1,8 +1,13 @@
 // Matches Space-prefixed IDs: s + 32-char hex spaceId + underscore
-const SPACE_PREFIX_RE = /^s[0-9a-f]{32}_/
+const SPACE_PREFIX_RE = /^s([0-9a-f]{32})_/
 
 export function hasSpacePrefix(id: string): boolean {
     return SPACE_PREFIX_RE.test(id)
+}
+
+/** Return the Space encoded in an `s<32-hex>_` channel ID, when present. */
+export function extractSpaceIdFromPrefix(id: string): string | undefined {
+    return SPACE_PREFIX_RE.exec(id)?.[1]
 }
 
 /**

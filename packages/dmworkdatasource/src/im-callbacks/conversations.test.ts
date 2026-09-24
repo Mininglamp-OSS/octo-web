@@ -39,7 +39,7 @@ describe('createSyncConversationsCallback', () => {
 
     expect(deps.postConversationSync).toHaveBeenCalledWith(
       'conversation/sync?space_id=space%2Fdefault',
-      { msg_count: 1, recent_filter: true },
+      { msg_count: 1, recent_filter: true, include_space_unreads: true },
     )
     expect(deps.toConversation).toHaveBeenCalledWith({
       channel_id: 'u1',
@@ -68,7 +68,7 @@ describe('createSyncConversationsCallback', () => {
 
     expect(deps.postConversationSync).toHaveBeenCalledWith(
       'conversation/sync',
-      { msg_count: 1, recent_filter: true },
+      { msg_count: 1, recent_filter: true, include_space_unreads: true },
     )
   })
 
@@ -163,7 +163,7 @@ describe('createSyncConversationsCallback', () => {
     expect(deps.setChannelMySourceSpace).not.toHaveBeenCalled()
     expect(deps.setChannelInfoForCache).not.toHaveBeenCalled()
     expect(deps.postConversationSync).toHaveBeenCalledWith(
-      'conversation/sync', { msg_count: 1, recent_filter: true },
+      'conversation/sync', { msg_count: 1, recent_filter: true, include_space_unreads: true },
     )
   })
 
@@ -231,6 +231,63 @@ describe('createSyncConversationsCallback', () => {
     expect(deps.setChannelMySourceSpace).toHaveBeenCalledWith('g1_2', 'source-a')
     expect(deps.setChannelSpace).toHaveBeenCalledTimes(1)
     expect(deps.setChannelMySourceSpace).toHaveBeenCalledTimes(1)
+  })
+
+  it('carries an empty Space unread snapshot without changing the array payload', async () => {
+    const deps = createDeps()
+    deps.postConversationSync.mockResolvedValue({ conversations: [], space_unreads: {} })
+
+    const conversations = await createSyncConversationsCallback(deps)({})
+
+    expect(conversations).toEqual([])
+    expect(conversations.spaceUnreads).toEqual({})
+    expect(Object.keys(conversations)).toEqual([])
+  })
+
+  it('leaves the Space unread snapshot undefined when the server omits it', async () => {
+    const deps = createDeps()
+    deps.postConversationSync.mockResolvedValue({ conversations: [] })
+
+    const conversations = await createSyncConversationsCallback(deps)({})
+
+    expect(conversations.spaceUnreads).toBeUndefined()
+  })
+
+  it('carries memberships as an isolated sideband without changing global SpaceFilter maps', async () => {
+    const deps = createDeps()
+    deps.postConversationSync.mockResolvedValue({
+      conversations: [],
+      space_memberships: [{
+        channel_id: 'group-in-another-space',
+        space_id: 'space-remote',
+        my_source_space_id: 'space-local',
+      }],
+    })
+
+    const conversations = await createSyncConversationsCallback(deps)({})
+
+    expect(deps.setChannelSpace).not.toHaveBeenCalled()
+    expect(deps.setChannelMySourceSpace).not.toHaveBeenCalled()
+    expect(conversations.spaceMemberships).toEqual([{
+      channel_id: 'group-in-another-space',
+      space_id: 'space-remote',
+      my_source_space_id: 'space-local',
+    }])
+    expect(Object.keys(conversations)).toEqual([])
+  })
+
+  it('carries an empty membership snapshot so consumers can clear stale attribution', async () => {
+    const deps = createDeps()
+    deps.postConversationSync.mockResolvedValue({
+      conversations: [],
+      space_memberships: [],
+    })
+
+    const conversations = await createSyncConversationsCallback(deps)({})
+
+    expect(conversations.spaceMemberships).toEqual([])
+    expect(Object.prototype.hasOwnProperty.call(conversations, 'spaceMemberships')).toBe(true)
+    expect(Object.keys(conversations)).toEqual([])
   })
 
   it('preheats user and group channel info cache from the sync response', async () => {

@@ -86,7 +86,7 @@ describe('DataSourceModule conversation sync', () => {
 
     expect(mockApiPost).toHaveBeenCalledWith(
       'conversation/sync?space_id=minglue_default',
-      { msg_count: 1, recent_filter: true }
+      { msg_count: 1, recent_filter: true, include_space_unreads: true }
     )
     expect(mockConvertToConversation).toHaveBeenCalledWith({
       channel_id: 'user-1',
