@@ -1931,14 +1931,10 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     letter-spacing: -0.01em;
     color: var(--wk-summary-content-text);
     counter-increment: md-section;
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
 }
 
 .summary-content-markdown h2::before {
-    content: counter(md-section, decimal-leading-zero);
-    flex: none;
+    content: counter(md-section, decimal-leading-zero) "\00a0\00a0";
     color: var(--wk-text-tertiary);
     font-size: 12px;
     line-height: 26px;
