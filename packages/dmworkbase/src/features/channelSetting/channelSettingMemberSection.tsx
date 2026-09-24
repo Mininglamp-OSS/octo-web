@@ -9,6 +9,7 @@ import { wkConfirm } from "../../Components/WKModal/confirm";
 import {
   ChannelTypeCommunityTopic,
   ChannelTypeCustomerService,
+  GroupRole,
 } from "../../Service/Const";
 import RouteContext, {
   FinishButtonContext,
@@ -22,10 +23,11 @@ import WKApp from "../../App";
 
 // 判定逻辑住在零依赖的叶子模块里，好让 Components/Subscribers/vm.ts 也能复用
 // （直接互相 import 会成环）。此处 re-export 保持既有引用路径不变。
-export {
+import {
   canRemoveChannelSettingSubscriber,
   isBotOwnedByViewer,
 } from "./memberRemovalPermission";
+export { canRemoveChannelSettingSubscriber, isBotOwnedByViewer };
 
 export function buildChannelMembersSection(
   context: RouteContext<ChannelSettingRouteData>
@@ -44,12 +46,27 @@ export function buildChannelMembersSection(
     return undefined;
   }
 
+  const viewAllRemoveAction = {
+    canRemove: (subscriber: Subscriber) => {
+      const viewerRole = data.subscriberOfMe?.role ?? GroupRole.normal;
+      if (viewerRole !== GroupRole.normal) return false;
+      return canRemoveChannelSettingSubscriber({
+        viewerUid: data.subscriberOfMe?.uid || WKApp.loginInfo.uid,
+        viewerRole,
+        subscriber,
+      });
+    },
+    onRemove: (subscriber: Subscriber) =>
+      removeChannelSettingSubscribers({
+        channel,
+        uids: [subscriber.uid],
+      }),
+  };
+
   // 「移出成员」是一条**独立**路径：减号图标 → MemberRemovalList。
   //
-  // 它不再与「查看全部」共用 removeAction。此前两条路径共用同一份配置，
-  // 「查看全部」这个纯浏览入口也会下发移除按钮，把管理语义混进了浏览场景；
-  // 而移除页又复用了带「添加成员」按钮的 title，右上角永远挂着一个「+」。
-  // 现在：浏览路径只浏览，移除路径只移除，标题各自独立。
+  // 群主和管理员从减号进入独立批量页；「查看全部」只保留普通成员移除
+  // 自己 Bot 的行级兜底，避免超大群中 Bot 不在本地缓存时入口完全不可达。
   return new Section({
     rows: [
       new Row({
@@ -59,6 +76,7 @@ export function buildChannelMembersSection(
           channel,
           key: channel.getChannelKey(),
           canManageBotAdmin: !!data.channelInfo?.orgData?.can_manage_bot_admin,
+          removeAction: viewAllRemoveAction,
           onRemove: () => {
             // subscriberOfMe may be populated after this section is built.
             const viewerUid = data.subscriberOfMe?.uid || WKApp.loginInfo.uid;
@@ -78,7 +96,7 @@ export function buildChannelMembersSection(
             context.push(
               <MemberRemovalList
                 channel={channel}
-                initialSubscribers={data.subscriberAll || data.subscribers}
+                initialSubscribers={data.subscribers}
                 viewerUid={viewerUid}
                 viewerRole={viewerRole}
                 onSelectionChange={(items) => {
@@ -131,11 +149,9 @@ export function buildChannelMembersSection(
                           channel,
                           uids,
                         });
-                        Toast.success(
-                          t("base.subscribers.removeSuccessBatch", {
-                            values: { count },
-                          })
-                        );
+                        // 管理员接口只返回成功/失败，不返回实际移除集合；避免在
+                        // 并发离群等场景里展示服务端未确认的精确人数。
+                        Toast.success(t("base.subscribers.removeSuccess"));
                         context.pop();
                         data.refresh?.();
                       } catch (error: any) {

@@ -11,8 +11,13 @@ export class SubscriberListVM extends ProviderListener {
   limit: number = 50;
   hasMore: boolean = true;
   keyword: string = "";
+  firstLoadSettled: boolean = false;
+  loadError: boolean = false;
+  autoPaging: boolean = false;
+  autoPageLimitReached: boolean = false;
   filter?: (subscriber: Subscriber) => boolean;
   private localSearch?: (keyword: string) => Subscriber[];
+  private maxAutoPages?: number;
   /** 每次 subscribers 数据加载完成后调用，用于触发预取等副作用 */
   onSubscribersLoaded?: (subscribers: Subscriber[]) => void;
   private _isMounted: boolean = false;
@@ -21,12 +26,14 @@ export class SubscriberListVM extends ProviderListener {
   constructor(
     channel: Channel,
     filter?: (subscriber: Subscriber) => boolean,
-    localSearch?: (keyword: string) => Subscriber[]
+    localSearch?: (keyword: string) => Subscriber[],
+    maxAutoPages?: number
   ) {
     super();
     this.channel = channel;
     this.filter = filter;
     this.localSearch = localSearch;
+    this.maxAutoPages = maxAutoPages;
   }
 
   didMount(): void {
@@ -47,6 +54,12 @@ export class SubscriberListVM extends ProviderListener {
     this.currPage = 1;
     this.subscribers = [];
     this.keyword = keyword;
+    if (this.maxAutoPages !== undefined) {
+      this.firstLoadSettled = false;
+      this.loadError = false;
+      this.autoPaging = false;
+      this.autoPageLimitReached = false;
+    }
     if (this.localSearch && keyword.trim()) {
       const requestVersion = ++this._requestVersion;
       this.hasMore = false;
@@ -76,15 +89,29 @@ export class SubscriberListVM extends ProviderListener {
     requestVersion = ++this._requestVersion,
     initialSubscribers: Subscriber[] = []
   ) => {
-    const subscribers = await WKApp.dataSource.channelDataSource.subscribers(
-      this.channel,
-      {
-        page: this.currPage,
-        limit: this.limit,
-        keyword: this.keyword,
-      }
-    );
+    let subscribers: Subscriber[];
+    try {
+      subscribers = await WKApp.dataSource.channelDataSource.subscribers(
+        this.channel,
+        {
+          page: this.currPage,
+          limit: this.limit,
+          keyword: this.keyword,
+        }
+      );
+    } catch (error) {
+      if (!this._isMounted || requestVersion !== this._requestVersion) return;
+      if (this.maxAutoPages === undefined) throw error;
+      this.firstLoadSettled = true;
+      this.loadError = true;
+      this.autoPaging = false;
+      this.autoPageLimitReached = false;
+      this.notifyListener();
+      return;
+    }
     if (!this._isMounted || requestVersion !== this._requestVersion) return;
+    this.firstLoadSettled = true;
+    this.loadError = false;
     this.hasMore = subscribers && subscribers.length >= this.limit;
     if (subscribers) {
       const filtered = this.applySubscriberFilters(subscribers);
@@ -94,31 +121,60 @@ export class SubscriberListVM extends ProviderListener {
         this.subscribers = this.mergeSubscribers(this.subscribers, filtered);
       }
     }
-    this.notifyListener();
-    this.onSubscribersLoaded?.(this.subscribers);
-
     // When client-side filtering removes most results, the list may be
     // too short for the user to scroll and trigger the next page load.
     // Auto-fetch more pages until we have enough visible items or run out.
-    if (this.filter && this.hasMore && this.subscribers.length < this.limit) {
+    const needsMore =
+      !!this.filter && this.hasMore && this.subscribers.length < this.limit;
+    const withinBudget =
+      this.maxAutoPages === undefined || this.currPage < this.maxAutoPages;
+    this.autoPaging = needsMore && withinBudget;
+    this.autoPageLimitReached = needsMore && !withinBudget;
+    this.notifyListener();
+    this.onSubscribersLoaded?.(this.subscribers);
+
+    if (this.autoPaging) {
       this.currPage++;
       await this.requestSubscribers(requestVersion);
     }
   };
 
+  retry = () => {
+    this.firstLoadSettled = false;
+    this.loadError = false;
+    this.autoPaging = false;
+    this.autoPageLimitReached = false;
+    this.notifyListener();
+    return this.requestSubscribers();
+  };
+
   private async requestLoadedSubscriberPages(requestVersion: number) {
     const pageCount = Math.max(1, this.currPage);
-    const pages = await Promise.all(
-      Array.from({ length: pageCount }, (_, index) =>
-        WKApp.dataSource.channelDataSource.subscribers(this.channel, {
-          page: index + 1,
-          limit: this.limit,
-          keyword: this.keyword,
-        })
-      )
-    );
+    let pages: Subscriber[][];
+    try {
+      pages = await Promise.all(
+        Array.from({ length: pageCount }, (_, index) =>
+          WKApp.dataSource.channelDataSource.subscribers(this.channel, {
+            page: index + 1,
+            limit: this.limit,
+            keyword: this.keyword,
+          })
+        )
+      );
+    } catch (error) {
+      if (!this._isMounted || requestVersion !== this._requestVersion) return;
+      if (this.maxAutoPages === undefined) throw error;
+      this.firstLoadSettled = true;
+      this.loadError = true;
+      this.autoPaging = false;
+      this.autoPageLimitReached = false;
+      this.notifyListener();
+      return;
+    }
     if (!this._isMounted || requestVersion !== this._requestVersion) return;
 
+    this.firstLoadSettled = true;
+    this.loadError = false;
     let nextSubscribers: Subscriber[] = [];
     if (this.localSearch && this.keyword.trim()) {
       try {
@@ -140,8 +196,19 @@ export class SubscriberListVM extends ProviderListener {
     const lastPage = pages[pages.length - 1] || [];
     this.hasMore = lastPage.length >= this.limit;
     this.subscribers = nextSubscribers;
+    const needsMore =
+      !!this.filter && this.hasMore && this.subscribers.length < this.limit;
+    const withinBudget =
+      this.maxAutoPages === undefined || this.currPage < this.maxAutoPages;
+    this.autoPaging = needsMore && withinBudget;
+    this.autoPageLimitReached = needsMore && !withinBudget;
     this.notifyListener();
     this.onSubscribersLoaded?.(this.subscribers);
+
+    if (this.autoPaging) {
+      this.currPage++;
+      await this.requestSubscribers(requestVersion);
+    }
   }
 
   private filterLocallyRemovedSubscribers(subscribers: Subscriber[]) {
@@ -207,7 +274,6 @@ export class SubscriberListVM extends ProviderListener {
     this.onSubscribersLoaded?.(this.subscribers);
   };
 
-  refreshCurrentSearch = () => {
+  refreshCurrentSearch = () =>
     this.requestLoadedSubscriberPages(++this._requestVersion);
-  };
 }

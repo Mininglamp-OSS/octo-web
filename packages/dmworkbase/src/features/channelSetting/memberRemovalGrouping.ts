@@ -1,4 +1,5 @@
 import { Subscriber } from "wukongimjssdk";
+import { SubscriberStatus } from "../../Service/Const";
 
 import {
   canRemoveChannelSettingSubscriber,
@@ -84,6 +85,12 @@ export function buildMemberRemovalGroups(params: {
   const others: Subscriber[] = [];
 
   for (const subscriber of subscribers) {
+    if (
+      subscriber.status !== undefined &&
+      subscriber.status !== SubscriberStatus.normal
+    ) {
+      continue;
+    }
     // §3.2 的唯一可见性判据。复用行级判据，不另写一份 —— 页面过滤与行内按钮
     // 各写一份的话，迟早漂移成「列表里有这一行，但它没有移除按钮」。
     if (

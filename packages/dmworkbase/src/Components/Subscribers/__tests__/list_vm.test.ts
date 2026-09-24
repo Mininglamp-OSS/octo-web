@@ -330,4 +330,35 @@ describe("SubscriberListVM local search", () => {
       ])
     );
   });
+
+  it("bounds sparse auto-paging and exposes a continuation state", async () => {
+    subscribersRequest.mockImplementation(async (_channel, options) =>
+      Array.from({ length: 50 }, (_, index) => ({
+        uid: `page-${options.page}-${index}`,
+        name: "Not removable",
+      }))
+    );
+    const vm = new SubscriberListVM(channel, () => false, undefined, 5);
+    (vm as any)._isMounted = true;
+
+    await vm.requestSubscribers();
+
+    expect(subscribersRequest).toHaveBeenCalledTimes(5);
+    expect(vm.firstLoadSettled).toBe(true);
+    expect(vm.autoPaging).toBe(false);
+    expect(vm.autoPageLimitReached).toBe(true);
+    expect(vm.hasMore).toBe(true);
+  });
+
+  it("reports a bounded page failure instead of an empty result", async () => {
+    subscribersRequest.mockRejectedValue(new Error("network failed"));
+    const vm = new SubscriberListVM(channel, () => false, undefined, 5);
+    (vm as any)._isMounted = true;
+
+    await vm.requestSubscribers();
+
+    expect(vm.firstLoadSettled).toBe(true);
+    expect(vm.loadError).toBe(true);
+    expect(vm.subscribers).toEqual([]);
+  });
 });

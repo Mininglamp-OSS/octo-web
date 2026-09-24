@@ -1,7 +1,7 @@
 import { Subscriber } from "wukongimjssdk";
 import { describe, expect, it } from "vitest";
 
-import { GroupRole } from "../../../Service/Const";
+import { GroupRole, SubscriberStatus } from "../../../Service/Const";
 import {
   MAX_OTHERS_GROUP_SIZE,
   buildMemberRemovalGroups,
@@ -98,6 +98,22 @@ describe("buildMemberRemovalGroups · §3.2 / §3.3 分类", () => {
       subscribers: [sub("owner", GroupRole.owner), sub("me", GroupRole.normal)],
     });
     expect(groups).toEqual([]);
+  });
+
+  it("不展示黑名单或未知状态成员", () => {
+    const groups = buildMemberRemovalGroups({
+      viewerUid: "owner",
+      viewerRole: GroupRole.owner,
+      subscribers: [
+        { ...sub("normal"), status: SubscriberStatus.normal },
+        { ...sub("blocked"), status: SubscriberStatus.blacklist },
+        { ...sub("unknown"), status: SubscriberStatus.unknown },
+      ] as Subscriber[],
+    });
+
+    expect(groups[0].subscribers.map((subscriber) => subscriber.uid)).toEqual([
+      "normal",
+    ]);
   });
 
   it("「其他成员」超过上限时截断并打标，「我的 BOT」永不截断", () => {

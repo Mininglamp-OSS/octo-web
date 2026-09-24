@@ -1,6 +1,13 @@
 import React from "react";
-import { Subscriber } from "wukongimjssdk";
-import { describe, expect, it, vi } from "vitest";
+import { Channel, Subscriber } from "wukongimjssdk";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const runtime = vi.hoisted(() => ({
+  subscriberChangeListener: undefined as
+    | ((channel: Channel) => void)
+    | undefined,
+  unsubscribe: vi.fn(),
+}));
 
 // 「移出成员」页的**交互模型**测试：多选 + 上报选择。
 //
@@ -17,6 +24,12 @@ import { describe, expect, it, vi } from "vitest";
 // WKAvatar 等一堆渲染期依赖。
 
 vi.mock("../../../im-runtime/currentChannelRuntime", () => ({
+  addCurrentImSubscriberChangeListener: vi.fn(
+    (listener: (channel: Channel) => void) => {
+      runtime.subscriberChangeListener = listener;
+      return runtime.unsubscribe;
+    }
+  ),
   getCurrentImChannelInfo: () => undefined,
 }));
 
@@ -32,6 +45,7 @@ vi.mock("@douyinfe/semi-icons", () => ({ IconSearchStroked: () => null }));
 vi.mock("@douyinfe/semi-ui", () => ({ Tag: () => null }));
 
 import { MemberRemovalList } from "../memberRemovalList";
+import { SubscriberListVM } from "../list_vm";
 import { GroupRole } from "../../../Service/Const";
 
 type AnyElement = {
@@ -73,15 +87,29 @@ const roster = [
  * （见 applySelection）。这是测试替身的常见做法：本组测的是选择逻辑与渲染
  * 映射，不是 React 的调度行为。
  */
-function render(component: MemberRemovalList, subscribers = roster) {
+function render(
+  component: MemberRemovalList,
+  subscribers = roster,
+  overrides: Record<string, unknown> = {}
+) {
   const tree = component.render() as AnyElement;
   const renderProp = tree.props?.render as (vm: unknown) => unknown;
-  return renderProp({ subscribers, search: vi.fn() });
+  return renderProp({
+    subscribers,
+    search: vi.fn(),
+    loadMoreSubscribersIfNeed: vi.fn(),
+    retry: vi.fn(),
+    firstLoadSettled: true,
+    loadError: false,
+    autoPaging: false,
+    hasMore: false,
+    ...overrides,
+  });
 }
 
 function createComponent(onSelectionChange?: (items: Subscriber[]) => void) {
   const component = new MemberRemovalList({
-    channel: { channelID: "g1" } as never,
+    channel: new Channel("g1", 2),
     viewerUid: "owner",
     viewerRole: GroupRole.owner,
     onSelectionChange,
@@ -106,6 +134,11 @@ function applySelection(component: MemberRemovalList, uids: string[]) {
 }
 
 describe("MemberRemovalList · 多选交互", () => {
+  beforeEach(() => {
+    runtime.subscriberChangeListener = undefined;
+    runtime.unsubscribe.mockReset();
+  });
+
   // §3.3：两组并存时「我的 BOT」默认**收起**、「其他成员」默认展开，
   // 所以首帧只渲染得出「其他成员」那一行。
   it("首帧按 §3.3 的默认展开态渲染（我的 BOT 收起）", () => {
@@ -138,9 +171,41 @@ describe("MemberRemovalList · 多选交互", () => {
       t: (key: string) => key,
     };
 
-    const content = render(component, []);
+    const content = render(component, [], { firstLoadSettled: false });
     expect(collectByTestId(content, "member-removal-row")).toHaveLength(1);
     expect(collectByTestId(content, "member-removal-empty")).toHaveLength(0);
+  });
+
+  it("没有首屏缓存时先显示加载状态", () => {
+    const content = render(createComponent(), [], {
+      firstLoadSettled: false,
+    });
+
+    expect(collectByTestId(content, "member-removal-loading")).toHaveLength(1);
+    expect(collectByTestId(content, "member-removal-empty")).toHaveLength(0);
+  });
+
+  it("加载失败时显示重试入口", () => {
+    const retry = vi.fn();
+    const content = render(createComponent(), [], {
+      firstLoadSettled: true,
+      loadError: true,
+      retry,
+    });
+
+    expect(collectByTestId(content, "member-removal-error")).toHaveLength(1);
+    const [button] = collectByTestId(content, "member-removal-retry");
+    (button.props?.onClick as () => void)();
+    expect(retry).toHaveBeenCalledOnce();
+  });
+
+  it("仅在加载完成且没有后续页时显示确定性空态", () => {
+    const content = render(createComponent(), [], {
+      firstLoadSettled: true,
+      hasMore: false,
+    });
+
+    expect(collectByTestId(content, "member-removal-empty")).toHaveLength(1);
   });
 
   it("滚动接近底部时继续加载成员", () => {
@@ -152,6 +217,10 @@ describe("MemberRemovalList · 多选交互", () => {
       subscribers: roster,
       search: vi.fn(),
       loadMoreSubscribersIfNeed,
+      firstLoadSettled: true,
+      loadError: false,
+      autoPaging: false,
+      hasMore: false,
     });
 
     (content.props?.onScroll as (event: unknown) => void)({
@@ -159,6 +228,134 @@ describe("MemberRemovalList · 多选交互", () => {
     });
 
     expect(loadMoreSubscribersIfNeed).toHaveBeenCalledTimes(1);
+  });
+
+  it("未扫完分页时不显示确定性空态，并提供继续加载", () => {
+    const loadMoreSubscribersIfNeed = vi.fn();
+    const content = render(createComponent(), [], {
+      firstLoadSettled: true,
+      hasMore: true,
+      autoPageLimitReached: true,
+      loadMoreSubscribersIfNeed,
+    });
+
+    expect(collectByTestId(content, "member-removal-empty")).toHaveLength(0);
+    const buttons = collectByTestId(content, "member-removal-load-more");
+    expect(buttons).toHaveLength(1);
+    (buttons[0].props?.onClick as () => void)();
+    expect(loadMoreSubscribersIfNeed).toHaveBeenCalledOnce();
+  });
+
+  it("已有成员但仍有下一页时也提供继续加载", () => {
+    const loadMoreSubscribersIfNeed = vi.fn();
+    const content = render(createComponent(), roster, {
+      firstLoadSettled: true,
+      hasMore: true,
+      autoPageLimitReached: true,
+      loadMoreSubscribersIfNeed,
+    });
+
+    const buttons = collectByTestId(content, "member-removal-load-more");
+    expect(buttons).toHaveLength(1);
+    (buttons[0].props?.onClick as () => void)();
+    expect(loadMoreSubscribersIfNeed).toHaveBeenCalledOnce();
+  });
+
+  it("搜索无结果时显示搜索范围空态", () => {
+    const component = createComponent();
+    (component as any).state = {
+      ...(component as any).state,
+      keyword: "missing",
+    };
+
+    const content = render(component, [], {
+      firstLoadSettled: true,
+      hasMore: false,
+    });
+
+    expect(
+      collectByTestId(content, "member-removal-search-empty")
+    ).toHaveLength(1);
+    expect(collectByTestId(content, "member-removal-empty")).toHaveLength(0);
+  });
+
+  it("搜索期间不允许折叠并保留原来的展开偏好", () => {
+    const component = createComponent();
+    (component as any).state = {
+      ...(component as any).state,
+      keyword: "bot",
+      manualExpanded: { myBots: false, others: true },
+    };
+
+    const content = render(component);
+    expect(
+      collectByTestId(content, "member-removal-chevron-myBots")
+    ).toHaveLength(0);
+    expect((component as any).state.manualExpanded).toEqual({
+      myBots: false,
+      others: true,
+    });
+  });
+
+  it("成员变化后刷新真实 VM，并移除已离群成员的选中态", async () => {
+    const onSelectionChange = vi.fn();
+    const component = createComponent(onSelectionChange);
+    const syncSetState = (update: any, callback?: () => void) => {
+      const next =
+        typeof update === "function"
+          ? update((component as any).state)
+          : update;
+      (component as any).state = { ...(component as any).state, ...next };
+      callback?.();
+    };
+    (component as any).setState = syncSetState;
+
+    const tree = component.render() as AnyElement;
+    const create = tree.props?.create as () => any;
+    const vm = create();
+    expect(vm).toBeInstanceOf(SubscriberListVM);
+    vm.subscribers = [roster[2]];
+    applySelection(component, ["human"]);
+    vi.spyOn(vm, "refreshCurrentSearch").mockImplementation(async () => {
+      vm.subscribers = [];
+      vm.onSubscribersLoaded?.([]);
+    });
+
+    component.componentDidMount();
+    runtime.subscriberChangeListener?.(new Channel("g1", 2));
+    await vi.waitFor(() =>
+      expect(vm.refreshCurrentSearch).toHaveBeenCalledOnce()
+    );
+
+    expect(Array.from((component as any).state.selected.keys())).toEqual([]);
+    expect(onSelectionChange).toHaveBeenLastCalledWith([]);
+    component.componentWillUnmount();
+    expect(runtime.unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  it("Provider 创建真实 VM，搜索输入会调用它的 search", () => {
+    vi.useFakeTimers();
+    try {
+      const component = createComponent();
+      const tree = component.render() as AnyElement;
+      const create = tree.props?.create as () => SubscriberListVM;
+      const renderProp = tree.props?.render as (
+        vm: SubscriberListVM
+      ) => unknown;
+      const vm = create();
+      const search = vi.spyOn(vm, "search").mockImplementation(() => {});
+      const content = renderProp(vm);
+      const [input] = collectByTestId(content, "member-removal-search");
+
+      (input.props?.onChange as (event: unknown) => void)({
+        target: { value: "alice" },
+      });
+      vi.advanceTimersByTime(300);
+
+      expect(search).toHaveBeenCalledWith("alice");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("展开「我的 BOT」后两组的行都可勾选", () => {

@@ -2,11 +2,13 @@ import { Toast } from "@douyinfe/semi-ui";
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import WKApp from "../../../App";
 import { ChannelTypeCommunityTopic, GroupRole } from "../../../Service/Const";
 import { ThreadStatus } from "../../../Service/Thread";
 import { GroupStatusDisband } from "../../../Utils/groupDisband";
 import {
   muteChannelSetting,
+  removeChannelSettingSubscribers,
   updateChannelSettingMyGroupNickname,
 } from "../../../bridge/channelSetting/channelSettingActions";
 import {
@@ -14,6 +16,7 @@ import {
   getCurrentImChannelInfo,
 } from "../../../im-runtime/currentChannelRuntime";
 import { t } from "../../../i18n";
+import { wkConfirm } from "../../../Components/WKModal/confirm";
 import {
   ChannelSettingInfoRow,
   ChannelSettingToggleRow,
@@ -83,6 +86,10 @@ vi.mock("../../../Service/threadPermission", () => ({
   shouldShowThreadArchiveAction: vi.fn(() => true),
 }));
 
+vi.mock("../../../Components/WKModal/confirm", () => ({
+  wkConfirm: vi.fn(),
+}));
+
 vi.mock("../../../bridge/channelSetting/channelSettingActions", () => ({
   addChannelSettingSubscribers: vi.fn(),
   clearChannelSettingMessages: vi.fn(),
@@ -124,6 +131,7 @@ function createContext(overrides: Record<string, any> = {}) {
   return {
     routeData: vi.fn(() => data),
     push: vi.fn(),
+    pop: vi.fn(),
   } as any;
 }
 
@@ -194,6 +202,10 @@ describe("channel setting section builders", () => {
         { uid: "bob", role: 0 },
         { uid: "carol", role: 0 },
       ],
+      subscriberAll: [
+        { uid: "alice", role: 1, status: 1 },
+        { uid: "blocked", role: 0, status: 2 },
+      ],
     });
     const section = buildChannelMembersSection(context);
 
@@ -209,6 +221,9 @@ describe("channel setting section builders", () => {
     expect(view.props.viewerRole).toBe(1);
     expect(view.props.initialSubscribers).toEqual(
       expect.arrayContaining([expect.objectContaining({ uid: "bob" })])
+    );
+    expect(view.props.initialSubscribers).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ uid: "blocked" })])
     );
     // 交互模型是**多选 + 批量提交**：组件只上报选择，不再持有逐行的 onRemove。
     expect(view.props.onRemove).toBeUndefined();
@@ -265,6 +280,34 @@ describe("channel setting section builders", () => {
     expect(disable).toHaveBeenLastCalledWith(true);
   });
 
+  it("keeps the page and selection available when batch removal fails", async () => {
+    vi.mocked(removeChannelSettingSubscribers).mockRejectedValueOnce({
+      msg: "member already left",
+    });
+    const context = createContext({
+      subscriberOfMe: { uid: "alice", role: GroupRole.owner },
+      subscribers: [
+        { uid: "alice", role: GroupRole.owner },
+        { uid: "bob", role: GroupRole.normal },
+      ],
+    });
+    const section = buildChannelMembersSection(context);
+    section?.rows?.[0].properties.onRemove();
+    const [view, config] = context.push.mock.calls[0];
+    view.props.onSelectionChange([{ uid: "bob", name: "Bob" }]);
+
+    config.onFinish();
+    const firstConfirmation = vi.mocked(wkConfirm).mock.calls[0][0];
+    await expect(firstConfirmation.onOk()).rejects.toEqual({
+      msg: "member already left",
+    });
+
+    expect(Toast.error).toHaveBeenCalledWith("member already left");
+    expect(context.pop).not.toHaveBeenCalled();
+    config.onFinish();
+    expect(wkConfirm).toHaveBeenCalledTimes(2);
+  });
+
   // 「移出成员」与「添加成员」必须完全解耦。
   //
   // 之前移除页复用了一个内嵌 organizationalTool（「添加成员」按钮）的 JSX title，
@@ -284,18 +327,11 @@ describe("channel setting section builders", () => {
     section?.rows?.[0].properties.onRemove();
     const [, config] = context.push.mock.calls[0];
 
-    // 纯字符串标题，不是带按钮的 JSX。
-    expect(typeof config.title).toBe("string");
-    expect(config.title).toBe(t("base.subscribers.removeMemberTitle"));
+    expect(config.title).toBeTruthy();
+    expect(WKApp.endpoints.organizationalTool).not.toHaveBeenCalled();
   });
 
-  // 「查看全部」是纯浏览路径，不得下发任何移除能力。
-  //
-  // 这条是原「exposes removeAction to the view-all path too」的**语义反转**。
-  // 当时透传 removeAction 的理由是「19 人以下小群普通成员没有别的入口」；
-  // 现在 vm.showRemove() 已为「拥有可移除 bot 的普通成员」点亮减号入口（含小群），
-  // 兜底不再需要，继续下发只会把管理语义混进浏览场景。
-  it("no longer leaks a removal capability into the browse-only section props", () => {
+  it("keeps a view-all fallback for a normal member's own bot", () => {
     const context = createContext({
       channelInfo: { orgData: { member_count: 3 } },
       subscriberOfMe: { uid: "bob", role: 0 },
@@ -307,9 +343,37 @@ describe("channel setting section builders", () => {
     const section = buildChannelMembersSection(context);
 
     const properties = section?.rows?.[0].properties ?? {};
-    expect(properties.removeAction).toBeUndefined();
-    // 减号入口本身仍要在 —— 解耦不等于把移除入口拆掉。
+    expect(
+      properties.removeAction.canRemove({
+        uid: "bot-mine",
+        role: GroupRole.normal,
+        orgData: { bot_owned_by_me: true },
+      })
+    ).toBe(true);
+    expect(
+      properties.removeAction.canRemove({
+        uid: "bot-other",
+        role: GroupRole.normal,
+        orgData: { bot_owned_by_me: false },
+      })
+    ).toBe(false);
     expect(typeof properties.onRemove).toBe("function");
+  });
+
+  it("does not expose the view-all fallback to owners or managers", () => {
+    const context = createContext({
+      subscriberOfMe: { uid: "alice", role: GroupRole.owner },
+    });
+    const section = buildChannelMembersSection(context);
+    const removeAction = section?.rows?.[0].properties.removeAction;
+
+    expect(
+      removeAction.canRemove({
+        uid: "bob",
+        role: GroupRole.normal,
+        orgData: {},
+      })
+    ).toBe(false);
   });
 
   it("keeps member removal permissions scoped to the current manager role", () => {

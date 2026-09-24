@@ -1,25 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
-// 「查看全部」是**纯浏览**路径：它不得下发任何移除能力。
-//
-// 这个文件原本钉的是相反的契约——当时「查看全部」透传 removeAction，理由是
-// 「19 人以下的小群里普通成员没有别的入口」（vm.showRemove() 那时只对群主/管理员
-// 返回 true）。现在减号入口本身已经覆盖了「拥有可移除 bot 的普通成员」，兜底不再
-// 需要；继续透传只会把管理语义混进浏览场景，与「+ / - 完全解耦」的目标相反。
-//
-// 保留这个文件而不是删掉，是因为它当初的存在理由现在反过来同样成立：评审做过
-// 变异测试，证明**光看 section.rows[0].properties 是测不到这一跳的**——那里少一个
-// 字段和真正 render 时少传一个 prop 是两回事。所以这里依旧走到 render + 点击
-// 「查看全部」，只是断言方向反过来：pushed 视图上不能出现 removeAction。
-//
-// 实现上不走 DOM：Subscribers.render() 返回的是普通 React 元素对象，
-// 直接遍历树、取到「查看全部」节点的 onClick 调用即可，既不用挂载也不用
-// 处理组件里的 require(png) 资源。
+// 「查看全部」保留普通成员移除自己 Bot 的兜底能力，避免 Bot 不在本地缓存时
+// 减号入口不亮后完全无路可达。
 
 vi.mock("../../../App", () => ({
   default: {
     loginInfo: { uid: "me" },
-    endpoints: { organizationalTool: (_channel: unknown, node: unknown) => node },
+    endpoints: {
+      organizationalTool: (_channel: unknown, node: unknown) => node,
+    },
     shared: { baseContext: { showUserInfo: vi.fn() } },
   },
 }));
@@ -36,7 +25,10 @@ type AnyElement = {
 };
 
 /** 深度优先找到第一个 className 命中的元素。 */
-function findByClassName(node: unknown, className: string): AnyElement | undefined {
+function findByClassName(
+  node: unknown,
+  className: string
+): AnyElement | undefined {
   if (!node || typeof node !== "object") return undefined;
   if (Array.isArray(node)) {
     for (const child of node) {
@@ -69,6 +61,10 @@ describe("Subscribers · 查看全部路径", () => {
     const props = {
       context: context as never,
       channel: { getChannelKey: () => "g1" } as never,
+      removeAction: {
+        canRemove: vi.fn(() => true),
+        onRemove: vi.fn(async () => undefined),
+      },
     };
     const component = new Subscribers(props);
     // i18n 在 render 里通过 this.context 取，塞一个恒等 t 即可。
@@ -90,12 +86,11 @@ describe("Subscribers · 查看全部路径", () => {
     return context.push.mock.calls[0][0] as AnyElement;
   };
 
-  it("不把任何移除能力带进「查看全部」打开的成员列表", () => {
+  it("把普通成员的自有 Bot 移除兜底带进查看全部列表", () => {
     const pushed = renderAndClickViewAll();
-    expect(
-      pushed.props?.removeAction,
-      "「查看全部」是纯浏览入口；移除只走「移出成员」独立页（减号图标）"
-    ).toBeUndefined();
+    expect(pushed.props?.removeAction).toBeTruthy();
+    expect(typeof pushed.props?.removeAction.canRemove).toBe("function");
+    expect(typeof pushed.props?.removeAction.onRemove).toBe("function");
   });
 
   it("仍然正常打开成员列表并带上本地搜索", () => {

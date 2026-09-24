@@ -17,13 +17,19 @@ import {
   isGroupExpanded,
   MAX_OTHERS_GROUP_SIZE,
 } from "../../features/channelSetting/memberRemovalGrouping";
-import { getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
+import { canRemoveChannelSettingSubscriber } from "../../features/channelSetting/memberRemovalPermission";
+import {
+  addCurrentImSubscriberChangeListener,
+  getCurrentImChannelInfo,
+} from "../../im-runtime/currentChannelRuntime";
 import AiBadge from "../AiBadge";
 import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
 import WKAvatar, { isBot } from "../WKAvatar";
 import { SubscriberListVM } from "./list_vm";
 import "./list.css";
 import "./memberRemovalList.css";
+
+const MAX_AUTO_PAGES = 5;
 
 /**
  * 「移出成员」独立页（PRD §3.2–§3.4）。
@@ -99,6 +105,9 @@ export class MemberRemovalList extends Component<
   private groupFirstItemRefs = new Map<MemberRemovalGroupId, HTMLDivElement>();
   private pendingScrollGroupId?: MemberRemovalGroupId;
   private scrollRaf?: number;
+  private currentVM?: SubscriberListVM;
+  private unsubscribeSubscriberChangeListener?: () => void;
+  private refreshBaselineUids?: Set<string>;
   constructor(props: MemberRemovalListProps) {
     super(props);
     this.state = {
@@ -108,7 +117,29 @@ export class MemberRemovalList extends Component<
     };
   }
 
+  componentDidMount() {
+    this.unsubscribeSubscriberChangeListener =
+      addCurrentImSubscriberChangeListener((channel: Channel) => {
+        if (!channel?.isEqual?.(this.props.channel)) return;
+        const vm = this.currentVM;
+        if (!vm) return;
+        const baseline = new Set(
+          vm.subscribers.map((subscriber) => subscriber.uid)
+        );
+        this.refreshBaselineUids = baseline;
+        void vm.refreshCurrentSearch().finally(() => {
+          if (this.refreshBaselineUids === baseline) {
+            this.refreshBaselineUids = undefined;
+          }
+        });
+      });
+  }
+
   componentWillUnmount() {
+    this.unsubscribeSubscriberChangeListener?.();
+    this.unsubscribeSubscriberChangeListener = undefined;
+    this.currentVM = undefined;
+    this.refreshBaselineUids = undefined;
     if (this.scrollRaf !== undefined) {
       cancelAnimationFrame(this.scrollRaf);
       this.scrollRaf = undefined;
@@ -122,7 +153,11 @@ export class MemberRemovalList extends Component<
 
   private buildGroups(vm: SubscriberListVM): MemberRemovalGroup[] {
     let subscribers = vm.subscribers;
-    if (!this.searching && this.props.initialSubscribers?.length) {
+    if (
+      !this.searching &&
+      !vm.firstLoadSettled &&
+      this.props.initialSubscribers?.length
+    ) {
       const merged = new Map(
         this.props.initialSubscribers.map((subscriber) => [
           subscriber.uid,
@@ -195,6 +230,22 @@ export class MemberRemovalList extends Component<
     onSelectionChange(Array.from(this.state.selected.values()));
   }
 
+  private onSubscribersLoaded = (subscribers: Subscriber[]) => {
+    const baseline = this.refreshBaselineUids;
+    if (!baseline) return;
+    const refreshedUids = new Set(
+      subscribers.map((subscriber) => subscriber.uid)
+    );
+    const selected = new Map(this.state.selected);
+    for (const uid of selected.keys()) {
+      if (baseline.has(uid) && !refreshedUids.has(uid)) {
+        selected.delete(uid);
+      }
+    }
+    if (selected.size === this.state.selected.size) return;
+    this.setState({ selected }, () => this.reportSelection());
+  };
+
   /**
    * §3.4：**点击分类文字** = 展开（若收起）+ 滚动到该分类第一个成员。
    *
@@ -230,7 +281,7 @@ export class MemberRemovalList extends Component<
   ) => {
     // 不 stopPropagation 的话会冒泡到标题行，变成「收起的同时又滚动」。
     event.stopPropagation();
-    if (groups.length === 1) return; // 单组恒展开，chevron 无意义
+    if (groups.length === 1 || this.searching) return;
     const currentlyExpanded = this.expandedFor(groupId, groups);
     this.setState((prev) => ({
       manualExpanded: {
@@ -433,7 +484,7 @@ export class MemberRemovalList extends Component<
   private renderGroup(group: MemberRemovalGroup, groups: MemberRemovalGroup[]) {
     const expanded = this.expandedFor(group.id, groups);
     // 单组时 chevron 无意义（收起后页面全空），隐藏它而不是渲染一个点了没反应的控件。
-    const collapsible = groups.length > 1;
+    const collapsible = groups.length > 1 && !this.searching;
     return (
       <div className="wk-memberremoval-group" key={group.id}>
         {/* 分类文字是独立点击区：展开 + 滚动定位。chevron 在右侧，只管折叠（§3.4）。 */}
@@ -444,6 +495,7 @@ export class MemberRemovalList extends Component<
           tabIndex={0}
           onClick={() => this.onGroupLabelClick(group.id, groups)}
           onKeyDown={(event) => {
+            if (event.target !== event.currentTarget) return;
             if (event.key !== "Enter" && event.key !== " ") return;
             event.preventDefault();
             this.onGroupLabelClick(group.id, groups);
@@ -506,16 +558,94 @@ export class MemberRemovalList extends Component<
     );
   }
 
+  private renderEmptyState(vm: SubscriberListVM) {
+    if (vm.loadError) {
+      return (
+        <div
+          className="wk-memberremoval-empty"
+          data-testid="member-removal-error"
+        >
+          <div>{this.context.t("base.subscribers.removalLoadFailed")}</div>
+          <button
+            type="button"
+            className="wk-memberremoval-load-more"
+            data-testid="member-removal-retry"
+            onClick={() => vm.retry()}
+          >
+            {this.context.t("base.subscribers.removalRetry")}
+          </button>
+        </div>
+      );
+    }
+    if (!vm.firstLoadSettled || vm.autoPaging) {
+      return (
+        <div
+          className="wk-memberremoval-empty"
+          data-testid="member-removal-loading"
+        >
+          {this.context.t("base.subscribers.removalLoading")}
+        </div>
+      );
+    }
+    if (vm.hasMore) {
+      return (
+        <div className="wk-memberremoval-empty">
+          <div>{this.context.t("base.subscribers.removalMoreAvailable")}</div>
+          {this.renderLoadMore(vm)}
+        </div>
+      );
+    }
+    if (this.searching) {
+      return (
+        <div
+          className="wk-memberremoval-empty"
+          data-testid="member-removal-search-empty"
+        >
+          {this.context.t("base.subscribers.removalSearchEmpty")}
+        </div>
+      );
+    }
+    return (
+      <div
+        className="wk-memberremoval-empty"
+        data-testid="member-removal-empty"
+      >
+        {this.context.t("base.subscribers.noRemovableMembers")}
+      </div>
+    );
+  }
+
+  private renderLoadMore(vm: SubscriberListVM) {
+    return (
+      <button
+        type="button"
+        className="wk-memberremoval-load-more"
+        data-testid="member-removal-load-more"
+        onClick={() => vm.loadMoreSubscribersIfNeed()}
+      >
+        {this.context.t("base.subscribers.removalLoadMore")}
+      </button>
+    );
+  }
+
   render() {
     return (
       <Provider
         create={() => {
-          // 有意**不**把 canRemove 作为 filter 传给 VM。
-          //
-          // list_vm 有一条「filter 把本页结果砍光就自动翻下一页」的逻辑，普通成员
-          // 在 500 人群里只有 1 个 bot，那会连翻 10 页把全群扫一遍。过滤放在
-          // 渲染层做，VM 保持朴素分页。
-          return new SubscriberListVM(this.props.channel);
+          const vm = new SubscriberListVM(
+            this.props.channel,
+            (subscriber) =>
+              canRemoveChannelSettingSubscriber({
+                subscriber,
+                viewerUid: this.props.viewerUid,
+                viewerRole: this.props.viewerRole,
+              }),
+            undefined,
+            MAX_AUTO_PAGES
+          );
+          vm.onSubscribersLoaded = this.onSubscribersLoaded;
+          this.currentVM = vm;
+          return vm;
         }}
         render={(vm: SubscriberListVM) => {
           const groups = this.buildGroups(vm);
@@ -542,14 +672,16 @@ export class MemberRemovalList extends Component<
                 </div>
               </div>
               {groups.length === 0 ? (
-                <div
-                  className="wk-memberremoval-empty"
-                  data-testid="member-removal-empty"
-                >
-                  {this.context.t("base.subscribers.noRemovableMembers")}
-                </div>
+                this.renderEmptyState(vm)
               ) : (
-                groups.map((group) => this.renderGroup(group, groups))
+                <>
+                  {groups.map((group) => this.renderGroup(group, groups))}
+                  {vm.hasMore && !vm.autoPaging && !vm.loadError && (
+                    <div className="wk-memberremoval-continuation">
+                      {this.renderLoadMore(vm)}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           );
