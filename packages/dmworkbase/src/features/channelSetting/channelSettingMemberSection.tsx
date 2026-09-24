@@ -17,7 +17,7 @@ import RouteContext, {
 import { Row, Section } from "../../Service/Section";
 import { isGroupDisbanded } from "../../Utils/groupDisband";
 import { t } from "../../i18n";
-import { removeChannelSettingSubscribers } from "../../bridge/channelSetting/channelSettingActions";
+import { removeAndReconcileChannelSettingSubscribers } from "../../bridge/channelSetting/channelSettingActions";
 import { createChannelSettingMemberSearch } from "./channelSettingMemberSearch";
 import { resolveSubscriberShowName } from "../../Components/Subscribers/subscriberShowName";
 import WKApp from "../../App";
@@ -70,13 +70,17 @@ export function buildChannelMembersSection(
             // 这与「转让群主」（channelSettingGroupManagementRows）是同一套模式，不另造。
             let finishContext: FinishButtonContext | undefined;
             let selected: Subscriber[] = [];
+            let confirming = false;
+            let submitting = false;
+            const removalPage = React.createRef<MemberRemovalList>();
 
             const syncFinishDisabled = () => {
-              finishContext?.disable(selected.length === 0);
+              finishContext?.disable(submitting || selected.length === 0);
             };
 
             context.push(
               <MemberRemovalList
+                ref={removalPage}
                 channel={channel}
                 // 名册不走 props：本页由 routeContext.push 推入，WKViewQueue 会把该 JSX
                 // 存进它自己的 state，之后外部再怎么更新也不会给它新 props
@@ -112,6 +116,7 @@ export function buildChannelMembersSection(
                   finishContext.disable(true);
                 },
                 onFinish: () => {
+                  if (confirming || submitting) return;
                   if (selected.length === 0) {
                     Toast.warning(
                       t("base.subscribers.removeSelectAtLeastOne")
@@ -120,6 +125,8 @@ export function buildChannelMembersSection(
                   }
                   const count = selected.length;
                   const uids = selected.map((item) => item.uid);
+                  confirming = true;
+                  let attempted = false;
                   wkConfirm({
                     title: t("base.subscribers.removeMemberTitle"),
                     // 列出名字而不是只报个数：选中项是跨搜索存活的（刻意设计），所以
@@ -142,32 +149,51 @@ export function buildChannelMembersSection(
                     ),
                     okText: t("base.subscribers.remove"),
                     okType: "danger",
+                    onCancel: () => { confirming = false; },
                     onOk: async () => {
+                      if (attempted) return;
+                      const page = removalPage.current;
+                      // A detached page must not submit a still-open modal's
+                      // stale selection after navigation.
+                      if (!page) {
+                        confirming = false;
+                        return;
+                      }
+                      attempted = true;
+                      submitting = true;
+                      syncFinishDisabled();
                       finishContext?.loading(true);
+                      page?.setSubmissionPending(true);
                       try {
-                        // **一次**请求提交整批。后端 memberRemove 的自助分支做的是
-                        // 整批校验（任一目标不在白名单即整批拒绝，不做部分执行），
-                        // 逐个调用反而会把一个天然批量的接口拆散用。
-                        await removeChannelSettingSubscribers({
+                        const evidence = await removeAndReconcileChannelSettingSubscribers({
                           channel,
                           uids,
                         });
-                        Toast.success(
-                          t("base.subscribers.removeSuccessBatch", {
-                            values: { count },
-                          })
-                        );
-                        context.pop();
-                        data.refresh?.();
-                      } catch (error: any) {
-                        // 批量是全成全败，所以只报一次错并**保留页面与勾选态**
-                        // 让用户重试，不能 pop（那会像部分成功）。
-                        Toast.error(
-                          error?.msg || t("base.subscribers.removeFailed")
-                        );
-                        throw error;
+                        if (!evidence || removalPage.current !== page) return;
+                        page?.applySelectionEvidence(evidence);
+                        if (evidence.absent.length === uids.length) {
+                          Toast.success(t("base.subscribers.removalVerified"));
+                          context.pop();
+                          data.refresh?.();
+                        } else {
+                          Toast.warning(t("base.subscribers.removalUncertain"));
+                          page?.refreshMembers();
+                        }
+                      } catch {
+                        if (removalPage.current === page) {
+                          Toast.warning(t("base.subscribers.removalUncertain"));
+                          page?.refreshMembers();
+                        }
                       } finally {
-                        finishContext?.loading(false);
+                        // Close this confirmation after an attempt. A retry must
+                        // confirm the reconciled selection, not the old uid snapshot.
+                        submitting = false;
+                        confirming = false;
+                        if (removalPage.current === page) {
+                          page?.setSubmissionPending(false);
+                          finishContext?.loading(false);
+                          syncFinishDisabled();
+                        }
                       }
                     },
                   });

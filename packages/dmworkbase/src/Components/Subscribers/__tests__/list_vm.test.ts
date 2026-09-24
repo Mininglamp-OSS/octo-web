@@ -284,7 +284,8 @@ describe("SubscriberListVM local search", () => {
 
     expect(vm.currPage).toBe(3);
     expect(vm.subscribers).toEqual([{ uid: "stale", name: "Stale" }]);
-    expect(listener).not.toHaveBeenCalled();
+    expect(listener).toHaveBeenCalledOnce();
+    expect(vm.status).toBe("refreshing");
     await vi.waitFor(() => expect(subscribersRequest).toHaveBeenCalledTimes(3));
     expect(subscribersRequest).toHaveBeenNthCalledWith(1, channel, {
       page: 1,
@@ -301,7 +302,7 @@ describe("SubscriberListVM local search", () => {
       limit: vm.limit,
       keyword: "wei",
     });
-    await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(vm.status).toBe("ready"));
     expect(vm.subscribers).toEqual([
       { uid: "page-1", name: "Page 1" },
       { uid: "page-2", name: "Page 2" },

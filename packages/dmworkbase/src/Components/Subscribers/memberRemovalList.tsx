@@ -6,7 +6,7 @@ import { Channel, ChannelTypePerson, Subscriber } from "wukongimjssdk";
 import Provider from "../../Service/Provider";
 import { GroupRole } from "../../Service/Const";
 import { I18nContext } from "../../i18n";
-import { debounce, throttle } from "../../Utils/rateLimit";
+import { throttle } from "../../Utils/rateLimit";
 import { isRealnameVerified } from "../../Utils/displayName";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import {
@@ -23,10 +23,11 @@ import {
   addCurrentImSubscriberChangeListener,
   fetchCurrentImChannelInfo,
   getCurrentImChannelInfo,
-  getCurrentImChannelSubscribers,
 } from "../../im-runtime/currentChannelRuntime";
+import { MemberSelectionEvidence, readSelectedMembers } from "../../bridge/channelSetting/memberRemovalRead";
 import AiBadge from "../AiBadge";
 import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
+import WKButton from "../WKButton";
 import WKAvatar, { isBot } from "../WKAvatar";
 import { SubscriberListVM } from "./list_vm";
 import { resolveSubscriberShowName } from "./subscriberShowName";
@@ -93,9 +94,8 @@ const MAX_AUTO_PAGES = 20;
  * ## 交互模型：多选 + 批量提交（不是逐行减号）
  *
  * 每行一个圆形勾选框，选中项跨分组共存，最后由路由 header 右上角的「确认」
- * 一次性提交。这比逐行「点一个弹一次确认框」更贴合后端：memberRemove 的入参
- * 本来就是 `Members []string`，而且自助分支做的是**整批校验**（任一目标不在
- * 白名单内即整批拒绝，不做部分执行）。逐行调用等于把一个天然批量的接口拆散用。
+ * 一次性提交。后端接受批量 uid，但执行/回包失败不保证没有成员被移出；
+ * 提交方必须核对结果，不能把 HTTP 失败或局部缓存缺席当成最终成员状态。
  *
  * ## 「确认」按钮为什么不在本组件里
  *
@@ -158,6 +158,7 @@ interface MemberRemovalListState {
    */
   manualExpanded: Partial<Record<MemberRemovalGroupId, boolean>>;
   keyword: string;
+  submissionPending: boolean;
 }
 
 export class MemberRemovalList extends Component<
@@ -179,6 +180,8 @@ export class MemberRemovalList extends Component<
   private currentVM?: SubscriberListVM;
   /** channelInfo 到达时的重渲染合帧句柄（见 scheduleRerender）。 */
   private rerenderRaf?: number;
+  private selectionRead?: AbortController;
+  private selectionRevision = 0;
 
   constructor(props: MemberRemovalListProps) {
     super(props);
@@ -186,6 +189,7 @@ export class MemberRemovalList extends Component<
       selected: new Map<string, Subscriber>(),
       manualExpanded: {},
       keyword: "",
+      submissionPending: false,
     };
   }
 
@@ -210,10 +214,12 @@ export class MemberRemovalList extends Component<
       addCurrentImSubscriberChangeListener((channel: Channel) => {
         if (!channel?.isEqual?.(this.props.channel)) return;
         this.currentVM?.refreshCurrentSearch();
+        void this.reconcileSelectedMembers();
       });
   }
 
   componentWillUnmount() {
+    this.selectionRead?.abort();
     if (this.scrollRaf !== undefined) {
       cancelAnimationFrame(this.scrollRaf);
       this.scrollRaf = undefined;
@@ -259,56 +265,53 @@ export class MemberRemovalList extends Component<
         void fetchCurrentImChannelInfo(personChannel);
       }
     }
-    // 名册变动后，已离群的人不该继续躺在批量里。
-    this.pruneSelectionToRoster();
   };
 
-  /**
-   * 把已不在群成员缓存里的人从选中里剔除。
-   *
-   * 选中项是跨搜索/分页存活的（这是刻意设计，否则「先勾人再搜索」会静默丢选），
-   * 所以判据只能是**是否还在群里**，绝不能用「不在当前结果集里」来推定。
-   *
-   * 两道闸，缺一不可：
-   *
-   *   1. **搜索态不剔**。keyword 搜索时 vm.subscribers 会被**整个替换**成命中集，
-   *      而成员缓存对超大群只有前 ~100 人。此时「存活集」退化成「命中集 ∪ 部分缓存」，
-   *      根本不是名册 —— 群主搜「bob」时勾在第 450 位、缓存外的 alice 会被误剔。
-   *      所以只在**非关键词加载**（浏览态）时才剔。
-   *
-   *   2. **缓存为空不剔**。缓存空（超大群还没同步到）只说明「不知道谁还在群里」，
-   *      不等于「所有人都走了」。宁可留着让服务端判，也不静默取消用户的勾选。
-   *
-   * 整批提交是全成全败的，一个已离开的 uid 能把整次操作拖失败，而用户无法从
-   * 报错里看出是哪一个；但宁可漏剔让服务端拒，也不错剔用户的选择。
-   */
-  private pruneSelectionToRoster() {
-    if (this.state.selected.size === 0) return;
-    // 闸 1：搜索态下 vm.subscribers 是命中集不是名册，此时任何剔除都可能误删
-    // 搜索窗口外的有效选中项。只在浏览态（无关键词）才剔。
-    if (this.searching) return;
-    const alive = new Set<string>();
-    for (const subscriber of getCurrentImChannelSubscribers<
-      Channel,
-      Subscriber
-    >(this.props.channel) ?? []) {
-      alive.add(subscriber.uid);
-    }
-    // 闸 2：缓存为空（例如超大群还没同步到）时不做剔除：那说明我们不知道谁还在
-    // 群里，而不是「所有人都走了」。宁可留着让服务端判，也不要静默取消用户的勾选。
-    if (alive.size === 0) return;
-    const stale = Array.from(this.state.selected.keys()).filter(
-      (uid) => !alive.has(uid)
+  /** Called only for membership events, not for every page/search callback. */
+  async reconcileSelectedMembers() {
+    this.selectionRead?.abort();
+    if (!this.state.selected.size) return;
+    const controller = new AbortController();
+    this.selectionRead = controller;
+    const revision = this.selectionRevision;
+    const evidence = await readSelectedMembers(
+      this.props.channel, [...this.state.selected.keys()], controller.signal
     );
-    if (stale.length === 0) return;
+    if (controller.signal.aborted || revision !== this.selectionRevision) return;
+    this.applySelectionEvidence(evidence);
+  }
+
+  /** Unknown reads retain selection; only explicit server evidence may prune. */
+  applySelectionEvidence(evidence: MemberSelectionEvidence) {
+    const invalid = new Set(evidence.absent);
+    for (const subscriber of evidence.present) {
+      if (!canRemoveChannelSettingSubscriber({ ...this.props, subscriber })) {
+        invalid.add(subscriber.uid);
+      }
+    }
+    for (const uid of invalid) this.currentVM?.removeSubscriber(uid);
+    if (![...invalid].some((uid) => this.state.selected.has(uid)) &&
+        !evidence.present.some((row) => this.state.selected.has(row.uid))) return;
+    this.selectionRevision++;
     this.setState(
       (prev) => {
         const next = new Map(prev.selected);
-        for (const uid of stale) next.delete(uid);
+        for (const uid of invalid) next.delete(uid);
+        for (const row of evidence.present) {
+          if (next.has(row.uid)) next.set(row.uid, row);
+        }
         return { selected: next };
       },
       () => this.reportSelection()
     );
+  }
+
+  refreshMembers() {
+    void this.currentVM?.refreshCurrentSearch();
+  }
+
+  setSubmissionPending(pending: boolean) {
+    this.setState({ submissionPending: pending });
   }
 
   private get searching() {
@@ -323,6 +326,7 @@ export class MemberRemovalList extends Component<
       subscribers: vm.subscribers,
       viewerUid: this.props.viewerUid,
       viewerRole: this.props.viewerRole,
+      hasMore: vm.hasMore || vm.loading,
     });
   }
 
@@ -332,11 +336,6 @@ export class MemberRemovalList extends Component<
    * 节流/防抖的实例按 VM 存一份：它们有内部时间戳状态，每次 render 新建会让
    * 节流彻底失效。
    */
-  private searchDebouncedMap = new WeakMap<
-    SubscriberListVM,
-    (keyword: string) => void
-  >();
-
   private throttledScrollMap = new WeakMap<
     SubscriberListVM,
     (event: React.UIEvent<HTMLDivElement>) => void
@@ -361,19 +360,11 @@ export class MemberRemovalList extends Component<
     return this.throttledScrollMap.get(vm)!;
   }
 
-  private getDebouncedSearch(vm: SubscriberListVM) {
-    if (!this.searchDebouncedMap.has(vm)) {
-      this.searchDebouncedMap.set(
-        vm,
-        debounce((keyword: string) => vm.search(keyword), 300)
-      );
-    }
-    return this.searchDebouncedMap.get(vm)!;
-  }
-
   private onSearchChange = (keyword: string, vm: SubscriberListVM) => {
+    // The VM invalidates the old query and marks debounce pending immediately;
+    // delaying the entire search() would leave an empty old result looking final.
+    vm.search(keyword, 300);
     this.setState({ keyword });
-    this.getDebouncedSearch(vm)(keyword);
   };
 
   /**
@@ -417,6 +408,8 @@ export class MemberRemovalList extends Component<
    * 上报时反查瞬时可见集合）的关键区别。
    */
   private toggleSelected = (subscriber: Subscriber) => {
+    if (this.state.submissionPending) return;
+    this.selectionRevision++;
     this.setState(
       (prev) => {
         const next = new Map(prev.selected);
@@ -507,11 +500,15 @@ export class MemberRemovalList extends Component<
     // 「其他成员（200）」，把渲染上限冒充成人口普查。
     const count = group.total;
     if (group.id === "myBots") {
-      return this.context.t("base.subscribers.groupMyBotsWithCount", {
+      return this.context.t(group.isPartial
+        ? "base.subscribers.groupMyBotsLoaded"
+        : "base.subscribers.groupMyBotsWithCount", {
         values: { count },
       });
     }
-    return this.context.t("base.subscribers.groupOtherMembersWithCount", {
+    return this.context.t(group.isPartial
+      ? "base.subscribers.groupOtherMembersLoaded"
+      : "base.subscribers.groupOtherMembersWithCount", {
       values: { count },
     });
   }
@@ -600,7 +597,7 @@ export class MemberRemovalList extends Component<
             )}
             {itemIsBot && <AiBadge />}
             {itemIsBot && isBotAdmin && (
-              <Tag size="small" color="green" style={{ marginLeft: 4 }}>
+              <Tag size="small" color="green" style={{ marginLeft: "var(--wk-sp-1)" }}>
                 {this.context.t("base.subscribers.botAdmin")}
               </Tag>
             )}
@@ -631,33 +628,23 @@ export class MemberRemovalList extends Component<
   ) {
     const expanded = this.expandedFor(group.id, groups);
     // 单组时 chevron 无意义（收起后页面全空），隐藏它而不是渲染一个点了没反应的控件。
-    const collapsible = groups.length > 1;
+    const collapsible = groups.length > 1 && !this.searching;
     return (
       <div className="wk-memberremoval-group" key={group.id}>
         {/* 分类文字是独立点击区：展开 + 滚动定位。chevron 在右侧，只管折叠（§3.4）。 */}
         <div
           className="wk-memberremoval-group-header"
           data-testid={`member-removal-group-${group.id}`}
-          role="button"
-          tabIndex={0}
-          aria-expanded={expanded}
-          onClick={() => this.onGroupLabelClick(group.id, groups)}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter" && event.key !== " ") return;
-            // 不能拦下子元素（chevron 按钮）自己的键盘激活：早期版本在这里无条件
-            // preventDefault，把冗余上来的 Enter/Space 也吐掉了，于是 chevron 用键盘
-            // 根本折叠不了。
-            if (event.target !== event.currentTarget) return;
-            event.preventDefault();
-            this.onGroupLabelClick(group.id, groups);
-          }}
         >
-          <span
+          <button
+            type="button"
             className="wk-memberremoval-group-label"
             data-testid={`member-removal-label-${group.id}`}
+            aria-expanded={expanded}
+            onClick={() => this.onGroupLabelClick(group.id, groups)}
           >
             {this.groupTitle(group)}
-          </span>
+          </button>
           {collapsible && (
             <button
               type="button"
@@ -774,22 +761,21 @@ export class MemberRemovalList extends Component<
     );
   }
 
-  /**
-   * 空结果拆四态，不能全部归为「你没有可移出的成员」。
-   *
-   * 早期版本只看 `groups.length === 0`，于是首帧（请求还没发出去）、请求失败、
-   * 搜索无匹配这三种情况都会对用户断言「本群没有可移出的成员」—— 把一次网络失败
-   * 或一个错别字说成了事实。
-   */
+  /** Render one derived request state, including visible errors alongside rows. */
   private renderBody(groups: MemberRemovalGroup[], vm: SubscriberListVM) {
-    if (groups.length > 0) {
-      return groups.map((group) => this.renderGroup(group, groups));
-    }
-    if (!vm.firstLoadSettled || vm.autoPaging) {
+    return <>
+      {groups.map((group) => this.renderGroup(group, groups))}
+      {this.renderRequestState(vm, groups.length > 0)}
+    </>;
+  }
+
+  private renderRequestState(vm: SubscriberListVM, hasRows: boolean) {
+    if (vm.status === "idle" || vm.loading) {
       return (
         <div
           className="wk-memberremoval-empty"
           data-testid="member-removal-loading"
+          role="status"
         >
           {this.context.t("base.subscribers.loadingMembers")}
         </div>
@@ -800,8 +786,13 @@ export class MemberRemovalList extends Component<
         <div
           className="wk-memberremoval-empty"
           data-testid="member-removal-error"
+          role="alert"
         >
           {this.context.t("base.subscribers.loadMembersFailed")}
+          <WKButton size="sm" variant="ghost" data-testid="member-removal-retry"
+            onClick={() => void vm.retry()}>
+            {this.context.t("base.subscribers.retry")}
+          </WKButton>
         </div>
       );
     }
@@ -813,12 +804,21 @@ export class MemberRemovalList extends Component<
           className="wk-memberremoval-empty"
           data-testid="member-removal-budget-exhausted"
         >
-          {this.context.t("base.subscribers.noRemovableInFirstPages", {
+          {this.context.t("base.subscribers.removalScanBudget", {
             values: { count: MAX_AUTO_PAGES * vm.limit },
           })}
         </div>
       );
     }
+    if (vm.hasMore) {
+      return <div className="wk-memberremoval-empty">
+        <WKButton size="sm" variant="ghost" data-testid="member-removal-load-more"
+          onClick={() => void vm.loadMoreSubscribersIfNeed()}>
+          {this.context.t("base.subscribers.loadMore")}
+        </WKButton>
+      </div>;
+    }
+    if (hasRows) return null;
     if (this.searching) {
       return (
         <div

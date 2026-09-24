@@ -11,6 +11,7 @@ import {
 // 零依赖叶子模块：入口可见性与行可见性共用同一判据（octo-web#1511）。
 // 不从 features/channelSetting/channelSettingMemberSection 引 —— 那会成环。
 import { canRemoveChannelSettingSubscriber } from "../../features/channelSetting/memberRemovalPermission";
+import { findRemovableGroupMember } from "../../bridge/channelSetting/memberRemovalRead";
 
 
 export class SubscribersVM extends ProviderListener {
@@ -19,6 +20,12 @@ export class SubscribersVM extends ProviderListener {
     private _subscribers: Subscriber[] = []
     private unsubscribeSubscriberChangeListener?: () => void
     showNum:number = 20
+    removalEntryError = false
+    private removalEntryFound = false
+    private removalEntryScope = ""
+    private removalProbe?: AbortController
+    private removalRefreshTimer?: ReturnType<typeof setTimeout>
+    private isMounted = false
 
 
     constructor(context:RouteContext<any>) {
@@ -28,18 +35,24 @@ export class SubscribersVM extends ProviderListener {
     }
 
     didMount(): void {
+        this.isMounted = true
         const channel = this.routeData.channel
         if (!channel) return
         this.unsubscribeSubscriberChangeListener = addCurrentImSubscriberChangeListener(
             (changedChannel: Channel) => {
                 if (!changedChannel?.isEqual?.(channel)) return
+                this.scheduleRemovalEntryRefresh()
                 this.reloadSubscribersFromCache()
             }
         )
         this.reloadSubscribersFromCache()
+        void this.refreshRemovalEntry()
     }
 
     didUnMount(): void {
+        this.isMounted = false
+        this.removalProbe?.abort()
+        clearTimeout(this.removalRefreshTimer)
         this.unsubscribeSubscriberChangeListener?.()
         this.unsubscribeSubscriberChangeListener = undefined
     }
@@ -48,7 +61,10 @@ export class SubscribersVM extends ProviderListener {
         const channel = this.routeData.channel
         if (!channel) return
         const subscribers = getCurrentImChannelSubscribers<Channel, Subscriber>(channel)
-        if (!subscribers.length) return
+        if (!subscribers.length) {
+            this.notifyListener()
+            return
+        }
         for (const subscriber of subscribers) {
             subscriber.channel = channel
             if (subscriber.uid === WKApp.loginInfo.uid) {
@@ -107,28 +123,55 @@ export class SubscribersVM extends ProviderListener {
         if(role === GroupRole.owner || role === GroupRole.manager) {
            return true
         }
-        // 自助移除（octo-web#1511）：拥有群内 bot 的普通成员也需要一个入口。
-        //
-        // 不加这条的话该功能在多数群里根本够不着：普通成员唯一能打开成员列表的
-        // 路径是「查看全部」，而它只在 subscribers.length > shouldShowMemberNum()
-        // （普通成员为 20-1=19）时才渲染 —— 也就是说 19 人以下的群完全没有入口，
-        // 后端放行、bot_owned_by_me 也为 true，用户却点不到任何东西。
-        //
-        // 判据**直接复用行级判据** canRemoveChannelSettingSubscriber，而不是自己
-        // 再读一遍 bot_owned_by_me。两个理由：
-        //   1. 避免入口比行判据宽 —— 若这里只看所有权，一个「我拥有、但担任群主
-        //      或管理员」的 bot 会点亮入口，进去却发现那一行根本不可移除，
-        //      变成死胡同入口；
-        //   2. 避免同一条 fail-closed 安全判据写两份而后各自漂移。
-        //
-        // 这里扫的是本地缓存的成员集，对小群是完整的 —— 而小群正是上面那条路径
-        // 失效的场景。注意「查看全部」现在是**纯浏览**的（不再下发行级移除按钮），
-        // 所以它不再是大群的移除兜底；大群的自助移除走的是同一个减号入口，而移除页
-        // 本身以服务端分页为数据源（含服务端关键词搜索），不受本缓存完整度约束。
-        //
-        // 残留：超大群的成员缓存只有前 ~100 人，所以普通成员的 bot 若排在那之后，
-        // 入口会不亮（fail-closed）。要彻底解决得让入口也走服务端探测，属独立改动。
-        return this.ownsAnyRemovableBotInGroup(role)
+        // Keep the same strict row predicate. A local positive is sufficient;
+        // a cache miss is not a group-wide negative (super-groups cache a prefix).
+        return this.ownsAnyRemovableBotInGroup(role) ||
+            (this.removalEntryScope === this.entryScope() && this.removalEntryFound)
+    }
+
+    private entryScope() {
+        return JSON.stringify([
+            this.routeData.channel?.getChannelKey(),
+            this.routeData.subscriberOfMe?.uid || WKApp.loginInfo.uid,
+            this.routeData.subscriberOfMe?.role ?? GroupRole.normal,
+            WKApp.loginInfo.uid,
+            WKApp.shared?.currentSpaceId,
+        ])
+    }
+
+    private scheduleRemovalEntryRefresh() {
+        this.removalProbe?.abort()
+        this.removalEntryFound = false
+        this.removalEntryError = false
+        clearTimeout(this.removalRefreshTimer)
+        // Coalesce bursts of IM cache updates without scanning on render.
+        this.removalRefreshTimer = setTimeout(() => void this.refreshRemovalEntry(), 200)
+    }
+
+    refreshRemovalEntry = async () => {
+        if (!this.isMounted) return
+        clearTimeout(this.removalRefreshTimer)
+        this.removalProbe?.abort()
+        const controller = new AbortController()
+        this.removalProbe = controller
+        this.removalEntryScope = this.entryScope()
+        this.removalEntryFound = false
+        this.removalEntryError = false
+        const role = this.routeData.subscriberOfMe?.role ?? GroupRole.normal
+        const viewerUid = this.routeData.subscriberOfMe?.uid || WKApp.loginInfo.uid
+        const channel = this.routeData.channel
+        if (!channel || !viewerUid || role === GroupRole.owner ||
+            role === GroupRole.manager || this.ownsAnyRemovableBotInGroup(role)) return
+        const scope = this.removalEntryScope
+        const current = () => this.isMounted && !controller.signal.aborted && scope === this.entryScope()
+        try {
+            const found = await findRemovableGroupMember(channel, viewerUid, role, controller.signal)
+            if (current()) this.removalEntryFound = found
+        } catch {
+            if (current()) this.removalEntryError = true
+        } finally {
+            if (current()) this.notifyListener()
+        }
     }
 
     ownsAnyRemovableBotInGroup(viewerRole: number) {

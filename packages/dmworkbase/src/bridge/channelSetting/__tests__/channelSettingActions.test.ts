@@ -10,6 +10,7 @@ import {
   muteChannelSetting,
   remarkChannelSetting,
   removeChannelSettingSubscribers,
+  removeAndReconcileChannelSettingSubscribers,
   saveChannelSetting,
   topChannelSetting,
   transferChannelSettingOwner,
@@ -24,6 +25,8 @@ import {
   SubscriberStatus,
 } from "../../../Service/Const";
 import { Dap } from "../../../Service/Dap";
+import { readSelectedMembers } from "../memberRemovalRead";
+vi.mock("../memberRemovalRead", () => ({ readSelectedMembers: vi.fn() }));
 
 vi.mock("../../../App", () => ({
   default: {},
@@ -954,6 +957,41 @@ describe("channel setting actions", () => {
     // 十一审 🔴:退子区同样在 leaveThread 成功后命令式单发 conversation_left。
     expect(Dap.shared.track).toHaveBeenCalledTimes(1);
     expect(Dap.shared.track).toHaveBeenCalledWith("conversation_left", {});
+  });
+
+  it("reconciles a failed batch and patches only explicitly absent targets", async () => {
+    const channel = new Channel("group-1", ChannelTypeGroup);
+    const runtime = createRuntime({
+      removeSubscribers: vi.fn(async () => { throw new Error("partially committed"); }),
+    });
+    const evidence = { absent: ["gone"], present: [], unknown: ["uncertain"] };
+    vi.mocked(readSelectedMembers).mockResolvedValueOnce(evidence);
+    expect(await removeAndReconcileChannelSettingSubscribers({
+      channel, uids: ["gone", "uncertain"], runtime,
+    })).toBe(evidence);
+    expect(runtime.removeSubscribers).toHaveBeenCalledTimes(1);
+    expect(runtime.markRemovedChannelSubscribers).toHaveBeenCalledWith(channel, ["gone"]);
+  });
+
+  it("does not mark a successful HTTP batch as removed without membership evidence", async () => {
+    const channel = new Channel("group-1", ChannelTypeGroup);
+    const runtime = createRuntime();
+    vi.mocked(readSelectedMembers).mockResolvedValueOnce({ absent: [], present: [], unknown: ["alice"] });
+    await removeAndReconcileChannelSettingSubscribers({ channel, uids: ["alice"], runtime });
+    expect(runtime.markRemovedChannelSubscribers).not.toHaveBeenCalled();
+    expect(runtime.removeSubscribers).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores batch results after the active context changes", async () => {
+    let current = true;
+    const runtime = createRuntime({
+      captureContext: () => () => current,
+      removeSubscribers: vi.fn(async () => { current = false; }),
+    });
+    expect(await removeAndReconcileChannelSettingSubscribers({
+      channel: new Channel("g", 2), uids: ["alice"], runtime,
+    })).toBeUndefined();
+    expect(runtime.markRemovedChannelSubscribers).not.toHaveBeenCalled();
   });
 
   it("updates thread name without emitting conversation_left (改名非退出)", async () => {

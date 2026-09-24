@@ -30,14 +30,17 @@ vi.mock("../list_vm", () => ({
     subscribers: Subscriber[] = [];
     limit = 50;
     keyword = "";
-    firstLoadSettled = true;
-    loadError = false;
-    autoPageBudgetExhausted = false;
-    autoPaging = false;
+    status = "ready";
+    hasMore = false;
+    get loading() { return ["loading", "refreshing", "debouncing"].includes(this.status); }
+    get loadError() { return this.status === "error"; }
+    get autoPageBudgetExhausted() { return this.status === "budget-exhausted"; }
     onSubscribersLoaded?: (s: Subscriber[]) => void;
     search = vi.fn();
     loadMoreSubscribersIfNeed = vi.fn();
     refreshCurrentSearch = vi.fn();
+    removeSubscriber = vi.fn();
+    retry = vi.fn();
     constructor(
       channel: any,
       filter?: (s: Subscriber) => boolean,
@@ -84,6 +87,10 @@ vi.mock("@douyinfe/semi-icons", () => ({ IconSearchStroked: () => null }));
 vi.mock("@douyinfe/semi-ui", () => ({ Tag: () => null }));
 
 import { MemberRemovalList } from "../memberRemovalList";
+import { readSelectedMembers } from "../../../bridge/channelSetting/memberRemovalRead";
+vi.mock("../../../bridge/channelSetting/memberRemovalRead", () => ({
+  readSelectedMembers: vi.fn(),
+}));
 import { GroupRole } from "../../../Service/Const";
 import { MAX_OTHERS_GROUP_SIZE } from "../../../features/channelSetting/memberRemovalGrouping";
 
@@ -312,21 +319,19 @@ describe("MemberRemovalList · 多选交互", () => {
 
   // 回归：标题的 onKeyDown 原本无条件 preventDefault，把冒泡上来的 Enter/Space
   // 一起吞了，于是里面那个 chevron <button> 用键盘反而按不动。
-  it("分组标题不吞掉 chevron 的键盘事件，且带 aria-expanded", () => {
+  it("标题和 chevron 是并列原生按钮，容器不拦截键盘", () => {
     const { content } = mountThroughProvider(createComponent(), {
       subscribers: roster,
     });
     const header = collectByTestId(content, "member-removal-group-others")[0];
-    expect(header.props?.["aria-expanded"]).toBe(true);
-
-    const fromChild = { key: "Enter", preventDefault: vi.fn(), target: {}, currentTarget: {} };
-    (header.props?.onKeyDown as any)(fromChild);
-    expect(fromChild.preventDefault).not.toHaveBeenCalled();
-
-    const node = {};
-    const fromSelf = { key: "Enter", preventDefault: vi.fn(), target: node, currentTarget: node };
-    (header.props?.onKeyDown as any)(fromSelf);
-    expect(fromSelf.preventDefault).toHaveBeenCalled();
+    expect(header.props?.role).toBeUndefined();
+    expect(header.props?.onKeyDown).toBeUndefined();
+    const label = collectByTestId(content, "member-removal-label-others")[0];
+    const chevron = collectByTestId(content, "member-removal-chevron-others")[0];
+    expect(label.type).toBe("button");
+    expect(chevron.type).toBe("button");
+    expect(label.props?.["aria-expanded"]).toBe(true);
+    expect(collectByTestId(label, "member-removal-chevron-others")).toHaveLength(0);
   });
 });
 
@@ -360,7 +365,7 @@ describe("MemberRemovalList · 选中项的存活与剔除", () => {
 
   // 但「已经不在群里的人」不该继续躺在批量里：整批提交全成全败，一个失效 uid
   // 能把整次操作拖失败，用户还无法从报错里看出是哪一个。
-  it("已离群的选中项在名册刷新后被剔除", () => {
+  it("只依据单成员查询明确确认的离群证据剔除选中项", async () => {
     const onSelectionChange = vi.fn();
     const alice = sub("alice", GroupRole.normal);
     const bob = sub("bob", GroupRole.normal);
@@ -370,9 +375,12 @@ describe("MemberRemovalList · 选中项的存活与剔除", () => {
     (component as any).toggleSelected(alice);
     (component as any).toggleSelected(bob);
 
-    // alice 被别的管理员移走：缓存与新一批加载结果里都没有她。
+    // Absence from the cache/page is not enough; an explicit lookup is required.
     cachedRoster = [bob];
     vm.onSubscribersLoaded([bob]);
+    expect(Array.from((component as any).state.selected.keys())).toEqual(["alice", "bob"]);
+    vi.mocked(readSelectedMembers).mockResolvedValueOnce({ absent: ["alice"], present: [bob], unknown: [] });
+    await component.reconcileSelectedMembers();
 
     expect(onSelectionChange).toHaveBeenLastCalledWith([
       expect.objectContaining({ uid: "bob" }),
@@ -440,11 +448,8 @@ describe("MemberRemovalList · 搜索框接线", () => {
       expect(typeof onChange).toBe("function");
 
       onChange({ target: { value: "alice" } });
-      // 搜索走 300ms 防抖：推过去才能看到 vm.search 被调。
-      vi.advanceTimersByTime(300);
-
-      // 关键断言：搜索真的打下去了，而不是静默丢掉。
-      expect(vm.search).toHaveBeenCalledWith("alice");
+      // Immediately invalidate the old query; the VM owns the network debounce.
+      expect(vm.search).toHaveBeenCalledWith("alice", 300);
     } finally {
       vi.useRealTimers();
     }
@@ -480,7 +485,7 @@ describe("MemberRemovalList · 空态分型", () => {
       .content;
 
   it("首次加载未结束：说加载中，不说「没有可移出的成员」", () => {
-    const content = emptyVM({ firstLoadSettled: false });
+    const content = emptyVM({ status: "idle" });
     expect(collectByTestId(content, "member-removal-loading")).toHaveLength(1);
     expect(collectByTestId(content, "member-removal-empty")).toHaveLength(0);
   });
@@ -489,7 +494,7 @@ describe("MemberRemovalList · 空态分型", () => {
   // 但 autoPaging 还在翻 —— 早先这里会渲染「你没有可移出的成员」，bot 在第 450 名时
   // 要连说 8 遍这句假话才把人等出来。
   it("自动续翻中（autoPaging）：说加载中，不说「没有可移出的成员」", () => {
-    const content = emptyVM({ firstLoadSettled: true, autoPaging: true });
+    const content = emptyVM({ status: "loading" });
     expect(collectByTestId(content, "member-removal-loading")).toHaveLength(1);
     expect(collectByTestId(content, "member-removal-empty")).toHaveLength(0);
   });
@@ -497,13 +502,13 @@ describe("MemberRemovalList · 空态分型", () => {
   // 回归：requestSubscribers 原本没有 catch，异常会静默逃逸，列表停在空，
   // 于是把一次网络失败说成了「这里没有任何成员」。
   it("加载失败：说失败，不说「没有可移出的成员」", () => {
-    const content = emptyVM({ loadError: true });
+    const content = emptyVM({ status: "error" });
     expect(collectByTestId(content, "member-removal-error")).toHaveLength(1);
     expect(collectByTestId(content, "member-removal-empty")).toHaveLength(0);
   });
 
   it("翻页预算用尽：给出搜索这条出路，而不是断言没有", () => {
-    const content = emptyVM({ autoPageBudgetExhausted: true });
+    const content = emptyVM({ status: "budget-exhausted" });
     expect(collectByTestId(content, "member-removal-budget-exhausted")).toHaveLength(1);
     expect(collectByTestId(content, "member-removal-empty")).toHaveLength(0);
   });

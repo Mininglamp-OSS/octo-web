@@ -42,6 +42,7 @@ import { captureCurrentImConversationSyncContext } from "../../im-runtime/conver
 import { Dap } from "../../Service/Dap";
 import { stripSpacePrefix } from "../../Service/SpacePrefix";
 import PinnedService from "../../Service/PinnedService";
+import { readSelectedMembers } from "./memberRemovalRead";
 import {
   findCurrentImConversation,
   removeCurrentImConversation,
@@ -501,6 +502,37 @@ export async function removeChannelSettingSubscribers(params: {
     "removeSubscribers",
     params.uids
   );
+}
+
+/**
+ * Batch UI path: a failed DELETE may have committed some targets. Reconcile
+ * before updating caches; never mark the entire submitted basket as removed.
+ * Existing single-row callers keep their original contract above.
+ */
+export async function removeAndReconcileChannelSettingSubscribers(params: {
+  channel: Channel;
+  uids: string[];
+  runtime?: ChannelSettingActionRuntime;
+}) {
+  const runtime = runtimeOrDefault(params.runtime);
+  const isCurrent = runtime.captureContext?.() ?? (() => true);
+  if (!isCurrent()) return undefined;
+  try {
+    await runtime.removeSubscribers(params.channel, params.uids);
+  } catch {
+    // The lookup below, not HTTP success/failure, establishes current membership.
+  }
+  if (!isCurrent()) return undefined;
+  const evidence = await readSelectedMembers(params.channel, params.uids);
+  if (!isCurrent()) return undefined;
+  if (evidence.absent.length) {
+    await refreshChannelStateAfterMemberMutation(
+      runtime, params.channel, "removeSubscribers", evidence.absent
+    ).catch((error: unknown) => {
+      console.warn("[removeSubscribers] confirmed-member cache refresh failed", error);
+    });
+  }
+  return evidence;
 }
 
 export async function updateChannelSettingField(params: {

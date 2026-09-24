@@ -16,6 +16,7 @@ import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
 import { I18nContext } from "../../i18n";
 import { createChannelSettingMemberSearch } from "../../features/channelSetting/channelSettingMemberSearch";
 import WKAvatar from "../WKAvatar";
+import WKButton from "../WKButton";
 
 export interface SubscribersProps {
   context: RouteContext<any>;
@@ -158,6 +159,14 @@ export class Subscribers extends Component<SubscribersProps> {
                     </div>
                   ) : undefined}
                 </div>
+                {vm.removalEntryError && !vm.showRemove() && (
+                  <div role="status">
+                    {this.context.t("base.subscribers.removalEntryCheckFailed")}
+                    <WKButton size="sm" variant="ghost" onClick={() => void vm.refreshRemovalEntry()}>
+                      {this.context.t("base.subscribers.retry")}
+                    </WKButton>
+                  </div>
+                )}
                 {vm.hasMoreSubscribers() ? (
                   <div
                     className="wk-subscribers-more"

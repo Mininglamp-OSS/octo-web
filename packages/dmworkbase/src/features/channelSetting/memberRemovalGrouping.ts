@@ -44,13 +44,14 @@ export interface MemberRemovalGroup {
   id: MemberRemovalGroupId;
   subscribers: Subscriber[];
   /**
-   * 该组**过滤后的真实人数**，可能大于 `subscribers.length`。
+   * 已加载页中该组的过滤人数（截断前），不是尚未加载的全群总数。
    *
    * 标题里的计数必须用这个值而不是 `subscribers.length`：后者是被
    * MAX_OTHERS_GROUP_SIZE 砍过的**渲染量**，用它会把 500 人的群写成
    * 「其他成员（200）」—— 把一个渲染上限冒充成人口普查。
    */
   total: number;
+  isPartial?: boolean;
   /**
    * 该组是否被 MAX_OTHERS_GROUP_SIZE 截断。
    * 截断时组底部要给出「仅显示前 N 人，请用搜索」的提示，而不是静默少人。
@@ -61,13 +62,12 @@ export interface MemberRemovalGroup {
 /**
  * 「其他成员」组的渲染上限。
  *
- * 本页是纯客户端过滤：服务端没有 scope=removable 这类参数，组件拿到的是整份
- * 成员名册（ChannelSettingRouteData.subscriberAll，由 IM 成员缓存填充）再在本地过滤。
- * 大群里群主/管理员过滤后仍可能剩几百人，一次性渲染几百行会卡。
+ * 本页消费服务端分页并在客户端做权限过滤，不消费完整 IM 缓存快照。
+ * 大群里已加载的可移除成员也可能超过几百人，限制同时渲染的行数。
  *
  * 所以这里设一个上限 + 明确提示，把「不完整」这件事显式告诉用户，而不是
- * 假装列表是全的。达到上限时引导用户用搜索缩小范围 —— 本页搜索是纯本地的、
- * 覆盖整份名册，所以搜索确实能触及第 200 名之后的人（否则这条提示就是空话）。
+ * 假装列表是全的。搜索以服务端为权威，本地索引只加速；达到上限后仍可
+ * 通过独立的继续加载按钮扫描后面的页面，不能依赖不再增长的 scrollHeight。
  *
  * 「我的 BOT」组**不受此限制** —— 一个人在一个群里的 bot 通常 0-3 个，天然极小，
  * 截断它只会制造「我的 bot 不见了」的 bug。
@@ -84,6 +84,7 @@ export function buildMemberRemovalGroups(params: {
   subscribers: Subscriber[];
   viewerUid?: string;
   viewerRole?: number;
+  hasMore?: boolean;
 }): MemberRemovalGroup[] {
   const { subscribers, viewerUid, viewerRole } = params;
   if (!subscribers?.length) return [];
@@ -111,6 +112,7 @@ export function buildMemberRemovalGroups(params: {
       id: "myBots",
       subscribers: myBots,
       total: myBots.length,
+      isPartial: params.hasMore,
       truncated: false,
     });
   }
@@ -120,6 +122,7 @@ export function buildMemberRemovalGroups(params: {
       subscribers: others.slice(0, MAX_OTHERS_GROUP_SIZE),
       // total 记截断**前**的人数，标题计数靠它，否则 500 人群会显示成（200）。
       total: others.length,
+      isPartial: params.hasMore,
       truncated: others.length > MAX_OTHERS_GROUP_SIZE,
     });
   }
