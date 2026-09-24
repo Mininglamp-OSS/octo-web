@@ -151,6 +151,7 @@ export interface SummaryWorkspaceCapabilitiesDTO {
   contract_version: string;
   max_time_range_days: number;
   direct_team_workflow: boolean;
+  mixed_sources: boolean;
 }
 
 export interface SummaryWorkspacePreviewDTO {
