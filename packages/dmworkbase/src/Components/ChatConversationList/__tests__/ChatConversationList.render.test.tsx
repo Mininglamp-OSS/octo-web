@@ -20,8 +20,27 @@ vi.mock("../../CreateCategoryModal", () => ({ default: (p: any) => { captured.mo
 vi.mock("../../../i18n", () => ({ useI18n: () => ({ t: (key: string) => key }), t: (key: string) => key, I18nContext: React.createContext({}) }))
 
 import ChatConversationList from "../index"
+import { Channel } from "wukongimjssdk"
 
 describe("ChatConversationList render branches", () => {
+  it("forwards repeated search scroll requests to the Recent list", () => {
+    const onScrolled = vi.fn()
+    const actions = { onConversationClick: vi.fn(), onClearMessages: vi.fn(), onThreadOverflowClick: vi.fn() }
+    const channel = new Channel("search-target", 1)
+    const presentation = (token: number) => ({
+      conversations: [],
+      scrollRequest: { token, channel },
+      onScrolled,
+      virtualChannelKeys: new Set<string>(),
+    })
+    const { rerender } = render(<ChatConversationList {...actions} conversations={[]} filter="all" temporaryConversationPresentation={presentation(1)} />)
+    expect(captured.list.scrollToTemporaryConversation).toEqual({ token: 1, channel })
+    rerender(<ChatConversationList {...actions} conversations={[]} filter="all" temporaryConversationPresentation={presentation(2)} />)
+    expect(captured.list.scrollToTemporaryConversation).toEqual({ token: 2, channel })
+    captured.list.onTemporaryConversationScrolled(2)
+    expect(onScrolled).toHaveBeenCalledWith(2)
+  })
+
   it("renders recent and grouped sources, loading/error states, and external create ref", async () => {
     const ref: any = { current: null }
     const props: any = { conversations: [], filter: "all", onConversationClick: vi.fn(), onClearMessages: vi.fn(), onThreadOverflowClick: vi.fn(), onOpenCreateCategoryRef: ref, onGroupCreated: vi.fn() }

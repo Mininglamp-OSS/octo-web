@@ -1,13 +1,34 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 vi.mock("react-virtuoso", () => ({ TableVirtuoso: () => null, Virtuoso: () => null, VirtuosoGrid: () => null }))
 import GlobalSearch from "../GlobalSearchPanel"
+import WKApp from "../../../App"
+import { handleGlobalSearchClick } from "../../../Pages/Chat/vm"
+
+afterEach(() => vi.restoreAllMocks())
 
 const source: any = {
   getSelfUid: () => "me", getSenders: () => [], getSender: (uid: string) => ({ uid, name: uid }),
 }
 
 describe("GlobalSearch panel state helpers", () => {
+  it("marks content, contact, and group result navigation as search-originated", async () => {
+    const open = vi.spyOn(WKApp.endpoints, "showConversation").mockImplementation(() => {})
+    vi.spyOn(WKApp.apiClient, "get").mockResolvedValue({ follow: 1 })
+    const panel = new GlobalSearch({ dataSource: source })
+    panel.handleLocate({
+      id: "hit", messageId: "hit", channelId: "group-search", channelType: 2,
+      messageSeq: 9, senderUid: "peer", timestamp: 1, kind: "text", text: "match",
+    })
+    expect(open).toHaveBeenLastCalledWith(expect.anything(), { initLocateMessageSeq: 9, fromSearch: true })
+    await handleGlobalSearchClick({ channel_id: "peer-search", channel_type: 1 }, "contacts")
+    expect(open).toHaveBeenLastCalledWith(expect.anything(), { fromSearch: true })
+    await handleGlobalSearchClick({ channel_id: "group-search", channel_type: 2 }, "group")
+    expect(open).toHaveBeenLastCalledWith(expect.anything(), { fromSearch: true })
+    await handleGlobalSearchClick({ channel: { channel_id: "group-search", channel_type: 2 }, message_seq: 9 }, "message")
+    expect(open).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ initLocateMessageSeq: 9, fromSearch: true }))
+  })
+
   it("guards and routes content hits and cloud documents", () => {
     const locate = vi.fn(), hide = vi.fn(), openDoc = vi.fn()
     const panel: any = new GlobalSearch({ dataSource: source, onLocateContentItem: locate, hideModal: hide, onOpenDoc: openDoc })

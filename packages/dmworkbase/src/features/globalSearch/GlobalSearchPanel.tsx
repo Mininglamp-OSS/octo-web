@@ -183,6 +183,7 @@ export default class GlobalSearch extends Component<
       const channel = new Channel(item.channelId, item.channelType);
       WKApp.endpoints.showConversation(channel, {
         initLocateMessageSeq: item.messageSeq,
+        fromSearch: true,
       });
     } catch (err) {
       // showConversation is expected to be present in the runtime;

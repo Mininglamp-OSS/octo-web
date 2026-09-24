@@ -32,6 +32,7 @@ vi.mock("../Pages/Chat", () => ({ ChatContentPage: () => null }));
 vi.mock("../features/channelSearch/feature", () => ({ isChannelSearchEnabled: () => true }));
 
 import { EndpointCommon, type ShowConversationOptions } from "../EndpointCommon";
+import WKApp from "../App";
 
 function setup() {
   new EndpointCommon();
@@ -47,6 +48,24 @@ describe("host conversation presentation identity", () => {
     vi.clearAllMocks();
     state.unread = 1;
     state.spaceId = "space-a";
+  });
+
+  it("marks only explicit search-result navigation as a sidebar scroll request", () => {
+    const open = setup();
+    open("contact");
+    expect(WKApp.mittBus.emit).toHaveBeenLastCalledWith("wk:temporarily-pin-conversation", {
+      channel: expect.anything(), fromSearch: undefined,
+    });
+    open("notification", { initLocateMessageSeq: 5 });
+    expect(WKApp.mittBus.emit).toHaveBeenLastCalledWith("wk:temporarily-pin-conversation", {
+      channel: expect.anything(), fromSearch: undefined,
+    });
+    open("search", { fromSearch: true });
+    expect(WKApp.mittBus.emit).toHaveBeenLastCalledWith("wk:temporarily-pin-conversation", {
+      channel: expect.anything(), fromSearch: true,
+    });
+    open("sidebar", { fromSidebarList: true });
+    expect(WKApp.mittBus.emit).toHaveBeenLastCalledWith("wk:sidebar-conversation-opened", expect.anything());
   });
 
   it("preserves the composer key and location when unread changes during a presentation-only transition", () => {

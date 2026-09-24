@@ -49,6 +49,7 @@ import {
   ChannelTypeGroup,
   ChannelTypePerson,
   WKSDK,
+  type Message,
 } from "wukongimjssdk";
 import WKAvatar from "../../Components/WKAvatar";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
@@ -63,7 +64,7 @@ import {
 import { ShowConversationOptions } from "../../EndpointCommon";
 import SpaceList from "../../Components/SpaceList";
 import SpaceCreate from "../../Components/SpaceCreate";
-import { Space, SpaceService } from "../../Service/SpaceService";
+import { Space, SpaceService, shouldSkipMessageForSpace } from "../../Service/SpaceService";
 import NavSignalBadge from "../../Components/NavRail/NavSignalBadge";
 import ThreadPanel from "../../Components/ThreadPanel";
 import {
@@ -114,6 +115,17 @@ import {
   tryHostTakeover,
   subscribeHostAttachmentPreview,
 } from "../../features/filePreview/attachmentHost";
+import {
+  buildTemporaryConversationPresentation,
+  dismissTemporaryConversation,
+  leaveTemporaryConversation,
+  openTemporaryConversation,
+  promoteTemporaryConversation,
+  refreshTemporaryConversation,
+  type TemporaryConversationScrollRequest,
+  type TemporaryConversationState,
+} from "../../features/temporaryConversation/presentation";
+import type { TemporaryConversationPresentation } from "../../Components/ChatConversationList";
 
 // 消息 ACK 只代表发送成功；后端把归档子区恢复为活跃存在短暂异步窗口。
 // 实测立即 threadGet 可能仍返回 Archived，因此发送后用短轮询等后端状态落稳。
@@ -1827,6 +1839,10 @@ interface ChatPageState {
   currentSpaceName: string;
   pendingConfirm: null | { onOk: () => void }; // 附件切换确认弹窗
   recentUnreadJumpToken: number;
+  temporaryConversationJumpToken: number;
+  temporaryConversationScrollRequest?: TemporaryConversationScrollRequest;
+  /** Deliberately memory-only: cleared by reload/remount, account, and Space changes. */
+  temporaryConversation: TemporaryConversationState;
 }
 
 export default class ChatPage extends Component<any, ChatPageState> {
@@ -1845,6 +1861,8 @@ export default class ChatPage extends Component<any, ChatPageState> {
       currentSpaceName: WKApp.config.appName,
       pendingConfirm: null,
       recentUnreadJumpToken: 0,
+      temporaryConversationJumpToken: 0,
+      temporaryConversation: {},
     };
   }
 
@@ -1852,17 +1870,23 @@ export default class ChatPage extends Component<any, ChatPageState> {
     try {
       localStorage.setItem(SIDEBAR_TAB_KEY, tab);
     } catch {}
-    this.setState({ activeTab: tab });
+    this.setState({ activeTab: tab, temporaryConversationScrollRequest: undefined });
   };
 
   _handleRecentUnreadNavigate = () => {
     this.setState((state) => ({
       recentUnreadJumpToken: state.recentUnreadJumpToken + 1,
+      temporaryConversationScrollRequest: undefined,
     }));
   };
 
   private _onSpaceChanged?: (space: any) => void;
   private _onSwitchTab?: (tab: string) => void;
+  private _onTemporaryConversation?: (event: { channel: Channel; fromSearch?: boolean }) => void;
+  private _onSidebarConversationOpened?: (channel: Channel) => void;
+  private _onConversationListRefreshed?: () => void;
+  private _onAuthStateChanged?: () => void;
+  private temporaryConversationMessageListener?: (message: Message) => void;
   private _unsubscribeRemoteConfig?: () => void;
 
   componentDidMount() {
@@ -1871,6 +1895,8 @@ export default class ChatPage extends Component<any, ChatPageState> {
       this.setState({
         currentSpaceName:
           (space as Space | undefined)?.name ?? WKApp.config.appName,
+        temporaryConversation: {},
+        temporaryConversationScrollRequest: undefined,
       });
     };
     WKApp.mittBus.on("space-changed", this._onSpaceChanged);
@@ -1886,6 +1912,74 @@ export default class ChatPage extends Component<any, ChatPageState> {
       }
     };
     WKApp.mittBus.on("wk:switch-sidebar-tab", this._onSwitchTab);
+
+    const hasConversation = (channel: Channel) =>
+      !!this.vm?.findConversation(channel) ||
+      !!WKSDK.shared().conversationManager.findConversation(channel);
+    this._onTemporaryConversation = ({ channel, fromSearch }) => {
+      this.setState((state) => ({
+        temporaryConversationJumpToken: state.temporaryConversationJumpToken + (fromSearch ? 1 : 0),
+        temporaryConversationScrollRequest: fromSearch
+          ? { token: state.temporaryConversationJumpToken + 1, channel }
+          : undefined,
+        temporaryConversation: openTemporaryConversation(
+          state.temporaryConversation,
+          channel,
+          hasConversation,
+        ),
+      }));
+    };
+    this._onSidebarConversationOpened = (channel: Channel) => {
+      this.setState((state) => ({
+        temporaryConversationScrollRequest: undefined,
+        temporaryConversation: leaveTemporaryConversation(
+          state.temporaryConversation,
+          channel,
+          hasConversation,
+        ),
+      }));
+    };
+    WKApp.mittBus.on("wk:temporarily-pin-conversation", this._onTemporaryConversation);
+    WKApp.mittBus.on("wk:sidebar-conversation-opened", this._onSidebarConversationOpened);
+
+    this._onConversationListRefreshed = () => {
+      this.setState((state) => ({
+        temporaryConversation: refreshTemporaryConversation(state.temporaryConversation, hasConversation),
+      }));
+    };
+    WKApp.mittBus.on("conversation-list-refreshed", this._onConversationListRefreshed);
+
+    this._onAuthStateChanged = () => this.setState({
+      temporaryConversation: {},
+      temporaryConversationScrollRequest: undefined,
+    });
+    WKApp.mittBus.on("wk:auth-state-changed", this._onAuthStateChanged);
+
+    // Listen to actual messages: a conversation update may only clear unread
+    // while still carrying an old outgoing lastMessage.
+    this.temporaryConversationMessageListener = (message) => {
+      if (
+        !WKApp.loginInfo.uid ||
+        message.fromUID !== WKApp.loginInfo.uid ||
+        message.header.noPersist ||
+        shouldSkipMessageForSpace(message)
+      ) return;
+      this.setState((state) => {
+        const temporaryConversation = promoteTemporaryConversation(
+          state.temporaryConversation, message.channel,
+        );
+        const cancelsScroll = state.temporaryConversationScrollRequest?.channel.isEqual(message.channel);
+        return temporaryConversation === state.temporaryConversation && !cancelsScroll ? null : {
+          temporaryConversation,
+          temporaryConversationScrollRequest: cancelsScroll
+            ? undefined
+            : state.temporaryConversationScrollRequest,
+        };
+      });
+    };
+    WKSDK.shared().chatManager.addMessageListener(
+      this.temporaryConversationMessageListener
+    );
 
     this._unsubscribeRemoteConfig = WKApp.remoteConfig.addConfigChangeListener(
       () => {
@@ -1922,8 +2016,32 @@ export default class ChatPage extends Component<any, ChatPageState> {
     if (this._onSwitchTab) {
       WKApp.mittBus.off("wk:switch-sidebar-tab", this._onSwitchTab);
     }
+    if (this._onTemporaryConversation) {
+      WKApp.mittBus.off("wk:temporarily-pin-conversation", this._onTemporaryConversation);
+    }
+    if (this._onSidebarConversationOpened) {
+      WKApp.mittBus.off("wk:sidebar-conversation-opened", this._onSidebarConversationOpened);
+    }
+    if (this._onConversationListRefreshed) {
+      WKApp.mittBus.off("conversation-list-refreshed", this._onConversationListRefreshed);
+    }
+    if (this._onAuthStateChanged) {
+      WKApp.mittBus.off("wk:auth-state-changed", this._onAuthStateChanged);
+    }
+    if (this.temporaryConversationMessageListener) {
+      WKSDK.shared().chatManager.removeMessageListener(
+        this.temporaryConversationMessageListener
+      );
+      this.temporaryConversationMessageListener = undefined;
+    }
     this._unsubscribeRemoteConfig?.();
   }
+
+  _handleTemporaryConversationScrolled = (token: number) => {
+    this.setState((state) => state.temporaryConversationScrollRequest?.token === token
+      ? { temporaryConversationScrollRequest: undefined }
+      : null);
+  };
 
   render(): ReactNode {
     return (
@@ -1933,10 +2051,39 @@ export default class ChatPage extends Component<any, ChatPageState> {
           return this.vm;
         }}
         render={(vm: ChatVM) => {
-          const { activeTab, recentUnreadJumpToken } = this.state;
+          const { activeTab, recentUnreadJumpToken, temporaryConversation } = this.state;
           // filter 用于 ConversationList
           // follow Tab 用 group（分组视图），recent Tab 用 all（所有会话混合）
           const filter: ConvFilter = activeTab === "follow" ? "group" : "all";
+          const temporaryPresentation = buildTemporaryConversationPresentation(
+            temporaryConversation,
+            (channel) => {
+              const fromViewModel = vm.findConversation(channel);
+              if (fromViewModel) return fromViewModel;
+              // Keep the placeholder until the real row can render in Recent.
+              // An SDK-only match during hydration is not in that list yet.
+              if (temporaryConversation.active?.origin === "virtual") return undefined;
+              const fromSdk = WKSDK.shared().conversationManager.findConversation(channel);
+              return fromSdk ? new ConversationWrap(fromSdk) : undefined;
+            },
+          );
+          const hasTemporaryPresentation = temporaryPresentation.conversations.length > 0;
+          const temporaryConversationListPresentation: TemporaryConversationPresentation = {
+            conversations: temporaryPresentation.conversations,
+            scrollRequest: this.state.temporaryConversationScrollRequest,
+            onScrolled: this._handleTemporaryConversationScrolled,
+            virtualChannelKeys: temporaryPresentation.virtualChannelKeys,
+            onDismiss: (channel) => {
+              this.setState((state) => ({
+                temporaryConversation: dismissTemporaryConversation(
+                  state.temporaryConversation, channel,
+                ),
+                temporaryConversationScrollRequest: state.temporaryConversationScrollRequest?.channel.isEqual(channel)
+                  ? undefined
+                  : state.temporaryConversationScrollRequest,
+              }));
+            },
+          };
           return (
             <div className="wk-chat">
               <div
@@ -2046,7 +2193,8 @@ export default class ChatPage extends Component<any, ChatPageState> {
                           <Spin style={{ marginTop: "20px" }} />
                         </div>
                       ) : activeTab === "recent" &&
-                        vm.filteredConversations.length === 0 ? (
+                        vm.filteredConversations.length === 0 &&
+                        !hasTemporaryPresentation ? (
                         <div className="wk-chat-empty-guide">
                           <div style={{ fontSize: 28, marginBottom: 12 }}>
                             💬
@@ -2121,6 +2269,11 @@ export default class ChatPage extends Component<any, ChatPageState> {
                             scrollToUnreadToken={
                               activeTab === "recent"
                                 ? recentUnreadJumpToken
+                                : undefined
+                            }
+                            temporaryConversationPresentation={
+                              activeTab === "recent"
+                                ? temporaryConversationListPresentation
                                 : undefined
                             }
                             onOpenCreateCategoryRef={this.openCreateCategoryRef}

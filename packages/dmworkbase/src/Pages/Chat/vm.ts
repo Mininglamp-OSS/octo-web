@@ -259,7 +259,7 @@ export async function handleGlobalSearchClick(item: any, type: string,hideModal?
                     if(hideModal){
                         hideModal()
                     }
-                    WKApp.endpoints.showConversation(new Channel(item.channel_id, item.channel_type))
+                    WKApp.endpoints.showConversation(new Channel(item.channel_id, item.channel_type), { fromSearch: true })
                 } else {
                     if(hideModal){
                         hideModal()
@@ -278,16 +278,17 @@ export async function handleGlobalSearchClick(item: any, type: string,hideModal?
             if(hideModal){
                 hideModal()
             }
-            WKApp.endpoints.showConversation(new Channel(item.channel_id, item.channel_type))
+            WKApp.endpoints.showConversation(new Channel(item.channel_id, item.channel_type), { fromSearch: true })
         }
     } else if (type === "group") {
         if(hideModal){
             hideModal()
         }
-        WKApp.endpoints.showConversation(new Channel(item.channel_id, item.channel_type))
+        WKApp.endpoints.showConversation(new Channel(item.channel_id, item.channel_type), { fromSearch: true })
     } else if (type === "message") {
         const opts = new ShowConversationOptions()
         opts.initLocateMessageSeq = item.message_seq
+        opts.fromSearch = true
         if(hideModal){
             hideModal()
         }

@@ -146,7 +146,7 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
                 visible={this.state.botDetailVisible}
                 onClose={() => this.setState({ botDetailVisible: false })}
                 onChat={(channel) => {
-                    WKApp.endpoints.showConversation(channel);
+                    WKApp.endpoints.showConversation(channel, { fromSearch: true });
                     this.setState({ botDetailVisible: false });
                     this.props.hideModal?.();
                 }}

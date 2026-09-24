@@ -33,6 +33,8 @@ export class ShowConversationOptions {
    * 会话；不切的话用户在 follow tab 上打开未关注会话会"消失"。
    */
   fromSidebarList?: boolean;
+  /** 搜索结果跳转：渲染临时会话后自动定位会话列表。 */
+  fromSearch?: boolean;
   workspaceEmbedding?: ChatContentPageProps["workspaceEmbedding"];
   /** Host presentation changes for the same conversation must not remount its composer. */
   preserveCurrentConversation?: boolean;
@@ -158,6 +160,16 @@ export class EndpointCommon {
         // follow tab 里的项必然 followed），这里不做 React-tree-外的同步读。
         if (!opts.fromSidebarList) {
           WKApp.mittBus.emit("wk:switch-sidebar-tab", "recent");
+          // Keep the entry-source decision at the endpoint boundary.  The
+          // Chat page consumes this in-memory signal after the tab switch and
+          // presents the target at the top of Recent without changing its
+          // server-side sort order.
+          WKApp.mittBus.emit("wk:temporarily-pin-conversation", {
+            channel,
+            fromSearch: opts.fromSearch,
+          });
+        } else {
+          WKApp.mittBus.emit("wk:sidebar-conversation-opened", channel);
         }
         let initLocateMessageSeq = 0;
         if (opts && opts.initLocateMessageSeq && opts.initLocateMessageSeq > 0) {
