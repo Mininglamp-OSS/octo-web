@@ -328,6 +328,13 @@ export function decodeSummaryWorkspaceCapabilities(
             record.direct_team_workflow,
             "capabilities.direct_team_workflow"
           ),
+    // Additive field absent on older backends → default OFF (fail-closed):
+    // the mixed document+chat selector only appears once the server advertises
+    // it via the admission gate.
+    mixed_sources:
+      record.mixed_sources === undefined
+        ? false
+        : requireBoolean(record.mixed_sources, "capabilities.mixed_sources"),
   };
 }
 
@@ -876,10 +883,15 @@ function toWorkbenchScope(
   context: SummaryWorkspaceContextDTO
 ): SummaryWorkbenchScope {
   // Mixed document+chat hydration: chats, documents and the chat time range
-  // restore TOGETHER (the time range scopes the chat side only). Only
-  // participants stay mutually exclusive with documents — a server snapshot
-  // carrying both means a pre-phase-1 mixed shape that the contract now
-  // rejects, so participants are dropped to keep the scope submittable.
+  // restore TOGETHER (the time range scopes the chat side only). Participants
+  // are restored AS-IS (not dropped): a server snapshot carrying both
+  // documents and participants is a shape the selection layer can no longer
+  // produce (canSelectParticipants is false with documents, and
+  // replaceSelectedDocuments clears participants), and the backend rejects it
+  // in both normalize branches, so it cannot be persisted going forward. If
+  // corrupted storage ever yields it, the participant chips still render and
+  // are removable, so retaining them (rather than silently dropping them here)
+  // keeps hydration lossless.
   return {
     selectedChannels: context.selected_channels.map((channel) => ({
       chatId: channel.chat_id,
