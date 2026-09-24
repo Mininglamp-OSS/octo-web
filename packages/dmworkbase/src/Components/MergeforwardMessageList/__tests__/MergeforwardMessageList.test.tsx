@@ -92,6 +92,28 @@ function renderList(
 }
 
 describe("MergeforwardMessageList mention rendering", () => {
+  it("opens rich-text image blocks at their original positions in archives without message IDs", () => {
+    vi.mocked(WKApp.dataSource.commonDataSource.getImageURL).mockImplementation((url) => url);
+    const content = {
+      channelType: ChannelTypeGroup, users: [], msgs: [
+        { contentType: MessageContentType.image, content: { url: "https://cdn/a.png", width: 20, height: 10 }, fromUID: "sender", timestamp: 1 },
+        { contentType: MessageContentTypeConst.richText, content: { content: [
+          { type: "image", url: "" },
+          { type: "image", url: "https://cdn/same.png", name: "first.png" },
+          { type: "image", url: "https://cdn/same.png", name: "second.png" },
+        ] }, fromUID: "sender", timestamp: 2 },
+      ],
+    };
+    render(
+      <I18nContext.Provider value={i18nValue as any}>
+        <MergeforwardMessageList mergeforwardContent={content as any} />
+      </I18nContext.Provider>
+    );
+    fireEvent.click(screen.getByAltText("second.png"));
+    expect(screen.getAllByTestId("image-preview")).toHaveLength(1);
+    expect(screen.getByTestId("image-position").textContent).toBe("3/3");
+    expect(screen.getByTestId("image-filename").textContent).toBe("second.png");
+  });
   it("opens grouped forwarded images at the clicked attachment and resets on hide or root replacement", () => {
     vi.mocked(WKApp.dataSource.commonDataSource.getImageURL).mockImplementation((url) => url);
     const content: any = {

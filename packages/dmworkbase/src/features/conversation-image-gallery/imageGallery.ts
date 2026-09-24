@@ -1,6 +1,8 @@
 import { MessageStatus, TaskStatus } from "wukongimjssdk";
 import { MessageContentTypeConst } from "../../Service/Const";
 import { getImageMessageImages } from "../../bridge/message/imageMessageImages";
+import { getRichTextMessageImages } from "../../bridge/message/richTextMessageImages";
+import { isSafeUrl } from "../../Utils/security";
 import type { ImagePreviewSlide } from "../../Messages/Image/ImagePreview";
 
 export interface GalleryImage extends ImagePreviewSlide {
@@ -45,11 +47,12 @@ export function collectGalleryImages(
 ): GalleryImage[] {
   const seen = new Set<string>();
   return messages.flatMap((message, position) => {
+    const isRichText = message.contentType === MessageContentTypeConst.richText;
     const content = message.content as
       | { contentObj?: { flame?: number } }
       | undefined;
     if (
-      message.contentType !== MessageContentTypeConst.image ||
+      (message.contentType !== MessageContentTypeConst.image && !isRichText) ||
       message.revoke ||
       message.remoteExtra?.revoke ||
       message.flame ||
@@ -72,12 +75,15 @@ export function collectGalleryImages(
       if (uploadStatus !== undefined && uploadStatus !== TaskStatus.success)
         return [];
     }
-    return getImageMessageImages(message.content).flatMap((image) => {
+    const images = isRichText
+      ? getRichTextMessageImages(message.content)
+      : getImageMessageImages(message.content);
+    return images.flatMap((image) => {
       // Local previews never establish eligibility for the conversation gallery.
       if (!image.url.trim() || /^(?:data|blob):/i.test(image.url.trim()))
         return [];
       const src = options.resolveUrl(image.url);
-      if (!src) return [];
+      if (!src || (isRichText && !isSafeUrl(src))) return [];
       const key = imageGalleryKey(message, image.imageIndex, position);
       if (seen.has(key)) return [];
       seen.add(key);

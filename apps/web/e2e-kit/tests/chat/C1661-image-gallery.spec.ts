@@ -8,11 +8,11 @@ import type { Page } from "@playwright/test";
 const GROUP_ID = "gallery-1661";
 const GROUP_NAME = "Image gallery test";
 
-async function openGalleryConversation(page: Page) {
+async function openGalleryConversation(page: Page, includeRichText = false) {
   await registerCh6ChatClearUnread(page);
   const origin = new URL(page.url()).origin;
   await page.evaluate(
-    ({ origin, groupId }) => {
+    ({ origin, groupId, includeRichText }) => {
       const msw = (window as any).__msw;
       const image = (name: string) => ({
         type: 2,
@@ -27,22 +27,33 @@ async function openGalleryConversation(page: Page) {
         from_uid: "e2e-user-2",
         payload,
       });
+      const richText = (name: string) => ({
+        type: 14,
+        content: [
+          { type: "text", text: "Pictures with text" },
+          { ...image(`${name}-first`), type: "image" },
+          { type: "image", url: "" },
+          { type: "text", text: "Between rich-text images" },
+          { ...image(`${name}-second`), type: "image" },
+        ],
+      });
       const forwarded = {
         type: 11,
         channel_type: 2,
         users: [{ uid: "e2e-user-2", name: "Sender" }],
         msgs: [
           inner("f"),
+          ...(includeRichText ? [inner("forward-rich", richText("forward-rich"))] : []),
           inner("g"),
           inner("nested", {
             type: 11,
             channel_type: 2,
             users: [{ uid: "e2e-user-2", name: "Sender" }],
-            msgs: [inner("h")],
+            msgs: [inner("h"), ...(includeRichText ? [inner("nested-rich", richText("nested-rich"))] : [])],
           }),
         ],
       };
-      const payloads = [
+      const payloads: unknown[] = [
         image("a"),
         { type: 1, content: "Between images" },
         image("b"),
@@ -52,12 +63,13 @@ async function openGalleryConversation(page: Page) {
         { ...image("private"), flame: 1 },
         { type: 1, content: "Gallery history ready" },
       ];
+      if (includeRichText) payloads.splice(2, 0, richText("mixed"));
       msw.worker.use(
         msw.http.get(
           "*/gallery-1661/:name",
           ({ params }: any) =>
             new msw.HttpResponse(
-              `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200"><rect width="320" height="200" fill="#4062bb"/><text x="160" y="115" text-anchor="middle" font-size="48" fill="white">${params.name}</text></svg>`,
+              `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200"><rect width="320" height="200" fill="#4062bb"/><text x="160" y="115" text-anchor="middle" font-size="24" fill="white">${params.name}</text></svg>`,
               { headers: { "Content-Type": "image/svg+xml" } }
             )
         ),
@@ -81,7 +93,7 @@ async function openGalleryConversation(page: Page) {
         })
       );
     },
-    { origin, groupId: GROUP_ID }
+    { origin, groupId: GROUP_ID, includeRichText }
   );
   await installMockImRuntime(page, {
     currentUid: "e2e-user-1",
@@ -179,6 +191,51 @@ test("@C1661 merge-forward galleries stay inside the currently displayed level",
   await expect(
     page.getByRole("button", { name: "上一张", exact: true })
   ).toHaveCount(0);
+});
+
+
+test("@C1661 rich-text images share conversation navigation and use the clicked block's filename", async ({
+  authedPage: page,
+}, testInfo) => {
+  const origin = await openGalleryConversation(page, true);
+  await page.locator('[data-message-seq="1"] img[alt=""]').click();
+  await expectImage(page, "1 / 7", `${origin}/gallery-1661/a.svg`);
+  await page.keyboard.press("ArrowRight");
+  await expectImage(page, "2 / 7", `${origin}/gallery-1661/mixed-first.svg`);
+  await page.getByRole("button", { name: "上一张", exact: true }).click();
+  await expectImage(page, "1 / 7", `${origin}/gallery-1661/a.svg`);
+  await page.keyboard.press("Escape");
+
+  await page.locator('[data-message-seq="3"] img[alt="mixed-second.svg"]').click();
+  await expectImage(page, "3 / 7", `${origin}/gallery-1661/mixed-second.svg`);
+  await expect(page.getByRole("dialog", { name: "Lightbox", exact: true })).toHaveCount(1);
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "下载", exact: true }).click();
+  expect((await download).suggestedFilename()).toBe("mixed-second.svg");
+  await page.screenshot({ path: testInfo.outputPath("richtext-gallery.png") });
+  await page.keyboard.press("ArrowRight");
+  await expectImage(page, "4 / 7", `${origin}/gallery-1661/b.svg`);
+  await page.keyboard.press("ArrowLeft");
+  await expectImage(page, "3 / 7", `${origin}/gallery-1661/mixed-second.svg`);
+});
+
+test("@C1661 forwarded rich-text images use their own gallery at every nesting level", async ({
+  authedPage: page,
+}) => {
+  const origin = await openGalleryConversation(page, true);
+  await page.locator('[data-message-seq="7"]').getByText("聊天记录", { exact: true }).click();
+  const modal = page.getByRole("dialog").filter({ has: page.locator(".wk-mergeforwardmessagelist") });
+  await modal.locator('img[alt="forward-rich-second.svg"]').click();
+  await expectImage(page, "3 / 4", `${origin}/gallery-1661/forward-rich-second.svg`);
+  await page.keyboard.press("ArrowRight");
+  await expectImage(page, "4 / 4", `${origin}/gallery-1661/g.svg`);
+  await page.keyboard.press("Escape");
+  await expect(modal).toBeVisible();
+  await modal.getByText("聊天记录", { exact: true }).click();
+  await modal.locator('img[alt="nested-rich-first.svg"]').click();
+  await expectImage(page, "2 / 3", `${origin}/gallery-1661/nested-rich-first.svg`);
+  await page.keyboard.press("ArrowLeft");
+  await expectImage(page, "1 / 3", `${origin}/gallery-1661/h.svg`);
 });
 
 // Only HTTP storage and the server ACK are simulated. The composer, file reader,

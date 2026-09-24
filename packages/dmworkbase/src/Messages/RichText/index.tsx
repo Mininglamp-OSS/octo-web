@@ -10,6 +10,8 @@ import { downloadFile } from "../../Utils/download";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import { MessageCell } from "../MessageCell";
 import { RichTextContent } from "./RichTextContent";
+import { ImageGalleryContext } from "../../features/conversation-image-gallery/ImageGalleryContext";
+import { imageGalleryKey } from "../../features/conversation-image-gallery/imageGallery";
 import "./index.css";
 
 export { RichTextContent } from "./RichTextContent";
@@ -78,15 +80,28 @@ export class RichTextCell extends MessageCell {
               onClick={() => context.locateMessage(content.reply.messageSeq)}
             />
           )}
-          <MixedContent
-            {...uiProps.content}
-            onMentionClick={this.handleMentionClick}
-            onFileDownload={(block) => {
-              if (block.url) {
-                downloadFile(block.url, block.name);
-              }
-            }}
-          />
+          <ImageGalleryContext.Consumer>
+            {(gallery) => (
+              <MixedContent
+                {...uiProps.content}
+                onImagePreview={(block) => {
+                  if (selectionMode) return true;
+                  return (
+                    block.imageIndex !== undefined &&
+                    !!gallery?.openImage(
+                      imageGalleryKey(message, block.imageIndex)
+                    )
+                  );
+                }}
+                onMentionClick={this.handleMentionClick}
+                onFileDownload={(block) => {
+                  if (block.url) {
+                    downloadFile(block.url, block.name);
+                  }
+                }}
+              />
+            )}
+          </ImageGalleryContext.Consumer>
         </div>
       </MessageRow>
     );
