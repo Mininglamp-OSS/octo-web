@@ -33,6 +33,27 @@ import { BODY_RULES, buildBodyIndex, computeBodyEvent, type BodyRuleIndex } from
 import { isElectronPowered } from '../electron/desktopBridge'
 
 export type TrackPrimitive = string | number | boolean | null
+/**
+ * 基础量数组:元素只允许 string | number(见 DAP-413 架构裁定 1)。数组里出现对象 /
+ * 嵌套数组 / boolean / null / undefined → sanitizeProps 会整体丢弃该 key,不做深度清洗、
+ * 不做部分保留。放行数组是为了让 batch 事件把 item_ids 原样送进 object_json,下游
+ * octo-dap `JSON_TABLE(object_json, '$.item_ids[*]')` 需要**真 JSON 数组**([1,2,3]),
+ * 字符串("[1,2,3]" / "1,2,3")都展不开。
+ */
+export type TrackArray = string[] | number[]
+/**
+ * props 值域:标量(TrackPrimitive)或基础量数组(TrackArray)。刻意**不**把数组并进
+ * TrackPrimitive——后者语义就是「标量」(object_id 抽取、TrackRules 静态 props 都只认它),
+ * 别污染。数组仅在 props 层面放行。
+ */
+export type TrackValue = TrackPrimitive | TrackArray
+
+/**
+ * 数组放行的合规护栏(见 DAP-413 架构裁定 2)。放行数组不能破坏 sanitizeProps「不夹带正文」
+ * 的硬约束,故:黑名单照旧先过;数组长度设上限并截断(批量操作可能选中上千项,不能让单条
+ * envelope 无界膨胀);超限截断即截断,不报错、不丢整批。
+ */
+const MAX_ARRAY_LEN = 200
 
 /** 上报信封:每条事件出队前补齐(§2.4)。刻意不含 flow_id / actor_*。 */
 interface TrackEnvelope {
@@ -48,7 +69,7 @@ interface TrackEnvelope {
     page_id?: string
     /** 后沉淀 flow 核心键:拿得到必带,拿不到如实为空,不臆造(§2.4 / §7) */
     object_id?: string
-    props?: Record<string, TrackPrimitive>
+    props?: Record<string, TrackValue>
 }
 
 const DEVICE_ID_KEY = 'octo_track_device_id'
@@ -241,7 +262,7 @@ function isAbortError(err: unknown): boolean {
  * 点击委托 resolver 的归宿:命中的元素 + 事件名 + 可选静态 props。
  * data-track 路径 event 取 dataset.track、props 省略;规则表路径 event/props 来自 TrackRule。
  */
-type Resolved = { el: HTMLElement; event: string; props?: Record<string, TrackPrimitive> }
+type Resolved = { el: HTMLElement; event: string; props?: Record<string, TrackValue> }
 
 class DapImpl {
     /** 会话内唯一;仅作为埋点事件 envelope 的 session_id 随上报发出(采集启用时才发)。纯内存,不落盘。 */
@@ -487,7 +508,7 @@ class DapImpl {
 
     private envelope(
         eventName: string,
-        props?: Record<string, TrackPrimitive>,
+        props?: Record<string, TrackValue>,
         objectId?: string,
     ): TrackEnvelope {
         const env: TrackEnvelope = {
@@ -503,12 +524,12 @@ class DapImpl {
         return env
     }
 
-    /** 剔黑名单 + 只留 Primitive;顺带取出 object_id。绝不带正文/复杂对象。 */
+    /** 剔黑名单 + 只留基础量(标量或 string[]/number[] 数组);顺带取出 object_id。绝不带正文/复杂对象。 */
     private sanitizeProps(input?: Record<string, unknown>): {
-        props: Record<string, TrackPrimitive>
+        props: Record<string, TrackValue>
         objectId?: string
     } {
-        const props: Record<string, TrackPrimitive> = {}
+        const props: Record<string, TrackValue> = {}
         let objectId: string | undefined
         if (!input) return { props }
         for (const key of Object.keys(input)) {
@@ -516,19 +537,62 @@ class DapImpl {
                 const v = input[key]
                 if (typeof v === 'string' && v) objectId = v
                 else if (typeof v === 'number') objectId = String(v)
+                // object_id 抽取仍只认 string/number(裁定 4):数组不参与 objectId 推断
                 continue
             }
-            if (PROP_KEY_BLACKLIST.test(key)) continue // 合规:命中黑名单直接丢
+            if (PROP_KEY_BLACKLIST.test(key)) continue // 合规:命中黑名单直接丢(数组 key 也不得绕过)
             const v = input[key]
             if (v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
                 props[key] = v
+                continue
             }
-            // 复杂对象 / undefined 一律丢,不做序列化(避免夹带正文)
+            // 基础量数组(裁定 1):元素均为 string 或均为 number 才放行,否则整个 key 丢弃。
+            // 数组里出现对象 / 嵌套数组 / boolean / null / undefined / 混合类型 → 不部分保留,直接丢。
+            const arr = this.sanitizeArray(v)
+            if (arr !== undefined) props[key] = arr
+            // 其余复杂对象 / undefined 一律丢,不做序列化(避免夹带正文)
         }
         return { props, objectId }
     }
 
-    private pickObjectId(clean: { props: Record<string, TrackPrimitive>; objectId?: string }): string | undefined {
+    /**
+     * 基础量数组校验 + 截断(见 DAP-413 裁定 1/2 / A-2)。
+     * — 非数组 → undefined(由调用方丢弃)。
+     * — 空数组 [] → undefined:显式与「缺失」等价地丢弃(裁定 5)。后端
+     *   `JSON_TABLE ... jt.item_id IS NOT NULL AND <> ''` 本就过滤空集,且不能让空数组
+     *   变成 null 混进 props。
+     * — 元素必须**均为 string 或均为 number**;出现对象 / 嵌套数组 / boolean / null /
+     *   undefined / 混合类型 → 整个数组丢弃(返回 undefined),不做部分保留。
+     * — 长度超 MAX_ARRAY_LEN → 截断到上限,不报错、不丢整批。
+     *   string 元素不额外截断:与现有标量 string 处理口径一致(现有代码对标量 string 无截断)。
+     *
+     * **B-1 防御拷贝(必守的合规不变量)**:先 `Array.from(v)` 做一份快照再 slice,**绝不**把
+     * 调用方的原数组按引用存进 props。序列化发生在之后的 flush(5s 定时 / 队列满 20 / unload /
+     * 重试),若存引用,则 `track()` 与 flush 之间调用方对该数组的任何 mutation(push 对象 /
+     * 文件名)都会未经 sanitize 直接进 POST body——这会击穿「不夹带正文」的硬约束(评审 B-1 实测
+     * 可复现)。快照切断别名后,被发出的数组与被校验的数组恒为同一份。
+     * `Array.from` 顺带把稀疏洞(`[1,,3]`)致密成 `undefined` → 过不了 `typeof` 校验 → 整组丢弃,
+     * 一并解决 B-3(否则 `every` 跳过空洞、`JSON.stringify` 把洞填成 null,破坏真数组语义)。
+     *
+     * **顺序不变量(A-2 架构裁定,勿改)**:先截断、再校验**保留下来的那一段**——不改成
+     * 「尾部有脏元素就整体丢弃」。截断本身即是部分保留,再要求 drop-whole 与截断语义自相矛盾。
+     * 真正要守的不变量是「**凡被发出的元素都经过校验**」:先 slice 到 200、再对这 200 个 every 校验,
+     * 满足该不变量(200 个合法 string 之后第 201 个是对象 → 前 200 个已被截掉对象、照常放行)。
+     */
+    private sanitizeArray(v: unknown): TrackArray | undefined {
+        if (!Array.isArray(v)) return undefined
+        if (v.length === 0) return undefined // 空数组 ≡ 缺失,丢弃(不让它变 null / [] 混进 props)
+        // B-1:先快照(切断调用方别名)+ 致密稀疏洞;再截断。顺序不变量见上方注释(A-2)。
+        const sliced = Array.from(v).slice(0, MAX_ARRAY_LEN)
+        // 校验保留下来的这一段:均为 string?
+        if (sliced.every((e) => typeof e === 'string')) return sliced as string[]
+        // 均为 number(排除 NaN / Infinity:JSON.stringify 会把它们序列化成 null,破坏真数组语义)?
+        if (sliced.every((e) => typeof e === 'number' && Number.isFinite(e))) return sliced as number[]
+        // 含对象 / 嵌套 / boolean / null / undefined / 混合:整数组丢弃
+        return undefined
+    }
+
+    private pickObjectId(clean: { props: Record<string, TrackValue>; objectId?: string }): string | undefined {
         return clean.objectId
     }
 

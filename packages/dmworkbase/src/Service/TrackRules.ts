@@ -16,7 +16,11 @@
  *     线性兜底(数量应保持很小)。
  */
 
-/** 规则携带的静态 props 只允许基础量,和 TrackEnvelope.props 的 TrackPrimitive 对齐。 */
+/**
+ * 规则携带的静态 props 只允许**标量**(RulePrimitive),仍是 TrackEnvelope.props 值域
+ * `TrackValue`(= TrackPrimitive | TrackArray,见 Dap.ts:DAP-413)的子集——规则表只登记
+ * 静态枚举 props,不承载数组;数组仅在运行时 track() 的 props 层面放行(A-3 收口)。
+ */
 type RulePrimitive = string | number | boolean | null
 
 /**
