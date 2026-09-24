@@ -16,8 +16,6 @@ import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
 import { I18nContext } from "../../i18n";
 import { createChannelSettingMemberSearch } from "../../features/channelSetting/channelSettingMemberSearch";
 import WKAvatar from "../WKAvatar";
-import WKButton from "../WKButton";
-import { ChannelSettingActivityBinding } from "../../features/channelSetting/channelSettingActivity";
 
 export interface SubscribersProps {
   context: RouteContext<any>;
@@ -100,7 +98,7 @@ export class Subscribers extends Component<SubscribersProps> {
     return (
       <Provider
         create={() => {
-          return new SubscribersVM(context, false);
+          return new SubscribersVM(context);
         }}
         render={(vm: SubscribersVM) => {
           return (
@@ -109,7 +107,6 @@ export class Subscribers extends Component<SubscribersProps> {
                 this.baseContext = baseContext;
               }}
             >
-              <ChannelSettingActivityBinding onChange={vm.setRemovalEntryActive} />
               <div className="wk-subscribers">
                 <div className="wk-subscribers-content">
                   {vm.subscribersTop.map((subscriber) => {
@@ -161,20 +158,6 @@ export class Subscribers extends Component<SubscribersProps> {
                     </div>
                   ) : undefined}
                 </div>
-                {!vm.showRemove() && ["checking", "partial", "error"].includes(vm.removalEntryStatus) && (
-                  <div className="wk-subscribers-removal-check" role="status">
-                    {this.context.t(vm.removalEntryStatus === "checking"
-                      ? "base.subscribers.removalEntryChecking"
-                      : vm.removalEntryError ? "base.subscribers.removalEntryCheckFailed"
-                      : "base.subscribers.removalEntryIncomplete")}
-                    {vm.removalEntryStatus !== "checking" && (
-                      <WKButton size="sm" variant="ghost" onClick={() => void vm.refreshRemovalEntry()}>
-                        {this.context.t(vm.removalEntryError
-                          ? "base.subscribers.retry" : "base.subscribers.removalEntryContinue")}
-                      </WKButton>
-                    )}
-                  </div>
-                )}
                 {vm.hasMoreSubscribers() ? (
                   <div
                     className="wk-subscribers-more"

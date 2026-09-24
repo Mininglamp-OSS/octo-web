@@ -207,6 +207,9 @@ describe("channel setting section builders", () => {
     expect(view.props.removeAction).toBeUndefined();
     expect(view.props.viewerUid).toBe("alice");
     expect(view.props.viewerRole).toBe(1);
+    expect(view.props.initialSubscribers).toEqual(
+      expect.arrayContaining([expect.objectContaining({ uid: "bob" })])
+    );
     // 交互模型是**多选 + 批量提交**：组件只上报选择，不再持有逐行的 onRemove。
     expect(view.props.onRemove).toBeUndefined();
     expect(typeof view.props.onSelectionChange).toBe("function");
@@ -215,6 +218,21 @@ describe("channel setting section builders", () => {
     expect(config.showFinishButton).toBe(true);
     expect(typeof config.onFinish).toBe("function");
     expect(typeof config.onFinishContext).toBe("function");
+  });
+
+  it("reads the latest viewer role when opening the removal page", () => {
+    const context = createContext({ subscriberOfMe: undefined });
+    const section = buildChannelMembersSection(context);
+
+    context.routeData().subscriberOfMe = {
+      uid: "alice",
+      role: GroupRole.owner,
+    };
+    section?.rows?.[0].properties.onRemove();
+
+    const [view] = context.push.mock.calls[0];
+    expect(view.props.viewerUid).toBe("alice");
+    expect(view.props.viewerRole).toBe(GroupRole.owner);
   });
 
   // 未选任何人时「确认」必须置灰；选中后才可点。
@@ -388,7 +406,11 @@ describe("channel setting section builders", () => {
   it("fails closed when bot_owned_by_me is missing", () => {
     // /membersync 是按 version 的增量同步：本字段上线前已缓存的成员行不会带上它。
     // 缺失必须退回改动前的行为（不可移除），绝不能误开权限。
-    const staleBotRow = { uid: "bot_stale", role: 0, orgData: { robot: 1 } } as any;
+    const staleBotRow = {
+      uid: "bot_stale",
+      role: 0,
+      orgData: { robot: 1 },
+    } as any;
     const noOrgData = { uid: "bot_no_org", role: 0 } as any;
     const truthyButNotTrue = {
       uid: "bot_truthy",

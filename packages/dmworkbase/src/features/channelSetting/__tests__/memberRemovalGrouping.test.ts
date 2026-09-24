@@ -39,7 +39,10 @@ describe("buildMemberRemovalGroups · §3.2 / §3.3 分类", () => {
         sub("manager", GroupRole.manager),
         sub("me", GroupRole.normal),
         sub("other-human", GroupRole.normal),
-        sub("others-bot", GroupRole.normal, { robot: 1, bot_owned_by_me: false }),
+        sub("others-bot", GroupRole.normal, {
+          robot: 1,
+          bot_owned_by_me: false,
+        }),
         sub("my-bot", GroupRole.normal, {
           robot: 1,
           bot_owned_by_me: true,
@@ -70,14 +73,20 @@ describe("buildMemberRemovalGroups · §3.2 / §3.3 分类", () => {
     expect(groups.map((g) => g.id)).toEqual(["myBots", "others"]);
     expect(groups[0].subscribers.map((s) => s.uid)).toEqual(["my-bot"]);
     // 群主可移除管理员与普通成员；自己不在列表里。
-    expect(groups[1].subscribers.map((s) => s.uid)).toEqual(["manager", "human"]);
+    expect(groups[1].subscribers.map((s) => s.uid)).toEqual([
+      "manager",
+      "human",
+    ]);
   });
 
   it("空组不渲染：没有自己的 bot 时只剩「其他成员」", () => {
     const groups = buildMemberRemovalGroups({
       viewerUid: "owner",
       viewerRole: GroupRole.owner,
-      subscribers: [sub("owner", GroupRole.owner), sub("human", GroupRole.normal)],
+      subscribers: [
+        sub("owner", GroupRole.owner),
+        sub("human", GroupRole.normal),
+      ],
     });
     expect(groups.map((g) => g.id)).toEqual(["others"]);
   });
@@ -108,8 +117,10 @@ describe("buildMemberRemovalGroups · §3.2 / §3.3 分类", () => {
     const others = groups.find((g) => g.id === "others")!;
     // 一个人在一个群里的 bot 天然极少，截断它只会变成「我的 bot 不见了」。
     expect(bots.subscribers).toHaveLength(12);
+    expect(bots.total).toBe(12);
     expect(bots.truncated).toBe(false);
     expect(others.subscribers).toHaveLength(MAX_OTHERS_GROUP_SIZE);
+    expect(others.total).toBe(MAX_OTHERS_GROUP_SIZE + 25);
     expect(others.truncated).toBe(true);
   });
 });
@@ -120,13 +131,13 @@ describe("deriveDefaultExpandedGroups · §3.3 默认展开态", () => {
   it("单组 → 强制展开（不论是哪一组）", () => {
     expect(
       deriveDefaultExpandedGroups([
-        { id: "myBots", subscribers: [], truncated: false },
+        { id: "myBots", subscribers: [], total: 0, truncated: false },
       ])
     ).toEqual({ myBots: true, others: false });
 
     expect(
       deriveDefaultExpandedGroups([
-        { id: "others", subscribers: [], truncated: false },
+        { id: "others", subscribers: [], total: 0, truncated: false },
       ])
     ).toEqual({ myBots: false, others: true });
   });
@@ -134,8 +145,8 @@ describe("deriveDefaultExpandedGroups · §3.3 默认展开态", () => {
   it("双组 → 「我的 BOT」收起、「其他成员」展开", () => {
     expect(
       deriveDefaultExpandedGroups([
-        { id: "myBots", subscribers: [], truncated: false },
-        { id: "others", subscribers: [], truncated: false },
+        { id: "myBots", subscribers: [], total: 0, truncated: false },
+        { id: "others", subscribers: [], total: 0, truncated: false },
       ])
     ).toEqual({ myBots: false, others: true });
   });

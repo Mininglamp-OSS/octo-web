@@ -111,12 +111,3 @@ body[theme-mode=dark] .wk-subscribers-item-name {
     cursor: pointer;
     text-align: center;
 }
-.wk-subscribers-removal-check {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--wk-sp-2);
-    padding: var(--wk-sp-2) var(--wk-sp-4);
-    color: var(--wk-text-secondary);
-    font-size: var(--wk-text-size-sm);
-}

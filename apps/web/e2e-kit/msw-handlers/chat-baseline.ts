@@ -43,39 +43,6 @@ function e2eScenario(_request?: Request): string {
   return "";
 }
 
-type MockImSeedSnapshot = {
-  users?: Array<{ uid: string; name?: string; robot?: number }>;
-  subscribers?: Array<{
-    uid: string;
-    name?: string;
-    channelId: string;
-    channelType: number;
-    role?: number;
-    status?: number;
-    robot?: number;
-    orgData?: Record<string, unknown>;
-  }>;
-};
-
-function groupMemberFixtures(groupNo: string) {
-  const seed = (window as unknown as { __mockImSeed__?: MockImSeedSnapshot }).__mockImSeed__;
-  const users = new Map((seed?.users ?? []).map(user => [user.uid, user]));
-  return (seed?.subscribers ?? [])
-    .filter(row => row.channelType === 2 && row.channelId === groupNo)
-    .map(row => {
-      const user = users.get(row.uid);
-      return {
-        ...row.orgData,
-        uid: row.uid,
-        name: row.name ?? user?.name ?? row.uid,
-        role: row.role ?? 0,
-        status: row.status ?? 1,
-        robot: row.robot ?? user?.robot ?? 0,
-        is_deleted: 0,
-      };
-    });
-}
-
 // Space fixture (单 space, 用户是 owner).
 const MOCK_SPACE = {
   space_id: MOCK_SPACE_ID,
@@ -182,25 +149,6 @@ export const chatBaselineHandlers = [
     // 空 colors 会走前端 fallback palette, 但请求本身不该漏到 Vite proxy.
     HttpResponse.json({ size: 0, colors: [] })
   ),
-  // Keep REST membership reads coherent with the fake IM seed. Channel settings
-  // uses both the paged list and the targeted lookup; blanket empty handlers
-  // would hide ownership and reconciliation bugs.
-  http.get("*/groups/:groupNo/members/:uid", ({ params }) => {
-    const row = groupMemberFixtures(String(params.groupNo))
-      .find(member => member.uid === String(params.uid));
-    return HttpResponse.json(row ? { exists: true, member: row } : { exists: false });
-  }),
-  http.get("*/groups/:groupNo/members", ({ request, params }) => {
-    const url = new URL(request.url);
-    const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
-    const limit = Math.max(1, Number(url.searchParams.get("limit")) || 50);
-    const keyword = (url.searchParams.get("keyword") ?? "").trim().toLowerCase();
-    const rows = groupMemberFixtures(String(params.groupNo)).filter(row =>
-      !keyword || row.uid.toLowerCase().includes(keyword) ||
-      String(row.name ?? "").toLowerCase().includes(keyword)
-    );
-    return HttpResponse.json(rows.slice((page - 1) * limit, page * limit));
-  }),
   http.get("*/api/v1/group/avatar_palette", () =>
     HttpResponse.json({ size: 0, colors: [] })
   ),

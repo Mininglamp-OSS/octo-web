@@ -17,10 +17,7 @@ import RouteContext, {
 import { Row, Section } from "../../Service/Section";
 import { isGroupDisbanded } from "../../Utils/groupDisband";
 import { t } from "../../i18n";
-import { reconcileChannelSettingSubscribers, removeAndReconcileChannelSettingSubscribers } from "../../bridge/channelSetting/channelSettingActions";
-import { describeMemberRemovalOutcome } from "./memberRemovalOutcome";
-import { createChannelSettingMemberSearch } from "./channelSettingMemberSearch";
-import { resolveSubscriberShowName } from "../../Components/Subscribers/subscriberShowName";
+import { removeChannelSettingSubscribers } from "../../bridge/channelSetting/channelSettingActions";
 import WKApp from "../../App";
 
 // 判定逻辑住在零依赖的叶子模块里，好让 Components/Subscribers/vm.ts 也能复用
@@ -53,9 +50,6 @@ export function buildChannelMembersSection(
   // 「查看全部」这个纯浏览入口也会下发移除按钮，把管理语义混进了浏览场景；
   // 而移除页又复用了带「添加成员」按钮的 title，右上角永远挂着一个「+」。
   // 现在：浏览路径只浏览，移除路径只移除，标题各自独立。
-  const viewerUid = data.subscriberOfMe?.uid || WKApp.loginInfo.uid;
-  const viewerRole = data.subscriberOfMe?.role;
-
   return new Section({
     rows: [
       new Row({
@@ -66,6 +60,9 @@ export function buildChannelMembersSection(
           key: channel.getChannelKey(),
           canManageBotAdmin: !!data.channelInfo?.orgData?.can_manage_bot_admin,
           onRemove: () => {
+            // subscriberOfMe may be populated after this section is built.
+            const viewerUid = data.subscriberOfMe?.uid || WKApp.loginInfo.uid;
+            const viewerRole = data.subscriberOfMe?.role;
             // 「确认」按钮属于**路由表头**（RouteContextConfig.showFinishButton），
             // 不属于列表组件；所以批量提交的编排放在这里，组件只负责上报选择。
             // 这与「转让群主」（channelSettingGroupManagementRows）是同一套模式，不另造。
@@ -73,74 +70,17 @@ export function buildChannelMembersSection(
             let selected: Subscriber[] = [];
             let confirming = false;
             let submitting = false;
-            let requestError: string | undefined;
-            const removalPage = React.createRef<MemberRemovalList>();
 
             const syncFinishDisabled = () => {
               finishContext?.disable(submitting || selected.length === 0);
             };
 
-            const runOperation = async (uids: string[], remove: boolean) => {
-              const page = removalPage.current;
-              if (!page || submitting) return;
-              submitting = true;
-              syncFinishDisabled();
-              finishContext?.loading(true);
-              const signal = page.beginVerification(uids.length);
-              try {
-                const params = { channel, uids, signal, onProgress: page.updateVerificationProgress };
-                const evidence = remove
-                  ? await removeAndReconcileChannelSettingSubscribers(params)
-                  : await reconcileChannelSettingSubscribers(params);
-                if (!evidence || signal.aborted || removalPage.current !== page) return;
-                if (remove) requestError = "requestError" in evidence ? evidence.requestError as string | undefined : undefined;
-                page.applySelectionEvidence(evidence);
-                const outcome = describeMemberRemovalOutcome(evidence, uids.length, requestError);
-                if (outcome.complete) {
-                  Toast.success(outcome.message);
-                  context.pop();
-                  data.refresh?.();
-                } else {
-                  page.showVerificationResult(outcome.message, [
-                    ...evidence.unknown, ...evidence.present.map(row => row.uid),
-                  ]);
-                  page.refreshMembers();
-                }
-              } catch {
-                if (!signal.aborted && removalPage.current === page) {
-                  page.showVerificationResult(t("base.subscribers.removalPending", {
-                    values: { count: uids.length },
-                  }), uids);
-                }
-              } finally {
-                submitting = false;
-                confirming = false;
-                if (removalPage.current === page) {
-                  page.setSubmissionPending(false);
-                  finishContext?.loading(false);
-                  syncFinishDisabled();
-                }
-              }
-            };
-
             context.push(
               <MemberRemovalList
-                ref={removalPage}
                 channel={channel}
-                // 名册不走 props：本页由 routeContext.push 推入，WKViewQueue 会把该 JSX
-                // 存进它自己的 state，之后外部再怎么更新也不会给它新 props
-                // （octo-web#95 记录过同一个坑）。名册一旦从这里传入就是冻结快照：
-                // 成员变动收不到、加载态翻不了身、按 props 变化触发的清理永远不跑。
-                // 改由组件内部的 Provider + SubscriberListVM 自己拉数据（与「查看全部」同构）。
-                //
-                // 传工厂而不是建好的搜索函数：索引要基于 VM 当前名册重建，否则它会和
-                // props 一样被冻住，成员变动后搜到的还是旧名册。
-                createLocalSearch={(members) =>
-                  createChannelSettingMemberSearch(members)
-                }
+                initialSubscribers={data.subscriberAll || data.subscribers}
                 viewerUid={viewerUid}
                 viewerRole={viewerRole}
-                onRetryVerification={(uids) => runOperation(uids, false)}
                 onSelectionChange={(items) => {
                   selected = items;
                   syncFinishDisabled();
@@ -153,8 +93,6 @@ export function buildChannelMembersSection(
                 title: t("base.subscribers.removeMemberTitle"),
                 showFinishButton: true,
                 finishButtonTitle: t("base.common.ok"),
-                // 「移出成员」页的完成按钮用 Octo 紫色（与选择圆圈同源），
-                // 局部覆盖而不改全站 primary（其它路由表头仍为默认深黑）。
                 finishButtonClassName: "wk-memberremoval-finish-btn",
                 onFinishContext: (value) => {
                   finishContext = value;
@@ -164,49 +102,55 @@ export function buildChannelMembersSection(
                 onFinish: () => {
                   if (confirming || submitting) return;
                   if (selected.length === 0) {
-                    Toast.warning(
-                      t("base.subscribers.removeSelectAtLeastOne")
-                    );
+                    Toast.warning(t("base.subscribers.removeSelectAtLeastOne"));
                     return;
                   }
                   const count = selected.length;
                   const uids = selected.map((item) => item.uid);
                   confirming = true;
-                  let attempted = false;
                   wkConfirm({
                     title: t("base.subscribers.removeMemberTitle"),
-                    // 列出名字而不是只报个数：选中项是跨搜索存活的（刻意设计），所以
-                    // 点「确认」时部分选中项可能正被搜索滤在屏外。对一个破坏性批量操作，
-                    // “移出 3 人”不足以让人确认自己要踢的到底是哪 3 个。
-                    content: t(
-                      "base.subscribers.confirmRemoveBatchContent",
-                      {
-                        values: {
-                          count,
-                          // 与列表行用**同一个**解析器。早先这里只用
-                          // `item.remark || item.name`，而行优先用 1:1 频道的个人备注，
-                          // 于是「我给某人设过个人备注」时两边叫的名字不一样 ——
-                          // 一个破坏性操作的确认框跟你刚勾的行对不上号，很容易误删。
-                          names: selected
-                            .map((item) => resolveSubscriberShowName(item))
-                            .join("\u3001"),
-                        },
-                      }
-                    ),
+                    content: t("base.subscribers.confirmRemoveBatchContent", {
+                      values: { count },
+                    }),
                     okText: t("base.subscribers.remove"),
                     okType: "danger",
-                    onCancel: () => { confirming = false; },
+                    onCancel: () => {
+                      confirming = false;
+                    },
                     onOk: async () => {
-                      if (attempted) return;
-                      const page = removalPage.current;
-                      // A detached page must not submit a still-open modal's
-                      // stale selection after navigation.
-                      if (!page) {
+                      if (submitting) return;
+                      submitting = true;
+                      syncFinishDisabled();
+                      finishContext?.loading(true);
+                      try {
+                        // **一次**请求提交整批。后端 memberRemove 的自助分支做的是
+                        // 整批校验（任一目标不在白名单即整批拒绝，不做部分执行），
+                        // 逐个调用反而会把一个天然批量的接口拆散用。
+                        await removeChannelSettingSubscribers({
+                          channel,
+                          uids,
+                        });
+                        Toast.success(
+                          t("base.subscribers.removeSuccessBatch", {
+                            values: { count },
+                          })
+                        );
+                        context.pop();
+                        data.refresh?.();
+                      } catch (error: any) {
+                        // 批量是全成全败，所以只报一次错并**保留页面与勾选态**
+                        // 让用户重试，不能 pop（那会像部分成功）。
+                        Toast.error(
+                          error?.msg || t("base.subscribers.removeFailed")
+                        );
+                        throw error;
+                      } finally {
+                        submitting = false;
                         confirming = false;
-                        return;
+                        finishContext?.loading(false);
+                        syncFinishDisabled();
                       }
-                      attempted = true;
-                      await runOperation(uids, true);
                     },
                   });
                 },

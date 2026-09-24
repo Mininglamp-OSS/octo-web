@@ -2,78 +2,22 @@ import React from "react";
 import { Subscriber } from "wukongimjssdk";
 import { describe, expect, it, vi } from "vitest";
 
-// 「移出成员」页的**组件行为**测试。
+// 「移出成员」页的**交互模型**测试：多选 + 上报选择。
 //
-// 纯函数层（分类/截断/展开推导）由 memberRemovalGrouping.test.ts 覆盖，这里只钉
-// 组件自己那部分，尤其是**它与数据源的接线** —— 前几轮的缺陷全部逃逸在这条缝上：
+// 纯函数层（分类/展开推导）已由 memberRemovalGrouping.test.ts 覆盖，这里只钉
+// 组件自己的那部分行为，也就是最容易在重构中悄悄丢掉的两件事：
 //
-//   1. canRemove 必须作为 **VM 的 filter** 传进去。只在渲染层过滤会关掉 list_vm
-//      「本页被砍空就自动翻下一页」的兜底，稀疏场景下列表永远停在第 1 页。
-//   2. 数据必须由**子树内部**的 Provider+VM 提供，不能走 props：本页是被
-//      routeContext.push 推入的，WKViewQueue 会把 JSX 冻在自己的 state 里，
-//      props 永远不会更新（octo-web#95）。
-//   3. 预取只覆盖**已加载的行**，不是整份名册。
-//   4. 空态要分清「还没加载完 / 加载失败 / 翻页预算用尽 / 搜索无匹配 / 真的没有」，
-//      对前四种说「你没有可移出的成员」都是在给用户一句确定的假话。
+//   1. 勾选是**多选且跨分组**的 —— 管理员要能一次勾「我的 BOT」里的和
+//      「其他成员」里的，一并提交。做成单选或按组互斥都会让批量能力失效。
+//   2. 每次勾选变化都要 onSelectionChange 上报**完整 Subscriber**（不是 uid）——
+//      父级要用名字拼二次确认文案，也靠它 enable/disable 路由表头的「确认」。
 //
-// 不走 DOM 挂载：render() 返回的是普通 React 元素对象，取出 Provider 的
-// `create`/`render` 两个 prop 直接调用即可 —— 这正是 Provider 在生产里做的事。
-
-const vmInstances: any[] = [];
-
-vi.mock("../list_vm", () => ({
-  SubscriberListVM: class {
-    channel: any;
-    filter?: (s: Subscriber) => boolean;
-    localSearch?: (k: string) => Subscriber[];
-    options?: { maxAutoPages?: number };
-    subscribers: Subscriber[] = [];
-    limit = 50;
-    keyword = "";
-    status = "ready";
-    hasMore = false;
-    get loading() { return ["loading", "refreshing", "debouncing"].includes(this.status); }
-    get loadError() { return this.status === "error"; }
-    get autoPageBudgetExhausted() { return this.status === "budget-exhausted"; }
-    onSubscribersLoaded?: (s: Subscriber[]) => void;
-    search = vi.fn();
-    loadMoreSubscribersIfNeed = vi.fn();
-    refreshCurrentSearch = vi.fn();
-    removeSubscriber = vi.fn();
-    retry = vi.fn();
-    constructor(
-      channel: any,
-      filter?: (s: Subscriber) => boolean,
-      localSearch?: (k: string) => Subscriber[],
-      options?: { maxAutoPages?: number }
-    ) {
-      this.channel = channel;
-      this.filter = filter;
-      this.localSearch = localSearch;
-      this.options = options;
-      vmInstances.push(this);
-    }
-  },
-}));
-
-const fetchedUids: string[] = [];
-let subscriberChangeHandler: ((channel: any) => void) | undefined;
-let cachedRoster: Subscriber[] = [];
+// 不走 DOM 挂载：组件 render() 返回的是普通 React 元素对象，遍历树取到行节点的
+// onClick 调用即可。这样既不用处理 Provider 的数据加载时序，也不用 mock 掉
+// WKAvatar 等一堆渲染期依赖。
 
 vi.mock("../../../im-runtime/currentChannelRuntime", () => ({
   getCurrentImChannelInfo: () => undefined,
-  fetchCurrentImChannelInfo: (channel: any) => {
-    fetchedUids.push(channel.channelID);
-    return Promise.resolve(undefined);
-  },
-  addCurrentImChannelInfoListener: () => () => {},
-  addCurrentImSubscriberChangeListener: (fn: (channel: any) => void) => {
-    subscriberChangeHandler = fn;
-    return () => {
-      subscriberChangeHandler = undefined;
-    };
-  },
-  getCurrentImChannelSubscribers: () => cachedRoster,
 }));
 
 vi.mock("../../WKAvatar", () => ({
@@ -83,23 +27,24 @@ vi.mock("../../WKAvatar", () => ({
 
 vi.mock("../../AiBadge", () => ({ default: () => null }));
 vi.mock("../../RealnameVerifiedBadge", () => ({ default: () => null }));
+
 vi.mock("@douyinfe/semi-icons", () => ({ IconSearchStroked: () => null }));
 vi.mock("@douyinfe/semi-ui", () => ({ Tag: () => null }));
 
 import { MemberRemovalList } from "../memberRemovalList";
-import { readSelectedMembers } from "../../../bridge/channelSetting/memberRemovalRead";
-vi.mock("../../../bridge/channelSetting/memberRemovalRead", () => ({
-  readSelectedMembers: vi.fn(),
-}));
 import { GroupRole } from "../../../Service/Const";
-import { MAX_OTHERS_GROUP_SIZE } from "../../../features/channelSetting/memberRemovalGrouping";
 
 type AnyElement = {
   type?: unknown;
   props?: Record<string, unknown> & { children?: unknown };
 };
 
-function collectByTestId(node: unknown, testId: string, out: AnyElement[] = []) {
+/** 深度优先收集所有 data-testid 命中的元素。 */
+function collectByTestId(
+  node: unknown,
+  testId: string,
+  out: AnyElement[] = []
+) {
   if (!node || typeof node !== "object") return out;
   if (Array.isArray(node)) {
     for (const child of node) collectByTestId(child, testId, out);
@@ -114,416 +59,188 @@ function collectByTestId(node: unknown, testId: string, out: AnyElement[] = []) 
 const sub = (uid: string, role: number, orgData: any = {}) =>
   ({ uid, name: uid, role, orgData } as unknown as Subscriber);
 
-const ownedBot = (uid: string) =>
-  sub(uid, GroupRole.normal, { robot: 1, bot_owned_by_me: true });
-
+/** 群主视角：两组都非空（我的 bot + 其他成员）。 */
 const roster = [
   sub("owner", GroupRole.owner), // 自己，canRemove 恒 false
-  ownedBot("bot-mine"),
+  sub("bot-mine", GroupRole.normal, { robot: 1, bot_owned_by_me: true }),
   sub("human", GroupRole.normal),
 ];
 
-function createComponent(
-  props: Partial<{
-    onSelectionChange: (items: Subscriber[]) => void;
-    createLocalSearch: (m: Subscriber[]) => (k: string) => Subscriber[];
-    viewerUid: string;
-    viewerRole: number;
-  }> = {}
-) {
-  vmInstances.length = 0;
-  fetchedUids.length = 0;
+/**
+ * 渲染一次并返回组件 + 元素树。
+ *
+ * 组件未挂载，所以 setState 是 no-op —— 要改状态得直接赋值给 this.state
+ * （见 applySelection）。这是测试替身的常见做法：本组测的是选择逻辑与渲染
+ * 映射，不是 React 的调度行为。
+ */
+function render(component: MemberRemovalList, subscribers = roster) {
+  const tree = component.render() as AnyElement;
+  const renderProp = tree.props?.render as (vm: unknown) => unknown;
+  return renderProp({ subscribers, search: vi.fn() });
+}
+
+function createComponent(onSelectionChange?: (items: Subscriber[]) => void) {
   const component = new MemberRemovalList({
-    channel: { channelID: "g1", isEqual: (c: any) => c?.channelID === "g1" } as never,
-    viewerUid: props.viewerUid ?? "owner",
-    viewerRole: props.viewerRole ?? GroupRole.owner,
-    onSelectionChange: props.onSelectionChange,
-    createLocalSearch: props.createLocalSearch,
+    channel: { channelID: "g1" } as never,
+    viewerUid: "owner",
+    viewerRole: GroupRole.owner,
+    onSelectionChange,
   });
   (component as unknown as { context: unknown }).context = {
-    t: (key: string, opts?: { values?: Record<string, unknown> }) =>
-      opts?.values ? `${key}:${JSON.stringify(opts.values)}` : key,
-  };
-  (component as any).setState = (updater: any, cb?: () => void) => {
-    const next =
-      typeof updater === "function" ? updater((component as any).state) : updater;
-    (component as any).state = { ...(component as any).state, ...next };
-    cb?.();
+    t: (key: string) => key,
   };
   return component;
 }
 
-/** 走 Provider 的真实两步：create() 造 VM，再用它渲染。 */
-function mountThroughProvider(
-  component: MemberRemovalList,
-  vmOverrides: Record<string, unknown> = {}
-) {
-  const tree = component.render() as AnyElement;
-  const create = tree.props?.create as () => any;
-  const renderProp = tree.props?.render as (vm: any) => unknown;
-  const vm = create();
-  Object.assign(vm, vmOverrides);
-  return { vm, content: renderProp(vm) };
-}
-
-function expandBothGroups(component: MemberRemovalList) {
+/** 绕开未挂载组件的 setState no-op，直接驱动选择态并触发上报。 */
+function applySelection(component: MemberRemovalList, uids: string[]) {
   (component as any).state = {
     ...(component as any).state,
-    manualExpanded: { myBots: true, others: true },
+    selected: new Map(
+      roster
+        .filter((subscriber) => uids.includes(subscriber.uid))
+        .map((subscriber) => [subscriber.uid, subscriber])
+    ),
   };
+  (component as any).reportSelection();
 }
 
-describe("MemberRemovalList · 与数据源的接线", () => {
-  // 回归：round-3 曾把 canRemove 只用在渲染层、给 VM 传 undefined filter，
-  // 于是 list_vm「本页被砍空就自动翻下一页」的兜底被关掉，稀疏场景永远停在第 1 页。
-  it("canRemove 作为 VM 的 filter 传入（否则自动翻页兜底会失效）", () => {
-    const component = createComponent();
-    const { vm } = mountThroughProvider(component);
-    expect(typeof vm.filter).toBe("function");
-
-    // filter 的语义必须与行级判据一致：自己不可移除，自有普通 bot 可移除。
-    expect(vm.filter(sub("owner", GroupRole.owner))).toBe(false);
-    expect(vm.filter(ownedBot("bot-mine"))).toBe(true);
-  });
-
-  it("传入翻页预算，避免稀疏过滤把整个大群翻完", () => {
-    const { vm } = mountThroughProvider(createComponent());
-    expect(vm.options?.maxAutoPages).toBeGreaterThan(0);
-  });
-
-  // 回归：索引若在 push 时刻用外部名册建好，会和 props 一起被 WKViewQueue 冻住，
-  // 成员变动后搜到的还是旧名册。所以传的是**工厂**，每次都用 VM 当前名册重建。
-  it("本地搜索索引基于 VM 当前名册重建，而不是 push 时刻的快照", () => {
-    const seen: Subscriber[][] = [];
-    const component = createComponent({
-      createLocalSearch: (members) => {
-        seen.push(members);
-        return () => members;
-      },
-    });
-    const { vm } = mountThroughProvider(component);
-
-    vm.subscribers = [sub("a", GroupRole.normal)];
-    vm.localSearch("x");
-    vm.subscribers = [sub("a", GroupRole.normal), sub("b", GroupRole.normal)];
-    vm.localSearch("x");
-
-    expect(seen).toHaveLength(2);
-    expect(seen[0].map((s) => s.uid)).toEqual(["a"]);
-    expect(seen[1].map((s) => s.uid)).toEqual(["a", "b"]);
-  });
-
-  // 回归：预取一度遍历整份名册（上限 10000），2000 人的群会在挂载瞬间打 2000 个
-  // 请求却只渲染 200 行，把共享的连接队列占满。边界必须是「已加载的行」。
-  it("预取挂在 onSubscribersLoaded 上，只覆盖已加载的行", () => {
-    const component = createComponent();
-    const { vm } = mountThroughProvider(component);
-    expect(typeof vm.onSubscribersLoaded).toBe("function");
-
-    vm.onSubscribersLoaded([sub("a", GroupRole.normal), sub("b", GroupRole.normal)]);
-    expect(fetchedUids.sort()).toEqual(["a", "b"]);
-
-    // 同一个人不会被重复预取。
-    vm.onSubscribersLoaded([sub("a", GroupRole.normal)]);
-    expect(fetchedUids.sort()).toEqual(["a", "b"]);
-  });
-
-  // 回归：数据若走 props，本页被 push 后就永远收不到更新（octo-web#95）。
-  // 成员变动要能驱动 VM 刷新，这条链路必须是活的。
-  it("成员变动会驱动 VM 刷新当前结果集", () => {
-    const component = createComponent();
-    const { vm } = mountThroughProvider(component);
-    component.componentDidMount();
-
-    expect(subscriberChangeHandler).toBeTypeOf("function");
-    subscriberChangeHandler!({ channelID: "g1", isEqual: (c: any) => c?.channelID === "g1" });
-    expect(vm.refreshCurrentSearch).toHaveBeenCalled();
-
-    // 别的群的变动不该触发刷新。
-    vm.refreshCurrentSearch.mockClear();
-    subscriberChangeHandler!({ channelID: "other", isEqual: () => false });
-    expect(vm.refreshCurrentSearch).not.toHaveBeenCalled();
-
-    component.componentWillUnmount();
-  });
-});
-
 describe("MemberRemovalList · 多选交互", () => {
+  // §3.3：两组并存时「我的 BOT」默认**收起**、「其他成员」默认展开，
+  // 所以首帧只渲染得出「其他成员」那一行。
   it("首帧按 §3.3 的默认展开态渲染（我的 BOT 收起）", () => {
-    const { content } = mountThroughProvider(createComponent(), {
-      subscribers: roster,
-    });
+    const content = render(createComponent());
+    const checks = collectByTestId(content, "member-removal-check");
     const rows = collectByTestId(content, "member-removal-row");
-    expect(rows).toHaveLength(1);
+    expect(checks).toHaveLength(1);
     expect(rows[0].props?.["aria-label"]).toBe("human");
     expect(rows[0].props?.role).toBe("checkbox");
     expect(rows[0].props?.["aria-checked"]).toBe(false);
+    expect(rows[0].props?.tabIndex).toBe(0);
 
-    expect(collectByTestId(content, "member-removal-group-myBots")).toHaveLength(1);
-    expect(collectByTestId(content, "member-removal-group-others")).toHaveLength(1);
+    // 两组的标题都要在（空组才不渲染，收起组仍要显示标题）。
+    expect(
+      collectByTestId(content, "member-removal-group-myBots")
+    ).toHaveLength(1);
+    expect(
+      collectByTestId(content, "member-removal-group-others")
+    ).toHaveLength(1);
+  });
+
+  it("服务端首屏返回前使用已知成员，不显示假空态", () => {
+    const component = new MemberRemovalList({
+      channel: { channelID: "g1" } as never,
+      initialSubscribers: roster,
+      viewerUid: "owner",
+      viewerRole: GroupRole.owner,
+    });
+    (component as unknown as { context: unknown }).context = {
+      t: (key: string) => key,
+    };
+
+    const content = render(component, []);
+    expect(collectByTestId(content, "member-removal-row")).toHaveLength(1);
+    expect(collectByTestId(content, "member-removal-empty")).toHaveLength(0);
+  });
+
+  it("滚动接近底部时继续加载成员", () => {
+    const component = createComponent();
+    const tree = component.render() as AnyElement;
+    const renderProp = tree.props?.render as (vm: unknown) => AnyElement;
+    const loadMoreSubscribersIfNeed = vi.fn();
+    const content = renderProp({
+      subscribers: roster,
+      search: vi.fn(),
+      loadMoreSubscribersIfNeed,
+    });
+
+    (content.props?.onScroll as (event: unknown) => void)({
+      target: { scrollTop: 700, clientHeight: 300, scrollHeight: 1100 },
+    });
+
+    expect(loadMoreSubscribersIfNeed).toHaveBeenCalledTimes(1);
   });
 
   it("展开「我的 BOT」后两组的行都可勾选", () => {
     const component = createComponent();
-    expandBothGroups(component);
-    const { content } = mountThroughProvider(component, { subscribers: roster });
-    expect(
-      collectByTestId(content, "member-removal-row")
-        .map((r) => r.props?.["aria-label"])
-        .sort()
-    ).toEqual(["bot-mine", "human"]);
-  });
-
-  it("勾选跨分组累加，并上报完整 Subscriber 给父级", () => {
-    const onSelectionChange = vi.fn();
-    const component = createComponent({ onSelectionChange });
-    expandBothGroups(component);
-    mountThroughProvider(component, { subscribers: roster });
-
-    (component as any).toggleSelected(roster[1]);
-    expect(onSelectionChange).toHaveBeenLastCalledWith([
-      expect.objectContaining({ uid: "bot-mine" }),
-    ]);
-
-    (component as any).toggleSelected(roster[2]);
-    const calls = onSelectionChange.mock.calls;
-    expect((calls[calls.length - 1][0] as Subscriber[]).map((s) => s.uid).sort()).toEqual([
+    // 模拟用户点开「我的 BOT」分类。
+    (component as any).state = {
+      ...(component as any).state,
+      manualExpanded: { myBots: true, others: true },
+    };
+    const rows = collectByTestId(render(component), "member-removal-row");
+    expect(rows.map((row) => row.props?.["aria-label"]).sort()).toEqual([
       "bot-mine",
       "human",
     ]);
   });
 
+  it("勾选跨分组累加，并上报完整 Subscriber 给父级", () => {
+    const onSelectionChange = vi.fn();
+    const component = createComponent(onSelectionChange);
+    // 先渲染一次：reportSelection 要从“最近一次可见集合”里反查完整对象。
+    (component as any).state = {
+      ...(component as any).state,
+      manualExpanded: { myBots: true, others: true },
+    };
+    render(component);
+
+    applySelection(component, ["bot-mine"]);
+    expect(onSelectionChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({ uid: "bot-mine" }),
+    ]);
+
+    // 再勾「其他成员」组里的人类 —— 两组的选中项必须共存，而不是互相替换。
+    applySelection(component, ["bot-mine", "human"]);
+    const last = onSelectionChange.mock.calls.at(-1)?.[0] as Subscriber[];
+    expect(last.map((s) => s.uid).sort()).toEqual(["bot-mine", "human"]);
+  });
+
   it("取消全部选中时上报空数组（父级据此置灰「确认」）", () => {
     const onSelectionChange = vi.fn();
-    const component = createComponent({ onSelectionChange });
-    mountThroughProvider(component, { subscribers: roster });
-    (component as any).toggleSelected(roster[2]);
-    (component as any).toggleSelected(roster[2]);
+    const component = createComponent(onSelectionChange);
+    render(component);
+
+    applySelection(component, ["human"]);
+    applySelection(component, []);
     expect(onSelectionChange).toHaveBeenLastCalledWith([]);
   });
 
-  it("行可聚焦且响应 Enter/Space（键盘可操作）", () => {
+  it("选中后该行的 aria-checked 变为 true", () => {
     const component = createComponent();
-    const { content } = mountThroughProvider(component, { subscribers: roster });
-    const row = collectByTestId(content, "member-removal-row")[0];
-    expect(row.props?.tabIndex).toBe(0);
+    applySelection(component, ["human"]);
 
-    const preventDefault = vi.fn();
-    (row.props?.onKeyDown as any)({ key: "Enter", preventDefault });
-    expect(preventDefault).toHaveBeenCalled();
-    expect(Array.from((component as any).state.selected.keys())).toEqual(["human"]);
-
-    (row.props?.onKeyDown as any)({ key: "a", preventDefault: vi.fn() });
-    expect(Array.from((component as any).state.selected.keys())).toEqual(["human"]);
+    const rows = collectByTestId(render(component), "member-removal-row");
+    const checked = rows
+      .filter((c) => c.props?.["aria-checked"] === true)
+      .map((c) => c.props?.["aria-label"]);
+    expect(checked).toEqual(["human"]);
   });
 
-  // 回归：标题的 onKeyDown 原本无条件 preventDefault，把冒泡上来的 Enter/Space
-  // 一起吞了，于是里面那个 chevron <button> 用键盘反而按不动。
-  it("标题和 chevron 是并列原生按钮，容器不拦截键盘", () => {
-    const { content } = mountThroughProvider(createComponent(), {
-      subscribers: roster,
-    });
-    const header = collectByTestId(content, "member-removal-group-others")[0];
-    expect(header.props?.role).toBeUndefined();
-    expect(header.props?.onKeyDown).toBeUndefined();
-    const label = collectByTestId(content, "member-removal-label-others")[0];
-    const chevron = collectByTestId(content, "member-removal-chevron-others")[0];
-    expect(label.type).toBe("button");
-    expect(chevron.type).toBe("button");
-    expect(label.props?.["aria-expanded"]).toBe(true);
-    expect(collectByTestId(label, "member-removal-chevron-others")).toHaveLength(0);
-  });
-});
-
-describe("MemberRemovalList · 选中项的存活与剔除", () => {
-  // 选中项跨搜索/分页存活是刻意设计：结果集被换掉不能把之前的选择静默丢掉。
-  it("结果集被换掉后，之前的选择仍在", () => {
+  it("toggleSelected 连点两次回到未选中", () => {
     const onSelectionChange = vi.fn();
-    const alice = sub("alice", GroupRole.normal);
-    const bob = sub("bob", GroupRole.normal);
-    const component = createComponent({ onSelectionChange });
-    expandBothGroups(component);
+    const component = createComponent(onSelectionChange);
+    render(component);
 
-    const tree = component.render() as AnyElement;
-    const renderProp = tree.props?.render as (vm: any) => unknown;
-    const vm = (tree.props?.create as () => any)();
+    // 直接驱动真实的 toggle 逻辑（而不是替身），验证它的增/删对称性。
+    const toggled = new Map<string, Subscriber>();
+    const fakeSetState = (updater: any, cb?: () => void) => {
+      const next = updater({ selected: toggled });
+      toggled.clear();
+      for (const [uid, subscriber] of next.selected) {
+        toggled.set(uid, subscriber);
+      }
+      (component as any).state = {
+        ...(component as any).state,
+        selected: toggled,
+      };
+      cb?.();
+    };
+    (component as any).setState = fakeSetState;
 
-    vm.subscribers = [alice, bob];
-    renderProp(vm);
-    (component as any).toggleSelected(alice);
-
-    // 搜索把结果集换成只剩 bob。
-    vm.subscribers = [bob];
-    renderProp(vm);
-    (component as any).toggleSelected(bob);
-
-    const calls = onSelectionChange.mock.calls;
-    const last = calls[calls.length - 1][0] as Subscriber[];
-    expect(last.map((s) => s.uid).sort()).toEqual(["alice", "bob"]);
-    expect(last.every((s) => typeof s.name === "string")).toBe(true);
-  });
-
-  // 但「已经不在群里的人」不该继续躺在批量里：整批提交全成全败，一个失效 uid
-  // 能把整次操作拖失败，用户还无法从报错里看出是哪一个。
-  it("只依据单成员查询明确确认的离群证据剔除选中项", async () => {
-    const onSelectionChange = vi.fn();
-    const alice = sub("alice", GroupRole.normal);
-    const bob = sub("bob", GroupRole.normal);
-    const component = createComponent({ onSelectionChange });
-    const { vm } = mountThroughProvider(component, { subscribers: [alice, bob] });
-
-    (component as any).toggleSelected(alice);
-    (component as any).toggleSelected(bob);
-
-    // Absence from the cache/page is not enough; an explicit lookup is required.
-    cachedRoster = [bob];
-    vm.onSubscribersLoaded([bob]);
-    expect(Array.from((component as any).state.selected.keys())).toEqual(["alice", "bob"]);
-    vi.mocked(readSelectedMembers).mockResolvedValueOnce({ absent: ["alice"], present: [bob], unknown: [] });
-    await component.reconcileSelectedMembers();
-
-    expect(onSelectionChange).toHaveBeenLastCalledWith([
-      expect.objectContaining({ uid: "bob" }),
-    ]);
-    cachedRoster = [];
-  });
-
-  // 缓存为空只说明「不知道谁还在群里」，不等于「所有人都走了」——
-  // 此时静默取消用户的勾选是更糟的行为。
-  it("成员缓存为空时不剔除任何选中项", () => {
-    const onSelectionChange = vi.fn();
-    const alice = sub("alice", GroupRole.normal);
-    const component = createComponent({ onSelectionChange });
-    const { vm } = mountThroughProvider(component, { subscribers: [alice] });
-    (component as any).toggleSelected(alice);
-    onSelectionChange.mockClear();
-
-    cachedRoster = [];
-    vm.onSubscribersLoaded([]);
-    expect(onSelectionChange).not.toHaveBeenCalled();
-    expect(Array.from((component as any).state.selected.keys())).toEqual(["alice"]);
-  });
-
-  // 回归（B3）：搜索态下 vm.subscribers 是命中集不是名册，此时剔除会把搜索窗口外
-  // 的有效选中项（比如缓存外、第 450 位的 alice）误剔。所以搜索态一律不剔。
-  it("搜索态下不剔除任何选中项（否则会误删搜索窗口外的选择）", () => {
-    const onSelectionChange = vi.fn();
-    const alice = sub("alice", GroupRole.normal);
-    const bob = sub("bob", GroupRole.normal);
-    const component = createComponent({ onSelectionChange });
-    const { vm } = mountThroughProvider(component, { subscribers: [alice, bob] });
-
-    (component as any).toggleSelected(alice);
-    (component as any).toggleSelected(bob);
-    onSelectionChange.mockClear();
-
-    // 用户搜「bob」：keyword 非空，缓存只有 bob（alice 在缓存外）。
-    (component as any).state = { ...(component as any).state, keyword: "bob" };
-    cachedRoster = [bob];
-    vm.onSubscribersLoaded([bob]);
-
-    // 搜索态不剔 —— alice 仍在选中里，不发新的选择变更。
-    expect(onSelectionChange).not.toHaveBeenCalled();
-    expect(
-      Array.from((component as any).state.selected.keys()).sort()
-    ).toEqual(["alice", "bob"]);
-    cachedRoster = [];
-  });
-});
-
-describe("MemberRemovalList · 搜索框接线", () => {
-  // 回归（B1）：onSearchChange 曾被重复声明，后一个仅 setState 的版本覆盖了走 vm.search
-  // 的版本 —— 搜索框完全失效。这条测试驱动输入框的 onChange（而不是直接调 vm.search），
-  // 铉死这条缝：输入必须触发 vm.search。
-  it("输入框 onChange 触发 vm.search（而不是只写 state）", () => {
-    vi.useFakeTimers();
-    try {
-      const component = createComponent();
-      const { vm, content } = mountThroughProvider(component, {
-        subscribers: [],
-      });
-
-      const input = collectByTestId(content, "member-removal-search")[0];
-      const onChange = input?.props?.onChange as (e: unknown) => void;
-      expect(typeof onChange).toBe("function");
-
-      onChange({ target: { value: "alice" } });
-      // Immediately invalidate the old query; the VM owns the network debounce.
-      expect(vm.search).toHaveBeenCalledWith("alice", 300);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-});
-
-describe("MemberRemovalList · 截断与真实人数", () => {
-  // 回归：标题计数原本用截断**之后**的行数，500 人的群会显示成「其他成员（200）」——
-  // 把一个渲染上限冒充成人口普查。
-  it("超过渲染上限时，标题显示真实人数而不是上限值", () => {
-    const many = Array.from({ length: MAX_OTHERS_GROUP_SIZE + 37 }, (_, i) =>
-      sub(`human-${i}`, GroupRole.normal)
-    );
-    const { content } = mountThroughProvider(createComponent(), {
-      subscribers: many,
-    });
-
-    const label = collectByTestId(content, "member-removal-label-others")[0];
-    const text = String((label.props?.children as any) ?? "");
-    expect(text).toContain(String(MAX_OTHERS_GROUP_SIZE + 37));
-    expect(text).not.toContain(`:{"count":${MAX_OTHERS_GROUP_SIZE}}`);
-
-    expect(collectByTestId(content, "member-removal-row")).toHaveLength(
-      MAX_OTHERS_GROUP_SIZE
-    );
-    expect(collectByTestId(content, "member-removal-truncated-hint")).toHaveLength(1);
-  });
-});
-
-describe("MemberRemovalList · 空态分型", () => {
-  const emptyVM = (overrides: Record<string, unknown>) =>
-    mountThroughProvider(createComponent(), { subscribers: [], ...overrides })
-      .content;
-
-  it("首次加载未结束：说加载中，不说「没有可移出的成员」", () => {
-    const content = emptyVM({ status: "idle" });
-    expect(collectByTestId(content, "member-removal-loading")).toHaveLength(1);
-    expect(collectByTestId(content, "member-removal-empty")).toHaveLength(0);
-  });
-
-  // 回归（B2）：自动续翻的中间页结果集为空是**过程量**。firstLoadSettled 已为 true
-  // 但 autoPaging 还在翻 —— 早先这里会渲染「你没有可移出的成员」，bot 在第 450 名时
-  // 要连说 8 遍这句假话才把人等出来。
-  it("自动续翻中（autoPaging）：说加载中，不说「没有可移出的成员」", () => {
-    const content = emptyVM({ status: "loading" });
-    expect(collectByTestId(content, "member-removal-loading")).toHaveLength(1);
-    expect(collectByTestId(content, "member-removal-empty")).toHaveLength(0);
-  });
-
-  // 回归：requestSubscribers 原本没有 catch，异常会静默逃逸，列表停在空，
-  // 于是把一次网络失败说成了「这里没有任何成员」。
-  it("加载失败：说失败，不说「没有可移出的成员」", () => {
-    const content = emptyVM({ status: "error" });
-    expect(collectByTestId(content, "member-removal-error")).toHaveLength(1);
-    expect(collectByTestId(content, "member-removal-empty")).toHaveLength(0);
-  });
-
-  it("翻页预算用尽：给出搜索这条出路，而不是断言没有", () => {
-    const content = emptyVM({ status: "budget-exhausted" });
-    expect(collectByTestId(content, "member-removal-budget-exhausted")).toHaveLength(1);
-    expect(collectByTestId(content, "member-removal-empty")).toHaveLength(0);
-  });
-
-  it("搜索无匹配：说没匹配，不说「本群没有可移出的成员」", () => {
-    const component = createComponent();
-    (component as any).state = { ...(component as any).state, keyword: "zzz" };
-    const { content } = mountThroughProvider(component, { subscribers: [] });
-    expect(collectByTestId(content, "member-removal-no-match")).toHaveLength(1);
-    expect(collectByTestId(content, "member-removal-empty")).toHaveLength(0);
-  });
-
-  it("加载完成、无搜索、确实没有可移出的人：才说空", () => {
-    const content = emptyVM({});
-    expect(collectByTestId(content, "member-removal-empty")).toHaveLength(1);
-    expect(collectByTestId(content, "member-removal-loading")).toHaveLength(0);
+    (component as any).toggleSelected(roster[2]); // human
+    expect(Array.from(toggled.keys())).toEqual(["human"]);
+    (component as any).toggleSelected(roster[2]);
+    expect(Array.from(toggled.keys())).toEqual([]);
   });
 });

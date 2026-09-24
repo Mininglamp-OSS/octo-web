@@ -26,15 +26,14 @@ import {
  *
  * ## 归属判据直接复用 isBotOwnedByViewer（不另造字段）
  *
- * 曾考虑过让后端多下发一个纯归属字段 bot_created_by_me，用来覆盖一个盲区：
- * bot_owned_by_me 对**非普通角色**的 bot 恒为 false，所以若一个 bot 被提为群
- * 管理员角色，前端就认不出它是「我的」。
+ * 曾经考虑过让后端多下发一个纯归属字段 bot_created_by_me，用来修一个边缘
+ * 错分：**群主自己建的 bot 被提为管理员**后，后端的 bot_owned_by_me 会下发
+ * false（自助分支不放行角色 bot），于是它会落进「其他成员」组 —— 可群主确实
+ * 能移除它。后端最终决定不加字段，所以这里接受该错分，**不在前端自造推断**：
+ * 前端没有 creator_uid，任何本地猜测都会和后端的授权口径漂移。
  *
- * 但产品上**没有把 bot 设为群管理员的入口**；只有 managerAdd 接口不排除 robot，
- * 所以理论上能用 API 构造出来（参见 memberRemovalPermission 的同题注释）。这种
- * 只能由 API 构造的数据，退化后的表现与本改动前完全一致（该 bot 被归入「其他
- * 成员」，群主仍能移除它），且服务端始终是授权权威，所以收益不足以引入新字段；
- * 也不在前端自造推断（前端没有 creator_uid，本地猜测会和后端授权口径漂移）。
+ * 影响面很窄：只有群主、且只在「自己的 bot 被提为管理员」时，那一行会出现在
+ * 「其他成员」而不是「我的 BOT」。它仍然可见、仍然可移除，只是分组不直观。
  */
 
 /** 分类 id。用字面量而不是 enum，方便测试里直接写断言。 */
@@ -43,15 +42,8 @@ export type MemberRemovalGroupId = "myBots" | "others";
 export interface MemberRemovalGroup {
   id: MemberRemovalGroupId;
   subscribers: Subscriber[];
-  /**
-   * 已加载页中该组的过滤人数（截断前），不是尚未加载的全群总数。
-   *
-   * 标题里的计数必须用这个值而不是 `subscribers.length`：后者是被
-   * MAX_OTHERS_GROUP_SIZE 砍过的**渲染量**，用它会把 500 人的群写成
-   * 「其他成员（200）」—— 把一个渲染上限冒充成人口普查。
-   */
+  /** 截断前的成员数，用于标题展示真实计数。 */
   total: number;
-  isPartial?: boolean;
   /**
    * 该组是否被 MAX_OTHERS_GROUP_SIZE 截断。
    * 截断时组底部要给出「仅显示前 N 人，请用搜索」的提示，而不是静默少人。
@@ -62,12 +54,12 @@ export interface MemberRemovalGroup {
 /**
  * 「其他成员」组的渲染上限。
  *
- * 本页消费服务端分页并在客户端做权限过滤，不消费完整 IM 缓存快照。
- * 大群里已加载的可移除成员也可能超过几百人，限制同时渲染的行数。
+ * 本页是纯客户端过滤：服务端没有 scope=removable 这类参数，所以大群里拿到的是
+ * 全量名册，过滤后管理员仍可能剩几百人。一次性渲染几百行会卡，而真分页又和
+ * 「点分类名滚到该组第一个成员」打架（滚动目标可能还没加载）。
  *
  * 所以这里设一个上限 + 明确提示，把「不完整」这件事显式告诉用户，而不是
- * 假装列表是全的。搜索以服务端为权威，本地索引只加速；达到上限后仍可
- * 通过独立的继续加载按钮扫描后面的页面，不能依赖不再增长的 scrollHeight。
+ * 假装列表是全的。
  *
  * 「我的 BOT」组**不受此限制** —— 一个人在一个群里的 bot 通常 0-3 个，天然极小，
  * 截断它只会制造「我的 bot 不见了」的 bug。
@@ -84,7 +76,6 @@ export function buildMemberRemovalGroups(params: {
   subscribers: Subscriber[];
   viewerUid?: string;
   viewerRole?: number;
-  hasMore?: boolean;
 }): MemberRemovalGroup[] {
   const { subscribers, viewerUid, viewerRole } = params;
   if (!subscribers?.length) return [];
@@ -95,7 +86,9 @@ export function buildMemberRemovalGroups(params: {
   for (const subscriber of subscribers) {
     // §3.2 的唯一可见性判据。复用行级判据，不另写一份 —— 页面过滤与行内按钮
     // 各写一份的话，迟早漂移成「列表里有这一行，但它没有移除按钮」。
-    if (!canRemoveChannelSettingSubscriber({ viewerUid, viewerRole, subscriber })) {
+    if (
+      !canRemoveChannelSettingSubscriber({ viewerUid, viewerRole, subscriber })
+    ) {
       continue;
     }
     if (isBotOwnedByViewer(subscriber)) {
@@ -112,7 +105,6 @@ export function buildMemberRemovalGroups(params: {
       id: "myBots",
       subscribers: myBots,
       total: myBots.length,
-      isPartial: params.hasMore,
       truncated: false,
     });
   }
@@ -120,9 +112,7 @@ export function buildMemberRemovalGroups(params: {
     groups.push({
       id: "others",
       subscribers: others.slice(0, MAX_OTHERS_GROUP_SIZE),
-      // total 记截断**前**的人数，标题计数靠它，否则 500 人群会显示成（200）。
       total: others.length,
-      isPartial: params.hasMore,
       truncated: others.length > MAX_OTHERS_GROUP_SIZE,
     });
   }

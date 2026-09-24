@@ -17,7 +17,9 @@
 /*
  * 分类头：标题文字在左、chevron 在右（对齐设计稿）。
  *
- * 标题和 chevron 是两个并列的原生按钮，不嵌套交互控件。
+ * 整行是一个点击区（展开 + 滚动定位），chevron 是嵌在其中的独立按钮（纯折叠）。
+ * §3.4 要求两者职责分离，所以 chevron 必须 stopPropagation —— 否则点它会同时
+ * 触发外层的滚动定位，变成「收起的同时又滚动」。
  */
 .wk-memberremoval-group-header {
     display: flex;
@@ -37,20 +39,12 @@
     color: var(--wk-text-primary);
 }
 
-.wk-memberremoval-group-label:focus-visible,
-.wk-memberremoval-group-chevron:focus-visible,
-.wk-memberremoval-item:focus-visible {
-    outline: 2px solid var(--wk-color-accent);
+.wk-memberremoval-group-header:focus-visible {
+    outline: 2px solid var(--wk-color-primary);
     outline-offset: -2px;
 }
 
 .wk-memberremoval-group-label {
-    flex: 1;
-    text-align: left;
-    border: 0;
-    padding: 0;
-    background: transparent;
-    cursor: pointer;
     min-width: 0;
     overflow: hidden;
     color: var(--wk-text-primary);
@@ -102,7 +96,7 @@
  * 圆形多选框。
  *
  * 不用 Semi 的 Checkbox：它是方形的，覆盖其内部样式做成圆形会依赖它的 DOM 结构，
- * 升级即碎。checkbox 语义挂在整行，圆圈 span 仅作 aria-hidden 装饰。
+ * 升级即碎。语义和键盘焦点放在整行上，这里只负责视觉。
  */
 .wk-memberremoval-check {
     display: inline-flex;
@@ -111,17 +105,12 @@
     width: var(--wk-sp-5);
     height: var(--wk-sp-5);
     flex: 0 0 auto;
-    /* Solid semantic accent also keeps the idle outline visible in both themes. */
-    border: 1.5px solid var(--wk-color-accent);
+    border: 1.5px solid var(--wk-border-strong, var(--wk-border-subtle));
     border-radius: 50%;
     background: transparent;
-    /* 对号用**恒定白色**，不用 --wk-text-inverse：后者在深色主题下解析为
-       neutral-900（近黑），贴在紫色填充上 hover 态只有 2.59:1，低于 3:1；
-       且跟「把白对号从填充里提出来」的设计意图相反。紫底白勾两个主题都成立。 */
-    color: var(--wk-text-on-brand);
+    color: var(--wk-color-white);
     transition: background var(--wk-dur-fast) var(--wk-ease),
-        border-color var(--wk-dur-fast) var(--wk-ease),
-        box-shadow var(--wk-dur-fast) var(--wk-ease);
+        border-color var(--wk-dur-fast) var(--wk-ease);
 }
 
 .wk-memberremoval-check svg {
@@ -129,22 +118,9 @@
     height: var(--wk-sp-3);
 }
 
-/* 行 hover 时描边加深到实紫，给“可点选”的可觉提示（与选中色同源）。 */
-.wk-memberremoval-item:hover .wk-memberremoval-check:not(.wk-memberremoval-check-on) {
-    border-color: var(--wk-color-accent);
-}
-
 .wk-memberremoval-check-on {
-    border-color: var(--wk-color-accent);
-    background: var(--wk-color-accent);
-    /* 选中时一圈极淡的紫晕，把对号从背景里“提”出来，白勾更显。 */
-    box-shadow: 0 0 0 3px var(--wk-ai-border);
-}
-
-.wk-memberremoval-item:hover .wk-memberremoval-check-on {
-    /* 选中态 hover 略加深，与 Octo 的 primary-hover 行为一致。 */
-    border-color: var(--wk-color-accent-hover);
-    background: var(--wk-color-accent-hover);
+    border-color: var(--wk-color-primary);
+    background: var(--wk-color-primary);
 }
 
 /* 整行可点即切换选中，所以行给 pointer 手型（与浏览列表的“点开名片”区分开）。 */
@@ -152,16 +128,9 @@
     cursor: pointer;
 }
 
-/*
- * 「完成」按钮（路由表头右上角）紫色化，对齐 Octo accent 与选择圆圈。
- * 仅作用于本页（通过 finishButtonClassName 局部下发），不影响其它路由的完成按钮。
- * 做法：在本按钮作用域重定义 Semi 的 --semi-color-primary 系列 token，而不硬编码
- * 颜色也不滥用 !important——Semi solid primary 按钮直接读这几个 token。
- */
-.wk-memberremoval-finish-btn.semi-button {
-    --semi-color-primary: var(--wk-color-accent);
-    --semi-color-primary-hover: var(--wk-color-accent-hover);
-    --semi-color-primary-active: var(--wk-color-accent-hover);
+.wk-memberremoval-item:focus-visible {
+    outline: 2px solid var(--wk-color-primary);
+    outline-offset: -2px;
 }
 
 .wk-memberremoval-group-truncated {
@@ -177,10 +146,9 @@
     font-size: var(--wk-text-size-md);
     text-align: center;
 }
-.wk-memberremoval-verification {
-    padding: var(--wk-sp-3) var(--wk-sp-5);
-    color: var(--wk-text-secondary);
-    background: var(--wk-bg-base);
-    font-size: var(--wk-text-size-sm);
-    overflow-wrap: anywhere;
+
+.wk-memberremoval-finish-btn.semi-button {
+    --semi-color-primary: var(--wk-color-accent);
+    --semi-color-primary-hover: var(--wk-color-accent-hover);
+    --semi-color-primary-active: var(--wk-color-accent-hover);
 }

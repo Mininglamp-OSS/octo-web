@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { canRemoveChannelSettingSubscriber, memberRemovalEligibility } from "../memberRemovalPermission";
+import { canRemoveChannelSettingSubscriber } from "../memberRemovalPermission";
 
 // 跨仓库契约校验（octo-web#1511 / octo-server#805）。
 //
@@ -39,11 +39,9 @@ const members: RawMember[] = [
   // 归我所有、但被提升为 Manager 的 bot：后端自助分支拒绝它，
   // 因此 bot_owned_by_me 下发 false（而不是靠前端自己再判一次角色）。
   //
-  // 副作用：「移出成员」页按本字段分类，所以这种 bot 会落进「其他成员」组而不是
-  // 「我的 BOT」。这是已知且**被接受**的错分，理由是产品上 **bot 无法被设为群
-  // 管理员角色**（没有入口），所以该组合在真实数据里不会出现；为它引入一个纯归属
-  // 字段（bot_created_by_me）的收益不足，而前端自造推断（没有 creator_uid）只会
-  // 和后端授权口径漂移。该行仍可见、仍可移除。
+  // 副作用：「移出成员」页按本字段分类，所以群主自己建的、已被提为管理员的 bot
+  // 会落进「其他成员」组而不是「我的 BOT」。这是已知且**被接受**的错分：
+  // 前端没有 creator_uid，自造推断只会和后端的授权口径漂移。该行仍可见、仍可移除。
   { uid: "bot_mgr_c", role: 2, robot: 1, bot_owned_by_me: false },
 ];
 
@@ -99,17 +97,5 @@ describe("wire contract · 真实 server 报文 → 前端判据", () => {
       )
       .map((m) => m.uid);
     expect(removable).toEqual(["bot_mine_c"]);
-  });
-
-  it("单成员查询缺少归属字段时保持未知，不把已有选择误删", () => {
-    expect(memberRemovalEligibility({
-      viewerUid: "10000",
-      viewerRole: 0,
-      subscriber: toSubscriber({ uid: "bot_mine_c", role: 0, robot: 1 }),
-    })).toBe("unknown");
-    expect(memberRemovalEligibility({
-      viewerUid: "10000",
-      subscriber: toSubscriber({ uid: "bot_mine_c", role: 0, robot: 1, bot_owned_by_me: true }),
-    })).toBe("unknown");
   });
 });

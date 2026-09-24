@@ -47,9 +47,7 @@ describe("SubscriberListVM local search", () => {
 
     vm.search("weijiao");
 
-    // search() 现在会先快照名册再清空，把快照作为第二参传给 localSearch（拼音索引靠它建）。
-    // 这里 VM 初始名册为空，所以快照是 []。
-    expect(localSearch).toHaveBeenCalledWith("weijiao", []);
+    expect(localSearch).toHaveBeenCalledWith("weijiao");
     expect(vm.subscribers).toEqual(localResult);
     expect(vm.hasMore).toBe(false);
     await vi.waitFor(() => expect(subscribersRequest).toHaveBeenCalledOnce());
@@ -268,13 +266,9 @@ describe("SubscriberListVM local search", () => {
   });
 
   it("refreshes loaded pages without clearing rows or resetting pagination", async () => {
-    const fullPage = (page: number) => Array.from({ length: 50 }, (_, index) => ({
-      uid: `page-${page}-${index}`,
-      name: `Page ${page} ${index}`,
-    }));
     subscribersRequest
-      .mockResolvedValueOnce(fullPage(1))
-      .mockResolvedValueOnce(fullPage(2))
+      .mockResolvedValueOnce([{ uid: "page-1", name: "Page 1" }])
+      .mockResolvedValueOnce([{ uid: "page-2", name: "Page 2" }])
       .mockResolvedValueOnce([{ uid: "page-3", name: "Page 3" }]);
     const vm = new SubscriberListVM(channel);
     const listener = vi.fn();
@@ -288,8 +282,7 @@ describe("SubscriberListVM local search", () => {
 
     expect(vm.currPage).toBe(3);
     expect(vm.subscribers).toEqual([{ uid: "stale", name: "Stale" }]);
-    expect(listener).toHaveBeenCalledOnce();
-    expect(vm.status).toBe("refreshing");
+    expect(listener).not.toHaveBeenCalled();
     await vi.waitFor(() => expect(subscribersRequest).toHaveBeenCalledTimes(3));
     expect(subscribersRequest).toHaveBeenNthCalledWith(1, channel, {
       page: 1,
@@ -306,25 +299,13 @@ describe("SubscriberListVM local search", () => {
       limit: vm.limit,
       keyword: "wei",
     });
-    await vi.waitFor(() => expect(vm.status).toBe("ready"));
-    expect(vm.subscribers).toHaveLength(101);
-    expect(vm.subscribers.at(-1)).toEqual({ uid: "page-3", name: "Page 3" });
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce());
+    expect(vm.subscribers).toEqual([
+      { uid: "page-1", name: "Page 1" },
+      { uid: "page-2", name: "Page 2" },
+      { uid: "page-3", name: "Page 3" },
+    ]);
     expect(vm.currPage).toBe(3);
-  });
-
-  it("stops a refresh when an earlier page becomes short", async () => {
-    subscribersRequest.mockResolvedValueOnce([{ uid: "only", name: "Only" }]);
-    const vm = new SubscriberListVM(channel);
-    (vm as any)._isMounted = true;
-    vm.currPage = 3;
-    vm.subscribers = [{ uid: "stale", name: "Stale" }] as Subscriber[];
-
-    await vm.refreshCurrentSearch();
-
-    expect(subscribersRequest).toHaveBeenCalledOnce();
-    expect(vm.subscribers).toEqual([{ uid: "only", name: "Only" }]);
-    expect(vm.currPage).toBe(1);
-    expect(vm.hasMore).toBe(false);
   });
 
   it("drops an already-rendered row that is absent from the refreshed loaded pages", async () => {
