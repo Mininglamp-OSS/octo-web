@@ -63,6 +63,13 @@ describe("formatMessageTimestamp", () => {
         expect(getTimeStringAutoShort2(Date.now() - 90_000, false)).toMatch(/^\d{2}:\d{2}$/)
         expect(getTimeStringAutoShort2(new Date(2026, 5, 7, 10, 0).getTime(), true)).toMatch(/^昨天 \d{2}:\d{2}$/)
         expect(getTimeStringAutoShort2(new Date(2026, 5, 6, 10, 0).getTime(), true)).toMatch(/^前天 \d{2}:\d{2}$/)
+        expect(getTimeStringAutoShort2(new Date(2026, 5, 4, 10, 0).getTime(), true)).toMatch(/^星期四 \d{2}:\d{2}$/)
+
+        i18n.setLocale("en-US", { notify: false, persist: false })
+        expect(getTimeStringAutoShort2(new Date(2026, 5, 7, 10, 0).getTime(), true)).toMatch(/^Yesterday \d{2}:\d{2}$/)
+        expect(getTimeStringAutoShort2(new Date(2026, 5, 6, 10, 0).getTime(), true)).toMatch(/^Sat \d{2}:\d{2}$/)
+        expect(getTimeStringAutoShort2(new Date(2026, 5, 4, 10, 0).getTime(), true)).toMatch(/^Thu \d{2}:\d{2}$/)
+        i18n.setLocale("zh-CN", { notify: false, persist: false })
         expect(formatRelativeTime()).toBe("")
         expect(formatRelativeTime(new Date(Date.now() - 30_000).toISOString())).toBe("刚刚")
         expect(formatRelativeTime(new Date(Date.now() - 2 * 3600_000).toISOString())).toContain("2")
