@@ -820,13 +820,17 @@ describe("CommunicationShell", () => {
     expect(mocks.createCurrentEmptyImConversation).toHaveBeenCalledTimes(1);
   });
 
-  it("does not create an empty recent conversation for a bare navigation target", async () => {
+  it("explicitly requests a recent conversation for a bare navigation target", async () => {
     render(<CommunicationShell bridge={mocks.bridge} initialPage="chat" initialSpaceId="space-a"
       initialPresentation="conversation" onReady={async () => {}} />);
     act(() => mocks.command.listener?.({
       type: "navigate", page: "chat", target: { channelId: "peer", channelType: 1 },
     }));
     await waitFor(() => expect(WKApp.endpoints.showConversation).toHaveBeenCalled());
+    expect(WKApp.endpoints.showConversation).toHaveBeenCalledWith(
+      expect.objectContaining({ channelID: "peer", channelType: 1 }),
+      expect.objectContaining({ ensureRecentConversation: true }),
+    );
     expect(mocks.createCurrentEmptyImConversation).not.toHaveBeenCalled();
     expect(mocks.setCurrentImChannelInfoCache).not.toHaveBeenCalled();
   });

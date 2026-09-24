@@ -106,7 +106,8 @@ function openTarget(
 ) {
   assertCompatibleTargetVariant(target);
   const channel = new Channel(target.channelId, target.channelType);
-  if (target.displayName || target.avatar || target.metadata) {
+  const hasIdentityHints = Boolean(target.displayName || target.avatar || target.metadata);
+  if (hasIdentityHints) {
     const info = getCurrentImChannelInfo<Channel, ChannelInfo>(channel) || new ChannelInfo();
     info.channel = channel;
     if (target.avatar) info.logo = target.avatar;
@@ -135,6 +136,10 @@ function openTarget(
     openChannelSearch: target.openChannelSearch,
     ...(workspaceEmbedding ? { workspaceEmbedding } : {}),
     ...(preserveCurrentConversation ? { preserveCurrentConversation: true } : {}),
+    // Hinted targets are already created above so they can carry their host
+    // display metadata. A bare host target needs an explicit recent-entry
+    // request; internal callers do not inherit this behavior.
+    ...(!hasIdentityHints ? { ensureRecentConversation: true } : {}),
     onCommitted,
   });
 }

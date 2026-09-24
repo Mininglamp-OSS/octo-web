@@ -28,13 +28,14 @@ vi.mock("wukongimjssdk", () => ({
   },
 }));
 
-import WKApp from "../App";
-import { EndpointCommon } from "../EndpointCommon";
-import { EndpointID } from "../Service/Const";
-import { EndpointManager } from "../Service/Module";
-
 describe("WKApp endpoint initialization", () => {
-  it("loads the real App <-> EndpointCommon cycle and registers showConversation", () => {
+  it("loads EndpointCommon before App and initializes endpoints only after both modules evaluate", async () => {
+    vi.resetModules();
+    const { EndpointCommon } = await import("../EndpointCommon");
+    const { default: WKApp } = await import("../App");
+    const { EndpointID } = await import("../Service/Const");
+    const { EndpointManager } = await import("../Service/Module");
+
     expect(WKApp.endpoints).toBeInstanceOf(EndpointCommon);
     expect(EndpointManager.shared.get(EndpointID.showConversation)?.handler).toBeTypeOf(
       "function"

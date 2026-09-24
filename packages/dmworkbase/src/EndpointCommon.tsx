@@ -6,6 +6,10 @@ import { EndpointCategory, EndpointID } from "./Service/Const";
 import { EndpointManager } from "./Service/Module";
 import ConversationContext from "./Components/Conversation/context";
 import { isChannelSearchEnabled } from "./features/channelSearch/feature";
+import {
+  createCurrentEmptyImConversation,
+  findCurrentImConversation,
+} from "./im-runtime/currentConversationRuntime";
 import type { LucideIcon } from "lucide-react";
 
 export type MessageContextMenuGroup = "processing" | "control" | "derived";
@@ -33,6 +37,11 @@ export class ShowConversationOptions {
    * 会话；不切的话用户在 follow tab 上打开未关注会话会"消失"。
    */
   fromSidebarList?: boolean;
+  /**
+   * Explicit external-entry opt-in: ensure the target has a local recent
+   * conversation entry. Existing conversations are not promoted or reordered.
+   */
+  ensureRecentConversation?: boolean;
   workspaceEmbedding?: ChatContentPageProps["workspaceEmbedding"];
   /** Host presentation changes for the same conversation must not remount its composer. */
   preserveCurrentConversation?: boolean;
@@ -158,10 +167,6 @@ export class EndpointCommon {
         // follow tab 里的项必然 followed），这里不做 React-tree-外的同步读。
         if (!opts.fromSidebarList) {
           WKApp.mittBus.emit("wk:switch-sidebar-tab", "recent");
-          // Make an external target a real IM conversation and promote it to
-          // the head of the normal formal list. The SDK updates an existing
-          // entry's timestamp (or creates one) and emits the usual list event.
-          WKSDK.shared().conversationManager.createEmptyConversation(channel);
         }
         let initLocateMessageSeq = 0;
         if (opts && opts.initLocateMessageSeq && opts.initLocateMessageSeq > 0) {
@@ -204,6 +209,21 @@ export class EndpointCommon {
           }
           key = currentRender.key;
           initLocateMessageSeq = currentRender.locateSeq;
+        }
+
+        // Only explicit external callers may create an entry. Do this after
+        // the presentation-only return above, and never touch an existing
+        // conversation: createEmptyConversation would otherwise update its
+        // timestamp and reorder the recent list. The SDK entry is local to the
+        // current runtime, not a server-side conversation write.
+        if (opts.ensureRecentConversation && !findCurrentImConversation(channel)) {
+          const conversation = createCurrentEmptyImConversation<
+            Channel,
+            { unread?: number }
+          >(channel);
+          if (conversation && conversation.unread == null) {
+            conversation.unread = 0;
+          }
         }
         const renderState = { channelKey, spaceId, key, locateSeq: initLocateMessageSeq };
         currentRender = renderState;

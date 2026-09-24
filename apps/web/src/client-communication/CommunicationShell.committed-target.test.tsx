@@ -70,6 +70,12 @@ vi.mock("wukongimjssdk", () => ({
   WKSDK: { shared: () => ({ conversationManager: {
     findConversation: () => ({ unread: state.unread, lastMessage: { messageSeq: 10 } }),
   } }) },
+  // currentConversationRuntime uses the SDK's default export. Keep both
+  // export shapes intentionally method-incomplete to exercise the optional
+  // create seam through the real endpoint.
+  default: { shared: () => ({ conversationManager: {
+    findConversation: () => ({ unread: state.unread, lastMessage: { messageSeq: 10 } }),
+  } }) },
 }));
 
 // Keep EndpointCommon and WKViewQueue real. Only the business page is reduced to stateful DOM.
