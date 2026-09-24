@@ -29,9 +29,11 @@ vi.mock("../list_vm", () => ({
     options?: { maxAutoPages?: number };
     subscribers: Subscriber[] = [];
     limit = 50;
+    keyword = "";
     firstLoadSettled = true;
     loadError = false;
     autoPageBudgetExhausted = false;
+    autoPaging = false;
     onSubscribersLoaded?: (s: Subscriber[]) => void;
     search = vi.fn();
     loadMoreSubscribersIfNeed = vi.fn();
@@ -393,6 +395,60 @@ describe("MemberRemovalList · 选中项的存活与剔除", () => {
     expect(onSelectionChange).not.toHaveBeenCalled();
     expect(Array.from((component as any).state.selected.keys())).toEqual(["alice"]);
   });
+
+  // 回归（B3）：搜索态下 vm.subscribers 是命中集不是名册，此时剔除会把搜索窗口外
+  // 的有效选中项（比如缓存外、第 450 位的 alice）误剔。所以搜索态一律不剔。
+  it("搜索态下不剔除任何选中项（否则会误删搜索窗口外的选择）", () => {
+    const onSelectionChange = vi.fn();
+    const alice = sub("alice", GroupRole.normal);
+    const bob = sub("bob", GroupRole.normal);
+    const component = createComponent({ onSelectionChange });
+    const { vm } = mountThroughProvider(component, { subscribers: [alice, bob] });
+
+    (component as any).toggleSelected(alice);
+    (component as any).toggleSelected(bob);
+    onSelectionChange.mockClear();
+
+    // 用户搜「bob」：keyword 非空，缓存只有 bob（alice 在缓存外）。
+    (component as any).state = { ...(component as any).state, keyword: "bob" };
+    cachedRoster = [bob];
+    vm.onSubscribersLoaded([bob]);
+
+    // 搜索态不剔 —— alice 仍在选中里，不发新的选择变更。
+    expect(onSelectionChange).not.toHaveBeenCalled();
+    expect(
+      Array.from((component as any).state.selected.keys()).sort()
+    ).toEqual(["alice", "bob"]);
+    cachedRoster = [];
+  });
+});
+
+describe("MemberRemovalList · 搜索框接线", () => {
+  // 回归（B1）：onSearchChange 曾被重复声明，后一个仅 setState 的版本覆盖了走 vm.search
+  // 的版本 —— 搜索框完全失效。这条测试驱动输入框的 onChange（而不是直接调 vm.search），
+  // 铉死这条缝：输入必须触发 vm.search。
+  it("输入框 onChange 触发 vm.search（而不是只写 state）", () => {
+    vi.useFakeTimers();
+    try {
+      const component = createComponent();
+      const { vm, content } = mountThroughProvider(component, {
+        subscribers: [],
+      });
+
+      const input = collectByTestId(content, "member-removal-search")[0];
+      const onChange = input?.props?.onChange as (e: unknown) => void;
+      expect(typeof onChange).toBe("function");
+
+      onChange({ target: { value: "alice" } });
+      // 搜索走 300ms 防抖：推过去才能看到 vm.search 被调。
+      vi.advanceTimersByTime(300);
+
+      // 关键断言：搜索真的打下去了，而不是静默丢掉。
+      expect(vm.search).toHaveBeenCalledWith("alice");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("MemberRemovalList · 截断与真实人数", () => {
@@ -425,6 +481,15 @@ describe("MemberRemovalList · 空态分型", () => {
 
   it("首次加载未结束：说加载中，不说「没有可移出的成员」", () => {
     const content = emptyVM({ firstLoadSettled: false });
+    expect(collectByTestId(content, "member-removal-loading")).toHaveLength(1);
+    expect(collectByTestId(content, "member-removal-empty")).toHaveLength(0);
+  });
+
+  // 回归（B2）：自动续翻的中间页结果集为空是**过程量**。firstLoadSettled 已为 true
+  // 但 autoPaging 还在翻 —— 早先这里会渲染「你没有可移出的成员」，bot 在第 450 名时
+  // 要连说 8 遍这句假话才把人等出来。
+  it("自动续翻中（autoPaging）：说加载中，不说「没有可移出的成员」", () => {
+    const content = emptyVM({ firstLoadSettled: true, autoPaging: true });
     expect(collectByTestId(content, "member-removal-loading")).toHaveLength(1);
     expect(collectByTestId(content, "member-removal-empty")).toHaveLength(0);
   });

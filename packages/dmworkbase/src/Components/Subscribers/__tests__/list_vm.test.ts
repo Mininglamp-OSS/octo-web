@@ -47,7 +47,9 @@ describe("SubscriberListVM local search", () => {
 
     vm.search("weijiao");
 
-    expect(localSearch).toHaveBeenCalledWith("weijiao");
+    // search() 现在会先快照名册再清空，把快照作为第二参传给 localSearch（拼音索引靠它建）。
+    // 这里 VM 初始名册为空，所以快照是 []。
+    expect(localSearch).toHaveBeenCalledWith("weijiao", []);
     expect(vm.subscribers).toEqual(localResult);
     expect(vm.hasMore).toBe(false);
     await vi.waitFor(() => expect(subscribersRequest).toHaveBeenCalledOnce());

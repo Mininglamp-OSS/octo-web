@@ -35,8 +35,15 @@ export class SubscriberListVM extends ProviderListener {
   loadError: boolean = false;
   /** 自动续翻是否用尽了 maxAutoPages 预算（仅在传了预算时可能为 true）。 */
   autoPageBudgetExhausted: boolean = false;
+  /**
+   * 是否正在自动续翻（横跨整个循环，而不是单次请求）。
+   *
+   * 调用方必须在渲染「空」之前检查它：firstLoadSettled 只说明「第一页回来了」，
+   * 不说明「扫完了」。稀疏过滤时中间页的空结果是过程量，不是结论。
+   */
+  autoPaging: boolean = false;
   private maxAutoPages?: number;
-  private localSearch?: (keyword: string) => Subscriber[];
+  private localSearch?: (keyword: string, roster?: Subscriber[]) => Subscriber[];
   /** 每次 subscribers 数据加载完成后调用，用于触发预取等副作用 */
   onSubscribersLoaded?: (subscribers: Subscriber[]) => void;
   private _isMounted: boolean = false;
@@ -45,7 +52,7 @@ export class SubscriberListVM extends ProviderListener {
   constructor(
     channel: Channel,
     filter?: (subscriber: Subscriber) => boolean,
-    localSearch?: (keyword: string) => Subscriber[],
+    localSearch?: (keyword: string, roster?: Subscriber[]) => Subscriber[],
     options?: SubscriberListVMOptions
   ) {
     super();
@@ -70,18 +77,22 @@ export class SubscriberListVM extends ProviderListener {
   }
 
   search(keyword: string) {
+    // 先快照：本地索引是基于「当前已加载的名册」建的，而下一行就把它清空了。
+    // 不快照的话，localSearch 每次拿到的都是空数组 —— 拼音加速器永远出不了结果。
+    const rosterBeforeReset = this.subscribers;
     this.currPage = 1;
     this.subscribers = [];
     this.keyword = keyword;
     // 换了关键词就是一次全新的检索：预算重新开始算，旧的错误态也别留着。
     this.autoPageBudgetExhausted = false;
     this.loadError = false;
+    this.autoPaging = false;
     if (this.localSearch && keyword.trim()) {
       const requestVersion = ++this._requestVersion;
       this.hasMore = false;
       let localResults: Subscriber[];
       try {
-        localResults = this.localSearch(keyword);
+        localResults = this.localSearch(keyword, rosterBeforeReset);
       } catch {
         this.requestSubscribers(requestVersion);
         return;
@@ -123,13 +134,14 @@ export class SubscriberListVM extends ProviderListener {
       this.loadError = true;
       this.firstLoadSettled = true;
       this.loading = false;
+      this.autoPaging = false;
       this.notifyListener();
       return;
     }
     if (!this._isMounted || requestVersion !== this._requestVersion) return;
     this.loadError = false;
     this.firstLoadSettled = true;
-    this.hasMore = subscribers && subscribers.length >= this.limit;
+    this.hasMore = !!subscribers && subscribers.length >= this.limit;
     if (subscribers) {
       const filtered = this.applySubscriberFilters(subscribers);
       if (this.currPage === 1) {
@@ -138,23 +150,32 @@ export class SubscriberListVM extends ProviderListener {
         this.subscribers = this.mergeSubscribers(this.subscribers, filtered);
       }
     }
-    this.notifyListener();
-    this.onSubscribersLoaded?.(this.subscribers);
 
     // When client-side filtering removes most results, the list may be
     // too short for the user to scroll and trigger the next page load.
     // Auto-fetch more pages until we have enough visible items or run out.
-    if (this.filter && this.hasMore && this.subscribers.length < this.limit) {
-      // 有预算时到顶就停：稀疏过滤（例如普通成员在大群里只有 1 个自己的 bot）
-      // 会一路翻到群尾，页数预算把它兜住，调用方据此引导用户改用服务端搜索。
-      if (
-        this.maxAutoPages !== undefined &&
-        this.currPage >= this.maxAutoPages
-      ) {
-        this.autoPageBudgetExhausted = true;
-        this.notifyListener();
-        return;
-      }
+    //
+    // 继续与否必须在 notifyListener() **之前**算出来。早先是先 notify 再决定，
+    // 于是稀疏过滤的每一个中间页都把「空结果 + 已结束」的快照推给组件，
+    // 组件只能渲染「你没有可移出的成员」—— bot 在第 450 名时连说 8 遍这句假话。
+    // autoPaging 横跨整个循环，让调用方能区分「还在扫」和「真没有」。
+    const needsMorePages =
+      !!this.filter && this.hasMore && this.subscribers.length < this.limit;
+    const budgetHit =
+      this.maxAutoPages !== undefined && this.currPage >= this.maxAutoPages;
+    const willAutoPage = needsMorePages && !budgetHit;
+
+    if (needsMorePages && budgetHit) {
+      // 预算用尽：稀疏过滤（例如普通成员在大群里只有 1 个自己的 bot）会一路翻到
+      // 群尾，页数预算把它兜住，调用方据此引导用户改用服务端搜索。
+      this.autoPageBudgetExhausted = true;
+    }
+    this.autoPaging = willAutoPage;
+
+    this.notifyListener();
+    this.onSubscribersLoaded?.(this.subscribers);
+
+    if (willAutoPage) {
       this.currPage++;
       await this.requestSubscribers(requestVersion);
     }
@@ -177,7 +198,7 @@ export class SubscriberListVM extends ProviderListener {
     if (this.localSearch && this.keyword.trim()) {
       try {
         nextSubscribers = this.applySubscriberFilters(
-          this.localSearch(this.keyword)
+          this.localSearch(this.keyword, this.subscribers)
         );
       } catch {
         nextSubscribers = [];

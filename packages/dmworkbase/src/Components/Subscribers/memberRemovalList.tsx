@@ -260,28 +260,42 @@ export class MemberRemovalList extends Component<
       }
     }
     // 名册变动后，已离群的人不该继续躺在批量里。
-    this.pruneSelectionToRoster(subscribers);
+    this.pruneSelectionToRoster();
   };
 
   /**
-   * 把已不在当前结果集、且已不在群成员缓存里的人从选中里剔除。
+   * 把已不在群成员缓存里的人从选中里剔除。
    *
    * 选中项是跨搜索/分页存活的（这是刻意设计，否则「先勾人再搜索」会静默丢选），
-   * 所以不能只因为「不在当前可见集合里」就剔除 —— 判据是**是否还在群里**。
+   * 所以判据只能是**是否还在群里**，绝不能用「不在当前结果集里」来推定。
+   *
+   * 两道闸，缺一不可：
+   *
+   *   1. **搜索态不剔**。keyword 搜索时 vm.subscribers 会被**整个替换**成命中集，
+   *      而成员缓存对超大群只有前 ~100 人。此时「存活集」退化成「命中集 ∪ 部分缓存」，
+   *      根本不是名册 —— 群主搜「bob」时勾在第 450 位、缓存外的 alice 会被误剔。
+   *      所以只在**非关键词加载**（浏览态）时才剔。
+   *
+   *   2. **缓存为空不剔**。缓存空（超大群还没同步到）只说明「不知道谁还在群里」，
+   *      不等于「所有人都走了」。宁可留着让服务端判，也不静默取消用户的勾选。
+   *
    * 整批提交是全成全败的，一个已离开的 uid 能把整次操作拖失败，而用户无法从
-   * 报错里看出是哪一个。
+   * 报错里看出是哪一个；但宁可漏剔让服务端拒，也不错剔用户的选择。
    */
-  private pruneSelectionToRoster(loaded: Subscriber[]) {
+  private pruneSelectionToRoster() {
     if (this.state.selected.size === 0) return;
+    // 闸 1：搜索态下 vm.subscribers 是命中集不是名册，此时任何剔除都可能误删
+    // 搜索窗口外的有效选中项。只在浏览态（无关键词）才剔。
+    if (this.searching) return;
     const alive = new Set<string>();
-    for (const subscriber of loaded ?? []) alive.add(subscriber.uid);
-    for (const subscriber of getCurrentImChannelSubscribers<Channel, Subscriber>(
-      this.props.channel
-    ) ?? []) {
+    for (const subscriber of getCurrentImChannelSubscribers<
+      Channel,
+      Subscriber
+    >(this.props.channel) ?? []) {
       alive.add(subscriber.uid);
     }
-    // 缓存为空（例如超大群还没同步到）时不做剔除：那说明我们不知道谁还在群里，
-    // 而不是「所有人都走了」。宁可留着让服务端判，也不要静默取消用户的勾选。
+    // 闸 2：缓存为空（例如超大群还没同步到）时不做剔除：那说明我们不知道谁还在
+    // 群里，而不是「所有人都走了」。宁可留着让服务端判，也不要静默取消用户的勾选。
     if (alive.size === 0) return;
     const stale = Array.from(this.state.selected.keys()).filter(
       (uid) => !alive.has(uid)
@@ -484,13 +498,6 @@ export class MemberRemovalList extends Component<
     // block:"nearest" 与 FileListPanel 一致：目标已在视口内时不做多余滚动。
     node.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
-
-  private onSearchChange = (keyword: string) => {
-    // 纯本地过滤：名册已在内存，不防抖也不打请求。早期版本把 keyword 同步写 state
-    // 而实际结果要等 300ms 防抖后的服务端响应，于是那段窗口里分组已按搜索态展开、
-    // 行却还是搜索前的 —— 现在两者同一帧生效。
-    this.setState({ keyword });
-  };
 
   private getShowName = (subscriber: Subscriber) =>
     resolveSubscriberShowName(subscriber);
@@ -706,7 +713,7 @@ export class MemberRemovalList extends Component<
     return (
       <Provider
         create={() => {
-          const vm = new SubscriberListVM(
+          const vm: SubscriberListVM = new SubscriberListVM(
             this.props.channel,
             // canRemove 必须作为 **VM 的 filter** 传进去，不能只在渲染层过滤：
             // list_vm 靠它才能知道「本页被砍空了，得接着翻下一页」。去掉它等于
@@ -720,8 +727,10 @@ export class MemberRemovalList extends Component<
             // 索引基于 VM 当前名册建，而不是 push 时刻的外部快照 —— 后者会跟 props
             // 一起被 WKViewQueue 冻住，成员变动后搜到的还是旧名册。
             this.props.createLocalSearch
-              ? (keyword: string) =>
-                  this.props.createLocalSearch!(vm.subscribers)(keyword)
+              ? (keyword: string, roster?: Subscriber[]) =>
+                  this.props.createLocalSearch!(roster ?? vm.subscribers)(
+                    keyword
+                  )
               : undefined,
             { maxAutoPages: MAX_AUTO_PAGES }
           );
@@ -776,7 +785,7 @@ export class MemberRemovalList extends Component<
     if (groups.length > 0) {
       return groups.map((group) => this.renderGroup(group, groups));
     }
-    if (!vm.firstLoadSettled) {
+    if (!vm.firstLoadSettled || vm.autoPaging) {
       return (
         <div
           className="wk-memberremoval-empty"
