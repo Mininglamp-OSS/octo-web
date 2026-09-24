@@ -400,7 +400,7 @@ describe("ConversationList temporary rows", () => {
     expect(target.timestamp).toBe(1);
   });
 
-  it("deduplicates an existing temporary row below pinned rows and restores its metadata on release", () => {
+  it("deduplicates an existing temporary row while preserving metadata before and after release", () => {
     const pinned = makeConversation({ channelID: "pinned", unread: 0 });
     pinned.channelInfo.top = true;
     const existing = makeConversation({ channelID: "existing", unread: 5, mention: true });
@@ -423,9 +423,12 @@ describe("ConversationList temporary rows", () => {
       .toEqual(["pinned", "existing", "recent"]);
     const temporary = container.querySelector('[data-object-id="existing"]')!;
     expect(temporary.textContent).toContain("existing");
-    expect(temporary.querySelector(".wk-conversationlist-item-time")).toBeNull();
-    expect(temporary.querySelector(".wk-conversationlist-item-right-second-line")).toBeNull();
-    expect(temporary.classList.contains("wk-conversationlist-item-unread")).toBe(false);
+    expect(temporary.querySelector(".wk-conversationlist-item-time")).not.toBeNull();
+    expect(temporary.querySelector(".wk-conversationlist-item-right-second-line")).not.toBeNull();
+    expect(temporary.classList.contains("wk-conversationlist-item-unread")).toBe(true);
+    expect(temporary.querySelector(".wk-conv-unread-num")?.textContent).toBe("5");
+    expect(temporary.querySelector(".wk-mention")?.textContent).toBe("base.conversationList.mentionMarker");
+    expect(temporary.textContent).toContain("saved draft");
     expect(container.querySelector('[data-object-id="recent"] .wk-conversationlist-item-time')).not.toBeNull();
     openContextMenu('[data-object-id="existing"]');
     expect(contextMenuShow).toHaveBeenCalledOnce();
@@ -436,6 +439,22 @@ describe("ConversationList temporary rows", () => {
     expect(container.querySelector('[data-object-id="existing"]')?.textContent).toContain("saved draft");
     expect(existing.unread).toBe(5);
     expect(existing.timestamp).toBe(1);
+  });
+
+  it("keeps a message-free virtual row free of message metadata", () => {
+    const virtual = makeConversation({ channelID: "virtual", unread: 0 });
+    act(() => {
+      ReactDOM.render(
+        <ConversationList conversations={[]} temporarilyPinnedConversations={[virtual] as any}
+          temporaryVirtualChannelKeys={new Set([virtual.channel.getChannelKey()])} />,
+        container,
+      );
+    });
+    const row = container.querySelector('[data-object-id="virtual"]')!;
+    expect(row.textContent).toContain("virtual");
+    expect(row.querySelector(".wk-conversationlist-item-time")).toBeNull();
+    expect(row.querySelector(".wk-conversationlist-item-right-second-line")).toBeNull();
+    expect(row.querySelector(".wk-conv-unread-num")).toBeNull();
   });
 
   it.each([true, false])("opens the context menu and hides virtual=%s through the correct path", async (virtual) => {

@@ -1,11 +1,14 @@
 import React from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import WKSDK, { Channel, ChannelInfo, Conversation, ConversationExtra } from "wukongimjssdk";
+import WKSDK, { Channel, ChannelInfo, Conversation, ConversationExtra, Message, MessageText, Mention } from "wukongimjssdk";
 import { ConversationWrap } from "../../../Service/Model";
 import ConversationList from "../index";
 import ChatPage from "../../../Pages/Chat";
 import WKApp from "../../../App";
+import { unreadContribution } from "../../../Pages/Chat/sidebarUnreadBadge";
+import { isMutedForRecentConversation } from "../../ChatConversationList";
+import { t } from "../../../i18n";
 import { buildTemporaryConversationPresentation } from "../../../features/temporaryConversation/presentation";
 
 vi.mock("react-virtuoso", () => ({ TableVirtuoso: () => null, Virtuoso: () => null, VirtuosoGrid: () => null }));
@@ -47,6 +50,7 @@ function conversation(id: string, pinned = false) {
   const raw = new Conversation();
   raw.channel = channel;
   raw.timestamp = 1;
+  raw.unread = 0;
   raw.remoteExtra = new ConversationExtra();
   return new ConversationWrap(raw);
 }
@@ -64,6 +68,85 @@ function geometry(container: HTMLElement, targetId: string) {
 }
 
 describe("temporary conversation scroll positioning", () => {
+  it("keeps incoming unread and mentions visible on an existing temporary row and highlights its badge on navigation", () => {
+    const sdk = WKSDK.shared();
+    const previousConversations = sdk.conversationManager.conversations;
+    const previousUid = WKApp.loginInfo.uid;
+    const previousSdkUid = sdk.config.uid;
+    WKApp.loginInfo.uid = sdk.config.uid = "temporary-unread-self";
+    const target = conversation("existing-incoming-target");
+    const other = conversation("existing-incoming-other");
+    const conversations = [other, target];
+    sdk.conversationManager.conversations = conversations.map(item => item.conversation);
+    const page = new ChatPage({});
+    vi.spyOn(page, "setState").mockImplementation((next) => {
+      const update = typeof next === "function" ? next(page.state, page.props) : next;
+      page.state = { ...page.state, ...update };
+    });
+    page.componentDidMount();
+    const list = () => {
+      const presentation = buildTemporaryConversationPresentation(
+        page.state.temporaryConversation,
+        channel => conversations.find(item => item.channel.isEqual(channel)),
+      );
+      return <ConversationList conversations={conversations} select={other.channel}
+        temporarilyPinnedConversations={presentation.conversations}
+        temporaryVirtualChannelKeys={presentation.virtualChannelKeys}
+        scrollToTemporaryConversation={page.state.temporaryConversationScrollRequest}
+        scrollToUnreadToken={page.state.recentUnreadJumpToken}
+        shouldScrollToUnreadTarget={item => item.unread > 0 && !isMutedForRecentConversation(item)} />;
+    };
+    try {
+      WKApp.mittBus.emit("wk:temporarily-pin-conversation", { channel: target.channel, fromSearch: true });
+      WKApp.mittBus.emit("wk:sidebar-conversation-opened", other.channel);
+      const placement = page.state.temporaryConversation;
+      expect(placement.active?.origin).toBe("existing");
+      const { container, rerender } = render(list());
+
+      const incoming = new Message();
+      incoming.channel = target.channel;
+      incoming.fromUID = "temporary-unread-peer";
+      incoming.messageSeq = 10;
+      incoming.timestamp = 123;
+      incoming.content = new MessageText("incoming mention preview");
+      incoming.content.mention = new Mention();
+      incoming.content.mention.uids = [WKApp.loginInfo.uid];
+      sdk.chatManager.notifyMessageListeners(incoming);
+      // Publish the realtime snapshot without a full conversation-list refresh.
+      target.conversation.lastMessage = incoming;
+      target.conversation.unread = 2;
+      target.conversation.timestamp = incoming.timestamp;
+      expect(page.state.temporaryConversation).toBe(placement);
+      rerender(list());
+
+      const countedUnread = conversations.reduce((sum, item) => sum + unreadContribution({
+        unread: item.unread,
+        muteAuthorityReady: !!item.channelInfo,
+        muted: isMutedForRecentConversation(item),
+      }), 0);
+      expect(countedUnread).toBe(2);
+      expect(target.isMentionMe).toBe(true);
+      const row = container.querySelector('[data-object-id="existing-incoming-target"]')!;
+      expect(row.querySelector(".wk-conv-unread-num")?.textContent).toBe(String(countedUnread));
+      expect(row.querySelector(".wk-mention")?.textContent).toBe(t("base.conversationList.mentionMarker"));
+      expect(row.querySelector(".wk-conversationlist-item-time")).not.toBeNull();
+      expect(row.querySelector(".wk-conversationlist-item-lastmsg")?.textContent).toContain("incoming mention preview");
+      expect(container.querySelectorAll('[data-object-id="existing-incoming-target"]')).toHaveLength(1);
+
+      const { scrollTo } = geometry(container, "existing-incoming-target");
+      page._handleRecentUnreadNavigate();
+      rerender(list());
+      flushFrames();
+      expect(scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 120, behavior: "smooth" });
+      expect(row.querySelector(".wk-conv-unread-num--nudge-b")?.textContent).toBe("2");
+    } finally {
+      page.componentWillUnmount();
+      sdk.conversationManager.conversations = previousConversations;
+      WKApp.loginInfo.uid = previousUid;
+      sdk.config.uid = previousSdkUid;
+    }
+  });
+
   it("restores incoming unread metadata after leaving a virtual row and releases it on refresh", () => {
     const sdk = WKSDK.shared();
     const previousConversations = sdk.conversationManager.conversations;

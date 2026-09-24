@@ -386,7 +386,7 @@ export interface ConversationListProps {
   /** 待处理的搜索跳转：重复搜索同一会话时也重新定位。 */
   scrollToTemporaryConversation?: TemporaryConversationScrollRequest;
   onTemporaryConversationScrolled?: (token: number) => void;
-  /** 无消息临时项：隐藏时只清除本地展示状态。 */
+  /** 无消息临时项：不显示消息信息，隐藏时只清除本地展示状态。 */
   temporaryVirtualChannelKeys?: ReadonlySet<string>;
   onDismissTemporaryConversation?: (channel: Channel) => void;
 }
@@ -761,7 +761,7 @@ export default class ConversationList extends Component<
     return needShowOnlineStatus(channelInfo);
   }
 
-  private isTemporaryConversation(conversation: ConversationWrap): boolean {
+  private isTemporarilyPlaced(conversation: ConversationWrap): boolean {
     const matches = (item: ConversationWrap) => item.channel.isEqual(conversation.channel);
     const temporary = this.props.temporarilyPinnedConversations?.some(matches) ||
       this.props.temporaryVirtualChannelKeys?.has(conversation.channel.getChannelKey());
@@ -855,7 +855,10 @@ export default class ConversationList extends Component<
     }
 
     const { select, onClick } = this.props;
-    const isTemporary = this.isTemporaryConversation(conversationWrap);
+    // Placement never suppresses a real conversation's unread state or preview.
+    const isVirtual = this.props.temporaryVirtualChannelKeys?.has(
+      conversationWrap.channel.getChannelKey()
+    ) ?? false;
     const { locatingUnreadKey, locatingUnreadPulse } = this.state;
     const typing = TypingManager.shared.getTyping(conversationWrap.channel);
     const selected = select && select.isEqual(conversationWrap.channel);
@@ -863,8 +866,8 @@ export default class ConversationList extends Component<
     // parent item receives the collapsed unread count. Recent mode renders
     // threads as independent rows and must keep both parent unread and mention
     // state independent from their child threads.
-    const totalUnread = isTemporary ? 0 : conversationWrap.unread + threadUnread;
-    const hasMention = isTemporary ? false : conversationWrap.isMentionMe;
+    const totalUnread = isVirtual ? 0 : conversationWrap.unread + threadUnread;
+    const hasMention = isVirtual ? false : conversationWrap.isMentionMe;
     const visibleSimpleReminders = conversationWrap.simpleReminders?.filter(
       (r) => !r.done && r.reminderType !== ReminderType.ReminderTypeMentionMe
     );
@@ -994,7 +997,7 @@ export default class ConversationList extends Component<
                     </svg>
                   </span>
                 )}
-                {!isTemporary && (
+                {!isVirtual && (
                   <div className="wk-conversationlist-item-time">
                     <span>
                       {getTimeStringAutoShort2(
@@ -1006,7 +1009,7 @@ export default class ConversationList extends Component<
                 )}
               </div>
             </div>
-            {!isTemporary && (
+            {!isVirtual && (
               <div className="wk-conversationlist-item-right-second-line">
                 <div className="wk-conversationlist-item-lastmsg">
                 {!typing ? (
@@ -1353,7 +1356,7 @@ export default class ConversationList extends Component<
     const { selectConversationWrap } = this.state;
 
     const temporaryPinned = (this.props.temporarilyPinnedConversations ?? [])
-      .filter((conversation) => this.isTemporaryConversation(conversation));
+      .filter((conversation) => this.isTemporarilyPlaced(conversation));
     const temporaryKeys = new Set(
       temporaryPinned.map((conversation) => conversation.channel.getChannelKey())
     );
