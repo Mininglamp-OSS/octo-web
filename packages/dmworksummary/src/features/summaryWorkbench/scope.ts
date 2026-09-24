@@ -124,17 +124,45 @@ export function replaceSelectedChannels(
   if (!shouldApplySourceSelection(scope.selectedChannels, channels)) {
     return { scope, participantsCleared: false };
   }
-  const nextScope = { ...scope, selectedChannels: channels, documents: [] };
-  const nextMemberSource = participantSourceKey(nextScope);
+  // Mixed document+chat: selecting chats KEEPS documents (phase-1 mixed
+  // sources). Participants still can't coexist with documents — if the scope
+  // already has documents, the chat picker cannot be a team-workspace base
+  // (canSelectParticipants returns false with documents), so participant
+  // bookkeeping below only matters for the pure-chat flow.
+  const nextScope = { ...scope, selectedChannels: channels };
+  // Invariant: the time range scopes the chat side ONLY. If there are no
+  // chats left (but documents remain), a picker time range would be sent to a
+  // document-only scope that the backend rejects. Clear it here so the state
+  // can never represent that illegal shape.
+  const scopeAfterChatChange = withChatOnlyTimeRange(nextScope);
+  const nextMemberSource = participantSourceKey(scopeAfterChatChange);
   const participantsCleared =
     scope.participants.length > 0 && !nextMemberSource;
   return {
     scope: {
-      ...nextScope,
+      ...scopeAfterChatChange,
       participants: participantsCleared ? [] : scope.participants,
     },
     participantsCleared,
   };
+}
+
+// withChatOnlyTimeRange enforces the invariant that a time range requires at
+// least one selected chat when documents are present. It is applied by both
+// replaceSelectedDocuments and replaceSelectedChannels so neither path can
+// leave a document-only scope carrying a chat time range (which the backend
+// contract rejects).
+export function withChatOnlyTimeRange(
+  scope: SummaryWorkbenchScope
+): SummaryWorkbenchScope {
+  if (
+    scope.selectedChannels.length === 0 &&
+    (scope.documents ?? []).length > 0 &&
+    scope.timeRange != null
+  ) {
+    return { ...scope, timeRange: null };
+  }
+  return scope;
 }
 
 export function replaceSelectedDocuments(
@@ -144,14 +172,21 @@ export function replaceSelectedDocuments(
   if (!shouldApplySourceSelection(scope.documents ?? [], documents)) {
     return { scope, participantsCleared: false };
   }
+  // Mixed document+chat: selecting documents KEEPS chats and the chat time
+  // range (it scopes the chat side only). Participants stay mutually
+  // exclusive with documents (phase-1 personal-only) — selecting documents
+  // clears participants. A reference-summary stack is also incompatible with
+  // a mixed scope (the backend rejects referenced_task_ids on a mixed scope),
+  // so it is cleared here too. the chat time range only survives while at
+  // least one chat remains selected.
+  const withDocuments = {
+    ...scope,
+    documents,
+    participants: [],
+    referencedTaskIds: [],
+  };
   return {
-    scope: {
-      ...scope,
-      selectedChannels: [],
-      documents,
-      participants: [],
-      timeRange: null,
-    },
+    scope: withChatOnlyTimeRange(withDocuments),
     participantsCleared: scope.participants.length > 0,
   };
 }

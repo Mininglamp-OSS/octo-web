@@ -286,7 +286,7 @@ describe("summary workbench scope helpers", () => {
     ).toBe(true);
   });
 
-  it("uses document selection as document-only scope", () => {
+  it("keeps chats and time range when documents are selected (mixed)", () => {
     const scope = {
       ...emptySummaryWorkbenchScope(),
       selectedChannels: [
@@ -304,14 +304,61 @@ describe("summary workbench scope helpers", () => {
     ]);
     const result = replaceSelectedDocuments(scope, documents);
 
+    // Mixed document+chat: chats and the chat time range stay; participants
+    // stay mutually exclusive with documents (phase-1 personal-only).
     expect(result.participantsCleared).toBe(true);
     expect(result.scope).toMatchObject({
-      selectedChannels: [],
+      selectedChannels: scope.selectedChannels,
       documents,
       participants: [],
-      timeRange: null,
+      timeRange: scope.timeRange,
     });
     expect(canSelectParticipants(result.scope)).toBe(false);
+  });
+
+  it("clears referenced tasks when documents are selected (mixed)", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      selectedChannels: [
+        { chatId: "group-a", chatType: "group" as const, name: "A" },
+      ],
+      referencedTaskIds: [10, 20],
+    };
+    const documents = documentsToScope([
+      { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+    ]);
+    const result = replaceSelectedDocuments(scope, documents);
+
+    // A reference-summary stack is incompatible with a mixed scope (the
+    // backend rejects referenced_task_ids on a document+chat scope), so
+    // selecting documents clears any reference.
+    expect(result.scope.referencedTaskIds).toEqual([]);
+    expect(result.scope.documents).toEqual(documents);
+  });
+
+  it("clears a chat time range when the last chat is removed from a document scope", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      selectedChannels: [
+        { chatId: "group-a", chatType: "group" as const, name: "A" },
+      ],
+      documents: documentsToScope([
+        { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+      ]),
+      timeRange: {
+        start: "2026-09-01T00:00:00Z",
+        end: "2026-09-02T00:00:00Z",
+        label: "昨天",
+      },
+    };
+    const result = replaceSelectedChannels(scope, []);
+
+    // The time range scopes the chat side only; with no chats left it would
+    // produce a document-only scope carrying a time range, which the backend
+    // rejects.
+    expect(result.scope.selectedChannels).toEqual([]);
+    expect(result.scope.timeRange).toBeNull();
+    expect(result.scope.documents).toEqual(scope.documents);
   });
 
   it("removes a reference without changing other scope fields", () => {

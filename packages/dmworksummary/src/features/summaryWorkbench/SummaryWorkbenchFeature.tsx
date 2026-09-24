@@ -99,6 +99,7 @@ export interface SummaryWorkbenchFeatureProps {
   onOpenTask?: (taskId: number) => void;
   maxTimeRangeDays?: number;
   directTeamWorkflow?: boolean;
+  mixedSources?: boolean;
   messaging?: SummaryMessagingPort;
 }
 
@@ -182,6 +183,7 @@ export default function SummaryWorkbenchFeature({
   onOpenTask,
   maxTimeRangeDays = DEFAULT_SUMMARY_WORKSPACE_MAX_TIME_RANGE_DAYS,
   directTeamWorkflow = false,
+  mixedSources = false,
   messaging,
 }: SummaryWorkbenchFeatureProps) {
   const { t, format } = useI18n();
@@ -600,9 +602,23 @@ export default function SummaryWorkbenchFeature({
       ? { ...item, label: referencedTask.title || item.label }
       : item
   );
+  // Mixed document+chat: when the server advertises mixed_sources, the chat
+  // time-range entry stays available alongside documents (it scopes the chat
+  // side only); the participant entry remains exclusive with documents
+  // (phase-1 personal-only). When mixed_sources is OFF (gate default), the
+  // pre-mixed behavior is kept: a document scope hides time_range so nothing
+  // the worker would reject can be composed.
+  const mixedDocumentsSelected = (workbench.scope.documents ?? []).length > 0;
+  const documentSourceKinds: SummaryWorkbenchContextKind[] =
+    mixedDocumentsSelected && mixedSources
+      ? ["document", "time_range"]
+      : ["document"];
   const availableContextKinds: SummaryWorkbenchContextKind[] =
-    (workbench.scope.documents ?? []).length > 0
-      ? ["chat", ...(documentSelectorAvailable ? (["document"] as const) : [])]
+    mixedDocumentsSelected
+      ? [
+          "chat",
+          ...(documentSelectorAvailable ? documentSourceKinds : []),
+        ]
       : [
           "chat",
           ...(documentSelectorAvailable ? (["document"] as const) : []),
