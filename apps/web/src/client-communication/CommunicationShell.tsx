@@ -40,6 +40,7 @@ import { installSummaryNavigation } from "./summaryNavigation";
 import { installDocumentForward } from "./documentForward";
 import { installSummaryRequests } from "./summaryRequests";
 import { createWorkspaceNavigationGuard } from "./workspaceNavigationGuard";
+import { isCompatibleConversationTarget } from "../client-feature/navigationContract";
 import { getImChannelDisplayName, seedImChannelDisplayName } from "@octo/base/src/im-runtime/channelDisplayName";
 import { WorkspaceGroupProvider } from "@octo/base/src/features/workspaceGroup/WorkspaceGroupProvider";
 import { createWorkspaceGroupHost } from "./workspaceGroupHost";
@@ -87,9 +88,7 @@ function reportUnread(bridge: OctoBuddyCommunicationBridge, count: number) {
 }
 
 function hasCompatibleTargetVariant(target: ConversationTarget): boolean {
-  if (target.variant === "app-bot") return target.channelType === 1;
-  if (target.variant === "workspace-group") return target.channelType === 2;
-  return true;
+  return isCompatibleConversationTarget(target);
 }
 
 function assertCompatibleTargetVariant(target: ConversationTarget): void {
