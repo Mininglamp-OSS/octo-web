@@ -59,27 +59,31 @@ describe("runtime contract", () => {
       expect(() => parseRuntimeCommand({ ...base, navigationId: id })).toThrow();
     }
   });
-  it("accepts workspace-group variant and requires workspace presentation", () => {
+  it.each([
+    { channelId: "bot-a", channelType: 1, variant: "app-bot" },
+    { channelId: "group-a", channelType: 2, variant: "workspace-group" },
+  ])("accepts $variant only in conversation presentation", (target) => {
     const scope = { ownerId: "owner", contextId: "context", epoch: 1 };
-    const target = { channelId: "group-a", channelType: 2, variant: "workspace-group" };
-    const cmd = { version: 1, ...scope, type: "navigate", page: "chat", presentation: "workspace", target };
+    const cmd = { version: 1, ...scope, type: "navigate", page: "chat", presentation: "conversation", target };
     expect(parseRuntimeCommand(cmd)).toMatchObject({
-      page: "chat", presentation: "workspace", target: { channelId: "group-a", channelType: 2, variant: "workspace-group" },
+      page: "chat", presentation: "conversation", target,
     });
   });
 
-  it("rejects workspace-group without workspace presentation", () => {
+  it.each([
+    { channelId: "bot-a", channelType: 1, variant: "app-bot" },
+    { channelId: "group-a", channelType: 2, variant: "workspace-group" },
+  ])("rejects $variant outside conversation presentation", (target) => {
     const scope = { ownerId: "owner", contextId: "context", epoch: 1 };
     expect(() => parseRuntimeCommand({
-      version: 1, ...scope, type: "navigate", page: "chat", presentation: "conversation",
-      target: { channelId: "group-a", channelType: 2, variant: "workspace-group" },
-    })).toThrow();
+      version: 1, ...scope, type: "navigate", page: "chat", presentation: "workspace", target,
+    })).toThrow("Variant conversation target requires conversation presentation");
   });
 
   it("rejects workspace-group with non-group channelType in variant validation", () => {
     const scope = { ownerId: "owner", contextId: "context", epoch: 1 };
     const target = { channelId: "person-u", channelType: 1, variant: "workspace-group" };
-    const cmd = { version: 1, ...scope, type: "navigate", page: "chat", presentation: "workspace", target };
+    const cmd = { version: 1, ...scope, type: "navigate", page: "chat", presentation: "conversation", target };
     expect(() => parseRuntimeCommand(cmd)).toThrow("Workspace-group variant requires channelType 2");
   });
 

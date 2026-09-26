@@ -1,3 +1,11 @@
+import {
+  assertConversationNavigation,
+  parseConversationTarget,
+  type CommunicationPage,
+  type CommunicationPresentation,
+  type ConversationTarget,
+} from "./navigationContract";
+
 export interface RuntimeScope {
   ownerId: string;
   contextId: string;
@@ -172,9 +180,7 @@ export function parseRuntimeCommand(value: unknown): RuntimeCommand {
       if (n < 1) throw new Error("Navigation ID must be a positive safe integer");
       return n;
     })();
-    if (target && input.page !== "chat") throw new Error("Conversation target requires chat");
-    if (target?.variant === "app-bot" && input.presentation !== "conversation") throw new Error("App conversation requires conversation presentation");
-    if (target?.variant === "workspace-group" && input.presentation !== "workspace") throw new Error("Workspace-group requires workspace presentation");
+    assertConversationNavigation(input.page, input.presentation as CommunicationPresentation | undefined, target);
     return {
       ...common, type: "navigate",
       page: input.page, presentation: input.presentation as CommunicationPresentation | undefined,
@@ -203,39 +209,3 @@ export function parseRuntimeCommand(value: unknown): RuntimeCommand {
   }
   throw new Error("Unknown runtime command");
 }
-
-function parseConversationTarget(value: unknown): ConversationTarget {
-  const input = record(value);
-  keys(input, ["channelId", "channelType", "messageSeq", "openChannelSearch", "displayName", "avatar", "metadata", "variant"]);
-  if (typeof input.channelId !== "string" || !input.channelId.trim() || input.channelId.trim().length > 512) {
-    throw new Error("Invalid conversation identifier");
-  }
-  const target: ConversationTarget = { channelId: input.channelId.trim(), channelType: integer(input.channelType) };
-  if (input.messageSeq !== undefined) target.messageSeq = integer(input.messageSeq);
-  if (input.openChannelSearch !== undefined) {
-    if (typeof input.openChannelSearch !== "boolean") throw new Error("Invalid channel search");
-    target.openChannelSearch = input.openChannelSearch;
-  }
-  for (const key of ["displayName", "avatar"] as const) {
-    if (input[key] !== undefined) {
-      if (typeof input[key] !== "string" || input[key].length > (key === "avatar" ? 8192 : 512)) throw new Error("Invalid target text");
-      target[key] = input[key];
-    }
-  }
-  if (input.metadata !== undefined) {
-    const metadata = record(input.metadata);
-    const encoded = JSON.stringify(metadata);
-    if (!encoded || encoded.length > 64 * 1024) throw new Error("Invalid target metadata");
-    target.metadata = metadata;
-  }
-  if (input.variant !== undefined) {
-    if (input.variant === "app-bot" && target.channelType !== 1) throw new Error("App-bot variant requires channelType 1");
-    if (input.variant === "workspace-group" && target.channelType !== 2) {
-      throw new Error("Workspace-group variant requires channelType 2");
-    }
-    if (input.variant !== "app-bot" && input.variant !== "workspace-group") throw new Error("Invalid target variant");
-    target.variant = input.variant;
-  }
-  return target;
-}
-import type { ConversationTarget, CommunicationPage, CommunicationPresentation } from "../client-communication/hostBridge";
