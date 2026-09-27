@@ -12,7 +12,7 @@ import type {
 import type { OctoBuddySummaryBridge } from "./hostBridge";
 import { installDocumentSourceTransport } from "@dmwork/summary/src/Service/DocumentSourceService";
 
-let activeListTransportDispose: (() => void) | undefined;
+let activeDocsAdapterDispose: (() => void) | undefined;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -49,14 +49,20 @@ export function installDocsAdapter(
     session?: { apiOrigin?: string };
   },
 ): () => void {
-  activeListTransportDispose?.();
-  activeListTransportDispose = undefined;
+  activeDocsAdapterDispose?.();
   let listTransportDispose: (() => void) | undefined;
+  const registeredEndpointIds: string[] = [];
+  let disposed = false;
   const dispose = (): void => {
-    if (activeListTransportDispose !== listTransportDispose) return;
+    if (disposed || activeDocsAdapterDispose !== dispose) return;
+    disposed = true;
+    activeDocsAdapterDispose = undefined;
     listTransportDispose?.();
-    activeListTransportDispose = undefined;
+    for (const sid of registeredEndpointIds) {
+      WKApp.endpointManager.removeMethod(sid);
+    }
   };
+  activeDocsAdapterDispose = dispose;
 
   const capability = bootstrap.capabilities?.docsConversion;
   const listCapability = bootstrap.capabilities?.docsList;
@@ -73,7 +79,6 @@ export function installDocsAdapter(
       listTransportDispose = installDocumentSourceTransport({
         list: (input) => bridge.listDocuments!(input),
       });
-      activeListTransportDispose = listTransportDispose;
     }
   }
   if (capability !== true) {
@@ -101,7 +106,7 @@ export function installDocsAdapter(
     }
   };
 
-  WKApp.endpointManager.setMethod(EndpointID.docsConvertMarkdown, async (
+  const convertMarkdownHandler = async (
     value: unknown,
   ): Promise<ConvertMarkdownToDocResult> => {
     assertIdentity();
@@ -147,9 +152,11 @@ export function installDocsAdapter(
     }
 
     return document;
-  });
+  };
+  WKApp.endpointManager.setMethod(EndpointID.docsConvertMarkdown, convertMarkdownHandler);
+  registeredEndpointIds.push(EndpointID.docsConvertMarkdown);
 
-  WKApp.endpointManager.setMethod(EndpointID.docsOpenDocument, async (
+  const openDocumentHandler = async (
     params: unknown,
     spaceId?: string,
   ): Promise<void> => {
@@ -162,7 +169,9 @@ export function installDocsAdapter(
       throw new Error("invalid document link from host");
     }
     await bridge.openDocument!({ docId: document.docId }, spaceId);
-  });
+  };
+  WKApp.endpointManager.setMethod(EndpointID.docsOpenDocument, openDocumentHandler);
+  registeredEndpointIds.push(EndpointID.docsOpenDocument);
   return dispose;
 }
 

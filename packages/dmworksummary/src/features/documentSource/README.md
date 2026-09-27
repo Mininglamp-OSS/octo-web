@@ -2,6 +2,11 @@
 
 The existing Workbench and create-page selector share the Service → bridge → UI path.
 Only `doc` and `html` sources are supported; the selector explicitly explains this.
+When the embedded Client declares `capabilities.docsList`, the same Service path
+uses the host bridge instead of the renderer REST client. The host request keeps
+`source`, `keyword`, `pagination`, `pageSize`, and `docTypes` explicit; the host
+owns authentication, current Space and REST routing, and returns the raw
+`{ items, total?, nextCursor? }` list body.
 
 ## Pagination contract
 

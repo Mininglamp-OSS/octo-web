@@ -1,4 +1,4 @@
-import { APIClient } from "@octo/base";
+import { APIClient, DEFAULT_REQUEST_TIMEOUT_MS } from "@octo/base";
 import type { DocSearchDocType, DocSearchItem } from "@octo/base";
 import type { DocumentSelectorSource } from "../ui/DocumentSelector/types";
 
@@ -39,6 +39,18 @@ let hostTransport:
   | { list(request: DocumentSourceHostRequest): Promise<unknown> }
   | undefined;
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error("document list request timed out"));
+    }, timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
+}
+
 export function installDocumentSourceTransport(transport: {
   list(request: DocumentSourceHostRequest): Promise<unknown>;
 }): () => void {
@@ -55,7 +67,7 @@ export function installDocumentSourceTransport(transport: {
 const defaultTransport: DocumentSourceTransport = {
   list(source, param) {
     if (hostTransport) {
-      return hostTransport.list({
+      const request: DocumentSourceHostRequest = {
         source,
         keyword: typeof param.q === "string" ? param.q : "",
         pagination:
@@ -68,7 +80,11 @@ const defaultTransport: DocumentSourceTransport = {
               : {},
         pageSize: PAGE_SIZE,
         docTypes: [...SUPPORTED_DOC_TYPES],
-      });
+      };
+      return withTimeout(
+        hostTransport.list(request),
+        DEFAULT_REQUEST_TIMEOUT_MS,
+      );
     }
     return APIClient.shared.get<unknown>(
       source === "recent" ? "docs/recent" : "docs",

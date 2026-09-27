@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import axios from "axios";
-import { APIClient } from "@octo/base";
+import { APIClient, DEFAULT_REQUEST_TIMEOUT_MS } from "@octo/base";
 import {
   DocumentSourceService,
   installDocumentSourceTransport,
@@ -268,6 +268,25 @@ describe("DocumentSourceService", () => {
       });
     } finally {
       dispose();
+    }
+  });
+
+  it("rejects a host document list request that never settles", async () => {
+    vi.useFakeTimers();
+    let dispose: (() => void) | undefined;
+    try {
+      const list = vi.fn().mockReturnValue(new Promise<never>(() => {}));
+      dispose = installDocumentSourceTransport({ list });
+      const request = new DocumentSourceService().listDocuments("recent", "");
+      const rejected = expect(request).rejects.toThrow(
+        "document list request timed out",
+      );
+
+      await vi.advanceTimersByTimeAsync(DEFAULT_REQUEST_TIMEOUT_MS);
+      await rejected;
+    } finally {
+      dispose?.();
+      vi.useRealTimers();
     }
   });
 

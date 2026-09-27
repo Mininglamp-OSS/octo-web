@@ -17,6 +17,9 @@ const { fakeWKApp, ENDPOINT_IDS, API_ORIGIN } = vi.hoisted(() => {
         setMethod(sid: string, handler: (p: any, spaceId?: string) => any) {
           this._methods[sid] = { handler };
         },
+        removeMethod(sid: string) {
+          delete this._methods[sid];
+        },
         get(sid: string) { return this._methods[sid]; },
       },
     },
@@ -30,6 +33,7 @@ const { fakeWKApp, ENDPOINT_IDS, API_ORIGIN } = vi.hoisted(() => {
 vi.mock('@octo/base', async () => ({
   WKApp: fakeWKApp,
   EndpointID: ENDPOINT_IDS,
+  DEFAULT_REQUEST_TIMEOUT_MS: 20_000,
   ...await import('../../../../packages/dmworkbase/src/bridge/docs/documentLink'),
 }));
 
@@ -77,6 +81,22 @@ describe('installDocsAdapter', () => {
       expect(fakeWKApp.endpointManager.get(ENDPOINT_IDS.docsConvertMarkdown)).toBeUndefined();
     });
 
+    it.each([1, "true", null])('does not install the docs list transport for malformed capability %s', (value) => {
+      bridge.listDocuments = vi.fn();
+      installDocsAdapter(bridge, { capabilities: { docsList: value as any } });
+      expect(bridge.listDocuments).not.toHaveBeenCalled();
+      expect(console.warn).toHaveBeenCalledExactlyOnceWith(
+        '[client-summary] docs list adapter not installed: invalid capability flag',
+      );
+    });
+
+    it('does not install the docs list transport when the bridge method is missing', () => {
+      installDocsAdapter(bridge, { capabilities: { docsList: true } });
+      expect(console.warn).toHaveBeenCalledExactlyOnceWith(
+        '[client-summary] docs list adapter not installed: missing bridge method',
+      );
+    });
+
     it.each([1, "true", null])('diagnoses malformed capability %s without installing', (value) => {
       bridge.convertMarkdown = vi.fn();
       bridge.openDocument = vi.fn();
@@ -109,9 +129,15 @@ describe('installDocsAdapter', () => {
     it('registers both endpoints when all conditions met', () => {
       bridge.convertMarkdown = vi.fn();
       bridge.openDocument = vi.fn();
-      installDocsAdapter(bridge, { capabilities: { docsConversion: true }, session: { apiOrigin: API_ORIGIN } });
+      const dispose = installDocsAdapter(bridge, {
+        capabilities: { docsConversion: true },
+        session: { apiOrigin: API_ORIGIN },
+      });
       expect(fakeWKApp.endpointManager.get(ENDPOINT_IDS.docsConvertMarkdown)).toBeDefined();
       expect(fakeWKApp.endpointManager.get(ENDPOINT_IDS.docsOpenDocument)).toBeDefined();
+      dispose();
+      expect(fakeWKApp.endpointManager.get(ENDPOINT_IDS.docsConvertMarkdown)).toBeUndefined();
+      expect(fakeWKApp.endpointManager.get(ENDPOINT_IDS.docsOpenDocument)).toBeUndefined();
     });
 
     it('installs the host document list transport without using the renderer API client', async () => {

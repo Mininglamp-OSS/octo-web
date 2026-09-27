@@ -15,6 +15,15 @@
 - 适配器不依赖 `WKApp.remoteConfig.docsOn`——`isDocsConvertAvailable()` 仍由 OSS 侧
   根据 docsOn + 端口注册状态独立管理。注册成功不等于按钮可见：UI gate 和转换调用
   仍要求服务端 appconfig `docs_on` 开启（默认 false）。
+- Client bootstrap 声明 `capabilities.docsList === true` 且提供 `listDocuments` 时，
+  资料库选择器通过 host bridge 查询；Web 不直接发起 Docs REST。请求使用结构化的
+  `source`、trim 后的 `keyword`、`pagination`、`pageSize` 和 `docTypes` 字段，
+  宿主负责认证、当前 Space、路由和排序约束。
+- `listDocuments` 必须返回原始列表体 `{ items: unknown[], total?: number, nextCursor?: string }`，
+  不能套用转换端口的 `{ ok, value }` / `{ ok, error }` envelope。Web 会继续校验行数据，
+  对 `recent` 使用 `nextCursor`，对 `mine` 使用请求的 `pageSize` 计算下一页。
+- 适配器由 `installDocsAdapterLifecycle` 管理；非 bfcache 的 `pagehide` 会释放 host transport，
+  persisted `pageshow` 会重新安装，避免页面恢复后退回 renderer REST 路径。
 - 转换成功返回 docId 和规范链接；Client 通过 `openDocument` 在宿主侧打开。
 - 失败分两种情况：全部失败（无文档残留）展示 `convertErr*` 细分文案；部分失败（文档已创建
   但导入出错）保留链接供用户打开检查，不重复创建或删除可能已写入内容的文档。
@@ -32,10 +41,10 @@
 | `packages/dmworkbase/src/bridge/docs/docsPort.ts` | 修改 | 新增 `OpenDocumentParams`、`OpenDocumentHandler`、`getDocsDocumentOpener()` |
 | `packages/dmworkbase/src/bridge/docs/documentLink.ts` | 新建 | 独立可信 origin 规范化与文档链接纯校验函数 |
 | `packages/dmworkbase/src/bridge/docs/docsPort.test.ts` | 新建 | 新增 `getDocsDocumentOpener` 契约测试；保留原 `src/__tests__/docsPort.test.ts` |
-| `apps/web/src/client-summary/hostBridge.ts` | 修改 | bootstrap 新增可选 `capabilities`；bridge 接口新增可选 `convertMarkdown`/`openDocument` |
-| `apps/web/src/client-summary/index.tsx` | 修改 | main 中安装 `installDocsAdapter(host, bootstrap)` |
-| `apps/web/src/client-summary/docsAdapter.ts` | 新建 | 条件注册 `docs.convertMarkdown` + `docs.openDocument` 端点，含安全校验与 scope 捕获 |
-| `apps/web/src/client-summary/docsAdapter.test.ts` | 新建 | adapter 安全校验、部分失败链接、身份过期、Origin 校验等完整契约测试 |
+| `apps/web/src/client-summary/hostBridge.ts` | 修改 | bootstrap 新增可选 `capabilities`；bridge 接口新增文档转换和资料库列表方法 |
+| `apps/web/src/client-summary/index.tsx` | 修改 | main 中安装 `installDocsAdapterLifecycle(host, bootstrap)` |
+| `apps/web/src/client-summary/docsAdapter.ts` | 新建 | 条件注册 docs 转换端点和资料库 host transport，含安全校验、scope 捕获与生命周期处理 |
+| `apps/web/src/client-summary/docsAdapter.test.ts` | 新建 | adapter 安全校验、列表 transport、重装生命周期、部分失败链接、身份过期和 Origin 校验测试 |
 | `packages/dmworksummary/src/utils/convertDocError.ts` | 修改 | 新增 `create_unconfirmed` 错误码映射、`convertDocErrorDocument()` |
 | `packages/dmworksummary/src/utils/convertDocError.test.ts` | 修改 | 新增 `convertDocErrorDocument` 测试 |
 | `packages/dmworksummary/src/__mocks__/dmworkBase.ts` | 修改 | 新增模拟 `getDocsDocumentOpener()`（默认返回 undefined） |
@@ -66,11 +75,14 @@
   校验自动降级到浏览器打开。
 - 需要 `capabilities.docsConversion === true`（真布尔值），`1` / `"true"` 等非严格 true
   的值不触发安装。
+- 资料库列表 bridge 不接收 renderer 自带的 URL、认证信息或 Space 路由参数；
+  host 从当前会话派生这些上下文，并在 IPC 边界校验 `pageSize`、`docTypes` 和分页形状。
 
 ## PR 范围
 
 此 PR：
 - 新增 Client summary artifact 的 docs 转换能力（文档打开 + 转换），共享基础端口。
+- 新增可选的 Client summary 资料库列表 host transport，保持普通 Web 的 REST fallback 不变。
 - 新增 `getDocsDocumentOpener` 可选宿主打开器，Web/Client 按需注册。
 - 新增 `convertDocErrorDocument` 提取部分失败保留的文档链接。
 - 新增 3 条用户可见 convert 文案。
@@ -79,6 +91,7 @@
 此 PR 不做：
 - 不导入私有 Docs 源码或 REST 调用。
 - 不改后端或普通 Web 转换实现（无注册时维持 popup 行为）。
+- 不改变普通 Web 文档列表请求；只有 host 声明 `docsList` 时才切换到宿主 transport。
 - 不改 apps/web/ 构建脚本（#1648 已覆盖）。
 - CI 增加真实、非 Mock 的 `build:client-summary` 构建及 manifest 检查。
 - 不新增用户可见入口。

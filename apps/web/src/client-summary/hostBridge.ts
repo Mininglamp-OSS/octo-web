@@ -5,6 +5,7 @@ import type {
   SummaryForwardOutcome,
 } from "@dmwork/summary";
 import type { SummaryWorkspaceRoute } from "@dmwork/summary";
+import type { DocumentSourceHostRequest } from "@dmwork/summary/src/Service/DocumentSourceService";
 import type { DesktopPresentationBridge, DesktopReadyCapability } from "../client-feature/desktop/presentation";
 import type { SummaryRuntimeBootstrap } from "../client-feature/runtimeContract";
 
@@ -32,13 +33,7 @@ export interface SummaryBootstrap {
   runtime?: SummaryRuntimeBootstrap;
 }
 
-export interface SummaryDocumentListRequest {
-  source: "recent" | "mine";
-  keyword: string;
-  pagination: { page?: number; cursor?: string };
-  pageSize: number;
-  docTypes: Array<"doc" | "html">;
-}
+export type SummaryDocumentListRequest = DocumentSourceHostRequest;
 
 export type SummaryHostCommand =
   | { type: "navigate"; route: SummaryWorkspaceRoute; navigationId?: number }
