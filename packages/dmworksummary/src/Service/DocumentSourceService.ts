@@ -11,6 +11,8 @@ export interface DocumentSourceHostRequest {
   source: DocumentSelectorSource;
   keyword: string;
   pagination: DocumentListPage;
+  pageSize: number;
+  docTypes: DocSearchDocType[];
 }
 
 export interface ListDocumentsResult {
@@ -36,9 +38,13 @@ let hostTransport:
 export function installDocumentSourceTransport(transport: {
   list(request: DocumentSourceHostRequest): Promise<unknown>;
 }): () => void {
+  const previousTransport = hostTransport;
   hostTransport = transport;
+  let disposed = false;
   return () => {
-    if (hostTransport === transport) hostTransport = undefined;
+    if (disposed) return;
+    disposed = true;
+    if (hostTransport === transport) hostTransport = previousTransport;
   };
 }
 
@@ -54,8 +60,10 @@ const defaultTransport: DocumentSourceTransport = {
               ? { cursor: param.cursor }
               : {}
             : typeof param.page === "number"
-            ? { page: param.page }
-            : {},
+              ? { page: param.page }
+              : {},
+        pageSize: PAGE_SIZE,
+        docTypes: [...SUPPORTED_DOC_TYPES],
       });
     }
     return APIClient.shared.get<unknown>(

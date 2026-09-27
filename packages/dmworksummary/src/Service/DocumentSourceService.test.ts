@@ -263,9 +263,33 @@ describe("DocumentSourceService", () => {
         source: "mine",
         keyword: "项目",
         pagination: { page: 2 },
+        pageSize: 50,
+        docTypes: ["doc", "html"],
       });
     } finally {
       dispose();
+    }
+  });
+
+  it("restores the previous host transport when the newer adapter is disposed", async () => {
+    const previousList = vi.fn().mockResolvedValue({ items: [], total: 0 });
+    const nextList = vi.fn().mockResolvedValue({ items: [], total: 0 });
+    const disposePrevious = installDocumentSourceTransport({ list: previousList });
+    const disposeNext = installDocumentSourceTransport({ list: nextList });
+    try {
+      disposeNext();
+      await new DocumentSourceService().listDocuments("recent", "");
+      expect(previousList).toHaveBeenCalledWith({
+        source: "recent",
+        keyword: "",
+        pagination: {},
+        pageSize: 50,
+        docTypes: ["doc", "html"],
+      });
+      expect(nextList).not.toHaveBeenCalled();
+    } finally {
+      disposePrevious();
+      disposeNext();
     }
   });
 });

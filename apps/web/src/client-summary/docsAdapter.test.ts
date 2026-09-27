@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OctoBuddySummaryBridge } from './hostBridge';
-import { installDocsAdapter } from './docsAdapter';
+import { installDocsAdapter, installDocsAdapterLifecycle } from './docsAdapter';
 import { DocumentSourceService } from '@dmwork/summary/src/Service/DocumentSourceService';
 
 const { fakeWKApp, ENDPOINT_IDS, API_ORIGIN } = vi.hoisted(() => {
@@ -127,6 +127,8 @@ describe('installDocsAdapter', () => {
         source: 'mine',
         keyword: '项目',
         pagination: { page: 2 },
+        pageSize: 50,
+        docTypes: ['doc', 'html'],
       });
     });
 
@@ -145,6 +147,30 @@ describe('installDocsAdapter', () => {
       await expect(new DocumentSourceService().listDocuments('recent', ''))
         .rejects.toThrow();
       expect(previousBridge).not.toHaveBeenCalled();
+    });
+
+    it('keeps the host list transport across bfcache pagehide and reinstalls it on pageshow', async () => {
+      bridge.listDocuments = vi.fn().mockResolvedValue({
+        items: [{ docId: 'doc-1', title: '资料', docType: 'doc', updatedAt: '' }],
+        total: 1,
+      });
+      const dispose = installDocsAdapterLifecycle(bridge, {
+        capabilities: { docsList: true },
+      });
+      const pagehide = new Event('pagehide');
+      Object.defineProperty(pagehide, 'persisted', { value: true });
+      window.dispatchEvent(pagehide);
+
+      await new DocumentSourceService().listDocuments('recent', '');
+      expect(bridge.listDocuments).toHaveBeenCalledTimes(1);
+
+      const pageshow = new Event('pageshow');
+      Object.defineProperty(pageshow, 'persisted', { value: true });
+      window.dispatchEvent(pageshow);
+      await new DocumentSourceService().listDocuments('recent', '');
+      expect(bridge.listDocuments).toHaveBeenCalledTimes(2);
+
+      dispose();
     });
     it.each([`${API_ORIGIN}/`, 'https://EXAMPLE.com:443/api/v1'])('normalizes configured origin %s', async (apiOrigin) => {
       bridge.convertMarkdown = vi.fn().mockResolvedValue({ ok: true, value: { docId: 'doc-1', url: `${API_ORIGIN}/d/doc-1` } });

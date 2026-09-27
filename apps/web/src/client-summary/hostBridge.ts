@@ -36,6 +36,8 @@ export interface SummaryDocumentListRequest {
   source: "recent" | "mine";
   keyword: string;
   pagination: { page?: number; cursor?: string };
+  pageSize: number;
+  docTypes: Array<"doc" | "html">;
 }
 
 export type SummaryHostCommand =

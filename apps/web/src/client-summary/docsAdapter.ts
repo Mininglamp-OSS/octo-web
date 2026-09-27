@@ -65,10 +65,10 @@ export function installDocsAdapter(
     listCapability !== true &&
     listCapability !== false
   ) {
-    console.warn("[client-summary] docs adapter not installed: invalid capability flag");
+    console.warn("[client-summary] docs list adapter not installed: invalid capability flag");
   } else if (listCapability === true) {
     if (typeof bridge.listDocuments !== "function") {
-      console.warn("[client-summary] docs adapter not installed: missing bridge methods");
+      console.warn("[client-summary] docs list adapter not installed: missing bridge method");
     } else {
       listTransportDispose = installDocumentSourceTransport({
         list: (input) => bridge.listDocuments!(input),
@@ -164,4 +164,30 @@ export function installDocsAdapter(
     await bridge.openDocument!({ docId: document.docId }, spaceId);
   });
   return dispose;
+}
+
+export function installDocsAdapterLifecycle(
+  bridge: OctoBuddySummaryBridge,
+  bootstrap: {
+    capabilities?: { docsConversion?: boolean; docsList?: boolean };
+    session?: { apiOrigin?: string };
+  },
+  view: Pick<Window, "addEventListener" | "removeEventListener"> = window,
+): () => void {
+  let dispose = installDocsAdapter(bridge, bootstrap);
+  const onPageHide = (event: PageTransitionEvent): void => {
+    if (!event.persisted) dispose();
+  };
+  const onPageShow = (event: PageTransitionEvent): void => {
+    if (!event.persisted) return;
+    dispose();
+    dispose = installDocsAdapter(bridge, bootstrap);
+  };
+  view.addEventListener("pagehide", onPageHide);
+  view.addEventListener("pageshow", onPageShow);
+  return () => {
+    view.removeEventListener("pagehide", onPageHide);
+    view.removeEventListener("pageshow", onPageShow);
+    dispose();
+  };
 }
