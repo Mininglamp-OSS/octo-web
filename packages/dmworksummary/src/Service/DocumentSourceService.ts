@@ -7,6 +7,12 @@ export interface DocumentListPage {
   page?: number;
 }
 
+export interface DocumentSourceHostRequest {
+  source: DocumentSelectorSource;
+  keyword: string;
+  pagination: DocumentListPage;
+}
+
 export interface ListDocumentsResult {
   items: DocSearchItem[];
   total: number | null;
@@ -23,8 +29,35 @@ export interface DocumentSourceTransport {
 const PAGE_SIZE = 50;
 const SUPPORTED_DOC_TYPES: DocSearchDocType[] = ["doc", "html"];
 
+let hostTransport:
+  | { list(request: DocumentSourceHostRequest): Promise<unknown> }
+  | undefined;
+
+export function installDocumentSourceTransport(transport: {
+  list(request: DocumentSourceHostRequest): Promise<unknown>;
+}): () => void {
+  hostTransport = transport;
+  return () => {
+    if (hostTransport === transport) hostTransport = undefined;
+  };
+}
+
 const defaultTransport: DocumentSourceTransport = {
   list(source, param) {
+    if (hostTransport) {
+      return hostTransport.list({
+        source,
+        keyword: typeof param.q === "string" ? param.q : "",
+        pagination:
+          source === "recent"
+            ? typeof param.cursor === "string"
+              ? { cursor: param.cursor }
+              : {}
+            : typeof param.page === "number"
+            ? { page: param.page }
+            : {},
+      });
+    }
     return APIClient.shared.get<unknown>(
       source === "recent" ? "docs/recent" : "docs",
       { param }

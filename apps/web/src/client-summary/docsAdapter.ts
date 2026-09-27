@@ -1,10 +1,8 @@
 /**
  * Client-summary docs 适配器。
  *
- * 仅在主进程 bootstrap 声明 capabilities.docsConversion === true 且 host
- * bridge 提供 convertMarkdown/openDocument 方法时注册 `docs.convertMarkdown`
- * 与 `docs.openDocument` 两个端口，并把调用代理到 bridge。host 主进程负责
- * 校验来源、作用域和 payload；这里不发起 Docs REST，也不 import 私有 Docs 源码。
+ * 资料库查询和文档转换都由 host bridge 提供。host 主进程负责校验来源、
+ * 作用域、认证和 REST 路由；这里不发起 Docs REST，也不 import 私有 Docs 源码。
  */
 
 import { WKApp, EndpointID, normalizeDocsOrigin, validateDocsDocumentLink } from "@octo/base";
@@ -12,6 +10,9 @@ import type {
   ConvertMarkdownToDocResult,
 } from "@octo/base";
 import type { OctoBuddySummaryBridge } from "./hostBridge";
+import { installDocumentSourceTransport } from "@dmwork/summary/src/Service/DocumentSourceService";
+
+let activeListTransportDispose: (() => void) | undefined;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -44,26 +45,52 @@ function toPortError(value: unknown, apiOrigin: string): Error {
 export function installDocsAdapter(
   bridge: OctoBuddySummaryBridge,
   bootstrap: {
-    capabilities?: { docsConversion?: boolean };
+    capabilities?: { docsConversion?: boolean; docsList?: boolean };
     session?: { apiOrigin?: string };
   },
-): void {
+): () => void {
+  activeListTransportDispose?.();
+  activeListTransportDispose = undefined;
+  let listTransportDispose: (() => void) | undefined;
+  const dispose = (): void => {
+    if (activeListTransportDispose !== listTransportDispose) return;
+    listTransportDispose?.();
+    activeListTransportDispose = undefined;
+  };
+
   const capability = bootstrap.capabilities?.docsConversion;
+  const listCapability = bootstrap.capabilities?.docsList;
+  if (
+    listCapability !== undefined &&
+    listCapability !== true &&
+    listCapability !== false
+  ) {
+    console.warn("[client-summary] docs adapter not installed: invalid capability flag");
+  } else if (listCapability === true) {
+    if (typeof bridge.listDocuments !== "function") {
+      console.warn("[client-summary] docs adapter not installed: missing bridge methods");
+    } else {
+      listTransportDispose = installDocumentSourceTransport({
+        list: (input) => bridge.listDocuments!(input),
+      });
+      activeListTransportDispose = listTransportDispose;
+    }
+  }
   if (capability !== true) {
     if (capability !== undefined && capability !== false) {
       console.warn("[client-summary] docs adapter not installed: invalid capability flag");
     }
-    return;
+    return dispose;
   }
   if (typeof bridge.convertMarkdown !== "function" || typeof bridge.openDocument !== "function") {
     console.warn("[client-summary] docs adapter not installed: missing bridge methods");
-    return;
+    return dispose;
   }
 
   const apiOrigin = normalizeDocsOrigin(bootstrap.session?.apiOrigin);
   if (!apiOrigin) {
     console.warn("[client-summary] docs adapter not installed: invalid API origin");
-    return;
+    return dispose;
   }
   // applySession runs once per renderer. Account/token changes must recreate it;
   // do not silently adopt a refreshed identity for an already captured opener.
@@ -136,4 +163,5 @@ export function installDocsAdapter(
     }
     await bridge.openDocument!({ docId: document.docId }, spaceId);
   });
+  return dispose;
 }

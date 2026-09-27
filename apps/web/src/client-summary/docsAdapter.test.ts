@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OctoBuddySummaryBridge } from './hostBridge';
 import { installDocsAdapter } from './docsAdapter';
+import { DocumentSourceService } from '@dmwork/summary/src/Service/DocumentSourceService';
 
 const { fakeWKApp, ENDPOINT_IDS, API_ORIGIN } = vi.hoisted(() => {
   const methods: Record<string, { handler: (p: any, spaceId?: string) => any }> = {};
@@ -111,6 +112,39 @@ describe('installDocsAdapter', () => {
       installDocsAdapter(bridge, { capabilities: { docsConversion: true }, session: { apiOrigin: API_ORIGIN } });
       expect(fakeWKApp.endpointManager.get(ENDPOINT_IDS.docsConvertMarkdown)).toBeDefined();
       expect(fakeWKApp.endpointManager.get(ENDPOINT_IDS.docsOpenDocument)).toBeDefined();
+    });
+
+    it('installs the host document list transport without using the renderer API client', async () => {
+      bridge.listDocuments = vi.fn().mockResolvedValue({
+        items: [{ docId: 'doc-1', title: '资料', docType: 'doc', updatedAt: '2026-09-27T00:00:00Z' }],
+        total: 1,
+      });
+      installDocsAdapter(bridge, { capabilities: { docsList: true } });
+
+      await expect(new DocumentSourceService().listDocuments('mine', ' 项目 ', { page: 2 }))
+        .resolves.toMatchObject({ items: [{ docId: 'doc-1' }], total: 1 });
+      expect(bridge.listDocuments).toHaveBeenCalledWith({
+        source: 'mine',
+        keyword: '项目',
+        pagination: { page: 2 },
+      });
+    });
+
+    it('removes the previous host list transport when the adapter is reinstalled without docsList', async () => {
+      bridge.listDocuments = vi.fn().mockResolvedValue({
+        items: [{ docId: 'doc-1', title: '资料', docType: 'doc', updatedAt: '' }],
+        total: 1,
+      });
+      installDocsAdapter(bridge, { capabilities: { docsList: true } });
+      const previousBridge = bridge.listDocuments;
+
+      installDocsAdapter({ ...bridge, listDocuments: undefined }, {
+        capabilities: { docsList: false },
+      });
+
+      await expect(new DocumentSourceService().listDocuments('recent', ''))
+        .rejects.toThrow();
+      expect(previousBridge).not.toHaveBeenCalled();
     });
     it.each([`${API_ORIGIN}/`, 'https://EXAMPLE.com:443/api/v1'])('normalizes configured origin %s', async (apiOrigin) => {
       bridge.convertMarkdown = vi.fn().mockResolvedValue({ ok: true, value: { docId: 'doc-1', url: `${API_ORIGIN}/d/doc-1` } });

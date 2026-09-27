@@ -15,6 +15,8 @@ export interface SummaryBootstrap {
   capabilities?: {
     /** docs 转换能力；为 true 时注册 docs.convertMarkdown 与 docs.openDocument 端口。 */
     docsConversion?: boolean;
+    /** 文档列表能力；为 true 时由宿主提供资料库列表 transport。 */
+    docsList?: boolean;
   };
   session: {
     uid: string;
@@ -28,6 +30,12 @@ export interface SummaryBootstrap {
   appearance: { theme: "light" | "dark"; locale: "zh-CN" | "en-US" };
   initialRoute: SummaryWorkspaceRoute;
   runtime?: SummaryRuntimeBootstrap;
+}
+
+export interface SummaryDocumentListRequest {
+  source: "recent" | "mine";
+  keyword: string;
+  pagination: { page?: number; cursor?: string };
 }
 
 export type SummaryHostCommand =
@@ -77,6 +85,8 @@ export interface OctoBuddySummaryBridge extends DesktopPresentationBridge {
   >;
   /** 宿主侧打开已创建的文档。仅在 capabilities.docsConversion 为 true 时存在。 */
   openDocument?(input: { docId: string }, spaceId: string): Promise<void>;
+  /** 宿主侧资料库列表查询；路由、认证和 Space 由宿主派生。 */
+  listDocuments?(input: SummaryDocumentListRequest): Promise<unknown>;
   requestForward(input: {
     content: string;
     title: string;

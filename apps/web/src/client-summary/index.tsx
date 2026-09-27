@@ -83,7 +83,8 @@ async function main() {
     logPrefix: "[client-summary]",
   });
   WKApp.remoteConfig.startRequestConfig();
-  installDocsAdapter(host, bootstrap);
+  const disposeDocsAdapter = installDocsAdapter(host, bootstrap);
+  window.addEventListener("pagehide", disposeDocsAdapter, { once: true });
   Dap.shared.init();
   const externalRuntime = bootstrap.runtime?.summaryAttention === "external"
     ? installSummaryExternalRuntime(host, bootstrap.runtime) : undefined;

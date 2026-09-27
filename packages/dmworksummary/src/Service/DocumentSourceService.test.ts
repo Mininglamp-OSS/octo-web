@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import axios from "axios";
 import { APIClient } from "@octo/base";
-import { DocumentSourceService } from "./DocumentSourceService";
+import {
+  DocumentSourceService,
+  installDocumentSourceTransport,
+} from "./DocumentSourceService";
 
 describe("DocumentSourceService", () => {
   it("skips malformed rows and normalizes display fields without losing valid documents", async () => {
@@ -248,6 +251,21 @@ describe("DocumentSourceService", () => {
       if (originalGet)
         Object.defineProperty(APIClient.shared, "get", originalGet);
       else Reflect.deleteProperty(APIClient.shared, "get");
+    }
+  });
+
+  it("uses the host document transport without exposing API routing parameters", async () => {
+    const list = vi.fn().mockResolvedValue({ items: [], total: 0 });
+    const dispose = installDocumentSourceTransport({ list });
+    try {
+      await new DocumentSourceService().listDocuments("mine", "项目", { page: 2 });
+      expect(list).toHaveBeenCalledWith({
+        source: "mine",
+        keyword: "项目",
+        pagination: { page: 2 },
+      });
+    } finally {
+      dispose();
     }
   });
 });
