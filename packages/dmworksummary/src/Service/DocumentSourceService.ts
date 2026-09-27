@@ -31,6 +31,10 @@ export interface DocumentSourceTransport {
 const PAGE_SIZE = 50;
 const SUPPORTED_DOC_TYPES: DocSearchDocType[] = ["doc", "html"];
 
+// The summary artifact has one default document service per renderer realm.
+// Keep the latest host transport active for that realm and restore the previous
+// one when it is disposed; multiple independent adapters should use separate
+// renderer realms or an explicitly injected DocumentSourceService instance.
 let hostTransport:
   | { list(request: DocumentSourceHostRequest): Promise<unknown> }
   | undefined;
