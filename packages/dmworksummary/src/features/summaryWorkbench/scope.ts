@@ -119,17 +119,24 @@ export function participantSourceKey(
 
 export function replaceSelectedChannels(
   scope: SummaryWorkbenchScope,
-  channels: SummaryWorkbenchChannelScope[]
-): { scope: SummaryWorkbenchScope; participantsCleared: boolean } {
+  channels: SummaryWorkbenchChannelScope[],
+  mixedSources = false
+): {
+  scope: SummaryWorkbenchScope;
+  participantsCleared: boolean;
+} {
   if (!shouldApplySourceSelection(scope.selectedChannels, channels)) {
     return { scope, participantsCleared: false };
   }
-  // Mixed document+chat: selecting chats KEEPS documents (phase-1 mixed
-  // sources). Participants still can't coexist with documents — if the scope
-  // already has documents, the chat picker cannot be a team-workspace base
-  // (canSelectParticipants returns false with documents), so participant
-  // bookkeeping below only matters for the pure-chat flow.
-  const nextScope = { ...scope, selectedChannels: channels };
+  // Mixed document+chat (capability ON): selecting chats KEEPS documents.
+  // When the capability is OFF the pre-mixed mutual-exclusion is restored —
+  // selecting chats clears documents so the UI can never compose a scope the
+  // backend rejects. Participants still can't coexist with documents (the
+  // chat picker cannot be a team-workspace base while documents are present),
+  // so participant bookkeeping below only matters for the pure-chat flow.
+  const nextScope = mixedSources
+    ? { ...scope, selectedChannels: channels }
+    : { ...scope, selectedChannels: channels, documents: [] };
   // Invariant: the time range scopes the chat side ONLY. If there are no
   // chats left (but documents remain), a picker time range would be sent to a
   // document-only scope that the backend rejects. Clear it here so the state
@@ -167,27 +174,52 @@ export function withChatOnlyTimeRange(
 
 export function replaceSelectedDocuments(
   scope: SummaryWorkbenchScope,
-  documents: SummaryWorkbenchDocumentScope[]
-): { scope: SummaryWorkbenchScope; participantsCleared: boolean } {
+  documents: SummaryWorkbenchDocumentScope[],
+  mixedSources = false
+): {
+  scope: SummaryWorkbenchScope;
+  participantsCleared: boolean;
+  referencesCleared: boolean;
+} {
   if (!shouldApplySourceSelection(scope.documents ?? [], documents)) {
-    return { scope, participantsCleared: false };
+    return {
+      scope,
+      participantsCleared: false,
+      referencesCleared: false,
+    };
   }
-  // Mixed document+chat: selecting documents KEEPS chats and the chat time
-  // range (it scopes the chat side only). Participants stay mutually
-  // exclusive with documents (phase-1 personal-only) — selecting documents
-  // clears participants. A reference-summary stack is also incompatible with
-  // a mixed scope (the backend rejects referenced_task_ids on a mixed scope),
-  // so it is cleared here too. the chat time range only survives while at
-  // least one chat remains selected.
-  const withDocuments = {
-    ...scope,
-    documents,
-    participants: [],
-    referencedTaskIds: [],
-  };
+  // Mixed document+chat (capability ON): selecting documents KEEPS chats and
+  // the chat time range (it scopes the chat side only). When the capability
+  // is OFF the pre-mixed mutual-exclusion is restored — selecting documents
+  // clears chats and the time range so the UI can never compose a scope the
+  // backend rejects.
+  const becomesMixed =
+    mixedSources && scope.selectedChannels.length > 0 && documents.length > 0;
+  // A reference-summary stack is incompatible with a MIXED scope (the
+  // backend rejects referenced_task_ids on a document+chat scope). A
+  // pure-document scope (no chats) accepts a reference, so only clear it when
+  // the selection actually turns the scope mixed.
+  const referencesCleared =
+    becomesMixed && scope.referencedTaskIds.length > 0;
+  const withDocuments = mixedSources
+    ? {
+        ...scope,
+        documents,
+        participants: [],
+        referencedTaskIds: referencesCleared ? [] : scope.referencedTaskIds,
+      }
+    : {
+        ...scope,
+        documents,
+        selectedChannels: [],
+        timeRange: null,
+        participants: [],
+        referencedTaskIds: scope.referencedTaskIds,
+      };
   return {
     scope: withChatOnlyTimeRange(withDocuments),
     participantsCleared: scope.participants.length > 0,
+    referencesCleared,
   };
 }
 
@@ -208,13 +240,15 @@ export function retainValidParticipants(
 export function removeScopeContext(
   scope: SummaryWorkbenchScope,
   kind: SummaryWorkbenchContextKind,
-  id: string
+  id: string,
+  mixedSources = false
 ): { scope: SummaryWorkbenchScope; participantsCleared: boolean } {
   switch (kind) {
     case "chat":
       return replaceSelectedChannels(
         scope,
-        scope.selectedChannels.filter((channel) => channel.chatId !== id)
+        scope.selectedChannels.filter((channel) => channel.chatId !== id),
+        mixedSources
       );
     case "document":
       return {
