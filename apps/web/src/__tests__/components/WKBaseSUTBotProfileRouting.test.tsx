@@ -50,6 +50,7 @@ interface Deferred {
 
 const cacheMap = new Map<string, ChannelInfo>();
 const pendingFetches = new Map<string, Deferred>();
+const userInfoMock = vi.hoisted(() => ({ nextInstanceId: 0 }));
 
 function resetChannelState() {
     cacheMap.clear();
@@ -162,15 +163,19 @@ vi.mock(
 vi.mock(
     '../../../../../packages/dmworkbase/src/Components/UserInfo',
     () => ({
-        default: (props: { uid: string; vercode?: string }) => (
-            <div
-                data-testid="user-info-stub"
-                data-uid={props.uid}
-                data-vercode={props.vercode ?? ''}
-            >
-                USER_INFO
-            </div>
-        ),
+        default: (props: { uid: string; vercode?: string }) => {
+            const instanceId = React.useRef(++userInfoMock.nextInstanceId).current;
+            return (
+                <div
+                    data-testid="user-info-stub"
+                    data-instance-id={instanceId}
+                    data-uid={props.uid}
+                    data-vercode={props.vercode ?? ''}
+                >
+                    USER_INFO
+                </div>
+            );
+        },
     }),
 );
 
@@ -232,6 +237,7 @@ async function flushMicrotasks() {
 describe('WKBase SUT: real component routes bot vs human entries (GH#1112, PR#1113 round-3)', () => {
     beforeEach(() => {
         resetChannelState();
+        userInfoMock.nextInstanceId = 0;
     });
 
     // Scenario ① — click normal user avatar
@@ -329,5 +335,23 @@ describe('WKBase SUT: real component routes bot vs human entries (GH#1112, PR#11
         expect(userAfter).not.toBeNull();
         expect(userAfter!.getAttribute('data-uid')).toBe('user_B');
         expect(queryByTestId('bot-detail-stub')).toBeNull();
+    });
+
+    it('remounts UserInfo when an open profile switches to another user', () => {
+        cacheMap.set('alice', { orgData: { robot: 0 } });
+        cacheMap.set('bob', { orgData: { robot: 0 } });
+        const { ctx, getByTestId } = mountWKBase();
+
+        act(() => {
+            ctx.showUserInfo('alice');
+        });
+        const aliceInstanceId = getByTestId('user-info-stub').getAttribute('data-instance-id');
+
+        act(() => {
+            ctx.showUserInfo('bob');
+        });
+        const bobProfile = getByTestId('user-info-stub');
+        expect(bobProfile).toHaveAttribute('data-uid', 'bob');
+        expect(bobProfile).not.toHaveAttribute('data-instance-id', aliceInstanceId);
     });
 });

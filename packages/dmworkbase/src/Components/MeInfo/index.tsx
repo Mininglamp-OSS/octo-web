@@ -1,6 +1,7 @@
 import { Toast } from "@douyinfe/semi-ui";
 import { Check } from "lucide-react";
 import React, { ChangeEvent, Component, ReactNode } from "react";
+import WKApp from "../../App";
 import RouteContext, { RouteContextConfig } from "../../Service/Context";
 import Provider, { IProviderListener } from "../../Service/Provider";
 import { I18nContext } from "../../i18n";
@@ -14,6 +15,11 @@ import WKAvatar from "../WKAvatar";
 import WKModal from "../WKModal";
 import MeInfoPanel from "./MeInfoPanel";
 import { MeInfoVM } from "./vm";
+import {
+    getProfileContactInfo,
+    truncateContactEmail,
+} from "../../bridge/profileDetail/profileContactInfo";
+import { copyToClipboard } from "../../Utils/clipboard";
 import "./index.css"
 
 export interface MeInfoProps {
@@ -32,6 +38,7 @@ interface MeInfoState {
     avatarCropFile: File | null
     avatarPreviewFile: File | null
     uploadingAvatar: boolean
+    phoneRevealed: boolean
 }
 
 export class MeInfo extends Component<MeInfoProps, MeInfoState> {
@@ -41,6 +48,7 @@ export class MeInfo extends Component<MeInfoProps, MeInfoState> {
     private mounted = false
     private fileInput: HTMLInputElement | null = null
     private avatarEdit: WKAvatarEditor | null = null
+    private unsubscribeRemoteConfig?: () => void
 
     state: MeInfoState = {
         editingName: false,
@@ -52,14 +60,20 @@ export class MeInfo extends Component<MeInfoProps, MeInfoState> {
         avatarCropFile: null,
         avatarPreviewFile: null,
         uploadingAvatar: false,
+        phoneRevealed: false,
     }
 
     componentDidMount() {
         this.mounted = true
+        this.unsubscribeRemoteConfig = WKApp.remoteConfig.addConfigChangeListener(() => {
+            this.forceUpdate()
+        })
     }
 
     componentWillUnmount() {
         this.mounted = false
+        this.unsubscribeRemoteConfig?.()
+        this.unsubscribeRemoteConfig = undefined
     }
 
     resetTransientState = () => {
@@ -73,6 +87,7 @@ export class MeInfo extends Component<MeInfoProps, MeInfoState> {
             avatarCropFile: null,
             avatarPreviewFile: null,
             uploadingAvatar: false,
+            phoneRevealed: false,
         })
     }
 
@@ -231,6 +246,15 @@ export class MeInfo extends Component<MeInfoProps, MeInfoState> {
         )
     }
 
+    copyContact = async (value: string) => {
+        const { t } = this.context
+        if (await copyToClipboard(value)) {
+            Toast.success(t("base.promptForward.copied"))
+        } else {
+            Toast.error(t("base.module.contextMenus.copyFailed"))
+        }
+    }
+
     renderPanel(vm: MeInfoVM, context?: RouteContext<any>) {
         const { t } = this.context
         const {
@@ -242,6 +266,7 @@ export class MeInfo extends Component<MeInfoProps, MeInfoState> {
             avatarCropFile,
             avatarPreviewFile,
             uploadingAvatar,
+            phoneRevealed,
         } = this.state
         const verified = vm.isRealnameVerified()
         const avatar = <WKAvatar channel={vm.currentUserChannel()} />
@@ -250,6 +275,43 @@ export class MeInfo extends Component<MeInfoProps, MeInfoState> {
             { value: 1, label: t("base.sexSelect.male") },
             { value: 0, label: t("base.sexSelect.female") },
         ]
+        const profileData = vm.selfChannelInfo?.orgData
+        const contacts = getProfileContactInfo(profileData)
+        const phoneContact = contacts.phone
+        const emailContact = contacts.email
+        const shouldShowProfileContacts = WKApp.remoteConfig.profileContactInfoOn
+        const phoneValue = shouldShowProfileContacts && phoneContact
+            ? phoneContact.kind === "empty"
+                ? t("base.profileContact.notAdded")
+                : phoneRevealed
+                    ? <button
+                        type="button"
+                        className="wk-profile-contact-copy"
+                        title={t("base.module.contextMenus.copy")}
+                        onClick={() => this.copyContact(phoneContact.value)}
+                    >
+                        {phoneContact.value}
+                    </button>
+                    : <button
+                        type="button"
+                        className="wk-profile-contact-reveal"
+                        onClick={() => this.setState({ phoneRevealed: true })}
+                    >
+                        {t("base.profileContact.revealPhone")}
+                    </button>
+            : undefined
+        const emailValue = shouldShowProfileContacts && emailContact
+            ? emailContact.kind === "empty"
+                ? t("base.profileContact.notAdded")
+                : <button
+                    type="button"
+                    className="wk-profile-contact-copy"
+                    title={t("base.module.contextMenus.copy")}
+                    onClick={() => this.copyContact(emailContact.value)}
+                >
+                    {truncateContactEmail(emailContact.value)}
+                </button>
+            : undefined
 
         return <>
             <div className="wk-meinfo">
@@ -274,6 +336,8 @@ export class MeInfo extends Component<MeInfoProps, MeInfoState> {
                     securityTitle={t("base.me.accountSecurity")}
                     avatarLabel={t("base.me.avatar")}
                     nameLabel={t("base.me.name")}
+                    phoneLabel={t("base.profileContact.phone")}
+                    emailLabel={t("base.profileContact.email")}
                     shortNoLabel={t("base.me.shortNo", { values: { appName: vm.appName() } })}
                     qrcodeLabel={t("base.me.qrCode")}
                     genderLabel={t("base.me.gender")}
@@ -287,6 +351,8 @@ export class MeInfo extends Component<MeInfoProps, MeInfoState> {
                     cancelLabel={t("base.common.cancel")}
                     nameValue={vm.name()}
                     nameDraft={nameDraft}
+                    phoneValue={phoneValue}
+                    emailValue={emailValue}
                     genderValue={vm.sexLabel()}
                     realnameValue={verified ? vm.formatVerifiedAtLabel() : t("base.me.realname.verifyNow")}
                     showExperimentalFeatures={!this.props.embedded && vm.isLabModeEnabled()}

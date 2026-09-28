@@ -40,6 +40,11 @@ export class UserInfoVM extends ProviderListener {
   subscriberOfMy?: Subscriber; // 当前登录用户在频道的订阅者信息
   fromChannelInfo?: ChannelInfo;
   channelInfo?: ChannelInfo;
+  /**
+   * Contact fields are viewer-specific. Keep the profile response separate
+   * from the mutable IM cache so a cached value can never bypass redaction.
+   */
+  profileContactData?: Record<string, unknown>;
   vercode?: string;
   subscriberChangeListener?: SubscriberChangeListener;
   unsubscribeSubscriberChangeListener?: () => void;
@@ -391,6 +396,7 @@ export class UserInfoVM extends ProviderListener {
   async reloadChannelInfo() {
     const res = await UserService.getUserProfile(this.uid, this.profileGroupNo());
     const profileChannelInfo = Convert.userToChannelInfo(res);
+    this.profileContactData = { ...profileChannelInfo.orgData };
     const cachedChannelInfo = getCurrentImChannelInfo(
       new Channel(this.uid, ChannelTypePerson)
     );

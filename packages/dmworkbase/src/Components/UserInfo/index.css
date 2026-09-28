@@ -127,6 +127,64 @@
     overflow-wrap: anywhere;
 }
 
+.wk-profile-contact-phone,
+.wk-profile-contact-email {
+    display: block;
+    min-width: 0;
+}
+
+.wk-profile-contact-phone {
+    user-select: text;
+}
+
+.wk-profile-contact-reveal {
+    min-width: calc(var(--wk-sp-12) * 2);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--wk-text-tertiary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.wk-profile-contact-reveal:hover,
+.wk-profile-contact-reveal:focus-visible {
+    color: var(--wk-text-primary);
+    outline: none;
+}
+
+.wk-profile-contact-copy {
+    display: block;
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: copy;
+    font: inherit;
+    text-align: inherit;
+}
+
+.wk-profile-contact-copy:hover,
+.wk-profile-contact-copy:focus-visible {
+    color: var(--wk-text-primary);
+    outline: none;
+}
+
+.wk-profile-contact-email {
+    max-width: calc(var(--wk-sp-12) * 8);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wk-profile-contact-email .wk-profile-contact-copy {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .wk-userinfo-footer-sendbutton {
     width: 100%;
     height: 100%;
@@ -224,6 +282,43 @@
     background: var(--wk-bg-hover);
     color: var(--wk-text-primary);
     outline: none;
+}
+
+.wk-userinfo-contact-list {
+    border-top: 1px solid var(--wk-border-subtle);
+}
+
+.wk-userinfo-contact-list--standalone {
+    border-top: 0;
+}
+
+.wk-userinfo-contact-row {
+    display: flex;
+    min-width: 0;
+    min-height: calc(var(--wk-sp-10) + var(--wk-sp-2));
+    padding: var(--wk-sp-3) var(--wk-sp-4);
+    flex-direction: column;
+    justify-content: center;
+    gap: var(--wk-sp-1);
+    box-sizing: border-box;
+}
+
+.wk-userinfo-contact-row + .wk-userinfo-contact-row {
+    border-top: 1px solid var(--wk-border-subtle);
+}
+
+.wk-userinfo-contact-label {
+    color: var(--wk-text-secondary);
+    font-size: var(--wk-text-size-sm);
+    line-height: var(--wk-leading-normal);
+}
+
+.wk-userinfo-contact-value {
+    min-width: 0;
+    color: var(--wk-text-primary);
+    font-size: var(--wk-text-size-md);
+    line-height: var(--wk-leading-normal);
+    overflow-wrap: anywhere;
 }
 
 .wk-userinfo-remark-editor {

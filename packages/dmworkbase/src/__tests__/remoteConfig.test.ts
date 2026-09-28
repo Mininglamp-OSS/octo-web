@@ -101,4 +101,16 @@ describe("[api] WKRemoteConfig notifications", () => {
     expect(configChangeListener).toHaveBeenCalledTimes(1);
     expect(warnSpy).toHaveBeenCalledTimes(2);
   });
+
+  it("keeps profile contacts hidden until appconfig explicitly enables them", async () => {
+    const remoteConfig = new WKRemoteConfig();
+
+    getSpy.mockResolvedValueOnce({ profile_contact_info_on: true });
+    await remoteConfig.requestConfig();
+    expect(remoteConfig.profileContactInfoOn).toBe(true);
+
+    getSpy.mockResolvedValueOnce({});
+    await remoteConfig.requestConfig();
+    expect(remoteConfig.profileContactInfoOn).toBe(false);
+  });
 });

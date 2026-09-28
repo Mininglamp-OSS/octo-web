@@ -207,6 +207,15 @@
     margin: 0 var(--wk-sp-4);
 }
 
+.wk-meinfo-story-copy-status {
+    display: block;
+    min-height: var(--wk-leading-normal);
+    margin: 0 var(--wk-sp-4);
+    color: var(--wk-text-tertiary);
+    font-size: var(--wk-text-size-sm);
+    line-height: var(--wk-leading-normal);
+}
+
 .wk-meinfo-section-title {
     display: none;
 }
@@ -305,6 +314,64 @@
     line-height: var(--wk-leading-normal);
     text-align: right;
     overflow-wrap: anywhere;
+}
+
+.wk-meinfo-row-value .wk-profile-contact-phone,
+.wk-meinfo-row-value .wk-profile-contact-email {
+    display: block;
+    min-width: 0;
+}
+
+.wk-meinfo-row-value .wk-profile-contact-phone {
+    user-select: text;
+}
+
+.wk-meinfo-row-value .wk-profile-contact-copy {
+    display: block;
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: copy;
+    font: inherit;
+    text-align: inherit;
+}
+
+.wk-meinfo-row-value .wk-profile-contact-copy:hover,
+.wk-meinfo-row-value .wk-profile-contact-copy:focus-visible {
+    color: var(--wk-text-primary);
+    outline: none;
+}
+
+.wk-meinfo-row-value .wk-profile-contact-reveal {
+    min-width: calc(var(--wk-sp-12) * 2);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    text-align: inherit;
+}
+
+.wk-meinfo-row-value .wk-profile-contact-reveal:hover,
+.wk-meinfo-row-value .wk-profile-contact-reveal:focus-visible {
+    color: var(--wk-text-primary);
+    outline: none;
+}
+
+.wk-meinfo-row-value .wk-profile-contact-email {
+    max-width: calc(var(--wk-sp-12) * 8);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wk-meinfo-row-value .wk-profile-contact-email .wk-profile-contact-copy {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .wk-meinfo-row-side {

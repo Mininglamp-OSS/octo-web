@@ -29,6 +29,8 @@ export interface MeInfoPanelProps {
     securityTitle: React.ReactNode;
     avatarLabel: string;
     nameLabel: React.ReactNode;
+    phoneLabel?: React.ReactNode;
+    emailLabel?: React.ReactNode;
     shortNoLabel: React.ReactNode;
     qrcodeLabel: React.ReactNode;
     genderLabel: React.ReactNode;
@@ -42,6 +44,8 @@ export interface MeInfoPanelProps {
     cancelLabel: React.ReactNode;
     nameValue: string;
     nameDraft: string;
+    phoneValue?: React.ReactNode;
+    emailValue?: React.ReactNode;
     genderValue: React.ReactNode;
     realnameValue: React.ReactNode;
     showExperimentalFeatures: boolean;
@@ -98,6 +102,8 @@ export default function MeInfoPanel({
     securityTitle,
     avatarLabel,
     nameLabel,
+    phoneLabel,
+    emailLabel,
     shortNoLabel,
     qrcodeLabel,
     genderLabel,
@@ -111,6 +117,8 @@ export default function MeInfoPanel({
     cancelLabel,
     nameValue,
     nameDraft,
+    phoneValue,
+    emailValue,
     genderValue,
     realnameValue,
     showExperimentalFeatures,
@@ -209,6 +217,8 @@ export default function MeInfoPanel({
                     <Edit3 size={16} />
                 </button>}
             </div>
+            {phoneValue !== undefined && <MeInfoNavRow title={phoneLabel} value={<span className="wk-profile-contact-phone">{phoneValue}</span>} showChevron={false} />}
+            {emailValue !== undefined && <MeInfoNavRow title={emailLabel} value={<span className="wk-profile-contact-email">{emailValue}</span>} showChevron={false} />}
             <MeInfoNavRow title={shortNoLabel} value={shortNo || notSetLabel} onClick={onShortNoTap} />
             <MeInfoNavRow title={qrcodeLabel} right={<QrCode size={16} aria-hidden="true" />} onClick={onShowQrCode} />
             {embedded && <MeInfoNavRow title={genderLabel} value={genderValue} onClick={onShowGender} />}

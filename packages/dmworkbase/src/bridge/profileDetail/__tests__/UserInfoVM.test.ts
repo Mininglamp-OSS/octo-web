@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   applyFriend: vi.fn(),
   getUserProfile: vi.fn(),
   fetchChannelInfo: vi.fn(),
+  getChannelInfo: vi.fn(),
   getSubscribes: vi.fn(() => []),
   changeChannelAvatarTag: vi.fn(),
   userInfos: vi.fn(),
@@ -18,7 +19,7 @@ vi.mock("wukongimjssdk", () => {
         getSubscribes: mocks.getSubscribes,
         addSubscriberChangeListener: vi.fn(),
         removeSubscriberChangeListener: vi.fn(),
-        getChannelInfo: vi.fn(),
+        getChannelInfo: mocks.getChannelInfo,
         addListener: vi.fn(),
         removeListener: vi.fn(),
       },
@@ -142,6 +143,31 @@ describe("UserInfoVM profile actions", () => {
     expect(vm.channelInfo?.lastOffline).toBe(123);
     expect(vm.channelInfo?.orgData?.remark).toBe("Old");
     expect(vm.channelInfo?.orgData?.online).toBe(0);
+  });
+
+  it("keeps contact fields sourced only from the profile response", async () => {
+    mocks.getUserProfile.mockResolvedValueOnce({
+      uid: "u1",
+      name: "User One",
+      email: "",
+    });
+    mocks.getChannelInfo.mockReturnValueOnce({
+      channel: { channelID: "u1", channelType: 1 },
+      orgData: {
+        phone: "+86 13800138000",
+        email: "stale@example.com",
+      },
+    });
+    const vm = new UserInfoVM("u1");
+
+    await vm.reloadChannelInfo();
+
+    expect(vm.channelInfo?.orgData).toMatchObject({
+      phone: "+86 13800138000",
+      email: "stale@example.com",
+    });
+    expect(vm.profileContactData).not.toHaveProperty("phone");
+    expect(vm.profileContactData?.email).toBe("");
   });
 
   it("uses parent group_no when loading profile from a thread", async () => {

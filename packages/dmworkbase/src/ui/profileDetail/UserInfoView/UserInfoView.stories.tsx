@@ -51,6 +51,32 @@ const profileSections = [
 
 function UserInfoViewStory(args: Partial<UserInfoViewProps>) {
   const [remarkDraft, setRemarkDraft] = useState(args.remarkDraft ?? "Alice");
+  const [phoneRevealed, setPhoneRevealed] = useState(false);
+  const [copyStatus, setCopyStatus] = useState("");
+  const phone = "+86 13800138000";
+  const email = "alice@example.com";
+  const contactItems = args.contactItems ?? [
+    {
+      label: "手机号",
+      value: phoneRevealed ? (
+        <button type="button" onClick={() => setCopyStatus("已复制手机号")}>
+          {phone}
+        </button>
+      ) : (
+        <button type="button" onClick={() => setPhoneRevealed(true)}>
+          点击查看
+        </button>
+      ),
+    },
+    {
+      label: "邮箱",
+      value: (
+        <button type="button" onClick={() => setCopyStatus("已复制邮箱")}>
+          {email}
+        </button>
+      ),
+    },
+  ];
 
   return (
     <div className="wk-userinfo-story-frame">
@@ -61,9 +87,9 @@ function UserInfoViewStory(args: Partial<UserInfoViewProps>) {
         isBot={false}
         isRealnameVerified
         metaItems={[
-          { label: "昵称", value: "Alice" },
           { label: "Octo号", value: "octo_1001" },
         ]}
+        contactItems={contactItems}
         showRemarkEditor
         editingRemark={false}
         remark="Alice"
@@ -82,6 +108,7 @@ function UserInfoViewStory(args: Partial<UserInfoViewProps>) {
         onSaveRemark={() => undefined}
         {...args}
       />
+      <span role="status">{copyStatus}</span>
     </div>
   );
 }

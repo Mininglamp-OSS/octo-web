@@ -17,6 +17,12 @@ import WKButton from "../WKButton";
 import type { UserInfoMetaItem } from "./UserInfoMetaList";
 import UserInfoView, { type UserInfoViewFooter } from "../../ui/profileDetail/UserInfoView";
 import ProfileOnlineStatus from "../../ui/profileDetail/ProfileOnlineStatus";
+import {
+    getProfileContactInfo,
+    phoneWithoutCountryCode,
+    truncateContactEmail,
+} from "../../bridge/profileDetail/profileContactInfo";
+import { copyToClipboard } from "../../Utils/clipboard";
 
 
 export interface UserInfoProps extends HTMLProps<any> {
@@ -33,6 +39,34 @@ export interface UserInfoProps extends HTMLProps<any> {
 export default class UserInfo extends Component<UserInfoProps> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
+    state = { phoneRevealed: false };
+    private unsubscribeRemoteConfig?: () => void;
+
+    componentDidMount() {
+        this.unsubscribeRemoteConfig = WKApp.remoteConfig.addConfigChangeListener(() => {
+            this.forceUpdate();
+        });
+    }
+
+    componentDidUpdate(previousProps: UserInfoProps) {
+        if (previousProps.uid !== this.props.uid && this.state.phoneRevealed) {
+            this.setState({ phoneRevealed: false });
+        }
+    }
+
+    componentWillUnmount() {
+        this.unsubscribeRemoteConfig?.();
+        this.unsubscribeRemoteConfig = undefined;
+    }
+
+    copyContact = async (value: string) => {
+        const { t } = this.context;
+        if (await copyToClipboard(value)) {
+            Toast.success(t("base.promptForward.copied"));
+        } else {
+            Toast.error(t("base.module.contextMenus.copyFailed"));
+        }
+    };
 
     getRemark(vm: UserInfoVM) {
         return vm.getRemark();
@@ -220,6 +254,7 @@ export default class UserInfo extends Component<UserInfoProps> {
             return new UserInfoVM(uid, fromChannel, vercode)
         }} render={(vm: UserInfoVM) => {
             return <RoutePage onClose={() => {
+                this.setState({ phoneRevealed: false });
                 if (onClose) {
                     onClose()
                 }
@@ -227,6 +262,55 @@ export default class UserInfo extends Component<UserInfoProps> {
                 const footer = this.getFooter(vm, context)
                 const sections = vm.channelInfo ? this.getVisibleSections(vm, context) : []
                 const metaItems: UserInfoMetaItem[] = []
+                const contactItems: UserInfoMetaItem[] = []
+                const profileData = vm.profileContactData
+                const contacts = getProfileContactInfo(profileData)
+                const phoneContact = contacts.phone
+                const emailContact = contacts.email
+                if (WKApp.remoteConfig.profileContactInfoOn) {
+                    if (phoneContact) {
+                        const phoneValue = phoneContact.kind === "empty"
+                            ? t("base.profileContact.notAdded")
+                            : this.state.phoneRevealed
+                                ? <button
+                                    type="button"
+                                    className="wk-profile-contact-copy"
+                                    title={t("base.module.contextMenus.copy")}
+                                    onClick={() => this.copyContact(phoneContact.value)}
+                                >
+                                    {vm.isSelf()
+                                        ? phoneContact.value
+                                        : phoneWithoutCountryCode(phoneContact.value, profileData)}
+                                </button>
+                                    : <button
+                                        type="button"
+                                        className="wk-profile-contact-reveal"
+                                        onClick={() => this.setState({ phoneRevealed: true })}
+                                    >
+                                        {t("base.profileContact.revealPhone")}
+                                    </button>
+                        contactItems.push({
+                            label: t("base.profileContact.phone"),
+                            value: <span className="wk-profile-contact-phone">{phoneValue}</span>,
+                        })
+                    }
+                    if (emailContact) {
+                        const emailValue = emailContact.kind === "empty"
+                            ? t("base.profileContact.notAdded")
+                            : <button
+                                type="button"
+                                className="wk-profile-contact-copy"
+                                title={t("base.module.contextMenus.copy")}
+                                onClick={() => this.copyContact(emailContact.value)}
+                            >
+                                {truncateContactEmail(emailContact.value)}
+                            </button>
+                        contactItems.push({
+                            label: t("base.profileContact.email"),
+                            value: <span className="wk-profile-contact-email">{emailValue}</span>,
+                        })
+                    }
+                }
                 if (vm.showNickname()) {
                     metaItems.push({
                         label: t("base.userInfo.nickname"),
@@ -255,6 +339,7 @@ export default class UserInfo extends Component<UserInfoProps> {
                     isBot={vm.channelInfo?.orgData?.robot === 1}
                     isRealnameVerified={vm.isRealnameVerified()}
                     metaItems={metaItems}
+                    contactItems={contactItems}
                     status={!vm.isSelf() ? <ProfileOnlineStatus channelInfo={vm.channelInfo} /> : undefined}
                     showRemarkEditor={!vm.isSelf()}
                     editingRemark={vm.editingRemark}

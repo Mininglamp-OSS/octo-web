@@ -35,6 +35,8 @@ export interface UserInfoViewProps {
   isBot: boolean;
   isRealnameVerified: boolean;
   metaItems: UserInfoMetaItem[];
+  /** Contact fields are intentionally displayed below the remark, not in the profile header. */
+  contactItems?: UserInfoMetaItem[];
   showRemarkEditor: boolean;
   editingRemark: boolean;
   remark: string;
@@ -58,6 +60,7 @@ function UserInfoView({
   isBot,
   isRealnameVerified,
   metaItems,
+  contactItems = [],
   showRemarkEditor,
   editingRemark,
   remark,
@@ -107,62 +110,76 @@ function UserInfoView({
         metaItems={metaItems}
         status={status}
       />
-      {showRemarkEditor && (
+      {(showRemarkEditor || contactItems.length > 0) && (
         <div className="wk-userinfo-remark-section">
-          <div className="wk-userinfo-remark-row">
-            <div className="wk-userinfo-remark-main">
-              <div className="wk-userinfo-remark-label">{labels.remark}</div>
-              {editingRemark ? (
-                <div className="wk-userinfo-remark-editor">
-                  <Input
-                    value={remarkDraft}
-                    onChange={onRemarkDraftChange}
-                    placeholder={labels.remarkPlaceholder}
-                    maxLength={30}
-                  />
-                  <div className="wk-userinfo-remark-actions">
-                    <WKButton
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      disabled={savingRemark}
-                      onClick={onCancelEditRemark}
-                    >
-                      {labels.cancel}
-                    </WKButton>
-                    <WKButton
-                      type="button"
-                      variant="primary"
-                      size="sm"
-                      loading={savingRemark}
-                      onClick={onSaveRemark}
-                    >
-                      {labels.save}
-                    </WKButton>
+          {showRemarkEditor && (
+            <div className="wk-userinfo-remark-row">
+              <div className="wk-userinfo-remark-main">
+                <div className="wk-userinfo-remark-label">{labels.remark}</div>
+                {editingRemark ? (
+                  <div className="wk-userinfo-remark-editor">
+                    <Input
+                      value={remarkDraft}
+                      onChange={onRemarkDraftChange}
+                      placeholder={labels.remarkPlaceholder}
+                      maxLength={30}
+                    />
+                    <div className="wk-userinfo-remark-actions">
+                      <WKButton
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={savingRemark}
+                        onClick={onCancelEditRemark}
+                      >
+                        {labels.cancel}
+                      </WKButton>
+                      <WKButton
+                        type="button"
+                        variant="primary"
+                        size="sm"
+                        loading={savingRemark}
+                        onClick={onSaveRemark}
+                      >
+                        {labels.save}
+                      </WKButton>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div className="wk-userinfo-remark-value">
-                  {remark || (
-                    <span className="wk-userinfo-remark-empty">
-                      {labels.notSet}
-                    </span>
-                  )}
-                </div>
+                ) : (
+                  <div className="wk-userinfo-remark-value">
+                    {remark || (
+                      <span className="wk-userinfo-remark-empty">
+                        {labels.notSet}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+              {!editingRemark && (
+                <button
+                  type="button"
+                  className="wk-userinfo-remark-edit"
+                  onClick={onStartEditRemark}
+                  aria-label={labels.editRemark}
+                  title={labels.editRemark}
+                >
+                  <IconEdit />
+                </button>
               )}
             </div>
-            {!editingRemark && (
-              <button
-                type="button"
-                className="wk-userinfo-remark-edit"
-                onClick={onStartEditRemark}
-                aria-label={labels.editRemark}
-                title={labels.editRemark}
-              >
-                <IconEdit />
-              </button>
-            )}
-          </div>
+          )}
+          {contactItems.length > 0 && (
+            <div
+              className={`wk-userinfo-contact-list${showRemarkEditor ? "" : " wk-userinfo-contact-list--standalone"}`}
+            >
+              {contactItems.map((item, index) => (
+                <div key={index} className="wk-userinfo-contact-row">
+                  <div className="wk-userinfo-contact-label">{item.label}</div>
+                  <div className="wk-userinfo-contact-value">{item.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
       <div className="wk-userinfo-sections">

@@ -106,4 +106,38 @@ describe("MeInfoPanel", () => {
 
     expect(onRealnameClick).toHaveBeenCalledTimes(1)
   })
+
+  it("places contact rows before the OCTO ID row", () => {
+    renderPanel(baseProps({
+      phoneLabel: "Phone",
+      phoneValue: "13800138000",
+      emailLabel: "Email",
+      emailValue: "alice@example.com",
+    }))
+
+    const rows = Array.from(container.querySelectorAll(".wk-meinfo-section-rows")).flatMap((section) =>
+      Array.from(section.querySelectorAll(":scope > .wk-meinfo-row")).map((row) => row.textContent),
+    )
+    expect(rows.indexOf("Phone13800138000")).toBeLessThan(rows.indexOf("OCTO IDocto_123"))
+    expect(rows.indexOf("Emailalice@example.com")).toBeLessThan(rows.indexOf("OCTO IDocto_123"))
+  })
+
+  it("keeps contact values interactive so callers can copy them", () => {
+    const onCopyPhone = vi.fn()
+    const onCopyEmail = vi.fn()
+    renderPanel(baseProps({
+      phoneLabel: "Phone",
+      phoneValue: React.createElement("button", { onClick: onCopyPhone }, "13800138000"),
+      emailLabel: "Email",
+      emailValue: React.createElement("button", { onClick: onCopyEmail }, "alice@example.com"),
+    }))
+
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "13800138000" }))
+      fireEvent.click(screen.getByRole("button", { name: "alice@example.com" }))
+    })
+
+    expect(onCopyPhone).toHaveBeenCalledTimes(1)
+    expect(onCopyEmail).toHaveBeenCalledTimes(1)
+  })
 })

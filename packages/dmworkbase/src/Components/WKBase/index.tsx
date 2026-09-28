@@ -642,6 +642,7 @@ export default class WKBase
         >
           {userUID && userUID !== "" ? (
             <UserInfo
+              key={userUID}
               fromChannel={fromChannel}
               vercode={vercode}
               uid={userUID}
