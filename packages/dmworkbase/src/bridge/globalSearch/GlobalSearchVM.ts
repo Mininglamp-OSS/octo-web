@@ -32,6 +32,8 @@ export default class GlobalSearchVM extends ProviderListener {
   public searchResult: any;
   public isComposing: boolean = false; // 是否正在输入(防止中文输入法干扰)
   public loadMoreing = false; // 是否正在加载更多中
+  /** A fresh legacy contacts/groups request is pending. */
+  public legacyLoading = false;
   public loadFinish = false; // 是否加载完成
   public contentTypes = new Array<number>(); // 内容类型
   private channelInfoListener!: ChannelInfoListener;
@@ -183,6 +185,7 @@ export default class GlobalSearchVM extends ProviderListener {
     this.loadFinish = false;
     this.loadMoreing = false;
     this.searchResult = null;
+    this.legacyLoading = true;
     this.notifyListener();
   }
 
@@ -304,6 +307,7 @@ export default class GlobalSearchVM extends ProviderListener {
         // 只有最新请求完成时才更新 loadMoreing 状态
         if (currentRequestId === this.requestId) {
           this.loadMoreing = false;
+          this.legacyLoading = false;
           this.notifyListener();
         }
       });

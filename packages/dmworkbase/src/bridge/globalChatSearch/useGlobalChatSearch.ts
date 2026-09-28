@@ -231,9 +231,6 @@ function mapOverviewResponse(
         ...presentation,
         matchCount: Math.max(0, group.match_count ?? 0),
         isMatchCountApproximate: group.match_count_approx !== false,
-        latestAt: group.latest_at
-          ? Date.parse(group.latest_at) || undefined
-          : undefined,
         preview: mapPreview(group.preview, group, keyword, filters),
       };
     });
@@ -263,16 +260,26 @@ export function useGlobalChatSearch({
   const resultAbortRef = useRef<AbortController>();
   const loadingMoreRef = useRef(false);
   const preferredConversationKeyRef = useRef(preferredConversationKey);
+  // A key passed from the All tab is an initial-selection hint, not a
+  // persistent selection. Later overview refreshes must preserve an explicit
+  // choice made in the chat panel.
+  const hasConsumedPreferredConversationRef = useRef(false);
+  const [overviewRetry, setOverviewRetry] = useState(0);
 
   useEffect(() => {
-    preferredConversationKeyRef.current = preferredConversationKey;
+    if (preferredConversationKeyRef.current !== preferredConversationKey) {
+      preferredConversationKeyRef.current = preferredConversationKey;
+      hasConsumedPreferredConversationRef.current = false;
+    }
     if (
       preferredConversationKey &&
+      !hasConsumedPreferredConversationRef.current &&
       overview.conversations.some(
         (conversation) => conversation.key === preferredConversationKey
       )
     ) {
       setSelectedKey(preferredConversationKey);
+      hasConsumedPreferredConversationRef.current = true;
     }
   }, [overview.conversations, preferredConversationKey]);
 
@@ -327,13 +334,19 @@ export function useGlobalChatSearch({
         );
         setOverview(next);
         const preferredKey = preferredConversationKeyRef.current;
+        const shouldApplyPreferredKey =
+          !!preferredKey && !hasConsumedPreferredConversationRef.current;
         setSelectedKey(
-          next.conversations.some(
-            (conversation) => conversation.key === preferredKey
-          )
+          shouldApplyPreferredKey &&
+            next.conversations.some(
+              (conversation) => conversation.key === preferredKey
+            )
             ? preferredKey
             : next.conversations[0]?.key
         );
+        // Consume this navigation hint after the first overview, even if its
+        // key is absent. It must never override a later manual selection.
+        hasConsumedPreferredConversationRef.current = true;
       } catch (error) {
         if (!controller.signal.aborted && !isCancelledRequest(error)) {
           setOverview({ ...idleOverview, status: "error" });
@@ -345,7 +358,7 @@ export function useGlobalChatSearch({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [dataSource, filters, isActive, keyword]);
+  }, [dataSource, filters, isActive, keyword, overviewRetry]);
 
   useEffect(() => {
     resultAbortRef.current?.abort();
@@ -463,6 +476,7 @@ export function useGlobalChatSearch({
     selectedConversation,
     result,
     selectConversation: setSelectedKey,
+    retryOverview: () => setOverviewRetry((attempt) => attempt + 1),
     loadMore,
   };
 }

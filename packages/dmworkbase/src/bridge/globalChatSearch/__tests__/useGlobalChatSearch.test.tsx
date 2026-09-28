@@ -34,6 +34,7 @@ import {
   type ChannelSearchItem,
   defaultGlobalSearchFilters,
   type GlobalSearchDataSource,
+  type GlobalSearchFilters,
   type GlobalSearchQuery,
 } from "../../../Service/SearchTypes";
 import useGlobalChatSearch from "../useGlobalChatSearch";
@@ -228,6 +229,60 @@ describe("useGlobalChatSearch", () => {
         }),
       })
     );
+  });
+
+  it("does not restore the aggregate preference after a manual selection", async () => {
+    const dataSource: GlobalSearchDataSource = {
+      getSenders: () => [],
+      getSender: (uid) => ({ uid, name: uid }),
+      getSelfUid: () => "self",
+      getFileTypeCategories: async () => [],
+      searchMessages: vi.fn().mockResolvedValue({ items: [], hasMore: false }),
+    };
+    hoisted.searchGroups.mockResolvedValue({
+      data: {
+        groups: [
+          { channel_id: "a", channel_type: 1, group_name: "A" },
+          { channel_id: "b", channel_type: 1, group_name: "B" },
+        ],
+      },
+    });
+    let latest: ReturnType<typeof useGlobalChatSearch> | undefined;
+    function Probe({ filters }: { filters: GlobalSearchFilters }) {
+      latest = useGlobalChatSearch({
+        keyword: "octo",
+        filters,
+        dataSource,
+        isActive: true,
+        preferredConversationKey: "1:b",
+      });
+      return null;
+    }
+
+    const filters = defaultGlobalSearchFilters();
+    act(() => {
+      ReactDOM.render(<Probe filters={filters} />, container);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+      await flushMicrotasks();
+    });
+    expect(latest?.selectedKey).toBe("1:b");
+
+    act(() => latest?.selectConversation("1:a"));
+    expect(latest?.selectedKey).toBe("1:a");
+
+    act(() => {
+      ReactDOM.render(
+        <Probe filters={{ ...filters, datePreset: "today" }} />,
+        container
+      );
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+      await flushMicrotasks();
+    });
+    expect(latest?.selectedKey).toBe("1:a");
   });
 
   it("loads only the overview until conversation details are enabled", async () => {

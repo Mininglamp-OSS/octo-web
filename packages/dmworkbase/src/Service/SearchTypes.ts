@@ -264,6 +264,8 @@ export interface DocSearchQuery {
   // page; set to the previous response's nextCursor to fetch the next page.
   cursor?: string;
   pageSize: number;
+  /** Cancels a stale aggregate-preview request when its query changes. */
+  signal?: AbortSignal;
 }
 
 export interface DocSearchResponse {

@@ -3,21 +3,13 @@ import type { LegacyGlobalSearchContact } from "../../Service/SearchService";
 import { getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 
-function sourceFields(source: Record<string, unknown>) {
-  const org = source.orgData;
-  const fields = typeof org === "object" && org !== null ? org : {};
-  const homeId =
-    source.home_space_id ??
-    ("home_space_id" in fields ? fields.home_space_id : undefined);
-  const homeName =
-    source.home_space_name ??
-    ("home_space_name" in fields ? fields.home_space_name : undefined);
-  const external =
-    source.is_external ??
-    ("is_external" in fields ? fields.is_external : undefined);
-  const sourceName =
-    source.source_space_name ??
-    ("source_space_name" in fields ? fields.source_space_name : undefined);
+type SourceMetadata = Record<string, unknown>;
+
+function metadataFields(source: SourceMetadata) {
+  const homeId = source.home_space_id;
+  const homeName = source.home_space_name;
+  const external = source.is_external;
+  const sourceName = source.source_space_name;
   return {
     homeSpaceId: typeof homeId === "string" ? homeId : undefined,
     homeSpaceName: typeof homeName === "string" ? homeName : undefined,
@@ -27,10 +19,24 @@ function sourceFields(source: Record<string, unknown>) {
   };
 }
 
+function contactSourceFields(contact: LegacyGlobalSearchContact) {
+  const direct = metadataFields(contact);
+  const orgData = contact.orgData;
+  if (typeof orgData !== "object" || orgData === null) return direct;
+  const nested = metadataFields(orgData as SourceMetadata);
+  return {
+    homeSpaceId: direct.homeSpaceId ?? nested.homeSpaceId,
+    homeSpaceName: direct.homeSpaceName ?? nested.homeSpaceName,
+    isExternalLegacy: direct.isExternalLegacy ?? nested.isExternalLegacy,
+    sourceSpaceNameLegacy:
+      direct.sourceSpaceNameLegacy ?? nested.sourceSpaceNameLegacy,
+  };
+}
+
 export function hasGlobalSearchContactSource(
   contact: LegacyGlobalSearchContact
 ) {
-  const fields = sourceFields(contact);
+  const fields = contactSourceFields(contact);
   return !!fields.homeSpaceId || fields.isExternalLegacy !== undefined;
 }
 
@@ -38,13 +44,13 @@ export function hasGlobalSearchContactSource(
 export function resolveGlobalSearchContactSource(
   contact: LegacyGlobalSearchContact
 ) {
-  let fields = sourceFields(contact);
+  let fields = contactSourceFields(contact);
   if (!hasGlobalSearchContactSource(contact) && contact.channel_id) {
     const cached = getCurrentImChannelInfo(
       new Channel(contact.channel_id, ChannelTypePerson)
     )?.orgData;
     if (cached) {
-      const fallback = sourceFields(cached);
+      const fallback = metadataFields(cached as SourceMetadata);
       fields = {
         ...fallback,
         homeSpaceName: fields.homeSpaceName ?? fallback.homeSpaceName,

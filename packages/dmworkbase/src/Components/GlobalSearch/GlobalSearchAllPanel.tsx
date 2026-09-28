@@ -5,6 +5,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { Channel } from "wukongimjssdk";
 import { FileResultItem } from "../ChannelSearch";
 import ItemContacts from "./item-contacts";
 import ItemGroup from "./item-group";
@@ -30,7 +31,12 @@ import "./global-search-all-panel.css";
 
 const LIMIT = 3;
 
-type TopState<T> = { items: T[]; loading: boolean };
+type TopState<T> = {
+  items: T[];
+  loading: boolean;
+  error: boolean;
+  retry: () => void;
+};
 
 function useTopResults<T>(
   enabled: boolean,
@@ -39,23 +45,32 @@ function useTopResults<T>(
   const [state, setState] = useState<TopState<T>>({
     items: [],
     loading: false,
+    error: false,
+    retry: () => undefined,
   });
+  const [retryVersion, setRetryVersion] = useState(0);
+  const retry = useCallback(
+    () => setRetryVersion((version) => version + 1),
+    []
+  );
 
   useEffect(() => {
     if (!enabled) {
-      setState({ items: [], loading: false });
+      setState({ items: [], loading: false, error: false, retry });
       return;
     }
     const controller = new AbortController();
-    setState({ items: [], loading: true });
+    setState({ items: [], loading: true, error: false, retry });
     void request(controller.signal).then(
       (items) =>
-        !controller.signal.aborted && setState({ items, loading: false }),
+        !controller.signal.aborted &&
+        setState({ items, loading: false, error: false, retry }),
       () =>
-        !controller.signal.aborted && setState({ items: [], loading: false })
+        !controller.signal.aborted &&
+        setState({ items: [], loading: false, error: true, retry })
     );
     return () => controller.abort();
-  }, [enabled, request]);
+  }, [enabled, request, retry, retryVersion]);
 
   return state;
 }
@@ -91,13 +106,17 @@ function useTopDocs(
 ): TopState<DocSearchItem> {
   const searchDocs = dataSource.searchDocs;
   const canSearch = enabled && !!keyword.trim() && !!searchDocs;
-  const request = useCallback(async () => {
-    const response = await searchDocs!({
-      keyword: keyword.trim(),
-      pageSize: LIMIT,
-    });
-    return response.items.slice(0, LIMIT);
-  }, [keyword, searchDocs]);
+  const request = useCallback(
+    async (signal: AbortSignal) => {
+      const response = await searchDocs!({
+        keyword: keyword.trim(),
+        pageSize: LIMIT,
+        signal,
+      });
+      return response.items.slice(0, LIMIT);
+    },
+    [keyword, searchDocs]
+  );
   return useTopResults(canSearch, request);
 }
 
@@ -131,6 +150,7 @@ interface Props {
   keyword: string;
   friends?: LegacyGlobalSearchContact[];
   groups?: LegacyGlobalSearchContact[];
+  legacyLoading?: boolean;
   dataSource: GlobalSearchDataSource;
   filters: GlobalSearchFilters;
   isActive: boolean;
@@ -264,6 +284,17 @@ export default function GlobalSearchAllPanel(props: Props) {
     () => chats.overview.conversations.slice(0, LIMIT),
     [chats.overview.conversations]
   );
+  const hasAggregateError =
+    files.error ||
+    docs.error ||
+    drive.error ||
+    chats.overview.status === "error";
+  const retryFailedSections = () => {
+    if (files.error) files.retry();
+    if (docs.error) docs.retry();
+    if (drive.error) drive.retry();
+    if (chats.overview.status === "error") chats.retryOverview();
+  };
   const moreLabel = t("base.globalSearch.all.more");
 
   if (!hasSearchCriteria)
@@ -337,7 +368,21 @@ export default function GlobalSearchAllPanel(props: Props) {
                 className="wk-global-search-all__conversation"
                 onClick={() => props.onOpenConversation(item.key)}
               >
-                <img src={item.avatarUrl} alt="" />
+                <img
+                  src={item.avatarUrl}
+                  alt=""
+                  onError={(event) => {
+                    const image = event.currentTarget;
+                    const fallback = WKApp.shared.avatarChannel(
+                      new Channel(item.channelId, item.channelType)
+                    );
+                    if (fallback && image.src !== fallback) {
+                      image.src = fallback;
+                    } else {
+                      image.style.visibility = "hidden";
+                    }
+                  }}
+                />
                 <span>{item.name}</span>
                 <small>
                   {item.preview[0]?.text || item.preview[0]?.file?.name || ""}
@@ -402,7 +447,8 @@ export default function GlobalSearchAllPanel(props: Props) {
           ))}
         </Segment>
       )}
-      {!files.loading &&
+      {!props.legacyLoading &&
+        !files.loading &&
         chats.overview.status !== "loading" &&
         !docs.loading &&
         !drive.loading &&
@@ -413,11 +459,19 @@ export default function GlobalSearchAllPanel(props: Props) {
           files.items.length ||
           docs.items.length ||
           drive.items.length
-        ) && (
+        ) &&
+        (hasAggregateError ? (
+          <div className="wk-global-search-all__hint">
+            <div>{t("base.globalSearch.searchFailedRetry")}</div>
+            <button type="button" onClick={retryFailedSections}>
+              {t("base.workspaceGroup.retry")}
+            </button>
+          </div>
+        ) : (
           <div className="wk-global-search-all__hint">
             {t("base.globalSearch.aggregated.emptyHint")}
           </div>
-        )}
+        ))}
     </div>
   );
 }

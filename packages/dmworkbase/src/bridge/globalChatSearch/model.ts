@@ -14,8 +14,6 @@ export interface GlobalChatSearchConversation {
   avatarUrl?: string;
   matchCount: number;
   isMatchCountApproximate: boolean;
-  /** Last matching message time supplied by the group overview endpoint. */
-  latestAt?: number;
   preview: ChannelSearchItem[];
 }
 

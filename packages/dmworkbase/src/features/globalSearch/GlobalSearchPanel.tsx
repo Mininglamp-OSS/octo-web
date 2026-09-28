@@ -140,6 +140,9 @@ export default class GlobalSearch extends Component<
       fileTypeCategoryKeys:
         meta?.fileTypeCategoryKeys ??
         (filters.fileExts.length > 0 ? prev.fileTypeCategoryKeys : []),
+      // The All-tab conversation is only an initial-selection hint. A filter
+      // change starts a new search, so it must not restore that old choice.
+      selectedConversationKey: undefined,
     }));
   };
 
@@ -306,6 +309,7 @@ export default class GlobalSearch extends Component<
             keyword={vm.keyword}
             friends={vm.searchResult?.friends}
             groups={vm.searchResult?.groups}
+            legacyLoading={vm.legacyLoading}
             dataSource={this.globalDataSource}
             filters={this.state.filters}
             isActive={currentKey === "all"}
