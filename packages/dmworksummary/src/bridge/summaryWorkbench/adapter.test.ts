@@ -113,6 +113,9 @@ describe("summary workspace adapter", () => {
         state: { ...emptyState(4), summary_context: wire },
       });
       expect(roundTrip.scope).toEqual(hydration.scope);
+      // A lossless round trip must not advance the version — the server's
+      // stored scope_hash still matches, so no 409 is possible.
+      expect(roundTrip.modelOptions.scopeVersion).toBe(4);
     }
   );
 

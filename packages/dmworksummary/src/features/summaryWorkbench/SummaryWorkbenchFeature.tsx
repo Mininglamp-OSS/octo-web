@@ -85,6 +85,7 @@ import {
   scopeChannelsToCandidates,
   scopeDocumentsToItems,
   scopeParticipantsToCandidates,
+  withChatOnlyTimeRange,
   type WorkbenchMemberCandidate,
 } from "./scope";
 import "./SummaryWorkbenchFeature.css";
@@ -606,19 +607,29 @@ export default function SummaryWorkbenchFeature({
   // time-range entry stays available alongside documents (it scopes the chat
   // side only); the participant entry remains exclusive with documents
   // (phase-1 personal-only). When mixed_sources is OFF (gate default), the
-  // pre-mixed behavior is kept: a document scope hides time_range so nothing
-  // the worker would reject can be composed.
+  // pre-mixed behavior is kept: a document scope offers neither chat nor
+  // time_range, so nothing the worker would reject can be composed.
   const mixedDocumentsSelected = (workbench.scope.documents ?? []).length > 0;
+  const mixedChatPresent = workbench.scope.selectedChannels.length > 0;
+  // The time range scopes the chat side only: it is offered on a document
+  // scope only when at least one chat is also selected (and the capability is
+  // on), so a document-only scope can never acquire a picker range.
   const documentSourceKinds: SummaryWorkbenchContextKind[] =
     mixedDocumentsSelected && mixedSources
-      ? ["document", "time_range"]
+      ? mixedChatPresent
+        ? ["document", "time_range"]
+        : ["document"]
       : ["document"];
   const availableContextKinds: SummaryWorkbenchContextKind[] =
     mixedDocumentsSelected
-      ? [
-          "chat",
-          ...(documentSelectorAvailable ? documentSourceKinds : []),
-        ]
+      ? mixedSources
+        ? [
+            "chat",
+            ...(documentSelectorAvailable ? documentSourceKinds : []),
+          ]
+        : documentSelectorAvailable
+          ? ["document"]
+          : []
       : [
           "chat",
           ...(documentSelectorAvailable ? (["document"] as const) : []),
@@ -800,6 +811,14 @@ export default function SummaryWorkbenchFeature({
       return;
     }
     if (kind === "document" && !documentSelectorAvailable) return;
+    // A reference-summary stack is incompatible with a mixed scope (the
+    // backend rejects referenced_task_ids on a document+chat scope). Block
+    // attaching a new reference while the scope is mixed, mirroring the
+    // backend boundary.
+    if (kind === "reference" && mixedDocumentsSelected && mixedChatPresent) {
+      Toast.info(t("summary.workbench.notice.referencesUnsupportedForMixedScope"));
+      return;
+    }
     if (kind === "participant" && !canSelectParticipants(workbench.scope)) {
       Toast.info(t("summary.workbench.notice.selectSingleChatForParticipants"));
       return;
@@ -818,7 +837,7 @@ export default function SummaryWorkbenchFeature({
     if (kind === "template" && templateLocked) return;
     const shouldClearTemplateText =
       kind === "template" && templateFilledComposer.current !== null;
-    const result = removeScopeContext(workbench.scope, kind, id);
+    const result = removeScopeContext(workbench.scope, kind, id, mixedSources);
     updateScopeWithPreviewGuard(result.scope, () => {
       if (shouldClearTemplateText) {
         templateFilledComposer.current = null;
@@ -1081,7 +1100,8 @@ export default function SummaryWorkbenchFeature({
           if (busy) return;
           const result = replaceSelectedChannels(
             workbench.scope,
-            chatCandidatesToScope(chats)
+            chatCandidatesToScope(chats),
+            mixedSources
           );
           if (result.scope === workbench.scope) {
             setOpenSelector(null);
@@ -1105,7 +1125,8 @@ export default function SummaryWorkbenchFeature({
           if (busy) return;
           const result = replaceSelectedDocuments(
             workbench.scope,
-            documentsToScope(documents)
+            documentsToScope(documents),
+            mixedSources
           );
           if (result.scope === workbench.scope) {
             setOpenSelector(null);
@@ -1115,6 +1136,11 @@ export default function SummaryWorkbenchFeature({
             setOpenSelector(null);
             if (result.participantsCleared) {
               Toast.info(t("summary.workbench.notice.participantsCleared"));
+            }
+            if (result.referencesCleared) {
+              setReferencedTask(null);
+              setReferencePreviewOpen(false);
+              Toast.info(t("summary.workbench.notice.referencesCleared"));
             }
           });
         }}
@@ -1163,12 +1189,12 @@ export default function SummaryWorkbenchFeature({
             onChange={(timeRange: SummaryWorkbenchTimeRangeScope | null) => {
               if (busy) return;
               updateScopeWithPreviewGuard(
-                {
+                withChatOnlyTimeRange({
                   ...workbench.scope,
                   timeRange: timeRange
                     ? { ...timeRange, source: "picker" }
                     : null,
-                },
+                }),
                 () => setOpenSelector(null)
               );
             }}
