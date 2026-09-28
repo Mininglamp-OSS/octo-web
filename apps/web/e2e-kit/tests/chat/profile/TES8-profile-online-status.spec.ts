@@ -128,6 +128,18 @@ test("@TES8 @p0 @chat @profile 资料详情在线状态专用 e2e", async ({ aut
         channel_name: profiles[uid].name,
         is_bot: profiles[uid].robot,
       });
+      // The aggregate "All" tab also requests group and file previews. Use
+      // the real APIClient paths: the suffix-only wildcard is not reliably
+      // consumed by the browser Service Worker in the preview build.
+      const emptyGroups = async ({ request }: any) => {
+        const body = await request.json().catch(() => null);
+        return R.json({
+          data: { sequence: body?.sequence ?? 1, total_groups: 0, groups: [] },
+          pagination: { has_more: false },
+        });
+      };
+      const emptyFiles = () =>
+        R.json({ data: [], pagination: { has_more: false } });
       worker.use(
         h.post("*/search/global", async ({ request }: any) => {
           let keyword = "";
@@ -140,6 +152,8 @@ test("@TES8 @p0 @chat @profile 资料详情在线状态专用 e2e", async ({ aut
             .map(hit);
           return R.json({ friends, groups: [], messages: [], files: [] });
         }),
+        h.post("*/api/v1/messages/_search_global_groups", emptyGroups),
+        h.post("*/api/v1/messages/_search_global_files", emptyFiles),
         h.get("*/users/:uid", ({ params }: any) => {
           const uid = String(params.uid);
           return R.json(profiles[uid] || profiles[ids.self]);

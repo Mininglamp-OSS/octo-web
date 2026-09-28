@@ -310,6 +310,7 @@ export default class GlobalSearch extends Component<
             friends={vm.searchResult?.friends}
             groups={vm.searchResult?.groups}
             legacyLoading={vm.legacyLoading}
+            legacyError={!!vm.searchError}
             dataSource={this.globalDataSource}
             filters={this.state.filters}
             isActive={currentKey === "all"}

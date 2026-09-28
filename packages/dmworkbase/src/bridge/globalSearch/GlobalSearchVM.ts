@@ -196,6 +196,11 @@ export default class GlobalSearchVM extends ProviderListener {
     const currentRequestId = this.requestId;
 
     this.searchError = null;
+    // requestSearch is also called directly on mount, bypassing initLoad().
+    // Raise the latch here so every legacy request suppresses an empty-state
+    // assertion until its result has settled.
+    this.legacyLoading = true;
+    this.notifyListener();
 
     const spaceId = WKApp.shared.currentSpaceId;
     SearchService.searchLegacyGlobal({

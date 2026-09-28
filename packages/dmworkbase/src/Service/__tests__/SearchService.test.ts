@@ -199,10 +199,14 @@ describe("SearchService request boundaries", () => {
     });
 
     // First page: cursor omitted entirely (backend starts from the top).
-    expect(postMock).toHaveBeenCalledWith("docs/search", {
-      q: "spec",
-      pageSize: 20,
-    });
+    expect(postMock).toHaveBeenCalledWith(
+      "docs/search",
+      {
+        q: "spec",
+        pageSize: 20,
+      },
+      { signal: undefined }
+    );
     expect(result).toEqual({
       total: 2,
       items: [
@@ -220,11 +224,15 @@ describe("SearchService request boundaries", () => {
       pageSize: 20,
       cursor: "cur-2",
     });
-    expect(postMock).toHaveBeenCalledWith("docs/search", {
-      q: "x",
-      pageSize: 20,
-      cursor: "cur-2",
-    });
+    expect(postMock).toHaveBeenCalledWith(
+      "docs/search",
+      {
+        q: "x",
+        pageSize: 20,
+        cursor: "cur-2",
+      },
+      { signal: undefined }
+    );
   });
 
   it("nextCursor: reads a non-empty string, else undefined; total falls back to the visible item count", async () => {

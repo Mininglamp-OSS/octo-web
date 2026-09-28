@@ -43,6 +43,17 @@ test("@C989 @p0 @search 顶部搜索 bot → 名片发送消息 → 外层搜索
       const w = globalThis as unknown as { __msw?: MSW };
       if (!w.__msw) throw new Error("MSW not ready");
       const { worker, http: h, HttpResponse: R } = w.__msw;
+      // Opening search now lands on the aggregate "All" tab, which fetches
+      // group and file previews in addition to the legacy contact search.
+      const emptyGroups = async ({ request }: any) => {
+        const body = await request.json().catch(() => null);
+        return R.json({
+          data: { sequence: body?.sequence ?? 1, total_groups: 0, groups: [] },
+          pagination: { has_more: false },
+        });
+      };
+      const emptyFiles = () =>
+        R.json({ data: [], pagination: { has_more: false } });
       worker.use(
         h.post("*/search/global", () =>
           R.json({
@@ -59,6 +70,8 @@ test("@C989 @p0 @search 顶部搜索 bot → 名片发送消息 → 外层搜索
             files: [],
           })
         ),
+        h.post("*/api/v1/messages/_search_global_groups", emptyGroups),
+        h.post("*/api/v1/messages/_search_global_files", emptyFiles),
         h.get(`*/users/${botUid}`, () =>
           R.json({
             uid: botUid,

@@ -248,6 +248,22 @@ describe("GlobalSearchVM", () => {
     expect(vm.notifyListener).toHaveBeenCalled();
   });
 
+  it("raises the legacy loading latch for direct mount-path searches", async () => {
+    let resolveSearch!: (value: ReturnType<typeof result>) => void;
+    mocks.searchLegacyGlobal.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSearch = resolve;
+      })
+    );
+    const vm = new GlobalSearchVM();
+
+    vm.requestSearch();
+
+    expect(vm.legacyLoading).toBe(true);
+    resolveSearch(result());
+    await vi.waitFor(() => expect(vm.legacyLoading).toBe(false));
+  });
+
   it("resets pagination and changes content type when switching to files", () => {
     mocks.searchLegacyGlobal.mockResolvedValue(result());
     const vm = new GlobalSearchVM();

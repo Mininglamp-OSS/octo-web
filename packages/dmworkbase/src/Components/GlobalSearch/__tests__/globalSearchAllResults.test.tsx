@@ -1,5 +1,12 @@
 import React from "react";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ImChannelInfoLike,
@@ -51,30 +58,45 @@ function mountPanel({
   keyword = "Alex",
   isActive = true,
   contentSearchEnabled = false,
+  docsEnabled = false,
+  docsError = false,
+  legacyError = false,
 }: {
   friends?: LegacyGlobalSearchContact[];
   keyword?: string;
   isActive?: boolean;
   contentSearchEnabled?: boolean;
+  docsEnabled?: boolean;
+  docsError?: boolean;
+  legacyError?: boolean;
 } = {}) {
   const searchMessages = vi
     .fn()
     .mockResolvedValue({ items: [], hasMore: false });
+  const searchDocs = vi
+    .fn()
+    .mockImplementation(() =>
+      docsError
+        ? Promise.reject(new Error("docs search failed"))
+        : Promise.resolve({ items: [] })
+    );
   const dataSource: GlobalSearchDataSource = {
     getSelfUid: () => "self",
     getSenders: () => [],
     getSender: (uid) => ({ uid, name: uid }),
     getFileTypeCategories: async () => [],
     searchMessages,
+    searchDocs,
   };
   const props = {
     keyword,
     friends,
     isActive,
     contentSearchEnabled,
+    legacyError,
     dataSource,
     filters: defaultGlobalSearchFilters(),
-    docsEnabled: false,
+    docsEnabled,
     driveEnabled: false,
     onSelectTab: vi.fn(),
     onOpenConversation: vi.fn(),
@@ -87,6 +109,7 @@ function mountPanel({
     ...render(<GlobalSearchAllPanel {...props} />),
     props,
     searchMessages,
+    searchDocs,
   };
 }
 
@@ -102,6 +125,17 @@ afterEach(() => {
 });
 
 describe("aggregate search results", () => {
+  it("does not leave aggregate rows mounted while another tab is active", () => {
+    const view = mountPanel({
+      friends: [{ channel_id: "alex", channel_type: 1, channel_name: "Alex" }],
+      isActive: false,
+    });
+
+    expect(screen.queryByText("Alex")).toBeNull();
+    view.rerender(<GlobalSearchAllPanel {...view.props} isActive />);
+    expect(screen.getByText("Alex")).toBeInTheDocument();
+  });
+
   it("does not fetch metadata for results hidden behind the start hint", () => {
     mountPanel({
       keyword: "",
@@ -110,6 +144,32 @@ describe("aggregate search results", () => {
     expect(screen.queryByText("Alex")).toBeNull();
     expect(fixture.fetchChannel).not.toHaveBeenCalled();
     expect(fixture.listeners.size).toBe(0);
+  });
+
+  it("does not claim an empty result after the legacy search failed", () => {
+    const view = mountPanel({ legacyError: true });
+
+    expect(
+      view.container.querySelector(".wk-global-search-all__hint")
+    ).toBeNull();
+  });
+
+  it("shows an errored docs section and retries it when contacts have results", async () => {
+    const { searchDocs } = mountPanel({
+      friends: [{ channel_id: "alex", channel_type: 1, channel_name: "Alex" }],
+      docsEnabled: true,
+      docsError: true,
+    });
+
+    expect(screen.getByText("Alex")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "搜索失败，请稍后重试"
+      )
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(searchDocs).toHaveBeenCalledTimes(2));
   });
 
   it.each([

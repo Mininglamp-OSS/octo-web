@@ -22,6 +22,22 @@
   color: var(--wk-color-primary);
   cursor: pointer;
 }
+.wk-global-search-all__segment-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-3);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
+}
+.wk-global-search-all__segment-error button {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--wk-color-primary);
+  cursor: pointer;
+}
 .wk-global-search-all__hint {
   padding: 48px 12px;
   text-align: center;

@@ -151,6 +151,8 @@ interface Props {
   friends?: LegacyGlobalSearchContact[];
   groups?: LegacyGlobalSearchContact[];
   legacyLoading?: boolean;
+  /** The legacy contacts/groups request failed, so it cannot prove an empty result. */
+  legacyError?: boolean;
   dataSource: GlobalSearchDataSource;
   filters: GlobalSearchFilters;
   isActive: boolean;
@@ -192,6 +194,25 @@ function Segment({
       </header>
       {children}
     </section>
+  );
+}
+
+function SegmentError({
+  message,
+  retryLabel,
+  onRetry,
+}: {
+  message: string;
+  retryLabel: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="wk-global-search-all__segment-error" role="alert">
+      <span>{message}</span>
+      <button type="button" onClick={onRetry}>
+        {retryLabel}
+      </button>
+    </div>
   );
 }
 
@@ -289,13 +310,16 @@ export default function GlobalSearchAllPanel(props: Props) {
     docs.error ||
     drive.error ||
     chats.overview.status === "error";
-  const retryFailedSections = () => {
-    if (files.error) files.retry();
-    if (docs.error) docs.retry();
-    if (drive.error) drive.retry();
-    if (chats.overview.status === "error") chats.retryOverview();
-  };
   const moreLabel = t("base.globalSearch.all.more");
+  const searchFailedRetryLabel = t("base.globalSearch.searchFailedRetry");
+  const retryLabel = t("base.workspaceGroup.retry");
+
+  // This panel remains mounted across tab switches to preserve its request
+  // state, but its rows must not remain in the DOM while another tab is
+  // active. Apart from avoiding duplicate accessible content, this prevents
+  // strict text locators from resolving both the active tab and this hidden
+  // aggregate preview.
+  if (!props.isActive) return null;
 
   if (!hasSearchCriteria)
     return (
@@ -354,7 +378,9 @@ export default function GlobalSearchAllPanel(props: Props) {
         </Segment>
       )}
       {props.contentSearchEnabled &&
-        (conversations.length > 0 || chats.overview.status === "loading") && (
+        (conversations.length > 0 ||
+          chats.overview.status === "loading" ||
+          chats.overview.status === "error") && (
           <Segment
             title={t("base.globalSearch.tab.chat")}
             moreTab="messages"
@@ -389,10 +415,17 @@ export default function GlobalSearchAllPanel(props: Props) {
                 </small>
               </button>
             ))}
+            {chats.overview.status === "error" && (
+              <SegmentError
+                message={searchFailedRetryLabel}
+                retryLabel={retryLabel}
+                onRetry={chats.retryOverview}
+              />
+            )}
           </Segment>
         )}
       {props.contentSearchEnabled &&
-        (files.items.length > 0 || files.loading) && (
+        (files.items.length > 0 || files.loading || files.error) && (
           <Segment
             title={t("base.globalSearch.tab.files")}
             moreTab="files"
@@ -410,44 +443,68 @@ export default function GlobalSearchAllPanel(props: Props) {
                 onLocate={props.onLocateMessage}
               />
             ))}
+            {files.error && (
+              <SegmentError
+                message={searchFailedRetryLabel}
+                retryLabel={retryLabel}
+                onRetry={files.retry}
+              />
+            )}
           </Segment>
         )}
-      {props.docsEnabled && (docs.items.length > 0 || docs.loading) && (
-        <Segment
-          title={t("base.globalSearch.tab.docs")}
-          moreTab="docs"
-          onSelectTab={props.onSelectTab}
-          moreLabel={moreLabel}
-        >
-          {docs.items.map((item) => (
-            <button
-              type="button"
-              className="wk-global-search-all__plain-hit"
-              key={item.docId}
-              onClick={() => props.onOpenDoc(item)}
-            >
-              {item.title}
-            </button>
-          ))}
-        </Segment>
-      )}
-      {props.driveEnabled && (drive.items.length > 0 || drive.loading) && (
-        <Segment
-          title={t("base.globalSearch.tab.drive")}
-          moreTab="drive"
-          onSelectTab={props.onSelectTab}
-          moreLabel={moreLabel}
-        >
-          {drive.items.map((item) => (
-            <DriveSearchResultItem
-              key={item.file_id}
-              hit={item}
-              onOpen={props.onOpenDriveHit}
-            />
-          ))}
-        </Segment>
-      )}
+      {props.docsEnabled &&
+        (docs.items.length > 0 || docs.loading || docs.error) && (
+          <Segment
+            title={t("base.globalSearch.tab.docs")}
+            moreTab="docs"
+            onSelectTab={props.onSelectTab}
+            moreLabel={moreLabel}
+          >
+            {docs.items.map((item) => (
+              <button
+                type="button"
+                className="wk-global-search-all__plain-hit"
+                key={item.docId}
+                onClick={() => props.onOpenDoc(item)}
+              >
+                {item.title}
+              </button>
+            ))}
+            {docs.error && (
+              <SegmentError
+                message={searchFailedRetryLabel}
+                retryLabel={retryLabel}
+                onRetry={docs.retry}
+              />
+            )}
+          </Segment>
+        )}
+      {props.driveEnabled &&
+        (drive.items.length > 0 || drive.loading || drive.error) && (
+          <Segment
+            title={t("base.globalSearch.tab.drive")}
+            moreTab="drive"
+            onSelectTab={props.onSelectTab}
+            moreLabel={moreLabel}
+          >
+            {drive.items.map((item) => (
+              <DriveSearchResultItem
+                key={item.file_id}
+                hit={item}
+                onOpen={props.onOpenDriveHit}
+              />
+            ))}
+            {drive.error && (
+              <SegmentError
+                message={searchFailedRetryLabel}
+                retryLabel={retryLabel}
+                onRetry={drive.retry}
+              />
+            )}
+          </Segment>
+        )}
       {!props.legacyLoading &&
+        !props.legacyError &&
         !files.loading &&
         chats.overview.status !== "loading" &&
         !docs.loading &&
@@ -460,18 +517,11 @@ export default function GlobalSearchAllPanel(props: Props) {
           docs.items.length ||
           drive.items.length
         ) &&
-        (hasAggregateError ? (
-          <div className="wk-global-search-all__hint">
-            <div>{t("base.globalSearch.searchFailedRetry")}</div>
-            <button type="button" onClick={retryFailedSections}>
-              {t("base.workspaceGroup.retry")}
-            </button>
-          </div>
-        ) : (
+        !hasAggregateError && (
           <div className="wk-global-search-all__hint">
             {t("base.globalSearch.aggregated.emptyHint")}
           </div>
-        ))}
+        )}
     </div>
   );
 }
