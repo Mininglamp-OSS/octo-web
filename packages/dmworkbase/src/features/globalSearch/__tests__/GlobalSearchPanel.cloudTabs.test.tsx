@@ -52,6 +52,7 @@ function mountSearch(selectedTabKey = "contacts") {
     getSelfUid: () => "self",
     getSenders: () => [],
     getSender: (uid) => ({ uid, name: uid }),
+    getFileTypeCategories: async () => [],
     searchMessages: vi.fn().mockResolvedValue({ items: [], hasMore: false }),
     searchDocs,
     searchDrive,
@@ -73,7 +74,7 @@ function tabLabels() {
 }
 
 describe("GlobalSearch cloud tabs", () => {
-  it.each(["contacts", "docs", "drive"])(
+  it.each(["all", "contacts", "docs", "drive"])(
     "does not mount or query cloud panels in Client with selected key %s",
     async (selectedTabKey) => {
       vi.useFakeTimers();
@@ -81,7 +82,7 @@ describe("GlobalSearch cloud tabs", () => {
       const { container, searchDocs, searchDrive } = mountSearch(selectedTabKey);
 
       expect(tabLabels()).toEqual(
-        ["contacts", "groups", "chat", "files"].map((key) => t(`base.globalSearch.tab.${key}`))
+        ["all", "contacts", "groups", "chat", "files"].map((key) => t(`base.globalSearch.tab.${key}`))
       );
       expect(container.querySelector(".wk-doc-search")).toBeNull();
       expect(container.querySelector(".wk-drive-search")).toBeNull();
@@ -94,7 +95,7 @@ describe("GlobalSearch cloud tabs", () => {
   it("keeps both cloud tabs in standalone Web and searches only the active one", async () => {
     const { searchDocs, searchDrive } = mountSearch();
     expect(tabLabels()).toEqual(
-      ["contacts", "groups", "chat", "files", "docs", "drive"].map((key) => t(`base.globalSearch.tab.${key}`))
+      ["all", "contacts", "groups", "chat", "files", "docs", "drive"].map((key) => t(`base.globalSearch.tab.${key}`))
     );
     expect(searchDocs).not.toHaveBeenCalled();
     expect(searchDrive).not.toHaveBeenCalled();

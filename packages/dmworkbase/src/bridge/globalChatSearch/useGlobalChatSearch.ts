@@ -57,6 +57,8 @@ interface UseGlobalChatSearchOptions {
   isActive: boolean;
   /** A conversation selected on the aggregate search surface. */
   preferredConversationKey?: string;
+  /** Aggregate previews only need the overview returned by the group search. */
+  loadConversationDetails?: boolean;
 }
 
 const idleOverview: OverviewState = {
@@ -251,6 +253,7 @@ export function useGlobalChatSearch({
   dataSource,
   isActive,
   preferredConversationKey,
+  loadConversationDetails = true,
 }: UseGlobalChatSearchOptions) {
   const [overview, setOverview] = useState<OverviewState>(idleOverview);
   const [selectedKey, setSelectedKey] = useState<string>();
@@ -347,7 +350,7 @@ export function useGlobalChatSearch({
   useEffect(() => {
     resultAbortRef.current?.abort();
     loadingMoreRef.current = false;
-    if (!isActive || !selectedConversation) {
+    if (!isActive || !loadConversationDetails || !selectedConversation) {
       setResult(idleResult);
       return;
     }
@@ -389,10 +392,18 @@ export function useGlobalChatSearch({
       });
 
     return () => controller.abort();
-  }, [dataSource, filters, isActive, keyword, selectedConversation]);
+  }, [
+    dataSource,
+    filters,
+    isActive,
+    keyword,
+    loadConversationDetails,
+    selectedConversation,
+  ]);
 
   const loadMore = useCallback(async () => {
     if (
+      !loadConversationDetails ||
       !selectedConversation ||
       !result.hasMore ||
       !result.nextCursor ||
@@ -440,6 +451,7 @@ export function useGlobalChatSearch({
     dataSource,
     filters,
     keyword,
+    loadConversationDetails,
     result.hasMore,
     result.nextCursor,
     selectedConversation,

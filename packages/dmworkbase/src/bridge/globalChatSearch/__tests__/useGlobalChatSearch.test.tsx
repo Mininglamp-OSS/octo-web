@@ -230,6 +230,57 @@ describe("useGlobalChatSearch", () => {
     );
   });
 
+  it("loads only the overview until conversation details are enabled", async () => {
+    const searchMessages = vi
+      .fn()
+      .mockResolvedValue({ items: [item("a-1", "a")], hasMore: false });
+    const dataSource: GlobalSearchDataSource = {
+      getSenders: () => [],
+      getSender: (uid) => ({ uid, name: uid }),
+      getSelfUid: () => "self",
+      getFileTypeCategories: async () => [],
+      searchMessages,
+    };
+    hoisted.searchGroups.mockResolvedValue({
+      data: { groups: [{ channel_id: "a", channel_type: 1, group_name: "A" }] },
+    });
+    const filters = defaultGlobalSearchFilters();
+    let latest: ReturnType<typeof useGlobalChatSearch> | undefined;
+    function Probe({ details }: { details: boolean }) {
+      latest = useGlobalChatSearch({
+        keyword: "octo",
+        filters,
+        dataSource,
+        isActive: true,
+        loadConversationDetails: details,
+      });
+      return null;
+    }
+    act(() => {
+      ReactDOM.render(<Probe details={false} />, container);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+      await flushMicrotasks();
+    });
+    expect(latest?.overview.conversations.map((entry) => entry.key)).toEqual([
+      "1:a",
+    ]);
+    expect(searchMessages).not.toHaveBeenCalled();
+    await act(async () => {
+      await latest?.loadMore();
+    });
+    expect(searchMessages).not.toHaveBeenCalled();
+
+    await act(async () => {
+      ReactDOM.render(<Probe details />, container);
+      await flushMicrotasks();
+    });
+    expect(hoisted.searchGroups).toHaveBeenCalledOnce();
+    expect(searchMessages).toHaveBeenCalledOnce();
+    expect(latest?.result.items.map((entry) => entry.id)).toEqual(["a-1"]);
+  });
+
   it("falls back to the first conversation when the aggregate selection is absent", async () => {
     const searchMessages = vi.fn((query: GlobalSearchQuery) =>
       Promise.resolve({

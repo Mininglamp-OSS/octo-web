@@ -4,8 +4,7 @@ import type {
   DriveSearchHit,
   GlobalSearchDataSource,
 } from "../../Service/SearchTypes";
-import { formatFileSize } from "../../Utils/fileIcon";
-import { driveIconSrc } from "./searchFileIcon";
+import DriveSearchResultItem from "./DriveSearchResultItem";
 import "./drive-search-panel.css";
 
 const PAGE_SIZE = 20;
@@ -15,10 +14,6 @@ const DEBOUNCE_MS = 250;
 // Trigger the next page while this many px from the bottom (same as the
 // cursor-paged panels feed useSearchPagination).
 const SCROLL_THRESHOLD_PX = 100;
-// Upper bound on the highlight fragment we scan/render (see renderHighlight).
-const HIGHLIGHT_MAX_LEN = 2000;
-// Show at most this many body snippets per hit; the backend may return more.
-const BODY_SNIPPET_MAX = 2;
 
 // Abort rejections (keyword change / unmount cleanup calling controller.abort())
 // are expected control flow, never a real search failure — filter them so a
@@ -45,64 +40,13 @@ interface DriveSearchPanelProps {
   onOpenDriveHit?: (hit: DriveSearchHit) => void;
 }
 
-// Backend highlight fragments already wrap hits in <mark></mark>. Render them
-// into React text nodes with a <mark>-only allowlist: everything between/around
-// the tags becomes a plain React string (auto-escaped by React), and only the
-// marked spans are wrapped in <mark>. This never uses dangerouslySetInnerHTML,
-// so injected markup in the fragment cannot execute. (Same logic as
-// DocSearchPanel.renderHighlight, with <em> swapped for <mark>.)
-function renderHighlight(rawFragment: string): React.ReactNode {
-  const fragment =
-    rawFragment.length > HIGHLIGHT_MAX_LEN
-      ? rawFragment.slice(0, HIGHLIGHT_MAX_LEN)
-      : rawFragment;
-  const pattern = /<mark>([\s\S]*?)<\/mark>/gi;
-  const nodes: React.ReactNode[] = [];
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-  let key = 0;
-  while ((match = pattern.exec(fragment))) {
-    if (match.index > cursor) nodes.push(fragment.slice(cursor, match.index));
-    nodes.push(<mark key={key++}>{match[1]}</mark>);
-    cursor = pattern.lastIndex;
-  }
-  if (cursor < fragment.length) nodes.push(fragment.slice(cursor));
-  return nodes.length > 0 ? nodes : fragment;
-}
-
-function renderFileIcon(hit: DriveSearchHit): React.ReactNode {
-  return (
-    <img
-      className="wk-drive-search__icon-img"
-      src={driveIconSrc(hit.type, hit.name, hit.doc_type)}
-      width={48}
-      height={48}
-      alt=""
-    />
-  );
-}
-
-function formatUpdatedAt(iso: string, locale: string): string {
-  if (!iso) return "";
-  try {
-    return new Date(iso).toLocaleDateString(locale);
-  } catch {
-    return "";
-  }
-}
-
-// space_name + root-first folder chain (path excludes the hit itself).
-function breadcrumb(hit: DriveSearchHit): string {
-  return [hit.space_name, ...(hit.path ?? [])].filter(Boolean).join(" / ");
-}
-
 const DriveSearchPanel: React.FC<DriveSearchPanelProps> = ({
   keyword,
   dataSource,
   isActive = true,
   onOpenDriveHit,
 }) => {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const trimmed = keyword.trim();
   const canSearch = !!trimmed && isActive && !!dataSource.searchDrive;
 
@@ -346,54 +290,13 @@ const DriveSearchPanel: React.FC<DriveSearchPanelProps> = ({
       <div className="wk-drive-search__list" onScroll={handleScroll}>
         {items.length === 0
           ? emptyState
-          : items.map((hit) => {
-              const bodySnippets = (hit.highlights?.body ?? []).slice(
-                0,
-                BODY_SNIPPET_MAX
-              );
-              const crumb = breadcrumb(hit);
-              return (
-                <button
-                  type="button"
-                  key={`${hit.space_id}:${hit.file_id}`}
-                  className="wk-drive-search__item"
-                  onClick={() => onOpenDriveHit?.(hit)}
-                >
-                  <span className="wk-drive-search__icon">
-                    {renderFileIcon(hit)}
-                  </span>
-                  <span className="wk-drive-search__meta">
-                    <span className="wk-drive-search__title">
-                      {hit.highlights?.name?.[0]
-                        ? renderHighlight(hit.highlights.name[0])
-                        : hit.name}
-                    </span>
-                    {crumb && (
-                      <span className="wk-drive-search__crumb">{crumb}</span>
-                    )}
-                    {bodySnippets.length > 0 ? (
-                      bodySnippets.map((frag, i) => (
-                        <span key={i} className="wk-drive-search__snippet">
-                          {renderHighlight(frag)}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="wk-drive-search__sub">
-                        {[
-                          hit.owner_name,
-                          formatUpdatedAt(hit.updated_at, locale),
-                          typeof hit.size === "number"
-                            ? formatFileSize(hit.size)
-                            : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </span>
-                    )}
-                  </span>
-                </button>
-              );
-            })}
+          : items.map((hit) => (
+              <DriveSearchResultItem
+                key={`${hit.space_id}:${hit.file_id}`}
+                hit={hit}
+                onOpen={onOpenDriveHit}
+              />
+            ))}
         {/* Bottom hints (only once the first page has results). Priority:
             loadingMore spinner > paging error > truncated note > all-loaded. */}
         {items.length > 0 && loadingMore && (

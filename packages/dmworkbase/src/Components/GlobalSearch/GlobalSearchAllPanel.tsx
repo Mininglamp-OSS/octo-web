@@ -1,11 +1,19 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { FileResultItem } from "../ChannelSearch";
 import ItemContacts from "./item-contacts";
 import ItemGroup from "./item-group";
+import DriveSearchResultItem from "./DriveSearchResultItem";
 import WKApp from "../../App";
 import { isBot } from "../WKAvatar";
 import BotDetailModal from "../BotDetailModal";
 import useGlobalChatSearch from "../../bridge/globalChatSearch/useGlobalChatSearch";
+import { useGlobalSearchContactSources } from "../../bridge/globalSearch/useGlobalSearchContactSources";
 import { hasGlobalSearchCriteria } from "../../bridge/globalSearch/filterState";
 import { useI18n } from "../../i18n";
 import UserService from "../../Service/UserService";
@@ -172,8 +180,36 @@ export default function GlobalSearchAllPanel(props: Props) {
   const [openFileId, setOpenFileId] = useState<string | null>(null);
   const [botDetailUid, setBotDetailUid] = useState("");
   const [botDetailVisible, setBotDetailVisible] = useState(false);
+  const isActiveRef = useRef(props.isActive);
+  const contactRequestRef = useRef(0);
+  const hasSearchCriteria =
+    hasGlobalSearchCriteria("messages", props.keyword, props.filters) ||
+    hasGlobalSearchCriteria("files", props.keyword, props.filters);
+  const contacts = useMemo(
+    () => (props.friends ?? []).slice(0, LIMIT),
+    [props.friends]
+  );
+  const contactSources = useGlobalSearchContactSources(
+    contacts,
+    props.isActive && hasSearchCriteria
+  );
+
+  useEffect(() => {
+    isActiveRef.current = props.isActive;
+    if (!props.isActive) {
+      // The aggregate panel stays mounted while another tab is visible. Close
+      // its portal modal and invalidate a profile request started on this tab.
+      contactRequestRef.current += 1;
+      setBotDetailVisible(false);
+    }
+    return () => {
+      isActiveRef.current = false;
+      contactRequestRef.current += 1;
+    };
+  }, [props.isActive]);
 
   const handleContactClick = async (item: LegacyGlobalSearchContact) => {
+    const request = ++contactRequestRef.current;
     // Global-search contact hits do not include a robot flag. The local
     // channel cache is often cold on the All tab, so confirm before falling
     // through to the generic router, which closes the search modal.
@@ -184,6 +220,9 @@ export default function GlobalSearchAllPanel(props: Props) {
         bot = profile.robot === 1 || profile.robot === true;
       } catch {
         // Ordinary-contact routing remains the fallback when lookup fails.
+      }
+      if (request !== contactRequestRef.current || !isActiveRef.current) {
+        return;
       }
     }
     if (bot) {
@@ -216,6 +255,7 @@ export default function GlobalSearchAllPanel(props: Props) {
     filters: props.filters,
     dataSource: props.dataSource,
     isActive: enabled,
+    loadConversationDetails: false,
   });
   const conversations = useMemo(
     // The chat tab renders the API's group order verbatim. Keep the aggregate
@@ -225,11 +265,6 @@ export default function GlobalSearchAllPanel(props: Props) {
     [chats.overview.conversations]
   );
   const moreLabel = t("base.globalSearch.all.more");
-  const hasSearchCriteria = hasGlobalSearchCriteria(
-    "messages",
-    props.keyword,
-    props.filters
-  );
 
   if (!hasSearchCriteria)
     return (
@@ -248,12 +283,13 @@ export default function GlobalSearchAllPanel(props: Props) {
           onSelectTab={props.onSelectTab}
           moreLabel={moreLabel}
         >
-          {props.friends!.slice(0, LIMIT).map((item) => (
+          {contacts.map((item) => (
             <ItemContacts
               key={item.channel_id}
               name={item.channel_name}
               avatar={WKApp.shared.avatarUser(item.channel_id)}
               isBot={isBot(item.channel_id)}
+              sourceSpaceName={contactSources.get(item.channel_id)}
               onClick={() => void handleContactClick(item)}
             />
           ))}
@@ -358,14 +394,11 @@ export default function GlobalSearchAllPanel(props: Props) {
           moreLabel={moreLabel}
         >
           {drive.items.map((item) => (
-            <button
-              type="button"
-              className="wk-global-search-all__plain-hit"
+            <DriveSearchResultItem
               key={item.file_id}
-              onClick={() => props.onOpenDriveHit(item)}
-            >
-              {item.name}
-            </button>
+              hit={item}
+              onOpen={props.onOpenDriveHit}
+            />
           ))}
         </Segment>
       )}

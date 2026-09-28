@@ -99,7 +99,7 @@ describe("GlobalSearchVM tabList — drive tab gating", () => {
     const list = keys(vm);
     expect(list).not.toContain("docs");
     expect(list).not.toContain("drive");
-    expect(list).toEqual(["contacts", "groups", "messages", "files"]);
+    expect(list).toEqual(["all", "contacts", "groups", "messages", "files"]);
   });
 
   it("keeps individual flags preserved in browser", () => {
@@ -112,13 +112,14 @@ describe("GlobalSearchVM tabList — drive tab gating", () => {
     expect(keys(vm)).not.toContain("drive");
   });
 
-  it("keeps the first four tab order unchanged", () => {
+  it("keeps the aggregate tab before the legacy result tabs", () => {
     mockState.remoteConfig.docsOn = true;
     mockState.remoteConfig.docsSearchOn = true;
     mockState.remoteConfig.driveOn = true;
     mockState.remoteConfig.driveSearchOn = true;
     const list = keys(new GlobalSearchVM());
-    expect(list.slice(0, 4)).toEqual([
+    expect(list.slice(0, 5)).toEqual([
+      "all",
       "contacts",
       "groups",
       "messages",

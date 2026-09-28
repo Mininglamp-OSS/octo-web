@@ -6,7 +6,7 @@ import WKApp from "../../App";
 import { isBot } from "../WKAvatar";
 import BotDetailModal from "../BotDetailModal";
 import { Channel, ChannelInfo, ChannelInfoListener, ChannelTypePerson } from "wukongimjssdk";
-import { resolveExternalForViewer } from "../../Utils/externalViewer";
+import { hasGlobalSearchContactSource, resolveGlobalSearchContactSource } from "../../bridge/globalSearch/contactSource";
 import { debounce } from "../../Utils/rateLimit";
 import { addCurrentImChannelInfoListener, fetchCurrentImChannelInfo, getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 import "./tab-contacts.css"
@@ -30,7 +30,7 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
         botDetailVisible: false,
     };
 
-    // channelInfo 到达后强制重渲，否则 resolveSourceSpaceName
+    // channelInfo 到达后强制重渲，否则来源 Space 名称
     // 首次读缓存未命中时，UI 永远不更新。
     // 懒加载重构：使用 debounce 合批 forceUpdate，避免视口内多个 uid 集中返回
     // 时触发 N 次重渲；并用 fetchedUids 记录已发起过的 uid，避免重复请求。
@@ -62,66 +62,12 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
     // 通过 fetchedUids 去重，避免 forceUpdate 后重复发起同 uid 请求。
     private requestChannelInfoIfNeeded = (friend: any) => {
         if (!friend?.channel_id) return
-        const org = friend?.orgData ?? {}
-        const homeId: string | undefined = friend?.home_space_id ?? org.home_space_id
-        const isExternalLegacy: number | undefined =
-            friend?.is_external ?? org.is_external
-        const missingHome = !homeId
-        const missingLegacy =
-            isExternalLegacy === undefined || isExternalLegacy === null
-        if (!(missingHome && missingLegacy)) return
+        if (hasGlobalSearchContactSource(friend)) return
         if (this.fetchedUids.has(friend.channel_id)) return
         const ch = new Channel(friend.channel_id, ChannelTypePerson)
         if (getCurrentImChannelInfo(ch)) return
         this.fetchedUids.add(friend.channel_id)
         void fetchCurrentImChannelInfo(ch)
-    }
-
-    /**
-     * 判定搜索到的联系人相对当前查看 Space 是否为外部成员，返回要
-     * 展示在姓名后的「@{sourceSpaceName}」文本。优先读 friend 项自身带的
-     * home_space_id / home_space_name / is_external / source_space_name 字段；
-     * 缺失时回落到 channelInfo.orgData，同 @Mention 候选、成员列表保持一致。
-     * 返回空字符串表示同 Space / 非外部 / 信息不足，上层不渲染后缀。
-     * 该方法现为纯函数：不再主动触发 fetchChannelInfo。按需拉取逻辑由
-     * requestChannelInfoIfNeeded 在 Virtuoso 渲染视口内 item 时处理。
-     */
-    private resolveSourceSpaceName(friend: any): string {
-        const org = friend?.orgData ?? {}
-        let homeId: string | undefined = friend?.home_space_id ?? org.home_space_id
-        let homeName: string | undefined = friend?.home_space_name ?? org.home_space_name
-        let isExternalLegacy: number | undefined = friend?.is_external ?? org.is_external
-        let sourceNameLegacy: string | undefined =
-            friend?.source_space_name ?? org.source_space_name
-
-        // 回落：friend 顶层与 orgData 都没有外部字段时，读已缓存的 channelInfo
-        const missingHome = !homeId
-        const missingLegacy =
-            isExternalLegacy === undefined || isExternalLegacy === null
-        if (missingHome && missingLegacy && friend?.channel_id) {
-            const ch = new Channel(friend.channel_id, ChannelTypePerson)
-            const ci = getCurrentImChannelInfo(ch)
-            const ciOrg = ci?.orgData
-            if (ciOrg) {
-                homeId = ciOrg.home_space_id as string | undefined
-                homeName = homeName ?? (ciOrg.home_space_name as string | undefined)
-                isExternalLegacy = ciOrg.is_external as number | undefined
-                sourceNameLegacy =
-                    sourceNameLegacy ??
-                    (ciOrg.source_space_name as string | undefined)
-            }
-            // 缓存未命中：保持 sourceSpaceName="" 由 Virtuoso 渲染视口 item 时
-            // 触发 requestChannelInfoIfNeeded → channelInfoListener → forceUpdate
-            // 补上，不在 render 中产生副作用
-        }
-
-        const { isExternal, sourceSpaceName } = resolveExternalForViewer({
-            homeSpaceId: homeId,
-            homeSpaceName: homeName,
-            isExternalLegacy,
-            sourceSpaceNameLegacy: sourceNameLegacy,
-        })
-        return isExternal ? sourceSpaceName : ""
     }
 
     render(): ReactNode {
@@ -170,7 +116,7 @@ export default class TabContacts extends Component<TabContactsProps, TabContacts
         // fetchedUids 去重避免 forceUpdate / 重入导致重复请求。
         this.requestChannelInfoIfNeeded(item)
         // 跨 Space 搜索联系人时展示来源 Space，避免误选外部成员
-        const sourceSpaceName = this.resolveSourceSpaceName(item)
+        const sourceSpaceName = resolveGlobalSearchContactSource(item)
         return <ItemContacts
             name={displayName}
             avatar={WKApp.shared.avatarUser(item.channel_id)}
