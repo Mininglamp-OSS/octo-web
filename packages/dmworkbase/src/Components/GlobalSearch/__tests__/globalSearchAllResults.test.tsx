@@ -33,6 +33,10 @@ vi.mock("../../../App", () => ({
       avatarGroup: (uid: string) => `group:${uid}`,
       avatarChannel: () => "avatar",
     },
+    emojiService: {
+      emojiRegExp: () => /$^/,
+      getImage: () => "",
+    },
   },
 }));
 vi.mock("../../../im-runtime/currentChannelRuntime", () => ({
@@ -266,6 +270,39 @@ describe("aggregate search results", () => {
     expect(view.searchMessages).toHaveBeenCalledOnce();
     expect(view.searchMessages).toHaveBeenCalledWith(
       expect.objectContaining({ tab: "files", limit: 3 })
+    );
+  });
+
+  it("renders marked conversation previews as highlighted text", async () => {
+    fixture.searchGroups.mockResolvedValue({
+      data: {
+        groups: [
+          {
+            channel_id: "a",
+            channel_type: 1,
+            group_name: "Conversation A",
+            preview: [
+              {
+                message_id: "message-a",
+                snippet: "hello <mark>Alex</mark> world",
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const view = mountPanel({ contentSearchEnabled: true });
+    await waitFor(() =>
+      expect(screen.getByText("Conversation A")).toBeInTheDocument()
+    );
+
+    const preview = view.container.querySelector(
+      ".wk-global-search-all__conversation small"
+    );
+    expect(preview).toHaveTextContent("hello Alex world");
+    expect(preview).toContainHTML(
+      'hello <mark class="wk-channel-search-highlight">Alex</mark> world'
     );
   });
 });

@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import { Channel } from "wukongimjssdk";
 import { FileResultItem } from "../ChannelSearch";
+import ChannelSearchSnippetContent from "../ChannelSearch/snippetContent";
 import ItemContacts from "./item-contacts";
 import ItemGroup from "./item-group";
 import DriveSearchResultItem from "./DriveSearchResultItem";
@@ -411,7 +412,14 @@ export default function GlobalSearchAllPanel(props: Props) {
                 />
                 <span>{item.name}</span>
                 <small>
-                  {item.preview[0]?.text || item.preview[0]?.file?.name || ""}
+                  {item.preview[0]?.text ? (
+                    <ChannelSearchSnippetContent
+                      text={item.preview[0].text}
+                      keyword={props.keyword}
+                    />
+                  ) : (
+                    item.preview[0]?.file?.name || ""
+                  )}
                 </small>
               </button>
             ))}
