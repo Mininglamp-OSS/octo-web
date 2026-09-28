@@ -2,7 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-vi.mock('@douyinfe/semi-ui', () => ({ Toast: { success: vi.fn(), error: vi.fn() } }))
+const modalUpdate = vi.hoisted(() => vi.fn())
+const modalDestroy = vi.hoisted(() => vi.fn())
+
+vi.mock('@douyinfe/semi-ui', () => ({
+  Toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), close: vi.fn() },
+  Modal: { info: vi.fn(() => ({ update: modalUpdate, destroy: modalDestroy })) },
+  Progress: () => null,
+  Button: 'button',
+}))
 
 vi.mock('../../App', () => ({
   default: {
@@ -28,7 +36,9 @@ vi.mock('../../electron/desktopBridge', () => ({
   getElectronIpcBridge: vi.fn(() => null),
 }))
 
-import { downloadFile, getPresignedDownloadUrl, getPresignedPreviewUrl, classifyDownloadFileType, clampFileType } from '../download'
+import { downloadFile, getPresignedDownloadUrl, getPresignedPreviewUrl, classifyDownloadFileType, clampFileType, saveFileAs } from '../download'
+import { openSaveProgressModal } from '../saveProgressModal'
+import { Toast, Modal } from '@douyinfe/semi-ui'
 import WKApp from '../../App'
 import { isElectronPowered, getElectronIpcBridge } from '../../electron/desktopBridge'
 import { IPC_DOWNLOAD_STATUS, IPC_DOWNLOAD_URL } from '../../../../../apps/web/src-election/shared/ipc-channels'
@@ -255,7 +265,7 @@ describe('message_file_saved_to_drive source-level file_type guard', () => {
   )
 
   it('imports the shared clampFileType helper', () => {
-    expect(moduleSrc).toMatch(/import\s*\{\s*clampFileType\s*\}\s*from\s*["']\.\/Utils\/download["']/)
+    expect(moduleSrc).toMatch(/import\s*\{[^}]*\bclampFileType\b[^}]*\}\s*from\s*["']\.\/Utils\/download["']/)
   })
 
   it('clamps file_type at the message_file_saved_to_drive track site', () => {
@@ -265,5 +275,198 @@ describe('message_file_saved_to_drive source-level file_type guard', () => {
     // 钳制后的 file_type,绝不再出现「直传原始 extension」的旧形态
     expect(block).toMatch(/file_type:\s*clampFileType\(/)
     expect(block).not.toMatch(/file_type:\s*fileContent\?\.extension\s*\|\|\s*""/)
+  })
+})
+
+describe('saveFileAs write progress (review: 大文件静默存储不友好)', () => {
+  // 用一个受控 ReadableStream + 假 FileSystemWritableFileHandle 驱动 saveFileAs 的
+  // Web 分支,断言:进度用 Toast.info 刷新、完成 Toast.success、失败降级 anchor 下载。
+  const originalPicker = (globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker
+  let writtenChunks: Uint8Array[]
+  let writable: { write: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn>; abort: ReturnType<typeof vi.fn> }
+  let capturedAnchor: HTMLAnchorElement | null
+  let removeFile: ReturnType<typeof vi.fn>
+
+  const makeStream = (chunks: Uint8Array[]): ReadableStream<Uint8Array> => {
+    let i = 0
+    return new ReadableStream<Uint8Array>({
+      pull(ctrl) {
+        if (i < chunks.length) ctrl.enqueue(chunks[i++])
+        else ctrl.close()
+      },
+    })
+  }
+
+  const stubFetch = (chunks: Uint8Array[], total: number | null, ok = true) => {
+    const headers = new Headers()
+    if (total != null) headers.set('content-length', String(total))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok,
+      status: ok ? 200 : 500,
+      body: ok ? makeStream(chunks) : null,
+      headers,
+    }))
+  }
+
+  beforeEach(() => {
+    vi.resetAllMocks()
+    writtenChunks = []
+    writable = {
+      write: vi.fn(async (c: Uint8Array) => { writtenChunks.push(c) }),
+      close: vi.fn(async () => {}),
+      abort: vi.fn(async () => {}),
+    }
+    removeFile = vi.fn(async () => {})
+    ;(globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker = vi.fn(async () => ({
+      remove: removeFile,
+      createWritable: async () => writable,
+    }))
+    capturedAnchor = null
+    vi.spyOn(document.body, 'appendChild').mockImplementation((node: Node) => {
+      capturedAnchor = node as HTMLAnchorElement
+      ;(node as HTMLAnchorElement).click = vi.fn()
+      return node
+    })
+    vi.spyOn(document.body, 'removeChild').mockImplementation((node: Node) => node)
+  })
+
+  afterEach(() => {
+    ;(globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker = originalPicker
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('streams chunks to the chosen handle, shows progress, then success', async () => {
+    const chunks = [new Uint8Array(50), new Uint8Array(50)]
+    stubFetch(chunks, 100)
+    vi.mocked(WKApp.apiClient.get).mockResolvedValue({ url: 'https://cdn.example.com/signed', filename: 'big.bin' })
+
+    await saveFileAs('https://cdn.example.com/big.bin', 'big.bin')
+
+    // 进度期间创建并刷新居中 Modal,结束后进入完成态并自动销毁。
+    expect(Modal.info).toHaveBeenCalled()
+    expect(modalUpdate).toHaveBeenCalled()
+    expect(writable.close).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls back to anchor download when the write stream errors mid-way', async () => {
+    // fetch 成功、进度 toast 已弹,但写入第二块时磁盘/权限错误 → streamToWritable
+    // 关掉进度 toast 并抛错 → saveFileAs catch 走 downloadFile(anchor 降级)。
+    const chunks = [new Uint8Array(50), new Uint8Array(50)]
+    stubFetch(chunks, 100)
+    writable.write = vi.fn()
+      .mockImplementationOnce(async (c: Uint8Array) => { writtenChunks.push(c) })
+      .mockRejectedValueOnce(new Error('disk full'))
+    vi.mocked(WKApp.apiClient.get).mockResolvedValue({ url: 'https://cdn.example.com/signed', filename: 'big.bin' })
+
+    await saveFileAs('https://cdn.example.com/big.bin', 'big.bin')
+
+    // 进度 Modal 已创建又被关闭,且降级到 anchor(浏览器默认目录)。
+    expect(Modal.info).toHaveBeenCalled()
+    expect(modalDestroy).toHaveBeenCalled()
+    expect(writable.abort).toHaveBeenCalled()
+    expect(capturedAnchor).not.toBeNull()
+  })
+
+  it('falls back to anchor download when fetch fails before streaming', async () => {
+    // fetch 非 2xx → 在弹进度 toast 前就抛错 → saveFileAs catch 直接 anchor 降级。
+    stubFetch([], null, false)
+    vi.mocked(WKApp.apiClient.get).mockResolvedValue({ url: 'https://cdn.example.com/signed', filename: 'big.bin' })
+
+    await saveFileAs('https://cdn.example.com/big.bin', 'big.bin')
+
+    expect(capturedAnchor).not.toBeNull()
+  })
+
+  it('renders a cancel-save button and exposes cancellation control', () => {
+    const controller = openSaveProgressModal('big.bin', false)
+    const options = vi.mocked(Modal.info).mock.calls[0][0] as { content: any }
+    const children = options.content.props.children as any[]
+    const button = children.find((child: any) => child?.type === 'button')
+    expect(button?.props.children).toBe('取消保存')
+    expect(controller.cancel).toEqual(expect.any(Function))
+    controller.close()
+  })
+
+  it('disables cancellation after completion is shown', () => {
+    const controller = openSaveProgressModal('big.bin', false)
+    controller.done()
+    const calls = vi.mocked(modalUpdate).mock.calls
+    const update = calls[calls.length - 1]?.[0] as { content: any }
+    const button = (update.content.props.children as any[]).find((child: any) => child?.type === 'button')
+    expect(button.props.disabled).toBe(true)
+    controller.close()
+  })
+
+  it('uses one combined save-target line for label and filename', () => {
+    openSaveProgressModal('big.bin', false)
+    const options = vi.mocked(Modal.info).mock.calls[0][0] as { content: any }
+    const target = (options.content.props.children as any[])[0]
+    expect(target.props.className).toBe('wk-save-progress-target')
+    expect(target.props.children[0].props.children).toContain('保存文件到')
+    expect(target.props.children[1].props.children).toBe('big.bin')
+  })
+
+  it('cancels an active save without falling back to a second download', async () => {
+    const chunks = [new Uint8Array(50), new Uint8Array(50)]
+    stubFetch(chunks, 100)
+    vi.mocked(WKApp.apiClient.get).mockResolvedValue({ url: 'https://cdn.example.com/signed', filename: 'big.bin' })
+    let resolveWrite: (() => void) | undefined
+    writable.write = vi.fn()
+      .mockImplementationOnce(() => new Promise<void>((resolve) => { resolveWrite = resolve }))
+      .mockResolvedValue(undefined)
+
+    const savePromise = saveFileAs('https://cdn.example.com/big.bin', 'big.bin')
+    await vi.waitFor(() => expect(Modal.info).toHaveBeenCalled())
+    const modalOptions = vi.mocked(Modal.info).mock.calls[0][0] as { content: any }
+    const button = (modalOptions.content.props.children as any[]).find((child: any) => child?.type === 'button')
+    button.props.onClick()
+    resolveWrite?.()
+    await savePromise
+
+    expect(capturedAnchor).toBeNull()
+    expect(modalDestroy).toHaveBeenCalled()
+    expect(removeFile).not.toHaveBeenCalled()
+  })
+
+  it('preserves an existing file handle on cancellation', async () => {
+    stubFetch([new Uint8Array(10)], 10)
+    ;(globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker = vi.fn(async () => ({
+      remove: removeFile,
+      createWritable: async () => writable,
+    }))
+    let resolveWrite: (() => void) | undefined
+    writable.write = vi.fn(() => new Promise<void>((resolve) => { resolveWrite = resolve }))
+
+    const savePromise = saveFileAs('/files/existing.bin', 'existing.bin')
+    await vi.waitFor(() => expect(Modal.info).toHaveBeenCalled())
+    const modalOptions = vi.mocked(Modal.info).mock.calls[0][0] as { content: any }
+    const button = (modalOptions.content.props.children as any[]).find((child: any) => child?.type === 'button')
+    button.props.onClick()
+    resolveWrite?.()
+    await savePromise
+
+    expect(removeFile).not.toHaveBeenCalled()
+    expect(capturedAnchor).toBeNull()
+  })
+
+  it('keeps indeterminate progress animated until the response has no total', () => {
+    openSaveProgressModal('unknown.bin', true)
+    const options = vi.mocked(Modal.info).mock.calls[0][0] as { content: any }
+    const children = options.content.props.children as any[]
+    expect(children.some((child: any) => child?.props?.className === 'wk-save-progress-indeterminate')).toBe(true)
+  })
+
+  it('user cancel (AbortError) returns silently — no write, no toast', async () => {
+    ;(globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker = vi.fn(async () => {
+      const e = new Error('cancel'); e.name = 'AbortError'; throw e
+    })
+    stubFetch([new Uint8Array(10)], 10)
+
+    await saveFileAs('https://cdn.example.com/big.bin', 'big.bin')
+
+    expect(writable.write).not.toHaveBeenCalled()
+    expect(Toast.info).not.toHaveBeenCalled()
+    expect(Toast.success).not.toHaveBeenCalled()
   })
 })

@@ -5,6 +5,7 @@ import { getElectronIpcBridge, isElectronPowered } from "../electron/desktopBrid
 import { IPC_DOWNLOAD_STATUS, IPC_DOWNLOAD_URL } from "../../../../apps/web/src-election/shared/ipc-channels";
 import { Toast } from "@douyinfe/semi-ui";
 import { t } from "../i18n";
+import { openSaveProgressModal, type SaveProgressController } from "./saveProgressModal";
 
 /**
  * message_file_downloaded 埋点用的已知扩展名白名单(低基数枚举)。
@@ -95,6 +96,60 @@ export async function getPresignedPreviewUrl(remotePath: string, filename: strin
 }
 
 /**
+ * 经 Electron 主进程把文件落到本地,并订阅下载状态做完成/失败提示。
+ * saveAs=true 时主进程强制弹出保存对话框(另存为,用户自选路径);false 走用户既有下载设置。
+ * 返回 true = 已交给 Electron 处理;false = 无 IPC 桥或调用失败,调用方应走浏览器降级。
+ *
+ * message_file_downloaded 仅在可观测的 `completed` 态计一次(failed/cancelled/expired 不计),
+ * 保持完成计数语义——与浏览器 anchor 路的 action 语义(发起即计)有意区分(见 downloadFile)。
+ */
+async function invokeElectronDownload(
+    downloadUrl: string,
+    filename: string,
+    fileType: string,
+    saveAs: boolean,
+): Promise<boolean> {
+    if (!isElectronPowered()) return false;
+    const ipc = getElectronIpcBridge();
+    if (!ipc) return false;
+
+    const displayName = (value: string) => value.length > 48 ? `${value.slice(0, 45)}…` : value;
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    let cleanupTimer: ReturnType<typeof setTimeout> | undefined;
+    let cleanup = () => undefined;
+    const onStatus = (_event: unknown, ...args: unknown[]) => {
+        const status = (args[0] || {}) as { id?: string; state?: string; filename?: string };
+        if (status?.id !== id) return;
+        if (status.state === "completed") {
+            Dap.shared.track("message_file_downloaded", { file_type: fileType });
+            Toast.success({ content: t("base.download.completed", { values: { filename: displayName(status.filename || filename) } }), duration: 2.5 });
+            cleanup();
+        }
+        if (status.state === "failed") {
+            Toast.error({ content: t("base.download.failed", { values: { filename: displayName(status.filename || filename) } }), duration: 3 });
+            cleanup();
+        }
+        if (status.state === "cancelled" || status.state === "expired") {
+            cleanup();
+        }
+    };
+    cleanup = () => {
+        ipc.removeListener(IPC_DOWNLOAD_STATUS, onStatus);
+        if (cleanupTimer) clearTimeout(cleanupTimer);
+    };
+    ipc.on(IPC_DOWNLOAD_STATUS, onStatus);
+    cleanupTimer = setTimeout(cleanup, 10 * 60 * 1000);
+    try {
+        await ipc.invoke(IPC_DOWNLOAD_URL, downloadUrl, filename, id, saveAs);
+        return true;
+    } catch (error) {
+        cleanup();
+        console.warn("invokeElectronDownload: Electron download failed, falling back to browser download", error);
+        return false;
+    }
+}
+
+/**
  * Download a file via anchor-click.
  * For cross-origin URLs, fetches a presigned download URL from the backend.
  */
@@ -130,45 +185,9 @@ export async function downloadFile(url: string, filename: string): Promise<void>
         downloadUrl = await getPresignedDownloadUrl(resolvedUrl, filename);
     }
 
-    if (isElectronPowered()) {
-        const ipc = getElectronIpcBridge();
-        if (ipc) {
-            const displayName = (value: string) => value.length > 48 ? `${value.slice(0, 45)}…` : value;
-            const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-            let cleanupTimer: ReturnType<typeof setTimeout> | undefined;
-            let cleanup = () => undefined;
-            const onStatus = (_event: unknown, ...args: unknown[]) => {
-                    const status = (args[0] || {}) as { id?: string; state?: string; filename?: string };
-                    if (status?.id !== id) return;
-                    if (status.state === "completed") {
-                        // B-2:electron 下载完成态才计 message_file_downloaded(完成计数语义)。
-                        Dap.shared.track("message_file_downloaded", { file_type: fileType });
-                        Toast.success({ content: t("base.download.completed", { values: { filename: displayName(status.filename || filename) } }), duration: 2.5 });
-                        cleanup();
-                    }
-                    if (status.state === "failed") {
-                        // failed/cancelled/expired 不计:取消/失败不是完成。
-                        Toast.error({ content: t("base.download.failed", { values: { filename: displayName(status.filename || filename) } }), duration: 3 });
-                        cleanup();
-                    }
-                    if (status.state === "cancelled" || status.state === "expired") {
-                        cleanup();
-                    }
-            };
-            cleanup = () => {
-                ipc.removeListener(IPC_DOWNLOAD_STATUS, onStatus);
-                if (cleanupTimer) clearTimeout(cleanupTimer);
-            };
-            ipc.on(IPC_DOWNLOAD_STATUS, onStatus);
-            cleanupTimer = setTimeout(cleanup, 10 * 60 * 1000);
-            try {
-                await ipc.invoke(IPC_DOWNLOAD_URL, downloadUrl, filename, id);
-                return;
-            } catch (error) {
-                cleanup();
-                console.warn("downloadFile: Electron download failed, falling back to browser download", error);
-            }
-        }
+    // B-2:electron 下载走完成计数语义(仅 `completed` 计一次),桥不可用/失败则落到下方 anchor 路。
+    if (await invokeElectronDownload(downloadUrl, filename, fileType, false)) {
+        return;
     }
 
     try {
@@ -196,4 +215,144 @@ export async function downloadFile(url: string, filename: string): Promise<void>
             console.warn("downloadFile: window.open also failed", err2);
         }
     }
+}
+
+/**
+ * 取流并写入用户选定的可写句柄,将字节进度刷新到居中 Modal。
+ *
+ * 不用 `resp.body.pipeTo(writable)` 是因为 pipeTo 拿不到中途进度;改为手动 reader
+ * 循环,累加已读字节 / Content-Length 得到百分比。Content-Length 缺失时保持弹窗
+ * 的动画态,不伪造百分比。完成/失败由 SaveProgressController 负责收尾。
+ */
+async function streamToWritable(
+    downloadUrl: string,
+    progress: SaveProgressController,
+    openWritable: () => Promise<{ write: (chunk: Uint8Array) => Promise<void>; close: () => Promise<void>; abort?: (reason?: unknown) => Promise<void> }>,
+    signal?: AbortSignal,
+): Promise<void> {
+    const resp = await fetch(downloadUrl, { signal });
+    if (!resp.ok || !resp.body) throw new Error(`fetch failed: ${resp.status}`);
+
+    const totalRaw = Number(resp.headers.get("content-length") || "");
+    const total = Number.isFinite(totalRaw) && totalRaw > 0 ? totalRaw : 0;
+    if (total) progress.setPercent(0);
+    const reader = resp.body.getReader();
+    let received = 0;
+    let lastTick = 0;
+    let writable: Awaited<ReturnType<typeof openWritable>> | undefined;
+    const cancelInFlight = () => {
+        void reader.cancel().catch(() => undefined);
+        if (writable?.abort) {
+            void writable.abort(new DOMException("Save cancelled", "AbortError")).catch(() => undefined);
+        }
+    };
+    signal?.addEventListener("abort", cancelInFlight, { once: true });
+    try {
+        if (signal?.aborted) throw new DOMException("Save cancelled", "AbortError");
+        writable = await openWritable();
+        for (;;) {
+            const { done, value } = await reader.read();
+            if (signal?.aborted) throw new DOMException("Save cancelled", "AbortError");
+            if (done) break;
+            if (value) {
+                await writable.write(value);
+                if (signal?.aborted) throw new DOMException("Save cancelled", "AbortError");
+                received += value.byteLength;
+                const now = Date.now();
+                if (total && now - lastTick > 200) {
+                    lastTick = now;
+                    progress.setPercent(Math.min(99, Math.floor((received / total) * 100)));
+                }
+            }
+        }
+        await writable.close();
+        progress.done();
+    } catch (err) {
+        progress.close();
+        try { await writable?.abort?.(err); } catch { /* ignore abort failure */ }
+        throw err;
+    } finally {
+        signal?.removeEventListener("abort", cancelInFlight);
+    }
+}
+
+/**
+ * 另存为(存本地):让用户自选保存路径。任务 A(文件消息)与任务 B(合并转发内部文件)共用同一套逻辑。
+ * - Electron:复用下载管道,saveAs=true 让主进程强制弹出保存对话框(dialog.showSaveDialog)。
+ * - Web:showSaveFilePicker 让用户选路径(先弹选择器保留用户手势,再取流写入)。
+ * - 不支持 showSaveFilePicker 的浏览器:降级为下载到浏览器默认下载目录(决策 4,已确认可接受)。
+ *
+ * 与 downloadFile(直接下载,无路径选择)分工不同,但底层跨域预签名/Electron 管道复用同一套。
+ */
+export async function saveFileAs(url: string, filename: string): Promise<void> {
+    if (!url) return;
+
+    let parsedUrl: URL;
+    try {
+        parsedUrl = new URL(url, window.location.href);
+    } catch {
+        return;
+    }
+    const resolvedUrl = parsedUrl.href;
+    if (!isSafeUrl(resolvedUrl)) return;
+
+    const fileType = classifyDownloadFileType(filename);
+    const isCrossOrigin = parsedUrl.origin !== window.location.origin;
+    // 跨域附件换取后端预签名下载 URL(与 downloadFile 同口径);同域直接用原 URL。
+    const resolveDownloadUrl = () =>
+        isCrossOrigin && filename ? getPresignedDownloadUrl(resolvedUrl, filename) : Promise.resolve(resolvedUrl);
+
+    // Electron:强制弹出保存对话框,用户自选路径。
+    if (isElectronPowered() && getElectronIpcBridge()) {
+        const downloadUrl = await resolveDownloadUrl();
+        if (await invokeElectronDownload(downloadUrl, filename, fileType, true)) return;
+    }
+
+    // Web:File System Access API。
+    const picker = (window as unknown as {
+        showSaveFilePicker?: (options?: { suggestedName?: string }) => Promise<any>;
+    }).showSaveFilePicker;
+
+    if (typeof picker === "function") {
+        let handle: any;
+        try {
+            // 选择器必须在用户手势链内调起,故放在换取预签名 URL(异步)之前。
+            handle = await picker({ suggestedName: filename || "download" });
+        } catch (err) {
+            // 用户取消(AbortError)静默返回;选择器本身报错则降级为默认下载,不打断用户。
+            if ((err as { name?: string })?.name === "AbortError") return;
+            console.warn("saveFileAs: showSaveFilePicker failed, falling back to download", err);
+            await downloadFile(url, filename);
+            return;
+        }
+        // showSaveFilePicker may create the selected path before resolving. The
+        // returned handle cannot safely tell us whether it existed beforehand,
+        // and FileSystemHandle.remove() is non-standard. Never delete a path
+        // selected by the user on cancellation or write failure.
+        let cancelled = false;
+        try {
+            // 系统保存框关闭后立即显示网页自己的进度弹窗。
+            const abortController = new AbortController();
+            const progress = openSaveProgressModal(filename, true, () => {
+                cancelled = true;
+                abortController.abort();
+            });
+            const downloadUrl = await resolveDownloadUrl();
+            await streamToWritable(downloadUrl, progress, () => handle.createWritable(), abortController.signal);
+            if (cancelled) {
+                return;
+            }
+            Dap.shared.track("message_file_downloaded", { file_type: fileType });
+        } catch (err) {
+            if (cancelled || (err as { name?: string })?.name === "AbortError") return;
+            // 已选好位置但取流/写入失败时回退到 anchor 下载。
+            // anchor 用预签名 URL 的 Content-Disposition 触发下载、不经 fetch,天然不受 CORS 限制。
+            console.warn("saveFileAs: write to chosen location failed, falling back to download", err);
+            await downloadFile(url, filename);
+        }
+        return;
+    }
+
+    // 降级:浏览器不支持 showSaveFilePicker,直接下载到默认下载目录。
+    await downloadFile(url, filename);
 }

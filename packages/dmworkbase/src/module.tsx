@@ -17,7 +17,7 @@ import {
 } from "wukongimjssdk";
 import React, { ElementType } from "react";
 import {
-  AtSign, Copy, Forward as ForwardIcon, HardDrive, HardDriveDownload,
+  AtSign, Copy, Download, Forward as ForwardIcon, HardDrive, HardDriveDownload,
   ImagePlus, ListChecks, MessageSquareMore, MessageSquarePlus, Paperclip,
   Scissors, Smile, SmilePlus, Undo2,
 } from "lucide-react";
@@ -27,7 +27,7 @@ import { isChannelSearchEnabled } from "./features/channelSearch/feature";
 import { voiceSettingsStore } from "./Service/VoiceSettingsStore";
 import ChatSearchEntryButton from "./features/channelSearch/ChatSearchEntryButton";
 import { isElectronPowered } from "./electron/desktopBridge";
-import { clampFileType } from "./Utils/download";
+import { clampFileType, saveFileAs } from "./Utils/download";
 import { ChannelSettingRouteData } from "./Components/ChannelSetting/context";
 import { InputEdit } from "./Components/InputEdit";
 import { ListItem, ListItemTip } from "./Components/ListItem";
@@ -35,7 +35,7 @@ import { Card, CardCell } from "./Messages/Card";
 import { GifCell, GifContent } from "./Messages/Gif";
 import { HistorySplitCell, HistorySplitContent } from "./Messages/HistorySplit";
 import { ImageCell, ImageContent } from "./Messages/Image";
-import { FileCell, FileContent } from "./Messages/File";
+import { FileCell, FileContent, resolveSafeFileUrl } from "./Messages/File";
 import {
   JoinOrganizationCell,
   JoinOrganizationContent,
@@ -1596,7 +1596,7 @@ export default class BaseModule implements IModule {
         return {
           actionKey: "saveDrive",
           group: "derived",
-          title: t("base.messageFile.saveToDrive"),
+          title: t("base.messageFile.saveToDriveAs"),
           icon: HardDriveDownload,
           onClick: () => {
             void WKApp.saveMessageToDriveAt?.(params).then(() => {
@@ -1618,6 +1618,36 @@ export default class BaseModule implements IModule {
         };
       },
       6000
+    );
+
+    // 文件消息「另存为」(存本地,PRD 3.2):与「另存至网盘」是两个独立入口——
+    // 图标(Download vs HardDriveDownload)与文案(另存为 vs 存到网盘)明确区分,避免混淆。
+    // 本地保存逻辑(含 showSaveFilePicker 不支持时降级到默认下载目录)由 saveFileAs 统一承载,
+    // 合并转发内部文件(PRD 3.4)复用同一函数。
+    WKApp.endpoints.registerMessageContextMenus(
+      "contextmenus.saveAs",
+      (message) => {
+        if (
+          message.contentType !== MessageContentTypeConst.file ||
+          message.status !== MessageStatus.Normal
+        ) {
+          return null;
+        }
+        const content = message.content as FileContent;
+        const url = resolveSafeFileUrl(content);
+        if (!url) return null;
+        return {
+          actionKey: "saveAs",
+          group: "derived",
+          title: t("base.messageFile.saveAs"),
+          icon: Download,
+          testid: "ctx-message-save-as",
+          onClick: () => {
+            void saveFileAs(url, content.name || "file");
+          },
+        };
+      },
+      6100
     );
   }
 

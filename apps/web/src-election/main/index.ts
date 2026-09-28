@@ -102,7 +102,7 @@ type DesktopSettings = {
   closeBehavior: "background" | "quit";
 };
 type DownloadStatus = { id: string; state: "started" | "progress" | "completed" | "failed" | "cancelled" | "expired"; filename: string; receivedBytes?: number; totalBytes?: number };
-type PendingDownload = { id: string; sender: Electron.WebContents; filename: string };
+type PendingDownload = { id: string; sender: Electron.WebContents; filename: string; saveAs?: boolean };
 const pendingDownloads = new Map<string, PendingDownload[]>();
 const reservedDownloadPaths = new Set<string>();
 let settings: DesktopSettings = {
@@ -276,12 +276,14 @@ function registerDownloadHandler(): void {
     const id = request?.id || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const sender = request?.sender;
     const requestedFilename = request?.filename || sanitizeDownloadFilename(item.getFilename(), "download");
+    // 另存为(saveAs):无视用户"直接保存到默认目录"设置,强制弹出保存对话框让用户自选路径。
+    const forceSaveAs = request?.saveAs === true;
     const sendStatus = (status: Omit<DownloadStatus, "id" | "filename">, filename = requestedFilename) => {
       if (!sender || sender.isDestroyed()) return;
       sender.send(IPC_DOWNLOAD_STATUS, { id, filename, ...status } satisfies DownloadStatus);
     };
     let savePath: string | undefined;
-    let userCancelled = downloadSettings.askBeforeSaving;
+    let userCancelled = forceSaveAs || downloadSettings.askBeforeSaving;
     item.on("updated", () => sendStatus({ state: "progress", receivedBytes: item.getReceivedBytes(), totalBytes: item.getTotalBytes() }));
     item.once("done", (_event, state) => {
       const nextState = state === "completed" ? "completed" : state === "cancelled" ? (userCancelled ? "cancelled" : "failed") : "failed";
@@ -289,7 +291,7 @@ function registerDownloadHandler(): void {
       if (savePath) reservedDownloadPaths.delete(savePath);
     });
     const path = downloadSettings.directory;
-    if (!downloadSettings.askBeforeSaving) {
+    if (!forceSaveAs && !downloadSettings.askBeforeSaving) {
       try {
         fs.mkdirSync(path, { recursive: true });
         const original = join(path, requestedFilename);
@@ -318,7 +320,7 @@ function registerDownloadHandler(): void {
 }
 
 function registerDownloadUrlHandler(): void {
-  ipcMain.handle(IPC_DOWNLOAD_URL, (event, url: unknown, filename?: unknown, requestId?: unknown) => {
+  ipcMain.handle(IPC_DOWNLOAD_URL, (event, url: unknown, filename?: unknown, requestId?: unknown, saveAs?: unknown) => {
     if (!isTrustedShellIpcSender(event) || typeof url !== "string") throw new Error("invalid download URL");
     const parsed = new URL(url);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("invalid download URL");
@@ -326,7 +328,7 @@ function registerDownloadUrlHandler(): void {
     const generatedId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const id = typeof requestId === "string" && requestId ? requestId : generatedId;
     const queue = pendingDownloads.get(parsed.href) || [];
-    const request = { id, sender: event.sender, filename: requestedFilename };
+    const request = { id, sender: event.sender, filename: requestedFilename, saveAs: saveAs === true };
     queue.push(request);
     pendingDownloads.set(parsed.href, queue);
     setTimeout(() => {

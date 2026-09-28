@@ -10,6 +10,7 @@ import {
 import React from "react";
 import { Component, ReactNode } from "react";
 import { Toast } from "@douyinfe/semi-ui";
+import { Download } from "lucide-react";
 import type { ImageContent } from "../../Messages/Image/ImageContent";
 import { FileContent } from "../../Messages/File/FileContent";
 import { MessageContentTypeConst } from "../../Service/Const";
@@ -18,7 +19,7 @@ import { dateFormat, getTimeStringAutoShort2 } from "../../Utils/time";
 import WKAvatar, { isBot } from "../WKAvatar";
 import AiBadge from "../AiBadge";
 import WKApp from "../../App";
-import { downloadFile } from "../../Utils/download";
+import { downloadFile, saveFileAs } from "../../Utils/download";
 import { isSafeUrl } from "../../Utils/security";
 import { getExtension } from "../FilePreviewPanel/types";
 import { RichTextContent } from "../../Messages/RichText/RichTextContent";
@@ -34,6 +35,7 @@ import { getImageMessageImages } from "../../bridge/message/imageMessageImages";
 import { I18nContext } from "../../i18n";
 
 import MergeforwardCard from "../../ui/message/MergeforwardCard";
+import ContextMenus, { ContextMenusContext, ContextMenusData } from "../ContextMenus";
 import { fetchImChannelInfo, getImChannelInfo } from "../../im-runtime/channelRuntime";
 
 import "./index.css";
@@ -63,6 +65,8 @@ interface MergeforwardMessageListState {
   galleryGeneration: number;
   /** 导航栈：点击嵌套合并转发时 push，点返回时 pop */
   contentStack: MergeforwardContent[];
+  /** 右键内部文件卡片时展示的菜单项（仅【另存为】） */
+  fileMenus: ContextMenusData[];
 }
 
 export default class MergeforwardMessageList extends Component<
@@ -77,7 +81,37 @@ export default class MergeforwardMessageList extends Component<
     this.state = {
       galleryGeneration: 0,
       contentStack: [],
+      fileMenus: [],
     };
+  }
+
+  /** 右键内部文件卡片弹出的菜单实例（仅【另存为】） */
+  private contextMenusRef: ContextMenusContext | null = null;
+
+  /**
+   * 内部文件卡片右键：仅【另存为】(存本地,复用任务 A 的 saveFileAs,含降级方案)。
+   * 不放【转发】【创建子区】【另存至网盘】,也不重复放【下载】——整块点击已可预览/下载。
+   */
+  private showFileContextMenu(event: React.MouseEvent, url: string, fileName: string) {
+    event.preventDefault();
+    const clientX = event.clientX;
+    const clientY = event.clientY;
+    this.setState(
+      {
+        fileMenus: [
+          {
+            actionKey: "saveAs",
+            title: this.context.t("base.messageFile.saveAs"),
+            icon: Download,
+            testid: "mergeforward-file-save-as",
+            onClick: () => {
+              void saveFileAs(url, fileName);
+            },
+          },
+        ],
+      },
+      () => this.contextMenusRef?.show({ clientX, clientY, preventDefault: () => undefined }),
+    );
   }
 
   componentDidMount() {
@@ -354,6 +388,11 @@ export default class MergeforwardMessageList extends Component<
           className={`wk-mergeforward-file${
             canPreview ? " wk-mergeforward-file--clickable" : ""
           }`}
+          onContextMenu={
+            canPreview
+              ? (e) => this.showFileContextMenu(e, url, fileName)
+              : undefined
+          }
           onClick={() => {
             if (!canPreview) return;
             // 与 Messages/File:handlePreview 行为一致 (fix #125)。
@@ -501,6 +540,12 @@ export default class MergeforwardMessageList extends Component<
             })}
           </div>
         </div>
+        <ContextMenus
+          onContext={(ctx) => {
+            this.contextMenusRef = ctx;
+          }}
+          menus={this.state.fileMenus}
+        />
       </ImageGalleryProvider>
     );
   }
