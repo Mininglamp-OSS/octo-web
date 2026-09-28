@@ -628,7 +628,15 @@ export default function SummaryWorkbenchFeature({
             ...(documentSelectorAvailable ? documentSourceKinds : []),
           ]
         : documentSelectorAvailable
-          ? ["document"]
+          ? [
+              // Gate OFF (default): keep the pre-mixed menu shape. "chat" is
+              // still offered so a user who picked documents can switch to a
+              // chat scope, and replaceSelectedChannels(scope, chats, false)
+              // still clears documents, so mutual exclusion holds — no illegal
+              // mixed scope can be composed.
+              "chat",
+              "document",
+            ]
           : []
       : [
           "chat",
@@ -1111,6 +1119,11 @@ export default function SummaryWorkbenchFeature({
             setOpenSelector(null);
             if (result.participantsCleared) {
               Toast.info(t("summary.workbench.notice.participantsCleared"));
+            }
+            if (result.referencesCleared) {
+              setReferencedTask(null);
+              setReferencePreviewOpen(false);
+              Toast.info(t("summary.workbench.notice.referencesCleared"));
             }
           });
         }}
