@@ -7,6 +7,7 @@ import TabAll from "../../Components/GlobalSearch/tab-all";
 import TabContacts from "../../Components/GlobalSearch/tab-contacts";
 import TabGroup from "../../Components/GlobalSearch/tab-group";
 import TabFile from "../../Components/GlobalSearch/tab-file";
+import GlobalSearchAllPanel from "../../Components/GlobalSearch/GlobalSearchAllPanel";
 import { Channel } from "wukongimjssdk";
 import GlobalContentSearchPanel from "../../Components/GlobalSearch/GlobalContentSearchPanel";
 import DocSearchPanel from "../../Components/GlobalSearch/DocSearchPanel";
@@ -70,6 +71,7 @@ export interface GlobalSearchState {
   filters: GlobalSearchFilters;
   fileTypeCategoryKeys: string[];
   searchValue: string;
+  selectedConversationKey?: string;
 }
 
 export default class GlobalSearch extends Component<
@@ -145,8 +147,10 @@ export default class GlobalSearch extends Component<
     const currentKey = this.vm.selectedTabKey;
     const contentTabInvolved =
       currentKey !== key &&
-      (currentKey === "messages" ||
+      (currentKey === "all" ||
+        currentKey === "messages" ||
         currentKey === "files" ||
+        key === "all" ||
         key === "messages" ||
         key === "files");
     if (!contentTabInvolved) {
@@ -157,8 +161,20 @@ export default class GlobalSearch extends Component<
       {
         filters: defaultGlobalSearchFilters(),
         fileTypeCategoryKeys: [],
+        selectedConversationKey: undefined,
       },
       () => this.vm.onTabClick(key)
+    );
+  };
+
+  private handleOpenConversation = (conversationKey: string) => {
+    this.setState(
+      {
+        filters: defaultGlobalSearchFilters(),
+        fileTypeCategoryKeys: [],
+        selectedConversationKey: conversationKey,
+      },
+      () => this.vm.onTabClick("messages")
     );
   };
 
@@ -285,6 +301,26 @@ export default class GlobalSearch extends Component<
           showSharedFilter ? " has-filter" : ""
         }`}
       >
+        <div className="wk-search-tabs__panel" style={panelStyle("all")}>
+          <GlobalSearchAllPanel
+            keyword={vm.keyword}
+            friends={vm.searchResult?.friends}
+            groups={vm.searchResult?.groups}
+            dataSource={this.globalDataSource}
+            filters={this.state.filters}
+            isActive={currentKey === "all"}
+            contentSearchEnabled={this.contentSearchEnabled}
+            docsEnabled={vm.docsSearchEnabled}
+            driveEnabled={vm.driveSearchEnabled}
+            onSelectTab={this.handleTabChange}
+            onOpenConversation={this.handleOpenConversation}
+            onClick={onClickOf}
+            onLocateMessage={this.handleLocate}
+            onOpenDoc={this.handleOpenDoc}
+            onOpenDriveHit={this.handleOpenDriveHit}
+            hideModal={this.props.hideModal}
+          />
+        </div>
         <div className="wk-search-tabs__panel" style={panelStyle("contacts")}>
           <TabContacts
             friends={vm.searchResult?.friends}
@@ -308,6 +344,7 @@ export default class GlobalSearch extends Component<
               onLocateMessage={this.handleLocate}
               isActive={currentKey === "messages"}
               filters={this.state.filters}
+              preferredConversationKey={this.state.selectedConversationKey}
             />
           ) : (
             disabledCopy

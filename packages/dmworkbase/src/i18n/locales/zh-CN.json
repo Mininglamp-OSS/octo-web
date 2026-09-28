@@ -1058,6 +1058,8 @@
   "globalSearch.placeholder": "搜索联系人、群组、聊天或文件",
   "globalSearch.searchFailedRetry": "搜索失败，请稍后重试",
   "globalSearch.searchDisabled": "搜索暂不可用",
+  "globalSearch.tab.all": "全部",
+  "globalSearch.all.more": "更多",
   "globalSearch.aggregated.approxConversations": "约 {{count}} 个相关会话",
   "globalSearch.aggregated.conversations": "{{count}} 个相关会话",
   "globalSearch.aggregated.approxMessages": "约 {{count}} 条相关聊天记录",

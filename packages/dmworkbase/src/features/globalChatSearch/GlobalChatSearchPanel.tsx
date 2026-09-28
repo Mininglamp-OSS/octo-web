@@ -21,6 +21,7 @@ interface GlobalChatSearchPanelProps {
   onLocateMessage: (item: ChannelSearchItem) => void;
   isActive?: boolean;
   filters: GlobalSearchFilters;
+  preferredConversationKey?: string;
 }
 
 export function GlobalChatSearchPanel({
@@ -29,6 +30,7 @@ export function GlobalChatSearchPanel({
   onLocateMessage,
   isActive = true,
   filters,
+  preferredConversationKey,
 }: GlobalChatSearchPanelProps) {
   const { t } = useI18n();
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
@@ -37,6 +39,7 @@ export function GlobalChatSearchPanel({
     filters,
     dataSource,
     isActive,
+    preferredConversationKey,
   });
 
   useEffect(() => {

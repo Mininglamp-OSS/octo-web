@@ -55,6 +55,8 @@ interface UseGlobalChatSearchOptions {
   filters: GlobalSearchFilters;
   dataSource: GlobalSearchDataSource;
   isActive: boolean;
+  /** A conversation selected on the aggregate search surface. */
+  preferredConversationKey?: string;
 }
 
 const idleOverview: OverviewState = {
@@ -227,6 +229,9 @@ function mapOverviewResponse(
         ...presentation,
         matchCount: Math.max(0, group.match_count ?? 0),
         isMatchCountApproximate: group.match_count_approx !== false,
+        latestAt: group.latest_at
+          ? Date.parse(group.latest_at) || undefined
+          : undefined,
         preview: mapPreview(group.preview, group, keyword, filters),
       };
     });
@@ -245,6 +250,7 @@ export function useGlobalChatSearch({
   filters,
   dataSource,
   isActive,
+  preferredConversationKey,
 }: UseGlobalChatSearchOptions) {
   const [overview, setOverview] = useState<OverviewState>(idleOverview);
   const [selectedKey, setSelectedKey] = useState<string>();
@@ -253,6 +259,19 @@ export function useGlobalChatSearch({
   const overviewAbortRef = useRef<AbortController>();
   const resultAbortRef = useRef<AbortController>();
   const loadingMoreRef = useRef(false);
+  const preferredConversationKeyRef = useRef(preferredConversationKey);
+
+  useEffect(() => {
+    preferredConversationKeyRef.current = preferredConversationKey;
+    if (
+      preferredConversationKey &&
+      overview.conversations.some(
+        (conversation) => conversation.key === preferredConversationKey
+      )
+    ) {
+      setSelectedKey(preferredConversationKey);
+    }
+  }, [overview.conversations, preferredConversationKey]);
 
   const selectedConversation = useMemo(
     () => overview.conversations.find((item) => item.key === selectedKey),
@@ -304,7 +323,14 @@ export function useGlobalChatSearch({
           dataSource
         );
         setOverview(next);
-        setSelectedKey(next.conversations[0]?.key);
+        const preferredKey = preferredConversationKeyRef.current;
+        setSelectedKey(
+          next.conversations.some(
+            (conversation) => conversation.key === preferredKey
+          )
+            ? preferredKey
+            : next.conversations[0]?.key
+        );
       } catch (error) {
         if (!controller.signal.aborted && !isCancelledRequest(error)) {
           setOverview({ ...idleOverview, status: "error" });

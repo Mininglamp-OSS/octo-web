@@ -169,4 +169,119 @@ describe("useGlobalChatSearch", () => {
     });
     expect(latest?.result.items.map((entry) => entry.id)).toEqual(["b-1"]);
   });
+
+  it("uses the aggregate surface's selected conversation when it is available", async () => {
+    const searchMessages = vi.fn((query: GlobalSearchQuery) =>
+      Promise.resolve({
+        items: [
+          item(
+            `${query.filters.channels[0]?.channelId}-1`,
+            query.filters.channels[0]?.channelId || ""
+          ),
+        ],
+        hasMore: false,
+      })
+    );
+    const dataSource: GlobalSearchDataSource = {
+      getSenders: () => [],
+      getSender: (uid) => ({ uid, name: uid }),
+      getSelfUid: () => "self",
+      searchMessages,
+      getFileTypeCategories: async () => [],
+    };
+    hoisted.searchGroups.mockResolvedValue({
+      data: {
+        sequence: 1,
+        groups: [
+          { channel_id: "a", channel_type: 1, group_name: "A" },
+          { channel_id: "b", channel_type: 1, group_name: "B" },
+        ],
+      },
+    });
+
+    const filters = defaultGlobalSearchFilters();
+    let latest: ReturnType<typeof useGlobalChatSearch> | undefined;
+    function Probe() {
+      latest = useGlobalChatSearch({
+        keyword: "octo",
+        filters,
+        dataSource,
+        isActive: true,
+        preferredConversationKey: "1:b",
+      });
+      return null;
+    }
+
+    act(() => {
+      ReactDOM.render(<Probe />, container);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+      await flushMicrotasks();
+    });
+
+    expect(latest?.selectedKey).toBe("1:b");
+    expect(searchMessages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          channels: [expect.objectContaining({ channelId: "b" })],
+        }),
+      })
+    );
+  });
+
+  it("falls back to the first conversation when the aggregate selection is absent", async () => {
+    const searchMessages = vi.fn((query: GlobalSearchQuery) =>
+      Promise.resolve({
+        items: [item("a-1", query.filters.channels[0]?.channelId || "")],
+        hasMore: false,
+      })
+    );
+    const dataSource: GlobalSearchDataSource = {
+      getSenders: () => [],
+      getSender: (uid) => ({ uid, name: uid }),
+      getSelfUid: () => "self",
+      searchMessages,
+      getFileTypeCategories: async () => [],
+    };
+    hoisted.searchGroups.mockResolvedValue({
+      data: {
+        sequence: 1,
+        groups: [
+          { channel_id: "a", channel_type: 1, group_name: "A" },
+          { channel_id: "b", channel_type: 1, group_name: "B" },
+        ],
+      },
+    });
+    const filters = defaultGlobalSearchFilters();
+
+    let latest: ReturnType<typeof useGlobalChatSearch> | undefined;
+    function Probe() {
+      latest = useGlobalChatSearch({
+        keyword: "octo",
+        filters,
+        dataSource,
+        isActive: true,
+        preferredConversationKey: "1:missing",
+      });
+      return null;
+    }
+
+    act(() => {
+      ReactDOM.render(<Probe />, container);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+      await flushMicrotasks();
+    });
+
+    expect(latest?.selectedKey).toBe("1:a");
+    expect(searchMessages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          channels: [expect.objectContaining({ channelId: "a" })],
+        }),
+      })
+    );
+  });
 });

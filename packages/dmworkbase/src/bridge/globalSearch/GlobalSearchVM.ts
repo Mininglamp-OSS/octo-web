@@ -13,13 +13,18 @@ import { ProviderListener } from "../../Service/Provider";
 import { debounce } from "../../Utils/rateLimit";
 import { isElectronPowered } from "../../electron/desktopBridge";
 import { t } from "../../i18n";
-import { addCurrentImChannelInfoListener, getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
+import {
+  addCurrentImChannelInfoListener,
+  getCurrentImChannelInfo,
+} from "../../im-runtime/currentChannelRuntime";
 import { buildSelfContactEntry, shouldInjectSelf } from "./selfInject";
 
 /** Legacy contacts/groups bridge retained while the aggregated tabs migrate. */
 export default class GlobalSearchVM extends ProviderListener {
   // 选中的tab组件
-  private _selectedTabKey = "contacts";
+  // The aggregate view is the global-search landing page.  Keep the channel
+  // search's existing "all" tab separate: it is a channel-local message list.
+  private _selectedTabKey = "all";
 
   public page = 1; // 当前页码
   public limit = 20; // 每页条数
@@ -43,6 +48,7 @@ export default class GlobalSearchVM extends ProviderListener {
       ];
     }
     const tabs = [
+      { tab: t("base.globalSearch.tab.all"), itemKey: "all" },
       { tab: t("base.globalSearch.tab.contacts"), itemKey: "contacts" },
       { tab: t("base.globalSearch.tab.groups"), itemKey: "groups" },
       { tab: t("base.globalSearch.tab.chat"), itemKey: "messages" },
@@ -104,9 +110,7 @@ export default class GlobalSearchVM extends ProviderListener {
   // 搜索标题
   public get searchTitle() {
     if (this.searchInChannel) {
-      const channelInfo = getCurrentImChannelInfo(
-        this.channel!
-      );
+      const channelInfo = getCurrentImChannelInfo(this.channel!);
       if (channelInfo) {
         return t("base.globalSearch.chatHistoryWith", {
           values: { name: channelInfo.title },
@@ -235,16 +239,10 @@ export default class GlobalSearchVM extends ProviderListener {
         // 注入 RAW channel_name（不预包 <mark>）。tab-contacts.tsx renderItem
         // 是唯一的高亮源，它会在 render 时用 raw keyword 匹配 raw name 并包
         // <mark>。双源会走到 <mark><mark>...</mark></mark> 双包路径。
-        if (
-          !this.loadMoreing &&
-          !this.channel &&
-          this.searchResult
-        ) {
+        if (!this.loadMoreing && !this.channel && this.searchResult) {
           const selfUid = WKApp.loginInfo.uid;
           const selfName =
-            WKApp.loginInfo.selfDisplayName?.() ||
-            WKApp.loginInfo.name ||
-            "";
+            WKApp.loginInfo.selfDisplayName?.() || WKApp.loginInfo.name || "";
           if (
             selfUid &&
             shouldInjectSelf(this.keyword, selfName) &&

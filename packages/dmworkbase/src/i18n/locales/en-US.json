@@ -1058,6 +1058,8 @@
   "globalSearch.placeholder": "Search contacts, groups, messages, or files",
   "globalSearch.searchFailedRetry": "Search failed. Please try again later.",
   "globalSearch.searchDisabled": "Search is currently unavailable.",
+  "globalSearch.tab.all": "All",
+  "globalSearch.all.more": "More",
   "globalSearch.aggregated.approxConversations": "About {{count}} related chats",
   "globalSearch.aggregated.conversations": "{{count}} related chats",
   "globalSearch.aggregated.approxMessages": "About {{count}} related messages",

@@ -1,0 +1,59 @@
+.wk-global-search-all {
+  height: var(--wk-global-search-content-height, min(58vh, 640px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 4px 0 16px;
+}
+.wk-global-search-all__segment {
+  margin: 0 0 12px;
+}
+.wk-global-search-all__segment > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  color: var(--wk-text-secondary);
+  font-size: 13px;
+}
+.wk-global-search-all__segment > header button {
+  border: 0;
+  background: transparent;
+  color: var(--wk-color-primary);
+  cursor: pointer;
+}
+.wk-global-search-all__hint {
+  padding: 48px 12px;
+  text-align: center;
+  color: var(--wk-text-tertiary);
+}
+.wk-global-search-all__conversation,
+.wk-global-search-all__plain-hit {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.wk-global-search-all__conversation:hover,
+.wk-global-search-all__plain-hit:hover {
+  background: var(--wk-bg-item-hover);
+}
+.wk-global-search-all__conversation img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.wk-global-search-all__conversation small {
+  overflow: hidden;
+  color: var(--wk-text-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
