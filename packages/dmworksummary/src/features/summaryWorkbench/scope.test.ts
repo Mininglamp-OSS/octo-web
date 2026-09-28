@@ -398,6 +398,48 @@ describe("summary workbench scope helpers", () => {
     expect(result.scope.documents).toEqual(scope.documents);
   });
 
+  it("clears a reference when a chat turns a document+reference scope mixed", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      documents: documentsToScope([
+        { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+      ]),
+      referencedTaskIds: [10, 20],
+    };
+    const channels = [
+      { chatId: "group-a", chatType: "group" as const, name: "A" },
+    ];
+    const result = replaceSelectedChannels(scope, channels, true);
+
+    // Adding a chat (gate ON) turns the document+reference scope mixed, which
+    // is exactly the shape the backend rejects. The chats writer must enforce
+    // the same reference boundary the documents writer does.
+    expect(result.scope.referencedTaskIds).toEqual([]);
+    expect(result.referencesCleared).toBe(true);
+    expect(result.scope.selectedChannels).toEqual(channels);
+    expect(result.scope.documents).toEqual(scope.documents);
+  });
+
+  it("keeps a reference when a chat is selected with the gate off", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      documents: documentsToScope([
+        { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+      ]),
+      referencedTaskIds: [10, 20],
+    };
+    const channels = [
+      { chatId: "group-a", chatType: "group" as const, name: "A" },
+    ];
+    const result = replaceSelectedChannels(scope, channels, false);
+
+    // Gate OFF: mutual exclusion clears documents, and the reference survives
+    // (a pure-chat scope accepts a reference; the scope never becomes mixed).
+    expect(result.scope.documents).toEqual([]);
+    expect(result.scope.referencedTaskIds).toEqual([10, 20]);
+    expect(result.referencesCleared).toBe(false);
+  });
+
   it("clears a chat time range when the last chat is removed from a document scope", () => {
     const scope = {
       ...emptySummaryWorkbenchScope(),

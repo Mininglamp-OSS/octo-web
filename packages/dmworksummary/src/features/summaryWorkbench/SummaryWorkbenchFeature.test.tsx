@@ -1358,7 +1358,7 @@ describe("SummaryWorkbenchFeature", () => {
     );
   });
 
-  it("offers no chat or time_range entry on a document scope when the mixed capability is off", () => {
+  it("restores chat and document entries on a document scope when the mixed capability is off", () => {
     mocks.docsOn = true;
     mocks.docsSearchOn = true;
     const current = controller({
@@ -1371,11 +1371,13 @@ describe("SummaryWorkbenchFeature", () => {
 
     render(<SummaryWorkbenchFeature spaceId="space-a" />, { legacyRoot: true });
 
-    // Gate OFF + documents present: the menu offers neither chat nor
-    // time_range, so the user cannot compose a mixed scope.
+    // Gate OFF + documents present: restore the pre-mixed menu shape. "chat"
+    // stays available so a user who picked documents can switch to a chat
+    // scope, and replaceSelectedChannels(scope, chats, false) still clears
+    // documents, so mutual exclusion holds and no mixed scope is composed.
     expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
       "data-available-contexts",
-      "document"
+      "chat,document"
     );
   });
 

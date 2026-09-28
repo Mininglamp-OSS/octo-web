@@ -124,9 +124,10 @@ export function replaceSelectedChannels(
 ): {
   scope: SummaryWorkbenchScope;
   participantsCleared: boolean;
+  referencesCleared: boolean;
 } {
   if (!shouldApplySourceSelection(scope.selectedChannels, channels)) {
-    return { scope, participantsCleared: false };
+    return { scope, participantsCleared: false, referencesCleared: false };
   }
   // Mixed document+chat (capability ON): selecting chats KEEPS documents.
   // When the capability is OFF the pre-mixed mutual-exclusion is restored —
@@ -134,8 +135,20 @@ export function replaceSelectedChannels(
   // backend rejects. Participants still can't coexist with documents (the
   // chat picker cannot be a team-workspace base while documents are present),
   // so participant bookkeeping below only matters for the pure-chat flow.
+  // A reference-summary stack is ALSO incompatible with a mixed scope: adding
+  // a chat to a document-bearing scope (capability ON) turns it mixed, so the
+  // reference must clear exactly when that transition happens — mirroring the
+  // same boundary on the documents writer (replaceSelectedDocuments).
+  const becomesMixed =
+    mixedSources && (scope.documents ?? []).length > 0 && channels.length > 0;
+  const referencesCleared =
+    becomesMixed && scope.referencedTaskIds.length > 0;
   const nextScope = mixedSources
-    ? { ...scope, selectedChannels: channels }
+    ? {
+        ...scope,
+        selectedChannels: channels,
+        referencedTaskIds: referencesCleared ? [] : scope.referencedTaskIds,
+      }
     : { ...scope, selectedChannels: channels, documents: [] };
   // Invariant: the time range scopes the chat side ONLY. If there are no
   // chats left (but documents remain), a picker time range would be sent to a
@@ -151,6 +164,7 @@ export function replaceSelectedChannels(
       participants: participantsCleared ? [] : scope.participants,
     },
     participantsCleared,
+    referencesCleared,
   };
 }
 
