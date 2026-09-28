@@ -375,6 +375,10 @@ describe('saveFileAs write progress (review: 大文件静默存储不友好)', (
 
     await saveFileAs('https://cdn.example.com/big.bin', 'big.bin')
 
+    expect(modalDestroy).toHaveBeenCalled()
+    expect(Toast.error).toHaveBeenCalledWith(
+      expect.objectContaining({ content: expect.stringContaining('保存到所选位置失败') }),
+    )
     expect(capturedAnchor).not.toBeNull()
   })
 

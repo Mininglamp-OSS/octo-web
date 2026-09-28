@@ -269,6 +269,7 @@ async function streamToWritable(
         progress.done();
     } catch (err) {
         progress.close();
+        try { await reader.cancel(); } catch { /* ignore reader cancellation failure */ }
         try { await writable?.abort?.(err); } catch { /* ignore abort failure */ }
         throw err;
     } finally {
@@ -330,10 +331,11 @@ export async function saveFileAs(url: string, filename: string): Promise<void> {
         // and FileSystemHandle.remove() is non-standard. Never delete a path
         // selected by the user on cancellation or write failure.
         let cancelled = false;
+        let progress: SaveProgressController | undefined;
         try {
             // 系统保存框关闭后立即显示网页自己的进度弹窗。
             const abortController = new AbortController();
-            const progress = openSaveProgressModal(filename, true, () => {
+            progress = openSaveProgressModal(filename, true, () => {
                 cancelled = true;
                 abortController.abort();
             });
@@ -344,10 +346,12 @@ export async function saveFileAs(url: string, filename: string): Promise<void> {
             }
             Dap.shared.track("message_file_downloaded", { file_type: fileType });
         } catch (err) {
+            progress?.close();
             if (cancelled || (err as { name?: string })?.name === "AbortError") return;
             // 已选好位置但取流/写入失败时回退到 anchor 下载。
             // anchor 用预签名 URL 的 Content-Disposition 触发下载、不经 fetch,天然不受 CORS 限制。
             console.warn("saveFileAs: write to chosen location failed, falling back to download", err);
+            Toast.error({ content: t("base.download.fallback", { values: { filename } }), duration: 4 });
             await downloadFile(url, filename);
         }
         return;

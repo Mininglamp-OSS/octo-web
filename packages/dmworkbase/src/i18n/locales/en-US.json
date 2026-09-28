@@ -111,6 +111,7 @@
   "channelSearch.downloadFailed": "Download failed. Please try again later.",
   "download.completed": "Download completed: {{filename}}",
   "download.failed": "Download failed: {{filename}}",
+  "download.fallback": "Saving to the selected location failed; downloaded to the default folder instead: {{filename}}",
   "download.saving": "Saving…",
   "download.savingPercent": "{{percent}}% complete",
   "download.saveModalTitle": "Save file",

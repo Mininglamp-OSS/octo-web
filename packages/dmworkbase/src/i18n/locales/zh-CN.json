@@ -111,6 +111,7 @@
   "channelSearch.downloadFailed": "下载失败，请稍后重试",
   "download.completed": "下载完成：{{filename}}",
   "download.failed": "下载失败：{{filename}}",
+  "download.fallback": "保存到所选位置失败，已改为下载到默认目录：{{filename}}",
   "download.saving": "正在保存…",
   "download.savingPercent": "已完成 {{percent}}%",
   "download.saveModalTitle": "保存文件",
