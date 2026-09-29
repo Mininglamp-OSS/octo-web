@@ -171,9 +171,15 @@ describe("MemberRemovalList · 多选交互", () => {
       t: (key: string) => key,
     };
 
-    const content = render(component, [], { firstLoadSettled: false });
+    const content = render(component, [], {
+      firstLoadSettled: false,
+      hasMore: true,
+    });
     expect(collectByTestId(content, "member-removal-row")).toHaveLength(1);
     expect(collectByTestId(content, "member-removal-empty")).toHaveLength(0);
+    expect(collectByTestId(content, "member-removal-load-more")).toHaveLength(
+      0
+    );
   });
 
   it("没有首屏缓存时先显示加载状态", () => {

@@ -695,7 +695,7 @@ export class MemberRemovalList extends Component<
                   {groups.map((group) => this.renderGroup(group, groups))}
                   {vm.loadError ? (
                     this.renderLoadError(vm)
-                  ) : vm.hasMore && !vm.autoPaging ? (
+                  ) : vm.firstLoadSettled && vm.hasMore && !vm.autoPaging ? (
                     <div className="wk-memberremoval-continuation">
                       {this.renderLoadMore(vm)}
                     </div>
