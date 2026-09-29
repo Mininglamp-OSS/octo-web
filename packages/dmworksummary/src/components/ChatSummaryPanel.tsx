@@ -13,7 +13,7 @@ import { X, ChevronLeft } from 'lucide-react';
 import SummaryListPage from '../pages/SummaryListPage';
 import SummaryWorkbenchCreateEntry from '../features/summaryWorkbench/SummaryWorkbenchCreateEntry';
 import SummaryDetailPage from '../pages/SummaryDetailPage';
-import type { SummaryListItem, SummaryReferenceTask } from '../types/summary';
+import type { SummaryReferenceTask } from '../types/summary';
 import { summaryTestIds } from '../utils/testIds';
 
 interface ChatSummaryPanelProps {
@@ -26,7 +26,7 @@ interface ChatSummaryPanelProps {
 interface ChatSummaryPanelState {
     view: 'list' | 'detail' | 'create';
     selectedTaskId: number | null;
-    refineTask: SummaryListItem | null;
+    refineTask: SummaryReferenceTask | null;
     isDragging: boolean;
     /** 仅供 Capability fail-closed 后的 Legacy 创建页恢复原选择。 */
     legacyCreateMode: 'normal' | 'agent';
@@ -145,7 +145,7 @@ export default class ChatSummaryPanel extends Component<
     };
 
     private handleCreateNew = (mode?: 'normal' | 'agent' | 'unified') => {
-        this.setState((prev) => ({
+        this.setState((prev: ChatSummaryPanelState) => ({
             view: 'create',
             selectedTaskId: null,
             refineTask: null,

@@ -31,6 +31,8 @@ vi.mock("@octo/base", async () => {
     "summary.workbench.message.userAvatar": "Me",
     "summary.workbench.message.conversation": "Summary conversation",
     "summary.workbench.actions.newSession": "New session",
+    "summary.workbench.lastSession.label": "Last conversation",
+    "summary.workbench.lastSession.resume": "Resume last conversation",
     "summary.workbench.loadingHistory": "Restoring session",
     "summary.common.agentChat.viewGenerationProcess": "Generation progress",
     "summary.common.agentChat.progress.understand": "Understanding request",
@@ -266,6 +268,33 @@ describe("SummaryWorkbench", () => {
     );
 
     expect(actions.onOpenContext).toHaveBeenCalledWith("reference");
+  });
+
+  it("renders the resume-last-session button in header actions next to the reference trigger", () => {
+    const actions = createActions();
+    actions.onResumeLastSession = vi.fn();
+    const { container } = rtlRender(
+      <SummaryWorkbench state={createState()} actions={actions} />,
+      { legacyRoot: true }
+    );
+
+    const headerActions = container.querySelector<HTMLElement>(
+      ".wk-summary-workbench__header-actions"
+    );
+    const resumeButton = screen.getByTestId(
+      "summary-workbench-last-session"
+    );
+    const referenceTrigger = screen.getByRole("button", {
+      name: "Reference summary",
+    });
+    // 合成一个按钮：文案即「上次会话」label，点击触发恢复，置于引用总结旁边。
+    expect(resumeButton).toBeInTheDocument();
+    expect(resumeButton).toHaveTextContent("Last conversation");
+    if (!headerActions) throw new Error("Header actions not rendered");
+    expect(headerActions).toContainElement(resumeButton);
+    expect(headerActions).toContainElement(referenceTrigger);
+    fireEvent.click(resumeButton);
+    expect(actions.onResumeLastSession).toHaveBeenCalledTimes(1);
   });
 
   it("renders every reference item state provides (normalization happens upstream in toWorkbenchScope — see adapter.test.ts for the wire cap; PR #1637 P1)", () => {

@@ -77,7 +77,7 @@ export default function SummaryWorkspace({
   const showCreate = (mode: "normal" | "agent" | "unified" = "normal") => {
     // 已在 create 视图时路由形状不变，onRouteChange 不会造成任何 props 差异；
     // createSeq 递增让 key 变化 → workbench 强制重挂 → 新会话语义生效。
-    setCreateSeq((value) => value + 1);
+    setCreateSeq((value: number) => value + 1);
     onRouteChange({ view: "create", mode: mode === "unified" ? "normal" : mode, source: "summary_list", fresh: true });
   };
   const showDetail = (taskId: number) =>

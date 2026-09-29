@@ -123,7 +123,12 @@ describe("SummaryShell with the real workspace", () => {
     fireEvent.change(list, { target: { value: "retained filter" } });
     fireEvent.doubleClick(list);
     await act(async () => {});
-    const route: SummaryWorkspaceRoute = { view: "create", mode: "normal", source: "summary_list" };
+    const route: SummaryWorkspaceRoute = {
+      view: "create",
+      mode: "normal",
+      source: "summary_list",
+      fresh: true,
+    };
     expect(f.bridge.reportRoute).toHaveBeenLastCalledWith({ route, spaceId: "space-a" });
     const draft = screen.getByLabelText("draft");
     fireEvent.change(draft, { target: { value: "unsaved creation" } });

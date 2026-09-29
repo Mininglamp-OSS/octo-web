@@ -125,6 +125,8 @@ export interface SummaryWorkbenchActions {
   onRemoveContext: (kind: SummaryWorkbenchContextKind, id: string) => void;
   onResultAction: (action: SummaryWorkbenchAction) => void;
   onNewSession?: () => void;
+  /** 有可恢复的「上次对话」时由 Feature 层注入；点击后恢复上一个会话。 */
+  onResumeLastSession?: () => void;
 }
 
 export interface SummaryWorkbenchProps {

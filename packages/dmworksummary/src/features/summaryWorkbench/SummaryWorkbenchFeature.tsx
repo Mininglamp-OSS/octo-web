@@ -7,7 +7,7 @@ import React, {
   useState,
 } from "react";
 import { Input, Modal, Spin, Toast } from "@douyinfe/semi-ui";
-import { Dap, useI18n, WKButton, type DocSearchItem } from "@octo/base";
+import { Dap, useI18n, type DocSearchItem } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import type { SummaryMessagingPort } from "../../host";
 import { themeLenBucket } from "../../utils/summaryHelpers";
@@ -680,9 +680,7 @@ export default function SummaryWorkbenchFeature({
     request: () => Promise<SummaryWorkbenchResponse | undefined>
   ) => {
     const previousInputValue = workbench.viewState.inputValue;
-    const previousHasSubmitted = hasSubmitted;
     const previousTemplateFilledComposer = templateFilledComposer.current;
-    const previousTemplateGalleryOpen = templateGalleryOpen;
     const responsePromise = request();
 
     templateFilledComposer.current = null;
@@ -919,13 +917,17 @@ export default function SummaryWorkbenchFeature({
     // conversation" and the stored one resumes as active. onSessionIdChange
     // persists whichever session ends up active.
     const currentPersisted = readSummaryWorkbenchSession(storageScope);
-    if (currentPersisted && currentPersisted !== lastSessionId) {
-      writeSummaryWorkbenchPreviousSession(storageScope, currentPersisted);
-    } else {
-      writeSummaryWorkbenchPreviousSession(storageScope, "");
-    }
+    // Keep the bar readable: point it at the demoted session instead of
+    // clearing it. Clearing here would hide the only reader of :previous and
+    // the next fresh "+" mount would overwrite the demoted session
+    // (resume-orphaning, Octo-Q P1-3).
+    const demotedSessionId =
+      currentPersisted && currentPersisted !== lastSessionId
+        ? currentPersisted
+        : "";
+    writeSummaryWorkbenchPreviousSession(storageScope, demotedSessionId);
     writeSummaryWorkbenchSession(storageScope, lastSessionId);
-    setLastSessionId("");
+    setLastSessionId(demotedSessionId);
     setHasSubmitted(false);
     setTemplateGalleryOpen(false);
     templateFilledComposer.current = null;
@@ -1026,25 +1028,6 @@ export default function SummaryWorkbenchFeature({
       data-testid={summaryTestIds.workbenchFeature}
     >
       <div className="wk-summary-workbench-feature__main">
-        {lastSessionId ? (
-          <div
-            className="wk-summary-workbench-feature__last-session"
-            data-testid={summaryTestIds.workbenchLastSession}
-          >
-            <span className="wk-summary-workbench-feature__last-session-label">
-              {t("summary.workbench.lastSession.label")}
-            </span>
-            <WKButton
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={resumeLastSession}
-              disabled={busy}
-            >
-              {t("summary.workbench.lastSession.resume")}
-            </WKButton>
-          </div>
-        ) : null}
         <SummaryWorkbench
           state={viewState}
           actions={{
@@ -1085,6 +1068,7 @@ export default function SummaryWorkbenchFeature({
             onRemoveContext: handleContextRemove,
             onResultAction: (action) => void handleResultAction(action),
             onNewSession: resetSession,
+            onResumeLastSession: lastSessionId ? resumeLastSession : undefined,
           }}
           contextPanel={
             templateGalleryOpen && !templateLocked ? (

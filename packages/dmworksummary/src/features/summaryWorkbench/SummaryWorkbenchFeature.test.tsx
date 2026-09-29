@@ -247,6 +247,16 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
       <button type="button" onClick={actions.onNewSession}>
         new-session
       </button>
+      {actions.onResumeLastSession && (
+        <button
+          type="button"
+          data-testid="summary-workbench-last-session"
+          aria-label="summary.workbench.lastSession.resume"
+          onClick={actions.onResumeLastSession}
+        >
+          last-session
+        </button>
+      )}
       {contextPanel}
     </div>
   ),
