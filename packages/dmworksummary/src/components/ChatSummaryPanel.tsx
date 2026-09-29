@@ -30,6 +30,8 @@ interface ChatSummaryPanelState {
     isDragging: boolean;
     /** 仅供 Capability fail-closed 后的 Legacy 创建页恢复原选择。 */
     legacyCreateMode: 'normal' | 'agent';
+    /** 「+」每次点击 +1：作为 workbench key 让其强制重挂载（新会话语义）。 */
+    createSeq: number;
 }
 
 export default class ChatSummaryPanel extends Component<
@@ -47,7 +49,7 @@ export default class ChatSummaryPanel extends Component<
     constructor(props: ChatSummaryPanelProps) {
         super(props);
         const initialView = props.summaryPanelView === 'new' ? 'create' : 'list';
-        this.state = { view: initialView, selectedTaskId: null, refineTask: null, isDragging: false, legacyCreateMode: 'normal' };
+        this.state = { view: initialView, selectedTaskId: null, refineTask: null, isDragging: false, legacyCreateMode: 'normal', createSeq: 0 };
     }
 
     componentDidMount() {
@@ -143,12 +145,14 @@ export default class ChatSummaryPanel extends Component<
     };
 
     private handleCreateNew = (mode?: 'normal' | 'agent' | 'unified') => {
-        this.setState({
+        this.setState((prev) => ({
             view: 'create',
             selectedTaskId: null,
             refineTask: null,
             legacyCreateMode: mode === 'agent' ? 'agent' : 'normal',
-        });
+            /** 每次点「+」都是新会话语义：递增 seq 换 key 强制重挂 workbench。 */
+            createSeq: prev.createSeq + 1,
+        }));
     };
 
     private handleViewDetail = (taskId: number) => {
@@ -231,9 +235,10 @@ export default class ChatSummaryPanel extends Component<
                         </div>
                         <div className="wk-summary-panel-detail-body" style={{ overflow: 'auto', flex: 1 }}>
                             <SummaryWorkbenchCreateEntry
-                                key={`${channel.channelType}:${channel.channelID}`}
+                                key={`${channel.channelType}:${channel.channelID}:${this.state.createSeq}`}
                                 channel={channel}
                                 derivedFromTask={refineTask ?? undefined}
+                                forceNewSession={refineTask == null}
                                 embedded={true}
                                 onClose={this.handleBackToList}
                                 onSubmit={this.handleCreateSubmit}
