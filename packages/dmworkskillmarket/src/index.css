@@ -3608,15 +3608,93 @@
   gap: var(--wk-sp-2);
   flex: 0 0 auto;
 }
+
+/* The upgrade leave guard is a full state of the existing workflow modal. The
+   form is removed from the interaction tree while this panel is visible, so
+   the destructive decision cannot compete with or leak focus into its fields. */
+.skill-market-workflow-modal--leave-confirm .wk-modal-body {
+  overflow: visible;
+}
+
+.skill-market-leave-confirm {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wk-sp-4);
+  min-height: 180px;
+  padding: var(--wk-sp-6);
+  border: 1px solid var(--wk-color-danger-border);
+  border-radius: var(--wk-r-lg);
+  background: var(--wk-color-danger-bg);
+  color: var(--wk-text-primary);
+  text-align: center;
+}
+
+.skill-market-leave-confirm__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--wk-r-full);
+  background: var(--wk-color-danger-light);
+  color: var(--wk-color-danger);
+}
+
+.skill-market-leave-confirm p {
+  max-width: 430px;
+  margin: 0;
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-md);
+  line-height: var(--wk-leading-loose);
+}
+
+.skill-market-leave-confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wk-sp-2);
+  width: 100%;
+}
+
+.skill-market-leave-confirm__leave.wk-btn--danger {
+  border-color: var(--wk-color-danger);
+  background: var(--wk-color-danger);
+  color: var(--wk-text-inverse);
+}
+
+.skill-market-leave-confirm__leave.wk-btn--danger:hover:not(:disabled) {
+  border-color: var(--wk-color-error);
+  background: var(--wk-color-error);
+}
 /* Narrow dialogs stack the message above the buttons rather than letting the
    message truncate — it is the reason the buttons are there. */
 @media (max-width: 640px) {
+  .skill-market-workflow-modal--leave-confirm,
+  .skill-market-workflow-modal--leave-confirm .wk-modal-content {
+    width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px);
+  }
+
   .skill-market-inline-confirm {
     flex-direction: column;
     align-items: flex-start;
   }
   .skill-market-inline-confirm__actions {
     align-self: flex-end;
+  }
+
+  .skill-market-leave-confirm {
+    min-height: 150px;
+    padding: var(--wk-sp-4);
+  }
+
+  .skill-market-leave-confirm__actions {
+    flex-direction: column;
+  }
+
+  .skill-market-leave-confirm__actions .wk-btn {
+    width: 100%;
   }
 }
 

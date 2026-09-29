@@ -66,6 +66,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const iconInputRef = useRef<HTMLInputElement | null>(null);
   const tagFieldRef = useRef<HTMLDivElement | null>(null);
+  const leaveConfirmActionsRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef(false);
   const [stage, setStage] = useState<UploadStage>("idle");
   const [progress, setProgress] = useState(0);
@@ -123,18 +124,25 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
     return DEFAULT_CREATE_VERSION;
   }, [reviewSkill, reviewInitial]);
 
-  const dirty = Boolean(
-    file ||
-    name.trim() ||
-    displayName.trim() ||
-    tags.length ||
-    tagDraft.trim() ||
-    categoryId ||
-    (isReviewMode ? version !== reviewDefaultVersion : version !== DEFAULT_CREATE_VERSION) ||
-    changelog.trim() ||
-    iconBlob ||
-    createdPluginId,
-  );
+  const dirty = isReviewMode
+    ? Boolean(
+        file ||
+        parseTaskId ||
+        version !== reviewDefaultVersion ||
+        changelog !== (reviewInitial?.changelog ?? ""),
+      )
+    : Boolean(
+        file ||
+        name.trim() ||
+        displayName.trim() ||
+        tags.length ||
+        tagDraft.trim() ||
+        categoryId ||
+        version !== DEFAULT_CREATE_VERSION ||
+        changelog.trim() ||
+        iconBlob ||
+        createdPluginId,
+      );
 
   function getTagDraftError() {
     const next = tagDraft.trim();
@@ -290,6 +298,17 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
     reset();
     onClose();
   }
+
+  const showUpgradeLeaveConfirm = isUpgrade && confirmClose !== null;
+
+  useEffect(() => {
+    if (!showUpgradeLeaveConfirm) return undefined;
+
+    const frame = window.requestAnimationFrame(() => {
+      leaveConfirmActionsRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [showUpgradeLeaveConfirm]);
 
   async function startUpload(nextFile: File) {
     const validationError = validateZipFile(nextFile);
@@ -639,11 +658,13 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
     }
   }
 
-  const modalTitle = isReviewMode
-    ? reviewSkill && reviewSkill.visibility !== "private"
-      ? t("skillMarket.plugin.actionUpgrade")
-      : t("skillMarket.plugin.actionPublish")
-    : t("skillMarket.form.createTitle");
+  const modalTitle = showUpgradeLeaveConfirm
+    ? t("skillMarket.confirm.leaveUpgradeTitle")
+    : isReviewMode
+      ? reviewSkill && reviewSkill.visibility !== "private"
+        ? t("skillMarket.plugin.actionUpgrade")
+        : t("skillMarket.plugin.actionPublish")
+      : t("skillMarket.form.createTitle");
 
 
   // Changelog is required when scope is "review"; hide the asterisk and relax
@@ -656,12 +677,35 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
     <>
       <WKModal
         visible={visible}
-        onCancel={requestClose}
+        onCancel={() => {
+          if (confirmClose) {
+            setConfirmClose(null);
+            return;
+          }
+          requestClose();
+        }}
         title={modalTitle}
         size="lg"
-        className="skill-market-workflow-modal"
+        className={
+          showUpgradeLeaveConfirm
+            ? "skill-market-workflow-modal skill-market-workflow-modal--leave-confirm"
+            : "skill-market-workflow-modal"
+        }
         footer={
-          confirmClose ? (
+          showUpgradeLeaveConfirm ? (
+            <div ref={leaveConfirmActionsRef} className="skill-market-leave-confirm__actions">
+              <WKButton variant="secondary" onClick={() => setConfirmClose(null)}>
+                {t("skillMarket.confirm.keepEditing")}
+              </WKButton>
+              <WKButton
+                className="skill-market-leave-confirm__leave"
+                variant="danger"
+                onClick={confirmLeave}
+              >
+                {t("skillMarket.confirm.leave")}
+              </WKButton>
+            </div>
+          ) : confirmClose ? (
             <InlineConfirmBar
               message={t(
                 confirmClose === "busy"
@@ -735,6 +779,18 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
           )
         }
       >
+        {showUpgradeLeaveConfirm ? (
+          <section
+            className="skill-market-leave-confirm"
+            role="alert"
+            aria-label={t("skillMarket.confirm.upgradeUnsavedMessage")}
+          >
+            <span className="skill-market-leave-confirm__icon" aria-hidden="true">
+              <AlertCircle size={28} />
+            </span>
+            <p>{t("skillMarket.confirm.upgradeUnsavedMessage")}</p>
+          </section>
+        ) : (
         <section className="skill-market-form skill-market-form--workflow">
           {error && (
             <div className="skill-market-form__error">
@@ -1064,6 +1120,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
             </>
           )}
         </section>
+        )}
       </WKModal>
       <IconCropModal
         visible={!!iconCropFile}

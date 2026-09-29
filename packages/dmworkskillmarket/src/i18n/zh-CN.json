@@ -162,6 +162,8 @@
     "keepEditing": "继续编辑",
     "keepUploading": "继续上传",
     "leave": "确认离开",
+    "leaveUpgradeTitle": "确认离开升级？",
+    "upgradeUnsavedMessage": "当前填写的版本信息、发布说明及已上传文件尚未保存，离开后将丢失。",
     "busyMessage": "确定离开？技能包正在上传/解析中，离开后当前进度将丢失，需要重新上传。",
     "unsavedMessage": "尚未保存，离开后已上传的文件和填写的信息将丢失",
     "saveDraftAndLeave": "保存草稿并离开",
