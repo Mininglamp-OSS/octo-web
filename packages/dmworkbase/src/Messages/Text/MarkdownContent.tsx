@@ -1331,6 +1331,8 @@ function escapeMarkdownLinkDestination(href: string): string {
 }
 
 function escapeMarkdownPreservingSafeLinks(raw: string): string {
+  // 防御：非字符串时直接返回空，避免 raw.split 等调用崩溃（#1663）
+  if (typeof raw !== 'string') return '';
   return linkifySafeUrls(raw)
     .map((segment) => {
       if (segment.type === "text") return escapeMarkdown(segment.content);
@@ -1347,6 +1349,9 @@ function escapeMarkdownPreservingSafeLinks(raw: string): string {
  * 跳过 fenced code block（```...```）内的内容，避免误处理 YAML 等代码中的分隔线。
  */
 function normalizeContent(raw: string): string {
+  // 防御：当上游传入非字符串（如结构化消息 content 为 Object）时直接返回空字符串，
+  // 避免 raw.split() 抛出 "n.split is not a function"（#1663）。
+  if (typeof raw !== 'string') return '';
   // 把字符串按 fenced code block 切分：
   // 奇数索引 = 代码块内容（保持原样），偶数索引 = 普通文本（需要处理）
   const parts = raw.split(/(```[\s\S]*?```)/g);
