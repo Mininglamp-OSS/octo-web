@@ -125,9 +125,15 @@ export function replaceSelectedChannels(
   scope: SummaryWorkbenchScope;
   participantsCleared: boolean;
   referencesCleared: boolean;
+  timeRangeCleared: boolean;
 } {
   if (!shouldApplySourceSelection(scope.selectedChannels, channels)) {
-    return { scope, participantsCleared: false, referencesCleared: false };
+    return {
+      scope,
+      participantsCleared: false,
+      referencesCleared: false,
+      timeRangeCleared: false,
+    };
   }
   // Mixed document+chat (capability ON): selecting chats KEEPS documents.
   // When the capability is OFF the pre-mixed mutual-exclusion is restored —
@@ -155,6 +161,8 @@ export function replaceSelectedChannels(
   // document-only scope that the backend rejects. Clear it here so the state
   // can never represent that illegal shape.
   const scopeAfterChatChange = withChatOnlyTimeRange(nextScope);
+  const timeRangeCleared =
+    scope.timeRange !== null && scopeAfterChatChange.timeRange === null;
   const nextMemberSource = participantSourceKey(scopeAfterChatChange);
   const participantsCleared =
     scope.participants.length > 0 && !nextMemberSource;
@@ -165,6 +173,7 @@ export function replaceSelectedChannels(
     },
     participantsCleared,
     referencesCleared,
+    timeRangeCleared,
   };
 }
 
@@ -194,12 +203,14 @@ export function replaceSelectedDocuments(
   scope: SummaryWorkbenchScope;
   participantsCleared: boolean;
   referencesCleared: boolean;
+  timeRangeCleared: boolean;
 } {
   if (!shouldApplySourceSelection(scope.documents ?? [], documents)) {
     return {
       scope,
       participantsCleared: false,
       referencesCleared: false,
+      timeRangeCleared: false,
     };
   }
   // Mixed document+chat (capability ON): selecting documents KEEPS chats and
@@ -230,10 +241,14 @@ export function replaceSelectedDocuments(
         participants: [],
         referencedTaskIds: scope.referencedTaskIds,
       };
+  const scopeAfterDocChange = withChatOnlyTimeRange(withDocuments);
+  const timeRangeCleared =
+    scope.timeRange !== null && scopeAfterDocChange.timeRange === null;
   return {
-    scope: withChatOnlyTimeRange(withDocuments),
+    scope: scopeAfterDocChange,
     participantsCleared: scope.participants.length > 0,
     referencesCleared,
+    timeRangeCleared,
   };
 }
 
@@ -260,6 +275,7 @@ export function removeScopeContext(
   scope: SummaryWorkbenchScope;
   participantsCleared: boolean;
   referencesCleared: boolean;
+  timeRangeCleared: boolean;
 } {
   switch (kind) {
     case "chat": {
@@ -272,6 +288,7 @@ export function removeScopeContext(
         scope: result.scope,
         participantsCleared: result.participantsCleared,
         referencesCleared: result.referencesCleared,
+        timeRangeCleared: result.timeRangeCleared,
       };
     }
     case "document": {
@@ -284,10 +301,14 @@ export function removeScopeContext(
       // Removing a document must still re-assert the chat-only-time-range
       // invariant (a snapshot could hydrate a document-only scope carrying a
       // time range; see withChatOnlyTimeRange).
+      const scopeAfterDocRemoval = withChatOnlyTimeRange(filtered);
+      const timeRangeCleared =
+        scope.timeRange !== null && scopeAfterDocRemoval.timeRange === null;
       return {
-        scope: withChatOnlyTimeRange(filtered),
+        scope: scopeAfterDocRemoval,
         participantsCleared: false,
         referencesCleared: false,
+        timeRangeCleared,
       };
     }
     case "participant":
@@ -300,18 +321,21 @@ export function removeScopeContext(
         },
         participantsCleared: false,
         referencesCleared: false,
+        timeRangeCleared: false,
       };
     case "template":
       return {
         scope: { ...scope, template: null },
         participantsCleared: false,
         referencesCleared: false,
+        timeRangeCleared: false,
       };
     case "time_range":
       return {
         scope: { ...scope, timeRange: null },
         participantsCleared: false,
         referencesCleared: false,
+        timeRangeCleared: false,
       };
     case "reference":
       return {
@@ -323,6 +347,7 @@ export function removeScopeContext(
         },
         participantsCleared: false,
         referencesCleared: false,
+        timeRangeCleared: false,
       };
   }
 }

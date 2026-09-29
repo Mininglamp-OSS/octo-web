@@ -290,7 +290,8 @@
       "participantsUnsupportedForSelectedChats": "Participants require group chats only, with no more than 30 chats selected.",
       "selectSingleChatForParticipants": "Participant selection supports up to 30 group chats only.",
       "referencesCleared": "Mixed sources can't stack a referenced summary yet; the reference was removed.",
-      "referencesUnsupportedForMixedScope": "Mixed sources can't stack a referenced summary yet."
+      "referencesUnsupportedForMixedScope": "Mixed sources can't stack a referenced summary yet.",
+      "timeRangeCleared": "The time range applies to chat sources only; it was cleared because no chats are selected."
     },
     "errors": {
       "network": "Network error. Try again later.",

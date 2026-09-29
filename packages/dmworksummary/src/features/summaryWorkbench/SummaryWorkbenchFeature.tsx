@@ -865,6 +865,9 @@ export default function SummaryWorkbenchFeature({
         setReferencePreviewOpen(false);
         Toast.info(t("summary.workbench.notice.referencesCleared"));
       }
+      if (result.timeRangeCleared) {
+        Toast.info(t("summary.workbench.notice.timeRangeCleared"));
+      }
     });
   };
 
@@ -1132,6 +1135,9 @@ export default function SummaryWorkbenchFeature({
               setReferencePreviewOpen(false);
               Toast.info(t("summary.workbench.notice.referencesCleared"));
             }
+            if (result.timeRangeCleared) {
+              Toast.info(t("summary.workbench.notice.timeRangeCleared"));
+            }
           });
         }}
         onCancel={() => setOpenSelector(null)}
@@ -1161,6 +1167,9 @@ export default function SummaryWorkbenchFeature({
               setReferencedTask(null);
               setReferencePreviewOpen(false);
               Toast.info(t("summary.workbench.notice.referencesCleared"));
+            }
+            if (result.timeRangeCleared) {
+              Toast.info(t("summary.workbench.notice.timeRangeCleared"));
             }
           });
         }}

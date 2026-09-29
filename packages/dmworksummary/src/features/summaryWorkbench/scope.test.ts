@@ -43,6 +43,7 @@ describe("summary workbench scope helpers", () => {
       scope,
       participantsCleared: false,
       referencesCleared: false,
+      timeRangeCleared: false,
     });
     expect(replaceSelectedDocuments(scope, []).scope).toBe(scope);
   });
@@ -517,6 +518,32 @@ describe("summary workbench scope helpers", () => {
     expect(
       removeScopeContext(scope, "document", "doc-a").referencesCleared
     ).toBe(false);
+  });
+
+  it("surfaces timeRangeCleared when removing the last chat drops the range (gate ON)", () => {
+    // Reachable by ordinary interaction with the capability ON: a mixed scope
+    // (chats + documents + range), then remove the last chat via chip ×. The
+    // range chip must vanish AND the caller must be told so it can toast —
+    // otherwise the next generation silently covers all time instead of the
+    // picked window.
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      selectedChannels: [
+        { chatId: "group-a", chatType: "group" as const, name: "A" },
+      ],
+      documents: documentsToScope([
+        { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+      ]),
+      timeRange: {
+        start: "2026-09-01T00:00:00Z",
+        end: "2026-09-02T00:00:00Z",
+        label: "昨天",
+      },
+    };
+    const result = removeScopeContext(scope, "chat", "group-a", true);
+    expect(result.scope.selectedChannels).toEqual([]);
+    expect(result.scope.timeRange).toBeNull();
+    expect(result.timeRangeCleared).toBe(true);
   });
 
   it("re-asserts the chat-only time range when removing a document leaves a document-only scope with a range", () => {

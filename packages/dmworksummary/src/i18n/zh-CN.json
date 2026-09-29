@@ -290,7 +290,8 @@
       "participantsUnsupportedForSelectedChats": "当前会话范围不支持参与者，请仅选择群聊且不超过 30 个",
       "selectSingleChatForParticipants": "选择参与者时仅支持最多 30 个群聊",
       "referencesCleared": "混合来源暂不支持叠加引用总结，已移除引用",
-      "referencesUnsupportedForMixedScope": "混合来源暂不支持叠加引用总结"
+      "referencesUnsupportedForMixedScope": "混合来源暂不支持叠加引用总结",
+      "timeRangeCleared": "时间范围仅作用于聊天来源，未选择聊天时已清除"
     },
     "errors": {
       "network": "网络连接异常，请稍后重试",
