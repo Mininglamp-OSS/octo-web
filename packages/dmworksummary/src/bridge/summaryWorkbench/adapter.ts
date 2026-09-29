@@ -897,43 +897,87 @@ function toWorkbenchScope(
   context: SummaryWorkspaceContextDTO,
   mixedSources: boolean
 ): SummaryWorkbenchScope {
-  // Mixed document+chat hydration is capability-aware. When the backend
-  // advertises mixed_sources (mixedSources=true), chats, documents, the chat
-  // time range AND participants restore TOGETHER losslessly (the time range
-  // scopes the chat side only; participants×documents is a shape the selection
-  // layer can no longer produce and the backend rejects at submit time, so a
-  // stored snapshot carrying both is retained rather than silently dropped).
-  // When the capability is OFF, the pre-mixed boundary is re-imposed at the
-  // decode boundary: a snapshot that was persisted while the gate was ON must
-  // NOT re-materialize the mixed shapes (documents+channels, documents+
-  // participants, document-only+time_range) that the gate-OFF UI cannot
-  // compose or edit — those are dropped here (and the scope-version bump in
-  // toAuthoritativeState keeps the next request from resending the server's
-  // stored hash), otherwise a gate rollback would hydrate an unsendable scope
-  // that only chip-by-chip removal could escape.
+  // The decode boundary enforces three scope invariants unconditionally
+  // (capability-INDEPENDENT — they hold on both gate states, mirroring how
+  // the selection layer would have prevented these shapes from ever being
+  // composed had they gone through the picker instead of an older
+  // persistence):
+  //   I1  participants × documents — the chat picker cannot be a
+  //       team-workspace base while documents are present, so participants
+  //       clear whenever documents exist.
+  //   I2  time_range × documents-without-chats — the time range scopes the
+  //       chat side only, so a document-only scope carrying a range is null'd.
+  //   I3  referenced_task_ids × mixed (documents + channels) — a reference
+  //       stack is incompatible with a mixed scope; the writers clear it on
+  //       the pure→mixed transition, so a persisted mixed+reference
+  //       shape drops the reference here.
+  // These are the same three shapes the outbound selection layer refuses to
+  // compose (scope.ts: replaceSelectedDocuments / replaceSelectedChannels /
+  // withChatOnlyTimeRange / handleContextOpen). Enforcing them at the decode
+  // boundary keeps hydration idempotent with the writers: a snapshot that
+  // disagrees with the current invariants normalizes down to a sendable
+  // scope, and the resulting length delta bumps scope_version (see
+  // toAuthoritativeState) so the next request cannot reuse the server's old
+  // hash and 409.
+  //
+  // On top of those three, when the mixed_sources capability is OFF and the
+  // snapshot carries documents, the pre-mixed boundary is re-imposed:
+  // selected_channels drops too (gate-OFF UI cannot compose documents+chats;
+  // participants and time_range already fell out via I1/I2). This is the
+  // one capability-dependent drop.
   const hasDocuments = context.documents.length > 0;
   const dropChatSide = hasDocuments && !mixedSources;
+  const selectedChannels = dropChatSide
+    ? []
+    : context.selected_channels.map((channel) => ({
+        chatId: channel.chat_id,
+        chatType: channel.chat_type,
+        name: channel.name,
+        ...(channel.is_archived === undefined
+          ? {}
+          : { isArchived: channel.is_archived }),
+      }));
+  const documents = context.documents.map((document) => ({
+    documentId: document.document_id,
+    title: document.title ?? document.document_id,
+  }));
+  // I1: participants clear whenever documents are present (capability-
+  // independent). dropChatSide is a strict subset of this (documents+!mixed),
+  // so the gate-OFF branch is already covered by hasDocuments.
+  const participants = hasDocuments
+    ? []
+    : context.participants.map((participant) => ({
+        userId: participant.user_id,
+        ...(participant.user_name ? { userName: participant.user_name } : {}),
+      }));
+  // I2: null the time range on a document-only scope (documents present, no
+  // chats). Gate-OFF's dropChatSide → zero channels → this branch fires too,
+  // so gate-OFF+documents+range is still normalized to null even though
+  // dropChatSide is no longer consulted here.
+  const timeRange =
+    hasDocuments && selectedChannels.length === 0
+      ? null
+      : context.time_range
+      ? {
+          start: context.time_range.start,
+          end: context.time_range.end,
+          label: context.time_range.label,
+          source: context.time_range.source,
+        }
+      : null;
+  // I3: a mixed scope (documents + channels) cannot carry a reference stack;
+  // drop it here so a persisted pure→mixed transition that never went through
+  // the writer boundary still lands on a sendable scope. The one-reference
+  // cap below then applies to the surviving ids (empty or the single
+  // non-mixed reference).
+  const referencedTaskIdsSource =
+    documents.length > 0 && selectedChannels.length > 0
+      ? []
+      : context.referenced_task_ids;
   return {
-    selectedChannels: dropChatSide
-      ? []
-      : context.selected_channels.map((channel) => ({
-          chatId: channel.chat_id,
-          chatType: channel.chat_type,
-          name: channel.name,
-          ...(channel.is_archived === undefined
-            ? {}
-            : { isArchived: channel.is_archived }),
-        })),
-    documents: context.documents.map((document) => ({
-      documentId: document.document_id,
-      title: document.title ?? document.document_id,
-    })),
-    participants: dropChatSide
-      ? []
-      : context.participants.map((participant) => ({
-          userId: participant.user_id,
-          ...(participant.user_name ? { userName: participant.user_name } : {}),
-        })),
+    selectedChannels,
+    documents,
+    participants,
     template: context.template
       ? {
           templateId: context.template.template_id,
@@ -944,21 +988,12 @@ function toWorkbenchScope(
             : { version: context.template.version }),
         }
       : null,
-    timeRange: dropChatSide
-      ? null
-      : context.time_range
-      ? {
-          start: context.time_range.start,
-          end: context.time_range.end,
-          label: context.time_range.label,
-          source: context.time_range.source,
-        }
-      : null,
+    timeRange,
     // Product supports one referenced summary. Normalize at the decode boundary
     // so the rendered chip and the submitted scope cannot disagree — legacy or
     // malformed server state carrying more than one id gets capped here rather
     // than at render, keeping the wire in agreement with the UI.
-    referencedTaskIds: context.referenced_task_ids.slice(0, 1),
+    referencedTaskIds: referencedTaskIdsSource.slice(0, 1),
   };
 }
 
