@@ -69,14 +69,19 @@ function resolveHistoryResultType(
 }
 
 export function adaptSummaryWorkspaceTurn(
-  value: unknown
+  value: unknown,
+  mixedSources = true
 ): SummaryWorkbenchResponse {
   const turn = decodeSummaryWorkspaceTurn(value);
   const actions = [...turn.available_actions];
-  const authoritativeState = toAuthoritativeState(turn.state, {
-    messageId: turn.message_id,
-    actions,
-  });
+  const authoritativeState = toAuthoritativeState(
+    turn.state,
+    mixedSources,
+    {
+      messageId: turn.message_id,
+      actions,
+    }
+  );
   const common = {
     messageId: String(turn.message_id),
     reply: turn.reply,
@@ -158,10 +163,11 @@ export function adaptSummaryWorkspaceTurn(
 }
 
 export function adaptSummaryWorkspaceHistory(
-  value: unknown
+  value: unknown,
+  mixedSources = true
 ): SummaryWorkbenchHistoryHydration {
   const history = decodeSummaryWorkspaceHistory(value);
-  const authoritativeState = toAuthoritativeState(history.state);
+  const authoritativeState = toAuthoritativeState(history.state, mixedSources);
   const scope = authoritativeState.scope;
   const currentPreview = history.state.current_preview;
   const pendingProposal = history.state.pending_proposal;
@@ -801,18 +807,26 @@ function requireWorkflow(
 
 function toAuthoritativeState(
   state: SummaryWorkspaceStateDTO,
+  mixedSources: boolean,
   turn?: { messageId: number; actions: SummaryWorkbenchAction[] }
 ): SummaryWorkbenchAuthoritativeState {
-  const scope = toWorkbenchScope(state.summary_context);
-  // Mixed document+chat: chats, documents and the chat time range now hydrate
-  // losslessly (no longer dropped when documents are present), so they no
-  // longer trigger a scope-version bump. The only remaining decode-boundary
-  // normalization is the referenced-task cap (the product supports one
-  // referenced summary; extra ids are dropped and must advance the version so
-  // the next request cannot reuse the server's old hash and fail with a 409).
+  const scope = toWorkbenchScope(state.summary_context, mixedSources);
+  // Mixed document+chat: chats, documents and the chat time range hydrate
+  // losslessly when the capability is ON, so they no longer trigger a
+  // scope-version bump. When the capability is OFF, the decode boundary drops
+  // the chat side / participants / time range of a persisted mixed snapshot
+  // (see toWorkbenchScope), which MUST advance the version so the next request
+  // cannot reuse the server's old hash and fail with a 409. The other
+  // decode-boundary normalization is the referenced-task cap (the product
+  // supports one referenced summary; extra ids are dropped and must also
+  // advance the version).
   const scopeWasNormalized =
     state.summary_context.referenced_task_ids.length !==
-    scope.referencedTaskIds.length;
+      scope.referencedTaskIds.length ||
+    state.summary_context.selected_channels.length !==
+      scope.selectedChannels.length ||
+    state.summary_context.participants.length !== scope.participants.length ||
+    (state.summary_context.time_range !== null && scope.timeRange === null);
   const scopeVersion = state.scope_version + (scopeWasNormalized ? 1 : 0);
   const constrainCurrentActions = (
     messageId: number,
@@ -880,35 +894,46 @@ function toAuthoritativeState(
 }
 
 function toWorkbenchScope(
-  context: SummaryWorkspaceContextDTO
+  context: SummaryWorkspaceContextDTO,
+  mixedSources: boolean
 ): SummaryWorkbenchScope {
-  // Mixed document+chat hydration: chats, documents and the chat time range
-  // restore TOGETHER (the time range scopes the chat side only). Participants
-  // are restored AS-IS (not dropped): a server snapshot carrying both
-  // documents and participants is a shape the selection layer can no longer
-  // produce (canSelectParticipants is false with documents, and
-  // replaceSelectedDocuments clears participants), and the backend rejects it
-  // in both normalize branches, so it cannot be persisted going forward. If
-  // corrupted storage ever yields it, the participant chips still render and
-  // are removable, so retaining them (rather than silently dropping them here)
-  // keeps hydration lossless.
+  // Mixed document+chat hydration is capability-aware. When the backend
+  // advertises mixed_sources (mixedSources=true), chats, documents, the chat
+  // time range AND participants restore TOGETHER losslessly (the time range
+  // scopes the chat side only; participants×documents is a shape the selection
+  // layer can no longer produce and the backend rejects at submit time, so a
+  // stored snapshot carrying both is retained rather than silently dropped).
+  // When the capability is OFF, the pre-mixed boundary is re-imposed at the
+  // decode boundary: a snapshot that was persisted while the gate was ON must
+  // NOT re-materialize the mixed shapes (documents+channels, documents+
+  // participants, document-only+time_range) that the gate-OFF UI cannot
+  // compose or edit — those are dropped here (and the scope-version bump in
+  // toAuthoritativeState keeps the next request from resending the server's
+  // stored hash), otherwise a gate rollback would hydrate an unsendable scope
+  // that only chip-by-chip removal could escape.
+  const hasDocuments = context.documents.length > 0;
+  const dropChatSide = hasDocuments && !mixedSources;
   return {
-    selectedChannels: context.selected_channels.map((channel) => ({
-      chatId: channel.chat_id,
-      chatType: channel.chat_type,
-      name: channel.name,
-      ...(channel.is_archived === undefined
-        ? {}
-        : { isArchived: channel.is_archived }),
-    })),
+    selectedChannels: dropChatSide
+      ? []
+      : context.selected_channels.map((channel) => ({
+          chatId: channel.chat_id,
+          chatType: channel.chat_type,
+          name: channel.name,
+          ...(channel.is_archived === undefined
+            ? {}
+            : { isArchived: channel.is_archived }),
+        })),
     documents: context.documents.map((document) => ({
       documentId: document.document_id,
       title: document.title ?? document.document_id,
     })),
-    participants: context.participants.map((participant) => ({
-      userId: participant.user_id,
-      ...(participant.user_name ? { userName: participant.user_name } : {}),
-    })),
+    participants: dropChatSide
+      ? []
+      : context.participants.map((participant) => ({
+          userId: participant.user_id,
+          ...(participant.user_name ? { userName: participant.user_name } : {}),
+        })),
     template: context.template
       ? {
           templateId: context.template.template_id,
@@ -919,7 +944,9 @@ function toWorkbenchScope(
             : { version: context.template.version }),
         }
       : null,
-    timeRange: context.time_range
+    timeRange: dropChatSide
+      ? null
+      : context.time_range
       ? {
           start: context.time_range.start,
           end: context.time_range.end,

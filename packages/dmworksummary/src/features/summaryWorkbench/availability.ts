@@ -404,6 +404,7 @@ function isCapabilities(value: unknown): value is SummaryWorkspaceCapabilitiesDT
     typeof record.max_time_range_days === "number" &&
     Number.isInteger(record.max_time_range_days) &&
     record.max_time_range_days > 0 &&
-    typeof record.direct_team_workflow === "boolean"
+    typeof record.direct_team_workflow === "boolean" &&
+    typeof record.mixed_sources === "boolean"
   );
 }

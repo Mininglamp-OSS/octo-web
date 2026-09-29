@@ -49,6 +49,7 @@ export interface UseSummaryWorkbenchOptions {
   layout?: SummaryWorkbenchModel["layout"];
   autoHydrate?: boolean;
   preferStreaming?: boolean;
+  mixedSources?: boolean;
   service?: SummaryWorkbenchControllerService;
   createSessionId?: () => string;
   createRequestId?: () => string;
@@ -182,6 +183,7 @@ export default function useSummaryWorkbench(
   const onSessionIdChangeRef = useRef(options.onSessionIdChange);
   const spaceIdRef = useRef(normalizeSpaceId(options.spaceId));
   const preferStreamingRef = useRef(options.preferStreaming ?? true);
+  const mixedSourcesRef = useRef(options.mixedSources ?? true);
   const workflowPollIntervalMsRef = useRef(
     options.workflowPollIntervalMs ?? DEFAULT_SUMMARY_WORKFLOW_POLL_INTERVAL_MS
   );
@@ -205,6 +207,7 @@ export default function useSummaryWorkbench(
   onSessionIdChangeRef.current = options.onSessionIdChange;
   spaceIdRef.current = normalizeSpaceId(options.spaceId);
   preferStreamingRef.current = options.preferStreaming ?? true;
+  mixedSourcesRef.current = options.mixedSources ?? true;
   workflowPollIntervalMsRef.current = Math.max(
     1,
     options.workflowPollIntervalMs ?? DEFAULT_SUMMARY_WORKFLOW_POLL_INTERVAL_MS
@@ -540,10 +543,14 @@ export default function useSummaryWorkbench(
         const controller = new AbortController();
         flight.fallbackController = controller;
         void serviceRef.current
-          .sendMessage(input, {
-            signal: controller.signal,
-            ...(spaceIdRef.current ? { spaceId: spaceIdRef.current } : {}),
-          })
+          .sendMessage(
+            input,
+            {
+              signal: controller.signal,
+              ...(spaceIdRef.current ? { spaceId: spaceIdRef.current } : {}),
+            },
+            mixedSourcesRef.current
+          )
           .then(finish)
           .catch(fail);
       };
@@ -583,10 +590,20 @@ export default function useSummaryWorkbench(
           onError: handleStreamError,
         };
         const stream = spaceIdRef.current
-          ? serviceRef.current.streamMessage(input, callbacks, {
-              spaceId: spaceIdRef.current,
-            })
-          : serviceRef.current.streamMessage(input, callbacks);
+          ? serviceRef.current.streamMessage(
+              input,
+              callbacks,
+              {
+                spaceId: spaceIdRef.current,
+              },
+              mixedSourcesRef.current
+            )
+          : serviceRef.current.streamMessage(
+              input,
+              callbacks,
+              {},
+              mixedSourcesRef.current
+            );
         if (isCurrent() && !flight.fallbackStarted) {
           flight.stream = stream;
         } else {
@@ -646,7 +663,8 @@ export default function useSummaryWorkbench(
         {
           signal: controller.signal,
           ...(spaceIdRef.current ? { spaceId: spaceIdRef.current } : {}),
-        }
+        },
+        mixedSourcesRef.current
       )
       .then((response: SummaryWorkbenchResponse) => {
         if (confirmationRef.current !== flight || epochRef.current !== epoch) {
@@ -823,10 +841,14 @@ export default function useSummaryWorkbench(
 
       let flight!: HydrationFlight;
       const promise = serviceRef.current
-        .loadSession(sessionId, {
-          signal: controller.signal,
-          ...(spaceIdRef.current ? { spaceId: spaceIdRef.current } : {}),
-        })
+        .loadSession(
+          sessionId,
+          {
+            signal: controller.signal,
+            ...(spaceIdRef.current ? { spaceId: spaceIdRef.current } : {}),
+          },
+          mixedSourcesRef.current
+        )
         .then((hydration: SummaryWorkbenchHistoryHydration) => {
           if (hydrationRef.current !== flight || epochRef.current !== epoch) {
             return { status: "cancelled" } as const;
@@ -1022,10 +1044,14 @@ export default function useSummaryWorkbench(
 
       const operationVersion = operationVersionRef.current;
       try {
-        const hydration = await serviceRef.current.loadSession(sessionId, {
-          signal: controller.signal,
-          ...(spaceIdRef.current ? { spaceId: spaceIdRef.current } : {}),
-        });
+        const hydration = await serviceRef.current.loadSession(
+          sessionId,
+          {
+            signal: controller.signal,
+            ...(spaceIdRef.current ? { spaceId: spaceIdRef.current } : {}),
+          },
+          mixedSourcesRef.current
+        );
         consecutiveFailures = 0;
         if (!active || controller.signal.aborted) return;
         if (hydration.empty) {
