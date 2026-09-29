@@ -109,22 +109,24 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
                 <button
                     ref={this.triggerRef}
                     type="button"
-                    className="wk-navrail__space-icon-btn"
+                    className={`wk-navrail__space-icon-btn${entryUnread > 0 ? " wk-navrail__space-icon-btn--unread" : ""}`}
                     title={current?.name ?? t("base.navRail.spaceSwitcher.switch")}
                     aria-label={switcherLabel}
                     aria-haspopup="dialog"
                     aria-expanded={open}
                     onClick={this.handleToggle}
                 >
-                    <IconBuilding />
+                    <span className="wk-navrail__space-icon-anchor" aria-hidden="true">
+                        <IconBuilding />
+                        {entryUnread > 0 && (
+                            <span className="wk-navrail__space-unread-badge" aria-hidden="true">
+                                {entryUnread > 99 ? "99+" : entryUnread}
+                            </span>
+                        )}
+                    </span>
                     <span className="wk-navrail__item-label">
                         {current?.name ?? t("base.navRail.spaceSwitcher.switch")}
                     </span>
-                    {entryUnread > 0 && (
-                        <span className="wk-navrail__space-unread-badge" aria-hidden="true">
-                            {entryUnread > 99 ? "99+" : entryUnread}
-                        </span>
-                    )}
                 </button>
 
                 <NavFlyout

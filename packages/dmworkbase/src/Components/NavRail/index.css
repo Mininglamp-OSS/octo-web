@@ -337,24 +337,37 @@
     flex-shrink: 0;
 }
 
+.wk-navrail__space-icon-anchor {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    width: var(--wk-sp-5);
+    height: var(--wk-sp-5);
+}
+
+.wk-layout-tab-expanded .wk-navrail__space-icon-anchor {
+    position: static;
+}
+
 .wk-navrail__space-unread-badge {
     position: absolute;
-    top: var(--wk-sp-0-5);
-    right: var(--wk-sp-1);
-    min-width: var(--wk-sp-5);
-    height: var(--wk-sp-5);
+    top: 0;
+    right: 0;
+    transform: translate(50%, -50%);
+    min-width: var(--wk-nav-badge-size);
+    height: var(--wk-nav-badge-size);
     box-sizing: border-box;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0 var(--wk-sp-1);
+    padding: 0 var(--wk-nav-badge-padding-x);
+    border: 0;
     border-radius: var(--wk-r-full);
     background: var(--wk-color-danger);
     color: var(--wk-color-white);
-    font-size: var(--wk-text-size-xs);
+    font-size: var(--wk-text-size-badge);
     font-weight: var(--wk-font-semibold);
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
+    line-height: var(--wk-nav-badge-size);
     pointer-events: none;
 }
 
@@ -362,6 +375,17 @@
     top: 50%;
     right: var(--wk-sp-3);
     transform: translateY(-50%);
+}
+
+.wk-layout-tab-expanded .wk-navrail__bottom .wk-navrail__space-icon-btn > .wk-navrail__item-label {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wk-layout-tab-expanded .wk-navrail__bottom .wk-navrail__space-icon-btn--unread > .wk-navrail__item-label {
+    margin-right: var(--wk-sp-8);
 }
 
 /* SpaceAvatar 在 NavRail 里统一 34×34 */
@@ -605,6 +629,9 @@
  * 决定,共享规则会把 --short 也拉成 inline-flex,expanded rail 同时显示两个 span
  * ("AI Summary Summary")。round 2 曾在此处翻车,靠 collapsedLayout.test 里的
  * specificity/顺序断言把关。
+ * Space 切换按钮另有 (0,4,0) 规则恢复展开态的单行省略；该规则要求
+ * `.wk-navrail__space-icon-btn` 祖先，不匹配这里 NavItem 的双 span。
+ * 测试必须匹配完整选择器，避免把该规则末尾的底类误当成底类规则。
  *
  * 盒模型:.wk-navrail__item = 56px width + `padding: 4px 2px` (border-box) → label
  * border box (`clientWidth`) 52px;label 自己再吃 `padding-inline: 4px` → 可用文

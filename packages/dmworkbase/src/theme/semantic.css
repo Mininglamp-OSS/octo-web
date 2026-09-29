@@ -209,6 +209,8 @@
 
   /* ── Typography — 字号 ── */
   --wk-text-size-badge: 9px; /* badge/label 极小字号 */
+  --wk-nav-badge-size: 14px;
+  --wk-nav-badge-padding-x: 3px;
   --wk-text-size-tiny: 10px;
   --wk-text-size-xs: 11px;
   --wk-text-size-sm: 12px;

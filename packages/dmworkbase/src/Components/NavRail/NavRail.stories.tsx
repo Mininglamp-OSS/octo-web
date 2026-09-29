@@ -1,10 +1,12 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import React from "react";
+import { expect } from "storybook/test";
 import NavRail from "./index";
 import type { NavRailProps } from "./index";
 import NavBottom from "./NavBottom";
 import NavSpaceSwitcher from "./NavSpaceSwitcher";
 import NavSettingsPanel from "./NavSettingsPanel";
+import { NAV_RAIL_EXPANDED_WIDTH } from "../WKLayout/layoutWidth";
 import { Menus } from "../../Service/Menus";
 import "../../theme/index.css";
 
@@ -165,6 +167,69 @@ function SpaceOpen() {
 export const SpaceFlyoutOpen: StoryObj = {
     name: "Space 弹层（真实组件）",
     render: () => <SpaceOpen />,
+};
+
+export const SpaceUnreadBadgeAnchors: StoryObj = {
+    name: "Space unread badges — collapsed and expanded",
+    render: () => (
+        <div style={{ display: "flex", gap: "var(--wk-sp-4)", alignItems: "flex-start" }}>
+            {[false, true].map((expanded) => (
+                <div key={String(expanded)} className={expanded ? "wk-layout-tab-expanded" : undefined} style={expanded ? { width: NAV_RAIL_EXPANDED_WIDTH } : undefined}>
+                    {[0, 1, 12, 100].map((count) => (
+                        <div key={count} className="wk-navrail" data-badge-count={count} style={{ height: "auto" }}>
+                            <div className="wk-navrail__bottom">
+                                <NavSpaceSwitcher
+                                    spaces={count === 0 || count === 100 ? mockSpaces.map(space => space.space_id === "s1" ? { ...space, name: "A very long Space name for badge overflow checks" } : space) : mockSpaces}
+                                    currentSpaceId="s1"
+                                    onSpaceSelect={() => undefined}
+                                    newUnreadBySpace={{ s2: count }}
+                                />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ))}
+        </div>
+    ),
+    play: async ({ canvasElement }) => {
+        for (const rail of canvasElement.querySelectorAll<HTMLElement>("[data-badge-count]")) {
+            const button = rail.querySelector<HTMLButtonElement>(".wk-navrail__space-icon-btn")!;
+            const icon = button.querySelector<SVGElement>("svg")!;
+            const iconBox = icon.getBoundingClientRect();
+            const anchorBox = icon.parentElement!.getBoundingClientRect();
+            expect(anchorBox.width).toBe(20);
+            expect(anchorBox.height).toBe(20);
+            expect(getComputedStyle(icon).color).toBe(getComputedStyle(button).color);
+
+            const badge = button.querySelector<HTMLElement>(".wk-navrail__space-unread-badge");
+            const count = Number(rail.dataset.badgeCount);
+            const label = button.querySelector<HTMLElement>(".wk-navrail__item-label")!;
+            expect(button.title).toBe(label.textContent);
+            if (count === 0 || count === 100) {
+                expect(label.scrollWidth).toBeGreaterThan(label.clientWidth);
+                expect(getComputedStyle(label).textOverflow).toBe("ellipsis");
+                expect(getComputedStyle(label).display).toBe("block");
+            }
+            if (count === 0) {
+                expect(badge).toBeNull();
+                continue;
+            }
+            expect(badge!.textContent).toBe(count > 99 ? "99+" : String(count));
+            const badgeBox = badge!.getBoundingClientRect();
+            expect(badgeBox.height).toBe(14);
+            expect(getComputedStyle(badge!).fontSize).toBe("9px");
+            if (rail.closest(".wk-layout-tab-expanded")) {
+                const buttonBox = button.getBoundingClientRect();
+                expect(badgeBox.right).toBeCloseTo(buttonBox.right - 12, 1);
+                expect(badgeBox.y + badgeBox.height / 2).toBeCloseTo(buttonBox.y + buttonBox.height / 2, 1);
+                expect(label.getBoundingClientRect().right).toBeLessThan(badgeBox.left);
+            } else {
+                expect(badgeBox.x + badgeBox.width / 2).toBeCloseTo(iconBox.right, 1);
+                expect(badgeBox.y + badgeBox.height / 2).toBeCloseTo(iconBox.top, 1);
+            }
+            expect(badge!.scrollWidth).toBeLessThanOrEqual(badge!.clientWidth);
+        }
+    },
 };
 
 function FlyoutComparison() {
