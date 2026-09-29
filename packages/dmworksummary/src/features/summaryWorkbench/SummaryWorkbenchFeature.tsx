@@ -261,6 +261,7 @@ export default function SummaryWorkbenchFeature({
     initialScope,
     layout: embedded ? "panel" : "full",
     autoHydrate: initialSessionId.length > 0,
+    mixedSources,
     onSessionIdChange: (sessionId) => {
       if (sessionId) {
         writeSummaryWorkbenchSession(storageScope, sessionId);
@@ -614,18 +615,16 @@ export default function SummaryWorkbenchFeature({
   // The time range scopes the chat side only: it is offered on a document
   // scope only when at least one chat is also selected (and the capability is
   // on), so a document-only scope can never acquire a picker range.
-  const documentSourceKinds: SummaryWorkbenchContextKind[] =
-    mixedDocumentsSelected && mixedSources
-      ? mixedChatPresent
-        ? ["document", "time_range"]
-        : ["document"]
-      : ["document"];
   const availableContextKinds: SummaryWorkbenchContextKind[] =
     mixedDocumentsSelected
       ? mixedSources
         ? [
             "chat",
-            ...(documentSelectorAvailable ? documentSourceKinds : []),
+            ...(documentSelectorAvailable
+              ? mixedChatPresent
+                ? (["document", "time_range"] as const)
+                : (["document"] as const)
+              : []),
           ]
         : documentSelectorAvailable
           ? [
@@ -637,7 +636,10 @@ export default function SummaryWorkbenchFeature({
               "chat",
               "document",
             ]
-          : []
+          : // Gate OFF with the document selector unavailable: keep "chat" as
+            // the single recovery entry (not an empty menu) so a user whose
+            // scope still holds documents can switch to a chat scope.
+            ["chat"]
       : [
           "chat",
           ...(documentSelectorAvailable ? (["document"] as const) : []),
@@ -857,6 +859,11 @@ export default function SummaryWorkbenchFeature({
       }
       if (result.participantsCleared) {
         Toast.info(t("summary.workbench.notice.participantsCleared"));
+      }
+      if (result.referencesCleared) {
+        setReferencedTask(null);
+        setReferencePreviewOpen(false);
+        Toast.info(t("summary.workbench.notice.referencesCleared"));
       }
     });
   };

@@ -1222,6 +1222,29 @@ describe("SummaryWorkbenchFeature", () => {
     );
   });
 
+  it("keeps the chat entry when the document selector is unavailable and the capability is off", () => {
+    // Gate OFF with the document selector unavailable: the menu must NOT
+    // collapse to empty. "chat" remains the single recovery entry so a user
+    // whose scope (e.g. hydrated from a persisted mixed snapshot) still holds
+    // documents can switch to a chat scope and escape a canSend=false state.
+    mocks.docsOn = false;
+    mocks.docsSearchOn = false;
+    const current = controller({
+      scope: scope({
+        selectedChannels: [],
+        documents: [{ documentId: "doc-a", title: "Doc A" }],
+      }),
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, { legacyRoot: true });
+
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-available-contexts",
+      "chat"
+    );
+  });
+
   it.each(["chat", "document"] as const)("empty %s confirmation preserves the other source and preview without prompting", (picker) => {
     mocks.docsOn = true;
     mocks.docsSearchOn = true;

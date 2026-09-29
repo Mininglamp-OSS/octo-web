@@ -119,6 +119,51 @@ describe("summary workspace adapter", () => {
     }
   );
 
+  it("drops the chat side of a persisted mixed scope when the capability is off", () => {
+    // Gate OFF (mixed_sources=false): a snapshot persisted while the gate was
+    // ON must not re-materialize the mixed shapes (documents+channels,
+    // documents+participants, document-only+time_range) that the gate-OFF UI
+    // cannot compose or edit. The decode boundary drops them and the
+    // scope-version bump keeps the next request from resending the server's
+    // stored hash (409).
+    const hydration = adaptSummaryWorkspaceHistory(
+      {
+        contract_version: "2",
+        session_id: "mixed-gate-off",
+        messages: [],
+        state: {
+          ...emptyState(4),
+          summary_context: {
+            ...summaryContext,
+            documents: [{ document_id: "doc-1", title: "Document" }],
+            selected_channels: summaryContext.selected_channels,
+            participants: [{ user_id: "u1" }],
+            time_range: summaryContext.time_range,
+            template: {
+              template_id: "weekly",
+              label: "Weekly",
+              requirement: "Summarize",
+            },
+            referenced_task_ids: [7],
+          },
+        },
+      },
+      false
+    );
+    expect(hydration.scope.documents).toEqual([
+      { documentId: "doc-1", title: "Document" },
+    ]);
+    expect(hydration.scope.selectedChannels).toEqual([]);
+    expect(hydration.scope.participants).toEqual([]);
+    expect(hydration.scope.timeRange).toBeNull();
+    // The reference stack is not mixed-specific: a pure-document scope accepts
+    // a reference, so it survives the gate-OFF normalization.
+    expect(hydration.scope.referencedTaskIds).toEqual([7]);
+    // Dropping the chat side / participants / range must advance the version
+    // so the next request cannot reuse the server's stored scope hash.
+    expect(hydration.modelOptions.scopeVersion).toBe(5);
+  });
+
   it("keeps a mixed chat+document preview valid (no stale bump)", () => {
     const response = adaptSummaryWorkspaceTurn({
       contract_version: "2", session_id: "doc-turn", message_id: 18,

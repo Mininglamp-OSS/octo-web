@@ -133,19 +133,21 @@ export class SummaryWorkbenchService {
 
   async sendMessage(
     input: SummaryWorkbenchMessageInput,
-    options: SummaryWorkbenchRequestOptions = {}
+    options: SummaryWorkbenchRequestOptions = {},
+    mixedSources = true
   ): Promise<SummaryWorkbenchResponse> {
     const response = await this.transport.postTurn(
       buildChatRequest(input),
       options
     );
-    return adaptSummaryWorkspaceTurn(response);
+    return adaptSummaryWorkspaceTurn(response, mixedSources);
   }
 
   streamMessage(
     input: SummaryWorkbenchMessageInput,
     callbacks: SummaryWorkbenchStreamCallbacks,
-    options: SummaryWorkbenchRequestOptions = {}
+    options: SummaryWorkbenchRequestOptions = {},
+    mixedSources = true
   ): { close: () => void } {
     const reportError = (error: SummaryWorkspaceApiError) =>
       callbacks.onError?.(error);
@@ -156,7 +158,7 @@ export class SummaryWorkbenchService {
         onDone: (payload) => {
           let response: SummaryWorkbenchResponse;
           try {
-            response = adaptSummaryWorkspaceTurn(payload);
+            response = adaptSummaryWorkspaceTurn(payload, mixedSources);
           } catch (error) {
             reportError(normalizeWorkspaceError(error));
             return;
@@ -171,7 +173,8 @@ export class SummaryWorkbenchService {
 
   async loadSession(
     sessionId: string,
-    options: SummaryWorkbenchRequestOptions = {}
+    options: SummaryWorkbenchRequestOptions = {},
+    mixedSources = true
   ): Promise<SummaryWorkbenchHistoryHydration> {
     const response = await this.transport.getHistory(sessionId, options);
     if (response === null) {
@@ -196,7 +199,7 @@ export class SummaryWorkbenchService {
         empty: true,
       };
     }
-    const hydration = adaptSummaryWorkspaceHistory(response);
+    const hydration = adaptSummaryWorkspaceHistory(response, mixedSources);
     if (
       (hydration.modelOptions.messages?.length ?? 0) === 0 &&
       hydration.modelOptions.currentPreview === null &&
@@ -210,7 +213,8 @@ export class SummaryWorkbenchService {
 
   async confirmWorkflow(
     input: SummaryWorkbenchConfirmInput,
-    options: SummaryWorkbenchRequestOptions = {}
+    options: SummaryWorkbenchRequestOptions = {},
+    mixedSources = true
   ): Promise<SummaryWorkbenchResponse> {
     const request: SummaryWorkspaceConfirmRequestDTO = {
       session_id: input.sessionId,
@@ -223,7 +227,7 @@ export class SummaryWorkbenchService {
       ...options,
       idempotencyKey: input.idempotencyKey,
     });
-    return adaptSummaryWorkspaceTurn(response);
+    return adaptSummaryWorkspaceTurn(response, mixedSources);
   }
 
   async savePreview(

@@ -482,4 +482,65 @@ describe("summary workbench scope helpers", () => {
     const result = removeScopeContext(scope, "document", "doc-a");
     expect(result.scope.documents).toEqual([]);
   });
+
+  it("propagates referencesCleared through the chat chip-removal branch", () => {
+    // replaceSelectedChannels clears references only when a scope BECOMES
+    // mixed (adding a chat to a document scope). Removing a chat chip moves
+    // the scope toward non-mixed (document-only), which KEEPS any reference —
+    // a document-only scope accepts a reference stack. removeScopeContext must
+    // still surface the (false) referencesCleared flag so the consumer can
+    // mirror the picker-confirm handler without a type gap.
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      selectedChannels: [
+        { chatId: "group-a", chatType: "group" as const, name: "A" },
+      ],
+      documents: documentsToScope([
+        { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+      ]),
+      referencedTaskIds: [10, 20],
+    };
+    const result = removeScopeContext(scope, "chat", "group-a", true);
+    expect(result.referencesCleared).toBe(false);
+    // Document-only scope retains the reference stack.
+    expect(result.scope.referencedTaskIds).toEqual([10, 20]);
+  });
+
+  it("returns referencesCleared false for non-chat removals", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      referencedTaskIds: [10],
+    };
+    expect(removeScopeContext(scope, "reference", "10").referencesCleared).toBe(
+      false
+    );
+    expect(
+      removeScopeContext(scope, "document", "doc-a").referencesCleared
+    ).toBe(false);
+  });
+
+  it("re-asserts the chat-only time range when removing a document leaves a document-only scope with a range", () => {
+    // A snapshot can hydrate a document-only scope carrying a time range (the
+    // shape the backend rejects); the document chip-removal branch must still
+    // run withChatOnlyTimeRange so removing a document never leaves that
+    // illegal shape in scope.
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      documents: documentsToScope([
+        { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+        { docId: "doc-b", title: "Doc B", docType: "doc", updatedAt: null },
+      ]),
+      timeRange: {
+        start: "2026-09-01T00:00:00Z",
+        end: "2026-09-02T00:00:00Z",
+        label: "昨天",
+      },
+    };
+    const result = removeScopeContext(scope, "document", "doc-b");
+    // One document remains, no chats → the range must be cleared.
+    expect(result.scope.documents).toEqual([
+      { documentId: "doc-a", title: "Doc A" },
+    ]);
+    expect(result.scope.timeRange).toBeNull();
+  });
 });

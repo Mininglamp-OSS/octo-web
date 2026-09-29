@@ -256,24 +256,40 @@ export function removeScopeContext(
   kind: SummaryWorkbenchContextKind,
   id: string,
   mixedSources = false
-): { scope: SummaryWorkbenchScope; participantsCleared: boolean } {
+): {
+  scope: SummaryWorkbenchScope;
+  participantsCleared: boolean;
+  referencesCleared: boolean;
+} {
   switch (kind) {
-    case "chat":
-      return replaceSelectedChannels(
+    case "chat": {
+      const result = replaceSelectedChannels(
         scope,
         scope.selectedChannels.filter((channel) => channel.chatId !== id),
         mixedSources
       );
-    case "document":
       return {
-        scope: {
-          ...scope,
-          documents: (scope.documents ?? []).filter(
-            (document) => document.documentId !== id
-          ),
-        },
-        participantsCleared: false,
+        scope: result.scope,
+        participantsCleared: result.participantsCleared,
+        referencesCleared: result.referencesCleared,
       };
+    }
+    case "document": {
+      const filtered = {
+        ...scope,
+        documents: (scope.documents ?? []).filter(
+          (document) => document.documentId !== id
+        ),
+      };
+      // Removing a document must still re-assert the chat-only-time-range
+      // invariant (a snapshot could hydrate a document-only scope carrying a
+      // time range; see withChatOnlyTimeRange).
+      return {
+        scope: withChatOnlyTimeRange(filtered),
+        participantsCleared: false,
+        referencesCleared: false,
+      };
+    }
     case "participant":
       return {
         scope: {
@@ -283,16 +299,19 @@ export function removeScopeContext(
           ),
         },
         participantsCleared: false,
+        referencesCleared: false,
       };
     case "template":
       return {
         scope: { ...scope, template: null },
         participantsCleared: false,
+        referencesCleared: false,
       };
     case "time_range":
       return {
         scope: { ...scope, timeRange: null },
         participantsCleared: false,
+        referencesCleared: false,
       };
     case "reference":
       return {
@@ -303,6 +322,7 @@ export function removeScopeContext(
           ),
         },
         participantsCleared: false,
+        referencesCleared: false,
       };
   }
 }
