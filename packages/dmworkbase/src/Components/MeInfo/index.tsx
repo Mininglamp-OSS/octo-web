@@ -38,7 +38,6 @@ interface MeInfoState {
     avatarCropFile: File | null
     avatarPreviewFile: File | null
     uploadingAvatar: boolean
-    phoneRevealed: boolean
 }
 
 export class MeInfo extends Component<MeInfoProps, MeInfoState> {
@@ -60,7 +59,6 @@ export class MeInfo extends Component<MeInfoProps, MeInfoState> {
         avatarCropFile: null,
         avatarPreviewFile: null,
         uploadingAvatar: false,
-        phoneRevealed: false,
     }
 
     componentDidMount() {
@@ -87,7 +85,6 @@ export class MeInfo extends Component<MeInfoProps, MeInfoState> {
             avatarCropFile: null,
             avatarPreviewFile: null,
             uploadingAvatar: false,
-            phoneRevealed: false,
         })
     }
 
@@ -266,7 +263,6 @@ export class MeInfo extends Component<MeInfoProps, MeInfoState> {
             avatarCropFile,
             avatarPreviewFile,
             uploadingAvatar,
-            phoneRevealed,
         } = this.state
         const verified = vm.isRealnameVerified()
         const avatar = <WKAvatar channel={vm.currentUserChannel()} />
@@ -283,22 +279,14 @@ export class MeInfo extends Component<MeInfoProps, MeInfoState> {
         const phoneValue = shouldShowProfileContacts && phoneContact
             ? phoneContact.kind === "empty"
                 ? t("base.profileContact.notAdded")
-                : phoneRevealed
-                    ? <button
-                        type="button"
-                        className="wk-profile-contact-copy"
-                        title={t("base.module.contextMenus.copy")}
-                        onClick={() => this.copyContact(phoneContact.value)}
-                    >
-                        {phoneContact.value}
-                    </button>
-                    : <button
-                        type="button"
-                        className="wk-profile-contact-reveal"
-                        onClick={() => this.setState({ phoneRevealed: true })}
-                    >
-                        {t("base.profileContact.revealPhone")}
-                    </button>
+                : <button
+                    type="button"
+                    className="wk-profile-contact-copy"
+                    title={t("base.module.contextMenus.copy")}
+                    onClick={() => this.copyContact(phoneContact.value)}
+                >
+                    {phoneContact.value}
+                </button>
             : undefined
         const emailValue = shouldShowProfileContacts && emailContact
             ? emailContact.kind === "empty"

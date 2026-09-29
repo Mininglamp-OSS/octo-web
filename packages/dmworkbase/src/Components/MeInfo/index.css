@@ -344,23 +344,6 @@
     outline: none;
 }
 
-.wk-meinfo-row-value .wk-profile-contact-reveal {
-    min-width: calc(var(--wk-sp-12) * 2);
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    cursor: pointer;
-    font: inherit;
-    text-align: inherit;
-}
-
-.wk-meinfo-row-value .wk-profile-contact-reveal:hover,
-.wk-meinfo-row-value .wk-profile-contact-reveal:focus-visible {
-    color: var(--wk-text-primary);
-    outline: none;
-}
-
 .wk-meinfo-row-value .wk-profile-contact-email {
     max-width: calc(var(--wk-sp-12) * 8);
     overflow: hidden;

@@ -34,7 +34,6 @@ function MeInfoPreview({
     uploadingAvatar,
     showExperimentalFeatures,
 }: MeInfoPreviewProps) {
-    const [phoneRevealed, setPhoneRevealed] = useState(false);
     const [copyStatus, setCopyStatus] = useState("");
     const copyContact = async (value: string) => {
         try {
@@ -46,22 +45,14 @@ function MeInfoPreview({
     };
     const phoneValue = phone === "This user has not added this information"
         ? phone
-        : phone && (phoneRevealed
-            ? <button
-                type="button"
-                className="wk-profile-contact-copy"
-                onClick={() => copyContact(phone)}
-                title="Copy"
-            >
-                {phone}
-            </button>
-            : <button
-                type="button"
-                className="wk-profile-contact-reveal"
-                onClick={() => setPhoneRevealed(true)}
-            >
-                Click to view
-            </button>);
+        : phone && <button
+            type="button"
+            className="wk-profile-contact-copy"
+            onClick={() => copyContact(phone)}
+            title="Copy"
+        >
+            {phone}
+        </button>;
     const emailValue = email === "This user has not added this information"
         ? email
         : email && <button
