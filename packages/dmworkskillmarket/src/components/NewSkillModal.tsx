@@ -67,6 +67,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
   const iconInputRef = useRef<HTMLInputElement | null>(null);
   const tagFieldRef = useRef<HTMLDivElement | null>(null);
   const leaveConfirmActionsRef = useRef<HTMLDivElement | null>(null);
+  const leaveConfirmWasOpenRef = useRef(false);
   const abortRef = useRef(false);
   const [stage, setStage] = useState<UploadStage>("idle");
   const [progress, setProgress] = useState(0);
@@ -302,13 +303,24 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
   const showUpgradeLeaveConfirm = isUpgrade && confirmClose !== null;
 
   useEffect(() => {
-    if (!showUpgradeLeaveConfirm) return undefined;
+    const wasOpen = leaveConfirmWasOpenRef.current;
+    leaveConfirmWasOpenRef.current = showUpgradeLeaveConfirm;
+    let frame = 0;
 
-    const frame = window.requestAnimationFrame(() => {
-      leaveConfirmActionsRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    });
+    if (showUpgradeLeaveConfirm) {
+      frame = window.requestAnimationFrame(() => {
+        leaveConfirmActionsRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+      });
+    } else if (wasOpen && visible) {
+      frame = window.requestAnimationFrame(() => {
+        document
+          .querySelector<HTMLButtonElement>(".skill-market-edit-cancel")
+          ?.focus();
+      });
+    }
+
     return () => window.cancelAnimationFrame(frame);
-  }, [showUpgradeLeaveConfirm]);
+  }, [showUpgradeLeaveConfirm, visible]);
 
   async function startUpload(nextFile: File) {
     const validationError = validateZipFile(nextFile);
@@ -695,7 +707,11 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
           showUpgradeLeaveConfirm ? (
             <div ref={leaveConfirmActionsRef} className="skill-market-leave-confirm__actions">
               <WKButton variant="secondary" onClick={() => setConfirmClose(null)}>
-                {t("skillMarket.confirm.keepEditing")}
+                {t(
+                  confirmClose === "busy"
+                    ? "skillMarket.confirm.keepUploading"
+                    : "skillMarket.confirm.keepEditing"
+                )}
               </WKButton>
               <WKButton
                 className="skill-market-leave-confirm__leave"
@@ -740,7 +756,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
             />
           ) : (
           <>
-            <WKButton variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</WKButton>
+            <WKButton className="skill-market-edit-cancel" variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</WKButton>
             {isReviewMode ? (
               <WKButton
                 variant="primary"
@@ -783,12 +799,17 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
           <section
             className="skill-market-leave-confirm"
             role="alert"
-            aria-label={t("skillMarket.confirm.upgradeUnsavedMessage")}
           >
             <span className="skill-market-leave-confirm__icon" aria-hidden="true">
               <AlertCircle size={28} />
             </span>
-            <p>{t("skillMarket.confirm.upgradeUnsavedMessage")}</p>
+            <p>
+              {t(
+                confirmClose === "busy"
+                  ? "skillMarket.confirm.busyMessage"
+                  : "skillMarket.confirm.upgradeUnsavedMessage"
+              )}
+            </p>
           </section>
         ) : (
         <section className="skill-market-form skill-market-form--workflow">

@@ -625,7 +625,44 @@ describe("NewSkillModal", () => {
       expect(screen.getByDisplayValue("2.0.0")).toBeInTheDocument();
       expect(screen.getByDisplayValue("保留这份发布说明")).toBeInTheDocument();
       expect(screen.getByText("upgrade.zip")).toBeInTheDocument();
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: cancelButton })).toHaveFocus()
+      );
       expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("keeps the upload-specific warning when leaving an upgrade mid-upload", async () => {
+      let finishUpload!: () => void;
+      vi.mocked(api.uploadFile).mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          finishUpload = resolve;
+        }),
+      );
+      render(
+        <NewSkillModal
+          visible
+          categories={categories}
+          onClose={vi.fn()}
+          onCreated={vi.fn()}
+          reviewSkill={reviewSkillFixture()}
+        />
+      );
+
+      fireEvent.change(screen.getByLabelText(selectNewZipLabel), {
+        target: { files: [zipFile("uploading.zip")] },
+      });
+      await waitFor(() => expect(screen.getByText(uploadProgress)).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole("button", { name: cancelButton }));
+
+      expect(screen.getByText(leaveUpgradeTitle)).toBeInTheDocument();
+      expect(screen.getByText(busyMessage)).toBeInTheDocument();
+      const keepUploadingButton = screen.getByRole("button", { name: keepUploading });
+      await waitFor(() => expect(keepUploadingButton).toHaveFocus());
+      fireEvent.click(keepUploadingButton);
+      expect(screen.getByText(uploadProgress)).toBeInTheDocument();
+
+      await act(async () => finishUpload());
     });
 
     it("treats Escape and the close icon as safe returns from the leave page", async () => {

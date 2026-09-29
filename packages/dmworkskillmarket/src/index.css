@@ -3657,16 +3657,6 @@
   width: 100%;
 }
 
-.skill-market-leave-confirm__leave.wk-btn--danger {
-  border-color: var(--wk-color-danger);
-  background: var(--wk-color-danger);
-  color: var(--wk-text-inverse);
-}
-
-.skill-market-leave-confirm__leave.wk-btn--danger:hover:not(:disabled) {
-  border-color: var(--wk-color-error);
-  background: var(--wk-color-error);
-}
 /* Narrow dialogs stack the message above the buttons rather than letting the
    message truncate — it is the reason the buttons are there. */
 @media (max-width: 640px) {
