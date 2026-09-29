@@ -756,7 +756,7 @@ describe("SummaryWorkbenchFeature", () => {
       },
     ],
   ])(
-    "keeps templates available after restoring %s",
+    "keeps the template gallery hidden after restoring %s (#1765)",
     async (_caseName, message) => {
       localStorage.setItem(
         "summary-workbench-session:v2:test-uid:space-a:global",
@@ -774,11 +774,13 @@ describe("SummaryWorkbenchFeature", () => {
       view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
 
       await waitFor(() =>
-        expect(screen.getByTestId("template-selector")).toBeInTheDocument()
+        expect(
+          screen.queryByTestId("template-selector")
+        ).not.toBeInTheDocument()
       );
       expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
         "data-template-locked",
-        "false"
+        "true"
       );
     }
   );
@@ -1297,7 +1299,7 @@ describe("SummaryWorkbenchFeature", () => {
     );
   });
 
-  it("restores the composer and template gallery when the request is not accepted", async () => {
+  it("restores the composer but keeps the template gallery hidden when the request is not accepted (#1765)", async () => {
     const pendingResponse = deferred<undefined>();
     const current = controller({
       viewState: {
@@ -1333,7 +1335,11 @@ describe("SummaryWorkbenchFeature", () => {
         "Keep this request"
       )
     );
-    expect(screen.getByTestId("template-selector")).toBeInTheDocument();
+    expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-template-locked",
+      "true"
+    );
   });
 
   it("restores the template gallery when starting a new session", async () => {
@@ -2524,6 +2530,79 @@ describe("SummaryWorkbenchFeature", () => {
     expect(
       screen.queryByTestId("template-selector")
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps the template gallery hidden after a dispatched run fails (#1765)", async () => {
+    const send = vi.fn().mockResolvedValue({ resultType: "error" });
+    const current = controller({
+      scope: scope({
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group" as const, name: "Product" },
+        ],
+      }),
+      send,
+    });
+    current.updateScope = vi.fn((nextScope: SummaryWorkbenchScope) => {
+      current.scope = nextScope;
+    });
+    current.setComposerValue = vi.fn((value: string) => {
+      current.viewState.inputValue = value;
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
+    expect(screen.getByTestId("template-selector")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() => expect(send).toHaveBeenCalled());
+
+    expect(
+      screen.queryByTestId("template-selector")
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the template gallery hidden when a hydrated turn failed (#1765)", async () => {
+    const hydrated = controller({
+      viewState: {
+        layout: "full",
+        messages: [
+          {
+            id: "failed-turn",
+            role: "assistant",
+            content: "",
+            resultType: "error",
+          },
+        ],
+        contextItems: [],
+        inputValue: "",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: false,
+      },
+    });
+    let hydrating = true;
+    const hydratingState = { ...hydrated, isHydrating: true };
+    const settledState = { ...hydrated, isHydrating: false };
+    mocks.useSummaryWorkbench.mockImplementation(
+      () => (hydrating ? hydratingState : settledState) as typeof hydrated
+    );
+
+    const view = render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    hydrating = false;
+    view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
+
+    // The failed turn keeps the conversation "started".
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("template-selector")
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: "choose-template" })).toBeNull();
   });
 
   it("restores hydrated reference metadata and toggles its preview", async () => {

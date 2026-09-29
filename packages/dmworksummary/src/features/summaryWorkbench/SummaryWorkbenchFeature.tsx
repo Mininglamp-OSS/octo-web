@@ -46,9 +46,7 @@ import useSummaryWorkbench, {
 } from "../../bridge/summaryWorkbench/useSummaryWorkbench";
 import SummaryWorkbench, {
   type SummaryWorkbenchAction,
-  type SummaryWorkbenchCardView,
   type SummaryWorkbenchContextKind,
-  type SummaryWorkbenchMessageView,
 } from "../../ui/SummaryWorkbench";
 import type { ChatCandidate, SummaryListItem } from "../../types/summary";
 import { channelToChatCandidate } from "../../utils/channelConvert";
@@ -164,19 +162,6 @@ function isAcceptedResponse(
   return Boolean(response && response.resultType !== "error");
 }
 
-function hasAcceptedHydratedTurn(
-  messages: SummaryWorkbenchMessageView[],
-  card?: SummaryWorkbenchCardView
-): boolean {
-  return Boolean(
-    card ||
-      messages.some(
-        (message) =>
-          message.role === "assistant" && message.resultType !== "error"
-      )
-  );
-}
-
 export default function SummaryWorkbenchFeature({
   spaceId,
   channel,
@@ -290,13 +275,13 @@ export default function SummaryWorkbenchFeature({
     workbench.isHydrating ||
     workbench.isConfirming ||
     workbench.isSaving;
+  // Any existing turn — accepted or failed — locks the template (#1765):
+  // a started conversation stays a conversation, failure or not.
   const templateLocked =
     hasSubmitted ||
     (!workbench.isHydrating &&
-      hasAcceptedHydratedTurn(
-        workbench.viewState.messages,
-        workbench.viewState.card
-      ));
+      (workbench.viewState.messages.length > 0 ||
+        Boolean(workbench.viewState.card)));
   const latestScopeRef = useRef(workbench.scope);
   const latestScopeChangeImpactRef = useRef<SummaryScopeChangeImpact | null>(
     controllerScopeChangeImpact(workbench)
@@ -481,11 +466,11 @@ export default function SummaryWorkbenchFeature({
     }
     if (!hydrationObserved.current) return;
     hydrationObserved.current = false;
+    // Any hydrated turn — including a failed one — counts as a started
+    // conversation: keep the template gallery hidden (#1765).
     if (
-      hasAcceptedHydratedTurn(
-        workbench.viewState.messages,
-        workbench.viewState.card
-      )
+      workbench.viewState.messages.length > 0 ||
+      Boolean(workbench.viewState.card)
     ) {
       setHasSubmitted(true);
       setTemplateGalleryOpen(false);
@@ -707,10 +692,11 @@ export default function SummaryWorkbenchFeature({
 
     const response = await responsePromise;
     if (!isAcceptedResponse(response)) {
+      // A dispatched run that fails must not resurrect the template gallery
+      // (#1765): the user already started a conversation — restore the
+      // composed input for retry, but keep the failure visible in place.
       workbench.restoreComposerValue(previousInputValue);
       templateFilledComposer.current = previousTemplateFilledComposer;
-      setHasSubmitted(previousHasSubmitted);
-      setTemplateGalleryOpen(previousTemplateGalleryOpen);
     }
     return response;
   };
