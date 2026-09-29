@@ -54,6 +54,7 @@ export default function SummaryWorkbenchCreateEntry(
             onOpenTask={props.onOpenTask}
             maxTimeRangeDays={availability.maxTimeRangeDays}
             directTeamWorkflow={availability.directTeamWorkflow}
+            mixedSources={availability.mixedSources}
             messaging={props.messaging}
           />
         )}
