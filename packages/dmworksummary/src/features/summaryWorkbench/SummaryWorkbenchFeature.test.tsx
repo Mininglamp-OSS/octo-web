@@ -25,6 +25,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@octo/base", () => ({
   Dap: { shared: { track: mocks.track } },
+  WKButton: (props: any) => (
+    <button type={props.type ?? "button"} disabled={props.disabled} onClick={props.onClick}>
+      {props.children}
+    </button>
+  ),
   getImChannelInfo: () => ({
     title: "mock-channel-title",
     orgData: {},
@@ -65,6 +70,11 @@ vi.mock("@octo/base", () => ({
 
 vi.mock("@octo/base/src/App", () => ({
   Dap: { shared: { track: mocks.track } },
+  WKButton: (props: any) => (
+    <button type={props.type ?? "button"} disabled={props.disabled} onClick={props.onClick}>
+      {props.children}
+    </button>
+  ),
   useI18n: () => ({
     t: (key: string) => {
       return (
@@ -1485,7 +1495,7 @@ describe("SummaryWorkbenchFeature", () => {
     expect(mocks.markNotificationEligible).not.toHaveBeenCalled();
   });
 
-  it("sends a template-only fallback as an explicit start intent for recent-chat discovery", async () => {
+  it("blocks a template-only send with no source scope and prompts for a chat", async () => {
     const send = vi.fn().mockResolvedValue({
       resultType: "agent_preview",
       preview: { content: "Draft", assumptions: ["最近 1 个聊天"] },
@@ -1503,11 +1513,40 @@ describe("SummaryWorkbenchFeature", () => {
       legacyRoot: true,
     });
     fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
-
-    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
-      "data-can-send",
-      "true"
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() =>
+      expect(mocks.toastWarning).toHaveBeenCalledWith(
+        "summary.workbench.notice.selectChatFirst"
+      )
     );
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("lets a template send through once a chat source is selected", async () => {
+    const send = vi.fn().mockResolvedValue({
+      resultType: "agent_preview",
+      preview: { content: "Draft", assumptions: [] },
+    });
+    const current = controller({
+      scope: scope({
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group" as const, name: "Product" },
+        ],
+      }),
+      send,
+    });
+    current.updateScope = vi.fn((nextScope: SummaryWorkbenchScope) => {
+      current.scope = nextScope;
+    });
+    current.setComposerValue = vi.fn((value: string) => {
+      current.viewState.inputValue = value;
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
     await waitFor(() =>
@@ -2434,6 +2473,57 @@ describe("SummaryWorkbenchFeature", () => {
         autoHydrate: true,
       })
     );
+  });
+
+  it("keeps the persisted session reachable as a last-conversation bar on forced-new mount", () => {
+    const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
+    localStorage.setItem(ordinaryKey, "old-session");
+    mocks.useSummaryWorkbench.mockReturnValue(controller());
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" forceNewSession />, {
+      legacyRoot: true,
+    });
+
+    expect(mocks.useSummaryWorkbench).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        initialSessionId: "",
+        autoHydrate: false,
+      })
+    );
+    expect(localStorage.getItem(ordinaryKey)).toBeNull();
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe("old-session");
+    expect(
+      screen.getByTestId("summary-workbench-last-session")
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "summary.workbench.lastSession.resume" })
+    );
+
+    const lastController = mocks.useSummaryWorkbench.mock.results[0]
+      ?.value as { hydrateSession: (sessionId: string) => unknown };
+    expect(lastController.hydrateSession).toHaveBeenCalledWith("old-session");
+    expect(localStorage.getItem(ordinaryKey)).toBe("old-session");
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBeNull();
+    expect(
+      screen.queryByTestId("summary-workbench-last-session")
+    ).not.toBeInTheDocument();
+  });
+
+  it("hides the template gallery when opened for continue-refine", () => {
+    mocks.useSummaryWorkbench.mockReturnValue(controller());
+
+    render(
+      <SummaryWorkbenchFeature
+        spaceId="space-a"
+        derivedFromTask={{ task_id: 42, title: "Prior summary" } as any}
+      />,
+      { legacyRoot: true }
+    );
+
+    expect(
+      screen.queryByTestId("template-selector")
+    ).not.toBeInTheDocument();
   });
 
   it("restores hydrated reference metadata and toggles its preview", async () => {

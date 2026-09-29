@@ -26,6 +26,7 @@ export const summaryTestIds = {
 
     // ── Unified workbench ──
     workbenchFeature: "summary-workbench-feature",
+    workbenchLastSession: "summary-workbench-last-session",
 
     // ── Chat selector modal ──
     chatSelectorModal: "summary-chat-selector-modal",

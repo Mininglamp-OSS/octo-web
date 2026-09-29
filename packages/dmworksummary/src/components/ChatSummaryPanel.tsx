@@ -13,7 +13,7 @@ import { X, ChevronLeft } from 'lucide-react';
 import SummaryListPage from '../pages/SummaryListPage';
 import SummaryWorkbenchCreateEntry from '../features/summaryWorkbench/SummaryWorkbenchCreateEntry';
 import SummaryDetailPage from '../pages/SummaryDetailPage';
-import type { SummaryListItem } from '../types/summary';
+import type { SummaryListItem, SummaryReferenceTask } from '../types/summary';
 import { summaryTestIds } from '../utils/testIds';
 
 interface ChatSummaryPanelProps {
@@ -155,7 +155,7 @@ export default class ChatSummaryPanel extends Component<
         this.setState({ view: 'detail', selectedTaskId: taskId, refineTask: null });
     };
 
-    private handleContinueOptimize = (task: SummaryListItem) => {
+    private handleContinueOptimize = (task: SummaryReferenceTask) => {
         this.setState({
             view: 'create',
             selectedTaskId: null,
@@ -260,7 +260,7 @@ export default class ChatSummaryPanel extends Component<
                             </button>
                         </div>
                         <div className="wk-summary-panel-detail-body">
-                            <SummaryDetailPage taskId={selectedTaskId} onAfterMutate={() => this.setState({ view: 'list', selectedTaskId: null })} />
+                            <SummaryDetailPage taskId={selectedTaskId} onAfterMutate={() => this.setState({ view: 'list', selectedTaskId: null })} onContinueRefine={this.handleContinueOptimize} />
                         </div>
                     </div>
                 )}

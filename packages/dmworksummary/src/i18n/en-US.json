@@ -288,7 +288,12 @@
       "participantsPrunedArtifactInvalidated": "Participant access changed. The previous result remains in history; generate a new result to continue.",
       "participantCandidatesLoadFailed": "Some group members failed to load. Try again.",
       "participantsUnsupportedForSelectedChats": "Participants require group chats only, with no more than 30 chats selected.",
-      "selectSingleChatForParticipants": "Participant selection supports up to 30 group chats only."
+      "selectSingleChatForParticipants": "Participant selection supports up to 30 group chats only.",
+      "selectChatFirst": "Select a chat or document to summarize first."
+    },
+    "lastSession": {
+      "label": "Last conversation",
+      "resume": "Resume"
     },
     "errors": {
       "network": "Network error. Try again later.",

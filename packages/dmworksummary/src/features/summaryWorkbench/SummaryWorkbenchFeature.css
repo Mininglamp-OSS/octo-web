@@ -29,6 +29,25 @@
     min-height: 0;
 }
 
+.wk-summary-workbench-feature__last-session {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--wk-sp-2);
+    flex: 0 0 auto;
+    padding: var(--wk-sp-2) var(--wk-sp-4);
+    border-bottom: thin solid var(--wk-border-default);
+    background: var(--wk-bg-surface);
+}
+
+.wk-summary-workbench-feature__last-session-label {
+    overflow: hidden;
+    color: var(--wk-text-secondary);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font: var(--wk-text-caption);
+}
+
 .wk-summary-workbench-feature__main {
     flex: 1;
     min-width: 0;

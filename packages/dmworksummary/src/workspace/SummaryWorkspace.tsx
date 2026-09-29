@@ -71,7 +71,7 @@ export default function SummaryWorkspace({
 
   const showList = () => onRouteChange({ view: "list" });
   const showCreate = (mode: "normal" | "agent" | "unified" = "normal") => {
-    onRouteChange({ view: "create", mode: mode === "unified" ? "normal" : mode, source: "summary_list" });
+    onRouteChange({ view: "create", mode: mode === "unified" ? "normal" : mode, source: "summary_list", fresh: true });
   };
   const showDetail = (taskId: number) =>
     onRouteChange({ view: "detail", taskId });
@@ -98,6 +98,7 @@ export default function SummaryWorkspace({
             legacyInitialMode={currentRoute.mode}
             source={currentRoute.source ?? "summary_home"}
             derivedFromTask={currentRoute.derivedFromTask}
+            forceNewSession={currentRoute.fresh}
             onOpenTask={showDetail}
             onCreated={refreshList}
             messaging={messagingPort}

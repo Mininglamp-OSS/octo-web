@@ -7,7 +7,7 @@ import React, {
   useState,
 } from "react";
 import { Input, Modal, Spin, Toast } from "@douyinfe/semi-ui";
-import { Dap, useI18n, type DocSearchItem } from "@octo/base";
+import { Dap, useI18n, WKButton, type DocSearchItem } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import type { SummaryMessagingPort } from "../../host";
 import { themeLenBucket } from "../../utils/summaryHelpers";
@@ -61,7 +61,10 @@ import {
 import { summaryTestIds } from "../../utils/testIds";
 import {
   clearSummaryWorkbenchSession,
+  moveSummaryWorkbenchSessionToPrevious,
+  readSummaryWorkbenchPreviousSession,
   readSummaryWorkbenchSession,
+  writeSummaryWorkbenchPreviousSession,
   writeSummaryWorkbenchSession,
   type SummaryWorkbenchSessionScope,
 } from "./sessionStorage";
@@ -94,6 +97,8 @@ export interface SummaryWorkbenchFeatureProps {
   channel?: { channelID: string; channelType: number };
   derivedFromTask?: Pick<SummaryListItem, "task_id" | "title">;
   embedded?: boolean;
+  /** "+" 语义：不恢复持久化会话；旧会话挪到「上次对话」槽位，横条一键返回。 */
+  forceNewSession?: boolean;
   source?: string;
   onCreated?: () => void;
   onOpenTask?: (taskId: number) => void;
@@ -177,6 +182,7 @@ export default function SummaryWorkbenchFeature({
   channel,
   derivedFromTask,
   embedded = false,
+  forceNewSession = false,
   source,
   onCreated,
   onOpenTask,
@@ -228,8 +234,19 @@ export default function SummaryWorkbenchFeature({
       clearSummaryWorkbenchSession(storageScope);
       return "";
     }
+    if (forceNewSession) {
+      // "+" must not resurrect the previous conversation, but it stays
+      // reachable through the "last conversation" slot.
+      moveSummaryWorkbenchSessionToPrevious(storageScope);
+      return "";
+    }
     return readSummaryWorkbenchSession(storageScope);
   });
+  const [lastSessionId, setLastSessionId] = useState(() =>
+    forceNewSession && !derivedFromTask
+      ? readSummaryWorkbenchPreviousSession(storageScope)
+      : ""
+  );
   const [openSelector, setOpenSelector] = useState<OpenSelector>(null);
   const [referencedTask, setReferencedTask] = useState<ReferencedTask | null>(
     derivedFromTask ?? null
@@ -243,7 +260,9 @@ export default function SummaryWorkbenchFeature({
   );
   const [composerFocusKey, setComposerFocusKey] = useState(0);
   const [hasSubmitted, setHasSubmitted] = useState(false);
-  const [templateGalleryOpen, setTemplateGalleryOpen] = useState(true);
+  const [templateGalleryOpen, setTemplateGalleryOpen] = useState(
+    () => !derivedFromTask
+  );
   const [pendingTemplate, setPendingTemplate] =
     useState<SummaryWorkbenchTemplateScope | null>(null);
   const notifiedTaskIds = useRef(new Set<number>());
@@ -701,6 +720,17 @@ export default function SummaryWorkbenchFeature({
       Toast.warning(t("summary.create.documentSourceUnavailable"));
       return;
     }
+    // 模板/意图文本只描述"怎么总结"，不含"总结什么"——没有任何来源
+    // （聊天/文档/参与者/引用）时直接派发必然失败，拦在前端提示补选。
+    const hasSourceScope =
+      workbench.scope.selectedChannels.length > 0 ||
+      (workbench.scope.documents ?? []).length > 0 ||
+      workbench.scope.participants.length > 0 ||
+      workbench.scope.referencedTaskIds.length > 0;
+    if (!composerHasCustomText && !hasSourceScope) {
+      Toast.warning(t("summary.workbench.notice.selectChatFirst"));
+      return;
+    }
     if (!viewState.canSend) return;
     if (themeTrackTimer.current) {
       clearTimeout(themeTrackTimer.current);
@@ -892,9 +922,28 @@ export default function SummaryWorkbenchFeature({
     setOpenSelector(null);
     setPendingTemplate(null);
     setHasSubmitted(false);
-    setTemplateGalleryOpen(true);
+    setTemplateGalleryOpen(!derivedFromTask);
     templateFilledComposer.current = null;
     workbench.resetSession({ scope: initialScope });
+  };
+
+  const resumeLastSession = () => {
+    if (!lastSessionId || busy) return;
+    // Swap: the (possibly started) current session becomes the "last
+    // conversation" and the stored one resumes as active. onSessionIdChange
+    // persists whichever session ends up active.
+    const currentPersisted = readSummaryWorkbenchSession(storageScope);
+    if (currentPersisted && currentPersisted !== lastSessionId) {
+      writeSummaryWorkbenchPreviousSession(storageScope, currentPersisted);
+    } else {
+      writeSummaryWorkbenchPreviousSession(storageScope, "");
+    }
+    writeSummaryWorkbenchSession(storageScope, lastSessionId);
+    setLastSessionId("");
+    setHasSubmitted(false);
+    setTemplateGalleryOpen(false);
+    templateFilledComposer.current = null;
+    void workbench.hydrateSession(lastSessionId);
   };
 
   const savePreview = async () => {
@@ -991,6 +1040,25 @@ export default function SummaryWorkbenchFeature({
       data-testid={summaryTestIds.workbenchFeature}
     >
       <div className="wk-summary-workbench-feature__main">
+        {lastSessionId ? (
+          <div
+            className="wk-summary-workbench-feature__last-session"
+            data-testid={summaryTestIds.workbenchLastSession}
+          >
+            <span className="wk-summary-workbench-feature__last-session-label">
+              {t("summary.workbench.lastSession.label")}
+            </span>
+            <WKButton
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={resumeLastSession}
+              disabled={busy}
+            >
+              {t("summary.workbench.lastSession.resume")}
+            </WKButton>
+          </div>
+        ) : null}
         <SummaryWorkbench
           state={viewState}
           actions={{

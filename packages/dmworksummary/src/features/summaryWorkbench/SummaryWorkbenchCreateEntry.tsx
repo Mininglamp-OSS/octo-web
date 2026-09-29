@@ -13,6 +13,8 @@ export interface SummaryWorkbenchCreateEntryProps {
   derivedFromTask?: SummaryReferenceTask;
   channel?: { channelID: string; channelType: number };
   embedded?: boolean;
+  /** "+" 语义：不恢复持久化会话，旧会话挪到「上次对话」槽位供一键返回。 */
+  forceNewSession?: boolean;
   onClose?: () => void;
   onSubmit?: (taskId: number) => void;
   onOpenTask?: (taskId: number) => void;
@@ -48,6 +50,7 @@ export default function SummaryWorkbenchCreateEntry(
             spaceId={spaceId}
             channel={props.channel}
             derivedFromTask={props.derivedFromTask}
+            forceNewSession={props.forceNewSession}
             embedded={props.embedded}
             source={props.source}
             onCreated={props.onCreated}
