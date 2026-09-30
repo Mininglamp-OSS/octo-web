@@ -577,22 +577,6 @@
   background: var(--wk-bg-elevated);
 }
 
-.wk-summary-workbench__missing-source {
-  margin: var(--wk-sp-2) var(--wk-sp-4) 0;
-  padding: var(--wk-sp-1) var(--wk-sp-2);
-  border: 0;
-  border-radius: var(--wk-r-xs);
-  color: var(--wk-color-warning);
-  background: transparent;
-  font: var(--wk-text-caption);
-  text-align: left;
-  cursor: pointer;
-}
-
-.wk-summary-workbench__missing-source:hover {
-  text-decoration: underline;
-}
-
 .wk-summary-workbench__composer textarea {
   width: 100%;
   min-height: var(--wk-sp-10);

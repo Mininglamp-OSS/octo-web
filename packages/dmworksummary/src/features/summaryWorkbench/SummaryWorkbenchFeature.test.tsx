@@ -652,10 +652,6 @@ describe("SummaryWorkbenchFeature", () => {
       const pendingResponse = deferred<any>();
       const current = controller({
         scope: scope({
-          // 新契约：发送必须有真实来源（聊天/文档/参与者/引用）。
-          selectedChannels: [
-            { chatId: "chat-a", chatType: "group", name: "Product" },
-          ],
           template: {
             templateId: "weekly",
             label: "Weekly",
@@ -801,12 +797,6 @@ describe("SummaryWorkbenchFeature", () => {
 
   it("does not allow reopening templates after the first turn", async () => {
     const current = controller({
-      scope: scope({
-        // 新契约：发送必须有真实来源。
-        selectedChannels: [
-          { chatId: "chat-a", chatType: "group", name: "Product" },
-        ],
-      }),
       viewState: {
         layout: "full",
         messages: [],
@@ -1322,12 +1312,6 @@ describe("SummaryWorkbenchFeature", () => {
   it("restores the composer but keeps the template gallery hidden when the request is not accepted (#1765)", async () => {
     const pendingResponse = deferred<undefined>();
     const current = controller({
-      scope: scope({
-        // 新契约：发送必须有真实来源。
-        selectedChannels: [
-          { chatId: "chat-a", chatType: "group", name: "Product" },
-        ],
-      }),
       viewState: {
         layout: "full",
         messages: [],
@@ -1370,12 +1354,6 @@ describe("SummaryWorkbenchFeature", () => {
 
   it("restores the template gallery when starting a new session", async () => {
     const current = controller({
-      scope: scope({
-        // 新契约：发送必须有真实来源。
-        selectedChannels: [
-          { chatId: "chat-a", chatType: "group", name: "Product" },
-        ],
-      }),
       viewState: {
         layout: "full",
         messages: [],
@@ -1533,7 +1511,7 @@ describe("SummaryWorkbenchFeature", () => {
     expect(mocks.markNotificationEligible).not.toHaveBeenCalled();
   });
 
-  it("blocks a template-only send with no source scope and prompts for a chat", async () => {
+  it("sends a template-only start intent so the backend can select the most recent active chat", async () => {
     const send = vi.fn().mockResolvedValue({
       resultType: "agent_preview",
       preview: { content: "Draft", assumptions: ["最近 1 个聊天"] },
@@ -1553,11 +1531,9 @@ describe("SummaryWorkbenchFeature", () => {
     fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
     fireEvent.click(screen.getByRole("button", { name: "send" }));
     await waitFor(() =>
-      expect(mocks.toastWarning).toHaveBeenCalledWith(
-        "summary.workbench.notice.selectChatFirst"
-      )
+      expect(send).toHaveBeenCalledWith("personal-intent", "system_intent")
     );
-    expect(send).not.toHaveBeenCalled();
+    expect(mocks.toastWarning).not.toHaveBeenCalled();
   });
 
   it("lets a template send through once a chat source is selected", async () => {
@@ -1854,12 +1830,6 @@ describe("SummaryWorkbenchFeature", () => {
     });
     mocks.useSummaryWorkbench.mockReturnValue(
       controller({
-        scope: scope({
-          // 新契约：发送必须有真实来源。
-          selectedChannels: [
-            { chatId: "chat-a", chatType: "group", name: "Product" },
-          ],
-        }),
         viewState: {
           layout: "full",
           messages: [],

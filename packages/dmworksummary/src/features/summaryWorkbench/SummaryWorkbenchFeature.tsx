@@ -73,7 +73,6 @@ import {
 import {
   canSelectParticipants,
   canGenerateFromScope,
-  hasSourceScopeForGenerate,
   chatCandidatesToScope,
   documentsToScope,
   emptySummaryWorkbenchScope,
@@ -623,9 +622,6 @@ export default function SummaryWorkbenchFeature({
       !busy &&
       !documentScopeUnavailable &&
       participantScopeReady &&
-      // 来源门禁：没有任何真实来源时不允许发送（模板/意图只描述"怎么总结"，
-      // 不构成"总结什么"）。已提交过一轮的会话天然有消息来源，不受影响。
-      (hasSubmitted || hasSourceScopeForGenerate(workbench.scope)) &&
       (composerHasCustomText ||
         (!templateLocked && structuredGenerate) ||
         (templateLocked &&
@@ -637,9 +633,6 @@ export default function SummaryWorkbenchFeature({
       !composerHasCustomText && structuredGenerate
         ? "summary.workbench.composer.generate"
         : "summary.workbench.composer.send",
-    // 无任何来源（聊天/文档/参与者/引用）时把"缺来源"暴露给 UI：置灰发送键
-    // 并渲染可点击的补选提示条，替代"按钮亮着、点击才弹 toast"的事后报错。
-    missingSource: !hasSourceScopeForGenerate(workbench.scope),
     errorMessage: displayErrorKey
       ? t(displayErrorKey)
       : workbench.viewState.errorMessage || participantScopeErrorMessage,
@@ -709,13 +702,6 @@ export default function SummaryWorkbenchFeature({
   const send = async () => {
     if (documentScopeUnavailable) {
       Toast.warning(t("summary.create.documentSourceUnavailable"));
-      return;
-    }
-    // 模板/意图文本只描述"怎么总结"，不含"总结什么"——没有任何来源
-    // （聊天/文档/参与者/引用）时直接派发必然失败，拦在前端提示补选。
-    // （发送键此时应已由 missingSource 置灰，这里兜底防御直调路径。）
-    if (!composerHasCustomText && !hasSourceScopeForGenerate(workbench.scope)) {
-      Toast.warning(t("summary.workbench.notice.selectChatFirst"));
       return;
     }
     if (!viewState.canSend) return;

@@ -434,6 +434,7 @@ describe("SummaryModule guarded menu switching", () => {
     expect(pushed.type).toBe(SummaryWorkbenchCreateEntry); // 统一入口，不是 SummaryListPage
     expect(pushed.props.source).toBe("summary_home");
     expect(pushed.props.legacyInitialMode).toBe("normal");
+    expect(pushed.props.forceNewSession).toBeUndefined();
     // P2-1/P2-5：key 必须存在且随每次进入变化——固定 key 会命中 WKViewQueue 的
     // React 复用分支，重复点菜单不会「重置回默认创建页」。
     expect(String(pushed.key).startsWith("home-workbench-")).toBe(true);

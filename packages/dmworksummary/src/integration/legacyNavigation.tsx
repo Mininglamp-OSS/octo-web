@@ -184,7 +184,6 @@ export function registerSummaryLegacyNavigation(): void {
             source="summary_home"
             key={`home-workbench-${++summaryHomeEntrySeq}`}
             legacyInitialMode="normal"
-            forceNewSession
           />
         );
       };

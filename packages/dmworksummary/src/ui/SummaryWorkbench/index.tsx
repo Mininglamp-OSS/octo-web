@@ -626,15 +626,6 @@ const SummaryWorkbench = ({
           isComposerDisabled ? " wk-summary-workbench__composer--disabled" : ""
         }`}
       >
-        {state.missingSource && (
-          <button
-            type="button"
-            className="wk-summary-workbench__missing-source"
-            onClick={() => actions.onOpenContext("chat")}
-          >
-            {t("summary.workbench.notice.selectChatFirst")} →
-          </button>
-        )}
         <textarea
           ref={composerRef}
           value={state.inputValue}

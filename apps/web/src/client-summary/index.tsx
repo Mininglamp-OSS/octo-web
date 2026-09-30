@@ -26,7 +26,7 @@ import { installFeatureAuthExpiryHandler } from "../client-feature/authLifecycle
 import { installDocsAdapterLifecycle } from "./docsAdapter";
 import { assertClientFeatureBootstrap } from "../client-feature/bootstrapContract";
 import { enableClientFeatureMocks } from "../client-feature/e2eMocks";
-import { SummaryShell } from "./SummaryShell";
+import { durableSummaryRoute, SummaryShell } from "./SummaryShell";
 import { requireSummaryHostBridge } from "./hostBridge";
 import { installSummaryExternalRuntime } from "./externalRuntime";
 import { reportSummaryStartupFailure } from "./startupFailure";
@@ -93,7 +93,8 @@ async function main() {
   if (externalRuntime) window.addEventListener("pagehide", () => externalRuntime.dispose(), { once: true });
 
   const root = document.getElementById("root")!;
-  let context = { route: bootstrap.initialRoute, spaceId: bootstrap.space.id };
+  const initialRoute = durableSummaryRoute(bootstrap.initialRoute);
+  let context = { route: initialRoute, spaceId: bootstrap.space.id };
   const presentation = installFeaturePresentation(host, {
     root,
     pages: ["list", "create", "detail", "share", "confirm", "schedules"] as const,
@@ -106,7 +107,7 @@ async function main() {
         <WKBase onContext={(context) => (WKApp.shared.baseContext = context)}>
           <SummaryShell
             bridge={host}
-            initialRoute={bootstrap.initialRoute}
+            initialRoute={initialRoute}
             initialSpaceId={bootstrap.space.id}
             externalRuntime={externalRuntime}
             onPresentationContext={(next) => { context = next; }}

@@ -26,8 +26,6 @@ vi.mock("@octo/base", async () => {
     "summary.workbench.context.timeRange": "Time range",
     "summary.workbench.context.reference": "Reference summary",
     "summary.workbench.composer.send": "Send",
-    "summary.workbench.notice.selectChatFirst":
-      "Please select a chat or document to summarize first.",
     "summary.workbench.message.assistant": "Summary assistant",
     "summary.workbench.message.user": "You",
     "summary.workbench.message.userAvatar": "Me",
@@ -297,44 +295,6 @@ describe("SummaryWorkbench", () => {
     expect(headerActions).toContainElement(referenceTrigger);
     fireEvent.click(resumeButton);
     expect(actions.onResumeLastSession).toHaveBeenCalledTimes(1);
-  });
-
-  it("shows the missing-source hint above the composer and opens the chat picker on click", () => {
-    const actions = createActions();
-    const state = createState();
-    state.missingSource = true;
-    state.canSend = false;
-    const { container } = rtlRender(
-      <SummaryWorkbench state={state} actions={actions} />,
-      { legacyRoot: true }
-    );
-
-    const hint = screen.getByRole("button", {
-      name: "Please select a chat or document to summarize first. →",
-    });
-    expect(hint).toHaveClass("wk-summary-workbench__missing-source");
-    const composer = container.querySelector(".wk-summary-workbench__composer");
-    expect(composer).toContainElement(hint);
-    // 发送键同时置灰：防误发 + 引导并存。
-    const sendButton = screen.getByRole("button", { name: "Send" });
-    expect(sendButton).toBeDisabled();
-
-    fireEvent.click(hint);
-    expect(actions.onOpenContext).toHaveBeenCalledWith("chat");
-  });
-
-  it("hides the missing-source hint once any source scope exists", () => {
-    const actions = createActions();
-    const state = createState();
-    state.missingSource = false;
-    rtlRender(<SummaryWorkbench state={state} actions={actions} />, {
-      legacyRoot: true,
-    });
-
-    expect(
-      screen.queryByText(/Please select a chat or document/)
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
   });
 
   it("renders every reference item state provides (normalization happens upstream in toWorkbenchScope — see adapter.test.ts for the wire cap; PR #1637 P1)", () => {
