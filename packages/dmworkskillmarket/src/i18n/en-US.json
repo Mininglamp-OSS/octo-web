@@ -26,7 +26,19 @@
     "invalidDownloadUrl": "Invalid download URL",
     "uploadResponseMissing": "Upload failed: response field missing",
     "parseFailed": "Parse failed",
-    "parseTimeout": "Parse timed out, please retry"
+    "parseFailedWithRequestId": "Parse failed. Please retry (request ID: {{requestId}})",
+    "parseTimeout": "Parse timed out, please retry",
+    "duplicateName": "A Skill with the same name already exists in this Space. Change the name in SKILL.md and try again.",
+    "invalidZip": "The uploaded file is not a valid ZIP archive",
+    "skillMdTooLarge": "SKILL.md is too large. Reduce its size and try again",
+    "skillMdNotFound": "SKILL.md was not found in the archive",
+    "unsafeArchivePath": "The archive contains an unsafe file path",
+    "invalidSkillMd": "SKILL.md is invalid. Check the file and try again",
+    "skillNameMismatch": "The uploaded Skill does not match the current Skill",
+    "parseRetryExhausted": "Parsing still failed after multiple attempts. Upload the package again",
+    "parseQueueFull": "The parse queue is busy. Please try again later",
+    "parseServiceUnavailable": "The parse service is temporarily unavailable. Please try again later",
+    "network": "Network connection failed. Check your connection and try again"
   },
   "list": {
     "pageTitle": "Skills",

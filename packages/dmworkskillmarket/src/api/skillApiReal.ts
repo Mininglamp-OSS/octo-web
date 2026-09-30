@@ -48,6 +48,7 @@ import {
 
 interface SuccessEnvelope<T> {
   data: T;
+  requestId?: string;
   pagination?: {
     has_more?: boolean;
     next_cursor?: string;
@@ -68,7 +69,8 @@ export class SkillMarketApiError extends Error {
     public code: string | number,
     message: string,
     public status?: number,
-    public details?: unknown
+    public details?: unknown,
+    public requestId?: string,
   ) {
     super(message);
     this.name = "SkillMarketApiError";
@@ -103,13 +105,20 @@ function normalizeError(input: {
   message?: string;
   status?: number;
   details?: unknown;
+  requestId?: string;
 }): SkillMarketApiError {
   return new SkillMarketApiError(
     input.code ?? (input.status ? `http_${input.status}` : "unknown_error"),
     input.message || "Request failed",
     input.status,
-    input.details
+    input.details,
+    input.requestId,
   );
+}
+
+function responseRequestId(response: Response): string | undefined {
+  const requestId = response.headers?.get?.("X-Request-Id")?.trim();
+  return requestId || undefined;
 }
 
 async function requestEnvelope<T>(
@@ -153,6 +162,7 @@ async function requestEnvelope<T>(
     const message = err instanceof Error ? err.message : "Network error";
     throw normalizeError({ code: "network_error", message, details: err });
   }
+  const requestId = responseRequestId(res);
 
   // Handle 401 — redirect to login. Fire-and-forget beacons opt out: a 401
   // on a background metric must never tear down the session (the page's list
@@ -167,6 +177,7 @@ async function requestEnvelope<T>(
       code: "unauthorized",
       message: t("skillMarket.errors.unauthorized"),
       status: 401,
+      requestId,
     });
   }
 
@@ -176,6 +187,7 @@ async function requestEnvelope<T>(
       code: "file_too_large",
       message: t("skillMarket.errors.fileTooLarge"),
       status: 413,
+      requestId,
     });
   }
 
@@ -192,6 +204,7 @@ async function requestEnvelope<T>(
       message: body?.error?.message ?? res.statusText ?? "Request failed",
       status: res.status,
       details: body?.error?.details ?? body,
+      requestId,
     });
   }
 
@@ -202,7 +215,7 @@ async function requestEnvelope<T>(
   // server did the work. Return an empty envelope so callers with `.then()`
   // just see success — flagged as P1 by Jerry-Xin on PR#851.
   if (res.status === 204) {
-    return { data: undefined as unknown as T } as SuccessEnvelope<T>;
+    return { data: undefined as unknown as T, requestId } as SuccessEnvelope<T>;
   }
 
   if (!body || !("data" in body)) {
@@ -211,10 +224,11 @@ async function requestEnvelope<T>(
       message: body?.error?.message ?? "Invalid response",
       status: res.status,
       details: body,
+      requestId,
     });
   }
 
-  return body as SuccessEnvelope<T>;
+  return { ...(body as SuccessEnvelope<T>), requestId };
 }
 
 async function request<T>(
@@ -884,9 +898,13 @@ function mapParseStatus(raw: RawParseStatusResult): ParseStatusResult {
 }
 
 async function fetchParseStatus(taskId: string): Promise<ParseStatusResult> {
-  return request<RawParseStatusResult>(
+  const envelope = await requestEnvelope<RawParseStatusResult>(
     `/skill_parse_tasks/${encodeURIComponent(taskId)}`
-  ).then(mapParseStatus);
+  );
+  return {
+    ...mapParseStatus(envelope.data),
+    requestId: envelope.requestId,
+  };
 }
 
 /** Step 4: Poll parse status every 2 seconds until success, failure, or timeout. */
@@ -899,6 +917,7 @@ export async function pollParse(taskId: string): Promise<ParseStatusResult> {
         code: status.error?.code ?? "parse_failed",
         message: status.error?.message ?? t("skillMarket.errors.parseFailed"),
         details: status.error,
+        requestId: status.requestId,
       });
     }
     if (attempt < 59) await wait(2000);

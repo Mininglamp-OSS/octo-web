@@ -233,6 +233,8 @@ export type ParseStatus = "pending" | "parsing" | "success" | "failed";
 /** Response from GET /api/v1/skill/parse/:taskId */
 export interface ParseStatusResult {
   status: ParseStatus;
+  /** Request correlation id returned by the marketplace API response header. */
+  requestId?: string;
   result?: {
     name: string;
     description: string;

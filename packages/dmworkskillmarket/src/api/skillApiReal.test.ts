@@ -42,9 +42,18 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function jsonResponse(data: unknown, status = 200, pagination?: unknown) {
+function jsonResponse(
+  data: unknown,
+  status = 200,
+  pagination?: unknown,
+  requestId?: string
+) {
   return Promise.resolve({
     status,
+    headers: {
+      get: (name: string) =>
+        name.toLowerCase() === "x-request-id" ? requestId ?? null : null,
+    },
     json: () =>
       Promise.resolve({ data, ...(pagination ? { pagination } : {}) }),
   });
@@ -911,20 +920,26 @@ describe("skillApiReal", () => {
 
   it("pollParse throws nested failure error from backend", async () => {
     mockFetch.mockReturnValueOnce(
-      jsonResponse({
-        status: "failed",
-        skill_parse_task_id: "task-404",
-        error: {
-          code: "err.marketplace.parse.invalid_zip",
-          message: "invalid zip",
+      jsonResponse(
+        {
+          status: "failed",
+          skill_parse_task_id: "task-404",
+          error: {
+            code: "err.marketplace.parse.invalid_zip",
+            message: "invalid zip",
+          },
         },
-      })
+        200,
+        undefined,
+        "req-parse-404"
+      )
     );
 
     await expect(pollParse("task-404")).rejects.toMatchObject({
       name: "SkillMarketApiError",
       code: "err.marketplace.parse.invalid_zip",
       message: "invalid zip",
+      requestId: "req-parse-404",
     });
   });
 

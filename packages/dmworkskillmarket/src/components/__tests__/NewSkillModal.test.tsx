@@ -561,6 +561,41 @@ describe("NewSkillModal", () => {
   });
 
   describe("review mode", () => {
+    it("localizes duplicate-name errors when uploading an upgrade", async () => {
+      vi.mocked(api.pollParse).mockRejectedValue({
+        code: "DUPLICATE_NAME",
+        message: "A Skill with the same name already exists in this Space.",
+      });
+      render(
+        <NewSkillModal
+          visible
+          categories={categories}
+          onClose={vi.fn()}
+          onCreated={vi.fn()}
+          reviewSkill={reviewSkillFixture()}
+        />,
+      );
+
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText(selectNewZipLabel), {
+          target: { files: [zipFile()] },
+        });
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(
+            "当前空间已存在同名 Skill。请修改 SKILL.md 中的 name 后重试。",
+          ),
+        ).toBeInTheDocument();
+      });
+      expect(
+        screen.queryByText(
+          "A Skill with the same name already exists in this Space.",
+        ),
+      ).not.toBeInTheDocument();
+    });
+
     it("closes an untouched upgrade without showing a leave confirmation", async () => {
       const onClose = vi.fn();
       render(

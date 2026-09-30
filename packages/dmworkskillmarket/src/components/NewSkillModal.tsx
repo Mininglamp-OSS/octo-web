@@ -8,6 +8,7 @@ import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
 import InlineConfirmBar from "./InlineConfirmBar";
 import { nextPatch, versionErrorKey } from "../utils/version";
+import { skillUploadErrorMessage } from "../utils/uploadError";
 
 /**
  * The visibility the author DECLARES on the plugin. It is stored as-is and lists
@@ -411,7 +412,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
         }
         if (status.status === "failed") {
           setStage(isReviewMode ? "review" : "error");
-          setError(status.error?.message ?? t("skillMarket.upload.parseFailed"));
+          setError(skillUploadErrorMessage(status.error));
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -422,7 +423,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
     } catch (err) {
       if (!abortRef.current) {
         setStage(isReviewMode ? "review" : "error");
-        setError(err instanceof Error ? err.message : t("skillMarket.upload.uploadFailed"));
+        setError(skillUploadErrorMessage(err));
       }
     }
   }
