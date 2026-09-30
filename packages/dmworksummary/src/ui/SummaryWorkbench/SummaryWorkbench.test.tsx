@@ -293,8 +293,23 @@ describe("SummaryWorkbench", () => {
     if (!headerActions) throw new Error("Header actions not rendered");
     expect(headerActions).toContainElement(resumeButton);
     expect(headerActions).toContainElement(referenceTrigger);
+    expect(resumeButton).toHaveAccessibleName("Last conversation");
     fireEvent.click(resumeButton);
     expect(actions.onResumeLastSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables last-session resume while a confirm or save is in progress", () => {
+    const actions = createActions();
+    actions.onResumeLastSession = vi.fn();
+    const state = createState();
+    state.resumeLastSessionDisabled = true;
+    rtlRender(<SummaryWorkbench state={state} actions={actions} />, {
+      legacyRoot: true,
+    });
+
+    expect(
+      screen.getByTestId("summary-workbench-last-session")
+    ).toBeDisabled();
   });
 
   it("renders every reference item state provides (normalization happens upstream in toWorkbenchScope — see adapter.test.ts for the wire cap; PR #1637 P1)", () => {

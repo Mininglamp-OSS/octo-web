@@ -438,10 +438,12 @@ const SummaryWorkbench = ({
                 type="button"
                 size="sm"
                 variant="ghost"
-                disabled={isComposerDisabled}
+                disabled={
+                  isComposerDisabled || state.resumeLastSessionDisabled
+                }
                 onClick={actions.onResumeLastSession}
                 data-testid={summaryTestIds.workbenchLastSession}
-                aria-label={t("summary.workbench.lastSession.resume")}
+                aria-label={t("summary.workbench.lastSession.label")}
               >
                 {t("summary.workbench.lastSession.label")}
               </WKButton>

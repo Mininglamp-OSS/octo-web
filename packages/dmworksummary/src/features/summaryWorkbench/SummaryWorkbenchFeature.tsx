@@ -228,7 +228,7 @@ export default function SummaryWorkbenchFeature({
     return readSummaryWorkbenchSession(storageScope);
   });
   const [lastSessionId, setLastSessionId] = useState(() =>
-    forceNewSession && !derivedFromTask
+    !derivedFromTask
       ? readSummaryWorkbenchPreviousSession(storageScope)
       : ""
   );
@@ -633,6 +633,7 @@ export default function SummaryWorkbenchFeature({
       !composerHasCustomText && structuredGenerate
         ? "summary.workbench.composer.generate"
         : "summary.workbench.composer.send",
+    resumeLastSessionDisabled: busy,
     errorMessage: displayErrorKey
       ? t(displayErrorKey)
       : workbench.viewState.errorMessage || participantScopeErrorMessage,

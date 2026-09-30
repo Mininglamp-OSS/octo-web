@@ -2538,6 +2538,57 @@ describe("SummaryWorkbenchFeature", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("keeps a demoted session reachable after a non-forced remount", () => {
+    const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
+    localStorage.setItem(ordinaryKey, "old-session");
+    mocks.useSummaryWorkbench.mockReturnValue(controller());
+
+    const forced = render(
+      <SummaryWorkbenchFeature spaceId="space-a" forceNewSession />,
+      { legacyRoot: true }
+    );
+    forced.unmount();
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+
+    expect(mocks.useSummaryWorkbench).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        initialSessionId: "",
+        autoHydrate: false,
+      })
+    );
+    expect(localStorage.getItem(ordinaryKey)).toBeNull();
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
+      "old-session"
+    );
+    expect(
+      screen.getByTestId("summary-workbench-last-session")
+    ).toBeInTheDocument();
+  });
+
+  it("restores the active session and exposes the previous one on a non-forced mount", () => {
+    const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
+    localStorage.setItem(ordinaryKey, "current-session");
+    localStorage.setItem(`${ordinaryKey}:previous`, "old-session");
+    mocks.useSummaryWorkbench.mockReturnValue(controller());
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+
+    expect(mocks.useSummaryWorkbench).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        initialSessionId: "current-session",
+        autoHydrate: true,
+      })
+    );
+    expect(
+      screen.getByTestId("summary-workbench-last-session")
+    ).toBeInTheDocument();
+  });
+
   it("keeps the bar visible on resume when the current session is non-empty (PG-R4-1: resume swap preserves the demoted session)", () => {
     // 复现 Octo-Q P1-3 的完整序列：用户在 fresh "+" 会话里已经跑过一轮
     // （onSessionIdChange 把会话 C 写进主槽位，横条仍指着 :previous 里的
