@@ -58,6 +58,7 @@ import {
 } from "../../utils/templateResolver";
 import { summaryTestIds } from "../../utils/testIds";
 import {
+  clearSummaryWorkbenchPreviousSession,
   clearSummaryWorkbenchSession,
   moveSummaryWorkbenchSessionToPrevious,
   readSummaryWorkbenchPreviousSession,
@@ -890,7 +891,8 @@ export default function SummaryWorkbenchFeature({
       clearTimeout(themeTrackTimer.current);
       themeTrackTimer.current = null;
     }
-    clearSummaryWorkbenchSession(storageScope);
+    moveSummaryWorkbenchSessionToPrevious(storageScope);
+    setLastSessionId(readSummaryWorkbenchPreviousSession(storageScope));
     setReferencedTask(derivedFromTask ?? null);
     setReferencePreviewOpen(false);
     setOpenSelector(null);
@@ -901,27 +903,36 @@ export default function SummaryWorkbenchFeature({
     workbench.resetSession({ scope: initialScope });
   };
 
-  const resumeLastSession = () => {
+  const resumeLastSession = async () => {
     if (!lastSessionId || busy) return;
-    // Swap: the (possibly started) current session becomes the "last
-    // conversation" and the stored one resumes as active. onSessionIdChange
-    // persists whichever session ends up active.
+    const sessionToResume = lastSessionId;
     const currentPersisted = readSummaryWorkbenchSession(storageScope);
-    // Keep the bar readable: point it at the demoted session instead of
-    // clearing it. Clearing here would hide the only reader of :previous and
-    // the next fresh "+" mount would overwrite the demoted session
-    // (resume-orphaning, Octo-Q P1-3).
+    const hydration = await workbench.hydrateSession(sessionToResume);
+    if (hydration.status === "failed" || hydration.status === "cancelled") {
+      return;
+    }
+
+    // Commit the storage swap only after the target session has been
+    // validated. A failed/cancelled hydration leaves both slots and the
+    // recovery bar untouched.
     const demotedSessionId =
-      currentPersisted && currentPersisted !== lastSessionId
+      currentPersisted && currentPersisted !== sessionToResume
         ? currentPersisted
         : "";
-    writeSummaryWorkbenchPreviousSession(storageScope, demotedSessionId);
-    writeSummaryWorkbenchSession(storageScope, lastSessionId);
+    if (demotedSessionId) {
+      writeSummaryWorkbenchPreviousSession(storageScope, demotedSessionId);
+    } else {
+      clearSummaryWorkbenchPreviousSession(storageScope);
+    }
+    if (hydration.status === "hydrated") {
+      writeSummaryWorkbenchSession(storageScope, hydration.sessionId);
+    } else {
+      clearSummaryWorkbenchSession(storageScope);
+    }
     setLastSessionId(demotedSessionId);
     setHasSubmitted(false);
     setTemplateGalleryOpen(false);
     templateFilledComposer.current = null;
-    void workbench.hydrateSession(lastSessionId);
   };
 
   const savePreview = async () => {

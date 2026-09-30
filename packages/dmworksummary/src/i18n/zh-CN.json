@@ -291,8 +291,7 @@
       "selectSingleChatForParticipants": "选择参与者时仅支持最多 30 个群聊"
     },
     "lastSession": {
-      "label": "上次对话",
-      "resume": "继续"
+      "label": "上次对话"
     },
     "errors": {
       "network": "网络连接异常，请稍后重试",

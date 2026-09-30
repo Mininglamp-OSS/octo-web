@@ -32,7 +32,6 @@ vi.mock("@octo/base", async () => {
     "summary.workbench.message.conversation": "Summary conversation",
     "summary.workbench.actions.newSession": "New session",
     "summary.workbench.lastSession.label": "Last conversation",
-    "summary.workbench.lastSession.resume": "Resume last conversation",
     "summary.workbench.loadingHistory": "Restoring session",
     "summary.common.agentChat.viewGenerationProcess": "Generation progress",
     "summary.common.agentChat.progress.understand": "Understanding request",

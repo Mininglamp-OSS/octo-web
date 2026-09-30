@@ -912,6 +912,69 @@ describe("useSummaryWorkbench", () => {
     unmount();
   });
 
+  it("restores the previous runtime when History hydration fails", async () => {
+    loadSession.mockRejectedValue(
+      new SummaryWorkspaceApiError({
+        message: "Network unavailable",
+        kind: "transport",
+        retryable: true,
+      })
+    );
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "current-session",
+        initialScope,
+        autoHydrate: false,
+        service,
+      })
+    );
+    act(() => result.current.setComposerValue("Keep current draft"));
+
+    let hydrationResult: unknown;
+    await act(async () => {
+      hydrationResult = await result.current.hydrateSession("dead-session");
+    });
+
+    expect(hydrationResult).toEqual({ status: "failed" });
+    expect(result.current.sessionId).toBe("current-session");
+    expect(result.current.model.composer.value).toBe("Keep current draft");
+    expect(result.current.error).toMatchObject({ kind: "transport" });
+    unmount();
+  });
+
+  it("does not restore an obsolete runtime when hydration is superseded", async () => {
+    loadSession.mockImplementation((_sessionId, options) => {
+      return new Promise((_, reject) => {
+        options?.signal?.addEventListener(
+          "abort",
+          () => reject(new DOMException("Superseded", "AbortError")),
+          { once: true }
+        );
+      });
+    });
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "current-session",
+        initialScope,
+        autoHydrate: false,
+        service,
+      })
+    );
+
+    let pending!: ReturnType<typeof result.current.hydrateSession>;
+    act(() => {
+      pending = result.current.hydrateSession("old-session");
+    });
+    act(() => {
+      result.current.resetSession({ sessionId: "new-session" });
+    });
+
+    await expect(pending).resolves.toEqual({ status: "cancelled" });
+    expect(result.current.sessionId).toBe("new-session");
+    expect(result.current.error).toBeNull();
+    unmount();
+  });
+
   it("restarts automatic History hydration after the StrictMode effect cleanup", async () => {
     const firstHydration = deferred<ReturnType<typeof previewHydration>>();
     let firstSignal: AbortSignal | undefined;

@@ -291,8 +291,7 @@
       "selectSingleChatForParticipants": "Participant selection supports up to 30 group chats only."
     },
     "lastSession": {
-      "label": "Last conversation",
-      "resume": "Resume"
+      "label": "Last conversation"
     },
     "errors": {
       "network": "Network error. Try again later.",

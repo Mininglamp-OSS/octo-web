@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+    clearSummaryWorkbenchPreviousSession,
     clearSummaryWorkbenchSession,
     moveSummaryWorkbenchSessionToPrevious,
     readSummaryWorkbenchPreviousSession,
@@ -101,7 +102,7 @@ describe("summary workbench session storage", () => {
         expect(readSummaryWorkbenchPreviousSession(scope)).toBe("");
     });
 
-    it("clears the previous slot with an empty write and keeps previous per scope", () => {
+    it("clears only the requested previous slot", () => {
         const scopeA = { userId: "user-a", spaceId: "space-a" };
         const scopeB = { userId: "user-a", spaceId: "space-b" };
         writeSummaryWorkbenchPreviousSession(scopeA, "prev-a");
@@ -110,7 +111,7 @@ describe("summary workbench session storage", () => {
         expect(readSummaryWorkbenchPreviousSession(scopeA)).toBe("prev-a");
         expect(readSummaryWorkbenchPreviousSession(scopeB)).toBe("prev-b");
 
-        writeSummaryWorkbenchPreviousSession(scopeA, "");
+        clearSummaryWorkbenchPreviousSession(scopeA);
         expect(readSummaryWorkbenchPreviousSession(scopeA)).toBe("");
         expect(readSummaryWorkbenchPreviousSession(scopeB)).toBe("prev-b");
     });

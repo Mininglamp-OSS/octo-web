@@ -251,7 +251,7 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
         <button
           type="button"
           data-testid="summary-workbench-last-session"
-          aria-label="summary.workbench.lastSession.resume"
+          aria-label="summary.workbench.lastSession.label"
           onClick={actions.onResumeLastSession}
         >
           last-session
@@ -395,7 +395,10 @@ function controller(overrides: Record<string, unknown> = {}) {
     send: vi.fn(),
     confirmWorkflow: vi.fn(),
     savePreview: vi.fn(),
-    hydrateSession: vi.fn(),
+    hydrateSession: vi.fn(async (sessionId?: string) => ({
+      status: "hydrated" as const,
+      sessionId: sessionId || "hydrated-session",
+    })),
     resetSession: vi.fn(),
     cancelActiveRequest: vi.fn(),
     clearError: vi.fn(),
@@ -1353,6 +1356,8 @@ describe("SummaryWorkbenchFeature", () => {
   });
 
   it("restores the template gallery when starting a new session", async () => {
+    const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
+    localStorage.setItem(ordinaryKey, "current-session");
     const current = controller({
       viewState: {
         layout: "full",
@@ -1380,7 +1385,14 @@ describe("SummaryWorkbenchFeature", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "new-session" }));
     expect(current.resetSession).toHaveBeenCalledWith({ scope: scope() });
+    expect(localStorage.getItem(ordinaryKey)).toBeNull();
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
+      "current-session"
+    );
     expect(screen.getByTestId("template-selector")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("summary-workbench-last-session")
+    ).toBeInTheDocument();
   });
 
   it("confirms before replacing manually entered text with a template", () => {
@@ -2503,7 +2515,7 @@ describe("SummaryWorkbenchFeature", () => {
     );
   });
 
-  it("keeps the persisted session reachable as a last-conversation bar on forced-new mount", () => {
+  it("keeps the persisted session reachable as a last-conversation bar on forced-new mount", async () => {
     const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
     localStorage.setItem(ordinaryKey, "old-session");
     mocks.useSummaryWorkbench.mockReturnValue(controller());
@@ -2525,13 +2537,15 @@ describe("SummaryWorkbenchFeature", () => {
     ).toBeInTheDocument();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "summary.workbench.lastSession.resume" })
+      screen.getByRole("button", { name: "summary.workbench.lastSession.label" })
     );
 
     const lastController = mocks.useSummaryWorkbench.mock.results[0]
       ?.value as { hydrateSession: (sessionId: string) => unknown };
     expect(lastController.hydrateSession).toHaveBeenCalledWith("old-session");
-    expect(localStorage.getItem(ordinaryKey)).toBe("old-session");
+    await waitFor(() =>
+      expect(localStorage.getItem(ordinaryKey)).toBe("old-session")
+    );
     expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBeNull();
     expect(
       screen.queryByTestId("summary-workbench-last-session")
@@ -2568,6 +2582,34 @@ describe("SummaryWorkbenchFeature", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps a demoted session reachable when resume hydration fails from a fresh session", async () => {
+    const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
+    localStorage.setItem(ordinaryKey, "old-session");
+    const hydration = deferred<{ status: "failed" }>();
+    const current = controller();
+    current.hydrateSession = vi.fn(() => hydration.promise);
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" forceNewSession />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "summary.workbench.lastSession.label",
+      })
+    );
+
+    expect(current.hydrateSession).toHaveBeenCalledWith("old-session");
+    await act(async () => hydration.resolve({ status: "failed" }));
+    expect(localStorage.getItem(ordinaryKey)).toBeNull();
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
+      "old-session"
+    );
+    expect(
+      screen.getByTestId("summary-workbench-last-session")
+    ).toBeInTheDocument();
+  });
+
   it("restores the active session and exposes the previous one on a non-forced mount", () => {
     const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
     localStorage.setItem(ordinaryKey, "current-session");
@@ -2589,7 +2631,7 @@ describe("SummaryWorkbenchFeature", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps the bar visible on resume when the current session is non-empty (PG-R4-1: resume swap preserves the demoted session)", () => {
+  it("keeps the bar visible on resume when the current session is non-empty (PG-R4-1: resume swap preserves the demoted session)", async () => {
     // 复现 Octo-Q P1-3 的完整序列：用户在 fresh "+" 会话里已经跑过一轮
     // （onSessionIdChange 把会话 C 写进主槽位，横条仍指着 :previous 里的
     // B）。此时点 resume：C 非空且 ≠ B → C 必须被降级进 :previous 并继续
@@ -2616,14 +2658,16 @@ describe("SummaryWorkbenchFeature", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "summary.workbench.lastSession.resume" })
+      screen.getByRole("button", { name: "summary.workbench.lastSession.label" })
     );
 
     const lastController = mocks.useSummaryWorkbench.mock.results[0]
       ?.value as { hydrateSession: (sessionId: string) => unknown };
     expect(lastController.hydrateSession).toHaveBeenCalledWith("old-session");
     // 主槽位切到被恢复的会话，被降级的当前会话 C 进入 :previous。
-    expect(localStorage.getItem(ordinaryKey)).toBe("old-session");
+    await waitFor(() =>
+      expect(localStorage.getItem(ordinaryKey)).toBe("old-session")
+    );
     expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
       "current-session"
     );
@@ -2632,6 +2676,39 @@ describe("SummaryWorkbenchFeature", () => {
       screen.getByTestId("summary-workbench-last-session")
     ).toBeInTheDocument();
   });
+
+  it.each(["failed", "cancelled"] as const)(
+    "keeps both session slots and the recovery bar when resume hydration is %s",
+    async (status) => {
+      const ordinaryKey =
+        "summary-workbench-session:v2:test-uid:space-a:global";
+      localStorage.setItem(ordinaryKey, "current-session");
+      localStorage.setItem(`${ordinaryKey}:previous`, "old-session");
+      const hydration = deferred<{ status: typeof status }>();
+      const current = controller();
+      current.hydrateSession = vi.fn(() => hydration.promise);
+      mocks.useSummaryWorkbench.mockReturnValue(current);
+
+      render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+        legacyRoot: true,
+      });
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "summary.workbench.lastSession.label",
+        })
+      );
+
+      expect(current.hydrateSession).toHaveBeenCalledWith("old-session");
+      await act(async () => hydration.resolve({ status }));
+      expect(localStorage.getItem(ordinaryKey)).toBe("current-session");
+      expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
+        "old-session"
+      );
+      expect(
+        screen.getByTestId("summary-workbench-last-session")
+      ).toBeInTheDocument();
+    }
+  );
 
   it("hides the template gallery when opened for continue-refine", () => {
     mocks.useSummaryWorkbench.mockReturnValue(controller());

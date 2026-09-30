@@ -104,3 +104,13 @@ export function writeSummaryWorkbenchPreviousSession(
         // Storage can be unavailable in private or restricted environments.
     }
 }
+
+export function clearSummaryWorkbenchPreviousSession(
+    scope: SummaryWorkbenchSessionScope
+): void {
+    try {
+        localStorage.removeItem(previousStorageKey(scope));
+    } catch {
+        // Keep the current in-memory session usable when storage is unavailable.
+    }
+}
