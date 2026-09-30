@@ -251,7 +251,9 @@ export default function SummaryWorkbenchFeature({
   );
   const [composerFocusKey, setComposerFocusKey] = useState(0);
   const [hasSubmitted, setHasSubmitted] = useState(false);
-  const [failedRunRetryable, setFailedRunRetryable] = useState(false);
+  const [lastFailedAction, setLastFailedAction] = useState<
+    "start_team_workflow" | "chat" | null
+  >(null);
   const [templateGalleryOpen, setTemplateGalleryOpen] = useState(
     () => !derivedFromTask
   );
@@ -261,6 +263,7 @@ export default function SummaryWorkbenchFeature({
   const handledSavedTaskIds = useRef(new Set<number>());
   const hydrationObserved = useRef(false);
   const templateFilledComposer = useRef<string | null>(null);
+  const failedRequestKeyRef = useRef<string | null>(null);
   const themeTrackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const workbench = useSummaryWorkbench({
@@ -611,6 +614,20 @@ export default function SummaryWorkbenchFeature({
       ? { ...item, label: referencedTask.title || item.label }
       : item
   );
+  const retryRequestKey = JSON.stringify({
+    inputValue: workbench.viewState.inputValue,
+    scope: workbench.scope,
+    contextItems,
+  });
+  useEffect(() => {
+    if (
+      lastFailedAction !== null &&
+      failedRequestKeyRef.current !== retryRequestKey
+    ) {
+      failedRequestKeyRef.current = null;
+      setLastFailedAction(null);
+    }
+  }, [lastFailedAction, retryRequestKey]);
   const availableContextKinds: SummaryWorkbenchContextKind[] =
     (workbench.scope.documents ?? []).length > 0
       ? ["chat", ...(documentSelectorAvailable ? (["document"] as const) : [])]
@@ -630,7 +647,7 @@ export default function SummaryWorkbenchFeature({
       !documentScopeUnavailable &&
       participantScopeReady &&
       (composerHasCustomText ||
-        (failedRunRetryable && structuredGenerate) ||
+        (lastFailedAction !== null && structuredGenerate) ||
         (!templateLocked && structuredGenerate) ||
         (templateLocked &&
           templateFilledComposer.current !== null &&
@@ -686,13 +703,15 @@ export default function SummaryWorkbenchFeature({
   };
 
   const runStartedTask = async (
-    request: () => Promise<SummaryWorkbenchResponse | undefined>
+    request: () => Promise<SummaryWorkbenchResponse | undefined>,
+    action: "start_team_workflow" | "chat" | null = null
   ) => {
     const previousInputValue = workbench.viewState.inputValue;
     const previousTemplateFilledComposer = templateFilledComposer.current;
     const responsePromise = request();
 
-    setFailedRunRetryable(false);
+    failedRequestKeyRef.current = null;
+    setLastFailedAction(null);
     templateFilledComposer.current = null;
     workbench.restoreComposerValue("");
     setHasSubmitted(true);
@@ -705,7 +724,8 @@ export default function SummaryWorkbenchFeature({
       // composed input for retry, but keep the failure visible in place.
       workbench.restoreComposerValue(previousInputValue);
       templateFilledComposer.current = previousTemplateFilledComposer;
-      setFailedRunRetryable(true);
+      failedRequestKeyRef.current = retryRequestKey;
+      setLastFailedAction(action);
     }
     return response;
   };
@@ -735,14 +755,16 @@ export default function SummaryWorkbenchFeature({
     }
     const action =
       directTeamWorkflow &&
-      (!templateLocked || failedRunRetryable) &&
+      (!templateLocked || lastFailedAction === "start_team_workflow") &&
       workbench.scope.participants.length > 0
         ? "start_team_workflow"
         : "chat";
-    const response = await runStartedTask(() =>
-      action === "start_team_workflow"
-        ? workbench.send(message, inputOrigin, action)
-        : workbench.send(message, inputOrigin)
+    const response = await runStartedTask(
+      () =>
+        action === "start_team_workflow"
+          ? workbench.send(message, inputOrigin, action)
+          : workbench.send(message, inputOrigin),
+      action
     );
     if (isAcceptedResponse(response)) {
       // DAP-266：补 has_reference（是否携带引用总结）。duration_seconds（请求耗时）此处无起始
@@ -907,7 +929,8 @@ export default function SummaryWorkbenchFeature({
     setOpenSelector(null);
     setPendingTemplate(null);
     setHasSubmitted(false);
-    setFailedRunRetryable(false);
+    failedRequestKeyRef.current = null;
+    setLastFailedAction(null);
     setTemplateGalleryOpen(!derivedFromTask);
     templateFilledComposer.current = null;
     workbench.resetSession({ scope: initialScope });
@@ -941,7 +964,8 @@ export default function SummaryWorkbenchFeature({
     }
     setLastSessionId(demotedSessionId);
     setHasSubmitted(false);
-    setFailedRunRetryable(false);
+    failedRequestKeyRef.current = null;
+    setLastFailedAction(null);
     setTemplateGalleryOpen(false);
     templateFilledComposer.current = null;
   };

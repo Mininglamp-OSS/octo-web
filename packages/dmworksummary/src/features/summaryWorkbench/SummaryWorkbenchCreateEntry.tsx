@@ -30,6 +30,16 @@ export default function SummaryWorkbenchCreateEntry(
   const [forceNewSessionPending, setForceNewSessionPending] = React.useState(
     () => Boolean(props.forceNewSession)
   );
+  // Every distinct fresh-session gesture should remount this entry. Also
+  // support callers that expose the next gesture as a false -> true edge.
+  const previousForceNewSession = React.useRef(Boolean(props.forceNewSession));
+  React.useEffect(() => {
+    const forceNewSession = Boolean(props.forceNewSession);
+    if (!previousForceNewSession.current && forceNewSession) {
+      setForceNewSessionPending(true);
+    }
+    previousForceNewSession.current = forceNewSession;
+  }, [props.forceNewSession]);
   const consumeForceNewSession = React.useCallback(
     () => setForceNewSessionPending(false),
     []

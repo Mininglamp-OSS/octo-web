@@ -139,4 +139,23 @@ describe("SummaryWorkbenchCreateEntry", () => {
             "false"
         );
     });
+
+    it("re-arms force-new on a false to true prop transition", async () => {
+        const view = render(
+            <SummaryWorkbenchCreateEntry source="summary_home" />,
+            { legacyRoot: true }
+        );
+
+        view.rerender(
+            <SummaryWorkbenchCreateEntry
+                source="summary_home"
+                forceNewSession
+            />
+        );
+
+        await waitFor(() => expect(mocks.forceNewMount).toHaveBeenCalledTimes(1));
+        expect(screen.getByTestId("force-new-session")).toHaveTextContent(
+            "false"
+        );
+    });
 });

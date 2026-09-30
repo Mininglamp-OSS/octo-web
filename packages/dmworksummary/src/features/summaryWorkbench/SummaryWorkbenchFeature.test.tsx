@@ -1780,6 +1780,85 @@ describe("SummaryWorkbenchFeature", () => {
     expect(send).toHaveBeenNthCalledWith(2, undefined, "user");
   });
 
+  it("keeps ordinary follow-ups as chat after a failed direct-team follow-up", async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        resultType: "workflow_started",
+        workflow: { taskId: 204, taskTitle: "Team update" },
+      })
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ resultType: "message" });
+    const current = controller({
+      scope: scope({
+        participants: [{ userId: "user-a", userName: "Alex" }],
+      }),
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Create the team summary",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: true,
+      },
+      send,
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    const view = render(
+      <SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />,
+      { legacyRoot: true }
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-can-send",
+        "true"
+      )
+    );
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+
+    current.viewState.inputValue = "Add delivery risks";
+    current.viewState.messages = [
+      { id: "user-1", role: "user", content: "Create the team summary" },
+    ];
+    mocks.useSummaryWorkbench.mockReturnValue({
+      ...current,
+      viewState: { ...current.viewState, canSend: true },
+    });
+    view.rerender(
+      <SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-can-send",
+        "true"
+      )
+    );
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+
+    current.viewState.inputValue = "Summarise the blockers";
+    mocks.useSummaryWorkbench.mockReturnValue({
+      ...current,
+      viewState: { ...current.viewState, canSend: true },
+    });
+    view.rerender(
+      <SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-can-send",
+        "true"
+      )
+    );
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(3));
+    expect(send).toHaveBeenNthCalledWith(3, undefined, "user");
+  });
+
   it.each([
     ["participants", []],
     [
