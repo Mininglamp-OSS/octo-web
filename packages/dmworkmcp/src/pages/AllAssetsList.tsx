@@ -378,9 +378,10 @@ export default function AllAssetsList({
       publishAria: t("skillMarket.plugin.ariaPublish", { values: { name: item.name } }),
       onUpgrade:
         onRequestAction && listedToOrg && !pending
-          ? () => onRequestAction({ pluginId: item.id, type: rowType, action: "upgrade" })
+          ? () => onRequestAction({ pluginId: item.id, type: rowType, action: "bot-upgrade" })
           : undefined,
-      upgradeAria: t("skillMarket.plugin.ariaUpgrade", { values: { name: item.name } }),
+      upgradeLabel: t("mcp.mine.botUpgrade"),
+      upgradeAria: t("mcp.mine.botUpgradeAria", { values: { name: item.name } }),
       onCancelReview:
         pending && item.reviewId
           ? () =>

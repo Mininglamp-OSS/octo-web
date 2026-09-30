@@ -97,11 +97,14 @@ function LoadMoreSentinel({
 interface ExpertMarketListPageProps {
   variant?: "market" | "mine";
   mineType?: "agent" | "squad";
+  /** Hidden when MyAssetsPage supplies the page-level unified entry. */
+  showPublishEntry?: boolean;
 }
 
 export default function ExpertMarketListPage({
   variant = "market",
   mineType,
+  showPublishEntry = true,
 }: ExpertMarketListPageProps = {}) {
   useI18n();
   // Loop(回路) feature gate. The install flow (添加到回路), its explainer, and the
@@ -747,7 +750,7 @@ export default function ExpertMarketListPage({
               )}
               </div>
           </div>
-          {variant === "mine" && (
+          {variant === "mine" && showPublishEntry && (
             <div className="wk-mcp-expert-publish">
               <WKButton
                 variant="primary"

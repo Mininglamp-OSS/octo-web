@@ -180,6 +180,8 @@
   "botPublish": {
     "title": "Bot Publish",
     "hint": "Copy the prompt for Agent to publish this Skill",
+    "updateTitle": "Upgrade Skill via Bot",
+    "updateHint": "Send the prompt to an Agent to check prerequisites and guide the new version release",
     "copyBtn": "Copy Prompt",
     "copied": "Copied"
   },

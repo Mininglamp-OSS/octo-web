@@ -180,6 +180,8 @@
   "botPublish": {
     "title": "Bot 上架",
     "hint": "复制提示词给 Agent，让它帮你完成上架",
+    "updateTitle": "Bot 升级技能",
+    "updateHint": "将提示词交给 Agent，它会检查前置条件并引导完成新版本发布",
     "copyBtn": "复制提示词",
     "copied": "已复制"
   },

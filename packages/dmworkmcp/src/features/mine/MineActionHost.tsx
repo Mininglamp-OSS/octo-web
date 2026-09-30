@@ -3,6 +3,7 @@ import { Toast } from "@douyinfe/semi-ui";
 import { t, useI18n } from "@octo/base";
 import {
   EditSkillModal,
+  BotPublishModal,
   DeleteConfirmModal,
   getCategories,
   getSkill,
@@ -13,6 +14,7 @@ import {
   type Skill,
 } from "@dmwork/skillmarket";
 import McpCreateModal from "../../components/McpCreateModal";
+import McpBotPublishModal from "../../components/McpBotPublishModal";
 import McpDetailModal from "../../components/McpDetailModal";
 import ExpertBotPublishModal from "../../components/ExpertBotPublishModal";
 import ExpertEditModal from "../../components/ExpertEditModal";
@@ -61,6 +63,10 @@ export default function MineActionHost({
     null
   );
   const [botTarget, setBotTarget] = useState<ExpertItem | null>(null);
+  const [botUpgradeTarget, setBotUpgradeTarget] = useState<{
+    id: string;
+    type: "skill" | "connector" | "expert" | "squad";
+  } | null>(null);
   const changedRef = useRef(false);
 
   const clear = useCallback(() => {
@@ -76,6 +82,7 @@ export default function MineActionHost({
     setExpertDetail(null);
     setReviewTarget(null);
     setBotTarget(null);
+    setBotUpgradeTarget(null);
   }, []);
 
   const close = useCallback(() => {
@@ -99,6 +106,10 @@ export default function MineActionHost({
     clear();
 
     const load = async () => {
+      if (request.action === "bot-upgrade") {
+        setBotUpgradeTarget({ id: request.pluginId, type: request.type });
+        return;
+      }
       if (request.type === "skill") {
         if (request.action === "view") {
           const categories = await getCategories();
@@ -276,6 +287,29 @@ export default function MineActionHost({
         kind={botTarget?.kind === "squad" ? "squad" : "agent"}
         mode="update"
         editingId={botTarget?.id}
+        onClose={close}
+        onToast={(message) => Toast.success(message)}
+      />
+      <BotPublishModal
+        visible={botUpgradeTarget?.type === "skill"}
+        mode="update"
+        editingId={botUpgradeTarget?.id}
+        onClose={close}
+      />
+      <McpBotPublishModal
+        visible={botUpgradeTarget?.type === "connector"}
+        mode="update"
+        editingId={botUpgradeTarget?.id}
+        onClose={close}
+      />
+      <ExpertBotPublishModal
+        visible={
+          botUpgradeTarget?.type === "expert" ||
+          botUpgradeTarget?.type === "squad"
+        }
+        kind={botUpgradeTarget?.type === "squad" ? "squad" : "agent"}
+        mode="update"
+        editingId={botUpgradeTarget?.id}
         onClose={close}
         onToast={(message) => Toast.success(message)}
       />

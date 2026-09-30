@@ -151,6 +151,7 @@ vi.mock("@dmwork/skillmarket", () => ({
               {
                 key: `${row.id}-upgrade`,
                 onClick: row.onUpgrade as () => void,
+                "data-label": String(row.upgradeLabel),
               },
               `upgrade-${row.name}`
             )
@@ -187,7 +188,11 @@ vi.mock("../../utils/mcpAvatar", () => ({
 
 import AllAssetsList from "../AllAssetsList";
 
-const asset = (id: string, name: string, patch: Record<string, unknown> = {}) => ({
+const asset = (
+  id: string,
+  name: string,
+  patch: Record<string, unknown> = {}
+) => ({
   id,
   name,
   displayName: name,
@@ -301,8 +306,13 @@ describe("AllAssetsList parity with type tabs", () => {
     expect(onRequestAction).toHaveBeenNthCalledWith(2, {
       pluginId: "listed-expert",
       type: "expert",
-      action: "upgrade",
+      action: "bot-upgrade",
     });
+    expect(
+      container
+        .querySelector('[data-label="mcp.mine.botUpgrade"]')
+        ?.textContent
+    ).toBe("upgrade-Listed expert");
   });
 
   it("uses downloads for skills and installs for the other asset types", async () => {
@@ -324,8 +334,12 @@ describe("AllAssetsList parity with type tabs", () => {
       );
     });
 
-    expect(container.querySelector('[data-testid="metric-skill"]')?.textContent).toBe("12");
-    expect(container.querySelector('[data-testid="metric-connector"]')?.textContent).toBe("34");
+    expect(
+      container.querySelector('[data-testid="metric-skill"]')?.textContent
+    ).toBe("12");
+    expect(
+      container.querySelector('[data-testid="metric-connector"]')?.textContent
+    ).toBe("34");
   });
 
   it("releases a row action lock when a search reload supersedes it", async () => {

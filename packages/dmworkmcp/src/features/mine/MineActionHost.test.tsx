@@ -82,6 +82,18 @@ vi.mock("@dmwork/skillmarket", () => ({
     item ? <div data-testid="skill-edit" data-id={item.id} /> : null,
   NewSkillModal: ({ visible }: { visible: boolean }) =>
     visible ? <div data-testid="skill-upgrade" /> : null,
+  BotPublishModal: ({
+    visible,
+    mode,
+    editingId,
+  }: {
+    visible: boolean;
+    mode?: string;
+    editingId?: string;
+  }) =>
+    visible ? (
+      <div data-testid="skill-bot" data-mode={mode} data-id={editingId} />
+    ) : null,
   DeleteConfirmModal: ({ skill: item }: { skill: typeof skill | null }) =>
     item ? <div data-testid="skill-delete" data-id={item.id} /> : null,
 }));
@@ -162,7 +174,39 @@ vi.mock("../../components/ExpertDetailModal", () => ({
     item ? <div data-testid="expert-detail" data-id={item.id} /> : null,
 }));
 vi.mock("../../components/ExpertBotPublishModal", () => ({
-  default: () => null,
+  default: ({
+    visible,
+    mode,
+    editingId,
+    kind,
+  }: {
+    visible: boolean;
+    mode?: string;
+    editingId?: string;
+    kind: string;
+  }) =>
+    visible ? (
+      <div
+        data-testid="expert-bot"
+        data-mode={mode}
+        data-id={editingId}
+        data-kind={kind}
+      />
+    ) : null,
+}));
+vi.mock("../../components/McpBotPublishModal", () => ({
+  default: ({
+    visible,
+    mode,
+    editingId,
+  }: {
+    visible: boolean;
+    mode?: string;
+    editingId?: string;
+  }) =>
+    visible ? (
+      <div data-testid="connector-bot" data-mode={mode} data-id={editingId} />
+    ) : null,
 }));
 vi.mock("../../components/ReviewSubmitModal", () => ({
   default: ({ target }: { target: { pluginId: string } | null }) =>
@@ -302,6 +346,29 @@ describe("MineActionHost", () => {
         ?.getAttribute("data-review")
     ).toBe("true");
   });
+
+  it.each([
+    ["skill", skill.id, "skill-bot", null],
+    ["connector", connector.id, "connector-bot", null],
+    ["expert", expert.id, "expert-bot", "agent"],
+    ["squad", squad.id, "expert-bot", "squad"],
+  ] as const)(
+    "opens the %s Bot upgrade guide without loading an editor",
+    async (type, pluginId, testId, kind) => {
+      renderHost({
+        requestId: 20,
+        pluginId,
+        type,
+        action: "bot-upgrade",
+      });
+      await act(async () => undefined);
+
+      const modal = container.querySelector(`[data-testid="${testId}"]`);
+      expect(modal?.getAttribute("data-mode")).toBe("update");
+      expect(modal?.getAttribute("data-id")).toBe(pluginId);
+      if (kind) expect(modal?.getAttribute("data-kind")).toBe(kind);
+    }
+  );
 
   it("ignores a stale load after a newer action replaces it", async () => {
     let resolveSkill: (value: typeof skill) => void = () => {};
