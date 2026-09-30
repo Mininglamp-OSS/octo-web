@@ -301,6 +301,10 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
   }
 
   const showUpgradeLeaveConfirm = isUpgrade && confirmClose !== null;
+  // `confirmClose` records why the leave page was opened, but an upload can
+  // finish or fail while that page is visible. Use the live pipeline state so
+  // the warning never claims a completed upload is still running.
+  const upgradeLeaveReason: "busy" | "dirty" = busy ? "busy" : "dirty";
 
   useEffect(() => {
     const wasOpen = leaveConfirmWasOpenRef.current;
@@ -708,7 +712,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
             <div ref={leaveConfirmActionsRef} className="skill-market-leave-confirm__actions">
               <WKButton variant="secondary" onClick={() => setConfirmClose(null)}>
                 {t(
-                  confirmClose === "busy"
+                  upgradeLeaveReason === "busy"
                     ? "skillMarket.confirm.keepUploading"
                     : "skillMarket.confirm.keepEditing"
                 )}
@@ -805,7 +809,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
             </span>
             <p>
               {t(
-                confirmClose === "busy"
+                upgradeLeaveReason === "busy"
                   ? "skillMarket.confirm.busyMessage"
                   : "skillMarket.confirm.upgradeUnsavedMessage"
               )}

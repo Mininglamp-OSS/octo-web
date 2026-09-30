@@ -665,6 +665,40 @@ describe("NewSkillModal", () => {
       await act(async () => finishUpload());
     });
 
+    it("stops showing the upload warning when the upload fails behind the leave page", async () => {
+      let failUpload!: (reason: Error) => void;
+      vi.mocked(api.uploadFile).mockReturnValueOnce(
+        new Promise<void>((_resolve, reject) => {
+          failUpload = reject;
+        }),
+      );
+      render(
+        <NewSkillModal
+          visible
+          categories={categories}
+          onClose={vi.fn()}
+          onCreated={vi.fn()}
+          reviewSkill={reviewSkillFixture()}
+        />
+      );
+
+      fireEvent.change(screen.getByLabelText(selectNewZipLabel), {
+        target: { files: [zipFile("uploading.zip")] },
+      });
+      await waitFor(() => expect(screen.getByText(uploadProgress)).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole("button", { name: cancelButton }));
+      expect(screen.getByText(busyMessage)).toBeInTheDocument();
+
+      await act(async () => failUpload(new Error("upload failed")));
+
+      await waitFor(() => {
+        expect(screen.queryByText(busyMessage)).not.toBeInTheDocument();
+        expect(screen.getByText(upgradeUnsavedMessage)).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: keepEditing })).toBeInTheDocument();
+      });
+    });
+
     it("treats Escape and the close icon as safe returns from the leave page", async () => {
       const onClose = vi.fn();
       render(
