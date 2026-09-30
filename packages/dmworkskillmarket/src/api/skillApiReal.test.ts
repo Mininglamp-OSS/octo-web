@@ -42,9 +42,18 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function jsonResponse(data: unknown, status = 200, pagination?: unknown) {
+function jsonResponse(
+  data: unknown,
+  status = 200,
+  pagination?: unknown,
+  requestId?: string
+) {
   return Promise.resolve({
     status,
+    headers: {
+      get: (name: string) =>
+        name.toLowerCase() === "x-request-id" ? requestId ?? null : null,
+    },
     json: () =>
       Promise.resolve({ data, ...(pagination ? { pagination } : {}) }),
   });
@@ -463,6 +472,7 @@ describe("skillApiReal", () => {
         json: () =>
           Promise.resolve({
             error: { code: "NOT_FOUND", message: "not found", details: {} },
+            request_id: "req-body-404",
           }),
       })
     );
@@ -475,6 +485,7 @@ describe("skillApiReal", () => {
       code: "NOT_FOUND",
       status: 404,
       message: "not found",
+      requestId: "req-body-404",
     });
   });
 
@@ -838,8 +849,37 @@ describe("skillApiReal", () => {
       )
     ).rejects.toMatchObject({
       name: "SkillMarketApiError",
-      code: "invalid_response",
+      code: "upload_url_scheme_not_allowed",
       message: "URL scheme 不允许",
+    });
+  });
+
+  it("uploadFile normalizes storage HTTP failures with an upload-phase code", async () => {
+    class FailedXHR {
+      upload = new EventTarget();
+      status = 403;
+      private listeners: Record<string, Array<() => void>> = {};
+
+      open() {}
+      setRequestHeader() {}
+      addEventListener(type: string, listener: () => void) {
+        this.listeners[type] = [...(this.listeners[type] ?? []), listener];
+      }
+      send() {
+        this.listeners.load?.forEach((listener) => listener());
+      }
+    }
+    vi.stubGlobal("XMLHttpRequest", FailedXHR);
+
+    await expect(
+      uploadFile(
+        "https://storage.example/upload",
+        new File(["zip"], "skill.zip", { type: "application/zip" })
+      )
+    ).rejects.toMatchObject({
+      name: "SkillMarketApiError",
+      code: "upload_failed",
+      status: 403,
     });
   });
 
@@ -911,20 +951,26 @@ describe("skillApiReal", () => {
 
   it("pollParse throws nested failure error from backend", async () => {
     mockFetch.mockReturnValueOnce(
-      jsonResponse({
-        status: "failed",
-        skill_parse_task_id: "task-404",
-        error: {
-          code: "err.marketplace.parse.invalid_zip",
-          message: "invalid zip",
+      jsonResponse(
+        {
+          status: "failed",
+          skill_parse_task_id: "task-404",
+          error: {
+            code: "err.marketplace.parse.invalid_zip",
+            message: "invalid zip",
+          },
         },
-      })
+        200,
+        undefined,
+        "req-parse-404"
+      )
     );
 
     await expect(pollParse("task-404")).rejects.toMatchObject({
       name: "SkillMarketApiError",
       code: "err.marketplace.parse.invalid_zip",
       message: "invalid zip",
+      requestId: "req-parse-404",
     });
   });
 
@@ -932,7 +978,12 @@ describe("skillApiReal", () => {
     vi.useFakeTimers();
     for (let i = 0; i < 60; i += 1) {
       mockFetch.mockReturnValueOnce(
-        jsonResponse({ status: "pending", skill_parse_task_id: "task-timeout" })
+        jsonResponse(
+          { status: "pending", skill_parse_task_id: "task-timeout" },
+          200,
+          undefined,
+          `req-timeout-${i}`
+        )
       );
     }
 
@@ -941,6 +992,7 @@ describe("skillApiReal", () => {
       name: "SkillMarketApiError",
       code: "parse_timeout",
       message: "解析超时，请重试",
+      requestId: "req-timeout-59",
     });
     await vi.advanceTimersByTimeAsync(2_000 * 60);
 

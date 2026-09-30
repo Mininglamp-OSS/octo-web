@@ -48,6 +48,8 @@ import {
 
 interface SuccessEnvelope<T> {
   data: T;
+  requestId?: string;
+  request_id?: string;
   pagination?: {
     has_more?: boolean;
     next_cursor?: string;
@@ -59,6 +61,8 @@ interface SuccessEnvelope<T> {
 
 interface ErrorEnvelope {
   error?: { code?: string; message?: string; details?: unknown; hint?: string };
+  requestId?: string;
+  request_id?: string;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -68,7 +72,8 @@ export class SkillMarketApiError extends Error {
     public code: string | number,
     message: string,
     public status?: number,
-    public details?: unknown
+    public details?: unknown,
+    public requestId?: string,
   ) {
     super(message);
     this.name = "SkillMarketApiError";
@@ -103,13 +108,26 @@ function normalizeError(input: {
   message?: string;
   status?: number;
   details?: unknown;
+  requestId?: string;
 }): SkillMarketApiError {
   return new SkillMarketApiError(
     input.code ?? (input.status ? `http_${input.status}` : "unknown_error"),
     input.message || "Request failed",
     input.status,
-    input.details
+    input.details,
+    input.requestId,
   );
+}
+
+function responseRequestId(response: Response): string | undefined {
+  const requestId = response.headers?.get?.("X-Request-Id")?.trim();
+  return requestId || undefined;
+}
+
+function envelopeRequestId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const requestId = value.trim();
+  return requestId || undefined;
 }
 
 async function requestEnvelope<T>(
@@ -153,6 +171,7 @@ async function requestEnvelope<T>(
     const message = err instanceof Error ? err.message : "Network error";
     throw normalizeError({ code: "network_error", message, details: err });
   }
+  const headerRequestId = responseRequestId(res);
 
   // Handle 401 — redirect to login. Fire-and-forget beacons opt out: a 401
   // on a background metric must never tear down the session (the page's list
@@ -167,6 +186,7 @@ async function requestEnvelope<T>(
       code: "unauthorized",
       message: t("skillMarket.errors.unauthorized"),
       status: 401,
+      requestId: headerRequestId,
     });
   }
 
@@ -176,12 +196,17 @@ async function requestEnvelope<T>(
       code: "file_too_large",
       message: t("skillMarket.errors.fileTooLarge"),
       status: 413,
+      requestId: headerRequestId,
     });
   }
 
   const body = (await parseJson(res)) as
     | (Partial<SuccessEnvelope<T>> & ErrorEnvelope)
     | null;
+  const requestId =
+    headerRequestId ??
+    envelopeRequestId(body?.requestId) ??
+    envelopeRequestId(body?.request_id);
   const ok =
     typeof res.ok === "boolean"
       ? res.ok
@@ -192,6 +217,7 @@ async function requestEnvelope<T>(
       message: body?.error?.message ?? res.statusText ?? "Request failed",
       status: res.status,
       details: body?.error?.details ?? body,
+      requestId,
     });
   }
 
@@ -202,7 +228,7 @@ async function requestEnvelope<T>(
   // server did the work. Return an empty envelope so callers with `.then()`
   // just see success — flagged as P1 by Jerry-Xin on PR#851.
   if (res.status === 204) {
-    return { data: undefined as unknown as T } as SuccessEnvelope<T>;
+    return { data: undefined as unknown as T, requestId } as SuccessEnvelope<T>;
   }
 
   if (!body || !("data" in body)) {
@@ -211,10 +237,11 @@ async function requestEnvelope<T>(
       message: body?.error?.message ?? "Invalid response",
       status: res.status,
       details: body,
+      requestId,
     });
   }
 
-  return body as SuccessEnvelope<T>;
+  return { ...(body as SuccessEnvelope<T>), requestId };
 }
 
 async function request<T>(
@@ -244,11 +271,11 @@ function assertSafeExternalURL(raw: string): void {
   try {
     u = new URL(raw);
   } catch {
-    throw normalizeError({ code: "invalid_response", message: t("skillMarket.errors.invalidUrl") });
+    throw normalizeError({ code: "invalid_upload_url", message: t("skillMarket.errors.invalidUrl") });
   }
   if (u.protocol === "https:" || u.protocol === "http:") return;
   throw normalizeError({
-    code: "invalid_response",
+    code: "upload_url_scheme_not_allowed",
     message: t("skillMarket.errors.urlSchemeNotAllowed"),
   });
 }
@@ -786,13 +813,21 @@ export async function uploadFile(
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve();
       } else {
-        reject(new Error(`Upload failed: HTTP ${xhr.status}`));
+        reject(
+          new SkillMarketApiError(
+            "upload_failed",
+            `Upload failed: HTTP ${xhr.status}`,
+            xhr.status
+          )
+        );
       }
     });
     xhr.addEventListener("error", () =>
-      reject(new Error("Upload network error"))
+      reject(new SkillMarketApiError("network_error", "Upload network error"))
     );
-    xhr.addEventListener("abort", () => reject(new Error("Upload aborted")));
+    xhr.addEventListener("abort", () =>
+      reject(new SkillMarketApiError("upload_aborted", "Upload aborted"))
+    );
     xhr.send(file);
   });
 }
@@ -815,7 +850,7 @@ export async function uploadIcon(blob: Blob): Promise<string> {
   // `uploadFile` as a bare TypeError instead of a normalized Toast error.
   if (!initResp?.presigned_url || !initResp?.object_key) {
     throw normalizeError({
-      code: "invalid_response",
+      code: "invalid_upload_response",
       message: t("skillMarket.errors.uploadResponseMissing"),
     });
   }
@@ -884,26 +919,37 @@ function mapParseStatus(raw: RawParseStatusResult): ParseStatusResult {
 }
 
 async function fetchParseStatus(taskId: string): Promise<ParseStatusResult> {
-  return request<RawParseStatusResult>(
+  const envelope = await requestEnvelope<RawParseStatusResult>(
     `/skill_parse_tasks/${encodeURIComponent(taskId)}`
-  ).then(mapParseStatus);
+  );
+  return {
+    ...mapParseStatus(envelope.data),
+    requestId: envelope.requestId,
+  };
 }
 
 /** Step 4: Poll parse status every 2 seconds until success, failure, or timeout. */
 export async function pollParse(taskId: string): Promise<ParseStatusResult> {
+  let lastRequestId: string | undefined;
   for (let attempt = 0; attempt < 60; attempt += 1) {
     const status = await fetchParseStatus(taskId);
+    lastRequestId = status.requestId ?? lastRequestId;
     if (status.status === "success") return status;
     if (status.status === "failed") {
       throw normalizeError({
         code: status.error?.code ?? "parse_failed",
         message: status.error?.message ?? t("skillMarket.errors.parseFailed"),
         details: status.error,
+        requestId: status.requestId,
       });
     }
     if (attempt < 59) await wait(2000);
   }
-  throw normalizeError({ code: "parse_timeout", message: t("skillMarket.errors.parseTimeout") });
+  throw normalizeError({
+    code: "parse_timeout",
+    message: t("skillMarket.errors.parseTimeout"),
+    requestId: lastRequestId,
+  });
 }
 
 /** Reupload init for an existing skill. The unified import consumes any
