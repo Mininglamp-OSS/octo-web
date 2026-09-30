@@ -263,7 +263,6 @@ export default function SummaryWorkbenchFeature({
   const handledSavedTaskIds = useRef(new Set<number>());
   const hydrationObserved = useRef(false);
   const templateFilledComposer = useRef<string | null>(null);
-  const failedRequestKeyRef = useRef<string | null>(null);
   const themeTrackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const workbench = useSummaryWorkbench({
@@ -321,6 +320,7 @@ export default function SummaryWorkbenchFeature({
       if (retained.removedCount === 0) return;
 
       const impact = latestScopeChangeImpactRef.current;
+      setLastFailedAction(null);
       workbench.updateScope(retained.scope);
       Toast.warning(
         t(
@@ -614,20 +614,6 @@ export default function SummaryWorkbenchFeature({
       ? { ...item, label: referencedTask.title || item.label }
       : item
   );
-  const retryRequestKey = JSON.stringify({
-    inputValue: workbench.viewState.inputValue,
-    scope: workbench.scope,
-    contextItems,
-  });
-  useEffect(() => {
-    if (
-      lastFailedAction !== null &&
-      failedRequestKeyRef.current !== retryRequestKey
-    ) {
-      failedRequestKeyRef.current = null;
-      setLastFailedAction(null);
-    }
-  }, [lastFailedAction, retryRequestKey]);
   const availableContextKinds: SummaryWorkbenchContextKind[] =
     (workbench.scope.documents ?? []).length > 0
       ? ["chat", ...(documentSelectorAvailable ? (["document"] as const) : [])]
@@ -681,6 +667,7 @@ export default function SummaryWorkbenchFeature({
         Toast.info(t("summary.workbench.scopeChange.changedWhileConfirming"));
         return;
       }
+      setLastFailedAction(null);
       workbench.updateScope(nextScope);
       onApplied?.();
     };
@@ -710,7 +697,6 @@ export default function SummaryWorkbenchFeature({
     const previousTemplateFilledComposer = templateFilledComposer.current;
     const responsePromise = request();
 
-    failedRequestKeyRef.current = null;
     setLastFailedAction(null);
     templateFilledComposer.current = null;
     workbench.restoreComposerValue("");
@@ -724,7 +710,6 @@ export default function SummaryWorkbenchFeature({
       // composed input for retry, but keep the failure visible in place.
       workbench.restoreComposerValue(previousInputValue);
       templateFilledComposer.current = previousTemplateFilledComposer;
-      failedRequestKeyRef.current = retryRequestKey;
       setLastFailedAction(action);
     }
     return response;
@@ -929,7 +914,6 @@ export default function SummaryWorkbenchFeature({
     setOpenSelector(null);
     setPendingTemplate(null);
     setHasSubmitted(false);
-    failedRequestKeyRef.current = null;
     setLastFailedAction(null);
     setTemplateGalleryOpen(!derivedFromTask);
     templateFilledComposer.current = null;
@@ -964,7 +948,6 @@ export default function SummaryWorkbenchFeature({
     }
     setLastSessionId(demotedSessionId);
     setHasSubmitted(false);
-    failedRequestKeyRef.current = null;
     setLastFailedAction(null);
     setTemplateGalleryOpen(false);
     templateFilledComposer.current = null;
@@ -1068,6 +1051,7 @@ export default function SummaryWorkbenchFeature({
           state={viewState}
           actions={{
             onInputChange: (value) => {
+              setLastFailedAction(null);
               const shouldClearTemplate = Boolean(
                 !templateLocked &&
                   !value.trim() &&

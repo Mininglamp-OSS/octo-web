@@ -146,6 +146,11 @@ describe("SummaryWorkbenchCreateEntry", () => {
             { legacyRoot: true }
         );
 
+        fireEvent.change(
+            screen.getByRole("textbox", { name: "workbench-draft" }),
+            { target: { value: "stale draft" } }
+        );
+
         view.rerender(
             <SummaryWorkbenchCreateEntry
                 source="summary_home"
@@ -154,6 +159,9 @@ describe("SummaryWorkbenchCreateEntry", () => {
         );
 
         await waitFor(() => expect(mocks.forceNewMount).toHaveBeenCalledTimes(1));
+        expect(
+            screen.getByRole("textbox", { name: "workbench-draft" })
+        ).toHaveValue("");
         expect(screen.getByTestId("force-new-session")).toHaveTextContent(
             "false"
         );

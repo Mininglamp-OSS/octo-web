@@ -30,13 +30,15 @@ export default function SummaryWorkbenchCreateEntry(
   const [forceNewSessionPending, setForceNewSessionPending] = React.useState(
     () => Boolean(props.forceNewSession)
   );
-  // Every distinct fresh-session gesture should remount this entry. Also
-  // support callers that expose the next gesture as a false -> true edge.
+  const [forceNewSessionSeq, setForceNewSessionSeq] = React.useState(0);
+  // Every distinct fresh-session gesture must remount this entry so the
+  // workbench's mount-time storage rotation runs exactly once for the gesture.
   const previousForceNewSession = React.useRef(Boolean(props.forceNewSession));
   React.useEffect(() => {
     const forceNewSession = Boolean(props.forceNewSession);
     if (!previousForceNewSession.current && forceNewSession) {
       setForceNewSessionPending(true);
+      setForceNewSessionSeq((current) => current + 1);
     }
     previousForceNewSession.current = forceNewSession;
   }, [props.forceNewSession]);
@@ -49,6 +51,7 @@ export default function SummaryWorkbenchCreateEntry(
     props.channel?.channelID ?? "global",
     props.channel?.channelType ?? "global",
     props.derivedFromTask?.task_id ?? "new",
+    forceNewSessionSeq,
   ].join(":");
 
   return (

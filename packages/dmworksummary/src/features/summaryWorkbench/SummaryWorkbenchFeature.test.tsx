@@ -1388,6 +1388,16 @@ describe("SummaryWorkbenchFeature", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
+    current.scope = scope({
+      selectedChannels: [
+        { chatId: "chat-a", chatType: "group", name: "Product" },
+      ],
+      timeRange: {
+        start: "2026-09-01T00:00:00Z",
+        end: "2026-09-02T00:00:00Z",
+        label: "Yesterday",
+      },
+    });
     current.viewState.errorMessage = "gateway timeout";
     await act(async () => pendingResponse.resolve(undefined));
 
@@ -1857,6 +1867,130 @@ describe("SummaryWorkbenchFeature", () => {
 
     await waitFor(() => expect(send).toHaveBeenCalledTimes(3));
     expect(send).toHaveBeenNthCalledWith(3, undefined, "user");
+  });
+
+  it("retries a failed direct-team launch after an authoritative scope echo", async () => {
+    const send = vi.fn();
+    const current = controller({
+      scope: scope({
+        participants: [{ userId: "user-a", userName: "Alex" }],
+      }),
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Create the team summary",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: true,
+      },
+      send,
+    });
+    send
+      .mockImplementationOnce(async () => {
+        current.scope = scope({
+          selectedChannels: [
+            { chatId: "chat-a", chatType: "group", name: "Product" },
+          ],
+          participants: [{ userId: "user-a", userName: "Alex" }],
+          timeRange: {
+            start: "2026-09-01T00:00:00Z",
+            end: "2026-09-02T00:00:00Z",
+            label: "Yesterday",
+          },
+        });
+        return undefined;
+      })
+      .mockResolvedValueOnce({
+        resultType: "workflow_started",
+        workflow: { taskId: 205, taskTitle: "Team update" },
+      });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />, {
+      legacyRoot: true,
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-can-send",
+        "true"
+      )
+    );
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() =>
+      expect(current.restoreComposerValue).toHaveBeenLastCalledWith(
+        "Create the team summary"
+      )
+    );
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "true"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    expect(send).toHaveBeenNthCalledWith(
+      1,
+      undefined,
+      "user",
+      "start_team_workflow"
+    );
+    expect(send).toHaveBeenNthCalledWith(
+      2,
+      undefined,
+      "user",
+      "start_team_workflow"
+    );
+  });
+
+  it("uses chat when the composer changes after a failed direct-team launch", async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ resultType: "message" });
+    const current = controller({
+      scope: scope({
+        participants: [{ userId: "user-a", userName: "Alex" }],
+      }),
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Create the team summary",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: true,
+      },
+      send,
+    });
+    current.setComposerValue = vi.fn((value: string) => {
+      current.viewState.inputValue = value;
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />, {
+      legacyRoot: true,
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-can-send",
+        "true"
+      )
+    );
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() =>
+      expect(current.restoreComposerValue).toHaveBeenLastCalledWith(
+        "Create the team summary"
+      )
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "summary-request" }), {
+      target: { value: "Summarise the blockers" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    expect(send).toHaveBeenNthCalledWith(2, undefined, "user");
   });
 
   it.each([
