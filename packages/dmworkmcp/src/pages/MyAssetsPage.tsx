@@ -11,6 +11,7 @@ import McpMarketListPage from "./McpMarketListPage";
 import ExpertMarketListPage from "./ExpertMarketListPage";
 import AllAssetsList from "./AllAssetsList";
 import MineActionHost from "../features/mine/MineActionHost";
+import MinePublishMenu from "../features/mine/MinePublishMenu";
 import "../index.css";
 
 /** Which personal-asset type the 我的 page is showing. Experts and squads are
@@ -92,6 +93,7 @@ export default function MyAssetsPage() {
   const [type, setType] = useState<MineType>(initialType);
   const [allQuery, setAllQuery] = useState("");
   const [allRefreshKey, setAllRefreshKey] = useState(0);
+  const [publishRefreshKey, setPublishRefreshKey] = useState(0);
   const [mineActionRequest, setMineActionRequest] =
     useState<MineActionRequest | null>(null);
   const requestIdRef = useRef(0);
@@ -107,6 +109,10 @@ export default function MyAssetsPage() {
   const handleDirectEditChanged = useCallback(() => {
     setAllRefreshKey((key) => key + 1);
   }, []);
+  const handlePublished = useCallback(() => {
+    setAllRefreshKey((key) => key + 1);
+    setPublishRefreshKey((key) => key + 1);
+  }, []);
 
   useEffect(() => {
     const handleSpaceChanged = () => setMineActionRequest(null);
@@ -120,15 +126,16 @@ export default function MyAssetsPage() {
         <div className="wk-mcp-mine__hero-title">
           <h1>{t("mcp.mine.pageTitle")}</h1>
         </div>
-        {type === "all" && (
-          <div className="wk-mcp-mine__hero-actions">
+        <div className="wk-mcp-mine__hero-actions">
+          {type === "all" && (
             <SearchBar
               value={allQuery}
               onChange={setAllQuery}
               placeholder={t("mcp.mine.searchPlaceholder")}
             />
-          </div>
-        )}
+          )}
+          <MinePublishMenu onChanged={handlePublished} />
+        </div>
       </header>
       <nav
         className="wk-mcp-mine__tabs"
@@ -162,14 +169,36 @@ export default function MyAssetsPage() {
             onRequestAction={handleActionRequest}
           />
         )}
-        {type === "skills" && <SkillListPage variant="mine" />}
+        {type === "skills" && (
+          <SkillListPage
+            key={`skills-${publishRefreshKey}`}
+            variant="mine"
+            showPublishEntry={false}
+          />
+        )}
         {type === "experts" && (
-          <ExpertMarketListPage variant="mine" mineType="agent" />
+          <ExpertMarketListPage
+            key={`experts-${publishRefreshKey}`}
+            variant="mine"
+            mineType="agent"
+            showPublishEntry={false}
+          />
         )}
         {type === "squads" && (
-          <ExpertMarketListPage variant="mine" mineType="squad" />
+          <ExpertMarketListPage
+            key={`squads-${publishRefreshKey}`}
+            variant="mine"
+            mineType="squad"
+            showPublishEntry={false}
+          />
         )}
-        {type === "mcp" && <McpMarketListPage variant="mine" />}
+        {type === "mcp" && (
+          <McpMarketListPage
+            key={`mcp-${publishRefreshKey}`}
+            variant="mine"
+            showPublishEntry={false}
+          />
+        )}
         <MineActionHost
           request={type === "all" ? mineActionRequest : null}
           onClose={handleDirectEditClose}

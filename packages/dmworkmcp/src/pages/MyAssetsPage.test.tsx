@@ -20,8 +20,11 @@ vi.mock("@octo/base", () => ({
 
 vi.mock("@dmwork/skillmarket", () => ({
   SearchBar: () => React.createElement("input", { type: "search" }),
-  SkillListPage: () =>
-    React.createElement("div", { "data-testid": "skills-page" }),
+  SkillListPage: ({ showPublishEntry }: { showPublishEntry?: boolean }) =>
+    React.createElement("div", {
+      "data-testid": "skills-page",
+      "data-publish-entry": String(showPublishEntry),
+    }),
 }));
 
 vi.mock("./AllAssetsList", () => ({
@@ -67,7 +70,7 @@ vi.mock("./AllAssetsList", () => ({
             onRequestAction({
               pluginId: "skill-1",
               type: "skill",
-              action: "upgrade",
+              action: "bot-upgrade",
             }),
         },
         "upgrade from all"
@@ -85,6 +88,15 @@ vi.mock("../features/mine/MineActionHost", () => ({
       "div",
       { "data-testid": "edit-host" },
       request ? `${request.type}:${request.action}` : "closed"
+    ),
+}));
+
+vi.mock("../features/mine/MinePublishMenu", () => ({
+  default: () =>
+    React.createElement(
+      "button",
+      { type: "button", "data-testid": "mine-publish-entry" },
+      "publish"
     ),
 }));
 
@@ -157,7 +169,30 @@ describe("MyAssetsPage all-tab actions", () => {
     expect(allTab.getAttribute("aria-pressed")).toBe("true");
     expect(
       container.querySelector('[data-testid="edit-host"]')?.textContent
-    ).toBe("skill:upgrade");
+    ).toBe("skill:bot-upgrade");
+  });
+
+  it("keeps one page-level publish entry while switching type tabs", () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    act(() => ReactDOM.render(<MyAssetsPage />, container));
+
+    expect(
+      container.querySelectorAll('[data-testid="mine-publish-entry"]')
+    ).toHaveLength(1);
+    const skillTab = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "skillMarket.plugin.typeSkill"
+    ) as HTMLButtonElement;
+    act(() => skillTab.click());
+
+    expect(
+      container.querySelectorAll('[data-testid="mine-publish-entry"]')
+    ).toHaveLength(1);
+    expect(
+      container
+        .querySelector('[data-testid="skills-page"]')
+        ?.getAttribute("data-publish-entry")
+    ).toBe("false");
   });
 
   it("closes an all-tab action when the active Space changes", () => {

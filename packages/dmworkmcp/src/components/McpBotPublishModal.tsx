@@ -8,6 +8,8 @@ import {
 
 interface McpBotPublishModalProps {
   visible: boolean;
+  mode?: "create" | "update";
+  editingId?: string;
   onClose: () => void;
 }
 
@@ -26,6 +28,8 @@ function getCurrentSpaceId(): string {
  *  MCP-specific. */
 export default function McpBotPublishModal({
   visible,
+  mode = "create",
+  editingId,
   onClose,
 }: McpBotPublishModalProps) {
   useI18n();
@@ -38,19 +42,24 @@ export default function McpBotPublishModal({
   const prompt = useMemo(
     () =>
       getMcpBotPublishPrompt({
+        mode,
+        pluginId: editingId,
         spaceId,
         apiBaseUrl: resolveMcpAPIBaseURL(apiURL, window.location.origin),
       }),
-    [spaceId, apiURL]
+    [mode, editingId, spaceId, apiURL]
   );
+  const isUpdate = mode === "update";
 
   return (
     <PromptForwardModal
       visible={visible}
       onClose={onClose}
-      title={t("mcp.botPublish.title")}
-      hint={t("mcp.botPublish.hint")}
-      kind="publish"
+      title={t(
+        isUpdate ? "mcp.botPublish.updateTitle" : "mcp.botPublish.title"
+      )}
+      hint={t(isUpdate ? "mcp.botPublish.updateHint" : "mcp.botPublish.hint")}
+      kind={isUpdate ? "update" : "publish"}
       icon={<Bot size={18} />}
       prompt={prompt}
       spaceId={spaceId}
