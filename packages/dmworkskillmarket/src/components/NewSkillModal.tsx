@@ -342,6 +342,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
     setProgress(0);
     setError(null);
     abortRef.current = false;
+    let fallbackKey = "skillMarket.upload.uploadFailed";
 
     try {
       // Same three-step pipeline for both flows; only the init boundary differs.
@@ -359,71 +360,57 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
       if (abortRef.current) return;
 
       setStage("parsing");
+      fallbackKey = "skillMarket.errors.parseFailed";
       const { taskId } = await triggerParse(uploadId);
       if (abortRef.current) return;
 
-      let attempts = 0;
-      const maxAttempts = 60;
-      while (attempts < maxAttempts) {
-        if (abortRef.current) return;
-        const status = await pollParse(taskId);
-        if (abortRef.current) return;
+      const status = await pollParse(taskId);
+      if (abortRef.current) return;
 
-        if (status.status === "success" && status.result) {
-          // Review mode reuses this one pipeline rather than bolting on a second
-          // uploader. The difference is what the parse result is allowed to
-          // touch: an upgrade keeps the existing skill's identity and metadata
-          // (the reviewer is deciding on a new version of a known skill), so
-          // only the parse task and the version/changelog inputs move.
-          if (isReviewMode && reviewSkill) {
-            if (status.result.name !== reviewSkill.name) {
-              setStage("review");
-              setFile(null);
-              setParseTaskId(null);
-              setError(
-                t("skillMarket.upload.nameMismatch", {
-                  values: { expected: reviewSkill.name, actual: status.result.name },
-                }),
-              );
-              return;
-            }
-            setParseTaskId(taskId);
-            // Respect a version the author actually bumped in the package, but
-            // never adopt one equal to what is already live — the backend
-            // rejects a republished version label, so keep the suggested bump
-            // and let the user override it by hand.
-            if (status.result.version && status.result.version !== reviewSkill.version) {
-              setVersion(status.result.version);
-            }
+      if (status.status === "success" && status.result) {
+        // Review mode reuses this one pipeline rather than bolting on a second
+        // uploader. The difference is what the parse result is allowed to
+        // touch: an upgrade keeps the existing skill's identity and metadata
+        // (the reviewer is deciding on a new version of a known skill), so
+        // only the parse task and the version/changelog inputs move.
+        if (isReviewMode && reviewSkill) {
+          if (status.result.name !== reviewSkill.name) {
             setStage("review");
-            setError(null);
+            setFile(null);
+            setParseTaskId(null);
+            setError(
+              t("skillMarket.upload.nameMismatch", {
+                values: { expected: reviewSkill.name, actual: status.result.name },
+              }),
+            );
             return;
           }
           setParseTaskId(taskId);
-          setName(status.result.name);
-          setDescription(status.result.description);
-          setTags(status.result.tags);
-          setVersion(status.result.version || DEFAULT_CREATE_VERSION);
-          setChangelog(t("skillMarket.form.initialChangelog"));
-          setCategoryId("");
-          setStage("form");
+          // Respect a version the author actually bumped in the package, but
+          // never adopt one equal to what is already live — the backend
+          // rejects a republished version label, so keep the suggested bump
+          // and let the user override it by hand.
+          if (status.result.version && status.result.version !== reviewSkill.version) {
+            setVersion(status.result.version);
+          }
+          setStage("review");
           setError(null);
           return;
         }
-        if (status.status === "failed") {
-          setStage(isReviewMode ? "review" : "error");
-          setError(skillUploadErrorMessage(status.error));
-          return;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        attempts++;
+        setParseTaskId(taskId);
+        setName(status.result.name);
+        setDescription(status.result.description);
+        setTags(status.result.tags);
+        setVersion(status.result.version || DEFAULT_CREATE_VERSION);
+        setChangelog(t("skillMarket.form.initialChangelog"));
+        setCategoryId("");
+        setStage("form");
+        setError(null);
       }
-      setStage(isReviewMode ? "review" : "error");
-      setError(t("skillMarket.upload.parseTimeout"));
     } catch (err) {
       if (!abortRef.current) {
         setStage(isReviewMode ? "review" : "error");
-        setError(skillUploadErrorMessage(err));
+        setError(skillUploadErrorMessage(err, { fallbackKey }));
       }
     }
   }
@@ -554,7 +541,9 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
         );
         onClose();
       } catch (err) {
-        setError(err instanceof Error ? err.message : t("skillMarket.review.submitFailed"));
+        setError(skillUploadErrorMessage(err, {
+          fallbackKey: "skillMarket.review.submitFailed",
+        }));
       } finally {
         setSaving(false);
       }
@@ -659,16 +648,18 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
         // The plugin was saved; say so, or the author retries and wonders why
         // there is no duplicate.
         setError(
-          (publishErr instanceof Error
-            ? publishErr.message
-            : t("skillMarket.review.submitFailed")) +
+          skillUploadErrorMessage(publishErr, {
+            fallbackKey: "skillMarket.review.submitFailed",
+          }) +
             " " +
             t("skillMarket.review.draftSavedHint")
         );
         return;
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("skillMarket.form.createFailed"));
+      setError(skillUploadErrorMessage(err, {
+        fallbackKey: "skillMarket.form.createFailed",
+      }));
     } finally {
       setSaving(false);
       setPublishing(false);

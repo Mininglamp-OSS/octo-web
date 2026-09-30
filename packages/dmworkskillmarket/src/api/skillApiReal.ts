@@ -49,6 +49,7 @@ import {
 interface SuccessEnvelope<T> {
   data: T;
   requestId?: string;
+  request_id?: string;
   pagination?: {
     has_more?: boolean;
     next_cursor?: string;
@@ -60,6 +61,8 @@ interface SuccessEnvelope<T> {
 
 interface ErrorEnvelope {
   error?: { code?: string; message?: string; details?: unknown; hint?: string };
+  requestId?: string;
+  request_id?: string;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -121,6 +124,12 @@ function responseRequestId(response: Response): string | undefined {
   return requestId || undefined;
 }
 
+function envelopeRequestId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const requestId = value.trim();
+  return requestId || undefined;
+}
+
 async function requestEnvelope<T>(
   path: string,
   init?: RequestInit,
@@ -162,7 +171,7 @@ async function requestEnvelope<T>(
     const message = err instanceof Error ? err.message : "Network error";
     throw normalizeError({ code: "network_error", message, details: err });
   }
-  const requestId = responseRequestId(res);
+  const headerRequestId = responseRequestId(res);
 
   // Handle 401 — redirect to login. Fire-and-forget beacons opt out: a 401
   // on a background metric must never tear down the session (the page's list
@@ -177,7 +186,7 @@ async function requestEnvelope<T>(
       code: "unauthorized",
       message: t("skillMarket.errors.unauthorized"),
       status: 401,
-      requestId,
+      requestId: headerRequestId,
     });
   }
 
@@ -187,13 +196,17 @@ async function requestEnvelope<T>(
       code: "file_too_large",
       message: t("skillMarket.errors.fileTooLarge"),
       status: 413,
-      requestId,
+      requestId: headerRequestId,
     });
   }
 
   const body = (await parseJson(res)) as
     | (Partial<SuccessEnvelope<T>> & ErrorEnvelope)
     | null;
+  const requestId =
+    headerRequestId ??
+    envelopeRequestId(body?.requestId) ??
+    envelopeRequestId(body?.request_id);
   const ok =
     typeof res.ok === "boolean"
       ? res.ok
@@ -258,11 +271,11 @@ function assertSafeExternalURL(raw: string): void {
   try {
     u = new URL(raw);
   } catch {
-    throw normalizeError({ code: "invalid_response", message: t("skillMarket.errors.invalidUrl") });
+    throw normalizeError({ code: "invalid_upload_url", message: t("skillMarket.errors.invalidUrl") });
   }
   if (u.protocol === "https:" || u.protocol === "http:") return;
   throw normalizeError({
-    code: "invalid_response",
+    code: "upload_url_scheme_not_allowed",
     message: t("skillMarket.errors.urlSchemeNotAllowed"),
   });
 }
@@ -800,13 +813,21 @@ export async function uploadFile(
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve();
       } else {
-        reject(new Error(`Upload failed: HTTP ${xhr.status}`));
+        reject(
+          new SkillMarketApiError(
+            "upload_failed",
+            `Upload failed: HTTP ${xhr.status}`,
+            xhr.status
+          )
+        );
       }
     });
     xhr.addEventListener("error", () =>
-      reject(new Error("Upload network error"))
+      reject(new SkillMarketApiError("network_error", "Upload network error"))
     );
-    xhr.addEventListener("abort", () => reject(new Error("Upload aborted")));
+    xhr.addEventListener("abort", () =>
+      reject(new SkillMarketApiError("upload_aborted", "Upload aborted"))
+    );
     xhr.send(file);
   });
 }
@@ -829,7 +850,7 @@ export async function uploadIcon(blob: Blob): Promise<string> {
   // `uploadFile` as a bare TypeError instead of a normalized Toast error.
   if (!initResp?.presigned_url || !initResp?.object_key) {
     throw normalizeError({
-      code: "invalid_response",
+      code: "invalid_upload_response",
       message: t("skillMarket.errors.uploadResponseMissing"),
     });
   }
@@ -909,8 +930,10 @@ async function fetchParseStatus(taskId: string): Promise<ParseStatusResult> {
 
 /** Step 4: Poll parse status every 2 seconds until success, failure, or timeout. */
 export async function pollParse(taskId: string): Promise<ParseStatusResult> {
+  let lastRequestId: string | undefined;
   for (let attempt = 0; attempt < 60; attempt += 1) {
     const status = await fetchParseStatus(taskId);
+    lastRequestId = status.requestId ?? lastRequestId;
     if (status.status === "success") return status;
     if (status.status === "failed") {
       throw normalizeError({
@@ -922,7 +945,11 @@ export async function pollParse(taskId: string): Promise<ParseStatusResult> {
     }
     if (attempt < 59) await wait(2000);
   }
-  throw normalizeError({ code: "parse_timeout", message: t("skillMarket.errors.parseTimeout") });
+  throw normalizeError({
+    code: "parse_timeout",
+    message: t("skillMarket.errors.parseTimeout"),
+    requestId: lastRequestId,
+  });
 }
 
 /** Reupload init for an existing skill. The unified import consumes any

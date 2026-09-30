@@ -5,12 +5,19 @@ type Translate = (
   options?: { values?: Record<string, string | number> }
 ) => string;
 
+interface SkillUploadErrorMessageOptions {
+  fallbackKey?: string;
+}
+
 const UPLOAD_ERROR_KEYS: Record<string, string> = {
   DUPLICATE_NAME: "skillMarket.errors.duplicateName",
   INVALID_ZIP: "skillMarket.errors.invalidZip",
   FILE_TOO_LARGE: "skillMarket.errors.fileTooLarge",
   SKILL_MD_TOO_LARGE: "skillMarket.errors.skillMdTooLarge",
   SKILL_MD_NOT_FOUND: "skillMarket.errors.skillMdNotFound",
+  MULTIPLE_SKILL_MD: "skillMarket.errors.multipleSkillMd",
+  TOO_MANY_FILES: "skillMarket.errors.tooManyFiles",
+  DUPLICATE_ENTRY: "skillMarket.errors.duplicateArchiveEntry",
   ZIP_SLIP_DETECTED: "skillMarket.errors.unsafeArchivePath",
   INVALID_SKILL_MD: "skillMarket.errors.invalidSkillMd",
   SKILL_NAME_MISMATCH: "skillMarket.errors.skillNameMismatch",
@@ -21,6 +28,11 @@ const UPLOAD_ERROR_KEYS: Record<string, string> = {
   file_too_large: "skillMarket.errors.fileTooLarge",
   unauthorized: "skillMarket.errors.unauthorized",
   network_error: "skillMarket.errors.network",
+  upload_failed: "skillMarket.upload.uploadFailed",
+  upload_aborted: "skillMarket.errors.uploadAborted",
+  invalid_upload_url: "skillMarket.errors.invalidUrl",
+  upload_url_scheme_not_allowed: "skillMarket.errors.urlSchemeNotAllowed",
+  invalid_upload_response: "skillMarket.errors.uploadResponseMissing",
 
   // Compatibility with parse-code shapes returned by older deployments and
   // retained in frontend fixtures. Product copy must depend on the code, never
@@ -42,7 +54,9 @@ function nonEmptyString(value: unknown): string | undefined {
 export function resolveSkillUploadErrorKey(error: unknown): string | undefined {
   if (!isRecord(error)) return undefined;
   const code = nonEmptyString(error.code);
-  return code ? UPLOAD_ERROR_KEYS[code] : undefined;
+  return code && Object.prototype.hasOwnProperty.call(UPLOAD_ERROR_KEYS, code)
+    ? UPLOAD_ERROR_KEYS[code]
+    : undefined;
 }
 
 /**
@@ -55,6 +69,7 @@ export function resolveSkillUploadErrorKey(error: unknown): string | undefined {
  */
 export function skillUploadErrorMessage(
   error: unknown,
+  options: SkillUploadErrorMessageOptions = {},
   translate: Translate = t
 ): string {
   const key = resolveSkillUploadErrorKey(error);
@@ -63,9 +78,17 @@ export function skillUploadErrorMessage(
   const requestId = isRecord(error)
     ? nonEmptyString(error.requestId)
     : undefined;
+  if (requestId && !options.fallbackKey) {
+    return translate("skillMarket.errors.parseFailedWithRequestId", {
+      values: { requestId },
+    });
+  }
+  const fallbackMessage = translate(
+    options.fallbackKey ?? "skillMarket.errors.parseFailed"
+  );
   return requestId
-    ? translate("skillMarket.errors.parseFailedWithRequestId", {
-        values: { requestId },
+    ? translate("skillMarket.errors.withRequestId", {
+        values: { message: fallbackMessage, requestId },
       })
-    : translate("skillMarket.errors.parseFailed");
+    : fallbackMessage;
 }

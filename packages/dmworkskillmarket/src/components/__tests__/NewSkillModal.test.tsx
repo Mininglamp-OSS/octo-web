@@ -205,6 +205,82 @@ describe("NewSkillModal", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("localizes backend errors from the create step", async () => {
+    vi.mocked(api.createSkill).mockRejectedValue({
+      code: "DUPLICATE_NAME",
+      message: "A Skill with the same name already exists in this Space.",
+    });
+    render(
+      <NewSkillModal
+        visible
+        categories={categories}
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+      />
+    );
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(selectZipLabel), {
+        target: { files: [zipFile()] },
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getByText("skill-pack.zip")).toBeTruthy()
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), {
+      target: { value: "技能包" },
+    });
+    fireEvent.change(screen.getByLabelText(categoryLabel), {
+      target: { value: "office" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: saveDraftButton }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "当前空间已存在同名 Skill。请修改 SKILL.md 中的 name 后重试。"
+        )
+      ).toBeTruthy();
+    });
+    expect(
+      screen.queryByText(
+        "A Skill with the same name already exists in this Space."
+      )
+    ).toBeNull();
+  });
+
+  it("uses a localized fallback instead of exposing an unknown parse message", async () => {
+    vi.mocked(api.pollParse).mockRejectedValue({
+      code: "FUTURE_PARSE_FAILURE",
+      message: "Unexpected backend parser failure",
+    });
+    render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(selectZipLabel), {
+        target: { files: [zipFile()] },
+      });
+    });
+
+    await waitFor(() => expect(screen.getByText("解析失败")).toBeInTheDocument());
+    expect(screen.queryByText("Unexpected backend parser failure")).not.toBeInTheDocument();
+  });
+
+  it("uses upload-phase copy when the storage upload fails", async () => {
+    vi.mocked(api.uploadFile).mockRejectedValue(new Error("Upload failed: HTTP 503"));
+    render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(selectZipLabel), {
+        target: { files: [zipFile()] },
+      });
+    });
+
+    await waitFor(() => expect(screen.getByText("上传失败")).toBeTruthy());
+    expect(screen.queryByText("Upload failed: HTTP 503")).toBeNull();
+  });
+
   // The declared visibility now SURVIVES the create — the old form always sent
   // `private` and let a scope radio decide what happened next, so the author's
   // choice was thrown away. It is also the value the backend reads to decide
@@ -974,6 +1050,42 @@ describe("NewSkillModal", () => {
       expect("pluginJson" in call).toBe(false);
     });
 
+    it("localizes backend errors from review submission", async () => {
+      vi.mocked(api.createReviewRequest).mockRejectedValue({
+        code: "DUPLICATE_NAME",
+        message: "A Skill with the same name already exists in this Space.",
+      });
+      render(
+        <NewSkillModal
+          visible
+          categories={categories}
+          onClose={vi.fn()}
+          onCreated={vi.fn()}
+          reviewSkill={reviewSkillFixture({ visibility: "private" })}
+          reviewInitial={{ changelog: "首次上架" }}
+        />
+      );
+
+      const submit = screen.getByRole("button", { name: upgradeButton });
+      await waitFor(() =>
+        expect((submit as HTMLButtonElement).disabled).toBe(false)
+      );
+      fireEvent.click(submit);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(
+            "当前空间已存在同名 Skill。请修改 SKILL.md 中的 name 后重试。"
+          )
+        ).toBeTruthy();
+      });
+      expect(
+        screen.queryByText(
+          "A Skill with the same name already exists in this Space."
+        )
+      ).toBeNull();
+    });
+
     it("re-publishes the same plugin after a failed publish instead of creating a second one", async () => {
       // The failure moved from createReviewRequest to publishPlugin — the create
       // is still step one, the second step is just a different call now. The
@@ -1005,6 +1117,8 @@ describe("NewSkillModal", () => {
 
       await waitFor(() => expect(api.publishPlugin).toHaveBeenCalledTimes(1));
       expect(api.createSkill).toHaveBeenCalledTimes(1);
+      expect(screen.getByText(/提交审核失败.*草稿已保存/)).toBeTruthy();
+      expect(screen.queryByText("boom")).toBeNull();
 
       // Retry: the created plugin id is remembered, so no second orphan plugin.
       await waitFor(() => expect(publish).toBeEnabled());

@@ -472,6 +472,7 @@ describe("skillApiReal", () => {
         json: () =>
           Promise.resolve({
             error: { code: "NOT_FOUND", message: "not found", details: {} },
+            request_id: "req-body-404",
           }),
       })
     );
@@ -484,6 +485,7 @@ describe("skillApiReal", () => {
       code: "NOT_FOUND",
       status: 404,
       message: "not found",
+      requestId: "req-body-404",
     });
   });
 
@@ -847,8 +849,37 @@ describe("skillApiReal", () => {
       )
     ).rejects.toMatchObject({
       name: "SkillMarketApiError",
-      code: "invalid_response",
+      code: "upload_url_scheme_not_allowed",
       message: "URL scheme 不允许",
+    });
+  });
+
+  it("uploadFile normalizes storage HTTP failures with an upload-phase code", async () => {
+    class FailedXHR {
+      upload = new EventTarget();
+      status = 403;
+      private listeners: Record<string, Array<() => void>> = {};
+
+      open() {}
+      setRequestHeader() {}
+      addEventListener(type: string, listener: () => void) {
+        this.listeners[type] = [...(this.listeners[type] ?? []), listener];
+      }
+      send() {
+        this.listeners.load?.forEach((listener) => listener());
+      }
+    }
+    vi.stubGlobal("XMLHttpRequest", FailedXHR);
+
+    await expect(
+      uploadFile(
+        "https://storage.example/upload",
+        new File(["zip"], "skill.zip", { type: "application/zip" })
+      )
+    ).rejects.toMatchObject({
+      name: "SkillMarketApiError",
+      code: "upload_failed",
+      status: 403,
     });
   });
 
@@ -947,7 +978,12 @@ describe("skillApiReal", () => {
     vi.useFakeTimers();
     for (let i = 0; i < 60; i += 1) {
       mockFetch.mockReturnValueOnce(
-        jsonResponse({ status: "pending", skill_parse_task_id: "task-timeout" })
+        jsonResponse(
+          { status: "pending", skill_parse_task_id: "task-timeout" },
+          200,
+          undefined,
+          `req-timeout-${i}`
+        )
       );
     }
 
@@ -956,6 +992,7 @@ describe("skillApiReal", () => {
       name: "SkillMarketApiError",
       code: "parse_timeout",
       message: "解析超时，请重试",
+      requestId: "req-timeout-59",
     });
     await vi.advanceTimersByTimeAsync(2_000 * 60);
 
