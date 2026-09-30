@@ -509,6 +509,35 @@ describe("useSummaryWorkbench", () => {
     unmount();
   });
 
+  it("restores composer text without clearing the current request error", async () => {
+    sendMessage.mockRejectedValue(
+      new SummaryWorkspaceApiError({
+        message: "gateway timeout",
+        kind: "transport",
+        retryable: true,
+      })
+    );
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "session-1",
+        initialScope,
+        autoHydrate: false,
+        preferStreaming: false,
+        service,
+      })
+    );
+
+    await act(async () => {
+      await result.current.send("personal-intent", "system_intent");
+    });
+    act(() => result.current.restoreComposerValue("Retry this request"));
+
+    expect(result.current.model.composer.value).toBe("Retry this request");
+    expect(result.current.model.composer.errorMessage).toBe("gateway timeout");
+    expect(result.current.error).toMatchObject({ kind: "transport" });
+    unmount();
+  });
+
   it("does not replay the entire run after a non-transient model parameter rejection", async () => {
     const { result, unmount } = renderHook(() =>
       useSummaryWorkbench({ initialSessionId: "session-1", initialScope, autoHydrate: false, service })
@@ -971,6 +1000,27 @@ describe("useSummaryWorkbench", () => {
 
     await expect(pending).resolves.toEqual({ status: "cancelled" });
     expect(result.current.sessionId).toBe("new-session");
+    expect(result.current.error).toBeNull();
+    unmount();
+  });
+
+  it("restores the previous runtime when the active hydration aborts", async () => {
+    loadSession.mockRejectedValue(new DOMException("Aborted", "AbortError"));
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "current-session",
+        initialScope,
+        autoHydrate: false,
+        service,
+      })
+    );
+    act(() => result.current.setComposerValue("Keep current draft"));
+
+    await expect(
+      act(async () => result.current.hydrateSession("old-session"))
+    ).resolves.toEqual({ status: "cancelled" });
+    expect(result.current.sessionId).toBe("current-session");
+    expect(result.current.model.composer.value).toBe("Keep current draft");
     expect(result.current.error).toBeNull();
     unmount();
   });

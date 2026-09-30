@@ -27,6 +27,13 @@ export default function SummaryWorkbenchCreateEntry(
   props: SummaryWorkbenchCreateEntryProps
 ) {
   const spaceId = useCurrentSummarySpaceId();
+  const [forceNewSessionPending, setForceNewSessionPending] = React.useState(
+    () => Boolean(props.forceNewSession)
+  );
+  const consumeForceNewSession = React.useCallback(
+    () => setForceNewSessionPending(false),
+    []
+  );
   const entryKey = [
     spaceId,
     props.channel?.channelID ?? "global",
@@ -50,7 +57,8 @@ export default function SummaryWorkbenchCreateEntry(
             spaceId={spaceId}
             channel={props.channel}
             derivedFromTask={props.derivedFromTask}
-            forceNewSession={props.forceNewSession}
+            forceNewSession={forceNewSessionPending}
+            onForceNewSessionConsumed={consumeForceNewSession}
             embedded={props.embedded}
             source={props.source}
             onCreated={props.onCreated}

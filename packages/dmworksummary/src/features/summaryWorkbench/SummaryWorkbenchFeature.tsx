@@ -98,6 +98,7 @@ export interface SummaryWorkbenchFeatureProps {
   embedded?: boolean;
   /** "+" 语义：不恢复持久化会话；旧会话挪到「上次对话」槽位，横条一键返回。 */
   forceNewSession?: boolean;
+  onForceNewSessionConsumed?: () => void;
   source?: string;
   onCreated?: () => void;
   onOpenTask?: (taskId: number) => void;
@@ -169,6 +170,7 @@ export default function SummaryWorkbenchFeature({
   derivedFromTask,
   embedded = false,
   forceNewSession = false,
+  onForceNewSessionConsumed,
   source,
   onCreated,
   onOpenTask,
@@ -233,6 +235,9 @@ export default function SummaryWorkbenchFeature({
       ? readSummaryWorkbenchPreviousSession(storageScope)
       : ""
   );
+  useEffect(() => {
+    if (forceNewSession) onForceNewSessionConsumed?.();
+  }, [forceNewSession, onForceNewSessionConsumed]);
   const [openSelector, setOpenSelector] = useState<OpenSelector>(null);
   const [referencedTask, setReferencedTask] = useState<ReferencedTask | null>(
     derivedFromTask ?? null
@@ -246,6 +251,7 @@ export default function SummaryWorkbenchFeature({
   );
   const [composerFocusKey, setComposerFocusKey] = useState(0);
   const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [failedRunRetryable, setFailedRunRetryable] = useState(false);
   const [templateGalleryOpen, setTemplateGalleryOpen] = useState(
     () => !derivedFromTask
   );
@@ -624,6 +630,7 @@ export default function SummaryWorkbenchFeature({
       !documentScopeUnavailable &&
       participantScopeReady &&
       (composerHasCustomText ||
+        (failedRunRetryable && structuredGenerate) ||
         (!templateLocked && structuredGenerate) ||
         (templateLocked &&
           templateFilledComposer.current !== null &&
@@ -685,6 +692,7 @@ export default function SummaryWorkbenchFeature({
     const previousTemplateFilledComposer = templateFilledComposer.current;
     const responsePromise = request();
 
+    setFailedRunRetryable(false);
     templateFilledComposer.current = null;
     workbench.restoreComposerValue("");
     setHasSubmitted(true);
@@ -697,6 +705,7 @@ export default function SummaryWorkbenchFeature({
       // composed input for retry, but keep the failure visible in place.
       workbench.restoreComposerValue(previousInputValue);
       templateFilledComposer.current = previousTemplateFilledComposer;
+      setFailedRunRetryable(true);
     }
     return response;
   };
@@ -726,7 +735,7 @@ export default function SummaryWorkbenchFeature({
     }
     const action =
       directTeamWorkflow &&
-      !templateLocked &&
+      (!templateLocked || failedRunRetryable) &&
       workbench.scope.participants.length > 0
         ? "start_team_workflow"
         : "chat";
@@ -898,6 +907,7 @@ export default function SummaryWorkbenchFeature({
     setOpenSelector(null);
     setPendingTemplate(null);
     setHasSubmitted(false);
+    setFailedRunRetryable(false);
     setTemplateGalleryOpen(!derivedFromTask);
     templateFilledComposer.current = null;
     workbench.resetSession({ scope: initialScope });
@@ -931,6 +941,7 @@ export default function SummaryWorkbenchFeature({
     }
     setLastSessionId(demotedSessionId);
     setHasSubmitted(false);
+    setFailedRunRetryable(false);
     setTemplateGalleryOpen(false);
     templateFilledComposer.current = null;
   };

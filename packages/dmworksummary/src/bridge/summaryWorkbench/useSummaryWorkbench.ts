@@ -301,10 +301,9 @@ export default function useSummaryWorkbench(
   const restoreComposerValue = useCallback(
     (value: string) => {
       commit((current: RuntimeState) => ({
-        ...clearRuntimeError(current),
+        ...current,
         model: updateSummaryComposer(current.model, {
           value,
-          errorMessage: undefined,
         }),
       }));
     },

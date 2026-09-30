@@ -1,14 +1,19 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import SummaryWorkbenchCreateEntry from "./SummaryWorkbenchCreateEntry";
+
+const mocks = vi.hoisted(() => ({
+    spaceId: "space-a",
+    forceNewMount: vi.fn(),
+}));
 
 vi.mock("@douyinfe/semi-ui", () => ({
     Spin: () => <div data-testid="loading" />,
 }));
 
 vi.mock("./useCurrentSummarySpaceId", () => ({
-    default: () => "space-a",
+    default: () => mocks.spaceId,
 }));
 
 vi.mock("./Entry", () => ({
@@ -23,8 +28,15 @@ vi.mock("./SummaryWorkbenchFeature", () => ({
     default: (props: {
         maxTimeRangeDays?: number;
         directTeamWorkflow?: boolean;
+        forceNewSession?: boolean;
+        onForceNewSessionConsumed?: () => void;
     }) => {
         const [draft, setDraft] = React.useState("");
+        React.useEffect(() => {
+            if (!props.forceNewSession) return;
+            mocks.forceNewMount();
+            props.onForceNewSessionConsumed?.();
+        }, [props.forceNewSession, props.onForceNewSessionConsumed]);
         return (
             <div>
                 <span data-testid="max-time-range-days">
@@ -32,6 +44,9 @@ vi.mock("./SummaryWorkbenchFeature", () => ({
                 </span>
                 <span data-testid="direct-team-workflow">
                     {String(props.directTeamWorkflow)}
+                </span>
+                <span data-testid="force-new-session">
+                    {String(props.forceNewSession)}
                 </span>
                 <input
                     aria-label="workbench-draft"
@@ -48,6 +63,11 @@ vi.mock("../../pages/SummaryCreatePage", () => ({
 }));
 
 describe("SummaryWorkbenchCreateEntry", () => {
+    beforeEach(() => {
+        mocks.spaceId = "space-a";
+        mocks.forceNewMount.mockReset();
+    });
+
     it("passes the server-advertised time range limit to the Workbench", () => {
         render(<SummaryWorkbenchCreateEntry source="summary_home" />, {
             legacyRoot: true,
@@ -90,5 +110,33 @@ describe("SummaryWorkbenchCreateEntry", () => {
         expect(
             screen.getByRole("textbox", { name: "workbench-draft" })
         ).toHaveValue("");
+    });
+
+    it("consumes force-new once so a space remount cannot demote again", async () => {
+        const view = render(
+            <SummaryWorkbenchCreateEntry
+                source="summary_home"
+                forceNewSession
+            />,
+            { legacyRoot: true }
+        );
+
+        await waitFor(() => expect(mocks.forceNewMount).toHaveBeenCalledTimes(1));
+        expect(screen.getByTestId("force-new-session")).toHaveTextContent(
+            "false"
+        );
+
+        mocks.spaceId = "space-b";
+        view.rerender(
+            <SummaryWorkbenchCreateEntry
+                source="summary_home"
+                forceNewSession
+            />
+        );
+
+        expect(mocks.forceNewMount).toHaveBeenCalledTimes(1);
+        expect(screen.getByTestId("force-new-session")).toHaveTextContent(
+            "false"
+        );
     });
 });

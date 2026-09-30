@@ -102,6 +102,22 @@ describe("summary workbench session storage", () => {
         expect(readSummaryWorkbenchPreviousSession(scope)).toBe("");
     });
 
+    it("rolls back the previous slot when removing the active slot fails", () => {
+        const scope = { userId: "user-a", spaceId: "space-a" };
+        writeSummaryWorkbenchSession(scope, "old-session");
+        const removeSpy = vi
+            .spyOn(Storage.prototype, "removeItem")
+            .mockImplementationOnce(() => {
+                throw new Error("blocked");
+            });
+
+        moveSummaryWorkbenchSessionToPrevious(scope);
+
+        expect(readSummaryWorkbenchSession(scope)).toBe("old-session");
+        expect(readSummaryWorkbenchPreviousSession(scope)).toBe("");
+        removeSpy.mockRestore();
+    });
+
     it("clears only the requested previous slot", () => {
         const scopeA = { userId: "user-a", spaceId: "space-a" };
         const scopeB = { userId: "user-a", spaceId: "space-b" };

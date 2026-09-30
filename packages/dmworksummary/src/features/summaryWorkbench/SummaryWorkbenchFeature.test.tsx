@@ -1355,6 +1355,59 @@ describe("SummaryWorkbenchFeature", () => {
     );
   });
 
+  it("re-enables scope-only generation and preserves its error after a rejected dispatch", async () => {
+    const pendingResponse = deferred<undefined>();
+    const current = controller({
+      scope: scope({
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group", name: "Product" },
+        ],
+      }),
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: true,
+      },
+      send: vi.fn(() => pendingResponse.promise),
+    });
+    current.restoreComposerValue = vi.fn((value: string) => {
+      current.viewState.inputValue = value;
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "true"
+    );
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    current.viewState.errorMessage = "gateway timeout";
+    await act(async () => pendingResponse.resolve(undefined));
+
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "true"
+    );
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-template-locked",
+      "true"
+    );
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-error-message",
+      "gateway timeout"
+    );
+    expect(
+      screen.queryByRole("button", { name: "open-template" })
+    ).not.toBeInTheDocument();
+  });
+
   it("restores the template gallery when starting a new session", async () => {
     const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
     localStorage.setItem(ordinaryKey, "current-session");

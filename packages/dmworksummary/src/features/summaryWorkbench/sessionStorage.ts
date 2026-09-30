@@ -72,11 +72,20 @@ export function moveSummaryWorkbenchSessionToPrevious(
 ): void {
     const sessionId = readSummaryWorkbenchSession(scope);
     if (!sessionId) return;
+    let wrotePrevious = false;
     try {
         localStorage.setItem(previousStorageKey(scope), sessionId);
+        wrotePrevious = true;
         localStorage.removeItem(storageKey(scope));
     } catch {
-        // The new session still works when storage is unavailable.
+        // Do not leave the same id in both slots after a partial move.
+        if (wrotePrevious) {
+            try {
+                localStorage.removeItem(previousStorageKey(scope));
+            } catch {
+                // Storage remains unavailable; keep the in-memory session usable.
+            }
+        }
     }
 }
 
