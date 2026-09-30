@@ -9,6 +9,7 @@ import IconCropModal from "./IconCropModal";
 import InlineConfirmBar from "./InlineConfirmBar";
 import { visibilityLabel } from "../utils/labels";
 import { isValidVersion, nextPatch, versionErrorKey } from "../utils/version";
+import { skillUploadErrorMessage } from "../utils/uploadError";
 
 interface EditSkillModalProps {
   skill: Skill | null;
@@ -406,7 +407,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
         if (status.status === "failed") {
           setUploadStage("error");
           setUploadedFile(null);
-          setError(status.error?.message ?? t("skillMarket.upload.parseFailed"));
+          setError(skillUploadErrorMessage(status.error));
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -418,7 +419,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
       if (!abortRef.current) {
         setUploadStage("error");
         setUploadedFile(null);
-        setError(err instanceof Error ? err.message : t("skillMarket.upload.uploadFailed"));
+        setError(skillUploadErrorMessage(err));
       }
     }
   }

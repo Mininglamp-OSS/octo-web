@@ -412,10 +412,10 @@ describe("EditSkillModal", () => {
     expect(api.publishPlugin).not.toHaveBeenCalled();
   });
 
-  it("does not save file metadata when re-upload parsing fails", async () => {
-    vi.mocked(api.pollParse).mockResolvedValue({
-      status: "failed",
-      error: { code: "parse.no_skill_md", message: "zip 包中未找到 SKILL.md" },
+  it("localizes a re-upload parse failure and does not save file metadata", async () => {
+    vi.mocked(api.pollParse).mockRejectedValue({
+      code: "SKILL_MD_NOT_FOUND",
+      message: "SKILL.md was not found in the archive.",
     });
 
     render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
@@ -429,8 +429,9 @@ describe("EditSkillModal", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("zip 包中未找到 SKILL.md")).toBeInTheDocument();
+      expect(screen.getByText("压缩包中未找到 SKILL.md")).toBeInTheDocument();
     });
+    expect(screen.queryByText("SKILL.md was not found in the archive.")).not.toBeInTheDocument();
 
     expect(screen.queryByText("meeting-note-cleaner.zip")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: saveButton })).toBeDisabled();
