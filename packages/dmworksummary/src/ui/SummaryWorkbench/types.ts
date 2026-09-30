@@ -110,6 +110,8 @@ export interface SummaryWorkbenchViewState {
   isHydrating?: boolean;
   progressSteps?: SummaryWorkbenchProgressView[];
   sendLabelKey?: string;
+  /** 无任何真实来源（聊天/文档/参与者/引用）：置灰发送键并显示补选提示条。 */
+  missingSource?: boolean;
   errorMessage?: string;
   showTemplateTrigger?: boolean;
   templateLocked?: boolean;

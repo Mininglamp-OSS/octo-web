@@ -242,6 +242,20 @@ describe("summary workbench scope helpers", () => {
           requirement: "Summarize progress",
         },
       })
+    ).toBe(false);
+    // 用户输入仍然构成可生成契约。
+    expect(
+      canGenerateFromScope(
+        {
+          ...scope,
+          template: {
+            templateId: "weekly",
+            label: "Weekly",
+            requirement: "Summarize progress",
+          },
+        },
+        true
+      )
     ).toBe(true);
     expect(
       canGenerateFromScope({

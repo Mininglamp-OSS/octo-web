@@ -231,10 +231,24 @@ export function canGenerateFromScope(
   if (scope.participants.length > 0) {
     return Boolean(scope.template) || hasUserInput;
   }
+  // 模板/意图文本只描述"怎么总结"，不含"总结什么"——模板单独出现不构成
+  // 可生成的来源契约（PR #1768 Octo-Q P1-2）。无任何真实来源（聊天/文档/
+  // 参与者/引用）时不可派发，由 UI 置灰发送键并提示补选。
   return (
     scope.selectedChannels.length > 0 ||
     (scope.documents ?? []).length > 0 ||
-    Boolean(scope.template) ||
     hasUserInput
+  );
+}
+
+/** 是否携带任何"总结什么"的真实来源（聊天/文档/参与者/引用）。 */
+export function hasSourceScopeForGenerate(
+  scope: SummaryWorkbenchScope
+): boolean {
+  return (
+    scope.selectedChannels.length > 0 ||
+    (scope.documents ?? []).length > 0 ||
+    scope.participants.length > 0 ||
+    scope.referencedTaskIds.length > 0
   );
 }

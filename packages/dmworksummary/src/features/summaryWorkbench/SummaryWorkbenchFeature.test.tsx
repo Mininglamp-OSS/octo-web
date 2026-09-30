@@ -652,6 +652,10 @@ describe("SummaryWorkbenchFeature", () => {
       const pendingResponse = deferred<any>();
       const current = controller({
         scope: scope({
+          // 新契约：发送必须有真实来源（聊天/文档/参与者/引用）。
+          selectedChannels: [
+            { chatId: "chat-a", chatType: "group", name: "Product" },
+          ],
           template: {
             templateId: "weekly",
             label: "Weekly",
@@ -797,6 +801,12 @@ describe("SummaryWorkbenchFeature", () => {
 
   it("does not allow reopening templates after the first turn", async () => {
     const current = controller({
+      scope: scope({
+        // 新契约：发送必须有真实来源。
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group", name: "Product" },
+        ],
+      }),
       viewState: {
         layout: "full",
         messages: [],
@@ -1312,6 +1322,12 @@ describe("SummaryWorkbenchFeature", () => {
   it("restores the composer but keeps the template gallery hidden when the request is not accepted (#1765)", async () => {
     const pendingResponse = deferred<undefined>();
     const current = controller({
+      scope: scope({
+        // 新契约：发送必须有真实来源。
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group", name: "Product" },
+        ],
+      }),
       viewState: {
         layout: "full",
         messages: [],
@@ -1354,6 +1370,12 @@ describe("SummaryWorkbenchFeature", () => {
 
   it("restores the template gallery when starting a new session", async () => {
     const current = controller({
+      scope: scope({
+        // 新契约：发送必须有真实来源。
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group", name: "Product" },
+        ],
+      }),
       viewState: {
         layout: "full",
         messages: [],
@@ -1688,8 +1710,22 @@ describe("SummaryWorkbenchFeature", () => {
     await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
 
     current.viewState.inputValue = "Add delivery risks";
+    // 第一轮派发后 controller 会携带 sessionId/来源状态重新返回（生产实现
+    // 中 workflow_started 响应触发 onSessionIdChange 与 scope 更新）。
+    // 这里让 mock 控制器反映"已有会话来源"的第二次渲染值。
+    const afterLaunch = {
+      ...current,
+      viewState: { ...current.viewState, canSend: true },
+    };
+    mocks.useSummaryWorkbench.mockReturnValue(afterLaunch);
     view.rerender(
       <SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-can-send",
+        "true"
+      )
     );
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
@@ -1818,6 +1854,12 @@ describe("SummaryWorkbenchFeature", () => {
     });
     mocks.useSummaryWorkbench.mockReturnValue(
       controller({
+        scope: scope({
+          // 新契约：发送必须有真实来源。
+          selectedChannels: [
+            { chatId: "chat-a", chatType: "group", name: "Product" },
+          ],
+        }),
         viewState: {
           layout: "full",
           messages: [],
@@ -2524,6 +2566,50 @@ describe("SummaryWorkbenchFeature", () => {
     expect(
       screen.queryByTestId("summary-workbench-last-session")
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps the bar visible on resume when the current session is non-empty (PG-R4-1: resume swap preserves the demoted session)", () => {
+    // 复现 Octo-Q P1-3 的完整序列：用户在 fresh "+" 会话里已经跑过一轮
+    // （onSessionIdChange 把会话 C 写进主槽位，横条仍指着 :previous 里的
+    // B）。此时点 resume：C 非空且 ≠ B → C 必须被降级进 :previous 并继续
+    // 显示在横条上；若实现回退为 setLastSessionId("")，横条会消失、C 会在
+    // 下一次 fresh "+" 时被静默覆盖——本测试在两种实现下结果不同，pin 咬合。
+    const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
+    localStorage.setItem(`${ordinaryKey}:previous`, "old-session");
+    mocks.useSummaryWorkbench.mockReturnValue(controller());
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" forceNewSession />, {
+      legacyRoot: true,
+    });
+
+    // fresh 挂载会把主槽位会话搬进 :previous（LRU-1）——这里先清掉挂载
+    // 产生的主槽位，再模拟用户跑了一轮、controller 上报了新会话 C。
+    localStorage.removeItem(ordinaryKey);
+    const options = mocks.useSummaryWorkbench.mock.calls.at(-1)?.[0] as {
+      onSessionIdChange: (sessionId: string) => void;
+    };
+    options.onSessionIdChange("current-session");
+    expect(localStorage.getItem(ordinaryKey)).toBe("current-session");
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
+      "old-session"
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "summary.workbench.lastSession.resume" })
+    );
+
+    const lastController = mocks.useSummaryWorkbench.mock.results[0]
+      ?.value as { hydrateSession: (sessionId: string) => unknown };
+    expect(lastController.hydrateSession).toHaveBeenCalledWith("old-session");
+    // 主槽位切到被恢复的会话，被降级的当前会话 C 进入 :previous。
+    expect(localStorage.getItem(ordinaryKey)).toBe("old-session");
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
+      "current-session"
+    );
+    // 横条必须保持可见并指向 C（旧行为 setLastSessionId("") 会隐藏它）。
+    expect(
+      screen.getByTestId("summary-workbench-last-session")
+    ).toBeInTheDocument();
   });
 
   it("hides the template gallery when opened for continue-refine", () => {
