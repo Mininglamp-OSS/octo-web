@@ -155,6 +155,39 @@ describe("EditSkillModal", () => {
     await waitFor(() => expect(onUpdated).toHaveBeenCalledTimes(1));
   });
 
+  it("localizes backend errors from save instead of exposing raw English", async () => {
+    vi.mocked(api.updateSkill).mockRejectedValue({
+      code: "DUPLICATE_NAME",
+      message: "A Skill with the same name already exists in this Space.",
+    });
+    render(
+      <EditSkillModal
+        skill={skill}
+        categories={categories}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), {
+      target: { value: "更新展示名" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: saveButton }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "当前空间已存在同名 Skill。请修改 SKILL.md 中的 name 后重试。"
+        )
+      ).toBeTruthy();
+    });
+    expect(
+      screen.queryByText(
+        "A Skill with the same name already exists in this Space."
+      )
+    ).toBeNull();
+  });
+
   it("blocks save while a tag validation error is visible", () => {
     render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
 

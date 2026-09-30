@@ -361,6 +361,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     setProgress(0);
     setError(null);
     abortRef.current = false;
+    let fallbackKey = "skillMarket.upload.uploadFailed";
 
     try {
       const { uploadId, presignedUrl, headers } = await initReupload(skill.id, nextFile.name, nextFile.size);
@@ -372,54 +373,39 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
       if (abortRef.current) return;
 
       setUploadStage("parsing");
+      fallbackKey = "skillMarket.errors.parseFailed";
       const { taskId } = await triggerParse(uploadId);
       if (abortRef.current) return;
 
-      let attempts = 0;
-      const maxAttempts = 60;
-      while (attempts < maxAttempts) {
-        if (abortRef.current) return;
-        const status = await pollParse(taskId);
-        if (abortRef.current) return;
+      const status = await pollParse(taskId);
+      if (abortRef.current) return;
 
-        if (status.status === "success" && status.result) {
-          if (status.result.name !== skill.name) {
-            setUploadStage("error");
-            setUploadedFile(null);
-            setParseTaskId(null);
-            setError(t("skillMarket.upload.nameMismatch", {
-              values: { expected: skill.name, actual: status.result.name },
-            }));
-            return;
-          }
-          setParseTaskId(taskId);
-          setName(status.result.name);
-          setDescription(status.result.description);
-          if (status.result.tags.length > 0) {
-            setTags(status.result.tags);
-          }
-          setVersion(bumpPatch(skill.version));
-          setChangelog("");
-          setUploadStage("idle");
-          setError(null);
-          return;
-        }
-        if (status.status === "failed") {
+      if (status.status === "success" && status.result) {
+        if (status.result.name !== skill.name) {
           setUploadStage("error");
           setUploadedFile(null);
-          setError(skillUploadErrorMessage(status.error));
+          setParseTaskId(null);
+          setError(t("skillMarket.upload.nameMismatch", {
+            values: { expected: skill.name, actual: status.result.name },
+          }));
           return;
         }
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        attempts++;
+        setParseTaskId(taskId);
+        setName(status.result.name);
+        setDescription(status.result.description);
+        if (status.result.tags.length > 0) {
+          setTags(status.result.tags);
+        }
+        setVersion(bumpPatch(skill.version));
+        setChangelog("");
+        setUploadStage("idle");
+        setError(null);
       }
-      setUploadStage("error");
-      setError(t("skillMarket.upload.parseTimeout"));
     } catch (err) {
       if (!abortRef.current) {
         setUploadStage("error");
         setUploadedFile(null);
-        setError(skillUploadErrorMessage(err));
+        setError(skillUploadErrorMessage(err, { fallbackKey }));
       }
     }
   }
@@ -499,7 +485,9 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
       }
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("skillMarket.form.saveFailed"));
+      setError(skillUploadErrorMessage(err, {
+        fallbackKey: "skillMarket.form.saveFailed",
+      }));
     } finally {
       setSaving(false);
       setPublishing(false);
