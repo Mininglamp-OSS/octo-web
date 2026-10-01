@@ -35,6 +35,9 @@ import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
  */
 interface SkillListPageProps {
   variant?: "market" | "mine";
+  /** MyAssetsPage owns the unified publish entry. Keep this true for any
+   * standalone mine embedding that still needs the legacy local entry. */
+  showPublishEntry?: boolean;
 }
 
 const TOAST_DURATION = 3000;
@@ -48,7 +51,10 @@ const SORT_OPTIONS: Array<{ value: SkillSort; labelKey: string; descending?: boo
   { value: "downloads", labelKey: "skillMarket.sort.hottest" },
 ];
 
-export default function SkillListPage({ variant = "market" }: SkillListPageProps = {}) {
+export default function SkillListPage({
+  variant = "market",
+  showPublishEntry = true,
+}: SkillListPageProps = {}) {
   useI18n();
   // Variant is fixed for the page's lifetime (mine → /mcp-market/mine, market →
   // discovery), so this is a derived constant, not state — the 全部/我的 tab
@@ -305,7 +311,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
             selectedTags={selectedTags}
             onSelectedTagsChange={handleSelectedTagsChange}
           />
-          {variant === "mine" && (
+          {variant === "mine" && showPublishEntry && (
           <div className="skill-market-publish-menu" ref={publishMenuRef}>
             <WKButton
               variant="primary"
