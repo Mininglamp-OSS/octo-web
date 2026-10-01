@@ -678,8 +678,10 @@ describe('Dap — rule-table fallback (no data-track)', () => {
 })
 
 // DAP-271 finding 1/2:sanitizeProps 最终 envelope 契约(经真实 Dap flush,而非 mock track)。
-// finding 2:数组维度(如 channel_ids)过不了 sanitizer(仅留 primitive),曾传数组即被静默丢弃=「假补齐」;
-//   primitive 的 channel_count 才能存活 —— 佐证 summary 侧只保 channel_count 的保守方案。
+// finding 2(已被 DAP-413 收敛):历史上数组维度(如 channel_ids)过不了 sanitizer(仅留 primitive),
+//   曾传数组即被静默丢弃=「假补齐」,故当时 emit 站点改用逗号字符串绕行。**DAP-413 起** sanitizer
+//   放行「基础量数组」(string[]/number[]),数组现在原样落成真 JSON 数组;逗号字符串方案仍可用
+//   (字符串本就是 primitive)。两条用例分别锁这两种形态。
 // finding 1:template_name 这类"看似无害"的键**不在黑名单**,字符串值会原样存活,sanitizer 兜不住隐私 ——
 //   佐证隐私红线必须在 emit 站点(summaryApi 不传 label)防守,见 dmworksummary 对应回归。
 describe('Dap — sanitizeProps 最终 envelope 契约(DAP-271 finding 1/2)', () => {
@@ -702,7 +704,7 @@ describe('Dap — sanitizeProps 最终 envelope 契约(DAP-271 finding 1/2)', ()
         return undefined
     }
 
-    it('finding 2: 数组 channel_ids 被 sanitizer 丢弃,primitive channel_count / mode 存活', async () => {
+    it('finding 2(DAP-413 后): string[] channel_ids 原样落成真 JSON 数组,channel_count / mode 一并存活', async () => {
         const { Dap } = await freshTracker()
         Dap.shared.setEnabled(true)
         Dap.shared.init()
@@ -712,7 +714,9 @@ describe('Dap — sanitizeProps 最终 envelope 契约(DAP-271 finding 1/2)', ()
 
         const props = propsOf('smart_summary_started')
         expect(props, '批次机制在场(非假绿)').toBeTruthy()
-        expect(props).not.toHaveProperty('channel_ids') // 原始数组被丢 —— 故 emit 站点须编码成字符串
+        // DAP-413:基础量数组现在放行,序列化后仍是真数组(而非被丢、也非字符串)
+        expect(Array.isArray(props?.channel_ids)).toBe(true)
+        expect(props?.channel_ids).toEqual(['c1', 'c2', 'c3'])
         expect(props).toMatchObject({ channel_count: 3, mode: 'by_person' }) // primitive 存活
     })
 
