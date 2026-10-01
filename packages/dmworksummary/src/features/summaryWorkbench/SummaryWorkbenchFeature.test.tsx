@@ -25,6 +25,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@octo/base", () => ({
   Dap: { shared: { track: mocks.track } },
+  WKButton: (props: any) => (
+    <button type={props.type ?? "button"} disabled={props.disabled} onClick={props.onClick}>
+      {props.children}
+    </button>
+  ),
   getImChannelInfo: () => ({
     title: "mock-channel-title",
     orgData: {},
@@ -65,6 +70,11 @@ vi.mock("@octo/base", () => ({
 
 vi.mock("@octo/base/src/App", () => ({
   Dap: { shared: { track: mocks.track } },
+  WKButton: (props: any) => (
+    <button type={props.type ?? "button"} disabled={props.disabled} onClick={props.onClick}>
+      {props.children}
+    </button>
+  ),
   useI18n: () => ({
     t: (key: string) => {
       return (
@@ -237,6 +247,16 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
       <button type="button" onClick={actions.onNewSession}>
         new-session
       </button>
+      {actions.onResumeLastSession && (
+        <button
+          type="button"
+          data-testid="summary-workbench-last-session"
+          aria-label="summary.workbench.lastSession.label"
+          onClick={actions.onResumeLastSession}
+        >
+          last-session
+        </button>
+      )}
       {contextPanel}
     </div>
   ),
@@ -375,7 +395,10 @@ function controller(overrides: Record<string, unknown> = {}) {
     send: vi.fn(),
     confirmWorkflow: vi.fn(),
     savePreview: vi.fn(),
-    hydrateSession: vi.fn(),
+    hydrateSession: vi.fn(async (sessionId?: string) => ({
+      status: "hydrated" as const,
+      sessionId: sessionId || "hydrated-session",
+    })),
     resetSession: vi.fn(),
     cancelActiveRequest: vi.fn(),
     clearError: vi.fn(),
@@ -746,7 +769,7 @@ describe("SummaryWorkbenchFeature", () => {
       },
     ],
   ])(
-    "keeps templates available after restoring %s",
+    "keeps the template gallery hidden after restoring %s (#1765)",
     async (_caseName, message) => {
       localStorage.setItem(
         "summary-workbench-session:v2:test-uid:space-a:global",
@@ -764,11 +787,13 @@ describe("SummaryWorkbenchFeature", () => {
       view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
 
       await waitFor(() =>
-        expect(screen.getByTestId("template-selector")).toBeInTheDocument()
+        expect(
+          screen.queryByTestId("template-selector")
+        ).not.toBeInTheDocument()
       );
       expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
         "data-template-locked",
-        "false"
+        "true"
       );
     }
   );
@@ -1287,7 +1312,7 @@ describe("SummaryWorkbenchFeature", () => {
     );
   });
 
-  it("restores the composer and template gallery when the request is not accepted", async () => {
+  it("restores the composer but keeps the template gallery hidden when the request is not accepted (#1765)", async () => {
     const pendingResponse = deferred<undefined>();
     const current = controller({
       viewState: {
@@ -1323,10 +1348,79 @@ describe("SummaryWorkbenchFeature", () => {
         "Keep this request"
       )
     );
-    expect(screen.getByTestId("template-selector")).toBeInTheDocument();
+    expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-template-locked",
+      "true"
+    );
+  });
+
+  it("re-enables scope-only generation and preserves its error after a rejected dispatch", async () => {
+    const pendingResponse = deferred<undefined>();
+    const current = controller({
+      scope: scope({
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group", name: "Product" },
+        ],
+      }),
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: true,
+      },
+      send: vi.fn(() => pendingResponse.promise),
+    });
+    current.restoreComposerValue = vi.fn((value: string) => {
+      current.viewState.inputValue = value;
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "true"
+    );
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    current.scope = scope({
+      selectedChannels: [
+        { chatId: "chat-a", chatType: "group", name: "Product" },
+      ],
+      timeRange: {
+        start: "2026-09-01T00:00:00Z",
+        end: "2026-09-02T00:00:00Z",
+        label: "Yesterday",
+      },
+    });
+    current.viewState.errorMessage = "gateway timeout";
+    await act(async () => pendingResponse.resolve(undefined));
+
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "true"
+    );
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-template-locked",
+      "true"
+    );
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-error-message",
+      "gateway timeout"
+    );
+    expect(
+      screen.queryByRole("button", { name: "open-template" })
+    ).not.toBeInTheDocument();
   });
 
   it("restores the template gallery when starting a new session", async () => {
+    const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
+    localStorage.setItem(ordinaryKey, "current-session");
     const current = controller({
       viewState: {
         layout: "full",
@@ -1354,7 +1448,14 @@ describe("SummaryWorkbenchFeature", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "new-session" }));
     expect(current.resetSession).toHaveBeenCalledWith({ scope: scope() });
+    expect(localStorage.getItem(ordinaryKey)).toBeNull();
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
+      "current-session"
+    );
     expect(screen.getByTestId("template-selector")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("summary-workbench-last-session")
+    ).toBeInTheDocument();
   });
 
   it("confirms before replacing manually entered text with a template", () => {
@@ -1485,7 +1586,7 @@ describe("SummaryWorkbenchFeature", () => {
     expect(mocks.markNotificationEligible).not.toHaveBeenCalled();
   });
 
-  it("sends a template-only fallback as an explicit start intent for recent-chat discovery", async () => {
+  it("sends a template-only start intent so the backend can select the most recent active chat", async () => {
     const send = vi.fn().mockResolvedValue({
       resultType: "agent_preview",
       preview: { content: "Draft", assumptions: ["最近 1 个聊天"] },
@@ -1503,11 +1604,38 @@ describe("SummaryWorkbenchFeature", () => {
       legacyRoot: true,
     });
     fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
-
-    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
-      "data-can-send",
-      "true"
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith("personal-intent", "system_intent")
     );
+    expect(mocks.toastWarning).not.toHaveBeenCalled();
+  });
+
+  it("lets a template send through once a chat source is selected", async () => {
+    const send = vi.fn().mockResolvedValue({
+      resultType: "agent_preview",
+      preview: { content: "Draft", assumptions: [] },
+    });
+    const current = controller({
+      scope: scope({
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group" as const, name: "Product" },
+        ],
+      }),
+      send,
+    });
+    current.updateScope = vi.fn((nextScope: SummaryWorkbenchScope) => {
+      current.scope = nextScope;
+    });
+    current.setComposerValue = vi.fn((value: string) => {
+      current.viewState.inputValue = value;
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
     await waitFor(() =>
@@ -1633,8 +1761,22 @@ describe("SummaryWorkbenchFeature", () => {
     await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
 
     current.viewState.inputValue = "Add delivery risks";
+    // 第一轮派发后 controller 会携带 sessionId/来源状态重新返回（生产实现
+    // 中 workflow_started 响应触发 onSessionIdChange 与 scope 更新）。
+    // 这里让 mock 控制器反映"已有会话来源"的第二次渲染值。
+    const afterLaunch = {
+      ...current,
+      viewState: { ...current.viewState, canSend: true },
+    };
+    mocks.useSummaryWorkbench.mockReturnValue(afterLaunch);
     view.rerender(
       <SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-can-send",
+        "true"
+      )
     );
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
@@ -1645,6 +1787,209 @@ describe("SummaryWorkbenchFeature", () => {
       "user",
       "start_team_workflow"
     );
+    expect(send).toHaveBeenNthCalledWith(2, undefined, "user");
+  });
+
+  it("keeps ordinary follow-ups as chat after a failed direct-team follow-up", async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        resultType: "workflow_started",
+        workflow: { taskId: 204, taskTitle: "Team update" },
+      })
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ resultType: "message" });
+    const current = controller({
+      scope: scope({
+        participants: [{ userId: "user-a", userName: "Alex" }],
+      }),
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Create the team summary",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: true,
+      },
+      send,
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    const view = render(
+      <SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />,
+      { legacyRoot: true }
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-can-send",
+        "true"
+      )
+    );
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+
+    current.viewState.inputValue = "Add delivery risks";
+    current.viewState.messages = [
+      { id: "user-1", role: "user", content: "Create the team summary" },
+    ];
+    mocks.useSummaryWorkbench.mockReturnValue({
+      ...current,
+      viewState: { ...current.viewState, canSend: true },
+    });
+    view.rerender(
+      <SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-can-send",
+        "true"
+      )
+    );
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+
+    current.viewState.inputValue = "Summarise the blockers";
+    mocks.useSummaryWorkbench.mockReturnValue({
+      ...current,
+      viewState: { ...current.viewState, canSend: true },
+    });
+    view.rerender(
+      <SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-can-send",
+        "true"
+      )
+    );
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(3));
+    expect(send).toHaveBeenNthCalledWith(3, undefined, "user");
+  });
+
+  it("retries a failed direct-team launch after an authoritative scope echo", async () => {
+    const send = vi.fn();
+    const current = controller({
+      scope: scope({
+        participants: [{ userId: "user-a", userName: "Alex" }],
+      }),
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Create the team summary",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: true,
+      },
+      send,
+    });
+    send
+      .mockImplementationOnce(async () => {
+        current.scope = scope({
+          selectedChannels: [
+            { chatId: "chat-a", chatType: "group", name: "Product" },
+          ],
+          participants: [{ userId: "user-a", userName: "Alex" }],
+          timeRange: {
+            start: "2026-09-01T00:00:00Z",
+            end: "2026-09-02T00:00:00Z",
+            label: "Yesterday",
+          },
+        });
+        return undefined;
+      })
+      .mockResolvedValueOnce({
+        resultType: "workflow_started",
+        workflow: { taskId: 205, taskTitle: "Team update" },
+      });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />, {
+      legacyRoot: true,
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-can-send",
+        "true"
+      )
+    );
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() =>
+      expect(current.restoreComposerValue).toHaveBeenLastCalledWith(
+        "Create the team summary"
+      )
+    );
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "true"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    expect(send).toHaveBeenNthCalledWith(
+      1,
+      undefined,
+      "user",
+      "start_team_workflow"
+    );
+    expect(send).toHaveBeenNthCalledWith(
+      2,
+      undefined,
+      "user",
+      "start_team_workflow"
+    );
+  });
+
+  it("uses chat when the composer changes after a failed direct-team launch", async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ resultType: "message" });
+    const current = controller({
+      scope: scope({
+        participants: [{ userId: "user-a", userName: "Alex" }],
+      }),
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "Create the team summary",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: true,
+      },
+      send,
+    });
+    current.setComposerValue = vi.fn((value: string) => {
+      current.viewState.inputValue = value;
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" directTeamWorkflow />, {
+      legacyRoot: true,
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-can-send",
+        "true"
+      )
+    );
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() =>
+      expect(current.restoreComposerValue).toHaveBeenLastCalledWith(
+        "Create the team summary"
+      )
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "summary-request" }), {
+      target: { value: "Summarise the blockers" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
     expect(send).toHaveBeenNthCalledWith(2, undefined, "user");
   });
 
@@ -2434,6 +2779,290 @@ describe("SummaryWorkbenchFeature", () => {
         autoHydrate: true,
       })
     );
+  });
+
+  it("keeps the persisted session reachable as a last-conversation bar on forced-new mount", async () => {
+    const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
+    localStorage.setItem(ordinaryKey, "old-session");
+    mocks.useSummaryWorkbench.mockReturnValue(controller());
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" forceNewSession />, {
+      legacyRoot: true,
+    });
+
+    expect(mocks.useSummaryWorkbench).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        initialSessionId: "",
+        autoHydrate: false,
+      })
+    );
+    expect(localStorage.getItem(ordinaryKey)).toBeNull();
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe("old-session");
+    expect(
+      screen.getByTestId("summary-workbench-last-session")
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "summary.workbench.lastSession.label" })
+    );
+
+    const lastController = mocks.useSummaryWorkbench.mock.results[0]
+      ?.value as { hydrateSession: (sessionId: string) => unknown };
+    expect(lastController.hydrateSession).toHaveBeenCalledWith("old-session");
+    await waitFor(() =>
+      expect(localStorage.getItem(ordinaryKey)).toBe("old-session")
+    );
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBeNull();
+    expect(
+      screen.queryByTestId("summary-workbench-last-session")
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps a demoted session reachable after a non-forced remount", () => {
+    const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
+    localStorage.setItem(ordinaryKey, "old-session");
+    mocks.useSummaryWorkbench.mockReturnValue(controller());
+
+    const forced = render(
+      <SummaryWorkbenchFeature spaceId="space-a" forceNewSession />,
+      { legacyRoot: true }
+    );
+    forced.unmount();
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+
+    expect(mocks.useSummaryWorkbench).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        initialSessionId: "",
+        autoHydrate: false,
+      })
+    );
+    expect(localStorage.getItem(ordinaryKey)).toBeNull();
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
+      "old-session"
+    );
+    expect(
+      screen.getByTestId("summary-workbench-last-session")
+    ).toBeInTheDocument();
+  });
+
+  it("keeps a demoted session reachable when resume hydration fails from a fresh session", async () => {
+    const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
+    localStorage.setItem(ordinaryKey, "old-session");
+    const hydration = deferred<{ status: "failed" }>();
+    const current = controller();
+    current.hydrateSession = vi.fn(() => hydration.promise);
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" forceNewSession />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "summary.workbench.lastSession.label",
+      })
+    );
+
+    expect(current.hydrateSession).toHaveBeenCalledWith("old-session");
+    await act(async () => hydration.resolve({ status: "failed" }));
+    expect(localStorage.getItem(ordinaryKey)).toBeNull();
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
+      "old-session"
+    );
+    expect(
+      screen.getByTestId("summary-workbench-last-session")
+    ).toBeInTheDocument();
+  });
+
+  it("restores the active session and exposes the previous one on a non-forced mount", () => {
+    const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
+    localStorage.setItem(ordinaryKey, "current-session");
+    localStorage.setItem(`${ordinaryKey}:previous`, "old-session");
+    mocks.useSummaryWorkbench.mockReturnValue(controller());
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+
+    expect(mocks.useSummaryWorkbench).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        initialSessionId: "current-session",
+        autoHydrate: true,
+      })
+    );
+    expect(
+      screen.getByTestId("summary-workbench-last-session")
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the bar visible on resume when the current session is non-empty (PG-R4-1: resume swap preserves the demoted session)", async () => {
+    // 复现 Octo-Q P1-3 的完整序列：用户在 fresh "+" 会话里已经跑过一轮
+    // （onSessionIdChange 把会话 C 写进主槽位，横条仍指着 :previous 里的
+    // B）。此时点 resume：C 非空且 ≠ B → C 必须被降级进 :previous 并继续
+    // 显示在横条上；若实现回退为 setLastSessionId("")，横条会消失、C 会在
+    // 下一次 fresh "+" 时被静默覆盖——本测试在两种实现下结果不同，pin 咬合。
+    const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
+    localStorage.setItem(`${ordinaryKey}:previous`, "old-session");
+    mocks.useSummaryWorkbench.mockReturnValue(controller());
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" forceNewSession />, {
+      legacyRoot: true,
+    });
+
+    // fresh 挂载会把主槽位会话搬进 :previous（LRU-1）——这里先清掉挂载
+    // 产生的主槽位，再模拟用户跑了一轮、controller 上报了新会话 C。
+    localStorage.removeItem(ordinaryKey);
+    const options = mocks.useSummaryWorkbench.mock.calls.at(-1)?.[0] as {
+      onSessionIdChange: (sessionId: string) => void;
+    };
+    options.onSessionIdChange("current-session");
+    expect(localStorage.getItem(ordinaryKey)).toBe("current-session");
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
+      "old-session"
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "summary.workbench.lastSession.label" })
+    );
+
+    const lastController = mocks.useSummaryWorkbench.mock.results[0]
+      ?.value as { hydrateSession: (sessionId: string) => unknown };
+    expect(lastController.hydrateSession).toHaveBeenCalledWith("old-session");
+    // 主槽位切到被恢复的会话，被降级的当前会话 C 进入 :previous。
+    await waitFor(() =>
+      expect(localStorage.getItem(ordinaryKey)).toBe("old-session")
+    );
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
+      "current-session"
+    );
+    // 横条必须保持可见并指向 C（旧行为 setLastSessionId("") 会隐藏它）。
+    expect(
+      screen.getByTestId("summary-workbench-last-session")
+    ).toBeInTheDocument();
+  });
+
+  it.each(["failed", "cancelled"] as const)(
+    "keeps both session slots and the recovery bar when resume hydration is %s",
+    async (status) => {
+      const ordinaryKey =
+        "summary-workbench-session:v2:test-uid:space-a:global";
+      localStorage.setItem(ordinaryKey, "current-session");
+      localStorage.setItem(`${ordinaryKey}:previous`, "old-session");
+      const hydration = deferred<{ status: typeof status }>();
+      const current = controller();
+      current.hydrateSession = vi.fn(() => hydration.promise);
+      mocks.useSummaryWorkbench.mockReturnValue(current);
+
+      render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+        legacyRoot: true,
+      });
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "summary.workbench.lastSession.label",
+        })
+      );
+
+      expect(current.hydrateSession).toHaveBeenCalledWith("old-session");
+      await act(async () => hydration.resolve({ status }));
+      expect(localStorage.getItem(ordinaryKey)).toBe("current-session");
+      expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
+        "old-session"
+      );
+      expect(
+        screen.getByTestId("summary-workbench-last-session")
+      ).toBeInTheDocument();
+    }
+  );
+
+  it("hides the template gallery when opened for continue-refine", () => {
+    mocks.useSummaryWorkbench.mockReturnValue(controller());
+
+    render(
+      <SummaryWorkbenchFeature
+        spaceId="space-a"
+        derivedFromTask={{ task_id: 42, title: "Prior summary" } as any}
+      />,
+      { legacyRoot: true }
+    );
+
+    expect(
+      screen.queryByTestId("template-selector")
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the template gallery hidden after a dispatched run fails (#1765)", async () => {
+    const send = vi.fn().mockResolvedValue({ resultType: "error" });
+    const current = controller({
+      scope: scope({
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group" as const, name: "Product" },
+        ],
+      }),
+      send,
+    });
+    current.updateScope = vi.fn((nextScope: SummaryWorkbenchScope) => {
+      current.scope = nextScope;
+    });
+    current.setComposerValue = vi.fn((value: string) => {
+      current.viewState.inputValue = value;
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "choose-template" }));
+    expect(screen.getByTestId("template-selector")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() => expect(send).toHaveBeenCalled());
+
+    expect(
+      screen.queryByTestId("template-selector")
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the template gallery hidden when a hydrated turn failed (#1765)", async () => {
+    const hydrated = controller({
+      viewState: {
+        layout: "full",
+        messages: [
+          {
+            id: "failed-turn",
+            role: "assistant",
+            content: "",
+            resultType: "error",
+          },
+        ],
+        contextItems: [],
+        inputValue: "",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: false,
+      },
+    });
+    let hydrating = true;
+    const hydratingState = { ...hydrated, isHydrating: true };
+    const settledState = { ...hydrated, isHydrating: false };
+    mocks.useSummaryWorkbench.mockImplementation(
+      () => (hydrating ? hydratingState : settledState) as typeof hydrated
+    );
+
+    const view = render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    hydrating = false;
+    view.rerender(<SummaryWorkbenchFeature spaceId="space-a" />);
+
+    // The failed turn keeps the conversation "started".
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("template-selector")
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: "choose-template" })).toBeNull();
   });
 
   it("restores hydrated reference metadata and toggles its preview", async () => {

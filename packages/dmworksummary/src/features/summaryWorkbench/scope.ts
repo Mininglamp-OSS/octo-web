@@ -231,6 +231,8 @@ export function canGenerateFromScope(
   if (scope.participants.length > 0) {
     return Boolean(scope.template) || hasUserInput;
   }
+  // Template/system-intent starts may omit an explicit source. The backend
+  // resolves that case to the user's most recent authorized active chat.
   return (
     scope.selectedChannels.length > 0 ||
     (scope.documents ?? []).length > 0 ||

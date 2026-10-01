@@ -13,6 +13,8 @@ export interface SummaryWorkbenchCreateEntryProps {
   derivedFromTask?: SummaryReferenceTask;
   channel?: { channelID: string; channelType: number };
   embedded?: boolean;
+  /** "+" 语义：不恢复持久化会话，旧会话挪到「上次对话」槽位供一键返回。 */
+  forceNewSession?: boolean;
   onClose?: () => void;
   onSubmit?: (taskId: number) => void;
   onOpenTask?: (taskId: number) => void;
@@ -25,11 +27,31 @@ export default function SummaryWorkbenchCreateEntry(
   props: SummaryWorkbenchCreateEntryProps
 ) {
   const spaceId = useCurrentSummarySpaceId();
+  const [forceNewSessionPending, setForceNewSessionPending] = React.useState(
+    () => Boolean(props.forceNewSession)
+  );
+  const [forceNewSessionSeq, setForceNewSessionSeq] = React.useState(0);
+  // Every distinct fresh-session gesture must remount this entry so the
+  // workbench's mount-time storage rotation runs exactly once for the gesture.
+  const previousForceNewSession = React.useRef(Boolean(props.forceNewSession));
+  React.useEffect(() => {
+    const forceNewSession = Boolean(props.forceNewSession);
+    if (!previousForceNewSession.current && forceNewSession) {
+      setForceNewSessionPending(true);
+      setForceNewSessionSeq((current) => current + 1);
+    }
+    previousForceNewSession.current = forceNewSession;
+  }, [props.forceNewSession]);
+  const consumeForceNewSession = React.useCallback(
+    () => setForceNewSessionPending(false),
+    []
+  );
   const entryKey = [
     spaceId,
     props.channel?.channelID ?? "global",
     props.channel?.channelType ?? "global",
     props.derivedFromTask?.task_id ?? "new",
+    forceNewSessionSeq,
   ].join(":");
 
   return (
@@ -48,6 +70,8 @@ export default function SummaryWorkbenchCreateEntry(
             spaceId={spaceId}
             channel={props.channel}
             derivedFromTask={props.derivedFromTask}
+            forceNewSession={forceNewSessionPending}
+            onForceNewSessionConsumed={consumeForceNewSession}
             embedded={props.embedded}
             source={props.source}
             onCreated={props.onCreated}

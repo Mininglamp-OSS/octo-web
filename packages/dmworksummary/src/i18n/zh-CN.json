@@ -290,6 +290,9 @@
       "participantsUnsupportedForSelectedChats": "当前会话范围不支持参与者，请仅选择群聊且不超过 30 个",
       "selectSingleChatForParticipants": "选择参与者时仅支持最多 30 个群聊"
     },
+    "lastSession": {
+      "label": "上次对话"
+    },
     "errors": {
       "network": "网络连接异常，请稍后重试",
       "protocol": "总结服务版本不兼容，请刷新后重试",

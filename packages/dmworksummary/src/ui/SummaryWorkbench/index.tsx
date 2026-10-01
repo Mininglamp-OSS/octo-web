@@ -433,6 +433,21 @@ const SummaryWorkbench = ({
             )}
           </div>
           <div className="wk-summary-workbench__header-actions">
+            {actions.onResumeLastSession && (
+              <WKButton
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={
+                  isComposerDisabled || state.resumeLastSessionDisabled
+                }
+                onClick={actions.onResumeLastSession}
+                data-testid={summaryTestIds.workbenchLastSession}
+                aria-label={t("summary.workbench.lastSession.label")}
+              >
+                {t("summary.workbench.lastSession.label")}
+              </WKButton>
+            )}
             <div className="wk-summary-workbench__reference-context">
               {referenceContextItems.length === 0 && (
                 <WKButton

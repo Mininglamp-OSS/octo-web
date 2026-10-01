@@ -155,7 +155,7 @@ describe("SummaryWorkspace", () => {
     render(<Harness initialRoute={{ view: "list" }} onRouteChange={onRouteChange} />);
     fireEvent.click(screen.getByText("create-unified"));
     expect(onRouteChange).toHaveBeenLastCalledWith({
-      view: "create", mode: "normal", source: "summary_list",
+      view: "create", mode: "normal", source: "summary_list", fresh: true,
     });
     fireEvent.click(screen.getByText("open-workbench-task"));
     expect(onRouteChange).toHaveBeenLastCalledWith({ view: "detail", taskId: 24 });

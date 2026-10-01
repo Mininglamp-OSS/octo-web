@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+    clearSummaryWorkbenchPreviousSession,
     clearSummaryWorkbenchSession,
+    moveSummaryWorkbenchSessionToPrevious,
+    readSummaryWorkbenchPreviousSession,
     readSummaryWorkbenchSession,
+    writeSummaryWorkbenchPreviousSession,
     writeSummaryWorkbenchSession,
 } from "./sessionStorage";
 
@@ -77,6 +81,55 @@ describe("summary workbench session storage", () => {
         writeSummaryWorkbenchSession(scope, "session-global");
         clearSummaryWorkbenchSession(scope);
         expect(readSummaryWorkbenchSession(scope)).toBe("");
+    });
+
+    it("moves the persisted session to the previous slot on forced-new mount", () => {
+        const scope = { userId: "user-a", spaceId: "space-a" };
+        writeSummaryWorkbenchSession(scope, "old-session");
+
+        moveSummaryWorkbenchSessionToPrevious(scope);
+
+        expect(readSummaryWorkbenchSession(scope)).toBe("");
+        expect(readSummaryWorkbenchPreviousSession(scope)).toBe("old-session");
+        expect(localStorage.getItem(
+            "summary-workbench-session:v2:user-a:space-a:global"
+        )).toBe(null);
+    });
+
+    it("no-ops the previous move when nothing is persisted", () => {
+        const scope = { userId: "user-a", spaceId: "space-a" };
+        moveSummaryWorkbenchSessionToPrevious(scope);
+        expect(readSummaryWorkbenchPreviousSession(scope)).toBe("");
+    });
+
+    it("rolls back the previous slot when removing the active slot fails", () => {
+        const scope = { userId: "user-a", spaceId: "space-a" };
+        writeSummaryWorkbenchSession(scope, "old-session");
+        const removeSpy = vi
+            .spyOn(Storage.prototype, "removeItem")
+            .mockImplementationOnce(() => {
+                throw new Error("blocked");
+            });
+
+        moveSummaryWorkbenchSessionToPrevious(scope);
+
+        expect(readSummaryWorkbenchSession(scope)).toBe("old-session");
+        expect(readSummaryWorkbenchPreviousSession(scope)).toBe("");
+        removeSpy.mockRestore();
+    });
+
+    it("clears only the requested previous slot", () => {
+        const scopeA = { userId: "user-a", spaceId: "space-a" };
+        const scopeB = { userId: "user-a", spaceId: "space-b" };
+        writeSummaryWorkbenchPreviousSession(scopeA, "prev-a");
+        writeSummaryWorkbenchPreviousSession(scopeB, "prev-b");
+
+        expect(readSummaryWorkbenchPreviousSession(scopeA)).toBe("prev-a");
+        expect(readSummaryWorkbenchPreviousSession(scopeB)).toBe("prev-b");
+
+        clearSummaryWorkbenchPreviousSession(scopeA);
+        expect(readSummaryWorkbenchPreviousSession(scopeA)).toBe("");
+        expect(readSummaryWorkbenchPreviousSession(scopeB)).toBe("prev-b");
     });
 
     it("isolates referenced tasks without changing the ordinary session key", () => {

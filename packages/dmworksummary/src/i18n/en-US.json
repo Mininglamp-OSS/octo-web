@@ -290,6 +290,9 @@
       "participantsUnsupportedForSelectedChats": "Participants require group chats only, with no more than 30 chats selected.",
       "selectSingleChatForParticipants": "Participant selection supports up to 30 group chats only."
     },
+    "lastSession": {
+      "label": "Last conversation"
+    },
     "errors": {
       "network": "Network error. Try again later.",
       "protocol": "The summary service version is incompatible. Refresh and try again.",

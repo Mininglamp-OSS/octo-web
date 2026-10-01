@@ -13,7 +13,7 @@ import { X, ChevronLeft } from 'lucide-react';
 import SummaryListPage from '../pages/SummaryListPage';
 import SummaryWorkbenchCreateEntry from '../features/summaryWorkbench/SummaryWorkbenchCreateEntry';
 import SummaryDetailPage from '../pages/SummaryDetailPage';
-import type { SummaryListItem } from '../types/summary';
+import type { SummaryReferenceTask } from '../types/summary';
 import { summaryTestIds } from '../utils/testIds';
 
 interface ChatSummaryPanelProps {
@@ -26,10 +26,12 @@ interface ChatSummaryPanelProps {
 interface ChatSummaryPanelState {
     view: 'list' | 'detail' | 'create';
     selectedTaskId: number | null;
-    refineTask: SummaryListItem | null;
+    refineTask: SummaryReferenceTask | null;
     isDragging: boolean;
     /** 仅供 Capability fail-closed 后的 Legacy 创建页恢复原选择。 */
     legacyCreateMode: 'normal' | 'agent';
+    /** 「+」每次点击 +1：作为 workbench key 让其强制重挂载（新会话语义）。 */
+    createSeq: number;
 }
 
 export default class ChatSummaryPanel extends Component<
@@ -47,7 +49,7 @@ export default class ChatSummaryPanel extends Component<
     constructor(props: ChatSummaryPanelProps) {
         super(props);
         const initialView = props.summaryPanelView === 'new' ? 'create' : 'list';
-        this.state = { view: initialView, selectedTaskId: null, refineTask: null, isDragging: false, legacyCreateMode: 'normal' };
+        this.state = { view: initialView, selectedTaskId: null, refineTask: null, isDragging: false, legacyCreateMode: 'normal', createSeq: 0 };
     }
 
     componentDidMount() {
@@ -143,19 +145,21 @@ export default class ChatSummaryPanel extends Component<
     };
 
     private handleCreateNew = (mode?: 'normal' | 'agent' | 'unified') => {
-        this.setState({
+        this.setState((prev: ChatSummaryPanelState) => ({
             view: 'create',
             selectedTaskId: null,
             refineTask: null,
             legacyCreateMode: mode === 'agent' ? 'agent' : 'normal',
-        });
+            /** 每次点「+」都是新会话语义：递增 seq 换 key 强制重挂 workbench。 */
+            createSeq: prev.createSeq + 1,
+        }));
     };
 
     private handleViewDetail = (taskId: number) => {
         this.setState({ view: 'detail', selectedTaskId: taskId, refineTask: null });
     };
 
-    private handleContinueOptimize = (task: SummaryListItem) => {
+    private handleContinueOptimize = (task: SummaryReferenceTask) => {
         this.setState({
             view: 'create',
             selectedTaskId: null,
@@ -231,9 +235,10 @@ export default class ChatSummaryPanel extends Component<
                         </div>
                         <div className="wk-summary-panel-detail-body" style={{ overflow: 'auto', flex: 1 }}>
                             <SummaryWorkbenchCreateEntry
-                                key={`${channel.channelType}:${channel.channelID}`}
+                                key={`${channel.channelType}:${channel.channelID}:${this.state.createSeq}`}
                                 channel={channel}
                                 derivedFromTask={refineTask ?? undefined}
+                                forceNewSession={refineTask == null}
                                 embedded={true}
                                 onClose={this.handleBackToList}
                                 onSubmit={this.handleCreateSubmit}
@@ -260,7 +265,7 @@ export default class ChatSummaryPanel extends Component<
                             </button>
                         </div>
                         <div className="wk-summary-panel-detail-body">
-                            <SummaryDetailPage taskId={selectedTaskId} onAfterMutate={() => this.setState({ view: 'list', selectedTaskId: null })} />
+                            <SummaryDetailPage taskId={selectedTaskId} onAfterMutate={() => this.setState({ view: 'list', selectedTaskId: null })} onContinueRefine={this.handleContinueOptimize} />
                         </div>
                     </div>
                 )}

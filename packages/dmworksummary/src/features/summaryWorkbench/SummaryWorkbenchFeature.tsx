@@ -46,9 +46,7 @@ import useSummaryWorkbench, {
 } from "../../bridge/summaryWorkbench/useSummaryWorkbench";
 import SummaryWorkbench, {
   type SummaryWorkbenchAction,
-  type SummaryWorkbenchCardView,
   type SummaryWorkbenchContextKind,
-  type SummaryWorkbenchMessageView,
 } from "../../ui/SummaryWorkbench";
 import type { ChatCandidate, SummaryListItem } from "../../types/summary";
 import { channelToChatCandidate } from "../../utils/channelConvert";
@@ -60,8 +58,12 @@ import {
 } from "../../utils/templateResolver";
 import { summaryTestIds } from "../../utils/testIds";
 import {
+  clearSummaryWorkbenchPreviousSession,
   clearSummaryWorkbenchSession,
+  moveSummaryWorkbenchSessionToPrevious,
+  readSummaryWorkbenchPreviousSession,
   readSummaryWorkbenchSession,
+  writeSummaryWorkbenchPreviousSession,
   writeSummaryWorkbenchSession,
   type SummaryWorkbenchSessionScope,
 } from "./sessionStorage";
@@ -94,6 +96,9 @@ export interface SummaryWorkbenchFeatureProps {
   channel?: { channelID: string; channelType: number };
   derivedFromTask?: Pick<SummaryListItem, "task_id" | "title">;
   embedded?: boolean;
+  /** "+" 语义：不恢复持久化会话；旧会话挪到「上次对话」槽位，横条一键返回。 */
+  forceNewSession?: boolean;
+  onForceNewSessionConsumed?: () => void;
   source?: string;
   onCreated?: () => void;
   onOpenTask?: (taskId: number) => void;
@@ -159,24 +164,13 @@ function isAcceptedResponse(
   return Boolean(response && response.resultType !== "error");
 }
 
-function hasAcceptedHydratedTurn(
-  messages: SummaryWorkbenchMessageView[],
-  card?: SummaryWorkbenchCardView
-): boolean {
-  return Boolean(
-    card ||
-      messages.some(
-        (message) =>
-          message.role === "assistant" && message.resultType !== "error"
-      )
-  );
-}
-
 export default function SummaryWorkbenchFeature({
   spaceId,
   channel,
   derivedFromTask,
   embedded = false,
+  forceNewSession = false,
+  onForceNewSessionConsumed,
   source,
   onCreated,
   onOpenTask,
@@ -228,8 +222,22 @@ export default function SummaryWorkbenchFeature({
       clearSummaryWorkbenchSession(storageScope);
       return "";
     }
+    if (forceNewSession) {
+      // "+" must not resurrect the previous conversation, but it stays
+      // reachable through the "last conversation" slot.
+      moveSummaryWorkbenchSessionToPrevious(storageScope);
+      return "";
+    }
     return readSummaryWorkbenchSession(storageScope);
   });
+  const [lastSessionId, setLastSessionId] = useState(() =>
+    !derivedFromTask
+      ? readSummaryWorkbenchPreviousSession(storageScope)
+      : ""
+  );
+  useEffect(() => {
+    if (forceNewSession) onForceNewSessionConsumed?.();
+  }, [forceNewSession, onForceNewSessionConsumed]);
   const [openSelector, setOpenSelector] = useState<OpenSelector>(null);
   const [referencedTask, setReferencedTask] = useState<ReferencedTask | null>(
     derivedFromTask ?? null
@@ -243,7 +251,12 @@ export default function SummaryWorkbenchFeature({
   );
   const [composerFocusKey, setComposerFocusKey] = useState(0);
   const [hasSubmitted, setHasSubmitted] = useState(false);
-  const [templateGalleryOpen, setTemplateGalleryOpen] = useState(true);
+  const [lastFailedAction, setLastFailedAction] = useState<
+    "start_team_workflow" | "chat" | null
+  >(null);
+  const [templateGalleryOpen, setTemplateGalleryOpen] = useState(
+    () => !derivedFromTask
+  );
   const [pendingTemplate, setPendingTemplate] =
     useState<SummaryWorkbenchTemplateScope | null>(null);
   const notifiedTaskIds = useRef(new Set<number>());
@@ -271,13 +284,13 @@ export default function SummaryWorkbenchFeature({
     workbench.isHydrating ||
     workbench.isConfirming ||
     workbench.isSaving;
+  // Any existing turn — accepted or failed — locks the template (#1765):
+  // a started conversation stays a conversation, failure or not.
   const templateLocked =
     hasSubmitted ||
     (!workbench.isHydrating &&
-      hasAcceptedHydratedTurn(
-        workbench.viewState.messages,
-        workbench.viewState.card
-      ));
+      (workbench.viewState.messages.length > 0 ||
+        Boolean(workbench.viewState.card)));
   const latestScopeRef = useRef(workbench.scope);
   const latestScopeChangeImpactRef = useRef<SummaryScopeChangeImpact | null>(
     controllerScopeChangeImpact(workbench)
@@ -307,6 +320,7 @@ export default function SummaryWorkbenchFeature({
       if (retained.removedCount === 0) return;
 
       const impact = latestScopeChangeImpactRef.current;
+      setLastFailedAction(null);
       workbench.updateScope(retained.scope);
       Toast.warning(
         t(
@@ -462,11 +476,11 @@ export default function SummaryWorkbenchFeature({
     }
     if (!hydrationObserved.current) return;
     hydrationObserved.current = false;
+    // Any hydrated turn — including a failed one — counts as a started
+    // conversation: keep the template gallery hidden (#1765).
     if (
-      hasAcceptedHydratedTurn(
-        workbench.viewState.messages,
-        workbench.viewState.card
-      )
+      workbench.viewState.messages.length > 0 ||
+      Boolean(workbench.viewState.card)
     ) {
       setHasSubmitted(true);
       setTemplateGalleryOpen(false);
@@ -619,6 +633,7 @@ export default function SummaryWorkbenchFeature({
       !documentScopeUnavailable &&
       participantScopeReady &&
       (composerHasCustomText ||
+        (lastFailedAction !== null && structuredGenerate) ||
         (!templateLocked && structuredGenerate) ||
         (templateLocked &&
           templateFilledComposer.current !== null &&
@@ -629,6 +644,7 @@ export default function SummaryWorkbenchFeature({
       !composerHasCustomText && structuredGenerate
         ? "summary.workbench.composer.generate"
         : "summary.workbench.composer.send",
+    resumeLastSessionDisabled: busy,
     errorMessage: displayErrorKey
       ? t(displayErrorKey)
       : workbench.viewState.errorMessage || participantScopeErrorMessage,
@@ -651,6 +667,7 @@ export default function SummaryWorkbenchFeature({
         Toast.info(t("summary.workbench.scopeChange.changedWhileConfirming"));
         return;
       }
+      setLastFailedAction(null);
       workbench.updateScope(nextScope);
       onApplied?.();
     };
@@ -673,14 +690,14 @@ export default function SummaryWorkbenchFeature({
   };
 
   const runStartedTask = async (
-    request: () => Promise<SummaryWorkbenchResponse | undefined>
+    request: () => Promise<SummaryWorkbenchResponse | undefined>,
+    action: "start_team_workflow" | "chat" | null = null
   ) => {
     const previousInputValue = workbench.viewState.inputValue;
-    const previousHasSubmitted = hasSubmitted;
     const previousTemplateFilledComposer = templateFilledComposer.current;
-    const previousTemplateGalleryOpen = templateGalleryOpen;
     const responsePromise = request();
 
+    setLastFailedAction(null);
     templateFilledComposer.current = null;
     workbench.restoreComposerValue("");
     setHasSubmitted(true);
@@ -688,10 +705,12 @@ export default function SummaryWorkbenchFeature({
 
     const response = await responsePromise;
     if (!isAcceptedResponse(response)) {
+      // A dispatched run that fails must not resurrect the template gallery
+      // (#1765): the user already started a conversation — restore the
+      // composed input for retry, but keep the failure visible in place.
       workbench.restoreComposerValue(previousInputValue);
       templateFilledComposer.current = previousTemplateFilledComposer;
-      setHasSubmitted(previousHasSubmitted);
-      setTemplateGalleryOpen(previousTemplateGalleryOpen);
+      setLastFailedAction(action);
     }
     return response;
   };
@@ -721,14 +740,16 @@ export default function SummaryWorkbenchFeature({
     }
     const action =
       directTeamWorkflow &&
-      !templateLocked &&
+      (!templateLocked || lastFailedAction === "start_team_workflow") &&
       workbench.scope.participants.length > 0
         ? "start_team_workflow"
         : "chat";
-    const response = await runStartedTask(() =>
-      action === "start_team_workflow"
-        ? workbench.send(message, inputOrigin, action)
-        : workbench.send(message, inputOrigin)
+    const response = await runStartedTask(
+      () =>
+        action === "start_team_workflow"
+          ? workbench.send(message, inputOrigin, action)
+          : workbench.send(message, inputOrigin),
+      action
     );
     if (isAcceptedResponse(response)) {
       // DAP-266：补 has_reference（是否携带引用总结）。duration_seconds（请求耗时）此处无起始
@@ -886,15 +907,50 @@ export default function SummaryWorkbenchFeature({
       clearTimeout(themeTrackTimer.current);
       themeTrackTimer.current = null;
     }
-    clearSummaryWorkbenchSession(storageScope);
+    moveSummaryWorkbenchSessionToPrevious(storageScope);
+    setLastSessionId(readSummaryWorkbenchPreviousSession(storageScope));
     setReferencedTask(derivedFromTask ?? null);
     setReferencePreviewOpen(false);
     setOpenSelector(null);
     setPendingTemplate(null);
     setHasSubmitted(false);
-    setTemplateGalleryOpen(true);
+    setLastFailedAction(null);
+    setTemplateGalleryOpen(!derivedFromTask);
     templateFilledComposer.current = null;
     workbench.resetSession({ scope: initialScope });
+  };
+
+  const resumeLastSession = async () => {
+    if (!lastSessionId || busy) return;
+    const sessionToResume = lastSessionId;
+    const currentPersisted = readSummaryWorkbenchSession(storageScope);
+    const hydration = await workbench.hydrateSession(sessionToResume);
+    if (hydration.status === "failed" || hydration.status === "cancelled") {
+      return;
+    }
+
+    // Commit the storage swap only after the target session has been
+    // validated. A failed/cancelled hydration leaves both slots and the
+    // recovery bar untouched.
+    const demotedSessionId =
+      currentPersisted && currentPersisted !== sessionToResume
+        ? currentPersisted
+        : "";
+    if (demotedSessionId) {
+      writeSummaryWorkbenchPreviousSession(storageScope, demotedSessionId);
+    } else {
+      clearSummaryWorkbenchPreviousSession(storageScope);
+    }
+    if (hydration.status === "hydrated") {
+      writeSummaryWorkbenchSession(storageScope, hydration.sessionId);
+    } else {
+      clearSummaryWorkbenchSession(storageScope);
+    }
+    setLastSessionId(demotedSessionId);
+    setHasSubmitted(false);
+    setLastFailedAction(null);
+    setTemplateGalleryOpen(false);
+    templateFilledComposer.current = null;
   };
 
   const savePreview = async () => {
@@ -995,6 +1051,7 @@ export default function SummaryWorkbenchFeature({
           state={viewState}
           actions={{
             onInputChange: (value) => {
+              setLastFailedAction(null);
               const shouldClearTemplate = Boolean(
                 !templateLocked &&
                   !value.trim() &&
@@ -1031,6 +1088,7 @@ export default function SummaryWorkbenchFeature({
             onRemoveContext: handleContextRemove,
             onResultAction: (action) => void handleResultAction(action),
             onNewSession: resetSession,
+            onResumeLastSession: lastSessionId ? resumeLastSession : undefined,
           }}
           contextPanel={
             templateGalleryOpen && !templateLocked ? (

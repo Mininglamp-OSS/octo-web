@@ -24,6 +24,7 @@ export const T = {
     createSelectMembers: "summary-create-select-members",
     createSubmit: "summary-create-submit",
     workbenchFeature: "summary-workbench-feature",
+    workbenchLastSession: "summary-workbench-last-session",
     // Mode-select dropdown on the single list-page "+" entry (mirror of prod testIds.ts)
     listModeSwitch: "summary-list-mode-switch",
     listNormalTab: "summary-list-normal-tab",
