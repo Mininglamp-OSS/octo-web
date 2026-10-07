@@ -51,7 +51,7 @@ jobs:
       - name: Trust workspace for git
         shell: bash
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v4
         with:
           node-version: "22.16.0"
