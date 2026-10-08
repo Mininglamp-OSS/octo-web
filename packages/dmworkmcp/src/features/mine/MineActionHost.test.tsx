@@ -348,13 +348,13 @@ describe("MineActionHost", () => {
   });
 
   it.each([
-    ["skill", skill.id, "skill-bot", null],
-    ["connector", connector.id, "connector-bot", null],
-    ["expert", expert.id, "expert-bot", "agent"],
-    ["squad", squad.id, "expert-bot", "squad"],
+    ["skill", skill.id, "skill-bot", null, "update"],
+    ["connector", connector.id, "connector-bot", null, "update"],
+    ["expert", expert.id, "expert-bot", "agent", "upgrade"],
+    ["squad", squad.id, "expert-bot", "squad", "upgrade"],
   ] as const)(
     "opens the %s Bot upgrade guide without loading an editor",
-    async (type, pluginId, testId, kind) => {
+    async (type, pluginId, testId, kind, expectedMode) => {
       renderHost({
         requestId: 20,
         pluginId,
@@ -364,7 +364,7 @@ describe("MineActionHost", () => {
       await act(async () => undefined);
 
       const modal = container.querySelector(`[data-testid="${testId}"]`);
-      expect(modal?.getAttribute("data-mode")).toBe("update");
+      expect(modal?.getAttribute("data-mode")).toBe(expectedMode);
       expect(modal?.getAttribute("data-id")).toBe(pluginId);
       if (kind) expect(modal?.getAttribute("data-kind")).toBe(kind);
     }

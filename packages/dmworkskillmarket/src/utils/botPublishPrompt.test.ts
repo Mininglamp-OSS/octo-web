@@ -67,6 +67,9 @@ describe("getBotPublishPrompt", () => {
     expect(prompt).toContain("旧版本仍在线、通过后才替换");
     expect(prompt).toContain("`RESULT_UNKNOWN`");
     expect(prompt).toContain("可复制的重试命令");
+    expect(prompt.indexOf("等待我明确回复“确认升级”")).toBeLessThan(
+      prompt.indexOf("`plugin review-request create`")
+    );
   });
 
   it("does not interpolate an unsafe plugin id into the upgrade prompt", () => {

@@ -31,10 +31,10 @@ export function getBotPublishPrompt(
    - 先用 \`octo-cli marketplace plugin get --plugin-id ${pluginId} --profile <profile>\` 回读当前
      \`display_status\`、版本和内容；再检查待审核请求。已有待审核升级时不要重复提交，先向用户说明并按
      \`skills.md\` 检查、取消或继续该请求。
-   - 检查新包但不要执行其中脚本；版本必须是向前递增的 \`MAJOR.MINOR.PATCH\`。上传、解析后，已上架的
-     Space Skill 不得调用 \`plugin import\` / \`plugin upsert\` 覆盖线上内容，而是把新的
-     \`parse_task_id\`、版本和 changelog 通过 \`plugin review-request create\` 提交为冻结升级。
    - 向我展示升级目标、当前/新版本、变更说明和可见范围，并暂停等待我明确回复“确认升级”；未确认不得写入。
+   - 检查新包但不要执行其中脚本；版本必须是向前递增的 \`MAJOR.MINOR.PATCH\`。上传、解析后，已上架的
+     Space Skill 不得调用 \`plugin import\` / \`plugin upsert\` 覆盖线上内容；确认后把新的
+     \`parse_task_id\`、版本和 changelog 通过 \`plugin review-request create\` 提交为冻结升级。
    - 提交后回读 Plugin 和审核请求。审核中时明确说明旧版本仍在线、通过后才替换；成功时报告新版本或 review ID。`
     : `4. 按该 Skill 的 \`skills.md\` 中“Publish as a Bot”流程，使用用户提供的附件、Skill 包路径或
    Skill 目录路径完成上架。以上 Space ID、API 地址和可见范围是本次操作的权威输入。`;

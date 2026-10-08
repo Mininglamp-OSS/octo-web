@@ -111,6 +111,10 @@ export default function MyAssetsPage() {
   }, []);
   const handlePublished = useCallback(() => {
     setAllRefreshKey((key) => key + 1);
+    // The legacy typed pages do not expose an imperative reload contract yet,
+    // so a successful manual publish remounts the active page to fetch fresh
+    // data. Bot forwarding does not call this handler because it has not
+    // published anything yet.
     setPublishRefreshKey((key) => key + 1);
   }, []);
 
@@ -126,16 +130,15 @@ export default function MyAssetsPage() {
         <div className="wk-mcp-mine__hero-title">
           <h1>{t("mcp.mine.pageTitle")}</h1>
         </div>
-        <div className="wk-mcp-mine__hero-actions">
-          {type === "all" && (
+        {type === "all" && (
+          <div className="wk-mcp-mine__hero-actions">
             <SearchBar
               value={allQuery}
               onChange={setAllQuery}
               placeholder={t("mcp.mine.searchPlaceholder")}
             />
-          )}
-          <MinePublishMenu onChanged={handlePublished} />
-        </div>
+          </div>
+        )}
       </header>
       <nav
         className="wk-mcp-mine__tabs"
@@ -156,6 +159,9 @@ export default function MyAssetsPage() {
             {t(tab.labelKey)}
           </button>
         ))}
+        <div className="wk-mcp-mine__tabs-publish">
+          <MinePublishMenu onChanged={handlePublished} />
+        </div>
       </nav>
       <div className="wk-mcp-mine__panel">
         {type === "all" && (

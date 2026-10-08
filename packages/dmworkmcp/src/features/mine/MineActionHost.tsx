@@ -308,7 +308,7 @@ export default function MineActionHost({
           botUpgradeTarget?.type === "squad"
         }
         kind={botUpgradeTarget?.type === "squad" ? "squad" : "agent"}
-        mode="update"
+        mode="upgrade"
         editingId={botUpgradeTarget?.id}
         onClose={close}
         onToast={(message) => Toast.success(message)}

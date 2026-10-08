@@ -12,10 +12,10 @@ import { isValidMcpSpaceId, resolveMcpAPIBaseURL } from "./mcpBotPublishPrompt";
 export interface ExpertBotPublishPromptValues {
   /** Which catalog the prompt publishes: a single expert or an expert squad. */
   kind: "agent" | "squad";
-  /** "create" (default) uploads a new listing; "update" edits an existing one
-   *  by id (the 我的-tab 编辑 flow). */
-  mode?: "create" | "update";
-  /** The existing listing's id — required for mode="update". */
+  /** "create" (default) uploads a new listing; "update" edits fields on an
+   *  existing listing; "upgrade" submits a new version for review. */
+  mode?: "create" | "update" | "upgrade";
+  /** The existing listing's id — required for update and upgrade modes. */
   id?: string;
   spaceId?: string;
   apiBaseUrl?: string;
@@ -41,6 +41,8 @@ export function getExpertBotPublishPrompt(
   const apiBaseUrl = values.apiBaseUrl?.trim() || "<api-base-url>";
   const isSquad = values.kind === "squad";
   const isUpdate = values.mode === "update";
+  const isUpgrade = values.mode === "upgrade";
+  const targetsExisting = isUpdate || isUpgrade;
 
   const entity = isSquad ? "专家团" : "专家";
   const idName = isSquad ? "<squad-id>" : "<expert-id>";
@@ -50,7 +52,7 @@ export function getExpertBotPublishPrompt(
   // Gate it with the same whitelist as the space id so a poisoned value falls
   // back to the placeholder instead of reaching a shell command in follow-up
   // steps authored by the receiving agent.
-  const targetId = isUpdate
+  const targetId = targetsExisting
     ? isValidMcpSpaceId(values.id)
       ? (values.id as string).trim()
       : idName
@@ -62,19 +64,26 @@ export function getExpertBotPublishPrompt(
   const askUpdate = isSquad
     ? "请提供要更新的专家团字段（名称、简介、分类、成员 / 角色 / Leader、调度规则、依赖、权限中的任意项；只覆盖本次明确要求修改的内容），或提供 Agent 当前运行环境可访问的 squad.json / squad.yaml 路径。"
     : "请提供要更新的专家字段（名称、简介、分类、instruction、mcp_config、skills 包中的任意项；只覆盖本次明确要求修改的内容），或提供 Agent 当前运行环境可访问的 expert.json / expert.yaml 路径。";
+  const askUpgrade = isSquad
+    ? "请提供专家团新版本的变更内容、目标版本和 changelog，以及需要更新的成员、角色、调度规则、依赖或权限；也可以提供 Agent 当前运行环境可访问的 squad.json / squad.yaml 路径。"
+    : "请提供专家新版本的变更内容、目标版本和 changelog，以及需要更新的 instruction、mcp_config 或 skills 包；也可以提供 Agent 当前运行环境可访问的 expert.json / expert.yaml 路径。";
 
-  const intro = isUpdate
-    ? `使用 octo-cli 内置的 \`octo-marketplace\` Skill，更新 OCTO Marketplace 上已上架的${entity}。`
-    : `使用 octo-cli 内置的 \`octo-marketplace\` Skill，将指定${entity}上架到 OCTO Marketplace。`;
+  const intro = isUpgrade
+    ? `使用 octo-cli 内置的 \`octo-marketplace\` Skill，为 OCTO Marketplace 中已上架的${entity}发布新版本。`
+    : isUpdate
+      ? `使用 octo-cli 内置的 \`octo-marketplace\` Skill，更新 OCTO Marketplace 上已上架的${entity}。`
+      : `使用 octo-cli 内置的 \`octo-marketplace\` Skill，将指定${entity}上架到 OCTO Marketplace。`;
 
-  const idLine = isUpdate ? `\n- ${entity} ID：\`${targetId}\`` : "";
+  const idLine = targetsExisting ? `\n- ${entity} ID：\`${targetId}\`` : "";
 
-  const step4Title = isUpdate
-    ? `4. 按 \`expert.md\` 的 Update / Review Request 流程完成更新：`
-    : `4. 按 \`expert.md\` 的 Create / Publish 流程完成上架：`;
+  const step4Title = isUpgrade
+    ? `4. 按 \`expert.md\` 的 Release a new version / Review Request 流程完成升级：`
+    : isUpdate
+      ? `4. 按 \`expert.md\` 的 Update / Review Request 流程完成更新：`
+      : `4. 按 \`expert.md\` 的 Create / Publish 流程完成上架：`;
 
-  const confirmation = isUpdate ? "确认更新" : "确认上架";
-  const actionWord = isUpdate ? "更新" : "发布";
+  const confirmation = isUpgrade ? "确认升级" : isUpdate ? "确认更新" : "确认上架";
+  const actionWord = isUpgrade ? "升级" : isUpdate ? "更新" : "发布";
 
   return `${intro}
 
@@ -83,7 +92,7 @@ export function getExpertBotPublishPrompt(
 
 如果当前消息没有${entity}信息或配置路径，只回复：
 
-> ${isUpdate ? askUpdate : ask}
+> ${isUpgrade ? askUpgrade : isUpdate ? askUpdate : ask}
 
 不要解释正在读取内容、复述本 Prompt 或逐步播报检查过程。用户提供前不要搜索磁盘或猜测路径。
 
@@ -116,15 +125,17 @@ ${step4Title}
    - 使用 \`octo-cli marketplace plugin-category list --scene-code default --plugin-type ${pluginType} --profile <profile>\`
      获取合法 \`category_id\`；body 里填 \`category_id\`，不是分类名称。
    - ${
-     isUpdate
+     targetsExisting
        ? `先用 \`octo-cli marketplace plugin get --plugin-id ${targetId} --include-relations --profile <profile>\` 读回现有记录，并把返回值作为 \`${pluginJsonFile}\` 的基线。`
        : `按 \`expert.md\` 编写 \`${pluginJsonFile}\`。`
    }
      使用 \`plugin_type: "${pluginType}"\`，准备完整的 \`manifest_json\`、\`plugin_json\` 和完整 \`relations\`。
      ${
-       isUpdate
-         ? `更新 payload 必须按全量替换语义准备：body 缺失字段会写成零值，\`relations\` 缺失关系会被软删。未修改的 \`plugin_name\` / \`publisher\` / \`icon\` / \`tags\` / \`visibility\` / \`category_id\` 必须原样回填；每条未删除的 relation 也必须原样保留 \`relation_id\` 和 \`data\`，只覆盖用户本次明确要求修改的字段或关系。回填图标时使用写入字段 \`icon\` 本身，不要把展示用的 \`icon_url\` 写回；\`version\` 保持省略，由后端保留当前版本标签。`
-         : ""
+       isUpgrade
+         ? `升级 payload 必须从当前记录完整回填：未修改的 \`plugin_name\` / \`publisher\` / \`icon\` / \`tags\` / \`visibility\` / \`category_id\` 必须原样保留，每条未删除的 relation 也必须保留 \`relation_id\` 和 \`data\`。准备向前递增的 \`MAJOR.MINOR.PATCH\` 版本和非空 changelog；不得保留当前版本标签冒充升级。回填图标时使用写入字段 \`icon\`，不要把展示用的 \`icon_url\` 写回。`
+         : isUpdate
+           ? `更新 payload 必须按全量替换语义准备：body 缺失字段会写成零值，\`relations\` 缺失关系会被软删。未修改的 \`plugin_name\` / \`publisher\` / \`icon\` / \`tags\` / \`visibility\` / \`category_id\` 必须原样回填；每条未删除的 relation 也必须原样保留 \`relation_id\` 和 \`data\`，只覆盖用户本次明确要求修改的字段或关系。回填图标时使用写入字段 \`icon\` 本身，不要把展示用的 \`icon_url\` 写回；\`version\` 保持省略，由后端保留当前版本标签。`
+           : ""
      }
      如需附带或更新技能包，此时只确认包内容和目标，不执行技能包写入流程；${actionWord}预览必须写明
      将要新建或覆盖的每个 skill plugin。
@@ -140,12 +151,14 @@ ${step4Title}
      \`plugin import\` 流程处理；取得预签名后不得输出 \`presigned_url\` / \`method\` / \`headers\`，
      也不得写入 payload 文件。
      ${
-       isUpdate
-         ? `优先使用 \`plugin upsert --data @${pluginJsonFile}\` 更新可编辑草稿或未上架的 Space 可见记录，并设置 \`plugin.plugin_id = "${targetId}"\`，提交上一步完整回填后的 payload。只有目标已上架到 org，或 \`plugin upsert\` 返回任何 409（包括 \`listed_requires_review\` / \`review_pending\`）时，才按 \`expert.md\` 的审核流程处理；如果已有待审核请求，先按 \`expert.md\` 检查 / 取消或复用该请求，不要重复提交 \`plugin review-request create\`。审核 payload 的文件名与结构以 \`expert.md\` 为准，不要引用未在本流程中实际生成的文件。`
-         : `使用 \`plugin upsert --data @${pluginJsonFile}\` 保存草稿，再按 \`expert.md\` 的 \`plugin publish\` 或 \`plugin review-request create\` 发布 / 审核流程继续；只有在 \`expert.md\` 要求且版本来源明确时才传 \`--version\`。审核 payload 的文件名与结构以 \`expert.md\` 为准。`
+       isUpgrade
+         ? `目标已经上架，禁止用 \`plugin upsert\` 覆盖线上内容；按 \`expert.md\` 生成审核 payload，并通过 \`plugin review-request create\` 提交新版本、changelog 和完整冻结内容。如果已有待审核请求，先检查、取消或复用该请求，不要重复提交。提交后回读 Plugin、版本历史和审核请求；审核中明确说明旧版本仍在线，审核通过后才会替换。`
+         : isUpdate
+           ? `优先使用 \`plugin upsert --data @${pluginJsonFile}\` 更新可编辑草稿或未上架的 Space 可见记录，并设置 \`plugin.plugin_id = "${targetId}"\`，提交上一步完整回填后的 payload。只有目标已上架到 org，或 \`plugin upsert\` 返回任何 409（包括 \`listed_requires_review\` / \`review_pending\`）时，才按 \`expert.md\` 的审核流程处理；如果已有待审核请求，先按 \`expert.md\` 检查 / 取消或复用该请求，不要重复提交 \`plugin review-request create\`。审核 payload 的文件名与结构以 \`expert.md\` 为准，不要引用未在本流程中实际生成的文件。`
+           : `使用 \`plugin upsert --data @${pluginJsonFile}\` 保存草稿，再按 \`expert.md\` 的 \`plugin publish\` 或 \`plugin review-request create\` 发布 / 审核流程继续；只有在 \`expert.md\` 要求且版本来源明确时才传 \`--version\`。审核 payload 的文件名与结构以 \`expert.md\` 为准。`
      }
      并用 \`octo-cli marketplace plugin get --plugin-id ${
-       isUpdate ? targetId : "<plugin-id>"
+       targetsExisting ? targetId : "<plugin-id>"
      } --include-relations --profile <profile>\`
      回读核验。写入必须使用 Bot Profile，不需要也不要传 \`created_by_type\`；创建、更新、发布或审核失败时
      不要伪造成功，保留本地 payload 文件，并返回可重试命令和错误摘要。不要使用旧的专家 / 专家团专用 create / update / get、分类或技能上传命令。

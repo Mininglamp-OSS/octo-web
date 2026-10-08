@@ -189,6 +189,9 @@ describe("getMcpBotPublishPrompt — shell-safe interpolation", () => {
     expect(p).toContain("409 时先检查待审核请求");
     expect(p).toContain("`RESULT_UNKNOWN`");
     expect(p).toContain("可复制的重试命令");
+    expect(p.indexOf("等待我明确回复“确认升级”")).toBeLessThan(
+      p.indexOf("`plugin review-request create`")
+    );
   });
 
   it("does not interpolate an unsafe plugin id into the upgrade prompt", () => {

@@ -180,6 +180,16 @@ describe("MyAssetsPage all-tab actions", () => {
     expect(
       container.querySelectorAll('[data-testid="mine-publish-entry"]')
     ).toHaveLength(1);
+    expect(
+      container
+        .querySelector('[data-testid="mine-publish-entry"]')
+        ?.closest(".wk-mcp-mine__tabs")
+    ).not.toBeNull();
+    expect(
+      container
+        .querySelector('[data-testid="mine-publish-entry"]')
+        ?.closest(".wk-mcp-mine__hero-actions")
+    ).toBeNull();
     const skillTab = Array.from(container.querySelectorAll("button")).find(
       (button) => button.textContent === "skillMarket.plugin.typeSkill"
     ) as HTMLButtonElement;

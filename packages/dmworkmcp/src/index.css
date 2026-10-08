@@ -1586,12 +1586,17 @@
 .wk-mcp-mine__tabs {
   flex: none;
   display: flex;
+  align-items: center;
   gap: var(--wk-sp-5);
   padding: 0 var(--wk-sp-6);
   border-bottom: 1px solid var(--wk-border-subtle);
 }
 
-.wk-mcp-mine__tabs button {
+.wk-mcp-mine__tabs-publish {
+  margin-left: auto;
+}
+
+.wk-mcp-mine__tabs > button {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -1607,7 +1612,7 @@
   transition: color var(--wk-dur-fast) var(--wk-ease);
 }
 
-.wk-mcp-mine__tabs button:hover {
+.wk-mcp-mine__tabs > button:hover {
   color: var(--wk-text-primary);
 }
 
@@ -1616,16 +1621,16 @@
   color: var(--wk-text-tertiary);
 }
 
-.wk-mcp-mine__tabs button.is-active {
+.wk-mcp-mine__tabs > button.is-active {
   color: var(--wk-brand-primary);
   font-weight: var(--wk-font-semibold);
 }
 
-.wk-mcp-mine__tabs button.is-active .wk-mcp-mine__tab-icon {
+.wk-mcp-mine__tabs > button.is-active .wk-mcp-mine__tab-icon {
   color: var(--wk-brand-primary);
 }
 
-.wk-mcp-mine__tabs button.is-active::after {
+.wk-mcp-mine__tabs > button.is-active::after {
   content: "";
   position: absolute;
   right: 0;
@@ -1701,9 +1706,9 @@
   padding: var(--wk-sp-4) var(--wk-sp-6);
 }
 
-/* variant="mine" hides each page's own title, so lift its search + create
-   actions up onto the 我的 hero row (top-right of the mine container) instead
-   of leaving them as a separate left-aligned row under the type tabs. */
+/* variant="mine" hides each page's own title and publish entry, so lift its
+   search control onto the 我的 hero row. The unified publish entry lives in the
+   tab strip, leaving a single occupant in this absolute corner. */
 .wk-mcp-mine__panel .wk-mcp__hero,
 .wk-mcp-mine__panel .wk-mcp-expert-topbar,
 .wk-mcp-mine__panel .skill-market-topbar {
