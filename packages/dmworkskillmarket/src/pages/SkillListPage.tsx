@@ -35,8 +35,7 @@ import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
  */
 interface SkillListPageProps {
   variant?: "market" | "mine";
-  /** MyAssetsPage owns the unified publish entry. Keep this true for any
-   * standalone mine embedding that still needs the legacy local entry. */
+  /** Legacy local entry is opt-in; MyAssetsPage owns the unified entry. */
   showPublishEntry?: boolean;
 }
 
@@ -53,7 +52,7 @@ const SORT_OPTIONS: Array<{ value: SkillSort; labelKey: string; descending?: boo
 
 export default function SkillListPage({
   variant = "market",
-  showPublishEntry = true,
+  showPublishEntry = false,
 }: SkillListPageProps = {}) {
   useI18n();
   // Variant is fixed for the page's lifetime (mine → /mcp-market/mine, market →

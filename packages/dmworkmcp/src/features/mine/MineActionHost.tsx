@@ -19,15 +19,8 @@ import McpDetailModal from "../../components/McpDetailModal";
 import ExpertBotPublishModal from "../../components/ExpertBotPublishModal";
 import ExpertEditModal from "../../components/ExpertEditModal";
 import ExpertDetailModal from "../../components/ExpertDetailModal";
-import ReviewSubmitModal, {
-  type ReviewSubmitTarget,
-} from "../../components/ReviewSubmitModal";
 import { fetchMcpDetail } from "../../api/mcpService";
-import {
-  getExpert,
-  getSquad,
-  loadExpertReviewSnapshot,
-} from "../../api/expertService";
+import { getExpert, getSquad } from "../../api/expertService";
 import type { ExpertItem } from "../../mock/expertMock";
 import type { McpDetail } from "../../types/mcp";
 
@@ -59,9 +52,6 @@ export default function MineActionHost({
   );
   const [expert, setExpert] = useState<ExpertItem | null>(null);
   const [expertDetail, setExpertDetail] = useState<ExpertItem | null>(null);
-  const [reviewTarget, setReviewTarget] = useState<ReviewSubmitTarget | null>(
-    null
-  );
   const [botTarget, setBotTarget] = useState<ExpertItem | null>(null);
   const [botUpgradeTarget, setBotUpgradeTarget] = useState<{
     id: string;
@@ -80,7 +70,6 @@ export default function MineActionHost({
     setConnectorDetailId(null);
     setExpert(null);
     setExpertDetail(null);
-    setReviewTarget(null);
     setBotTarget(null);
     setBotUpgradeTarget(null);
   }, []);
@@ -148,17 +137,8 @@ export default function MineActionHost({
       if (!active) return;
       if (request.action === "view") {
         setExpertDetail(item);
-      } else if (request.action === "edit") {
-        setExpert(item);
       } else {
-        setReviewTarget({
-          pluginId: item.id,
-          name: item.name,
-          version: item.version,
-          isUpgrade: true,
-          loadSnapshot: () => loadExpertReviewSnapshot(item.id),
-          needs: { relations: true, content: true },
-        });
+        setExpert(item);
       }
     };
 
@@ -259,14 +239,6 @@ export default function MineActionHost({
         onDeleted={() => {
           notifyChanged();
           close();
-        }}
-      />
-      <ReviewSubmitModal
-        target={reviewTarget}
-        onClose={close}
-        onSubmitted={(message) => {
-          Toast.success(message);
-          notifyChanged();
         }}
       />
       <ExpertEditModal

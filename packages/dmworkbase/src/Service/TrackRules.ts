@@ -148,8 +148,8 @@ export const TRACK_RULES: TrackRule[] = [
     { event: 'market_publish_entry_clicked', testid: 'mine-publish-entry', on: 'click' },
     { event: 'market_publish_method_selected', testid: 'mine-publish-skill-bot', on: 'click', props: { market_type: 'skill', method: 'bot' } },
     { event: 'market_publish_method_selected', testid: 'mine-publish-skill-manual', on: 'click', props: { market_type: 'skill', method: 'manual' } },
-    { event: 'market_publish_method_selected', testid: 'mine-publish-connector-bot', on: 'click', props: { market_type: 'connector', method: 'bot' } },
-    { event: 'market_publish_method_selected', testid: 'mine-publish-connector-manual', on: 'click', props: { market_type: 'connector', method: 'manual' } },
+    { event: 'market_publish_method_selected', testid: 'mine-publish-connector-bot', on: 'click', props: { market_type: 'mcp', method: 'bot' } },
+    { event: 'market_publish_method_selected', testid: 'mine-publish-connector-manual', on: 'click', props: { market_type: 'mcp', method: 'manual' } },
     { event: 'market_publish_method_selected', testid: 'mine-publish-expert-bot', on: 'click', props: { market_type: 'expert', method: 'bot' } },
     { event: 'market_publish_method_selected', testid: 'mine-publish-squad-bot', on: 'click', props: { market_type: 'expert_team', method: 'bot' } },
     // market_bot_publish_prompt_copied 不在本表 —— 复制成功后命令式 track。skill 上架(BotPublishModal)与

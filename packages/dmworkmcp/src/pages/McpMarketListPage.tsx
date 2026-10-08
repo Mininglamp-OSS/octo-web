@@ -105,7 +105,7 @@ interface McpMarketListPageState {
  */
 interface McpMarketListPageProps {
   variant?: "market" | "mine";
-  /** Hidden when MyAssetsPage supplies the page-level unified entry. */
+  /** Legacy local entry is opt-in; MyAssetsPage owns the unified entry. */
   showPublishEntry?: boolean;
 }
 
@@ -1014,7 +1014,7 @@ export default class McpMarketListPage extends Component<
                 </div>
               </div>
             </div>
-            {this.props.variant === "mine" && this.props.showPublishEntry !== false && (
+            {this.props.variant === "mine" && this.props.showPublishEntry === true && (
             <div className="wk-mcp-publish-menu" ref={this.publishMenuRef}>
               <WKButton
                 variant="primary"

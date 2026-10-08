@@ -10,7 +10,6 @@ const h = vi.hoisted(() => ({
   fetchMcpDetail: vi.fn(),
   getExpert: vi.fn(),
   getSquad: vi.fn(),
-  loadExpertReviewSnapshot: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
   toastWarning: vi.fn(),
@@ -105,8 +104,6 @@ vi.mock("../../api/mcpService", () => ({
 vi.mock("../../api/expertService", () => ({
   getExpert: (...args: unknown[]) => h.getExpert(...args),
   getSquad: (...args: unknown[]) => h.getSquad(...args),
-  loadExpertReviewSnapshot: (...args: unknown[]) =>
-    h.loadExpertReviewSnapshot(...args),
 }));
 
 vi.mock("../../components/McpCreateModal", () => ({
@@ -208,13 +205,6 @@ vi.mock("../../components/McpBotPublishModal", () => ({
       <div data-testid="connector-bot" data-mode={mode} data-id={editingId} />
     ) : null,
 }));
-vi.mock("../../components/ReviewSubmitModal", () => ({
-  default: ({ target }: { target: { pluginId: string } | null }) =>
-    target ? (
-      <div data-testid="review-submit" data-id={target.pluginId} />
-    ) : null,
-}));
-
 import MineActionHost from "./MineActionHost";
 import type { MineActionRequest } from "@dmwork/skillmarket";
 
@@ -271,19 +261,6 @@ describe("MineActionHost", () => {
 
     renderHost({
       requestId: 2,
-      pluginId: connector.id,
-      type: "connector",
-      action: "upgrade",
-    });
-    await act(async () => undefined);
-    expect(
-      container
-        .querySelector('[data-testid="connector-form"]')
-        ?.getAttribute("data-review")
-    ).toBe("true");
-
-    renderHost({
-      requestId: 3,
       pluginId: expert.id,
       type: "expert",
       action: "edit",
@@ -295,18 +272,6 @@ describe("MineActionHost", () => {
         ?.getAttribute("data-id")
     ).toBe(expert.id);
 
-    renderHost({
-      requestId: 4,
-      pluginId: squad.id,
-      type: "squad",
-      action: "upgrade",
-    });
-    await act(async () => undefined);
-    expect(
-      container
-        .querySelector('[data-testid="review-submit"]')
-        ?.getAttribute("data-id")
-    ).toBe(squad.id);
   });
 
   it("keeps owner actions in skill and connector details", async () => {

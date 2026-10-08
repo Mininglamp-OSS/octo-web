@@ -84,8 +84,8 @@ describe('TRACK_RULES — unified marketplace publish funnel', () => {
     it.each([
         ['mine-publish-skill-bot', 'skill', 'bot'],
         ['mine-publish-skill-manual', 'skill', 'manual'],
-        ['mine-publish-connector-bot', 'connector', 'bot'],
-        ['mine-publish-connector-manual', 'connector', 'manual'],
+        ['mine-publish-connector-bot', 'mcp', 'bot'],
+        ['mine-publish-connector-manual', 'mcp', 'manual'],
         ['mine-publish-expert-bot', 'expert', 'bot'],
         ['mine-publish-squad-bot', 'expert_team', 'bot'],
     ])('tracks %s with its asset type and method', (testid, marketType, method) => {

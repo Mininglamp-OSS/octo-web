@@ -136,6 +136,53 @@ describe("MinePublishMenu", () => {
     );
   });
 
+  it("does not let a stale category request replace a newer flow", async () => {
+    let resolveCategories: (value: Array<{ id: string; name: string }>) => void =
+      () => {};
+    h.getCategories.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveCategories = resolve;
+      })
+    );
+    renderMenu();
+
+    click("mine-publish-entry");
+    click("mine-publish-skill-manual");
+    click("mine-publish-entry");
+    click("mine-publish-connector-manual");
+    expect(
+      container.querySelector('[data-testid="connector-manual-publish"]')
+    ).not.toBeNull();
+
+    await act(async () => {
+      resolveCategories([{ id: "dev", name: "Development" }]);
+      await Promise.resolve();
+    });
+
+    expect(
+      container.querySelector('[data-testid="connector-manual-publish"]')
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="skill-manual-publish"]')
+    ).toBeNull();
+    expect(h.track).toHaveBeenCalledTimes(1);
+    expect(h.track).toHaveBeenCalledWith(
+      "market_manual_publish_dialog_opened",
+      { market_type: "mcp" }
+    );
+  });
+
+  it("tracks the connector manual flow with the shared mcp market type", () => {
+    renderMenu();
+    click("mine-publish-entry");
+    click("mine-publish-connector-manual");
+
+    expect(h.track).toHaveBeenCalledWith(
+      "market_manual_publish_dialog_opened",
+      { market_type: "mcp" }
+    );
+  });
+
   it("opens Bot flows for experts and squads", () => {
     renderMenu();
     click("mine-publish-entry");

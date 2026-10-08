@@ -100,8 +100,26 @@ vi.mock("../features/mine/MinePublishMenu", () => ({
     ),
 }));
 
-vi.mock("./McpMarketListPage", () => ({ default: () => null }));
-vi.mock("./ExpertMarketListPage", () => ({ default: () => null }));
+vi.mock("./McpMarketListPage", () => ({
+  default: ({ showPublishEntry }: { showPublishEntry?: boolean }) =>
+    React.createElement("div", {
+      "data-testid": "mcp-page",
+      "data-publish-entry": String(showPublishEntry),
+    }),
+}));
+vi.mock("./ExpertMarketListPage", () => ({
+  default: ({
+    mineType,
+    showPublishEntry,
+  }: {
+    mineType?: "agent" | "squad";
+    showPublishEntry?: boolean;
+  }) =>
+    React.createElement("div", {
+      "data-testid": `${mineType}-page`,
+      "data-publish-entry": String(showPublishEntry),
+    }),
+}));
 
 import MyAssetsPage from "./MyAssetsPage";
 
@@ -203,6 +221,37 @@ describe("MyAssetsPage all-tab actions", () => {
         .querySelector('[data-testid="skills-page"]')
         ?.getAttribute("data-publish-entry")
     ).toBe("false");
+
+    const assertTabKeepsLegacyEntryHidden = (
+      label: string,
+      pageTestId: string
+    ) => {
+      const tab = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === label
+      ) as HTMLButtonElement;
+      act(() => tab.click());
+      expect(
+        container
+          .querySelector(`[data-testid="${pageTestId}"]`)
+          ?.getAttribute("data-publish-entry")
+      ).toBe("false");
+      expect(
+        container.querySelectorAll('[data-testid="mine-publish-entry"]')
+      ).toHaveLength(1);
+    };
+
+    assertTabKeepsLegacyEntryHidden(
+      "skillMarket.plugin.typeConnector",
+      "mcp-page"
+    );
+    assertTabKeepsLegacyEntryHidden(
+      "skillMarket.plugin.typeExpert",
+      "agent-page"
+    );
+    assertTabKeepsLegacyEntryHidden(
+      "skillMarket.plugin.typeExpertTeam",
+      "squad-page"
+    );
   });
 
   it("closes an all-tab action when the active Space changes", () => {

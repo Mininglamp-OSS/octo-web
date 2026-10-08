@@ -31,7 +31,7 @@ export interface MineActionRequest {
   requestId: number;
   pluginId: string;
   type: MineAssetType;
-  action: "view" | "edit" | "upgrade" | "bot-upgrade";
+  action: "view" | "edit" | "bot-upgrade";
 }
 
 const WIRE_TYPE: Record<MineAssetType, string> = {

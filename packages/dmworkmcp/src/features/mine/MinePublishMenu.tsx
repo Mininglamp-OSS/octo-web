@@ -41,7 +41,7 @@ export default function MinePublishMenu({ onChanged }: MinePublishMenuProps) {
   const [flow, setFlow] = useState<PublishFlow>(null);
   const [skillCategories, setSkillCategories] = useState<Category[]>([]);
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const categoryRequestRef = useRef(0);
+  const selectionRequestRef = useRef(0);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -61,28 +61,31 @@ export default function MinePublishMenu({ onChanged }: MinePublishMenuProps) {
 
   useEffect(() => {
     const closeForSpace = () => {
-      categoryRequestRef.current += 1;
+      selectionRequestRef.current += 1;
       setOpen(false);
       setFlow(null);
       setSkillCategories([]);
     };
     WKApp.mittBus.on("space-changed", closeForSpace);
     return () => {
-      categoryRequestRef.current += 1;
+      selectionRequestRef.current += 1;
       WKApp.mittBus.off("space-changed", closeForSpace);
     };
   }, []);
 
   const choose = async (next: Exclude<PublishFlow, null>) => {
+    // Every selection invalidates any earlier async selection. Otherwise a slow
+    // Skill category request can resolve after the user chose another flow and
+    // replace the modal they are already using.
+    const request = ++selectionRequestRef.current;
     setOpen(false);
     if (next === "skill-manual" && skillCategories.length === 0) {
-      const request = ++categoryRequestRef.current;
       try {
         const categories = await getCategories();
-        if (request !== categoryRequestRef.current) return;
+        if (request !== selectionRequestRef.current) return;
         setSkillCategories(categories);
       } catch (error) {
-        if (request !== categoryRequestRef.current) return;
+        if (request !== selectionRequestRef.current) return;
         Toast.error(
           error instanceof Error
             ? error.message
@@ -91,6 +94,7 @@ export default function MinePublishMenu({ onChanged }: MinePublishMenuProps) {
         return;
       }
     }
+    if (request !== selectionRequestRef.current) return;
     if (next === "skill-manual") {
       Dap.shared.track("market_manual_publish_dialog_opened", {
         market_type: "skill",

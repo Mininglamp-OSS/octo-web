@@ -634,7 +634,7 @@ describe("SkillListPage", () => {
   });
 
   it("opens the publish menu and keeps manual upload on the existing modal", async () => {
-    render(<SkillListPage variant="mine" />);
+    render(<SkillListPage variant="mine" showPublishEntry />);
 
     fireEvent.click(screen.getByRole("button", { name: publishSkillName }));
     expect(
@@ -659,7 +659,7 @@ describe("SkillListPage", () => {
       value: { writeText },
     });
 
-    render(<SkillListPage variant="mine" />);
+    render(<SkillListPage variant="mine" showPublishEntry />);
 
     fireEvent.click(screen.getByRole("button", { name: publishSkillName }));
     fireEvent.click(screen.getByRole("menuitem", { name: botPublishName }));
