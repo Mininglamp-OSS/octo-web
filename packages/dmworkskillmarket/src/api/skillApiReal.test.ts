@@ -949,6 +949,24 @@ describe("skillApiReal", () => {
     vi.useRealTimers();
   });
 
+  it("rejects a malformed success response instead of polling forever", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse(
+        { status: "success", skill_parse_task_id: "task-malformed" },
+        200,
+        undefined,
+        "req-malformed-success"
+      )
+    );
+
+    await expect(pollParse("task-malformed")).rejects.toMatchObject({
+      name: "SkillMarketApiError",
+      code: "invalid_response",
+      requestId: "req-malformed-success",
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("pollParse throws nested failure error from backend", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse(

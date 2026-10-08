@@ -72,12 +72,26 @@ export function skillUploadErrorMessage(
   options: SkillUploadErrorMessageOptions = {},
   translate: Translate = t
 ): string {
-  const key = resolveSkillUploadErrorKey(error);
-  if (key) return translate(key);
-
   const requestId = isRecord(error)
     ? nonEmptyString(error.requestId)
     : undefined;
+  let key = resolveSkillUploadErrorKey(error);
+  if (
+    key === "skillMarket.errors.parseServiceUnavailable" &&
+    options.fallbackKey &&
+    options.fallbackKey !== "skillMarket.errors.parseFailed"
+  ) {
+    key = undefined;
+  }
+  if (key) {
+    const message = translate(key);
+    return requestId
+      ? translate("skillMarket.errors.withRequestId", {
+          values: { message, requestId },
+        })
+      : message;
+  }
+
   if (requestId && !options.fallbackKey) {
     return translate("skillMarket.errors.parseFailedWithRequestId", {
       values: { requestId },

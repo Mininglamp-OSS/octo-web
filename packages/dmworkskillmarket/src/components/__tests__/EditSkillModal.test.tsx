@@ -188,6 +188,35 @@ describe("EditSkillModal", () => {
     ).toBeNull();
   });
 
+  it("uses the save-phase fallback and request id for internal errors", async () => {
+    vi.mocked(api.updateSkill).mockRejectedValue({
+      code: "INTERNAL_ERROR",
+      message: "Internal server error",
+      requestId: "req-save-500",
+    });
+    render(
+      <EditSkillModal
+        skill={skill}
+        categories={categories}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), {
+      target: { value: "更新展示名" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: saveButton }));
+
+    await waitFor(() => {
+      expect(screen.getByText("保存失败（请求 ID：req-save-500）"))
+        .toBeTruthy();
+    });
+    expect(screen.queryByText("解析服务暂时不可用，请稍后重试"))
+      .toBeNull();
+    expect(screen.queryByText("Internal server error")).toBeNull();
+  });
+
   it("blocks save while a tag validation error is visible", () => {
     render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
 

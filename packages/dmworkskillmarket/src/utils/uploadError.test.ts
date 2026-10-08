@@ -95,6 +95,33 @@ describe("skillUploadErrorMessage", () => {
     ).toBe("上传失败（请求 ID：req-upload-1）");
   });
 
+  it("keeps INTERNAL_ERROR parse-specific only during parsing", () => {
+    expect(
+      skillUploadErrorMessage(
+        { code: "INTERNAL_ERROR", requestId: "req-save-500" },
+        { fallbackKey: "skillMarket.form.saveFailed" },
+        zh
+      )
+    ).toBe("保存失败（请求 ID：req-save-500）");
+    expect(
+      skillUploadErrorMessage(
+        { code: "INTERNAL_ERROR", requestId: "req-parse-500" },
+        { fallbackKey: "skillMarket.errors.parseFailed" },
+        zh
+      )
+    ).toBe("解析服务暂时不可用，请稍后重试（请求 ID：req-parse-500）");
+  });
+
+  it("keeps request ids on mapped errors", () => {
+    expect(
+      skillUploadErrorMessage(
+        { code: "parse_timeout", requestId: "req-timeout-59" },
+        {},
+        zh
+      )
+    ).toBe("解析超时，请重试（请求 ID：req-timeout-59）");
+  });
+
   it("does not resolve inherited object property names", () => {
     for (const code of [
       "toString",

@@ -934,7 +934,14 @@ export async function pollParse(taskId: string): Promise<ParseStatusResult> {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     const status = await fetchParseStatus(taskId);
     lastRequestId = status.requestId ?? lastRequestId;
-    if (status.status === "success") return status;
+    if (status.status === "success") {
+      if (status.result) return status;
+      throw normalizeError({
+        code: "invalid_response",
+        message: t("skillMarket.errors.parseFailed"),
+        requestId: lastRequestId,
+      });
+    }
     if (status.status === "failed") {
       throw normalizeError({
         code: status.error?.code ?? "parse_failed",
