@@ -84,10 +84,34 @@
 
         im.onReady();
 
-        // Auth init: server now redirects with a one-time ?session= instead of
-        // passing token/uid in the URL. Resolve it once on load and cache
-        // uid/token in memory for later upload/submit (resolve is single-use).
-        window.__reportAuth = { uid: getQueryString('uid'), token: getQueryString('token') };
+        // Auth init: server redirects with a one-time ?session= and no longer
+        // passes token/uid in the URL. Resolve it once on load and cache uid/token
+        // in memory for later upload/submit (resolve is single-use). No legacy
+        // ?token/?uid fallback — ?session is the only credential entry point.
+        window.__reportAuth = { uid: null, token: null };
+
+        function onAuthResolveFailed() {
+            window.__reportAuth = { uid: null, token: null };
+            if ($('.authError').length === 0) {
+                $('body').prepend('<div class="authError" style="background:#ffecec;color:#c00;padding:10px;text-align:center;font-size:14px;">登录态获取失败，请从客户端重新进入投诉页</div>');
+            }
+        }
+
+        // Drop the single-use ?session from the URL once consumed so reload / back
+        // navigation and notice/success redirects can't replay it. Keep every other
+        // query key (lang / channel_id / channel_type / mode) and the hash intact.
+        function stripSessionFromUrl() {
+            let search = window.location.search;
+            if (search.indexOf('session=') === -1) {
+                return;
+            }
+            let params = search.substring(1).split('&').filter(function (kv) {
+                return kv && kv.split('=')[0] !== 'session';
+            });
+            let newSearch = params.length > 0 ? '?' + params.join('&') : '';
+            history.replaceState(null, '', window.location.pathname + newSearch + window.location.hash);
+        }
+
         let sessionId = getQueryString('session');
         if (sessionId) {
             $.ajax({
@@ -97,8 +121,19 @@
                 contentType: "application/json",
                 dataType: 'json',
                 data: JSON.stringify({ "session_id": sessionId }),
+                // Success contract: HTTP 200 with non-empty uid & token. Anything
+                // else (HTTP 400 error envelope, empty fields) is a failure.
                 success: function (result) {
-                    window.__reportAuth = { uid: result.uid, token: result.token };
+                    if (result && result.uid && result.token) {
+                        window.__reportAuth = { uid: result.uid, token: result.token };
+                    } else {
+                        onAuthResolveFailed();
+                    }
+                    stripSessionFromUrl();
+                },
+                error: function () {
+                    onAuthResolveFailed();
+                    stripSessionFromUrl();
                 }
             })
         }
@@ -113,12 +148,14 @@
             window.history.back()
         });
 
+        window.categories = [];
         $.getJSON(apiURL + `report/categories?lang=${window.getLang()}`).then(function (categories) {
-            window.categories = categories;
-            if (categories && categories.length > 0) {
-                renderCategories(categories);
+            window.categories = categories || [];
+            if (window.categories.length > 0) {
+                renderCategories(window.categories);
             }
-
+        }, function () {
+            $('.categoryBox .item ul').html('<li><div class="content"><label>加载失败，请重试</label></div></li>');
         })
 
         if ("onhashchange" in window) {
@@ -153,21 +190,42 @@
             return url;
         }
 
+        // Each entry: { url, status } where status is 'pending' | 'done' | 'failed'.
         let imageDatas = [];
+        // Number of uploads still in flight; submit must wait until this is 0.
+        let pendingUploads = 0;
 
         function uploadChange() {
             var objUrl = getObjectURL(this.files[0]);//获取文件信息
             if (objUrl) {
-                imageDatas.push(objUrl);
+                var imageData = { url: objUrl, status: 'pending' };
+                imageDatas.push(imageData);
                 renderImageItes();
-                uploadImage(this.files[0]);
+                uploadImage(this.files[0], imageData);
             }
         }
 
         let imgPaths = [];
-        function uploadImage(fileObj) {
+        function uploadImage(fileObj, imageData) {
             let uid = window.__reportAuth.uid;
             let token = window.__reportAuth.token;
+            // Credential not resolved yet (or resolve failed): don't fire a
+            // path=/null/... request. Drop the just-added thumbnail and warn once.
+            if (!uid || !token) {
+                alert('登录态尚未就绪，请重试');
+                var idx = imageDatas.indexOf(imageData);
+                if (idx !== -1) {
+                    imageDatas.splice(idx, 1);
+                }
+                renderImageItes();
+                return;
+            }
+            function markFailed() {
+                imageData.status = 'failed';
+                renderImageItes();
+                alert('图片上传失败，请重试');
+            }
+            pendingUploads++;
             $.ajax({
                 headers: {
                     Accept: "application/json; charset=utf-8",
@@ -182,14 +240,25 @@
                     xhr.open("post", result.url, true);
                     xhr.onreadystatechange = function () {
                         if (xhr.readyState == 4) {
+                            pendingUploads--;
                             if (xhr.status == 200) {
-                                var obj = JSON.parse(xhr.responseText);
-                                console.log(obj);
-                                imgPaths.push(obj.path);
+                                try {
+                                    var obj = JSON.parse(xhr.responseText);
+                                    imgPaths.push(obj.path);
+                                    imageData.status = 'done';
+                                } catch (e) {
+                                    markFailed();
+                                }
+                            } else {
+                                markFailed();
                             }
                         }
                     }
                     xhr.send(form);
+                },
+                error: function () {
+                    pendingUploads--;
+                    markFailed();
                 }
             })
 
@@ -204,8 +273,13 @@
             $('.imgs').html('');
             if (imageDatas && imageDatas.length > 0) {
                 for (const imageData of imageDatas) {
-                    let item = $(`<div class="imgItem">
-                                        <img style="width: 100%;height: 100%;" src="${imageData}" />
+                    let failedCls = imageData.status === 'failed' ? ' upload-failed' : '';
+                    let failedTip = imageData.status === 'failed'
+                        ? '<div class="uploadFailedTip" style="position:absolute;left:0;right:0;bottom:0;background:rgba(204,0,0,0.8);color:#fff;font-size:12px;text-align:center;">上传失败</div>'
+                        : '';
+                    let item = $(`<div class="imgItem${failedCls}" style="position:relative;">
+                                        <img style="width: 100%;height: 100%;" src="${imageData.url}" />
+                                        ${failedTip}
                                 </div>`)
                     $('.imgs').append(item);
                 }
@@ -231,9 +305,27 @@
             window.location.href = 'report_notice.html' + window.location.search;
         })
         $('.reportSubmit').on('click', async function () { // 提交
-            let reportContent = $('.reportContent').val();
             let token = window.__reportAuth.token;
-            let channel = await im.getChannel();
+            if (!token) {
+                alert('登录态尚未就绪，请从客户端重新进入');
+                return;
+            }
+            if (pendingUploads > 0) {
+                alert('图片还在上传中，请稍候');
+                return;
+            }
+            if (imageDatas.some(function (d) { return d.status === 'failed'; })) {
+                alert('存在上传失败的图片，请移除或重试后再提交');
+                return;
+            }
+            let reportContent = $('.reportContent').val();
+            let channel;
+            try {
+                channel = await im.getChannel();
+            } catch (e) {
+                alert('获取会话信息失败，请从客户端重新进入');
+                return;
+            }
             let categoryNos = window.location.hash.substring(1).split("-")
             let categoryNo = categoryNos[categoryNos.length - 1];
             $.ajax({
@@ -257,6 +349,7 @@
 
         function clearDetailContent() {
             imageDatas = []
+            imgPaths = []
             renderImageItes()
             $('.reportRemark textarea').val('');
 
@@ -268,9 +361,9 @@
             $(".reportFormBox").css('display', 'none');
             $(".categoryBox").css('display', 'block');
             for (const category of children) {
-                let item = $(`<li no='${category.category_no}'>
+                let item = $(`<li no='${escapeHtml(category.category_no)}'>
                                         <div class='content'>
-                                            <label>${category.category_name}</label>
+                                            <label>${escapeHtml(category.category_name)}</label>
                                             <img src='./images/arrow_right.png' style="width:32px;height:32px"/>
                                         </div>
                                     </li>`);
@@ -305,6 +398,15 @@
             getAllParentCategoryNo(parent, parentCategoryNos);
         }
 
+    }
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     function getCatgoryWithCategoryNo(categoryNo, categoryList) {
@@ -366,12 +468,19 @@
             document.title = "Report";
         }
 
+        // The vendored i18n plugin unconditionally reads a same-origin `i18n_lang`
+        // cookie (written by the SPA as zh-CN/en-US) and lets it override
+        // defaultLang, producing a 404 filename like i18n_zh-CN.json and no
+        // translation. Clear that cookie so our explicit cn/en defaultLang wins.
+        // We pass no `lang`, so the plugin's cookie-writing branch (which needs
+        // the absent $.removeCookie when forever is false) is never reached.
+        document.cookie = 'i18n_lang=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
         $("[i18n]").i18n({
             defaultLang: defaultLang,
             filePath: "./i18n/",
             filePrefix: "i18n_",
             fileSuffix: "",
-            forever: true,
+            forever: false,
             callback: function () {
                 console.log("i18n is ready.");
             }

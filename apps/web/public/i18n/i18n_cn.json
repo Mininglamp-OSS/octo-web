@@ -1,5 +1,7 @@
-
 {
     "report.title": "请选择投诉该账号的原因",
-    "report.notice": "投诉须知"
+    "report.notice": "投诉须知",
+    "report.image.evidence": "图片证据(选填)",
+    "report.content.placeholder": "投诉内容(选填)",
+    "report.submit": "提交"
 }
