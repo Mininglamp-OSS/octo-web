@@ -50,83 +50,6 @@
   gap: var(--wk-sp-2);
 }
 
-/* Publish 按钮 + Bot/手动 下拉 —— 与 dmworkskillmarket 的
-   .skill-market-publish-menu 一致。 */
-.wk-mcp-publish-menu {
-  position: relative;
-  display: inline-flex;
-}
-
-.wk-mcp-publish-menu__panel {
-  position: absolute;
-  z-index: var(--wk-z-dropdown);
-  top: calc(100% + var(--wk-sp-2));
-  right: 0;
-  display: grid;
-  gap: var(--wk-sp-1);
-  width: 220px;
-  padding: var(--wk-sp-1);
-  border: 1px solid var(--wk-border-subtle);
-  border-radius: var(--wk-r-md);
-  background: var(--wk-bg-surface);
-  box-shadow: var(--wk-shadow-md);
-}
-
-.wk-mcp-publish-menu__panel button {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  align-items: center;
-  gap: var(--wk-sp-2);
-  width: 100%;
-  min-width: 0;
-  padding: var(--wk-sp-2);
-  border: 0;
-  border-radius: var(--wk-r-sm);
-  background: transparent;
-  color: var(--wk-text-secondary);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.wk-mcp-publish-menu__panel button:hover,
-.wk-mcp-publish-menu__panel button:focus-visible {
-  outline: none;
-  background: var(--wk-bg-elevated);
-  color: var(--wk-text-primary);
-}
-
-.wk-mcp-publish-menu__panel button > svg {
-  color: var(--wk-icon-default);
-}
-
-.wk-mcp-publish-menu__panel span,
-.wk-mcp-publish-menu__panel strong,
-.wk-mcp-publish-menu__panel small {
-  display: block;
-  min-width: 0;
-}
-
-.wk-mcp-publish-menu__panel strong {
-  overflow: hidden;
-  color: var(--wk-text-strong);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.wk-mcp-publish-menu__panel small {
-  margin-top: 2px;
-  overflow: hidden;
-  color: var(--wk-text-tertiary);
-  font-size: 12px;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* Bot 上架 modal — mirrors dmworkskillmarket's .skill-market-prompt-modal.
    头部 icon + 标题/副标题，body 灰底代码框，footer 复制按钮。 */
 .wk-mcp-prompt-modal__header {
@@ -1500,6 +1423,79 @@
   right: var(--wk-sp-6);
   display: flex;
   align-items: center;
+  gap: var(--wk-sp-2);
+}
+
+.wk-mcp-mine-publish {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.wk-mcp-mine-publish__panel {
+  position: absolute;
+  z-index: var(--wk-z-dropdown);
+  top: calc(100% + var(--wk-sp-2));
+  right: 0;
+  display: grid;
+  gap: var(--wk-sp-1);
+  width: 300px;
+  max-height: min(480px, calc(100vh - 120px));
+  padding: var(--wk-sp-1);
+  overflow-y: auto;
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+  box-shadow: var(--wk-shadow-md);
+}
+
+.wk-mcp-mine-publish__panel button {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--wk-sp-2);
+  width: 100%;
+  min-width: 0;
+  padding: var(--wk-sp-2);
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  color: var(--wk-text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wk-mcp-mine-publish__panel button:hover,
+.wk-mcp-mine-publish__panel button:focus-visible {
+  outline: none;
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp-mine-publish__panel button > svg {
+  color: var(--wk-icon-default);
+}
+
+.wk-mcp-mine-publish__panel span,
+.wk-mcp-mine-publish__panel strong,
+.wk-mcp-mine-publish__panel small {
+  display: block;
+  min-width: 0;
+}
+
+.wk-mcp-mine-publish__panel strong {
+  color: var(--wk-text-strong);
+  font-size: var(--wk-text-size-md);
+  font-weight: var(--wk-font-semibold);
+  line-height: 1.35;
+}
+
+.wk-mcp-mine-publish__panel small {
+  margin-top: var(--wk-sp-1);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
+  line-height: 1.35;
 }
 
 .wk-mcp-mine__hero-title h1 {
@@ -1513,12 +1509,17 @@
 .wk-mcp-mine__tabs {
   flex: none;
   display: flex;
+  align-items: center;
   gap: var(--wk-sp-5);
   padding: 0 var(--wk-sp-6);
   border-bottom: 1px solid var(--wk-border-subtle);
 }
 
-.wk-mcp-mine__tabs button {
+.wk-mcp-mine__tabs-publish {
+  margin-left: auto;
+}
+
+.wk-mcp-mine__tabs > button {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -1534,7 +1535,7 @@
   transition: color var(--wk-dur-fast) var(--wk-ease);
 }
 
-.wk-mcp-mine__tabs button:hover {
+.wk-mcp-mine__tabs > button:hover {
   color: var(--wk-text-primary);
 }
 
@@ -1543,16 +1544,16 @@
   color: var(--wk-text-tertiary);
 }
 
-.wk-mcp-mine__tabs button.is-active {
+.wk-mcp-mine__tabs > button.is-active {
   color: var(--wk-brand-primary);
   font-weight: var(--wk-font-semibold);
 }
 
-.wk-mcp-mine__tabs button.is-active .wk-mcp-mine__tab-icon {
+.wk-mcp-mine__tabs > button.is-active .wk-mcp-mine__tab-icon {
   color: var(--wk-brand-primary);
 }
 
-.wk-mcp-mine__tabs button.is-active::after {
+.wk-mcp-mine__tabs > button.is-active::after {
   content: "";
   position: absolute;
   right: 0;
@@ -1628,9 +1629,9 @@
   padding: var(--wk-sp-4) var(--wk-sp-6);
 }
 
-/* variant="mine" hides each page's own title, so lift its search + create
-   actions up onto the 我的 hero row (top-right of the mine container) instead
-   of leaving them as a separate left-aligned row under the type tabs. */
+/* variant="mine" hides each page's own title and publish entry, so lift its
+   search control onto the 我的 hero row. The unified publish entry lives in the
+   tab strip, leaving a single occupant in this absolute corner. */
 .wk-mcp-mine__panel .wk-mcp__hero,
 .wk-mcp-mine__panel .wk-mcp-expert-topbar,
 .wk-mcp-mine__panel .skill-market-topbar {
@@ -3660,71 +3661,6 @@
   .wk-mcp-expert-dependency-columns {
     grid-template-columns: 1fr;
   }
-}
-
-/* -------- Publish dropdown -------- */
-.wk-mcp-expert-publish {
-  position: relative;
-  flex: 0 0 auto;
-}
-
-.wk-mcp-expert-publish__menu {
-  position: absolute;
-  top: 42px;
-  right: 0;
-  z-index: var(--wk-z-dropdown, 100);
-  width: 288px;
-  padding: var(--wk-sp-1);
-  border: 1px solid var(--wk-border-subtle);
-  border-radius: var(--wk-r-md);
-  background: var(--wk-bg-surface);
-  box-shadow: var(--wk-shadow-dropdown, var(--wk-shadow-lg));
-}
-
-.wk-mcp-expert-publish__menu button {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  align-items: center;
-  gap: var(--wk-sp-3);
-  width: 100%;
-  min-height: 56px;
-  padding: var(--wk-sp-2);
-  border: 0;
-  border-radius: var(--wk-r-sm);
-  color: var(--wk-text-primary);
-  background: transparent;
-  text-align: left;
-}
-
-.wk-mcp-expert-publish__menu button:hover {
-  background: var(--wk-bg-hover);
-}
-
-.wk-mcp-expert-publish__icon {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--wk-r-md);
-  color: var(--wk-icon-default);
-  background: var(--wk-brand-tint-06);
-}
-
-.wk-mcp-expert-publish__icon--bot {
-  color: var(--wk-color-accent);
-  background: var(--wk-accent-tint-08);
-}
-
-.wk-mcp-expert-publish__menu strong {
-  display: block;
-  font-size: var(--wk-text-size-base);
-}
-
-.wk-mcp-expert-publish__menu small {
-  display: block;
-  margin-top: 2px;
-  color: var(--wk-text-tertiary);
-  font-size: var(--wk-text-size-sm);
 }
 
 /* -------- Bot publish modal -------- */

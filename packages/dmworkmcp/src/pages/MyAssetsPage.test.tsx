@@ -20,8 +20,26 @@ vi.mock("@octo/base", () => ({
 
 vi.mock("@dmwork/skillmarket", () => ({
   SearchBar: () => React.createElement("input", { type: "search" }),
-  SkillListPage: () =>
-    React.createElement("div", { "data-testid": "skills-page" }),
+  SkillListPage: ({ refreshKey }: { refreshKey?: number }) => {
+    const [query, setQuery] = React.useState("");
+    return React.createElement(
+      "div",
+      {
+        "data-testid": "skills-page",
+        "data-refresh-key": String(refreshKey),
+      },
+      React.createElement("input", {
+        "data-testid": "skills-query",
+        value: query,
+        readOnly: true,
+      }),
+      React.createElement("button", {
+        type: "button",
+        "data-testid": "set-skills-query",
+        onClick: () => setQuery("keep me"),
+      })
+    );
+  },
 }));
 
 vi.mock("./AllAssetsList", () => ({
@@ -67,7 +85,7 @@ vi.mock("./AllAssetsList", () => ({
             onRequestAction({
               pluginId: "skill-1",
               type: "skill",
-              action: "upgrade",
+              action: "bot-upgrade",
             }),
         },
         "upgrade from all"
@@ -88,8 +106,46 @@ vi.mock("../features/mine/MineActionHost", () => ({
     ),
 }));
 
-vi.mock("./McpMarketListPage", () => ({ default: () => null }));
-vi.mock("./ExpertMarketListPage", () => ({ default: () => null }));
+vi.mock("../features/mine/MinePublishMenu", () => ({
+  default: ({ onChanged }: { onChanged: (type: "skills" | "mcp") => void }) =>
+    React.createElement(
+      React.Fragment,
+      null,
+      React.createElement(
+        "button",
+        { type: "button", "data-testid": "mine-publish-entry" },
+        "publish"
+      ),
+      React.createElement("button", {
+        type: "button",
+        "data-testid": "skill-published",
+        onClick: () => onChanged("skills"),
+      }),
+      React.createElement("button", {
+        type: "button",
+        "data-testid": "connector-published",
+        onClick: () => onChanged("mcp"),
+      })
+    ),
+}));
+
+vi.mock("./McpMarketListPage", () => ({
+  default: ({ refreshKey }: { refreshKey?: number }) =>
+    React.createElement("div", {
+      "data-testid": "mcp-page",
+      "data-refresh-key": String(refreshKey),
+    }),
+}));
+vi.mock("./ExpertMarketListPage", () => ({
+  default: ({
+    mineType,
+  }: {
+    mineType?: "agent" | "squad";
+  }) =>
+    React.createElement("div", {
+      "data-testid": `${mineType}-page`,
+    }),
+}));
 
 import MyAssetsPage from "./MyAssetsPage";
 
@@ -157,7 +213,83 @@ describe("MyAssetsPage all-tab actions", () => {
     expect(allTab.getAttribute("aria-pressed")).toBe("true");
     expect(
       container.querySelector('[data-testid="edit-host"]')?.textContent
-    ).toBe("skill:upgrade");
+    ).toBe("skill:bot-upgrade");
+  });
+
+  it("keeps one page-level publish entry while switching type tabs", () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    act(() => ReactDOM.render(<MyAssetsPage />, container));
+
+    expect(
+      container.querySelectorAll('[data-testid="mine-publish-entry"]')
+    ).toHaveLength(1);
+    expect(
+      container
+        .querySelector('[data-testid="mine-publish-entry"]')
+        ?.closest(".wk-mcp-mine__tabs")
+    ).not.toBeNull();
+    expect(
+      container
+        .querySelector('[data-testid="mine-publish-entry"]')
+        ?.closest(".wk-mcp-mine__hero-actions")
+    ).toBeNull();
+    const skillTab = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "skillMarket.plugin.typeSkill"
+    ) as HTMLButtonElement;
+    act(() => skillTab.click());
+
+    expect(
+      container.querySelectorAll('[data-testid="mine-publish-entry"]')
+    ).toHaveLength(1);
+    const assertSingleEntryAfterSwitch = (label: string) => {
+      const tab = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === label
+      ) as HTMLButtonElement;
+      act(() => tab.click());
+      expect(
+        container.querySelectorAll('[data-testid="mine-publish-entry"]')
+      ).toHaveLength(1);
+    };
+
+    assertSingleEntryAfterSwitch("skillMarket.plugin.typeConnector");
+    assertSingleEntryAfterSwitch("skillMarket.plugin.typeExpert");
+    assertSingleEntryAfterSwitch("skillMarket.plugin.typeExpertTeam");
+  });
+
+  it("does not reset the active Skill tab after publishing a connector", () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    act(() => ReactDOM.render(<MyAssetsPage />, container));
+
+    const skillTab = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "skillMarket.plugin.typeSkill"
+    ) as HTMLButtonElement;
+    act(() => skillTab.click());
+
+    act(() => {
+      (container.querySelector('[data-testid="set-skills-query"]') as HTMLButtonElement).click();
+    });
+    act(() => {
+      (container.querySelector('[data-testid="connector-published"]') as HTMLButtonElement).click();
+    });
+
+    expect((container.querySelector('[data-testid="skills-query"]') as HTMLInputElement).value).toBe("keep me");
+    expect(
+      container
+        .querySelector('[data-testid="skills-page"]')
+        ?.getAttribute("data-refresh-key")
+    ).toBe("0");
+
+    act(() => {
+      (container.querySelector('[data-testid="skill-published"]') as HTMLButtonElement).click();
+    });
+    expect((container.querySelector('[data-testid="skills-query"]') as HTMLInputElement).value).toBe("keep me");
+    expect(
+      container
+        .querySelector('[data-testid="skills-page"]')
+        ?.getAttribute("data-refresh-key")
+    ).toBe("1");
   });
 
   it("closes an all-tab action when the active Space changes", () => {

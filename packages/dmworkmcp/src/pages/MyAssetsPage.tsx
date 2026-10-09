@@ -11,6 +11,7 @@ import McpMarketListPage from "./McpMarketListPage";
 import ExpertMarketListPage from "./ExpertMarketListPage";
 import AllAssetsList from "./AllAssetsList";
 import MineActionHost from "../features/mine/MineActionHost";
+import MinePublishMenu from "../features/mine/MinePublishMenu";
 import "../index.css";
 
 /** Which personal-asset type the 我的 page is showing. Experts and squads are
@@ -92,6 +93,7 @@ export default function MyAssetsPage() {
   const [type, setType] = useState<MineType>(initialType);
   const [allQuery, setAllQuery] = useState("");
   const [allRefreshKey, setAllRefreshKey] = useState(0);
+  const [publishRefreshKeys, setPublishRefreshKeys] = useState({ skills: 0, mcp: 0 });
   const [mineActionRequest, setMineActionRequest] =
     useState<MineActionRequest | null>(null);
   const requestIdRef = useRef(0);
@@ -106,6 +108,17 @@ export default function MyAssetsPage() {
   }, []);
   const handleDirectEditChanged = useCallback(() => {
     setAllRefreshKey((key) => key + 1);
+  }, []);
+  const handlePublished = useCallback((publishedType: "skills" | "mcp") => {
+    setAllRefreshKey((key) => key + 1);
+    // The legacy typed pages do not expose an imperative reload contract yet,
+    // so a successful manual publish remounts only the matching page to fetch
+    // fresh data. A publish started from another active tab must not discard
+    // that tab's search, filters, pagination, or scroll position.
+    setPublishRefreshKeys((keys) => ({
+      ...keys,
+      [publishedType]: keys[publishedType] + 1,
+    }));
   }, []);
 
   useEffect(() => {
@@ -149,6 +162,9 @@ export default function MyAssetsPage() {
             {t(tab.labelKey)}
           </button>
         ))}
+        <div className="wk-mcp-mine__tabs-publish">
+          <MinePublishMenu onChanged={handlePublished} />
+        </div>
       </nav>
       <div className="wk-mcp-mine__panel">
         {type === "all" && (
@@ -162,14 +178,30 @@ export default function MyAssetsPage() {
             onRequestAction={handleActionRequest}
           />
         )}
-        {type === "skills" && <SkillListPage variant="mine" />}
+        {type === "skills" && (
+          <SkillListPage
+            variant="mine"
+            refreshKey={publishRefreshKeys.skills}
+          />
+        )}
         {type === "experts" && (
-          <ExpertMarketListPage variant="mine" mineType="agent" />
+          <ExpertMarketListPage
+            variant="mine"
+            mineType="agent"
+          />
         )}
         {type === "squads" && (
-          <ExpertMarketListPage variant="mine" mineType="squad" />
+          <ExpertMarketListPage
+            variant="mine"
+            mineType="squad"
+          />
         )}
-        {type === "mcp" && <McpMarketListPage variant="mine" />}
+        {type === "mcp" && (
+          <McpMarketListPage
+            variant="mine"
+            refreshKey={publishRefreshKeys.mcp}
+          />
+        )}
         <MineActionHost
           request={type === "all" ? mineActionRequest : null}
           onClose={handleDirectEditClose}

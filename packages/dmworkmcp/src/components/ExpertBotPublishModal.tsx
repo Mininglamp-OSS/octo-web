@@ -10,9 +10,9 @@ interface ExpertBotPublishModalProps {
   visible: boolean;
   /** Which catalog the Bot prompt targets: single expert or a squad. */
   kind: "agent" | "squad";
-  /** "create" (default) publishes a new listing; "update" edits an existing one. */
-  mode?: "create" | "update";
-  /** The listing id to update — required when mode="update". */
+  /** "create" publishes, "update" edits fields, and "upgrade" releases a version. */
+  mode?: "create" | "update" | "upgrade";
+  /** The existing listing id required by update and upgrade modes. */
   editingId?: string;
   onClose: () => void;
   onToast: (message: string) => void;
@@ -47,6 +47,7 @@ export default function ExpertBotPublishModal({
   const spaceId = getCurrentSpaceId();
   const apiURL = WKApp.apiClient.config.apiURL;
   const isUpdate = mode === "update";
+  const isUpgrade = mode === "upgrade";
   // Depend on kind + mode + editingId + spaceId + apiURL — resolveMcpAPIBaseURL
   // derives from apiURL first and falls back to window.location.origin (treated
   // as stable), so a runtime apiURL change on the mutable client config must
@@ -63,7 +64,11 @@ export default function ExpertBotPublishModal({
     [kind, mode, editingId, spaceId, apiURL]
   );
 
-  const title = isUpdate
+  const title = isUpgrade
+    ? kind === "squad"
+      ? t("mcp.expert.botUpgradeTitle")
+      : t("mcp.expert.botUpgradeTitleAgent")
+    : isUpdate
     ? kind === "squad"
       ? t("mcp.expert.botUpdateTitle")
       : t("mcp.expert.botUpdateTitleAgent")
@@ -74,7 +79,9 @@ export default function ExpertBotPublishModal({
   // botUpdateHint is kind-neutral, but botPublishHint is squad-specific
   // ("...as a squad template"), so the publish hint discriminates on kind the
   // same way `title` does.
-  const hint = isUpdate
+  const hint = isUpgrade
+    ? t("mcp.expert.botUpgradeHint")
+    : isUpdate
     ? t("mcp.expert.botUpdateHint")
     : kind === "squad"
     ? t("mcp.expert.botPublishHint")
@@ -86,7 +93,7 @@ export default function ExpertBotPublishModal({
       onClose={onClose}
       title={title}
       hint={hint}
-      kind={isUpdate ? "update" : "publish"}
+      kind={isUpdate || isUpgrade ? "update" : "publish"}
       icon={<Bot size={18} />}
       prompt={prompt}
       spaceId={spaceId}

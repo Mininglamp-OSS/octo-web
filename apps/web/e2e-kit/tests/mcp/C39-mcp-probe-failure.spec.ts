@@ -16,8 +16,20 @@ test("@C39 @p1 @mcp @mcp-probe MCP 试连失败保留向导并展示原因", asy
   // never mounts (and never fires an unmocked skill fetch).
   await authedPage.goto("/mcp-market/mine?type=mcp&sid=e2etest");
 
-  await authedPage.getByTestId("mcp-publish-entry").click();
-  await authedPage.getByTestId("mcp-publish-method-manual").click();
+  const publishEntry = authedPage.getByTestId("mine-publish-entry");
+  await expect(publishEntry).toBeVisible();
+  expect(
+    await publishEntry.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        rect.left + rect.width / 2,
+        rect.top + rect.height / 2,
+      );
+      return hit === element || element.contains(hit);
+    }),
+  ).toBe(true);
+  await publishEntry.click();
+  await authedPage.getByTestId("mine-publish-connector-manual").click();
 
   const dialog = authedPage.getByRole("dialog");
   await expect(dialog).toBeVisible();

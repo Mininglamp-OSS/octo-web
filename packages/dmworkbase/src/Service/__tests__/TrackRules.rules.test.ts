@@ -71,3 +71,41 @@ describe('TRACK_RULES — dap350 docs events moved to the octo-docs-module comma
         expect(leaked, `${testid} must not re-enter TRACK_RULES: ${leaked.join(', ')}`).toEqual([])
     })
 })
+
+describe('TRACK_RULES — unified marketplace publish funnel', () => {
+    it('tracks the single publish entry', () => {
+        expect(TRACK_RULES).toContainEqual({
+            event: 'market_publish_entry_clicked',
+            testid: 'mine-publish-entry',
+            on: 'click',
+        })
+    })
+
+    it.each([
+        ['mine-publish-skill-bot', 'skill', 'bot'],
+        ['mine-publish-skill-manual', 'skill', 'manual'],
+        ['mine-publish-connector-bot', 'mcp', 'bot'],
+        ['mine-publish-connector-manual', 'mcp', 'manual'],
+        ['mine-publish-expert-bot', 'expert', 'bot'],
+        ['mine-publish-squad-bot', 'expert_team', 'bot'],
+    ])('tracks %s with its asset type and method', (testid, marketType, method) => {
+        expect(TRACK_RULES).toContainEqual({
+            event: 'market_publish_method_selected',
+            testid,
+            on: 'click',
+            props: { market_type: marketType, method },
+        })
+    })
+
+    it('does not retain hidden legacy publish anchors', () => {
+        const legacyTestIds = new Set([
+            'mcp-publish-entry',
+            'skill-publish-entry',
+            'mcp-publish-method-bot',
+            'mcp-publish-method-manual',
+            'skill-publish-method-bot',
+            'skill-publish-method-manual',
+        ])
+        expect(TRACK_RULES.some((rule) => legacyTestIds.has(rule.testid ?? ''))).toBe(false)
+    })
+})

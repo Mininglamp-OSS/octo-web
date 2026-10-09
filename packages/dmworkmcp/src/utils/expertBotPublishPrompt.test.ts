@@ -206,8 +206,10 @@ describe("getExpertBotPublishPrompt — update mode", () => {
   it.each([
     ["agent", "create", "确认上架"],
     ["agent", "update", "确认更新"],
+    ["agent", "upgrade", "确认升级"],
     ["squad", "create", "确认上架"],
     ["squad", "update", "确认更新"],
+    ["squad", "upgrade", "确认升级"],
   ] as const)(
     "places every %s %s write command after the explicit confirmation gate",
     (kind, mode, confirmation) => {
@@ -313,4 +315,33 @@ describe("getExpertBotPublishPrompt — update mode", () => {
     expect(p).toContain("`version` 保持省略");
     expect(p).toContain("plugin upsert --data @expert-plugin.json");
   });
+
+  it.each([
+    ["agent", "专家", "expert-plugin.json"],
+    ["squad", "专家团", "team-plugin.json"],
+  ] as const)(
+    "builds a real %s version-upgrade review flow",
+    (kind, entity, payloadFile) => {
+      const p = getExpertBotPublishPrompt({
+        kind,
+        mode: "upgrade",
+        id: ID,
+        spaceId: SLUG,
+        apiBaseUrl: API,
+      });
+
+      expect(p).toContain(`为 OCTO Marketplace 中已上架的${entity}发布新版本`);
+      expect(p).toContain("向前递增的 `MAJOR.MINOR.PATCH` 版本");
+      expect(p).toContain("非空 changelog");
+      expect(p).toContain("等待我回复“确认升级”");
+      expect(p).toContain("禁止用 `plugin upsert` 覆盖线上内容");
+      expect(p).toContain("`plugin review-request create`");
+      expect(p).toContain("旧版本仍在线，审核通过后才会替换");
+      expect(p).toContain(payloadFile);
+      expect(p).not.toContain("`version` 保持省略");
+      expect(p.indexOf("等待我回复“确认升级”")).toBeLessThan(
+        p.indexOf("`plugin review-request create`")
+      );
+    }
+  );
 });

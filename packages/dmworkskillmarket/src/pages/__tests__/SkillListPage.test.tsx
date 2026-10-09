@@ -69,10 +69,6 @@ const tagSearchPlaceholder = /搜索标签|skillMarket\.filter\.searchTags/;
 const selectedTagsText = /已选择标签|skillMarket\.filter\.tagsSelected/;
 const noSelectedTagsText = /未选择标签|skillMarket\.filter\.noTagsSelected/;
 const clearFilterName = /清空|skillMarket\.filter\.clear/;
-const publishSkillName = /上架技能|skillMarket\.list\.publishSkill/;
-const botPublishName = /Bot 上架|skillMarket\.publishMenu\.botTitle/;
-const manualPublishName = /手动上传|skillMarket\.publishMenu\.manualTitle/;
-const copyPromptName = /复制提示词|skillMarket\.botPublish\.copyBtn/;
 // The row's 编辑/删除 buttons are labelled by aria-label, so the accessible name
 // is the label string, not the icon. `SkillListPage` still spells it with the
 // older `skillMarket.card.*AriaLabel` wording (编辑 X) while the MCP pages use
@@ -629,61 +625,6 @@ describe("SkillListPage", () => {
           limit: 20,
         },
         expect.objectContaining({ signal: expect.any(AbortSignal) })
-      );
-    });
-  });
-
-  it("opens the publish menu and keeps manual upload on the existing modal", async () => {
-    render(<SkillListPage variant="mine" />);
-
-    fireEvent.click(screen.getByRole("button", { name: publishSkillName }));
-    expect(
-      screen.getByRole("menuitem", { name: botPublishName })
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("menuitem", { name: manualPublishName }));
-
-    expect(
-      screen.getByRole("dialog", { name: publishSkillName })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText(
-        /选择技能包文件|skillMarket\.upload\.selectFileAriaLabel/
-      )
-    ).toBeInTheDocument();
-  });
-
-  it("opens Bot publish without a cancel button and copies the prompt", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    render(<SkillListPage variant="mine" />);
-
-    fireEvent.click(screen.getByRole("button", { name: publishSkillName }));
-    fireEvent.click(screen.getByRole("menuitem", { name: botPublishName }));
-
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /取消|skillMarket\.common\.cancel/ })
-    ).not.toBeInTheDocument();
-
-    const copyButton = screen.getByRole("button", { name: copyPromptName });
-    expect(copyButton).toBeEnabled();
-    fireEvent.click(copyButton);
-    await waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith(
-        expect.stringContaining("Space ID：`space-123`")
-      );
-      expect(writeText).toHaveBeenCalledWith(
-        expect.stringContaining("API 地址：`http://localhost:3000`")
-      );
-      expect(writeText).toHaveBeenCalledWith(
-        expect.not.stringContaining("<space-id>")
-      );
-      expect(writeText).toHaveBeenCalledWith(
-        expect.not.stringContaining("<api-base-url>")
       );
     });
   });

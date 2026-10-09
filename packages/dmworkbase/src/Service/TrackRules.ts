@@ -145,12 +145,13 @@ export const TRACK_RULES: TrackRule[] = [
     //   的详情快速接入,以及卡片「添加到 Bot」经共享 PromptForwardActions.copyTrackEvent(McpConnectModal
     //   传入)。install 事件:InstallPromptModal 现渲染共享 PromptForwardModal,经同一 copyTrackEvent prop 触发
     //   (feat/market-ui-restructure;不再有各自的 handleCopy)。
-    { event: 'market_publish_entry_clicked', testid: 'mcp-publish-entry', on: 'click' },
-    { event: 'market_publish_entry_clicked', testid: 'skill-publish-entry', on: 'click' },
-    { event: 'market_publish_method_selected', testid: 'mcp-publish-method-bot', on: 'click', props: { method: 'bot' } },
-    { event: 'market_publish_method_selected', testid: 'mcp-publish-method-manual', on: 'click', props: { method: 'manual' } },
-    { event: 'market_publish_method_selected', testid: 'skill-publish-method-bot', on: 'click', props: { method: 'bot' } },
-    { event: 'market_publish_method_selected', testid: 'skill-publish-method-manual', on: 'click', props: { method: 'manual' } },
+    { event: 'market_publish_entry_clicked', testid: 'mine-publish-entry', on: 'click' },
+    { event: 'market_publish_method_selected', testid: 'mine-publish-skill-bot', on: 'click', props: { market_type: 'skill', method: 'bot' } },
+    { event: 'market_publish_method_selected', testid: 'mine-publish-skill-manual', on: 'click', props: { market_type: 'skill', method: 'manual' } },
+    { event: 'market_publish_method_selected', testid: 'mine-publish-connector-bot', on: 'click', props: { market_type: 'mcp', method: 'bot' } },
+    { event: 'market_publish_method_selected', testid: 'mine-publish-connector-manual', on: 'click', props: { market_type: 'mcp', method: 'manual' } },
+    { event: 'market_publish_method_selected', testid: 'mine-publish-expert-bot', on: 'click', props: { market_type: 'expert', method: 'bot' } },
+    { event: 'market_publish_method_selected', testid: 'mine-publish-squad-bot', on: 'click', props: { market_type: 'expert_team', method: 'bot' } },
     // market_bot_publish_prompt_copied 不在本表 —— 复制成功后命令式 track。skill 上架(BotPublishModal)与
     //   MCP 上架(McpBotPublishModal)都渲染共享 PromptForwardModal,经 PromptForwardActions.copyTrackEvent
     //   传入本事件触发;不再用 /mcp-market/mcp route 门(restructure 后 skill 上架在 /mcp-market/skills、
