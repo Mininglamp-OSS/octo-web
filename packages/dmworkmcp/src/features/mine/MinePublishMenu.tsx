@@ -29,7 +29,7 @@ type PublishFlow =
   | null;
 
 interface MinePublishMenuProps {
-  onChanged: () => void;
+  onChanged: (type: "skills" | "mcp") => void;
 }
 
 /** The single publish entry owned by MyAssetsPage. It stays mounted while the
@@ -201,7 +201,7 @@ export default function MinePublishMenu({ onChanged }: MinePublishMenuProps) {
         onClose={() => setFlow(null)}
         onCreated={(message) => {
           Toast.success(message ?? t("skillMarket.list.created"));
-          onChanged();
+          onChanged("skills");
           setFlow(null);
         }}
       />
@@ -213,12 +213,12 @@ export default function MinePublishMenu({ onChanged }: MinePublishMenuProps) {
         visible={flow === "connector-manual"}
         onClose={() => setFlow(null)}
         onSaved={() => {
-          onChanged();
+          onChanged("mcp");
           setFlow(null);
         }}
         onPublished={(message) => {
           Toast.success(message);
-          onChanged();
+          onChanged("mcp");
           setFlow(null);
         }}
       />

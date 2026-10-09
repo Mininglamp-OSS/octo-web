@@ -40,15 +40,16 @@ vi.mock("@dmwork/skillmarket", () => ({
   NewSkillModal: ({
     visible,
     categories,
+    onCreated,
   }: {
     visible: boolean;
     categories: unknown[];
+    onCreated: () => void;
   }) =>
     visible ? (
-      <div
-        data-testid="skill-manual-publish"
-        data-categories={categories.length}
-      />
+      <div data-testid="skill-manual-publish" data-categories={categories.length}>
+        <button type="button" data-testid="complete-skill-publish" onClick={onCreated} />
+      </div>
     ) : null,
 }));
 
@@ -58,8 +59,12 @@ vi.mock("../../components/McpBotPublishModal", () => ({
 }));
 
 vi.mock("../../components/McpCreateModal", () => ({
-  default: ({ visible }: { visible: boolean }) =>
-    visible ? <div data-testid="connector-manual-publish" /> : null,
+  default: ({ visible, onSaved }: { visible: boolean; onSaved: () => void }) =>
+    visible ? (
+      <div data-testid="connector-manual-publish">
+        <button type="button" data-testid="complete-connector-publish" onClick={onSaved} />
+      </div>
+    ) : null,
 }));
 
 vi.mock("../../components/ExpertBotPublishModal", () => ({
@@ -85,10 +90,11 @@ afterEach(() => {
   h.spaceHandlers.clear();
 });
 
-function renderMenu() {
+function renderMenu(onChanged = vi.fn()) {
   act(() =>
-    ReactDOM.render(<MinePublishMenu onChanged={vi.fn()} />, container)
+    ReactDOM.render(<MinePublishMenu onChanged={onChanged} />, container)
   );
+  return onChanged;
 }
 
 function click(testId: string) {
@@ -181,6 +187,21 @@ describe("MinePublishMenu", () => {
       "market_manual_publish_dialog_opened",
       { market_type: "mcp" }
     );
+  });
+
+  it("reports which typed page changed after a manual publish", async () => {
+    const onChanged = renderMenu();
+    click("mine-publish-entry");
+    await act(async () => {
+      (container.querySelector('[data-testid="mine-publish-skill-manual"]') as HTMLButtonElement).click();
+    });
+    click("complete-skill-publish");
+    expect(onChanged).toHaveBeenLastCalledWith("skills");
+
+    click("mine-publish-entry");
+    click("mine-publish-connector-manual");
+    click("complete-connector-publish");
+    expect(onChanged).toHaveBeenLastCalledWith("mcp");
   });
 
   it("opens Bot flows for experts and squads", () => {

@@ -20,11 +20,26 @@ vi.mock("@octo/base", () => ({
 
 vi.mock("@dmwork/skillmarket", () => ({
   SearchBar: () => React.createElement("input", { type: "search" }),
-  SkillListPage: ({ showPublishEntry }: { showPublishEntry?: boolean }) =>
-    React.createElement("div", {
-      "data-testid": "skills-page",
-      "data-publish-entry": String(showPublishEntry),
-    }),
+  SkillListPage: ({ showPublishEntry }: { showPublishEntry?: boolean }) => {
+    const [query, setQuery] = React.useState("");
+    return React.createElement(
+      "div",
+      {
+        "data-testid": "skills-page",
+        "data-publish-entry": String(showPublishEntry),
+      },
+      React.createElement("input", {
+        "data-testid": "skills-query",
+        value: query,
+        readOnly: true,
+      }),
+      React.createElement("button", {
+        type: "button",
+        "data-testid": "set-skills-query",
+        onClick: () => setQuery("keep me"),
+      })
+    );
+  },
 }));
 
 vi.mock("./AllAssetsList", () => ({
@@ -92,11 +107,25 @@ vi.mock("../features/mine/MineActionHost", () => ({
 }));
 
 vi.mock("../features/mine/MinePublishMenu", () => ({
-  default: () =>
+  default: ({ onChanged }: { onChanged: (type: "skills" | "mcp") => void }) =>
     React.createElement(
-      "button",
-      { type: "button", "data-testid": "mine-publish-entry" },
-      "publish"
+      React.Fragment,
+      null,
+      React.createElement(
+        "button",
+        { type: "button", "data-testid": "mine-publish-entry" },
+        "publish"
+      ),
+      React.createElement("button", {
+        type: "button",
+        "data-testid": "skill-published",
+        onClick: () => onChanged("skills"),
+      }),
+      React.createElement("button", {
+        type: "button",
+        "data-testid": "connector-published",
+        onClick: () => onChanged("mcp"),
+      })
     ),
 }));
 
@@ -252,6 +281,31 @@ describe("MyAssetsPage all-tab actions", () => {
       "skillMarket.plugin.typeExpertTeam",
       "squad-page"
     );
+  });
+
+  it("does not reset the active Skill tab after publishing a connector", () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    act(() => ReactDOM.render(<MyAssetsPage />, container));
+
+    const skillTab = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "skillMarket.plugin.typeSkill"
+    ) as HTMLButtonElement;
+    act(() => skillTab.click());
+
+    act(() => {
+      (container.querySelector('[data-testid="set-skills-query"]') as HTMLButtonElement).click();
+    });
+    act(() => {
+      (container.querySelector('[data-testid="connector-published"]') as HTMLButtonElement).click();
+    });
+
+    expect((container.querySelector('[data-testid="skills-query"]') as HTMLInputElement).value).toBe("keep me");
+
+    act(() => {
+      (container.querySelector('[data-testid="skill-published"]') as HTMLButtonElement).click();
+    });
+    expect((container.querySelector('[data-testid="skills-query"]') as HTMLInputElement).value).toBe("");
   });
 
   it("closes an all-tab action when the active Space changes", () => {

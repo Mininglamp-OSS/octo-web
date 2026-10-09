@@ -93,7 +93,7 @@ export default function MyAssetsPage() {
   const [type, setType] = useState<MineType>(initialType);
   const [allQuery, setAllQuery] = useState("");
   const [allRefreshKey, setAllRefreshKey] = useState(0);
-  const [publishRefreshKey, setPublishRefreshKey] = useState(0);
+  const [publishRefreshKeys, setPublishRefreshKeys] = useState({ skills: 0, mcp: 0 });
   const [mineActionRequest, setMineActionRequest] =
     useState<MineActionRequest | null>(null);
   const requestIdRef = useRef(0);
@@ -109,13 +109,16 @@ export default function MyAssetsPage() {
   const handleDirectEditChanged = useCallback(() => {
     setAllRefreshKey((key) => key + 1);
   }, []);
-  const handlePublished = useCallback(() => {
+  const handlePublished = useCallback((publishedType: "skills" | "mcp") => {
     setAllRefreshKey((key) => key + 1);
     // The legacy typed pages do not expose an imperative reload contract yet,
-    // so a successful manual publish remounts the active page to fetch fresh
-    // data. Bot forwarding does not call this handler because it has not
-    // published anything yet.
-    setPublishRefreshKey((key) => key + 1);
+    // so a successful manual publish remounts only the matching page to fetch
+    // fresh data. A publish started from another active tab must not discard
+    // that tab's search, filters, pagination, or scroll position.
+    setPublishRefreshKeys((keys) => ({
+      ...keys,
+      [publishedType]: keys[publishedType] + 1,
+    }));
   }, []);
 
   useEffect(() => {
@@ -177,14 +180,13 @@ export default function MyAssetsPage() {
         )}
         {type === "skills" && (
           <SkillListPage
-            key={`skills-${publishRefreshKey}`}
+            key={`skills-${publishRefreshKeys.skills}`}
             variant="mine"
             showPublishEntry={false}
           />
         )}
         {type === "experts" && (
           <ExpertMarketListPage
-            key={`experts-${publishRefreshKey}`}
             variant="mine"
             mineType="agent"
             showPublishEntry={false}
@@ -192,7 +194,6 @@ export default function MyAssetsPage() {
         )}
         {type === "squads" && (
           <ExpertMarketListPage
-            key={`squads-${publishRefreshKey}`}
             variant="mine"
             mineType="squad"
             showPublishEntry={false}
@@ -200,7 +201,7 @@ export default function MyAssetsPage() {
         )}
         {type === "mcp" && (
           <McpMarketListPage
-            key={`mcp-${publishRefreshKey}`}
+            key={`mcp-${publishRefreshKeys.mcp}`}
             variant="mine"
             showPublishEntry={false}
           />
