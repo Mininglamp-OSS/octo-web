@@ -3,11 +3,8 @@ import { createPortal } from "react-dom";
 import {
   AlertCircle,
   ArrowDown,
-  Bot,
-  ChevronDown,
   PackageOpen,
   RefreshCw,
-  Upload,
 } from "lucide-react";
 import { t, useI18n, WKApp, WKButton, Dap } from "@octo/base";
 import type { Skill, SkillSort } from "../types/skill";
@@ -15,7 +12,6 @@ import { useSkills } from "../hooks/useSkills";
 import { useReviewRequests } from "../hooks/useReviewRequests";
 import { cancelReview, publishPlugin } from "../api/skillApi";
 import { deriveSkillReviewState } from "../utils/review";
-import BotPublishModal from "../components/BotPublishModal";
 import CategoryChips from "../components/CategoryChips";
 import DeleteConfirmModal from "../components/DeleteConfirmModal";
 import EditSkillModal from "../components/EditSkillModal";
@@ -35,8 +31,8 @@ import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
  */
 interface SkillListPageProps {
   variant?: "market" | "mine";
-  /** Legacy local entry is opt-in; MyAssetsPage owns the unified entry. */
-  showPublishEntry?: boolean;
+  /** External refresh signal that preserves the page's filters and scroll. */
+  refreshKey?: number;
 }
 
 const TOAST_DURATION = 3000;
@@ -52,7 +48,7 @@ const SORT_OPTIONS: Array<{ value: SkillSort; labelKey: string; descending?: boo
 
 export default function SkillListPage({
   variant = "market",
-  showPublishEntry = false,
+  refreshKey = 0,
 }: SkillListPageProps = {}) {
   useI18n();
   // Variant is fixed for the page's lifetime (mine → /mcp-market/mine, market →
@@ -70,6 +66,7 @@ export default function SkillListPage({
   const myReviews = useReviewRequests({ mode: "mine", pageSize: 100, enabled: mine });
   const refreshRef = useRef(list.refresh);
   const reviewsRefreshRef = useRef(myReviews.refresh);
+  const externalRefreshKeyRef = useRef(refreshKey);
   const [createVisible, setCreateVisible] = useState(false);
   // 提交组织审核 / 重新提交 / 发布新版本 all funnel into NewSkillModal's review
   // mode: it collects the version label + changelog and calls
@@ -80,8 +77,6 @@ export default function SkillListPage({
   const [reviewInitial, setReviewInitial] = useState<{ version?: string; changelog?: string } | null>(
     null
   );
-  const [publishMenuOpen, setPublishMenuOpen] = useState(false);
-  const [botPublishVisible, setBotPublishVisible] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Skill | null>(null);
   const [deleting, setDeleting] = useState<Skill | null>(null);
@@ -90,11 +85,17 @@ export default function SkillListPage({
   const [detailRefreshKey, setDetailRefreshKey] = useState(0);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const publishMenuRef = useRef<HTMLDivElement | null>(null);
   const toastTimerRef = useRef<number | null>(null);
 
   refreshRef.current = list.refresh;
   reviewsRefreshRef.current = myReviews.refresh;
+
+  useEffect(() => {
+    if (externalRefreshKeyRef.current === refreshKey) return;
+    externalRefreshKeyRef.current = refreshKey;
+    refreshRef.current();
+    reviewsRefreshRef.current();
+  }, [refreshKey]);
 
   const showToast = useCallback((message: string) => {
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
@@ -113,11 +114,9 @@ export default function SkillListPage({
 
   useEffect(() => {
     const handleSpaceChanged = () => {
-      setPublishMenuOpen(false);
       setCreateVisible(false);
       setReviewSkill(null);
       setReviewInitial(null);
-      setBotPublishVisible(false);
       setDetailId(null);
       setEditing(null);
       setDeleting(null);
@@ -128,27 +127,6 @@ export default function SkillListPage({
     WKApp.mittBus.on("space-changed", handleSpaceChanged);
     return () => WKApp.mittBus.off("space-changed", handleSpaceChanged);
   }, []);
-
-  useEffect(() => {
-    if (!publishMenuOpen) return undefined;
-
-    function handlePointerDown(event: PointerEvent) {
-      if (!publishMenuRef.current?.contains(event.target as Node)) {
-        setPublishMenuOpen(false);
-      }
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setPublishMenuOpen(false);
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [publishMenuOpen]);
 
   useEffect(() => {
     const node = sentinelRef.current;
@@ -310,60 +288,6 @@ export default function SkillListPage({
             selectedTags={selectedTags}
             onSelectedTagsChange={handleSelectedTagsChange}
           />
-          {variant === "mine" && showPublishEntry && (
-          <div className="skill-market-publish-menu" ref={publishMenuRef}>
-            <WKButton
-              variant="primary"
-              data-testid="skill-publish-entry"
-              icon={<Upload size={15} />}
-              onClick={() => setPublishMenuOpen((open) => !open)}
-              aria-haspopup="menu"
-              aria-expanded={publishMenuOpen}
-            >
-              {t("skillMarket.list.publishSkill")}
-              <ChevronDown size={14} />
-            </WKButton>
-            {publishMenuOpen && (
-              <div className="skill-market-publish-menu__panel" role="menu">
-                <button
-                  type="button"
-                  role="menuitem"
-                  data-testid="skill-publish-method-bot"
-                  onClick={() => {
-                    setPublishMenuOpen(false);
-                    setBotPublishVisible(true);
-                  }}
-                >
-                  <Bot size={16} />
-                  <span>
-                    <strong>{t("skillMarket.publishMenu.botTitle")}</strong>
-                    <small>{t("skillMarket.publishMenu.botHint")}</small>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  data-testid="skill-publish-method-manual"
-                  onClick={() => {
-                    Dap.shared.track("market_manual_publish_dialog_opened", { market_type: "skill" });
-                    setPublishMenuOpen(false);
-                    // Plain upload, not a review resubmit — clear any review
-                    // context left over from an earlier 提交审核 click.
-                    setReviewSkill(null);
-                    setReviewInitial(null);
-                    setCreateVisible(true);
-                  }}
-                >
-                  <Upload size={16} />
-                  <span>
-                    <strong>{t("skillMarket.publishMenu.manualTitle")}</strong>
-                    <small>{t("skillMarket.publishMenu.manualHint")}</small>
-                  </span>
-                </button>
-              </div>
-            )}
-          </div>
-          )}
         </div>
       </header>
 
@@ -551,10 +475,6 @@ export default function SkillListPage({
         onCreated={handleCreated}
         reviewSkill={reviewSkill}
         reviewInitial={reviewInitial}
-      />
-      <BotPublishModal
-        visible={botPublishVisible}
-        onClose={() => setBotPublishVisible(false)}
       />
       <EditSkillModal
         skill={editing}

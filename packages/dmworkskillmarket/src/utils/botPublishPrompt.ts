@@ -1,7 +1,7 @@
 import { isShellSafeSpaceId, sanitizeShellSpaceId } from "./spaceId";
 
 export interface BotPublishPromptValues {
-  mode?: "create" | "update";
+  mode?: "create" | "upgrade";
   pluginId?: string;
   spaceId?: string;
   apiBaseUrl?: string;
@@ -14,18 +14,18 @@ export function getBotPublishPrompt(
   // poisoned value must render as the inert <space-id> placeholder.
   const spaceId = sanitizeShellSpaceId(values.spaceId);
   const apiBaseUrl = values.apiBaseUrl?.trim() || "<api-base-url>";
-  const isUpdate = values.mode === "update";
+  const isUpgrade = values.mode === "upgrade";
   const pluginId = isShellSafeSpaceId(values.pluginId)
     ? (values.pluginId as string).trim()
     : "<plugin-id>";
-  const intro = isUpdate
+  const intro = isUpgrade
     ? "使用 octo-cli 内置的 Marketplace Skill，为 OCTO Marketplace 中已上架的 Skill 发布新版本。"
     : "使用 octo-cli 内置的 Marketplace Skill，将指定 Skill 上架到 OCTO Marketplace。";
-  const idLine = isUpdate ? `\n- Plugin ID：\`${pluginId}\`` : "";
-  const request = isUpdate
+  const idLine = isUpgrade ? `\n- Plugin ID：\`${pluginId}\`` : "";
+  const request = isUpgrade
     ? "请上传包含新版本的 `.zip` / `.skill` 包，或提供 Agent 当前运行环境可访问的新 Skill 包或 Skill 目录位置，并说明本次变更。"
     : "请上传要上架的 `.zip` / `.skill` 包，或提供 Agent 当前运行环境可访问的 Skill 包或 Skill 目录位置。";
-  const workflow = isUpdate
+  const workflow = isUpgrade
     ? `4. 按该 Skill 的 \`skills.md\` 中“Release a new version”流程升级 Plugin \`${pluginId}\`：
 
    - 先用 \`octo-cli marketplace plugin get --plugin-id ${pluginId} --profile <profile>\` 回读当前

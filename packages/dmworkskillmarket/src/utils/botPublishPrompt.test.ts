@@ -54,7 +54,7 @@ describe("getBotPublishPrompt", () => {
 
   it("builds a guarded new-version flow for an existing skill", () => {
     const prompt = getBotPublishPrompt({
-      mode: "update",
+      mode: "upgrade",
       pluginId: "skill-123",
       spaceId: "space-1",
       apiBaseUrl: "https://octo.example.com/api",
@@ -74,7 +74,7 @@ describe("getBotPublishPrompt", () => {
 
   it("does not interpolate an unsafe plugin id into the upgrade prompt", () => {
     const prompt = getBotPublishPrompt({
-      mode: "update",
+      mode: "upgrade",
       pluginId: "skill; rm -rf /",
       spaceId: "space-1",
     });

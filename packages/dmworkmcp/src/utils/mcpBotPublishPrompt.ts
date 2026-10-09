@@ -4,11 +4,17 @@ import {
 } from "@octo/base/src/Utils/spaceId";
 
 export interface McpBotPublishPromptValues {
-  mode?: "create" | "update";
+  mode?: "create" | "upgrade";
   pluginId?: string;
   spaceId?: string;
   apiBaseUrl?: string;
 }
+
+const SECRET_PLACEHOLDER_RULE = `消费者需自行填入的密钥值必须写成规范化键名占位：先去掉首尾空白，把非字母数字字符替换为
+     \`_\`，再转大写。例如 header \`Authorization\` 写 \`\${AUTHORIZATION}\`、\`X-Api-Secret\`
+     写 \`\${X_API_SECRET}\`、\`GITHUB_TOKEN\` 写 \`\${GITHUB_TOKEN}\`，不要写泛化的
+     \`\${VAR}\`，也不要提交真实密钥。即使 \`mcp.md\` 示例使用了与键名不一致的占位符
+     （例如键 \`TOKEN\` 配 \`\${GITHUB_TOKEN}\`），也必须改为规范化键名占位 \`\${TOKEN}\`。`;
 
 // A space id is interpolated into shell command examples (`--space ${spaceId}`),
 // so it must not carry shell metacharacters. Server-issued space ids are
@@ -50,11 +56,12 @@ export function getMcpBotPublishPrompt(
     ? (values.pluginId as string).trim()
     : "<plugin-id>";
 
-  if (values.mode === "update") {
+  if (values.mode === "upgrade") {
     return `使用 octo-cli 内置的 \`octo-marketplace\` Skill，为 OCTO Marketplace 中已上架的连接器发布新版本。
 
 - Space ID：\`${spaceId}\`
 - API 地址：\`${apiBaseUrl}\`
+- 可见范围：\`space\`
 - Plugin ID：\`${pluginId}\`
 
 如果当前消息没有更新后的 MCP 配置信息或路径，只回复：
@@ -85,17 +92,20 @@ export function getMcpBotPublishPrompt(
    - 先用 \`octo-cli marketplace plugin get --plugin-id ${pluginId} --profile <profile>\` 回读当前记录，
      保留未修改的完整 manifest/package 字段，并检查是否已有待审核升级；有待审请求时不要重复提交。
    - 校验修改后的连接配置。\`streamable-http\` / \`sse\` 用 \`marketplace mcp probe\` 确认
-     \`is_ok=true\`；\`stdio\` 不在服务端执行 probe。真实密钥不得写入 payload，只能使用规范化 \`\${VAR}\` 占位符。
+     \`is_ok=true\`；\`stdio\` 不在服务端执行 probe。${SECRET_PLACEHOLDER_RULE}
    - 准备向前递增的 \`MAJOR.MINOR.PATCH\` 版本、changelog、完整 \`manifest_json\` 和
      \`plugin_json\`。向我展示升级目标、当前/新版本、变更和可见范围，并暂停等待我明确回复“确认升级”；
      未确认不得写入。
    - 已上架到 Space 的连接器不得通过 \`plugin upsert\` 覆盖线上内容；确认后按 \`mcp.md\` 用
      \`plugin review-request create\` 提交冻结内容。完成后回读 Plugin 和审核请求；审核中时说明旧版本仍在线，
-     审核通过后才会替换。
+     审核通过后才会替换。如需上传图标，取得预签名后不得输出 \`presigned_url\` / \`method\` / \`headers\`，
+     也不得写入 payload 文件。
 
 失败处理：探测或校验失败时停止并指出具体字段；遇到 409 时先检查待审核请求，不要重复创建；网关超时或
 \`RESULT_UNKNOWN\` 时先回读 Plugin、版本和审核请求判断是否已提交，再决定是否重试。任何失败都不得伪造成功；
-保留本地 payload，返回脱敏错误摘要和可复制的重试命令。`;
+保留本地 payload，返回脱敏错误摘要和可复制的重试命令。
+
+以上 Space ID、API 地址和可见范围是本次操作的权威输入。`;
   }
 
   return `使用 octo-cli 内置的 \`octo-marketplace\` Skill，将指定 MCP 服务器上架到 OCTO Marketplace。
@@ -145,11 +155,7 @@ export function getMcpBotPublishPrompt(
      确认 \`is_ok=true\` 再继续。\`stdio\` 传输不要调用 probe。
    - 按 \`mcp.md\` 编写 \`plugin.json\`，使用 \`plugin_type: "connector"\`，
      准备完整的 \`manifest_json\` 和 \`plugin_json\`（包含根目录 \`mcp.json\`）。
-     消费者需自行填入的密钥值必须写成规范化键名占位：先去掉首尾空白，把非字母数字字符替换为
-     \`_\`，再转大写。例如 header \`Authorization\` 写 \`\${AUTHORIZATION}\`、\`X-Api-Secret\`
-     写 \`\${X_API_SECRET}\`、\`GITHUB_TOKEN\` 写 \`\${GITHUB_TOKEN}\`，不要写泛化的
-     \`\${VAR}\`，也不要提交真实密钥。即使 \`mcp.md\` 示例使用了与键名不一致的占位符
-     （例如键 \`TOKEN\` 配 \`\${GITHUB_TOKEN}\`），也必须改为规范化键名占位 \`\${TOKEN}\`。
+     ${SECRET_PLACEHOLDER_RULE}
    - 向我展示发布预览，并在这里暂停，明确等待我回复“确认上架”；未收到这四个字，
      不得创建、发布或提交审核。可先用 \`--dry-run\` 打印将要发送的请求核对。
    - 确认后只使用 \`mcp.md\` 记录的统一 \`octo-cli marketplace plugin ...\` 命令完成保存、

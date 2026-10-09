@@ -229,7 +229,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("AllAssetsList parity with type tabs", () => {
+describe("AllAssetsList mixed-catalog actions", () => {
   it("debounces a unified search and sends it to the all-types list", async () => {
     vi.useFakeTimers();
     h.getMySkills.mockResolvedValue(page([]));

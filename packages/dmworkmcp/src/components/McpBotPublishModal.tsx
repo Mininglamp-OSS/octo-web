@@ -8,7 +8,7 @@ import {
 
 interface McpBotPublishModalProps {
   visible: boolean;
-  mode?: "create" | "update";
+  mode?: "create" | "upgrade";
   editingId?: string;
   onClose: () => void;
 }
@@ -49,17 +49,17 @@ export default function McpBotPublishModal({
       }),
     [mode, editingId, spaceId, apiURL]
   );
-  const isUpdate = mode === "update";
+  const isUpgrade = mode === "upgrade";
 
   return (
     <PromptForwardModal
       visible={visible}
       onClose={onClose}
       title={t(
-        isUpdate ? "mcp.botPublish.updateTitle" : "mcp.botPublish.title"
+        isUpgrade ? "mcp.botPublish.updateTitle" : "mcp.botPublish.title"
       )}
-      hint={t(isUpdate ? "mcp.botPublish.updateHint" : "mcp.botPublish.hint")}
-      kind={isUpdate ? "update" : "publish"}
+      hint={t(isUpgrade ? "mcp.botPublish.updateHint" : "mcp.botPublish.hint")}
+      kind={isUpgrade ? "update" : "publish"}
       icon={<Bot size={18} />}
       prompt={prompt}
       spaceId={spaceId}

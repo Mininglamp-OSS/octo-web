@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   fetchMcpDetail: vi.fn(),
   getExpert: vi.fn(),
   getSquad: vi.fn(),
+  loadExpertReviewSnapshot: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
   toastWarning: vi.fn(),
@@ -104,6 +105,8 @@ vi.mock("../../api/mcpService", () => ({
 vi.mock("../../api/expertService", () => ({
   getExpert: (...args: unknown[]) => h.getExpert(...args),
   getSquad: (...args: unknown[]) => h.getSquad(...args),
+  loadExpertReviewSnapshot: (...args: unknown[]) =>
+    h.loadExpertReviewSnapshot(...args),
 }));
 
 vi.mock("../../components/McpCreateModal", () => ({
@@ -167,8 +170,26 @@ vi.mock("../../components/ExpertEditModal", () => ({
     item ? <div data-testid="expert-edit" data-id={item.id} /> : null,
 }));
 vi.mock("../../components/ExpertDetailModal", () => ({
-  default: ({ item }: { item: typeof expert | typeof squad | null }) =>
-    item ? <div data-testid="expert-detail" data-id={item.id} /> : null,
+  default: ({
+    item,
+    onUpgrade,
+  }: {
+    item: typeof expert | typeof squad | null;
+    onUpgrade?: (item: typeof expert | typeof squad) => void;
+  }) =>
+    item ? (
+      <div data-testid="expert-detail" data-id={item.id}>
+        {onUpgrade && (
+          <button type="button" onClick={() => onUpgrade(item)}>
+            expert-detail-upgrade
+          </button>
+        )}
+      </div>
+    ) : null,
+}));
+vi.mock("../../components/ReviewSubmitModal", () => ({
+  default: ({ target }: { target: { pluginId: string } | null }) =>
+    target ? <div data-testid="review-submit" data-id={target.pluginId} /> : null,
 }));
 vi.mock("../../components/ExpertBotPublishModal", () => ({
   default: ({
@@ -237,6 +258,7 @@ beforeEach(() => {
   h.fetchMcpDetail.mockResolvedValue(connector);
   h.getExpert.mockResolvedValue(expert);
   h.getSquad.mockResolvedValue(squad);
+  h.loadExpertReviewSnapshot.mockResolvedValue({ content: {}, relations: [] });
 });
 
 afterEach(() => {
@@ -313,8 +335,43 @@ describe("MineActionHost", () => {
   });
 
   it.each([
-    ["skill", skill.id, "skill-bot", null, "update"],
-    ["connector", connector.id, "connector-bot", null, "update"],
+    ["expert", expert],
+    ["squad", squad],
+  ] as const)("keeps an in-app upgrade route for %s details", async (type, item) => {
+    const listed = {
+      ...item,
+      listingState: "published",
+      visibility: "space",
+      displayStatus: "published",
+    };
+    if (type === "squad") h.getSquad.mockResolvedValueOnce(listed);
+    else h.getExpert.mockResolvedValueOnce(listed);
+
+    renderHost({
+      requestId: 10,
+      pluginId: item.id,
+      type,
+      action: "view",
+    });
+    await act(async () => undefined);
+
+    act(() => {
+      const button = Array.from(container.querySelectorAll("button")).find(
+        (candidate) => candidate.textContent === "expert-detail-upgrade"
+      ) as HTMLButtonElement;
+      button.click();
+    });
+
+    expect(
+      container
+        .querySelector('[data-testid="review-submit"]')
+        ?.getAttribute("data-id")
+    ).toBe(item.id);
+  });
+
+  it.each([
+    ["skill", skill.id, "skill-bot", null, "upgrade"],
+    ["connector", connector.id, "connector-bot", null, "upgrade"],
     ["expert", expert.id, "expert-bot", "agent", "upgrade"],
     ["squad", squad.id, "expert-bot", "squad", "upgrade"],
   ] as const)(

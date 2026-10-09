@@ -6,7 +6,7 @@ import { getBotPublishPrompt } from "../utils/botPublishPrompt";
 
 interface BotPublishModalProps {
   visible: boolean;
-  mode?: "create" | "update";
+  mode?: "create" | "upgrade";
   editingId?: string;
   onClose: () => void;
 }
@@ -46,23 +46,23 @@ export default function BotPublishModal({
       }),
     [mode, editingId, spaceId, apiURL]
   );
-  const isUpdate = mode === "update";
+  const isUpgrade = mode === "upgrade";
 
   return (
     <PromptForwardModal
       visible={visible}
       onClose={onClose}
       title={t(
-        isUpdate
+        isUpgrade
           ? "skillMarket.botPublish.updateTitle"
           : "skillMarket.botPublish.title"
       )}
       hint={t(
-        isUpdate
+        isUpgrade
           ? "skillMarket.botPublish.updateHint"
           : "skillMarket.botPublish.hint"
       )}
-      kind={isUpdate ? "update" : "publish"}
+      kind={isUpgrade ? "update" : "publish"}
       icon={<Bot size={18} />}
       prompt={prompt}
       spaceId={spaceId}

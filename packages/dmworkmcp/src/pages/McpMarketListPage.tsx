@@ -2,7 +2,7 @@ import React, { Component } from "react";
 import axios from "axios";
 import { Spin, Toast } from "@douyinfe/semi-ui";
 import { IconClose } from "@douyinfe/semi-icons";
-import { Bot, Check, ChevronDown, Search, SlidersHorizontal, Upload } from "lucide-react";
+import { Check, Search, SlidersHorizontal } from "lucide-react";
 import { I18nContext, t, WKApp, WKButton, Dap } from "@octo/base";
 import { fetchMcpDetail, fetchMcpList, fetchMcpMine, fetchMcpTags, McpTagSuggestion } from "../api/mcpService";
 import { mcpListErrorI18nKey } from "../api/mcpListError";
@@ -10,7 +10,6 @@ import type { McpCategory, McpDetail, McpListItem, McpSort } from "../types/mcp"
 import McpCard from "../components/McpCard";
 import McpDetailModal from "../components/McpDetailModal";
 import McpCreateModal from "../components/McpCreateModal";
-import McpBotPublishModal from "../components/McpBotPublishModal";
 import McpConnectModal from "../components/McpConnectModal";
 import McpDeleteConfirmModal from "../components/McpDeleteConfirmModal";
 import ReviewSubmitModal, {
@@ -67,11 +66,6 @@ interface McpMarketListPageState {
   total: number;
   detailId: string | null;
   createVisible: boolean;
-  /** Dropdown-menu open state for the "上架 MCP" button. Mirrors Skill's
-   *  `publishMenuOpen`. */
-  publishMenuOpen: boolean;
-  /** Bot 上架 modal open state. */
-  botPublishVisible: boolean;
   /** When set, the create/edit modal opens in EDIT mode prefilled from this
    *  detail. Cleared on modal close. Distinct from `createVisible` — this
    *  drives the "editing" branch of the shared modal component. */
@@ -105,8 +99,8 @@ interface McpMarketListPageState {
  */
 interface McpMarketListPageProps {
   variant?: "market" | "mine";
-  /** Legacy local entry is opt-in; MyAssetsPage owns the unified entry. */
-  showPublishEntry?: boolean;
+  /** External refresh signal that preserves filters, pagination and scroll. */
+  refreshKey?: number;
 }
 
 /**
@@ -138,8 +132,6 @@ export default class McpMarketListPage extends Component<
     total: 0,
     detailId: null,
     createVisible: false,
-    publishMenuOpen: false,
-    botPublishVisible: false,
     editingDetail: null,
     deletingItem: null,
     connectItem: null,
@@ -150,7 +142,6 @@ export default class McpMarketListPage extends Component<
     reviewEditingDetail: null,
   };
 
-  private publishMenuRef = React.createRef<HTMLDivElement>();
   private tagFilterRef = React.createRef<HTMLDivElement>();
   private tagSearchInputRef = React.createRef<HTMLInputElement>();
 
@@ -171,14 +162,17 @@ export default class McpMarketListPage extends Component<
     WKApp.mittBus.on("space-changed", this.handleSpaceChanged_);
   }
 
-  componentDidUpdate(_prevProps: {}, prevState: McpMarketListPageState) {
-    // Only own the two global listeners while EITHER the publish dropdown or
-    // the tag filter popover is open — mirrors dmworkskillmarket's
-    // SkillListPage. Attaching in componentDidMount unconditionally forces
-    // every card click / scroll on the page to trip through a no-op guard
-    // for the 99% of the session where both are closed.
-    const wasOpen = prevState.publishMenuOpen || prevState.tagFilterOpen;
-    const isOpen = this.state.publishMenuOpen || this.state.tagFilterOpen;
+  componentDidUpdate(
+    prevProps: McpMarketListPageProps,
+    prevState: McpMarketListPageState
+  ) {
+    if (prevProps.refreshKey !== this.props.refreshKey) {
+      void this.loadData();
+      this.state.review.refresh();
+    }
+    // Own the global listeners only while the tag filter popover is open.
+    const wasOpen = prevState.tagFilterOpen;
+    const isOpen = this.state.tagFilterOpen;
     if (wasOpen !== isOpen) {
       if (isOpen) {
         document.addEventListener("pointerdown", this.handleGlobalPointerDown_);
@@ -215,21 +209,14 @@ export default class McpMarketListPage extends Component<
     WKApp.mittBus.off("wk:nav-menu-activated", this.handleNavMenuActivated_);
     WKApp.mittBus.off("space-changed", this.handleSpaceChanged_);
     this.cancelTagFetch_();
-    // Idempotent — safe if both popovers were closed at unmount.
+    // Idempotent — safe if the popover was closed at unmount.
     document.removeEventListener("pointerdown", this.handleGlobalPointerDown_);
     document.removeEventListener("keydown", this.handleGlobalKeyDown_);
     if (this.searchTimer) clearTimeout(this.searchTimer);
   }
 
-  /** Close either open dropdown on outside click. Attached only while at
-   *  least one is open (see componentDidUpdate). */
+  /** Close the tag dropdown on outside click. */
   private handleGlobalPointerDown_ = (e: PointerEvent) => {
-    if (
-      this.state.publishMenuOpen &&
-      !this.publishMenuRef.current?.contains(e.target as Node)
-    ) {
-      this.setState({ publishMenuOpen: false });
-    }
     if (
       this.state.tagFilterOpen &&
       !this.tagFilterRef.current?.contains(e.target as Node)
@@ -238,11 +225,10 @@ export default class McpMarketListPage extends Component<
     }
   };
 
-  /** Close either open dropdown on Escape. Attached only while at least one
-   *  is open (see componentDidUpdate). */
+  /** Close the tag dropdown on Escape. */
   private handleGlobalKeyDown_ = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
-      this.setState({ publishMenuOpen: false, tagFilterOpen: false });
+      this.setState({ tagFilterOpen: false });
     }
   };
 
@@ -272,8 +258,6 @@ export default class McpMarketListPage extends Component<
       tagQuery: "",
       tagSuggestions: [],
       categoriesSelected: [],
-      publishMenuOpen: false,
-      botPublishVisible: false,
       connectItem: null,
       createVisible: false,
       editingDetail: null,
@@ -1014,56 +998,6 @@ export default class McpMarketListPage extends Component<
                 </div>
               </div>
             </div>
-            {this.props.variant === "mine" && this.props.showPublishEntry === true && (
-            <div className="wk-mcp-publish-menu" ref={this.publishMenuRef}>
-              <WKButton
-                variant="primary"
-                data-testid="mcp-publish-entry"
-                icon={<Upload size={15} />}
-                onClick={() =>
-                  this.setState((prev) => ({ publishMenuOpen: !prev.publishMenuOpen }))
-                }
-                aria-haspopup="menu"
-                aria-expanded={this.state.publishMenuOpen}
-              >
-                {t("mcp.list.create")}
-                <ChevronDown size={14} />
-              </WKButton>
-              {this.state.publishMenuOpen && (
-                <div className="wk-mcp-publish-menu__panel" role="menu">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    data-testid="mcp-publish-method-bot"
-                    onClick={() =>
-                      this.setState({ publishMenuOpen: false, botPublishVisible: true })
-                    }
-                  >
-                    <Bot size={16} />
-                    <span>
-                      <strong>{t("mcp.publishMenu.botTitle")}</strong>
-                      <small>{t("mcp.publishMenu.botHint")}</small>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    data-testid="mcp-publish-method-manual"
-                    onClick={() => {
-                      Dap.shared.track("market_manual_publish_dialog_opened", { market_type: "mcp" })
-                      this.setState({ publishMenuOpen: false, createVisible: true })
-                    }}
-                  >
-                    <Upload size={16} />
-                    <span>
-                      <strong>{t("mcp.publishMenu.manualTitle")}</strong>
-                      <small>{t("mcp.publishMenu.manualHint")}</small>
-                    </span>
-                  </button>
-                </div>
-              )}
-            </div>
-            )}
           </div>
         </header>
 
@@ -1200,10 +1134,6 @@ export default class McpMarketListPage extends Component<
         <MyReviewStateProbe
           enabled={this.props.variant === "mine"}
           onChange={this.handleReviewStateChange}
-        />
-        <McpBotPublishModal
-          visible={this.state.botPublishVisible}
-          onClose={() => this.setState({ botPublishVisible: false })}
         />
         <McpConnectModal
           item={this.state.connectItem}

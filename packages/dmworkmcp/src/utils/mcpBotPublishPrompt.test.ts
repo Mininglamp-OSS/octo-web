@@ -176,7 +176,7 @@ describe("getMcpBotPublishPrompt — shell-safe interpolation", () => {
 
   it("builds a guarded new-version flow for an existing connector", () => {
     const p = getMcpBotPublishPrompt({
-      mode: "update",
+      mode: "upgrade",
       pluginId: "connector-123",
       spaceId: goodId,
       apiBaseUrl: "https://example.com",
@@ -189,6 +189,11 @@ describe("getMcpBotPublishPrompt — shell-safe interpolation", () => {
     expect(p).toContain("409 时先检查待审核请求");
     expect(p).toContain("`RESULT_UNKNOWN`");
     expect(p).toContain("可复制的重试命令");
+    expect(p).toContain("可见范围：`space`");
+    expect(p).toContain("header `Authorization` 写 `${AUTHORIZATION}`");
+    expect(p).toContain("不要写泛化的");
+    expect(p).toContain("`${VAR}`");
+    expect(p).toContain("不得输出 `presigned_url` / `method` / `headers`");
     expect(p.indexOf("等待我明确回复“确认升级”")).toBeLessThan(
       p.indexOf("`plugin review-request create`")
     );
@@ -196,7 +201,7 @@ describe("getMcpBotPublishPrompt — shell-safe interpolation", () => {
 
   it("does not interpolate an unsafe plugin id into the upgrade prompt", () => {
     const p = getMcpBotPublishPrompt({
-      mode: "update",
+      mode: "upgrade",
       pluginId: "connector; rm -rf /",
       spaceId: goodId,
     });

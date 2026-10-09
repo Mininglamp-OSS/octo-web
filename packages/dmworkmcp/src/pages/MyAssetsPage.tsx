@@ -180,30 +180,26 @@ export default function MyAssetsPage() {
         )}
         {type === "skills" && (
           <SkillListPage
-            key={`skills-${publishRefreshKeys.skills}`}
             variant="mine"
-            showPublishEntry={false}
+            refreshKey={publishRefreshKeys.skills}
           />
         )}
         {type === "experts" && (
           <ExpertMarketListPage
             variant="mine"
             mineType="agent"
-            showPublishEntry={false}
           />
         )}
         {type === "squads" && (
           <ExpertMarketListPage
             variant="mine"
             mineType="squad"
-            showPublishEntry={false}
           />
         )}
         {type === "mcp" && (
           <McpMarketListPage
-            key={`mcp-${publishRefreshKeys.mcp}`}
             variant="mine"
-            showPublishEntry={false}
+            refreshKey={publishRefreshKeys.mcp}
           />
         )}
         <MineActionHost
