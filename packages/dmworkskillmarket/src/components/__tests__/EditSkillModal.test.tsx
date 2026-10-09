@@ -155,10 +155,12 @@ describe("EditSkillModal", () => {
     await waitFor(() => expect(onUpdated).toHaveBeenCalledTimes(1));
   });
 
-  it("localizes backend errors from save instead of exposing raw English", async () => {
+  it("localizes structured validation errors from save", async () => {
     vi.mocked(api.updateSkill).mockRejectedValue({
-      code: "DUPLICATE_NAME",
-      message: "A Skill with the same name already exists in this Space.",
+      code: "VALIDATION_ERROR",
+      status: 400,
+      details: { field: "version", reason: "must_not_decrease" },
+      message: "version must not go backwards",
     });
     render(
       <EditSkillModal
@@ -177,13 +179,13 @@ describe("EditSkillModal", () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          "当前空间已存在同名 Skill。请修改 SKILL.md 中的 name 后重试。"
+          "版本号只能保持不变或递增"
         )
       ).toBeTruthy();
     });
     expect(
       screen.queryByText(
-        "A Skill with the same name already exists in this Space."
+        "version must not go backwards"
       )
     ).toBeNull();
   });
@@ -215,6 +217,19 @@ describe("EditSkillModal", () => {
     expect(screen.queryByText("解析服务暂时不可用，请稍后重试"))
       .toBeNull();
     expect(screen.queryByText("Internal server error")).toBeNull();
+  });
+
+  it("does not stay stuck parsing when success has no result", async () => {
+    vi.mocked(api.pollParse).mockResolvedValue({ status: "success" });
+    render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(selectNewZipLabel), {
+        target: { files: [new File(["zip"], "meeting-note-cleaner.zip", { type: "application/zip" })] },
+      });
+    });
+
+    await waitFor(() => expect(screen.getByText("解析失败")).toBeInTheDocument());
   });
 
   it("blocks save while a tag validation error is visible", () => {

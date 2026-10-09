@@ -205,9 +205,11 @@ describe("NewSkillModal", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("localizes backend errors from the create step", async () => {
+  it("localizes wire-format duplicate errors from the create step", async () => {
     vi.mocked(api.createSkill).mockRejectedValue({
-      code: "DUPLICATE_NAME",
+      code: "DUPLICATE",
+      status: 409,
+      details: { resource: "skill", name: "skill-pack" },
       message: "A Skill with the same name already exists in this Space.",
     });
     render(
@@ -265,6 +267,19 @@ describe("NewSkillModal", () => {
 
     await waitFor(() => expect(screen.getByText("解析失败")).toBeInTheDocument());
     expect(screen.queryByText("Unexpected backend parser failure")).not.toBeInTheDocument();
+  });
+
+  it("does not stay stuck parsing when success has no result", async () => {
+    vi.mocked(api.pollParse).mockResolvedValue({ status: "success" });
+    render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(selectZipLabel), {
+        target: { files: [zipFile()] },
+      });
+    });
+
+    await waitFor(() => expect(screen.getByText("解析失败")).toBeInTheDocument());
   });
 
   it("uses upload-phase copy when the storage upload fails", async () => {
@@ -1050,10 +1065,12 @@ describe("NewSkillModal", () => {
       expect("pluginJson" in call).toBe(false);
     });
 
-    it("localizes backend errors from review submission", async () => {
+    it("localizes wire-format conflicts from review submission", async () => {
       vi.mocked(api.createReviewRequest).mockRejectedValue({
-        code: "DUPLICATE_NAME",
-        message: "A Skill with the same name already exists in this Space.",
+        code: "CONFLICT",
+        status: 409,
+        details: { conflict_reason: "review_pending" },
+        message: "a review request is pending on this plugin",
       });
       render(
         <NewSkillModal
@@ -1075,13 +1092,13 @@ describe("NewSkillModal", () => {
       await waitFor(() => {
         expect(
           screen.getByText(
-            "当前空间已存在同名 Skill。请修改 SKILL.md 中的 name 后重试。"
+            "该 Skill 有正在审核的申请，请先撤回或等待审核完成"
           )
         ).toBeTruthy();
       });
       expect(
         screen.queryByText(
-          "A Skill with the same name already exists in this Space."
+          "a review request is pending on this plugin"
         )
       ).toBeNull();
     });

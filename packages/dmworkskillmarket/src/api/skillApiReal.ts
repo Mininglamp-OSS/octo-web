@@ -48,8 +48,6 @@ import {
 
 interface SuccessEnvelope<T> {
   data: T;
-  requestId?: string;
-  request_id?: string;
   pagination?: {
     has_more?: boolean;
     next_cursor?: string;
@@ -61,8 +59,6 @@ interface SuccessEnvelope<T> {
 
 interface ErrorEnvelope {
   error?: { code?: string; message?: string; details?: unknown; hint?: string };
-  requestId?: string;
-  request_id?: string;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -121,12 +117,6 @@ function normalizeError(input: {
 
 function responseRequestId(response: Response): string | undefined {
   const requestId = response.headers?.get?.("X-Request-Id")?.trim();
-  return requestId || undefined;
-}
-
-function envelopeRequestId(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const requestId = value.trim();
   return requestId || undefined;
 }
 
@@ -203,10 +193,7 @@ async function requestEnvelope<T>(
   const body = (await parseJson(res)) as
     | (Partial<SuccessEnvelope<T>> & ErrorEnvelope)
     | null;
-  const requestId =
-    headerRequestId ??
-    envelopeRequestId(body?.requestId) ??
-    envelopeRequestId(body?.request_id);
+  const requestId = headerRequestId;
   const ok =
     typeof res.ok === "boolean"
       ? res.ok
@@ -947,7 +934,7 @@ export async function pollParse(taskId: string): Promise<ParseStatusResult> {
         code: status.error?.code ?? "parse_failed",
         message: status.error?.message ?? t("skillMarket.errors.parseFailed"),
         details: status.error,
-        requestId: status.requestId,
+        requestId: status.requestId ?? lastRequestId,
       });
     }
     if (attempt < 59) await wait(2000);

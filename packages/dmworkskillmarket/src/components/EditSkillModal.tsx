@@ -9,7 +9,7 @@ import IconCropModal from "./IconCropModal";
 import InlineConfirmBar from "./InlineConfirmBar";
 import { visibilityLabel } from "../utils/labels";
 import { isValidVersion, nextPatch, versionErrorKey } from "../utils/version";
-import { skillUploadErrorMessage } from "../utils/uploadError";
+import { skillUploadErrorMessage, type SkillErrorPhase } from "../utils/uploadError";
 
 interface EditSkillModalProps {
   skill: Skill | null;
@@ -361,7 +361,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     setProgress(0);
     setError(null);
     abortRef.current = false;
-    let fallbackKey = "skillMarket.upload.uploadFailed";
+    let errorPhase: SkillErrorPhase = "upload";
 
     try {
       const { uploadId, presignedUrl, headers } = await initReupload(skill.id, nextFile.name, nextFile.size);
@@ -373,7 +373,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
       if (abortRef.current) return;
 
       setUploadStage("parsing");
-      fallbackKey = "skillMarket.errors.parseFailed";
+      errorPhase = "parse";
       const { taskId } = await triggerParse(uploadId);
       if (abortRef.current) return;
 
@@ -400,12 +400,14 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
         setChangelog("");
         setUploadStage("idle");
         setError(null);
+      } else {
+        throw new Error("Parse succeeded without a result");
       }
     } catch (err) {
       if (!abortRef.current) {
         setUploadStage("error");
         setUploadedFile(null);
-        setError(skillUploadErrorMessage(err, { fallbackKey }));
+        setError(skillUploadErrorMessage(err, { phase: errorPhase }));
       }
     }
   }
@@ -485,9 +487,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
       }
       onClose();
     } catch (err) {
-      setError(skillUploadErrorMessage(err, {
-        fallbackKey: "skillMarket.form.saveFailed",
-      }));
+      setError(skillUploadErrorMessage(err, { phase: "save" }));
     } finally {
       setSaving(false);
       setPublishing(false);

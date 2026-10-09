@@ -472,8 +472,11 @@ describe("skillApiReal", () => {
         json: () =>
           Promise.resolve({
             error: { code: "NOT_FOUND", message: "not found", details: {} },
-            request_id: "req-body-404",
           }),
+        headers: {
+          get: (name: string) =>
+            name.toLowerCase() === "x-request-id" ? "req-header-404" : null,
+        },
       })
     );
 
@@ -485,7 +488,7 @@ describe("skillApiReal", () => {
       code: "NOT_FOUND",
       status: 404,
       message: "not found",
-      requestId: "req-body-404",
+      requestId: "req-header-404",
     });
   });
 
@@ -990,6 +993,36 @@ describe("skillApiReal", () => {
       message: "invalid zip",
       requestId: "req-parse-404",
     });
+  });
+
+  it("keeps the last parse request id when the failure response omits it", async () => {
+    vi.useFakeTimers();
+    mockFetch
+      .mockReturnValueOnce(
+        jsonResponse(
+          { status: "pending", skill_parse_task_id: "task-failed" },
+          200,
+          undefined,
+          "req-parse-pending"
+        )
+      )
+      .mockReturnValueOnce(
+        jsonResponse({
+          status: "failed",
+          skill_parse_task_id: "task-failed",
+          error: { code: "INVALID_ZIP", message: "invalid zip" },
+        })
+      );
+
+    const pending = pollParse("task-failed");
+    const assertion = expect(pending).rejects.toMatchObject({
+      code: "INVALID_ZIP",
+      requestId: "req-parse-pending",
+    });
+    await vi.advanceTimersByTimeAsync(2000);
+
+    await assertion;
+    vi.useRealTimers();
   });
 
   it("pollParse times out after 60 pending attempts", async () => {

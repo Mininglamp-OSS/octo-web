@@ -89,7 +89,7 @@ describe("skillUploadErrorMessage", () => {
     expect(
       skillUploadErrorMessage(
         { message: "Upload failed: HTTP 503", requestId: "req-upload-1" },
-        { fallbackKey: "skillMarket.upload.uploadFailed" },
+        { phase: "upload" },
         zh
       )
     ).toBe("上传失败（请求 ID：req-upload-1）");
@@ -99,17 +99,44 @@ describe("skillUploadErrorMessage", () => {
     expect(
       skillUploadErrorMessage(
         { code: "INTERNAL_ERROR", requestId: "req-save-500" },
-        { fallbackKey: "skillMarket.form.saveFailed" },
+        { phase: "save" },
         zh
       )
     ).toBe("保存失败（请求 ID：req-save-500）");
     expect(
       skillUploadErrorMessage(
         { code: "INTERNAL_ERROR", requestId: "req-parse-500" },
-        { fallbackKey: "skillMarket.errors.parseFailed" },
+        { phase: "parse" },
         zh
       )
     ).toBe("解析服务暂时不可用，请稍后重试（请求 ID：req-parse-500）");
+  });
+
+  it("maps write API errors from wire codes and structured details", () => {
+    const cases = [
+      [{ code: "VALIDATION_ERROR", details: { field: "version", reason: "must_not_decrease" } }, "版本号只能保持不变或递增"],
+      [{ code: "CONFLICT", details: { conflict_reason: "review_pending" } }, "该 Skill 有正在审核的申请，请先撤回或等待审核完成"],
+      [{ code: "CONFLICT", details: { conflict_reason: "label_taken" } }, "该版本号已发布，请使用新的版本号后重试"],
+      [{ code: "DUPLICATE" }, "当前空间已存在同名 Skill。请修改 SKILL.md 中的 name 后重试。"],
+      [{ code: "PAYLOAD_TOO_LARGE" }, "文件过大，请压缩后重试"],
+    ] as const;
+
+    for (const [error, expected] of cases) {
+      expect(skillUploadErrorMessage(error, { phase: "save" }, zh)).toBe(expected);
+    }
+  });
+
+  it("does not expose unknown write error messages", () => {
+    const error = {
+      code: "FUTURE_WRITE_ERROR",
+      message: "private backend diagnostic",
+      requestId: "req-write-1",
+    };
+
+    expect(skillUploadErrorMessage(error, { phase: "save" }, zh)).toBe(
+      "保存失败（请求 ID：req-write-1）"
+    );
+    expect(skillUploadErrorMessage(error, { phase: "save" }, zh)).not.toContain(error.message);
   });
 
   it("keeps request ids on mapped errors", () => {

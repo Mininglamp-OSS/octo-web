@@ -8,7 +8,7 @@ import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
 import InlineConfirmBar from "./InlineConfirmBar";
 import { nextPatch, versionErrorKey } from "../utils/version";
-import { skillUploadErrorMessage } from "../utils/uploadError";
+import { skillUploadErrorMessage, type SkillErrorPhase } from "../utils/uploadError";
 
 /**
  * The visibility the author DECLARES on the plugin. It is stored as-is and lists
@@ -342,7 +342,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
     setProgress(0);
     setError(null);
     abortRef.current = false;
-    let fallbackKey = "skillMarket.upload.uploadFailed";
+    let errorPhase: SkillErrorPhase = "upload";
 
     try {
       // Same three-step pipeline for both flows; only the init boundary differs.
@@ -360,7 +360,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
       if (abortRef.current) return;
 
       setStage("parsing");
-      fallbackKey = "skillMarket.errors.parseFailed";
+      errorPhase = "parse";
       const { taskId } = await triggerParse(uploadId);
       if (abortRef.current) return;
 
@@ -406,11 +406,13 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
         setCategoryId("");
         setStage("form");
         setError(null);
+      } else {
+        throw new Error("Parse succeeded without a result");
       }
     } catch (err) {
       if (!abortRef.current) {
         setStage(isReviewMode ? "review" : "error");
-        setError(skillUploadErrorMessage(err, { fallbackKey }));
+        setError(skillUploadErrorMessage(err, { phase: errorPhase }));
       }
     }
   }
@@ -541,9 +543,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
         );
         onClose();
       } catch (err) {
-        setError(skillUploadErrorMessage(err, {
-          fallbackKey: "skillMarket.review.submitFailed",
-        }));
+        setError(skillUploadErrorMessage(err, { phase: "submit" }));
       } finally {
         setSaving(false);
       }
@@ -648,18 +648,14 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
         // The plugin was saved; say so, or the author retries and wonders why
         // there is no duplicate.
         setError(
-          skillUploadErrorMessage(publishErr, {
-            fallbackKey: "skillMarket.review.submitFailed",
-          }) +
+          skillUploadErrorMessage(publishErr, { phase: "submit" }) +
             " " +
             t("skillMarket.review.draftSavedHint")
         );
         return;
       }
     } catch (err) {
-      setError(skillUploadErrorMessage(err, {
-        fallbackKey: "skillMarket.form.createFailed",
-      }));
+      setError(skillUploadErrorMessage(err, { phase: "create" }));
     } finally {
       setSaving(false);
       setPublishing(false);
