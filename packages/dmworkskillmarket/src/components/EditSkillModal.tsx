@@ -401,6 +401,8 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
         setUploadStage("idle");
         setError(null);
       } else {
+        // Defensive guard for mocked or future pollParse implementations;
+        // production pollParse rejects this malformed success shape itself.
         throw new Error("Parse succeeded without a result");
       }
     } catch (err) {
@@ -471,17 +473,25 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
         // earns the listing back through review. The changelog only rides along
         // on the org-review branch; on 仅自己 the server ignores it, and
         // publishPlugin omits an empty one from the body regardless.
-        const outcome = await publishPlugin({
-          pluginId: skill.id,
-          version,
-          ...(visibility === "space" ? { changelog } : {}),
-        });
-        onUpdated(updated);
-        onPublished?.(
-          outcome.displayStatus === "pending_review"
-            ? t("skillMarket.review.submittedToast")
-            : t("skillMarket.plugin.publishedToast")
-        );
+        try {
+          const outcome = await publishPlugin({
+            pluginId: skill.id,
+            version,
+            ...(visibility === "space" ? { changelog } : {}),
+          });
+          onUpdated(updated);
+          onPublished?.(
+            outcome.displayStatus === "pending_review"
+              ? t("skillMarket.review.submittedToast")
+              : t("skillMarket.plugin.publishedToast")
+          );
+        } catch (publishErr) {
+          // The edit already committed even though publication failed. Refresh
+          // the owning list and describe the failed step accurately.
+          onUpdated(updated);
+          setError(skillUploadErrorMessage(publishErr, { phase: "publish" }));
+          return;
+        }
       } else {
         onUpdated(updated);
       }

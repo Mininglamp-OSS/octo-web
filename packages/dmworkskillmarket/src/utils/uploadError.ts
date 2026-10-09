@@ -5,7 +5,13 @@ type Translate = (
   options?: { values?: Record<string, string | number> }
 ) => string;
 
-export type SkillErrorPhase = "upload" | "parse" | "save" | "create" | "submit";
+export type SkillErrorPhase =
+  | "upload"
+  | "parse"
+  | "save"
+  | "create"
+  | "publish"
+  | "submit";
 
 interface SkillUploadErrorMessageOptions {
   phase?: SkillErrorPhase;
@@ -16,6 +22,7 @@ const PHASE_FALLBACK_KEYS: Record<SkillErrorPhase, string> = {
   parse: "skillMarket.errors.parseFailed",
   save: "skillMarket.form.saveFailed",
   create: "skillMarket.form.createFailed",
+  publish: "skillMarket.plugin.publishFailed",
   submit: "skillMarket.review.submitFailed",
 };
 

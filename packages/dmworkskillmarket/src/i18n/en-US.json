@@ -345,6 +345,7 @@
     "visibilitySpaceHint": "Publishing sends it to a Space admin for review; approved plugins are visible to your organization",
     "draftSavedToast": "Draft saved",
     "publishedToast": "Published",
+    "publishFailed": "Failed to publish",
     "visibilityChangeUnlists": "Changing the audience returns this plugin to a draft; publish it again to list it (organization visibility needs review).",
     "visibilityAdminManaged": "Only a platform admin can change this",
     "versionFormatInvalid": "Version must look like 1.0.1 (three numbers)",

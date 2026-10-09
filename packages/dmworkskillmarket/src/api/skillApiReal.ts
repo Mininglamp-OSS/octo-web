@@ -48,6 +48,8 @@ import {
 
 interface SuccessEnvelope<T> {
   data: T;
+  requestId?: string;
+  requestIdFromResponse?: boolean;
   pagination?: {
     has_more?: boolean;
     next_cursor?: string;
@@ -65,7 +67,7 @@ interface ErrorEnvelope {
 
 export class SkillMarketApiError extends Error {
   constructor(
-    public code: string | number,
+    public code: string,
     message: string,
     public status?: number,
     public details?: unknown,
@@ -100,7 +102,7 @@ async function parseJson(response: Response): Promise<unknown> {
 }
 
 function normalizeError(input: {
-  code?: string | number;
+  code?: string;
   message?: string;
   status?: number;
   details?: unknown;
@@ -120,6 +122,11 @@ function responseRequestId(response: Response): string | undefined {
   return requestId || undefined;
 }
 
+function createRequestId(): string {
+  const randomUUID = globalThis.crypto?.randomUUID?.();
+  return `octo-web-${randomUUID ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+}
+
 async function requestEnvelope<T>(
   path: string,
   init?: RequestInit,
@@ -130,6 +137,13 @@ async function requestEnvelope<T>(
     options?.auth === false
       ? { "Content-Type": "application/json" }
       : getAuthHeaders();
+  const initHeaders = init?.headers as Record<string, string> | undefined;
+  // The desktop renderer calls an absolute marketplace origin, where CORS may
+  // hide response headers. Supply a valid request id up front so the server
+  // logs and echoes the same value, and retain it locally even when the echoed
+  // response header is not exposed to JavaScript.
+  const clientRequestId =
+    initHeaders?.["X-Request-Id"] ?? initHeaders?.["x-request-id"] ?? createRequestId();
   let res: Response;
   // Bound every request to the shared 20s ceiling. The isolated fetch here
   // never inherits axios.defaults.timeout that APIClient.initAxios sets, so
@@ -151,7 +165,8 @@ async function requestEnvelope<T>(
       signal: composedSignal,
       headers: {
         ...defaultHeaders,
-        ...(init?.headers as Record<string, string> | undefined),
+        ...initHeaders,
+        "X-Request-Id": clientRequestId,
       },
     });
   } catch (err) {
@@ -161,7 +176,8 @@ async function requestEnvelope<T>(
     const message = err instanceof Error ? err.message : "Network error";
     throw normalizeError({ code: "network_error", message, details: err });
   }
-  const headerRequestId = responseRequestId(res);
+  const responseHeaderRequestId = responseRequestId(res);
+  const headerRequestId = responseHeaderRequestId ?? clientRequestId;
 
   // Handle 401 — redirect to login. Fire-and-forget beacons opt out: a 401
   // on a background metric must never tear down the session (the page's list
@@ -215,7 +231,11 @@ async function requestEnvelope<T>(
   // server did the work. Return an empty envelope so callers with `.then()`
   // just see success — flagged as P1 by Jerry-Xin on PR#851.
   if (res.status === 204) {
-    return { data: undefined as unknown as T, requestId } as SuccessEnvelope<T>;
+    return {
+      data: undefined as unknown as T,
+      requestId,
+      requestIdFromResponse: Boolean(responseHeaderRequestId),
+    };
   }
 
   if (!body || !("data" in body)) {
@@ -228,7 +248,11 @@ async function requestEnvelope<T>(
     });
   }
 
-  return { ...(body as SuccessEnvelope<T>), requestId };
+  return {
+    ...(body as SuccessEnvelope<T>),
+    requestId,
+    requestIdFromResponse: Boolean(responseHeaderRequestId),
+  };
 }
 
 async function request<T>(
@@ -905,13 +929,18 @@ function mapParseStatus(raw: RawParseStatusResult): ParseStatusResult {
   return result;
 }
 
-async function fetchParseStatus(taskId: string): Promise<ParseStatusResult> {
+async function fetchParseStatus(taskId: string): Promise<{
+  status: ParseStatusResult;
+  requestId?: string;
+  requestIdFromResponse: boolean;
+}> {
   const envelope = await requestEnvelope<RawParseStatusResult>(
     `/skill_parse_tasks/${encodeURIComponent(taskId)}`
   );
   return {
-    ...mapParseStatus(envelope.data),
+    status: mapParseStatus(envelope.data),
     requestId: envelope.requestId,
+    requestIdFromResponse: Boolean(envelope.requestIdFromResponse),
   };
 }
 
@@ -919,10 +948,20 @@ async function fetchParseStatus(taskId: string): Promise<ParseStatusResult> {
 export async function pollParse(taskId: string): Promise<ParseStatusResult> {
   let lastRequestId: string | undefined;
   for (let attempt = 0; attempt < 60; attempt += 1) {
-    const status = await fetchParseStatus(taskId);
-    lastRequestId = status.requestId ?? lastRequestId;
+    const envelope = await fetchParseStatus(taskId);
+    const status = envelope.status;
+    if (envelope.requestIdFromResponse || !lastRequestId) {
+      lastRequestId = envelope.requestId ?? lastRequestId;
+    }
     if (status.status === "success") {
-      if (status.result) return status;
+      if (status.result) {
+        return {
+          ...status,
+          ...(envelope.requestIdFromResponse
+            ? { requestId: envelope.requestId }
+            : {}),
+        };
+      }
       throw normalizeError({
         code: "invalid_response",
         message: t("skillMarket.errors.parseFailed"),
@@ -934,7 +973,9 @@ export async function pollParse(taskId: string): Promise<ParseStatusResult> {
         code: status.error?.code ?? "parse_failed",
         message: status.error?.message ?? t("skillMarket.errors.parseFailed"),
         details: status.error,
-        requestId: status.requestId ?? lastRequestId,
+        requestId: envelope.requestIdFromResponse
+          ? envelope.requestId
+          : lastRequestId ?? envelope.requestId,
       });
     }
     if (attempt < 59) await wait(2000);

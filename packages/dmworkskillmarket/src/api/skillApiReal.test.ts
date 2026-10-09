@@ -147,6 +147,7 @@ describe("skillApiReal", () => {
           "Content-Type": "application/json",
           token: "test-token",
           "X-Space-Id": "space-123",
+          "X-Request-Id": expect.any(String),
         },
       })
     );
@@ -160,7 +161,10 @@ describe("skillApiReal", () => {
     await getCategories();
 
     const headers = mockFetch.mock.calls[0][1].headers;
-    expect(headers).toEqual({ "Content-Type": "application/json" });
+    expect(headers).toEqual({
+      "Content-Type": "application/json",
+      "X-Request-Id": expect.any(String),
+    });
   });
 
   it("resolves marketplace requests against the API origin for desktop builds", async () => {
@@ -203,6 +207,7 @@ describe("skillApiReal", () => {
           "Content-Type": "application/json",
           token: "test-token",
           "X-Space-Id": "space-from-storage",
+          "X-Request-Id": expect.any(String),
         },
       })
     );
@@ -282,6 +287,7 @@ describe("skillApiReal", () => {
           "Content-Type": "application/json",
           token: "test-token",
           "X-Space-Id": "space-123",
+          "X-Request-Id": expect.any(String),
         },
       })
     );
@@ -490,6 +496,27 @@ describe("skillApiReal", () => {
       message: "not found",
       requestId: "req-header-404",
     });
+  });
+
+  it("keeps the client request id when CORS hides the response header", async () => {
+    mockFetch.mockReturnValueOnce(
+      Promise.resolve({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        headers: { get: () => null },
+        json: () =>
+          Promise.resolve({
+            error: { code: "INTERNAL_ERROR", message: "internal error" },
+          }),
+      })
+    );
+
+    const request = getSkill("broken");
+    const requestId = mockFetch.mock.calls[0][1].headers["X-Request-Id"];
+
+    await expect(request).rejects.toMatchObject({ requestId });
+    expect(requestId).toMatch(/^octo-web-/);
   });
 
   it("normalizes HTTP and network errors into SkillMarketApiError", async () => {
@@ -1231,6 +1258,7 @@ describe("skillApiReal", () => {
             "Content-Type": "application/json",
             token: "test-token",
             "X-Space-Id": "space-123",
+            "X-Request-Id": expect.any(String),
           },
         })
       );

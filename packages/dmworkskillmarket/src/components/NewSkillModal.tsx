@@ -407,11 +407,14 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
         setStage("form");
         setError(null);
       } else {
+        // Defensive guard for mocked or future pollParse implementations;
+        // production pollParse rejects this malformed success shape itself.
         throw new Error("Parse succeeded without a result");
       }
     } catch (err) {
       if (!abortRef.current) {
         setStage(isReviewMode ? "review" : "error");
+        if (isReviewMode) setParseTaskId(null);
         setError(skillUploadErrorMessage(err, { phase: errorPhase }));
       }
     }
@@ -648,7 +651,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
         // The plugin was saved; say so, or the author retries and wonders why
         // there is no duplicate.
         setError(
-          skillUploadErrorMessage(publishErr, { phase: "submit" }) +
+          skillUploadErrorMessage(publishErr, { phase: "publish" }) +
             " " +
             t("skillMarket.review.draftSavedHint")
         );

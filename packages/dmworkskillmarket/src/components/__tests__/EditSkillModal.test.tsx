@@ -479,6 +479,37 @@ describe("EditSkillModal", () => {
     await waitFor(() => expect(onPublished).toHaveBeenCalled());
   });
 
+  it("reports a publish failure without hiding the edit that already saved", async () => {
+    vi.mocked(api.publishPlugin).mockRejectedValue({
+      code: "INTERNAL_ERROR",
+      requestId: "req-publish-edit",
+    });
+    const onUpdated = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <EditSkillModal
+        skill={skill}
+        categories={categories}
+        onClose={onClose}
+        onUpdated={onUpdated}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(changelogPlaceholder), {
+      target: { value: "发布失败回归" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /发布|skillMarket\.plugin\.actionPublish/,
+      }),
+    );
+
+    await waitFor(() => expect(api.publishPlugin).toHaveBeenCalled());
+    expect(onUpdated).toHaveBeenCalledWith(skill);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText("发布失败（请求 ID：req-publish-edit）")).toBeInTheDocument();
+  });
+
   it("blocks a 本组织 publish until a changelog is entered", () => {
     render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
 

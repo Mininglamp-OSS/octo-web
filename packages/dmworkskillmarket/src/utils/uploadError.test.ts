@@ -41,8 +41,8 @@ describe("skillUploadErrorMessage", () => {
 
     for (const [code, key] of Object.entries(cases)) {
       expect(resolveSkillUploadErrorKey({ code })).toBe(key);
-      expect(skillUploadErrorMessage({ code }, {}, zh)).not.toBe(key);
-      expect(skillUploadErrorMessage({ code }, {}, en)).not.toBe(key);
+      expect(skillUploadErrorMessage({ code }, {}, zh)).toBe(zh(key));
+      expect(skillUploadErrorMessage({ code }, {}, en)).toBe(en(key));
     }
   });
 
@@ -137,6 +137,16 @@ describe("skillUploadErrorMessage", () => {
       "保存失败（请求 ID：req-write-1）"
     );
     expect(skillUploadErrorMessage(error, { phase: "save" }, zh)).not.toContain(error.message);
+  });
+
+  it("uses a publish-specific fallback after a successful save", () => {
+    expect(
+      skillUploadErrorMessage(
+        { code: "INTERNAL_ERROR", requestId: "req-publish-1" },
+        { phase: "publish" },
+        zh
+      )
+    ).toBe("发布失败（请求 ID：req-publish-1）");
   });
 
   it("keeps request ids on mapped errors", () => {

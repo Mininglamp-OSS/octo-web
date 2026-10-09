@@ -989,6 +989,42 @@ describe("NewSkillModal", () => {
       );
     });
 
+    it("clears the previous parse task when a replacement package fails", async () => {
+      render(
+        <NewSkillModal
+          visible
+          categories={categories}
+          onClose={vi.fn()}
+          onCreated={vi.fn()}
+          reviewSkill={reviewSkillFixture()}
+        />,
+      );
+
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText(selectNewZipLabel), {
+          target: { files: [zipFile("first.zip")] },
+        });
+      });
+      fireEvent.change(screen.getByPlaceholderText(changelogPlaceholder), {
+        target: { value: "替换版本" },
+      });
+      const submit = screen.getByRole("button", { name: upgradeButton });
+      await waitFor(() => expect(submit).toBeEnabled());
+
+      vi.mocked(api.pollParse).mockRejectedValueOnce({
+        code: "INVALID_ZIP",
+        message: "invalid zip",
+      });
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText(selectNewZipLabel), {
+          target: { files: [zipFile("replacement.zip")] },
+        });
+      });
+
+      await waitFor(() => expect(submit).toBeDisabled());
+      expect(screen.getByText("上传的文件不是有效的 ZIP 压缩包")).toBeInTheDocument();
+    });
+
     it("blocks an upgrade whose package declares a different skill name", async () => {
       vi.mocked(api.pollParse).mockResolvedValue({
         status: "success",
@@ -1134,7 +1170,7 @@ describe("NewSkillModal", () => {
 
       await waitFor(() => expect(api.publishPlugin).toHaveBeenCalledTimes(1));
       expect(api.createSkill).toHaveBeenCalledTimes(1);
-      expect(screen.getByText(/提交审核失败.*草稿已保存/)).toBeTruthy();
+      expect(screen.getByText(/发布失败.*草稿已保存/)).toBeTruthy();
       expect(screen.queryByText("boom")).toBeNull();
 
       // Retry: the created plugin id is remembered, so no second orphan plugin.
