@@ -155,6 +155,83 @@ describe("EditSkillModal", () => {
     await waitFor(() => expect(onUpdated).toHaveBeenCalledTimes(1));
   });
 
+  it("localizes structured validation errors from save", async () => {
+    vi.mocked(api.updateSkill).mockRejectedValue({
+      code: "VALIDATION_ERROR",
+      status: 400,
+      details: { field: "version", reason: "must_not_decrease" },
+      message: "version must not go backwards",
+    });
+    render(
+      <EditSkillModal
+        skill={skill}
+        categories={categories}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), {
+      target: { value: "更新展示名" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: saveButton }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "版本号只能保持不变或递增"
+        )
+      ).toBeTruthy();
+    });
+    expect(
+      screen.queryByText(
+        "version must not go backwards"
+      )
+    ).toBeNull();
+  });
+
+  it("uses the save-phase fallback and request id for internal errors", async () => {
+    vi.mocked(api.updateSkill).mockRejectedValue({
+      code: "INTERNAL_ERROR",
+      message: "Internal server error",
+      requestId: "req-save-500",
+    });
+    render(
+      <EditSkillModal
+        skill={skill}
+        categories={categories}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), {
+      target: { value: "更新展示名" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: saveButton }));
+
+    await waitFor(() => {
+      expect(screen.getByText("保存失败（请求 ID：req-save-500）"))
+        .toBeTruthy();
+    });
+    expect(screen.queryByText("解析服务暂时不可用，请稍后重试"))
+      .toBeNull();
+    expect(screen.queryByText("Internal server error")).toBeNull();
+  });
+
+  it("does not stay stuck parsing when success has no result", async () => {
+    vi.mocked(api.pollParse).mockResolvedValue({ status: "success" });
+    render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(selectNewZipLabel), {
+        target: { files: [new File(["zip"], "meeting-note-cleaner.zip", { type: "application/zip" })] },
+      });
+    });
+
+    await waitFor(() => expect(screen.getByText("解析失败")).toBeInTheDocument());
+  });
+
   it("blocks save while a tag validation error is visible", () => {
     render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
 
@@ -402,6 +479,37 @@ describe("EditSkillModal", () => {
     await waitFor(() => expect(onPublished).toHaveBeenCalled());
   });
 
+  it("reports a publish failure without hiding the edit that already saved", async () => {
+    vi.mocked(api.publishPlugin).mockRejectedValue({
+      code: "INTERNAL_ERROR",
+      requestId: "req-publish-edit",
+    });
+    const onUpdated = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <EditSkillModal
+        skill={skill}
+        categories={categories}
+        onClose={onClose}
+        onUpdated={onUpdated}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(changelogPlaceholder), {
+      target: { value: "发布失败回归" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /发布|skillMarket\.plugin\.actionPublish/,
+      }),
+    );
+
+    await waitFor(() => expect(api.publishPlugin).toHaveBeenCalled());
+    expect(onUpdated).toHaveBeenCalledWith(skill);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText("发布失败（请求 ID：req-publish-edit）")).toBeInTheDocument();
+  });
+
   it("blocks a 本组织 publish until a changelog is entered", () => {
     render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
 
@@ -412,10 +520,10 @@ describe("EditSkillModal", () => {
     expect(api.publishPlugin).not.toHaveBeenCalled();
   });
 
-  it("does not save file metadata when re-upload parsing fails", async () => {
-    vi.mocked(api.pollParse).mockResolvedValue({
-      status: "failed",
-      error: { code: "parse.no_skill_md", message: "zip 包中未找到 SKILL.md" },
+  it("localizes a re-upload parse failure and does not save file metadata", async () => {
+    vi.mocked(api.pollParse).mockRejectedValue({
+      code: "SKILL_MD_NOT_FOUND",
+      message: "SKILL.md was not found in the archive.",
     });
 
     render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
@@ -429,8 +537,9 @@ describe("EditSkillModal", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("zip 包中未找到 SKILL.md")).toBeInTheDocument();
+      expect(screen.getByText("压缩包中未找到 SKILL.md")).toBeInTheDocument();
     });
+    expect(screen.queryByText("SKILL.md was not found in the archive.")).not.toBeInTheDocument();
 
     expect(screen.queryByText("meeting-note-cleaner.zip")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: saveButton })).toBeDisabled();

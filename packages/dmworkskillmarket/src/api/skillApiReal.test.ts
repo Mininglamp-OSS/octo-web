@@ -42,9 +42,18 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function jsonResponse(data: unknown, status = 200, pagination?: unknown) {
+function jsonResponse(
+  data: unknown,
+  status = 200,
+  pagination?: unknown,
+  requestId?: string
+) {
   return Promise.resolve({
     status,
+    headers: {
+      get: (name: string) =>
+        name.toLowerCase() === "x-request-id" ? requestId ?? null : null,
+    },
     json: () =>
       Promise.resolve({ data, ...(pagination ? { pagination } : {}) }),
   });
@@ -138,6 +147,7 @@ describe("skillApiReal", () => {
           "Content-Type": "application/json",
           token: "test-token",
           "X-Space-Id": "space-123",
+          "X-Request-Id": expect.any(String),
         },
       })
     );
@@ -151,7 +161,10 @@ describe("skillApiReal", () => {
     await getCategories();
 
     const headers = mockFetch.mock.calls[0][1].headers;
-    expect(headers).toEqual({ "Content-Type": "application/json" });
+    expect(headers).toEqual({
+      "Content-Type": "application/json",
+      "X-Request-Id": expect.any(String),
+    });
   });
 
   it("resolves marketplace requests against the API origin for desktop builds", async () => {
@@ -194,6 +207,7 @@ describe("skillApiReal", () => {
           "Content-Type": "application/json",
           token: "test-token",
           "X-Space-Id": "space-from-storage",
+          "X-Request-Id": expect.any(String),
         },
       })
     );
@@ -273,6 +287,7 @@ describe("skillApiReal", () => {
           "Content-Type": "application/json",
           token: "test-token",
           "X-Space-Id": "space-123",
+          "X-Request-Id": expect.any(String),
         },
       })
     );
@@ -464,6 +479,10 @@ describe("skillApiReal", () => {
           Promise.resolve({
             error: { code: "NOT_FOUND", message: "not found", details: {} },
           }),
+        headers: {
+          get: (name: string) =>
+            name.toLowerCase() === "x-request-id" ? "req-header-404" : null,
+        },
       })
     );
 
@@ -475,7 +494,29 @@ describe("skillApiReal", () => {
       code: "NOT_FOUND",
       status: 404,
       message: "not found",
+      requestId: "req-header-404",
     });
+  });
+
+  it("keeps the client request id when CORS hides the response header", async () => {
+    mockFetch.mockReturnValueOnce(
+      Promise.resolve({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        headers: { get: () => null },
+        json: () =>
+          Promise.resolve({
+            error: { code: "INTERNAL_ERROR", message: "internal error" },
+          }),
+      })
+    );
+
+    const request = getSkill("broken");
+    const requestId = mockFetch.mock.calls[0][1].headers["X-Request-Id"];
+
+    await expect(request).rejects.toMatchObject({ requestId });
+    expect(requestId).toMatch(/^octo-web-/);
   });
 
   it("normalizes HTTP and network errors into SkillMarketApiError", async () => {
@@ -838,8 +879,37 @@ describe("skillApiReal", () => {
       )
     ).rejects.toMatchObject({
       name: "SkillMarketApiError",
-      code: "invalid_response",
+      code: "upload_url_scheme_not_allowed",
       message: "URL scheme 不允许",
+    });
+  });
+
+  it("uploadFile normalizes storage HTTP failures with an upload-phase code", async () => {
+    class FailedXHR {
+      upload = new EventTarget();
+      status = 403;
+      private listeners: Record<string, Array<() => void>> = {};
+
+      open() {}
+      setRequestHeader() {}
+      addEventListener(type: string, listener: () => void) {
+        this.listeners[type] = [...(this.listeners[type] ?? []), listener];
+      }
+      send() {
+        this.listeners.load?.forEach((listener) => listener());
+      }
+    }
+    vi.stubGlobal("XMLHttpRequest", FailedXHR);
+
+    await expect(
+      uploadFile(
+        "https://storage.example/upload",
+        new File(["zip"], "skill.zip", { type: "application/zip" })
+      )
+    ).rejects.toMatchObject({
+      name: "SkillMarketApiError",
+      code: "upload_failed",
+      status: 403,
     });
   });
 
@@ -909,30 +979,89 @@ describe("skillApiReal", () => {
     vi.useRealTimers();
   });
 
+  it("rejects a malformed success response instead of polling forever", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse(
+        { status: "success", skill_parse_task_id: "task-malformed" },
+        200,
+        undefined,
+        "req-malformed-success"
+      )
+    );
+
+    await expect(pollParse("task-malformed")).rejects.toMatchObject({
+      name: "SkillMarketApiError",
+      code: "invalid_response",
+      requestId: "req-malformed-success",
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("pollParse throws nested failure error from backend", async () => {
     mockFetch.mockReturnValueOnce(
-      jsonResponse({
-        status: "failed",
-        skill_parse_task_id: "task-404",
-        error: {
-          code: "err.marketplace.parse.invalid_zip",
-          message: "invalid zip",
+      jsonResponse(
+        {
+          status: "failed",
+          skill_parse_task_id: "task-404",
+          error: {
+            code: "err.marketplace.parse.invalid_zip",
+            message: "invalid zip",
+          },
         },
-      })
+        200,
+        undefined,
+        "req-parse-404"
+      )
     );
 
     await expect(pollParse("task-404")).rejects.toMatchObject({
       name: "SkillMarketApiError",
       code: "err.marketplace.parse.invalid_zip",
       message: "invalid zip",
+      requestId: "req-parse-404",
     });
+  });
+
+  it("keeps the last parse request id when the failure response omits it", async () => {
+    vi.useFakeTimers();
+    mockFetch
+      .mockReturnValueOnce(
+        jsonResponse(
+          { status: "pending", skill_parse_task_id: "task-failed" },
+          200,
+          undefined,
+          "req-parse-pending"
+        )
+      )
+      .mockReturnValueOnce(
+        jsonResponse({
+          status: "failed",
+          skill_parse_task_id: "task-failed",
+          error: { code: "INVALID_ZIP", message: "invalid zip" },
+        })
+      );
+
+    const pending = pollParse("task-failed");
+    const assertion = expect(pending).rejects.toMatchObject({
+      code: "INVALID_ZIP",
+      requestId: "req-parse-pending",
+    });
+    await vi.advanceTimersByTimeAsync(2000);
+
+    await assertion;
+    vi.useRealTimers();
   });
 
   it("pollParse times out after 60 pending attempts", async () => {
     vi.useFakeTimers();
     for (let i = 0; i < 60; i += 1) {
       mockFetch.mockReturnValueOnce(
-        jsonResponse({ status: "pending", skill_parse_task_id: "task-timeout" })
+        jsonResponse(
+          { status: "pending", skill_parse_task_id: "task-timeout" },
+          200,
+          undefined,
+          `req-timeout-${i}`
+        )
       );
     }
 
@@ -941,6 +1070,7 @@ describe("skillApiReal", () => {
       name: "SkillMarketApiError",
       code: "parse_timeout",
       message: "解析超时，请重试",
+      requestId: "req-timeout-59",
     });
     await vi.advanceTimersByTimeAsync(2_000 * 60);
 
@@ -1128,6 +1258,7 @@ describe("skillApiReal", () => {
             "Content-Type": "application/json",
             token: "test-token",
             "X-Space-Id": "space-123",
+            "X-Request-Id": expect.any(String),
           },
         })
       );
