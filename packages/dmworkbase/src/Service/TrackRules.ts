@@ -268,10 +268,13 @@ export const TRACK_RULES: TrackRule[] = [
     //      Dap.track,不进本表。编辑器/表格/画板渲染在两个独立文档命名空间 /d/:docId(标准)+
     //      /ppt/d/:docId(slides,documentScene.ts),非同壳 /docs 列表页 → 泛名 testid 用 route 门锁定(见 :264/:284)。
     //   编辑器(EditorShell / Toolbar / DocMoreMenu):testid 均 doc-*/docs-* 自命名,全局唯一,无需 route。
-    { event: 'document_tab_switched', testid: 'docs-tab-recent', on: 'click' }, // 页内内容 tab,Class A 页内激活:按手势计数,重复点再计一次为预期(同 fleet 作用域 tab)
-    { event: 'document_tab_switched', testid: 'docs-tab-mine', on: 'click' },
+    // dap350 follow-up: document_tab_switched(docs-tab-recent/-mine)移出本表。改由 octo-docs-module
+    //   DocsTabs 命令侧在 tab 点击时 Dap.track('document_tab_switched', { tab }),携带 recent/mine 枚举;
+    //   泛 DOM click 规则无法携带该属性,故永不得再回 TRACK_RULES(见 FetchRules.test.ts uiOnly pin)。
     { event: 'document_comment_input_opened', testid: 'comment-bubble-start', route: ['/d', '/ppt/d'], on: 'click' }, // 非 doc- 前缀,route 门防误配。编辑面在两个独立文档命名空间 /d/:docId(标准)+ /ppt/d/:docId(slides,documentScene.ts),非同壳文档列表页 → 门收两者(R13 B5)
-    { event: 'document_forward_panel_opened', testid: 'doc-forward-btn', on: 'click' },
+    // dap350 follow-up: document_forward_panel_opened(doc-forward-btn)移出本表。改由各文档视图
+    //   (editor/sheet/board/html/ppt)命令侧在转发按钮点击时 Dap.track('document_forward_panel_opened',
+    //   { doc_id, doc_type }),携带 doc_type;泛 DOM click 规则无法携带,故永不得再回 TRACK_RULES。
     { event: 'document_open_in_new_page', testid: 'doc-more-item-open-new-page', on: 'click' },
     { event: 'document_history_viewed', testid: 'doc-more-item-history', on: 'click' },
     { event: 'document_outline_toggled', testid: 'doc-outline-toggle', on: 'click' }, // toggle:开+关同 testid,Class A 页内激活,每次切换按手势计一次(有界,中心侧聚合去重)

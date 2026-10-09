@@ -49,3 +49,25 @@ describe('TRACK_RULES — *_searched keeps the on:\'click\' activation gate (R13
         expect(rule?.on, `${event} must stay on:'click' (box activation, never per-keystroke)`).toBe('click')
     })
 })
+
+describe('TRACK_RULES — dap350 docs events moved to the octo-docs-module command side (防回归)', () => {
+    // document_tab_switched / document_forward_panel_opened left this declarative table and are now
+    // emitted command-side by octo-docs-module (DocsTabs tab click; each doc view's forward button),
+    // carrying full props. channelUniqueness.test.ts already treats them as "imperative sites", but it
+    // only does so because the migration COMMENTS in TrackRules.ts contain literal Dap.track(...) text
+    // the scanner regex matches inside comments — reword a comment and that guard silently dies
+    // (review A-1). These are explicit, comment-independent negative pins: assert both event names and
+    // all three source testids are absent from TRACK_RULES, so re-adding either rule here goes red.
+    const movedEvents = ['document_tab_switched', 'document_forward_panel_opened']
+    const movedTestids = ['docs-tab-recent', 'docs-tab-mine', 'doc-forward-btn']
+
+    it.each(movedEvents)('%s has no declarative TRACK_RULES rule (emitted command-side now)', (event) => {
+        const leaked = TRACK_RULES.filter((r) => r.event === event).map((r) => r.testid ?? '(no testid)')
+        expect(leaked, `${event} must not re-enter TRACK_RULES: ${leaked.join(', ')}`).toEqual([])
+    })
+
+    it.each(movedTestids)('testid %s is not wired to any TRACK_RULES rule', (testid) => {
+        const leaked = TRACK_RULES.filter((r) => r.testid === testid).map((r) => r.event)
+        expect(leaked, `${testid} must not re-enter TRACK_RULES: ${leaked.join(', ')}`).toEqual([])
+    })
+})

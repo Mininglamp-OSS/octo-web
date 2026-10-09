@@ -235,11 +235,12 @@ export const FETCH_RULES: FetchRule[] = [
     //     R12 🔴 P1-3 移出 fetch 通道的同一失败模式。改由 host 导航手势命令式发射(apps/web Main/index.tsx +
     //     tab_low_screen.tsx,menus.id==='docs' 且非 reentry 时计一次,与 contacts_/apps_module_entered 同款),
     //     故永不得再回 FETCH_RULES(见 FetchRules.test.ts uiOnly pin)。122 ?creator= 筛选事件不受影响(本就退各仓 UI)。
-    { method: 'POST', path: '/api/v1/docs', event: 'document_created' },
-    { method: 'POST', path: '/api/v1/docs/:id/view', event: 'document_opened' },
-    // 128 document_commented:ROOT 与 REPLY 都 POST /docs/:id/comments(comments/api.ts),path 层不分,
-    //   回复会一并计入「评论」(整合表语义为评论行为,可接受近似)。
-    { method: 'POST', path: '/api/v1/docs/:id/comments', event: 'document_commented' },
+    // dap350 follow-up: document_created / document_opened / document_commented 不再走本通道。
+    //   这三者原按端点 2xx 近似采集(POST /docs、POST /docs/:id/view、POST /docs/:id/comments),props 为空,
+    //   且无法携带 doc_type、create_method、has_result 等业务属性;comments 端点还把 ROOT 与 REPLY 混计。
+    //   改由 octo-docs-module 命令侧在动作成功点发射全属性事件(document_created {doc_id,doc_type,create_method}、
+    //   document_opened {doc_id,doc_type}、document_commented {doc_id,doc_type}),与 document_share_managed /
+    //   document_forwarded 同款,故永不得再回 FETCH_RULES(见 FetchRules.test.ts 负向 pin)。
     // 130 document_forwarded 不在此通道(Octo-Q head 258e876e P1)—— 原挂 POST /docs/:id/forward-grant/batch,
     //   但该授权批处理仅在用户显式打开「先授权后发」开关(默认关闭:useForwardGrant.ts:35,80 契约 +
     //   WKBase/index.tsx:391 门控)时才调用;默认转发路径(开关关)照发文档卡片却不打该端点 → 漏斗分子
@@ -249,8 +250,13 @@ export const FETCH_RULES: FetchRule[] = [
     // document_share_managed is emitted by the Docs MemberPanel only after each member mutation
     // succeeds, with doc identity/action/permission props. Do not map these endpoints here or the
     // same PUT/DELETE would be counted twice with empty props.
-    { method: 'GET', path: '/api/v1/docs/:id/export/file', event: 'document_exported' },
-    { method: 'DELETE', path: '/api/v1/docs/:id', event: 'document_deleted' },
+    // dap350 follow-up: document_exported / document_deleted 同样移出本通道。
+    //   原按 GET /docs/:id/export/file、DELETE /docs/:id 的 2xx 采集,props 为空且无 doc_type / format。
+    //   改由命令侧发射 document_exported {doc_id,doc_type,format} 与 document_deleted {doc_id,doc_type}。
+    //   删除语义(octo-docs-module useDocDelete):只在 200(真正执行删除的那次)发一次;404-already-gone
+    //   视为「别的 client / 丢响应重试 已删并已计过」,仅导航不再发,保证重复/并发删除至多计一次(幂等)。
+    //   因此总体上机器回滚删除(importBoardScene 回滚等走 deleteDoc 的非用户手势)不再被计 —— 对分析是改进。
+    //   永不得再回 FETCH_RULES。
     // apps_module_entered 不在此通道(十二审 🔴 P1-3)—— GET /app_bot/available 由 useAppBots 在**每次切换空间**
     //   时经 mittBus "space-changed" 监听重拉(loadData),而 Apps 页首次访问后就常驻 DOM(MainContentLeft 只切
     //   display 不卸载),所以用户打开过一次 Apps 后,在 Chat/Contacts 任意处切空间都会误发 apps_module_entered;
