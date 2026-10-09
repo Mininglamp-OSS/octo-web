@@ -1,10 +1,15 @@
 import React from "react";
+import { WKApp } from "@octo/base";
 import { Spin } from "@douyinfe/semi-ui";
 import type { SummaryReferenceTask } from "../../types/summary";
 import type { SummaryMessagingPort } from "../../host";
 import LegacySummaryCreatePage from "../../pages/SummaryCreatePage";
 import SummaryWorkbenchEntry from "./Entry";
 import SummaryWorkbenchFeature from "./SummaryWorkbenchFeature";
+import {
+  moveSummaryWorkbenchSessionToPrevious,
+  type SummaryWorkbenchSessionScope,
+} from "./sessionStorage";
 import useCurrentSummarySpaceId from "./useCurrentSummarySpaceId";
 import "./SummaryWorkbenchFeature.css";
 
@@ -21,6 +26,61 @@ export interface SummaryWorkbenchCreateEntryProps {
   source?: string;
   legacyInitialMode?: "normal" | "agent";
   messaging?: SummaryMessagingPort;
+}
+
+function WorkbenchLoading() {
+  return (
+    <div className="wk-summary-workbench-entry-loading" role="status">
+      <Spin />
+    </div>
+  );
+}
+
+function PreparedSummaryWorkbenchFeature({
+  forceNewSession = false,
+  onForceNewSessionConsumed,
+  ...props
+}: React.ComponentProps<typeof SummaryWorkbenchFeature>) {
+  const currentUserId =
+    props.messaging?.getCurrentUser().uid ?? WKApp.loginInfo.uid ?? "";
+  const storageScope = React.useMemo<SummaryWorkbenchSessionScope>(
+    () => ({
+      userId: currentUserId,
+      spaceId: props.spaceId,
+      channelId: props.channel?.channelID,
+      channelType: props.channel?.channelType,
+      referencedTaskId: props.derivedFromTask?.task_id,
+    }),
+    [
+      currentUserId,
+      props.channel?.channelID,
+      props.channel?.channelType,
+      props.derivedFromTask?.task_id,
+      props.spaceId,
+    ]
+  );
+  const [preparedFreshSession, setPreparedFreshSession] = React.useState<
+    boolean | null
+  >(() => (forceNewSession ? null : false));
+
+  React.useEffect(() => {
+    if (!forceNewSession) {
+      setPreparedFreshSession(false);
+      return;
+    }
+    const moved = moveSummaryWorkbenchSessionToPrevious(storageScope);
+    setPreparedFreshSession(moved);
+    if (!moved) onForceNewSessionConsumed?.();
+  }, [forceNewSession, onForceNewSessionConsumed, storageScope]);
+
+  if (preparedFreshSession === null) return <WorkbenchLoading />;
+  return (
+    <SummaryWorkbenchFeature
+      {...props}
+      forceNewSession={preparedFreshSession}
+      onForceNewSessionConsumed={onForceNewSessionConsumed}
+    />
+  );
 }
 
 export default function SummaryWorkbenchCreateEntry(
@@ -59,13 +119,9 @@ export default function SummaryWorkbenchCreateEntry(
       <SummaryWorkbenchEntry
         key={entryKey}
         spaceId={spaceId}
-        renderPending={() => (
-          <div className="wk-summary-workbench-entry-loading" role="status">
-            <Spin />
-          </div>
-        )}
+        renderPending={() => <WorkbenchLoading />}
         renderNew={(availability) => (
-          <SummaryWorkbenchFeature
+          <PreparedSummaryWorkbenchFeature
             key={entryKey}
             spaceId={spaceId}
             channel={props.channel}

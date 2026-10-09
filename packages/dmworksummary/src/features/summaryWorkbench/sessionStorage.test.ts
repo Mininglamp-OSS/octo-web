@@ -1,12 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-    clearSummaryWorkbenchPreviousSession,
     clearSummaryWorkbenchSession,
     moveSummaryWorkbenchSessionToPrevious,
     readSummaryWorkbenchPreviousSession,
     readSummaryWorkbenchSession,
     replaceSummaryWorkbenchSessionSlots,
-    writeSummaryWorkbenchPreviousSession,
     writeSummaryWorkbenchSession,
 } from "./sessionStorage";
 
@@ -106,7 +104,11 @@ describe("summary workbench session storage", () => {
     it("rolls back the previous slot when removing the active slot fails", () => {
         const scope = { userId: "user-a", spaceId: "space-a" };
         writeSummaryWorkbenchSession(scope, "old-session");
-        writeSummaryWorkbenchPreviousSession(scope, "previous-session");
+        replaceSummaryWorkbenchSessionSlots(
+            scope,
+            "old-session",
+            "previous-session"
+        );
         const removeSpy = vi
             .spyOn(Storage.prototype, "removeItem")
             .mockImplementationOnce(() => {
@@ -125,7 +127,11 @@ describe("summary workbench session storage", () => {
     it("restores both slots when replacing them fails halfway", () => {
         const scope = { userId: "user-a", spaceId: "space-a" };
         writeSummaryWorkbenchSession(scope, "current-session");
-        writeSummaryWorkbenchPreviousSession(scope, "old-session");
+        replaceSummaryWorkbenchSessionSlots(
+            scope,
+            "current-session",
+            "old-session"
+        );
         const originalSetItem = Storage.prototype.setItem;
         const setSpy = vi
             .spyOn(Storage.prototype, "setItem")
@@ -146,20 +152,6 @@ describe("summary workbench session storage", () => {
         expect(readSummaryWorkbenchSession(scope)).toBe("current-session");
         expect(readSummaryWorkbenchPreviousSession(scope)).toBe("old-session");
         setSpy.mockRestore();
-    });
-
-    it("clears only the requested previous slot", () => {
-        const scopeA = { userId: "user-a", spaceId: "space-a" };
-        const scopeB = { userId: "user-a", spaceId: "space-b" };
-        writeSummaryWorkbenchPreviousSession(scopeA, "prev-a");
-        writeSummaryWorkbenchPreviousSession(scopeB, "prev-b");
-
-        expect(readSummaryWorkbenchPreviousSession(scopeA)).toBe("prev-a");
-        expect(readSummaryWorkbenchPreviousSession(scopeB)).toBe("prev-b");
-
-        clearSummaryWorkbenchPreviousSession(scopeA);
-        expect(readSummaryWorkbenchPreviousSession(scopeA)).toBe("");
-        expect(readSummaryWorkbenchPreviousSession(scopeB)).toBe("prev-b");
     });
 
     it("isolates referenced tasks without changing the ordinary session key", () => {

@@ -75,7 +75,16 @@ export default class ChatSummaryPanel extends Component<
         ) {
             // 切换会话或面板视图请求变化时，重置到对应初始视图
             const initialView = this.props.summaryPanelView === 'new' ? 'create' : 'list';
-            this.setState({ view: initialView, selectedTaskId: null, refineTask: null, legacyCreateMode: 'normal' });
+            this.setState((state) => ({
+                view: initialView,
+                selectedTaskId: null,
+                refineTask: null,
+                legacyCreateMode: 'normal',
+                createSeq:
+                    this.props.summaryPanelView === 'new'
+                        ? state.createSeq + 1
+                        : state.createSeq,
+            }));
         }
     }
 

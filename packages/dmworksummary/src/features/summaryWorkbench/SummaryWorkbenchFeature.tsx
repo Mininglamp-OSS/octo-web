@@ -233,9 +233,8 @@ export default function SummaryWorkbenchFeature({
     if (derivedFromTask) {
       clearSummaryWorkbenchSession(storageScope);
     } else if (forceNewSession) {
-      // Storage writes happen after commit, never during render. The move is
-      // transactional and restores an older previous pointer on failure.
-      moveSummaryWorkbenchSessionToPrevious(storageScope);
+      // SummaryWorkbenchCreateEntry prepares the storage move before mounting
+      // this runtime, so this effect only reads the committed previous slot.
       setLastSessionId(readSummaryWorkbenchPreviousSession(storageScope));
     }
     if (forceNewSession) onForceNewSessionConsumed?.();
@@ -649,11 +648,12 @@ export default function SummaryWorkbenchFeature({
       participantScopeReady &&
       (composerHasCustomText ||
         (lastFailedAction !== null && structuredGenerate) ||
-        (!templateLocked && structuredGenerate) ||
+        (!conversationEstablished && structuredGenerate) ||
         (templateLocked &&
           templateFilledComposer.current !== null &&
           structuredGenerate)),
-    showTemplateTrigger: !templateLocked && !templateGalleryOpen,
+    showTemplateTrigger:
+      !conversationEstablished && !templateGalleryOpen,
     templateLocked,
     templateEditable: !conversationEstablished,
     sendLabelKey:
@@ -926,7 +926,7 @@ export default function SummaryWorkbenchFeature({
       clearTimeout(themeTrackTimer.current);
       themeTrackTimer.current = null;
     }
-    moveSummaryWorkbenchSessionToPrevious(storageScope);
+    if (!moveSummaryWorkbenchSessionToPrevious(storageScope)) return;
     setLastSessionId(readSummaryWorkbenchPreviousSession(storageScope));
     setReferencedTask(derivedFromTask ?? null);
     setReferencePreviewOpen(false);

@@ -12,6 +12,10 @@ vi.mock("@douyinfe/semi-ui", () => ({
     Spin: () => <div data-testid="loading" />,
 }));
 
+vi.mock("@octo/base", () => ({
+    WKApp: { loginInfo: { uid: "test-uid" } },
+}));
+
 vi.mock("./useCurrentSummarySpaceId", () => ({
     default: () => mocks.spaceId,
 }));
@@ -64,6 +68,7 @@ vi.mock("../../pages/SummaryCreatePage", () => ({
 
 describe("SummaryWorkbenchCreateEntry", () => {
     beforeEach(() => {
+        localStorage.clear();
         mocks.spaceId = "space-a";
         mocks.forceNewMount.mockReset();
     });
@@ -138,6 +143,53 @@ describe("SummaryWorkbenchCreateEntry", () => {
         expect(screen.getByTestId("force-new-session")).toHaveTextContent(
             "false"
         );
+    });
+
+    it("moves the persisted session before mounting a fresh workbench", async () => {
+        const key =
+            "summary-workbench-session:v2:test-uid:space-a:global";
+        localStorage.setItem(key, "old-session");
+
+        render(
+            <SummaryWorkbenchCreateEntry
+                source="summary_home"
+                forceNewSession
+            />,
+            { legacyRoot: true }
+        );
+
+        await waitFor(() => expect(mocks.forceNewMount).toHaveBeenCalled());
+        expect(localStorage.getItem(key)).toBeNull();
+        expect(localStorage.getItem(`${key}:previous`)).toBe("old-session");
+    });
+
+    it("restores the persisted session when fresh-session preparation fails", async () => {
+        const key =
+            "summary-workbench-session:v2:test-uid:space-a:global";
+        localStorage.setItem(key, "old-session");
+        const removeSpy = vi
+            .spyOn(Storage.prototype, "removeItem")
+            .mockImplementationOnce(() => {
+                throw new Error("blocked");
+            });
+
+        render(
+            <SummaryWorkbenchCreateEntry
+                source="summary_home"
+                forceNewSession
+            />,
+            { legacyRoot: true }
+        );
+
+        await waitFor(() =>
+            expect(screen.getByTestId("force-new-session")).toHaveTextContent(
+                "false"
+            )
+        );
+        expect(mocks.forceNewMount).not.toHaveBeenCalled();
+        expect(localStorage.getItem(key)).toBe("old-session");
+        expect(localStorage.getItem(`${key}:previous`)).toBeNull();
+        removeSpy.mockRestore();
     });
 
     it("re-arms force-new on a false to true prop transition", async () => {

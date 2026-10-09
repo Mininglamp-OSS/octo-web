@@ -740,19 +740,22 @@ describe("SummaryWorkbenchFeature", () => {
       fireEvent.click(screen.getByRole("button", { name: "send" }));
 
       expect(current.restoreComposerValue).toHaveBeenCalledWith("");
-      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
-        "data-can-send",
-        "false"
-      );
       expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
 
-      pendingResponse.resolve({
-        resultType,
-        ...(resultType === "agent_preview"
-          ? { preview: { content: "Draft" } }
-          : {}),
+      await act(async () => {
+        pendingResponse.resolve({
+          resultType,
+          ...(resultType === "agent_preview"
+            ? { preview: { content: "Draft" } }
+            : {}),
+        });
       });
-      await waitFor(() => expect(current.send).toHaveBeenCalled());
+      await waitFor(() =>
+        expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+          "data-can-send",
+          "false"
+        )
+      );
       expect(
         screen.queryByRole("button", { name: "open-template" })
       ).not.toBeInTheDocument();
@@ -1511,7 +1514,54 @@ describe("SummaryWorkbenchFeature", () => {
     );
     expect(
       screen.queryByRole("button", { name: "open-template" })
-    ).not.toBeInTheDocument();
+    ).toBeInTheDocument();
+  });
+
+  it("keeps a scope-only retry enabled after the composer is touched and cleared", async () => {
+    const pendingResponse = deferred<undefined>();
+    const current = controller({
+      scope: scope({
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group", name: "Product" },
+        ],
+      }),
+      viewState: {
+        layout: "full",
+        messages: [],
+        contextItems: [],
+        inputValue: "",
+        placeholderKey: "summary.workbench.placeholder.initial",
+        isSending: false,
+        canSend: true,
+      },
+      send: vi.fn(() => pendingResponse.promise),
+    });
+    current.restoreComposerValue = vi.fn((value: string) => {
+      current.viewState.inputValue = value;
+    });
+    current.setComposerValue = vi.fn((value: string) => {
+      current.viewState.inputValue = value;
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    current.viewState.errorMessage = "gateway timeout";
+    await act(async () => pendingResponse.resolve(undefined));
+
+    const composer = () =>
+      screen.getByRole("textbox", { name: "summary-request" });
+    fireEvent.change(composer(), { target: { value: "x" } });
+    fireEvent.click(screen.getByRole("button", { name: "open-chat" }));
+    fireEvent.change(composer(), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "open-time-range" }));
+
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "true"
+    );
   });
 
   it("restores the template gallery when starting a new session", async () => {
@@ -2884,7 +2934,7 @@ describe("SummaryWorkbenchFeature", () => {
 
   it("keeps the persisted session reachable as a last-conversation bar on forced-new mount", async () => {
     const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
-    localStorage.setItem(ordinaryKey, "old-session");
+    localStorage.setItem(`${ordinaryKey}:previous`, "old-session");
     mocks.useSummaryWorkbench.mockReturnValue(controller());
 
     render(<SummaryWorkbenchFeature spaceId="space-a" forceNewSession />, {
@@ -2924,7 +2974,7 @@ describe("SummaryWorkbenchFeature", () => {
 
   it("keeps a demoted session reachable after a non-forced remount", () => {
     const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
-    localStorage.setItem(ordinaryKey, "old-session");
+    localStorage.setItem(`${ordinaryKey}:previous`, "old-session");
     mocks.useSummaryWorkbench.mockReturnValue(controller());
 
     const forced = render(
@@ -2969,7 +3019,7 @@ describe("SummaryWorkbenchFeature", () => {
 
   it("keeps a demoted session reachable when resume hydration fails from a fresh session", async () => {
     const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
-    localStorage.setItem(ordinaryKey, "old-session");
+    localStorage.setItem(`${ordinaryKey}:previous`, "old-session");
     const hydration = deferred<{ status: "failed" }>();
     const current = controller();
     current.hydrateSession = vi.fn(() => hydration.promise);
@@ -3184,13 +3234,15 @@ describe("SummaryWorkbenchFeature", () => {
     await waitFor(() => expect(send).toHaveBeenCalled());
 
     expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole("button", { name: "open-template-context" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "open-template" }));
     expect(screen.getByTestId("template-selector")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "remove-template" }));
     expect(current.updateScope).toHaveBeenCalledWith(
       expect.objectContaining({ template: null })
+    );
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "true"
     );
   });
 

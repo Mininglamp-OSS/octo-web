@@ -45,23 +45,31 @@ vi.mock('../../pages/SummaryListPage', () => ({
 // Production create entry mock: the real component owns the capability gate and
 // only forwards legacyInitialMode when it falls back to SummaryCreatePage.
 vi.mock('../../features/summaryWorkbench/SummaryWorkbenchCreateEntry', () => ({
-    default: (props: any) => (
-        <div
-            data-testid="summary-create-entry"
-            data-channel={props.channel?.channelID}
-            data-legacy-initial-mode={props.legacyInitialMode ?? ''}
-            data-has-create-mode={String(
-                Object.prototype.hasOwnProperty.call(props, 'createMode'),
-            )}
-            data-embedded={String(props.embedded)}
-            data-source={props.source}
-            data-derived-task-id={props.derivedFromTask?.task_id ?? ''}
-        >
-            <button onClick={() => props.onSubmit?.(99)}>submit-create</button>
-            <button onClick={() => props.onOpenTask?.(77)}>open-created-task</button>
-            <button onClick={() => props.onClose?.()}>cancel-create</button>
-        </div>
-    ),
+    default: (props: any) => {
+        const [draft, setDraft] = React.useState('');
+        return (
+            <div
+                data-testid="summary-create-entry"
+                data-channel={props.channel?.channelID}
+                data-legacy-initial-mode={props.legacyInitialMode ?? ''}
+                data-has-create-mode={String(
+                    Object.prototype.hasOwnProperty.call(props, 'createMode'),
+                )}
+                data-embedded={String(props.embedded)}
+                data-source={props.source}
+                data-derived-task-id={props.derivedFromTask?.task_id ?? ''}
+            >
+                <input
+                    aria-label="panel-workbench-draft"
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                />
+                <button onClick={() => props.onSubmit?.(99)}>submit-create</button>
+                <button onClick={() => props.onOpenTask?.(77)}>open-created-task</button>
+                <button onClick={() => props.onClose?.()}>cancel-create</button>
+            </div>
+        );
+    },
 }));
 
 // SummaryDetailPage mock
@@ -190,6 +198,30 @@ describe('ChatSummaryPanel', () => {
         expect(screen.getByTestId('summary-create-entry')).toBeInTheDocument();
         // List stays mounted but hidden (display:none) to preserve scroll
         expect(screen.queryByTestId('summary-list')).not.toBeVisible();
+    });
+
+    it('remounts an existing create view when summaryPanelView changes to "new"', () => {
+        const view = render(
+            <ChatSummaryPanel visible channel={channel} onClose={onClose} />,
+        );
+        fireEvent.click(screen.getByText('create-new'));
+        fireEvent.change(
+            screen.getByRole('textbox', { name: 'panel-workbench-draft' }),
+            { target: { value: 'stale draft' } },
+        );
+
+        view.rerender(
+            <ChatSummaryPanel
+                visible
+                channel={channel}
+                onClose={onClose}
+                summaryPanelView="new"
+            />,
+        );
+
+        expect(
+            screen.getByRole('textbox', { name: 'panel-workbench-draft' }),
+        ).toHaveValue('');
     });
 
     it('emits summary-list-refresh-requested after create submit', () => {

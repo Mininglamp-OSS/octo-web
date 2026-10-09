@@ -108,36 +108,7 @@ export function readSummaryWorkbenchPreviousSession(
     }
 }
 
-export function writeSummaryWorkbenchPreviousSession(
-    scope: SummaryWorkbenchSessionScope,
-    sessionId: string
-): boolean {
-    try {
-        if (sessionId) {
-            localStorage.setItem(previousStorageKey(scope), sessionId);
-        } else {
-            localStorage.removeItem(previousStorageKey(scope));
-        }
-        return true;
-    } catch {
-        // Storage can be unavailable in private or restricted environments.
-        return false;
-    }
-}
-
-export function clearSummaryWorkbenchPreviousSession(
-    scope: SummaryWorkbenchSessionScope
-): boolean {
-    try {
-        localStorage.removeItem(previousStorageKey(scope));
-        return true;
-    } catch {
-        // Keep the current in-memory session usable when storage is unavailable.
-        return false;
-    }
-}
-
-/** Atomically replace both session pointers, restoring both on partial failure. */
+/** Best-effort replacement that restores both pointers when compensation succeeds. */
 export function replaceSummaryWorkbenchSessionSlots(
     scope: SummaryWorkbenchSessionScope,
     activeSessionId: string,
