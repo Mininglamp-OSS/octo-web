@@ -38,22 +38,26 @@ export function readSummaryWorkbenchSession(
 export function writeSummaryWorkbenchSession(
     scope: SummaryWorkbenchSessionScope,
     sessionId: string
-): void {
-    if (!sessionId) return;
+): boolean {
+    if (!sessionId) return false;
     try {
         localStorage.setItem(storageKey(scope), sessionId);
+        return true;
     } catch {
         // Storage can be unavailable in private or restricted environments.
+        return false;
     }
 }
 
 export function clearSummaryWorkbenchSession(
     scope: SummaryWorkbenchSessionScope
-): void {
+): boolean {
     try {
         localStorage.removeItem(storageKey(scope));
+        return true;
     } catch {
         // Keep the current in-memory session usable when storage is unavailable.
+        return false;
     }
 }
 
@@ -69,23 +73,28 @@ function previousStorageKey(scope: SummaryWorkbenchSessionScope): string {
  */
 export function moveSummaryWorkbenchSessionToPrevious(
     scope: SummaryWorkbenchSessionScope
-): void {
-    const sessionId = readSummaryWorkbenchSession(scope);
-    if (!sessionId) return;
-    let wrotePrevious = false;
+): boolean {
+    const activeKey = storageKey(scope);
+    const previousKey = previousStorageKey(scope);
+    let previousSessionId: string | null = null;
     try {
-        localStorage.setItem(previousStorageKey(scope), sessionId);
-        wrotePrevious = true;
-        localStorage.removeItem(storageKey(scope));
+        const sessionId = localStorage.getItem(activeKey) || "";
+        if (!sessionId) return true;
+        previousSessionId = localStorage.getItem(previousKey);
+        localStorage.setItem(previousKey, sessionId);
+        localStorage.removeItem(activeKey);
+        return true;
     } catch {
-        // Do not leave the same id in both slots after a partial move.
-        if (wrotePrevious) {
-            try {
-                localStorage.removeItem(previousStorageKey(scope));
-            } catch {
-                // Storage remains unavailable; keep the in-memory session usable.
+        try {
+            if (previousSessionId === null) {
+                localStorage.removeItem(previousKey);
+            } else {
+                localStorage.setItem(previousKey, previousSessionId);
             }
+        } catch {
+            // Storage remains unavailable; keep the in-memory session usable.
         }
+        return false;
     }
 }
 
@@ -102,24 +111,63 @@ export function readSummaryWorkbenchPreviousSession(
 export function writeSummaryWorkbenchPreviousSession(
     scope: SummaryWorkbenchSessionScope,
     sessionId: string
-): void {
+): boolean {
     try {
         if (sessionId) {
             localStorage.setItem(previousStorageKey(scope), sessionId);
         } else {
             localStorage.removeItem(previousStorageKey(scope));
         }
+        return true;
     } catch {
         // Storage can be unavailable in private or restricted environments.
+        return false;
     }
 }
 
 export function clearSummaryWorkbenchPreviousSession(
     scope: SummaryWorkbenchSessionScope
-): void {
+): boolean {
     try {
         localStorage.removeItem(previousStorageKey(scope));
+        return true;
     } catch {
         // Keep the current in-memory session usable when storage is unavailable.
+        return false;
+    }
+}
+
+/** Atomically replace both session pointers, restoring both on partial failure. */
+export function replaceSummaryWorkbenchSessionSlots(
+    scope: SummaryWorkbenchSessionScope,
+    activeSessionId: string,
+    previousSessionId: string
+): boolean {
+    const activeKey = storageKey(scope);
+    const previousKey = previousStorageKey(scope);
+    try {
+        const originalActive = localStorage.getItem(activeKey);
+        const originalPrevious = localStorage.getItem(previousKey);
+        try {
+            if (activeSessionId) {
+                localStorage.setItem(activeKey, activeSessionId);
+            } else {
+                localStorage.removeItem(activeKey);
+            }
+            if (previousSessionId) {
+                localStorage.setItem(previousKey, previousSessionId);
+            } else {
+                localStorage.removeItem(previousKey);
+            }
+            return true;
+        } catch {
+            if (originalActive === null) localStorage.removeItem(activeKey);
+            else localStorage.setItem(activeKey, originalActive);
+            if (originalPrevious === null) localStorage.removeItem(previousKey);
+            else localStorage.setItem(previousKey, originalPrevious);
+            return false;
+        }
+    } catch {
+        return false;
     }
 }

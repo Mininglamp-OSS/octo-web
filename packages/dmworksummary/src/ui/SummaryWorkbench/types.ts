@@ -113,6 +113,7 @@ export interface SummaryWorkbenchViewState {
   errorMessage?: string;
   showTemplateTrigger?: boolean;
   templateLocked?: boolean;
+  templateEditable?: boolean;
   resumeLastSessionDisabled?: boolean;
   referencePreviewOpen?: boolean;
   referencePreviewId?: string;

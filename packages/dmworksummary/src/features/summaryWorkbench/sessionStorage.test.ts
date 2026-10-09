@@ -5,6 +5,7 @@ import {
     moveSummaryWorkbenchSessionToPrevious,
     readSummaryWorkbenchPreviousSession,
     readSummaryWorkbenchSession,
+    replaceSummaryWorkbenchSessionSlots,
     writeSummaryWorkbenchPreviousSession,
     writeSummaryWorkbenchSession,
 } from "./sessionStorage";
@@ -105,17 +106,46 @@ describe("summary workbench session storage", () => {
     it("rolls back the previous slot when removing the active slot fails", () => {
         const scope = { userId: "user-a", spaceId: "space-a" };
         writeSummaryWorkbenchSession(scope, "old-session");
+        writeSummaryWorkbenchPreviousSession(scope, "previous-session");
         const removeSpy = vi
             .spyOn(Storage.prototype, "removeItem")
             .mockImplementationOnce(() => {
                 throw new Error("blocked");
             });
 
-        moveSummaryWorkbenchSessionToPrevious(scope);
+        expect(moveSummaryWorkbenchSessionToPrevious(scope)).toBe(false);
 
         expect(readSummaryWorkbenchSession(scope)).toBe("old-session");
-        expect(readSummaryWorkbenchPreviousSession(scope)).toBe("");
+        expect(readSummaryWorkbenchPreviousSession(scope)).toBe(
+            "previous-session"
+        );
         removeSpy.mockRestore();
+    });
+
+    it("restores both slots when replacing them fails halfway", () => {
+        const scope = { userId: "user-a", spaceId: "space-a" };
+        writeSummaryWorkbenchSession(scope, "current-session");
+        writeSummaryWorkbenchPreviousSession(scope, "old-session");
+        const originalSetItem = Storage.prototype.setItem;
+        const setSpy = vi
+            .spyOn(Storage.prototype, "setItem")
+            .mockImplementation(function (key, value) {
+                if (key.endsWith(":previous") && value === "current-session") {
+                    throw new Error("blocked");
+                }
+                return originalSetItem.call(this, key, value);
+            });
+
+        expect(
+            replaceSummaryWorkbenchSessionSlots(
+                scope,
+                "old-session",
+                "current-session"
+            )
+        ).toBe(false);
+        expect(readSummaryWorkbenchSession(scope)).toBe("current-session");
+        expect(readSummaryWorkbenchPreviousSession(scope)).toBe("old-session");
+        setSpy.mockRestore();
     });
 
     it("clears only the requested previous slot", () => {

@@ -790,6 +790,7 @@ export default function useSummaryWorkbench(
       const existing = hydrationRef.current;
       if (existing?.sessionId === sessionId) return existing.promise;
 
+      const previousRetryableGeneration = retryableGenerationRef.current;
       retryableGenerationRef.current = null;
       cancelOperations(false);
       const previousRuntime = runtimeRef.current;
@@ -850,11 +851,29 @@ export default function useSummaryWorkbench(
           }
           const error = normalizeControllerError(reason);
           if (error.kind === "abort") {
-            commit(() => ({ ...previousRuntime, isHydrating: false }));
+            retryableGenerationRef.current = previousRetryableGeneration;
+            commit((current: RuntimeState) => ({
+              ...current,
+              sessionId: previousRuntime.sessionId,
+              isHydrating: false,
+              model: updateSummaryComposer(current.model, {
+                isSending: previousRuntime.model.composer.isSending,
+              }),
+            }));
             return { status: "cancelled" } as const;
           }
-          commit(() => ({
-            ...withRuntimeError(previousRuntime, error),
+          retryableGenerationRef.current = previousRetryableGeneration;
+          commit((current: RuntimeState) => ({
+            ...withRuntimeError(
+              {
+                ...current,
+                sessionId: previousRuntime.sessionId,
+                model: updateSummaryComposer(current.model, {
+                  isSending: previousRuntime.model.composer.isSending,
+                }),
+              },
+              error
+            ),
             isHydrating: false,
           }));
           return { status: "failed" } as const;

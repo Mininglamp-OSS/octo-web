@@ -655,7 +655,8 @@ const SummaryWorkbench = ({
                   className="wk-summary-workbench-context__remove"
                   disabled={
                     isComposerDisabled ||
-                    (item.kind === "template" && Boolean(state.templateLocked))
+                    (item.kind === "template" &&
+                      !(state.templateEditable ?? !state.templateLocked))
                   }
                   aria-label={t("summary.workbench.context.remove", {
                     values: {

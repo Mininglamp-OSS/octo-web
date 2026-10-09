@@ -1,5 +1,12 @@
 import React from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { adaptSummaryWorkspaceHistory } from "../../bridge/summaryWorkbench/adapter";
 import type { SummaryWorkbenchScope } from "../../bridge/summaryWorkbench/protocol";
@@ -26,7 +33,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@octo/base", () => ({
   Dap: { shared: { track: mocks.track } },
   WKButton: (props: any) => (
-    <button type={props.type ?? "button"} disabled={props.disabled} onClick={props.onClick}>
+    <button
+      type={props.type ?? "button"}
+      disabled={props.disabled}
+      onClick={props.onClick}
+    >
       {props.children}
     </button>
   ),
@@ -71,7 +82,11 @@ vi.mock("@octo/base", () => ({
 vi.mock("@octo/base/src/App", () => ({
   Dap: { shared: { track: mocks.track } },
   WKButton: (props: any) => (
-    <button type={props.type ?? "button"} disabled={props.disabled} onClick={props.onClick}>
+    <button
+      type={props.type ?? "button"}
+      disabled={props.disabled}
+      onClick={props.onClick}
+    >
       {props.children}
     </button>
   ),
@@ -224,6 +239,9 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
       >
         remove-template
       </button>
+      <button type="button" onClick={() => actions.onOpenContext("template")}>
+        open-template-context
+      </button>
       <button
         type="button"
         onClick={() => actions.onOpenContext("participant")}
@@ -280,7 +298,9 @@ vi.mock("../documentSource/DocumentSelectorModal", () => ({
         >
           choose-document
         </button>
-        <button type="button" onClick={() => onConfirm([])}>empty-document</button>
+        <button type="button" onClick={() => onConfirm([])}>
+          empty-document
+        </button>
       </div>
     ) : null,
 }));
@@ -293,8 +313,24 @@ vi.mock("../../components/ChatSelectorModal", () => ({
         data-mode={mode ?? "chat"}
         data-channel-id={channel?.channelID ?? ""}
       >
-        <button type="button" onClick={() => onConfirm([])}>empty-chat</button>
-        <button type="button" onClick={() => onConfirm([{ chat_id: "chat-a", chat_type: "group", name: "A", member_count: null }])}>choose-chat</button>
+        <button type="button" onClick={() => onConfirm([])}>
+          empty-chat
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            onConfirm([
+              {
+                chat_id: "chat-a",
+                chat_type: "group",
+                name: "A",
+                member_count: null,
+              },
+            ])
+          }
+        >
+          choose-chat
+        </button>
       </div>
     ) : null,
 }));
@@ -473,27 +509,45 @@ describe("SummaryWorkbenchFeature", () => {
   it("measures the header, follows wrapping changes and disconnects on unmount", () => {
     mocks.useSummaryWorkbench.mockReturnValue(controller());
     let height = 72;
-    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-      return new DOMRect(0, 0, 700, this.classList.contains("wk-summary-workbench__header") ? height : 0);
-    });
+    const rect = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        return new DOMRect(
+          0,
+          0,
+          700,
+          this.classList.contains("wk-summary-workbench__header") ? height : 0
+        );
+      });
     const observe = vi.fn();
     const disconnect = vi.fn();
     let resize: (() => void) | undefined;
-    vi.stubGlobal("ResizeObserver", class {
-      constructor(callback: () => void) { resize = callback; }
-      observe = observe;
-      disconnect = disconnect;
-    });
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          resize = callback;
+        }
+        observe = observe;
+        disconnect = disconnect;
+      }
+    );
     let unmount: (() => void) | undefined;
     try {
       const view = render(<SummaryWorkbenchFeature spaceId="space-a" />);
       unmount = view.unmount;
       const feature = screen.getByTestId("summary-workbench-feature");
-      expect(feature.style.getPropertyValue("--wk-summary-workbench-header-height")).toBe("72px");
-      expect(observe).toHaveBeenCalledWith(feature.querySelector(".wk-summary-workbench__header"));
+      expect(
+        feature.style.getPropertyValue("--wk-summary-workbench-header-height")
+      ).toBe("72px");
+      expect(observe).toHaveBeenCalledWith(
+        feature.querySelector(".wk-summary-workbench__header")
+      );
       height = 119.5;
       act(() => resize?.());
-      expect(feature.style.getPropertyValue("--wk-summary-workbench-header-height")).toBe("120px");
+      expect(
+        feature.style.getPropertyValue("--wk-summary-workbench-header-height")
+      ).toBe("120px");
       view.unmount();
       unmount = undefined;
       expect(disconnect).toHaveBeenCalledOnce();
@@ -1186,42 +1240,77 @@ describe("SummaryWorkbenchFeature", () => {
     );
   });
 
-  it.each(["chat", "document"] as const)("empty %s confirmation preserves the other source and preview without prompting", (picker) => {
-    mocks.docsOn = true;
-    mocks.docsSearchOn = true;
-    const current = controller({
-      scope: scope(picker === "chat"
-        ? { documents: [{ documentId: "doc-a", title: "A" }] }
-        : { selectedChannels: [{ chatId: "chat-a", chatType: "group", name: "A" }] }),
-      model: {
-        currentPreview: { content: "Keep this preview" },
-        messages: [{ id: "preview-message", role: "assistant", resultType: "agent_preview", content: "Preview" }],
-      },
-    });
-    mocks.useSummaryWorkbench.mockReturnValue(current);
-    render(<SummaryWorkbenchFeature spaceId="space-a" />, { legacyRoot: true });
-    fireEvent.click(screen.getByRole("button", { name: `open-${picker}` }));
-    fireEvent.click(screen.getByRole("button", { name: `empty-${picker}` }));
-    expect(current.updateScope).not.toHaveBeenCalled();
-    expect(mocks.modalConfirm).not.toHaveBeenCalled();
-    expect(screen.queryByTestId(`${picker}-selector`)).not.toBeInTheDocument();
-  });
+  it.each(["chat", "document"] as const)(
+    "empty %s confirmation preserves the other source and preview without prompting",
+    (picker) => {
+      mocks.docsOn = true;
+      mocks.docsSearchOn = true;
+      const current = controller({
+        scope: scope(
+          picker === "chat"
+            ? { documents: [{ documentId: "doc-a", title: "A" }] }
+            : {
+                selectedChannels: [
+                  { chatId: "chat-a", chatType: "group", name: "A" },
+                ],
+              }
+        ),
+        model: {
+          currentPreview: { content: "Keep this preview" },
+          messages: [
+            {
+              id: "preview-message",
+              role: "assistant",
+              resultType: "agent_preview",
+              content: "Preview",
+            },
+          ],
+        },
+      });
+      mocks.useSummaryWorkbench.mockReturnValue(current);
+      render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+        legacyRoot: true,
+      });
+      fireEvent.click(screen.getByRole("button", { name: `open-${picker}` }));
+      fireEvent.click(screen.getByRole("button", { name: `empty-${picker}` }));
+      expect(current.updateScope).not.toHaveBeenCalled();
+      expect(mocks.modalConfirm).not.toHaveBeenCalled();
+      expect(
+        screen.queryByTestId(`${picker}-selector`)
+      ).not.toBeInTheDocument();
+    }
+  );
 
-  it.each(["chat", "document"] as const)("empty %s confirmation still clears the same source", (picker) => {
-    mocks.docsOn = true;
-    mocks.docsSearchOn = true;
-    const current = controller({
-      scope: scope(picker === "document"
-        ? { documents: [{ documentId: "doc-a", title: "A" }] }
-        : { selectedChannels: [{ chatId: "chat-a", chatType: "group", name: "A" }] }),
-    });
-    mocks.useSummaryWorkbench.mockReturnValue(current);
-    render(<SummaryWorkbenchFeature spaceId="space-a" />, { legacyRoot: true });
-    fireEvent.click(screen.getByRole("button", { name: `open-${picker}` }));
-    fireEvent.click(screen.getByRole("button", { name: `empty-${picker}` }));
-    expect(current.updateScope).toHaveBeenCalledWith(expect.objectContaining({ selectedChannels: [], documents: [] }));
-    expect(screen.queryByTestId(`${picker}-selector`)).not.toBeInTheDocument();
-  });
+  it.each(["chat", "document"] as const)(
+    "empty %s confirmation still clears the same source",
+    (picker) => {
+      mocks.docsOn = true;
+      mocks.docsSearchOn = true;
+      const current = controller({
+        scope: scope(
+          picker === "document"
+            ? { documents: [{ documentId: "doc-a", title: "A" }] }
+            : {
+                selectedChannels: [
+                  { chatId: "chat-a", chatType: "group", name: "A" },
+                ],
+              }
+        ),
+      });
+      mocks.useSummaryWorkbench.mockReturnValue(current);
+      render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+        legacyRoot: true,
+      });
+      fireEvent.click(screen.getByRole("button", { name: `open-${picker}` }));
+      fireEvent.click(screen.getByRole("button", { name: `empty-${picker}` }));
+      expect(current.updateScope).toHaveBeenCalledWith(
+        expect.objectContaining({ selectedChannels: [], documents: [] })
+      );
+      expect(
+        screen.queryByTestId(`${picker}-selector`)
+      ).not.toBeInTheDocument();
+    }
+  );
 
   it("still prompts before a real source replacement invalidates a preview", () => {
     mocks.docsOn = true;
@@ -1230,7 +1319,14 @@ describe("SummaryWorkbenchFeature", () => {
       scope: scope({ documents: [{ documentId: "doc-a", title: "A" }] }),
       model: {
         currentPreview: { content: "Existing preview" },
-        messages: [{ id: "preview-message", role: "assistant", resultType: "agent_preview", content: "Preview" }],
+        messages: [
+          {
+            id: "preview-message",
+            role: "assistant",
+            resultType: "agent_preview",
+            content: "Preview",
+          },
+        ],
       },
     });
     mocks.useSummaryWorkbench.mockReturnValue(current);
@@ -1943,7 +2039,7 @@ describe("SummaryWorkbenchFeature", () => {
     );
   });
 
-  it("uses chat when the composer changes after a failed direct-team launch", async () => {
+  it("keeps direct-team eligibility when the composer changes after a failed first launch", async () => {
     const send = vi
       .fn()
       .mockResolvedValueOnce(undefined)
@@ -1990,7 +2086,12 @@ describe("SummaryWorkbenchFeature", () => {
     fireEvent.click(screen.getByRole("button", { name: "send" }));
 
     await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
-    expect(send).toHaveBeenNthCalledWith(2, undefined, "user");
+    expect(send).toHaveBeenNthCalledWith(
+      2,
+      undefined,
+      "user",
+      "start_team_workflow"
+    );
   });
 
   it.each([
@@ -2803,11 +2904,14 @@ describe("SummaryWorkbenchFeature", () => {
     ).toBeInTheDocument();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "summary.workbench.lastSession.label" })
+      screen.getByRole("button", {
+        name: "summary.workbench.lastSession.label",
+      })
     );
 
-    const lastController = mocks.useSummaryWorkbench.mock.results[0]
-      ?.value as { hydrateSession: (sessionId: string) => unknown };
+    const lastController = mocks.useSummaryWorkbench.mock.results[0]?.value as {
+      hydrateSession: (sessionId: string) => unknown;
+    };
     expect(lastController.hydrateSession).toHaveBeenCalledWith("old-session");
     await waitFor(() =>
       expect(localStorage.getItem(ordinaryKey)).toBe("old-session")
@@ -2840,12 +2944,27 @@ describe("SummaryWorkbenchFeature", () => {
       })
     );
     expect(localStorage.getItem(ordinaryKey)).toBeNull();
-    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
-      "old-session"
-    );
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe("old-session");
     expect(
       screen.getByTestId("summary-workbench-last-session")
     ).toBeInTheDocument();
+  });
+
+  it("does not mutate session storage during render", () => {
+    const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
+    localStorage.setItem(ordinaryKey, "old-session");
+    mocks.useSummaryWorkbench.mockReturnValue(controller());
+    const setSpy = vi.spyOn(Storage.prototype, "setItem");
+    const removeSpy = vi.spyOn(Storage.prototype, "removeItem");
+
+    renderToString(
+      <SummaryWorkbenchFeature spaceId="space-a" forceNewSession />
+    );
+
+    expect(setSpy).not.toHaveBeenCalled();
+    expect(removeSpy).not.toHaveBeenCalled();
+    setSpy.mockRestore();
+    removeSpy.mockRestore();
   });
 
   it("keeps a demoted session reachable when resume hydration fails from a fresh session", async () => {
@@ -2868,9 +2987,7 @@ describe("SummaryWorkbenchFeature", () => {
     expect(current.hydrateSession).toHaveBeenCalledWith("old-session");
     await act(async () => hydration.resolve({ status: "failed" }));
     expect(localStorage.getItem(ordinaryKey)).toBeNull();
-    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
-      "old-session"
-    );
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe("old-session");
     expect(
       screen.getByTestId("summary-workbench-last-session")
     ).toBeInTheDocument();
@@ -2919,16 +3036,17 @@ describe("SummaryWorkbenchFeature", () => {
     };
     options.onSessionIdChange("current-session");
     expect(localStorage.getItem(ordinaryKey)).toBe("current-session");
-    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
-      "old-session"
-    );
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe("old-session");
 
     fireEvent.click(
-      screen.getByRole("button", { name: "summary.workbench.lastSession.label" })
+      screen.getByRole("button", {
+        name: "summary.workbench.lastSession.label",
+      })
     );
 
-    const lastController = mocks.useSummaryWorkbench.mock.results[0]
-      ?.value as { hydrateSession: (sessionId: string) => unknown };
+    const lastController = mocks.useSummaryWorkbench.mock.results[0]?.value as {
+      hydrateSession: (sessionId: string) => unknown;
+    };
     expect(lastController.hydrateSession).toHaveBeenCalledWith("old-session");
     // 主槽位切到被恢复的会话，被降级的当前会话 C 进入 :previous。
     await waitFor(() =>
@@ -2941,6 +3059,54 @@ describe("SummaryWorkbenchFeature", () => {
     expect(
       screen.getByTestId("summary-workbench-last-session")
     ).toBeInTheDocument();
+  });
+
+  it("restores the current session when the persisted resume swap fails", async () => {
+    const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
+    localStorage.setItem(ordinaryKey, "current-session");
+    localStorage.setItem(`${ordinaryKey}:previous`, "old-session");
+    const current = controller();
+    current.hydrateSession = vi
+      .fn()
+      .mockResolvedValueOnce({ status: "hydrated", sessionId: "old-session" })
+      .mockResolvedValueOnce({
+        status: "hydrated",
+        sessionId: "current-session",
+      });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+    const originalSetItem = Storage.prototype.setItem;
+    const setSpy = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (key, value) {
+        if (key === ordinaryKey && value === "old-session") {
+          throw new Error("blocked");
+        }
+        return originalSetItem.call(this, key, value);
+      });
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "summary.workbench.lastSession.label",
+      })
+    );
+
+    await waitFor(() =>
+      expect(current.hydrateSession).toHaveBeenCalledTimes(2)
+    );
+    expect(current.hydrateSession).toHaveBeenNthCalledWith(1, "old-session");
+    expect(current.hydrateSession).toHaveBeenNthCalledWith(
+      2,
+      "current-session"
+    );
+    expect(localStorage.getItem(ordinaryKey)).toBe("current-session");
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe("old-session");
+    expect(
+      screen.getByTestId("summary-workbench-last-session")
+    ).toBeInTheDocument();
+    setSpy.mockRestore();
   });
 
   it.each(["failed", "cancelled"] as const)(
@@ -2987,9 +3153,7 @@ describe("SummaryWorkbenchFeature", () => {
       { legacyRoot: true }
     );
 
-    expect(
-      screen.queryByTestId("template-selector")
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
   });
 
   it("keeps the template gallery hidden after a dispatched run fails (#1765)", async () => {
@@ -3019,9 +3183,15 @@ describe("SummaryWorkbenchFeature", () => {
     fireEvent.click(screen.getByRole("button", { name: "send" }));
     await waitFor(() => expect(send).toHaveBeenCalled());
 
-    expect(
-      screen.queryByTestId("template-selector")
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "open-template-context" })
+    );
+    expect(screen.getByTestId("template-selector")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "remove-template" }));
+    expect(current.updateScope).toHaveBeenCalledWith(
+      expect.objectContaining({ template: null })
+    );
   });
 
   it("keeps the template gallery hidden when a hydrated turn failed (#1765)", async () => {
@@ -3058,11 +3228,11 @@ describe("SummaryWorkbenchFeature", () => {
 
     // The failed turn keeps the conversation "started".
     await waitFor(() => {
-      expect(
-        screen.queryByTestId("template-selector")
-      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId("template-selector")).not.toBeInTheDocument();
     });
-    expect(screen.queryByRole("button", { name: "choose-template" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "choose-template" })
+    ).toBeNull();
   });
 
   it("restores hydrated reference metadata and toggles its preview", async () => {

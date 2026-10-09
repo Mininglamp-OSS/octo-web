@@ -5,7 +5,10 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SummaryWorkbenchStreamCallbacks } from "../../Service/SummaryWorkbenchService";
 import type { CreateAgentSummaryResult } from "../../types/summary";
-import { contextItemsFromScope, decodeSummaryWorkspaceStreamError } from "./adapter";
+import {
+  contextItemsFromScope,
+  decodeSummaryWorkspaceStreamError,
+} from "./adapter";
 import { canSaveCurrentPreview, type SummaryWorkbenchResponse } from "./model";
 import {
   SummaryWorkspaceApiError,
@@ -540,17 +543,30 @@ describe("useSummaryWorkbench", () => {
 
   it("does not replay the entire run after a non-transient model parameter rejection", async () => {
     const { result, unmount } = renderHook(() =>
-      useSummaryWorkbench({ initialSessionId: "session-1", initialScope, autoHydrate: false, service })
+      useSummaryWorkbench({
+        initialSessionId: "session-1",
+        initialScope,
+        autoHydrate: false,
+        service,
+      })
     );
     let request!: Promise<SummaryWorkbenchResponse | undefined>;
     act(() => {
       request = result.current.send("summarize");
       streamCallbacks.onProgress?.({
-        phase: "retrieve", step: 1, ofSteps: 2, elapsed_ms: 100, count: 12,
+        phase: "retrieve",
+        step: 1,
+        ofSteps: 2,
+        elapsed_ms: 100,
+        count: 12,
       });
-      streamCallbacks.onError?.(decodeSummaryWorkspaceStreamError({
-        code: 50003, message: "Model request failed", transient: false,
-      }));
+      streamCallbacks.onError?.(
+        decodeSummaryWorkspaceStreamError({
+          code: 50003,
+          message: "Model request failed",
+          transient: false,
+        })
+      );
     });
     await request;
     expect(sendMessage).not.toHaveBeenCalled();
@@ -968,6 +984,96 @@ describe("useSummaryWorkbench", () => {
     expect(result.current.sessionId).toBe("current-session");
     expect(result.current.model.composer.value).toBe("Keep current draft");
     expect(result.current.error).toMatchObject({ kind: "transport" });
+    unmount();
+  });
+
+  it("restores retry request identity when History hydration fails", async () => {
+    sendMessage.mockRejectedValue(
+      new SummaryWorkspaceApiError({
+        message: "gateway timeout",
+        kind: "transport",
+        retryable: true,
+      })
+    );
+    loadSession.mockRejectedValue(
+      new SummaryWorkspaceApiError({
+        message: "History unavailable",
+        kind: "transport",
+        retryable: true,
+      })
+    );
+    const requestIds = ["request-original", "request-unexpected"];
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "current-session",
+        initialScope,
+        autoHydrate: false,
+        preferStreaming: false,
+        service,
+        createRequestId: () => requestIds.shift() ?? "request-extra",
+      })
+    );
+
+    await act(async () => {
+      await result.current.send(
+        "Create the team summary",
+        "user",
+        "start_team_workflow"
+      );
+      await result.current.hydrateSession("dead-session");
+      await result.current.send(
+        "Create the team summary",
+        "user",
+        "start_team_workflow"
+      );
+    });
+
+    expect(sendMessage.mock.calls.map(([input]) => input.requestId)).toEqual([
+      "request-original",
+      "request-original",
+    ]);
+    unmount();
+  });
+
+  it("preserves current state changes when active hydration aborts", async () => {
+    sendMessage.mockRejectedValue(
+      new SummaryWorkspaceApiError({
+        message: "Original error",
+        kind: "business",
+        retryable: false,
+      })
+    );
+    const hydration = deferred<ReturnType<typeof previewHydration>>();
+    loadSession.mockImplementationOnce(() => hydration.promise);
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "current-session",
+        initialScope,
+        autoHydrate: false,
+        preferStreaming: false,
+        service,
+      })
+    );
+    await act(async () => {
+      await result.current.send("Create summary");
+    });
+    expect(result.current.error?.message).toBe("Original error");
+
+    let pending!: ReturnType<typeof result.current.hydrateSession>;
+    act(() => {
+      pending = result.current.hydrateSession("old-session");
+      result.current.clearError();
+    });
+    let hydrationResult: unknown;
+    await act(async () => {
+      hydration.reject(new DOMException("Aborted", "AbortError"));
+      hydrationResult = await pending;
+    });
+    expect(hydrationResult).toEqual({ status: "cancelled" });
+
+    expect(result.current.sessionId).toBe("current-session");
+    expect(result.current.error).toBeNull();
+    expect(result.current.model.composer.errorMessage).toBeUndefined();
     unmount();
   });
 
