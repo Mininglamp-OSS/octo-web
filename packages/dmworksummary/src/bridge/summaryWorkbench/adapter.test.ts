@@ -50,9 +50,59 @@ function emptyState(scopeVersion = 1) {
 }
 
 describe("summary workspace adapter", () => {
-  it.each(["channels", "participants", "timeRange", "all"] as const)(
-    "normalizes mixed document hydration (%s), advances scope version and cannot resend the conflict",
-    (conflict) => {
+  it.each([
+    {
+      name: "documents+channels drops refs and bumps (I3, mixed cannot carry a reference)",
+      conflict: "channels",
+      expected: {
+        selectedChannels: true,
+        participants: false,
+        timeRange: false,
+        referencedTaskIds: false,
+        versionBumped: true,
+      },
+    },
+    {
+      name: "documents+participants drops participants and bumps (I1)",
+      conflict: "participants",
+      expected: {
+        selectedChannels: false,
+        participants: false,
+        timeRange: false,
+        referencedTaskIds: true,
+        versionBumped: true,
+      },
+    },
+    {
+      name: "documents+time_range without chats nulls the range and bumps (I2)",
+      conflict: "timeRange",
+      expected: {
+        selectedChannels: false,
+        participants: false,
+        timeRange: false,
+        referencedTaskIds: true,
+        versionBumped: true,
+      },
+    },
+    {
+      name: "documents+channels+participants+time_range drops participants and refs, keeps range and bumps (I1 + I3)",
+      conflict: "all",
+      expected: {
+        selectedChannels: true,
+        participants: false,
+        timeRange: true,
+        referencedTaskIds: false,
+        versionBumped: true,
+      },
+    },
+  ] as const)("mixed document hydration normalizes conflicting shapes: $name", ({ conflict, expected }) => {
+      // The decode boundary enforces three capability-INDEPENDENT invariants
+      // (participants×documents, time_range×document-only, references×mixed).
+      // A snapshot that disagrees with them normalizes down to a sendable
+      // shape and the resulting length delta bumps scope_version so the next
+      // request cannot reuse the server's stored hash (409). A legal mixed
+      // scope (documents+channels without participants/refs) round-trips
+      // losslessly.
       const hydration = adaptSummaryWorkspaceHistory({
         contract_version: "2",
         session_id: "mixed-documents",
@@ -70,28 +120,163 @@ describe("summary workspace adapter", () => {
           },
         },
       });
-      expect(hydration.modelOptions.scopeVersion).toBe(5);
-      expect(hydration.scope).toMatchObject({
-        documents: [{ documentId: "doc-1", title: "Document" }],
-        selectedChannels: [], participants: [], timeRange: null,
-        template: { templateId: "weekly" }, referencedTaskIds: [7],
-      });
-      expect(contextItemsFromScope(hydration.scope).map(item => item.kind)).toEqual(["document", "template", "reference"]);
+      expect(hydration.modelOptions.scopeVersion).toBe(expected.versionBumped ? 5 : 4);
+      expect(hydration.scope.documents).toEqual([{ documentId: "doc-1", title: "Document" }]);
+      expect(hydration.scope.selectedChannels.length > 0).toBe(expected.selectedChannels);
+      expect(hydration.scope.participants.length > 0).toBe(expected.participants);
+      expect(hydration.scope.timeRange !== null).toBe(expected.timeRange);
+      expect(hydration.scope.referencedTaskIds.length > 0).toBe(expected.referencedTaskIds);
+      // Round-trip: re-hydrating the normalized wire form must be idempotent
+      // (no further drop, no further bump).
       const wire = serializeSummaryWorkbenchScope(hydration.scope);
-      expect(wire).toMatchObject({
-        documents: [{ document_id: "doc-1", title: "Document" }],
-        selected_channels: [], participants: [], time_range: null,
-      });
       const roundTrip = adaptSummaryWorkspaceHistory({
         contract_version: "2", session_id: "mixed-documents", messages: [],
-        state: { ...emptyState(5), summary_context: wire },
+        state: { ...emptyState(expected.versionBumped ? 5 : 4), summary_context: wire },
       });
-      expect(roundTrip.modelOptions.scopeVersion).toBe(5);
       expect(roundTrip.scope).toEqual(hydration.scope);
+      expect(roundTrip.modelOptions.scopeVersion).toBe(expected.versionBumped ? 5 : 4);
     }
   );
 
-  it("invalidates a preview when a turn normalizes mixed document scope", () => {
+  it("drops the chat side of a persisted mixed scope when the capability is off", () => {
+    // Gate OFF (mixed_sources=false): a snapshot persisted while the gate was
+    // ON must not re-materialize the mixed shapes (documents+channels,
+    // documents+participants, document-only+time_range) that the gate-OFF UI
+    // cannot compose or edit. The decode boundary drops them and the
+    // scope-version bump keeps the next request from resending the server's
+    // stored hash (409).
+    const hydration = adaptSummaryWorkspaceHistory(
+      {
+        contract_version: "2",
+        session_id: "mixed-gate-off",
+        messages: [],
+        state: {
+          ...emptyState(4),
+          summary_context: {
+            ...summaryContext,
+            documents: [{ document_id: "doc-1", title: "Document" }],
+            selected_channels: summaryContext.selected_channels,
+            participants: [{ user_id: "u1" }],
+            time_range: summaryContext.time_range,
+            template: {
+              template_id: "weekly",
+              label: "Weekly",
+              requirement: "Summarize",
+            },
+            referenced_task_ids: [7],
+          },
+        },
+      },
+      false
+    );
+    expect(hydration.scope.documents).toEqual([
+      { documentId: "doc-1", title: "Document" },
+    ]);
+    expect(hydration.scope.selectedChannels).toEqual([]);
+    expect(hydration.scope.participants).toEqual([]);
+    expect(hydration.scope.timeRange).toBeNull();
+    // The reference stack is not mixed-specific: a pure-document scope accepts
+    // a reference, so it survives the gate-OFF normalization.
+    expect(hydration.scope.referencedTaskIds).toEqual([7]);
+    // Dropping the chat side / participants / range must advance the version
+    // so the next request cannot reuse the server's stored scope hash.
+    expect(hydration.modelOptions.scopeVersion).toBe(5);
+  });
+
+  it("drops participants at hydration when documents are present, capability ON (I1)", () => {
+    // I1 is capability-independent: participants×documents is a shape the
+    // selection layer refuses to compose (canSelectParticipants=false when
+    // documents exist), so a persisted snapshot carrying both must not
+    // re-materialize on gate ON either — the wire round-trip would carry
+    // participants back to a backend the PR itself documents as rejecting
+    // this shape.
+    const hydration = adaptSummaryWorkspaceHistory(
+      {
+        contract_version: "2",
+        session_id: "docs-and-participants",
+        messages: [],
+        state: {
+          ...emptyState(4),
+          summary_context: {
+            ...summaryContext,
+            selected_channels: [],
+            documents: [{ document_id: "doc-1", title: "Document" }],
+            participants: [{ user_id: "u1" }],
+            time_range: null,
+            referenced_task_ids: [],
+          },
+        },
+      },
+      true
+    );
+    expect(hydration.scope.participants).toEqual([]);
+    expect(hydration.scope.documents).toEqual([
+      { documentId: "doc-1", title: "Document" },
+    ]);
+    // Dropping participants advances the version so the next request cannot
+    // reuse the server's stored scope hash.
+    expect(hydration.modelOptions.scopeVersion).toBe(5);
+  });
+
+  it("nulls the time range at hydration when documents are present without chats, capability ON (I2)", () => {
+    // I2: the time range scopes the chat side only. A document-only scope
+    // carrying a range is a shape the backend contract rejects; drop it
+    // here so the round-trip cannot re-emit it.
+    const hydration = adaptSummaryWorkspaceHistory(
+      {
+        contract_version: "2",
+        session_id: "docs-only-with-range",
+        messages: [],
+        state: {
+          ...emptyState(4),
+          summary_context: {
+            ...summaryContext,
+            selected_channels: [],
+            documents: [{ document_id: "doc-1", title: "Document" }],
+            participants: [],
+            time_range: summaryContext.time_range,
+            referenced_task_ids: [],
+          },
+        },
+      },
+      true
+    );
+    expect(hydration.scope.timeRange).toBeNull();
+    expect(hydration.scope.documents).toHaveLength(1);
+    expect(hydration.modelOptions.scopeVersion).toBe(5);
+  });
+
+  it("drops the reference stack at hydration when the snapshot is mixed, capability ON (I3)", () => {
+    // I3: a mixed scope (documents + channels) cannot carry a reference
+    // stack. Both writers clear references on the pure→mixed transition;
+    // the decode boundary mirrors that so a persisted mixed+reference shape
+    // still lands on a sendable scope.
+    const hydration = adaptSummaryWorkspaceHistory(
+      {
+        contract_version: "2",
+        session_id: "mixed-with-reference",
+        messages: [],
+        state: {
+          ...emptyState(4),
+          summary_context: {
+            ...summaryContext,
+            documents: [{ document_id: "doc-1", title: "Document" }],
+            selected_channels: summaryContext.selected_channels,
+            participants: [],
+            time_range: null,
+            referenced_task_ids: [7],
+          },
+        },
+      },
+      true
+    );
+    expect(hydration.scope.documents).toHaveLength(1);
+    expect(hydration.scope.selectedChannels).toHaveLength(1);
+    expect(hydration.scope.referencedTaskIds).toEqual([]);
+    expect(hydration.modelOptions.scopeVersion).toBe(5);
+  });
+
+  it("keeps a mixed chat+document preview valid (no stale bump)", () => {
     const response = adaptSummaryWorkspaceTurn({
       contract_version: "2", session_id: "doc-turn", message_id: 18,
       result_type: "agent_preview", reply: "Preview",
@@ -101,15 +286,15 @@ describe("summary workspace adapter", () => {
         summary_context: { ...summaryContext, documents: [{ document_id: "doc-1" }] },
         current_preview: {
           message_id: 18, result_type: "agent_preview", scope_version: 4,
-          artifact_version: 3, snapshot_version: 1, content: "Old mixed preview",
+          artifact_version: 3, snapshot_version: 1, content: "Mixed preview",
           assumptions: [], available_actions: ["save_preview"],
         },
       },
     });
     const model = applySummaryResponse(createInitialSummaryWorkbenchModel(), response);
-    expect(model.scopeVersion).toBe(5);
-    expect(canSaveCurrentPreview(model)).toBe(false);
-    expect(deriveSummaryWorkbenchView(model).card).toMatchObject({ isStale: true });
+    expect(model.scopeVersion).toBe(4);
+    expect(canSaveCurrentPreview(model)).toBe(true);
+    expect(deriveSummaryWorkbenchView(model).card).toMatchObject({ isStale: false });
   });
 
   it("leaves valid chat hydration and its version unchanged", () => {
@@ -827,12 +1012,14 @@ describe("summary workspace adapter", () => {
         contract_version: "2",
         max_time_range_days: 90,
         direct_team_workflow: true,
+        mixed_sources: true,
       })
     ).toEqual({
       enabled: true,
       contract_version: "2",
       max_time_range_days: 90,
       direct_team_workflow: true,
+      mixed_sources: true,
     });
     expect(
       decodeSummaryWorkspaceCapabilities({
@@ -844,6 +1031,7 @@ describe("summary workspace adapter", () => {
       contract_version: "2",
       max_time_range_days: 31,
       direct_team_workflow: false,
+      mixed_sources: false,
     });
   });
 

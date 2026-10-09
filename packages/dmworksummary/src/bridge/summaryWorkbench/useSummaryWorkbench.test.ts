@@ -366,7 +366,8 @@ describe("useSummaryWorkbench", () => {
         scope: initialScope,
       },
       expect.any(Object),
-      { spaceId: "space-a" }
+      { spaceId: "space-a" },
+      true
     );
     expect(result.current.model.messages).toEqual([
       expect.objectContaining({
@@ -903,7 +904,8 @@ describe("useSummaryWorkbench", () => {
 
     expect(loadSession).toHaveBeenCalledWith(
       "persisted-session",
-      expect.objectContaining({ signal: expect.any(AbortSignal) })
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      true
     );
     expect(result.current.sessionId).toBe("session-1");
     expect(result.current.scope).toEqual(serverScope);

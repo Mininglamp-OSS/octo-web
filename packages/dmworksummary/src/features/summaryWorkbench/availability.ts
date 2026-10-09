@@ -28,6 +28,7 @@ export interface SummaryWorkbenchEnabledAvailability {
   contractVersion: typeof SUMMARY_WORKSPACE_CONTRACT_VERSION;
   maxTimeRangeDays: number;
   directTeamWorkflow: boolean;
+  mixedSources: boolean;
   checkedAt: number;
 }
 
@@ -285,6 +286,7 @@ export class SummaryWorkbenchAvailability {
       contractVersion: SUMMARY_WORKSPACE_CONTRACT_VERSION,
       maxTimeRangeDays: value.max_time_range_days,
       directTeamWorkflow: value.direct_team_workflow,
+      mixedSources: value.mixed_sources,
       checkedAt: this.now(),
     };
   }
@@ -402,6 +404,7 @@ function isCapabilities(value: unknown): value is SummaryWorkspaceCapabilitiesDT
     typeof record.max_time_range_days === "number" &&
     Number.isInteger(record.max_time_range_days) &&
     record.max_time_range_days > 0 &&
-    typeof record.direct_team_workflow === "boolean"
+    typeof record.direct_team_workflow === "boolean" &&
+    typeof record.mixed_sources === "boolean"
   );
 }

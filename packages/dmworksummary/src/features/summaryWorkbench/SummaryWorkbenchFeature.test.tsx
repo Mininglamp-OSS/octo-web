@@ -1124,7 +1124,7 @@ describe("SummaryWorkbenchFeature", () => {
     expect(mocks.loadParticipantCandidates).toHaveBeenCalledTimes(1);
   });
 
-  it("selects documents into document-only scope when docs capability is enabled", () => {
+  it("selects documents into mixed scope (keeps chats and time range) when the mixed capability is on", () => {
     mocks.docsOn = true;
     mocks.docsSearchOn = true;
     const current = controller({
@@ -1140,9 +1140,10 @@ describe("SummaryWorkbenchFeature", () => {
     });
     mocks.useSummaryWorkbench.mockReturnValue(current);
 
-    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
-      legacyRoot: true,
-    });
+    render(
+      <SummaryWorkbenchFeature spaceId="space-a" mixedSources />,
+      { legacyRoot: true }
+    );
     expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
       "data-available-contexts",
       "chat,document,participant,time_range"
@@ -1151,13 +1152,96 @@ describe("SummaryWorkbenchFeature", () => {
     fireEvent.click(screen.getByRole("button", { name: "open-document" }));
     fireEvent.click(screen.getByRole("button", { name: "choose-document" }));
 
+    // Mixed document+chat: chats and the chat time range stay; participants
+    // stay mutually exclusive with documents (phase-1 personal-only).
+    expect(current.updateScope).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selectedChannels: [{ chatId: "chat-a", chatType: "group", name: "A" }],
+        documents: [{ documentId: "doc-a", title: "Doc A" }],
+        participants: [],
+        timeRange: {
+          start: "2026-09-01T00:00:00Z",
+          end: "2026-09-02T00:00:00Z",
+          label: "昨天",
+        },
+      })
+    );
+  });
+
+  it("clears chats and time range when documents are selected with the mixed capability off", () => {
+    mocks.docsOn = true;
+    mocks.docsSearchOn = true;
+    const current = controller({
+      scope: scope({
+        selectedChannels: [{ chatId: "chat-a", chatType: "group", name: "A" }],
+        timeRange: {
+          start: "2026-09-01T00:00:00Z",
+          end: "2026-09-02T00:00:00Z",
+          label: "昨天",
+        },
+      }),
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, { legacyRoot: true });
+
+    fireEvent.click(screen.getByRole("button", { name: "open-document" }));
+    fireEvent.click(screen.getByRole("button", { name: "choose-document" }));
+
+    // Gate OFF: selecting a document clears the chat side (pre-mixed mutual
+    // exclusion) so no mixed wire shape can be composed.
     expect(current.updateScope).toHaveBeenCalledWith(
       expect.objectContaining({
         selectedChannels: [],
         documents: [{ documentId: "doc-a", title: "Doc A" }],
-        participants: [],
         timeRange: null,
       })
+    );
+  });
+
+  it("restores chat and document entries on a document scope when the mixed capability is off", () => {
+    mocks.docsOn = true;
+    mocks.docsSearchOn = true;
+    const current = controller({
+      scope: scope({
+        selectedChannels: [{ chatId: "chat-a", chatType: "group", name: "A" }],
+        documents: [{ documentId: "doc-a", title: "Doc A" }],
+      }),
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, { legacyRoot: true });
+
+    // Gate OFF + documents present: restore the pre-mixed menu shape. "chat"
+    // stays available so a user who picked documents can switch to a chat
+    // scope, and replaceSelectedChannels(scope, chats, false) still clears
+    // documents, so mutual exclusion holds and no mixed scope is composed.
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-available-contexts",
+      "chat,document"
+    );
+  });
+
+  it("keeps the chat entry when the document selector is unavailable and the capability is off", () => {
+    // Gate OFF with the document selector unavailable: the menu must NOT
+    // collapse to empty. "chat" remains the single recovery entry so a user
+    // whose scope (e.g. hydrated from a persisted mixed snapshot) still holds
+    // documents can switch to a chat scope and escape a canSend=false state.
+    mocks.docsOn = false;
+    mocks.docsSearchOn = false;
+    const current = controller({
+      scope: scope({
+        selectedChannels: [],
+        documents: [{ documentId: "doc-a", title: "Doc A" }],
+      }),
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, { legacyRoot: true });
+
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-available-contexts",
+      "chat"
     );
   });
 

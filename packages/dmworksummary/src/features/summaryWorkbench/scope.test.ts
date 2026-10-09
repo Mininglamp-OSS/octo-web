@@ -39,7 +39,12 @@ describe("summary workbench scope helpers", () => {
       participants: [{ userId: "u1" }],
       timeRange: { start: "2026-09-01", end: "2026-09-02", label: "Range" },
     };
-    expect(replaceSelectedDocuments(scope, [])).toEqual({ scope, participantsCleared: false });
+    expect(replaceSelectedDocuments(scope, [])).toEqual({
+      scope,
+      participantsCleared: false,
+      referencesCleared: false,
+      timeRangeCleared: false,
+    });
     expect(replaceSelectedDocuments(scope, []).scope).toBe(scope);
   });
 
@@ -286,7 +291,7 @@ describe("summary workbench scope helpers", () => {
     ).toBe(true);
   });
 
-  it("uses document selection as document-only scope", () => {
+  it("keeps chats and time range when documents are selected (mixed)", () => {
     const scope = {
       ...emptySummaryWorkbenchScope(),
       selectedChannels: [
@@ -302,16 +307,163 @@ describe("summary workbench scope helpers", () => {
     const documents = documentsToScope([
       { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
     ]);
-    const result = replaceSelectedDocuments(scope, documents);
+    const result = replaceSelectedDocuments(scope, documents, true);
 
+    // Mixed document+chat: chats and the chat time range stay; participants
+    // stay mutually exclusive with documents (phase-1 personal-only).
     expect(result.participantsCleared).toBe(true);
     expect(result.scope).toMatchObject({
-      selectedChannels: [],
+      selectedChannels: scope.selectedChannels,
       documents,
       participants: [],
-      timeRange: null,
+      timeRange: scope.timeRange,
     });
     expect(canSelectParticipants(result.scope)).toBe(false);
+  });
+
+  it("clears referenced tasks when documents are selected (mixed)", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      selectedChannels: [
+        { chatId: "group-a", chatType: "group" as const, name: "A" },
+      ],
+      referencedTaskIds: [10, 20],
+    };
+    const documents = documentsToScope([
+      { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+    ]);
+    const result = replaceSelectedDocuments(scope, documents, true);
+
+    // A reference-summary stack is incompatible with a mixed scope (the
+    // backend rejects referenced_task_ids on a document+chat scope), so
+    // selecting documents clears any reference.
+    expect(result.scope.referencedTaskIds).toEqual([]);
+    expect(result.scope.documents).toEqual(documents);
+    expect(result.referencesCleared).toBe(true);
+  });
+
+  it("keeps a reference when documents are selected with no chats (pure document)", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      referencedTaskIds: [10, 20],
+    };
+    const documents = documentsToScope([
+      { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+    ]);
+    const result = replaceSelectedDocuments(scope, documents, true);
+
+    // A pure-document scope (no chats) accepts a reference: the backend only
+    // rejects referenced_task_ids on a MIXED scope, so the reference must
+    // survive here (and no toast/clear signal should fire).
+    expect(result.scope.referencedTaskIds).toEqual([10, 20]);
+    expect(result.referencesCleared).toBe(false);
+  });
+
+  it("clears documents when chats are selected with the gate off", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      documents: documentsToScope([
+        { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+      ]),
+      timeRange: {
+        start: "2026-09-01T00:00:00Z",
+        end: "2026-09-02T00:00:00Z",
+        label: "昨天",
+      },
+    };
+    const channels = [
+      { chatId: "group-a", chatType: "group" as const, name: "A" },
+    ];
+    const result = replaceSelectedChannels(scope, channels, false);
+
+    // Gate OFF restores pre-mixed mutual exclusion: selecting chats clears
+    // documents so no mixed wire shape can be composed.
+    expect(result.scope.selectedChannels).toEqual(channels);
+    expect(result.scope.documents).toEqual([]);
+  });
+
+  it("keeps documents when chats are selected with the gate on", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      documents: documentsToScope([
+        { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+      ]),
+    };
+    const channels = [
+      { chatId: "group-a", chatType: "group" as const, name: "A" },
+    ];
+    const result = replaceSelectedChannels(scope, channels, true);
+
+    // Gate ON: selecting chats keeps documents (mixed scope).
+    expect(result.scope.selectedChannels).toEqual(channels);
+    expect(result.scope.documents).toEqual(scope.documents);
+  });
+
+  it("clears a reference when a chat turns a document+reference scope mixed", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      documents: documentsToScope([
+        { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+      ]),
+      referencedTaskIds: [10, 20],
+    };
+    const channels = [
+      { chatId: "group-a", chatType: "group" as const, name: "A" },
+    ];
+    const result = replaceSelectedChannels(scope, channels, true);
+
+    // Adding a chat (gate ON) turns the document+reference scope mixed, which
+    // is exactly the shape the backend rejects. The chats writer must enforce
+    // the same reference boundary the documents writer does.
+    expect(result.scope.referencedTaskIds).toEqual([]);
+    expect(result.referencesCleared).toBe(true);
+    expect(result.scope.selectedChannels).toEqual(channels);
+    expect(result.scope.documents).toEqual(scope.documents);
+  });
+
+  it("keeps a reference when a chat is selected with the gate off", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      documents: documentsToScope([
+        { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+      ]),
+      referencedTaskIds: [10, 20],
+    };
+    const channels = [
+      { chatId: "group-a", chatType: "group" as const, name: "A" },
+    ];
+    const result = replaceSelectedChannels(scope, channels, false);
+
+    // Gate OFF: mutual exclusion clears documents, and the reference survives
+    // (a pure-chat scope accepts a reference; the scope never becomes mixed).
+    expect(result.scope.documents).toEqual([]);
+    expect(result.scope.referencedTaskIds).toEqual([10, 20]);
+    expect(result.referencesCleared).toBe(false);
+  });
+
+  it("clears a chat time range when the last chat is removed from a document scope", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      selectedChannels: [
+        { chatId: "group-a", chatType: "group" as const, name: "A" },
+      ],
+      documents: documentsToScope([
+        { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+      ]),
+      timeRange: {
+        start: "2026-09-01T00:00:00Z",
+        end: "2026-09-02T00:00:00Z",
+        label: "昨天",
+      },
+    };
+    const result = replaceSelectedChannels(scope, [], true);
+
+    // The time range scopes the chat side only; with no chats left it would
+    // produce a document-only scope carrying a time range, which the backend
+    // rejects. In mixed mode (gate on) the documents survive the chat removal.
+    expect(result.scope.selectedChannels).toEqual([]);
+    expect(result.scope.timeRange).toBeNull();
+    expect(result.scope.documents).toEqual(scope.documents);
   });
 
   it("removes a reference without changing other scope fields", () => {
@@ -330,5 +482,92 @@ describe("summary workbench scope helpers", () => {
     };
     const result = removeScopeContext(scope, "document", "doc-a");
     expect(result.scope.documents).toEqual([]);
+  });
+
+  it("propagates referencesCleared through the chat chip-removal branch", () => {
+    // replaceSelectedChannels clears references only when a scope BECOMES
+    // mixed (adding a chat to a document scope). Removing a chat chip moves
+    // the scope toward non-mixed (document-only), which KEEPS any reference —
+    // a document-only scope accepts a reference stack. removeScopeContext must
+    // still surface the (false) referencesCleared flag so the consumer can
+    // mirror the picker-confirm handler without a type gap.
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      selectedChannels: [
+        { chatId: "group-a", chatType: "group" as const, name: "A" },
+      ],
+      documents: documentsToScope([
+        { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+      ]),
+      referencedTaskIds: [10, 20],
+    };
+    const result = removeScopeContext(scope, "chat", "group-a", true);
+    expect(result.referencesCleared).toBe(false);
+    // Document-only scope retains the reference stack.
+    expect(result.scope.referencedTaskIds).toEqual([10, 20]);
+  });
+
+  it("returns referencesCleared false for non-chat removals", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      referencedTaskIds: [10],
+    };
+    expect(removeScopeContext(scope, "reference", "10").referencesCleared).toBe(
+      false
+    );
+    expect(
+      removeScopeContext(scope, "document", "doc-a").referencesCleared
+    ).toBe(false);
+  });
+
+  it("surfaces timeRangeCleared when removing the last chat drops the range (gate ON)", () => {
+    // Reachable by ordinary interaction with the capability ON: a mixed scope
+    // (chats + documents + range), then remove the last chat via chip ×. The
+    // range chip must vanish AND the caller must be told so it can toast —
+    // otherwise the next generation silently covers all time instead of the
+    // picked window.
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      selectedChannels: [
+        { chatId: "group-a", chatType: "group" as const, name: "A" },
+      ],
+      documents: documentsToScope([
+        { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+      ]),
+      timeRange: {
+        start: "2026-09-01T00:00:00Z",
+        end: "2026-09-02T00:00:00Z",
+        label: "昨天",
+      },
+    };
+    const result = removeScopeContext(scope, "chat", "group-a", true);
+    expect(result.scope.selectedChannels).toEqual([]);
+    expect(result.scope.timeRange).toBeNull();
+    expect(result.timeRangeCleared).toBe(true);
+  });
+
+  it("re-asserts the chat-only time range when removing a document leaves a document-only scope with a range", () => {
+    // A snapshot can hydrate a document-only scope carrying a time range (the
+    // shape the backend rejects); the document chip-removal branch must still
+    // run withChatOnlyTimeRange so removing a document never leaves that
+    // illegal shape in scope.
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      documents: documentsToScope([
+        { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+        { docId: "doc-b", title: "Doc B", docType: "doc", updatedAt: null },
+      ]),
+      timeRange: {
+        start: "2026-09-01T00:00:00Z",
+        end: "2026-09-02T00:00:00Z",
+        label: "昨天",
+      },
+    };
+    const result = removeScopeContext(scope, "document", "doc-b");
+    // One document remains, no chats → the range must be cleared.
+    expect(result.scope.documents).toEqual([
+      { documentId: "doc-a", title: "Doc A" },
+    ]);
+    expect(result.scope.timeRange).toBeNull();
   });
 });

@@ -9,13 +9,15 @@ function capability(
     enabled = true,
     contractVersion = "2",
     maxTimeRangeDays = 90,
-    directTeamWorkflow = false
+    directTeamWorkflow = false,
+    mixedSources = false
 ) {
     return {
         enabled,
         contract_version: contractVersion,
         max_time_range_days: maxTimeRangeDays,
         direct_team_workflow: directTeamWorkflow,
+        mixed_sources: mixedSources,
     };
 }
 
