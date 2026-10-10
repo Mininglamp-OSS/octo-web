@@ -106,6 +106,16 @@ im.call = function (method, params) {
                 params.complete(result)
             }
         })
+    } else if (params) {
+        // 没有原生 bridge（非 App 环境，或 onReady 尚未注入）：必须回调，
+        // 否则 im.getChannel() 之类的 Promise 会永久挂起。
+        var result = { err_code: 500, msg: 'IMJSBridge is not available' }
+        if (params.error) {
+            params.error(result)
+        }
+        if (params.complete) {
+            params.complete(result)
+        }
     }
 }
 

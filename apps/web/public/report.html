@@ -7,6 +7,61 @@
         content="width=device-width, initial-scale=1.0,maximum-scale=1.0,minimum=1.0,user-scalable=no">
     <meta name="format-detection" content="telephone=no, email=no">
     <link rel="stylesheet" type="text/css" href="css/report.css" />
+    <style type="text/css">
+        /* The notice is an in-page overlay, not a separate document: navigating
+           away would consume-and-discard the one-time ?session credential and
+           lose whatever the user already typed. `background-color: inherit`
+           picks up body's background so the overlay stays opaque in both the
+           default and the `mode=dark` stylesheet without duplicating colors. */
+        .reportNoticeOverlay {
+            display: none;
+            position: fixed;
+            left: 0;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 100;
+            overflow-y: auto;
+            padding-bottom: 30px;
+            background-color: inherit;
+        }
+
+        .reportNoticeOverlayTitle {
+            text-align: center;
+            font-size: 1.3em;
+            font-weight: 900;
+        }
+
+        .reportNoticeOverlayClose {
+            position: fixed;
+            right: 16px;
+            top: 16px;
+            width: 32px;
+            height: 32px;
+            line-height: 32px;
+            border-radius: 16px;
+            text-align: center;
+            font-size: 18px;
+            background-color: #2F70F5;
+            color: white;
+            cursor: pointer;
+        }
+
+        .uploadRemove {
+            position: absolute;
+            right: 0;
+            top: 0;
+            width: 20px;
+            height: 20px;
+            line-height: 20px;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 12px;
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            cursor: pointer;
+        }
+    </style>
     <script type="text/javascript" src="js/config.js"></script>
     <script type="text/javascript" src="js/jquery-3.7.1.min.js"></script>
     <script type="text/javascript" src="js/IMJSBridge.js"></script>
@@ -76,6 +131,57 @@
         </div>
 
     </div>
+
+    <div class="reportNoticeOverlay">
+        <div class="reportNoticeOverlayClose">✕</div>
+        <div class="reportDesc reportNoticeOverlayTitle">投诉须知</div>
+        <div class="reportDesc">
+            你应保证你的投诉行为基于善意，并代表你本人真实意思。信必达作为中立的平台服务者，收到你投诉后，会尽快按照相关法律法规的规定独立判断并进行处理。信必达将会采取合理的措施保护你的个人信息；除法律法规规定的情形外，未经用户许可信必达不会向第三方公开、透露你的个人信息。
+        </div>
+        <div class="reportDesc">
+            根据《中华人民共和国民法典》的规定，权利人在通知网络服务提供者时应当提供权利人的真实身份信息。因此，当你提交侵权投诉及冒充他人投诉时，我们根据你的主体类型，收集你的相关信息（含敏感个人信息），包括你的姓名或名称、证件号码或者组织证件号、证件正反面照片、公司或组织证件照片，收集前述内容的目的在于核验你的身份信息的真实性。如果你委托代理人进行投诉，我们还将收集代理人的姓名、证件号码、证件正反面照片、授权委托书照片，收集前述信息在于核验代理人信息的真实性。你可以拒绝提供，如果拒绝提供，我们可能无法对你的投诉进行评估，但不影响你对悟空聊天其他功能的正常使用。
+        </div>
+        <div class="reportDesc">
+            此外，为了对你的投诉予以评估，我们也会收集你主动提交的聊天记录、投诉内容、补充证明材料照片。你可以拒绝提供，如果拒绝提供，我们可能无法对你的投诉进行充分评估，但不影响你对悟空聊天其他功能的正常使用。
+        </div>
+        <div class="reportDesc">
+            若你提交的是侵权投诉，请注意：
+        </div>
+        <div class="reportDesc">
+            1.
+            权利人及其代理人知悉并了解侵权投诉是一项严肃的法律行为，平台将根据法律法规、投诉内容和证据等进行评估审核，尽力保障每一位权利人的合法权益。但侵权投诉的评估审核结果与投诉次数无关联，多次或多人重复或批量投诉并不能改变或提升侵权投诉通过率。
+        </div>
+        <div class="reportDesc">
+            2.
+            为了更好地维护权利人的合法权益及正常侵权投诉，保障系统安全及正常运作，权利人及其代理人不得采取可能会严重影响其他用户合法权益、阻碍平台系统的安全正常运作的方式进行投诉，包括但不限于使用外挂、插件、第三方软件、系统、自动化程序等进行投诉等。
+            一经发现，上述投诉将被平台视为无效投诉。同时不排除会采取包括但不限于限制频次等、记入非正常投诉名单、调整投诉处理顺序、直至直接拒绝、处罚投诉帐号等特殊处理机制或限制、处理措施。
+        </div>
+        <div class="reportDesc">
+            3. 为各权利人的合法权益得以保障，相关投诉能有效提交，如平台有合理理由相信投诉存在以下情形，将有权根据实际情况调整处理方式。包括但不限于：
+            <div>
+                （1）明知、应知不构成侵权或明显缺乏权利基础和事实依据而进行投诉；
+            </div>
+            <div>
+                （2）平台已告知欠缺处理依据仍不断重复投诉且无实质补充等情形；
+            </div>
+            <div>
+                （3）多次或大量提交侵权投诉，但整体通过率低或涉嫌滥用投诉；
+            </div>
+            <div>
+                （4）非合理且正当理由，对平台正常处理其他权利人侵权投诉造成不利影响的情形；
+            </div>
+            <div>
+                （5）其他平台有理由认为存在不合理、滥用投诉的情形。
+            </div>
+        </div>
+        <div class="reportDesc">
+            一经发现，将不排除采取特殊的处理机制或限制措施，包括但不限于限制频次、记入非正常投诉名单、调整侵权投诉单处理顺序等，由此将可能导致侵权投诉不可高频提交、无法通过或审核评估时效延长等效果。
+        </div>
+        <div class="reportDesc">
+            4. 如由于特殊原因造成平台处理能力过载，包括但不限于网络因素、设备原因、投诉量短期激增等，平台的处理与反馈也可能会有时效调整或延迟。
+        </div>
+    </div>
+
 </body>
 
 <script language="javascript">
@@ -136,6 +242,11 @@
                     stripSessionFromUrl();
                 }
             })
+        } else {
+            // No ?session at all (direct hit, replayed URL, or a reload after it
+            // was stripped): say so now instead of looking healthy until the
+            // first upload / submit.
+            onAuthResolveFailed();
         }
 
         $(".go").on('touchend', function () {
@@ -213,17 +324,25 @@
             // path=/null/... request. Drop the just-added thumbnail and warn once.
             if (!uid || !token) {
                 alert('登录态尚未就绪，请重试');
-                var idx = imageDatas.indexOf(imageData);
-                if (idx !== -1) {
-                    imageDatas.splice(idx, 1);
-                }
-                renderImageItes();
+                removeImageData(imageData);
                 return;
             }
-            function markFailed() {
-                imageData.status = 'failed';
+            // Single exit for every terminal outcome (ok / error / timeout /
+            // thrown), so pendingUploads always drains and drains exactly once:
+            // ontimeout and onreadystatechange can both fire for one aborted
+            // XHR, and `status` leaving 'pending' makes the second a no-op.
+            // Returns whether this call is the one that settled the image.
+            function settle(status) {
+                if (imageData.status !== 'pending') {
+                    return false;
+                }
+                imageData.status = status;
+                pendingUploads--;
                 renderImageItes();
-                alert('图片上传失败，请重试');
+                if (status === 'failed') {
+                    alert('图片上传失败，请重试');
+                }
+                return true;
             }
             pendingUploads++;
             $.ajax({
@@ -234,31 +353,61 @@
                 url: apiURL + `file/upload?type=report&path=/${uid}/${uuid()}`,
                 type: "get",
                 success: function (result) {
-                    var form = new FormData();
-                    form.append("file", fileObj);
-                    var xhr = new XMLHttpRequest();
-                    xhr.open("post", result.url, true);
-                    xhr.onreadystatechange = function () {
-                        if (xhr.readyState == 4) {
-                            pendingUploads--;
+                    try {
+                        if (!result || !result.url) {
+                            settle('failed');
+                            return;
+                        }
+                        var form = new FormData();
+                        form.append("file", fileObj);
+                        // result.url is the API's own auth-gated POST
+                        // /v1/file/upload (not a pre-signed storage URL), and
+                        // that handler sits behind AuthMiddleware: without a
+                        // `token` header it answers 401. Attach it only when the
+                        // target is same-origin with this document — the
+                        // credential must never reach a foreign host — and
+                        // normalize same-origin URLs to a relative path so the
+                        // existing /v1/ proxy serves them without a CORS
+                        // preflight. Mirrors shouldAttachUploadToken in
+                        // packages/dmworkdatasource/src/datasource.ts.
+                        var target = new URL(result.url, window.location.href);
+                        var sameOrigin = target.origin === window.location.origin;
+                        var xhr = new XMLHttpRequest();
+                        xhr.open("post", sameOrigin ? target.pathname + target.search : target.href, true);
+                        if (sameOrigin) {
+                            xhr.setRequestHeader("token", token);
+                        }
+                        xhr.timeout = 60000;
+                        xhr.ontimeout = function () {
+                            settle('failed');
+                        };
+                        xhr.onerror = function () {
+                            settle('failed');
+                        };
+                        xhr.onreadystatechange = function () {
+                            if (xhr.readyState != 4) {
+                                return;
+                            }
                             if (xhr.status == 200) {
                                 try {
                                     var obj = JSON.parse(xhr.responseText);
-                                    imgPaths.push(obj.path);
-                                    imageData.status = 'done';
+                                    if (settle('done')) {
+                                        imgPaths.push(obj.path);
+                                    }
                                 } catch (e) {
-                                    markFailed();
+                                    settle('failed');
                                 }
                             } else {
-                                markFailed();
+                                settle('failed');
                             }
                         }
+                        xhr.send(form);
+                    } catch (e) {
+                        settle('failed');
                     }
-                    xhr.send(form);
                 },
                 error: function () {
-                    pendingUploads--;
-                    markFailed();
+                    settle('failed');
                 }
             })
 
@@ -269,18 +418,34 @@
         })
 
 
+        function removeImageData(imageData) {
+            var idx = imageDatas.indexOf(imageData);
+            if (idx !== -1) {
+                imageDatas.splice(idx, 1);
+            }
+            renderImageItes();
+        }
+
         function renderImageItes() {
             $('.imgs').html('');
             if (imageDatas && imageDatas.length > 0) {
                 for (const imageData of imageDatas) {
-                    let failedCls = imageData.status === 'failed' ? ' upload-failed' : '';
-                    let failedTip = imageData.status === 'failed'
-                        ? '<div class="uploadFailedTip" style="position:absolute;left:0;right:0;bottom:0;background:rgba(204,0,0,0.8);color:#fff;font-size:12px;text-align:center;">上传失败</div>'
+                    let failed = imageData.status === 'failed';
+                    let failedCls = failed ? ' upload-failed' : '';
+                    // A failed tile blocks submit, so it has to be removable or
+                    // the form is locked forever. Retry = pick the image again.
+                    let failedTip = failed
+                        ? '<div class="uploadFailedTip" style="position:absolute;left:0;right:0;bottom:0;background:rgba(204,0,0,0.8);color:#fff;font-size:12px;text-align:center;">上传失败</div><div class="uploadRemove">✕</div>'
                         : '';
                     let item = $(`<div class="imgItem${failedCls}" style="position:relative;">
                                         <img style="width: 100%;height: 100%;" src="${imageData.url}" />
                                         ${failedTip}
                                 </div>`)
+                    if (failed) {
+                        item.children('.uploadRemove').on('click', function () {
+                            removeImageData(imageData);
+                        });
+                    }
                     $('.imgs').append(item);
                 }
             }
@@ -301,10 +466,22 @@
 
         }
 
-        $('.reportNotice').on('click', async function () {
-            window.location.href = 'report_notice.html' + window.location.search;
+        // Open the notice as an in-page overlay. Navigating to
+        // report_notice.html would reload this document, and the one-time
+        // ?session was already consumed and stripped — the credential (and
+        // whatever the user typed) would not survive the round trip.
+        $('.reportNotice').on('click', function () {
+            $('.reportNoticeOverlay').css('display', 'block').scrollTop(0);
         })
+        $('.reportNoticeOverlayClose').on('click', function () {
+            $('.reportNoticeOverlay').css('display', 'none');
+        })
+
+        let submitting = false;
         $('.reportSubmit').on('click', async function () { // 提交
+            if (submitting) {
+                return;
+            }
             let token = window.__reportAuth.token;
             if (!token) {
                 alert('登录态尚未就绪，请从客户端重新进入');
@@ -319,15 +496,27 @@
                 return;
             }
             let reportContent = $('.reportContent').val();
-            let channel;
+            let channel = null;
             try {
                 channel = await im.getChannel();
             } catch (e) {
-                alert('获取会话信息失败，请从客户端重新进入');
-                return;
+                channel = null;
+            }
+            if (!channel || !channel.channelID) {
+                // Bridge missing or erroring: the server redirect already put
+                // the channel in the query, so use that before giving up.
+                let channelID = getQueryString('channel_id');
+                let channelType = parseInt(getQueryString('channel_type'), 10);
+                if (!channelID || isNaN(channelType)) {
+                    alert('获取会话信息失败，请从客户端重新进入');
+                    return;
+                }
+                channel = { channelID: channelID, channelType: channelType };
             }
             let categoryNos = window.location.hash.substring(1).split("-")
             let categoryNo = categoryNos[categoryNos.length - 1];
+            submitting = true;
+            $('.reportSubmit').css('opacity', '0.5');
             $.ajax({
                 headers: {
                     Accept: "application/json; charset=utf-8",
@@ -342,6 +531,8 @@
                     window.location.href = 'report_success.html' + window.location.search;
                 },
                 error: function () {
+                    submitting = false;
+                    $('.reportSubmit').css('opacity', '');
                     alert('提交失败！');
                 }
             })
@@ -468,13 +659,13 @@
             document.title = "Report";
         }
 
-        // The vendored i18n plugin unconditionally reads a same-origin `i18n_lang`
-        // cookie (written by the SPA as zh-CN/en-US) and lets it override
-        // defaultLang, producing a 404 filename like i18n_zh-CN.json and no
-        // translation. Clear that cookie so our explicit cn/en defaultLang wins.
-        // We pass no `lang`, so the plugin's cookie-writing branch (which needs
-        // the absent $.removeCookie when forever is false) is never reached.
-        document.cookie = 'i18n_lang=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+        // The vendored i18n plugin unconditionally reads the same-origin
+        // `i18n_lang` cookie (written by the SPA as zh-CN/en-US) and lets it
+        // override defaultLang, so the filename it fetches may be
+        // i18n_zh-CN.json / i18n_en-US.json. Those exist as alias payloads
+        // alongside i18n_cn/i18n_en. Deleting or rewriting the cookie here is
+        // not an option: it is the SPA's persisted app-wide locale, and the
+        // plugin's cookie-writing branch needs the absent $.removeCookie.
         $("[i18n]").i18n({
             defaultLang: defaultLang,
             filePath: "./i18n/",
