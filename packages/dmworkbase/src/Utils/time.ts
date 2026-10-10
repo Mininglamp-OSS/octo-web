@@ -112,11 +112,13 @@ export function getTimeStringAutoShort2(timestamp:number, mustIncludeTime:boolea
             // 用目标日期的“月”和“天”跟上方计算出来的“昨天”进行比较，是最为准确的（如果用时间戳差值
             // 的形式，是不准确的，比如：现在时刻是2019年02月22日1:00、而srcDate是2019年02月21日23:00，
             // 这两者间只相差2小时，直接用“deltaTime/(3600 * 1000)” > 24小时来判断是否昨天，就完全是扯蛋的逻辑了）
+            const isZh = i18n.getLocale() === "zh-CN";
+
             if (srcMonth === (yesterdayDate.getMonth() + 1) && srcDateD === yesterdayDate.getDate())
                 ret = t("base.time.yesterday") + timeExtraStr;// -1d
             // “前天”判断逻辑同上
             else if (srcMonth === (beforeYesterdayDate.getMonth() + 1) && srcDateD === beforeYesterdayDate.getDate())
-                ret = t("base.time.dayBeforeYesterday") + timeExtraStr;// -2d
+                ret = (isZh ? t("base.time.dayBeforeYesterday") : formatShortWeekday(srcDate)) + timeExtraStr;// -2d
             else {
                 // 跟当前时间相差的小时数
                 const deltaHour = (deltaTime / (3600 * 1000));
@@ -124,7 +126,7 @@ export function getTimeStringAutoShort2(timestamp:number, mustIncludeTime:boolea
                 // 如果小于或等 7*24小时就显示星期几
                 if (deltaHour <= 7 * 24) {
                     // 取出当前是星期几
-                    const weedayDesc = formatWeekday(srcDate);
+                    const weedayDesc = isZh ? formatWeekday(srcDate) : formatShortWeekday(srcDate);
                     ret = weedayDesc + timeExtraStr;
                 }
                 // 否则直接显示完整日期时间
