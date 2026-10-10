@@ -870,6 +870,7 @@ export default class SummaryListPage extends Component<
             <SummaryWorkbenchCreateEntry
                 key={`unified-${++this.createEntrySeq}`}
                 source="summary_list"
+                forceNewSession
             />
         );
     };

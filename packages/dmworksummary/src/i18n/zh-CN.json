@@ -290,11 +290,15 @@
       "participantsUnsupportedForSelectedChats": "当前会话范围不支持参与者，请仅选择群聊且不超过 30 个",
       "selectSingleChatForParticipants": "选择参与者时仅支持最多 30 个群聊"
     },
+    "lastSession": {
+      "label": "上次对话"
+    },
     "errors": {
       "network": "网络连接异常，请稍后重试",
       "protocol": "总结服务版本不兼容，请刷新后重试",
       "serviceUnavailable": "总结服务暂时不可用，请稍后重试",
-      "sessionExpired": "总结会话已过期，请重新开始。"
+      "sessionExpired": "总结会话已过期，请重新开始。",
+      "sessionSaveFailed": "新建会话失败，当前会话已保留，请稍后重试。"
     },
     "card": {
       "teamConfirmationTitle": "确认多人总结任务",

@@ -13,6 +13,8 @@ export type SummaryWorkspaceRoute =
       mode?: "normal" | "agent";
       source?: string;
       derivedFromTask?: SummaryReferenceTask;
+      /** "+" 语义：强制开新会话，已持久化的会话挪到「上次对话」槽位。 */
+      fresh?: boolean;
     }
   | { view: "detail"; taskId: number | string; originConversation?: SummaryConversationTarget }
   | {

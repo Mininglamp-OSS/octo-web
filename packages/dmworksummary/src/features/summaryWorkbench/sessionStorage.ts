@@ -38,21 +38,136 @@ export function readSummaryWorkbenchSession(
 export function writeSummaryWorkbenchSession(
     scope: SummaryWorkbenchSessionScope,
     sessionId: string
-): void {
-    if (!sessionId) return;
+): boolean {
+    if (!sessionId) return false;
     try {
         localStorage.setItem(storageKey(scope), sessionId);
+        return true;
     } catch {
         // Storage can be unavailable in private or restricted environments.
+        return false;
     }
 }
 
 export function clearSummaryWorkbenchSession(
     scope: SummaryWorkbenchSessionScope
-): void {
+): boolean {
     try {
         localStorage.removeItem(storageKey(scope));
+        return true;
     } catch {
         // Keep the current in-memory session usable when storage is unavailable.
+        return false;
+    }
+}
+
+const PREVIOUS_SUFFIX = ":previous";
+
+function previousStorageKey(scope: SummaryWorkbenchSessionScope): string {
+    return `${storageKey(scope)}${PREVIOUS_SUFFIX}`;
+}
+
+/**
+ * Keep the currently persisted session reachable as "last conversation"
+ * before a forced-new-session mount clears the main slot.
+ */
+export function moveSummaryWorkbenchSessionToPrevious(
+    scope: SummaryWorkbenchSessionScope
+): boolean {
+    const activeKey = storageKey(scope);
+    const previousKey = previousStorageKey(scope);
+    let previousSessionId: string | null = null;
+    let previousSessionCaptured = false;
+    let previousSessionMutationAttempted = false;
+    try {
+        const sessionId = localStorage.getItem(activeKey) || "";
+        if (!sessionId) return true;
+        previousSessionId = localStorage.getItem(previousKey);
+        previousSessionCaptured = true;
+        previousSessionMutationAttempted = true;
+        localStorage.setItem(previousKey, sessionId);
+        localStorage.removeItem(activeKey);
+        return true;
+    } catch {
+        try {
+            if (previousSessionCaptured && previousSessionMutationAttempted) {
+                if (previousSessionId === null) {
+                    localStorage.removeItem(previousKey);
+                } else {
+                    localStorage.setItem(previousKey, previousSessionId);
+                }
+            }
+        } catch {
+            // Storage remains unavailable; keep the in-memory session usable.
+        }
+        return false;
+    }
+}
+
+export function readSummaryWorkbenchPreviousSession(
+    scope: SummaryWorkbenchSessionScope
+): string {
+    try {
+        return localStorage.getItem(previousStorageKey(scope)) || "";
+    } catch {
+        return "";
+    }
+}
+
+export interface SummaryWorkbenchSessionSlotsSnapshot {
+    activeSessionId: string | null;
+    previousSessionId: string | null;
+}
+
+/** Best-effort replacement that restores both pointers when compensation succeeds. */
+export function replaceSummaryWorkbenchSessionSlots(
+    scope: SummaryWorkbenchSessionScope,
+    activeSessionId: string,
+    previousSessionId: string,
+    rollbackSnapshot?: SummaryWorkbenchSessionSlotsSnapshot
+): boolean {
+    const activeKey = storageKey(scope);
+    const previousKey = previousStorageKey(scope);
+    // Without a caller-provided snapshot the original values are read here, just
+    // before the mutations. If that read itself fails we cannot know what the
+    // pointers held, so compensation must be skipped entirely: restoring with an
+    // inferred `null` would treat "unknown" as "absent" and delete a live
+    // `:previous` pointer on the rollback path (the exact loss the block exists
+    // to prevent).
+    let snapshotCaptured = false;
+    let originalActive: string | null = null;
+    let originalPrevious: string | null = null;
+    try {
+        if (rollbackSnapshot) {
+            originalActive = rollbackSnapshot.activeSessionId;
+            originalPrevious = rollbackSnapshot.previousSessionId;
+            snapshotCaptured = true;
+        } else {
+            originalActive = localStorage.getItem(activeKey);
+            originalPrevious = localStorage.getItem(previousKey);
+            snapshotCaptured = true;
+        }
+        try {
+            if (activeSessionId) {
+                localStorage.setItem(activeKey, activeSessionId);
+            } else {
+                localStorage.removeItem(activeKey);
+            }
+            if (previousSessionId) {
+                localStorage.setItem(previousKey, previousSessionId);
+            } else {
+                localStorage.removeItem(previousKey);
+            }
+            return true;
+        } catch {
+            if (!snapshotCaptured) return false;
+            if (originalActive === null) localStorage.removeItem(activeKey);
+            else localStorage.setItem(activeKey, originalActive);
+            if (originalPrevious === null) localStorage.removeItem(previousKey);
+            else localStorage.setItem(previousKey, originalPrevious);
+            return false;
+        }
+    } catch {
+        return false;
     }
 }

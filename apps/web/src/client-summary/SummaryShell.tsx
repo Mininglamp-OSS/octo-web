@@ -27,6 +27,14 @@ function reportSafely(label: string, action: () => void | Promise<void>) {
     .catch((error) => console.error(`[client-summary] ${label}`, error));
 }
 
+export function durableSummaryRoute(
+  route: SummaryWorkspaceRoute
+): SummaryWorkspaceRoute {
+  if (route.view !== "create" || !route.fresh) return route;
+  const { fresh: _fresh, ...durable } = route;
+  return durable;
+}
+
 export function SummaryShell({
   bridge,
   initialRoute,
@@ -45,7 +53,7 @@ export function SummaryShell({
   onPresentationContext?: (state: { route: SummaryWorkspaceRoute; spaceId: string }) => void;
   externalRuntime?: ReturnType<typeof import("./externalRuntime").installSummaryExternalRuntime>;
 }) {
-  const [route, setRoute] = useState(initialRoute);
+  const [route, setRoute] = useState(() => durableSummaryRoute(initialRoute));
   const routeRef = useRef(route);
   const spaceIdRef = useRef(initialSpaceId);
   const scopeRevision = useRef(0);
@@ -60,7 +68,10 @@ export function SummaryShell({
   }>();
 
   useLayoutEffect(() => {
-    onPresentationContext?.({ route, spaceId: spaceIdRef.current });
+    onPresentationContext?.({
+      route: durableSummaryRoute(route),
+      spaceId: spaceIdRef.current,
+    });
   }, [route, workspaceRevision, onPresentationContext]);
 
   // Release the page barrier once the host-navigate route has committed to the DOM.
@@ -78,7 +89,9 @@ export function SummaryShell({
         const revision = scopeRevision.current;
         const spaceId = spaceIdRef.current;
         reportSafely("failed to report route", () => {
-          if (revision === scopeRevision.current) bridge.reportRoute({ route: next, spaceId });
+          if (revision === scopeRevision.current) {
+            bridge.reportRoute({ route: durableSummaryRoute(next), spaceId });
+          }
         });
       }
     },
@@ -148,7 +161,7 @@ export function SummaryShell({
           hasConversation: false,
         });
         setNavigation({ token, controller: navCommit });
-        setControlledRoute(command.route, false);
+        setControlledRoute(durableSummaryRoute(command.route), false);
         return;
       }
       if (command.type === "spaceChanged") {
@@ -227,7 +240,7 @@ export function SummaryShell({
     const reporter = createReadyReporter(
       () =>
         onReadyRef.current({
-          route: routeRef.current,
+          route: durableSummaryRoute(routeRef.current),
           spaceId: spaceIdRef.current,
         }),
       {

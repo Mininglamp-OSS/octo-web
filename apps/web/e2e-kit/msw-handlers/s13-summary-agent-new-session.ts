@@ -84,6 +84,13 @@ export async function registerS13SummaryAgentNewSession(page: Page): Promise<voi
     };
 
     worker.use(
+      http.get("*/summary/api/v1/summary-workbench/capabilities", () =>
+        env({
+          enabled: true,
+          contract_version: "2",
+          max_time_range_days: 90,
+        })
+      ),
       http.get("*/summary/api/v1/summaries", ({ request }: any) => {
         const url = new URL(request.url);
         // Discriminate picker vs list-page: picker sends status=3 (COMPLETED).
@@ -100,16 +107,74 @@ export async function registerS13SummaryAgentNewSession(page: Page): Promise<voi
       http.get("*/summary/api/v1/summary-templates", () => env({ templates: [], custom_template_limit: 30 })),
       http.get("*/summary/api/v1/agent/chat/history", ({ request }: any) => {
         const url = new URL(request.url);
-        return env({ session_id: url.searchParams.get("session_id") || "", messages: [] });
+        const sessionId = url.searchParams.get("session_id") || "";
+        if (sessionId !== "s13-agent-session") {
+          return env({ session_id: sessionId, messages: [] });
+        }
+        return env({
+          contract_version: "2",
+          session_id: sessionId,
+          messages: [
+            {
+              id: 1,
+              role: "user",
+              content: "S13 第一轮问题",
+              scope_version: 1,
+            },
+            {
+              id: 2,
+              role: "assistant",
+              content: "S13 Agent 已生成第一轮回复",
+              scope_version: 1,
+            },
+          ],
+          state: {
+            scope_version: 1,
+            summary_context: {
+              selected_channels: [],
+              documents: [],
+              participants: [],
+              template: null,
+              time_range: null,
+              referenced_task_ids: [taskId],
+            },
+            current_preview: null,
+            pending_proposal: null,
+            workflow: null,
+          },
+        });
       }),
       http.get("*/summary/api/v1/summaries/13013", () => env(detail)),
       http.post("*/summary/api/v1/agent/chat/stream", () => {
+        const done = {
+          contract_version: "2",
+          session_id: "s13-agent-session",
+          message_id: 2,
+          result_type: "explanation",
+          reply: "S13 Agent 已生成第一轮回复",
+          scope_version: 1,
+          available_actions: ["continue_chat"],
+          state: {
+            scope_version: 1,
+            summary_context: {
+              selected_channels: [],
+              documents: [],
+              participants: [],
+              template: null,
+              time_range: null,
+              referenced_task_ids: [taskId],
+            },
+            current_preview: null,
+            pending_proposal: null,
+            workflow: null,
+          },
+        };
         const body = [
           "event: progress",
           'data: {"phase":"understand","step":1,"count":1}',
           "",
           "event: done",
-          'data: {"reply":"S13 Agent 已生成第一轮回复","session_id":"s13-agent-session"}',
+          `data: ${JSON.stringify(done)}`,
           "",
         ].join("\n");
         return HttpResponse.text(body, {

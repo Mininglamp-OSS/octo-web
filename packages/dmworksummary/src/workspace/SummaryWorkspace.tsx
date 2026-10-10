@@ -29,6 +29,10 @@ export default function SummaryWorkspace({
   const { t } = useI18n();
   const [listRefreshKey, setListRefreshKey] = useState(0);
   const [backgroundRefreshKey, setBackgroundRefreshKey] = useState(0);
+  // 每次「+ / 新建会话」+1：拼进 create 视图的 React key，保证即使路由形状
+  // 不变（例如已在 create 视图再点「+」）也会强制重挂 workbench，让
+  // forceNewSession 真正生效（新空会话 + 旧会话进「上次对话」槽位）。
+  const [createSeq, setCreateSeq] = useState(0);
   const messagingPort = useMemo(() => {
     const base = messaging ?? legacySummaryMessagingPort;
     if (!onOpenConversation) return base;
@@ -71,7 +75,10 @@ export default function SummaryWorkspace({
 
   const showList = () => onRouteChange({ view: "list" });
   const showCreate = (mode: "normal" | "agent" | "unified" = "normal") => {
-    onRouteChange({ view: "create", mode: mode === "unified" ? "normal" : mode, source: "summary_list" });
+    // 已在 create 视图时路由形状不变，onRouteChange 不会造成任何 props 差异；
+    // createSeq 递增让 key 变化 → workbench 强制重挂 → 新会话语义生效。
+    setCreateSeq((value: number) => value + 1);
+    onRouteChange({ view: "create", mode: mode === "unified" ? "normal" : mode, source: "summary_list", fresh: true });
   };
   const showDetail = (taskId: number) =>
     onRouteChange({ view: "detail", taskId });
@@ -94,10 +101,11 @@ export default function SummaryWorkspace({
           <SummaryWorkbenchCreateEntry
             key={`${currentRoute.mode ?? "normal"}:${
               currentRoute.source ?? "summary_home"
-            }:${currentRoute.derivedFromTask?.task_id ?? "new"}`}
+            }:${currentRoute.derivedFromTask?.task_id ?? "new"}:${createSeq}`}
             legacyInitialMode={currentRoute.mode}
             source={currentRoute.source ?? "summary_home"}
             derivedFromTask={currentRoute.derivedFromTask}
+            forceNewSession={currentRoute.fresh}
             onOpenTask={showDetail}
             onCreated={refreshList}
             messaging={messagingPort}
