@@ -84,14 +84,7 @@ server {
         # it blind risks a silent production font break with no fallback once esm.sh is removed. Per
         # the boss escape hatch, esm.sh is retained for now; self-hosting is tracked as the
         # follow-up to remove this allowance.
-        # frame-src: 'self' keeps the existing same-origin iframes (doc tab, org join,
-        # HTML preview) working now that framing no longer falls back to default-src.
-        # https://__bridge_loaded__ is the sentinel the native WebViewJavascriptBridge
-        # bootstrap navigates a throwaway iframe to; the WebView intercepts it to inject
-        # the bridge. Without this exact origin the report H5 pages lose the native bridge
-        # on iOS (the page's target runtime). Do not widen to https: — it is a single
-        # sentinel URL, never a real remote document.
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: ${DOCS_ASSET_CSP_ORIGIN}; font-src 'self' data: https://esm.sh; connect-src 'self' ws: wss: http: https: blob:; media-src 'self' blob: https:; worker-src 'self' blob:; frame-src 'self' https://__bridge_loaded__; object-src 'none'; frame-ancestors 'self';" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: ${DOCS_ASSET_CSP_ORIGIN}; font-src 'self' data: https://esm.sh; connect-src 'self' ws: wss: http: https: blob:; media-src 'self' blob: https:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'self';" always;
         # HSTS - uncomment when full HTTPS chain is confirmed
         # add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 

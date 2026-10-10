@@ -7,7 +7,13 @@ const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
 
-const BUILD = path.resolve(__dirname, '../../build');
+// Defaults to the plain `vite build` output; overridable so CI can point at
+// whatever build directory that job produced.
+const BUILD = path.resolve(process.env.REPORT_H5_BUILD || path.join(__dirname, '../../build'));
+if (!fs.existsSync(path.join(BUILD, 'report.html'))) {
+  console.error(`report.html not found under ${BUILD} — run the web build first`);
+  process.exit(2);
+}
 // Prefer a caller-supplied browser (CI uses the Playwright-managed chromium via
 // PLAYWRIGHT_BROWSERS_PATH=0); fall back to a locally installed Chrome so the
 // script also runs on a dev box without the bundled browser.
@@ -28,8 +34,14 @@ function serve(port) {
         return json({ uid: 'u-1', token: 'tok-abc' });
       }
       if (u.pathname === '/v1/report/categories') {
-        return json([{ category_no: '1', category_name: 'Cat A', parent_category_no: '', children: [] },
-                     { category_no: '12', category_name: 'Cat B', parent_category_no: '', children: [] }]);
+        // Nested 3-level tree so the parent-category navigation path is exercised:
+        // A(1) > B(12) > C(121), plus a flat sibling D(2).
+        return json([
+          { category_no: '1', category_name: 'Cat A', parent_category_no: '',
+            children: [ { category_no: '12', category_name: 'Cat B', parent_category_no: '1',
+                          children: [ { category_no: '121', category_name: 'Cat C', parent_category_no: '12', children: [] } ] } ] },
+          { category_no: '2', category_name: 'Cat D', parent_category_no: '', children: [] },
+        ]);
       }
       if (u.pathname === '/v1/file/upload' && req.method === 'GET') {
         if (!req.headers.token) return json({ status: 401, msg: 'token required' }, 401);
@@ -60,7 +72,8 @@ function serve(port) {
 async function openForm(page, url) {
   await page.goto(url);
   await page.waitForFunction(() => window.categories && window.categories.length > 0, { timeout: 5000 });
-  await page.evaluate(() => { window.location.hash = '#1'; });
+  // #2 is a leaf (Cat D): the form only renders for a leaf category.
+  await page.evaluate(() => { window.location.hash = '#2'; });
   await page.waitForSelector('.reportContent', { state: 'visible', timeout: 5000 });
 }
 
@@ -117,7 +130,8 @@ async function launchBrowser() {
   // switch category while the upload is still in flight → clearDetailContent
   await page.evaluate(() => { window.location.hash = ''; });
   await page.waitForTimeout(150);
-  await page.evaluate(() => { window.location.hash = '#12'; });
+  // #2 (Cat D) is a leaf, so the form renders there for the next draft.
+  await page.evaluate(() => { window.location.hash = '#2'; });
   await page.waitForSelector('.reportContent', { state: 'visible', timeout: 5000 });
   await page.fill('.reportContent', 'new draft - I attached NO photo');
   await page.waitForTimeout(1200); // stale upload lands in this window
@@ -131,12 +145,68 @@ async function launchBrowser() {
     uploads.length > 0 && uploads.every((u) => u.token === 'tok-abc'),
     `uploads=${uploads.length} tokens=${JSON.stringify(uploads.map((u) => u.token))}`);
 
-  // ---------- Probe 3: CSP allows the bridge sentinel ----------
+  // ---------- Probe 4: submitting freezes the draft (no bypass during bridge wait) ----------
+  submissions.length = 0; uploads.length = 0; sessionConsumed = false; uploadDelayMs = 900;
+  await openForm(page, 'http://127.0.0.1:18933/report.html?session=S3&channel_id=ch-q&channel_type=2');
+  // bridge already resolves at 120ms; submit, then try to attach + switch category
+  // during that window. The draft must be frozen and the payload must reflect the
+  // state validated at submit time.
+  await page.fill('.reportContent', 'frozen draft');
+  await page.evaluate(() => document.querySelector('.reportSubmit').click());
+  // immediately try to add an image (the picker should be pointer-events:none)
+  await page.evaluate(() => {
+    const inp = document.querySelector('.imgItem .upload');
+    if (inp) {
+      const dt = new DataTransfer(); dt.items.add(new File(['x'], 'late.png', { type: 'image/png' }));
+      Object.defineProperty(inp, 'files', { value: dt.files });
+      inp.dispatchEvent(new Event('change'));
+    }
+  });
+  await page.waitForTimeout(1200);
+  const frozenImgs = submissions.length ? submissions[submissions.length - 1].imgs : null;
+  // Safe outcomes: either the re-validation refused (no POST), or a POST went out
+  // with a payload that does not omit evidence that was uploading. The unsafe case
+  // (the one this guards) is a POST with empty imgs while an upload was in flight.
+  const filedWithoutEvidence = submissions.some((s) => Array.isArray(s.imgs) && s.imgs.length === 0) && uploads.length > 0;
+  check('P1-C: an image started during the submit window cannot be silently omitted',
+    !filedWithoutEvidence,
+    `posts=${submissions.length} uploads=${uploads.length} imgs=${JSON.stringify(frozenImgs)}`);
+
+  // ---------- Probe 5: three-level category navigation includes the tapped node ----------
+  submissions.length = 0; sessionConsumed = false; uploadDelayMs = 0;
+  await openForm(page, 'http://127.0.0.1:18933/report.html?session=S4&channel_id=ch-q&channel_type=2');
+  // open A (has children) → should land on its children list with hash #1
+  await page.evaluate(() => { window.location.hash = '#1'; });
+  await page.waitForTimeout(400);
+  // tap B (has children) → hash must become #1-12 (NOT #1)
+  await page.evaluate(() => {
+    const lis = Array.from(document.querySelectorAll('.categoryBox .item ul li'));
+    const b = lis.find((li) => li.querySelector('label') && li.querySelector('label').textContent === 'Cat B');
+    if (b) b.dispatchEvent(new Event('touchend'));
+  });
+  await page.waitForTimeout(400);
+  const hashAfterB = await page.evaluate(() => window.location.hash);
+  check('P1-D: tapping a nested parent keeps the tapped node in the path',
+    hashAfterB === '#1-12', `hash=${hashAfterB} (expected #1-12)`);
+  // now tap C (leaf) → #1-12-121, root-first
+  await page.evaluate(() => {
+    const lis = Array.from(document.querySelectorAll('.categoryBox .item ul li'));
+    const c = lis.find((li) => li.querySelector('label') && li.querySelector('label').textContent === 'Cat C');
+    if (c) c.dispatchEvent(new Event('touchend'));
+  });
+  await page.waitForTimeout(400);
+  const hashAfterC = await page.evaluate(() => window.location.hash);
+  check('P1-D: leaf path is root-first and complete', hashAfterC === '#1-12-121', `hash=${hashAfterC} (expected #1-12-121)`);
+
+  // ---------- Probe 3: CSP must not carry the inert bridge source ----------
   const csp = fs.readFileSync(path.resolve(__dirname, '../../../../nginx.conf.template'), 'utf8');
-  const m = csp.match(/frame-src ([^;]*);/);
-  check('P1-C: frame-src includes the bridge sentinel', !!m && m[1].includes('https://__bridge_loaded__'), m ? m[1] : 'missing');
-  check('P1-C: frame-src keeps self (same-origin iframes intact)', !!m && m[1].includes("'self'"), m ? m[1] : 'missing');
-  check('P1-C: frame-src not widened to blanket https:', !!m && !/(^|\s)https:(\s|$)/.test(m[1]), m ? m[1] : 'missing');
+  const cspMatch = csp.match(/Content-Security-Policy "([^"]*)"/);
+  const directive = cspMatch ? cspMatch[1] : '';
+  const frameSrc = directive.match(/frame-src ([^;]*);/);
+  check('P1-C: CSP does not assert the inert __bridge_loaded__ source',
+    !directive.includes('__bridge_loaded__'), directive.includes('__bridge_loaded__') ? 'still present' : 'clean');
+  check('P1-C: frame-src is absent, or not widened to a scheme source',
+    !frameSrc || !/(^|\s)https:(\s|$)/.test(frameSrc[1]), frameSrc ? frameSrc[1] : '(no frame-src)');
 
   await browser.close();
   server.close();

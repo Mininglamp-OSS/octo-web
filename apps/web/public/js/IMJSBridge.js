@@ -121,9 +121,22 @@ im.call = function (method, params) {
 
 // ---------- 常用函数 ----------
 
-// 退出webview
+// 退出webview。带上 params 并且带 fallback，否则 bridge 不存在时
+// im.call 的 no-bridge 分支（else if (params)）不会触发，
+// 按钮会变成一个无反馈的空操作。
 im.quit = function () {
-    im.call("quit");
+    im.call("quit", {
+        error: function () {
+            if (window.history.length > 1) {
+                window.history.back();
+            }
+        },
+        complete: function (result) {
+            if (result && result.err_code && result.err_code !== 200 && window.history.length > 1) {
+                window.history.back();
+            }
+        }
+    });
 }
 
 // 获取频道信息
@@ -138,11 +151,6 @@ im.getChannel = function () {
             }
         });
     });
-}
-
-// 退出webview
-im.quit = function () {
-    im.call("quit");
 }
 
 

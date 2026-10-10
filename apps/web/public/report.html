@@ -301,7 +301,8 @@
             return url;
         }
 
-        // Each entry: { url, status } where status is 'pending' | 'done' | 'failed'.
+        // Each entry: { url, status, xhr } where status is
+        // 'pending' | 'done' | 'failed' | 'cancelled'.
         let imageDatas = [];
         // Number of uploads still in flight; submit must wait until this is 0.
         let pendingUploads = 0;
@@ -336,6 +337,13 @@
         // every still-in-flight upload so its completion cannot leak a path into
         // a later complaint, and so pendingUploads tracks the visible draft.
         function settleCancelled(imageData) {
+            // Abort the underlying XHR too. Marking the entry cancelled stops the
+            // path from being recorded, but the file bytes are already being
+            // streamed and would otherwise still be written into object storage
+            // under the reporter's own prefix — an evidence photo they withdrew.
+            if (imageData.xhr) {
+                try { imageData.xhr.abort(); } catch (e) { /* already finished */ }
+            }
             if (settleImage(imageData, 'cancelled')) {
                 renderImageItes();
             }
@@ -396,6 +404,14 @@
                         var target = new URL(result.url, window.location.href);
                         var sameOrigin = target.origin === window.location.origin;
                         var xhr = new XMLHttpRequest();
+                        // Cancelled while the presign GET was in flight: do not
+                        // start streaming the body. imageData.xhr is stored so
+                        // clearDetailContent() can abort a request already in
+                        // progress.
+                        if (imageData.status !== 'pending') {
+                            return;
+                        }
+                        imageData.xhr = xhr;
                         xhr.open("post", sameOrigin ? target.pathname + target.search : target.href, true);
                         if (sameOrigin) {
                             xhr.setRequestHeader("token", token);
@@ -414,8 +430,15 @@
                             if (xhr.status == 200) {
                                 try {
                                     var obj = JSON.parse(xhr.responseText);
-                                    if (settle('done')) {
-                                        targetPaths.push(obj.path);
+                                    // Only a non-empty path is a successful upload;
+                                    // an absent/empty one must not be recorded as null
+                                    // in the submitted imgs array.
+                                    if (obj && obj.path) {
+                                        if (settle('done')) {
+                                            targetPaths.push(obj.path);
+                                        }
+                                    } else {
+                                        settle('failed');
                                     }
                                 } catch (e) {
                                     settle('failed');
@@ -506,6 +529,24 @@
             $('.reportSubmit').css(on
                 ? { opacity: '0.5', 'pointer-events': 'none' }
                 : { opacity: '', 'pointer-events': '' });
+            // Freeze the rest of the draft while a submit is in flight so the
+            // payload can't be edited out from under the request (image added,
+            // category switched, remark changed).
+            $('.imgs, .categoryBox, .reportContent').css('pointer-events', on ? 'none' : '');
+        }
+        // Draft readiness. Checked both before and after the bridge await: the
+        // await is a real async gap, not a microtask, so an image can start
+        // uploading (or a category can change) while it is pending.
+        function draftReady() {
+            if (pendingUploads > 0) {
+                alert('图片还在上传中，请稍候');
+                return false;
+            }
+            if (imageDatas.some(function (d) { return d.status === 'failed'; })) {
+                alert('存在上传失败的图片，请移除或重试后再提交');
+                return false;
+            }
+            return true;
         }
         $('.reportSubmit').on('click', async function () { // 提交
             if (submitting) {
@@ -522,17 +563,10 @@
                 setSubmitting(false);
                 return;
             }
-            if (pendingUploads > 0) {
-                alert('图片还在上传中，请稍候');
+            if (!draftReady()) {
                 setSubmitting(false);
                 return;
             }
-            if (imageDatas.some(function (d) { return d.status === 'failed'; })) {
-                alert('存在上传失败的图片，请移除或重试后再提交');
-                setSubmitting(false);
-                return;
-            }
-            let reportContent = $('.reportContent').val();
             let channel = null;
             try {
                 channel = await im.getChannel();
@@ -551,6 +585,13 @@
                 }
                 channel = { channelID: channelID, channelType: channelType };
             }
+            // Re-validate AND re-read the draft after the await, so the remark,
+            // category and imgs that get sent are the ones we just validated.
+            if (!draftReady()) {
+                setSubmitting(false);
+                return;
+            }
+            let reportContent = $('.reportContent').val();
             let categoryNos = window.location.hash.substring(1).split("-")
             let categoryNo = categoryNos[categoryNos.length - 1];
             $.ajax({
@@ -562,6 +603,11 @@
                 type: "post",
                 contentType: "application/json",
                 dataType: 'json',
+                // Bound the request like the upload leg: jQuery has no default
+                // timeout, and setSubmitting() now applies pointer-events:none,
+                // so a connection accepted but never answered would brick the
+                // button with no way back (the consumed ?session cannot reload).
+                timeout: 30000,
                 data: JSON.stringify({ "category_no": categoryNo, "channel_id": channel.channelID, "channel_type": channel.channelType, "remark": reportContent || '', "imgs": imgPaths || [] }),
                 success: function (result) {
                     // Navigating away; leave the lock set so no further click can
@@ -608,18 +654,16 @@
                                         </div>
                                     </li>`);
                 item.on('touchend', function (e) {
-                    if (category.parent_category_no == '') {
-                        window.location.href = `${window.location.pathname + window.location.search}#${category.category_no}`;
-                    } else {
-                        let categoryNos = new Array();
-                        getAllParentCategoryNo(category, categoryNos);
-                        if (category.children && category.children.length > 0) {
-                            window.location.href = `${window.location.pathname + window.location.search}#${categoryNos.join("-")}`;
-                        } else {
-                            categoryNos.push(category.category_no);
-                            window.location.href = `${window.location.pathname + window.location.search}#${categoryNos.join("-")}`;
-                        }
-                    }
+                    // Build the path root-first and ALWAYS include the tapped
+                    // category itself. The previous shape omitted it whenever the
+                    // category had children, so for A>B>C tapping B navigated back
+                    // to #A and C was unreachable. Ancestors alone are also
+                    // nearest-first, which would have produced B-A-C.
+                    let categoryNos = new Array();
+                    getAllParentCategoryNo(category, categoryNos);
+                    categoryNos.reverse();
+                    categoryNos.push(category.category_no);
+                    window.location.href = `${window.location.pathname + window.location.search}#${categoryNos.join("-")}`;
                 })
                 $('.categoryBox .item ul').append(item);
             }

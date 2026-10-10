@@ -73,6 +73,33 @@ jobs:
           path: apps/web/build-e2e/
           retention-days: 1
 
+  report-h5-guard:
+    # Behavioural regression guard for the report H5 pages. Their async
+    # upload/submit state machine regressed or was missed across several review
+    # rounds; this job drives the real build output against server stubs so an
+    # e2e-only suite (which exercises the SPA, not these static pages) cannot
+    # catch a repeat.
+    needs: [changes]
+    if: needs.changes.outputs.e2e == 'true'
+    runs-on: ubuntu-22.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+          cache: "pnpm"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Build web bundle (produces apps/web/build/report.html)
+        working-directory: apps/web
+        run: pnpm build
+      - name: Run report H5 behavioural probes
+        working-directory: apps/web
+        run: pnpm test:report-h5
+
   e2e-p0:
     needs: install-build
     runs-on: ubuntu-22.04
