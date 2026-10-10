@@ -6,7 +6,7 @@ import type { CommunicationBootstrap, OctoBuddyCommunicationBridge } from "./hos
 const f = vi.hoisted(() => ({
   render: vi.fn(), unmount: vi.fn(), presentationDispose: vi.fn(),
   documentDispose: vi.fn(), fileDispose: vi.fn(),
-  documentInstall: vi.fn(), fileInstall: vi.fn(),
+  documentInstall: vi.fn(), fileInstall: vi.fn(), screenshotInstall: vi.fn(), screenshotDispose: vi.fn(),
 }));
 vi.mock("react-dom/client", () => ({
   createRoot: () => ({ render: f.render, unmount: f.unmount }),
@@ -23,12 +23,14 @@ vi.mock("./desktopPresentationLifecycle", () => ({
 }));
 vi.mock("./documentPreview", () => ({ installHostDocumentPreview: f.documentInstall }));
 vi.mock("./filePreview", () => ({ installHostFilePreview: f.fileInstall }));
+vi.mock("./screenshot", () => ({ installScreenshotToolbar: f.screenshotInstall }));
 
 beforeEach(() => {
   vi.clearAllMocks();
   document.body.innerHTML = '<div id="root"></div>';
   f.documentInstall.mockReturnValue(f.documentDispose);
   f.fileInstall.mockReturnValue(f.fileDispose);
+  f.screenshotInstall.mockReturnValue(f.screenshotDispose);
 });
 afterEach(() => { document.body.innerHTML = ""; });
 const host = {} as OctoBuddyCommunicationBridge;
@@ -39,10 +41,12 @@ describe("communication preview UI ownership", () => {
     const dispose = await mountCommunicationUi(host, bootstrap);
     expect(f.documentInstall).toHaveBeenCalledWith(host, "current-space");
     expect(f.fileInstall).toHaveBeenCalledWith(host, "current-space");
+    expect(f.screenshotInstall).toHaveBeenCalledWith(host);
     dispose();
     expect(f.unmount).toHaveBeenCalledOnce();
     expect(f.documentDispose).toHaveBeenCalledOnce();
     expect(f.fileDispose).toHaveBeenCalledOnce();
+    expect(f.screenshotDispose).toHaveBeenCalledOnce();
     expect(f.presentationDispose).toHaveBeenCalledOnce();
   });
 
@@ -52,11 +56,13 @@ describe("communication preview UI ownership", () => {
     expect(f.fileInstall).toHaveBeenCalledOnce();
     dispose();
     expect(f.fileDispose).toHaveBeenCalledOnce();
+    expect(f.screenshotDispose).toHaveBeenCalledOnce();
   });
 
   it("does not install preview bridges for a cancelled lazy UI mount", async () => {
     await mountCommunicationUi(host, bootstrap, { isActive: () => false });
     expect(f.fileInstall).not.toHaveBeenCalled();
+    expect(f.screenshotInstall).not.toHaveBeenCalled();
     expect(f.documentInstall).not.toHaveBeenCalled();
     expect(f.render).not.toHaveBeenCalled();
     expect(f.presentationDispose).toHaveBeenCalledOnce();
