@@ -48,6 +48,7 @@
     "test:e2e": "PLAYWRIGHT_BROWSERS_PATH=0 playwright test --config=e2e-kit/playwright.config.ts",
     "test:e2e:desktop": "playwright test --config=e2e-kit/playwright.desktop.config.ts",
     "test:e2e:loop-bridge": "../../node_modules/.bin/playwright test --config=e2e-kit/playwright.bridge.config.ts",
+    "test:report-h5": "node e2e-kit/standalone/report-h5-probe.cjs",
     "test:e2e:bind": "PLAYWRIGHT_BROWSERS_PATH=0 playwright test --config=e2e-kit/playwright.config.ts e2e-kit/tests/bind/bind.spec.ts",
     "test:e2e:bind:install": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium",
     "test:arch-builds": "./scripts/test-arch-builds.sh",

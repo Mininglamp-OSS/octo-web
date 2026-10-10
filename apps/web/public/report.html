@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0,maximum-scale=1.0,minimum=1.0,user-scalable=no">
+    <meta name="format-detection" content="telephone=no, email=no">
+    <link rel="stylesheet" type="text/css" href="css/report.css" />
+    <style type="text/css">
+        /* The notice is an in-page overlay, not a separate document: navigating
+           away would consume-and-discard the one-time ?session credential and
+           lose whatever the user already typed. `background-color: inherit`
+           picks up body's background so the overlay stays opaque in both the
+           default and the `mode=dark` stylesheet without duplicating colors. */
+        .reportNoticeOverlay {
+            display: none;
+            position: fixed;
+            left: 0;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 100;
+            overflow-y: auto;
+            padding-bottom: 30px;
+            background-color: inherit;
+        }
+
+        .reportNoticeOverlayTitle {
+            text-align: center;
+            font-size: 1.3em;
+            font-weight: 900;
+        }
+
+        .reportNoticeOverlayClose {
+            position: fixed;
+            right: 16px;
+            top: 16px;
+            width: 32px;
+            height: 32px;
+            line-height: 32px;
+            border-radius: 16px;
+            text-align: center;
+            font-size: 18px;
+            background-color: #2F70F5;
+            color: white;
+            cursor: pointer;
+        }
+
+        .uploadRemove {
+            position: absolute;
+            right: 0;
+            top: 0;
+            width: 20px;
+            height: 20px;
+            line-height: 20px;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 12px;
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            cursor: pointer;
+        }
+    </style>
+    <script type="text/javascript" src="js/config.js"></script>
+    <script type="text/javascript" src="js/jquery-3.7.1.min.js"></script>
+    <script type="text/javascript" src="js/IMJSBridge.js"></script>
+    <script type="text/javascript" src="js/index.js"></script>
+    <script type="text/javascript" src="js/jquery.i18n.min.js"></script>
+    <title>投诉</title>
+</head>
+
+<body>
+    <div class="reportBox">
+        <div class="reportBody">
+            <div class="categoryBox">
+                <div class="item">
+                    <h1 i18n="report.title">请选择投诉该账号的原因:</h1>
+                    <ul>
+                    </ul>
+                </div>
+                <div class="reportNotice" i18n="report.notice">
+                    投诉须知
+                </div>
+            </div>
+            <div class="reportFormBox">
+                <div class="reportForm">
+                    <div class="item">
+                        <ul>
+                            <li>
+                                <div class="title" i18n="report.image.evidence">图片证据(选填)</div>
+                                <div class="imgs">
+                                    <div class="imgItem">
+                                        <img class="add" src='./images/img_add.png' style="width: 100%;height: 100%;">
+                                        <input type="file" class="upload"
+                                            accept="image/gif,image/jpeg,image/jpg,image/png,image/svg"></input>
+                                    </div>
+                                </div>
+                            </li>
+                            <li class="reportRemark">
+                                <textarea i18n="report.content.placeholder" class="reportContent"
+                                    placeholder="投诉内容(选填)"></textarea>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="reportSubmit" i18n="report.submit">提交</div>
+            </div>
+        </div>
+        <div class="reportFooter">
+            <div class="back">
+                <!-- <img src="./images/bottom_arrow_left.svg" style="width:32px;color: red;" /> -->
+                <svg t="1609322904660" class="backIcon" viewBox="0 0 1024 1024" version="1.1"
+                    xmlns="http://www.w3.org/2000/svg" p-id="4579">
+                    <path
+                        d="M396.504 551.539l384.753 379.451c21.336 21.017 21.592 55.384 0.639 76.784v0c-21.017 21.4-55.64 21.657-76.976 0.639l-463.581-457.129c-21.592-21.272-21.592-56.087 0-77.423l464.603-458.215c21.017-20.697 54.682-20.889 75.89-0.383l0.319 0.319c22.039 21.273 22.23 56.279 0.383 77.807l-386.094 380.792c-21.528 21.208-21.528 56.087 0.064 77.359z"
+                        p-id="4580"></path>
+                </svg>
+            </div>
+            <div class="go">
+                <svg t="1609323186882" class="goIcon" viewBox="0 0 1024 1024" version="1.1"
+                    xmlns="http://www.w3.org/2000/svg" p-id="4768" width="72" height="72">
+                    <path
+                        d="M747.457 479.104c16.64-15.872 44.544-13.76 62.144 4.864 17.664 18.624 18.432 46.4 1.92 62.336l-484.16 461.248c-16.576 15.872-44.415 13.696-62.08-4.864-17.664-18.56-18.56-46.4-1.855-62.272l484.032-461.312z"
+                        fill="" p-id="4769"></path>
+                    <path
+                        d="M811.839 484.992c16.384 16.064 15.232 43.968-2.816 62.272-17.92 18.24-45.76 20.032-62.208 3.968l-477.44-468.16c-16.384-16.064-15.232-43.968 2.688-62.336 17.984-18.176 45.76-20.032 62.208-3.968l477.568 468.224z"
+                        fill="" p-id="4770"></path>
+                </svg>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="reportNoticeOverlay">
+        <div class="reportNoticeOverlayClose">✕</div>
+        <div class="reportDesc reportNoticeOverlayTitle">投诉须知</div>
+        <div class="reportDesc">
+            你应保证你的投诉行为基于善意，并代表你本人真实意思。信必达作为中立的平台服务者，收到你投诉后，会尽快按照相关法律法规的规定独立判断并进行处理。信必达将会采取合理的措施保护你的个人信息；除法律法规规定的情形外，未经用户许可信必达不会向第三方公开、透露你的个人信息。
+        </div>
+        <div class="reportDesc">
+            根据《中华人民共和国民法典》的规定，权利人在通知网络服务提供者时应当提供权利人的真实身份信息。因此，当你提交侵权投诉及冒充他人投诉时，我们根据你的主体类型，收集你的相关信息（含敏感个人信息），包括你的姓名或名称、证件号码或者组织证件号、证件正反面照片、公司或组织证件照片，收集前述内容的目的在于核验你的身份信息的真实性。如果你委托代理人进行投诉，我们还将收集代理人的姓名、证件号码、证件正反面照片、授权委托书照片，收集前述信息在于核验代理人信息的真实性。你可以拒绝提供，如果拒绝提供，我们可能无法对你的投诉进行评估，但不影响你对悟空聊天其他功能的正常使用。
+        </div>
+        <div class="reportDesc">
+            此外，为了对你的投诉予以评估，我们也会收集你主动提交的聊天记录、投诉内容、补充证明材料照片。你可以拒绝提供，如果拒绝提供，我们可能无法对你的投诉进行充分评估，但不影响你对悟空聊天其他功能的正常使用。
+        </div>
+        <div class="reportDesc">
+            若你提交的是侵权投诉，请注意：
+        </div>
+        <div class="reportDesc">
+            1.
+            权利人及其代理人知悉并了解侵权投诉是一项严肃的法律行为，平台将根据法律法规、投诉内容和证据等进行评估审核，尽力保障每一位权利人的合法权益。但侵权投诉的评估审核结果与投诉次数无关联，多次或多人重复或批量投诉并不能改变或提升侵权投诉通过率。
+        </div>
+        <div class="reportDesc">
+            2.
+            为了更好地维护权利人的合法权益及正常侵权投诉，保障系统安全及正常运作，权利人及其代理人不得采取可能会严重影响其他用户合法权益、阻碍平台系统的安全正常运作的方式进行投诉，包括但不限于使用外挂、插件、第三方软件、系统、自动化程序等进行投诉等。
+            一经发现，上述投诉将被平台视为无效投诉。同时不排除会采取包括但不限于限制频次等、记入非正常投诉名单、调整投诉处理顺序、直至直接拒绝、处罚投诉帐号等特殊处理机制或限制、处理措施。
+        </div>
+        <div class="reportDesc">
+            3. 为各权利人的合法权益得以保障，相关投诉能有效提交，如平台有合理理由相信投诉存在以下情形，将有权根据实际情况调整处理方式。包括但不限于：
+            <div>
+                （1）明知、应知不构成侵权或明显缺乏权利基础和事实依据而进行投诉；
+            </div>
+            <div>
+                （2）平台已告知欠缺处理依据仍不断重复投诉且无实质补充等情形；
+            </div>
+            <div>
+                （3）多次或大量提交侵权投诉，但整体通过率低或涉嫌滥用投诉；
+            </div>
+            <div>
+                （4）非合理且正当理由，对平台正常处理其他权利人侵权投诉造成不利影响的情形；
+            </div>
+            <div>
+                （5）其他平台有理由认为存在不合理、滥用投诉的情形。
+            </div>
+        </div>
+        <div class="reportDesc">
+            一经发现，将不排除采取特殊的处理机制或限制措施，包括但不限于限制频次、记入非正常投诉名单、调整侵权投诉单处理顺序等，由此将可能导致侵权投诉不可高频提交、无法通过或审核评估时效延长等效果。
+        </div>
+        <div class="reportDesc">
+            4. 如由于特殊原因造成平台处理能力过载，包括但不限于网络因素、设备原因、投诉量短期激增等，平台的处理与反馈也可能会有时效调整或延迟。
+        </div>
+    </div>
+
+</body>
+
+<script language="javascript">
+
+    $(function () {
+
+        im.onReady();
+
+        // Auth init: server redirects with a one-time ?session= and no longer
+        // passes token/uid in the URL. Resolve it once on load and cache uid/token
+        // in memory for later upload/submit (resolve is single-use). No legacy
+        // ?token/?uid fallback — ?session is the only credential entry point.
+        window.__reportAuth = { uid: null, token: null };
+
+        function onAuthResolveFailed() {
+            window.__reportAuth = { uid: null, token: null };
+            if ($('.authError').length === 0) {
+                $('body').prepend('<div class="authError" style="background:#ffecec;color:#c00;padding:10px;text-align:center;font-size:14px;">登录态获取失败，请从客户端重新进入投诉页</div>');
+            }
+        }
+
+        // Drop the single-use ?session from the URL once consumed so reload / back
+        // navigation and notice/success redirects can't replay it. Keep every other
+        // query key (lang / channel_id / channel_type / mode) and the hash intact.
+        function stripSessionFromUrl() {
+            let search = window.location.search;
+            if (search.indexOf('session=') === -1) {
+                return;
+            }
+            let params = search.substring(1).split('&').filter(function (kv) {
+                return kv && kv.split('=')[0] !== 'session';
+            });
+            let newSearch = params.length > 0 ? '?' + params.join('&') : '';
+            history.replaceState(null, '', window.location.pathname + newSearch + window.location.hash);
+        }
+
+        let sessionId = getQueryString('session');
+        if (sessionId) {
+            $.ajax({
+                headers: { Accept: "application/json; charset=utf-8" },
+                url: apiURL + 'report/session/resolve',
+                type: "post",
+                contentType: "application/json",
+                dataType: 'json',
+                data: JSON.stringify({ "session_id": sessionId }),
+                // Success contract: HTTP 200 with non-empty uid & token. Anything
+                // else (HTTP 400 error envelope, empty fields) is a failure.
+                success: function (result) {
+                    if (result && result.uid && result.token) {
+                        window.__reportAuth = { uid: result.uid, token: result.token };
+                    } else {
+                        onAuthResolveFailed();
+                    }
+                    stripSessionFromUrl();
+                },
+                error: function () {
+                    onAuthResolveFailed();
+                    stripSessionFromUrl();
+                }
+            })
+        } else {
+            // No ?session at all (direct hit, replayed URL, or a reload after it
+            // was stripped): say so now instead of looking healthy until the
+            // first upload / submit.
+            onAuthResolveFailed();
+        }
+
+        $(".go").on('touchend', function () {
+            // Navigation during a submit would mutate the frozen draft (the
+            // payload is snapshotted, but the round trip must not appear to
+            // succeed against a category the user navigated away from).
+            if (submitting) {
+                return;
+            }
+            if (window.history.length > 0) {
+                window.history.forward()
+            }
+        });
+
+        $(".back").on('touchend', function () {
+            if (submitting) {
+                return;
+            }
+            window.history.back()
+        });
+
+        window.categories = [];
+        $.getJSON(apiURL + `report/categories?lang=${window.getLang()}`).then(function (categories) {
+            window.categories = categories || [];
+            if (window.categories.length > 0) {
+                renderCategories(window.categories);
+            }
+        }, function () {
+            $('.categoryBox .item ul').html('<li><div class="content"><label>加载失败，请重试</label></div></li>');
+        })
+
+        if ("onhashchange" in window) {
+
+            window.onhashchange = function (ev) {
+                // Ignore hash navigation while a submit is in flight: it would
+                // swap the rendered category (and run clearDetailContent) out
+                // from under the snapshot the request was built from.
+                if (submitting) {
+                    return;
+                }
+                if (window.location.hash && window.location.hash != '') {
+                    let categoryNos = window.location.hash.substring(1).split("-")
+                    let category = getCatgoryWithCategoryNo(categoryNos[categoryNos.length - 1], window.categories);
+                    if (category && category.children && category.children.length > 0) {
+                        renderCategories(category.children);
+                    } else {
+                        $(".reportFormBox").css('display', 'block');
+                        $(".categoryBox").css('display', 'none');
+                        return
+                        // renderCategories(window.categories);
+                    }
+                } else {
+                    renderCategories(window.categories);
+                }
+            };
+        }
+
+        function getObjectURL(file) {
+            var url = null;
+            if (window.createObjectURL != undefined) {
+                url = window.createObjectURL(file);
+            } else if (window.URL != undefined) { // mozilla(firefox)
+                url = window.URL.createObjectURL(file);
+            } else if (window.webkitURL != undefined) { // webkit or chrome
+                url = window.webkitURL.createObjectURL(file);
+            }
+            return url;
+        }
+
+        // Each entry: { url, status, xhr } where status is
+        // 'pending' | 'done' | 'failed' | 'cancelled'.
+        let imageDatas = [];
+        // Number of uploads still in flight; submit must wait until this is 0.
+        let pendingUploads = 0;
+
+        function uploadChange() {
+            var objUrl = getObjectURL(this.files[0]);//获取文件信息
+            if (objUrl) {
+                var imageData = { url: objUrl, status: 'pending' };
+                imageDatas.push(imageData);
+                renderImageItes();
+                uploadImage(this.files[0], imageData);
+            }
+        }
+
+        let imgPaths = [];
+
+        // Single exit for every terminal outcome of an image upload (ok / error /
+        // timeout / thrown / cancelled on category switch). status leaving
+        // 'pending' makes any later call a no-op, so a duplicate ontimeout +
+        // onreadystatechange pair decrements pendingUploads exactly once. Returns
+        // whether this call is the one that settled the image.
+        function settleImage(imageData, status) {
+            if (imageData.status !== 'pending') {
+                return false;
+            }
+            imageData.status = status;
+            pendingUploads--;
+            return true;
+        }
+
+        // Called from clearDetailContent() when the draft is discarded: cancel
+        // every still-in-flight upload so its completion cannot leak a path into
+        // a later complaint, and so pendingUploads tracks the visible draft.
+        function settleCancelled(imageData) {
+            // Abort the underlying XHR too. Marking the entry cancelled stops the
+            // path from being recorded, but the file bytes are already being
+            // streamed and would otherwise still be written into object storage
+            // under the reporter's own prefix — an evidence photo they withdrew.
+            if (imageData.xhr) {
+                try { imageData.xhr.abort(); } catch (e) { /* already finished */ }
+            }
+            if (settleImage(imageData, 'cancelled')) {
+                renderImageItes();
+            }
+        }
+
+        function uploadImage(fileObj, imageData) {
+            let uid = window.__reportAuth.uid;
+            let token = window.__reportAuth.token;
+            // Bind this upload to the draft that started it. clearDetailContent()
+            // rebinds imgPaths to a fresh array when the user switches category;
+            // pushing through the module binding at completion time would then
+            // attach a withdrawn image to the next complaint. Capture the array
+            // identity now and push into that (possibly orphaned) array instead.
+            var targetPaths = imgPaths;
+            // Credential not resolved yet (or resolve failed): don't fire a
+            // path=/null/... request. Drop the just-added thumbnail and warn once.
+            if (!uid || !token) {
+                alert('登录态尚未就绪，请重试');
+                removeImageData(imageData);
+                return;
+            }
+            function settle(status) {
+                if (!settleImage(imageData, status)) {
+                    return false;
+                }
+                renderImageItes();
+                if (status === 'failed') {
+                    alert('图片上传失败，请重试');
+                }
+                return true;
+            }
+            pendingUploads++;
+            $.ajax({
+                headers: {
+                    Accept: "application/json; charset=utf-8",
+                    token: token
+                },
+                url: apiURL + `file/upload?type=report&path=/${uid}/${uuid()}`,
+                type: "get",
+                // Bound the presign GET like the submit POST (30s) and the
+                // upload POST (60s). jQuery has no default timeout, so a proxy
+                // that accepts the connection but never answers pins the tile
+                // at 'pending' forever; the only other exit (submit) answers
+                // "图片还在上传中" with no visible way out. On timeout jQuery
+                // fires error() → settle('failed'), which renders a removable
+                // tile and unblocks submit.
+                timeout: 10000,
+                success: function (result) {
+                    try {
+                        if (!result || !result.url) {
+                            settle('failed');
+                            return;
+                        }
+                        var form = new FormData();
+                        form.append("file", fileObj);
+                        // result.url is the API's own auth-gated POST
+                        // /v1/file/upload (not a pre-signed storage URL), and
+                        // that handler sits behind AuthMiddleware: without a
+                        // `token` header it answers 401. Attach it only when the
+                        // target is same-origin with this document — the
+                        // credential must never reach a foreign host — and
+                        // normalize same-origin URLs to a relative path so the
+                        // existing /v1/ proxy serves them without a CORS
+                        // preflight. Mirrors shouldAttachUploadToken in
+                        // packages/dmworkdatasource/src/datasource.ts.
+                        var target = new URL(result.url, window.location.href);
+                        var sameOrigin = target.origin === window.location.origin;
+                        var xhr = new XMLHttpRequest();
+                        // Cancelled while the presign GET was in flight: do not
+                        // start streaming the body. imageData.xhr is stored so
+                        // clearDetailContent() can abort a request already in
+                        // progress.
+                        if (imageData.status !== 'pending') {
+                            return;
+                        }
+                        imageData.xhr = xhr;
+                        xhr.open("post", sameOrigin ? target.pathname + target.search : target.href, true);
+                        if (sameOrigin) {
+                            xhr.setRequestHeader("token", token);
+                        }
+                        xhr.timeout = 60000;
+                        xhr.ontimeout = function () {
+                            settle('failed');
+                        };
+                        xhr.onerror = function () {
+                            settle('failed');
+                        };
+                        xhr.onreadystatechange = function () {
+                            if (xhr.readyState != 4) {
+                                return;
+                            }
+                            if (xhr.status == 200) {
+                                try {
+                                    var obj = JSON.parse(xhr.responseText);
+                                    // Only a non-empty path is a successful upload;
+                                    // an absent/empty one must not be recorded as null
+                                    // in the submitted imgs array.
+                                    if (obj && obj.path) {
+                                        if (settle('done')) {
+                                            targetPaths.push(obj.path);
+                                        }
+                                    } else {
+                                        settle('failed');
+                                    }
+                                } catch (e) {
+                                    settle('failed');
+                                }
+                            } else {
+                                settle('failed');
+                            }
+                        }
+                        xhr.send(form);
+                    } catch (e) {
+                        settle('failed');
+                    }
+                },
+                error: function () {
+                    settle('failed');
+                }
+            })
+
+        }
+
+        $('.imgItem .upload').on('change', function () {
+            uploadChange.bind(this)();
+        })
+
+
+        function removeImageData(imageData) {
+            var idx = imageDatas.indexOf(imageData);
+            if (idx !== -1) {
+                imageDatas.splice(idx, 1);
+            }
+            renderImageItes();
+        }
+
+        function renderImageItes() {
+            $('.imgs').html('');
+            if (imageDatas && imageDatas.length > 0) {
+                for (const imageData of imageDatas) {
+                    let failed = imageData.status === 'failed';
+                    let failedCls = failed ? ' upload-failed' : '';
+                    // A failed tile blocks submit, so it has to be removable or
+                    // the form is locked forever. Retry = pick the image again.
+                    let failedTip = failed
+                        ? '<div class="uploadFailedTip" style="position:absolute;left:0;right:0;bottom:0;background:rgba(204,0,0,0.8);color:#fff;font-size:12px;text-align:center;">上传失败</div><div class="uploadRemove">✕</div>'
+                        : '';
+                    let item = $(`<div class="imgItem${failedCls}" style="position:relative;">
+                                        <img style="width: 100%;height: 100%;" src="${imageData.url}" />
+                                        ${failedTip}
+                                </div>`)
+                    if (failed) {
+                        item.children('.uploadRemove').on('click', function () {
+                            removeImageData(imageData);
+                        });
+                    }
+                    $('.imgs').append(item);
+                }
+            }
+            if (imageDatas && imageDatas.length >= 9) {
+                return
+            }
+            let uploadInput = $(`
+                         <div class="imgItem">
+                            <img class="add" src='./images/img_add.png' style="width: 100%;height: 100%;">
+                            <input type="file" class="upload"
+                                            accept="image/gif,image/jpeg,image/jpg,image/png,image/svg"></input>
+                        </div>
+                `)
+            uploadInput.children('.upload').on('change', function () {
+                uploadChange.bind(this)();
+            });
+            $('.imgs').append(uploadInput);
+
+        }
+
+        // Open the notice as an in-page overlay. Navigating to
+        // report_notice.html would reload this document, and the one-time
+        // ?session was already consumed and stripped — the credential (and
+        // whatever the user typed) would not survive the round trip.
+        $('.reportNotice').on('click', function () {
+            $('.reportNoticeOverlay').css('display', 'block').scrollTop(0);
+        })
+        $('.reportNoticeOverlayClose').on('click', function () {
+            $('.reportNoticeOverlay').css('display', 'none');
+        })
+
+        let submitting = false;
+        function setSubmitting(on) {
+            submitting = on;
+            $('.reportSubmit').css(on
+                ? { opacity: '0.5', 'pointer-events': 'none' }
+                : { opacity: '', 'pointer-events': '' });
+            // Freeze the rest of the draft while a submit is in flight so the
+            // payload can't be edited out from under the request (image added,
+            // category switched, remark changed).
+            $('.imgs, .categoryBox, .reportContent').css('pointer-events', on ? 'none' : '');
+        }
+        // Draft readiness. Checked both before and after the bridge await: the
+        // await is a real async gap, not a microtask, so an image can start
+        // uploading (or a category can change) while it is pending.
+        function draftReady() {
+            if (pendingUploads > 0) {
+                alert('图片还在上传中，请稍候');
+                return false;
+            }
+            if (imageDatas.some(function (d) { return d.status === 'failed'; })) {
+                alert('存在上传失败的图片，请移除或重试后再提交');
+                return false;
+            }
+            return true;
+        }
+        // Bound the native bridge round-trip. im.getChannel() only settles when
+        // the WebView invokes the callback (or the bridge is absent and im.call
+        // fails fast); a bridge that is present but silent would otherwise hang
+        // this await forever, leaving setSubmitting(true)'s pointer-events:none
+        // in place with no POST and no prompt. Reject with a tagged error so the
+        // submit handler can distinguish "silent bridge" from "no bridge" and
+        // surface a visible exit instead of falling through to the query params.
+        function getChannelWithTimeout(ms) {
+            return new Promise(function (resolve, reject) {
+                let timer = setTimeout(function () {
+                    let err = new Error('getChannel timeout');
+                    err.__timeout = true;
+                    reject(err);
+                }, ms);
+                im.getChannel().then(function (channel) {
+                    clearTimeout(timer);
+                    resolve(channel);
+                }, function (e) {
+                    clearTimeout(timer);
+                    reject(e);
+                });
+            });
+        }
+        $('.reportSubmit').on('click', async function () { // 提交
+            if (submitting) {
+                return;
+            }
+            // Claim the lock BEFORE the first await. im.getChannel() round-trips
+            // through the native bridge (a real async task, not a microtask), so
+            // checking here but assigning after the await let a fast double-tap
+            // slip a second POST through with identical payload.
+            setSubmitting(true);
+            let token = window.__reportAuth.token;
+            if (!token) {
+                alert('登录态尚未就绪，请从客户端重新进入');
+                setSubmitting(false);
+                return;
+            }
+            if (!draftReady()) {
+                setSubmitting(false);
+                return;
+            }
+            // Snapshot the validated draft BEFORE the await. The bridge round
+            // trip is an async gap in which the page can still navigate (footer
+            // back/forward, browser back, the OS back gesture, onhashchange) and
+            // mutate the draft. Reading the DOM/hash again afterwards would then
+            // file a complaint against whatever the user navigated to — an empty
+            // category, a discarded remark — and still show the success page.
+            // Submit exactly what was validated here.
+            let draft = {
+                categoryNo: (function () {
+                    let nos = window.location.hash.substring(1).split("-");
+                    return nos[nos.length - 1];
+                })(),
+                remark: $('.reportContent').val() || '',
+                imgs: (imgPaths || []).slice()
+            };
+            let channel = null;
+            try {
+                channel = await getChannelWithTimeout(5000);
+            } catch (e) {
+                if (e && e.__timeout) {
+                    // Bridge present but never called back: release the submit
+                    // lock and tell the user, rather than hanging with the
+                    // button frozen (pointer-events:none) and no feedback.
+                    alert('获取会话信息超时，请重试');
+                    setSubmitting(false);
+                    return;
+                }
+                channel = null;
+            }
+            if (!channel || !channel.channelID) {
+                // Bridge missing or erroring: the server redirect already put
+                // the channel in the query, so use that before giving up.
+                let channelID = getQueryString('channel_id');
+                let channelType = parseInt(getQueryString('channel_type'), 10);
+                if (!channelID || isNaN(channelType)) {
+                    alert('获取会话信息失败，请从客户端重新进入');
+                    setSubmitting(false);
+                    return;
+                }
+                channel = { channelID: channelID, channelType: channelType };
+            }
+            // No re-read after the await: `draft` above is the validated
+            // payload. But re-verify the draft is unchanged and still ready —
+            // an upload started during the window (or any draft mutation) must
+            // fail the submit rather than file a complaint that silently omits
+            // evidence the UI now shows, or that no longer matches what was
+            // validated. Navigation and the picker are frozen, so this is
+            // defence in depth for anything that slips past those guards.
+            let currentNos = window.location.hash.substring(1).split("-");
+            let currentCategoryNo = currentNos[currentNos.length - 1];
+            let currentRemark = $('.reportContent').val() || '';
+            if (currentCategoryNo !== draft.categoryNo || currentRemark !== draft.remark) {
+                alert('提交内容已变更，请重新提交');
+                setSubmitting(false);
+                return;
+            }
+            if (!draftReady()) {
+                setSubmitting(false);
+                return;
+            }
+            $.ajax({
+                headers: {
+                    Accept: "application/json; charset=utf-8",
+                    token: token
+                },
+                url: apiURL + `reports`,
+                type: "post",
+                contentType: "application/json",
+                dataType: 'json',
+                // Bound the request like the upload leg: jQuery has no default
+                // timeout, and setSubmitting() now applies pointer-events:none,
+                // so a connection accepted but never answered would brick the
+                // button with no way back (the consumed ?session cannot reload).
+                timeout: 30000,
+                data: JSON.stringify({ "category_no": draft.categoryNo, "channel_id": channel.channelID, "channel_type": channel.channelType, "remark": draft.remark, "imgs": draft.imgs }),
+                success: function (result) {
+                    // Navigating away; leave the lock set so no further click can
+                    // fire another POST during the navigation.
+                    window.location.href = 'report_success.html' + window.location.search;
+                },
+                error: function () {
+                    setSubmitting(false);
+                    alert('提交失败！');
+                }
+            })
+        })
+
+        function clearDetailContent() {
+            // Cancel any upload still in flight for this draft. Merely dropping
+            // the array references is not enough: the XHR's completion handler
+            // would otherwise settle as 'done' and repopulate the array (or, once
+            // the push is bound to the captured array, still leak a path into the
+            // draft's own array). Marking the entry cancelled makes settle() a
+            // no-op and keeps pendingUploads in step with the visible draft, so
+            // the next category's submit is not blocked by a stale upload.
+            imageDatas.forEach(function (d) {
+                if (d.status === 'pending') {
+                    settleCancelled(d);
+                }
+            });
+            imageDatas = []
+            imgPaths = []
+            renderImageItes()
+            $('.reportRemark textarea').val('');
+
+        }
+
+        function renderCategories(children) {
+            $('.categoryBox .item ul').html('');
+            clearDetailContent()
+            $(".reportFormBox").css('display', 'none');
+            $(".categoryBox").css('display', 'block');
+            for (const category of children) {
+                let item = $(`<li no='${escapeHtml(category.category_no)}'>
+                                        <div class='content'>
+                                            <label>${escapeHtml(category.category_name)}</label>
+                                            <img src='./images/arrow_right.png' style="width:32px;height:32px"/>
+                                        </div>
+                                    </li>`);
+                item.on('touchend', function (e) {
+                    // Build the path root-first and ALWAYS include the tapped
+                    // category itself. The previous shape omitted it whenever the
+                    // category had children, so for A>B>C tapping B navigated back
+                    // to #A and C was unreachable. Ancestors alone are also
+                    // nearest-first, which would have produced B-A-C.
+                    let categoryNos = new Array();
+                    getAllParentCategoryNo(category, categoryNos);
+                    categoryNos.reverse();
+                    categoryNos.push(category.category_no);
+                    window.location.href = `${window.location.pathname + window.location.search}#${categoryNos.join("-")}`;
+                })
+                $('.categoryBox .item ul').append(item);
+            }
+        }
+    })
+
+
+
+    function getAllParentCategoryNo(category, parentCategoryNos) {
+        if (category.parent_category_no == '') {
+            return
+        }
+        let parent = getCatgoryWithCategoryNo(category.parent_category_no, window.categories);
+        if (parent) {
+            parentCategoryNos.push(parent.category_no);
+            getAllParentCategoryNo(parent, parentCategoryNos);
+        }
+
+    }
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function getCatgoryWithCategoryNo(categoryNo, categoryList) {
+        for (const category of categoryList) {
+            if (category.category_no == categoryNo) {
+                return category;
+            }
+            if (category.children && category.children.length > 0) {
+                let ct = getCatgoryWithCategoryNo(categoryNo, category.children);
+                if (ct) {
+                    return ct
+                }
+            }
+        }
+    }
+
+    //异步加载css,js文件
+    var Head = document.getElementsByTagName('head')[0], style = document.createElement('style');
+    function linkScript(parm, fn) {
+        var linkScript;
+        if (/\.css[^\.]*$/.test(parm)) {
+            linkScript = document.createElement("link");
+            linkScript.type = "text/" + ("css");
+            linkScript.rel = "stylesheet";
+            linkScript.href = parm;
+        } else {
+            linkScript = document.createElement("script");
+            linkScript.type = "text/" + ("javascript");
+            linkScript.src = parm;
+        }
+        Head.insertBefore(linkScript, Head.lastChild)
+        linkScript.onload = linkScript.onerror = function () {
+            if (fn) fn()
+        }
+    }
+
+    let mode = getQueryString("mode")
+    if (mode == 'dark') {
+        linkScript("css/report.dark.css");
+    }
+
+    window.getLang = function () {
+        var defaultLang = "cn";
+        let lang = window.navigator.userLanguage || window.navigator.language;
+        let userLang = getQueryString("lang")
+        if (userLang && userLang !== "") {
+            lang = userLang
+        }
+        if (lang.indexOf("en") != -1) {
+            defaultLang = "en";
+        }
+        return defaultLang
+    }
+
+    $(document).ready(function () {
+        /*默认语言*/
+        var defaultLang = window.getLang()
+        if (defaultLang.indexOf("en") != -1) {
+            document.title = "Report";
+        }
+
+        // The vendored i18n plugin unconditionally reads the same-origin
+        // `i18n_lang` cookie (written by the SPA as zh-CN/en-US) and lets it
+        // override defaultLang, so the filename it fetches may be
+        // i18n_zh-CN.json / i18n_en-US.json. Those exist as alias payloads
+        // alongside i18n_cn/i18n_en. Deleting or rewriting the cookie here is
+        // not an option: it is the SPA's persisted app-wide locale, and the
+        // plugin's cookie-writing branch needs the absent $.removeCookie.
+        $("[i18n]").i18n({
+            defaultLang: defaultLang,
+            filePath: "./i18n/",
+            filePrefix: "i18n_",
+            fileSuffix: "",
+            forever: false,
+            callback: function () {
+                console.log("i18n is ready.");
+            }
+        });
+        // /*切换为中文 - 按钮*/
+        // $(".chinese").click(function() {
+        //     $("[i18n]").i18n({
+        //         defaultLang: "cn",
+        //         filePath: "./i18n/"
+        //     });
+        // });
+        // /*切换为英文 - 按钮*/
+        // $(".english").click(function() {
+        //     $("[i18n]").i18n({
+        //         defaultLang: "en",
+        //         filePath: "/example/i18n/"
+        //     });
+        // });
+
+    });
+
+
+</script>

@@ -48,6 +48,23 @@ describe('Nginx Security Headers', () => {
     expect(nginxConfig).toMatch(/media-src\s+'self'\s+blob:\s+https:/);
   });
 
+  it('should not carry an inert frame-src source', () => {
+    // A previous revision added `frame-src 'self' https://__bridge_loaded__`
+    // believing it unblocked the native WebViewJavascriptBridge bootstrap
+    // iframe. It does not: underscore is not a valid CSP host-char, so the
+    // source is discarded and the directive collapses to `frame-src 'self'` —
+    // byte-for-byte the same restriction the default-src fallback already gave.
+    // Guard against re-adding it.
+    const csp = nginxConfig.match(/Content-Security-Policy "([^"]*)"/);
+    expect(csp).not.toBeNull();
+    expect(csp[1]).not.toContain('__bridge_loaded__');
+    // And never widen frame-src to a blanket scheme source.
+    const frameSrc = csp[1].match(/frame-src ([^;]*);/);
+    if (frameSrc) {
+      expect(frameSrc[1]).not.toMatch(/(^|\s)https:(\s|$)/);
+    }
+  });
+
   it('should have HSTS header available (commented for manual enable)', () => {
     expect(nginxConfig).toContain('Strict-Transport-Security');
   });
