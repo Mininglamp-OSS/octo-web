@@ -124,6 +124,28 @@ describe("summary workbench session storage", () => {
         removeSpy.mockRestore();
     });
 
+    it("does not delete an untouched previous slot when reading it throws", () => {
+        const scope = { userId: "user-a", spaceId: "space-a" };
+        const activeKey =
+            "summary-workbench-session:v2:user-a:space-a:global";
+        const previousKey = `${activeKey}:previous`;
+        localStorage.setItem(activeKey, "current-session");
+        localStorage.setItem(previousKey, "old-session");
+        const originalGetItem = Storage.prototype.getItem;
+        const getSpy = vi
+            .spyOn(Storage.prototype, "getItem")
+            .mockImplementation(function (key) {
+                if (key === previousKey) throw new Error("blocked read");
+                return originalGetItem.call(this, key);
+            });
+
+        expect(moveSummaryWorkbenchSessionToPrevious(scope)).toBe(false);
+
+        getSpy.mockRestore();
+        expect(localStorage.getItem(activeKey)).toBe("current-session");
+        expect(localStorage.getItem(previousKey)).toBe("old-session");
+    });
+
     it("restores both slots when replacing them fails halfway", () => {
         const scope = { userId: "user-a", spaceId: "space-a" };
         writeSummaryWorkbenchSession(scope, "current-session");
@@ -147,6 +169,40 @@ describe("summary workbench session storage", () => {
                 scope,
                 "old-session",
                 "current-session"
+            )
+        ).toBe(false);
+        expect(readSummaryWorkbenchSession(scope)).toBe("current-session");
+        expect(readSummaryWorkbenchPreviousSession(scope)).toBe("old-session");
+        setSpy.mockRestore();
+    });
+
+    it("uses the caller snapshot when hydration already changed the active slot", () => {
+        const scope = { userId: "user-a", spaceId: "space-a" };
+        writeSummaryWorkbenchSession(scope, "resumed-session");
+        replaceSummaryWorkbenchSessionSlots(
+            scope,
+            "resumed-session",
+            "old-session"
+        );
+        const originalSetItem = Storage.prototype.setItem;
+        const setSpy = vi
+            .spyOn(Storage.prototype, "setItem")
+            .mockImplementation(function (key, value) {
+                if (key.endsWith(":previous") && value === "current-session") {
+                    throw new Error("blocked");
+                }
+                return originalSetItem.call(this, key, value);
+            });
+
+        expect(
+            replaceSummaryWorkbenchSessionSlots(
+                scope,
+                "resumed-session",
+                "current-session",
+                {
+                    activeSessionId: "current-session",
+                    previousSessionId: "old-session",
+                }
             )
         ).toBe(false);
         expect(readSummaryWorkbenchSession(scope)).toBe("current-session");

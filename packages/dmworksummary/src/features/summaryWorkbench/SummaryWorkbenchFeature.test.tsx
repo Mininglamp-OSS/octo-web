@@ -1604,6 +1604,24 @@ describe("SummaryWorkbenchFeature", () => {
     ).toBeInTheDocument();
   });
 
+  it("starts a new in-memory session when session storage is blocked", () => {
+    const current = controller();
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+    const getSpy = vi
+      .spyOn(Storage.prototype, "getItem")
+      .mockImplementation(() => {
+        throw new Error("blocked");
+      });
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "new-session" }));
+
+    expect(current.resetSession).toHaveBeenCalledWith({ scope: scope() });
+    getSpy.mockRestore();
+  });
+
   it("confirms before replacing manually entered text with a template", () => {
     const current = controller({
       viewState: {
@@ -3157,6 +3175,82 @@ describe("SummaryWorkbenchFeature", () => {
       screen.getByTestId("summary-workbench-last-session")
     ).toBeInTheDocument();
     setSpy.mockRestore();
+  });
+
+  it("restores the pre-hydration slots when hydration changes active before the resume swap fails", async () => {
+    const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
+    localStorage.setItem(ordinaryKey, "current-session");
+    localStorage.setItem(`${ordinaryKey}:previous`, "old-session");
+    const current = controller();
+    let onSessionIdChange: (sessionId: string) => void = () => undefined;
+    current.hydrateSession = vi.fn(async (sessionId: string) => {
+      onSessionIdChange(sessionId);
+      return { status: "hydrated" as const, sessionId };
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    const options = mocks.useSummaryWorkbench.mock.calls.at(-1)?.[0] as {
+      onSessionIdChange: (sessionId: string) => void;
+    };
+    onSessionIdChange = options.onSessionIdChange;
+    const originalSetItem = Storage.prototype.setItem;
+    const setSpy = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (key, value) {
+        if (key === `${ordinaryKey}:previous` && value === "current-session") {
+          throw new Error("blocked");
+        }
+        return originalSetItem.call(this, key, value);
+      });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "summary.workbench.lastSession.label",
+      })
+    );
+
+    await waitFor(() =>
+      expect(current.hydrateSession).toHaveBeenCalledTimes(2)
+    );
+    expect(current.hydrateSession).toHaveBeenNthCalledWith(1, "old-session");
+    expect(current.hydrateSession).toHaveBeenNthCalledWith(
+      2,
+      "current-session"
+    );
+    expect(localStorage.getItem(ordinaryKey)).toBe("current-session");
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe("old-session");
+    setSpy.mockRestore();
+  });
+
+  it("warns and demotes the active session when the previous session expired", async () => {
+    const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
+    localStorage.setItem(ordinaryKey, "current-session");
+    localStorage.setItem(`${ordinaryKey}:previous`, "old-session");
+    const current = controller();
+    current.hydrateSession = vi.fn().mockResolvedValue({ status: "empty" });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "summary.workbench.lastSession.label",
+      })
+    );
+
+    await waitFor(() =>
+      expect(mocks.toastWarning).toHaveBeenCalledWith(
+        "summary.workbench.errors.sessionExpired"
+      )
+    );
+    expect(localStorage.getItem(ordinaryKey)).toBeNull();
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
+      "current-session"
+    );
   });
 
   it.each(["failed", "cancelled"] as const)(

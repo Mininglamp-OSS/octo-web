@@ -922,12 +922,15 @@ export default function SummaryWorkbenchFeature({
   };
 
   const resetSession = () => {
+    const currentPersisted = readSummaryWorkbenchSession(storageScope);
+    const moved = moveSummaryWorkbenchSessionToPrevious(storageScope);
     if (themeTrackTimer.current) {
       clearTimeout(themeTrackTimer.current);
       themeTrackTimer.current = null;
     }
-    if (!moveSummaryWorkbenchSessionToPrevious(storageScope)) return;
-    setLastSessionId(readSummaryWorkbenchPreviousSession(storageScope));
+    if (moved) {
+      setLastSessionId(readSummaryWorkbenchPreviousSession(storageScope));
+    }
     setReferencedTask(derivedFromTask ?? null);
     setReferencePreviewOpen(false);
     setOpenSelector(null);
@@ -938,15 +941,22 @@ export default function SummaryWorkbenchFeature({
     setTemplateGalleryOpen(!derivedFromTask);
     templateFilledComposer.current = null;
     workbench.resetSession({ scope: initialScope });
+    if (!moved && currentPersisted) {
+      writeSummaryWorkbenchSession(storageScope, currentPersisted);
+    }
   };
 
   const resumeLastSession = async () => {
     if (!lastSessionId || busy) return;
     const sessionToResume = lastSessionId;
     const currentPersisted = readSummaryWorkbenchSession(storageScope);
+    const previousPersisted = readSummaryWorkbenchPreviousSession(storageScope);
     const hydration = await workbench.hydrateSession(sessionToResume);
     if (hydration.status === "failed" || hydration.status === "cancelled") {
       return;
+    }
+    if (hydration.status === "empty") {
+      Toast.warning(t("summary.workbench.errors.sessionExpired"));
     }
 
     // Commit the storage swap only after the target session has been
@@ -961,7 +971,11 @@ export default function SummaryWorkbenchFeature({
     const persisted = replaceSummaryWorkbenchSessionSlots(
       storageScope,
       nextActiveSessionId,
-      demotedSessionId
+      demotedSessionId,
+      {
+        activeSessionId: currentPersisted || null,
+        previousSessionId: previousPersisted || null,
+      }
     );
     if (!persisted) {
       if (currentPersisted) {

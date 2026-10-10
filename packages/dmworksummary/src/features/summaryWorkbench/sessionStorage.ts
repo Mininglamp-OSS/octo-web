@@ -77,19 +77,25 @@ export function moveSummaryWorkbenchSessionToPrevious(
     const activeKey = storageKey(scope);
     const previousKey = previousStorageKey(scope);
     let previousSessionId: string | null = null;
+    let previousSessionCaptured = false;
+    let previousSessionMutationAttempted = false;
     try {
         const sessionId = localStorage.getItem(activeKey) || "";
         if (!sessionId) return true;
         previousSessionId = localStorage.getItem(previousKey);
+        previousSessionCaptured = true;
+        previousSessionMutationAttempted = true;
         localStorage.setItem(previousKey, sessionId);
         localStorage.removeItem(activeKey);
         return true;
     } catch {
         try {
-            if (previousSessionId === null) {
-                localStorage.removeItem(previousKey);
-            } else {
-                localStorage.setItem(previousKey, previousSessionId);
+            if (previousSessionCaptured && previousSessionMutationAttempted) {
+                if (previousSessionId === null) {
+                    localStorage.removeItem(previousKey);
+                } else {
+                    localStorage.setItem(previousKey, previousSessionId);
+                }
             }
         } catch {
             // Storage remains unavailable; keep the in-memory session usable.
@@ -108,17 +114,27 @@ export function readSummaryWorkbenchPreviousSession(
     }
 }
 
+export interface SummaryWorkbenchSessionSlotsSnapshot {
+    activeSessionId: string | null;
+    previousSessionId: string | null;
+}
+
 /** Best-effort replacement that restores both pointers when compensation succeeds. */
 export function replaceSummaryWorkbenchSessionSlots(
     scope: SummaryWorkbenchSessionScope,
     activeSessionId: string,
-    previousSessionId: string
+    previousSessionId: string,
+    rollbackSnapshot?: SummaryWorkbenchSessionSlotsSnapshot
 ): boolean {
     const activeKey = storageKey(scope);
     const previousKey = previousStorageKey(scope);
     try {
-        const originalActive = localStorage.getItem(activeKey);
-        const originalPrevious = localStorage.getItem(previousKey);
+        const originalActive = rollbackSnapshot
+            ? rollbackSnapshot.activeSessionId
+            : localStorage.getItem(activeKey);
+        const originalPrevious = rollbackSnapshot
+            ? rollbackSnapshot.previousSessionId
+            : localStorage.getItem(previousKey);
         try {
             if (activeSessionId) {
                 localStorage.setItem(activeKey, activeSessionId);
