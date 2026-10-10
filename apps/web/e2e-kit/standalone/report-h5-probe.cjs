@@ -294,6 +294,62 @@ async function launchBrowser() {
     `dialogs=${JSON.stringify(silentDialogs)} pointerEvents=${unlocked} posts=${submissions.length}`);
   await silentPage.close();
 
+  // ---------- Probe 8: navigation during the bridge wait can't alter the payload ----------
+  // The review repro: enter text in a leaf category, submit with a slow bridge,
+  // then hit the footer Back control. Before the fix the post-await re-read filed
+  // the complaint against the navigated-to state (empty category, discarded
+  // remark) and still showed the success page. Now: navigation is ignored while
+  // submitting, and the payload is the snapshot taken before the await.
+  submissions.length = 0; uploads.length = 0; sessionConsumed = false; uploadDelayMs = 0;
+  presignDelayMs = 0; presignHang = false;
+  const navPage = await browser.newPage();
+  await navPage.addInitScript(() => {
+    // slow bridge: 500ms, matching the review's reproduction
+    window.IMJSBridge = { callHandler: (m, o, cb) => setTimeout(() => cb(JSON.stringify({ err_code: 200, channelID: 'ch-native', channelType: 1 })), 500) };
+  });
+  navPage.on('dialog', (d) => d.dismiss());
+  await openForm(navPage, 'http://127.0.0.1:18933/report.html?session=S7&channel_id=ch-q&channel_type=2');
+  await navPage.fill('.reportContent', 'KEEP');
+  // submit, then immediately drive the footer Back control during the bridge wait
+  await navPage.evaluate(() => document.querySelector('.reportSubmit').click());
+  await navPage.waitForTimeout(100); // inside the 500ms bridge round trip
+  await navPage.evaluate(() => {
+    const back = document.querySelector('.back');
+    if (back) back.dispatchEvent(new Event('touchend'));
+  });
+  await navPage.waitForTimeout(1200);
+  const navPayload = submissions.length ? submissions[submissions.length - 1] : null;
+  check('P1-E: footer Back during the bridge wait cannot blank the submitted draft',
+    !!navPayload && navPayload.category_no === '2' && navPayload.remark === 'KEEP',
+    `payload=${JSON.stringify(navPayload)}`);
+  await navPage.close();
+
+  // ---------- Probe 9: browser back (onhashchange) during the bridge wait ----------
+  // The OS/browser back gesture is not reachable by CSS, so it is guarded in
+  // onhashchange instead. Hash navigation during submit must not swap the draft.
+  submissions.length = 0; uploads.length = 0; sessionConsumed = false;
+  const hashPage = await browser.newPage();
+  await hashPage.addInitScript(() => {
+    window.IMJSBridge = { callHandler: (m, o, cb) => setTimeout(() => cb(JSON.stringify({ err_code: 200, channelID: 'ch-native', channelType: 1 })), 500) };
+  });
+  hashPage.on('dialog', (d) => d.dismiss());
+  await openForm(hashPage, 'http://127.0.0.1:18933/report.html?session=S8&channel_id=ch-q&channel_type=2');
+  await hashPage.fill('.reportContent', 'HASH-KEEP');
+  await hashPage.evaluate(() => document.querySelector('.reportSubmit').click());
+  await hashPage.waitForTimeout(100);
+  // simulate a hash navigation / back landing on the category root mid-submit
+  await hashPage.evaluate(() => { window.location.hash = ''; });
+  await hashPage.waitForTimeout(1200);
+  const hashPayload = submissions.length ? submissions[submissions.length - 1] : null;
+  // Safe outcomes: either the navigation cancelled the submit (no POST), or a
+  // POST went out with the intact pre-await draft. The unsafe outcome — a POST
+  // carrying the navigated-to (blank) category/remark — must not happen.
+  const hashUnsafe = !!hashPayload && (hashPayload.category_no !== '2' || hashPayload.remark !== 'HASH-KEEP');
+  check('P1-E: hash navigation during the bridge wait cannot file a wrong draft',
+    !hashUnsafe,
+    `payload=${JSON.stringify(hashPayload)}`);
+  await hashPage.close();
+
   // ---------- Probe 3: CSP must not carry the inert bridge source ----------
   const csp = fs.readFileSync(path.resolve(__dirname, '../../../../nginx.conf.template'), 'utf8');
   const cspMatch = csp.match(/Content-Security-Policy "([^"]*)"/);

@@ -250,12 +250,21 @@
         }
 
         $(".go").on('touchend', function () {
+            // Navigation during a submit would mutate the frozen draft (the
+            // payload is snapshotted, but the round trip must not appear to
+            // succeed against a category the user navigated away from).
+            if (submitting) {
+                return;
+            }
             if (window.history.length > 0) {
                 window.history.forward()
             }
         });
 
         $(".back").on('touchend', function () {
+            if (submitting) {
+                return;
+            }
             window.history.back()
         });
 
@@ -272,6 +281,12 @@
         if ("onhashchange" in window) {
 
             window.onhashchange = function (ev) {
+                // Ignore hash navigation while a submit is in flight: it would
+                // swap the rendered category (and run clearDetailContent) out
+                // from under the snapshot the request was built from.
+                if (submitting) {
+                    return;
+                }
                 if (window.location.hash && window.location.hash != '') {
                     let categoryNos = window.location.hash.substring(1).split("-")
                     let category = getCatgoryWithCategoryNo(categoryNos[categoryNos.length - 1], window.categories);
@@ -598,6 +613,21 @@
                 setSubmitting(false);
                 return;
             }
+            // Snapshot the validated draft BEFORE the await. The bridge round
+            // trip is an async gap in which the page can still navigate (footer
+            // back/forward, browser back, the OS back gesture, onhashchange) and
+            // mutate the draft. Reading the DOM/hash again afterwards would then
+            // file a complaint against whatever the user navigated to — an empty
+            // category, a discarded remark — and still show the success page.
+            // Submit exactly what was validated here.
+            let draft = {
+                categoryNo: (function () {
+                    let nos = window.location.hash.substring(1).split("-");
+                    return nos[nos.length - 1];
+                })(),
+                remark: $('.reportContent').val() || '',
+                imgs: (imgPaths || []).slice()
+            };
             let channel = null;
             try {
                 channel = await getChannelWithTimeout(5000);
@@ -624,15 +654,25 @@
                 }
                 channel = { channelID: channelID, channelType: channelType };
             }
-            // Re-validate AND re-read the draft after the await, so the remark,
-            // category and imgs that get sent are the ones we just validated.
+            // No re-read after the await: `draft` above is the validated
+            // payload. But re-verify the draft is unchanged and still ready —
+            // an upload started during the window (or any draft mutation) must
+            // fail the submit rather than file a complaint that silently omits
+            // evidence the UI now shows, or that no longer matches what was
+            // validated. Navigation and the picker are frozen, so this is
+            // defence in depth for anything that slips past those guards.
+            let currentNos = window.location.hash.substring(1).split("-");
+            let currentCategoryNo = currentNos[currentNos.length - 1];
+            let currentRemark = $('.reportContent').val() || '';
+            if (currentCategoryNo !== draft.categoryNo || currentRemark !== draft.remark) {
+                alert('提交内容已变更，请重新提交');
+                setSubmitting(false);
+                return;
+            }
             if (!draftReady()) {
                 setSubmitting(false);
                 return;
             }
-            let reportContent = $('.reportContent').val();
-            let categoryNos = window.location.hash.substring(1).split("-")
-            let categoryNo = categoryNos[categoryNos.length - 1];
             $.ajax({
                 headers: {
                     Accept: "application/json; charset=utf-8",
@@ -647,7 +687,7 @@
                 // so a connection accepted but never answered would brick the
                 // button with no way back (the consumed ?session cannot reload).
                 timeout: 30000,
-                data: JSON.stringify({ "category_no": categoryNo, "channel_id": channel.channelID, "channel_type": channel.channelType, "remark": reportContent || '', "imgs": imgPaths || [] }),
+                data: JSON.stringify({ "category_no": draft.categoryNo, "channel_id": channel.channelID, "channel_type": channel.channelType, "remark": draft.remark, "imgs": draft.imgs }),
                 success: function (result) {
                     // Navigating away; leave the lock set so no further click can
                     // fire another POST during the navigation.
