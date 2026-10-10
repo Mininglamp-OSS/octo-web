@@ -1,17 +1,17 @@
 import React from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type ConversationContext from "../../../Components/Conversation/context";
+import type { ScreenshotConversationPort } from "./port";
 import { i18n } from "../../../i18n";
 import { ScreenshotToolbar } from "./ScreenshotToolbar";
-import zhCN from "./locales/zh-CN.json";
-import enUS from "./locales/en-US.json";
+import zhCN from "./i18n/zh-CN.json";
+import enUS from "./i18n/en-US.json";
 
 i18n.registerNamespace("screenshot", { "zh-CN": zhCN, "en-US": enUS });
-const conversation = {
+const conversation: ScreenshotConversationPort = {
   channel: () => ({ channelID: "story", channelType: 1 }),
   addPendingAttachments: async () => null,
   messageInputContext: () => ({ focus() {} }),
-} as unknown as ConversationContext;
+};
 const meta = { title: "Chat/Composer/Screenshot", component: ScreenshotToolbar,
   args: { conversation, scopeKey: () => "story", host: { captureScreenshot: async () => ({ status: "cancelled" as const }) } },
 } satisfies Meta<typeof ScreenshotToolbar>;

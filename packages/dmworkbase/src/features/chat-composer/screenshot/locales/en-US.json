@@ -1,9 +1,0 @@
-{
-  "action": "Screenshot",
-  "capturing": "Capturing…",
-  "hideWindow": "Hide chat window while capturing",
-  "busy": "A screenshot is already in progress. Finish or cancel it, then try again",
-  "permission": "Allow OctoBuddy Screen Recording in System Settings, then try again",
-  "unsupported": "Desktop screenshots are unavailable in this environment",
-  "capture-failed": "Screenshot failed. Please try again"
-}

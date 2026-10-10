@@ -1,8 +1,8 @@
 import React from "react";
 import { i18n, WKApp } from "@octo/base";
 import { ScreenshotToolbar } from "@octo/base/src/features/chat-composer/screenshot/ScreenshotToolbar";
-import zhCN from "@octo/base/src/features/chat-composer/screenshot/locales/zh-CN.json";
-import enUS from "@octo/base/src/features/chat-composer/screenshot/locales/en-US.json";
+import zhCN from "@octo/base/src/features/chat-composer/screenshot/i18n/zh-CN.json";
+import enUS from "@octo/base/src/features/chat-composer/screenshot/i18n/en-US.json";
 import type { ScreenshotHost } from "@octo/base/src/features/chat-composer/screenshot/contract";
 
 export function installScreenshotToolbar(host: ScreenshotHost): () => void {
