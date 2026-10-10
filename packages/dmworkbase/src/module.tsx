@@ -190,6 +190,7 @@ import {
   buildThreadOverviewSection,
 } from "./features/channelSetting/channelSettingThreadSections";
 import { recordIncomingSpaceUnread, spaceUnreadStore } from "./features/space-unread";
+import { screenshotSettingsStore } from "./features/chat-composer/screenshot/settings";
 
 /** execCommand 降级复制，用于 navigator.clipboard 不可用的场景 */
 function fallbackCopy(text: string) {
@@ -292,12 +293,14 @@ export default class BaseModule implements IModule {
     };
     voiceSettingsStore.setUserId(WKApp.loginInfo.uid || "");
     quickMuteStore.setUserId(WKApp.loginInfo.uid || "");
+    screenshotSettingsStore.setUserId(WKApp.loginInfo.uid || "");
     WKApp.mittBus.on("wk:app-foreground", refreshQuickMute);
     WKApp.mittBus.on("wk:auth-state-changed", () => {
       spaceUnreadStore.reset();
       quickMuteStore.reset();
       voiceSettingsStore.setUserId(WKApp.loginInfo.uid || "");
       quickMuteStore.setUserId(WKApp.loginInfo.uid || "");
+      screenshotSettingsStore.setUserId(WKApp.loginInfo.uid || "");
       refreshQuickMute();
     });
     if (typeof window !== "undefined") window.addEventListener("online", refreshQuickMute);
