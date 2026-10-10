@@ -1,0 +1,10 @@
+{
+  "action": "截图",
+  "capturing": "截图中…",
+  "hideWindow": "截图时隐藏聊天窗口",
+  "busy": "已有截图进行中，请完成或取消后重试",
+  "permission": "请在系统设置中允许 OctoBuddy 录制屏幕，然后重试",
+  "unsupported": "当前环境不支持桌面截图",
+  "capture-failed": "截图失败，请重试",
+  "too-large": "截图过大（超过 32 MB），请缩小范围后重试"
+}
