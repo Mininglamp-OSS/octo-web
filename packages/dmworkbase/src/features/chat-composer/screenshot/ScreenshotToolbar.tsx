@@ -2,15 +2,15 @@ import React, { useEffect, useRef, useState } from "react";
 import { Check, LoaderCircle, ScanLine } from "lucide-react";
 import { Dropdown, Toast } from "@douyinfe/semi-ui";
 import IconClick from "../../../Components/IconClick";
-import type ConversationContext from "../../../Components/Conversation/context";
 import { i18n, useI18n } from "../../../i18n";
 import { captureForComposer } from "./capture";
 import type { ScreenshotHost } from "./contract";
+import type { ScreenshotConversationPort } from "./port";
 import { screenshotSettingsStore, type ScreenshotSettings } from "./settings";
 
 export interface ScreenshotToolbarProps {
   host: ScreenshotHost;
-  conversation: ConversationContext;
+  conversation: ScreenshotConversationPort;
   scopeKey(): string;
 }
 
@@ -40,12 +40,16 @@ export function ScreenshotToolbar({ host, conversation, scopeKey }: ScreenshotTo
     const isCurrent = () => living.current && container.current?.isConnected === true &&
       latest.current.conversation === conversation && channelKey() === channel && latest.current.scopeKey() === scope;
     const operation = captureForComposer(host, {
-      requestId: crypto.randomUUID(), locale: i18n.getLocale() === "en-US" ? "en-US" : "zh-CN",
+      // randomUUID is secure-context only and would throw before the busy state is set.
+      requestId: crypto.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36),
+      locale: i18n.getLocale() === "en-US" ? "en-US" : "zh-CN",
       // Read the store rather than the render state: the menu may have been toggled since the last paint.
       hideChatWindow: screenshotSettingsStore.get().hideChatWindow,
     }, {
       isCurrent,
-      add: file => conversation.addPendingAttachments([file], "paste"),
+      // "upload" keeps the capture out of the editor: the "paste" path inserts an inline node at the
+      // live Tiptap selection, which replaces selected draft text or an inline attachment.
+      add: file => conversation.addPendingAttachments([file], "upload"),
       focus: () => conversation.messageInputContext()?.focus(),
     });
     active.current = operation;
