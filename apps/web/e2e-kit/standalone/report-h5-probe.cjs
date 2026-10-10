@@ -21,6 +21,10 @@ const submissions = [];
 const uploads = [];
 let sessionConsumed = false;
 let uploadDelayMs = 0;
+// Presign GET (#P2-1): delay its answer, or ignore the request entirely to
+// model a proxy that accepts the connection but never responds.
+let presignDelayMs = 0;
+let presignHang = false;
 
 function serve(port) {
   return new Promise((resolve) => {
@@ -45,7 +49,8 @@ function serve(port) {
       }
       if (u.pathname === '/v1/file/upload' && req.method === 'GET') {
         if (!req.headers.token) return json({ status: 401, msg: 'token required' }, 401);
-        return json({ url: `http://127.0.0.1:${port}/v1/file/upload?type=report&path=/u-1/x.png` });
+        if (presignHang) return; // hold the connection open, never answer
+        return setTimeout(() => json({ url: `http://127.0.0.1:${port}/v1/file/upload?type=report&path=/u-1/x.png` }), presignDelayMs);
       }
       if (u.pathname === '/v1/file/upload' && req.method === 'POST') {
         uploads.push({ token: req.headers.token, at: Date.now() });
@@ -145,6 +150,30 @@ async function launchBrowser() {
     uploads.length > 0 && uploads.every((u) => u.token === 'tok-abc'),
     `uploads=${uploads.length} tokens=${JSON.stringify(uploads.map((u) => u.token))}`);
 
+  // ---------- Probe 2b: withdrawing during presign never starts the upload ----------
+  // Isolates the cancel/abort protection from the targetPaths snapshot. Hold the
+  // presign GET open, then withdraw the draft before it answers: the withdrawal
+  // must mark the tile 'cancelled' so uploadImage()'s `status !== 'pending'`
+  // guard skips xhr.send(). If only clearDetailContent()'s cancel is reverted
+  // (snapshot kept), the tile stays 'pending' and the upload POST fires — this
+  // assertion is the one that goes red for that single mutation.
+  submissions.length = 0; uploads.length = 0; sessionConsumed = false; uploadDelayMs = 0;
+  presignDelayMs = 800; presignHang = false;
+  await openForm(page, 'http://127.0.0.1:18933/report.html?session=S2b&channel_id=ch-q&channel_type=2');
+  await page.evaluate(() => {
+    const dt = new DataTransfer(); dt.items.add(new File(['y'], 'withdrawn.png', { type: 'image/png' }));
+    const inp = document.querySelector('.imgItem .upload');
+    Object.defineProperty(inp, 'files', { value: dt.files });
+    inp.dispatchEvent(new Event('change'));
+  });
+  await page.waitForFunction(() => document.querySelectorAll('.imgs .imgItem').length >= 1, { timeout: 3000 });
+  await page.waitForTimeout(150); // presign still in flight
+  await page.evaluate(() => { window.location.hash = ''; }); // withdraw → clearDetailContent
+  await page.waitForTimeout(1500); // past presignDelayMs; upload POST would have landed by now
+  check('P1-B-abort: withdrawing during presign never starts the upload POST',
+    uploads.length === 0, `uploads=${uploads.length}`);
+  presignDelayMs = 0;
+
   // ---------- Probe 4: submitting freezes the draft (no bypass during bridge wait) ----------
   submissions.length = 0; uploads.length = 0; sessionConsumed = false; uploadDelayMs = 900;
   await openForm(page, 'http://127.0.0.1:18933/report.html?session=S3&channel_id=ch-q&channel_type=2');
@@ -197,6 +226,73 @@ async function launchBrowser() {
   await page.waitForTimeout(400);
   const hashAfterC = await page.evaluate(() => window.location.hash);
   check('P1-D: leaf path is root-first and complete', hashAfterC === '#1-12-121', `hash=${hashAfterC} (expected #1-12-121)`);
+
+  // ---------- Probe 6: presign GET that never answers → removable failure tile ----------
+  // Models a proxy that accepts the presign GET but never responds. Before the
+  // timeout fix the tile stays 'pending' forever (submit answers "图片还在上传中"
+  // with no visible exit); after it, the tile becomes removable and submit is
+  // reachable again.
+  submissions.length = 0; uploads.length = 0; sessionConsumed = false; uploadDelayMs = 0;
+  presignDelayMs = 0; presignHang = true;
+  const presignDialogs = [];
+  page.on('dialog', (d) => { presignDialogs.push(d.message()); d.dismiss(); });
+  await openForm(page, 'http://127.0.0.1:18933/report.html?session=S5&channel_id=ch-q&channel_type=2');
+  await page.evaluate(() => {
+    const dt = new DataTransfer(); dt.items.add(new File(['z'], 'stuck.png', { type: 'image/png' }));
+    const inp = document.querySelector('.imgItem .upload');
+    Object.defineProperty(inp, 'files', { value: dt.files });
+    inp.dispatchEvent(new Event('change'));
+  });
+  await page.waitForFunction(() => document.querySelectorAll('.imgs .imgItem').length >= 1, { timeout: 3000 });
+  // while stuck, submit is refused and no complaint goes out (the pre-fix state)
+  await page.evaluate(() => document.querySelector('.reportSubmit').click());
+  await page.waitForTimeout(300);
+  check('P2-1(pre): a hung presign blocks submit with no POST',
+    submissions.length === 0 && presignDialogs.some((m) => /还在上传中/.test(m)),
+    `posts=${submissions.length} dialogs=${JSON.stringify(presignDialogs)}`);
+  // past the 10s presign timeout the tile must become a removable failure
+  await page.waitForTimeout(11000);
+  const failedTileVisible = await page.evaluate(() => !!document.querySelector('.imgs .imgItem.upload-failed .uploadRemove'));
+  check('P2-1: timed-out presign renders a removable failure tile', failedTileVisible, `failedTile=${failedTileVisible}`);
+  // remove the failed tile → submit is unblocked and posts
+  await page.evaluate(() => {
+    const el = document.querySelector('.uploadRemove');
+    if (el) el.click();
+  });
+  await page.waitForTimeout(100);
+  await page.fill('.reportContent', 'after removing the stuck tile');
+  await page.evaluate(() => document.querySelector('.reportSubmit').click());
+  await page.waitForTimeout(900);
+  check('P2-1: after removing the timed-out tile, submit posts the complaint',
+    submissions.length === 1, `posts=${submissions.length}`);
+  presignHang = false;
+
+  // ---------- Probe 7: bridge present but silent → submit lock is released ----------
+  // The review repro: window.IMJSBridge exists but never invokes its callback.
+  // Before the fix the await hangs with pointer-events:none and no prompt; after
+  // it, the 5s timeout fires, alerts, and unlocks the button.
+  const silentDialogs = [];
+  const silentPage = await browser.newPage();
+  await silentPage.addInitScript(() => {
+    window.IMJSBridge = { callHandler: () => {} };
+  });
+  silentPage.on('dialog', (d) => { silentDialogs.push(d.message()); d.dismiss(); });
+  submissions.length = 0; uploads.length = 0; sessionConsumed = false; uploadDelayMs = 0;
+  presignDelayMs = 0; presignHang = false;
+  await openForm(silentPage, 'http://127.0.0.1:18933/report.html?session=S6&channel_id=ch-q&channel_type=2');
+  await silentPage.fill('.reportContent', 'silent bridge');
+  await silentPage.evaluate(() => document.querySelector('.reportSubmit').click());
+  await silentPage.waitForTimeout(3000); // below the 5s timeout: still locked (the pre-fix state)
+  check('P2-2(pre): within the bridge timeout the submit is still locked',
+    submissions.length === 0 &&
+    (await silentPage.evaluate(() => getComputedStyle(document.querySelector('.reportSubmit')).pointerEvents)) === 'none',
+    `posts=${submissions.length}`);
+  await silentPage.waitForTimeout(3000); // past the 5s bridge timeout
+  const unlocked = await silentPage.evaluate(() => getComputedStyle(document.querySelector('.reportSubmit')).pointerEvents);
+  check('P2-2: a silent bridge releases the lock and shows a visible prompt',
+    silentDialogs.some((m) => /超时/.test(m)) && unlocked !== 'none' && submissions.length === 0,
+    `dialogs=${JSON.stringify(silentDialogs)} pointerEvents=${unlocked} posts=${submissions.length}`);
+  await silentPage.close();
 
   // ---------- Probe 3: CSP must not carry the inert bridge source ----------
   const csp = fs.readFileSync(path.resolve(__dirname, '../../../../nginx.conf.template'), 'utf8');

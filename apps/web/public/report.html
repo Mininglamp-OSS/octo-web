@@ -383,6 +383,14 @@
                 },
                 url: apiURL + `file/upload?type=report&path=/${uid}/${uuid()}`,
                 type: "get",
+                // Bound the presign GET like the submit POST (30s) and the
+                // upload POST (60s). jQuery has no default timeout, so a proxy
+                // that accepts the connection but never answers pins the tile
+                // at 'pending' forever; the only other exit (submit) answers
+                // "图片还在上传中" with no visible way out. On timeout jQuery
+                // fires error() → settle('failed'), which renders a removable
+                // tile and unblocks submit.
+                timeout: 10000,
                 success: function (result) {
                     try {
                         if (!result || !result.url) {
@@ -548,6 +556,29 @@
             }
             return true;
         }
+        // Bound the native bridge round-trip. im.getChannel() only settles when
+        // the WebView invokes the callback (or the bridge is absent and im.call
+        // fails fast); a bridge that is present but silent would otherwise hang
+        // this await forever, leaving setSubmitting(true)'s pointer-events:none
+        // in place with no POST and no prompt. Reject with a tagged error so the
+        // submit handler can distinguish "silent bridge" from "no bridge" and
+        // surface a visible exit instead of falling through to the query params.
+        function getChannelWithTimeout(ms) {
+            return new Promise(function (resolve, reject) {
+                let timer = setTimeout(function () {
+                    let err = new Error('getChannel timeout');
+                    err.__timeout = true;
+                    reject(err);
+                }, ms);
+                im.getChannel().then(function (channel) {
+                    clearTimeout(timer);
+                    resolve(channel);
+                }, function (e) {
+                    clearTimeout(timer);
+                    reject(e);
+                });
+            });
+        }
         $('.reportSubmit').on('click', async function () { // 提交
             if (submitting) {
                 return;
@@ -569,8 +600,16 @@
             }
             let channel = null;
             try {
-                channel = await im.getChannel();
+                channel = await getChannelWithTimeout(5000);
             } catch (e) {
+                if (e && e.__timeout) {
+                    // Bridge present but never called back: release the submit
+                    // lock and tell the user, rather than hanging with the
+                    // button frozen (pointer-events:none) and no feedback.
+                    alert('获取会话信息超时，请重试');
+                    setSubmitting(false);
+                    return;
+                }
                 channel = null;
             }
             if (!channel || !channel.channelID) {
