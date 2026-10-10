@@ -128,13 +128,25 @@ export function replaceSummaryWorkbenchSessionSlots(
 ): boolean {
     const activeKey = storageKey(scope);
     const previousKey = previousStorageKey(scope);
+    // Without a caller-provided snapshot the original values are read here, just
+    // before the mutations. If that read itself fails we cannot know what the
+    // pointers held, so compensation must be skipped entirely: restoring with an
+    // inferred `null` would treat "unknown" as "absent" and delete a live
+    // `:previous` pointer on the rollback path (the exact loss the block exists
+    // to prevent).
+    let snapshotCaptured = false;
+    let originalActive: string | null = null;
+    let originalPrevious: string | null = null;
     try {
-        const originalActive = rollbackSnapshot
-            ? rollbackSnapshot.activeSessionId
-            : localStorage.getItem(activeKey);
-        const originalPrevious = rollbackSnapshot
-            ? rollbackSnapshot.previousSessionId
-            : localStorage.getItem(previousKey);
+        if (rollbackSnapshot) {
+            originalActive = rollbackSnapshot.activeSessionId;
+            originalPrevious = rollbackSnapshot.previousSessionId;
+            snapshotCaptured = true;
+        } else {
+            originalActive = localStorage.getItem(activeKey);
+            originalPrevious = localStorage.getItem(previousKey);
+            snapshotCaptured = true;
+        }
         try {
             if (activeSessionId) {
                 localStorage.setItem(activeKey, activeSessionId);
@@ -148,6 +160,7 @@ export function replaceSummaryWorkbenchSessionSlots(
             }
             return true;
         } catch {
+            if (!snapshotCaptured) return false;
             if (originalActive === null) localStorage.removeItem(activeKey);
             else localStorage.setItem(activeKey, originalActive);
             if (originalPrevious === null) localStorage.removeItem(previousKey);

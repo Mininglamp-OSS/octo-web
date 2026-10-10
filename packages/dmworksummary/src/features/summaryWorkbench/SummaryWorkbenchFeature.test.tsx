@@ -3225,7 +3225,7 @@ describe("SummaryWorkbenchFeature", () => {
     setSpy.mockRestore();
   });
 
-  it("warns and demotes the active session when the previous session expired", async () => {
+  it("warns and restores the current session when the previous session expired", async () => {
     const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
     localStorage.setItem(ordinaryKey, "current-session");
     localStorage.setItem(`${ordinaryKey}:previous`, "old-session");
@@ -3247,9 +3247,18 @@ describe("SummaryWorkbenchFeature", () => {
         "summary.workbench.errors.sessionExpired"
       )
     );
-    expect(localStorage.getItem(ordinaryKey)).toBeNull();
-    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
+    // An expired resume must NOT demote the conversation the user was
+    // reading into the single :previous slot (it would be one fresh-session
+    // gesture away from permanent loss). Both slots stay untouched and the
+    // runtime re-hydrates the current session.
+    expect(current.hydrateSession).toHaveBeenNthCalledWith(1, "old-session");
+    expect(current.hydrateSession).toHaveBeenNthCalledWith(
+      2,
       "current-session"
+    );
+    expect(localStorage.getItem(ordinaryKey)).toBe("current-session");
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
+      "old-session"
     );
   });
 

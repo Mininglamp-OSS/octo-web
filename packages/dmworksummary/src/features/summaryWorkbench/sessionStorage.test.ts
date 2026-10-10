@@ -245,6 +245,32 @@ describe("summary workbench session storage", () => {
         expect(readSummaryWorkbenchSession(second)).toBe("session-b");
     });
 
+    it("keeps the previous slot when the pre-swap snapshot read fails", () => {
+        const scope = { userId: "user-a", spaceId: "space-a" };
+        const activeKey =
+            "summary-workbench-session:v2:user-a:space-a:global";
+        const previousKey = `${activeKey}:previous`;
+        localStorage.setItem(activeKey, "current-session");
+        localStorage.setItem(previousKey, "old-session");
+        const originalGetItem = Storage.prototype.getItem;
+        const getSpy = vi
+            .spyOn(Storage.prototype, "getItem")
+            .mockImplementation(function (this: Storage, key: string) {
+                // Fail the compensation snapshot read (the previous slot); the
+                // active-slot read still succeeds so the swap itself proceeds.
+                if (key === previousKey) throw new Error("blocked read");
+                return originalGetItem.call(this, key);
+            });
+
+        expect(
+            replaceSummaryWorkbenchSessionSlots(scope, "", "current-session")
+        ).toBe(false);
+
+        getSpy.mockRestore();
+        // Without the guard this rollback inferred previous=null and deleted it.
+        expect(localStorage.getItem(previousKey)).toBe("old-session");
+    });
+
     it("fails safely when browser storage is unavailable", () => {
         const getSpy = vi
             .spyOn(Storage.prototype, "getItem")

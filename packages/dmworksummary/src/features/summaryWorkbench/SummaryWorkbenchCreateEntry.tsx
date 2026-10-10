@@ -1,5 +1,4 @@
 import React from "react";
-import { WKApp } from "@octo/base";
 import { Spin } from "@douyinfe/semi-ui";
 import type { SummaryReferenceTask } from "../../types/summary";
 import type { SummaryMessagingPort } from "../../host";
@@ -10,6 +9,7 @@ import {
   moveSummaryWorkbenchSessionToPrevious,
   type SummaryWorkbenchSessionScope,
 } from "./sessionStorage";
+import { summaryWorkbenchSessionScopeValue } from "./useSummaryWorkbenchSessionScope";
 import useCurrentSummarySpaceId from "./useCurrentSummarySpaceId";
 import "./SummaryWorkbenchFeature.css";
 
@@ -41,22 +41,21 @@ function PreparedSummaryWorkbenchFeature({
   onForceNewSessionConsumed,
   ...props
 }: React.ComponentProps<typeof SummaryWorkbenchFeature>) {
-  const currentUserId =
-    props.messaging?.getCurrentUser().uid ?? WKApp.loginInfo.uid ?? "";
   const storageScope = React.useMemo<SummaryWorkbenchSessionScope>(
-    () => ({
-      userId: currentUserId,
-      spaceId: props.spaceId,
-      channelId: props.channel?.channelID,
-      channelType: props.channel?.channelType,
-      referencedTaskId: props.derivedFromTask?.task_id,
-    }),
+    () =>
+      summaryWorkbenchSessionScopeValue({
+        spaceId: props.spaceId,
+        channelId: props.channel?.channelID,
+        channelType: props.channel?.channelType,
+        referencedTaskId: props.derivedFromTask?.task_id,
+        messaging: props.messaging,
+      }),
     [
-      currentUserId,
       props.channel?.channelID,
       props.channel?.channelType,
       props.derivedFromTask?.task_id,
       props.spaceId,
+      props.messaging,
     ]
   );
   const [preparedFreshSession, setPreparedFreshSession] = React.useState<

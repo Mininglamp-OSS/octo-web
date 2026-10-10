@@ -32,6 +32,8 @@ interface ChatSummaryPanelState {
     legacyCreateMode: 'normal' | 'agent';
     /** 「+」每次点击 +1：作为 workbench key 让其强制重挂载（新会话语义）。 */
     createSeq: number;
+    /** 仅由显式「新建会话」手势递增；0 表示从未点过「+」。 */
+    freshSessionSeq: number;
 }
 
 export default class ChatSummaryPanel extends Component<
@@ -49,7 +51,7 @@ export default class ChatSummaryPanel extends Component<
     constructor(props: ChatSummaryPanelProps) {
         super(props);
         const initialView = props.summaryPanelView === 'new' ? 'create' : 'list';
-        this.state = { view: initialView, selectedTaskId: null, refineTask: null, isDragging: false, legacyCreateMode: 'normal', createSeq: 0 };
+        this.state = { view: initialView, selectedTaskId: null, refineTask: null, isDragging: false, legacyCreateMode: 'normal', createSeq: 0, freshSessionSeq: 0 };
     }
 
     componentDidMount() {
@@ -161,6 +163,8 @@ export default class ChatSummaryPanel extends Component<
             legacyCreateMode: mode === 'agent' ? 'agent' : 'normal',
             /** 每次点「+」都是新会话语义：递增 seq 换 key 强制重挂 workbench。 */
             createSeq: prev.createSeq + 1,
+            /** 只有「+」手势才允许销毁性轮换 :previous 槽位（forceNewSession）。 */
+            freshSessionSeq: prev.freshSessionSeq + 1,
         }));
     };
 
@@ -194,7 +198,7 @@ export default class ChatSummaryPanel extends Component<
 
     render() {
         const { channel, onClose } = this.props;
-        const { view, selectedTaskId, refineTask, isDragging } = this.state;
+        const { view, selectedTaskId, refineTask, isDragging, freshSessionSeq } = this.state;
         const { t } = this.context;
         const isDetail = view === 'detail' && selectedTaskId != null;
         const isCreate = view === 'create';
@@ -247,7 +251,7 @@ export default class ChatSummaryPanel extends Component<
                                 key={`${channel.channelType}:${channel.channelID}:${this.state.createSeq}`}
                                 channel={channel}
                                 derivedFromTask={refineTask ?? undefined}
-                                forceNewSession={refineTask == null}
+                                forceNewSession={freshSessionSeq > 0}
                                 embedded={true}
                                 onClose={this.handleBackToList}
                                 onSubmit={this.handleCreateSubmit}

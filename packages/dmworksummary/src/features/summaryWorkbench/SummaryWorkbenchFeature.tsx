@@ -52,6 +52,7 @@ import type { ChatCandidate, SummaryListItem } from "../../types/summary";
 import { channelToChatCandidate } from "../../utils/channelConvert";
 import { markAgentSummaryNotificationEligible } from "../../utils/groupSummaryNotify";
 import { trackAgentSummaryQuality } from "../../utils/summaryQualityDiagnostics";
+import { summaryWorkbenchSessionScopeValue } from "./useSummaryWorkbenchSessionScope";
 import {
   deriveSummaryTitle,
   resolveTemplate,
@@ -194,26 +195,25 @@ export default function SummaryWorkbenchFeature({
     return () => observer.disconnect();
   }, []);
   const [referencePreviewId] = useState(createReferencePreviewId);
-  const currentUserId =
-    messaging?.getCurrentUser().uid ?? WKApp.loginInfo.uid ?? "";
   const initialScope = useMemo(
     () => initialScopeFor(channel, derivedFromTask),
     [channel?.channelID, channel?.channelType, derivedFromTask?.task_id]
   );
   const storageScope = useMemo<SummaryWorkbenchSessionScope>(
-    () => ({
-      userId: currentUserId,
-      spaceId,
-      channelId: channel?.channelID,
-      channelType: channel?.channelType,
-      referencedTaskId: derivedFromTask?.task_id,
-    }),
+    () =>
+      summaryWorkbenchSessionScopeValue({
+        spaceId,
+        channelId: channel?.channelID,
+        channelType: channel?.channelType,
+        referencedTaskId: derivedFromTask?.task_id,
+        messaging,
+      }),
     [
       channel?.channelID,
       channel?.channelType,
       derivedFromTask?.task_id,
       spaceId,
-      currentUserId,
+      messaging,
     ]
   );
   const [persistedSessionAtMount] = useState(() =>
@@ -382,7 +382,7 @@ export default function SummaryWorkbenchFeature({
       }));
       try {
         const result = await loadParticipantCandidates(channels, {
-          currentUserId,
+          currentUserId: storageScope.userId ?? "",
           spaceId,
           messaging,
         });
@@ -419,7 +419,7 @@ export default function SummaryWorkbenchFeature({
       }
     },
     [
-      currentUserId,
+      storageScope,
       messaging,
       applyParticipantPrune,
       participantCandidateState.sourceKey,
@@ -922,8 +922,24 @@ export default function SummaryWorkbenchFeature({
   };
 
   const resetSession = () => {
+    // Distinguish the two storage-failure shapes: a READ failure means storage
+    // is entirely unavailable (private mode), where the historical contract is
+    // to keep going with an in-memory reset. A read that succeeds but whose
+    // rotation fails (quota-exhausted writes) would otherwise silently strand
+    // the user — abort that with feedback instead.
+    // readSummaryWorkbenchSession already swallows read errors and returns "",
+    // so a "fully blocked" storage and an "empty" session are indistinguishable
+    // through it; both keep the historical in-memory-reset contract. Only a
+    // readable session whose rotation fails (quota-exhausted writes) aborts.
     const currentPersisted = readSummaryWorkbenchSession(storageScope);
     const moved = moveSummaryWorkbenchSessionToPrevious(storageScope);
+    if (!moved && currentPersisted) {
+      // Rotation failed while a real session was persisted: keep the pending
+      // theme-tracking timer so the event still fires for the session the
+      // user is staying in, and surface why nothing happened.
+      Toast.warning(t("summary.workbench.errors.sessionSaveFailed"));
+      return;
+    }
     if (themeTrackTimer.current) {
       clearTimeout(themeTrackTimer.current);
       themeTrackTimer.current = null;
@@ -941,9 +957,6 @@ export default function SummaryWorkbenchFeature({
     setTemplateGalleryOpen(!derivedFromTask);
     templateFilledComposer.current = null;
     workbench.resetSession({ scope: initialScope });
-    if (!moved && currentPersisted) {
-      writeSummaryWorkbenchSession(storageScope, currentPersisted);
-    }
   };
 
   const resumeLastSession = async () => {
@@ -956,7 +969,18 @@ export default function SummaryWorkbenchFeature({
       return;
     }
     if (hydration.status === "empty") {
+      // The resumed session no longer exists server-side. Leave both storage
+      // slots untouched (the runtime already cleared the active pointer) and
+      // restore the conversation the user was reading, so an expired resume
+      // never demotes the current session into the single :previous slot.
       Toast.warning(t("summary.workbench.errors.sessionExpired"));
+      if (currentPersisted) {
+        await workbench.hydrateSession(currentPersisted);
+      } else {
+        workbench.resetSession({ scope: initialScope });
+      }
+      setLastSessionId(readSummaryWorkbenchPreviousSession(storageScope));
+      return;
     }
 
     // Commit the storage swap only after the target session has been
