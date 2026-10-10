@@ -317,9 +317,39 @@
         }
 
         let imgPaths = [];
+
+        // Single exit for every terminal outcome of an image upload (ok / error /
+        // timeout / thrown / cancelled on category switch). status leaving
+        // 'pending' makes any later call a no-op, so a duplicate ontimeout +
+        // onreadystatechange pair decrements pendingUploads exactly once. Returns
+        // whether this call is the one that settled the image.
+        function settleImage(imageData, status) {
+            if (imageData.status !== 'pending') {
+                return false;
+            }
+            imageData.status = status;
+            pendingUploads--;
+            return true;
+        }
+
+        // Called from clearDetailContent() when the draft is discarded: cancel
+        // every still-in-flight upload so its completion cannot leak a path into
+        // a later complaint, and so pendingUploads tracks the visible draft.
+        function settleCancelled(imageData) {
+            if (settleImage(imageData, 'cancelled')) {
+                renderImageItes();
+            }
+        }
+
         function uploadImage(fileObj, imageData) {
             let uid = window.__reportAuth.uid;
             let token = window.__reportAuth.token;
+            // Bind this upload to the draft that started it. clearDetailContent()
+            // rebinds imgPaths to a fresh array when the user switches category;
+            // pushing through the module binding at completion time would then
+            // attach a withdrawn image to the next complaint. Capture the array
+            // identity now and push into that (possibly orphaned) array instead.
+            var targetPaths = imgPaths;
             // Credential not resolved yet (or resolve failed): don't fire a
             // path=/null/... request. Drop the just-added thumbnail and warn once.
             if (!uid || !token) {
@@ -327,17 +357,10 @@
                 removeImageData(imageData);
                 return;
             }
-            // Single exit for every terminal outcome (ok / error / timeout /
-            // thrown), so pendingUploads always drains and drains exactly once:
-            // ontimeout and onreadystatechange can both fire for one aborted
-            // XHR, and `status` leaving 'pending' makes the second a no-op.
-            // Returns whether this call is the one that settled the image.
             function settle(status) {
-                if (imageData.status !== 'pending') {
+                if (!settleImage(imageData, status)) {
                     return false;
                 }
-                imageData.status = status;
-                pendingUploads--;
                 renderImageItes();
                 if (status === 'failed') {
                     alert('图片上传失败，请重试');
@@ -392,7 +415,7 @@
                                 try {
                                     var obj = JSON.parse(xhr.responseText);
                                     if (settle('done')) {
-                                        imgPaths.push(obj.path);
+                                        targetPaths.push(obj.path);
                                     }
                                 } catch (e) {
                                     settle('failed');
@@ -478,21 +501,35 @@
         })
 
         let submitting = false;
+        function setSubmitting(on) {
+            submitting = on;
+            $('.reportSubmit').css(on
+                ? { opacity: '0.5', 'pointer-events': 'none' }
+                : { opacity: '', 'pointer-events': '' });
+        }
         $('.reportSubmit').on('click', async function () { // 提交
             if (submitting) {
                 return;
             }
+            // Claim the lock BEFORE the first await. im.getChannel() round-trips
+            // through the native bridge (a real async task, not a microtask), so
+            // checking here but assigning after the await let a fast double-tap
+            // slip a second POST through with identical payload.
+            setSubmitting(true);
             let token = window.__reportAuth.token;
             if (!token) {
                 alert('登录态尚未就绪，请从客户端重新进入');
+                setSubmitting(false);
                 return;
             }
             if (pendingUploads > 0) {
                 alert('图片还在上传中，请稍候');
+                setSubmitting(false);
                 return;
             }
             if (imageDatas.some(function (d) { return d.status === 'failed'; })) {
                 alert('存在上传失败的图片，请移除或重试后再提交');
+                setSubmitting(false);
                 return;
             }
             let reportContent = $('.reportContent').val();
@@ -509,14 +546,13 @@
                 let channelType = parseInt(getQueryString('channel_type'), 10);
                 if (!channelID || isNaN(channelType)) {
                     alert('获取会话信息失败，请从客户端重新进入');
+                    setSubmitting(false);
                     return;
                 }
                 channel = { channelID: channelID, channelType: channelType };
             }
             let categoryNos = window.location.hash.substring(1).split("-")
             let categoryNo = categoryNos[categoryNos.length - 1];
-            submitting = true;
-            $('.reportSubmit').css('opacity', '0.5');
             $.ajax({
                 headers: {
                     Accept: "application/json; charset=utf-8",
@@ -528,17 +564,30 @@
                 dataType: 'json',
                 data: JSON.stringify({ "category_no": categoryNo, "channel_id": channel.channelID, "channel_type": channel.channelType, "remark": reportContent || '', "imgs": imgPaths || [] }),
                 success: function (result) {
+                    // Navigating away; leave the lock set so no further click can
+                    // fire another POST during the navigation.
                     window.location.href = 'report_success.html' + window.location.search;
                 },
                 error: function () {
-                    submitting = false;
-                    $('.reportSubmit').css('opacity', '');
+                    setSubmitting(false);
                     alert('提交失败！');
                 }
             })
         })
 
         function clearDetailContent() {
+            // Cancel any upload still in flight for this draft. Merely dropping
+            // the array references is not enough: the XHR's completion handler
+            // would otherwise settle as 'done' and repopulate the array (or, once
+            // the push is bound to the captured array, still leak a path into the
+            // draft's own array). Marking the entry cancelled makes settle() a
+            // no-op and keeps pendingUploads in step with the visible draft, so
+            // the next category's submit is not blocked by a stale upload.
+            imageDatas.forEach(function (d) {
+                if (d.status === 'pending') {
+                    settleCancelled(d);
+                }
+            });
             imageDatas = []
             imgPaths = []
             renderImageItes()

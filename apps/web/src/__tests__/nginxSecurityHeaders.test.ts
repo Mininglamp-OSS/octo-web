@@ -48,6 +48,20 @@ describe('Nginx Security Headers', () => {
     expect(nginxConfig).toMatch(/media-src\s+'self'\s+blob:\s+https:/);
   });
 
+  it('should allow the native bridge bootstrap sentinel in frame-src while keeping self', () => {
+    // The report H5 pages bootstrap the WebViewJavascriptBridge by navigating a
+    // throwaway iframe to https://__bridge_loaded__. Without an explicit frame-src
+    // this falls back to default-src 'self' and the iframe is blocked on iOS.
+    const csp = nginxConfig.match(/Content-Security-Policy "([^"]*)"/);
+    expect(csp).not.toBeNull();
+    const frameSrc = csp[1].match(/frame-src ([^;]*);/);
+    expect(frameSrc).not.toBeNull();
+    expect(frameSrc[1]).toContain("'self'");
+    expect(frameSrc[1]).toContain('https://__bridge_loaded__');
+    // Never widen to a blanket https: source.
+    expect(frameSrc[1]).not.toMatch(/(^|\s)https:(\s|$)/);
+  });
+
   it('should have HSTS header available (commented for manual enable)', () => {
     expect(nginxConfig).toContain('Strict-Transport-Security');
   });
