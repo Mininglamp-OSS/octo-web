@@ -294,61 +294,117 @@ async function launchBrowser() {
     `dialogs=${JSON.stringify(silentDialogs)} pointerEvents=${unlocked} posts=${submissions.length}`);
   await silentPage.close();
 
-  // ---------- Probe 8: navigation during the bridge wait can't alter the payload ----------
-  // The review repro: enter text in a leaf category, submit with a slow bridge,
-  // then hit the footer Back control. Before the fix the post-await re-read filed
-  // the complaint against the navigated-to state (empty category, discarded
-  // remark) and still showed the success page. Now: navigation is ignored while
-  // submitting, and the payload is the snapshot taken before the await.
+  // Walk the nested tree with real taps from root to the C leaf (#1-12-121).
+  async function walkToLeafC(p) {
+    await p.evaluate(() => { window.location.hash = ''; });
+    await p.waitForTimeout(250);
+    for (const label of ['Cat A', 'Cat B', 'Cat C']) {
+      await p.evaluate((name) => {
+        const lis = Array.from(document.querySelectorAll('.categoryBox .item ul li'));
+        const el = lis.find((li) => li.querySelector('label') && li.querySelector('label').textContent === name);
+        if (el) el.dispatchEvent(new Event('touchend'));
+      }, label);
+      await p.waitForTimeout(300);
+    }
+    await p.waitForSelector('.reportContent', { state: 'visible', timeout: 5000 });
+  }
+
+  // ---------- Probe 8: a real hash navigation during the bridge wait ----------
+  // The review repro: nested leaf, submit with a slow bridge, then a back
+  // gesture changes the hash. Before the fix the post-await re-read filed the
+  // complaint against the navigated-to state. Now the payload is the render
+  // identity, AND the URL is re-synced so hash and form cannot diverge.
   submissions.length = 0; uploads.length = 0; sessionConsumed = false; uploadDelayMs = 0;
   presignDelayMs = 0; presignHang = false;
   const navPage = await browser.newPage();
   await navPage.addInitScript(() => {
-    // slow bridge: 500ms, matching the review's reproduction
-    window.IMJSBridge = { callHandler: (m, o, cb) => setTimeout(() => cb(JSON.stringify({ err_code: 200, channelID: 'ch-native', channelType: 1 })), 500) };
+    window.IMJSBridge = { callHandler: (m, o, cb) => setTimeout(() => cb(JSON.stringify({ err_code: 200, channelID: 'ch-native', channelType: 1 })), 2500) };
   });
   navPage.on('dialog', (d) => d.dismiss());
   await openForm(navPage, 'http://127.0.0.1:18933/report.html?session=S7&channel_id=ch-q&channel_type=2');
-  await navPage.fill('.reportContent', 'KEEP');
-  // submit, then immediately drive the footer Back control during the bridge wait
+  await walkToLeafC(navPage);
+  await navPage.fill('.reportContent', 'LEAF-KEEP');
   await navPage.evaluate(() => document.querySelector('.reportSubmit').click());
-  await navPage.waitForTimeout(100); // inside the 500ms bridge round trip
-  await navPage.evaluate(() => {
-    const back = document.querySelector('.back');
-    if (back) back.dispatchEvent(new Event('touchend'));
-  });
-  await navPage.waitForTimeout(1200);
+  await navPage.waitForTimeout(200); // inside the 2500ms bridge round trip
+  // real history transition (what the OS back gesture produces), not the frozen control
+  await navPage.evaluate(() => { window.history.back(); });
+  // read the hash while still waiting on the bridge: the suppressed navigation
+  // must have re-synced the URL to the rendered leaf. (After the submit resolves
+  // the page navigates to the success page, so this has to be observed early.)
+  await navPage.waitForTimeout(700);
+  const navHash = await navPage.evaluate(() => window.location.hash);
+  await navPage.waitForTimeout(2500);
   const navPayload = submissions.length ? submissions[submissions.length - 1] : null;
-  check('P1-E: footer Back during the bridge wait cannot blank the submitted draft',
-    !!navPayload && navPayload.category_no === '2' && navPayload.remark === 'KEEP',
+  check('P1-E: the URL is re-synced to the rendered leaf after the suppressed navigation',
+    navHash === '#1-12-121', `hash=${navHash}`);
+  check('P1-E: a back gesture during the bridge wait cannot file the wrong category',
+    !!navPayload && navPayload.category_no === '121' && navPayload.remark === 'LEAF-KEEP',
     `payload=${JSON.stringify(navPayload)}`);
   await navPage.close();
 
-  // ---------- Probe 9: browser back (onhashchange) during the bridge wait ----------
-  // The OS/browser back gesture is not reachable by CSS, so it is guarded in
-  // onhashchange instead. Hash navigation during submit must not swap the draft.
+  // ---------- Probe 9: the resubmit the cancel message asks for must be safe ----------
+  // Previously the URL and the rendered form diverged after a suppressed
+  // navigation, so following the "提交内容已变更，请重新提交" dialog filed the
+  // complaint against the stale hash (a real parent node). Assert the resubmit
+  // lands on the LEAF, never a parent or an empty category.
   submissions.length = 0; uploads.length = 0; sessionConsumed = false;
   const hashPage = await browser.newPage();
+  const hashDialogs = [];
   await hashPage.addInitScript(() => {
-    window.IMJSBridge = { callHandler: (m, o, cb) => setTimeout(() => cb(JSON.stringify({ err_code: 200, channelID: 'ch-native', channelType: 1 })), 500) };
+    window.IMJSBridge = { callHandler: (m, o, cb) => setTimeout(() => cb(JSON.stringify({ err_code: 200, channelID: 'ch-native', channelType: 1 })), 600) };
   });
-  hashPage.on('dialog', (d) => d.dismiss());
+  hashPage.on('dialog', (d) => { hashDialogs.push(d.message()); d.accept(); });
   await openForm(hashPage, 'http://127.0.0.1:18933/report.html?session=S8&channel_id=ch-q&channel_type=2');
-  await hashPage.fill('.reportContent', 'HASH-KEEP');
+  await walkToLeafC(hashPage);
+  await hashPage.fill('.reportContent', 'RESUBMIT');
   await hashPage.evaluate(() => document.querySelector('.reportSubmit').click());
-  await hashPage.waitForTimeout(100);
-  // simulate a hash navigation / back landing on the category root mid-submit
-  await hashPage.evaluate(() => { window.location.hash = ''; });
-  await hashPage.waitForTimeout(1200);
-  const hashPayload = submissions.length ? submissions[submissions.length - 1] : null;
-  // Safe outcomes: either the navigation cancelled the submit (no POST), or a
-  // POST went out with the intact pre-await draft. The unsafe outcome — a POST
-  // carrying the navigated-to (blank) category/remark — must not happen.
-  const hashUnsafe = !!hashPayload && (hashPayload.category_no !== '2' || hashPayload.remark !== 'HASH-KEEP');
-  check('P1-E: hash navigation during the bridge wait cannot file a wrong draft',
-    !hashUnsafe,
-    `payload=${JSON.stringify(hashPayload)}`);
+  await hashPage.waitForTimeout(150);
+  await hashPage.evaluate(() => { window.history.back(); });
+  await hashPage.waitForTimeout(1500);
+  const first = submissions.length ? submissions[submissions.length - 1] : null;
+  // If the first submit was refused, resubmit as the dialog instructed.
+  if (submissions.length === 0) {
+    await hashPage.waitForTimeout(100);
+    await hashPage.evaluate(() => document.querySelector('.reportSubmit').click());
+    await hashPage.waitForTimeout(1200);
+  }
+  const final = submissions.length ? submissions[submissions.length - 1] : null;
+  const anyWrong = [first, final].some((s) => s && s.category_no !== '121');
+  check('P1-E: every submitted category is the rendered leaf, not a stale parent',
+    !anyWrong && !!final && final.category_no === '121',
+    `posts=${submissions.length} first=${JSON.stringify(first)} final=${JSON.stringify(final)} dialogs=${JSON.stringify(hashDialogs)}`);
   await hashPage.close();
+
+  // ---------- Probe 10: an upload that completes inside the bridge window ----------
+  // The reachable route the CSS freeze cannot cover: the native picker is opened
+  // BEFORE 提交 is tapped and the photo is confirmed during the bridge wait, so the
+  // change event fires on the real input while submitting. Before the fix the
+  // snapshot was empty and the identity check ignored imgs, so the complaint was
+  // persisted with no evidence while the bytes reached storage.
+  submissions.length = 0; uploads.length = 0; sessionConsumed = false; uploadDelayMs = 150; presignDelayMs = 0; presignHang = false;
+  const pickPage = await browser.newPage();
+  await pickPage.addInitScript(() => {
+    window.IMJSBridge = { callHandler: (m, o, cb) => setTimeout(() => cb(JSON.stringify({ err_code: 200, channelID: 'ch-native', channelType: 1 })), 1200) };
+  });
+  const pickDialogs = [];
+  pickPage.on('dialog', (d) => { pickDialogs.push(d.message()); d.dismiss(); });
+  await openForm(pickPage, 'http://127.0.0.1:18933/report.html?session=S10&channel_id=ch-q&channel_type=2');
+  await pickPage.fill('.reportContent', 'PICKER-BEFORE');
+  await pickPage.evaluate(() => document.querySelector('.reportSubmit').click());
+  await pickPage.waitForTimeout(150); // inside the 1200ms bridge round trip
+  // the picker (opened before submit) delivers its change during the wait
+  await pickPage.evaluate(() => {
+    const inp = document.querySelector('.imgItem .upload');
+    const dt = new DataTransfer(); dt.items.add(new File(['p'], 'late-evidence.png', { type: 'image/png' }));
+    Object.defineProperty(inp, 'files', { value: dt.files, configurable: true });
+    inp.dispatchEvent(new Event('change'));
+  });
+  await pickPage.waitForTimeout(1800); // upload settles, bridge resolves
+  const silentDrop = submissions.some((s) => Array.isArray(s.imgs) && s.imgs.length === 0) && uploads.length > 0;
+  check('P1-B2: an upload completing inside the bridge window is never silently dropped',
+    !silentDrop,
+    `posts=${JSON.stringify(submissions)} uploads=${uploads.length} dialogs=${JSON.stringify(pickDialogs)}`);
+  await pickPage.close();
 
   // ---------- Probe 3: CSP must not carry the inert bridge source ----------
   const csp = fs.readFileSync(path.resolve(__dirname, '../../../../nginx.conf.template'), 'utf8');

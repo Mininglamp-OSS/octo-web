@@ -90,7 +90,23 @@ im.onReady = function (callback) {
 im.call = function (method, params) {
     if (window.IMJSBridge) {
         window.IMJSBridge.callHandler(method, params ? params.options : undefined, function (response) {
-            let result = JSON.parse(response)
+            let result
+            try {
+                result = JSON.parse(response)
+            } catch (e) {
+                // A malformed native payload must not throw out of the callback:
+                // none of success / error / complete would fire and every caller
+                // awaiting this would hang. Route it through the error path with
+                // the same shape the no-bridge branch uses.
+                result = { err_code: 500, msg: 'IMJSBridge returned invalid JSON' }
+                if (params && params.error) {
+                    params.error(result)
+                }
+                if (params && params.complete) {
+                    params.complete(result)
+                }
+                return
+            }
             if (result.err_code == undefined || result.err_code == 200) { // 正确请求
                 if (params.success) {
                     params.success(result)
@@ -123,17 +139,23 @@ im.call = function (method, params) {
 
 // 退出webview。带上 params 并且带 fallback，否则 bridge 不存在时
 // im.call 的 no-bridge 分支（else if (params)）不会触发，
-// 按钮会变成一个无反馈的空操作。
+// 按钮会变成一个无反馈的空操作。error/complete 可能都触发，用 done 保证只退一次。
 im.quit = function () {
+    var done = false;
+    function goBackOnce() {
+        if (done) {
+            return;
+        }
+        done = true;
+        if (window.history.length > 1) {
+            window.history.back();
+        }
+    }
     im.call("quit", {
-        error: function () {
-            if (window.history.length > 1) {
-                window.history.back();
-            }
-        },
+        error: goBackOnce,
         complete: function (result) {
-            if (result && result.err_code && result.err_code !== 200 && window.history.length > 1) {
-                window.history.back();
+            if (result && result.err_code && result.err_code !== 200) {
+                goBackOnce();
             }
         }
     });

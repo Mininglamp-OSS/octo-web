@@ -227,6 +227,12 @@
                 contentType: "application/json",
                 dataType: 'json',
                 data: JSON.stringify({ "session_id": sessionId }),
+                // Bound like the other three network calls: jQuery has no default
+                // timeout, and onAuthResolveFailed() is reachable only from the
+                // success/error arms, so a connection accepted but never answered
+                // would leave the page looking healthy with no credential and no
+                // banner until the user first interacts.
+                timeout: 10000,
                 // Success contract: HTTP 200 with non-empty uid & token. Anything
                 // else (HTTP 400 error envelope, empty fields) is a failure.
                 success: function (result) {
@@ -268,11 +274,53 @@
             window.history.back()
         });
 
+        // The identity of what the form is actually rendered for. The URL hash
+        // can be changed by a navigation that a submit freezes (the OS back
+        // gesture fires onhashchange, which we suppress), which leaves the hash
+        // pointing at one category while the form renders another. Reading the
+        // category back out of the hash after the bridge await would then file
+        // the complaint against a category the user is no longer looking at —
+        // and the resubmit the cancel message asks for would do exactly that.
+        // Keep the rendered identity explicitly and treat it as the source of
+        // truth for both the payload and the post-await check.
+        let renderHash = '';
+        let selectedCategoryNo = null;
+
+        function applyHashNavigation() {
+            if (window.location.hash && window.location.hash != '') {
+                let categoryNos = window.location.hash.substring(1).split("-")
+                let category = getCatgoryWithCategoryNo(categoryNos[categoryNos.length - 1], window.categories);
+                renderHash = window.location.hash;
+                if (category && category.children && category.children.length > 0) {
+                    selectedCategoryNo = null;
+                    renderCategories(category.children);
+                } else {
+                    selectedCategoryNo = categoryNos[categoryNos.length - 1];
+                    $(".reportFormBox").css('display', 'block');
+                    $(".categoryBox").css('display', 'none');
+                }
+            } else {
+                renderHash = '';
+                selectedCategoryNo = null;
+                renderCategories(window.categories);
+            }
+        }
+
+        // Re-sync the address bar to what is rendered, so the hash and the form
+        // cannot diverge after a navigation the submit suppressed.
+        function syncUrlToRender() {
+            if (window.location.hash !== renderHash) {
+                history.replaceState(null, '', window.location.pathname + window.location.search + renderHash);
+            }
+        }
+
         window.categories = [];
         $.getJSON(apiURL + `report/categories?lang=${window.getLang()}`).then(function (categories) {
             window.categories = categories || [];
             if (window.categories.length > 0) {
-                renderCategories(window.categories);
+                // Honour an initial hash (deep link / restored navigation) and
+                // seed renderHash/selectedCategoryNo from it.
+                applyHashNavigation();
             }
         }, function () {
             $('.categoryBox .item ul').html('<li><div class="content"><label>加载失败，请重试</label></div></li>');
@@ -281,26 +329,14 @@
         if ("onhashchange" in window) {
 
             window.onhashchange = function (ev) {
-                // Ignore hash navigation while a submit is in flight: it would
-                // swap the rendered category (and run clearDetailContent) out
-                // from under the snapshot the request was built from.
                 if (submitting) {
+                    // Navigation is frozen during submit; restore the URL so it
+                    // keeps matching the rendered draft instead of stranding the
+                    // hash on the category the user navigated to.
+                    syncUrlToRender();
                     return;
                 }
-                if (window.location.hash && window.location.hash != '') {
-                    let categoryNos = window.location.hash.substring(1).split("-")
-                    let category = getCatgoryWithCategoryNo(categoryNos[categoryNos.length - 1], window.categories);
-                    if (category && category.children && category.children.length > 0) {
-                        renderCategories(category.children);
-                    } else {
-                        $(".reportFormBox").css('display', 'block');
-                        $(".categoryBox").css('display', 'none');
-                        return
-                        // renderCategories(window.categories);
-                    }
-                } else {
-                    renderCategories(window.categories);
-                }
+                applyHashNavigation();
             };
         }
 
@@ -339,6 +375,20 @@
         // 'pending' makes any later call a no-op, so a duplicate ontimeout +
         // onreadystatechange pair decrements pendingUploads exactly once. Returns
         // whether this call is the one that settled the image.
+        // Order-sensitive equality for the evidence path list. Used by the
+        // post-await submit check to cover the whole payload.
+        function sameImgPaths(a, b) {
+            if (a.length !== b.length) {
+                return false;
+            }
+            for (let i = 0; i < a.length; i++) {
+                if (a[i] !== b[i]) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         function settleImage(imageData, status) {
             if (imageData.status !== 'pending') {
                 return false;
@@ -352,14 +402,16 @@
         // every still-in-flight upload so its completion cannot leak a path into
         // a later complaint, and so pendingUploads tracks the visible draft.
         function settleCancelled(imageData) {
-            // Abort the underlying XHR too. Marking the entry cancelled stops the
-            // path from being recorded, but the file bytes are already being
-            // streamed and would otherwise still be written into object storage
-            // under the reporter's own prefix — an evidence photo they withdrew.
+            // Mark cancelled FIRST, then abort. abort() fires readystatechange
+            // synchronously (readyState 4, status 0), which would otherwise let
+            // the 'failed' branch win while the entry is still 'pending' — telling
+            // a reporter who withdrew their own photo that "上传失败". Settling
+            // first makes that later settle('failed') a no-op.
+            var settled = settleImage(imageData, 'cancelled');
             if (imageData.xhr) {
                 try { imageData.xhr.abort(); } catch (e) { /* already finished */ }
             }
-            if (settleImage(imageData, 'cancelled')) {
+            if (settled) {
                 renderImageItes();
             }
         }
@@ -615,16 +667,13 @@
             }
             // Snapshot the validated draft BEFORE the await. The bridge round
             // trip is an async gap in which the page can still navigate (footer
-            // back/forward, browser back, the OS back gesture, onhashchange) and
-            // mutate the draft. Reading the DOM/hash again afterwards would then
-            // file a complaint against whatever the user navigated to — an empty
-            // category, a discarded remark — and still show the success page.
-            // Submit exactly what was validated here.
+            // back/forward, browser back, the OS back gesture, onhashchange). We
+            // freeze navigation during the submit and re-sync the URL, but the
+            // payload itself is taken from the rendered identity
+            // (selectedCategoryNo) rather than the hash, so a stale hash can
+            // never decide which category is filed.
             let draft = {
-                categoryNo: (function () {
-                    let nos = window.location.hash.substring(1).split("-");
-                    return nos[nos.length - 1];
-                })(),
+                categoryNo: selectedCategoryNo,
                 remark: $('.reportContent').val() || '',
                 imgs: (imgPaths || []).slice()
             };
@@ -661,10 +710,15 @@
             // evidence the UI now shows, or that no longer matches what was
             // validated. Navigation and the picker are frozen, so this is
             // defence in depth for anything that slips past those guards.
-            let currentNos = window.location.hash.substring(1).split("-");
-            let currentCategoryNo = currentNos[currentNos.length - 1];
-            let currentRemark = $('.reportContent').val() || '';
-            if (currentCategoryNo !== draft.categoryNo || currentRemark !== draft.remark) {
+            // Compare the WHOLE payload, not two of its four fields. The render
+            // identity is the source of truth for the category (the hash may have
+            // been left stale by a suppressed navigation). imgs must be compared
+            // too: an upload that was already open in the native picker when 提交
+            // was tapped can settle inside the bridge window and would otherwise
+            // be stored yet silently omitted from the complaint.
+            if (selectedCategoryNo !== draft.categoryNo
+                || ($('.reportContent').val() || '') !== draft.remark
+                || !sameImgPaths(imgPaths || [], draft.imgs)) {
                 alert('提交内容已变更，请重新提交');
                 setSubmitting(false);
                 return;
