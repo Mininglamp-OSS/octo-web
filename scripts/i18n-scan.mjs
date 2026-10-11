@@ -23,7 +23,13 @@ const namespaceByDir = {
   dmworksummary: "summary",
 };
 
-const knownNamespaces = new Set(["app", ...Object.values(namespaceByDir)]);
+// Feature-scoped namespaces that override the owning package's default namespace. Keyed by the
+// locale directory suffix so a feature can register its own namespace without a package of its own.
+const namespaceByPathFragment = {
+  "features/chat-composer/screenshot/i18n/": "screenshot",
+};
+
+const knownNamespaces = new Set(["app", ...Object.values(namespaceByDir), ...Object.values(namespaceByPathFragment)]);
 
 function toPosix(value) {
   return value.split(path.sep).join("/");
@@ -141,9 +147,11 @@ function getPackageInfo(relPath) {
   }
   const parts = relPath.split("/");
   if (parts[0] === "packages" && parts[1]) {
+    const packageName = `packages/${parts[1]}`;
+    const fragment = Object.keys(namespaceByPathFragment).find(prefix => relPath.includes(prefix));
     return {
-      packageName: `packages/${parts[1]}`,
-      namespace: namespaceByDir[parts[1]] || parts[1].replace(/^dmwork/, ""),
+      packageName,
+      namespace: fragment ? namespaceByPathFragment[fragment] : namespaceByDir[parts[1]] || parts[1].replace(/^dmwork/, ""),
     };
   }
   return { packageName: "unknown", namespace: "app" };

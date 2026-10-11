@@ -99,6 +99,9 @@ export interface DocumentForwardRequest {
 }
 
 export interface OctoBuddyCommunicationBridge {
+  /** Optional native region capture. Image bytes return only to the initiating composer. */
+  captureScreenshot?: import("@octo/base/src/features/chat-composer/screenshot/contract").ScreenshotHost["captureScreenshot"];
+  cancelScreenshot?: import("@octo/base/src/features/chat-composer/screenshot/contract").ScreenshotHost["cancelScreenshot"];
   /** Legacy host read, unused by Web; retained only for older bridge compatibility. */
   getWorkspaceGroupContext?(target: WorkspaceGroupTarget): Promise<WorkspaceGroupContext | null>;
   /** Client-only native actions. Display data is queried directly by Web. */
