@@ -969,17 +969,37 @@ export default function SummaryWorkbenchFeature({
       return;
     }
     if (hydration.status === "empty") {
-      // The resumed session no longer exists server-side. Leave both storage
-      // slots untouched (the runtime already cleared the active pointer) and
-      // restore the conversation the user was reading, so an expired resume
-      // never demotes the current session into the single :previous slot.
+      // The resumed session no longer exists server-side. Retire that dead
+      // pointer before restoring the conversation the user was reading. The
+      // empty hydration already cleared the active slot through
+      // onSessionIdChange, so persist the captured active pointer explicitly
+      // if the restoration is cancelled or fails before it can notify again.
       Toast.warning(t("summary.workbench.errors.sessionExpired"));
+      const retiredExpiredSession = replaceSummaryWorkbenchSessionSlots(
+        storageScope,
+        currentPersisted,
+        "",
+        {
+          activeSessionId: currentPersisted || null,
+          previousSessionId: previousPersisted || null,
+        }
+      );
       if (currentPersisted) {
-        await workbench.hydrateSession(currentPersisted);
+        const restoration = await workbench.hydrateSession(currentPersisted);
+        if (
+          restoration.status === "failed" ||
+          restoration.status === "cancelled"
+        ) {
+          writeSummaryWorkbenchSession(storageScope, currentPersisted);
+        }
       } else {
         workbench.resetSession({ scope: initialScope });
       }
-      setLastSessionId(readSummaryWorkbenchPreviousSession(storageScope));
+      setLastSessionId(
+        retiredExpiredSession
+          ? ""
+          : readSummaryWorkbenchPreviousSession(storageScope)
+      );
       return;
     }
 

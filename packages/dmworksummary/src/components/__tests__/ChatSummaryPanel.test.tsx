@@ -58,6 +58,7 @@ vi.mock('../../features/summaryWorkbench/SummaryWorkbenchCreateEntry', () => ({
                 data-embedded={String(props.embedded)}
                 data-source={props.source}
                 data-derived-task-id={props.derivedFromTask?.task_id ?? ''}
+                data-force-new-session={String(Boolean(props.forceNewSession))}
             >
                 <input
                     aria-label="panel-workbench-draft"
@@ -100,6 +101,22 @@ describe('ChatSummaryPanel', () => {
         expect(screen.queryByTestId('summary-create-entry')).not.toBeInTheDocument();
     });
 
+    it('does not rotate sessions for a render-time new view without a plus gesture', () => {
+        render(
+            <ChatSummaryPanel
+                visible
+                channel={channel}
+                onClose={onClose}
+                summaryPanelView="new"
+            />,
+        );
+
+        expect(screen.getByTestId('summary-create-entry')).toHaveAttribute(
+            'data-force-new-session',
+            'false',
+        );
+    });
+
     it('passes channelId to SummaryListPage for channel-scoped list', () => {
         render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
         expect(screen.getByTestId('summary-list').dataset.channelId).toBe('ch1');
@@ -120,6 +137,10 @@ describe('ChatSummaryPanel', () => {
         fireEvent.click(screen.getByText('create-new'));
 
         expect(screen.getByTestId('summary-create-entry')).toBeInTheDocument();
+        expect(screen.getByTestId('summary-create-entry')).toHaveAttribute(
+            'data-force-new-session',
+            'true',
+        );
         // List stays mounted but hidden (display:none) to preserve scroll
         expect(screen.queryByTestId('summary-list')).not.toBeVisible();
         // Must NOT emit wk:open-summary-modal — create is now in-panel
@@ -256,7 +277,28 @@ describe('ChatSummaryPanel', () => {
             'data-derived-task-id',
             '42',
         );
+        expect(screen.getByTestId('summary-create-entry')).toHaveAttribute(
+            'data-force-new-session',
+            'false',
+        );
         expect(screen.queryByTestId('summary-list')).not.toBeVisible();
+    });
+
+    it('does not reuse a prior fresh-session gesture for continue optimization', () => {
+        render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
+        fireEvent.click(screen.getByText('create-new'));
+        expect(screen.getByTestId('summary-create-entry')).toHaveAttribute(
+            'data-force-new-session',
+            'true',
+        );
+        fireEvent.click(screen.getByTestId('back-icon').closest('button')!);
+
+        fireEvent.click(screen.getByText('continue-optimize'));
+
+        expect(screen.getByTestId('summary-create-entry')).toHaveAttribute(
+            'data-force-new-session',
+            'false',
+        );
     });
 
     describe('resizable splitter', () => {

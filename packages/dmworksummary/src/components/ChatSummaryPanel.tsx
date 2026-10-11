@@ -178,6 +178,9 @@ export default class ChatSummaryPanel extends Component<
             selectedTaskId: null,
             refineTask: task,
             legacyCreateMode: 'agent',
+            // Continue-refine is not a destructive fresh-session gesture. A
+            // prior "+" may have left the sequence latched across an unmount.
+            freshSessionSeq: 0,
         });
     };
 

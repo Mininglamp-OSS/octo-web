@@ -494,6 +494,40 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+type TestHydrationResult =
+  | { status: "hydrated"; sessionId?: string }
+  | { status: "empty" }
+  | { status: "failed" }
+  | { status: "cancelled" };
+
+function mockHydrationWithSessionSideEffects(
+  current: ReturnType<typeof controller>,
+  results: TestHydrationResult[]
+) {
+  current.hydrateSession = vi.fn(async (sessionId?: string) => {
+    const configured = results.shift() ?? {
+      status: "hydrated" as const,
+      sessionId,
+    };
+    const result =
+      configured.status === "hydrated"
+        ? {
+            status: "hydrated" as const,
+            sessionId: configured.sessionId || sessionId || "hydrated-session",
+          }
+        : configured;
+    const options = mocks.useSummaryWorkbench.mock.calls.at(-1)?.[0] as {
+      onSessionIdChange: (nextSessionId: string) => void;
+    };
+    if (result.status === "hydrated") {
+      options.onSessionIdChange(result.sessionId);
+    } else if (result.status === "empty") {
+      options.onSessionIdChange("");
+    }
+    return result;
+  });
+}
+
 describe("SummaryWorkbenchFeature", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -3182,20 +3216,15 @@ describe("SummaryWorkbenchFeature", () => {
     localStorage.setItem(ordinaryKey, "current-session");
     localStorage.setItem(`${ordinaryKey}:previous`, "old-session");
     const current = controller();
-    let onSessionIdChange: (sessionId: string) => void = () => undefined;
-    current.hydrateSession = vi.fn(async (sessionId: string) => {
-      onSessionIdChange(sessionId);
-      return { status: "hydrated" as const, sessionId };
-    });
+    mockHydrationWithSessionSideEffects(current, [
+      { status: "hydrated", sessionId: "old-session" },
+      { status: "failed" },
+    ]);
     mocks.useSummaryWorkbench.mockReturnValue(current);
 
     render(<SummaryWorkbenchFeature spaceId="space-a" />, {
       legacyRoot: true,
     });
-    const options = mocks.useSummaryWorkbench.mock.calls.at(-1)?.[0] as {
-      onSessionIdChange: (sessionId: string) => void;
-    };
-    onSessionIdChange = options.onSessionIdChange;
     const originalSetItem = Storage.prototype.setItem;
     const setSpy = vi
       .spyOn(Storage.prototype, "setItem")
@@ -3225,12 +3254,15 @@ describe("SummaryWorkbenchFeature", () => {
     setSpy.mockRestore();
   });
 
-  it("warns and restores the current session when the previous session expired", async () => {
+  it("retires an expired previous session and preserves the current pointer when restoration fails", async () => {
     const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
     localStorage.setItem(ordinaryKey, "current-session");
     localStorage.setItem(`${ordinaryKey}:previous`, "old-session");
     const current = controller();
-    current.hydrateSession = vi.fn().mockResolvedValue({ status: "empty" });
+    mockHydrationWithSessionSideEffects(current, [
+      { status: "empty" },
+      { status: "failed" },
+    ]);
     mocks.useSummaryWorkbench.mockReturnValue(current);
 
     render(<SummaryWorkbenchFeature spaceId="space-a" />, {
@@ -3247,19 +3279,16 @@ describe("SummaryWorkbenchFeature", () => {
         "summary.workbench.errors.sessionExpired"
       )
     );
-    // An expired resume must NOT demote the conversation the user was
-    // reading into the single :previous slot (it would be one fresh-session
-    // gesture away from permanent loss). Both slots stay untouched and the
-    // runtime re-hydrates the current session.
     expect(current.hydrateSession).toHaveBeenNthCalledWith(1, "old-session");
     expect(current.hydrateSession).toHaveBeenNthCalledWith(
       2,
       "current-session"
     );
     expect(localStorage.getItem(ordinaryKey)).toBe("current-session");
-    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
-      "old-session"
-    );
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBeNull();
+    expect(
+      screen.queryByTestId("summary-workbench-last-session")
+    ).not.toBeInTheDocument();
   });
 
   it.each(["failed", "cancelled"] as const)(
