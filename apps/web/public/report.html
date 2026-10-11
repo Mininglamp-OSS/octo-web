@@ -786,7 +786,40 @@
                                             <img src='./images/arrow_right.png' style="width:32px;height:32px"/>
                                         </div>
                                     </li>`);
+                // Tap-vs-drag discrimination. The list scrolls (overflow-y:
+                // scroll), and a touch that ends on a row after a scroll gesture
+                // still fires touchend on that row. Navigating unconditionally
+                // would drop a reporter into a category they only swiped past and
+                // file the complaint against it. Record the touch origin and act
+                // only when the gesture stayed within a small movement budget.
+                let touchStartX = null, touchStartY = null;
+                const TAP_SLOP = 10; // px
+                item.on('touchstart', function (e) {
+                    const t = e.originalEvent && e.originalEvent.touches && e.originalEvent.touches[0];
+                    if (t) {
+                        touchStartX = t.clientX;
+                        touchStartY = t.clientY;
+                    }
+                });
+                item.on('touchmove', function () {
+                    // A genuine scroll cancels the pending tap.
+                    touchStartX = null;
+                    touchStartY = null;
+                });
                 item.on('touchend', function (e) {
+                    if (touchStartX === null || touchStartY === null) {
+                        return;
+                    }
+                    const t = (e.originalEvent && e.originalEvent.changedTouches && e.originalEvent.changedTouches[0]) || null;
+                    if (t) {
+                        const dx = Math.abs(t.clientX - touchStartX);
+                        const dy = Math.abs(t.clientY - touchStartY);
+                        if (dx > TAP_SLOP || dy > TAP_SLOP) {
+                            touchStartX = touchStartY = null;
+                            return;
+                        }
+                    }
+                    touchStartX = touchStartY = null;
                     // Build the path root-first and ALWAYS include the tapped
                     // category itself. The previous shape omitted it whenever the
                     // category had children, so for A>B>C tapping B navigated back
@@ -805,14 +838,24 @@
 
 
 
-    function getAllParentCategoryNo(category, parentCategoryNos) {
+    function getAllParentCategoryNo(category, parentCategoryNos, seen) {
+        // Categories are admin-configured server state. A misconfigured cycle
+        // (A's parent is B, B's parent is A) would recurse until a RangeError is
+        // thrown inside the touchend handler — the navigation would never happen
+        // and the WebView would sit on a dead list with no feedback. Guard with a
+        // seen-set (plus the existing empty-parent exit).
+        seen = seen || {};
         if (category.parent_category_no == '') {
             return
         }
+        if (seen[category.category_no]) {
+            return
+        }
+        seen[category.category_no] = true;
         let parent = getCatgoryWithCategoryNo(category.parent_category_no, window.categories);
         if (parent) {
             parentCategoryNos.push(parent.category_no);
-            getAllParentCategoryNo(parent, parentCategoryNos);
+            getAllParentCategoryNo(parent, parentCategoryNos, seen);
         }
 
     }

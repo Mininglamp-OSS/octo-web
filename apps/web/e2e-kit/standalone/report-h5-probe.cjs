@@ -108,6 +108,44 @@ async function launchBrowser() {
 
   const server = await serve(18933);
   const browser = await launchBrowser();
+  // Real touch events, so the tap-vs-drag discrimination in renderCategories is
+  // actually exercised (a synthetic Event('touchend') carries no coordinates and
+  // would be ignored by the guard, silently making the category unusable).
+  const tapCategory = (p, label) => p.evaluate((name) => {
+    const lis = Array.from(document.querySelectorAll('.categoryBox .item ul li'));
+    const el = lis.find((li) => li.querySelector('label') && li.querySelector('label').textContent === name);
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const mk = (type, cx, cy) => new TouchEvent(type, {
+      bubbles: true, cancelable: true, composed: true,
+      touches: type === 'touchend' ? [] : [new Touch({ identifier: 1, target: el, clientX: cx, clientY: cy })],
+      changedTouches: [new Touch({ identifier: 1, target: el, clientX: cx, clientY: cy })],
+      targetTouches: [],
+    });
+    el.dispatchEvent(mk('touchstart', x, y));
+    el.dispatchEvent(mk('touchend', x, y));
+    return true;
+  }, label);
+
+  // A drag that starts and ends on a row (as a scroll gesture does) must NOT select it.
+  const dragCategory = (p, label, dx, dy) => p.evaluate(({ name, dx, dy }) => {
+    const lis = Array.from(document.querySelectorAll('.categoryBox .item ul li'));
+    const el = lis.find((li) => li.querySelector('label') && li.querySelector('label').textContent === name);
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const mk = (type, cx, cy, list) => new TouchEvent(type, {
+      bubbles: true, cancelable: true, composed: true,
+      touches: list, changedTouches: list, targetTouches: list,
+    });
+    const t1 = [new Touch({ identifier: 1, target: el, clientX: x, clientY: y })];
+    const t2 = [new Touch({ identifier: 1, target: el, clientX: x + dx, clientY: y + dy })];
+    el.dispatchEvent(mk('touchstart', x, y, t1));
+    el.dispatchEvent(mk('touchmove', x + dx, y + dy, t2));
+    el.dispatchEvent(mk('touchend', x + dx, y + dy, []));
+    return true;
+  }, { name: label, dx, dy });
   const page = await browser.newPage();
   await page.addInitScript(() => {
     window.IMJSBridge = { callHandler: (m, o, cb) => setTimeout(() => cb(JSON.stringify({ err_code: 200, channelID: 'ch-native', channelType: 1 })), 120) };
@@ -208,24 +246,43 @@ async function launchBrowser() {
   await page.evaluate(() => { window.location.hash = '#1'; });
   await page.waitForTimeout(400);
   // tap B (has children) → hash must become #1-12 (NOT #1)
-  await page.evaluate(() => {
-    const lis = Array.from(document.querySelectorAll('.categoryBox .item ul li'));
-    const b = lis.find((li) => li.querySelector('label') && li.querySelector('label').textContent === 'Cat B');
-    if (b) b.dispatchEvent(new Event('touchend'));
-  });
+  await tapCategory(page, 'Cat B');
   await page.waitForTimeout(400);
   const hashAfterB = await page.evaluate(() => window.location.hash);
   check('P1-D: tapping a nested parent keeps the tapped node in the path',
     hashAfterB === '#1-12', `hash=${hashAfterB} (expected #1-12)`);
   // now tap C (leaf) → #1-12-121, root-first
-  await page.evaluate(() => {
-    const lis = Array.from(document.querySelectorAll('.categoryBox .item ul li'));
-    const c = lis.find((li) => li.querySelector('label') && li.querySelector('label').textContent === 'Cat C');
-    if (c) c.dispatchEvent(new Event('touchend'));
-  });
+  await tapCategory(page, 'Cat C');
   await page.waitForTimeout(400);
   const hashAfterC = await page.evaluate(() => window.location.hash);
   check('P1-D: leaf path is root-first and complete', hashAfterC === '#1-12-121', `hash=${hashAfterC} (expected #1-12-121)`);
+
+  // ---------- Probe 5b: a scroll drag across a row must not select it ----------
+  // The list scrolls; a swipe that starts and ends over a row still fires
+  // touchend on that row. Before the tap-vs-drag guard this navigated into the
+  // category the reporter only scrolled past.
+  submissions.length = 0; sessionConsumed = false;
+  await openForm(page, 'http://127.0.0.1:18933/report.html?session=S5b&channel_id=ch-q&channel_type=2');
+  // Back to the ROOT category list, where the root rows (Cat A / Cat D) are
+  // actually rendered. (openForm leaves the leaf form, where no list exists and
+  // the drag helper would silently no-op — which is how this probe passed while
+  // the guard was reverted.)
+  await page.evaluate(() => { window.location.hash = ''; });
+  await page.waitForTimeout(400);
+  const listVisible = await page.evaluate(() => !!document.querySelector('.categoryBox .item ul li'));
+  const hashBeforeDrag = await page.evaluate(() => window.location.hash);
+  const dragged = await dragCategory(page, 'Cat D', 0, -60); // vertical swipe over the row
+  await page.waitForTimeout(400);
+  const hashAfterDrag = await page.evaluate(() => window.location.hash);
+  check('P1-F: a vertical drag across a row does not select it',
+    listVisible && dragged && hashAfterDrag === hashBeforeDrag,
+    `listVisible=${listVisible} dragged=${dragged} before=${hashBeforeDrag} after=${hashAfterDrag}`);
+  // and a clean tap on the same row still works
+  await tapCategory(page, 'Cat D');
+  await page.waitForTimeout(400);
+  const hashAfterTap = await page.evaluate(() => window.location.hash);
+  check('P1-F: a clean tap on the same row still selects it',
+    hashAfterTap === '#2', `hash=${hashAfterTap} (expected #2)`);
 
   // ---------- Probe 6: presign GET that never answers → removable failure tile ----------
   // Models a proxy that accepts the presign GET but never responds. Before the
@@ -299,11 +356,7 @@ async function launchBrowser() {
     await p.evaluate(() => { window.location.hash = ''; });
     await p.waitForTimeout(250);
     for (const label of ['Cat A', 'Cat B', 'Cat C']) {
-      await p.evaluate((name) => {
-        const lis = Array.from(document.querySelectorAll('.categoryBox .item ul li'));
-        const el = lis.find((li) => li.querySelector('label') && li.querySelector('label').textContent === name);
-        if (el) el.dispatchEvent(new Event('touchend'));
-      }, label);
+      await tapCategory(p, label);
       await p.waitForTimeout(300);
     }
     await p.waitForSelector('.reportContent', { state: 'visible', timeout: 5000 });
@@ -374,6 +427,34 @@ async function launchBrowser() {
     !anyWrong && !!final && final.category_no === '121',
     `posts=${submissions.length} first=${JSON.stringify(first)} final=${JSON.stringify(final)} dialogs=${JSON.stringify(hashDialogs)}`);
   await hashPage.close();
+
+  // ---------- Probe 9b: the payload source is pinned in isolation ----------
+  // yujiawei: the two halves of the round-6 fix mask each other, because
+  // syncUrlToRender() always restores the hash before the post-await read. Make
+  // the hash and the render disagree WITHOUT firing hashchange (replaceState
+  // does not), so syncUrlToRender never runs and the only way to file the leaf
+  // is to take the category from the rendered identity rather than the URL.
+  submissions.length = 0; uploads.length = 0; sessionConsumed = false;
+  const srcPage = await browser.newPage();
+  await srcPage.addInitScript(() => {
+    window.IMJSBridge = { callHandler: (m, o, cb) => setTimeout(() => cb(JSON.stringify({ err_code: 200, channelID: 'ch-native', channelType: 1 })), 400) };
+  });
+  srcPage.on('dialog', (d) => d.dismiss());
+  await openForm(srcPage, 'http://127.0.0.1:18933/report.html?session=S9b&channel_id=ch-q&channel_type=2');
+  await walkToLeafC(srcPage);
+  await srcPage.fill('.reportContent', 'SRC-PIN');
+  // Divert the URL to the PARENT without a hashchange event, so nothing re-syncs it.
+  await srcPage.evaluate(() => {
+    history.replaceState(null, '', window.location.pathname + window.location.search + '#12');
+  });
+  const splitHash = await srcPage.evaluate(() => window.location.hash);
+  await srcPage.evaluate(() => document.querySelector('.reportSubmit').click());
+  await srcPage.waitForTimeout(1200);
+  const srcPayload = submissions.length ? submissions[submissions.length - 1] : null;
+  check('P1-G: the filed category comes from the rendered draft, not the URL hash',
+    !!srcPayload && srcPayload.category_no === '121',
+    `hash=${splitHash} payload=${JSON.stringify(srcPayload)}`);
+  await srcPage.close();
 
   // ---------- Probe 10: an upload that completes inside the bridge window ----------
   // The reachable route the CSS freeze cannot cover: the native picker is opened
