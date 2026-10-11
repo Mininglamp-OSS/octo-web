@@ -985,13 +985,7 @@ export default function SummaryWorkbenchFeature({
         }
       );
       if (currentPersisted) {
-        const restoration = await workbench.hydrateSession(currentPersisted);
-        if (
-          restoration.status === "failed" ||
-          restoration.status === "cancelled"
-        ) {
-          writeSummaryWorkbenchSession(storageScope, currentPersisted);
-        }
+        await workbench.hydrateSession(currentPersisted);
       } else {
         workbench.resetSession({ scope: initialScope });
       }
@@ -1000,6 +994,9 @@ export default function SummaryWorkbenchFeature({
           ? ""
           : readSummaryWorkbenchPreviousSession(storageScope)
       );
+      setHasSubmitted(false);
+      setHasAcceptedDispatch(false);
+      setLastFailedAction(null);
       return;
     }
 
@@ -1028,6 +1025,9 @@ export default function SummaryWorkbenchFeature({
         workbench.resetSession({ scope: initialScope });
       }
       setLastSessionId(readSummaryWorkbenchPreviousSession(storageScope));
+      setHasSubmitted(false);
+      setHasAcceptedDispatch(false);
+      setLastFailedAction(null);
       return;
     }
     setLastSessionId(demotedSessionId);

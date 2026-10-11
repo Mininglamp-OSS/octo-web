@@ -12,6 +12,7 @@ import { adaptSummaryWorkspaceHistory } from "../../bridge/summaryWorkbench/adap
 import type { SummaryWorkbenchScope } from "../../bridge/summaryWorkbench/protocol";
 import SummaryWorkbenchFeature from "./SummaryWorkbenchFeature";
 import type { WorkbenchMemberCandidate } from "./scope";
+import { moveSummaryWorkbenchSessionToPrevious } from "./sessionStorage";
 
 const mocks = vi.hoisted(() => ({
   useSummaryWorkbench: vi.fn(),
@@ -3289,6 +3290,100 @@ describe("SummaryWorkbenchFeature", () => {
     expect(
       screen.queryByTestId("summary-workbench-last-session")
     ).not.toBeInTheDocument();
+  });
+
+  it("does not write an obsolete active pointer when expired-session restoration is cancelled after unmount", async () => {
+    const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
+    localStorage.setItem(ordinaryKey, "current-session");
+    localStorage.setItem(`${ordinaryKey}:previous`, "expired-session");
+    const restoration = deferred<{ status: "cancelled" }>();
+    const current = controller();
+    current.hydrateSession = vi.fn(async (sessionId?: string) => {
+      const options = mocks.useSummaryWorkbench.mock.calls.at(-1)?.[0] as {
+        onSessionIdChange: (nextSessionId: string) => void;
+      };
+      if (sessionId === "expired-session") {
+        options.onSessionIdChange("");
+        return { status: "empty" as const };
+      }
+      return restoration.promise;
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    const view = render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "summary.workbench.lastSession.label",
+      })
+    );
+    await waitFor(() =>
+      expect(current.hydrateSession).toHaveBeenCalledTimes(2)
+    );
+    expect(localStorage.getItem(ordinaryKey)).toBe("current-session");
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBeNull();
+
+    view.unmount();
+    expect(
+      moveSummaryWorkbenchSessionToPrevious({
+        userId: "test-uid",
+        spaceId: "space-a",
+      })
+    ).toBe(true);
+    expect(localStorage.getItem(ordinaryKey)).toBeNull();
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
+      "current-session"
+    );
+
+    await act(async () => restoration.resolve({ status: "cancelled" }));
+
+    expect(localStorage.getItem(ordinaryKey)).toBeNull();
+    expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe(
+      "current-session"
+    );
+  });
+
+  it("clears retry state when crossing an expired-session recovery boundary", async () => {
+    const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
+    localStorage.setItem(ordinaryKey, "current-session");
+    localStorage.setItem(`${ordinaryKey}:previous`, "expired-session");
+    const current = controller({
+      scope: scope({
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group", name: "A" },
+        ],
+      }),
+      send: vi.fn().mockResolvedValue(undefined),
+    });
+    mockHydrationWithSessionSideEffects(current, [
+      { status: "empty" },
+      { status: "hydrated", sessionId: "current-session" },
+    ]);
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() => expect(current.send).toHaveBeenCalledTimes(1));
+    current.viewState.messages = [
+      { role: "assistant", resultType: "agent_response" },
+    ];
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "summary.workbench.lastSession.label",
+      })
+    );
+
+    await waitFor(() =>
+      expect(current.hydrateSession).toHaveBeenCalledTimes(2)
+    );
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "false"
+    );
   });
 
   it.each(["failed", "cancelled"] as const)(
