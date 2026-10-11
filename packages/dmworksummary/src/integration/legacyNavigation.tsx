@@ -126,10 +126,6 @@ export function registerSummaryLegacyNavigation(): void {
     <SummaryWorkbenchCreateEntry
       source="summary_home"
       legacyInitialMode="normal"
-      // Direct create-route activation is an explicit new-session intent.
-      // SummaryWorkbenchCreateEntry consumes this once so space remounts do
-      // not repeat the destructive demotion.
-      forceNewSession
     />
   ));
 

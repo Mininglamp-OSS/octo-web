@@ -3216,7 +3216,14 @@ describe("SummaryWorkbenchFeature", () => {
     const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
     localStorage.setItem(ordinaryKey, "current-session");
     localStorage.setItem(`${ordinaryKey}:previous`, "old-session");
-    const current = controller();
+    const current = controller({
+      scope: scope({
+        selectedChannels: [
+          { chatId: "chat-a", chatType: "group", name: "A" },
+        ],
+      }),
+      send: vi.fn().mockResolvedValue(undefined),
+    });
     mockHydrationWithSessionSideEffects(current, [
       { status: "hydrated", sessionId: "old-session" },
       { status: "failed" },
@@ -3226,6 +3233,11 @@ describe("SummaryWorkbenchFeature", () => {
     render(<SummaryWorkbenchFeature spaceId="space-a" />, {
       legacyRoot: true,
     });
+    fireEvent.click(screen.getByRole("button", { name: "send" }));
+    await waitFor(() => expect(current.send).toHaveBeenCalledTimes(1));
+    current.viewState.messages = [
+      { role: "assistant", resultType: "agent_response" },
+    ];
     const originalSetItem = Storage.prototype.setItem;
     const setSpy = vi
       .spyOn(Storage.prototype, "setItem")
@@ -3252,6 +3264,10 @@ describe("SummaryWorkbenchFeature", () => {
     );
     expect(localStorage.getItem(ordinaryKey)).toBe("current-session");
     expect(localStorage.getItem(`${ordinaryKey}:previous`)).toBe("old-session");
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "false"
+    );
     setSpy.mockRestore();
   });
 
@@ -3344,7 +3360,7 @@ describe("SummaryWorkbenchFeature", () => {
     );
   });
 
-  it("clears retry state when crossing an expired-session recovery boundary", async () => {
+  it("preserves the current session retry action across an expired-session recovery", async () => {
     const ordinaryKey = "summary-workbench-session:v2:test-uid:space-a:global";
     localStorage.setItem(ordinaryKey, "current-session");
     localStorage.setItem(`${ordinaryKey}:previous`, "expired-session");
@@ -3382,7 +3398,7 @@ describe("SummaryWorkbenchFeature", () => {
     );
     expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
       "data-can-send",
-      "false"
+      "true"
     );
   });
 

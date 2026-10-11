@@ -383,6 +383,7 @@ describe("SummaryModule guarded menu switching", () => {
     expect(createEntry.type).toBe(SummaryWorkbenchCreateEntry);
     expect(createEntry.props.source).toBe("summary_home");
     expect(createEntry.props.legacyInitialMode).toBe("normal");
+    expect(createEntry.props.forceNewSession).toBeUndefined();
     expect(scheduleEntry.type).toBe(ScheduleListPage);
   });
 
