@@ -23,6 +23,7 @@ interface AttachmentState {
 interface HostInstallation {
   host: LocalAttachmentDraftHost;
   active: boolean;
+  revision: number;
 }
 
 const hostInstallations: HostInstallation[] = [];
@@ -42,10 +43,10 @@ function sendingIds(channel: LocalAttachmentDraftChannel): Set<string> {
   return ids;
 }
 
-function installedHost(): LocalAttachmentDraftHost | undefined {
+function installedHost(): HostInstallation | undefined {
   for (let index = hostInstallations.length - 1; index >= 0; index -= 1) {
     const installation = hostInstallations[index];
-    if (installation.active) return installation.host;
+    if (installation.active) return installation;
   }
   return undefined;
 }
@@ -53,7 +54,7 @@ function installedHost(): LocalAttachmentDraftHost | undefined {
 export function installLocalAttachmentDraftHost(
   host: LocalAttachmentDraftHost
 ): () => void {
-  const installation: HostInstallation = { host, active: true };
+  const installation: HostInstallation = { host, active: true, revision: 0 };
   hostInstallations.push(installation);
   return () => {
     installation.active = false;
@@ -66,17 +67,34 @@ export function installLocalAttachmentDraftHost(
   };
 }
 
-function bytes(value: ArrayBuffer | Uint8Array): Uint8Array {
-  return value instanceof Uint8Array ? value : new Uint8Array(value);
+export function invalidateLocalAttachmentDraftHost(
+  host: LocalAttachmentDraftHost
+): void {
+  for (const installation of hostInstallations) {
+    if (installation.active && installation.host === host) {
+      installation.revision += 1;
+    }
+  }
+  sendingByChannel.clear();
 }
+
+function bytes(value: ArrayBuffer | Uint8Array): Uint8Array<ArrayBuffer> {
+  return new Uint8Array(value);
+}
+
+class AttachmentDraftIntegrityError extends Error {}
 
 export function createChatComposerAttachmentDraftPort(
   channel: LocalAttachmentDraftChannel
 ): ChatComposerAttachmentDraftPort | undefined {
-  const host = installedHost();
-  if (!host || host.version !== 1) return undefined;
+  const installation = installedHost();
+  if (!installation || installation.host.version !== 1) return undefined;
+  const host = installation.host;
+  const hostRevision = installation.revision;
+  const isActive = () =>
+    installation.active && installation.revision === hostRevision;
   const states = new Map<string, AttachmentState>();
-  const activeSends = sendingIds(channel);
+  const restoreMetadataBarriers = new Set<Promise<void>>();
   let nextPosition = 0;
   let restoreInFlight = false;
 
@@ -89,14 +107,29 @@ export function createChatComposerAttachmentDraftPort(
 
   return {
     async restore() {
+      if (!isActive()) return { attachments: [], failedCount: 0 };
+      let releaseMetadata = () => {};
+      const metadataBarrier = new Promise<void>((resolve) => {
+        releaseMetadata = resolve;
+      });
+      restoreMetadataBarriers.add(metadataBarrier);
+      void metadataBarrier.finally(() => {
+        restoreMetadataBarriers.delete(metadataBarrier);
+      });
       restoreInFlight = true;
       const restored: RestoredLocalAttachmentDraft[] = [];
       let failedCount = 0;
       try {
         const metadata = await host.list({ channel });
+        if (!isActive()) return { attachments: [], failedCount: 0 };
         for (const attachment of metadata) {
           nextPosition = Math.max(nextPosition, attachment.position + 1);
-          if (states.has(attachment.id) || activeSends.has(attachment.id)) continue;
+          if (
+            states.has(attachment.id) ||
+            sendingIds(channel).has(attachment.id)
+          ) {
+            continue;
+          }
           states.set(attachment.id, {
             phase: "restoring",
             live: false,
@@ -105,24 +138,30 @@ export function createChatComposerAttachmentDraftPort(
             removeAfterWrite: false,
           });
         }
+        releaseMetadata();
         for (const attachment of metadata) {
           const current = states.get(attachment.id);
           if (!current || current.phase !== "restoring") continue;
-          if (activeSends.has(attachment.id)) continue;
+          if (sendingIds(channel).has(attachment.id)) continue;
           try {
             const result = await host.read({
               channel,
               attachmentId: attachment.id,
             });
+            if (!isActive()) return { attachments: [], failedCount: 0 };
             if (
               result.attachment.id !== attachment.id ||
               result.attachment.size !== attachment.size
             ) {
-              throw new Error("Attachment draft metadata changed during restore");
+              throw new AttachmentDraftIntegrityError(
+                "Attachment draft metadata changed during restore"
+              );
             }
             const content = bytes(result.bytes);
             if (content.byteLength !== attachment.size) {
-              throw new Error("Attachment draft byte length mismatch");
+              throw new AttachmentDraftIntegrityError(
+                "Attachment draft byte length mismatch"
+              );
             }
             const state = states.get(attachment.id);
             if (!state || state.phase !== "restoring") continue;
@@ -138,6 +177,9 @@ export function createChatComposerAttachmentDraftPort(
           } catch (error) {
             failedCount += 1;
             console.warn("[attachment-drafts] restore failed", error);
+            if (error instanceof AttachmentDraftIntegrityError) {
+              remove(attachment.id);
+            }
           }
         }
         const positionById = new Map(
@@ -152,13 +194,15 @@ export function createChatComposerAttachmentDraftPort(
           failedCount,
         };
       } finally {
+        releaseMetadata();
         restoreInFlight = false;
       }
     },
 
     async stage({ id, file, source }, position) {
-      const resolvedPosition = position ?? nextPosition++;
-      nextPosition = Math.max(nextPosition, resolvedPosition + 1);
+      if (!isActive()) return false;
+      const existing = states.get(id);
+      if (existing?.persisted) return true;
       const state: AttachmentState = {
         phase: "staging",
         live: true,
@@ -168,7 +212,12 @@ export function createChatComposerAttachmentDraftPort(
       };
       states.set(id, state);
       try {
+        await Promise.all([...restoreMetadataBarriers]);
+        if (!isActive() || states.get(id) !== state) return false;
+        const resolvedPosition = position ?? nextPosition++;
+        nextPosition = Math.max(nextPosition, resolvedPosition + 1);
         const content = await file.arrayBuffer();
+        if (!isActive()) return false;
         await host.stage({
           channel,
           attachment: {
@@ -182,6 +231,7 @@ export function createChatComposerAttachmentDraftPort(
           },
           bytes: content,
         });
+        if (!isActive()) return false;
         state.writePending = false;
         if (states.get(id) !== state) {
           if (state.removeAfterWrite) {
@@ -210,6 +260,7 @@ export function createChatComposerAttachmentDraftPort(
     },
 
     syncLive(attachmentIds) {
+      if (!isActive()) return;
       const live = new Set(attachmentIds);
       for (const [id, state] of states) {
         state.live = live.has(id);
@@ -222,12 +273,14 @@ export function createChatComposerAttachmentDraftPort(
     },
 
     discardUnready(attachmentIds) {
+      if (!isActive()) return;
       for (const id of attachmentIds) {
         const state = states.get(id);
         if (
           !state ||
           state.phase === "ready" ||
-          state.phase === "sending"
+          state.phase === "sending" ||
+          state.persisted
         ) {
           continue;
         }
@@ -237,17 +290,19 @@ export function createChatComposerAttachmentDraftPort(
     },
 
     beginSend(attachmentIds) {
+      if (!isActive()) return;
       for (const id of attachmentIds) {
-        activeSends.add(id);
+        sendingIds(channel).add(id);
         const state = states.get(id);
         if (state) state.phase = "sending";
       }
     },
 
     settleSend({ attachmentIds, keepAttachmentIds }) {
+      if (!isActive()) return;
       const keep = new Set(keepAttachmentIds);
       for (const id of attachmentIds) {
-        activeSends.delete(id);
+        sendingIds(channel).delete(id);
         const state = states.get(id);
         if (!state) continue;
         if (keep.has(id)) {
@@ -259,15 +314,15 @@ export function createChatComposerAttachmentDraftPort(
           remove(id);
         }
       }
-      if (activeSends.size === 0) sendingByChannel.delete(channelKey(channel));
     },
 
     canLeave(attachmentIds) {
+      if (!isActive()) return attachmentIds.length === 0;
       return attachmentIds.every((id) => {
         const state = states.get(id);
         return (
           state === undefined ||
-          state.phase === "restoring" ||
+          (state.phase === "restoring" && state.persisted) ||
           (state.phase === "ready" && state.persisted)
         );
       });

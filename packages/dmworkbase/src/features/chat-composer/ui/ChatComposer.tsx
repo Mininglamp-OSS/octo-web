@@ -134,12 +134,7 @@ function buildPlaceholder(name: string, t: typeof translate): string {
     : t("base.messageInput.placeholder.direct");
 }
 
-// 从编辑器中提取附件节点（纯函数，避免闭包问题）
-function extractAttachmentsFromEditor(
-  editorInstance: any
-): AttachmentAttributes[] {
-  if (!editorInstance) return [];
-  const json = editorInstance.getJSON();
+function extractAttachmentsFromDocument(json: any): AttachmentAttributes[] {
   const attachments: AttachmentAttributes[] = [];
 
   function traverse(node: any) {
@@ -153,6 +148,15 @@ function extractAttachmentsFromEditor(
 
   traverse(json);
   return attachments;
+}
+
+// 从编辑器中提取附件节点（纯函数，避免闭包问题）
+function extractAttachmentsFromEditor(
+  editorInstance: any
+): AttachmentAttributes[] {
+  return editorInstance
+    ? extractAttachmentsFromDocument(editorInstance.getJSON())
+    : [];
 }
 
 /**
@@ -761,7 +765,9 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     },
     onUpdate: ({ editor }) => {
       setEditorIsEmpty(editor.isEmpty);
-      const inlineAttachmentIds = extractAttachmentsFromEditor(editor)
+      const json = editor.getJSON();
+      const inlineAttachments = extractAttachmentsFromDocument(json);
+      const inlineAttachmentIds = inlineAttachments
         .map(({ id }) => id)
         .join("\u0000");
       if (inlineAttachmentIds !== inlineAttachmentIdsRef.current) {
@@ -788,12 +794,11 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       }
 
       // 检测是否多行（检查是否有换行符或多个段落，或有附件节点，或文本较长）
-      const json = editor.getJSON();
       const paragraphs = json.content || [];
       const hasMultipleParagraphs = paragraphs.length > 1;
       const hasNewline = text.includes("\n");
       // 检查编辑器内是否有附件节点
-      const hasAttachments = extractAttachmentsFromEditor(editor).length > 0;
+      const hasAttachments = inlineAttachments.length > 0;
       // 文本较长时也需要垂直排列（阈值：超过 50 个字符）
       const isLongText = text.length > 50;
       setIsMultiLine(
@@ -872,9 +877,17 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         !editor.isDestroyed;
 
       const staging: Promise<void>[] = [];
+      const existingIds = new Set([
+        ...(editor
+          ? extractAttachmentsFromEditor(editor).map(({ id }) => id)
+          : []),
+        ...attachmentStore.snapshotTopAttachments().map(({ id }) => id),
+      ]);
       for (const attachment of attachments) {
         if (!isAttachmentTargetActive()) return;
         const { id, file, source } = attachment;
+        if (attachment.restored && existingIds.has(id)) continue;
+        existingIds.add(id);
         const position = attachment.position;
         const isPastedImage = source === "paste" && isImageFile(file);
 
@@ -923,6 +936,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
               .then((persisted) => {
                 if (!persisted && isAttachmentTargetActive()) {
                   Notification.error({
+                    className: "wk-octo-notification",
                     content: t("base.messageInput.attachment.draftSaveFailed"),
                     duration: 5,
                   });
@@ -962,6 +976,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         if (!active || !composerMountedRef.current || editor.isDestroyed) return;
         if (failedCount > 0) {
           Notification.error({
+            className: "wk-octo-notification",
             content: t("base.messageInput.attachment.draftRestoreFailed"),
             duration: 5,
           });
@@ -971,13 +986,22 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             ...attachment,
             restored: true,
           }))
-        );
+        ).then(() => {
+          const inlineIds = extractAttachmentsFromEditor(editor).map(
+            ({ id }) => id
+          );
+          const topIds = attachmentStore
+            .snapshotTopAttachments()
+            .map(({ id }) => id);
+          props.attachmentDrafts?.syncLive([...inlineIds, ...topIds]);
+        });
       })
       .catch((error) => {
         restoredDraftsRef.current = false;
         console.warn("[attachment-drafts] draft restore failed", error);
         if (active && composerMountedRef.current) {
           Notification.error({
+            className: "wk-octo-notification",
             content: t("base.messageInput.attachment.draftRestoreUnavailable"),
             duration: 5,
           });
@@ -985,6 +1009,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       });
     return () => {
       active = false;
+      restoredDraftsRef.current = false;
     };
   }, [addAttachmentRecords, editor, props.attachmentDrafts]);
 
@@ -1299,7 +1324,15 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         recoveredAttachments.map((attachment) =>
           props.attachmentDrafts!.stage(attachment)
         )
-      );
+      ).then((results) => {
+        if (results.some((persisted) => !persisted)) {
+          Notification.error({
+            className: "wk-octo-notification",
+            content: t("base.messageInput.attachment.draftSaveFailed"),
+            duration: 5,
+          });
+        }
+      });
     }
 
     if (hydrated.some((item) => item.expanded)) {
@@ -1321,6 +1354,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     props.recoveredComposes,
     props.attachmentDrafts,
     extensions.editor.composeParts,
+    t,
   ]);
 
   const addMention = useCallback(

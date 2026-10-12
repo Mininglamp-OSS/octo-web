@@ -32,7 +32,10 @@ export async function mountCommunicationUi(
     ? () => {}
     : installHostDocumentPreview(host, WKApp.shared.currentSpaceId);
   const disposeFilePreview = installHostFilePreview(host, WKApp.shared.currentSpaceId);
-  const disposeLocalAttachmentDrafts = installClientLocalAttachmentDrafts(host);
+  const disposeLocalAttachmentDrafts = installClientLocalAttachmentDrafts(
+    host,
+    WKApp.shared.currentSpaceId,
+  );
   const disposeScreenshot = installScreenshotToolbar(host);
   const reactRoot = createRoot(root);
   reactRoot.render(

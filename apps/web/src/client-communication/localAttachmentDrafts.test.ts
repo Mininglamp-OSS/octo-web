@@ -31,14 +31,14 @@ describe("Client local attachment draft capability", () => {
     dispose = installClientLocalAttachmentDrafts({
       localAttachmentDraftsVersion: 1,
       stageAttachmentDraft: vi.fn(),
-    });
+    }, "space-a");
 
     expect(createChatComposerAttachmentDraftPort(channel)).toBeUndefined();
   });
 
   it("installs only a complete versioned bridge and disposes it with the UI", () => {
     const value = bridge();
-    dispose = installClientLocalAttachmentDrafts(value);
+    dispose = installClientLocalAttachmentDrafts(value, "space-a");
     const port = createChatComposerAttachmentDraftPort(channel);
 
     expect(port).toBeDefined();
@@ -47,18 +47,43 @@ describe("Client local attachment draft capability", () => {
     expect(createChatComposerAttachmentDraftPort(channel)).toBeUndefined();
   });
 
-  it("invalidates stale ports when the space or session changes", () => {
+  it("invalidates stale ports on space change while keeping the capability installed", async () => {
     let commandListener: Parameters<OctoBuddyCommunicationBridge["onCommand"]>[0] | undefined;
     const value = bridge();
     value.onCommand = vi.fn((listener) => {
       commandListener = listener;
       return () => { commandListener = undefined; };
     });
-    dispose = installClientLocalAttachmentDrafts(value);
-    expect(createChatComposerAttachmentDraftPort(channel)).toBeDefined();
+    dispose = installClientLocalAttachmentDrafts(value, "space-a");
+    const stalePort = createChatComposerAttachmentDraftPort(channel)!;
 
     commandListener?.({ type: "spaceChanged", space: { id: "space-b", name: "B" } });
 
+    expect(await stalePort.stage({
+      id: "stale",
+      file: new File(["x"], "x.txt"),
+      source: "upload",
+    })).toBe(false);
+    expect(createChatComposerAttachmentDraftPort(channel)).toBeDefined();
+  });
+
+  it("invalidates stale ports and removes the capability on session revocation", async () => {
+    let commandListener: Parameters<OctoBuddyCommunicationBridge["onCommand"]>[0] | undefined;
+    const value = bridge();
+    value.onCommand = vi.fn((listener) => {
+      commandListener = listener;
+      return () => { commandListener = undefined; };
+    });
+    dispose = installClientLocalAttachmentDrafts(value, "space-a");
+    const stalePort = createChatComposerAttachmentDraftPort(channel)!;
+
+    commandListener?.({ type: "sessionRevoked" });
+
+    expect(await stalePort.stage({
+      id: "stale",
+      file: new File(["x"], "x.txt"),
+      source: "upload",
+    })).toBe(false);
     expect(createChatComposerAttachmentDraftPort(channel)).toBeUndefined();
   });
 });
