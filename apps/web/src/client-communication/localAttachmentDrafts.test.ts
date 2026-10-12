@@ -1,0 +1,48 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  createChatComposerAttachmentDraftPort,
+  type LocalAttachmentDraftHost,
+} from "@octo/base/src/features/chat-composer/local-drafts";
+import type { OctoBuddyCommunicationBridge } from "./hostBridge";
+import { installClientLocalAttachmentDrafts } from "./localAttachmentDrafts";
+
+const channel = { id: "channel-a", type: 2 };
+let dispose: (() => void) | undefined;
+
+afterEach(() => {
+  dispose?.();
+  dispose = undefined;
+  vi.restoreAllMocks();
+});
+
+function bridge(): OctoBuddyCommunicationBridge {
+  return {
+    localAttachmentDraftsVersion: 1,
+    stageAttachmentDraft: vi.fn<LocalAttachmentDraftHost["stage"]>(),
+    listAttachmentDrafts: vi.fn<LocalAttachmentDraftHost["list"]>(),
+    readAttachmentDraft: vi.fn<LocalAttachmentDraftHost["read"]>(),
+    removeAttachmentDraft: vi.fn<LocalAttachmentDraftHost["remove"]>(),
+  };
+}
+
+describe("Client local attachment draft capability", () => {
+  it("rejects partial capability exposure and preserves the browser fallback", () => {
+    dispose = installClientLocalAttachmentDrafts({
+      localAttachmentDraftsVersion: 1,
+      stageAttachmentDraft: vi.fn(),
+    });
+
+    expect(createChatComposerAttachmentDraftPort(channel)).toBeUndefined();
+  });
+
+  it("installs only a complete versioned bridge and disposes it with the UI", () => {
+    const value = bridge();
+    dispose = installClientLocalAttachmentDrafts(value);
+    const port = createChatComposerAttachmentDraftPort(channel);
+
+    expect(port).toBeDefined();
+    dispose();
+    dispose = undefined;
+    expect(createChatComposerAttachmentDraftPort(channel)).toBeUndefined();
+  });
+});

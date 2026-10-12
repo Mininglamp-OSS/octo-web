@@ -29,7 +29,11 @@ export function createWorkspaceNavigationGuard() {
         content: t("base.chatPage.unsentAttachmentContent"),
         okText: t("base.chatPage.continueSwitch"),
         cancelText: t("base.common.cancel"),
-        onOk: () => finish(proceed),
+        onOk: () =>
+          finish(() => {
+            WKApp.shared.pendingAttachmentDiscard?.();
+            proceed();
+          }),
         onCancel: () => finish(onCancel),
       });
     },

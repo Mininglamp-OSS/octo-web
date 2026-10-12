@@ -16,3 +16,4 @@ export * from "./recovery";
 export * from "./adapters/conversation";
 export { imageBlockToPasteFile } from "./clipboard";
 export * from "./voice";
+export * from "./local-drafts";

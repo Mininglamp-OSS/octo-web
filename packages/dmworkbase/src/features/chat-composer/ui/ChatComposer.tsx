@@ -107,6 +107,10 @@ import type {
   ChatComposerVoiceContext,
 } from "../ports";
 import { MAX_MESSAGE_LENGTH } from "../domain/constants";
+import type {
+  ChatComposerAttachmentDraftPort,
+  RestoredLocalAttachmentDraft,
+} from "../local-drafts";
 
 function commonRecoveredTarget(
   recovered: ComposeRecoveryRecord[],
@@ -351,6 +355,7 @@ export interface ChatComposerProps {
     files: File[],
     source?: "paste" | "upload"
   ) => boolean | Promise<boolean>;
+  attachmentDrafts?: ChatComposerAttachmentDraftPort;
   hideMention?: boolean;
   toolbar?: JSX.Element;
   /** Extra action nodes rendered inside the actionbox, before voice input */
@@ -442,6 +447,8 @@ export interface MessageInputContext {
     source?: "paste" | "upload"
   ) => void | Promise<void>;
   getAttachmentFiles: () => File[];
+  canLeaveWithAttachments: () => boolean;
+  discardUnreadyAttachments: () => void;
   text: () => string | undefined;
   focus: () => void;
   /**
@@ -564,6 +571,8 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   const [isMultiLine, setIsMultiLine] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [editorIsEmpty, setEditorIsEmpty] = useState(true);
+  const [attachmentRevision, setAttachmentRevision] = useState(0);
+  const inlineAttachmentIdsRef = useRef("");
   const [attachmentStore] = useState(
     () => new ChatComposerAttachmentStore<TopAttachmentItem>(),
   );
@@ -752,6 +761,13 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     },
     onUpdate: ({ editor }) => {
       setEditorIsEmpty(editor.isEmpty);
+      const inlineAttachmentIds = extractAttachmentsFromEditor(editor)
+        .map(({ id }) => id)
+        .join("\u0000");
+      if (inlineAttachmentIds !== inlineAttachmentIdsRef.current) {
+        inlineAttachmentIdsRef.current = inlineAttachmentIds;
+        setAttachmentRevision((revision) => revision + 1);
+      }
       const text = stripInvisibleChars(editor.getText());
 
       // 检查 slash 命令
@@ -844,8 +860,10 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   // 插入附件
   // source: 'paste' = 粘贴进来的图片（作为富文本元素混合在文本中）
   // source: 'upload' = 通过上传按钮选择的文件（放在顶部附件区）
-  const addAttachment = useCallback(
-    async (files: File[], source: "paste" | "upload" = "upload") => {
+  const addAttachmentRecords = useCallback(
+    async (
+      attachments: Array<RestoredLocalAttachmentDraft & { restored?: boolean }>
+    ) => {
       const lifecycle = pasteLifecycleRef.current;
       const isAttachmentTargetActive = () =>
         composerMountedRef.current &&
@@ -853,15 +871,18 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         !!editor &&
         !editor.isDestroyed;
 
-      for (const file of files) {
+      const staging: Promise<void>[] = [];
+      const existingAttachmentCount = editor
+        ? extractAttachmentsFromEditor(editor).length +
+          attachmentStore.snapshotTopAttachments().length
+        : attachmentStore.snapshotTopAttachments().length;
+      for (const [batchPosition, attachment] of attachments.entries()) {
         if (!isAttachmentTargetActive()) return;
-        const id = createAttachmentId(file);
-
-        // 判断是否为粘贴的图片（只有粘贴的图片才放入编辑器）
+        const { id, file, source } = attachment;
+        const position = existingAttachmentCount + batchPosition;
         const isPastedImage = source === "paste" && isImageFile(file);
 
         if (isPastedImage && editor) {
-          // 粘贴的图片：插入到编辑器作为富文本元素
           const previewUrl = URL.createObjectURL(file);
           attachmentStore.addInlineFile(id, file, previewUrl);
 
@@ -881,7 +902,6 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             })
             .run();
         } else {
-          // 其他所有附件（非图片文件 + 上传的图片）：放入顶部附件区
           let previewUrl: string | undefined;
           if (isImageFile(file)) {
             previewUrl = URL.createObjectURL(file);
@@ -898,16 +918,57 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             type: file.type,
             previewUrl,
           };
-
           attachmentStore.appendTopAttachment(item);
+        }
+        if (!attachment.restored && props.attachmentDrafts) {
+          staging.push(
+            props.attachmentDrafts.stage({ id, file, source }, position)
+          );
         }
       }
 
-      // 插入附件后切换到多行模式
       if (isAttachmentTargetActive()) setIsMultiLine(true);
+      await Promise.all(staging);
     },
-    [attachmentStore, editor]
+    [attachmentStore, editor, props.attachmentDrafts]
   );
+
+  const addAttachment = useCallback(
+    async (files: File[], source: "paste" | "upload" = "upload") => {
+      await addAttachmentRecords(
+        files.map((file) => ({
+          id: createAttachmentId(file),
+          file,
+          source,
+        }))
+      );
+    },
+    [addAttachmentRecords]
+  );
+
+  const restoredDraftsRef = useRef(false);
+  useEffect(() => {
+    if (!editor || !props.attachmentDrafts || restoredDraftsRef.current) return;
+    restoredDraftsRef.current = true;
+    let active = true;
+    void props.attachmentDrafts
+      .restore()
+      .then((attachments) => {
+        if (!active || !composerMountedRef.current || editor.isDestroyed) return;
+        return addAttachmentRecords(
+          attachments.map((attachment) => ({
+            ...attachment,
+            restored: true,
+          }))
+        );
+      })
+      .catch((error) => {
+        console.warn("[attachment-drafts] draft restore failed", error);
+      });
+    return () => {
+      active = false;
+    };
+  }, [addAttachmentRecords, editor, props.attachmentDrafts]);
 
   useEffect(() => {
     editorHandlePasteRef.current = (
@@ -1017,6 +1078,25 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
 
     return [...editorFiles, ...topFiles];
   }, [attachmentStore, editor]);
+
+  const getAttachmentIds = useCallback((): string[] => {
+    const inlineIds = editor
+      ? extractAttachmentsFromEditor(editor).map(({ id }) => id)
+      : [];
+    const topIds = attachmentStore
+      .snapshotTopAttachments()
+      .map(({ id }) => id);
+    return [...inlineIds, ...topIds];
+  }, [attachmentStore, editor]);
+
+  useEffect(() => {
+    props.attachmentDrafts?.syncLive(getAttachmentIds());
+  }, [
+    attachmentRevision,
+    getAttachmentIds,
+    props.attachmentDrafts,
+    topAttachments,
+  ]);
 
   const insertText = useCallback(
     (text: string) => {
@@ -1182,6 +1262,27 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     if (recoveredTopAttachments.length > 0) {
       attachmentStore.restoreTopAttachments(recoveredTopAttachments, 0);
     }
+    if (props.attachmentDrafts) {
+      const recoveredAttachments = [
+        ...hydrated.flatMap((item) =>
+          item.editorAttachments.map(({ id, file }) => ({
+            id,
+            file,
+            source: "paste" as const,
+          }))
+        ),
+        ...recoveredTopAttachments.map(({ id, file }) => ({
+          id,
+          file,
+          source: "upload" as const,
+        })),
+      ];
+      void Promise.all(
+        recoveredAttachments.map((attachment, position) =>
+          props.attachmentDrafts!.stage(attachment, position)
+        )
+      );
+    }
 
     if (hydrated.some((item) => item.expanded)) {
       setExpanded(true);
@@ -1200,6 +1301,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     props.onRecoveredComposes,
     props.onRestoreRecoveredTarget,
     props.recoveredComposes,
+    props.attachmentDrafts,
     extensions.editor.composeParts,
   ]);
 
@@ -1302,51 +1404,57 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       localMembersRef.current,
     );
 
-    return coordinator.submit(
-      {
-        text: content,
-        mention,
-        topFiles: topAttachmentFiles,
-        editorBlocks: orderedBlocks,
-        pendingAttachments: pendingAttachmentPreviews,
-      },
-      {
-        host: {
-          captureSendTransaction: () => {
-            if (props.onCaptureSendTransaction) {
-              return props.onCaptureSendTransaction();
-            }
-            return {
-              channelKey: hostRef.current.getChannel().key,
-              captureSendTarget: () => props.onCaptureSendTarget?.(),
-              captureSendDraft: () => props.onCaptureSendDraft?.(),
-              send: props.onSend!,
-              onSendSettled: props.onSendSettled,
-            };
-          },
-          isChannelActive: (channelKey) => {
-            return hostRef.current.getChannel().key === channelKey;
-          },
-          getExpanded: () => expanded,
-          setExpanded: (nextExpanded) => {
-            setExpanded(nextExpanded);
-            props.onExpandChange?.(nextExpanded);
-          },
-          handoffRecovery: props.onComposeRecovery,
-          notifyRestoreError: (err, step) => {
-            console.error(`[MessageInput] compose ${step} failed`, err);
-            Notification.error({
-              className: "wk-octo-notification",
-              content:
-                err instanceof ComposeRestoreUnavailableError
-                  ? t("base.messageInput.send.restoreFailed")
-                  : t("base.conversation.message.sendFailed"),
-            });
-          },
+    const draftAttachmentIds = [
+      ...attachmentAttrs.map(({ id }) => id),
+      ...topAttachmentsAtSend.map(({ id }) => id),
+    ];
+    props.attachmentDrafts?.beginSend(draftAttachmentIds);
+    try {
+      const result = await coordinator.submit(
+        {
+          text: content,
+          mention,
+          topFiles: topAttachmentFiles,
+          editorBlocks: orderedBlocks,
+          pendingAttachments: pendingAttachmentPreviews,
         },
-        editor: {
-          consume: (context) =>
-            consumeCompose({
+        {
+          host: {
+            captureSendTransaction: () => {
+              if (props.onCaptureSendTransaction) {
+                return props.onCaptureSendTransaction();
+              }
+              return {
+                channelKey: hostRef.current.getChannel().key,
+                captureSendTarget: () => props.onCaptureSendTarget?.(),
+                captureSendDraft: () => props.onCaptureSendDraft?.(),
+                send: props.onSend!,
+                onSendSettled: props.onSendSettled,
+              };
+            },
+            isChannelActive: (channelKey) => {
+              return hostRef.current.getChannel().key === channelKey;
+            },
+            getExpanded: () => expanded,
+            setExpanded: (nextExpanded) => {
+              setExpanded(nextExpanded);
+              props.onExpandChange?.(nextExpanded);
+            },
+            handoffRecovery: props.onComposeRecovery,
+            notifyRestoreError: (err, step) => {
+              console.error(`[MessageInput] compose ${step} failed`, err);
+              Notification.error({
+                className: "wk-octo-notification",
+                content:
+                  err instanceof ComposeRestoreUnavailableError
+                    ? t("base.messageInput.send.restoreFailed")
+                    : t("base.conversation.message.sendFailed"),
+              });
+            },
+          },
+          editor: {
+            consume: (context) =>
+              consumeCompose({
               composePartRegistry: extensions.editor.composeParts,
               captured: capturedEditorCompose,
               isRestoreTargetActive: context.isRestoreTargetActive,
@@ -1401,20 +1509,48 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
               onRestoreCompose: context.onRestoreCompose,
               onRestoreSendTarget: context.onRestoreSendTarget,
               onRestoreError: context.onRestoreError,
-            }),
-          handoffRecovery: (recovery) => {
-            const editorRecoveryIds = new Set([
-              ...recovery.editorAttachments.map(({ id }) => id),
-              ...recovery.editorObjectUrls.map(({ id }) => id),
-            ]);
-            attachmentStore.handoffInlineAttachments([...editorRecoveryIds]);
-            attachmentStore.handoffTopAttachments(
-              recovery.topAttachments.map(({ id }) => id),
-            );
+              }),
+            handoffRecovery: (recovery) => {
+              const editorRecoveryIds = new Set([
+                ...recovery.editorAttachments.map(({ id }) => id),
+                ...recovery.editorObjectUrls.map(({ id }) => id),
+              ]);
+              attachmentStore.handoffInlineAttachments([...editorRecoveryIds]);
+              attachmentStore.handoffTopAttachments(
+                recovery.topAttachments.map(({ id }) => id),
+              );
+            },
           },
         },
-      },
-    );
+      );
+      const keepAttachmentIds =
+        result.kind === "rejected"
+          ? draftAttachmentIds
+          : [
+              ...topAttachmentsAtSend
+                .filter(({ id }) => !result.outcome.consumedTopIds.includes(id))
+                .map(({ id }) => id),
+              ...(result.editorConsumed
+                ? result.outcome.unsentEditorBlocks
+                    .filter(
+                      (block): block is { type: "attachment"; id: string } =>
+                        block.type === "attachment"
+                    )
+                    .map(({ id }) => id)
+                : attachmentAttrs.map(({ id }) => id)),
+            ];
+      props.attachmentDrafts?.settleSend({
+        attachmentIds: draftAttachmentIds,
+        keepAttachmentIds,
+      });
+      return result;
+    } catch (error) {
+      props.attachmentDrafts?.settleSend({
+        attachmentIds: draftAttachmentIds,
+        keepAttachmentIds: draftAttachmentIds,
+      });
+      throw error;
+    }
   }, [
     editor,
     attachmentStore,
@@ -1426,6 +1562,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     props.onComposeRecovery,
     props.onSendSettled,
     props.onExpandChange,
+    props.attachmentDrafts,
     controller,
     coordinator,
     extensions.editor.composeParts,
@@ -1447,6 +1584,15 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         addMention,
         addAttachment,
         getAttachmentFiles,
+        canLeaveWithAttachments: () => {
+          const attachmentIds = getAttachmentIds();
+          return props.attachmentDrafts
+            ? props.attachmentDrafts.canLeave(attachmentIds)
+            : attachmentIds.length === 0;
+        },
+        discardUnreadyAttachments: () => {
+          props.attachmentDrafts?.discardUnready(getAttachmentIds());
+        },
         text: () => (editor ? extractMentionsFromEditor(editor) : undefined),
         focus: () => editor?.commands.focus(),
         send: () => invokeReadySend(sendRef.current),
@@ -1478,6 +1624,8 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     attachmentStore,
     controller,
     getAttachmentFiles,
+    getAttachmentIds,
+    props.attachmentDrafts,
   ]);
 
   const getFilteredSlashCommands = useCallback((): BotCommand[] => {
