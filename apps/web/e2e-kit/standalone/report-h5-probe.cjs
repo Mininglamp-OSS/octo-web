@@ -34,6 +34,9 @@ let presignHang = false;
 let presignUrlOverride = null;
 // When set, POST /v1/reports answers 502 — the "result unknown" outcome.
 let failSubmit = false;
+// When set, the upload POST answers 500 so a tile reaches 'failed' fast (used to
+// exercise "delete the failed tile, then re-pick the same file").
+let failUpload = false;
 // Requests the off-origin "leak" listener received. Must stay empty.
 const leakRequests = [];
 let serveCsp = true;
@@ -88,6 +91,7 @@ function serve(port) {
       if (u.pathname === '/v1/file/upload' && req.method === 'POST') {
         uploads.push({ token: req.headers.token, at: Date.now() });
         if (!req.headers.token) return json({ status: 401 }, 401);
+        if (failUpload) return json({ status: 500 }, 500);
         setTimeout(() => json({ path: 'report/u-1/LEAKED.png' }), uploadDelayMs);
         return;
       }
@@ -756,6 +760,21 @@ async function launchBrowser() {
     `inert=${unknownInert} dialogs=${JSON.stringify(unknownPage.__dialogs)}`);
   check('P2-UNKNOWN: an unknown outcome releases navigation (no permanent trap)',
     navReleased, `navReleased=${navReleased}`);
+  // Critical-1 regression: after a 502 the outcome is unknown, but the button is
+  // only pointer-events:none — which blocks real pointer input, not a programmatic
+  // activation (the exact a11y click path). A 2nd POST would file a duplicate
+  // complaint against a server with no idempotency key. Re-activate three ways.
+  const postsAfterUnknown = submissions.length;
+  await unknownPage.evaluate(() => {
+    const el = document.querySelector('.reportSubmit');
+    el.click();
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    el.click();
+  });
+  await unknownPage.waitForTimeout(800);
+  check('P2-UNKNOWN: a programmatic re-activation after 502 cannot file a second complaint',
+    postsAfterUnknown === 1 && submissions.length === 1,
+    `posts=${submissions.length} dialogs=${JSON.stringify(unknownPage.__dialogs)}`);
   await unknownPage.close();
   failSubmit = false;
 
@@ -804,6 +823,67 @@ async function launchBrowser() {
     leafPickerCount === 1 && presignRequests.length === 1,
     `pickers=${leafPickerCount} presign=${presignRequests.length} dialogs=${JSON.stringify(leafHashPage.__dialogs)}`);
   await leafHashPage.close();
+
+  // #R7-8 Critical-2: after a failed upload tile is removed, re-picking the SAME
+  // file must start a fresh presign. The picker is now a single reused <input>
+  // (round-7 P1-PICK), so its .value is no longer implicitly reset by a rebuild.
+  // uploadChange() must clear it, or the native picker treats the identical
+  // selection as "no change" and silently does nothing.
+  //
+  // A headless probe cannot open the real OS dialog, so model the browser's own
+  // rule — a native pick fires `change` only when .value differs from the current
+  // one — by shimming .value. Setting .value on a file input is otherwise
+  // restricted to '', which is exactly the reset under test, so the shim lets the
+  // page's `this.value = ''` be observed while reproducing the no-op on re-pick.
+  const installValueModel = (p) => p.evaluate(() => {
+    const inp = document.querySelector('.imgItem .upload');
+    if (!inp) return;
+    let current = inp.value; // '' until the first pick
+    Object.defineProperty(inp, 'value', {
+      configurable: true,
+      get() { return current; },
+      set(v) { current = v; },
+    });
+  });
+  const nativeSelect = (p, name) => p.evaluate(({ name }) => {
+    const inp = document.querySelector('.imgItem .upload');
+    if (!inp) return 'no-picker';
+    const fakePath = 'C:\\fakepath\\' + name;
+    if (inp.value === fakePath) return 'noop'; // identical native pick → no change event
+    const dt = new DataTransfer();
+    dt.items.add(new File(['x'], name, { type: 'image/png' }));
+    Object.defineProperty(inp, 'files', { value: dt.files, configurable: true });
+    inp.value = fakePath;
+    inp.dispatchEvent(new Event('change'));
+    return 'fired';
+  }, { name });
+
+  submissions.length = 0; uploads.length = 0; presignRequests.length = 0;
+  sessionConsumed = false; uploadDelayMs = 0; presignDelayMs = 0; presignHang = false;
+  presignUrlOverride = null; failSubmit = false; failUpload = true;
+  const retryPage = await mkPage('R8');
+  await installValueModel(retryPage);
+  const firstPick = await nativeSelect(retryPage, 'retry-same.png');
+  await retryPage.waitForFunction(
+    () => !!document.querySelector('.imgs .imgItem.upload-failed .uploadRemove'),
+    { timeout: 5000 });
+  const valueAfterFirst = await retryPage.evaluate(() => document.querySelector('.imgItem .upload').value);
+  const presignAfterFirst = presignRequests.length;
+  // Remove the failed tile (the page tells the user to "移除或重试"), then pick
+  // the very same file again.
+  await retryPage.evaluate(() => { const el = document.querySelector('.uploadRemove'); if (el) el.click(); });
+  await retryPage.waitForTimeout(150);
+  const secondPick = await nativeSelect(retryPage, 'retry-same.png');
+  await retryPage.waitForFunction(
+    () => document.querySelectorAll('.imgs .imgItem:not(.imgsPicker)').length >= 1,
+    { timeout: 5000 }).catch(() => {});
+  const presignAfterSecond = presignRequests.length;
+  check('P2-RETRY: re-picking the same file after a failed upload starts a new presign',
+    firstPick === 'fired' && valueAfterFirst === '' && presignAfterFirst === 1
+      && secondPick === 'fired' && presignAfterSecond === 2,
+    `first=${firstPick} value=${JSON.stringify(valueAfterFirst)} presign1=${presignAfterFirst} second=${secondPick} presign2=${presignAfterSecond}`);
+  await retryPage.close();
+  failUpload = false;
 
   // ---------- Probe 3: CSP must not carry the inert bridge source ----------
   const csp = fs.readFileSync(path.resolve(__dirname, '../../../../nginx.conf.template'), 'utf8');

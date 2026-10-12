@@ -508,6 +508,12 @@
                 this.value = '';
                 return;
             }
+            // The picker is now a single reused <input> (ensurePicker() no longer
+            // rebuilds it), so its .value is no longer implicitly reset by a
+            // re-render. Clear it here, or re-selecting the SAME file after a
+            // failed upload fires no change event — the exact retry the failure
+            // tile and draftReady() tell the user to perform.
+            this.value = '';
             var objUrl = getObjectURL(file);//获取文件信息
             if (objUrl) {
                 var imageData = { url: objUrl, status: 'pending' };
@@ -800,6 +806,13 @@
         })
 
         let submitting = false;
+        // Latched once an unknown outcome is reached: releasing `submitting`
+        // (so navigation works again) is not enough on its own, because the
+        // submit handler's only re-entry guard is `submitting` and the button's
+        // pointer-events:none does not stop a programmatic activation (the a11y
+        // click path). The server has no idempotency key, so this latch keeps the
+        // handler dead for the life of the page and blocks a duplicate filing.
+        let submitLatched = false;
         function setSubmitting(on) {
             submitting = on;
             $('.reportSubmit').css(on
@@ -823,6 +836,7 @@
         // again) while keeping the button pointer-events:none.
         function lockSubmitForUnknownOutcome() {
             submitting = false;
+            submitLatched = true;
             $('.reportSubmit').css({ opacity: '0.5', 'pointer-events': 'none' });
             $('.imgs, .categoryBox, .reportContent').css('pointer-events', '');
         }
@@ -864,7 +878,7 @@
             });
         }
         $('.reportSubmit').on('click', async function () { // 提交
-            if (submitting) {
+            if (submitting || submitLatched) {
                 return;
             }
             // Claim the lock BEFORE the first await. im.getChannel() round-trips
