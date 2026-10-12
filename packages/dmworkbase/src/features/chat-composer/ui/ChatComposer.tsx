@@ -872,14 +872,10 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         !editor.isDestroyed;
 
       const staging: Promise<void>[] = [];
-      const existingAttachmentCount = editor
-        ? extractAttachmentsFromEditor(editor).length +
-          attachmentStore.snapshotTopAttachments().length
-        : attachmentStore.snapshotTopAttachments().length;
-      for (const [batchPosition, attachment] of attachments.entries()) {
+      for (const attachment of attachments) {
         if (!isAttachmentTargetActive()) return;
         const { id, file, source } = attachment;
-        const position = existingAttachmentCount + batchPosition;
+        const position = attachment.position;
         const isPastedImage = source === "paste" && isImageFile(file);
 
         if (isPastedImage && editor) {
@@ -922,7 +918,16 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         }
         if (!attachment.restored && props.attachmentDrafts) {
           staging.push(
-            props.attachmentDrafts.stage({ id, file, source }, position)
+            props.attachmentDrafts
+              .stage({ id, file, source }, position)
+              .then((persisted) => {
+                if (!persisted && isAttachmentTargetActive()) {
+                  Notification.error({
+                    content: t("base.messageInput.attachment.draftSaveFailed"),
+                    duration: 5,
+                  });
+                }
+              })
           );
         }
       }
@@ -1278,8 +1283,8 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         })),
       ];
       void Promise.all(
-        recoveredAttachments.map((attachment, position) =>
-          props.attachmentDrafts!.stage(attachment, position)
+        recoveredAttachments.map((attachment) =>
+          props.attachmentDrafts!.stage(attachment)
         )
       );
     }

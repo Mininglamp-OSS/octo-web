@@ -1344,6 +1344,7 @@
   "groupCard.groupTag": "Group",
   "groupCard.memberCount": "{{count}} members",
   "messageInput.attachment.remove": "Remove",
+  "messageInput.attachment.draftSaveFailed": "This attachment could not be saved locally. Keep this conversation open until it is sent.",
   "messageInput.attachment.unnamedFile": "Untitled file",
   "messageInput.collapse": "Collapse",
   "messageInput.expand": "Expand input",
