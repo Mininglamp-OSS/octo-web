@@ -40,6 +40,10 @@ let failUpload = false;
 // Requests the off-origin "leak" listener received. Must stay empty.
 const leakRequests = [];
 let serveCsp = true;
+// Delay static /i18n/*.json responses so a probe can exercise the race where the
+// reporter types before the i18n payload lands (the jQuery.i18n plugin rewrites
+// value/html/placeholder in its getJSON callback, i.e. after a network round-trip).
+let i18nDelayMs = 0;
 
 // The real production policy, read from the shipped template, so probes run under
 // the same CSP the pages actually get (previously the stub sent only
@@ -112,6 +116,12 @@ function serve(port) {
         const headers = { 'Content-Type': ct };
         const csp = serveCsp ? productionCsp() : null;
         if (csp) headers['Content-Security-Policy'] = csp;
+        // The i18n payload is fetched once, asynchronously, on document.ready.
+        // Delaying it lets a probe type before it lands, which is exactly the
+        // window where an unmarked textarea had its value overwritten.
+        if (u.pathname.startsWith('/i18n/') && i18nDelayMs > 0) {
+          return setTimeout(() => { res.writeHead(200, headers); res.end(fs.readFileSync(f)); }, i18nDelayMs);
+        }
         res.writeHead(200, headers); res.end(fs.readFileSync(f));
       } else { res.writeHead(404); res.end('nf'); }
     });
@@ -741,6 +751,35 @@ async function launchBrowser() {
     inputBefore === 'STABLE' && inputAfter === 'STABLE',
     `before=${inputBefore} after=${inputAfter}`);
   await pickKeepPage.close();
+
+  // #R7-8: the i18n payload lands asynchronously (a getJSON round-trip on
+  // document.ready). If the reporter types before it arrives, an unmarked
+  // textarea had its val() overwritten by the i18n string, and report.html
+  // snapshots that polluted value straight into the filed complaint. Delay the
+  // payload, type first, and assert the typed text survives both in the DOM and
+  // in the filed remark.
+  submissions.length = 0; uploads.length = 0; sessionConsumed = false; uploadDelayMs = 0;
+  presignDelayMs = 0; presignHang = false; failSubmit = false;
+  i18nDelayMs = 2000;
+  const i18nPage = await mkPage('R-i18n');
+  const typedText = 'MY OWN COMPLAINT TEXT';
+  await i18nPage.fill('.reportContent', typedText);
+  // The payload is still in flight (delayed); this proves the probe observes the
+  // pre-i18n DOM rather than a post-i18n no-op.
+  const valBeforeI18n = await i18nPage.inputValue('.reportContent');
+  await i18nPage.waitForTimeout(2600);
+  const valAfterI18n = await i18nPage.inputValue('.reportContent');
+  check('P1-I18N: a delayed i18n payload does not clobber typed complaint text',
+    valBeforeI18n === typedText && valAfterI18n === typedText,
+    `before=${JSON.stringify(valBeforeI18n)} after=${JSON.stringify(valAfterI18n)}`);
+  await i18nPage.evaluate(() => document.querySelector('.reportSubmit').click());
+  await i18nPage.waitForTimeout(1200);
+  const i18nPayload = submissions.length ? submissions[submissions.length - 1] : null;
+  check('P1-I18N: the filed remark is the typed text, not the localized placeholder',
+    !!i18nPayload && i18nPayload.remark === typedText,
+    `remark=${JSON.stringify(i18nPayload && i18nPayload.remark)}`);
+  await i18nPage.close();
+  i18nDelayMs = 0;
 
   // #R7-5: an unknown outcome keeps the button inert but releases navigation.
   submissions.length = 0; uploads.length = 0; sessionConsumed = false; uploadDelayMs = 0;

@@ -104,7 +104,11 @@
                                 </div>
                             </li>
                             <li class="reportRemark">
-                                <textarea i18n="report.content.placeholder" class="reportContent"
+                                <!-- i18n-only="placeholder": the vendored plugin rewrites
+                                     value + html + placeholder by default; on a textarea the
+                                     value rewrite clobbers anything the reporter typed before
+                                     the async i18n payload lands. Pin it to the placeholder. -->
+                                <textarea i18n="report.content.placeholder" i18n-only="placeholder" class="reportContent"
                                     placeholder="投诉内容(选填)"></textarea>
                             </li>
                         </ul>
