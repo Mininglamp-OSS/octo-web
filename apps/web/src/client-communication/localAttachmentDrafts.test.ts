@@ -22,6 +22,7 @@ function bridge(): OctoBuddyCommunicationBridge {
     listAttachmentDrafts: vi.fn<LocalAttachmentDraftHost["list"]>(),
     readAttachmentDraft: vi.fn<LocalAttachmentDraftHost["read"]>(),
     removeAttachmentDraft: vi.fn<LocalAttachmentDraftHost["remove"]>(),
+    onCommand: vi.fn(() => () => {}),
   };
 }
 
@@ -43,6 +44,21 @@ describe("Client local attachment draft capability", () => {
     expect(port).toBeDefined();
     dispose();
     dispose = undefined;
+    expect(createChatComposerAttachmentDraftPort(channel)).toBeUndefined();
+  });
+
+  it("invalidates stale ports when the space or session changes", () => {
+    let commandListener: Parameters<OctoBuddyCommunicationBridge["onCommand"]>[0] | undefined;
+    const value = bridge();
+    value.onCommand = vi.fn((listener) => {
+      commandListener = listener;
+      return () => { commandListener = undefined; };
+    });
+    dispose = installClientLocalAttachmentDrafts(value);
+    expect(createChatComposerAttachmentDraftPort(channel)).toBeDefined();
+
+    commandListener?.({ type: "spaceChanged", space: { id: "space-b", name: "B" } });
+
     expect(createChatComposerAttachmentDraftPort(channel)).toBeUndefined();
   });
 });

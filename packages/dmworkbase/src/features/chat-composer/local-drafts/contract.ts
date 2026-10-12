@@ -37,6 +37,7 @@ export interface LocalAttachmentDraftHost {
   remove(input: {
     channel: LocalAttachmentDraftChannel;
     attachmentId: string;
+    /** Removal must be idempotent and accept an attachment that is already absent. */
   }): Promise<void>;
 }
 

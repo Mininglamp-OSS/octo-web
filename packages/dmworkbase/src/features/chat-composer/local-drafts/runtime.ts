@@ -26,6 +26,21 @@ interface HostInstallation {
 }
 
 const hostInstallations: HostInstallation[] = [];
+const sendingByChannel = new Map<string, Set<string>>();
+
+function channelKey(channel: LocalAttachmentDraftChannel): string {
+  return `${channel.type}:${channel.id}`;
+}
+
+function sendingIds(channel: LocalAttachmentDraftChannel): Set<string> {
+  const key = channelKey(channel);
+  let ids = sendingByChannel.get(key);
+  if (!ids) {
+    ids = new Set();
+    sendingByChannel.set(key, ids);
+  }
+  return ids;
+}
 
 function installedHost(): LocalAttachmentDraftHost | undefined {
   for (let index = hostInstallations.length - 1; index >= 0; index -= 1) {
@@ -61,6 +76,7 @@ export function createChatComposerAttachmentDraftPort(
   const host = installedHost();
   if (!host || host.version !== 1) return undefined;
   const states = new Map<string, AttachmentState>();
+  const activeSends = sendingIds(channel);
   let nextPosition = 0;
   let restoreInFlight = false;
 
@@ -80,6 +96,7 @@ export function createChatComposerAttachmentDraftPort(
         const metadata = await host.list({ channel });
         for (const attachment of metadata) {
           nextPosition = Math.max(nextPosition, attachment.position + 1);
+          if (states.has(attachment.id) || activeSends.has(attachment.id)) continue;
           states.set(attachment.id, {
             phase: "restoring",
             live: false,
@@ -89,6 +106,9 @@ export function createChatComposerAttachmentDraftPort(
           });
         }
         for (const attachment of metadata) {
+          const current = states.get(attachment.id);
+          if (!current || current.phase !== "restoring") continue;
+          if (activeSends.has(attachment.id)) continue;
           try {
             const result = await host.read({
               channel,
@@ -218,6 +238,7 @@ export function createChatComposerAttachmentDraftPort(
 
     beginSend(attachmentIds) {
       for (const id of attachmentIds) {
+        activeSends.add(id);
         const state = states.get(id);
         if (state) state.phase = "sending";
       }
@@ -226,6 +247,7 @@ export function createChatComposerAttachmentDraftPort(
     settleSend({ attachmentIds, keepAttachmentIds }) {
       const keep = new Set(keepAttachmentIds);
       for (const id of attachmentIds) {
+        activeSends.delete(id);
         const state = states.get(id);
         if (!state) continue;
         if (keep.has(id)) {
@@ -237,6 +259,7 @@ export function createChatComposerAttachmentDraftPort(
           remove(id);
         }
       }
+      if (activeSends.size === 0) sendingByChannel.delete(channelKey(channel));
     },
 
     canLeave(attachmentIds) {
