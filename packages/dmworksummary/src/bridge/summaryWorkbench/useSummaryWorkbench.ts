@@ -90,11 +90,19 @@ export interface SummaryWorkbenchController {
   savePreview: (
     title?: string
   ) => Promise<CreateAgentSummaryResult | undefined>;
-  hydrateSession: (sessionId?: string) => Promise<boolean>;
+  hydrateSession: (
+    sessionId?: string
+  ) => Promise<SummaryWorkbenchHydrationResult>;
   resetSession: (options?: SummaryWorkbenchResetOptions) => string;
   cancelActiveRequest: () => void;
   clearError: () => void;
 }
+
+export type SummaryWorkbenchHydrationResult =
+  | { status: "hydrated"; sessionId: string }
+  | { status: "empty" }
+  | { status: "failed" }
+  | { status: "cancelled" };
 
 interface RuntimeState {
   sessionId: string;
@@ -142,7 +150,7 @@ interface HydrationFlight {
   epoch: number;
   sessionId: string;
   controller: AbortController;
-  promise: Promise<boolean>;
+  promise: Promise<SummaryWorkbenchHydrationResult>;
 }
 
 const EMPTY_SCOPE: SummaryWorkbenchScope = {
@@ -293,10 +301,9 @@ export default function useSummaryWorkbench(
   const restoreComposerValue = useCallback(
     (value: string) => {
       commit((current: RuntimeState) => ({
-        ...clearRuntimeError(current),
+        ...current,
         model: updateSummaryComposer(current.model, {
           value,
-          errorMessage: undefined,
         }),
       }));
     },
@@ -775,14 +782,18 @@ export default function useSummaryWorkbench(
   );
 
   const hydrateSession = useCallback(
-    (requestedSessionId?: string): Promise<boolean> => {
+    (
+      requestedSessionId?: string
+    ): Promise<SummaryWorkbenchHydrationResult> => {
       const sessionId =
         normalizeSessionId(requestedSessionId) || runtimeRef.current.sessionId;
       const existing = hydrationRef.current;
       if (existing?.sessionId === sessionId) return existing.promise;
 
+      const previousRetryableGeneration = retryableGenerationRef.current;
       retryableGenerationRef.current = null;
       cancelOperations(false);
+      const previousRuntime = runtimeRef.current;
       const controller = new AbortController();
       const epoch = epochRef.current;
       commit((current: RuntimeState) => ({
@@ -803,7 +814,7 @@ export default function useSummaryWorkbench(
         })
         .then((hydration: SummaryWorkbenchHistoryHydration) => {
           if (hydrationRef.current !== flight || epochRef.current !== epoch) {
-            return false;
+            return { status: "cancelled" } as const;
           }
           if (hydration.empty) {
             const nextSessionId = createSessionIdRef.current();
@@ -818,7 +829,7 @@ export default function useSummaryWorkbench(
               )
             );
             notifySessionId("");
-            return true;
+            return { status: "empty" } as const;
           }
           const nextSessionId = hydration.sessionId;
           commit((current: RuntimeState) =>
@@ -832,20 +843,40 @@ export default function useSummaryWorkbench(
             )
           );
           notifySessionId(nextSessionId);
-          return true;
+          return { status: "hydrated", sessionId: nextSessionId } as const;
         })
         .catch((reason: unknown) => {
           if (hydrationRef.current !== flight || epochRef.current !== epoch) {
-            return false;
+            return { status: "cancelled" } as const;
           }
           const error = normalizeControllerError(reason);
-          if (error.kind !== "abort") {
+          if (error.kind === "abort") {
+            retryableGenerationRef.current = previousRetryableGeneration;
             commit((current: RuntimeState) => ({
-              ...withRuntimeError(current, error),
+              ...current,
+              sessionId: previousRuntime.sessionId,
               isHydrating: false,
+              model: updateSummaryComposer(current.model, {
+                isSending: previousRuntime.model.composer.isSending,
+              }),
             }));
+            return { status: "cancelled" } as const;
           }
-          return false;
+          retryableGenerationRef.current = previousRetryableGeneration;
+          commit((current: RuntimeState) => ({
+            ...withRuntimeError(
+              {
+                ...current,
+                sessionId: previousRuntime.sessionId,
+                model: updateSummaryComposer(current.model, {
+                  isSending: previousRuntime.model.composer.isSending,
+                }),
+              },
+              error
+            ),
+            isHydrating: false,
+          }));
+          return { status: "failed" } as const;
         })
         .finally(() => {
           if (hydrationRef.current === flight) {

@@ -290,11 +290,15 @@
       "participantsUnsupportedForSelectedChats": "Participants require group chats only, with no more than 30 chats selected.",
       "selectSingleChatForParticipants": "Participant selection supports up to 30 group chats only."
     },
+    "lastSession": {
+      "label": "Last conversation"
+    },
     "errors": {
       "network": "Network error. Try again later.",
       "protocol": "The summary service version is incompatible. Refresh and try again.",
       "serviceUnavailable": "The summary service is temporarily unavailable. Try again later.",
-      "sessionExpired": "This summary session has expired. Start a new session."
+      "sessionExpired": "This summary session has expired. Start a new session.",
+      "sessionSaveFailed": "Couldn't start a new session. Your current session is preserved. Please try again."
     },
     "card": {
       "teamConfirmationTitle": "Confirm team summary task",

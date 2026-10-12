@@ -9,7 +9,12 @@ const fakes = vi.hoisted(() => ({
 vi.mock("react-dom/client", () => ({
   createRoot: () => ({ render: fakes.render }),
 }));
-vi.mock("./SummaryShell", () => ({ SummaryShell: () => null }));
+// This test imports the real entry module, so its shell mock must mirror every
+// named export that index.tsx consumes.
+vi.mock("./SummaryShell", () => ({
+  SummaryShell: () => null,
+  durableSummaryRoute: (route: unknown) => route,
+}));
 vi.mock("../client-feature/e2eMocks", () => ({
   enableClientFeatureMocks: fakes.enableClientFeatureMocks,
 }));

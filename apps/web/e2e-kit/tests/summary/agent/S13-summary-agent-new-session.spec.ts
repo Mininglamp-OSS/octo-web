@@ -23,35 +23,43 @@ test.describe("@S13 @p1 @summary @agent @summary-agent @summary-reference S13 �
     await authedPage.getByRole("button", { name: "智能总结" }).click();
     await expect(authedPage.getByText("暂无总结记录")).toBeVisible({ timeout: 15_000 });
 
-    // 总结方式选择已上移到列表页「+」下拉（创建页内不再提供切换）：直接以 Agent 总结进入。
+    // v2 workbench 由列表页「+」直接进入，不再经过 Legacy Agent tab。
     await authedPage.getByTestId(T.listModeSwitch).click();
-    await authedPage.getByTestId(T.listAgentTab).click();
-    await expect(
-      authedPage.getByText("你好，我是总结助手，想总结什么尽管告诉我。")
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(authedPage.getByTestId(T.workbenchFeature)).toBeVisible({ timeout: 15_000 });
 
-    await authedPage.getByTestId(T.agentRefEntry).click();
+    await authedPage.getByRole("button", { name: "引用总结", exact: true }).click();
     await expect(authedPage.getByText("选择要引用的总结")).toBeVisible({ timeout: 15_000 });
     await authedPage.getByText("S13 可引用总结", { exact: true }).click();
 
-    const referenceCard = authedPage.getByTestId(T.agentRefCard);
-    await expect(referenceCard.getByText("已引用")).toBeVisible();
-    await expect(referenceCard.getByText("S13 可引用总结", { exact: true })).toBeVisible();
+    await expect(
+      authedPage.getByRole("button", { name: "引用总结: S13 可引用总结" })
+    ).toBeVisible();
 
-    await authedPage.getByTestId(T.agentInput).fill("S13 第一轮问题");
-    await authedPage.getByTestId(T.agentSendBtn).click();
+    await authedPage
+      .getByRole("textbox", { name: "描述你想总结的内容和要求" })
+      .fill("S13 第一轮问题");
+    await authedPage.getByRole("button", { name: "发送", exact: true }).click();
 
     await expect(authedPage.getByText("S13 第一轮问题")).toBeVisible();
     await expect(authedPage.getByText("S13 Agent 已生成第一轮回复")).toBeVisible({ timeout: 15_000 });
 
     await authedPage.getByTestId(T.agentNewSessionBtn).click();
-    await expect(authedPage.getByText("已引用")).toHaveCount(0);
-    await expect(authedPage.getByTestId(T.agentRefEntry)).toBeVisible();
+    await expect(
+      authedPage.getByRole("button", { name: "引用总结: S13 可引用总结" })
+    ).toHaveCount(0);
+    await expect(
+      authedPage.getByRole("button", { name: "引用总结", exact: true })
+    ).toBeVisible();
     await expect(authedPage.getByText("S13 第一轮问题")).toHaveCount(0);
     await expect(authedPage.getByText("S13 Agent 已生成第一轮回复")).toHaveCount(0);
     await expect(
-      authedPage.getByText("你好，我是总结助手，想总结什么尽管告诉我。")
+      authedPage.getByRole("textbox", { name: "描述你想总结的内容和要求" })
     ).toBeVisible();
+
+    await expect(authedPage.getByTestId(T.workbenchLastSession)).toBeVisible();
+    await authedPage.getByTestId(T.workbenchLastSession).click();
+    await expect(authedPage.getByText("S13 第一轮问题")).toBeVisible();
+    await expect(authedPage.getByText("S13 Agent 已生成第一轮回复")).toBeVisible();
 
     await sanityCheck(authedPage, ctx);
   });

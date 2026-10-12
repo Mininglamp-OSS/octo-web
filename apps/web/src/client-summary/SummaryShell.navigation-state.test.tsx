@@ -52,7 +52,9 @@ vi.mock("../../../../packages/dmworksummary/src/pages/SummaryListPage", () => ({
   },
 }));
 vi.mock("../../../../packages/dmworksummary/src/features/summaryWorkbench/SummaryWorkbenchCreateEntry", () => ({
-  default: () => <input aria-label="draft" />,
+  default: ({ forceNewSession }: { forceNewSession?: boolean }) => (
+    <input aria-label="draft" data-force-new-session={String(Boolean(forceNewSession))} />
+  ),
 }));
 vi.mock("../../../../packages/dmworksummary/src/pages/SummaryDetailPage", () => ({
   default: ({ taskId }: { taskId: number | string }) => {
@@ -123,13 +125,23 @@ describe("SummaryShell with the real workspace", () => {
     fireEvent.change(list, { target: { value: "retained filter" } });
     fireEvent.doubleClick(list);
     await act(async () => {});
-    const route: SummaryWorkspaceRoute = { view: "create", mode: "normal", source: "summary_list" };
-    expect(f.bridge.reportRoute).toHaveBeenLastCalledWith({ route, spaceId: "space-a" });
+    const route: SummaryWorkspaceRoute = {
+      view: "create",
+      mode: "normal",
+      source: "summary_list",
+      fresh: true,
+    };
+    expect(f.bridge.reportRoute).toHaveBeenLastCalledWith({
+      route: { view: "create", mode: "normal", source: "summary_list" },
+      spaceId: "space-a",
+    });
     const draft = screen.getByLabelText("draft");
+    expect(draft).toHaveAttribute("data-force-new-session", "true");
     fireEvent.change(draft, { target: { value: "unsaved creation" } });
 
     await f.send({ type: "suspend" });
     await f.send({ type: "resume" }, { type: "navigate", route, navigationId: 1 });
+    expect(draft).toHaveAttribute("data-force-new-session", "false");
     expect(screen.getByTestId("list-load-count")).toHaveTextContent("2");
     await f.send({ type: "navigate", route, navigationId: 2 });
     expect(screen.getByTestId("list-load-count")).toHaveTextContent("2");
@@ -139,6 +151,15 @@ describe("SummaryShell with the real workspace", () => {
     expect(screen.getByLabelText("list-filter")).toBe(list);
     expect(list).toHaveValue("retained filter");
     expect(f.committed.map(({ navigationId }) => navigationId)).toEqual([1, 2]);
+  });
+
+  it("drops a stale fresh marker from the initial host route", () => {
+    setup({ view: "create", mode: "normal", source: "summary_list", fresh: true });
+
+    expect(screen.getByLabelText("draft")).toHaveAttribute(
+      "data-force-new-session",
+      "false"
+    );
   });
 
   it("refreshes the cached list from the source on resume without remounting the workspace", async () => {

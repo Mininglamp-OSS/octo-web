@@ -5,7 +5,10 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SummaryWorkbenchStreamCallbacks } from "../../Service/SummaryWorkbenchService";
 import type { CreateAgentSummaryResult } from "../../types/summary";
-import { contextItemsFromScope, decodeSummaryWorkspaceStreamError } from "./adapter";
+import {
+  contextItemsFromScope,
+  decodeSummaryWorkspaceStreamError,
+} from "./adapter";
 import { canSaveCurrentPreview, type SummaryWorkbenchResponse } from "./model";
 import {
   SummaryWorkspaceApiError,
@@ -509,19 +512,61 @@ describe("useSummaryWorkbench", () => {
     unmount();
   });
 
+  it("restores composer text without clearing the current request error", async () => {
+    sendMessage.mockRejectedValue(
+      new SummaryWorkspaceApiError({
+        message: "gateway timeout",
+        kind: "transport",
+        retryable: true,
+      })
+    );
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "session-1",
+        initialScope,
+        autoHydrate: false,
+        preferStreaming: false,
+        service,
+      })
+    );
+
+    await act(async () => {
+      await result.current.send("personal-intent", "system_intent");
+    });
+    act(() => result.current.restoreComposerValue("Retry this request"));
+
+    expect(result.current.model.composer.value).toBe("Retry this request");
+    expect(result.current.model.composer.errorMessage).toBe("gateway timeout");
+    expect(result.current.error).toMatchObject({ kind: "transport" });
+    unmount();
+  });
+
   it("does not replay the entire run after a non-transient model parameter rejection", async () => {
     const { result, unmount } = renderHook(() =>
-      useSummaryWorkbench({ initialSessionId: "session-1", initialScope, autoHydrate: false, service })
+      useSummaryWorkbench({
+        initialSessionId: "session-1",
+        initialScope,
+        autoHydrate: false,
+        service,
+      })
     );
     let request!: Promise<SummaryWorkbenchResponse | undefined>;
     act(() => {
       request = result.current.send("summarize");
       streamCallbacks.onProgress?.({
-        phase: "retrieve", step: 1, ofSteps: 2, elapsed_ms: 100, count: 12,
+        phase: "retrieve",
+        step: 1,
+        ofSteps: 2,
+        elapsed_ms: 100,
+        count: 12,
       });
-      streamCallbacks.onError?.(decodeSummaryWorkspaceStreamError({
-        code: 50003, message: "Model request failed", transient: false,
-      }));
+      streamCallbacks.onError?.(
+        decodeSummaryWorkspaceStreamError({
+          code: 50003,
+          message: "Model request failed",
+          transient: false,
+        })
+      );
     });
     await request;
     expect(sendMessage).not.toHaveBeenCalled();
@@ -909,6 +954,180 @@ describe("useSummaryWorkbench", () => {
     expect(result.current.scope).toEqual(serverScope);
     expect(canSaveCurrentPreview(result.current.model)).toBe(true);
     expect(onSessionIdChange).toHaveBeenCalledWith("session-1");
+    unmount();
+  });
+
+  it("restores the previous runtime when History hydration fails", async () => {
+    loadSession.mockRejectedValue(
+      new SummaryWorkspaceApiError({
+        message: "Network unavailable",
+        kind: "transport",
+        retryable: true,
+      })
+    );
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "current-session",
+        initialScope,
+        autoHydrate: false,
+        service,
+      })
+    );
+    act(() => result.current.setComposerValue("Keep current draft"));
+
+    let hydrationResult: unknown;
+    await act(async () => {
+      hydrationResult = await result.current.hydrateSession("dead-session");
+    });
+
+    expect(hydrationResult).toEqual({ status: "failed" });
+    expect(result.current.sessionId).toBe("current-session");
+    expect(result.current.model.composer.value).toBe("Keep current draft");
+    expect(result.current.error).toMatchObject({ kind: "transport" });
+    unmount();
+  });
+
+  it("restores retry request identity when History hydration fails", async () => {
+    sendMessage.mockRejectedValue(
+      new SummaryWorkspaceApiError({
+        message: "gateway timeout",
+        kind: "transport",
+        retryable: true,
+      })
+    );
+    loadSession.mockRejectedValue(
+      new SummaryWorkspaceApiError({
+        message: "History unavailable",
+        kind: "transport",
+        retryable: true,
+      })
+    );
+    const requestIds = ["request-original", "request-unexpected"];
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "current-session",
+        initialScope,
+        autoHydrate: false,
+        preferStreaming: false,
+        service,
+        createRequestId: () => requestIds.shift() ?? "request-extra",
+      })
+    );
+
+    await act(async () => {
+      await result.current.send(
+        "Create the team summary",
+        "user",
+        "start_team_workflow"
+      );
+      await result.current.hydrateSession("dead-session");
+      await result.current.send(
+        "Create the team summary",
+        "user",
+        "start_team_workflow"
+      );
+    });
+
+    expect(sendMessage.mock.calls.map(([input]) => input.requestId)).toEqual([
+      "request-original",
+      "request-original",
+    ]);
+    unmount();
+  });
+
+  it("preserves current state changes when active hydration aborts", async () => {
+    sendMessage.mockRejectedValue(
+      new SummaryWorkspaceApiError({
+        message: "Original error",
+        kind: "business",
+        retryable: false,
+      })
+    );
+    const hydration = deferred<ReturnType<typeof previewHydration>>();
+    loadSession.mockImplementationOnce(() => hydration.promise);
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "current-session",
+        initialScope,
+        autoHydrate: false,
+        preferStreaming: false,
+        service,
+      })
+    );
+    await act(async () => {
+      await result.current.send("Create summary");
+    });
+    expect(result.current.error?.message).toBe("Original error");
+
+    let pending!: ReturnType<typeof result.current.hydrateSession>;
+    act(() => {
+      pending = result.current.hydrateSession("old-session");
+      result.current.clearError();
+    });
+    let hydrationResult: unknown;
+    await act(async () => {
+      hydration.reject(new DOMException("Aborted", "AbortError"));
+      hydrationResult = await pending;
+    });
+    expect(hydrationResult).toEqual({ status: "cancelled" });
+
+    expect(result.current.sessionId).toBe("current-session");
+    expect(result.current.error).toBeNull();
+    expect(result.current.model.composer.errorMessage).toBeUndefined();
+    unmount();
+  });
+
+  it("does not restore an obsolete runtime when hydration is superseded", async () => {
+    loadSession.mockImplementation((_sessionId, options) => {
+      return new Promise((_, reject) => {
+        options?.signal?.addEventListener(
+          "abort",
+          () => reject(new DOMException("Superseded", "AbortError")),
+          { once: true }
+        );
+      });
+    });
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "current-session",
+        initialScope,
+        autoHydrate: false,
+        service,
+      })
+    );
+
+    let pending!: ReturnType<typeof result.current.hydrateSession>;
+    act(() => {
+      pending = result.current.hydrateSession("old-session");
+    });
+    act(() => {
+      result.current.resetSession({ sessionId: "new-session" });
+    });
+
+    await expect(pending).resolves.toEqual({ status: "cancelled" });
+    expect(result.current.sessionId).toBe("new-session");
+    expect(result.current.error).toBeNull();
+    unmount();
+  });
+
+  it("restores the previous runtime when the active hydration aborts", async () => {
+    loadSession.mockRejectedValue(new DOMException("Aborted", "AbortError"));
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "current-session",
+        initialScope,
+        autoHydrate: false,
+        service,
+      })
+    );
+    act(() => result.current.setComposerValue("Keep current draft"));
+
+    await expect(
+      act(async () => result.current.hydrateSession("old-session"))
+    ).resolves.toEqual({ status: "cancelled" });
+    expect(result.current.sessionId).toBe("current-session");
+    expect(result.current.model.composer.value).toBe("Keep current draft");
+    expect(result.current.error).toBeNull();
     unmount();
   });
 

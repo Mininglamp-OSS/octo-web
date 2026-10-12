@@ -123,7 +123,10 @@ export function registerSummaryLegacyNavigation(): void {
 
   WKApp.route.register("/summary", () => <SummaryListPage />);
   WKApp.route.register("/summary/create", () => (
-    <SummaryWorkbenchCreateEntry source="summary_home" legacyInitialMode="normal" />
+    <SummaryWorkbenchCreateEntry
+      source="summary_home"
+      legacyInitialMode="normal"
+    />
   ));
 
   openChatWithReferenceHandler = ((event: CustomEvent) => {
@@ -180,6 +183,8 @@ export function registerSummaryLegacyNavigation(): void {
             source="summary_home"
             key={`home-workbench-${++summaryHomeEntrySeq}`}
             legacyInitialMode="normal"
+            // NavRail re-entry restores the current draft; only explicit
+            // create actions request a fresh session.
           />
         );
       };
