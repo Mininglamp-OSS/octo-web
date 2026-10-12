@@ -2488,6 +2488,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                   cancelText: t("base.common.cancel"),
                   okText: t("base.chatPage.continueSwitch"),
                   onOk: () => {
+                    WKApp.shared.pendingAttachmentDiscard?.();
                     this.state.pendingConfirm?.onOk();
                     this.setState({ pendingConfirm: null });
                   },

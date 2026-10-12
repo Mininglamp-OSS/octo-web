@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  shared: { pendingAttachmentGuard: undefined as (() => boolean) | undefined },
+  shared: {
+    pendingAttachmentGuard: undefined as (() => boolean) | undefined,
+    pendingAttachmentDiscard: undefined as (() => void) | undefined,
+  },
   confirm: vi.fn((_props: { onOk: () => void; onCancel: () => void }) => ({
     destroy: vi.fn(),
   })),
@@ -19,6 +22,7 @@ describe("workspace navigation attachment guard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.shared.pendingAttachmentGuard = undefined;
+    mocks.shared.pendingAttachmentDiscard = undefined;
   });
 
   it("proceeds without a dialog when there are no pending attachments", () => {
@@ -36,6 +40,8 @@ describe("workspace navigation attachment guard", () => {
     const guard = createWorkspaceNavigationGuard();
     const proceed = vi.fn();
     const cancel = vi.fn();
+    const discard = vi.fn();
+    mocks.shared.pendingAttachmentDiscard = discard;
     guard.run(proceed, cancel);
     expect(proceed).not.toHaveBeenCalled();
     expect(mocks.confirm).toHaveBeenCalledWith(expect.objectContaining({
@@ -49,6 +55,7 @@ describe("workspace navigation attachment guard", () => {
     dialog.onOk();
     dialog.onCancel();
     expect(proceed).toHaveBeenCalledTimes(1);
+    expect(discard).toHaveBeenCalledTimes(1);
     expect(cancel).not.toHaveBeenCalled();
   });
 

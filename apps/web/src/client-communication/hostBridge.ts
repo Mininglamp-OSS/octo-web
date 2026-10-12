@@ -99,6 +99,12 @@ export interface DocumentForwardRequest {
 }
 
 export interface OctoBuddyCommunicationBridge {
+  /** Optional Client-owned local attachment draft persistence. */
+  localAttachmentDraftsVersion?: 1;
+  stageAttachmentDraft?: import("@octo/base/src/features/chat-composer/local-drafts").LocalAttachmentDraftHost["stage"];
+  listAttachmentDrafts?: import("@octo/base/src/features/chat-composer/local-drafts").LocalAttachmentDraftHost["list"];
+  readAttachmentDraft?: import("@octo/base/src/features/chat-composer/local-drafts").LocalAttachmentDraftHost["read"];
+  removeAttachmentDraft?: import("@octo/base/src/features/chat-composer/local-drafts").LocalAttachmentDraftHost["remove"];
   /** Optional native region capture. Image bytes return only to the initiating composer. */
   captureScreenshot?: import("@octo/base/src/features/chat-composer/screenshot/contract").ScreenshotHost["captureScreenshot"];
   cancelScreenshot?: import("@octo/base/src/features/chat-composer/screenshot/contract").ScreenshotHost["cancelScreenshot"];
