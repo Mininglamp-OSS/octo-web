@@ -135,7 +135,42 @@ describe("local attachment draft runtime", () => {
     expect(restored[0]).toMatchObject({ id: "paste-a", source: "paste" });
     expect(restored[0].file.name).toBe("capture.png");
     expect(restored[0].file.type).toBe("image/png");
+    port.syncLive(["paste-a"]);
     expect(port.canLeave(["paste-a"])).toBe(true);
+  });
+
+  it("does not delete drafts while a restore is still in flight", async () => {
+    let finishSecondRead: (() => void) | undefined;
+    const value = host({
+      list: vi.fn(async () => [
+        metadata("first", { position: 0 }),
+        metadata("second", { position: 1 }),
+      ]),
+      read: vi.fn(async ({ attachmentId }) => {
+        if (attachmentId === "second") {
+          await new Promise<void>((resolve) => {
+            finishSecondRead = resolve;
+          });
+        }
+        return {
+          attachment: metadata(attachmentId, {
+            position: attachmentId === "first" ? 0 : 1,
+          }),
+          bytes: new Uint8Array([1, 2, 3]),
+        };
+      }),
+    });
+    install(value);
+    const port = createChatComposerAttachmentDraftPort(channel)!;
+
+    const restoring = port.restore();
+    await vi.waitFor(() => expect(value.read).toHaveBeenCalledTimes(2));
+    port.syncLive(["unrelated"]);
+    expect(value.remove).not.toHaveBeenCalled();
+    finishSecondRead?.();
+
+    expect((await restoring).map(({ id }) => id)).toEqual(["first", "second"]);
+    expect(value.remove).not.toHaveBeenCalled();
   });
 
   it("keeps unsent attachments and removes successfully consumed ones", async () => {
@@ -203,11 +238,43 @@ describe("local attachment draft runtime", () => {
     finishStage?.();
     await staging;
 
-    expect(port.canLeave([])).toBe(true);
+    expect(port.canLeave(["attachment-a"])).toBe(true);
     expect(value.remove).toHaveBeenCalledWith({
       channel,
       attachmentId: "attachment-a",
     });
+  });
+
+  it("does not discard an attachment owned by an in-flight send", async () => {
+    const value = host();
+    install(value);
+    const port = createChatComposerAttachmentDraftPort(channel)!;
+    await port.stage({ id: "sending", file: file(), source: "upload" });
+
+    port.beginSend(["sending"]);
+    port.discardUnready(["sending"]);
+
+    expect(value.remove).not.toHaveBeenCalled();
+  });
+
+  it("does not block on attachment ids that were not managed by the draft port", () => {
+    install(host());
+    const port = createChatComposerAttachmentDraftPort(channel)!;
+
+    expect(port.canLeave(["preview-only"])).toBe(true);
+  });
+
+  it("keeps positions monotonic after an earlier attachment is removed", async () => {
+    const value = host();
+    install(value);
+    const port = createChatComposerAttachmentDraftPort(channel)!;
+    await port.stage({ id: "first", file: file("first.txt"), source: "upload" });
+    await port.stage({ id: "second", file: file("second.txt"), source: "upload" });
+    port.syncLive(["second"]);
+    await port.stage({ id: "third", file: file("third.txt"), source: "upload" });
+
+    expect(vi.mocked(value.stage).mock.calls.map(([input]) => input.attachment.position))
+      .toEqual([0, 1, 2]);
   });
 
   it("restores attachments by their explicit position", async () => {

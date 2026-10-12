@@ -59,6 +59,7 @@ features/chat-composer/
   recovery/                        跨实例恢复和草稿 revision
   clipboard/                       粘贴解析与 secret guard
   keyboard/                        Enter、IME、suggestion 策略
+  local-drafts/                    Client 本地附件草稿 contract 与生命周期
   ui/                              ChatComposer 和纯 UI
 ```
 

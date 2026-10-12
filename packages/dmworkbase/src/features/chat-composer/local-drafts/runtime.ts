@@ -5,7 +5,12 @@ import type {
   RestoredLocalAttachmentDraft,
 } from "./contract";
 
-type AttachmentPhase = "staging" | "ready" | "failed" | "sending";
+type AttachmentPhase =
+  | "restoring"
+  | "staging"
+  | "ready"
+  | "failed"
+  | "sending";
 
 interface AttachmentState {
   phase: AttachmentPhase;
@@ -54,6 +59,8 @@ export function createChatComposerAttachmentDraftPort(
   const host = installedHost();
   if (!host || host.version !== 1) return undefined;
   const states = new Map<string, AttachmentState>();
+  let nextPosition = 0;
+  let restoreInFlight = false;
 
   const remove = (attachmentId: string): void => {
     states.delete(attachmentId);
@@ -64,53 +71,66 @@ export function createChatComposerAttachmentDraftPort(
 
   return {
     async restore() {
+      restoreInFlight = true;
       const restored: RestoredLocalAttachmentDraft[] = [];
-      const metadata = await host.list({ channel });
-      for (const attachment of metadata) {
-        try {
-          const result = await host.read({
-            channel,
-            attachmentId: attachment.id,
-          });
-          if (
-            result.attachment.id !== attachment.id ||
-            result.attachment.size !== attachment.size
-          ) {
-            throw new Error("Attachment draft metadata changed during restore");
-          }
-          const content = bytes(result.bytes);
-          if (content.byteLength !== attachment.size) {
-            throw new Error("Attachment draft byte length mismatch");
-          }
+      try {
+        const metadata = await host.list({ channel });
+        for (const attachment of metadata) {
+          nextPosition = Math.max(nextPosition, attachment.position + 1);
           states.set(attachment.id, {
-            phase: "ready",
-            live: true,
+            phase: "restoring",
+            live: false,
             persisted: true,
           });
-          restored.push({
-            id: attachment.id,
-            source: attachment.source,
-            file: new File([content], attachment.name, {
-              type: attachment.mimeType,
-              lastModified: attachment.lastModified,
-            }),
-          });
-        } catch (error) {
-          console.warn("[attachment-drafts] restore failed", error);
-          remove(attachment.id);
         }
+        for (const attachment of metadata) {
+          try {
+            const result = await host.read({
+              channel,
+              attachmentId: attachment.id,
+            });
+            if (
+              result.attachment.id !== attachment.id ||
+              result.attachment.size !== attachment.size
+            ) {
+              throw new Error("Attachment draft metadata changed during restore");
+            }
+            const content = bytes(result.bytes);
+            if (content.byteLength !== attachment.size) {
+              throw new Error("Attachment draft byte length mismatch");
+            }
+            const state = states.get(attachment.id);
+            if (!state || state.phase !== "restoring") continue;
+            restored.push({
+              id: attachment.id,
+              source: attachment.source,
+              position: attachment.position,
+              file: new File([content], attachment.name, {
+                type: attachment.mimeType,
+                lastModified: attachment.lastModified,
+              }),
+            });
+          } catch (error) {
+            console.warn("[attachment-drafts] restore failed", error);
+            remove(attachment.id);
+          }
+        }
+        const positionById = new Map(
+          metadata.map((attachment) => [attachment.id, attachment.position])
+        );
+        return restored.sort(
+          (left, right) =>
+            (positionById.get(left.id) ?? 0) -
+            (positionById.get(right.id) ?? 0)
+        );
+      } finally {
+        restoreInFlight = false;
       }
-      const positionById = new Map(
-        metadata.map((attachment) => [attachment.id, attachment.position])
-      );
-      return restored.sort(
-        (left, right) =>
-          (positionById.get(left.id) ?? 0) -
-          (positionById.get(right.id) ?? 0)
-      );
     },
 
-    async stage({ id, file, source }, position = 0) {
+    async stage({ id, file, source }, position) {
+      const resolvedPosition = position ?? nextPosition++;
+      nextPosition = Math.max(nextPosition, resolvedPosition + 1);
       const state: AttachmentState = {
         phase: "staging",
         live: true,
@@ -123,7 +143,7 @@ export function createChatComposerAttachmentDraftPort(
           channel,
           attachment: {
             id,
-            position,
+            position: resolvedPosition,
             name: file.name,
             mimeType: file.type,
             size: file.size,
@@ -132,16 +152,18 @@ export function createChatComposerAttachmentDraftPort(
           },
           bytes: content,
         });
-        if (states.get(id) !== state) return;
+        if (states.get(id) !== state) return true;
         state.persisted = true;
         if (!state.live) {
           remove(id);
-          return;
+          return true;
         }
         state.phase = "ready";
+        return true;
       } catch (error) {
         if (states.get(id) === state) state.phase = "failed";
         console.warn("[attachment-drafts] stage failed", error);
+        return false;
       }
     },
 
@@ -149,8 +171,10 @@ export function createChatComposerAttachmentDraftPort(
       const live = new Set(attachmentIds);
       for (const [id, state] of states) {
         state.live = live.has(id);
+        if (restoreInFlight && state.persisted) continue;
+        if (state.phase === "restoring" && state.live) state.phase = "ready";
         if (state.live || state.phase === "sending") continue;
-        if (state.phase === "staging") continue;
+        if (state.phase === "staging" || state.phase === "restoring") continue;
         remove(id);
       }
     },
@@ -158,7 +182,13 @@ export function createChatComposerAttachmentDraftPort(
     discardUnready(attachmentIds) {
       for (const id of attachmentIds) {
         const state = states.get(id);
-        if (!state || state.phase === "ready") continue;
+        if (
+          !state ||
+          state.phase === "ready" ||
+          state.phase === "sending"
+        ) {
+          continue;
+        }
         state.live = false;
         if (state.persisted) remove(id);
       }
@@ -186,7 +216,12 @@ export function createChatComposerAttachmentDraftPort(
     },
 
     canLeave(attachmentIds) {
-      return attachmentIds.every((id) => states.get(id)?.phase === "ready");
+      return attachmentIds.every((id) => {
+        const phase = states.get(id)?.phase;
+        return (
+          phase === undefined || phase === "ready" || phase === "restoring"
+        );
+      });
     },
   };
 }

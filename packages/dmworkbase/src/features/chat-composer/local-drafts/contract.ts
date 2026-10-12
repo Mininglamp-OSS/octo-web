@@ -44,11 +44,12 @@ export interface RestoredLocalAttachmentDraft {
   id: string;
   file: File;
   source: LocalAttachmentDraftSource;
+  position?: number;
 }
 
 export interface ChatComposerAttachmentDraftPort {
   restore(): Promise<RestoredLocalAttachmentDraft[]>;
-  stage(input: RestoredLocalAttachmentDraft, position?: number): Promise<void>;
+  stage(input: RestoredLocalAttachmentDraft, position?: number): Promise<boolean>;
   syncLive(attachmentIds: readonly string[]): void;
   discardUnready(attachmentIds: readonly string[]): void;
   beginSend(attachmentIds: readonly string[]): void;

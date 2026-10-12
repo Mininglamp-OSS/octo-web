@@ -468,7 +468,6 @@ export class Conversation
   private readonly _composeRecoveryOwner = Symbol("composeRecoveryOwner");
   private readonly _chatComposerExtensions =
     createDefaultChatComposerExtensions<Message>();
-  private _attachmentDraftChannelKey = "";
   private _attachmentDrafts?: ChatComposerAttachmentDraftPort;
   private readonly _chatComposerViewHost: ChatComposerViewHost = {
     track: (event) => Dap.shared.track(event, {}),
@@ -527,18 +526,6 @@ export class Conversation
     },
   };
 
-  private attachmentDrafts(): ChatComposerAttachmentDraftPort | undefined {
-    const channel = this.props.channel;
-    const key = `${channel.channelID}:${channel.channelType}`;
-    if (key !== this._attachmentDraftChannelKey) {
-      this._attachmentDraftChannelKey = key;
-      this._attachmentDrafts = createChatComposerAttachmentDraftPort({
-        id: channel.channelID,
-        type: channel.channelType,
-      });
-    }
-    return this._attachmentDrafts;
-  }
   private _attentionRefreshHandler = () => {
     if (!this._attentionMounted || this._cancelAttentionRefresh) return;
     const run = () => {
@@ -1764,6 +1751,10 @@ export class Conversation
     this._initialComposeMounted = true;
     this.subscribeComposeRecovery();
     const { channel, onContext } = this.props;
+    this._attachmentDrafts = createChatComposerAttachmentDraftPort({
+      id: channel.channelID,
+      type: channel.channelType,
+    });
     if (onContext) {
       onContext(this);
     }
@@ -1779,8 +1770,9 @@ export class Conversation
       // 只保护「compose 已清空但本地气泡还没出现」的数据丢失窗口。消息一旦入队，
       // 即使仍在等 upload/ack，也已有气泡承载失败与重试，不应再弹“未发送附件”确认。
       WKApp.shared.pendingAttachmentGuard = () =>
-        (this._messageInputContext?.canLeaveWithAttachments() ??
-          this.getPendingAttachments().length === 0) &&
+        (this._attachmentDrafts
+          ? this._messageInputContext?.canLeaveWithAttachments() ?? true
+          : this.getPendingAttachments().length === 0) &&
         this.pendingPreEnqueueCount() === 0;
       WKApp.shared.pendingAttachmentDiscard = () =>
         this._messageInputContext?.discardUnreadyAttachments();
@@ -3432,7 +3424,7 @@ export class Conversation
                       </div>
                     )}
                     <ChatComposer
-                      attachmentDrafts={this.attachmentDrafts()}
+                      attachmentDrafts={this._attachmentDrafts}
                       extensions={this._chatComposerExtensions}
                       recoveredComposes={recoveredComposes}
                       onComposeRecovery={this.recordComposeRecovery}
