@@ -553,6 +553,10 @@ export class Conversation
 
   constructor(props: any) {
     super(props);
+    this._attachmentDrafts = createChatComposerAttachmentDraftPort({
+      id: props.channel.channelID,
+      type: props.channel.channelType,
+    });
     this.state = {
       inputExpanded: false,
       contextMenuMessageID: null as string | null,
@@ -1751,10 +1755,6 @@ export class Conversation
     this._initialComposeMounted = true;
     this.subscribeComposeRecovery();
     const { channel, onContext } = this.props;
-    this._attachmentDrafts = createChatComposerAttachmentDraftPort({
-      id: channel.channelID,
-      type: channel.channelType,
-    });
     if (onContext) {
       onContext(this);
     }

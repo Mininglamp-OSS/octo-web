@@ -47,7 +47,7 @@ describe("communication preview UI ownership", () => {
     expect(f.documentInstall).toHaveBeenCalledWith(host, "current-space");
     expect(f.fileInstall).toHaveBeenCalledWith(host, "current-space");
     expect(f.screenshotInstall).toHaveBeenCalledWith(host);
-    expect(f.attachmentDraftInstall).toHaveBeenCalledWith(host);
+    expect(f.attachmentDraftInstall).toHaveBeenCalledWith(host, "current-space");
     dispose();
     expect(f.unmount).toHaveBeenCalledOnce();
     expect(f.documentDispose).toHaveBeenCalledOnce();

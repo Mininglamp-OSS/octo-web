@@ -16,9 +16,9 @@ vi.mock("../../../../App", () => ({
 vi.mock("react-virtuoso", () => ({ Virtuoso: () => null, TableVirtuoso: () => null }));
 
 describe("attachment draft positions", () => {
-  it("continues positions when files are added in separate batches", async () => {
+  it("routes files added in separate batches through draft staging", async () => {
     let context: MessageInputContext | undefined;
-    const stage = vi.fn().mockResolvedValue(undefined);
+    const stage = vi.fn().mockResolvedValue(true);
     const attachmentDrafts: ChatComposerAttachmentDraftPort = {
       restore: vi.fn().mockResolvedValue({ attachments: [], failedCount: 0 }),
       stage,
@@ -43,5 +43,9 @@ describe("attachment draft positions", () => {
     });
 
     expect(stage).toHaveBeenCalledTimes(2);
+    expect(stage.mock.calls.map(([attachment]) => attachment.file.name)).toEqual([
+      "a.txt",
+      "b.txt",
+    ]);
   });
 });
