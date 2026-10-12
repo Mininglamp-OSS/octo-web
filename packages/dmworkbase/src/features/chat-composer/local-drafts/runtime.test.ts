@@ -358,6 +358,50 @@ describe("local attachment draft runtime", () => {
     expect(value.remove).not.toHaveBeenCalled();
   });
 
+  it("does not restore an attachment owned by another port's active send", async () => {
+    const value = host({
+      list: vi.fn(async () => [metadata("sending")]),
+      read: vi.fn(async () => ({
+        attachment: metadata("sending"),
+        bytes: new Uint8Array([1, 2, 3]),
+      })),
+    });
+    install(value);
+    const sendingPort = createChatComposerAttachmentDraftPort(channel)!;
+    await sendingPort.stage({ id: "sending", file: file(), source: "upload" });
+    sendingPort.beginSend(["sending"]);
+
+    const reopenedPort = createChatComposerAttachmentDraftPort(channel)!;
+    const restored = await reopenedPort.restore();
+
+    expect(restored.attachments).toEqual([]);
+    sendingPort.settleSend({ attachmentIds: ["sending"], keepAttachmentIds: [] });
+  });
+
+  it("does not clobber a staging id when restore listing resolves later", async () => {
+    let finishList: (() => void) | undefined;
+    const value = host({
+      list: vi.fn(async () => {
+        await new Promise<void>((resolve) => { finishList = resolve; });
+        return [metadata("shared", { position: 4 })];
+      }),
+      read: vi.fn(async () => ({
+        attachment: metadata("shared", { position: 4 }),
+        bytes: new Uint8Array([1, 2, 3]),
+      })),
+    });
+    install(value);
+    const port = createChatComposerAttachmentDraftPort(channel)!;
+    const restoring = port.restore();
+    await vi.waitFor(() => expect(value.list).toHaveBeenCalledOnce());
+    await port.stage({ id: "shared", file: file(), source: "upload" }, 4);
+    finishList?.();
+
+    expect((await restoring).attachments).toEqual([]);
+    expect(value.read).not.toHaveBeenCalled();
+    expect(port.canLeave(["shared"])).toBe(true);
+  });
+
   it("restores attachments by their explicit position", async () => {
     const value = host({
       list: vi.fn(async () => [

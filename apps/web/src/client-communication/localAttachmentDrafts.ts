@@ -23,5 +23,19 @@ export function installClientLocalAttachmentDrafts(
     read: (input) => bridge.readAttachmentDraft!(input),
     remove: (input) => bridge.removeAttachmentDraft!(input),
   };
-  return installLocalAttachmentDraftHost(host);
+  let active = true;
+  const disposeHost = installLocalAttachmentDraftHost(host);
+  const offCommand = bridge.onCommand((command) => {
+    if (command.type !== "spaceChanged" && command.type !== "sessionRevoked") {
+      return;
+    }
+    if (!active) return;
+    active = false;
+    disposeHost();
+  });
+  return () => {
+    if (active) disposeHost();
+    active = false;
+    offCommand();
+  };
 }
