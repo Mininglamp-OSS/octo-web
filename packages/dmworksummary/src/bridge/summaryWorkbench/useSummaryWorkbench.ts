@@ -90,11 +90,20 @@ export interface SummaryWorkbenchController {
   savePreview: (
     title?: string
   ) => Promise<CreateAgentSummaryResult | undefined>;
-  hydrateSession: (sessionId?: string) => Promise<boolean>;
+  hydrateSession: (
+    sessionId?: string,
+    options?: { restoreSessionId?: string }
+  ) => Promise<SummaryWorkbenchHydrationResult>;
   resetSession: (options?: SummaryWorkbenchResetOptions) => string;
   cancelActiveRequest: () => void;
   clearError: () => void;
 }
+
+export type SummaryWorkbenchHydrationResult =
+  | { status: "hydrated"; sessionId: string }
+  | { status: "empty" }
+  | { status: "failed" }
+  | { status: "cancelled" };
 
 interface RuntimeState {
   sessionId: string;
@@ -129,6 +138,7 @@ interface GenerationFlight {
 interface RetryableGeneration {
   identity: string;
   requestId: string;
+  sessionId: string;
 }
 
 interface MutationFlight<T> {
@@ -142,7 +152,7 @@ interface HydrationFlight {
   epoch: number;
   sessionId: string;
   controller: AbortController;
-  promise: Promise<boolean>;
+  promise: Promise<SummaryWorkbenchHydrationResult>;
 }
 
 const EMPTY_SCOPE: SummaryWorkbenchScope = {
@@ -187,6 +197,7 @@ export default function useSummaryWorkbench(
     useRef<MutationFlight<SummaryWorkbenchResponse> | null>(null);
   const saveRef = useRef<MutationFlight<CreateAgentSummaryResult> | null>(null);
   const hydrationRef = useRef<HydrationFlight | null>(null);
+  const recoverableRuntimeRef = useRef<RuntimeState | null>(null);
   const idempotencyKeysRef = useRef(new Map<string, string>());
   const initializedRef = useRef<RuntimeState | null>(null);
 
@@ -293,10 +304,9 @@ export default function useSummaryWorkbench(
   const restoreComposerValue = useCallback(
     (value: string) => {
       commit((current: RuntimeState) => ({
-        ...clearRuntimeError(current),
+        ...current,
         model: updateSummaryComposer(current.model, {
           value,
-          errorMessage: undefined,
         }),
       }));
     },
@@ -368,7 +378,11 @@ export default function useSummaryWorkbench(
         previousAttempt?.identity === retryIdentity
           ? previousAttempt.requestId
           : createRequestIdRef.current();
-      retryableGenerationRef.current = { identity: retryIdentity, requestId };
+      retryableGenerationRef.current = {
+        identity: retryIdentity,
+        requestId,
+        sessionId: current.sessionId,
+      };
       const input: SummaryWorkbenchMessageInput = {
         sessionId: current.sessionId,
         message,
@@ -775,14 +789,26 @@ export default function useSummaryWorkbench(
   );
 
   const hydrateSession = useCallback(
-    (requestedSessionId?: string): Promise<boolean> => {
+    (
+      requestedSessionId?: string,
+      hydrateOptions: { restoreSessionId?: string } = {}
+    ): Promise<SummaryWorkbenchHydrationResult> => {
       const sessionId =
         normalizeSessionId(requestedSessionId) || runtimeRef.current.sessionId;
       const existing = hydrationRef.current;
       if (existing?.sessionId === sessionId) return existing.promise;
 
+      const previousRetryableGeneration = retryableGenerationRef.current;
       retryableGenerationRef.current = null;
       cancelOperations(false);
+      const previousRuntime = runtimeRef.current;
+      const restoreSessionId =
+        normalizeSessionId(hydrateOptions.restoreSessionId) ||
+        previousRuntime.sessionId;
+      const chainedRollbackRuntime =
+        recoverableRuntimeRef.current?.sessionId === restoreSessionId
+          ? recoverableRuntimeRef.current
+          : null;
       const controller = new AbortController();
       const epoch = epochRef.current;
       commit((current: RuntimeState) => ({
@@ -803,10 +829,15 @@ export default function useSummaryWorkbench(
         })
         .then((hydration: SummaryWorkbenchHistoryHydration) => {
           if (hydrationRef.current !== flight || epochRef.current !== epoch) {
-            return false;
+            return { status: "cancelled" } as const;
           }
           if (hydration.empty) {
             const nextSessionId = createSessionIdRef.current();
+            // An empty switch target has not committed a new server session.
+            // Keep the prior retry identity available for a caller that
+            // restores the originating session.
+            retryableGenerationRef.current = previousRetryableGeneration;
+            recoverableRuntimeRef.current = previousRuntime;
             commit((current: RuntimeState) =>
               createRuntimeState(
                 nextSessionId,
@@ -818,9 +849,14 @@ export default function useSummaryWorkbench(
               )
             );
             notifySessionId("");
-            return true;
+            return { status: "empty" } as const;
           }
           const nextSessionId = hydration.sessionId;
+          recoverableRuntimeRef.current = null;
+          retryableGenerationRef.current =
+            previousRetryableGeneration?.sessionId === nextSessionId
+              ? previousRetryableGeneration
+              : null;
           commit((current: RuntimeState) =>
             createRuntimeState(
               nextSessionId,
@@ -832,20 +868,41 @@ export default function useSummaryWorkbench(
             )
           );
           notifySessionId(nextSessionId);
-          return true;
+          return { status: "hydrated", sessionId: nextSessionId } as const;
         })
         .catch((reason: unknown) => {
           if (hydrationRef.current !== flight || epochRef.current !== epoch) {
-            return false;
+            return { status: "cancelled" } as const;
           }
           const error = normalizeControllerError(reason);
-          if (error.kind !== "abort") {
-            commit((current: RuntimeState) => ({
-              ...withRuntimeError(current, error),
-              isHydrating: false,
-            }));
+          if (error.kind === "abort") {
+            retryableGenerationRef.current = previousRetryableGeneration;
+            if (chainedRollbackRuntime) {
+              commit(() => ({
+                ...chainedRollbackRuntime,
+                isHydrating: false,
+              }));
+              recoverableRuntimeRef.current = null;
+            } else {
+              commit((current: RuntimeState) => ({
+                ...current,
+                sessionId: restoreSessionId,
+                isHydrating: false,
+                model: updateSummaryComposer(current.model, {
+                  isSending: previousRuntime.model.composer.isSending,
+                }),
+              }));
+            }
+            return { status: "cancelled" } as const;
           }
-          return false;
+          retryableGenerationRef.current = previousRetryableGeneration;
+          const rollbackRuntime = chainedRollbackRuntime ?? previousRuntime;
+          commit(() => ({
+            ...withRuntimeError(rollbackRuntime, error),
+            isHydrating: false,
+          }));
+          if (chainedRollbackRuntime) recoverableRuntimeRef.current = null;
+          return { status: "failed" } as const;
         })
         .finally(() => {
           if (hydrationRef.current === flight) {
@@ -868,6 +925,7 @@ export default function useSummaryWorkbench(
     (resetOptions: SummaryWorkbenchResetOptions = {}): string => {
       cancelOperations(false);
       retryableGenerationRef.current = null;
+      recoverableRuntimeRef.current = null;
       idempotencyKeysRef.current.clear();
       const sessionId =
         normalizeSessionId(resetOptions.sessionId) ||

@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+    clearSummaryWorkbenchPreviousSession,
     clearSummaryWorkbenchSession,
+    moveSummaryWorkbenchSessionToPrevious,
+    readSummaryWorkbenchPreviousSession,
     readSummaryWorkbenchSession,
+    replaceSummaryWorkbenchSessionSlots,
     writeSummaryWorkbenchSession,
 } from "./sessionStorage";
 
@@ -67,9 +71,7 @@ describe("summary workbench session storage", () => {
         writeSummaryWorkbenchSession(directScope, "direct-session");
 
         expect(readSummaryWorkbenchSession(groupScope)).toBe("group-session");
-        expect(readSummaryWorkbenchSession(directScope)).toBe(
-            "direct-session"
-        );
+        expect(readSummaryWorkbenchSession(directScope)).toBe("direct-session");
     });
 
     it("clears only the requested entry", () => {
@@ -79,8 +81,176 @@ describe("summary workbench session storage", () => {
         expect(readSummaryWorkbenchSession(scope)).toBe("");
     });
 
+    it("moves the persisted session to the previous slot on forced-new mount", () => {
+        const scope = { userId: "user-a", spaceId: "space-a" };
+        writeSummaryWorkbenchSession(scope, "old-session");
+
+        moveSummaryWorkbenchSessionToPrevious(scope);
+
+        expect(readSummaryWorkbenchSession(scope)).toBe("");
+        expect(readSummaryWorkbenchPreviousSession(scope)).toBe("old-session");
+        expect(
+            localStorage.getItem(
+                "summary-workbench-session:v2:user-a:space-a:global"
+            )
+        ).toBe(null);
+    });
+
+    it("no-ops the previous move when nothing is persisted", () => {
+        const scope = { userId: "user-a", spaceId: "space-a" };
+        moveSummaryWorkbenchSessionToPrevious(scope);
+        expect(readSummaryWorkbenchPreviousSession(scope)).toBe("");
+    });
+
+    it("rolls back the previous slot when removing the active slot fails", () => {
+        const scope = { userId: "user-a", spaceId: "space-a" };
+        writeSummaryWorkbenchSession(scope, "old-session");
+        replaceSummaryWorkbenchSessionSlots(
+            scope,
+            "old-session",
+            "previous-session"
+        );
+        const removeSpy = vi
+            .spyOn(Storage.prototype, "removeItem")
+            .mockImplementationOnce(() => {
+                throw new Error("blocked");
+            });
+
+        expect(moveSummaryWorkbenchSessionToPrevious(scope)).toBe(false);
+
+        expect(readSummaryWorkbenchSession(scope)).toBe("old-session");
+        expect(readSummaryWorkbenchPreviousSession(scope)).toBe(
+            "previous-session"
+        );
+        removeSpy.mockRestore();
+    });
+
+    it("does not delete an untouched previous slot when reading it throws", () => {
+        const scope = { userId: "user-a", spaceId: "space-a" };
+        const activeKey = "summary-workbench-session:v2:user-a:space-a:global";
+        const previousKey = `${activeKey}:previous`;
+        localStorage.setItem(activeKey, "current-session");
+        localStorage.setItem(previousKey, "old-session");
+        const originalGetItem = Storage.prototype.getItem;
+        const getSpy = vi
+            .spyOn(Storage.prototype, "getItem")
+            .mockImplementation(function (key) {
+                if (key === previousKey) throw new Error("blocked read");
+                return originalGetItem.call(this, key);
+            });
+
+        expect(moveSummaryWorkbenchSessionToPrevious(scope)).toBe(false);
+
+        getSpy.mockRestore();
+        expect(localStorage.getItem(activeKey)).toBe("current-session");
+        expect(localStorage.getItem(previousKey)).toBe("old-session");
+    });
+
+    it("restores both slots when replacing them fails halfway", () => {
+        const scope = { userId: "user-a", spaceId: "space-a" };
+        writeSummaryWorkbenchSession(scope, "current-session");
+        replaceSummaryWorkbenchSessionSlots(
+            scope,
+            "current-session",
+            "old-session"
+        );
+        const originalSetItem = Storage.prototype.setItem;
+        const setSpy = vi
+            .spyOn(Storage.prototype, "setItem")
+            .mockImplementation(function (key, value) {
+                if (key.endsWith(":previous") && value === "current-session") {
+                    throw new Error("blocked");
+                }
+                return originalSetItem.call(this, key, value);
+            });
+
+        expect(
+            replaceSummaryWorkbenchSessionSlots(
+                scope,
+                "old-session",
+                "current-session"
+            )
+        ).toBe(false);
+        expect(readSummaryWorkbenchSession(scope)).toBe("current-session");
+        expect(readSummaryWorkbenchPreviousSession(scope)).toBe("old-session");
+        setSpy.mockRestore();
+    });
+
+    it("attempts both rollback slots when restoring the active slot throws", () => {
+        const scope = { userId: "user-a", spaceId: "space-a" };
+        const activeKey = "summary-workbench-session:v2:user-a:space-a:global";
+        const previousKey = `${activeKey}:previous`;
+        localStorage.setItem(activeKey, "current-session");
+        localStorage.setItem(previousKey, "old-session");
+        const originalSetItem = Storage.prototype.setItem;
+        const setSpy = vi
+            .spyOn(Storage.prototype, "setItem")
+            .mockImplementation(function (key, value) {
+                if (
+                    (key === previousKey && value === "next-previous") ||
+                    (key === activeKey && value === "current-session")
+                ) {
+                    throw new Error("blocked");
+                }
+                return originalSetItem.call(this, key, value);
+            });
+
+        expect(
+            replaceSummaryWorkbenchSessionSlots(scope, "", "next-previous")
+        ).toBe(false);
+        expect(localStorage.getItem(activeKey)).toBeNull();
+        expect(localStorage.getItem(previousKey)).toBe("old-session");
+        setSpy.mockRestore();
+    });
+
+    it("clears the previous slot independently", () => {
+        const scope = { userId: "user-a", spaceId: "space-a" };
+        replaceSummaryWorkbenchSessionSlots(scope, "", "old-session");
+
+        expect(clearSummaryWorkbenchPreviousSession(scope)).toBe(true);
+        expect(readSummaryWorkbenchPreviousSession(scope)).toBe("");
+    });
+
+    it("uses the caller snapshot when hydration already changed the active slot", () => {
+        const scope = { userId: "user-a", spaceId: "space-a" };
+        writeSummaryWorkbenchSession(scope, "resumed-session");
+        replaceSummaryWorkbenchSessionSlots(
+            scope,
+            "resumed-session",
+            "old-session"
+        );
+        const originalSetItem = Storage.prototype.setItem;
+        const setSpy = vi
+            .spyOn(Storage.prototype, "setItem")
+            .mockImplementation(function (key, value) {
+                if (key.endsWith(":previous") && value === "current-session") {
+                    throw new Error("blocked");
+                }
+                return originalSetItem.call(this, key, value);
+            });
+
+        expect(
+            replaceSummaryWorkbenchSessionSlots(
+                scope,
+                "resumed-session",
+                "current-session",
+                {
+                    activeSessionId: "current-session",
+                    previousSessionId: "old-session",
+                }
+            )
+        ).toBe(false);
+        expect(readSummaryWorkbenchSession(scope)).toBe("current-session");
+        expect(readSummaryWorkbenchPreviousSession(scope)).toBe("old-session");
+        setSpy.mockRestore();
+    });
+
     it("isolates referenced tasks without changing the ordinary session key", () => {
-        const ordinaryScope = { userId: "user-a", spaceId: "space-a", channelId: null };
+        const ordinaryScope = {
+            userId: "user-a",
+            spaceId: "space-a",
+            channelId: null,
+        };
         const task42Scope = { ...ordinaryScope, referencedTaskId: 42 };
         const task73Scope = { ...ordinaryScope, referencedTaskId: 73 };
 
@@ -114,13 +284,42 @@ describe("summary workbench session storage", () => {
         expect(readSummaryWorkbenchSession(second)).toBe("session-b");
     });
 
+    it("does not mutate slots when the pre-swap snapshot read fails", () => {
+        const scope = { userId: "user-a", spaceId: "space-a" };
+        const activeKey = "summary-workbench-session:v2:user-a:space-a:global";
+        const previousKey = `${activeKey}:previous`;
+        localStorage.setItem(activeKey, "current-session");
+        localStorage.setItem(previousKey, "old-session");
+        const originalGetItem = Storage.prototype.getItem;
+        const getSpy = vi
+            .spyOn(Storage.prototype, "getItem")
+            .mockImplementation(function (this: Storage, key: string) {
+                // The snapshot must be complete before either slot is mutated.
+                if (key === previousKey) throw new Error("blocked read");
+                return originalGetItem.call(this, key);
+            });
+
+        expect(
+            replaceSummaryWorkbenchSessionSlots(scope, "", "current-session")
+        ).toBe(false);
+
+        getSpy.mockRestore();
+        expect(localStorage.getItem(activeKey)).toBe("current-session");
+        expect(localStorage.getItem(previousKey)).toBe("old-session");
+    });
+
     it("fails safely when browser storage is unavailable", () => {
         const getSpy = vi
             .spyOn(Storage.prototype, "getItem")
             .mockImplementation(() => {
                 throw new Error("blocked");
             });
-        expect(readSummaryWorkbenchSession({ userId: "user-a", spaceId: "space-a" })).toBe("");
+        expect(
+            readSummaryWorkbenchSession({
+                userId: "user-a",
+                spaceId: "space-a",
+            })
+        ).toBe("");
         getSpy.mockRestore();
 
         const setSpy = vi
@@ -129,7 +328,10 @@ describe("summary workbench session storage", () => {
                 throw new Error("blocked");
             });
         expect(() =>
-            writeSummaryWorkbenchSession({ userId: "user-a", spaceId: "space-a" }, "session-a")
+            writeSummaryWorkbenchSession(
+                { userId: "user-a", spaceId: "space-a" },
+                "session-a"
+            )
         ).not.toThrow();
         setSpy.mockRestore();
     });
