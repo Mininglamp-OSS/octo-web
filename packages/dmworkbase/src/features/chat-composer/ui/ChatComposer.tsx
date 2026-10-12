@@ -958,8 +958,14 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     let active = true;
     void props.attachmentDrafts
       .restore()
-      .then((attachments) => {
+      .then(({ attachments, failedCount }) => {
         if (!active || !composerMountedRef.current || editor.isDestroyed) return;
+        if (failedCount > 0) {
+          Notification.error({
+            content: t("base.messageInput.attachment.draftRestoreFailed"),
+            duration: 5,
+          });
+        }
         return addAttachmentRecords(
           attachments.map((attachment) => ({
             ...attachment,
@@ -968,7 +974,14 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         );
       })
       .catch((error) => {
+        restoredDraftsRef.current = false;
         console.warn("[attachment-drafts] draft restore failed", error);
+        if (active && composerMountedRef.current) {
+          Notification.error({
+            content: t("base.messageInput.attachment.draftRestoreUnavailable"),
+            duration: 5,
+          });
+        }
       });
     return () => {
       active = false;

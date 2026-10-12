@@ -16,6 +16,8 @@ interface AttachmentState {
   phase: AttachmentPhase;
   live: boolean;
   persisted: boolean;
+  writePending: boolean;
+  removeAfterWrite: boolean;
 }
 
 interface HostInstallation {
@@ -73,6 +75,7 @@ export function createChatComposerAttachmentDraftPort(
     async restore() {
       restoreInFlight = true;
       const restored: RestoredLocalAttachmentDraft[] = [];
+      let failedCount = 0;
       try {
         const metadata = await host.list({ channel });
         for (const attachment of metadata) {
@@ -81,6 +84,8 @@ export function createChatComposerAttachmentDraftPort(
             phase: "restoring",
             live: false,
             persisted: true,
+            writePending: false,
+            removeAfterWrite: false,
           });
         }
         for (const attachment of metadata) {
@@ -111,18 +116,21 @@ export function createChatComposerAttachmentDraftPort(
               }),
             });
           } catch (error) {
+            failedCount += 1;
             console.warn("[attachment-drafts] restore failed", error);
-            remove(attachment.id);
           }
         }
         const positionById = new Map(
           metadata.map((attachment) => [attachment.id, attachment.position])
         );
-        return restored.sort(
-          (left, right) =>
-            (positionById.get(left.id) ?? 0) -
-            (positionById.get(right.id) ?? 0)
-        );
+        return {
+          attachments: restored.sort(
+            (left, right) =>
+              (positionById.get(left.id) ?? 0) -
+              (positionById.get(right.id) ?? 0)
+          ),
+          failedCount,
+        };
       } finally {
         restoreInFlight = false;
       }
@@ -135,6 +143,8 @@ export function createChatComposerAttachmentDraftPort(
         phase: "staging",
         live: true,
         persisted: false,
+        writePending: true,
+        removeAfterWrite: false,
       };
       states.set(id, state);
       try {
@@ -152,16 +162,28 @@ export function createChatComposerAttachmentDraftPort(
           },
           bytes: content,
         });
-        if (states.get(id) !== state) return true;
+        state.writePending = false;
+        if (states.get(id) !== state) {
+          if (state.removeAfterWrite) {
+            void host.remove({ channel, attachmentId: id }).catch((error) => {
+              console.warn("[attachment-drafts] remove failed", error);
+            });
+          }
+          return true;
+        }
         state.persisted = true;
-        if (!state.live) {
+        if (state.removeAfterWrite || (!state.live && state.phase !== "sending")) {
           remove(id);
           return true;
         }
-        state.phase = "ready";
+        if (state.phase !== "sending") state.phase = "ready";
         return true;
       } catch (error) {
-        if (states.get(id) === state) state.phase = "failed";
+        state.writePending = false;
+        if (states.get(id) === state) {
+          state.phase = "failed";
+          state.persisted = false;
+        }
         console.warn("[attachment-drafts] stage failed", error);
         return false;
       }
@@ -207,9 +229,11 @@ export function createChatComposerAttachmentDraftPort(
         const state = states.get(id);
         if (!state) continue;
         if (keep.has(id)) {
-          state.phase = "ready";
           state.live = true;
+          state.removeAfterWrite = false;
+          state.phase = state.persisted ? "ready" : state.writePending ? "staging" : "failed";
         } else {
+          if (state.writePending) state.removeAfterWrite = true;
           remove(id);
         }
       }
@@ -217,9 +241,11 @@ export function createChatComposerAttachmentDraftPort(
 
     canLeave(attachmentIds) {
       return attachmentIds.every((id) => {
-        const phase = states.get(id)?.phase;
+        const state = states.get(id);
         return (
-          phase === undefined || phase === "ready" || phase === "restoring"
+          state === undefined ||
+          state.phase === "restoring" ||
+          (state.phase === "ready" && state.persisted)
         );
       });
     },

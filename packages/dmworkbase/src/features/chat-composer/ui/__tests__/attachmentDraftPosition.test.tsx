@@ -20,7 +20,7 @@ describe("attachment draft positions", () => {
     let context: MessageInputContext | undefined;
     const stage = vi.fn().mockResolvedValue(undefined);
     const attachmentDrafts: ChatComposerAttachmentDraftPort = {
-      restore: vi.fn().mockResolvedValue([]),
+      restore: vi.fn().mockResolvedValue({ attachments: [], failedCount: 0 }),
       stage,
       syncLive: vi.fn(),
       discardUnready: vi.fn(),
