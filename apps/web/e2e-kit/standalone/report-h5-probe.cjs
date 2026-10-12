@@ -775,6 +775,36 @@ async function launchBrowser() {
     `banner=${backBanner} url=${backUrl}`);
   await backPage.close();
 
+  // #R7-7: an initial load whose URL already carries a LEAF hash must still
+  // render a BOUND picker. The leaf deep-link branch shows the form without
+  // going through renderCategories(), so before the fix the form was rendered
+  // against the static <input type=file> that had no change handler — the
+  // picker was visible but tapping it did nothing (no request at all).
+  submissions.length = 0; uploads.length = 0; resolveRequests.length = 0;
+  presignRequests.length = 0; sessionConsumed = false; uploadDelayMs = 0;
+  presignDelayMs = 0; presignHang = false; presignUrlOverride = null; failSubmit = false;
+  const leafHashPage = await browser.newPage();
+  leafHashPage.__dialogs = [];
+  await leafHashPage.addInitScript(() => {
+    window.IMJSBridge = { callHandler: (m, o, cb) => setTimeout(() => cb(JSON.stringify({ err_code: 200, channelID: 'ch-native', channelType: 1 })), 50) };
+  });
+  leafHashPage.on('dialog', (d) => { leafHashPage.__dialogs.push(d.message()); d.dismiss(); });
+  // Load straight onto the leaf (#2 === Cat D) instead of setting the hash after
+  // load, so applyHashNavigation() takes the leaf branch on first render.
+  await leafHashPage.goto('http://127.0.0.1:18933/report.html?session=R7&channel_id=ch-q&channel_type=2#2');
+  await leafHashPage.waitForSelector('.reportContent', { state: 'visible', timeout: 5000 });
+  const leafPickerCount = await leafHashPage.evaluate(() => document.querySelectorAll('.imgs .imgItem .upload').length);
+  // Only drive the picker if it exists; a regression must show up as a FAIL on
+  // this check, not as an uncaught throw that aborts the whole probe run.
+  if (leafPickerCount === 1) {
+    await attachFile(leafHashPage, 'leaf-hash.png', 'L');
+    await leafHashPage.waitForTimeout(800);
+  }
+  check('P2-1: a leaf-hash deep link still renders a bound picker',
+    leafPickerCount === 1 && presignRequests.length === 1,
+    `pickers=${leafPickerCount} presign=${presignRequests.length} dialogs=${JSON.stringify(leafHashPage.__dialogs)}`);
+  await leafHashPage.close();
+
   // ---------- Probe 3: CSP must not carry the inert bridge source ----------
   const csp = fs.readFileSync(path.resolve(__dirname, '../../../../nginx.conf.template'), 'utf8');
   // Parse directive-wise, not with a single-space/semicolon-anchored regex: a

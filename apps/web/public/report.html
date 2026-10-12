@@ -95,11 +95,12 @@
                             <li>
                                 <div class="title" i18n="report.image.evidence">图片证据(选填)</div>
                                 <div class="imgs">
-                                    <div class="imgItem">
-                                        <img class="add" src='./images/img_add.png' style="width: 100%;height: 100%;">
-                                        <input type="file" class="upload"
-                                            accept="image/gif,image/jpeg,image/png,image/webp"></input>
-                                    </div>
+                                    <!-- The file picker <input type=file> is injected
+                                         once by renderImageItes()/ensurePicker(),
+                                         which also binds its change handler. Do not
+                                         add a second, static copy here: on the
+                                         leaf-hash deep-link path it was shown with
+                                         no bound handler, so tapping it did nothing. -->
                                 </div>
                             </li>
                             <li class="reportRemark">
@@ -271,10 +272,9 @@
                     } else {
                         onAuthResolveFailed();
                     }
-                    stripSessionFromUrl();                },
+                },
                 error: function () {
                     onAuthResolveFailed();
-                    stripSessionFromUrl();
                 }
             })
         } else {
@@ -352,6 +352,15 @@
                     renderCategories(category.children);
                 } else if (category) {
                     selectedCategoryNo = categoryNos[categoryNos.length - 1];
+                    // Deep-linking straight to a leaf (initial load with a #hash,
+                    // or a restored navigation) never passes through
+                    // renderCategories(), which is otherwise the only caller of
+                    // clearDetailContent() -> renderImageItes() -> ensurePicker().
+                    // Without this the form is shown against the STATIC
+                    // <input type=file> whose change handler was never bound, so
+                    // the picker is visible but silently dead. Run the same reset
+                    // path here so the picker is always the injected, bound one.
+                    clearDetailContent();
                     $(".reportFormBox").css('display', 'block');
                     $(".categoryBox").css('display', 'none');
                 } else {
@@ -800,6 +809,11 @@
             // payload can't be edited out from under the request (image added,
             // category switched, remark changed).
             $('.imgs, .categoryBox, .reportContent').css('pointer-events', on ? 'none' : '');
+            // pointer-events only stops pointer input; a soft-keyboard / IME user
+            // can still type into the focused textarea. Freeze it too, so an edit
+            // cannot invalidate the snapshot mid-request and get misattributed to
+            // the post-await "提交内容已变更" re-verify.
+            $('.reportContent').prop('readonly', !!on);
         }
         // Result-unknown outcome: the complaint may already have been written
         // upstream, so the submit button must stay inert (a resubmit could file a
@@ -1024,7 +1038,9 @@
             $(".reportFormBox").css('display', 'none');
             $(".categoryBox").css('display', 'block');
             for (const category of children) {
-                let item = $(`<li no='${escapeHtml(category.category_no)}'>
+                // No data attribute is needed on the row: the handler below
+                // closes over `category`. The previous `no='…'` read never happened.
+                let item = $(`<li>
                                         <div class='content'>
                                             <label>${escapeHtml(category.category_name)}</label>
                                             <img src='./images/arrow_right.png' style="width:32px;height:32px"/>
@@ -1199,21 +1215,17 @@
             document.title = "Report";
         }
 
-        // The vendored i18n plugin unconditionally reads the same-origin
-        // `i18n_lang` cookie (written by the SPA as zh-CN/en-US) and lets it
-        // override defaultLang, so the filename it fetches may be
-        // i18n_zh-CN.json / i18n_en-US.json. Those exist as alias payloads
-        // alongside i18n_cn/i18n_en. Deleting or rewriting the cookie here is
-        // not an option: it is the SPA's persisted app-wide locale, and the
-        // plugin's cookie-writing branch needs the absent $.removeCookie.
-        // The vendored plugin reads the same-origin `i18n_lang` cookie (SPA-owned,
-        // zh-CN/en-US) and lets it override defaultLang — so passing only
-        // defaultLang left the cookie winning and produced mixed language
-        // (?lang=en + zh-CN cookie → English title/categories over Chinese labels).
-        // Passing `lang` explicitly with `forever:false` makes the plugin use our
-        // value, but that branch calls `$.removeCookie`, which the bundled runtime
-        // does not define. Shim it as a no-op: the plugin then honours our lang and
-        // the SPA's cookie is left untouched.
+        // getLang() normalizes ?lang=/?locale=/cookie/localStorage/browser to
+        // exactly 'cn' or 'en'. Passing it below as an explicit non-empty `lang`
+        // makes the vendored plugin fetch i18n_<lang>.json (i18n_cn.json /
+        // i18n_en.json) directly; it does NOT take the cookie-override branch, so
+        // i18n_zh-CN.json / i18n_en-US.json are unreachable from these pages and
+        // remain only inert alias payloads. (Passing only defaultLang previously
+        // let the SPA-owned `i18n_lang` cookie win and produced mixed language,
+        // e.g. ?lang=en + zh-CN cookie → English title over Chinese labels.)
+        // The explicit-lang branch calls `$.removeCookie`, which the bundled
+        // jQuery runtime does not define; shim it as a no-op so the plugin honours
+        // our lang and the SPA's cookie is left untouched.
         if (typeof $.removeCookie !== 'function') {
             $.removeCookie = function () { };
         }

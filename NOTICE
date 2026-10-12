@@ -26,6 +26,9 @@ Third-party components requiring attribution:
   - jquery.i18n (MIT OR Apache-2.0) — https://github.com/zmartcloud/jquery-i18n
     Vendored at apps/web/public/js/jquery.i18n.min.js (unversioned upstream build;
     no banner is present in the minified file). Used by the report H5 pages.
+  - jQuery (MIT) — https://jquery.com
+    Vendored at apps/web/public/js/jquery-3.7.1.min.js (v3.7.1, upstream MIT
+    banner retained). Used by the report H5 pages and the IMJS bridge.
 
 A full dependency license inventory is maintained in the project's
 license audit report. For commercial use, please refer to each
