@@ -23,6 +23,9 @@ Third-party components requiring attribution
 Third-party components requiring attribution:
   - axe-core (MPL-2.0) — https://github.com/dequelabs/axe-core
   - caniuse-lite (CC-BY-4.0) — https://github.com/browserslist/caniuse-lite
+  - jquery.i18n (MIT OR Apache-2.0) — https://github.com/zmartcloud/jquery-i18n
+    Vendored at apps/web/public/js/jquery.i18n.min.js (unversioned upstream build;
+    no banner is present in the minified file). Used by the report H5 pages.
 
 A full dependency license inventory is maintained in the project's
 license audit report. For commercial use, please refer to each

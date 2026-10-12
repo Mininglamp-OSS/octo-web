@@ -58,23 +58,28 @@ im.onError = function (errFunc) {
  * @param {*} callback
  */
 im.onReady = function (callback) {
-
-    setupWebViewJavascriptBridge(function (bridge) {
+    // 两条路径（iOS iframe / Android ready 事件）都可能注入 bridge，且都可以在
+    // 调用时立即拿到已存在的 window.WebViewJavascriptBridge。没有该标志位时
+    // callback 会被调两次，第二个 bridge 也会静默覆盖第一个。只让先到者生效。
+    var ready = false;
+    function onBridge(bridge) {
+        if (ready) {
+            return;
+        }
+        ready = true;
         window.IMJSBridge = bridge
         if (callback) {
             callback()
         }
+    }
 
-    })
+    setupWebViewJavascriptBridge(onBridge)
 
     connectWebViewJavascriptBridge(function (bridge) {
         bridge.init(function (message, responseCallback) {
             responseCallback();
         });
-        window.IMJSBridge = bridge
-        if (callback) {
-            callback()
-        }
+        onBridge(bridge)
     })
 }
 
@@ -137,25 +142,35 @@ im.call = function (method, params) {
 
 // ---------- 常用函数 ----------
 
-// 退出webview。带上 params 并且带 fallback，否则 bridge 不存在时
-// im.call 的 no-bridge 分支（else if (params)）不会触发，
-// 按钮会变成一个无反馈的空操作。error/complete 可能都触发，用 done 保证只退一次。
-im.quit = function () {
-    var done = false;
-    function goBackOnce() {
-        if (done) {
+// 退出 webview。bridge 不存在时 im.call 走 no-bridge 分支并回调 error，
+// 所以必须传 params，否则按钮会变成无反馈的空操作。
+//
+// fallback 绝对不能是 history.back()：成功页是 report.html 用
+// window.location.href 跳过来的，而那次跳转前已经用 replaceState 把
+// 一次性 ?session 从 URL 抹掉了；back 回去只会重跑 report.html 并命中
+// onAuthResolveFailed()，让刚提交完的用户看到“登录态获取失败”的假错误。
+// 改为交给调用方决定：优先 window.close()，关不掉就显示可见提示。
+im.quit = function (onUnavailable) {
+    var handled = false;
+    function fallback() {
+        if (handled) {
             return;
         }
-        done = true;
-        if (window.history.length > 1) {
-            window.history.back();
+        handled = true;
+        if (typeof onUnavailable === 'function') {
+            onUnavailable();
+            return;
         }
+        // 没有调用方兜底时也不回头：只尝试关窗，并把选择权留给用户。
+        try {
+            window.close();
+        } catch (e) { /* 非脚本打开的窗口关不掉，忽略 */ }
     }
     im.call("quit", {
-        error: goBackOnce,
+        error: fallback,
         complete: function (result) {
             if (result && result.err_code && result.err_code !== 200) {
-                goBackOnce();
+                fallback();
             }
         }
     });

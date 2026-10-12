@@ -25,6 +25,7 @@
             我们会尽快核实，并通过消息通知你审核结果。感谢你的支持。
         </div>
         <div class="closeBtn">关闭</div>
+        <div class="closeHint" style="display:none;margin-top:16px;color:#888;font-size:13px;text-align:center;">请手动关闭本页面</div>
     </div>
 
 </body>
@@ -34,7 +35,20 @@
         im.onReady(); // 初始化im
 
         $(".closeBtn").on('click', async function () {
-            im.quit();
+            // 兜底不能是非 history.back()：那是 report.html，而它的一次性 ?session
+            // 已被消费并抹掉，退回去会弹“登录态获取失败”的假错误，看起来像提交没成功。
+            // 先尝试关窗（原生 WebView / script-opened 窗口可行），关不掉就显示提示。
+            im.quit(function () {
+                var closed = false;
+                try {
+                    window.close();
+                    closed = window.closed;
+                } catch (e) { /* ignore */ }
+                if (!closed) {
+                    $('.closeBtn').css('display', 'none');
+                    $('.closeHint').css('display', 'block');
+                }
+            });
         })
     })
 

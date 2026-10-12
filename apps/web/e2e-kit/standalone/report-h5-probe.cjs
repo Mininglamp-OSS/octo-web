@@ -25,6 +25,22 @@ let uploadDelayMs = 0;
 // model a proxy that accepts the connection but never responds.
 let presignDelayMs = 0;
 let presignHang = false;
+let serveCsp = true;
+
+// The real production policy, read from the shipped template, so probes run under
+// the same CSP the pages actually get (previously the stub sent only
+// Content-Type, so the CSP-blocked bridge-iframe path was never exercised).
+function productionCsp() {
+  try {
+    const tpl = fs.readFileSync(path.resolve(__dirname, '../../../../nginx.conf.template'), 'utf8');
+    const m = tpl.match(/add_header\s+Content-Security-Policy\s+"([^"]*)"/);
+    if (!m) return null;
+    // Resolve the envsubst placeholder to an empty extra source.
+    return m[1].replace(/\$\{[A-Z_]+\}/g, '').replace(/\s{2,}/g, ' ').trim();
+  } catch (e) {
+    return null;
+  }
+}
 
 function serve(port) {
   return new Promise((resolve) => {
@@ -67,7 +83,10 @@ function serve(port) {
       const f = path.join(BUILD, p);
       if (fs.existsSync(f) && fs.statSync(f).isFile()) {
         const ct = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml' }[path.extname(f)] || 'application/octet-stream';
-        res.writeHead(200, { 'Content-Type': ct }); res.end(fs.readFileSync(f));
+        const headers = { 'Content-Type': ct };
+        const csp = serveCsp ? productionCsp() : null;
+        if (csp) headers['Content-Security-Policy'] = csp;
+        res.writeHead(200, headers); res.end(fs.readFileSync(f));
       } else { res.writeHead(404); res.end('nf'); }
     });
     s.listen(port, () => resolve(s));
@@ -487,19 +506,71 @@ async function launchBrowser() {
     `posts=${JSON.stringify(submissions)} uploads=${uploads.length} dialogs=${JSON.stringify(pickDialogs)}`);
   await pickPage.close();
 
+  // ---------- Probe 11: no native bridge -- 关闭 must not land on report.html ----------
+  // The production path under the shipped CSP: no bridge is ever injected (the
+  // bootstrap iframe is blocked by default-src 'self', and a real shell may not
+  // pre-inject either). im.quit()'s fallback must not be history.back() — the
+  // success page was reached from report.html whose one-time ?session is already
+  // consumed, so going back shows a false "登录态获取失败" banner.
+  submissions.length = 0; uploads.length = 0; sessionConsumed = false; uploadDelayMs = 0;
+  presignDelayMs = 0; presignHang = false;
+  const noBridgePage = await browser.newPage();
+  // Deliberately inject NOTHING: no window.IMJSBridge, no WebViewJavascriptBridge.
+  const noBridgeDialogs = [];
+  noBridgePage.on('dialog', (d) => { noBridgeDialogs.push(d.message()); d.dismiss(); });
+  await noBridgePage.goto('http://127.0.0.1:18933/report.html?session=S11&channel_id=ch-q&channel_type=2');
+  await noBridgePage.waitForFunction(() => window.categories && window.categories.length > 0, { timeout: 5000 });
+  await noBridgePage.evaluate(() => { window.location.hash = '#2'; });
+  await noBridgePage.waitForSelector('.reportContent', { state: 'visible', timeout: 5000 });
+  await noBridgePage.fill('.reportContent', 'NO-BRIDGE-CLOSE');
+  await noBridgePage.evaluate(() => document.querySelector('.reportSubmit').click());
+  await noBridgePage.waitForTimeout(1200);
+  const noBridgeSubmitted = submissions.length === 1;
+  // now tap 关闭 on the real success page we were routed to
+  await noBridgePage.waitForSelector('.closeBtn', { timeout: 5000 });
+  await noBridgePage.evaluate(() => document.querySelector('.closeBtn').click());
+  await noBridgePage.waitForTimeout(800);
+  const landedUrl = noBridgePage.url();
+  const authBanner = await noBridgePage.evaluate(() => !!document.querySelector('.authError'));
+  check('P1-H: with no bridge, 关闭 does not return to report.html',
+    noBridgeSubmitted && !/report\.html/.test(landedUrl),
+    `submitted=${noBridgeSubmitted} landedUrl=${landedUrl}`);
+  check('P1-H: with no bridge, 关闭 never shows the false auth-failure banner',
+    noBridgeSubmitted && !authBanner,
+    `authBanner=${authBanner} dialogs=${JSON.stringify(noBridgeDialogs)}`);
+  await noBridgePage.close();
+
   // ---------- Probe 3: CSP must not carry the inert bridge source ----------
   const csp = fs.readFileSync(path.resolve(__dirname, '../../../../nginx.conf.template'), 'utf8');
-  const cspMatch = csp.match(/Content-Security-Policy "([^"]*)"/);
+  // Parse directive-wise, not with a single-space/semicolon-anchored regex: a
+  // `frame-src 'self' https:` written last with no trailing ';' (or separated by a
+  // tab) would otherwise make the match null and silently skip the assertion.
+  const cspMatch = csp.match(/add_header\s+Content-Security-Policy\s+"([^"]*)"/);
   const directive = cspMatch ? cspMatch[1] : '';
-  const frameSrc = directive.match(/frame-src ([^;]*);/);
+  const directives = directive.split(';').map((d) => d.trim()).filter(Boolean);
+  const frameSrcDirective = directives.find((d) => /^frame-src\b/.test(d));
   check('P1-C: CSP does not assert the inert __bridge_loaded__ source',
     !directive.includes('__bridge_loaded__'), directive.includes('__bridge_loaded__') ? 'still present' : 'clean');
   check('P1-C: frame-src is absent, or not widened to a scheme source',
-    !frameSrc || !/(^|\s)https:(\s|$)/.test(frameSrc[1]), frameSrc ? frameSrc[1] : '(no frame-src)');
+    !frameSrcDirective || !/(^|\s)https:(\s|$)/.test(frameSrcDirective),
+    frameSrcDirective || '(no frame-src)');
+  // Every host-source in frame-src must be a parseable CSP host (no underscores),
+  // so the class of defect this guards is closed, not just the one literal.
+  const frameHosts = frameSrcDirective ? frameSrcDirective.replace(/^frame-src\s+/, '').split(/\s+/).filter((s) => /^https?:\/\//.test(s)) : [];
+  const badHost = frameHosts.find((s) => /_[^./]*\.|\/\/[^/]*_/.test(s));
+  check('P1-C: every frame-src host-source is a parseable CSP host',
+    !badHost, badHost ? `invalid host-source: ${badHost}` : `${frameHosts.length} host-source(s) checked`);
 
   await browser.close();
   server.close();
   const failed = results.filter((r) => !r.pass);
+  // Floor: this job is the only guard here that could shrink to zero assertions
+  // and still pass. Fail if the suite loses checks rather than reporting green.
+  const MIN_PROBES = 20;
+  if (results.length < MIN_PROBES) {
+    console.log(`FAIL  probe count ${results.length} < minimum ${MIN_PROBES}`);
+    process.exit(1);
+  }
   console.log(`\n${results.length - failed.length}/${results.length} probes passed`);
   process.exit(failed.length ? 1 : 0);
 })();

@@ -136,13 +136,13 @@
         <div class="reportNoticeOverlayClose">✕</div>
         <div class="reportDesc reportNoticeOverlayTitle">投诉须知</div>
         <div class="reportDesc">
-            你应保证你的投诉行为基于善意，并代表你本人真实意思。信必达作为中立的平台服务者，收到你投诉后，会尽快按照相关法律法规的规定独立判断并进行处理。信必达将会采取合理的措施保护你的个人信息；除法律法规规定的情形外，未经用户许可信必达不会向第三方公开、透露你的个人信息。
+            你应保证你的投诉行为基于善意，并代表你本人真实意思。明略科技作为中立的平台服务者，收到你投诉后，会尽快按照相关法律法规的规定独立判断并进行处理。明略科技将会采取合理的措施保护你的个人信息；除法律法规规定的情形外，未经用户许可明略科技不会向第三方公开、透露你的个人信息。
         </div>
         <div class="reportDesc">
-            根据《中华人民共和国民法典》的规定，权利人在通知网络服务提供者时应当提供权利人的真实身份信息。因此，当你提交侵权投诉及冒充他人投诉时，我们根据你的主体类型，收集你的相关信息（含敏感个人信息），包括你的姓名或名称、证件号码或者组织证件号、证件正反面照片、公司或组织证件照片，收集前述内容的目的在于核验你的身份信息的真实性。如果你委托代理人进行投诉，我们还将收集代理人的姓名、证件号码、证件正反面照片、授权委托书照片，收集前述信息在于核验代理人信息的真实性。你可以拒绝提供，如果拒绝提供，我们可能无法对你的投诉进行评估，但不影响你对悟空聊天其他功能的正常使用。
+            根据《中华人民共和国民法典》的规定，权利人在通知网络服务提供者时应当提供权利人的真实身份信息。因此，当你提交侵权投诉及冒充他人投诉时，我们根据你的主体类型，收集你的相关信息（含敏感个人信息），包括你的姓名或名称、证件号码或者组织证件号、证件正反面照片、公司或组织证件照片，收集前述内容的目的在于核验你的身份信息的真实性。如果你委托代理人进行投诉，我们还将收集代理人的姓名、证件号码、证件正反面照片、授权委托书照片，收集前述信息在于核验代理人信息的真实性。你可以拒绝提供，如果拒绝提供，我们可能无法对你的投诉进行评估，但不影响你对 Octo 其他功能的正常使用。
         </div>
         <div class="reportDesc">
-            此外，为了对你的投诉予以评估，我们也会收集你主动提交的聊天记录、投诉内容、补充证明材料照片。你可以拒绝提供，如果拒绝提供，我们可能无法对你的投诉进行充分评估，但不影响你对悟空聊天其他功能的正常使用。
+            此外，为了对你的投诉予以评估，我们也会收集你主动提交的聊天记录、投诉内容、补充证明材料照片。你可以拒绝提供，如果拒绝提供，我们可能无法对你的投诉进行充分评估，但不影响你对 Octo 其他功能的正常使用。
         </div>
         <div class="reportDesc">
             若你提交的是侵权投诉，请注意：
@@ -294,10 +294,17 @@
                 if (category && category.children && category.children.length > 0) {
                     selectedCategoryNo = null;
                     renderCategories(category.children);
-                } else {
+                } else if (category) {
                     selectedCategoryNo = categoryNos[categoryNos.length - 1];
                     $(".reportFormBox").css('display', 'block');
                     $(".categoryBox").css('display', 'none');
+                } else {
+                    // The hash names a category that is not in the tree. Do not
+                    // treat it as a leaf and file it: fall back to the root list.
+                    renderHash = '';
+                    selectedCategoryNo = null;
+                    history.replaceState(null, '', window.location.pathname + window.location.search);
+                    renderCategories(window.categories);
                 }
             } else {
                 renderHash = '';
@@ -315,16 +322,47 @@
         }
 
         window.categories = [];
-        $.getJSON(apiURL + `report/categories?lang=${window.getLang()}`).then(function (categories) {
-            window.categories = categories || [];
-            if (window.categories.length > 0) {
-                // Honour an initial hash (deep link / restored navigation) and
-                // seed renderHash/selectedCategoryNo from it.
-                applyHashNavigation();
-            }
-        }, function () {
-            $('.categoryBox .item ul').html('<li><div class="content"><label>加载失败，请重试</label></div></li>');
-        })
+        // Bounded like the other calls, and retryable in place: the previous
+        // failure copy said "重试" but nothing was clickable, and a reload cannot
+        // help (the one-time ?session is already consumed).
+        function loadCategories() {
+            return $.ajax({
+                url: apiURL + `report/categories?lang=${window.getLang()}`,
+                type: 'get',
+                dataType: 'json',
+                timeout: 10000
+            });
+        }
+
+        function renderCategoryLoadError() {
+            $('.categoryBox .item ul').html(
+                '<li><div class="content"><label>加载失败，请点击重试</label></div></li>'
+            );
+            $('.categoryBox .item ul li').on('touchend', function () {
+                initCategories();
+            });
+        }
+
+        function initCategories() {
+            loadCategories().then(function (categories) {
+                // An envelope like {code,data} would make .length undefined and
+                // silently render a blank page, so require an array.
+                window.categories = Array.isArray(categories) ? categories : [];
+                if (window.categories.length > 0) {
+                    // Honour an initial hash (deep link / restored navigation) and
+                    // seed renderHash/selectedCategoryNo from it.
+                    applyHashNavigation();
+                } else {
+                    $('.categoryBox .item ul').html(
+                        '<li><div class="content"><label>暂无可选分类</label></div></li>'
+                    );
+                }
+            }, function () {
+                renderCategoryLoadError();
+            });
+        }
+
+        initCategories();
 
         if ("onhashchange" in window) {
 
@@ -334,6 +372,12 @@
                     // keeps matching the rendered draft instead of stranding the
                     // hash on the category the user navigated to.
                     syncUrlToRender();
+                    return;
+                }
+                // Before the taxonomy has loaded, a hash lookup always misses;
+                // applying it would reveal the form for an unvalidated category.
+                // initCategories() re-applies the hash once the list is in.
+                if (!window.categories || window.categories.length === 0) {
                     return;
                 }
                 applyHashNavigation();
@@ -358,13 +402,23 @@
         // Number of uploads still in flight; submit must wait until this is 0.
         let pendingUploads = 0;
 
+        // Server caps the upload at 10m (nginx client_max_body_size on /v1/).
+        // Catch it client-side so an oversized photo does not get a 413 that
+        // retrying reproduces forever; leave headroom for multipart overhead.
+        var MAX_UPLOAD_BYTES = 9 * 1024 * 1024;
+
         function uploadChange() {
-            var objUrl = getObjectURL(this.files[0]);//获取文件信息
+            var file = this.files[0];
+            if (file && file.size > MAX_UPLOAD_BYTES) {
+                alert('图片过大（超过 9MB），请选择更小的图片');
+                return;
+            }
+            var objUrl = getObjectURL(file);//获取文件信息
             if (objUrl) {
                 var imageData = { url: objUrl, status: 'pending' };
                 imageDatas.push(imageData);
                 renderImageItes();
-                uploadImage(this.files[0], imageData);
+                uploadImage(file, imageData);
             }
         }
 
@@ -432,13 +486,22 @@
                 removeImageData(imageData);
                 return;
             }
-            function settle(status) {
+            function settle(status, httpStatus) {
                 if (!settleImage(imageData, status)) {
                     return false;
                 }
                 renderImageItes();
                 if (status === 'failed') {
-                    alert('图片上传失败，请重试');
+                    // Distinguish the outcomes a retry cannot fix (oversize 413,
+                    // expired-token 401) from a transient one, so the copy does
+                    // not tell the user to retry something that will never work.
+                    if (httpStatus === 413) {
+                        alert('图片过大被拒绝，请选择更小的图片');
+                    } else if (httpStatus === 401 || httpStatus === 403) {
+                        alert('登录态已失效，请从客户端重新进入投诉页');
+                    } else {
+                        alert('图片上传失败，请重试');
+                    }
                 }
                 return true;
             }
@@ -519,7 +582,7 @@
                                     settle('failed');
                                 }
                             } else {
-                                settle('failed');
+                                settle('failed', xhr.status);
                             }
                         }
                         xhr.send(form);
@@ -747,7 +810,14 @@
                     // fire another POST during the navigation.
                     window.location.href = 'report_success.html' + window.location.search;
                 },
-                error: function () {
+                error: function (xhr, textStatus) {
+                    // A timeout or an unparseable 200 may still have persisted the
+                    // complaint: do not report a plain failure and invite a
+                    // resubmit that would file a second one.
+                    if (textStatus === 'timeout' || textStatus === 'parsererror') {
+                        alert('提交结果未知，请稍后重新进入查看，不要重复提交');
+                        return; // keep the lock: do not invite a resubmit
+                    }
                     setSubmitting(false);
                     alert('提交失败！');
                 }
@@ -908,17 +978,24 @@
         linkScript("css/report.dark.css");
     }
 
+    // Locale, resolved ONCE with the documented precedence (docs/i18n-agent-guide.md):
+    // ?lang= → ?locale= → i18n_lang cookie → localStorage['octo:locale'] → browser.
+    // Both the i18n plugin and the ?lang= sent to /v1/report/categories read this
+    // single value, so the title, the labels and the category list cannot disagree
+    // (previously the plugin honoured the cookie while getLang() did not, so an
+    // English-cookie user got English labels over a Chinese title/categories).
+    function readCookie(name) {
+        var m = document.cookie.match(new RegExp('(^|;\\s*)' + name + '=([^;]*)'));
+        return m ? decodeURIComponent(m[2]) : '';
+    }
+
     window.getLang = function () {
-        var defaultLang = "cn";
-        let lang = window.navigator.userLanguage || window.navigator.language;
-        let userLang = getQueryString("lang")
-        if (userLang && userLang !== "") {
-            lang = userLang
-        }
-        if (lang.indexOf("en") != -1) {
-            defaultLang = "en";
-        }
-        return defaultLang
+        var raw = getQueryString("lang") || getQueryString("locale") ||
+            readCookie('i18n_lang') ||
+            (function () { try { return window.localStorage.getItem('octo:locale'); } catch (e) { return ''; } })() ||
+            window.navigator.userLanguage || window.navigator.language || '';
+        // Normalize anything English-ish (en, en-US, en_US) to 'en'; else 'cn'.
+        return String(raw).toLowerCase().indexOf('en') === 0 ? 'en' : 'cn';
     }
 
     $(document).ready(function () {
