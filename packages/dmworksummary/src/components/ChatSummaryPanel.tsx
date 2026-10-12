@@ -86,6 +86,7 @@ export default class ChatSummaryPanel extends Component<
                     this.props.summaryPanelView === 'new'
                         ? state.createSeq + 1
                         : state.createSeq,
+                freshSessionSeq: 0,
             }));
         }
     }
@@ -164,7 +165,7 @@ export default class ChatSummaryPanel extends Component<
             /** 每次点「+」都是新会话语义：递增 seq 换 key 强制重挂 workbench。 */
             createSeq: prev.createSeq + 1,
             /** 只有「+」手势才允许销毁性轮换 :previous 槽位（forceNewSession）。 */
-            freshSessionSeq: prev.freshSessionSeq + 1,
+            freshSessionSeq: prev.createSeq + 1,
         }));
     };
 
@@ -185,18 +186,22 @@ export default class ChatSummaryPanel extends Component<
     };
 
     private handleBack = () => {
-        this.setState({ view: 'list', refineTask: null });
+        this.setState({ view: 'list', refineTask: null, freshSessionSeq: 0 });
     };
 
     private handleBackToList = () => {
-        this.setState({ view: 'list', refineTask: null });
+        this.setState({ view: 'list', refineTask: null, freshSessionSeq: 0 });
     };
 
     private handleCreateSubmit = (taskId: number) => {
-        this.setState({ view: 'list' });
+        this.setState({ view: 'list', freshSessionSeq: 0 });
         setTimeout(() => {
             WKApp.mittBus.emit("summary-list-refresh-requested" as any);
         }, 800);
+    };
+
+    private handleForceNewSessionConsumed = () => {
+        this.setState({ freshSessionSeq: 0 });
     };
 
     render() {
@@ -254,7 +259,11 @@ export default class ChatSummaryPanel extends Component<
                                 key={`${channel.channelType}:${channel.channelID}:${this.state.createSeq}`}
                                 channel={channel}
                                 derivedFromTask={refineTask ?? undefined}
-                                forceNewSession={freshSessionSeq > 0}
+                                forceNewSession={
+                                    freshSessionSeq > 0 &&
+                                    freshSessionSeq === this.state.createSeq
+                                }
+                                onForceNewSessionConsumed={this.handleForceNewSessionConsumed}
                                 embedded={true}
                                 onClose={this.handleBackToList}
                                 onSubmit={this.handleCreateSubmit}

@@ -20,6 +20,7 @@ export interface SummaryWorkbenchCreateEntryProps {
   embedded?: boolean;
   /** "+" 语义：不恢复持久化会话，旧会话挪到「上次对话」槽位供一键返回。 */
   forceNewSession?: boolean;
+  onForceNewSessionConsumed?: () => void;
   onClose?: () => void;
   onSubmit?: (taskId: number) => void;
   onOpenTask?: (taskId: number) => void;
@@ -101,10 +102,10 @@ export default function SummaryWorkbenchCreateEntry(
     }
     previousForceNewSession.current = forceNewSession;
   }, [props.forceNewSession]);
-  const consumeForceNewSession = React.useCallback(
-    () => setForceNewSessionPending(false),
-    []
-  );
+  const consumeForceNewSession = React.useCallback(() => {
+    setForceNewSessionPending(false);
+    props.onForceNewSessionConsumed?.();
+  }, [props.onForceNewSessionConsumed]);
   const entryKey = [
     spaceId,
     props.channel?.channelID ?? "global",

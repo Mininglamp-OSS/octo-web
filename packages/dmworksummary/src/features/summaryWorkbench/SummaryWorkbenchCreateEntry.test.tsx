@@ -118,15 +118,18 @@ describe("SummaryWorkbenchCreateEntry", () => {
     });
 
     it("consumes force-new once so a space remount cannot demote again", async () => {
+        const onForceNewSessionConsumed = vi.fn();
         const view = render(
             <SummaryWorkbenchCreateEntry
                 source="summary_home"
                 forceNewSession
+                onForceNewSessionConsumed={onForceNewSessionConsumed}
             />,
             { legacyRoot: true }
         );
 
         await waitFor(() => expect(mocks.forceNewMount).toHaveBeenCalledTimes(1));
+        expect(onForceNewSessionConsumed).toHaveBeenCalledTimes(1);
         expect(screen.getByTestId("force-new-session")).toHaveTextContent(
             "false"
         );
@@ -136,10 +139,12 @@ describe("SummaryWorkbenchCreateEntry", () => {
             <SummaryWorkbenchCreateEntry
                 source="summary_home"
                 forceNewSession
+                onForceNewSessionConsumed={onForceNewSessionConsumed}
             />
         );
 
         expect(mocks.forceNewMount).toHaveBeenCalledTimes(1);
+        expect(onForceNewSessionConsumed).toHaveBeenCalledTimes(1);
         expect(screen.getByTestId("force-new-session")).toHaveTextContent(
             "false"
         );

@@ -245,6 +245,53 @@ describe('ChatSummaryPanel', () => {
         ).toHaveValue('');
     });
 
+    it('does not reuse a plus gesture as a fresh session after switching channels', () => {
+        const view = render(
+            <ChatSummaryPanel visible channel={channel} onClose={onClose} />,
+        );
+        fireEvent.click(screen.getByText('create-new'));
+        expect(screen.getByTestId('summary-create-entry')).toHaveAttribute(
+            'data-force-new-session',
+            'true',
+        );
+
+        view.rerender(
+            <ChatSummaryPanel
+                visible
+                channel={{ channelID: 'ch2', channelType: 2 }}
+                onClose={onClose}
+                summaryPanelView="new"
+            />,
+        );
+
+        expect(screen.getByTestId('summary-create-entry')).toHaveAttribute(
+            'data-force-new-session',
+            'false',
+        );
+    });
+
+    it('does not reuse a plus gesture when history changes back to a new view', () => {
+        const view = render(
+            <ChatSummaryPanel visible channel={channel} onClose={onClose} />,
+        );
+        fireEvent.click(screen.getByText('create-new'));
+        fireEvent.click(screen.getByTestId('back-icon').closest('button')!);
+
+        view.rerender(
+            <ChatSummaryPanel
+                visible
+                channel={channel}
+                onClose={onClose}
+                summaryPanelView="new"
+            />,
+        );
+
+        expect(screen.getByTestId('summary-create-entry')).toHaveAttribute(
+            'data-force-new-session',
+            'false',
+        );
+    });
+
     it('emits summary-list-refresh-requested after create submit', () => {
         vi.useFakeTimers();
         render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
