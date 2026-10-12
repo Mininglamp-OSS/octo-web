@@ -48,7 +48,10 @@ export interface RestoredLocalAttachmentDraft {
 }
 
 export interface ChatComposerAttachmentDraftPort {
-  restore(): Promise<RestoredLocalAttachmentDraft[]>;
+  restore(): Promise<{
+    attachments: RestoredLocalAttachmentDraft[];
+    failedCount: number;
+  }>;
   stage(input: RestoredLocalAttachmentDraft, position?: number): Promise<boolean>;
   syncLive(attachmentIds: readonly string[]): void;
   discardUnready(attachmentIds: readonly string[]): void;

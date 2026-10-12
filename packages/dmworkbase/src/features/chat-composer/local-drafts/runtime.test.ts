@@ -129,8 +129,9 @@ describe("local attachment draft runtime", () => {
     install(value);
     const port = createChatComposerAttachmentDraftPort(channel)!;
 
-    const restored = await port.restore();
+    const { attachments: restored, failedCount } = await port.restore();
 
+    expect(failedCount).toBe(0);
     expect(restored).toHaveLength(1);
     expect(restored[0]).toMatchObject({ id: "paste-a", source: "paste" });
     expect(restored[0].file.name).toBe("capture.png");
@@ -169,7 +170,7 @@ describe("local attachment draft runtime", () => {
     expect(value.remove).not.toHaveBeenCalled();
     finishSecondRead?.();
 
-    expect((await restoring).map(({ id }) => id)).toEqual(["first", "second"]);
+    expect((await restoring).attachments.map(({ id }) => id)).toEqual(["first", "second"]);
     expect(value.remove).not.toHaveBeenCalled();
   });
 
@@ -277,6 +278,86 @@ describe("local attachment draft runtime", () => {
       .toEqual([0, 1, 2]);
   });
 
+  it("does not mark a failed local write durable after send recovery", async () => {
+    const value = host({
+      stage: vi.fn(async () => {
+        throw new Error("quota exceeded");
+      }),
+    });
+    install(value);
+    const port = createChatComposerAttachmentDraftPort(channel)!;
+    await port.stage({ id: "failed", file: file(), source: "upload" });
+
+    port.beginSend(["failed"]);
+    port.settleSend({ attachmentIds: ["failed"], keepAttachmentIds: ["failed"] });
+
+    expect(port.canLeave(["failed"])).toBe(false);
+  });
+
+  it("removes a consumed attachment again after its pending write lands", async () => {
+    let finishStage: (() => void) | undefined;
+    const value = host({
+      stage: vi.fn(
+        () =>
+          new Promise<LocalAttachmentDraftMetadata>((resolve) => {
+            finishStage = () => resolve(metadata("pending"));
+          })
+      ),
+    });
+    install(value);
+    const port = createChatComposerAttachmentDraftPort(channel)!;
+    const staging = port.stage({ id: "pending", file: file(), source: "upload" });
+    await vi.waitFor(() => expect(value.stage).toHaveBeenCalledOnce());
+
+    port.beginSend(["pending"]);
+    port.settleSend({ attachmentIds: ["pending"], keepAttachmentIds: [] });
+    finishStage?.();
+    await staging;
+
+    expect(value.remove).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a draft when a pending write finishes before failed-send settlement", async () => {
+    let finishStage: (() => void) | undefined;
+    const value = host({
+      stage: vi.fn(
+        () =>
+          new Promise<LocalAttachmentDraftMetadata>((resolve) => {
+            finishStage = () => resolve(metadata("retry"));
+          })
+      ),
+    });
+    install(value);
+    const port = createChatComposerAttachmentDraftPort(channel)!;
+    const staging = port.stage({ id: "retry", file: file(), source: "upload" });
+    await vi.waitFor(() => expect(value.stage).toHaveBeenCalledOnce());
+
+    port.beginSend(["retry"]);
+    port.syncLive([]);
+    finishStage?.();
+    await staging;
+    port.settleSend({ attachmentIds: ["retry"], keepAttachmentIds: ["retry"] });
+
+    expect(value.remove).not.toHaveBeenCalled();
+    expect(port.canLeave(["retry"])).toBe(true);
+  });
+
+  it("retains a draft after a transient restore read failure", async () => {
+    const value = host({
+      list: vi.fn(async () => [metadata("busy")]),
+      read: vi.fn(async () => {
+        throw Object.assign(new Error("busy"), { code: "EBUSY" });
+      }),
+    });
+    install(value);
+
+    expect(await createChatComposerAttachmentDraftPort(channel)!.restore()).toEqual({
+      attachments: [],
+      failedCount: 1,
+    });
+    expect(value.remove).not.toHaveBeenCalled();
+  });
+
   it("restores attachments by their explicit position", async () => {
     const value = host({
       list: vi.fn(async () => [
@@ -292,7 +373,8 @@ describe("local attachment draft runtime", () => {
     });
     install(value);
 
-    const restored = await createChatComposerAttachmentDraftPort(channel)!.restore();
+    const { attachments: restored } =
+      await createChatComposerAttachmentDraftPort(channel)!.restore();
 
     expect(restored.map(({ id }) => id)).toEqual(["first", "second"]);
   });
