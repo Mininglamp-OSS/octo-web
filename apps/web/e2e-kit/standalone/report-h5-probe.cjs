@@ -28,6 +28,14 @@ let uploadDelayMs = 0;
 // model a proxy that accepts the connection but never responds.
 let presignDelayMs = 0;
 let presignHang = false;
+// When set, the presign GET returns this url verbatim instead of the default.
+// Used to assert the upload POST cannot be redirected off-origin by a
+// scheme-relative pathname (round-7 P0).
+let presignUrlOverride = null;
+// When set, POST /v1/reports answers 502 — the "result unknown" outcome.
+let failSubmit = false;
+// Requests the off-origin "leak" listener received. Must stay empty.
+const leakRequests = [];
 let serveCsp = true;
 
 // The real production policy, read from the shipped template, so probes run under
@@ -68,10 +76,14 @@ function serve(port) {
         ]);
       }
       if (u.pathname === '/v1/file/upload' && req.method === 'GET') {
-        presignRequests.push({ path: u.searchParams.get('path') || '', filename: u.searchParams.get('filename') || '' });
+        presignRequests.push({ type: u.searchParams.get('type') || '', path: u.searchParams.get('path') || '', filename: u.searchParams.get('filename') || '' });
         if (!req.headers.token) return json({ status: 401, msg: 'token required' }, 401);
         if (presignHang) return; // hold the connection open, never answer
-        return setTimeout(() => json({ url: `http://127.0.0.1:${port}/v1/file/upload?type=report&path=/u-1/x.png` }), presignDelayMs);
+        // Echo the caller's own path back (the server's getFilePath handler
+        // builds the POST url from the request's `path`), so the probe exercises
+        // a response derived from the real request rather than a hard-coded one.
+        const url = presignUrlOverride || `http://127.0.0.1:${port}/v1/file/upload?type=report&path=${encodeURIComponent(u.searchParams.get('path') || '/u-1/x.png')}`;
+        return setTimeout(() => json({ url }), presignDelayMs);
       }
       if (u.pathname === '/v1/file/upload' && req.method === 'POST') {
         uploads.push({ token: req.headers.token, at: Date.now() });
@@ -84,6 +96,7 @@ function serve(port) {
         req.on('end', () => {
           submitAuth.push({ token: req.headers.token || null });
           submissions.push(JSON.parse(body));
+          if (failSubmit) return json({ msg: 'upstream boom' }, 502);
           json({ status: 200 });
         });
         return;
@@ -97,6 +110,20 @@ function serve(port) {
         if (csp) headers['Content-Security-Policy'] = csp;
         res.writeHead(200, headers); res.end(fs.readFileSync(f));
       } else { res.writeHead(404); res.end('nf'); }
+    });
+    s.listen(port, () => resolve(s));
+  });
+}
+
+// A second listener that stands in for the "foreign host" a scheme-relative
+// upload url would resolve to. Any request it receives is a credential/evidence
+// leak and must make the probe fail.
+function serveLeak(port, sink) {
+  return new Promise((resolve) => {
+    const s = http.createServer((req, res) => {
+      sink.push({ method: req.method, url: req.url, token: req.headers.token || null });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ path: 'leak/LEAKED.png' }));
     });
     s.listen(port, () => resolve(s));
   });
@@ -135,6 +162,7 @@ async function launchBrowser() {
   const check = (name, cond, detail) => { results.push({ name, pass: !!cond, detail }); console.log(`${cond ? 'PASS' : 'FAIL'}  ${name}${detail ? '  — ' + detail : ''}`); };
 
   const server = await serve(18933);
+  const leakServer = await serveLeak(18934, leakRequests);
   const browser = await launchBrowser();
   // Real touch events, so the tap-vs-drag discrimination in renderCategories is
   // actually exercised (a synthetic Event('touchend') carries no coordinates and
@@ -612,9 +640,140 @@ async function launchBrowser() {
     submitAuth.length === 1 && submitAuth[0].token === 'tok-abc',
     `submitAuth=${JSON.stringify(submitAuth)}`);
   check('P-FILE: the presign request carries a filename and an extension-bearing path',
-    presignRequests.length === 1 && /\.[A-Za-z0-9]+$/.test(presignRequests[0].path) && !!presignRequests[0].filename,
+    presignRequests.length === 1 && presignRequests[0].type === 'report' && /\.[A-Za-z0-9]+$/.test(presignRequests[0].path) && !!presignRequests[0].filename,
     `presign=${JSON.stringify(presignRequests)}`);
   await authPage.close();
+
+  // ---------- Round-7 fixes ----------
+  const mkPage = async (session) => {
+    const p = await browser.newPage();
+    p.__dialogs = [];
+    await p.addInitScript(() => {
+      window.IMJSBridge = { callHandler: (m, o, cb) => setTimeout(() => cb(JSON.stringify({ err_code: 200, channelID: 'ch-native', channelType: 1 })), 50) };
+    });
+    p.on('dialog', (d) => { p.__dialogs.push(d.message()); d.dismiss(); });
+    await openForm(p, `http://127.0.0.1:18933/report.html?session=${session}&channel_id=ch-q&channel_type=2`);
+    return p;
+  };
+  const attachFile = (p, name, bytes) => p.evaluate(({ name, bytes }) => {
+    const dt = new DataTransfer();
+    dt.items.add(new File([bytes], name, { type: 'image/png' }));
+    const inp = document.querySelector('.imgItem .upload');
+    Object.defineProperty(inp, 'files', { value: dt.files, configurable: true });
+    inp.dispatchEvent(new Event('change'));
+  }, { name, bytes });
+
+  // #R7-1: deleting a successfully-uploaded image must drop it from the payload.
+  submissions.length = 0; uploads.length = 0; sessionConsumed = false; uploadDelayMs = 0;
+  presignDelayMs = 0; presignHang = false; presignUrlOverride = null; failSubmit = false;
+  const delPage = await mkPage('R1');
+  await attachFile(delPage, 'keep-then-delete.png', 'x');
+  await delPage.waitForFunction(() => !!document.querySelector('.imgs .imgItem .uploadRemove'), { timeout: 5000 });
+  await delPage.evaluate(() => { const el = document.querySelector('.uploadRemove'); if (el) el.click(); });
+  await delPage.waitForTimeout(200);
+  await delPage.fill('.reportContent', 'deleted my uploaded photo');
+  await delPage.evaluate(() => document.querySelector('.reportSubmit').click());
+  await delPage.waitForTimeout(1200);
+  const delPayload = submissions.length ? submissions[submissions.length - 1] : null;
+  check('P1-DEL: a deleted done image is absent from the submit payload',
+    !!delPayload && Array.isArray(delPayload.imgs) && delPayload.imgs.length === 0,
+    `imgs=${JSON.stringify(delPayload && delPayload.imgs)}`);
+  await delPage.close();
+
+  // #R7-2: a scheme-relative pathname in the presign url must not move the POST off-origin.
+  submissions.length = 0; uploads.length = 0; sessionConsumed = false; uploadDelayMs = 0;
+  presignDelayMs = 0; presignHang = false;
+  // Same-origin (passes the origin check) but the PATH is scheme-relative:
+  // pathname+search rebuild would resolve `//host` against the document → leak.
+  presignUrlOverride = 'http://127.0.0.1:18933//127.0.0.1:18934/leak';
+  leakRequests.length = 0;
+  const leakPage = await mkPage('R2');
+  await attachFile(leakPage, 'leaky.png', 'L');
+  await leakPage.waitForTimeout(1500);
+  check('P0-URL: a scheme-relative presign url cannot redirect the upload off-origin',
+    leakRequests.length === 0,
+    `leakRequests=${JSON.stringify(leakRequests)}`);
+  await leakPage.close();
+  presignUrlOverride = null;
+
+  // #R7-3: a drag + the browser's synthetic click must not select the row.
+  submissions.length = 0; sessionConsumed = false;
+  const tapDragPage = await mkPage('R3');
+  await tapDragPage.evaluate(() => { window.location.hash = ''; });
+  await tapDragPage.waitForTimeout(400);
+  const beforeHash = await tapDragPage.evaluate(() => window.location.hash);
+  const draggedThenClicked = await tapDragPage.evaluate(() => {
+    const lis = Array.from(document.querySelectorAll('.categoryBox .item ul li'));
+    const el = lis.find((li) => li.querySelector('label') && li.querySelector('label').textContent === 'Cat D');
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const mk = (type, cx, cy, list) => new TouchEvent(type, { bubbles: true, cancelable: true, composed: true, touches: list, changedTouches: list, targetTouches: list });
+    const t1 = [new Touch({ identifier: 1, target: el, clientX: x, clientY: y })];
+    const t2 = [new Touch({ identifier: 1, target: el, clientX: x, clientY: y - 60 })];
+    el.dispatchEvent(mk('touchstart', x, y, t1));
+    el.dispatchEvent(mk('touchmove', x, y - 60, t2));
+    el.dispatchEvent(mk('touchend', x, y - 60, []));
+    // the click the browser synthesises after a real touch
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    return true;
+  });
+  await tapDragPage.waitForTimeout(400);
+  const afterHash = await tapDragPage.evaluate(() => window.location.hash);
+  check('P1-TAP: a drag followed by the synthetic click does not select the row',
+    draggedThenClicked && afterHash === beforeHash,
+    `before=${beforeHash} after=${afterHash}`);
+  await tapDragPage.close();
+
+  // #R7-4: the picker input node survives an upload settle (no async rebuild).
+  submissions.length = 0; uploads.length = 0; sessionConsumed = false; uploadDelayMs = 0;
+  presignDelayMs = 0; presignHang = false;
+  const pickKeepPage = await mkPage('R4');
+  const inputBefore = await pickKeepPage.evaluate(() => { const el = document.querySelector('.imgItem .upload'); el.dataset.tag = 'STABLE'; return el.dataset.tag; });
+  await attachFile(pickKeepPage, 'keep.png', 'k');
+  await pickKeepPage.waitForFunction(() => !!document.querySelector('.imgs .imgItem .uploadRemove'), { timeout: 5000 });
+  const inputAfter = await pickKeepPage.evaluate(() => { const el = document.querySelector('.imgItem .upload'); return el ? el.dataset.tag : null; });
+  check('P1-PICK: the picker input node survives an upload settle (no rebuild)',
+    inputBefore === 'STABLE' && inputAfter === 'STABLE',
+    `before=${inputBefore} after=${inputAfter}`);
+  await pickKeepPage.close();
+
+  // #R7-5: an unknown outcome keeps the button inert but releases navigation.
+  submissions.length = 0; uploads.length = 0; sessionConsumed = false; uploadDelayMs = 0;
+  presignDelayMs = 0; presignHang = false; failSubmit = true;
+  const unknownPage = await mkPage('R5');
+  await unknownPage.fill('.reportContent', 'unknown outcome');
+  await unknownPage.evaluate(() => document.querySelector('.reportSubmit').click());
+  await unknownPage.waitForTimeout(1200);
+  const unknownInert = await unknownPage.evaluate(() => getComputedStyle(document.querySelector('.reportSubmit')).pointerEvents === 'none');
+  await unknownPage.evaluate(() => { window.location.hash = ''; });
+  await unknownPage.waitForTimeout(400);
+  const navReleased = await unknownPage.evaluate(() =>
+    getComputedStyle(document.querySelector('.reportFormBox')).display === 'none' &&
+    getComputedStyle(document.querySelector('.categoryBox')).display !== 'none');
+  check('P2-UNKNOWN: an unknown outcome keeps the submit button inert',
+    unknownInert && unknownPage.__dialogs.some((m) => /结果未知/.test(m)),
+    `inert=${unknownInert} dialogs=${JSON.stringify(unknownPage.__dialogs)}`);
+  check('P2-UNKNOWN: an unknown outcome releases navigation (no permanent trap)',
+    navReleased, `navReleased=${navReleased}`);
+  await unknownPage.close();
+  failSubmit = false;
+
+  // #R7-6: back after a successful submit must not re-show the login-failure banner.
+  submissions.length = 0; uploads.length = 0; sessionConsumed = false; uploadDelayMs = 0;
+  presignDelayMs = 0; presignHang = false; failSubmit = false;
+  const backPage = await mkPage('R6');
+  await backPage.fill('.reportContent', 'submitted then back');
+  await backPage.evaluate(() => document.querySelector('.reportSubmit').click());
+  await backPage.waitForSelector('.closeBtn', { timeout: 5000 });
+  await backPage.goBack();
+  await backPage.waitForTimeout(1500);
+  const backBanner = await backPage.evaluate(() => !!document.querySelector('.authError'));
+  const backUrl = backPage.url();
+  check('P1-BACK: back after a successful submit shows no false auth-failure banner',
+    !backBanner && /report_success\.html/.test(backUrl),
+    `banner=${backBanner} url=${backUrl}`);
+  await backPage.close();
 
   // ---------- Probe 3: CSP must not carry the inert bridge source ----------
   const csp = fs.readFileSync(path.resolve(__dirname, '../../../../nginx.conf.template'), 'utf8');
@@ -639,6 +798,7 @@ async function launchBrowser() {
 
   await browser.close();
   server.close();
+  leakServer.close();
   const failed = results.filter((r) => !r.pass);
   // Floor: this job is the only guard here that could shrink to zero assertions
   // and still pass. Fail if the suite loses checks rather than reporting green.
