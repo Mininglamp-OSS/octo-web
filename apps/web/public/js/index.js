@@ -8,7 +8,10 @@
 function getQueryString(name) {
     var reg = new RegExp("(^|&)" + name + "=([^&]*)(&|$)");
     var r = window.location.search.substr(1).match(reg);
-    if (r != null) return unescape(r[2]); return null;
+    // decodeURIComponent 而非 unescape：后者走 Latin-1，会把多字节 UTF-8
+    // （中文参数值）解成乱码。
+    if (r != null) { try { return decodeURIComponent(r[2]); } catch (e) { return r[2]; } }
+    return null;
 }
 
 function uuid() {

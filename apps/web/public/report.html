@@ -93,7 +93,7 @@
                                     <div class="imgItem">
                                         <img class="add" src='./images/img_add.png' style="width: 100%;height: 100%;">
                                         <input type="file" class="upload"
-                                            accept="image/gif,image/jpeg,image/jpg,image/png,image/svg"></input>
+                                            accept="image/gif,image/jpeg,image/png,image/webp"></input>
                                     </div>
                                 </div>
                             </li>
@@ -219,7 +219,11 @@
         }
 
         let sessionId = getQueryString('session');
+        // 立即用局部变量接管，并马上从地址栏抹掉：否则一次性凭证会在 resolve
+        // POST 与 categories GET 期间一直停在 URL，作为同源 Referer 进入访问日志，
+        // 也留在 WebView history 里（最长 10s）。
         if (sessionId) {
+            stripSessionFromUrl();
             $.ajax({
                 headers: { Accept: "application/json; charset=utf-8" },
                 url: apiURL + 'report/session/resolve',
@@ -241,8 +245,7 @@
                     } else {
                         onAuthResolveFailed();
                     }
-                    stripSessionFromUrl();
-                },
+                    stripSessionFromUrl();                },
                 error: function () {
                     onAuthResolveFailed();
                     stripSessionFromUrl();
@@ -408,9 +411,16 @@
         var MAX_UPLOAD_BYTES = 9 * 1024 * 1024;
 
         function uploadChange() {
-            var file = this.files[0];
-            if (file && file.size > MAX_UPLOAD_BYTES) {
+            var file = this.files && this.files[0];
+            // 空 FileList（用户取消选择）时 file 为 undefined，
+            // URL.createObjectURL(undefined) 会抛未捕获 TypeError。
+            if (!file) {
+                return;
+            }
+            if (file.size > MAX_UPLOAD_BYTES) {
                 alert('图片过大（超过 9MB），请选择更小的图片');
+                // 重置 value，否则重选同一个文件不会触发 change，看起来没反应。
+                this.value = '';
                 return;
             }
             var objUrl = getObjectURL(file);//获取文件信息
@@ -506,12 +516,22 @@
                 return true;
             }
             pendingUploads++;
+            // 对齐仓内 canonical 上传形状（UploadCredentials.ts / datasource.ts）：
+            // path 带扩展名，并附带 filename。此前发的是无扩展名的 /uid/uuid，
+            // 既无任何调用方先例，服务端也只能从 multipart 文件名反推扩展名；
+            // 而且探针把响应写死，根本盖不到这条。扩展名取自文件名，缺省回退 .jpg。
+            var fileExt = (function () {
+                var n = (fileObj && fileObj.name) || '';
+                var m = n.match(/\.([A-Za-z0-9]+)$/);
+                return m ? '.' + m[1].toLowerCase() : '.jpg';
+            })();
+            var fileName = (fileObj && fileObj.name) || ('report' + fileExt);
             $.ajax({
                 headers: {
                     Accept: "application/json; charset=utf-8",
                     token: token
                 },
-                url: apiURL + `file/upload?type=report&path=/${uid}/${uuid()}`,
+                url: apiURL + `file/upload?type=report&path=/${uid}/${uuid()}${fileExt}&filename=${encodeURIComponent(fileName)}`,
                 type: "get",
                 // Bound the presign GET like the submit POST (30s) and the
                 // upload POST (60s). jQuery has no default timeout, so a proxy
@@ -541,6 +561,13 @@
                         // packages/dmworkdatasource/src/datasource.ts.
                         var target = new URL(result.url, window.location.href);
                         var sameOrigin = target.origin === window.location.origin;
+                        // 非同源就是非法值（注释里写明它恒为同源的 /v1/file/upload）。
+                        // 此前会“保地不带 token 但仍 send” —— 等于把用户证据图
+                        // 上传到外来主机。改为 fail closed，根本不外发。
+                        if (!sameOrigin) {
+                            settle('failed');
+                            return;
+                        }
                         var xhr = new XMLHttpRequest();
                         // Cancelled while the presign GET was in flight: do not
                         // start streaming the body. imageData.xhr is stored so
@@ -550,10 +577,8 @@
                             return;
                         }
                         imageData.xhr = xhr;
-                        xhr.open("post", sameOrigin ? target.pathname + target.search : target.href, true);
-                        if (sameOrigin) {
-                            xhr.setRequestHeader("token", token);
-                        }
+                        xhr.open("post", target.pathname + target.search, true);
+                        xhr.setRequestHeader("token", token);
                         xhr.timeout = 60000;
                         xhr.ontimeout = function () {
                             settle('failed');
@@ -607,6 +632,9 @@
             if (idx !== -1) {
                 imageDatas.splice(idx, 1);
             }
+            // Revoke the preview blob so repeated draft edits do not leak up to
+            // nine image blobs per switch.
+            try { if (imageData.url) { URL.revokeObjectURL(imageData.url); } } catch (e) { /* already gone */ }
             renderImageItes();
         }
 
@@ -618,14 +646,20 @@
                     let failedCls = failed ? ' upload-failed' : '';
                     // A failed tile blocks submit, so it has to be removable or
                     // the form is locked forever. Retry = pick the image again.
-                    let failedTip = failed
-                        ? '<div class="uploadFailedTip" style="position:absolute;left:0;right:0;bottom:0;background:rgba(204,0,0,0.8);color:#fff;font-size:12px;text-align:center;">上传失败</div><div class="uploadRemove">✕</div>'
+                    let removable = imageData.status === 'failed' || imageData.status === 'done';
+                    // A failed tile blocks submit, so it must be removable or the
+                    // form locks forever; a DONE tile must be removable too, or a
+                    // user who attached the wrong photo can only clear it by
+                    // switching category (which also wipes the remark).
+                    let tip = imageData.status === 'failed'
+                        ? '<div class="uploadFailedTip" style="position:absolute;left:0;right:0;bottom:0;background:rgba(204,0,0,0.8);color:#fff;font-size:12px;text-align:center;">上传失败</div>'
                         : '';
+                    let removeEl = removable ? '<div class="uploadRemove">✕</div>' : '';
                     let item = $(`<div class="imgItem${failedCls}" style="position:relative;">
                                         <img style="width: 100%;height: 100%;" src="${imageData.url}" />
-                                        ${failedTip}
+                                        ${tip}${removeEl}
                                 </div>`)
-                    if (failed) {
+                    if (removable) {
                         item.children('.uploadRemove').on('click', function () {
                             removeImageData(imageData);
                         });
@@ -640,7 +674,7 @@
                          <div class="imgItem">
                             <img class="add" src='./images/img_add.png' style="width: 100%;height: 100%;">
                             <input type="file" class="upload"
-                                            accept="image/gif,image/jpeg,image/jpg,image/png,image/svg"></input>
+                                            accept="image/gif,image/jpeg,image/png,image/webp"></input>
                         </div>
                 `)
             uploadInput.children('.upload').on('change', function () {
@@ -754,6 +788,20 @@
                 }
                 channel = null;
             }
+            if (channel && channel.channelID) {
+                // Native 路径也要校验 channelType：bridge 只回 channelID 时
+                // JSON.stringify 会把 undefined 的 channel_type 整个丢掉，
+                // 服务端 invalidField() 会拒。缺就回退到 query。
+                var nativeType = parseInt(channel.channelType, 10);
+                if (isNaN(nativeType)) {
+                    var qt = parseInt(getQueryString('channel_type'), 10);
+                    if (!isNaN(qt)) {
+                        channel = { channelID: channel.channelID, channelType: qt };
+                    } else {
+                        channel = null;
+                    }
+                }
+            }
             if (!channel || !channel.channelID) {
                 // Bridge missing or erroring: the server redirect already put
                 // the channel in the query, so use that before giving up.
@@ -806,18 +854,32 @@
                 timeout: 30000,
                 data: JSON.stringify({ "category_no": draft.categoryNo, "channel_id": channel.channelID, "channel_type": channel.channelType, "remark": draft.remark, "imgs": draft.imgs }),
                 success: function (result) {
+                    // 200 不等于“已受理”：服务端失败走 httperr 信封（非 200），
+                    // 但真要有 envelope 就必须拦住，否则用户看到“投诉已提交”
+                    // 而投诉其实被拒（一次性 ?session 已消费，无法重来）。
+                    // 另两条腿（resolve / upload）都校验了 body，这条也校。
+                    if (result && result.status && result.status !== 200) {
+                        alert('提交失败！');
+                        setSubmitting(false);
+                        return;
+                    }
                     // Navigating away; leave the lock set so no further click can
                     // fire another POST during the navigation.
                     window.location.href = 'report_success.html' + window.location.search;
                 },
                 error: function (xhr, textStatus) {
-                    // A timeout or an unparseable 200 may still have persisted the
-                    // complaint: do not report a plain failure and invite a
-                    // resubmit that would file a second one.
-                    if (textStatus === 'timeout' || textStatus === 'parsererror') {
+                    // jQuery 对网络中断与所有非 2xx 都报 textStatus='error'，
+                    // 而 /v1/ 网关超时（502/504）或连接被重置时，上游很可能
+                    // 已经写入了投诉。把这些当成“确定性失败”并放开提交锁，
+                    // 用户重提就会产生第二条投诉（服务端无幂等键）。
+                    // status===0（断网/被重置）与 5xx 一律按“结果未知”处理。
+                    if (textStatus === 'timeout' || textStatus === 'parsererror' ||
+                        !xhr || xhr.status === 0 || xhr.status >= 500) {
                         alert('提交结果未知，请稍后重新进入查看，不要重复提交');
+                        $('.reportSubmit').css({ opacity: '0.5', 'pointer-events': 'none' });
                         return; // keep the lock: do not invite a resubmit
                     }
+                    // 确定失败：4xx 拒绝可安全重试。
                     setSubmitting(false);
                     alert('提交失败！');
                 }
@@ -836,6 +898,7 @@
                 if (d.status === 'pending') {
                     settleCancelled(d);
                 }
+                try { if (d.url) { URL.revokeObjectURL(d.url); } } catch (e) { /* already gone */ }
             });
             imageDatas = []
             imgPaths = []
@@ -863,7 +926,20 @@
                 // file the complaint against it. Record the touch origin and act
                 // only when the gesture stayed within a small movement budget.
                 let touchStartX = null, touchStartY = null;
+                let lastTouchTs = 0;
                 const TAP_SLOP = 10; // px
+                // Build the path root-first and ALWAYS include the tapped
+                // category itself. The previous shape omitted it whenever the
+                // category had children, so for A>B>C tapping B navigated back
+                // to #A and C was unreachable. Ancestors alone are also
+                // nearest-first, which would have produced B-A-C.
+                function goToCategory() {
+                    let categoryNos = new Array();
+                    getAllParentCategoryNo(category, categoryNos);
+                    categoryNos.reverse();
+                    categoryNos.push(category.category_no);
+                    window.location.href = `${window.location.pathname + window.location.search}#${categoryNos.join("-")}`;
+                }
                 item.on('touchstart', function (e) {
                     const t = e.originalEvent && e.originalEvent.touches && e.originalEvent.touches[0];
                     if (t) {
@@ -890,16 +966,18 @@
                         }
                     }
                     touchStartX = touchStartY = null;
-                    // Build the path root-first and ALWAYS include the tapped
-                    // category itself. The previous shape omitted it whenever the
-                    // category had children, so for A>B>C tapping B navigated back
-                    // to #A and C was unreachable. Ancestors alone are also
-                    // nearest-first, which would have produced B-A-C.
-                    let categoryNos = new Array();
-                    getAllParentCategoryNo(category, categoryNos);
-                    categoryNos.reverse();
-                    categoryNos.push(category.category_no);
-                    window.location.href = `${window.location.pathname + window.location.search}#${categoryNos.join("-")}`;
+                    lastTouchTs = Date.now();
+                    goToCategory();
+                })
+                // Accessibility: screen readers synthesise `click`, not `touchend`,
+                // so a touch-only binding makes the category list unusable for
+                // VoiceOver/TalkBack. The timestamp guard suppresses the synthetic
+                // click that a real tap also fires, so a tap cannot navigate twice.
+                item.on('click', function () {
+                    if (Date.now() - lastTouchTs < 800) {
+                        return;
+                    }
+                    goToCategory();
                 })
                 $('.categoryBox .item ul').append(item);
             }
@@ -1012,8 +1090,21 @@
         // alongside i18n_cn/i18n_en. Deleting or rewriting the cookie here is
         // not an option: it is the SPA's persisted app-wide locale, and the
         // plugin's cookie-writing branch needs the absent $.removeCookie.
+        // The vendored plugin reads the same-origin `i18n_lang` cookie (SPA-owned,
+        // zh-CN/en-US) and lets it override defaultLang — so passing only
+        // defaultLang left the cookie winning and produced mixed language
+        // (?lang=en + zh-CN cookie → English title/categories over Chinese labels).
+        // Passing `lang` explicitly with `forever:false` makes the plugin use our
+        // value, but that branch calls `$.removeCookie`, which the bundled runtime
+        // does not define. Shim it as a no-op: the plugin then honours our lang and
+        // the SPA's cookie is left untouched.
+        if (typeof $.removeCookie !== 'function') {
+            $.removeCookie = function () { };
+        }
         $("[i18n]").i18n({
+            lang: defaultLang,
             defaultLang: defaultLang,
+            forever: false,
             filePath: "./i18n/",
             filePrefix: "i18n_",
             fileSuffix: "",

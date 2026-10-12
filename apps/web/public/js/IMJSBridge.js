@@ -61,12 +61,27 @@ im.onReady = function (callback) {
     // 两条路径（iOS iframe / Android ready 事件）都可能注入 bridge，且都可以在
     // 调用时立即拿到已存在的 window.WebViewJavascriptBridge。没有该标志位时
     // callback 会被调两次，第二个 bridge 也会静默覆盖第一个。只让先到者生效。
+    //
+    // init 也必须在这道门之内：原生壳预注入 bridge 时两条路径都会同步命中，
+    // 若在守门之外对已被收养的 bridge 调 init，会抛（WebViewJavascriptBridge
+    // "init called twice" 或自定义壳的 "bridge.init is not a function"），
+    // 异常会冲出 onReady —— 而它是各页 DOM-ready 的第一条语句，后面整段初始化
+    // （session resolve / 错误横幅 / 分类加载 / 事件绑定）全部作废且无提示。
     var ready = false;
     function onBridge(bridge) {
         if (ready) {
             return;
         }
         ready = true;
+        try {
+            if (bridge && typeof bridge.init === 'function') {
+                bridge.init(function (message, responseCallback) {
+                    responseCallback();
+                });
+            }
+        } catch (e) {
+            // 已经 init 过的实现会抛；bridge 本身仍可用，不要中断调用方。
+        }
         window.IMJSBridge = bridge
         if (callback) {
             callback()
@@ -75,12 +90,7 @@ im.onReady = function (callback) {
 
     setupWebViewJavascriptBridge(onBridge)
 
-    connectWebViewJavascriptBridge(function (bridge) {
-        bridge.init(function (message, responseCallback) {
-            responseCallback();
-        });
-        onBridge(bridge)
-    })
+    connectWebViewJavascriptBridge(onBridge)
 }
 
 
@@ -166,9 +176,13 @@ im.quit = function (onUnavailable) {
             window.close();
         } catch (e) { /* 非脚本打开的窗口关不掉，忽略 */ }
     }
+    // bridge 存在但永不回调 quit 时，error/complete 都不会触发，
+    // 按钮会永久无反应（且连提示也不出）。与 getChannel 一样加限时。
+    var timer = setTimeout(fallback, 3000);
     im.call("quit", {
-        error: fallback,
+        error: function () { clearTimeout(timer); fallback(); },
         complete: function (result) {
+            clearTimeout(timer);
             if (result && result.err_code && result.err_code !== 200) {
                 fallback();
             }

@@ -19,6 +19,9 @@ if (!fs.existsSync(path.join(BUILD, 'report.html'))) {
 // script also runs on a dev box without the bundled browser.
 const submissions = [];
 const uploads = [];
+const resolveRequests = [];
+const presignRequests = [];
+const submitAuth = [];
 let sessionConsumed = false;
 let uploadDelayMs = 0;
 // Presign GET (#P2-1): delay its answer, or ignore the request entirely to
@@ -49,6 +52,7 @@ function serve(port) {
       const json = (o, code = 200) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
 
       if (u.pathname === '/v1/report/session/resolve') {
+        resolveRequests.push({ method: req.method, body: '' });
         if (sessionConsumed) return json({ status: 400, msg: 'invalid' }, 400);
         sessionConsumed = true;
         return json({ uid: 'u-1', token: 'tok-abc' });
@@ -64,6 +68,7 @@ function serve(port) {
         ]);
       }
       if (u.pathname === '/v1/file/upload' && req.method === 'GET') {
+        presignRequests.push({ path: u.searchParams.get('path') || '', filename: u.searchParams.get('filename') || '' });
         if (!req.headers.token) return json({ status: 401, msg: 'token required' }, 401);
         if (presignHang) return; // hold the connection open, never answer
         return setTimeout(() => json({ url: `http://127.0.0.1:${port}/v1/file/upload?type=report&path=/u-1/x.png` }), presignDelayMs);
@@ -76,7 +81,11 @@ function serve(port) {
       }
       if (u.pathname === '/v1/reports') {
         let body = ''; req.on('data', (c) => (body += c));
-        req.on('end', () => { submissions.push(JSON.parse(body)); json({ status: 200 }); });
+        req.on('end', () => {
+          submitAuth.push({ token: req.headers.token || null });
+          submissions.push(JSON.parse(body));
+          json({ status: 200 });
+        });
         return;
       }
       let p = u.pathname === '/' ? '/index.html' : u.pathname;
@@ -539,6 +548,73 @@ async function launchBrowser() {
     noBridgeSubmitted && !authBanner,
     `authBanner=${authBanner} dialogs=${JSON.stringify(noBridgeDialogs)}`);
   await noBridgePage.close();
+
+  // ---------- Probe 12: pre-injected bridge must not break page init ----------
+  // The real production shape: the native shell installs window.WebViewJavascriptBridge
+  // BEFORE DOM-ready, so both discovery paths resolve synchronously. bridge.init then
+  // ran on an already-adopted bridge and threw out of im.onReady — which is the first
+  // statement of the DOM-ready handler, killing the session resolve, the categories
+  // load and every binding, with no error banner. All the other probes inject
+  // window.IMJSBridge directly (post-discovery), so none of them covered this.
+  submissions.length = 0; uploads.length = 0; resolveRequests.length = 0; sessionConsumed = false;
+  const preBridgePage = await browser.newPage();
+  await preBridgePage.addInitScript(() => {
+    // The canonical shape: the native shell pre-injects the bridge AND has
+    // already initialised it, so any init() call from the page is the second one
+    // and throws — exactly the condition the review reproduced.
+    window.WebViewJavascriptBridge = {
+      init: function () { throw new Error('WebViewJavascriptBridge::init called twice'); },
+      callHandler: function (m, o, cb) { setTimeout(() => cb(JSON.stringify({ err_code: 200, channelID: 'ch-pre', channelType: 1 })), 40); },
+    };
+  });
+  const preBridgeErrors = [];
+  preBridgePage.on('pageerror', (e) => preBridgeErrors.push(e.message));
+  await preBridgePage.goto('http://127.0.0.1:18933/report.html?session=S12&channel_id=ch-q&channel_type=2');
+  const preBridgeCategories = await preBridgePage.waitForFunction(
+    () => window.categories && window.categories.length > 0, { timeout: 5000 }
+  ).then(() => true).catch(() => false);
+  const preBridgeResolved = await preBridgePage.evaluate(() => !!(window.__reportAuth && window.__reportAuth.token));
+  check('P1-I: a pre-injected bridge does not abort page init',
+    preBridgeCategories && preBridgeResolved && preBridgeErrors.length === 0,
+    `categories=${preBridgeCategories} resolved=${preBridgeResolved} errors=${JSON.stringify(preBridgeErrors)}`);
+  await preBridgePage.close();
+
+  // ---------- Probe 13: auth coverage the suite previously lacked entirely ----------
+  // None of the other checks assert that the one-time session is consumed exactly
+  // once, stripped from the URL, or that the submit carries a credential — the suite
+  // would stay green if the page stopped sending the session or dropped auth.
+  submissions.length = 0; uploads.length = 0; resolveRequests.length = 0; presignRequests.length = 0;
+  submitAuth.length = 0; sessionConsumed = false;
+  const authPage = await browser.newPage();
+  await authPage.addInitScript(() => {
+    window.IMJSBridge = { callHandler: (m, o, cb) => setTimeout(() => cb(JSON.stringify({ err_code: 200, channelID: 'ch-native', channelType: 1 })), 50) };
+  });
+  authPage.on('dialog', (d) => d.dismiss());
+  await openForm(authPage, 'http://127.0.0.1:18933/report.html?session=S13&channel_id=ch-q&channel_type=2');
+  const urlAfterResolve = await authPage.evaluate(() => window.location.search);
+  // attach one image so the presign contract is exercised too
+  await authPage.evaluate(() => {
+    const inp = document.querySelector('.imgItem .upload');
+    const dt = new DataTransfer(); dt.items.add(new File(['q'], 'shot.png', { type: 'image/png' }));
+    Object.defineProperty(inp, 'files', { value: dt.files, configurable: true });
+    inp.dispatchEvent(new Event('change'));
+  });
+  await authPage.waitForFunction(() => document.querySelectorAll('.imgs .imgItem').length >= 2, { timeout: 5000 });
+  await authPage.waitForTimeout(600);
+  await authPage.fill('.reportContent', 'AUTH-COVERAGE');
+  await authPage.evaluate(() => document.querySelector('.reportSubmit').click());
+  await authPage.waitForTimeout(1200);
+  check('P-AUTH: the one-time ?session is stripped from the URL right after load',
+    !/session=/.test(urlAfterResolve), `search=${urlAfterResolve}`);
+  check('P-AUTH: the session is exchanged exactly once',
+    resolveRequests.length === 1, `resolveRequests=${resolveRequests.length}`);
+  check('P-AUTH: the submit request carries a credential',
+    submitAuth.length === 1 && submitAuth[0].token === 'tok-abc',
+    `submitAuth=${JSON.stringify(submitAuth)}`);
+  check('P-FILE: the presign request carries a filename and an extension-bearing path',
+    presignRequests.length === 1 && /\.[A-Za-z0-9]+$/.test(presignRequests[0].path) && !!presignRequests[0].filename,
+    `presign=${JSON.stringify(presignRequests)}`);
+  await authPage.close();
 
   // ---------- Probe 3: CSP must not carry the inert bridge source ----------
   const csp = fs.readFileSync(path.resolve(__dirname, '../../../../nginx.conf.template'), 'utf8');
