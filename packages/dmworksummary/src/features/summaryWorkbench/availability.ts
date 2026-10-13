@@ -286,7 +286,7 @@ export class SummaryWorkbenchAvailability {
       contractVersion: SUMMARY_WORKSPACE_CONTRACT_VERSION,
       maxTimeRangeDays: value.max_time_range_days,
       directTeamWorkflow: value.direct_team_workflow,
-      mixedSources: value.mixed_sources,
+      mixedSources: value.mixed_sources ?? false,
       checkedAt: this.now(),
     };
   }
@@ -393,7 +393,14 @@ function shouldRetryCapabilityDecision(
   );
 }
 
-function isCapabilities(value: unknown): value is SummaryWorkspaceCapabilitiesDTO {
+type AdditiveCapabilitiesPayload = Omit<
+  SummaryWorkspaceCapabilitiesDTO,
+  "mixed_sources"
+> & {
+  mixed_sources?: boolean;
+};
+
+function isCapabilities(value: unknown): value is AdditiveCapabilitiesPayload {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
   }
@@ -405,6 +412,7 @@ function isCapabilities(value: unknown): value is SummaryWorkspaceCapabilitiesDT
     Number.isInteger(record.max_time_range_days) &&
     record.max_time_range_days > 0 &&
     typeof record.direct_team_workflow === "boolean" &&
-    typeof record.mixed_sources === "boolean"
+    (record.mixed_sources === undefined ||
+      typeof record.mixed_sources === "boolean")
   );
 }

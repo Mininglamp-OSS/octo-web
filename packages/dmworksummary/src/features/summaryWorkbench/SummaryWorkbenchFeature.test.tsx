@@ -282,9 +282,13 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
   ),
 }));
 vi.mock("../documentSource/DocumentSelectorModal", () => ({
-  default: ({ visible, selected, onConfirm }: any) =>
+  default: ({ visible, selected, maxSelect, onConfirm }: any) =>
     visible ? (
-      <div data-testid="document-selector" data-selected={selected.length}>
+      <div
+        data-testid="document-selector"
+        data-selected={selected.length}
+        data-max-select={maxSelect}
+      >
         <button
           type="button"
           onClick={() =>
@@ -308,12 +312,13 @@ vi.mock("../documentSource/DocumentSelectorModal", () => ({
 }));
 
 vi.mock("../../components/ChatSelectorModal", () => ({
-  default: ({ visible, mode, channel, onConfirm }: any) =>
+  default: ({ visible, mode, channel, maxSelect, onConfirm }: any) =>
     visible ? (
       <div
         data-testid="chat-selector"
         data-mode={mode ?? "chat"}
         data-channel-id={channel?.channelID ?? ""}
+        data-max-select={maxSelect}
       >
         <button type="button" onClick={() => onConfirm([])}>
           empty-chat
@@ -1173,7 +1178,7 @@ describe("SummaryWorkbenchFeature", () => {
           referenced_task_ids: [],
         },
       },
-    }).scope;
+    }, true).scope;
     const current = controller({
       scope: invalidScope,
       viewState: {
@@ -1286,6 +1291,99 @@ describe("SummaryWorkbenchFeature", () => {
     );
   });
 
+  it("reduces each picker limit by the selected count from the other source", () => {
+    mocks.docsOn = true;
+    mocks.docsSearchOn = true;
+    const current = controller({
+      scope: scope({
+        selectedChannels: Array.from({ length: 25 }, (_, index) => ({
+          chatId: `chat-${index}`,
+          chatType: "group" as const,
+          name: `Chat ${index}`,
+        })),
+        documents: Array.from({ length: 10 }, (_, index) => ({
+          documentId: `doc-${index}`,
+          title: `Document ${index}`,
+        })),
+      }),
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" mixedSources />, {
+      legacyRoot: true,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "open-chat" }));
+    expect(screen.getByTestId("chat-selector")).toHaveAttribute(
+      "data-max-select",
+      "20"
+    );
+    fireEvent.click(screen.getByRole("button", { name: "open-document" }));
+    expect(screen.getByTestId("document-selector")).toHaveAttribute(
+      "data-max-select",
+      "5"
+    );
+  });
+
+  it("rejects a 31st mixed source at the centralized scope guard", () => {
+    mocks.docsOn = true;
+    mocks.docsSearchOn = true;
+    const current = controller({
+      scope: scope({
+        selectedChannels: Array.from({ length: 30 }, (_, index) => ({
+          chatId: `chat-${index}`,
+          chatType: "group" as const,
+          name: `Chat ${index}`,
+        })),
+      }),
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" mixedSources />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "open-document" }));
+    fireEvent.click(screen.getByRole("button", { name: "choose-document" }));
+
+    expect(current.updateScope).not.toHaveBeenCalled();
+    expect(mocks.toastWarning).toHaveBeenCalledWith(
+      "summary.workbench.notice.mixedSourceLimitExceeded"
+    );
+  });
+
+  it("allows an already-invalid hydrated scope to reduce toward the limit", () => {
+    mocks.docsOn = true;
+    mocks.docsSearchOn = true;
+    const current = controller({
+      scope: scope({
+        selectedChannels: Array.from({ length: 30 }, (_, index) => ({
+          chatId: `chat-${index}`,
+          chatType: "group" as const,
+          name: `Chat ${index}`,
+        })),
+        documents: [
+          { documentId: "doc-a", title: "Document A" },
+          { documentId: "doc-b", title: "Document B" },
+        ],
+      }),
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" mixedSources />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "open-document" }));
+    fireEvent.click(screen.getByRole("button", { name: "choose-document" }));
+
+    expect(current.updateScope).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selectedChannels: expect.any(Array),
+        documents: [{ documentId: "doc-a", title: "Doc A" }],
+      })
+    );
+    expect(mocks.toastWarning).not.toHaveBeenCalled();
+  });
+
   it.each(["chat", "document"] as const)(
     "empty %s confirmation preserves the other source and preview without prompting",
     (picker) => {
@@ -1379,6 +1477,14 @@ describe("SummaryWorkbenchFeature", () => {
       "data-available-contexts",
       "chat,document"
     );
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-can-send",
+      "false"
+    );
+    expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+      "data-error-message",
+      "summary.workbench.notice.mixedSourcesUnavailable"
+    );
   });
 
   it("keeps the chat entry when the document selector is unavailable and the capability is off", () => {
@@ -1403,6 +1509,34 @@ describe("SummaryWorkbenchFeature", () => {
       "chat"
     );
   });
+
+  it.each([
+    [[], "chat"],
+    [[{ chatId: "chat-a", chatType: "group" as const, name: "A" }], "chat,time_range"],
+  ])(
+    "keeps the gate-on time range tied to chats when document search is unavailable",
+    (selectedChannels, expectedContexts) => {
+      mocks.docsOn = false;
+      mocks.docsSearchOn = false;
+      mocks.useSummaryWorkbench.mockReturnValue(
+        controller({
+          scope: scope({
+            selectedChannels,
+            documents: [{ documentId: "doc-a", title: "Doc A" }],
+          }),
+        })
+      );
+
+      render(<SummaryWorkbenchFeature spaceId="space-a" mixedSources />, {
+        legacyRoot: true,
+      });
+
+      expect(screen.getByTestId("workbench-ui")).toHaveAttribute(
+        "data-available-contexts",
+        expectedContexts
+      );
+    }
+  );
 
   it.each(["chat", "document"] as const)(
     "empty %s confirmation still clears the same source",

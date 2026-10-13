@@ -291,7 +291,11 @@
       "selectSingleChatForParticipants": "选择参与者时仅支持最多 30 个群聊",
       "referencesCleared": "混合来源暂不支持叠加引用总结，已移除引用",
       "referencesUnsupportedForMixedScope": "混合来源暂不支持叠加引用总结",
-      "timeRangeCleared": "时间范围仅作用于聊天来源，未选择聊天时已清除"
+      "timeRangeCleared": "时间范围仅作用于聊天来源，未选择聊天时已清除",
+      "mixedSourceLimitExceeded": "会话和文档合计最多选择 30 个，请减少来源后重试",
+      "mixedSourcesUnavailable": "当前服务暂不支持混合来源，请移除会话或文档后再生成",
+      "scopeRequiresAdjustment": "当前总结范围存在不兼容的选择，请调整后再生成",
+      "hydratedScopeNormalized": "部分不兼容的历史范围已调整，请确认当前选择"
     },
     "lastSession": {
       "label": "上次对话"

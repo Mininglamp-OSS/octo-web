@@ -4,6 +4,12 @@ export const MAX_CHAT_SELECT = 30;
 /** Phase 1 document-summary source limit enforced by Summary API. */
 export const MAX_DOCUMENT_SELECT = 10;
 
+/**
+ * Max deduplicated chats + documents accepted by the mixed-source backend.
+ * Keep aligned with octo-smart-summary service.MixedMaxTotalSources.
+ */
+export const MIXED_MAX_TOTAL_SOURCES = 30;
+
 /** Max number of participants a user can invite to a team summary. */
 export const MAX_PARTICIPANT_SELECT = 30;
 

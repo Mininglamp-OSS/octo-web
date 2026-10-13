@@ -90,6 +90,34 @@ describe("SummaryWorkbenchAvailability", () => {
     });
 
     it.each([
+        [true, true],
+        [false, false],
+    ])("round-trips mixed_sources=%s", async (mixedSources, expected) => {
+        const availability = new SummaryWorkbenchAvailability({
+            getCapabilities: vi.fn().mockResolvedValue(
+                capability(true, "2", 90, false, mixedSources)
+            ),
+        });
+
+        await expect(availability.resolve("space-a")).resolves.toMatchObject({
+            status: "enabled",
+            mixedSources: expected,
+        });
+    });
+
+    it("treats an omitted additive mixed_sources field as false", async () => {
+        const { mixed_sources: _omitted, ...payload } = capability();
+        const availability = new SummaryWorkbenchAvailability({
+            getCapabilities: vi.fn().mockResolvedValue(payload),
+        });
+
+        await expect(availability.resolve("space-a")).resolves.toMatchObject({
+            status: "enabled",
+            mixedSources: false,
+        });
+    });
+
+    it.each([
         [capability(false), "server_disabled"],
     [capability(true, "3"), "unsupported_contract"],
         [

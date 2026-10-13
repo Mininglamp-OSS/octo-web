@@ -291,7 +291,11 @@
       "selectSingleChatForParticipants": "Participant selection supports up to 30 group chats only.",
       "referencesCleared": "Mixed sources can't stack a referenced summary yet; the reference was removed.",
       "referencesUnsupportedForMixedScope": "Mixed sources can't stack a referenced summary yet.",
-      "timeRangeCleared": "The time range applies to chat sources only; it was cleared because no chats are selected."
+      "timeRangeCleared": "The time range applies to chat sources only; it was cleared because no chats are selected.",
+      "mixedSourceLimitExceeded": "You can select up to 30 chats and documents in total. Remove a source and try again.",
+      "mixedSourcesUnavailable": "Mixed sources aren't available right now. Remove either the chats or documents before generating.",
+      "scopeRequiresAdjustment": "Some source selections are incompatible. Adjust the scope before generating.",
+      "hydratedScopeNormalized": "Some incompatible selections from this conversation were adjusted. Review the current scope."
     },
     "lastSession": {
       "label": "Last conversation"

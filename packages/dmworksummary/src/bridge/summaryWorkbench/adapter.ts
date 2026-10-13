@@ -39,6 +39,10 @@ import {
   type SummaryWorkspaceTurnDTO,
   type SummaryWorkspaceWorkflowDTO,
 } from "./protocol";
+import {
+  summaryWorkbenchScopeIssues,
+  type SummaryWorkbenchScopeIssue,
+} from "./scopePolicy";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -46,7 +50,9 @@ export interface SummaryWorkbenchHistoryHydration {
   sessionId: string;
   contractVersion: string;
   scope: SummaryWorkbenchScope;
+  scopeIssues?: SummaryWorkbenchScopeIssue[];
   modelOptions: CreateSummaryWorkbenchModelOptions;
+  scopeWasNormalized?: boolean;
   empty?: boolean;
 }
 
@@ -70,7 +76,7 @@ function resolveHistoryResultType(
 
 export function adaptSummaryWorkspaceTurn(
   value: unknown,
-  mixedSources = true
+  mixedSources: boolean
 ): SummaryWorkbenchResponse {
   const turn = decodeSummaryWorkspaceTurn(value);
   const actions = [...turn.available_actions];
@@ -164,7 +170,7 @@ export function adaptSummaryWorkspaceTurn(
 
 export function adaptSummaryWorkspaceHistory(
   value: unknown,
-  mixedSources = true
+  mixedSources: boolean
 ): SummaryWorkbenchHistoryHydration {
   const history = decodeSummaryWorkspaceHistory(value);
   const authoritativeState = toAuthoritativeState(history.state, mixedSources);
@@ -299,6 +305,8 @@ export function adaptSummaryWorkspaceHistory(
     sessionId: history.session_id,
     contractVersion: history.contract_version,
     scope,
+    scopeIssues: authoritativeState.scopeIssues,
+    scopeWasNormalized: authoritativeState.scopeWasNormalized,
     modelOptions: {
       scopeVersion: authoritativeState.scopeVersion,
       contextItems: authoritativeState.contextItems,
@@ -809,17 +817,17 @@ function toAuthoritativeState(
   state: SummaryWorkspaceStateDTO,
   mixedSources: boolean,
   turn?: { messageId: number; actions: SummaryWorkbenchAction[] }
-): SummaryWorkbenchAuthoritativeState {
-  const scope = toWorkbenchScope(state.summary_context, mixedSources);
-  // Mixed document+chat: chats, documents and the chat time range hydrate
-  // losslessly when the capability is ON, so they no longer trigger a
-  // scope-version bump. When the capability is OFF, the decode boundary drops
-  // the chat side / participants / time range of a persisted mixed snapshot
-  // (see toWorkbenchScope), which MUST advance the version so the next request
-  // cannot reuse the server's old hash and fail with a 409. The other
-  // decode-boundary normalization is the referenced-task cap (the product
-  // supports one referenced summary; extra ids are dropped and must also
-  // advance the version).
+): SummaryWorkbenchAuthoritativeState & {
+  scopeWasNormalized: boolean;
+  scopeIssues: SummaryWorkbenchScopeIssue[];
+} {
+  const scope = toWorkbenchScope(state.summary_context);
+  const scopeIssues = summaryWorkbenchScopeIssues(scope, { mixedSources });
+  // Hydration keeps the selected chat/document sources even when the
+  // capability is unavailable. The Feature renders those chips, blocks send,
+  // and asks the user to choose which side to remove. Capability-independent
+  // compatibility normalization still advances scope_version so the next
+  // request cannot reuse the server's old hash.
   const scopeWasNormalized =
     state.summary_context.referenced_task_ids.length !==
       scope.referencedTaskIds.length ||
@@ -839,6 +847,8 @@ function toAuthoritativeState(
   return {
     scopeVersion,
     scope,
+    scopeIssues,
+    scopeWasNormalized,
     contextItems: contextItemsFromScope(scope),
     currentPreview: state.current_preview
       ? {
@@ -894,8 +904,7 @@ function toAuthoritativeState(
 }
 
 function toWorkbenchScope(
-  context: SummaryWorkspaceContextDTO,
-  mixedSources: boolean
+  context: SummaryWorkspaceContextDTO
 ): SummaryWorkbenchScope {
   // The decode boundary enforces three scope invariants unconditionally
   // (capability-INDEPENDENT — they hold on both gate states, mirroring how
@@ -920,30 +929,23 @@ function toWorkbenchScope(
   // toAuthoritativeState) so the next request cannot reuse the server's old
   // hash and 409.
   //
-  // On top of those three, when the mixed_sources capability is OFF and the
-  // snapshot carries documents, the pre-mixed boundary is re-imposed:
-  // selected_channels drops too (gate-OFF UI cannot compose documents+chats;
-  // participants and time_range already fell out via I1/I2). This is the
-  // one capability-dependent drop.
+  // Capability OFF is intentionally not normalized here. Persisted chat and
+  // document selections remain visible so the user can resolve the conflict;
+  // the shared scope policy blocks sending until one source side is removed.
   const hasDocuments = context.documents.length > 0;
-  const dropChatSide = hasDocuments && !mixedSources;
-  const selectedChannels = dropChatSide
-    ? []
-    : context.selected_channels.map((channel) => ({
-        chatId: channel.chat_id,
-        chatType: channel.chat_type,
-        name: channel.name,
-        ...(channel.is_archived === undefined
-          ? {}
-          : { isArchived: channel.is_archived }),
-      }));
+  const selectedChannels = context.selected_channels.map((channel) => ({
+    chatId: channel.chat_id,
+    chatType: channel.chat_type,
+    name: channel.name,
+    ...(channel.is_archived === undefined
+      ? {}
+      : { isArchived: channel.is_archived }),
+  }));
   const documents = context.documents.map((document) => ({
     documentId: document.document_id,
     title: document.title ?? document.document_id,
   }));
-  // I1: participants clear whenever documents are present (capability-
-  // independent). dropChatSide is a strict subset of this (documents+!mixed),
-  // so the gate-OFF branch is already covered by hasDocuments.
+  // I1: participants clear whenever documents are present.
   const participants = hasDocuments
     ? []
     : context.participants.map((participant) => ({
@@ -951,9 +953,8 @@ function toWorkbenchScope(
         ...(participant.user_name ? { userName: participant.user_name } : {}),
       }));
   // I2: null the time range on a document-only scope (documents present, no
-  // chats). Gate-OFF's dropChatSide → zero channels → this branch fires too,
-  // so gate-OFF+documents+range is still normalized to null even though
-  // dropChatSide is no longer consulted here.
+  // chats). A persisted mixed scope retains its chat-side time range even when
+  // the capability is currently unavailable.
   const timeRange =
     hasDocuments && selectedChannels.length === 0
       ? null

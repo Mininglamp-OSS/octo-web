@@ -7,8 +7,8 @@ import {
   isTeamProposalConfirmable,
 } from "./model";
 import {
-  adaptSummaryWorkspaceHistory,
-  adaptSummaryWorkspaceTurn,
+  adaptSummaryWorkspaceHistory as adaptSummaryWorkspaceHistoryWithCapability,
+  adaptSummaryWorkspaceTurn as adaptSummaryWorkspaceTurnWithCapability,
   contextItemsFromScope,
   decodeSummaryWorkspaceCapabilities,
   decodeSummaryWorkspaceSaveResult,
@@ -18,6 +18,14 @@ import {
   SummaryWorkspaceApiError,
   serializeSummaryWorkbenchScope,
 } from "./protocol";
+
+const adaptSummaryWorkspaceHistory = (
+  value: unknown,
+  mixedSources = true
+) => adaptSummaryWorkspaceHistoryWithCapability(value, mixedSources);
+
+const adaptSummaryWorkspaceTurn = (value: unknown, mixedSources = true) =>
+  adaptSummaryWorkspaceTurnWithCapability(value, mixedSources);
 
 const summaryContext = {
   selected_channels: [
@@ -138,13 +146,11 @@ describe("summary workspace adapter", () => {
     }
   );
 
-  it("drops the chat side of a persisted mixed scope when the capability is off", () => {
-    // Gate OFF (mixed_sources=false): a snapshot persisted while the gate was
-    // ON must not re-materialize the mixed shapes (documents+channels,
-    // documents+participants, document-only+time_range) that the gate-OFF UI
-    // cannot compose or edit. The decode boundary drops them and the
-    // scope-version bump keeps the next request from resending the server's
-    // stored hash (409).
+  it("retains persisted mixed sources and reports the capability issue when the gate is off", () => {
+    // Gate OFF must not silently delete the user's chat/document selections.
+    // The Feature keeps the chips visible and blocks send until the user
+    // removes one source side. Capability-independent invariants are still
+    // normalized and surfaced through scopeWasNormalized.
     const hydration = adaptSummaryWorkspaceHistory(
       {
         contract_version: "2",
@@ -172,14 +178,16 @@ describe("summary workspace adapter", () => {
     expect(hydration.scope.documents).toEqual([
       { documentId: "doc-1", title: "Document" },
     ]);
-    expect(hydration.scope.selectedChannels).toEqual([]);
+    expect(hydration.scope.selectedChannels).toHaveLength(1);
     expect(hydration.scope.participants).toEqual([]);
-    expect(hydration.scope.timeRange).toBeNull();
-    // The reference stack is not mixed-specific: a pure-document scope accepts
-    // a reference, so it survives the gate-OFF normalization.
-    expect(hydration.scope.referencedTaskIds).toEqual([7]);
-    // Dropping the chat side / participants / range must advance the version
-    // so the next request cannot reuse the server's stored scope hash.
+    expect(hydration.scope.timeRange).toEqual(
+      expect.objectContaining({ label: summaryContext.time_range.label })
+    );
+    expect(hydration.scope.referencedTaskIds).toEqual([]);
+    expect(hydration.scopeIssues).toContain("mixed_sources_disabled");
+    expect(hydration.scopeWasNormalized).toBe(true);
+    // Dropping participants/reference still advances the version so the next
+    // request cannot reuse the server's stored scope hash.
     expect(hydration.modelOptions.scopeVersion).toBe(5);
   });
 

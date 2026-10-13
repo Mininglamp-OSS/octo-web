@@ -11,6 +11,7 @@ import summaryWorkbenchService, {
 import { genRequestId, genSessionId } from "../../utils/summaryHelpers";
 import { contextItemsFromScope } from "./adapter";
 import type { SummaryWorkbenchHistoryHydration } from "./adapter";
+import type { SummaryWorkbenchScopeIssue } from "./scopePolicy";
 import {
   applySummaryResponse,
   attachSummaryMessageProcess,
@@ -49,7 +50,7 @@ export interface UseSummaryWorkbenchOptions {
   layout?: SummaryWorkbenchModel["layout"];
   autoHydrate?: boolean;
   preferStreaming?: boolean;
-  mixedSources?: boolean;
+  mixedSources: boolean;
   service?: SummaryWorkbenchControllerService;
   createSessionId?: () => string;
   createRequestId?: () => string;
@@ -101,7 +102,12 @@ export interface SummaryWorkbenchController {
 }
 
 export type SummaryWorkbenchHydrationResult =
-  | { status: "hydrated"; sessionId: string }
+  | {
+      status: "hydrated";
+      sessionId: string;
+      scopeIssues?: SummaryWorkbenchScopeIssue[];
+      scopeWasNormalized?: boolean;
+    }
   | { status: "empty" }
   | { status: "failed" }
   | { status: "cancelled" };
@@ -170,7 +176,7 @@ const MAX_SUMMARY_WORKFLOW_POLL_FAILURES = 5;
 const MAX_SUMMARY_WORKFLOW_POLL_BACKOFF_MS = 30_000;
 
 export default function useSummaryWorkbench(
-  options: UseSummaryWorkbenchOptions = {}
+  options: UseSummaryWorkbenchOptions
 ): SummaryWorkbenchController {
   const serviceRef = useRef<SummaryWorkbenchControllerService>(
     options.service ?? summaryWorkbenchService
@@ -183,7 +189,7 @@ export default function useSummaryWorkbench(
   const onSessionIdChangeRef = useRef(options.onSessionIdChange);
   const spaceIdRef = useRef(normalizeSpaceId(options.spaceId));
   const preferStreamingRef = useRef(options.preferStreaming ?? true);
-  const mixedSourcesRef = useRef(options.mixedSources ?? true);
+  const mixedSourcesRef = useRef(options.mixedSources);
   const workflowPollIntervalMsRef = useRef(
     options.workflowPollIntervalMs ?? DEFAULT_SUMMARY_WORKFLOW_POLL_INTERVAL_MS
   );
@@ -207,7 +213,7 @@ export default function useSummaryWorkbench(
   onSessionIdChangeRef.current = options.onSessionIdChange;
   spaceIdRef.current = normalizeSpaceId(options.spaceId);
   preferStreamingRef.current = options.preferStreaming ?? true;
-  mixedSourcesRef.current = options.mixedSources ?? true;
+  mixedSourcesRef.current = options.mixedSources;
   workflowPollIntervalMsRef.current = Math.max(
     1,
     options.workflowPollIntervalMs ?? DEFAULT_SUMMARY_WORKFLOW_POLL_INTERVAL_MS
@@ -890,7 +896,12 @@ export default function useSummaryWorkbench(
             )
           );
           notifySessionId(nextSessionId);
-          return { status: "hydrated", sessionId: nextSessionId } as const;
+          return {
+            status: "hydrated",
+            sessionId: nextSessionId,
+            scopeIssues: [...(hydration.scopeIssues ?? [])],
+            scopeWasNormalized: hydration.scopeWasNormalized ?? false,
+          } as const;
         })
         .catch((reason: unknown) => {
           if (hydrationRef.current !== flight || epochRef.current !== epoch) {

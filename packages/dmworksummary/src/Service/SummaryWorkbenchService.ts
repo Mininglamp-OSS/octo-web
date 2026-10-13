@@ -134,7 +134,7 @@ export class SummaryWorkbenchService {
   async sendMessage(
     input: SummaryWorkbenchMessageInput,
     options: SummaryWorkbenchRequestOptions = {},
-    mixedSources = true
+    mixedSources: boolean
   ): Promise<SummaryWorkbenchResponse> {
     const response = await this.transport.postTurn(
       buildChatRequest(input),
@@ -147,7 +147,7 @@ export class SummaryWorkbenchService {
     input: SummaryWorkbenchMessageInput,
     callbacks: SummaryWorkbenchStreamCallbacks,
     options: SummaryWorkbenchRequestOptions = {},
-    mixedSources = true
+    mixedSources: boolean
   ): { close: () => void } {
     const reportError = (error: SummaryWorkspaceApiError) =>
       callbacks.onError?.(error);
@@ -165,7 +165,8 @@ export class SummaryWorkbenchService {
           }
           callbacks.onDone?.(response);
         },
-        onError: (event) => reportError(decodeSummaryWorkspaceStreamError(event)),
+        onError: (event) =>
+          reportError(decodeSummaryWorkspaceStreamError(event)),
       },
       options
     );
@@ -174,7 +175,7 @@ export class SummaryWorkbenchService {
   async loadSession(
     sessionId: string,
     options: SummaryWorkbenchRequestOptions = {},
-    mixedSources = true
+    mixedSources: boolean
   ): Promise<SummaryWorkbenchHistoryHydration> {
     const response = await this.transport.getHistory(sessionId, options);
     if (response === null) {
@@ -183,11 +184,14 @@ export class SummaryWorkbenchService {
         contractVersion: SUMMARY_WORKSPACE_CONTRACT_VERSION,
         scope: {
           selectedChannels: [],
+          documents: [],
           participants: [],
           template: null,
           timeRange: null,
           referencedTaskIds: [],
         },
+        scopeIssues: [],
+        scopeWasNormalized: false,
         modelOptions: {
           scopeVersion: 1,
           contextItems: [],
@@ -214,7 +218,7 @@ export class SummaryWorkbenchService {
   async confirmWorkflow(
     input: SummaryWorkbenchConfirmInput,
     options: SummaryWorkbenchRequestOptions = {},
-    mixedSources = true
+    mixedSources: boolean
   ): Promise<SummaryWorkbenchResponse> {
     const request: SummaryWorkspaceConfirmRequestDTO = {
       session_id: input.sessionId,

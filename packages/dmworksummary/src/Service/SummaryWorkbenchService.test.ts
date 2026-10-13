@@ -86,7 +86,7 @@ describe("SummaryWorkbenchService", () => {
         requestId: "request-1",
         scopeVersion: 1,
         scope,
-      })
+      }, {}, true)
     ).resolves.toMatchObject({
       messageId: "10",
       resultType: "clarification",
@@ -141,9 +141,9 @@ describe("SummaryWorkbenchService", () => {
       scope,
     };
 
-    await service.sendMessage(input, options);
-    service.streamMessage(input, {}, options);
-    await service.loadSession("session-1", options);
+    await service.sendMessage(input, options, true);
+    service.streamMessage(input, {}, options, true);
+    await service.loadSession("session-1", options, true);
     await service.confirmWorkflow(
       {
         sessionId: "session-1",
@@ -153,7 +153,8 @@ describe("SummaryWorkbenchService", () => {
         scope,
         idempotencyKey: "confirm-key",
       },
-      options
+      options,
+      true
     );
     await service.savePreview(
       {
@@ -188,7 +189,7 @@ describe("SummaryWorkbenchService", () => {
         ...scope,
         participants: [{ userId: "u1", userName: "张三" }],
       },
-    });
+    }, {}, true);
 
     expect(postTurn).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -213,7 +214,9 @@ describe("SummaryWorkbenchService", () => {
         scopeVersion: 1,
         scope,
       },
-      { onDone, onError }
+      { onDone, onError },
+      {},
+      true
     );
     const handlers: SummaryWorkspaceStreamHandlers | undefined =
       streamTurn.mock.calls[streamTurn.mock.calls.length - 1]?.[1];
@@ -245,7 +248,9 @@ describe("SummaryWorkbenchService", () => {
         scopeVersion: 1,
         scope,
       },
-      { onError }
+      { onError },
+      {},
+      true
     );
     const handlers: SummaryWorkspaceStreamHandlers | undefined =
       invalidStream.mock.calls[invalidStream.mock.calls.length - 1]?.[1];
@@ -270,7 +275,9 @@ describe("SummaryWorkbenchService", () => {
         scopeVersion: 1,
         scope,
       },
-      { onError }
+      { onError },
+      {},
+      true
     );
     const handlers: SummaryWorkspaceStreamHandlers | undefined =
       streamTurn.mock.calls[streamTurn.mock.calls.length - 1]?.[1];
@@ -315,7 +322,7 @@ describe("SummaryWorkbenchService", () => {
         scopeVersion: 1,
         scope,
         idempotencyKey: "confirm-key",
-      })
+      }, {}, true)
     ).resolves.toMatchObject({
       resultType: "workflow_started",
       workflow: { taskId: 88, scope: "team" },
@@ -488,7 +495,7 @@ describe("SummaryWorkbenchService", () => {
   it("treats History data:null as an empty server session", async () => {
     getHistory.mockResolvedValueOnce(null);
 
-    await expect(service.loadSession("session-empty")).resolves.toMatchObject({
+    await expect(service.loadSession("session-empty", {}, true)).resolves.toMatchObject({
       sessionId: "session-empty",
       contractVersion: "2",
       empty: true,
@@ -498,6 +505,31 @@ describe("SummaryWorkbenchService", () => {
         referencedTaskIds: [],
       },
       modelOptions: { messages: [], workflow: null },
+    });
+  });
+
+  it("forwards mixedSources=false to History adaptation", async () => {
+    getHistory.mockResolvedValueOnce({
+      contract_version: "2",
+      session_id: "mixed-session",
+      messages: [],
+      state: {
+        ...state(),
+        summary_context: {
+          ...state().summary_context,
+          documents: [{ document_id: "doc-1", title: "Document" }],
+        },
+      },
+    });
+
+    await expect(
+      service.loadSession("mixed-session", {}, false)
+    ).resolves.toMatchObject({
+      scope: {
+        selectedChannels: [expect.objectContaining({ chatId: "chat-1" })],
+        documents: [expect.objectContaining({ documentId: "doc-1" })],
+      },
+      scopeIssues: ["mixed_sources_disabled"],
     });
   });
 
@@ -522,7 +554,7 @@ describe("SummaryWorkbenchService", () => {
       },
     });
 
-    await expect(service.loadSession("expired-session")).resolves.toMatchObject(
+    await expect(service.loadSession("expired-session", {}, true)).resolves.toMatchObject(
       {
         sessionId: "expired-session",
         empty: true,
