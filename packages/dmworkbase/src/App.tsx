@@ -999,6 +999,7 @@ export default class WKApp extends ProviderListener {
    * componentDidMount 注册，componentWillUnmount 清空（仅注册者可清空，防止新实例 guard 被旧实例覆盖）。
    */
   pendingAttachmentGuard?: () => boolean;
+  pendingAttachmentDiscard?: () => void;
   pendingAttachmentGuardId?: symbol;
 
   /** 待打开子区面板的群组 ID，ChatContentPage 挂载时检查并消费 */

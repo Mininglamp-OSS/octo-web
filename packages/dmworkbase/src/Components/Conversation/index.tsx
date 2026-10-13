@@ -64,10 +64,12 @@ import {
   type RecoveredComposeHydration,
   type ChatSendSettlement,
   type ChatComposerSendTransaction,
+  type ChatComposerAttachmentDraftPort,
   type ChatComposerViewHost,
   type EditorContentBlock,
   type MessageInputContext,
   type PendingSendDraft,
+  createChatComposerAttachmentDraftPort,
 } from "../../features/chat-composer";
 import {
   tryConsumeInitialCompose,
@@ -466,6 +468,7 @@ export class Conversation
   private readonly _composeRecoveryOwner = Symbol("composeRecoveryOwner");
   private readonly _chatComposerExtensions =
     createDefaultChatComposerExtensions<Message>();
+  private _attachmentDrafts?: ChatComposerAttachmentDraftPort;
   private readonly _chatComposerViewHost: ChatComposerViewHost = {
     track: (event) => Dap.shared.track(event, {}),
     getChannel: () => {
@@ -522,6 +525,7 @@ export class Conversation
       },
     },
   };
+
   private _attentionRefreshHandler = () => {
     if (!this._attentionMounted || this._cancelAttentionRefresh) return;
     const run = () => {
@@ -549,6 +553,10 @@ export class Conversation
 
   constructor(props: any) {
     super(props);
+    this._attachmentDrafts = createChatComposerAttachmentDraftPort({
+      id: props.channel.channelID,
+      type: props.channel.channelType,
+    });
     this.state = {
       inputExpanded: false,
       contextMenuMessageID: null as string | null,
@@ -1762,8 +1770,12 @@ export class Conversation
       // 只保护「compose 已清空但本地气泡还没出现」的数据丢失窗口。消息一旦入队，
       // 即使仍在等 upload/ack，也已有气泡承载失败与重试，不应再弹“未发送附件”确认。
       WKApp.shared.pendingAttachmentGuard = () =>
-        this.getPendingAttachments().length === 0 &&
+        (this._attachmentDrafts
+          ? this._messageInputContext?.canLeaveWithAttachments() ?? true
+          : this.getPendingAttachments().length === 0) &&
         this.pendingPreEnqueueCount() === 0;
+      WKApp.shared.pendingAttachmentDiscard = () =>
+        this._messageInputContext?.discardUnreadyAttachments();
       WKApp.shared.pendingAttachmentGuardId = this._guardId;
     }
 
@@ -1902,6 +1914,7 @@ export class Conversation
     // 注销附件守卫：只清除自己注册的，防止新实例 guard 被旧实例 unmount 覆盖
     if (WKApp.shared.pendingAttachmentGuardId === this._guardId) {
       WKApp.shared.pendingAttachmentGuard = undefined;
+      WKApp.shared.pendingAttachmentDiscard = undefined;
       WKApp.shared.pendingAttachmentGuardId = undefined;
     }
     // 附件现在由编辑器管理，组件卸载时编辑器会自动清理
@@ -3411,6 +3424,7 @@ export class Conversation
                       </div>
                     )}
                     <ChatComposer
+                      attachmentDrafts={this._attachmentDrafts}
                       extensions={this._chatComposerExtensions}
                       recoveredComposes={recoveredComposes}
                       onComposeRecovery={this.recordComposeRecovery}

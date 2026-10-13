@@ -7,6 +7,7 @@ const f = vi.hoisted(() => ({
   render: vi.fn(), unmount: vi.fn(), presentationDispose: vi.fn(),
   documentDispose: vi.fn(), fileDispose: vi.fn(),
   documentInstall: vi.fn(), fileInstall: vi.fn(), screenshotInstall: vi.fn(), screenshotDispose: vi.fn(),
+  attachmentDraftInstall: vi.fn(), attachmentDraftDispose: vi.fn(),
 }));
 vi.mock("react-dom/client", () => ({
   createRoot: () => ({ render: f.render, unmount: f.unmount }),
@@ -24,6 +25,9 @@ vi.mock("./desktopPresentationLifecycle", () => ({
 vi.mock("./documentPreview", () => ({ installHostDocumentPreview: f.documentInstall }));
 vi.mock("./filePreview", () => ({ installHostFilePreview: f.fileInstall }));
 vi.mock("./screenshot", () => ({ installScreenshotToolbar: f.screenshotInstall }));
+vi.mock("./localAttachmentDrafts", () => ({
+  installClientLocalAttachmentDrafts: f.attachmentDraftInstall,
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -31,6 +35,7 @@ beforeEach(() => {
   f.documentInstall.mockReturnValue(f.documentDispose);
   f.fileInstall.mockReturnValue(f.fileDispose);
   f.screenshotInstall.mockReturnValue(f.screenshotDispose);
+  f.attachmentDraftInstall.mockReturnValue(f.attachmentDraftDispose);
 });
 afterEach(() => { document.body.innerHTML = ""; });
 const host = {} as OctoBuddyCommunicationBridge;
@@ -42,11 +47,13 @@ describe("communication preview UI ownership", () => {
     expect(f.documentInstall).toHaveBeenCalledWith(host, "current-space");
     expect(f.fileInstall).toHaveBeenCalledWith(host, "current-space");
     expect(f.screenshotInstall).toHaveBeenCalledWith(host);
+    expect(f.attachmentDraftInstall).toHaveBeenCalledWith(host, "current-space");
     dispose();
     expect(f.unmount).toHaveBeenCalledOnce();
     expect(f.documentDispose).toHaveBeenCalledOnce();
     expect(f.fileDispose).toHaveBeenCalledOnce();
     expect(f.screenshotDispose).toHaveBeenCalledOnce();
+    expect(f.attachmentDraftDispose).toHaveBeenCalledOnce();
     expect(f.presentationDispose).toHaveBeenCalledOnce();
   });
 

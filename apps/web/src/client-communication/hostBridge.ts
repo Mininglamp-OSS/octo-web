@@ -99,6 +99,8 @@ export interface DocumentForwardRequest {
 }
 
 export interface OctoBuddyCommunicationBridge {
+  /** Optional semantic desktop draft API; absent in browser and older Clients. */
+  attachmentDrafts?: import("./attachmentDraftContract").LocalAttachmentDraftBridge;
   /** Optional native region capture. Image bytes return only to the initiating composer. */
   captureScreenshot?: import("@octo/base/src/features/chat-composer/screenshot/contract").ScreenshotHost["captureScreenshot"];
   cancelScreenshot?: import("@octo/base/src/features/chat-composer/screenshot/contract").ScreenshotHost["cancelScreenshot"];

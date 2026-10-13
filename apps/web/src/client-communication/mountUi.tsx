@@ -6,6 +6,7 @@ import { installDesktopPresentationLifecycle } from "./desktopPresentationLifecy
 import { installHostDocumentPreview } from "./documentPreview";
 import { installHostFilePreview } from "./filePreview";
 import { installScreenshotToolbar } from "./screenshot";
+import { installClientLocalAttachmentDrafts } from "./localAttachmentDrafts";
 import type { CommunicationBootstrap, DocumentForwardRequest, OctoBuddyCommunicationBridge } from "./hostBridge";
 
 export async function mountCommunicationUi(
@@ -31,6 +32,10 @@ export async function mountCommunicationUi(
     ? () => {}
     : installHostDocumentPreview(host, WKApp.shared.currentSpaceId);
   const disposeFilePreview = installHostFilePreview(host, WKApp.shared.currentSpaceId);
+  const disposeLocalAttachmentDrafts = installClientLocalAttachmentDrafts(
+    host,
+    WKApp.shared.currentSpaceId,
+  );
   const disposeScreenshot = installScreenshotToolbar(host);
   const reactRoot = createRoot(root);
   reactRoot.render(
@@ -60,6 +65,7 @@ export async function mountCommunicationUi(
   return () => {
     reactRoot.unmount();
     disposeScreenshot();
+    disposeLocalAttachmentDrafts();
     disposeFilePreview();
     disposeDocumentPreview();
     presentation.dispose();
