@@ -20,9 +20,7 @@ import {
 } from "../adapters/tiptap/mentionResolve";
 import "./ChatComposer.css";
 import { Notification } from "@douyinfe/semi-ui";
-import SlashCommandMenu, {
-  BotCommand,
-} from "../../../Components/SlashCommandMenu";
+import SlashCommandMenu, { BotCommand } from "../../../Components/SlashCommandMenu";
 import VoiceInputIndicator from "./voice/VoiceInputIndicator";
 import { Maximize2, Minimize2 } from "lucide-react";
 import IconClick from "../../../Components/IconClick";
@@ -74,7 +72,10 @@ import {
   createDefaultChatComposerExtensions,
   type DefaultChatComposerExtensions,
 } from "./createDefaultChatComposerExtensions";
-export type { AttachmentFile, EditorContentBlock } from "../domain";
+export type {
+  AttachmentFile,
+  EditorContentBlock,
+} from "../domain";
 import {
   consumeCompose,
   buildComposeRecoveryDocument,
@@ -112,7 +113,7 @@ import type {
 } from "../local-drafts";
 
 function commonRecoveredTarget(
-  recovered: ComposeRecoveryRecord[]
+  recovered: ComposeRecoveryRecord[],
 ): ComposeRecoveryRecord["sendTarget"] {
   const first = recovered[0]?.sendTarget;
   if (!first) return undefined;
@@ -120,7 +121,7 @@ function commonRecoveredTarget(
   return recovered.every(
     ({ sendTarget }) =>
       sendTarget?.handlerType === first.handlerType &&
-      sendTarget.replyMessage === first.replyMessage
+      sendTarget.replyMessage === first.replyMessage,
   )
     ? first
     : undefined;
@@ -163,18 +164,10 @@ function extractAttachmentsFromEditor(
  * 用于按顺序发送编辑器中穿插的文本和媒体。
  */
 const TIPTAP_BLOCK_TYPES = new Set([
-  "paragraph",
-  "heading",
-  "blockquote",
-  "codeBlock",
-  "orderedList",
-  "bulletList",
-  "listItem",
-  "table",
-  "tableRow",
-  "tableCell",
-  "tableHeader",
-  "horizontalRule",
+  'paragraph', 'heading', 'blockquote', 'codeBlock',
+  'orderedList', 'bulletList', 'listItem',
+  'table', 'tableRow', 'tableCell', 'tableHeader',
+  'horizontalRule',
 ]);
 
 function escapeTrailingMarkdownImageBang(text: string): string {
@@ -185,14 +178,16 @@ function escapeTrailingMarkdownImageBang(text: string): string {
     if (text[index] !== "\\") break;
     precedingBackslashes += 1;
   }
-  return precedingBackslashes % 2 === 0 ? `${text.slice(0, -1)}\\!` : text;
+  return precedingBackslashes % 2 === 0
+    ? `${text.slice(0, -1)}\\!`
+    : text;
 }
 
 function extractOrderedBlocks(
   editorInstance: any,
   attachmentFilesMap: Map<string, File>,
   members: readonly ChatComposerMember[] | undefined,
-  composePartRegistry: EditorComposePartRegistry
+  composePartRegistry: EditorComposePartRegistry,
 ): {
   blocks: EditorContentBlock[];
   snapshot: ComposeDoc;
@@ -202,12 +197,15 @@ function extractOrderedBlocks(
   if (!json.content) return { blocks: [], snapshot: json, editorParts: [] };
 
   const composePartContext = { attachmentFiles: attachmentFilesMap };
-  const capturedParts = composePartRegistry.capture(json, composePartContext);
+  const capturedParts = composePartRegistry.capture(
+    json,
+    composePartContext,
+  );
   capturedParts.forEach((part) =>
-    composePartRegistry.assertSettlementSupported(part)
+    composePartRegistry.assertSettlementSupported(part),
   );
   const capturedPartByNode = new Map(
-    capturedParts.map((part) => [composePartRegistry.sourceNode(part), part])
+    capturedParts.map((part) => [composePartRegistry.sourceNode(part), part]),
   );
 
   const blocks: EditorContentBlock[] = [];
@@ -217,12 +215,7 @@ function extractOrderedBlocks(
     const joined = stripInvisibleChars(pendingTextParts.join(""));
     if (joined.trim() !== "") {
       const { content, mention } = formatMentionTextV2(joined, members);
-      blocks.push({
-        type: "text",
-        text: content,
-        restoreText: joined,
-        mention,
-      });
+      blocks.push({ type: "text", text: content, restoreText: joined, mention });
     }
     pendingTextParts = [];
   }
@@ -240,7 +233,7 @@ function extractOrderedBlocks(
       if (serialized.startsWith("[") && pendingTextParts.length > 0) {
         const previousIndex = pendingTextParts.length - 1;
         pendingTextParts[previousIndex] = escapeTrailingMarkdownImageBang(
-          pendingTextParts[previousIndex]
+          pendingTextParts[previousIndex],
         );
       }
       pendingTextParts.push(serialized);
@@ -300,25 +293,18 @@ function stripInvisibleChars(text: string): string {
  */
 function notifySecretPaste(
   detectedValue: string,
-  openSecretCreate: (value: string) => void
+  openSecretCreate: (value: string) => void,
 ): void {
   Notification.warning({
     className: "wk-octo-notification",
-    title: (
-      <span className="wk-octo-notification__title">
-        {translate("base.secrets.pasteGuard.title")}
-      </span>
-    ),
-    content: (
-      <span className="wk-octo-notification__body">
-        {translate("base.secrets.pasteGuard.content")}
-      </span>
-    ),
+    title: <span className="wk-octo-notification__title">{translate("base.secrets.pasteGuard.title")}</span>,
+    content: <span className="wk-octo-notification__body">{translate("base.secrets.pasteGuard.content")}</span>,
     duration: 8,
     showClose: true,
     onClick: () => openSecretCreate(detectedValue),
   });
 }
+
 
 export interface ChatComposerProps {
   host: ChatComposerViewHost;
@@ -335,7 +321,7 @@ export interface ChatComposerProps {
    * 才还原，所以 await 期间用户新输入的草稿不会被旧 send 干扰。
    */
   onSend?: (
-    request: ChatSendRequest<any>
+    request: ChatSendRequest<any>,
   ) => ChatSendOutcome | Promise<ChatSendOutcome>;
   /** Capture an immutable channel/host boundary for one queued send attempt. */
   onCaptureSendTransaction?: () => ChatComposerSendTransaction<any>;
@@ -347,7 +333,9 @@ export interface ChatComposerProps {
   /** Capture draft state before this send enters the serial queue. */
   onCaptureSendDraft?: () => Omit<SendDraftSnapshot, "draftText">;
   /** Runs after editor/attachment settlement and before the attempt is released. */
-  onSendSettled?: (settlement: ChatSendSettlement) => void | Promise<void>;
+  onSendSettled?: (
+    settlement: ChatSendSettlement,
+  ) => void | Promise<void>;
   /** Preserve a consumed compose when its original editor was destroyed. */
   onComposeRecovery?: (recovery: ComposeRecoveryRecord) => boolean;
   /** Recover consumed composes transferred from an earlier editor instance. */
@@ -360,7 +348,7 @@ export interface ChatComposerProps {
           replyMessage?: unknown;
           handlerType: number;
         }
-      | undefined
+      | undefined,
   ) => boolean | void;
   members?: Array<ChatComposerMember>;
   onInputRef?: any;
@@ -379,13 +367,13 @@ export interface ChatComposerProps {
   onContext?: (ctx: MessageInputContext) => void;
   topView?: JSX.Element;
   botCommands?: BotCommand[];
-  getChatContext?: () =>
-    | ChatComposerVoiceContext
-    | Promise<ChatComposerVoiceContext>;
+  getChatContext?: () => ChatComposerVoiceContext | Promise<ChatComposerVoiceContext>;
   onExpandChange?: (expanded: boolean) => void;
   /** Called when Alt+Enter is pressed in the editor */
   onAltEnter?: () => void;
 }
+
+
 
 export interface MentionEntity {
   uid: string;
@@ -416,7 +404,9 @@ export class MentionModel implements ChatMention {
 // The canonical definitions live in Utils/mentionRender so the shared
 // dropdown helper (`buildMentionDropdownItems`) and unit tests can reuse
 // them without an import cycle through this large editor module.
-import { buildMentionDropdownItems } from "../../../Utils/mentionRender";
+import {
+  buildMentionDropdownItems,
+} from "../../../Utils/mentionRender";
 import {
   parseSendMentionText,
   serializeEditorTextNodeForSend,
@@ -430,7 +420,7 @@ import type { SendParseMember } from "../adapters/tiptap/mentionSendParse";
 // 仅当广播 sentinel 携带 node-origin 信任标记时才路由广播，伪造的字面文本降级为纯文本。
 function formatMentionTextV2(
   text: string,
-  subscribers: readonly ChatComposerMember[] | undefined
+  subscribers: readonly ChatComposerMember[] | undefined,
 ): {
   content: string;
   mention?: MentionModel;
@@ -512,11 +502,7 @@ function extractMentionsFromEditor(editor: any, trusted = false): string {
       }
       result += serialized;
     } else if (node.type === "mention") {
-      result += serializeMentionMarker(
-        node.attrs.id,
-        node.attrs.label,
-        trusted
-      );
+      result += serializeMentionMarker(node.attrs.id, node.attrs.label, trusted);
     } else if (node.type === "hardBreak") {
       result += "\n";
     } else if (node.content) {
@@ -580,8 +566,8 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   const hostRef = useRef(props.host);
   hostRef.current = props.host;
   const channelSnapshot = props.host.getChannel();
-  const [extensions] = useState(
-    () => props.extensions ?? createDefaultChatComposerExtensions()
+  const [extensions] = useState(() =>
+    props.extensions ?? createDefaultChatComposerExtensions(),
   );
   const [slashMenuVisible, setSlashMenuVisible] = useState(false);
   const [slashFilter, setSlashFilter] = useState("");
@@ -592,13 +578,14 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   const [attachmentRevision, setAttachmentRevision] = useState(0);
   const inlineAttachmentIdsRef = useRef("");
   const [attachmentStore] = useState(
-    () => new ChatComposerAttachmentStore<TopAttachmentItem>()
+    () => new ChatComposerAttachmentStore<TopAttachmentItem>(),
   );
   const [controller] = useState(
-    () => new ChatComposerController<PendingSendAttachmentPreview>()
+    () => new ChatComposerController<PendingSendAttachmentPreview>(),
   );
   const [coordinator] = useState(
-    () => new ChatComposerCoordinator<PendingSendAttachmentPreview>(controller)
+    () =>
+      new ChatComposerCoordinator<PendingSendAttachmentPreview>(controller),
   );
   const composerMountedRef = useRef(true);
   const [topAttachments, setTopAttachments] = useState<TopAttachmentItem[]>([]);
@@ -622,7 +609,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       controller.subscribe(({ preEnqueue }) => {
         setPendingPreEnqueueItems(preEnqueue);
       }),
-    [controller]
+    [controller],
   );
 
   // 动态生成 placeholder（channelInfo 异步加载后通过 listener 自动更新）
@@ -641,8 +628,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     };
 
     updateName(props.host.getChannelTitle() || "");
-    const unsubscribeChannelTitle =
-      props.host.subscribeChannelTitle(updateName);
+    const unsubscribeChannelTitle = props.host.subscribeChannelTitle(updateName);
 
     return () => {
       aborted = true;
@@ -652,7 +638,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
 
   const memberInfos = useMemo<MemberInfo[]>(
     () => buildMemberInfos(props.members),
-    [props.members]
+    [props.members],
   );
   const placeholderRef = useRef(placeholder);
   placeholderRef.current = placeholder;
@@ -683,12 +669,11 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     ((view: any, event: KeyboardEvent) => boolean) | null
   >(null);
   const editorHandlePasteRef = useRef<
-    | ((
-        view: any,
-        event: ClipboardEvent,
-        decision: ComposerPasteDecision
-      ) => boolean)
-    | null
+    ((
+      view: any,
+      event: ClipboardEvent,
+      decision: ComposerPasteDecision,
+    ) => boolean) | null
   >(null);
   const pasteLifecycleRef = useRef(0);
 
@@ -743,7 +728,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             onOpened: () => hostRef.current.track("input_mention_opened"),
             onAiSelected: () =>
               hostRef.current.track("input_mention_ai_selected"),
-          }
+          },
         ),
         renderLabel({ options, node }) {
           return `@${node.attrs.label}`;
@@ -764,16 +749,18 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       handlePaste: (_view, event) => {
         if (!event.clipboardData) return false;
         const decision = decideComposerPaste(
-          snapshotComposerClipboard(event.clipboardData)
+          snapshotComposerClipboard(event.clipboardData),
         );
         if (decision.kind === "block-secret") {
           event.preventDefault();
           notifySecretPaste(decision.value, (value) =>
-            hostRef.current.openSecretCreate(value)
+            hostRef.current.openSecretCreate(value),
           );
           return true;
         }
-        return editorHandlePasteRef.current?.(_view, event, decision) ?? false;
+        return (
+          editorHandlePasteRef.current?.(_view, event, decision) ?? false
+        );
       },
     },
     onUpdate: ({ editor }) => {
@@ -822,9 +809,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    editor.view.dispatch(
-      editor.state.tr.setMeta("chatComposerPlaceholder", true)
-    );
+    editor.view.dispatch(editor.state.tr.setMeta("chatComposerPlaceholder", true));
   }, [editor, placeholder]);
 
   useEffect(() => {
@@ -1052,15 +1037,14 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     editorHandlePasteRef.current = (
       _view: any,
       event: ClipboardEvent,
-      decision: ComposerPasteDecision
+      decision: ComposerPasteDecision,
     ) => {
       if (!editor) return false;
       if (decision.kind === "default") return false;
 
       event.preventDefault();
 
-      const addPastedAttachments =
-        props.onAddPendingAttachments || addAttachment;
+      const addPastedAttachments = props.onAddPendingAttachments || addAttachment;
       const pasteLifecycle = pasteLifecycleRef.current;
       const isPasteActive = () =>
         composerMountedRef.current &&
@@ -1069,7 +1053,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       if (decision.kind === "files") {
         if (isPasteActive()) {
           Promise.resolve(addPastedAttachments(decision.files, "paste")).catch(
-            (err) => console.error("[MessageInput] pasted files failed", err)
+            (err) => console.error("[MessageInput] pasted files failed", err),
           );
         }
         return true;
@@ -1082,8 +1066,9 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         addPastedAttachments,
         {
           imageBlockToFile: (block) =>
-            imageBlockToPasteFile(block, (url, opts) =>
-              hostRef.current.resolveImageUrl(url, opts)
+            imageBlockToPasteFile(
+              block,
+              (url, opts) => hostRef.current.resolveImageUrl(url, opts),
             ),
           // Validate pasted mentions against the live channel roster so a
           // forged clipboard payload cannot inject mentions for non-members
@@ -1105,12 +1090,9 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   }, [addAttachment, editor, props.onAddPendingAttachments]);
 
   // 移除顶部附件区的附件
-  const removeTopAttachment = useCallback(
-    (id: string) => {
-      attachmentStore.removeTopAttachment(id);
-    },
-    [attachmentStore]
-  );
+  const removeTopAttachment = useCallback((id: string) => {
+    attachmentStore.removeTopAttachment(id);
+  }, [attachmentStore]);
 
   // 监听顶部附件区变化，更新多行模式状态
   useEffect(() => {
@@ -1164,7 +1146,9 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     const inlineIds = editor
       ? extractAttachmentsFromEditor(editor).map(({ id }) => id)
       : [];
-    const topIds = attachmentStore.snapshotTopAttachments().map(({ id }) => id);
+    const topIds = attachmentStore
+      .snapshotTopAttachments()
+      .map(({ id }) => id);
     return [...inlineIds, ...topIds];
   }, [attachmentStore, editor]);
 
@@ -1223,9 +1207,8 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             },
             item.editorBlocks,
             (value) =>
-              (parseConsumedTextToContent(value).content ??
-                []) as ComposeDoc["content"] as never,
-            extensions.editor.composeParts
+              (parseConsumedTextToContent(value).content ?? []) as ComposeDoc["content"] as never,
+            extensions.editor.composeParts,
           ),
         });
       } catch (err) {
@@ -1243,7 +1226,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     try {
       prepared.forEach(({ item }) => {
         const previewUrls = new Map(
-          item.editorObjectUrls.map(({ id, url }) => [id, url])
+          item.editorObjectUrls.map(({ id, url }) => [id, url]),
         );
         item.editorAttachments.forEach(({ id, file }) => {
           const existingFile = preparedFiles.get(id);
@@ -1258,7 +1241,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             existingPreviewUrl !== previewUrl
           ) {
             throw new Error(
-              `inline attachment preview already registered: ${id}`
+              `inline attachment preview already registered: ${id}`,
             );
           }
           attachmentStore.validateInlineRegistration(id, file, previewUrl);
@@ -1269,13 +1252,13 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
           const existingPreviewUrl = preparedPreviewUrls.get(id);
           if (existingPreviewUrl && existingPreviewUrl !== url) {
             throw new Error(
-              `inline attachment preview already registered: ${id}`
+              `inline attachment preview already registered: ${id}`,
             );
           }
           attachmentStore.validateInlineRegistration(
             id,
             preparedFiles.get(id),
-            url
+            url,
           );
           preparedPreviewUrls.set(id, url);
         });
@@ -1294,7 +1277,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
 
     prepared.forEach(({ item }) => {
       const previewUrls = new Map(
-        item.editorObjectUrls.map(({ id, url }) => [id, url])
+        item.editorObjectUrls.map(({ id, url }) => [id, url]),
       );
       item.editorAttachments.forEach(({ id, file }) => {
         attachmentStore.addInlineFile(id, file, previewUrls.get(id));
@@ -1328,7 +1311,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             appendContent: (nodes) =>
               editor.commands.insertContent(nodes as JSONContent[]),
           },
-          blockOffset
+          blockOffset,
         );
         blockOffset += inserted;
       }
@@ -1336,8 +1319,8 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     const recoveredTopAttachments = hydrated.flatMap((item) =>
       item.topAttachments.filter(
         (attachment): attachment is TopAttachmentItem =>
-          attachment.file !== undefined
-      )
+          attachment.file !== undefined,
+      ),
     );
     if (recoveredTopAttachments.length > 0) {
       attachmentStore.restoreTopAttachments(recoveredTopAttachments, 0);
@@ -1414,9 +1397,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     if (text.length > MAX_MESSAGE_LENGTH) {
       Notification.error({
         className: "wk-octo-notification",
-        content: t("base.messageInput.validation.maxLength", {
-          values: { max: MAX_MESSAGE_LENGTH },
-        }),
+        content: t("base.messageInput.validation.maxLength", { values: { max: MAX_MESSAGE_LENGTH } }),
       });
       return rejectChatComposerSend("message-too-long");
     }
@@ -1429,7 +1410,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       (a) => ({
         id: a.id,
         file: a.file,
-      })
+      }),
     );
     let orderedBlocks: EditorContentBlock[];
     let capturedEditorCompose: {
@@ -1441,7 +1422,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         editor,
         attachmentStore.attachmentFiles,
         localMembersRef.current,
-        extensions.editor.composeParts
+        extensions.editor.composeParts,
       );
       orderedBlocks = extracted.blocks;
       capturedEditorCompose = {
@@ -1475,7 +1456,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     const hasAttachments =
       attachmentAttrs.length > 0 || topAttachmentFiles.length > 0;
     const hasEditorBlocks = orderedBlocks.some(
-      (block) => block.type !== "text" || block.text.trim() !== ""
+      (block) => block.type !== "text" || block.text.trim() !== "",
     );
 
     // 没有 onSend 或没有任何内容时无需发送，直接退出（不清空，保持现状）。
@@ -1492,7 +1473,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     const formattedText = extractMentionsFromEditor(editor, true);
     const { content, mention } = formatMentionTextV2(
       formattedText,
-      localMembersRef.current
+      localMembersRef.current,
     );
 
     const draftAttachmentIds = [
@@ -1546,61 +1527,60 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
           editor: {
             consume: (context) =>
               consumeCompose({
-                composePartRegistry: extensions.editor.composeParts,
-                captured: capturedEditorCompose,
-                isRestoreTargetActive: context.isRestoreTargetActive,
-                editor: {
-                  getJSON: () => editor.getJSON() as ComposeDoc,
-                  getRestoredBlockMarkerIds: () =>
-                    getRestoredBlockMarkerIds(editor),
-                  markRestoredBlocks: (blockOffset, blockCount) =>
-                    markRestoredBlocks(editor, blockOffset, blockCount),
-                  isEmpty: () => editor.isEmpty,
-                  isDestroyed: () =>
-                    !composerMountedRef.current || editor.isDestroyed,
-                  clearContent: () => editor.commands.clearContent(),
-                  setContent: (doc) =>
-                    editor.commands.setContent(doc as JSONContent),
-                  insertContentAtBlock: (blockOffset, nodes) => {
-                    const docNode = editor.state.doc;
-                    const limit = Math.min(blockOffset, docNode.childCount);
-                    let pos = 0;
-                    for (let i = 0; i < limit; i++) {
-                      pos += docNode.child(i).nodeSize;
-                    }
-                    editor.commands.insertContentAt(
-                      pos,
-                      nodes as JSONContent[]
-                    );
-                  },
-                  appendContent: (nodes) =>
-                    editor.commands.insertContent(nodes as JSONContent[]),
-                  focusEnd: () => editor.commands.focus("end"),
+              composePartRegistry: extensions.editor.composeParts,
+              captured: capturedEditorCompose,
+              isRestoreTargetActive: context.isRestoreTargetActive,
+              editor: {
+                getJSON: () => editor.getJSON() as ComposeDoc,
+                getRestoredBlockMarkerIds: () =>
+                  getRestoredBlockMarkerIds(editor),
+                markRestoredBlocks: (blockOffset, blockCount) =>
+                  markRestoredBlocks(editor, blockOffset, blockCount),
+                isEmpty: () => editor.isEmpty,
+                isDestroyed: () =>
+                  !composerMountedRef.current || editor.isDestroyed,
+                clearContent: () => editor.commands.clearContent(),
+                setContent: (doc) =>
+                  editor.commands.setContent(doc as JSONContent),
+                insertContentAtBlock: (blockOffset, nodes) => {
+                  const docNode = editor.state.doc;
+                  const limit = Math.min(blockOffset, docNode.childCount);
+                  let pos = 0;
+                  for (let i = 0; i < limit; i++) {
+                    pos += docNode.child(i).nodeSize;
+                  }
+                  editor.commands.insertContentAt(
+                    pos,
+                    nodes as JSONContent[],
+                  );
                 },
-                attachmentFiles: attachmentStore.attachmentFiles,
-                takeEditorAttachments: (ids) =>
-                  attachmentStore.takeInlineAttachments(ids),
-                restoreEditorAttachments: (ids) =>
-                  attachmentStore.restoreInlineAttachments(ids),
-                disposeEditorAttachment: (id, previewUrl) =>
-                  attachmentStore.disposeInlineAttachment(id, previewUrl),
-                parseTextToNodes: (value) =>
-                  (parseConsumedTextToContent(value).content ??
-                    []) as ComposeDoc["content"] as never,
-                snapshotTopAttachments: () =>
-                  attachmentStore.snapshotTopAttachments(),
-                takeTopAttachments: (ids) =>
-                  attachmentStore.takeTopAttachments(ids),
-                restoreTopAttachments: (items, offset) =>
-                  attachmentStore.restoreTopAttachments(
-                    items as TopAttachmentItem[],
-                    offset
-                  ),
-                getRestoreOffsets: context.getRestoreOffsets,
-                onRestored: context.onRestored,
-                onRestoreCompose: context.onRestoreCompose,
-                onRestoreSendTarget: context.onRestoreSendTarget,
-                onRestoreError: context.onRestoreError,
+                appendContent: (nodes) =>
+                  editor.commands.insertContent(nodes as JSONContent[]),
+                focusEnd: () => editor.commands.focus("end"),
+              },
+              attachmentFiles: attachmentStore.attachmentFiles,
+              takeEditorAttachments: (ids) =>
+                attachmentStore.takeInlineAttachments(ids),
+              restoreEditorAttachments: (ids) =>
+                attachmentStore.restoreInlineAttachments(ids),
+              disposeEditorAttachment: (id, previewUrl) =>
+                attachmentStore.disposeInlineAttachment(id, previewUrl),
+              parseTextToNodes: (value) =>
+                (parseConsumedTextToContent(value).content ?? []) as ComposeDoc["content"] as never,
+              snapshotTopAttachments: () =>
+                attachmentStore.snapshotTopAttachments(),
+              takeTopAttachments: (ids) =>
+                attachmentStore.takeTopAttachments(ids),
+              restoreTopAttachments: (items, offset) =>
+                attachmentStore.restoreTopAttachments(
+                  items as TopAttachmentItem[],
+                  offset,
+                ),
+              getRestoreOffsets: context.getRestoreOffsets,
+              onRestored: context.onRestored,
+              onRestoreCompose: context.onRestoreCompose,
+              onRestoreSendTarget: context.onRestoreSendTarget,
+              onRestoreError: context.onRestoreError,
               }),
             handoffRecovery: (recovery) => {
               const editorRecoveryIds = new Set([
@@ -1609,11 +1589,11 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
               ]);
               attachmentStore.handoffInlineAttachments([...editorRecoveryIds]);
               attachmentStore.handoffTopAttachments(
-                recovery.topAttachments.map(({ id }) => id)
+                recovery.topAttachments.map(({ id }) => id),
               );
             },
           },
-        }
+        },
       );
       const keepAttachmentIds =
         result.kind === "rejected"
@@ -1814,7 +1794,9 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   // 检查编辑器内是否有内容或附件
   const editorAttachments = editor ? extractAttachmentsFromEditor(editor) : [];
   const hasValue =
-    !editorIsEmpty || editorAttachments.length > 0 || topAttachments.length > 0;
+    !editorIsEmpty ||
+    editorAttachments.length > 0 ||
+    topAttachments.length > 0;
   // 设置 inputRef
   useEffect(() => {
     if (onInputRef && editor) {
@@ -1843,7 +1825,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             与附件保持可见；本地气泡出现后立即移除，避免同一内容重复展示。 */}
         {pendingPreEnqueueItems.length > 0 && (
           <div className="wk-messageinput-sending" aria-live="polite">
-            {pendingPreEnqueueItems.map((item) =>
+            {pendingPreEnqueueItems.map((item) => (
               extensions.render.pending.render(item, {
                 sendingLabel: t("base.message.sending"),
                 renderAttachment: (attachment) =>
@@ -1868,7 +1850,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
                     </span>
                   ),
               })
-            )}
+            ))}
           </div>
         )}
 
@@ -1985,15 +1967,8 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
               </div>
             )}
             {!hasValue && (
-              <div
-                className={`wk-messageinput-placeholder-overlay${
-                  botCommands && botCommands.length > 0 ? " has-menu" : ""
-                }`}
-                aria-hidden="true"
-              >
-                <span className="wk-messageinput-placeholder-base">
-                  {placeholder}
-                </span>
+              <div className={`wk-messageinput-placeholder-overlay${botCommands && botCommands.length > 0 ? " has-menu" : ""}`} aria-hidden="true">
+                <span className="wk-messageinput-placeholder-base">{placeholder}</span>
               </div>
             )}
             <div className="wk-messageinput-editor">
@@ -2021,7 +1996,8 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
                 if (!editor) return;
 
                 // Use dynamic regex built from member names to detect mentions
-                const hasMention = buildMentionRegex(memberInfos).test(text);
+                const hasMention =
+                  buildMentionRegex(memberInfos).test(text);
 
                 // Find text position in current doc (handles mention atom nodes)
                 const findSelectionRange = (
@@ -2107,8 +2083,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
                 // 序列化编辑器内容为纯文本，处理各类 leaf 节点
                 const leafText = (node: any) => {
                   if (node.type.name === "attachment") return "";
-                  if (node.type.name === "mention")
-                    return `@${node.attrs.label ?? node.attrs.id}`;
+                  if (node.type.name === "mention") return `@${node.attrs.label ?? node.attrs.id}`;
                   if (node.type.name === "hardBreak") return "\n";
                   return "";
                 };
@@ -2126,8 +2101,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
                 // 序列化编辑器内容为纯文本，处理各类 leaf 节点
                 const leafText = (node: any) => {
                   if (node.type.name === "attachment") return "";
-                  if (node.type.name === "mention")
-                    return `@${node.attrs.label ?? node.attrs.id}`;
+                  if (node.type.name === "mention") return `@${node.attrs.label ?? node.attrs.id}`;
                   if (node.type.name === "hardBreak") return "\n";
                   return "";
                 };
@@ -2155,11 +2129,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             {/* 展开/收起按钮 */}
             <IconClick
               size="sm"
-              title={
-                expanded
-                  ? t("base.messageInput.collapse")
-                  : t("base.messageInput.expand")
-              }
+              title={expanded ? t("base.messageInput.collapse") : t("base.messageInput.expand")}
               onClick={toggleExpand}
               icon={
                 expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />
