@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createChatComposerAttachmentDraftPort,
-  type LocalAttachmentDraftHost,
 } from "@octo/base/src/features/chat-composer/local-drafts";
 import type { OctoBuddyCommunicationBridge } from "./hostBridge";
 import { installClientLocalAttachmentDrafts } from "./localAttachmentDrafts";
@@ -17,11 +16,19 @@ afterEach(() => {
 
 function bridge(): OctoBuddyCommunicationBridge {
   return {
-    localAttachmentDraftsVersion: 1,
-    stageAttachmentDraft: vi.fn<LocalAttachmentDraftHost["stage"]>(),
-    listAttachmentDrafts: vi.fn<LocalAttachmentDraftHost["list"]>(),
-    readAttachmentDraft: vi.fn<LocalAttachmentDraftHost["read"]>(),
-    removeAttachmentDraft: vi.fn<LocalAttachmentDraftHost["remove"]>(),
+    localAttachmentDraftsVersion: 2,
+    stageAttachmentDraft: vi.fn<
+      NonNullable<OctoBuddyCommunicationBridge["stageAttachmentDraft"]>
+    >(),
+    listAttachmentDrafts: vi.fn<
+      NonNullable<OctoBuddyCommunicationBridge["listAttachmentDrafts"]>
+    >(),
+    readAttachmentDraft: vi.fn<
+      NonNullable<OctoBuddyCommunicationBridge["readAttachmentDraft"]>
+    >(),
+    removeAttachmentDraft: vi.fn<
+      NonNullable<OctoBuddyCommunicationBridge["removeAttachmentDraft"]>
+    >(),
     onCommand: vi.fn(() => () => {}),
   };
 }
@@ -29,9 +36,20 @@ function bridge(): OctoBuddyCommunicationBridge {
 describe("Client local attachment draft capability", () => {
   it("rejects partial capability exposure and preserves the browser fallback", () => {
     dispose = installClientLocalAttachmentDrafts({
-      localAttachmentDraftsVersion: 1,
+      localAttachmentDraftsVersion: 2,
       stageAttachmentDraft: vi.fn(),
     }, "space-a");
+
+    expect(createChatComposerAttachmentDraftPort(channel)).toBeUndefined();
+  });
+
+  it("rejects a complete legacy V1 bridge and preserves the browser fallback", () => {
+    const legacyBridge = {
+      ...bridge(),
+      localAttachmentDraftsVersion: 1,
+    } as unknown as OctoBuddyCommunicationBridge;
+
+    dispose = installClientLocalAttachmentDrafts(legacyBridge, "space-a");
 
     expect(createChatComposerAttachmentDraftPort(channel)).toBeUndefined();
   });
@@ -65,6 +83,66 @@ describe("Client local attachment draft capability", () => {
       source: "upload",
     })).toBe(false);
     expect(createChatComposerAttachmentDraftPort(channel)).toBeDefined();
+  });
+
+  it("binds each installed host and stale settlement to its original space", async () => {
+    let commandListener: Parameters<
+      OctoBuddyCommunicationBridge["onCommand"]
+    >[0] | undefined;
+    const value = bridge();
+    value.stageAttachmentDraft = vi.fn(async ({ attachment }) => ({
+      ...attachment,
+      createdAt: 100,
+      updatedAt: 100,
+    }));
+    value.removeAttachmentDraft = vi.fn(async () => {});
+    value.onCommand = vi.fn((listener) => {
+      commandListener = listener;
+      return () => {
+        commandListener = undefined;
+      };
+    });
+    dispose = installClientLocalAttachmentDrafts(value, "space-a");
+    const spaceAPort = createChatComposerAttachmentDraftPort(channel)!;
+    await spaceAPort.stage({
+      id: "shared",
+      file: new File(["a"], "a.txt"),
+      source: "upload",
+    });
+    spaceAPort.beginSend(["shared"]);
+
+    commandListener?.({
+      type: "spaceChanged",
+      space: { id: "space-b", name: "B" },
+    });
+    const spaceBPort = createChatComposerAttachmentDraftPort(channel)!;
+    await spaceBPort.stage({
+      id: "shared",
+      file: new File(["b"], "b.txt"),
+      source: "upload",
+    });
+    spaceAPort.settleSend({
+      attachmentIds: ["shared"],
+      keepAttachmentIds: [],
+    });
+
+    await vi.waitFor(() =>
+      expect(value.removeAttachmentDraft).toHaveBeenCalledWith({
+        channel,
+        attachmentId: "shared",
+        spaceId: "space-a",
+      })
+    );
+    expect(value.stageAttachmentDraft).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        attachment: expect.objectContaining({ id: "shared", name: "b.txt" }),
+        spaceId: "space-b",
+      })
+    );
+    expect(value.removeAttachmentDraft).not.toHaveBeenCalledWith(
+      expect.objectContaining({ spaceId: "space-b" })
+    );
   });
 
   it("invalidates stale ports and removes the capability on session revocation", async () => {

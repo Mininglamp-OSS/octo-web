@@ -66,6 +66,16 @@ function file(name = "draft.txt"): File {
   return value;
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 afterEach(() => {
   while (disposals.length > 0) disposals.pop()?.();
   vi.restoreAllMocks();
@@ -386,6 +396,38 @@ describe("local attachment draft runtime", () => {
     });
   });
 
+  it("does not persist a staging attachment cancelled during a slow byte read", async () => {
+    const bytes = deferred<ArrayBuffer>();
+    const readStarted = deferred<void>();
+    const slowFile = {
+      name: "slow.txt",
+      type: "text/plain",
+      size: 3,
+      lastModified: 123,
+      arrayBuffer: () => {
+        readStarted.resolve();
+        return bytes.promise;
+      },
+    } as File;
+    const value = host();
+    install(value);
+    const port = createChatComposerAttachmentDraftPort(channel)!;
+    const staging = port.stage({
+      id: "slow",
+      file: slowFile,
+      source: "upload",
+    });
+    await readStarted.promise;
+
+    port.syncLive([]);
+    bytes.resolve(new Uint8Array([1, 2, 3]).buffer);
+
+    expect(await staging).toBe(true);
+    expect(value.stage).not.toHaveBeenCalled();
+    const reopenedPort = createChatComposerAttachmentDraftPort(channel)!;
+    expect((await reopenedPort.restore()).attachments).toEqual([]);
+  });
+
   it("clears a failed draft after the user confirms navigation", async () => {
     const value = host({
       stage: vi.fn(async () => {
@@ -467,6 +509,30 @@ describe("local attachment draft runtime", () => {
     expect(port.canLeave(["failed"])).toBe(false);
   });
 
+  it("keeps a failed draft guarded while an in-flight send owns it", async () => {
+    const write = deferred<LocalAttachmentDraftMetadata>();
+    const value = host({ stage: vi.fn(() => write.promise) });
+    install(value);
+    const port = createChatComposerAttachmentDraftPort(channel)!;
+    const staging = port.stage({
+      id: "failed-send",
+      file: file(),
+      source: "upload",
+    });
+    await vi.waitFor(() => expect(value.stage).toHaveBeenCalledOnce());
+
+    port.beginSend(["failed-send"]);
+    write.reject(new Error("quota exceeded"));
+    expect(await staging).toBe(false);
+    port.syncLive(["other"]);
+    port.settleSend({
+      attachmentIds: ["failed-send"],
+      keepAttachmentIds: ["failed-send"],
+    });
+
+    expect(port.canLeave(["failed-send"])).toBe(false);
+  });
+
   it("removes a consumed attachment after its pending write lands", async () => {
     let finishStage: (() => void) | undefined;
     const value = host({
@@ -535,6 +601,87 @@ describe("local attachment draft runtime", () => {
     });
     port.syncLive([]);
     expect(value.remove).not.toHaveBeenCalled();
+  });
+
+  it("rechecks send ownership after each restore read", async () => {
+    const firstRead = deferred<void>();
+    const secondRead = deferred<void>();
+    const value = host({
+      list: vi.fn(async () => [
+        metadata("first", { position: 0 }),
+        metadata("second", { position: 1 }),
+      ]),
+      read: vi.fn(async ({ attachmentId }) => {
+        await (attachmentId === "first"
+          ? firstRead.promise
+          : secondRead.promise);
+        return {
+          attachment: metadata(attachmentId, {
+            position: attachmentId === "first" ? 0 : 1,
+          }),
+          bytes: new Uint8Array([1, 2, 3]),
+        };
+      }),
+    });
+    install(value);
+    const restoringPort = createChatComposerAttachmentDraftPort(channel)!;
+    const restoring = restoringPort.restore();
+    await vi.waitFor(() => expect(value.read).toHaveBeenCalledTimes(1));
+
+    const sendingPort = createChatComposerAttachmentDraftPort(channel)!;
+    sendingPort.beginSend(["first"]);
+    firstRead.resolve();
+    await vi.waitFor(() => expect(value.read).toHaveBeenCalledTimes(2));
+    sendingPort.settleSend({
+      attachmentIds: ["first"],
+      keepAttachmentIds: ["first"],
+    });
+    secondRead.resolve();
+
+    expect((await restoring).attachments.map(({ id }) => id)).toEqual([
+      "second",
+    ]);
+  });
+
+  it("filters attachments consumed after their restore read completed", async () => {
+    const secondRead = deferred<void>();
+    const value = host({
+      list: vi.fn(async () => [
+        metadata("first", { position: 0 }),
+        metadata("second", { position: 1 }),
+      ]),
+      read: vi.fn(async ({ attachmentId }) => {
+        if (attachmentId === "second") await secondRead.promise;
+        return {
+          attachment: metadata(attachmentId, {
+            position: attachmentId === "first" ? 0 : 1,
+          }),
+          bytes: new Uint8Array([1, 2, 3]),
+        };
+      }),
+    });
+    install(value);
+    const restoringPort = createChatComposerAttachmentDraftPort(channel)!;
+    const restoring = restoringPort.restore();
+    await vi.waitFor(() => expect(value.read).toHaveBeenCalledTimes(2));
+
+    const sendingPort = createChatComposerAttachmentDraftPort(channel)!;
+    sendingPort.beginSend(["first"]);
+    sendingPort.settleSend({
+      attachmentIds: ["first"],
+      keepAttachmentIds: [],
+    });
+    await vi.waitFor(() =>
+      expect(value.remove).toHaveBeenCalledWith({
+        channel,
+        attachmentId: "first",
+      })
+    );
+    secondRead.resolve();
+
+    expect((await restoring).attachments.map(({ id }) => id)).toEqual([
+      "second",
+    ]);
   });
 
   it("does not restore an attachment owned by another port's active send", async () => {

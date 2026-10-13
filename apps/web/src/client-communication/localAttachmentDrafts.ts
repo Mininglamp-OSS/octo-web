@@ -10,7 +10,7 @@ export function installClientLocalAttachmentDrafts(
   initialSpaceId: string,
 ): () => void {
   if (
-    bridge.localAttachmentDraftsVersion !== 1 ||
+    bridge.localAttachmentDraftsVersion !== 2 ||
     typeof bridge.stageAttachmentDraft !== "function" ||
     typeof bridge.listAttachmentDrafts !== "function" ||
     typeof bridge.readAttachmentDraft !== "function" ||
@@ -18,33 +18,41 @@ export function installClientLocalAttachmentDrafts(
   ) {
     return () => {};
   }
-  const host: LocalAttachmentDraftHost = {
-    version: 1,
-    stage: (input) => bridge.stageAttachmentDraft!(input),
-    list: (input) => bridge.listAttachmentDrafts!(input),
-    read: (input) => bridge.readAttachmentDraft!(input),
-    remove: (input) => bridge.removeAttachmentDraft!(input),
+  const installForSpace = (spaceId: string) => {
+    const host: LocalAttachmentDraftHost = {
+      version: 1,
+      stage: (input) => bridge.stageAttachmentDraft!({ ...input, spaceId }),
+      list: (input) => bridge.listAttachmentDrafts!({ ...input, spaceId }),
+      read: (input) => bridge.readAttachmentDraft!({ ...input, spaceId }),
+      remove: (input) => bridge.removeAttachmentDraft!({ ...input, spaceId }),
+    };
+    return {
+      host,
+      dispose: installLocalAttachmentDraftHost(host),
+    };
   };
   let active = true;
   let spaceId = initialSpaceId;
-  const disposeHost = installLocalAttachmentDraftHost(host);
+  let installation = installForSpace(spaceId);
   const offCommand = bridge.onCommand((command) => {
     if (command.type === "spaceChanged") {
       if (command.space.id === spaceId) return;
       spaceId = command.space.id;
-      invalidateLocalAttachmentDraftHost(host);
+      invalidateLocalAttachmentDraftHost(installation.host);
+      installation.dispose();
+      installation = installForSpace(spaceId);
       return;
     }
     if (command.type === "sessionRevoked" && active) {
       active = false;
-      invalidateLocalAttachmentDraftHost(host);
-      disposeHost();
+      invalidateLocalAttachmentDraftHost(installation.host);
+      installation.dispose();
     }
   });
   return () => {
     if (active) {
-      invalidateLocalAttachmentDraftHost(host);
-      disposeHost();
+      invalidateLocalAttachmentDraftHost(installation.host);
+      installation.dispose();
     }
     active = false;
     offCommand();

@@ -30,6 +30,7 @@ interface SendOwnership {
 
 interface ChannelRuntime {
   generations: Map<string, number>;
+  cancelled: Map<string, number>;
   consumed: Map<string, number>;
   sending: Map<string, SendOwnership>;
   mutations: Map<string, Promise<void>>;
@@ -61,6 +62,7 @@ function channelRuntime(
   if (!value) {
     value = {
       generations: new Map(),
+      cancelled: new Map(),
       consumed: new Map(),
       sending: new Map(),
       mutations: new Map(),
@@ -94,13 +96,40 @@ function isCurrentGeneration(
   return runtime.generations.get(attachmentId) === generation;
 }
 
+function cancelGeneration(
+  runtime: ChannelRuntime,
+  attachmentId: string,
+  generation: number
+): void {
+  runtime.cancelled.set(
+    attachmentId,
+    Math.max(runtime.cancelled.get(attachmentId) ?? 0, generation)
+  );
+}
+
+function isCancelled(
+  runtime: ChannelRuntime,
+  attachmentId: string,
+  generation: number
+): boolean {
+  return (runtime.cancelled.get(attachmentId) ?? 0) >= generation;
+}
+
+function isSendOwned(
+  runtime: ChannelRuntime,
+  attachmentId: string,
+  generation: number
+): boolean {
+  return runtime.sending.get(attachmentId)?.generation === generation;
+}
+
 function isOwnedOrConsumed(
   runtime: ChannelRuntime,
   attachmentId: string,
   generation: number
 ): boolean {
   return (
-    runtime.sending.get(attachmentId)?.generation === generation ||
+    isSendOwned(runtime, attachmentId, generation) ||
     (runtime.consumed.get(attachmentId) ?? 0) >= generation
   );
 }
@@ -389,7 +418,12 @@ export function createChatComposerAttachmentDraftPort(
         const content = await file.arrayBuffer();
         if (!isActive() || states.get(id) !== state) return false;
         const staged = await enqueueMutation(shared, id, async () => {
-          if (!isCurrentGeneration(shared, id, generation)) return undefined;
+          if (
+            !isCurrentGeneration(shared, id, generation) ||
+            isCancelled(shared, id, generation)
+          ) {
+            return undefined;
+          }
           return host.stage({
             channel,
             attachment: {
@@ -405,7 +439,13 @@ export function createChatComposerAttachmentDraftPort(
           });
         });
         state.writePending = false;
-        if (!staged) return false;
+        if (!staged) {
+          if (states.get(id) === state && isCancelled(shared, id, generation)) {
+            states.delete(id);
+            return true;
+          }
+          return false;
+        }
         if (Number.isFinite(staged.position)) {
           nextPosition = Math.max(nextPosition, staged.position + 1);
         }
@@ -413,6 +453,9 @@ export function createChatComposerAttachmentDraftPort(
           states.get(id) !== state ||
           !isCurrentGeneration(shared, id, generation)
         ) {
+          if (isCancelled(shared, id, generation)) {
+            await remove(id, generation);
+          }
           return true;
         }
         state.persisted = true;
@@ -465,11 +508,12 @@ export function createChatComposerAttachmentDraftPort(
           continue;
         }
         if (state.phase === "staging") {
+          cancelGeneration(shared, id, state.generation);
           state.removeAfterWrite = true;
-          void remove(id, state.generation);
           continue;
         }
         if (state.phase === "failed") {
+          if (isSendOwned(shared, id, state.generation)) continue;
           states.delete(id);
           continue;
         }
@@ -495,7 +539,7 @@ export function createChatComposerAttachmentDraftPort(
           continue;
         }
         state.removeAfterWrite = true;
-        void remove(id, state.generation);
+        cancelGeneration(shared, id, state.generation);
       }
     },
 
@@ -538,14 +582,20 @@ export function createChatComposerAttachmentDraftPort(
           }
           continue;
         }
-        shared.consumed.set(
-          id,
-          Math.max(shared.consumed.get(id) ?? 0, generation)
-        );
         if (state?.generation === generation && state.writePending) {
           state.removeAfterWrite = true;
         }
-        void remove(id, generation).finally(releaseOwnership);
+        const finishSettlement = () => {
+          shared.consumed.set(
+            id,
+            Math.max(shared.consumed.get(id) ?? 0, generation)
+          );
+          releaseOwnership();
+        };
+        void remove(id, generation).then(
+          finishSettlement,
+          finishSettlement
+        );
       }
     },
 
