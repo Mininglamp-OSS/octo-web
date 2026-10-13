@@ -1,6 +1,5 @@
 import {
-  invalidateLocalAttachmentDraftHost,
-  installLocalAttachmentDraftHost,
+  createLocalAttachmentDraftSession,
   type LocalAttachmentDraftHost,
 } from "@octo/base/src/features/chat-composer/local-drafts";
 import type { OctoBuddyCommunicationBridge } from "./hostBridge";
@@ -24,6 +23,7 @@ export function installClientLocalAttachmentDrafts(
     }
     return () => {};
   }
+  const session = createLocalAttachmentDraftSession();
   const installForSpace = (spaceId: string) => {
     const host: LocalAttachmentDraftHost = {
       version: 1,
@@ -32,10 +32,7 @@ export function installClientLocalAttachmentDrafts(
       read: (input) => bridge.readAttachmentDraft!({ ...input, spaceId }),
       remove: (input) => bridge.removeAttachmentDraft!({ ...input, spaceId }),
     };
-    return {
-      host,
-      dispose: installLocalAttachmentDraftHost(host),
-    };
+    return session.install(spaceId, host);
   };
   let active = true;
   let spaceId = initialSpaceId;
@@ -44,8 +41,7 @@ export function installClientLocalAttachmentDrafts(
   const dispose = () => {
     if (!active) return;
     active = false;
-    invalidateLocalAttachmentDraftHost(installation.host);
-    installation.dispose();
+    session.dispose();
     offCommand();
   };
   offCommand = bridge.onCommand((command) => {
@@ -53,8 +49,7 @@ export function installClientLocalAttachmentDrafts(
     if (command.type === "spaceChanged") {
       if (command.space.id === spaceId) return;
       spaceId = command.space.id;
-      invalidateLocalAttachmentDraftHost(installation.host);
-      installation.dispose();
+      installation();
       installation = installForSpace(spaceId);
       return;
     }

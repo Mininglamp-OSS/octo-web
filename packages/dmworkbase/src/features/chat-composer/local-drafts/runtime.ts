@@ -39,6 +39,7 @@ interface ChannelRuntime {
 
 interface HostRuntime {
   channels: Map<string, ChannelRuntime>;
+  revoked: boolean;
 }
 
 interface HostInstallation {
@@ -168,11 +169,57 @@ function installedHost(): HostInstallation | undefined {
 export function installLocalAttachmentDraftHost(
   host: LocalAttachmentDraftHost
 ): () => void {
+  return installHost(host, { channels: new Map(), revoked: false });
+}
+
+/** Owns transient draft state for one authenticated renderer session, by space. */
+export function createLocalAttachmentDraftSession() {
+  const spaces = new Map<string, HostRuntime>();
+  const installations = new Set<() => void>();
+  let revoked = false;
+  return {
+    install(spaceId: string, host: LocalAttachmentDraftHost): () => void {
+      if (revoked) return () => {};
+      let runtime = spaces.get(spaceId);
+      if (!runtime) {
+        runtime = { channels: new Map(), revoked: false };
+        spaces.set(spaceId, runtime);
+      }
+      const uninstall = installHost(host, runtime);
+      const dispose = () => {
+        uninstall();
+        installations.delete(dispose);
+      };
+      installations.add(dispose);
+      return dispose;
+    },
+    dispose() {
+      if (revoked) return;
+      revoked = true;
+      for (const runtime of spaces.values()) {
+        runtime.revoked = true;
+        // Stale ports also reference these channel maps. Clear their ownership
+        // and fence late callbacks rather than just dropping the space index.
+        for (const channel of runtime.channels.values()) {
+          for (const state of Object.values(channel)) state.clear();
+        }
+        runtime.channels.clear();
+      }
+      spaces.clear();
+      for (const dispose of installations) dispose();
+    },
+  };
+}
+
+function installHost(
+  host: LocalAttachmentDraftHost,
+  runtime: HostRuntime
+): () => void {
   const installation: HostInstallation = {
     host,
     active: true,
     revision: 0,
-    runtime: { channels: new Map() },
+    runtime,
   };
   hostInstallations.push(installation);
   return () => {
@@ -210,9 +257,10 @@ export function createChatComposerAttachmentDraftPort(
   if (!installation || installation.host.version !== 1) return undefined;
   const host = installation.host;
   const hostRevision = installation.revision;
-  const shared = channelRuntime(installation.runtime, channel);
+  const runtime = installation.runtime;
+  const shared = channelRuntime(runtime, channel);
   const isActive = () =>
-    installation.active && installation.revision === hostRevision;
+    !runtime.revoked && installation.active && installation.revision === hostRevision;
   const states = new Map<string, AttachmentState>();
   const ownedSends = new Map<string, symbol>();
   const restoreMetadataBarriers = new Set<Promise<void>>();
@@ -224,7 +272,7 @@ export function createChatComposerAttachmentDraftPort(
     generation: number
   ): Promise<boolean> => {
     // Publish intent before queuing I/O so other ports cannot restore a stale list.
-    if (!isCurrentGeneration(shared, attachmentId, generation)) {
+    if (runtime.revoked || !isCurrentGeneration(shared, attachmentId, generation)) {
       return Promise.resolve(false);
     }
     const intent = { generation, token: Symbol(attachmentId) };
@@ -235,7 +283,7 @@ export function createChatComposerAttachmentDraftPort(
       state.live = false;
     }
     const removal = enqueueMutation(shared, attachmentId, async () => {
-      if (!isCurrentGeneration(shared, attachmentId, generation)) return false;
+      if (runtime.revoked || !isCurrentGeneration(shared, attachmentId, generation)) return false;
       await host.remove({ channel, attachmentId });
       return true;
     });
@@ -378,6 +426,7 @@ export function createChatComposerAttachmentDraftPort(
             .filter(({ id }) => {
               const state = states.get(id);
               return (
+                isActive() &&
                 state !== undefined &&
                 isCurrentGeneration(shared, id, state.generation) &&
                 !isOwnedOrConsumed(shared, id, state.generation)
@@ -432,6 +481,7 @@ export function createChatComposerAttachmentDraftPort(
         if (!isActive() || states.get(id) !== state) return false;
         const staged = await enqueueMutation(shared, id, async () => {
           if (
+            runtime.revoked ||
             !isCurrentGeneration(shared, id, generation) ||
             isCancelled(shared, id, generation)
           ) {
@@ -452,6 +502,7 @@ export function createChatComposerAttachmentDraftPort(
           });
         });
         state.writePending = false;
+        if (runtime.revoked) return false;
         if (!staged) {
           if (states.get(id) === state && isCancelled(shared, id, generation)) {
             states.delete(id);
@@ -538,6 +589,7 @@ export function createChatComposerAttachmentDraftPort(
     },
 
     discardUnready(attachmentIds) {
+      if (runtime.revoked) return;
       for (const id of attachmentIds) {
         const state = states.get(id);
         if (
@@ -572,6 +624,9 @@ export function createChatComposerAttachmentDraftPort(
     },
 
     settleSend({ attachmentIds, keepAttachmentIds }) {
+      // Space disposal still allows the original owner to settle; session
+      // revocation must never perform I/O against a subsequent login.
+      if (runtime.revoked) return;
       const keep = new Set(keepAttachmentIds);
       for (const id of attachmentIds) {
         const token = ownedSends.get(id);
@@ -602,6 +657,7 @@ export function createChatComposerAttachmentDraftPort(
           state.removeAfterWrite = true;
         }
         const finishSettlement = () => {
+          if (runtime.revoked) return;
           shared.consumed.set(
             id,
             Math.max(shared.consumed.get(id) ?? 0, generation)

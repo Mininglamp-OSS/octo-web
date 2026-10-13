@@ -156,14 +156,33 @@ host 后，ChatComposer 才会把附件按会话写入本地持久化存储，�
 restore 在每次 read 后及返回前都会重新检查所有权、删除意图和已消费代次。
 恢复结果返回不代表 UI 已插入：未被 `syncLive` 观察为 live 的 restoring 附件必须保留，
 包括视频封面等待和恢复中切换会话。普通删除意图在进入异步队列前共享到同会话所有端口，
-删除失败时撤回该意图，允许重新恢复。成功删除意图保留到安装结束，以屏蔽先前的 list/read。
-发送后删除失败仍保留当前 JS 生命周期内的 consumed 标记，避免立即重发；该标记不会跨
+删除失败时撤回该意图，允许重新恢复。成功删除意图保留到登录会话结束，以屏蔽先前的 list/read。
+Client 桥接为每个登录会话创建 `createLocalAttachmentDraftSession()`，按 spaceId 保存运行状态。
+切换空间仅卸载当前 host；重新进入同一空间时复用 generations、sending、consumed、removals 和
+mutation 队列。旧端口的 UI 操作保持失效，发送结算仍绑定原空间和原代次。
+发送后删除失败仍保留当前登录会话内的 consumed 标记，避免立即重发；该标记不会跨
 renderer 重载持久化，宿主删除故障后的跨重载清理重试仍是限制。
 
 此能力需要 Buddy 同步提供 `localAttachmentDraftsVersion: 2`，四个方法均接收固定 `spaceId`。
 V2 修正开发期 V1 缺少空间绑定的问题；内部 `LocalAttachmentDraftHost.version: 1` 是独立
 适配器版本。缺失能力沿用 Web 行为，旧版、未来未知版本或不完整桥接会记录诊断并回退。
-`sessionRevoked` 终止本次安装并取消订阅，排队的 `spaceChanged` 不能重新安装能力。
+`sessionRevoked` 或 UI 卸载会终止整个 session，清空所有空间状态并取消订阅。旧发送结算和
+尚未开始的存储操作不能再调用 host，排队的 `spaceChanged` 不能重新安装能力。已进入 Client
+的 I/O 仍由 Client 的登录态检查和退出清理约束。
+
+跨空间状态转换矩阵（桥接层磁盘 fixture 回归：`localAttachmentDrafts.lifecycle.test.ts`）：
+
+| A 的状态/事件 | A → B → A 后 | 原操作结束后 |
+| --- | --- | --- |
+| 已持久化、未发送 | 可恢复 | 保留磁盘草稿 |
+| 正在发送 | 不恢复，保留原发送所有权 | 成功则删除；保留重试则允许恢复 |
+| 发送成功、删除等待中 | 不恢复 | 删除成功继续隐藏；失败由 consumed 继续屏蔽 |
+| 发送成功、删除已失败 | 不恢复 | 标记保留到 session 结束 |
+| 普通删除等待中 | 不恢复 | 成功则删除；失败撤回意图并允许恢复 |
+| 旧删除执行中，新代次写入同 ID | 新写入等待旧删除 | 旧结算不影响新代次 |
+| 恢复已读出部分附件后切换空间 | 旧恢复返回空结果 | 新端口可重新恢复 |
+| 同 ID 位于 B 或另一会话类型 | 状态相互隔离 | 结算只影响原空间、会话、代次 |
+| 任意空间状态 → session 撤销/销毁 | 清空全部空间运行状态 | 旧回调失效，新 session 独立 |
 
 host 边界要求：
 
