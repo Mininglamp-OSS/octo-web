@@ -152,8 +152,18 @@ sendText     wire 文本和 mention sidecar
 host 后，ChatComposer 才会把附件按会话写入本地持久化存储，并在重新进入会话时恢复。
 
 运行时为同一附件 ID 维护递增代次，并串行执行 stage/remove。发送所有权绑定到具体代次：
-成功发送后，所有权持续到持久化删除结束；旧发送迟到的删除不能删除新端口重建的同 ID 草稿；
-restore 在每次 read 后及返回前都会重新检查所有权和已消费代次。
+成功发送后，所有权持续到删除尝试落定（成功或失败）；旧发送迟到的删除不能删除新端口重建的同 ID 草稿；
+restore 在每次 read 后及返回前都会重新检查所有权、删除意图和已消费代次。
+恢复结果返回不代表 UI 已插入：未被 `syncLive` 观察为 live 的 restoring 附件必须保留，
+包括视频封面等待和恢复中切换会话。普通删除意图在进入异步队列前共享到同会话所有端口，
+删除失败时撤回该意图，允许重新恢复。成功删除意图保留到安装结束，以屏蔽先前的 list/read。
+发送后删除失败仍保留当前 JS 生命周期内的 consumed 标记，避免立即重发；该标记不会跨
+renderer 重载持久化，宿主删除故障后的跨重载清理重试仍是限制。
+
+此能力需要 Buddy 同步提供 `localAttachmentDraftsVersion: 2`，四个方法均接收固定 `spaceId`。
+V2 修正开发期 V1 缺少空间绑定的问题；内部 `LocalAttachmentDraftHost.version: 1` 是独立
+适配器版本。缺失能力沿用 Web 行为，旧版、未来未知版本或不完整桥接会记录诊断并回退。
+`sessionRevoked` 终止本次安装并取消订阅，排队的 `spaceChanged` 不能重新安装能力。
 
 host 边界要求：
 

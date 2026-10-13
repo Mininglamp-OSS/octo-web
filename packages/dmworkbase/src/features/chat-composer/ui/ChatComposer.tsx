@@ -877,6 +877,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         !editor.isDestroyed;
 
       const staging: Promise<boolean>[] = [];
+      let inserted = 0;
       const existingIds = new Set([
         ...(editor
           ? extractAttachmentsFromEditor(editor).map(({ id }) => id)
@@ -884,7 +885,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         ...attachmentStore.snapshotTopAttachments().map(({ id }) => id),
       ]);
       for (const attachment of attachments) {
-        if (!isAttachmentTargetActive()) return;
+        if (!isAttachmentTargetActive()) break;
         const { id, file, source } = attachment;
         if (attachment.restored && existingIds.has(id)) continue;
         existingIds.add(id);
@@ -916,7 +917,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             previewUrl = URL.createObjectURL(file);
           } else if (isVideoFile(file)) {
             previewUrl = await generateVideoCover(file);
-            if (!isAttachmentTargetActive()) return;
+            if (!isAttachmentTargetActive()) break;
           }
 
           const item: TopAttachmentItem = {
@@ -929,6 +930,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
           };
           attachmentStore.appendTopAttachment(item);
         }
+        inserted += 1;
         if (!attachment.restored && props.attachmentDrafts) {
           staging.push(
             props.attachmentDrafts.stage({ id, file, source }, position)
@@ -936,7 +938,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         }
       }
 
-      if (isAttachmentTargetActive()) setIsMultiLine(true);
+      if (inserted > 0 && isAttachmentTargetActive()) setIsMultiLine(true);
       const results = await Promise.all(staging);
       if (
         results.some((persisted) => !persisted) &&
@@ -1006,6 +1008,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             restored: true,
           }))
         ).then(() => {
+          if (!active || !composerMountedRef.current || editor.isDestroyed) return;
           const inlineIds = extractAttachmentsFromEditor(editor).map(
             ({ id }) => id
           );

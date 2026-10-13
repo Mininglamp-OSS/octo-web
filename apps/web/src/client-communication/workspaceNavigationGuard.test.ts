@@ -60,6 +60,8 @@ describe("workspace navigation attachment guard", () => {
   });
 
   it("cancels without committing the target", () => {
+    const discard = vi.fn();
+    mocks.shared.pendingAttachmentDiscard = discard;
     mocks.shared.pendingAttachmentGuard = () => false;
     const guard = createWorkspaceNavigationGuard();
     const proceed = vi.fn();
@@ -70,6 +72,7 @@ describe("workspace navigation attachment guard", () => {
     dialog.onOk();
     expect(cancel).toHaveBeenCalledTimes(1);
     expect(proceed).not.toHaveBeenCalled();
+    expect(discard).not.toHaveBeenCalled();
   });
 
   it("destroys replaced dialogs and ignores stale callbacks", () => {

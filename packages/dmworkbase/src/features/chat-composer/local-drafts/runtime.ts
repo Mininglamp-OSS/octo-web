@@ -32,6 +32,7 @@ interface ChannelRuntime {
   generations: Map<string, number>;
   cancelled: Map<string, number>;
   consumed: Map<string, number>;
+  removals: Map<string, { generation: number; token: symbol }>;
   sending: Map<string, SendOwnership>;
   mutations: Map<string, Promise<void>>;
 }
@@ -64,6 +65,7 @@ function channelRuntime(
       generations: new Map(),
       cancelled: new Map(),
       consumed: new Map(),
+      removals: new Map(),
       sending: new Map(),
       mutations: new Map(),
     };
@@ -129,6 +131,7 @@ function isOwnedOrConsumed(
   generation: number
 ): boolean {
   return (
+    (runtime.removals.get(attachmentId)?.generation ?? 0) >= generation ||
     isSendOwned(runtime, attachmentId, generation) ||
     (runtime.consumed.get(attachmentId) ?? 0) >= generation
   );
@@ -220,6 +223,12 @@ export function createChatComposerAttachmentDraftPort(
     attachmentId: string,
     generation: number
   ): Promise<boolean> => {
+    // Publish intent before queuing I/O so other ports cannot restore a stale list.
+    if (!isCurrentGeneration(shared, attachmentId, generation)) {
+      return Promise.resolve(false);
+    }
+    const intent = { generation, token: Symbol(attachmentId) };
+    shared.removals.set(attachmentId, intent);
     const state = states.get(attachmentId);
     if (state?.generation === generation) {
       state.phase = "removing";
@@ -237,6 +246,10 @@ export function createChatComposerAttachmentDraftPort(
         }
       },
       (error) => {
+        // A failed ordinary delete must remain recoverable. Never clear a newer intent.
+        if (shared.removals.get(attachmentId) === intent) {
+          shared.removals.delete(attachmentId);
+        }
         const current = states.get(attachmentId);
         if (current?.generation === generation) {
           current.phase = current.persisted ? "ready" : "failed";
@@ -501,6 +514,9 @@ export function createChatComposerAttachmentDraftPort(
         if (state.phase === "restoring" && state.live) state.phase = "ready";
         if (
           state.live ||
+          // A restored file is not deleted until the UI has actually observed it.
+          // Video previews and unmounts can leave only part of a restore applied.
+          state.phase === "restoring" ||
           state.phase === "restore-failed" ||
           state.phase === "sending" ||
           state.phase === "removing"

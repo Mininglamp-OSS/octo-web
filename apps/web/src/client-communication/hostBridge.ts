@@ -99,8 +99,8 @@ export interface DocumentForwardRequest {
 }
 
 export interface OctoBuddyCommunicationBridge {
-  /** Optional Client-owned local attachment draft persistence. */
-  localAttachmentDraftsVersion?: 2;
+  /** Optional Client capability. V2 binds every operation to an explicit spaceId. */
+  localAttachmentDraftsVersion?: number;
   stageAttachmentDraft?(
     input: Parameters<
       import("@octo/base/src/features/chat-composer/local-drafts").LocalAttachmentDraftHost["stage"]

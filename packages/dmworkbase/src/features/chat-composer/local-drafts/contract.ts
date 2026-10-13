@@ -17,13 +17,13 @@ export interface LocalAttachmentDraftMetadata {
   updatedAt: number;
 }
 
+/**
+ * Bound to one authenticated account and space. Storage must isolate that scope,
+ * purge account data when its session ends, and enforce a bounded local quota.
+ */
 export interface LocalAttachmentDraftHost {
+  /** Internal composer adapter version; distinct from the Client bridge V2 capability. */
   version: 1;
-  /**
-   * The host installation is bound to one authenticated account and space.
-   * Storage must isolate that scope and purge account data when its session ends.
-   * Hosts should enforce a bounded local quota rather than grow without limit.
-   */
   /**
    * Resolve only after bytes and metadata are durable. Calls that target the
    * same attachment id must be serialized with remove(), including across

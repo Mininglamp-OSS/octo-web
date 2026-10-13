@@ -82,6 +82,7 @@ describe("Client local attachment draft capability", () => {
       file: new File(["x"], "x.txt"),
       source: "upload",
     })).toBe(false);
+    expect(value.stageAttachmentDraft).not.toHaveBeenCalled();
     expect(createChatComposerAttachmentDraftPort(channel)).toBeDefined();
   });
 
@@ -143,6 +144,28 @@ describe("Client local attachment draft capability", () => {
     expect(value.removeAttachmentDraft).not.toHaveBeenCalledWith(
       expect.objectContaining({ spaceId: "space-b" })
     );
+  });
+
+  it("makes revocation terminal even for queued commands and repeated disposal", async () => {
+    const value = bridge();
+    let queuedListener!: Parameters<OctoBuddyCommunicationBridge["onCommand"]>[0];
+    const unsubscribe = vi.fn();
+    value.onCommand = vi.fn((listener) => {
+      queuedListener = listener;
+      return unsubscribe;
+    });
+    dispose = installClientLocalAttachmentDrafts(value, "space-a");
+    const stale = createChatComposerAttachmentDraftPort(channel)!;
+    queuedListener({ type: "sessionRevoked" });
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    queuedListener({ type: "spaceChanged", space: { id: "space-b", name: "B" } });
+    expect(createChatComposerAttachmentDraftPort(channel)).toBeUndefined();
+    await stale.stage({ id: "revoked", file: new File(["x"], "x.txt"), source: "upload" });
+    expect(value.stageAttachmentDraft).not.toHaveBeenCalled();
+    dispose();
+    dispose();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    expect(createChatComposerAttachmentDraftPort(channel)).toBeUndefined();
   });
 
   it("invalidates stale ports and removes the capability on session revocation", async () => {

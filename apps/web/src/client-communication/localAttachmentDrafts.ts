@@ -16,6 +16,12 @@ export function installClientLocalAttachmentDrafts(
     typeof bridge.readAttachmentDraft !== "function" ||
     typeof bridge.removeAttachmentDraft !== "function"
   ) {
+    if (bridge.localAttachmentDraftsVersion !== undefined) {
+      console.warn("[attachment-drafts] unsupported or incomplete Client capability; using attachment leave confirmation", {
+        expectedVersion: 2,
+        actualVersion: bridge.localAttachmentDraftsVersion,
+      });
+    }
     return () => {};
   }
   const installForSpace = (spaceId: string) => {
@@ -34,7 +40,16 @@ export function installClientLocalAttachmentDrafts(
   let active = true;
   let spaceId = initialSpaceId;
   let installation = installForSpace(spaceId);
-  const offCommand = bridge.onCommand((command) => {
+  let offCommand = () => {};
+  const dispose = () => {
+    if (!active) return;
+    active = false;
+    invalidateLocalAttachmentDraftHost(installation.host);
+    installation.dispose();
+    offCommand();
+  };
+  offCommand = bridge.onCommand((command) => {
+    if (!active) return;
     if (command.type === "spaceChanged") {
       if (command.space.id === spaceId) return;
       spaceId = command.space.id;
@@ -43,18 +58,9 @@ export function installClientLocalAttachmentDrafts(
       installation = installForSpace(spaceId);
       return;
     }
-    if (command.type === "sessionRevoked" && active) {
-      active = false;
-      invalidateLocalAttachmentDraftHost(installation.host);
-      installation.dispose();
-    }
+    if (command.type === "sessionRevoked") dispose();
   });
-  return () => {
-    if (active) {
-      invalidateLocalAttachmentDraftHost(installation.host);
-      installation.dispose();
-    }
-    active = false;
-    offCommand();
-  };
+  // Also cover a bridge that synchronously replays revocation on subscription.
+  if (!active) offCommand();
+  return dispose;
 }

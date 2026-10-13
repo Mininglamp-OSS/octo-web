@@ -82,6 +82,120 @@ afterEach(() => {
 });
 
 describe("local attachment draft runtime", () => {
+  it("retains restored drafts until each one has appeared in the composer", async () => {
+    const value = host({
+      list: vi.fn(async () => [metadata("first"), metadata("video", { position: 1 })]),
+      read: vi.fn(async ({ attachmentId }) => ({
+        attachment: metadata(attachmentId), bytes: new Uint8Array([1, 2, 3]),
+      })),
+    });
+    install(value);
+    const port = createChatComposerAttachmentDraftPort(channel)!;
+    expect((await port.restore()).attachments).toHaveLength(2);
+    port.syncLive([]);
+    port.syncLive(["first"]);
+    await Promise.resolve();
+    expect(value.remove).not.toHaveBeenCalled();
+    port.syncLive(["first", "video"]);
+    port.syncLive(["first"]);
+    await vi.waitFor(() => expect(value.remove).toHaveBeenCalledWith({
+      channel, attachmentId: "video",
+    }));
+  });
+
+  it.each(["pending", "read", "collected"] as const)(
+    "shares ordinary deletion intent across ports during %s restore",
+    async (phase) => {
+      const removal = deferred<void>();
+      const read = deferred<void>();
+      const value = host({
+        list: vi.fn(async () => [metadata("gone"), metadata("tail")]),
+        read: vi.fn(async ({ attachmentId }) => {
+          if ((phase === "read" && attachmentId === "gone") ||
+              (phase === "collected" && attachmentId === "tail")) await read.promise;
+          return { attachment: metadata(attachmentId), bytes: new Uint8Array([1, 2, 3]) };
+        }),
+        remove: vi.fn(() => removal.promise),
+      });
+      install(value);
+      const first = createChatComposerAttachmentDraftPort(channel)!;
+      await first.stage({ id: "gone", file: file(), source: "upload" });
+      first.syncLive(["gone"]);
+      const second = createChatComposerAttachmentDraftPort(channel)!;
+      let restoring: ReturnType<typeof second.restore>;
+      if (phase === "pending") {
+        first.syncLive([]);
+        restoring = second.restore();
+      } else {
+        restoring = second.restore();
+        await vi.waitFor(() => expect(value.read).toHaveBeenCalledWith({
+          channel, attachmentId: phase === "read" ? "gone" : "tail",
+        }));
+        first.syncLive([]);
+      }
+      read.resolve();
+      expect((await restoring).attachments.map(({ id }) => id)).toEqual(["tail"]);
+      removal.resolve();
+    }
+  );
+
+  it("allows a remount to recover a draft after ordinary deletion rejects", async () => {
+    const removal = deferred<void>();
+    const value = host({
+      list: vi.fn(async () => [metadata("retained")]),
+      read: vi.fn(async () => ({ attachment: metadata("retained"), bytes: new Uint8Array([1, 2, 3]) })),
+      remove: vi.fn(() => removal.promise),
+    });
+    install(value);
+    const first = createChatComposerAttachmentDraftPort(channel)!;
+    await first.stage({ id: "retained", file: file(), source: "upload" });
+    first.syncLive([]);
+    const second = createChatComposerAttachmentDraftPort(channel)!;
+    expect((await second.restore()).attachments).toEqual([]);
+    removal.reject(new Error("unlink unavailable"));
+    await vi.waitFor(() => expect(value.remove).toHaveBeenCalledOnce());
+    await Promise.resolve();
+    const reopened = createChatComposerAttachmentDraftPort(channel)!;
+    expect((await reopened.restore()).attachments.map(({ id }) => id)).toEqual(["retained"]);
+  });
+
+  it("serializes a replacement write behind an already issued deletion", async () => {
+    const removal = deferred<void>();
+    const value = host({ remove: vi.fn(() => removal.promise) });
+    install(value);
+    const first = createChatComposerAttachmentDraftPort(channel)!;
+    await first.stage({ id: "replace", file: file(), source: "upload" });
+    first.syncLive([]);
+    await vi.waitFor(() => expect(value.remove).toHaveBeenCalledOnce());
+    const second = createChatComposerAttachmentDraftPort(channel)!;
+    const reading = deferred<ArrayBuffer>();
+    const replacement = file();
+    const buffer = vi.spyOn(replacement, "arrayBuffer").mockReturnValue(reading.promise);
+    const staging = second.stage({ id: "replace", file: replacement, source: "upload" });
+    await vi.waitFor(() => expect(buffer).toHaveBeenCalledOnce());
+    reading.resolve(new Uint8Array([1, 2, 3]).buffer);
+    // Flush all microtasks before the next task, with the old unlink still held.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(value.stage).toHaveBeenCalledTimes(1);
+    removal.resolve();
+    expect(await staging).toBe(true);
+    expect(value.stage).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores settlement from a port whose send ownership was replaced", async () => {
+    const value = host();
+    install(value);
+    const first = createChatComposerAttachmentDraftPort(channel)!;
+    await first.stage({ id: "owned", file: file(), source: "upload" });
+    first.beginSend(["owned"]);
+    const second = createChatComposerAttachmentDraftPort(channel)!;
+    second.beginSend(["owned"]);
+    first.settleSend({ attachmentIds: ["owned"], keepAttachmentIds: [] });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(value.remove).not.toHaveBeenCalled();
+    second.settleSend({ attachmentIds: ["owned"], keepAttachmentIds: ["owned"] });
+  });
+
   it("keeps ordinary Web behavior when no Client host is installed", () => {
     expect(createChatComposerAttachmentDraftPort(channel)).toBeUndefined();
   });
