@@ -5,6 +5,7 @@ import type {
 } from "./contract";
 import {
   createChatComposerAttachmentDraftPort,
+  invalidateLocalAttachmentDraftHost,
   installLocalAttachmentDraftHost,
 } from "./runtime";
 
@@ -170,7 +171,10 @@ describe("local attachment draft runtime", () => {
     expect(value.remove).not.toHaveBeenCalled();
     finishSecondRead?.();
 
-    expect((await restoring).attachments.map(({ id }) => id)).toEqual(["first", "second"]);
+    expect((await restoring).attachments.map(({ id }) => id)).toEqual([
+      "first",
+      "second",
+    ]);
     expect(value.remove).not.toHaveBeenCalled();
   });
 
@@ -202,6 +206,142 @@ describe("local attachment draft runtime", () => {
       channel,
       attachmentId: "retry",
     });
+  });
+
+  it("settles a successful send after its port is invalidated", async () => {
+    const value = host();
+    install(value);
+    const port = createChatComposerAttachmentDraftPort(channel)!;
+    await port.stage({ id: "sent", file: file(), source: "upload" });
+    port.beginSend(["sent"]);
+
+    invalidateLocalAttachmentDraftHost(value);
+    port.settleSend({ attachmentIds: ["sent"], keepAttachmentIds: [] });
+
+    await vi.waitFor(() =>
+      expect(value.remove).toHaveBeenCalledWith({
+        channel,
+        attachmentId: "sent",
+      })
+    );
+  });
+
+  it("cleans up an ordinary write that finishes after invalidation", async () => {
+    let finishStage: (() => void) | undefined;
+    const value = host({
+      stage: vi.fn(
+        () =>
+          new Promise<LocalAttachmentDraftMetadata>((resolve) => {
+            finishStage = () => resolve(metadata("stale"));
+          })
+      ),
+    });
+    install(value);
+    const port = createChatComposerAttachmentDraftPort(channel)!;
+    const staging = port.stage({
+      id: "stale",
+      file: file(),
+      source: "upload",
+    });
+    await vi.waitFor(() => expect(value.stage).toHaveBeenCalledOnce());
+
+    invalidateLocalAttachmentDraftHost(value);
+    finishStage?.();
+
+    expect(await staging).toBe(false);
+    expect(value.remove).toHaveBeenCalledWith({
+      channel,
+      attachmentId: "stale",
+    });
+  });
+
+  it("does not let an older send settlement delete a newer draft generation", async () => {
+    const value = host();
+    install(value);
+    const sendingPort = createChatComposerAttachmentDraftPort(channel)!;
+    await sendingPort.stage({
+      id: "shared",
+      file: file("old.txt"),
+      source: "upload",
+    });
+    sendingPort.beginSend(["shared"]);
+
+    const newerPort = createChatComposerAttachmentDraftPort(channel)!;
+    await newerPort.stage({
+      id: "shared",
+      file: file("new.txt"),
+      source: "upload",
+    });
+    sendingPort.settleSend({
+      attachmentIds: ["shared"],
+      keepAttachmentIds: [],
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(value.remove).not.toHaveBeenCalled();
+    expect(newerPort.canLeave(["shared"])).toBe(true);
+  });
+
+  it("keeps send ownership until durable removal finishes", async () => {
+    let finishRemove: (() => void) | undefined;
+    const value = host({
+      list: vi.fn(async () => [metadata("sent")]),
+      read: vi.fn(async () => ({
+        attachment: metadata("sent"),
+        bytes: new Uint8Array([1, 2, 3]),
+      })),
+      remove: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            finishRemove = resolve;
+          })
+      ),
+    });
+    install(value);
+    const sendingPort = createChatComposerAttachmentDraftPort(channel)!;
+    await sendingPort.stage({ id: "sent", file: file(), source: "upload" });
+    sendingPort.beginSend(["sent"]);
+    sendingPort.settleSend({
+      attachmentIds: ["sent"],
+      keepAttachmentIds: [],
+    });
+    await vi.waitFor(() => expect(value.remove).toHaveBeenCalledOnce());
+
+    const reopenedPort = createChatComposerAttachmentDraftPort(channel)!;
+    expect((await reopenedPort.restore()).attachments).toEqual([]);
+    expect(value.read).not.toHaveBeenCalled();
+
+    finishRemove?.();
+  });
+
+  it("does not return an attachment consumed while its restore read is pending", async () => {
+    let finishRead: (() => void) | undefined;
+    const value = host({
+      list: vi.fn(async () => [metadata("sent")]),
+      read: vi.fn(async () => {
+        await new Promise<void>((resolve) => {
+          finishRead = resolve;
+        });
+        return {
+          attachment: metadata("sent"),
+          bytes: new Uint8Array([1, 2, 3]),
+        };
+      }),
+    });
+    install(value);
+    const restoringPort = createChatComposerAttachmentDraftPort(channel)!;
+    const restoring = restoringPort.restore();
+    await vi.waitFor(() => expect(value.read).toHaveBeenCalledOnce());
+
+    const sendingPort = createChatComposerAttachmentDraftPort(channel)!;
+    sendingPort.beginSend(["sent"]);
+    sendingPort.settleSend({
+      attachmentIds: ["sent"],
+      keepAttachmentIds: [],
+    });
+    finishRead?.();
+
+    expect((await restoring).attachments).toEqual([]);
   });
 
   it("does not reactivate an older host disposed out of order", () => {
@@ -246,6 +386,21 @@ describe("local attachment draft runtime", () => {
     });
   });
 
+  it("clears a failed draft after the user confirms navigation", async () => {
+    const value = host({
+      stage: vi.fn(async () => {
+        throw new Error("quota exceeded");
+      }),
+    });
+    install(value);
+    const port = createChatComposerAttachmentDraftPort(channel)!;
+    await port.stage({ id: "failed", file: file(), source: "upload" });
+
+    expect(port.canLeave(["failed"])).toBe(false);
+    port.discardUnready(["failed"]);
+    expect(port.canLeave(["failed"])).toBe(true);
+  });
+
   it("does not discard an attachment owned by an in-flight send", async () => {
     const value = host();
     install(value);
@@ -269,13 +424,28 @@ describe("local attachment draft runtime", () => {
     const value = host();
     install(value);
     const port = createChatComposerAttachmentDraftPort(channel)!;
-    await port.stage({ id: "first", file: file("first.txt"), source: "upload" });
-    await port.stage({ id: "second", file: file("second.txt"), source: "upload" });
+    await port.stage({
+      id: "first",
+      file: file("first.txt"),
+      source: "upload",
+    });
+    await port.stage({
+      id: "second",
+      file: file("second.txt"),
+      source: "upload",
+    });
     port.syncLive(["second"]);
-    await port.stage({ id: "third", file: file("third.txt"), source: "upload" });
+    await port.stage({
+      id: "third",
+      file: file("third.txt"),
+      source: "upload",
+    });
 
-    expect(vi.mocked(value.stage).mock.calls.map(([input]) => input.attachment.position))
-      .toEqual([0, 1, 2]);
+    expect(
+      vi
+        .mocked(value.stage)
+        .mock.calls.map(([input]) => input.attachment.position)
+    ).toEqual([0, 1, 2]);
   });
 
   it("does not mark a failed local write durable after send recovery", async () => {
@@ -289,12 +459,15 @@ describe("local attachment draft runtime", () => {
     await port.stage({ id: "failed", file: file(), source: "upload" });
 
     port.beginSend(["failed"]);
-    port.settleSend({ attachmentIds: ["failed"], keepAttachmentIds: ["failed"] });
+    port.settleSend({
+      attachmentIds: ["failed"],
+      keepAttachmentIds: ["failed"],
+    });
 
     expect(port.canLeave(["failed"])).toBe(false);
   });
 
-  it("removes a consumed attachment again after its pending write lands", async () => {
+  it("removes a consumed attachment after its pending write lands", async () => {
     let finishStage: (() => void) | undefined;
     const value = host({
       stage: vi.fn(
@@ -306,7 +479,11 @@ describe("local attachment draft runtime", () => {
     });
     install(value);
     const port = createChatComposerAttachmentDraftPort(channel)!;
-    const staging = port.stage({ id: "pending", file: file(), source: "upload" });
+    const staging = port.stage({
+      id: "pending",
+      file: file(),
+      source: "upload",
+    });
     await vi.waitFor(() => expect(value.stage).toHaveBeenCalledOnce());
 
     port.beginSend(["pending"]);
@@ -314,7 +491,7 @@ describe("local attachment draft runtime", () => {
     finishStage?.();
     await staging;
 
-    expect(value.remove).toHaveBeenCalledTimes(2);
+    expect(value.remove).toHaveBeenCalledTimes(1);
   });
 
   it("keeps a draft when a pending write finishes before failed-send settlement", async () => {
@@ -351,10 +528,12 @@ describe("local attachment draft runtime", () => {
     });
     install(value);
 
-    expect(await createChatComposerAttachmentDraftPort(channel)!.restore()).toEqual({
+    const port = createChatComposerAttachmentDraftPort(channel)!;
+    expect(await port.restore()).toEqual({
       attachments: [],
       failedCount: 1,
     });
+    port.syncLive([]);
     expect(value.remove).not.toHaveBeenCalled();
   });
 
@@ -375,7 +554,10 @@ describe("local attachment draft runtime", () => {
     const restored = await reopenedPort.restore();
 
     expect(restored.attachments).toEqual([]);
-    sendingPort.settleSend({ attachmentIds: ["sending"], keepAttachmentIds: [] });
+    sendingPort.settleSend({
+      attachmentIds: ["sending"],
+      keepAttachmentIds: [],
+    });
   });
 
   it("keeps send ownership shared after an earlier send has settled", async () => {
@@ -407,7 +589,7 @@ describe("local attachment draft runtime", () => {
     });
   });
 
-  it("removes a deterministically corrupt draft after restore fails", async () => {
+  it("retains a draft when read metadata does not match the list result", async () => {
     const value = host({
       list: vi.fn(async () => [metadata("corrupt")]),
       read: vi.fn(async () => ({
@@ -417,21 +599,46 @@ describe("local attachment draft runtime", () => {
     });
     install(value);
 
-    expect(await createChatComposerAttachmentDraftPort(channel)!.restore()).toEqual({
+    const port = createChatComposerAttachmentDraftPort(channel)!;
+    expect(await port.restore()).toEqual({
       attachments: [],
       failedCount: 1,
     });
-    expect(value.remove).toHaveBeenCalledWith({
-      channel,
-      attachmentId: "corrupt",
+    port.syncLive([]);
+    expect(value.remove).not.toHaveBeenCalled();
+  });
+
+  it("removes a draft whose stored byte length is corrupt", async () => {
+    const value = host({
+      list: vi.fn(async () => [metadata("corrupt")]),
+      read: vi.fn(async () => ({
+        attachment: metadata("corrupt"),
+        bytes: new Uint8Array([1, 2]),
+      })),
     });
+    install(value);
+
+    expect(
+      await createChatComposerAttachmentDraftPort(channel)!.restore()
+    ).toEqual({
+      attachments: [],
+      failedCount: 1,
+    });
+    await vi.waitFor(() =>
+      expect(value.remove).toHaveBeenCalledWith({
+        channel,
+        attachmentId: "corrupt",
+      })
+    );
   });
 
   it("does not clobber a staging id when restore listing resolves later", async () => {
     let finishList: (() => void) | undefined;
     const value = host({
       list: vi.fn(async () => {
-        await new Promise<void>((resolve) => { finishList = resolve; });
+        await new Promise<void>((resolve) => {
+          finishList = resolve;
+        });
         return [metadata("shared", { position: 4 })];
       }),
       read: vi.fn(async () => ({
@@ -459,7 +666,9 @@ describe("local attachment draft runtime", () => {
     let finishList: (() => void) | undefined;
     const value = host({
       list: vi.fn(async () => {
-        await new Promise<void>((resolve) => { finishList = resolve; });
+        await new Promise<void>((resolve) => {
+          finishList = resolve;
+        });
         return [metadata("restored", { position: 0 })];
       }),
       read: vi.fn(async () => ({
@@ -480,9 +689,41 @@ describe("local attachment draft runtime", () => {
     finishList?.();
     await Promise.all([restoring, staging]);
 
-    expect(value.stage).toHaveBeenCalledWith(expect.objectContaining({
-      attachment: expect.objectContaining({ id: "recovered", position: 1 }),
-    }));
+    expect(value.stage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attachment: expect.objectContaining({ id: "recovered", position: 1 }),
+      })
+    );
+  });
+
+  it("ignores non-finite host positions when assigning the next draft position", async () => {
+    const value = host({
+      list: vi.fn(async () => [metadata("invalid", { position: Number.NaN })]),
+      read: vi.fn(async () => ({
+        attachment: metadata("invalid", { position: Number.NaN }),
+        bytes: new Uint8Array([1, 2, 3]),
+      })),
+    });
+    install(value);
+    const port = createChatComposerAttachmentDraftPort(channel)!;
+    await port.restore();
+    await port.stage({
+      id: "next",
+      file: file("next.txt"),
+      source: "upload",
+    });
+
+    expect(value.stage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attachment: expect.objectContaining({
+          id: "next",
+          position: expect.any(Number),
+        }),
+      })
+    );
+    const stagedPosition = vi.mocked(value.stage).mock.calls[0][0].attachment
+      .position;
+    expect(Number.isFinite(stagedPosition)).toBe(true);
   });
 
   it("restores attachments by their explicit position", async () => {

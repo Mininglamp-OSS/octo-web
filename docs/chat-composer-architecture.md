@@ -146,6 +146,25 @@ sendText     wire 文本和 mention sidecar
 如果只有 top attachment 恢复失败，recovery record 必须携带空 editor snapshot，不能把已经发送
 的正文或 inline 资源重新放回输入框。
 
+### 4.3 Client 本地附件草稿
+
+独立 Web 不安装 `LocalAttachmentDraftHost`，仍沿用切换会话时的未发送附件确认。Client 注入
+host 后，ChatComposer 才会把附件按会话写入本地持久化存储，并在重新进入会话时恢复。
+
+运行时为同一附件 ID 维护递增代次，并串行执行 stage/remove。发送所有权绑定到具体代次：
+成功发送后，所有权持续到持久化删除结束；旧发送迟到的删除不能删除新端口重建的同 ID 草稿；
+restore 在每次 read 后及返回前都会重新检查所有权和已消费代次。
+
+host 边界要求：
+
+- `stage()` 必须在元数据和字节都持久化后才 resolve；
+- 同一附件 ID 的 `stage()`/`remove()` 必须有确定顺序，`remove()` 对不存在的记录幂等；
+- `list()`/`read()` 返回同一存储记录的元数据；元数据不一致按可重试失败保留，确定的字节长度
+  损坏才删除；
+- 存储必须按账号、空间和会话隔离，并由 Client 在退出登录或账号生命周期结束时清理；
+- Client 负责总容量上限、配额失败和可观测错误；Web 端在持久化失败时保持切换保护，不静默
+  放行。
+
 ## 5. 跨实例 Recovery
 
 ```text
@@ -171,7 +190,8 @@ old coordinator settlement
 - 连续失败恢复使用实际 editor marker 和 top attachment ID 前缀校验顺序。用户删除、替换或重新
   消费恢复节点后，旧 offset 自动失效。
 
-Recovery 是 session 内存级能力，不写入 IndexedDB，也不承诺浏览器崩溃或刷新后的附件恢复。
+Recovery 本身仍是 session 内存级能力，不写入 IndexedDB。独立 Web 不承诺浏览器崩溃或刷新后
+的附件恢复；安装本地附件草稿 host 的 Client 可恢复已经成功持久化的附件。
 远端草稿写入由 `ComposeDraftWriteQueue` 按 channel 串行，避免旧实例写入覆盖新实例 hydration。
 
 ## 6. 扩展模型

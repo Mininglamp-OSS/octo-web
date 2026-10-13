@@ -10,7 +10,9 @@ type AttachmentPhase =
   | "staging"
   | "ready"
   | "failed"
-  | "sending";
+  | "restore-failed"
+  | "sending"
+  | "removing";
 
 interface AttachmentState {
   phase: AttachmentPhase;
@@ -18,29 +20,109 @@ interface AttachmentState {
   persisted: boolean;
   writePending: boolean;
   removeAfterWrite: boolean;
+  generation: number;
+}
+
+interface SendOwnership {
+  token: symbol;
+  generation: number;
+}
+
+interface ChannelRuntime {
+  generations: Map<string, number>;
+  consumed: Map<string, number>;
+  sending: Map<string, SendOwnership>;
+  mutations: Map<string, Promise<void>>;
+}
+
+interface HostRuntime {
+  channels: Map<string, ChannelRuntime>;
 }
 
 interface HostInstallation {
   host: LocalAttachmentDraftHost;
   active: boolean;
   revision: number;
+  runtime: HostRuntime;
 }
 
 const hostInstallations: HostInstallation[] = [];
-const sendingByChannel = new Map<string, Set<string>>();
 
 function channelKey(channel: LocalAttachmentDraftChannel): string {
   return `${channel.type}:${channel.id}`;
 }
 
-function sendingIds(channel: LocalAttachmentDraftChannel): Set<string> {
+function channelRuntime(
+  runtime: HostRuntime,
+  channel: LocalAttachmentDraftChannel
+): ChannelRuntime {
   const key = channelKey(channel);
-  let ids = sendingByChannel.get(key);
-  if (!ids) {
-    ids = new Set();
-    sendingByChannel.set(key, ids);
+  let value = runtime.channels.get(key);
+  if (!value) {
+    value = {
+      generations: new Map(),
+      consumed: new Map(),
+      sending: new Map(),
+      mutations: new Map(),
+    };
+    runtime.channels.set(key, value);
   }
-  return ids;
+  return value;
+}
+
+function ensureGeneration(
+  runtime: ChannelRuntime,
+  attachmentId: string
+): number {
+  const current = runtime.generations.get(attachmentId);
+  if (current !== undefined) return current;
+  runtime.generations.set(attachmentId, 1);
+  return 1;
+}
+
+function nextGeneration(runtime: ChannelRuntime, attachmentId: string): number {
+  const generation = (runtime.generations.get(attachmentId) ?? 0) + 1;
+  runtime.generations.set(attachmentId, generation);
+  return generation;
+}
+
+function isCurrentGeneration(
+  runtime: ChannelRuntime,
+  attachmentId: string,
+  generation: number
+): boolean {
+  return runtime.generations.get(attachmentId) === generation;
+}
+
+function isOwnedOrConsumed(
+  runtime: ChannelRuntime,
+  attachmentId: string,
+  generation: number
+): boolean {
+  return (
+    runtime.sending.get(attachmentId)?.generation === generation ||
+    (runtime.consumed.get(attachmentId) ?? 0) >= generation
+  );
+}
+
+function enqueueMutation<T>(
+  runtime: ChannelRuntime,
+  attachmentId: string,
+  operation: () => Promise<T>
+): Promise<T> {
+  const previous = runtime.mutations.get(attachmentId) ?? Promise.resolve();
+  const result = previous.catch(() => undefined).then(operation);
+  const tail = result.then(
+    () => undefined,
+    () => undefined
+  );
+  runtime.mutations.set(attachmentId, tail);
+  void tail.then(() => {
+    if (runtime.mutations.get(attachmentId) === tail) {
+      runtime.mutations.delete(attachmentId);
+    }
+  });
+  return result;
 }
 
 function installedHost(): HostInstallation | undefined {
@@ -54,7 +136,12 @@ function installedHost(): HostInstallation | undefined {
 export function installLocalAttachmentDraftHost(
   host: LocalAttachmentDraftHost
 ): () => void {
-  const installation: HostInstallation = { host, active: true, revision: 0 };
+  const installation: HostInstallation = {
+    host,
+    active: true,
+    revision: 0,
+    runtime: { channels: new Map() },
+  };
   hostInstallations.push(installation);
   return () => {
     installation.active = false;
@@ -75,14 +162,14 @@ export function invalidateLocalAttachmentDraftHost(
       installation.revision += 1;
     }
   }
-  sendingByChannel.clear();
 }
 
 function bytes(value: ArrayBuffer | Uint8Array): Uint8Array<ArrayBuffer> {
   return new Uint8Array(value);
 }
 
-class AttachmentDraftIntegrityError extends Error {}
+class AttachmentDraftMetadataError extends Error {}
+class AttachmentDraftCorruptionError extends Error {}
 
 export function createChatComposerAttachmentDraftPort(
   channel: LocalAttachmentDraftChannel
@@ -91,18 +178,44 @@ export function createChatComposerAttachmentDraftPort(
   if (!installation || installation.host.version !== 1) return undefined;
   const host = installation.host;
   const hostRevision = installation.revision;
+  const shared = channelRuntime(installation.runtime, channel);
   const isActive = () =>
     installation.active && installation.revision === hostRevision;
   const states = new Map<string, AttachmentState>();
+  const ownedSends = new Map<string, symbol>();
   const restoreMetadataBarriers = new Set<Promise<void>>();
   let nextPosition = 0;
-  let restoreInFlight = false;
+  let restoreInFlight = 0;
 
-  const remove = (attachmentId: string): void => {
-    states.delete(attachmentId);
-    void host.remove({ channel, attachmentId }).catch((error) => {
-      console.warn("[attachment-drafts] remove failed", error);
+  const remove = (
+    attachmentId: string,
+    generation: number
+  ): Promise<boolean> => {
+    const state = states.get(attachmentId);
+    if (state?.generation === generation) {
+      state.phase = "removing";
+      state.live = false;
+    }
+    const removal = enqueueMutation(shared, attachmentId, async () => {
+      if (!isCurrentGeneration(shared, attachmentId, generation)) return false;
+      await host.remove({ channel, attachmentId });
+      return true;
     });
+    void removal.then(
+      () => {
+        if (states.get(attachmentId)?.generation === generation) {
+          states.delete(attachmentId);
+        }
+      },
+      (error) => {
+        const current = states.get(attachmentId);
+        if (current?.generation === generation) {
+          current.phase = current.persisted ? "ready" : "failed";
+        }
+        console.warn("[attachment-drafts] remove failed", error);
+      }
+    );
+    return removal;
   };
 
   return {
@@ -116,17 +229,20 @@ export function createChatComposerAttachmentDraftPort(
       void metadataBarrier.finally(() => {
         restoreMetadataBarriers.delete(metadataBarrier);
       });
-      restoreInFlight = true;
+      restoreInFlight += 1;
       const restored: RestoredLocalAttachmentDraft[] = [];
       let failedCount = 0;
       try {
         const metadata = await host.list({ channel });
-        if (!isActive()) return { attachments: [], failedCount: 0 };
+        if (!isActive()) return { attachments: [], failedCount };
         for (const attachment of metadata) {
-          nextPosition = Math.max(nextPosition, attachment.position + 1);
+          if (Number.isFinite(attachment.position)) {
+            nextPosition = Math.max(nextPosition, attachment.position + 1);
+          }
+          const generation = ensureGeneration(shared, attachment.id);
           if (
             states.has(attachment.id) ||
-            sendingIds(channel).has(attachment.id)
+            isOwnedOrConsumed(shared, attachment.id, generation)
           ) {
             continue;
           }
@@ -136,39 +252,61 @@ export function createChatComposerAttachmentDraftPort(
             persisted: true,
             writePending: false,
             removeAfterWrite: false,
+            generation,
           });
         }
         releaseMetadata();
         for (const attachment of metadata) {
+          if (!isActive()) break;
           const current = states.get(attachment.id);
           if (!current || current.phase !== "restoring") continue;
-          if (sendingIds(channel).has(attachment.id)) continue;
+          const generation = current.generation;
+          if (
+            !isCurrentGeneration(shared, attachment.id, generation) ||
+            isOwnedOrConsumed(shared, attachment.id, generation)
+          ) {
+            continue;
+          }
           try {
             const result = await host.read({
               channel,
               attachmentId: attachment.id,
             });
-            if (!isActive()) return { attachments: [], failedCount: 0 };
+            if (
+              !isActive() ||
+              !isCurrentGeneration(shared, attachment.id, generation) ||
+              isOwnedOrConsumed(shared, attachment.id, generation)
+            ) {
+              continue;
+            }
             if (
               result.attachment.id !== attachment.id ||
               result.attachment.size !== attachment.size
             ) {
-              throw new AttachmentDraftIntegrityError(
+              throw new AttachmentDraftMetadataError(
                 "Attachment draft metadata changed during restore"
               );
             }
             const content = bytes(result.bytes);
             if (content.byteLength !== attachment.size) {
-              throw new AttachmentDraftIntegrityError(
+              throw new AttachmentDraftCorruptionError(
                 "Attachment draft byte length mismatch"
               );
             }
             const state = states.get(attachment.id);
-            if (!state || state.phase !== "restoring") continue;
+            if (
+              !state ||
+              state.phase !== "restoring" ||
+              state.generation !== generation
+            ) {
+              continue;
+            }
             restored.push({
               id: attachment.id,
               source: attachment.source,
-              position: attachment.position,
+              position: Number.isFinite(attachment.position)
+                ? attachment.position
+                : undefined,
               file: new File([content], attachment.name, {
                 type: attachment.mimeType,
                 lastModified: attachment.lastModified,
@@ -177,73 +315,125 @@ export function createChatComposerAttachmentDraftPort(
           } catch (error) {
             failedCount += 1;
             console.warn("[attachment-drafts] restore failed", error);
-            if (error instanceof AttachmentDraftIntegrityError) {
-              remove(attachment.id);
+            if (error instanceof AttachmentDraftCorruptionError) {
+              void remove(attachment.id, generation);
+            } else {
+              const state = states.get(attachment.id);
+              if (state?.generation === generation) {
+                state.phase = "restore-failed";
+              }
             }
           }
         }
         const positionById = new Map(
-          metadata.map((attachment) => [attachment.id, attachment.position])
+          metadata.map((attachment) => [
+            attachment.id,
+            Number.isFinite(attachment.position) ? attachment.position : 0,
+          ])
         );
         return {
-          attachments: restored.sort(
-            (left, right) =>
-              (positionById.get(left.id) ?? 0) -
-              (positionById.get(right.id) ?? 0)
-          ),
+          attachments: restored
+            .filter(({ id }) => {
+              const state = states.get(id);
+              return (
+                state !== undefined &&
+                isCurrentGeneration(shared, id, state.generation) &&
+                !isOwnedOrConsumed(shared, id, state.generation)
+              );
+            })
+            .sort(
+              (left, right) =>
+                (positionById.get(left.id) ?? 0) -
+                (positionById.get(right.id) ?? 0)
+            ),
           failedCount,
         };
       } finally {
         releaseMetadata();
-        restoreInFlight = false;
+        restoreInFlight -= 1;
       }
     },
 
     async stage({ id, file, source }, position) {
-      if (!isActive()) return false;
+      if (!isActive()) {
+        states.set(id, {
+          phase: "failed",
+          live: true,
+          persisted: false,
+          writePending: false,
+          removeAfterWrite: false,
+          generation: shared.generations.get(id) ?? 0,
+        });
+        return false;
+      }
       const existing = states.get(id);
       if (existing?.persisted) return true;
+      const generation = nextGeneration(shared, id);
       const state: AttachmentState = {
         phase: "staging",
         live: true,
         persisted: false,
         writePending: true,
         removeAfterWrite: false,
+        generation,
       };
       states.set(id, state);
       try {
         await Promise.all([...restoreMetadataBarriers]);
         if (!isActive() || states.get(id) !== state) return false;
-        const resolvedPosition = position ?? nextPosition++;
-        nextPosition = Math.max(nextPosition, resolvedPosition + 1);
+        const requestedPosition =
+          position !== undefined && Number.isFinite(position)
+            ? position
+            : nextPosition++;
+        nextPosition = Math.max(nextPosition, requestedPosition + 1);
         const content = await file.arrayBuffer();
-        if (!isActive()) return false;
-        await host.stage({
-          channel,
-          attachment: {
-            id,
-            position: resolvedPosition,
-            name: file.name,
-            mimeType: file.type,
-            size: file.size,
-            lastModified: file.lastModified,
-            source,
-          },
-          bytes: content,
+        if (!isActive() || states.get(id) !== state) return false;
+        const staged = await enqueueMutation(shared, id, async () => {
+          if (!isCurrentGeneration(shared, id, generation)) return undefined;
+          return host.stage({
+            channel,
+            attachment: {
+              id,
+              position: requestedPosition,
+              name: file.name,
+              mimeType: file.type,
+              size: file.size,
+              lastModified: file.lastModified,
+              source,
+            },
+            bytes: content,
+          });
         });
-        if (!isActive()) return false;
         state.writePending = false;
-        if (states.get(id) !== state) {
-          if (state.removeAfterWrite) {
-            void host.remove({ channel, attachmentId: id }).catch((error) => {
-              console.warn("[attachment-drafts] remove failed", error);
-            });
-          }
+        if (!staged) return false;
+        if (Number.isFinite(staged.position)) {
+          nextPosition = Math.max(nextPosition, staged.position + 1);
+        }
+        if (
+          states.get(id) !== state ||
+          !isCurrentGeneration(shared, id, generation)
+        ) {
           return true;
         }
         state.persisted = true;
-        if (state.removeAfterWrite || (!state.live && state.phase !== "sending")) {
-          remove(id);
+        if (!isActive() && state.phase !== "sending") {
+          state.removeAfterWrite = true;
+          await remove(id, generation);
+          return false;
+        }
+        if (
+          state.removeAfterWrite ||
+          (!state.live && state.phase !== "sending")
+        ) {
+          const pendingRemoval = shared.mutations.get(id);
+          if (pendingRemoval) await pendingRemoval;
+          if (
+            states.get(id) === state &&
+            state.removeAfterWrite &&
+            state.phase !== "removing"
+          ) {
+            await remove(id, generation);
+          }
           return true;
         }
         if (state.phase !== "sending") state.phase = "ready";
@@ -264,60 +454,102 @@ export function createChatComposerAttachmentDraftPort(
       const live = new Set(attachmentIds);
       for (const [id, state] of states) {
         state.live = live.has(id);
-        if (restoreInFlight && state.persisted) continue;
+        if (restoreInFlight > 0 && state.persisted) continue;
         if (state.phase === "restoring" && state.live) state.phase = "ready";
-        if (state.live || state.phase === "sending") continue;
-        if (state.phase === "staging" || state.phase === "restoring") continue;
-        remove(id);
+        if (
+          state.live ||
+          state.phase === "restore-failed" ||
+          state.phase === "sending" ||
+          state.phase === "removing"
+        ) {
+          continue;
+        }
+        if (state.phase === "staging") {
+          state.removeAfterWrite = true;
+          void remove(id, state.generation);
+          continue;
+        }
+        if (state.phase === "failed") {
+          states.delete(id);
+          continue;
+        }
+        void remove(id, state.generation);
       }
     },
 
     discardUnready(attachmentIds) {
-      if (!isActive()) return;
       for (const id of attachmentIds) {
         const state = states.get(id);
         if (
           !state ||
           state.phase === "ready" ||
           state.phase === "sending" ||
+          state.phase === "removing" ||
           state.persisted
         ) {
           continue;
         }
         state.live = false;
-        if (state.persisted) remove(id);
+        if (state.phase === "failed") {
+          states.delete(id);
+          continue;
+        }
+        state.removeAfterWrite = true;
+        void remove(id, state.generation);
       }
     },
 
     beginSend(attachmentIds) {
       if (!isActive()) return;
       for (const id of attachmentIds) {
-        sendingIds(channel).add(id);
         const state = states.get(id);
+        const generation = state?.generation ?? ensureGeneration(shared, id);
+        const token = Symbol(id);
+        shared.sending.set(id, { token, generation });
+        ownedSends.set(id, token);
         if (state) state.phase = "sending";
       }
     },
 
     settleSend({ attachmentIds, keepAttachmentIds }) {
-      if (!isActive()) return;
       const keep = new Set(keepAttachmentIds);
       for (const id of attachmentIds) {
-        sendingIds(channel).delete(id);
+        const token = ownedSends.get(id);
+        const ownership = shared.sending.get(id);
+        if (!token || ownership?.token !== token) continue;
+        const { generation } = ownership;
+        const releaseOwnership = () => {
+          if (shared.sending.get(id)?.token === token) {
+            shared.sending.delete(id);
+          }
+          if (ownedSends.get(id) === token) ownedSends.delete(id);
+        };
         const state = states.get(id);
-        if (!state) continue;
         if (keep.has(id)) {
-          state.live = true;
-          state.removeAfterWrite = false;
-          state.phase = state.persisted ? "ready" : state.writePending ? "staging" : "failed";
-        } else {
-          if (state.writePending) state.removeAfterWrite = true;
-          remove(id);
+          releaseOwnership();
+          if (state?.generation === generation) {
+            state.live = true;
+            state.removeAfterWrite = false;
+            state.phase = state.persisted
+              ? "ready"
+              : state.writePending
+              ? "staging"
+              : "failed";
+          }
+          continue;
         }
+        shared.consumed.set(
+          id,
+          Math.max(shared.consumed.get(id) ?? 0, generation)
+        );
+        if (state?.generation === generation && state.writePending) {
+          state.removeAfterWrite = true;
+        }
+        void remove(id, generation).finally(releaseOwnership);
       }
     },
 
     canLeave(attachmentIds) {
-      if (!isActive()) return attachmentIds.length === 0;
       return attachmentIds.every((id) => {
         const state = states.get(id);
         return (

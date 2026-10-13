@@ -19,6 +19,11 @@ export interface LocalAttachmentDraftMetadata {
 
 export interface LocalAttachmentDraftHost {
   version: 1;
+  /**
+   * Resolve only after bytes and metadata are durable. Calls that target the
+   * same attachment id must be serialized with remove(), including across
+   * renderer reloads that share the same backing store.
+   */
   stage(input: {
     channel: LocalAttachmentDraftChannel;
     attachment: Omit<LocalAttachmentDraftMetadata, "createdAt" | "updatedAt">;
@@ -31,6 +36,10 @@ export interface LocalAttachmentDraftHost {
     channel: LocalAttachmentDraftChannel;
     attachmentId: string;
   }): Promise<{
+    /**
+     * Metadata should describe the same stored record returned by list().
+     * The Web runtime retains, rather than deletes, records on a mismatch.
+     */
     attachment: LocalAttachmentDraftMetadata;
     bytes: ArrayBuffer | Uint8Array;
   }>;
@@ -53,7 +62,10 @@ export interface ChatComposerAttachmentDraftPort {
     attachments: RestoredLocalAttachmentDraft[];
     failedCount: number;
   }>;
-  stage(input: RestoredLocalAttachmentDraft, position?: number): Promise<boolean>;
+  stage(
+    input: RestoredLocalAttachmentDraft,
+    position?: number
+  ): Promise<boolean>;
   syncLive(attachmentIds: readonly string[]): void;
   discardUnready(attachmentIds: readonly string[]): void;
   beginSend(attachmentIds: readonly string[]): void;
