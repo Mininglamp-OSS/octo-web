@@ -276,6 +276,9 @@ export default function SummaryWorkbenchFeature({
     layout: embedded ? "panel" : "full",
     autoHydrate: initialSessionId.length > 0,
     mixedSources,
+    onScopeNormalized: () => {
+      Toast.info(t("summary.workbench.notice.hydratedScopeNormalized"));
+    },
     onSessionIdChange: (sessionId) => {
       if (sessionId) {
         writeSummaryWorkbenchSession(storageScope, sessionId);
@@ -630,10 +633,9 @@ export default function SummaryWorkbenchFeature({
   );
   // Mixed document+chat: when the server advertises mixed_sources, the chat
   // time-range entry stays available alongside documents (it scopes the chat
-  // side only); the participant entry remains exclusive with documents
-  // (phase-1 personal-only). When mixed_sources is OFF (gate default), the
-  // pre-mixed behavior is kept: a document scope offers neither chat nor
-  // time_range, so nothing the worker would reject can be composed.
+  // side only); the participant entry remains exclusive with documents.
+  // Gate OFF keeps pure-source writes mutually exclusive, while a retained
+  // mixed scope stays visible and recoverable until the user removes one side.
   const mixedDocumentsSelected = (workbench.scope.documents ?? []).length > 0;
   const mixedChatPresent = workbench.scope.selectedChannels.length > 0;
   const scopeIssues = summaryWorkbenchScopeIssues(workbench.scope, {
@@ -659,8 +661,14 @@ export default function SummaryWorkbenchFeature({
     mixedDocumentsSelected
       ? mixedSources
         ? [
-            "chat",
-            ...(documentSelectorAvailable ? (["document"] as const) : []),
+            ...(chatMaxSelect > 0 || workbench.scope.selectedChannels.length > 0
+              ? (["chat"] as const)
+              : []),
+            ...(documentSelectorAvailable &&
+            (documentMaxSelect > 0 ||
+              (workbench.scope.documents ?? []).length > 0)
+              ? (["document"] as const)
+              : []),
             ...(mixedChatPresent ? (["time_range"] as const) : []),
           ]
         : documentSelectorAvailable
@@ -678,8 +686,14 @@ export default function SummaryWorkbenchFeature({
             // scope still holds documents can switch to a chat scope.
             ["chat"]
       : [
-          "chat",
-          ...(documentSelectorAvailable ? (["document"] as const) : []),
+          ...(chatMaxSelect > 0 || workbench.scope.selectedChannels.length > 0
+            ? (["chat"] as const)
+            : []),
+          ...(documentSelectorAvailable &&
+          (documentMaxSelect > 0 ||
+            (workbench.scope.documents ?? []).length > 0)
+            ? (["document"] as const)
+            : []),
           "participant",
           "time_range",
         ];
@@ -708,11 +722,11 @@ export default function SummaryWorkbenchFeature({
         ? "summary.workbench.composer.generate"
         : "summary.workbench.composer.send",
     resumeLastSessionDisabled: busy || hasUnpersistedDraft,
-    errorMessage: displayErrorKey
-      ? t(displayErrorKey)
-      : workbench.viewState.errorMessage ||
-        participantScopeErrorMessage ||
-        (scopeIssueMessageKey ? t(scopeIssueMessageKey) : undefined),
+    errorMessage: scopeIssueMessageKey
+      ? t(scopeIssueMessageKey)
+      : displayErrorKey
+        ? t(displayErrorKey)
+        : workbench.viewState.errorMessage || participantScopeErrorMessage,
     referencePreviewOpen,
     referencePreviewId,
     availableContextKinds,
@@ -723,6 +737,10 @@ export default function SummaryWorkbenchFeature({
     onApplied?: () => void
   ) => {
     const baseScope = workbench.scope;
+    if (sameSummaryWorkbenchScope(baseScope, nextScope)) {
+      onApplied?.();
+      return;
+    }
     const currentIssues = summaryWorkbenchScopeIssues(baseScope, {
       mixedSources,
     });
@@ -732,13 +750,13 @@ export default function SummaryWorkbenchFeature({
     const introducesIssue = nextIssues.some(
       (issue) => !currentIssues.includes(issue)
     );
-    const improvesInvalidScope =
-      nextIssues.length < currentIssues.length ||
-      summaryWorkbenchSourceCount(nextScope) <
+    const growsInvalidSourceSet =
+      nextIssues.length > 0 &&
+      summaryWorkbenchSourceCount(nextScope) >
         summaryWorkbenchSourceCount(baseScope);
     if (
       nextIssues.length > 0 &&
-      (introducesIssue || !improvesInvalidScope)
+      (introducesIssue || growsInvalidSourceSet)
     ) {
       const messageKey = nextIssues.includes("mixed_source_limit_exceeded")
         ? "summary.workbench.notice.mixedSourceLimitExceeded"
@@ -746,10 +764,6 @@ export default function SummaryWorkbenchFeature({
           ? "summary.workbench.notice.mixedSourcesUnavailable"
           : "summary.workbench.notice.scopeRequiresAdjustment";
       Toast.warning(t(messageKey));
-      return;
-    }
-    if (sameSummaryWorkbenchScope(baseScope, nextScope)) {
-      onApplied?.();
       return;
     }
     const apply = () => {
@@ -864,6 +878,15 @@ export default function SummaryWorkbenchFeature({
 
   const handleResultAction = async (action: SummaryWorkbenchAction) => {
     if (action === "confirm_workflow") {
+      if (scopeIssues.length > 0) {
+        Toast.warning(
+          t(
+            scopeIssueMessageKey ??
+              "summary.workbench.notice.scopeRequiresAdjustment"
+          )
+        );
+        return;
+      }
       const response = await runStartedTask(() => workbench.confirmWorkflow());
       observeWorkflow(response);
       return;
@@ -897,6 +920,17 @@ export default function SummaryWorkbenchFeature({
       return;
     }
     if (kind === "document" && !documentSelectorAvailable) return;
+    if (
+      (kind === "chat" &&
+        chatMaxSelect === 0 &&
+        workbench.scope.selectedChannels.length === 0) ||
+      (kind === "document" &&
+        documentMaxSelect === 0 &&
+        (workbench.scope.documents ?? []).length === 0)
+    ) {
+      Toast.warning(t("summary.workbench.notice.mixedSourceLimitExceeded"));
+      return;
+    }
     // A reference-summary stack is incompatible with a mixed scope (the
     // backend rejects referenced_task_ids on a document+chat scope). Block
     // attaching a new reference while the scope is mixed, mirroring the
@@ -1080,10 +1114,6 @@ export default function SummaryWorkbenchFeature({
       setHasAcceptedDispatch(false);
       return;
     }
-    if (hydration.scopeWasNormalized) {
-      Toast.info(t("summary.workbench.notice.hydratedScopeNormalized"));
-    }
-
     // Commit the storage swap only after the target session has been
     // validated. A failed/cancelled hydration leaves both slots and the
     // recovery bar untouched.
@@ -1335,20 +1365,30 @@ export default function SummaryWorkbenchFeature({
             setOpenSelector(null);
             return;
           }
-          updateScopeWithPreviewGuard(result.scope, () => {
-            setOpenSelector(null);
-            if (result.participantsCleared) {
-              Toast.info(t("summary.workbench.notice.participantsCleared"));
-            }
-            if (result.referencesCleared) {
-              setReferencedTask(null);
-              setReferencePreviewOpen(false);
-              Toast.info(t("summary.workbench.notice.referencesCleared"));
-            }
-            if (result.timeRangeCleared) {
-              Toast.info(t("summary.workbench.notice.timeRangeCleared"));
-            }
-          });
+          const applyDocuments = () => {
+            updateScopeWithPreviewGuard(result.scope, () => {
+              setOpenSelector(null);
+              if (result.referencesCleared) {
+                setReferencedTask(null);
+                setReferencePreviewOpen(false);
+                Toast.info(t("summary.workbench.notice.referencesCleared"));
+              }
+              if (result.timeRangeCleared) {
+                Toast.info(t("summary.workbench.notice.timeRangeCleared"));
+              }
+            });
+          };
+          if (result.participantsCleared) {
+            Modal.confirm({
+              title: t("summary.workbench.scopeChange.participantTitle"),
+              content: t("summary.workbench.scopeChange.participantContent"),
+              okText: t("summary.workbench.scopeChange.confirm"),
+              cancelText: t("summary.common.cancel"),
+              onOk: applyDocuments,
+            });
+            return;
+          }
+          applyDocuments();
         }}
         onCancel={() => setOpenSelector(null)}
       />

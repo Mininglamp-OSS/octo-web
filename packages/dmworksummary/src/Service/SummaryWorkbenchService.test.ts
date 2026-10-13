@@ -79,14 +79,17 @@ describe("SummaryWorkbenchService", () => {
     postTurn.mockResolvedValue(clarificationTurn());
 
     await expect(
-      service.sendMessage({
-        sessionId: "session-1",
-        message: "帮我总结风险",
-        inputOrigin: "user",
-        requestId: "request-1",
-        scopeVersion: 1,
-        scope,
-      }, {}, true)
+      service.sendMessage(
+        {
+          sessionId: "session-1",
+          message: "帮我总结风险",
+          inputOrigin: "user",
+          requestId: "request-1",
+          scopeVersion: 1,
+          scope,
+        },
+        {}
+      )
     ).resolves.toMatchObject({
       messageId: "10",
       resultType: "clarification",
@@ -141,8 +144,8 @@ describe("SummaryWorkbenchService", () => {
       scope,
     };
 
-    await service.sendMessage(input, options, true);
-    service.streamMessage(input, {}, options, true);
+    await service.sendMessage(input, options);
+    service.streamMessage(input, {}, options);
     await service.loadSession("session-1", options, true);
     await service.confirmWorkflow(
       {
@@ -153,8 +156,7 @@ describe("SummaryWorkbenchService", () => {
         scope,
         idempotencyKey: "confirm-key",
       },
-      options,
-      true
+      options
     );
     await service.savePreview(
       {
@@ -178,18 +180,21 @@ describe("SummaryWorkbenchService", () => {
   it("builds a direct team workflow request when requested", async () => {
     postTurn.mockResolvedValue(clarificationTurn());
 
-    await service.sendMessage({
-      sessionId: "session-1",
-      message: "直接生成多人总结",
-      inputOrigin: "system_intent",
-      action: "start_team_workflow",
-      requestId: "request-team-1",
-      scopeVersion: 1,
-      scope: {
-        ...scope,
-        participants: [{ userId: "u1", userName: "张三" }],
+    await service.sendMessage(
+      {
+        sessionId: "session-1",
+        message: "直接生成多人总结",
+        inputOrigin: "system_intent",
+        action: "start_team_workflow",
+        requestId: "request-team-1",
+        scopeVersion: 1,
+        scope: {
+          ...scope,
+          participants: [{ userId: "u1", userName: "张三" }],
+        },
       },
-    }, {}, true);
+      {}
+    );
 
     expect(postTurn).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -215,8 +220,7 @@ describe("SummaryWorkbenchService", () => {
         scope,
       },
       { onDone, onError },
-      {},
-      true
+      {}
     );
     const handlers: SummaryWorkspaceStreamHandlers | undefined =
       streamTurn.mock.calls[streamTurn.mock.calls.length - 1]?.[1];
@@ -249,8 +253,7 @@ describe("SummaryWorkbenchService", () => {
         scope,
       },
       { onError },
-      {},
-      true
+      {}
     );
     const handlers: SummaryWorkspaceStreamHandlers | undefined =
       invalidStream.mock.calls[invalidStream.mock.calls.length - 1]?.[1];
@@ -276,8 +279,7 @@ describe("SummaryWorkbenchService", () => {
         scope,
       },
       { onError },
-      {},
-      true
+      {}
     );
     const handlers: SummaryWorkspaceStreamHandlers | undefined =
       streamTurn.mock.calls[streamTurn.mock.calls.length - 1]?.[1];
@@ -315,14 +317,17 @@ describe("SummaryWorkbenchService", () => {
     });
 
     await expect(
-      service.confirmWorkflow({
-        sessionId: "session-1",
-        proposalVersion: 3,
-        proposalToken: "proposal-token",
-        scopeVersion: 1,
-        scope,
-        idempotencyKey: "confirm-key",
-      }, {}, true)
+      service.confirmWorkflow(
+        {
+          sessionId: "session-1",
+          proposalVersion: 3,
+          proposalToken: "proposal-token",
+          scopeVersion: 1,
+          scope,
+          idempotencyKey: "confirm-key",
+        },
+        {}
+      )
     ).resolves.toMatchObject({
       resultType: "workflow_started",
       workflow: { taskId: 88, scope: "team" },
@@ -495,7 +500,9 @@ describe("SummaryWorkbenchService", () => {
   it("treats History data:null as an empty server session", async () => {
     getHistory.mockResolvedValueOnce(null);
 
-    await expect(service.loadSession("session-empty", {}, true)).resolves.toMatchObject({
+    await expect(
+      service.loadSession("session-empty", {}, true)
+    ).resolves.toMatchObject({
       sessionId: "session-empty",
       contractVersion: "2",
       empty: true,
@@ -554,13 +561,13 @@ describe("SummaryWorkbenchService", () => {
       },
     });
 
-    await expect(service.loadSession("expired-session", {}, true)).resolves.toMatchObject(
-      {
-        sessionId: "expired-session",
-        empty: true,
-        modelOptions: { messages: [], workflow: null },
-      }
-    );
+    await expect(
+      service.loadSession("expired-session", {}, true)
+    ).resolves.toMatchObject({
+      sessionId: "expired-session",
+      empty: true,
+      modelOptions: { messages: [], workflow: null },
+    });
   });
 
   it("loads only the reference metadata needed by the workbench", async () => {

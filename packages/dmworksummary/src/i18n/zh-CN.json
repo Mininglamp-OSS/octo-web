@@ -279,6 +279,8 @@
       "title": "修改总结范围？",
       "content": "修改后，当前预览会保留为历史版本，但将无法继续保存。需要使用新范围重新生成总结。",
       "proposalContent": "修改后，当前多人协作方案会失效，需要重新生成后才能发起协作。",
+      "participantTitle": "移除已选参与者？",
+      "participantContent": "文档来源不能与协作参与者同时使用。继续后将移除当前参与者选择。",
       "changedWhileConfirming": "总结范围已发生变化，请重新选择。",
       "confirm": "修改范围"
     },

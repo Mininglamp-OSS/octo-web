@@ -378,8 +378,7 @@ describe("useSummaryWorkbench", () => {
         scope: initialScope,
       },
       expect.any(Object),
-      { spaceId: "space-a" },
-      true
+      { spaceId: "space-a" }
     );
     expect(result.current.model.messages).toEqual([
       expect.objectContaining({
@@ -1001,6 +1000,28 @@ describe("useSummaryWorkbench", () => {
       scopeIssues: ["mixed_sources_disabled"],
       scopeWasNormalized: false,
     });
+    unmount();
+  });
+
+  it("notifies when automatic hydration normalizes a persisted scope", async () => {
+    loadSession.mockResolvedValue({
+      ...previewHydration(serverScope),
+      scopeWasNormalized: true,
+    });
+    const onScopeNormalized = vi.fn();
+    const { result, unmount } = renderHook(() =>
+      useSummaryWorkbench({
+        initialSessionId: "session-1",
+        initialScope,
+        mixedSources: false,
+        service,
+        onScopeNormalized,
+      })
+    );
+
+    await waitFor(() => expect(result.current.isHydrating).toBe(false));
+
+    expect(onScopeNormalized).toHaveBeenCalledTimes(1);
     unmount();
   });
 

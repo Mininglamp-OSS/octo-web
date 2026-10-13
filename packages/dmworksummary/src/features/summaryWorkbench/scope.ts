@@ -136,26 +136,32 @@ export function replaceSelectedChannels(
     };
   }
   // Mixed document+chat (capability ON): selecting chats KEEPS documents.
-  // When the capability is OFF the pre-mixed mutual-exclusion is restored —
-  // selecting chats clears documents so the UI can never compose a scope the
-  // backend rejects. Participants still can't coexist with documents (the
-  // chat picker cannot be a team-workspace base while documents are present),
-  // so participant bookkeeping below only matters for the pure-chat flow.
+  // When the capability is OFF, a valid pure-source scope keeps the legacy
+  // mutual-exclusion behaviour. A retained mixed scope is different: it came
+  // from hydration and must stay lossless while the user removes either side.
+  // The policy guard keeps Send disabled and rejects source-count growth until
+  // the scope becomes pure again. Participants still can't coexist with
+  // documents (the chat picker cannot be a team-workspace base while documents
+  // are present), so bookkeeping below only matters for the pure-chat flow.
   // A reference-summary stack is ALSO incompatible with a mixed scope: adding
   // a chat to a document-bearing scope (capability ON) turns it mixed, so the
   // reference must clear exactly when that transition happens — mirroring the
   // same boundary on the documents writer (replaceSelectedDocuments).
   const becomesMixed =
     mixedSources && (scope.documents ?? []).length > 0 && channels.length > 0;
-  const referencesCleared =
-    becomesMixed && scope.referencedTaskIds.length > 0;
-  const nextScope = mixedSources
-    ? {
-        ...scope,
-        selectedChannels: channels,
-        referencedTaskIds: referencesCleared ? [] : scope.referencedTaskIds,
-      }
-    : { ...scope, selectedChannels: channels, documents: [] };
+  const referencesCleared = becomesMixed && scope.referencedTaskIds.length > 0;
+  const recoveringRetainedMixedScope =
+    !mixedSources &&
+    scope.selectedChannels.length > 0 &&
+    (scope.documents ?? []).length > 0;
+  const nextScope =
+    mixedSources || recoveringRetainedMixedScope
+      ? {
+          ...scope,
+          selectedChannels: channels,
+          referencedTaskIds: referencesCleared ? [] : scope.referencedTaskIds,
+        }
+      : { ...scope, selectedChannels: channels, documents: [] };
   // Invariant: the time range scopes the chat side ONLY. If there are no
   // chats left (but documents remain), a picker time range would be sent to a
   // document-only scope that the backend rejects. Clear it here so the state
@@ -214,33 +220,37 @@ export function replaceSelectedDocuments(
     };
   }
   // Mixed document+chat (capability ON): selecting documents KEEPS chats and
-  // the chat time range (it scopes the chat side only). When the capability
-  // is OFF the pre-mixed mutual-exclusion is restored — selecting documents
-  // clears chats and the time range so the UI can never compose a scope the
-  // backend rejects.
+  // the chat time range (it scopes the chat side only). Gate OFF keeps legacy
+  // mutual exclusion for a valid pure-source scope, but a retained mixed scope
+  // remains lossless while the user reduces either side. See the symmetric
+  // recovery branch in replaceSelectedChannels.
   const becomesMixed =
     mixedSources && scope.selectedChannels.length > 0 && documents.length > 0;
   // A reference-summary stack is incompatible with a MIXED scope (the
   // backend rejects referenced_task_ids on a document+chat scope). A
   // pure-document scope (no chats) accepts a reference, so only clear it when
   // the selection actually turns the scope mixed.
-  const referencesCleared =
-    becomesMixed && scope.referencedTaskIds.length > 0;
-  const withDocuments = mixedSources
-    ? {
-        ...scope,
-        documents,
-        participants: [],
-        referencedTaskIds: referencesCleared ? [] : scope.referencedTaskIds,
-      }
-    : {
-        ...scope,
-        documents,
-        selectedChannels: [],
-        timeRange: null,
-        participants: [],
-        referencedTaskIds: scope.referencedTaskIds,
-      };
+  const referencesCleared = becomesMixed && scope.referencedTaskIds.length > 0;
+  const recoveringRetainedMixedScope =
+    !mixedSources &&
+    scope.selectedChannels.length > 0 &&
+    (scope.documents ?? []).length > 0;
+  const withDocuments =
+    mixedSources || recoveringRetainedMixedScope
+      ? {
+          ...scope,
+          documents,
+          participants: [],
+          referencedTaskIds: referencesCleared ? [] : scope.referencedTaskIds,
+        }
+      : {
+          ...scope,
+          documents,
+          selectedChannels: [],
+          timeRange: null,
+          participants: [],
+          referencedTaskIds: scope.referencedTaskIds,
+        };
   const scopeAfterDocChange = withChatOnlyTimeRange(withDocuments);
   const timeRangeCleared =
     scope.timeRange !== null && scopeAfterDocChange.timeRange === null;

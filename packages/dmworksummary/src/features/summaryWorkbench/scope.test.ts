@@ -546,6 +546,72 @@ describe("summary workbench scope helpers", () => {
     expect(result.timeRangeCleared).toBe(true);
   });
 
+  it("keeps documents while a gate-OFF retained mixed scope removes one chat", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      selectedChannels: [
+        { chatId: "group-a", chatType: "group" as const, name: "A" },
+        { chatId: "group-b", chatType: "group" as const, name: "B" },
+      ],
+      documents: documentsToScope([
+        { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+        { docId: "doc-b", title: "Doc B", docType: "doc", updatedAt: null },
+      ]),
+    };
+
+    const result = removeScopeContext(scope, "chat", "group-a", false);
+
+    expect(result.scope.selectedChannels).toEqual([scope.selectedChannels[1]]);
+    expect(result.scope.documents).toEqual(scope.documents);
+  });
+
+  it("keeps documents and clears the chat range when a gate-OFF retained mixed scope removes its last chat", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      selectedChannels: [
+        { chatId: "group-a", chatType: "group" as const, name: "A" },
+      ],
+      documents: documentsToScope([
+        { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+      ]),
+      timeRange: {
+        start: "2026-09-01T00:00:00Z",
+        end: "2026-09-02T00:00:00Z",
+        label: "昨天",
+      },
+    };
+
+    const result = removeScopeContext(scope, "chat", "group-a", false);
+
+    expect(result.scope.selectedChannels).toEqual([]);
+    expect(result.scope.documents).toEqual(scope.documents);
+    expect(result.scope.timeRange).toBeNull();
+    expect(result.timeRangeCleared).toBe(true);
+  });
+
+  it("keeps chats when a gate-OFF retained mixed scope confirms an empty document picker", () => {
+    const scope = {
+      ...emptySummaryWorkbenchScope(),
+      selectedChannels: [
+        { chatId: "group-a", chatType: "group" as const, name: "A" },
+      ],
+      documents: documentsToScope([
+        { docId: "doc-a", title: "Doc A", docType: "doc", updatedAt: null },
+      ]),
+      timeRange: {
+        start: "2026-09-01T00:00:00Z",
+        end: "2026-09-02T00:00:00Z",
+        label: "昨天",
+      },
+    };
+
+    const result = replaceSelectedDocuments(scope, [], false);
+
+    expect(result.scope.selectedChannels).toEqual(scope.selectedChannels);
+    expect(result.scope.documents).toEqual([]);
+    expect(result.scope.timeRange).toEqual(scope.timeRange);
+  });
+
   it("re-asserts the chat-only time range when removing a document leaves a document-only scope with a range", () => {
     // A snapshot can hydrate a document-only scope carrying a time range (the
     // shape the backend rejects); the document chip-removal branch must still

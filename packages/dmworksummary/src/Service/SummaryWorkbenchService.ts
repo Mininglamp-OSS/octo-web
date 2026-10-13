@@ -133,21 +133,19 @@ export class SummaryWorkbenchService {
 
   async sendMessage(
     input: SummaryWorkbenchMessageInput,
-    options: SummaryWorkbenchRequestOptions = {},
-    mixedSources: boolean
+    options: SummaryWorkbenchRequestOptions = {}
   ): Promise<SummaryWorkbenchResponse> {
     const response = await this.transport.postTurn(
       buildChatRequest(input),
       options
     );
-    return adaptSummaryWorkspaceTurn(response, mixedSources);
+    return adaptSummaryWorkspaceTurn(response);
   }
 
   streamMessage(
     input: SummaryWorkbenchMessageInput,
     callbacks: SummaryWorkbenchStreamCallbacks,
-    options: SummaryWorkbenchRequestOptions = {},
-    mixedSources: boolean
+    options: SummaryWorkbenchRequestOptions = {}
   ): { close: () => void } {
     const reportError = (error: SummaryWorkspaceApiError) =>
       callbacks.onError?.(error);
@@ -158,7 +156,7 @@ export class SummaryWorkbenchService {
         onDone: (payload) => {
           let response: SummaryWorkbenchResponse;
           try {
-            response = adaptSummaryWorkspaceTurn(payload, mixedSources);
+            response = adaptSummaryWorkspaceTurn(payload);
           } catch (error) {
             reportError(normalizeWorkspaceError(error));
             return;
@@ -217,8 +215,7 @@ export class SummaryWorkbenchService {
 
   async confirmWorkflow(
     input: SummaryWorkbenchConfirmInput,
-    options: SummaryWorkbenchRequestOptions = {},
-    mixedSources: boolean
+    options: SummaryWorkbenchRequestOptions = {}
   ): Promise<SummaryWorkbenchResponse> {
     const request: SummaryWorkspaceConfirmRequestDTO = {
       session_id: input.sessionId,
@@ -231,7 +228,7 @@ export class SummaryWorkbenchService {
       ...options,
       idempotencyKey: input.idempotencyKey,
     });
-    return adaptSummaryWorkspaceTurn(response, mixedSources);
+    return adaptSummaryWorkspaceTurn(response);
   }
 
   async savePreview(

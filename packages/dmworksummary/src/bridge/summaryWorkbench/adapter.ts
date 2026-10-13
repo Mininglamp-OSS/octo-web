@@ -75,19 +75,14 @@ function resolveHistoryResultType(
 }
 
 export function adaptSummaryWorkspaceTurn(
-  value: unknown,
-  mixedSources: boolean
+  value: unknown
 ): SummaryWorkbenchResponse {
   const turn = decodeSummaryWorkspaceTurn(value);
   const actions = [...turn.available_actions];
-  const authoritativeState = toAuthoritativeState(
-    turn.state,
-    mixedSources,
-    {
-      messageId: turn.message_id,
-      actions,
-    }
-  );
+  const authoritativeState = toAuthoritativeState(turn.state, {
+    messageId: turn.message_id,
+    actions,
+  });
   const common = {
     messageId: String(turn.message_id),
     reply: turn.reply,
@@ -173,7 +168,7 @@ export function adaptSummaryWorkspaceHistory(
   mixedSources: boolean
 ): SummaryWorkbenchHistoryHydration {
   const history = decodeSummaryWorkspaceHistory(value);
-  const authoritativeState = toAuthoritativeState(history.state, mixedSources);
+  const authoritativeState = toAuthoritativeState(history.state);
   const scope = authoritativeState.scope;
   const currentPreview = history.state.current_preview;
   const pendingProposal = history.state.pending_proposal;
@@ -305,7 +300,9 @@ export function adaptSummaryWorkspaceHistory(
     sessionId: history.session_id,
     contractVersion: history.contract_version,
     scope,
-    scopeIssues: authoritativeState.scopeIssues,
+    scopeIssues: summaryWorkbenchScopeIssues(authoritativeState.scope, {
+      mixedSources,
+    }),
     scopeWasNormalized: authoritativeState.scopeWasNormalized,
     modelOptions: {
       scopeVersion: authoritativeState.scopeVersion,
@@ -346,9 +343,8 @@ export function decodeSummaryWorkspaceCapabilities(
     // the mixed document+chat selector only appears once the server advertises
     // it via the admission gate.
     mixed_sources:
-      record.mixed_sources === undefined
-        ? false
-        : requireBoolean(record.mixed_sources, "capabilities.mixed_sources"),
+      optionalBoolean(record.mixed_sources, "capabilities.mixed_sources") ??
+      false,
   };
 }
 
@@ -815,14 +811,9 @@ function requireWorkflow(
 
 function toAuthoritativeState(
   state: SummaryWorkspaceStateDTO,
-  mixedSources: boolean,
   turn?: { messageId: number; actions: SummaryWorkbenchAction[] }
-): SummaryWorkbenchAuthoritativeState & {
-  scopeWasNormalized: boolean;
-  scopeIssues: SummaryWorkbenchScopeIssue[];
-} {
+): SummaryWorkbenchAuthoritativeState & { scopeWasNormalized: boolean } {
   const scope = toWorkbenchScope(state.summary_context);
-  const scopeIssues = summaryWorkbenchScopeIssues(scope, { mixedSources });
   // Hydration keeps the selected chat/document sources even when the
   // capability is unavailable. The Feature renders those chips, blocks send,
   // and asks the user to choose which side to remove. Capability-independent
@@ -847,7 +838,6 @@ function toAuthoritativeState(
   return {
     scopeVersion,
     scope,
-    scopeIssues,
     scopeWasNormalized,
     contextItems: contextItemsFromScope(scope),
     currentPreview: state.current_preview

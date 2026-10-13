@@ -279,6 +279,8 @@
       "title": "Change the summary scope?",
       "content": "The current preview will remain in history but can no longer be saved. Generate again to use the new scope.",
       "proposalContent": "The current collaboration proposal will become invalid and must be regenerated before collaboration can start.",
+      "participantTitle": "Remove selected participants?",
+      "participantContent": "Document sources cannot be combined with collaboration participants. Continuing will remove the current participant selection.",
       "changedWhileConfirming": "The summary scope changed. Please make the selection again.",
       "confirm": "Change scope"
     },

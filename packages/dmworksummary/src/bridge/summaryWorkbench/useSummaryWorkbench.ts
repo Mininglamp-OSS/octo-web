@@ -56,6 +56,7 @@ export interface UseSummaryWorkbenchOptions {
   createRequestId?: () => string;
   createIdempotencyKey?: () => string;
   onSessionIdChange?: (sessionId: string) => void;
+  onScopeNormalized?: () => void;
   workflowPollIntervalMs?: number;
 }
 
@@ -187,6 +188,7 @@ export default function useSummaryWorkbench(
     options.createIdempotencyKey ?? genRequestId
   );
   const onSessionIdChangeRef = useRef(options.onSessionIdChange);
+  const onScopeNormalizedRef = useRef(options.onScopeNormalized);
   const spaceIdRef = useRef(normalizeSpaceId(options.spaceId));
   const preferStreamingRef = useRef(options.preferStreaming ?? true);
   const mixedSourcesRef = useRef(options.mixedSources);
@@ -211,6 +213,7 @@ export default function useSummaryWorkbench(
 
   serviceRef.current = options.service ?? summaryWorkbenchService;
   onSessionIdChangeRef.current = options.onSessionIdChange;
+  onScopeNormalizedRef.current = options.onScopeNormalized;
   spaceIdRef.current = normalizeSpaceId(options.spaceId);
   preferStreamingRef.current = options.preferStreaming ?? true;
   mixedSourcesRef.current = options.mixedSources;
@@ -549,14 +552,10 @@ export default function useSummaryWorkbench(
         const controller = new AbortController();
         flight.fallbackController = controller;
         void serviceRef.current
-          .sendMessage(
-            input,
-            {
-              signal: controller.signal,
-              ...(spaceIdRef.current ? { spaceId: spaceIdRef.current } : {}),
-            },
-            mixedSourcesRef.current
-          )
+          .sendMessage(input, {
+            signal: controller.signal,
+            ...(spaceIdRef.current ? { spaceId: spaceIdRef.current } : {}),
+          })
           .then(finish)
           .catch(fail);
       };
@@ -596,20 +595,10 @@ export default function useSummaryWorkbench(
           onError: handleStreamError,
         };
         const stream = spaceIdRef.current
-          ? serviceRef.current.streamMessage(
-              input,
-              callbacks,
-              {
-                spaceId: spaceIdRef.current,
-              },
-              mixedSourcesRef.current
-            )
-          : serviceRef.current.streamMessage(
-              input,
-              callbacks,
-              {},
-              mixedSourcesRef.current
-            );
+          ? serviceRef.current.streamMessage(input, callbacks, {
+              spaceId: spaceIdRef.current,
+            })
+          : serviceRef.current.streamMessage(input, callbacks, {});
         if (isCurrent() && !flight.fallbackStarted) {
           flight.stream = stream;
         } else {
@@ -669,8 +658,7 @@ export default function useSummaryWorkbench(
         {
           signal: controller.signal,
           ...(spaceIdRef.current ? { spaceId: spaceIdRef.current } : {}),
-        },
-        mixedSourcesRef.current
+        }
       )
       .then((response: SummaryWorkbenchResponse) => {
         if (confirmationRef.current !== flight || epochRef.current !== epoch) {
@@ -896,6 +884,9 @@ export default function useSummaryWorkbench(
             )
           );
           notifySessionId(nextSessionId);
+          if (hydration.scopeWasNormalized) {
+            onScopeNormalizedRef.current?.();
+          }
           return {
             status: "hydrated",
             sessionId: nextSessionId,

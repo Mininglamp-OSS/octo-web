@@ -8,7 +8,7 @@ import {
 } from "./model";
 import {
   adaptSummaryWorkspaceHistory as adaptSummaryWorkspaceHistoryWithCapability,
-  adaptSummaryWorkspaceTurn as adaptSummaryWorkspaceTurnWithCapability,
+  adaptSummaryWorkspaceTurn,
   contextItemsFromScope,
   decodeSummaryWorkspaceCapabilities,
   decodeSummaryWorkspaceSaveResult,
@@ -23,9 +23,6 @@ const adaptSummaryWorkspaceHistory = (
   value: unknown,
   mixedSources = true
 ) => adaptSummaryWorkspaceHistoryWithCapability(value, mixedSources);
-
-const adaptSummaryWorkspaceTurn = (value: unknown, mixedSources = true) =>
-  adaptSummaryWorkspaceTurnWithCapability(value, mixedSources);
 
 const summaryContext = {
   selected_channels: [
@@ -1033,6 +1030,7 @@ describe("summary workspace adapter", () => {
       decodeSummaryWorkspaceCapabilities({
         enabled: true,
         contract_version: "2",
+        mixed_sources: null,
       })
     ).toEqual({
       enabled: true,

@@ -12,14 +12,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   adaptSummaryWorkspaceHistory as adaptSummaryWorkspaceHistoryWithCapability,
-  adaptSummaryWorkspaceTurn as adaptSummaryWorkspaceTurnWithCapability,
+  adaptSummaryWorkspaceTurn,
 } from '../adapter';
 
 const adaptSummaryWorkspaceHistory = (value: unknown) =>
   adaptSummaryWorkspaceHistoryWithCapability(value, true);
-const adaptSummaryWorkspaceTurn = (value: unknown) =>
-  adaptSummaryWorkspaceTurnWithCapability(value, true);
-
 // A minimal valid turn payload with every optional pointer key OMITTED
 // (the shape a Go omitempty backend actually emits) instead of explicit null.
 function turnWithOmittedPointers(resultType: string, extra?: Record<string, unknown>) {

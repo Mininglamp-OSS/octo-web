@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
     forceNewMount: vi.fn(),
     toastWarning: vi.fn(),
     capabilityReady: true,
+    mixedSources: false,
 }));
 
 vi.mock("@douyinfe/semi-ui", () => ({
@@ -40,7 +41,11 @@ vi.mock("./Entry", () => ({
     }) => (
         <>
             {mocks.capabilityReady
-                ? renderNew({ maxTimeRangeDays: 90, directTeamWorkflow: true })
+                ? renderNew({
+                      maxTimeRangeDays: 90,
+                      directTeamWorkflow: true,
+                      mixedSources: mocks.mixedSources,
+                  })
                 : renderPending()}
         </>
     ),
@@ -50,6 +55,7 @@ vi.mock("./SummaryWorkbenchFeature", () => ({
     default: (props: {
         maxTimeRangeDays?: number;
         directTeamWorkflow?: boolean;
+        mixedSources?: boolean;
         forceNewSession?: boolean;
         onForceNewSessionConsumed?: () => void;
     }) => {
@@ -66,6 +72,9 @@ vi.mock("./SummaryWorkbenchFeature", () => ({
                 </span>
                 <span data-testid="direct-team-workflow">
                     {String(props.directTeamWorkflow)}
+                </span>
+                <span data-testid="mixed-sources">
+                    {String(props.mixedSources)}
                 </span>
                 <span data-testid="force-new-session">
                     {String(props.forceNewSession)}
@@ -91,6 +100,7 @@ describe("SummaryWorkbenchCreateEntry", () => {
         mocks.forceNewMount.mockReset();
         mocks.toastWarning.mockReset();
         mocks.capabilityReady = true;
+        mocks.mixedSources = false;
     });
 
     it("passes the server-advertised time range limit to the Workbench", () => {
@@ -104,6 +114,7 @@ describe("SummaryWorkbenchCreateEntry", () => {
         expect(screen.getByTestId("direct-team-workflow")).toHaveTextContent(
             "true"
         );
+        expect(screen.getByTestId("mixed-sources")).toHaveTextContent("false");
     });
 
     it("remounts the workbench when the channel type changes for the same id", () => {
