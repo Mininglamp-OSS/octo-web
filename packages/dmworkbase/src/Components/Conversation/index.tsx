@@ -1466,6 +1466,9 @@ export class Conversation
       messageWrap.locateRemind = true;
       this.vm.notifyListener(() => {
         this.vm.scrollToMessage(messageWrap);
+        // A new history page can place the target at the same scrollTop,
+        // so no scroll event will reconcile the now-visible reminder.
+        if (this._attentionMounted) this.updateBrowseToMessageSeqAndReminderDoneIfNeed();
       });
     };
     const messageWrap = this.vm.findMessageWithMessageSeq(messageSeq);
@@ -1479,6 +1482,7 @@ export class Conversation
         if (isSummaryMessage) {
           this.vm.highlightFoldSessionSummary(foldSession.sessionId, () => {
             this.vm.scrollToFoldSession(foldSession.sessionId);
+            if (this._attentionMounted) this.updateBrowseToMessageSeqAndReminderDoneIfNeed();
           });
           return;
         }
