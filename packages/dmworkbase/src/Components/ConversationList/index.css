@@ -69,6 +69,18 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   transition: background var(--wk-dur) var(--wk-ease);
 }
 
+/* 相邻会话分隔线：与头像左缘对齐，左右等距，不参与行高计算。 */
+.wk-conversationlist-item + .wk-conversationlist-item::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: var(--wk-sp-2);
+  right: var(--wk-sp-2);
+  height: 1px;
+  background: var(--wk-border-subtle);
+  pointer-events: none;
+}
+
 .wk-conversationlist-item-top {
   background: var(--wk-brand-tint-03);
 }
