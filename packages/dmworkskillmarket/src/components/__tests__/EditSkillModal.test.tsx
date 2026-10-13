@@ -510,6 +510,52 @@ describe("EditSkillModal", () => {
     expect(screen.getByText("发布失败（请求 ID：req-publish-edit）")).toBeInTheDocument();
   });
 
+  it("does not reuse a consumed parse task when retrying publication", async () => {
+    vi.mocked(api.publishPlugin)
+      .mockRejectedValueOnce({ code: "INTERNAL_ERROR" })
+      .mockResolvedValueOnce({
+        pluginId: "meeting-note-cleaner",
+        listingState: "draft",
+        displayStatus: "pending_review",
+      });
+    render(
+      <EditSkillModal
+        skill={skill}
+        categories={categories}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: reuploadButton }));
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(selectNewZipLabel), {
+        target: { files: [new File(["zip"], "updated-skill.skill", { type: "application/zip" })] },
+      });
+    });
+    await waitFor(() => expect(screen.getByDisplayValue("1.1.4")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByPlaceholderText(changelogPlaceholder), {
+      target: { value: "修复发布重试" },
+    });
+    const publish = screen.getByRole("button", {
+      name: /发布|skillMarket\.plugin\.actionPublish/,
+    });
+    fireEvent.click(publish);
+
+    await waitFor(() => expect(api.publishPlugin).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.updateSkill).mock.calls[0][1]).toMatchObject({
+      parseTaskId: "task-456",
+    });
+
+    await waitFor(() => expect(publish).toBeEnabled());
+    fireEvent.click(publish);
+
+    await waitFor(() => expect(api.publishPlugin).toHaveBeenCalledTimes(2));
+    expect(api.updateSkill).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(api.updateSkill).mock.calls[1][1]).not.toHaveProperty("parseTaskId");
+  });
+
   it("blocks a 本组织 publish until a changelog is entered", () => {
     render(<EditSkillModal skill={skill} categories={categories} onClose={vi.fn()} onUpdated={vi.fn()} />);
 

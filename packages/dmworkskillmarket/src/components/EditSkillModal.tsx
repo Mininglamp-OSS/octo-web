@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { AlertCircle, Box, ImagePlus, Loader2, Upload, XCircle } from "lucide-react";
 import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
 import type { Category, Skill, Visibility } from "../types/skill";
-import { updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse, getSkillTags, publishPlugin } from "../api/skillApi";
+import { SkillMarketApiError, updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse, getSkillTags, publishPlugin } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
@@ -403,7 +403,10 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
       } else {
         // Defensive guard for mocked or future pollParse implementations;
         // production pollParse rejects this malformed success shape itself.
-        throw new Error("Parse succeeded without a result");
+        throw new SkillMarketApiError(
+          "invalid_response",
+          t("skillMarket.errors.parseFailed"),
+        );
       }
     } catch (err) {
       if (!abortRef.current) {
@@ -467,6 +470,10 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
         visibility,
         ...(iconUrl !== undefined ? { iconUrl } : {}),
       });
+      // Import consumes the parse task. If publication fails after this save,
+      // retry only the publish step instead of submitting the consumed task
+      // through updateSkill again.
+      if (parseTaskId) setParseTaskId(null);
       if (publish) {
         // Saved first, so what gets published is what the author just wrote —
         // and if widening the audience un-listed the row, this is the step that

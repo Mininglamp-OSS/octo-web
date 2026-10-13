@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { AlertCircle, FileArchive, ImagePlus, Loader2, UploadCloud, XCircle } from "lucide-react";
 import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
 import type { Category, NewSkillForm, Skill } from "../types/skill";
-import { createSkill, updateSkill, createReviewRequest, getSkillTags, initReupload, initUpload, publishPlugin, uploadFile, uploadIcon, triggerParse, pollParse } from "../api/skillApi";
+import { SkillMarketApiError, createSkill, updateSkill, createReviewRequest, getSkillTags, initReupload, initUpload, publishPlugin, uploadFile, uploadIcon, triggerParse, pollParse } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
@@ -409,12 +409,18 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated,
       } else {
         // Defensive guard for mocked or future pollParse implementations;
         // production pollParse rejects this malformed success shape itself.
-        throw new Error("Parse succeeded without a result");
+        throw new SkillMarketApiError(
+          "invalid_response",
+          t("skillMarket.errors.parseFailed"),
+        );
       }
     } catch (err) {
       if (!abortRef.current) {
         setStage(isReviewMode ? "review" : "error");
-        if (isReviewMode) setParseTaskId(null);
+        // A replacement upload invalidates the previously parsed package in
+        // both create and review flows. Keeping the old task here would let a
+        // create submit old content with the replacement file's metadata.
+        setParseTaskId(null);
         setError(skillUploadErrorMessage(err, { phase: errorPhase }));
       }
     }

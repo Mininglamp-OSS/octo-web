@@ -282,6 +282,41 @@ describe("NewSkillModal", () => {
     await waitFor(() => expect(screen.getByText("解析失败")).toBeInTheDocument());
   });
 
+  it("clears the previous parse task when a replacement package fails in create mode", async () => {
+    render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(selectZipLabel), {
+        target: { files: [zipFile("first.zip")] },
+      });
+    });
+    await waitFor(() => expect(screen.getByText("first.zip")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByPlaceholderText(displayNamePlaceholder), {
+      target: { value: "技能包" },
+    });
+    fireEvent.change(screen.getByLabelText(categoryLabel), {
+      target: { value: "office" },
+    });
+    const saveDraft = screen.getByRole("button", { name: saveDraftButton });
+    await waitFor(() => expect(saveDraft).toBeEnabled());
+
+    vi.mocked(api.pollParse).mockRejectedValueOnce({
+      code: "INVALID_ZIP",
+      message: "invalid zip",
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText(selectZipLabel), {
+        target: { files: [zipFile("replacement.zip")] },
+      });
+    });
+
+    await waitFor(() => expect(screen.getByText("上传的文件不是有效的 ZIP 压缩包")).toBeInTheDocument());
+    expect(saveDraft).toBeDisabled();
+    fireEvent.click(saveDraft);
+    expect(api.createSkill).not.toHaveBeenCalled();
+  });
+
   it("uses upload-phase copy when the storage upload fails", async () => {
     vi.mocked(api.uploadFile).mockRejectedValue(new Error("Upload failed: HTTP 503"));
     render(<NewSkillModal visible categories={categories} onClose={vi.fn()} onCreated={vi.fn()} />);

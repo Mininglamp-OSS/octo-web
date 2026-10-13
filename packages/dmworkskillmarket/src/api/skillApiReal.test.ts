@@ -1052,6 +1052,33 @@ describe("skillApiReal", () => {
     vi.useRealTimers();
   });
 
+  it("keeps the latest client request id when CORS hides every poll response header", async () => {
+    vi.useFakeTimers();
+    mockFetch
+      .mockReturnValueOnce(
+        jsonResponse({ status: "pending", skill_parse_task_id: "task-hidden-headers" })
+      )
+      .mockReturnValueOnce(
+        jsonResponse({
+          status: "failed",
+          skill_parse_task_id: "task-hidden-headers",
+          error: { code: "INVALID_ZIP", message: "invalid zip" },
+        })
+      );
+
+    const result = pollParse("task-hidden-headers").catch((error) => error);
+    await vi.advanceTimersByTimeAsync(2000);
+
+    const firstRequestId = mockFetch.mock.calls[0][1].headers["X-Request-Id"];
+    const latestRequestId = mockFetch.mock.calls[1][1].headers["X-Request-Id"];
+    expect(latestRequestId).not.toBe(firstRequestId);
+    await expect(result).resolves.toMatchObject({
+      code: "INVALID_ZIP",
+      requestId: latestRequestId,
+    });
+    vi.useRealTimers();
+  });
+
   it("pollParse times out after 60 pending attempts", async () => {
     vi.useFakeTimers();
     for (let i = 0; i < 60; i += 1) {

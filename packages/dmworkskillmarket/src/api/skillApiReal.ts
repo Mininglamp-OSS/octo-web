@@ -947,10 +947,18 @@ async function fetchParseStatus(taskId: string): Promise<{
 /** Step 4: Poll parse status every 2 seconds until success, failure, or timeout. */
 export async function pollParse(taskId: string): Promise<ParseStatusResult> {
   let lastRequestId: string | undefined;
+  let hasResponseRequestId = false;
   for (let attempt = 0; attempt < 60; attempt += 1) {
     const envelope = await fetchParseStatus(taskId);
     const status = envelope.status;
-    if (envelope.requestIdFromResponse || !lastRequestId) {
+    if (envelope.requestIdFromResponse) {
+      lastRequestId = envelope.requestId ?? lastRequestId;
+      hasResponseRequestId = true;
+    } else if (!hasResponseRequestId) {
+      // Desktop CORS may hide every echoed response header. In that case each
+      // client-generated id is still logged by the server, so retain the most
+      // recent poll id. Once an echoed id is visible, keep that authoritative
+      // value if a later response omits its header.
       lastRequestId = envelope.requestId ?? lastRequestId;
     }
     if (status.status === "success") {

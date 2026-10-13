@@ -175,8 +175,6 @@
     "uploadProgress": "Upload progress",
     "progressBarAriaLabel": "Upload progress bar",
     "parsing": "Parsing...",
-    "parseFailed": "Parse failed",
-    "parseTimeout": "Parse timed out, please retry",
     "uploadFailed": "Upload failed",
     "reselect": "Reselect file",
     "reupload": "Re-upload Skill package",

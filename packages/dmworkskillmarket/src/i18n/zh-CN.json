@@ -175,8 +175,6 @@
     "uploadProgress": "上传进度",
     "progressBarAriaLabel": "上传进度条",
     "parsing": "解析中...",
-    "parseFailed": "解析失败",
-    "parseTimeout": "解析超时，请重试",
     "uploadFailed": "上传失败",
     "reselect": "重新选择文件",
     "reupload": "重新上传技能包",
