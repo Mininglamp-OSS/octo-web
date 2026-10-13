@@ -368,7 +368,7 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
       followUnread={hideFollowUnread ? 0 : followUnread}
       recentUnread={hideRecentUnread ? 0 : recentUnread}
       onTabChange={onTabChange}
-      onActiveTabClick={(tab) => {
+      onActiveTabDoubleClick={(tab) => {
         if (tab === "recent" && activeTab === "recent" && recentUnread > 0) {
           onRecentUnreadNavigate?.();
         }
@@ -2266,11 +2266,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                             conversations={vm.filteredConversations}
                             filter={filter}
                             select={WKApp.shared.openChannel}
-                            scrollToUnreadToken={
-                              activeTab === "recent"
-                                ? recentUnreadJumpToken
-                                : undefined
-                            }
+                            scrollToUnreadToken={recentUnreadJumpToken}
                             temporaryConversationPresentation={
                               activeTab === "recent"
                                 ? temporaryConversationListPresentation

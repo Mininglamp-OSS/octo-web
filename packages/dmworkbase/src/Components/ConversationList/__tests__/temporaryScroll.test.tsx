@@ -1,5 +1,6 @@
 import React from "react";
-import { act, cleanup, render } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WKSDK, { Channel, ChannelInfo, Conversation, ConversationExtra, Message, MessageText, Mention } from "wukongimjssdk";
 import { ConversationWrap } from "../../../Service/Model";
@@ -338,5 +339,159 @@ describe("temporary conversation scroll positioning", () => {
     rerender(<ConversationList {...props} scrollToUnreadToken={1} />);
     flushFrames();
     expect(scrollTo).toHaveBeenLastCalledWith({ top: 120, behavior: "smooth" });
+  });
+});
+
+describe("recent unread jump sequence", () => {
+  function setup() {
+    const conversations = ["a", "b", "c", "d"].map((id) => {
+      const item = conversation(`sequence-${id}`);
+      item.conversation.unread = 1;
+      return item;
+    });
+    const props = {
+      conversations,
+      shouldScrollToUnreadTarget: (item: ConversationWrap) => item.unread > 0,
+    };
+    let token = 0;
+    const view = render(
+      <ConversationList {...props} scrollToUnreadToken={token} />
+    );
+    const root = view.container.querySelector<HTMLDivElement>(
+      ".wk-conversationlist"
+    )!;
+    Object.defineProperty(root, "clientHeight", {
+      configurable: true,
+      value: 100,
+    });
+    vi.spyOn(root, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 10, 300, 100)
+    );
+    const rows = conversations.map(
+      (item) =>
+        view.container.querySelector<HTMLDivElement>(
+          `[data-object-id="${item.channel.channelID}"]`
+        )!
+    );
+    rows.forEach((row, index) => {
+      vi.spyOn(row, "getBoundingClientRect").mockImplementation(
+        () => new DOMRect(0, 10 + index * 60 - root.scrollTop, 300, 60)
+      );
+    });
+    // Content height is 240; the last row cannot reach the viewport top.
+    const scrollTo = vi.fn(({ top }: ScrollToOptions) => {
+      root.scrollTop = Math.min(top ?? 0, 140);
+      fireEvent.scroll(root);
+    });
+    root.scrollTo = scrollTo;
+    const jump = () => {
+      view.rerender(
+        <ConversationList {...props} scrollToUnreadToken={++token} />
+      );
+      flushFrames();
+    };
+    const expectTarget = (index: number) => {
+      rows.forEach((row, rowIndex) => {
+        expect(
+          !!row.querySelector(
+            ".wk-conv-unread-num--nudge-a, .wk-conv-unread-num--nudge-b"
+          )
+        ).toBe(rowIndex === index);
+      });
+    };
+    return { ...view, props, root, rows, jump, expectTarget, scrollTo };
+  }
+
+  it("cycles independently of automatic scroll events and nudges targets that cannot reach the top", () => {
+    const { jump, expectTarget, root, scrollTo } = setup();
+    [0, 1, 2, 3, 0, 1].forEach((index) => {
+      jump();
+      expectTarget(index);
+      expect(scrollTo).toHaveBeenLastCalledWith({
+        top: index * 60,
+        behavior: "smooth",
+      });
+      expect(root.scrollTop).toBe(Math.min(index * 60, 140));
+      fireEvent.scroll(root);
+    });
+  });
+
+  it.each(["wheel", "touch", "keyboard", "scrollbar"])(
+    "starts below the visible area after a %s scroll, then resumes the selected sequence",
+    (gesture) => {
+      const { root, jump, expectTarget } = setup();
+      jump();
+      expectTarget(0);
+      if (gesture === "wheel") fireEvent.wheel(root, { deltaY: 30 });
+      if (gesture === "touch") fireEvent.touchMove(root);
+      if (gesture === "keyboard") fireEvent.keyDown(root, { key: "ArrowDown" });
+      if (gesture === "scrollbar") fireEvent.pointerDown(root);
+      root.scrollTop = 20; // b is visible, c starts exactly at the viewport bottom.
+      fireEvent.scroll(root);
+      jump();
+      expectTarget(2);
+      jump();
+      expectTarget(3);
+      jump();
+      expectTarget(0);
+    }
+  );
+
+  it.each(["ArrowDown", "PageDown"])(
+    "recognizes %s scrolling after a conversation row is clicked",
+    async (key) => {
+      const user = userEvent.setup();
+      const { root, rows, jump, expectTarget } = setup();
+      jump();
+      expectTarget(0);
+      await user.click(rows[0]);
+      expect(document.activeElement).toBe(root);
+      await user.keyboard(`{${key}}`);
+      // jsdom does not perform native keyboard scrolling; publish its result.
+      root.scrollTop = 20;
+      fireEvent.scroll(root);
+      jump();
+      expectTarget(2);
+      jump();
+      expectTarget(3);
+    }
+  );
+
+  it("continues the previous sequence when a manual scroll leaves no unread rows below the viewport", () => {
+    const { root, jump, expectTarget } = setup();
+    jump();
+    expectTarget(0);
+    fireEvent.wheel(root, { deltaY: 140 });
+    root.scrollTop = 140;
+    fireEvent.scroll(root);
+    jump();
+    expectTarget(1);
+    jump();
+    expectTarget(2);
+  });
+
+  it("does not treat a gesture without actual scrolling as a manual scroll", () => {
+    const { root, jump, expectTarget } = setup();
+    jump();
+    fireEvent.wheel(root, { deltaY: -10 });
+    jump();
+    expectTarget(1);
+  });
+
+  it("resumes from the first remaining candidate if the previous target is no longer unread", () => {
+    const { props, jump, expectTarget } = setup();
+    jump();
+    props.conversations[0].conversation.unread = 0;
+    jump();
+    expectTarget(1);
+  });
+
+  it("does nothing when there are no unread candidates", () => {
+    const { props, jump, scrollTo } = setup();
+    props.conversations.forEach((item) => {
+      item.conversation.unread = 0;
+    });
+    jump();
+    expect(scrollTo).not.toHaveBeenCalled();
   });
 });

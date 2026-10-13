@@ -57,7 +57,7 @@ export interface ChatConversationListProps {
     onOpenCreateCategoryRef?: React.MutableRefObject<(() => void) | null>
     /** 群聊创建成功后回调，用于刷新会话列表 */
     onGroupCreated?: () => void
-    /** 递增 token：变化时最近列表滚到第一条可导航未读 */
+    /** 递增 token：变化时最近列表循环定位下一条可导航未读 */
     scrollToUnreadToken?: number
     /** 外部打开会话在 Recent 中的临时展示与搜索定位状态。 */
     temporaryConversationPresentation?: TemporaryConversationPresentation

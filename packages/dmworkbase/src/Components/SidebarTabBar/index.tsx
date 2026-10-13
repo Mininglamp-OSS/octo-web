@@ -10,6 +10,7 @@ export interface SidebarTabBarProps {
     recentUnread: number
     onTabChange: (tab: SidebarTab) => void
     onActiveTabClick?: (tab: SidebarTab) => void
+    onActiveTabDoubleClick?: (tab: SidebarTab) => void
 }
 
 const SidebarTabBar: React.FC<SidebarTabBarProps> = ({
@@ -18,6 +19,7 @@ const SidebarTabBar: React.FC<SidebarTabBarProps> = ({
     recentUnread,
     onTabChange,
     onActiveTabClick,
+    onActiveTabDoubleClick,
 }) => {
     const { t } = useI18n()
     const handleTabClick = (tab: SidebarTab) => {
@@ -44,7 +46,16 @@ const SidebarTabBar: React.FC<SidebarTabBarProps> = ({
                 </button>
                 <button
                     className={`wk-sidebar-tabbar__btn ${activeTab === 'recent' ? 'wk-sidebar-tabbar__btn--active' : ''}`}
-                    onClick={() => handleTabClick('recent')}
+                    onClick={(event) => {
+                        handleTabClick('recent')
+                        // Keyboard and assistive activation emit click (detail=0), not dblclick.
+                        if (activeTab === 'recent' && event.detail === 0) {
+                            onActiveTabDoubleClick?.('recent')
+                        }
+                    }}
+                    onDoubleClick={() => {
+                        if (activeTab === 'recent') onActiveTabDoubleClick?.('recent')
+                    }}
                 >
                     <span className="wk-sidebar-tabbar__label">{t("base.sidebarTabBar.recent")}</span>
                     {recentUnread > 0 && (
