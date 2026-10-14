@@ -26,6 +26,7 @@ import {
   classifyAssistantIntentText,
   deleteSelectedConversationMessages,
 } from "../index"
+import WKApp from "../../../App"
 import {
   MediaMessageContent,
   MessageStatus,
@@ -746,6 +747,115 @@ describe("Conversation attachment and viewport helpers", () => {
 
     await expect(conversation.addPendingAttachments([makeFile("next.bin")])).resolves.toContain("100")
     expect(add).not.toHaveBeenCalled()
+  })
+
+  // P1 regression guards: file_upload_limits.max_size_kb is the server's *per-upload-request*
+  // single-file limit. The composer's *batch* cap must stay a client-owned constant, otherwise
+  // operators lowering max_size_kb to e.g. 20MB would falsely reject multi-attachment messages.
+  describe("composer batch cap stays decoupled from the server per-file limit", () => {
+    const MB = 1024 * 1024
+    const withFileUploadLimits = async (
+      limits: { maxSizeKB: number; allowedExtensions: string[] },
+      fn: () => Promise<void>
+    ) => {
+      const original = WKApp.remoteConfig.fileUploadLimits
+      WKApp.remoteConfig.fileUploadLimits = limits
+      try {
+        await fn()
+      } finally {
+        WKApp.remoteConfig.fileUploadLimits = original
+      }
+    }
+
+    it("accepts two same-batch files that each fit the lowered per-file limit", async () => {
+      const conversation = new Conversation({ channel })
+      const add = vi.fn()
+      ;(conversation as any)._addAttachmentFn = add
+
+      await withFileUploadLimits({ maxSizeKB: 20 * 1024, allowedExtensions: [] }, async () => {
+        const files = [makeFile("a.bin", 15 * MB), makeFile("b.bin", 15 * MB)]
+        await expect(conversation.addPendingAttachments(files)).resolves.toBeNull()
+        expect(add).toHaveBeenCalledWith(files, "upload")
+      })
+    })
+
+    it("accepts a new file when the queued total exceeds the lowered per-file limit", async () => {
+      const conversation = new Conversation({ channel })
+      const add = vi.fn()
+      ;(conversation as any)._addAttachmentFn = add
+      ;(conversation as any)._messageInputContext = {
+        getAttachmentFiles: () => [makeFile("queued.bin", 15 * MB)],
+      }
+
+      await withFileUploadLimits({ maxSizeKB: 20 * 1024, allowedExtensions: [] }, async () => {
+        const incoming = [makeFile("next.bin", 15 * MB)]
+        await expect(conversation.addPendingAttachments(incoming)).resolves.toBeNull()
+        expect(add).toHaveBeenCalledWith(incoming, "upload")
+      })
+    })
+
+    it("still rejects a single file above the lowered per-file limit", async () => {
+      const conversation = new Conversation({ channel })
+      const add = vi.fn()
+      ;(conversation as any)._addAttachmentFn = add
+
+      await withFileUploadLimits({ maxSizeKB: 20 * 1024, allowedExtensions: [] }, async () => {
+        await expect(
+          conversation.addPendingAttachments([makeFile("huge.bin", 21 * MB)])
+        ).resolves.toContain("huge.bin")
+        expect(add).not.toHaveBeenCalled()
+      })
+    })
+
+    it("rejects an extension outside the pushed allowlist", async () => {
+      const conversation = new Conversation({ channel })
+      const add = vi.fn()
+      ;(conversation as any)._addAttachmentFn = add
+
+      await withFileUploadLimits({ maxSizeKB: 102400, allowedExtensions: [".pdf"] }, async () => {
+        await expect(conversation.addPendingAttachments([makeFile("note.txt")])).resolves.toContain(".txt")
+        expect(add).not.toHaveBeenCalled()
+      })
+    })
+
+    it("accepts an extension inside the pushed allowlist", async () => {
+      const conversation = new Conversation({ channel })
+      const add = vi.fn()
+      ;(conversation as any)._addAttachmentFn = add
+
+      await withFileUploadLimits({ maxSizeKB: 102400, allowedExtensions: [".pdf"] }, async () => {
+        const files = [makeFile("doc.pdf")]
+        await expect(conversation.addPendingAttachments(files)).resolves.toBeNull()
+        expect(add).toHaveBeenCalledWith(files, "upload")
+      })
+    })
+
+    it("still rejects a blacklisted extension that is also allowlisted", async () => {
+      const conversation = new Conversation({ channel })
+      const add = vi.fn()
+      ;(conversation as any)._addAttachmentFn = add
+
+      await withFileUploadLimits(
+        { maxSizeKB: 102400, allowedExtensions: [".exe", ".txt"] },
+        async () => {
+          await expect(conversation.addPendingAttachments([makeFile("payload.exe")])).resolves.toContain("exe")
+          expect(add).not.toHaveBeenCalled()
+        }
+      )
+    })
+
+    it("rejects extension-less files without inventing a fake extension", async () => {
+      const conversation = new Conversation({ channel })
+      const add = vi.fn()
+      ;(conversation as any)._addAttachmentFn = add
+
+      await withFileUploadLimits({ maxSizeKB: 102400, allowedExtensions: [".pdf"] }, async () => {
+        const message = await conversation.addPendingAttachments([makeFile("Dockerfile")])
+        expect(message).toContain("Dockerfile")
+        expect(message).not.toContain(".dockerfile")
+        expect(add).not.toHaveBeenCalled()
+      })
+    })
   })
 
   it("adds valid attachments with their source and propagates editor failures", async () => {

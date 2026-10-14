@@ -132,8 +132,13 @@ describe("file_upload_limits appconfig web integration", () => {
     // Size threshold is KB × 1024 from the pushed config.
     expect(source).toContain("limits.maxSizeKB * 1024");
     // Extension allowlist is authoritative; the local blacklist guard is retained.
-    expect(source).toContain("allowedExtensions.includes(normalized)");
-    expect(source).toContain("BLOCKED_EXTENSIONS.includes(ext)");
+    expect(source).toContain("allowedExtensions.includes(`.${ext}`)");
+    expect(source).toContain("BLOCKED_EXTENSIONS.includes(blockedKey)");
+    // P1: the batch total check uses a client-owned constant, NOT the server per-file field.
+    expect(source).toContain(
+      "existingSize + incomingSize > COMPOSER_MAX_TOTAL_BYTES"
+    );
+    expect(source).toContain("const COMPOSER_MAX_TOTAL_BYTES =");
     // MAX_TOTAL_SIZE is no longer the effective threshold on this path (and is deleted).
     expect(source).not.toContain("MAX_TOTAL_SIZE");
     expect(readRepoFile("packages/dmworkbase/src/Components/Conversation/vm.ts")).not.toContain(

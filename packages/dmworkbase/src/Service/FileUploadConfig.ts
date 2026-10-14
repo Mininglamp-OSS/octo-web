@@ -46,7 +46,7 @@ function parsePositiveInt(value: unknown, fallback: number): number {
  * 非数组 / 归一化后为空数组时回退默认值（空允许集若被读成「什么都不能传」，比缺字段更危险）。
  */
 function parseAllowedExtensions(value: unknown, fallback: string[]): string[] {
-  if (!Array.isArray(value)) return fallback;
+  if (!Array.isArray(value)) return [...fallback];
   const out: string[] = [];
   const seen = new Set<string>();
   for (const item of value) {
@@ -58,7 +58,9 @@ function parseAllowedExtensions(value: unknown, fallback: string[]): string[] {
     seen.add(normalized);
     out.push(normalized);
   }
-  return out.length > 0 ? out : fallback;
+  // 返回副本，避免把 DEFAULT_FILE_UPLOAD_LIMITS.allowedExtensions 这个模块级默认数组
+  // 按引用外发——否则任何消费者就地改写都会污染默认值，且症状远离根因。
+  return out.length > 0 ? out : [...fallback];
 }
 
 /**

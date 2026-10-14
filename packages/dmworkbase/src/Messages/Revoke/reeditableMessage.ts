@@ -147,7 +147,7 @@ export async function remoteReeditFileToFile(input: {
   size?: number;
   mime?: string;
 }): Promise<File | null> {
-  // 校验发生的那一刻实时读下发上限（A6），不缓存进模块级常量，避免 TOCTOU。
+  // 校验发生的那一刻实时读下发上限，不缓存进模块级常量，避免 TOCTOU。
   const maxReeditFileBytes = liveFileUploadMaxBytes();
   if (!input.url || (input.size && input.size > maxReeditFileBytes)) {
     return null;

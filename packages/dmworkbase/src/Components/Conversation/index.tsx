@@ -394,6 +394,13 @@ const composeRecoveryStore = new ComposeRecoveryStore<ComposeRecoveryRecord>({
 });
 const composeDraftWriteQueue = new ComposeDraftWriteQueue();
 
+// 客户端自有的「同一轮附件合计」预算。与后端 file_upload_limits.max_size_kb 解耦：
+// 该字段是 per-upload-request 的单文件上限（对应 MaxBytesReader / multipart 校验，每个
+// 附件各自一个上传请求），服务端没有「整批附件累计上限」概念。因此 composer 的多附件
+// 累计检查保留为本地常量（基线值 100MB），不随运维调整该字段而变化——否则把它调小
+// （例如 20MB）会让本应放行的多附件消息被前端误拒。
+const COMPOSER_MAX_TOTAL_BYTES = 100 * 1024 * 1024;
+
 function hasSameComposeRecoveryResources(
   left: ComposeRecoveryRecord,
   right: ComposeRecoveryRecord,
@@ -940,7 +947,9 @@ export class Conversation
               Toast.error(t("base.revoke.reeditAttachmentFailed"));
               return;
             }
-            await input.addAttachment([file], "paste");
+            // 走统一入口，复用黑名单 + 允许集 + 大小校验（否则恢复路径会绕过扩展名闸门）。
+            const pasteError = await this.addPendingAttachments([file], "paste");
+            if (pasteError) Toast.error(pasteError);
             return;
           }
 
@@ -959,7 +968,8 @@ export class Conversation
             );
             return;
           }
-          await input.addAttachment([file], "upload");
+          const uploadError = await this.addPendingAttachments([file], "upload");
+          if (uploadError) Toast.error(uploadError);
         },
         onBlockError: (block, error) => {
           console.error(
@@ -1565,8 +1575,8 @@ export class Conversation
     files: File[],
     source: "paste" | "upload" = "upload"
   ): Promise<string | null> {
-    // 本地硬编码黑名单（A2）：作为额外守门保留。即使后端下发的允许集被绕过/缓存过期，
-    // 也不放行这批最危险的可执行扩展名。命中文案沿用基线。
+    // 本地硬编码黑名单：作为额外守门保留。即使后端下发的允许集被绕过/缓存过期，也不
+    // 放行这批最危险的可执行扩展名。命中文案沿用基线。
     const BLOCKED_EXTENSIONS = [
       "exe",
       "bat",
@@ -1587,50 +1597,64 @@ export class Conversation
     ];
     const incoming = Array.from(files);
 
-    // 实时读取下发上限（A6：校验发生的那一刻读 WKApp.remoteConfig，不缓存进组件 state，
+    // 实时读取下发上限（校验发生的那一刻读 WKApp.remoteConfig，不缓存进组件 state，
     // 避免 TOCTOU）。上游空值由 leaf 解析层逐字段回退到 100MB，故此处一定是有效值。
     const limits = WKApp.remoteConfig.fileUploadLimits;
-    const maxTotal = limits.maxSizeKB * 1024;
-    const maxSizeLabel = formatFileSize(maxTotal);
+    const maxFileBytes = limits.maxSizeKB * 1024;
+    const maxFileLabel = formatFileSize(maxFileBytes);
     const allowedExtensions = limits.allowedExtensions;
-    // 与基线保持一致的扩展名提取（最后一个点之后、小写；无点文件名退化为整名）。
-    const extensionOf = (name: string) =>
+    // 本地黑名单键：沿用基线的「最后一个点之后、无点退化整名」提取，仅用于黑名单匹配。
+    const blacklistKeyOf = (name: string) =>
       name.substring(name.lastIndexOf(".") + 1).toLowerCase();
+    // 允许集判定用「真实扩展名」，与 Go filepath.Ext 对齐：无点（Dockerfile）、前导点
+    // （.gitignore）、结尾点（a.）都视为无扩展名；否则会把它们当成扩展名误报（例如
+    // Dockerfile 被报成 .dockerfile）。
+    const realExtensionOf = (name: string): string | null => {
+      const dot = name.lastIndexOf(".");
+      if (dot <= 0 || dot === name.length - 1) return null;
+      return name.substring(dot + 1).toLowerCase();
+    };
 
     // 扩展名校验：先本地黑名单，再下发允许集（权威允许集；空集 = 不限制，仅走黑名单）。
     for (const f of incoming) {
-      const ext = extensionOf(f.name);
-      if (BLOCKED_EXTENSIONS.includes(ext)) {
+      const blockedKey = blacklistKeyOf(f.name);
+      if (BLOCKED_EXTENSIONS.includes(blockedKey)) {
         return t("base.conversation.upload.blockedExtension", {
-          values: { extension: ext },
+          values: { extension: blockedKey },
         });
       }
       if (allowedExtensions.length > 0) {
-        const normalized = ext ? `.${ext}` : "";
-        if (!normalized || !allowedExtensions.includes(normalized)) {
+        const ext = realExtensionOf(f.name);
+        if (!ext) {
+          return t("base.conversation.upload.extensionMissing", {
+            values: { name: f.name },
+          });
+        }
+        if (!allowedExtensions.includes(`.${ext}`)) {
           return t("base.conversation.upload.extensionNotAllowed", {
-            values: { extension: normalized || f.name },
+            values: { extension: `.${ext}` },
           });
         }
       }
     }
 
     // 大小校验（octo-web#3173）：单入口统一拦截，按钮/粘贴/拖拽三路共用。
-    // 阈值改读后端 file_upload_limits.max_size_kb（KB × 1024），字段缺失时回退 100MB。
-    // 单文件超限：任一文件本身就超过总上限时直接拒绝。
-    const oversized = incoming.find((f) => f.size > maxTotal);
+    // 单文件阈值改读后端 file_upload_limits.max_size_kb（KB × 1024），字段缺失时回退 100MB。
+    const oversized = incoming.find((f) => f.size > maxFileBytes);
     if (oversized) {
       return t("base.conversation.upload.fileTooLarge", {
-        values: { name: oversized.name, max: maxSizeLabel },
+        values: { name: oversized.name, max: maxFileLabel },
       });
     }
-    // 总大小超限：本次新增 + 已在待发送队列里的累加。
+    // 同一轮附件合计：客户端自有的本地预算（COMPOSER_MAX_TOTAL_BYTES）。这里刻意不读
+    // 服务端 max_size_kb——那是 per-upload-request 的单文件上限，服务端没有「整批附件
+    // 累计上限」，绑上去会让运维调小该值时误拒本应放行的多附件消息。
     const existing = this.getPendingAttachments();
     const existingSize = existing.reduce((sum, f) => sum + f.size, 0);
     const incomingSize = incoming.reduce((sum, f) => sum + f.size, 0);
-    if (existingSize + incomingSize > maxTotal) {
+    if (existingSize + incomingSize > COMPOSER_MAX_TOTAL_BYTES) {
       return t("base.conversation.upload.totalTooLarge", {
-        values: { max: maxSizeLabel },
+        values: { max: formatFileSize(COMPOSER_MAX_TOTAL_BYTES) },
       });
     }
 
