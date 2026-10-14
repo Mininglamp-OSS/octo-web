@@ -1,13 +1,9 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 import { NodeViewWrapper, ReactNodeViewRenderer } from "@tiptap/react";
 import React from "react";
-import { X } from "lucide-react";
+import FileCard from "../../../../ui/FileCard";
 import { useI18n } from "../../../../i18n";
-import {
-  formatFileSize,
-  getFileIcon,
-  videoPlayIcon,
-} from "../../../../Utils/fileIcon";
+import { formatFileSize, videoPlayIcon } from "../../../../Utils/fileIcon";
 
 // 导出图标供外部使用
 export {
@@ -88,7 +84,6 @@ const AttachmentNodeView = ({
 
   // 非图片类型：渲染文件卡片
   const isVideo = isVideoType(type, name);
-  const icon = getFileIcon(name, type);
 
   return (
     <NodeViewWrapper
@@ -97,9 +92,13 @@ const AttachmentNodeView = ({
       }`}
       data-type="attachment"
     >
-      <div className="wk-attachment-node-card">
-        <div className="wk-attachment-node-icon">
-          {isVideo && previewUrl ? (
+      <FileCard
+        name={displayName}
+        size={formatFileSize(size)}
+        onRemove={deleteNode}
+        removeLabel={t("base.messageInput.attachment.remove")}
+        icon={
+          isVideo && previewUrl ? (
             <div className="wk-attachment-node-video-cover-wrapper">
               <img
                 src={previewUrl}
@@ -114,32 +113,9 @@ const AttachmentNodeView = ({
                 draggable={false}
               />
             </div>
-          ) : (
-            <img src={icon} alt="file" draggable={false} />
-          )}
-        </div>
-        <div className="wk-attachment-node-info">
-          <div className="wk-attachment-node-name-row">
-            <div className="wk-attachment-node-name" title={displayName}>
-              {displayName}
-            </div>
-            <button
-              className="wk-attachment-node-remove"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                deleteNode();
-              }}
-              type="button"
-              title={t("base.messageInput.attachment.remove")}
-              contentEditable={false}
-            >
-              <X size={16} />
-            </button>
-          </div>
-          <div className="wk-attachment-node-size">{formatFileSize(size)}</div>
-        </div>
-      </div>
+          ) : undefined
+        }
+      />
     </NodeViewWrapper>
   );
 };

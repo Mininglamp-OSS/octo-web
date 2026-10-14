@@ -1,5 +1,12 @@
+import { render, screen, fireEvent, cleanup } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { TaskStatus } from "wukongimjssdk"
+
+const taskManager = vi.hoisted(() => ({
+  taskMap: new Map<string, any>(),
+  addListener: vi.fn(),
+  removeListener: vi.fn(),
+}));
 
 const app = vi.hoisted(() => {
   const getFileURL = vi.fn((url: string) => url)
@@ -24,9 +31,9 @@ vi.mock("../../../Utils/download", () => ({ downloadFile: app.downloadFile }))
 vi.mock("../../../bridge/message/useFileMessageUI", () => ({ getFileMessageUI: () => ({}) }))
 vi.mock("../../../Service/Convert", () => ({ resolveExternalFileURL: (url: string) => url }))
 vi.mock("../../../Components/WKModal", () => ({ default: () => null }))
-vi.mock("../../../ui/message/MessageRow", () => ({ default: () => null }))
+vi.mock("../../../ui/message/MessageRow", () => ({ default: ({ children }: any) => children }))
 vi.mock("../../Base", () => ({ default: () => null }))
-vi.mock("../../MessageCell", () => ({ MessageCell: class {} }))
+vi.mock("../../MessageCell", () => ({ MessageCell: class { componentDidMount() {} componentWillUnmount() {} } }))
 vi.mock("../Text/MarkdownContent", () => ({ default: () => null }))
 vi.mock("../../../i18n", () => ({ I18nContext: {}, t: (key: string) => key }))
 vi.mock("@douyinfe/semi-ui", () => ({ Toast: { error: vi.fn() }, Tooltip: ({ children }: any) => children }))
@@ -34,13 +41,17 @@ vi.mock("wukongimjssdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("wukongimjssdk")>()
   return {
     ...actual,
-    WKSDK: { shared: () => ({}) },
+    WKSDK: { shared: () => ({ taskManager }) },
   }
 })
 
 import { FileCell, formatFileSize, getExtension, getFileIconInfo, resolveSafeFileUrl } from "../index"
 
 afterEach(() => {
+  cleanup()
+  taskManager.taskMap.clear()
+  taskManager.addListener.mockClear()
+  taskManager.removeListener.mockClear()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   app.getFileURL.mockImplementation((url: string) => url)
@@ -171,7 +182,7 @@ describe("file message helpers", () => {
       return cell
     }
 
-    expect(makeCell(TaskStatus.uploading, "pdf").render()).toBeTruthy()
+    expect(makeCell(TaskStatus.processing, "pdf").render()).toBeTruthy()
     expect(makeCell(TaskStatus.fail, "docx").render()).toBeTruthy()
     expect(makeCell(TaskStatus.success, "bin").render()).toBeTruthy()
   })
@@ -206,3 +217,109 @@ describe("file message helpers", () => {
     expect(emits).toHaveBeenCalledWith("wk:file-preview", expect.objectContaining({ name: "a.pdf", extension: "pdf" }))
   })
 })
+
+describe("file upload lifecycle", () => {
+  function makeCell(size: number) {
+    const context: any = {
+      editOn: () => false,
+      isContextMenuOpen: () => false,
+      t: (key: string) => key,
+    };
+    const message: any = {
+      clientMsgNo: "upload-1",
+      messageID: "",
+      status: 0,
+      channel: { channelID: "peer", channelType: 1 },
+      content: { name: "report.pdf", extension: "file", size, file: {} },
+    };
+    const cell: any = new FileCell({ message, context });
+    cell.props = { message, context };
+    cell.context = context;
+    cell.setState = (patch: any) => Object.assign(cell.state, patch);
+    (app as any).remoteConfig = {
+      driveOn: true,
+      addConfigChangeListener: () => vi.fn(),
+    };
+    (app as any).mittBus = { on: vi.fn(), off: vi.fn(), emit: vi.fn() };
+    (app as any).saveMessageToDrive = vi.fn();
+    return cell;
+  }
+
+  it.each([0, 512, 2 * 1024 * 1024])(
+    "shows progress immediately and switches only after upload succeeds (%i bytes)",
+    (size) => {
+      const cell = makeCell(size);
+      const view = render(cell.render());
+      expect(
+        screen.getByRole("progressbar").getAttribute("aria-valuenow")
+      ).toBe("0");
+      expect(
+        screen.queryByRole("button", {
+          name: "base.conversation.file.download",
+        })
+      ).toBeNull();
+      cell.componentDidMount();
+      const listener = taskManager.addListener.mock.calls[0][0];
+      const task = {
+        id: "upload-1",
+        status: TaskStatus.processing,
+        progress: () => 100,
+        restart: vi.fn(),
+      };
+      listener({ ...task, id: "other-file" });
+      expect(cell.state.uploadProgress).toBe(0);
+      listener(task);
+      view.rerender(cell.render());
+      expect(
+        screen.getByRole("progressbar").getAttribute("aria-valuenow")
+      ).toBe("100");
+      expect(
+        screen.queryByRole("button", {
+          name: "base.conversation.file.download",
+        })
+      ).toBeNull();
+      cell.props.message.content.url = "/files/report.pdf";
+      listener({ ...task, status: TaskStatus.success });
+      view.rerender(cell.render());
+      expect(screen.queryByRole("progressbar")).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "base.conversation.file.download" })
+      ).toBeTruthy();
+      expect(screen.getByText("PDF")).toBeTruthy();
+      cell.componentWillUnmount();
+      expect(taskManager.removeListener).toHaveBeenCalledWith(listener);
+    }
+  );
+
+  it("restores an existing task's progress and retries a late failure", () => {
+    const cell = makeCell(512);
+    const task = {
+      id: "upload-1",
+      status: TaskStatus.processing,
+      progress: () => 37,
+      restart: vi.fn(),
+    };
+    taskManager.taskMap.set(task.id, task);
+    cell.componentDidMount();
+    const view = render(cell.render());
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe(
+      "37"
+    );
+    const retry = vi.fn();
+    taskManager.addListener.mock.calls[0][0]({
+      ...task,
+      status: TaskStatus.fail,
+      restart: retry,
+    });
+    view.rerender(cell.render());
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "base.conversation.file.download" })
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "base.messageFile.retry" })
+    );
+    expect(retry).toHaveBeenCalledOnce();
+    cell.componentWillUnmount();
+  });
+});

@@ -4,7 +4,8 @@ import { attachmentErrorMessage } from "../../bridge/html-attachment/useHtmlAtta
 import React from "react";
 import "./index.css";
 import { MessageCell } from "../MessageCell";
-import MessageBase from "../Base";
+import FileCard from "../../ui/FileCard";
+import { RotateCcw } from "lucide-react";
 import WKApp from "../../App";
 import { FileContent } from "./FileContent";
 import { downloadFile } from "../../Utils/download";
@@ -80,208 +81,6 @@ export function getFileIconInfo(
   }
 }
 
-/** 文件类型图标，对齐 Figma 设计稿 */
-function FileTypeIcon({
-  extension,
-  name,
-}: {
-  extension: string;
-  name?: string;
-}) {
-  const ext = getExtension(extension, name);
-
-  // PDF
-  if (ext === "pdf") {
-    return (
-      <svg
-        width="40"
-        height="40"
-        viewBox="0 0 40 40"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <rect width="40" height="40" rx="8" fill="#FEE2E2" />
-        <path
-          d="M12 10C12 8.9 12.9 8 14 8H24L30 14V30C30 31.1 29.1 32 28 32H14C12.9 32 12 31.1 12 30V10Z"
-          fill="#EF4444"
-        />
-        <path d="M24 8L30 14H26C24.9 14 24 13.1 24 12V8Z" fill="#FCA5A5" />
-        <text
-          x="20"
-          y="26"
-          textAnchor="middle"
-          fill="white"
-          fontSize="7"
-          fontWeight="700"
-          fontFamily="sans-serif"
-        >
-          PDF
-        </text>
-      </svg>
-    );
-  }
-
-  // DOC/DOCX
-  if (ext === "doc" || ext === "docx") {
-    return (
-      <svg
-        width="40"
-        height="40"
-        viewBox="0 0 40 40"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <rect width="40" height="40" rx="8" fill="#DBEAFE" />
-        <path
-          d="M12 10C12 8.9 12.9 8 14 8H24L30 14V30C30 31.1 29.1 32 28 32H14C12.9 32 12 31.1 12 30V10Z"
-          fill="#3B82F6"
-        />
-        <path d="M24 8L30 14H26C24.9 14 24 13.1 24 12V8Z" fill="#93C5FD" />
-        <text
-          x="20"
-          y="26"
-          textAnchor="middle"
-          fill="white"
-          fontSize="6.5"
-          fontWeight="700"
-          fontFamily="sans-serif"
-        >
-          DOC
-        </text>
-      </svg>
-    );
-  }
-
-  // XLS/XLSX
-  if (ext === "xls" || ext === "xlsx") {
-    return (
-      <svg
-        width="40"
-        height="40"
-        viewBox="0 0 40 40"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <rect width="40" height="40" rx="8" fill="#DCFCE7" />
-        <path
-          d="M12 10C12 8.9 12.9 8 14 8H24L30 14V30C30 31.1 29.1 32 28 32H14C12.9 32 12 31.1 12 30V10Z"
-          fill="#22C55E"
-        />
-        <path d="M24 8L30 14H26C24.9 14 24 13.1 24 12V8Z" fill="#86EFAC" />
-        <text
-          x="20"
-          y="26"
-          textAnchor="middle"
-          fill="white"
-          fontSize="6.5"
-          fontWeight="700"
-          fontFamily="sans-serif"
-        >
-          XLS
-        </text>
-      </svg>
-    );
-  }
-
-  // PPT/PPTX
-  if (ext === "ppt" || ext === "pptx") {
-    return (
-      <svg
-        width="40"
-        height="40"
-        viewBox="0 0 40 40"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <rect width="40" height="40" rx="8" fill="#FFEDD5" />
-        <path
-          d="M12 10C12 8.9 12.9 8 14 8H24L30 14V30C30 31.1 29.1 32 28 32H14C12.9 32 12 31.1 12 30V10Z"
-          fill="#F97316"
-        />
-        <path d="M24 8L30 14H26C24.9 14 24 13.1 24 12V8Z" fill="#FDba74" />
-        <text
-          x="20"
-          y="26"
-          textAnchor="middle"
-          fill="white"
-          fontSize="6.5"
-          fontWeight="700"
-          fontFamily="sans-serif"
-        >
-          PPT
-        </text>
-      </svg>
-    );
-  }
-
-  // ZIP/压缩包
-  if (["zip", "rar", "7z", "tar", "gz"].includes(ext)) {
-    return (
-      <svg
-        width="40"
-        height="40"
-        viewBox="0 0 40 40"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <rect width="40" height="40" rx="8" fill="#FEF9C3" />
-        <path
-          d="M12 10C12 8.9 12.9 8 14 8H24L30 14V30C30 31.1 29.1 32 28 32H14C12.9 32 12 31.1 12 30V10Z"
-          fill="#EAB308"
-        />
-        <path d="M24 8L30 14H26C24.9 14 24 13.1 24 12V8Z" fill="#FDE047" />
-        <text
-          x="20"
-          y="26"
-          textAnchor="middle"
-          fill="white"
-          fontSize="6.5"
-          fontWeight="700"
-          fontFamily="sans-serif"
-        >
-          ZIP
-        </text>
-      </svg>
-    );
-  }
-
-  // 通用文件
-  return (
-    <svg
-      width="40"
-      height="40"
-      viewBox="0 0 40 40"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <rect width="40" height="40" rx="8" fill="#F3F4F6" />
-      <path
-        d="M12 10C12 8.9 12.9 8 14 8H24L30 14V30C30 31.1 29.1 32 28 32H14C12.9 32 12 31.1 12 30V10Z"
-        fill="#9CA3AF"
-      />
-      <path d="M24 8L30 14H26C24.9 14 24 13.1 24 12V8Z" fill="#D1D5DB" />
-      <line
-        x1="16"
-        y1="20"
-        x2="26"
-        y2="20"
-        stroke="white"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-      <line
-        x1="16"
-        y1="24"
-        x2="22"
-        y2="24"
-        stroke="white"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 export function getExtension(extension: string, name?: string): string {
   // 优先从文件名后缀提取: 服务端返回的 extension 字段不可靠 (可能为空、
   // 或是 "file" 等占位值, 见 issue #143), 用文件名后缀更稳妥。
@@ -342,8 +141,6 @@ function isTextFile(extension: string, name?: string): boolean {
   return ["md", "txt"].includes(ext);
 }
 
-const SMALL_FILE_THRESHOLD = 1024 * 1024; // 1MB 以下不显示进度条
-
 /** task 自身支持的重试接口（MediaMessageUploadTask 实现） */
 interface RestartableTask extends Task {
   restart(): Promise<void>;
@@ -381,6 +178,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
   private _taskListener = (task: Task) => {
     const { message } = this.props;
     if (task.id !== message.clientMsgNo) return;
+    this._task = task as RestartableTask;
     this.setState({
       uploadProgress: task.progress(),
       uploadStatus: task.status,
@@ -403,26 +201,13 @@ export class FileCell extends MessageCell<any, FileCellState> {
     super.componentDidMount();
     this._mounted = true;
     const { message } = this.props;
-    const content = message.content as FileContent;
-    // 小文件不显示进度，跳过订阅
-    if (content.size >= SMALL_FILE_THRESHOLD) {
-      // taskManager 通过 addListener 订阅；初始 task 状态通过首次回调获取
-      WKSDK.shared().taskManager.addListener(this._taskListener);
-      // 存 task 引用供重试使用（addTask 时 task 已调 start，此处仅读取）
-      const allListeners = (WKSDK.shared().taskManager as any).taskMap as
-        | Map<string, Task>
-        | undefined;
-      const found = allListeners?.get(message.clientMsgNo) as
-        | RestartableTask
-        | undefined;
-      if (found) {
-        this._task = found;
-        this.setState({
-          uploadProgress: found.progress(),
-          uploadStatus: found.status,
-        });
-      }
-    }
+    // Subscribe for every file size, including tasks created after the cell mounts.
+    const taskManager = WKSDK.shared().taskManager;
+    taskManager.addListener(this._taskListener);
+    const found = (
+      taskManager as unknown as { taskMap?: Map<string, Task> }
+    ).taskMap?.get(message.clientMsgNo);
+    if (found) this._taskListener(found);
 
     // 挂载时查询转存状态：多条消息在钩子层微批合并成一次批量请求。
     // 群/子区/私聊统一支持（源码 source_key 已带 channelType 区分）。
@@ -802,119 +587,16 @@ export class FileCell extends MessageCell<any, FileCellState> {
     const { message, context } = this.props;
     const content = message.content as FileContent;
     const { t } = this.context;
-    const iconInfo = getFileIconInfo(content.extension, content.name);
-    const canPreview = isPreviewable(content.extension, content.name);
     const { uploadProgress, uploadStatus } = this.state;
 
-    const isUploading =
-      content.size >= SMALL_FILE_THRESHOLD &&
-      uploadStatus !== null &&
-      uploadStatus !== TaskStatus.success &&
-      uploadStatus !== TaskStatus.fail &&
-      uploadStatus !== TaskStatus.cancel;
-
     const isFailed =
-      content.size >= SMALL_FILE_THRESHOLD && uploadStatus === TaskStatus.fail;
-
-    // 上传中：显示进度条
-    if (isUploading) {
-      const pct = Math.round(uploadProgress);
-      return (
-        <MessageBase context={context} message={message}>
-          <div className="wk-message-file wk-message-file--uploading">
-            <div className="wk-message-file-icon">
-              <FileTypeIcon extension={content.extension} name={content.name} />
-            </div>
-            <div className="wk-message-file-info">
-              <div className="wk-message-file-name" title={content.name}>
-                {content.name || t("base.messageFile.uploading")}
-              </div>
-              <div className="wk-message-file-progress-bar">
-                <div
-                  className="wk-message-file-progress-fill"
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-              <div className="wk-message-file-progress-text">{pct}%</div>
-            </div>
-          </div>
-        </MessageBase>
-      );
-    }
-
-    // 上传失败：显示失败提示 + 重试按钮
-    if (isFailed) {
-      return (
-        <MessageBase context={context} message={message}>
-          <div className="wk-message-file wk-message-file--failed">
-            <div className="wk-message-file-icon">
-              <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-                <rect width="40" height="40" rx="8" fill="#FEE2E2" />
-                <path
-                  d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
-                  fill="#EF4444"
-                  transform="translate(8,8) scale(0.9)"
-                />
-                <line
-                  x1="20"
-                  y1="18"
-                  x2="20"
-                  y2="23"
-                  stroke="white"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-                <line
-                  x1="20"
-                  y1="27"
-                  x2="20.01"
-                  y2="27"
-                  stroke="white"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </div>
-            <div className="wk-message-file-info">
-              <div className="wk-message-file-name" title={content.name}>
-                {content.name || t("base.messageFile.uploadFailed")}
-              </div>
-              <div className="wk-message-file-meta">
-                <span className="wk-message-file-failed-text">{t("base.messageFile.uploadFailed")}</span>
-              </div>
-              <div className="wk-message-file-retry-hint">{t("base.messageFile.retryHint")}</div>
-            </div>
-            <div className="wk-message-file-actions">
-              <div
-                className="wk-message-file-action"
-                title={t("base.messageFile.retry")}
-                onClick={() => {
-                  if (!this._task) {
-                    Toast.warning(t("base.messageFile.uploadTaskExpired"));
-                    return;
-                  }
-                  this._task.restart();
-                }}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="16"
-                  height="16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="1 4 1 10 7 10" />
-                  <path d="M3.51 15a9 9 0 1 0 .49-3.5" />
-                </svg>
-              </div>
-            </div>
-          </div>
-        </MessageBase>
-      );
-    }
+      uploadStatus === TaskStatus.fail || uploadStatus === TaskStatus.cancel;
+    // Local files have no remote URL while credentials/the first progress event are pending.
+    const isUploading =
+      !isFailed &&
+      uploadStatus !== TaskStatus.success &&
+      (uploadStatus !== null ||
+        (!!content.file && !content.url && !content.remoteUrl));
 
     const uiProps = getFileMessageUI(message);
     const selectionMode = context.editOn();
@@ -932,112 +614,136 @@ export class FileCell extends MessageCell<any, FileCellState> {
           selectionMode={selectionMode}
           showCheckbox={selectionMode && selectable}
           isSelected={selectable && !!message.checked}
-          onSelect={selectable
-            ? (selected) => context.checkeMessage(message.message, selected)
-            : undefined
+          onSelect={
+            selectable
+              ? (selected) => context.checkeMessage(message.message, selected)
+              : undefined
           }
           onAvatarClick={(e) => context.onTapAvatar(message.fromUID, e)}
           onSenderNameClick={() => context.showUser(message.fromUID)}
         >
           <div>
-            <div
-              className={`wk-message-file wk-message-file--clickable${
-                isActive ? " wk-message-file--active" : ""
-              }`}
-              onClick={this.handlePreview}
-              title={t("base.messageFile.preview")}
-            >
-              <div className="wk-message-file-icon">
-                <FileTypeIcon
-                  extension={content.extension}
-                  name={content.name}
-                />
-              </div>
-              <div className="wk-message-file-info">
-                <div className="wk-message-file-name" title={content.name}>
-                  {content.name || t("base.messageFile.unknownFile")}
-                </div>
-                <div className="wk-message-file-meta-row">
-                  <div className="wk-message-file-meta">
-                    <span className="wk-message-file-size">
-                      {formatFileSize(content.size)}
-                    </span>
-                    {content.extension && (
-                      <span className="wk-message-file-ext">
-                        {content.extension.toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-                  <div className="wk-message-file-actions">
-                    {WKApp.saveMessageToDrive && WKApp.remoteConfig?.driveOn && isDriveTransferSupportedChannel(message.channel.channelType) && (
-                      <Tooltip
-                        content={
-                          !this.isMessagePersisted()
-                            ? t("base.messageFile.saveToDrivePendingAck")
-                            : this.state.imTransferred?.exists
-                              ? t("base.messageFile.viewInDrive")
-                              : t("base.messageFile.saveToDrive")
-                        }
-                        position="top"
-                      >
-                        <div
-                          className="wk-message-file-action"
-                          aria-label={
+            <FileCard
+              name={content.name || t("base.messageFile.unknownFile")}
+              size={formatFileSize(content.size)}
+              extension={content.extension}
+              active={isActive}
+              onClick={isUploading || isFailed ? undefined : this.handlePreview}
+              title={
+                isFailed
+                  ? t("base.messageFile.retryHint")
+                  : t("base.messageFile.preview")
+              }
+              progress={isUploading ? uploadProgress : undefined}
+              status={
+                isFailed ? (
+                  <span className="wk-message-file-failed-text">
+                    {t("base.messageFile.uploadFailed")}
+                  </span>
+                ) : undefined
+              }
+              actions={
+                isFailed ? (
+                  <button
+                    className="wk-file-card-action"
+                    type="button"
+                    aria-label={t("base.messageFile.retry")}
+                    title={t("base.messageFile.retry")}
+                    onClick={() => {
+                      if (
+                        !this._task ||
+                        typeof this._task.restart !== "function"
+                      ) {
+                        Toast.warning(t("base.messageFile.uploadTaskExpired"));
+                        return;
+                      }
+                      void this._task.restart();
+                    }}
+                  >
+                    <RotateCcw aria-hidden="true" />
+                  </button>
+                ) : (
+                  <>
+                    {WKApp.saveMessageToDrive &&
+                      WKApp.remoteConfig?.driveOn &&
+                      isDriveTransferSupportedChannel(
+                        message.channel.channelType
+                      ) && (
+                        <Tooltip
+                          content={
                             !this.isMessagePersisted()
                               ? t("base.messageFile.saveToDrivePendingAck")
                               : this.state.imTransferred?.exists
+                              ? t("base.messageFile.viewInDrive")
+                              : t("base.messageFile.saveToDrive")
+                          }
+                          position="top"
+                        >
+                          <button
+                            type="button"
+                            className="wk-file-card-action"
+                            aria-label={
+                              !this.isMessagePersisted()
+                                ? t("base.messageFile.saveToDrivePendingAck")
+                                : this.state.imTransferred?.exists
                                 ? t("base.messageFile.viewInDrive")
                                 : t("base.messageFile.saveToDrive")
-                          }
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // 未 ack / 无 server messageID：静默拦截点击，避免把
-                            // 空 im_msg_id 传给后端(#1261 review round 3 flagged case)。
-                            // 视觉上与下载按钮口径一致（始终高亮、运行时静默返回），
-                            // hover tooltip 提示原因。
-                            if (!this.isMessagePersisted()) return;
-                            this.handleSaveToDrive();
-                          }}
-                        >
-                          {this.state.imTransferred?.exists ? (
-                            <svg
-                              viewBox="0 0 24 24"
-                              width="16"
-                              height="16"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25" />
-                              <polyline points="9 12 11 14 15 10" />
-                            </svg>
-                          ) : (
-                            <svg
-                              viewBox="0 0 24 24"
-                              width="16"
-                              height="16"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25" />
-                              <polyline points="16 16 12 12 8 16" />
-                              <line x1="12" y1="12" x2="12" y2="21" />
-                            </svg>
-                          )}
-                        </div>
-                      </Tooltip>
-                    )}
-                    <Tooltip content={t("base.conversation.file.download")} position="top">
-                      <div
-                        className="wk-message-file-action"
-                        aria-label={t(this.state.htmlDownloadPending
-                          ? "base.htmlAttachment.preparing"
-                          : "base.conversation.file.download")}
+                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // 未 ack / 无 server messageID：静默拦截点击，避免把
+                              // 空 im_msg_id 传给后端(#1261 review round 3 flagged case)。
+                              // 视觉上与下载按钮口径一致（始终高亮、运行时静默返回），
+                              // hover tooltip 提示原因。
+                              if (!this.isMessagePersisted()) return;
+                              this.handleSaveToDrive();
+                            }}
+                          >
+                            {this.state.imTransferred?.exists ? (
+                              <svg
+                                viewBox="0 0 24 24"
+                                width="16"
+                                height="16"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25" />
+                                <polyline points="9 12 11 14 15 10" />
+                              </svg>
+                            ) : (
+                              <svg
+                                viewBox="0 0 24 24"
+                                width="16"
+                                height="16"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25" />
+                                <polyline points="16 16 12 12 8 16" />
+                                <line x1="12" y1="12" x2="12" y2="21" />
+                              </svg>
+                            )}
+                          </button>
+                        </Tooltip>
+                      )}
+                    <Tooltip
+                      content={t("base.conversation.file.download")}
+                      position="top"
+                    >
+                      <button
+                        type="button"
+                        className="wk-file-card-action"
+                        aria-label={t(
+                          this.state.htmlDownloadPending
+                            ? "base.htmlAttachment.preparing"
+                            : "base.conversation.file.download"
+                        )}
                         aria-busy={this.state.htmlDownloadPending}
                         onClick={(e) => {
                           e.stopPropagation(); // 阻止冒泡，避免触发预览
@@ -1058,12 +764,12 @@ export class FileCell extends MessageCell<any, FileCellState> {
                           <polyline points="7 10 12 15 17 10" />
                           <line x1="12" y1="15" x2="12" y2="3" />
                         </svg>
-                      </div>
+                      </button>
                     </Tooltip>
-                  </div>
-                </div>
-              </div>
-            </div>
+                  </>
+                )
+              }
+            />
             {content.caption && (
               <div className="wk-message-file-caption">{content.caption}</div>
             )}
@@ -1080,7 +786,10 @@ export class FileCell extends MessageCell<any, FileCellState> {
             {this.state.textPreviewExt === "md" ? (
               // 附件 .md 预览不是聊天消息入口：显式关掉公式渲染，避免正文里的
               // $$...$$ / $VAR 被当公式吞掉分隔符（KaTeX 只在消息与显式文档预览开启）。
-              <MarkdownContent content={this.state.textPreviewContent} enableMath={false} />
+              <MarkdownContent
+                content={this.state.textPreviewContent}
+                enableMath={false}
+              />
             ) : (
               <pre className="wk-text-file-preview-plain">
                 {this.state.textPreviewContent}

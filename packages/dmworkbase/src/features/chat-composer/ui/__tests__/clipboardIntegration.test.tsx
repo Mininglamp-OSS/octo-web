@@ -103,6 +103,31 @@ describe("MessageInput clipboard integration", () => {
     act(() => inputContext?.clear());
   });
 
+  it("removes pending file cards and sends only the remaining attachment", async () => {
+    let inputContext: MessageInputContext | undefined;
+    const onSend = vi.fn(() => createChatSendOutcome({ editorConsumed: true }));
+    const view = render(
+      <ChatComposer host={createTestViewHost()}
+        onContext={(context) => { inputContext = context; }} onSend={onSend} />
+    );
+    await waitFor(() => expect(inputContext).toBeDefined());
+    const removed = new File(["short"], "a.md", { type: "text/markdown" });
+    const kept = new File(["long"], "report-with-a-long-filename-2026.pdf", { type: "application/pdf" });
+    await act(async () => { await inputContext!.addAttachment([removed, kept]); });
+    const cards = view.container.querySelectorAll(".wk-file-card");
+    expect(cards).toHaveLength(2);
+    expect(cards[0].querySelector(".wk-file-card-ext")?.textContent).toBe("MD");
+    expect(cards[1].querySelector(".wk-file-card-ext")?.textContent).toBe("PDF");
+    fireEvent.click(cards[0].querySelector("button")!);
+    expect(inputContext!.getAttachmentFiles()).toEqual([kept]);
+    expect(view.container.querySelectorAll(".wk-file-card")).toHaveLength(1);
+    await act(async () => { await inputContext!.send(); });
+    expect(onSend).toHaveBeenCalledWith(expect.objectContaining({
+      topFiles: [expect.objectContaining({ file: kept })],
+    }));
+    act(() => inputContext!.clear());
+  });
+
   it("routes a file-only paste through the pending attachment port", async () => {
     let inputContext: MessageInputContext | undefined;
     const onAddPendingAttachments = vi.fn().mockResolvedValue(true);

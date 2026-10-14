@@ -5,7 +5,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import { X } from "lucide-react";
+import FileCard from "../../../ui/FileCard";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import Placeholder from "@tiptap/extension-placeholder";
 import TiptapMention from "@tiptap/extension-mention";
@@ -1885,14 +1885,17 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
               {topAttachments.map((item) => {
                 const isImage = isImageFileType(item.file);
                 const isVideo = isVideoFileType(item.file);
-                const icon = getFileIcon(item.name, item.type);
 
                 // 顶部附件区所有类型都使用卡片样式（包括图片）
                 return (
                   <div key={item.id} className="wk-attachment-node">
-                    <div className="wk-attachment-node-card">
-                      <div className="wk-attachment-node-icon">
-                        {isImage && item.previewUrl ? (
+                    <FileCard
+                      name={item.name}
+                      size={formatFileSize(item.size)}
+                      onRemove={() => removeTopAttachment(item.id)}
+                      removeLabel={t("base.messageInput.attachment.remove")}
+                      icon={
+                        isImage && item.previewUrl ? (
                           // 图片：显示缩略图
                           <img
                             src={item.previewUrl}
@@ -1916,33 +1919,9 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
                               draggable={false}
                             />
                           </div>
-                        ) : (
-                          // 其他文件：显示文件图标
-                          <img src={icon} alt="file" draggable={false} />
-                        )}
-                      </div>
-                      <div className="wk-attachment-node-info">
-                        <div className="wk-attachment-node-name-row">
-                          <div
-                            className="wk-attachment-node-name"
-                            title={item.name}
-                          >
-                            {item.name}
-                          </div>
-                          <button
-                            className="wk-attachment-node-remove"
-                            onClick={() => removeTopAttachment(item.id)}
-                            type="button"
-                            title={t("base.messageInput.attachment.remove")}
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                        <div className="wk-attachment-node-size">
-                          {formatFileSize(item.size)}
-                        </div>
-                      </div>
-                    </div>
+                        ) : undefined
+                      }
+                    />
                   </div>
                 );
               })}

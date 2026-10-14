@@ -1,0 +1,159 @@
+/* 280 × 84; reserve the same two-line name area in every state. */
+.wk-file-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: none;
+  width: calc(var(--wk-sp-10) * 7);
+  height: calc(var(--wk-sp-5) * 3 + var(--wk-sp-3) * 2);
+  box-sizing: border-box;
+  padding: var(--wk-sp-3);
+  gap: var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-file-card-bg);
+  color: var(--wk-text-primary);
+  font-family: var(--wk-font-sans);
+}
+
+.wk-file-card--clickable {
+  cursor: pointer;
+}
+.wk-file-card--clickable:hover {
+  background: var(--wk-file-card-hover-bg);
+}
+.wk-file-card--clickable:active {
+  background: var(--wk-file-card-active-bg);
+}
+.wk-file-card--active,
+.wk-file-card--active:hover {
+  box-shadow: inset 0 0 0 calc(var(--wk-sp-0-5) / 2) var(--wk-brand-primary);
+  background: var(--wk-brand-tint-06);
+}
+
+.wk-file-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--wk-sp-10);
+  height: var(--wk-sp-10);
+}
+
+.wk-file-card-icon > img,
+.wk-file-card-icon > svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.wk-file-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.wk-file-card-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  width: calc(100% - var(--wk-sp-5));
+  height: var(--wk-sp-10);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  white-space: normal;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  font-size: var(--wk-text-size-md);
+  font-weight: var(--wk-font-medium);
+  line-height: var(--wk-sp-5);
+}
+
+.wk-file-card-footer,
+.wk-file-card-meta,
+.wk-file-card-actions,
+.wk-file-card-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  min-width: 0;
+  height: var(--wk-sp-5);
+}
+
+.wk-file-card-footer {
+  justify-content: space-between;
+}
+.wk-file-card-meta,
+.wk-file-card-progress {
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
+  line-height: var(--wk-sp-5);
+}
+.wk-file-card-meta {
+  flex: 1;
+  max-width: calc(100% - var(--wk-sp-10) - var(--wk-sp-4));
+}
+.wk-file-card-size {
+  white-space: nowrap;
+}
+.wk-file-card-ext {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 var(--wk-sp-1);
+  border-radius: var(--wk-r-xs);
+  background: var(--wk-file-ext-bg);
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-tiny);
+  font-weight: var(--wk-font-medium);
+  line-height: var(--wk-sp-4);
+}
+.wk-file-card-actions {
+  flex: none;
+}
+.wk-file-card-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--wk-sp-5);
+  height: var(--wk-sp-5);
+  padding: 0;
+  border: 0;
+  border-radius: var(--wk-r-xs);
+  background: transparent;
+  color: var(--wk-text-primary);
+  cursor: pointer;
+}
+.wk-file-card-action svg {
+  width: var(--wk-sp-4);
+  height: var(--wk-sp-4);
+}
+.wk-file-card-action:hover {
+  background: var(--wk-file-ext-bg);
+}
+.wk-file-card-action:focus-visible {
+  outline: var(--wk-sp-0-5) solid var(--wk-brand-primary);
+}
+.wk-file-card-remove {
+  position: absolute;
+  top: var(--wk-sp-3);
+  right: var(--wk-sp-3);
+  color: var(--wk-text-tertiary);
+}
+.wk-file-card-progress-track {
+  flex: 1;
+  overflow: hidden;
+  height: var(--wk-sp-1);
+  border-radius: var(--wk-r-xs);
+  background: var(--wk-border-default);
+}
+.wk-file-card-progress-fill {
+  height: 100%;
+  background: var(--wk-brand-primary);
+  transition: width var(--wk-dur-fast);
+}
+.wk-file-card-progress > span {
+  min-width: var(--wk-sp-10);
+  text-align: right;
+}

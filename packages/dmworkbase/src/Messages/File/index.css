@@ -1,214 +1,16 @@
-.wk-message-file {
-  display: flex;
-  align-items: center;
-  padding: 10px 12px;
-  min-width: 200px;
-  max-width: 280px;
-  gap: 12px;
-  background: var(--wk-file-card-bg);
-  border: 1px solid transparent;
-  border-radius: 8px;
-  box-sizing: border-box;
-  cursor: pointer;
-  transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s;
-}
-
-/* 可点击的文件卡片 hover 效果 */
-.wk-message-file--clickable:hover {
-  background: var(--wk-file-card-hover-bg);
-  box-shadow: var(--wk-shadow-sm);
-}
-
-.wk-message-file--clickable:active {
-  background: var(--wk-file-card-active-bg);
-}
-
-/* 激活态（正在预览） */
-.wk-message-file--active {
-  border-color: var(--wk-brand-primary);
-  background: var(--wk-brand-tint-06);
-}
-
-.wk-message-file--active:hover {
-  border-color: var(--wk-brand-primary);
-  background: var(--wk-brand-tint-06);
-}
-
-.wk-message-file-icon {
-  width: 40px;
-  height: 40px;
-  min-width: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.wk-message-file-icon-label {
-  color: var(--wk-text-on-brand);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-}
-
-.wk-message-file-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.wk-message-file-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--wk-text-legacy-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.4;
-  padding-right: 12px;
-}
-
-.wk-message-file-meta-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.wk-message-file-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--wk-text-legacy-tertiary);
-}
-
-.wk-message-file-ext {
-  padding: 0 4px;
-  border-radius: 2px;
-  background-color: var(--wk-file-ext-bg);
-  color: var(--wk-color-theme);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.6;
-}
-
-.wk-message-file-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.wk-message-file-action {
-  width: 20px;
-  height: 20px;
-  min-width: 20px;
-  min-height: 20px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--wk-color-theme);
-  transition: background-color 0.2s;
-}
-
-.wk-message-file-action:hover {
-  background-color: var(--wk-file-ext-bg);
-}
-
-.wk-message-base-bubble-box.send .wk-message-file-name {
-  color: var(--wk-text-primary);
-}
-
-.wk-message-base-bubble-box.send .wk-message-file-meta {
-  color: var(--wk-text-tertiary);
-}
-
-.wk-message-base-bubble-box.send .wk-message-file-ext {
-  background-color: var(--wk-file-send-tint-10);
-  color: var(--wk-color-theme);
-}
-
-.wk-message-base-bubble-box.send .wk-message-file-action {
-  color: var(--wk-color-theme);
-}
-
-.wk-message-base-bubble-box.send .wk-message-file-action:hover {
-  background-color: var(--wk-file-send-tint-08);
-}
-
 .wk-message-file-caption {
-  padding: 4px 8px 8px;
-  font-size: 14px;
+  padding: var(--wk-sp-1) var(--wk-sp-2) var(--wk-sp-2);
+  font-size: var(--wk-text-size-md);
   color: var(--wk-text-item);
   word-break: break-word;
-  line-height: 1.4;
+  line-height: var(--wk-leading-normal);
 }
 
 .wk-message-base-bubble-box.send .wk-message-file-caption {
   color: var(--wk-text-primary);
 }
 
-/* 上传进度条 */
-.wk-message-file--uploading,
-.wk-message-file--failed {
-  opacity: 0.9;
-}
-
-.wk-message-file-progress-bar {
-  height: 4px;
-  background-color: var(--wk-black-alpha-12);
-  border-radius: 2px;
-  overflow: hidden;
-  margin: 6px 0 2px;
-}
-
-.wk-message-file-progress-fill {
-  height: 100%;
-  background-color: var(--wk-brand-primary);
-  border-radius: 2px;
-  transition: width 0.2s ease;
-}
-
-.wk-message-file-progress-text {
-  font-size: 11px;
-  color: var(--wk-text-item-second, #999);
-}
-
-.wk-message-base-bubble-box.send .wk-message-file-progress-bar {
-  background-color: var(--wk-file-send-tint-15);
-}
-
-.wk-message-base-bubble-box.send .wk-message-file-progress-fill {
-  background-color: var(--wk-color-theme);
-}
-
-.wk-message-base-bubble-box.send .wk-message-file-progress-text {
-  color: var(--wk-text-tertiary);
-}
-
-/* 失败状态文案 */
 .wk-message-file-failed-text {
-  color: var(--wk-color-error);
-}
-
-.wk-message-file-retry-hint {
-  font-size: 11px;
-  color: var(--wk-color-error);
-  margin-top: 2px;
-}
-
-/* 发送方气泡里失败文案 */
-.wk-message-base-bubble-box.send .wk-message-file-failed-text {
-  color: var(--wk-color-error);
-}
-
-.wk-message-base-bubble-box.send .wk-message-file-retry-hint {
   color: var(--wk-color-error);
 }
 
@@ -216,14 +18,14 @@
 .wk-text-file-preview {
   max-height: 70vh;
   overflow-y: auto;
-  padding: 8px;
+  padding: var(--wk-sp-2);
 }
 
 .wk-text-file-preview-plain {
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
-  font-size: 14px;
-  line-height: 1.6;
+  font-family: var(--wk-font-mono);
+  font-size: var(--wk-text-size-md);
+  line-height: var(--wk-leading-loose);
   margin: 0;
 }
