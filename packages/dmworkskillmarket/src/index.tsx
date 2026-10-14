@@ -15,6 +15,7 @@ export { default as EditSkillModal } from "./components/EditSkillModal";
 export { default as NewSkillModal } from "./components/NewSkillModal";
 export { default as SkillDetailModal } from "./components/SkillDetailModal";
 export { default as DeleteConfirmModal } from "./components/DeleteConfirmModal";
+export { default as BotPublishModal } from "./components/BotPublishModal";
 // "组织审核" — the Space reviewer queue, mounted by dmworkmcp at
 // /mcp-market/review as the sidebar's fifth entry.
 export { default as SpaceReviewPage } from "./pages/SpaceReviewPage";

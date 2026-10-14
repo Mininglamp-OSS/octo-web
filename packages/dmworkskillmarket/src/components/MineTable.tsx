@@ -31,7 +31,7 @@ export interface MineActionRequest {
   requestId: number;
   pluginId: string;
   type: MineAssetType;
-  action: "view" | "edit" | "upgrade";
+  action: "view" | "edit" | "bot-upgrade";
 }
 
 const WIRE_TYPE: Record<MineAssetType, string> = {
@@ -106,6 +106,9 @@ export interface MineRow {
    *  types. */
   onPublish?: () => void;
   onUpgrade?: () => void;
+  /** Optional copy override for flows such as the mixed list's Bot-guided
+   * upgrade. The owning page still controls the action and its permissions. */
+  upgradeLabel?: React.ReactNode;
   onCancelReview?: () => void;
   onApprove?: () => void;
   onReject?: () => void;
@@ -307,7 +310,7 @@ export default function MineTable({ rows, ariaLabel }: MineTableProps) {
                 aria={r.upgradeAria}
                 onClick={r.onUpgrade}
                 leading={<Upload size={13} aria-hidden="true" />}
-                label={t("skillMarket.plugin.actionUpgrade")}
+                label={r.upgradeLabel ?? t("skillMarket.plugin.actionUpgrade")}
               />
               <RowAction
                 show={!!r.onCancelReview}

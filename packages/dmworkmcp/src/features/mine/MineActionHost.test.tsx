@@ -82,6 +82,18 @@ vi.mock("@dmwork/skillmarket", () => ({
     item ? <div data-testid="skill-edit" data-id={item.id} /> : null,
   NewSkillModal: ({ visible }: { visible: boolean }) =>
     visible ? <div data-testid="skill-upgrade" /> : null,
+  BotPublishModal: ({
+    visible,
+    mode,
+    editingId,
+  }: {
+    visible: boolean;
+    mode?: string;
+    editingId?: string;
+  }) =>
+    visible ? (
+      <div data-testid="skill-bot" data-mode={mode} data-id={editingId} />
+    ) : null,
   DeleteConfirmModal: ({ skill: item }: { skill: typeof skill | null }) =>
     item ? <div data-testid="skill-delete" data-id={item.id} /> : null,
 }));
@@ -158,19 +170,62 @@ vi.mock("../../components/ExpertEditModal", () => ({
     item ? <div data-testid="expert-edit" data-id={item.id} /> : null,
 }));
 vi.mock("../../components/ExpertDetailModal", () => ({
-  default: ({ item }: { item: typeof expert | typeof squad | null }) =>
-    item ? <div data-testid="expert-detail" data-id={item.id} /> : null,
-}));
-vi.mock("../../components/ExpertBotPublishModal", () => ({
-  default: () => null,
+  default: ({
+    item,
+    onUpgrade,
+  }: {
+    item: typeof expert | typeof squad | null;
+    onUpgrade?: (item: typeof expert | typeof squad) => void;
+  }) =>
+    item ? (
+      <div data-testid="expert-detail" data-id={item.id}>
+        {onUpgrade && (
+          <button type="button" onClick={() => onUpgrade(item)}>
+            expert-detail-upgrade
+          </button>
+        )}
+      </div>
+    ) : null,
 }));
 vi.mock("../../components/ReviewSubmitModal", () => ({
   default: ({ target }: { target: { pluginId: string } | null }) =>
-    target ? (
-      <div data-testid="review-submit" data-id={target.pluginId} />
+    target ? <div data-testid="review-submit" data-id={target.pluginId} /> : null,
+}));
+vi.mock("../../components/ExpertBotPublishModal", () => ({
+  default: ({
+    visible,
+    mode,
+    editingId,
+    kind,
+  }: {
+    visible: boolean;
+    mode?: string;
+    editingId?: string;
+    kind: string;
+  }) =>
+    visible ? (
+      <div
+        data-testid="expert-bot"
+        data-mode={mode}
+        data-id={editingId}
+        data-kind={kind}
+      />
     ) : null,
 }));
-
+vi.mock("../../components/McpBotPublishModal", () => ({
+  default: ({
+    visible,
+    mode,
+    editingId,
+  }: {
+    visible: boolean;
+    mode?: string;
+    editingId?: string;
+  }) =>
+    visible ? (
+      <div data-testid="connector-bot" data-mode={mode} data-id={editingId} />
+    ) : null,
+}));
 import MineActionHost from "./MineActionHost";
 import type { MineActionRequest } from "@dmwork/skillmarket";
 
@@ -203,6 +258,7 @@ beforeEach(() => {
   h.fetchMcpDetail.mockResolvedValue(connector);
   h.getExpert.mockResolvedValue(expert);
   h.getSquad.mockResolvedValue(squad);
+  h.loadExpertReviewSnapshot.mockResolvedValue({ content: {}, relations: [] });
 });
 
 afterEach(() => {
@@ -227,19 +283,6 @@ describe("MineActionHost", () => {
 
     renderHost({
       requestId: 2,
-      pluginId: connector.id,
-      type: "connector",
-      action: "upgrade",
-    });
-    await act(async () => undefined);
-    expect(
-      container
-        .querySelector('[data-testid="connector-form"]')
-        ?.getAttribute("data-review")
-    ).toBe("true");
-
-    renderHost({
-      requestId: 3,
       pluginId: expert.id,
       type: "expert",
       action: "edit",
@@ -251,18 +294,6 @@ describe("MineActionHost", () => {
         ?.getAttribute("data-id")
     ).toBe(expert.id);
 
-    renderHost({
-      requestId: 4,
-      pluginId: squad.id,
-      type: "squad",
-      action: "upgrade",
-    });
-    await act(async () => undefined);
-    expect(
-      container
-        .querySelector('[data-testid="review-submit"]')
-        ?.getAttribute("data-id")
-    ).toBe(squad.id);
   });
 
   it("keeps owner actions in skill and connector details", async () => {
@@ -302,6 +333,64 @@ describe("MineActionHost", () => {
         ?.getAttribute("data-review")
     ).toBe("true");
   });
+
+  it.each([
+    ["expert", expert],
+    ["squad", squad],
+  ] as const)("keeps an in-app upgrade route for %s details", async (type, item) => {
+    const listed = {
+      ...item,
+      listingState: "published",
+      visibility: "space",
+      displayStatus: "published",
+    };
+    if (type === "squad") h.getSquad.mockResolvedValueOnce(listed);
+    else h.getExpert.mockResolvedValueOnce(listed);
+
+    renderHost({
+      requestId: 10,
+      pluginId: item.id,
+      type,
+      action: "view",
+    });
+    await act(async () => undefined);
+
+    act(() => {
+      const button = Array.from(container.querySelectorAll("button")).find(
+        (candidate) => candidate.textContent === "expert-detail-upgrade"
+      ) as HTMLButtonElement;
+      button.click();
+    });
+
+    expect(
+      container
+        .querySelector('[data-testid="review-submit"]')
+        ?.getAttribute("data-id")
+    ).toBe(item.id);
+  });
+
+  it.each([
+    ["skill", skill.id, "skill-bot", null, "upgrade"],
+    ["connector", connector.id, "connector-bot", null, "upgrade"],
+    ["expert", expert.id, "expert-bot", "agent", "upgrade"],
+    ["squad", squad.id, "expert-bot", "squad", "upgrade"],
+  ] as const)(
+    "opens the %s Bot upgrade guide without loading an editor",
+    async (type, pluginId, testId, kind, expectedMode) => {
+      renderHost({
+        requestId: 20,
+        pluginId,
+        type,
+        action: "bot-upgrade",
+      });
+      await act(async () => undefined);
+
+      const modal = container.querySelector(`[data-testid="${testId}"]`);
+      expect(modal?.getAttribute("data-mode")).toBe(expectedMode);
+      expect(modal?.getAttribute("data-id")).toBe(pluginId);
+      if (kind) expect(modal?.getAttribute("data-kind")).toBe(kind);
+    }
+  );
 
   it("ignores a stale load after a newer action replaces it", async () => {
     let resolveSkill: (value: typeof skill) => void = () => {};
