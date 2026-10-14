@@ -59,7 +59,7 @@ describe("workspace navigation attachment guard", () => {
     expect(cancel).not.toHaveBeenCalled();
   });
 
-  it("cancels without committing the target", () => {
+  it("cancels without committing the target", async () => {
     const discard = vi.fn();
     mocks.shared.pendingAttachmentDiscard = discard;
     mocks.shared.pendingAttachmentGuard = () => false;
@@ -69,7 +69,7 @@ describe("workspace navigation attachment guard", () => {
     guard.run(proceed, cancel);
     const dialog = mocks.confirm.mock.calls[0][0];
     dialog.onCancel();
-    dialog.onOk();
+    await dialog.onOk();
     expect(cancel).toHaveBeenCalledTimes(1);
     expect(proceed).not.toHaveBeenCalled();
     expect(discard).not.toHaveBeenCalled();
@@ -86,7 +86,7 @@ describe("workspace navigation attachment guard", () => {
     const oldModal = mocks.confirm.mock.results[0].value;
     guard.run(proceed);
     expect(oldModal.destroy).toHaveBeenCalledTimes(1);
-    oldDialog.onOk();
+    await oldDialog.onOk();
     oldDialog.onCancel();
     expect(oldProceed).not.toHaveBeenCalled();
     expect(oldCancel).not.toHaveBeenCalled();
@@ -94,7 +94,7 @@ describe("workspace navigation attachment guard", () => {
     expect(proceed).toHaveBeenCalledTimes(1);
   });
 
-  it("awaits deletion confirmation and preserves the dialog on failure", async () => {
+  it("awaits cleanup but honors explicit navigation confirmation on persistent failure", async () => {
     const { Toast } = await import("@douyinfe/semi-ui");
     const notification = vi.spyOn(Toast, "error").mockImplementation(() => "toast");
     mocks.shared.pendingAttachmentGuard = () => false;
@@ -108,15 +108,16 @@ describe("workspace navigation attachment guard", () => {
     expect(proceed).not.toHaveBeenCalled();
     finish(); await leaving;
     expect(proceed).toHaveBeenCalledOnce();
-    mocks.shared.pendingAttachmentDiscard = vi.fn().mockRejectedValueOnce(new Error("disk"));
+    mocks.shared.pendingAttachmentDiscard = vi.fn().mockRejectedValue(new Error("disk"));
     createWorkspaceNavigationGuard().run(proceed);
-    await expect(mocks.confirm.mock.calls[1][0].onOk()).rejects.toThrow("disk");
-    expect(proceed).toHaveBeenCalledOnce();
+    await mocks.confirm.mock.calls[1][0].onOk();
+    await mocks.confirm.mock.calls[1][0].onOk();
+    expect(proceed).toHaveBeenCalledTimes(2);
     expect(notification).toHaveBeenCalledOnce();
     notification.mockRestore();
   });
 
-  it("invalidates pending callbacks on cleanup without navigating", () => {
+  it("invalidates pending callbacks on cleanup without navigating", async () => {
     mocks.shared.pendingAttachmentGuard = () => false;
     const guard = createWorkspaceNavigationGuard();
     const proceed = vi.fn();
@@ -125,7 +126,7 @@ describe("workspace navigation attachment guard", () => {
     const dialog = mocks.confirm.mock.calls[0][0];
     guard.cancel();
     expect(mocks.confirm.mock.results[0].value.destroy).toHaveBeenCalledTimes(1);
-    dialog.onOk();
+    await dialog.onOk();
     dialog.onCancel();
     expect(proceed).not.toHaveBeenCalled();
     expect(cancel).not.toHaveBeenCalled();

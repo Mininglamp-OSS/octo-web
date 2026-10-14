@@ -1345,7 +1345,7 @@
   "groupCard.memberCount": "{{count}} members",
   "messageInput.attachment.remove": "Remove",
   "messageInput.attachment.draftSendUnavailable": "Attachment status could not be confirmed. The message was not sent. Your content is retained; please retry.",
-  "messageInput.attachment.draftCleanupFailed": "Attachment cleanup has not finished. Keep this conversation open and retry.",
+  "messageInput.attachment.draftCleanupFailed": "Attachment cleanup is unavailable. You can confirm switching; local copies may remain.",
   "messageInput.attachment.draftSaveFailed": "This attachment could not be saved locally and may be lost when switching conversations. You can still try sending.",
   "messageInput.attachment.draftRestoreFailed": "Some locally saved attachments could not be restored. They were kept for a later retry.",
   "messageInput.attachment.draftRestoreUnavailable": "Locally saved attachments are temporarily unavailable. Reopen this conversation to retry.",

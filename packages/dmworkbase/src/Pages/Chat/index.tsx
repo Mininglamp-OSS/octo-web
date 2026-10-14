@@ -1837,7 +1837,7 @@ function getSavedTab(): SidebarTab {
 interface ChatPageState {
   activeTab: SidebarTab;
   currentSpaceName: string;
-  pendingConfirm: null | { onOk: () => void }; // 附件切换确认弹窗
+  pendingConfirm: null | { onOk: () => void; discard?: () => void | Promise<void>; confirming?: boolean }; // 附件切换确认弹窗
   recentUnreadJumpToken: number;
   temporaryConversationJumpToken: number;
   temporaryConversationScrollRequest?: TemporaryConversationScrollRequest;
@@ -2318,7 +2318,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                               const guard = WKApp.shared.pendingAttachmentGuard;
                               if (guard && !guard()) {
                                 this.setState({
-                                  pendingConfirm: { onOk: doSwitch },
+                                  pendingConfirm: { onOk: doSwitch, discard: WKApp.shared.pendingAttachmentDiscard },
                                 });
                                 return;
                               }
@@ -2489,8 +2489,10 @@ export default class ChatPage extends Component<any, ChatPageState> {
                   okText: t("base.chatPage.continueSwitch"),
                   onOk: async () => {
                     const pending = this.state.pendingConfirm;
-                    try { await WKApp.shared.pendingAttachmentDiscard?.(); }
-                    catch { Toast.error(t("base.messageInput.attachment.draftCleanupFailed")); return; }
+                    if (!pending || pending.confirming) return;
+                    pending.confirming = true;
+                    try { await pending.discard?.(); }
+                    catch { if (this.state.pendingConfirm === pending) Toast.error(t("base.messageInput.attachment.draftCleanupFailed")); }
                     if (this.state.pendingConfirm !== pending) return;
                     pending?.onOk();
                     this.setState({ pendingConfirm: null });

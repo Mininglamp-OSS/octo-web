@@ -1345,7 +1345,7 @@
   "groupCard.memberCount": "{{count}} 位成员",
   "messageInput.attachment.remove": "移除",
   "messageInput.attachment.draftSendUnavailable": "附件状态暂时无法确认，消息尚未发送。内容已保留，请稍后重试。",
-  "messageInput.attachment.draftCleanupFailed": "附件清理尚未完成，请保持当前会话打开并重试。",
+  "messageInput.attachment.draftCleanupFailed": "附件清理暂不可用。你仍可确认切换，本地副本可能保留。",
   "messageInput.attachment.draftSaveFailed": "附件未能保存到本地，切换会话可能丢失附件。你仍可尝试发送。",
   "messageInput.attachment.draftRestoreFailed": "部分本地附件暂时无法恢复，已保留并可稍后重试。",
   "messageInput.attachment.draftRestoreUnavailable": "本地附件暂时不可用，请重新进入当前会话后重试。",

@@ -10,7 +10,7 @@ export function createClientAttachmentDraftPort(
     removeNeeded: boolean; removing?: Promise<void> };
   const entries = new Map<string, Entry>();
   const preparing = new Set<Entry>();
-  const settlements = new Map<string, () => Promise<void>>();
+  const settlements = new Map<string, { ids: readonly string[]; run: () => Promise<void> }>();
   let opened: ReturnType<LocalAttachmentDraftBridge["open"]> | undefined;
   let nextPosition = 0;
   const report = (error: unknown) => console.warn("[attachment-drafts] Client operation failed", error);
@@ -19,8 +19,12 @@ export function createClientAttachmentDraftPort(
     promise.then(resolve, reject).finally(() => clearTimeout(timer));
   });
   const open = () => opened ??= bounded(api.open(context)).catch(error => { opened = undefined; throw error; });
-  const flushSettlements = async () => {
-    for (const operation of settlements.values()) await operation();
+  const flushSettlements = async (ids?: readonly string[]) => {
+    const results = await Promise.allSettled([...settlements.values()]
+      .filter(operation => !ids || operation.ids.some(id => ids.includes(id)))
+      .map(operation => operation.run()));
+    const failure = results.find(result => result.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
   };
   const remove = (id: string, entry: Entry): Promise<void> => {
     entry.removeNeeded = true;
@@ -105,9 +109,17 @@ export function createClientAttachmentDraftPort(
     async discardUnready(ids) {
       // Captured navigation must finish its outstanding deletion even if its UI
       // has since become inactive. Client still validates the captured session.
-      await flushSettlements();
-      await Promise.all([...entries].flatMap(([id, entry]) =>
-        entry.removeNeeded || (ids.includes(id) && !entry.receipt && !preparing.has(entry)) ? [remove(id, entry)] : []));
+      const discarded = [...entries].filter(([id, entry]) =>
+        entry.removeNeeded || (ids.includes(id) && !entry.receipt && !preparing.has(entry)));
+      // Explicit confirmation is a terminal UI decision. Try every cleanup even
+      // if settlement fails; Client retains received intents and owns retries.
+      const results = await Promise.allSettled([
+        flushSettlements(), ...discarded.map(([id, entry]) => remove(id, entry)),
+      ]);
+      settlements.clear();
+      for (const [id, entry] of discarded) if (entries.get(id) === entry) entries.delete(id);
+      const failure = results.find(result => result.status === "rejected");
+      if (failure?.status === "rejected") throw failure.reason;
     },
     beginSend(ids, files = []) {
       // Capture undo-restored Files synchronously, before React's live-sync effect.
@@ -125,7 +137,7 @@ export function createClientAttachmentDraftPort(
       const prepare = (async () => {
         if (duplicate) throw new Error("Attachment already being submitted");
         if (!isActive()) throw new Error("Attachment editor expired");
-        await flushSettlements();
+        await flushSettlements(ids);
         await Promise.all(selected.map(entry => entry?.saving));
         const { leaseId } = await open();
         if (!isActive()) throw new Error("Attachment editor expired");
@@ -148,10 +160,10 @@ export function createClientAttachmentDraftPort(
                   await bounded(api.settleSend({ sendId: requestId, keepAttachmentIds: [...keepAttachmentIds] }));
                   settlements.delete(requestId);
                 };
-                settlements.set(requestId, operation);
+                settlements.set(requestId, { ids, run: operation });
                 await operation();
               }
-              selected.forEach((entry, index) => {
+              if (!duplicate) selected.forEach((entry, index) => {
                 if (!entry) return;
                 if (!keepAttachmentIds.includes(ids[index]) && entries.get(ids[index]) === entry && !entry.removeNeeded) entries.delete(ids[index]);
               });
@@ -166,8 +178,8 @@ export function createClientAttachmentDraftPort(
       };
     },
     canLeave(ids) {
-      return settlements.size === 0 && ![...entries.values()].some(entry => entry.removeNeeded) &&
-        ids.every(id => !!entries.get(id)?.receipt && !entries.get(id)?.removeNeeded);
+      return !isActive() || (settlements.size === 0 && ![...entries.values()].some(entry => entry.removeNeeded) &&
+        ids.every(id => !!entries.get(id)?.receipt && !entries.get(id)?.removeNeeded));
     },
   };
 }

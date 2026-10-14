@@ -104,11 +104,61 @@ describe("Client draft failure and undo boundaries", () => {
     const first = port.beginSend(["x"]); await first.ready;
     const duplicate = port.beginSend(["x"]);
     await expect(duplicate.ready).rejects.toThrow("already being submitted");
-    await duplicate.settle(["x"]);
+    await duplicate.settle([]);
     await expect(port.beginSend(["x"]).ready).rejects.toThrow("already being submitted");
     expect(api.prepareSend).toHaveBeenCalledOnce();
     await first.settle(["x"]);
     await port.beginSend(["x"]).ready;
+  });
+  it("does not make a permanently failed settlement block unrelated attachment sends", async () => {
+    const { api, port } = fixture(); await port.stage(file());
+    const first = port.beginSend(["x"]); await first.ready;
+    const failedId = vi.mocked(api.prepareSend).mock.calls[0][0].requestId;
+    vi.mocked(api.settleSend).mockImplementation(async ({ sendId }) => {
+      if (sendId === failedId) throw new Error("permanent settlement failure");
+    });
+    await expect(first.settle([])).rejects.toThrow("permanent");
+    await port.stage(file("new"));
+    const next = port.beginSend(["new"]); await next.ready; await next.settle([]);
+    expect(api.prepareSend).toHaveBeenCalledTimes(2);
+    expect(port.canLeave([])).toBe(false);
+    await expect(port.discardUnready([])).rejects.toThrow("permanent");
+    expect(port.canLeave([])).toBe(true);
+  });
+  it("attempts all removals despite permanent settlement failure and releases a confirmed discard", async () => {
+    const { api, port } = fixture(); await port.stage(file()); await port.stage(file("delete"));
+    const send = port.beginSend(["x"]); await send.ready;
+    vi.mocked(api.settleSend).mockRejectedValue(new Error("settlement offline"));
+    await expect(send.settle([])).rejects.toThrow("offline");
+    vi.mocked(api.remove).mockRejectedValue(new Error("removal offline"));
+    port.syncLive([]);
+    await vi.waitFor(() => expect(api.remove).toHaveBeenCalledOnce());
+    expect(port.canLeave([])).toBe(false);
+    await expect(port.discardUnready([])).rejects.toThrow("offline");
+    expect(api.remove).toHaveBeenCalledTimes(2);
+    expect(port.canLeave([])).toBe(true);
+  });
+  it("bounds confirmed discard even when cleanup never replies", async () => {
+    const { api, port } = fixture(50); await port.stage(file());
+    const send = port.beginSend(["x"]); await send.ready;
+    vi.useFakeTimers();
+    vi.mocked(api.settleSend).mockImplementation(() => new Promise(() => {}));
+    const failed = expect(send.settle([])).rejects.toThrow("timed out");
+    await vi.advanceTimersByTimeAsync(51); await failed;
+    const discard = expect(port.discardUnready([])).rejects.toThrow("timed out");
+    await vi.advanceTimersByTimeAsync(51); await discard;
+    expect(port.canLeave([])).toBe(true);
+  });
+  it("does not let an invalidated port veto navigation", async () => {
+    const { api } = fixture(); let active = true;
+    const port = createClientAttachmentDraftPort(api, context, () => active);
+    await port.stage(file());
+    vi.mocked(api.remove).mockRejectedValue(new Error("expired"));
+    port.syncLive([]);
+    await vi.waitFor(() => expect(api.remove).toHaveBeenCalledOnce());
+    expect(port.canLeave([])).toBe(false);
+    active = false;
+    expect(port.canLeave([])).toBe(true);
   });
   it("allows a mixed compose with unstaged ids to use Client-confirmed reservation", async () => {
     const { api, port } = fixture(); await port.stage(file("good"));

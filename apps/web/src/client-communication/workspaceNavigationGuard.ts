@@ -35,9 +35,10 @@ export function createWorkspaceNavigationGuard() {
         onOk: async () => {
           if (pending !== request || confirming) return;
           confirming = true;
-          try { await discard?.(); finish(proceed); }
-          catch (error) { Toast.error(t("base.messageInput.attachment.draftCleanupFailed")); throw error; }
+          try { await discard?.(); }
+          catch { if (pending === request) Toast.error(t("base.messageInput.attachment.draftCleanupFailed")); }
           finally { confirming = false; }
+          finish(proceed);
         },
         onCancel: () => finish(onCancel),
       });
