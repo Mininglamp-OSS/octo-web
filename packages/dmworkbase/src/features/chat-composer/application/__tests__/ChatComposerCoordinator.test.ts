@@ -292,7 +292,12 @@ describe("ChatComposerCoordinator", () => {
         },
         { host: currentHost, editor }
       )
-    ).rejects.toBe(settledError);
+    ).resolves.toMatchObject({
+      kind: "attempted",
+      editorConsumed: false,
+      outcome: expect.objectContaining({ restoreSendTarget: true }),
+    });
+    expect(controller.pendingSendCount()).toBe(0);
 
     expect(setExpanded.mock.calls).toEqual([[false], [true]]);
     expect(restoreTarget).toHaveBeenCalledOnce();

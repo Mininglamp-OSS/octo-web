@@ -72,6 +72,54 @@ describe("composer attachment draft send settlement", () => {
       } finally { view.unmount(); }
     }
   );
+  it.each([false, true])("keeps the real send outcome when completion bookkeeping rejects (partial=%s)", async (partial) => {
+    const settle = vi.fn(async (_ids: readonly string[]) => {});
+    const drafts: ChatComposerAttachmentDraftPort = {
+      restore: vi.fn(async () => ({ attachments: [], failedCount: 0 })),
+      stage: vi.fn(async () => true), syncLive: vi.fn(), discardUnready: vi.fn(),
+      beginSend: vi.fn(() => ({ ready: Promise.resolve(), settle })), canLeave: () => true,
+    };
+    const cleanupError = new Error("draft reconciliation failed after delivery");
+    const report = vi.spyOn(console, "error").mockImplementation(() => {});
+    const onSendSettled = vi.fn(async () => { throw cleanupError; });
+    let context!: MessageInputContext;
+    let keepIds: string[] = [];
+    const send = vi.fn(async (request: import("../../domain").ChatSendRequest) => {
+      const inline = (request.editorBlocks ?? []).filter(block => block.type === "image");
+      const top = request.topFiles ?? [];
+      expect(inline).toHaveLength(2);
+      expect(top).toHaveLength(2);
+      keepIds = partial ? [top[1].id, inline[1].id] : [];
+      return createChatSendOutcome({
+        editorConsumed: true,
+        consumedTopIds: (partial ? top.slice(0, 1) : top).map(({ id }) => id),
+        unsentEditorBlocks: partial ? inline.slice(1).map(({ id }) => ({ type: "attachment" as const, id })) : [],
+      });
+    });
+    const view = render(<ChatComposer host={createTestViewHost()} attachmentDrafts={drafts}
+      onSend={send} onSendSettled={onSendSettled} onContext={value => { context = value; }} />);
+    try {
+      await waitFor(() => expect(context).toBeDefined());
+      await act(async () => {
+        await context.addAttachment([
+          new File(["a"], "a.png", { type: "image/png" }),
+          new File(["b"], "b.png", { type: "image/png" }),
+        ], "paste");
+        await context.addAttachment([new File(["c"], "c.txt"), new File(["d"], "d.txt")], "upload");
+      });
+      await act(async () => {
+        await expect(context.send()).resolves.toMatchObject({ kind: "attempted", editorConsumed: true });
+      });
+      expect(send).toHaveBeenCalledOnce();
+      expect(onSendSettled).toHaveBeenCalledOnce();
+      expect(settle).toHaveBeenCalledExactlyOnceWith(keepIds);
+      expect(report).toHaveBeenCalledWith("[ChatComposer] send completion hook failed", cleanupError);
+      expect(view.container.textContent).not.toContain("c.txt");
+      expect(view.container.textContent?.includes("d.txt")).toBe(partial);
+      expect(view.container.querySelectorAll('[data-type="attachment"]')).toHaveLength(partial ? 1 : 0);
+    } finally { view.unmount(); }
+  });
+
   it.each([false, true])("captures synchronously and awaits Client preparation before network send (reject=%s)", async (reject) => {
     let resolve!: () => void;
     let fail!: (error: Error) => void;

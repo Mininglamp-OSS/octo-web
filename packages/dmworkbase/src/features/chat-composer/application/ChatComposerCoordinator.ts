@@ -150,6 +150,10 @@ export class ChatComposerCoordinator<
             restoreFailed: settlement.restoreErrors.length > 0,
           });
         }
+      } catch (error) {
+        // Delivery is already settled. A bookkeeping failure must not turn
+        // consumed attachments back into unsent drafts in the caller.
+        console.error("[ChatComposer] send completion hook failed", error);
       } finally {
         const recovery = this.buildRecovery({
           attemptId,
