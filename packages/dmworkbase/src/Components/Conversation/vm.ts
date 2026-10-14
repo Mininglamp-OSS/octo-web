@@ -246,7 +246,6 @@ export default class ConversationVM extends ProviderListener {
     pendingAttachments: File[] = [] // 待发送附件队列
 
     static readonly MAX_ATTACHMENTS = 20
-    static readonly MAX_TOTAL_SIZE = 100 * 1024 * 1024 // 100MB
 
     private _selectMessage?: Message // 右键选中的消息
 

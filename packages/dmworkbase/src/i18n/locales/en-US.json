@@ -322,6 +322,7 @@
   "conversation.replyView.reply": "Reply",
   "conversation.selection.selectMessageFirst": "Please select messages first.",
   "conversation.upload.blockedExtension": ".{{extension}} files cannot be sent",
+  "conversation.upload.extensionNotAllowed": "{{extension}} files are not on the server's allowed list",
   "conversation.upload.failed": "Upload failed",
   "conversation.upload.fileFailed": "File \"{{name}}\" {{message}}",
   "conversation.upload.fileSendFailed": "Failed to send file \"{{name}}\"",

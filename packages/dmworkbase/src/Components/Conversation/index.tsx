@@ -35,9 +35,9 @@ import { MessageWrap, Part, PartType } from "../../Service/Model";
 import WKApp from "../../App";
 import { RevokeCell } from "../../Messages/Revoke";
 import {
-  MAX_REEDIT_FILE_BYTES,
   canReeditRevokedMessage,
   getReeditableMessageBlocks,
+  liveFileUploadMaxBytes,
   remoteReeditFileToFile,
   restoreReeditableMessageBlocks,
 } from "../../Messages/Revoke/reeditableMessage";
@@ -953,7 +953,7 @@ export class Conversation
               t("base.revoke.reeditFileFailed", {
                 values: {
                   name: block.name,
-                  max: formatFileSize(MAX_REEDIT_FILE_BYTES),
+                  max: formatFileSize(liveFileUploadMaxBytes()),
                 },
               })
             );
@@ -1565,6 +1565,8 @@ export class Conversation
     files: File[],
     source: "paste" | "upload" = "upload"
   ): Promise<string | null> {
+    // 本地硬编码黑名单（A2）：作为额外守门保留。即使后端下发的允许集被绕过/缓存过期，
+    // 也不放行这批最危险的可执行扩展名。命中文案沿用基线。
     const BLOCKED_EXTENSIONS = [
       "exe",
       "bat",
@@ -1585,21 +1587,37 @@ export class Conversation
     ];
     const incoming = Array.from(files);
 
-    // 检查类型黑名单
+    // 实时读取下发上限（A6：校验发生的那一刻读 WKApp.remoteConfig，不缓存进组件 state，
+    // 避免 TOCTOU）。上游空值由 leaf 解析层逐字段回退到 100MB，故此处一定是有效值。
+    const limits = WKApp.remoteConfig.fileUploadLimits;
+    const maxTotal = limits.maxSizeKB * 1024;
+    const maxSizeLabel = formatFileSize(maxTotal);
+    const allowedExtensions = limits.allowedExtensions;
+    // 与基线保持一致的扩展名提取（最后一个点之后、小写；无点文件名退化为整名）。
+    const extensionOf = (name: string) =>
+      name.substring(name.lastIndexOf(".") + 1).toLowerCase();
+
+    // 扩展名校验：先本地黑名单，再下发允许集（权威允许集；空集 = 不限制，仅走黑名单）。
     for (const f of incoming) {
-      const ext = f.name.substring(f.name.lastIndexOf(".") + 1).toLowerCase();
+      const ext = extensionOf(f.name);
       if (BLOCKED_EXTENSIONS.includes(ext)) {
         return t("base.conversation.upload.blockedExtension", {
           values: { extension: ext },
         });
       }
+      if (allowedExtensions.length > 0) {
+        const normalized = ext ? `.${ext}` : "";
+        if (!normalized || !allowedExtensions.includes(normalized)) {
+          return t("base.conversation.upload.extensionNotAllowed", {
+            values: { extension: normalized || f.name },
+          });
+        }
+      }
     }
 
     // 大小校验（octo-web#3173）：单入口统一拦截，按钮/粘贴/拖拽三路共用。
-    // 阈值复用既有常量 ConversationVM.MAX_TOTAL_SIZE（100MB），不另立阈值。
+    // 阈值改读后端 file_upload_limits.max_size_kb（KB × 1024），字段缺失时回退 100MB。
     // 单文件超限：任一文件本身就超过总上限时直接拒绝。
-    const maxTotal = ConversationVM.MAX_TOTAL_SIZE;
-    const maxSizeLabel = formatFileSize(maxTotal);
     const oversized = incoming.find((f) => f.size > maxTotal);
     if (oversized) {
       return t("base.conversation.upload.fileTooLarge", {

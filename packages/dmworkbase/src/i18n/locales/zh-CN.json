@@ -322,6 +322,7 @@
   "conversation.replyView.reply": "回复",
   "conversation.selection.selectMessageFirst": "请先选择消息！",
   "conversation.upload.blockedExtension": "不允许发送 .{{extension}} 类型的文件",
+  "conversation.upload.extensionNotAllowed": "不允许发送 {{extension}} 类型的文件（不在服务端允许清单内）",
   "conversation.upload.failed": "上传失败",
   "conversation.upload.fileFailed": "文件「{{name}}」{{message}}",
   "conversation.upload.fileSendFailed": "文件「{{name}}」发送失败",

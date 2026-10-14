@@ -1,5 +1,6 @@
 import type { JSONContent } from "@tiptap/react";
 import { MessageContentType, type MessageText } from "wukongimjssdk";
+import WKApp from "../../App";
 import { MessageContentTypeConst } from "../../Service/Const";
 import { MessageWrap, PartType } from "../../Service/Model";
 import {
@@ -59,7 +60,14 @@ interface MessageMention {
   entities?: MentionEntity[];
 }
 
-export const MAX_REEDIT_FILE_BYTES = 100 * 1024 * 1024;
+/**
+ * 实时读取当前生效的单文件上限（字节）。来源与消息输入框附件预校验同源：后端
+ * file_upload_limits.max_size_kb（字段缺失时由 leaf 解析层回退到 100MB）。纯客户端预
+ * 校验用，服务端 modules/file 侧仍对每次请求独立校验，不构成安全边界。
+ */
+export function liveFileUploadMaxBytes(): number {
+  return WKApp.remoteConfig.fileUploadLimits.maxSizeKB * 1024;
+}
 
 export async function restoreReeditableMessageBlocks(
   blocks: ReeditBlock[],
@@ -139,7 +147,9 @@ export async function remoteReeditFileToFile(input: {
   size?: number;
   mime?: string;
 }): Promise<File | null> {
-  if (!input.url || (input.size && input.size > MAX_REEDIT_FILE_BYTES)) {
+  // 校验发生的那一刻实时读下发上限（A6），不缓存进模块级常量，避免 TOCTOU。
+  const maxReeditFileBytes = liveFileUploadMaxBytes();
+  if (!input.url || (input.size && input.size > maxReeditFileBytes)) {
     return null;
   }
   try {
@@ -151,12 +161,12 @@ export async function remoteReeditFileToFile(input: {
     const contentLength = Number(response.headers.get("Content-Length"));
     if (
       Number.isFinite(contentLength) &&
-      contentLength > MAX_REEDIT_FILE_BYTES
+      contentLength > maxReeditFileBytes
     ) {
       return null;
     }
     const blob = await response.blob();
-    if (blob.size > MAX_REEDIT_FILE_BYTES) return null;
+    if (blob.size > maxReeditFileBytes) return null;
     const rawName = (input.name || "file")
       .replace(/[\\/:*?"<>|]+/g, "_")
       .slice(0, 160);

@@ -322,6 +322,21 @@ export {
 } from "./Service/StickerUploadConfig";
 export type { StickerUploadLimits } from "./Service/StickerUploadConfig";
 
+// FileUploadLimits 解析同理抽到 ./Service/FileUploadConfig：独立 leaf 文件,
+// 不拖 App.tsx 的重依赖链路, 消费侧 vitest 可以直接测 parse 的边界情况。
+import {
+  DEFAULT_FILE_UPLOAD_LIMITS,
+  parseFileUploadLimits,
+  fileUploadLimitsEqual,
+  type FileUploadLimits,
+} from "./Service/FileUploadConfig";
+export {
+  DEFAULT_FILE_UPLOAD_LIMITS,
+  parseFileUploadLimits,
+  fileUploadLimitsEqual,
+} from "./Service/FileUploadConfig";
+export type { FileUploadLimits } from "./Service/FileUploadConfig";
+
 import {
   DEFAULT_MESSAGE_REACTION_CAPABILITY,
   messageReactionCapabilityEqual,
@@ -383,6 +398,19 @@ export class WKRemoteConfig {
    * （1024 KB / 512 px / gif,png,jpg,jpeg,webp）严格等价，行为无回归。
    */
   stickerUploadLimits: StickerUploadLimits = { ...DEFAULT_STICKER_UPLOAD_LIMITS };
+  /**
+   * 消息输入框附件的操作端可调上限（最大单文件体积 KB / 允许的扩展名允许集），后端字段
+   * file_upload_limits，与 octo-server file 模块同一份策略快照同源。
+   *
+   * 纯客户端预校验用：Conversation.addPendingAttachments / reeditableMessage 在用户选完
+   * 文件后据此本地立即校验（单文件 / 累计大小 / 扩展名允许集），避免超限文件先跑完一次
+   * HTTP 上传才被服务端拒绝。服务端 modules/file 侧仍对每次上传请求用同一份策略快照兜底，
+   * 这份缓存过期或被绕过都不影响安全边界，前端不能据此推断上传一定会成功。
+   *
+   * 默认值 = 字段缺失/appconfig 请求失败时的回退值（102400 KB = 100MB，无扩展名白名单），
+   * 与基线两处 100MB 硬编码 + 本地 16 项黑名单行为严格等价，行为无回归。
+   */
+  fileUploadLimits: FileUploadLimits = { ...DEFAULT_FILE_UPLOAD_LIMITS };
   /**
    * Docs 协作文档模块展示开关。后端字段 docs_on 为 true 时，前端在侧边栏 NavRail
    * 展示 Docs 入口；false 或字段缺失时隐藏。
@@ -553,6 +581,7 @@ export class WKRemoteConfig {
       const previousStickerCustomEnabled = this.stickerCustomEnabled;
       const previousMessageReaction = this.messageReaction;
       const previousStickerUploadLimits = this.stickerUploadLimits;
+      const previousFileUploadLimits = this.fileUploadLimits;
       const previousDocsOn = this.docsOn;
       const previousDocsSearchOn = this.docsSearchOn;
       const previousDmloopOn = this.dmloopOn;
@@ -584,6 +613,9 @@ export class WKRemoteConfig {
       this.stickerUploadLimits = parseStickerUploadLimits(
         result["sticker_upload_limits"]
       );
+      this.fileUploadLimits = parseFileUploadLimits(
+        result["file_upload_limits"]
+      );
       this.docsOn = parseRemoteBool(result["docs_on"]);
       this.docsSearchOn = parseRemoteBool(result["docs_search_on"]);
       this.dmloopOn = parseRemoteBool(result["dmloop_on"]);
@@ -609,6 +641,10 @@ export class WKRemoteConfig {
         !stickerUploadLimitsEqual(
           previousStickerUploadLimits,
           this.stickerUploadLimits
+        ) ||
+        !fileUploadLimitsEqual(
+          previousFileUploadLimits,
+          this.fileUploadLimits
         ) ||
         previousDocsOn !== this.docsOn ||
         previousDocsSearchOn !== this.docsSearchOn ||

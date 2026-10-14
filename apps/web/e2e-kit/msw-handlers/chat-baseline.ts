@@ -23,6 +23,8 @@ const MOCK_APP_CONFIG = {
   messages_search_on: true,
   message_reaction: { read: true, write: true },
   oidc_providers: [],
+  // 附件预校验上限（纯 UX；空 allowlist = 不下发白名单，只走本地黑名单，与基线等价）。
+  file_upload_limits: { max_size_kb: 102400, allowed_extensions: [] },
 };
 
 function appConfig() {
