@@ -417,7 +417,16 @@ export default class ConversationList extends Component<
   private scrollFrame: number | null = null;
   private unreadNudgeTimer: number | null = null;
   private lastUnreadTargetKey?: string;
-  private lastUnreadSuccessorKey?: string;
+  /**
+   * Snapshot of the candidate-set keys in order, recorded at the moment the
+   * last target was committed.  When the target (and any number of its
+   * successors) leave the candidate set between two activations we scan this
+   * snapshot forward from the committed position to find the first key that is
+   * still present, guaranteeing the cycle continues in the right direction
+   * regardless of how many entries have been removed.
+   */
+  private lastUnreadCandidateSnapshot: string[] = [];
+  private lastUnreadCommittedIndex = -1;
   private manuallyScrolledSinceUnreadJump = false;
   private manualScrollIntent = false;
   private _storageKey(): string {
@@ -563,9 +572,22 @@ export default class ConversationList extends Component<
     // When the previous target leaves the candidate set (e.g. marked read),
     // findIndex returns -1 and (-1 + 1) % n = 0, which silently resets the
     // cursor to the first candidate instead of advancing past the removed entry.
-    // To avoid that, we pre-compute and persist the successor key each time we
-    // commit a target, so that when the target disappears we can resume from
-    // where it would have led rather than falling back to index 0.
+    //
+    // Single-removal fix (round 1): pre-record the immediate successor key so
+    // that one departure can be bridged.  But if both the target and its
+    // recorded successor leave before the next activation (e.g. the user marks
+    // several conversations read between two presses) that memo is also stale
+    // and the cursor still fell back to index 0.
+    //
+    // Multi-removal fix (round 2): instead of remembering only the next key,
+    // we snapshot the full ordered candidate list at commit time together with
+    // the committed position.  On the next activation we scan the snapshot
+    // forward from that position (wrapping once) to find the first key that
+    // still exists in the current candidate set.  This correctly bridges any
+    // number of simultaneous departures.
+    const currentKeys = new Set(
+      candidates.map((conv) => conv.channel.getChannelKey())
+    );
     const previousIndex = candidates.findIndex(
       (conv) => conv.channel.getChannelKey() === this.lastUnreadTargetKey
     );
@@ -573,13 +595,31 @@ export default class ConversationList extends Component<
     if (previousIndex !== -1) {
       // Target is still a candidate — advance normally.
       target = candidates[(previousIndex + 1) % candidates.length];
+    } else if (this.lastUnreadCandidateSnapshot.length > 0) {
+      // Target left the candidate set.  Walk the snapshot forward from the
+      // committed position (wrapping once) to find the first surviving key.
+      // This handles the case where the target AND one or more of its
+      // successors have all disappeared since the last activation.
+      const snapshotLen = this.lastUnreadCandidateSnapshot.length;
+      let resumeKey: string | undefined;
+      for (let offset = 1; offset <= snapshotLen; offset++) {
+        const key =
+          this.lastUnreadCandidateSnapshot[
+            (this.lastUnreadCommittedIndex + offset) % snapshotLen
+          ];
+        if (currentKeys.has(key)) {
+          resumeKey = key;
+          break;
+        }
+      }
+      const resumeIndex = resumeKey
+        ? candidates.findIndex(
+            (conv) => conv.channel.getChannelKey() === resumeKey
+          )
+        : 0;
+      target = candidates[resumeIndex !== -1 ? resumeIndex : 0];
     } else {
-      // Target left the candidate set.  Find the pre-recorded successor so the
-      // cycle continues in the right direction instead of jumping to index 0.
-      const successorIndex = candidates.findIndex(
-        (conv) => conv.channel.getChannelKey() === this.lastUnreadSuccessorKey
-      );
-      target = candidates[successorIndex !== -1 ? successorIndex : 0];
+      target = candidates[0];
     }
     const root = this.listRef.current;
     if (this.manuallyScrolledSinceUnreadJump && root) {
@@ -593,13 +633,14 @@ export default class ConversationList extends Component<
 
     this.manuallyScrolledSinceUnreadJump = false;
     this.lastUnreadTargetKey = target.channel.getChannelKey();
-    // Pre-record which candidate comes after the chosen target so that if it
-    // leaves the set before the next activation we can still advance correctly.
-    const committedIndex = candidates.findIndex(
-      (conv) => conv.channel.getChannelKey() === this.lastUnreadTargetKey
+    // Snapshot the current candidate order and remember the committed position
+    // so that the next activation can scan forward past any number of removals.
+    this.lastUnreadCandidateSnapshot = candidates.map((conv) =>
+      conv.channel.getChannelKey()
     );
-    this.lastUnreadSuccessorKey =
-      candidates[(committedIndex + 1) % candidates.length].channel.getChannelKey();
+    this.lastUnreadCommittedIndex = this.lastUnreadCandidateSnapshot.indexOf(
+      this.lastUnreadTargetKey
+    );
     this.scrollConversationToTop(target.channel, "smooth");
     this.nudgeUnreadBadge(this.lastUnreadTargetKey);
   }

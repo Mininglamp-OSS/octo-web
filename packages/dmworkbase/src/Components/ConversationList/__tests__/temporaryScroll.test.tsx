@@ -511,6 +511,35 @@ describe("recent unread jump sequence", () => {
     jump(); expectTarget(2); // must be C
   });
 
+  it("advances past two simultaneous removals: target and its immediate successor both leave", () => {
+    // Reproduces the blocking defect from round 2 of the review.
+    // Sequence: A B C D.  jump→A, jump→B, mark B and C read simultaneously,
+    // jump should go to D — not reset to A (index 0).
+    // Under the old single-successor memo, both B (target) and C (successor)
+    // have left by activation time, so successorIndex === -1 and the code
+    // fell back to candidates[0] = A, revisiting an already-visited conversation.
+    const { props, jump, expectTarget } = setup(); // a=0, b=1, c=2, d=3
+    jump(); expectTarget(0); // →A
+    jump(); expectTarget(1); // →B
+    // B and C both leave the candidate set before the next activation.
+    props.conversations[1].conversation.unread = 0; // B (current target) gone
+    props.conversations[2].conversation.unread = 0; // C (recorded successor) gone
+    jump(); expectTarget(3); // must be D, not A
+  });
+
+  it("advances correctly when all successors up to the wrap point leave the candidate set", () => {
+    // Sequence: A B C D.  jump→B, mark C and D read, jump should wrap to A
+    // (the first survivor after B in cyclic order), not reset to B (index 0).
+    // This exercises the wrap-around branch of the forward scan.
+    const { props, jump, expectTarget } = setup(); // a=0, b=1, c=2, d=3
+    jump(); expectTarget(0); // →A  (positions the cursor on A first)
+    jump(); expectTarget(1); // →B
+    // C and D leave — all successors after B up to the wrap point are gone.
+    props.conversations[2].conversation.unread = 0; // C gone
+    props.conversations[3].conversation.unread = 0; // D gone
+    jump(); expectTarget(0); // must wrap to A, not stay on B (index 0 in the new 2-item set would be A anyway, but the assertion verifies identity)
+  });
+
   it("does nothing when there are no unread candidates", () => {
     const { props, jump, scrollTo } = setup();
     props.conversations.forEach((item) => {
