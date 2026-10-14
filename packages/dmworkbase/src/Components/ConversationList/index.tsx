@@ -417,6 +417,7 @@ export default class ConversationList extends Component<
   private scrollFrame: number | null = null;
   private unreadNudgeTimer: number | null = null;
   private lastUnreadTargetKey?: string;
+  private lastUnreadSuccessorKey?: string;
   private manuallyScrolledSinceUnreadJump = false;
   private manualScrollIntent = false;
   private _storageKey(): string {
@@ -558,10 +559,28 @@ export default class ConversationList extends Component<
     if (candidates.length === 0) return;
 
     // The cursor must not depend on scrollTop: bottom rows cannot always reach the top.
+    //
+    // When the previous target leaves the candidate set (e.g. marked read),
+    // findIndex returns -1 and (-1 + 1) % n = 0, which silently resets the
+    // cursor to the first candidate instead of advancing past the removed entry.
+    // To avoid that, we pre-compute and persist the successor key each time we
+    // commit a target, so that when the target disappears we can resume from
+    // where it would have led rather than falling back to index 0.
     const previousIndex = candidates.findIndex(
       (conv) => conv.channel.getChannelKey() === this.lastUnreadTargetKey
     );
-    let target = candidates[(previousIndex + 1) % candidates.length];
+    let target: ConversationWrap;
+    if (previousIndex !== -1) {
+      // Target is still a candidate — advance normally.
+      target = candidates[(previousIndex + 1) % candidates.length];
+    } else {
+      // Target left the candidate set.  Find the pre-recorded successor so the
+      // cycle continues in the right direction instead of jumping to index 0.
+      const successorIndex = candidates.findIndex(
+        (conv) => conv.channel.getChannelKey() === this.lastUnreadSuccessorKey
+      );
+      target = candidates[successorIndex !== -1 ? successorIndex : 0];
+    }
     const root = this.listRef.current;
     if (this.manuallyScrolledSinceUnreadJump && root) {
       const viewportBottom =
@@ -574,6 +593,13 @@ export default class ConversationList extends Component<
 
     this.manuallyScrolledSinceUnreadJump = false;
     this.lastUnreadTargetKey = target.channel.getChannelKey();
+    // Pre-record which candidate comes after the chosen target so that if it
+    // leaves the set before the next activation we can still advance correctly.
+    const committedIndex = candidates.findIndex(
+      (conv) => conv.channel.getChannelKey() === this.lastUnreadTargetKey
+    );
+    this.lastUnreadSuccessorKey =
+      candidates[(committedIndex + 1) % candidates.length].channel.getChannelKey();
     this.scrollConversationToTop(target.channel, "smooth");
     this.nudgeUnreadBadge(this.lastUnreadTargetKey);
   }

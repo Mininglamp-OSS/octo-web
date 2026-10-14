@@ -479,11 +479,36 @@ describe("recent unread jump sequence", () => {
   });
 
   it("resumes from the first remaining candidate if the previous target is no longer unread", () => {
+    // Removes index 0 (the just-visited target) — the correct answer is index 1,
+    // which coincidentally matches the (-1+1)%n=0 fallback.  This test pins the
+    // "first-element removal" case; the two tests below pin middle/before-cursor
+    // removal where the old fallback would have given the wrong answer.
     const { props, jump, expectTarget } = setup();
     jump();
     props.conversations[0].conversation.unread = 0;
     jump();
     expectTarget(1);
+  });
+
+  it("advances to the removed target's successor when a middle element leaves the candidate set", () => {
+    // Sequence: A B C D all unread.  jump→A, jump→B, mark B read, jump should
+    // go to C (B's successor), not back to A (index 0).
+    // This is the exact path reported in the review: t1→A t2→B [B read] t3→C.
+    const { props, jump, expectTarget } = setup(); // a=0, b=1, c=2, d=3
+    jump(); expectTarget(0); // →A
+    jump(); expectTarget(1); // →B
+    props.conversations[1].conversation.unread = 0; // B leaves the candidate set
+    jump(); expectTarget(2); // must be C, not A
+  });
+
+  it("continues forward when an element before the cursor leaves the candidate set", () => {
+    // Sequence: A B C D.  jump→A, jump→B, mark A read (behind the cursor),
+    // jump should continue to C, not wrap around or skip.
+    const { props, jump, expectTarget } = setup();
+    jump(); expectTarget(0); // →A
+    jump(); expectTarget(1); // →B
+    props.conversations[0].conversation.unread = 0; // A leaves the candidate set
+    jump(); expectTarget(2); // must be C
   });
 
   it("does nothing when there are no unread candidates", () => {
