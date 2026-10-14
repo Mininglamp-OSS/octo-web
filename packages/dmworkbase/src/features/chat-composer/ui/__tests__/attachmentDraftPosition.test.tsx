@@ -29,9 +29,9 @@ describe("attachment draft positions", () => {
         finishStage = () => resolve({ ...attachment, revision: "rev", createdAt: 1, updatedAt: 1 });
       }));
     const api: LocalAttachmentDraftBridge = {
-      version: 3, stage,
+      version: 4, stage,
       open: vi.fn(async () => ({ leaseId: "lease", attachments: [], failedCount: 0 })),
-      remove: vi.fn(async () => {}), prepareSend: vi.fn(async () => ({ sendId: "send" })), settleSend: vi.fn(async () => {}),
+      remove: vi.fn(async () => {}), prepareSend: vi.fn(async ({ requestId }) => ({ sendId: requestId })), settleSend: vi.fn(async () => {}),
     };
     const attachmentDrafts = createClientAttachmentDraftPort(api, { spaceId: "a", channel: { id: "guard-channel", type: 2 } }, () => true);
     const dispose = () => {};
@@ -106,7 +106,7 @@ describe("attachment draft positions", () => {
     expect(restore).toHaveBeenCalledTimes(1);
     expect(attachmentDrafts.stage).not.toHaveBeenCalled();
     expect(syncLive).toHaveBeenCalledWith(
-      expect.arrayContaining(["restored-id"])
+      expect.arrayContaining(["restored-id"]), expect.any(Array)
     );
   });
 
@@ -130,9 +130,9 @@ describe("attachment draft positions", () => {
     ].map((item) => ({ ...item, revision: "rev", size: 1, lastModified: 1, createdAt: 1, updatedAt: 1 })) as LocalAttachmentDraftMetadata[];
     const disk = new Map(records.map((item) => [item.id, item]));
     const host: LocalAttachmentDraftBridge = {
-      version: 3, stage: vi.fn(),
+      version: 4, stage: vi.fn(),
       open: vi.fn(async () => ({ leaseId: "lease", attachments: [...disk.values()].map(attachment => ({ attachment, bytes: new Uint8Array([1]) })), failedCount: 0 })),
-      prepareSend: vi.fn(async () => ({ sendId: "send" })), settleSend: vi.fn(async () => {}),
+      prepareSend: vi.fn(async ({ requestId }) => ({ sendId: requestId })), settleSend: vi.fn(async () => {}),
       remove: vi.fn(async ({ attachments }) => { attachments.forEach(({ id }) => disk.delete(id)); }),
     };
     const dispose = () => {};

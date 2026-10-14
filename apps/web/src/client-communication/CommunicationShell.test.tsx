@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => {
     createCurrentEmptyImConversation: vi.fn(),
     loadConversationMembers: vi.fn(async () => [{ uid: "user-1", name: "User 1" }]),
     requestForward: vi.fn(),
-    confirm: vi.fn((_props: { onOk: () => void; onCancel: () => void }) => ({
+    confirm: vi.fn((_props: { onOk: () => Promise<void>; onCancel: () => void }) => ({
       destroy: vi.fn(),
     })),
     bridge: {
@@ -256,7 +256,7 @@ describe("CommunicationShell", () => {
     expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
     act(switchWorkspaceGroup);
     await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(2));
-    act(() => mocks.confirm.mock.calls[1][0].onOk());
+    await act(async () => { await mocks.confirm.mock.calls[1][0].onOk(); });
     expect(WKApp.endpoints.showConversation).toHaveBeenLastCalledWith(
       expect.objectContaining({ channelID: "group-b" }), expect.any(Object),
     );
@@ -273,7 +273,7 @@ describe("CommunicationShell", () => {
     await Promise.resolve();
     expect(mocks.bridge.reportNavigation).not.toHaveBeenCalled();
     act(() => open(channel));
-    act(() => mocks.confirm.mock.calls[1][0].onOk());
+    await act(async () => { await mocks.confirm.mock.calls[1][0].onOk(); });
     await waitFor(() => expect(mocks.bridge.reportNavigation).toHaveBeenCalledWith({
       page: "chat", source: "workspace-conversation",
       channel: { id: "group-a____topic", type: 5 },
@@ -298,7 +298,7 @@ describe("CommunicationShell", () => {
       });
       await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
       mocks.bridge.reportNavigation.mockClear();
-      act(() => { dialog.onOk(); dialog.onCancel(); });
+      await act(async () => { await dialog.onOk(); dialog.onCancel(); });
       await Promise.resolve();
       expect(WKApp.endpoints.showConversation).toHaveBeenCalledTimes(1);
       expect(mocks.bridge.reportNavigation).not.toHaveBeenCalled();

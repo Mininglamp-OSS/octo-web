@@ -9,10 +9,10 @@ export interface RestoredLocalAttachmentDraft {
 export interface ChatComposerAttachmentDraftPort {
   restore(): Promise<{ attachments: RestoredLocalAttachmentDraft[]; failedCount: number }>;
   stage(input: RestoredLocalAttachmentDraft, position?: number): Promise<boolean>;
-  syncLive(attachmentIds: readonly string[]): void;
-  discardUnready(attachmentIds: readonly string[]): void;
+  syncLive(attachmentIds: readonly string[], files?: RestoredLocalAttachmentDraft[]): void;
+  discardUnready(attachmentIds: readonly string[]): void | Promise<void>;
   /** Await inside the captured send transaction, before submitting any messages. */
-  beginSend(attachmentIds: readonly string[]): {
+  beginSend(attachmentIds: readonly string[], files?: RestoredLocalAttachmentDraft[]): {
     ready: Promise<void>;
     settle(keepAttachmentIds: readonly string[]): Promise<void>;
   };

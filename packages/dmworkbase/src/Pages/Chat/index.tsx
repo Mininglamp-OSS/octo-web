@@ -2487,9 +2487,12 @@ export default class ChatPage extends Component<any, ChatPageState> {
                 footerConfig={{
                   cancelText: t("base.common.cancel"),
                   okText: t("base.chatPage.continueSwitch"),
-                  onOk: () => {
-                    WKApp.shared.pendingAttachmentDiscard?.();
-                    this.state.pendingConfirm?.onOk();
+                  onOk: async () => {
+                    const pending = this.state.pendingConfirm;
+                    try { await WKApp.shared.pendingAttachmentDiscard?.(); }
+                    catch { Toast.error(t("base.messageInput.attachment.draftCleanupFailed")); return; }
+                    if (this.state.pendingConfirm !== pending) return;
+                    pending?.onOk();
                     this.setState({ pendingConfirm: null });
                   },
                 }}

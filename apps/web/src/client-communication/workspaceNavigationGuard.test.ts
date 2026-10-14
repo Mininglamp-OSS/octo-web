@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   shared: {
     pendingAttachmentGuard: undefined as (() => boolean) | undefined,
-    pendingAttachmentDiscard: undefined as (() => void) | undefined,
+    pendingAttachmentDiscard: undefined as (() => void | Promise<void>) | undefined,
   },
-  confirm: vi.fn((_props: { onOk: () => void; onCancel: () => void }) => ({
+  confirm: vi.fn((_props: { onOk: () => Promise<void>; onCancel: () => void }) => ({
     destroy: vi.fn(),
   })),
 }));
@@ -35,7 +35,7 @@ describe("workspace navigation attachment guard", () => {
     expect(mocks.confirm).not.toHaveBeenCalled();
   });
 
-  it("reuses the existing warning and commits only once after confirmation", () => {
+  it("reuses the existing warning and commits only once after confirmation", async () => {
     mocks.shared.pendingAttachmentGuard = () => false;
     const guard = createWorkspaceNavigationGuard();
     const proceed = vi.fn();
@@ -51,8 +51,8 @@ describe("workspace navigation attachment guard", () => {
       cancelText: "base.common.cancel",
     }));
     const dialog = mocks.confirm.mock.calls[0][0];
-    dialog.onOk();
-    dialog.onOk();
+    await dialog.onOk();
+    await dialog.onOk();
     dialog.onCancel();
     expect(proceed).toHaveBeenCalledTimes(1);
     expect(discard).toHaveBeenCalledTimes(1);
@@ -75,7 +75,7 @@ describe("workspace navigation attachment guard", () => {
     expect(discard).not.toHaveBeenCalled();
   });
 
-  it("destroys replaced dialogs and ignores stale callbacks", () => {
+  it("destroys replaced dialogs and ignores stale callbacks", async () => {
     mocks.shared.pendingAttachmentGuard = () => false;
     const guard = createWorkspaceNavigationGuard();
     const oldProceed = vi.fn();
@@ -90,8 +90,30 @@ describe("workspace navigation attachment guard", () => {
     oldDialog.onCancel();
     expect(oldProceed).not.toHaveBeenCalled();
     expect(oldCancel).not.toHaveBeenCalled();
-    mocks.confirm.mock.calls[1][0].onOk();
+    await mocks.confirm.mock.calls[1][0].onOk();
     expect(proceed).toHaveBeenCalledTimes(1);
+  });
+
+  it("awaits deletion confirmation and preserves the dialog on failure", async () => {
+    const { Toast } = await import("@douyinfe/semi-ui");
+    const notification = vi.spyOn(Toast, "error").mockImplementation(() => "toast");
+    mocks.shared.pendingAttachmentGuard = () => false;
+    let finish!: () => void;
+    const discard = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+    mocks.shared.pendingAttachmentDiscard = discard;
+    const proceed = vi.fn();
+    createWorkspaceNavigationGuard().run(proceed);
+    const dialog = mocks.confirm.mock.calls[0][0];
+    const leaving = dialog.onOk();
+    expect(proceed).not.toHaveBeenCalled();
+    finish(); await leaving;
+    expect(proceed).toHaveBeenCalledOnce();
+    mocks.shared.pendingAttachmentDiscard = vi.fn().mockRejectedValueOnce(new Error("disk"));
+    createWorkspaceNavigationGuard().run(proceed);
+    await expect(mocks.confirm.mock.calls[1][0].onOk()).rejects.toThrow("disk");
+    expect(proceed).toHaveBeenCalledOnce();
+    expect(notification).toHaveBeenCalledOnce();
+    notification.mockRestore();
   });
 
   it("invalidates pending callbacks on cleanup without navigating", () => {

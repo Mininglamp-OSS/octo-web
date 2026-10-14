@@ -452,7 +452,7 @@ export interface MessageInputContext {
   ) => void | Promise<void>;
   getAttachmentFiles: () => File[];
   canLeaveWithAttachments: () => boolean;
-  discardUnreadyAttachments: () => void;
+  discardUnreadyAttachments: () => void | Promise<void>;
   text: () => string | undefined;
   focus: () => void;
   /**
@@ -1156,7 +1156,14 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   }, [attachmentStore, editor]);
 
   useEffect(() => {
-    props.attachmentDrafts?.syncLive(getAttachmentIds());
+    const files: RestoredLocalAttachmentDraft[] = [
+      ...(editor ? extractAttachmentsFromEditor(editor).flatMap(({ id }) => {
+        const file = attachmentStore.attachmentFiles.get(id);
+        return file ? [{ id, file, source: "paste" as const }] : [];
+      }) : []),
+      ...attachmentStore.snapshotTopAttachments().map(({ id, file }) => ({ id, file, source: "upload" as const })),
+    ];
+    props.attachmentDrafts?.syncLive(getAttachmentIds(), files);
   }, [
     attachmentRevision,
     getAttachmentIds,
@@ -1344,8 +1351,8 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         })),
       ];
       void Promise.all(
-        recoveredAttachments.map((attachment, position) =>
-          props.attachmentDrafts!.stage(attachment, position)
+        recoveredAttachments.map((attachment) =>
+          props.attachmentDrafts!.stage(attachment)
         )
       ).then((results) => {
         if (results.some((persisted) => !persisted)) {
@@ -1484,7 +1491,13 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       ...topAttachmentsAtSend.map(({ id }) => id),
     ];
     const draftSend = draftAttachmentIds.length > 0
-      ? props.attachmentDrafts?.beginSend(draftAttachmentIds)
+      ? props.attachmentDrafts?.beginSend(draftAttachmentIds, [
+          ...attachmentAttrs.flatMap(({ id }) => {
+            const file = attachmentStore.attachmentFiles.get(id);
+            return file ? [{ id, file, source: "paste" as const }] : [];
+          }),
+          ...topAttachmentsAtSend.map(({ id, file }) => ({ id, file, source: "upload" as const })),
+        ])
       : undefined;
     // Capture/consume remains synchronous; only the actual send waits for Client.
     void draftSend?.ready.catch(() => {});
@@ -1509,7 +1522,11 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
               };
               if (!draftSend) return captured;
               return { ...captured, send: async (request) => {
-                await draftSend?.ready;
+                try { await draftSend.ready; }
+                catch (error) {
+                  Notification.error({ className: "wk-octo-notification", content: t("base.messageInput.attachment.draftSendUnavailable"), duration: 5 });
+                  throw error;
+                }
                 return captured.send(request);
               } };
             },
@@ -1623,6 +1640,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       await draftSend?.settle(keepAttachmentIds).catch((error) => {
         // Preserve the send result: Client keeps an unsettled reservation hidden.
         console.warn("[attachment-drafts] settlement failed", error);
+        Notification.error({ className: "wk-octo-notification", content: t("base.messageInput.attachment.draftCleanupFailed"), duration: 5 });
       });
       return result;
     } catch (error) {
@@ -1669,7 +1687,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             : attachmentIds.length === 0;
         },
         discardUnreadyAttachments: () => {
-          props.attachmentDrafts?.discardUnready(getAttachmentIds());
+          return props.attachmentDrafts?.discardUnready(getAttachmentIds());
         },
         text: () => (editor ? extractMentionsFromEditor(editor) : undefined),
         focus: () => editor?.commands.focus(),

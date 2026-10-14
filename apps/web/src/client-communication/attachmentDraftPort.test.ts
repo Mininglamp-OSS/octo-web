@@ -13,10 +13,10 @@ function deferred<T>() {
 }
 function fixture() {
   const api: LocalAttachmentDraftBridge = {
-    version: 3,
+    version: 4,
     open: vi.fn(async () => ({ leaseId: "lease", attachments: [], failedCount: 0 })),
     stage: vi.fn(async ({ attachment }) => ({ ...attachment, revision: "revision", createdAt: 1, updatedAt: 1 })),
-    remove: vi.fn(async () => {}), prepareSend: vi.fn(async () => ({ sendId: "send" })), settleSend: vi.fn(async () => {}),
+    remove: vi.fn(async () => {}), prepareSend: vi.fn(async ({ requestId }) => ({ sendId: requestId })), settleSend: vi.fn(async () => {}),
   };
   let active = true;
   return { api, port: createClientAttachmentDraftPort(api, context, () => active), deactivate: () => { active = false; } };
@@ -26,7 +26,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("Client draft editor adapter", () => {
   it("keeps browser and incomplete/older Client capabilities on the leave-confirmation path", () => {
-    for (const capability of [undefined, { version: 2 }, { version: 3 }]) {
+    for (const capability of [undefined, { version: 2 }, { ...fixture().api, version: 3 }, { version: 4 }]) {
       const dispose = installClientLocalAttachmentDrafts({ attachmentDrafts: capability, onCommand: vi.fn() } as unknown as OctoBuddyCommunicationBridge, "a");
       expect(createChatComposerAttachmentDraftPort(context.channel)).toBeUndefined();
       dispose();
@@ -61,21 +61,21 @@ describe("Client draft editor adapter", () => {
     expect(api.prepareSend).not.toHaveBeenCalled();
     write.resolve({ ...vi.mocked(api.stage).mock.calls[0][0].attachment, revision: "r2", createdAt: 1, updatedAt: 1 });
     await staging; await sending.ready;
-    expect(api.prepareSend).toHaveBeenCalledWith({ leaseId: "lease", attachments: [{ id: "x", revision: "r2" }] });
+    expect(api.prepareSend).toHaveBeenCalledWith({ leaseId: "lease", requestId: expect.any(String), attachments: [{ id: "x", revision: "r2" }] });
     expect(api.remove).not.toHaveBeenCalled();
     await sending.settle([]);
-    expect(api.settleSend).toHaveBeenCalledWith({ sendId: "send", keepAttachmentIds: [] });
+    expect(api.settleSend).toHaveBeenCalledWith({ sendId: expect.any(String), keepAttachmentIds: [] });
   });
-  it("does not reserve or permit leaving after a failed save", async () => {
+  it("reserves by identity after a failed save without blocking the in-memory file", async () => {
     const { api, port } = fixture();
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.mocked(api.stage).mockRejectedValue(new Error("quota"));
     expect(await port.stage(item())).toBe(false);
     expect(port.canLeave(["x"])).toBe(false);
     const sending = port.beginSend(["x"]);
-    await expect(sending.ready).rejects.toThrow("persistence incomplete");
+    await sending.ready;
     await sending.settle(["x"]);
-    expect(api.prepareSend).not.toHaveBeenCalled();
+    expect(api.prepareSend).toHaveBeenCalledWith({ leaseId: "lease", requestId: expect.any(String), attachments: [{ id: "x" }] });
   });
   it("retains a pending write when a captured send is rejected after switching space", async () => {
     const f = fixture();
@@ -96,13 +96,12 @@ describe("Client draft editor adapter", () => {
   });
   it("settles concurrent attempts using their own Client tokens", async () => {
     const { api, port } = fixture();
-    vi.mocked(api.prepareSend).mockResolvedValueOnce({ sendId: "first" }).mockResolvedValueOnce({ sendId: "second" });
     await port.stage(item("one")); await port.stage(item("two"));
     const first = port.beginSend(["one"]), second = port.beginSend(["two"]);
     await Promise.all([first.ready, second.ready]);
     await second.settle(["two"]); await first.settle([]);
     expect(vi.mocked(api.settleSend).mock.calls.map(([input]) => input)).toEqual([
-      { sendId: "second", keepAttachmentIds: ["two"] }, { sendId: "first", keepAttachmentIds: [] },
+      { sendId: vi.mocked(api.prepareSend).mock.calls[1][0].requestId, keepAttachmentIds: ["two"] }, { sendId: vi.mocked(api.prepareSend).mock.calls[0][0].requestId, keepAttachmentIds: [] },
     ]);
   });
   it("preserves restored files until actually seen in the editor, then removes explicit deletions", async () => {
@@ -128,6 +127,6 @@ describe("Client draft editor adapter", () => {
     await f.port.stage(item()); const sending = f.port.beginSend(["x"]); await sending.ready;
     f.deactivate();
     await sending.settle(["x"]);
-    expect(f.api.settleSend).toHaveBeenCalledWith({ sendId: "send", keepAttachmentIds: ["x"] });
+    expect(f.api.settleSend).toHaveBeenCalledWith({ sendId: expect.any(String), keepAttachmentIds: ["x"] });
   });
 });

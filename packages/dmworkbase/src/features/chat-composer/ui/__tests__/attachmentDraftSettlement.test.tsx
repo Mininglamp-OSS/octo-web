@@ -1,4 +1,5 @@
 import React from "react";
+import { Notification } from "@douyinfe/semi-ui";
 import { act, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatComposerCoordinator } from "../../application/ChatComposerCoordinator";
@@ -63,7 +64,7 @@ describe("composer attachment draft send settlement", () => {
         expect(inlineIds).toHaveLength(2);
         expect(topIds).toHaveLength(2);
         const allIds = [...inlineIds, ...topIds];
-        expect(drafts.beginSend).toHaveBeenCalledWith(expect.arrayContaining(allIds));
+        expect(drafts.beginSend).toHaveBeenCalledWith(expect.arrayContaining(allIds), expect.any(Array));
         const keep = mode === "rejected" || mode === "throws" ? allIds
           : [topIds[1], ...(mode === "consumed" ? [inlineIds[1]] : inlineIds)];
         expect(settle).toHaveBeenCalledOnce();
@@ -81,6 +82,7 @@ describe("composer attachment draft send settlement", () => {
       stage: vi.fn(async () => true), syncLive: vi.fn(), discardUnready: vi.fn(),
       beginSend: vi.fn(() => ({ ready: preparation, settle })), canLeave: () => true,
     };
+    const notification = vi.spyOn(Notification, "error").mockImplementation(() => "toast");
     let context!: MessageInputContext;
     let current = "original";
     const send = vi.fn(async (_request, captured) => {
@@ -107,6 +109,7 @@ describe("composer attachment draft send settlement", () => {
         await pending;
       });
       expect(send).toHaveBeenCalledTimes(reject ? 0 : 1);
+      if (reject) expect(notification).toHaveBeenCalledWith(expect.objectContaining({ content: expect.any(String) }));
       expect(settle).toHaveBeenCalledOnce();
       expect(settle.mock.calls[0][0]).toHaveLength(reject ? 1 : 0);
     } finally { view.unmount(); }

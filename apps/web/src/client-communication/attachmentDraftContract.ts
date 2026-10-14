@@ -18,6 +18,7 @@ export interface DraftReference { id: string; revision: string }
 export interface DraftOpenInput { spaceId: string; channel: LocalAttachmentDraftChannel }
 export interface DraftStageInput { leaseId: string; attachment: DraftAttachmentInput; bytes: ArrayBuffer | Uint8Array }
 export interface DraftSelection { leaseId: string; attachments: DraftReference[] }
+export interface DraftSendSelection { leaseId: string; requestId: string; attachments: Array<{ id: string; revision?: string }> }
 export interface DraftSettlement { sendId: string; keepAttachmentIds: string[] }
 export interface DraftOpenResult {
   leaseId: string
@@ -26,10 +27,10 @@ export interface DraftOpenResult {
 }
 /** Desktop-owned lifecycle. Renderer receipts are opaque, never filesystem paths. */
 export interface LocalAttachmentDraftBridge {
-  version: 3
+  version: 4
   open(input: DraftOpenInput): Promise<DraftOpenResult>
   stage(input: DraftStageInput): Promise<LocalAttachmentDraftMetadata>
   remove(input: DraftSelection): Promise<void>
-  prepareSend(input: DraftSelection): Promise<{ sendId: string }>
+  prepareSend(input: DraftSendSelection): Promise<{ sendId: string }>
   settleSend(input: DraftSettlement): Promise<void>
 }

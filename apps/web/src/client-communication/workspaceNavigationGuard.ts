@@ -1,3 +1,4 @@
+import { Toast } from "@douyinfe/semi-ui";
 import { WKApp, t } from "@octo/base";
 import { wkConfirm } from "@octo/base/src/Components/WKModal";
 
@@ -24,16 +25,20 @@ export function createWorkspaceNavigationGuard() {
         pending = undefined;
         callback?.();
       };
+      let confirming = false;
+      const discard = WKApp.shared.pendingAttachmentDiscard;
       request.modal = wkConfirm({
         title: t("base.chatPage.unsentAttachmentTitle"),
         content: t("base.chatPage.unsentAttachmentContent"),
         okText: t("base.chatPage.continueSwitch"),
         cancelText: t("base.common.cancel"),
-        onOk: () =>
-          finish(() => {
-            WKApp.shared.pendingAttachmentDiscard?.();
-            proceed();
-          }),
+        onOk: async () => {
+          if (pending !== request || confirming) return;
+          confirming = true;
+          try { await discard?.(); finish(proceed); }
+          catch (error) { Toast.error(t("base.messageInput.attachment.draftCleanupFailed")); throw error; }
+          finally { confirming = false; }
+        },
         onCancel: () => finish(onCancel),
       });
     },

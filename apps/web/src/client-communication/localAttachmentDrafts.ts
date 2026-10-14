@@ -4,7 +4,7 @@ import type { OctoBuddyCommunicationBridge } from "./hostBridge";
 
 export function installClientLocalAttachmentDrafts(bridge: OctoBuddyCommunicationBridge, initialSpaceId: string): () => void {
   const api = bridge.attachmentDrafts;
-  if (!api || api.version !== 3 ||
+  if (!api || api.version !== 4 ||
       ![api.open, api.stage, api.remove, api.prepareSend, api.settleSend].every(method => typeof method === "function")) return () => {};
   let active = true;
   let revision = 0;
