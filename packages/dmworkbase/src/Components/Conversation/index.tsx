@@ -1606,9 +1606,12 @@ export class Conversation
     // 本地黑名单键：沿用基线的「最后一个点之后、无点退化整名」提取，仅用于黑名单匹配。
     const blacklistKeyOf = (name: string) =>
       name.substring(name.lastIndexOf(".") + 1).toLowerCase();
-    // 允许集判定用「真实扩展名」，与 Go filepath.Ext 对齐：无点（Dockerfile）、前导点
-    // （.gitignore）、结尾点（a.）都视为无扩展名；否则会把它们当成扩展名误报（例如
-    // Dockerfile 被报成 .dockerfile）。
+    // 允许集判定用「真实扩展名」：必须存在非首尾的点号；无点（Dockerfile）、前导点
+    // （.gitignore/.pdf 这类隐藏文件）、结尾点（a.）都视为「无扩展名」，直接提示不支持该
+    // 文件类型，而不是拼出一个伪造扩展名（否则 Dockerfile 会被误报成 .dockerfile）。
+    // 注意：这是刻意的客户端设计，与 Go filepath.Ext 并不完全一致——filepath.Ext 会把前导点
+    // （.gitignore → .gitignore）和结尾点（a. → .）也算作扩展名。这里对隐藏文件/结尾点更
+    // 严格，是保守方向（宁可前端多拒，不靠前端放行）；服务端仍是最终安全边界。
     const realExtensionOf = (name: string): string | null => {
       const dot = name.lastIndexOf(".");
       if (dot <= 0 || dot === name.length - 1) return null;
@@ -1649,12 +1652,16 @@ export class Conversation
     // 同一轮附件合计：客户端自有的本地预算（COMPOSER_MAX_TOTAL_BYTES）。这里刻意不读
     // 服务端 max_size_kb——那是 per-upload-request 的单文件上限，服务端没有「整批附件
     // 累计上限」，绑上去会让运维调小该值时误拒本应放行的多附件消息。
+    // 但累计阈值至少要 ≥ 单文件上限：否则当运维把 max_size_kb 调到 > 100MB 时，一个已
+    // 通过单文件闸门的合法文件仍会被累计闸门单独拦下。取二者较大值——下发值 ≤ 100MB 时
+    // 与基线/现状逐字等价，> 100MB 时也不会误拒合法单文件。
+    const maxBatchBytes = Math.max(COMPOSER_MAX_TOTAL_BYTES, maxFileBytes);
     const existing = this.getPendingAttachments();
     const existingSize = existing.reduce((sum, f) => sum + f.size, 0);
     const incomingSize = incoming.reduce((sum, f) => sum + f.size, 0);
-    if (existingSize + incomingSize > COMPOSER_MAX_TOTAL_BYTES) {
+    if (existingSize + incomingSize > maxBatchBytes) {
       return t("base.conversation.upload.totalTooLarge", {
-        values: { max: formatFileSize(COMPOSER_MAX_TOTAL_BYTES) },
+        values: { max: formatFileSize(maxBatchBytes) },
       });
     }
 

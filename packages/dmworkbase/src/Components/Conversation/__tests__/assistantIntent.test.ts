@@ -27,6 +27,7 @@ import {
   deleteSelectedConversationMessages,
 } from "../index"
 import WKApp from "../../../App"
+import { t } from "../../../i18n"
 import {
   MediaMessageContent,
   MessageStatus,
@@ -838,7 +839,15 @@ describe("Conversation attachment and viewport helpers", () => {
       await withFileUploadLimits(
         { maxSizeKB: 102400, allowedExtensions: [".exe", ".txt"] },
         async () => {
-          await expect(conversation.addPendingAttachments([makeFile("payload.exe")])).resolves.toContain("exe")
+          // blockedExtension and extensionNotAllowed render identical text for ".exe"
+          // (both end up as ".exe files cannot be sent"), so assert exact equality with
+          // the blacklist message to prove the blacklist guard ran first, not the allowlist.
+          const blacklistMessage = t("base.conversation.upload.blockedExtension", {
+            values: { extension: "exe" },
+          })
+          await expect(
+            conversation.addPendingAttachments([makeFile("payload.exe")])
+          ).resolves.toBe(blacklistMessage)
           expect(add).not.toHaveBeenCalled()
         }
       )
@@ -854,6 +863,47 @@ describe("Conversation attachment and viewport helpers", () => {
         expect(message).toContain("Dockerfile")
         expect(message).not.toContain(".dockerfile")
         expect(add).not.toHaveBeenCalled()
+      })
+    })
+
+    it("treats leading-dot and trailing-dot names as extension-less (design intent)", async () => {
+      // Finding 1 option A: unlike Go filepath.Ext, a leading dot (.gitignore/.pdf hidden
+      // file) and a trailing dot (a.) are deliberately NOT treated as extensions. This is a
+      // conservative client-side choice; assert the dedicated extensionMissing message.
+      const conversation = new Conversation({ channel })
+      const add = vi.fn()
+      ;(conversation as any)._addAttachmentFn = add
+
+      await withFileUploadLimits({ maxSizeKB: 102400, allowedExtensions: [".gitignore", "."] }, async () => {
+        await expect(
+          conversation.addPendingAttachments([makeFile(".gitignore")])
+        ).resolves.toBe(
+          t("base.conversation.upload.extensionMissing", { values: { name: ".gitignore" } })
+        )
+        await expect(
+          conversation.addPendingAttachments([makeFile("a.")])
+        ).resolves.toBe(
+          t("base.conversation.upload.extensionMissing", { values: { name: "a." } })
+        )
+        // A normal single-dot extension still matches the allowlist as usual.
+        const ok = [makeFile("doc.pdf")]
+        await withFileUploadLimits({ maxSizeKB: 102400, allowedExtensions: [".pdf"] }, async () => {
+          await expect(conversation.addPendingAttachments(ok)).resolves.toBeNull()
+        })
+      })
+    })
+
+    it("does not block a large single file when the server per-file limit exceeds 100MB", async () => {
+      // Finding 2: with max_size_kb > 100MB the batch gate must not reject a single file
+      // that already cleared the per-file gate (batch floor lifted to max(100MB, per-file)).
+      const conversation = new Conversation({ channel })
+      const add = vi.fn()
+      ;(conversation as any)._addAttachmentFn = add
+
+      await withFileUploadLimits({ maxSizeKB: 200 * 1024, allowedExtensions: [] }, async () => {
+        const files = [makeFile("big.bin", 150 * MB)]
+        await expect(conversation.addPendingAttachments(files)).resolves.toBeNull()
+        expect(add).toHaveBeenCalledWith(files, "upload")
       })
     })
   })

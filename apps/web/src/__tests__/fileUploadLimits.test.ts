@@ -136,9 +136,14 @@ describe("file_upload_limits appconfig web integration", () => {
     expect(source).toContain("BLOCKED_EXTENSIONS.includes(blockedKey)");
     // P1: the batch total check uses a client-owned constant, NOT the server per-file field.
     expect(source).toContain(
-      "existingSize + incomingSize > COMPOSER_MAX_TOTAL_BYTES"
+      "existingSize + incomingSize > maxBatchBytes"
     );
     expect(source).toContain("const COMPOSER_MAX_TOTAL_BYTES =");
+    // The batch floor is lifted to the per-file limit so a file that clears the per-file
+    // gate can never be blocked solely by the batch gate (server max_size_kb > 100MB case).
+    expect(source).toContain(
+      "const maxBatchBytes = Math.max(COMPOSER_MAX_TOTAL_BYTES, maxFileBytes)"
+    );
     // MAX_TOTAL_SIZE is no longer the effective threshold on this path (and is deleted).
     expect(source).not.toContain("MAX_TOTAL_SIZE");
     expect(readRepoFile("packages/dmworkbase/src/Components/Conversation/vm.ts")).not.toContain(
@@ -172,5 +177,9 @@ describe("file_upload_limits appconfig web integration", () => {
 
     expect(zh["conversation.upload.extensionNotAllowed"]).toContain("{{extension}}");
     expect(en["conversation.upload.extensionNotAllowed"]).toContain("{{extension}}");
+    // The extension-less message added in this change must exist in both locales and
+    // interpolate the file name (so a missing key is caught here, not silently swallowed).
+    expect(zh["conversation.upload.extensionMissing"]).toContain("{{name}}");
+    expect(en["conversation.upload.extensionMissing"]).toContain("{{name}}");
   });
 });
