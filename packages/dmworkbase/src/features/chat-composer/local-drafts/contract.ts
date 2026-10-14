@@ -10,7 +10,9 @@ export interface ChatComposerAttachmentDraftPort {
   restore(): Promise<{ attachments: RestoredLocalAttachmentDraft[]; failedCount: number }>;
   stage(input: RestoredLocalAttachmentDraft, position?: number): Promise<boolean>;
   syncLive(attachmentIds: readonly string[], files?: RestoredLocalAttachmentDraft[]): void;
-  /** Explicitly confirmed navigation: try all cleanup, then release UI guards.
+  /** Explicitly confirmed navigation: attempt current cleanup and waive its guards.
+   * Failed requests retain ownership until acknowledged, across editor unmounts.
+   * New concurrent work and in-flight staging are not discarded.
    * A rejection reports incomplete cleanup; it must not veto the confirmed move.
    */
   discardUnready(attachmentIds: readonly string[]): void | Promise<void>;

@@ -1837,7 +1837,8 @@ function getSavedTab(): SidebarTab {
 interface ChatPageState {
   activeTab: SidebarTab;
   currentSpaceName: string;
-  pendingConfirm: null | { onOk: () => void; discard?: () => void | Promise<void>; confirming?: boolean }; // 附件切换确认弹窗
+  pendingConfirm: null | { onOk: () => void; discard?: () => void | Promise<void> }; // 附件切换确认弹窗
+  attachmentDiscardPending: boolean;
   recentUnreadJumpToken: number;
   temporaryConversationJumpToken: number;
   temporaryConversationScrollRequest?: TemporaryConversationScrollRequest;
@@ -1849,6 +1850,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
   static contextType = I18nContext;
   declare context: React.ContextType<typeof I18nContext>;
 
+  private confirmingAttachmentDiscard = false;
   vm!: ChatVM;
   spaceListRef: SpaceList | null = null;
   openCreateCategoryRef: React.MutableRefObject<(() => void) | null> = {
@@ -1860,6 +1862,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
       activeTab: getSavedTab(),
       currentSpaceName: WKApp.config.appName,
       pendingConfirm: null,
+      attachmentDiscardPending: false,
       recentUnreadJumpToken: 0,
       temporaryConversationJumpToken: 0,
       temporaryConversation: {},
@@ -2487,19 +2490,29 @@ export default class ChatPage extends Component<any, ChatPageState> {
                 footerConfig={{
                   cancelText: t("base.common.cancel"),
                   okText: t("base.chatPage.continueSwitch"),
+                  isOkLoading: this.state.attachmentDiscardPending,
+                  isCancelDisabled: this.state.attachmentDiscardPending,
                   onOk: async () => {
                     const pending = this.state.pendingConfirm;
-                    if (!pending || pending.confirming) return;
-                    pending.confirming = true;
-                    try { await pending.discard?.(); }
-                    catch { if (this.state.pendingConfirm === pending) Toast.error(t("base.messageInput.attachment.draftCleanupFailed")); }
-                    if (this.state.pendingConfirm !== pending) return;
-                    pending?.onOk();
-                    this.setState({ pendingConfirm: null });
+                    if (!pending || this.confirmingAttachmentDiscard) return;
+                    this.confirmingAttachmentDiscard = true;
+                    this.setState({ attachmentDiscardPending: true });
+                    try {
+                      try { await pending.discard?.(); }
+                      catch { if (this.state.pendingConfirm === pending) Toast.error(t("base.messageInput.attachment.draftCleanupFailed")); }
+                      if (this.state.pendingConfirm !== pending) return;
+                      pending.onOk();
+                      this.setState({ pendingConfirm: null });
+                    } finally {
+                      this.confirmingAttachmentDiscard = false;
+                      this.setState({ attachmentDiscardPending: false });
+                    }
                   },
                 }}
-                onCancel={() => this.setState({ pendingConfirm: null })}
-                options={{ closable: false }}
+                onCancel={() => {
+                  if (!this.confirmingAttachmentDiscard) this.setState({ pendingConfirm: null });
+                }}
+                options={{ closable: false, maskClosable: !this.state.attachmentDiscardPending, closeOnEsc: !this.state.attachmentDiscardPending }}
               >
                 <p className="wk-modal-confirm-text">
                   {t("base.chatPage.unsentAttachmentContent")}

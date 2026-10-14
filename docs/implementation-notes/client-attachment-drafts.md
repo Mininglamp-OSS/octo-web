@@ -1,56 +1,60 @@
 # Client-owned attachment drafts
 
-## Behavior
-- Browser Web retains its existing confirmation before leaving attachments; it does not persist them.
-- Embedded Client restores successfully saved attachments on conversation/space return.
+## Behavior list
+- Browser Web retains its existing confirmation before leaving attachments; it does not persist them. Embedded Client restores successfully saved attachments on conversation/space return.
 - Client owns draft versions, send reservations, restore eligibility and deletion. Consumed records are hidden durably before blob cleanup; failed cleanup is retried.
-- A send asks Client to reserve existing records for its captured attachment IDs before network submission; missing records do not block in-memory files. A late settlement targets only its original send token. Uncertain sends after renderer loss stay excluded from automatic draft restoration.
-- Logout revokes draft handles immediately and clears the account's files before another session can use the service. Old async requests cannot recreate cleared files.
+- Before network submission, a send asks Client to reserve existing records for its captured attachment IDs. Missing records do not block in-memory files. A stable request ID supports retry and cancellation after a timed-out prepare; settlement affects only that transaction.
+- If reservation fails, the compose is retained and an error is shown. A completion-hook failure cannot overwrite already established full/partial delivery outcomes.
+- Explicit deletion creates a retryable transport request before awaiting IPC. Only acknowledgement retires it. Requests that never reach Client survive editor unmount and conversation A-B-A navigation for the authenticated renderer session.
+- Confirmation attempts current cleanup and may waive its navigation guard, even on persistent failure. It never erases pending tasks or waives new concurrent work. Cancellation before confirmation changes nothing. While confirming, Cancel/Esc/mask are disabled and loading is shown. Host-forced cancellation suppresses stale navigation without destroying cleanup ownership.
+- Restore retries queued requests and masks unresolved deletion IDs, then obtains a fresh Client snapshot. In-flight staging is retained on navigation; confirmation does not delete a write just because its receipt has not arrived.
+- Logout immediately revokes draft handles and clears the account's files before another session can use the service. The renderer queue is disposed; old callbacks cannot acquire another account's lease. Space/channel queues remain separate.
 
 ## File map
-- Web `features/chat-composer/local-drafts`: optional UI port/types only, with no filesystem or authoritative draft/send state.
-- Web `client-communication/localAttachmentDrafts` and `attachmentDraftPort`: typed Client bridge adapter, File conversion, persistence receipts and editor lifetime tracking.
-- Web `ChatComposer`: attachment insertion/preview, navigation protection and captured send outcome integration.
-- Client `shared/local-attachment-drafts*`: versioned, validated semantic IPC contract.
-- Client `electron/main/communication/attachment-draft-host.ts`, `attachment-draft-store.ts` and `attachment-drafts/*`: persistence schema/IO, store transitions, session and editor handles, send transactions.
+- Web `features/chat-composer/local-drafts`: optional UI port/types, without filesystem or authoritative draft/send state.
+- Web `client-communication/localAttachmentDrafts` and `attachmentDraftPort`: capability/lifetime wiring, File conversion, persistence receipts, bounded IPC and editor integration.
+- Web `client-communication/attachmentDraftCleanup`: session-owned transport outbox with acknowledgement, coalescing, deletion visibility masks and per-request navigation waiver. It stores pending callbacks, not attachment bytes or durable lifecycle records.
+- Web `ChatComposer`: attachment insertion/preview, undo re-staging, navigation protection and captured send outcomes. Existing ChatPage/workspace confirmation paths supply loading and cancellation guards.
+- Client `shared/local-attachment-drafts*`: validated V4 semantic IPC contract.
+- Client `electron/main/communication/attachment-draft-host.ts`, `attachment-draft-store.ts` and `attachment-drafts/*`: persistence schema/IO, store transitions, session/editor handles and send transactions.
 - Client preload/IPC/controller: capability wiring, trusted session routing and awaited logout cleanup.
+- Client `tests/e2e/local-attachment-cleanup.spec.ts`: real editor/preload/disk regression with deletion IPC intercepted before reaching the Client handler, pending confirmation, leave/return, and recovery.
 
 ## PR scope
-Two coordinated PRs from current main. Browser behavior is unchanged; only embedded Client gains persistence. Reuse audited file storage primitives from the previous Client proposal. Replace the Web-owned lifecycle implementation, rather than retaining two competing authorities. No additional UI entry point or styling changes.
+Two coordinated changes with one attachment entry point. Client owns local persistence and lifecycle; Web adapts its existing composer to that capability. Shared composer/conversation and ChatPage changes only connect attachment insertion, navigation protection and captured send outcomes. No additional menu, route or styling system.
+
+The latest repair retains undelivered IPC ownership outside the editor, independently of navigation permission. It updates the existing Client MR with integration coverage and replaces the Web PR after validation. No Client production lifecycle change is needed for these renderer-side blockers.
+
+## Cleanup states and transitions
+
+| State | Navigation | Retry / restore behavior |
+| --- | --- | --- |
+| Pending or failed request | Prompt unless explicitly waived | Keep request; coalesce concurrent attempts; mask deleted IDs |
+| Explicitly waived request | Allow confirmed departure | Retain request across editor unmount; retry on return/send/discard |
+| Acknowledged request | No cleanup guard | Retire only that task after Client acknowledgement |
+| Session disposed | Old editor cannot act | Clear session queue; reject old async work before further host calls |
+
+Navigation confirmation snapshots the tasks it attempts. Waiving those tasks in `finally` cannot erase a settlement registered concurrently. Acknowledgement is the only per-request destructive transition; navigation cancellation or host suspension does not retire tasks. Saving entries are not cleanup requests unless the user explicitly deleted them.
+
+Client also retains received-but-failed removal/settlement intents, retries each independently and filters pending removed revisions from restoration. Explicit removal can consume a reserved revision; a later retained-send settlement cannot revive it. Unknown send IDs are rejected and stale-revision removals are idempotent. Identity fields are metadata; disk filenames use hashed identities and random blob tokens. Manifest reads validate metadata and verify blob size/checksum.
+
+New sends retry pending work involving the same IDs; unrelated sends remain available. Same-ID undo waits for prior cleanup and re-stages the retained File under a new revision. Failed settlements release UI preparation locks and retain their original decision for idempotent retry. Request-ID generation occurs within asynchronous preparation, so a randomness error still reaches the composer error/settlement path.
 
 ## Validation plan
-- Client store/service tests with real temporary disk: save/restore, quota, checksum, identity isolation, removal, reservation/settlement, partial failures, stale versions, A-B-A, reload and logout races.
-- Web bridge/composer tests: missing/legacy capability fallback, async send preparation before actual send, UI restore/unmount and removal, persistence failure confirmation, accurate partial-send mapping.
-- Browser E2E: cancel/confirm navigation with an attachment; confirm drops the attachment.
-- Electron E2E with the new bundled Web artifact: persist and restore across conversations, consumed attachment absence, space changes and logout clearing real disk.
-- Client typecheck; Web composer/bridge suites, i18n validation and embedded renderer build; diff checks.
+- Client real-disk store/lifecycle: save/restore, quota/checksum, identity isolation, removal, reservations, settlement, partial failures, stale versions, reload/logout races and independent retry.
+- Web stateful adapter: dropped-before-host removal, remount/retry without deleted-file hydration, concurrent settlement during discard, in-flight staging, disposal, fresh restore after consumption and coalesced retries.
+- Existing composer/bridge suites: capability fallback, preparation before send, partial outcomes, undo and persistent failure feedback.
+- Confirmation tests: loading, disabled cancellation, double-click suppression and stale/host-forced cancellation in both ChatPage and workspace paths.
+- Browser leave-confirmation and Electron with a rebuilt bundled renderer; Client typecheck, locale validation, builds and diff checks.
 
 ## Verified implementation
-- Web client-communication and composer suites pass; browser Playwright confirms cancel preserves and confirmed navigation drops attachments.
-- Electron with the rebuilt communication artifact verifies conversation/space return, UI-added file sending, absence of consumed drafts and logout clearing the actual draft directory.
-- Client filesystem/lifecycle and auth/controller/logout tests, Client typecheck, both Web builds and locale checks pass.
-- Remote storage and IM ACKs are simulated in E2E. No production service or packaged release validation is claimed.
+- Web communication: 32 files / 337 tests. Composer plus ChatPage confirmation: 44 files / 435 tests.
+- Client attachment lifecycle/storage: 34 tests; Client typecheck and main/preload/renderer build.
+- Web embedded and browser E2E builds; locale validation; browser cancel-retains / confirm-leaves regression.
+- Five Electron scenarios pass with the rebuilt communication artifact: conversation/space restoration and logout disk clearing; normal send; persistent settlement failure with another attachment send and confirmed navigation; paste/delete/undo/send; dropped deletion with pending confirmation, leave/return without resurrection, then successful disk cleanup on IPC recovery.
+- Electron uses the real editor, preload, Client service and temporary disk. Remote uploads and IM ACKs are simulated. No production service or packaged release validation is claimed.
 
-## Rollout boundary
-The renderer only installs persistence for a complete V4 capability. Client must bundle a released renderer containing this adapter before the combined feature is shipped. A lost renderer/process leaves uncertain sends excluded from automatic restoration; expiry/logout reclaims those records. The feature introduces no second visible entry point. Shared composer and conversation changes only connect attachment insertion, navigation protection and captured send outcomes to the optional port.
+## Rollout and recovery limits
+The renderer installs persistence only for a complete V4 capability. Client must bundle a released renderer containing this adapter before the combined feature ships. No generated artifact is committed by these PRs.
 
-## Review repair plan
-- Behavior: retry transient open/stage failures; re-stage undo-restored nodes; retain deletion intent through settlement and failed IPC; attempt cleanup before confirmed navigation without permanently blocking an explicit discard. Allow non-persisted files to send through a Client-confirmed reservation of existing records. Surface uncertain Client failures with bounded waits and retry rather than silently blocking.
-- Files: Client host/store and V4 wire contract own idempotent reservations, settlement and removal retry. Web adapter owns bounded IPC calls and editor receipts; composer supplies live Files for undo reconciliation; existing navigation callbacks await bounded cleanup and honor confirmed departure even on failure.
-- Scope: update both coordinated implementations, replace Web PR #1838 after validation, retain existing Client MR. No new UI entry point.
-- Validation: deferred/rejected open, stage, removal and settlement; delete during settlement; same-ID undo; missing receipts mixed with persisted files; retry after lost reply; timeout; real composer error feedback; browser navigation and Electron send/restore/logout.
-
-## Failure semantics after review
-V4 uses a stable request ID for prepare/settle, including cancellation after a timed-out prepare. Client accepts missing receipts by resolving existing records inside its serialized store; it cannot silently bypass a durable record. A failed local stage therefore does not make an in-memory File unsendable. If Client cannot confirm reservation, Web bounds the wait, preserves the compose and shows a retry message instead of sending with ambiguous durable state.
-
-Deletion intent and failed settlement are retried in Client before operations; each failure is isolated so later intents and unrelated editors still progress. Pending removed revisions are filtered out of restoration while their intents remain in Client memory. Explicit removal can consume a reserved version; later settlement cannot restore it. Web reports pending/failed deletions as unsafe until explicit confirmation. Confirmed discard attempts settlements and removals independently, releases its local guards, and reports incomplete cleanup without vetoing navigation. New sends retry only settlements involving the same attachment IDs; unrelated sends remain available. Undo supplies the retained File to stage a new revision, including undo immediately followed by send before React effects run. Settlements release UI locks on failure and can be retried idempotently. The Web adapter still tracks non-authoritative editor receipts and pending requests; it is not stateless.
-
-Review repair verification: Web communication 323 tests, composer 433 tests, browser leave-confirmation E2E, Client attachment lifecycle/storage 32 tests, auth/controller/logout 76 tests, and all three Electron E2E scenarios passed. Client typecheck, renderer builds, locale validation and diff checks passed. Electron undo coverage uses the actual editor clipboard and keyboard path, real IPC and temporary disk; remote upload/ACK remain simulated.
-
-## Persistent-failure review repair
-- The shared coordinator preserves established send outcomes when a completion hook rejects; full and partial delivery are covered through the real composer/coordinator.
-- Confirmation is the terminal UI decision, not an automatic retry-count threshold. Cancellation preserves the guard. Confirmation attempts every cleanup, releases the guard even on permanent failure, and displays the cleanup warning. Both conversation and workspace paths capture their original discard callback and ignore stale/double confirmation.
-- Client keeps failed removal/settlement intents and retries each independently. An unrelated failure cannot prevent a newly received intent from being registered. Pending removed revisions stay hidden on open, while uncertain send reservations remain durably hidden. Logout cleanup remains a session barrier.
-- Limits: received but not persisted removal intents are in memory. A Client crash before persistence or an IPC request that never reaches Client can leave a local copy behind. Confirmed navigation does not claim successful deletion; the warning says copies may remain. No renderer retry counter is treated as evidence of durable cleanup.
-- Client cross-checks: unknown send IDs are rejected; stale attachment revisions are idempotent removal no-ops. Attachment IDs are metadata only; filesystem names use hashed identities and random blob tokens. Manifest reads validate numeric metadata and reads verify byte size/checksum before returning a File payload.
-- Incremental checks: Web communication 327 tests, composer 433 tests, Client real-disk lifecycle/storage 34 tests, locale checks and embedded Web/Client builds. Electron fault injection persistently rejects settlement IPC while retaining real editor, preload, reservation storage and navigation; remote upload/ACK remain simulated.
+The Web outbox is authenticated-renderer-session memory, not durable storage. It survives conversation unmount and space return, but not renderer/process loss. A deletion never received by Client before renderer loss, or a received removal intent not persisted before Client loss, can leave a local copy behind. Confirmed navigation reports incomplete cleanup and does not claim durable deletion. Uncertain send reservations remain durably excluded from restoration after renderer loss; expiry/logout reclaims them.

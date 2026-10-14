@@ -35,12 +35,13 @@ export function createWorkspaceNavigationGuard() {
         onOk: async () => {
           if (pending !== request || confirming) return;
           confirming = true;
+          request.modal?.update?.({ maskClosable: false, closeOnEsc: false });
           try { await discard?.(); }
           catch { if (pending === request) Toast.error(t("base.messageInput.attachment.draftCleanupFailed")); }
           finally { confirming = false; }
           finish(proceed);
         },
-        onCancel: () => finish(onCancel),
+        onCancel: () => { if (!confirming) finish(onCancel); },
       });
     },
   };

@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
     pendingAttachmentDiscard: undefined as (() => void | Promise<void>) | undefined,
   },
   confirm: vi.fn((_props: { onOk: () => Promise<void>; onCancel: () => void }) => ({
-    destroy: vi.fn(),
+    destroy: vi.fn(), update: vi.fn(),
   })),
 }));
 
@@ -131,4 +131,21 @@ describe("workspace navigation attachment guard", () => {
     expect(proceed).not.toHaveBeenCalled();
     expect(cancel).not.toHaveBeenCalled();
   });
+  it.each([false, true])("ignores UI cancellation while cleaning up and honors forced cancellation=%s", async forced => {
+    mocks.shared.pendingAttachmentGuard = () => false;
+    let release!: () => void;
+    mocks.shared.pendingAttachmentDiscard = () => new Promise<void>(resolve => { release = resolve; });
+    const guard = createWorkspaceNavigationGuard(), proceed = vi.fn(), cancel = vi.fn();
+    guard.run(proceed, cancel);
+    const dialog = mocks.confirm.mock.calls[0][0];
+    const pending = dialog.onOk();
+    expect(mocks.confirm.mock.results[0].value.update).toHaveBeenCalledWith({ maskClosable: false, closeOnEsc: false });
+    dialog.onCancel();
+    expect(cancel).not.toHaveBeenCalled();
+    expect(proceed).not.toHaveBeenCalled();
+    if (forced) guard.cancel();
+    release(); await pending;
+    expect(proceed).toHaveBeenCalledTimes(forced ? 0 : 1);
+  });
+
 });
