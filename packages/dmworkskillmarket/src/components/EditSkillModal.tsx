@@ -2,13 +2,14 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { AlertCircle, Box, ImagePlus, Loader2, Upload, XCircle } from "lucide-react";
 import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
 import type { Category, Skill, Visibility } from "../types/skill";
-import { updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse, getSkillTags, publishPlugin } from "../api/skillApi";
+import { SkillMarketApiError, updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse, getSkillTags, publishPlugin } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
 import IconCropModal from "./IconCropModal";
 import InlineConfirmBar from "./InlineConfirmBar";
 import { visibilityLabel } from "../utils/labels";
 import { isValidVersion, nextPatch, versionErrorKey } from "../utils/version";
+import { skillUploadErrorMessage, type SkillErrorPhase } from "../utils/uploadError";
 
 interface EditSkillModalProps {
   skill: Skill | null;
@@ -360,6 +361,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
     setProgress(0);
     setError(null);
     abortRef.current = false;
+    let errorPhase: SkillErrorPhase = "upload";
 
     try {
       const { uploadId, presignedUrl, headers } = await initReupload(skill.id, nextFile.name, nextFile.size);
@@ -371,54 +373,46 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
       if (abortRef.current) return;
 
       setUploadStage("parsing");
+      errorPhase = "parse";
       const { taskId } = await triggerParse(uploadId);
       if (abortRef.current) return;
 
-      let attempts = 0;
-      const maxAttempts = 60;
-      while (attempts < maxAttempts) {
-        if (abortRef.current) return;
-        const status = await pollParse(taskId);
-        if (abortRef.current) return;
+      const status = await pollParse(taskId);
+      if (abortRef.current) return;
 
-        if (status.status === "success" && status.result) {
-          if (status.result.name !== skill.name) {
-            setUploadStage("error");
-            setUploadedFile(null);
-            setParseTaskId(null);
-            setError(t("skillMarket.upload.nameMismatch", {
-              values: { expected: skill.name, actual: status.result.name },
-            }));
-            return;
-          }
-          setParseTaskId(taskId);
-          setName(status.result.name);
-          setDescription(status.result.description);
-          if (status.result.tags.length > 0) {
-            setTags(status.result.tags);
-          }
-          setVersion(bumpPatch(skill.version));
-          setChangelog("");
-          setUploadStage("idle");
-          setError(null);
-          return;
-        }
-        if (status.status === "failed") {
+      if (status.status === "success" && status.result) {
+        if (status.result.name !== skill.name) {
           setUploadStage("error");
           setUploadedFile(null);
-          setError(status.error?.message ?? t("skillMarket.upload.parseFailed"));
+          setParseTaskId(null);
+          setError(t("skillMarket.upload.nameMismatch", {
+            values: { expected: skill.name, actual: status.result.name },
+          }));
           return;
         }
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        attempts++;
+        setParseTaskId(taskId);
+        setName(status.result.name);
+        setDescription(status.result.description);
+        if (status.result.tags.length > 0) {
+          setTags(status.result.tags);
+        }
+        setVersion(bumpPatch(skill.version));
+        setChangelog("");
+        setUploadStage("idle");
+        setError(null);
+      } else {
+        // Defensive guard for mocked or future pollParse implementations;
+        // production pollParse rejects this malformed success shape itself.
+        throw new SkillMarketApiError(
+          "invalid_response",
+          t("skillMarket.errors.parseFailed"),
+        );
       }
-      setUploadStage("error");
-      setError(t("skillMarket.upload.parseTimeout"));
     } catch (err) {
       if (!abortRef.current) {
         setUploadStage("error");
         setUploadedFile(null);
-        setError(err instanceof Error ? err.message : t("skillMarket.upload.uploadFailed"));
+        setError(skillUploadErrorMessage(err, { phase: errorPhase }));
       }
     }
   }
@@ -476,29 +470,41 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated, 
         visibility,
         ...(iconUrl !== undefined ? { iconUrl } : {}),
       });
+      // Import consumes the parse task. If publication fails after this save,
+      // retry only the publish step instead of submitting the consumed task
+      // through updateSkill again.
+      if (parseTaskId) setParseTaskId(null);
       if (publish) {
         // Saved first, so what gets published is what the author just wrote —
         // and if widening the audience un-listed the row, this is the step that
         // earns the listing back through review. The changelog only rides along
         // on the org-review branch; on 仅自己 the server ignores it, and
         // publishPlugin omits an empty one from the body regardless.
-        const outcome = await publishPlugin({
-          pluginId: skill.id,
-          version,
-          ...(visibility === "space" ? { changelog } : {}),
-        });
-        onUpdated(updated);
-        onPublished?.(
-          outcome.displayStatus === "pending_review"
-            ? t("skillMarket.review.submittedToast")
-            : t("skillMarket.plugin.publishedToast")
-        );
+        try {
+          const outcome = await publishPlugin({
+            pluginId: skill.id,
+            version,
+            ...(visibility === "space" ? { changelog } : {}),
+          });
+          onUpdated(updated);
+          onPublished?.(
+            outcome.displayStatus === "pending_review"
+              ? t("skillMarket.review.submittedToast")
+              : t("skillMarket.plugin.publishedToast")
+          );
+        } catch (publishErr) {
+          // The edit already committed even though publication failed. Refresh
+          // the owning list and describe the failed step accurately.
+          onUpdated(updated);
+          setError(skillUploadErrorMessage(publishErr, { phase: "publish" }));
+          return;
+        }
       } else {
         onUpdated(updated);
       }
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("skillMarket.form.saveFailed"));
+      setError(skillUploadErrorMessage(err, { phase: "save" }));
     } finally {
       setSaving(false);
       setPublishing(false);
