@@ -1850,5 +1850,9 @@
   "htmlAttachment.tooLarge": "This file is too large to preview. Download it to view.",
   "htmlAttachment.downloadFailed": "Unable to prepare the download. Please retry.",
   "htmlAttachment.expired": "Preview expired. Reopen this attachment from chat.",
-  "htmlAttachment.popupBlocked": "Unable to open the preview tab. Allow popups and retry."
+  "htmlAttachment.popupBlocked": "Unable to open the preview tab. Allow popups and retry.",
+  "messageInput.draft.restoreFailed": "Saved drafts could not be loaded. Retry, or use a temporary draft without changing the saved draft.",
+  "messageInput.draft.retryRestore": "Retry loading",
+  "messageInput.draft.useTemporary": "Use temporary draft",
+  "messageInput.draft.temporaryNotice": "Temporary draft: new content will not be saved when you leave. Your previously saved draft is unchanged."
 }

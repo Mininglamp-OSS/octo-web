@@ -23,7 +23,7 @@ import {
   parseMentionMarkers,
 } from "../adapters/tiptap/mentionResolve";
 import "./ChatComposer.css";
-import { Notification, Toast } from "@douyinfe/semi-ui";
+import { Banner, Button, Notification, Toast } from "@douyinfe/semi-ui";
 import SlashCommandMenu, { BotCommand } from "../../../Components/SlashCommandMenu";
 import VoiceInputIndicator from "./voice/VoiceInputIndicator";
 import { Maximize2, Minimize2 } from "lucide-react";
@@ -568,6 +568,11 @@ function createAttachmentId(file: File): string {
 }
 
 const ChatComposer: React.FC<ChatComposerProps> = (props) => {
+  const [temporaryDraftPort, setTemporaryDraftPort] = useState<ChatComposerAttachmentDraftPort | null>(null);
+  const temporaryDraft = !!props.attachmentDrafts && temporaryDraftPort === props.attachmentDrafts;
+  const attachmentDrafts = temporaryDraft ? undefined : props.attachmentDrafts;
+  const [draftRestoreFailed, setDraftRestoreFailed] = useState(false);
+
   const { t } = useI18n();
   const hostRef = useRef(props.host);
   hostRef.current = props.host;
@@ -869,10 +874,10 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   };
 
   const [draftRestoreGeneration, setDraftRestoreGeneration] = useState(0);
-  const localDraft = useConversationDraft(editor, attachmentStore, props.attachmentDrafts,
+  const localDraft = useConversationDraft(editor, attachmentStore, attachmentDrafts,
     () => composerMountedRef.current,
     (error) => {
-      if (error instanceof DraftConflictError && props.attachmentDrafts?.mergeDocumentConflict) {
+      if (error instanceof DraftConflictError && attachmentDrafts?.mergeDocumentConflict) {
         wkConfirm({
           title: t("base.messageInput.draft.conflictTitle"),
           content: t("base.messageInput.draft.conflictBody"),
@@ -884,7 +889,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             localDraftRef.current.pause();
             editor.setEditable(false);
             try {
-              await props.attachmentDrafts!.mergeDocumentConflict!(snapshot);
+              await attachmentDrafts!.mergeDocumentConflict!(snapshot);
               if (!composerMountedRef.current || editor.isDestroyed) return;
               setDraftLoaded(false);
               draftRestoreRef.current = null;
@@ -903,9 +908,9 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   const draftReady = useMemo(() => {
     let resolve!: () => void;
     const promise = new Promise<void>(done => { resolve = done; });
-    if (!props.attachmentDrafts?.saveDocument) resolve();
+    if (!attachmentDrafts?.saveDocument) resolve();
     return { promise, resolve };
-  }, [props.attachmentDrafts, draftRestoreGeneration]);
+  }, [attachmentDrafts, draftRestoreGeneration]);
   const localDraftRef = useRef(localDraft);
   localDraftRef.current = localDraft;
 
@@ -979,9 +984,9 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
           attachmentStore.appendTopAttachment(item);
         }
         inserted += 1;
-        if (!attachment.restored && props.attachmentDrafts) {
+        if (!attachment.restored && attachmentDrafts) {
           staging.push(
-            props.attachmentDrafts.stage({ id, file, source }, position)
+            attachmentDrafts.stage({ id, file, source }, position)
           );
         }
       }
@@ -999,7 +1004,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         });
       }
     },
-    [attachmentStore, editor, props.attachmentDrafts, t]
+    [attachmentStore, editor, attachmentDrafts, t]
   );
 
   const addAttachment = useCallback(
@@ -1018,25 +1023,25 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     [addAttachmentRecords, draftReady]
   );
 
-  const [draftLoaded, setDraftLoaded] = useState(!props.attachmentDrafts?.saveDocument);
+  const [draftLoaded, setDraftLoaded] = useState(!attachmentDrafts?.saveDocument);
   const draftRestoreRef = useRef<{
     port: ChatComposerAttachmentDraftPort;
     promise: ReturnType<ChatComposerAttachmentDraftPort["restore"]>;
     applied: boolean;
   } | null>(null);
   useEffect(() => {
-    if (!editor || !props.attachmentDrafts) return;
+    if (!editor || !attachmentDrafts) return;
     let restore = draftRestoreRef.current;
-    if (!restore || restore.port !== props.attachmentDrafts) {
+    if (!restore || restore.port !== attachmentDrafts) {
       restore = {
-        port: props.attachmentDrafts,
-        promise: props.attachmentDrafts.restore(),
+        port: attachmentDrafts,
+        promise: attachmentDrafts.restore(),
         applied: false,
       };
       draftRestoreRef.current = restore;
     }
     let active = true;
-    if (props.attachmentDrafts.saveDocument && !restore.applied) editor.setEditable(false);
+    if (attachmentDrafts.saveDocument && !restore.applied) editor.setEditable(false);
     void restore.promise
       .then(({ attachments, failedCount, document }) => {
         if (
@@ -1048,6 +1053,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
           return;
         }
         restore.applied = true;
+        setDraftRestoreFailed(false);
         if (failedCount > 0) {
           Notification.error({
             className: "wk-octo-notification",
@@ -1081,7 +1087,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             // Context and attachment insertion wait for restoration before accepting edits.
             editor.commands.setContent(restoredDocument);
             localDraftRef.current.restoreAnchors(document);
-          } else if (props.attachmentDrafts?.saveDocument && props.legacyDraft) {
+          } else if (attachmentDrafts?.saveDocument && props.legacyDraft) {
             editor.commands.setContent(parseDraftToContent(props.legacyDraft));
           }
           localDraftRef.current.applying(false);
@@ -1089,7 +1095,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
           setDraftLoaded(true);
           draftReady.resolve();
           editor.setEditable(true);
-          props.attachmentDrafts?.syncLive([
+          attachmentDrafts?.syncLive([
             ...extractAttachmentsFromEditor(editor).map(({ id }) => id), ...topIds,
           ]);
         });
@@ -1100,21 +1106,15 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         }
         localDraftRef.current.applying(false);
         if (active && !editor.isDestroyed) {
-          editor.setEditable(!props.attachmentDrafts?.saveDocument);
+          editor.setEditable(!attachmentDrafts?.saveDocument);
         }
         console.warn("[attachment-drafts] draft restore failed", error);
-        if (active && composerMountedRef.current) {
-          Notification.error({
-            className: "wk-octo-notification",
-            content: t("base.messageInput.attachment.draftRestoreUnavailable"),
-            duration: 5,
-          });
-        }
+        if (active && composerMountedRef.current) setDraftRestoreFailed(true);
       });
     return () => {
       active = false;
     };
-  }, [addAttachmentRecords, editor, props.attachmentDrafts, draftReady]);
+  }, [addAttachmentRecords, editor, attachmentDrafts, draftReady]);
 
   useEffect(() => {
     editorHandlePasteRef.current = (
@@ -1236,6 +1236,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   }, [attachmentStore, editor]);
 
   useEffect(() => {
+    if (!draftLoaded || !localDraftRef.current.ready()) return;
     const files: RestoredLocalAttachmentDraft[] = [
       ...(editor ? extractAttachmentsFromEditor(editor).flatMap(({ id }) => {
         const file = attachmentStore.attachmentFiles.get(id);
@@ -1243,11 +1244,12 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       }) : []),
       ...attachmentStore.snapshotTopAttachments().map(({ id, file }) => ({ id, file, source: "upload" as const })),
     ];
-    props.attachmentDrafts?.syncLive(getAttachmentIds(), files);
+    attachmentDrafts?.syncLive(getAttachmentIds(), files);
   }, [
     attachmentRevision,
+    draftLoaded,
     getAttachmentIds,
-    props.attachmentDrafts,
+    attachmentDrafts,
     topAttachments,
   ]);
 
@@ -1417,7 +1419,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     if (recoveredTopAttachments.length > 0) {
       attachmentStore.restoreTopAttachments(recoveredTopAttachments, 0);
     }
-    if (props.attachmentDrafts) {
+    if (attachmentDrafts) {
       const recoveredAttachments = [
         ...hydrated.flatMap((item) =>
           item.editorAttachments.map(({ id, file }) => ({
@@ -1434,7 +1436,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       ];
       void Promise.all(
         recoveredAttachments.map((attachment) =>
-          props.attachmentDrafts!.stage(attachment)
+          attachmentDrafts!.stage(attachment)
         )
       ).then((results) => {
         if (results.some((persisted) => !persisted)) {
@@ -1466,7 +1468,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     props.onRecoveredComposes,
     props.onRestoreRecoveredTarget,
     props.recoveredComposes,
-    props.attachmentDrafts,
+    attachmentDrafts,
     extensions.editor.composeParts,
     t,
   ]);
@@ -1589,7 +1591,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       ...topAttachmentsAtSend.map(({ id }) => id),
     ];
     const draftSend = draftAttachmentIds.length > 0
-      ? props.attachmentDrafts?.beginSend(draftAttachmentIds, [
+      ? attachmentDrafts?.beginSend(draftAttachmentIds, [
           ...attachmentAttrs.flatMap(({ id }) => {
             const file = attachmentStore.attachmentFiles.get(id);
             return file ? [{ id, file, source: "paste" as const }] : [];
@@ -1618,11 +1620,11 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
                 send: props.onSend!,
                 onSendSettled: props.onSendSettled,
               };
-              if (!draftSend && !props.attachmentDrafts?.flushDocument) return captured;
+              if (!draftSend && !attachmentDrafts?.flushDocument) return captured;
               return { ...captured, send: async (request) => {
                 try {
                   await draftSend?.ready;
-                  await props.attachmentDrafts?.flushDocument?.();
+                  await attachmentDrafts?.flushDocument?.();
                 }
                 catch (error) {
                   Notification.error({ className: "wk-octo-notification", content: t("base.messageInput.attachment.draftSendUnavailable"), duration: 5 });
@@ -1640,12 +1642,12 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
               props.onExpandChange?.(nextExpanded);
             },
             handoffRecovery: (recovery) => {
-              if (props.attachmentDrafts?.recoverDocument) {
+              if (attachmentDrafts?.recoverDocument) {
                 const document = buildComposeRecoveryDocument(recovery, recovery.editorBlocks,
                   value => (parseConsumedTextToContent(value).content ?? []) as ComposeDoc["content"] as never,
                   extensions.editor.composeParts);
                 const topIds = new Set(recovery.topAttachments.map(item => item.id));
-                void props.attachmentDrafts.recoverDocument(recovery.attemptId, {
+                void attachmentDrafts.recoverDocument(recovery.attemptId, {
                   document: document ?? { type: "doc", content: [] },
                   topAttachments: documentAtSend.topAttachments.filter(item => topIds.has(item.id)),
                 }).catch(error => console.warn("[drafts] recovery persistence failed", error));
@@ -1779,7 +1781,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     props.onComposeRecovery,
     props.onSendSettled,
     props.onExpandChange,
-    props.attachmentDrafts,
+    attachmentDrafts,
     controller,
     coordinator,
     extensions.editor.composeParts,
@@ -1803,12 +1805,12 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         getAttachmentFiles,
         canLeaveWithAttachments: () => {
           const attachmentIds = getAttachmentIds();
-          return props.attachmentDrafts
-            ? props.attachmentDrafts.canLeave(attachmentIds)
+          return attachmentDrafts
+            ? attachmentDrafts.canLeave(attachmentIds)
             : attachmentIds.length === 0;
         },
         discardUnreadyAttachments: () => {
-          return props.attachmentDrafts?.discardUnready(getAttachmentIds());
+          return attachmentDrafts?.discardUnready(getAttachmentIds());
         },
         text: () => (editor ? extractMentionsFromEditor(editor) : undefined),
         focus: () => editor?.commands.focus(),
@@ -1843,7 +1845,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     controller,
     getAttachmentFiles,
     getAttachmentIds,
-    props.attachmentDrafts,
+    attachmentDrafts,
   ]);
 
   const getFilteredSlashCommands = useCallback((): BotCommand[] => {
@@ -1964,6 +1966,32 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
           "wk-messageinput-card--has-topview": !!topView,
         })}
       >
+        {draftRestoreFailed && !temporaryDraft && (
+          <Banner type="warning" closeIcon={null}
+            description={t("base.messageInput.draft.restoreFailed")}
+          >
+              <Button theme="solid" onClick={() => {
+                pasteLifecycleRef.current += 1;
+                draftReady.resolve();
+                setDraftRestoreFailed(false);
+                draftRestoreRef.current = null;
+                setDraftRestoreGeneration(value => value + 1);
+              }}>{t("base.messageInput.draft.retryRestore")}</Button>
+              <Button theme="solid" type="tertiary" onClick={() => {
+                // Opt out of every persistence/send-settlement operation for this
+                // mounted compose; an unread saved draft must remain untouched.
+                pasteLifecycleRef.current += 1;
+                draftReady.resolve();
+                setTemporaryDraftPort(props.attachmentDrafts ?? null);
+                setDraftRestoreFailed(false);
+                setDraftLoaded(true);
+                editor?.setEditable(true);
+              }}>{t("base.messageInput.draft.useTemporary")}</Button>
+          </Banner>
+        )}
+        {temporaryDraft && <Banner type="warning" closeIcon={null}
+          description={t("base.messageInput.draft.temporaryNotice")} />}
+
         {/* 引用/编辑条在卡片内部 */}
         {topView && <div className="wk-messageinput-topview">{topView}</div>}
 

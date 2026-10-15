@@ -17,6 +17,7 @@ export function withConversationDocument(
   repository: ConversationDraftRepository = conversationDrafts
 ): ChatComposerAttachmentDraftPort {
   const epoch = repository.epoch(scope);
+  void repository.session(scope).catch(() => {});
   const key = draftKey(scope, channel);
   let loaded = false;
   return {

@@ -28,9 +28,12 @@ export function createBrowserAttachmentDraftPort(
 ): ChatComposerAttachmentDraftPort {
   const conversation = draftKey(scope, channel);
   const epoch = repository.epoch(scope);
+  const session = () => repository.session(scope);
+  void session().catch(() => {});
   const entries = new Map<string, StoredAttachment>();
   const saving = new Map<string, Promise<boolean>>();
   const observed = new Set<string>();
+  const removing = new Set<string>();
   const sending = new Set<string>();
   const liveFiles = new Map<string, RestoredLocalAttachmentDraft>();
   let live = new Set<string>();
@@ -44,6 +47,7 @@ export function createBrowserAttachmentDraftPort(
       .then((records) => {
         if (active())
           records.forEach((record) => {
+            sequence = Math.max(sequence, record.position + 1);
             if (!entries.has(record.id)) entries.set(record.id, record);
           });
       })
@@ -73,10 +77,15 @@ export function createBrowserAttachmentDraftPort(
           conversation,
           account: draftAccountKey(scope),
         };
-        await repository.database.changeAttachments(conversation, (records) => [
-          ...records.filter((item) => item.id !== input.id),
-          record,
-        ]);
+        sequence = Math.max(sequence, record.position + 1);
+        await repository.database.changeAttachments(
+          conversation,
+          (records) => [
+            ...records.filter((item) => item.id !== input.id),
+            record,
+          ],
+          await session()
+        );
         entries.set(input.id, record);
       })
       .then(
@@ -87,12 +96,27 @@ export function createBrowserAttachmentDraftPort(
     void operation.finally(() => saving.delete(input.id));
     return operation;
   };
-  const remove = (id: string) =>
-    repository.enqueue(conversation + ":files", async () => {
+  const remove = (id: string) => {
+    removing.add(id);
+    return repository.enqueue(conversation + ":files", async () => {
       if (!active() || live.has(id)) return;
       const revision = entries.get(id)?.revision;
-      await repository.database.changeAttachments(conversation, (records) =>
-        records.filter((item) => item.id !== id || item.revision !== revision)
+      // Keep the decision even when physical blob cleanup fails. Document saves
+      // also persist membership atomically, including not-yet-staged attachments.
+      await repository.database.setAttachmentPresence(
+        conversation,
+        id,
+        false,
+        await session(),
+        revision
+      );
+      await repository.database.changeAttachments(
+        conversation,
+        (records) =>
+          records.filter(
+            (item) => item.id !== id || item.revision !== revision
+          ),
+        await session()
       );
       entries.delete(id);
       observed.delete(id);
@@ -100,6 +124,7 @@ export function createBrowserAttachmentDraftPort(
       const restored = live.has(id) ? liveFiles.get(id) : undefined;
       if (restored) void stage(restored);
     });
+  };
   return {
     async restore() {
       await repository.flush(conversation + ":files");
@@ -107,25 +132,44 @@ export function createBrowserAttachmentDraftPort(
       entries.clear();
       await open();
       if (!active()) return { attachments: [], failedCount: 0 };
+      const visible = await repository.database.restoreAttachments(
+        conversation
+      );
+      if (!active()) return { attachments: [], failedCount: 0 };
+      entries.clear();
+      visible.forEach((item) => entries.set(item.id, item));
       // Reservations are durable: an uncertain send must not silently reappear after reload.
       return {
-        attachments: [...entries.values()]
-          .filter((item) => !item.reserved)
-          .map((item) => ({
-            id: item.id,
-            file: new File([item.file], item.name, {
-              type: item.file.type,
-              lastModified: item.lastModified,
-            }),
-            source: item.source,
-            position: item.position,
-          })),
+        attachments: visible.map((item) => ({
+          id: item.id,
+          file: new File([item.file], item.name, {
+            type: item.file.type,
+            lastModified: item.lastModified,
+          }),
+          source: item.source,
+          position: item.position,
+        })),
         failedCount: 0,
       };
     },
     stage,
     syncLive(ids, files = []) {
       if (!active()) return;
+      live = new Set(ids);
+      for (const id of ids)
+        if (removing.delete(id)) {
+          void repository
+            .enqueue(conversation + ":files", async () => {
+              if (active() && live.has(id))
+                await repository.database.setAttachmentPresence(
+                  conversation,
+                  id,
+                  true,
+                  await session()
+                );
+            })
+            .catch(() => {});
+        }
       files.forEach((file) => {
         if (
           !entries.has(file.id) &&
@@ -134,7 +178,6 @@ export function createBrowserAttachmentDraftPort(
         )
           void stage(file);
       });
-      live = new Set(ids);
       liveFiles.clear();
       files.forEach((file) => liveFiles.set(file.id, file));
       ids.forEach((id) => observed.add(id));
@@ -179,7 +222,8 @@ export function createBrowserAttachmentDraftPort(
                 if (item.reserved)
                   throw new Error("Attachment is already being sent");
                 return { ...item, reserved: sendId };
-              })
+              }),
+            await session()
           );
           records.forEach((record) => entries.set(record.id, record));
         },
@@ -200,7 +244,8 @@ export function createBrowserAttachmentDraftPort(
                   const record = { ...item };
                   delete record.reserved;
                   return [record];
-                })
+                }),
+              await session()
             );
             ids.forEach((id) => {
               sending.delete(id);

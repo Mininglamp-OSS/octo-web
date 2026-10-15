@@ -50,3 +50,16 @@ pnpm i18n:check
 ```
 
 Review-fix verification: 52 composer/list suites (544 tests), Conversation integration plus composer migration (122 tests, 7 overlapping), and 3 Client suites (32 tests) passed. The 11 mute-error assertions also fail against the pre-fix ConversationList snapshot; they are excluded from the 52-suite passing run. i18n and diff checks passed. Full package TypeScript checking remains blocked by existing React declaration/module-resolution and other project errors. Packaged Client/browser E2E was not rerun for these fixes.
+
+
+## Durable recovery and logout fixes
+- IndexedDB schema v2 adds account generations and attachment intent records; the upgrade retains existing v1 documents and blobs.
+- Every document/attachment mutation checks its captured account generation in the same transaction as the write. Logout advances that generation and clears account records atomically. Suspended writers cannot recreate cleared data; BroadcastChannel invalidates other-window caches when available, but correctness does not depend on delivery.
+- Attachment removal records its decision before deleting bytes. Document membership transitions commit with the document, so a saved empty draft cannot restore a deleted file even when attachment cleanup fails. Pending-stage blobs without a removal decision remain recoverable; undo restores membership.
+- Restoration orders attachment rows by insertion position and continues numbering from existing rows.
+- Initial restore failure shows retry and explicit temporary-draft actions. Temporary mode disables persistence and attachment settlement for that compose, preserving unread saved content. Live attachment synchronization waits until restoration completes.
+
+Focused regression coverage includes fresh-repository deletion failure through the real composer/send callback, failed attachment-intent writes with successful document commits, pending stage and undo, two database connections with notifications disabled, paused writes during logout, broadcast cache invalidation, schema upgrades, consecutive reopens, retry followed by sending, and temporary sending without altering the saved draft.
+
+
+Verification for the durable-recovery fixes: 54 composer/list suites (557 tests), 124 conversation integration tests, and 32 Client lifecycle tests passed (713 distinct tests). Chromium passed the existing navigation/reload scenario and the new retry/temporary-mode scenarios in both zh-CN and en-US. Light/dark screenshots of the recovery UI were inspected in both languages. The Web E2E build, i18n validation, and diff checks passed. The previously documented mute-test exclusions and repository-wide TypeScript baseline failures still apply; packaged native Client testing was not performed.

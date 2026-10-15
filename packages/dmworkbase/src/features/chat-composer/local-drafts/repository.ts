@@ -1,4 +1,4 @@
-import { DraftDatabase } from "./database";
+import { DraftDatabase, type DraftSession } from "./database";
 import {
   cleanDraftDocument,
   mergeConflictingDrafts,
@@ -26,6 +26,8 @@ export class ConversationDraftRepository {
   private listeners = new Set<(change?: DraftChange) => void>();
   private epochs = new Map<string, number>();
   private loadedScopes = new Map<string, Promise<void>>();
+  private sessions = new Map<string, Promise<DraftSession>>();
+  private revocations?: BroadcastChannel;
   private fileTasks = new Map<string, Array<() => Promise<void>>>();
   constructor(readonly database = new DraftDatabase()) {}
   subscribe = (listener: (change?: DraftChange) => void) => {
@@ -36,6 +38,57 @@ export class ConversationDraftRepository {
   };
   private notify(change?: DraftChange) {
     this.listeners.forEach((listener) => listener(change));
+  }
+  session(scope: DraftScope): Promise<DraftSession> {
+    const account = draftAccountKey(scope);
+    let session = this.sessions.get(account);
+    if (!session) {
+      session = this.database.session(account);
+      this.sessions.set(account, session);
+      // A failed read is retryable, but a successfully captured generation must
+      // never refresh silently in an old window after logout.
+      void session.catch(() => {
+        if (this.sessions.get(account) === session)
+          this.sessions.delete(account);
+      });
+    }
+    if (
+      !this.revocations &&
+      typeof window !== "undefined" &&
+      typeof window.BroadcastChannel === "function"
+    ) {
+      try {
+        this.revocations = new window.BroadcastChannel(
+          this.database.name + ":revocations"
+        );
+        this.revocations.onmessage = (event) => {
+          const { account, generation } = event.data ?? {};
+          if (typeof account !== "string" || typeof generation !== "number")
+            return;
+          const captured = this.sessions.get(account);
+          void captured
+            ?.then((session) => {
+              if (session.generation < generation)
+                this.invalidateAccount(account);
+            })
+            .catch(() => {});
+        };
+      } catch {
+        // Notifications are optional; transaction-level generation checks still fence writers.
+      }
+    }
+    return session;
+  }
+  private invalidateAccount(account: string) {
+    this.epochs.set(account, (this.epochs.get(account) ?? 0) + 1);
+    for (const [key, record] of this.records)
+      if (record.account === account) {
+        this.records.delete(key);
+        this.revisions.delete(key);
+        this.failed.delete(key);
+      }
+    this.loadedScopes.clear();
+    this.notify();
   }
   epoch(scope: DraftScope) {
     return this.epochs.get(draftAccountKey(scope)) ?? 0;
@@ -51,8 +104,8 @@ export class ConversationDraftRepository {
     const epoch = this.epoch(scope);
     let loading = this.loadedScopes.get(key);
     if (!loading) {
-      loading = this.database
-        .list<DraftRecord>("drafts", "scope", key)
+      loading = this.session(scope)
+        .then(() => this.database.list<DraftRecord>("drafts", "scope", key))
         .then((records) => {
           if (!this.active(scope, epoch)) return;
           records.forEach((record) => {
@@ -85,6 +138,7 @@ export class ConversationDraftRepository {
   ): Promise<void> {
     const key = draftKey(scope, channel);
     const epoch = this.epoch(scope);
+    const session = this.session(scope);
     const cleaned = {
       document: cleanDraftDocument(draft.document),
       topAttachments: draft.topAttachments.map((item) => ({ ...item })),
@@ -115,11 +169,13 @@ export class ConversationDraftRepository {
       try {
         const expected = this.revisions.get(key) ?? 0;
         record.revision = expected + 1;
-        await this.database.writeDraft(record, expected);
-        this.revisions.set(key, record.revision);
-        this.failed.delete(key);
+        await this.database.writeDraft(record, expected, await session);
+        if (this.active(scope, epoch)) {
+          this.revisions.set(key, record.revision);
+          this.failed.delete(key);
+        }
       } catch (error) {
-        this.failed.add(key);
+        if (this.active(scope, epoch)) this.failed.add(key);
         throw error;
       }
     });
@@ -178,10 +234,10 @@ export class ConversationDraftRepository {
       .then(run)
       .then(
         () => {
-          this.failed.delete(key);
+          if (this.queues.get(key) === pending) this.failed.delete(key);
         },
         (error) => {
-          this.failed.add(key);
+          if (this.queues.get(key) === pending) this.failed.add(key);
           throw error;
         }
       );
@@ -209,25 +265,30 @@ export class ConversationDraftRepository {
     return !this.queues.has(key) && !this.failed.has(key);
   }
   async clearAccount(scope: DraftScope) {
+    void this.session(scope).catch(() => {});
     const account = draftAccountKey(scope);
-    this.epochs.set(account, this.epoch(scope) + 1);
-    for (const [key, record] of this.records)
-      if (record.account === account) {
-        this.records.delete(key);
-        this.revisions.delete(key);
-        this.failed.delete(key);
-      }
-    this.loadedScopes.clear();
-    this.notify();
-    await Promise.allSettled([...this.queues.values()]);
+    this.invalidateAccount(account);
     const prefix =
       JSON.stringify([scope.server, scope.account]).slice(0, -1) + ",";
-    for (const key of this.fileTasks.keys())
+    for (const key of new Set([
+      ...this.queues.keys(),
+      ...this.fileTasks.keys(),
+      ...this.failed,
+    ])) {
       if (key.startsWith(prefix)) {
+        this.queues.delete(key);
         this.fileTasks.delete(key);
         this.failed.delete(key);
       }
-    await this.database.clearAccount(account);
+    }
+    // Do not wait for suspended writers. The shared generation and deletion
+    // commit atomically; every late writer is fenced inside its transaction.
+    const cleanup = this.database.clearAccount(account);
+    const nextSession = cleanup.then(() => this.database.session(account));
+    this.sessions.set(account, nextSession);
+    void nextSession.catch(() => {});
+    await cleanup;
+    this.revocations?.postMessage(await nextSession);
   }
 }
 export const conversationDrafts = new ConversationDraftRepository();

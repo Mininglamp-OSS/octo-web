@@ -1850,5 +1850,9 @@
   "htmlAttachment.tooLarge": "文件超过预览大小上限，请下载查看。",
   "htmlAttachment.downloadFailed": "无法准备下载，请重试。",
   "htmlAttachment.expired": "预览已失效，请从聊天重新打开附件。",
-  "htmlAttachment.popupBlocked": "无法打开预览标签页，请允许弹出窗口后重试。"
+  "htmlAttachment.popupBlocked": "无法打开预览标签页，请允许弹出窗口后重试。",
+  "messageInput.draft.restoreFailed": "暂时无法读取已保存的草稿。可以重试，或使用临时草稿；原有草稿将保留。",
+  "messageInput.draft.retryRestore": "重新读取",
+  "messageInput.draft.useTemporary": "使用临时草稿",
+  "messageInput.draft.temporaryNotice": "正在使用临时草稿：离开后不会保存新内容，原有草稿不受影响。"
 }
