@@ -1,4 +1,8 @@
 {
+  "messageInput.draft.conflictTitle": "Draft updated in another window",
+  "messageInput.draft.conflictBody": "Merge this draft with the draft from the other window to continue editing. Both versions will be kept. Review the merged content before sending.",
+  "messageInput.draft.merge": "Merge drafts and continue",
+  "messageInput.draft.saveFailed": "Could not save this draft on this device. Keep this page open and try again.",
   "chatPage.loadingName": "Loading name...",
   "chatPage.nameUnavailable": "Name unavailable",
   "base.workspaceGroup.title": "Workspace relation",

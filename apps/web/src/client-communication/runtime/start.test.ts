@@ -19,6 +19,7 @@ const f = vi.hoisted(() => ({
   unread: { getSnapshot: vi.fn(() => 12), subscribe: vi.fn(() => vi.fn()) },
   gate: { setAllowed: vi.fn(), dispose: vi.fn() },
   sdk: { disconnect: vi.fn() },
+  clearDrafts: vi.fn(async () => {}),
   mount: vi.fn(async () => vi.fn()),
   app: {
     shared: { currentSpaceId: "s", notifyListener: vi.fn() },
@@ -27,6 +28,8 @@ const f = vi.hoisted(() => ({
     loginInfo: { logout: vi.fn() },
   },
 }));
+vi.mock("@octo/base/src/bridge/conversationDraftScope", () => ({ currentConversationDraftScope: () => ({server: "test", account: "alice", space: "s"}) }));
+vi.mock("@octo/base/src/features/chat-composer/local-drafts/repository", () => ({ conversationDrafts: { clearAccount: f.clearDrafts } }));
 vi.mock("@octo/base", () => ({
   applyImSpaceContext: vi.fn(({ space_id }) => { f.app.shared.currentSpaceId = space_id; }),
   getCurrentImConversationStore: () => f.store,
@@ -70,6 +73,19 @@ function hostFixture() {
   };
 }
 describe("communication runtime composition", () => {
+  it.each([false, true])("clears account drafts on sessionRevoked with UI mounted=%s", async (mounted) => {
+    const h = hostFixture();
+    const owner = await startCommunicationRuntime(h.host, bootstrap);
+    if (mounted) {
+      h.send({ type: "navigate", page: "chat" });
+      await vi.waitFor(() => expect(f.mount).toHaveBeenCalledOnce());
+    }
+    h.legacy({ type: "sessionRevoked" });
+    expect(f.clearDrafts).toHaveBeenCalledExactlyOnceWith({server: "test", account: "alice", space: "s"});
+    expect(f.app.loginInfo.logout).toHaveBeenCalledOnce();
+    expect(f.clearDrafts.mock.invocationCallOrder[0]).toBeLessThan(f.app.loginInfo.logout.mock.invocationCallOrder[0]);
+    owner.dispose();
+  });
   it("holds shared data with no UI, ignores unscoped navigation, then mounts the same owner", async () => {
     const h = hostFixture();
     const owner = await startCommunicationRuntime(h.host, bootstrap);
@@ -151,6 +167,7 @@ describe("communication runtime composition", () => {
     expect(f.sdk.disconnect).toHaveBeenCalledOnce();
     expect(f.app.apiClient.logoutCallback).toBe(previous);
     expect(previous).toHaveBeenCalledOnce();
+    expect(f.clearDrafts).toHaveBeenCalledExactlyOnceWith({server: "test", account: "alice", space: "s"});
     h.send({ type: "navigate", page: "chat" });
     expect(f.mount).not.toHaveBeenCalled();
   });

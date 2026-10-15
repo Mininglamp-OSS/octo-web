@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createClientAttachmentDraftPort } from "./attachmentDraftPort";
 import { installClientLocalAttachmentDrafts } from "./localAttachmentDrafts";
 import { createChatComposerAttachmentDraftPort } from "@octo/base/src/features/chat-composer/local-drafts";
+import { conversationDrafts } from "@octo/base/src/features/chat-composer/local-drafts/repository";
 import type { LocalAttachmentDraftBridge } from "./attachmentDraftContract";
 import type { OctoBuddyCommunicationBridge } from "./hostBridge";
 const context = { spaceId: "a", channel: { id: "c", type: 2 } };
@@ -27,10 +28,20 @@ afterEach(() => vi.restoreAllMocks());
 describe("Client draft editor adapter", () => {
   it("keeps browser and incomplete/older Client capabilities on the leave-confirmation path", () => {
     for (const capability of [undefined, { version: 2 }, { ...fixture().api, version: 3 }, { version: 4 }]) {
-      const dispose = installClientLocalAttachmentDrafts({ attachmentDrafts: capability, onCommand: vi.fn() } as unknown as OctoBuddyCommunicationBridge, "a");
+      const dispose = installClientLocalAttachmentDrafts({ attachmentDrafts: capability, onCommand: vi.fn(() => () => {}) } as unknown as OctoBuddyCommunicationBridge, "a");
       expect(createChatComposerAttachmentDraftPort(context.channel)).toBeUndefined();
       dispose();
     }
+  });
+  it("clears browser fallback drafts when an older Client revokes the session", () => {
+    const clear = vi.spyOn(conversationDrafts, "clearAccount").mockResolvedValue();
+    let command!: Parameters<OctoBuddyCommunicationBridge["onCommand"]>[0];
+    const off = vi.fn();
+    const dispose = installClientLocalAttachmentDrafts({ onCommand: listener => { command = listener; return off; } }, "a");
+    command({ type: "sessionRevoked" });
+    expect(clear).toHaveBeenCalledOnce();
+    dispose();
+    expect(off).toHaveBeenCalledOnce();
   });
   it("invalidates old UI ports on space changes and makes logout terminal", async () => {
     const { api } = fixture();

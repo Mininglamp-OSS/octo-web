@@ -1,3 +1,4 @@
+import { conversationDrafts } from "./features/chat-composer/local-drafts/repository";
 import mitt, { Emitter } from "mitt";
 import { getSessionSid, setSessionSid } from "./Service/SessionScope";
 import { replaceWithShellDocument } from "./Service/ShellDocument";
@@ -1389,6 +1390,8 @@ export default class WKApp extends ProviderListener {
     return WKApp.loginInfo.isLogined();
   }
   private async clearLocalLoginState() {
+    const draftCleanup = conversationDrafts.clearAccount({ server: WKApp.apiClient.config.apiURL || "",
+      account: WKApp.loginInfo.uid || "", space: this.currentSpaceId });
     WKApp.loginInfo.logout();
     clearAuthStorage();
     setSessionSid("");
@@ -1397,6 +1400,7 @@ export default class WKApp extends ProviderListener {
     this.channelMySourceSpaceMap.clear();
     this.spaceChecked = false;
     WKApp.mittBus.emit("wk:auth-state-changed");
+    await draftCleanup.catch(error => console.warn("[drafts] logout cleanup failed", error));
   }
 
   private async clearElectronAuthSession() {

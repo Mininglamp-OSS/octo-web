@@ -1,3 +1,4 @@
+import { currentConversationDraftScope } from "../../bridge/conversationDraftScope";
 import {
   Channel,
   ChannelTypeGroup,
@@ -563,7 +564,7 @@ export class Conversation
     this._attachmentDrafts = createChatComposerAttachmentDraftPort({
       id: props.channel.channelID,
       type: props.channel.channelType,
-    });
+    }, currentConversationDraftScope());
     this.state = {
       inputExpanded: false,
       contextMenuMessageID: null as string | null,
@@ -1406,6 +1407,13 @@ export class Conversation
       this._pendingInsertText = text;
     }
   }
+  private legacyComposerDraft(): string | undefined {
+    const draft = this.vm.draft();
+    // Pending send recovery already owns its provisional remote draft.
+    return composeRecoveryStore.matchPendingDraft(this.composeRecoveryKey(), draft).length
+      ? undefined : draft;
+  }
+
   /** 恢复草稿内容（替换编辑器内容，解析 @[uid:label] 为 mention 节点） */
   restoreDraft(text: string): void {
     const ctx = this.messageInputContext();
@@ -1835,7 +1843,7 @@ export class Conversation
       WKApp.shared.pendingAttachmentGuardId = this._guardId;
     }
 
-    if (this.vm.hasDraft()) {
+    if (!this._attachmentDrafts?.saveDocument && this.vm.hasDraft()) {
       const draft = this.vm.draft();
       const pendingOwners = composeRecoveryStore.matchPendingDraft(
         this.composeRecoveryKey(),
@@ -2149,7 +2157,7 @@ export class Conversation
     if (remoteExtra) {
       remoteExtra.keepMessageSeq = keepMessageSeq;
       remoteExtra.keepOffsetY = keepOffsetY;
-      remoteExtra.draft = draft || "";
+      remoteExtra.draft = this._attachmentDrafts?.saveDocument ? "" : draft || "";
     }
 
     const update = {
@@ -2157,7 +2165,7 @@ export class Conversation
       browseTo: 0,
       keepMessageSeq: keepMessageSeq,
       keepOffsetY,
-      draft,
+      draft: this._attachmentDrafts?.saveDocument ? undefined : draft,
       version: 0,
     };
     return composeDraftWriteQueue.enqueue(channelKey, () =>
@@ -3481,6 +3489,7 @@ export class Conversation
                     )}
                     <ChatComposer
                       attachmentDrafts={this._attachmentDrafts}
+                      legacyDraft={this._attachmentDrafts?.saveDocument ? this.legacyComposerDraft() : undefined}
                       extensions={this._chatComposerExtensions}
                       recoveredComposes={recoveredComposes}
                       onComposeRecovery={this.recordComposeRecovery}

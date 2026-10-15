@@ -1,3 +1,5 @@
+import type { ConversationDraft } from "./model";
+
 export interface RestoredLocalAttachmentDraft {
   id: string;
   file: File;
@@ -7,7 +9,11 @@ export interface RestoredLocalAttachmentDraft {
 
 /** Optional desktop capability. Browser composers never install this port. */
 export interface ChatComposerAttachmentDraftPort {
-  restore(): Promise<{ attachments: RestoredLocalAttachmentDraft[]; failedCount: number }>;
+  restore(): Promise<{ attachments: RestoredLocalAttachmentDraft[]; failedCount: number; document?: ConversationDraft }>;
+  saveDocument?(draft: ConversationDraft): Promise<void>;
+  mergeDocumentConflict?(draft: ConversationDraft): Promise<void>;
+  flushDocument?(): Promise<void>;
+  recoverDocument?(attemptId: string, draft: ConversationDraft): Promise<void>;
   stage(input: RestoredLocalAttachmentDraft, position?: number): Promise<boolean>;
   syncLive(attachmentIds: readonly string[], files?: RestoredLocalAttachmentDraft[]): void;
   /** Explicitly confirmed navigation: attempt current cleanup and waive its guards.

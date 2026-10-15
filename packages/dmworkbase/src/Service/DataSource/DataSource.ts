@@ -360,7 +360,7 @@ export interface IChannelDataSource {
      * 更新扩展
      * @param conversationExtra
      */
-    conversationExtraUpdate(conversationExtra: ConversationExtra): Promise<void>
+    conversationExtraUpdate(conversationExtra: Omit<ConversationExtra, "draft"> & { draft?: string }): Promise<void>
 
     getGroupMd(channel: Channel): Promise<{ content: string; version: number }>
     updateGroupMd(channel: Channel, content: string): Promise<{ version: number }>

@@ -1,4 +1,8 @@
 {
+  "messageInput.draft.conflictTitle": "草稿已在其他窗口更新",
+  "messageInput.draft.conflictBody": "合并当前草稿和其他窗口的草稿后继续编辑。两份内容都会保留，请在发送前检查合并结果。",
+  "messageInput.draft.merge": "合并草稿并继续",
+  "messageInput.draft.saveFailed": "草稿未能保存到本机，请勿关闭页面，稍后重试。",
   "chatPage.loadingName": "名称加载中...",
   "chatPage.nameUnavailable": "名称暂不可用",
   "base.workspaceGroup.title": "工作空间关联",
