@@ -766,6 +766,9 @@ export class Conversation
     result: ForwardResult,
     scope: ForwardToastScope,
   ): ForwardToastKind {
+    if (result.commentFailures?.length) {
+      Toast.warning(t("base.forwardModal.commentSendFailed", { values: { count: result.commentFailures.length } }));
+    }
     const state = interpretForwardResult(result, scope);
     if (state.kind === "success") return "success";
     if (state.kind === "all-failed") {
@@ -799,14 +802,14 @@ export class Conversation
   }
 
   fowardMessageUI(message: Message): void {
-    WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[]) => {
+    WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[], comment?: string) => {
       try {
         // buildContent 每 channel 调一次；InteractiveCardForwardBlockedError 从
         // getEffectiveContent 抛出会被 ForwardService Phase 1 abort 上抛到此处。
         const result = await ForwardService.send(
           channels,
           () => getEffectiveContent(message),
-          this.buildForwardOptions(),
+          this.buildForwardOptions({ comment }),
         );
         const kind = this.showForwardResult(result, "targets");
         // 全部目标失败(如群已解散)不计转发,与 smart_summary_forwarded 同口径(见二审 P2-2)。
@@ -827,7 +830,7 @@ export class Conversation
         const blockedMessageKey = forwardBlockedMessageKey(e);
         Toast.error(t(blockedMessageKey ?? "base.conversation.forward.allFailed"));
       }
-    });
+    }, undefined, undefined, undefined, { withComment: true });
   }
 
   openThreadPanel(threadChannelId: string, threadName: string): void {
@@ -3285,7 +3288,7 @@ export class Conversation
                         return;
                       }
                       WKApp.shared.baseContext.showConversationSelect(
-                        async (channels: Channel[]) => {
+                        async (channels: Channel[], comment?: string) => {
                           try {
                             // 每 channel 一次 buildContent，返回 N 条 content（每条选中消息 1 条）。
                             // messageMode='parallel' 保留 messages × channels 并发语义（对齐旧行为）。
@@ -3293,7 +3296,7 @@ export class Conversation
                             const result = await ForwardService.send(
                               channels,
                               () => messages.map((m) => getEffectiveContent(m.message)),
-                              this.buildForwardOptions({ messageMode: "parallel" }),
+                              this.buildForwardOptions({ messageMode: "parallel", comment }),
                             );
                             // 多选 Toast 分母保持 messages × channels 语义（scope='messages'）。
                             const kind = this.showForwardResult(result, "messages");
@@ -3314,7 +3317,7 @@ export class Conversation
                           }
                           vm.editOn = false;
                           vm.unCheckAllMessages();
-                        }
+                        }, undefined, undefined, undefined, { withComment: true }
                       );
                     }}
                     onMergeForward={() => {
@@ -3326,7 +3329,7 @@ export class Conversation
                         return;
                       }
                       WKApp.shared.baseContext.showConversationSelect(
-                        async (channels: Channel[]) => {
+                        async (channels: Channel[], comment?: string) => {
                           try {
                             // buildMergeforwardContent 内部保留 InteractiveCard 校验 →
                             // 抛 InteractiveCardForwardBlockedError；ForwardService Phase 1
@@ -3335,7 +3338,7 @@ export class Conversation
                             const result = await ForwardService.send(
                               channels,
                               () => vm.buildMergeforwardContent(vm.getCheckedMessages()),
-                              this.buildForwardOptions(),
+                              this.buildForwardOptions({ comment }),
                             );
                             const kind = this.showForwardResult(result, "targets");
                             // 全部失败不计转发,与 smart_summary_forwarded 同口径(见二审 P2-2)。
@@ -3358,7 +3361,7 @@ export class Conversation
                           }
                           vm.editOn = false;
                           vm.unCheckAllMessages();
-                        }
+                        }, undefined, undefined, undefined, { withComment: true }
                       );
                     }}
                     onDelete={() => {

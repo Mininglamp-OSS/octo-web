@@ -2,7 +2,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import React from "react"
 import ReactDOM from "react-dom"
-import { act } from "react-dom/test-utils"
+import { act, Simulate } from "react-dom/test-utils"
+import { Toast } from "@douyinfe/semi-ui"
 
 // No wukongimjssdk or WKApp mocks needed — ForwardModalView is pure UI.
 vi.mock("../../Checkbox", () => ({
@@ -121,5 +122,83 @@ describe("ForwardModalView (pure, no wukong deps)", () => {
     const cancelBtn = container.querySelectorAll(".wk-fm-btn--cancel")[0] as HTMLButtonElement
     act(() => { cancelBtn.click() })
     expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+})
+
+
+describe("forward comment", () => {
+  let container: HTMLDivElement
+  const onConfirm = vi.fn()
+  const onCancel = vi.fn()
+  function mount(selectedIDs = ["u1"], withComment = true) {
+    act(() => { ReactDOM.render(<ForwardModalView
+      items={items} selectedIDs={selectedIDs} inputValue="" activeTab="recent"
+      onInputChange={vi.fn()} onToggleSelect={vi.fn()} onTabChange={vi.fn()}
+      onConfirm={onConfirm} onCancel={onCancel} withComment={withComment}
+    />, container) })
+  }
+  function type(value: string) {
+    const input = container.querySelector("textarea")!
+    act(() => { Simulate.change(input, { target: { value } } as any) })
+    return input
+  }
+  function confirm() {
+    act(() => { (container.querySelector(".wk-fm-btn--confirm") as HTMLButtonElement).click() })
+  }
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.spyOn(Toast, "error").mockReturnValue("comment-error")
+    container = document.createElement("div")
+    document.body.appendChild(container)
+  })
+  afterEach(() => {
+    act(() => ReactDOM.unmountComponentAtNode(container))
+    container.remove()
+    vi.restoreAllMocks()
+  })
+  it("only shows the comment for forwarding and keeps it inside the right column", () => {
+    mount([], false)
+    expect(container.querySelector("textarea")).toBeNull()
+    mount([])
+    expect(container.querySelector(".wk-fm-right textarea")).not.toBeNull()
+    type("No recipient")
+    confirm()
+    expect(onConfirm).not.toHaveBeenCalled()
+    expect(container.textContent).toContain("base.forwardModal.noneSelected")
+  })
+  it.each(["", "  first line\nsecond line  ", "字".repeat(5000)])("accepts empty, multiline and boundary text (%#)", (value) => {
+    mount()
+    const input = type(value)
+    expect(input.hasAttribute("maxlength")).toBe(false)
+    confirm()
+    expect(onConfirm).toHaveBeenCalledWith(value)
+    expect(Toast.error).not.toHaveBeenCalled()
+  })
+  it("allows typing over the limit but validates on confirm and permits correction", () => {
+    mount()
+    expect(type("字".repeat(5001)).value.length).toBe(5001)
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(Toast.error).not.toHaveBeenCalled()
+    confirm()
+    expect(onConfirm).not.toHaveBeenCalled()
+    expect(Toast.error).toHaveBeenCalledExactlyOnceWith('base.forwardModal.commentTooLong:{"max":5000}')
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(container.textContent).not.toContain("base.forwardModal.commentTooLong")
+    expect(container.querySelector("textarea")?.getAttribute("aria-invalid")).toBe("true")
+    type("Corrected\ncomment")
+    expect(container.querySelector("textarea")?.hasAttribute("aria-invalid")).toBe(false)
+    confirm()
+    expect(onConfirm).toHaveBeenCalledWith("Corrected\ncomment")
+    expect(Toast.error).toHaveBeenCalledTimes(1)
+  })
+  it("cancels without sending and starts empty after reopening", () => {
+    mount()
+    type("Discard this")
+    act(() => { (container.querySelector('.wk-fm-btn--cancel') as HTMLButtonElement).click() })
+    expect(onCancel).toHaveBeenCalledOnce()
+    expect(onConfirm).not.toHaveBeenCalled()
+    act(() => ReactDOM.unmountComponentAtNode(container))
+    mount()
+    expect(container.querySelector("textarea")?.value).toBe("")
   })
 })

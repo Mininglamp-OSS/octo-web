@@ -91,7 +91,7 @@ export function ForwardSurfaceApp({ host }: { host?: ForwardSurfaceHost }) {
       }
       if (event.key !== "Tab" || !root) return
       const focusable = [...root.querySelectorAll<HTMLElement>(
-        'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]',
+        'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]',
       )].filter(node => node.getClientRects().length > 0)
       const first = focusable[0]
       const last = focusable.at(-1)
@@ -114,7 +114,9 @@ export function ForwardSurfaceApp({ host }: { host?: ForwardSurfaceHost }) {
         aria-label={model?.title || t("base.forwardModal.title")} tabIndex={-1}>
         {failed && <div className="wk-fs-error" role="alert">{t("base.forwardModal.loadError")}</div>}
         {model ? <ForwardModalView
+          key={update.id}
           title={model.title}
+          withComment={model.withComment}
           items={model.items}
           allItems={model.allItems}
           selectedIDs={model.selectedIDs}
@@ -129,7 +131,7 @@ export function ForwardSurfaceApp({ host }: { host?: ForwardSurfaceHost }) {
           onItemVisible={item => dispatch({ type: "visible", channelID: item.channelID, channelType: item.channelType })}
           onRetry={() => dispatch({ type: "retry" })}
           onCancel={() => dispatch({ type: "cancel" })}
-          onConfirm={() => dispatch({ type: "confirm" })}
+          onConfirm={comment => dispatch(comment === undefined ? { type: "confirm" } : { type: "confirm", comment })}
           botPreview={model.botPreview && { botsFor: uid => model.botPreview!.find(group => group.uid === uid)?.bots ?? [] }}
           grant={model.grant && {
             ...model.grant,

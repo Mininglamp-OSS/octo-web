@@ -1,4 +1,5 @@
 import React from "react"
+import { Toast } from "@douyinfe/semi-ui"
 import { act, fireEvent, render, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { I18nProvider, i18n } from "@octo/base/src/i18n"
@@ -27,6 +28,7 @@ function setup(getState: ForwardSurfaceHost["getState"] = async () => state()) {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks()
   i18n.setLocale("zh-CN")
   document.body.removeAttribute("theme-mode")
 })
@@ -108,3 +110,26 @@ describe("standalone forwarding UI", () => {
     expect(safeAvatarUrl("https://example.com/avatar")).toBe("https://example.com/avatar")
   })
 })
+
+
+describe("standalone forward comment", () => {
+  it("keeps local typing across host updates and validates before dispatch", async () => {
+    const toast = vi.spyOn(Toast, "error").mockReturnValue("comment-error");
+    const initial = { ...state(), model: { ...state().model!, withComment: true, selectedIDs: ["person-a"] } };
+    const ui = setup(async () => initial);
+    await waitFor(() => expect(ui.container.querySelector("textarea")).toBeTruthy());
+    const input = ui.container.querySelector("textarea")!;
+    fireEvent.change(input, { target: { value: "x".repeat(5001) } });
+    ui.push({ ...initial, revision: 2 });
+    expect(input.value).toHaveLength(5001);
+    fireEvent.click(ui.container.querySelector(".wk-fm-btn--confirm")!);
+    expect(ui.host.dispatch.mock.calls.some(([command]) => command.action.type === "confirm")).toBe(false);
+    expect(toast).toHaveBeenCalledExactlyOnceWith("输入内容长度不能大于5000字符");
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    fireEvent.change(input, { target: { value: "line one\nline two" } });
+    fireEvent.click(ui.container.querySelector(".wk-fm-btn--confirm")!);
+    expect(ui.host.dispatch).toHaveBeenLastCalledWith({ id: "picker", revision: 2, action: { type: "confirm", comment: "line one\nline two" } });
+    expect(input).not.toHaveAttribute("aria-invalid");
+    expect(toast).toHaveBeenCalledTimes(1);
+  });
+});

@@ -54,6 +54,18 @@ describe("ConversationSelect render wiring", () => {
     expect(cancel).toHaveBeenCalled()
   })
 
+  it("passes comments only for opt-in forwarding", () => {
+    const view = render(<ConversationSelect withComment />)
+    let props = hoisted.modalProps.at(-1)
+    expect(props.withComment).toBe(true)
+    props.onConfirm("first\nsecond")
+    expect(hoisted.confirm).toHaveBeenLastCalledWith("first\nsecond")
+    view.rerender(<ConversationSelect />)
+    props = hoisted.modalProps.at(-1)
+    props.onConfirm("ignored")
+    expect(hoisted.confirm).toHaveBeenLastCalledWith()
+  })
+
   it("builds grant config and confirms the authoritative human/Bot snapshot", () => {
     const finished = vi.fn()
     render(<ConversationSelect grant={{ canGrant: true, defaultRole: "writer", disabledReason: "no access", spaceId: "s1" }} onFinished={finished} />)

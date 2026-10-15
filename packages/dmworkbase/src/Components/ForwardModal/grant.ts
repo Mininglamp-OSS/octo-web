@@ -40,7 +40,7 @@ export interface ForwardGrant {
  * Widened finished callback. The second `grant` arg is optional and backward compatible:
  * existing callers destructure only `channels` and ignore the extra argument.
  */
-export type ForwardFinished = (channels: Channel[], grant?: ForwardGrant) => void
+export type ForwardFinished = (channels: Channel[], grant?: ForwardGrant, comment?: string) => void
 
 /**
  * Controlled config the caller passes to render the 授权区 inside ForwardModal. Present only

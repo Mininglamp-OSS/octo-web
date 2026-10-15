@@ -41,6 +41,8 @@
  */
 
 import WKSDK, { Channel, Message, MessageContent, MessageText, Setting } from "wukongimjssdk";
+import { observeForwardDelivery } from "./forwardDelivery";
+import { MAX_MESSAGE_LENGTH } from "../Utils/messageLimits";
 import { isConversationDisbanded } from "../Utils/groupDisband";
 import { wrapSendContentForInjection } from "../Utils/sendContentProxy";
 import { applyMsgLevelExternalFieldsWithFallback } from "./Convert";
@@ -69,6 +71,8 @@ interface MentionAware {
 }
 
 export interface ForwardResult {
+    /** Original forwarding counts below exclude optional comments. Only attempted, failed comments appear here. */
+    commentFailures?: ForwardFailure[];
     /** 传入的目标 channel 数（含 disbanded，未去重）。 */
     targets: number;
     /** 至少一条 content 失败的 channel 数（含 disbanded）。runDocForward/Summary/单条转发 Toast 分母。 */
@@ -89,6 +93,8 @@ export type ForwardSender = (
 ) => Promise<Message>;
 
 export interface ForwardOptions {
+    /** Optional text sent once per target, after all forwarded content succeeds. */
+    comment?: string;
     /** Optional captured-scope guard. Expiration aborts remaining sends and completion side effects. */
     isActive?: () => boolean;
     /** channel 之间：'parallel'（默认，Promise.all）| 'serial'（for-of + await）。 */
@@ -121,6 +127,7 @@ type BuildContentFn = (channel: Channel) => MessageContent | MessageContent[];
 interface ChannelPlan {
     channel: Channel;
     contents: MessageContent[];
+    comment?: MessageContent;
     disbanded: boolean;
 }
 
@@ -167,6 +174,9 @@ export class ForwardService {
         buildContent: BuildContentFn,
         opts: ForwardOptions = {},
     ): Promise<ForwardResult> {
+        if (opts.comment && opts.comment.length > MAX_MESSAGE_LENGTH) {
+            throw new Error("Forward comment exceeds maximum message length");
+        }
         const assertActive = () => {
             if (opts.isActive && !opts.isActive()) throw new Error("Forward context expired");
         };
@@ -193,9 +203,10 @@ export class ForwardService {
         for (const channel of channels) {
             assertActive();
             const built = buildContent(channel);
-            const contents = toContentArray(built);
+            const contents = [...toContentArray(built)];
+            const comment = opts.comment ? new MessageText(opts.comment) : undefined;
             const disbanded = isConversationDisbanded(channel);
-            plans.push({ channel, contents, disbanded });
+            plans.push({ channel, contents, comment, disbanded });
             result.messageAttempts += contents.length;
         }
 
@@ -258,38 +269,56 @@ export class ForwardService {
             }
             let channelFailed = false;
 
-            const sendOne = async (content: MessageContent, index: number): Promise<boolean> => {
+            const sendOne = async (content: MessageContent, index: number, isComment = false): Promise<boolean> => {
                 assertActive();
-                let message: Message;
-                try {
-                    const mention = readMention(content);
-                    const wrapped = wrapSendContentForInjection(content, {
-                        spaceId: injectSpaceId,
-                        mentionHumans: mention.humans,
-                        mentionAis: mention.ais,
-                    });
-                    assertActive();
-                    message = await sender(wrapped, channel, setting);
-                } catch (error) {
-                    assertActive();
-                    result.failures.push({
+                const delivery = plan.comment ? observeForwardDelivery(content, opts.isActive) : undefined;
+                const recordFailure = (error: unknown) => {
+                    const failure: ForwardFailure = {
                         channelID: channel.channelID,
-                        messageIndex: contents.length > 1 ? index : undefined,
+                        messageIndex: isComment || contents.length > 1 ? index : undefined,
                         reason: "send-error",
                         error,
-                    });
-                    result.failedMessages++;
-                    channelFailed = true;
+                    };
+                    if (isComment) (result.commentFailures ??= []).push(failure);
+                    else {
+                        result.failures.push(failure);
+                        result.failedMessages++;
+                        channelFailed = true;
+                    }
                     return false;
+                };
+                try {
+                    let message: Message;
+                    try {
+                        const mention = readMention(content);
+                        const wrapped = wrapSendContentForInjection(content, {
+                            spaceId: injectSpaceId,
+                            mentionHumans: mention.humans,
+                            mentionAis: mention.ais,
+                        });
+                        assertActive();
+                        message = await sender(wrapped, channel, setting);
+                    } catch (error) {
+                        assertActive();
+                        return recordFailure(error);
+                    }
+                    // Preserve optimistic local bubbles immediately after enqueueing, before waiting for ACK.
+                    // Exceptions in UI completion remain fatal rather than becoming a transport failure.
+                    assertActive();
+                    applyMsgLevelExternalFieldsWithFallback(message, undefined);
+                    assertActive();
+                    opts.onSent?.(message, channel, isComment || contents.length > 1 ? index : undefined);
+                    try {
+                        if (delivery) await delivery.wait(message);
+                    } catch (error) {
+                        assertActive();
+                        return recordFailure(error);
+                    }
+                    assertActive();
+                    return true;
+                } finally {
+                    delivery?.dispose();
                 }
-                // 消息已被 SDK 接受 —— 以下收尾都算"发送成功"，异常不能倒过来记 send-error。
-                // apply 幂等：若自定义 sender（如 vm.sendMessage wrapper）内部已调过，这里重复调无副作用。
-                // onSent 只做 UI/queue 副作用（如塞 sendQueue）。
-                assertActive();
-                applyMsgLevelExternalFieldsWithFallback(message, undefined);
-                assertActive();
-                opts.onSent?.(message, channel, contents.length > 1 ? index : undefined);
-                return true;
             };
 
             if (messageMode === "serial") {
@@ -314,7 +343,12 @@ export class ForwardService {
                     }
                 }
             } else {
-                await Promise.all(contents.map((c, i) => sendOne(c, i)));
+                await Promise.all(contents.map((content, index) => sendOne(content, index)));
+            }
+
+            // Originals keep their concurrency; the trailing comment requires every original ACK.
+            if (plan.comment && contents.length > 0 && !channelFailed) {
+                await sendOne(plan.comment, contents.length, true);
             }
 
             if (channelFailed) {
