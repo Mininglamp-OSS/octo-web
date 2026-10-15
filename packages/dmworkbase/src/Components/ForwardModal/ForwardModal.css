@@ -601,3 +601,34 @@
   font-size: var(--wk-text-size-tiny, 12px);
   color: var(--wk-text-color-secondary, #86909c);
 }
+
+/* Optional forwarding comment, anchored beneath the scrollable selection. */
+.wk-fm-comment {
+  flex-shrink: 0;
+  margin: var(--wk-sp-2) var(--wk-sp-3) 0;
+}
+
+.wk-fm-comment-input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  resize: none;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  font-family: inherit;
+  font-size: var(--wk-text-size-sm);
+  line-height: var(--wk-leading-normal);
+  max-height: calc(3lh + 2 * var(--wk-sp-2) + 2px);
+  overflow-y: auto;
+}
+
+.wk-fm-comment-input::placeholder {
+  color: var(--wk-text-tertiary);
+}
+
+.wk-fm-comment-input:focus-visible {
+  outline: 1px solid var(--wk-brand-primary);
+}

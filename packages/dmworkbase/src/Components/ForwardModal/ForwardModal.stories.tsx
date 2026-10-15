@@ -1,5 +1,5 @@
 import React, { useState } from "react"
-import type { Meta, StoryObj } from "@storybook/react"
+import type { Meta, StoryObj } from "@storybook/react-vite"
 import { userEvent, within, expect } from "@storybook/test"
 import { ForwardModal, ForwardItem } from "./ForwardModal"
 import type { ForwardModalProps } from "./ForwardModal"
@@ -497,4 +497,13 @@ export const GrantWithBots: Story = {
 /** 无授权权限：授权区显示锁定图标 + 提示（Scope D：WK 图标，非 emoji）。 */
 export const GrantDisabled: Story = {
   render: () => <GrantInteractive canGrant={false} />,
+}
+
+/** Optional multiline comment; try pasting 5001 characters and confirming. */
+export const WithComment: Story = {
+  render: () => <Interactive withComment selectedIDs={[mockItems[0].channelID]} onCancel={() => {}} />,
+}
+
+export const WithCommentNoSelection: Story = {
+  render: () => <Interactive withComment onCancel={() => {}} />,
 }

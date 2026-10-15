@@ -46,7 +46,7 @@ export interface UseForwardModalResult {
   /** 更新 input 显示值，内部 debounce 后更新过滤 keyword */
   setInputValue: (val: string) => void
   toggleSelect: (item: ForwardItem) => void
-  confirm: () => void
+  confirm: (comment?: string) => void
   reset: () => void
   /** 懒加载：项进入视口时调用，按需拉取 channelInfo；去重 */
   requestChannelInfoIfNeeded: (item: ForwardItem) => void
@@ -157,10 +157,11 @@ export function useForwardModal(
     [activeTab, filteredBase, recentSortMeta],
   )
 
-  const confirm = useCallback(() => {
+  const confirm = useCallback((comment?: string) => {
     const channels = readSelectedChannels()
     if (onFinished && channels.length > 0) {
-      onFinished(channels, readGrantPayload())
+      if (comment === undefined) onFinished(channels, readGrantPayload())
+      else onFinished(channels, readGrantPayload(), comment)
     }
   }, [onFinished, readSelectedChannels, readGrantPayload])
 

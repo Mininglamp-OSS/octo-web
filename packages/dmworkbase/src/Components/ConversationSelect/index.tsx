@@ -33,6 +33,7 @@ export interface ConversationSelectProps {
   title?: string
   /** 授权区 opt-in 配置（feature #511）。不传则不渲染授权区。 */
   grant?: ConversationSelectGrant
+  withComment?: boolean
   surfacePort?: ForwardSurfaceAdapter
 }
 
@@ -42,6 +43,7 @@ export default function ConversationSelect({
   title,
   grant,
   surfacePort,
+  withComment,
 }: ConversationSelectProps) {
   const {
     items,
@@ -91,16 +93,18 @@ export default function ConversationSelect({
     ? botSnapshot.peopleCount
     : undefined
 
-  const confirm = React.useCallback(() => {
+  const confirm = React.useCallback((comment?: string) => {
     if (grantEnabled && botSnapshot && !botSnapshot.ready) return
     setGrantPrincipalsByTarget(readLatestPrincipalsByTarget())
-    confirmForward()
+    if (withComment) confirmForward(comment)
+    else confirmForward()
   }, [
     grantEnabled,
     botSnapshot,
     setGrantPrincipalsByTarget,
     readLatestPrincipalsByTarget,
     confirmForward,
+    withComment,
   ])
 
   // Person-row Bot preview (UX #4): lets an UNSELECTED person candidate be expanded to inspect the
@@ -131,6 +135,7 @@ export default function ConversationSelect({
     <Presentation
       port={surfacePort!}
       title={title}
+      withComment={withComment}
       items={items}
       allItems={allItems}
       selectedIDs={selectedIDs}

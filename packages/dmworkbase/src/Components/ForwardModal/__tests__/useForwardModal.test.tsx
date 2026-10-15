@@ -1158,3 +1158,17 @@ describe("forward picker progressive loading (#1653)", () => {
         view.unmount()
     })
 })
+
+
+it("passes the comment separately from selected channels and grant payload", async () => {
+    resetHoisted()
+    const finished = vi.fn()
+    hoisted.conversations = [makeConv("g1", CT_GROUP, "Group 1", { timestamp: 100 })]
+    const view = await renderForwardWithGrant(finished, { canGrant: true })
+    act(() => view.current.confirm("no target"))
+    expect(finished).not.toHaveBeenCalled()
+    act(() => view.current.toggleSelect(view.current.allItems.find(item => item.channelID === "g1")!))
+    act(() => view.current.confirm("first\nsecond"))
+    expect(finished.mock.calls[0]).toEqual([expect.arrayContaining([expect.objectContaining({ channelID: "g1" })]), undefined, "first\nsecond"])
+    view.unmount()
+})

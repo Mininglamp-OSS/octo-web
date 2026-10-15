@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest"
 const hoisted = vi.hoisted(() => ({
   disbanded: false,
   toastError: vi.fn(),
+  toastWarning: vi.fn(),
   modalConfirm: vi.fn(() => ({ destroy: vi.fn() })),
 }))
 
@@ -10,7 +11,7 @@ vi.mock("../../../Utils/groupDisband", () => ({
   isConversationDisbanded: () => hoisted.disbanded,
 }))
 vi.mock("@douyinfe/semi-ui", () => ({
-  Toast: { error: hoisted.toastError },
+  Toast: { error: hoisted.toastError, warning: hoisted.toastWarning },
   Modal: { confirm: hoisted.modalConfirm },
   Spin: () => null,
 }))
@@ -122,6 +123,19 @@ describe("classifyAssistantIntentText", () => {
       targets: 2, failedTargets: 2, messages: 2, failedMessages: 4, messageAttempts: 4,
     }, "messages")).toBe("all-failed")
     expect(hoisted.toastError).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(["targets", "messages"] as const)("warns about a failed comment while retaining original success (%s)", (scope) => {
+    hoisted.toastError.mockReset()
+    hoisted.toastWarning.mockReset()
+    const conversation = new Conversation({ channel: { channelID: "g", channelType: 2 } })
+    const result = conversation["showForwardResult"]({
+      targets: 1, failedTargets: 0, messageAttempts: 1, failedMessages: 0,
+      disbanded: 0, failures: [], commentFailures: [{ channelID: "g", reason: "send-error" }],
+    }, scope)
+    expect(result).toBe("success")
+    expect(hoisted.toastWarning).toHaveBeenCalledOnce()
+    expect(hoisted.toastError).not.toHaveBeenCalled()
   })
 
   it("short-circuits empty deletion selections", async () => {

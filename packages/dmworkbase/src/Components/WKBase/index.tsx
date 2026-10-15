@@ -109,11 +109,12 @@ export interface WKBaseState {
   conversationSelectTitle?: string;
   conversationSelectKey?: number;
   conversationSelectGrant?: ConversationSelectGrant;
+  conversationSelectWithComment?: boolean;
   showAlert?: boolean;
   alertContent?: string;
   alertTitle?: string;
   onAlertOk?: () => void;
-  conversationSelectFinished?: (channel: Channel[]) => void;
+  conversationSelectFinished?: (channel: Channel[], comment?: string) => void;
   conversationSelectCancelled?: () => void;
 
   showGlobalModal?: boolean; // 显示全局弹窗
@@ -155,10 +156,11 @@ export interface WKBaseContext {
   // 「先授权后发」：展开目标频道成员 uid 快照 → await 授权 → 发普通 Text 消息 → 部分失败 Toast。
   // 既有调用方只传 (onFinished, title)，第 3 参缺省 → 行为完全不变。
   showConversationSelect(
-    onFinished?: (channels: Channel[]) => void,
+    onFinished?: (channels: Channel[], comment?: string) => void,
     title?: string,
     forward?: DocForwardOpen,
-    onCancel?: () => void
+    onCancel?: () => void,
+    options?: { withComment?: boolean }
   ): (() => void) | void;
 
   // 显示用户信息
@@ -261,10 +263,11 @@ export default class WKBase
   }
 
   showConversationSelect(
-    onFinished?: (channels: Channel[]) => void,
+    onFinished?: (channels: Channel[], comment?: string) => void,
     title?: string,
     forward?: DocForwardOpen,
-    onCancel?: () => void
+    onCancel?: () => void,
+    options?: { withComment?: boolean }
   ): (() => void) | void {
     if (this.currentForwardOp) this.cancelForward(this.currentForwardOp);
     const op: ForwardOp = { settled: false, confirmed: false, forward, onCancel };
@@ -275,6 +278,7 @@ export default class WKBase
       conversationSelectFinished: onFinished,
       conversationSelectCancelled: onCancel,
       conversationSelectTitle: title,
+      conversationSelectWithComment: options?.withComment ?? !!forward,
       conversationSelectGrant: forward
         ? {
             canGrant: forward.canGrant,
@@ -348,7 +352,8 @@ export default class WKBase
     channels: Channel[],
     grant: ForwardGrant | undefined,
     forward: DocForwardOpen,
-    op?: ForwardOp
+    op?: ForwardOp,
+    comment?: string
   ): Promise<void> {
     const { t } = this.context;
 
@@ -486,6 +491,8 @@ export default class WKBase
       {
         spaceId: sourceSpaceId,
         sender,
+        comment,
+        isActive: () => !isDead(),
       },
     );
 
@@ -528,8 +535,11 @@ export default class WKBase
           values: { failed: grantFailures.length },
         })
       );
-    } else {
+    } else if (!result.commentFailures?.length) {
       Toast.success(t("base.forwardModal.grant.forwarded"));
+    }
+    if (result.commentFailures?.length) {
+      Toast.warning(t("base.forwardModal.commentSendFailed", { values: { count: result.commentFailures.length } }));
     }
 
     const sent = state.total - state.failed;
@@ -681,7 +691,8 @@ export default class WKBase
           visible={showConversationSelect}
             pickerKey={conversationSelectKey}
             grant={conversationSelectGrant}
-            onFinished={(channels: Channel[], grant) => {
+            withComment={this.state.conversationSelectWithComment}
+            onFinished={(channels: Channel[], grant, comment) => {
               if (!renderForwardOp || renderForwardOp !== this.currentForwardOp ||
                   renderForwardOp.settled || renderForwardOp.confirmed) return;
               renderForwardOp.confirmed = true;
@@ -689,7 +700,7 @@ export default class WKBase
               this.hideForwardPicker(renderForwardOp);
               if (forward) {
                 // feature #511: host owns "先授权后发" + send + partial-failure Toast.
-                void this.runDocForward(channels, grant, forward, renderForwardOp).catch((error) => {
+                void this.runDocForward(channels, grant, forward, renderForwardOp, comment).catch((error) => {
                   if (renderForwardOp.settled) return;
                   renderForwardOp.settled = true;
                   this.forwardOps.delete(renderForwardOp);
@@ -699,7 +710,8 @@ export default class WKBase
               }
               renderForwardOp.settled = true;
               this.forwardOps.delete(renderForwardOp);
-              conversationSelectFinished?.(channels);
+              if (this.state.conversationSelectWithComment) conversationSelectFinished?.(channels, comment);
+              else conversationSelectFinished?.(channels);
             }}
             onCancel={() => {
               if (renderForwardOp) this.cancelForward(renderForwardOp);

@@ -1,2 +1,2 @@
-/** Maximum text length accepted by the shared message composer. */
-export const MAX_MESSAGE_LENGTH = 5000;
+/** Kept as the composer import path; forwarding uses the same message limit. */
+export { MAX_MESSAGE_LENGTH } from "../../../Utils/messageLimits";

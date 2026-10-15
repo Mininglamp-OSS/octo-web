@@ -1,3 +1,4 @@
+import { MAX_MESSAGE_LENGTH } from "../../Utils/messageLimits"
 import type { ForwardItem, ForwardModalProps } from "../../Components/ForwardModal/ForwardModal"
 import type {
   ForwardSurfaceCommand,
@@ -35,6 +36,7 @@ export function toForwardSurfaceModel(
   return {
     ...appearance,
     title: props.title,
+    withComment: props.withComment,
     items: props.items.map((item) => serializeItem(item, avatar)),
     allItems: source.map((item) => serializeItem(item, avatar)),
     selectedIDs: [...props.selectedIDs],
@@ -132,8 +134,11 @@ export class ForwardSurfaceSession {
     if (action.type === "confirm") {
       if (command.revision !== this.revision || this.awaitingRender ||
           !props.selectedIDs.length || (props.grant?.enabled && props.grant.bots && !props.grant.bots.ready)) return
+      if (props.withComment && action.comment !== undefined &&
+          (typeof action.comment !== "string" || action.comment.length > MAX_MESSAGE_LENGTH)) return
       this.dispose()
-      props.onConfirm()
+      if (props.withComment) props.onConfirm(action.comment ?? "")
+      else props.onConfirm()
       return
     }
     if (action.type === "visible" || action.type === "toggle") {

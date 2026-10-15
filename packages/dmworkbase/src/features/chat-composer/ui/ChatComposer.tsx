@@ -19,7 +19,7 @@ import {
   parseMentionMarkers,
 } from "../adapters/tiptap/mentionResolve";
 import "./ChatComposer.css";
-import { Notification } from "@douyinfe/semi-ui";
+import { Notification, Toast } from "@douyinfe/semi-ui";
 import SlashCommandMenu, { BotCommand } from "../../../Components/SlashCommandMenu";
 import VoiceInputIndicator from "./voice/VoiceInputIndicator";
 import { Maximize2, Minimize2 } from "lucide-react";
@@ -1405,10 +1405,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
 
     const text = editor.getText();
     if (text.length > MAX_MESSAGE_LENGTH) {
-      Notification.error({
-        className: "wk-octo-notification",
-        content: t("base.messageInput.validation.maxLength", { values: { max: MAX_MESSAGE_LENGTH } }),
-      });
+      Toast.error(t("base.messageInput.validation.maxLength", { values: { max: MAX_MESSAGE_LENGTH } }));
       return rejectChatComposerSend("message-too-long");
     }
 

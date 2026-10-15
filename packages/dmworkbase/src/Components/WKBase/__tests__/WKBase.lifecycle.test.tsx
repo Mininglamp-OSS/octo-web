@@ -2,7 +2,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Toast } from "@douyinfe/semi-ui";
-import { Channel, Message, WKSDK } from "wukongimjssdk";
+import { Channel, Message, MessageStatus, WKSDK } from "wukongimjssdk";
 import type { DocForwardOpen, ForwardGrant, ForwardGrantResult } from "../../ForwardModal/grant";
 
 const runtime = vi.hoisted(() => ({
@@ -94,7 +94,7 @@ function picker(base: WKBase) {
   const select = findElement(pickerTree, ConversationSelect);
   const modal = findElement(pickerTree, WKModal, "wk-base-modal wk-base-modal-forward");
   return {
-    confirm: select.props.onFinished as (channels: Channel[], grant?: ForwardGrant) => void,
+    confirm: select.props.onFinished as (channels: Channel[], grant?: ForwardGrant, comment?: string) => void,
     cancel: select.props.onCancel as () => void,
     dismiss: modal.props.onCancel as () => void,
   };
@@ -110,6 +110,7 @@ beforeEach(() => {
   runtime.syncSubscribers.mockReset().mockResolvedValue(undefined);
   send = vi.spyOn(WKSDK.shared().chatManager, "send").mockImplementation(async (content, channel) => {
     const message = new Message();
+    message.status = MessageStatus.Normal;
     message.content = content;
     message.channel = channel;
     return message;
@@ -378,4 +379,54 @@ describe("document forwarding through WKBase render callbacks", () => {
     expect(Toast.error).toHaveBeenCalledWith("base.forwardModal.grant.partialSendFailed");
     expect(onError).not.toHaveBeenCalled();
   });
+});
+
+
+describe("forward comment plumbing", () => {
+  it("passes message comments through once and isolates the next picker", () => {
+    const base = makeBase();
+    const finished = vi.fn();
+    base.showConversationSelect(finished, undefined, undefined, undefined, { withComment: true });
+    expect(base.state.conversationSelectWithComment).toBe(true);
+    const ui = picker(base);
+    ui.confirm([recipient, group], undefined, "one\ntwo");
+    ui.confirm([recipient, group], undefined, "one\ntwo");
+    expect(finished).toHaveBeenCalledExactlyOnceWith([recipient, group], "one\ntwo");
+    expect(base.state.showConversationSelect).toBe(false);
+    base.showConversationSelect(finished);
+    expect(base.state.conversationSelectWithComment).toBe(false);
+  });
+  it("sends document cards and comments to every selected target", async () => {
+    const base = makeBase();
+    const onResult = vi.fn();
+    base.showConversationSelect(undefined, undefined, { ...documentInput, onResult });
+    picker(base).confirm([recipient, group], undefined, "Document note\nSecond line");
+    await vi.waitFor(() => expect(onResult).toHaveBeenCalledOnce());
+    for (const target of [recipient, group]) {
+      const contents = send.mock.calls.filter(([, channel]) => channel === target).map(([content]) => content.encodeJSON());
+      expect(contents).toHaveLength(2);
+      expect(contents[0]).toMatchObject({ type: 18, doc_id: "doc-a" });
+      expect(contents[1]).toMatchObject({ content: "Document note\nSecond line" });
+    }
+  });
+});
+
+
+it("reports a forwarded document as sent when its comment fails", async () => {
+  const base = makeBase();
+  const onResult = vi.fn();
+  send.mockImplementationOnce(async (content, channel) => {
+    const message = new Message();
+    message.status = MessageStatus.Normal;
+    message.content = content;
+    message.channel = channel;
+    return message;
+  }).mockRejectedValueOnce(new Error("comment failed"));
+  base.showConversationSelect(undefined, undefined, { ...documentInput, onResult });
+  picker(base).confirm([group], undefined, "note");
+  await vi.waitFor(() => expect(onResult).toHaveBeenCalledOnce());
+  expect(onResult).toHaveBeenCalledWith(expect.objectContaining({ sent: 1, failed: 0 }));
+  expect(Toast.warning).toHaveBeenCalledWith("base.forwardModal.commentSendFailed");
+  expect(Toast.error).not.toHaveBeenCalled();
+  expect(Toast.success).not.toHaveBeenCalled();
 });

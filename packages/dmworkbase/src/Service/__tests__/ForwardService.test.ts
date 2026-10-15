@@ -100,6 +100,11 @@ vi.mock("../Utils/groupDisband", () => ({
 import { Channel } from "wukongimjssdk"
 import { ForwardService, forwardPlainText } from "../ForwardService"
 
+// SDK event and upload behavior is covered with the real SDK in ForwardService.delivery.test.ts.
+vi.mock("../forwardDelivery", () => ({
+    observeForwardDelivery: () => ({ wait: async () => {}, dispose: () => {} }),
+}))
+
 const CT_PERSON = 1
 const CT_GROUP = 2
 
@@ -541,4 +546,67 @@ describe("forwardPlainText", () => {
         expect(sdkState.send).toHaveBeenCalledTimes(1)
         expect(sdkState.send.mock.calls[0][0].__original.text).toBe("")
     })
+})
+
+
+describe("ForwardService comments", () => {
+    it("sends original messages before one independent multiline comment per target", async () => {
+        sdkState.send.mockResolvedValue({ messageID: "m" })
+        const channels = [new Channel("g1", CT_GROUP), new Channel("u1", CT_PERSON)]
+        const original = [{ contentType: 4, name: "file.pdf" }, makeContent()]
+        const comment = "  line one\nline two  "
+        const result = await ForwardService.send(channels, () => original as any, { comment, messageMode: "parallel", spaceId: "s1" })
+        expect(original).toHaveLength(2)
+        expect(result).toMatchObject({ targets: 2, messageAttempts: 4, failedMessages: 0 })
+        for (const channel of channels) {
+            const calls = sdkState.send.mock.calls.filter(([, ch]) => ch === channel)
+            expect(calls.map(([c]) => c.__original)).toEqual([...original, expect.objectContaining({ text: comment })])
+        }
+        const comments = sdkState.send.mock.calls.filter(([c]) => c.__original.text === comment)
+        expect(comments[0][0].__original).not.toBe(comments[1][0].__original)
+        expect(comments.find(([, ch]) => ch.channelID === "u1")?.[0].__injection.spaceId).toBe("s1")
+    })
+    it("does not append an empty comment", async () => {
+        sdkState.send.mockResolvedValue({ messageID: "m" })
+        await ForwardService.send([new Channel("g1", CT_GROUP)], () => makeContent(), { comment: "" })
+        expect(sdkState.send).toHaveBeenCalledOnce()
+    })
+    it("accepts 5000 characters and rejects 5001 before building or sending", async () => {
+        const build = vi.fn(() => makeContent())
+        sdkState.send.mockResolvedValue({ messageID: "m" })
+        await expect(ForwardService.send([new Channel("g1", CT_GROUP)], build, { comment: "字".repeat(5001) })).rejects.toThrow("maximum message length")
+        expect(build).not.toHaveBeenCalled()
+        expect(sdkState.send).not.toHaveBeenCalled()
+        await ForwardService.send([new Channel("g1", CT_GROUP)], build, { comment: "字".repeat(5000) })
+        expect(sdkState.send).toHaveBeenCalledTimes(2)
+    })
+    it("skips the comment on a failed original but continues other targets", async () => {
+        sdkState.send.mockImplementation(async (_content, channel) => {
+            if (channel.channelID === "bad") throw new Error("send failed")
+            return { messageID: "m" }
+        })
+        const result = await ForwardService.send([new Channel("bad", CT_GROUP), new Channel("ok", CT_GROUP)], () => makeContent(), { comment: "note" })
+        expect(result).toMatchObject({ failedTargets: 1, failedMessages: 1 })
+        expect(sdkState.send.mock.calls.filter(([c]) => c.__original.text === "note").map(([, ch]) => ch.channelID)).toEqual(["ok"])
+    })
+})
+
+
+it("keeps attempting parallel originals after one fails and skips the trailing comment", async () => {
+    const original = [makeContent(), makeContent()]
+    sdkState.send.mockImplementation(async (content) => {
+        if (content.__original === original[0]) throw new Error("failed")
+        return { messageID: "m" }
+    })
+    const result = await ForwardService.send([new Channel("g1", CT_GROUP)], () => original, { comment: "note", messageMode: "parallel" })
+    expect(sdkState.send.mock.calls.map(([content]) => content.__original)).toEqual(original)
+    expect(result).toMatchObject({ failedTargets: 1, failedMessages: 1, messageAttempts: 2 })
+})
+
+
+it("preserves original success when only the comment fails", async () => {
+    sdkState.send.mockResolvedValueOnce({ messageID: "original" }).mockRejectedValueOnce(new Error("comment rejected"))
+    const result = await ForwardService.send([new Channel("g1", CT_GROUP)], () => makeContent(), { comment: "note" })
+    expect(result).toMatchObject({ targets: 1, failedTargets: 0, messageAttempts: 1, failedMessages: 0, failures: [] })
+    expect(result.commentFailures).toEqual([expect.objectContaining({ channelID: "g1", reason: "send-error" })])
 })

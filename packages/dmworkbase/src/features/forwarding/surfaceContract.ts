@@ -17,6 +17,7 @@ export type ForwardSurfaceRole = "reader" | "commenter" | "writer"
 
 export interface ForwardSurfaceModel {
   title?: string
+  withComment?: boolean
   items: ForwardSurfaceItem[]
   allItems: ForwardSurfaceItem[]
   selectedIDs: string[]
@@ -57,7 +58,8 @@ export type ForwardSurfaceAction =
   | { type: "grantEnabled"; value: boolean }
   | { type: "grantRole"; value: ForwardSurfaceRole }
   | { type: "toggleBot"; uid: string }
-  | { type: "retry" | "retryBots" | "confirm" | "cancel" }
+  | { type: "confirm"; comment?: string }
+  | { type: "retry" | "retryBots" | "cancel" }
 
 export interface ForwardSurfaceCommand {
   id: string

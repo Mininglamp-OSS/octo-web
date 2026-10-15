@@ -171,3 +171,26 @@ describe("ForwardSurfaceSession", () => {
     expect(publish.mock.calls.map(([value]: [ForwardSurfaceUpdate]) => value.revision)).toEqual([1, 3])
   })
 })
+
+
+describe("forward surface comments", () => {
+  it("publishes opt-in and carries the exact comment on confirm", () => {
+    const { props, act } = setup({ withComment: true, selectedIDs: ["group-a"] })
+    expect(toForwardSurfaceModel(props, appearance).withComment).toBe(true)
+    act({ type: "confirm", comment: "  first\nsecond  " })
+    expect(props.onConfirm).toHaveBeenCalledWith("  first\nsecond  ")
+  })
+  it("rejects overlong payloads without closing, then accepts a correction", () => {
+    const { props, act, unsubscribe } = setup({ withComment: true, selectedIDs: ["group-a"] })
+    act({ type: "confirm", comment: "x".repeat(5001) })
+    expect(props.onConfirm).not.toHaveBeenCalled()
+    expect(unsubscribe).not.toHaveBeenCalled()
+    act({ type: "confirm", comment: "x".repeat(5000) })
+    expect(props.onConfirm).toHaveBeenCalledWith("x".repeat(5000))
+  })
+  it("does not pass injected comments to ordinary conversation selectors", () => {
+    const { props, act } = setup({ selectedIDs: ["group-a"] })
+    act({ type: "confirm", comment: "ignored" })
+    expect(props.onConfirm).toHaveBeenCalledWith()
+  })
+})
