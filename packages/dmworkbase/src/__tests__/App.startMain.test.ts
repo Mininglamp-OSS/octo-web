@@ -451,6 +451,7 @@ describe("WKRemoteConfig listeners and appconfig mapping", () => {
         max_concurrent_parts: 4,
         max_concurrent_sessions: 5,
       },
+      drive_upload_v2_on: "true",
       mail_on: true,
       octo_assistant_uids: "bot-a, bot-b",
       oidc_providers: [{ id: "oidc", name: "OIDC", authorize_path: "/auth", account_url: "https://idp/account" }],
@@ -466,6 +467,7 @@ describe("WKRemoteConfig listeners and appconfig mapping", () => {
       maxConcurrentParts: 4,
       maxConcurrentSessions: 5,
     });
+    expect(config.driveUploadV2On).toBe(true);
     expect(config.octoAssistantUids).toEqual(["bot-a", "bot-b"]);
     expect(config.oidcProviders[0].id).toBe("oidc");
     expect(initial).toHaveBeenCalledTimes(1);

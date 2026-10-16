@@ -5,6 +5,7 @@ import {
   driveUploadLimitsEqual,
   parseDriveUploadLimits,
 } from "../../../../packages/dmworkbase/src/Service/DriveUploadConfig";
+import { parseRemoteBool } from "../../../../packages/dmworkbase/src/Utils/remoteConfig";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(__dirname, "../../../..");
@@ -167,5 +168,31 @@ describe("drive_upload_limits WKRemoteConfig wiring", () => {
       "driveUploadLimitsEqual(\n          previousDriveUploadLimits,\n          this.driveUploadLimits\n        )"
     );
     expect(source).toContain("notifyConfigChangeListeners");
+  });
+});
+
+describe("drive_upload_v2_on front-end gray flag wiring", () => {
+  it("wires driveUploadV2On as a front-end-only gray flag, defaulting to false", () => {
+    const source = readRepoFile("packages/dmworkbase/src/App.tsx");
+
+    expect(source).toContain("driveUploadV2On: boolean = false");
+    expect(source).toContain(
+      'this.driveUploadV2On = parseRemoteBool(result["drive_upload_v2_on"])'
+    );
+    expect(source).toContain("previousDriveUploadV2On");
+    expect(source).toContain("previousDriveUploadV2On !== this.driveUploadV2On");
+    expect(source).toContain("notifyConfigChangeListeners");
+    // The field's doc comment must spell out that it is NOT the server capability gate.
+    expect(source).toContain("不是服务端能力门");
+    expect(source).toContain("X-Drive-Upload-Capabilities");
+  });
+
+  it("parses the drive_upload_v2_on gray flag exactly like other remote booleans", () => {
+    expect(parseRemoteBool(undefined)).toBe(false);
+    expect(parseRemoteBool("0")).toBe(false);
+    expect(parseRemoteBool(0)).toBe(false);
+    expect(parseRemoteBool("1")).toBe(true);
+    expect(parseRemoteBool("true")).toBe(true);
+    expect(parseRemoteBool(true)).toBe(true);
   });
 });

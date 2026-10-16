@@ -488,6 +488,15 @@ export class WKRemoteConfig {
    */
   driveUploadLimits: DriveUploadLimits = { ...DEFAULT_DRIVE_UPLOAD_LIMITS };
   /**
+   * 前端分片上传 UI 的纯灰度开关。后端字段 drive_upload_v2_on（= system_setting
+   * drive.upload_v2_enabled），默认关闭；企业模块据此决定是否启用分片 UI。
+   *
+   * ⚠️ 它只控制前端分片 UI 的灰度，**不是服务端能力门**。服务端能力门是请求头
+   * `X-Drive-Upload-Capabilities: multipart-v1`（唯一强制点，由 ② octo-drive 判定，06 决策 1）。
+   * 主壳不参与任何服务端能力判定，此位也不代表后端支持分片。
+   */
+  driveUploadV2On: boolean = false;
+  /**
    * Agent Mail 模块展示开关。后端字段 mail_on 为 true 时，前端在侧边栏 NavRail
    * 展示邮件入口；false 或字段缺失时隐藏。
    *
@@ -617,6 +626,7 @@ export class WKRemoteConfig {
       const previousDriveOn = this.driveOn;
       const previousDriveSearchOn = this.driveSearchOn;
       const previousDriveUploadLimits = this.driveUploadLimits;
+      const previousDriveUploadV2On = this.driveUploadV2On;
       const previousMailOn = this.mailOn;
       const previousOctoAssistantUids = this.octoAssistantUids;
       const previousRequestFailed = this.requestFailed;
@@ -654,6 +664,7 @@ export class WKRemoteConfig {
       this.driveUploadLimits = parseDriveUploadLimits(
         result["drive_upload_limits"]
       );
+      this.driveUploadV2On = parseRemoteBool(result["drive_upload_v2_on"]);
       this.mailOn = parseRemoteBool(result["mail_on"]);
       // Octo Assistant UID 列表：后端下发 octo_assistant_uids（逗号分隔字符串或数组），
       // 前端据此判别当前打开的应用 bot 是否为 Octo Assistant（octo-dap S3 / YUJ-277）。
@@ -688,6 +699,7 @@ export class WKRemoteConfig {
           previousDriveUploadLimits,
           this.driveUploadLimits
         ) ||
+        previousDriveUploadV2On !== this.driveUploadV2On ||
         previousMailOn !== this.mailOn ||
         !stringArraysEqual(previousOctoAssistantUids, this.octoAssistantUids) ||
         previousRequestFailed !== this.requestFailed ||
