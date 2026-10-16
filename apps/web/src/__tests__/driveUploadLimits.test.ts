@@ -148,3 +148,24 @@ describe("drive_upload_limits leaf parsing", () => {
     expect(source).not.toContain("setTimeout");
   });
 });
+
+describe("drive_upload_limits WKRemoteConfig wiring", () => {
+  it("wires driveUploadLimits into WKRemoteConfig from appconfig, defaulting to the frozen values", () => {
+    const source = readRepoFile("packages/dmworkbase/src/App.tsx");
+
+    expect(source).toContain(
+      "driveUploadLimits: DriveUploadLimits = { ...DEFAULT_DRIVE_UPLOAD_LIMITS }"
+    );
+    expect(source).toContain(
+      "const previousDriveUploadLimits = this.driveUploadLimits;"
+    );
+    expect(source).toContain(
+      'this.driveUploadLimits = parseDriveUploadLimits(\n        result["drive_upload_limits"]\n      );'
+    );
+    // Must participate in change detection so consumers refresh when ops adjusts limits.
+    expect(source).toContain(
+      "driveUploadLimitsEqual(\n          previousDriveUploadLimits,\n          this.driveUploadLimits\n        )"
+    );
+    expect(source).toContain("notifyConfigChangeListeners");
+  });
+});

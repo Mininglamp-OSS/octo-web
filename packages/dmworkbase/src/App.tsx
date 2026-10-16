@@ -337,6 +337,21 @@ export {
 } from "./Service/FileUploadConfig";
 export type { FileUploadLimits } from "./Service/FileUploadConfig";
 
+// DriveUploadLimits 解析同理抽到 ./Service/DriveUploadConfig：独立 leaf 文件,
+// 不拖 App.tsx 的重依赖链路, 消费侧 vitest 可以直接测 parse 的边界情况。
+import {
+  DEFAULT_DRIVE_UPLOAD_LIMITS,
+  parseDriveUploadLimits,
+  driveUploadLimitsEqual,
+  type DriveUploadLimits,
+} from "./Service/DriveUploadConfig";
+export {
+  DEFAULT_DRIVE_UPLOAD_LIMITS,
+  parseDriveUploadLimits,
+  driveUploadLimitsEqual,
+} from "./Service/DriveUploadConfig";
+export type { DriveUploadLimits } from "./Service/DriveUploadConfig";
+
 import {
   DEFAULT_MESSAGE_REACTION_CAPABILITY,
   messageReactionCapabilityEqual,
@@ -459,6 +474,19 @@ export class WKRemoteConfig {
    * 运维在多类型搜索上线后再下发 drive_search_on=true。
    */
   driveSearchOn: boolean = false;
+  /**
+   * 网盘(Drive)动态上传策略。后端字段 drive_upload_limits，与 octo-server 下发的
+   * SystemSettings 同源（octo-server PR #930，已合并且两条 appconfig 响应分支都下发）。
+   *
+   * 主壳只把配置存进单例供企业模块(④ octo-drive-module)读取：选文件本地预校验（大小）、
+   * 分片阈值展示、分片并发 / 会话并发上限。主壳不渲染任何 drive 上传 UI，也不发任何
+   * drive 上传 / 直传链路请求。服务端仍对每次上传请求用同一份策略快照兜底，这份缓存过期
+   * 或被绕过都不影响安全边界，前端不能据此推断上传一定会成功。
+   *
+   * 默认值 = 字段缺失 / appconfig 请求失败时的回退值（1 GiB / 128 MiB / 64 MiB / 3 / 3）。
+   * 主壳不做防御性 clamp：下发的是 server 侧 clamp 后的 effective 值（设计 §3.3 / 06 决策 3）。
+   */
+  driveUploadLimits: DriveUploadLimits = { ...DEFAULT_DRIVE_UPLOAD_LIMITS };
   /**
    * Agent Mail 模块展示开关。后端字段 mail_on 为 true 时，前端在侧边栏 NavRail
    * 展示邮件入口；false 或字段缺失时隐藏。
@@ -588,6 +616,7 @@ export class WKRemoteConfig {
       const previousDmpersonalOn = this.dmpersonalOn;
       const previousDriveOn = this.driveOn;
       const previousDriveSearchOn = this.driveSearchOn;
+      const previousDriveUploadLimits = this.driveUploadLimits;
       const previousMailOn = this.mailOn;
       const previousOctoAssistantUids = this.octoAssistantUids;
       const previousRequestFailed = this.requestFailed;
@@ -622,6 +651,9 @@ export class WKRemoteConfig {
       this.dmpersonalOn = parseRemoteBool(result["dmpersonal_on"]);
       this.driveOn = parseRemoteBool(result["drive_on"]);
       this.driveSearchOn = parseRemoteBool(result["drive_search_on"]);
+      this.driveUploadLimits = parseDriveUploadLimits(
+        result["drive_upload_limits"]
+      );
       this.mailOn = parseRemoteBool(result["mail_on"]);
       // Octo Assistant UID 列表：后端下发 octo_assistant_uids（逗号分隔字符串或数组），
       // 前端据此判别当前打开的应用 bot 是否为 Octo Assistant（octo-dap S3 / YUJ-277）。
@@ -652,6 +684,10 @@ export class WKRemoteConfig {
         previousDmpersonalOn !== this.dmpersonalOn ||
         previousDriveOn !== this.driveOn ||
         previousDriveSearchOn !== this.driveSearchOn ||
+        !driveUploadLimitsEqual(
+          previousDriveUploadLimits,
+          this.driveUploadLimits
+        ) ||
         previousMailOn !== this.mailOn ||
         !stringArraysEqual(previousOctoAssistantUids, this.octoAssistantUids) ||
         previousRequestFailed !== this.requestFailed ||
