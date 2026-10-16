@@ -339,7 +339,7 @@ it("aborts an open document transaction and its membership changes without revok
   const saved = await db.read("drafts", key);
   const put = IDBObjectStore.prototype.put;
   let cancelled = false;
-  vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (value, key) {
+  vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (this: IDBObjectStore, value, key) {
     const request = put.call(this, value, key);
     if (this.name === "drafts" && !cancelled) {
       cancelled = true;
