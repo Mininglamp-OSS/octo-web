@@ -32,6 +32,9 @@ export function createBrowserAttachmentDraftPort(
   void session().catch(() => {});
   const entries = new Map<string, StoredAttachment>();
   const saving = new Map<string, Promise<boolean>>();
+  // Failed stages remain in the repository queue. Only the latest, still-owned
+  // stage for an attachment may retry; removal must not retry obsolete bytes.
+  const stages = new Map<string, object>();
   const observed = new Set<string>();
   const removing = new Set<string>();
   const sending = new Set<string>();
@@ -63,9 +66,14 @@ export function createBrowserAttachmentDraftPort(
     const pending = saving.get(input.id);
     if (pending) return pending;
     observed.add(input.id);
+    const stageToken = {};
+    stages.set(input.id, stageToken);
+    const currentStage = () => stages.get(input.id) === stageToken;
     const operation = repository
       .enqueue(conversation + ":files", async () => {
+        if (!currentStage()) return;
         await open();
+        if (!currentStage()) return;
         if (!active()) throw new Error("Draft session expired");
         const record: StoredAttachment = {
           ...input,
@@ -78,25 +86,33 @@ export function createBrowserAttachmentDraftPort(
           account: draftAccountKey(scope),
         };
         sequence = Math.max(sequence, record.position + 1);
-        await repository.database.changeAttachments(
+        const records = await repository.database.changeAttachments(
           conversation,
-          (records) => [
+          (records) => currentStage() ? [
             ...records.filter((item) => item.id !== input.id),
             record,
-          ],
+          ] : records,
           await session()
         );
-        entries.set(input.id, record);
+        // A removal can race a committed stage. Retain that revision so the
+        // queued removal still deletes exactly the bytes we actually wrote.
+        if (records.some(item => item.id === input.id && item.revision === record.revision))
+          entries.set(input.id, record);
+        if (currentStage()) stages.delete(input.id);
       })
       .then(
         () => true,
         () => false
       );
     saving.set(input.id, operation);
-    void operation.finally(() => saving.delete(input.id));
+    void operation.finally(() => {
+      if (saving.get(input.id) === operation) saving.delete(input.id);
+    });
     return operation;
   };
   const remove = (id: string) => {
+    stages.delete(id);
+    saving.delete(id);
     removing.add(id);
     return repository.enqueue(conversation + ":files", async () => {
       if (!active() || live.has(id)) return;

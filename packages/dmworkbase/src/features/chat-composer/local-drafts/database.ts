@@ -54,6 +54,7 @@ export interface StoredAttachment {
 
 export class DraftDatabase {
   private opening?: Promise<IDBDatabase>;
+  private connection?: IDBDatabase;
   constructor(
     private readonly factory: () => IDBFactory = () => indexedDB,
     readonly name = "octo-conversation-drafts"
@@ -84,9 +85,11 @@ export class DraftDatabase {
       };
       request.onsuccess = () => {
         const db = request.result;
+        this.connection = db;
+        db.onclose = () => this.invalidateConnection(db);
         db.onversionchange = () => {
           db.close();
-          this.opening = undefined;
+          this.invalidateConnection(db);
         };
         resolve(db);
       };
@@ -98,13 +101,41 @@ export class DraftDatabase {
     }));
   }
 
+  private invalidateConnection(db: IDBDatabase): void {
+    // A delayed close event from an older handle cannot evict its replacement.
+    if (this.connection !== db) return;
+    this.connection = undefined;
+    this.opening = undefined;
+  }
+
+  private async transaction(
+    stores: string | string[],
+    mode: IDBTransactionMode = "readonly",
+    signal?: AbortSignal
+  ): Promise<IDBTransaction> {
+    for (let attempt = 0; ; attempt++) {
+      signal?.throwIfAborted();
+      const db = await this.open();
+      signal?.throwIfAborted();
+      try {
+        return db.transaction(stores, mode);
+      } catch (error) {
+        if ((error as { name?: string })?.name !== "InvalidStateError") throw error;
+        this.invalidateConnection(db);
+        // The close event may not have arrived yet. Retry transaction creation
+        // once, before any work has started; never replay an uncertain write.
+        if (attempt === 1) throw error;
+      }
+    }
+  }
+
   async read<T>(
     store: "drafts" | "attachments",
     key: string
   ): Promise<T | undefined> {
-    const db = await this.open();
+    const tx = await this.transaction(store);
     return new Promise((resolve, reject) => {
-      const request = db.transaction(store).objectStore(store).get(key);
+      const request = tx.objectStore(store).get(key);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
@@ -114,10 +145,9 @@ export class DraftDatabase {
     index: string,
     value: string
   ): Promise<T[]> {
-    const db = await this.open();
+    const tx = await this.transaction(store);
     return new Promise((resolve, reject) => {
-      const request = db
-        .transaction(store)
+      const request = tx
         .objectStore(store)
         .index(index)
         .getAll(value);
@@ -126,10 +156,9 @@ export class DraftDatabase {
     });
   }
   async session(account: string): Promise<DraftSession> {
-    const db = await this.open();
+    const tx = await this.transaction("accounts");
     return new Promise((resolve, reject) => {
-      const request = db
-        .transaction("accounts")
+      const request = tx
         .objectStore("accounts")
         .get(account);
       request.onsuccess = () =>
@@ -150,14 +179,11 @@ export class DraftDatabase {
     ) => void,
     signal?: AbortSignal
   ): Promise<T> {
-    signal?.throwIfAborted();
-    const db = await this.open();
+    const tx = await this.transaction(
+      [...new Set([...stores, "accounts"])], "readwrite", signal
+    );
     signal?.throwIfAborted();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(
-        [...new Set([...stores, "accounts"])],
-        "readwrite"
-      );
       let value: T;
       let failure: unknown;
       const fail = (error: unknown) => {
@@ -322,9 +348,8 @@ export class DraftDatabase {
   }
 
   async restoreAttachments(conversation: string): Promise<StoredAttachment[]> {
-    const db = await this.open();
+    const tx = await this.transaction(["attachments", "attachmentIntents"]);
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(["attachments", "attachmentIntents"]);
       const files = tx
         .objectStore("attachments")
         .index("conversation")

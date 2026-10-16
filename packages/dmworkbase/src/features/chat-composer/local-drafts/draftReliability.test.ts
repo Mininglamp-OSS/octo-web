@@ -458,3 +458,50 @@ it.each(["settled", "restaged", "reserved-again", "logout"])(
     if (change === "reserved-again") expect(result.pendingSendRecovery?.count).toBe(1);
   }
 );
+
+it.each(["remove", "replace"])("retires a quota-rejected stage when its file is %s", async mode => {
+  const { db, first, port } = setup();
+  const current = port();
+  await current.restore();
+  const change = db.changeAttachments.bind(db);
+  vi.spyOn(db, "changeAttachments").mockImplementation((key, update, session) => change(key, records => {
+    const next = update(records);
+    if (next.some(item => item.file.size > 16)) throw new DOMException("Blob full", "QuotaExceededError");
+    return next;
+  }, session));
+  const large = { ...attachment("large.zip"), file: new File(["x".repeat(32)], "large.zip") };
+  expect(await current.stage(large)).toBe(false);
+  current.syncLive([large.id]);
+  if (mode === "remove") current.syncLive([]);
+  const small = { ...attachment(mode === "remove" ? "small.zip" : large.id), file: new File(["small"], "small.zip") };
+  expect(await current.stage(small)).toBe(true);
+  current.syncLive([small.id], [small]);
+  await first.flush(draftKey(scope, channel) + ":files");
+  expect(current.canLeave([small.id])).toBe(true);
+  const send = current.beginSend([small.id]);
+  await send.ready;
+  await send.settle([]);
+  expect((await port(new ConversationDraftRepository(db)).restore()).attachments).toEqual([]);
+});
+
+it("retiring an obsolete stage still acknowledges a queued send settlement", async () => {
+  const { db, first, port } = setup();
+  const current = port();
+  await current.restore();
+  await current.stage(attachment("sent.zip"));
+  const send = current.beginSend(["sent.zip"]);
+  await send.ready;
+  const change = db.changeAttachments.bind(db);
+  vi.spyOn(db, "changeAttachments").mockImplementation((key, update, session) => change(key, records => {
+    const next = update(records);
+    if (next.some(item => item.id === "rejected.zip")) throw new DOMException("Blob full", "QuotaExceededError");
+    return next;
+  }, session));
+  expect(await current.stage(attachment("rejected.zip"))).toBe(false);
+  await expect(send.settle([])).rejects.toMatchObject({ name: "QuotaExceededError" });
+  expect(await db.list("attachments", "conversation", draftKey(scope, channel))).toHaveLength(1);
+  current.syncLive([]);
+  await first.flush(draftKey(scope, channel) + ":files");
+  expect(await db.list("attachments", "conversation", draftKey(scope, channel))).toEqual([]);
+  expect(current.canLeave([])).toBe(true);
+});

@@ -9,7 +9,7 @@ import { DraftDatabase } from "../../local-drafts/database";
 import { ConversationDraftRepository } from "../../local-drafts/repository";
 import { createBrowserAttachmentDraftPort } from "../../local-drafts/browserPort";
 import { withConversationDocument } from "../../local-drafts/documentPort";
-import { createChatSendOutcome } from "../../domain";
+import { createChatSendOutcome, type ChatSendRequest } from "../../domain";
 
 vi.mock("../../../../Components/WKModal/confirm", () => ({
   wkConfirm: vi.fn(),
@@ -33,6 +33,13 @@ const scope = { server: "test", account: "alice", space: "s" };
 function fixture() {
   vi.stubGlobal("File", NodeFile);
   const factory = new IDBFactory();
+  const connections: IDBDatabase[] = [];
+  const open = factory.open.bind(factory);
+  vi.spyOn(factory, "open").mockImplementation((...args) => {
+    const request = open(...args);
+    request.addEventListener("success", () => connections.push(request.result));
+    return request;
+  });
   const db = new DraftDatabase(() => factory);
   const repository = new ConversationDraftRepository(db);
   const port = (id: string, repo = repository) =>
@@ -42,7 +49,7 @@ function fixture() {
       { id, type: 2 },
       repo
     );
-  return { db, repository, port };
+  return { db, repository, port, factory, connections };
 }
 
 import { draftKey, type DraftRecord } from "../../local-drafts/model";
@@ -424,4 +431,62 @@ it.each(["restore", "temporary"])("offers an explicit choice for interrupted sen
     expect(files.map(item => item.id)).toEqual(["zip", "image"]);
     expect(view.container.querySelector('[data-type="attachment"]')).not.toBeNull();
   }
+});
+
+it("sends a small file after removing a large file rejected by storage quota", async () => {
+  const { db, port } = fixture();
+  const drafts = port("quota");
+  const change = db.changeAttachments.bind(db);
+  vi.spyOn(db, "changeAttachments").mockImplementation((key, update, session) =>
+    change(key, records => {
+      const next = update(records);
+      if (next.some(file => file.file.size > 16))
+        throw new DOMException("Blob capacity exceeded", "QuotaExceededError");
+      return next;
+    }, session));
+  const onSend = vi.fn(async (request: ChatSendRequest) => createChatSendOutcome({ editorConsumed: true, consumedTopIds: request.topFiles?.map(file => file.id) ?? [] }));
+  let context!: MessageInputContext;
+  const view = render(<ChatComposer host={createTestViewHost("quota")} attachmentDrafts={drafts}
+    onSend={onSend} onContext={next => { context = next; }} />);
+  await waitFor(() => expect(context).toBeDefined());
+  await act(async () => { await context.addAttachment([new File(["x".repeat(32)], "large.zip")]); });
+  expect(context.canLeaveWithAttachments()).toBe(false);
+  fireEvent.click(view.getByRole("button", { name: /移除|Remove/ }));
+  await waitFor(() => expect(context.getAttachmentFiles()).toHaveLength(0));
+  await act(async () => { await context.addAttachment([new File(["small"], "small.zip")]); });
+  await waitFor(() => expect(context.canLeaveWithAttachments()).toBe(true));
+  expect((await db.restoreAttachments(draftKey(scope, { id: "quota", type: 2 }))).map(file => file.name)).toEqual(["small.zip"]);
+  await act(async () => { await context.send(); });
+  expect(onSend).toHaveBeenCalledOnce();
+  expect(onSend).toHaveBeenCalledWith(expect.objectContaining({ topFiles: [expect.objectContaining({ file: expect.objectContaining({ name: "small.zip" }) })] }));
+  expect(context.getAttachmentFiles()).toHaveLength(0);
+  expect((await port("quota", new ConversationDraftRepository(db)).restore()).attachments).toEqual([]);
+});
+
+
+it("retries visible restore after a closed connection becomes available without refreshing the session", async () => {
+  const { db, repository, port, connections, factory } = fixture();
+  const drafts = port("closed");
+  await drafts.stage({ id: "saved", file: new File(["saved"], "saved.zip"), source: "upload" });
+  await drafts.saveDocument!({ document: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "saved text" }] }] }, topAttachments: [{ id: "saved", name: "saved.zip", position: 1 }] });
+  const session = await repository.session(scope);
+  const captures = vi.spyOn(db, "session");
+  connections[0].close();
+  connections[0].onclose?.call(connections[0], new Event("close"));
+  vi.mocked(factory.open).mockImplementationOnce(() => { throw new DOMException("Storage unavailable", "UnknownError"); });
+  let context: MessageInputContext | undefined;
+  const onSend = vi.fn(async (request: ChatSendRequest) => createChatSendOutcome({ editorConsumed: true, consumedTopIds: request.topFiles?.map(file => file.id) ?? [] }));
+  const view = render(<ChatComposer host={createTestViewHost("closed")} attachmentDrafts={drafts}
+    onSend={onSend} onContext={next => { context = next; }} />);
+  const retry = await view.findByRole("button", { name: /重新读取|Retry loading/ });
+  expect(context).toBeUndefined();
+  fireEvent.click(retry);
+  await waitFor(() => expect(context).toBeDefined());
+  expect(context!.text()).toContain("saved text");
+  expect(context!.getAttachmentFiles().map(file => file.name)).toEqual(["saved.zip"]);
+  await act(async () => { await context!.send(); });
+  expect(onSend).toHaveBeenCalledOnce();
+  expect(context!.getAttachmentFiles()).toHaveLength(0);
+  expect(await repository.session(scope)).toEqual(session);
+  expect(captures).not.toHaveBeenCalled();
 });
