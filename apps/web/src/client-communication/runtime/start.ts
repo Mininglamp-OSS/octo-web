@@ -127,7 +127,12 @@ export async function startCommunicationRuntime(host: OctoBuddyCommunicationBrid
     }));
     cleanups.push(host.onCommand(command => {
       if (command.type === "sessionRevoked") {
-        void revokeEmbeddedSession(clearDrafts);
+        // Invoke clearDrafts synchronously so its side-effects (e.g. the
+        // invocationCallOrder expected by tests) are visible immediately.
+        // The callback passed to revokeEmbeddedSession returns the same
+        // in-flight promise so the coordinator waits for it to finish.
+        const draftPromise = clearDrafts();
+        void revokeEmbeddedSession(() => draftPromise);
         owner.dispose();
       } else if (command.type === "filePreviewClosed" || command.type === "filePreviewState") {
         ui.dispatch(command);

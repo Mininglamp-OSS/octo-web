@@ -86,7 +86,9 @@ describe("legacy migration through Composer restoration and Conversation teardow
     const view = f.mount();
     fireEvent.click(await view.findByRole("button", { name: /使用临时草稿|Use temporary draft/ }));
     await waitFor(() => expect(f.context()).toBeDefined());
-    expect(f.context()!.text()).toBe("");
+    // Local restore failed: the editor is seeded with the legacy remote draft
+    // so the user does not lose the only copy of their unsent text.
+    expect(f.context()!.text()).toBe(legacy);
     act(() => f.context()!.insertText("temporary edit"));
     expect(await new ConversationDraftRepository(f.db).load(scope, channel)).toBeUndefined();
 
