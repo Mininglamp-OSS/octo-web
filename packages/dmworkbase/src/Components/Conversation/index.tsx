@@ -2165,7 +2165,7 @@ export class Conversation
       browseTo: 0,
       keepMessageSeq: keepMessageSeq,
       keepOffsetY,
-      draft: this._attachmentDrafts?.saveDocument ? undefined : draft,
+      draft: this._attachmentDrafts?.saveDocument ? "" : draft,
       version: 0,
     };
     return composeDraftWriteQueue.enqueue(channelKey, () =>
