@@ -302,7 +302,13 @@ export function createBrowserAttachmentDraftPort(
               ownedDurableRevisions.get(id) === entry.revision &&
               !saving.has(id)
             );
-          }))
+          })) ||
+        // A deterministically-failed stage (e.g. quota exceeded) leaves the
+        // :files queue in a failed state with no further progress possible.
+        // Allow leaving when every supplied ID has no in-flight staging operation
+        // and has never been durably committed by this port — the failure is
+        // already reported to the user and there is nothing left to save.
+        ids.every((id) => !saving.has(id) && !ownedDurableRevisions.has(id))
       );
     },
     async discardUnready(ids) {

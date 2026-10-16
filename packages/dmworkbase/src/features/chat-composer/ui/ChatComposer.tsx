@@ -2098,7 +2098,14 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
                 setTemporaryDraftPort(props.attachmentDrafts ?? null);
                 setDraftRestoreFailed(false);
                 setDraftLoaded(true);
-                editor?.setEditable(true);
+                if (editor && !editor.isDestroyed) {
+                  // The local restore failed; fall back to the remote draft so
+                  // the editor is never left blank when legacy content exists.
+                  if (props.attachmentDrafts?.saveDocument && props.legacyDraft) {
+                    editor.commands.setContent(parseDraftToContent(props.legacyDraft));
+                  }
+                  editor.setEditable(true);
+                }
               }}>{t("base.messageInput.draft.useTemporary")}</Button>
           </Banner>
         )}
