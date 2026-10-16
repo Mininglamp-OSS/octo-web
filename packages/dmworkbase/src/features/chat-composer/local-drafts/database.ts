@@ -290,6 +290,37 @@ export class DraftDatabase {
     );
   }
 
+  /** Explicit recovery of the exact reservations shown to the user. A late
+   * settlement or another window's newer reservation must not be changed. */
+  async recoverAttachmentReservations(
+    reservations: StoredAttachment[],
+    session: DraftSession,
+    revision: () => string
+  ): Promise<void> {
+    await this.mutate<void>(["attachments", "attachmentIntents"], session, (tx, _result, fail) => {
+      const files = tx.objectStore("attachments");
+      for (const snapshot of reservations) {
+        const request = files.get(snapshot.key);
+        request.onsuccess = () => {
+          try {
+            const current: StoredAttachment | undefined = request.result;
+            if (!current?.reserved || current.reserved !== snapshot.reserved ||
+                current.revision !== snapshot.revision) return;
+            const recovered = { ...current, revision: revision() };
+            delete recovered.reserved;
+            files.put(recovered);
+            // Sending may already have saved a document without this file.
+            // The explicit recovery decision supersedes that removal intent.
+            tx.objectStore("attachmentIntents").put({
+              key: current.key, conversation: current.conversation,
+              account: current.account, removed: false,
+            } satisfies AttachmentIntent);
+          } catch (error) { fail(error); }
+        };
+      }
+    });
+  }
+
   async restoreAttachments(conversation: string): Promise<StoredAttachment[]> {
     const db = await this.open();
     return new Promise((resolve, reject) => {

@@ -45,6 +45,17 @@ test("@p1 browser drafts retain ordered attachments and text across navigation a
   await composer.getByRole("button", { name: "移除", exact: true }).first().click();
   await rowB.click();
   await expect(rowA.locator(".wk-conversationlist-item-lastmsg")).toHaveText("[草稿]between[file-b.md]");
+  // On unload, MSW may lose its page client before dealloc's metadata POST
+  // reaches the handler. Catch only this fixture's POST at the context level
+  // (which also sees worker-owned passthrough), including after the page closes.
+  // Normal navigation above still exercises the baseline MSW handler.
+  await page.context().route("**/api/v1/conversations/draft-leave-*/2/extra", async route => {
+    if (route.request().method() !== "POST") return route.fallback();
+    const body = route.request().postDataJSON();
+    expect(body).not.toHaveProperty("draft");
+    extraBodies.push(body);
+    await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+  });
   await page.reload();
   await page.getByRole("button", { name: "会话" }).click();
   await page.getByRole("button", { name: "最近", exact: true }).click();

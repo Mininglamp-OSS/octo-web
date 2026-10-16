@@ -387,3 +387,41 @@ it("fences a held document write before temporary sending and restores the prote
   expect(reopened.container.querySelector(".tiptap")!.textContent).toBe("last saved copy");
   reopened.unmount();
 });
+
+it.each(["restore", "temporary"])("offers an explicit choice for interrupted sends: %s", async choice => {
+  const { db, port } = fixture();
+  const old = port("crash");
+  const upload = { id: "zip", file: new File(["zip"], "crash.zip"), source: "upload" as const };
+  const image = { id: "image", file: new File(["image"], "crash.png", { type: "image/png" }), source: "paste" as const };
+  await old.stage(upload);
+  await old.stage(image);
+  const send = old.beginSend([upload.id, image.id]);
+  await send.ready;
+  // The composer already consumed its document, but the process died before settlement.
+  await old.saveDocument!({ document: { type: "doc", content: [{ type: "paragraph" }] }, topAttachments: [] });
+  const reopened = port("crash", new ConversationDraftRepository(db));
+  let context!: MessageInputContext;
+  const view = render(<ChatComposer host={createTestViewHost("crash")} attachmentDrafts={reopened}
+    onContext={next => { context = next; }} />);
+  const recovery = await view.findByRole("button", { name: /恢复待确认附件|Restore unconfirmed attachments/ });
+  expect(view.getByText(/有 2 个附件|Unconfirmed attachment deliveries: 2/)).toBeTruthy();
+  expect(view.container.querySelector('[contenteditable="true"]')).toBeNull();
+  expect(context).toBeUndefined();
+  if (choice === "temporary") {
+    fireEvent.click(view.getByRole("button", { name: /使用临时草稿|Use temporary draft/ }));
+    await waitFor(() => expect(view.container.querySelector('[contenteditable="true"]')).not.toBeNull());
+    expect(context.getAttachmentFiles()).toHaveLength(0);
+    expect((await port("crash", new ConversationDraftRepository(db)).restore()).pendingSendRecovery?.count).toBe(2);
+  } else {
+    vi.spyOn(db, "recoverAttachmentReservations").mockRejectedValueOnce(new Error("disk busy"));
+    fireEvent.click(recovery);
+    await waitFor(() => expect(recovery).not.toBeDisabled());
+    expect(view.container.querySelector('[contenteditable="true"]')).toBeNull();
+    fireEvent.click(recovery);
+    await waitFor(() => expect(context.getAttachmentFiles()).toHaveLength(2));
+    await act(async () => { await send.settle([]); });
+    const files = (await port("crash", new ConversationDraftRepository(db)).restore()).attachments;
+    expect(files.map(item => item.id)).toEqual(["zip", "image"]);
+    expect(view.container.querySelector('[data-type="attachment"]')).not.toBeNull();
+  }
+});

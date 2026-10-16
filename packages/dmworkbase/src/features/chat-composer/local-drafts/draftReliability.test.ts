@@ -391,3 +391,70 @@ it.each(["same", "different"])("drops cancelled queued writes but retains anothe
   await abandoned.recoverDocument!("old-send", withFile("old.zip"));
   expect(await db.read("drafts", draftKey(scope, channel))).toMatchObject({ draft: liveDraft });
 });
+
+it("explicitly recovers crash reservations across database connections, including consumed membership", async () => {
+  const { first, second, port } = setup();
+  const old = port();
+  await old.stage(attachment("recover.zip"));
+  await old.saveDocument!(withFile("recover.zip"));
+  const send = old.beginSend(["recover.zip"]);
+  await send.ready;
+  await old.saveDocument!(empty);
+  const reopened = port(second);
+  const snapshot = await reopened.restore();
+  expect(snapshot.attachments).toEqual([]);
+  expect(snapshot.pendingSendRecovery?.count).toBe(1);
+  const recovery = snapshot.pendingSendRecovery!;
+  await recovery.recover();
+  // Old delivery completion cannot delete the explicitly recovered generation.
+  await send.settle([]);
+  const restored = await port(new ConversationDraftRepository(second.database)).restore();
+  expect(restored.pendingSendRecovery).toBeUndefined();
+  expect(restored.attachments.map(item => item.id)).toEqual(["recover.zip"]);
+  expect(await restored.attachments[0].file.text()).toBe("recover.zip");
+  const retry = reopened.beginSend(["recover.zip"], restored.attachments);
+  await retry.ready;
+  await retry.settle([]);
+  expect((await port(first).restore()).attachments).toEqual([]);
+});
+
+it("retries failed explicit recovery without dropping its reservation", async () => {
+  const { secondDb, second, port } = setup();
+  const old = port();
+  await old.stage(attachment("retry.zip"));
+  await old.beginSend(["retry.zip"]).ready;
+  const snapshot = await port(second).restore();
+  const recover = snapshot.pendingSendRecovery!.recover;
+  vi.spyOn(secondDb, "recoverAttachmentReservations").mockRejectedValueOnce(new Error("disk busy"));
+  await expect(recover()).rejects.toThrow("disk busy");
+  expect((await port(second).restore()).pendingSendRecovery?.count).toBe(1);
+  await recover();
+  expect((await port(second).restore()).attachments).toHaveLength(1);
+});
+
+it.each(["settled", "restaged", "reserved-again", "logout"])(
+  "does not reclaim a stale recovery snapshot after %s", async change => {
+    const { first, second, port } = setup();
+    const old = port();
+    await old.stage(attachment("file.zip"));
+    const send = old.beginSend(["file.zip"]);
+    await send.ready;
+    const reopened = port(second);
+    const recovery = (await reopened.restore()).pendingSendRecovery!;
+    if (change === "settled") await send.settle([]);
+    if (change === "restaged") await old.stage({ ...attachment("file.zip"), file: new File(["new"], "new.zip") });
+    if (change === "reserved-again") {
+      await recovery.recover();
+      await reopened.restore();
+      await reopened.beginSend(["file.zip"]).ready;
+    }
+    if (change === "logout") {
+      await first.clearAccount(scope);
+      await expect(recovery.recover()).rejects.toBeInstanceOf(DraftSessionExpiredError);
+    } else await recovery.recover();
+    const result = await port(new ConversationDraftRepository(first.database)).restore();
+    if (change === "restaged") expect(await result.attachments[0].file.text()).toBe("new");
+    else expect(result.attachments).toEqual([]);
+    if (change === "reserved-again") expect(result.pendingSendRecovery?.count).toBe(1);
+  }
+);

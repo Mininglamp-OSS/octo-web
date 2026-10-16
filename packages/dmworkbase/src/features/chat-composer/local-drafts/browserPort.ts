@@ -132,14 +132,25 @@ export function createBrowserAttachmentDraftPort(
       entries.clear();
       await open();
       if (!active()) return { attachments: [], failedCount: 0 };
+      const reservations = [...entries.values()].filter(item => item.reserved);
       const visible = await repository.database.restoreAttachments(
         conversation
       );
       if (!active()) return { attachments: [], failedCount: 0 };
       entries.clear();
       visible.forEach((item) => entries.set(item.id, item));
-      // Reservations are durable: an uncertain send must not silently reappear after reload.
+      // Keep uncertain sends hidden until the user explicitly recovers this snapshot.
       return {
+        ...(reservations.length ? {
+          pendingSendRecovery: {
+            count: reservations.length,
+            async recover() {
+              await repository.database.recoverAttachmentReservations(
+                reservations, await session(), createRevision
+              );
+            },
+          },
+        } : {}),
         attachments: visible.map((item) => ({
           id: item.id,
           file: new File([item.file], item.name, {

@@ -114,6 +114,7 @@ import { MAX_MESSAGE_LENGTH } from "../domain/constants";
 import type {
   ChatComposerAttachmentDraftPort,
   RestoredLocalAttachmentDraft,
+  PendingAttachmentSendRecovery,
 } from "../local-drafts";
 
 function commonRecoveredTarget(
@@ -572,6 +573,12 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   const temporaryDraft = !!props.attachmentDrafts && temporaryDraftPort === props.attachmentDrafts;
   const attachmentDrafts = temporaryDraft ? undefined : props.attachmentDrafts;
   const [draftRestoreFailed, setDraftRestoreFailed] = useState(false);
+  const [pendingSendRecovery, setPendingSendRecovery] = useState<{
+    port: ChatComposerAttachmentDraftPort;
+    recovery: PendingAttachmentSendRecovery;
+  } | null>(null);
+  const sendRecovery = pendingSendRecovery && pendingSendRecovery.port === attachmentDrafts ? pendingSendRecovery.recovery : undefined;
+  const [recoveringSend, setRecoveringSend] = useState(false);
   const [draftSaveFailed, setDraftSaveFailed] = useState(false);
   const [temporaryDocumentPort, setTemporaryDocumentPort] = useState<ChatComposerAttachmentDraftPort | null>(null);
   const temporaryDocument = !!attachmentDrafts && temporaryDocumentPort === attachmentDrafts;
@@ -1057,7 +1064,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     let active = true;
     if (attachmentDrafts.saveDocument && !restore.applied) editor.setEditable(false);
     void restore.promise
-      .then(({ attachments, failedCount, document }) => {
+      .then(({ attachments, failedCount, document, pendingSendRecovery: recovery }) => {
         if (
           !active ||
           restore.applied ||
@@ -1066,6 +1073,12 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         ) {
           return;
         }
+        if (recovery) {
+          setPendingSendRecovery({ port: attachmentDrafts, recovery });
+          setDraftRestoreFailed(true);
+          return;
+        }
+        setPendingSendRecovery(null);
         restore.applied = true;
         setDraftRestoreFailed(false);
         if (failedCount > 0) {
@@ -1101,6 +1114,20 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             // Context and attachment insertion wait for restoration before accepting edits.
             editor.commands.setContent(restoredDocument);
             localDraftRef.current.restoreAnchors(document);
+            // An interrupted send can persist the consumed document before
+            // settlement. Reinsert recovered inline files absent from that copy.
+            const inlineIds = new Set(extractAttachmentsFromEditor(editor).map(item => item.id));
+            const missingInline = attachments.filter(item => item.source === "paste" && isImageFile(item.file) && !inlineIds.has(item.id));
+            if (missingInline.length) {
+              editor.commands.insertContentAt(editor.state.doc.content.size, {
+                type: "paragraph",
+                content: missingInline.map(({ id, file }) => ({
+                  type: "attachment",
+                  attrs: { id, name: file.name, size: file.size, type: file.type,
+                    source: "paste", previewUrl: attachmentStore.inlineResource(id).previewUrl },
+                })),
+              });
+            }
           } else if (attachmentDrafts?.saveDocument && props.legacyDraft) {
             editor.commands.setContent(parseDraftToContent(props.legacyDraft));
           }
@@ -1988,16 +2015,33 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       >
         {draftRestoreFailed && !temporaryDraft && (
           <Banner type="warning" closeIcon={null}
-            description={t("base.messageInput.draft.restoreFailed")}
+            description={sendRecovery
+              ? t("base.messageInput.draft.pendingSend", { values: { count: sendRecovery.count } })
+              : t("base.messageInput.draft.restoreFailed")}
           >
-              <Button theme="solid" onClick={() => {
-                pasteLifecycleRef.current += 1;
-                draftReady.resolve();
-                setDraftRestoreFailed(false);
-                draftRestoreRef.current = null;
-                setDraftRestoreGeneration(value => value + 1);
-              }}>{t("base.messageInput.draft.retryRestore")}</Button>
-              <Button theme="solid" type="tertiary" onClick={() => {
+              <Button theme="solid" loading={recoveringSend} disabled={recoveringSend} onClick={async () => {
+                const restore = draftRestoreRef.current;
+                setRecoveringSend(true);
+                try {
+                  await sendRecovery?.recover();
+                  if (!composerMountedRef.current || draftRestoreRef.current !== restore) return;
+                  pasteLifecycleRef.current += 1;
+                  draftReady.resolve();
+                  setPendingSendRecovery(null);
+                  setDraftRestoreFailed(false);
+                  draftRestoreRef.current = null;
+                  setDraftRestoreGeneration(value => value + 1);
+                } catch (error) {
+                  console.warn("[attachment-drafts] reservation recovery failed", error);
+                  if (composerMountedRef.current && draftRestoreRef.current === restore) {
+                    Notification.error({ className: "wk-octo-notification",
+                      content: t("base.messageInput.attachment.draftRestoreFailed"), duration: 5 });
+                  }
+                } finally {
+                  if (composerMountedRef.current) setRecoveringSend(false);
+                }
+              }}>{t(sendRecovery ? "base.messageInput.draft.recoverSend" : "base.messageInput.draft.retryRestore")}</Button>
+              <Button theme="solid" type="tertiary" disabled={recoveringSend} onClick={() => {
                 // Opt out of every persistence/send-settlement operation for this
                 // mounted compose; an unread saved draft must remain untouched.
                 pasteLifecycleRef.current += 1;

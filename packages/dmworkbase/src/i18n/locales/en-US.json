@@ -1854,6 +1854,8 @@
   "htmlAttachment.downloadFailed": "Unable to prepare the download. Please retry.",
   "htmlAttachment.expired": "Preview expired. Reopen this attachment from chat.",
   "htmlAttachment.popupBlocked": "Unable to open the preview tab. Allow popups and retry.",
+  "messageInput.draft.pendingSend": "Unconfirmed attachment deliveries: {{count}}. Check other windows and chat history before restoring to avoid sending duplicates. You can also use a temporary draft and keep these files for later.",
+  "messageInput.draft.recoverSend": "Restore unconfirmed attachments",
   "messageInput.draft.restoreFailed": "Saved drafts could not be loaded. Retry, or use a temporary draft without changing the saved draft.",
   "messageInput.draft.retryRestore": "Retry loading",
   "messageInput.draft.useTemporary": "Use temporary draft",

@@ -7,9 +7,20 @@ export interface RestoredLocalAttachmentDraft {
   position?: number;
 }
 
+export interface PendingAttachmentSendRecovery {
+  count: number;
+  /** User confirmed that these uncertain sends should become draft files again. */
+  recover(): Promise<void>;
+}
+
 /** Local document persistence around browser or native attachment ownership. */
 export interface ChatComposerAttachmentDraftPort {
-  restore(): Promise<{ attachments: RestoredLocalAttachmentDraft[]; failedCount: number; document?: ConversationDraft }>;
+  restore(): Promise<{
+    attachments: RestoredLocalAttachmentDraft[];
+    failedCount: number;
+    document?: ConversationDraft;
+    pendingSendRecovery?: PendingAttachmentSendRecovery;
+  }>;
   /** Permanently fence this compose's queued and active document mutations. */
   stopDocumentSaving?(): void;
   saveDocument?(draft: ConversationDraft): Promise<void>;
