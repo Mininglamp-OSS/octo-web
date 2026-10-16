@@ -5,7 +5,7 @@ import { File as NodeFile } from "node:buffer";
 import { IDBFactory } from "fake-indexeddb";
 import ChatComposer, { type MessageInputContext } from "../ChatComposer";
 import { createTestViewHost } from "./testViewHost";
-import { DraftDatabase } from "../../local-drafts/database";
+import { DraftDatabase, DraftSessionExpiredError } from "../../local-drafts/database";
 import { ConversationDraftRepository } from "../../local-drafts/repository";
 import { createBrowserAttachmentDraftPort } from "../../local-drafts/browserPort";
 import { withConversationDocument } from "../../local-drafts/documentPort";
@@ -377,6 +377,126 @@ it("preserves a replacement draft when an older temporary send settles late", as
       content: [{ content: [{ text: "replacement" }] }],
     },
   });
+  view.unmount();
+});
+
+it("preserves the new session's draft when an unmounted temporary sender succeeds after logout", async () => {
+  vi.stubGlobal("BroadcastChannel", undefined);
+  const { db, repository, port, factory } = fixture();
+  const drafts = port("a");
+  await drafts.saveDocument!({
+    document: {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "old send" }] }],
+    },
+    topAttachments: [],
+  });
+  const key = draftKey(scope, { id: "a", type: 2 });
+  const epoch = repository.epoch(scope);
+  const consume = vi.spyOn(drafts, "consumeStoppedDocument");
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+  let releaseSend!: () => void;
+  const gate = new Promise<void>((resolve) => { releaseSend = resolve; });
+  const onSend = vi.fn(async () => {
+    await gate;
+    return createChatSendOutcome({ editorConsumed: true });
+  });
+  let context!: MessageInputContext;
+  const view = render(<ChatComposer host={createTestViewHost("a")}
+    attachmentDrafts={drafts} onSend={onSend}
+    onContext={next => { context = next; }} />);
+  await waitFor(() => expect(context).toBeDefined());
+  await act(async () => { await drafts.flushDocument!(); });
+  expect(await db.read<DraftRecord>("drafts", key)).toMatchObject({ revision: 1 });
+  vi.spyOn(db, "writeDraft").mockRejectedValueOnce(new DOMException("full", "QuotaExceededError"));
+  act(() => context.insertText(" pending"));
+  fireEvent.click(await view.findByRole("button", { name: /使用临时草稿|Use temporary draft/ }));
+  let sending!: ReturnType<MessageInputContext["send"]>;
+  act(() => { sending = context.send(); });
+  await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+
+  await act(async () => { await repository.clearAccount(scope); });
+  expect(repository.active(scope, epoch)).toBe(false);
+  view.unmount();
+  const freshDb = new DraftDatabase(() => factory);
+  const fresh = port("a", new ConversationDraftRepository(freshDb));
+  const newDraft = {
+    document: {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "new unsent draft" }] }],
+    },
+    topAttachments: [],
+  };
+  await fresh.saveDocument!(newDraft);
+  const saved = await freshDb.read<DraftRecord>("drafts", key);
+  expect(saved).toMatchObject({ revision: 1 });
+  await act(async () => {
+    releaseSend();
+    await sending;
+  });
+
+  expect(consume).toHaveBeenCalledOnce();
+  expect(await freshDb.read("drafts", key)).toEqual(saved);
+  expect(warning).toHaveBeenCalledWith(
+    "[drafts] temporary document cleanup failed",
+    expect.any(DraftSessionExpiredError)
+  );
+  expect((await port("a", new ConversationDraftRepository(freshDb)).restore()).document)
+    .toEqual(newDraft);
+});
+
+it("preserves a same-id replacement attachment when a real temporary send completes", async () => {
+  const { db, port, factory } = fixture();
+  const drafts = port("a");
+  await drafts.stage({ id: "same-id", file: new File(["old"], "old.zip"), source: "upload" });
+  await drafts.saveDocument!({
+    document: {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "old send" }] }],
+    },
+    topAttachments: [{ id: "same-id", name: "old.zip", position: 1 }],
+  });
+  let releaseSend!: () => void;
+  const gate = new Promise<void>((resolve) => { releaseSend = resolve; });
+  const onSend = vi.fn(async (request: ChatSendRequest) => {
+    await gate;
+    return createChatSendOutcome({
+      editorConsumed: true,
+      consumedTopIds: request.topFiles?.map(file => file.id) ?? [],
+    });
+  });
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  let context!: MessageInputContext;
+  const view = render(<ChatComposer host={createTestViewHost("a")}
+    attachmentDrafts={drafts} onSend={onSend}
+    onContext={next => { context = next; }} />);
+  await waitFor(() => expect(context).toBeDefined());
+  await waitFor(() => expect(context.getAttachmentFiles().map(file => file.name)).toEqual(["old.zip"]));
+  await act(async () => { await drafts.flushDocument!(); });
+  vi.spyOn(db, "writeDraft").mockRejectedValueOnce(new DOMException("full", "QuotaExceededError"));
+  act(() => context.insertText(" pending"));
+  fireEvent.click(await view.findByRole("button", { name: /使用临时草稿|Use temporary draft/ }));
+  let sending!: ReturnType<MessageInputContext["send"]>;
+  act(() => { sending = context.send(); });
+  await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+  expect(onSend).toHaveBeenCalledWith(expect.objectContaining({
+    topFiles: [expect.objectContaining({ id: "same-id" })],
+  }));
+
+  const freshDb = new DraftDatabase(() => factory);
+  const replacement = port("a", new ConversationDraftRepository(freshDb));
+  expect(await replacement.stage({
+    id: "same-id", file: new File(["new"], "new.zip"), source: "upload",
+  })).toBe(true);
+  await act(async () => {
+    releaseSend();
+    await sending;
+  });
+
+  const restored = await port("a", new ConversationDraftRepository(freshDb)).restore();
+  expect(restored.attachments).toHaveLength(1);
+  expect(restored.attachments[0].file.name).toBe("new.zip");
+  expect(await restored.attachments[0].file.text()).toBe("new");
   view.unmount();
 });
 

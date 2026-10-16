@@ -41,7 +41,7 @@ function fixture() {
       channel,
       repo
     );
-  return { db, repository, port };
+  return { db, repository, port, factory };
 }
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -100,6 +100,59 @@ describe("conversation draft preview", () => {
 });
 
 describe("local draft persistence", () => {
+  it.each([
+    { cleanup: "same", held: false },
+    { cleanup: "other", held: false },
+    { cleanup: "same", held: true },
+    { cleanup: "other", held: true },
+  ])("preserves a new session's draft after $cleanup-repository logout (consumption held: $held)", async ({ cleanup, held }) => {
+    vi.stubGlobal("BroadcastChannel", undefined);
+    const { db, repository, port, factory } = fixture();
+    const stale = port();
+    await stale.restore();
+    await stale.saveDocument!(document("old send"));
+    stale.stopDocumentSaving!();
+    const key = draftKey(scope, channel);
+    expect(await db.read<DraftRecord>("drafts", key)).toMatchObject({ revision: 1 });
+
+    let release!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const consume = db.consumeDraft.bind(db);
+    if (held) {
+      vi.spyOn(db, "consumeDraft").mockImplementationOnce(async (...args) => {
+        entered();
+        await gate;
+        return consume(...args);
+      });
+    }
+    const rejected = held
+      ? expect(stale.consumeStoppedDocument!()).rejects.toBeInstanceOf(DraftSessionExpiredError)
+      : undefined;
+    if (held) await started;
+
+    const revoker = cleanup === "same"
+      ? repository
+      : new ConversationDraftRepository(new DraftDatabase(() => factory));
+    await revoker.clearAccount(scope);
+    const freshDb = new DraftDatabase(() => factory);
+    const fresh = port(new ConversationDraftRepository(freshDb));
+    await fresh.saveDocument!(document("new unsent draft"));
+    const saved = await freshDb.read<DraftRecord>("drafts", key);
+    // Cleanup resets the document revision: CAS alone cannot distinguish sessions.
+    expect(saved).toMatchObject({ revision: 1 });
+
+    if (held) {
+      release();
+      await rejected;
+    } else {
+      await expect(stale.consumeStoppedDocument!()).rejects.toBeInstanceOf(DraftSessionExpiredError);
+    }
+    expect(await freshDb.read("drafts", key)).toEqual(saved);
+    expect((await port(new ConversationDraftRepository(freshDb)).restore()).document)
+      .toEqual(document("new unsent draft"));
+  });
   it("does not let a late temporary send consume a replacement after consumption", async () => {
     const { db, repository, port } = fixture();
     await repository.save(scope, channel, document("original"));

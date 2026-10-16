@@ -55,6 +55,8 @@ export function withConversationDocument(
       repository.forgetCancelledDocument(scope, channel, documentWrites.signal);
     },
     consumeStoppedDocument(retainedAttachmentIds = [], attachmentRevisions) {
+      // A late send must not adopt the repository's post-logout session.
+      if (!active()) return Promise.reject(expired());
       if (stoppedRevision === undefined) return Promise.resolve();
       return repository.consumeDocument(
         scope,
