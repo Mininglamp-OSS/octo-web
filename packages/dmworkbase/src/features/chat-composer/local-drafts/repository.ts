@@ -45,12 +45,11 @@ export class ConversationDraftRepository {
     if (!session) {
       session = this.database.session(account);
       this.sessions.set(account, session);
-      // A failed read is retryable, but a successfully captured generation must
-      // never refresh silently in an old window after logout.
-      void session.catch(() => {
-        if (this.sessions.get(account) === session)
-          this.sessions.delete(account);
-      });
+      // Keep failed captures pinned too: retrying could observe another
+      // window's post-logout generation and authorize an old port. Ordinary
+      // document reads remain retryable; an unknown session must use temporary
+      // operation or a newly authenticated repository session.
+      void session.catch(() => {});
     }
     if (
       !this.revocations &&

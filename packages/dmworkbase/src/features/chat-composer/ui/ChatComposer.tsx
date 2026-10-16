@@ -572,6 +572,14 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   const temporaryDraft = !!props.attachmentDrafts && temporaryDraftPort === props.attachmentDrafts;
   const attachmentDrafts = temporaryDraft ? undefined : props.attachmentDrafts;
   const [draftRestoreFailed, setDraftRestoreFailed] = useState(false);
+  const [draftSaveFailed, setDraftSaveFailed] = useState(false);
+  const [temporaryDocumentPort, setTemporaryDocumentPort] = useState<ChatComposerAttachmentDraftPort | null>(null);
+  const temporaryDocument = !!attachmentDrafts && temporaryDocumentPort === attachmentDrafts;
+  const draftConflictRef = useRef(false);
+  useEffect(() => {
+    setDraftSaveFailed(false);
+    draftConflictRef.current = false;
+  }, [attachmentDrafts]);
 
   const { t } = useI18n();
   const hostRef = useRef(props.host);
@@ -874,10 +882,10 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   };
 
   const [draftRestoreGeneration, setDraftRestoreGeneration] = useState(0);
-  const localDraft = useConversationDraft(editor, attachmentStore, attachmentDrafts,
-    () => composerMountedRef.current,
-    (error) => {
+  const onDraftError = (error: unknown) => {
       if (error instanceof DraftConflictError && attachmentDrafts?.mergeDocumentConflict) {
+        draftConflictRef.current = true;
+        setDraftSaveFailed(false);
         wkConfirm({
           title: t("base.messageInput.draft.conflictTitle"),
           content: t("base.messageInput.draft.conflictBody"),
@@ -890,6 +898,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             editor.setEditable(false);
             try {
               await attachmentDrafts!.mergeDocumentConflict!(snapshot);
+              draftConflictRef.current = false;
               if (!composerMountedRef.current || editor.isDestroyed) return;
               setDraftLoaded(false);
               draftRestoreRef.current = null;
@@ -903,8 +912,13 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             }
           },
         });
-      } else Notification.error({ className: "wk-octo-notification", content: t("base.messageInput.draft.saveFailed"), duration: 5 });
-    });
+      } else {
+        if (!draftConflictRef.current) setDraftSaveFailed(true);
+        Notification.error({ className: "wk-octo-notification", content: t("base.messageInput.draft.saveFailed"), duration: 5 });
+      }
+  };
+  const localDraft = useConversationDraft(editor, attachmentStore, attachmentDrafts,
+    () => composerMountedRef.current, onDraftError, !temporaryDocument);
   const draftReady = useMemo(() => {
     let resolve!: () => void;
     const promise = new Promise<void>(done => { resolve = done; });
@@ -1250,6 +1264,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     draftLoaded,
     getAttachmentIds,
     attachmentDrafts,
+    temporaryDocument,
     topAttachments,
   ]);
 
@@ -1301,7 +1316,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             },
             item.editorBlocks,
             (value) =>
-              (parseConsumedTextToContent(value).content ?? []) as ComposeDoc["content"] as never,
+              parseConsumedTextToContent(value).content,
             extensions.editor.composeParts,
           ),
         });
@@ -1620,13 +1635,14 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
                 send: props.onSend!,
                 onSendSettled: props.onSendSettled,
               };
-              if (!draftSend && !attachmentDrafts?.flushDocument) return captured;
+              if (!draftSend && (temporaryDocument || !attachmentDrafts?.flushDocument)) return captured;
               return { ...captured, send: async (request) => {
                 try {
                   await draftSend?.ready;
-                  await attachmentDrafts?.flushDocument?.();
+                  if (!temporaryDocument) await attachmentDrafts?.flushDocument?.();
                 }
                 catch (error) {
+                  if (!temporaryDocument && !draftConflictRef.current && !(error instanceof DraftConflictError)) setDraftSaveFailed(true);
                   Notification.error({ className: "wk-octo-notification", content: t("base.messageInput.attachment.draftSendUnavailable"), duration: 5 });
                   throw error;
                 }
@@ -1642,9 +1658,9 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
               props.onExpandChange?.(nextExpanded);
             },
             handoffRecovery: (recovery) => {
-              if (attachmentDrafts?.recoverDocument) {
+              if (!temporaryDocument && attachmentDrafts?.recoverDocument) {
                 const document = buildComposeRecoveryDocument(recovery, recovery.editorBlocks,
-                  value => (parseConsumedTextToContent(value).content ?? []) as ComposeDoc["content"] as never,
+                  value => parseConsumedTextToContent(value).content,
                   extensions.editor.composeParts);
                 const topIds = new Set(recovery.topAttachments.map(item => item.id));
                 void attachmentDrafts.recoverDocument(recovery.attemptId, {
@@ -1715,7 +1731,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
               disposeEditorAttachment: (id, previewUrl) =>
                 attachmentStore.disposeInlineAttachment(id, previewUrl),
               parseTextToNodes: (value) =>
-                (parseConsumedTextToContent(value).content ?? []) as ComposeDoc["content"] as never,
+                parseConsumedTextToContent(value).content,
               snapshotTopAttachments: () =>
                 attachmentStore.snapshotTopAttachments(),
               takeTopAttachments: (ids) =>
@@ -1782,6 +1798,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     props.onSendSettled,
     props.onExpandChange,
     attachmentDrafts,
+    temporaryDocument,
     controller,
     coordinator,
     extensions.editor.composeParts,
@@ -1806,7 +1823,9 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         canLeaveWithAttachments: () => {
           const attachmentIds = getAttachmentIds();
           return attachmentDrafts
-            ? attachmentDrafts.canLeave(attachmentIds)
+            ? temporaryDocument && attachmentDrafts.canLeaveAttachments
+              ? attachmentDrafts.canLeaveAttachments(attachmentIds)
+              : attachmentDrafts.canLeave(attachmentIds)
             : attachmentIds.length === 0;
         },
         discardUnreadyAttachments: () => {
@@ -1846,6 +1865,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     getAttachmentFiles,
     getAttachmentIds,
     attachmentDrafts,
+    temporaryDocument,
   ]);
 
   const getFilteredSlashCommands = useCallback((): BotCommand[] => {
@@ -1989,6 +2009,26 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
               }}>{t("base.messageInput.draft.useTemporary")}</Button>
           </Banner>
         )}
+        {draftSaveFailed && !temporaryDocument && !temporaryDraft && !draftRestoreFailed && (
+          <Banner type="warning" closeIcon={null}
+            description={t("base.messageInput.draft.saveRecovery")}
+          >
+            <Button theme="solid" onClick={async () => {
+              try {
+                await localDraftRef.current.retrySave();
+                if (composerMountedRef.current) setDraftSaveFailed(false);
+              } catch (error) {
+                if (composerMountedRef.current) onDraftError(error);
+              }
+            }}>{t("base.messageInput.draft.retrySave")}</Button>
+            <Button theme="solid" type="tertiary" onClick={() => {
+              setTemporaryDocumentPort(attachmentDrafts ?? null);
+              setDraftSaveFailed(false);
+            }}>{t("base.messageInput.draft.useTemporary")}</Button>
+          </Banner>
+        )}
+        {temporaryDocument && <Banner type="warning" closeIcon={null}
+          description={t("base.messageInput.draft.temporaryDocumentNotice")} />}
         {temporaryDraft && <Banner type="warning" closeIcon={null}
           description={t("base.messageInput.draft.temporaryNotice")} />}
 

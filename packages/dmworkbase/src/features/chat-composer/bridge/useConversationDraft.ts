@@ -17,7 +17,8 @@ export function useConversationDraft<T extends DraftAttachment>(
   store: ChatComposerAttachmentStore<T>,
   port: ChatComposerAttachmentDraftPort | undefined,
   isMounted: () => boolean,
-  onError: (error: unknown) => void
+  onError: (error: unknown) => void,
+  persistenceEnabled = true
 ) {
   const state = useMemo(
     () => ({
@@ -27,9 +28,11 @@ export function useConversationDraft<T extends DraftAttachment>(
       frozen: new Set<string>(),
       recovered: new Set<string>(),
       errorShown: false,
+      persistenceEnabled,
     }),
     [port]
   );
+  state.persistenceEnabled = persistenceEnabled;
   const capture = (): ConversationDraft => ({
     document: editor?.getJSON() ?? {
       type: "doc",
@@ -45,6 +48,7 @@ export function useConversationDraft<T extends DraftAttachment>(
   });
   const save = () => {
     if (
+      !state.persistenceEnabled ||
       !state.ready ||
       state.applying ||
       !isMounted() ||
@@ -57,7 +61,7 @@ export function useConversationDraft<T extends DraftAttachment>(
         state.errorShown = false;
       },
       (error) => {
-        if (!state.errorShown && isMounted()) {
+        if (state.persistenceEnabled && !state.errorShown && isMounted()) {
           state.errorShown = true;
           onError(error);
         }
@@ -88,6 +92,12 @@ export function useConversationDraft<T extends DraftAttachment>(
     save,
     pause() {
       state.ready = false;
+    },
+    async retrySave() {
+      if (!state.persistenceEnabled || !state.ready || !port?.saveDocument) return;
+      await port.saveDocument(capture());
+      await port.flushDocument?.();
+      state.errorShown = false;
     },
     retryErrors() {
       state.errorShown = false;

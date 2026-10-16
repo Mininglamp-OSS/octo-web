@@ -7,7 +7,7 @@ export interface RestoredLocalAttachmentDraft {
   position?: number;
 }
 
-/** Optional desktop capability. Browser composers never install this port. */
+/** Local document persistence around browser or native attachment ownership. */
 export interface ChatComposerAttachmentDraftPort {
   restore(): Promise<{ attachments: RestoredLocalAttachmentDraft[]; failedCount: number; document?: ConversationDraft }>;
   saveDocument?(draft: ConversationDraft): Promise<void>;
@@ -32,4 +32,6 @@ export interface ChatComposerAttachmentDraftPort {
     settle(keepAttachmentIds: readonly string[]): Promise<void>;
   };
   canLeave(attachmentIds: readonly string[]): boolean;
+  /** Attachment-only guard after explicitly disabling document persistence. */
+  canLeaveAttachments?(attachmentIds: readonly string[]): boolean;
 }

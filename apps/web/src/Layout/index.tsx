@@ -17,7 +17,8 @@ import JoinSpacePage from "../Components/JoinSpacePage";
 import JoinApprovalResult from "../Components/JoinApprovalResult";
 import { getEnterpriseStandaloneHandlers } from "virtual:octo-enterprise-modules";
 import { SummaryDetailPage, SummaryShareDetailPage } from "@dmwork/summary";
-import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
+import { expireStandaloneSession } from "./standaloneSessionExpiry";
+import { adoptStoredSession, findSidForToken } from "./recoverSession";
 import { buildPostLoginRedirectUrl } from "./postLoginRedirect";
 import {
     getMailAuthorizationSessionStorage,
@@ -80,14 +81,7 @@ function recoverOctoSessionFromStorage(persist: boolean): void {
  * and is left untouched (XIN-390/392: 只清当前过期 session，别误清有效 session).
  */
 function clearExpiredStandaloneSessionAndReload(): void {
-    const expiredToken = WKApp.loginInfo.token || "";
-    // In-memory + current-sid bucket + cross-tab mirror (the sid-scoped part logout() handles).
-    WKApp.loginInfo.logout();
-    // Value-matched sweep for any remaining copies (the cold-load recover-then-persist case).
-    if (expiredToken && typeof window !== "undefined") {
-        clearSessionsWithToken(expiredToken, window.sessionStorage, window.localStorage);
-    }
-    if (typeof window !== "undefined") window.location.reload();
+    void expireStandaloneSession(WKApp.loginInfo, window);
 }
 
 /** `/s/:taskNo` — summary taskNo is a single URL path segment, optional trailing slash. */

@@ -884,7 +884,14 @@ export class LoginInfo {
     }
     return true;
   }
-  logout() {
+  logout(): Promise<void> {
+    // Capture identity before credential teardown, including cold post-logout
+    // startup where LoginInfo.load has not populated uid yet.
+    const account = this.uid || this.getStorageItemForSID("uid") || "";
+    const draftCleanup = account
+      ? conversationDrafts.clearAccount({ server: WKApp.apiClient.config.apiURL || "", account, space: "" })
+          .catch(error => console.warn("[drafts] logout cleanup failed", error))
+      : Promise.resolve();
     this.token = undefined;
     this.appID = "";
     this.role = "";
@@ -913,6 +920,7 @@ export class LoginInfo {
     this.removeStorageItemForSID("realname_verified");
     this.removeStorageItemForSID("real_name");
     this.removeStorageItemForSID("realname_verified_at");
+    return draftCleanup;
   }
 
   /**
@@ -1390,9 +1398,7 @@ export default class WKApp extends ProviderListener {
     return WKApp.loginInfo.isLogined();
   }
   private async clearLocalLoginState() {
-    const draftCleanup = conversationDrafts.clearAccount({ server: WKApp.apiClient.config.apiURL || "",
-      account: WKApp.loginInfo.uid || "", space: this.currentSpaceId });
-    WKApp.loginInfo.logout();
+    const draftCleanup = WKApp.loginInfo.logout();
     clearAuthStorage();
     setSessionSid("");
     this.currentSpaceId = "";
@@ -1400,7 +1406,7 @@ export default class WKApp extends ProviderListener {
     this.channelMySourceSpaceMap.clear();
     this.spaceChecked = false;
     WKApp.mittBus.emit("wk:auth-state-changed");
-    await draftCleanup.catch(error => console.warn("[drafts] logout cleanup failed", error));
+    await draftCleanup;
   }
 
   private async clearElectronAuthSession() {

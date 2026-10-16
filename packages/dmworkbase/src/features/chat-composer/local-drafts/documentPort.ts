@@ -53,6 +53,7 @@ export function withConversationDocument(
         mergeRecoveredDraft(current, recovered, attemptId)
       );
     },
+    canLeaveAttachments: (ids) => attachments.canLeave(ids),
     canLeave: (ids) =>
       loaded && attachments.canLeave(ids) && repository.saved(key),
   };

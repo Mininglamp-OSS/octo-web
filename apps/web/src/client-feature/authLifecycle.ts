@@ -3,7 +3,7 @@ interface AuthExpiryClient {
 }
 
 interface EphemeralLoginInfo {
-  logout(): void;
+  logout(): void | Promise<void>;
 }
 
 interface AuthExpiryBridge {
@@ -20,14 +20,19 @@ export function installFeatureAuthExpiryHandler(
   apiClient.logoutCallback = () => {
     if (reported) return;
     reported = true;
-    loginInfo.logout();
-    try {
-      bridge.reportAuthExpired(options.reason);
-    } catch (error) {
-      console.error(
-        `${options.logPrefix} failed to report expired session`,
-        error
-      );
-    }
+    const cleanup = loginInfo.logout();
+    const report = () => {
+      try {
+        bridge.reportAuthExpired(options.reason);
+      } catch (error) {
+        console.error(`${options.logPrefix} failed to report expired session`, error);
+      }
+    };
+    // Reporting may immediately destroy the renderer. Finish revocation first.
+    if (cleanup) void cleanup.then(report, error => {
+      console.error(`${options.logPrefix} failed to clean expired session`, error);
+      report();
+    });
+    else report();
   };
 }

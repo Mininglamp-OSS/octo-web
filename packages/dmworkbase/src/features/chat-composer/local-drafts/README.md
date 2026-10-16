@@ -63,3 +63,25 @@ Focused regression coverage includes fresh-repository deletion failure through t
 
 
 Verification for the durable-recovery fixes: 54 composer/list suites (557 tests), 124 conversation integration tests, and 32 Client lifecycle tests passed (713 distinct tests). Chromium passed the existing navigation/reload scenario and the new retry/temporary-mode scenarios in both zh-CN and en-US. Light/dark screenshots of the recovery UI were inspected in both languages. The Web E2E build, i18n validation, and diff checks passed. The previously documented mute-test exclusions and repository-wide TypeScript baseline failures still apply; packaged native Client testing was not performed.
+
+## PR 1845 follow-up plan
+
+### Behavior list
+- Extend the existing recovery entry to save failures after loading. Preserve live content and allow explicit temporary document operation while retaining attachment ownership and conflict guards.
+- Pin failed initial generation captures to their session. Retrying must not adopt another window's post-logout generation. Ordinary document-read failures remain retryable.
+- Clear drafts in shared low-level logout, capturing identity before erasing credentials. Await cleanup before auth-expiry teardown or standalone reload.
+
+### File map
+- `repository.ts`, `documentPort.ts`, `contract.ts`: session fences and attachment-only navigation guard.
+- `../bridge/useConversationDraft.ts`, `../ui/ChatComposer.tsx`: explicit recovery and compose preservation.
+- `../../../App.tsx`, web auth lifecycle and standalone expiry helper: shared cleanup and teardown ordering.
+- Existing locales and storage/composer/auth tests: recovery copy and adverse-order regressions.
+
+### PR scope
+Repair local draft reliability and logout through existing entry points. Shared impact covers composer ports and authentication cleanup. Preserve conflict detection, native attachment ownership and remote scroll behavior.
+
+### Verification plan
+- Failed capture → other-window logout → same-port retry, with/without broadcasts and through the visible retry action.
+- Post-load write failure → explicit recovery → successful text send, preserving the saved copy and failed-send recovery; attachment readiness still blocks unsafe sends.
+- Communication expiry without runtime or later host revocation, plus standalone expiry: deletion completes before teardown and stale writers remain fenced.
+- Composer/storage/auth suites, i18n/diff checks, web build and browser recovery coverage in both locales/themes.

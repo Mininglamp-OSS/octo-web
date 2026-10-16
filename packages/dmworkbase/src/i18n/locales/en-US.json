@@ -1,4 +1,7 @@
 {
+  "messageInput.draft.saveRecovery": "Draft storage is unavailable. Retry saving, or continue without saving this draft. Your last saved copy will be kept.",
+  "messageInput.draft.retrySave": "Retry saving",
+  "messageInput.draft.temporaryDocumentNotice": "Changes to this draft will not be saved. The last saved copy is kept. Attachments still require safe storage before sending.",
   "messageInput.draft.conflictTitle": "Draft updated in another window",
   "messageInput.draft.conflictBody": "Merge this draft with the draft from the other window to continue editing. Both versions will be kept. Review the merged content before sending.",
   "messageInput.draft.merge": "Merge drafts and continue",
