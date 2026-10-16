@@ -31,6 +31,9 @@ interface AttachmentIntent {
   revision?: string;
 }
 
+const attachmentIntentKey = (conversation: string, id: string, revision: string) =>
+  JSON.stringify([conversation, id, revision]);
+
 function attachmentIds(draft?: ConversationDraft): Set<string> {
   const ids = new Set(draft?.topAttachments.map((item) => item.id));
   const visit = (node: ConversationDraft["document"]) => {
@@ -233,7 +236,8 @@ export class DraftDatabase {
     record: DraftRecord,
     expectedRevision: number,
     session: DraftSession,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    attachmentRevisions?: ReadonlyMap<string, readonly string[]>
   ): Promise<void> {
     let conflict = false;
     // Membership changes and the document commit together, even if blob cleanup fails.
@@ -250,12 +254,18 @@ export class DraftDatabase {
         const current = attachmentIds(record.draft);
         const intents = tx.objectStore("attachmentIntents");
         for (const id of new Set([...previous, ...current])) {
-          intents.put({
-            key: JSON.stringify([record.key, id]),
-            conversation: record.key,
-            account: record.account,
-            removed: !current.has(id),
-          } satisfies AttachmentIntent);
+          // The writer owns a particular incarnation, not every future file
+          // with this ID. Unknown bytes (including native-owned files) are not
+          // evidence that a browser generation should be hidden.
+          for (const revision of attachmentRevisions?.get(id) ?? []) {
+            intents.put({
+              key: attachmentIntentKey(record.key, id, revision),
+              conversation: record.key,
+              account: record.account,
+              removed: !current.has(id),
+              revision,
+            } satisfies AttachmentIntent);
+          }
         }
         store.put(record);
       };
@@ -299,7 +309,7 @@ export class DraftDatabase {
               // delete, and a revisionless intent could hide a later replacement.
               if (!revision) return;
               intents.put({
-                key: JSON.stringify([record.key, id]),
+                key: attachmentIntentKey(record.key, id, revision),
                 conversation: record.key,
                 account: record.account,
                 removed: !retained.has(id),
@@ -348,15 +358,32 @@ export class DraftDatabase {
     session: DraftSession
   ): Promise<StoredAttachment[]> {
     return this.mutate<StoredAttachment[]>(
-      ["attachments"],
+      ["attachments", "attachmentIntents"],
       session,
       (tx, result, fail) => {
         const store = tx.objectStore("attachments");
         const request = store.index("conversation").getAll(conversation);
-        request.onsuccess = () => {
+        const intents = tx.objectStore("attachmentIntents");
+        const intentRequest = intents.index("conversation").getAll(conversation);
+        intentRequest.onsuccess = () => {
           try {
             const previous: StoredAttachment[] = request.result;
-            const updated = change(previous);
+            const decisions = new Map<string, AttachmentIntent>(
+              intentRequest.result.map((intent: AttachmentIntent) => [intent.key, intent])
+            );
+            const updated = change(previous).flatMap((item) => {
+              const old = previous.find(record => record.key === item.key);
+              if (old?.revision === item.revision) return [item];
+              const intent = decisions.get(attachmentIntentKey(conversation, item.id, item.revision))
+                ?? decisions.get(item.key);
+              // A stage accepted before removal keeps its revision on retry.
+              // Do not let that late write recreate the removed generation.
+              if (intent?.removed && intent.revision === item.revision)
+                return old ? [old] : [];
+              // Pre-fix revisionless tombstones cannot own a new generation.
+              if (intent?.removed && !intent.revision) intents.delete(item.key);
+              return [item];
+            });
             const remaining = new Set(updated.map((item) => item.key));
             previous.forEach((item) => {
               if (!remaining.has(item.key)) store.delete(item.key);
@@ -378,6 +405,9 @@ export class DraftDatabase {
     session: DraftSession,
     revision?: string
   ): Promise<void> {
+    // Pending stages have their own revisions. Without one, removal has no
+    // authority to hide either current bytes or a later same-ID replacement.
+    if (!present && !revision) return;
     await this.mutate<void>(
       ["attachmentIntents", "attachments"],
       session,
@@ -386,12 +416,14 @@ export class DraftDatabase {
         const request = tx.objectStore("attachments").get(key);
         request.onsuccess = () => {
           if (revision && request.result?.revision !== revision) return;
+          const ownedRevision = revision ?? request.result?.revision;
+          if (!ownedRevision) return;
           tx.objectStore("attachmentIntents").put({
-            key,
+            key: attachmentIntentKey(conversation, id, ownedRevision),
             conversation,
             account: session.account,
             removed: !present,
-            ...(revision ? { revision } : {}),
+            revision: ownedRevision,
           } satisfies AttachmentIntent);
         };
       }
@@ -420,8 +452,9 @@ export class DraftDatabase {
             // Sending may already have saved a document without this file.
             // The explicit recovery decision supersedes that removal intent.
             tx.objectStore("attachmentIntents").put({
-              key: current.key, conversation: current.conversation,
-              account: current.account, removed: false,
+              key: attachmentIntentKey(current.conversation, current.id, recovered.revision),
+              conversation: current.conversation,
+              account: current.account, removed: false, revision: recovered.revision,
             } satisfies AttachmentIntent);
           } catch (error) { fail(error); }
         };
@@ -447,7 +480,8 @@ export class DraftDatabase {
         resolve(
           (files.result as StoredAttachment[])
             .filter((item) => {
-              const intent = decisions.get(item.key);
+              const intent = decisions.get(attachmentIntentKey(conversation, item.id, item.revision))
+                ?? decisions.get(item.key);
               return (
                 !item.reserved &&
                 !(

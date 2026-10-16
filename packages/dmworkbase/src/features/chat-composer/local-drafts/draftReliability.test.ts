@@ -173,9 +173,21 @@ it("keeps newly staged bytes absent from an older document and honors subsequent
     )
   ).toEqual(["pending.zip"]);
   // The document may commit removal while the corresponding bytes are still queued.
+  // Start that stage before removing its generation; a stage first accepted
+  // after removal is a new generation and must remain recoverable.
+  const entered = deferred(), gate = deferred();
+  const change = db.changeAttachments.bind(db);
+  vi.spyOn(db, "changeAttachments").mockImplementationOnce(async (...args) => {
+    entered.resolve();
+    await gate.promise;
+    return change(...args);
+  });
+  const pending = current.stage(attachment("late.zip"));
+  await entered.promise;
   await current.saveDocument!(withFile("late.zip"));
   await current.saveDocument!(empty);
-  await current.stage(attachment("late.zip"));
+  gate.resolve();
+  expect(await pending).toBe(false);
   expect(
     (await port(new ConversationDraftRepository(db)).restore()).attachments.map(
       (item) => item.id

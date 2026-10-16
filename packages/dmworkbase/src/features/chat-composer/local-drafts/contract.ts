@@ -30,10 +30,16 @@ export interface ChatComposerAttachmentDraftPort {
     attachmentRevisions?: ReadonlyMap<string, string>
   ): Promise<void>;
   saveDocument?(draft: ConversationDraft): Promise<void>;
+  /** A local document (including an empty tombstone) has been durably read or
+   * committed by this port. Only then may the legacy remote draft be cleared. */
+  hasDurableDocument?(): boolean;
   mergeDocumentConflict?(draft: ConversationDraft): Promise<void>;
   flushDocument?(): Promise<void>;
   recoverDocument?(attemptId: string, draft: ConversationDraft): Promise<void>;
   stage(input: RestoredLocalAttachmentDraft, position?: number): Promise<boolean>;
+  /** Snapshot the browser generations owned by this editor, including queued
+   * stages and removed files. Document writes must not target later replacements. */
+  attachmentRevisions?(): ReadonlyMap<string, readonly string[]>;
   syncLive(attachmentIds: readonly string[], files?: RestoredLocalAttachmentDraft[]): void;
   /** Explicitly confirmed navigation: attempt current cleanup and waive its guards.
    * Failed requests retain ownership until acknowledged, across editor unmounts.

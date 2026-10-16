@@ -140,7 +140,8 @@ export class ConversationDraftRepository {
     scope: DraftScope,
     channel: DraftChannel,
     draft: ConversationDraft,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    attachmentRevisions?: ReadonlyMap<string, readonly string[]>
   ): Promise<void> {
     if (signal?.aborted) return Promise.resolve();
     const key = draftKey(scope, channel);
@@ -178,7 +179,7 @@ export class ConversationDraftRepository {
       try {
         const expected = this.revisions.get(key) ?? 0;
         record.revision = expected + 1;
-        await this.database.writeDraft(record, expected, await session, signal);
+        await this.database.writeDraft(record, expected, await session, signal, attachmentRevisions);
         if (this.active(scope, epoch) && !signal?.aborted) {
           this.revisions.set(key, record.revision);
           this.failed.delete(key);
@@ -243,7 +244,8 @@ export class ConversationDraftRepository {
     scope: DraftScope,
     channel: DraftChannel,
     local: ConversationDraft,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    attachmentRevisions?: ReadonlyMap<string, readonly string[]>
   ) {
     const key = draftKey(scope, channel);
     const epoch = this.epoch(scope);
@@ -258,7 +260,7 @@ export class ConversationDraftRepository {
         : local;
     // Force a CAS write even if the local in-memory snapshot did not change.
     this.failed.add(key);
-    await this.save(scope, channel, merged, signal);
+    await this.save(scope, channel, merged, signal, attachmentRevisions);
   }
   enqueue(
     key: string,

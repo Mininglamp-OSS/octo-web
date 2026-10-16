@@ -2,7 +2,7 @@ import type {
   ChatComposerAttachmentDraftPort,
   RestoredLocalAttachmentDraft,
 } from "./contract";
-import { DraftSessionExpiredError, type StoredAttachment } from "./database";
+import { DraftConflictError, DraftSessionExpiredError, type StoredAttachment } from "./database";
 import {
   draftAccountKey,
   draftKey,
@@ -41,6 +41,11 @@ export function createBrowserAttachmentDraftPort(
   const session = () => repository.session(scope);
   void session().catch(() => {});
   const entries = new Map<string, StoredAttachment>();
+  const storedRevisions = new Map<string, string>();
+  // Retain ownership after removal so a delayed document save still targets
+  // the old incarnation. Snapshots passed to saves never adopt newer files.
+  const ownedRevisions = new Map<string, string>();
+  const ownedDurableRevisions = new Map<string, string>();
   const saving = new Map<string, Promise<boolean>>();
   // Failed stages remain in the repository queue. Only the latest, still-owned
   // stage for an attachment may retry; removal must not retry obsolete bytes.
@@ -64,6 +69,9 @@ export function createBrowserAttachmentDraftPort(
         if (active())
           records.forEach((record) => {
             sequence = Math.max(sequence, record.position + 1);
+            storedRevisions.set(record.id, record.revision);
+            if (!ownedRevisions.has(record.id)) ownedRevisions.set(record.id, record.revision);
+            if (!ownedDurableRevisions.has(record.id)) ownedDurableRevisions.set(record.id, record.revision);
             if (!entries.has(record.id)) entries.set(record.id, record);
           });
       })
@@ -80,41 +88,57 @@ export function createBrowserAttachmentDraftPort(
     if (pending) return pending;
     observed.add(input.id);
     const stageToken = {};
+    const revision = createRevision();
+    ownedRevisions.set(input.id, revision);
     stages.set(input.id, stageToken);
     const currentStage = () => stages.get(input.id) === stageToken;
+    let record: StoredAttachment | undefined;
+    let expectedRevision: string | undefined;
+    let persisted = false;
     const operation = repository
       .enqueue(conversation + ":files", async () => {
         if (!currentStage()) return;
         await open();
         if (!currentStage()) return;
         if (!active()) throw new Error("Draft session expired");
-        const record: StoredAttachment = {
-          ...input,
-          name: input.file.name,
-          lastModified: input.file.lastModified,
-          position: position ?? sequence++,
-          revision: createRevision(),
-          key: key(input.id),
-          conversation,
-          account: draftAccountKey(scope),
-        };
+        if (!record) {
+          expectedRevision = storedRevisions.get(input.id);
+          record = {
+            ...input,
+            name: input.file.name,
+            lastModified: input.file.lastModified,
+            position: position ?? sequence++,
+            revision,
+            key: key(input.id),
+            conversation,
+            account: draftAccountKey(scope),
+          };
+        }
+        const staged = record;
         sequence = Math.max(sequence, record.position + 1);
         const records = await repository.database.changeAttachments(
           conversation,
-          (records) => currentStage() ? [
-            ...records.filter((item) => item.id !== input.id),
-            record,
-          ] : records,
+          (records) => {
+            if (!currentStage()) return records;
+            const current = records.find(item => item.id === input.id);
+            if (current?.revision !== expectedRevision && current?.revision !== revision)
+              throw new DraftConflictError();
+            return [...records.filter(item => item.id !== input.id), staged];
+          },
           await session()
         );
         // A removal can race a committed stage. Retain that revision so the
         // queued removal still deletes exactly the bytes we actually wrote.
-        if (records.some(item => item.id === input.id && item.revision === record.revision))
+        persisted = records.some(item => item.id === input.id && item.revision === revision);
+        if (persisted) {
           entries.set(input.id, record);
+          storedRevisions.set(input.id, revision);
+          ownedDurableRevisions.set(input.id, revision);
+        }
         if (currentStage()) stages.delete(input.id);
       })
       .then(
-        () => true,
+        () => persisted,
         () => false
       );
     saving.set(input.id, operation);
@@ -130,7 +154,7 @@ export function createBrowserAttachmentDraftPort(
     return repository.enqueue(conversation + ":files", async () => {
       if (!active() || live.has(id)) return;
       const entry = entries.get(id);
-      const revision = entry?.revision;
+      const revision = entry?.revision ?? ownedRevisions.get(id);
       if (entry) removedFiles.set(id, restoreFile(entry));
       // Keep the decision even when physical blob cleanup fails. Document saves
       // also persist membership atomically, including not-yet-staged attachments.
@@ -150,6 +174,7 @@ export function createBrowserAttachmentDraftPort(
         await session()
       );
       entries.delete(id);
+      storedRevisions.delete(id);
       observed.delete(id);
       // Undo can occur after the transaction starts but before it completes.
       const restored = live.has(id) ? liveFiles.get(id) ?? removedFiles.get(id) : undefined;
@@ -167,6 +192,7 @@ export function createBrowserAttachmentDraftPort(
       });
       opened = undefined;
       entries.clear();
+      storedRevisions.clear();
       await open();
       if (!active()) return { attachments: [], failedCount: 0 };
       const reservations = [...entries.values()].filter(item => item.reserved);
@@ -175,7 +201,11 @@ export function createBrowserAttachmentDraftPort(
       );
       if (!active()) return { attachments: [], failedCount: 0 };
       entries.clear();
-      visible.forEach((item) => entries.set(item.id, item));
+      visible.forEach((item) => {
+        entries.set(item.id, item);
+        ownedDurableRevisions.set(item.id, item.revision);
+        if (!stages.has(item.id)) ownedRevisions.set(item.id, item.revision);
+      });
       // Keep uncertain sends hidden until the user explicitly recovers this snapshot.
       return {
         ...(reservations.length ? {
@@ -185,6 +215,11 @@ export function createBrowserAttachmentDraftPort(
               await repository.database.recoverAttachmentReservations(
                 reservations, await session(), createRevision
               );
+              // Recovery changed the generation outside this port's file
+              // queue. Its next stage/send must load the recovered ownership.
+              opened = undefined;
+              entries.clear();
+              storedRevisions.clear();
             },
           },
         } : {}),
@@ -193,6 +228,18 @@ export function createBrowserAttachmentDraftPort(
       };
     },
     stage,
+    attachmentRevisions() {
+      const revisions = new Map<string, string[]>();
+      ownedRevisions.forEach((revision, id) => revisions.set(id, [revision]));
+      // A failed replacement owns pending bytes and the earlier durable copy.
+      // Removing it must hide both, without claiming another window's files.
+      ownedDurableRevisions.forEach((revision, id) => {
+        const owned = revisions.get(id) ?? [];
+        if (!owned.includes(revision)) owned.push(revision);
+        revisions.set(id, owned);
+      });
+      return revisions;
+    },
     syncLive(ids, files = []) {
       if (!active()) return;
       live = new Set(ids);
@@ -200,6 +247,7 @@ export function createBrowserAttachmentDraftPort(
       for (const id of ids)
         if (removing.delete(id)) {
           const restored = removedFiles.get(id);
+          const revision = ownedRevisions.get(id);
           if (restored && !files.some(file => file.id === id)) undoFiles.push(restored);
           void repository
             .enqueue(conversation + ":files", async () => {
@@ -208,7 +256,8 @@ export function createBrowserAttachmentDraftPort(
                   conversation,
                   id,
                   true,
-                  await session()
+                  await session(),
+                  revision
                 );
             })
             .catch(() => {});
@@ -271,6 +320,7 @@ export function createBrowserAttachmentDraftPort(
           );
           records.forEach((record) => {
             entries.set(record.id, record);
+            storedRevisions.set(record.id, record.revision);
             if (record.reserved === sendId)
               attachmentRevisions.set(record.id, record.revision);
           });
@@ -282,6 +332,9 @@ export function createBrowserAttachmentDraftPort(
         attachmentRevisions,
         async settle(keep) {
           await ready.catch(() => {});
+          // A failed send restores a new ownership generation. Old queued
+          // consumption documents cannot hide those retained bytes again.
+          const recoveredRevisions = new Map(keep.map(id => [id, createRevision()]));
           await repository.enqueue(conversation + ":files", async () => {
             if (!active()) return;
             const retained = await repository.database.changeAttachments(
@@ -290,7 +343,7 @@ export function createBrowserAttachmentDraftPort(
                 records.flatMap((item) => {
                   if (!sendId || item.reserved !== sendId) return [item];
                   if (!keep.includes(item.id)) return [];
-                  const record = { ...item };
+                  const record = { ...item, revision: recoveredRevisions.get(item.id)! };
                   delete record.reserved;
                   return [record];
                 }),
@@ -298,9 +351,19 @@ export function createBrowserAttachmentDraftPort(
             );
             ids.forEach((id) => {
               sending.delete(id);
-              if (!keep.includes(id)) entries.delete(id);
+              if (!keep.includes(id)) {
+                entries.delete(id);
+                storedRevisions.delete(id);
+              }
             });
-            retained.forEach((record) => entries.set(record.id, record));
+            retained.forEach((record) => {
+              entries.set(record.id, record);
+              storedRevisions.set(record.id, record.revision);
+              if (record.revision === recoveredRevisions.get(record.id)) {
+                ownedRevisions.set(record.id, record.revision);
+                ownedDurableRevisions.set(record.id, record.revision);
+              }
+            });
           });
         },
       };

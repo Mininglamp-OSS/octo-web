@@ -2154,10 +2154,17 @@ export class Conversation
       }
     }
 
+    // A persistence capability does not prove the legacy draft was imported.
+    // Failed restoration and temporary operation must retain the existing
+    // remote copy until a local document has been durably acknowledged. Send
+    // the retained value explicitly: omission is not a metadata PATCH contract.
+    const persistedDraft = this._attachmentDrafts?.saveDocument
+      ? this._attachmentDrafts.hasDurableDocument?.() ? "" : remoteExtra?.draft || ""
+      : draft || "";
     if (remoteExtra) {
       remoteExtra.keepMessageSeq = keepMessageSeq;
       remoteExtra.keepOffsetY = keepOffsetY;
-      remoteExtra.draft = this._attachmentDrafts?.saveDocument ? "" : draft || "";
+      remoteExtra.draft = persistedDraft;
     }
 
     const update = {
@@ -2165,7 +2172,7 @@ export class Conversation
       browseTo: 0,
       keepMessageSeq: keepMessageSeq,
       keepOffsetY,
-      draft: this._attachmentDrafts?.saveDocument ? "" : draft,
+      draft: persistedDraft,
       version: 0,
     };
     return composeDraftWriteQueue.enqueue(channelKey, () =>

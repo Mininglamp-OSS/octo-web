@@ -964,9 +964,17 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         existingIds.add(id);
         const position = attachment.position;
         const isPastedImage = source === "paste" && isImageFile(file);
+        const stageAttachment = () => {
+          if (!attachment.restored && attachmentDrafts) {
+            // Allocate browser ownership before editor/store notifications save
+            // this attachment's document membership.
+            staging.push(attachmentDrafts.stage({ id, file, source }, position));
+          }
+        };
 
         if (isPastedImage && editor) {
           const previewUrl = URL.createObjectURL(file);
+          stageAttachment();
           attachmentStore.addInlineFile(id, file, previewUrl);
 
           editor
@@ -1002,14 +1010,10 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             previewUrl,
           };
           localDraftRef.current.anchor(id);
+          stageAttachment();
           attachmentStore.appendTopAttachment(item);
         }
         inserted += 1;
-        if (!attachment.restored && attachmentDrafts) {
-          staging.push(
-            attachmentDrafts.stage({ id, file, source }, position)
-          );
-        }
       }
 
       if (inserted > 0 && isAttachmentTargetActive()) setIsMultiLine(true);
@@ -1411,6 +1415,42 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     const target = commonRecoveredTarget(hydrated);
     if (props.onRestoreRecoveredTarget?.(target) === false) return;
 
+    const recoveredTopAttachments = hydrated.flatMap((item) =>
+      item.topAttachments.filter(
+        (attachment): attachment is TopAttachmentItem =>
+          attachment.file !== undefined,
+      ),
+    );
+    if (attachmentDrafts) {
+      const recoveredAttachments = [
+        ...hydrated.flatMap((item) =>
+          item.editorAttachments.map(({ id, file }) => ({
+            id,
+            file,
+            source: "paste" as const,
+          }))
+        ),
+        ...recoveredTopAttachments.map(({ id, file }) => ({
+          id,
+          file,
+          source: "upload" as const,
+        })),
+      ];
+      void Promise.all(
+        recoveredAttachments.map((attachment) =>
+          attachmentDrafts!.stage(attachment)
+        )
+      ).then((results) => {
+        if (results.some((persisted) => !persisted)) {
+          Notification.error({
+            className: "wk-octo-notification",
+            content: t("base.messageInput.attachment.draftSaveFailed"),
+            duration: 5,
+          });
+        }
+      });
+    }
+
     prepared.forEach(({ item }) => {
       const previewUrls = new Map(
         item.editorObjectUrls.map(({ id, url }) => [id, url]),
@@ -1452,43 +1492,8 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         blockOffset += inserted;
       }
     });
-    const recoveredTopAttachments = hydrated.flatMap((item) =>
-      item.topAttachments.filter(
-        (attachment): attachment is TopAttachmentItem =>
-          attachment.file !== undefined,
-      ),
-    );
     if (recoveredTopAttachments.length > 0) {
       attachmentStore.restoreTopAttachments(recoveredTopAttachments, 0);
-    }
-    if (attachmentDrafts) {
-      const recoveredAttachments = [
-        ...hydrated.flatMap((item) =>
-          item.editorAttachments.map(({ id, file }) => ({
-            id,
-            file,
-            source: "paste" as const,
-          }))
-        ),
-        ...recoveredTopAttachments.map(({ id, file }) => ({
-          id,
-          file,
-          source: "upload" as const,
-        })),
-      ];
-      void Promise.all(
-        recoveredAttachments.map((attachment) =>
-          attachmentDrafts!.stage(attachment)
-        )
-      ).then((results) => {
-        if (results.some((persisted) => !persisted)) {
-          Notification.error({
-            className: "wk-octo-notification",
-            content: t("base.messageInput.attachment.draftSaveFailed"),
-            duration: 5,
-          });
-        }
-      });
     }
 
     if (hydrated.some((item) => item.expanded)) {

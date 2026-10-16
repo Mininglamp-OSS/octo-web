@@ -2253,7 +2253,7 @@ describe("Conversation attachment and viewport helpers", () => {
       conversationLastMessageSeq: () => 0,
     }
     ;(conversation as any).visiblePersistentMessage = vi.fn(() => undefined)
-    ;(conversation as any)._attachmentDrafts = { saveDocument: vi.fn() }
+    ;(conversation as any)._attachmentDrafts = { saveDocument: vi.fn(), hasDurableDocument: () => true }
 
     await conversation.updateConversationExtra("local draft")
 
