@@ -301,6 +301,14 @@ it("broadcasts revocation to clear other-window caches without refreshing its ol
   await Promise.resolve();
   expect(second.records.size).toBe(0);
   expect(await stale.stage(attachment("private.zip"))).toBe(false);
+  await expect(stale.saveDocument!(empty)).rejects.toBeInstanceOf(
+    DraftSessionExpiredError
+  );
+  await expect(stale.flushDocument!()).rejects.toBeInstanceOf(
+    DraftSessionExpiredError
+  );
+  expect(stale.canLeave([])).toBe(false);
+  expect(stale.canLeaveAttachments!([])).toBe(false);
   await expect(second.save(scope, channel, empty)).rejects.toBeInstanceOf(
     DraftSessionExpiredError
   );

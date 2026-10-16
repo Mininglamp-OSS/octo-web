@@ -9,6 +9,7 @@ import {
   conversationDrafts,
   type ConversationDraftRepository,
 } from "./repository";
+import { DraftSessionExpiredError } from "./database";
 
 export function withConversationDocument(
   attachments: ChatComposerAttachmentDraftPort,
@@ -22,6 +23,8 @@ export function withConversationDocument(
   const documentWrites = new AbortController();
   let loaded = false;
   let stoppedRevision: number | undefined;
+  const active = () => repository.active(scope, epoch);
+  const expired = () => new DraftSessionExpiredError();
   return {
     ...attachments,
     async restore() {
@@ -29,20 +32,21 @@ export function withConversationDocument(
         attachments.restore(),
         repository.load(scope, channel),
       ]);
-      if (!repository.active(scope, epoch))
-        return { attachments: [], failedCount: 0 };
+      if (!active()) throw expired();
       loaded = true;
       return { ...result, document };
     },
     saveDocument(draft) {
-      if (!repository.active(scope, epoch)) return Promise.resolve();
-      return repository.save(scope, channel, draft, documentWrites.signal).then(() => {
-        loaded = true;
-      });
+      if (!active()) return Promise.reject(expired());
+      return repository
+        .save(scope, channel, draft, documentWrites.signal)
+        .then(() => {
+          if (!active()) throw expired();
+          loaded = true;
+        });
     },
     async mergeDocumentConflict(draft) {
-      if (!repository.active(scope, epoch))
-        throw new Error("Draft session expired");
+      if (!active()) throw expired();
       await repository.mergeConflict(scope, channel, draft, documentWrites.signal);
     },
     stopDocumentSaving() {
@@ -50,13 +54,23 @@ export function withConversationDocument(
       documentWrites.abort();
       repository.forgetCancelledDocument(scope, channel, documentWrites.signal);
     },
-    consumeStoppedDocument() {
+    consumeStoppedDocument(retainedAttachmentIds = [], attachmentRevisions) {
       if (stoppedRevision === undefined) return Promise.resolve();
-      return repository.consumeDocument(scope, channel, stoppedRevision);
+      return repository.consumeDocument(
+        scope,
+        channel,
+        stoppedRevision,
+        retainedAttachmentIds,
+        attachmentRevisions
+      );
     },
-    flushDocument: () => repository.flush(key),
+    async flushDocument() {
+      if (!active()) throw expired();
+      await repository.flush(key);
+      if (!active()) throw expired();
+    },
     recoverDocument(attemptId, recovered) {
-      if (!repository.active(scope, epoch)) return Promise.resolve();
+      if (!active()) return Promise.reject(expired());
       const current = repository.records.get(key)?.draft;
       return repository.save(
         scope,
@@ -65,8 +79,8 @@ export function withConversationDocument(
         documentWrites.signal
       );
     },
-    canLeaveAttachments: (ids) => attachments.canLeave(ids),
+    canLeaveAttachments: (ids) => active() && attachments.canLeave(ids),
     canLeave: (ids) =>
-      loaded && attachments.canLeave(ids) && repository.saved(key),
+      active() && loaded && attachments.canLeave(ids) && repository.saved(key),
   };
 }

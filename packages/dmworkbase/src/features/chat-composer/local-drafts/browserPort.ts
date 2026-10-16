@@ -231,6 +231,7 @@ export function createBrowserAttachmentDraftPort(
         observed.delete(id);
       });
       let sendId: string | undefined;
+      const attachmentRevisions = new Map<string, string>();
       const ready = repository.enqueue(
         conversation + ":files",
         async () => {
@@ -252,12 +253,17 @@ export function createBrowserAttachmentDraftPort(
               }),
             await session()
           );
-          records.forEach((record) => entries.set(record.id, record));
+          records.forEach((record) => {
+            entries.set(record.id, record);
+            if (record.reserved === sendId)
+              attachmentRevisions.set(record.id, record.revision);
+          });
         },
         false
       );
       return {
         ready,
+        attachmentRevisions,
         async settle(keep) {
           await ready.catch(() => {});
           await repository.enqueue(conversation + ":files", async () => {

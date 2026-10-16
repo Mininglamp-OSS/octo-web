@@ -23,8 +23,12 @@ export interface ChatComposerAttachmentDraftPort {
   }>;
   /** Permanently fence this compose's queued and active document mutations. */
   stopDocumentSaving?(): void;
-  /** Replace the consumed snapshot with a durable empty tombstone. */
-  consumeStoppedDocument?(): Promise<void>;
+  /** Replace the consumed snapshot with a durable empty tombstone while
+   * preserving attachment generations that the send outcome kept unsent. */
+  consumeStoppedDocument?(
+    retainedAttachmentIds?: readonly string[],
+    attachmentRevisions?: ReadonlyMap<string, string>
+  ): Promise<void>;
   saveDocument?(draft: ConversationDraft): Promise<void>;
   mergeDocumentConflict?(draft: ConversationDraft): Promise<void>;
   flushDocument?(): Promise<void>;
@@ -40,6 +44,9 @@ export interface ChatComposerAttachmentDraftPort {
   /** Await inside the captured send transaction, before submitting any messages. */
   beginSend(attachmentIds: readonly string[], files?: RestoredLocalAttachmentDraft[]): {
     ready: Promise<void>;
+    /** Browser ports fill this map before ready resolves. Cleanup must target
+     * these captured generations rather than a same-ID replacement. */
+    attachmentRevisions?: ReadonlyMap<string, string>;
     /** Settle once with only the unsent IDs (including partial sends).
      * Returns a rejecting Promise on cleanup failure; never throws synchronously.
      * A retry must preserve the same decision. Client retains uncertain sends.

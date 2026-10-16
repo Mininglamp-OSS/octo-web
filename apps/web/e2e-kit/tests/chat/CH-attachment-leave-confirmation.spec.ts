@@ -52,7 +52,7 @@ test("@p1 browser drafts retain ordered attachments and text across navigation a
   await page.context().route("**/api/v1/conversations/draft-leave-*/2/extra", async route => {
     if (route.request().method() !== "POST") return route.fallback();
     const body = route.request().postDataJSON();
-    expect(body).not.toHaveProperty("draft");
+    expect(body).toHaveProperty("draft", "");
     extraBodies.push(body);
     await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
   });
@@ -64,5 +64,5 @@ test("@p1 browser drafts retain ordered attachments and text across navigation a
   await expect(composer.getByText("file-a.zip", { exact: true })).toHaveCount(0);
   await expect(composer.getByText("file-b.md", { exact: true })).toBeVisible();
   expect(extraBodies.length).toBeGreaterThan(0);
-  expect(extraBodies.every(body => !("draft" in body))).toBe(true);
+  expect(extraBodies.every(body => body.draft === "")).toBe(true);
 });

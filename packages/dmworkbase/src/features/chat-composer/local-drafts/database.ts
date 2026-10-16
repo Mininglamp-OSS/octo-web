@@ -267,43 +267,77 @@ export class DraftDatabase {
   async consumeDraft(
     record: DraftRecord,
     expectedRevision: number,
-    session: DraftSession
+    session: DraftSession,
+    retainedAttachmentIds: readonly string[] = [],
+    attachmentRevisions?: ReadonlyMap<string, string>
   ): Promise<DraftRecord> {
     let conflict = false;
-    return this.mutate<DraftRecord>(["drafts", "attachmentIntents"], session, (tx, result) => {
-      const store = tx.objectStore("drafts");
-      const request = store.get(record.key);
-      request.onsuccess = () => {
-        const current = request.result as DraftRecord | undefined;
-        if (current?.consumed && current.revision === expectedRevision + 1) {
-          result(current);
-          return;
-        }
-        if ((current?.revision ?? 0) !== expectedRevision) {
-          conflict = true;
-          tx.abort();
-          return;
-        }
-        const tombstone: DraftRecord = {
-          ...record,
-          revision: expectedRevision + 1,
-          draft: emptyConversationDraft(),
-          preview: "",
-          consumed: true,
+    const retained = new Set(retainedAttachmentIds);
+    return this.mutate<DraftRecord>(
+      ["drafts", "attachmentIntents", "attachments"],
+      session,
+      (tx, result) => {
+        const store = tx.objectStore("drafts");
+        const request = store.get(record.key);
+        request.onsuccess = () => {
+          const current = request.result as DraftRecord | undefined;
+          const alreadyConsumed =
+            current?.consumed && current.revision === expectedRevision + 1;
+          if (!alreadyConsumed && (current?.revision ?? 0) !== expectedRevision) {
+            conflict = true;
+            tx.abort();
+            return;
+          }
+          const consume = (revisions: ReadonlyMap<string, string>) => {
+            const membership = alreadyConsumed
+              ? retained
+              : new Set([...attachmentIds(current?.draft), ...retained]);
+            const intents = tx.objectStore("attachmentIntents");
+            membership.forEach((id) => {
+              const revision = revisions.get(id);
+              // Without a concrete blob generation there is nothing durable to
+              // delete, and a revisionless intent could hide a later replacement.
+              if (!revision) return;
+              intents.put({
+                key: JSON.stringify([record.key, id]),
+                conversation: record.key,
+                account: record.account,
+                removed: !retained.has(id),
+                revision,
+              } satisfies AttachmentIntent);
+            });
+            if (alreadyConsumed) {
+              result(current);
+              return;
+            }
+            const tombstone: DraftRecord = {
+              ...record,
+              revision: expectedRevision + 1,
+              draft: emptyConversationDraft(),
+              preview: "",
+              consumed: true,
+            };
+            store.put(tombstone);
+            result(tombstone);
+          };
+          const files = tx
+            .objectStore("attachments")
+            .index("conversation")
+            .getAll(record.key);
+          files.onsuccess = () =>
+            consume(
+              new Map(
+                (files.result as StoredAttachment[])
+                  .filter((item) =>
+                    !attachmentRevisions ||
+                    attachmentRevisions.get(item.id) === item.revision
+                  )
+                  .map((item) => [item.id, item.revision])
+              )
+            );
         };
-        const intents = tx.objectStore("attachmentIntents");
-        attachmentIds(current?.draft).forEach((id) => {
-          intents.put({
-            key: JSON.stringify([record.key, id]),
-            conversation: record.key,
-            account: record.account,
-            removed: true,
-          } satisfies AttachmentIntent);
-        });
-        store.put(tombstone);
-        result(tombstone);
-      };
-    }).catch((error) => {
+      }
+    ).catch((error) => {
       throw conflict ? new DraftConflictError() : error;
     });
   }

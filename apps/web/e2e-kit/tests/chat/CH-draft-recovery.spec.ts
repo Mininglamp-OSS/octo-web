@@ -50,7 +50,7 @@ for (const locale of ["zh-CN", "en-US"] as const) {
       // MSW cannot resolve a page-owned handler once its client unloads.
       await page.context().route("**/api/v1/conversations/interrupted-send/2/extra", async route => {
         if (route.request().method() !== "POST") return route.fallback();
-        expect(route.request().postDataJSON()).not.toHaveProperty("draft");
+        expect(route.request().postDataJSON()).toHaveProperty("draft", "");
         await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
       });
       await page.reload();

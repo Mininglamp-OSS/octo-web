@@ -487,6 +487,131 @@ it("fences a held document write and consumes the protected copy after temporary
   reopened.unmount();
 });
 
+it("retains a failed attachment across reload after a partial temporary send", async () => {
+  const { db, port } = fixture();
+  const drafts = port("partial");
+  let context!: MessageInputContext;
+  const onSend = vi.fn(async () =>
+    createChatSendOutcome({
+      editorConsumed: true,
+      consumedTopIds: [],
+    })
+  );
+  const view = render(
+    <ChatComposer
+      host={createTestViewHost("partial")}
+      attachmentDrafts={drafts}
+      onSend={onSend}
+      onContext={(next: MessageInputContext) => {
+        context = next;
+      }}
+    />
+  );
+  await waitFor(() => expect(context).toBeDefined());
+  act(() => context.insertText("send text"));
+  await act(async () => {
+    await context.addAttachment([new File(["retry"], "retry.zip")]);
+    await drafts.flushDocument!();
+  });
+  const fail = vi
+    .spyOn(db, "writeDraft")
+    .mockRejectedValue(new DOMException("full", "QuotaExceededError"));
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  act(() => context.insertText(" now"));
+  fireEvent.click(
+    await view.findByRole("button", {
+      name: /使用临时草稿|Use temporary draft/,
+    })
+  );
+
+  await act(async () => {
+    await context.send();
+  });
+
+  expect(onSend).toHaveBeenCalledOnce();
+  expect(context.getAttachmentFiles().map((file) => file.name)).toEqual([
+    "retry.zip",
+  ]);
+  expect(context.canLeaveWithAttachments()).toBe(true);
+  fail.mockRestore();
+  const restored = await port(
+    "partial",
+    new ConversationDraftRepository(db)
+  ).restore();
+  expect(restored.attachments.map((item) => item.file.name)).toEqual([
+    "retry.zip",
+  ]);
+  view.unmount();
+});
+
+it("keeps a mounted editor unsafe after another window revokes its account", async () => {
+  const channels: FakeBroadcastChannel[] = [];
+  class FakeBroadcastChannel {
+    onmessage?: (event: { data: unknown }) => void;
+    constructor(readonly name: string) {
+      channels.push(this);
+    }
+    postMessage(data: unknown) {
+      channels
+        .filter((channel) => channel !== this && channel.name === this.name)
+        .forEach((channel) =>
+          queueMicrotask(() => channel.onmessage?.({ data }))
+        );
+    }
+  }
+  vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel);
+  vi.stubGlobal("File", NodeFile);
+  const factory = new IDBFactory();
+  const mountedDatabase = new DraftDatabase(() => factory);
+  const mountedRepository = new ConversationDraftRepository(mountedDatabase);
+  const revokingRepository = new ConversationDraftRepository(
+    new DraftDatabase(() => factory)
+  );
+  const channel = { id: "revoked", type: 2 };
+  const drafts = withConversationDocument(
+    createBrowserAttachmentDraftPort(scope, channel, mountedRepository),
+    scope,
+    channel,
+    mountedRepository
+  );
+  const capturedEpoch = mountedRepository.epoch(scope);
+  let context!: MessageInputContext;
+  const view = render(
+    <ChatComposer
+      host={createTestViewHost(channel.id)}
+      attachmentDrafts={drafts}
+      onContext={(next: MessageInputContext) => {
+        context = next;
+      }}
+    />
+  );
+  await waitFor(() => expect(context).toBeDefined());
+  act(() => context.insertText("saved before logout"));
+  await act(async () => {
+    await drafts.flushDocument!();
+  });
+
+  await revokingRepository.clearAccount(scope);
+  await waitFor(() =>
+    expect(mountedRepository.active(scope, capturedEpoch)).toBe(false)
+  );
+  act(() => context.insertText(" retained locally"));
+
+  await view.findByRole("button", { name: /重试保存|Retry saving/ });
+  expect(view.container.querySelector(".tiptap")!.textContent).toContain(
+    "retained locally"
+  );
+  expect(context.canLeaveWithAttachments()).toBe(false);
+  expect(
+    await mountedDatabase.list(
+      "drafts",
+      "account",
+      JSON.stringify([scope.server, scope.account])
+    )
+  ).toEqual([]);
+  view.unmount();
+});
+
 it.each(["restore", "temporary"])("offers an explicit choice for interrupted sends: %s", async choice => {
   const { db, port } = fixture();
   const old = port("crash");

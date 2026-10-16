@@ -208,7 +208,9 @@ export class ConversationDraftRepository {
   async consumeDocument(
     scope: DraftScope,
     channel: DraftChannel,
-    expectedRevision: number
+    expectedRevision: number,
+    retainedAttachmentIds: readonly string[] = [],
+    attachmentRevisions?: ReadonlyMap<string, string>
   ) {
     const key = draftKey(scope, channel);
     const epoch = this.epoch(scope);
@@ -223,7 +225,9 @@ export class ConversationDraftRepository {
         consumed: true,
       },
       expectedRevision,
-      await this.session(scope)
+      await this.session(scope),
+      retainedAttachmentIds,
+      attachmentRevisions
     );
     if (!this.active(scope, epoch)) return;
     this.revisions.set(key, tombstone.revision);

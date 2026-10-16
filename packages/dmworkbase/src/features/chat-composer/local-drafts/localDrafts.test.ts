@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
 import { File as NodeFile } from "node:buffer";
-import { DraftConflictError, DraftDatabase } from "./database";
+import {
+  DraftConflictError,
+  DraftDatabase,
+  DraftSessionExpiredError,
+} from "./database";
 import { ConversationDraftRepository } from "./repository";
 import { createBrowserAttachmentDraftPort } from "./browserPort";
 import { withConversationDocument } from "./documentPort";
@@ -243,7 +247,9 @@ describe("local draft persistence", () => {
     });
     await old.saveDocument!(document("secret"));
     await repository.clearAccount(scope);
-    await old.saveDocument!(document("stale"));
+    await expect(old.saveDocument!(document("stale"))).rejects.toBeInstanceOf(
+      DraftSessionExpiredError
+    );
     expect(
       await old.stage({
         id: "late",
@@ -322,6 +328,43 @@ describe("local draft persistence", () => {
     });
     await send.settle([]);
     const restored = await port().restore();
+    expect(await restored.attachments[0].file.text()).toBe("new");
+  });
+  it("does not let document consumption hide a same-id attachment replacement", async () => {
+    vi.stubGlobal("File", NodeFile);
+    const { db, port } = fixture();
+    const old = port();
+    await old.restore();
+    await old.stage({
+      id: "same-id",
+      file: new File(["old"], "old.zip"),
+      source: "upload",
+    });
+    await old.saveDocument!({
+      ...document("old"),
+      topAttachments: [
+        { id: "same-id", name: "old.zip", position: 1 },
+      ],
+    });
+    old.stopDocumentSaving!();
+    const send = old.beginSend(["same-id"]);
+    await send.ready;
+
+    const replacement = port(new ConversationDraftRepository(db));
+    await replacement.stage({
+      id: "same-id",
+      file: new File(["new"], "new.zip"),
+      source: "upload",
+    });
+    await old.consumeStoppedDocument!(
+      [],
+      send.attachmentRevisions
+    );
+    await send.settle([]);
+
+    const restored = await port(new ConversationDraftRepository(db)).restore();
+    expect(restored.attachments).toHaveLength(1);
+    expect(restored.attachments[0].file.name).toBe("new.zip");
     expect(await restored.attachments[0].file.text()).toBe("new");
   });
   it("retains unsaved document content and retries a failed write on the next save", async () => {
