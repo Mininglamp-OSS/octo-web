@@ -85,3 +85,16 @@ Repair local draft reliability and logout through existing entry points. Shared 
 - Post-load write failure → explicit recovery → successful text send, preserving the saved copy and failed-send recovery; attachment readiness still blocks unsafe sends.
 - Communication expiry without runtime or later host revocation, plus standalone expiry: deletion completes before teardown and stale writers remain fenced.
 - Composer/storage/auth suites, i18n/diff checks, web build and browser recovery coverage in both locales/themes.
+
+### Follow-up behavior and verification
+- An initial generation-read failure remains pinned for that repository session. Retry cannot acquire a newer generation; the initial recovery UI still offers temporary operation without writing saved data. Retry continues to work for ordinary transient document/attachment reads.
+- A post-load document-save failure offers retry-save or explicit temporary document operation, retaining the live compose, upload anchors, failed-send recovery and the last persisted document. Attachment staging/reservation/settlement remains active and must succeed before attachment sends. Temporary operation does not bypass a detected cross-window conflict.
+- Low-level `LoginInfo.logout()` captures current or stored account identity before synchronously erasing credentials, starts revocation, and returns its completion. Authentication-expiry reporting and standalone reload await that completion. This covers renderers without an owner runtime or subsequent host callback.
+- Parsed draft nodes now implement the shared editor-node contract; recovery no longer needs incompatible double type assertions.
+
+Verified on the follow-up revision:
+- 56 base suites / 712 tests passed (composer, local storage, conversation/list and real logout integration). The previously documented mute-test filename exclusions remain.
+- 7 web suites / 74 tests passed (shared/communication authentication expiry, runtime, attachment ports/cleanup and standalone session recovery).
+- 5 Chromium scenarios passed: ordered draft navigation/reload, initial retry/temporary operation and post-load quota recovery in both zh-CN and en-US. Light/dark recovery screenshots were inspected in both locales.
+- Web E2E production build, `pnpm i18n:check` and whitespace checks passed.
+- Full package `tsc --noEmit` remains non-clean due to repository-wide declaration/module-resolution and existing errors. The recovery TS2352 diagnostics are absent. Packaged native Client testing was not performed.
