@@ -233,3 +233,117 @@ it("sends in temporary mode without modifying unread saved drafts or attachments
     "saved.zip",
   ]);
 });
+
+it("keeps the visible retry action fenced after failed generation capture and other-window logout", async () => {
+  const { db, port } = fixture();
+  vi.stubGlobal("BroadcastChannel", undefined);
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  vi.spyOn(db, "session").mockRejectedValueOnce(new Error("session read failed"));
+  const drafts = port("a");
+  let context: MessageInputContext | undefined;
+  const view = render(<ChatComposer host={createTestViewHost("a")} attachmentDrafts={drafts}
+    onContext={next => { context = next; }} />);
+  const retry = await view.findByRole("button", { name: /重新读取|Retry loading/ });
+  await new ConversationDraftRepository(db).clearAccount(scope);
+  fireEvent.click(retry);
+  await view.findByRole("button", { name: /重新读取|Retry loading/ });
+  expect(context).toBeUndefined();
+  expect(view.container.querySelector(".tiptap")?.getAttribute("contenteditable")).toBe("false");
+  expect(await db.list("drafts", "account", JSON.stringify([scope.server, scope.account]))).toEqual([]);
+  expect(await drafts.stage({ id: "revoked", file: new File(["x"], "revoked.zip"), source: "upload" })).toBe(false);
+  view.unmount();
+});
+
+it("recovers from persistent post-load write failure without changing saved content or losing failed sends", async () => {
+  const { db, port } = fixture();
+  const drafts = port("a");
+  let context!: MessageInputContext;
+  const onSend = vi.fn(async () => createChatSendOutcome({ editorConsumed: true }));
+  const view = render(<ChatComposer host={createTestViewHost("a")} attachmentDrafts={drafts}
+    onSend={onSend} onContext={next => { context = next; }} />);
+  await waitFor(() => expect(context).toBeDefined());
+  act(() => context.insertText("saved text"));
+  await act(async () => { await drafts.flushDocument!(); });
+  const key = draftKey(scope, { id: "a", type: 2 });
+  const saved = await db.read<DraftRecord>("drafts", key);
+  vi.spyOn(db, "writeDraft").mockRejectedValue(new DOMException("full", "QuotaExceededError"));
+  act(() => context.insertText(" current edit"));
+  const temporary = await view.findByRole("button", { name: /使用临时草稿|Use temporary draft/ });
+  await act(async () => { await context.send(); });
+  expect(onSend).not.toHaveBeenCalled();
+  expect(context.canLeaveWithAttachments()).toBe(false);
+  const liveText = view.container.querySelector(".tiptap")!.textContent;
+  fireEvent.click(temporary);
+  await waitFor(() => expect(context.canLeaveWithAttachments()).toBe(true));
+  expect(view.container.querySelector(".tiptap")!.textContent).toBe(liveText);
+  onSend.mockRejectedValueOnce(new Error("network offline"));
+  await act(async () => { await context.send(); });
+  expect(view.container.querySelector(".tiptap")!.textContent).toBe(liveText);
+  await act(async () => { await context.send(); });
+  expect(onSend).toHaveBeenCalledTimes(2);
+  expect(view.container.querySelector(".tiptap")!.textContent).toBe("");
+  expect(await db.read("drafts", key)).toEqual(saved);
+  view.unmount();
+});
+
+it("can retry saving without reloading over live edits", async () => {
+  const { db, port } = fixture();
+  const drafts = port("a");
+  let context!: MessageInputContext;
+  const view = render(<ChatComposer host={createTestViewHost("a")} attachmentDrafts={drafts}
+    onContext={next => { context = next; }} />);
+  await waitFor(() => expect(context).toBeDefined());
+  await act(async () => { await drafts.flushDocument!(); });
+  const fault = vi.spyOn(db, "writeDraft").mockRejectedValue(new Error("disk busy"));
+  act(() => context.insertText("keep current edit"));
+  const retry = await view.findByRole("button", { name: /重试保存|Retry saving/ });
+  fault.mockRestore();
+  fireEvent.click(retry);
+  await waitFor(() => expect(view.queryByRole("button", { name: /重试保存|Retry saving/ })).toBeNull());
+  expect(view.container.querySelector(".tiptap")!.textContent).toBe("keep current edit");
+  expect(JSON.stringify(await db.read("drafts", draftKey(scope, { id: "a", type: 2 })))).toContain("keep current edit");
+  view.unmount();
+});
+
+it("retains attachment readiness checks in temporary document mode", async () => {
+  const { db, port } = fixture();
+  const drafts = port("a");
+  let context!: MessageInputContext;
+  const onSend = vi.fn(async () => createChatSendOutcome());
+  const view = render(<ChatComposer host={createTestViewHost("a")} attachmentDrafts={drafts}
+    onSend={onSend} onContext={next => { context = next; }} />);
+  await waitFor(() => expect(context).toBeDefined());
+  await act(async () => { await drafts.flushDocument!(); });
+  vi.spyOn(db, "writeDraft").mockRejectedValue(new Error("document disk full"));
+  act(() => context.insertText("text"));
+  fireEvent.click(await view.findByRole("button", { name: /使用临时草稿|Use temporary draft/ }));
+  const begin = vi.spyOn(drafts, "beginSend");
+  vi.spyOn(db, "changeAttachments").mockRejectedValue(new Error("attachment disk full"));
+  await act(async () => { await context.addAttachment([new File(["x"], "pending.zip")]); });
+  await act(async () => { await context.send(); });
+  expect(begin).toHaveBeenCalled();
+  expect(onSend).not.toHaveBeenCalled();
+  expect(context.getAttachmentFiles().map(file => file.name)).toContain("pending.zip");
+  expect(context.canLeaveWithAttachments()).toBe(false);
+  view.unmount();
+});
+
+import { DraftConflictError } from "../../local-drafts/database";
+import { wkConfirm } from "../../../../Components/WKModal/confirm";
+it("does not bypass a cross-window conflict through save recovery", async () => {
+  const { db, port } = fixture();
+  const drafts = port("a");
+  let context!: MessageInputContext;
+  const onSend = vi.fn(async () => createChatSendOutcome());
+  const view = render(<ChatComposer host={createTestViewHost("a")} attachmentDrafts={drafts}
+    onSend={onSend} onContext={next => { context = next; }} />);
+  await waitFor(() => expect(context).toBeDefined());
+  await act(async () => { await drafts.flushDocument!(); });
+  vi.spyOn(db, "writeDraft").mockRejectedValue(new DraftConflictError());
+  act(() => context.insertText("conflicting text"));
+  await waitFor(() => expect(wkConfirm).toHaveBeenCalled());
+  await act(async () => { await context.send(); });
+  expect(onSend).not.toHaveBeenCalled();
+  expect(view.queryByRole("button", { name: /使用临时草稿|Use temporary draft/ })).toBeNull();
+  view.unmount();
+});

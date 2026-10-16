@@ -305,3 +305,26 @@ it("broadcasts revocation to clear other-window caches without refreshing its ol
     DraftSessionExpiredError
   );
 });
+
+it.each([false, true])("never adopts a new generation after a failed capture (broadcasts: %s)", async notifications => {
+  const channels: Array<{ onmessage?: (event: { data: unknown }) => void }> = [];
+  class FakeChannel {
+    onmessage?: (event: { data: unknown }) => void;
+    constructor() { channels.push(this); }
+    postMessage(data: unknown) {
+      channels.filter(channel => channel !== this).forEach(channel => channel.onmessage?.({ data }));
+    }
+  }
+  if (notifications) vi.stubGlobal("BroadcastChannel", FakeChannel);
+  const { db, first, secondDb, second, port } = setup(notifications);
+  const capture = vi.spyOn(secondDb, "session").mockRejectedValueOnce(new Error("initial read failed"));
+  const stale = port(second);
+  await expect(stale.restore()).rejects.toThrow("initial read failed");
+  await first.clearAccount(scope);
+  await expect(stale.restore()).rejects.toThrow();
+  expect(await stale.stage(attachment("revoked.zip"))).toBe(false);
+  await expect(stale.saveDocument!(withFile("revoked.zip"))).rejects.toThrow();
+  expect(capture).toHaveBeenCalledOnce();
+  expect(await db.list("drafts", "account", draftAccountKey(scope))).toEqual([]);
+  expect(await db.list("attachments", "account", draftAccountKey(scope))).toEqual([]);
+});
