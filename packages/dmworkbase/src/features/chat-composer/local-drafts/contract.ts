@@ -10,6 +10,8 @@ export interface RestoredLocalAttachmentDraft {
 /** Local document persistence around browser or native attachment ownership. */
 export interface ChatComposerAttachmentDraftPort {
   restore(): Promise<{ attachments: RestoredLocalAttachmentDraft[]; failedCount: number; document?: ConversationDraft }>;
+  /** Permanently fence this compose's queued and active document mutations. */
+  stopDocumentSaving?(): void;
   saveDocument?(draft: ConversationDraft): Promise<void>;
   mergeDocumentConflict?(draft: ConversationDraft): Promise<void>;
   flushDocument?(): Promise<void>;

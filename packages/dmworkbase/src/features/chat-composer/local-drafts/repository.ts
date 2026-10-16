@@ -20,6 +20,7 @@ export interface DraftChange {
 /** Shared across composer unmounts. The list reads metadata, never attachment blobs. */
 export class ConversationDraftRepository {
   readonly records = new Map<string, DraftRecord>();
+  private documentOwners = new Map<string, AbortSignal | undefined>();
   private queues = new Map<string, Promise<void>>();
   private failed = new Set<string>();
   private revisions = new Map<string, number>();
@@ -83,6 +84,7 @@ export class ConversationDraftRepository {
     for (const [key, record] of this.records)
       if (record.account === account) {
         this.records.delete(key);
+        this.documentOwners.delete(key);
         this.revisions.delete(key);
         this.failed.delete(key);
       }
@@ -133,8 +135,10 @@ export class ConversationDraftRepository {
   save(
     scope: DraftScope,
     channel: DraftChannel,
-    draft: ConversationDraft
+    draft: ConversationDraft,
+    signal?: AbortSignal
   ): Promise<void> {
+    if (signal?.aborted) return Promise.resolve();
     const key = draftKey(scope, channel);
     const epoch = this.epoch(scope);
     const session = this.session(scope);
@@ -149,7 +153,8 @@ export class ConversationDraftRepository {
     if (
       previous &&
       JSON.stringify(previous.draft) === JSON.stringify(cleaned) &&
-      !this.failed.has(key)
+      !this.failed.has(key) &&
+      (!this.queues.has(key) || this.documentOwners.get(key) === signal)
     )
       return this.flush(key);
     const record: DraftRecord = {
@@ -161,33 +166,52 @@ export class ConversationDraftRepository {
       preview: conversationDraftPreview(cleaned),
     };
     this.records.set(key, record);
+    this.documentOwners.set(key, signal);
     if (previous?.preview !== record.preview)
       this.notify({ scope: record.scope, key });
     return this.enqueue(key, async () => {
-      if (!this.active(scope, epoch)) return;
+      if (!this.active(scope, epoch) || signal?.aborted) return;
       try {
         const expected = this.revisions.get(key) ?? 0;
         record.revision = expected + 1;
-        await this.database.writeDraft(record, expected, await session);
-        if (this.active(scope, epoch)) {
+        await this.database.writeDraft(record, expected, await session, signal);
+        if (this.active(scope, epoch) && !signal?.aborted) {
           this.revisions.set(key, record.revision);
           this.failed.delete(key);
         }
       } catch (error) {
+        // An explicitly abandoned compose must not poison later writers.
+        if (signal?.aborted) return;
         if (this.active(scope, epoch)) this.failed.add(key);
         throw error;
       }
     });
   }
+  forgetCancelledDocument(scope: DraftScope, channel: DraftChannel, signal: AbortSignal) {
+    const key = draftKey(scope, channel);
+    if (!signal.aborted || this.documentOwners.get(key) !== signal) return;
+    // A new composer must reload the durable copy, not the abandoned optimistic
+    // snapshot. Never evict another composer's newer snapshot.
+    this.documentOwners.delete(key);
+    this.records.delete(key);
+    this.revisions.delete(key);
+    this.failed.delete(key);
+    this.loadedScopes.delete(draftScopeKey(scope));
+    this.notify({ scope: draftScopeKey(scope), key });
+    // Refresh inactive-row previews too, without overwriting a newer owner.
+    void this.loadScope(scope).catch(() => {});
+  }
   async mergeConflict(
     scope: DraftScope,
     channel: DraftChannel,
-    local: ConversationDraft
+    local: ConversationDraft,
+    signal?: AbortSignal
   ) {
     const key = draftKey(scope, channel);
     const epoch = this.epoch(scope);
     await this.flush(key).catch(() => {});
     const latest = await this.database.read<DraftRecord>("drafts", key);
+    if (signal?.aborted) return;
     if (!this.active(scope, epoch)) throw new Error("Draft session expired");
     this.revisions.set(key, latest?.revision ?? 0);
     const merged =
@@ -196,7 +220,7 @@ export class ConversationDraftRepository {
         : local;
     // Force a CAS write even if the local in-memory snapshot did not change.
     this.failed.add(key);
-    await this.save(scope, channel, merged);
+    await this.save(scope, channel, merged, signal);
   }
   enqueue(
     key: string,

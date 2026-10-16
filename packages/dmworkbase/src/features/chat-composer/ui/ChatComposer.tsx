@@ -2002,6 +2002,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
                 // mounted compose; an unread saved draft must remain untouched.
                 pasteLifecycleRef.current += 1;
                 draftReady.resolve();
+                props.attachmentDrafts?.stopDocumentSaving?.();
                 setTemporaryDraftPort(props.attachmentDrafts ?? null);
                 setDraftRestoreFailed(false);
                 setDraftLoaded(true);
@@ -2022,6 +2023,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
               }
             }}>{t("base.messageInput.draft.retrySave")}</Button>
             <Button theme="solid" type="tertiary" onClick={() => {
+              attachmentDrafts?.stopDocumentSaving?.();
               setTemporaryDocumentPort(attachmentDrafts ?? null);
               setDraftSaveFailed(false);
             }}>{t("base.messageInput.draft.useTemporary")}</Button>

@@ -347,3 +347,43 @@ it("does not bypass a cross-window conflict through save recovery", async () => 
   expect(view.queryByRole("button", { name: /使用临时草稿|Use temporary draft/ })).toBeNull();
   view.unmount();
 });
+
+it("fences a held document write before temporary sending and restores the protected copy", async () => {
+  const { db, repository, port } = fixture();
+  const drafts = port("a");
+  let context!: MessageInputContext;
+  const onSend = vi.fn(async () => createChatSendOutcome({ editorConsumed: true }));
+  const view = render(<ChatComposer host={createTestViewHost("a")} attachmentDrafts={drafts}
+    onSend={onSend} onContext={next => { context = next; }} />);
+  await waitFor(() => expect(context).toBeDefined());
+  act(() => context.insertText("last saved copy"));
+  await act(async () => { await drafts.flushDocument!(); });
+  const key = draftKey(scope, { id: "a", type: 2 });
+  const saved = await db.read<DraftRecord>("drafts", key);
+  const write = db.writeDraft.bind(db);
+  const fault = vi.spyOn(db, "writeDraft").mockRejectedValueOnce(new DOMException("full", "QuotaExceededError"));
+  act(() => context.clear());
+  const temporary = await view.findByRole("button", { name: /使用临时草稿|Use temporary draft/ });
+  let release!: () => void;
+  let entered!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  fault.mockImplementationOnce(async (...args) => { entered(); await gate; return write(...args); });
+  act(() => context.insertText("temporary sent message"));
+  await started;
+  fireEvent.click(temporary);
+  await act(async () => { await context.send(); });
+  expect(onSend).toHaveBeenCalledOnce();
+  expect(view.container.querySelector(".tiptap")!.textContent).toBe("");
+  expect(await db.read("drafts", key)).toEqual(saved);
+  await act(async () => { release(); await repository.flush(key); });
+  expect(await db.read("drafts", key)).toEqual(saved);
+  view.unmount();
+  let restored: MessageInputContext | undefined;
+  const reopened = render(<ChatComposer host={createTestViewHost("a")}
+    attachmentDrafts={port("a", new ConversationDraftRepository(db))}
+    onContext={next => { restored = next; }} />);
+  await waitFor(() => expect(restored).toBeDefined());
+  expect(reopened.container.querySelector(".tiptap")!.textContent).toBe("last saved copy");
+  reopened.unmount();
+});

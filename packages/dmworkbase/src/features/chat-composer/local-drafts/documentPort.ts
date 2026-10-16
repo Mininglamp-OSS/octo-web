@@ -19,6 +19,7 @@ export function withConversationDocument(
   const epoch = repository.epoch(scope);
   void repository.session(scope).catch(() => {});
   const key = draftKey(scope, channel);
+  const documentWrites = new AbortController();
   let loaded = false;
   return {
     ...attachments,
@@ -34,14 +35,18 @@ export function withConversationDocument(
     },
     saveDocument(draft) {
       if (!repository.active(scope, epoch)) return Promise.resolve();
-      return repository.save(scope, channel, draft).then(() => {
+      return repository.save(scope, channel, draft, documentWrites.signal).then(() => {
         loaded = true;
       });
     },
     async mergeDocumentConflict(draft) {
       if (!repository.active(scope, epoch))
         throw new Error("Draft session expired");
-      await repository.mergeConflict(scope, channel, draft);
+      await repository.mergeConflict(scope, channel, draft, documentWrites.signal);
+    },
+    stopDocumentSaving() {
+      documentWrites.abort();
+      repository.forgetCancelledDocument(scope, channel, documentWrites.signal);
     },
     flushDocument: () => repository.flush(key),
     recoverDocument(attemptId, recovered) {
@@ -50,7 +55,8 @@ export function withConversationDocument(
       return repository.save(
         scope,
         channel,
-        mergeRecoveredDraft(current, recovered, attemptId)
+        mergeRecoveredDraft(current, recovered, attemptId),
+        documentWrites.signal
       );
     },
     canLeaveAttachments: (ids) => attachments.canLeave(ids),

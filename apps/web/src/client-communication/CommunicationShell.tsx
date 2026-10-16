@@ -175,6 +175,7 @@ export function CommunicationShell({
     ready: Boolean(WKApp.loginInfo.uid && WKApp.loginInfo.token),
     apiOrigin: WKApp.apiClient.config.apiURL,
   }), (listener) => WKApp.shared.addListener(listener)), [bridge]);
+  const sessionRevoked = useRef(false);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
   const readyReporterRef = useRef<ReturnType<typeof createReadyReporter>>();
@@ -377,6 +378,7 @@ export function CommunicationShell({
     };
 
     const dispose = bridge.onCommand((command: HostCommand) => {
+      if (sessionRevoked.current) return;
       if (command.type !== "spaceChanged") workspaceGroups.handleCommand(command);
       if (command.type === "navigate") {
         if (command.target && !hasCompatibleTargetVariant(command.target)) {
@@ -447,9 +449,12 @@ export function CommunicationShell({
       }
 
       if (command.type === "sessionRevoked") {
+        sessionRevoked.current = true;
         cancelNavigation();
-        WKApp.loginInfo.logout();
-        window.location.reload();
+        void Promise.resolve(WKApp.loginInfo.logout()).then(
+          () => window.location.reload(),
+          error => console.error("[client-communication] session cleanup failed", error),
+        );
         return;
       }
       if (command.type === "hostVisibilityChanged") {

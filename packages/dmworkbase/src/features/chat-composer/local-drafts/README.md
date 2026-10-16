@@ -98,3 +98,9 @@ Verified on the follow-up revision:
 - 5 Chromium scenarios passed: ordered draft navigation/reload, initial retry/temporary operation and post-load quota recovery in both zh-CN and en-US. Light/dark recovery screenshots were inspected in both locales.
 - Web E2E production build, `pnpm i18n:check` and whitespace checks passed.
 - Full package `tsc --noEmit` remains non-clean due to repository-wide declaration/module-resolution and existing errors. The recovery TS2352 diagnostics are absent. Packaged native Client testing was not performed.
+
+## Outstanding-write and host-revocation follow-up plan
+- **Behavior:** accepting temporary document mode immediately revokes this compose's document writes, including queued work and open transactions. Attachment ownership and other composers remain active. Host revocation cancels navigation immediately and reloads only after cleanup completes.
+- **File map:** document port/repository/database carry a per-compose cancellation signal through the write transaction; the existing temporary button triggers it. The communication, summary and apps shells await logout in their existing command handlers. Existing composer/storage/shell suites cover the boundaries.
+- **PR scope:** reliability fixes within local drafts and Client authentication lifecycle; no new UI, copy, route or schema.
+- **Verification:** reproduce failed save → held save → temporary mode → successful send → late release → fresh restore; cover cancellation during an open transaction, independent composers and CAS. Deliver real shell host commands with cleanup held/released, asserting immediate navigation cancellation and delayed reload. Run focused and adjacent regression suites, build and whitespace checks.

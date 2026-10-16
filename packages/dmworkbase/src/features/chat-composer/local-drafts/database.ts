@@ -147,9 +147,12 @@ export class DraftDatabase {
       tx: IDBTransaction,
       result: (value: T) => void,
       fail: (error: unknown) => void
-    ) => void
+    ) => void,
+    signal?: AbortSignal
   ): Promise<T> {
+    signal?.throwIfAborted();
     const db = await this.open();
+    signal?.throwIfAborted();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(
         [...new Set([...stores, "accounts"])],
@@ -159,8 +162,13 @@ export class DraftDatabase {
       let failure: unknown;
       const fail = (error: unknown) => {
         failure = error;
-        tx.abort();
+        // The transaction may already have committed before cancellation.
+        // Its oncomplete event still settles the mutation in that case.
+        try { tx.abort(); } catch { /* already finished */ }
       };
+      const cancel = () => fail(signal!.reason);
+      const release = () => signal?.removeEventListener("abort", cancel);
+      signal?.addEventListener("abort", cancel, { once: true });
       const apply = () => {
         try {
           change(
@@ -183,16 +191,19 @@ export class DraftDatabase {
           } else apply();
         };
       } else apply();
-      tx.oncomplete = () => resolve(value!);
-      tx.onabort = tx.onerror = () =>
+      tx.oncomplete = () => { release(); resolve(value!); };
+      tx.onabort = tx.onerror = () => {
+        release();
         reject(failure ?? tx.error ?? new Error("Draft write failed"));
+      };
     });
   }
 
   async writeDraft(
     record: DraftRecord,
     expectedRevision: number,
-    session: DraftSession
+    session: DraftSession,
+    signal?: AbortSignal
   ): Promise<void> {
     let conflict = false;
     // Membership changes and the document commit together, even if blob cleanup fails.
@@ -218,7 +229,7 @@ export class DraftDatabase {
         }
         store.put(record);
       };
-    }).catch((error) => {
+    }, signal).catch((error) => {
       throw conflict ? new DraftConflictError() : error;
     });
   }

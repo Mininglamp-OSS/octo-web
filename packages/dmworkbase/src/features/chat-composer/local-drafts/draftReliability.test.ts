@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { IDBFactory } from "fake-indexeddb";
+import { IDBFactory, IDBObjectStore } from "fake-indexeddb";
 import { File as NodeFile } from "node:buffer";
 import { DraftDatabase, DraftSessionExpiredError } from "./database";
 import { ConversationDraftRepository } from "./repository";
@@ -327,4 +327,67 @@ it.each([false, true])("never adopts a new generation after a failed capture (br
   expect(capture).toHaveBeenCalledOnce();
   expect(await db.list("drafts", "account", draftAccountKey(scope))).toEqual([]);
   expect(await db.list("attachments", "account", draftAccountKey(scope))).toEqual([]);
+});
+
+it("aborts an open document transaction and its membership changes without revoking attachment ownership", async () => {
+  const { db, first, port } = setup();
+  const current = port();
+  await current.restore();
+  await current.stage(attachment("protected.zip"));
+  await current.saveDocument!(withFile("protected.zip"));
+  const key = draftKey(scope, channel);
+  const saved = await db.read("drafts", key);
+  const put = IDBObjectStore.prototype.put;
+  let cancelled = false;
+  vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (value, key) {
+    const request = put.call(this, value, key);
+    if (this.name === "drafts" && !cancelled) {
+      cancelled = true;
+      current.stopDocumentSaving!();
+    }
+    return request;
+  });
+  await current.saveDocument!(empty);
+  expect(cancelled).toBe(true);
+  expect(await db.read("drafts", key)).toEqual(saved);
+  expect((await db.restoreAttachments(key)).map(file => file.id)).toEqual(["protected.zip"]);
+  expect(await current.stage(attachment("still-owned.zip"))).toBe(true);
+  // A newly mounted compose using the same repository must see disk, not the
+  // cancelled optimistic empty record, and must still be able to persist.
+  const next = port(first);
+  expect((await next.restore()).document).toEqual(withFile("protected.zip"));
+  await next.saveDocument!(empty);
+  expect(await db.read("drafts", key)).toMatchObject({ draft: empty });
+});
+
+it.each(["same", "different"])("drops cancelled queued writes but retains another composer's %s snapshot", async which => {
+  const { db, first, port } = setup();
+  const abandoned = port();
+  await abandoned.restore();
+  await abandoned.saveDocument!(empty);
+  const gate = deferred(), started = deferred();
+  const write = db.writeDraft.bind(db);
+  const writes = vi.spyOn(db, "writeDraft").mockImplementationOnce(async (...args) => {
+    started.resolve();
+    await gate.promise;
+    return write(...args);
+  });
+  const firstSave = abandoned.saveDocument!(withFile("abandoned.zip"));
+  await started.promise;
+  const queuedSave = abandoned.saveDocument!(withFile("queued.zip"));
+  const live = port(first);
+  await live.restore();
+  const liveDraft = withFile(which === "same" ? "queued.zip" : "live.zip");
+  const liveSave = live.saveDocument!(liveDraft);
+  abandoned.stopDocumentSaving!();
+  expect(first.records.get(draftKey(scope, channel))?.draft).toEqual(liveDraft);
+  gate.resolve();
+  await Promise.all([firstSave, queuedSave, liveSave]);
+  // The held mutation is cancelled inside the DB; the queued abandoned one
+  // never reaches it. The other compose retains normal CAS persistence.
+  expect(writes).toHaveBeenCalledTimes(2);
+  expect(await db.read("drafts", draftKey(scope, channel))).toMatchObject({ draft: liveDraft });
+  await abandoned.saveDocument!(empty);
+  await abandoned.recoverDocument!("old-send", withFile("old.zip"));
+  expect(await db.read("drafts", draftKey(scope, channel))).toMatchObject({ draft: liveDraft });
 });
