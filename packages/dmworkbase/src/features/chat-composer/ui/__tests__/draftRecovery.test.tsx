@@ -827,3 +827,35 @@ it("retries visible restore after a closed connection becomes available without 
   expect(await repository.session(scope)).toEqual(session);
   expect(captures).not.toHaveBeenCalled();
 });
+
+it("hydrates durable files after remount despite a permanently failed cleanup task", async () => {
+  const { db, repository, port } = fixture();
+  const previous = port("a");
+  const file = (id: string) => ({ id, file: new File([id], id), source: "upload" as const });
+  await previous.stage(file("saved.zip"));
+  await previous.stage(file("removed.zip"));
+  previous.syncLive(["saved.zip", "removed.zip"]);
+  const writes = vi.spyOn(db, "changeAttachments").mockRejectedValue(new Error("cleanup failed"));
+  previous.syncLive(["saved.zip"]);
+  await expect(repository.flush(draftKey(scope, { id: "a", type: 2 }) + ":files"))
+    .rejects.toThrow("cleanup failed");
+  let context: MessageInputContext | undefined;
+  const onSend = vi.fn(async () => createChatSendOutcome());
+  const view = render(<ChatComposer host={createTestViewHost("a")} attachmentDrafts={port("a")}
+    onSend={onSend} onContext={next => { context = next; }} />);
+  await waitFor(() => expect(context).toBeDefined());
+  expect(context!.getAttachmentFiles().map(item => item.name)).toEqual(["saved.zip"]);
+  expect(view.container.querySelector(".tiptap")?.getAttribute("contenteditable")).toBe("true");
+  expect(view.queryByRole("button", { name: /重新读取|Retry loading/ })).toBeNull();
+  expect(context!.canLeaveWithAttachments()).toBe(false);
+  await act(async () => { await context!.send(); });
+  expect(onSend).not.toHaveBeenCalled();
+  expect(context!.getAttachmentFiles().map(item => item.name)).toEqual(["saved.zip"]);
+  writes.mockRestore();
+  await act(async () => { await context!.send(); });
+  expect(onSend).toHaveBeenCalledOnce();
+  expect(onSend).toHaveBeenCalledWith(expect.objectContaining({
+    topFiles: [expect.objectContaining({ file: expect.objectContaining({ name: "saved.zip" }) })],
+  }));
+  view.unmount();
+});

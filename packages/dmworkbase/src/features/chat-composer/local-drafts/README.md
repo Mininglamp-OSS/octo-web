@@ -36,7 +36,7 @@ Preview: `base-conversationlist--local-attachment-drafts`. Click a conversation 
 
 ## Review fixes
 - Legacy remote text remains visible until the first local restore imports it. An existing empty local record always wins, so cleared drafts stay cleared.
-- File deletion checks current liveness; undo during an in-flight deletion schedules a replacement write before restoration can proceed.
+- File deletion checks current liveness and retains an undo snapshot for the current port. IDs-only undo during or after deletion schedules replacement bytes with the original metadata and position; navigation remains unsafe until that write succeeds.
 - Cross-window CAS conflicts offer an explicit merge through the existing confirmation dialog. Both texts are retained, shared attachment identities are deduplicated, and the merged editor must be reviewed before sending.
 - Runtime-owned Client session revocation and authentication expiry clear account drafts independently of UI mounting.
 - Sending freezes attempt-owned upload anchors; failure restores them after the recovered document is inserted, then ordinary editing maps them again.
@@ -148,3 +148,11 @@ Verified on the follow-up revision:
 - Operations that entered before logout retain the existing database transaction generation check. Public-port regressions cover same-repository and other-connection cleanup, both before consumption starts and while consumption is suspended, with BroadcastChannel disabled.
 - Real-Composer regressions cover logout → unmount → new-session draft → old send success, and a same-ID attachment replacement while a temporary send is in flight. Removing the epoch guard reproduces draft loss; removing the Composer's attachment-revision forwarding reproduces attachment loss.
 - Validation: all 48 Composer suites / 511 tests and the 3 Client attachment/authentication lifecycle suites / 33 tests passed. Both targeted guard/forwarding mutations failed their new regression tests and were reverted; `git diff --check` passed. Browser E2E, packaged Client, production build and full repository typechecking were not rerun for this increment.
+
+## PR 1848 attachment recovery fixes
+
+- A failed file-task flush no longer prevents reading durable attachments or exposing pending-send recovery. Restore reports the queue failure through the existing `failedCount` feedback while retaining failed work for retry; navigation and sending still require acknowledged file operations. Storage read failures and account-generation fence failures still reject restoration.
+- Removal retains the stored file's bytes, name, MIME type, modification time, source and insertion position for IDs-only undo. Both in-flight and completed deletion can restage that snapshot. Membership restoration alone does not make missing bytes durable or allow navigation.
+- Scope: browser attachment persistence only, through existing Composer restore/error/undo entry points. The native Client attachment lifecycle and public port contract are unchanged.
+- New storage regressions cover persistent stage/remove/settle failures, reservation visibility, retry retention, queued/pre-commit/post-commit/completed deletion undo, failed restaging, unreadable storage and logout fencing. A real-Composer test remounts on the same repository after failed cleanup, restores only the surviving file, blocks sending while writes fail and sends after storage recovers.
+- Validation: the original implementation failed 6 of the first 7 regression cases. After the fixes, all 49 Composer suites / 522 tests, the Web production build, i18n validation and whitespace checks passed. Browser E2E, packaged native Client and full repository typechecking were not rerun for this increment.

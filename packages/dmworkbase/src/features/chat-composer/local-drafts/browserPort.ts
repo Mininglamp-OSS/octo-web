@@ -2,7 +2,7 @@ import type {
   ChatComposerAttachmentDraftPort,
   RestoredLocalAttachmentDraft,
 } from "./contract";
-import type { StoredAttachment } from "./database";
+import { DraftSessionExpiredError, type StoredAttachment } from "./database";
 import {
   draftAccountKey,
   draftKey,
@@ -19,6 +19,16 @@ const createRevision = () =>
   Array.from(crypto.getRandomValues(new Uint8Array(16)), (value) =>
     value.toString(16).padStart(2, "0")
   ).join("");
+
+const restoreFile = (item: StoredAttachment): RestoredLocalAttachmentDraft => ({
+  id: item.id,
+  file: new File([item.file], item.name, {
+    type: item.file.type,
+    lastModified: item.lastModified,
+  }),
+  source: item.source,
+  position: item.position,
+});
 
 /** Browser equivalent of the Client attachment lifecycle; blobs never leave this device. */
 export function createBrowserAttachmentDraftPort(
@@ -39,6 +49,9 @@ export function createBrowserAttachmentDraftPort(
   const removing = new Set<string>();
   const sending = new Set<string>();
   const liveFiles = new Map<string, RestoredLocalAttachmentDraft>();
+  // Editor undo may supply only IDs, even after physical deletion commits.
+  // Keep its bytes for this port's lifetime, independently of current liveness.
+  const removedFiles = new Map<string, RestoredLocalAttachmentDraft>();
   let live = new Set<string>();
   let opened: Promise<void> | undefined;
   let sequence = 0;
@@ -116,7 +129,9 @@ export function createBrowserAttachmentDraftPort(
     removing.add(id);
     return repository.enqueue(conversation + ":files", async () => {
       if (!active() || live.has(id)) return;
-      const revision = entries.get(id)?.revision;
+      const entry = entries.get(id);
+      const revision = entry?.revision;
+      if (entry) removedFiles.set(id, restoreFile(entry));
       // Keep the decision even when physical blob cleanup fails. Document saves
       // also persist membership atomically, including not-yet-staged attachments.
       await repository.database.setAttachmentPresence(
@@ -137,13 +152,19 @@ export function createBrowserAttachmentDraftPort(
       entries.delete(id);
       observed.delete(id);
       // Undo can occur after the transaction starts but before it completes.
-      const restored = live.has(id) ? liveFiles.get(id) : undefined;
-      if (restored) void stage(restored);
+      const restored = live.has(id) ? liveFiles.get(id) ?? removedFiles.get(id) : undefined;
+      if (restored) void stage(restored, restored.position);
     });
   };
   return {
     async restore() {
-      await repository.flush(conversation + ":files");
+      // A failed write must remain retryable and keep navigation unsafe, but
+      // cannot prevent reading unrelated durable files or uncertain sends.
+      let failedCount = 0;
+      await repository.flush(conversation + ":files").catch((error) => {
+        if (error instanceof DraftSessionExpiredError) throw error;
+        failedCount = 1;
+      });
       opened = undefined;
       entries.clear();
       await open();
@@ -167,24 +188,19 @@ export function createBrowserAttachmentDraftPort(
             },
           },
         } : {}),
-        attachments: visible.map((item) => ({
-          id: item.id,
-          file: new File([item.file], item.name, {
-            type: item.file.type,
-            lastModified: item.lastModified,
-          }),
-          source: item.source,
-          position: item.position,
-        })),
-        failedCount: 0,
+        attachments: visible.map(restoreFile),
+        failedCount,
       };
     },
     stage,
     syncLive(ids, files = []) {
       if (!active()) return;
       live = new Set(ids);
+      const undoFiles: RestoredLocalAttachmentDraft[] = [];
       for (const id of ids)
         if (removing.delete(id)) {
+          const restored = removedFiles.get(id);
+          if (restored && !files.some(file => file.id === id)) undoFiles.push(restored);
           void repository
             .enqueue(conversation + ":files", async () => {
               if (active() && live.has(id))
@@ -197,13 +213,13 @@ export function createBrowserAttachmentDraftPort(
             })
             .catch(() => {});
         }
-      files.forEach((file) => {
+      [...files, ...undoFiles].forEach((file) => {
         if (
           !entries.has(file.id) &&
           !saving.has(file.id) &&
           !sending.has(file.id)
         )
-          void stage(file);
+          void stage(file, file.position);
       });
       liveFiles.clear();
       files.forEach((file) => liveFiles.set(file.id, file));
