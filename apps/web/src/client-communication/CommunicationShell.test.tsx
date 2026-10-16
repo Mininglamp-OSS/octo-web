@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resetEmbeddedSessionRevocationForTests } from "../client-feature/sessionRevocation";
 
 const mocks = vi.hoisted(() => {
   const command = {
@@ -239,6 +240,7 @@ describe("CommunicationShell", () => {
   });
 
   beforeEach(() => {
+    resetEmbeddedSessionRevocationForTests();
     vi.clearAllMocks();
     mocks.bridge.reportNavigationCommitted = vi.fn(async () => {});
     mocks.command.listener = undefined;

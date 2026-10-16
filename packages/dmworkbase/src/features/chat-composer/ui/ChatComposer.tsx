@@ -1785,6 +1785,16 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         },
       );
       if (result.kind !== "rejected") restoreUploadAnchors();
+      if (temporaryDocument && result.kind !== "rejected" && result.editorConsumed) {
+        await attachmentDrafts?.consumeStoppedDocument?.().catch((error) => {
+          console.warn("[drafts] temporary document cleanup failed", error);
+          Notification.error({
+            className: "wk-octo-notification",
+            content: t("base.messageInput.draft.cleanupFailed"),
+            duration: 5,
+          });
+        });
+      }
       const keepAttachmentIds =
         result.kind === "rejected"
           ? draftAttachmentIds

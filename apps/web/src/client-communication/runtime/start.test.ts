@@ -10,6 +10,10 @@ import {
   setWebAttachmentHost, subscribeHostAttachmentState, tryHostTakeover,
   type AttachmentPreviewRequest,
 } from "@octo/base/src/features/filePreview/attachmentHost";
+import {
+  resetEmbeddedSessionRevocationForTests,
+  revokeEmbeddedSession,
+} from "../../client-feature/sessionRevocation";
 
 const f = vi.hoisted(() => ({
   store: {
@@ -25,7 +29,7 @@ const f = vi.hoisted(() => ({
     shared: { currentSpaceId: "s", notifyListener: vi.fn() },
     config: {},
     apiClient: { logoutCallback: undefined as (() => void) | undefined },
-    loginInfo: { logout: vi.fn() },
+    loginInfo: { logout: vi.fn(), uid: "alice" },
   },
 }));
 vi.mock("@octo/base/src/bridge/conversationDraftScope", () => ({ currentConversationDraftScope: () => ({server: "test", account: "alice", space: "s"}) }));
@@ -48,9 +52,14 @@ const bootstrap = {
   runtime, space: { id: "s", name: "" }, initialPage: "chat", initialPresentation: "workspace",
 } as CommunicationBootstrap;
 beforeEach(() => {
+  resetEmbeddedSessionRevocationForTests();
   vi.clearAllMocks();
   f.app.apiClient.logoutCallback = undefined;
   f.app.shared.currentSpaceId = "s";
+  f.app.loginInfo.uid = "alice";
+  f.app.loginInfo.logout.mockImplementation(() => {
+    f.app.loginInfo.uid = "";
+  });
   vi.spyOn(APIClient.shared, "get").mockResolvedValue({ fallback: true });
 });
 afterEach(() => vi.restoreAllMocks());
@@ -84,6 +93,25 @@ describe("communication runtime composition", () => {
     expect(f.clearDrafts).toHaveBeenCalledExactlyOnceWith({server: "test", account: "alice", space: "s"});
     expect(f.app.loginInfo.logout).toHaveBeenCalledOnce();
     expect(f.clearDrafts.mock.invocationCallOrder[0]).toBeLessThan(f.app.loginInfo.logout.mock.invocationCallOrder[0]);
+    owner.dispose();
+  });
+  it("shares the runtime cleanup with the shell after logout clears the account", async () => {
+    let finish!: () => void;
+    const cleanup = new Promise<void>(resolve => { finish = resolve; });
+    f.clearDrafts.mockReturnValueOnce(cleanup);
+    const h = hostFixture();
+    const owner = await startCommunicationRuntime(h.host, bootstrap);
+    h.legacy({ type: "sessionRevoked" });
+    expect(f.app.loginInfo.uid).toBe("");
+    const shellCleanup = revokeEmbeddedSession();
+    let settled = false;
+    void shellCleanup.then(() => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(f.app.loginInfo.logout).toHaveBeenCalledOnce();
+    finish();
+    await shellCleanup;
+    expect(settled).toBe(true);
     owner.dispose();
   });
   it("holds shared data with no UI, ignores unscoped navigation, then mounts the same owner", async () => {

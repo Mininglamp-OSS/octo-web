@@ -21,6 +21,7 @@ export function withConversationDocument(
   const key = draftKey(scope, channel);
   const documentWrites = new AbortController();
   let loaded = false;
+  let stoppedRevision: number | undefined;
   return {
     ...attachments,
     async restore() {
@@ -45,8 +46,13 @@ export function withConversationDocument(
       await repository.mergeConflict(scope, channel, draft, documentWrites.signal);
     },
     stopDocumentSaving() {
+      stoppedRevision ??= repository.durableRevision(scope, channel);
       documentWrites.abort();
       repository.forgetCancelledDocument(scope, channel, documentWrites.signal);
+    },
+    consumeStoppedDocument() {
+      if (stoppedRevision === undefined) return Promise.resolve();
+      return repository.consumeDocument(scope, channel, stoppedRevision);
     },
     flushDocument: () => repository.flush(key),
     recoverDocument(attemptId, recovered) {

@@ -1,11 +1,12 @@
 {
   "messageInput.draft.saveRecovery": "Draft storage is unavailable. Retry saving, or continue without saving this draft. Your last saved copy will be kept.",
   "messageInput.draft.retrySave": "Retry saving",
-  "messageInput.draft.temporaryDocumentNotice": "Changes to this draft will not be saved. The last saved copy is kept. Attachments still require safe storage before sending.",
+  "messageInput.draft.temporaryDocumentNotice": "Changes to this draft will not be saved. The last saved copy is kept until a message is sent successfully. Attachments still require safe storage before sending.",
   "messageInput.draft.conflictTitle": "Draft updated in another window",
   "messageInput.draft.conflictBody": "Merge this draft with the draft from the other window to continue editing. Both versions will be kept. Review the merged content before sending.",
   "messageInput.draft.merge": "Merge drafts and continue",
   "messageInput.draft.saveFailed": "Could not save this draft on this device. Keep this page open and try again.",
+  "messageInput.draft.cleanupFailed": "The message was sent, but the saved draft could not be cleared. Reopen this conversation before sending again.",
   "chatPage.loadingName": "Loading name...",
   "chatPage.nameUnavailable": "Name unavailable",
   "base.workspaceGroup.title": "Workspace relation",

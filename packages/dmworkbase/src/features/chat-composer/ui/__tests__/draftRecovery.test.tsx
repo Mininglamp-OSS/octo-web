@@ -261,7 +261,7 @@ it("keeps the visible retry action fenced after failed generation capture and ot
   view.unmount();
 });
 
-it("recovers from persistent post-load write failure without changing saved content or losing failed sends", async () => {
+it("preserves a failed temporary send and consumes the durable copy after success", async () => {
   const { db, port } = fixture();
   const drafts = port("a");
   let context!: MessageInputContext;
@@ -286,10 +286,11 @@ it("recovers from persistent post-load write failure without changing saved cont
   onSend.mockRejectedValueOnce(new Error("network offline"));
   await act(async () => { await context.send(); });
   expect(view.container.querySelector(".tiptap")!.textContent).toBe(liveText);
+  expect(await db.read("drafts", key)).toEqual(saved);
   await act(async () => { await context.send(); });
   expect(onSend).toHaveBeenCalledTimes(2);
   expect(view.container.querySelector(".tiptap")!.textContent).toBe("");
-  expect(await db.read("drafts", key)).toEqual(saved);
+  expect(await db.read("drafts", key)).toBeUndefined();
   view.unmount();
 });
 
@@ -355,7 +356,7 @@ it("does not bypass a cross-window conflict through save recovery", async () => 
   view.unmount();
 });
 
-it("fences a held document write before temporary sending and restores the protected copy", async () => {
+it("fences a held document write and consumes the protected copy after temporary sending", async () => {
   const { db, repository, port } = fixture();
   const drafts = port("a");
   let context!: MessageInputContext;
@@ -366,7 +367,6 @@ it("fences a held document write before temporary sending and restores the prote
   act(() => context.insertText("last saved copy"));
   await act(async () => { await drafts.flushDocument!(); });
   const key = draftKey(scope, { id: "a", type: 2 });
-  const saved = await db.read<DraftRecord>("drafts", key);
   const write = db.writeDraft.bind(db);
   const fault = vi.spyOn(db, "writeDraft").mockRejectedValueOnce(new DOMException("full", "QuotaExceededError"));
   act(() => context.clear());
@@ -382,16 +382,16 @@ it("fences a held document write before temporary sending and restores the prote
   await act(async () => { await context.send(); });
   expect(onSend).toHaveBeenCalledOnce();
   expect(view.container.querySelector(".tiptap")!.textContent).toBe("");
-  expect(await db.read("drafts", key)).toEqual(saved);
+  expect(await db.read("drafts", key)).toBeUndefined();
   await act(async () => { release(); await repository.flush(key); });
-  expect(await db.read("drafts", key)).toEqual(saved);
+  expect(await db.read("drafts", key)).toBeUndefined();
   view.unmount();
   let restored: MessageInputContext | undefined;
   const reopened = render(<ChatComposer host={createTestViewHost("a")}
     attachmentDrafts={port("a", new ConversationDraftRepository(db))}
     onContext={next => { restored = next; }} />);
   await waitFor(() => expect(restored).toBeDefined());
-  expect(reopened.container.querySelector(".tiptap")!.textContent).toBe("last saved copy");
+  expect(reopened.container.querySelector(".tiptap")!.textContent).toBe("");
   reopened.unmount();
 });
 

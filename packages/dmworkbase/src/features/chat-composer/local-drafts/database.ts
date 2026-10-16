@@ -260,6 +260,28 @@ export class DraftDatabase {
     });
   }
 
+  async deleteDraft(
+    key: string,
+    expectedRevision: number,
+    session: DraftSession
+  ): Promise<void> {
+    let conflict = false;
+    await this.mutate<void>(["drafts"], session, (tx) => {
+      const store = tx.objectStore("drafts");
+      const request = store.get(key);
+      request.onsuccess = () => {
+        if ((request.result?.revision ?? 0) !== expectedRevision) {
+          conflict = true;
+          tx.abort();
+          return;
+        }
+        store.delete(key);
+      };
+    }).catch((error) => {
+      throw conflict ? new DraftConflictError() : error;
+    });
+  }
+
   async changeAttachments(
     conversation: string,
     change: (records: StoredAttachment[]) => StoredAttachment[],

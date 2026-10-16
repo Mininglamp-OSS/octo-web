@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
 import { File as NodeFile } from "node:buffer";
-import { DraftDatabase } from "./database";
+import { DraftConflictError, DraftDatabase } from "./database";
 import { ConversationDraftRepository } from "./repository";
 import { createBrowserAttachmentDraftPort } from "./browserPort";
 import { withConversationDocument } from "./documentPort";
@@ -95,6 +95,22 @@ describe("conversation draft preview", () => {
 });
 
 describe("local draft persistence", () => {
+  it("does not consume a newer document when temporary sending settles late", async () => {
+    const { db, port } = fixture();
+    const temporary = port();
+    await temporary.restore();
+    await temporary.saveDocument!(document("saved copy"));
+    temporary.stopDocumentSaving!();
+    const other = new ConversationDraftRepository(db);
+    await other.load(scope, channel);
+    await other.save(scope, channel, document("newer window"));
+    await expect(temporary.consumeStoppedDocument!()).rejects.toBeInstanceOf(
+      DraftConflictError
+    );
+    expect(await new ConversationDraftRepository(db).load(scope, channel)).toEqual(
+      document("newer window")
+    );
+  });
   it("merges conflicting drafts explicitly and permits subsequent saves", async () => {
     const { db, repository } = fixture();
     const other = new ConversationDraftRepository(db);

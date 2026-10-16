@@ -100,6 +100,9 @@ export class ConversationDraftRepository {
   preview(scope: DraftScope, channel: DraftChannel) {
     return this.records.get(draftKey(scope, channel))?.preview;
   }
+  durableRevision(scope: DraftScope, channel: DraftChannel) {
+    return this.revisions.get(draftKey(scope, channel)) ?? 0;
+  }
   loadScope(scope: DraftScope): Promise<void> {
     const key = draftScopeKey(scope);
     const epoch = this.epoch(scope);
@@ -200,6 +203,29 @@ export class ConversationDraftRepository {
     this.notify({ scope: draftScopeKey(scope), key });
     // Refresh inactive-row previews too, without overwriting a newer owner.
     void this.loadScope(scope).catch(() => {});
+  }
+  async consumeDocument(
+    scope: DraftScope,
+    channel: DraftChannel,
+    expectedRevision: number
+  ) {
+    const key = draftKey(scope, channel);
+    const epoch = this.epoch(scope);
+    await this.database.deleteDraft(
+      key,
+      expectedRevision,
+      await this.session(scope)
+    );
+    if (!this.active(scope, epoch)) return;
+    const current = this.records.get(key);
+    if (!current || current.revision <= expectedRevision) {
+      this.records.delete(key);
+      this.documentOwners.delete(key);
+      this.revisions.delete(key);
+      this.failed.delete(key);
+      this.loadedScopes.delete(draftScopeKey(scope));
+      this.notify({ scope: draftScopeKey(scope), key });
+    }
   }
   async mergeConflict(
     scope: DraftScope,
