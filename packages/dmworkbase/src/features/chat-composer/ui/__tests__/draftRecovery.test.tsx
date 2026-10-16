@@ -174,6 +174,57 @@ it("retries a transient restore failure and enables typing and sending", async (
   view.unmount();
 });
 
+it.each(["retry", "temporary"] as const)(
+  "keeps an attachment queued during restore failure after choosing %s",
+  async (choice) => {
+    const { db, port } = fixture();
+    const drafts = port("queued");
+    vi.spyOn(drafts, "restore").mockRejectedValueOnce(
+      new Error("transient read failure")
+    );
+    const stage = vi.spyOn(drafts, "stage");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    let addAttachment!: (files: File[]) => void | Promise<void>;
+    let context: MessageInputContext | undefined;
+    const view = render(<ChatComposer host={createTestViewHost("queued")}
+      attachmentDrafts={drafts}
+      onAddAttachment={next => { addAttachment = next; }}
+      onContext={next => { context = next; }} />);
+    const action = await view.findByRole("button", {
+      name: choice === "retry"
+        ? /重新读取|Retry loading/
+        : /使用临时草稿|Use temporary draft/,
+    });
+    await waitFor(() => expect(addAttachment).toBeDefined());
+    let pending!: void | Promise<void>;
+    act(() => {
+      pending = addAttachment([new File(["queued bytes"], "queued.zip")]);
+    });
+    fireEvent.click(action);
+    await act(async () => { await pending; });
+    await waitFor(() => expect(context).toBeDefined());
+    expect(context!.getAttachmentFiles().map(file => file.name)).toEqual([
+      "queued.zip",
+    ]);
+
+    if (choice === "retry") {
+      expect(stage).toHaveBeenCalledOnce();
+      const restored = await port(
+        "queued",
+        new ConversationDraftRepository(db)
+      ).restore();
+      expect(await restored.attachments[0].file.text()).toBe("queued bytes");
+    } else {
+      expect(stage).not.toHaveBeenCalled();
+      expect((await port(
+        "queued",
+        new ConversationDraftRepository(db)
+      ).restore()).attachments).toEqual([]);
+    }
+    view.unmount();
+  }
+);
+
 it("sends in temporary mode without modifying unread saved drafts or attachments", async () => {
   const { db, port } = fixture();
   const drafts = port("a");
@@ -559,6 +610,116 @@ it("does not bypass a cross-window conflict through save recovery", async () => 
   await act(async () => { await context.send(); });
   expect(onSend).not.toHaveBeenCalled();
   expect(view.queryByRole("button", { name: /使用临时草稿|Use temporary draft/ })).toBeNull();
+  view.unmount();
+});
+
+it.each(["cancel", "merge failure"] as const)(
+  "shows durable save recovery after conflict %s",
+  async (resolution) => {
+    const { port } = fixture();
+    const drafts = port(`conflict-${resolution}`);
+    let context!: MessageInputContext;
+    const view = render(<ChatComposer
+      host={createTestViewHost(`conflict-${resolution}`)}
+      attachmentDrafts={drafts}
+      onContext={next => { context = next; }} />);
+    await waitFor(() => expect(context).toBeDefined());
+    const save = vi.spyOn(drafts, "saveDocument")
+      .mockRejectedValueOnce(new DraftConflictError());
+    act(() => context.insertText("conflict"));
+    await waitFor(() => expect(wkConfirm).toHaveBeenCalled());
+    const confirmCalls = vi.mocked(wkConfirm).mock.calls;
+    const dialog = confirmCalls[confirmCalls.length - 1]![0];
+
+    if (resolution === "cancel") {
+      dialog.onCancel?.({} as React.MouseEvent<HTMLButtonElement>);
+      save.mockRejectedValueOnce(new Error("disk busy"));
+      act(() => context.insertText(" after cancel"));
+    } else {
+      vi.spyOn(drafts, "mergeDocumentConflict").mockRejectedValueOnce(
+        new Error("merge failed")
+      );
+      save.mockRejectedValueOnce(new Error("disk busy"));
+      await expect(
+        dialog.onOk?.({} as React.MouseEvent<HTMLButtonElement>)
+      ).rejects.toThrow("merge failed");
+    }
+
+    await view.findByRole("button", { name: /重试保存|Retry saving/ });
+    view.unmount();
+  }
+);
+
+it("clears conflict suppression after a later successful save", async () => {
+  const { port } = fixture();
+  const drafts = port("conflict-success");
+  let context!: MessageInputContext;
+  const view = render(<ChatComposer host={createTestViewHost("conflict-success")}
+    attachmentDrafts={drafts} onContext={next => { context = next; }} />);
+  await waitFor(() => expect(context).toBeDefined());
+  const save = vi.spyOn(drafts, "saveDocument")
+    .mockRejectedValueOnce(new DraftConflictError());
+  act(() => context.insertText("conflict"));
+  await waitFor(() => expect(wkConfirm).toHaveBeenCalled());
+
+  save.mockResolvedValueOnce(undefined);
+  act(() => context.insertText(" saved"));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+
+  save.mockRejectedValueOnce(new Error("later disk failure"));
+  act(() => context.insertText(" then failed"));
+  await view.findByRole("button", { name: /重试保存|Retry saving/ });
+  view.unmount();
+});
+
+it("queues an attachment while a conflict merge reloads the draft", async () => {
+  const { port } = fixture();
+  const drafts = port("conflict-merge-queue");
+  let context!: MessageInputContext;
+  let addAttachment!: (files: File[]) => void | Promise<void>;
+  const view = render(<ChatComposer
+    host={createTestViewHost("conflict-merge-queue")}
+    attachmentDrafts={drafts}
+    onAddAttachment={next => { addAttachment = next; }}
+    onContext={next => { context = next; }} />);
+  await waitFor(() => expect(context).toBeDefined());
+  vi.spyOn(drafts, "saveDocument").mockRejectedValueOnce(
+    new DraftConflictError()
+  );
+  act(() => context.insertText("conflict"));
+  await waitFor(() => expect(wkConfirm).toHaveBeenCalled());
+  const confirmCalls = vi.mocked(wkConfirm).mock.calls;
+  const dialog = confirmCalls[confirmCalls.length - 1]![0];
+  let releaseMerge!: () => void;
+  const mergeGate = new Promise<void>(resolve => { releaseMerge = resolve; });
+  const merge = vi.spyOn(drafts, "mergeDocumentConflict")
+    .mockImplementation(async () => { await mergeGate; });
+
+  let merging!: Promise<void>;
+  act(() => {
+    merging = Promise.resolve(
+      dialog.onOk?.({} as React.MouseEvent<HTMLButtonElement>)
+    );
+  });
+  await waitFor(() => expect(merge).toHaveBeenCalledOnce());
+  let attachmentSettled = false;
+  let pendingAttachment!: Promise<void>;
+  act(() => {
+    pendingAttachment = Promise.resolve(
+      addAttachment([new File(["queued"], "during-merge.zip")])
+    ).then(() => { attachmentSettled = true; });
+  });
+  await act(async () => { await Promise.resolve(); });
+  expect(attachmentSettled).toBe(false);
+
+  await act(async () => {
+    releaseMerge();
+    await merging;
+    await pendingAttachment;
+  });
+  expect(context.getAttachmentFiles().map(file => file.name)).toContain(
+    "during-merge.zip"
+  );
   view.unmount();
 });
 

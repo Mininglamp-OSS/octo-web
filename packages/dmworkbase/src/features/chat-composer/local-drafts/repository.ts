@@ -150,6 +150,9 @@ export class ConversationDraftRepository {
     const cleaned = {
       document: cleanDraftDocument(draft.document),
       topAttachments: draft.topAttachments.map((item) => ({ ...item })),
+      ...(draft.leafNodeTypes?.length
+        ? { leafNodeTypes: [...draft.leafNodeTypes] }
+        : {}),
       ...(draft.recoveredAttemptIds?.length
         ? { recoveredAttemptIds: [...draft.recoveredAttemptIds] }
         : {}),

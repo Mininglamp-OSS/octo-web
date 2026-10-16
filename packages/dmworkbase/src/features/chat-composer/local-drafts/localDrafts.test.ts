@@ -11,7 +11,9 @@ import { createBrowserAttachmentDraftPort } from "./browserPort";
 import { withConversationDocument } from "./documentPort";
 import {
   conversationDraftPreview,
+  draftDocumentSize,
   mergeConflictingDrafts,
+  mergeRecoveredDraft,
   draftKey,
   type ConversationDraft,
   type DraftRecord,
@@ -49,6 +51,53 @@ afterEach(() => {
 });
 
 describe("conversation draft preview", () => {
+  it("uses ProseMirror sizes for empty blocks and leaf nodes", () => {
+    expect(draftDocumentSize({ type: "paragraph" })).toBe(2);
+    expect(draftDocumentSize({ type: "mention", attrs: { id: "u" } })).toBe(1);
+    expect(draftDocumentSize({ type: "attachment", attrs: { id: "a" } })).toBe(1);
+    expect(draftDocumentSize({ type: "hardBreak" })).toBe(1);
+    expect(
+      draftDocumentSize(
+        { type: "customAtom", attrs: { id: "custom" } },
+        new Set(["customAtom"])
+      )
+    ).toBe(1);
+    expect(draftDocumentSize({
+      type: "doc",
+      content: [{ type: "paragraph" }, { type: "paragraph" }],
+    })).toBe(4);
+  });
+  it("offsets retained anchors past empty recovered and conflict paragraphs", () => {
+    const emptyParagraph = document("");
+    emptyParagraph.document.content = [{ type: "paragraph" }];
+    const current = document("current");
+    current.topAttachments = [{ id: "current", name: "current.zip", position: 1 }];
+    expect(
+      mergeRecoveredDraft(current, emptyParagraph, "attempt").topAttachments
+    ).toContainEqual({ id: "current", name: "current.zip", position: 3 });
+
+    const remote = document("remote");
+    remote.topAttachments = [{ id: "remote", name: "remote.zip", position: 1 }];
+    expect(
+      mergeConflictingDrafts(emptyParagraph, remote, 2).topAttachments
+    ).toContainEqual({ id: "remote", name: "remote.zip", position: 3 });
+  });
+  it("uses persisted extension leaf types when offsetting recovered anchors", () => {
+    const recovered: ConversationDraft = {
+      document: { type: "doc", content: [{ type: "customAtom" }] },
+      topAttachments: [],
+      leafNodeTypes: ["customAtom"],
+    };
+    const current = document("current");
+    current.topAttachments = [{ id: "current", name: "current.zip", position: 1 }];
+    const merged = mergeRecoveredDraft(current, recovered, "custom-atom");
+    expect(merged.topAttachments).toContainEqual({
+      id: "current",
+      name: "current.zip",
+      position: 2,
+    });
+    expect(merged.leafNodeTypes).toContain("customAtom");
+  });
   it("keeps both conflict texts but does not duplicate shared attachment identities", () => {
     const local = document("local");
     const remote = document("remote");

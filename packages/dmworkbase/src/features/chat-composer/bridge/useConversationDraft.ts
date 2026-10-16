@@ -3,7 +3,10 @@ import type { Editor } from "@tiptap/core";
 import type { Transaction } from "@tiptap/pm/state";
 import type { ChatComposerAttachmentStore } from "../editor/attachmentStore";
 import type { ChatComposerAttachmentDraftPort } from "../local-drafts";
-import type { ConversationDraft } from "../local-drafts/model";
+import {
+  DEFAULT_DRAFT_LEAF_NODE_TYPES,
+  type ConversationDraft,
+} from "../local-drafts/model";
 
 interface DraftAttachment {
   id: string;
@@ -11,14 +14,24 @@ interface DraftAttachment {
   previewUrl?: string;
 }
 
+interface UseConversationDraftOptions {
+  isMounted: () => boolean;
+  onError: (error: unknown) => void;
+  persistenceEnabled?: boolean;
+  onSaved?: () => void;
+}
+
 /** Keeps upload anchors in document coordinates while retaining the existing top tray. */
 export function useConversationDraft<T extends DraftAttachment>(
   editor: Editor | null,
   store: ChatComposerAttachmentStore<T>,
   port: ChatComposerAttachmentDraftPort | undefined,
-  isMounted: () => boolean,
-  onError: (error: unknown) => void,
-  persistenceEnabled = true
+  {
+    isMounted,
+    onError,
+    persistenceEnabled = true,
+    onSaved,
+  }: UseConversationDraftOptions
 ) {
   const state = useMemo(
     () => ({
@@ -33,19 +46,32 @@ export function useConversationDraft<T extends DraftAttachment>(
     [port]
   );
   state.persistenceEnabled = persistenceEnabled;
-  const capture = (): ConversationDraft => ({
-    document: editor?.getJSON() ?? {
-      type: "doc",
-      content: [{ type: "paragraph" }],
-    },
-    recoveredAttemptIds: [...state.recovered],
-    topAttachments: store.snapshotTopAttachments().map((item) => ({
-      id: item.id,
-      name: item.name,
-      position:
-        state.anchors.get(item.id) ?? editor?.state.doc.content.size ?? 0,
-    })),
-  });
+  const capture = (): ConversationDraft => {
+    const extensionLeafNodeTypes = editor
+      ? Object.values(editor.schema.nodes)
+          .filter(
+            (type) =>
+              type.isLeaf && !DEFAULT_DRAFT_LEAF_NODE_TYPES.has(type.name)
+          )
+          .map((type) => type.name)
+      : [];
+    return {
+      document: editor?.getJSON() ?? {
+        type: "doc",
+        content: [{ type: "paragraph" }],
+      },
+      recoveredAttemptIds: [...state.recovered],
+      topAttachments: store.snapshotTopAttachments().map((item) => ({
+        id: item.id,
+        name: item.name,
+        position:
+          state.anchors.get(item.id) ?? editor?.state.doc.content.size ?? 0,
+      })),
+      ...(extensionLeafNodeTypes.length
+        ? { leafNodeTypes: extensionLeafNodeTypes }
+        : {}),
+    };
+  };
   const save = () => {
     if (
       !state.persistenceEnabled ||
@@ -59,6 +85,7 @@ export function useConversationDraft<T extends DraftAttachment>(
     void port.saveDocument(capture()).then(
       () => {
         state.errorShown = false;
+        onSaved?.();
       },
       (error) => {
         if (state.persistenceEnabled && !state.errorShown && isMounted()) {
@@ -94,10 +121,12 @@ export function useConversationDraft<T extends DraftAttachment>(
       state.ready = false;
     },
     async retrySave() {
-      if (!state.persistenceEnabled || !state.ready || !port?.saveDocument) return;
+      if (!state.persistenceEnabled || !state.ready || !port?.saveDocument)
+        return;
       await port.saveDocument(capture());
       await port.flushDocument?.();
       state.errorShown = false;
+      onSaved?.();
     },
     retryErrors() {
       state.errorShown = false;
@@ -131,6 +160,9 @@ export function useConversationDraft<T extends DraftAttachment>(
     loaded() {
       state.ready = true;
       save();
+    },
+    readyWithoutSaving() {
+      state.ready = true;
     },
   };
 }

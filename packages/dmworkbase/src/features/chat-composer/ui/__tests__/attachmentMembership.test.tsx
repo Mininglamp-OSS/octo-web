@@ -87,6 +87,58 @@ it("captures the file generation before publishing it to the Composer and preser
   view.unmount();
 });
 
+it("preserves a foreign same-ID replacement when a failed older send is retained and then removed", async () => {
+  const { client } = fixture();
+  const original = client();
+  let context!: MessageInputContext;
+  let releaseSend!: () => void;
+  const sendGate = new Promise<void>((resolve) => { releaseSend = resolve; });
+  const onSend = vi.fn(async () => {
+    await sendGate;
+    return createChatSendOutcome();
+  });
+  const view = render(<ChatComposer host={createTestViewHost(channel.id)}
+    attachmentDrafts={original.port} onSend={onSend}
+    onContext={next => { context = next; }} />);
+  await waitFor(() => expect(context).toBeDefined());
+  await act(async () => {
+    await context.addAttachment([new File(["original bytes"], "report.txt")]);
+    await original.port.flushDocument!();
+  });
+  const [attachment] = original.repository.records.get(key)!.draft.topAttachments;
+
+  let sending!: ReturnType<MessageInputContext["send"]>;
+  act(() => { sending = context.send(); });
+  await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+
+  const replacement = client();
+  await replacement.port.restore();
+  expect(await replacement.port.stage({
+    id: attachment.id,
+    file: new File(["replacement bytes"], "report.txt"),
+    source: "upload",
+  })).toBe(true);
+
+  await act(async () => {
+    releaseSend();
+    await sending;
+  });
+  await waitFor(() =>
+    expect(context.getAttachmentFiles().map(file => file.name)).toEqual(["report.txt"])
+  );
+  let restored = await client().port.restore();
+  expect(await restored.attachments[0].file.text()).toBe("replacement bytes");
+
+  fireEvent.click(view.getByRole("button", { name: /移除|Remove/ }));
+  await waitFor(() => expect(context.getAttachmentFiles()).toEqual([]));
+  await act(async () => { await original.repository.flush(key + ":files"); });
+
+  restored = await client().port.restore();
+  expect(restored.attachments).toHaveLength(1);
+  expect(await restored.attachments[0].file.text()).toBe("replacement bytes");
+  view.unmount();
+});
+
 it.each([false, true])("retains unsent files after real send recovery writes fail and temporary mode is chosen (partial: %s)", async partial => {
   const { client } = fixture();
   const current = client();

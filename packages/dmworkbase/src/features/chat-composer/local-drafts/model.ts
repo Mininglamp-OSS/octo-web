@@ -19,13 +19,29 @@ export interface ConversationDraft {
   document: JSONContent;
   topAttachments: DraftTopAttachment[];
   recoveredAttemptIds?: string[];
+  /** ProseMirror leaf node names needed to size extension-provided atoms. */
+  leafNodeTypes?: string[];
 }
 
-export function draftDocumentSize(node: JSONContent): number {
+export const DEFAULT_DRAFT_LEAF_NODE_TYPES: ReadonlySet<string> = new Set([
+  "text",
+  "attachment",
+  "mention",
+  "hardBreak",
+]);
+
+export function draftDocumentSize(
+  node: JSONContent,
+  extensionLeafNodeTypes: ReadonlySet<string> = new Set()
+): number {
   if (node.type === "text") return node.text?.length ?? 0;
-  if (!node.content) return 1;
-  return node.content.reduce(
-    (size, child) => size + draftDocumentSize(child),
+  if (
+    DEFAULT_DRAFT_LEAF_NODE_TYPES.has(node.type ?? "") ||
+    extensionLeafNodeTypes.has(node.type ?? "")
+  )
+    return 1;
+  return (node.content ?? []).reduce(
+    (size, child) => size + draftDocumentSize(child, extensionLeafNodeTypes),
     node.type === "doc" ? 0 : 2
   );
 }
@@ -36,7 +52,8 @@ export function mergeRecoveredDraft(
   attemptId: string
 ): ConversationDraft {
   if (current?.recoveredAttemptIds?.includes(attemptId)) return current;
-  const offset = draftDocumentSize(recovered.document);
+  const recoveredLeafNodeTypes = new Set(recovered.leafNodeTypes ?? []);
+  const offset = draftDocumentSize(recovered.document, recoveredLeafNodeTypes);
   const ids = new Set(recovered.topAttachments.map((item) => item.id));
   return {
     document: {
@@ -59,6 +76,16 @@ export function mergeRecoveredDraft(
         attemptId,
       ]),
     ],
+    ...(recovered.leafNodeTypes?.length || current?.leafNodeTypes?.length
+      ? {
+          leafNodeTypes: [
+            ...new Set([
+              ...(recovered.leafNodeTypes ?? []),
+              ...(current?.leafNodeTypes ?? []),
+            ]),
+          ],
+        }
+      : {}),
   };
 }
 export interface DraftRecord {
@@ -102,6 +129,7 @@ export function cleanDraftDocument(node: JSONContent): JSONContent {
 
 /** Positions use ProseMirror coordinates, including paragraph boundaries. */
 export function conversationDraftPreview(draft: ConversationDraft): string {
+  const leafNodeTypes = new Set(draft.leafNodeTypes ?? []);
   const anchors = [...draft.topAttachments].sort(
     (a, b) => a.position - b.position
   );
@@ -134,9 +162,13 @@ export function conversationDraftPreview(draft: ConversationDraft): string {
       result += " ";
       return 1;
     }
-    if (!node.content) return 1;
+    if (
+      DEFAULT_DRAFT_LEAF_NODE_TYPES.has(node.type ?? "") ||
+      leafNodeTypes.has(node.type ?? "")
+    )
+      return 1;
     let offset = node.type === "doc" ? 0 : 1;
-    node.content.forEach((child) => {
+    (node.content ?? []).forEach((child) => {
       offset += visit(child, position + offset);
     });
     insert(position + offset);
@@ -154,6 +186,7 @@ export function mergeConflictingDrafts(
   remote: ConversationDraft,
   revision: number
 ): ConversationDraft {
+  const remoteLeafNodeTypes = new Set(remote.leafNodeTypes ?? []);
   const ids = new Set(local.topAttachments.map((item) => item.id));
   const collect = (node: JSONContent) => {
     if (node.type === "attachment") ids.add(node.attrs?.id);
@@ -174,7 +207,7 @@ export function mergeConflictingDrafts(
           ? {
               content: node.content.flatMap((child) => {
                 const result = deduplicate(child, position + offset);
-                offset += draftDocumentSize(child);
+                offset += draftDocumentSize(child, remoteLeafNodeTypes);
                 return result;
               }),
             }

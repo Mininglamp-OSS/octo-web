@@ -57,6 +57,7 @@ export function createBrowserAttachmentDraftPort(
   // Editor undo may supply only IDs, even after physical deletion commits.
   // Keep its bytes for this port's lifetime, independently of current liveness.
   const removedFiles = new Map<string, RestoredLocalAttachmentDraft>();
+  const removedRevisions = new Map<string, string[]>();
   let live = new Set<string>();
   let opened: Promise<void> | undefined;
   let sequence = 0;
@@ -154,24 +155,35 @@ export function createBrowserAttachmentDraftPort(
     return repository.enqueue(conversation + ":files", async () => {
       if (!active() || live.has(id)) return;
       const entry = entries.get(id);
-      const revision = entry?.revision ?? ownedRevisions.get(id);
-      if (entry) removedFiles.set(id, restoreFile(entry));
+      const revisions = [...new Set([
+        ownedRevisions.get(id),
+        ownedDurableRevisions.get(id),
+      ].filter((revision): revision is string => !!revision))];
+      const ownedEntry = entry && revisions.includes(entry.revision)
+        ? entry
+        : undefined;
+      const removedFile = liveFiles.get(id) ?? (ownedEntry ? restoreFile(ownedEntry) : undefined);
+      if (removedFile) removedFiles.set(id, removedFile);
+      removedRevisions.set(id, revisions);
       // Keep the decision even when physical blob cleanup fails. Document saves
       // also persist membership atomically, including not-yet-staged attachments.
-      await repository.database.setAttachmentPresence(
-        conversation,
-        id,
-        false,
-        await session(),
-        revision
-      );
+      const capturedSession = await session();
+      for (const revision of revisions)
+        await repository.database.setAttachmentPresence(
+          conversation,
+          id,
+          false,
+          capturedSession,
+          revision
+        );
+      const owned = new Set(revisions);
       await repository.database.changeAttachments(
         conversation,
         (records) =>
           records.filter(
-            (item) => item.id !== id || item.revision !== revision
+            (item) => item.id !== id || !owned.has(item.revision)
           ),
-        await session()
+        capturedSession
       );
       entries.delete(id);
       storedRevisions.delete(id);
@@ -247,16 +259,18 @@ export function createBrowserAttachmentDraftPort(
       for (const id of ids)
         if (removing.delete(id)) {
           const restored = removedFiles.get(id);
-          const revision = ownedRevisions.get(id);
+          const revisions = removedRevisions.get(id) ?? [];
           if (restored && !files.some(file => file.id === id)) undoFiles.push(restored);
           void repository
             .enqueue(conversation + ":files", async () => {
-              if (active() && live.has(id))
+              if (!active() || !live.has(id)) return;
+              const capturedSession = await session();
+              for (const revision of revisions)
                 await repository.database.setAttachmentPresence(
                   conversation,
                   id,
                   true,
-                  await session(),
+                  capturedSession,
                   revision
                 );
             })
@@ -281,7 +295,14 @@ export function createBrowserAttachmentDraftPort(
       return (
         !active() ||
         (repository.saved(conversation + ":files") &&
-          ids.every((id) => entries.has(id) && !saving.has(id)))
+          ids.every((id) => {
+            const entry = entries.get(id);
+            return (
+              !!entry &&
+              ownedDurableRevisions.get(id) === entry.revision &&
+              !saving.has(id)
+            );
+          }))
       );
     },
     async discardUnready(ids) {
@@ -319,10 +340,11 @@ export function createBrowserAttachmentDraftPort(
             await session()
           );
           records.forEach((record) => {
-            entries.set(record.id, record);
-            storedRevisions.set(record.id, record.revision);
-            if (record.reserved === sendId)
+            if (record.reserved === sendId) {
+              entries.set(record.id, record);
+              storedRevisions.set(record.id, record.revision);
               attachmentRevisions.set(record.id, record.revision);
+            }
           });
         },
         false
@@ -351,15 +373,13 @@ export function createBrowserAttachmentDraftPort(
             );
             ids.forEach((id) => {
               sending.delete(id);
-              if (!keep.includes(id)) {
-                entries.delete(id);
-                storedRevisions.delete(id);
-              }
+              entries.delete(id);
+              storedRevisions.delete(id);
             });
             retained.forEach((record) => {
-              entries.set(record.id, record);
-              storedRevisions.set(record.id, record.revision);
               if (record.revision === recoveredRevisions.get(record.id)) {
+                entries.set(record.id, record);
+                storedRevisions.set(record.id, record.revision);
                 ownedRevisions.set(record.id, record.revision);
                 ownedDurableRevisions.set(record.id, record.revision);
               }

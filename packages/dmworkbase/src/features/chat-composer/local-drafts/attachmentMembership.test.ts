@@ -126,6 +126,37 @@ it("does not let an older document remove a same-ID replacement staged in anothe
   expect(await restoredContents()).toEqual(["replacement bytes"]);
 });
 
+it.each(["before reservation", "after reservation"] as const)(
+  "does not let a failed older send remove a foreign replacement staged %s",
+  async (replacementTiming) => {
+    const { client, restoredContents } = setup();
+    const original = client();
+    await original.port.restore();
+    const originalFile = attachment("original bytes");
+    await original.port.stage(originalFile);
+    original.port.syncLive([attachmentId], [originalFile]);
+    await original.port.saveDocument!(withFile);
+
+    const replacement = client();
+    await replacement.port.restore();
+    if (replacementTiming === "before reservation")
+      await replacement.port.stage(attachment("replacement bytes"));
+
+    const send = original.port.beginSend([attachmentId]);
+    await send.ready;
+    if (replacementTiming === "after reservation")
+      await replacement.port.stage(attachment("replacement bytes"));
+
+    await send.settle([attachmentId]);
+    expect(original.port.canLeave([attachmentId])).toBe(false);
+    expect(await restoredContents()).toEqual(["replacement bytes"]);
+
+    original.port.syncLive([]);
+    await original.flushFiles();
+    expect(await restoredContents()).toEqual(["replacement bytes"]);
+  }
+);
+
 it("does not adopt another connection's replacement while reserving or settling an older send", async () => {
   const { client, restoredContents } = setup();
   const original = client();
