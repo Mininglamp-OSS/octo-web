@@ -23,7 +23,7 @@ export interface ChatComposerAttachmentDraftPort {
   }>;
   /** Permanently fence this compose's queued and active document mutations. */
   stopDocumentSaving?(): void;
-  /** Remove the durable snapshot consumed by a successful temporary send. */
+  /** Replace the consumed snapshot with a durable empty tombstone. */
   consumeStoppedDocument?(): Promise<void>;
   saveDocument?(draft: ConversationDraft): Promise<void>;
   mergeDocumentConflict?(draft: ConversationDraft): Promise<void>;

@@ -68,7 +68,14 @@ export interface DraftRecord {
   revision: number;
   draft: ConversationDraft;
   preview: string;
+  /** A successful temporary send consumed this revision. Keep the record so
+   * revisions never restart and legacy migration cannot import it again. */
+  consumed?: true;
 }
+export const emptyConversationDraft = (): ConversationDraft => ({
+  document: { type: "doc", content: [{ type: "paragraph" }] },
+  topAttachments: [],
+});
 export const draftAccountKey = (scope: DraftScope) =>
   JSON.stringify([scope.server, scope.account]);
 export const draftScopeKey = (scope: DraftScope) =>

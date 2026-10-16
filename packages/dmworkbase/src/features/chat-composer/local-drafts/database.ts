@@ -1,4 +1,8 @@
-import type { ConversationDraft, DraftRecord } from "./model";
+import {
+  emptyConversationDraft,
+  type ConversationDraft,
+  type DraftRecord,
+} from "./model";
 
 export class DraftConflictError extends Error {
   constructor() {
@@ -260,22 +264,44 @@ export class DraftDatabase {
     });
   }
 
-  async deleteDraft(
-    key: string,
+  async consumeDraft(
+    record: DraftRecord,
     expectedRevision: number,
     session: DraftSession
-  ): Promise<void> {
+  ): Promise<DraftRecord> {
     let conflict = false;
-    await this.mutate<void>(["drafts"], session, (tx) => {
+    return this.mutate<DraftRecord>(["drafts", "attachmentIntents"], session, (tx, result) => {
       const store = tx.objectStore("drafts");
-      const request = store.get(key);
+      const request = store.get(record.key);
       request.onsuccess = () => {
-        if ((request.result?.revision ?? 0) !== expectedRevision) {
+        const current = request.result as DraftRecord | undefined;
+        if (current?.consumed && current.revision === expectedRevision + 1) {
+          result(current);
+          return;
+        }
+        if ((current?.revision ?? 0) !== expectedRevision) {
           conflict = true;
           tx.abort();
           return;
         }
-        store.delete(key);
+        const tombstone: DraftRecord = {
+          ...record,
+          revision: expectedRevision + 1,
+          draft: emptyConversationDraft(),
+          preview: "",
+          consumed: true,
+        };
+        const intents = tx.objectStore("attachmentIntents");
+        attachmentIds(current?.draft).forEach((id) => {
+          intents.put({
+            key: JSON.stringify([record.key, id]),
+            conversation: record.key,
+            account: record.account,
+            removed: true,
+          } satisfies AttachmentIntent);
+        });
+        store.put(tombstone);
+        result(tombstone);
       };
     }).catch((error) => {
       throw conflict ? new DraftConflictError() : error;

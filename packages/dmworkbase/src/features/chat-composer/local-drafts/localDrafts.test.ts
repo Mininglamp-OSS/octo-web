@@ -10,6 +10,7 @@ import {
   mergeConflictingDrafts,
   draftKey,
   type ConversationDraft,
+  type DraftRecord,
 } from "./model";
 
 const scope = {
@@ -29,12 +30,12 @@ function fixture() {
   const factory = new IDBFactory();
   const db = new DraftDatabase(() => factory);
   const repository = new ConversationDraftRepository(db);
-  const port = () =>
+  const port = (repo = repository) =>
     withConversationDocument(
-      createBrowserAttachmentDraftPort(scope, channel, repository),
+      createBrowserAttachmentDraftPort(scope, channel, repo),
       scope,
       channel,
-      repository
+      repo
     );
   return { db, repository, port };
 }
@@ -95,6 +96,34 @@ describe("conversation draft preview", () => {
 });
 
 describe("local draft persistence", () => {
+  it("does not let a late temporary send consume a replacement after consumption", async () => {
+    const { db, repository, port } = fixture();
+    await repository.save(scope, channel, document("original"));
+    const first = port(new ConversationDraftRepository(db));
+    const late = port(new ConversationDraftRepository(db));
+    await first.restore();
+    await late.restore();
+    first.stopDocumentSaving!();
+    late.stopDocumentSaving!();
+
+    await first.consumeStoppedDocument!();
+    const key = draftKey(scope, channel);
+    expect(await db.read<DraftRecord>("drafts", key)).toMatchObject({
+      revision: 2,
+      consumed: true,
+      preview: "",
+    });
+
+    const replacement = new ConversationDraftRepository(db);
+    await replacement.load(scope, channel);
+    await replacement.save(scope, channel, document("replacement"));
+    await expect(late.consumeStoppedDocument!()).rejects.toBeInstanceOf(
+      DraftConflictError
+    );
+    expect(
+      await new ConversationDraftRepository(db).load(scope, channel)
+    ).toEqual(document("replacement"));
+  });
   it("does not consume a newer document when temporary sending settles late", async () => {
     const { db, port } = fixture();
     const temporary = port();

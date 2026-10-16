@@ -1,6 +1,7 @@
 import { DraftDatabase, type DraftSession } from "./database";
 import {
   cleanDraftDocument,
+  emptyConversationDraft,
   mergeConflictingDrafts,
   conversationDraftPreview,
   draftAccountKey,
@@ -211,19 +212,26 @@ export class ConversationDraftRepository {
   ) {
     const key = draftKey(scope, channel);
     const epoch = this.epoch(scope);
-    await this.database.deleteDraft(
-      key,
+    const tombstone = await this.database.consumeDraft(
+      {
+        key,
+        scope: draftScopeKey(scope),
+        account: draftAccountKey(scope),
+        revision: expectedRevision + 1,
+        draft: emptyConversationDraft(),
+        preview: "",
+        consumed: true,
+      },
       expectedRevision,
       await this.session(scope)
     );
     if (!this.active(scope, epoch)) return;
+    this.revisions.set(key, tombstone.revision);
     const current = this.records.get(key);
     if (!current || current.revision <= expectedRevision) {
-      this.records.delete(key);
+      this.records.set(key, tombstone);
       this.documentOwners.delete(key);
-      this.revisions.delete(key);
       this.failed.delete(key);
-      this.loadedScopes.delete(draftScopeKey(scope));
       this.notify({ scope: draftScopeKey(scope), key });
     }
   }

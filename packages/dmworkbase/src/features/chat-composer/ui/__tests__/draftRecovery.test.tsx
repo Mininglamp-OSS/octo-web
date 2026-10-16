@@ -290,7 +290,93 @@ it("preserves a failed temporary send and consumes the durable copy after succes
   await act(async () => { await context.send(); });
   expect(onSend).toHaveBeenCalledTimes(2);
   expect(view.container.querySelector(".tiptap")!.textContent).toBe("");
-  expect(await db.read("drafts", key)).toBeUndefined();
+  expect(await db.read<DraftRecord>("drafts", key)).toMatchObject({
+    revision: saved!.revision + 1,
+    consumed: true,
+    preview: "",
+    draft: { topAttachments: [] },
+  });
+  view.unmount();
+  let restored: MessageInputContext | undefined;
+  const reopened = render(<ChatComposer host={createTestViewHost("a")}
+    legacyDraft="saved text" attachmentDrafts={port("a", new ConversationDraftRepository(db))}
+    onContext={next => { restored = next; }} />);
+  await waitFor(() => expect(restored).toBeDefined());
+  expect(reopened.container.querySelector(".tiptap")!.textContent).toBe("");
+  reopened.unmount();
+});
+
+it("preserves a replacement draft when an older temporary send settles late", async () => {
+  const { db, port } = fixture();
+  const seed = port("a");
+  await seed.saveDocument!({
+    document: {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "original" }] }],
+    },
+    topAttachments: [],
+  });
+  const first = port("a", new ConversationDraftRepository(db));
+  await first.restore();
+  first.stopDocumentSaving!();
+
+  let releaseSend!: (outcome: ReturnType<typeof createChatSendOutcome>) => void;
+  let sendStarted!: () => void;
+  const heldSend = new Promise<ReturnType<typeof createChatSendOutcome>>(resolve => {
+    releaseSend = resolve;
+  });
+  const started = new Promise<void>(resolve => {
+    sendStarted = resolve;
+  });
+  const onSend = vi.fn(() => {
+    sendStarted();
+    return heldSend;
+  });
+  const late = port("a", new ConversationDraftRepository(db));
+  let context!: MessageInputContext;
+  const view = render(<ChatComposer host={createTestViewHost("a")}
+    attachmentDrafts={late} onSend={onSend}
+    onContext={next => { context = next; }} />);
+  await waitFor(() => expect(context).toBeDefined());
+  const failedWrite = vi.spyOn(db, "writeDraft").mockRejectedValueOnce(
+    new DOMException("full", "QuotaExceededError")
+  );
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  act(() => context.insertText(" pending"));
+  const temporary = await view.findByRole("button", {
+    name: /使用临时草稿|Use temporary draft/,
+  });
+  fireEvent.click(temporary);
+  let sending!: ReturnType<MessageInputContext["send"]>;
+  await act(async () => {
+    sending = context.send();
+    await started;
+  });
+
+  await first.consumeStoppedDocument!();
+  const replacement = new ConversationDraftRepository(db);
+  await replacement.load(scope, { id: "a", type: 2 });
+  await replacement.save(scope, { id: "a", type: 2 }, {
+    document: {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "replacement" }] }],
+    },
+    topAttachments: [],
+  });
+  failedWrite.mockRestore();
+  await act(async () => {
+    releaseSend(createChatSendOutcome({ editorConsumed: true }));
+    await sending;
+  });
+
+  expect(onSend).toHaveBeenCalledOnce();
+  expect(
+    await new ConversationDraftRepository(db).load(scope, { id: "a", type: 2 })
+  ).toMatchObject({
+    document: {
+      content: [{ content: [{ text: "replacement" }] }],
+    },
+  });
   view.unmount();
 });
 
@@ -382,9 +468,15 @@ it("fences a held document write and consumes the protected copy after temporary
   await act(async () => { await context.send(); });
   expect(onSend).toHaveBeenCalledOnce();
   expect(view.container.querySelector(".tiptap")!.textContent).toBe("");
-  expect(await db.read("drafts", key)).toBeUndefined();
+  expect(await db.read<DraftRecord>("drafts", key)).toMatchObject({
+    consumed: true,
+    preview: "",
+  });
   await act(async () => { release(); await repository.flush(key); });
-  expect(await db.read("drafts", key)).toBeUndefined();
+  expect(await db.read<DraftRecord>("drafts", key)).toMatchObject({
+    consumed: true,
+    preview: "",
+  });
   view.unmount();
   let restored: MessageInputContext | undefined;
   const reopened = render(<ChatComposer host={createTestViewHost("a")}
