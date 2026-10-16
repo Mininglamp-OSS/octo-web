@@ -25,6 +25,15 @@ const MOCK_APP_CONFIG = {
   oidc_providers: [],
   // 附件预校验上限（纯 UX；空 allowlist = 不下发白名单，只走本地黑名单，与基线等价）。
   file_upload_limits: { max_size_kb: 102400, allowed_extensions: [] },
+  // 网盘动态上传策略（1 GiB / 128 MiB / 64 MiB / 3 / 3）与分片 UI 纯灰度开关（默认关）。
+  drive_upload_limits: {
+    max_size_kb: 1048576,
+    multipart_threshold_kb: 131072,
+    part_size_kb: 65536,
+    max_concurrent_parts: 3,
+    max_concurrent_sessions: 3,
+  },
+  drive_upload_v2_on: "0",
 };
 
 function appConfig() {
