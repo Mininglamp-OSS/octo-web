@@ -215,6 +215,8 @@ describe('中央映射通道 —— 命令式 / data-track 站点也与规则表
  *   - 会话设置跨群/DM/子区三作用域同构:conversation_remark_edited / _saved_to_contacts
  *     (mute/pin 已改命令式补点、退出 BODY 表,故不在此列;见 review M3/B4)
  *   - 登录双入口(账号 / 邮箱)同为一次登录:user_login
+ *   - 工作区创建兼容别名:当前宿主 POST /api/v1/space/:seg/projects 与旧 Fleet POST /fleet/api/v1/workspaces
+ *     都表示创建工作区成功;单次请求路径互斥,matchFetchEvent 只返回一个事件,不是同一次请求重复上报。
  *   - 密钥「配置」= 新建(POST)或更新(PUT)同一动作:settings_secrets_configured
  *
  * 仅覆盖 FETCH / BODY 两条**后端调用驱动**通道:一次真实后端调用被两条同事件规则命中 = 真·双计。
@@ -245,6 +247,7 @@ describe('中央映射通道 —— 表内「一手势一事件」守卫(重复�
             allow: new Set([
                 'user_login',
                 'settings_secrets_configured',
+                'workspace_created',       // 当前宿主创建接口与旧 Fleet 创建接口的兼容别名,理由见上方。
                 'group_md_edited',
                 'webhook_created',
                 'webhook_url_reset',

@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import creation from './fixtures/workspaceCreated.im-test.json'
+
 import { FETCH_RULES, FETCH_IGNORE, buildFetchIndex, matchFetchEvent, rawPathname, type FetchRule } from '../FetchRules'
 
 /**
@@ -62,6 +64,29 @@ describe('FetchRules — rawPathname 只取路径(隐私:去 query / 去 origin)
     })
     it('空串经 base 解析为 "/"(无害:匹配不到任何规则)', () => {
         expect(rawPathname('')).toBe('/')
+    })
+})
+
+describe('FETCH_RULES — workspace creation API compatibility', () => {
+    const idx = buildFetchIndex(FETCH_RULES)
+
+    it('maps the current space-scoped workspace creation endpoint', () => {
+        expect(matchFetchEvent(idx, creation.method, creation.pathname)).toBe('workspace_created')
+    })
+
+    it('does not count SpaceService tenant-space creation as Loop workspace creation', () => {
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/space/create')).toBeUndefined()
+    })
+
+    it('retains the legacy workspace creation endpoint', () => {
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/workspaces')).toBe('workspace_created')
+    })
+
+    it('does not treat listing, member changes or nested project resources as creation', () => {
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/space/minglue_default/projects')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'PATCH', '/api/v1/space/minglue_default/projects')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/space/minglue_default/projects/fixture/members')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/projects/fixture/members')).not.toBe('workspace_created')
     })
 })
 

@@ -292,6 +292,8 @@ export const FETCH_RULES: FetchRule[] = [
     //   159 workspace_switched 不在本表 —— switchWorkspace 仅设 context + 重挂 tab(useLoopWorkspace.tsx:371),
     //     无专属端点,切工作区后续的 GET /issues 等仅是列表 reload(见下,不再映射事件),退各仓 UI(选工作区 onClick 命令式)。
     // A1 工作区
+    // Current Loop workspace creation uses the host space API; keep the legacy Fleet route compatible.
+    { method: 'POST', path: '/api/v1/space/:seg/projects', event: 'workspace_created' },
     { method: 'POST', path: '/fleet/api/v1/workspaces', event: 'workspace_created' },
     // A2/A3 任务板:进板浏览(task_board_viewed)、筛选(task_board_filtered)、开单详情(task_opened)三者
     //   都无法在 path 通道正确表达 —— GET /issues、/issues/grouped、/issues/search 都是列表加载/reload 端点

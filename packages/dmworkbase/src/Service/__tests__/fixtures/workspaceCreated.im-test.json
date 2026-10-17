@@ -1,0 +1,14 @@
+{
+  "entrypoint": "Loop -> workspace switcher -> Create workspace",
+  "captureHost": "https://im-test.deepminer.com.cn",
+  "requestId": "3995593.195",
+  "method": "POST",
+  "pathname": "/api/v1/space/minglue_default/projects",
+  "status": 200,
+  "sourceRepository": "dmwork/octo-web-enterprise/octo-loop-module",
+  "sourceRevision": "31ecd5ff223c0ecf20b63eb196204b31b887c591",
+  "sourceChain": [
+    "packages/dmloop/src/bridge/useLoopWorkspace.tsx: submitCreateWorkspace",
+    "packages/dmloop/src/api/workspaceApi.ts: createWorkspace -> ProjectService.createProject"
+  ]
+}
