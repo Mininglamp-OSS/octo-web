@@ -128,6 +128,31 @@ vi.mock("wukongimjssdk", () => ({
 import { ChannelDataSource, CommonDataSource, resolvePublicFileURL, shouldAttachUploadToken } from "./datasource"
 import { Channel } from "wukongimjssdk"
 
+describe("ChannelDataSource.conversationExtraUpdate", () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+        hoisted.apiPost.mockResolvedValue(undefined)
+    })
+
+    it("includes an explicit empty draft so the server clears legacy content", async () => {
+        await new ChannelDataSource().conversationExtraUpdate({
+            channel: new Channel("chat-a", 2),
+            browseTo: 0,
+            keepMessageSeq: 3,
+            keepOffsetY: 12,
+            version: 0,
+            draft: "",
+        })
+
+        expect(hoisted.apiPost).toHaveBeenCalledWith("conversations/chat-a/2/extra", {
+            browse_to: 0,
+            keep_message_seq: 3,
+            keep_offset_y: 12,
+            draft: "",
+        })
+    })
+})
+
 describe("ChannelDataSource.threadDelete", () => {
     beforeEach(() => {
         vi.clearAllMocks()

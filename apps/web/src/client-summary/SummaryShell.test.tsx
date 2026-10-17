@@ -70,6 +70,37 @@ import { WKApp, i18n } from "@octo/base";
 import { SummaryShell } from "./SummaryShell";
 
 describe("SummaryShell", () => {
+  it("awaits cleanup before host-command reload and ignores repeated revocation", async () => {
+    let finish!: () => void;
+    const cleanup = new Promise<void>(resolve => { finish = resolve; });
+    const logout = vi.fn(() => cleanup);
+    const originalLogout = WKApp.loginInfo.logout;
+    WKApp.loginInfo.logout = logout;
+    const originalWindow = window;
+    const reload = vi.fn();
+    vi.stubGlobal("window", new Proxy(originalWindow, {
+      get(target, key) { return key === "location" ? { reload } : Reflect.get(target, key, target); },
+    }));
+    const view = render(<SummaryShell bridge={mocks.bridge} initialRoute={{ view: "list" }} initialSpaceId="space-a" onReady={async () => {}} />);
+    try {
+      act(() => {
+        mocks.command.listener?.({ type: "navigate", route: { view: "detail", taskId: 42 }, navigationId: 1 });
+        mocks.command.listener?.({ type: "sessionRevoked" });
+        mocks.command.listener?.({ type: "sessionRevoked" });
+      });
+      expect(reload).not.toHaveBeenCalled();
+      expect(logout).toHaveBeenCalledOnce();
+      expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+      await act(async () => { finish(); await cleanup; });
+      expect(reload).toHaveBeenCalledOnce();
+      expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+      WKApp.loginInfo.logout = originalLogout;
+      vi.unstubAllGlobals();
+    }
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.command.listener = undefined;

@@ -6,7 +6,7 @@ interface AuthExpiryClient {
 }
 
 interface EphemeralLoginInfo {
-  logout(): void;
+  logout(): void | Promise<void>;
 }
 
 export function installCommunicationAuthExpiryHandler(

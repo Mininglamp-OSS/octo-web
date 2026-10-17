@@ -59,6 +59,7 @@ export function SummaryShell({
   const scopeRevision = useRef(0);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const invalidationListeners = useRef(new Set<() => void>());
+  const sessionRevoked = useRef(false);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
   const navCommit = useNavigationCommit(bridge);
@@ -155,6 +156,7 @@ export function SummaryShell({
 
   useEffect(() => {
     const dispose = bridge.onCommand((command: SummaryHostCommand) => {
+      if (sessionRevoked.current) return;
       if (command.type === "navigate") {
         const token = navCommit?.start({
           navigationId: command.navigationId,
@@ -198,10 +200,13 @@ export function SummaryShell({
         return;
       }
       if (command.type === "sessionRevoked") {
+        sessionRevoked.current = true;
         externalRuntime?.dispose();
         navCommit?.cancel();
-        WKApp.loginInfo.logout();
-        window.location.reload();
+        void Promise.resolve(WKApp.loginInfo.logout()).then(
+          () => window.location.reload(),
+          error => console.error("[client-summary] session cleanup failed", error),
+        );
         return;
       }
       if (command.type === "hostVisibilityChanged") {

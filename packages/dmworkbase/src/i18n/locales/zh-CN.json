@@ -1,4 +1,12 @@
 {
+  "messageInput.draft.saveRecovery": "草稿存储不可用。可重试保存，或暂不保存此草稿继续使用。上次保存的副本会保留。",
+  "messageInput.draft.retrySave": "重试保存",
+  "messageInput.draft.temporaryDocumentNotice": "此草稿的后续修改不会保存；消息发送成功前，上次保存的副本会保留。附件仍需安全保存后才能发送。",
+  "messageInput.draft.conflictTitle": "草稿已在其他窗口更新",
+  "messageInput.draft.conflictBody": "合并当前草稿和其他窗口的草稿后继续编辑。两份内容都会保留，请在发送前检查合并结果。",
+  "messageInput.draft.merge": "合并草稿并继续",
+  "messageInput.draft.saveFailed": "草稿未能保存到本机，请勿关闭页面，稍后重试。",
+  "messageInput.draft.cleanupFailed": "消息已发送，但已保存的草稿未能清除。再次发送前，请重新打开此会话确认。",
   "chatPage.loadingName": "名称加载中...",
   "chatPage.nameUnavailable": "名称暂不可用",
   "base.workspaceGroup.title": "工作空间关联",
@@ -1846,5 +1854,11 @@
   "htmlAttachment.tooLarge": "文件超过预览大小上限，请下载查看。",
   "htmlAttachment.downloadFailed": "无法准备下载，请重试。",
   "htmlAttachment.expired": "预览已失效，请从聊天重新打开附件。",
-  "htmlAttachment.popupBlocked": "无法打开预览标签页，请允许弹出窗口后重试。"
+  "htmlAttachment.popupBlocked": "无法打开预览标签页，请允许弹出窗口后重试。",
+  "messageInput.draft.pendingSend": "有 {{count}} 个附件的发送结果尚未确认。请先检查其他窗口和聊天记录，确认未发送后再恢复，以免重复发送。也可以使用临时草稿，保留这些附件供以后处理。",
+  "messageInput.draft.recoverSend": "恢复待确认附件",
+  "messageInput.draft.restoreFailed": "暂时无法读取已保存的草稿。可以重试，或使用临时草稿；原有草稿将保留。",
+  "messageInput.draft.retryRestore": "重新读取",
+  "messageInput.draft.useTemporary": "使用临时草稿",
+  "messageInput.draft.temporaryNotice": "正在使用临时草稿：离开后不会保存新内容，原有草稿不受影响。"
 }
