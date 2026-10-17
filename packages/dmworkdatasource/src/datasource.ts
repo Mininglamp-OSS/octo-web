@@ -289,12 +289,12 @@ export class ChannelDataSource implements IChannelDataSource {
         return WKApp.apiClient.delete(`groups/${channel.channelID}/bot_admin/${uid}`)
     }
 
-    conversationExtraUpdate(conversationExtra:ConversationExtra): Promise<void> {
+    conversationExtraUpdate(conversationExtra: Omit<ConversationExtra, "draft"> & { draft?: string }): Promise<void> {
         return WKApp.apiClient.post(`conversations/${conversationExtra.channel.channelID}/${conversationExtra.channel.channelType}/extra`,{
             "browse_to": conversationExtra.browseTo,
             "keep_message_seq": conversationExtra.keepMessageSeq,
             "keep_offset_y": conversationExtra.keepOffsetY,
-            "draft": conversationExtra.draft||""
+            ...(conversationExtra.draft !== undefined ? { draft: conversationExtra.draft } : {})
 
         })
     }

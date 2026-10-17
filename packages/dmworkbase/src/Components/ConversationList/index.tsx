@@ -1,3 +1,6 @@
+import { draftKey, draftScopeKey } from "../../features/chat-composer/local-drafts/model";
+import { currentConversationDraftScope } from "../../bridge/conversationDraftScope";
+import { conversationDrafts } from "../../features/chat-composer/local-drafts/repository";
 import WKSDK from "wukongimjssdk";
 import { ChannelInfoListener } from "wukongimjssdk";
 import {
@@ -454,8 +457,33 @@ export default class ConversationList extends Component<
     };
   }
 
+  private unsubscribeDrafts?: () => void;
+  private loadDraftPreviews = () => {
+    const scope = currentConversationDraftScope();
+    if (scope.account) void conversationDrafts.loadScope(scope).catch(() => {});
+  };
+
+  private draftPreview(conversation: ConversationWrap): string {
+    if (this.props.select?.isEqual(conversation.channel)) return "";
+    const scope = currentConversationDraftScope();
+    return scope.account
+      ? conversationDrafts.preview(scope, { id: conversation.channel.channelID, type: conversation.channel.channelType }) ?? formatDraftPreview(conversation.remoteExtra.draft || "")
+      : formatDraftPreview(conversation.remoteExtra.draft || "");
+  }
+
   componentDidMount() {
     this.unmounted = false;
+    this.unsubscribeDrafts = conversationDrafts.subscribe((change) => {
+      if (this.unmounted) return;
+      const scope = currentConversationDraftScope();
+      if (change && change.scope !== draftScopeKey(scope)) return;
+      const selected = this.props.select;
+      if (change?.key && selected && change.key === draftKey(scope, {
+        id: selected.channelID, type: selected.channelType,
+      })) return;
+      this.setState({});
+    });
+    this.loadDraftPreviews();
     this.channelListener = (channelInfo: ChannelInfo) => {
       this.setState({});
     };
@@ -472,6 +500,7 @@ export default class ConversationList extends Component<
   }
 
   componentDidUpdate(prevProps: ConversationListProps) {
+    this.loadDraftPreviews();
     if (
       this.props.scrollToUnreadToken !== undefined &&
       this.props.scrollToUnreadToken !== prevProps.scrollToUnreadToken
@@ -491,6 +520,7 @@ export default class ConversationList extends Component<
 
   componentWillUnmount() {
     this.unmounted = true;
+    this.unsubscribeDrafts?.();
     if (
       this.scrollFrame !== null &&
       typeof window !== "undefined" &&
@@ -806,9 +836,9 @@ export default class ConversationList extends Component<
   }
 
   lastContent(conversationWrap: ConversationWrap) {
-    const draft = conversationWrap.remoteExtra.draft;
+    const draft = this.draftPreview(conversationWrap);
     if (draft && draft !== "") {
-      return formatDraftPreview(draft);
+      return draft;
     }
     if (!conversationWrap.lastMessage) {
       return;
@@ -1125,20 +1155,14 @@ export default class ConversationList extends Component<
             {!isVirtual && (
               <div className="wk-conversationlist-item-right-second-line">
                 <div className="wk-conversationlist-item-lastmsg">
-                {!typing ? (
-                  <label
-                    className="wk-reminder"
-                    style={{
-                      display: conversationWrap.remoteExtra.draft
-                        ? undefined
-                        : "none",
-                    }}
-                  >
+                {this.draftPreview(conversationWrap) ? (
+                  <label className="wk-reminder">
                     {t("base.conversationList.draft")}
                   </label>
                 ) : undefined}
                 {visibleSimpleReminders &&
                 !typing &&
+                !this.draftPreview(conversationWrap) &&
                 visibleSimpleReminders.length > 0
                   ? visibleSimpleReminders.map((r) => {
                       return (
@@ -1148,7 +1172,7 @@ export default class ConversationList extends Component<
                       );
                     })
                   : undefined}
-                {typing
+                {typing && !this.draftPreview(conversationWrap)
                   ? this._getTypingUI(conversationWrap)
                   : this.lastContent(conversationWrap)}
                 </div>

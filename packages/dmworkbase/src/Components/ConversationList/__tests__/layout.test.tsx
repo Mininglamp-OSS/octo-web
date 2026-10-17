@@ -29,6 +29,8 @@ const browserUnreadPublish = vi.fn();
 const topChannelSetting = vi.fn(() => Promise.resolve());
 const hideConversation = vi.fn(() => Promise.resolve());
 const contextMenuShow = vi.fn();
+let draftListener: ((change?: {scope: string; key?: string}) => void) | undefined;
+const localPreviews = new Map<string, string>();
 
 class MockChannel {
   channelID: string;
@@ -52,6 +54,10 @@ class MockChannel {
 }
 
 beforeAll(async () => {
+  vi.doMock("../../../features/chat-composer/local-drafts/repository", () => ({ conversationDrafts: {
+    subscribe: (listener: typeof draftListener) => { draftListener = listener; return () => { draftListener = undefined; }; }, loadScope: async () => {},
+    preview: (_scope: unknown, channel: { id: string }) => localPreviews.get(channel.id),
+  } }));
   vi.doMock("wukongimjssdk", () => {
     const sdk = {
       shared: () => ({
@@ -261,6 +267,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  localPreviews.clear();
   vi.clearAllMocks();
   localStorage.clear();
   container = document.createElement("div");
@@ -367,6 +374,53 @@ function currentMenuOrder() {
   );
 }
 
+describe("ConversationList local drafts", () => {
+  it("shows the legacy preview only until a local record exists", () => {
+    const a = makeConversation({ channelID: "legacy", unread: 0 });
+    a.remoteExtra = { draft: "legacy text" };
+    act(() => { ReactDOM.render(<ConversationList conversations={[a] as any} />, container); });
+    expect(container.textContent).toContain("legacy text");
+    localPreviews.set("legacy", "");
+    act(() => { draftListener?.(); });
+    expect(container.textContent).not.toContain("legacy text");
+  });
+  it("does not render for selected or other-scope draft changes", () => {
+    const a = makeConversation({ channelID: "draft-a", unread: 0 });
+    const b = makeConversation({ channelID: "draft-b", unread: 0 });
+    const render = vi.spyOn(ConversationList.prototype, "render");
+    act(() => { ReactDOM.render(<ConversationList conversations={[a, b] as any} select={a.channel as any} />, container); });
+    render.mockClear();
+    const scope = JSON.stringify(["", "u1", "space1"]);
+    act(() => draftListener?.({scope, key: JSON.stringify(["", "u1", "space1", a.channel.channelType, "draft-a"])}));
+    act(() => draftListener?.({scope: "another scope"}));
+    expect(render).not.toHaveBeenCalled();
+    localPreviews.set("draft-b", "new draft");
+    act(() => draftListener?.({scope, key: JSON.stringify(["", "u1", "space1", b.channel.channelType, "draft-b"])}));
+    expect(render).toHaveBeenCalledOnce();
+    expect(container.querySelector('[data-object-id="draft-b"]')?.textContent).toContain("new draft");
+    render.mockRestore();
+  });
+  it("hides the selected draft and restores it on departure without using remote text", () => {
+    const a = makeConversation({ channelID: "draft-a", unread: 2 });
+    const b = makeConversation({ channelID: "draft-b", unread: 0 });
+    a.remoteExtra = { draft: "remote text must not appear" };
+    localPreviews.set("draft-a", "[a.zip]between[b.md]");
+    const show = (select: MockChannel) => act(() => {
+      ReactDOM.render(<ConversationList conversations={[a, b] as any} select={select as any} />, container);
+    });
+    show(a.channel);
+    expect(container.textContent).not.toContain("[a.zip]");
+    expect(container.textContent).not.toContain("remote text must not appear");
+    show(b.channel);
+    const row = container.querySelector('[data-object-id="draft-a"]')!;
+    expect(row.querySelector(".wk-reminder")?.textContent).toBe("base.conversationList.draft");
+    expect(row.querySelector(".wk-conversationlist-item-lastmsg")?.textContent).toContain("[a.zip]between[b.md]");
+    expect(row.querySelector(".wk-conv-unread-num")?.textContent).toBe("2");
+    show(a.channel);
+    expect(container.querySelector('[data-object-id="draft-a"] .wk-reminder')).toBeNull();
+  });
+});
+
 describe("ConversationList temporary rows", () => {
   it.each([1, 2, 3])("preserves a pinned external target's order and metadata for channel type %s", (channelType) => {
     const a = makeConversation({ channelID: "pin-a", unread: 1 });
@@ -377,7 +431,7 @@ describe("ConversationList temporary rows", () => {
     const c = makeConversation({ channelID: "pin-c", unread: 1 });
     const recent = makeConversation({ channelID: "recent", unread: 1 });
     for (const item of [a, target, c]) item.channelInfo.top = true;
-    target.remoteExtra = { draft: "saved draft" };
+    localPreviews.set(target.channel.channelID, "saved draft");
     const renderList = (temporary: boolean) => act(() => {
       ReactDOM.render(
         <ConversationList conversations={[a, target, c, recent] as any}
@@ -404,7 +458,7 @@ describe("ConversationList temporary rows", () => {
     const pinned = makeConversation({ channelID: "pinned", unread: 0 });
     pinned.channelInfo.top = true;
     const existing = makeConversation({ channelID: "existing", unread: 5, mention: true });
-    existing.remoteExtra = { draft: "saved draft" };
+    localPreviews.set(existing.channel.channelID, "saved draft");
     const recent = makeConversation({ channelID: "recent", unread: 2 });
     const conversations = [recent, existing, pinned];
     const renderList = (temporary: boolean) => {

@@ -1,3 +1,5 @@
+import { conversationDrafts } from "@octo/base/src/features/chat-composer/local-drafts/repository";
+import { currentConversationDraftScope } from "@octo/base/src/bridge/conversationDraftScope";
 import {
   applyImSpaceContext, getCurrentImConversationStore, getCurrentImUnreadObserver,
   installImReadAttentionGate, ThemeMode, WKApp, i18n,
@@ -14,6 +16,7 @@ import { createLazyCommunicationUi } from "./lazyUi";
 import { installLazyDocumentForward } from "./lazyDocumentForward";
 import { createCommunicationOwner } from "./owner";
 import { createRuntimeHostScheduler } from "./hostScheduler";
+import { revokeEmbeddedSession } from "../../client-feature/sessionRevocation";
 
 export function assertBackgroundRuntimeHost(host: OctoBuddyCommunicationBridge, bootstrap: CommunicationBootstrap): void {
   if (!bootstrap.runtime) return;
@@ -33,6 +36,13 @@ export async function startCommunicationRuntime(host: OctoBuddyCommunicationBrid
   const unread = getCurrentImUnreadObserver();
   const gate = installImReadAttentionGate(false);
   let disposed = false;
+  const draftScope = currentConversationDraftScope();
+  let draftCleanup: Promise<void> | undefined;
+  const clearDrafts = () => {
+    draftCleanup ??= conversationDrafts.clearAccount(draftScope).catch(error =>
+      console.warn("[drafts] logout cleanup failed", error));
+    return draftCleanup;
+  };
   const cleanups: Array<() => void> = [];
   let owner: ReturnType<typeof createCommunicationOwner>;
   let forward: ReturnType<typeof installLazyDocumentForward>;
@@ -117,8 +127,8 @@ export async function startCommunicationRuntime(host: OctoBuddyCommunicationBrid
     }));
     cleanups.push(host.onCommand(command => {
       if (command.type === "sessionRevoked") {
+        void revokeEmbeddedSession(clearDrafts);
         owner.dispose();
-        WKApp.loginInfo.logout();
       } else if (command.type === "filePreviewClosed" || command.type === "filePreviewState") {
         ui.dispatch(command);
       } else if (command.type === "appearanceChanged") {
@@ -135,7 +145,7 @@ export async function startCommunicationRuntime(host: OctoBuddyCommunicationBrid
       // Legacy navigation/Space/visibility messages are not owner-scoped.
     }));
     const previousLogout = WKApp.apiClient.logoutCallback;
-    const logout = () => { owner.dispose(); previousLogout?.(); };
+    const logout = () => { void clearDrafts(); owner.dispose(); previousLogout?.(); };
     WKApp.apiClient.logoutCallback = logout;
     cleanups.push(() => {
       if (WKApp.apiClient.logoutCallback === logout) WKApp.apiClient.logoutCallback = previousLogout;

@@ -21,6 +21,7 @@ export function AppsShell({
   const spaceRef = useRef(space);
   const listeners = useRef(new Set<() => void>());
   const invalidationListeners = useRef(new Set<() => void>());
+  const sessionRevoked = useRef(false);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
 
@@ -55,6 +56,7 @@ export function AppsShell({
 
   useEffect(() => {
     const dispose = bridge.onCommand((command: AppsHostCommand) => {
+      if (sessionRevoked.current) return;
       if (command.type === "spaceChanged") {
         spaceRef.current = command.space;
         setSpace(command.space);
@@ -79,8 +81,11 @@ export function AppsShell({
         return;
       }
       if (command.type === "sessionRevoked") {
-        WKApp.loginInfo.logout();
-        window.location.reload();
+        sessionRevoked.current = true;
+        void Promise.resolve(WKApp.loginInfo.logout()).then(
+          () => window.location.reload(),
+          error => console.error("[client-apps] session cleanup failed", error),
+        );
         return;
       }
       if (command.type === "hostVisibilityChanged") {

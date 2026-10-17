@@ -502,3 +502,66 @@ describe("WKRemoteConfig listeners and appconfig mapping", () => {
     warn.mockRestore();
   });
 });
+
+import { IDBFactory } from "fake-indexeddb";
+import { File as NodeFile } from "node:buffer";
+import { conversationDrafts, ConversationDraftRepository } from "../features/chat-composer/local-drafts/repository";
+import { DraftDatabase } from "../features/chat-composer/local-drafts/database";
+import { createBrowserAttachmentDraftPort } from "../features/chat-composer/local-drafts/browserPort";
+import { withConversationDocument } from "../features/chat-composer/local-drafts/documentPort";
+import { draftAccountKey } from "../features/chat-composer/local-drafts/model";
+import { installFeatureAuthExpiryHandler } from "../../../../apps/web/src/client-feature/authLifecycle";
+import { expireStandaloneSession } from "../../../../apps/web/src/Layout/standaloneSessionExpiry";
+
+describe("real logout draft revocation", () => {
+  const factory = new IDBFactory();
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+  it.each(["communication", "standalone"] as const)("cleans and fences %s expiry before renderer teardown", async path => {
+    vi.stubGlobal("indexedDB", factory);
+    vi.stubGlobal("BroadcastChannel", undefined);
+    vi.stubGlobal("File", NodeFile);
+    const info = new LoginInfo();
+    info.applySession({ uid: `expiry-${path}`, token: "expired-token" });
+    const scope = { server: WKApp.apiClient.config.apiURL || "", account: info.uid!, space: "s" };
+    const channel = { id: "chat", type: 2 };
+    const db = new DraftDatabase();
+    const repo = new ConversationDraftRepository(db);
+    const port = withConversationDocument(createBrowserAttachmentDraftPort(scope, channel, repo), scope, channel, repo);
+    await port.restore();
+    const file = { id: "private", file: new File(["private"], "private.zip"), source: "upload" as const };
+    await port.stage(file);
+    await port.saveDocument!({ document: { type: "doc", content: [{ type: "paragraph" }] }, topAttachments: [{ id: file.id, name: file.file.name, position: 1 }] });
+    const account = draftAccountKey(scope);
+    const teardown = vi.fn();
+    const original = conversationDrafts.database.clearAccount.bind(conversationDrafts.database);
+    let finish!: () => void;
+    const gate = new Promise<void>(resolve => { finish = resolve; });
+    vi.spyOn(conversationDrafts.database, "clearAccount").mockImplementation(async key => { await gate; return original(key); });
+    let completion: Promise<void> | undefined;
+    if (path === "communication") {
+      const api: { logoutCallback?: () => void } = {};
+      installFeatureAuthExpiryHandler(api, info, { reportAuthExpired: teardown }, { reason: "expired", logPrefix: "test" });
+      api.logoutCallback!();
+      api.logoutCallback!();
+    } else {
+      completion = expireStandaloneSession(info, { sessionStorage, localStorage, location: { reload: teardown } });
+    }
+    expect(info.uid).toBe("");
+    expect(teardown).not.toHaveBeenCalled();
+    finish();
+    await completion;
+    await vi.waitFor(() => expect(teardown).toHaveBeenCalledOnce());
+    expect(await db.list("drafts", "account", account)).toEqual([]);
+    expect(await db.list("attachments", "account", account)).toEqual([]);
+    expect(await port.stage(file)).toBe(false);
+    await expect(port.saveDocument!({ document: { type: "doc" }, topAttachments: [] })).rejects.toThrow("Draft session expired");
+    expect(await db.list("drafts", "account", account)).toEqual([]);
+  });
+  it("captures stored uid when cold logout precedes LoginInfo.load", async () => {
+    const info = new LoginInfo();
+    vi.spyOn(info, "getStorageItemForSID").mockImplementation(key => key === "uid" ? "cold-user" : null);
+    const clear = vi.spyOn(conversationDrafts, "clearAccount").mockResolvedValue();
+    await info.logout();
+    expect(clear).toHaveBeenCalledWith(expect.objectContaining({ account: "cold-user" }));
+  });
+});
