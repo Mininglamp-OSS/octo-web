@@ -158,3 +158,85 @@ it("does not hide a generation fence failure while restoring after other-window 
   expect(await stale.stage(attachment("expired.png"))).toBe(false);
   await expect(stale.restore()).rejects.toMatchObject({ name: "DraftSessionExpiredError" });
 });
+
+it.each([
+  { timing: "queued", keepFirst: false },
+  { timing: "queued", keepFirst: true },
+  { timing: "reserved", keepFirst: false },
+  { timing: "reserved", keepFirst: true },
+])("rejects duplicate sends without releasing the $timing owner (keep=$keepFirst)", async ({ timing, keepFirst }) => {
+  const { db, repository, port } = setup();
+  const current = port();
+  await current.stage(attachment("same.png"));
+  const first = current.beginSend(["same.png"]);
+  if (timing === "reserved") await first.ready;
+  const duplicate = current.beginSend(["same.png"]);
+  await expect(duplicate.ready).rejects.toThrow(/already being/);
+  await first.ready;
+  const reserved = await db.list("attachments", "conversation", key);
+  await duplicate.settle(["same.png"]);
+  // A rejected attempt owns neither the in-memory entry nor the durable lease.
+  expect(current.canLeave(["same.png"])).toBe(true);
+  expect(await db.list("attachments", "conversation", key)).toEqual(reserved);
+  expect(repository.saved(filesKey)).toBe(true);
+
+  const third = current.beginSend(["same.png"]);
+  await expect(third.ready).rejects.toThrow(/already being/);
+  await third.settle([]);
+  const firstDecision = keepFirst ? ["same.png"] : [];
+  // An independent storage error must leave the original owner's retry intact.
+  vi.spyOn(db, "changeAttachments").mockRejectedValueOnce(new Error("settlement aborted"));
+  await expect(first.settle(firstDecision)).rejects.toThrow("settlement aborted");
+  await first.settle(firstDecision);
+  // Even a late retry of rejected settlement cannot erase the recovered owner.
+  await duplicate.settle([]);
+  const restored = await port(new ConversationDraftRepository(db)).restore();
+  expect(restored.pendingSendRecovery).toBeUndefined();
+  expect(restored.attachments.map(item => item.id)).toEqual(firstDecision);
+  if (keepFirst) {
+    expect(current.canLeave(["same.png"])).toBe(true);
+    const retry = current.beginSend(["same.png"]);
+    await retry.ready;
+    expect(retry.attachmentRevisions?.has("same.png")).toBe(true);
+    await first.settle([]);
+    expect(current.canLeave(["same.png"])).toBe(true);
+    await retry.settle([]);
+    expect((await port(new ConversationDraftRepository(db)).restore()).attachments).toEqual([]);
+  }
+});
+
+it("rejects an overlapping batch before staging or claiming any of its other files", async () => {
+  const { db, port } = setup();
+  const current = port();
+  await current.stage(attachment("first.png"));
+  const first = current.beginSend(["first.png"]);
+  await first.ready;
+  const secondFile = attachment("second.png");
+  const duplicate = current.beginSend(["first.png", "second.png"], [secondFile]);
+  await expect(duplicate.ready).rejects.toThrow(/already being/);
+  await duplicate.settle(["first.png", "second.png"]);
+  expect(await db.list("attachments", "conversation", key)).toHaveLength(1);
+  const second = current.beginSend(["second.png"], [secondFile]);
+  await second.ready;
+  expect(second.attachmentRevisions?.has("second.png")).toBe(true);
+  await first.settle([]);
+  await second.settle([]);
+  expect((await port(new ConversationDraftRepository(db)).restore()).attachments).toEqual([]);
+});
+
+it("allows retry after failed preparation and makes its late settlement harmless", async () => {
+  const { db, port } = setup();
+  const current = port();
+  await current.stage(attachment("retry.png"));
+  vi.spyOn(db, "changeAttachments").mockRejectedValueOnce(new Error("reservation aborted"));
+  const failed = current.beginSend(["retry.png"]);
+  await expect(failed.ready).rejects.toThrow("reservation aborted");
+  const retry = current.beginSend(["retry.png"]);
+  await retry.ready;
+  const reserved = await db.list("attachments", "conversation", key);
+  await failed.settle([]);
+  expect(current.canLeave(["retry.png"])).toBe(true);
+  expect(await db.list("attachments", "conversation", key)).toEqual(reserved);
+  await retry.settle([]);
+  expect((await port(new ConversationDraftRepository(db)).restore()).attachments).toEqual([]);
+});

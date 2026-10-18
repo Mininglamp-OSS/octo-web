@@ -312,6 +312,13 @@ export function createBrowserAttachmentDraftPort(
       await Promise.all(ids.filter((id) => !entries.has(id)).map(remove));
     },
     beginSend(ids, files = []) {
+      // Reject the entire overlapping attempt before staging or changing any
+      // shared ownership. Its settlement must never release the first sender.
+      if (ids.some(id => sending.has(id))) {
+        const ready = Promise.reject<void>(new Error("Attachment is already being sent"));
+        void ready.catch(() => {});
+        return { ready, settle: async () => {} };
+      }
       files.forEach((file) => {
         if (!entries.has(file.id)) void stage(file);
       });
@@ -320,10 +327,15 @@ export function createBrowserAttachmentDraftPort(
         observed.delete(id);
       });
       let sendId: string | undefined;
+      let preparation: "queued" | "ready" | "failed" = "queued";
+      let settled = false;
       const attachmentRevisions = new Map<string, string>();
       const ready = repository.enqueue(
         conversation + ":files",
         async () => {
+          // A preceding file task may have rejected our queue before this
+          // callback ran. Never resurrect that abandoned reservation on retry.
+          if (preparation === "failed") return;
           sendId = createRevision();
           await open();
           if (!active()) throw new Error("Draft session expired");
@@ -349,19 +361,29 @@ export function createBrowserAttachmentDraftPort(
               attachmentRevisions.set(record.id, record.revision);
             }
           });
+          preparation = "ready";
         },
         false
-      );
+      ).catch(error => {
+        // IndexedDB preparation is atomic. No reservation was acquired, so
+        // release this attempt without a settlement write or deleting entries.
+        preparation = "failed";
+        ids.forEach(id => sending.delete(id));
+        throw error;
+      });
       return {
         ready,
         attachmentRevisions,
         async settle(keep) {
           await ready.catch(() => {});
+          if (settled || preparation !== "ready") return;
           // A failed send restores a new ownership generation. Old queued
           // consumption documents cannot hide those retained bytes again.
           const recoveredRevisions = new Map(keep.map(id => [id, createRevision()]));
           await repository.enqueue(conversation + ":files", async () => {
-            if (!active()) return;
+            // enqueue retries failed file tasks before running this callback.
+            // A prior retry may already have settled this send and released it.
+            if (settled || !active()) return;
             const retained = await repository.database.changeAttachments(
               conversation,
               (records) =>
@@ -387,6 +409,7 @@ export function createBrowserAttachmentDraftPort(
                 ownedDurableRevisions.set(record.id, record.revision);
               }
             });
+            settled = true;
           });
         },
       };
