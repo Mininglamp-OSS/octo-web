@@ -101,17 +101,23 @@ it.each([false, true])("requires deletion when the synchronous barrier cannot pe
   const deletion = repository.clearAccount(scope);
   expect(deletion.requireCompletion).toBe(true);
   const completed = vi.fn();
-  const teardown = Promise.resolve(runSessionCleanup(() => deletion, "[test]")).then(completed);
+  const failed = vi.fn();
+  const teardown = Promise.resolve(runSessionCleanup(() => deletion, "[test]")).then(completed, failed);
   await vi.advanceTimersByTimeAsync(SESSION_CLEANUP_TIMEOUT_MS * 2);
   expect(completed).not.toHaveBeenCalled();
   vi.useRealTimers();
   gate.resolve();
   if (fails) {
     await expect(deletion).rejects.toThrow("IDB unavailable");
+    expect(failed).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      name: "SessionCleanupError", cause: expect.objectContaining({ message: "IDB unavailable" }),
+    }));
+    await teardown;
     expect(completed).not.toHaveBeenCalled();
   } else {
     await teardown;
     expect(completed).toHaveBeenCalledOnce();
+    expect(failed).not.toHaveBeenCalled();
     expect(await fresh().read("drafts", key)).toBeUndefined();
     expect(await fresh().restoreAttachments(key)).toEqual([]);
   }

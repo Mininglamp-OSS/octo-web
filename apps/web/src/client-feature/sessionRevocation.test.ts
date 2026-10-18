@@ -160,3 +160,23 @@ it.each([true, false])("waits for the remaining native cleanup after another tas
   expect(reload).toHaveBeenCalledOnce();
   expect(vi.getTimerCount()).toBe(0);
 });
+
+
+it("settles with a single safe exit instead of reloading when mandatory deletion rejects", async () => {
+  vi.useFakeTimers();
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const location = { reload: vi.fn(), replace: vi.fn() };
+  vi.stubGlobal("window", { location });
+  const cleanup = Object.assign(Promise.reject(new Error("IDB aborted")), { requireCompletion: true });
+  vi.mocked(WKApp.loginInfo.logout).mockReturnValue(cleanup);
+  const completed = vi.fn();
+  const pending = revokeAndReloadEmbeddedSession();
+  expect(revokeAndReloadEmbeddedSession()).toBe(pending);
+  const completion = pending.then(completed);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(completed).toHaveBeenCalledOnce();
+  await completion;
+  expect(location.replace).toHaveBeenCalledExactlyOnceWith("about:blank");
+  expect(location.reload).not.toHaveBeenCalled();
+  expect(vi.getTimerCount()).toBe(0);
+});

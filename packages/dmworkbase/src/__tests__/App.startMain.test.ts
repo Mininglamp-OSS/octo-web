@@ -528,7 +528,7 @@ describe("real logout draft revocation", () => {
       api.logoutCallback!();
       api.logoutCallback!();
     } else {
-      completion = expireStandaloneSession(info, { sessionStorage, localStorage, location: { reload: teardown } });
+      completion = expireStandaloneSession(info, { sessionStorage, localStorage, location: { reload: teardown, replace: vi.fn() } });
     }
     expect(info.uid).toBe("");
     expect(teardown).not.toHaveBeenCalled();
@@ -586,5 +586,26 @@ it("continues manual logout cleanup when draft storage hangs", async () => {
     WKApp.shared.currentSpaceId = originalSpace;
     vi.restoreAllMocks();
     vi.useRealTimers();
+  }
+});
+
+
+it("exits manual logout without reopening the app when mandatory draft deletion fails", async () => {
+  const app = WKApp.shared;
+  const wasLoggingOut = app["_loggingOut"];
+  const location = { replace: vi.fn(), reload: vi.fn() };
+  const error = new Error("IDB aborted");
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(WKApp.loginInfo, "logout").mockReturnValue(Object.assign(Promise.reject(error), { requireCompletion: true }));
+  vi.stubGlobal("window", { location });
+  app["_loggingOut"] = false;
+  try {
+    await expect(app.logout()).resolves.toBeUndefined();
+    expect(location.replace).toHaveBeenCalledExactlyOnceWith("about:blank");
+    expect(location.reload).not.toHaveBeenCalled();
+  } finally {
+    app["_loggingOut"] = wasLoggingOut;
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   }
 });

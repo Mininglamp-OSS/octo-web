@@ -2,7 +2,7 @@ import { conversationDrafts } from "./features/chat-composer/local-drafts/reposi
 import mitt, { Emitter } from "mitt";
 import { getSessionSid, setSessionSid } from "./Service/SessionScope";
 import { replaceWithShellDocument } from "./Service/ShellDocument";
-import { runSessionCleanup } from "./Service/sessionCleanup";
+import { runSessionCleanup, SessionCleanupError } from "./Service/sessionCleanup";
 import { runLogoutCleanup } from "./Service/logoutCleanup";
 import {
   clearElectronAuthSession as clearElectronAuthSessionBridge,
@@ -1144,7 +1144,9 @@ export default class WKApp extends ProviderListener {
   // app启动
   startup(options: { loadLoginInfo?: boolean; isPC?: boolean } = {}) {
     if (consumeOidcPostLogoutCleanup()) {
-      void this.clearLocalLoginState();
+      void this.clearLocalLoginState().catch(error => {
+        console.error("[auth] startup cleanup failed", error);
+      });
     }
     if (options.loadLoginInfo !== false) {
       WKApp.loginInfo.load(); // 加载登录信息
@@ -1174,7 +1176,9 @@ export default class WKApp extends ProviderListener {
       );
       this._deviceFlagMigrationHandled = true;
       markDeviceFlagMigration(migrationSid);
-      void this.clearLocalLoginState();
+      void this.clearLocalLoginState().catch(error => {
+        console.error("[auth] startup cleanup failed", error);
+      });
     } else if (!hasDeviceFlagMismatch && WKApp.loginInfo.isLogined()) {
       // A matching session supersedes any marker left by an interrupted boot.
       clearDeviceFlagMigration(migrationSid);
@@ -1408,7 +1412,13 @@ export default class WKApp extends ProviderListener {
     this.channelMySourceSpaceMap.clear();
     this.spaceChecked = false;
     WKApp.mittBus.emit("wk:auth-state-changed");
-    await draftCleanup;
+    try {
+      await draftCleanup;
+    } catch (error) {
+      // No durable fence exists; a fresh app document could reopen old drafts.
+      window.location.replace("about:blank");
+      throw error;
+    }
   }
 
   private async clearElectronAuthSession() {
@@ -1433,10 +1443,15 @@ export default class WKApp extends ProviderListener {
     // 后续重入直接返回，避免 window.location.replace 被连发导致的反复跳转/刷屏。
     if (this._loggingOut) return;
     this._loggingOut = true;
-    await runLogoutCleanup(
-      () => this.clearLocalLoginState(),
-      () => this.clearElectronAuthSession(),
-    );
+    try {
+      await runLogoutCleanup(
+        () => this.clearLocalLoginState(),
+        () => this.clearElectronAuthSession(),
+      );
+    } catch (error) {
+      if (error instanceof SessionCleanupError) return; // Already exited safely.
+      throw error;
+    }
     // Packaged Electron shell loads via `file://` and has no `/login` route
     // on disk, so `location.replace("/login")` navigates to
     // `file:///login` and hangs on ERR_FILE_NOT_FOUND — the interceptor's

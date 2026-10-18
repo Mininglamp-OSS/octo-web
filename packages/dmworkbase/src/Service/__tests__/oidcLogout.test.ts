@@ -1,3 +1,4 @@
+import { SessionCleanupError } from "../sessionCleanup";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildOidcLogoutPath,
@@ -555,4 +556,21 @@ describe("stale IPC channel guard", () => {
       .replace(/\/\/.*$/gm, "");
     expect(withoutComments).not.toMatch(/oidc-api-origin-start/);
   });
+});
+
+
+it.each(["web", "desktop-shell"] as const)("does not bypass mandatory cleanup failure through OIDC fallback (%s)", async env => {
+  const sfx = makeSideEffects();
+  const error = new SessionCleanupError(new Error("IDB aborted"));
+  sfx.clearLocalLoginState.mockRejectedValue(error);
+  const result = await performOidcUserInitiatedLogout(buildDeps({
+    env,
+    requestLogout: vi.fn(async () => ({ end_session_url: "https://accounts.example.com/end_session" })),
+  }, sfx));
+  expect(result).toEqual({ kind: "logout-error", error });
+  expect(sfx.clearLocalLoginState).toHaveBeenCalledOnce();
+  expect(sfx.fallbackLogout).not.toHaveBeenCalled();
+  expect(sfx.reloadShell).not.toHaveBeenCalled();
+  expect(sfx.navigateExternal).not.toHaveBeenCalled();
+  expect(sfx.markPostLogoutCleanup).not.toHaveBeenCalled();
 });

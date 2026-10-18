@@ -31,7 +31,11 @@ export function installFeatureAuthExpiryHandler(
       }
     };
     // Reporting can destroy the renderer; wait for cleanup within its time bound.
-    if (cleanup) void cleanup.then(report);
+    if (cleanup) void cleanup.then(report, () => {
+      // Notify the host even when persistence failed, then remove the expired UI.
+      report();
+      window.location.replace("about:blank");
+    });
     else report();
   };
 }

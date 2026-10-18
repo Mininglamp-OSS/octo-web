@@ -14,7 +14,7 @@ function makeTarget() {
   return {
     sessionStorage: { removeItem: vi.fn(), getItem: vi.fn(), setItem: vi.fn(), key: vi.fn(), clear: vi.fn(), length: 0 },
     localStorage:   { removeItem: vi.fn(), getItem: vi.fn(), setItem: vi.fn(), key: vi.fn(), clear: vi.fn(), length: 0 },
-    location: { reload: vi.fn() },
+    location: { reload: vi.fn(), replace: vi.fn() },
   };
 }
 
@@ -113,5 +113,25 @@ it("reloads after bounded cleanup and clears token buckets even on a synchronous
     await expireStandaloneSession({ token: "tok1", logout: () => { throw new Error("storage"); } }, target);
     expect(clearSessionsWithToken).toHaveBeenCalledWith("tok1", target.sessionStorage, target.localStorage);
     expect(target.location.reload).toHaveBeenCalledOnce();
+  } finally { vi.useRealTimers(); log.mockRestore(); }
+});
+
+
+it.each([false, true])("exits after mandatory deletion fails even if token storage also throws (%s)", async tokenStorageFails => {
+  vi.useFakeTimers();
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const target = makeTarget();
+    if (tokenStorageFails) vi.mocked(clearSessionsWithToken).mockImplementationOnce(() => { throw new Error("token storage unavailable"); });
+    const completed = vi.fn();
+    const cleanup = Object.assign(Promise.reject(new Error("IDB aborted")), { requireCompletion: true });
+    const pending = expireStandaloneSession({ token: "expired", logout: () => cleanup }, target).then(completed);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(completed).toHaveBeenCalledOnce();
+    await pending;
+    expect(clearSessionsWithToken).toHaveBeenCalledWith("expired", target.sessionStorage, target.localStorage);
+    expect(target.location.replace).toHaveBeenCalledExactlyOnceWith("about:blank");
+    expect(target.location.reload).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
   } finally { vi.useRealTimers(); log.mockRestore(); }
 });

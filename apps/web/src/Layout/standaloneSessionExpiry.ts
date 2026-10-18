@@ -9,9 +9,9 @@ interface ExpiringLogin {
 /**
  * Clear token buckets synchronously, finish draft revocation, then reload.
  *
- * `target.location.reload()` is called inside a `finally` block so that any
- * IndexedDB / logout failure can never leave an expired standalone page visible.
- * The cleanup error is logged for observability but does not prevent the reload.
+ * Ordinary cleanup failures can reload behind the durable draft fence. If both
+ * the fence and deletion fail, exit to a blank document so stale drafts cannot
+ * be reopened by an automatic reload.
  *
  * Why clearing by token VALUE, not just `logout()`:
  * `logout()` clears only the CURRENT `?sid=` bucket, but on a clean cold-load
@@ -24,17 +24,21 @@ interface ExpiringLogin {
  */
 export async function expireStandaloneSession(
   login: ExpiringLogin,
-  target: Pick<Window, "sessionStorage" | "localStorage"> & { location: Pick<Location, "reload"> }
+  target: Pick<Window, "sessionStorage" | "localStorage"> & { location: Pick<Location, "reload" | "replace"> }
 ): Promise<void> {
   const token = login.token || "";
+  const cleanup = runSessionCleanup(() => login.logout(), "[standaloneSessionExpiry]");
   try {
-    const cleanup = runSessionCleanup(() => login.logout(), "[standaloneSessionExpiry]");
     if (token) clearSessionsWithToken(token, target.sessionStorage, target.localStorage);
-    await cleanup;
   } catch (error) {
-    // Log but do not rethrow — reload must happen regardless of cleanup outcome.
-    console.error("[standaloneSessionExpiry] logout cleanup failed, reloading anyway", error);
-  } finally {
-    target.location.reload();
+    console.error("[standaloneSessionExpiry] token cleanup failed", error);
   }
+  try {
+    await cleanup;
+  } catch {
+    // runSessionCleanup already logged the mandatory deletion failure.
+    target.location.replace("about:blank");
+    return;
+  }
+  target.location.reload();
 }

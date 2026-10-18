@@ -29,7 +29,10 @@ export function revokeAndReloadEmbeddedSession(
   additionalCleanup?: () => void | Promise<void>,
 ): Promise<void> {
   const cleanup = revokeEmbeddedSession(additionalCleanup);
-  reload ??= cleanup.then(() => window.location.reload());
+  reload ??= cleanup.then(
+    () => window.location.reload(),
+    () => window.location.replace("about:blank"),
+  );
   return reload;
 }
 
