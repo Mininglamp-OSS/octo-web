@@ -225,8 +225,77 @@ describe("conversation local drafts in the real composer", () => {
     ).toEqual(["b.md"]);
   });
 
-  it("does not clear newly typed text when an older send settles", async () => {
-    const { repository, port } = fixture();
+  it.each([false, true])("awaits the consumed document without a flush hook, across unmount (write fails=%s)", async writeFails => {
+    const { db, port } = fixture();
+    const original = port("a");
+    const { flushDocument, ...drafts } = original;
+    let context!: MessageInputContext;
+    const onSend = vi.fn(async () => createChatSendOutcome({ editorConsumed: true }));
+    const view = render(<ChatComposer host={createTestViewHost("a")} attachmentDrafts={drafts} onSend={onSend} onContext={next => { context = next; }} />);
+    await waitFor(() => expect(context).toBeDefined());
+    act(() => context.insertText("old"));
+    await flushDocument!();
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const write = db.writeDraft.bind(db);
+    let blocked = false;
+    vi.spyOn(db, "writeDraft").mockImplementationOnce(async (...args) => {
+      expect(args[0].preview).toBe("");
+      blocked = true;
+      await gate;
+      if (writeFails) throw new Error("tombstone write failed");
+      return write(...args);
+    });
+    let sending!: ReturnType<MessageInputContext["send"]>;
+    act(() => { sending = context.send(); });
+    await waitFor(() => expect(blocked).toBe(true));
+    expect(onSend).not.toHaveBeenCalled();
+    view.unmount();
+    await act(async () => {
+      release();
+      const result = await sending;
+      expect(result.editorConsumed).toBe(!writeFails);
+      await flushDocument!();
+    });
+    expect(onSend).toHaveBeenCalledTimes(writeFails ? 0 : 1);
+    const fresh = new ConversationDraftRepository(db);
+    await fresh.load(scope, { id: "a", type: 2 });
+    expect(fresh.preview(scope, { id: "a", type: 2 })).toBe(writeFails ? "old" : "");
+  });
+
+  it.each(["capture", "queued", "transport"] as const)("does not restore a successful send after unmount at %s", async unmountAt => {
+    const { db, port } = fixture();
+    const drafts = port("a");
+    let context!: MessageInputContext;
+    let finish!: (value: ReturnType<typeof createChatSendOutcome>) => void;
+    const onSend = vi.fn(() => new Promise<ReturnType<typeof createChatSendOutcome>>(resolve => { finish = resolve; }));
+    const view = render(<ChatComposer host={createTestViewHost("a")} attachmentDrafts={drafts} onSend={onSend}
+      onCaptureSendTarget={() => { if (unmountAt === "capture") view.unmount(); return undefined; }}
+      onContext={next => { context = next; }} />);
+    await waitFor(() => expect(context).toBeDefined());
+    act(() => context.insertText("old"));
+    await drafts.flushDocument!();
+    let sending!: ReturnType<MessageInputContext["send"]>;
+    act(() => { sending = context.send(); });
+    if (unmountAt === "transport") await waitFor(() => expect(onSend).toHaveBeenCalled());
+    if (unmountAt !== "capture") view.unmount();
+    await waitFor(() => expect(onSend).toHaveBeenCalled());
+    await act(async () => {
+      finish(createChatSendOutcome({ editorConsumed: true }));
+      await sending;
+      await drafts.flushDocument!();
+    });
+    const fresh = new ConversationDraftRepository(db);
+    let restored: MessageInputContext | undefined;
+    const reopened = render(<ChatComposer host={createTestViewHost("a")} legacyDraft="old" attachmentDrafts={port("a", fresh)} onContext={next => { restored = next; }} />);
+    await waitFor(() => expect(restored).toBeDefined());
+    expect(restored!.text()).toBe("");
+    expect(fresh.preview(scope, { id: "a", type: 2 })).toBe("");
+    reopened.unmount();
+  });
+
+  it.each([false, true])("does not clear newer text when an older send settles (unmounted=%s)", async unmounted => {
+    const { db, repository, port } = fixture();
     const drafts = port("a");
     let context: MessageInputContext | undefined;
     let finish!: (value: ReturnType<typeof createChatSendOutcome>) => void;
@@ -254,6 +323,8 @@ describe("conversation local drafts in the real composer", () => {
     });
     await waitFor(() => expect(onSend).toHaveBeenCalled());
     act(() => context!.insertText("new"));
+    await drafts.flushDocument!();
+    if (unmounted) view.unmount();
     await act(async () => {
       finish(createChatSendOutcome({ editorConsumed: true }));
       await sending;
@@ -261,8 +332,11 @@ describe("conversation local drafts in the real composer", () => {
     await waitFor(() =>
       expect(repository.preview(scope, { id: "a", type: 2 })).toBe("new")
     );
-    expect(context!.text()).toBe("new");
-    view.unmount();
+    expect((await new ConversationDraftRepository(db).load(scope, { id: "a", type: 2 }))?.document.content?.[0].content?.[0].text).toBe("new");
+    if (!unmounted) {
+      expect(context!.text()).toBe("new");
+      view.unmount();
+    }
   });
 
   it("persists an unmounted failed send ahead of a newer draft without overwriting it", async () => {

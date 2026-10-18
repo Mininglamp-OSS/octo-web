@@ -1,6 +1,6 @@
 import { wkConfirm } from "../../../Components/WKModal/confirm";
 import { DraftConflictError } from "../local-drafts/database";
-import { draftDocumentSize } from "../local-drafts/model";
+import { draftDocumentSize, emptyConversationDraft } from "../local-drafts/model";
 import React, {
   useState,
   useEffect,
@@ -1649,6 +1649,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     let restoredDocumentOffset = 0;
     let restoredDocumentSize = 0;
     let anchorsRestored = false;
+    let consumedDocument: Promise<void> | undefined;
     const restoreUploadAnchors = () => {
       if (anchorsRestored || !composerMountedRef.current || editor.isDestroyed) return;
       anchorsRestored = true;
@@ -1693,11 +1694,15 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
                 send: props.onSend!,
                 onSendSettled: props.onSendSettled,
               };
-              if (!draftSend && (temporaryDocument || !attachmentDrafts?.flushDocument)) return captured;
+              if (!draftSend && (temporaryDocument ||
+                  (!attachmentDrafts?.saveDocument && !attachmentDrafts?.flushDocument))) return captured;
               return { ...captured, send: async (request) => {
                 try {
                   await draftSend?.ready;
-                  if (!temporaryDocument) await attachmentDrafts?.flushDocument?.();
+                  if (!temporaryDocument) {
+                    await consumedDocument;
+                    await attachmentDrafts?.flushDocument?.();
+                  }
                 }
                 catch (error) {
                   if (!temporaryDocument && !draftConflictRef.current && !(error instanceof DraftConflictError)) setDraftSaveFailed(true);
@@ -1741,8 +1746,8 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             },
           },
           editor: {
-            consume: (context) =>
-              consumeCompose({
+            consume: (context) => {
+              const consumed = consumeCompose({
               composePartRegistry: extensions.editor.composeParts,
               captured: capturedEditorCompose,
               isRestoreTargetActive: context.isRestoreTargetActive,
@@ -1802,7 +1807,21 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
               onRestoreCompose: context.onRestoreCompose,
               onRestoreSendTarget: context.onRestoreSendTarget,
               onRestoreError: context.onRestoreError,
-              }),
+              });
+              if (!temporaryDocument) {
+                // Queue the empty snapshot synchronously, before yielding to
+                // navigation or new input, even if the editor has unmounted.
+                // Do not depend on editor/store subscriptions to persist it,
+                // or clear a potentially newer draft after the send settles.
+                consumedDocument = attachmentDrafts?.saveDocument?.({
+                  ...documentAtSend,
+                  ...emptyConversationDraft(),
+                });
+                // The send queue may await this later, after earlier attempts.
+                void consumedDocument?.catch(() => {});
+              }
+              return consumed;
+            },
             handoffRecovery: (recovery) => {
               const editorRecoveryIds = new Set([
                 ...recovery.editorAttachments.map(({ id }) => id),
