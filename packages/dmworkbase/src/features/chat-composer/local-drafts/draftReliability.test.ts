@@ -525,3 +525,32 @@ it("retiring an obsolete stage still acknowledges a queued send settlement", asy
   expect(await db.list("attachments", "conversation", draftKey(scope, channel))).toEqual([]);
   expect(current.canLeave([])).toBe(true);
 });
+
+
+it("requires confirmation for live blobs that failed despite a durable document", async () => {
+  const { db, first, second, port } = setup();
+  const current = port();
+  await current.restore();
+  const change = db.changeAttachments.bind(db);
+  vi.spyOn(db, "changeAttachments").mockImplementation((key, update, session) => change(key, records => {
+    const next = update(records);
+    if (next.length) throw new DOMException("Blob full", "QuotaExceededError");
+    return next;
+  }, session));
+  const file = attachment("unsaved.zip");
+  expect(await current.stage(file)).toBe(false);
+  current.syncLive([file.id]);
+  await current.saveDocument!(withFile(file.id));
+  await current.flushDocument!();
+  expect(current.hasDurableDocument!()).toBe(true);
+  const reopened = await port(second).restore();
+  expect(reopened.document?.topAttachments).toHaveLength(1);
+  expect(reopened.attachments).toEqual([]);
+  expect(current.canLeave([file.id])).toBe(false);
+  expect(current.canLeaveAttachments!(["unknown-live-id"])).toBe(false);
+
+  current.syncLive([]);
+  await current.saveDocument!(empty);
+  await first.flush(draftKey(scope, channel) + ":files");
+  expect(current.canLeave([])).toBe(true);
+});

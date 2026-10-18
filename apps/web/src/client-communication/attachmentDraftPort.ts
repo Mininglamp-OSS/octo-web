@@ -156,11 +156,13 @@ export function createClientAttachmentDraftPort(
           if (settled) return settled;
           settled = (async () => {
             try {
-              try { await prepare; } catch { /* Cancel an uncertain reservation using its stable request id. */ }
+              let sendId = requestId;
+              try { sendId = (await prepare).sendId; }
+              catch { /* Cancel an uncertain reservation using its stable request id. */ }
               if (requested) {
                 settlement ??= cleanup.add(scope, ids, ids.filter(id => !keepAttachmentIds.includes(id)), async () => {
                   cleanup.assertActive();
-                  await bounded(api.settleSend({ sendId: requestId, keepAttachmentIds: [...keepAttachmentIds] }));
+                  await bounded(api.settleSend({ sendId, keepAttachmentIds: [...keepAttachmentIds] }));
                 });
                 await settlement.run();
               }

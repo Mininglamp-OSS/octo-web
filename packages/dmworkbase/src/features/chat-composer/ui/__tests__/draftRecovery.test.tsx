@@ -595,9 +595,36 @@ it("retains attachment readiness checks in temporary document mode", async () =>
   expect(begin).toHaveBeenCalled();
   expect(onSend).not.toHaveBeenCalled();
   expect(context.getAttachmentFiles().map(file => file.name)).toContain("pending.zip");
-  // Staging failed deterministically (disk full); send is blocked but the user
-  // is not prevented from navigating away — the failure is already visible.
+  // A failure notification is not consent to discard the live in-memory file.
+  expect(context.canLeaveWithAttachments()).toBe(false);
+  fireEvent.click(view.getByRole("button", { name: /移除|Remove/ }));
+  await waitFor(() => expect(context.getAttachmentFiles()).toHaveLength(0));
   expect(context.canLeaveWithAttachments()).toBe(true);
+  view.unmount();
+});
+
+it("requires leave confirmation when only the attachment blob failed to save", async () => {
+  const { db, port, factory } = fixture();
+  const drafts = port("blob-quota");
+  const change = db.changeAttachments.bind(db);
+  vi.spyOn(db, "changeAttachments").mockImplementation((key, update, session) => change(key, records => {
+    const next = update(records);
+    if (next.length) throw new DOMException("Blob full", "QuotaExceededError");
+    return next;
+  }, session));
+  let context!: MessageInputContext;
+  const view = render(<ChatComposer host={createTestViewHost("blob-quota")} attachmentDrafts={drafts}
+    onContext={next => { context = next; }} />);
+  await waitFor(() => expect(context).toBeDefined());
+  await act(async () => { await context.addAttachment([new File(["private bytes"], "unsaved.zip")]); });
+  await act(async () => { await drafts.flushDocument!(); });
+  const reopened = await port("blob-quota", new ConversationDraftRepository(new DraftDatabase(() => factory))).restore();
+  expect(reopened.document?.topAttachments).toHaveLength(1);
+  expect(reopened.attachments).toEqual([]);
+  expect(context.getAttachmentFiles().map(file => file.name)).toEqual(["unsaved.zip"]);
+  expect(context.canLeaveWithAttachments()).toBe(false);
+  fireEvent.click(view.getByRole("button", { name: /移除|Remove/ }));
+  await waitFor(() => expect(context.canLeaveWithAttachments()).toBe(true));
   view.unmount();
 });
 

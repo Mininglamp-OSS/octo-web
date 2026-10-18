@@ -1,5 +1,3 @@
-import { conversationDrafts } from "@octo/base/src/features/chat-composer/local-drafts/repository";
-import { currentConversationDraftScope } from "@octo/base/src/bridge/conversationDraftScope";
 import {
   applyImSpaceContext, getCurrentImConversationStore, getCurrentImUnreadObserver,
   installImReadAttentionGate, ThemeMode, WKApp, i18n,
@@ -36,15 +34,6 @@ export async function startCommunicationRuntime(host: OctoBuddyCommunicationBrid
   const unread = getCurrentImUnreadObserver();
   const gate = installImReadAttentionGate(false);
   let disposed = false;
-  const draftScope = currentConversationDraftScope();
-  let draftCleanup: Promise<void> | undefined;
-  const clearDrafts = () => {
-    if (!draftCleanup) {
-      draftCleanup = conversationDrafts.clearAccount(draftScope);
-      void draftCleanup.catch(error => console.warn("[drafts] logout cleanup failed", error));
-    }
-    return draftCleanup;
-  };
   const cleanups: Array<() => void> = [];
   let owner: ReturnType<typeof createCommunicationOwner>;
   let forward: ReturnType<typeof installLazyDocumentForward>;
@@ -129,7 +118,7 @@ export async function startCommunicationRuntime(host: OctoBuddyCommunicationBrid
     }));
     cleanups.push(host.onCommand(command => {
       if (command.type === "sessionRevoked") {
-        void revokeAndReloadEmbeddedSession(clearDrafts);
+        void revokeAndReloadEmbeddedSession();
         owner.dispose();
       } else if (command.type === "filePreviewClosed" || command.type === "filePreviewState") {
         ui.dispatch(command);
@@ -147,7 +136,7 @@ export async function startCommunicationRuntime(host: OctoBuddyCommunicationBrid
       // Legacy navigation/Space/visibility messages are not owner-scoped.
     }));
     const previousLogout = WKApp.apiClient.logoutCallback;
-    const logout = () => { void clearDrafts(); owner.dispose(); previousLogout?.(); };
+    const logout = () => { owner.dispose(); previousLogout?.(); };
     WKApp.apiClient.logoutCallback = logout;
     cleanups.push(() => {
       if (WKApp.apiClient.logoutCallback === logout) WKApp.apiClient.logoutCallback = previousLogout;

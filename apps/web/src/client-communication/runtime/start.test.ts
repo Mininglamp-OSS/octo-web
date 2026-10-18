@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommunicationBootstrap, OctoBuddyCommunicationBridge } from "../hostBridge";
 import { startCommunicationRuntime } from "./start";
+import { installCommunicationAuthExpiryHandler } from "../authLifecycle";
 import { getDocumentPreviewBody } from "@octo/base/src/Service/DocumentPreviewService";
 import type { DocumentPreviewResponse } from "@octo/base/src/Service/DocumentPreviewService";
 import APIClient from "@octo/base/src/Service/APIClient";
@@ -23,7 +24,7 @@ const f = vi.hoisted(() => ({
   unread: { getSnapshot: vi.fn(() => 12), subscribe: vi.fn(() => vi.fn()) },
   gate: { setAllowed: vi.fn(), dispose: vi.fn() },
   sdk: { disconnect: vi.fn() },
-  clearDrafts: vi.fn(async () => {}),
+  clearDrafts: vi.fn(async (_scope: { server: string; account: string; space: string }) => {}),
   mount: vi.fn(async () => vi.fn()),
   app: {
     shared: { currentSpaceId: "s", notifyListener: vi.fn() },
@@ -58,7 +59,9 @@ beforeEach(() => {
   f.app.shared.currentSpaceId = "s";
   f.app.loginInfo.uid = "alice";
   f.app.loginInfo.logout.mockImplementation(() => {
+    const cleanup = f.clearDrafts({ server: "test", account: f.app.loginInfo.uid, space: "" });
     f.app.loginInfo.uid = "";
+    return cleanup;
   });
   vi.spyOn(APIClient.shared, "get").mockResolvedValue({ fallback: true });
 });
@@ -95,9 +98,9 @@ describe("communication runtime composition", () => {
       await vi.waitFor(() => expect(f.mount).toHaveBeenCalledOnce());
     }
     h.legacy({ type: "sessionRevoked" });
-    expect(f.clearDrafts).toHaveBeenCalledExactlyOnceWith({server: "test", account: "alice", space: "s"});
+    expect(f.clearDrafts).toHaveBeenCalledExactlyOnceWith({server: "test", account: "alice", space: ""});
     expect(f.app.loginInfo.logout).toHaveBeenCalledOnce();
-    expect(f.clearDrafts.mock.invocationCallOrder[0]).toBeLessThan(f.app.loginInfo.logout.mock.invocationCallOrder[0]);
+    expect(f.app.loginInfo.logout.mock.invocationCallOrder[0]).toBeLessThan(f.clearDrafts.mock.invocationCallOrder[0]);
     await revokeEmbeddedSession();
     expect(reload).toHaveBeenCalledOnce();
     owner.dispose();
@@ -219,15 +222,16 @@ describe("communication runtime composition", () => {
     }
   });
   it("releases runtime on authentication expiry and restores the auth callback", async () => {
-    const previous = vi.fn();
-    f.app.apiClient.logoutCallback = previous;
     const h = hostFixture();
+    installCommunicationAuthExpiryHandler(f.app.apiClient, f.app.loginInfo, h.host);
+    const previous = vi.fn(f.app.apiClient.logoutCallback!);
+    f.app.apiClient.logoutCallback = previous;
     await startCommunicationRuntime(h.host, bootstrap);
     f.app.apiClient.logoutCallback!();
     expect(f.sdk.disconnect).toHaveBeenCalledOnce();
     expect(f.app.apiClient.logoutCallback).toBe(previous);
     expect(previous).toHaveBeenCalledOnce();
-    expect(f.clearDrafts).toHaveBeenCalledExactlyOnceWith({server: "test", account: "alice", space: "s"});
+    expect(f.clearDrafts).toHaveBeenCalledExactlyOnceWith({server: "test", account: "alice", space: ""});
     h.send({ type: "navigate", page: "chat" });
     expect(f.mount).not.toHaveBeenCalled();
   });

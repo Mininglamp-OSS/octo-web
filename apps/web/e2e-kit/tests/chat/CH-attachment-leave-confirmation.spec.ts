@@ -66,3 +66,64 @@ test("@p1 browser drafts retain ordered attachments and text across navigation a
   expect(extraBodies.length).toBeGreaterThan(0);
   expect(extraBodies.every(body => body.draft === "")).toBe(true);
 });
+
+test("@p1 failed blob storage requires cancel or explicit discard even when the document saves", async ({ authedPage: page }) => {
+  const groups = [{ group_no: "quota-leave-a", name: "Quota Leave A" }, { group_no: "quota-leave-b", name: "Quota Leave B" }];
+  await registerChatLifecycleHandlers(page);
+  await installMockImRuntime(page, {
+    currentUid: "e2e-user-1", spaceId: "e2e-space-001",
+    users: [{ uid: "e2e-user-1", name: "E2E Tester" }], groups,
+    conversations: groups.map(group => ({ channelId: group.group_no, channelType: 2, unread: 0, timestamp: Math.floor(Date.now() / 1000) })),
+    messages: [], subscribers: [],
+  });
+  await page.getByRole("button", { name: "会话", exact: true }).click();
+  await page.getByRole("button", { name: "最近", exact: true }).click();
+  const rowA = page.locator('[data-object-id="quota-leave-a"]');
+  const rowB = page.locator('[data-object-id="quota-leave-b"]');
+  await rowA.click();
+  const composer = page.locator(".wk-messageinput-box");
+  await expect(composer.locator('[contenteditable="true"]')).toBeVisible();
+  await page.evaluate(() => {
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (value, key) {
+      if (this.name === "attachments" && value.file instanceof Blob)
+        throw new DOMException("Injected blob quota failure", "QuotaExceededError");
+      return put.call(this, value, key);
+    };
+  });
+  await page.locator('input[type="file"]').first().setInputFiles({ name: "unsaved.zip", mimeType: "application/zip", buffer: Buffer.from("only in memory") });
+  await expect(composer.getByText("unsaved.zip", { exact: true })).toBeVisible();
+  // Confirm the smaller document write succeeded, so it cannot accidentally
+  // supply the leave veto that the missing blob must provide on its own.
+  await expect.poll(() => page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("octo-conversation-drafts");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      return await new Promise<boolean>((resolve, reject) => {
+        const tx = db.transaction(["drafts", "attachments"]);
+        const documents = tx.objectStore("drafts").getAll();
+        const files = tx.objectStore("attachments").getAll();
+        tx.oncomplete = () => resolve(
+          documents.result.some(record => record.key.includes("quota-leave-a") && record.draft.topAttachments.some((file: { name: string }) => file.name === "unsaved.zip")) &&
+          files.result.length === 0
+        );
+        tx.onerror = () => reject(tx.error);
+      });
+    } finally { db.close(); }
+  })).toBe(true);
+  await rowB.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("有未发送的附件");
+  await dialog.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(composer.getByText("unsaved.zip", { exact: true })).toBeVisible();
+  await rowB.click();
+  await dialog.getByRole("button", { name: "继续切换", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(composer.getByText("unsaved.zip", { exact: true })).toHaveCount(0);
+  await rowA.click();
+  await expect(dialog).toHaveCount(0);
+  await expect(composer.getByText("unsaved.zip", { exact: true })).toHaveCount(0);
+});

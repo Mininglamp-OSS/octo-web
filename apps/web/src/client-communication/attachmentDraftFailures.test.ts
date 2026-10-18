@@ -85,16 +85,20 @@ describe("Client draft failure and undo boundaries", () => {
     expect(api.prepareSend).toHaveBeenCalledWith(expect.objectContaining({ attachments: [{ id: "x", revision: expect.any(String) }] }));
     await send.settle([]);
   });
-  it("retries failed settlement before another send without leaking the UI lock", async () => {
+  it("retries failed settlement with the returned opaque token before another send", async () => {
     const { api, port } = fixture();
     await port.stage(file());
+    vi.mocked(api.prepareSend).mockResolvedValueOnce({ sendId: "native-reservation" });
     const first = port.beginSend(["x"]); await first.ready;
     vi.mocked(api.settleSend).mockRejectedValueOnce(new Error("lost reply"));
     await expect(first.settle(["x"])).rejects.toThrow("lost reply");
     expect(port.canLeave(["x"])).toBe(false);
     const second = port.beginSend(["x"]); await second.ready;
     expect(api.settleSend).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(api.settleSend).mock.calls[0]).toEqual(vi.mocked(api.settleSend).mock.calls[1]);
+    expect(vi.mocked(api.settleSend).mock.calls.slice(0, 2)).toEqual([
+      [{ sendId: "native-reservation", keepAttachmentIds: ["x"] }],
+      [{ sendId: "native-reservation", keepAttachmentIds: ["x"] }],
+    ]);
     expect(api.prepareSend).toHaveBeenCalledTimes(2);
     await second.settle([]); await second.settle([]);
     expect(api.settleSend).toHaveBeenCalledTimes(3);

@@ -1,20 +1,14 @@
-import { conversationDrafts } from "@octo/base/src/features/chat-composer/local-drafts/repository";
-import { currentConversationDraftScope } from "@octo/base/src/bridge/conversationDraftScope";
 import { installAttachmentDraftFactory } from "@octo/base/src/features/chat-composer/local-drafts";
 import { AttachmentDraftCleanup } from "./attachmentDraftCleanup";
 import { createClientAttachmentDraftPort } from "./attachmentDraftPort";
 import type { OctoBuddyCommunicationBridge } from "./hostBridge";
 
 export function installClientLocalAttachmentDrafts(bridge: OctoBuddyCommunicationBridge, initialSpaceId: string): () => void {
-  const draftScope = currentConversationDraftScope();
-  const clearDrafts = () => {
-    void conversationDrafts.clearAccount(draftScope).catch(error => console.warn("[drafts] logout cleanup failed", error));
-  };
   const api = bridge.attachmentDrafts;
   if (!api || api.version !== 4 ||
       ![api.open, api.stage, api.remove, api.prepareSend, api.settleSend].every(method => typeof method === "function")) {
-    // Older Clients use the browser provider and still need account cleanup.
-    return bridge.onCommand(command => { if (command.type === "sessionRevoked") clearDrafts(); });
+    // Browser fallback and account cleanup belong to the shared session lifecycle.
+    return () => {};
   }
   const cleanup = new AttachmentDraftCleanup();
   let active = true;
@@ -35,7 +29,6 @@ export function installClientLocalAttachmentDrafts(bridge: OctoBuddyCommunicatio
   off = bridge.onCommand(command => {
     if (!active) return;
     if (command.type === "sessionRevoked") {
-      clearDrafts();
       dispose();
     }
     else if (command.type === "spaceChanged" && command.space.id !== spaceId) {
