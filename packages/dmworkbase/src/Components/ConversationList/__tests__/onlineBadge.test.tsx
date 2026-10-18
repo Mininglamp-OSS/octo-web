@@ -221,6 +221,7 @@ describe("online badge in compact (favorites/group) list", () => {
     const list: any = new (ConversationList as any)({ filter: "all" });
     const person: any = { channel: new MockChannel("p", 1), channelInfo: { orgData: { robot: 0 } }, remoteExtra: { draft: "draft" } };
     const group: any = { channel: new MockChannel("g", 2), channelInfo: { orgData: {} }, remoteExtra: {} };
+    // Keep legacy previews visible until the conversation is migrated locally.
     expect(list.lastContent(person)).toBe("draft");
     expect(list.lastContent({ ...group, lastMessage: undefined })).toBeUndefined();
     expect(list.getOnlineTip({ online: true } as any)).toBeUndefined();

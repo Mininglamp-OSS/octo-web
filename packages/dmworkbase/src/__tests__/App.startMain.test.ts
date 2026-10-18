@@ -502,3 +502,234 @@ describe("WKRemoteConfig listeners and appconfig mapping", () => {
     warn.mockRestore();
   });
 });
+
+import { IDBFactory } from "fake-indexeddb";
+import { File as NodeFile } from "node:buffer";
+import { conversationDrafts, ConversationDraftRepository } from "../features/chat-composer/local-drafts/repository";
+import { DraftDatabase } from "../features/chat-composer/local-drafts/database";
+import { createBrowserAttachmentDraftPort } from "../features/chat-composer/local-drafts/browserPort";
+import { withConversationDocument } from "../features/chat-composer/local-drafts/documentPort";
+import { draftAccountKey, draftKey } from "../features/chat-composer/local-drafts/model";
+import { SESSION_CLEANUP_TIMEOUT_MS } from "../Service/sessionCleanup";
+import { installFeatureAuthExpiryHandler } from "../../../../apps/web/src/client-feature/authLifecycle";
+import { expireStandaloneSession } from "../../../../apps/web/src/Layout/standaloneSessionExpiry";
+
+describe("real logout draft revocation", () => {
+  const factory = new IDBFactory();
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+  it.each(["communication", "standalone"] as const)("cleans and fences %s expiry before renderer teardown", async path => {
+    vi.stubGlobal("indexedDB", factory);
+    vi.stubGlobal("BroadcastChannel", undefined);
+    vi.stubGlobal("File", NodeFile);
+    const info = new LoginInfo();
+    info.applySession({ uid: `expiry-${path}`, token: "expired-token" });
+    const scope = { server: WKApp.apiClient.config.apiURL || "", account: info.uid!, space: "s" };
+    const channel = { id: "chat", type: 2 };
+    const db = new DraftDatabase();
+    const repo = new ConversationDraftRepository(db);
+    const port = withConversationDocument(createBrowserAttachmentDraftPort(scope, channel, repo), scope, channel, repo);
+    await port.restore();
+    const file = { id: "private", file: new File(["private"], "private.zip"), source: "upload" as const };
+    await port.stage(file);
+    await port.saveDocument!({ document: { type: "doc", content: [{ type: "paragraph" }] }, topAttachments: [{ id: file.id, name: file.file.name, position: 1 }] });
+    const account = draftAccountKey(scope);
+    const teardown = vi.fn();
+    const original = conversationDrafts.database.clearAccount.bind(conversationDrafts.database);
+    let finish!: () => void;
+    const gate = new Promise<void>(resolve => { finish = resolve; });
+    vi.spyOn(conversationDrafts.database, "clearAccount").mockImplementation(async key => { await gate; return original(key); });
+    let completion: Promise<void> | undefined;
+    if (path === "communication") {
+      const api: { logoutCallback?: () => void } = {};
+      installFeatureAuthExpiryHandler(api, info, { reportAuthExpired: teardown }, { reason: "expired", logPrefix: "test" });
+      api.logoutCallback!();
+      api.logoutCallback!();
+    } else {
+      completion = expireStandaloneSession(info, { sessionStorage, localStorage, location: { reload: teardown, replace: vi.fn() } });
+    }
+    expect(info.uid).toBe("");
+    expect(teardown).not.toHaveBeenCalled();
+    finish();
+    await completion;
+    await vi.waitFor(() => expect(teardown).toHaveBeenCalledOnce());
+    expect(await db.list("drafts", "account", account)).toEqual([]);
+    expect(await db.list("attachments", "account", account)).toEqual([]);
+    expect(await port.stage(file)).toBe(false);
+    await expect(port.saveDocument!({ document: { type: "doc" }, topAttachments: [] })).rejects.toThrow("Draft session expired");
+    expect(await db.list("drafts", "account", account)).toEqual([]);
+  });
+  it("preserves mandatory cleanup completion through LoginInfo.logout", async () => {
+    const info = new LoginInfo();
+    info.applySession({ uid: "barrier-failed", token: "expired" });
+    let finish!: () => void;
+    const cleanup = Object.assign(new Promise<void>(resolve => { finish = resolve; }), {
+      requireCompletion: true,
+    });
+    vi.spyOn(conversationDrafts, "clearAccount").mockReturnValue(cleanup);
+    expect(info.logout()).toBe(cleanup);
+    expect(info.token).toBeUndefined();
+    finish();
+    await cleanup;
+  });
+  it("captures stored uid when cold logout precedes LoginInfo.load", async () => {
+    const info = new LoginInfo();
+    vi.spyOn(info, "getStorageItemForSID").mockImplementation(key => key === "uid" ? "cold-user" : null);
+    const clear = vi.spyOn(conversationDrafts, "clearAccount").mockResolvedValue();
+    await info.logout();
+    expect(clear).toHaveBeenCalledWith(expect.objectContaining({ account: "cold-user" }));
+  });
+
+  it.each([
+    { storage: "sessionStorage", fails: false },
+    { storage: "localStorage", fails: false },
+    { storage: "sessionStorage", fails: true },
+    { storage: "localStorage", fails: true },
+  ] as const)("preserves mandatory deletion through throwing $storage removal (deletion fails=$fails)", async ({ storage, fails }) => {
+    vi.stubGlobal("indexedDB", factory);
+    vi.stubGlobal("BroadcastChannel", undefined);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const info = new LoginInfo();
+    info.applySession({ uid: `throwing-${storage}-${fails}`, token: "expired" });
+    info.realnameVerified = true;
+    info.realName = "Private Name";
+    info.realnameVerifiedAt = 1;
+    info.save();
+    const scope = { server: WKApp.apiClient.config.apiURL || "", account: info.uid!, space: "s" };
+    const channel = { id: "chat", type: 2 };
+    const key = draftKey(scope, channel);
+    const draft = { document: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "private" }] }] }, topAttachments: [] };
+    await conversationDrafts.save(scope, channel, draft);
+    const db = conversationDrafts.database;
+    const session = await conversationDrafts.session(scope);
+    await db.changeAttachments(key, () => [{
+      key: JSON.stringify([key, "private"]), conversation: key, account: draftAccountKey(scope),
+      id: "private", file: new Blob(["private bytes"]), name: "private.zip", lastModified: 1,
+      revision: "original", source: "upload", position: 1,
+    }], session);
+
+    // Hold real database deletion after its synchronous revocation attempt.
+    let finish!: () => void;
+    const gate = new Promise<void>(resolve => { finish = resolve; });
+    const internals = db as unknown as { open(): Promise<IDBDatabase> };
+    const open = internals.open.bind(db);
+    vi.spyOn(internals, "open").mockImplementationOnce(async () => {
+      await gate;
+      if (fails) throw new Error("IDB deletion failed");
+      return open();
+    });
+    const clear = vi.spyOn(conversationDrafts, "clearAccount");
+    // Wrap the browser Storage objects: jsdom's Storage proxy does not reliably
+    // allow spying on individual instance methods.
+    for (const name of ["sessionStorage", "localStorage"] as const) {
+      const backing = window[name];
+      vi.stubGlobal(name, {
+        get length() { return backing.length; },
+        key: backing.key.bind(backing),
+        getItem: backing.getItem.bind(backing),
+        clear: backing.clear.bind(backing),
+        setItem(key: string, value: string) {
+          if (name === "localStorage") throw new DOMException("Revocation storage unavailable", "QuotaExceededError");
+          backing.setItem(key, value);
+        },
+        removeItem(key: string) {
+          if (name === storage && key === "token" + info.getSID()) {
+            expect(clear).toHaveBeenCalledOnce();
+            throw new DOMException("Credential storage unavailable", "SecurityError");
+          }
+          backing.removeItem(key);
+        },
+      });
+    }
+    const removals = vi.spyOn(info, "removeStorageItemForSID");
+    const logout = vi.spyOn(info, "logout");
+    const location = { reload: vi.fn(), replace: vi.fn() };
+    const fresh = new DraftDatabase(() => factory, db.name);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const completion = expireStandaloneSession(info, { sessionStorage, localStorage, location });
+    const deletion = clear.mock.results[0].value;
+    try {
+      expect(deletion.requireCompletion).toBe(true);
+      await vi.advanceTimersByTimeAsync(SESSION_CLEANUP_TIMEOUT_MS * 2);
+      expect(location.reload).not.toHaveBeenCalled();
+      expect(location.replace).not.toHaveBeenCalled();
+      expect(logout.mock.results[0].value).toBe(deletion);
+      expect(info.token).toBeUndefined();
+      expect(info.uid).toBe("");
+      expect(info.realnameVerified).toBeUndefined();
+      expect(info.realName).toBeUndefined();
+      expect(info.realnameVerifiedAt).toBeUndefined();
+      expect(removals.mock.calls.map(([key]) => key)).toEqual([
+        "token", "app_id", "role", "is_work", "uid", "short_no", "name", "sex",
+        "login_provider", "device_flag", "realname_verified", "real_name", "realname_verified_at",
+      ]);
+      expect(sessionStorage.getItem("real_name" + info.getSID())).toBeNull();
+      // Without a durable marker, a premature reload really could expose this data.
+      expect(await fresh.read("drafts", key)).toBeDefined();
+      expect(await fresh.restoreAttachments(key)).toHaveLength(1);
+      finish();
+      await completion;
+      if (fails) {
+        await expect(deletion).rejects.toThrow("IDB deletion failed");
+        expect(location.replace).toHaveBeenCalledExactlyOnceWith("about:blank");
+        expect(location.reload).not.toHaveBeenCalled();
+      } else {
+        expect(location.reload).toHaveBeenCalledOnce();
+        expect(location.replace).not.toHaveBeenCalled();
+        expect(await fresh.read("drafts", key)).toBeUndefined();
+        expect(await fresh.restoreAttachments(key)).toEqual([]);
+      }
+    } finally {
+      finish();
+      await Promise.allSettled([completion, deletion]);
+      vi.useRealTimers();
+    }
+  });
+});
+
+
+it("continues manual logout cleanup when draft storage hangs", async () => {
+  vi.useFakeTimers();
+  const originalSpace = WKApp.shared.currentSpaceId;
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const logout = vi.spyOn(WKApp.loginInfo, "logout").mockReturnValue(new Promise(() => {}));
+  try {
+    WKApp.shared.currentSpaceId = "leaving-space";
+    const completed = vi.fn();
+    const cleanup = WKApp.shared["clearLocalLoginState"]().then(completed);
+    expect(logout).toHaveBeenCalledOnce();
+    expect(WKApp.shared.currentSpaceId).toBe("");
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(completed).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await cleanup;
+    expect(completed).toHaveBeenCalledOnce();
+    expect(log).toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    WKApp.shared.currentSpaceId = originalSpace;
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  }
+});
+
+
+it("exits manual logout without reopening the app when mandatory draft deletion fails", async () => {
+  const app = WKApp.shared;
+  const wasLoggingOut = app["_loggingOut"];
+  const location = { replace: vi.fn(), reload: vi.fn() };
+  const error = new Error("IDB aborted");
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(WKApp.loginInfo, "logout").mockReturnValue(Object.assign(Promise.reject(error), { requireCompletion: true }));
+  vi.stubGlobal("window", { location });
+  app["_loggingOut"] = false;
+  try {
+    await expect(app.logout()).resolves.toBeUndefined();
+    expect(location.replace).toHaveBeenCalledExactlyOnceWith("about:blank");
+    expect(location.reload).not.toHaveBeenCalled();
+  } finally {
+    app["_loggingOut"] = wasLoggingOut;
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  }
+});

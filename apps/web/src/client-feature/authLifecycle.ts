@@ -1,9 +1,11 @@
+import { runSessionCleanup } from "@octo/base/src/Service/sessionCleanup";
+
 interface AuthExpiryClient {
   logoutCallback?: () => void;
 }
 
 interface EphemeralLoginInfo {
-  logout(): void;
+  logout(): void | Promise<void>;
 }
 
 interface AuthExpiryBridge {
@@ -20,14 +22,20 @@ export function installFeatureAuthExpiryHandler(
   apiClient.logoutCallback = () => {
     if (reported) return;
     reported = true;
-    loginInfo.logout();
-    try {
-      bridge.reportAuthExpired(options.reason);
-    } catch (error) {
-      console.error(
-        `${options.logPrefix} failed to report expired session`,
-        error
-      );
-    }
+    const cleanup = runSessionCleanup(() => loginInfo.logout(), options.logPrefix);
+    const report = () => {
+      try {
+        bridge.reportAuthExpired(options.reason);
+      } catch (error) {
+        console.error(`${options.logPrefix} failed to report expired session`, error);
+      }
+    };
+    // Reporting can destroy the renderer; wait for cleanup within its time bound.
+    if (cleanup) void cleanup.then(report, () => {
+      // Notify the host even when persistence failed, then remove the expired UI.
+      report();
+      window.location.replace("about:blank");
+    });
+    else report();
   };
 }

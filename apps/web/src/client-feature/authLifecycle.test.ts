@@ -1,5 +1,47 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { installFeatureAuthExpiryHandler } from "./authLifecycle";
+import { SESSION_CLEANUP_TIMEOUT_MS } from "@octo/base/src/Service/sessionCleanup";
+
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+it.each(["hang", "reject", "throw"] as const)("reports expiry exactly once when cleanup can %s", async mode => {
+  vi.useFakeTimers();
+  const error = new Error("storage unavailable");
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const logout = vi.fn(() => {
+    if (mode === "throw") throw error;
+    if (mode === "reject") return Promise.reject(error);
+    return new Promise<void>(() => {});
+  });
+  const api: { logoutCallback?: () => void } = {};
+  const bridge = { reportAuthExpired: vi.fn() };
+  installFeatureAuthExpiryHandler(api, { logout }, bridge, { reason: "expired", logPrefix: "[test]" });
+  expect(() => { api.logoutCallback?.(); api.logoutCallback?.(); }).not.toThrow();
+  expect(logout).toHaveBeenCalledOnce();
+  if (mode === "hang") {
+    await vi.advanceTimersByTimeAsync(SESSION_CLEANUP_TIMEOUT_MS - 1);
+    expect(bridge.reportAuthExpired).not.toHaveBeenCalled();
+  }
+  await vi.advanceTimersByTimeAsync(SESSION_CLEANUP_TIMEOUT_MS);
+  expect(bridge.reportAuthExpired).toHaveBeenCalledExactlyOnceWith("expired");
+  expect(log).toHaveBeenCalled();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it("waits for durable cleanup and cancels the timeout when it finishes", async () => {
+  vi.useFakeTimers();
+  let finish!: () => void;
+  const cleanup = new Promise<void>(resolve => { finish = resolve; });
+  const api: { logoutCallback?: () => void } = {};
+  const bridge = { reportAuthExpired: vi.fn() };
+  installFeatureAuthExpiryHandler(api, { logout: () => cleanup }, bridge, { reason: "expired", logPrefix: "[test]" });
+  api.logoutCallback?.();
+  expect(bridge.reportAuthExpired).not.toHaveBeenCalled();
+  finish();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(bridge.reportAuthExpired).toHaveBeenCalledOnce();
+  expect(vi.getTimerCount()).toBe(0);
+});
 
 describe("installFeatureAuthExpiryHandler", () => {
   it("clears the renderer session and reports expiration once", () => {
@@ -43,4 +85,22 @@ describe("installFeatureAuthExpiryHandler", () => {
     );
     consoleSpy.mockRestore();
   });
+});
+
+
+it.each([false, true])("reports expiry and exits after mandatory cleanup rejects (host throws=%s)", async hostThrows => {
+  vi.useFakeTimers();
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const replace = vi.fn();
+  vi.stubGlobal("window", { location: { replace } });
+  const api: { logoutCallback?: () => void } = {};
+  const cleanup = Object.assign(Promise.reject(new Error("IDB aborted")), { requireCompletion: true });
+  const bridge = { reportAuthExpired: vi.fn(() => { if (hostThrows) throw new Error("host unavailable"); }) };
+  installFeatureAuthExpiryHandler(api, { logout: () => cleanup }, bridge, { reason: "expired", logPrefix: "[test]" });
+  api.logoutCallback?.();
+  api.logoutCallback?.();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(bridge.reportAuthExpired).toHaveBeenCalledExactlyOnceWith("expired");
+  expect(replace).toHaveBeenCalledExactlyOnceWith("about:blank");
+  expect(vi.getTimerCount()).toBe(0);
 });

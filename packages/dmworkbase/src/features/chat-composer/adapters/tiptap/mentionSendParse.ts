@@ -1,3 +1,4 @@
+import type { EditorComposeNode } from "../../domain/editorCompose";
 /**
  * Send-boundary parser for the `@[uid:label]` mention grammar (octo-web#330).
  *
@@ -223,7 +224,7 @@ export function serializeEditorTextNodeForSend(node: EditorTextNode): string {
 
 // ─── Draft deserialization ────────────────────────────────────────────────
 
-export interface DraftDocNode {
+export interface DraftDocNode extends EditorComposeNode {
   type: string;
   text?: string;
   attrs?: { id: string; label: string };

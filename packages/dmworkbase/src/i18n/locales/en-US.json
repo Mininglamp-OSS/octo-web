@@ -1,4 +1,12 @@
 {
+  "messageInput.draft.saveRecovery": "Draft storage is unavailable. Retry saving, or continue without saving this draft. Your last saved copy will be kept.",
+  "messageInput.draft.retrySave": "Retry saving",
+  "messageInput.draft.temporaryDocumentNotice": "Changes to this draft will not be saved. The last saved copy is kept until a message is sent successfully. Attachments still require safe storage before sending.",
+  "messageInput.draft.conflictTitle": "Draft updated in another window",
+  "messageInput.draft.conflictBody": "Merge this draft with the draft from the other window to continue editing. Both versions will be kept. Review the merged content before sending.",
+  "messageInput.draft.merge": "Merge drafts and continue",
+  "messageInput.draft.saveFailed": "Could not save this draft on this device. Keep this page open and try again.",
+  "messageInput.draft.cleanupFailed": "The message was sent, but the saved draft could not be cleared. Reopen this conversation before sending again.",
   "chatPage.loadingName": "Loading name...",
   "chatPage.nameUnavailable": "Name unavailable",
   "base.workspaceGroup.title": "Workspace relation",
@@ -1846,5 +1854,11 @@
   "htmlAttachment.tooLarge": "This file is too large to preview. Download it to view.",
   "htmlAttachment.downloadFailed": "Unable to prepare the download. Please retry.",
   "htmlAttachment.expired": "Preview expired. Reopen this attachment from chat.",
-  "htmlAttachment.popupBlocked": "Unable to open the preview tab. Allow popups and retry."
+  "htmlAttachment.popupBlocked": "Unable to open the preview tab. Allow popups and retry.",
+  "messageInput.draft.pendingSend": "Unconfirmed attachment deliveries: {{count}}. Check other windows and chat history before restoring to avoid sending duplicates. You can also use a temporary draft and keep these files for later.",
+  "messageInput.draft.recoverSend": "Restore unconfirmed attachments",
+  "messageInput.draft.restoreFailed": "Saved drafts could not be loaded. Retry, or use a temporary draft without changing the saved draft.",
+  "messageInput.draft.retryRestore": "Retry loading",
+  "messageInput.draft.useTemporary": "Use temporary draft",
+  "messageInput.draft.temporaryNotice": "Temporary draft: new content will not be saved when you leave. Your previously saved draft is unchanged."
 }

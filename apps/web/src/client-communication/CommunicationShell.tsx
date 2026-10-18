@@ -35,6 +35,7 @@ import { createReadyReporter } from "./readyReporter";
 import type { NavigationCommitController } from "../client-feature/navigationCommit";
 import { NavigationCommitBoundary } from "../client-feature/NavigationCommitBoundary";
 import { useNavigationCommit } from "../client-feature/useNavigationCommit";
+import { revokeAndReloadEmbeddedSession } from "../client-feature/sessionRevocation";
 import { Toast } from "@douyinfe/semi-ui";
 import { installSummaryNavigation } from "./summaryNavigation";
 import { installDocumentForward } from "./documentForward";
@@ -175,6 +176,7 @@ export function CommunicationShell({
     ready: Boolean(WKApp.loginInfo.uid && WKApp.loginInfo.token),
     apiOrigin: WKApp.apiClient.config.apiURL,
   }), (listener) => WKApp.shared.addListener(listener)), [bridge]);
+  const sessionRevoked = useRef(false);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
   const readyReporterRef = useRef<ReturnType<typeof createReadyReporter>>();
@@ -377,6 +379,7 @@ export function CommunicationShell({
     };
 
     const dispose = bridge.onCommand((command: HostCommand) => {
+      if (sessionRevoked.current) return;
       if (command.type !== "spaceChanged") workspaceGroups.handleCommand(command);
       if (command.type === "navigate") {
         if (command.target && !hasCompatibleTargetVariant(command.target)) {
@@ -447,9 +450,9 @@ export function CommunicationShell({
       }
 
       if (command.type === "sessionRevoked") {
+        sessionRevoked.current = true;
         cancelNavigation();
-        WKApp.loginInfo.logout();
-        window.location.reload();
+        void revokeAndReloadEmbeddedSession();
         return;
       }
       if (command.type === "hostVisibilityChanged") {

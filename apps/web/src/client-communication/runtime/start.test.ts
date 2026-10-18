@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommunicationBootstrap, OctoBuddyCommunicationBridge } from "../hostBridge";
 import { startCommunicationRuntime } from "./start";
+import { installCommunicationAuthExpiryHandler } from "../authLifecycle";
 import { getDocumentPreviewBody } from "@octo/base/src/Service/DocumentPreviewService";
 import type { DocumentPreviewResponse } from "@octo/base/src/Service/DocumentPreviewService";
 import APIClient from "@octo/base/src/Service/APIClient";
@@ -10,6 +11,10 @@ import {
   setWebAttachmentHost, subscribeHostAttachmentState, tryHostTakeover,
   type AttachmentPreviewRequest,
 } from "@octo/base/src/features/filePreview/attachmentHost";
+import {
+  resetEmbeddedSessionRevocationForTests,
+  revokeEmbeddedSession,
+} from "../../client-feature/sessionRevocation";
 
 const f = vi.hoisted(() => ({
   store: {
@@ -19,14 +24,17 @@ const f = vi.hoisted(() => ({
   unread: { getSnapshot: vi.fn(() => 12), subscribe: vi.fn(() => vi.fn()) },
   gate: { setAllowed: vi.fn(), dispose: vi.fn() },
   sdk: { disconnect: vi.fn() },
+  clearDrafts: vi.fn(async (_scope: { server: string; account: string; space: string }) => {}),
   mount: vi.fn(async () => vi.fn()),
   app: {
     shared: { currentSpaceId: "s", notifyListener: vi.fn() },
     config: {},
     apiClient: { logoutCallback: undefined as (() => void) | undefined },
-    loginInfo: { logout: vi.fn() },
+    loginInfo: { logout: vi.fn(), uid: "alice" },
   },
 }));
+vi.mock("@octo/base/src/bridge/conversationDraftScope", () => ({ currentConversationDraftScope: () => ({server: "test", account: "alice", space: "s"}) }));
+vi.mock("@octo/base/src/features/chat-composer/local-drafts/repository", () => ({ conversationDrafts: { clearAccount: f.clearDrafts } }));
 vi.mock("@octo/base", () => ({
   applyImSpaceContext: vi.fn(({ space_id }) => { f.app.shared.currentSpaceId = space_id; }),
   getCurrentImConversationStore: () => f.store,
@@ -45,12 +53,19 @@ const bootstrap = {
   runtime, space: { id: "s", name: "" }, initialPage: "chat", initialPresentation: "workspace",
 } as CommunicationBootstrap;
 beforeEach(() => {
+  resetEmbeddedSessionRevocationForTests();
   vi.clearAllMocks();
   f.app.apiClient.logoutCallback = undefined;
   f.app.shared.currentSpaceId = "s";
+  f.app.loginInfo.uid = "alice";
+  f.app.loginInfo.logout.mockImplementation(() => {
+    const cleanup = f.clearDrafts({ server: "test", account: f.app.loginInfo.uid, space: "" });
+    f.app.loginInfo.uid = "";
+    return cleanup;
+  });
   vi.spyOn(APIClient.shared, "get").mockResolvedValue({ fallback: true });
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 function hostFixture() {
   let command!: (command: unknown) => void;
   const legacy = new Set<(command: unknown) => void>();
@@ -70,6 +85,70 @@ function hostFixture() {
   };
 }
 describe("communication runtime composition", () => {
+  it.each([false, true])("clears account drafts on sessionRevoked with UI mounted=%s", async (mounted) => {
+    const reload = vi.fn();
+    const originalWindow = window;
+    vi.stubGlobal("window", new Proxy(originalWindow, {
+      get(target, key) { return key === "location" ? { reload } : Reflect.get(target, key, target); },
+    }));
+    const h = hostFixture();
+    const owner = await startCommunicationRuntime(h.host, bootstrap);
+    if (mounted) {
+      h.send({ type: "navigate", page: "chat" });
+      await vi.waitFor(() => expect(f.mount).toHaveBeenCalledOnce());
+    }
+    h.legacy({ type: "sessionRevoked" });
+    expect(f.clearDrafts).toHaveBeenCalledExactlyOnceWith({server: "test", account: "alice", space: ""});
+    expect(f.app.loginInfo.logout).toHaveBeenCalledOnce();
+    expect(f.app.loginInfo.logout.mock.invocationCallOrder[0]).toBeLessThan(f.clearDrafts.mock.invocationCallOrder[0]);
+    await revokeEmbeddedSession();
+    expect(reload).toHaveBeenCalledOnce();
+    owner.dispose();
+  });
+  it("shares the runtime cleanup with the shell after logout clears the account", async () => {
+    let finish!: () => void;
+    const cleanup = new Promise<void>(resolve => { finish = resolve; });
+    f.clearDrafts.mockReturnValueOnce(cleanup);
+    const h = hostFixture();
+    const owner = await startCommunicationRuntime(h.host, bootstrap);
+    h.legacy({ type: "sessionRevoked" });
+    expect(f.app.loginInfo.uid).toBe("");
+    const shellCleanup = revokeEmbeddedSession();
+    let settled = false;
+    void shellCleanup.then(() => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(f.app.loginInfo.logout).toHaveBeenCalledOnce();
+    finish();
+    await shellCleanup;
+    expect(settled).toBe(true);
+    owner.dispose();
+  });
+  it("does not discard the runtime's mandatory deletion barrier before reload", async () => {
+    const reload = vi.fn();
+    const originalWindow = window;
+    vi.stubGlobal("window", new Proxy(originalWindow, {
+      get(target, key) { return key === "location" ? { reload } : Reflect.get(target, key, target); },
+    }));
+    let finish!: () => void;
+    f.clearDrafts.mockReturnValueOnce(Object.assign(new Promise<void>(resolve => { finish = resolve; }), {
+      requireCompletion: true,
+    }));
+    const h = hostFixture();
+    const owner = await startCommunicationRuntime(h.host, bootstrap);
+    vi.useFakeTimers();
+    try {
+      h.legacy({ type: "sessionRevoked" });
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(reload).not.toHaveBeenCalled();
+      finish();
+      await revokeEmbeddedSession();
+      expect(reload).toHaveBeenCalledOnce();
+    } finally {
+      owner.dispose();
+      vi.useRealTimers();
+    }
+  });
   it("holds shared data with no UI, ignores unscoped navigation, then mounts the same owner", async () => {
     const h = hostFixture();
     const owner = await startCommunicationRuntime(h.host, bootstrap);
@@ -143,14 +222,16 @@ describe("communication runtime composition", () => {
     }
   });
   it("releases runtime on authentication expiry and restores the auth callback", async () => {
-    const previous = vi.fn();
-    f.app.apiClient.logoutCallback = previous;
     const h = hostFixture();
+    installCommunicationAuthExpiryHandler(f.app.apiClient, f.app.loginInfo, h.host);
+    const previous = vi.fn(f.app.apiClient.logoutCallback!);
+    f.app.apiClient.logoutCallback = previous;
     await startCommunicationRuntime(h.host, bootstrap);
     f.app.apiClient.logoutCallback!();
     expect(f.sdk.disconnect).toHaveBeenCalledOnce();
     expect(f.app.apiClient.logoutCallback).toBe(previous);
     expect(previous).toHaveBeenCalledOnce();
+    expect(f.clearDrafts).toHaveBeenCalledExactlyOnceWith({server: "test", account: "alice", space: ""});
     h.send({ type: "navigate", page: "chat" });
     expect(f.mount).not.toHaveBeenCalled();
   });

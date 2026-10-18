@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createClientAttachmentDraftPort } from "./attachmentDraftPort";
 import { installClientLocalAttachmentDrafts } from "./localAttachmentDrafts";
 import { createChatComposerAttachmentDraftPort } from "@octo/base/src/features/chat-composer/local-drafts";
+import { conversationDrafts } from "@octo/base/src/features/chat-composer/local-drafts/repository";
 import type { LocalAttachmentDraftBridge } from "./attachmentDraftContract";
 import type { OctoBuddyCommunicationBridge } from "./hostBridge";
 const context = { spaceId: "a", channel: { id: "c", type: 2 } };
@@ -27,12 +28,21 @@ afterEach(() => vi.restoreAllMocks());
 describe("Client draft editor adapter", () => {
   it("keeps browser and incomplete/older Client capabilities on the leave-confirmation path", () => {
     for (const capability of [undefined, { version: 2 }, { ...fixture().api, version: 3 }, { version: 4 }]) {
-      const dispose = installClientLocalAttachmentDrafts({ attachmentDrafts: capability, onCommand: vi.fn() } as unknown as OctoBuddyCommunicationBridge, "a");
+      const dispose = installClientLocalAttachmentDrafts({ attachmentDrafts: capability, onCommand: vi.fn(() => () => {}) } as unknown as OctoBuddyCommunicationBridge, "a");
       expect(createChatComposerAttachmentDraftPort(context.channel)).toBeUndefined();
       dispose();
     }
   });
-  it("invalidates old UI ports on space changes and makes logout terminal", async () => {
+  it("leaves browser fallback cleanup to the shared session lifecycle", () => {
+    const clear = vi.spyOn(conversationDrafts, "clearAccount").mockResolvedValue();
+    const onCommand = vi.fn(() => () => {});
+    const dispose = installClientLocalAttachmentDrafts({ onCommand }, "a");
+    expect(onCommand).not.toHaveBeenCalled();
+    expect(clear).not.toHaveBeenCalled();
+    dispose();
+  });
+  it("invalidates old UI ports without starting another account cleanup", async () => {
+    const clear = vi.spyOn(conversationDrafts, "clearAccount").mockResolvedValue();
     const { api } = fixture();
     let command!: Parameters<OctoBuddyCommunicationBridge["onCommand"]>[0];
     const off = vi.fn();
@@ -46,6 +56,7 @@ describe("Client draft editor adapter", () => {
       command({ type: "sessionRevoked" });
       command({ type: "spaceChanged", space: { id: "a", name: "A" } });
       expect(createChatComposerAttachmentDraftPort(context.channel)).toBeUndefined();
+      expect(clear).not.toHaveBeenCalled();
       expect(off).toHaveBeenCalledOnce();
     } finally { dispose(); }
   });
@@ -97,11 +108,12 @@ describe("Client draft editor adapter", () => {
   it("settles concurrent attempts using their own Client tokens", async () => {
     const { api, port } = fixture();
     await port.stage(item("one")); await port.stage(item("two"));
+    vi.mocked(api.prepareSend).mockResolvedValueOnce({ sendId: "native-one" }).mockResolvedValueOnce({ sendId: "native-two" });
     const first = port.beginSend(["one"]), second = port.beginSend(["two"]);
     await Promise.all([first.ready, second.ready]);
     await second.settle(["two"]); await first.settle([]);
     expect(vi.mocked(api.settleSend).mock.calls.map(([input]) => input)).toEqual([
-      { sendId: vi.mocked(api.prepareSend).mock.calls[1][0].requestId, keepAttachmentIds: ["two"] }, { sendId: vi.mocked(api.prepareSend).mock.calls[0][0].requestId, keepAttachmentIds: [] },
+      { sendId: "native-two", keepAttachmentIds: ["two"] }, { sendId: "native-one", keepAttachmentIds: [] },
     ]);
   });
   it("preserves restored files until actually seen in the editor, then removes explicit deletions", async () => {

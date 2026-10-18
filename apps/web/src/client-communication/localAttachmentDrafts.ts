@@ -6,7 +6,10 @@ import type { OctoBuddyCommunicationBridge } from "./hostBridge";
 export function installClientLocalAttachmentDrafts(bridge: OctoBuddyCommunicationBridge, initialSpaceId: string): () => void {
   const api = bridge.attachmentDrafts;
   if (!api || api.version !== 4 ||
-      ![api.open, api.stage, api.remove, api.prepareSend, api.settleSend].every(method => typeof method === "function")) return () => {};
+      ![api.open, api.stage, api.remove, api.prepareSend, api.settleSend].every(method => typeof method === "function")) {
+    // Browser fallback and account cleanup belong to the shared session lifecycle.
+    return () => {};
+  }
   const cleanup = new AttachmentDraftCleanup();
   let active = true;
   let revision = 0;
@@ -25,7 +28,9 @@ export function installClientLocalAttachmentDrafts(bridge: OctoBuddyCommunicatio
   };
   off = bridge.onCommand(command => {
     if (!active) return;
-    if (command.type === "sessionRevoked") dispose();
+    if (command.type === "sessionRevoked") {
+      dispose();
+    }
     else if (command.type === "spaceChanged" && command.space.id !== spaceId) {
       revision += 1;
       spaceId = command.space.id;

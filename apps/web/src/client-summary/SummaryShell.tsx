@@ -1,3 +1,4 @@
+import { revokeAndReloadEmbeddedSession } from "../client-feature/sessionRevocation";
 import React, {
   useCallback,
   useEffect,
@@ -59,6 +60,7 @@ export function SummaryShell({
   const scopeRevision = useRef(0);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const invalidationListeners = useRef(new Set<() => void>());
+  const sessionRevoked = useRef(false);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
   const navCommit = useNavigationCommit(bridge);
@@ -155,6 +157,7 @@ export function SummaryShell({
 
   useEffect(() => {
     const dispose = bridge.onCommand((command: SummaryHostCommand) => {
+      if (sessionRevoked.current) return;
       if (command.type === "navigate") {
         const token = navCommit?.start({
           navigationId: command.navigationId,
@@ -198,10 +201,10 @@ export function SummaryShell({
         return;
       }
       if (command.type === "sessionRevoked") {
+        sessionRevoked.current = true;
         externalRuntime?.dispose();
         navCommit?.cancel();
-        WKApp.loginInfo.logout();
-        window.location.reload();
+        void revokeAndReloadEmbeddedSession();
         return;
       }
       if (command.type === "hostVisibilityChanged") {

@@ -1,6 +1,8 @@
+import { conversationDrafts } from "./features/chat-composer/local-drafts/repository";
 import mitt, { Emitter } from "mitt";
 import { getSessionSid, setSessionSid } from "./Service/SessionScope";
 import { replaceWithShellDocument } from "./Service/ShellDocument";
+import { runSessionCleanup, SessionCleanupError } from "./Service/sessionCleanup";
 import { runLogoutCleanup } from "./Service/logoutCleanup";
 import {
   clearElectronAuthSession as clearElectronAuthSessionBridge,
@@ -931,7 +933,15 @@ export class LoginInfo {
     }
     return true;
   }
-  logout() {
+  logout(): Promise<void> {
+    // Capture identity before credential teardown, including cold post-logout
+    // startup where LoginInfo.load has not populated uid yet.
+    const account = this.uid || this.getStorageItemForSID("uid") || "";
+    const draftCleanup = account
+      ? conversationDrafts.clearAccount({ server: WKApp.apiClient.config.apiURL || "", account, space: "" })
+      : Promise.resolve();
+    // Observe errors without replacing the task's timeout-safety contract.
+    void draftCleanup.catch(error => console.warn("[drafts] logout cleanup failed", error));
     this.token = undefined;
     this.appID = "";
     this.role = "";
@@ -942,24 +952,24 @@ export class LoginInfo {
     this.sex = 0;
     this.loginProvider = undefined;
     this.deviceFlag = undefined;
-    this.removeStorageItemForSID("token");
-    this.removeStorageItemForSID("app_id");
-    this.removeStorageItemForSID("role");
-    this.removeStorageItemForSID("is_work");
-    // 与 StorageService CROSS_TAB_KEYS 白名单对齐，清理双写到 localStorage 的剩余 key
-    this.removeStorageItemForSID("uid");
-    this.removeStorageItemForSID("short_no");
-    this.removeStorageItemForSID("name");
-    this.removeStorageItemForSID("sex");
-    this.removeStorageItemForSID("login_provider");
-    this.removeStorageItemForSID("device_flag");
     // 清除实名认证缓存
     this.realnameVerified = undefined;
     this.realName = undefined;
     this.realnameVerifiedAt = undefined;
-    this.removeStorageItemForSID("realname_verified");
-    this.removeStorageItemForSID("real_name");
-    this.removeStorageItemForSID("realname_verified_at");
+    // Keep attempting the remaining credentials if browser storage throws.
+    // Never lose the original draft task or its requireCompletion flag: without
+    // a durable revocation marker, teardown must wait for actual deletion.
+    for (const key of [
+      "token", "app_id", "role", "is_work", "uid", "short_no", "name", "sex",
+      "login_provider", "device_flag", "realname_verified", "real_name", "realname_verified_at",
+    ]) {
+      try {
+        this.removeStorageItemForSID(key);
+      } catch (error) {
+        console.warn("[logout] credential cleanup failed", key, error);
+      }
+    }
+    return draftCleanup;
   }
 
   /**
@@ -1181,7 +1191,9 @@ export default class WKApp extends ProviderListener {
   // app启动
   startup(options: { loadLoginInfo?: boolean; isPC?: boolean } = {}) {
     if (consumeOidcPostLogoutCleanup()) {
-      void this.clearLocalLoginState();
+      void this.clearLocalLoginState().catch(error => {
+        console.error("[auth] startup cleanup failed", error);
+      });
     }
     if (options.loadLoginInfo !== false) {
       WKApp.loginInfo.load(); // 加载登录信息
@@ -1211,7 +1223,9 @@ export default class WKApp extends ProviderListener {
       );
       this._deviceFlagMigrationHandled = true;
       markDeviceFlagMigration(migrationSid);
-      void this.clearLocalLoginState();
+      void this.clearLocalLoginState().catch(error => {
+        console.error("[auth] startup cleanup failed", error);
+      });
     } else if (!hasDeviceFlagMismatch && WKApp.loginInfo.isLogined()) {
       // A matching session supersedes any marker left by an interrupted boot.
       clearDeviceFlagMigration(migrationSid);
@@ -1437,7 +1451,7 @@ export default class WKApp extends ProviderListener {
     return WKApp.loginInfo.isLogined();
   }
   private async clearLocalLoginState() {
-    WKApp.loginInfo.logout();
+    const draftCleanup = runSessionCleanup(() => WKApp.loginInfo.logout(), "[auth]");
     clearAuthStorage();
     setSessionSid("");
     this.currentSpaceId = "";
@@ -1445,6 +1459,13 @@ export default class WKApp extends ProviderListener {
     this.channelMySourceSpaceMap.clear();
     this.spaceChecked = false;
     WKApp.mittBus.emit("wk:auth-state-changed");
+    try {
+      await draftCleanup;
+    } catch (error) {
+      // No durable fence exists; a fresh app document could reopen old drafts.
+      window.location.replace("about:blank");
+      throw error;
+    }
   }
 
   private async clearElectronAuthSession() {
@@ -1469,10 +1490,15 @@ export default class WKApp extends ProviderListener {
     // 后续重入直接返回，避免 window.location.replace 被连发导致的反复跳转/刷屏。
     if (this._loggingOut) return;
     this._loggingOut = true;
-    await runLogoutCleanup(
-      () => this.clearLocalLoginState(),
-      () => this.clearElectronAuthSession(),
-    );
+    try {
+      await runLogoutCleanup(
+        () => this.clearLocalLoginState(),
+        () => this.clearElectronAuthSession(),
+      );
+    } catch (error) {
+      if (error instanceof SessionCleanupError) return; // Already exited safely.
+      throw error;
+    }
     // Packaged Electron shell loads via `file://` and has no `/login` route
     // on disk, so `location.replace("/login")` navigates to
     // `file:///login` and hangs on ERR_FILE_NOT_FOUND — the interceptor's

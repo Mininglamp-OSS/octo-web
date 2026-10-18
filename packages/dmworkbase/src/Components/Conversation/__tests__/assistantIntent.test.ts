@@ -2240,6 +2240,28 @@ describe("Conversation attachment and viewport helpers", () => {
     ;(app as any).dataSource = originalDataSource
   })
 
+  it("explicitly clears the remote draft when local document persistence owns it", async () => {
+    const { default: app } = await import("../../../App")
+    const update = vi.fn().mockResolvedValue(undefined)
+    const originalDataSource = app.dataSource
+    ;(app as any).dataSource = { channelDataSource: { conversationExtraUpdate: update } }
+    const conversation = new Conversation({ channel })
+    const remoteExtra: any = { draft: "legacy draft", keepMessageSeq: 0, keepOffsetY: 0 }
+    ;(conversation as any).vm = {
+      messageContainerId: "local-draft-vp",
+      currentConversation: { remoteExtra },
+      conversationLastMessageSeq: () => 0,
+    }
+    ;(conversation as any).visiblePersistentMessage = vi.fn(() => undefined)
+    ;(conversation as any)._attachmentDrafts = { saveDocument: vi.fn(), hasDurableDocument: () => true }
+
+    await conversation.updateConversationExtra("local draft")
+
+    expect(remoteExtra.draft).toBe("")
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ draft: "" }))
+    ;(app as any).dataSource = originalDataSource
+  })
+
   it("records the live editor draft when leaving the conversation", async () => {
     const { default: app } = await import("../../../App")
     const originalDataSource = app.dataSource

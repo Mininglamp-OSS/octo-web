@@ -14,6 +14,7 @@ import { createLazyCommunicationUi } from "./lazyUi";
 import { installLazyDocumentForward } from "./lazyDocumentForward";
 import { createCommunicationOwner } from "./owner";
 import { createRuntimeHostScheduler } from "./hostScheduler";
+import { revokeAndReloadEmbeddedSession } from "../../client-feature/sessionRevocation";
 
 export function assertBackgroundRuntimeHost(host: OctoBuddyCommunicationBridge, bootstrap: CommunicationBootstrap): void {
   if (!bootstrap.runtime) return;
@@ -117,8 +118,8 @@ export async function startCommunicationRuntime(host: OctoBuddyCommunicationBrid
     }));
     cleanups.push(host.onCommand(command => {
       if (command.type === "sessionRevoked") {
+        void revokeAndReloadEmbeddedSession();
         owner.dispose();
-        WKApp.loginInfo.logout();
       } else if (command.type === "filePreviewClosed" || command.type === "filePreviewState") {
         ui.dispatch(command);
       } else if (command.type === "appearanceChanged") {

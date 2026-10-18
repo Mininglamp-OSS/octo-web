@@ -1,3 +1,5 @@
+import { SessionCleanupError } from "./sessionCleanup";
+
 export const OIDC_POST_LOGOUT_CLEANUP_KEY = "octo_oidc_post_logout_cleanup";
 
 const AUTH_STORAGE_PREFIXES = [
@@ -425,6 +427,12 @@ export async function performOidcUserInitiatedLogout(
     deps.navigateExternal(endSessionUrl);
     return { kind: "web-redirect", url: endSessionUrl };
   } catch (error) {
+    if (error instanceof SessionCleanupError) {
+      // Local cleanup already exited safely. Retrying after uid was cleared
+      // would skip account deletion and allow the fallback to reload stale data.
+      logger.warn("OIDC logout stopped after mandatory cleanup failure", error);
+      return { kind: "logout-error", error };
+    }
     logger.warn("OIDC logout failed, falling back to local logout", error);
     await deps.fallbackLogout();
     return { kind: "logout-error", error };
