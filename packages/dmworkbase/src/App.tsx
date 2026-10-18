@@ -904,24 +904,23 @@ export class LoginInfo {
     this.sex = 0;
     this.loginProvider = undefined;
     this.deviceFlag = undefined;
-    this.removeStorageItemForSID("token");
-    this.removeStorageItemForSID("app_id");
-    this.removeStorageItemForSID("role");
-    this.removeStorageItemForSID("is_work");
-    // 与 StorageService CROSS_TAB_KEYS 白名单对齐，清理双写到 localStorage 的剩余 key
-    this.removeStorageItemForSID("uid");
-    this.removeStorageItemForSID("short_no");
-    this.removeStorageItemForSID("name");
-    this.removeStorageItemForSID("sex");
-    this.removeStorageItemForSID("login_provider");
-    this.removeStorageItemForSID("device_flag");
     // 清除实名认证缓存
     this.realnameVerified = undefined;
     this.realName = undefined;
     this.realnameVerifiedAt = undefined;
-    this.removeStorageItemForSID("realname_verified");
-    this.removeStorageItemForSID("real_name");
-    this.removeStorageItemForSID("realname_verified_at");
+    // Keep attempting the remaining credentials if browser storage throws.
+    // Never lose the original draft task or its requireCompletion flag: without
+    // a durable revocation marker, teardown must wait for actual deletion.
+    for (const key of [
+      "token", "app_id", "role", "is_work", "uid", "short_no", "name", "sex",
+      "login_provider", "device_flag", "realname_verified", "real_name", "realname_verified_at",
+    ]) {
+      try {
+        this.removeStorageItemForSID(key);
+      } catch (error) {
+        console.warn("[logout] credential cleanup failed", key, error);
+      }
+    }
     return draftCleanup;
   }
 
