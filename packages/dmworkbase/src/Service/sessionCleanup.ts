@@ -1,4 +1,7 @@
-/** Keep expiry/revocation live even if local persistence never responds. */
+/** A timeout is safe only after persistent data has a durable read barrier. */
+export type SessionCleanupTask = Promise<void> & { requireCompletion?: boolean };
+
+/** Keep expiry/revocation live when local persistence can safely finish later. */
 export const SESSION_CLEANUP_TIMEOUT_MS = 5_000;
 
 export function runSessionCleanup(
@@ -16,13 +19,19 @@ export function runSessionCleanup(
   }
   if (!pending) return;
   return new Promise<void>((resolve) => {
-    const timer = setTimeout(() => {
+    const requireCompletion = (pending as SessionCleanupTask).requireCompletion;
+    const timer = requireCompletion ? undefined : setTimeout(() => {
       report(new Error("Session cleanup timed out"));
       resolve();
     }, SESSION_CLEANUP_TIMEOUT_MS);
-    Promise.resolve(pending).catch(report).finally(() => {
+    Promise.resolve(pending).then(() => {
       clearTimeout(timer);
       resolve();
+    }, error => {
+      clearTimeout(timer);
+      report(error);
+      // If both the barrier and deletion failed, reloading would expose old data.
+      if (!requireCompletion) resolve();
     });
   });
 }

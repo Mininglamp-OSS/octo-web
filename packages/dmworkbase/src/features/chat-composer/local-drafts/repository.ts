@@ -330,31 +330,35 @@ export class ConversationDraftRepository {
   saved(key: string) {
     return !this.queues.has(key) && !this.failed.has(key);
   }
-  async clearAccount(scope: DraftScope) {
-    void this.session(scope).catch(() => {});
+  clearAccount(scope: DraftScope) {
     const account = draftAccountKey(scope);
-    this.invalidateAccount(account);
-    const prefix =
-      JSON.stringify([scope.server, scope.account]).slice(0, -1) + ",";
-    for (const key of new Set([
-      ...this.queues.keys(),
-      ...this.fileTasks.keys(),
-      ...this.failed,
-    ])) {
-      if (key.startsWith(prefix)) {
-        this.queues.delete(key);
-        this.fileTasks.delete(key);
-        this.failed.delete(key);
-      }
-    }
-    // Do not wait for suspended writers. The shared generation and deletion
-    // commit atomically; every late writer is fenced inside its transaction.
+    // Persist the barrier before notifying subscribers or awaiting IndexedDB.
     const cleanup = this.database.clearAccount(account);
-    const nextSession = cleanup.then(() => this.database.session(account));
-    this.sessions.set(account, nextSession);
-    void nextSession.catch(() => {});
-    await cleanup;
-    this.revocations?.postMessage(await nextSession);
+    const completion = (async () => {
+      void this.session(scope).catch(() => {});
+      this.invalidateAccount(account);
+      const prefix =
+        JSON.stringify([scope.server, scope.account]).slice(0, -1) + ",";
+      for (const key of new Set([
+        ...this.queues.keys(),
+        ...this.fileTasks.keys(),
+        ...this.failed,
+      ])) {
+        if (key.startsWith(prefix)) {
+          this.queues.delete(key);
+          this.fileTasks.delete(key);
+          this.failed.delete(key);
+        }
+      }
+      // Do not wait for suspended writers. Generation and deletion commit
+      // together, while the synchronous barrier fences reads until then.
+      const nextSession = cleanup.then(() => this.database.session(account));
+      this.sessions.set(account, nextSession);
+      void nextSession.catch(() => {});
+      await cleanup;
+      this.revocations?.postMessage(await nextSession);
+    })();
+    return Object.assign(completion, { requireCompletion: cleanup.requireCompletion });
   }
 }
 export const conversationDrafts = new ConversationDraftRepository();

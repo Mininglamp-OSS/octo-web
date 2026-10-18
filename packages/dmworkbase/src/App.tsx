@@ -891,8 +891,9 @@ export class LoginInfo {
     const account = this.uid || this.getStorageItemForSID("uid") || "";
     const draftCleanup = account
       ? conversationDrafts.clearAccount({ server: WKApp.apiClient.config.apiURL || "", account, space: "" })
-          .catch(error => console.warn("[drafts] logout cleanup failed", error))
       : Promise.resolve();
+    // Observe errors without replacing the task's timeout-safety contract.
+    void draftCleanup.catch(error => console.warn("[drafts] logout cleanup failed", error));
     this.token = undefined;
     this.appID = "";
     this.role = "";

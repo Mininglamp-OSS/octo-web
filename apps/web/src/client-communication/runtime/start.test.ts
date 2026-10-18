@@ -121,6 +121,31 @@ describe("communication runtime composition", () => {
     expect(settled).toBe(true);
     owner.dispose();
   });
+  it("does not discard the runtime's mandatory deletion barrier before reload", async () => {
+    const reload = vi.fn();
+    const originalWindow = window;
+    vi.stubGlobal("window", new Proxy(originalWindow, {
+      get(target, key) { return key === "location" ? { reload } : Reflect.get(target, key, target); },
+    }));
+    let finish!: () => void;
+    f.clearDrafts.mockReturnValueOnce(Object.assign(new Promise<void>(resolve => { finish = resolve; }), {
+      requireCompletion: true,
+    }));
+    const h = hostFixture();
+    const owner = await startCommunicationRuntime(h.host, bootstrap);
+    vi.useFakeTimers();
+    try {
+      h.legacy({ type: "sessionRevoked" });
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(reload).not.toHaveBeenCalled();
+      finish();
+      await revokeEmbeddedSession();
+      expect(reload).toHaveBeenCalledOnce();
+    } finally {
+      owner.dispose();
+      vi.useRealTimers();
+    }
+  });
   it("holds shared data with no UI, ignores unscoped navigation, then mounts the same owner", async () => {
     const h = hostFixture();
     const owner = await startCommunicationRuntime(h.host, bootstrap);

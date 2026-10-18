@@ -541,6 +541,19 @@ describe("real logout draft revocation", () => {
     await expect(port.saveDocument!({ document: { type: "doc" }, topAttachments: [] })).rejects.toThrow("Draft session expired");
     expect(await db.list("drafts", "account", account)).toEqual([]);
   });
+  it("preserves mandatory cleanup completion through LoginInfo.logout", async () => {
+    const info = new LoginInfo();
+    info.applySession({ uid: "barrier-failed", token: "expired" });
+    let finish!: () => void;
+    const cleanup = Object.assign(new Promise<void>(resolve => { finish = resolve; }), {
+      requireCompletion: true,
+    });
+    vi.spyOn(conversationDrafts, "clearAccount").mockReturnValue(cleanup);
+    expect(info.logout()).toBe(cleanup);
+    expect(info.token).toBeUndefined();
+    finish();
+    await cleanup;
+  });
   it("captures stored uid when cold logout precedes LoginInfo.load", async () => {
     const info = new LoginInfo();
     vi.spyOn(info, "getStorageItemForSID").mockImplementation(key => key === "uid" ? "cold-user" : null);

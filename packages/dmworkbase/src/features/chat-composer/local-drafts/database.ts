@@ -1,3 +1,4 @@
+import type { SessionCleanupTask } from "../../../Service/sessionCleanup";
 import {
   emptyConversationDraft,
   type ConversationDraft,
@@ -115,6 +116,35 @@ export class DraftDatabase {
     this.opening = undefined;
   }
 
+  private revocationKey(account: string) {
+    return this.name + ":revocation:" + account;
+  }
+  private revocation(account: string) {
+    // Storage failures must fail closed, including direct attachment reads.
+    return localStorage.getItem(this.revocationKey(account)) ?? "";
+  }
+  private assertReadable(
+    tx: IDBTransaction,
+    records: Array<{ account: string }>,
+    complete: () => void,
+    reject: (error: unknown) => void
+  ) {
+    const accounts = [...new Set(records.map(record => record.account))];
+    let remaining = accounts.length;
+    if (!remaining) { complete(); return; }
+    for (const account of accounts) {
+      const request = tx.objectStore("accounts").get(account);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        try {
+          if ((request.result?.revocation ?? "") !== this.revocation(account))
+            throw new DraftSessionExpiredError();
+          if (--remaining === 0) complete();
+        } catch (error) { reject(error); }
+      };
+    }
+  }
+
   private async transaction(
     stores: string | string[],
     mode: IDBTransactionMode = "readonly",
@@ -140,10 +170,12 @@ export class DraftDatabase {
     store: "drafts" | "attachments",
     key: string
   ): Promise<T | undefined> {
-    const tx = await this.transaction(store);
+    const tx = await this.transaction([store, "accounts"]);
     return new Promise((resolve, reject) => {
       const request = tx.objectStore(store).get(key);
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => this.assertReadable(
+        tx, request.result ? [request.result] : [], () => resolve(request.result), reject
+      );
       request.onerror = () => reject(request.error);
     });
   }
@@ -152,26 +184,22 @@ export class DraftDatabase {
     index: string,
     value: string
   ): Promise<T[]> {
-    const tx = await this.transaction(store);
+    const tx = await this.transaction([store, "accounts"]);
     return new Promise((resolve, reject) => {
       const request = tx
         .objectStore(store)
         .index(index)
         .getAll(value);
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => this.assertReadable(
+        tx, request.result, () => resolve(request.result), reject
+      );
       request.onerror = () => reject(request.error);
     });
   }
   async session(account: string): Promise<DraftSession> {
-    const tx = await this.transaction("accounts");
-    return new Promise((resolve, reject) => {
-      const request = tx
-        .objectStore("accounts")
-        .get(account);
-      request.onsuccess = () =>
-        resolve({ account, generation: request.result?.generation ?? 0 });
-      request.onerror = () => reject(request.error);
-    });
+    // Pin the barrier before opening IDB so a suspended old caller cannot
+    // acquire a new authenticated generation after logout.
+    return this.reconcileAccount(account, false, this.revocation(account));
   }
 
   /** The generation check and mutation share a transaction with logout. A
@@ -218,10 +246,12 @@ export class DraftDatabase {
       if (session) {
         const request = tx.objectStore("accounts").get(session.account);
         request.onsuccess = () => {
-          if ((request.result?.generation ?? 0) !== session.generation) {
-            failure = new DraftSessionExpiredError();
-            tx.abort();
-          } else apply();
+          try {
+            if ((request.result?.generation ?? 0) !== session.generation ||
+                (request.result?.revocation ?? "") !== this.revocation(session.account))
+              throw new DraftSessionExpiredError();
+            apply();
+          } catch (error) { fail(error); }
         };
       } else apply();
       tx.oncomplete = () => { release(); resolve(value!); };
@@ -463,7 +493,7 @@ export class DraftDatabase {
   }
 
   async restoreAttachments(conversation: string): Promise<StoredAttachment[]> {
-    const tx = await this.transaction(["attachments", "attachmentIntents"]);
+    const tx = await this.transaction(["attachments", "attachmentIntents", "accounts"]);
     return new Promise((resolve, reject) => {
       const files = tx
         .objectStore("attachments")
@@ -473,7 +503,7 @@ export class DraftDatabase {
         .objectStore("attachmentIntents")
         .index("conversation")
         .getAll(conversation);
-      tx.oncomplete = () => {
+      intents.onsuccess = () => this.assertReadable(tx, files.result, () => {
         const decisions = new Map<string, AttachmentIntent>(
           intents.result.map((item: AttachmentIntent) => [item.key, item])
         );
@@ -492,36 +522,59 @@ export class DraftDatabase {
             })
             .sort((a, b) => a.position - b.position)
         );
-      };
+      }, reject);
       tx.onabort = tx.onerror = () => reject(tx.error);
     });
   }
 
-  async clearAccount(account: string): Promise<void> {
-    await this.mutate<void>(
+  clearAccount(account: string): SessionCleanupTask {
+    let requireCompletion = false;
+    try {
+      // This happens before any IndexedDB await and survives renderer teardown.
+      // Keep the token permanently: a late cleanup cannot erase a newer barrier.
+      localStorage.setItem(this.revocationKey(account), crypto.randomUUID());
+    } catch {
+      // Without a durable fence, callers must wait for actual deletion.
+      requireCompletion = true;
+    }
+    return Object.assign(this.reconcileAccount(account, requireCompletion).then(() => {}), {
+      requireCompletion,
+    });
+  }
+
+  private reconcileAccount(
+    account: string,
+    force = false,
+    capturedRevocation?: string
+  ): Promise<DraftSession> {
+    return this.mutate<DraftSession>(
       ["drafts", "attachments", "attachmentIntents"],
       undefined,
-      (tx) => {
+      (tx, result, fail) => {
         const accounts = tx.objectStore("accounts");
-        const generation = accounts.get(account);
-        generation.onsuccess = () =>
-          accounts.put({
-            account,
-            generation: (generation.result?.generation ?? 0) + 1,
-          });
-        for (const name of ["drafts", "attachments", "attachmentIntents"]) {
-          const request = tx
-            .objectStore(name)
-            .index("account")
-            .openCursor(account);
-          request.onsuccess = () => {
-            const cursor = request.result;
-            if (cursor) {
-              cursor.delete();
-              cursor.continue();
+        const request = accounts.get(account);
+        request.onsuccess = () => {
+          try {
+            const revocation = force
+              ? request.result?.revocation ?? ""
+              : this.revocation(account);
+            if (capturedRevocation !== undefined && capturedRevocation !== revocation)
+              throw new DraftSessionExpiredError();
+            let generation = request.result?.generation ?? 0;
+            if (force || (request.result?.revocation ?? "") !== revocation) {
+              generation++;
+              accounts.put({ account, generation, revocation });
+              for (const name of ["drafts", "attachments", "attachmentIntents"]) {
+                const deletion = tx.objectStore(name).index("account").openCursor(account);
+                deletion.onsuccess = () => {
+                  const cursor = deletion.result;
+                  if (cursor) { cursor.delete(); cursor.continue(); }
+                };
+              }
             }
-          };
-        }
+            result({ account, generation });
+          } catch (error) { fail(error); }
+        };
       }
     );
   }

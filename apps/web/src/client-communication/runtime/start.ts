@@ -39,8 +39,10 @@ export async function startCommunicationRuntime(host: OctoBuddyCommunicationBrid
   const draftScope = currentConversationDraftScope();
   let draftCleanup: Promise<void> | undefined;
   const clearDrafts = () => {
-    draftCleanup ??= conversationDrafts.clearAccount(draftScope).catch(error =>
-      console.warn("[drafts] logout cleanup failed", error));
+    if (!draftCleanup) {
+      draftCleanup = conversationDrafts.clearAccount(draftScope);
+      void draftCleanup.catch(error => console.warn("[drafts] logout cleanup failed", error));
+    }
     return draftCleanup;
   };
   const cleanups: Array<() => void> = [];
