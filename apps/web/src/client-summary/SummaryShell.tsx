@@ -1,3 +1,4 @@
+import { revokeAndReloadEmbeddedSession } from "../client-feature/sessionRevocation";
 import React, {
   useCallback,
   useEffect,
@@ -203,10 +204,7 @@ export function SummaryShell({
         sessionRevoked.current = true;
         externalRuntime?.dispose();
         navCommit?.cancel();
-        void Promise.resolve(WKApp.loginInfo.logout()).then(
-          () => window.location.reload(),
-          error => console.error("[client-summary] session cleanup failed", error),
-        );
+        void revokeAndReloadEmbeddedSession();
         return;
       }
       if (command.type === "hostVisibilityChanged") {

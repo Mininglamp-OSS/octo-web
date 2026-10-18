@@ -1,6 +1,7 @@
 import React from "react";
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { Notification, Toast } from "@douyinfe/semi-ui";
 import { File as NodeFile } from "node:buffer";
 import { IDBFactory } from "fake-indexeddb";
 import ChatComposer, { type MessageInputContext } from "../ChatComposer";
@@ -26,6 +27,9 @@ vi.mock("react-virtuoso", () => ({
   TableVirtuoso: () => null,
 }));
 afterEach(() => {
+  cleanup();
+  // Semi notifications own separate React roots outside the rendered composer.
+  act(() => { Notification.destroyAll(); Toast.destroyAll(); });
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -912,8 +916,9 @@ it.each(["restore", "temporary"])("offers an explicit choice for interrupted sen
   let context!: MessageInputContext;
   const view = render(<ChatComposer host={createTestViewHost("crash")} attachmentDrafts={reopened}
     onContext={next => { context = next; }} />);
-  const recovery = await view.findByRole("button", { name: /恢复待确认附件|Restore unconfirmed attachments/ });
-  expect(view.getByText(/有 2 个附件|Unconfirmed attachment deliveries: 2/)).toBeTruthy();
+  const composer = within(view.container);
+  const recovery = await composer.findByRole("button", { name: /恢复待确认附件|Restore unconfirmed attachments/ });
+  expect(composer.getByText(/有 2 个附件|Unconfirmed attachment deliveries: 2/)).toBeTruthy();
   expect(view.container.querySelector('[contenteditable="true"]')).toBeNull();
   expect(context).toBeUndefined();
   if (choice === "temporary") {

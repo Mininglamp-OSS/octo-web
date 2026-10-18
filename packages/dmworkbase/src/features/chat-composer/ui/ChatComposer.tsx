@@ -23,7 +23,8 @@ import {
   parseMentionMarkers,
 } from "../adapters/tiptap/mentionResolve";
 import "./ChatComposer.css";
-import { Banner, Button, Notification, Toast } from "@douyinfe/semi-ui";
+import WKButton from "../../../Components/WKButton";
+import { Banner, Notification, Toast } from "@douyinfe/semi-ui";
 import SlashCommandMenu, { BotCommand } from "../../../Components/SlashCommandMenu";
 import VoiceInputIndicator from "./voice/VoiceInputIndicator";
 import { Maximize2, Minimize2 } from "lucide-react";
@@ -2069,7 +2070,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
               ? t("base.messageInput.draft.pendingSend", { values: { count: sendRecovery.count } })
               : t("base.messageInput.draft.restoreFailed")}
           >
-              <Button theme="solid" loading={recoveringSend} disabled={recoveringSend} onClick={async () => {
+              <WKButton variant="primary" loading={recoveringSend} disabled={recoveringSend} onClick={async () => {
                 const restore = draftRestoreRef.current;
                 setRecoveringSend(true);
                 try {
@@ -2088,8 +2089,8 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
                 } finally {
                   if (composerMountedRef.current) setRecoveringSend(false);
                 }
-              }}>{t(sendRecovery ? "base.messageInput.draft.recoverSend" : "base.messageInput.draft.retryRestore")}</Button>
-              <Button theme="solid" type="tertiary" disabled={recoveringSend} onClick={() => {
+              }}>{t(sendRecovery ? "base.messageInput.draft.recoverSend" : "base.messageInput.draft.retryRestore")}</WKButton>
+              <WKButton variant="secondary" disabled={recoveringSend} onClick={() => {
                 // Opt out of every persistence/send-settlement operation for this
                 // mounted compose; an unread saved draft must remain untouched.
                 props.attachmentDrafts?.stopDocumentSaving?.();
@@ -2106,26 +2107,26 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
                   }
                   editor.setEditable(true);
                 }
-              }}>{t("base.messageInput.draft.useTemporary")}</Button>
+              }}>{t("base.messageInput.draft.useTemporary")}</WKButton>
           </Banner>
         )}
         {draftSaveFailed && !temporaryDocument && !temporaryDraft && !draftRestoreFailed && (
           <Banner type="warning" closeIcon={null}
             description={t("base.messageInput.draft.saveRecovery")}
           >
-            <Button theme="solid" onClick={async () => {
+            <WKButton variant="primary" onClick={async () => {
               try {
                 await localDraftRef.current.retrySave();
                 if (composerMountedRef.current) setDraftSaveFailed(false);
               } catch (error) {
                 if (composerMountedRef.current) onDraftError(error);
               }
-            }}>{t("base.messageInput.draft.retrySave")}</Button>
-            <Button theme="solid" type="tertiary" onClick={() => {
+            }}>{t("base.messageInput.draft.retrySave")}</WKButton>
+            <WKButton variant="secondary" onClick={() => {
               attachmentDrafts?.stopDocumentSaving?.();
               setTemporaryDocumentPort(attachmentDrafts ?? null);
               setDraftSaveFailed(false);
-            }}>{t("base.messageInput.draft.useTemporary")}</Button>
+            }}>{t("base.messageInput.draft.useTemporary")}</WKButton>
           </Banner>
         )}
         {temporaryDocument && <Banner type="warning" closeIcon={null}

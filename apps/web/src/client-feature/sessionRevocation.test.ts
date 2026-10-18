@@ -2,11 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   resetEmbeddedSessionRevocationForTests,
   revokeEmbeddedSession,
+  revokeAndReloadEmbeddedSession,
 } from "./sessionRevocation";
 
-// ---------------------------------------------------------------------------
-// WKApp stub – hoisted so the factory sees no outer-scope `let` bindings.
-// ---------------------------------------------------------------------------
 vi.mock("@octo/base", () => {
   const logout = vi.fn<[], void | Promise<void>>();
   return { WKApp: { loginInfo: { logout } } };
@@ -16,22 +14,22 @@ import { WKApp } from "@octo/base";
 
 afterEach(() => {
   resetEmbeddedSessionRevocationForTests();
-  vi.clearAllMocks();
+  vi.resetAllMocks();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
-// ---------------------------------------------------------------------------
-// Helper: fast-forward the 5 s macro timer and drain microtask queues.
-// ---------------------------------------------------------------------------
 async function flushAll() {
-  vi.runAllTimers();
-  for (let i = 0; i < 5; i++) await Promise.resolve();
+  await vi.runAllTimersAsync();
 }
 
 describe("revokeEmbeddedSession", () => {
-  it("returns the same promise on repeated calls", () => {
+  it("returns the same promise on repeated calls", async () => {
     const p1 = revokeEmbeddedSession();
     const p2 = revokeEmbeddedSession();
     expect(p1).toBe(p2);
+    await p1;
   });
 
   it("invokes logout exactly once regardless of call count", async () => {
@@ -46,38 +44,16 @@ describe("revokeEmbeddedSession", () => {
     }
   });
 
-  // -------------------------------------------------------------------------
-  // REGRESSION: Shell listener registered BEFORE runtime listener.
-  //
-  // Prior to the fix, the Shell call (no cleanup) created the singleton and
-  // the subsequent Runtime call (with clearDrafts) was silently ignored because
-  // the singleton body ran synchronously, snapshotting an empty callback list
-  // before clearDrafts could be pushed.
-  //
-  // The fix defers singleton execution by one microtask so both synchronous
-  // callers in the same event-loop turn can register their callbacks first.
-  //
-  // In production the Runtime handler pre-invokes clearDrafts synchronously
-  // (for invocation-order guarantees) and passes the resulting promise as a
-  // callback; this test mirrors that pattern.
-  // -------------------------------------------------------------------------
   it("runs clearDrafts even when the shell listener fires before the runtime listener", async () => {
     vi.useFakeTimers();
     try {
-      let draftsCleared = false;
-      const draftPromise = Promise.resolve().then(() => { draftsCleared = true; });
+      const draftPromise = Promise.resolve();
       const clearDrafts = vi.fn(() => draftPromise);
 
-      // 1. Shell listener fires first — no cleanup callback.
       void revokeEmbeddedSession();
 
-      // 2. Runtime listener fires immediately after — with clearDrafts.
-      // The callback is invoked synchronously when revokeEmbeddedSession is
-      // called, so clearDrafts is already running by this point.
       void revokeEmbeddedSession(clearDrafts);
 
-      // clearDrafts is invoked synchronously; logout is called inside the
-      // singleton body before the first await (synchronous prologue).
       expect(clearDrafts).toHaveBeenCalledOnce();
 
       await flushAll();
@@ -114,11 +90,11 @@ describe("revokeEmbeddedSession", () => {
       const settled = vi.fn();
       void revokeEmbeddedSession().then(settled);
 
-      await Promise.resolve(); // singleton microtask fires
-      await Promise.resolve(); // logout is invoked but doesn't settle
+      await Promise.resolve();
+      await Promise.resolve();
       expect(settled).not.toHaveBeenCalled();
 
-      await flushAll(); // 5 s timeout fires
+      await flushAll();
       expect(settled).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
@@ -145,4 +121,42 @@ describe("revokeEmbeddedSession", () => {
       vi.useRealTimers();
     }
   });
+});
+
+it.each(["hang", "reject", "throw"] as const)("reloads exactly once when logout can %s", async mode => {
+  vi.useFakeTimers();
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const reload = vi.fn();
+  vi.stubGlobal("window", { location: { reload } });
+  vi.mocked(WKApp.loginInfo.logout).mockImplementation(() => {
+    if (mode === "throw") throw new Error("storage");
+    if (mode === "reject") return Promise.reject(new Error("storage"));
+    return new Promise<void>(() => {});
+  });
+  const pending = revokeAndReloadEmbeddedSession();
+  expect(revokeAndReloadEmbeddedSession()).toBe(pending);
+  await vi.advanceTimersByTimeAsync(5000);
+  await pending;
+  expect(reload).toHaveBeenCalledOnce();
+  expect(WKApp.loginInfo.logout).toHaveBeenCalledOnce();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it.each([true, false])("waits for the remaining native cleanup after another task rejects (shell first=%s)", async shellFirst => {
+  vi.useFakeTimers();
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const reload = vi.fn();
+  vi.stubGlobal("window", { location: { reload } });
+  vi.mocked(WKApp.loginInfo.logout).mockRejectedValue(new Error("browser storage"));
+  let finish!: () => void;
+  const nativeCleanup = new Promise<void>(resolve => { finish = resolve; });
+  if (shellFirst) void revokeAndReloadEmbeddedSession();
+  const pending = revokeAndReloadEmbeddedSession(() => nativeCleanup);
+  if (!shellFirst) void revokeAndReloadEmbeddedSession();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(reload).not.toHaveBeenCalled();
+  finish();
+  await pending;
+  expect(reload).toHaveBeenCalledOnce();
+  expect(vi.getTimerCount()).toBe(0);
 });

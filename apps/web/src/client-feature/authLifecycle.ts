@@ -1,3 +1,5 @@
+import { runSessionCleanup } from "@octo/base/src/Service/sessionCleanup";
+
 interface AuthExpiryClient {
   logoutCallback?: () => void;
 }
@@ -20,7 +22,7 @@ export function installFeatureAuthExpiryHandler(
   apiClient.logoutCallback = () => {
     if (reported) return;
     reported = true;
-    const cleanup = loginInfo.logout();
+    const cleanup = runSessionCleanup(() => loginInfo.logout(), options.logPrefix);
     const report = () => {
       try {
         bridge.reportAuthExpired(options.reason);
@@ -28,11 +30,8 @@ export function installFeatureAuthExpiryHandler(
         console.error(`${options.logPrefix} failed to report expired session`, error);
       }
     };
-    // Reporting may immediately destroy the renderer. Finish revocation first.
-    if (cleanup) void cleanup.then(report, error => {
-      console.error(`${options.logPrefix} failed to clean expired session`, error);
-      report();
-    });
+    // Reporting can destroy the renderer; wait for cleanup within its time bound.
+    if (cleanup) void cleanup.then(report);
     else report();
   };
 }

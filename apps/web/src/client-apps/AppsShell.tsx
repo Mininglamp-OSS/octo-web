@@ -1,3 +1,4 @@
+import { revokeAndReloadEmbeddedSession } from "../client-feature/sessionRevocation";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Dap, SpaceService, ThemeMode, WKApp, i18n } from "@octo/base";
 import { AppsWorkspace, type AppBotHostCapabilities } from "@dmwork/appbot";
@@ -82,10 +83,7 @@ export function AppsShell({
       }
       if (command.type === "sessionRevoked") {
         sessionRevoked.current = true;
-        void Promise.resolve(WKApp.loginInfo.logout()).then(
-          () => window.location.reload(),
-          error => console.error("[client-apps] session cleanup failed", error),
-        );
+        void revokeAndReloadEmbeddedSession();
         return;
       }
       if (command.type === "hostVisibilityChanged") {

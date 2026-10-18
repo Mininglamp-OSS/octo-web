@@ -2,6 +2,7 @@ import { conversationDrafts } from "./features/chat-composer/local-drafts/reposi
 import mitt, { Emitter } from "mitt";
 import { getSessionSid, setSessionSid } from "./Service/SessionScope";
 import { replaceWithShellDocument } from "./Service/ShellDocument";
+import { runSessionCleanup } from "./Service/sessionCleanup";
 import { runLogoutCleanup } from "./Service/logoutCleanup";
 import {
   clearElectronAuthSession as clearElectronAuthSessionBridge,
@@ -1398,7 +1399,7 @@ export default class WKApp extends ProviderListener {
     return WKApp.loginInfo.isLogined();
   }
   private async clearLocalLoginState() {
-    const draftCleanup = WKApp.loginInfo.logout();
+    const draftCleanup = runSessionCleanup(() => WKApp.loginInfo.logout(), "[auth]");
     clearAuthStorage();
     setSessionSid("");
     this.currentSpaceId = "";

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { resetEmbeddedSessionRevocationForTests } from "../client-feature/sessionRevocation";
 import React from "react";
 import { act, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -70,10 +71,16 @@ import { WKApp, i18n } from "@octo/base";
 import { SummaryShell } from "./SummaryShell";
 
 describe("SummaryShell", () => {
-  it("awaits cleanup before host-command reload and ignores repeated revocation", async () => {
+  it.each(["resolve", "hang", "reject", "throw"] as const)("finishes host revocation exactly once when cleanup can %s", async mode => {
+    vi.useFakeTimers();
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
     let finish!: () => void;
     const cleanup = new Promise<void>(resolve => { finish = resolve; });
-    const logout = vi.fn(() => cleanup);
+    const logout = vi.fn(() => {
+      if (mode === "throw") throw new Error("storage unavailable");
+      if (mode === "reject") return Promise.reject(new Error("storage unavailable"));
+      return cleanup;
+    });
     const originalLogout = WKApp.loginInfo.logout;
     WKApp.loginInfo.logout = logout;
     const originalWindow = window;
@@ -91,17 +98,27 @@ describe("SummaryShell", () => {
       expect(reload).not.toHaveBeenCalled();
       expect(logout).toHaveBeenCalledOnce();
       expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
-      await act(async () => { finish(); await cleanup; });
+      await act(async () => {
+        if (mode === "resolve") finish();
+        if (mode === "hang") {
+          await vi.advanceTimersByTimeAsync(4999);
+          expect(reload).not.toHaveBeenCalled();
+          await vi.advanceTimersByTimeAsync(1);
+        } else await vi.advanceTimersByTimeAsync(0);
+      });
       expect(reload).toHaveBeenCalledOnce();
       expect(mocks.bridge.reportNavigationCommitted).not.toHaveBeenCalled();
     } finally {
       view.unmount();
       WKApp.loginInfo.logout = originalLogout;
       vi.unstubAllGlobals();
+      vi.useRealTimers();
+      log.mockRestore();
     }
   });
 
   beforeEach(() => {
+    resetEmbeddedSessionRevocationForTests();
     vi.clearAllMocks();
     mocks.command.listener = undefined;
     mocks.workspaceProps = undefined;

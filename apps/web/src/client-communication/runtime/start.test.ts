@@ -62,7 +62,7 @@ beforeEach(() => {
   });
   vi.spyOn(APIClient.shared, "get").mockResolvedValue({ fallback: true });
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 function hostFixture() {
   let command!: (command: unknown) => void;
   const legacy = new Set<(command: unknown) => void>();
@@ -83,6 +83,11 @@ function hostFixture() {
 }
 describe("communication runtime composition", () => {
   it.each([false, true])("clears account drafts on sessionRevoked with UI mounted=%s", async (mounted) => {
+    const reload = vi.fn();
+    const originalWindow = window;
+    vi.stubGlobal("window", new Proxy(originalWindow, {
+      get(target, key) { return key === "location" ? { reload } : Reflect.get(target, key, target); },
+    }));
     const h = hostFixture();
     const owner = await startCommunicationRuntime(h.host, bootstrap);
     if (mounted) {
@@ -93,6 +98,8 @@ describe("communication runtime composition", () => {
     expect(f.clearDrafts).toHaveBeenCalledExactlyOnceWith({server: "test", account: "alice", space: "s"});
     expect(f.app.loginInfo.logout).toHaveBeenCalledOnce();
     expect(f.clearDrafts.mock.invocationCallOrder[0]).toBeLessThan(f.app.loginInfo.logout.mock.invocationCallOrder[0]);
+    await revokeEmbeddedSession();
+    expect(reload).toHaveBeenCalledOnce();
     owner.dispose();
   });
   it("shares the runtime cleanup with the shell after logout clears the account", async () => {

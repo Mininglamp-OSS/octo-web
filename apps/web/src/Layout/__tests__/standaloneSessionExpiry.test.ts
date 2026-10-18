@@ -95,3 +95,23 @@ describe("expireStandaloneSession", () => {
     consoleSpy.mockRestore();
   });
 });
+
+
+it("reloads after bounded cleanup and clears token buckets even on a synchronous logout failure", async () => {
+  vi.useFakeTimers();
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const target = makeTarget();
+    const pending = expireStandaloneSession({ token: "tok1", logout: () => new Promise(() => {}) }, target);
+    expect(clearSessionsWithToken).toHaveBeenCalledWith("tok1", target.sessionStorage, target.localStorage);
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(target.location.reload).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await pending;
+    expect(target.location.reload).toHaveBeenCalledOnce();
+    vi.clearAllMocks();
+    await expireStandaloneSession({ token: "tok1", logout: () => { throw new Error("storage"); } }, target);
+    expect(clearSessionsWithToken).toHaveBeenCalledWith("tok1", target.sessionStorage, target.localStorage);
+    expect(target.location.reload).toHaveBeenCalledOnce();
+  } finally { vi.useRealTimers(); log.mockRestore(); }
+});

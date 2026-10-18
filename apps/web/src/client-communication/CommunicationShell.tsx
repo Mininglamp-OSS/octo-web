@@ -35,7 +35,7 @@ import { createReadyReporter } from "./readyReporter";
 import type { NavigationCommitController } from "../client-feature/navigationCommit";
 import { NavigationCommitBoundary } from "../client-feature/NavigationCommitBoundary";
 import { useNavigationCommit } from "../client-feature/useNavigationCommit";
-import { revokeEmbeddedSession } from "../client-feature/sessionRevocation";
+import { revokeAndReloadEmbeddedSession } from "../client-feature/sessionRevocation";
 import { Toast } from "@douyinfe/semi-ui";
 import { installSummaryNavigation } from "./summaryNavigation";
 import { installDocumentForward } from "./documentForward";
@@ -452,10 +452,7 @@ export function CommunicationShell({
       if (command.type === "sessionRevoked") {
         sessionRevoked.current = true;
         cancelNavigation();
-        void revokeEmbeddedSession().then(
-          () => window.location.reload(),
-          error => console.error("[client-communication] session cleanup failed", error),
-        );
+        void revokeAndReloadEmbeddedSession();
         return;
       }
       if (command.type === "hostVisibilityChanged") {

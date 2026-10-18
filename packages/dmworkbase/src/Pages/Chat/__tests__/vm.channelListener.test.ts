@@ -1,3 +1,4 @@
+import { Channel } from "wukongimjssdk"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 // 捕获 ChatVM.channelListener（didMount 里通过 channelManager.addListener 注册）。
@@ -308,8 +309,11 @@ describe("ChatVM.spaceChangedHandler", () => {
         expect(hoisted.popToRoot).not.toHaveBeenCalled()
     })
 
-    it("clears the shared right pane when Chat is the active menu", () => {
-        mountVM()
+    it("clears the selected channel and its mounted right pane before another Space can reopen it", () => {
+        const vm = mountVM()
+        const selected = new ConversationWrap({ channel: new Channel("same-peer", 1) } as any)
+        vm.selectedConversation = selected
+        WKApp.shared.openChannel = selected.channel
         ;(WKApp as any).currentMenuId = "chat"
         hoisted.popToRoot.mockClear()
 
@@ -317,6 +321,8 @@ describe("ChatVM.spaceChangedHandler", () => {
         hoisted.spaceChangedHandler!({ space_id: "space-next" })
 
         expect(hoisted.popToRoot).toHaveBeenCalledTimes(1)
+        expect(vm.selectedConversation).toBeUndefined()
+        expect(WKApp.shared.openChannel).toBeUndefined()
     })
 })
 

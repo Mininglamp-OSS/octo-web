@@ -2119,6 +2119,12 @@ export class Conversation
     const { channel, channelKey, vm } = context;
     const viewport = document.getElementById(vm.messageContainerId);
     const remoteExtra = vm.currentConversation?.remoteExtra;
+    if (this._attachmentDrafts?.saveDocument &&
+        !this._attachmentDrafts.hasDurableDocument?.() && !remoteExtra) {
+      // Unknown metadata is not an empty remote draft. The update endpoint
+      // replaces draft content, so defer scroll metadata until a copy is known.
+      return Promise.resolve();
+    }
     const conversationLastMessageSeq = vm.conversationLastMessageSeq();
     const lastVisiableMessage = this.visiblePersistentMessage(
       viewport,

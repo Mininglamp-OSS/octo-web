@@ -74,7 +74,7 @@ function fixture() {
     conversation.componentWillUnmount();
     await waitFor(() => expect(update).toHaveBeenCalled());
   };
-  return { db, repository, drafts, remoteExtra, update, mount, leave,
+  return { db, repository, drafts, conversation, remoteExtra, update, mount, leave,
     context: () => context, serverDraft: () => serverDraft };
 }
 
@@ -249,4 +249,29 @@ describe("legacy migration through Composer restoration and Conversation teardow
     expect(f.serverDraft()).toBe(legacy);
     view.unmount();
   });
+});
+
+
+it("does not clear an unknown remote draft before a local copy is durable", async () => {
+  const f = fixture();
+  // A deep link can open before the SDK conversation cache has synchronized.
+  f.conversation.vm.currentConversation = undefined;
+  expect(f.drafts.hasDurableDocument!()).toBe(false);
+
+  await f.conversation.updateConversationExtra("temporary unsaved text");
+
+  expect(f.update).not.toHaveBeenCalled();
+  expect(f.serverDraft()).toBe(legacy);
+});
+
+it("can update an uncached conversation after its local document is durable", async () => {
+  const f = fixture();
+  f.conversation.vm.currentConversation = undefined;
+  await f.drafts.saveDocument!(emptyConversationDraft());
+  expect(f.drafts.hasDurableDocument!()).toBe(true);
+
+  await f.conversation.updateConversationExtra("");
+
+  expect(f.update).toHaveBeenCalledWith(expect.objectContaining({ draft: "" }));
+  expect(f.serverDraft()).toBe("");
 });

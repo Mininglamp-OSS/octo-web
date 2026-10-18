@@ -1,3 +1,4 @@
+import { runSessionCleanup } from "@octo/base/src/Service/sessionCleanup";
 import { clearSessionsWithToken } from "./recoverSession";
 
 interface ExpiringLogin {
@@ -27,7 +28,7 @@ export async function expireStandaloneSession(
 ): Promise<void> {
   const token = login.token || "";
   try {
-    const cleanup = login.logout();
+    const cleanup = runSessionCleanup(() => login.logout(), "[standaloneSessionExpiry]");
     if (token) clearSessionsWithToken(token, target.sessionStorage, target.localStorage);
     await cleanup;
   } catch (error) {

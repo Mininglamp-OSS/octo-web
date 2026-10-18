@@ -549,3 +549,29 @@ describe("real logout draft revocation", () => {
     expect(clear).toHaveBeenCalledWith(expect.objectContaining({ account: "cold-user" }));
   });
 });
+
+
+it("continues manual logout cleanup when draft storage hangs", async () => {
+  vi.useFakeTimers();
+  const originalSpace = WKApp.shared.currentSpaceId;
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const logout = vi.spyOn(WKApp.loginInfo, "logout").mockReturnValue(new Promise(() => {}));
+  try {
+    WKApp.shared.currentSpaceId = "leaving-space";
+    const completed = vi.fn();
+    const cleanup = WKApp.shared["clearLocalLoginState"]().then(completed);
+    expect(logout).toHaveBeenCalledOnce();
+    expect(WKApp.shared.currentSpaceId).toBe("");
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(completed).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await cleanup;
+    expect(completed).toHaveBeenCalledOnce();
+    expect(log).toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    WKApp.shared.currentSpaceId = originalSpace;
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  }
+});

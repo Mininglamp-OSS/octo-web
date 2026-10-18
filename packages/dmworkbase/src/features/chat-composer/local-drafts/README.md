@@ -178,3 +178,31 @@ Verified on the follow-up revision:
 - `pnpm --dir apps/web exec vitest run src/client-communication/attachmentDraftPort.test.ts src/client-communication/attachmentDraftCleanup.test.ts src/client-communication/runtime/start.test.ts --maxWorkers=1`: 3 suites / 33 tests passed.
 - Web production and E2E builds passed. Chromium passed all 7 draft recovery/navigation scenarios in zh-CN/en-US on the final implementation.
 - i18n validation and whitespace checks passed. Full repository typechecking, the complete E2E suite and packaged native Client verification were not rerun; their previously documented limitations remain.
+
+### PR #1849 review and CI repair (2026-10-18)
+
+The remaining auth failures came from awaiting draft storage in several renderer entry points without a bounded completion path. `Service/sessionCleanup.ts` now provides the shared five-second bound, catches synchronous throws and rejected promises, and cancels completed timers. Embedded shells and the background Communication runtime share one reload; standalone expiry, HTTP expiry reporting and manual/OIDC local logout use the same cleanup bound. Credentials are still revoked synchronously. Recovery actions reuse the existing `WKButton`.
+
+| Finding | Disposition |
+| --- | --- |
+| P1: Apps/Summary revocation and HTTP expiry can wait forever | Fixed; real shell tests cover pending, rejected and synchronously thrown cleanup. |
+| Unknown remote metadata can be overwritten before a local draft is durable | Fixed; defer the metadata update instead of sending an empty draft. Regression fails on the original implementation. |
+| Background-only Communication revocation has no reload | Fixed; runtime tests assert reload both with and without mounted UI. |
+| P1: a selected conversation necessarily survives a Space switch | Refuted for current entry points: `currentConversationStore` publishes `space`, `ChatVM.clearSpacePresentation` clears selection/openChannel and pops the active chat route. The strengthened VM regression asserts all three effects; no second scope lifecycle was introduced. |
+| CI: interrupted-send recovery button query exceeds its default wait | Isolated Semi notification roots now get destroyed after each test; the recovery query is scoped to its composer. The original CI snapshot contained earlier tests' notifications. This addresses the demonstrated isolation defect without increasing timeouts; it is not evidence of a storage corruption bug. |
+
+The attachment generations, document CAS revision, account generation and document abort signal protect different races and remain separate. This repair changes auth completion and test isolation, not the IndexedDB schema or attachment ownership protocol.
+
+Review used the five correctness/security/performance/test/style dimensions. Raw deep-scan scores were AI faithfulness **43**, freshness **99**, coherence **6**, implementation quality **7** (overall **36**). Manual validation rejected its cross-scope duplicate-variable matches and workspace-dependency false positives; that raw score is not a reliable merge verdict. No further high-confidence blocking issue was found in the reviewed paths.
+
+Reproducible checks:
+
+- `pnpm --filter @octo/base test:coverage --maxWorkers=2` (same CI coverage thresholds; lower local concurrency).
+- `pnpm --filter @octo/web exec vitest run src/client-feature src/client-apps src/client-summary src/client-communication src/Layout/__tests__/standaloneSessionExpiry.test.ts --maxWorkers=2`.
+- `pnpm --filter @octo/web run build` and `pnpm --filter @octo/web run build:e2e`.
+- `PW_PREVIEW_PORT=15184 pnpm --filter @octo/web exec playwright test --config=e2e-kit/playwright.ci.config.ts e2e-kit/tests/chat/CH-draft-recovery.spec.ts --workers=1`.
+- `pnpm i18n:check` and `git diff --check`.
+
+The original auth-expiry implementation fails two of the new regression cases (hung cleanup and synchronous throw). Full repository `tsc --noEmit` remains non-clean (3,136 diagnostics in this environment, including React JSX/types and unrelated modules); no clean typecheck is claimed. Packaged native Client validation remains outside this local run.
+
+Validation results: 578 base suites / 6,187 tests passed with coverage (statements 75.26%, branches 68.05%, functions 71.18%, lines 76.98%). The final unknown-metadata guard was added after that complete run and verified separately with all 73 Conversation/composer suites / 921 tests passing. All 53 embedded-renderer suites / 571 tests passed with two workers; production and E2E builds and all six bilingual Chromium recovery scenarios passed. Two cold-entry suites timed out during the initial highly concurrent local run on an 8 GB host and passed when rerun with bounded concurrency. Light/dark recovery screenshots were inspected.
