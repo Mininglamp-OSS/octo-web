@@ -69,9 +69,10 @@ const ROW_TYPE: Record<string, MineAssetType> = {
  * The backend made this expressible by allowing `plugin_type` to be omitted on
  * the `mode=mine` listing.
  *
- * Type-agnostic actions run here. 详情、编辑 and 升级版本 hand the plugin id to
- * the page-level action host, which opens the owning type's existing modal over
- * this tab; this keeps the mixed table aligned without duplicating authoring UI.
+ * Type-agnostic actions run here. 详情 and 编辑 open the owning type's in-app
+ * surface; the row-level 升级 action deliberately opens Bot guidance for every
+ * type. Skills/connectors retain their form-based path from detail → edit, and
+ * expert/squad details retain the in-app review submission path.
  */
 export default function AllAssetsList({
   query = "",
@@ -378,9 +379,10 @@ export default function AllAssetsList({
       publishAria: t("skillMarket.plugin.ariaPublish", { values: { name: item.name } }),
       onUpgrade:
         onRequestAction && listedToOrg && !pending
-          ? () => onRequestAction({ pluginId: item.id, type: rowType, action: "upgrade" })
+          ? () => onRequestAction({ pluginId: item.id, type: rowType, action: "bot-upgrade" })
           : undefined,
-      upgradeAria: t("skillMarket.plugin.ariaUpgrade", { values: { name: item.name } }),
+      upgradeLabel: t("mcp.mine.botUpgrade"),
+      upgradeAria: t("mcp.mine.botUpgradeAria", { values: { name: item.name } }),
       onCancelReview:
         pending && item.reviewId
           ? () =>

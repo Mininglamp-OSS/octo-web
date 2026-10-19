@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowDown, Check, HelpCircle, PackageOpen, Search, SlidersHorizontal, Upload, X } from "lucide-react";
+import { ArrowDown, Check, HelpCircle, PackageOpen, Search, SlidersHorizontal, X } from "lucide-react";
 import { Toast, Tooltip } from "@douyinfe/semi-ui";
 import { t, useI18n, WKApp, WKButton } from "@octo/base";
 import { EXPERT_CATEGORIES } from "../mock/expertMock";
@@ -143,7 +143,6 @@ export default function ExpertMarketListPage({
    *  publish prompt; botEditTarget drives the update prompt for an existing
    *  record. Reached from ExpertEditModal's content handoff — 编辑 itself now
    *  opens the marketplace-metadata editor first. */
-  const [botPublishOpen, setBotPublishOpen] = useState(false);
   const [botEditTarget, setBotEditTarget] = useState<
     { id: string; kind: "agent" | "squad" } | null
   >(null);
@@ -231,7 +230,6 @@ export default function ExpertMarketListPage({
   useEffect(() => {
     const handleSpaceChanged = () => {
       setSelected(null);
-      setBotPublishOpen(false);
       setBotEditTarget(null);
       setEditItem(null);
       setDeleteTarget(null);
@@ -747,19 +745,6 @@ export default function ExpertMarketListPage({
               )}
               </div>
           </div>
-          {variant === "mine" && (
-            <div className="wk-mcp-expert-publish">
-              <WKButton
-                variant="primary"
-                icon={<Upload size={15} />}
-                onClick={() => setBotPublishOpen(true)}
-              >
-                {mineType === "squad"
-                  ? t("mcp.expert.publish")
-                  : t("mcp.expert.publishAgent")}
-              </WKButton>
-            </div>
-          )}
         </div>
       </header>
 
@@ -898,13 +883,6 @@ export default function ExpertMarketListPage({
       <ExpertDetailModal
         item={selected}
         onClose={() => setSelected(null)}
-      />
-      <ExpertBotPublishModal
-        visible={botPublishOpen}
-        kind={mineType === "squad" ? "squad" : "agent"}
-        mode="create"
-        onClose={() => setBotPublishOpen(false)}
-        onToast={showToast}
       />
       <ExpertBotPublishModal
         visible={Boolean(botEditTarget)}

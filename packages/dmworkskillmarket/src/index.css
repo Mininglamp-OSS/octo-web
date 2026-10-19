@@ -102,81 +102,6 @@
   gap: var(--wk-sp-2);
 }
 
-.skill-market-publish-menu {
-  position: relative;
-  display: inline-flex;
-}
-
-.skill-market-publish-menu__panel {
-  position: absolute;
-  z-index: var(--wk-z-dropdown);
-  top: calc(100% + var(--wk-sp-2));
-  right: 0;
-  display: grid;
-  gap: var(--wk-sp-1);
-  width: 220px;
-  padding: var(--wk-sp-1);
-  border: 1px solid var(--wk-border-subtle);
-  border-radius: var(--wk-r-md);
-  background: var(--wk-bg-surface);
-  box-shadow: var(--wk-shadow-md);
-}
-
-.skill-market-publish-menu__panel button {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  align-items: center;
-  gap: var(--wk-sp-2);
-  width: 100%;
-  min-width: 0;
-  padding: var(--wk-sp-2);
-  border: 0;
-  border-radius: var(--wk-r-sm);
-  background: transparent;
-  color: var(--wk-text-secondary);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.skill-market-publish-menu__panel button:hover,
-.skill-market-publish-menu__panel button:focus-visible {
-  outline: none;
-  background: var(--wk-bg-elevated);
-  color: var(--wk-text-primary);
-}
-
-.skill-market-publish-menu__panel button > svg {
-  color: var(--wk-icon-default);
-}
-
-.skill-market-publish-menu__panel span,
-.skill-market-publish-menu__panel strong,
-.skill-market-publish-menu__panel small {
-  display: block;
-  min-width: 0;
-}
-
-.skill-market-publish-menu__panel strong {
-  overflow: hidden;
-  color: var(--wk-text-strong);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.skill-market-publish-menu__panel small {
-  margin-top: 2px;
-  overflow: hidden;
-  color: var(--wk-text-tertiary);
-  font-size: 12px;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .skill-market-tabs {
   flex: none;
   display: flex;
@@ -2498,16 +2423,6 @@
   .skill-market-topbar__actions {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .skill-market-publish-menu {
-    width: 100%;
-  }
-
-  .skill-market-publish-menu__panel {
-    right: auto;
-    left: 0;
-    width: 100%;
   }
 
   .skill-market-search {

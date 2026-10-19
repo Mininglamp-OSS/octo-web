@@ -51,4 +51,34 @@ describe("getBotPublishPrompt", () => {
     expect(prompt).toContain("Space ID：`<space-id>`");
     expect(prompt).toContain("--profile space-<space-id> --space <space-id>");
   });
+
+  it("builds a guarded new-version flow for an existing skill", () => {
+    const prompt = getBotPublishPrompt({
+      mode: "upgrade",
+      pluginId: "skill-123",
+      spaceId: "space-1",
+      apiBaseUrl: "https://octo.example.com/api",
+    });
+
+    expect(prompt).toContain("Plugin ID：`skill-123`");
+    expect(prompt).toContain("“Release a new version”流程");
+    expect(prompt).toContain("等待我明确回复“确认升级”");
+    expect(prompt).toContain("不得调用 `plugin import` / `plugin upsert`");
+    expect(prompt).toContain("旧版本仍在线、通过后才替换");
+    expect(prompt).toContain("`RESULT_UNKNOWN`");
+    expect(prompt).toContain("可复制的重试命令");
+    expect(prompt.indexOf("等待我明确回复“确认升级”")).toBeLessThan(
+      prompt.indexOf("`plugin review-request create`")
+    );
+  });
+
+  it("does not interpolate an unsafe plugin id into the upgrade prompt", () => {
+    const prompt = getBotPublishPrompt({
+      mode: "upgrade",
+      pluginId: "skill; rm -rf /",
+      spaceId: "space-1",
+    });
+    expect(prompt).not.toContain("rm -rf");
+    expect(prompt).toContain("Plugin ID：`<plugin-id>`");
+  });
 });

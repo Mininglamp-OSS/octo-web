@@ -6,6 +6,8 @@ import { getBotPublishPrompt } from "../utils/botPublishPrompt";
 
 interface BotPublishModalProps {
   visible: boolean;
+  mode?: "create" | "upgrade";
+  editingId?: string;
   onClose: () => void;
 }
 
@@ -24,6 +26,8 @@ function getCurrentSpaceId(): string {
  *  Prompt content lives in ../utils/botPublishPrompt.ts. */
 export default function BotPublishModal({
   visible,
+  mode = "create",
+  editingId,
   onClose,
 }: BotPublishModalProps) {
   useI18n();
@@ -35,19 +39,30 @@ export default function BotPublishModal({
   const prompt = useMemo(
     () =>
       getBotPublishPrompt({
+        mode,
+        pluginId: editingId,
         spaceId,
         apiBaseUrl: resolveAPIBaseURL(apiURL, window.location.origin),
       }),
-    [spaceId, apiURL]
+    [mode, editingId, spaceId, apiURL]
   );
+  const isUpgrade = mode === "upgrade";
 
   return (
     <PromptForwardModal
       visible={visible}
       onClose={onClose}
-      title={t("skillMarket.botPublish.title")}
-      hint={t("skillMarket.botPublish.hint")}
-      kind="publish"
+      title={t(
+        isUpgrade
+          ? "skillMarket.botPublish.updateTitle"
+          : "skillMarket.botPublish.title"
+      )}
+      hint={t(
+        isUpgrade
+          ? "skillMarket.botPublish.updateHint"
+          : "skillMarket.botPublish.hint"
+      )}
+      kind={isUpgrade ? "update" : "publish"}
       icon={<Bot size={18} />}
       prompt={prompt}
       spaceId={spaceId}

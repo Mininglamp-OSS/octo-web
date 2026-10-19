@@ -7,7 +7,7 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
-import { t, useI18n, WKModal } from "@octo/base";
+import { t, useI18n, WKButton, WKModal } from "@octo/base";
 import type { ExpertItem, ExpertMember } from "../mock/expertMock";
 import { getExpertSkillContent, getSquadSkillContent, getExpertSkillDownloadUrl, getSquadSkillDownloadUrl, trackExpertView } from "../api/expertService";
 import { getMcpAvatarColor } from "../utils/mcpAvatar";
@@ -18,6 +18,7 @@ import ExpertSpecView from "./ExpertSpecView";
 interface ExpertDetailModalProps {
   item: ExpertItem | null;
   onClose: () => void;
+  onUpgrade?: (item: ExpertItem) => void;
 }
 
 function memberInitial(name: string): string {
@@ -47,7 +48,11 @@ function MemberAvatar({ itemId, member }: { itemId: string; member: ExpertMember
  * own spec (指令 / MCP / Skills). Installing (添加到回路) is handled by
  * ExpertAddToLoopModal from the card's install button, not here.
  */
-export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalProps) {
+export default function ExpertDetailModal({
+  item,
+  onClose,
+  onUpgrade,
+}: ExpertDetailModalProps) {
   useI18n();
   // A drilled-into squad member; null shows the squad overview.
   const [drillMember, setDrillMember] = useState<ExpertMember | null>(null);
@@ -151,6 +156,18 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
       width="min(880px, calc(100vw - 32px))"
       className="wk-mcp-expert-modal"
       header={header}
+      footer={
+        onUpgrade ? (
+          <>
+            <WKButton variant="secondary" onClick={onClose}>
+              {t("skillMarket.common.cancel")}
+            </WKButton>
+            <WKButton variant="primary" onClick={() => onUpgrade(item)}>
+              {t("skillMarket.plugin.actionUpgrade")}
+            </WKButton>
+          </>
+        ) : undefined
+      }
     >
       <div className="wk-mcp-expert-detail__layout wk-mcp-expert-detail__layout--agent">
         <div className="wk-mcp-expert-detail__overview">
