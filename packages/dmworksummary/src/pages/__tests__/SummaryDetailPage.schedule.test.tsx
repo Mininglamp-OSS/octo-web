@@ -233,13 +233,14 @@ describe('shared detail actions after navigation', () => {
         consumeSummaryDetailAction(1, WKApp.shared.currentSpaceId);
     });
 
-    it('waits for slow detail and personal loading before prefilling regeneration', async () => {
+    it('routes a legacy regenerate intent to optimization after detail and personal loading', async () => {
         let resolveDetail!: (value: any) => void;
         let resolvePersonal!: (value: any) => void;
         vi.mocked(api.getSummaryDetail).mockReturnValue(new Promise(resolve => { resolveDetail = resolve; }));
         vi.mocked(api.getPersonalResult).mockReturnValue(new Promise(resolve => { resolvePersonal = resolve; }));
         vi.mocked(api.getMembers).mockResolvedValue([]);
         const page = makePage(1);
+        const optimize = vi.spyOn(page, "handleContinueRefine").mockImplementation(() => {});
         requestSummaryDetailAction(1, WKApp.shared.currentSpaceId, 'regenerate');
         const loading = page.loadDetail();
         expect(page.state.showRegenerateModal).toBe(false);
@@ -248,12 +249,13 @@ describe('shared detail actions after navigation', () => {
         await loading;
         expect(page.state.showRegenerateModal).toBe(false);
         resolvePersonal({ id: 7, content: 'old body', worker_status: 2 });
-        await vi.waitFor(() => expect(page.state.showRegenerateModal).toBe(true));
-        expect(page.state.regenerateTopic).toBe('Saved original instruction');
+        await vi.waitFor(() => expect(optimize).toHaveBeenCalledTimes(1));
+        expect(page.state.showRegenerateModal).toBe(false);
         expect(consumeSummaryDetailAction(1, WKApp.shared.currentSpaceId)).toBeNull();
     });
 
-    it('list retry and detail retry both open full regeneration, even with no personal result', async () => {
+    it('list retry and detail retry use the saved configuration without a regeneration dialog', async () => {
+        vi.mocked(api.regenerateSummary).mockResolvedValue({task_id: 1});
         const detail = baseDetail({ summary_mode: SummaryMode.BY_PERSON, status: TaskStatus.FAILED,
             trigger_type: TriggerType.AGENT, generation_requirement: 'Saved original instruction' });
         const fromList = makePage(1);
@@ -263,21 +265,22 @@ describe('shared detail actions after navigation', () => {
         const fromDetail = makePage(1);
         fromDetail.state = { ...fromDetail.state, loading: false, detail } as any;
         await fromDetail.handleRetry();
+        expect(api.regenerateSummary).toHaveBeenCalledWith(1, undefined, TaskStatus.FAILED);
+        expect(api.regenerateSummary).toHaveBeenCalledTimes(2);
         for (const page of [fromList, fromDetail]) {
-            expect(page.state.showRegenerateModal).toBe(true);
-            expect(page.state.regenerateMode).toBe('full');
-            expect(page.state.regenerateTopic).toBe('Saved original instruction');
+            expect(page.state.showRegenerateModal).toBe(false);
         }
     });
 
-    it('reports an older backend instead of opening a disabled retry dialog', async () => {
+    it('surfaces a retry failure without opening a regeneration dialog', async () => {
+        vi.mocked(api.regenerateSummary).mockRejectedValueOnce(new Error('Retry unavailable'));
         const page = makePage(1);
         page.state = { ...page.state, loading: false,
             detail: baseDetail({ trigger_type: TriggerType.AGENT, status: TaskStatus.FAILED }) } as any;
         await page.handleRetry();
         expect(page.state.showRegenerateModal).toBe(false);
-        expect(Toast.error).toHaveBeenCalledWith(t('summary.generation.serviceUpgradeRequired'));
-        expect(api.regenerateSummary).not.toHaveBeenCalled();
+        expect(Toast.error).toHaveBeenCalledWith('Retry unavailable');
+        expect(api.regenerateSummary).toHaveBeenCalledWith(1, undefined, TaskStatus.FAILED);
     });
 
     it('retries a failed Workflow summary without replacing its saved instruction', async () => {
@@ -343,7 +346,7 @@ describe('shared detail actions after navigation', () => {
         expect(collectByClass(tree, 'summary-detail-failed')).toHaveLength(1);
     });
 
-    it('keeps team regeneration creator-only without changing collaboration rights', () => {
+    it('removes team regeneration for both creator and participant', () => {
         const page = makePage(1);
         page.state = { ...page.state, loading: false,
             detail: baseDetail({ summary_mode: SummaryMode.BY_GROUP, status: TaskStatus.COMPLETED,
@@ -352,7 +355,7 @@ describe('shared detail actions after navigation', () => {
             element.props?.['data-testid'] === summaryTestIds.detailRegenerateBtn)).toBe(false);
         page.state.detail!.creator_id = WKApp.loginInfo.uid;
         expect(collectElements(page.renderHeader()).some(element =>
-            element.props?.['data-testid'] === summaryTestIds.detailRegenerateBtn)).toBe(true);
+            element.props?.['data-testid'] === summaryTestIds.detailRegenerateBtn)).toBe(false);
     });
 });
 

@@ -1725,3 +1725,7 @@ export async function getMemberCandidates(params?: { keyword?: string }): Promis
 export async function convertSummaryToDoc(title: string, markdown: string): Promise<{ docId: string; url: string }> {
     return convertMarkdownToDoc({ title, markdown });
 }
+
+export async function getSummaryOptimizationTarget(taskId: number): Promise<import("../bridge/summaryWorkbench/protocol").SummaryOptimizationContext> {
+    return get(`/summaries/${taskId}/optimization-target`);
+}

@@ -799,5 +799,13 @@
     "previewLatestHint": "Showing the latest version of this summary (may have been updated since you referenced it)",
     "previewNotFound": "This summary was deleted or you don't have access",
     "previewLoadFailed": "Failed to load, please retry later"
+  },
+  "optimization": {
+    "saveVersion": "Save new version",
+    "saveNew": "Save as new summary",
+    "target": "Optimizing “{{title}}”",
+    "versionSaved": "Saved as version {{version}}",
+    "targetUnavailable": "The original summary is unavailable. You can save your changes as a new summary.",
+    "conflict": "The original summary has changed. Your draft is preserved. Save it as a new summary, or review the latest version before optimizing again."
   }
 }
