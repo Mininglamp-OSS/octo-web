@@ -1,3 +1,4 @@
+import { getSummaryOptimizationTarget } from "../../Service/SummaryWorkbenchService";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import {
@@ -176,6 +177,7 @@ vi.mock("./participantCandidates", () => ({
 }));
 
 vi.mock("../../Service/SummaryWorkbenchService", () => ({
+  getSummaryOptimizationTarget: vi.fn().mockResolvedValue({ target: {task_id: 17, result_kind: "team", expected_revision: "base"}, title: "Original", can_save_version: false }),
   default: {
     loadReferenceSummary: (...args: unknown[]) =>
       mocks.getSummaryDetail(...args),
@@ -195,6 +197,7 @@ vi.mock("../../ui/SummaryWorkbench", () => ({
       data-available-contexts={(state.availableContextKinds ?? []).join(",")}
     >
       <header className="wk-summary-workbench__header" />
+      {actions.onSaveAsNew && <button onClick={actions.onSaveAsNew}>save-new</button>}
       <span data-testid="reference-label">
         {state.contextItems.find((item: any) => item.kind === "reference")
           ?.label ?? ""}
@@ -4130,4 +4133,48 @@ describe("SummaryWorkbenchFeature", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByTestId("reference-side-panel")).toHaveTextContent("73");
   });
+  it("saves an optimization to the captured original revision without a title dialog", async () => {
+    const target = {task_id: 17, result_kind: "team" as const, expected_revision: "initial-revision"};
+    vi.mocked(getSummaryOptimizationTarget).mockResolvedValueOnce({target, title: "Original", can_save_version: true});
+    const savePreview = vi.fn().mockResolvedValue({task_id: 17, save_mode: "new_version", version: 2});
+    const onOpenTask = vi.fn();
+    const current = controller({savePreview, model: { currentPreview: {content: "# Optimized"} }});
+    current.scope.referencedTaskIds = [17];
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+    render(<SummaryWorkbenchFeature spaceId="space-a" derivedFromTask={{task_id:17,title:"Original"}} onOpenTask={onOpenTask}/>, {legacyRoot:true});
+    await screen.findByRole("button", {name:"save-new"});
+    fireEvent.click(screen.getByRole("button", {name:"save-preview"}));
+    await waitFor(() => expect(savePreview).toHaveBeenCalledWith("Original", target));
+    expect(screen.queryByRole("button", {name:"modal-ok"})).not.toBeInTheDocument();
+    expect(onOpenTask).toHaveBeenCalledWith(17);
+    expect(mocks.markNotificationEligible).not.toHaveBeenCalled();
+  });
+
+  it("remounts the saved detail in the legacy route even for the original task", async () => {
+    vi.mocked(getSummaryOptimizationTarget).mockResolvedValueOnce({target:{task_id:17,result_kind:"team",expected_revision:"base"},title:"Original",can_save_version:true});
+    const savePreview = vi.fn().mockResolvedValue({task_id:17,save_mode:"new_version",version:2});
+    const current=controller({savePreview,model:{currentPreview:{content:"# Updated"}}});
+    current.scope.referencedTaskIds=[17];
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+    render(<SummaryWorkbenchFeature spaceId="space-a" derivedFromTask={{task_id:17,title:"Original"}}/>, {legacyRoot:true});
+    await screen.findByRole("button", {name:"save-new"});
+    fireEvent.click(screen.getByRole("button", {name:"save-preview"}));
+    await waitFor(() => expect(mocks.routePush).toHaveBeenCalled());
+    const detail=mocks.routePush.mock.calls.at(-1)?.[0];
+    expect(detail.props.taskId).toBe(17);
+    expect(detail.key).toBe(`workbench:${current.sessionId}:17`);
+  });
+
+  it("can save an optimization as a separate summary without passing the update target", async () => {
+    vi.mocked(getSummaryOptimizationTarget).mockResolvedValueOnce({target:{task_id:17,result_kind:"team",expected_revision:"base"},title:"Original",can_save_version:true});
+    const savePreview = vi.fn().mockResolvedValue({task_id:99});
+    const current=controller({savePreview, model: { currentPreview: {content: "# Draft"} }});
+    current.scope.referencedTaskIds=[17];
+    mocks.useSummaryWorkbench.mockReturnValue(current);
+    render(<SummaryWorkbenchFeature spaceId="space-a" derivedFromTask={{task_id:17,title:"Original"}}/>, {legacyRoot:true});
+    fireEvent.click(await screen.findByRole("button", {name:"save-new"}));
+    fireEvent.click(screen.getByRole("button", {name:"modal-ok"}));
+    await waitFor(() => expect(savePreview).toHaveBeenCalledWith("# Draft"));
+  });
+
 });

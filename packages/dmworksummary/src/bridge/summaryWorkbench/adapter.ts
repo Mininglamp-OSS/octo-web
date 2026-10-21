@@ -410,6 +410,7 @@ export function decodeSummaryWorkspaceSaveResult(
   const finishStatus = decodeFinishStatus(record.finish_status);
   const gaps = decodeCoverageGaps(record.gaps);
   return {
+    ...(record.save_mode === "new_version" ? { save_mode: "new_version" as const, version: requirePositiveInteger(record.version, "save_result.version") } : {}),
     task_id: requirePositiveInteger(record.task_id, "save_result.task_id"),
     task_no: requireString(record.task_no, "save_result.task_no"),
     status: requireNonNegativeInteger(record.status, "save_result.status"),

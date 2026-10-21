@@ -1,3 +1,4 @@
+import type { SummaryOptimizationTarget } from "./protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { t } from "@octo/base";
 import type {
@@ -91,7 +92,7 @@ export interface SummaryWorkbenchController {
   ) => Promise<SummaryWorkbenchResponse | undefined>;
   confirmWorkflow: () => Promise<SummaryWorkbenchResponse | undefined>;
   savePreview: (
-    title?: string
+    title?: string, target?: SummaryOptimizationTarget
   ) => Promise<CreateAgentSummaryResult | undefined>;
   hydrateSession: (
     sessionId?: string,
@@ -700,7 +701,7 @@ export default function useSummaryWorkbench(
   }, [commit, notifySessionId]);
 
   const savePreview = useCallback(
-    (title?: string): Promise<CreateAgentSummaryResult | undefined> => {
+    (title?: string, target?: SummaryOptimizationTarget): Promise<CreateAgentSummaryResult | undefined> => {
       const existing = saveRef.current;
       if (existing) return existing.promise;
       if (
@@ -726,6 +727,7 @@ export default function useSummaryWorkbench(
         preview.scopeVersion,
         preview.version,
         normalizedTitle ?? "",
+        JSON.stringify(target ?? null),
       ].join(":");
       const key = idempotencyKeyFor(`save:${identity}`);
       const controller = new AbortController();
@@ -743,6 +745,7 @@ export default function useSummaryWorkbench(
       const promise = serviceRef.current
         .savePreview(
           {
+            ...(target ? { target } : {}),
             sessionId: current.sessionId,
             messageId: preview.messageId,
             snapshotVersion: preview.snapshotVersion,

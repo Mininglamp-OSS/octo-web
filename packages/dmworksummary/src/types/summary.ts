@@ -109,7 +109,13 @@ export interface TeamCitationItem {
 }
 
 /** 总结结果 */
+export interface SummaryGenerationSnapshot {
+  content_version: number;
+  scope: { sources?: SourceItem[]; time_range: { start: string; end: string } };
+}
+
 export interface SummaryResult {
+    snapshot?: SummaryGenerationSnapshot;
     content: string;
     /** Short AI-generated abstract (see backend Option-B generation). Empty → hide the callout. */
     abstract?: string;
@@ -138,6 +144,7 @@ export interface SummaryVersionItem {
 }
 
 export interface SummaryVersionDetail extends SummaryVersionItem {
+    snapshot?: SummaryGenerationSnapshot;
     content: string;
     citations?: CitationItem[];
     team_citations?: TeamCitationItem[];
@@ -152,6 +159,7 @@ export type WorkflowStage =
     | "generate_summary";
 
 export interface PersonalResult {
+    snapshot?: SummaryGenerationSnapshot;
     id?: number;
     version?: number;
     worker_status: 0 | 1 | 2 | 3;
@@ -406,6 +414,8 @@ export interface CoverageGap {
  * v2 后端(AGENT_SUMMARY_V2_MODE!=off)追加完成判定;旧后端 / V2 off 时缺省。
  */
 export interface CreateAgentSummaryResult {
+    save_mode?: "new_summary" | "new_version";
+    version?: number;
     task_id: number;
     task_no: string;
     status: number;

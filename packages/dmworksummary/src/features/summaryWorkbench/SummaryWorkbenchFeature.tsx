@@ -1,3 +1,4 @@
+import { useOptimizationTarget } from "../../bridge/summaryWorkbench/useOptimizationTarget";
 import React, {
   useCallback,
   useEffect,
@@ -287,7 +288,15 @@ export default function SummaryWorkbenchFeature({
       }
     },
   });
+  const { optimization, loading: optimizationLoading } = useOptimizationTarget({
+    taskId: derivedFromTask?.task_id, sessionId: workbench.sessionId,
+    userId: storageScope.userId ?? undefined, spaceId,
+    hasMessages: workbench.viewState.messages.length > 0,
+  });
+  const canSaveVersion = Boolean(optimization?.can_save_version &&
+    workbench.scope.referencedTaskIds.includes(optimization.target.task_id));
   const busy =
+    optimizationLoading ||
     workbench.viewState.isSending ||
     workbench.isHydrating ||
     workbench.isConfirming ||
@@ -699,6 +708,7 @@ export default function SummaryWorkbenchFeature({
         ];
   const viewState = {
     ...workbench.viewState,
+    optimizationTitle: canSaveVersion ? optimization?.title : undefined,
     contextItems,
     composerFocusKey,
     isSending: busy,
@@ -722,7 +732,9 @@ export default function SummaryWorkbenchFeature({
         ? "summary.workbench.composer.generate"
         : "summary.workbench.composer.send",
     resumeLastSessionDisabled: busy || hasUnpersistedDraft,
-    errorMessage: scopeIssueMessageKey
+    errorMessage: canSaveVersion && String(workbench.error?.code) === "40009"
+      ? t("summary.optimization.conflict")
+      : scopeIssueMessageKey
       ? t(scopeIssueMessageKey)
       : displayErrorKey
         ? t(displayErrorKey)
@@ -873,7 +885,12 @@ export default function SummaryWorkbenchFeature({
       return;
     }
     WKApp.routeRight.popToRoot();
-    WKApp.routeRight.push(<SummaryDetailPage taskId={taskId} emitSelection />);
+    // The legacy route queue can reuse the original detail at the same position
+    // after pop + push are batched. Give the saved detail a session key so it
+    // mounts again and fetches the new version, even when taskId is unchanged.
+    WKApp.routeRight.push(
+      <SummaryDetailPage key={`workbench:${workbench.sessionId}:${taskId}`} taskId={taskId} emitSelection />
+    );
   };
 
   const handleResultAction = async (action: SummaryWorkbenchAction) => {
@@ -892,6 +909,7 @@ export default function SummaryWorkbenchFeature({
       return;
     }
     if (action === "save_preview") {
+      if (canSaveVersion) { await savePreview(true); return; }
       workbench.clearError();
       const content = workbench.model.currentPreview?.content ?? "";
       setSaveTitle(deriveSummaryTitle(content).slice(0, 100));
@@ -1155,13 +1173,15 @@ export default function SummaryWorkbenchFeature({
     templateFilledComposer.current = null;
   };
 
-  const savePreview = async () => {
-    const title = saveTitle.trim();
+  const savePreview = async (asVersion = false) => {
+    const title = asVersion ? optimization?.title || "" : saveTitle.trim();
     if (!title) {
       Toast.warning(t("summary.create.titleRequired"));
       return;
     }
-    const result = await workbench.savePreview(title);
+    const result = await (asVersion && canSaveVersion
+      ? workbench.savePreview(title, optimization?.target)
+      : workbench.savePreview(title));
     if (!result) return;
     setSaveDialogOpen(false);
     if (handledSavedTaskIds.current.has(result.task_id)) return;
@@ -1176,8 +1196,13 @@ export default function SummaryWorkbenchFeature({
       entry_source: source,
       trigger_mode: "agent",
     });
-    Toast.success(t("summary.create.agentSummaryCreated"));
-    notifyCreated(result.task_id, "agent");
+    Toast.success(t(result.save_mode === "new_version" ? "summary.optimization.versionSaved" : "summary.create.agentSummaryCreated", { values: { version: result.version ?? "" } }));
+    if (result.save_mode === "new_version") {
+      WKApp.mittBus.emit("summary-list-refresh-requested" as any);
+      onCreated?.();
+    } else {
+      notifyCreated(result.task_id, "agent");
+    }
     openTask(result.task_id);
   };
 
@@ -1288,6 +1313,11 @@ export default function SummaryWorkbenchFeature({
             onSend: () => void send(),
             onOpenContext: handleContextOpen,
             onRemoveContext: handleContextRemove,
+            onSaveAsNew: canSaveVersion ? () => {
+              workbench.clearError();
+              setSaveTitle(deriveSummaryTitle(workbench.model.currentPreview?.content ?? "").slice(0, 100));
+              setSaveDialogOpen(true);
+            } : undefined,
             onResultAction: (action) => void handleResultAction(action),
             onNewSession: resetSession,
             onResumeLastSession: lastSessionId ? resumeLastSession : undefined,

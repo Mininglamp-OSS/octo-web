@@ -338,6 +338,9 @@ const SummaryWorkbench = ({
 
         {cardActions.length > 0 && (
           <div className="wk-summary-workbench-card__actions">
+            {cardActions.includes("save_preview") && state.optimizationTitle && (
+              <span>{t("summary.optimization.target", { values: { title: state.optimizationTitle } })}</span>
+            )}
             {cardActions.map((action) => (
               <WKButton
                 key={action}
@@ -352,9 +355,14 @@ const SummaryWorkbench = ({
                   if (action === "continue_chat") composerRef.current?.focus();
                 }}
               >
-                {t(ACTION_LABEL_KEYS[action])}
+                {t(action === "save_preview" && state.optimizationTitle ? "summary.optimization.saveVersion" : ACTION_LABEL_KEYS[action])}
               </WKButton>
             ))}
+            {cardActions.includes("save_preview") && actions.onSaveAsNew && (
+              <WKButton type="button" variant="secondary" onClick={actions.onSaveAsNew}>
+                {t("summary.optimization.saveNew")}
+              </WKButton>
+            )}
           </div>
         )}
       </article>

@@ -67,7 +67,6 @@ import { TaskStatus, SummaryMode, ParticipantStatus, SourceType, TriggerType } f
 import {
     formatDate,
     canCancel,
-    canRegenerate,
     scheduleItemToConfig,
     scheduleToParams,
     formatScheduleSummary,
@@ -243,6 +242,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     private renderSourceMetadata = (sources: SourceItem[], snapshotAt?: string) => {
+        const currentSnapshot = this.state.detail?.result?.snapshot ?? this.state.personalResult?.snapshot;
+        if (currentSnapshot?.scope.sources?.length) sources = currentSnapshot.scope.sources;
         if (!sources.length) return null;
         const { t } = this.context;
         const snapshotDocumentCount = sources.filter(
@@ -582,7 +583,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 : action === "retry" || detail.summary_mode !== SummaryMode.BY_PERSON || !personalLoading);
         switch (action) {
             case "schedule": this.openScheduleModal(); break;
-            case "regenerate": this.handleRegenerate(); break;
+            case "regenerate": this.handleContinueRefine(); break;
             case "retry": void this.handleRetry(); break;
             case "edit": this.handleStartEdit(); break;
         }
@@ -1596,15 +1597,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // DAP-266：补 summary_id（this.taskId,上方已 guard 非空）+ prev_status（重试前的失败/未完成状态,detail.status 就近）。
         //   source（触发来源）无就近枚举变量（详情页单入口,无 source 参数）→ DEFER。
         Dap.shared.track("smart_summary_retried", { summary_id: this.taskId, prev_status: detail.status });
-        if (detail.trigger_type === TriggerType.AGENT) {
-            if (!supportsGenerationConfig(detail)) {
-                Toast.error(t("summary.generation.serviceUpgradeRequired"));
-                return;
-            }
-            this.handleRegenerate();
-            this.setState({ regenerateMode: "full" });
-            return;
-        }
         try {
             this.setState({ regenerateSubmitting: true });
             // DAP-271 finding 6：prev_status 就近取自 detail.status（重生成前状态）。
@@ -4528,8 +4520,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const waitingForFallback = !!detail && isAgent && !detail.result?.content?.trim() && !agentContentReady;
 
         const showForwardToChat = !!detail && detail.status === TaskStatus.COMPLETED;
-        const showRegenerate = !!detail && canRegenerate(detail.status) && (isCreator || this.isMultiCollab());
-        const showRetry = !!detail && detail.status === TaskStatus.FAILED;
+        const showRetry = !!detail && (detail.status === TaskStatus.FAILED || detail.status === TaskStatus.CANCELLED);
         const showCancel = !!detail && canCancel(detail.status);
         const showDelete = !!detail && isCreator;
         const showLeave = !!detail && isParticipant && !isCreator;
@@ -4634,18 +4625,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             disabled={waitingForFallback}
                         >
                             {t("summary.detail.forwardToChat")}
-                        </Button>
-                    )}
-                    {showRegenerate && !showRetry && (
-                        <Button
-                            data-testid={summaryTestIds.detailRegenerateBtn}
-                            className="summary-detail-header-btn"
-                            theme="borderless"
-                            type="tertiary"
-                            icon={<IconRefresh />}
-                            onClick={this.handleRegenerate}
-                        >
-                            {t("summary.detail.regenerate")}
                         </Button>
                     )}
                     {showRetry && (

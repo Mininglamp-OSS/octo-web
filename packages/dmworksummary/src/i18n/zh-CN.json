@@ -799,5 +799,13 @@
     "previewLatestHint": "以下内容为该总结的最新版本(可能已经被更新过,与您引用时的快照不完全一致)",
     "previewNotFound": "该总结已删除或您无权访问",
     "previewLoadFailed": "加载失败,请稍后重试"
+  },
+  "optimization": {
+    "saveVersion": "保存新版本",
+    "saveNew": "保存为新总结",
+    "target": "正在优化《{{title}}》",
+    "versionSaved": "已保存为第 {{version}} 版",
+    "targetUnavailable": "暂时无法读取原总结，可继续优化并保存为新总结",
+    "conflict": "原总结已更新，你的优化内容已保留。可以另存为新总结，或查看最新版本后重新优化。"
   }
 }

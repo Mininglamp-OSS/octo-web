@@ -69,7 +69,7 @@ function getStatusColor(status: number): string | null {
     }
 }
 
-const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDelete, onRespond, onLeave, onRetry, onRegenerate, onContinueOptimize, onEdit, onSchedule, onCancel }) => {
+const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDelete, onRespond, onLeave, onRetry, onContinueOptimize, onEdit, onSchedule, onCancel }) => {
     const { t } = useI18n();
     const [confirmType, setConfirmType] = useState<'delete' | 'leave' | null>(null);
     const [menuVisible, setMenuVisible] = useState(false);
@@ -245,11 +245,6 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                                                         {t("summary.detail.continueRefine")}
                                                     </Dropdown.Item>
                                                 )}
-                                                    {onRegenerate && (
-                                                        <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onRegenerate(task.task_id); }}>
-                                                            {t("summary.summaryCard.regenerate")}
-                                                        </Dropdown.Item>
-                                                    )}
                                                     {onEdit && (
                                                         <Dropdown.Item onClick={(e) => { e?.stopPropagation?.(); setMenuVisible(false); onEdit(task.task_id); }}>
                                                             {t("summary.summaryCard.edit")}

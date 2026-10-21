@@ -582,4 +582,12 @@ describe("SummaryWorkbenchService", () => {
     });
     expect(getSummaryDetail).toHaveBeenCalledWith(42);
   });
+  it("sends an explicit version target and decodes the saved version", async () => {
+    const target = {task_id:17,result_kind:"team" as const,expected_revision:"base"};
+    savePreview.mockResolvedValue({task_id:17,task_no:"S17",status:2,created_at:"2026-10-19T00:00:00Z",save_mode:"new_version",version:2});
+    const result = await service.savePreview({sessionId:"s1",messageId:"1",snapshotVersion:1,scopeVersion:1,artifactVersion:1,idempotencyKey:"v1",target});
+    expect(savePreview.mock.calls[0][0]).toMatchObject({save_mode:"new_version",target});
+    expect(result).toMatchObject({task_id:17,save_mode:"new_version",version:2});
+  });
+
 });

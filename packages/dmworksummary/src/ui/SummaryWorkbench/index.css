@@ -53,6 +53,7 @@
 }
 
 .wk-summary-workbench__heading > div:first-child {
+  flex: 1 1 0;
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -60,7 +61,7 @@
 .wk-summary-workbench__header-actions {
   display: flex;
   align-items: center;
-  flex-shrink: 0;
+  flex: 1 1 0;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--wk-sp-2);
@@ -70,11 +71,13 @@
 
 .wk-summary-workbench__reference-context {
   display: flex;
+  flex: 1 1 0;
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--wk-sp-1);
   min-width: 0;
+  max-width: 100%;
 }
 
 .wk-summary-workbench__header h1 {
@@ -653,6 +656,11 @@
 }
 
 @container wk-summary-workbench (max-width: 719px) {
+  .wk-summary-workbench__heading > div:first-child,
+  .wk-summary-workbench__header-actions {
+    flex: 0 1 auto;
+  }
+
   .wk-summary-workbench__header-actions,
   .wk-summary-workbench__reference-context {
     justify-content: flex-start;
